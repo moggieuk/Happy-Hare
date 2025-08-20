@@ -117,17 +117,19 @@ class MmuMachine:
         # Hack to bring some v4 functionality into v3
 
         # MMU design for control purposes can be broken down into the following choices:
-        #  - Selector type or no selector
+        #  - Selector type or no (Virtual) selector
         #  - Does each gate of the MMU have different BMG drive gears (or similar). I.e. drive rotation distance is variable
         #  - Does each gate of the MMU have different bowden path
         #  - Does design require "bowden move" (i.e. non zero length bowden)
         #  - Is filament always gripped by MMU
+        #  - Does selector mechanism still allow selection of gates when filament is loaded (implied for Multigear designs)
         #  - Does design has a filament bypass
         selector_type = 'LinearSelector'
         variable_rotation_distances = 1
         variable_bowden_lengths = 0
         require_bowden_move = 1     # Will allow mmu_gate sensor and extruder sensor to share the same pin
         filament_always_gripped = 0 # Whether MMU design has ability to release filament (overrides gear/extruder syncing)
+        can_crossload = 0           # Design allows preloading/eject in one gate while another gate is loaded (also requires post_gear sensor)
         has_bypass = 0              # Whether MMU design has bypass gate (also has to be calibrated on type-A designs with LinearSelector)
 
         if self.mmu_vendor == VENDOR_ERCF:
@@ -187,6 +189,7 @@ class MmuMachine:
             variable_bowden_lengths = 1
             require_bowden_move = 1
             filament_always_gripped = 0
+            can_crossload = 1
             has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_PICO_MMU:
@@ -195,6 +198,7 @@ class MmuMachine:
             variable_bowden_lengths = 0
             require_bowden_move = 1
             filament_always_gripped = 0
+            can_crossload = 1
             has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_QUATTRO_BOX:
@@ -211,6 +215,7 @@ class MmuMachine:
             variable_bowden_lengths = 0
             require_bowden_move = 1
             filament_always_gripped = 0
+            can_crossload = 1
             has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_VVD:
@@ -219,6 +224,7 @@ class MmuMachine:
             variable_bowden_lengths = 0
             require_bowden_move = 1
             filament_always_gripped = 1
+            can_crossload = 1
             has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_KMS:
@@ -236,6 +242,7 @@ class MmuMachine:
         self.variable_bowden_lengths = bool(config.getint('variable_bowden_lengths', variable_bowden_lengths))
         self.require_bowden_move = bool(config.getint('require_bowden_move', require_bowden_move))
         self.filament_always_gripped = bool(config.getint('filament_always_gripped', filament_always_gripped))
+        self.can_crossload = bool(config.getint('can_crossload', can_crossload))
         self.has_bypass = bool(config.getint('has_bypass', has_bypass))
 
         # By default HH uses its modified homing extruder. Because this might have unknown consequences on certain

@@ -393,6 +393,7 @@ class Mmu:
         self.toolhead_ooze_reduction = config.getfloat('toolhead_ooze_reduction', 0., minval=-5., maxval=20.) # +ve value = reduction of load length
         self.toolhead_unload_safety_margin = config.getfloat('toolhead_unload_safety_margin', 10., minval=0.) # Extra unload distance
         self.toolhead_move_error_tolerance = config.getfloat('toolhead_move_error_tolerance', 60, minval=0, maxval=100) # Allowable delta movement % before error
+        self.toolhead_entry_tension_test = config.getint('toolhead_entry_tension_test', 1, minval=0, maxval=1) # Use filament compression to test for successful extruder entry (requires compression sensor)
         self.toolhead_post_load_tighten = config.getint('toolhead_post_load_tighten', 60, minval=0, maxval=100) # Whether to apply filament tightening move after load (if not synced)
         self.toolhead_post_load_tension_adjust = config.getint('toolhead_post_load_tension_adjust', 1, minval=0, maxval=1) # Whether to use sync-feedback sensor to adjust tension (synced)
 
@@ -699,7 +700,7 @@ class Mmu:
         self.mmu_toolhead = MmuToolHead(config, self)
         rails = self.mmu_toolhead.get_kinematics().rails
         self.gear_rail = rails[1]
-        self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper # Is a MmuExtruderStepper if 'self.homing_extruder' is True
+        self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper # Will be a MmuExtruderStepper if 'self.homing_extruder' is True
 
         # Setup filament sensors that are also used for homing (endstops). Must be done during initialization
         self.sensor_manager = MmuSensorManager(self)
@@ -2243,8 +2244,8 @@ class Mmu:
         if self.check_if_disabled(): return
         if self.check_if_bypass(): return
         if self.check_if_not_homed(): return
-        if self.check_if_always_gripped(): return
         sync = gcmd.get_int('SYNC', 1, minval=0, maxval=1)
+        if not sync and self.check_if_always_gripped(): return
         if not self.is_in_print():
             self._standalone_sync = bool(sync) # Make sticky if not in a print
         self.reset_sync_gear_to_extruder(sync)
@@ -3908,13 +3909,14 @@ class Mmu:
     # Preload selected gate as little as possible. If a full gate load is the only option
     # this will then park correctly after pre-load
     def _preload_gate(self):
-        if self.sensor_manager.has_gate_sensor(self.SENSOR_GEAR_PREFIX, self.gate_selected):
-            # Minimal load past gear stepper if gear sensor is fitted
-            if self.sensor_manager.check_gate_sensor(self.SENSOR_GEAR_PREFIX, self.gate_selected):
+        gate_sensor = self.sensor_manager.check_gate_sensor(self.SENSOR_GEAR_PREFIX, self.gate_selected)
+        if gate_sensor is not None:
+            if gate_sensor:
                 self.log_always("Filament already preloaded")
                 self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE)
                 return
             else:
+                # Minimal load to gear sensor if fitted
                 endstop_name = self.sensor_manager.get_gate_sensor_name(self.SENSOR_GEAR_PREFIX, self.gate_selected)
                 self.log_always("Preloading...")
                 msg = "Homing to %s sensor" % endstop_name
@@ -3955,8 +3957,8 @@ class Mmu:
             gate = self.gate_selected
         else:
             self.select_gate(gate)
-
         self.selector.filament_drive()
+
         self.log_always("Ejecting...")
         if self.sensor_manager.has_gate_sensor(self.SENSOR_GEAR_PREFIX, gate):
             endstop_name = self.sensor_manager.get_gate_sensor_name(self.SENSOR_GEAR_PREFIX, gate)
@@ -3968,7 +3970,12 @@ class Mmu:
                 raise MmuError("Filament did not exit gate homing sensor: %s" % endstop_name)
 
         if self.gate_final_eject_distance > 0:
-            self.trace_filament_move("Ejecting filament out of gate", -self.gate_final_eject_distance, wait=True)
+            msg = "Ejecting filament out of gate"
+            if self.sensor_manager.check_gate_sensor(self.SENSOR_PRE_GATE_PREFIX, gate) is not None:
+                # Use homing move so we don't "over eject"
+                self.trace_filament_move(msg, -self.gate_final_eject_distance, motor="gear", homing_move=-1, endstop_name=self.SENSOR_PRE_GATE_PREFIX, wait=True)
+            else:
+                self.trace_filament_move(msg, -self.gate_final_eject_distance, wait=True)
 
         self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=True) # Should already be in this position
         self._set_gate_status(gate, self.GATE_EMPTY)
@@ -4088,7 +4095,7 @@ class Mmu:
                 self.trace_filament_move("Final parking", -self.gate_parking_distance)
                 self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
                 return actual, self.gate_unload_buffer
-            msg = "did not home to gate sensor %s after moving %1.fmm" % (self.gate_homing_endstop, homing_max)
+            msg = "did not home to sensor '%s' after moving %1.fmm" % (self.gate_homing_endstop, homing_max)
 
         raise MmuError("Failed to unload gate because %s" % msg)
 
@@ -4120,7 +4127,7 @@ class Mmu:
             if self.gate_homing_endstop == self.SENSOR_GEAR_PREFIX:
                 sensor += "_%d" % self.gate_selected
             if not self.sensor_manager.has_sensor(sensor):
-                raise MmuError("Attempting to %s gate but gate sensor '%s' is not configured on MMU!" % (direction, sensor))
+                raise MmuError("Attempting to %s gate but sensor '%s' is not configured on MMU!" % (direction, sensor))
         else:
             raise MmuError("Unsupported gate endstop %s" % self.gate_homing_endstop)
 
@@ -4301,7 +4308,7 @@ class Mmu:
             self.log_debug("Homing to extruder '%s' endstop, up to %.1fmm" % (self.extruder_homing_endstop, max_length))
             actual,homed,measured,_ = self.trace_filament_move("Homing filament to extruder endstop", max_length, motor="gear", homing_move=1, endstop_name=self.extruder_homing_endstop)
             if homed:
-                self.log_debug("Extruder endstop reached after %.1fmm (measured %.1fmm)" % (actual, measured))
+                self.log_debug("Extruder endstop '%s' reached after %.1fmm (measured %.1fmm)" % (self.extruder_homing_endstop, actual, measured))
                 self._set_filament_pos_state(self.FILAMENT_POS_HOMED_ENTRY)
 
                 # Make adjustment based on sensor: extruder - move a little move, compression - back off a little
@@ -4368,6 +4375,10 @@ class Mmu:
             self._ensure_safe_extruder_temperature(wait=True)
             homing_movement = None
 
+            has_tension = self.sensor_manager.has_sensor(self.SENSOR_TENSION)
+            has_compression = self.sensor_manager.has_sensor(self.SENSOR_COMPRESSION)
+            has_toolhead = self.sensor_manager.has_sensor(self.SENSOR_TOOLHEAD)
+
             synced = not extruder_only
             if synced:
                 self.selector.filament_drive()
@@ -4379,8 +4390,9 @@ class Mmu:
                 motor = "extruder"
 
             fhomed = False
-            if self.sensor_manager.has_sensor(self.SENSOR_TOOLHEAD):
-                # With toolhead sensor we always first home to toolhead sensor past the extruder entrance
+            if has_toolhead:
+                # With toolhead sensor for accuracy we always first home to toolhead sensor past the extruder entrance
+                # The remaining load distance is relative to the toolhead sensor
                 if self.sensor_manager.check_sensor(self.SENSOR_TOOLHEAD):
                     raise MmuError("Possible toolhead sensor malfunction - filament detected before it entered extruder")
                 self.log_debug("Homing up to %.1fmm to toolhead sensor%s" % (self.toolhead_homing_max, (" (synced)" if synced else "")))
@@ -4393,8 +4405,22 @@ class Mmu:
                     raise MmuError("Failed to reach toolhead sensor after moving %.1fmm" % self.toolhead_homing_max)
 
             # Length may be reduced by previous unload in filament cutting use case. Ensure reduction is used only one time
-            d = self.toolhead_sensor_to_nozzle if self.sensor_manager.has_sensor(self.SENSOR_TOOLHEAD) else self.toolhead_extruder_to_nozzle
+            d = self.toolhead_sensor_to_nozzle if has_toolhead else self.toolhead_extruder_to_nozzle
             length = max(d - self.filament_remaining - self.toolhead_residual_filament - self.toolhead_ooze_reduction - self.toolchange_retract, 0)
+
+            # If we have a compression sensor indicating compression we can detect failure in the critical extruder entrance transition
+            # by performing the initial load with just the extruder motor and checking that the sensor un-triggers before continuing
+            if self.toolhead_entry_tension_test and synced and not has_toolhead and self.sensor_manager.check_sensor(self.SENSOR_COMPRESSION):
+                max_range = self.sync_feedback_manager.sync_feedback_buffer_maxrange
+                if length > max_range:
+                    self.log_debug("Monitoring extruder entrance transistion for up to %.1fmm..." % max_range)
+                    actual,success = self._adjust_filament_tension(use_gear_motor=False)
+                    if success:
+                        length -= actual
+                    else:
+                        self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY) # But could also still be POS_IN_BOWDEN!
+                        raise MmuError("Failed to load filament passed the extruder entrance (sync-feedback buffer didn't detect neutral tension)")
+
             self.log_debug("Loading last %.1fmm to the nozzle..." % length)
             _,_,measured,delta = self.trace_filament_move("Loading filament to nozzle", length, speed=speed, motor=motor, wait=True)
             self._set_filament_remaining(0.)
@@ -4413,9 +4439,6 @@ class Mmu:
                 not extruder_only
                 and self.gate_selected != self.TOOL_GATE_BYPASS
             ):
-                has_tension = self.sensor_manager.has_sensor(self.SENSOR_TENSION)
-                has_compression = self.sensor_manager.has_sensor(self.SENSOR_COMPRESSION)
-
                 if (
                     self.toolhead_post_load_tighten
                     and not self.sync_to_extruder
@@ -4438,49 +4461,13 @@ class Mmu:
                     # Try to put filament in neutral tension by centering between sensors
                     tension_active = self.sensor_manager.check_sensor(self.SENSOR_TENSION)
                     compression_active = self.sensor_manager.check_sensor(self.SENSOR_COMPRESSION)
-
-                    if (compression_active is True) != (tension_active is True): # Equality means already neutral
-
-                        if compression_active:
-                            self.log_debug("Relaxing filament tension")
-                        elif tension_active:
-                            self.log_debug("Tightening filament tension")
-
-                        fhomed = False
-                        if self.sync_feedback_manager.sync_feedback_buffer_range == 0:
-                            # Special case for buffers whose neutral point overlaps both sensors. I.e. both sensors active
-                            # is the neutral point. This requires different homing logic
-                            max_move = self.sync_feedback_manager.sync_feedback_buffer_maxrange
-                            if compression_active:
-                                direction = -1
-                                _,fhomed,_,_ = self.trace_filament_move("Homing to tension sensor", max_move * direction, homing_move=1, endstop_name=self.SENSOR_TENSION)
-
-                            elif tension_active:
-                                direction = 1
-                                _,fhomed,_,_ = self.trace_filament_move("Homing to compression sensor", max_move * direction, homing_move=1, endstop_name=self.SENSOR_COMPRESSION)
-                        else:
-                            max_move = self.sync_feedback_manager.sync_feedback_buffer_range
-                            direction = 0
-                            if compression_active:
-                                direction = -1
-                                _,fhomed,_,_ = self.trace_filament_move("Reverse homing off compression sensor", max_move * direction, homing_move=-1, endstop_name=self.SENSOR_COMPRESSION)
-
-                            elif tension_active:
-                                direction = 1
-                                _,fhomed,_,_ = self.trace_filament_move("Reverse homing off tension sensor", max_move * direction, homing_move=-1, endstop_name=self.SENSOR_TENSION)
-
-                            if fhomed:
-                                # Move just a little more to find perfect neutral spot between sensors
-                                _,_,_,_ = self.trace_filament_move("Centering sync feedback buffer", (max_move * direction) / 2.)
-
-                        if not fhomed:
-                            self.log_debug("Failed to neutalize filament tension")
+                    _,_ = self._adjust_filament_tension()
 
             self._random_failure() # Testing
             self.movequeues_wait()
             self._set_filament_pos_state(self.FILAMENT_POS_LOADED)
             self.log_debug("Filament should be loaded to nozzle")
-            return homing_movement
+            return homing_movement # Will only have value if we have toolhead sensor
 
     # Extract filament past extruder gear (to end of bowden). Assume that tip has already been formed
     # and we are parked somewhere in the extruder either by slicer or by stand alone tip creation
@@ -4586,6 +4573,59 @@ class Mmu:
             self.movequeues_wait()
             self.log_debug("Filament should be out of extruder")
             return synced
+
+    # Helper to relax filament tension using the sync-feedback buffer. This can be performed either with the
+    # gear motor (default) or extruder motor (which is good as an extruder loading check)
+    # Returns distance moved and whether operation was successful (or None if not performed)
+    def _adjust_filament_tension(self, use_gear_motor=True):
+        fhomed = None
+        actual = 0
+        tension_active = self.sensor_manager.check_sensor(self.SENSOR_TENSION)
+        compression_active = self.sensor_manager.check_sensor(self.SENSOR_COMPRESSION)
+
+        if (compression_active is True) != (tension_active is True): # Equality means already neutral
+            max_move = self.sync_feedback_manager.sync_feedback_buffer_maxrange
+
+            if use_gear_motor:
+                motor = "gear"
+                if compression_active:
+                    self.log_debug("Relaxing filament compression")
+                elif tension_active:
+                    self.log_debug("Relaxing filament tension")
+            else:
+                motor = "extruder"
+                self.log_debug("Monitoring extruder entry transistion...")
+            speed = min(self.gear_homing_speed, self.extruder_homing_speed) # Keep this tension adjustment slow
+
+            if self.sync_feedback_manager.sync_feedback_buffer_range == 0:
+                # Special case for buffers whose neutral point overlaps both sensors. I.e. both sensors active
+                # is the neutral point. This requires different homing logic
+                if compression_active:
+                    direction = -1 if use_gear_motor else 1
+                    actual,fhomed,_,_ = self.trace_filament_move("Homing to tension sensor", max_move * direction, speed=speed, motor=motor, homing_move=1, endstop_name=self.SENSOR_TENSION)
+
+                elif tension_active:
+                    direction = 1 if use_gear_motor else -1
+                    actual,fhomed,_,_ = self.trace_filament_move("Homing to compression sensor", max_move * direction, speed=speed, motor=motor, homing_move=1, endstop_name=self.SENSOR_COMPRESSION)
+            else:
+                # Normally configured buffer with neutral (no-trigger) gap
+                direction = 0
+                if compression_active:
+                    direction = -1 if use_gear_motor else 1
+                    actual,fhomed,_,_ = self.trace_filament_move("Reverse homing off compression sensor", max_move * direction, speed=speed, motor=motor, homing_move=-1, endstop_name=self.SENSOR_COMPRESSION)
+
+                elif tension_active:
+                    direction = 1 if use_gear_motor else -1
+                    actual,fhomed,_,_ = self.trace_filament_move("Reverse homing off tension sensor", max_move * direction, speed=speed, motor=motor, homing_move=-1, endstop_name=self.SENSOR_TENSION)
+
+            if fhomed:
+                if use_gear_motor:
+                    # Move just a little more to find perfect neutral spot between sensors
+                    _,_,_,_ = self.trace_filament_move("Centering sync feedback buffer", (max_move * direction) / 2.)
+            else:
+                self.log_debug("Failed to reach neutral filament tension after moving %.1fmm" % max_move)
+
+        return actual, fhomed
 
 
 ##############################################
@@ -5137,6 +5177,7 @@ class Mmu:
             wait = wait or self._wait_for_espooler # Allow eSpooler wrapper to force wait
 
             # Gear rail is driving the filament
+            start_pos = self.mmu_toolhead.get_position()[1]
             if motor in ["gear", "gear+extruder", "extruder"]:
                 with self._wrap_sync_mode(MmuToolHead.EXTRUDER_SYNCED_TO_GEAR if motor == "gear+extruder" else MmuToolHead.EXTRUDER_ONLY_ON_GEAR if motor == "extruder" else None):
                     if homing_move != 0:
@@ -5182,7 +5223,7 @@ class Mmu:
 
                                 actual = halt_pos[1] - init_pos
                                 if self.log_enabled(self.LOG_STEPPER):
-                                    self.log_stepper("%s HOMING MOVE: max dist=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s, wait=%s >> %s" % (motor.upper(), dist, speed, accel, endstop_name, wait, "%s halt_pos=%.1f (rail moved=%.1f, extruder moved=%.1f), trig_pos=%.1f" % ("HOMED" if homed else "DID NOT HOMED",  halt_pos[1], actual, ext_actual, trig_pos[1])))
+                                    self.log_stepper("%s HOMING MOVE: max dist=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s, wait=%s >> %s" % (motor.upper(), dist, speed, accel, endstop_name, wait, "%s halt_pos=%.1f (rail moved=%.1f, extruder moved=%.1f), start_pos=%.1f, trig_pos=%.1f" % ("HOMED" if homed else "DID NOT HOMED",  halt_pos[1], actual, ext_actual, start_pos[1], trig_pos[1])))
                             if not got_comms_timeout:
                                 break
                     else:
@@ -6370,7 +6411,7 @@ class Mmu:
         if self.check_if_not_calibrated(self.CALIBRATED_ESSENTIAL, check_gates=[gate]): return
         self._fix_started_state()
 
-        can_crossload = self.mmu_machine.multigear and self.sensor_manager.has_gate_sensor(self.SENSOR_GEAR_PREFIX, gate)
+        can_crossload = (self.mmu_machine.can_crossload or self.mmu_machine.multigear) and self.sensor_manager.has_gate_sensor(self.SENSOR_GEAR_PREFIX, gate)
         if not can_crossload and gate != self.gate_selected:
             if self.check_if_loaded(): return
 
@@ -6400,7 +6441,7 @@ class Mmu:
                         self.log_always("Ejecting filament out of %s" % ("current gate" if gate == self.gate_selected else "gate %d" % gate))
                         self._eject_from_gate()
                     # If necessary or easy restore previous gate
-                    if self.is_in_print() or self.mmu_machine.multigear:
+                    if self.is_in_print() or self.mmu_machine.multigear or self.filament_pos != self.FILAMENT_POS_UNLOADED:
                         self.select_gate(current_gate)
                     else:
                         self._initialize_encoder() # Encoder 0000
@@ -6837,6 +6878,7 @@ class Mmu:
         self.toolhead_unload_safety_margin = gcmd.get_float('TOOLHEAD_UNLOAD_SAFETY_MARGIN', self.toolhead_unload_safety_margin, minval=0.)
         self.toolhead_post_load_tighten = gcmd.get_int('TOOLHEAD_POST_LOAD_TIGHTEN', self.toolhead_post_load_tighten, minval=0, maxval=100)
         self.toolhead_post_load_tension_adjust = gcmd.get_int('TOOLHEAD_POST_LOAD_TENSION_ADJUST', self.toolhead_post_load_tension_adjust, minval=0, maxval=1)
+        self.toolhead_entry_tension_test = gcmd.get_int('TOOLHEAD_ENTRY_TENSION_TEST', self.toolhead_entry_tension_test, minval=0, maxval=1)
         self.gcode_load_sequence = gcmd.get_int('GCODE_LOAD_SEQUENCE', self.gcode_load_sequence, minval=0, maxval=1)
         self.gcode_unload_sequence = gcmd.get_int('GCODE_UNLOAD_SEQUENCE', self.gcode_unload_sequence, minval=0, maxval=1)
 
@@ -6989,6 +7031,7 @@ class Mmu:
             msg += "\ntoolhead_residual_filament = %.1f" % self.toolhead_residual_filament
             msg += "\ntoolhead_ooze_reduction = %.1f" % self.toolhead_ooze_reduction
             msg += "\ntoolhead_unload_safety_margin = %d" % self.toolhead_unload_safety_margin
+            msg += "\ntoolhead_entry_tension_test = %d" % self.toolhead_entry_tension_test
             msg += "\ntoolhead_post_load_tighten = %d" % self.toolhead_post_load_tighten
             msg += "\ntoolhead_post_load_tension_adjust = %d" % self.toolhead_post_load_tension_adjust
             msg += "\ngcode_load_sequence = %d" % self.gcode_load_sequence
@@ -8274,7 +8317,7 @@ class Mmu:
         gate = gcmd.get_int('GATE', self.gate_selected, minval=0, maxval=self.num_gates - 1)
         if self.check_if_not_calibrated(self.CALIBRATED_ESSENTIAL, check_gates=[gate]): return
 
-        can_crossload = self.mmu_machine.multigear and self.sensor_manager.has_gate_sensor(self.SENSOR_GEAR_PREFIX, gate)
+        can_crossload = (self.mmu_machine.can_crossload or self.mmu_machine.multigear) and self.sensor_manager.has_gate_sensor(self.SENSOR_GEAR_PREFIX, gate)
         if not can_crossload:
             if self.check_if_bypass(): return
             if self.check_if_loaded(): return
@@ -8288,7 +8331,7 @@ class Mmu:
                         self.select_gate(gate)
                         self._preload_gate()
                         # If necessary or easy restore previous gate
-                        if self.is_in_print() or self.mmu_machine.multigear:
+                        if self.is_in_print() or self.mmu_machine.multigear or self.filament_pos != self.FILAMENT_POS_UNLOADED:
                             self.select_gate(current_gate)
                         else:
                             self._initialize_encoder() # Encoder 0000

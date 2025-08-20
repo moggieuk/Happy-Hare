@@ -19,11 +19,11 @@
 #
 [mcu mmu]
 serial: {serial1}
-# PAUL serial: /dev/serial/by-id/usb-Klipper_stm32g0b1xx_4F0034000A50425539393020-if00
+#serial: /dev/serial/by-id/usb-Klipper_stm32g0b1xx_4F0034000A50425539393020-if00
 
 [mcu buffer]
 serial: {serial2}
-# PAUL serial: /dev/serial/by-id/usb-Klipper_stm32f042x6_1E0008000143565335383320-if00
+#serial: /dev/serial/by-id/usb-Klipper_stm32f042x6_buffer-if00
 
 [temperature_sensor MCU_mmu]
 sensor_type: temperature_mcu

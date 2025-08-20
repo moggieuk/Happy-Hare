@@ -51,6 +51,7 @@ class MmuSensorManager:
 
         # Setup subset of filament sensors that are also used for homing (endstops)
         self.endstop_names = []
+        self.endstop_names.extend([self.get_gate_sensor_name(self.mmu.SENSOR_PRE_GATE_PREFIX, i) for i in range(self.mmu.num_gates)])
         self.endstop_names.extend([self.get_gate_sensor_name(self.mmu.SENSOR_GEAR_PREFIX, i) for i in range(self.mmu.num_gates)])
         self.endstop_names.extend([
             self.mmu.SENSOR_GATE,
@@ -87,7 +88,7 @@ class MmuSensorManager:
 
                 # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
                 # otherwise the extruder can continue to move a small (speed dependent) distance
-                if self.mmu.homing_extruder and name == self.mmu.SENSOR_TOOLHEAD:
+                if self.mmu.homing_extruder and name in [self.mmu.SENSOR_TOOLHEAD, self.mmu.SENSOR_COMPRESSION, self.mmu.SENSOR_TENSION]:
                     mcu_endstop.add_stepper(self.mmu.mmu_extruder_stepper.stepper)
             else:
                 logging.warning("MMU: Improper setup: Filament sensor %s is not defined in [mmu_sensors]" % name)
@@ -161,7 +162,7 @@ class MmuSensorManager:
         sensor = self.sensors.get(name, None)
         if sensor is not None and sensor.runout_helper.sensor_enabled:
             detected = bool(sensor.runout_helper.filament_present)
-            self.mmu.log_trace("(%s sensor %s filament)" % (name, "detects" if detected else "does not detect"))
+            self.mmu.log_stepper("[%s sensor is %s]" % (name, "TRIGGERED" if detected else "empty"))
             return detected
         else:
             return None
@@ -172,7 +173,7 @@ class MmuSensorManager:
         sensor = self.sensors.get(sensor_name, None)
         if sensor is not None and sensor.runout_helper.sensor_enabled:
             detected = bool(sensor.runout_helper.filament_present)
-            self.mmu.log_trace("(%s sensor %s filament)" % (sensor_name, "detects" if detected else "does not detect"))
+            self.mmu.log_stepper("]%s sensor is %s]" % (sensor_name, "TRIGGERED" if detected else "empty"))
             return detected
         else:
             return None

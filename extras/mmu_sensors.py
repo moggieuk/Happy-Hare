@@ -169,7 +169,7 @@ class MmuRunoutHelper:
     def cmd_SET_FILAMENT_SENSOR(self, gcmd):
         self.sensor_enabled = bool(gcmd.get_int("ENABLE", 1))
 
-# EXPERIMENT/HACK to support ViViD analog(!) buffer "endstops"
+# EXPERIMENT/HACK to support ViViD analog buffer "endstops"
 # This class implments both the filament switch sensor and endstop. However:
 #  * it will not display in UI because no filament_switch_sensor exists in config
 #  * does not involve the mcu in the homing process so it can't be accurate
@@ -262,7 +262,7 @@ class MmuSensors:
         for gate in range(23):
             switch_pin = config.get('post_gear_switch_pin_%d' % gate, None)
             if switch_pin:
-                # EXPERIMENT/HACK to support ViViD analog(!) buffer "endstops"
+                # EXPERIMENT/HACK to support ViViD analog buffer "endstops"
                 a_range = config.getfloatlist('post_gear_analog_range_%d' % gate, None, count=2)
                 if a_range is not None:
                     a_pullup = config.getfloat('post_gear_analog_pullup_resister_%d' % gate, 4700.)

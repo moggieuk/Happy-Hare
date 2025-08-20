@@ -213,7 +213,8 @@ class MmuSyncFeedbackManager:
             old_state = self.state
             self.state = float(state)
             self.mmu.log_trace(
-                "MmuSyncFeedbackManager: Got sync force feedback update. State: %s (%s)" % (
+                "MmuSyncFeedbackManager(%s): Got sync force feedback update. State: %s (%s)" % (
+                    "active" if self.sync_feedback_enabled and self.active else "inactive",
                     self.get_sync_feedback_string(detail=True),
                     float(state)
                 )
