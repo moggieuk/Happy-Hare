@@ -6749,7 +6749,7 @@ class Mmu:
         with self.wrap_sync_gear_to_extruder():
             with DebugStepperMovement(self, debug):
                 actual,_,measured,_ = self._move_cmd(gcmd, "Test move")
-            if not self.mmu._is_running_test:
+            if not self._is_running_test:
                 self.movequeues_wait()
             self.log_always("Moved %.1fmm%s" % (actual, (" (measured %.1fmm)" % measured) if self._can_use_encoder() else ""))
 
