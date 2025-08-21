@@ -467,10 +467,6 @@ class MmuToolHead(toolhead.ToolHead, object):
             self._reconfigure_rail(None)
 
     def _register(self, toolhead, stepper, trapq = None):
-        # klipper 0.13.0 <= 195
-        # if hasattr(toolhead, 'register_step_generator'):
-        #     if stepper.generate_steps not in toolhead.step_generators:
-        #         toolhead.register_step_generator(stepper.generate_steps)
         if hasattr(stepper, 'set_trapq') and hasattr(stepper, 'get_trapq'):
             trapq = self.get_trapq() if trapq is None else trapq
             if trapq != stepper.get_trapq():
@@ -481,10 +477,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             raise ValueError(msg)
 
     def _unregister(self, toolhead, stepper):
-        # klipper 0.13.0 <= 195
-        # if hasattr(toolhead, 'register_step_generator'):
-        #     if stepper.generate_steps in toolhead.step_generators:
-        #         toolhead.step_generators.remove(stepper.generate_steps)
+        logging.info("Un-Registering stepper %s" % stepper.get_name())
         if hasattr(stepper, 'set_trapq'):
             if stepper.get_trapq() is not None:
                 stepper.set_trapq(None)
@@ -498,7 +491,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         if sync_mode:
             self.unsync()
         else:
-            self._ready_rail()
+            self._quiesce()
 
         # Activate only the desired gear steppers
         gear_rail = self.get_kinematics().rails[1]
@@ -521,14 +514,17 @@ class MmuToolHead(toolhead.ToolHead, object):
             # No steppers on rail is ok, because Rail keeps separate reference for the first stepper added
             pass
 
-    def _ready_rail(self):
+    def _quiesce(self):
         lmt = self.printer_toolhead.get_last_move_time()
         if lmt > self.last_move_time:
             self.last_move_time = lmt
+            logging.info("PAUL: __quiesce() wating on printer_toolhead ****")
             self.printer_toolhead.wait_moves()
-        self.printer_toolhead.flush_step_generation()
+
+        self.mmu_toolhead.dwell(0.01) # Give motion queues time to flush
+        self.printer_toolhead.dwell(0.01) # Give motion queues time to flush
         self.mmu_toolhead.flush_step_generation()
-        self.mmu_toolhead.dwell(0.01) # TTC Mitigation
+        self.printer_toolhead.flush_step_generation()
 
     def is_synced(self):
         return self.sync_mode is not None
@@ -547,7 +543,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.unsync()
         if new_sync_mode is None: return prev_sync_mode # Lazy way to unsync()
         self.mmu.log_stepper("sync(mode=%d %s)" % (new_sync_mode, ("gear+extruder" if new_sync_mode == self.EXTRUDER_SYNCED_TO_GEAR  else "extruder" if new_sync_mode == self.EXTRUDER_ONLY_ON_GEAR else "extruder+gear")))
-        self._ready_rail()
+        self._quiesce()
 
         ffi_main, ffi_lib = chelper.get_ffi()
         if new_sync_mode in [self.EXTRUDER_SYNCED_TO_GEAR, self.EXTRUDER_ONLY_ON_GEAR]:
@@ -582,12 +578,12 @@ class MmuToolHead(toolhead.ToolHead, object):
 
         self._prev_sk, self._prev_rd = [], []
         for s in following_steppers:
+            self._unregister(following_toolhead, s)
             s_kinematics = ffi_main.gc(s_alloc, ffi_lib.free)
             self._prev_sk.append(s.set_stepper_kinematics(s_kinematics))
             self._prev_rd.append(s.get_rotation_distance()[0])
-            self._unregister(following_toolhead, s)
-            self._register(driving_toolhead, s, driving_trapq)
             s.set_position(pos)
+            self._register(driving_toolhead, s, driving_trapq)
 
         self.sync_mode = new_sync_mode
         if self.sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
@@ -599,7 +595,7 @@ class MmuToolHead(toolhead.ToolHead, object):
 
         self.mmu.log_stepper("unsync()")
         prev_sync_mode = self.sync_mode
-        self._ready_rail()
+        self._quiesce()
 
         if self.sync_mode in [self.EXTRUDER_SYNCED_TO_GEAR, self.EXTRUDER_ONLY_ON_GEAR]:
             driving_toolhead = self.mmu_toolhead
