@@ -6749,7 +6749,8 @@ class Mmu:
         with self.wrap_sync_gear_to_extruder():
             with DebugStepperMovement(self, debug):
                 actual,_,measured,_ = self._move_cmd(gcmd, "Test move")
-            self.movequeues_wait()
+            if not self.mmu._is_running_test:
+                self.movequeues_wait()
             self.log_always("Moved %.1fmm%s" % (actual, (" (measured %.1fmm)" % measured) if self._can_use_encoder() else ""))
 
     cmd_MMU_TEST_HOMING_MOVE_help = "Test filament homing move to help debug setup / options"

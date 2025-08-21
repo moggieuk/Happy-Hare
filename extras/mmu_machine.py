@@ -560,7 +560,6 @@ class MmuToolHead(toolhead.ToolHead, object):
 
     # Register stepper step generator with desired toolhead and add toolhead's trapq
     def _register(self, toolhead, stepper, trapq=None):
-        logging.info("PAUL: _register(stepper=%s) toolhead.trapq=%s, trapq=%s, stepper_old_trapq=%s" % (stepper._name, toolhead.get_trapq(), trapq, stepper.get_trapq()))
         trapq = trapq or toolhead.get_trapq()
         if not self.motion_queuing:
             # klipper 0.13.0 <= 195 we also register step generators from mmu_toolhead
@@ -571,7 +570,6 @@ class MmuToolHead(toolhead.ToolHead, object):
 
     # Unregister stepper step generator with desired toolhead and remove from trapq
     def _unregister(self, toolhead, stepper):
-        logging.info("PAUL: _unregister(stepper=%s) toolhead.trapq=%s, stepper_old_trapq=%s" % (stepper._name, toolhead.get_trapq(), stepper.get_trapq()))
         if not self.motion_queuing:
             # klipper 0.13.0 <= 195 we also unregister step generators from mmu_toolhead
             # May not be necessary but that's what we have always done
@@ -580,32 +578,23 @@ class MmuToolHead(toolhead.ToolHead, object):
         stepper.set_trapq(None)
 
     def _quiesce(self):
-        start = time.time()
-        logging.info("PAUL: _quiesce() START")
-        lmt = self.printer_toolhead.get_last_move_time()
-        if lmt > self.printer_last_move_time:
-            logging.info("PAUL: __quiesce() wating on printer_toolhead because lmt=%s > printer_last_move=%s" % (lmt, self.printer_last_move_time))
+        # Wait for current movement to finish
+        if self.printer_toolhead.get_last_move_time() > self.printer_last_move_time:
             self.printer_toolhead.wait_moves()
-            logging.info("PAUL:  >> Elapsed: %.6f s" % (time.time() - start))
-
-        lmt = self.mmu_toolhead.get_last_move_time()
-        if lmt > self.mmu_last_move_time:
-            logging.info("PAUL: __quiesce() wating on mmu_toolhead because lmt=%.6f > mmu_last_move=%.6f" % (lmt, self.mmu_last_move_time))
+        if self.mmu_toolhead.get_last_move_time() > self.mmu_last_move_time:
             self.printer_toolhead.wait_moves()
-            logging.info("PAUL:  >> Elapsed: %.6f s" % (time.time() - start))
 
-        logging.info("PAUL: dwell + flush")
-        self.mmu_toolhead.dwell(0.01) # Give motion queues time to flush
-        self.printer_toolhead.dwell(0.01) # Give motion queues time to flush
+        # Precaution even though wait_moves() should be sufficient(?)
+        self.mmu_toolhead.dwell(0.01) # Always give motion queues time to flush
+        self.printer_toolhead.dwell(0.01) # Always give motion queues time to flush
         self.mmu_toolhead.flush_step_generation()
         self.printer_toolhead.flush_step_generation()
-        logging.info("PAUL:  >> Elapsed: %.6f s" % (time.time() - start))
 
+        # Added precaution although can't see a case where it is necessary
         if self.motion_queuing:
             self.motion_queuing.wipe_trapq(self.mmu_toolhead.get_trapq())
-        logging.info("PAUL:  >> Total: %.6f s" % (time.time() - start))
-        logging.info("PAUL: _quiesce() END")
 
+        # Prevents wait_moves() in the future if not necessary
         self.printer_last_move_time = self.printer_toolhead.get_last_move_time()
         self.mmu_last_move_time = self.mmu_toolhead.get_last_move_time()
 
@@ -709,7 +698,6 @@ class MmuToolHead(toolhead.ToolHead, object):
             s.set_stepper_kinematics(self._prev_sk[i])
             s.set_rotation_distance(self._prev_rd[i])
             self._unregister(driving_toolhead, s)
-            logging.info("PAUL: unsync() passing _prev_trapq because might be extruder or mmu_toolhead shared")
             self._register(following_toolhead, s, trapq=self._prev_trapq)
             s.set_position(pos)
 
