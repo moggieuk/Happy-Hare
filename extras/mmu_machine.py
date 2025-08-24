@@ -30,8 +30,6 @@ from .homing import Homing, HomingMove
 
 from . import mmu_leds
 
-MOVE_HISTORY_EXPIRE = 30 # PAUL
-
 # TMC chips to search for
 TMC_CHIPS = ["tmc2209", "tmc2130", "tmc2208", "tmc2660", "tmc5160", "tmc2240"]
 
@@ -362,7 +360,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.reactor = self.printer.get_reactor()
         self.all_mcus = [m for n, m in self.printer.lookup_objects(module='mcu')]
         self.mcu = self.all_mcus[0]
-        self._reconfigure_lock = self.reactor.mutex()
+#        self._reconfigure_lock = self.reactor.mutex()
 
         if hasattr(toolhead, 'BUFFER_TIME_HIGH'):
             time_high = toolhead.BUFFER_TIME_HIGH
@@ -564,8 +562,6 @@ class MmuToolHead(toolhead.ToolHead, object):
     # Register stepper step generator with desired toolhead and add toolhead's trapq
     def _register(self, toolhead, stepper, trapq=None):
         trapq = trapq or toolhead.get_trapq()
-        logging.info("PAUL: _register(toolhead=%s, stepper=%s) stepper_new_trapq=%s" % (toolhead.__class__.__name__, stepper._name, trapq))
-
         if not self.motion_queuing:
             # klipper 0.13.0 <= 195 we also register step generators from mmu_toolhead
             # May not be necessary but that's what we have always done
@@ -576,7 +572,6 @@ class MmuToolHead(toolhead.ToolHead, object):
 
     # Unregister stepper step generator with desired toolhead and remove from trapq
     def _unregister(self, toolhead, stepper):
-        logging.info("PAUL: _unregister(toolhead=%s, stepper=%s) stepper_old_trapq=%s" % (toolhead.__class__.__name__, stepper._name, stepper.get_trapq()))
         if not self.motion_queuing:
             # klipper 0.13.0 <= 195 we also unregister step generators from mmu_toolhead
             # May not be necessary but that's what we have always done
@@ -586,44 +581,15 @@ class MmuToolHead(toolhead.ToolHead, object):
         stepper.set_trapq(None) # Cripple movement
 
     def quiesce(self, sync_mode=None):
-        start = time.time()
-        logging.info("PAUL: _quiesce(sync_mode=%s) START" % sync_mode)
-
-        # PAUL .. doing flush() first can causes step compress on the mcu mcu for extruder stepper (oid 15)
-        # PAUL .. clearly having the extruder still known (stepcompress logic in motion queue), despite moving it's trapq is a BIG problem
-#        logging.info("PAUL: flush...")
-#        self.printer_toolhead.flush_step_generation()
-#        self.mmu_toolhead.flush_step_generation()
-#        logging.info("PAUL:  >> Elapsed: %.6f" % (time.time() - start))
-
-        logging.info("PAUL: wait...")
         self.printer_toolhead.wait_moves()
         self.mmu_toolhead.wait_moves()
-        logging.info("PAUL:  >> Elapsed: %.6f s" % (time.time() - start))
 
-#        # Align to time in the future
-#        logging.info("PAUL: dwell...")
+        # Align to time in the future
         t_future = self._advance_time()
-#        logging.info("PAUL:  >> Elapsed: %.6f s" % (time.time() - start))
 
         # Materialize the air gap
-        logging.info("PAUL: flush...")
         self.printer_toolhead.flush_step_generation()
         self.mmu_toolhead.flush_step_generation()
-        logging.info("PAUL:  >> Elapsed: %.6f" % (time.time() - start))
-
-#            if sync_mode in [self.EXTRUDER_SYNCED_TO_GEAR, self.EXTRUDER_ONLY_ON_GEAR]:
-#                # Means the extruder stepper is being moved
-#                if self.motion_queuing:
-#                    e_stepper = self.printer_toolhead.get_extruder().extruder_stepper.stepper
-#                    tq = e_stepper.get_trapq()
-#                    logging.info("PAUL: wiping tq=%s..." % tq)
-#                    self.motion_queuing.wipe_trapq(tq)
-#                    logging.info("PAUL:  >> Elapsed: %.6f" % (time.time() - start))
-
-        logging.info("PAUL: printer_toolhead pos=%s" % str(self.printer_toolhead.get_position()))
-        logging.info("PAUL: mmu_toolhead pos=%s" % str(self.mmu_toolhead.get_position()))
-        logging.info("PAUL: _quiesce() END - TOTAL TIME: %.6f" % (time.time() - start))
         return t_future
 
     # Add a tiny "air gap" to avoid stepcompress sequence errors (tail from extruder pressure advance?)
@@ -633,12 +599,8 @@ class MmuToolHead(toolhead.ToolHead, object):
         t_future = max(p_th.get_last_move_time(), m_th.get_last_move_time()) + gap
         dp = max(0.0, t_future - p_th.get_last_move_time())
         dm = max(0.0, t_future - m_th.get_last_move_time())
-        if dp:
-            logging.info("PAUL: _advance_time: printer_th=%s" % dp)
-            p_th.dwell(dp)
-        if dm:
-            logging.info("PAUL: _advance_time: mmu_th=%s" % dm)
-            m_th.dwell(dm)
+        if dp: p_th.dwell(dp)
+        if dm: m_th.dwell(dm)
         return t_future
 
     def is_synced(self):
@@ -653,19 +615,17 @@ class MmuToolHead(toolhead.ToolHead, object):
         return self.sync_mode == self.GEAR_SYNCED_TO_EXTRUDER
 
     def sync(self, new_sync_mode):
-        with self._reconfigure_lock:
-            self._sync(new_sync_mode)
+#        with self._reconfigure_lock:
+#            self._sync(new_sync_mode)
+        self._sync(new_sync_mode)
 
     def _sync(self, new_sync_mode):
         if new_sync_mode == self.sync_mode: return new_sync_mode
         prev_sync_mode = self.sync_mode
         self._unsync()
         if new_sync_mode is None: return prev_sync_mode # Lazy way to unsync()
-        logging.info("PAUL: vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv\nPAUL: sync(mode=%d %s)" % (new_sync_mode, ("gear+extruder" if new_sync_mode == self.EXTRUDER_SYNCED_TO_GEAR  else "extruder" if new_sync_mode == self.EXTRUDER_ONLY_ON_GEAR else "extruder+gear")))
-#        logging.info("PAUL: DUMP\n%s" % self.dump_rails(False))
         self.mmu.log_stepper("sync(mode=%d %s)" % (new_sync_mode, ("gear+extruder" if new_sync_mode == self.EXTRUDER_SYNCED_TO_GEAR  else "extruder" if new_sync_mode == self.EXTRUDER_ONLY_ON_GEAR else "extruder+gear")))
         t_cut = self.quiesce(new_sync_mode)
-        logging.info("PAUL: t_cut=%s" % t_cut)
 
         ffi_main, ffi_lib = chelper.get_ffi()
         if new_sync_mode in [self.EXTRUDER_SYNCED_TO_GEAR, self.EXTRUDER_ONLY_ON_GEAR]:
@@ -707,11 +667,10 @@ class MmuToolHead(toolhead.ToolHead, object):
             self._register(driving_toolhead, s, trapq=driving_trapq)
             s.set_position(pos)
 
-#        if self.motion_queuing: # PAUL vvv
+#        if self.motion_queuing:
 #            # Finalize the following (OLD) trapq right at the fence
 #            self.motion_queuing.trapq_finalize_moves(self._prev_trapq, t_cut, t_cut - MOVE_HISTORY_EXPIRE)
 #            following_toolhead.flush_step_generation()
-
 #            # Force driving (RECEIVER's) planner time ≥ t_cut and materialize
 #            dt = max(0.0, t_cut - driving_toolhead.get_last_move_time())
 #            if dt: driving_toolhead.dwell(dt)
@@ -720,28 +679,24 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.sync_mode = new_sync_mode
         if self.sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
             self.printer.send_event("mmu:synced")
-#        logging.info("PAUL: DUMP\n%s" % self.dump_rails(False))
-        logging.info("PAUL: sync() end\nPAUL: ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
         return prev_sync_mode
 
     def unsync(self):
-        with self._reconfigure_lock:
-            self._unsync()
+#        with self._reconfigure_lock:
+#            self._unsync()
+        self._unsync()
 
     def _unsync(self):
         if self.sync_mode is None: return None
         self.mmu.log_stepper("unsync()")
-        logging.info("PAUL: vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv\nPAUL: unsync()")
-#        logging.info("PAUL: DUMP\n%s" % self.dump_rails(False))
         prev_sync_mode = self.sync_mode
         t_cut = self.quiesce(self.sync_mode)
-        logging.info("PAUL: t_cut=%s" % t_cut)
 
         if self.sync_mode in [self.EXTRUDER_SYNCED_TO_GEAR, self.EXTRUDER_ONLY_ON_GEAR]:
             driving_toolhead = self.mmu_toolhead
             following_toolhead = self.printer_toolhead
             following_steppers = [following_toolhead.get_extruder().extruder_stepper.stepper]
-            _prev_trapq = driving_toolhead.get_trapq() # PAUL added
+#            _prev_trapq = driving_toolhead.get_trapq()
             pos = [following_toolhead.get_position()[3], 0., 0.]
 
             # Restore previously unused/unwanted gear steppers
@@ -758,7 +713,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             driving_toolhead = self.printer_toolhead
             following_toolhead = self.mmu_toolhead
             following_steppers = following_toolhead.get_kinematics().rails[1].get_steppers()
-            _prev_trapq = driving_toolhead.get_extruder().get_trapq() # PAUL added
+#            _prev_trapq = driving_toolhead.get_extruder().get_trapq()
             pos = [0., following_toolhead.get_position()[1], 0.]
 
         else:
@@ -771,11 +726,10 @@ class MmuToolHead(toolhead.ToolHead, object):
             self._register(following_toolhead, s, trapq=self._prev_trapq)
             s.set_position(pos)
 
-#        if self.motion_queuing: # PAUL vvv
+#        if self.motion_queuing:
 #            # Finalize the following (OLD) trapq right at the fence
 #            self.motion_queuing.trapq_finalize_moves(_prev_trapq, t_cut, t_cut - MOVE_HISTORY_EXPIRE)
-#            following_toolhead.flush_step_generation()
-
+#            driving_toolhead.flush_step_generation()
 #            # Force driving (RECEIVER's) planner time ≥ t_cut and materialize
 #            dt = max(0.0, t_cut - following_toolhead.get_last_move_time())
 #            if dt: following_toolhead.dwell(dt)
@@ -784,8 +738,6 @@ class MmuToolHead(toolhead.ToolHead, object):
         if self.sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
             self.printer.send_event("mmu:unsynced")
         self.sync_mode = None
-#        logging.info("PAUL: DUMP\n%s" % self.dump_rails(False))
-        logging.info("PAUL: unsync() end\nPAUL: ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
         return prev_sync_mode
 
     def is_selector_homed(self):
