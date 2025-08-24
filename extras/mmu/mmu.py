@@ -1270,6 +1270,13 @@ class Mmu:
             # Use per gate sensors to adjust gate map
             self.gate_status = self._validate_gate_status(self.gate_status)
 
+            # Can we verify gate selected? If so fix now
+            gate_selected = self._validate_gate_selected()
+            if gate_selected is not None and gate_selected != self.gate_selected:
+                self.selector.restore_gate(gate_selected)
+                self._set_gate_selected(gate_selected)
+                self._ensure_ttg_match() # Ensure tool/gate consistency
+
             # Sanity check filament pos based only on non-intrusive tests and recover if necessary
             if self.sensor_manager.check_all_sensors_after(
                 self.FILAMENT_POS_END_BOWDEN, self.gate_selected
@@ -1345,6 +1352,7 @@ class Mmu:
 
     # Wait on desired move queues
     def movequeues_wait(self, toolhead=True, mmu_toolhead=True):
+        logging.info("PAUL: movequeues_wait(toolhead=%s, mmu_toolhead=%s)" % (toolhead, mmu_toolhead))
         #self.log_trace("movequeues_wait(toolhead=%s, mmu_toolhead=%s)" % (toolhead, mmu_toolhead))
         if toolhead:
             self.toolhead.wait_moves()
@@ -5357,7 +5365,7 @@ class Mmu:
         ts = self.sensor_manager.check_sensor(self.SENSOR_TOOLHEAD)
         es = self.sensor_manager.check_sensor(self.SENSOR_EXTRUDER_ENTRY)
 
-        # We ignore the gate enstop trigger if using gear sensor and parking distance is not a retract (i.e. sensor expected to be triggered))
+        # We ignore the gate endstop trigger if using gear sensor and parking distance is not a retract (i.e. sensor expected to be triggered))
         if self.gate_homing_endstop == self.SENSOR_GEAR_PREFIX and self.gate_parking_distance <= 0:
             gs = None
         else:
@@ -5664,7 +5672,7 @@ class Mmu:
         speed = gcmd.get_float('SPEED', None)
         accel = gcmd.get_float('ACCEL', None)
         motor = gcmd.get('MOTOR', "gear")
-        wait = bool(gcmd.get_int('WAIT', 0, minval=0, maxval=1)) # Wait for move to complete (make move synchronous)
+        wait = bool(gcmd.get_int('WAIT', 1, minval=0, maxval=1)) # Wait for move to complete (make move synchronous)
         if motor not in ["gear", "extruder", "gear+extruder", "synced"]:
             raise gcmd.error("Valid motor names are 'gear', 'extruder', 'gear+extruder' or 'synced'")
         if motor == "extruder":
@@ -6749,8 +6757,6 @@ class Mmu:
         with self.wrap_sync_gear_to_extruder():
             with DebugStepperMovement(self, debug):
                 actual,_,measured,_ = self._move_cmd(gcmd, "Test move")
-            if not self._is_running_test:
-                self.movequeues_wait()
             self.log_always("Moved %.1fmm%s" % (actual, (" (measured %.1fmm)" % measured) if self._can_use_encoder() else ""))
 
     cmd_MMU_TEST_HOMING_MOVE_help = "Test filament homing move to help debug setup / options"
@@ -7162,20 +7168,32 @@ class Mmu:
         return next_gate, msg
 
     # Use pre-gate (and gear) sensors to "correct" gate status
-    # Return updated gate_status
+    # Return updated gate_status adjusted by sensor readings
     def _validate_gate_status(self, gate_status):
         v_gate_status = list(gate_status) # Ensure that webhooks sees get_status() change
         for gate, status in enumerate(v_gate_status):
-            detected = self.sensor_manager.check_gate_sensor(self.SENSOR_GEAR_PREFIX, gate)
-            if detected is True:
+            gear_detected = self.sensor_manager.check_gate_sensor(self.SENSOR_GEAR_PREFIX, gate)
+            if gear_detected is True:
                 v_gate_status[gate] = self.GATE_AVAILABLE
             else:
-                detected = self.sensor_manager.check_gate_sensor(self.SENSOR_PRE_GATE_PREFIX, gate)
-                if detected is True and status == self.GATE_EMPTY:
+                pre_detected = self.sensor_manager.check_gate_sensor(self.SENSOR_PRE_GATE_PREFIX, gate)
+                if pre_detected is True and status == self.GATE_EMPTY:
                     v_gate_status[gate] = self.GATE_UNKNOWN
-                elif detected is False and status != self.GATE_EMPTY:
+                elif pre_detected is False and status != self.GATE_EMPTY:
                     v_gate_status[gate] = self.GATE_EMPTY
         return v_gate_status
+
+    # Use post-gear sensors to correct the selected gate.
+    # Returns the unique detected gate index, or None if zero/multiple detected.
+    def _validate_gate_selected(self):
+        gate = None
+        for g in range(self.num_gates):
+            if self.sensor_manager.check_all_sensors_before(self.FILAMENT_POS_START_BOWDEN, g, loading=True) is True:
+                if gate is None:
+                    gate = g
+                else:
+                    return None
+        return gate
 
     def _get_filament_char(self, gate, no_space=False, show_source=False):
         show_source &= self.has_filament_buffer

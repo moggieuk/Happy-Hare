@@ -717,6 +717,8 @@ class LinearSelector(BaseSelector, object):
         if trace_str:
             self.mmu.log_trace(trace_str)
 
+        self.mmu_toolhead.quiesce() # Don't start an unsynced mmu movement until printer toolhead is idle else will get stepcompress errors
+
         # Set appropriate speeds and accel if not supplied
         if homing_move != 0:
             speed = speed or (self.selector_touch_speed if self.selector_touch_enable or endstop_name == self.mmu.SENSOR_SELECTOR_TOUCH else self.selector_homing_speed)
@@ -1432,6 +1434,8 @@ class RotarySelector(BaseSelector, object):
         if trace_str:
             self.mmu.log_trace(trace_str)
 
+        self.mmu_toolhead.quiesce() # Don't start an unsynced mmu movement until printer toolhead is idle else will get stepcompress errors
+
         # Set appropriate speeds and accel if not supplied
         speed = speed or self.selector_move_speed
         accel = accel or self.mmu_toolhead.get_selector_limits()[1]
@@ -2047,6 +2051,8 @@ class IndexedSelector(BaseSelector, object):
         homed = False
         actual = dist
 
+        self.mmu_toolhead.quiesce() # Don't start an unsynced mmu movement until printer toolhead is idle else will get stepcompress errors
+
         if homing_move != 0:
             # Check for valid endstop
             endstops = self.selector_rail.get_endstops() if endstop_name is None else self.selector_rail.get_extra_endstop(endstop_name)
@@ -2083,8 +2089,8 @@ class IndexedSelector(BaseSelector, object):
             if self.mmu.log_enabled(self.mmu.LOG_STEPPER):
                 self.mmu.log_stepper("SELECTOR MOVE: position=%.1f, speed=%.1f, accel=%.1f" % (dist, speed, accel))
 
-        self.mmu_toolhead.flush_step_generation() # TTC mitigation
-        self.mmu.toolhead.flush_step_generation() # TTC mitigation
+        self.mmu_toolhead.flush_step_generation() # TTC mitigation (TODO: still required?)
+        self.mmu.toolhead.flush_step_generation() # TTC mitigation (TODO: still required?)
         if wait:
             self.mmu.movequeues_wait(toolhead=False, mmu_toolhead=True)
 
