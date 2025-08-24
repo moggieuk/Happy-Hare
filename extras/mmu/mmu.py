@@ -5186,6 +5186,8 @@ class Mmu:
             # Gear rail is driving the filament
             start_pos = self.mmu_toolhead.get_position()[1]
             if motor in ["gear", "gear+extruder", "extruder"]:
+                if motor == "gear" and not self.mmu_toolhead.is_synced():
+                    self.mmu_toolhead.quiesce() # Don't start an unsynced mmu movement until printer toolhead is idle else will get stepcompress errors
                 with self._wrap_sync_mode(MmuToolHead.EXTRUDER_SYNCED_TO_GEAR if motor == "gear+extruder" else MmuToolHead.EXTRUDER_ONLY_ON_GEAR if motor == "extruder" else None):
                     if homing_move != 0:
                         trig_pos = [0., 0., 0., 0.]
@@ -5252,8 +5254,8 @@ class Mmu:
                         ext_pos[3] += dist
                         self.toolhead.move(ext_pos, speed)
 
-            self.mmu_toolhead.flush_step_generation() # TTC mitigation
-            self.toolhead.flush_step_generation()     # TTC mitigation
+            self.mmu_toolhead.flush_step_generation() # TTC mitigation (TODO still required?)
+            self.toolhead.flush_step_generation()     # TTC mitigation (TODO still required?)
             if wait:
                 self.movequeues_wait()
 
