@@ -5122,6 +5122,7 @@ class Mmu:
         actual = dist
         delta = 0.
         null_rtn = (0., False, 0., 0.)
+        logging.info("PAUL: +++++++++++ TRACE_FILAMENT_MOVE: motor=%s, dist=%s, homing_move=%s, endstop=%s, wait=%s" % (motor, dist, homing_move, endstop_name, wait))
 
         if homing_move != 0:
             # Check for valid endstop
@@ -5187,7 +5188,9 @@ class Mmu:
             start_pos = self.mmu_toolhead.get_position()[1]
             if motor in ["gear", "gear+extruder", "extruder"]:
                 if motor == "gear" and not self.mmu_toolhead.is_synced():
-                    self.mmu_toolhead.quiesce() # Don't start an unsynced mmu movement until printer toolhead is idle else will get stepcompress errors
+# PAUL this should no longer be true!
+#                    # Don't start an unsynced mmu movement until printer toolhead is idle else will get stepcompress errors
+#                    self.movequeues_wait(mmu_toolhead=False)
                 with self._wrap_sync_mode(MmuToolHead.EXTRUDER_SYNCED_TO_GEAR if motor == "gear+extruder" else MmuToolHead.EXTRUDER_ONLY_ON_GEAR if motor == "extruder" else None):
                     if homing_move != 0:
                         trig_pos = [0., 0., 0., 0.]
@@ -5232,7 +5235,7 @@ class Mmu:
 
                                 actual = halt_pos[1] - init_pos
                                 if self.log_enabled(self.LOG_STEPPER):
-                                    self.log_stepper("%s HOMING MOVE: max dist=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s, wait=%s >> %s" % (motor.upper(), dist, speed, accel, endstop_name, wait, "%s halt_pos=%.1f (rail moved=%.1f, extruder moved=%.1f), start_pos=%.1f, trig_pos=%.1f" % ("HOMED" if homed else "DID NOT HOMED",  halt_pos[1], actual, ext_actual, start_pos[1], trig_pos[1])))
+                                    self.log_stepper("%s HOMING MOVE: max dist=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s, wait=%s >> %s" % (motor.upper(), dist, speed, accel, endstop_name, wait, "%s halt_pos=%.1f (rail moved=%.1f, extruder moved=%.1f), start_pos=%.1f, trig_pos=%.1f" % ("HOMED" if homed else "DID NOT HOMED",  halt_pos[1], actual, ext_actual, start_pos, trig_pos[1])))
                             if not got_comms_timeout:
                                 break
                     else:
@@ -5478,14 +5481,14 @@ class Mmu:
         return None
 
     # Reset correct sync state based on MMU type and state
-    #   in_print_sync: intention when printing based on sync_to_extruder, sync_form_tip, sync_purge
+    #   sync_intention: sync intention when printing based on sync_to_extruder, sync_form_tip, sync_purge
     #   force_in_print used to mimick printing behavior often for testing
     #
     # This logic is tricky. Have to consider:
     #   If bypass is selected we cannot sync
     #   If in a print then used desired sync state if actively printing or desired or necessary sync state
     #   If not consider desired (_standalone_sync) or necessary (always_gripped) sync state
-    def reset_sync_gear_to_extruder(self, in_print_sync, force_in_print=False):
+    def reset_sync_gear_to_extruder(self, sync_intention, force_in_print=False):
         if self.gate_selected == self.TOOL_GATE_BYPASS:
             sync = False
         elif self.is_in_print(force_in_print):
@@ -5505,10 +5508,12 @@ class Mmu:
                 self.filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY and
                 (
                     self.mmu_machine.filament_always_gripped or
-                    self._standalone_sync
+                    self._standalone_sync or
+                    sync_intention
                 )
             )
         self.sync_gear_to_extruder(sync)
+        logging.info("PAUL: ____________ reset_gear_to_extruder: sync=%s" % sync)
         return sync
 
     # Sync/unsync gear motor with extruder, handle filament engagement and current control

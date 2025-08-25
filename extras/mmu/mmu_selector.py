@@ -716,8 +716,8 @@ class LinearSelector(BaseSelector, object):
     def _trace_selector_move(self, trace_str, new_pos, speed=None, accel=None, homing_move=0, endstop_name=None, wait=False):
         if trace_str:
             self.mmu.log_trace(trace_str)
-
-        self.mmu_toolhead.quiesce() # Don't start an unsynced mmu movement until printer toolhead is idle else will get stepcompress errors
+# PAUL this should no longer be true
+#        self.mmu_toolhead.quiesce() # Don't start an unsynced mmu movement until printer toolhead is idle else will get stepcompress errors
 
         # Set appropriate speeds and accel if not supplied
         if homing_move != 0:
@@ -1433,8 +1433,8 @@ class RotarySelector(BaseSelector, object):
     def _trace_selector_move(self, trace_str, new_pos, speed=None, accel=None, wait=False):
         if trace_str:
             self.mmu.log_trace(trace_str)
-
-        self.mmu_toolhead.quiesce() # Don't start an unsynced mmu movement until printer toolhead is idle else will get stepcompress errors
+# PAUL this should no longer be true
+#        self.mmu_toolhead.quiesce() # Don't start an unsynced mmu movement until printer toolhead is idle else will get stepcompress errors
 
         # Set appropriate speeds and accel if not supplied
         speed = speed or self.selector_move_speed
@@ -2050,8 +2050,8 @@ class IndexedSelector(BaseSelector, object):
         null_rtn = (0., False)
         homed = False
         actual = dist
-
-        self.mmu_toolhead.quiesce() # Don't start an unsynced mmu movement until printer toolhead is idle else will get stepcompress errors
+# PAUL this should no longer be true
+#        self.mmu_toolhead.quiesce() # Don't start an unsynced mmu movement until printer toolhead is idle else will get stepcompress errors
 
         if homing_move != 0:
             # Check for valid endstop

@@ -91,6 +91,7 @@ class MmuTest:
             self.mmu.log_info("GET_POSITION=1 : Fetch the current filament position")
             self.mmu.log_info("SET_POSITION=<pos> : Fetch the current filament position")
             self.mmu.log_info("SYNC_LOAD_TEST=1 : Hammer stepper syncing and movement. Params: LOOP|HOME|WAIT")
+            self.mmu.log_info("QUIESCE_TEST=1 : Quick test of problematic sync changes")
             self.mmu.log_info("SEL_MOVE=1 : Selector homing move. Params: MOVE|SPEED|ACCEL|WAIT|LOOP")
             self.mmu.log_info("SEL_HOMING_MOVE=1 : Selector homing move. Params: MOVE|SPEED|ACCEL|WAIT|LOOP|ENDSTOP")
             self.mmu.log_info("SEL_LOAD_TEST=1 : Load test selector movements. Params: LOOP|ENDSTOP")
@@ -451,9 +452,14 @@ class MmuTest:
                 self.mmu.gcode.run_script_from_command("G1 E8 F6000")
                 self.mmu.mmu_toolhead.unsync()
                 self.mmu.gcode.run_script_from_command("G1 E2 F6000")
-                self.mmu.mmu_toolhead.unsync()
-                self.mmu.gcode.run_script_from_command("G1 E2 F6000")
                 self.mmu.gcode.run_script_from_command("MMU_TEST_HOMING_MOVE MOTOR=gear MOVE=30 ENDSTOP=toolhead STOP_ON_ENDSTOP=1")
+                self.mmu.gcode.run_script_from_command("G1 E-24 F6000")
+                self.mmu.mmu_toolhead.sync(MmuToolHead.EXTRUDER_SYNCED_TO_GEAR)
+                self.mmu.gcode.run_script_from_command("G1 E-2 F6000")
+                self.mmu.gcode.run_script_from_command("MMU_TEST_MOVE MOTOR=gear MOVE=30 WAIT=1")
+                self.mmu.gcode.run_script_from_command("MMU_TEST_HOMING_MOVE MOTOR=gear+extruder MOVE=30 ENDSTOP=toolhead STOP_ON_ENDSTOP=1")
+                self.mmu.gcode.run_script_from_command("MMU_TEST_MOVE MOTOR=gear+extruder MOVE=30")
+                self.mmu.gcode.run_script_from_command("G1 E8 F6000")
 
 
             if gcmd.get_int('SYNC_LOAD_TEST', 0, minval=0, maxval=1):
