@@ -1361,6 +1361,7 @@ class Mmu:
 
     # Dwell on desired move queues
     def movequeues_dwell(self, dwell, toolhead=True, mmu_toolhead=True):
+        logging.info("PAUL: movequeues_dwell(toolhead=%s, mmu_toolhead=%s)" % (toolhead, mmu_toolhead))
         if dwell > 0.:
             if toolhead:
                 self.toolhead.dwell(dwell)
@@ -5187,11 +5188,7 @@ class Mmu:
             # Gear rail is driving the filament
             start_pos = self.mmu_toolhead.get_position()[1]
             if motor in ["gear", "gear+extruder", "extruder"]:
-                if motor == "gear" and not self.mmu_toolhead.is_synced():
-# PAUL this should no longer be true!
-#                    # Don't start an unsynced mmu movement until printer toolhead is idle else will get stepcompress errors
-#                    self.movequeues_wait(mmu_toolhead=False)
-                with self._wrap_sync_mode(MmuToolHead.EXTRUDER_SYNCED_TO_GEAR if motor == "gear+extruder" else MmuToolHead.EXTRUDER_ONLY_ON_GEAR if motor == "extruder" else None):
+                with self._wrap_sync_mode(MmuToolHead.EXTRUDER_SYNCED_TO_GEAR if motor == "gear+extruder" else MmuToolHead.EXTRUDER_ONLY_ON_GEAR if motor == "extruder" else MmuToolHead.GEAR_ONLY):
                     if homing_move != 0:
                         trig_pos = [0., 0., 0., 0.]
                         hmove = HomingMove(self.printer, endstops, self.mmu_toolhead)
@@ -5513,7 +5510,6 @@ class Mmu:
                 )
             )
         self.sync_gear_to_extruder(sync)
-        logging.info("PAUL: ____________ reset_gear_to_extruder: sync=%s" % sync)
         return sync
 
     # Sync/unsync gear motor with extruder, handle filament engagement and current control

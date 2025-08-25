@@ -445,21 +445,74 @@ class MmuTest:
 
             if gcmd.get_int('QUIESCE_TEST', 0, minval=0, maxval=1):
                 have_run_test = True
-                self.mmu.log_warning("Setup:\ntoolhead sensor should be present or dummy ones created\nExtruder should be hot (able to extrude)")
-                self.mmu.mmu_toolhead.unsync()
-                self.mmu.gcode.run_script_from_command("G1 E-24 F6000")
-                self.mmu.mmu_toolhead.sync(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER)
-                self.mmu.gcode.run_script_from_command("G1 E8 F6000")
-                self.mmu.mmu_toolhead.unsync()
-                self.mmu.gcode.run_script_from_command("G1 E2 F6000")
-                self.mmu.gcode.run_script_from_command("MMU_TEST_HOMING_MOVE MOTOR=gear MOVE=30 ENDSTOP=toolhead STOP_ON_ENDSTOP=1")
-                self.mmu.gcode.run_script_from_command("G1 E-24 F6000")
-                self.mmu.mmu_toolhead.sync(MmuToolHead.EXTRUDER_SYNCED_TO_GEAR)
-                self.mmu.gcode.run_script_from_command("G1 E-2 F6000")
-                self.mmu.gcode.run_script_from_command("MMU_TEST_MOVE MOTOR=gear MOVE=30 WAIT=1")
-                self.mmu.gcode.run_script_from_command("MMU_TEST_HOMING_MOVE MOTOR=gear+extruder MOVE=30 ENDSTOP=toolhead STOP_ON_ENDSTOP=1")
-                self.mmu.gcode.run_script_from_command("MMU_TEST_MOVE MOTOR=gear+extruder MOVE=30")
-                self.mmu.gcode.run_script_from_command("G1 E8 F6000")
+                self.mmu.log_warning(
+                    "Setup:\n"
+                    "toolhead sensor should be present or dummy ones created\n"
+                    "Extruder should be hot (able to extrude)"
+                )
+
+                # Simple dispatcher so the sequence below stays clean and declarative
+                def _exec(ops):
+                    for i, (op, arg) in enumerate(ops, start=1):
+                        if op == "g":
+                            self.mmu.log_info("Step %d: %s" % (i, arg))
+                            self.mmu.gcode.run_script_from_command(arg)
+                        elif op == "sync":
+                            self.mmu.log_info("Step %d: %s" % (i, arg))
+                            self.mmu.mmu_toolhead.sync(arg)
+                        elif op == "unsync":
+                            self.mmu.log_info("Step %d: unsync()" % i)
+                            self.mmu.mmu_toolhead.unsync()
+                        else:
+                            self.mmu.log_warning("Step %d: unknown op %s" % (i, op))
+
+                ops = [
+                    ("unsync", None),
+                    ("g", f"G1 E-24 F6000"),
+                    ("sync", MmuToolHead.GEAR_SYNCED_TO_EXTRUDER),
+                    ("g", f"G1 E8 F6000"),
+                    ("unsync", None),
+                    ("g", f"G1 E2 F6000"),
+                    ("g", "MMU_TEST_HOMING_MOVE MOTOR=gear MOVE=30 ENDSTOP=toolhead STOP_ON_ENDSTOP=1"),
+                    ("g", f"G1 E-24 F6000"),
+                    ("sync", MmuToolHead.EXTRUDER_SYNCED_TO_GEAR),
+                    ("g", f"G1 E-2 F6000"),
+                    ("g", "MMU_TEST_MOVE MOTOR=gear MOVE=30 WAIT=1"),
+                    ("g", "MMU_TEST_HOMING_MOVE MOTOR=gear+extruder MOVE=30 ENDSTOP=toolhead STOP_ON_ENDSTOP=1"),
+                    ("g", "MMU_TEST_MOVE MOTOR=gear+extruder MOVE=30"),
+                    ("g", f"G1 E8 F6000"),
+                    ("unsync", None),
+                    ("g", f"G1 E-10 F6000"),
+                    ("g", f"G1 E8 F6000"),
+                    ("g", "MMU_TEST_MOVE MOTOR=gear MOVE=30 WAIT=0"),
+                    ("g", f"G1 E-10 F6000"),
+                    ("g", f"G1 E8 F6000"),
+                    ("g", "MMU_TEST_MOVE MOTOR=gear MOVE=30 WAIT=0"),
+                    ("g", f"G1 E-10 F6000"),
+                    ("g", f"G1 E8 F6000"),
+                    ("g", "MMU_TEST_MOVE MOTOR=gear MOVE=30 WAIT=0"),
+                    ("g", "MMU_TEST_MOVE MOTOR=gear MOVE=30 WAIT=0"),
+                    ("g", "MMU_TEST_MOVE MOTOR=gear MOVE=30 WAIT=0"),
+                    ("g", "MMU_TEST_MOVE MOTOR=gear MOVE=30 WAIT=0"),
+                    ("g", f"G1 E-10 F6000"),
+                ]
+                _exec(ops)
+
+            if gcmd.get_int('PAUL', 0, minval=0, maxval=1):
+                have_run_test = True
+                pos = self.mmu.mmu_toolhead.get_position()
+                self.mmu.mmu_toolhead.resync(None)
+                pos[1] += 100
+                self.mmu.mmu_toolhead.move(pos, 100)
+                self.mmu.mmu_toolhead.resync(None)
+                pos[1] += 100
+                self.mmu.mmu_toolhead.move(pos, 100)
+                self.mmu.mmu_toolhead.resync(None)
+                pos[1] += 100
+                self.mmu.mmu_toolhead.move(pos, 100)
+                self.mmu.mmu_toolhead.resync(None)
+                pos[1] += 100
+                self.mmu.mmu_toolhead.move(pos, 100)
 
 
             if gcmd.get_int('SYNC_LOAD_TEST', 0, minval=0, maxval=1):
@@ -472,6 +525,7 @@ class MmuTest:
                 self.mmu.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=mmu_test")
                 self.mmu._initialize_filament_position()
                 total = 0.
+                log = self.mmu.log_info
                 for i in range(loop):
                     move_type = random.randint(0, 10) # 11 to enable tracking test
                     move = random.randint(0, 100) - 50
@@ -484,42 +538,42 @@ class MmuTest:
                     if select and self.mmu.mmu_machine.multigear:
                         if random.randint(0, 1):
                             gate = random.randint(0, self.mmu.num_gates - 1)
-                            self.mmu.log_info("Selecting gate: %d" % gate)
+                            log("Selecting gate: %d" % gate)
                             self.mmu.select_gate(gate)
                     if move_type in (0, 1):
-                        self.mmu.log_info("Loop: %d - Synced extruder movement with G1 Ex: %.1fmm" % (i, move))
+                        log("Loop: %d - Synced extruder movement with G1 Ex: %.1fmm" % (i, move))
                         self.mmu.mmu_toolhead.sync(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER)
                         self.mmu.gcode.run_script_from_command("G1 E%.2f F%d" % (move, speed * 60))
                     elif move_type == 2:
-                        self.mmu.log_info("Loop: %d - Unsynced extruder movement with G1 Ex: %.1fmm" % (i, move))
+                        log("Loop: %d - Unsynced extruder movement with G1 Ex: %.1fmm" % (i, move))
                         self.mmu.mmu_toolhead.unsync()
                         self.mmu.gcode.run_script_from_command("G1 E%.2f F%d" % (move, speed * 60))
                     elif move_type == 3:
-                        self.mmu.log_info("Loop: %d - Regular mmu move: %.1fmm, MOTOR=%s" %  (i, move, motor))
+                        log("Loop: %d - Regular mmu move: %.1fmm, MOTOR=%s" %  (i, move, motor))
                         self.mmu.gcode.run_script_from_command("MMU_TEST_MOVE MOTOR=%s MOVE=%.2f SPEED=%d WAIT=%d" % (motor, move, speed, w))
                         total += move
                     elif move_type in (4, 5, 6):
-                        self.mmu.log_info("Loop: %d - HOMING MOVE: %.1fmm, MOTOR=%s" % (i, move, motor))
+                        log("Loop: %d - HOMING MOVE: %.1fmm, MOTOR=%s" % (i, move, motor))
                         self.mmu.gcode.run_script_from_command("MMU_TEST_HOMING_MOVE MOTOR=%s MOVE=%.2f SPEED=%d ENDSTOP=%s STOP_ON_ENDSTOP=1" % (motor, move, speed, endstop))
                         total += move
                     elif move_type == 7:
                         if random.randint(0, 1):
                             new_pos = random.uniform(0, 300)
-                            self.mmu.log_info("Loop: %d - Set filament position" % i)
+                            log("Loop: %d - Set filament position" % i)
                             self.mmu._set_filament_position(new_pos)
                             total = new_pos
                         else:
-                            self.mmu.log_info("Loop: %d - Initialized filament position" % i)
+                            log("Loop: %d - Initialized filament position" % i)
                             self.mmu._initialize_filament_position()
                             total = 0.
                     elif move_type == 8:
-                        self.mmu.log_info("Loop: %d - Save gcode state" % i)
+                        log("Loop: %d - Save gcode state" % i)
                         self.mmu.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=mmu_test")
                     elif move_type == 9:
-                        self.mmu.log_info("Loop: %d - Restore gcode state" % i)
+                        log("Loop: %d - Restore gcode state" % i)
                         self.mmu.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=mmu_test")
                     elif move_type == 10:
-                        self.mmu.log_info("Loop: %d - Synced extruder movement: %.1fmm" % (i, move))
+                        log("Loop: %d - Synced extruder movement: %.1fmm" % (i, move))
                         self.mmu.gcode.run_script_from_command("MMU_TEST_MOVE MOTOR=synced MOVE=%.2f SPEED=%d WAIT=%d" % (move, speed, w))
                     else:
                         sync = "---" if self.mmu.mmu_toolhead.sync_mode is None else "E2G" if self.mmu.mmu_toolhead.sync_mode == MmuToolHead.EXTRUDER_SYNCED_TO_GEAR else "G2E" if self.mmu.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER else "Ext"
@@ -588,7 +642,7 @@ class MmuTest:
 
             if gcmd.get_int('TTC_TEST', 0, minval=0, maxval=1):
                 have_run_test = True
-                loop = gcmd.get_int('LOOP', 5, minval=1, maxval=1000)
+                loop = gcmd.get_int('LOOP', 10, minval=1, maxval=1000)
                 debug = gcmd.get_int('DEBUG', 0, minval=0, maxval=1)
                 mix = gcmd.get_int('MIX', 0, minval=0, maxval=1)
                 wait = gcmd.get_int('WAIT', None, minval=0, maxval=1)
@@ -608,7 +662,7 @@ class MmuTest:
 
             if gcmd.get_int('TTC_TEST2', 0, minval=0, maxval=1):
                 have_run_test = True
-                loop = gcmd.get_int('LOOP', 5, minval=1, maxval=1000)
+                loop = gcmd.get_int('LOOP', 10, minval=1, maxval=1000)
                 debug = gcmd.get_int('DEBUG', 0, minval=0, maxval=1)
                 mix = gcmd.get_int('MIX', 0, minval=0, maxval=1)
                 wait = gcmd.get_int('WAIT', None, minval=0, maxval=1)
@@ -625,7 +679,7 @@ class MmuTest:
 
             if gcmd.get_int('TTC_TEST3', 0, minval=0, maxval=1):
                 have_run_test = True
-                loop = gcmd.get_int('LOOP', 5, minval=1, maxval=1000)
+                loop = gcmd.get_int('LOOP', 10, minval=1, maxval=1000)
                 debug = gcmd.get_int('DEBUG', 0, minval=0, maxval=1)
                 wait = gcmd.get_int('WAIT', None, minval=0, maxval=1)
                 for i in range(loop):
@@ -644,7 +698,7 @@ class MmuTest:
 
             if gcmd.get_int('STEPCOMPRESS_TEST', 0, minval=0, maxval=1):
                 have_run_test = True
-                loop = gcmd.get_int('LOOP', 1, minval=1, maxval=1000)
+                loop = gcmd.get_int('LOOP', 1, minval=10, maxval=1000)
                 debug = gcmd.get_int('DEBUG', 0, minval=0, maxval=1)
                 motor = gcmd.get('MOTOR', None)
                 wait = gcmd.get_int('WAIT', None, minval=0, maxval=1)
@@ -655,7 +709,6 @@ class MmuTest:
                     w = random.randint(0, 1) if wait is None else wait
                     if self.mmu.mmu_machine.multigear and select:
                         self.mmu.select_gate(random.randint(0, self.mmu.num_gates - 1))
-                    logging.info("Moving extruder 1mm with G1")
                     self.mmu.gcode.run_script_from_command("M83")
                     self.mmu.gcode.run_script_from_command("G1 E1 F300")
                     if motor is None:
