@@ -358,7 +358,7 @@ class MmuToolHead(toolhead.ToolHead, object):
     EXTRUDER_SYNCED_TO_GEAR = 1 # Aka 'gear+extruder'
     EXTRUDER_ONLY_ON_GEAR   = 2 # Aka 'extruder' (only)
     GEAR_SYNCED_TO_EXTRUDER = 3 # Aka 'extruder+gear'
-    GEAR_ONLY               = 4 # Aka 'gear' This is same and unsync() but with protective wait()
+    GEAR_ONLY               = 4 # Aka 'gear' (same state as unsync() but with protective wait)
 
     def __init__(self, config, mmu):
         self.mmu = mmu
@@ -474,10 +474,6 @@ class MmuToolHead(toolhead.ToolHead, object):
             logging.exception("MMU: %s" % msg)
             raise config.error(msg)
 
-        # PAUL HACK up oid for easier debugging
-        for i in range(10):
-            _ = self.mcu.create_oid()
-
         self.mmu_machine = self.printer.lookup_object("mmu_machine")
         self.mmu_extruder_stepper = None
         if self.mmu_machine.homing_extruder:
@@ -504,7 +500,6 @@ class MmuToolHead(toolhead.ToolHead, object):
 
     def handle_connect(self):
         self.printer_toolhead = self.printer.lookup_object('toolhead')
-#PAUL        self.printer_lmt = self.printer_toolhead.get_last_move_time()
 
         printer_extruder = self.printer_toolhead.get_extruder()
         if self.mmu_machine.homing_extruder:
@@ -549,7 +544,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         mmu_trapq = m_th.get_trapq()
 
         # Build a fence for the rail's trapq and hard-close it up to that time
-        t_cut = self._quiesce_align_get_tcut(ths=[m_th])
+        t_cut = self._quiesce_align_get_tcut([m_th])
         self.trapq_finalize_moves(mmu_trapq, t_cut, t_cut - MOVE_HISTORY_EXPIRE)
 
         want = set(selected_steppers or []) # empty => keep all
@@ -564,11 +559,13 @@ class MmuToolHead(toolhead.ToolHead, object):
 
         # Apply disables first so nothing else can emit for those steppers
         for s in to_disable:
-            self._unregister(m_th, s) # TODO s.set_trapq(None)
+            s.set_trapq(None)
+# PAUL            self._unregister(m_th, s)
 
         # Enable desired steppers on the mmu rail's trapq
         for s in to_enable:
-            self._register(m_th, s, trapq=mmu_trapq) # TODO s.set_trapq(mmu_trapq)
+            s.set_trapq(mmu_trapq)
+# PAUL            self._register(m_th, s, trapq=mmu_trapq)
 
         # Atomically swap rail membership, then ensure position is correct
         gear_rail.steppers = new_list
@@ -585,53 +582,49 @@ class MmuToolHead(toolhead.ToolHead, object):
         m_th.dwell(dt)
         m_th.flush_step_generation()
 
-    # Register stepper step generator with desired toolhead and add toolhead's trapq
-    def _register(self, toolhead, stepper, trapq=None):
-        trapq = trapq or toolhead.get_trapq()
-        logging.info("PAUL: _register %s on trapq %s" % (stepper._name, self._match_trapq(trapq)))
-        stepper.set_trapq(trapq) # Restore movement
+# PAUL
+#    # Register stepper step generator with desired toolhead and add toolhead's trapq
+#    def _register(self, toolhead, stepper, trapq=None):
+#        trapq = trapq or toolhead.get_trapq()
+#        logging.info("PAUL: _register %s on trapq %s" % (stepper._name, self._match_trapq(trapq)))
+#        stepper.set_trapq(trapq) # Restore movement
+#
+#        if not self.motion_queuing:
+#            # klipper 0.13.0 <= 195 we also register step generators from mmu_toolhead
+#            # May not be necessary but that's what we have always done
+#            if stepper.generate_steps not in self.mmu_toolhead.step_generators:
+#                toolhead.register_step_generator(stepper.generate_steps)
+#
+#    # Unregister stepper step generator with desired toolhead and remove from trapq
+#    def _unregister(self, toolhead, stepper):
+#        logging.info("PAUL: _unregister %s trapq reset (old trapq=%s)" % (stepper._name, self._match_trapq(stepper.get_trapq())))
+#        stepper.set_trapq(None) # Cripple movement
+#        if not self.motion_queuing:
+#            # klipper 0.13.0 <= 195 we also unregister step generators from mmu_toolhead
+#            # May not be necessary but that's what we have always done
+#            if stepper.generate_steps in self.mmu_toolhead.step_generators:
+#                toolhead.unregister_step_generator(stepper.generate_steps)
 
-        if not self.motion_queuing:
-            # klipper 0.13.0 <= 195 we also register step generators from mmu_toolhead
-            # May not be necessary but that's what we have always done
-            if stepper.generate_steps not in self.mmu_toolhead.step_generators:
-                toolhead.register_step_generator(stepper.generate_steps)
-
-    # Unregister stepper step generator with desired toolhead and remove from trapq
-    def _unregister(self, toolhead, stepper):
-        logging.info("PAUL: _unregister %s trapq reset (old trapq=%s)" % (stepper._name, self._match_trapq(stepper.get_trapq())))
-        stepper.set_trapq(None) # Cripple movement
-        if not self.motion_queuing:
-            # klipper 0.13.0 <= 195 we also unregister step generators from mmu_toolhead
-            # May not be necessary but that's what we have always done
-            if stepper.generate_steps in self.mmu_toolhead.step_generators:
-                toolhead.unregister_step_generator(stepper.generate_steps)
-
-    def quiesce(self):
-        _ = self._quiesce_align_get_tcut()
+    def quiesce(self, full_quiesce=False):
+        ths = [self.printer_toolhead, self.mmu_toolhead]
+        _ = self._quiesce_align_get_tcut(ths, full=full_quiesce)
 
     # Drain required toolheads, align to a common future time, materialize it,
-    # and return a strict fence time t_cut
-    def _quiesce_align_get_tcut(self, ths=None, wait=True):
-        if not ths:
-            ths = [self.printer_toolhead, self.mmu_toolhead]
-
-        start = time.time()
-        logging.info("PAUL: _quiesce(wait=%s) START" % wait)
+    # and return a strict fence time t_cut. 'wait' shouldn't be needed but
+    # is helpful when debugging
+    def _quiesce_align_get_tcut(self, ths, full=False, wait=False):
+        start = time.time() # PAUL
+        self.mmu.log_stepper("quiesce(full=%s, wait=%s)" % (full, wait))
+        logging.info("PAUL: [A]\nPAUL: quiesce(full=%s, wait=%s) vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv" % (full, wait))
 
         # Drain whatever is already planned
-        logging.info("PAUL:  >> flush...")
         for th in ths:
             th.flush_step_generation()
-        logging.info("PAUL:  >> Elapsed: %.6f" % (time.time() - start))
-        logging.info("PAUL:  >> wait...")
-        for th in ths:
-            th.wait_moves()
-        logging.info("PAUL:  >> Elapsed: %.6f" % (time.time() - start))
-        logging.info("PAUL:  >> flush...")
-        for th in ths:
-            th.flush_step_generation()
-        logging.info("PAUL:  >> Elapsed: %.6f" % (time.time() - start))
+        if full:
+            for th in ths:
+                th.wait_moves()
+            for th in ths:
+                th.flush_step_generation()
 
         # Align planners to a common *future* time
         last_times = [th.get_last_move_time() for th in ths]
@@ -639,28 +632,20 @@ class MmuToolHead(toolhead.ToolHead, object):
         for th, lm in zip(ths, last_times):
             dt = t_future - lm
             if dt > 0.0:
-#                logging.info("PAUL:  >> dwell... dt: %.6f" % dt)
                 th.dwell(dt)
-#        logging.info("PAUL:  >> Elapsed: %.6f" % (time.time() - start))
 
         # Materialize the air gap before choosing the fence
-#        logging.info("PAUL:  >> flush...")
         for th in ths:
             th.flush_step_generation()
-#        logging.info("PAUL:  >> Elapsed: %.6f" % (time.time() - start))
 
         # Optional wait and flush to aid debugging
         if wait:
-#            logging.info("PAUL:  >> wait...")
             for th in ths:
                 th.wait_moves()
-#            logging.info("PAUL:  >> Elapsed: %.6f" % (time.time() - start))
-#            logging.info("PAUL:  >> flush...")
             for th in ths:
                 th.flush_step_generation()
-#            logging.info("PAUL:  >> Elapsed: %.6f" % (time.time() - start))
 
-        logging.info("PAUL: +++++ quiesce END TOTAL TIME: %.6f" % (time.time() - start))
+        logging.info("PAUL: +++++ quiesce END TOTAL TIME: %.6f\nPAUL:" % (time.time() - start))
         return t_future + EPS
 
     def is_synced(self):
@@ -674,42 +659,38 @@ class MmuToolHead(toolhead.ToolHead, object):
     def is_gear_synced_to_extruder(self):
         return self.sync_mode == self.GEAR_SYNCED_TO_EXTRUDER
 
-    def sync(self, new_sync_mode): # Legacy name
+    def sync(self, new_sync_mode):
         with self._resync_lock:
-            self._resync_no_lock(new_sync_mode)
+            return self._resync_no_lock(new_sync_mode)
 
     def unsync(self):
         with self._resync_lock:
-            self._resync_no_lock(None)
+            return self._resync_no_lock(None)
 
-    def resync(self, new_sync_mode):
-        with self._resync_lock:
-            self._resync_no_lock(new_sync_mode)
-
+    # This resets the state of mmu/extruder synchronization carefully avoiding stepcompress issues.
+    # It is quite tricky to do efficiently without timing windows. The goal is to do the minimum
+    # of waiting and only drain everything IF the extruder is being synced to gear rail or
+    # gear rail synced to the extruder
     def _resync_no_lock(self, new_sync_mode):
 
-        # To prevent stepcompress from extruder movements already queued we must always wait
-        # on gear-only movement
-        if new_sync_mode == self.GEAR_ONLY and self.sync_mode is None:
-#PAUL            logging.info("PAUL: Printer_lmt=%.6f" % self.printer_lmt)
-            start = time.time() # PAUL
-            self.printer_toolhead.wait_moves()
-            logging.info("PAUL: MUST WAITING ON PRINTER TOOLHEAD")
-            logging.info("PAUL: >>>>> WAIT_TIME=%s" % (time.time() - start))
-            new_sync_mode = None # Treat as not synced
-
         if new_sync_mode == self.sync_mode:
-#PAUL            self.printer_lmt = self.printer_toolhead.get_last_move_time()
             return new_sync_mode
 
-        if new_sync_mode is None:
-            self.mmu.log_stepper("unsync()")
-            logging.info("PAUL:\nPAUL: unsync() vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv")
-        else:
-            self.mmu.log_stepper("resync(mode=%d %s)" % (new_sync_mode, ("gear+extruder" if new_sync_mode == self.EXTRUDER_SYNCED_TO_GEAR  else "extruder" if new_sync_mode == self.EXTRUDER_ONLY_ON_GEAR else "extruder+gear")))
-            logging.info("PAUL:\nPAUL: resync(mode=%d %s) vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv" % (new_sync_mode, ("gear+extruder" if new_sync_mode == self.EXTRUDER_SYNCED_TO_GEAR  else "extruder" if new_sync_mode == self.EXTRUDER_ONLY_ON_GEAR else "extruder+gear")))
+        self.mmu.log_stepper("resync(%s --> %s)" % (self.sync_mode_to_string(self.sync_mode), self.sync_mode_to_string(new_sync_mode)))
+        logging.info("PAUL:\nPAUL: resync(%s --> %s) =========================================================================" % (self.sync_mode_to_string(self.sync_mode), self.sync_mode_to_string(new_sync_mode)))
 
-        t0 = self._quiesce_align_get_tcut() # Build cutover fence
+        # ---------------- Phase A: FENCE if messing with extruder -----------
+
+        user_control_states       = [self.GEAR_SYNCED_TO_EXTRUDER, None]
+        relocated_extruder_states = [self.EXTRUDER_SYNCED_TO_GEAR, self.EXTRUDER_ONLY_ON_GEAR]
+        mmu_control_states        = relocated_extruder_states + [self.GEAR_ONLY]
+        full_quiesce = (
+            (new_sync_mode in user_control_states and self.sync_mode in mmu_control_states) or
+            (new_sync_mode in mmu_control_states and self.sync_mode in user_control_states)
+        )
+
+        ths = [self.printer_toolhead, self.mmu_toolhead]
+        t0 = self._quiesce_align_get_tcut(ths, full=full_quiesce) # Build cutover fence
         prev_sync_mode = self.sync_mode
         ffi_main, ffi_lib = chelper.get_ffi()
 
@@ -718,9 +699,12 @@ class MmuToolHead(toolhead.ToolHead, object):
                 self.trapq_finalize_moves(tq, t, t - MOVE_HISTORY_EXPIRE)
 
         # UNSYNC current mode (if any) to base state at t0
-        if self.sync_mode is not None:
+        if self.sync_mode not in [self.GEAR_ONLY, None]:
 
-            # ---------------- Phase A: UNSYNC current mode at t0 ----------------
+            # ---------------- Phase B: UNSYNC current mode at t0 ----------------
+
+            self.mmu.log_stepper("unsync(%s)" % ("mode=gear_only" if new_sync_mode == self.GEAR_ONLY  else ""))
+            logging.info("PAUL: [B]\nPAUL: unsync(%s) vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv" % ("mode=gear_only" if new_sync_mode == self.GEAR_ONLY  else ""))
 
             # Figure out who is CURRENTLY driving (old owner) and who will receive (new owner)
             if self.sync_mode in [self.EXTRUDER_SYNCED_TO_GEAR, self.EXTRUDER_ONLY_ON_GEAR]:
@@ -752,9 +736,9 @@ class MmuToolHead(toolhead.ToolHead, object):
             for i, s in enumerate(following_steppers):
                 s.set_stepper_kinematics(self._prev_sk[i])
                 s.set_rotation_distance(self._prev_rd[i])
-                # TODO s.set_trapq(new_trapq)                        # Attach to NEW owner on the pre-saved trapq
-                self._unregister(driving_toolhead, s)                  # Detach from OLD owner…
-                self._register(following_toolhead, s, trapq=new_trapq) # …then attach to NEW owner on the pre-saved trapq
+                s.set_trapq(new_trapq)                        # Attach to NEW owner on the pre-saved trapq
+# PAUL                self._unregister(driving_toolhead, s)                  # Detach from OLD owner…
+# PAUL                self._register(following_toolhead, s, trapq=new_trapq) # …then attach to NEW owner on the pre-saved trapq
                 # Coordinate-only seed (timing will be enforced by advancing the receiver)
                 s.set_position(pos)
 
@@ -762,7 +746,8 @@ class MmuToolHead(toolhead.ToolHead, object):
             rail = self.mmu_toolhead.get_kinematics().rails[1]
             if restore_inactive:
                 for s in self.inactive_gear_steppers:
-                    self._register(self.mmu_toolhead, s) # TODO s.set_trapq(self.mmu_toolhead.get_trapq())
+                    s.set_trapq(self.mmu_toolhead.get_trapq())
+# PAUL                    self._register(self.mmu_toolhead, s)
                     s.set_position([0., self.mmu_toolhead.get_position()[1], 0.])
                 self.inactive_gear_steppers = []
 
@@ -771,10 +756,10 @@ class MmuToolHead(toolhead.ToolHead, object):
                 rail.steppers = rail.steppers[:-len(following_steppers)]
 
             # Debugging
-            logging.info("PAUL: ////////// CUTOVER fence t_cut=%.6f, old_trapq=%s, new_trapq=%s, from.last=%.6f, to.last=%.6f",
-                         t0, self._match_trapq(old_trapq), self._match_trapq(new_trapq),
-                         driving_toolhead.get_last_move_time(),
-                         following_toolhead.get_last_move_time())
+            #logging.info("PAUL: ////////// CUTOVER fence t_cut=%.6f, old_trapq=%s, new_trapq=%s, from.last=%.6f, to.last=%.6f",
+            #             t0, self._match_trapq(old_trapq), self._match_trapq(new_trapq),
+            #             driving_toolhead.get_last_move_time(),
+            #             following_toolhead.get_last_move_time())
 
             # FORCE the RECEIVER (following_toolhead) planner to ≥ t0 and materialize it
             dt = max(EPS, t0 - following_toolhead.get_last_move_time())
@@ -784,16 +769,17 @@ class MmuToolHead(toolhead.ToolHead, object):
             if self.sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
                 self.printer.send_event("mmu:unsynced")
 
-        # Now “unsynced” at t0
-        self.sync_mode = None
-
-        if new_sync_mode is None:
+            # Now “unsynced” at t0
             logging.info("PAUL: unsync() end ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nPAUL:")
-#PAUL            self.printer_lmt = self.printer_toolhead.get_last_move_time()
+
+        self.sync_mode = self.GEAR_ONLY if new_sync_mode == self.GEAR_ONLY else None
+        if new_sync_mode in [self.GEAR_ONLY, None]:
             return prev_sync_mode
 
+        # ---------------- Phase C: SYNC into new mode at t1 -----------------
 
-        # ---------------- Phase B: SYNC into new mode at t1 -----------------
+        self.mmu.log_stepper("sync(mode=%d %s)" % (new_sync_mode, ("gear+extruder" if new_sync_mode == self.EXTRUDER_SYNCED_TO_GEAR  else "extruder" if new_sync_mode == self.EXTRUDER_ONLY_ON_GEAR else "extruder+gear")))
+        logging.info("PAUL: [C]\nPAUL: sync(mode=%d %s) vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv" % (new_sync_mode, ("gear+extruder" if new_sync_mode == self.EXTRUDER_SYNCED_TO_GEAR  else "extruder" if new_sync_mode == self.EXTRUDER_ONLY_ON_GEAR else "extruder+gear")))
 
         t1 = t0 + EPS  # Later fence for the second cut over (t1 = t0 + EPS)
 
@@ -812,7 +798,8 @@ class MmuToolHead(toolhead.ToolHead, object):
             if new_sync_mode == self.EXTRUDER_ONLY_ON_GEAR:
                 self.inactive_gear_steppers = list(rail.steppers)
                 for s in self.inactive_gear_steppers:
-                    self._unregister(self.mmu_toolhead, s) # TODO s.set_trapq(None)
+                    s.set_trapq(None)
+# PAUL                    self._unregister(self.mmu_toolhead, s)
             rail.steppers.extend(following_steppers)
 
         elif new_sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
@@ -838,18 +825,18 @@ class MmuToolHead(toolhead.ToolHead, object):
             self._prev_rd.append(s.get_rotation_distance()[0])
 
             # Remove from following toolhead, then attach to driving toolhead’s trapq
-            # TODO s.set_trapq(driving_trapq)
-            self._unregister(following_toolhead, s)
-            self._register(driving_toolhead, s, trapq=driving_trapq)
+            s.set_trapq(driving_trapq)
+# PAUL            self._unregister(following_toolhead, s)
+# PAUL            self._register(driving_toolhead, s, trapq=driving_trapq)
 
             # Coordinate-only seed (timing handled by advancing receiver’s planner)
             s.set_position(pos)
 
         # Debugging
-        logging.info("PAUL: ////////// CUTOVER fence t_cut=%.6f, old_trapq=%s, new_trapq=%s, from.last=%.6f, to.last=%.6f",
-                     t1, self._match_trapq(self._prev_trapq), self._match_trapq(driving_trapq),
-                     following_toolhead.get_last_move_time(),
-                     driving_toolhead.get_last_move_time())
+        #logging.info("PAUL: ////////// CUTOVER fence t_cut=%.6f, old_trapq=%s, new_trapq=%s, from.last=%.6f, to.last=%.6f",
+        #             t1, self._match_trapq(self._prev_trapq), self._match_trapq(driving_trapq),
+        #             following_toolhead.get_last_move_time(),
+        #             driving_toolhead.get_last_move_time())
 
         # FORCE the NEW/RECEIVER (driving_toolhead) planner to ≥ t1 and materialize it
         dt = max(EPS, t1 - driving_toolhead.get_last_move_time())
@@ -862,8 +849,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         if self.sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
             self.printer.send_event("mmu:synced")
 
-        logging.info("PAUL: resync() end ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nPAUL:")
-#PAUL        self.printer_lmt = self.printer_toolhead.get_last_move_time()
+        logging.info("PAUL: sync() end ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nPAUL:")
         return prev_sync_mode
 
     def is_selector_homed(self):
@@ -900,6 +886,17 @@ class MmuToolHead(toolhead.ToolHead, object):
         elif trapq is ffi_main.NULL:
             return "NULL"
         return hex(id(trapq))
+
+    def sync_mode_to_string(self, mode):
+        if mode == self.EXTRUDER_SYNCED_TO_GEAR:
+            return "gear+extruder"
+        elif mode == self.EXTRUDER_ONLY_ON_GEAR:
+            return "extruder"
+        elif mode == self.GEAR_SYNCED_TO_EXTRUDER:
+            return "extruder+gear"
+        elif mode == self.GEAR_ONLY:
+            return "unsynced/gear"
+        return "unsynced"
 
     def dump_rails(self, show_endstops=True):
         msg = "MMU TOOLHEAD: %s Last move time: %s\n" % (self.get_position(), self.mmu_toolhead.get_last_move_time())

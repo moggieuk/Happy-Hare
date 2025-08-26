@@ -91,6 +91,7 @@ class MmuTest:
             self.mmu.log_info("GET_POSITION=1 : Fetch the current filament position")
             self.mmu.log_info("SET_POSITION=<pos> : Fetch the current filament position")
             self.mmu.log_info("SYNC_LOAD_TEST=1 : Hammer stepper syncing and movement. Params: LOOP|HOME|WAIT")
+            self.mmu.log_info("REALISTIC_SYNC_TEST=1 : Load test normal stepper syncing and movement. Params: LOOP|SELECT|ENDSTOP")
             self.mmu.log_info("QUIESCE_TEST=1 : Quick test of problematic sync changes")
             self.mmu.log_info("SEL_MOVE=1 : Selector homing move. Params: MOVE|SPEED|ACCEL|WAIT|LOOP")
             self.mmu.log_info("SEL_HOMING_MOVE=1 : Selector homing move. Params: MOVE|SPEED|ACCEL|WAIT|LOOP|ENDSTOP")
@@ -101,9 +102,9 @@ class MmuTest:
             self.mmu.log_info("STEPCOMPRESS_TEST=1 : Provoke stepcompress error. Parms: LOOP|MIX|DEBUG|WAIT")
             self.mmu.log_info("AUTO_CALIBRATE=1 [GATE=] [DIRECTION=] [RATIO=] [HOMING=] : Call auto-calibrate function directly")
             self.mmu.log_info("GATE_MOTOR=n : Select the specified gear motor on type-B designs")
-            self.mmu.log_info("SYNC_G2E=1 : Sync gear to extruder")
+            self.mmu.log_info("SYNC_G2E=1 : Sync gear to extruder (user mode)")
             self.mmu.log_info("SYNC_E2G=1 [EXTRUDER_ONLY=] : Sync extruder to gear optionally just the extruder on rail")
-            self.mmu.log_info("UNSYNC=1 : Unsync")
+            self.mmu.log_info("UNSYNC=1 [GEAR_ONLY=]: Unsync (user mode) or unsynced with assuption of no extruder movement")
             return
 
         try:
@@ -417,8 +418,8 @@ class MmuTest:
 
             if gcmd.get_int('UNSYNC', 0, minval=0, maxval=1):
                 have_run_test = True
-                self.mmu.mmu_toolhead.unsync()
-
+                gear_only = bool(gcmd.get_int('GEAR_ONLY', 0, minval=0, maxval=1))
+                self.mmu.mmu_toolhead.sync(MmuToolHead.GEAR_ONLY if gear_only else None)
 
             pos = gcmd.get_float('SET_POS', -1, minval=0, maxval=10)
             if pos >= 0:
@@ -498,21 +499,41 @@ class MmuTest:
                 ]
                 _exec(ops)
 
-            if gcmd.get_int('PAUL', 0, minval=0, maxval=1):
+            # Test of all expected MMU and extruder movement (this must be bulletproof)
+            if gcmd.get_int('REALISTIC_SYNC_TEST', 0, minval=0, maxval=1):
                 have_run_test = True
-                pos = self.mmu.mmu_toolhead.get_position()
-                self.mmu.mmu_toolhead.resync(None)
-                pos[1] += 100
-                self.mmu.mmu_toolhead.move(pos, 100)
-                self.mmu.mmu_toolhead.resync(None)
-                pos[1] += 100
-                self.mmu.mmu_toolhead.move(pos, 100)
-                self.mmu.mmu_toolhead.resync(None)
-                pos[1] += 100
-                self.mmu.mmu_toolhead.move(pos, 100)
-                self.mmu.mmu_toolhead.resync(None)
-                pos[1] += 100
-                self.mmu.mmu_toolhead.move(pos, 100)
+                self.mmu.log_warning("Setup:\ntoolhead sensor should be present or dummy ones created or use ENDSTOP=xxx\nExtruder should be hot (able to extrude)\nSELECT=1 turns on gate selection on type-B designs")
+                loop = gcmd.get_int('LOOP', 10, minval=1, maxval=1000)
+                select = gcmd.get_int('SELECT', 0, minval=0, maxval=1) # TODO add selector change logic
+                endstop = gcmd.get('ENDSTOP', "toolhead")
+                log = self.mmu.log_info
+
+                for i in range(loop):
+                    log("Loop: %d..." % i)
+
+                    # Run a few randomized moves on the mmu toolhead to simulate load/unload logic
+                    for j in range(6):
+                        move_type = random.randint(0, 10) # 11 to enable tracking test
+                        move = random.randint(0, 100) - 50
+                        speed = random.uniform(50, 200)
+                        accel = random.randint(50, 1000)
+                        homing_move = random.randint(-1, 1)
+                        motor = random.choice(["gear", "gear+extruder", "extruder"])
+                        wait = random.randint(0, 1)
+                        ed = random.randint(0, 4)
+                        encoder_dwell = True if ed == 0 else None if ed == 1 else False
+
+                        log("> INTERNAL MMU MOVE %d: move(%s, motor=%s, speed=%.2f, accel=%s, homing_move=%s, endstop_name=%s, encoder_dwell=%s, wait=%s)" % (j, move, motor, speed, accel, homing_move, endstop, encoder_dwell, wait))
+                        _,_,_,_ = self.mmu.trace_filament_move("REALISTIC_SYNC_TEST", move, motor=motor, speed=speed, accel=accel, homing_move=homing_move, endstop_name=endstop, encoder_dwell=encoder_dwell, speed_override=False, wait=wait)
+
+                    # Run a few randomized moves on the printer toolhead to simulate user movement
+                    # Sync state must either be unsynced or GEAR_SYNCED_TO_EXTRUDER
+                    sync = None if random.randint(0, 1) else MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
+                    self.mmu.mmu_toolhead.sync(sync)
+                    log("> EXTRUDER MOVEMENT (%s)..." % "not synced" if sync is None else "synced to extruder")
+                    for j in range(4):
+                        move = random.randint(-10, 10)
+                        self.mmu.gcode.run_script_from_command("G1 E%d F6000" % move)
 
 
             if gcmd.get_int('SYNC_LOAD_TEST', 0, minval=0, maxval=1):

@@ -1352,7 +1352,6 @@ class Mmu:
 
     # Wait on desired move queues
     def movequeues_wait(self, toolhead=True, mmu_toolhead=True):
-        logging.info("PAUL: movequeues_wait(toolhead=%s, mmu_toolhead=%s)" % (toolhead, mmu_toolhead))
         #self.log_trace("movequeues_wait(toolhead=%s, mmu_toolhead=%s)" % (toolhead, mmu_toolhead))
         if toolhead:
             self.toolhead.wait_moves()
@@ -1361,7 +1360,6 @@ class Mmu:
 
     # Dwell on desired move queues
     def movequeues_dwell(self, dwell, toolhead=True, mmu_toolhead=True):
-        logging.info("PAUL: movequeues_dwell(toolhead=%s, mmu_toolhead=%s)" % (toolhead, mmu_toolhead))
         if dwell > 0.:
             if toolhead:
                 self.toolhead.dwell(dwell)
@@ -3798,7 +3796,7 @@ class Mmu:
                 if run:
                     self._ensure_safe_extruder_temperature(wait=True)
 
-                    # Mimick in print if requested
+                    # Ensure sync state and mimick in print if requested
                     self.reset_sync_gear_to_extruder(self.sync_form_tip, force_in_print=force_in_print)
 
                     _,_,_ = self._do_form_tip(test=not self.is_in_print(force_in_print))
@@ -4672,7 +4670,7 @@ class Mmu:
                 self._track_time_start('load')
                 # PRE_LOAD user defined macro
                 with self._wrap_track_time('pre_load'):
-                    self.wrap_gcode_command(self.pre_load_macro, exception=True, wait=True)
+                    self.wrap_gcode_command(self.pre_load_macro, exception=True, reset_sync=True, wait=True)
 
             self.log_info("Loading %s..." % ("extruder" if extruder_only else "filament"))
             if not extruder_only:
@@ -4752,22 +4750,28 @@ class Mmu:
             # Deal with purging
             if purge == self.PURGE_SLICER and not skip_extruder:
                 self.log_debug("Purging expected to be performed by slicer")
+
             elif purge == self.PURGE_STANDALONE and not skip_extruder:
                 with self._wrap_track_time('purge'):
+
+                    # Restore the expected sync state now before running this macro
                     self.reset_sync_gear_to_extruder(not extruder_only and self.sync_purge)
+
                     with self.wrap_action(self.ACTION_PURGING):
                         self.purge_standalone()
 
             # POST_LOAD user defined macro
             if macros_and_track:
                 with self._wrap_track_time('post_load'):
+
                     # Restore the expected sync state now before running this macro
                     self.reset_sync_gear_to_extruder(not extruder_only and self.sync_purge)
+
                     if self.has_blobifier: # Legacy blobifer integration. purge_macro now preferred
                         with self.wrap_action(self.ACTION_PURGING):
-                            self.wrap_gcode_command(self.post_load_macro, exception=True, wait=True)
+                            self.wrap_gcode_command(self.post_load_macro, exception=True, reset_sync=True, wait=True)
                     else:
-                        self.wrap_gcode_command(self.post_load_macro, exception=True, wait=True)
+                        self.wrap_gcode_command(self.post_load_macro, exception=True, reset_sync=True, wait=True)
 
         except MmuError as ee:
             self._track_gate_statistics('load_failures', self.gate_selected)
@@ -5115,7 +5119,6 @@ class Mmu:
     # All moves return: actual (relative), homed, measured, delta; mmu_toolhead.get_position[1] holds absolute position
     #
     def trace_filament_move(self, trace_str, dist, speed=None, accel=None, motor="gear", homing_move=0, endstop_name="default", track=False, wait=False, encoder_dwell=False, speed_override=True):
-        self.mmu_toolhead.unsync() # Precaution
         encoder_start = self.get_encoder_distance(dwell=encoder_dwell)
         pos = self.mmu_toolhead.get_position()
         ext_pos = self.toolhead.get_position()
@@ -5123,7 +5126,6 @@ class Mmu:
         actual = dist
         delta = 0.
         null_rtn = (0., False, 0., 0.)
-        logging.info("PAUL: +++++++++++ TRACE_FILAMENT_MOVE: motor=%s, dist=%s, homing_move=%s, endstop=%s, wait=%s" % (motor, dist, homing_move, endstop_name, wait))
 
         if homing_move != 0:
             # Check for valid endstop
@@ -5291,6 +5293,7 @@ class Mmu:
 
         return actual, homed, measured, delta
 
+    # Used to force accelaration override for homing moves
     @contextlib.contextmanager
     def wrap_accel(self, accel):
         self.mmu_toolhead.get_kinematics().set_accel_limit(accel)
@@ -5550,7 +5553,6 @@ class Mmu:
     @contextlib.contextmanager
     def wrap_sync_gear_to_extruder(self):
         prev_sync = self.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
-        prev_grip = self.selector.get_filament_grip_state()
 
         # Turn espooler in-print assist off
         espooler_state = None
@@ -5577,7 +5579,9 @@ class Mmu:
         try:
             yield self
         finally:
-            self.mmu_toolhead.sync(prev_sync_mode)
+            # Don't restore because it results in too much delay on rapid back-to-back moves
+            #self.mmu_toolhead.sync(prev_sync_mode)
+            pass
 
     def _adjust_gear_current(self, gate=None, percent=100, reason=""):
         gate = gate if gate is not None else self.gate_selected
