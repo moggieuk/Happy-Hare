@@ -4670,7 +4670,7 @@ class Mmu:
                 self._track_time_start('load')
                 # PRE_LOAD user defined macro
                 with self._wrap_track_time('pre_load'):
-                    self.wrap_gcode_command(self.pre_load_macro, exception=True, reset_sync=True, wait=True)
+                    self.wrap_gcode_command(self.pre_load_macro, exception=True, wait=True)
 
             self.log_info("Loading %s..." % ("extruder" if extruder_only else "filament"))
             if not extruder_only:
@@ -4769,9 +4769,9 @@ class Mmu:
 
                     if self.has_blobifier: # Legacy blobifer integration. purge_macro now preferred
                         with self.wrap_action(self.ACTION_PURGING):
-                            self.wrap_gcode_command(self.post_load_macro, exception=True, reset_sync=True, wait=True)
+                            self.wrap_gcode_command(self.post_load_macro, exception=True, wait=True)
                     else:
-                        self.wrap_gcode_command(self.post_load_macro, exception=True, reset_sync=True, wait=True)
+                        self.wrap_gcode_command(self.post_load_macro, exception=True, wait=True)
 
         except MmuError as ee:
             self._track_gate_statistics('load_failures', self.gate_selected)
