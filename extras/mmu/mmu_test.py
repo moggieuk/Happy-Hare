@@ -530,7 +530,7 @@ class MmuTest:
                     # Sync state must either be unsynced or GEAR_SYNCED_TO_EXTRUDER
                     sync = None if random.randint(0, 1) else MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
                     self.mmu.mmu_toolhead.sync(sync)
-                    log("> EXTRUDER MOVEMENT (%s)..." % "not synced" if sync is None else "synced to extruder")
+                    log("> EXTRUDER MOVEMENT (%s)..." % ("not synced" if sync is None else "synced to extruder"))
                     for j in range(4):
                         move = random.randint(-10, 10)
                         self.mmu.gcode.run_script_from_command("G1 E%d F6000" % move)
