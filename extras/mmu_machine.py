@@ -559,11 +559,11 @@ class MmuToolHead(toolhead.ToolHead, object):
 
         # Apply disables first so nothing else can emit for those steppers
         for s in to_disable:
-            s.set_trapq(None)
+            self._unregister(m_th, s) # s.set_trapq(None)
 
         # Enable desired steppers on the mmu rail's trapq
         for s in to_enable:
-            s.set_trapq(mmu_trapq)
+            self._register(m_th, s, trapq=mmu_trapq) # s.set_trapq(mmu_trapq)
 
         # Atomically swap rail membership, then ensure position is correct
         gear_rail.steppers = new_list
@@ -579,6 +579,25 @@ class MmuToolHead(toolhead.ToolHead, object):
         dt = max(EPS, t_cut - m_th.get_last_move_time())
         m_th.dwell(dt)
         m_th.flush_step_generation()
+
+    # Register stepper step generator with desired toolhead and add toolhead's trapq
+    def _register(self, toolhead, stepper, trapq=None):
+        trapq = trapq or toolhead.get_trapq()
+        logging.info("PAUL: _register %s on trapq %s" % (stepper._name, self._match_trapq(trapq)))
+        stepper.set_trapq(trapq) # Restore movement
+        if not self.motion_queuing:
+            # klipper 0.13.0 <= 195 we also register step generators from mmu_toolhead
+            if stepper.generate_steps not in self.mmu_toolhead.step_generators:
+                toolhead.register_step_generator(stepper.generate_steps)
+
+    # Unregister stepper step generator with desired toolhead and remove from trapq
+    def _unregister(self, toolhead, stepper):
+        logging.info("PAUL: _unregister %s trapq reset (old trapq=%s)" % (stepper._name, self._match_trapq(stepper.get_trapq())))
+        stepper.set_trapq(None) # Cripple movement
+        if not self.motion_queuing:
+            # klipper 0.13.0 <= 195 we also unregister step generators from mmu_toolhead
+            if stepper.generate_steps in self.mmu_toolhead.step_generators:
+                toolhead.unregister_step_generator(stepper.generate_steps)
 
     def quiesce(self, full_quiesce=False):
         ths = [self.printer_toolhead, self.mmu_toolhead]
@@ -711,7 +730,9 @@ class MmuToolHead(toolhead.ToolHead, object):
             for i, s in enumerate(following_steppers):
                 s.set_stepper_kinematics(self._prev_sk[i])
                 s.set_rotation_distance(self._prev_rd[i])
-                s.set_trapq(new_trapq)                        # Attach to NEW owner on the pre-saved trapq
+                # s.set_trapq(new_trapq)                        # Attach to NEW owner on the pre-saved trapq
+                self._unregister(driving_toolhead, s)                  # Detach from OLD owner…
+                self._register(following_toolhead, s, trapq=new_trapq) # …then attach to NEW owner on the pre-saved trapq
                 # Coordinate-only seed (timing will be enforced by advancing the receiver)
                 s.set_position(pos)
 
@@ -719,7 +740,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             rail = self.mmu_toolhead.get_kinematics().rails[1]
             if restore_inactive:
                 for s in self.inactive_gear_steppers:
-                    s.set_trapq(self.mmu_toolhead.get_trapq())
+                    self._register(self.mmu_toolhead, s) # s.set_trapq(self.mmu_toolhead.get_trapq())
                     s.set_position([0., self.mmu_toolhead.get_position()[1], 0.])
                 self.inactive_gear_steppers = []
 
@@ -770,7 +791,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             if new_sync_mode == self.EXTRUDER_ONLY_ON_GEAR:
                 self.inactive_gear_steppers = list(rail.steppers)
                 for s in self.inactive_gear_steppers:
-                    s.set_trapq(None)
+                    self._unregister(self.mmu_toolhead, s) # s.set_trapq(None)
             rail.steppers.extend(following_steppers)
 
         elif new_sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
@@ -796,7 +817,9 @@ class MmuToolHead(toolhead.ToolHead, object):
             self._prev_rd.append(s.get_rotation_distance()[0])
 
             # Remove from following toolhead, then attach to driving toolhead’s trapq
-            s.set_trapq(driving_trapq)
+            # s.set_trapq(driving_trapq)
+            self._unregister(following_toolhead, s)
+            self._register(driving_toolhead, s, trapq=driving_trapq)
 
             # Coordinate-only seed (timing handled by advancing receiver’s planner)
             s.set_position(pos)
