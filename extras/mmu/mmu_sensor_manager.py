@@ -281,7 +281,7 @@ class MmuSensorManager:
                 sensor = self.sensors.get(name, None)
                 if sensor and position_condition(pos, position_check):
                     result[name] = bool(sensor.runout_helper.filament_present) if sensor.runout_helper.sensor_enabled else None
-        return result
+        return result # TODO handle bypass and return only EXTRUDER_ENTRY and TOOLHEAD sensors
 
     def _get_sensors_before(self, pos, gate, loading=True):
         return self._get_sensors(pos, gate, lambda p, pc: pc is None or (loading and p >= pc) or (not loading and p > pc))

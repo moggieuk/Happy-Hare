@@ -3874,16 +3874,18 @@ class Mmu:
     cmd_MMU_STEP_HOMING_MOVE_help = "User composable loading step: Generic homing move"
     def cmd_MMU_STEP_HOMING_MOVE(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
+        allow_bypass = bool(gcmd.get_int('ALLOW_BYPASS', 0, minval=0, maxval=1))
         try:
-            self._homing_move_cmd(gcmd, "User defined step homing move")
+            self._homing_move_cmd(gcmd, "User defined step homing move", allow_bypass=allow_bypass)
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_HOMING_MOVE: %s" % str(ee))
 
     cmd_MMU_STEP_MOVE_help = "User composable loading step: Generic move"
     def cmd_MMU_STEP_MOVE(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
+        allow_bypass = bool(gcmd.get_int('ALLOW_BYPASS', 0, minval=0, maxval=1))
         try:
-            self._move_cmd(gcmd, "User defined step move")
+            self._move_cmd(gcmd, "User defined step move", allow_bypass=allow_bypass)
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_MOVE: %s" % str(ee))
 
@@ -5672,9 +5674,9 @@ class Mmu:
         self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f QUIET=1" % pa)
 
     # Logic shared with MMU_TEST_MOVE and _MMU_STEP_MOVE
-    def _move_cmd(self, gcmd, trace_str):
+    def _move_cmd(self, gcmd, trace_str, allow_bypass=False):
         if self.check_if_disabled(): return (0., False, 0., 0.)
-        if self.check_if_bypass(): return (0., False, 0., 0.)
+        if not allow_bypass and self.check_if_bypass(): return (0., False, 0., 0.)
         move = gcmd.get_float('MOVE', 100.)
         speed = gcmd.get_float('SPEED', None)
         accel = gcmd.get_float('ACCEL', None)
@@ -5690,9 +5692,9 @@ class Mmu:
         return self.trace_filament_move(trace_str, move, speed=speed, accel=accel, motor=motor, wait=wait)
 
     # Logic shared with MMU_TEST_HOMING_MOVE and _MMU_STEP_HOMING_MOVE
-    def _homing_move_cmd(self, gcmd, trace_str):
+    def _homing_move_cmd(self, gcmd, trace_str, allow_bypass=False):
         if self.check_if_disabled(): return (0., False, 0., 0.)
-        if self.check_if_bypass(): return (0., False, 0., 0.)
+        if not allow_bypass and self.check_if_bypass(): return (0., False, 0., 0.)
         endstop = gcmd.get('ENDSTOP', "default")
         move = gcmd.get_float('MOVE', 100.)
         speed = gcmd.get_float('SPEED', None)
@@ -6634,9 +6636,15 @@ class Mmu:
 
             elif tool == self.TOOL_GATE_UNKNOWN and self.tool_selected == self.TOOL_GATE_BYPASS and loaded == -1:
                 # This is to be able to get out of "stuck in bypass" state
-                self.log_warning("Warning: Making assumption that bypass is unloaded")
+                ts = self.sensor_manager.check_sensor(self.SENSOR_TOOLHEAD)
+                es = self.sensor_manager.check_sensor(self.SENSOR_EXTRUDER_ENTRY)
+                if ts or es: # TODO use check_all_sensors() call when sensor_manager is fixed
+                    self._set_filament_pos_state(self.FILAMENT_POS_LOADED, silent=True)
+                else:
+                    if es is None and ts is None:
+                        self.log_warning("Warning: Making assumption that bypass is unloaded because no toolhead sensors are present")
+                    self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=True)
                 self._set_filament_direction(self.DIRECTION_UNKNOWN)
-                self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=True)
                 return
 
             if loaded == 1:
@@ -6760,21 +6768,23 @@ class Mmu:
         self.log_to_file(gcmd.get_commandline())
         if self.check_if_disabled(): return
         debug = bool(gcmd.get_int('DEBUG', 0, minval=0, maxval=1)) # Hidden option
+        allow_bypass = bool(gcmd.get_int('ALLOW_BYPASS', 0, minval=0, maxval=1))
 
         with self.wrap_sync_gear_to_extruder():
             with DebugStepperMovement(self, debug):
-                actual,_,measured,_ = self._move_cmd(gcmd, "Test move")
+                actual,_,measured,_ = self._move_cmd(gcmd, "Test move", allow_bypass=allow_bypass)
             self.log_always("Moved %.1fmm%s" % (actual, (" (measured %.1fmm)" % measured) if self._can_use_encoder() else ""))
 
     cmd_MMU_TEST_HOMING_MOVE_help = "Test filament homing move to help debug setup / options"
     def cmd_MMU_TEST_HOMING_MOVE(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if self.check_if_disabled(): return
+        allow_bypass = bool(gcmd.get_int('ALLOW_BYPASS', 0, minval=0, maxval=1))
 
         with self.wrap_sync_gear_to_extruder():
             debug = bool(gcmd.get_int('DEBUG', 0, minval=0, maxval=1)) # Hidden option
             with DebugStepperMovement(self, debug):
-                actual,homed,measured,_ = self._homing_move_cmd(gcmd, "Test homing move")
+                actual,homed,measured,_ = self._homing_move_cmd(gcmd, "Test homing move", allow_bypass=allow_bypass)
             self.log_always("%s after %.1fmm%s" % (("Homed" if homed else "Did not home"), actual, (" (measured %.1fmm)" % measured) if self._can_use_encoder() else ""))
 
     cmd_MMU_TEST_CONFIG_help = "Runtime adjustment of MMU configuration for testing or in-print tweaking purposes"
