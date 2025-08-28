@@ -548,7 +548,6 @@ class MmuToolHead(toolhead.ToolHead, object):
         if self.sync_mode not in [self.GEAR_ONLY, None]:
             self._resync_no_lock(None) # Unsync first
         else:
-            # Build a fence for the rail's trapq and hard-close it up to that time
             ths = [self.printer_toolhead, self.mmu_toolhead]
             t_cut = self._quiesce_align_get_tcut(ths, full=False)
             self.trapq_finalize_moves(mmu_trapq, t_cut, t_cut - MOVE_HISTORY_EXPIRE) # PAUL don't see why I need to do this
@@ -594,9 +593,11 @@ class MmuToolHead(toolhead.ToolHead, object):
             if stepper.generate_steps in self.mmu_toolhead.step_generators:
                 toolhead.unregister_step_generator(stepper.generate_steps)
 
-    def quiesce(self, full_quiesce=False):
-        ths = [self.printer_toolhead, self.mmu_toolhead]
-        _ = self._quiesce_align_get_tcut(ths, full=full_quiesce)
+    def quiesce(self, full_quiesce=True):
+        with self._resync_lock:
+            ths = [self.printer_toolhead, self.mmu_toolhead]
+            t_cut = self._quiesce_align_get_tcut(ths, full=full_quiesce)
+            self.trapq_finalize_moves(self.mmu_toolhead.get_trapq(), t_cut, t_cut - MOVE_HISTORY_EXPIRE) # PAUL don't see why I need to do this
 
     # Drain required toolheads, align to a common future time, materialize it,
     # and return a strict fence time t_cut. 'wait' shouldn't be needed but

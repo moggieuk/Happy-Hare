@@ -717,6 +717,8 @@ class LinearSelector(BaseSelector, object):
         if trace_str:
             self.mmu.log_trace(trace_str)
 
+        self.mmu_toolhead.quiesce()
+
         # Set appropriate speeds and accel if not supplied
         if homing_move != 0:
             speed = speed or (self.selector_touch_speed if self.selector_touch_enable or endstop_name == self.mmu.SENSOR_SELECTOR_TOUCH else self.selector_homing_speed)
@@ -1432,6 +1434,8 @@ class RotarySelector(BaseSelector, object):
         if trace_str:
             self.mmu.log_trace(trace_str)
 
+        self.mmu_toolhead.quiesce()
+
         # Set appropriate speeds and accel if not supplied
         speed = speed or self.selector_move_speed
         accel = accel or self.mmu_toolhead.get_selector_limits()[1]
@@ -2046,6 +2050,8 @@ class IndexedSelector(BaseSelector, object):
         null_rtn = (0., False)
         homed = False
         actual = dist
+
+        self.mmu_toolhead.quiesce()
 
         if homing_move != 0:
             # Check for valid endstop
