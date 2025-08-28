@@ -504,14 +504,14 @@ class MmuTest:
                 have_run_test = True
                 self.mmu.log_warning("Setup:\ntoolhead sensor should be present or dummy ones created or use ENDSTOP=xxx\nExtruder should be hot (able to extrude)\nSELECT=1 turns on gate selection on type-B designs")
                 loop = gcmd.get_int('LOOP', 10, minval=1, maxval=1000)
-                select = gcmd.get_int('SELECT', 0, minval=0, maxval=1) # TODO add selector change logic
+                select = gcmd.get_int('SELECT', 0, minval=0, maxval=1)
                 endstop = gcmd.get('ENDSTOP', "toolhead")
                 log = self.mmu.log_info
 
                 for i in range(loop):
                     log("Loop: %d..." % i)
 
-                    # Run a few randomized moves on the mmu toolhead to simulate load/unload logic
+                    # Run a few randomized moves on the mmu toolhead to simulate load/unload logic (optional gate switch)
                     for j in range(6):
                         move_type = random.randint(0, 10) # 11 to enable tracking test
                         move = random.randint(0, 100) - 50
@@ -522,6 +522,12 @@ class MmuTest:
                         wait = random.randint(0, 1)
                         ed = random.randint(0, 4)
                         encoder_dwell = True if ed == 0 else None if ed == 1 else False
+
+                        # Sometimes switch gate. This will test interleaved selector movement / gear rail reconfiguration
+                        if select and random.randint(0, 3) == 0:
+                            gate = random.randint(0, self.mmu.num_gates - 1)
+                            log("Selecting gate: %d" % gate)
+                            self.mmu.select_gate(gate)
 
                         log("> INTERNAL MMU MOVE %d: move(%s, motor=%s, speed=%.2f, accel=%s, homing_move=%s, endstop_name=%s, encoder_dwell=%s, wait=%s)" % (j, move, motor, speed, accel, homing_move, endstop, encoder_dwell, wait))
                         _,_,_,_ = self.mmu.trace_filament_move("REALISTIC_SYNC_TEST", move, motor=motor, speed=speed, accel=accel, homing_move=homing_move, endstop_name=endstop, encoder_dwell=encoder_dwell, speed_override=False, wait=wait)

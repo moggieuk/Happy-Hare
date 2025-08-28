@@ -5249,7 +5249,6 @@ class Mmu:
             # Extruder is driving, gear rail is following
             elif motor in ["synced"]:
                 with self._wrap_sync_mode(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER):
-                    self._ensure_safe_extruder_temperature(wait=False)
                     if homing_move != 0:
                         self.log_error("Not possible to perform homing move while synced")
                     else:

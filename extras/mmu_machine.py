@@ -464,7 +464,9 @@ class MmuToolHead(toolhead.ToolHead, object):
         # Create MMU kinematics
         try:
             self.kin = MmuKinematics(self, config)
-            self.all_gear_rail_steppers = self.kin.rails[1].get_steppers()
+            steppers = list(self.kin.rails[1].get_steppers())
+            self.all_gear_rail_steppers = steppers.copy()
+            self.selected_gear_steppers = steppers.copy()
         except config.error:
             raise
         except self.printer.lookup_object('pins').error:
@@ -480,7 +482,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             # Create MmuExtruderStepper for later insertion into PrinterExtruder on Toolhead (on klippy:connect)
             self.mmu_extruder_stepper = MmuExtruderStepper(config.getsection('extruder'), self.kin.rails[1]) # Only first extruder is handled
 
-            # Nullify original extruder stepper definition so Klipper doesn't try to create it again. Restore in handle_connect()
+            # Nullify original extruder stepper definition so Klipper doesn't try to create it again. Restore in handle_connect() so config lookups succeed
             self.old_ext_options = {}
             self.config = config
             for i in SHAREABLE_STEPPER_PARAMS + OTHER_STEPPER_PARAMS:
@@ -495,7 +497,6 @@ class MmuToolHead(toolhead.ToolHead, object):
 
         # Bi-directional sync management of gear(s) and extruder(s)
         self.mmu_toolhead = self # Make it easier to read code and distinquish printer_toolhead from mmu_toolhead
-        self.inactive_gear_steppers = []
         self.sync_mode = None
 
     def handle_connect(self):
@@ -538,48 +539,43 @@ class MmuToolHead(toolhead.ToolHead, object):
             else:
                 self._reconfigure_rail_no_lock(None)
 
-    def _reconfigure_rail_no_lock(self, selected_steppers):
+    def _reconfigure_rail_no_lock(self, selected):
         m_th = self.mmu_toolhead
         gear_rail = m_th.get_kinematics().rails[1]
         mmu_trapq = m_th.get_trapq()
 
-        # Build a fence for the rail's trapq and hard-close it up to that time
-        ths = [self.printer_toolhead, self.mmu_toolhead]
-        t_cut = self._quiesce_align_get_tcut(ths, full=True)
-        self.trapq_finalize_moves(mmu_trapq, t_cut, t_cut - MOVE_HISTORY_EXPIRE)
+        prev_sync_mode = self.sync_mode
+        if self.sync_mode not in [self.GEAR_ONLY, None]:
+            self._resync_no_lock(None) # Unsync first
+        else:
+            # Build a fence for the rail's trapq and hard-close it up to that time
+            ths = [self.printer_toolhead, self.mmu_toolhead]
+            t_cut = self._quiesce_align_get_tcut(ths, full=False)
+            self.trapq_finalize_moves(mmu_trapq, t_cut, t_cut - MOVE_HISTORY_EXPIRE) # PAUL don't see why I need to do this
 
-        want = set(selected_steppers or []) # empty => keep all
-        def in_want(s): return (not want) or (s.get_name() in want)
+        # Activate only the desired gear steppers
+        pos = [0., self.mmu_toolhead.get_position()[1], 0.]
+        gear_rail.steppers = []
 
-        # Build the new membership and action lists without mutating as we iterate
-        ffi_main, ffi_lib = chelper.get_ffi()
-        new_list   = [s for s in self.all_gear_rail_steppers if in_want(s)]
-        to_enable  = [s for s in new_list if s.get_trapq() == ffi_main.NULL]
-        to_disable = [s for s in self.all_gear_rail_steppers
-                      if not in_want(s) and s.get_trapq() != ffi_main.NULL]
+        self.selected_gear_steppers = []
+        for s in self.all_gear_rail_steppers:
+            if selected and s.get_name() in selected:
+                self.selected_gear_steppers.append(s)
+                gear_rail.steppers.append(s)
+                self._register(m_th, s, trapq=mmu_trapq) # s.set_trapq(mmu_trapq)
+            else:
+                # Cripple unused/unwanted gear steppers
+                self._unregister(m_th, s) # s.set_trapq(None)
 
-        # Apply disables first so nothing else can emit for those steppers
-        for s in to_disable:
-            self._unregister(m_th, s) # s.set_trapq(None)
-
-        # Enable desired steppers on the mmu rail's trapq
-        for s in to_enable:
-            self._register(m_th, s, trapq=mmu_trapq) # s.set_trapq(mmu_trapq)
-
-        # Atomically swap rail membership, then ensure position is correct
-        gear_rail.steppers = new_list
-        if selected_steppers:
-            if not new_list:
-                raise self.printer.command_error(
-                    "None of these '%s' gear steppers were found!" % selected_steppers
-                )
-            pos = [0., m_th.get_position()[1], 0.]
+        if selected:
+            if not gear_rail.steppers:
+                raise self.printer.command_error("None of these '%s' gear steppers where found!" % selected)
             gear_rail.set_position(pos)
 
-        # Force the rail's planner time to ≥ fence and materialize it with one flush
-        dt = max(EPS, t_cut - m_th.get_last_move_time())
-        m_th.dwell(dt)
-        m_th.flush_step_generation()
+        # Restore previous syncing mode
+        # (Not needed in practice)
+        # if prev_sync_mode != self.sync_mode:
+        #     self._resync_no_lock(prev_sync_mode)
 
     # Register stepper step generator with desired toolhead and add toolhead's trapq
     def _register(self, toolhead, stepper, trapq=None):
@@ -635,7 +631,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             for th in ths:
                 th.flush_step_generation()
 
-        self.mmu.log_stepper("quiesce(full=%s, wait=%s) Elapsed:%.6f" % (full, wait, time.time() - start))
+        self.mmu.log_stepper("_quiesce_align_get_tcut(full=%s, wait=%s) Elapsed:%.6f" % (full, wait, time.time() - start))
         return t_future + EPS
 
     def is_synced(self):
@@ -679,6 +675,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         )
 
         ths = [self.printer_toolhead, self.mmu_toolhead]
+        gear_rail = self.mmu_toolhead.get_kinematics().rails[1]
         t0 = self._quiesce_align_get_tcut(ths, full=full_quiesce) # Build cutover fence
         prev_sync_mode = self.sync_mode
         ffi_main, ffi_lib = chelper.get_ffi()
@@ -703,6 +700,9 @@ class MmuToolHead(toolhead.ToolHead, object):
                 new_trapq = self._prev_trapq                  # trapq saved during sync()
                 pos = [following_toolhead.get_position()[3], 0., 0.]
 
+                # Always remove the extruder stepper we appended to the gear rail (will always be at end of list)
+                gear_rail.steppers = gear_rail.steppers[:-len(following_steppers)]
+
             elif self.sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
                 driving_toolhead   = self.printer_toolhead    # OLD owner (printer/extruder)
                 following_toolhead = self.mmu_toolhead        # NEW owner (mmu/gear)
@@ -716,10 +716,6 @@ class MmuToolHead(toolhead.ToolHead, object):
             # Anything ≤ t0 moves to history so it can’t be emitted later.
             _finalize_if_valid(old_trapq, t0)
 
-            # If EXTRUDER_ONLY_ON_GEAR: we’ll restore the gear steppers AFTER the extruder rebind,
-            # so they don’t interleave with the fence timing on the receiver
-            restore_inactive = (self.sync_mode == self.EXTRUDER_ONLY_ON_GEAR and self.inactive_gear_steppers is not None)
-
             # Rebind steppers back to the NEW owner’s trapq and restore kinematics
             for i, s in enumerate(following_steppers):
                 s.set_stepper_kinematics(self._prev_sk[i])
@@ -730,17 +726,11 @@ class MmuToolHead(toolhead.ToolHead, object):
                 # Coordinate-only seed (timing will be enforced by advancing the receiver)
                 s.set_position(pos)
 
-            # Restore previously disabled gear steppers (after the extruder is back)
-            rail = self.mmu_toolhead.get_kinematics().rails[1]
-            if restore_inactive:
-                for s in self.inactive_gear_steppers:
+            # Restore previously disabled gear steppers (after the extruder is back on printer toolhead)
+            if self.sync_mode == self.EXTRUDER_ONLY_ON_GEAR:
+                for s in self.selected_gear_steppers:
                     self._register(self.mmu_toolhead, s) # s.set_trapq(self.mmu_toolhead.get_trapq())
                     s.set_position([0., self.mmu_toolhead.get_position()[1], 0.])
-                self.inactive_gear_steppers = []
-
-            # Always remove the extruder stepper we appended to the gear rail
-            if self.sync_mode in [self.EXTRUDER_SYNCED_TO_GEAR, self.EXTRUDER_ONLY_ON_GEAR]:
-                rail.steppers = rail.steppers[:-len(following_steppers)]
 
             # Debugging
             #logging.info("MMU: ////////// CUTOVER fence t_cut=%.6f, old_trapq=%s, new_trapq=%s, from.last=%.6f, to.last=%.6f",
@@ -778,13 +768,12 @@ class MmuToolHead(toolhead.ToolHead, object):
             s_alloc = ffi_lib.cartesian_stepper_alloc(b"y")
             pos = [0., driving_toolhead.get_position()[1], 0.]
 
-            # Cripple unused/unwanted gear steppers and inject the extruder steppers into the gear rail
-            rail = self.mmu_toolhead.get_kinematics().rails[1]
+            # Cripple gear steppers and inject the extruder steppers into the gear rail
             if new_sync_mode == self.EXTRUDER_ONLY_ON_GEAR:
-                self.inactive_gear_steppers = list(rail.steppers)
-                for s in self.inactive_gear_steppers:
+                for s in self.all_gear_rail_steppers:
                     self._unregister(self.mmu_toolhead, s) # s.set_trapq(None)
-            rail.steppers.extend(following_steppers)
+            # Inject the extruder steppers to the end of the gear rail
+            gear_rail.steppers.extend(following_steppers)
 
         elif new_sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
             driving_toolhead = self.printer_toolhead     # NEW owner (printer/extruder)
@@ -813,7 +802,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             self._unregister(following_toolhead, s)
             self._register(driving_toolhead, s, trapq=driving_trapq)
 
-            # Coordinate-only seed (timing handled by advancing receiver’s planner)
+            # Fix position
             s.set_position(pos)
 
         # Debugging
@@ -889,15 +878,20 @@ class MmuToolHead(toolhead.ToolHead, object):
             header = "RAIL: %s (Steppers: %d, Default endstops: %d, Extra endstops: %d) %s" % (rail.rail_name, len(rail.steppers), len(rail.endstops), len(rail.extra_endstops), '-' * 100)
             msg += header[:100] + "\n"
             gsd = None
-            rail_steppers = rail.get_steppers()
             if axis == 1:
-                for s in self.inactive_gear_steppers:
+                rail_steppers = list(self.all_gear_rail_steppers)
+                for s in rail.get_steppers():
                     if s not in rail_steppers:
                         rail_steppers.append(s)
+            else:
+                rail_steppers = rail.get_steppers()
             for idx, s in enumerate(rail_steppers):
-                if axis == 1 and gsd is None:
-                    gsd = s.get_step_dist()
-                suffix = "INACTIVE" if axis == 1 and s in self.inactive_gear_steppers else ""
+                suffix = ""
+                if axis == 1:
+                    if gsd is None:
+                        gsd = s.get_step_dist()
+                    if s in self.all_gear_rail_steppers and s not in self.selected_gear_steppers:
+                        suffix = "*** INACTIVE ***"
                 msg += "Stepper %d: %s (trapq: %s) %s\n" % (idx, s.get_name(), self._match_trapq(s.get_trapq()), suffix)
                 msg += "  - Commanded Pos: %.2f, " % s.get_commanded_position()
                 msg += "MCU Pos: %.2f, " % s.get_mcu_position()
@@ -975,19 +969,16 @@ class MmuKinematics:
     def get_steppers(self):
         return [s for rail in self.rails for s in rail.get_steppers()]
 
+    # Aka which stepper to choose to report movement
     def calc_position(self, stepper_positions):
         positions = []
         for i, r in enumerate(self.rails):
-            #logging.info("MMU: DEBUG: * %d. rail=%s, initial_stepper_name=%s", i, r.get_name(), r.steppers[0].get_name())
-            stepper = None
-            if i == 1:
-                stepper = next((s for s in r.steppers if s not in self.toolhead.inactive_gear_steppers), None)
-            if stepper:
-                positions.append(stepper_positions[stepper.get_name()])
-            elif isinstance(r, DummyRail):
+            if isinstance(r, DummyRail):
                 positions.append(0.)
-            else:
-                positions.append(stepper_positions[r.get_name()])
+                continue
+            s = next((s for s in r.steppers if s.get_trapq()), None) if i == 1 else None
+            name = s.get_name() if s else r.get_name()
+            positions.append(stepper_positions[name])
         return positions
 
     def set_position(self, newpos, homing_axes):
@@ -1262,6 +1253,9 @@ class DummyRail:
         self.endstops = []
         self.extra_endstops = []
         self.rail_name = "Dummy"
+
+    def get_name(self):
+        return self.rail_name
 
     def get_steppers(self):
         return self.steppers
