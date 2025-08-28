@@ -544,7 +544,8 @@ class MmuToolHead(toolhead.ToolHead, object):
         mmu_trapq = m_th.get_trapq()
 
         # Build a fence for the rail's trapq and hard-close it up to that time
-        t_cut = self._quiesce_align_get_tcut([m_th])
+        ths = [self.printer_toolhead, self.mmu_toolhead]
+        t_cut = self._quiesce_align_get_tcut(ths, full=True)
         self.trapq_finalize_moves(mmu_trapq, t_cut, t_cut - MOVE_HISTORY_EXPIRE)
 
         want = set(selected_steppers or []) # empty => keep all
