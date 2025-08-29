@@ -551,8 +551,6 @@ class MmuToolHead(toolhead.ToolHead, object):
             ths = [self.printer_toolhead, self.mmu_toolhead]
             t_cut = self._quiesce_align_get_tcut(ths, full=False)
 
-#            self.trapq_finalize_moves(mmu_trapq, t_cut, t_cut - MOVE_HISTORY_EXPIRE) # PAUL don't think this is necessary
-
         # Activate only the desired gear steppers
         pos = [0., self.mmu_toolhead.get_position()[1], 0.]
         gear_rail.steppers = []
@@ -584,7 +582,10 @@ class MmuToolHead(toolhead.ToolHead, object):
         if not self.motion_queuing:
             # klipper 0.13.0 <= 195 we also register step generators from mmu_toolhead
             if stepper.generate_steps not in self.mmu_toolhead.step_generators:
-                toolhead.register_step_generator(stepper.generate_steps)
+                if hasattr(toolhead, 'register_step_generator'):
+                    toolhead.register_step_generator(stepper.generate_steps)
+                else:
+                    toolhead.step_generators.append(stepper.generate_steps)
 
     # Unregister stepper step generator with desired toolhead and remove from trapq
     def _unregister(self, toolhead, stepper):
@@ -592,21 +593,22 @@ class MmuToolHead(toolhead.ToolHead, object):
         if not self.motion_queuing:
             # klipper 0.13.0 <= 195 we also unregister step generators from mmu_toolhead
             if stepper.generate_steps in self.mmu_toolhead.step_generators:
-                toolhead.unregister_step_generator(stepper.generate_steps)
+                if hasattr(toolhead, 'unregister_step_generator'):
+                    toolhead.unregister_step_generator(stepper.generate_steps)
+                else:
+                    # Why did Kalico remove this function?
+                    toolhead.step_generators.remove(stepper.generate_steps)
 
     def quiesce(self, full_quiesce=True):
         with self._resync_lock:
             logging.info("PAUL: ======= quiesce(%s)" % full_quiesce)
             ths = [self.printer_toolhead, self.mmu_toolhead]
             t_cut = self._quiesce_align_get_tcut(ths, full=full_quiesce)
-#            for th in ths:
-#                self.trapq_finalize_moves(th.get_trapq(), t_cut, t_cut - MOVE_HISTORY_EXPIRE) # PAUL don't think this is necessary
 
     # Drain required toolheads, align to a common future time, materialize it,
     # and return a strict fence time t_cut. 'wait' shouldn't be needed but
     # is helpful when debugging
     def _quiesce_align_get_tcut(self, ths, full=False, wait=False):
-        wait = full # PAUL test
         logging.info("PAUL: [A] _quiesce_align_get_tcut(full=%s, wait=%s)" % (full, wait))
         start = time.time()
         # Drain whatever is already planned
@@ -675,6 +677,14 @@ class MmuToolHead(toolhead.ToolHead, object):
         if new_sync_mode == self.sync_mode:
             return new_sync_mode
 
+        prev_sync_mode = self.sync_mode
+        ffi_main, ffi_lib = chelper.get_ffi()
+
+        def _finalize_if_valid(tq, t):
+            if tq is not None and tq != ffi_main.NULL:
+                logging.info("PAUL: finalizing trapq %s to %.6f" % (self._match_trapq(tq), t))
+                self.trapq_finalize_moves(tq, t, t - MOVE_HISTORY_EXPIRE)
+
         self.mmu.log_stepper("resync(%s --> %s)" % (self.sync_mode_to_string(self.sync_mode), self.sync_mode_to_string(new_sync_mode)))
         logging.info("PAUL: ====== resync(%s --> %s)" % (self.sync_mode_to_string(self.sync_mode), self.sync_mode_to_string(new_sync_mode)))
 
@@ -690,14 +700,7 @@ class MmuToolHead(toolhead.ToolHead, object):
 
         ths = [self.printer_toolhead, self.mmu_toolhead]
         gear_rail = self.mmu_toolhead.get_kinematics().rails[1]
-        t0 = self._quiesce_align_get_tcut(ths, full=full_quiesce) # Build cutover fence
-        prev_sync_mode = self.sync_mode
-        ffi_main, ffi_lib = chelper.get_ffi()
-
-        def _finalize_if_valid(tq, t):
-            if tq is not None and tq != ffi_main.NULL:
-                logging.info("PAUL: finalizing trapq %s to %.6f" % (self._match_trapq(tq), t))
-                self.trapq_finalize_moves(tq, t, t - MOVE_HISTORY_EXPIRE)
+        t0 = self._quiesce_align_get_tcut(ths, full=full_quiesce, wait=full_quiesce) # Build cutover fence
 
         # UNSYNC current mode (if any) to base state at t0
         if self.sync_mode not in [self.GEAR_ONLY, None]:
