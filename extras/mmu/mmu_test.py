@@ -109,7 +109,7 @@ class MmuTest:
 
         def log(msg):
             self.mmu.log_info(msg)
-            logging.info("PAUL: %s" % msg)
+            logging.info("MMU: %s" % msg)
 
         try:
             self.mmu._is_running_test = True
