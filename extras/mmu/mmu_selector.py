@@ -37,13 +37,14 @@
 import random, logging, math, re
 
 # Klipper imports
-from ..homing    import Homing, HomingMove
+from ..homing          import Homing, HomingMove
 
 # Happy Hare imports
-from ..          import mmu_machine
+from ..                import mmu_machine
+from ..mmu_machine     import MmuToolHead
 
 # MMU subcomponent clases
-from .mmu_shared import MmuError
+from .mmu_shared       import MmuError
 
 
 ################################################################################
@@ -923,7 +924,7 @@ class LinearSelectorServo:
         self.mmu.log_trace("Setting servo to down (filament drive) position at angle: %d" % self.servo_angles['down'])
 
         if buzz_gear and self.servo_buzz_gear_on_down > 0:
-            self.mmu_toolhead.unsync() # Must be unsynced before buzz to avoid delay
+            self.mmu_toolhead.sync(MmuToolHead.GEAR_ONLY) # Must be in correct sync mode before buzz to avoid delay
 
         self.mmu.movequeues_wait() # Probably not necessary
         initial_encoder_position = self.mmu.get_encoder_distance(dwell=None)
