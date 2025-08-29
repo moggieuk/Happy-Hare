@@ -624,7 +624,7 @@ class MmuToolHead(toolhead.ToolHead, object):
 
         # Align planners to a common *future* time
         last_times = [th.get_last_move_time() for th in ths]
-        logging.info(">>>> Last times:%s" % last_times)
+        logging.info("PAUL: >>>> Last times:%s" % last_times)
         t_future = max(last_times) + SYNC_AIR_GAP
         for th, lm in zip(ths, last_times):
             dt = t_future - lm
