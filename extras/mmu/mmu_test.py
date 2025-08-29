@@ -500,46 +500,68 @@ class MmuTest:
                 _exec(ops)
 
             # Test of all expected MMU and extruder movement (this must be bulletproof)
+            # e.g. _MMU_TEST REALISTIC_SYNC_TEST=1 ENDSTOP=toolhead LOOP=100 SELECT=1 SERVO=1
             if gcmd.get_int('REALISTIC_SYNC_TEST', 0, minval=0, maxval=1):
                 have_run_test = True
                 self.mmu.log_warning("Setup:\ntoolhead sensor should be present or dummy ones created or use ENDSTOP=xxx\nExtruder should be hot (able to extrude)\nSELECT=1 turns on gate selection on type-B designs")
                 loop = gcmd.get_int('LOOP', 10, minval=1, maxval=1000)
                 select = gcmd.get_int('SELECT', 0, minval=0, maxval=1)
+                servo = gcmd.get_int('SERVO', 0, minval=0, maxval=1)
                 endstop = gcmd.get('ENDSTOP', "toolhead")
                 log = self.mmu.log_info
 
-                for i in range(loop):
-                    log("Loop: %d..." % i)
+                try:
+                    if servo:
+                        self.mmu._is_running_test = False # Else servo won't move
 
-                    # Run a few randomized moves on the mmu toolhead to simulate load/unload logic (optional gate switch)
-                    for j in range(6):
-                        move_type = random.randint(0, 10) # 11 to enable tracking test
-                        move = random.randint(0, 100) - 50
-                        speed = random.uniform(50, 200)
-                        accel = random.randint(50, 1000)
-                        homing_move = random.randint(-1, 1)
-                        motor = random.choice(["gear", "gear+extruder", "extruder"])
-                        wait = random.randint(0, 1)
-                        ed = random.randint(0, 4)
-                        encoder_dwell = True if ed == 0 else None if ed == 1 else False
+                    for i in range(loop):
+                        log("Loop: %d..." % i)
 
-                        # Sometimes switch gate. This will test interleaved selector movement / gear rail reconfiguration
-                        if select and random.randint(0, 3) == 0:
-                            gate = random.randint(0, self.mmu.num_gates - 1)
-                            log("Selecting gate: %d" % gate)
-                            self.mmu.select_gate(gate)
+                        # Run a few randomized moves on the mmu toolhead to simulate load/unload logic (optional gate switch)
+                        for j in range(6):
+                            move_type = random.randint(0, 10) # 11 to enable tracking test
+                            move = random.randint(0, 100) - 50
+                            speed = random.uniform(50, 200)
+                            accel = random.randint(50, 1000)
+                            homing_move = random.randint(-1, 1)
+                            motor = random.choice(["gear", "gear+extruder", "extruder"])
+                            wait = random.randint(0, 1)
+                            ed = random.randint(0, 4)
+                            encoder_dwell = True if ed == 0 else None if ed == 1 else False
 
-                        log("> INTERNAL MMU MOVE %d: move(%s, motor=%s, speed=%.2f, accel=%s, homing_move=%s, endstop_name=%s, encoder_dwell=%s, wait=%s)" % (j, move, motor, speed, accel, homing_move, endstop, encoder_dwell, wait))
-                        _,_,_,_ = self.mmu.trace_filament_move("REALISTIC_SYNC_TEST", move, motor=motor, speed=speed, accel=accel, homing_move=homing_move, endstop_name=endstop, encoder_dwell=encoder_dwell, speed_override=False, wait=wait)
+                            # Sometimes switch gate. This will test interleaved selector movement / gear rail reconfiguration
+                            if select and random.randint(0, 3) == 0:
+                                gate = random.randint(0, self.mmu.num_gates - 1)
+                                log("Selecting gate: %d" % gate)
+                                self.mmu.select_gate(gate)
 
-                    # Run a few randomized moves on the printer toolhead to simulate user movement
-                    # Sync state must either be unsynced or GEAR_SYNCED_TO_EXTRUDER
-                    sync = None if random.randint(0, 1) else MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
-                    self.mmu.mmu_toolhead.sync(sync)
-                    log("> EXTRUDER MOVEMENT (%s)..." % ("not synced" if sync is None else "synced to extruder"))
-                    for j in range(4):
-                        move = random.randint(-10, 10)
-                        self.mmu.gcode.run_script_from_command("G1 E%d F6000" % move)
+                            # Sometimes inject servo movement for selectors with servo
+                            if servo and random.randint(0, 4) == 0:
+                                pos = "move" if random.randint(0, 1) else "down"
+                                log("Moving servo to position: %s" % pos)
+                                self.mmu.gcode.run_script_from_command("MMU_SERVO POS=%s" % pos)
+
+                            log("> Internal mmu movement %d: move(%s, motor=%s, speed=%.2f, accel=%s, homing_move=%s, endstop_name=%s, encoder_dwell=%s, wait=%s)" % (j, move, motor, speed, accel, homing_move, endstop, encoder_dwell, wait))
+                            _,_,_,_ = self.mmu.trace_filament_move("REALISTIC_SYNC_TEST", move, motor=motor, speed=speed, accel=accel, homing_move=homing_move, endstop_name=endstop, encoder_dwell=encoder_dwell, speed_override=False, wait=wait)
+
+                        # Run a few randomized moves on the printer toolhead to simulate user movement
+                        # Sync state must either be unsynced or GEAR_SYNCED_TO_EXTRUDER
+                        sync = None if random.randint(0, 1) else MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
+                        self.mmu.mmu_toolhead.sync(sync)
+                        log(">> Extruder movement (%s)..." % ("not synced" if sync is None else "synced to extruder"))
+                        for j in range(5):
+                            move = random.randint(-10, 10)
+                            self.mmu.gcode.run_script_from_command("G1 E%d F6000" % move)
+
+                            # Simulate a call back into _MMU_STEP_MOVE or similar call - e.g. user calls from post_load_macro
+                            step_callback = random.randint(0, 4)
+                            if step_callback == 0:
+                                self.mmu.gcode.run_script_from_command("_MMU_STEP_MOVE MOVE=10")
+                            elif step_callback == 1:
+                                self.mmu.gcode.run_script_from_command("_MMU_STEP_HOMING_MOVE MOVE=10 ENDSTOP=%s" % endstop)
+
+                except MmuError as ee:
+                    log("TEST TERMINATED WITH MMU EXCEPTION: %s" % str(ee))
 
 
             if gcmd.get_int('SYNC_LOAD_TEST', 0, minval=0, maxval=1):

@@ -3809,7 +3809,8 @@ class Mmu:
     def cmd_MMU_STEP_LOAD_GATE(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         try:
-            self._load_gate()
+            with self.wrap_sync_gear_to_extruder():
+                self._load_gate()
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_LOAD_GATE: %s" % str(ee))
 
@@ -3818,7 +3819,8 @@ class Mmu:
         self.log_to_file(gcmd.get_commandline())
         full = gcmd.get_int('FULL', 0)
         try:
-            _,_ = self._unload_gate(homing_max=self._get_bowden_length(self.gate_selected) if full else None)
+            with self.wrap_sync_gear_to_extruder():
+                _,_ = self._unload_gate(homing_max=self._get_bowden_length(self.gate_selected) if full else None)
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_UNLOAD_GATE: %s" % str(ee))
 
@@ -3828,7 +3830,8 @@ class Mmu:
         length = gcmd.get_float('LENGTH', None, minval=0.)
         start_pos = gcmd.get_float('START_POS', 0.)
         try:
-            _,_ = self._load_bowden(length, start_pos=start_pos)
+            with self.wrap_sync_gear_to_extruder():
+                _,_ = self._load_bowden(length, start_pos=start_pos)
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_LOAD_BOWDEN: %s" % str(ee))
 
@@ -3837,7 +3840,8 @@ class Mmu:
         self.log_to_file(gcmd.get_commandline())
         length = gcmd.get_float('LENGTH', self._get_bowden_length(self.gate_selected))
         try:
-            _ = self._unload_bowden(length)
+            with self.wrap_sync_gear_to_extruder():
+                _ = self._unload_bowden(length)
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_UNLOAD_BOWDEN: %s" % str(ee))
 
@@ -3845,7 +3849,8 @@ class Mmu:
     def cmd_MMU_STEP_HOME_EXTRUDER(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         try:
-            _,_ = self._home_to_extruder(self.extruder_homing_max)
+            with self.wrap_sync_gear_to_extruder():
+                _,_ = self._home_to_extruder(self.extruder_homing_max)
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_HOME_EXTRUDER: %s" % str(ee))
 
@@ -3854,7 +3859,8 @@ class Mmu:
         self.log_to_file(gcmd.get_commandline())
         extruder_only = gcmd.get_int('EXTRUDER_ONLY', 0)
         try:
-            _ = self._load_extruder(extruder_only)
+            with self.wrap_sync_gear_to_extruder():
+                _ = self._load_extruder(extruder_only)
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_LOAD_TOOLHEAD: %s" % str(ee))
 
@@ -3864,10 +3870,11 @@ class Mmu:
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0))
         park_pos = gcmd.get_float('PARK_POS', -self._get_filament_position()) # +ve value
         try:
-            # Precautionary validation of filament position
-            park_pos = min(self.toolhead_extruder_to_nozzle, max(0, park_pos))
-            self._set_filament_position(-park_pos)
-            self._unload_extruder(extruder_only = extruder_only)
+            with self.wrap_sync_gear_to_extruder():
+                # Precautionary validation of filament position
+                park_pos = min(self.toolhead_extruder_to_nozzle, max(0, park_pos))
+                self._set_filament_position(-park_pos)
+                self._unload_extruder(extruder_only = extruder_only)
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_UNLOAD_TOOLHEAD: %s" % str(ee))
 
@@ -3876,7 +3883,8 @@ class Mmu:
         self.log_to_file(gcmd.get_commandline())
         allow_bypass = bool(gcmd.get_int('ALLOW_BYPASS', 0, minval=0, maxval=1))
         try:
-            self._homing_move_cmd(gcmd, "User defined step homing move", allow_bypass=allow_bypass)
+            with self.wrap_sync_gear_to_extruder():
+                self._homing_move_cmd(gcmd, "User defined step homing move", allow_bypass=allow_bypass)
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_HOMING_MOVE: %s" % str(ee))
 
@@ -3885,7 +3893,8 @@ class Mmu:
         self.log_to_file(gcmd.get_commandline())
         allow_bypass = bool(gcmd.get_int('ALLOW_BYPASS', 0, minval=0, maxval=1))
         try:
-            self._move_cmd(gcmd, "User defined step move", allow_bypass=allow_bypass)
+            with self.wrap_sync_gear_to_extruder():
+                self._move_cmd(gcmd, "User defined step move", allow_bypass=allow_bypass)
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_MOVE: %s" % str(ee))
 
@@ -5536,7 +5545,7 @@ class Mmu:
         # Sync / Unsync
         new_sync_mode = MmuToolHead.GEAR_SYNCED_TO_EXTRUDER if sync else None
         if new_sync_mode != self.mmu_toolhead.sync_mode:
-            self.movequeues_wait() # Safety but should not be required(?)
+            self.movequeues_wait() # TODO Safety but should not be required(?)
             self.mmu_toolhead.sync(new_sync_mode)
 
         # See if we need to set a reduced gear current. If we do then make sure it is
