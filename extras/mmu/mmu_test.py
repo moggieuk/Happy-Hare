@@ -11,7 +11,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import random, logging
+import random, logging, math
 
 from ..mmu_sensors import MmuSensors
 
@@ -106,6 +106,10 @@ class MmuTest:
             self.mmu.log_info("SYNC_E2G=1 [EXTRUDER_ONLY=] : Sync extruder to gear optionally just the extruder on rail")
             self.mmu.log_info("UNSYNC=1 [GEAR_ONLY=]: Unsync (user mode) or unsynced with assuption of no extruder movement")
             return
+
+        def log(msg):
+            self.mmu.log_info(msg)
+            logging.info("PAUL: %s" % msg)
 
         try:
             self.mmu._is_running_test = True
@@ -508,7 +512,6 @@ class MmuTest:
                 select = gcmd.get_int('SELECT', 0, minval=0, maxval=1)
                 servo = gcmd.get_int('SERVO', 0, minval=0, maxval=1)
                 endstop = gcmd.get('ENDSTOP', "toolhead")
-                log = self.mmu.log_info
 
                 try:
                     if servo:
@@ -518,6 +521,8 @@ class MmuTest:
                         log("Loop: %d..." % i)
 
                         # Run a few randomized moves on the mmu toolhead to simulate load/unload logic (optional gate switch)
+                        tracked = 0.
+                        initial_pos = self.mmu._get_filament_position()
                         for j in range(6):
                             move_type = random.randint(0, 10) # 11 to enable tracking test
                             move = random.randint(0, 100) - 50
@@ -542,7 +547,14 @@ class MmuTest:
                                 self.mmu.gcode.run_script_from_command("MMU_SERVO POS=%s" % pos)
 
                             log("> Internal mmu movement %d: move(%s, motor=%s, speed=%.2f, accel=%s, homing_move=%s, endstop_name=%s, encoder_dwell=%s, wait=%s)" % (j, move, motor, speed, accel, homing_move, endstop, encoder_dwell, wait))
-                            _,_,_,_ = self.mmu.trace_filament_move("REALISTIC_SYNC_TEST", move, motor=motor, speed=speed, accel=accel, homing_move=homing_move, endstop_name=endstop, encoder_dwell=encoder_dwell, speed_override=False, wait=wait)
+                            actual,_,_,_ = self.mmu.trace_filament_move("REALISTIC_SYNC_TEST", move, motor=motor, speed=speed, accel=accel, homing_move=homing_move, endstop_name=endstop, encoder_dwell=encoder_dwell, speed_override=False, wait=wait)
+                            tracked += actual
+
+                        # Check MMU position is correct
+                        final_pos = self.mmu._get_filament_position()
+                        expected = final_pos - initial_pos
+                        if not math.isclose(expected, tracked):
+                            raise MmuError("TEST ERROR: inital_pos=%.6f, final_pos=%.6f, tracked=%.6f (expected=%.6f)" % (initial_pos, final_pos, tracked, expected))
 
                         # Run a few randomized moves on the printer toolhead to simulate user movement
                         # Sync state must either be unsynced or GEAR_SYNCED_TO_EXTRUDER
@@ -554,11 +566,12 @@ class MmuTest:
                             self.mmu.gcode.run_script_from_command("G1 E%d F6000" % move)
 
                             # Simulate a call back into _MMU_STEP_MOVE or similar call - e.g. user calls from post_load_macro
-                            step_callback = random.randint(0, 4)
-                            if step_callback == 0:
-                                self.mmu.gcode.run_script_from_command("_MMU_STEP_MOVE MOVE=10")
-                            elif step_callback == 1:
-                                self.mmu.gcode.run_script_from_command("_MMU_STEP_HOMING_MOVE MOVE=10 ENDSTOP=%s" % endstop)
+                            if random.randint(0, 4) == 0:
+                                log(">>> Calling _MMU_STEP_** move")
+                                if random.randint(0, 1):
+                                    self.mmu.gcode.run_script_from_command("_MMU_STEP_MOVE MOVE=10")
+                                else:
+                                    self.mmu.gcode.run_script_from_command("_MMU_STEP_HOMING_MOVE MOVE=10 ENDSTOP=%s" % endstop)
 
                 except MmuError as ee:
                     log("TEST TERMINATED WITH MMU EXCEPTION: %s" % str(ee))
@@ -574,7 +587,6 @@ class MmuTest:
                 self.mmu.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=mmu_test")
                 self.mmu._initialize_filament_position()
                 total = 0.
-                log = self.mmu.log_info
                 for i in range(loop):
                     move_type = random.randint(0, 10) # 11 to enable tracking test
                     move = random.randint(0, 100) - 50

@@ -606,6 +606,7 @@ class MmuToolHead(toolhead.ToolHead, object):
     # and return a strict fence time t_cut. 'wait' shouldn't be needed but
     # is helpful when debugging
     def _quiesce_align_get_tcut(self, ths, full=False, wait=False):
+        wait = full # PAUL test
         logging.info("PAUL: [A] _quiesce_align_get_tcut(full=%s, wait=%s)" % (full, wait))
         start = time.time()
         # Drain whatever is already planned
@@ -643,7 +644,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.mmu.log_stepper("_quiesce_align_get_tcut(full=%s, wait=%s) Elapsed:%.6f" % (full, wait, time.time() - start))
         logging.info("PAUL: +++++ quiesce END TOTAL TIME: %.6f" % (time.time() - start))
         if (time.time() - start) > 1:
-            logging.info("PAUL: ***************** !!!!!!!! ************************")
+            logging.info("PAUL: ******************** LONG WAIT !!!!!!!! ************************")
         return t_future + EPS
 
     def is_synced(self):
@@ -695,6 +696,7 @@ class MmuToolHead(toolhead.ToolHead, object):
 
         def _finalize_if_valid(tq, t):
             if tq is not None and tq != ffi_main.NULL:
+                logging.info("PAUL: finalizing trapq %s to %.6f" % (self._match_trapq(tq), t))
                 self.trapq_finalize_moves(tq, t, t - MOVE_HISTORY_EXPIRE)
 
         # UNSYNC current mode (if any) to base state at t0
