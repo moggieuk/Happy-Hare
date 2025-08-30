@@ -31,7 +31,7 @@ from .homing import Homing, HomingMove
 from . import mmu_leds
 
 # For toolhead synchronization
-EPS           = 1e-6       # ~1 µs saftey
+EPS           = 1e-6       # ~1 microsecond safety
 SYNC_AIR_GAP  = 0.001      # Sync time air gap
 MOVE_HISTORY_EXPIRE = 30.0 # From motion_queuing.py
 
