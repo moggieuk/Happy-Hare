@@ -241,7 +241,6 @@ class MmuMachine:
             has_bypass = 0
 
         # Still allow MMU design attributes to be altered or set for custom MMU
-        self.display_name = config.get('display_name', UNIT_ALT_DISPLAY_NAMES.get(self.mmu_vendor, self.mmu_vendor))
         self.selector_type = config.getchoice('selector_type', {o: o for o in ['LinearSelector', 'VirtualSelector', 'MacroSelector', 'RotarySelector', 'ServoSelector', 'IndexedSelector']}, selector_type)
         self.variable_rotation_distances = bool(config.getint('variable_rotation_distances', variable_rotation_distances))
         self.variable_bowden_lengths = bool(config.getint('variable_bowden_lengths', variable_bowden_lengths))
@@ -249,6 +248,10 @@ class MmuMachine:
         self.filament_always_gripped = bool(config.getint('filament_always_gripped', filament_always_gripped))
         self.can_crossload = bool(config.getint('can_crossload', can_crossload))
         self.has_bypass = bool(config.getint('has_bypass', has_bypass))
+
+        # Other attributes
+        self.display_name = config.get('display_name', UNIT_ALT_DISPLAY_NAMES.get(self.mmu_vendor, self.mmu_vendor))
+        self.environment_sensor = config.get('environment_sensor', "")
 
         # By default HH uses a modified homing extruder. Because this might have unknown consequences on certain
         # set-ups it can be disabled. If disabled, homing moves will still work, but the delay in mcu to mcu comms
@@ -320,6 +323,7 @@ class MmuMachine:
             unit_info['filament_always_gripped'] = self.filament_always_gripped
             unit_info['has_bypass'] = self.has_bypass
             unit_info['multi_gear'] = self.multigear
+            unit_info['environment_sensor'] = self.environment_sensor
             gate_count += unit
             self.unit_status["unit_%d" % i] = unit_info
             self.unit_status['num_units'] = len(self.gate_counts)
