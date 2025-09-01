@@ -102,7 +102,9 @@ has_bypass: 1				# 1 = Bypass gate available, 0 = No filament bypass possible
 
 # Fullname of environment sensor for MMU filament storage (displays temp and humidity in UI)
 # Polls for "temperature" and "humidity"
-environment_sensor: htu21d MMU_enviroment_kms
+# E.g. If you have a section like this: [temperature_sensor MMU_enclosure]
+# Set: environment_sensor: temperature_sensor MMU_enclosure
+environment_sensor: temperature_sensor MMU_enviroment_kms
 
 homing_extruder: 1			# CAUTION: Normally this should be 1. 0 will disable the homing extruder capability
 
