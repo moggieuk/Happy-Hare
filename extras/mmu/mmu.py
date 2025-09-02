@@ -7898,8 +7898,8 @@ class Mmu:
                             self.log_debug("Warning: Illegal gate number %d supplied in gate map update - ignored" % gate)
                             continue
 
-                        # Only update gate attributes if we have a valid spool_id
-                        if fil and fil.get('spool_id', -1) != -1:
+                        # Only update gate attributes if we don't have spool_id
+                        if fil:
                             self.gate_filament_name[gate] = fil.get('name', '')
                             self.gate_material[gate] = fil.get('material', '')
                             self.gate_color[gate] = fil.get('color', '')
