@@ -633,7 +633,6 @@ class MmuToolHead(toolhead.ToolHead, object):
         # Materialize the air gap before choosing the fence
         for th in ths:
             th.flush_step_generation()
-        logging.info(">>>> After dwell/flush. Elapsed=%.6f" % (time.time() - start))
 
         # Optional wait and flush to aid debugging
         if wait:

@@ -4952,6 +4952,10 @@ class Mmu:
             # POST_UNLOAD user defined macro
             if macros_and_track:
                 with self._wrap_track_time('post_unload'):
+
+                    # Restore the expected sync state now before running this macro
+                    self.reset_sync_gear_to_extruder(not extruder_only and self.sync_to_extruder)
+
                     if self.has_mmu_cutter:
                         with self.wrap_action(self.ACTION_CUTTING_FILAMENT):
                             self.wrap_gcode_command(self.post_unload_macro, exception=True, wait=True)
