@@ -33,7 +33,7 @@ Universal Automated Filament Changer / MMU driver for Klipper
 -->
 </p>
 
-Happy Hare is the original open-source filament changer controller for multi-color printing. Its philosophy is to provide a universal control system that adapts to your choice of MMU (Multi-Material Unit). If you switch MMUs, the software transitions seamlessly with you. Currently, it fully supports **ERCF**, **Tradrack**, **Box Turtle**, **Angry Beaver**, **Night Owl**, **3MS**, **3D Chameleon**, **QuattroBox**, **PicoMMU**, and various custom designs.
+Happy Hare is the original open-source filament changer controller for multi-color printing. Its philosophy is to provide a universal control system that adapts to your choice of MMU (Multi-Material Unit). If you switch MMUs, the software transitions seamlessly with you. Currently, it fully supports **ERCF**, **Tradrack**, **Box Turtle**, **Angry Beaver**, **Night Owl**, **3MS**, **3D Chameleon**, **QuattroBox**, **PicoMMU**, **KMS**, **BTT ViViD** and various custom designs.
 
 The system is implemented as a Klipper extension (primarily using Python modules) to control MMUs and AFCs. It also provides functionality that can be customized through Klipper macros. With extensive configuration options for personalization, it includes an installer to simplify the initial setup for popular MMU and MCU types. For details about the different conceptual types of MMUs and the functions of their various sensors, refer to the [conceptual MMU guide](https://github.com/moggieuk/Happy-Hare/wiki/Conceptual-MMU). This guide is particularly useful for customized setups. For the best experience, pair it with the [KlipperScreen for Happy Hare](https://github.com/moggieuk/KlipperScreen-Happy-Hare-Edition) project, at least until Mainsail integration is completed. Extensive documentation is available in the [Wiki](https://github.com/moggieuk/Happy-Hare/wiki).
 
@@ -41,10 +41,10 @@ The system is implemented as a Klipper extension (primarily using Python modules
 
 Happy Hare is under active development, with a meticulous focus on the quality of multi-color printing. It has benefited from insights gained over two years from thousands of users. While the experience is highly polished, development continues in three key areas:
 
-- **Additional MMU Support:** _Striving for inclusivity—support for Prusa MMU, KMS, Open AMS, Pico MMU, and others is in progress_
-- **Mainsail/Fluidd Plugin:** _While the KlipperScreen extension offers a rich user interface, many users have requested similar functionality for Mainsail. This integration is coming soon!_
+- **Additional MMU Support:** _Striving for inclusivity—support for Prusa MMU and others is in progress_
+- **v4 Rework:** _This release will allow for even more modularity and in particular support for dissimilar MMU/AFC's on the same printer!  Yes, mix your old ERCF and BoxTurtle on the same machine or even direct to different toolheads in a IDEX design!_
 
-Some users have inquired about making donations to support this project (and to keep my coffee or G&T supply steady!). While this project is a labor of love and not financially motivated, it is a substantial undertaking—comprising 17,000 lines of Python code, 10,000 lines of documentation, 160 illustrations and 6,000 lines of macros/configuration. If you’ve found value in Happy Hare and wish to contribute, donations can be made via PayPal https://www.paypal.me/moggieuk. Any support will be spent improving your experience with your favorite MMU. Thank you!
+Some users have inquired about making donations to support this project (and to keep my coffee or G&T supply steady!). While this project is a labor of love and not financially motivated, it is a substantial undertaking—comprising 18,000 lines of Python code, 10,000 lines of documentation, 160 illustrations and 6,000 lines of macros/configuration. If you’ve found value in Happy Hare and wish to contribute, donations can be made via PayPal https://www.paypal.me/moggieuk. Any support will be spent improving your experience with your favorite MMU/AFC. Thank you!
 <p align="center"><a href="https://www.paypal.me/moggieuk"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/donate.svg" width="30%"></a></p>
 
 <br>
@@ -66,18 +66,20 @@ Some users have inquired about making donations to support this project (and to 
   - Quattro Box
   - PicoMMU
   - MMX
+  - KSM
+  - BTT ViViD
   - Custom...
-- Synchronized movement of extruder and gear motors (with sync feedback control) to overcome friction and even work with FLEX materials!
+- Klipperscreen and Mainsail/Fluidd UI
 - Support for all type of sensor: pre-gate, post-gear, combiner gate sensors, extruder entry sensors, toolhead sensors
 - Full Spoolman integration
-- Multiple MMUs managed as one
-- Support for motorized filament buffer systems for rewinding
+- Multiple MMUs managed as one (limited to type-A until v4 release)
+- Support for motorized eSpooler filament buffer systems for rewinding
 - Suite of startup macros that include sophisticated parking options for filament change or error operations
 - Implements a Tool-to-Gate mapping so that the physical spool can be mapped to any tool
 - EndlessSpool allowing a spool to automatically be mapped and take over from a spool that runs out
 - Sophisticated logging options (console and separate mmu.log file)
 - Can define material type and color in each gate for visualization and customized settings (like Pressure Advance)
-- Automated calibration for easy setup
+- Automated calibration and tuning for easy setup
 - Supports MMU "bypass" gate functionality
 - Moonraker update-manager support
 - Moonraker gcode pre-parsing to extract important print information
@@ -85,10 +87,10 @@ Some users have inquired about making donations to support this project (and to 
 - Optional integrated encoder driver that validates filament movement, runout, clog detection and flow rate verification!
 - Vast customization options most of which can be changed and tested at runtime
 - Integrated help, testing and soak-testing procedures
-- Gcode pre-processor check that all the required tools are avaialble!
+- Gcode pre-processor check that all the required tools are available!
 - Drives LEDs for functional feed and some bling!
 - Built in tip forming and filament cutter support (both toolhead and at MMU)
-- Klipperscreen and Mainsail/Fluidd UI
+- Synchronized movement of extruder and gear motors (with sync feedback control) to overcome friction and even work with FLEX materials!
 - Lots more... Detail change log can be found in the [Wiki](https://github.com/moggieuk/Happy-Hare/wiki/Change-Log)
 
 Controlling my oldest ERCF MMU with companion [customized KlipperScreen](https://github.com/moggieuk/Happy-Hare/wiki/Basic-Operation#---klipperscreen-happy-hare) for easy touchscreen MMU control and new Mainsail/Fluidd integration!

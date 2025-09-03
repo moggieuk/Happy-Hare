@@ -12,7 +12,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import gc, sys, ast, random, logging, time, contextlib, math, os.path, re, unicodedata
+import gc, sys, ast, random, logging, time, contextlib, math, os.path, re, unicodedata, traceback
 
 # Klipper imports
 import chelper
@@ -31,12 +31,13 @@ from .mmu_selector              import *
 from .mmu_test                  import MmuTest
 from .mmu_utils                 import DebugStepperMovement, PurgeVolCalculator
 from .mmu_sensor_manager        import MmuSensorManager
+from .mmu_led_manager           import MmuLedManager
 from .mmu_sync_feedback_manager import MmuSyncFeedbackManager
 
 
 # Main klipper module
 class Mmu:
-    VERSION = 3.30 # When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
+    VERSION = 3.40 # When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
 
     BOOT_DELAY = 2.5 # Delay before running bootup tasks
 
@@ -48,8 +49,6 @@ class Mmu:
     CALIBRATED_GEAR_RDS  = 0b10000
     CALIBRATED_ESSENTIAL = 0b01111
     CALIBRATED_ALL       = 0b11111
-
-    UNIT_UNKNOWN = -1
 
     TOOL_GATE_UNKNOWN = -1
     TOOL_GATE_BYPASS = -2
@@ -249,6 +248,10 @@ class Mmu:
         self.config = config
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
+        self.gcode = self.printer.lookup_object('gcode')
+        self.gcode_move = self.printer.load_object(config, 'gcode_move')
+        self.mmu_machine = self.printer.lookup_object("mmu_machine")
+        self.num_gates = self.mmu_machine.num_gates
         self.calibration_status = 0b0
         self.w3c_colors = dict(self.W3C_COLORS)
         self.filament_remaining = 0.
@@ -259,7 +262,6 @@ class Mmu:
         self.toolchange_purge_volume = 0.
         self.mmu_logger = None                # Setup on connect
         self._standalone_sync = False         # Used to indicate synced extruder intention whilst out of print
-        self.has_leds = self.has_led_animation = False
         self.bowden_start_pos = None
         self.has_blobifier = False            # Post load blobbling macro (like BLOBIFIER)
         self.has_mmu_cutter = False           # Post unload cutting macro (like EREC)
@@ -286,9 +288,6 @@ class Mmu:
         # This assumes that the hardware definition appears before the '[mmu]' section.
         # The default recommended install will guarantee this order
         self._setup_mmu_hardware(config)
-
-        self.gcode = self.printer.lookup_object('gcode')
-        self.gcode_move = self.printer.load_object(config, 'gcode_move')
 
         # Read user configuration ---------------------------------------------------------------------------
         #
@@ -394,6 +393,7 @@ class Mmu:
         self.toolhead_ooze_reduction = config.getfloat('toolhead_ooze_reduction', 0., minval=-5., maxval=20.) # +ve value = reduction of load length
         self.toolhead_unload_safety_margin = config.getfloat('toolhead_unload_safety_margin', 10., minval=0.) # Extra unload distance
         self.toolhead_move_error_tolerance = config.getfloat('toolhead_move_error_tolerance', 60, minval=0, maxval=100) # Allowable delta movement % before error
+        self.toolhead_entry_tension_test = config.getint('toolhead_entry_tension_test', 1, minval=0, maxval=1) # Use filament compression to test for successful extruder entry (requires compression sensor)
         self.toolhead_post_load_tighten = config.getint('toolhead_post_load_tighten', 60, minval=0, maxval=100) # Whether to apply filament tightening move after load (if not synced)
         self.toolhead_post_load_tension_adjust = config.getint('toolhead_post_load_tension_adjust', 1, minval=0, maxval=1) # Whether to use sync-feedback sensor to adjust tension (synced)
 
@@ -508,6 +508,9 @@ class Mmu:
         # to increase BIT_MAX_TIME in neopixel.py. This option does that automatically for you to save dirtying klipper.
         self.update_bit_max_time = config.getint('update_bit_max_time', 0, minval=0, maxval=1)
 
+        # This is required for the BTT AHT10 used on the ViViD MMU
+        self.update_aht10_commands = config.getint('update_aht10_commands', 0, minval=0, maxval=1)
+
         # Initialize manager helpers
         # These encapsulate specific functionality to reduce the complexity of main class
         self.sync_feedback_manager = MmuSyncFeedbackManager(self)
@@ -582,7 +585,6 @@ class Mmu:
         self.gcode.register_command('MMU_HELP', self.cmd_MMU_HELP, desc = self.cmd_MMU_HELP_help)
         self.gcode.register_command('MMU_ENCODER', self.cmd_MMU_ENCODER, desc = self.cmd_MMU_ENCODER_help)
         self.gcode.register_command('MMU_ESPOOLER', self.cmd_MMU_ESPOOLER, desc = self.cmd_MMU_ESPOOLER_help)
-        self.gcode.register_command('MMU_LED', self.cmd_MMU_LED, desc = self.cmd_MMU_LED_help)
         self.gcode.register_command('MMU_HOME', self.cmd_MMU_HOME, desc = self.cmd_MMU_HOME_help)
         self.gcode.register_command('MMU_SELECT', self.cmd_MMU_SELECT, desc = self.cmd_MMU_SELECT_help)
         self.gcode.register_command('MMU_SELECT_BYPASS', self.cmd_MMU_SELECT_BYPASS, desc = self.cmd_MMU_SELECT_BYPASS_help) # Alias for MMU_SELECT BYPASS=1
@@ -668,6 +670,17 @@ class Mmu:
             except Exception as e:
                 self.log_error("Unable to update BIT_MAX_TIME: %s" % str(e))
 
+        if self.update_aht10_commands: # Command set of AHT10 (on ViViD)
+            try:
+                from extras import aht10
+                aht10.AHT10_COMMANDS = {
+                    'INIT'              :[0xBE, 0x08, 0x00],
+                    'MEASURE'           :[0xAC, 0x33, 0x00],
+                    'RESET'             :[0xBE, 0x08, 0x00]
+                }
+            except Exception as e:
+                self.log_error("Unable to update AHT10_COMMANDS: %s" % str(e))
+
         # Initialize state and statistics variables
         self.reinit()
         self._reset_statistics()
@@ -676,9 +689,6 @@ class Mmu:
     # Initialize MMU hardare. Note that logging not set up yet so use main klippy logger
     def _setup_mmu_hardware(self, config):
         logging.info("MMU: Hardware Initialization -------------------------------")
-
-        self.mmu_machine = self.printer.lookup_object("mmu_machine")
-        self.num_gates = self.mmu_machine.num_gates
         self.homing_extruder = self.mmu_machine.homing_extruder
 
         # Dynamically instantiate the selector class
@@ -690,10 +700,11 @@ class Mmu:
         self.mmu_toolhead = MmuToolHead(config, self)
         rails = self.mmu_toolhead.get_kinematics().rails
         self.gear_rail = rails[1]
-        self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper # Is a MmuExtruderStepper if 'self.homing_extruder' is True
+        self.mmu_extruder_stepper = self.mmu_toolhead.mmu_extruder_stepper # Will be a MmuExtruderStepper if 'self.homing_extruder' is True
 
         # Setup filament sensors that are also used for homing (endstops). Must be done during initialization
         self.sensor_manager = MmuSensorManager(self)
+        self.led_manager = MmuLedManager(self)
 
         # Get optional encoder setup. TODO Multi-encoder: rework to default name to None and then use lookup to determine if present
         self.encoder_name = config.get('encoder_name', 'mmu_encoder')
@@ -721,7 +732,7 @@ class Mmu:
         self._setup_logging()
 
         self.toolhead = self.printer.lookup_object('toolhead')
-        self.sensor_manager.reset_active_unit(self.UNIT_UNKNOWN)
+        self.sensor_manager.reset_active_unit(self.unit_selected)
 
         # Sanity check extruder name
         extruder = self.printer.lookup_object(self.extruder_name, None)
@@ -967,29 +978,6 @@ class Mmu:
         except Exception as e:
             self.log_error('Error trying to wrap PAUSE/RESUME/CLEAR_PAUSE/CANCEL_PRINT macros: %s' % str(e))
 
-        # Basic LED validation
-        gcode_macro = self.printer.lookup_object("gcode_macro _MMU_SET_LED", None)
-        if gcode_macro:
-            mmu_leds = self.printer.lookup_object('mmu_leds', None)
-            self.has_leds = bool(mmu_leds)
-            self.has_led_animation = mmu_leds.get_status().get('led_effect_module', False) if mmu_leds else False
-
-            if self.has_leds:
-                self.log_debug("LEDs support enabled %s" % "with optional animation" if self.has_led_animation else "")
-            else:
-                self.log_debug("LEDs support is not configured")
-        else:
-            self.log_error("LEDs macro _MMU_SET_LED not available")
-
-        # Override user configuration based on actual h/w setup
-        led_vars_macro = self.printer.lookup_object("gcode_macro _MMU_LED_VARS", None)
-        if led_vars_macro:
-            variables = led_vars_macro.variables
-            led_vars = {}
-            led_vars['led_enable'] = variables.get('led_enable', True) & self.has_leds
-            led_vars['led_animation'] = variables.get('led_animation', True) & self.has_led_animation
-            led_vars_macro.variables.update(led_vars)
-
         # Sub components
         self.selector.handle_ready()
 
@@ -1002,7 +990,7 @@ class Mmu:
         self.is_handling_runout = self.calibrating = False
         self.last_print_stats = self.paused_extruder_temp = self.reason_for_pause = None
         self.tool_selected = self._next_tool = self.gate_selected = self.TOOL_GATE_UNKNOWN
-        self.unit_selected = self.UNIT_UNKNOWN # Which MMU unit is active if more than one
+        self.unit_selected = 0 # Which MMU unit is active if more than one
         self._last_toolchange = "Unknown"
         self.active_filament = {}
         self.filament_pos = self.FILAMENT_POS_UNKNOWN
@@ -1145,7 +1133,7 @@ class Mmu:
             gate = self.ttg_map[tool]
             self.slicer_color_rgb[gate] = self._color_to_rgb_tuple(tool_value['color'])
         self._update_t_macros()
-        self.mmu_macro_event(self.MACRO_EVENT_GATE_MAP_CHANGED, "GATE=-1") # Cheat to force LED update
+        self.led_manager.gate_map_changed(None) # Force LED update
 
     # Helper to determine purge volume for toolchange
     def _get_purge_volume(self, from_tool, to_tool):
@@ -1265,6 +1253,7 @@ class Mmu:
     cmd_MMU_BOOTUP_help = "Internal commands to complete bootup of MMU"
     def cmd_MMU_BOOTUP(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
+        self.selector.bootup()
 
         try:
             # Splash...
@@ -1276,10 +1265,28 @@ class Mmu:
                     self.log_trace(msg + " Message was suppressed.")
                 else:
                     self.log_warning(msg)
+
+            # Look for filament_switch_sensors already configured to warn for possible conflicts
+            for section in self.config.get_prefix_sections('filament_switch_sensor'):
+                # Determine if this is created by HH or user
+                fsensor = self.printer.lookup_object(section.get_name())
+                if not isinstance(fsensor.runout_helper, MmuRunoutHelper):
+                    fsensor_name = section.get_name().split()[1]
+                    pause_on_runout = section.getboolean('pause_on_runout', False)
+                    pause_on_runout_msg = " and/or pause during prints unintentionally" if pause_on_runout else ""
+                    self.log_warning("Warning: filament_switch_sensor '%s' found in printer configuration. This may interfere with MMU functionality%s." % (fsensor_name, pause_on_runout_msg))
+
             self._set_print_state("initialized")
 
-            # Use pre-gate sensors to adjust gate map
+            # Use per gate sensors to adjust gate map
             self.gate_status = self._validate_gate_status(self.gate_status)
+
+            # Can we verify gate selected? If so fix now
+            gate_selected = self._validate_gate_selected()
+            if gate_selected is not None and gate_selected != self.gate_selected:
+                self.selector.restore_gate(gate_selected)
+                self._set_gate_selected(gate_selected)
+                self._ensure_ttg_match() # Ensure tool/gate consistency
 
             # Sanity check filament pos based only on non-intrusive tests and recover if necessary
             if self.sensor_manager.check_all_sensors_after(
@@ -1322,6 +1329,7 @@ class Mmu:
             # Sync with spoolman. Delay as long as possible to maximize the chance it is contactable after startup/reboot
             self._spoolman_sync()
         except Exception as e:
+            logging.error(traceback.format_exc())
             self.log_error('Error booting up MMU: %s' % str(e))
         self.mmu_macro_event(self.MACRO_EVENT_RESTART)
 
@@ -1784,6 +1792,31 @@ class Mmu:
     def _persist_counters(self):
         self.save_variable(self.VARS_MMU_COUNTERS, self.counters, write=True)
 
+    def format_help(self, msg):
+        lines = msg.splitlines()
+        if not lines:
+            return msg     
+
+        first_line = lines[0]
+        if ":" in first_line:
+            cmd, helpstr = first_line.split(":", 1)
+            formatted_help = "{5}%s{6}:%s" % (cmd.strip(), helpstr)
+        else:
+            formatted_help = first_line 
+
+        param_width = max(10, max((len(line.split("=", 1)[0].strip()) + 1 for line in lines[1:] if "=" in line), default=0))
+        formatted_params = []
+        for line in lines[1:]:      
+            if "=" in line:
+                key, value = line.split("=", 1)
+                padded = key.strip().ljust(param_width, UI_SPACE) + "= " + value.strip()
+                formatted_line = "{4}%s %s{0}" % (UI_CASCADE, padded)
+            else:
+                formatted_line = "{4}%s %s{0}" % (UI_CASCADE, line)
+            formatted_params.append(formatted_line)
+
+        return "\n".join([formatted_help] + formatted_params) + '\n'
+
     def _color_message(self, msg):
         try:
             html_msg = msg.format(
@@ -1955,7 +1988,7 @@ class Mmu:
         msg = "MMU: Happy Hare %s running %s v%s" % (self._fversion(self.config_version), self.mmu_machine.mmu_vendor, self.mmu_machine.mmu_version_string)
         msg += " with %d gates" % self.num_gates
         msg += (" over %d units" % self.mmu_machine.num_units) if self.mmu_machine.num_units > 1 else ""
-        msg += " (%s)" % ("DISABLED" if not self.is_enabled else "PAUSED" if self.is_mmu_paused() else "OPERATIONAL")
+        msg += " (%s) " % ("DISABLED" if not self.is_enabled else "PAUSED" if self.is_mmu_paused() else "OPERATIONAL")
         msg += self.selector.get_mmu_status_config()
         if self.has_encoder():
             msg += ". Encoder reads %.1fmm" % self.get_encoder_distance()
@@ -2229,8 +2262,8 @@ class Mmu:
         if self.check_if_disabled(): return
         if self.check_if_bypass(): return
         if self.check_if_not_homed(): return
-        if self.check_if_always_gripped(): return
         sync = gcmd.get_int('SYNC', 1, minval=0, maxval=1)
+        if not sync and self.check_if_always_gripped(): return
         if not self.is_in_print():
             self._standalone_sync = bool(sync) # Make sticky if not in a print
         self.reset_sync_gear_to_extruder(sync)
@@ -2782,6 +2815,7 @@ class Mmu:
                     % (self.print_state.upper(), print_state.upper(), self._get_encoder_state(), self.mmu_toolhead.is_gear_synced_to_extruder(), self.paused_extruder_temp,
                         self.resume_to_state, self.saved_toolhead_operation, self.is_printer_paused(), idle_timeout))
             if call_macro:
+                self.led_manager.print_state_changed(print_state, self.print_state)
                 if self.printer.lookup_object("gcode_macro %s" % self.print_state_changed_macro, None) is not None:
                     self.wrap_gcode_command("%s STATE='%s' OLD_STATE='%s'" % (self.print_state_changed_macro, print_state, self.print_state))
             self.print_state = print_state
@@ -3390,12 +3424,6 @@ class Mmu:
                 return True
         return False
 
-    def check_if_has_leds(self):
-        if not self.has_leds:
-            self.log_error("No LEDs configured on MMU")
-            return True
-        return False
-
     def check_if_spoolman_enabled(self):
         if self.spoolman_support == self.SPOOLMAN_OFF:
             self.log_error("Spoolman support is currently disabled")
@@ -3499,15 +3527,13 @@ class Mmu:
             return "#%d" % gate
 
     def _selected_unit_string(self, unit=None):
-        if self.mmu_machine.num_units > 1 and self.unit_selected != self.UNIT_UNKNOWN:
-            return " (unit #%d)" % self.unit_selected
-        else:
-            return ""
+        return " (unit #%d)" % self.unit_selected if self.mmu_machine.num_units > 1 else ""
 
     def _set_action(self, action):
         if action == self.action: return action
         old_action = self.action
         self.action = action
+        self.led_manager.action_changed(action, old_action)
         if self.printer.lookup_object("gcode_macro %s" % self.action_changed_macro, None) is not None:
             self.wrap_gcode_command("%s ACTION='%s' OLD_ACTION='%s'" % (self.action_changed_macro, self._get_action_string(), self._get_action_string(old_action)))
         return old_action
@@ -3702,62 +3728,6 @@ class Mmu:
                     msg += "not fitted"
             self.log_always(msg)
 
-    cmd_MMU_LED_help = "Manage mode of operation of optional MMU LED's"
-    def cmd_MMU_LED(self, gcmd):
-        self.log_to_file(gcmd.get_commandline())
-        if self.check_if_has_leds(): return
-        if self.check_if_disabled(): return
-        quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
-
-        set_led_macro = self.printer.lookup_object("gcode_macro _MMU_SET_LED", None)
-        led_vars_macro = self.printer.lookup_object("gcode_macro _MMU_LED_VARS", None)
-        mmu_leds = self.printer.lookup_object('mmu_leds', None)
-        if led_vars_macro and set_led_macro and mmu_leds:
-
-            current_led_enable = led_vars_macro.variables['led_enable']
-            current_led_animation = led_vars_macro.variables['led_animation']
-            led_enable = bool(gcmd.get_int('ENABLE', current_led_enable, minval=0, maxval=1))
-            led_animation = bool(gcmd.get_int('ANIMATION', current_led_animation, minval=0, maxval=1))
-            if led_animation and not self.has_led_animation:
-                raise gcmd.error("Led animation is unavailable. Klipper led_effects module is missing")
-
-            default_exit_effect = gcmd.get('EXIT_EFFECT', led_vars_macro.variables['default_exit_effect'])
-            default_entry_effect = gcmd.get('ENTRY_EFFECT', led_vars_macro.variables['default_entry_effect'])
-            default_status_effect = gcmd.get('STATUS_EFFECT', led_vars_macro.variables['default_status_effect'])
-            default_logo_effect = gcmd.get('LOGO_EFFECT', led_vars_macro.variables['default_logo_effect'])
-
-            led_vars = {}
-            led_vars['led_enable'] = led_enable
-            led_vars['led_animation'] = led_animation
-            led_vars['default_exit_effect'] = default_exit_effect
-            led_vars['default_entry_effect'] = default_entry_effect
-            led_vars['default_status_effect'] = default_status_effect
-            led_vars['default_logo_effect'] = default_logo_effect
-
-            if current_led_enable and not led_enable:
-                # Enabled to disabled
-                self.wrap_gcode_command("_MMU_SET_LED EXIT_EFFECT=off ENTRY_EFFECT=off STATUS_EFFECT=off LOGO_EFFECT=off")
-                led_vars_macro.variables.update(led_vars)
-            else:
-                if current_led_animation and not led_animation:
-                    # Turning animation off so clear existing effects
-                    self.wrap_gcode_command("_MMU_SET_LED EXIT_EFFECT=off ENTRY_EFFECT=off STATUS_EFFECT=off LOGO_EFFECT=off FADETIME=0")
-                led_vars_macro.variables.update(led_vars)
-                self.wrap_gcode_command("_MMU_SET_LED EXIT_EFFECT=default ENTRY_EFFECT=default STATUS_EFFECT=default LOGO_EFFECT=default")
-
-            if not quiet:
-                effect_string = lambda effect, enabled : ("'%s'" % effect) if enabled > 0 else "Unavailable"
-                msg = "LEDs are %s\n" % ("enabled" if led_enable else "disabled")
-                msg += "LED animations: %s\n" % ("unavailable" if not self.has_led_animation else "enabled" if led_animation else "disabled")
-                msg += "Default exit effect: %s\n" % effect_string(default_exit_effect, mmu_leds.get_status()['exit'])
-                msg += "Default entry effect: %s\n" % effect_string(default_entry_effect, mmu_leds.get_status()['entry'])
-                msg += "Default status effect: %s\n" % effect_string(default_status_effect, mmu_leds.get_status()['status'])
-                msg += "Default logo effect: %s\n" % effect_string(default_logo_effect, mmu_leds.get_status()['logo'])
-                msg += "\nOptions:\nENABLE=[0|1]\nANIMATION=[0|1]\nEXIT_EFFECT=[off|gate_status|filament_color|slicer_color|r,g,b|_effect_]\nENTRY_EFFECT=[off|gate_status|filament_color|slicer_color|r,g,b|_effect_]\nSTATUS_EFFECT=[off|on|filament_color|slicer_color|r,g,b|_effect_]\nLOGO_EFFECT=[off|r,g,b|_effect_]"
-                self.log_always(msg)
-        else:
-            self.log_error("LEDs not available")
-
     cmd_MMU_RESET_help = "Forget persisted state and re-initialize defaults"
     def cmd_MMU_RESET(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
@@ -3837,7 +3807,7 @@ class Mmu:
                 if run:
                     self._ensure_safe_extruder_temperature(wait=True)
 
-                    # Mimick in print if requested
+                    # Ensure sync state and mimick in print if requested
                     self.reset_sync_gear_to_extruder(self.sync_form_tip, force_in_print=force_in_print)
 
                     _,_,_ = self._do_form_tip(test=not self.is_in_print(force_in_print))
@@ -3850,7 +3820,8 @@ class Mmu:
     def cmd_MMU_STEP_LOAD_GATE(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         try:
-            self._load_gate()
+            with self.wrap_sync_gear_to_extruder():
+                self._load_gate()
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_LOAD_GATE: %s" % str(ee))
 
@@ -3859,7 +3830,8 @@ class Mmu:
         self.log_to_file(gcmd.get_commandline())
         full = gcmd.get_int('FULL', 0)
         try:
-            _,_ = self._unload_gate(homing_max=self._get_bowden_length(self.gate_selected) if full else None)
+            with self.wrap_sync_gear_to_extruder():
+                _,_ = self._unload_gate(homing_max=self._get_bowden_length(self.gate_selected) if full else None)
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_UNLOAD_GATE: %s" % str(ee))
 
@@ -3869,7 +3841,8 @@ class Mmu:
         length = gcmd.get_float('LENGTH', None, minval=0.)
         start_pos = gcmd.get_float('START_POS', 0.)
         try:
-            _,_ = self._load_bowden(length, start_pos=start_pos)
+            with self.wrap_sync_gear_to_extruder():
+                _,_ = self._load_bowden(length, start_pos=start_pos)
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_LOAD_BOWDEN: %s" % str(ee))
 
@@ -3878,7 +3851,8 @@ class Mmu:
         self.log_to_file(gcmd.get_commandline())
         length = gcmd.get_float('LENGTH', self._get_bowden_length(self.gate_selected))
         try:
-            _ = self._unload_bowden(length)
+            with self.wrap_sync_gear_to_extruder():
+                _ = self._unload_bowden(length)
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_UNLOAD_BOWDEN: %s" % str(ee))
 
@@ -3886,7 +3860,8 @@ class Mmu:
     def cmd_MMU_STEP_HOME_EXTRUDER(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         try:
-            _,_ = self._home_to_extruder(self.extruder_homing_max)
+            with self.wrap_sync_gear_to_extruder():
+                _,_ = self._home_to_extruder(self.extruder_homing_max)
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_HOME_EXTRUDER: %s" % str(ee))
 
@@ -3895,7 +3870,8 @@ class Mmu:
         self.log_to_file(gcmd.get_commandline())
         extruder_only = gcmd.get_int('EXTRUDER_ONLY', 0)
         try:
-            _ = self._load_extruder(extruder_only)
+            with self.wrap_sync_gear_to_extruder():
+                _ = self._load_extruder(extruder_only)
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_LOAD_TOOLHEAD: %s" % str(ee))
 
@@ -3905,26 +3881,31 @@ class Mmu:
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0))
         park_pos = gcmd.get_float('PARK_POS', -self._get_filament_position()) # +ve value
         try:
-            # Precautionary validation of filament position
-            park_pos = min(self.toolhead_extruder_to_nozzle, max(0, park_pos))
-            self._set_filament_position(-park_pos)
-            self._unload_extruder(extruder_only = extruder_only)
+            with self.wrap_sync_gear_to_extruder():
+                # Precautionary validation of filament position
+                park_pos = min(self.toolhead_extruder_to_nozzle, max(0, park_pos))
+                self._set_filament_position(-park_pos)
+                self._unload_extruder(extruder_only = extruder_only)
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_UNLOAD_TOOLHEAD: %s" % str(ee))
 
     cmd_MMU_STEP_HOMING_MOVE_help = "User composable loading step: Generic homing move"
     def cmd_MMU_STEP_HOMING_MOVE(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
+        allow_bypass = bool(gcmd.get_int('ALLOW_BYPASS', 0, minval=0, maxval=1))
         try:
-            self._homing_move_cmd(gcmd, "User defined step homing move")
+            with self.wrap_sync_gear_to_extruder():
+                self._homing_move_cmd(gcmd, "User defined step homing move", allow_bypass=allow_bypass)
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_HOMING_MOVE: %s" % str(ee))
 
     cmd_MMU_STEP_MOVE_help = "User composable loading step: Generic move"
     def cmd_MMU_STEP_MOVE(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
+        allow_bypass = bool(gcmd.get_int('ALLOW_BYPASS', 0, minval=0, maxval=1))
         try:
-            self._move_cmd(gcmd, "User defined step move")
+            with self.wrap_sync_gear_to_extruder():
+                self._move_cmd(gcmd, "User defined step move", allow_bypass=allow_bypass)
         except MmuError as ee:
             self.handle_mmu_error("_MMU_STEP_MOVE: %s" % str(ee))
 
@@ -3957,19 +3938,25 @@ class Mmu:
     # Preload selected gate as little as possible. If a full gate load is the only option
     # this will then park correctly after pre-load
     def _preload_gate(self):
-        if self.sensor_manager.has_gate_sensor(self.SENSOR_GEAR_PREFIX, self.gate_selected):
-            # Minimal load past gear stepper if gear sensor is fitted
-            endstop_name = self.sensor_manager.get_gate_sensor_name(self.SENSOR_GEAR_PREFIX, self.gate_selected)
-            self.log_always("Preloading...")
-            msg = "Homing to %s sensor" % endstop_name
-            with self._wrap_suspend_runout():
-                actual,homed,measured,_ = self.trace_filament_move(msg, self.gate_preload_homing_max, motor="gear", homing_move=1, endstop_name=endstop_name)
-                if homed:
-                    self.trace_filament_move("Final parking", -self.gate_preload_parking_distance)
-                    self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE)
-                    self._check_pending_spool_id(self.gate_selected) # Have spool_id ready?
-                    self.log_always("Filament detected and loaded in gate %d" % self.gate_selected)
-                    return
+        gate_sensor = self.sensor_manager.check_gate_sensor(self.SENSOR_GEAR_PREFIX, self.gate_selected)
+        if gate_sensor is not None:
+            if gate_sensor:
+                self.log_always("Filament already preloaded")
+                self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE)
+                return
+            else:
+                # Minimal load to gear sensor if fitted
+                endstop_name = self.sensor_manager.get_gate_sensor_name(self.SENSOR_GEAR_PREFIX, self.gate_selected)
+                self.log_always("Preloading...")
+                msg = "Homing to %s sensor" % endstop_name
+                with self._wrap_suspend_runout():
+                    actual,homed,measured,_ = self.trace_filament_move(msg, self.gate_preload_homing_max, motor="gear", homing_move=1, endstop_name=endstop_name)
+                    if homed:
+                        self.trace_filament_move("Final parking", -self.gate_preload_parking_distance)
+                        self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE)
+                        self._check_pending_spool_id(self.gate_selected) # Have spool_id ready?
+                        self.log_always("Filament detected and loaded in gate %d" % self.gate_selected)
+                        return
         else:
             # Full gate load if no gear sensor
             for _ in range(self.preload_attempts):
@@ -3985,8 +3972,12 @@ class Mmu:
                     # Exception just means filament is not loaded yet, so continue
                     self.log_trace("Exception on preload: %s" % str(ee))
 
-        self.log_always("Filament not detected in gate %d" % self.gate_selected)
-        self._set_gate_status(self.gate_selected, self.GATE_EMPTY)
+        if self.sensor_manager.check_gate_sensor(self.SENSOR_PRE_GATE_PREFIX, self.gate_selected):
+            self._set_gate_status(self.gate_selected, self.GATE_UNKNOWN)
+            self.log_warning("Filament detected by pre-gate %d sensor but did not complete preload" % self.gate_selected)
+        else:
+            self._set_gate_status(self.gate_selected, self.GATE_EMPTY)
+            raise MmuError("Filament not detected")
 
     # Eject final clear of gate. Important for MMU's where filament is always gripped (e.g. most type-B)
     def _eject_from_gate(self, gate=None):
@@ -3995,8 +3986,8 @@ class Mmu:
             gate = self.gate_selected
         else:
             self.select_gate(gate)
-
         self.selector.filament_drive()
+
         self.log_always("Ejecting...")
         if self.sensor_manager.has_gate_sensor(self.SENSOR_GEAR_PREFIX, gate):
             endstop_name = self.sensor_manager.get_gate_sensor_name(self.SENSOR_GEAR_PREFIX, gate)
@@ -4005,10 +3996,15 @@ class Mmu:
             if homed:
                 self.log_debug("Endstop %s reached after %.1fmm (measured %.1fmm)" % (endstop_name, actual, measured))
             else:
-                raise MmuError("Error ejecting filament - filament did not reach gate homing sensor: %s" % endstop_name)
+                raise MmuError("Filament did not exit gate homing sensor: %s" % endstop_name)
 
         if self.gate_final_eject_distance > 0:
-            self.trace_filament_move("Ejecting filament out of gate", -self.gate_final_eject_distance)
+            msg = "Ejecting filament out of gate"
+            if self.sensor_manager.check_gate_sensor(self.SENSOR_PRE_GATE_PREFIX, gate) is not None:
+                # Use homing move so we don't "over eject"
+                self.trace_filament_move(msg, -self.gate_final_eject_distance, motor="gear", homing_move=-1, endstop_name=self.SENSOR_PRE_GATE_PREFIX, wait=True)
+            else:
+                self.trace_filament_move(msg, -self.gate_final_eject_distance, wait=True)
 
         self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=True) # Should already be in this position
         self._set_gate_status(gate, self.GATE_EMPTY)
@@ -4128,7 +4124,7 @@ class Mmu:
                 self.trace_filament_move("Final parking", -self.gate_parking_distance)
                 self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
                 return actual, self.gate_unload_buffer
-            msg = "did not home to gate sensor %s after moving %1.fmm" % (self.gate_homing_endstop, homing_max)
+            msg = "did not home to sensor '%s' after moving %1.fmm" % (self.gate_homing_endstop, homing_max)
 
         raise MmuError("Failed to unload gate because %s" % msg)
 
@@ -4160,7 +4156,7 @@ class Mmu:
             if self.gate_homing_endstop == self.SENSOR_GEAR_PREFIX:
                 sensor += "_%d" % self.gate_selected
             if not self.sensor_manager.has_sensor(sensor):
-                raise MmuError("Attempting to %s gate but gate sensor '%s' is not configured on MMU!" % (direction, sensor))
+                raise MmuError("Attempting to %s gate but sensor '%s' is not configured on MMU!" % (direction, sensor))
         else:
             raise MmuError("Unsupported gate endstop %s" % self.gate_homing_endstop)
 
@@ -4288,7 +4284,8 @@ class Mmu:
                     sensor_msg = ''
                     for name, state in sensors.items():
                         sensor_msg += "%s (%s), " % (name.upper(), "Disabled" if state is None else ("Detected" if state is True else "Empty"))
-                    self.log_warning("Warning: Possible sensor malfunction - a sensor indicated filament not present before unloading bowden: %s\nWill attempt to continue..." % sensor_msg)
+                    self.log_warning("Warning: Possible sensor malfunction - a sensor indicated filament not present before unloading bowden\nWill attempt to continue...")
+                    self.log_debug("Sensor state: %s" % sensor_msg)
 
                 # "Fast" unload
                 _,_,_,delta = self.trace_filament_move("Fast unloading move through bowden", -length, track=True, encoder_dwell=bool(self.autotune_rotation_distance))
@@ -4340,7 +4337,7 @@ class Mmu:
             self.log_debug("Homing to extruder '%s' endstop, up to %.1fmm" % (self.extruder_homing_endstop, max_length))
             actual,homed,measured,_ = self.trace_filament_move("Homing filament to extruder endstop", max_length, motor="gear", homing_move=1, endstop_name=self.extruder_homing_endstop)
             if homed:
-                self.log_debug("Extruder endstop reached after %.1fmm (measured %.1fmm)" % (actual, measured))
+                self.log_debug("Extruder endstop '%s' reached after %.1fmm (measured %.1fmm)" % (self.extruder_homing_endstop, actual, measured))
                 self._set_filament_pos_state(self.FILAMENT_POS_HOMED_ENTRY)
 
                 # Make adjustment based on sensor: extruder - move a little move, compression - back off a little
@@ -4407,6 +4404,10 @@ class Mmu:
             self._ensure_safe_extruder_temperature(wait=True)
             homing_movement = None
 
+            has_tension = self.sensor_manager.has_sensor(self.SENSOR_TENSION)
+            has_compression = self.sensor_manager.has_sensor(self.SENSOR_COMPRESSION)
+            has_toolhead = self.sensor_manager.has_sensor(self.SENSOR_TOOLHEAD)
+
             synced = not extruder_only
             if synced:
                 self.selector.filament_drive()
@@ -4418,8 +4419,9 @@ class Mmu:
                 motor = "extruder"
 
             fhomed = False
-            if self.sensor_manager.has_sensor(self.SENSOR_TOOLHEAD):
-                # With toolhead sensor we always first home to toolhead sensor past the extruder entrance
+            if has_toolhead:
+                # With toolhead sensor for accuracy we always first home to toolhead sensor past the extruder entrance
+                # The remaining load distance is relative to the toolhead sensor
                 if self.sensor_manager.check_sensor(self.SENSOR_TOOLHEAD):
                     raise MmuError("Possible toolhead sensor malfunction - filament detected before it entered extruder")
                 self.log_debug("Homing up to %.1fmm to toolhead sensor%s" % (self.toolhead_homing_max, (" (synced)" if synced else "")))
@@ -4432,8 +4434,22 @@ class Mmu:
                     raise MmuError("Failed to reach toolhead sensor after moving %.1fmm" % self.toolhead_homing_max)
 
             # Length may be reduced by previous unload in filament cutting use case. Ensure reduction is used only one time
-            d = self.toolhead_sensor_to_nozzle if self.sensor_manager.has_sensor(self.SENSOR_TOOLHEAD) else self.toolhead_extruder_to_nozzle
+            d = self.toolhead_sensor_to_nozzle if has_toolhead else self.toolhead_extruder_to_nozzle
             length = max(d - self.filament_remaining - self.toolhead_residual_filament - self.toolhead_ooze_reduction - self.toolchange_retract, 0)
+
+            # If we have a compression sensor indicating compression we can detect failure in the critical extruder entrance transition
+            # by performing the initial load with just the extruder motor and checking that the sensor un-triggers before continuing
+            if self.toolhead_entry_tension_test and synced and not has_toolhead and self.sensor_manager.check_sensor(self.SENSOR_COMPRESSION):
+                max_range = self.sync_feedback_manager.sync_feedback_buffer_maxrange
+                if length > max_range:
+                    self.log_debug("Monitoring extruder entrance transistion for up to %.1fmm..." % max_range)
+                    actual,success = self._adjust_filament_tension(use_gear_motor=False)
+                    if success:
+                        length -= actual
+                    else:
+                        self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY) # But could also still be POS_IN_BOWDEN!
+                        raise MmuError("Failed to load filament passed the extruder entrance (sync-feedback buffer didn't detect neutral tension)")
+
             self.log_debug("Loading last %.1fmm to the nozzle..." % length)
             _,_,measured,delta = self.trace_filament_move("Loading filament to nozzle", length, speed=speed, motor=motor, wait=True)
             self._set_filament_remaining(0.)
@@ -4452,9 +4468,6 @@ class Mmu:
                 not extruder_only
                 and self.gate_selected != self.TOOL_GATE_BYPASS
             ):
-                has_tension = self.sensor_manager.has_sensor(self.SENSOR_TENSION)
-                has_compression = self.sensor_manager.has_sensor(self.SENSOR_COMPRESSION)
-
                 if (
                     self.toolhead_post_load_tighten
                     and not self.sync_to_extruder
@@ -4477,49 +4490,13 @@ class Mmu:
                     # Try to put filament in neutral tension by centering between sensors
                     tension_active = self.sensor_manager.check_sensor(self.SENSOR_TENSION)
                     compression_active = self.sensor_manager.check_sensor(self.SENSOR_COMPRESSION)
-
-                    if (compression_active is True) != (tension_active is True): # Equality means already neutral
-
-                        if compression_active:
-                            self.log_debug("Relaxing filament tension")
-                        elif tension_active:
-                            self.log_debug("Tightening filament tension")
-
-                        fhomed = False
-                        if self.sync_feedback_manager.sync_feedback_buffer_range == 0:
-                            # Special case for buffers whose neutral point overlaps both sensors. I.e. both sensors active
-                            # is the neutral point. This requires different homing logic
-                            max_move = self.sync_feedback_manager.sync_feedback_buffer_maxrange
-                            if compression_active:
-                                direction = -1
-                                _,fhomed,_,_ = self.trace_filament_move("Homing to tension sensor", max_move * direction, homing_move=1, endstop_name=self.SENSOR_TENSION)
-
-                            elif tension_active:
-                                direction = 1
-                                _,fhomed,_,_ = self.trace_filament_move("Homing to compression sensor", max_move * direction, homing_move=1, endstop_name=self.SENSOR_COMPRESSION)
-                        else:
-                            max_move = self.sync_feedback_manager.sync_feedback_buffer_range
-                            direction = 0
-                            if compression_active:
-                                direction = -1
-                                _,fhomed,_,_ = self.trace_filament_move("Reverse homing off compression sensor", max_move * direction, homing_move=-1, endstop_name=self.SENSOR_COMPRESSION)
-
-                            elif tension_active:
-                                direction = 1
-                                _,fhomed,_,_ = self.trace_filament_move("Reverse homing off tension sensor", max_move * direction, homing_move=-1, endstop_name=self.SENSOR_TENSION)
-
-                            if fhomed:
-                                # Move just a little more to find perfect neutral spot between sensors
-                                _,_,_,_ = self.trace_filament_move("Centering sync feedback buffer", (max_move * direction) / 2.)
-
-                        if not fhomed:
-                            self.log_debug("Failed to neutalize filament tension")
+                    _,_ = self._adjust_filament_tension()
 
             self._random_failure() # Testing
             self.movequeues_wait()
             self._set_filament_pos_state(self.FILAMENT_POS_LOADED)
             self.log_debug("Filament should be loaded to nozzle")
-            return homing_movement
+            return homing_movement # Will only have value if we have toolhead sensor
 
     # Extract filament past extruder gear (to end of bowden). Assume that tip has already been formed
     # and we are parked somewhere in the extruder either by slicer or by stand alone tip creation
@@ -4625,6 +4602,59 @@ class Mmu:
             self.movequeues_wait()
             self.log_debug("Filament should be out of extruder")
             return synced
+
+    # Helper to relax filament tension using the sync-feedback buffer. This can be performed either with the
+    # gear motor (default) or extruder motor (which is good as an extruder loading check)
+    # Returns distance moved and whether operation was successful (or None if not performed)
+    def _adjust_filament_tension(self, use_gear_motor=True):
+        fhomed = None
+        actual = 0
+        tension_active = self.sensor_manager.check_sensor(self.SENSOR_TENSION)
+        compression_active = self.sensor_manager.check_sensor(self.SENSOR_COMPRESSION)
+
+        if (compression_active is True) != (tension_active is True): # Equality means already neutral
+            max_move = self.sync_feedback_manager.sync_feedback_buffer_maxrange
+
+            if use_gear_motor:
+                motor = "gear"
+                if compression_active:
+                    self.log_debug("Relaxing filament compression")
+                elif tension_active:
+                    self.log_debug("Relaxing filament tension")
+            else:
+                motor = "extruder"
+                self.log_debug("Monitoring extruder entry transistion...")
+            speed = min(self.gear_homing_speed, self.extruder_homing_speed) # Keep this tension adjustment slow
+
+            if self.sync_feedback_manager.sync_feedback_buffer_range == 0:
+                # Special case for buffers whose neutral point overlaps both sensors. I.e. both sensors active
+                # is the neutral point. This requires different homing logic
+                if compression_active:
+                    direction = -1 if use_gear_motor else 1
+                    actual,fhomed,_,_ = self.trace_filament_move("Homing to tension sensor", max_move * direction, speed=speed, motor=motor, homing_move=1, endstop_name=self.SENSOR_TENSION)
+
+                elif tension_active:
+                    direction = 1 if use_gear_motor else -1
+                    actual,fhomed,_,_ = self.trace_filament_move("Homing to compression sensor", max_move * direction, speed=speed, motor=motor, homing_move=1, endstop_name=self.SENSOR_COMPRESSION)
+            else:
+                # Normally configured buffer with neutral (no-trigger) gap
+                direction = 0
+                if compression_active:
+                    direction = -1 if use_gear_motor else 1
+                    actual,fhomed,_,_ = self.trace_filament_move("Reverse homing off compression sensor", max_move * direction, speed=speed, motor=motor, homing_move=-1, endstop_name=self.SENSOR_COMPRESSION)
+
+                elif tension_active:
+                    direction = 1 if use_gear_motor else -1
+                    actual,fhomed,_,_ = self.trace_filament_move("Reverse homing off tension sensor", max_move * direction, speed=speed, motor=motor, homing_move=-1, endstop_name=self.SENSOR_TENSION)
+
+            if fhomed:
+                if use_gear_motor:
+                    # Move just a little more to find perfect neutral spot between sensors
+                    _,_,_,_ = self.trace_filament_move("Centering sync feedback buffer", (max_move * direction) / 2.)
+            else:
+                self.log_debug("Failed to reach neutral filament tension after moving %.1fmm" % max_move)
+
+        return actual, fhomed
 
 
 ##############################################
@@ -4742,17 +4772,23 @@ class Mmu:
             # Deal with purging
             if purge == self.PURGE_SLICER and not skip_extruder:
                 self.log_debug("Purging expected to be performed by slicer")
+
             elif purge == self.PURGE_STANDALONE and not skip_extruder:
                 with self._wrap_track_time('purge'):
+
+                    # Restore the expected sync state now before running this macro
                     self.reset_sync_gear_to_extruder(not extruder_only and self.sync_purge)
+
                     with self.wrap_action(self.ACTION_PURGING):
                         self.purge_standalone()
 
             # POST_LOAD user defined macro
             if macros_and_track:
                 with self._wrap_track_time('post_load'):
+
                     # Restore the expected sync state now before running this macro
                     self.reset_sync_gear_to_extruder(not extruder_only and self.sync_purge)
+
                     if self.has_blobifier: # Legacy blobifer integration. purge_macro now preferred
                         with self.wrap_action(self.ACTION_PURGING):
                             self.wrap_gcode_command(self.post_load_macro, exception=True, wait=True)
@@ -4927,6 +4963,10 @@ class Mmu:
             # POST_UNLOAD user defined macro
             if macros_and_track:
                 with self._wrap_track_time('post_unload'):
+
+                    # Restore the expected sync state now before running this macro
+                    self.reset_sync_gear_to_extruder(not extruder_only and self.sync_to_extruder)
+
                     if self.has_mmu_cutter:
                         with self.wrap_action(self.ACTION_CUTTING_FILAMENT):
                             self.wrap_gcode_command(self.post_unload_macro, exception=True, wait=True)
@@ -5087,7 +5127,6 @@ class Mmu:
     # motor = "gear"           - gear motor(s) only on rail
     #         "gear+extruder"  - gear and extruder included on rail
     #         "extruder"       - extruder only on gear rail
-    #         "both"           - gear and extruder together but independent (legacy, homing move not possible)
     #         "synced"         - gear synced with extruder as in print (homing move not possible)
     #
     # If homing move then endstop name can be specified.
@@ -5106,7 +5145,6 @@ class Mmu:
     # All moves return: actual (relative), homed, measured, delta; mmu_toolhead.get_position[1] holds absolute position
     #
     def trace_filament_move(self, trace_str, dist, speed=None, accel=None, motor="gear", homing_move=0, endstop_name="default", track=False, wait=False, encoder_dwell=False, speed_override=True):
-        self.mmu_toolhead.unsync() # Precaution
         encoder_start = self.get_encoder_distance(dwell=encoder_dwell)
         pos = self.mmu_toolhead.get_position()
         ext_pos = self.toolhead.get_position()
@@ -5118,11 +5156,11 @@ class Mmu:
         if homing_move != 0:
             # Check for valid endstop
             if endstop_name is None:
-                endstop = self.gear_rail.get_endstops()
+                endstops = self.gear_rail.get_endstops()
             else:
                 endstop_name = self.sensor_manager.get_mapped_endstop_name(endstop_name)
-                endstop = self.gear_rail.get_extra_endstop(endstop_name)
-                if endstop is None:
+                endstops = self.gear_rail.get_extra_endstop(endstop_name)
+                if endstops is None:
                     self.log_error("Endstop '%s' not found" % endstop_name)
                     return null_rtn
 
@@ -5146,7 +5184,7 @@ class Mmu:
                     speed = speed or self.gear_short_move_speed
                     accel = accel or self.gear_short_move_accel
 
-        elif motor in ["both", "gear+extruder", "synced"]:
+        elif motor in ["gear+extruder", "synced"]:
             if homing_move != 0:
                 speed = speed or min(self.gear_homing_speed, self.extruder_homing_speed)
                 accel = accel or min(max(self.gear_from_buffer_accel, self.gear_from_spool_accel), self.extruder_accel)
@@ -5176,11 +5214,12 @@ class Mmu:
             wait = wait or self._wait_for_espooler # Allow eSpooler wrapper to force wait
 
             # Gear rail is driving the filament
+            start_pos = self.mmu_toolhead.get_position()[1]
             if motor in ["gear", "gear+extruder", "extruder"]:
-                with self._wrap_sync_mode(MmuToolHead.EXTRUDER_SYNCED_TO_GEAR if motor == "gear+extruder" else MmuToolHead.EXTRUDER_ONLY_ON_GEAR if motor == "extruder" else None):
+                with self._wrap_sync_mode(MmuToolHead.EXTRUDER_SYNCED_TO_GEAR if motor == "gear+extruder" else MmuToolHead.EXTRUDER_ONLY_ON_GEAR if motor == "extruder" else MmuToolHead.GEAR_ONLY):
                     if homing_move != 0:
                         trig_pos = [0., 0., 0., 0.]
-                        hmove = HomingMove(self.printer, endstop, self.mmu_toolhead)
+                        hmove = HomingMove(self.printer, endstops, self.mmu_toolhead)
                         init_ext_mcu_pos = self.mmu_extruder_stepper.stepper.get_mcu_position() # For non-homing extruder or if extruder not on gear rail
                         init_pos = pos[1]
                         pos[1] += dist
@@ -5221,7 +5260,7 @@ class Mmu:
 
                                 actual = halt_pos[1] - init_pos
                                 if self.log_enabled(self.LOG_STEPPER):
-                                    self.log_stepper("%s HOMING MOVE: max dist=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s, wait=%s >> %s" % (motor.upper(), dist, speed, accel, endstop_name, wait, "%s halt_pos=%.1f (rail moved=%.1f, extruder moved=%.1f), trig_pos=%.1f" % ("HOMED" if homed else "DID NOT HOMED",  halt_pos[1], actual, ext_actual, trig_pos[1])))
+                                    self.log_stepper("%s HOMING MOVE: max dist=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s, wait=%s >> %s" % (motor.upper(), dist, speed, accel, endstop_name, wait, "%s halt_pos=%.1f (rail moved=%.1f, extruder moved=%.1f), start_pos=%.1f, trig_pos=%.1f" % ("HOMED" if homed else "DID NOT HOMED",  halt_pos[1], actual, ext_actual, start_pos, trig_pos[1])))
                             if not got_comms_timeout:
                                 break
                     else:
@@ -5234,7 +5273,6 @@ class Mmu:
             # Extruder is driving, gear rail is following
             elif motor in ["synced"]:
                 with self._wrap_sync_mode(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER):
-                    self._ensure_safe_extruder_temperature(wait=False)
                     if homing_move != 0:
                         self.log_error("Not possible to perform homing move while synced")
                     else:
@@ -5243,23 +5281,8 @@ class Mmu:
                         ext_pos[3] += dist
                         self.toolhead.move(ext_pos, speed)
 
-            # Independent motors. Unsynced move
-            elif motor == "both":
-                with self._wrap_sync_mode(None):
-                    if homing_move != 0:
-                        self.log_error("Not possible to perform homing move on two independent steppers")
-                    else:
-                        self._ensure_safe_extruder_temperature(wait=False)
-                        if self.log_enabled(self.LOG_STEPPER):
-                            self.log_stepper("%s MOVE: dist=%.1f, speed=%.1f, accel=%.1f, wait=%s" % (motor.upper(), dist, speed, accel, wait))
-                        pos[1] += dist
-                        with self.wrap_accel(accel):
-                            self.mmu_toolhead.move(pos, speed)
-                        ext_pos[3] += dist
-                        self.toolhead.move(ext_pos, speed)
-
-            self.mmu_toolhead.flush_step_generation() # TTC mitigation
-            self.toolhead.flush_step_generation()     # TTC mitigation
+            self.mmu_toolhead.flush_step_generation() # TTC mitigation (TODO still required?)
+            self.toolhead.flush_step_generation()     # TTC mitigation (TODO still required?)
             if wait:
                 self.movequeues_wait()
 
@@ -5295,6 +5318,7 @@ class Mmu:
 
         return actual, homed, measured, delta
 
+    # Used to force accelaration override for homing moves
     @contextlib.contextmanager
     def wrap_accel(self, accel):
         self.mmu_toolhead.get_kinematics().set_accel_limit(accel)
@@ -5370,7 +5394,12 @@ class Mmu:
 
         ts = self.sensor_manager.check_sensor(self.SENSOR_TOOLHEAD)
         es = self.sensor_manager.check_sensor(self.SENSOR_EXTRUDER_ENTRY)
-        gs = self.sensor_manager.check_sensor(self.sensor_manager.get_mapped_endstop_name(self.gate_homing_endstop))
+
+        # We ignore the gate endstop trigger if using gear sensor and parking distance is not a retract (i.e. sensor expected to be triggered))
+        if self.gate_homing_endstop == self.SENSOR_GEAR_PREFIX and self.gate_parking_distance <= 0:
+            gs = None
+        else:
+            gs = self.sensor_manager.check_sensor(self.sensor_manager.get_mapped_endstop_name(self.gate_homing_endstop))
         filament_detected = self.sensor_manager.check_any_sensors_in_path()
         if not filament_detected:
             filament_detected = self.check_filament_in_mmu() # Include encoder detection method
@@ -5477,14 +5506,14 @@ class Mmu:
         return None
 
     # Reset correct sync state based on MMU type and state
-    #   in_print_sync: intention when printing based on sync_to_extruder, sync_form_tip, sync_purge
+    #   sync_intention: sync intention when printing based on sync_to_extruder, sync_form_tip, sync_purge
     #   force_in_print used to mimick printing behavior often for testing
     #
     # This logic is tricky. Have to consider:
     #   If bypass is selected we cannot sync
     #   If in a print then used desired sync state if actively printing or desired or necessary sync state
     #   If not consider desired (_standalone_sync) or necessary (always_gripped) sync state
-    def reset_sync_gear_to_extruder(self, in_print_sync, force_in_print=False):
+    def reset_sync_gear_to_extruder(self, sync_intention, force_in_print=False):
         if self.gate_selected == self.TOOL_GATE_BYPASS:
             sync = False
         elif self.is_in_print(force_in_print):
@@ -5504,7 +5533,8 @@ class Mmu:
                 self.filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY and
                 (
                     self.mmu_machine.filament_always_gripped or
-                    self._standalone_sync
+                    self._standalone_sync or
+                    sync_intention
                 )
             )
         self.sync_gear_to_extruder(sync)
@@ -5530,7 +5560,7 @@ class Mmu:
         # Sync / Unsync
         new_sync_mode = MmuToolHead.GEAR_SYNCED_TO_EXTRUDER if sync else None
         if new_sync_mode != self.mmu_toolhead.sync_mode:
-            self.movequeues_wait() # Safety but should not be required(?)
+            self.movequeues_wait() # TODO Safety but should not be required(?)
             self.mmu_toolhead.sync(new_sync_mode)
 
         # See if we need to set a reduced gear current. If we do then make sure it is
@@ -5548,7 +5578,6 @@ class Mmu:
     @contextlib.contextmanager
     def wrap_sync_gear_to_extruder(self):
         prev_sync = self.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
-        prev_grip = self.selector.get_filament_grip_state()
 
         # Turn espooler in-print assist off
         espooler_state = None
@@ -5575,7 +5604,9 @@ class Mmu:
         try:
             yield self
         finally:
-            self.mmu_toolhead.sync(prev_sync_mode)
+            # Don't restore because it results in too much delay on rapid back-to-back moves
+            #self.mmu_toolhead.sync(prev_sync_mode)
+            pass
 
     def _adjust_gear_current(self, gate=None, percent=100, reason=""):
         gate = gate if gate is not None else self.gate_selected
@@ -5666,16 +5697,16 @@ class Mmu:
         self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f QUIET=1" % pa)
 
     # Logic shared with MMU_TEST_MOVE and _MMU_STEP_MOVE
-    def _move_cmd(self, gcmd, trace_str):
+    def _move_cmd(self, gcmd, trace_str, allow_bypass=False):
         if self.check_if_disabled(): return (0., False, 0., 0.)
-        if self.check_if_bypass(): return (0., False, 0., 0.)
+        if not allow_bypass and self.check_if_bypass(): return (0., False, 0., 0.)
         move = gcmd.get_float('MOVE', 100.)
         speed = gcmd.get_float('SPEED', None)
         accel = gcmd.get_float('ACCEL', None)
         motor = gcmd.get('MOTOR', "gear")
-        wait = bool(gcmd.get_int('WAIT', 0, minval=0, maxval=1)) # Wait for move to complete (make move synchronous)
-        if motor not in ["gear", "extruder", "gear+extruder", "synced", "both"]:
-            raise gcmd.error("Valid motor names are 'gear', 'extruder', 'gear+extruder', 'synced' or 'both'")
+        wait = bool(gcmd.get_int('WAIT', 1, minval=0, maxval=1)) # Wait for move to complete (make move synchronous)
+        if motor not in ["gear", "extruder", "gear+extruder", "synced"]:
+            raise gcmd.error("Valid motor names are 'gear', 'extruder', 'gear+extruder' or 'synced'")
         if motor == "extruder":
             self.selector.filament_release()
         else:
@@ -5684,9 +5715,9 @@ class Mmu:
         return self.trace_filament_move(trace_str, move, speed=speed, accel=accel, motor=motor, wait=wait)
 
     # Logic shared with MMU_TEST_HOMING_MOVE and _MMU_STEP_HOMING_MOVE
-    def _homing_move_cmd(self, gcmd, trace_str):
+    def _homing_move_cmd(self, gcmd, trace_str, allow_bypass=False):
         if self.check_if_disabled(): return (0., False, 0., 0.)
-        if self.check_if_bypass(): return (0., False, 0., 0.)
+        if not allow_bypass and self.check_if_bypass(): return (0., False, 0., 0.)
         endstop = gcmd.get('ENDSTOP', "default")
         move = gcmd.get_float('MOVE', 100.)
         speed = gcmd.get_float('SPEED', None)
@@ -5824,12 +5855,17 @@ class Mmu:
             self.select_bypass()
 
     def select_gate(self, gate):
-        if gate == self.gate_selected: return
         try:
-            self._next_gate = gate # Valid only during the gate selection process
-            self.selector.select_gate(gate)
-            self._set_gate_selected(gate)
-            self._espooler_assist_on() # Will switch assist print mode if printing
+            if gate == self.gate_selected:
+                self.selector.select_gate(gate) # Always give selector a chance to fix position
+            else:
+                self._next_gate = gate # Valid only during the gate selection process
+                _prev_gate = self.gate_selected
+                self.selector.select_gate(gate)
+                self._set_gate_selected(gate)
+                self.led_manager.gate_map_changed(_prev_gate)
+                self.led_manager.gate_map_changed(gate)
+                self._espooler_assist_on() # Will switch assist print mode if printing
         except MmuError as ee:
             self.unselect_gate()
             raise ee
@@ -5892,15 +5928,13 @@ class Mmu:
             'temperature': self.gate_temperature[gate],
         } if gate >= 0 else {}
 
-    # Simple support for multiple MMUs (all same type for now)
+    # Return unit number for gate
     def find_unit_by_gate(self, gate):
-        if gate >= 0:
-            c_sum = 0
-            for unit_index, gate_count in enumerate(self.mmu_machine.units):
-                c_sum += gate_count
-                if gate < c_sum:
-                    return unit_index
-        return self.UNIT_UNKNOWN
+        unit = self.mmu_machine.get_mmu_unit_by_gate(gate)
+        if unit:
+            return unit.unit_index
+        self.log_debug("Assertion failure: Gate %d has no unit!" % gate)
+        return 0
 
     def get_rotation_distance(self, gate):
         rd = self.rotation_distances[gate if gate >= 0 and self.mmu_machine.variable_rotation_distances else 0]
@@ -6401,7 +6435,7 @@ class Mmu:
         if self.check_if_not_calibrated(self.CALIBRATED_ESSENTIAL, check_gates=[gate]): return
         self._fix_started_state()
 
-        can_crossload = self.mmu_machine.multigear and self.sensor_manager.has_gate_sensor(self.SENSOR_GEAR_PREFIX, gate)
+        can_crossload = (self.mmu_machine.can_crossload or self.mmu_machine.multigear) and self.sensor_manager.has_gate_sensor(self.SENSOR_GEAR_PREFIX, gate)
         if not can_crossload and gate != self.gate_selected:
             if self.check_if_loaded(): return
 
@@ -6431,7 +6465,7 @@ class Mmu:
                         self.log_always("Ejecting filament out of %s" % ("current gate" if gate == self.gate_selected else "gate %d" % gate))
                         self._eject_from_gate()
                     # If necessary or easy restore previous gate
-                    if self.is_in_print() or self.mmu_machine.multigear:
+                    if self.is_in_print() or self.mmu_machine.multigear or self.filament_pos != self.FILAMENT_POS_UNLOADED:
                         self.select_gate(current_gate)
                     else:
                         self._initialize_encoder() # Encoder 0000
@@ -6625,9 +6659,15 @@ class Mmu:
 
             elif tool == self.TOOL_GATE_UNKNOWN and self.tool_selected == self.TOOL_GATE_BYPASS and loaded == -1:
                 # This is to be able to get out of "stuck in bypass" state
-                self.log_warning("Warning: Making assumption that bypass is unloaded")
+                ts = self.sensor_manager.check_sensor(self.SENSOR_TOOLHEAD)
+                es = self.sensor_manager.check_sensor(self.SENSOR_EXTRUDER_ENTRY)
+                if ts or es: # TODO use check_all_sensors() call when sensor_manager is fixed
+                    self._set_filament_pos_state(self.FILAMENT_POS_LOADED, silent=True)
+                else:
+                    if es is None and ts is None:
+                        self.log_warning("Warning: Making assumption that bypass is unloaded because no toolhead sensors are present")
+                    self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=True)
                 self._set_filament_direction(self.DIRECTION_UNKNOWN)
-                self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=True)
                 return
 
             if loaded == 1:
@@ -6751,22 +6791,23 @@ class Mmu:
         self.log_to_file(gcmd.get_commandline())
         if self.check_if_disabled(): return
         debug = bool(gcmd.get_int('DEBUG', 0, minval=0, maxval=1)) # Hidden option
+        allow_bypass = bool(gcmd.get_int('ALLOW_BYPASS', 0, minval=0, maxval=1))
 
         with self.wrap_sync_gear_to_extruder():
             with DebugStepperMovement(self, debug):
-                actual,_,measured,_ = self._move_cmd(gcmd, "Test move")
-            self.movequeues_wait()
+                actual,_,measured,_ = self._move_cmd(gcmd, "Test move", allow_bypass=allow_bypass)
             self.log_always("Moved %.1fmm%s" % (actual, (" (measured %.1fmm)" % measured) if self._can_use_encoder() else ""))
 
     cmd_MMU_TEST_HOMING_MOVE_help = "Test filament homing move to help debug setup / options"
     def cmd_MMU_TEST_HOMING_MOVE(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if self.check_if_disabled(): return
+        allow_bypass = bool(gcmd.get_int('ALLOW_BYPASS', 0, minval=0, maxval=1))
 
         with self.wrap_sync_gear_to_extruder():
             debug = bool(gcmd.get_int('DEBUG', 0, minval=0, maxval=1)) # Hidden option
             with DebugStepperMovement(self, debug):
-                actual,homed,measured,_ = self._homing_move_cmd(gcmd, "Test homing move")
+                actual,homed,measured,_ = self._homing_move_cmd(gcmd, "Test homing move", allow_bypass=allow_bypass)
             self.log_always("%s after %.1fmm%s" % (("Homed" if homed else "Did not home"), actual, (" (measured %.1fmm)" % measured) if self._can_use_encoder() else ""))
 
     cmd_MMU_TEST_CONFIG_help = "Runtime adjustment of MMU configuration for testing or in-print tweaking purposes"
@@ -6868,6 +6909,7 @@ class Mmu:
         self.toolhead_unload_safety_margin = gcmd.get_float('TOOLHEAD_UNLOAD_SAFETY_MARGIN', self.toolhead_unload_safety_margin, minval=0.)
         self.toolhead_post_load_tighten = gcmd.get_int('TOOLHEAD_POST_LOAD_TIGHTEN', self.toolhead_post_load_tighten, minval=0, maxval=100)
         self.toolhead_post_load_tension_adjust = gcmd.get_int('TOOLHEAD_POST_LOAD_TENSION_ADJUST', self.toolhead_post_load_tension_adjust, minval=0, maxval=1)
+        self.toolhead_entry_tension_test = gcmd.get_int('TOOLHEAD_ENTRY_TENSION_TEST', self.toolhead_entry_tension_test, minval=0, maxval=1)
         self.gcode_load_sequence = gcmd.get_int('GCODE_LOAD_SEQUENCE', self.gcode_load_sequence, minval=0, maxval=1)
         self.gcode_unload_sequence = gcmd.get_int('GCODE_UNLOAD_SEQUENCE', self.gcode_unload_sequence, minval=0, maxval=1)
 
@@ -7020,6 +7062,7 @@ class Mmu:
             msg += "\ntoolhead_residual_filament = %.1f" % self.toolhead_residual_filament
             msg += "\ntoolhead_ooze_reduction = %.1f" % self.toolhead_ooze_reduction
             msg += "\ntoolhead_unload_safety_margin = %d" % self.toolhead_unload_safety_margin
+            msg += "\ntoolhead_entry_tension_test = %d" % self.toolhead_entry_tension_test
             msg += "\ntoolhead_post_load_tighten = %d" % self.toolhead_post_load_tighten
             msg += "\ntoolhead_post_load_tension_adjust = %d" % self.toolhead_post_load_tension_adjust
             msg += "\ngcode_load_sequence = %d" % self.gcode_load_sequence
@@ -7165,20 +7208,32 @@ class Mmu:
         return next_gate, msg
 
     # Use pre-gate (and gear) sensors to "correct" gate status
-    # Return updated gate_status
+    # Return updated gate_status adjusted by sensor readings
     def _validate_gate_status(self, gate_status):
         v_gate_status = list(gate_status) # Ensure that webhooks sees get_status() change
         for gate, status in enumerate(v_gate_status):
-            detected = self.sensor_manager.check_gate_sensor(self.SENSOR_GEAR_PREFIX, gate)
-            if detected is True:
+            gear_detected = self.sensor_manager.check_gate_sensor(self.SENSOR_GEAR_PREFIX, gate)
+            if gear_detected is True:
                 v_gate_status[gate] = self.GATE_AVAILABLE
             else:
-                detected = self.sensor_manager.check_gate_sensor(self.SENSOR_PRE_GATE_PREFIX, gate)
-                if detected is True and status == self.GATE_EMPTY:
+                pre_detected = self.sensor_manager.check_gate_sensor(self.SENSOR_PRE_GATE_PREFIX, gate)
+                if pre_detected is True and status == self.GATE_EMPTY:
                     v_gate_status[gate] = self.GATE_UNKNOWN
-                elif detected is False and status != self.GATE_EMPTY:
+                elif pre_detected is False and status != self.GATE_EMPTY:
                     v_gate_status[gate] = self.GATE_EMPTY
         return v_gate_status
+
+    # Use post-gear sensors to correct the selected gate.
+    # Returns the unique detected gate index, or None if zero/multiple detected.
+    def _validate_gate_selected(self):
+        gate = None
+        for g in range(self.num_gates):
+            if self.sensor_manager.check_all_sensors_before(self.FILAMENT_POS_START_BOWDEN, g, loading=True) is True:
+                if gate is None:
+                    gate = g
+                else:
+                    return None
+        return gate
 
     def _get_filament_char(self, gate, no_space=False, show_source=False):
         show_source &= self.has_filament_buffer
@@ -7226,7 +7281,7 @@ class Mmu:
         msg_avail = "Avail: "
         msg_tools = "Tools: "
         msg_selct = "Selct: "
-        for unit_index, gate_count in enumerate(self.mmu_machine.units):
+        for unit_index, gate_count in enumerate(self.mmu_machine.gate_counts):
             gate_indices = range(c_sum, c_sum + gate_count)
             c_sum += gate_count
             last_gate = gate_indices[-1] == self.num_gates - 1
@@ -7366,6 +7421,7 @@ class Mmu:
                 self.gate_status = list(self.gate_status) # Ensure that webhooks sees get_status() change
                 self.gate_status[gate] = state
                 self._persist_gate_status()
+                self.led_manager.gate_map_changed(gate)
                 self.mmu_macro_event(self.MACRO_EVENT_GATE_MAP_CHANGED, "GATE=%d" % gate)
 
     def _persist_gate_status(self):
@@ -7403,6 +7459,7 @@ class Mmu:
             elif self.spoolman_support == self.SPOOLMAN_READONLY:
                 self._spoolman_update_filaments(gate_ids)
 
+        self.led_manager.gate_map_changed(None)
         if self.printer.lookup_object("gcode_macro %s" % self.mmu_event_macro, None) is not None:
             self.mmu_macro_event(self.MACRO_EVENT_GATE_MAP_CHANGED, "GATE=-1")
 
@@ -7856,8 +7913,8 @@ class Mmu:
                             self.log_debug("Warning: Illegal gate number %d supplied in gate map update - ignored" % gate)
                             continue
 
-                        # Only update gate attributes if we have a valid spool_id
-                        if fil and fil.get('spool_id', -1) != -1:
+                        # Only update gate attributes if we don't have spool_id
+                        if fil:
                             self.gate_filament_name[gate] = fil.get('name', '')
                             self.gate_material[gate] = fil.get('material', '')
                             self.gate_color[gate] = fil.get('color', '')
@@ -8303,12 +8360,12 @@ class Mmu:
         gate = gcmd.get_int('GATE', self.gate_selected, minval=0, maxval=self.num_gates - 1)
         if self.check_if_not_calibrated(self.CALIBRATED_ESSENTIAL, check_gates=[gate]): return
 
-        can_crossload = self.mmu_machine.multigear and self.sensor_manager.has_gate_sensor(self.SENSOR_GEAR_PREFIX, gate)
+        can_crossload = (self.mmu_machine.can_crossload or self.mmu_machine.multigear) and self.sensor_manager.has_gate_sensor(self.SENSOR_GEAR_PREFIX, gate)
         if not can_crossload:
             if self.check_if_bypass(): return
             if self.check_if_loaded(): return
 
-        self.log_always("Preloading filament in %s" % ("current gate" if gate == self.gate_selected else "gate %d" % gate))
+        self.log_always("Preloading filament in %s..." % ("current gate" if gate == self.gate_selected else "gate %d" % gate))
         try:
             with self.wrap_sync_gear_to_extruder():
                 with self.wrap_suppress_visual_log():
@@ -8317,7 +8374,7 @@ class Mmu:
                         self.select_gate(gate)
                         self._preload_gate()
                         # If necessary or easy restore previous gate
-                        if self.is_in_print() or self.mmu_machine.multigear:
+                        if self.is_in_print() or self.mmu_machine.multigear or self.filament_pos != self.FILAMENT_POS_UNLOADED:
                             self.select_gate(current_gate)
                         else:
                             self._initialize_encoder() # Encoder 0000

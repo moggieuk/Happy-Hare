@@ -7,7 +7,7 @@
 #                          moggieuk@hotmail.com
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-# Goal: Happy Hare MMU hardware config file with config for KMS MCU board
+# Goal: Happy Hare MMU hardware config file with config for BTT ViViD MCU board
 #
 # (\_/)
 # ( *,*)
@@ -70,27 +70,13 @@ num_gates: 4
 # MMU Vendor & Version is used to automatically configure some parameters and validate configuration
 # If custom set to "Other" and uncomment the additional parameters below
 #
-# ERCF          1.1  add "s" suffix for Springy, "b" for Binky, "t" for Triple-Decky
-#                    e.g. "1.1sb" for v1.1 with Springy mod and Binky encoder
-# ERCF          2.0  community edition ERCFv2
-# ERCF          2.5
-# Tradrack      1.0  add "e" if encoder is fitted (assumed to be Binky)
-# AngryBeaver   1.0
-# BoxTurtle     1.0
-# NightOwl      1.0
-# 3MS           1.0
-# 3D Chameleon  1.0
-# Pico          1.0
-# Prusa         3.0  NOT YET SUPPORTED - COMING SOON
-# Other              Generic setup that may require further customization of 'cad' parameters. See doc in mmu_parameters.cfg
-#
-mmu_vendor: KMS				# MMU family
+mmu_vendor: VVD				# MMU family
 mmu_version: 1.0			# MMU hardware version number (add mod suffix documented above)
 
 # The following attributes are set internally from vendor/version above. Only uncomment to customize the vendor
 # default or for custom ("Other") designs
 #
-#selector_type: VirtualSelector		# E.g. LinearSelector (type-A), VirtualSelector (type-B), MacroSelector, RotarySelector, ...
+#selector_type: IndexedSelector		# E.g. LinearSelector (type-A), VirtualSelector (type-B), MacroSelector, RotarySelector, ...
 #variable_bowden_lengths: 0		# 1 = If MMU design has different bowden lengths per gate, 0 = bowden length is the same
 #variable_rotation_distances: 1		# 1 = If MMU design has dissimilar drive/BMG gears, thus rotation distance, 0 = One drive gear (e.g. Tradrack)
 #require_bowden_move: 1			# 1 = If MMU design has bowden move that is included in load/unload, 0 = zero length bowden (skip bowden move)
@@ -104,80 +90,68 @@ has_bypass: 1				# 1 = Bypass gate available, 0 = No filament bypass possible
 # Polls for "temperature" and "humidity"
 # E.g. If you have a section like this: [temperature_sensor MMU_enclosure]
 # Set: environment_sensor: temperature_sensor MMU_enclosure
-environment_sensor: temperature_sensor MMU_enviroment_kms
+environment_sensor: temperature_sensor MMU_vivid_left
 
 homing_extruder: 1			# CAUTION: Normally this should be 1. 0 will disable the homing extruder capability
 
 
-# FILAMENT DRIVE GEAR STEPPER(S)  --------------------------------------------------------------------------------------
-#  ██████╗ ███████╗ █████╗ ██████╗ 
+# FILAMENT DRIVE GEAR STEPPER(S) --------------------------------------------------------------------------------------
+#  ██████╗ ███████╗ █████╗ ██████╗
 # ██╔════╝ ██╔════╝██╔══██╗██╔══██╗
 # ██║  ███╗█████╗  ███████║██████╔╝
 # ██║   ██║██╔══╝  ██╔══██║██╔══██╗
 # ╚██████╔╝███████╗██║  ██║██║  ██║
 #  ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝
+#
 # Note that 'toolhead' & 'mmu_gear' endstops will automatically be added if a toolhead sensor or gate sensor is defined
 #
-# The default values are tested with the ERCF BOM NEMA14 motor. Please adapt these values to the motor you are using
-# Example : for NEMA17 motors, you'll usually use higher current
-#
+
 [tmc2209 stepper_mmu_gear]
-uart_pin: mmu:PB4
+uart_pin: mmu:PB7
 run_current: 0.7
 hold_current: 0.1			# Recommend to be small if not using "touch" or move (TMC stallguard)
 interpolate: True
 sense_resistor: 0.110			# Usually 0.11, 0.15 for BTT TMC2226
 stealthchop_threshold: 0		# Spreadcycle has more torque and better at speed
-#
-# Uncomment two lines below if you have TMC and want the ability to use filament "touch" homing with gear stepper
-#diag_pin: mmu:PA3			# Set to MCU pin connected to TMC DIAG pin for gear stepper
-#driver_SGTHRS: 60			# 255 is most sensitive value, 0 is least sensitive
 
 [stepper_mmu_gear]
-step_pin: mmu:PB5
-dir_pin: mmu:PB6
-enable_pin: !mmu:PB3
-rotation_distance: 22.96		# Bondtech 5mm Drive Gears. Overridden by 'mmu_gear_rotation_distance' in mmu_vars.cfg
-gear_ratio: 50:17
-microsteps: 16 				# Recommend 16. Increase only if you "step compress" issues when syncing
+step_pin: mmu:PB6
+dir_pin: mmu:PB5
+enable_pin: !mmu:PB8
+rotation_distance: 8.0			# This is highly variable -- tune each gate with MMU_CALIBRATE_GEAR
+gear_ratio: 1:1
+microsteps: 16
 full_steps_per_rotation: 200		# 200 for 1.8 degree, 400 for 0.9 degree
+
+
+# SELECTOR STEPPER ----------------------------------------------------------------------------------------------------
+# ███████╗███████╗██╗     ███████╗ ██████╗████████╗ ██████╗ ██████╗ 
+# ██╔════╝██╔════╝██║     ██╔════╝██╔════╝╚══██╔══╝██╔═══██╗██╔══██╗
+# ███████╗█████╗  ██║     █████╗  ██║        ██║   ██║   ██║██████╔╝
+# ╚════██║██╔══╝  ██║     ██╔══╝  ██║        ██║   ██║   ██║██╔══██╗
+# ███████║███████╗███████╗███████╗╚██████╗   ██║   ╚██████╔╝██║  ██║
+# ╚══════╝╚══════╝╚══════╝╚══════╝ ╚═════╝   ╚═╝    ╚═════╝ ╚═╝  ╚═╝
 #
-# Uncomment the two lines below to enable filament "touch" homing option with gear motor
-#extra_endstop_pins: tmc2209_stepper_mmu_gear:virtual_endstop
-#extra_endstop_names: mmu_gear_touch
-
-# ADDITIONAL FILAMENT DRIVE GEAR STEPPERS FOR TYPE-B MMU's -------------------------------------------------------------
-# Note that common parameters are inherited from base stepper_mmu_gear, but can be uniquely specified here too
+# Consult doc if you want to setup selector for "touch" homing instead or physical endstop
 #
-# Filament Drive Gear_1 --------------------------
-[tmc2209 stepper_mmu_gear_1]
-uart_pin: mmu:PB8
+[tmc2209 stepper_mmu_selector]
+uart_pin: mmu:PB3
+run_current: 0.8
+hold_current: 0.4			# Recommend to be small if not using "touch" or move (TMC stallguard)
+interpolate: True
+sense_resistor: 0.110			# Usually 0.11, 0.15 for BTT TMC2226
+stealthchop_threshold: 0		# Spreadcycle has more torque and better at speed
 
-[stepper_mmu_gear_1]
-step_pin: mmu:PB9
-dir_pin: !mmu:PC10
-enable_pin: !mmu:PB7
-#diag_pin: mmu:PA4
-
-# Filament Drive Gear_2 --------------------------
-[tmc2209 stepper_mmu_gear_2]
-uart_pin: mmu:PD3
-
-[stepper_mmu_gear_2]
-step_pin: mmu:PD4
-dir_pin: mmu:PD5
-enable_pin: !mmu:PD6
-#diag_pin: mmu:PB9
-
-# Filament Drive Gear_3 --------------------------
-[tmc2209 stepper_mmu_gear_3]
-uart_pin: mmu:PC9
-
-[stepper_mmu_gear_3]
-step_pin: mmu:PD0
-dir_pin: !mmu:PD1
-enable_pin: !mmu:PD2
-#diag_pin: mmu:PB8
+[stepper_mmu_selector]
+step_pin: mmu:PD3
+dir_pin: mmu:PD2
+enable_pin: !mmu:PB4
+rotation_distance: 360
+gear_ratio: 25:10
+microsteps: 16 				# Don't need high fidelity
+full_steps_per_rotation: 200		# 200 for 1.8 degree, 400 for 0.9 degree
+extra_endstop_pins: !mmu:PD0, !mmu:PA15, !mmu:PD1, !mmu:PC13
+extra_endstop_names: unit0_gate0, unit0_gate1, unit0_gate2, unit0_gate3
 
 
 # SERVOS ---------------------------------------------------------------------------------------------------------------
@@ -226,93 +200,26 @@ enable_pin: !mmu:PD2
 # it will be ignored. You can also just comment out what you are not using.
 #
 [mmu_sensors]
-pre_gate_switch_pin_0: mmu:PA0
-pre_gate_switch_pin_1: mmu:PA1
-pre_gate_switch_pin_2: mmu:PA2
-pre_gate_switch_pin_3: mmu:PA3
+pre_gate_switch_pin_0: !mmu:PA0
+pre_gate_switch_pin_1: !mmu:PA1
+pre_gate_switch_pin_2: !mmu:PA2
+pre_gate_switch_pin_3: !mmu:PA3
 
-post_gear_switch_pin_0: mmu:PA5
-post_gear_switch_pin_1: mmu:PA6
-post_gear_switch_pin_2: mmu:PA7
-post_gear_switch_pin_3: mmu:PC4
+post_gear_switch_pin_0: buffer:PA0
+#post_gear_analog_range_0: 0, 500 # Delete if using updated digital sensor
+post_gear_switch_pin_1: buffer:PA1
+#post_gear_analog_range_1: 0, 500 # Delete if using updated digital sensor
+post_gear_switch_pin_2: buffer:PA2
+#post_gear_analog_range_2: 0, 500 # Delete if using updated digital sensor
+post_gear_switch_pin_3: buffer:PA3
+#post_gear_analog_range_3: 0, 500 # Delete if using updated digital sensor
 
-# These sensors can be replicated in a multi-mmu, type-B setup (see num_gates comment).
-# If so, then use a comma separated list of per-unit pins instead of single pin
-gate_switch_pin: mmu:PC0
-
-sync_feedback_tension_pin: !buffer:PA1
-sync_feedback_compression_pin: !buffer:PA0
+sync_feedback_tension_pin: buffer:PA4
+sync_feedback_compression_pin: buffer:PA5
 
 # These sensors are on the toolhead and often controlled by the main printer mcu
 #extruder_switch_pin: PG11
 #toolhead_switch_pin: PG13
-
-
-# ENCODER -------------------------------------------------------------------------------------------------------------
-# ███████╗███╗   ██╗ ██████╗ ██████╗ ██████╗ ███████╗██████╗ 
-# ██╔════╝████╗  ██║██╔════╝██╔═══██╗██╔══██╗██╔════╝██╔══██╗
-# █████╗  ██╔██╗ ██║██║     ██║   ██║██║  ██║█████╗  ██████╔╝
-# ██╔══╝  ██║╚██╗██║██║     ██║   ██║██║  ██║██╔══╝  ██╔══██╗
-# ███████╗██║ ╚████║╚██████╗╚██████╔╝██████╔╝███████╗██║  ██║
-# ╚══════╝╚═╝  ╚═══╝ ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝
-# Encoder measures distance, monitors for runout and clogging and constantly calculates % flow rate
-# Note that the encoder_resolution set here is purely a default to get started. It will be correcly set after calibration
-# with the value stored in mmu_vars.cfg
-#
-# The encoder resolution will be calibrated but it needs a default approximation 
-# If BMG gear based:
-#   resolution = bmg_circumfrance / (2 * teeth)
-# 24 / (2 * 17) = 0.7059 for TRCT5000 based sensor
-# 24 / (2 * 12) = 1.0 for Binky with 12 tooth disc
-#
-[mmu_encoder mmu_encoder]
-encoder_pin: mmu:PC5
-encoder_resolution: 0.967		# This is just a starter value. Overriden by calibrated 'mmu_encoder_resolution' in mmm_vars.cfg
-desired_headroom: 5.0			# The clog/runout headroom that MMU attempts to maintain (closest point to triggering runout)
-average_samples: 4			# The "damping" effect of last measurement (higher value means slower automatic clog_length reduction)
-flowrate_samples: 20			# How many "movements" of the extruder to measure average flowrate over
-
-
-# ESPOOLER (OPTIONAL) -------------------------------------------------------------------------------------------------
-# ███████╗███████╗██████╗  ██████╗  ██████╗ ██╗     ███████╗██████╗
-# ██╔════╝██╔════╝██╔══██╗██╔═══██╗██╔═══██╗██║     ██╔════╝██╔══██╗
-# █████╗  ███████╗██████╔╝██║   ██║██║   ██║██║     █████╗  ██████╔╝
-# ██╔══╝  ╚════██║██╔═══╝ ██║   ██║██║   ██║██║     ██╔══╝  ██╔══██╗
-# ███████╗███████║██║     ╚██████╔╝╚██████╔╝███████╗███████╗██║  ██║
-# ╚══════╝╚══════╝╚═╝      ╚═════╝  ╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═╝
-#
-# An espooler controls DC motors (typically N20) that are able to rewind a filament spool and optionally provide
-# forward assist to overcome spooler rotation friction. This should define pins for each of the gates on your mmu
-# starting with '_0'. 
-# An empty pin can be deleted, commented or simply left blank. If you mcu has a separate "enable" pin
-#
-[mmu_espooler mmu_espooler]
-#pwm: 1                                         # 1=PWM control (typical), 0=digital on/off control
-#hardware_pwm: 0                                # See klipper doc
-#cycle_time: 0.100                              # See klipper doc
-#scale: 1                                       # Scales the PWM output range
-#value: 0					# See klipper doc
-#shutdown_value: 0				# See klipper doc
-
-assist_motor_pin_0: mmu:PA8			# PWM (or digital) pin for forward motor movement
-respool_motor_pin_0: mmu:PB15			# PWM (or digital) pin for rewind/respool movement
-#enable_motor_pin_0:				# Digital output to enable motors
-#assist_trigger_pin_0: 				# Trigger pin for sensing need to assist during print
-
-assist_motor_pin_1: mmu:PB13
-respool_motor_pin_1: mmu:PB14
-#enable_motor_pin_1:
-#assist_trigger_pin_1:
-
-assist_motor_pin_2: mmu:PA9
-respool_motor_pin_2: mmu:PC6
-#enable_motor_pin_2:
-#assist_trigger_pin_2:
-
-assist_motor_pin_3: mmu:PD8
-respool_motor_pin_3: mmu:PC7
-#enable_motor_pin_3:
-#assist_trigger_pin_3:
 
 
 # LED SUPPORT (OPTIONAL) -----------------------------------------------------------------------------------------------
@@ -325,10 +232,15 @@ respool_motor_pin_3: mmu:PC7
 #
 # Define mmu leds, both the "neopixel" config and [mmu_led] to define their purpose
 #
-[neopixel mmu_leds]
-pin: mmu:PC13
-chain_count: 4
-color_order: GRBW
+[neopixel mmu_leds_1]
+pin: mmu:PC6
+chain_count: 14
+color_order: GRB
+
+[neopixel mmu_leds_2]
+pin: mmu:PC7
+chain_count: 14
+color_order: GRB
 
 # MMU LED EFFECT SEGMENTS ----------------------------------------------------------------------------------------------
 # Define neopixel LEDs for your MMU. The chain_count must be large enough for your desired ranges:
@@ -370,7 +282,8 @@ color_order: GRBW
 # (comment out this whole section if you don't have/want leds; uncomment/edit LEDs fitted on your MMU)
 #
 [mmu_leds unit0]
-exit_leds:   neopixel:mmu_leds (1-4)
+exit_leds:   neopixel:mmu_leds_1 (1-14)
+             neopixel:mmu_leds_2 (1-14)
 frame_rate: 24
 
 # Default effects for LED segments when not providing action status
@@ -426,34 +339,50 @@ effect_gate_empty_sel:     mmu_ready_orange2,       (0.1, 0.04, 0)
 #
 # Define any additional hardware for this MMU unit, e.g. heaters, chamber temperature probes, etc
 #
-[temperature_sensor MMU_enviroment_kms]
-sensor_type: HTU21D
+[temperature_sensor MMU_vivid_left]
+sensor_type: AHT10 # Actually a ACT30, set 'update_aht10_commands: 1' in mmu_parameters.cfg
 i2c_mcu: mmu
-htu21d_report_time: 10
-i2c_software_scl_pin: mmu:PB10
-i2c_software_sda_pin: mmu:PB11
+i2c_bus: i2c1_PA9_PA10
+aht10_report_time: 10
 
-[heater_fan MMU_kms_box_left_fan]
-pin: mmu:PC3
+[temperature_sensor MMU_vivid_right]
+sensor_type: AHT10 # Actually a ACT30, set 'update_aht10_commands: 1' in mmu_parameters.cfg
+i2c_mcu: mmu
+i2c_software_scl_pin: PA7
+i2c_software_sda_pin: PA6
+aht10_report_time: 10
+
+[heater_generic MMU_heater_vivid]
+gcode_id:  mmu_heater_vivid
+heater_pin: mmu:PC14
+sensor_type: temperature_combined
+sensor_list: temperature_sensor MMU_vivid_left, temperature_sensor MMU_vivid_right
+combination_method: mean
+maximum_deviation: 100
+control: pid
+pid_Kp=51.604
+pid_Ki=1.121
+pid_Kd=593.934
+min_temp: -100
+max_temp: 70
+
+[verify_heater MMU_heater_vivid]
+max_error: 300
+check_gain_time: 600
+hysteresis: 10
+heating_gain: 1
+
+[heater_fan MMU_vivid_box_fan]
+pin: mmu:PC15
 shutdown_speed: 0
-heater: MMU_heater_kms
+heater: MMU_heater_vivid
 
-[heater_fan MMU_kms_box_right_fan]
-pin: mmu:PC1
-shutdown_speed: 0
-heater: MMU_heater_kms
+# Electronics cooling fan
+[controller_fan my_controller_fan]
+pin: mmu:PA14
+stepper: stepper_mmu_selector, stepper_mmu_gear
 
-[heater_generic MMU_heater_kms]
-gcode_id:  mmu_heater_kms
-heater_pin: mmu:PB1
-max_power:1.0
-sensor_type: EPCOS 100K B57560G104F
-pullup_resistor: 2200
+[temperature_sensor ptc_ntc100k]
 sensor_pin: mmu:PA4
-control:watermark
-#control: pid
-#pid_Kp=
-#pid_Ki=
-#pid_Kd=
-min_temp:0
-max_temp:70
+sensor_type: Generic 3950
+pullup_resistor: 2200
