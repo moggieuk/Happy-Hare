@@ -420,6 +420,9 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.requested_accel_to_decel = self.min_cruise_ratio * self.max_accel # Backward klipper compatibility 31de734d193d
         self._calc_junction_deviation()
 
+        # This is now a big switch that gates changes to the Toolhead in Klipper
+        self.motion_queuing = self.printer.load_object(config, 'motion_queuing', None)
+
         # Input stall detection
         self.check_stall_time = 0.
         self.print_stall = 0
@@ -433,21 +436,26 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.special_queuing_state = "NeedPrime"
         self.priming_timer = None
         self.drip_completion = None # TODO No longer part of Klipper >v0.13.0-46
-        # Flush tracking
-        self.flush_timer = self.reactor.register_timer(self._flush_handler)
-        self.do_kick_flush_timer = True
-        self.last_flush_time = self.last_sg_flush_time = self.min_restart_time = 0. # last_sg_flush_time deprecated
-        self.need_flush_time = self.step_gen_time = self.clear_history_time = 0.
-        # Kinematic step generation scan window time tracking
-        self.kin_flush_delay = toolhead.SDS_CHECK_TIME # Happy Hare: Use base class
-        self.kin_flush_times = []
-        self.motion_queuing = self.printer.load_object(config, 'motion_queuing', None)
+
+        if not self.motion_queuing:
+            # Flush tracking
+            self.flush_timer = self.reactor.register_timer(self._flush_handler)
+            self.do_kick_flush_timer = True
+            self.last_flush_time = self.last_sg_flush_time = self.min_restart_time = 0. # last_sg_flush_time deprecated
+            self.need_flush_time = self.step_gen_time = self.clear_history_time = 0.
+            # Kinematic step generation scan window time tracking
+            self.kin_flush_delay = toolhead.SDS_CHECK_TIME # Happy Hare: Use base class
+            self.kin_flush_times = []
+
         if self.motion_queuing:
-            # Setup for generating moves
-            self.trapq = self.motion_queuing.allocate_trapq()
-            self.trapq_append = self.motion_queuing.lookup_trapq_append()
             ffi_main, ffi_lib = chelper.get_ffi()
             self.trapq_finalize_moves = ffi_lib.trapq_finalize_moves # Want my own binding so I know its available
+
+            # Setup for generating moves
+            self.motion_queuing.setup_lookahead_flush_callback(
+                self._check_flush_lookahead)
+            self.trapq = self.motion_queuing.allocate_trapq()
+            self.trapq_append = self.motion_queuing.lookup_trapq_append()
         else:
             # Setup iterative solver
             ffi_main, ffi_lib = chelper.get_ffi()
@@ -457,6 +465,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             # Motion flushing
             self.step_generators = []
             self.flush_trapqs = [self.trapq]
+
         # Create kinematics class
         gcode = self.printer.lookup_object('gcode')
         self.Coord = gcode.Coord
