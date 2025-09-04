@@ -1265,6 +1265,17 @@ class Mmu:
                     self.log_trace(msg + " Message was suppressed.")
                 else:
                     self.log_warning(msg)
+
+            # Look for filament_switch_sensors already configured to warn for possible conflicts
+            for section in self.config.get_prefix_sections('filament_switch_sensor'):
+                # Determine if this is created by HH or user
+                fsensor = self.printer.lookup_object(section.get_name())
+                if not isinstance(fsensor.runout_helper, MmuRunoutHelper):
+                    fsensor_name = section.get_name().split()[1]
+                    pause_on_runout = section.getboolean('pause_on_runout', False)
+                    pause_on_runout_msg = " and/or pause during prints unintentionally" if pause_on_runout else ""
+                    self.log_warning("Warning: filament_switch_sensor '%s' found in printer configuration. This may interfere with MMU functionality%s." % (fsensor_name, pause_on_runout_msg))
+
             self._set_print_state("initialized")
 
             # Use per gate sensors to adjust gate map
@@ -7902,8 +7913,8 @@ class Mmu:
                             self.log_debug("Warning: Illegal gate number %d supplied in gate map update - ignored" % gate)
                             continue
 
-                        # Only update gate attributes if we have a valid spool_id
-                        if fil and fil.get('spool_id', -1) != -1:
+                        # Only update gate attributes if we don't have spool_id
+                        if fil:
                             self.gate_filament_name[gate] = fil.get('name', '')
                             self.gate_material[gate] = fil.get('material', '')
                             self.gate_color[gate] = fil.get('color', '')

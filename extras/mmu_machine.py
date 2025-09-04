@@ -31,7 +31,7 @@ from .homing import Homing, HomingMove
 from . import mmu_leds
 
 # For toolhead synchronization
-EPS           = 1e-6       # ~1 µs saftey
+EPS           = 1e-6       # ~1 microsecond safety
 SYNC_AIR_GAP  = 0.001      # Sync time air gap
 MOVE_HISTORY_EXPIRE = 30.0 # From motion_queuing.py
 
@@ -241,7 +241,6 @@ class MmuMachine:
             has_bypass = 0
 
         # Still allow MMU design attributes to be altered or set for custom MMU
-        self.display_name = config.get('display_name', UNIT_ALT_DISPLAY_NAMES.get(self.mmu_vendor, self.mmu_vendor))
         self.selector_type = config.getchoice('selector_type', {o: o for o in ['LinearSelector', 'VirtualSelector', 'MacroSelector', 'RotarySelector', 'ServoSelector', 'IndexedSelector']}, selector_type)
         self.variable_rotation_distances = bool(config.getint('variable_rotation_distances', variable_rotation_distances))
         self.variable_bowden_lengths = bool(config.getint('variable_bowden_lengths', variable_bowden_lengths))
@@ -249,6 +248,10 @@ class MmuMachine:
         self.filament_always_gripped = bool(config.getint('filament_always_gripped', filament_always_gripped))
         self.can_crossload = bool(config.getint('can_crossload', can_crossload))
         self.has_bypass = bool(config.getint('has_bypass', has_bypass))
+
+        # Other attributes
+        self.display_name = config.get('display_name', UNIT_ALT_DISPLAY_NAMES.get(self.mmu_vendor, self.mmu_vendor))
+        self.environment_sensor = config.get('environment_sensor', "")
 
         # By default HH uses a modified homing extruder. Because this might have unknown consequences on certain
         # set-ups it can be disabled. If disabled, homing moves will still work, but the delay in mcu to mcu comms
@@ -320,6 +323,7 @@ class MmuMachine:
             unit_info['filament_always_gripped'] = self.filament_always_gripped
             unit_info['has_bypass'] = self.has_bypass
             unit_info['multi_gear'] = self.multigear
+            unit_info['environment_sensor'] = self.environment_sensor
             gate_count += unit
             self.unit_status["unit_%d" % i] = unit_info
             self.unit_status['num_units'] = len(self.gate_counts)
@@ -416,6 +420,9 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.requested_accel_to_decel = self.min_cruise_ratio * self.max_accel # Backward klipper compatibility 31de734d193d
         self._calc_junction_deviation()
 
+        # This is now a big switch that gates changes to the Toolhead in Klipper
+        self.motion_queuing = self.printer.load_object(config, 'motion_queuing', None)
+
         # Input stall detection
         self.check_stall_time = 0.
         self.print_stall = 0
@@ -429,21 +436,26 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.special_queuing_state = "NeedPrime"
         self.priming_timer = None
         self.drip_completion = None # TODO No longer part of Klipper >v0.13.0-46
-        # Flush tracking
-        self.flush_timer = self.reactor.register_timer(self._flush_handler)
-        self.do_kick_flush_timer = True
-        self.last_flush_time = self.last_sg_flush_time = self.min_restart_time = 0. # last_sg_flush_time deprecated
-        self.need_flush_time = self.step_gen_time = self.clear_history_time = 0.
-        # Kinematic step generation scan window time tracking
-        self.kin_flush_delay = toolhead.SDS_CHECK_TIME # Happy Hare: Use base class
-        self.kin_flush_times = []
-        self.motion_queuing = self.printer.load_object(config, 'motion_queuing', None)
+
+        if not self.motion_queuing:
+            # Flush tracking
+            self.flush_timer = self.reactor.register_timer(self._flush_handler)
+            self.do_kick_flush_timer = True
+            self.last_flush_time = self.last_sg_flush_time = self.min_restart_time = 0. # last_sg_flush_time deprecated
+            self.need_flush_time = self.step_gen_time = self.clear_history_time = 0.
+            # Kinematic step generation scan window time tracking
+            self.kin_flush_delay = toolhead.SDS_CHECK_TIME # Happy Hare: Use base class
+            self.kin_flush_times = []
+
         if self.motion_queuing:
-            # Setup for generating moves
-            self.trapq = self.motion_queuing.allocate_trapq()
-            self.trapq_append = self.motion_queuing.lookup_trapq_append()
             ffi_main, ffi_lib = chelper.get_ffi()
             self.trapq_finalize_moves = ffi_lib.trapq_finalize_moves # Want my own binding so I know its available
+
+            # Setup for generating moves
+            self.motion_queuing.setup_lookahead_flush_callback(
+                self._check_flush_lookahead)
+            self.trapq = self.motion_queuing.allocate_trapq()
+            self.trapq_append = self.motion_queuing.lookup_trapq_append()
         else:
             # Setup iterative solver
             ffi_main, ffi_lib = chelper.get_ffi()
@@ -453,6 +465,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             # Motion flushing
             self.step_generators = []
             self.flush_trapqs = [self.trapq]
+
         # Create kinematics class
         gcode = self.printer.lookup_object('gcode')
         self.Coord = gcode.Coord
@@ -634,7 +647,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         # Materialize the air gap before choosing the fence
         for th in ths:
             th.flush_step_generation()
-        logging.info(">>>> After dwell/flush. Elapsed=%.6f" % (time.time() - start))
+        logging.info("PAUL: >>>> After dwell/flush. Elapsed=%.6f" % (time.time() - start))
 
         # Optional wait and flush to aid debugging
         if wait:

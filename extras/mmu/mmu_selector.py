@@ -2014,7 +2014,7 @@ class IndexedSelector(BaseSelector, object):
         max_move = self._get_max_selector_movement() * rotation_dir
         self.mmu.movequeues_wait()
         actual,homed = self._trace_selector_move("Indexing selector", max_move, speed=self.selector_move_speed, homing_move=1, endstop_name=self._get_gate_endstop(gate))
-        if actual > 0 and homed:
+        if abs(actual) > 0 and homed:
             # If we actually moved to home make sure we are centered on index endstop
             center_move = (self.selector_index_distance / 2) * rotation_dir
             self._trace_selector_move("Centering selector", center_move, speed=self.selector_move_speed)

@@ -100,6 +100,12 @@ has_bypass: 1				# 1 = Bypass gate available, 0 = No filament bypass possible
 # Uncomment to change the display name in UI's.  Defaults to the vendor name
 #display_name: My Precious
 
+# Fullname of environment sensor for MMU filament storage (displays temp and humidity in UI)
+# Polls for "temperature" and "humidity"
+# E.g. If you have a section like this: [temperature_sensor MMU_enclosure]
+# Set: environment_sensor: temperature_sensor MMU_enclosure
+environment_sensor: temperature_sensor MMU_enviroment_kms
+
 homing_extruder: 1			# CAUTION: Normally this should be 1. 0 will disable the homing extruder capability
 
 
