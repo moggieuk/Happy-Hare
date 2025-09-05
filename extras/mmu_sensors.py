@@ -130,18 +130,19 @@ class MmuRunoutHelper:
 
         if is_filament_present and self.insert_gcode: # Insert detected
             if not is_printing or (is_printing and self.insert_remove_in_print):
-                self.min_event_systime = self.reactor.NEVER
                 #logging.info("MMU: filament sensor %s: insert event detected, Eventtime %.2f" % (self.name, eventtime))
+                self.min_event_systime = self.reactor.NEVER # Prevent more callbacks until this one is complete
                 self.reactor.register_callback(lambda reh: self._insert_event_handler(eventtime))
 
         else: # Remove or Runout detected
-            self.min_event_systime = self.reactor.NEVER
             if is_printing and self.runout_suspended is False and self.runout_gcode:
                 #logging.info("MMU: filament sensor %s: runout event detected, Eventtime %.2f" % (self.name, eventtime))
+                self.min_event_systime = self.reactor.NEVER # Prevent more callbacks until this one is complete
                 self.reactor.register_callback(lambda reh: self._runout_event_handler(eventtime))
             elif self.remove_gcode and (not is_printing or self.insert_remove_in_print):
                 # Just a "remove" event
                 #logging.info("MMU: filament sensor %s: remove event detected, Eventtime %.2f" % (self.name, eventtime))
+                self.min_event_systime = self.reactor.NEVER # Prevent more callbacks until this one is complete
                 self.reactor.register_callback(lambda reh: self._remove_event_handler(eventtime))
 
     def enable_runout(self, restore):

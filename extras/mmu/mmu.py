@@ -3280,6 +3280,12 @@ class Mmu:
         self._wakeup()
         return False
 
+    def check_if_printing(self):
+        if self.is_printing():
+            self.log_error("Operation not possible. Printer is actively printing")
+            return True
+        return False
+
     def check_if_bypass(self):
         if self.tool_selected == self.TOOL_GATE_BYPASS and self.filament_pos not in [self.FILAMENT_POS_UNLOADED]:
             self.log_error("Operation not possible. MMU is currently using bypass. Unload or select a different gate first")
@@ -4430,7 +4436,11 @@ class Mmu:
                     self._set_filament_pos_state(self.FILAMENT_POS_HOMED_TS)
                     homing_movement = max(actual - (self.toolhead_extruder_to_nozzle - self.toolhead_sensor_to_nozzle), 0)
                 else:
-                    self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY) # But could also still be POS_IN_BOWDEN!
+                    if self.gate_selected != self.TOOL_GATE_BYPASS:
+                        self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY) # But could also still be POS_IN_BOWDEN!
+                    else:
+                        # For bypass its best to assume we didn't enter the extruder at all
+                        self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
                     raise MmuError("Failed to reach toolhead sensor after moving %.1fmm" % self.toolhead_homing_max)
 
             # Length may be reduced by previous unload in filament cutting use case. Ensure reduction is used only one time
@@ -4439,7 +4449,13 @@ class Mmu:
 
             # If we have a compression sensor indicating compression we can detect failure in the critical extruder entrance transition
             # by performing the initial load with just the extruder motor and checking that the sensor un-triggers before continuing
-            if self.toolhead_entry_tension_test and synced and not has_toolhead and self.sensor_manager.check_sensor(self.SENSOR_COMPRESSION):
+            if (
+                self.gate_selected != self.TOOL_GATE_BYPASS
+                and self.toolhead_entry_tension_test
+                and synced
+                and not has_toolhead
+                and self.sensor_manager.check_sensor(self.SENSOR_COMPRESSION)
+            ):
                 max_range = self.sync_feedback_manager.sync_feedback_buffer_maxrange
                 if length > max_range:
                     self.log_debug("Monitoring extruder entrance transistion for up to %.1fmm..." % max_range)
@@ -4455,7 +4471,12 @@ class Mmu:
             self._set_filament_remaining(0.)
 
             # Encoder based validation test if short of deterministic sensors and test makes sense
-            if self._can_use_encoder() and not fhomed and not extruder_only and self.gate_selected != self.TOOL_GATE_BYPASS:
+            if (
+                self.gate_selected != self.TOOL_GATE_BYPASS
+                and self._can_use_encoder()
+                and not fhomed
+                and not extruder_only
+            ):
                 self.log_debug("Total measured movement: %.1fmm, total delta: %.1fmm" % (measured, delta))
                 if measured < self.encoder_min:
                     raise MmuError("Move to nozzle failed (encoder didn't sense any movement). Extruder may not have picked up filament or filament did not find homing sensor")
@@ -4465,8 +4486,8 @@ class Mmu:
 
             # Make post load filament tension adjustments for reliability
             if (
-                not extruder_only
-                and self.gate_selected != self.TOOL_GATE_BYPASS
+                self.gate_selected != self.TOOL_GATE_BYPASS
+                and not extruder_only
             ):
                 if (
                     self.toolhead_post_load_tighten
@@ -6430,6 +6451,7 @@ class Mmu:
     def cmd_MMU_EJECT(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if self.check_if_disabled(): return
+
         gate = gcmd.get_int('GATE', self.gate_selected, minval=0, maxval=self.num_gates - 1)
         force = bool(gcmd.get_int('FORCE', 0, minval=0, maxval=1))
         if self.check_if_not_calibrated(self.CALIBRATED_ESSENTIAL, check_gates=[gate]): return
@@ -7744,7 +7766,7 @@ class Mmu:
                     elif self.is_printing():
                         msg = "actively printing" # Should not get here!
                     elif self.filament_pos != self.FILAMENT_POS_UNLOADED:
-                        msg = "extruder cannot be verified as unloaded"
+                        msg = "extruder cannot be verified as unloaded. Try running MMU_RECOVER to fix state"
                     elif not self.bypass_autoload:
                         msg = "bypass autoload is disabled"
                     else:
@@ -8356,7 +8378,9 @@ class Mmu:
     def cmd_MMU_PRELOAD(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if self.check_if_disabled(): return
+        if self.check_if_printing(): return
         if self.check_if_not_homed(): return
+
         gate = gcmd.get_int('GATE', self.gate_selected, minval=0, maxval=self.num_gates - 1)
         if self.check_if_not_calibrated(self.CALIBRATED_ESSENTIAL, check_gates=[gate]): return
 
