@@ -6465,11 +6465,12 @@ class Mmu:
 
         # Determine if full eject_from_gate is necessary
         in_bypass = self.gate_selected == self.TOOL_GATE_BYPASS
-        extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1)) or in_bypass
+        extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1))
         can_eject_from_gate = (
             not extruder_only
+            and not (in_bypass and self.filament_pos != self.FILAMENT_POS_UNLOADED and gate >= 0)
             and (
-                self.mmu_machine.multigear and gate != self.gate_selected
+                (self.mmu_machine.multigear and gate != self.gate_selected)
                 or self.filament_pos == self.FILAMENT_POS_UNLOADED
                 or force
             )
