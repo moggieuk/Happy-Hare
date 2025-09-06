@@ -243,7 +243,7 @@ $(KLIPPER_CONFIG_HOME)/mmu/mmu_vars.cfg: | $(OUT)/mmu/mmu_vars.cfg $(call backup
 $(call backup_name,$(KLIPPER_CONFIG_HOME)/%): $(OUT)/% | build
 	$(Q)$(call backup,$(basename $@))
 
-# Recipe to backup Happy-Gare configs before installing
+# Recipe to backup Happy-Hare configs before installing
 $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu): $(addprefix $(OUT)/mmu/, $(hh_config_files)) | build
 	$(Q)$(call backup,$(basename $@))
 
