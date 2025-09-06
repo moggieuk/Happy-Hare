@@ -323,6 +323,7 @@ class MmuUnit:
                     raise config.error("Selector stepper configuration not found for mmu_unit %s" % self.name)
 
             # Now we have all the parts to create MmuToolHead
+            logging.info("PAUL: Aboout to create toolhead...") # PAUL
             self.mmu_toolhead = MmuToolHead(config, self)
             logging.info("MMU: Created: Toolhead for %s" % self.name)
         else: # PAUL TEMP TESTING HACK
@@ -428,7 +429,7 @@ class MmuUnit:
             'filament_always_gripped': self.filament_always_gripped,
             'has_bypass': self.has_bypass,
             'can_crossload': self.can_crossload,
-            'multi_gear': self.multigear
+            'multi_gear': self.multigear,
             'environment_sensor': self.environment_sensor
         }
 
@@ -443,12 +444,16 @@ class MmuToolHead(toolhead.ToolHead, object):
     GEAR_SYNCED_TO_EXTRUDER = 3 # Aka 'extruder+gear'
     GEAR_ONLY               = 4 # Aka 'gear' (same state as unsync() but with protective wait)
 
-    def __init__(self, config, mmu):
-        self.mmu = mmu
+    def __init__(self, config, mmu_unit):
+        self.mmu_unit = mmu_unit
+        self.mmu_machine = self.mmu_unit.mmu_machine
+
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
+        self.config = config
         self.all_mcus = [m for n, m in self.printer.lookup_objects(module='mcu')]
         self.mcu = self.all_mcus[0]
+
         self._resync_lock = self.reactor.mutex()
 
         if hasattr(toolhead, 'BUFFER_TIME_HIGH'):
@@ -479,10 +484,11 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.gap_auto_comp = None
 
         # MMU velocity and acceleration control
-        self.gear_max_velocity = config.getfloat('gear_max_velocity', 300, above=0.)
-        self.gear_max_accel = config.getfloat('gear_max_accel', 500, above=0.)
-        self.selector_max_velocity = config.getfloat('selector_max_velocity', 250, above=0.)
-        self.selector_max_accel = config.getfloat('selector_max_accel', 1500, above=0.)
+        mmu_config = config.getsection('mmu')
+        self.gear_max_velocity = mmu_config.getfloat('gear_max_velocity', 300, above=0.)
+        self.gear_max_accel = mmu_config.getfloat('gear_max_accel', 500, above=0.)
+        self.selector_max_velocity = mmu_config.getfloat('selector_max_velocity', 250, above=0.)
+        self.selector_max_accel = mmu_config.getfloat('selector_max_accel', 1500, above=0.)
 
         self.max_velocity = max(self.selector_max_velocity, self.gear_max_velocity)
         self.max_accel = max(self.selector_max_accel, self.gear_max_accel)
@@ -567,20 +573,6 @@ class MmuToolHead(toolhead.ToolHead, object):
             msg = "Error loading MMU kinematics"
             logging.exception("MMU: %s" % msg)
             raise config.error(msg)
-
-        self.mmu_machine = self.printer.lookup_object("mmu_machine")
-        self.mmu_extruder_stepper = None
-        if self.mmu_machine.homing_extruder:
-            # Create MmuExtruderStepper for later insertion into PrinterExtruder on Toolhead (on klippy:connect)
-            self.mmu_extruder_stepper = MmuExtruderStepper(config.getsection('extruder'), self.kin.rails[1]) # Only first extruder is handled
-
-            # Nullify original extruder stepper definition so Klipper doesn't try to create it again. Restore in handle_connect() so config lookups succeed
-            self.old_ext_options = {}
-            self.config = config
-            for i in SHAREABLE_STEPPER_PARAMS + OTHER_STEPPER_PARAMS:
-                if config.fileconfig.has_option('extruder', i):
-                    self.old_ext_options[i] = config.fileconfig.get('extruder', i)
-                    config.fileconfig.remove_option('extruder', i)
 
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
 
@@ -1039,7 +1031,8 @@ class MmuKinematics:
     def __init__(self, toolhead, config):
         self.printer = config.get_printer()
         self.toolhead = toolhead
-        self.mmu_machine = self.printer.lookup_object('mmu_machine')
+        self.mmu_unit = toolhead.mmu_unit
+        self.mmu_machine = self.mmu_unit.mmu_machine
 
         # Setup "axis" rails
         self.rails = []

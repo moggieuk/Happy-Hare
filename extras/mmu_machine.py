@@ -208,4 +208,5 @@ class MmuExtruderStepper(ExtruderStepper, object):
             gcmd.respond_info(msg, log=False)
 
 def load_config(config):
+    logging.info("PAUL: HERE")
     return MmuMachine(config)
