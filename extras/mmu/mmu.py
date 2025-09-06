@@ -5877,6 +5877,7 @@ class Mmu:
 
     def select_gate(self, gate):
         try:
+
             if gate == self.gate_selected:
                 self.selector.select_gate(gate) # Always give selector a chance to fix position
             else:
@@ -5887,6 +5888,7 @@ class Mmu:
                 self.led_manager.gate_map_changed(_prev_gate)
                 self.led_manager.gate_map_changed(gate)
                 self._espooler_assist_on() # Will switch assist print mode if printing
+
         except MmuError as ee:
             self.unselect_gate()
             raise ee
@@ -6447,7 +6449,7 @@ class Mmu:
         except MmuError as ee:
             self.handle_mmu_error("%s.\nOccured when unloading tool" % str(ee))
 
-    cmd_MMU_EJECT_help = "Alias for MMU_UNLOAD if filament is loaded but will fully eject filament from MMU (release from gear) if in unloaded state"
+    cmd_MMU_EJECT_help = "Alias for MMU_UNLOAD if filament is loaded but will fully eject filament from MMU (release from gear) if already in unloaded state"
     def cmd_MMU_EJECT(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if self.check_if_disabled(): return
@@ -6461,7 +6463,7 @@ class Mmu:
         if not can_crossload and gate != self.gate_selected:
             if self.check_if_loaded(): return
 
-        # Determine if eject_from_gate is necessary
+        # Determine if full eject_from_gate is necessary
         in_bypass = self.gate_selected == self.TOOL_GATE_BYPASS
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1)) or in_bypass
         can_eject_from_gate = (
@@ -6480,17 +6482,26 @@ class Mmu:
         try:
             with self.wrap_sync_gear_to_extruder():
                 with self._wrap_suspend_runout(): # Don't want runout accidently triggering during filament eject
+
                     current_gate = self.gate_selected
-                    self.select_gate(gate)
-                    self._mmu_unload_eject(gcmd)
-                    if can_eject_from_gate:
-                        self.log_always("Ejecting filament out of %s" % ("current gate" if gate == self.gate_selected else "gate %d" % gate))
-                        self._eject_from_gate()
-                    # If necessary or easy restore previous gate
-                    if self.is_in_print() or self.mmu_machine.multigear or self.filament_pos != self.FILAMENT_POS_UNLOADED:
-                        self.select_gate(current_gate)
-                    else:
-                        self._initialize_encoder() # Encoder 0000
+                    if gate != current_gate:
+                        self.select_gate(gate)
+
+                    try:
+                        self._mmu_unload_eject(gcmd)
+                        if can_eject_from_gate:
+                            self.log_always("Ejecting filament out of %s" % ("current gate" if gate == current_gate else "gate %d" % gate))
+                            self._eject_from_gate()
+
+                    finally:
+                        if self.gate_selected != current_gate:
+                            # If necessary or easy restore previous gate
+                            if self.is_in_print() or self.mmu_machine.multigear or self.filament_pos != self.FILAMENT_POS_UNLOADED:
+                                self.select_gate(current_gate)
+                            else:
+                                # Lazy movement means we have side effect of changed tool/gate
+                                self._ensure_ttg_match()
+                                self._initialize_encoder() # Encoder 0000
 
                     self._persist_swap_statistics()
 
@@ -7410,10 +7421,10 @@ class Mmu:
             possible_tools = [tool for tool in range(self.num_gates) if self.ttg_map[tool] == self.gate_selected]
             if possible_tools:
                 if self.tool_selected not in possible_tools:
-                    self.log_debug("Resetting tool selected to match current gate")
+                    self.log_debug("Resetting tool selected to match TTG map for current gate (%d)" % self.gate_selected)
                     self._set_tool_selected(possible_tools[0])
             else:
-                self.log_warning("Resetting tool selected to unknown because current gate isn't associated with tool")
+                self.log_warning("Resetting tool selected to unknown because current gate (%d) isn't associated with tool in TTG map" % self.gate_selected)
                 self._set_tool_selected(self.TOOL_GATE_UNKNOWN)
 
     def _persist_ttg_map(self):
@@ -8384,7 +8395,10 @@ class Mmu:
         gate = gcmd.get_int('GATE', self.gate_selected, minval=0, maxval=self.num_gates - 1)
         if self.check_if_not_calibrated(self.CALIBRATED_ESSENTIAL, check_gates=[gate]): return
 
-        can_crossload = (self.mmu_machine.can_crossload or self.mmu_machine.multigear) and self.sensor_manager.has_gate_sensor(self.SENSOR_GEAR_PREFIX, gate)
+        can_crossload = (
+            (self.mmu_machine.can_crossload or self.mmu_machine.multigear)
+            and self.sensor_manager.has_gate_sensor(self.SENSOR_GEAR_PREFIX, gate)
+        )
         if not can_crossload:
             if self.check_if_bypass(): return
             if self.check_if_loaded(): return
@@ -8394,16 +8408,26 @@ class Mmu:
             with self.wrap_sync_gear_to_extruder():
                 with self.wrap_suppress_visual_log():
                     with self.wrap_action(self.ACTION_CHECKING):
+
                         current_gate = self.gate_selected
-                        self.select_gate(gate)
-                        self._preload_gate()
-                        # If necessary or easy restore previous gate
-                        if self.is_in_print() or self.mmu_machine.multigear or self.filament_pos != self.FILAMENT_POS_UNLOADED:
-                            self.select_gate(current_gate)
-                        else:
-                            self._initialize_encoder() # Encoder 0000
+                        if gate != current_gate:
+                            self.select_gate(gate)
+
+                        try:
+                            self._preload_gate()
+
+                        finally:
+                            if self.gate_selected != current_gate:
+                                # If necessary or easy restore previous gate
+                                if self.is_in_print() or self.mmu_machine.multigear or self.filament_pos != self.FILAMENT_POS_UNLOADED:
+                                    self.select_gate(current_gate)
+                                else:
+                                    # Lazy movement means we have side effect of changed tool/gate
+                                    self._ensure_ttg_match()
+                                    self._initialize_encoder() # Encoder 0000
         except MmuError as ee:
             self.handle_mmu_error("Filament preload for gate %d failed: %s" % (gate, str(ee)))
+
 
 def load_config(config):
     return Mmu(config)

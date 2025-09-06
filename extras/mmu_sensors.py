@@ -325,7 +325,7 @@ class MmuSensors:
         return real_pin == ''
 
     # Button event handlers for sync-feedback
-    # Feedback state should be between -1 (expanded) and 1 (compressed)
+    # Feedback state should be between -1 (tension) and 1 (compressed)
     def _sync_tension_callback(self, eventtime, tension_state, runout_helper):
         from .mmu import Mmu # For sensor names
         tension_enabled = runout_helper.sensor_enabled
