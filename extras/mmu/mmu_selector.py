@@ -37,13 +37,13 @@
 import random, logging, math, re, traceback
 
 # Klipper imports
-from ..homing    import Homing, HomingMove
+from ..homing        import Homing, HomingMove
 
 # Happy Hare imports
-from ..          import mmu_unit as MmuUnit
+from ..              import mmu_unit as MmuUnit
 
 # MMU subcomponent clases
-from .mmu_shared import MmuError
+from .mmu_shared     import MmuError
 
 
 
@@ -84,6 +84,9 @@ class BaseSelector:
         pass
 
     def handle_disconnect(self):
+        pass
+
+    def bootup(self):
         pass
 
     def home(self, force_unload = None):
@@ -215,7 +218,6 @@ class PhysicalSelector(BaseSelector, object):
                         self.filament_drive()
         except MmuError as ee:
             self.mmu.handle_mmu_error("Soaktest abandoned because of error: %s" % str(ee))
-
 
 
 ################################################################################
@@ -489,7 +491,7 @@ class LinearSelector(PhysicalSelector, object):
         return status
 
     def get_mmu_status_config(self):
-        msg = "Selector is %s" % ("HOMED" if self.is_homed else "NOT HOMED")
+        msg = "\nSelector is NOT HOMED" if not self.is_homed else ""
         msg += self.servo.get_mmu_status_config()
         return msg
 
@@ -797,6 +799,8 @@ class LinearSelector(PhysicalSelector, object):
         if trace_str:
             self.mmu.log_trace(trace_str)
 
+        self.mmu_toolhead.quiesce()
+
         # Set appropriate speeds and accel if not supplied
         if homing_move != 0:
             speed = speed or (self.selector_touch_speed if self.selector_touch_enable or endstop_name == self.mmu.SENSOR_SELECTOR_TOUCH else self.selector_homing_speed)
@@ -808,12 +812,12 @@ class LinearSelector(PhysicalSelector, object):
         homed = False
         if homing_move != 0:
             # Check for valid endstop
-            endstop = self.selector_rail.get_extra_endstop(endstop_name) if endstop_name is not None else self.selector_rail.get_endstops()
-            if endstop is None:
-                self.mmu.log_error("Endstop '%s' not found on selector rail" % endstop_name)
+            endstops = self.selector_rail.get_endstops() if endstop_name is None else self.selector_rail.get_extra_endstop(endstop_name)
+            if endstops is None:
+                self.mmu.log_error("Endstop '%s' not found" % endstop_name)
                 return pos[0], homed
 
-            hmove = HomingMove(self.mmu.printer, endstop, self.mmu_toolhead)
+            hmove = HomingMove(self.mmu.printer, endstops, self.mmu_toolhead)
             try:
                 trig_pos = [0., 0., 0., 0.]
                 with self.mmu.wrap_accel(accel):
@@ -1015,7 +1019,7 @@ class LinearSelectorServo:
         self.mmu.log_trace("Setting servo to down (filament drive) position at angle: %d" % self.servo_angles['down'])
 
         if buzz_gear and self.servo_buzz_gear_on_down > 0:
-            self.mmu_unit.mmu_toolhead.unsync() # Must be unsynced before buzz to avoid delay
+            self.mmu_unit.mmu_toolhead.sync(MmuToolHead.GEAR_ONLY) # Must be in correct sync mode before buzz to avoid delay
 
         self.mmu.movequeues_wait() # Probably not necessary
         initial_encoder_position = self.mmu.get_encoder_distance(dwell=None)
@@ -1341,8 +1345,8 @@ class RotarySelector(PhysicalSelector, object):
         return status
 
     def get_mmu_status_config(self):
-        msg = "Selector is %s" % ("HOMED" if self.is_homed else "NOT HOMED")
-        msg += ". Filament is %s" % ("GRIPPED" if self.grip_state == self.mmu.FILAMENT_DRIVE_STATE else "RELEASED")
+        msg = "\nSelector is NOT HOMED. " if not self.is_homed else ""
+        msg += "Filament is %s" % ("GRIPPED" if self.grip_state == self.mmu.FILAMENT_DRIVE_STATE else "RELEASED")
         return msg
 
     def set_test_config(self, gcmd):
@@ -1502,6 +1506,8 @@ class RotarySelector(PhysicalSelector, object):
     def _trace_selector_move(self, trace_str, new_pos, speed=None, accel=None, wait=False):
         if trace_str:
             self.mmu.log_trace(trace_str)
+
+        self.mmu_toolhead.quiesce()
 
         # Set appropriate speeds and accel if not supplied
         speed = speed or self.selector_move_speed
@@ -1926,10 +1932,12 @@ class IndexedSelector(PhysicalSelector, object):
 
     def __init__(self, mmu, mmu_unit):
         super(IndexedSelector, self).__init__(mmu, mmu_unit)
+        self.is_homed = True
 
         # Process config
         self.selector_move_speed = mmu.config.getfloat('selector_move_speed', 100, minval=1.)
         self.selector_homing_speed = mmu.config.getfloat('selector_homing_speed', self.selector_move_speed, minval=1.)
+        self.selector_index_distance = mmu.config.getfloat('selector_index_distance', 5, minval=0.)
 
         # To simplfy config CAD related parameters are set based on vendor and version setting
         self.cad_gate_width = 90. # Rotation distance set to make this equivalent to degrees
@@ -1939,37 +1947,30 @@ class IndexedSelector(PhysicalSelector, object):
         self.cad_gate_width = mmu.config.getfloat('cad_gate_width', self.cad_gate_width, above=0.)
         self.cad_max_rotations = mmu.config.getfloat('cad_max_rotations', self.cad_max_rotations, above=0.)
 
-        self.register_mmu_command('PAUL', self.cmd_PAUL) # PAUL testing
-
         self.unit_gate_selected = 0 # TODO could be set as part of startup homing..
+
+        # Selector stepper setup before MMU toolhead is instantiated
+        section = mmu_machine.SELECTOR_STEPPER_CONFIG
+        if mmu.config.has_section(section):
+            # Inject options into selector stepper config regardless or what user sets
+            mmu.config.fileconfig.set(section, 'homing_speed', self.selector_homing_speed)
 
     # Selector "Interface" methods ---------------------------------------------
 
     def handle_connect(self):
+        self.mmu_toolhead = self.mmu.mmu_toolhead
         self.selector_rail = self.mmu_toolhead.get_kinematics().rails[0]
         self.selector_stepper = self.selector_rail.steppers[0]
-
-        # Adjust selector rail limits now we know the config
-        self.selector_rail.homing_speed = self.selector_homing_speed
-        self.selector_rail.second_homing_speed = self.selector_homing_speed / 2.
-        self.selector_rail.homing_retract_speed = self.selector_homing_speed
         self._set_position(0) # Reset pos
 
-    def cmd_PAUL(self, gcmd): # PAUL testing command
-        move = gcmd.get_float('MOVE', self._get_max_selector_movement())
-        speed = gcmd.get_float('SPEED', None)
-        accel = gcmd.get_float('ACCEL', None)
-        wait = bool(gcmd.get_int('WAIT', 0, minval=0, maxval=1)) # Wait for move to complete (make move synchronous)
-        gate = gcmd.get_int('GATE', None)
-        if gate is not None:
-            endstop_name = "%s_gate%d" % (self.mmu_unit.name, unit_gate)
-            self.mmu.log_debug("Homing selector motor %.1fmm to %s..." % (move, endstop_name))
-            actual,homed = self._trace_selector_move("PAUL TEST homing selector", move, homing_move=1, endstop_name=endstop_name, speed=speed, accel=accel, wait=wait)
-        else:
-            self.mmu.log_debug("Moving selector motor %.1fmm..." % move)
-            actual,homed = self._trace_selector_move("PAUL TEST selector", move, speed=speed, accel=accel, wait=wait)
-        self.mmu.log_error("PAUL: actual=%s, homed=%s" % (actual, homed))
-        # End of PAUL testing command ^^^^
+# PAUL        # Adjust selector rail limits now we know the config
+# PAUL        self.selector_rail.homing_speed = self.selector_homing_speed
+# PAUL        self.selector_rail.second_homing_speed = self.selector_homing_speed / 2.
+# PAUL        self.selector_rail.homing_retract_speed = self.selector_homing_speed
+# PAUL        self._set_position(0) # Reset pos
+
+    def bootup(self):
+        self.select_gate(self.mmu.gate_selected)
 
     def home(self, force_unload = None):
         if self.mmu.check_if_bypass(): return
@@ -1986,15 +1987,14 @@ class IndexedSelector(PhysicalSelector, object):
             self._home_selector()
 
     def select_gate(self, gate):
-        if gate >= 0 and gate != self.mmu.gate_selected:
-            with self.mmu.wrap_action(self.mmu.ACTION_SELECTING):
-                self._find_gate(self.local_gate(gate))
-
-    def restore_gate(self, gate):
         if gate >= 0:
-            # PAUL this will generate a TTC error if the mcu has just booted. It is called from "ready" callback. Either need to move the
-            # intial call or delay actual move here..
-            self._find_gate(self.local_gate(gate))
+            endstop = self.selector_rail.get_extra_endstop(self._get_gate_endstop(gate))
+            if not endstop:
+                raise MmuError("Extra endstop %s not defined on the selector stepper" % self._get_gate_endstop(gate))
+            mcu_endstop = endstop[0][0]
+            if not mcu_endstop.query_endstop(self.mmu_toolhead.get_last_move_time()):
+                with self.mmu.wrap_action(self.mmu.ACTION_SELECTING):
+                    self._find_gate(gate)
 
     def disable_motors(self):
         stepper_enable = self.mmu.printer.lookup_object('stepper_enable')
@@ -2018,7 +2018,7 @@ class IndexedSelector(PhysicalSelector, object):
         return True
 
     def get_mmu_status_config(self):
-        msg = "Selector is %s" % ("HOMED" if self.is_homed else "NOT HOMED")
+        msg = "\nSelector is NOT HOMED" if not self.is_homed else ""
         return msg
 
     def set_test_config(self, gcmd):
@@ -2047,15 +2047,18 @@ class IndexedSelector(PhysicalSelector, object):
             logging.error(traceback.format_exc())
             raise MmuError("Homing selector failed because of blockage or malfunction. Klipper reports: %s" % str(e))
 
-    def _find_gate(self, unit_gate):
-        self.mmu.log_error("PAUL: _find_gate(%s)" % unit_gate)
-        endstop_name = "%s_gate%d" % (self.mmu_unit.name, unit_gate)
-        max_move = self._get_max_selector_movement() * self._best_rotation_direction(self.unit_gate_selected, unit_gate)
+    def _get_gate_endstop(self, gate):
+        return "unit0_gate%d" % gate
+
+    def _find_gate(self, gate):
+        rotation_dir = self._best_rotation_direction(self.mmu.gate_selected, gate)
+        max_move = self._get_max_selector_movement() * rotation_dir
         self.mmu.movequeues_wait()
-        actual,homed = self._trace_selector_move("Indexing selector", max_move, speed=self.selector_move_speed, homing_move=1, endstop_name=endstop_name, wait=False)
-        if homed:
-            self.unit_gate_selected = unit_gate
-        self.mmu.log_error("PAUL: actual=%s, homed=%s" % (actual, homed))
+        actual,homed = self._trace_selector_move("Indexing selector", max_move, speed=self.selector_move_speed, homing_move=1, endstop_name=self._get_gate_endstop(gate))
+        if abs(actual) > 0 and homed:
+            # If we actually moved to home make sure we are centered on index endstop
+            center_move = (self.selector_index_distance / 2) * rotation_dir
+            self._trace_selector_move("Centering selector", center_move, speed=self.selector_move_speed)
 
     # TODO automate the setup of the sequence through homing move on startup
     def _best_rotation_direction(self, start_gate, end_gate):
@@ -2090,15 +2093,14 @@ class IndexedSelector(PhysicalSelector, object):
         homed = False
         actual = dist
 
+        self.mmu_unit.mmu_toolhead.quiesce()
+
         if homing_move != 0:
             # Check for valid endstop
-            if endstop_name is None:
-                endstop = self.selector_rail.get_endstops()
-            else:
-                endstop = self.selector_rail.get_extra_endstop(endstop_name)
-                if endstop is None:
-                    self.mmu.log_error("Endstop '%s' not found" % endstop_name)
-                    return null_rtn
+            endstops = self.selector_rail.get_endstops() if endstop_name is None else self.selector_rail.get_extra_endstop(endstop_name)
+            if endstops is None:
+                self.mmu.log_error("Endstop '%s' not found" % endstop_name)
+                return null_rtn
 
         # Set appropriate speeds and accel if not supplied
         speed = speed or self.selector_homing_speed if homing_move != 0 else self.selector_move_speed
@@ -2111,7 +2113,7 @@ class IndexedSelector(PhysicalSelector, object):
                     init_pos = pos[0]
                     pos[0] += dist
                     trig_pos = [0., 0., 0., 0.]
-                    hmove = HomingMove(self.mmu.printer, endstop, self.mmu_toolhead)
+                    hmove = HomingMove(self.mmu.printer, endstops, self.mmu_toolhead)
                     trig_pos = hmove.homing_move(pos, speed, probe_pos=True, triggered=homing_move > 0, check_triggered=True)
                     homed = True
             except self.mmu.printer.command_error as e:
@@ -2129,8 +2131,8 @@ class IndexedSelector(PhysicalSelector, object):
             if self.mmu.log_enabled(self.mmu.LOG_STEPPER):
                 self.mmu.log_stepper("SELECTOR MOVE: position=%.1f, speed=%.1f, accel=%.1f" % (dist, speed, accel))
 
-        self.mmu_toolhead.flush_step_generation() # TTC mitigation
-        self.mmu.toolhead.flush_step_generation() # TTC mitigation
+        self.mmu_toolhead.flush_step_generation() # TTC mitigation (TODO: still required?)
+        self.mmu.toolhead.flush_step_generation() # TTC mitigation (TODO: still required?)
         if wait:
             self.mmu.movequeues_wait(toolhead=False, mmu_toolhead=True)
 

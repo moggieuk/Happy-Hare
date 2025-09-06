@@ -588,25 +588,27 @@ class MmuLedManager:
 
                 elif effect == "gate_status": # Filament availability (gate_map)
                     if gate is not None:
+                        suffix = '_sel' if gate == self.mmu.gate_selected else ''
                         if gate == self.mmu.gate_selected and self.mmu.filament_pos > self.mmu.FILAMENT_POS_EXTRUDER_ENTRY:
                             set_gate_effect(self.effect_name(unit, 'gate_selected'), unit, segment, gate, fadetime=fadetime)
                         elif self.mmu.gate_status[gate] == self.mmu.GATE_UNKNOWN:
-                            set_gate_effect(self.effect_name(unit, 'gate_unknown'), unit, segment, gate, fadetime=fadetime)
+                            set_gate_effect(self.effect_name(unit, 'gate_unknown%s' % suffix), unit, segment, gate, fadetime=fadetime)
                         elif self.mmu.gate_status[gate] > self.mmu.GATE_EMPTY:
-                            set_gate_effect(self.effect_name(unit, 'gate_available'), unit, segment, gate, fadetime=fadetime)
+                            set_gate_effect(self.effect_name(unit, 'gate_available%s' % suffix), unit, segment, gate, fadetime=fadetime)
                         else:
-                            set_gate_effect(self.effect_name(unit, 'gate_empty'), unit, segment, gate, fadetime=fadetime)
+                            set_gate_effect(self.effect_name(unit, 'gate_empty%s' % suffix), unit, segment, gate, fadetime=fadetime)
                     else:
                         for g in range(mmu_unit.first_gate, mmu_unit.first_gate + mmu_unit.num_gates):
                             status = self.mmu.gate_status[g]
+                            suffix = '_sel' if g == self.mmu.gate_selected else ''
                             if g == self.mmu.gate_selected and self.mmu.filament_pos > self.mmu.FILAMENT_POS_EXTRUDER_ENTRY:
                                 set_gate_effect(self.effect_name(unit, 'gate_selected'), unit, segment, g, fadetime=fadetime)
                             elif status == self.mmu.GATE_UNKNOWN:
-                                set_gate_effect(self.effect_name(unit, 'gate_unknown'), unit, segment, g, fadetime=fadetime)
+                                set_gate_effect(self.effect_name(unit, 'gate_unknown%s' % suffix), unit, segment, g, fadetime=fadetime)
                             elif status > self.mmu.GATE_EMPTY:
-                                set_gate_effect(self.effect_name(unit, 'gate_available'), unit, segment, g, fadetime=fadetime)
+                                set_gate_effect(self.effect_name(unit, 'gate_available%s' % suffix), unit, segment, g, fadetime=fadetime)
                             else:
-                                set_gate_effect(self.effect_name(unit, 'gate_empty'), unit, segment, g, fadetime=fadetime)
+                                set_gate_effect(self.effect_name(unit, 'gate_empty%s' % suffix), unit, segment, g, fadetime=fadetime)
 
                 elif effect == "filament_color":
                     if gate is not None:

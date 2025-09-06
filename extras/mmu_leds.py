@@ -125,10 +125,13 @@ class MmuLeds:
             'effect_initialized',
             'effect_error',
             'effect_complete',
+            'effect_gate_selected',
             'effect_gate_available',
             'effect_gate_unknown',
             'effect_gate_empty',
-            'effect_gate_selected'
+            'effect_gate_available_sel',
+            'effect_gate_unknown_sel',
+            'effect_gate_empty_sel'
         ]
         for key in effect_keys:
             parts = [part.strip() for part in config.get(key, '').split(",", 1)]

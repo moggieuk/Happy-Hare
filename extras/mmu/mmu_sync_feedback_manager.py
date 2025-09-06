@@ -129,7 +129,7 @@ class MmuSyncFeedbackManager:
         if state is None:
             state = self.state
         if self.mmu.is_enabled and self.sync_feedback_enabled and (self.active or detail):
-            return 'compressed' if state > 0.5 else 'expanded' if state < -0.5 else 'neutral'
+            return 'compressed' if state > 0.5 else 'tension' if state < -0.5 else 'neutral'
         return "disabled"
 
     #
@@ -205,7 +205,7 @@ class MmuSyncFeedbackManager:
             self.state = self.SYNC_STATE_NEUTRAL
             self._reset_gear_rotation_distance()
 
-    # Gear/Extruder sync feedback event. State should be -1 (expanded) and 1 (compressed)
+    # Gear/Extruder sync feedback event. State should be -1 (tension) and 1 (compressed)
     # or can be a proportional float value between -1.0 and 1.0
     def _handle_sync_feedback(self, eventtime, state):
         if not self.mmu.is_enabled: return
@@ -213,7 +213,8 @@ class MmuSyncFeedbackManager:
             old_state = self.state
             self.state = float(state)
             self.mmu.log_trace(
-                "MmuSyncFeedbackManager: Got sync force feedback update. State: %s (%s)" % (
+                "MmuSyncFeedbackManager(%s): Got sync force feedback update. State: %s (%s)" % (
+                    "active" if self.sync_feedback_enabled and self.active else "inactive",
                     self.get_sync_feedback_string(detail=True),
                     float(state)
                 )
@@ -274,15 +275,15 @@ class MmuSyncFeedbackManager:
                     rd_clamp[0]
                 )
             )
-            # Adjust clamp and use new slow rd that is known to make sensor move towards expanded
+            # Adjust clamp and use new slow rd that is known to make sensor move towards tension
             rd_clamp[1] = rd_clamp[0]
 
         elif self.state == self.SYNC_STATE_EXPANDED:
-            # Expanded state too long means filament feed too slow, need to go faster so smaller rotation distance
+            # Tension state too long means filament feed too slow, need to go faster so smaller rotation distance
             # Increase compressed value by fixed % and set new_rd to compressed value
             rd_clamp[2] *= (1 - self.MULTIPLIER_WHEN_STUCK)
             self.mmu.log_debug(
-                "MmuSyncFeedbackManager: Extruder moved too far in expanded state (%.1fmm). Decreased fast clamp value by %d%% from %.4f to %.4f" % (
+                "MmuSyncFeedbackManager: Extruder moved too far in tension state (%.1fmm). Decreased fast clamp value by %d%% from %.4f to %.4f" % (
                     movement,
                     self.MULTIPLIER_WHEN_STUCK * 100,
                     old_clamp[2],
@@ -349,11 +350,11 @@ class MmuSyncFeedbackManager:
                 )
             rd_clamp[1] = rd_clamp[0]  # Set current rd to slow setting
 
-        elif state == self.SYNC_STATE_EXPANDED:  # Transition from neutral --> expanded
+        elif state == self.SYNC_STATE_EXPANDED:  # Transition from neutral --> tension
             # Use current rotation distance to clamp slow setting
             rd_clamp[0] = rd_clamp[1]
             self.mmu.log_trace(
-                "MmuSyncFeedbackManager: Neutral -> Expanded. Going too slow. "
+                "MmuSyncFeedbackManager: Neutral -> Tension. Going too slow. "
                 "Adjusted slow clamp (%.4f -> %.4f)" % (
                     old_clamp[0],
                     rd_clamp[0]
@@ -406,11 +407,11 @@ class MmuSyncFeedbackManager:
         else:
             go_slower = lambda s, d: abs(s - d) < abs(s + d)
             if go_slower(self.state, self.extruder_direction):
-                # Compressed when extruding or expanded when retracting, so increase the rotation distance of gear stepper to slow it down
+                # Compressed when extruding or tension when retracting, so increase the rotation distance of gear stepper to slow it down
                 rd = rd_clamp[0]
                 self.mmu.log_trace("MmuSyncFeedbackManager: Slowing gear motor down")
             else:
-                # Expanded when extruding or compressed when retracting, so decrease the rotation distance of gear stepper to speed it up
+                # Tension when extruding or compressed when retracting, so decrease the rotation distance of gear stepper to speed it up
                 rd = rd_clamp[2]
                 self.mmu.log_trace("MmuSyncFeedbackManager: Speeding gear motor up")
 

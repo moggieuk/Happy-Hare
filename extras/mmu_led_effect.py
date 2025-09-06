@@ -20,7 +20,7 @@ from .mmu_leds import MmuLeds
 # [mmu_led_effect] is a simple wrapper that makes it easy to define led animations
 #
 # E.g. If you have setup the following config in mmu_hardware.cfg for 4-gate MMU
-#   [mmu_leds]
+#   [mmu_leds unit0]
 #   exit_leds:   neopixel:mmu_leds (1-4)
 #   status_leds: neopixel:mmu_leds (5)
 #
@@ -29,12 +29,12 @@ from .mmu_leds import MmuLeds
 #
 # This will create effects on each of these segments elements without laborous
 # error prone repetition:
-#   "mmu_flash_exit" on 'exit' portion of the strip (leds 1,2,3,4)
-#   "mmu_flash_status" on the status LED (led 5)
-#   "mmu_flash_exit_1" for gate 0 (led 1)
-#   "mmu_flash_exit_2" for gate 1 (led 2)
-#   "mmu_flash_exit_3" for gate 2 (led 3)
-#   "mmu_flash_exit_4" for gate 3 (led 4)
+#   "unit0_mmu_flash_exit" on 'exit' portion of the strip (leds 1,2,3,4)
+#   "unit0_mmu_flash_status" on the status LED (led 5)
+#   "unit0_mmu_flash_exit_1" for gate 0 (led 1)
+#   "unit0_mmu_flash_exit_2" for gate 1 (led 2)
+#   "unit0_mmu_flash_exit_3" for gate 2 (led 3)
+#   "unit0_mmu_flash_exit_4" for gate 3 (led 4)
 #
 # Created effects can be restricted with by specifing 'define_on' and a let of segment
 # names or 'gates' to indicate creation on exit/entry gates. If ommitted all possible

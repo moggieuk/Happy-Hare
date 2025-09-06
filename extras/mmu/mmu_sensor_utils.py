@@ -104,18 +104,19 @@ class MmuRunoutHelper:
 
         if is_filament_present and self.insert_gcode: # Insert detected
             if not is_printing or (is_printing and self.insert_remove_in_print):
-                self.min_event_systime = self.reactor.NEVER
                 #logging.info("MMU: filament sensor %s: insert event detected, Eventtime %.2f" % (self.name, eventtime))
+                self.min_event_systime = self.reactor.NEVER # Prevent more callbacks until this one is complete
                 self.reactor.register_callback(lambda reh: self._insert_event_handler(eventtime))
 
         else: # Remove or Runout detected
-            self.min_event_systime = self.reactor.NEVER
             if is_printing and self.runout_suspended is False and self.runout_gcode:
                 #logging.info("MMU: filament sensor %s: runout event detected, Eventtime %.2f" % (self.name, eventtime))
+                self.min_event_systime = self.reactor.NEVER # Prevent more callbacks until this one is complete
                 self.reactor.register_callback(lambda reh: self._runout_event_handler(eventtime))
             elif self.remove_gcode and (not is_printing or self.insert_remove_in_print):
                 # Just a "remove" event
                 #logging.info("MMU: filament sensor %s: remove event detected, Eventtime %.2f" % (self.name, eventtime))
+                self.min_event_systime = self.reactor.NEVER # Prevent more callbacks until this one is complete
                 self.reactor.register_callback(lambda reh: self._remove_event_handler(eventtime))
 
     def enable_runout(self, restore):
@@ -244,3 +245,71 @@ class MmuSensorFactory:
                 event_value = 0
 
         self.printer.send_event("mmu:sync_feedback", eventtime, event_value)
+
+
+# PAUL not sure if I want this vvv
+
+# EXPERIMENT/HACK to support ViViD analog buffer "endstops"
+# This class implments both the filament switch sensor and endstop. However:
+#  * it will not display in UI because no filament_switch_sensor exists in config
+#  * does not involve the mcu in the homing process so it can't be accurate
+#  * suffers from inherent averaging lag for analog inputs
+class MmuAdcSwitchSensor:
+    def __init__(self, config, name_prefix, gate, switch_pin, event_delay, a_range, insert=False, remove=False, runout=False, insert_remove_in_print=False, button_handler=None, a_pullup=4700.):
+        self.printer = config.get_printer()
+        self.reactor = self.printer.get_reactor()
+        self._pin = switch_pin
+        self._steppers = []
+        self._trigger_completion = None
+        self._last_trigger_time = None
+
+        buttons = self.printer.load_object(config, 'buttons')
+        a_min, a_max = a_range
+        buttons.register_adc_button(switch_pin, a_min, a_max, a_pullup, self._button_handler)
+        self.name = name = "%s_%d" % (name_prefix, gate)
+        insert_gcode = ("%s SENSOR=%s%s" % (INSERT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if insert else None
+        remove_gcode = ("%s SENSOR=%s%s" % (REMOVE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if remove else None
+        runout_gcode = ("%s SENSOR=%s%s" % (RUNOUT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if runout else None
+        self.runout_helper = MmuRunoutHelper(self.printer, name, event_delay, insert_gcode, remove_gcode, runout_gcode, insert_remove_in_print, button_handler, switch_pin)
+        self.get_status = self.runout_helper.get_status
+
+    def _button_handler(self, eventtime, state):
+        self.runout_helper.note_filament_present(eventtime, state)
+        if self._trigger_completion is not None:
+            self._last_trigger_time = eventtime
+            self._trigger_completion.complete(True)
+
+    # Required to implement an endstop -------
+
+    def query_endstop(self, print_time):
+        return self.runout_helper.filament_present
+
+    def setup_pin(self, pin_type, pin_name):
+        return self
+
+    def add_stepper(self, stepper):
+        self._steppers.append(stepper)
+
+    def get_steppers(self):
+        return list(self._steppers)
+
+    def home_start(self, print_time, sample_time, sample_count, rest_time, triggered):
+        self._trigger_completion = self.reactor.completion()
+        self._last_trigger_time = None
+        self._homing = True
+        self._triggered = triggered
+
+        if self.runout_helper.filament_present == self._triggered:
+            self._last_trigger_time = print_time
+            self._trigger_completion.complete(True)
+
+        return self._trigger_completion
+
+    def home_wait(self, home_end_time):
+        self._homing = False
+        self._trigger_completion = None
+
+        if self._last_trigger_time is None:
+            raise self.printer.command_error("No trigger on %s after full movement" % self.name)
+
+        return self._last_trigger_time

@@ -1,0 +1,388 @@
+########################################################################################################################
+# Happy Hare MMU Software
+#
+# EDIT THIS FILE BASED ON YOUR SETUP
+#
+# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
+# Goal: Happy Hare MMU hardware config file with config for BTT ViViD MCU board
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+#
+# Notes about setup of common external MCUs can be found here:
+#  https://github.com/moggieuk/Happy-Hare/blob/main/doc/mcu_notes.md
+# 
+# Note about "touch" endstops: Happy Hare provides extremely flexible homing options using both single steppers or
+# synced steppers. The "touch" option leverages stallguard and thus requires the appropriate 'diag_pin' and stallguard
+# parameters set on the TMC driver section. If you have the diag_pin exposed, it is harmless to define this because
+# they will only be used when explicitly needed and configured.
+#
+# Touch option for each stepper provides these benefits / possibilities (experimental):
+#  - on extruder stepper allows for the automatic detection of the nozzle!
+#  - on selector stepper allows for the automatic detection of filament stuck in the gate and subsequent recovery
+#  - on gear stepper allows for the automatic detection of the extruder entrance
+#
+# In summary, "touch" homing with your MMU is an advanced option that requires patience and careful tuning. Everything
+# works with regular endstops and there are workaround options for certain homing points (like extruder entry) in
+# the absence of any endstop. I'm really interested in creative setups. Ping me on Discord (moggieuk#6538)
+#
+# See 'mmu.cfg' for serial definition and pins aliases
+#
+# HOMING CAPABLE EXTRUDER (VERY ADVANCED) -----------------------------------------------------------------------------
+# With Happy Hare installed even the extruder can be homed. You will find the usual 'endstop' parameters can be added
+# to your '[extruder]' section.  Useless you have some clever load cell attached to your nozzle it only really makes
+# sense to configure stallguard style "touch" homing. To do this add lines similar to this to your existing
+# '[extruder]' definition in printer.cfg.
+#
+#    [extruder]
+#    endstop_pin: tmc2209_extruder:virtual_endstop
+#
+# Also be sure to add the appropriate stallguard config to the TMC section, e.g.
+#
+#    [tmc2209 extruder]
+#    diag_pin: E_DIAG		# Set to MCU pin connected to TMC DIAG pin for extruder
+#    driver_SGTHRS: 100		# 255 is most sensitive value, 0 is least sensitive
+#
+# Happy Hare will take care of the rest and add a 'mmu_ext_touch' endstop automatically
+#
+
+
+# MMU MACHINE / TYPE ---------------------------------------------------------------------------------------------------
+# ███╗   ███╗███╗   ███╗██╗   ██╗    ███╗   ███╗ █████╗  ██████╗██╗  ██╗██╗███╗   ██╗███████╗
+# ████╗ ████║████╗ ████║██║   ██║    ████╗ ████║██╔══██╗██╔════╝██║  ██║██║████╗  ██║██╔════╝
+# ██╔████╔██║██╔████╔██║██║   ██║    ██╔████╔██║███████║██║     ███████║██║██╔██╗ ██║█████╗  
+# ██║╚██╔╝██║██║╚██╔╝██║██║   ██║    ██║╚██╔╝██║██╔══██║██║     ██╔══██║██║██║╚██╗██║██╔══╝  
+# ██║ ╚═╝ ██║██║ ╚═╝ ██║╚██████╔╝    ██║ ╚═╝ ██║██║  ██║╚██████╗██║  ██║██║██║ ╚████║███████╗
+# ╚═╝     ╚═╝╚═╝     ╚═╝ ╚═════╝     ╚═╝     ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝╚══════╝
+[mmu_machine]
+
+# Number of selectable gate on (each) MMU. Generally this is a single number, but with multi-mmu (type-B) setups
+# it can be a comma separated list of the number of gates per unit.
+# E.g. 'num_gates: 4,4,2' for a 2xBox Turtle and 1xNight Owl multiplexed setup
+#
+num_gates: 4
+
+# MMU Vendor & Version is used to automatically configure some parameters and validate configuration
+# If custom set to "Other" and uncomment the additional parameters below
+#
+mmu_vendor: VVD				# MMU family
+mmu_version: 1.0			# MMU hardware version number (add mod suffix documented above)
+
+# The following attributes are set internally from vendor/version above. Only uncomment to customize the vendor
+# default or for custom ("Other") designs
+#
+#selector_type: IndexedSelector		# E.g. LinearSelector (type-A), VirtualSelector (type-B), MacroSelector, RotarySelector, ...
+#variable_bowden_lengths: 0		# 1 = If MMU design has different bowden lengths per gate, 0 = bowden length is the same
+#variable_rotation_distances: 1		# 1 = If MMU design has dissimilar drive/BMG gears, thus rotation distance, 0 = One drive gear (e.g. Tradrack)
+#require_bowden_move: 1			# 1 = If MMU design has bowden move that is included in load/unload, 0 = zero length bowden (skip bowden move)
+#filament_always_gripped: 1		# 1 = Filament is always trapped by MMU (most type-B designs), 0 = MMU can release filament
+has_bypass: 1				# 1 = Bypass gate available, 0 = No filament bypass possible
+
+# Uncomment to change the display name in UI's.  Defaults to the vendor name
+#display_name: My Precious
+
+# Fullname of environment sensor for MMU filament storage (displays temp and humidity in UI)
+# Polls for "temperature" and "humidity"
+# E.g. If you have a section like this: [temperature_sensor MMU_enclosure]
+# Set: environment_sensor: temperature_sensor MMU_enclosure
+environment_sensor: temperature_sensor MMU_vivid_left
+
+homing_extruder: 1			# CAUTION: Normally this should be 1. 0 will disable the homing extruder capability
+
+
+# FILAMENT DRIVE GEAR STEPPER(S) --------------------------------------------------------------------------------------
+#  ██████╗ ███████╗ █████╗ ██████╗
+# ██╔════╝ ██╔════╝██╔══██╗██╔══██╗
+# ██║  ███╗█████╗  ███████║██████╔╝
+# ██║   ██║██╔══╝  ██╔══██║██╔══██╗
+# ╚██████╔╝███████╗██║  ██║██║  ██║
+#  ╚═════╝ ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝
+#
+# Note that 'toolhead' & 'mmu_gear' endstops will automatically be added if a toolhead sensor or gate sensor is defined
+#
+
+[tmc2209 stepper_mmu_gear]
+uart_pin: mmu:PB7
+run_current: 0.7
+hold_current: 0.1			# Recommend to be small if not using "touch" or move (TMC stallguard)
+interpolate: True
+sense_resistor: 0.110			# Usually 0.11, 0.15 for BTT TMC2226
+stealthchop_threshold: 0		# Spreadcycle has more torque and better at speed
+
+[stepper_mmu_gear]
+step_pin: mmu:PB6
+dir_pin: mmu:PB5
+enable_pin: !mmu:PB8
+rotation_distance: 8.0			# This is highly variable -- tune each gate with MMU_CALIBRATE_GEAR
+gear_ratio: 1:1
+microsteps: 16
+full_steps_per_rotation: 200		# 200 for 1.8 degree, 400 for 0.9 degree
+
+
+# SELECTOR STEPPER ----------------------------------------------------------------------------------------------------
+# ███████╗███████╗██╗     ███████╗ ██████╗████████╗ ██████╗ ██████╗ 
+# ██╔════╝██╔════╝██║     ██╔════╝██╔════╝╚══██╔══╝██╔═══██╗██╔══██╗
+# ███████╗█████╗  ██║     █████╗  ██║        ██║   ██║   ██║██████╔╝
+# ╚════██║██╔══╝  ██║     ██╔══╝  ██║        ██║   ██║   ██║██╔══██╗
+# ███████║███████╗███████╗███████╗╚██████╗   ██║   ╚██████╔╝██║  ██║
+# ╚══════╝╚══════╝╚══════╝╚══════╝ ╚═════╝   ╚═╝    ╚═════╝ ╚═╝  ╚═╝
+#
+# Consult doc if you want to setup selector for "touch" homing instead or physical endstop
+#
+[tmc2209 stepper_mmu_selector]
+uart_pin: mmu:PB3
+run_current: 0.8
+hold_current: 0.4			# Recommend to be small if not using "touch" or move (TMC stallguard)
+interpolate: True
+sense_resistor: 0.110			# Usually 0.11, 0.15 for BTT TMC2226
+stealthchop_threshold: 0		# Spreadcycle has more torque and better at speed
+
+[stepper_mmu_selector]
+step_pin: mmu:PD3
+dir_pin: mmu:PD2
+enable_pin: !mmu:PB4
+rotation_distance: 360
+gear_ratio: 25:10
+microsteps: 16 				# Don't need high fidelity
+full_steps_per_rotation: 200		# 200 for 1.8 degree, 400 for 0.9 degree
+extra_endstop_pins: !mmu:PD0, !mmu:PA15, !mmu:PD1, !mmu:PC13
+extra_endstop_names: unit0_gate0, unit0_gate1, unit0_gate2, unit0_gate3
+
+
+# SERVOS ---------------------------------------------------------------------------------------------------------------
+# ███████╗███████╗██████╗ ██╗   ██╗ ██████╗ ███████╗
+# ██╔════╝██╔════╝██╔══██╗██║   ██║██╔═══██╗██╔════╝
+# ███████╗█████╗  ██████╔╝██║   ██║██║   ██║███████╗
+# ╚════██║██╔══╝  ██╔══██╗╚██╗ ██╔╝██║   ██║╚════██║
+# ███████║███████╗██║  ██║ ╚████╔╝ ╚██████╔╝███████║
+# ╚══════╝╚══════╝╚═╝  ╚═╝  ╚═══╝   ╚═════╝ ╚══════╝
+# Basic servo PWM setup. If these values are changed then the angles defined for different positions will also change
+#
+# OPTIONAL GANTRY SERVO FOR TOOLHEAD FILAMENT CUTTER ------------------------------------------------------------------
+#
+# (uncomment this section if you have a gantry servo for toolhead cutter pin)
+#[mmu_servo mmu_gantry_servo]
+#pin: 
+#maximum_servo_angle:180
+#minimum_pulse_width: 0.00075
+#maximum_pulse_width: 0.00225
+#initial_angle: 180
+
+
+# FILAMENT SENSORS -----------------------------------------------------------------------------------------------------
+# ███████╗███████╗███╗   ██╗███████╗ ██████╗ ██████╗ ███████╗
+# ██╔════╝██╔════╝████╗  ██║██╔════╝██╔═══██╗██╔══██╗██╔════╝
+# ███████╗█████╗  ██╔██╗ ██║███████╗██║   ██║██████╔╝███████╗
+# ╚════██║██╔══╝  ██║╚██╗██║╚════██║██║   ██║██╔══██╗╚════██║
+# ███████║███████╗██║ ╚████║███████║╚██████╔╝██║  ██║███████║
+# ╚══════╝╚══════╝╚═╝  ╚═══╝╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝
+# Define the pins for optional sensors in the filament path. All but the pre-gate sensors will be automatically setup as
+# both endstops (for homing) and sensors for visibility purposes.
+#
+# 'pre_gate_switch_pin_X'  .. 'mmu_pre_gate_X' sensor detects filament at entry to MMU. X=gate number (0..N)
+# 'gate_switch_pin'        .. 'mmu_gate' shared sensor detects filament past the gate of the MMU
+#     or
+# 'post_gear_switch_pin_X' .. 'mmu_gear_X' post gear sensor for each filament
+# 'extruder_switch_pin'    .. 'extruder' sensor detects filament just before the extruder entry
+# 'toolhead_switch_pin'    .. 'toolhead' sensor detects filament after extruder entry
+#
+# Sync motor feedback will typically have a tension switch (most important for syncing) or both tension and compression.
+# Note that compression switch is useful for use as a endstop to detect hitting the extruder entrance
+# 'sync_feedback_tension_pin'     .. pin for switch activated when filament is under tension
+# 'sync_feedback_compression_pin' .. pin for switch activated when filament is under compression
+#
+# Configuration is flexible: Simply define pins for any sensor you want to enable, if pin is not set (or the alias is empty)
+# it will be ignored. You can also just comment out what you are not using.
+#
+[mmu_sensors]
+pre_gate_switch_pin_0: !mmu:PA0
+pre_gate_switch_pin_1: !mmu:PA1
+pre_gate_switch_pin_2: !mmu:PA2
+pre_gate_switch_pin_3: !mmu:PA3
+
+post_gear_switch_pin_0: buffer:PA0
+#post_gear_analog_range_0: 0, 500 # Delete if using updated digital sensor
+post_gear_switch_pin_1: buffer:PA1
+#post_gear_analog_range_1: 0, 500 # Delete if using updated digital sensor
+post_gear_switch_pin_2: buffer:PA2
+#post_gear_analog_range_2: 0, 500 # Delete if using updated digital sensor
+post_gear_switch_pin_3: buffer:PA3
+#post_gear_analog_range_3: 0, 500 # Delete if using updated digital sensor
+
+sync_feedback_tension_pin: buffer:PA4
+sync_feedback_compression_pin: buffer:PA5
+
+# These sensors are on the toolhead and often controlled by the main printer mcu
+#extruder_switch_pin: PG11
+#toolhead_switch_pin: PG13
+
+
+# LED SUPPORT (OPTIONAL) -----------------------------------------------------------------------------------------------
+# ██╗     ███████╗██████╗ ███████╗
+# ██║     ██╔════╝██╔══██╗██╔════╝
+# ██║     █████╗  ██║  ██║███████╗
+# ██║     ██╔══╝  ██║  ██║╚════██║
+# ███████╗███████╗██████╔╝███████║
+# ╚══════╝╚══════╝╚═════╝ ╚══════╝
+#
+# Define mmu leds, both the "neopixel" config and [mmu_led] to define their purpose
+#
+[neopixel mmu_leds_1]
+pin: mmu:PC6
+chain_count: 14
+color_order: GRB
+
+[neopixel mmu_leds_2]
+pin: mmu:PC7
+chain_count: 14
+color_order: GRB
+
+# MMU LED EFFECT SEGMENTS ----------------------------------------------------------------------------------------------
+# Define neopixel LEDs for your MMU. The chain_count must be large enough for your desired ranges:
+#   exit   .. this set of LEDs, one for every gate, usually would be mounted at the exit point of the gate
+#   entry  .. this set of LEDs, one for every gate, could be mounted at the entry point of filament into this MMU/buffer
+#   status .. these LED. represents the status of the MMU (and selected filament). More than one status LED is possible
+#   logo   .. these LEDs don't change during operation and are designed lighting a logo. Multiple logo LEDs are possible
+#
+# Note that all sets are optional. You can opt to just have the 'exit' set for example. The advantage to having
+# both entry and exit LEDs is, for example, so that 'entry' can display gate status while 'exit' displays the color
+# 
+# The animation effects requires the installation of Julian Schill's awesome LED effect module otherwise the LEDs
+# will be static:
+#   https://github.com/julianschill/klipper-led_effect
+#
+# LED's are indexed in the chain from 1..N. Thus to set up LED's on 'exit' and a single 'status' LED on a 4 gate MMU:
+#
+#    exit_leds:   neopixel:mmu_leds (1,2,3,4)
+#    status_leds: neopixel:mmu_leds (5)
+#
+# In this example no 'entry' set is configured. Note that constructs like "mmu_leds (1-3,4)" are also valid
+#
+# The range is completely flexible and can be comprised of different led strips, individual LEDs, or combinations of
+# both on different pins. In addition, the ordering is flexible based on your wiring, thus (1-4) and (4-1) both
+# represent the same LED range but mapped to increasing or decreasing gates respectively. E.g if you have two Box
+# Turtle MMUs, one with a chain of LEDs wired in reverse order and another with individual LEDs, to define 8 exit LEDs:
+#
+#   exit_leds: neopixel:bt_1 (4-1)
+#              neopixel:bt_2a
+#              neopixel:bt_2b
+#              neopixel:bt_2c
+#              neopixel:bt_2d
+#
+# Note the use of separate lines for each part of the definition,
+#
+# ADVANCED: Happy Hare provides a convenience wrapper [mmu_led_effect] that not only creates an effect on each of the
+# [mmu_leds] specified segments as a whole but also each individual LED for atomic control. See mmu_leds.cfg for examples
+#
+# (comment out this whole section if you don't have/want leds; uncomment/edit LEDs fitted on your MMU)
+#
+[mmu_leds unit0]
+exit_leds:   neopixel:mmu_leds_1 (1-14)
+             neopixel:mmu_leds_2 (1-14)
+frame_rate: 24
+
+# Default effects for LED segments when not providing action status
+#    off              - LED's off
+#    on               - LED's white
+#    gate_status      - indicate gate availability / status            (printer.mmu.gate_status)
+#    filament_color   - display filament color defined in gate map     (printer.mmu.gate_color_rgb)
+#    slicer_color     - display slicer defined set color for each gate (printer.mmu.slicer_color_rgb)
+#   (r,g,b)           - display static r,g,b color e.g. "0,0,0.3" for dim blue
+#    _effect_         - display the named led effect
+#
+enabled: True				# True = LEDs are enabled at startup (MMU_LED can control), False = Disabled
+animation: True				# True = Use led-animation-effects, False = Static LEDs
+exit_effect: gate_status		#    off|gate_status|filament_color|slicer_color|r,g,b|_effect_
+entry_effect: filament_color		#    off|gate_status|filament_color|slicer_color|r,g,b|_effect_
+status_effect: filament_color		# on|off|gate_status|filament_color|slicer_color|r,g,b|_effect_
+logo_effect: (0, 0, 0.3)		#    off                                        |r,g,b|_effect_
+white_light: (1, 1, 1)			# RGB color for static white light
+black_light: (.01, 0, .02)		# RGB color used to represent "black" (filament)
+empty_light: (0, 0, 0)			# RGB color used to represent empty gate
+
+# Default effects (animation: True) / static rbg (animation False) to apply to actions
+#   effect_name, (r,b,g)
+#
+# IMPORTANT: Effects must be from [mmu_led_effects] set defined in mmu_hardware.cfg
+#
+effect_loading:            mmu_blue_clockwise_slow, (0, 0, 0.4)
+effect_loading_extruder:   mmu_blue_clockwise_fast, (0, 0, 1)
+effect_unloading:          mmu_blue_anticlock_slow, (0, 0, 0.4)
+effect_unloading_extruder: mmu_blue_anticlock_fast, (0, 0, 1)
+effect_heating:            mmu_breathing_red,       (0.3, 0, 0)
+effect_selecting:          mmu_white_fast,          (0.2, 0.2, 0.2)
+effect_checking:           mmu_white_fast,          (0.8, 0.8, 0.8)
+effect_initialized:        mmu_rainbow,             (0.5, 0.2, 0)
+effect_error:              mmu_strobe,              (1, 0, 0)
+effect_complete:           mmu_sparkle,             (0.3, 0.3, 0.3)
+effect_gate_selected:      mmu_static_blue,         (0, 0, 1)
+effect_gate_available:     mmu_static_green,        (0, 0.5, 0)
+effect_gate_available_sel: mmu_ready_green,         (0, 0.75, 0)
+effect_gate_unknown:       mmu_static_orange,       (0.5, 0.2, 0)
+effect_gate_unknown_sel:   mmu_ready_orange,        (0.75, 0.3, 0)
+effect_gate_empty:         mmu_static_black,        (0, 0, 0)
+effect_gate_empty_sel:     mmu_ready_orange2,       (0.1, 0.04, 0)
+
+
+# ADDITIONAL HARDWARE -------------------------------------------------------------------------------------------------
+# ███╗   ███╗██╗███████╗ ██████╗    ██╗  ██╗ █████╗ ██████╗ ██████╗ ██╗    ██╗ █████╗ ██████╗ ███████╗
+# ████╗ ████║██║██╔════╝██╔════╝    ██║  ██║██╔══██╗██╔══██╗██╔══██╗██║    ██║██╔══██╗██╔══██╗██╔════╝
+# ██╔████╔██║██║███████╗██║         ███████║███████║██████╔╝██║  ██║██║ █╗ ██║███████║██████╔╝█████╗  
+# ██║╚██╔╝██║██║╚════██║██║         ██╔══██║██╔══██║██╔══██╗██║  ██║██║███╗██║██╔══██║██╔══██╗██╔══╝  
+# ██║ ╚═╝ ██║██║███████║╚██████╗    ██║  ██║██║  ██║██║  ██║██████╔╝╚███╔███╔╝██║  ██║██║  ██║███████╗
+# ╚═╝     ╚═╝╚═╝╚══════╝ ╚═════╝    ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝  ╚══╝╚══╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝
+#
+# Define any additional hardware for this MMU unit, e.g. heaters, chamber temperature probes, etc
+#
+[temperature_sensor MMU_vivid_left]
+sensor_type: AHT10 # Actually a ACT30, set 'update_aht10_commands: 1' in mmu_parameters.cfg
+i2c_mcu: mmu
+i2c_bus: i2c1_PA9_PA10
+aht10_report_time: 10
+
+[temperature_sensor MMU_vivid_right]
+sensor_type: AHT10 # Actually a ACT30, set 'update_aht10_commands: 1' in mmu_parameters.cfg
+i2c_mcu: mmu
+i2c_software_scl_pin: PA7
+i2c_software_sda_pin: PA6
+aht10_report_time: 10
+
+[heater_generic MMU_heater_vivid]
+gcode_id:  mmu_heater_vivid
+heater_pin: mmu:PC14
+sensor_type: temperature_combined
+sensor_list: temperature_sensor MMU_vivid_left, temperature_sensor MMU_vivid_right
+combination_method: mean
+maximum_deviation: 100
+control: pid
+pid_Kp=51.604
+pid_Ki=1.121
+pid_Kd=593.934
+min_temp: -100
+max_temp: 70
+
+[verify_heater MMU_heater_vivid]
+max_error: 300
+check_gain_time: 600
+hysteresis: 10
+heating_gain: 1
+
+[heater_fan MMU_vivid_box_fan]
+pin: mmu:PC15
+shutdown_speed: 0
+heater: MMU_heater_vivid
+
+# Electronics cooling fan
+[controller_fan my_controller_fan]
+pin: mmu:PA14
+stepper: stepper_mmu_selector, stepper_mmu_gear
+
+[temperature_sensor ptc_ntc100k]
+sensor_pin: mmu:PA4
+sensor_type: Generic 3950
+pullup_resistor: 2200

@@ -73,14 +73,30 @@ class MmuSensors:
         self.post_gear_sensors = {}
         for i, gate in enumerate(range(self.first_gate, self.first_gate + self.num_gates)):
             switch_pin = config.get('post_gear_switch_pin_%d' % i, None)
-            self.post_gear_sensors[gate] = sf.create_mmu_sensor(
-                config,
-                Mmu.SENSOR_GEAR_PREFIX,
-                gate,
-                switch_pin,
-                event_delay,
-                runout=True
-            )
+
+            # EXPERIMENT/HACK to support ViViD analog buffer "endstops"
+            a_range = config.getfloatlist('post_gear_analog_range_%d' % gate, None, count=2)
+            if a_range is not None: # PAUL TEST ME
+                a_pullup = config.getfloat('post_gear_analog_pullup_resister_%d' % gate, 4700.)
+                self.post_gear_sensors[gate] = MmuAdcSwitchSensor(
+                    config,
+                    Mmu.SENSOR_GEAR_PREFIX,
+                    gate,
+                    switch_pin,
+                    event_delay,
+                    a_range,
+                    runout=True,
+                    a_pullup=a_pullup)
+            else:
+                self.post_gear_sensors[gate] = sf.create_mmu_sensor(
+                    config,
+                    Mmu.SENSOR_GEAR_PREFIX,
+                    gate,
+                    switch_pin,
+                    event_delay,
+                    runout=True
+                )
+
 
 def load_config_prefix(config):
     return MmuSensors(config)

@@ -99,36 +99,33 @@ if BOARD_TYPE_KMS_1_0
 
   config PARAM_MISC_HARDWARE
     default "$(ml,\
-[temperature_sensor Environment]\n\
+[temperature_sensor $(UNIT_NAME)_enviroment]\n\
 sensor_type: HTU21D\n\
 i2c_mcu: $(MMU_MCU)\n\
-htu21d_report_time: 5\n\
-i2c_software_scl_pin: PB10\n\
-i2c_software_sda_pin: PB11\n\
+htu21d_report_time: 10\n\
+i2c_software_scl_pin: $(MMU_MCU):PB10\n\
+i2c_software_sda_pin: $(MMU_MCU):PB11\n\
 \n\
-[heater_fan $(UNIT_NAME)_fan_left]\n\
+[heater_fan $(MMU_UNTI)_fan_left]\n\
 pin: $(MMU_MCU):PC3\n\
-max_power: 1\n\
-kick_start_time: 0.5\n\
-heater: $(UNIT_NAME)_heater\n\
-heater_temp: 20\n\
+shutdown_speed: 0\n\
+heater: MMU_heater_kms\n\
 \n\
 [heater_fan $(UNIT_NAME)_fan_right]\n\
 pin: $(MMU_MCU):PC1\n\
-max_power: 1\n\
-kick_start_time: 0.5\n\
+shutdown_speed: 0\n\
 heater: $(UNIT_NAME)_heater\n\
-heater_temp: 20\n\
 \n\
 [heater_generic $(UNIT_NAME)_heater]\n\
 gcode_id: $(UNIT_NAME)		# ID used when querying temperature using M105.\n\
 heater_pin: $(MMU_MCU):PB1\n\
-max_power: 1.0\n\
+max_power:1.0\n\
 sensor_type: EPCOS 100K B57560G104F\n\
+pullup_resistor: 2200\n\
 sensor_pin: $(MMU_MCU):PA4\n\
-control: watermark\n\
-min_temp: 0\n\
-max_temp: 60\n\
+control:watermark\n\
+min_temp:0\n\
+max_temp:70\n\
 )"
 
 endif
