@@ -23,7 +23,7 @@ endif
 
 # By default KCONFIG_CONFIG is '.config', but it can be overridden by the user
 export KCONFIG_CONFIG ?= .config
-include $(KCONFIG_CONFIG)
+-include $(KCONFIG_CONFIG) # Won't exist on first invocation
 
 export SRC ?= $(CURDIR)
 export PYTHONPATH:=$(SRC)/installer/lib/kconfiglib:$(PYTHONPATH)
@@ -79,11 +79,17 @@ else
   hh_config_files = $(patsubst config/%,%, $(wildcard config/*.cfg config/**/*.cfg)))
 endif
 
-# use sudo if the klipper home is at a system location
+# Use sudo if the klipper home is at a system location
+# PAUL SUDO := $(shell \
+# PAUL   [ -n "$(KLIPPER_HOME)" ] && \
+# PAUL   [ -d "$(KLIPPER_HOME)" ] && \
+# PAUL   [ "$$(stat -c %u $(KLIPPER_HOME))" != "$$(id -u)" ] && \
+# PAUL   echo "sudo " || echo "")
+# PAUL below is POSIX equivalent.. TODO TEST
 SUDO := $(shell \
   [ -n "$(KLIPPER_HOME)" ] && \
   [ -d "$(KLIPPER_HOME)" ] && \
-  [ "$$(stat -c %u $(KLIPPER_HOME))" != "$$(id -u)" ] && \
+  [ "$$(ls -nd -- $(KLIPPER_HOME) | awk '{print $$3}')" != "$$(id -u)" ] && \
   echo "sudo " || echo "")
 
 # Look for installed configs that would need be parsed by the build script
@@ -153,6 +159,13 @@ restart_klipper = 0
 
 
 ##### Build targets #####
+paul:
+	$(Q)echo "HOME = $(HOME)"
+	$(Q)echo "KLIPPER_HOME = $(KLIPPER_HOME)"
+	$(Q)echo "KLIPPER_CONFIG_HOME = $(KLIPPER_CONFIG_HOME)"
+	$(Q)echo "MOONRAKER_HOME  = $(MOONRAKER_HOME)"
+	$(Q)echo "PRINTER_CONFIG_FILE  = $(PRINTER_CONFIG_FILE)"
+	$(Q)echo "MOONRAKER_CONFIG_FILE  = $(MOONRAKER_CONFIG_FILE)"
 
 # Link existing config files to the out/in directory to break circular dependency
 $(IN)/%:

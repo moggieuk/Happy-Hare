@@ -12,7 +12,10 @@ serial_exists=$(to_bool, [ -e '$(serial,$(1),$(2))' ])
 serial_config=$(shell, basename '$(serial,$(1),$(2))' | sed 's/-/_/g' | awk '{print "PARAM_SERIAL_" toupper($0)}')
 
 # To allow multiline config strings
-ml = $(shell, printf "$(1)" | sed -z "s/\\n/\\\\n/g")
+# PAUL ml = $(shell, printf "$(1)" | sed -z "s/\\n/\\\\n/g")
+# PAUL POSIX compliant equiv. TODO TEST
+ml = $(shell, printf "$(1)" | sed "s/\\n/\\\\n/g")
+
 
 mainmenu "$(title)"
 

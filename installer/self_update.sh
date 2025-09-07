@@ -63,4 +63,4 @@ self_update() {
     fi
 }
 
-self_update
+# PAUL TEMP self_update

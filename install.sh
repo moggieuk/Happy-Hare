@@ -15,7 +15,6 @@ usage() {
     echo "                    [-a <kiauh_alternate_klipper>] [config_file]" # [-r <repetier_server stub>]"
     echo
     echo "-i for interactive install"
-    # echo "-e for install of default starter config files for manual configuration"
     echo "-d for uninstall"
     echo "-z skip github update check (nullifies -b <branch>)"
     echo "-s to skip restart of services"
@@ -43,8 +42,8 @@ ordinal() {
 
 while getopts "a:b:k:c:m:nidszevq" arg; do
     case $arg in
-    a) export CONFIG_KLIPPER_SERVICE="${OPTARG}.service" ;;
     b) export BRANCH="${OPTARG}" ;;
+    a) export CONFIG_KLIPPER_SERVICE="${OPTARG}.service" ;;
     k) export CONFIG_KLIPPER_HOME="${OPTARG}" ;;
     m) export CONFIG_MOONRAKER_HOME="${OPTARG}" ;;
     c) export CONFIG_KLIPPER_CONFIG_HOME="${OPTARG}" ;;

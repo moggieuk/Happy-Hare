@@ -1028,7 +1028,6 @@ class MmuToolHead(toolhead.ToolHead, object):
 # MMU Kinematics class
 # (loosely based on corexy.py)
 class MmuKinematics:
-    def __init__(self, toolhead, config):
         self.printer = config.get_printer()
         self.toolhead = toolhead
         self.mmu_unit = toolhead.mmu_unit
@@ -1036,10 +1035,10 @@ class MmuKinematics:
 
         # Setup "axis" rails
         self.rails = []
-        if self.mmu_machine.selector_type in ['LinearSelector', 'RotarySelector']:
+        if self.mmu_unit.selector_type in {'LinearSelector', 'RotarySelector', 'IndexedSelector'}:
             self.rails.append(MmuLookupMultiRail(config.getsection(SELECTOR_STEPPER_CONFIG), need_position_minmax=True, default_position_endstop=0.))
             self.rails[0].setup_itersolve('cartesian_stepper_alloc', b'x')
-        elif self.mmu_machine.selector_type in ['IndexedSelector']:
+        elif self.mmu_unit.selector_type in ['IndexedSelector']:
             self.rails.append(MmuLookupMultiRail(config.getsection(SELECTOR_STEPPER_CONFIG), need_position_minmax=False, default_position_endstop=0.))
             self.rails[0].setup_itersolve('cartesian_stepper_alloc', b'x')
         else:
@@ -1101,7 +1100,7 @@ class MmuKinematics:
         self.move_accel = accel
 
     def check_move(self, move):
-        if self.mmu_machine.selector_type in ['LinearSelector', 'RotarySelector']:
+        if self.mmu_unit.selector_type in ['LinearSelector', 'RotarySelector']:
             limits = self.limits
             xpos, _ = move.end_pos[:2]
             if xpos != 0. and (xpos < limits[0][0] or xpos > limits[0][1]):
@@ -1200,7 +1199,7 @@ class MmuPrinterRail(_StepperPrinterRail, object):
         super(MmuPrinterRail, self).__init__(config, **kwargs)
 
         # Prior to klipper v0.13.0-79 this was done in the base class
-        if (len(self.get_steppers()) == 0):
+        if len(self.get_steppers()) == 0:
             self.add_stepper_from_config(config)
 
     def lookup_endstop(self, endstop_pin, name, **kwargs):
