@@ -10,34 +10,39 @@ if [ -n "$(which tput 2>/dev/null)" ]; then
 fi
 
 usage() {
-    echo "Usage: $0 [-i] [-e] [-d] [-z] [-s]"
-    echo "                    [-b <branch>] [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>]"
-    echo "                    [-a <kiauh_alternate_klipper>] [config_file]" # [-r <repetier_server stub>]"
-    echo
+    USAGE="Usage: $0"
+    SPACE=$(echo ${USAGE} | tr "[:print:]" " ")
+    echo ${C_INFO}
+    echo "${USAGE} [-i] [-d] [-z] [-s] [-t]"
+    echo "${SPACE} [-b <branch>]"
+    echo "${SPACE} [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>]"
+    echo "${SPACE} [-a <kiauh_alternate_klipper>] [config_file]" # [-r <repetier_server stub>]"
+    echo ${C_OFF}
+    echo "${C_INFO}(no flags for safe re-install / upgrade)${C_OFF}"
     echo "-i for interactive install"
     echo "-d for uninstall"
     echo "-z skip github update check (nullifies -b <branch>)"
     echo "-s to skip restart of services"
     echo "-b to switch to specified feature branch (sticky)"
-    echo "-n to specify a multiple MMU units setup"
+    echo "-n to specify a multiple MMU unit setup"
     echo "-k <dir> to specify location of non-default klipper home directory"
     echo "-c <dir> to specify location of non-default klipper config directory"
     echo "-m <dir> to specify location of non-default moonraker home directory"
     # TODO: Repetier-Server stub support
     # echo "-r specify Repetier-Server <stub> to override printer.cfg and klipper.service names"
     echo "-a <name> to specify alternative klipper-service-name when installed with Kiauh"
-    echo "-t used alone to create test config files in /tmp"
-    echo "[config_file] is optional, if not specified the default config filename (.config) will be used."
-    echo "(no flags for safe re-install / upgrade)"
+    echo "-t activate test mode to create test config files in /tmp"
+    echo "${C_INFO}[config_file]${C_OFF} is optional, if not specified the default config filename (.config) will be used."
+    echo
     exit 0
 }
 
 ordinal() {
     case "$1" in
-    *1[0-9] | *[04-9]) echo "$1"th ;;
-    *1) echo "$1"st ;;
-    *2) echo "$1"nd ;;
-    *3) echo "$1"rd ;;
+        *1[0-9] | *[04-9]) echo "$1"th ;;
+        *1) echo "$1"st ;;
+        *2) echo "$1"nd ;;
+        *3) echo "$1"rd ;;
     esac
 }
 
@@ -53,26 +58,26 @@ prompt_yn() {
 
 while getopts "a:b:k:c:m:nidszevqt" arg; do
     case $arg in
-    b) export BRANCH="${OPTARG}" ;;
-    a) export CONFIG_KLIPPER_SERVICE="${OPTARG}.service" ;;
-    k) export CONFIG_KLIPPER_HOME="${OPTARG}" ;;
-    m) export CONFIG_MOONRAKER_HOME="${OPTARG}" ;;
-    c) export CONFIG_KLIPPER_CONFIG_HOME="${OPTARG}" ;;
-    n) export F_MULTI_UNIT=y ;;
-    # TODO: Repetier-Server stub support
-    # r)
-    #     PRINTER_CONFIG=${OPTARG}.cfg
-    #     KLIPPER_SERVICE=klipper_${OPTARG}.service
-    #     echo "Repetier-Server <stub> specified. Over-riding printer.cfg to [${PRINTER_CONFIG}] & klipper.service to [${KLIPPER_SERVICE}]"
-    #     ;;
-    i) F_MENUCONFIG=y ;;
-    d) F_UNINSTALL=y ;;
-    s) export F_NO_SERVICE=y ;;
-    z) export F_SKIP_UPDATE=y ;;
-    q) export Q= ;;   # Disable quite mode in Makefile
-    v) export V=-v ;; # Enable verbose mode in builder
-    t) export TEST_MODE=y ;;
-    *) usage ;;
+        i) F_MENUCONFIG=y ;;
+        d) F_UNINSTALL=y ;;
+        z) export F_SKIP_UPDATE=y ;;
+        s) export F_NO_SERVICE=y ;;
+        b) export BRANCH="${OPTARG}" ;;
+        n) export F_MULTI_UNIT=y ;;
+        k) export CONFIG_KLIPPER_HOME="${OPTARG}" ;;
+        c) export CONFIG_KLIPPER_CONFIG_HOME="${OPTARG}" ;;
+        m) export CONFIG_MOONRAKER_HOME="${OPTARG}" ;;
+        # TODO: Repetier-Server stub support
+        # r)
+        #     PRINTER_CONFIG=${OPTARG}.cfg
+        #     KLIPPER_SERVICE=klipper_${OPTARG}.service
+        #     echo "Repetier-Server <stub> specified. Over-riding printer.cfg to [${PRINTER_CONFIG}] & klipper.service to [${KLIPPER_SERVICE}]"
+        #     ;;
+        a) export CONFIG_KLIPPER_SERVICE="${OPTARG}.service" ;;
+        t) export TEST_MODE=y ;;
+        q) export Q= ;;   # Developer: Disable quite mode in Makefile
+        v) export V=-v ;; # Developer: Enable verbose mode in builder
+        *) usage ;;
     esac
 done
 
