@@ -27,8 +27,8 @@ export KCONFIG_CONFIG ?= .config
 
 export SRC ?= $(CURDIR)
 export PYTHONPATH:=$(SRC)/installer/lib/kconfiglib:$(PYTHONPATH)
+
 # Use the name of the '.config.name' or 'name.config' file as the out_name directory, or 'out' if just '.config' is used
-#
 ifeq ($(notdir $(KCONFIG_CONFIG)),.config)
   export OUT ?= $(CURDIR)/out
 else
@@ -41,11 +41,11 @@ export IN=$(OUT)/in
 export UNIT_NAME ?= mmu0
 export MMU_MCU ?= mmu0
 
-# helper functions/constants
+# Helper functions/constants
 comma = ,
 empty =
 space = $(empty) $(empty) 
-# replace ~ with $(HOME) and remove quotes
+# Replace ~ with $(HOME) and remove quotes
 unwrap = $(subst ~,$(HOME),$(patsubst "%",%,$(1)))
 space_to_underscore = $(subst $(space),_,$(1)) 
 comma_to_space = $(subst $(comma),$(space),$(1)) 
@@ -79,13 +79,7 @@ else
   hh_config_files = $(patsubst config/%,%, $(wildcard config/*.cfg config/**/*.cfg)))
 endif
 
-# Use sudo if the klipper home is at a system location
-# PAUL SUDO := $(shell \
-# PAUL   [ -n "$(KLIPPER_HOME)" ] && \
-# PAUL   [ -d "$(KLIPPER_HOME)" ] && \
-# PAUL   [ "$$(stat -c %u $(KLIPPER_HOME))" != "$$(id -u)" ] && \
-# PAUL   echo "sudo " || echo "")
-# PAUL below is POSIX equivalent.. TODO TEST
+# Use sudo if the klipper home is at a system location (not owned by user)
 SUDO := $(shell \
   [ -n "$(KLIPPER_HOME)" ] && \
   [ -d "$(KLIPPER_HOME)" ] && \
@@ -122,6 +116,7 @@ install_targets = \
 # Recipe functions
 install = \
 	$(info $(C_INFO)Installing $(2)...$(C_OFF)) \
+        echo "PAUL: SUDO=$(SUDO)"; \
 	$(SUDO)mkdir -p $(dir $(2)); \
 	$(SUDO)cp -af $(3) "$(1)" "$(2)";
 
@@ -160,16 +155,20 @@ restart_klipper = 0
 
 ##### Build targets #####
 paul:
-	$(Q)echo "HOME = $(HOME)"
-	$(Q)echo "KLIPPER_HOME = $(KLIPPER_HOME)"
-	$(Q)echo "KLIPPER_CONFIG_HOME = $(KLIPPER_CONFIG_HOME)"
-	$(Q)echo "MOONRAKER_HOME  = $(MOONRAKER_HOME)"
-	$(Q)echo "PRINTER_CONFIG_FILE  = $(PRINTER_CONFIG_FILE)"
-	$(Q)echo "MOONRAKER_CONFIG_FILE  = $(MOONRAKER_CONFIG_FILE)"
+	$(Q)echo "PAUL:HOME = $(HOME)"
+	$(Q)echo "PAUL:KLIPPER_HOME = $(KLIPPER_HOME)"
+	$(Q)echo "PAUL:KLIPPER_CONFIG_HOME = $(KLIPPER_CONFIG_HOME)"
+	$(Q)echo "PAUL:MOONRAKER_HOME  = $(MOONRAKER_HOME)"
+	$(Q)echo "PAUL:PRINTER_CONFIG_FILE  = $(PRINTER_CONFIG_FILE)"
+	$(Q)echo "PAUL:MOONRAKER_CONFIG_FILE  = $(MOONRAKER_CONFIG_FILE)"
+	$(Q)echo "PAUL:SUDO = $(SUDO)"
+	$(Q)echo "PAUL:C_ERROR = $(C_ERROR)TEST"
+	$(Q)echo "PAUL:END"
 
 # Link existing config files to the out/in directory to break circular dependency
+#	$(Q)[ -f "$(KLIPPER_CONFIG_HOME)/$*" ] || { echo "The file '$(KLIPPER_CONFIG_HOME)/$*' does not exist. Please check your config for the correct paths"; exit 1; }
 $(IN)/%:
-	$(Q)[ -f "$(KLIPPER_CONFIG_HOME)/$*" ] || { echo "The file '$(KLIPPER_CONFIG_HOME)/$*' does not exist. Please check your config for the correct paths"; exit 1; }
+	$(Q)[ -f "$(KLIPPER_CONFIG_HOME)/$*" ] || { echo "$(C_ERROR)The file '$(KLIPPER_CONFIG_HOME)/$*' does not exist. Please check your config for the correct paths$(C_OFF)"; }
 	$(Q)$(call link,$(KLIPPER_CONFIG_HOME)/$*,$@)
 
 ifneq ($(wildcard $(KCONFIG_CONFIG)),) # To prevent make errors when .config is not yet created

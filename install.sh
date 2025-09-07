@@ -26,6 +26,7 @@ usage() {
     # TODO: Repetier-Server stub support
     # echo "-r specify Repetier-Server <stub> to override printer.cfg and klipper.service names"
     echo "-a <name> to specify alternative klipper-service-name when installed with Kiauh"
+    echo "-t used alone to create test config files in /tmp"
     echo "[config_file] is optional, if not specified the default config filename (.config) will be used."
     echo "(no flags for safe re-install / upgrade)"
     exit 0
@@ -40,7 +41,17 @@ ordinal() {
     esac
 }
 
-while getopts "a:b:k:c:m:nidszevq" arg; do
+prompt_yn() {
+    while true; do
+        read -n1 -p "$@ (y/n)? " yn
+        case "${yn}" in 
+            Y|y) echo -n "y"; break ;;
+            N|n) echo -n "n"; break ;;
+        esac        
+    done
+}  
+
+while getopts "a:b:k:c:m:nidszevqt" arg; do
     case $arg in
     b) export BRANCH="${OPTARG}" ;;
     a) export CONFIG_KLIPPER_SERVICE="${OPTARG}.service" ;;
@@ -58,8 +69,9 @@ while getopts "a:b:k:c:m:nidszevq" arg; do
     d) F_UNINSTALL=y ;;
     s) export F_NO_SERVICE=y ;;
     z) export F_SKIP_UPDATE=y ;;
-    q) export Q= ;; # disable quite mode in Makefile
-    v) export V=-v ;; # enable verbose mode in builder
+    q) export Q= ;;   # Disable quite mode in Makefile
+    v) export V=-v ;; # Enable verbose mode in builder
+    t) export TEST_MODE=y ;;
     *) usage ;;
     esac
 done
@@ -70,6 +82,26 @@ if [ "$1" ]; then
 fi
 
 export KCONFIG_CONFIG="${KCONFIG_CONFIG-.config}"
+
+if [ "${TEST_MODE}" ]; then
+    TEST_DIR="/tmp/mmu_test"
+    export CONFIG_KLIPPER_HOME="${TEST_DIR}/klipper"
+    export CONFIG_KLIPPER_CONFIG_HOME="${TEST_DIR}/printer_data/config"
+    export CONFIG_MOONRAKER_HOME="${TEST_DIR}/moonraker"
+    export F_NO_SERVICE=y
+    echo -e "\n${C_WARNING}Running in test mode to simulate update without changing real configuration${C_OFF}"
+    echo -e "${C_WARNING}Forcing flags '-c ${CONFIG_KLIPPER_CONFIG_HOME} -k ${CONFIG_KLIPPER_HOME} -c ${CONFIG_MOONRAKER_HOME} -s'${C_OFF}"
+    echo -e "${C_INFO}When complete look in ${TEST_DIR} for results${C_OFF}\n"
+    mkdir -p "${CONFIG_KLIPPER_HOME}/klippy/extras"
+    mkdir -p "${CONFIG_KLIPPER_CONFIG_HOME}"
+    mkdir -p "${CONFIG_MOONRAKER_HOME}/components"
+    touch "${CONFIG_KLIPPER_CONFIG_HOME}/moonraker.conf"
+    touch "${CONFIG_KLIPPER_CONFIG_HOME}/printer.cfg"
+    if [ $(prompt_yn "Continue") != "y" ]; then
+        exit 0
+    fi
+    echo
+fi
 
 if [ "${F_MENUCONFIG}" ] && [ "${F_UNINSTALL}" ]; then
     echo "${C_ERROR}Can't install and uninstall at the same time!${C_OFF}"
