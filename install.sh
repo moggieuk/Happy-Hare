@@ -5,6 +5,8 @@
 # Installer / Updater launch script with familar options
 #
 
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
 if [ -n "$(which tput 2>/dev/null)" ]; then
     C_OFF=$(tput -Txterm-256color sgr0)
     C_DEBUG=$(tput -Txterm-256color setaf 5)
@@ -89,7 +91,6 @@ done
 
 # Handle git self update or branch change
 if [ ! "$SKIP_UPDATE" ]; then
-    SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
     "$SCRIPT_DIR/installer/self_update.sh" || exit 1
     # Restart forcing a skip_update flag
     exec "$0" -z "$@"
@@ -129,14 +130,14 @@ fi
 if [ "${F_UNINSTALL}" ]; then
     echo -e "${C_WARNING}This will uninstall and cleanup prior config${C_OFF}\n"
     [ $(prompt_yn "Are you sure") != "y" ] && { echo; exit 0; } || echo; echo
-    make uninstall
+    make -C ${SCRIPT_DIR} uninstall
     [ "${TEST_DIR}" ] && rm -rf "${TEST_DIR}"
     exit 0
 fi
 
 if [ "${F_MULTI_UNIT}" ]; then
     if [ "${F_MENUCONFIG}" ] || [ ! -e "${KCONFIG_CONFIG}" ]; then
-        make F_MULTI_UNIT_ENTRY_POINT=y menuconfig
+        make -C ${SCRIPT_DIR} F_MULTI_UNIT_ENTRY_POINT=y menuconfig
     fi
 
     if [ ! -e "${KCONFIG_CONFIG}" ]; then
@@ -149,7 +150,7 @@ if [ "${F_MULTI_UNIT}" ]; then
 
     if [ ! "${CONFIG_MULTI_UNIT}" ]; then
         echo "${C_NOTICE}Current '${KCONFIG_CONFIG}' is not a multi-unit configuration, forcing interactive menu"
-        make F_MULTI_UNIT_ENTRY_POINT=y menuconfig
+        make -C ${SCRIPT_DIR} F_MULTI_UNIT_ENTRY_POINT=y menuconfig
         F_MENUCONFIG=y
         # shellcheck source=./.config
         . "$(realpath "${KCONFIG_CONFIG}")"
@@ -161,7 +162,7 @@ if [ "${F_MULTI_UNIT}" ]; then
         name=${name#"${name%%[![:space:]]*}"} # remove leading spaces
         name=${name%"${name##*[![:space:]]}"} # remove trailing spaces
         if [ "${F_MENUCONFIG}" ] || [ ! -e "${KCONFIG_CONFIG}.${name}" ]; then
-            make KCONFIG_CONFIG="${KCONFIG_CONFIG}.${name}" UNIT_INDEX=$i UNIT_NAME="${name}" MMU_MCU="${name}" menuconfig
+            make -C ${SCRIPT_DIR} CONFIG_CONFIG="${KCONFIG_CONFIG}.${name}" UNIT_INDEX=$i UNIT_NAME="${name}" MMU_MCU="${name}" menuconfig
             i=$((i + 1))
         fi
     done
@@ -177,8 +178,8 @@ else
     fi
 
     if [ "${F_MENUCONFIG}" ]; then
-        make menuconfig
+        make -C ${SCRIPT_DIR} menuconfig
     fi
 fi
 
-make install
+make -C ${SCRIPT_DIR} install
