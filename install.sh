@@ -5,7 +5,7 @@
 # Installer / Updater launch script with familar options
 #
 
-clear
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 if [ -n "$(which tput 2>/dev/null)" ]; then
     C_OFF=$(tput -Txterm-256color sgr0)
@@ -91,7 +91,7 @@ done
 
 # Handle git self update or branch change
 if [ ! "$SKIP_UPDATE" ]; then
-    ./self_update.sh || exit 1
+    "$SCRIPT_DIR/installer/self_update.sh" || exit 1
     exec "$0" -z "$@"
 fi
 
