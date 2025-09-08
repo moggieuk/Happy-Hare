@@ -635,7 +635,7 @@ class MmuToolHead(toolhead.ToolHead, object):
                 th.flush_step_generation()
             logging.info("PAUL: >>>> After full wait. Elapsed=%.6f" % (time.time() - start))
 
-        # Align planners to a common *future* time
+        # Align planners to a common future time
         last_times = [th.get_last_move_time() for th in ths]
         logging.info("PAUL: >>>> Last times:%s" % last_times)
         t_future = max(last_times) + SYNC_AIR_GAP
@@ -746,7 +746,7 @@ class MmuToolHead(toolhead.ToolHead, object):
                 pos = [0., following_toolhead.get_position()[1], 0.]
 
             # Hard close the old trapq up to the fence (don’t wipe)
-            # Anything ≤ t0 moves to history so it can’t be emitted later.
+            # Anything <= t0 moves to history so it can’t be emitted later.
             _finalize_if_valid(old_trapq, t0)
 
             # Rebind steppers back to the NEW owner’s trapq and restore kinematics
@@ -771,7 +771,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             #             driving_toolhead.get_last_move_time(),
             #             following_toolhead.get_last_move_time())
 
-            # FORCE the RECEIVER (following_toolhead) planner to ≥ t0 and materialize it
+            # FORCE the RECEIVER (following_toolhead) planner to >= t0 and materialize it
             dt = max(EPS, t0 - following_toolhead.get_last_move_time())
             if dt: following_toolhead.dwell(dt)
             following_toolhead.flush_step_generation()
@@ -846,7 +846,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         #             following_toolhead.get_last_move_time(),
         #             driving_toolhead.get_last_move_time())
 
-        # FORCE the NEW/RECEIVER (driving_toolhead) planner to ≥ t1 and materialize it
+        # FORCE the NEW/RECEIVER (driving_toolhead) planner to >= t1 and materialize it
         dt = max(EPS, t1 - driving_toolhead.get_last_move_time())
         driving_toolhead.dwell(dt)
         driving_toolhead.flush_step_generation()
