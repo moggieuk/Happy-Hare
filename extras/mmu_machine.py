@@ -733,7 +733,7 @@ class MmuToolHead(toolhead.ToolHead, object):
                 pos = [0., following_toolhead.get_position()[1], 0.]
 
             # Hard close the old trapq up to the fence (don’t wipe)
-            # Anything ≤ t0 moves to history so it can’t be emitted later.
+            # Anything <= t0 moves to history so it can’t be emitted later.
             _finalize_if_valid(old_trapq, t0)
 
             # Rebind steppers back to the NEW owner’s trapq and restore kinematics
