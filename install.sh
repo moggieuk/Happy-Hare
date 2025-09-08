@@ -107,13 +107,6 @@ if [ "${F_MENUCONFIG}" ] && [ "${F_UNINSTALL}" ]; then
     usage
 fi
 
-if [ ! "F_SKIP_UPDATE" ]; then
-    ./installer/self_update.sh
-    if MUST_RESTART:
-        exec "$SCRIPTNAME" "${ARGS[@]}"
-        exit 0 # Exit this old instance
-fi
-
 if [ "${TEST_DIR}" ]; then
     export CONFIG_KLIPPER_HOME="${TEST_DIR}/klipper"
     export CONFIG_KLIPPER_CONFIG_HOME="${TEST_DIR}/printer_data/config"
