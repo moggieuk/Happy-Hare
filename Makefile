@@ -1,8 +1,8 @@
 SHELL := /usr/bin/env bash
 PY := python
 MAKEFLAGS += --jobs 16 # Parallel build
-Q ?= @ # For quiet make builds, override with make Q= for verbose output
-V ?=  # For verbose output (mostly from python builder), set to -v to enable
+Q ?= @  # For quiet make builds, override with make Q= for verbose output
+V ?=    # For verbose output (mostly from python builder), set to -v to enable
 UT ?= * # For unittests, e.g. make UT=test_build.py test
 
 # Prevent the user from running with sudo. This isn't perfect if something else than sudo is used.
@@ -266,9 +266,7 @@ $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu): $(addprefix $(OUT)/mmu/, $(hh_co
 
 endif
 
-# PAUL  $(install_targets): build
-
-install: build $(install_targets) # PAUL added build
+install: build $(install_targets)
 	$(Q)rm -rf $(addprefix $(KLIPPER_HOME)/klippy/extras,$(hh_old_klipper_modules))
 	$(Q)$(call restart_service,$(restart_moonraker),Moonraker,$(CONFIG_SERVICE_MOONRAKER))
 	$(Q)$(call restart_service,$(restart_klipper),Klipper,$(CONFIG_SERVICE_KLIPPER))
@@ -294,18 +292,17 @@ uninstall:
 
 
 
+########################
 ##### Misc targets #####
-# PAUL not needed
-#update: 
-#	$(Q)$(SRC)/installer/self_update.sh
+########################
 
 clean:
 	$(Q)rm -rf $(OUT)
 
-diff=\
-	 git diff -U2 --color --src-prefix="current: " --dst-prefix="built: " --minimal --word-diff=color --stat --no-index -- "$(1)" "$(2)" | \
-        grep -v "diff --git " | \
-		grep -Ev "index [[:xdigit:]]+\.\.[[:xdigit:]]+" || true;
+diff= \
+	git diff -U2 --color --src-prefix="current: " --dst-prefix="built: " --minimal --word-diff=color --stat --no-index -- "$(1)" "$(2)" | \
+	grep -v "diff --git " | \
+	grep -Ev "index [[:xdigit:]]+\.\.[[:xdigit:]]+" || true;
 
 diff: | build
 	$(Q)$(call diff,$(KLIPPER_CONFIG_HOME)/mmu,$(patsubst $(SRC)/%,%,$(OUT)/mmu))
@@ -322,9 +319,10 @@ check_version:
 	$(Q)$(PY) -m installer.build $(V) --check-version "$(KCONFIG_CONFIG)" $(cfg_base)
 
 $(KCONFIG_CONFIG): $(SRC)/installer/Kconfig* $(SRC)/installer/**/Kconfig* 
-# If KCONFIG_CONFIG is outdated or doesn't exist run menuconfig first. If the user doesn't save the config, we will update it with olddefconfig
-# touch in case .config does not get updated by olddefconfig.py
-ifeq ($(filter menuconfig uninstall,$(MAKECMDGOALS)),) # Only if menuconfig is not the target, else it will run twice, nor uninstall
+# If KCONFIG_CONFIG is outdated or doesn't exist run menuconfig first. If the user doesn't save the config,
+# we will update it with olddefconfig. touch in case .config does not get updated by olddefconfig.py
+# Only if install or menuconfig is not the target (else it will run twice)
+ifeq ($(filter menuconfig uninstall,$(MAKECMDGOALS)),)
 	$(Q)$(MAKE) MAKEFLAGS= menuconfig
 	$(Q)$(PY) -m olddefconfig $(SRC)/installer/Kconfig >/dev/null # Always update the .config file in case the user doesn't save it
 	$(Q)touch $(KCONFIG_CONFIG)
@@ -332,6 +330,3 @@ endif
 
 menuconfig: $(SRC)/installer/Kconfig
 	$(Q)MENUCONFIG_STYLE="aquatic" $(PY) -m menuconfig $(SRC)/installer/Kconfig
-
-paul:
-	$(info hh_configs_to_parse = $(hh_configs_to_parse))

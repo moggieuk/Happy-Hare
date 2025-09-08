@@ -181,5 +181,4 @@ else
     fi
 fi
 
-echo -e "${C_WARNING}PAUL: TEST_DIR=/tmp/mmu_test CONFIG_KLIPPER_HOME=${TEST_DIR}/klipper CONFIG_KLIPPER_CONFIG_HOME=${TEST_DIR}/printer_data/config CONFIG_MOONRAKER_HOME=${TEST_DIR}/moonraker KCONFIG_CONFIG=${TEST_DIR}/test_config F_NO_SERVICE=y make install${C_OFF}"
 make install

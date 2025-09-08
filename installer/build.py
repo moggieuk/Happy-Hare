@@ -75,7 +75,6 @@ class KConfig(kconfiglib.Kconfig):
 
 class HHConfig(ConfigBuilder):
     def __init__(self, cfg_files):
-#        logging.info("PAUL: HHConfig. cfg_files=%s" % cfg_files)
         super(HHConfig, self).__init__()
         self.origins = {}
         self.used_options = set()
