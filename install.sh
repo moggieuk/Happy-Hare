@@ -132,18 +132,25 @@ if [ "${TEST_DIR}" ]; then
     fi
 fi
 
-# Time the actual install logic...
-SECONDS=0
+
+#####################
+##### Uninstall #####
+#####################
 
 if [ "${F_UNINSTALL}" ]; then
     echo -e "${C_WARNING}This will uninstall and cleanup prior config${C_OFF}\n"
     [ $(prompt_yn "Are you sure") != "y" ] && { echo; exit 0; } || echo; echo
+    SECONDS=0
     make -C ${SCRIPT_DIR} uninstall
     [ "${TEST_DIR}" ] && rm -rf "${TEST_DIR}"
-    end=$(date +%s)
     echo "${C_INFO}Elapsed: ${SECONDS} seconds${C_OFF}"
     exit 0
 fi
+
+
+######################
+##### Menuconfig #####
+######################
 
 if [ "${F_MULTI_UNIT}" ]; then
     if [ "${F_MENUCONFIG}" ] || [ ! -e "${KCONFIG_CONFIG}" ]; then
@@ -192,5 +199,11 @@ else
     fi
 fi
 
+
+###################
+##### Install #####
+###################
+
+SECONDS=0
 make -C ${SCRIPT_DIR} install
 echo "${C_INFO}Elapsed: ${SECONDS} seconds${C_OFF}"
