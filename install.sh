@@ -5,8 +5,6 @@
 # Installer / Updater launch script with familar options
 #
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-
 if [ -n "$(which tput 2>/dev/null)" ]; then
     C_OFF=$(tput -Txterm-256color sgr0)
     C_DEBUG=$(tput -Txterm-256color setaf 5)
@@ -91,7 +89,11 @@ done
 
 # Handle git self update or branch change
 if [ ! "$SKIP_UPDATE" ]; then
+    SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+    echo -e "PAUL1"
     "$SCRIPT_DIR/installer/self_update.sh" || exit 1
+    echo -e "PAUL2"
+    # Restart forcing a skip_update flag
     exec "$0" -z "$@"
 fi
 
