@@ -47,8 +47,8 @@ self_update() {
     fi
 
     if [ -n "${BRANCH}" ] && [ "${BRANCH}" != "${current_branch}" ]; then
-        echo "${C_NOTICE}Switching to '${current_branch}' branch${C_OFF}"
         current_branch=${BRANCH}
+        echo "${C_NOTICE}Switching to '${current_branch}' branch${C_OFF}"
         switch=1
     fi
 
