@@ -758,7 +758,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             #             driving_toolhead.get_last_move_time(),
             #             following_toolhead.get_last_move_time())
 
-            # FORCE the RECEIVER (following_toolhead) planner to ≥ t0 and materialize it
+            # FORCE the RECEIVER (following_toolhead) planner to >= t0 and materialize it
             dt = max(EPS, t0 - following_toolhead.get_last_move_time())
             if dt: following_toolhead.dwell(dt)
             following_toolhead.flush_step_generation()
@@ -831,7 +831,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         #             following_toolhead.get_last_move_time(),
         #             driving_toolhead.get_last_move_time())
 
-        # FORCE the NEW/RECEIVER (driving_toolhead) planner to ≥ t1 and materialize it
+        # FORCE the NEW/RECEIVER (driving_toolhead) planner to >= t1 and materialize it
         dt = max(EPS, t1 - driving_toolhead.get_last_move_time())
         driving_toolhead.dwell(dt)
         driving_toolhead.flush_step_generation()
