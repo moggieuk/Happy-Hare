@@ -6,7 +6,6 @@
 #
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-clear
 
 if [ -n "$(which tput 2>/dev/null)" ]; then
     C_OFF=$(tput -Txterm-256color sgr0)
@@ -69,7 +68,7 @@ while getopts "iudzsb:nk:c:m:a:tqv" arg; do
     case $arg in
         i) F_MENUCONFIG=y ;;
         u|d) F_UNINSTALL=y ;;
-        z) export SKIP_UPDATE=y ;;
+        z) export F_SKIP_UPDATE="${F_SKIP_UPDATE:=y}" ;;
         s) export F_NO_SERVICE=y ;;
         b) export BRANCH="${OPTARG}" ;;
         n) export F_MULTI_UNIT=y ;;
@@ -91,12 +90,20 @@ while getopts "iudzsb:nk:c:m:a:tqv" arg; do
 done
 
 # Handle git self update or branch change
-if [ ! "$SKIP_UPDATE" ]; then
+if [ "${F_SKIP_UPDATE:-}" = "force" ]; then
+    # If we just restarted with a forced skip, do nothing.
+    ;
+elif [ -n "${BRANCH:-}" ] || [ -z "${F_SKIP_UPDATE:-}" ]; then
+
+    [ -t 1 ] && clear
     "$SCRIPT_DIR/installer/self_update.sh" || exit 1
-    # Restart forcing a skip_update flag
-    exec "$0" -z "$@"
+    F_SKIP_UPDATE=force exec "$0" "$@"
+
 else
-    echo "${C_NOTICE}Skipping github update${C_OFF}"
+
+    [ -t 1 ] && clear
+    echo "${C_NOTICE}Skipping self update${C_OFF}"
+
 fi
 
 shift $((OPTIND - 1))
