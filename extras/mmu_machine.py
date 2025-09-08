@@ -642,6 +642,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         for th, lm in zip(ths, last_times):
             dt = t_future - lm
             if dt > 0.0:
+                logging.info("PAUL: >>>> dwell(%s)" % dt)
                 th.dwell(dt)
 
         # Materialize the air gap before choosing the fence
