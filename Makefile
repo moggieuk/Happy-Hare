@@ -1,6 +1,6 @@
 SHELL := /usr/bin/env bash
 PY := python
-MAKEFLAGS += --jobs 16            # Parallel build
+MAKEFLAGS += --jobs 8             # Parallel build
 MAKEFLAGS += --output-sync=target # Keep log order sane
 Q ?= @                            # For quiet make builds, override with make Q= for verbose output
 V ?=                              # For verbose output (mostly from python builder), set to -v to enable
@@ -131,7 +131,7 @@ link = \
 	mkdir -p $(dir $(2)); \
 	ln -sf "$(abspath $(1))" "$(2)";
 
-backup_ext ::= .old-$(shell date '+%Y%m%d-%H%M%S')
+backup_ext := .old-$(shell date '+%Y%m%d-%H%M%S')
 backup_name = $(addsuffix $(backup_ext),$(1))
 backup = \
 	if [ -e "$(1)" ] && [ ! -e "$(call backup_name,$(1))" ]; then \
@@ -265,7 +265,7 @@ $(call backup_name,$(KLIPPER_CONFIG_HOME)/%): $(OUT)/% | build
 $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu): $(addprefix $(OUT)/mmu/, $(hh_config_files)) | build
 	$(Q)$(call backup,$(basename $@))
 
-endif
+endif # To prevent make errors when .config is not yet created
 
 install: build $(install_targets)
 	$(Q)rm -rf $(addprefix $(KLIPPER_HOME)/klippy/extras,$(hh_old_klipper_modules))
@@ -274,8 +274,10 @@ install: build $(install_targets)
 	$(Q)$(PY) -m installer.build $(V) --print-happy-hare "Done! Happy Hare $(CONFIG_F_VERSION) is ready!"
 
 uninstall:
-	$(Q)$(call backup,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE))
-	$(Q)$(call backup,$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE))
+	$(Q)$(if $(MOONRAKER_CONFIG_FILE), \
+		$(call backup,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)))
+	$(Q)$(if $(PRINTER_CONFIG_FILE), \
+		$(call backup,$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE)))
 	$(Q)$(call backup,$(KLIPPER_CONFIG_HOME)/mmu)
 	@# Remove the installed files
 	$(Q)rm -f $(addprefix $(KLIPPER_HOME)/klippy/,$(hh_klipper_extras_files))
@@ -313,11 +315,15 @@ diff: | build
 test: 
 	$(Q)$(PY) -m unittest discover $(V) -p '$(UT)'
 
-# Look for version number in current configs and report
-#check_version: $(hh_configs_to_parse)
-#	$(Q)$(PY) -m installer.build $(V) --check-version "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)
-check_version:
-	$(Q)$(PY) -m installer.build $(V) --check-version "$(KCONFIG_CONFIG)" $(cfg_base)
+# Look for version number in current config files and report
+check_version: $(hh_configs_to_parse)
+	$(Q)$(PY) -m installer.build $(V) --check-version "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)
+
+
+
+##############################
+##### Menuconfig targets #####
+##############################
 
 $(KCONFIG_CONFIG): $(SRC)/installer/Kconfig* $(SRC)/installer/**/Kconfig* 
 # If KCONFIG_CONFIG is outdated or doesn't exist run menuconfig first. If the user doesn't save the config,

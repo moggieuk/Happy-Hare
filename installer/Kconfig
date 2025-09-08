@@ -7,14 +7,13 @@ title = $(shell, echo "Happy Hare $(formatted_version) Configuration${UNIT_NAME+
 to_bool = $(shell, $(1) && echo y || echo n)
 
 # Used to get the serial device paths
-serial=$(shell, ls /dev/serial/by-id/* 2>/dev/null | grep 'Klipper_$(2)' | tail -n +$(1) | head -n 1)
-serial_exists=$(to_bool, [ -e '$(serial,$(1),$(2))' ])
-serial_config=$(shell, basename '$(serial,$(1),$(2))' | sed 's/-/_/g' | awk '{print "PARAM_SERIAL_" toupper($0)}')
+serial = $(shell, ls /dev/serial/by-id/* 2>/dev/null | grep 'Klipper_$(2)' | tail -n +$(1) | head -n 1)
+serial_exists = $(to_bool, [ -e '$(serial,$(1),$(2))' ])
+serial_config = $(shell, basename '$(serial,$(1),$(2))' | sed 's/-/_/g' | awk '{print "PARAM_SERIAL_" toupper($0)}')
 
-# To allow multiline config strings
-# PAUL ml = $(shell, printf "$(1)" | sed -z "s/\\n/\\\\n/g")
-# PAUL POSIX compliant equiv. TODO TEST
-ml = $(shell, printf "$(1)" | sed "s/\\n/\\\\n/g")
+# To allow multiline config strings. For portability, this is a posix version of:
+# ml = $(shell, printf "$(1)" | sed -z "s/\\n/\\\\n/g")
+ml = $(shell, printf %s '$(1)' | sed ':a;N;$!ba;s/\n/\\n/g' 2>/dev/null)
 
 
 mainmenu "$(title)"

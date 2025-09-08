@@ -90,20 +90,15 @@ while getopts "iudzsb:nk:c:m:a:tqv" arg; do
 done
 
 # Handle git self update or branch change
-if [ "${F_SKIP_UPDATE:-}" = "force" ]; then
-    # If we just restarted with a forced skip, do nothing.
-    ;
-elif [ -n "${BRANCH:-}" ] || [ -z "${F_SKIP_UPDATE:-}" ]; then
-
+if [ "${F_SKIP_UPDATE}" = "force" ]; then
+    : # If we just restarted with a forced skip, do nothing
+elif [ ! "${F_SKIP_UPDATE}" ]; then
     [ -t 1 ] && clear
     "$SCRIPT_DIR/installer/self_update.sh" || exit 1
     F_SKIP_UPDATE=force exec "$0" "$@"
-
 else
-
     [ -t 1 ] && clear
     echo "${C_NOTICE}Skipping self update${C_OFF}"
-
 fi
 
 shift $((OPTIND - 1))
@@ -137,11 +132,16 @@ if [ "${TEST_DIR}" ]; then
     fi
 fi
 
+# Time the actual install logic...
+SECONDS=0
+
 if [ "${F_UNINSTALL}" ]; then
     echo -e "${C_WARNING}This will uninstall and cleanup prior config${C_OFF}\n"
     [ $(prompt_yn "Are you sure") != "y" ] && { echo; exit 0; } || echo; echo
     make -C ${SCRIPT_DIR} uninstall
     [ "${TEST_DIR}" ] && rm -rf "${TEST_DIR}"
+    end=$(date +%s)
+    echo "${C_INFO}Elapsed: ${SECONDS} seconds${C_OFF}"
     exit 0
 fi
 
@@ -193,3 +193,4 @@ else
 fi
 
 make -C ${SCRIPT_DIR} install
+echo "${C_INFO}Elapsed: ${SECONDS} seconds${C_OFF}"
