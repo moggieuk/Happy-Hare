@@ -6,14 +6,15 @@
 #
 
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+clear
 
 if [ -n "$(which tput 2>/dev/null)" ]; then
     C_OFF=$(tput -Txterm-256color sgr0)
     C_DEBUG=$(tput -Txterm-256color setaf 5)
     C_INFO=$(tput -Txterm-256color setaf 6)
-    C_NOTICE=$(tput -Txterm-256color setaf 2)
+    C_NOTICE=$(tput -Txterm-256color bold)$(tput -Txterm-256color setaf 2)
     C_WARNING=$(tput -Txterm-256color setaf 3)
-    C_ERROR=$(tput -Txterm-256color setaf 1)
+    C_ERROR=$(tput -Txterm-256color bold)$(tput -Txterm-256color setaf 1)
 fi
 
 usage() {
@@ -94,6 +95,8 @@ if [ ! "$SKIP_UPDATE" ]; then
     "$SCRIPT_DIR/installer/self_update.sh" || exit 1
     # Restart forcing a skip_update flag
     exec "$0" -z "$@"
+else
+    echo "${C_NOTICE}Skipping github update${C_OFF}"
 fi
 
 shift $((OPTIND - 1))

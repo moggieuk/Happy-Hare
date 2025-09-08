@@ -435,9 +435,9 @@ def main():
         build(args.build[0], args.build[1], args.build[2], args.build[3:])
 
     if args.print_happy_hare:
-        logging.info(happy_hare.format(caption=args.print_happy_hare))
+        logging.log(LEVEL_NOTICE, happy_hare.format(caption=args.print_happy_hare))
     if args.print_unhappy_hare:
-        logging.warning(unhappy_hare.format(caption=args.print_unhappy_hare))
+        logging.log(LEVEL_NOTICE, unhappy_hare.format(caption=args.print_unhappy_hare))
 
     if args.install_moonraker:
         install_moonraker(args.install_moonraker[0], args.install_moonraker[1], args.install_moonraker[2])

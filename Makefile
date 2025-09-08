@@ -14,12 +14,12 @@ endif
 
 # Print Colors (exported for use in py installer)
 ifneq ($(shell which tput 2>/dev/null),)
-  export C_OFF:=$(shell tput -Txterm-256color sgr0)
-  export C_DEBUG:=$(shell tput -Txterm-256color setaf 5)
-  export C_INFO:=$(shell tput -Txterm-256color setaf 6)
-  export C_NOTICE:=$(shell tput -Txterm-256color setaf 2)
-  export C_WARNING:=$(shell tput -Txterm-256color setaf 3)
-  export C_ERROR:=$(shell tput -Txterm-256color setaf 1)
+  export C_OFF ?= $(shell tput -Txterm-256color sgr0)
+  export C_DEBUG ?= $(shell tput -Txterm-256color setaf 5)
+  export C_INFO ?= $(shell tput -Txterm-256color setaf 6)
+  export C_NOTICE ?= $(shell tput -Txterm-256color bold)$(tput -Txterm-256color setaf 2)
+  export C_WARNING ?= $(shell tput -Txterm-256color setaf 3)
+  export C_ERROR ?= $(shell tput -Txterm-256color bold)$(tput -Txterm-256color setaf 1)
 endif
 
 # Couple verbose debug output to python debugging flag
