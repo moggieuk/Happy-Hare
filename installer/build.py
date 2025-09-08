@@ -6,7 +6,6 @@ import logging
 import subprocess
 from jinja2 import Environment, FileSystemLoader
 
-
 import kconfiglib
 from .parser import ConfigBuilder
 from .upgrades import Upgrades
@@ -76,6 +75,7 @@ class KConfig(kconfiglib.Kconfig):
 
 class HHConfig(ConfigBuilder):
     def __init__(self, cfg_files):
+#        logging.info("PAUL: HHConfig. cfg_files=%s" % cfg_files)
         super(HHConfig, self).__init__()
         self.origins = {}
         self.used_options = set()
@@ -245,7 +245,7 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
 
 
 def install_moonraker(moonraker_cfg, existing_cfg, kconfig):
-    logging.info("Adding moonraker components")
+    logging.info("Checking for moonraker.conf additions")
 
     kcfg = KConfig(kconfig)
     buffer = render_template(moonraker_cfg, kcfg, {})
@@ -275,7 +275,7 @@ def uninstall_moonraker(moonraker_cfg):
     if not os.path.isfile(moonraker_cfg):
         return
 
-    logging.info("Cleaning up moonraker components")
+    logging.info("Cleaning up moonraker.conf additions")
     builder = ConfigBuilder(moonraker_cfg)
 
     if builder.has_section("update_manager happy-hare"):
@@ -291,7 +291,8 @@ def uninstall_moonraker(moonraker_cfg):
 
 
 def install_includes(dest_file, kconfig):
-    logging.info("Configuring includes")
+    logging.info("Checking for printer.cfg includes")
+
     kcfg = KConfig(kconfig)
     builder = ConfigBuilder(dest_file)
 

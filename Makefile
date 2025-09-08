@@ -1,8 +1,8 @@
 SHELL := /usr/bin/env bash
 PY := python
-#PAUL MAKEFLAGS += --jobs 16 # Parallel build
+MAKEFLAGS += --jobs 16 # Parallel build
 Q ?= @ # For quiet make builds, override with make Q= for verbose output
-V ?=  # For verbose output of python builder, set to -v to enable
+V ?=  # For verbose output (mostly from python builder), set to -v to enable
 UT ?= * # For unittests, e.g. make UT=test_build.py test
 
 # Prevent the user from running with sudo. This isn't perfect if something else than sudo is used.
@@ -21,6 +21,9 @@ ifneq ($(shell which tput 2>/dev/null),)
   export C_ERROR:=$(shell tput -Txterm-256color setaf 1)
 endif
 
+# Couple verbose debug output to python debugging flag
+debug = $(if $(findstring -v,$(V)),$(info $(1)))
+
 # By default KCONFIG_CONFIG is '.config', but it can be overridden by the user
 export KCONFIG_CONFIG ?= .config
 -include $(KCONFIG_CONFIG) # Won't exist on first invocation
@@ -28,7 +31,7 @@ export KCONFIG_CONFIG ?= .config
 export SRC ?= $(CURDIR)
 export PYTHONPATH:=$(SRC)/installer/lib/kconfiglib:$(PYTHONPATH)
 
-ifeq ($(TEST_MODE),y)
+ifneq ($(TEST_DIR),)
   # In test mode keep the 'out' directory with rest of test config
   export OUT ?= $(TEST_DIR)/out
 else
@@ -39,7 +42,6 @@ else
     export OUT ?= $(CURDIR)/out_$(subst .config.,,$(notdir $(KCONFIG_CONFIG)))
   endif
 endif
-
 export IN=$(OUT)/in
 
 # Default unit and mcu naming
@@ -81,7 +83,7 @@ ifeq ($(CONFIG_MULTI_UNIT),y)
 else
   # In single unit setups, we use the mmu_hardware_unit0.cfg as the base config, so it is not filtered out
   hh_unit_config_files = base/mmu_hardware_unit0.cfg
-  hh_config_files = $(patsubst config/%,%, $(wildcard config/*.cfg config/**/*.cfg)))
+  hh_config_files = $(patsubst config/%,%, $(wildcard config/*.cfg config/**/*.cfg))
 endif
 
 # Use sudo if the klipper home is at a system location (not owned by user)
@@ -119,7 +121,6 @@ install_targets = \
 
 
 # Recipe functions
-# PAUL orig NON POSIX $(SUDO)cp -af $(3) "$(1)" "$(2)";
 install = \
 	$(info $(C_INFO)Installing $(2)...$(C_OFF)) \
 	$(SUDO)mkdir -p $(dir $(2)); \
@@ -139,7 +140,7 @@ backup = \
 
 restart_service = \
 	if [ "$(F_NO_SERVICE)" ]; then \
-		echo "$(C_INFO)Skipping restart of $(2) service$(C_OFF)"; \
+		echo "$(C_WARNING)Skipping restart of $(2) service$(C_OFF)"; \
 	else \
 		[ "$(1)" -eq 0 ] || $(PY) -m installer.build $(V) --restart-service "$(2)" $(3) "$(KCONFIG_CONFIG)"; \
 	fi
@@ -155,42 +156,39 @@ restart_klipper = 0
 .SECONDARY: $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE))
+.NOTPARALLEL: clean
 
 
 
+#########################
 ##### Build targets #####
-paul:
-	$(Q)echo "PAUL:HOME = $(HOME)"
-	$(Q)echo "PAUL:KLIPPER_HOME = $(KLIPPER_HOME)"
-	$(Q)echo "PAUL:KLIPPER_CONFIG_HOME = $(KLIPPER_CONFIG_HOME)"
-	$(Q)echo "PAUL:MOONRAKER_HOME  = $(MOONRAKER_HOME)"
-	$(Q)echo "PAUL:PRINTER_CONFIG_FILE  = $(PRINTER_CONFIG_FILE)"
-	$(Q)echo "PAUL:MOONRAKER_CONFIG_FILE  = $(MOONRAKER_CONFIG_FILE)"
-	$(Q)echo "PAUL:MAKECMDGOALS = $(MAKECMDGOALS)"
-	$(Q)echo "PAUL:SUDO = $(SUDO)"
+#########################
+
+# To prevent make errors when .config is not yet created
+ifneq ($(wildcard $(KCONFIG_CONFIG)),)
 
 # Link existing config files to the out/in directory to break circular dependency
 $(IN)/%:
 	$(Q)[ -f "$(KLIPPER_CONFIG_HOME)/$*" ] || { echo "$(C_ERROR)The file '$(KLIPPER_CONFIG_HOME)/$*' does not exist. Please check your config for the correct paths$(C_OFF)"; exit 1; }
+	$(call debug,$(C_DEBUG)Linking $(KLIPPER_CONFIG_HOME)/$* to '$(notdir $(IN))' directory$(C_OFF))
 	$(Q)$(call link,$(KLIPPER_CONFIG_HOME)/$*,$@)
 
-ifneq ($(wildcard $(KCONFIG_CONFIG)),) # To prevent make errors when .config is not yet created
-
 # Copy existing moonraker.conf to the out directory and update with moonraker_update.txt
-$(OUT)/$(MOONRAKER_CONFIG_FILE): $(IN)/$$(@F) 
-	$(info $(C_INFO)Copying $(MOONRAKER_CONFIG_FILE) to '$(notdir $(OUT))' directory$(C_OFF))
-	$(Q)cp -aL "$<" "$@" # Copy the current version to the out directory
-	$(Q)chmod +w "$@" # Make sure the file is writable
+$(OUT)/$(MOONRAKER_CONFIG_FILE): $(IN)/$$(@F)
+	$(call debug,$(C_DEBUG)Copying $< to '$(notdir $(OUT))' directory$(C_OFF))
+	$(Q)cp -aL "$<" "$@"
+	$(Q)chmod +w "$@"
 	$(Q)$(PY) -m installer.build $(V) --install-moonraker "$(SRC)/installer/moonraker_update.txt" "$@" "$(KCONFIG_CONFIG)"
 
 # Copy existing printer.cfg to the out directory and update with includes
-$(OUT)/$(PRINTER_CONFIG_FILE): $(IN)/$$(@F) 
-	$(info $(C_INFO)Copying $(PRINTER_CONFIG_FILE) to '$(notdir $(OUT))' directory$(C_OFF))
-	$(Q)cp -aL "$<" "$@" # Copy the current version to the out directory
-	$(Q)chmod +w "$@" # Make sure the file is writable
+$(OUT)/$(PRINTER_CONFIG_FILE): $(IN)/$$(@F)
+	$(call debug,$(C_DEBUG)Copying $< to '$(notdir $(OUT))' directory$(C_OFF))
+	$(Q)cp -aL "$<" "$@"
+	$(Q)chmod +w "$@"
 	$(Q)$(PY) -m installer.build $(V) --install-includes "$@" "$(KCONFIG_CONFIG)"
 
-# We link all config files, those that need to be updated will be written over in the install script, in case of a multi unit setup, the unit hardware config targets are overridden below
+# We link all config files, those that need to be updated will be written over in the install script,
+# in case of a multi unit setup, the unit hardware config targets are overridden below
 $(OUT)/mmu/%.cfg: $(SRC)/config/%.cfg $(hh_configs_to_parse)
 	$(Q)$(call link,$<,$@)
 	$(Q)$(PY) -m installer.build $(V) --build "$<" "$@" "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)
@@ -212,13 +210,15 @@ $(OUT)/moonraker/components/%.py: $(SRC)/components/%.py
 $(OUT):
 	$(Q)mkdir -p "$@"
 
-$(build_targets): $(KCONFIG_CONFIG) | $(OUT) update check_version 
+$(build_targets): $(KCONFIG_CONFIG) | $(OUT) check_version 
 
 build: $(build_targets)
 
 
 
+###########################
 ##### Install targets #####
+###########################
 
 # Check whether the required paths exist
 $(KLIPPER_HOME)/klippy/extras $(MOONRAKER_HOME)/moonraker/components:
@@ -229,7 +229,7 @@ $(KLIPPER_HOME)/%: $(OUT)/% | $(KLIPPER_HOME)/klippy/extras
 	$(Q)$(call install,$<,$@)
 	$(Q)$(eval restart_klipper = 1)
 
-# Install pyhton files for moonraker
+# Install python files for moonraker
 $(MOONRAKER_HOME)/%: $(OUT)/% | $(MOONRAKER_HOME)/moonraker/components
 	$(Q)$(call install,$<,$@)
 	$(Q)$(eval restart_moonraker = 1)
@@ -250,7 +250,7 @@ $(KLIPPER_CONFIG_HOME)/mmu/%.cfg: $(OUT)/mmu/%.cfg | $(call backup_name,$(KLIPPE
 	$(Q)$(eval restart_klipper = 1)
 
 # Special recipe for mmu_vars.cfg, so it doesn't overwrite an existing mmu_vars.cfg
-# Can't use non-POSIX $(Q)$(call install,$(firstword $|),$@,--no-clobber)
+# Don't use non-POSIX $(Q)$(call install,$(firstword $|),$@,--no-clobber)
 $(KLIPPER_CONFIG_HOME)/mmu/mmu_vars.cfg: | $(OUT)/mmu/mmu_vars.cfg $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu)
 	$(Q)$(SUDO)mkdir -p "$(dir $@)"
 	$(Q)[ -f "$@" ] || $(SUDO)cp -p "$(firstword $|)" "$@"
@@ -266,10 +266,9 @@ $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu): $(addprefix $(OUT)/mmu/, $(hh_co
 
 endif
 
-$(install_targets): build
+# PAUL  $(install_targets): build
 
-install: $(install_targets)
-	echo "PAUL in install rule"
+install: build $(install_targets) # PAUL added build
 	$(Q)rm -rf $(addprefix $(KLIPPER_HOME)/klippy/extras,$(hh_old_klipper_modules))
 	$(Q)$(call restart_service,$(restart_moonraker),Moonraker,$(CONFIG_SERVICE_MOONRAKER))
 	$(Q)$(call restart_service,$(restart_klipper),Klipper,$(CONFIG_SERVICE_KLIPPER))
@@ -296,9 +295,9 @@ uninstall:
 
 
 ##### Misc targets #####
-
-update: 
-	$(Q)$(SRC)/installer/self_update.sh
+# PAUL not needed
+#update: 
+#	$(Q)$(SRC)/installer/self_update.sh
 
 clean:
 	$(Q)rm -rf $(OUT)
@@ -316,11 +315,14 @@ diff: | build
 test: 
 	$(Q)$(PY) -m unittest discover $(V) -p '$(UT)'
 
+# Look for version number in current configs and report
+#check_version: $(hh_configs_to_parse)
+#	$(Q)$(PY) -m installer.build $(V) --check-version "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)
 check_version:
-	$(Q)$(PY) -m installer.build $(V) --check-version "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)  
+	$(Q)$(PY) -m installer.build $(V) --check-version "$(KCONFIG_CONFIG)" $(cfg_base)
 
 $(KCONFIG_CONFIG): $(SRC)/installer/Kconfig* $(SRC)/installer/**/Kconfig* 
-# if KCONFIG_CONFIG is outdated or doesn't exist run menuconfig first. If the user doesn't save the config, we will update it with olddefconfig
+# If KCONFIG_CONFIG is outdated or doesn't exist run menuconfig first. If the user doesn't save the config, we will update it with olddefconfig
 # touch in case .config does not get updated by olddefconfig.py
 ifeq ($(filter menuconfig uninstall,$(MAKECMDGOALS)),) # Only if menuconfig is not the target, else it will run twice, nor uninstall
 	$(Q)$(MAKE) MAKEFLAGS= menuconfig
@@ -331,3 +333,5 @@ endif
 menuconfig: $(SRC)/installer/Kconfig
 	$(Q)MENUCONFIG_STYLE="aquatic" $(PY) -m menuconfig $(SRC)/installer/Kconfig
 
+paul:
+	$(info hh_configs_to_parse = $(hh_configs_to_parse))

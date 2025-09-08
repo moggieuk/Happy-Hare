@@ -84,7 +84,6 @@ class Node(object):
         def _print(node, lines, depth):
             lines.append(" " * depth * tab + type(node).__name__)
             for k, v in vars(node).items():
-                logging.info("PAUL: k=%s, v=%s" % (k, v))
                 if k in ["type", "body"]:
                     continue
                 lines.append(unicode(" " * (depth + 1) * tab + "{}: `{}`").format(k, v))
@@ -399,7 +398,6 @@ class ConfigBuilder(object):
                 self.document = self.parser.parse(f.read())
 
     def read(self, filename):
-        logging.info("PAUL: filename=%s" % filename)
         with open(filename, "r") as f:
             doc = self.parser.parse(f.read())
             self.document.body += doc.body

@@ -62,13 +62,13 @@ prompt_yn() {
             N|n) echo -n "n"; break ;;
         esac        
     done
-}  
+}
 
 while getopts "iudzsb:nk:c:m:a:tqv" arg; do
     case $arg in
         i) F_MENUCONFIG=y ;;
         u|d) F_UNINSTALL=y ;;
-        z) export F_SKIP_UPDATE=y ;;
+        z) export SKIP_UPDATE=y ;;
         s) export F_NO_SERVICE=y ;;
         b) export BRANCH="${OPTARG}" ;;
         n) export F_MULTI_UNIT=y ;;
@@ -82,12 +82,18 @@ while getopts "iudzsb:nk:c:m:a:tqv" arg; do
         #     echo "Repetier-Server <stub> specified. Over-riding printer.cfg to [${PRINTER_CONFIG}] & klipper.service to [${KLIPPER_SERVICE}]"
         #     ;;
         a) export CONFIG_KLIPPER_SERVICE="${OPTARG}.service" ;;
-        t) export TEST_MODE=y ;;
+        t) export TEST_DIR=/tmp/mmu_test ;;
         q) export Q= ;;   # Developer: Disable quite mode in Makefile
-        v) export V=-v ;; # Developer: Enable verbose mode in builder
+        v) export V=-v ;; # Developer: Enable verbose mode in builder and debug in Makefile
         *) usage ;;
     esac
 done
+
+# Handle git self update or branch change
+if [ ! "$SKIP_UPDATE" ]; then
+    ./self_update.sh || exit 1
+    exec "$0" -z "$@"
+fi
 
 shift $((OPTIND - 1))
 if [ "$1" ]; then
@@ -101,14 +107,20 @@ if [ "${F_MENUCONFIG}" ] && [ "${F_UNINSTALL}" ]; then
     usage
 fi
 
-if [ "${TEST_MODE}" ]; then
-    export TEST_DIR="/tmp/mmu_test"
+if [ ! "F_SKIP_UPDATE" ]; then
+    ./installer/self_update.sh
+    if MUST_RESTART:
+        exec "$SCRIPTNAME" "${ARGS[@]}"
+        exit 0 # Exit this old instance
+fi
+
+if [ "${TEST_DIR}" ]; then
     export CONFIG_KLIPPER_HOME="${TEST_DIR}/klipper"
     export CONFIG_KLIPPER_CONFIG_HOME="${TEST_DIR}/printer_data/config"
     export CONFIG_MOONRAKER_HOME="${TEST_DIR}/moonraker"
-    export KCONFIG_CONFIG=${TEST_DIR}/test_config
+    export KCONFIG_CONFIG=${TEST_DIR}/.config
     export F_NO_SERVICE=y
-    echo -e "\n${C_WARNING}Running in test mode to simulate update without changing real configuration${C_OFF}"
+    echo -e "\n${C_WARNING}Running in test mode to simulate without changing real configuration${C_OFF}"
     echo -e "${C_WARNING}Forcing flags '-s -c ${CONFIG_KLIPPER_CONFIG_HOME} -k ${CONFIG_KLIPPER_HOME} -c ${CONFIG_MOONRAKER_HOME} ${TEST_DIR}/.config' ${C_OFF}"
     mkdir -p "${CONFIG_KLIPPER_HOME}/klippy/extras"
     mkdir -p "${CONFIG_KLIPPER_CONFIG_HOME}"
@@ -117,15 +129,15 @@ if [ "${TEST_MODE}" ]; then
     touch "${CONFIG_KLIPPER_CONFIG_HOME}/printer.cfg"
     if [ ! "${F_UNINSTALL}" ]; then
         echo -e "${C_INFO}When complete look in ${TEST_DIR} for results${C_OFF}\n"
-        [ $(prompt_yn "Continue") != "y" ] && { echo; exit 0; } || echo
+        [ $(prompt_yn "Continue") != "y" ] && { echo; exit 0; } || echo; echo
     fi
 fi
 
 if [ "${F_UNINSTALL}" ]; then
     echo -e "${C_WARNING}This will uninstall and cleanup prior config${C_OFF}\n"
-    [ $(prompt_yn "Are you sure") != "y" ] && { echo; exit 0; } || echo
+    [ $(prompt_yn "Are you sure") != "y" ] && { echo; exit 0; } || echo; echo
     make uninstall
-    [ "${TEST_MODE}" ] && rm -rf "${TEST_DIR}"
+    [ "${TEST_DIR}" ] && rm -rf "${TEST_DIR}"
     exit 0
 fi
 
@@ -176,5 +188,5 @@ else
     fi
 fi
 
-echo "PAUL calling make install..."
+echo -e "${C_WARNING}PAUL: TEST_DIR=/tmp/mmu_test CONFIG_KLIPPER_HOME=${TEST_DIR}/klipper CONFIG_KLIPPER_CONFIG_HOME=${TEST_DIR}/printer_data/config CONFIG_MOONRAKER_HOME=${TEST_DIR}/moonraker KCONFIG_CONFIG=${TEST_DIR}/test_config F_NO_SERVICE=y make install${C_OFF}"
 make install
