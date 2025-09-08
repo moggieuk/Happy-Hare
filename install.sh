@@ -176,4 +176,5 @@ else
     fi
 fi
 
+echo "PAUL calling make install..."
 make install

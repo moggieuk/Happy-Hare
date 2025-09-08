@@ -119,10 +119,11 @@ install_targets = \
 
 
 # Recipe functions
+# PAUL orig NON POSIX $(SUDO)cp -af $(3) "$(1)" "$(2)";
 install = \
 	$(info $(C_INFO)Installing $(2)...$(C_OFF)) \
 	$(SUDO)mkdir -p $(dir $(2)); \
-	$(SUDO)cp -af $(3) "$(1)" "$(2)";
+	$(SUDO)cp -rPf $(3) "$(1)" "$(2)";
 
 link = \
 	mkdir -p $(dir $(2)); \
@@ -169,9 +170,8 @@ paul:
 	$(Q)echo "PAUL:SUDO = $(SUDO)"
 
 # Link existing config files to the out/in directory to break circular dependency
-#	$(Q)[ -f "$(KLIPPER_CONFIG_HOME)/$*" ] || { echo "The file '$(KLIPPER_CONFIG_HOME)/$*' does not exist. Please check your config for the correct paths"; exit 1; }
 $(IN)/%:
-	$(Q)[ -f "$(KLIPPER_CONFIG_HOME)/$*" ] || { echo "$(C_ERROR)The file '$(KLIPPER_CONFIG_HOME)/$*' does not exist. Please check your config for the correct paths$(C_OFF)"; }
+	$(Q)[ -f "$(KLIPPER_CONFIG_HOME)/$*" ] || { echo "$(C_ERROR)The file '$(KLIPPER_CONFIG_HOME)/$*' does not exist. Please check your config for the correct paths$(C_OFF)"; exit 1; }
 	$(Q)$(call link,$(KLIPPER_CONFIG_HOME)/$*,$@)
 
 ifneq ($(wildcard $(KCONFIG_CONFIG)),) # To prevent make errors when .config is not yet created
@@ -250,8 +250,10 @@ $(KLIPPER_CONFIG_HOME)/mmu/%.cfg: $(OUT)/mmu/%.cfg | $(call backup_name,$(KLIPPE
 	$(Q)$(eval restart_klipper = 1)
 
 # Special recipe for mmu_vars.cfg, so it doesn't overwrite an existing mmu_vars.cfg
-$(KLIPPER_CONFIG_HOME)/mmu/mmu_vars.cfg: | $(OUT)/mmu/mmu_vars.cfg $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) 
-	$(Q)$(call install,$(firstword $|),$@,--no-clobber)
+# Can't use non-POSIX $(Q)$(call install,$(firstword $|),$@,--no-clobber)
+$(KLIPPER_CONFIG_HOME)/mmu/mmu_vars.cfg: | $(OUT)/mmu/mmu_vars.cfg $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu)
+	$(Q)$(SUDO)mkdir -p "$(dir $@)"
+	$(Q)[ -f "$@" ] || $(SUDO)cp -p "$(firstword $|)" "$@"
 	$(Q)$(eval restart_klipper = 1)
 
 # Recipe to backup printer.cfg and moonraker.conf before installing
@@ -267,6 +269,7 @@ endif
 $(install_targets): build
 
 install: $(install_targets)
+	echo "PAUL in install rule"
 	$(Q)rm -rf $(addprefix $(KLIPPER_HOME)/klippy/extras,$(hh_old_klipper_modules))
 	$(Q)$(call restart_service,$(restart_moonraker),Moonraker,$(CONFIG_SERVICE_MOONRAKER))
 	$(Q)$(call restart_service,$(restart_klipper),Klipper,$(CONFIG_SERVICE_KLIPPER))
