@@ -1,6 +1,6 @@
 SHELL := /usr/bin/env bash
 PY := python
-MAKEFLAGS += --jobs 16 # Parallel build
+#PAUL MAKEFLAGS += --jobs 16 # Parallel build
 Q ?= @ # For quiet make builds, override with make Q= for verbose output
 V ?=  # For verbose output of python builder, set to -v to enable
 UT ?= * # For unittests, e.g. make UT=test_build.py test
@@ -28,11 +28,16 @@ export KCONFIG_CONFIG ?= .config
 export SRC ?= $(CURDIR)
 export PYTHONPATH:=$(SRC)/installer/lib/kconfiglib:$(PYTHONPATH)
 
-# Use the name of the '.config.name' or 'name.config' file as the out_name directory, or 'out' if just '.config' is used
-ifeq ($(notdir $(KCONFIG_CONFIG)),.config)
-  export OUT ?= $(CURDIR)/out
+ifeq ($(TEST_MODE),y)
+  # In test mode keep the 'out' directory with rest of test config
+  export OUT ?= $(TEST_DIR)/out
 else
-  export OUT ?= $(CURDIR)/out_$(subst .config.,,$(notdir $(KCONFIG_CONFIG)))
+  # Use the name of the '.config.name' or 'name.config' file as the out_name directory, or 'out' if just '.config' is used
+  ifeq ($(notdir $(KCONFIG_CONFIG)),.config)
+    export OUT ?= $(CURDIR)/out
+  else
+    export OUT ?= $(CURDIR)/out_$(subst .config.,,$(notdir $(KCONFIG_CONFIG)))
+  endif
 endif
 
 export IN=$(OUT)/in
@@ -116,7 +121,6 @@ install_targets = \
 # Recipe functions
 install = \
 	$(info $(C_INFO)Installing $(2)...$(C_OFF)) \
-        echo "PAUL: SUDO=$(SUDO)"; \
 	$(SUDO)mkdir -p $(dir $(2)); \
 	$(SUDO)cp -af $(3) "$(1)" "$(2)";
 
@@ -161,9 +165,8 @@ paul:
 	$(Q)echo "PAUL:MOONRAKER_HOME  = $(MOONRAKER_HOME)"
 	$(Q)echo "PAUL:PRINTER_CONFIG_FILE  = $(PRINTER_CONFIG_FILE)"
 	$(Q)echo "PAUL:MOONRAKER_CONFIG_FILE  = $(MOONRAKER_CONFIG_FILE)"
+	$(Q)echo "PAUL:MAKECMDGOALS = $(MAKECMDGOALS)"
 	$(Q)echo "PAUL:SUDO = $(SUDO)"
-	$(Q)echo "PAUL:C_ERROR = $(C_ERROR)TEST"
-	$(Q)echo "PAUL:END"
 
 # Link existing config files to the out/in directory to break circular dependency
 #	$(Q)[ -f "$(KLIPPER_CONFIG_HOME)/$*" ] || { echo "The file '$(KLIPPER_CONFIG_HOME)/$*' does not exist. Please check your config for the correct paths"; exit 1; }
@@ -316,7 +319,7 @@ check_version:
 $(KCONFIG_CONFIG): $(SRC)/installer/Kconfig* $(SRC)/installer/**/Kconfig* 
 # if KCONFIG_CONFIG is outdated or doesn't exist run menuconfig first. If the user doesn't save the config, we will update it with olddefconfig
 # touch in case .config does not get updated by olddefconfig.py
-ifneq ($(findstring menuconfig,$(MAKECMDGOALS)),menuconfig) # only if menuconfig is not the target, else it will run twice
+ifeq ($(filter menuconfig uninstall,$(MAKECMDGOALS)),) # Only if menuconfig is not the target, else it will run twice, nor uninstall
 	$(Q)$(MAKE) MAKEFLAGS= menuconfig
 	$(Q)$(PY) -m olddefconfig $(SRC)/installer/Kconfig >/dev/null # Always update the .config file in case the user doesn't save it
 	$(Q)touch $(KCONFIG_CONFIG)

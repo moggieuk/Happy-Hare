@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+#
+# Happy Hare MMU Software
+#
+# Installer / Updater launch script with familar options
+#
+
+clear
 
 if [ -n "$(which tput 2>/dev/null)" ]; then
     C_OFF=$(tput -Txterm-256color sgr0)
@@ -13,14 +20,14 @@ usage() {
     USAGE="Usage: $0"
     SPACE=$(echo ${USAGE} | tr "[:print:]" " ")
     echo ${C_INFO}
-    echo "${USAGE} [-i] [-d] [-z] [-s] [-t]"
+    echo "${USAGE} [-i] [-u] [-d] [-z] [-s] [-t]"
     echo "${SPACE} [-b <branch>]"
     echo "${SPACE} [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>]"
     echo "${SPACE} [-a <kiauh_alternate_klipper>] [config_file]" # [-r <repetier_server stub>]"
     echo ${C_OFF}
     echo "${C_INFO}(no flags for safe re-install / upgrade)${C_OFF}"
     echo "-i for interactive install"
-    echo "-d for uninstall"
+    echo "-u or -d for uninstall"
     echo "-z skip github update check (nullifies -b <branch>)"
     echo "-s to skip restart of services"
     echo "-b to switch to specified feature branch (sticky)"
@@ -33,6 +40,7 @@ usage() {
     echo "-a <name> to specify alternative klipper-service-name when installed with Kiauh"
     echo "-t activate test mode to create test config files in /tmp"
     echo "${C_INFO}[config_file]${C_OFF} is optional, if not specified the default config filename (.config) will be used."
+    echo "(-q verbose make; -v verbose builder)"
     echo
     exit 0
 }
@@ -56,10 +64,10 @@ prompt_yn() {
     done
 }  
 
-while getopts "a:b:k:c:m:nidszevqt" arg; do
+while getopts "iudzsb:nk:c:m:a:tqv" arg; do
     case $arg in
         i) F_MENUCONFIG=y ;;
-        d) F_UNINSTALL=y ;;
+        u|d) F_UNINSTALL=y ;;
         z) export F_SKIP_UPDATE=y ;;
         s) export F_NO_SERVICE=y ;;
         b) export BRANCH="${OPTARG}" ;;
@@ -88,33 +96,36 @@ fi
 
 export KCONFIG_CONFIG="${KCONFIG_CONFIG-.config}"
 
-if [ "${TEST_MODE}" ]; then
-    TEST_DIR="/tmp/mmu_test"
-    export CONFIG_KLIPPER_HOME="${TEST_DIR}/klipper"
-    export CONFIG_KLIPPER_CONFIG_HOME="${TEST_DIR}/printer_data/config"
-    export CONFIG_MOONRAKER_HOME="${TEST_DIR}/moonraker"
-    export F_NO_SERVICE=y
-    echo -e "\n${C_WARNING}Running in test mode to simulate update without changing real configuration${C_OFF}"
-    echo -e "${C_WARNING}Forcing flags '-c ${CONFIG_KLIPPER_CONFIG_HOME} -k ${CONFIG_KLIPPER_HOME} -c ${CONFIG_MOONRAKER_HOME} -s'${C_OFF}"
-    echo -e "${C_INFO}When complete look in ${TEST_DIR} for results${C_OFF}\n"
-    mkdir -p "${CONFIG_KLIPPER_HOME}/klippy/extras"
-    mkdir -p "${CONFIG_KLIPPER_CONFIG_HOME}"
-    mkdir -p "${CONFIG_MOONRAKER_HOME}/components"
-    touch "${CONFIG_KLIPPER_CONFIG_HOME}/moonraker.conf"
-    touch "${CONFIG_KLIPPER_CONFIG_HOME}/printer.cfg"
-    if [ $(prompt_yn "Continue") != "y" ]; then
-        exit 0
-    fi
-    echo
-fi
-
 if [ "${F_MENUCONFIG}" ] && [ "${F_UNINSTALL}" ]; then
     echo "${C_ERROR}Can't install and uninstall at the same time!${C_OFF}"
     usage
 fi
 
+if [ "${TEST_MODE}" ]; then
+    export TEST_DIR="/tmp/mmu_test"
+    export CONFIG_KLIPPER_HOME="${TEST_DIR}/klipper"
+    export CONFIG_KLIPPER_CONFIG_HOME="${TEST_DIR}/printer_data/config"
+    export CONFIG_MOONRAKER_HOME="${TEST_DIR}/moonraker"
+    export KCONFIG_CONFIG=${TEST_DIR}/test_config
+    export F_NO_SERVICE=y
+    echo -e "\n${C_WARNING}Running in test mode to simulate update without changing real configuration${C_OFF}"
+    echo -e "${C_WARNING}Forcing flags '-s -c ${CONFIG_KLIPPER_CONFIG_HOME} -k ${CONFIG_KLIPPER_HOME} -c ${CONFIG_MOONRAKER_HOME} ${TEST_DIR}/.config' ${C_OFF}"
+    mkdir -p "${CONFIG_KLIPPER_HOME}/klippy/extras"
+    mkdir -p "${CONFIG_KLIPPER_CONFIG_HOME}"
+    mkdir -p "${CONFIG_MOONRAKER_HOME}/moonraker/components"
+    touch "${CONFIG_KLIPPER_CONFIG_HOME}/moonraker.conf"
+    touch "${CONFIG_KLIPPER_CONFIG_HOME}/printer.cfg"
+    if [ ! "${F_UNINSTALL}" ]; then
+        echo -e "${C_INFO}When complete look in ${TEST_DIR} for results${C_OFF}\n"
+        [ $(prompt_yn "Continue") != "y" ] && { echo; exit 0; } || echo
+    fi
+fi
+
 if [ "${F_UNINSTALL}" ]; then
+    echo -e "${C_WARNING}This will uninstall and cleanup prior config${C_OFF}\n"
+    [ $(prompt_yn "Are you sure") != "y" ] && { echo; exit 0; } || echo
     make uninstall
+    [ "${TEST_MODE}" ] && rm -rf "${TEST_DIR}"
     exit 0
 fi
 

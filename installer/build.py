@@ -271,6 +271,10 @@ def install_moonraker(moonraker_cfg, existing_cfg, kconfig):
 
 
 def uninstall_moonraker(moonraker_cfg):
+    # May not be complete path if config already deleted so ignore
+    if not os.path.isfile(moonraker_cfg):
+        return
+
     logging.info("Cleaning up moonraker components")
     builder = ConfigBuilder(moonraker_cfg)
 
@@ -317,6 +321,10 @@ def install_includes(dest_file, kconfig):
 
 
 def uninstall_includes(dest_file):
+    # May not be complete path if config already deleted so ignore
+    if not os.path.isfile(dest_file):
+        return
+
     logging.info("Cleaning up includes")
     builder = ConfigBuilder(dest_file)
     for include in [

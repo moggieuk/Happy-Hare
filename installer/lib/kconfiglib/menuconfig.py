@@ -258,8 +258,13 @@ _INPUT_DIALOG_MIN_WIDTH = 30
 _N_SCROLL_ARROWS = 14
 
 # Lines of help text shown at the bottom of the "main" display
+#_MAIN_HELP_LINES = """
+#+[Space/Enter] Toggle/enter      [F] Toggle show-help mode
+#+[Q] Quit (prompts for save)     [ESC] Leave menu
+#"""[1:-1].split("\n")
+# Happy Hare: Remove show-help text...
 _MAIN_HELP_LINES = """
-+[Space/Enter] Toggle/enter      [F] Toggle show-help mode
++[Space/Enter] Toggle/enter
 +[Q] Quit (prompts for save)     [ESC] Leave menu
 """[1:-1].split("\n")
 
@@ -916,10 +921,11 @@ def _menuconfig(stdscr):
             # dialog was open
             _resize_main()
 
-        elif c in ("f", "F"):
-            _show_help = not _show_help
-            # _set_style(_help_win, "show-help" if _show_help else "help")
-            _resize_main()
+        # Happy Hare: Completely disable turning help on/off
+        #elif c in ("f", "F"):
+        #    _show_help = not _show_help
+        #    # _set_style(_help_win, "show-help" if _show_help else "help")
+        #    _resize_main()
 
         elif False and c in ("c", "C"):
             _show_name = not _show_name
