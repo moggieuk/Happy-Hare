@@ -1,17 +1,48 @@
+# Happy Hare MMU Software
+#
+# A tiny tokenizer > parser > AST > writer pipeline for Klipper-style .cfg files.
+# It reads a config buffer, builds an in-memory tree (sections, options, comments, whitespace, placeholders),
+# lets you query/mutate it, then serializes back to text while preserving layout.
+#
+#  - Layout preservation: whitespace/comments are first-class nodes and retained through round trips
+#  - Indented multi-line values: indentation signals continuation; a bare newline without leading space ends the value
+#  - Special-case gcode* options: parses their values literally to avoid misinterpreting gcode content
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
+
 import sys
 import logging
 import re
 
+# Old style {token}
+#CONFIG_SPEC = [
+#    ("comment", re.compile(r"^[ \t]*[#;].*?(?=\{[^}]+\})")),
+#    ("comment", re.compile(r"^[ \t]*[#;].*")),
+#    ("whitespace", re.compile(r"^\s+")),
+#    ("section", re.compile(r"^\[.+\]")),
+#    ("word", re.compile(r"^\w[\w\d%]*")),
+#    ("assign_op", re.compile(r"^[:=]")),
+#    ("placeholder", re.compile(r"^\{(?:PIN_|CFG_|PARAM_)[^%}]+\}")),
+#    ("unknown", re.compile(r"^\S")),
+#]
+
+# New style [[token]] for jijna parsing
 CONFIG_SPEC = [
-    ("comment", re.compile(r"^[ \t]*[#;].*?(?=\{[^}]+\})")),
+    ("comment", re.compile(r"^[ \t]*[#;].*?(?=\[\[(?:PIN_|CFG_|PARAM_)[^%\]]+\]\])")),
     ("comment", re.compile(r"^[ \t]*[#;].*")),
     ("whitespace", re.compile(r"^\s+")),
-    ("section", re.compile(r"^\[.+\]")),
-    ("word", re.compile(r"^\w[\w\d%]*")),
+    ("section", re.compile(r"^\[[^\n]*\]")),               # Stricter: ("section", re.compile(r"^\[[^\]\n]+\]")), doesn't allow for: [gcode_macro T[[i]]]
+    ("word", re.compile(r"^\w(?:[\w%]|\[\[[^\]]+\]\])*")), # Stricter: ("word", re.compile(r"^\w[\w\d%]*")), doesn't allow for: respool_motor_pin_[[i]]:
     ("assign_op", re.compile(r"^[:=]")),
-    ("placeholder", re.compile(r"^\[[PIN_|CFG_|PARAM_)[^%\]][^\]]+\]]")),
+    ("placeholder", re.compile(r"^\[\[(?:PIN_|CFG_|PARAM_)[^%\]]+\]\]")),
     ("unknown", re.compile(r"^\S")),
 ]
+
 
 if sys.version_info[0] >= 3:
     unicode = str
@@ -189,7 +220,7 @@ class PlaceholderNode(Node):
         self.value = value
 
     def serialize(self):
-        return "{" + self.value + "}"
+        return "[[" + self.value + "]]" # Old style: return "{" + self.value + "}"
 
 
 class WhitespaceNode(Node):
@@ -210,16 +241,27 @@ class Parser(object):
         tokenizer = Tokenizer(buffer, CONFIG_SPEC)
         return self._post_process(self.parse_document(tokenizer))
 
-    def filter_tree(self, node, filter):
-        def _filter_tree(parent, node, filter):
-            if filter(node):
-                if parent and parent["body"]:
-                    parent["body"].remove(node)
-            elif node["body"]:
-                for item in node["body"]:
-                    _filter_tree(node, item, filter)
+    def filter_tree(self, node, predicate):
+        """
+        Remove any node (and its subtree) for which predicate(node) is True.
+        Operates in-place.
+        """
+        def _filter_tree(parent, cur):
+            # If this node should be removed, prune it from the parent and stop descending.
+            if predicate(cur):
+                if isinstance(parent, BodyNode):
+                    try:
+                        parent.body.remove(cur)
+                    except ValueError:
+                        pass  # already removed or not present
+                return
 
-        _filter_tree(None, node, filter)
+            # Otherwise descend into children if present.
+            if isinstance(cur, BodyNode):
+                for child in list(cur.body):  # iterate over a snapshot to avoid skipping
+                    _filter_tree(cur, child)
+
+        _filter_tree(None, node)
 
     def parse_document(self, tokenizer):
         body = []
@@ -385,7 +427,8 @@ def identity(node, _):
 
 
 def rename(node, ctx):
-    node["name"] = ctx
+    node.name = ctx
+    return ctx
 
 
 class ConfigBuilder(object):
@@ -409,6 +452,7 @@ class ConfigBuilder(object):
     def read_test(self, b):
         self.document.body = b
 
+    # Dumps a tree view to stdout for debugging
     def pretty_print_document(self):
         def print_node(node, ctx, _):
             logging.debug(node._pretty_print())
@@ -588,3 +632,151 @@ class ConfigBuilder(object):
             return True, ctx
 
         return self.document.walk(collect_placeholders, [])
+
+
+
+# Simple built-in command line round-trip test for the config parser. Use
+# "--check" option to perform byte-by-btye comparison
+# "--print" option to pretty print node tree
+# 
+# Usage:
+#   python parser.py path/to/printer.cfg <in.cfg>
+#   python parser.py path/to/printer.cfg --out <path/to/out.cfg> <in.cfg>
+#   python parser.py path/to/printer.cfg --check <in.cfg>
+#
+if __name__ == "__main__":
+    import argparse
+    import difflib
+    import sys
+    from pathlib import Path
+
+    def _decode_with_fallback(data: bytes, forced_encoding: str | None = None):
+        """
+        Return (text, used_encoding). Prefers utf-8/utf-8-sig, falls back to latin-1.
+        Preserves UTF-8 BOM by switching to 'utf-8-sig' when present.
+        """
+        if forced_encoding:
+            return data.decode(forced_encoding), forced_encoding
+
+        # Detect UTF-8 BOM
+        if data.startswith(b"\xef\xbb\xbf"):
+            return data.decode("utf-8-sig"), "utf-8-sig"
+
+        # Try UTF-8, then latin-1
+        try:
+            return data.decode("utf-8"), "utf-8"
+        except UnicodeDecodeError:
+            return data.decode("latin-1"), "latin-1"
+
+    def _encode_with_bom_awareness(text: str, used_encoding: str) -> bytes:
+        if used_encoding == "utf-8-sig":
+            # Prepend BOM when encoding (utf-8-sig handles it automatically)
+            return text.encode("utf-8-sig")
+        return text.encode(used_encoding)
+
+    def _make_parser():
+        ap = argparse.ArgumentParser(
+            description="Parse a Klipper-style config and write it back unchanged."
+        )
+        ap.add_argument("cfg", type=Path, help="Input config file")
+        ap.add_argument(
+            "--out",
+            type=Path,
+            help="Path to write round-tripped output (default: <cfg>.roundtrip)",
+        )
+        ap.add_argument(
+            "--check",
+            action="store_true",
+            help="Exit 0 if input == output bytes, else 1 and print unified diff.",
+        )
+        ap.add_argument(
+            "--encoding",
+            help="Force encoding for read/write (default: auto-detect utf-8/utf-8-sig, fallback latin-1)",
+        )
+        ap.add_argument(
+            "--print",
+            action="store_true",
+            help="Dump a pretty print of node tree for debugging",
+        )
+        return ap
+
+    def _main():
+        args = _make_parser().parse_args()
+
+        # Read original bytes (no newline normalization)
+        try:
+            original_bytes = args.cfg.read_bytes()
+        except Exception as e:
+            sys.stderr.write("[ERROR] Failed to read '{}': {}\n".format(args.cfg, e))
+            sys.exit(2)
+
+        # Decode with basic BOM/encoding handling
+        try:
+            original_text, used_encoding = _decode_with_fallback(
+                original_bytes, forced_encoding=args.encoding
+            )
+        except Exception as e:
+            sys.stderr.write("[ERROR] Decoding failed: {}\n".format(e))
+            sys.exit(2)
+
+        # Parse > serialize
+        try:
+            parser = Parser()
+            builder = ConfigBuilder(parser=parser)
+            builder.read_buf(original_text)
+            roundtripped_text = builder.write()
+        except Exception as e:
+            sys.stderr.write("[ERROR] Parsing/serialization failed: {}\n".format(e))
+            sys.exit(2)
+
+        # Encode output bytes (preserve BOM if used)
+        try:
+            out_bytes = _encode_with_bom_awareness(roundtripped_text, used_encoding)
+        except Exception as e:
+            sys.stderr.write("[ERROR] Encoding failed: {}\n".format(e))
+            sys.exit(2)
+
+        out_path = args.out or args.cfg.with_suffix(args.cfg.suffix + ".roundtrip")
+
+        # Write exact bytes (no newline normalization)
+        try:
+            out_path.write_bytes(out_bytes)
+        except Exception as e:
+            sys.stderr.write("[ERROR] Failed writing '{}': {}\n".format(out_path, e))
+            sys.exit(2)
+
+        # Pretty print node structure for debugging
+        if args.print:
+            builder.pretty_print_document()
+
+        if args.check:
+            if original_bytes == out_bytes:
+                print("OK: Round-trip is byte-for-byte identical.")
+                sys.exit(0)
+            else:
+                print("MISMATCH: Round-trip differs. Unified diff:\n")
+                # Decode both for human-friendly diff display
+                # Use the same encoding we used to write (minus BOM for display)
+                diff_from_enc = "utf-8" if used_encoding == "utf-8-sig" else used_encoding
+                try:
+                    lhs = original_bytes.decode(diff_from_enc, errors="replace")
+                except Exception:
+                    lhs = original_bytes.decode("latin-1", errors="replace")
+                try:
+                    rhs = out_bytes.decode(diff_from_enc, errors="replace")
+                except Exception:
+                    rhs = out_bytes.decode("latin-1", errors="replace")
+
+                diff = difflib.unified_diff(
+                    lhs.splitlines(keepends=True),
+                    rhs.splitlines(keepends=True),
+                    fromfile=str(args.cfg),
+                    tofile=str(out_path),
+                    n=3,
+                )
+                sys.stdout.writelines(diff)
+                sys.exit(1)
+        else:
+            print("Wrote round-tripped file to: {}".format(out_path))
+
+    _main()

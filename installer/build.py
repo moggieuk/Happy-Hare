@@ -1,3 +1,16 @@
+# Happy Hare MMU Software
+#
+# Install utilities called from Makefile
+#   - allows for Config file parsing and jinja templating
+#
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
+
 import sys
 import argparse
 import re
