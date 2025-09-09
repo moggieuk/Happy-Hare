@@ -30,8 +30,7 @@ import logging, time, math
 
 class MmuSyncFeedbackManager:
 
-    FEEDBACK_INTERVAL     = 0.5     # How often to check extruder movement
-    SIGNIFICANT_MOVEMENT  = 5.      # Min extruder movement to trigger direction change (don't want small retracts to trigger)
+    FEEDBACK_INTERVAL     = 0.25     # How often to check extruder movement
     MOVEMENT_THRESHOLD    = 50      # Default extruder movement threshold trigger when stuck in one state
     MULTIPLIER_RUNAWAY    = 0.25    # Used to limit range in runaway conditions (25%)
     MULTIPLIER_WHEN_STUCK = 0.01    # Used to "widen" clamp if we are not getting to neutral soon enough (1%)
@@ -49,6 +48,10 @@ class MmuSyncFeedbackManager:
         self.extruder_direction = 0 # 0 = Extruder not moving
         self.active = False         # Actively operating?
         self.last_recorded_extruder_position = None
+        self._last_state_side = 0   # track sign of proportional state to detect transitions
+        self._last_watchdog_reset = 0.0
+        self._rd_applied = None     # track live applied RD so UI can show true adjustment
+        self._proportional_seen = False  # true once we receive at least one proportional event
 
         # Process config
         self.sync_feedback_enabled = self.mmu.config.getint('sync_feedback_enabled', 0, minval=0, maxval=1)
@@ -56,7 +59,13 @@ class MmuSyncFeedbackManager:
         self.sync_feedback_buffer_maxrange = self.mmu.config.getfloat('sync_feedback_buffer_maxrange', 10., minval=0.)
         self.sync_multiplier_high = self.mmu.config.getfloat('sync_multiplier_high', 1.05, minval=1., maxval=2.)
         self.sync_multiplier_low = self.mmu.config.getfloat('sync_multiplier_low', 0.95, minval=0.5, maxval=1.)
-        self.sync_movement_threshold = self.mmu.config.getfloat('sync_movement_threshold', self.MOVEMENT_THRESHOLD, above=self.SIGNIFICANT_MOVEMENT) # Not yet exposed
+        # Make direction detection threshold configurable and reasonable for proportional updates
+        # Min extruder movement to trigger direction change
+        self.sync_movement_threshold = self.mmu.config.getfloat(
+            'sync_movement_threshold',
+            self.MOVEMENT_THRESHOLD,
+            above=0.5
+        )
 
         # Setup events for managing motor synchronization
         self.mmu.printer.register_event_handler("mmu:synced", self._handle_mmu_synced)
@@ -112,7 +121,9 @@ class MmuSyncFeedbackManager:
 
             # Always set initial rotation distance (may have been previously autotuned)
             if not self._adjust_gear_rotation_distance():
-                self.mmu.set_rotation_distance(self.rd_clamps[gate][1])
+                rd = self.rd_clamps[gate][1]
+                self._rd_applied = rd
+                self.mmu.set_rotation_distance(rd)
         else:
             self._reset_gear_rotation_distance()
 
@@ -154,7 +165,7 @@ class MmuSyncFeedbackManager:
                 self.last_recorded_extruder_position = pos
 
             # Have we changed direction?
-            if abs(pos - self.last_recorded_extruder_position) > self.SIGNIFICANT_MOVEMENT:
+            if abs(pos - self.last_recorded_extruder_position) > self.sync_movement_threshold:
                 prev_direction = self.extruder_direction
                 self.extruder_direction = (
                     self.mmu.DIRECTION_LOAD if pos > self.last_recorded_extruder_position
@@ -212,6 +223,7 @@ class MmuSyncFeedbackManager:
         if abs(state) <= 1:
             old_state = self.state
             self.state = float(state)
+            self._proportional_seen = True
             self.mmu.log_trace(
                 "MmuSyncFeedbackManager(%s): Got sync force feedback update. State: %s (%s)" % (
                     "active" if self.sync_feedback_enabled and self.active else "inactive",
@@ -219,7 +231,14 @@ class MmuSyncFeedbackManager:
                     float(state)
                 )
             )
-            self.last_recorded_extruder_position = None # Reset extruder watchdog position
+            # IMPORTANT: Do NOT reset the extruder watchdog every proportional tick.
+            # Only reset on *side* transitions (tension<->compression) so ΔE can accumulate.
+            def _side(v): 
+                return 0 if abs(v) < 1e-3 else (1 if v > 0.0 else -1)
+            new_side = _side(self.state)
+            if new_side != self._last_state_side:
+                self._reset_extruder_watchdog()
+                self._last_state_side = new_side
 
             if self.sync_feedback_enabled and self.active:
                 # Dynamically inspect sensor availability so we can be reactive to user enable/disable mid print
@@ -399,6 +418,8 @@ class MmuSyncFeedbackManager:
     # the direction of movement (although it will almost always be extruding)
     # Return True if rotation_distance set/reset
     def _adjust_gear_rotation_distance(self):
+        self.mmu.log_trace( "MmuSyncFeedbackManager: adjust RD? enabled=%s active=%s state=%.3f dir=%d" % (self.sync_feedback_enabled, self.active, self.state, self.extruder_direction) )
+        
         if not self.sync_feedback_enabled or not self.active: return False
 
         rd_clamp = self.rd_clamps[self.mmu.gate_selected]
@@ -409,13 +430,18 @@ class MmuSyncFeedbackManager:
             if go_slower(self.state, self.extruder_direction):
                 # Compressed when extruding or tension when retracting, so increase the rotation distance of gear stepper to slow it down
                 rd = rd_clamp[0]
-                self.mmu.log_trace("MmuSyncFeedbackManager: Slowing gear motor down")
+                self.mmu.log_info("MmuSyncFeedbackManager: Slowing gear motor down")
             else:
                 # Tension when extruding or compressed when retracting, so decrease the rotation distance of gear stepper to speed it up
                 rd = rd_clamp[2]
-                self.mmu.log_trace("MmuSyncFeedbackManager: Speeding gear motor up")
+                self.mmu.log_info("MmuSyncFeedbackManager: Speeding gear motor up")
 
-        self.mmu.log_trace(
+        EPS = 1e-4
+        if self._rd_applied is not None and abs(rd - self._rd_applied) < EPS:
+            # No meaningful change; skip logging & write
+            return False
+
+        self.mmu.log_debug(
             "MmuSyncFeedbackManager: Gear rotation_distance: %.4f (slow:%.4f, default: %.4f, fast:%.4f)%s" % (
                 rd,
                 rd_clamp[0],
@@ -424,13 +450,16 @@ class MmuSyncFeedbackManager:
                 (" tuned: %.4f" % rd_clamp[3]) if rd_clamp[3] else ""
             )
         )
+        self._rd_applied = rd
         self.mmu.set_rotation_distance(rd)
+        self.mmu.log_debug("Applied RD now: %.4f" % self._rd_applied)
         return True
 
     # Reset rotation_distance to calibrated value of current gate (not necessarily current value if autotuning)
     def _reset_gear_rotation_distance(self):
         rd = self.mmu.get_rotation_distance(self.mmu.gate_selected)
         self.mmu.log_trace("MmuSyncFeedbackManager: Reset rotation distance to calibrated value (%.4f)" % rd)
+        self._rd_applied = rd
         self.mmu.set_rotation_distance(rd)
 
     # Reset current sync state based on current sensor feedback
@@ -454,4 +483,15 @@ class MmuSyncFeedbackManager:
             ss = self.SYNC_STATE_COMPRESSED if compression_active else self.SYNC_STATE_EXPANDED
         elif has_tension and not has_compression:
             ss = self.SYNC_STATE_EXPANDED if tension_active else self.SYNC_STATE_COMPRESSED
+        else:
+            # No switches: fall back to proportional state if we have seen any
+            if self._proportional_seen:
+                ss = self.SYNC_STATE_NEUTRAL if abs(self.state) < 0.5 else (
+                    self.SYNC_STATE_COMPRESSED if self.state > 0 else self.SYNC_STATE_EXPANDED
+                )
+            else:
+                ss = self.SYNC_STATE_NEUTRAL
         self.state = ss
+        # Update cached side for later transition detection
+        self._last_state_side = 0 if ss == self.SYNC_STATE_NEUTRAL else (1 if ss == self.SYNC_STATE_COMPRESSED else -1)
+
