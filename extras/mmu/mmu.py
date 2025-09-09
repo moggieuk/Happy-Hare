@@ -4470,7 +4470,7 @@ class Mmu:
             _,_,measured,delta = self.trace_filament_move("Loading filament to nozzle", length, speed=speed, motor=motor, wait=True)
             self._set_filament_remaining(0.)
 
-            # Proportional-only pre-settle during toolhead load (no tension/compression switches present)
+            # Proportional-only pre-settle during extruder load (no tension/compression switches present)
             if (
                 (self.sync_to_extruder or self.sync_purge)
                 and not (has_tension or has_compression)
@@ -4491,7 +4491,7 @@ class Mmu:
                     if abs(total + move) > max_len:
                         break
                     _a,_b,_c,_d = self.trace_filament_move(
-                        "Proportional pre-settle during toolhead load", move, motor="gear", wait=True
+                        "Proportional sensor settling - extruder load", move, motor="gear", wait=True
                     )
                     total += move
                     steps += 1
@@ -4499,7 +4499,7 @@ class Mmu:
                         self.mmu.reactor.pause(settle_time)
                     except Exception:
                         time.sleep(settle_time)
-                self.log_info("Proportional pre-settle during toolhead load complete (gear-only total: %.2fmm)" % total)
+                self.log_info("Proportional sensor settling - extruder load complete (gear-only total: %.2fmm)" % total)
             # End of Proportional-only pre-settle
 
             # Encoder based validation test if short of deterministic sensors and test makes sense
@@ -4551,7 +4551,7 @@ class Mmu:
                     and not (has_tension or has_compression)
                     and self.sync_feedback_manager.is_enabled()
                 ):
-                    # Proportional-only post-load re-centering (no tension/compression switches present)
+                    # Proportional-only toolhead load re-centering (no tension/compression switches present)
                     state = float(self.sync_feedback_manager.state)
                     if abs(state) > 0.5:
                         rng = float(self.sync_feedback_manager.sync_feedback_buffer_maxrange)
@@ -4563,13 +4563,13 @@ class Mmu:
                         if nudge < -rng:
                             nudge = -rng
                         _a,_b,_c,_d = self.trace_filament_move(
-                            "Proportional post-load tension adjust",
+                            "Proportional sensor settling - toolhead load",
                             nudge, motor="gear", wait=True
                         )
-                        self.log_info("Proportional post-load tension adjust complete (gear-only move: %.2fmm, state=%.3f)" % (nudge, state))
+                        self.log_info("Proportional sensor settling - toolhead load complete (gear-only move: %.2fmm, state=%.3f)" % (nudge, state))
                     else:
                         self.log_info(
-                            "Proportional post-load tension adjust skipped "
+                            "Proportional sensor settling - toolhead load skipped "
                             "(state already neutral: %.3f)" % state
                         )
 
