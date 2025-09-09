@@ -170,7 +170,7 @@ class MmuESpooler:
                     self.advance(gate)
             elif cur_enabled and not enable:
                 self.burst_trigger_enabled[gate] = False
-                # If motor is running because of burst, disable it and prevent future calls to _reset_burst_trigger turning off the motor unwantedly
+                # If motor is running because of burst, disable it and prevent pending calls to _reset_burst_trigger turning off the motor unwantedly
                 self._reset_burst_trigger(gate, True)
 
 
@@ -300,13 +300,8 @@ class MmuESpooler:
                 _schedule_set_pin('enable_%d' % gate, 1)
 
             # Don't change the operation if it is just an in-print assist burst move.
-            # If we would change operation, the following could happen:
-            # When there is any MMU operation that uses self.get_operation(gate) while the burst move is on, the get_operation would return a non zero value for PWM.
-            # This is a problem for e. g. a filament runout while burst is currently running:
-            # 1. The wrap_sync_gear_to_extruder wrapper in mmu/mmu.py, which uses get_operation, caches a non zero pwm (e.g. 1.0 if the assist power is 100%)
-            #    with operation=print.
-            # 2. After the runout handling is complete, the wrapper restores the cached espooler state via set_operation.
-            # 3. Now the espooler unspools filament continuously (with the configured burst power) instead of using burst moves because the pwm is not zero.
+            # If we would change operation, any MMU operation calling the get_operation(gate) method while the motor is performing a burst move
+            # (e. g. a runout which is wrapped by wrap_sync_gear_to_extruder()) would get the burst pwm value instead of 0
             if operation != None:
                 self.operation[self._key(gate)] = (operation, value)
 
