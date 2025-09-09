@@ -267,12 +267,12 @@ def install_moonraker(moonraker_cfg, existing_cfg, kconfig):
 
     def update_section(section):
         if not builder.has_section(section):
-            logging.debug("Adding [{}]".format(section))
+            logging.debug(" > Adding [{}]".format(section))
             builder.add_section(section)
 
         for option, value in update.items(section):
             if not builder.has_option(section, option):
-                logging.debug("Adding [{}] {} = {}".format(section, option, value))
+                logging.debug(" > Adding [{}] {} = {}".format(section, option, value))
                 builder.set(section, option, value)
 
     update_section("update_manager happy-hare")
@@ -312,7 +312,7 @@ def install_includes(dest_file, kconfig):
         include = "include " + include
         if kcfg.is_enabled(param):
             if not builder.has_section(include):
-                logging.debug("Adding include [{}]".format(include))
+                logging.debug(" > Adding include [{}]".format(include))
                 builder.add_section(include, at_top=True, extra_newline=False)
         else:
             if builder.has_section(include):
@@ -326,7 +326,7 @@ def install_includes(dest_file, kconfig):
     check_include(builder, "ADDON_EJECT_BUTTONS", "mmu/addons/mmu_eject_buttons.cfg")
 
     if not builder.has_section("include mmu/base/*.cfg"):
-        logging.debug("Adding include [include mmu/base/*.cfg]")
+        logging.debug(" > Adding include [include mmu/base/*.cfg]")
         builder.add_section("include mmu/base/*.cfg", at_top=True, extra_newline=False)
 
     with open(dest_file, "w") as f:

@@ -396,8 +396,8 @@ class Mmu:
         self.sync_gear_current = config.getint('sync_gear_current', 50, minval=10, maxval=100)
 
         # Filament move speeds and accelaration
-        self.gear_from_buffer_speed = config.getfloat('gear_from_buffer_speed', 150., minval=10.)
-        self.gear_from_buffer_accel = config.getfloat('gear_from_buffer_accel', 400, minval=10.)
+        self.gear_from_filament_buffer_speed = config.getfloat('gear_from_filament_buffer_speed', 150., minval=10.)
+        self.gear_from_filament_buffer_accel = config.getfloat('gear_from_filament_buffer_accel', 400, minval=10.)
         self.gear_from_spool_speed = config.getfloat('gear_from_spool_speed', 60, minval=10.)
         self.gear_from_spool_accel = config.getfloat('gear_from_spool_accel', 100, minval=10.)
         self.gear_unload_speed = config.getfloat('gear_unload_speed', self.gear_from_spool_speed, minval=10.)
@@ -2486,8 +2486,8 @@ class Mmu:
 
         length = gcmd.get_float('LENGTH', 400., above=0.)
         repeats = gcmd.get_int('REPEATS', 3, minval=1, maxval=10)
-        speed = gcmd.get_float('SPEED', self.gear_from_buffer_speed, minval=10.)
-        accel = gcmd.get_float('ACCEL', self.gear_from_buffer_accel, minval=10.)
+        speed = gcmd.get_float('SPEED', self.gear_from_filament_buffer_speed, minval=10.)
+        accel = gcmd.get_float('ACCEL', self.gear_from_filament_buffer_accel, minval=10.)
         min_speed = gcmd.get_float('MINSPEED', speed, above=0.)
         max_speed = gcmd.get_float('MAXSPEED', speed, above=0.)
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
@@ -5299,7 +5299,7 @@ class Mmu:
         if motor in ["gear"]:
             if homing_move != 0:
                 speed = speed or self.gear_homing_speed
-                accel = accel or min(self.gear_from_buffer_accel, self.gear_from_spool_accel)
+                accel = accel or min(self.gear_from_filament_buffer_accel, self.gear_from_spool_accel)
             else:
                 if abs(dist) > self.gear_short_move_threshold:
                     if dist < 0:
@@ -5309,8 +5309,8 @@ class Mmu:
                         speed = speed or self.gear_from_spool_speed
                         accel = accel or self.gear_from_spool_accel
                     else:
-                        speed = speed or self.gear_from_buffer_speed
-                        accel = accel or self.gear_from_buffer_accel
+                        speed = speed or self.gear_from_filament_buffer_speed
+                        accel = accel or self.gear_from_filament_buffer_accel
                 else:
                     speed = speed or self.gear_short_move_speed
                     accel = accel or self.gear_short_move_accel
@@ -5318,10 +5318,10 @@ class Mmu:
         elif motor in ["gear+extruder", "synced"]:
             if homing_move != 0:
                 speed = speed or min(self.gear_homing_speed, self.extruder_homing_speed)
-                accel = accel or min(max(self.gear_from_buffer_accel, self.gear_from_spool_accel), self.extruder_accel)
+                accel = accel or min(max(self.gear_from_filament_buffer_accel, self.gear_from_spool_accel), self.extruder_accel)
             else:
                 speed = speed or (self.extruder_sync_load_speed if dist > 0 else self.extruder_sync_unload_speed)
-                accel = accel or min(max(self.gear_from_buffer_accel, self.gear_from_spool_accel), self.extruder_accel)
+                accel = accel or min(max(self.gear_from_filament_buffer_accel, self.gear_from_spool_accel), self.extruder_accel)
 
         elif motor in ["extruder"]:
             if homing_move != 0:
@@ -6977,8 +6977,8 @@ class Mmu:
             raise gcmd.error("Unknown parameter: %s" % illegal_params)
 
         # Filament Speeds
-        self.gear_from_buffer_speed = gcmd.get_float('GEAR_FROM_BUFFER_SPEED', self.gear_from_buffer_speed, minval=10.)
-        self.gear_from_buffer_accel = gcmd.get_float('GEAR_FROM_BUFFER_ACCEL', self.gear_from_buffer_accel, minval=10.)
+        self.gear_from_filament_buffer_speed = gcmd.get_float('GEAR_FROM_FILAMENT_BUFFER_SPEED', self.gear_from_filament_buffer_speed, minval=10.)
+        self.gear_from_filament_buffer_accel = gcmd.get_float('GEAR_FROM_FILAMENT_BUFFER_ACCEL', self.gear_from_filament_buffer_accel, minval=10.)
         self.gear_from_spool_speed = gcmd.get_float('GEAR_FROM_SPOOL_SPEED', self.gear_from_spool_speed, minval=10.)
         self.gear_from_spool_accel = gcmd.get_float('GEAR_FROM_SPOOL_ACCEL', self.gear_from_spool_accel, above=10.)
         self.gear_unload_speed = gcmd.get_float('GEAR_UNLOAD_SPEED', self.gear_unload_speed, minval=10.)
@@ -7155,8 +7155,8 @@ class Mmu:
             msg += "\ngear_unload_speed = %.1f" % self.gear_unload_speed
             msg += "\ngear_unload_accel = %.1f" % self.gear_unload_accel
             if self.has_filament_buffer:
-                msg += "\ngear_from_buffer_speed = %.1f" % self.gear_from_buffer_speed
-                msg += "\ngear_from_buffer_accel = %.1f" % self.gear_from_buffer_accel
+                msg += "\ngear_from_filament_buffer_speed = %.1f" % self.gear_from_filament_buffer_speed
+                msg += "\ngear_from_filament_buffer_accel = %.1f" % self.gear_from_filament_buffer_accel
             msg += "\ngear_short_move_speed = %.1f" % self.gear_short_move_speed
             msg += "\ngear_short_move_accel = %.1f" % self.gear_short_move_accel
             msg += "\ngear_short_move_threshold = %.1f" % self.gear_short_move_threshold
