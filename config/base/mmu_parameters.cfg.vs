@@ -269,6 +269,11 @@ toolhead_post_load_tighten: 60		# % of clog detection length, 0 to disable. Igno
 # to create neutral tension after loading
 toolhead_post_load_tension_adjust: 1	# 1 to enable (recommended), 0 to disable
 
+# If sync-feedback compression sensor is available this test will ensure the filament passes the extruder entry by checking
+# for neutral tension when moving filament with just the extruder. Recommended with sprung loaded sync-feedback buffers.
+# This is ignored if toolhead sensor is available.
+toolhead_entry_tension_test: 1		# 1 to enable (recommended), 0 to disable
+
 # ADVANCED: Controls the detection of successful extruder load/unload movement and represents the fraction of allowable
 # mismatch between actual movement and that seen by encoder. Setting to 100% tolerance effectively turns off checking.
 # Some designs of extruder have a short move distance that may not be picked up by encoder and cause false errors. This
@@ -369,7 +374,7 @@ sync_gear_current: 70			# % of gear_stepper current (10%-100%) to use when synci
 #   compression   tension        compression-only                      tension-only
 #
 sync_feedback_enabled: 0		# Turn off even if sensor is installed and active
-sync_feedback_buffer_range: 8		# Travel in "buffer" between compression/tension or one sensor and end (see above)
+sync_feedback_buffer_range: 6		# Travel in "buffer" between compression/tension or one sensor and end (see above)
 sync_feedback_buffer_maxrange: 12	# Absolute maximum end-to-end travel (mm) provided by buffer (see above)
 sync_multiplier_high: 1.05		# Maximum factor to apply to gear stepper 'rotation_distance'
 sync_multiplier_low: 0.95		# Minimum factor to apply
@@ -614,6 +619,9 @@ canbus_comms_retries: 3		# Number of retries. Recommend the default of 3.
 # errors in klippy.log. An often cited workaround is to increase BIT_MAX_TIME in neopixel.py. This option does that
 # automatically for you to save dirtying klipper
 update_bit_max_time: 1		# 1 = Increase BIT_MAX_TIME, 0 = Leave the klipper default
+#
+# BTT ViViD has an incompatible AHT10 sensor and requires the command set to be changed
+update_aht10_commands: 0	# 1 = Config AHT10 for BTT ViViD heater sensor, 0 = Leave the klipper default
 
 
 # ADVANCED: MMU macro overrides --- ONLY SET IF YOU'RE COMFORTABLE WITH KLIPPER MACROS -------------------------------

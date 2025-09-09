@@ -10,7 +10,7 @@
 #               2024  Unsweeticetea <iamzevle@gmail.com>
 #               2024  Dmitry Kychanov <k1-801@mail.ru>
 #
-VERSION=3.3 # Important: Keep synced with mmy.py
+VERSION=3.4 # Important: Keep synced with mmy.py
 
 F_VERSION=$(echo "$VERSION" | sed 's/\([0-9]\+\)\.\([0-9]\)\([0-9]\)/\1.\2.\3/')
 SCRIPT="$(readlink -f "$0")"
@@ -496,7 +496,7 @@ read_previous_mmu_type() {
     echo -e "${INFO}HAS_SERVO=${HAS_SERVO}"
     echo -e "${INFO}HAS_ENCODER=${HAS_ENCODER}"
     echo -e "${INFO}HAS_ESPOOLER=${HAS_ESPOOLER}"
-    echo -e "${INFO}Determined you have a ${_hw_selector_type}"
+    echo -e "${INFO}Determined you have a ${_hw_selector_type} or similar"
 }
 
 # Set default parameters from the distribution (reference) config files
@@ -698,6 +698,12 @@ read_previous_config() {
     if [ "${_param_sync_feedback_enable}" != "" ]; then
         _param_sync_feedback_enabled=${_param_sync_feedback_enable}
     fi
+
+    # v3.4.0 - led config moved to v4 format (from macro to python module)
+    # <users are going to be responsible for this...>
+    #if [ "${variable_led_enable}" != "" ]; then
+    #    _hw_led_enable=$(convert_boolean_string_to_int "${variable_led_enable}")
+    #fi
 }
 
 check_for_999() {
@@ -868,6 +874,74 @@ EOF
         echo "${new_section}" >> "${hardware_cfg}"
         echo -e "${INFO}Added new [mmu_machine] section to mmu_hardware.cfg..."
     fi
+
+    # v3.4.0: Update [mmu_leds] section for v4 python impl
+    found_old_mmu_leds=$(grep -E -c "^\[mmu_leds\]" ${hardware_cfg} || true)
+    if [ "${found_old_mmu_leds}" -eq 1 ]; then
+
+        sed "s/\[mmu_leds\]/\[mmu_leds unit0\]/g" "${hardware_cfg}" > "${hardware_cfg}.tmp" && mv "${hardware_cfg}.tmp" ${hardware_cfg}
+        new_section=$(cat <<EOF
+
+# Default effects for LED segments when not providing action status
+#    off              - LED's off
+#    on               - LED's white
+#    gate_status      - indicate gate availability / status            (printer.mmu.gate_status)
+#    filament_color   - display filament color defined in gate map     (printer.mmu.gate_color_rgb)
+#    slicer_color     - display slicer defined set color for each gate (printer.mmu.slicer_color_rgb)
+#   (r,g,b)           - display static r,g,b color e.g. "0,0,0.3" for dim blue
+#    _effect_         - display the named led effect
+#
+enabled: True                           # True = LEDs are enabled at startup (MMU_LED can control), False = Disabled
+animation: True                         # True = Use led-animation-effects, False = Static LEDs
+exit_effect: gate_status                #    off|gate_status|filament_color|slicer_color|r,g,b|_effect_
+entry_effect: filament_color            #    off|gate_status|filament_color|slicer_color|r,g,b|_effect_
+status_effect: filament_color           # on|off|gate_status|filament_color|slicer_color|r,g,b|_effect_
+logo_effect: (0, 0, 0.3)                #    off                                        |r,g,b|_effect_
+white_light: (1, 1, 1)                  # RGB color for static white light
+black_light: (.01, 0, .02)              # RGB color used to represent "black" (filament)
+empty_light: (0, 0, 0)                  # RGB color used to represent empty gate
+
+# Default effects (animation: True) / static rbg (animation False) to apply to actions
+#   effect_name, (r,b,g)
+#
+# IMPORTANT: Effects must be from [mmu_led_effects] set defined in mmu_leds.cfg
+#
+effect_loading:            mmu_blue_clockwise_slow, (0, 0, 0.4)
+effect_loading_extruder:   mmu_blue_clockwise_fast, (0, 0, 1)
+effect_unloading:          mmu_blue_anticlock_slow, (0, 0, 0.4)
+effect_unloading_extruder: mmu_blue_anticlock_fast, (0, 0, 1)
+effect_heating:            mmu_breathing_red,       (0.3, 0, 0)
+effect_selecting:          mmu_white_fast,          (0.2, 0.2, 0.2)
+effect_checking:           mmu_white_fast,          (0.8, 0.8, 0.8)
+effect_initialized:        mmu_rainbow,             (0.5, 0.2, 0)
+effect_error:              mmu_strobe,              (1, 0, 0)
+effect_complete:           mmu_sparkle,             (0.3, 0.3, 0.3)
+effect_gate_selected:      mmu_static_blue,         (0, 0, 1)
+effect_gate_available:     mmu_static_green,        (0, 0.5, 0)
+effect_gate_available_sel: mmu_ready_green,         (0, 0.75, 0)
+effect_gate_unknown:       mmu_static_orange,       (0.5, 0.2, 0)
+effect_gate_unknown_sel:   mmu_ready_orange ,       (0.75, 0.3, 0)
+effect_gate_empty:         mmu_static_black,        (0, 0, 0)
+effect_gate_empty_sel:     mmu_ready_blue,          (0, 0, 0.2)
+
+EOF
+)
+        temp_file=$(mktemp)
+        echo "$new_section" > "$temp_file"
+        awk '
+            BEGIN { found = 0 }
+            /^frame_rate/ && !found {
+                print
+                while ((getline line < "'"$temp_file"'") > 0) print line
+                close("'"$temp_file"'")
+                found = 1
+                next
+            }
+            { print }
+        ' "${hardware_cfg}" > "${hardware_cfg}.tmp" && mv "${hardware_cfg}.tmp" "${hardware_cfg}"
+        rm "$temp_file"
+        echo -e "${INFO}Upgraded [mmu_leds] section in mmu_hardware.cfg with new settings..."
+    fi
 }
 
 copy_config_files() {
@@ -963,8 +1037,12 @@ copy_config_files() {
         if [ "${file}" == "mmu.cfg" -o "${file}" == "mmu_hardware.cfg" ]; then
 
             # Kludge to support complete h/w configurations for dedicated MMUs
-            if [ "${_hw_mmu_vendor}" == "KMS" ]; then
-                cp "${src}.kms" ${dest}
+            if [ "${_hw_mmu_vendor}" == "KMS" -o "${_hw_mmu_vendor}" == "VVD" ]; then
+                if [ "${_hw_mmu_vendor}" == "KMS" ]; then
+                    cp "${src}.kms" ${dest}
+                else
+                    cp "${src}.vvd" ${dest}
+                fi
 
                 # Do all the token substitution
                 cat ${dest} | sed -e "$sed_expr" "${dest}" > "${dest}.tmp" > ${dest}.tmp && mv ${dest}.tmp ${dest}
@@ -1478,7 +1556,7 @@ questionaire() {
     option QUATTRO_BOX    'QuattroBox v1.0'
     option QUATTRO_BOX11  'QuattroBox v1.1'
     option MMX            'MMX'
-    #option VVD            'BigTreeTech VVD'
+    option VVD            'BigTreeTech ViViD (BETA)'
     option KMS            'KMS'
     option OTHER          'Other / Custom (or just want starter config files)'
     prompt_option opt 'MMU Type' "${OPTIONS[@]}"
@@ -1640,6 +1718,7 @@ questionaire() {
             _param_extruder_homing_endstop="extruder"
             _param_gate_homing_endstop="extruder"
             _param_gate_homing_max=500
+            _param_gate_preload_homing_max=500
             _param_gate_parking_distance=50
             _param_gear_homing_speed=80
             _param_has_filament_buffer=0
@@ -1775,8 +1854,8 @@ questionaire() {
             _hw_variable_bowden_lengths=0
             _hw_variable_rotation_distances=0
             _hw_require_bowden_move=1
-            _hw_filament_always_gripped=1
-            _hw_gear_gear_ratio="1.28:1"
+            _hw_filament_always_gripped=0
+            _hw_gear_gear_ratio="1.25:1"
             _hw_gear_run_current=0.7
             _hw_gear_hold_current=0.1
             _hw_chain_count=4
@@ -1898,6 +1977,7 @@ questionaire() {
             _param_extruder_homing_endstop="none"
             _param_gate_homing_endstop="mmu_gate"
             _param_gate_homing_max=1000
+            _param_gate_preload_homing_max=1000
             _param_gate_parking_distance=25
             _param_gear_homing_speed=80
             _param_selector_gate_angles="60,0,180,120"
@@ -1906,12 +1986,46 @@ questionaire() {
         "$VVD")
             # Comming soon (Bigtreetech)...
             HAS_ENCODER=no
-            HAS_SELECTOR=no
+            HAS_SELECTOR=yes
+            HAS_SERVO=no
+            HAS_ESPOOLER=yes
+            SETUP_LED=yes
+            # Note VVD has preconfigured mmu_hardware.cfg based on dedicated electronics
+            _hw_num_gates=4
+            _hw_mmu_vendor="VVD"
+            _hw_mmu_version="1.0"
+            _hw_selector_type=IndexedSelector
+
+            # mmu_parameters config
+            _param_extruder_homing_endstop="filament_compression"
+            _param_extruder_homing_max=250
+            _param_extruder_homing_buffer=80
+            _param_gate_homing_endstop="mmu_gear"
+            _param_gate_homing_max=250
+            _param_gate_unload_buffer=80
+            _param_gate_parking_distance=30
+            _param_gate_preload_homing_max=750
+            _param_gate_preload_parking_distance=30
+            _param_gate_final_eject_distance=750
+            _param_gate_autoload=1
+            _param_has_filament_buffer=0
+
+            _param_autocal_bowden_length=1
+            _param_autotune_bowden_length=0
+            _param_skip_cal_rotation_distance=1
+            _param_autotune_rotation_distance=1
+
+            _param_sync_feedback_enabled=1
+            _param_sync_feedback_buffer_range=8
+            _param_sync_feedback_buffer_maxrange=12
+
+            _param_update_aht10_commands=1
             ;;
 
         "$KMS")
             HAS_ENCODER=yes
             HAS_SELECTOR=no
+            HAS_SERVO=no
             HAS_ESPOOLER=yes
             SETUP_LED=yes
             # Note KMS has preconfigured mmu_hardware.cfg based on dedicated electronics
@@ -1923,9 +2037,9 @@ questionaire() {
             # mmu_parameters config
             _param_extruder_homing_endstop="filament_compression"
             _param_gate_homing_endstop="mmu_gate"
+            _param_gate_homing_max=300
             _param_gate_preload_homing_max=300
             _param_gate_preload_parking_distance=-10
-            _param_gate_homing_max=300
             _param_gate_parking_distance=20
             _param_gate_unload_buffer=50
             _param_gate_endstop_to_encoder=14
@@ -1943,8 +2057,6 @@ questionaire() {
             _param_sync_feedback_enabled=1
             _param_sync_feedback_buffer_range=8
             _param_sync_feedback_buffer_maxrange=12
-
-            # TODO: Tweak espooler tuned variables?..
             ;;
 
         *)
@@ -2055,7 +2167,7 @@ questionaire() {
             ;;
         esac
 
-    if [ "${_hw_mmu_vendor}" != "KMS" ]; then
+    if [ "${_hw_mmu_vendor}" != "KMS" -a "${_hw_mmu_vendor}" != "VVD" ]; then
         echo -e "${PROMPT}${SECTION}How many gates (lanes) do you have?${INPUT}"
         _hw_num_gates=$(prompt_123 "Number of gates")
     fi
@@ -2072,6 +2184,39 @@ questionaire() {
                 prompt_option opt 'KMS MCU?' "${OPTIONS[@]}"
                 case $opt in
                     "$KMS")
+                        _hw_serial1="/dev/serial/by-id/${line}"
+                        ;;
+                    "$BUFFER")
+                        _hw_serial2="/dev/serial/by-id/${line}"
+                        ;;
+                    *)
+                        ;;
+                esac
+            fi
+        done
+        if [ "${_hw_serial1}" == "" ]; then
+            echo
+            echo -e "${WARNING}    Couldn't find your MMU serial port, but no worries - I'll configure the default and you can manually change later"
+            _hw_serial1='/dev/ttyACM1 # Config guess. Run ls -l /dev/serial/by-id and set manually'
+        fi
+        if [ "${_hw_serial2}" == "" ]; then
+            echo
+            echo -e "${WARNING}    Couldn't find your Bufffer (sync-feedback sensor) serial port, but no worries - I'll configure the default and you can manually change later"
+            _hw_serial1='/dev/ttyACM2 # Config guess. Run ls -l /dev/serial/by-id and set manually'
+        fi
+
+    elif [ "${_hw_mmu_vendor}" == "VVD" ]; then
+        pattern="Klipper_stm32"
+        for line in `ls /dev/serial/by-id 2>/dev/null | grep -E "Klipper_"`; do
+            if echo ${line} | grep --quiet "${pattern}"; then
+                echo -e "${PROMPT}${SECTION}Is '/dev/serial/by-id/${line}' a ${EMPHASIZE}KMS${PROMPT} controller serial port?${INPUT}"
+                OPTIONS=()
+                option VVD     'ViVid MMU'
+                option BUFFER  'ViViD Buffer (sync-feedback sensor)'
+                option NEITHER 'No, not related to ViViD'
+                prompt_option opt 'ViViD MCU?' "${OPTIONS[@]}"
+                case $opt in
+                    "$VVD")
                         _hw_serial1="/dev/serial/by-id/${line}"
                         ;;
                     "$BUFFER")
@@ -2338,6 +2483,7 @@ questionaire() {
                 echo -e "${PROMPT}${SECTION}Which servo are you using?${INPUT}"
                 OPTIONS=()
                 option MMX_BOM 'MG996R'
+                option EMAX_ES3004 'EMAX ES3004'
                 option OTHER 'Not listed / Other'
                 prompt_option opt 'Servo' "${OPTIONS[@]}"
                 case $opt in
@@ -2348,6 +2494,14 @@ questionaire() {
                         _param_servo_always_active=0
                         _param_servo_duration=0.6
                         _param_servo_dwell=1.0
+                        ;;
+                    "$EMAX_ES3004")
+                        _hw_maximum_servo_angle=140
+                        _hw_minimum_pulse_width=0.00070
+                        _hw_maximum_pulse_width=0.00230
+                        _param_servo_always_active=0
+                        _param_servo_duration=0.6
+                        _param_servo_dwell=1.2
                         ;;
                     *)
                         _hw_maximum_servo_angle=180

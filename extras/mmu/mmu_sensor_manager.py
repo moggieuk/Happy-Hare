@@ -42,11 +42,8 @@ class MmuSensorManager:
             self.mmu.SENSOR_EXTRUDER_ENTRY,
             self.mmu.SENSOR_TOOLHEAD
         ])
-        for name in sensor_names:
-            sensor_name = name if re.search(r'_(\d+)$', name) else "%s_sensor" % name # Must match mmu_sensors
-            sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s" % sensor_name, None)
-            if sensor is not None and isinstance(sensor.runout_helper, MmuRunoutHelper):
-                self.all_sensors[name] = sensor
+        mmu_sensors = self.mmu.printer.lookup_object("mmu_sensors")
+        self.all_sensors = mmu_sensors.sensors
 
         # Special case for "no bowden" (one unit) designs where mmu_gate is an alias for extruder sensor
         if not self.mmu.mmu_machine.require_bowden_move and self.all_sensors.get(self.mmu.SENSOR_EXTRUDER_ENTRY, None) and self.mmu.SENSOR_GATE not in self.all_sensors:
@@ -54,6 +51,7 @@ class MmuSensorManager:
 
         # Setup subset of filament sensors that are also used for homing (endstops)
         self.endstop_names = []
+        self.endstop_names.extend([self.get_gate_sensor_name(self.mmu.SENSOR_PRE_GATE_PREFIX, i) for i in range(self.mmu.num_gates)])
         self.endstop_names.extend([self.get_gate_sensor_name(self.mmu.SENSOR_GEAR_PREFIX, i) for i in range(self.mmu.num_gates)])
         self.endstop_names.extend([
             self.mmu.SENSOR_GATE,
@@ -74,20 +72,23 @@ class MmuSensorManager:
             self.mmu.SENSOR_GEAR_TOUCH
         ])
         for name in self.endstop_names:
-            sensor_name = name if re.search(r'_(\d+)$', name) else "%s_sensor" % name # Must match mmu_sensors
-            sensor = self.mmu.printer.lookup_object("filament_switch_sensor %s" % sensor_name, None)
-            if sensor is not None and isinstance(sensor.runout_helper, MmuRunoutHelper):
-                # Add sensor pin as an extra endstop for gear rail
-                sensor_pin = sensor.runout_helper.switch_pin
-                ppins = self.mmu.printer.lookup_object('pins')
-                pin_params = ppins.parse_pin(sensor_pin, True, True)
-                share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
-                ppins.allow_multi_use_pin(share_name)
-                mcu_endstop = self.mmu.gear_rail.add_extra_endstop(sensor_pin, name)
+            sensor = self.all_sensors.get(name, None)
+            if sensor is not None:
+                if sensor.__class__.__name__ == "MmuAdcSwitchSensor":
+                    sensor_pin = sensor.runout_helper.switch_pin
+                    mcu_endstop = self.mmu.gear_rail.add_extra_endstop(sensor_pin, name, mcu_endstop=sensor)
+                else:
+                    # Add sensor pin as an extra endstop for gear rail
+                    sensor_pin = sensor.runout_helper.switch_pin
+                    ppins = self.mmu.printer.lookup_object('pins')
+                    pin_params = ppins.parse_pin(sensor_pin, True, True)
+                    share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
+                    ppins.allow_multi_use_pin(share_name)
+                    mcu_endstop = self.mmu.gear_rail.add_extra_endstop(sensor_pin, name)
 
                 # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
                 # otherwise the extruder can continue to move a small (speed dependent) distance
-                if self.mmu.homing_extruder and name == self.mmu.SENSOR_TOOLHEAD:
+                if self.mmu.homing_extruder and name in [self.mmu.SENSOR_TOOLHEAD, self.mmu.SENSOR_COMPRESSION, self.mmu.SENSOR_TENSION]:
                     mcu_endstop.add_stepper(self.mmu.mmu_extruder_stepper.stepper)
             else:
                 logging.warning("MMU: Improper setup: Filament sensor %s is not defined in [mmu_sensors]" % name)
@@ -114,7 +115,7 @@ class MmuSensorManager:
         self.sensors = {}
         for name, sensor in self.all_sensors.items():
             if name.startswith("unit_"):
-                if unit != self.mmu.UNIT_UNKNOWN and name.startswith("unit_" + str(unit)):
+                if unit is not None and name.startswith("unit_" + str(unit)):
                     self.sensors[re.sub(r'unit_\d+_', '', name)] = sensor
                     sensor.runout_helper.enable_button_feedback(True)
                 else:
@@ -161,7 +162,7 @@ class MmuSensorManager:
         sensor = self.sensors.get(name, None)
         if sensor is not None and sensor.runout_helper.sensor_enabled:
             detected = bool(sensor.runout_helper.filament_present)
-            self.mmu.log_trace("(%s sensor %s filament)" % (name, "detects" if detected else "does not detect"))
+            self.mmu.log_stepper("[%s sensor is %s]" % (name, "TRIGGERED" if detected else "empty"))
             return detected
         else:
             return None
@@ -172,7 +173,7 @@ class MmuSensorManager:
         sensor = self.sensors.get(sensor_name, None)
         if sensor is not None and sensor.runout_helper.sensor_enabled:
             detected = bool(sensor.runout_helper.filament_present)
-            self.mmu.log_trace("(%s sensor %s filament)" % (sensor_name, "detects" if detected else "does not detect"))
+            self.mmu.log_stepper("]%s sensor is %s]" % (sensor_name, "TRIGGERED" if detected else "empty"))
             return detected
         else:
             return None
@@ -215,7 +216,7 @@ class MmuSensorManager:
 
     # Returns True is any sensors in current filament path are triggered (EXCLUDES pre-gate)
     #         None if no sensors available (disambiguate from non-triggered sensor)
-    def check_any_sensors_in_path(self):
+    def check_any_sensors_in_path(self, exclude_gear=False):
         sensors = self._get_all_sensors_for_gate(self.mmu.gate_selected)
         if all(state is None for state in sensors.values()):
             return None
@@ -268,9 +269,10 @@ class MmuSensorManager:
     def _get_sensors(self, pos, gate, position_condition):
         result = {}
         if gate >= 0:
+            # Note: For gear sensor the position of POS_HOMED_GATE is only valid if is not usually triggered (i.e. parking retract)
             sensor_selection = [
                 (self.get_gate_sensor_name(self.mmu.SENSOR_PRE_GATE_PREFIX, gate), None),
-                (self.get_gate_sensor_name(self.mmu.SENSOR_GEAR_PREFIX, gate), self.mmu.FILAMENT_POS_HOMED_GATE if self.mmu.gate_homing_endstop == self.mmu.SENSOR_GEAR_PREFIX else None),
+                (self.get_gate_sensor_name(self.mmu.SENSOR_GEAR_PREFIX, gate), self.mmu.FILAMENT_POS_HOMED_GATE if self.mmu.gate_homing_endstop == self.mmu.SENSOR_GEAR_PREFIX and self.mmu.gate_parking_distance >= 0 else None),
                 (self.mmu.SENSOR_GATE, self.mmu.FILAMENT_POS_HOMED_GATE),
                 (self.mmu.SENSOR_EXTRUDER_ENTRY, self.mmu.FILAMENT_POS_HOMED_ENTRY),
                 (self.mmu.SENSOR_TOOLHEAD, self.mmu.FILAMENT_POS_HOMED_TS),
@@ -279,7 +281,7 @@ class MmuSensorManager:
                 sensor = self.sensors.get(name, None)
                 if sensor and position_condition(pos, position_check):
                     result[name] = bool(sensor.runout_helper.filament_present) if sensor.runout_helper.sensor_enabled else None
-        return result
+        return result # TODO handle bypass and return only EXTRUDER_ENTRY and TOOLHEAD sensors
 
     def _get_sensors_before(self, pos, gate, loading=True):
         return self._get_sensors(pos, gate, lambda p, pc: pc is None or (loading and p >= pc) or (not loading and p > pc))
