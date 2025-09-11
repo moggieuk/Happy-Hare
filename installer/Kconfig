@@ -11,9 +11,13 @@ serial = $(shell, ls /dev/serial/by-id/* 2>/dev/null | grep 'Klipper_$(2)' | tai
 serial_exists = $(to_bool, [ -e '$(serial,$(1),$(2))' ])
 serial_config = $(shell, basename '$(serial,$(1),$(2))' | sed 's/-/_/g' | awk '{print "PARAM_SERIAL_" toupper($0)}')
 
-# To allow multiline config strings. For portability, this is a posix version of:
-# ml = $(shell, printf "$(1)" | sed -z "s/\\n/\\\\n/g")
-ml = $(shell, printf %s '$(1)' | sed ':a;N;$!ba;s/\n/\\n/g' 2>/dev/null)
+# To allow multiline config strings.
+# Important: Use $(comma) & $(quote) instead of real comma's or double quotes in multiline strings
+# For portability, this is a posix version of: ml = $(shell, printf "$(1)" | sed -z "s/\\n/\\\\n/g")
+comma := ,
+quote := "
+ml = $(shell, printf '%s' "$(1)" | awk -v ORS='\\n' '1')
+
 
 
 mainmenu "$(title)"

@@ -87,13 +87,13 @@ chain_count: 14\n\
 color_order: GRB\n\
 \n\
 [temperature_sensor $(UNIT_NAME)_env_left]\n\
-sensor_type: AHT10 # Actually a ACT30, set 'update_aht10_commands: 1' in mmu_parameters.cfg\n\
+sensor_type: AHT10 # Actually a ACT30$$(comma) set 'update_aht10_commands: 1$' in mmu_parameters.cfg\n\
 i2c_mcu: $(MMU_MCU)\n\
 i2c_bus: i2c1_PA9_PA10\n\
 aht10_report_time: 10\n\
 \n\
 [temperature_sensor $(UNIT_NAME)_env_right]\n\
-sensor_type: AHT10 # Actually a ACT30, set 'update_aht10_commands: 1' in mmu_parameters.cfg\n\
+sensor_type: AHT10 # Actually a ACT30$(comma) set 'update_aht10_commands: 1' in mmu_parameters.cfg\n\
 i2c_mcu: $(MMU_MCU)\n\
 i2c_software_scl_pin: PA7\n\
 i2c_software_sda_pin: PA6\n\
@@ -103,7 +103,7 @@ aht10_report_time: 10\n\
 gcode_id:  $(UNIT_NAME)_heater\n\
 heater_pin: $(MMU_MCU):PC14\n\
 sensor_type: temperature_combined\n\
-sensor_list: temperature_sensor ${UNIT_NAME}_env_left, temperature_sensor ${UNIT_NAME}_env_right\n\
+sensor_list: temperature_sensor ${UNIT_NAME}_env_left$(comma) temperature_sensor ${UNIT_NAME}_env_right\n\
 combination_method: mean\n\
 maximum_deviation: 100\n\
 control: pid\n\
@@ -127,7 +127,7 @@ heater: $(UNIT_NAME)_heater\n\
 # Electronics cooling fan\n\
 [controller_fan $(UNIT_NAME)_mcu_fan]\n\
 pin: $(MMU_MCU):PA14\n\
-stepper: stepper mmu_selector_$(UNIT_NAME), stepper mmu_gear_$(UNIT_NAME)\n\
+stepper: stepper mmu_selector_$(UNIT_NAME)$(comma) stepper mmu_gear_$(UNIT_NAME)\n\
 \n\
 [temperature_sensor ptc_ntc100k]\n\
 sensor_pin: $(MMU_MCU):PA4\n\

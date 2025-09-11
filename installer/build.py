@@ -36,23 +36,24 @@ unhappy_hare = '\n(\\_/)\n( V,V)\n(")^(") {caption}\n'
 LEVEL_NOTICE = 25
 
 HH_CONFIG_FILES_TO_BUILD = [
-    "config/mmu.cfg",
-    "config/mmu_hardware.cfg",
-    "config/mmu_parameters.cfg",
-    "config/mmu_macro_vars.cfg",
+    "config/base/mmu.cfg",
+    "config/base/mmu_hardware.cfg",
+    "config/base/mmu_parameters.cfg",
+    "config/base/mmu_macro_vars.cfg",
 ]
 
 HH_CONFIG_INCLUDES_TO_CLEAN = [
+    "mmu/base/*.cfg",
+    "mmu/macros/*.cfg",
+    "mmu/addons/*.cfg",
+    "mmu/optional/*.cfg",
     "mmu/optional/mmu_menu.cfg",
     "mmu/optional/mmu_ercf_compat.cfg",
     "mmu/optional/client_macros.cfg",
     "mmu/addons/mmu_erec_cutter.cfg",
     "mmu/addons/blobifier.cfg",
     "mmu/addons/dc_espooler.cfg",
-    "mmu/base/*.cfg",
-    "mmu/macros/*.cfg",
-    "mmu/addons/*.cfg"
-    "mmu/optional/*.cfg"
+    "mmu/addons/mmu_eject_buttons.cfg",
 ]
 
 # Enhanced representation of Kconfig file
@@ -450,7 +451,7 @@ def check_version(kconfig_file, input_files):
         exit(1)
 
     if current_version == target_version:
-        logging.log(LEVEL_NOTICE, "Up to date, no config upgrades required. Will just confirm installation")
+        logging.log(LEVEL_NOTICE, "Up to date, no config upgrades required. Will confirm installation")
         return
 
     if float(current_version) > float(target_version):
