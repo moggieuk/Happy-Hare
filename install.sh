@@ -2175,7 +2175,7 @@ questionaire() {
     if [ "${_hw_mmu_vendor}" == "KMS" ]; then
         pattern="Klipper_stm32"
         for line in `ls /dev/serial/by-id 2>/dev/null | grep -E "Klipper_"`; do
-            if echo ${line} | grep --quiet "${pattern}"; then
+            if echo ${line} | grep -q "${pattern}"; then
                 echo -e "${PROMPT}${SECTION}Is '/dev/serial/by-id/${line}' a ${EMPHASIZE}KMS${PROMPT} controller serial port?${INPUT}"
                 OPTIONS=()
                 option KMS     'KMS MMU'
@@ -2208,7 +2208,7 @@ questionaire() {
     elif [ "${_hw_mmu_vendor}" == "VVD" ]; then
         pattern="Klipper_stm32"
         for line in `ls /dev/serial/by-id 2>/dev/null | grep -E "Klipper_"`; do
-            if echo ${line} | grep --quiet "${pattern}"; then
+            if echo ${line} | grep -q "${pattern}"; then
                 echo -e "${PROMPT}${SECTION}Is '/dev/serial/by-id/${line}' a ${EMPHASIZE}KMS${PROMPT} controller serial port?${INPUT}"
                 OPTIONS=()
                 option VVD     'ViVid MMU'
@@ -2314,7 +2314,7 @@ questionaire() {
         esac
 
         for line in `ls /dev/serial/by-id 2>/dev/null | grep -E "Klipper_"`; do
-            if echo ${line} | grep --quiet "${pattern}"; then
+            if echo ${line} | grep -q "${pattern}"; then
                 echo -e "${PROMPT}${SECTION}This looks like your ${EMPHASIZE}${_hw_brd_type}${PROMPT} controller serial port. Is that correct?${INPUT}"
                 yn=$(prompt_yn "/dev/serial/by-id/${line}")
                 echo
