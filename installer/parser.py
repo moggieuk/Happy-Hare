@@ -27,7 +27,7 @@ CONFIG_SPEC = [
     ("section", re.compile(r"^\[.+\]")),
     ("word", re.compile(r"^\w[\w%]*")),
     ("assign_op", re.compile(r"^[:=]")),
-    ("placeholder", re.compile(r"^\{(?:PIN_|CFG_|PARAM_)[^%}]+\}")),
+    ("placeholder", re.compile(r"^\{(?:PIN_|PARAM_)[^%}]+\}")),
     ("unknown", re.compile(r"^\S")),
 ]
 
@@ -500,6 +500,29 @@ class ConfigBuilder(object):
             return True, buffer
 
         return self.document.walk(print_node, "")
+
+    def excluded_nodes(self):
+        """
+        Return a list of all MagicExclusionNode instances in the current document,
+        across all files that have been read/merged.
+        """
+        def collect_magic(node, acc, _depth):
+            if isinstance(node, MagicExclusionNode):
+                acc.append(node)
+            return True, acc  # Keep descending
+        return self.document.walk(collect_magic, [])
+
+    def delete_excluded(self):
+        """
+        Remove every MagicExclusionNode (and all of its children) from the document.
+        Returns the number of nodes removed.
+        """
+        to_remove = len(self.excluded_nodes())
+        if to_remove == 0:
+            return 0
+        # Filter_tree prunes matching nodes and their entire subtree in-place
+        self.parser.filter_tree(self.document, lambda n: isinstance(n, MagicExclusionNode))
+        return to_remove
 
     def _iter_section_nodes(self, node, inside_excluded=False):
         """

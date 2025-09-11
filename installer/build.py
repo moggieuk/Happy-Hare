@@ -15,12 +15,13 @@ import sys
 import argparse
 import re
 import os
+import copy
 import logging
 import subprocess
 from jinja2 import Environment, FileSystemLoader
 
 import kconfiglib
-from .parser import ConfigBuilder
+from .parser import ConfigBuilder, WhitespaceNode
 from .upgrades import Upgrades
 
 # Documented params that are not in templates
@@ -115,63 +116,6 @@ class KConfig(kconfiglib.Kconfig):
                 result[sym] = value
         return result
 
-    def update(self, hhcfg): # PAUL new
-        """ Where posssible update the KConfig with the existing config HH Config data """
-        # PAUL may need to create mutation methods
-        #    sym.set_value(value)
-#        """
-#        Sets the user value of the symbol.
-#
-#        Equal in effect to assigning the value to the symbol within a .config
-#        file. For bool and tristate symbols, use the 'assignable' attribute to
-#        check which values can currently be assigned. Setting values outside
-#        'assignable' will cause Symbol.user_value to differ from
-#        Symbol.str/tri_value (be truncated down or up).
-#
-#        Setting a choice symbol to 2 (y) sets Choice.user_selection to the
-#        choice symbol in addition to setting Symbol.user_value.
-#        Choice.user_selection is considered when the choice is in y mode (the
-#        "normal" mode).
-#
-#        Other symbols that depend (possibly indirectly) on this symbol are
-#        automatically recalculated to reflect the assigned value.
-#
-#        value:
-#          The user value to give to the symbol. For bool and tristate symbols,
-#          n/m/y can be specified either as 0/1/2 (the usual format for tristate
-#          values in Kconfiglib) or as one of the strings "n", "m", or "y". For
-#          other symbol types, pass a string.
-#        
-#          Note that the value for an int/hex symbol is passed as a string, e.g.
-#          "123" or "0x0123". The format of this string is preserved in the
-#          output.
-#
-#          Values that are invalid for the type (such as "foo" or 1 (m) for a
-#          BOOL or "0x123" for an INT) are ignored and won't be stored in
-#          Symbol.user_value. Kconfiglib will print a warning by default for
-#          invalid assignments, and set_value() will return False.
-#
-#        Returns True if the value is valid for the type of the symbol, and
-#        False otherwise. This only looks at the form of the value. For BOOL and
-#        TRISTATE symbols, check the Symbol.assignable attribute to see what
-#        values are currently in range and would actually be reflected in the
-#        value of the symbol. For other symbol types, check whether the
-#        visibility is non-n.
-#        """
-        pass # PAUL TODO
-
-# PAUL write_config exists in super class
-#    def write_config(self, filename=None, header=None, save_old=True,
-#                     verbose=None):
-#    def write(self): # PAUL new
-#        def print_node(node, buffer, _):
-#            buffer += node.serialize()
-#            return True, buffer
-#
-#        return self.document.walk(print_node, "")
-#        pass # PAUL TODO
-
-
 
 class HHConfig(ConfigBuilder):
     def __init__(self, cfg_files):
@@ -183,7 +127,6 @@ class HHConfig(ConfigBuilder):
             logging.debug(" > Reading config file: " + cfg_file)
             basename = cfg_file.replace(prefix, "")
             super(HHConfig, self).read(cfg_file)
-            logging.debug(" > PAUL: sections: %s" % self.sections())
             for section in self.sections():
                 for option in self.options(section):
                     if (section, option) not in self.origins:
@@ -220,13 +163,42 @@ class HHConfig(ConfigBuilder):
             self.remove_section(section_name)
 
     def update_builder(self, builder):
-        """ Update the builder config with the existing config data """
-        for section in builder.sections():
+        """
+        Update the builder config with the existing config HH data
+        """
+
+        # Copy over included options
+        for section in builder.sections(scope="included"):
             for option in builder.options(section):
                 if self.has_option(section, option):
-                    if not option.startswith("gcode"):  # Don't ever resuse the gcode
+                    if not option.startswith("gcode"): # Don't ever resuse the gcode
                         builder.set(section, option, self.get(section, option))
                     self.used_options.add((section, option))
+
+        # If existing config has excluded options use them in lieu of builder excluded options
+        # TODO: Multiple exclude sections in multiple files not supported
+        if self.sections(scope="excluded") and builder.sections(scope="excluded"):
+            logging.info("Preserving existing excluded config sections")
+            builder.delete_excluded()
+            self._copy_excluded_to(builder)
+
+    def _copy_excluded_to(self, builder, insert_blank_line=True):
+        """
+        Copy all MagicExclusionNode(s) into builder config appending each as a separate top-level MagicExclusionNode.
+        Returns the number of nodes copied.
+        """
+
+        # Append deep copies to the destination, one by one
+        dest_doc = builder.document
+        copied = 0
+        for excluded in self.excluded_nodes():
+            if insert_blank_line and dest_doc.body and not isinstance(dest_doc.body[-1], WhitespaceNode):
+                dest_doc.body.append(WhitespaceNode("\n"))
+            dest_doc.body.append(copy.deepcopy(excluded))
+            copied += 1
+
+        return copied
+
 
     def unused_options_for(self, origin):
         return [
@@ -299,7 +271,7 @@ def build(cfg_file, dest_file, kconfig_file, input_files):
 def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_params):
     dest_file_basename = dest_file[len(os.getenv("OUT")) + 1 :]
     logging.info("Building config file: " + dest_file_basename)
-    logging.info(dest_file)
+    logging.debug(dest_file)
 
     # 1.Generate an aggregated master HH Config for all HH input_files
     hhcfg = HHConfig(input_files)
@@ -316,8 +288,6 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
         upgrades = Upgrades()
         upgrades.upgrade(hhcfg, from_version, to_version)
 
-# PAUL what if I updated the kcfg parameters here.. if exists in hhcfg then update value (or separate task called at end of make)
-
     # 3.Render cfg template expanding KConfig parameters
     buffer = render_template(cfg_file_basename, kcfg, extra_params)
 
@@ -329,10 +299,8 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
     if cfg_file_basename == "config/base/mmu_parameters.cfg":
         build_mmu_parameters_cfg(builder, hhcfg)
 
-    # 6.Update the builder Config from the existing master HH Config to ensure user edits are preserved
-    #   This will ignore any section after the EXCLUDE magic marker
+    # 6.Update the builder Config from the existing master HH Config to ensure all user edits are preserved
     hhcfg.update_builder(builder)
-#    hhcfg.pretty_print_document() # PAUL TEMP
 
     # 7.Report on deprecated/unused options
     first = True
@@ -486,11 +454,11 @@ def check_version(kconfig_file, input_files):
     logging.log(LEVEL_NOTICE, "Current version: " + current_version)
     target_version = kcfg.get("PARAM_HAPPY_HARE_VERSION")
     if target_version is None:
-        logging.error("Target version is not defined")
+        logging.error("Target version is not defined in .config file")
         exit(1)
 
     if current_version == target_version:
-        logging.log(LEVEL_NOTICE, "Up to date, no upgrades required")
+        logging.log(LEVEL_NOTICE, "Up to date, no config upgrades required. Will just refresh install")
         return
 
     if float(current_version) > float(target_version):
