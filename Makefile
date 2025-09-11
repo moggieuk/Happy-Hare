@@ -96,6 +96,10 @@ SUDO := $(shell \
 
 # Look for installed configs that would need be parsed by the build script
 cfg_base = $(wildcard $(addprefix $(KLIPPER_CONFIG_HOME)/mmu/, \
+		mmu.cfg \
+		mmu_hardware.cfg \
+		mmu_parameters.cfg \
+		mmu_macro_vars.cfg \
 		base/mmu.cfg \
 		base/mmu_hardware.cfg \
 		base/mmu_parameters.cfg \

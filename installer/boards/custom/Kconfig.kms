@@ -106,7 +106,7 @@ htu21d_report_time: 10\n\
 i2c_software_scl_pin: $(MMU_MCU):PB10\n\
 i2c_software_sda_pin: $(MMU_MCU):PB11\n\
 \n\
-[heater_fan $(MMU_UNTI)_fan_left]\n\
+[heater_fan $(UNIT_NAME)_fan_left]\n\
 pin: $(MMU_MCU):PC3\n\
 shutdown_speed: 0\n\
 heater: MMU_heater_kms\n\
@@ -117,15 +117,15 @@ shutdown_speed: 0\n\
 heater: $(UNIT_NAME)_heater\n\
 \n\
 [heater_generic $(UNIT_NAME)_heater]\n\
-gcode_id: $(UNIT_NAME)		# ID used when querying temperature using M105.\n\
+gcode_id: $(UNIT_NAME)\n\
 heater_pin: $(MMU_MCU):PB1\n\
 max_power:1.0\n\
 sensor_type: EPCOS 100K B57560G104F\n\
 pullup_resistor: 2200\n\
 sensor_pin: $(MMU_MCU):PA4\n\
-control:watermark\n\
-min_temp:0\n\
-max_temp:70\n\
+control: watermark\n\
+min_temp: 0\n\
+max_temp: 70\n\
 )"
 
 endif

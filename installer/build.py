@@ -36,12 +36,10 @@ unhappy_hare = '\n(\\_/)\n( V,V)\n(")^(") {caption}\n'
 LEVEL_NOTICE = 25
 
 HH_CONFIG_FILES_TO_BUILD = [
-    "config/base/mmu.cfg",
-    "config/base/mmu_hardware.cfg",
-    "config/base/mmu_parameters.cfg",
-    "config/base/mmu_macro_vars.cfg",
-    "config/base/mmu_hardware_unit0.cfg",
-    "config/mmu_vars.cfg"
+    "config/mmu.cfg",
+    "config/mmu_hardware.cfg",
+    "config/mmu_parameters.cfg",
+    "config/mmu_macro_vars.cfg",
 ]
 
 HH_CONFIG_INCLUDES_TO_CLEAN = [
@@ -51,17 +49,10 @@ HH_CONFIG_INCLUDES_TO_CLEAN = [
     "mmu/addons/mmu_erec_cutter.cfg",
     "mmu/addons/blobifier.cfg",
     "mmu/addons/dc_espooler.cfg",
-    "mmu_software.cfg",
-    "mmu_sequence.cfg",
-    "mmu_cut_tip.cfg",
-    "mmu_form_tip.cfg",
-    "mmu_parameters.cfg",
-    "mmu_hardware.cfg",
-    "mmu_hardware_unit0.cfg",
-    "mmu_filametrix.cfg",
-    "mmu.cfg",
     "mmu/base/*.cfg",
+    "mmu/macros/*.cfg",
     "mmu/addons/*.cfg"
+    "mmu/optional/*.cfg"
 ]
 
 # Enhanced representation of Kconfig file
@@ -295,9 +286,10 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
     builder = ConfigBuilder()
     builder.read_buf(buffer)
 
-    # 5.Special case mmu_parameters.cfg because it map contain hidden and supplemental options not present in cfg template
-    if cfg_file_basename == "config/base/mmu_parameters.cfg":
-        build_mmu_parameters_cfg(builder, hhcfg)
+# PAUL TODO
+#    # 5.Special case mmu_parameters.cfg because it map contain hidden and supplemental options not present in cfg template
+#    if cfg_file_basename == "config/base/mmu_parameters.cfg":
+#        build_mmu_parameters_cfg(builder, hhcfg)
 
     # 6.Update the builder Config from the existing master HH Config to ensure all user edits are preserved
     hhcfg.update_builder(builder)
@@ -458,14 +450,14 @@ def check_version(kconfig_file, input_files):
         exit(1)
 
     if current_version == target_version:
-        logging.log(LEVEL_NOTICE, "Up to date, no config upgrades required. Will just refresh install")
+        logging.log(LEVEL_NOTICE, "Up to date, no config upgrades required. Will just confirm installation")
         return
 
     if float(current_version) > float(target_version):
         logging.warning(
             "Automatic 'downgrade' to earlier version is not guaranteed!\n"
             "If you encounter startup problems you may need to manually compare "
-            "the backed-up 'mmu_parameters.cfg' with current one to restore differences"
+            "the backed-up 'mmu_hardware.cfg and 'mmu_parameters.cfg' with current one to restore differences"
         )
         return
 
