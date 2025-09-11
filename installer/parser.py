@@ -19,30 +19,19 @@ import sys
 import logging
 import re
 
-# Old style {token}
-#CONFIG_SPEC = [
-#    ("comment", re.compile(r"^[ \t]*[#;].*?(?=\{[^}]+\})")),
-#    ("comment", re.compile(r"^[ \t]*[#;].*")),
-#    ("whitespace", re.compile(r"^\s+")),
-#    ("section", re.compile(r"^\[.+\]")),
-#    ("word", re.compile(r"^\w[\w\d%]*")),
-#    ("assign_op", re.compile(r"^[:=]")),
-#    ("placeholder", re.compile(r"^\{(?:PIN_|CFG_|PARAM_)[^%}]+\}")),
-#    ("unknown", re.compile(r"^\S")),
-#]
-
-# New style [[token]] for jijna parsing
+# Note {placeholder} style placeholders are no longer used with jinja templating
 CONFIG_SPEC = [
-    ("comment", re.compile(r"^[ \t]*[#;].*?(?=\[\[(?:PIN_|CFG_|PARAM_)[^%\]]+\]\])")),
+    ("comment", re.compile(r"^[ \t]*[#;].*?(?=\{[^}]+\})")),
     ("comment", re.compile(r"^[ \t]*[#;].*")),
     ("whitespace", re.compile(r"^\s+")),
-    ("section", re.compile(r"^\[[^\n]*\]")),               # Stricter: ("section", re.compile(r"^\[[^\]\n]+\]")), doesn't allow for: [gcode_macro T[[i]]]
-    ("word", re.compile(r"^\w(?:[\w%]|\[\[[^\]]+\]\])*")), # Stricter: ("word", re.compile(r"^\w[\w\d%]*")), doesn't allow for: respool_motor_pin_[[i]]:
+    ("section", re.compile(r"^\[.+\]")),
+    ("word", re.compile(r"^\w[\w%]*")),
     ("assign_op", re.compile(r"^[:=]")),
-    ("placeholder", re.compile(r"^\[\[(?:PIN_|CFG_|PARAM_)[^%\]]+\]\]")),
+    ("placeholder", re.compile(r"^\{(?:PIN_|CFG_|PARAM_)[^%}]+\}")),
     ("unknown", re.compile(r"^\S")),
 ]
 
+MAGIC_EXCLUSION_COMMENT = re.compile(r"^# EXCLUDE FROM CONFIG BUILDER.*")
 
 if sys.version_info[0] >= 3:
     unicode = str
@@ -101,6 +90,11 @@ class Tokenizer(object):
         else:
             raise SyntaxError("Expected {}, got {}".format(token_type, token.type))
 
+    def unread(self, s):
+        if s:
+            self.next_token = None
+            self.slice = s + self.slice
+
     def consume(self, token_type):
         peek = self.peek()
         if peek and peek.type == token_type:
@@ -150,6 +144,17 @@ class BodyNode(Node):
 class DocumentNode(BodyNode):
     def __init__(self, body=None):
         super(DocumentNode, self).__init__("document", body or [])
+
+
+class MagicExclusionNode(BodyNode):
+    def __init__(self, body):
+        # All nodes after the magic comment live here
+        BodyNode.__init__(self, "magic_exclusion", body)
+
+def _is_magic_comment_token(peek):
+    return (peek is not None
+            and peek.type == "comment"
+            and MAGIC_EXCLUSION_COMMENT.match(peek.value.lstrip()))
 
 
 class SectionNode(BodyNode):
@@ -220,7 +225,7 @@ class PlaceholderNode(Node):
         self.value = value
 
     def serialize(self):
-        return "[[" + self.value + "]]" # Old style: return "{" + self.value + "}"
+        return "{" + self.value + "}"
 
 
 class WhitespaceNode(Node):
@@ -264,9 +269,8 @@ class Parser(object):
         _filter_tree(None, node)
 
     def parse_document(self, tokenizer):
-        body = []
-        peek = tokenizer.peek()
-        while peek:
+
+        def _parse_regular(peek, body):
             if peek.type == "section":
                 body.append(self.parse_section(tokenizer))
             elif peek.type == "comment":
@@ -277,6 +281,25 @@ class Parser(object):
                 body.append(self.parse_placeholder(tokenizer))
             else:
                 raise SyntaxError("Unexpected token '{}' at:\n {}".format(peek, tokenizer.slice[:20]))
+
+        body = []
+        peek = tokenizer.peek()
+
+        while peek:
+            # Start exclusion block: the magic comment and then everything to EOF
+            if _is_magic_comment_token(peek):
+                magic_comment = self.parse_comment(tokenizer)  # Keep the marker as a real comment
+                exclusion_body = [magic_comment]
+
+                peek2 = tokenizer.peek()
+                while peek2:
+                    _parse_regular(peek2, exclusion_body)
+                    peek2 = tokenizer.peek()
+
+                body.append(MagicExclusionNode(exclusion_body))
+                break  # Everything else is now inside the exclusion node
+
+            _parse_regular(peek, body)
             peek = tokenizer.peek()
 
         return DocumentNode(body)
@@ -308,6 +331,9 @@ class Parser(object):
 
         peek = tokenizer.peek()
         while peek and peek.type != "section":
+            if _is_magic_comment_token(peek):
+                break # Do not consume here—let parse_document() handle it
+
             if peek.type == "comment":
                 body.append(self.parse_comment(tokenizer))
             elif peek.type == "word":
@@ -343,10 +369,17 @@ class Parser(object):
         peek = tokenizer.peek()
         while peek:
             if peek.type == "whitespace":
-                if peek.value.endswith("\n"):  # multi-line value ends with a newline without a tab/space after it
+                if peek.value.startswith("\n") and peek.value.endswith("\n"):  # multi-line value ends with a newline without a tab/space after it
                     break
 
                 token = tokenizer.take("whitespace")
+
+                # Ensure whitespace for empty options is tokenized in ValueLineNode (only newline is standalone)
+                m = re.search(r"\r?\n", token.value)
+                if m and m.start() > 0:
+                    tokenizer.unread(token.value[m.start():])
+                    token.value = token.value[:m.start()]
+
                 if len(body) == 0 and len(current_line) == 0 and len(current_entry) == 0:
                     current_line.append(WhitespaceNode(token.value))
                 else:
@@ -364,6 +397,7 @@ class Parser(object):
                     current_line.append(ValueEntryNode(current_entry))
                     current_entry = ""
                 current_line.append(self.parse_comment(tokenizer))
+
             elif not as_is and peek.type == "placeholder":
                 if len(current_entry) > 0:
                     current_line.append(ValueEntryNode(current_entry))
@@ -467,16 +501,54 @@ class ConfigBuilder(object):
 
         return self.document.walk(print_node, "")
 
-    def _for_section(self, section_name, callback, ctx=None):
-        def for_section(node, ctx, _):
-            if isinstance(node, SectionNode) and (not section_name or node.name == section_name):
-                ctx = callback(node, ctx)
-            return (isinstance(node, DocumentNode), ctx)
+    def _iter_section_nodes(self, node, inside_excluded=False):
+        """
+        Yield (SectionNode, is_excluded) pairs from the tree rooted at `node`.
+        Exclusion only flips to True when descending into a MagicExclusionNode.
+        """
+        if isinstance(node, SectionNode):
+            yield node, inside_excluded
+            return
 
-        return self.document.walk(for_section, ctx)
+        if isinstance(node, MagicExclusionNode):
+            for child in node.body:
+                # Descend with inside_excluded=True
+                for pair in self._iter_section_nodes(child, True):
+                    yield pair
+            return
 
-    def _sections(self):
-        return self._for_section(None, collect, [])
+        if isinstance(node, DocumentNode):
+            for child in node.body:
+                # Reset inside_excluded at each top-level sibling (critical!)
+                for pair in self._iter_section_nodes(child, False):
+                    yield pair
+            return
+
+        # Other nodes cannot contain sections, so skip
+
+    def _for_section(self, section_name, callback, ctx=None, scope="all"):
+        """
+        scope:
+          - "included": only before the EXCLUDE marker
+          - "excluded": only inside MagicExclusionNode
+          - "all":      both
+        """
+        if scope not in ("all", "included", "excluded"):
+            raise ValueError("scope must be 'all', 'included', or 'excluded'")
+
+        out = ctx
+        for sec, is_excl in self._iter_section_nodes(self.document, False):
+            if section_name and sec.name != section_name:
+                continue
+            if scope == "included" and is_excl:
+                continue
+            if scope == "excluded" and not is_excl:
+                continue
+            out = callback(sec, out)
+        return out
+
+    def sections(self, scope="all"):
+        return [x.name for x in self._for_section(None, collect, [], scope=scope)]
 
     def _get_section(self, section_name):
         section = self._for_section(section_name, identity)
@@ -485,8 +557,8 @@ class ConfigBuilder(object):
         else:
             raise KeyError("Section [{}] not found".format(section_name))
 
-    def sections(self):
-        return [x.name for x in self._sections()]
+    def sections(self, scope="all"):
+        return [x.name for x in self._for_section(None, collect, [], scope=scope)]
 
     def has_section(self, section_name):
         try:
@@ -516,9 +588,10 @@ class ConfigBuilder(object):
             self.document.body += document_body
 
     def remove_section(self, section_name):
-        for i, item in enumerate(self.document.body):
-            if isinstance(item, SectionNode) and item.name == section_name:
-                self.document.body.pop(i)
+        self.parser.filter_tree(
+            self.document,
+            lambda n: isinstance(n, SectionNode) and n.name == section_name,
+        )
 
     def rename_section(self, section_name, new_section_name):
         self._for_section(section_name, rename, new_section_name)
@@ -607,12 +680,17 @@ class ConfigBuilder(object):
 
         if idx != -1:
             value = value[:idx] + re.sub(r"^(?=\S)", r"    ", value[idx:], flags=re.MULTILINE)
+
         if self.has_option(section_name, option_name):
             option = self._get_option(section_name, option_name)
+
             if option.body and isinstance(option.body[0].body[0], WhitespaceNode):
                 value = option.body[0].body[0].value + value
+            else:
+                value = " " + value
             value = self.parser.parse_value(Tokenizer(value, CONFIG_SPEC))
             option.body = value
+
         else:
             value = self.parser.parse_value(Tokenizer(" " + value, CONFIG_SPEC))
             section = self._get_section(section_name)
@@ -632,6 +710,7 @@ class ConfigBuilder(object):
             return True, ctx
 
         return self.document.walk(collect_placeholders, [])
+
 
 
 

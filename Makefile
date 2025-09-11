@@ -95,13 +95,13 @@ SUDO := $(shell \
   echo "sudo " || echo "")
 
 # Look for installed configs that would need be parsed by the build script
-cfg_addons = $(wildcard $(KLIPPER_CONFIG_HOME)/mmu/addons/*_hw.cfg)
 cfg_base = $(wildcard $(addprefix $(KLIPPER_CONFIG_HOME)/mmu/, \
-				base/mmu.cfg \
-				base/mmu_parameters.cfg \
-				base/mmu_hardware.cfg \
-				base/mmu_macro_vars.cfg \
-				$(hh_unit_config_files)))
+		base/mmu.cfg \
+		base/mmu_hardware.cfg \
+		base/mmu_parameters.cfg \
+		base/mmu_macro_vars.cfg \
+		$(hh_unit_config_files)))
+cfg_addons = $(wildcard $(KLIPPER_CONFIG_HOME)/mmu/addons/*_hw.cfg) # PAUL should it be none _hw that is parsed?
 hh_configs_to_parse = $(subst $(KLIPPER_CONFIG_HOME),$(IN),$(cfg_base) $(cfg_addons))
 
 # Files/targets that need to be build
