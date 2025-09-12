@@ -82,7 +82,7 @@ while getopts "iudzsb:nk:c:m:a:tqv" arg; do
         #     echo "Repetier-Server <stub> specified. Over-riding printer.cfg to [${PRINTER_CONFIG}] & klipper.service to [${KLIPPER_SERVICE}]"
         #     ;;
         a) export CONFIG_KLIPPER_SERVICE="${OPTARG}.service" ;;
-        t) export TEST_DIR=/tmp/mmu_test ;;
+        t) export TESTDIR=/tmp/mmu_test ;;
         q) export Q= ;;   # Developer: Disable quite mode in Makefile
         v) export V=-v ;; # Developer: Enable verbose mode in builder and debug in Makefile
         *) usage ;;
@@ -113,21 +113,21 @@ if [ "${F_MENUCONFIG}" ] && [ "${F_UNINSTALL}" ]; then
     usage
 fi
 
-if [ "${TEST_DIR}" ]; then
-    export CONFIG_KLIPPER_HOME="${TEST_DIR}/klipper"
-    export CONFIG_KLIPPER_CONFIG_HOME="${TEST_DIR}/printer_data/config"
-    export CONFIG_MOONRAKER_HOME="${TEST_DIR}/moonraker"
-    export KCONFIG_CONFIG=${TEST_DIR}/.config
+if [ "${TESTDIR}" ]; then
+    export CONFIG_KLIPPER_HOME="${TESTDIR}/klipper"
+    export CONFIG_KLIPPER_CONFIG_HOME="${TESTDIR}/printer_data/config"
+    export CONFIG_MOONRAKER_HOME="${TESTDIR}/moonraker"
+    export KCONFIG_CONFIG=${TESTDIR}/.config
     export F_NO_SERVICE=y
     echo -e "\n${C_WARNING}Running in test mode to simulate without changing real configuration${C_OFF}"
-    echo -e "${C_WARNING}Forcing flags '-s -c ${CONFIG_KLIPPER_CONFIG_HOME} -k ${CONFIG_KLIPPER_HOME} -c ${CONFIG_MOONRAKER_HOME} ${TEST_DIR}/.config' ${C_OFF}"
+    echo -e "${C_WARNING}Forcing flags '-s -c ${CONFIG_KLIPPER_CONFIG_HOME} -k ${CONFIG_KLIPPER_HOME} -c ${CONFIG_MOONRAKER_HOME} ${TESTDIR}/.config' ${C_OFF}"
     mkdir -p "${CONFIG_KLIPPER_HOME}/klippy/extras"
     mkdir -p "${CONFIG_KLIPPER_CONFIG_HOME}"
     mkdir -p "${CONFIG_MOONRAKER_HOME}/moonraker/components"
     touch "${CONFIG_KLIPPER_CONFIG_HOME}/moonraker.conf"
     touch "${CONFIG_KLIPPER_CONFIG_HOME}/printer.cfg"
     if [ ! "${F_UNINSTALL}" ]; then
-        echo -e "${C_INFO}When complete look in ${TEST_DIR} for results${C_OFF}\n"
+        echo -e "${C_INFO}When complete look in ${TESTDIR} for results${C_OFF}\n"
         [ $(prompt_yn "Continue") != "y" ] && { echo; exit 0; } || echo; echo
     fi
 fi
@@ -141,8 +141,8 @@ if [ "${F_UNINSTALL}" ]; then
     echo -e "${C_WARNING}This will uninstall and cleanup prior config${C_OFF}\n"
     [ $(prompt_yn "Are you sure") != "y" ] && { echo; exit 0; } || echo; echo
     SECONDS=0
-    make -C ${SCRIPT_DIR} uninstall
-    [ "${TEST_DIR}" ] && rm -rf "${TEST_DIR}"
+    make -C "${SCRIPT_DIR}" uninstall
+    [ "${TESTDIR}" ] && rm -rf "${TESTDIR}"
     echo "${C_INFO}Elapsed: ${SECONDS} seconds${C_OFF}"
     exit 0
 fi
@@ -152,9 +152,13 @@ fi
 ##### Menuconfig #####
 ######################
 
+# Ensures there’s a valid top-level config, confirms whether it’s single- or multi-unit,
+# and—if multi-unit—runs menuconfig once per listed unit to create/update each unit’s own
+# config file, passing UNIT_* parameters to the Makefile/Kconfig for customization.
+
 if [ "${F_MULTI_UNIT}" ]; then
     if [ "${F_MENUCONFIG}" ] || [ ! -e "${KCONFIG_CONFIG}" ]; then
-        make -C ${SCRIPT_DIR} F_MULTI_UNIT_ENTRY_POINT=y menuconfig
+        make -C "${SCRIPT_DIR}" F_MULTI_UNIT_ENTRY_POINT=y menuconfig
     fi
 
     if [ ! -e "${KCONFIG_CONFIG}" ]; then
@@ -167,22 +171,24 @@ if [ "${F_MULTI_UNIT}" ]; then
 
     if [ ! "${CONFIG_MULTI_UNIT}" ]; then
         echo "${C_NOTICE}Current '${KCONFIG_CONFIG}' is not a multi-unit configuration, forcing interactive menu"
-        make -C ${SCRIPT_DIR} F_MULTI_UNIT_ENTRY_POINT=y menuconfig
+        make -C "${SCRIPT_DIR}" F_MULTI_UNIT_ENTRY_POINT=y menuconfig
         F_MENUCONFIG=y
         # shellcheck source=./.config
         . "$(realpath "${KCONFIG_CONFIG}")"
     fi
 
     i=0
+    OLDIFS=$IFS
     IFS=,
     for name in ${CONFIG_PARAM_MMU_UNITS}; do
-        name=${name#"${name%%[![:space:]]*}"} # remove leading spaces
-        name=${name%"${name##*[![:space:]]}"} # remove trailing spaces
+        name=${name#"${name%%[![:space:]]*}"} # Remove leading spaces
+        name=${name%"${name##*[![:space:]]}"} # Remove trailing spaces
         if [ "${F_MENUCONFIG}" ] || [ ! -e "${KCONFIG_CONFIG}.${name}" ]; then
-            make -C ${SCRIPT_DIR} CONFIG_CONFIG="${KCONFIG_CONFIG}.${name}" UNIT_INDEX=$i UNIT_NAME="${name}" MMU_MCU="${name}" menuconfig
+            make -C "${SCRIPT_DIR}" KCONFIG_CONFIG="${KCONFIG_CONFIG}.${name}" UNIT_INDEX=$i UNIT_NAME="${name}" MMU_MCU="${name}" menuconfig
             i=$((i + 1))
         fi
     done
+    IFS=$OLDIFS
 else
     # If a `.config` already exists check if it's a single-unit setup else force menuconfig
     if [ -e "${KCONFIG_CONFIG}" ]; then
@@ -195,7 +201,7 @@ else
     fi
 
     if [ "${F_MENUCONFIG}" ]; then
-        make -C ${SCRIPT_DIR} menuconfig
+        make -C "${SCRIPT_DIR}" menuconfig
     fi
 fi
 
@@ -205,5 +211,5 @@ fi
 ###################
 
 SECONDS=0
-make -C ${SCRIPT_DIR} install
+make -C "${SCRIPT_DIR}" install
 echo "${C_INFO}Elapsed: ${SECONDS} seconds${C_OFF}"

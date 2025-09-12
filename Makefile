@@ -1,9 +1,9 @@
 SHELL := /usr/bin/env bash
-PY := python
+PY    := python
 MAKEFLAGS += --jobs 8             # Parallel build
 MAKEFLAGS += --output-sync=target # Keep log order sane
-Q ?= @                            # For quiet make builds, override with make Q= for verbose output
-V ?=                              # For verbose output (mostly from python builder), set to -v to enable
+Q  ?= @                           # For quiet make builds, override with make Q= for verbose output
+V  ?=                             # For verbose output (mostly from python builder), set to -v to enable
 UT ?= *                           # For unittests, e.g. make UT=test_build.py test
 
 # Prevent the user from running with sudo. This isn't perfect if something else than sudo is used.
@@ -13,13 +13,13 @@ ifneq ($(SUDO_COMMAND),)
 endif
 
 # Print Colors (exported for use in py installer)
-ifneq ($(shell which tput 2>/dev/null),)
-  export C_OFF ?= $(shell tput -Txterm-256color sgr0)
-  export C_DEBUG ?= $(shell tput -Txterm-256color setaf 5)
-  export C_INFO ?= $(shell tput -Txterm-256color setaf 6)
-  export C_NOTICE ?= $(shell tput -Txterm-256color bold)$(tput -Txterm-256color setaf 2)
+ifneq ($(shell command -v tput 2>/dev/null),)
+  export C_OFF     ?= $(shell tput -Txterm-256color sgr0)
+  export C_DEBUG   ?= $(shell tput -Txterm-256color setaf 5)
+  export C_INFO    ?= $(shell tput -Txterm-256color setaf 6)
+  export C_NOTICE  ?= $(shell tput -Txterm-256color bold; tput -Txterm-256color setaf 2)
   export C_WARNING ?= $(shell tput -Txterm-256color setaf 3)
-  export C_ERROR ?= $(shell tput -Txterm-256color bold)$(tput -Txterm-256color setaf 1)
+  export C_ERROR   ?= $(shell tput -Txterm-256color bold; tput -Txterm-256color setaf 1)
 endif
 
 # Couple verbose debug output to python debugging flag
@@ -32,17 +32,19 @@ export KCONFIG_CONFIG ?= .config
 export SRC ?= $(CURDIR)
 export PYTHONPATH:=$(SRC)/installer/lib/kconfiglib:$(PYTHONPATH)
 
-ifneq ($(TEST_DIR),)
-  # In test mode keep the 'out' directory with rest of test config
-  export OUT ?= $(TEST_DIR)/out
+ifneq ($(TESTDIR),)
+  OUTDIR := $(TESTDIR)
 else
-  # Use the name of the '.config.name' or 'name.config' file as the out_name directory, or 'out' if just '.config' is used
-  ifeq ($(notdir $(KCONFIG_CONFIG)),.config)
-    export OUT ?= $(CURDIR)/out
-  else
-    export OUT ?= $(CURDIR)/out_$(subst .config.,,$(notdir $(KCONFIG_CONFIG)))
-  endif
+  OUTDIR := $(CURDIR)
 endif
+
+# Use the name of the '.config.name' or 'name.config' file as the out_name directory, or 'out' if just '.config' is used
+ifeq ($(notdir $(KCONFIG_CONFIG)),.config)
+  export OUT ?= $(OUTDIR)/out
+else
+  export OUT ?= $(OUTDIR)/out_$(subst .config.,,$(notdir $(KCONFIG_CONFIG)))
+endif
+
 export IN=$(OUT)/in
 
 # Default unit and mcu naming
@@ -50,62 +52,71 @@ export UNIT_NAME ?= mmu0
 export MMU_MCU ?= mmu0
 
 # Helper functions/constants
-comma = ,
-empty =
-space = $(empty) $(empty) 
+comma := ,
+empty :=
+space := $(empty) $(empty)
+
 # Replace ~ with $(HOME) and remove quotes
-unwrap = $(subst ~,$(HOME),$(patsubst "%",%,$(1)))
-space_to_underscore = $(subst $(space),_,$(1)) 
-comma_to_space = $(subst $(comma),$(space),$(1)) 
+unwrap                   = $(subst ~,$(HOME),$(patsubst "%",%,$(1)))
+space_to_underscore      = $(subst $(space),_,$(1))
+comma_to_space           = $(subst $(comma),$(space),$(1))
 # Convert a comma separated list to a space separated list with spaces replaced with underscores
-convert_list = $(call comma_to_space,$(call space_to_underscore,$(1)))
+convert_list             = $(call comma_to_space,$(call space_to_underscore,$(1)))
 
 # We strip these from surrounding quotes, and replace ~ with $(HOME)
-KLIPPER_HOME = $(call unwrap,$(CONFIG_KLIPPER_HOME))
-KLIPPER_CONFIG_HOME := $(call unwrap,$(CONFIG_KLIPPER_CONFIG_HOME))
-MOONRAKER_HOME := $(call unwrap,$(CONFIG_MOONRAKER_HOME))
-PRINTER_CONFIG_FILE := $(call unwrap,$(CONFIG_PRINTER_CONFIG_FILE))
-MOONRAKER_CONFIG_FILE := $(call unwrap,$(CONFIG_MOONRAKER_CONFIG_FILE))
+KLIPPER_HOME            := $(call unwrap,$(CONFIG_KLIPPER_HOME))
+KLIPPER_CONFIG_HOME     := $(call unwrap,$(CONFIG_KLIPPER_CONFIG_HOME))
+MOONRAKER_HOME          := $(call unwrap,$(CONFIG_MOONRAKER_HOME))
+PRINTER_CONFIG_FILE     := $(call unwrap,$(CONFIG_PRINTER_CONFIG_FILE))
+MOONRAKER_CONFIG_FILE   := $(call unwrap,$(CONFIG_MOONRAKER_CONFIG_FILE))
 
-hh_klipper_extras_files = $(wildcard extras/*.py extras/**/*.py)
-hh_old_klipper_modules = mmu.py mmu_toolhead.py # These will get removed upon install
-hh_moonraker_components = $(wildcard components/*.py)
+hh_klipper_extras_files := $(wildcard extras/*.py extras/mmu/*.py)
+hh_old_klipper_modules  := mmu.py mmu_toolhead.py # These will get removed upon install
+hh_moonraker_components := $(wildcard components/*.py)
 
-ifeq ($(CONFIG_MULTI_UNIT),y)
-  # Convert CONFIG_PARAM_MMU_UNITS list to a space separated list 
-  unit_names = $(strip $(subst ",,$(call convert_list,$(CONFIG_PARAM_MMU_UNITS))))
-  # filter out mmu_hardware_unit0.cfg, as it is not used in multi unit setups 
-  # And add a mmu_harware_<unit>.cfg target for each unit 
-  hh_unit_config_files = $(addprefix base/mmu_hardware_,$(addsuffix .cfg,$(unit_names)))
-  hh_config_files = \
-  		$(filter-out base/mmu_hardware_unit0.cfg, \
-			$(patsubst config/%,%, $(wildcard config/*.cfg config/**/*.cfg))) \
-		$(hh_unit_config_files)
-else
-  # In single unit setups, we use the mmu_hardware_unit0.cfg as the base config, so it is not filtered out
-  hh_unit_config_files = base/mmu_hardware_unit0.cfg
-  hh_config_files = $(patsubst config/%,%, $(wildcard config/*.cfg config/**/*.cfg))
-endif
+# All repo configs files less mmu_vars.cfg
+repo_cfgs := $(patsubst config/%,%, $(wildcard config/*.cfg config/**/*.cfg))
+repo_cfgs := $(filter-out %/mmu_vars.cfg mmu_vars.cfg,$(repo_cfgs))
+
+# unit_names: from CONFIG_PARAM_MMU_UNITS in multi-unit, else default to mmu0
+unit_names := \
+	$(if $(filter y,$(CONFIG_MULTI_UNIT)), \
+	$(strip $(subst ",,$(call convert_list,$(CONFIG_PARAM_MMU_UNITS)))),mmu0)
+
+# Per-unit files: <unit>_{hardware,parameters}.cfg
+hh_unit_config_files := \
+	$(addprefix base/,$(addsuffix _hardware.cfg,$(unit_names))) \
+	$(addprefix base/,$(addsuffix _parameters.cfg,$(unit_names)))
+
+# Final config set: all repo cfgs (minus the single-unit defaults) + per-unit files
+hh_config_files := \
+	$(filter-out base/mmu_hardware.cfg base/mmu_parameters.cfg,$(repo_cfgs)) \
+	$(hh_unit_config_files)
 
 # Use sudo if the klipper home is at a system location (not owned by user)
 SUDO := $(shell \
-  [ -n "$(KLIPPER_HOME)" ] && \
-  [ -d "$(KLIPPER_HOME)" ] && \
-  [ "$$(ls -nd -- $(KLIPPER_HOME) | awk '{print $$3}')" != "$$(id -u)" ] && \
-  echo "sudo " || echo "")
+	  [ -n "$(KLIPPER_HOME)" ] && \
+	  [ -d "$(KLIPPER_HOME)" ] && \
+	  [ "$$(ls -nd -- $(KLIPPER_HOME) | awk '{print $$3}')" != "$$(id -u)" ] && \
+	  echo "sudo " || echo "" \
+	)
 
 # Look for installed configs that would need be parsed by the build script
-cfg_base = $(wildcard $(addprefix $(KLIPPER_CONFIG_HOME)/mmu/, \
+cfg_base := \
+	$(wildcard $(addprefix $(KLIPPER_CONFIG_HOME)/mmu/, \
 		base/mmu.cfg \
 		base/mmu_hardware.cfg \
 		base/mmu_parameters.cfg \
 		base/mmu_macro_vars.cfg \
-		$(hh_unit_config_files)))
-cfg_addons = $(wildcard $(KLIPPER_CONFIG_HOME)/mmu/addons/*_hw.cfg) # PAUL should it be none _hw that is parsed?
-hh_configs_to_parse = $(subst $(KLIPPER_CONFIG_HOME),$(IN),$(cfg_base) $(cfg_addons))
+		$(hh_unit_config_files)) \
+	)
+
+cfg_addons := $(wildcard $(KLIPPER_CONFIG_HOME)/mmu/addons/*_hw.cfg)
+
+hh_configs_to_parse := $(subst $(KLIPPER_CONFIG_HOME),$(IN),$(cfg_base) $(cfg_addons))
 
 # Files/targets that need to be build
-build_targets = \
+build_targets := \
 	$(OUT)/$(MOONRAKER_CONFIG_FILE) \
 	$(OUT)/$(PRINTER_CONFIG_FILE) \
 	$(addprefix $(OUT)/mmu/, $(hh_config_files)) \
@@ -113,7 +124,7 @@ build_targets = \
 	$(addprefix $(OUT)/moonraker/, $(hh_moonraker_components)) 
 
 # Files/targets that need to be installed
-install_targets = \
+install_targets := \
 	$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE) \
 	$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE) \
 	$(addprefix $(KLIPPER_CONFIG_HOME)/mmu/, $(hh_config_files)) \
@@ -131,20 +142,25 @@ link = \
 	mkdir -p $(dir $(2)); \
 	ln -sf "$(abspath $(1))" "$(2)";
 
-backup_ext := .old-$(shell date '+%Y%m%d-%H%M%S')
+copy = \
+	mkdir -p $(dir $(2)); \
+	cp -aL "$(1)" "$(2)" && chmod +w "$(2)"
+
+backup_ext  = .old-$(shell date '+%Y%m%d-%H%M%S')
 backup_name = $(addsuffix $(backup_ext),$(1))
 backup = \
 	if [ -e "$(1)" ] && [ ! -e "$(call backup_name,$(1))" ]; then \
-		echo "$(C_INFO)Making a backup of '$(1)' to '$(notdir $(call backup_name,$(1)))'$(C_OFF)"; \
-		$(SUDO)cp -a "$(1)" "$(call backup_name,$(1))"; \
+	  echo "$(C_INFO)Making a backup of '$(1)' to '$(notdir $(call backup_name,$(1)))'$(C_OFF)"; \
+	  $(SUDO)cp -a "$(1)" "$(call backup_name,$(1))"; \
 	fi
 
 restart_service = \
 	if [ "$(F_NO_SERVICE)" ]; then \
-		echo "$(C_WARNING)Skipping restart of $(2) service$(C_OFF)"; \
+	  echo "$(C_WARNING)Skipping restart of $(2) service$(C_OFF)"; \
 	else \
-		[ "$(1)" -eq 0 ] || $(PY) -m installer.build $(V) --restart-service "$(2)" $(3) "$(KCONFIG_CONFIG)"; \
+	  [ "$(1)" -eq 0 ] || $(PY) -m installer.build $(V) --restart-service "$(2)" $(3) "$(KCONFIG_CONFIG)"; \
 	fi
+
 
 # Bool to check if moonraker/klipper needs to be restarted
 restart_moonraker = 0
@@ -158,6 +174,7 @@ restart_klipper = 0
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE))
 .NOTPARALLEL: clean
+.DELETE_ON_ERROR:
 
 
 
@@ -177,29 +194,39 @@ $(IN)/%:
 # Copy existing moonraker.conf to the out directory and update with moonraker_update.txt
 $(OUT)/$(MOONRAKER_CONFIG_FILE): $(IN)/$$(@F)
 	$(call debug,$(C_DEBUG)Copying $< to '$(notdir $(OUT))' directory$(C_OFF))
-	$(Q)cp -aL "$<" "$@"
-	$(Q)chmod +w "$@"
+	$(Q)$(call copy,$<,$@)
 	$(Q)$(PY) -m installer.build $(V) --install-moonraker "$(SRC)/installer/moonraker_update.txt" "$@" "$(KCONFIG_CONFIG)"
 
 # Copy existing printer.cfg to the out directory and update with includes
 $(OUT)/$(PRINTER_CONFIG_FILE): $(IN)/$$(@F)
 	$(call debug,$(C_DEBUG)Copying $< to '$(notdir $(OUT))' directory$(C_OFF))
-	$(Q)cp -aL "$<" "$@"
-	$(Q)chmod +w "$@"
+	$(Q)$(call copy,$<,$@)
 	$(Q)$(PY) -m installer.build $(V) --install-includes "$@" "$(KCONFIG_CONFIG)"
 
 # We link all config files, those that need to be updated will be written over in the install script,
-# in case of a multi unit setup, the unit hardware config targets are overridden below
+# in case of a multi unit setup, the per-unit config targets are overridden below
 $(OUT)/mmu/%.cfg: $(SRC)/config/%.cfg $(hh_configs_to_parse)
 	$(Q)$(call link,$<,$@)
 	$(Q)$(PY) -m installer.build $(V) --build "$<" "$@" "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)
 
-ifeq ($(CONFIG_MULTI_UNIT),y)
-# Build the unit hardware configs, these use their own $(KCONFIG_CONFIG).<unit> Kconfig file 
-$(OUT)/mmu/base/mmu_hardware_%.cfg: $(SRC)/config/base/mmu_hardware_unit0.cfg $(hh_configs_to_parse) $(KCONFIG_CONFIG).%
+# Map the per-unit targets back to the shared base templates
+$(OUT)/mmu/base/%_hardware.cfg:   BASE := mmu_hardware
+$(OUT)/mmu/base/%_parameters.cfg: BASE := mmu_parameters
+
+# Helper expands to ".config.<unit>" when multi-unit, else to ".config"
+define KCONF_FOR_UNIT
+$(if $(filter y,$(CONFIG_MULTI_UNIT)),$(KCONFIG_CONFIG).$*,$(KCONFIG_CONFIG))
+endef
+
+# Only require ".config.<unit>" as a prerequisite when multi-unit is enabled
+define KCONF_PREREQ
+$(if $(filter y,$(CONFIG_MULTI_UNIT)),$(KCONFIG_CONFIG).%,)
+endef
+
+$(OUT)/mmu/base/%_hardware.cfg \
+$(OUT)/mmu/base/%_parameters.cfg: $$(SRC)/config/base/$$(BASE).cfg $$(hh_configs_to_parse) $$(KCONF_PREREQ)
 	$(Q)$(call link,$<,$@)
-	$(Q)$(PY) -m installer.build $(V) --build "$<" "$@" "$(KCONFIG_CONFIG).$*" $(hh_configs_to_parse)
-endif
+	$(Q)$(PY) -m installer.build $(V) --build "$<" "$@" "$$(strip $$(KCONF_FOR_UNIT))" $(hh_configs_to_parse)
 
 # Python files are linked to the out directory
 $(OUT)/klippy/extras/%.py: $(SRC)/extras/%.py
@@ -245,13 +272,14 @@ $(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE): $(OUT)/$$(@F) | $(call backup_n
 	$(Q)$(call install,$<,$@)
 	$(Q)$(eval restart_moonraker = 1)
 
+
 # Install Happy-Hare *.cfg files
 $(KLIPPER_CONFIG_HOME)/mmu/%.cfg: $(OUT)/mmu/%.cfg | $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) 
 	$(Q)$(call install,$<,$@)
 	$(Q)$(eval restart_klipper = 1)
 
 # Special recipe for mmu_vars.cfg, so it doesn't overwrite an existing mmu_vars.cfg
-# Don't use non-POSIX $(Q)$(call install,$(firstword $|),$@,--no-clobber)
+# Avoiding use of non-POSIX $(Q)$(call install,$(firstword $|),$@,--no-clobber)
 $(KLIPPER_CONFIG_HOME)/mmu/mmu_vars.cfg: | $(OUT)/mmu/mmu_vars.cfg $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu)
 	$(Q)$(SUDO)mkdir -p "$(dir $@)"
 	$(Q)[ -f "$@" ] || $(SUDO)cp -p "$(firstword $|)" "$@"
@@ -267,8 +295,10 @@ $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu): $(addprefix $(OUT)/mmu/, $(hh_co
 
 endif # To prevent make errors when .config is not yet created
 
-install: build $(install_targets)
-	$(Q)rm -rf $(addprefix $(KLIPPER_HOME)/klippy/extras,$(hh_old_klipper_modules))
+$(install_targets): build variables # PAUL temp added variables
+
+install: $(install_targets)
+	$(Q)rm -rf $(addprefix $(KLIPPER_HOME)/klippy/extras/,$(hh_old_klipper_modules))
 	$(Q)$(call restart_service,$(restart_moonraker),Moonraker,$(CONFIG_SERVICE_MOONRAKER))
 	$(Q)$(call restart_service,$(restart_klipper),Klipper,$(CONFIG_SERVICE_KLIPPER))
 	$(Q)$(PY) -m installer.build $(V) --print-happy-hare "Done! Happy Hare $(CONFIG_F_VERSION) is ready!"
@@ -299,6 +329,10 @@ uninstall:
 ##### Misc targets #####
 ########################
 
+# Look for version number in current config files and report
+check_version: $(hh_configs_to_parse)
+	$(Q)$(PY) -m installer.build $(V) --check-version "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)
+
 clean:
 	$(Q)rm -rf $(OUT)
 
@@ -315,15 +349,30 @@ diff: | build
 test: 
 	$(Q)$(PY) -m unittest discover $(V) -p '$(UT)'
 
-# Look for version number in current config files and report
-check_version: $(hh_configs_to_parse)
-	$(Q)$(PY) -m installer.build $(V) --check-version "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)
+variables:
+	@echo "========================="
+	@echo "$(C_NOTICE)hh_klipper_extras_files =$(C_INFO) $(hh_klipper_extras_files)$(C_OFF)"
+	@echo "$(C_NOTICE)repo_cfgs               =$(C_INFO) $(repo_cfgs)$(C_OFF)"
+	@echo "$(C_NOTICE)unit_names              =$(C_INFO) $(unit_names)$(C_OFF)"
+	@echo "$(C_NOTICE)hh_unit_config_files    =$(C_INFO) $(hh_unit_config_files)$(C_OFF)"
+	@echo "$(C_NOTICE)hh_config_files         =$(C_INFO) $(hh_config_files)$(C_OFF)"
+	@echo "$(C_NOTICE)cfg_base                =$(C_INFO) $(cfg_base)$(C_OFF)"
+	@echo "$(C_NOTICE)cfg_addons              =$(C_INFO) $(cfg_addons)$(C_OFF)"
+	@echo "$(C_NOTICE)hh_configs_to_parse     =$(C_INFO) $(hh_configs_to_parse)$(C_OFF)"
+	@echo "$(C_NOTICE)build_targets           =$(C_INFO) $(build_targets)$(C_OFF)"
+	@echo "$(C_NOTICE)install_targets         =$(C_INFO) $(install_targets)$(C_OFF)"
+	@echo "========================="
 
 
 
 ##############################
 ##### Menuconfig targets #####
 ##############################
+
+MENUCONFIG_STYLE ?= aquatic
+ifeq ($(F_MULTI_UNIT_ENTRY_POINT),y)
+  MENUCONFIG_STYLE := default
+endif
 
 $(KCONFIG_CONFIG): $(SRC)/installer/Kconfig* $(SRC)/installer/**/Kconfig* 
 # If KCONFIG_CONFIG is outdated or doesn't exist run menuconfig first. If the user doesn't save the config,
@@ -336,4 +385,4 @@ ifeq ($(filter menuconfig uninstall,$(MAKECMDGOALS)),)
 endif
 
 menuconfig: $(SRC)/installer/Kconfig
-	$(Q)MENUCONFIG_STYLE="aquatic" $(PY) -m menuconfig $(SRC)/installer/Kconfig
+	$(Q)MENUCONFIG_STYLE="$(MENUCONFIG_STYLE)" $(PY) -m menuconfig $(SRC)/installer/Kconfig

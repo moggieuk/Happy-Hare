@@ -226,7 +226,8 @@ menu "Pins"
       string "Gate sensor pin"
       depends on !MMU_HAS_ENCODER
 
-    if !MULTI_UNIT
+#    if !MULTI_UNIT
+    if MULTI_UNIT_ENTRY_POINT
       config PIN_EXTRUDER_SENSOR
         string "Extruder sensor pin"
 
