@@ -74,14 +74,28 @@ hh_klipper_extras_files := $(wildcard extras/*.py extras/mmu/*.py)
 hh_old_klipper_modules  := mmu.py mmu_toolhead.py # These will get removed upon install
 hh_moonraker_components := $(wildcard components/*.py)
 
-# All repo configs files less mmu_vars.cfg
-repo_cfgs := $(patsubst config/%,%, $(wildcard config/*.cfg config/**/*.cfg))
-repo_cfgs := $(filter-out %/mmu_vars.cfg mmu_vars.cfg,$(repo_cfgs))
-
 # unit_names: from CONFIG_PARAM_MMU_UNITS in multi-unit, else default to mmu0
 unit_names := \
 	$(if $(filter y,$(CONFIG_MULTI_UNIT)), \
 	$(strip $(subst ",,$(call convert_list,$(CONFIG_PARAM_MMU_UNITS)))),mmu0)
+
+# Use sudo if the klipper home is at a system location (not owned by user)
+SUDO := $(shell \
+	  [ -n "$(KLIPPER_HOME)" ] && \
+	  [ -d "$(KLIPPER_HOME)" ] && \
+	  [ "$$(ls -nd -- $(KLIPPER_HOME) | awk '{print $$3}')" != "$$(id -u)" ] && \
+	  echo "sudo " || echo "" \
+	)
+
+
+
+#####################
+##### File sets #####
+#####################
+
+# All repo configs files less mmu_vars.cfg
+repo_cfgs := $(patsubst config/%,%, $(wildcard config/*.cfg config/**/*.cfg))
+repo_cfgs := $(filter-out %/mmu_vars.cfg mmu_vars.cfg,$(repo_cfgs))
 
 # Per-unit files: <unit>_{hardware,parameters}.cfg
 hh_unit_config_files := \
@@ -92,14 +106,6 @@ hh_unit_config_files := \
 hh_config_files := \
 	$(filter-out base/mmu_hardware.cfg base/mmu_parameters.cfg,$(repo_cfgs)) \
 	$(hh_unit_config_files)
-
-# Use sudo if the klipper home is at a system location (not owned by user)
-SUDO := $(shell \
-	  [ -n "$(KLIPPER_HOME)" ] && \
-	  [ -d "$(KLIPPER_HOME)" ] && \
-	  [ "$$(ls -nd -- $(KLIPPER_HOME) | awk '{print $$3}')" != "$$(id -u)" ] && \
-	  echo "sudo " || echo "" \
-	)
 
 # Look for installed configs that would need be parsed by the build script
 cfg_base := \
@@ -123,6 +129,11 @@ build_targets := \
 	$(addprefix $(OUT)/klippy/, $(hh_klipper_extras_files)) \
 	$(addprefix $(OUT)/moonraker/, $(hh_moonraker_components)) 
 
+# Subset of files/targets which require token processing and/or are user editable
+processed_targets := \
+	$(filter-out $(OUT)/mmu/optional/%.cfg $(OUT)/mmu/macros/%.cfg $(OUT)/mmu/mmu_vars.cfg, \
+		$(filter $(OUT)/mmu/%.cfg, $(addprefix $(OUT)/mmu/,$(hh_config_files))))
+
 # Files/targets that need to be installed
 install_targets := \
 	$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE) \
@@ -132,7 +143,11 @@ install_targets := \
 	$(addprefix $(MOONRAKER_HOME)/moonraker/, $(hh_moonraker_components))
 
 
-# Recipe functions
+
+############################
+##### Recipe functions #####
+############################
+
 install = \
 	$(info $(C_INFO)Installing $(2)...$(C_OFF)) \
 	$(SUDO)mkdir -p $(dir $(2)); \
@@ -207,26 +222,25 @@ $(OUT)/$(PRINTER_CONFIG_FILE): $(IN)/$$(@F)
 # in case of a multi unit setup, the per-unit config targets are overridden below
 $(OUT)/mmu/%.cfg: $(SRC)/config/%.cfg $(hh_configs_to_parse)
 	$(Q)$(call link,$<,$@)
-	$(Q)$(PY) -m installer.build $(V) --build "$<" "$@" "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)
+	$(Q)$(if $(filter $@,$(processed_targets)), \
+		$(PY) -m installer.build $(V) --build "$<" "$@" "$(KCONFIG_CONFIG)" $(hh_configs_to_parse), \
+	        $(info $(C_INFO)Skipping build of mmu/$*$(C_OFF)))
 
-# Map the per-unit targets back to the shared base templates
-$(OUT)/mmu/base/%_hardware.cfg:   BASE := mmu_hardware
-$(OUT)/mmu/base/%_parameters.cfg: BASE := mmu_parameters
+# Conditional per-unit prereqiusit ".config.<unit>" when multi-unit, else to ".config"
+KCONF_REQ = $$(if $$(filter y,$$(CONFIG_MULTI_UNIT)),$$(KCONFIG_CONFIG).%,)
 
-# Helper expands to ".config.<unit>" when multi-unit, else to ".config"
-define KCONF_FOR_UNIT
-$(if $(filter y,$(CONFIG_MULTI_UNIT)),$(KCONFIG_CONFIG).$*,$(KCONFIG_CONFIG))
-endef
-
-# Only require ".config.<unit>" as a prerequisite when multi-unit is enabled
-define KCONF_PREREQ
-$(if $(filter y,$(CONFIG_MULTI_UNIT)),$(KCONFIG_CONFIG).%,)
-endef
-
-$(OUT)/mmu/base/%_hardware.cfg \
-$(OUT)/mmu/base/%_parameters.cfg: $$(SRC)/config/base/$$(BASE).cfg $$(hh_configs_to_parse) $$(KCONF_PREREQ)
+# Shared target rules don't work on old make so separate for portability
+$(OUT)/mmu/base/%_hardware.cfg: \
+  $$(SRC)/config/base/mmu_hardware.cfg $$(hh_configs_to_parse) $(KCONF_REQ)
 	$(Q)$(call link,$<,$@)
-	$(Q)$(PY) -m installer.build $(V) --build "$<" "$@" "$$(strip $$(KCONF_FOR_UNIT))" $(hh_configs_to_parse)
+	$(Q)$(PY) -m installer.build $(V) --build "$<" "$@" \
+		"$(if $(filter y,$(CONFIG_MULTI_UNIT)),$(KCONFIG_CONFIG).$*,$(KCONFIG_CONFIG))" $(hh_configs_to_parse)
+
+$(OUT)/mmu/base/%_parameters.cfg: \
+  $$(SRC)/config/base/mmu_parameters.cfg $$(hh_configs_to_parse) $(KCONF_REQ)
+	$(Q)$(call link,$<,$@)
+	$(Q)$(PY) -m installer.build $(V) --build "$<" "$@" \
+		"$(if $(filter y,$(CONFIG_MULTI_UNIT)),$(KCONFIG_CONFIG).$*,$(KCONFIG_CONFIG))" $(hh_configs_to_parse)
 
 # Python files are linked to the out directory
 $(OUT)/klippy/extras/%.py: $(SRC)/extras/%.py
@@ -272,7 +286,6 @@ $(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE): $(OUT)/$$(@F) | $(call backup_n
 	$(Q)$(call install,$<,$@)
 	$(Q)$(eval restart_moonraker = 1)
 
-
 # Install Happy-Hare *.cfg files
 $(KLIPPER_CONFIG_HOME)/mmu/%.cfg: $(OUT)/mmu/%.cfg | $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) 
 	$(Q)$(call install,$<,$@)
@@ -295,7 +308,7 @@ $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu): $(addprefix $(OUT)/mmu/, $(hh_co
 
 endif # To prevent make errors when .config is not yet created
 
-$(install_targets): build variables # PAUL temp added variables
+$(install_targets): build
 
 install: $(install_targets)
 	$(Q)rm -rf $(addprefix $(KLIPPER_HOME)/klippy/extras/,$(hh_old_klipper_modules))
@@ -311,9 +324,11 @@ uninstall:
 	$(Q)$(call backup,$(KLIPPER_CONFIG_HOME)/mmu)
 	@# Remove the installed files
 	$(Q)rm -f $(addprefix $(KLIPPER_HOME)/klippy/,$(hh_klipper_extras_files))
-	$(Q)rmdir --ignore-fail-on-non-empty $(addprefix $(KLIPPER_HOME)/klippy/,$(filter-out extras/,$(dir $(hh_klipper_extras_files)))) 2>/dev/null || true
+	$(Q)rmdir --ignore-fail-on-non-empty $(addprefix $(KLIPPER_HOME)/klippy/, \
+		$(filter-out extras/,$(dir $(hh_klipper_extras_files)))) 2>/dev/null || true
 	$(Q)rm -f $(addprefix $(MOONRAKER_HOME)/moonraker/,$(hh_moonraker_components))
-	$(Q)rmdir --ignore-fail-on-non-empty $(addprefix $(MOONRAKER_HOME)/moonraker/,$(filter-out components/,$(dir $(hh_moonraker_components)))) 2>/dev/null || true
+	$(Q)rmdir --ignore-fail-on-non-empty $(addprefix $(MOONRAKER_HOME)/moonraker/, \
+		$(filter-out components/,$(dir $(hh_moonraker_components)))) 2>/dev/null || true
 	$(Q)rm -rf $(KLIPPER_CONFIG_HOME)/mmu
 	@# Remove HH from config files
 	$(Q)$(PY) -m installer.build $(V) --uninstall-moonraker $(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)
@@ -360,6 +375,7 @@ variables:
 	@echo "$(C_NOTICE)cfg_addons              =$(C_INFO) $(cfg_addons)$(C_OFF)"
 	@echo "$(C_NOTICE)hh_configs_to_parse     =$(C_INFO) $(hh_configs_to_parse)$(C_OFF)"
 	@echo "$(C_NOTICE)build_targets           =$(C_INFO) $(build_targets)$(C_OFF)"
+	@echo "$(C_NOTICE)processed_targets       =$(C_INFO) $(processed_targets)$(C_OFF)"
 	@echo "$(C_NOTICE)install_targets         =$(C_INFO) $(install_targets)$(C_OFF)"
 	@echo "========================="
 

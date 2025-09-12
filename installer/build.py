@@ -35,13 +35,7 @@ unhappy_hare = '\n(\\_/)\n( V,V)\n(")^(") {caption}\n'
 
 LEVEL_NOTICE = 25
 
-HH_CONFIG_FILES_TO_BUILD = [
-    "config/base/mmu.cfg",
-    "config/base/mmu_hardware.cfg",
-    "config/base/mmu_parameters.cfg",
-    "config/base/mmu_macro_vars.cfg",
-]
-
+# All possible [include] lines a user might have added to their printer.cfg
 HH_CONFIG_INCLUDES_TO_CLEAN = [
     "mmu/base/*.cfg",
     "mmu/macros/*.cfg",
@@ -233,17 +227,11 @@ def render_template(template_file, kcfg, extra_params):
 def build(cfg_file, dest_file, kconfig_file, input_files):
     cfg_file_basename = cfg_file[len(os.getenv("SRC")) + 1 :]
 
-    if (
-        not cfg_file_basename.startswith("config/addons/") or not cfg_file_basename.endswith("_hw.cfg")
-    ) and cfg_file_basename not in HH_CONFIG_FILES_TO_BUILD: # PAUL: CONFIG_FILES_TO_BUILD could be the same as input_files!
-        logging.debug("Skipping build of %s" % cfg_file)
-        return
-
     kcfg = KConfig(kconfig_file)
     extra_params = dict()
     unit_kcfgs = dict()
 
-# PAUL .... fix me vvv
+    # PARAM_TOTAL_NUM_GATES is required to create the Tx macro wrappers
     if kcfg.is_enabled("MULTI_UNIT_ENTRY_POINT"):
         total_num_gates = 0
         for unit in kcfg.get("PARAM_MMU_UNITS").split(","):
@@ -255,7 +243,6 @@ def build(cfg_file, dest_file, kconfig_file, input_files):
         extra_params["PARAM_TOTAL_NUM_GATES"] = total_num_gates
     else:
         extra_params["PARAM_TOTAL_NUM_GATES"] = kcfg.getint("PARAM_NUM_GATES")
-# PAUL .... ^^^
 
     build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_params)
 
@@ -314,10 +301,10 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
         with open(dest_file, "w", encoding="utf-8") as f:
             f.write(builder.write())
 
-# PAUL the below should replace the above and work on py2 and py3. TEST IT
+# PAUL TODO the below should replace the above and work on py2 and py3. TEST IT
 #    data = builder.write()
 #    with open(dest_file, "wb") as f:
-#        f.write(data.encode("utf-8"))
+#        f.write(builder.write().encode("utf-8"))
 
 
 
