@@ -164,7 +164,7 @@ fi
 # config file, passing UNIT_* parameters to the Makefile/Kconfig for customization.
 
 if [ ! -e "${KCONFIG_CONFIG}" ]; then
-    echo "${C_NOTICE}No '${KCONFIG_CONFIG}' found, forcing interactive menu"
+    echo "${C_INFO}No '${KCONFIG_CONFIG}' found, forcing interactive menu"
     F_MENUCONFIG=y
 fi
 

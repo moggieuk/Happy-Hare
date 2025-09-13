@@ -1,6 +1,6 @@
 menu "MMU Additions"
   help
-    Step 2 - Enhancements to base design
+    Enhancements to base design
     If the base MMU design lacks a particular feature there are often
     modifications available to enhance the design. Select those modifications
     here so that Happy Hare will install the correct drivers and setup

@@ -263,7 +263,7 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
 
     # 3.Render cfg template expanding KConfig parameters
     buffer = render_template(cfg_file_basename, kcfg, extra_params)
-    logging.debug("Rendered '%s' using Kconfig '%s' and extra_params: %s" % (cfg_file_basename, kcfg.config_file, extra_params))
+    logging.debug("Rendered template '%s' using Kconfig '%s' with extra_params: %s" % (cfg_file_basename, kcfg.config_file, extra_params))
 
     # 4.Generate builder Config from rendered template
     builder = ConfigBuilder()
@@ -275,6 +275,7 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
 
     # 6.Update the builder Config from the existing master HH Config to ensure all user edits are preserved
     hhcfg.update_builder(builder)
+    logging.debug("Updated '%s' using previous config options" % dest_file)
 
     # 7.Report on deprecated/unused options
     first = True
@@ -288,17 +289,10 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
     if os.path.islink(dest_file):
         os.remove(dest_file)
 
-    if sys.version_info[0] < 3: # Python 2
-        with open(dest_file, "w") as f:
-            f.write(builder.write().encode("utf-8"))
-    else: # Python 3
-        with open(dest_file, "w", encoding="utf-8") as f:
-            f.write(builder.write())
-
-# PAUL TODO the below should replace the above and work on py2 and py3. TEST IT
-#    data = builder.write()
-#    with open(dest_file, "wb") as f:
-#        f.write(builder.write().encode("utf-8"))
+    # 9.Write out processed config file
+    data = builder.write()
+    with open(dest_file, "wb") as f:
+        f.write(data.encode("utf-8"))
 
 
 
@@ -432,7 +426,7 @@ def check_version(kconfig_file, input_files):
         exit(1)
 
     if current_version == target_version:
-        logging.log(LEVEL_NOTICE, "Up to date, no config upgrades required. Will confirm installation")
+        logging.log(LEVEL_NOTICE, "Up to date, no config upgrades required")
         return
 
     if float(current_version) > float(target_version):

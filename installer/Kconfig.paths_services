@@ -1,4 +1,8 @@
 menu "Paths & Services"
+  help 
+    Advanced
+    If you have a non-standard install of klipper or moonraker you can configure
+    paths and service names here in addition to some other miscellaneous system options
 
   config KLIPPER_HOME
     string "Klipper directory"

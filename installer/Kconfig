@@ -15,7 +15,7 @@ serial_exists = $(to_bool, [ -e '$(serial,$(1),$(2))' ])
 serial_config = $(shell, basename '$(serial,$(1),$(2))' | sed 's/-/_/g' | awk '{print "PARAM_SERIAL_" toupper($0)}')
 
 # Used for comment padding
-pad = $(shell, printf '%-50s' "$(1)")
+pad = $(shell, printf "%-$(1)s" "$(2)")
 
 # To allow multiline config strings.
 # Important: Use $(comma) & $(quote) instead of real comma's or double quotes in multiline strings
@@ -55,15 +55,17 @@ if !MULTI_UNIT_ENTRY_POINT
     default "$(MMU_MCU)"
 endif
 
+if MULTI_UNIT_ENTRY_POINT
+  config PARAM_MMU_UNITS
+    string
+    default "$(UNIT_NAME)"
+endif
+
 if MULTI_UNIT && !MULTI_UNIT_ENTRY_POINT
   config UNIT_INDEX
     int
     default $(shell, echo "${UNIT_INDEX-0}")
 endif
-
-config PARAM_MMU_UNITS
-  string
-  default "$(UNIT_NAME)"
 
 # y to shows MMU additions menu inline with type
 # n to show as top level menu
@@ -71,40 +73,55 @@ config SHOW_MMU_ADDITIONS_WITH_TYPE
   bool
   default n
 
-comment "$(pad,)"
-comment "$(pad,(\\_/))"
-comment "$(pad,( *,*))"
-comment "$(pad,(\")_(\") $(caption))"
-comment "$(pad,)"
+comment "$(pad,50,)"
+comment "$(pad,50,(\\_/))"
+comment "$(pad,50,( *,*))"
+comment "$(pad,50,(\")_(\") $(caption))"
+comment "$(pad,50,)"
+
+# Common/shared settings
+#if (MULTI_UNIT && MULTI_UNIT_ENTRY_POINT) || !MULTI_UNIT
 
 if MULTI_UNIT_ENTRY_POINT
+
+  config PARAM_MMU_UNITS
+    prompt "MMU unit names"
+    help
+      Comma-separated list of unit names. Careful: Use only alphanumeric characters.
+      If this is the first time configuring mulit-unit from previous single-unit install
+      then the first name must be mmu0 because that is how it was configured.
+      E.g. "mmu0,mmu1"
+
+      A separate configurator will be run for each MMU after this initial screen is closed
+
+  comment "Shared System Options"
+
   rsource "Kconfig.multi"
+
 endif
 
-if !MULTI_UNIT_ENTRY_POINT
-#  if MULTI_UNIT
-#    comment "Configuration for unit '$(UNIT_NAME)'"
-#  endif 
+#endif
 
-  # Step 1 - Base MMU
+# Only show if we have a single-unit setup
+if !MULTI_UNIT_ENTRY_POINT
+
+  # Base MMU
   rsource "mmu_types/Kconfig"
 
-  # Step 2 - MMU Additions/Customization (optionally inline with base type)
+  # MMU Additions/Customization (optionally inline with base type)
   if !SHOW_MMU_ADDITIONS_WITH_TYPE
     rsource "mmu_additions/Kconfig"
   endif
 
-  # Step 3 - Addon Features
-  rsource "addons/Kconfig"
-
-  # Step 4 - MCU
+  # MCU Selection
   rsource "boards/Kconfig"
 
-  # Step 5 - MCU connection
+  # MCU Connection
   rsource "Kconfig.serial"
 
-  # Step 6 - Popular options
-  rsource "Kconfig.options"
+  if !MULTI_UNIT
+    rsource "Kconfig.multi"
+  endif
 
   # Raw access to suggested settings
   menu "Advanced/Raw Settings"
@@ -127,8 +144,5 @@ if !MULTI_UNIT_ENTRY_POINT
     rsource "Kconfig.pins"
     rsource "Kconfig.params"
 
-    if !MULTI_UNIT
-      rsource "Kconfig.paths_services"
-    endif
   endmenu
 endif

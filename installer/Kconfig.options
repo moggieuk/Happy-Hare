@@ -1,6 +1,6 @@
 menu "Software Options"
   help
-    Step 6 - Software Options
+    Software Options
     This covers some of the more common software setup options. Further
     configuration can be achieved later by editing generated klipper
     config files.

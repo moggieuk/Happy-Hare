@@ -4,7 +4,7 @@
 choice CHOICE_SERIAL_DEVICE 
   prompt "Select MCU serial device"
   help
-    Step 5 - MCU connection
+    MCU connection
     Specify the path of the serial device connected to the MMU MCU.
     It's best to use the /dev/serial/by-id/ path, as it's unique and
     doesn't change when you plug in multiple serial devices.
@@ -50,7 +50,7 @@ config PARAM_SERIAL
   string
   prompt "MCU serial device path" if PARAM_SERIAL_OTHER || !$(serial_exists,1)
   help
-    Step 5 - MCU connection
+    MCU connection
     Specify the path of the serial device connected to the MMU MCU.
     It's best to use the /dev/serial/by-id/ path, as it's unique and
     doesn't change when you plug in multiple serial devices.

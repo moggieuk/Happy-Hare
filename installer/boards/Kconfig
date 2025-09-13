@@ -5,7 +5,7 @@ choice CHOICE_BOARD_TYPE
   prompt "Board type"
   default BOARD_TYPE_OTHER
   help 
-    Step 4 - MCU type
+    MCU type
     Select the type of mcu board you are using. This will configure
     the default pin layout for your setup. After selecting board
     pins can be customized in Advanced Settings.
