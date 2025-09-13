@@ -124,8 +124,8 @@ if [ "${TESTDIR}" ]; then
     export CONFIG_KLIPPER_HOME="${TESTDIR}/klipper"
     export CONFIG_KLIPPER_CONFIG_HOME="${TESTDIR}/printer_data/config"
     export CONFIG_MOONRAKER_HOME="${TESTDIR}/moonraker"
-    export KCONFIG_CONFIG=${TESTDIR}/.config
     export F_NO_SERVICE=y
+    export KCONFIG_CONFIG="${TESTDIR}/.config"
     echo -e "\n${C_WARNING}Running in test mode to simulate without changing real configuration${C_OFF}"
     echo -e "${C_WARNING}Forcing flags '-s -c ${CONFIG_KLIPPER_CONFIG_HOME} -k ${CONFIG_KLIPPER_HOME} -c ${CONFIG_MOONRAKER_HOME} ${TESTDIR}/.config' ${C_OFF}"
     mkdir -p "${CONFIG_KLIPPER_HOME}/klippy/extras"
@@ -178,9 +178,9 @@ if [ -n "${F_MENUCONFIG:-}" ]; then
             tmpconfig="$(mktemp -t tmpconfig.XXXXXX)"
             cp -- "${KCONFIG_CONFIG}" "${tmpconfig}"
         fi
-        make -C "${SCRIPT_DIR}" KCONFIG_CONFIG="${KCONFIG_CONFIG}" F_MULTI_UNIT_ENTRY_POINT=y F_MULTI_UNIT=y menuconfig
+        make -C "${SCRIPT_DIR}" F_MULTI_UNIT_ENTRY_POINT=y F_MULTI_UNIT=y menuconfig
     else
-        make -C "${SCRIPT_DIR}" KCONFIG_CONFIG="${KCONFIG_CONFIG}" menuconfig
+        make -C "${SCRIPT_DIR}" menuconfig
     fi
 
     if [ ! -e "${KCONFIG_CONFIG}" ]; then

@@ -35,21 +35,6 @@ unhappy_hare = '\n(\\_/)\n( V,V)\n(")^(") {caption}\n'
 
 LEVEL_NOTICE = 25
 
-# All possible [include] lines a user might have added to their printer.cfg
-HH_CONFIG_INCLUDES_TO_CLEAN = [
-    "mmu/base/*.cfg",
-    "mmu/macros/*.cfg",
-    "mmu/addons/*.cfg",
-    "mmu/optional/*.cfg",
-    "mmu/optional/mmu_menu.cfg",
-    "mmu/optional/mmu_ercf_compat.cfg",
-    "mmu/optional/client_macros.cfg",
-    "mmu/addons/mmu_erec_cutter.cfg",
-    "mmu/addons/blobifier.cfg",
-    "mmu/addons/dc_espooler.cfg",
-    "mmu/addons/mmu_eject_buttons.cfg",
-]
-
 # Enhanced representation of Kconfig file
 class KConfig(kconfiglib.Kconfig):
     def __init__(self, config_file):
@@ -196,10 +181,15 @@ class HHConfig(ConfigBuilder):
 
 
 def build_mmu_parameters_cfg(builder, hhcfg):
+    added = []
     for param in supplemental_params.split() + hidden_params.split():
         if hhcfg.has_option("mmu", param):
-            builder.buf += param + ": " + hhcfg.get("mmu", param) + "\n"
+            extra = param + ": " + hhcfg.get("mmu", param) + "\n"
+            builder.buf += extra + "\n"
             hhcfg.remove_option("mmu", param)
+            added.append(extra)
+    if added:
+        logging.debug("Reinserting hidden and supplemental options: %s" % added)
 
 
 def jinja_env():
@@ -255,7 +245,6 @@ def build(cfg_file, dest_file, kconfig_file, input_files):
 def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_params):
     dest_file_basename = dest_file[len(os.getenv("OUT")) + 1 :]
     logging.info("Building config file: " + dest_file_basename)
-    logging.debug(dest_file)
 
     # 1.Generate an aggregated master HH Config for all HH input_files
     hhcfg = HHConfig(input_files)
@@ -274,15 +263,15 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
 
     # 3.Render cfg template expanding KConfig parameters
     buffer = render_template(cfg_file_basename, kcfg, extra_params)
+    logging.debug("Rendered '%s' using Kconfig '%s' and extra_params: %s" % (cfg_file_basename, kcfg.config_file, extra_params))
 
     # 4.Generate builder Config from rendered template
     builder = ConfigBuilder()
     builder.read_buf(buffer)
 
-# PAUL TODO
-#    # 5.Special case mmu_parameters.cfg because it map contain hidden and supplemental options not present in cfg template
-#    if cfg_file_basename == "config/base/mmu_parameters.cfg":
-#        build_mmu_parameters_cfg(builder, hhcfg)
+    # 5.Special case mmu_parameters.cfg because it may contain hidden and supplemental options not present in cfg template
+    if cfg_file_basename == "config/base/mmu_parameters.cfg":
+        build_mmu_parameters_cfg(builder, hhcfg)
 
     # 6.Update the builder Config from the existing master HH Config to ensure all user edits are preserved
     hhcfg.update_builder(builder)
@@ -397,10 +386,10 @@ def uninstall_includes(dest_file):
 
     logging.info("Cleaning up includes")
     builder = ConfigBuilder(dest_file)
-    for include in HH_CONFIG_INCLUDES_TO_CLEAN:
-        if builder.has_section("include " + include):
-            logging.debug(" > Removing include [{}]".format(include))
-            builder.remove_section("include " + include)
+    for section in builder.sections():
+        if section.startswith("include mmu/"):
+            logging.debug(" > Removing include [{}]".format(section))
+            builder.remove_section(section)
 
     with open(dest_file, "w") as f:
         f.write(builder.write())

@@ -38,14 +38,8 @@ else
   OUTDIR := $(CURDIR)
 endif
 
-# Use the name of the '.config.name' or 'name.config' file as the out_name directory, or 'out' if just '.config' is used
-ifeq ($(notdir $(KCONFIG_CONFIG)),.config)
-  export OUT ?= $(OUTDIR)/out
-else
-  export OUT ?= $(OUTDIR)/out_$(subst .config.,,$(notdir $(KCONFIG_CONFIG)))
-endif
-
-export IN=$(OUT)/in
+export OUT ?= $(OUTDIR)/out
+export IN  := $(OUT)/in
 
 # Default unit and mcu naming
 export UNIT_NAME ?= mmu0
@@ -343,7 +337,7 @@ uninstall:
 ########################
 
 # Look for version number in current config files and report
-check_version: variables $(hh_configs_to_parse)
+check_version: $(hh_configs_to_parse)
 	$(Q)$(PY) -m installer.build $(V) --check-version "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)
 
 clean:
@@ -377,6 +371,9 @@ variables:
 	@echo "$(C_NOTICE)build_targets     ..out/ =$(C_INFO) $(call strip_prefix,$(OUT)/,$(build_targets))$(C_OFF)"
 	@echo "$(C_NOTICE)processed_targets ..out/ =$(C_INFO) $(call strip_prefix,$(OUT)/,$(processed_targets))$(C_OFF)"
 	@echo "$(C_NOTICE)install_targets          =$(C_INFO) $(install_targets)$(C_OFF)"
+	@echo "$(C_NOTICE)OUT                      =$(C_INFO) $(OUT)$(C_OFF)"
+	@echo "$(C_NOTICE)IN                       =$(C_INFO) $(IN)$(C_OFF)"
+	@echo "$(C_NOTICE)KCONFIG_CONFIG           =$(C_INFO) $(KCONFIG_CONFIG)$(C_OFF)"
 	@echo "========================="
 
 
