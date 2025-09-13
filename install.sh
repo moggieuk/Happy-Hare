@@ -219,5 +219,5 @@ fi
 ###################
 
 SECONDS=0
-make -C "${SCRIPT_DIR}" install
+make -C "${SCRIPT_DIR}" KCONFIG_CONFIG="${KCONFIG_CONFIG}" install
 echo "${C_INFO}Elapsed: ${SECONDS} seconds${C_OFF}"

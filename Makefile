@@ -128,11 +128,11 @@ hh_configs_to_parse := $(subst $(KLIPPER_CONFIG_HOME),$(IN),$(cfg_base) $(cfg_ad
 
 # Files/targets that need to be build
 build_targets := \
-	$(OUT)/$(MOONRAKER_CONFIG_FILE) \
-	$(OUT)/$(PRINTER_CONFIG_FILE) \
 	$(addprefix $(OUT)/mmu/, $(hh_config_files)) \
 	$(addprefix $(OUT)/klippy/, $(hh_klipper_extras_files)) \
-	$(addprefix $(OUT)/moonraker/, $(hh_moonraker_components)) 
+	$(addprefix $(OUT)/moonraker/, $(hh_moonraker_components)) \
+        $(OUT)/$(MOONRAKER_CONFIG_FILE) \
+        $(OUT)/$(PRINTER_CONFIG_FILE)
 
 # Subset of files/targets which require token processing and/or are user editable
 processed_targets := \
@@ -141,11 +141,11 @@ processed_targets := \
 
 # Files/targets that need to be installed
 install_targets := \
-	$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE) \
-	$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE) \
 	$(addprefix $(KLIPPER_CONFIG_HOME)/mmu/, $(hh_config_files)) \
 	$(addprefix $(KLIPPER_HOME)/klippy/, $(hh_klipper_extras_files)) \
-	$(addprefix $(MOONRAKER_HOME)/moonraker/, $(hh_moonraker_components))
+	$(addprefix $(MOONRAKER_HOME)/moonraker/, $(hh_moonraker_components)) \
+	$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE) \
+	$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)
 
 
 
@@ -189,26 +189,27 @@ restart_service = \
 ##### Build targets #####
 #########################
 
-# To prevent make errors when .config is not yet created
-ifneq ($(wildcard $(KCONFIG_CONFIG)),)
-
 # Link existing config files to the out/in directory to break circular dependency
 $(IN)/%:
 	$(Q)[ -f "$(KLIPPER_CONFIG_HOME)/$*" ] || { echo "$(C_ERROR)The file '$(KLIPPER_CONFIG_HOME)/$*' does not exist. Please check your config for the correct paths$(C_OFF)"; exit 1; }
 	$(call debug,$(C_DEBUG)Linking $(KLIPPER_CONFIG_HOME)/$* to '$(notdir $(IN))' directory$(C_OFF))
 	$(Q)$(call link,$(KLIPPER_CONFIG_HOME)/$*,$@)
 
+ifneq ($(strip $(MOONRAKER_CONFIG_FILE)),)
 # Copy existing moonraker.conf to the out directory and update with moonraker_update.txt
 $(OUT)/$(MOONRAKER_CONFIG_FILE): $(IN)/$$(@F)
 	$(call debug,$(C_DEBUG)Copying $< to '$(notdir $(OUT))' directory$(C_OFF))
 	$(Q)$(call copy,$<,$@)
 	$(Q)$(PY) -m installer.build $(V) --install-moonraker "$(SRC)/installer/moonraker_update.txt" "$@" "$(KCONFIG_CONFIG)"
+endif
 
+ifneq ($(strip $(PRINTER_CONFIG_FILE)),)
 # Copy existing printer.cfg to the out directory and update with includes
 $(OUT)/$(PRINTER_CONFIG_FILE): $(IN)/$$(@F)
 	$(call debug,$(C_DEBUG)Copying $< to '$(notdir $(OUT))' directory$(C_OFF))
 	$(Q)$(call copy,$<,$@)
 	$(Q)$(PY) -m installer.build $(V) --install-includes "$@" "$(KCONFIG_CONFIG)"
+endif
 
 # We link all config files, those that need to be updated will be written over in the install script,
 # in case of a multi unit setup, the per-unit config targets are overridden below
@@ -268,15 +269,19 @@ $(MOONRAKER_HOME)/%: $(OUT)/% | $(MOONRAKER_HOME)/moonraker/components
 	$(Q)$(call install,$<,$@)
 	$(Q)$(eval restart_moonraker = 1)
 
-# Install printer.cfg
-$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE): $(OUT)/$$(@F) | $(call backup_name,$$@)
-	$(Q)$(call install,$<,$@)
-	$(Q)$(eval restart_klipper = 1)
-
+ifneq ($(strip $(MOONRAKER_CONFIG_FILE)),)
 # Install moonraker.conf
 $(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE): $(OUT)/$$(@F) | $(call backup_name,$$@)
 	$(Q)$(call install,$<,$@)
 	$(Q)$(eval restart_moonraker = 1)
+endif
+
+ifneq ($(strip $(PRINTER_CONFIG_FILE)),)
+# Install printer.cfg
+$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE): $(OUT)/$$(@F) | $(call backup_name,$$@)
+	$(Q)$(call install,$<,$@)
+	$(Q)$(eval restart_klipper = 1)
+endif
 
 # Install Happy-Hare *.cfg files
 $(KLIPPER_CONFIG_HOME)/mmu/%.cfg: $(OUT)/mmu/%.cfg | $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) 
@@ -298,7 +303,6 @@ $(call backup_name,$(KLIPPER_CONFIG_HOME)/%): $(OUT)/% | build
 $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu): $(addprefix $(OUT)/mmu/, $(hh_config_files)) | build
 	$(Q)$(call backup,$(basename $@))
 
-endif # To prevent make errors when .config is not yet created
 
 $(install_targets): build
 
