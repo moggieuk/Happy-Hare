@@ -18,7 +18,7 @@ import os
 import copy
 import logging
 import subprocess
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, UndefinedError
 
 import kconfiglib
 from .parser import ConfigBuilder, WhitespaceNode
@@ -55,6 +55,7 @@ class KConfig(kconfiglib.Kconfig):
     def __init__(self, config_file):
         super(KConfig, self).__init__("installer/Kconfig")
         self.load_config(config_file)
+        self.config_file = config_file
 
     def load_unit(self, unit_config_file):
         self.load_config(unit_config_file)
@@ -217,11 +218,15 @@ def jinja_env():
 
 def render_template(template_file, kcfg, extra_params):
     """ Render the template config file after expanding KConfig params (and extra params) dictionary """
-    env = jinja_env()
-    template = env.get_template(os.path.relpath(template_file))
-    params = kcfg.as_dict()
-    params.update(extra_params)
-    return template.render(params)
+    try:
+        env = jinja_env()
+        template = env.get_template(os.path.relpath(template_file))
+        params = kcfg.as_dict()
+        params.update(extra_params)
+        return template.render(params)
+    except UndefinedError as ue:
+        logging.error("%s while rendering '%s' with KConfig '%s'" % (str(ue), template_file, kcfg.config_file))
+        exit(1)
 
 
 def build(cfg_file, dest_file, kconfig_file, input_files):
@@ -236,7 +241,7 @@ def build(cfg_file, dest_file, kconfig_file, input_files):
         total_num_gates = 0
         for unit in kcfg.get("PARAM_MMU_UNITS").split(","):
             unit = unit.strip()
-            unit_kcfgs[unit] = KConfig(kconfig_file + "." + unit)
+            unit_kcfgs[unit] = KConfig(kconfig_file + "_" + unit)
             total_num_gates += unit_kcfgs[unit].getint("PARAM_NUM_GATES")
 
         # Total sum of gates for all units

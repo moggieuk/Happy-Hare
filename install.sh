@@ -64,6 +64,13 @@ prompt_yn() {
     done
 }
 
+trim() {
+    name=${1-}
+    name=${name#"${name%%[![:space:]]*}"} # Remove leading whitespace
+    name=${name%"${name##*[![:space:]]}"} # Remove trailing whitespace
+    echo $name
+}
+
 while getopts "iudzsb:nk:c:m:a:tqv" arg; do
     case $arg in
         i) F_MENUCONFIG=y ;;
@@ -156,9 +163,24 @@ fi
 # and—if multi-unit—runs menuconfig once per listed unit to create/update each unit’s own
 # config file, passing UNIT_* parameters to the Makefile/Kconfig for customization.
 
-if [ "${F_MULTI_UNIT}" ]; then
-    if [ "${F_MENUCONFIG}" ] || [ ! -e "${KCONFIG_CONFIG}" ]; then
-        make -C "${SCRIPT_DIR}" F_MULTI_UNIT_ENTRY_POINT=y menuconfig
+if [ ! -e "${KCONFIG_CONFIG}" ]; then
+    echo "${C_NOTICE}No '${KCONFIG_CONFIG}' found, forcing interactive menu"
+    F_MENUCONFIG=y
+fi
+
+if [ -n "${F_MENUCONFIG:-}" ]; then
+
+    [ -r "${KCONFIG_CONFIG}" ] && . "${KCONFIG_CONFIG}"
+
+    if [ -n "${F_MULTI_UNIT:-}" ] || [ -n "${CONFIG_MULTI_UNIT:-}" ]; then
+        if [ -r "${KCONFIG_CONFIG}" ] && [ -z "${CONFIG_MULTI_UNIT:-}" ] && [ -n "${F_MULTI_UNIT:-}" ]; then
+            echo "${C_NOTICE}Current '${KCONFIG_CONFIG}' is not a multi-unit configuration, updating and forcing interactive menu"
+            tmpconfig="$(mktemp -t tmpconfig.XXXXXX)"
+            cp -- "${KCONFIG_CONFIG}" "${tmpconfig}"
+        fi
+        make -C "${SCRIPT_DIR}" KCONFIG_CONFIG="${KCONFIG_CONFIG}" F_MULTI_UNIT_ENTRY_POINT=y F_MULTI_UNIT=y menuconfig
+    else
+        make -C "${SCRIPT_DIR}" KCONFIG_CONFIG="${KCONFIG_CONFIG}" menuconfig
     fi
 
     if [ ! -e "${KCONFIG_CONFIG}" ]; then
@@ -166,42 +188,28 @@ if [ "${F_MULTI_UNIT}" ]; then
         exit 1
     fi
 
-    # shellcheck source=./.config
-    . "$(realpath "${KCONFIG_CONFIG}")"
+    . "${KCONFIG_CONFIG}"
 
-    if [ ! "${CONFIG_MULTI_UNIT}" ]; then
-        echo "${C_NOTICE}Current '${KCONFIG_CONFIG}' is not a multi-unit configuration, forcing interactive menu"
-        make -C "${SCRIPT_DIR}" F_MULTI_UNIT_ENTRY_POINT=y menuconfig
-        F_MENUCONFIG=y
-        # shellcheck source=./.config
-        . "$(realpath "${KCONFIG_CONFIG}")"
+    # Now we are sure of having multi-unit names, move the original combined config
+    # to first unit config before running menuconfig on it
+    if [ -n "${tmpconfig:-}" ]; then
+        first_unit=$(trim "${CONFIG_PARAM_MMU_UNITS%%,*}")
+        [ -n "${first_unit}" ] && mv "${tmpconfig}" "${KCONFIG_CONFIG}_${first_unit}"
     fi
 
-    i=0
-    OLDIFS=$IFS
-    IFS=,
-    for name in ${CONFIG_PARAM_MMU_UNITS}; do
-        name=${name#"${name%%[![:space:]]*}"} # Remove leading spaces
-        name=${name%"${name##*[![:space:]]}"} # Remove trailing spaces
-        if [ "${F_MENUCONFIG}" ] || [ ! -e "${KCONFIG_CONFIG}.${name}" ]; then
-            make -C "${SCRIPT_DIR}" KCONFIG_CONFIG="${KCONFIG_CONFIG}.${name}" UNIT_INDEX=$i UNIT_NAME="${name}" MMU_MCU="${name}" menuconfig
+    if [ -n "${CONFIG_MULTI_UNIT:-}" ]; then
+        i=0
+        OLDIFS=${IFS-}
+        IFS=,
+        set -f # Avoid globbing
+        for name in ${CONFIG_PARAM_MMU_UNITS:-}; do
+            name=$(trim "$name")
+            [ -n "$name" ] || continue
+            make -C "${SCRIPT_DIR}" KCONFIG_CONFIG="${KCONFIG_CONFIG}_${name}" F_MULTI_UNIT=y UNIT_INDEX="${i}" UNIT_NAME="${name}" MMU_MCU="${name}" menuconfig
             i=$((i + 1))
-        fi
-    done
-    IFS=$OLDIFS
-else
-    # If a `.config` already exists check if it's a single-unit setup else force menuconfig
-    if [ -e "${KCONFIG_CONFIG}" ]; then
-        # shellcheck source=./.config
-        . "$(realpath "${KCONFIG_CONFIG}")"
-        if [ "${CONFIG_MULTI_UNIT}" ]; then
-            echo "${C_NOTICE}Current '${KCONFIG_CONFIG}' is a multi-unit configuration, forcing interactive menu${C_OFF}"
-            F_MENUCONFIG=y
-        fi
-    fi
-
-    if [ "${F_MENUCONFIG}" ]; then
-        make -C "${SCRIPT_DIR}" menuconfig
+        done
+        set +f
+        IFS=${OLDIFS}
     fi
 fi
 

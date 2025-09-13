@@ -70,14 +70,8 @@ MOONRAKER_HOME          := $(call unwrap,$(CONFIG_MOONRAKER_HOME))
 PRINTER_CONFIG_FILE     := $(call unwrap,$(CONFIG_PRINTER_CONFIG_FILE))
 MOONRAKER_CONFIG_FILE   := $(call unwrap,$(CONFIG_MOONRAKER_CONFIG_FILE))
 
-hh_klipper_extras_files := $(wildcard extras/*.py extras/mmu/*.py)
-hh_old_klipper_modules  := mmu.py mmu_toolhead.py # These will get removed upon install
-hh_moonraker_components := $(wildcard components/*.py)
-
 # unit_names: from CONFIG_PARAM_MMU_UNITS in multi-unit, else default to mmu0
-unit_names := \
-	$(if $(filter y,$(CONFIG_MULTI_UNIT)), \
-	$(strip $(subst ",,$(call convert_list,$(CONFIG_PARAM_MMU_UNITS)))),mmu0)
+unit_names := $(if $(filter y,$(CONFIG_MULTI_UNIT)),$(strip $(subst ",,$(call convert_list,$(CONFIG_PARAM_MMU_UNITS)))),mmu0)
 
 # Use sudo if the klipper home is at a system location (not owned by user)
 SUDO := $(shell \
@@ -87,15 +81,33 @@ SUDO := $(shell \
 	  echo "sudo " || echo "" \
 	)
 
+# Bool to check if moonraker/klipper needs to be restarted
+restart_moonraker = 0
+restart_klipper = 0
+
+.SECONDEXPANSION:
+.DEFAULT_GOAL := build
+.PRECIOUS: $(KCONFIG_CONFIG)
+.PHONY: update menuconfig install uninstall check_root check_version diff test build clean
+.SECONDARY: $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
+	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
+	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE))
+.NOTPARALLEL: clean
+
 
 
 #####################
 ##### File sets #####
 #####################
 
+hh_klipper_extras_files := $(wildcard extras/*.py extras/mmu/*.py)
+hh_old_klipper_modules  := mmu.py mmu_toolhead.py # These will get removed upon install
+hh_moonraker_components := $(wildcard components/*.py)
+
 # All repo configs files less mmu_vars.cfg
-repo_cfgs := $(patsubst config/%,%, $(wildcard config/*.cfg config/**/*.cfg))
-repo_cfgs := $(filter-out %/mmu_vars.cfg mmu_vars.cfg,$(repo_cfgs))
+repo_cfgs := \
+	$(filter-out %/mmu_vars.cfg mmu_vars.cfg, \
+	$(patsubst config/%,%, $(wildcard config/*.cfg config/**/*.cfg)))
 
 # Per-unit files: <unit>_{hardware,parameters}.cfg
 hh_unit_config_files := \
@@ -114,8 +126,7 @@ cfg_base := \
 		base/mmu_hardware.cfg \
 		base/mmu_parameters.cfg \
 		base/mmu_macro_vars.cfg \
-		$(hh_unit_config_files)) \
-	)
+		$(hh_unit_config_files)))
 
 cfg_addons := $(wildcard $(KLIPPER_CONFIG_HOME)/mmu/addons/*_hw.cfg)
 
@@ -149,7 +160,7 @@ install_targets := \
 ############################
 
 install = \
-	$(info $(C_INFO)Installing $(2)...$(C_OFF)) \
+	$(info $(C_INFO)Installing $(2)$(C_OFF)) \
 	$(SUDO)mkdir -p $(dir $(2)); \
 	$(SUDO)cp -rPf $(3) "$(1)" "$(2)";
 
@@ -160,6 +171,8 @@ link = \
 copy = \
 	mkdir -p $(dir $(2)); \
 	cp -aL "$(1)" "$(2)" && chmod +w "$(2)"
+
+strip_prefix = $(patsubst $(1)%,%,$(2))
 
 backup_ext  = .old-$(shell date '+%Y%m%d-%H%M%S')
 backup_name = $(addsuffix $(backup_ext),$(1))
@@ -175,21 +188,6 @@ restart_service = \
 	else \
 	  [ "$(1)" -eq 0 ] || $(PY) -m installer.build $(V) --restart-service "$(2)" $(3) "$(KCONFIG_CONFIG)"; \
 	fi
-
-
-# Bool to check if moonraker/klipper needs to be restarted
-restart_moonraker = 0
-restart_klipper = 0
-
-.SECONDEXPANSION:
-.DEFAULT_GOAL := build
-.PRECIOUS: $(KCONFIG_CONFIG)
-.PHONY: update menuconfig install uninstall check_root check_version diff test build clean
-.SECONDARY: $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
-	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
-	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE))
-.NOTPARALLEL: clean
-.DELETE_ON_ERROR:
 
 
 
@@ -226,21 +224,21 @@ $(OUT)/mmu/%.cfg: $(SRC)/config/%.cfg $(hh_configs_to_parse)
 		$(PY) -m installer.build $(V) --build "$<" "$@" "$(KCONFIG_CONFIG)" $(hh_configs_to_parse), \
 	        $(info $(C_INFO)Skipping build of mmu/$*$(C_OFF)))
 
-# Conditional per-unit prereqiusit ".config.<unit>" when multi-unit, else to ".config"
-KCONF_REQ = $$(if $$(filter y,$$(CONFIG_MULTI_UNIT)),$$(KCONFIG_CONFIG).%,)
+# Conditional per-unit prereqiusit ".config_<unit>" when multi-unit, else to ".config"
+KCONF_REQ = $$(if $$(filter y,$$(CONFIG_MULTI_UNIT)),$$(KCONFIG_CONFIG)_%,)
 
 # Shared target rules don't work on old make so separate for portability
 $(OUT)/mmu/base/%_hardware.cfg: \
   $$(SRC)/config/base/mmu_hardware.cfg $$(hh_configs_to_parse) $(KCONF_REQ)
 	$(Q)$(call link,$<,$@)
 	$(Q)$(PY) -m installer.build $(V) --build "$<" "$@" \
-		"$(if $(filter y,$(CONFIG_MULTI_UNIT)),$(KCONFIG_CONFIG).$*,$(KCONFIG_CONFIG))" $(hh_configs_to_parse)
+		"$(if $(filter y,$(CONFIG_MULTI_UNIT)),$(KCONFIG_CONFIG)_$*,$(KCONFIG_CONFIG))" $(hh_configs_to_parse)
 
 $(OUT)/mmu/base/%_parameters.cfg: \
   $$(SRC)/config/base/mmu_parameters.cfg $$(hh_configs_to_parse) $(KCONF_REQ)
 	$(Q)$(call link,$<,$@)
 	$(Q)$(PY) -m installer.build $(V) --build "$<" "$@" \
-		"$(if $(filter y,$(CONFIG_MULTI_UNIT)),$(KCONFIG_CONFIG).$*,$(KCONFIG_CONFIG))" $(hh_configs_to_parse)
+		"$(if $(filter y,$(CONFIG_MULTI_UNIT)),$(KCONFIG_CONFIG)_$*,$(KCONFIG_CONFIG))" $(hh_configs_to_parse)
 
 # Python files are linked to the out directory
 $(OUT)/klippy/extras/%.py: $(SRC)/extras/%.py
@@ -336,7 +334,7 @@ uninstall:
 	@# Restart services if needed
 	$(Q)$(call restart_service,1,Moonraker,$(CONFIG_SERVICE_MOONRAKER))
 	$(Q)$(call restart_service,1,Klipper,$(CONFIG_SERVICE_KLIPPER))
-	$(Q)$(PY) -m installer.build $(V) --print-unhappy-hare "Done... Very unHappy Hare."
+	$(Q)$(PY) -m installer.build $(V) --print-unhappy-hare "Done. Very unHappy Hare."
 
 
 
@@ -345,7 +343,7 @@ uninstall:
 ########################
 
 # Look for version number in current config files and report
-check_version: $(hh_configs_to_parse)
+check_version: variables $(hh_configs_to_parse)
 	$(Q)$(PY) -m installer.build $(V) --check-version "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)
 
 clean:
@@ -366,17 +364,19 @@ test:
 
 variables:
 	@echo "========================="
-	@echo "$(C_NOTICE)hh_klipper_extras_files =$(C_INFO) $(hh_klipper_extras_files)$(C_OFF)"
-	@echo "$(C_NOTICE)repo_cfgs               =$(C_INFO) $(repo_cfgs)$(C_OFF)"
-	@echo "$(C_NOTICE)unit_names              =$(C_INFO) $(unit_names)$(C_OFF)"
-	@echo "$(C_NOTICE)hh_unit_config_files    =$(C_INFO) $(hh_unit_config_files)$(C_OFF)"
-	@echo "$(C_NOTICE)hh_config_files         =$(C_INFO) $(hh_config_files)$(C_OFF)"
-	@echo "$(C_NOTICE)cfg_base                =$(C_INFO) $(cfg_base)$(C_OFF)"
-	@echo "$(C_NOTICE)cfg_addons              =$(C_INFO) $(cfg_addons)$(C_OFF)"
-	@echo "$(C_NOTICE)hh_configs_to_parse     =$(C_INFO) $(hh_configs_to_parse)$(C_OFF)"
-	@echo "$(C_NOTICE)build_targets           =$(C_INFO) $(build_targets)$(C_OFF)"
-	@echo "$(C_NOTICE)processed_targets       =$(C_INFO) $(processed_targets)$(C_OFF)"
-	@echo "$(C_NOTICE)install_targets         =$(C_INFO) $(install_targets)$(C_OFF)"
+	@echo "$(C_NOTICE)hh_klipper_extras_files  =$(C_INFO) $(hh_klipper_extras_files)$(C_OFF)"
+	@echo "$(C_NOTICE)hh_old_klipper_modules   =$(C_INFO) $(hh_old_klipper_modules)$(C_OFF)"
+	@echo "$(C_NOTICE)hh_moonraker_components  =$(C_INFO) $(hh_moonraker_components)$(C_OFF)"
+	@echo "$(C_NOTICE)repo_cfgs                =$(C_INFO) $(repo_cfgs)$(C_OFF)"
+	@echo "$(C_NOTICE)unit_names               =$(C_INFO) $(unit_names)$(C_OFF)"
+	@echo "$(C_NOTICE)hh_unit_config_files     =$(C_INFO) $(hh_unit_config_files)$(C_OFF)"
+	@echo "$(C_NOTICE)hh_config_files          =$(C_INFO) $(hh_config_files)$(C_OFF)"
+	@echo "$(C_NOTICE)cfg_base                 =$(C_INFO) $(cfg_base)$(C_OFF)"
+	@echo "$(C_NOTICE)cfg_addons               =$(C_INFO) $(cfg_addons)$(C_OFF)"
+	@echo "$(C_NOTICE)hh_configs_to_parse      =$(C_INFO) $(hh_configs_to_parse)$(C_OFF)"
+	@echo "$(C_NOTICE)build_targets     ..out/ =$(C_INFO) $(call strip_prefix,$(OUT)/,$(build_targets))$(C_OFF)"
+	@echo "$(C_NOTICE)processed_targets ..out/ =$(C_INFO) $(call strip_prefix,$(OUT)/,$(processed_targets))$(C_OFF)"
+	@echo "$(C_NOTICE)install_targets          =$(C_INFO) $(install_targets)$(C_OFF)"
 	@echo "========================="
 
 
