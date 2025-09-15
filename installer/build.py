@@ -98,8 +98,8 @@ class HHConfig(ConfigBuilder):
         for cfg_file in cfg_files:
             logging.debug(" > Reading config file: " + cfg_file)
             basename = cfg_file.replace(prefix, "")
-            super(HHConfig, self).read(cfg_file, source=os.path.basename(cfg_file))
-            for section in self.sections():
+            super(HHConfig, self).read(cfg_file, origin=os.path.basename(cfg_file))
+            for section in self.sections(scope="included"):
                 for option in self.options(section):
                     if (section, option) not in self.origins:
                         self.origins[(section, option)] = basename
@@ -134,7 +134,7 @@ class HHConfig(ConfigBuilder):
                 self.origins.pop((section_name, option))
             self.remove_section(section_name)
 
-    def update_builder(self, builder, source=None):
+    def update_builder(self, builder, origin=None):
         """
         Update the builder config with the existing config HH data
         """
@@ -148,13 +148,13 @@ class HHConfig(ConfigBuilder):
                     self.used_options.add((section, option))
 
         # If existing config has excluded options use them in lieu of builder excluded options
-        # TODO: Multiple exclude sections in multiple files not supported
-        if self.sections(scope="excluded") and builder.sections(scope="excluded"):
+        if self.excluded_nodes(origin=origin) and builder.excluded_nodes():
             logging.info("Preserving existing excluded config sections")
             builder.delete_excluded()                      # Ensure template is clean
-            self._copy_excluded_to(builder, source=source) # Copy in previous excluded nodes
+            self._copy_excluded_to(builder, origin=origin) # Copy in previous excluded nodes
+            self.delete_excluded(origin=origin)            # Prevent them being reported in unsed option set
 
-    def _copy_excluded_to(self, builder, source=None, insert_blank_line=True):
+    def _copy_excluded_to(self, builder, origin=None, insert_blank_line=True):
         """
         Copy all MagicExclusionNode(s) into builder config appending each as a separate top-level MagicExclusionNode.
         Returns the number of nodes copied.
@@ -163,7 +163,7 @@ class HHConfig(ConfigBuilder):
         # Append deep copies to the destination, one by one
         dest_doc = builder.document
         copied = 0
-        for excluded in self.excluded_nodes(source=source):
+        for excluded in self.excluded_nodes(origin=origin):
             if insert_blank_line and dest_doc.body and not isinstance(dest_doc.body[-1], WhitespaceNode):
                 dest_doc.body.append(WhitespaceNode("\n"))
             dest_doc.body.append(copy.deepcopy(excluded))
@@ -171,7 +171,7 @@ class HHConfig(ConfigBuilder):
 
         return copied
 
-
+ 
     def unused_options_for(self, origin):
         return [
             (section, key)
@@ -186,7 +186,6 @@ def build_mmu_parameters_cfg(builder, hhcfg, unit_name):
         if hhcfg.has_option(section, param):
             logging.debug(" > Reinserting hidden / supplemental option: %s" % param)
             builder.copy_option(hhcfg, section, param)
-            #hhcfg.remove_option(section, param)
 
 
 def jinja_env():
@@ -216,7 +215,7 @@ def render_template(template_file, kcfg, extra_params):
         exit(1)
 
 
-def build(cfg_file, dest_file, kconfig_file, input_files):
+def build(cfg_file, dest_file, kconfig_file, input_files): # TODO Really input_files should exclude first directory config/mmu to make origin consistent everywhere
     cfg_file_basename = cfg_file[len(os.getenv("SRC")) + 1 :]
 
     kcfg = KConfig(kconfig_file)
@@ -241,7 +240,7 @@ def build(cfg_file, dest_file, kconfig_file, input_files):
 
 def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_params):
     dest_file_basename = dest_file[len(os.getenv("OUT")) + 1 :]
-    logging.info("Building config file: " + dest_file_basename)
+    logging.info("Building config file: %s" % dest_file_basename)
 
     # 1.Generate an aggregated master HH Config for all HH input_files
     hhcfg = HHConfig(input_files)
@@ -273,12 +272,13 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
         build_mmu_parameters_cfg(builder, hhcfg, unit_name)
 
     # 6.Update the builder Config from the existing master HH Config to ensure all user edits are preserved
-    hhcfg.update_builder(builder, source=os.path.basename(dest_file))
+    hhcfg.update_builder(builder, origin=os.path.basename(dest_file))
     logging.debug("Updated '%s' using previous config options" % dest_file)
 
     # 7.Report on deprecated/unused options
     first = True
-    for section, option in hhcfg.unused_options_for(cfg_file_basename):
+    origin = re.sub(r'^mmu[/\\]', '', dest_file_basename)
+    for section, option in hhcfg.unused_options_for(origin):
         if first:
             first = False
             logging.warning("The following parameters in {} have been dropped:".format(dest_file_basename))

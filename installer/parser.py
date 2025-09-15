@@ -148,10 +148,10 @@ class DocumentNode(BodyNode):
 
 
 class MagicExclusionNode(BodyNode):
-    def __init__(self, body, source=None):
+    def __init__(self, body, origin=None):
         # All nodes after the magic comment live here
         BodyNode.__init__(self, "magic_exclusion", body)
-        self.source = source
+        self.origin = origin
 
 def _is_magic_comment_token(peek):
     return (peek is not None
@@ -241,12 +241,12 @@ class WhitespaceNode(Node):
 
 class Parser(object):
     def __init__(self, default_assign_op=":", default_comment_ch="#"):
-        self.source = None
+        self.origin = None
         self.default_assign_op = default_assign_op
         self.default_comment_ch = default_comment_ch
 
-    def parse(self, buffer, source=None):
-        self.source = source
+    def parse(self, buffer, origin=None):
+        self.origin = origin
         tokenizer = Tokenizer(buffer, CONFIG_SPEC)
         return self._post_process(self.parse_document(tokenizer))
 
@@ -300,7 +300,7 @@ class Parser(object):
                     _parse_regular(peek2, exclusion_body)
                     peek2 = tokenizer.peek()
 
-                body.append(MagicExclusionNode(exclusion_body, self.source))
+                body.append(MagicExclusionNode(exclusion_body, self.origin))
                 break  # Everything else is now inside the exclusion node
 
             _parse_regular(peek, body)
@@ -478,9 +478,9 @@ class ConfigBuilder(object):
             with open(self.filename, "r") as f:
                 self.document = self.parser.parse(f.read())
 
-    def read(self, filename, source=None):
+    def read(self, filename, origin=None):
         with open(filename, "r") as f:
-            doc = self.parser.parse(f.read(), source)
+            doc = self.parser.parse(f.read(), origin)
             self.document.body += doc.body
 
     def read_buf(self, buf):
@@ -505,27 +505,27 @@ class ConfigBuilder(object):
 
         return self.document.walk(print_node, "")
 
-    def excluded_nodes(self, source=None):
+    def excluded_nodes(self, origin=None):
         """
         Return a list of all MagicExclusionNode instances in the current document,
         across all files that have been read/merged.
         """
         def collect_magic(node, acc, _depth):
-            if isinstance(node, MagicExclusionNode) and (source is None or node.source == source):
+            if isinstance(node, MagicExclusionNode) and (origin is None or node.origin == origin):
                 acc.append(node)
             return True, acc  # Keep descending
         return self.document.walk(collect_magic, [])
 
-    def delete_excluded(self, source=None):
+    def delete_excluded(self, origin=None):
         """
         Remove every MagicExclusionNode (and all of its children) from the document.
         Returns the number of nodes removed.
         """
-        to_remove = len(self.excluded_nodes(source=source))
+        to_remove = len(self.excluded_nodes(origin=origin))
         if to_remove == 0:
             return 0
         # Filter_tree prunes matching nodes and their entire subtree in-place
-        self.parser.filter_tree(self.document, lambda n: isinstance(n, MagicExclusionNode) and (source is None or n.source == source))
+        self.parser.filter_tree(self.document, lambda n: isinstance(n, MagicExclusionNode) and (origin is None or n.origin == origin))
         return to_remove
 
     def _iter_section_nodes(self, node, inside_excluded=False):
