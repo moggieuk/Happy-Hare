@@ -18,6 +18,7 @@
 import sys
 import logging
 import re
+import copy
 
 # Note {placeholder} style placeholders are no longer used with jinja templating
 CONFIG_SPEC = [
@@ -147,9 +148,10 @@ class DocumentNode(BodyNode):
 
 
 class MagicExclusionNode(BodyNode):
-    def __init__(self, body):
+    def __init__(self, body, source=None):
         # All nodes after the magic comment live here
         BodyNode.__init__(self, "magic_exclusion", body)
+        self.source = source
 
 def _is_magic_comment_token(peek):
     return (peek is not None
@@ -239,10 +241,12 @@ class WhitespaceNode(Node):
 
 class Parser(object):
     def __init__(self, default_assign_op=":", default_comment_ch="#"):
+        self.source = None
         self.default_assign_op = default_assign_op
         self.default_comment_ch = default_comment_ch
 
-    def parse(self, buffer):
+    def parse(self, buffer, source=None):
+        self.source = source
         tokenizer = Tokenizer(buffer, CONFIG_SPEC)
         return self._post_process(self.parse_document(tokenizer))
 
@@ -296,7 +300,7 @@ class Parser(object):
                     _parse_regular(peek2, exclusion_body)
                     peek2 = tokenizer.peek()
 
-                body.append(MagicExclusionNode(exclusion_body))
+                body.append(MagicExclusionNode(exclusion_body, self.source))
                 break  # Everything else is now inside the exclusion node
 
             _parse_regular(peek, body)
@@ -474,9 +478,9 @@ class ConfigBuilder(object):
             with open(self.filename, "r") as f:
                 self.document = self.parser.parse(f.read())
 
-    def read(self, filename):
+    def read(self, filename, source=None):
         with open(filename, "r") as f:
-            doc = self.parser.parse(f.read())
+            doc = self.parser.parse(f.read(), source)
             self.document.body += doc.body
 
     def read_buf(self, buf):
@@ -501,27 +505,27 @@ class ConfigBuilder(object):
 
         return self.document.walk(print_node, "")
 
-    def excluded_nodes(self):
+    def excluded_nodes(self, source=None):
         """
         Return a list of all MagicExclusionNode instances in the current document,
         across all files that have been read/merged.
         """
         def collect_magic(node, acc, _depth):
-            if isinstance(node, MagicExclusionNode):
+            if isinstance(node, MagicExclusionNode) and (source is None or node.source == source):
                 acc.append(node)
             return True, acc  # Keep descending
         return self.document.walk(collect_magic, [])
 
-    def delete_excluded(self):
+    def delete_excluded(self, source=None):
         """
         Remove every MagicExclusionNode (and all of its children) from the document.
         Returns the number of nodes removed.
         """
-        to_remove = len(self.excluded_nodes())
+        to_remove = len(self.excluded_nodes(source=source))
         if to_remove == 0:
             return 0
         # Filter_tree prunes matching nodes and their entire subtree in-place
-        self.parser.filter_tree(self.document, lambda n: isinstance(n, MagicExclusionNode))
+        self.parser.filter_tree(self.document, lambda n: isinstance(n, MagicExclusionNode) and (source is None or n.source == source))
         return to_remove
 
     def _iter_section_nodes(self, node, inside_excluded=False):
@@ -646,6 +650,38 @@ class ConfigBuilder(object):
             return self._for_option(section_name, option_name, identity) is not None
         except KeyError:
             return False
+
+    def copy_option(self, src_config, section_name, option_name):
+        """
+        Append an existing OptionNode from src_config to the end of the section `section_name`,
+        but before any MagicExclusionNode (if present)
+        """
+        option = src_config._get_option(section_name, option_name)
+        section = self._get_section(section_name)
+
+        # Insert after the last existing option, but before any trailing whitespace
+        # Deep-copy the option so we don't alias nodes across documents.
+        cloned = OptionNode(option.name, copy.deepcopy(option.body), option.assign_op, option.trailing_ws)
+
+        # Pull document-level tail (comments/whitespace after this section) back into the section
+        doc_body = self.document.body
+        try:
+            sec_doc_idx = doc_body.index(section)
+        except ValueError:
+            sec_doc_idx = -1
+
+        if sec_doc_idx != -1:
+            j = sec_doc_idx + 1
+            # Collect the nodes immediately following this section that are comments/whitespace
+            while j < len(doc_body) and isinstance(doc_body[j], (CommentNode, WhitespaceNode)):
+                j += 1
+            # Move them into the section so we can append after them
+            if j > sec_doc_idx + 1:
+                section.body.extend(doc_body[sec_doc_idx + 1 : j])
+                del doc_body[sec_doc_idx + 1 : j]
+
+        # Now append AFTER those comments/whitespace, but still before the next section/exclusion.
+        section.body.extend([cloned, WhitespaceNode("\n")])
 
     def remove_option(self, section_name, option_name):
         try:

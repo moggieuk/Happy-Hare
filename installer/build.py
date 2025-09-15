@@ -21,7 +21,7 @@ import subprocess
 from jinja2 import Environment, FileSystemLoader, UndefinedError
 
 import kconfiglib
-from .parser import ConfigBuilder, WhitespaceNode
+from .parser   import ConfigBuilder, WhitespaceNode
 from .upgrades import Upgrades
 
 # Documented params that are not in templates
@@ -98,7 +98,7 @@ class HHConfig(ConfigBuilder):
         for cfg_file in cfg_files:
             logging.debug(" > Reading config file: " + cfg_file)
             basename = cfg_file.replace(prefix, "")
-            super(HHConfig, self).read(cfg_file)
+            super(HHConfig, self).read(cfg_file, source=os.path.basename(cfg_file))
             for section in self.sections():
                 for option in self.options(section):
                     if (section, option) not in self.origins:
@@ -134,7 +134,7 @@ class HHConfig(ConfigBuilder):
                 self.origins.pop((section_name, option))
             self.remove_section(section_name)
 
-    def update_builder(self, builder):
+    def update_builder(self, builder, source=None):
         """
         Update the builder config with the existing config HH data
         """
@@ -151,10 +151,10 @@ class HHConfig(ConfigBuilder):
         # TODO: Multiple exclude sections in multiple files not supported
         if self.sections(scope="excluded") and builder.sections(scope="excluded"):
             logging.info("Preserving existing excluded config sections")
-            builder.delete_excluded()
-            self._copy_excluded_to(builder)
+            builder.delete_excluded()                      # Ensure template is clean
+            self._copy_excluded_to(builder, source=source) # Copy in previous excluded nodes
 
-    def _copy_excluded_to(self, builder, insert_blank_line=True):
+    def _copy_excluded_to(self, builder, source=None, insert_blank_line=True):
         """
         Copy all MagicExclusionNode(s) into builder config appending each as a separate top-level MagicExclusionNode.
         Returns the number of nodes copied.
@@ -163,7 +163,7 @@ class HHConfig(ConfigBuilder):
         # Append deep copies to the destination, one by one
         dest_doc = builder.document
         copied = 0
-        for excluded in self.excluded_nodes():
+        for excluded in self.excluded_nodes(source=source):
             if insert_blank_line and dest_doc.body and not isinstance(dest_doc.body[-1], WhitespaceNode):
                 dest_doc.body.append(WhitespaceNode("\n"))
             dest_doc.body.append(copy.deepcopy(excluded))
@@ -180,16 +180,13 @@ class HHConfig(ConfigBuilder):
         ]
 
 
-def build_mmu_parameters_cfg(builder, hhcfg):
-    added = []
+def build_mmu_parameters_cfg(builder, hhcfg, unit_name):
+    section = "mmu_parameters %s" % unit_name
     for param in supplemental_params.split() + hidden_params.split():
-        if hhcfg.has_option("mmu", param):
-            extra = param + ": " + hhcfg.get("mmu", param) + "\n"
-            builder.buf += extra + "\n"
-            hhcfg.remove_option("mmu", param)
-            added.append(extra)
-    if added:
-        logging.debug("Reinserting hidden and supplemental options: %s" % added)
+        if hhcfg.has_option(section, param):
+            logging.debug(" > Reinserting hidden / supplemental option: %s" % param)
+            builder.copy_option(hhcfg, section, param)
+            #hhcfg.remove_option(section, param)
 
 
 def jinja_env():
@@ -271,10 +268,12 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
 
     # 5.Special case mmu_parameters.cfg because it may contain hidden and supplemental options not present in cfg template
     if cfg_file_basename == "config/base/mmu_parameters.cfg":
-        build_mmu_parameters_cfg(builder, hhcfg)
+        m = re.match(r'(?:^|.*[\\/])(?P<unit>[^\\/]+)_parameters\.cfg$', dest_file)
+        unit_name = m.group(1) if m else 'mmu'
+        build_mmu_parameters_cfg(builder, hhcfg, unit_name)
 
     # 6.Update the builder Config from the existing master HH Config to ensure all user edits are preserved
-    hhcfg.update_builder(builder)
+    hhcfg.update_builder(builder, source=os.path.basename(dest_file))
     logging.debug("Updated '%s' using previous config options" % dest_file)
 
     # 7.Report on deprecated/unused options

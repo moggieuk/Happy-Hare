@@ -82,8 +82,9 @@ restart_klipper = 0
 .SECONDEXPANSION:
 .DEFAULT_GOAL := build
 .PRECIOUS: $(KCONFIG_CONFIG)
-.PHONY: update menuconfig install uninstall check_root check_version diff test build clean
-.SECONDARY: $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
+.PHONY: update menuconfig install uninstall check_root check_version diff test build clean variables
+.SECONDARY: \
+	$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE))
 .NOTPARALLEL: clean
@@ -114,17 +115,11 @@ hh_config_files := \
 	$(hh_unit_config_files)
 
 # Look for installed configs that would need be parsed by the build script
-cfg_base := \
-	$(wildcard $(addprefix $(KLIPPER_CONFIG_HOME)/mmu/, \
-		base/mmu.cfg \
-		base/mmu_hardware.cfg \
-		base/mmu_parameters.cfg \
-		base/mmu_macro_vars.cfg \
-		$(hh_unit_config_files)))
-
-cfg_addons := $(wildcard $(KLIPPER_CONFIG_HOME)/mmu/addons/*_hw.cfg)
-
-hh_configs_to_parse := $(subst $(KLIPPER_CONFIG_HOME),$(IN),$(cfg_base) $(cfg_addons))
+# This allows for easy upgrades and option movement across files
+hh_configs_to_parse := \
+	$(subst $(KLIPPER_CONFIG_HOME),$(IN), \
+	$(wildcard $(KLIPPER_CONFIG_HOME)/mmu/base/*.cfg \
+		$(KLIPPER_CONFIG_HOME)/mmu/addons/*.cfg))
 
 # Files/targets that need to be build
 build_targets := \
@@ -369,8 +364,6 @@ variables:
 	@echo "$(C_NOTICE)unit_names               =$(C_INFO) $(unit_names)$(C_OFF)"
 	@echo "$(C_NOTICE)hh_unit_config_files     =$(C_INFO) $(hh_unit_config_files)$(C_OFF)"
 	@echo "$(C_NOTICE)hh_config_files          =$(C_INFO) $(hh_config_files)$(C_OFF)"
-	@echo "$(C_NOTICE)cfg_base                 =$(C_INFO) $(cfg_base)$(C_OFF)"
-	@echo "$(C_NOTICE)cfg_addons               =$(C_INFO) $(cfg_addons)$(C_OFF)"
 	@echo "$(C_NOTICE)hh_configs_to_parse      =$(C_INFO) $(hh_configs_to_parse)$(C_OFF)"
 	@echo "$(C_NOTICE)build_targets     ..out/ =$(C_INFO) $(call strip_prefix,$(OUT)/,$(build_targets))$(C_OFF)"
 	@echo "$(C_NOTICE)processed_targets ..out/ =$(C_INFO) $(call strip_prefix,$(OUT)/,$(processed_targets))$(C_OFF)"
