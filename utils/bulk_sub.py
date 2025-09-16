@@ -47,6 +47,8 @@ from typing import Iterable, List, Sequence, Tuple
 
 # ---- Edit these if you want in-script rules ---------------------------------
 # Important: these are applied in order listed
+
+# Set A - sensor names (mmu_pre_gate -> mmu_entry, mmu_gear -> mmu_exit, mmu_gate --> mmu_shared_exit)
 DEFAULT_PATTERNS: List[Tuple[str, str]] = [
     # Example:
     # (r"(?<!_)mmu_gear(?!_)", "mmu_gear"),
@@ -61,11 +63,25 @@ DEFAULT_PATTERNS: List[Tuple[str, str]] = [
     ("pre-gate", "entry"),
 ]
 
+# Set B - Gate >> Lane
+#DEFAULT_PATTERNS: List[Tuple[str, str]] = [
+#    ("gates/lanes", "lanes"),
+#    ("GATE", "LANE"),
+#    ("Gate", "Lane"),
+#    ("gate", "lane"),
+#]
+
+# Set C - TTG >> TTL
+#DEFAULT_PATTERNS: List[Tuple[str, str]] = [
+#    ("TTG", "TTL"),
+#    ("ttg", "ttl"),
+#]
+
 IGNORE_DIRS = {
     ".git", ".hg", ".svn", "__pycache__", ".venv", "venv", "node_modules",
     "build", "dist", ".mypy_cache", ".ruff_cache", ".pytest_cache",
 }
-TARGET_EXTS = (".py", ".cfg")
+TARGET_EXTS = (".py", ".cfg", "Kconfig*")
 
 
 # ---- Diff colorization -------------------------------------------------------
