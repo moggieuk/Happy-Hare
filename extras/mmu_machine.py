@@ -452,8 +452,11 @@ class MmuToolHead(toolhead.ToolHead, object):
             self.trapq_finalize_moves = ffi_lib.trapq_finalize_moves # Want my own binding so I know its available
 
             # Setup for generating moves
-            self.motion_queuing.setup_lookahead_flush_callback(
-                self._check_flush_lookahead)
+            try:
+                self.motion_queuing.register_flush_callback(self._handle_step_flush, can_add_trapq=True) # Latest klipper >= v0.13.0-267
+            except AttributeError:
+                self.motion_queuing.setup_lookahead_flush_callback(self._check_flush_lookahead)
+
             self.trapq = self.motion_queuing.allocate_trapq()
             self.trapq_append = self.motion_queuing.lookup_trapq_append()
         else:
