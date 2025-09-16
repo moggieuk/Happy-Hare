@@ -24,6 +24,14 @@ python bulk_sub.py --rules rules.json --apply
 
 # Use a Python rules file that defines PATTERNS
 python bulk_sub.py --rules rules.py --diff
+
+# Preview revert changes
+python bulk_sub.py --restore --diff
+
+# Revert changes and clean up last backup
+python bulk_sub.py --restore --apply --restore-clean
+
+#
 """
 from __future__ import annotations
 
@@ -38,6 +46,7 @@ from pathlib import Path
 from typing import Iterable, List, Sequence, Tuple
 
 # ---- Edit these if you want in-script rules ---------------------------------
+# Important: these are applied in order listed
 DEFAULT_PATTERNS: List[Tuple[str, str]] = [
     # Example:
     # (r"(?<!_)mmu_gear(?!_)", "mmu_gear"),
@@ -216,13 +225,26 @@ def _collect_backups(root: Path) -> dict[Path, Path]:
     return mapping
 
 
-def _revert_backups(root: Path, apply: bool, diff: bool, encoding: str) -> int:
+def _list_all_backups_for(orig: Path) -> list[Path]:
+    """Return all backups for 'orig' in the same directory: .orig and .orig.*"""
+    d = orig.parent
+    base = orig.name
+    # Only files, ignore dirs
+    results = [p for p in d.glob(base + ".orig") if p.is_file()]
+    results += [p for p in d.glob(base + ".orig.*") if p.is_file()]
+    return results
+
+
+def _revert_backups(root: Path, apply: bool, diff: bool, encoding: str,
+                    use_color: bool = False, clean: bool = False, clean_all: bool = False) -> int:
     backups = _collect_backups(root)
     if not backups:
         print("[info] No backups found (.orig or .orig.TIMESTAMP) under", root)
         return 0
 
     restored = 0
+    deleted_backups = 0
+
     for orig, bpath in sorted(backups.items()):
         try:
             backup_text = bpath.read_text(encoding=encoding, errors="surrogateescape")
@@ -249,25 +271,56 @@ def _revert_backups(root: Path, apply: bool, diff: bool, encoding: str) -> int:
                 tofile=str(orig) + " (from backup)",
                 lineterm=""
             ):
+                # if not using colors, replace with: print(line, end="")
                 print(colorize_unified_diff_line(line, use_color), end="")
 
         if apply:
             try:
-                # Overwrite the original with the backup content
                 orig.write_text(backup_text, encoding=encoding)
                 restored += 1
                 print(f"[apply] Restored from backup: {bpath} -> {orig}")
+
+                # Decide which backups to remove
+                to_delete: list[Path] = []
+                if clean_all:
+                    to_delete = _list_all_backups_for(orig)
+                elif clean:
+                    to_delete = [bpath]
+
+                if to_delete:
+                    # Avoid deleting the same file twice if lists overlap
+                    seen = set()
+                    for bp in to_delete:
+                        if bp in seen:
+                            continue
+                        seen.add(bp)
+                        try:
+                            bp.unlink()
+                            deleted_backups += 1
+                            print(f"[apply] Deleted backup: {bp}")
+                        except Exception as e:
+                            print(f"[warn] Restore succeeded, but failed to delete backup {bp}: {e}",
+                                  file=sys.stderr)
             except Exception as e:
                 print(f"[error] Failed to restore {orig}: {e}", file=sys.stderr)
         else:
             print("[dry-run] Would restore from backup")
+            if clean_all:
+                cands = _list_all_backups_for(orig)
+                for bp in cands:
+                    print(f"[dry-run] Would delete backup: {bp}")
+            elif clean:
+                print(f"[dry-run] Would delete backup: {bpath}")
 
+    mode = "APPLY" if apply else "DRY-RUN"
+    clean_mode = "all" if clean_all else ("used" if clean else "off")
     print("\nRevert summary:")
-    print(f"  Backups found : {len(backups)}")
-    print(f"  Files restored: {restored} (mode: {'APPLY' if apply else 'DRY-RUN'}, diff={'on' if diff else 'off'})")
+    print(f"  Backups found  : {len(backups)}")
+    print(f"  Files restored : {restored} (mode: {mode}, diff={'on' if diff else 'off'})")
+    print(f"  Backups deleted: {deleted_backups} (clean={clean_mode})")
     return 0
-# -----------------------------------------------------------------------------
 
+# -----------------------------------------------------------------------------
 
 def main(argv: Sequence[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
@@ -277,9 +330,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                     help="Write changes to files (default is dry-run).")
     ap.add_argument("--diff", action="store_true",
                     help="Show unified diff for each changed/restored file.")
-    ap.add_argument("--revert", action="store_true",
-                    help="Restore files from .orig/.orig.TIMESTAMP backups. "
-                         "Honors --apply (otherwise dry-run). Ignores substitution rules.")
+    ap.add_argument("--revert", "--restore", dest="revert", action="store_true",
+                    help="Restore files from .orig/.orig.TIMESTAMP backups. Honors --apply.")
+    ap.add_argument("--revert-clean", "--restore-clean", dest="revert_clean", action="store_true",
+                    help="After a successful restore, delete the backup file that was used.")
+    ap.add_argument("--revert-clean-all", "--restore-clean-all", dest="revert_clean_all", action="store_true",
+                    help="After a successful restore, delete ALL backups for that file.")
     ap.add_argument("--rules", metavar="FILE", default=None,
                     help="Rules file (.json with [[pattern, repl], ...] or .py defining PATTERNS).")
     ap.add_argument("--root", metavar="DIR", default=".",
@@ -301,7 +357,20 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     # Revert mode takes precedence and ignores substitution logic.
     if args.revert:
-        return _revert_backups(root=root, apply=args.apply, diff=args.diff, encoding=args.encoding)
+        # If both flags set, favor 'all'
+        clean_all = args.revert_clean_all
+        clean_used = args.revert_clean and not clean_all
+
+        return _revert_backups(
+            root=root,
+            apply=args.apply,
+            diff=args.diff,
+            encoding=args.encoding,
+            use_color=use_color,
+            clean=clean_used,
+            clean_all=clean_all
+        )
+
 
     patterns = load_patterns(args.rules)
     if not patterns:
