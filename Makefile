@@ -115,7 +115,6 @@ hh_moonraker_components := $(wildcard components/*.py)
 
 # All repo configs files less mmu_vars.cfg
 repo_cfgs := \
-	$(filter-out %/mmu_vars.cfg mmu_vars.cfg, \
 	$(patsubst config/%,%, $(wildcard config/*.cfg config/**/*.cfg)))
 
 # Per-unit files: <unit>_{hardware,parameters}.cfg
