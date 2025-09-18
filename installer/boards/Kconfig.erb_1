@@ -29,9 +29,9 @@ if BOARD_TYPE_ERB_1
   config PIN_SELECTOR_ENABLE
     default "!$(MMU_MCU):gpio14" 
   config PIN_SELECTOR_DIAG
-    default "$(MMU_MCU):gpio19" if MMU_SELECTOR_TOUCH 
+    default "$(MMU_MCU):gpio19" if BOOL_ENABLE_SELECTOR_TOUCH 
   config PIN_SELECTOR_ENDSTOP
-    default "^$(MMU_MCU):gpio24" if !MMU_SELECTOR_TOUCH
+    default "^$(MMU_MCU):gpio24" if !BOOL_ENABLE_SELECTOR_TOUCH
   config PIN_SELECTOR_SERVO
     default "$(MMU_MCU):gpio23" 
 

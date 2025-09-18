@@ -27,9 +27,9 @@ if BOARD_TYPE_EASY_BRD_RP2040
   config PIN_SELECTOR_ENABLE
     default "!$(MMU_MCU):gpio29" 
   config PIN_SELECTOR_DIAG
-    default "$(MMU_MCU):gpio2" if MMU_SELECTOR_TOUCH 
+    default "$(MMU_MCU):gpio2" if BOOL_ENABLE_SELECTOR_TOUCH 
   config PIN_SELECTOR_ENDSTOP
-    default "^$(MMU_MCU):gpio1" if !MMU_SELECTOR_TOUCH
+    default "^$(MMU_MCU):gpio1" if !BOOL_ENABLE_SELECTOR_TOUCH
   config PIN_SELECTOR_SERVO
     default "$(MMU_MCU):gpio4" 
 

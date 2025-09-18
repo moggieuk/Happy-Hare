@@ -27,9 +27,9 @@ if BOARD_TYPE_MELLOW_EASY_BRD_CAN_2
   config PIN_SELECTOR_ENABLE
     default "!$(MMU_MCU):gpio5" 
   config PIN_SELECTOR_DIAG
-    default "$(MMU_MCU):gpio20" if MMU_SELECTOR_TOUCH 
+    default "$(MMU_MCU):gpio20" if BOOL_ENABLE_SELECTOR_TOUCH 
   config PIN_SELECTOR_ENDSTOP
-    default "^$(MMU_MCU):gpio20" if !MMU_SELECTOR_TOUCH
+    default "^$(MMU_MCU):gpio20" if !BOOL_ENABLE_SELECTOR_TOUCH
   config PIN_SELECTOR_SERVO
     default "$(MMU_MCU):gpio21" 
 

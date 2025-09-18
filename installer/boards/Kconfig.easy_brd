@@ -27,9 +27,9 @@ if BOARD_TYPE_EASY_BRD
   config PIN_SELECTOR_ENABLE
     default "!$(MMU_MCU):PA11" 
   config PIN_SELECTOR_DIAG
-    default "$(MMU_MCU):PA7" if MMU_SELECTOR_TOUCH 
+    default "$(MMU_MCU):PA7" if BOOL_ENABLE_SELECTOR_TOUCH 
   config PIN_SELECTOR_ENDSTOP
-    default "^$(MMU_MCU):PB9" if !MMU_SELECTOR_TOUCH
+    default "^$(MMU_MCU):PB9" if !BOOL_ENABLE_SELECTOR_TOUCH
   config PIN_SELECTOR_SERVO
     default "$(MMU_MCU):PA5" 
 
