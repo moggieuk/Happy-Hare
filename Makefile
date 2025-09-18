@@ -1,10 +1,25 @@
 SHELL := /usr/bin/env bash
 PY    := python
-MAKEFLAGS += --jobs 8             # Parallel build
-MAKEFLAGS += --output-sync=target # Keep log order sane
 Q  ?= @                           # For quiet make builds, override with make Q= for verbose output
 V  ?=                             # For verbose output (mostly from python builder), set to -v to enable
 UT ?= *                           # For unittests, e.g. make UT=test_build.py test
+
+MAKEFLAGS += --jobs 8             # Parallel build
+
+# By default KCONFIG_CONFIG is '.config', but it can be overridden by the user
+export KCONFIG_CONFIG ?= .config
+
+# Enable output-sync if menuconfig will not be trigger. menuconfig.py will crash if output-sync is enabled on certain systems
+ifeq ($(CHECK_OUTPUT_SYNC),)
+  # Never enable output-sync for menuconfig
+  ifeq ($(findstring menuconfig,$(MAKECMDGOALS)),)
+    # Check whether $KCONFIG_CONFIG is outdated. if so menuconfig will be triggered and output-sync should stay disabled
+    ifeq ($(shell $(MAKE) CHECK_OUTPUT_SYNC=y -q $(KCONFIG_CONFIG) > /dev/null && echo y),y)
+      MAKEFLAGS += --output-sync
+    endif
+  endif
+  -include $(KCONFIG_CONFIG) # Won't exist on first invocation
+endif
 
 # Prevent the user from running with sudo. This isn't perfect if something else than sudo is used.
 # Just checking for root isn't enough, as users on Creality K1 printers usually run as root (ugh)
@@ -14,20 +29,17 @@ endif
 
 # Print Colors (exported for use in py installer)
 ifneq ($(shell command -v tput 2>/dev/null),)
-  export C_OFF     ?= $(shell tput -Txterm-256color sgr0)
-  export C_DEBUG   ?= $(shell tput -Txterm-256color setaf 5)
-  export C_INFO    ?= $(shell tput -Txterm-256color setaf 6)
-  export C_NOTICE  ?= $(shell tput -Txterm-256color bold; tput -Txterm-256color setaf 2)
-  export C_WARNING ?= $(shell tput -Txterm-256color setaf 3)
-  export C_ERROR   ?= $(shell tput -Txterm-256color bold; tput -Txterm-256color setaf 1)
+  export C_OFF     := $(shell tput -Txterm-256color sgr0)
+  export C_DEBUG   := $(shell tput -Txterm-256color setaf 5)
+  export C_INFO    := $(shell tput -Txterm-256color setaf 6)
+  export C_NOTICE  := $(shell tput -Txterm-256color bold; tput -Txterm-256color setaf 2)
+  export C_WARNING := $(shell tput -Txterm-256color setaf 3)
+  export C_ERROR   := $(shell tput -Txterm-256color bold; tput -Txterm-256color setaf 1)
 endif
 
 # Couple verbose debug output to python debugging flag
 debug = $(if $(findstring -v,$(V)),$(info $(1)))
 
-# By default KCONFIG_CONFIG is '.config', but it can be overridden by the user
-export KCONFIG_CONFIG ?= .config
--include $(KCONFIG_CONFIG) # Won't exist on first invocation
 
 export SRC ?= $(CURDIR)
 export PYTHONPATH:=$(SRC)/installer/lib/kconfiglib:$(PYTHONPATH)
@@ -396,3 +408,4 @@ endif
 
 menuconfig: $(SRC)/installer/Kconfig
 	$(Q)MENUCONFIG_STYLE="$(MENUCONFIG_STYLE)" $(PY) -m menuconfig $(SRC)/installer/Kconfig
+
