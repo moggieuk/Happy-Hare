@@ -42,6 +42,8 @@ debug = $(if $(findstring -v,$(V)),$(info $(1)))
 
 
 export SRC ?= $(CURDIR)
+# export $srctree for menuconfig and kconfiglib
+export srctree := $(SRC)/installer
 export PYTHONPATH:=$(SRC)/installer/lib/kconfiglib:$(PYTHONPATH)
 
 ifneq ($(TESTDIR),)
@@ -407,5 +409,5 @@ ifeq ($(filter menuconfig uninstall,$(MAKECMDGOALS)),)
 endif
 
 menuconfig: $(SRC)/installer/Kconfig
-	$(Q)MENUCONFIG_STYLE="$(MENUCONFIG_STYLE)" $(PY) -m menuconfig $(SRC)/installer/Kconfig
+	$(Q)MENUCONFIG_STYLE="$(MENUCONFIG_STYLE)" $(PY) -m menuconfig Kconfig
 

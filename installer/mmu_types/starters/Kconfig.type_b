@@ -1,10 +1,11 @@
 config MMU_CUSTOM_TYPE_B
+  bool "Custom type B - with multiple filament drivers"
   help 
     Select this custom starter config when you MMU has separate
     stepper motors for each gate/lane. After selection be sure to
     add options under "MMU Additions".
     You can fine tune the klipper configuration as necessary.
-  bool "Custom type B - with multiple filament drivers"
+  select VIRTUAL_SELECTOR
   select PARAM_VARIABLE_ROTATION_DISTANCES
   select PARAM_FILAMENT_ALWAYS_GRIPPED
   imply PARAM_VARIABLE_BOWDEN_LENGTHS
@@ -19,7 +20,7 @@ if MMU_CUSTOM_TYPE_B
     bool "Require fast bowden move?"
 
   if SHOW_MMU_ADDITIONS_WITH_TYPE
-    rsource "../../mmu_additions/Kconfig"
+    source "mmu_additions/Kconfig"
   endif
 endif
 
@@ -30,9 +31,6 @@ if MMU_CUSTOM_TYPE_B
     default "1.0"
   config PARAM_NUM_GATES
     default 4
-  choice CHOICE_SELECTOR_TYPE
-    default VIRTUAL_SELECTOR
-  endchoice
 
   config PARAM_GEAR_GEAR_RATIO
     default "1:1"

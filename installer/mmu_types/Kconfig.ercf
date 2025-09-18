@@ -1,8 +1,10 @@
-config MMU_TYPE_ERCF_1_1
- help
-   Enraged Rabbit Carrot Feeder (ERCF v1.1) is the original DIY MMU
-   for klipper. Originally fitted with a TCRT5000 based encoder.
-  bool "ERCF v1.1"
+config MMU_FAMILY_ERCF
+  bool "Enraged Rabbit Carrot Feeder (ERCF)"
+  help
+    The Enraged Rabbit Carrot Feeder (ERCF) is the original DIY MMU design
+    with a large community and many popular mods. It is available in two
+    main versions, the original v1.1 and the upgraded v2.0.
+  select LINEAR_SELECTOR
   select MMU_HAS_ENCODER
   select MMU_HAS_SERVO
   select MMU_HAS_SELECTOR
@@ -10,89 +12,109 @@ config MMU_TYPE_ERCF_1_1
   select PARAM_REQUIRE_BOWDEN_MOVE
   imply MMU_HAS_FILAMENT_BUFFER
 
-if MMU_TYPE_ERCF_1_1 
-  rsource "../Kconfig.num_gates"
-  rsource "../servos/Kconfig"
+if MMU_FAMILY_ERCF
+  choice 
+    prompt "Version"
 
-  menu "Project Options"
-    help
-      The ERCF project has a few popular modifications that were later
-      incorporated into the v2 design. If you have any upgrades then
-      you can specify them here.
-
-    config MOD_BINKY
-      bool "Binky encoder"
+    config MMU_TYPE_ERCF_1_1
+      bool "ERCF v1.1"
       help
-        Select if building with the upgraded Binky based encoder
+        ERCF v1.1 is the original DIY MMU for klipper. 
+        Originally fitted with a TCRT5000 based encoder.
 
-    config MOD_SPRINGY
-      bool "Springy"
+    config MMU_TYPE_ERCF_2_0
+      bool "ERCF v2.0"
       help
-        Springy is a mod for sprung selector servo removing need for top-hat tuning.
+        ERCF v2.0 is a community upgraded version incorporating 
+        popular mods and filler with custom Binky based encoder.
+      imply MMU_HAS_LEDS
+      imply PARAM_HAS_BYPASS
+  endchoice
 
-   config MOD_TRIPLE_DECKY
-     bool "Triple Decky"
-     help
-       Alternative filament block removing need for magnetic gate opening.
+  source "Kconfig.num_gates"
+  source "servos/Kconfig"
 
-    config MMU_HAS_FILAMENT_BUFFER
-      prompt "Has ERCP filament buffer?"
-      help 
-        Does MMU have the Enraged Rabbit Carrot Patch (ERCP) filament buffer
-        to catch the uncoiled filament on unload.
-
-    config PARAM_HAS_BYPASS
-      prompt "Built with filament bypass block?"
+  if MMU_TYPE_ERCF_1_1 
+    menu "Project Options"
       help
-        Select if you built the filament bypass block option.
-  endmenu
+        The ERCF project has a few popular modifications that were later
+        incorporated into the v2 design. If you have any upgrades then
+        you can specify them here.
+
+      config MOD_BINKY
+        bool "Binky encoder"
+        help
+          Select if building with the upgraded Binky based encoder
+
+      config MOD_SPRINGY
+        bool "Springy"
+        help
+          Springy is a mod for sprung selector servo removing need for top-hat tuning.
+
+     config MOD_TRIPLE_DECKY
+       bool "Triple Decky"
+       help
+         Alternative filament block removing need for magnetic gate opening.
+
+      config MMU_HAS_FILAMENT_BUFFER
+        prompt "Has ERCP filament buffer?"
+        help 
+          Does MMU have the Enraged Rabbit Carrot Patch (ERCP) filament buffer
+          to catch the uncoiled filament on unload.
+
+      config PARAM_HAS_BYPASS
+        prompt "Built with filament bypass block?"
+        help
+          Select if you built the filament bypass block option.
+    endmenu
+  endif
+
+  if MMU_TYPE_ERCF_2_0
+    menu "Project Options"
+      help
+        The ERCF project has a few popular modifications. If you have any
+        upgrades or non-default options you can specify them here.
+
+      config MOD_THUMPER_BLOCKS
+        bool "Thumper Blocks"
+        help
+          Alternative filament block with slightly different geometry.
+
+      config MMU_HAS_FILAMENT_BUFFER
+        bool "Has Cotton Tail filament buffer?"
+        help 
+          Does MMU have the Cotton Tail filament buffer to catch the uncoiled
+          filament on unload. NOTE unselect if you are using Filamentalist.
+    endmenu
+  endif
 
   if SHOW_MMU_ADDITIONS_WITH_TYPE
-    rsource "../mmu_additions/Kconfig"
+    source "mmu_additions/Kconfig"
   endif
-endif
 
-if MMU_TYPE_ERCF_1_1 
+  ####################
+  ##### Defaults #####
+  ####################
+#
   config PARAM_MMU_VENDOR
     default "ERCF"
-  config PARAM_MMU_VERSION
-    default "1.1sbt" if MOD_SPRINGY && MOD_BINKY && MOD_TRIPLE_DECKY
-    default "1.1sb" if MOD_SPRINGY && MOD_BINKY
-    default "1.1st" if MOD_SPRINGY && MOD_TRIPLE_DECKY
-    default "1.1bt" if MOD_BINKY && MOD_TRIPLE_DECKY
-    default "1.1s" if MOD_SPRINGY
-    default "1.1b" if MOD_BINKY
-    default "1.1t" if MOD_TRIPLE_DECKY
-    default "1.1"
-  config PARAM_NUM_GATES
-    default 9
-  choice CHOICE_SELECTOR_TYPE
-    default LINEAR_SELECTOR
-  endchoice
-  choice CHOICE_BOARD_TYPE
-    default BOARD_TYPE_EASY_BRD_RP2040
-  endchoice
-
-  config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
-    default 3
 
   config PARAM_GEAR_GEAR_RATIO
     default "80:20"
   config PARAM_GEAR_RUN_CURRENT
     default "0.5"
   config PARAM_GEAR_HOLD_CURRENT
-    default "0.1"
+    default "0.1"    
+
+  config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
+    default 3
+  config PARAM_SERVO_DURATION
+    default "0.4"
 
   config PARAM_SELECTOR_RUN_CURRENT
     default "0.4"
   config PARAM_SELECTOR_HOLD_CURRENT
     default "0.2"
-
-  config PARAM_SERVO_DURATION
-    default "0.4"
-  config PARAM_GATE_PARKING_DISTANCE
-    default "23"
-    default "13" if MOD_THUMPER_BLOCKS
 
   choice CHOICE_GATE_HOMING_ENDSTOP
     default GATE_HOMING_ENDSTOP_ENCODER
@@ -100,102 +122,62 @@ if MMU_TYPE_ERCF_1_1
   choice CHOICE_EXTRUDER_HOMING_ENDSTOP
     default EXTRUDER_HOMING_ENDSTOP_COLLISION
   endchoice
-  choice CHOICE_ENCODER_TYPE
-    default ENCODER_TYPE_BINKY if MOD_BINKY
-    default ENCODER_TYPE_TCRT5000 if !MOD_BINKY
-  endchoice
-endif
-  
 
-config MMU_TYPE_ERCF_2_0
- help
-   Enraged Rabbit Carrot Feeder (ERCF v2.0) is a community upgraded
-   version incorporating popular mods and filler with custom Binky
-   based encoder.
-  bool "ERCF v2.0"
-  select MMU_HAS_ENCODER
-  select MMU_HAS_SERVO
-  select MMU_HAS_SELECTOR
-  select PARAM_VARIABLE_ROTATION_DISTANCES
-  select PARAM_REQUIRE_BOWDEN_MOVE
-  imply MMU_HAS_LEDS
-  imply MMU_HAS_FILAMENT_BUFFER
-  imply PARAM_HAS_BYPASS
+  if MMU_TYPE_ERCF_1_1 
+    config PARAM_MMU_VERSION
+      default "1.1sbt" if MOD_SPRINGY && MOD_BINKY && MOD_TRIPLE_DECKY
+      default "1.1sb" if MOD_SPRINGY && MOD_BINKY
+      default "1.1st" if MOD_SPRINGY && MOD_TRIPLE_DECKY
+      default "1.1bt" if MOD_BINKY && MOD_TRIPLE_DECKY
+      default "1.1s" if MOD_SPRINGY
+      default "1.1b" if MOD_BINKY
+      default "1.1t" if MOD_TRIPLE_DECKY
+      default "1.1"
+    config PARAM_NUM_GATES
+      default 9
 
-if MMU_TYPE_ERCF_2_0
-  choice CHOICE_ENCODER_TYPE
-    default ENCODER_TYPE_BINKY
-  endchoice
+    choice CHOICE_BOARD_TYPE
+      default BOARD_TYPE_EASY_BRD_RP2040
+    endchoice
 
-  rsource "../Kconfig.num_gates"
-  rsource "../servos/Kconfig"
+    config PARAM_GATE_PARKING_DISTANCE
+      default "23"
+      default "13" if MOD_THUMPER_BLOCKS
 
-  menu "Project Options"
-    help
-      The ERCF project has a few popular modifications. If you have any
-      upgrades or non-default options you can specify them here.
-
-    config MOD_THUMPER_BLOCKS
-      bool "Thumper Blocks"
-      help
-        Alternative filament block with slightly different geometry.
-
-    config MMU_HAS_FILAMENT_BUFFER
-      bool "Has Cotton Tail filament buffer?"
-      help 
-        Does MMU have the Cotton Tail filament buffer to catch the uncoiled
-        filament on unload. NOTE unselect if you are using Filamentalist.
-  endmenu
-
-  if SHOW_MMU_ADDITIONS_WITH_TYPE
-    rsource "../mmu_additions/Kconfig"
+    choice CHOICE_GATE_HOMING_ENDSTOP
+      default GATE_HOMING_ENDSTOP_ENCODER
+    endchoice
+    choice CHOICE_EXTRUDER_HOMING_ENDSTOP
+      default EXTRUDER_HOMING_ENDSTOP_COLLISION
+    endchoice
+    choice CHOICE_ENCODER_TYPE
+      default ENCODER_TYPE_BINKY if MOD_BINKY
+      default ENCODER_TYPE_TCRT5000 if !MOD_BINKY
+    endchoice
   endif
+
+  if MMU_TYPE_ERCF_2_0
+    config PARAM_MMU_VENDOR
+      default "ERCF"
+    config PARAM_MMU_VERSION
+      default "2.0"
+    config PARAM_NUM_GATES
+      default 8
+    choice CHOICE_BOARD_TYPE
+      default BOARD_TYPE_MMB_2_0
+    endchoice
+    choice CHOICE_ENCODER_TYPE
+      default ENCODER_TYPE_BINKY
+    endchoice
+
+    config PARAM_ENCODER_RESOLUTION
+      default "1.0"
+    config PARAM_GATE_PARKING_DISTANCE
+      default "13"
+      default "11" if MOD_THUMPER_BLOCKS
+
+    choice CHOICE_ENCODER_TYPE
+      default ENCODER_TYPE_BINKY
+    endchoice
+  endif 
 endif
-
-if MMU_TYPE_ERCF_2_0
-  config PARAM_MMU_VENDOR
-    default "ERCF"
-  config PARAM_MMU_VERSION
-    default "2.0"
-  config PARAM_NUM_GATES
-    default 8
-  choice CHOICE_SELECTOR_TYPE
-    default LINEAR_SELECTOR
-  endchoice
-  choice CHOICE_BOARD_TYPE
-    default BOARD_TYPE_MMB_2_0
-  endchoice
-  
-  config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
-    default 3
- 
-  config PARAM_GEAR_GEAR_RATIO
-    default "80:20"
-  config PARAM_GEAR_RUN_CURRENT
-    default "0.5"
-  config PARAM_GEAR_HOLD_CURRENT
-    default "0.1"
-
-  config PARAM_SELECTOR_RUN_CURRENT
-    default "0.4"
-  config PARAM_SELECTOR_HOLD_CURRENT
-    default "0.2"
-
-  config PARAM_SERVO_DURATION
-    default "0.4"
-  config PARAM_ENCODER_RESOLUTION
-    default "1.0"
-  config PARAM_GATE_PARKING_DISTANCE
-    default "13"
-    default "11" if MOD_THUMPER_BLOCKS
-
-  choice CHOICE_GATE_HOMING_ENDSTOP
-    default GATE_HOMING_ENDSTOP_ENCODER
-  endchoice
-  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
-    default EXTRUDER_HOMING_ENDSTOP_COLLISION
-  endchoice
-  choice CHOICE_ENCODER_TYPE
-    default ENCODER_TYPE_BINKY
-  endchoice
-endif 

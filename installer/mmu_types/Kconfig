@@ -4,7 +4,7 @@ config PARAM_MMU_VENDOR
 config PARAM_MMU_VERSION
   string
 
-choice CHOICE_MMU_TYPE 
+choice 
   prompt "MMU Type"
   help 
     MMU type and hardware

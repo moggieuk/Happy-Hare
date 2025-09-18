@@ -5,13 +5,15 @@ config MMU_CUSTOM_TYPE_A
     by sure to add options under "MMU Additions".
     You can fine tune the klipper configuration as necessary.
   bool "Custom type A - with selector"
+  imply LINEAR_SELECTOR
   imply MMU_HAS_SELECTOR
   imply MMU_HAS_SERVO
   imply PARAM_REQUIRE_BOWDEN_MOVE
   imply PARAM_VARIABLE_ROTATION_DISTANCES
   
 if MMU_CUSTOM_TYPE_A 
-  rsource "../../Kconfig.num_gates"
+  source "Kconfig.selector_type" 
+  source "Kconfig.num_gates"
 
   config MMU_HAS_SELECTOR
     help
@@ -31,7 +33,7 @@ if MMU_CUSTOM_TYPE_A
     bool "Different drive gear (rotation distance) per gate?"
 
   if SHOW_MMU_ADDITIONS_WITH_TYPE
-    rsource "../../mmu_additions/Kconfig"
+    source "mmu_additions/Kconfig"
   endif
 endif
 
@@ -42,9 +44,6 @@ if MMU_CUSTOM_TYPE_A
     default "1.0"
   config PARAM_NUM_GATES
     default 8
-  choice CHOICE_SELECTOR_TYPE
-    default LINEAR_SELECTOR
-  endchoice
 
   config PARAM_GEAR_GEAR_RATIO
     default "1:1"

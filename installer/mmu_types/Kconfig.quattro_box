@@ -1,116 +1,50 @@
-config MMU_TYPE_QUATTRO_BOX_1_0
+config MMU_FAMILY_QUATTRO_BOX
+  bool "QuattroBox"
   help
     QuattroBox is type-B MMU with 4 gates. It uses a Filamentalist based
     design for spool respooling leveraging gear steppers for motion.
     Has integrated encoder for measurement of filament movement.
     Has eject button option -- be sure to install eject button addon.
-  bool "QuattroBox v1.0"
+  select VIRTUAL_SELECTOR
   select MMU_HAS_ENCODER
-  select MMU_HAS_LEDS
   select PARAM_VARIABLE_ROTATION_DISTANCES
   select PARAM_VARIABLE_BOWDEN_LENGTHS
   select PARAM_FILAMENT_ALWAYS_GRIPPED
-  select BOOL_ENABLE_SYNC_TO_EXTRUDER
-  select BOOL_ENABLE_SYNC_FORM_TIP
-  select BOOL_ENABLE_SYNC_PURGE
-  select ADDON_EJECT_BUTTONS
+  select ADDON_EJECT_BUTTONS      
   select PARAM_REQUIRE_BOWDEN_MOVE
-  imply BOOL_ENABLE_LEDS
   select MMU_DISABLE_ESPOOLER_OPTION
   select MMU_DISABLE_FILAMENT_BUFFER_OPTION
+  imply BOOL_ENABLE_LEDS
 
-if MMU_TYPE_QUATTRO_BOX_1_0
-  if SHOW_MMU_ADDITIONS_WITH_TYPE
-    rsource "../mmu_additions/Kconfig"
-  endif
-endif
-
-if MMU_TYPE_QUATTRO_BOX_1_0
-  config PARAM_MMU_VENDOR
-    default "QuattroBox"
-  config PARAM_MMU_VERSION
-    default "1.0"  
-  config PARAM_NUM_GATES
-    default 4
-  choice CHOICE_SELECTOR_TYPE
-    default VIRTUAL_SELECTOR
-  endchoice
-
-  config PARAM_GEAR_GEAR_RATIO
-    default "50:17"
-  config PARAM_GEAR_RUN_CURRENT
-    default "1.27"
-  config PARAM_GEAR_HOLD_CURRENT
-    default "0.2"
-
-  config PARAM_GEAR_HOMING_SPEED
-    default "80"
+if MMU_FAMILY_QUATTRO_BOX
+  choice
+    prompt "Version"
   
-  config PARAM_GATE_HOMING_MAX
-    default "200"
-  config PARAM_GATE_PRELOAD_HOMING_MAX
-    default "200"
-  config PARAM_GATE_PARKING_DISTANCE
-    default "30"
-  config PARAM_GATE_ENDSTOP_TO_ENCODER
-    default "18"
-  config PARAM_GATE_FINAL_EJECT_DISTANCE
-    default "200"
+    config MMU_TYPE_QUATTRO_BOX_1_0
+      bool "QuattroBox v1.0"
+      select MMU_HAS_LEDS
+      select BOOL_ENABLE_SYNC_TO_EXTRUDER
+      select BOOL_ENABLE_SYNC_FORM_TIP
+      select BOOL_ENABLE_SYNC_PURGE
 
-  config PARAM_CHAIN_COUNT
-    default 32   
-  config PARAM_COLOR_ORDER
-    default "GRBW,GRBW,GRBW,GRBW,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB"
-  config PARAM_EXIT_LEDS 
-    default "neopixel:$(UNIT_NAME)_leds (1-4)"
-  config PARAM_STATUS_LEDS
-    default "neopixel:$(UNIT_NAME)_leds (5-14)"
-  config PARAM_LOGO_LEDS
-    default "neopixel:$(UNIT_NAME)_leds (15-32)"
+      config MMU_TYPE_QUATTRO_BOX_1_1
+      bool "QuattroBox v1.1"
+      help
+        Version 1.1 has updated LEDs.
+    endchoice
 
-  choice CHOICE_GATE_HOMING_ENDSTOP
-    default GATE_HOMING_ENDSTOP_GATE
-  endchoice
-  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
-    default EXTRUDER_HOMING_ENDSTOP_COLLISION
-  endchoice
-endif 
-
-
-config MMU_TYPE_QUATTRO_BOX_1_1
-  help
-    QuattroBox is type-B MMU with 4 gates. It uses a Filamentalist based
-    design for spool respooling leveraging gear steppers for motion.
-    Has integrated encoder for measurement of filament movement.
-    Has eject button option -- be sure to install eject button addon.
-    Version 1.1 has updated LEDs.
-  bool "QuattroBox v1.1"
-  select MMU_HAS_ENCODER
-  select PARAM_VARIABLE_ROTATION_DISTANCES
-  select PARAM_VARIABLE_BOWDEN_LENGTHS
-  select PARAM_FILAMENT_ALWAYS_GRIPPED
-  select ADDON_EJECT_BUTTONS
-  select PARAM_REQUIRE_BOWDEN_MOVE
-  imply BOOL_ENABLE_LEDS
-  select MMU_DISABLE_ESPOOLER_OPTION
-  select MMU_DISABLE_FILAMENT_BUFFER_OPTION
-
-if MMU_TYPE_QUATTRO_BOX_1_1
   if SHOW_MMU_ADDITIONS_WITH_TYPE
-    rsource "../mmu_additions/Kconfig"
+    source "mmu_additions/Kconfig"
   endif
-endif
 
-if MMU_TYPE_QUATTRO_BOX_1_1
+  ####################
+  ##### Defaults #####
+  ####################
+  
   config PARAM_MMU_VENDOR
     default "QuattroBox"
-  config PARAM_MMU_VERSION
-    default "1.1"  
   config PARAM_NUM_GATES
     default 4
-  choice CHOICE_SELECTOR_TYPE
-    default VIRTUAL_SELECTOR
-  endchoice
 
   config PARAM_GEAR_GEAR_RATIO
     default "50:17"
@@ -132,21 +66,41 @@ if MMU_TYPE_QUATTRO_BOX_1_1
   config PARAM_GATE_FINAL_EJECT_DISTANCE
     default "200"
 
-  config PARAM_CHAIN_COUNT
-    default 36   
-  config PARAM_COLOR_ORDER
-    default "GRBW,GRBW,GRBW,GRBW,GRBW,GRBW,GRBW,GRBW,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB"
-  config PARAM_EXIT_LEDS 
-    default "neopixel:$(UNIT_NAME)_leds (2,4,6,8)"
-  config PARAM_STATUS_LEDS
-    default "neopixel:$(UNIT_NAME)_leds (1,3,5,7)"
-  config PARAM_LOGO_LEDS
-    default "neopixel:$(UNIT_NAME)_leds (9-36)"
-
   choice CHOICE_GATE_HOMING_ENDSTOP
     default GATE_HOMING_ENDSTOP_GATE
   endchoice
   choice CHOICE_EXTRUDER_HOMING_ENDSTOP
     default EXTRUDER_HOMING_ENDSTOP_COLLISION
   endchoice
-endif 
+
+  if MMU_TYPE_QUATTRO_BOX_1_0
+    config PARAM_MMU_VERSION
+      default "1.0"  
+    config PARAM_CHAIN_COUNT
+      default 32   
+    config PARAM_COLOR_ORDER
+      default "GRBW,GRBW,GRBW,GRBW,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB"
+    config PARAM_EXIT_LEDS 
+      default "neopixel:$(UNIT_NAME)_leds (1-4)"
+    config PARAM_STATUS_LEDS
+      default "neopixel:$(UNIT_NAME)_leds (5-14)"
+    config PARAM_LOGO_LEDS
+      default "neopixel:$(UNIT_NAME)_leds (15-32)"
+  endif 
+
+  if MMU_TYPE_QUATTRO_BOX_1_1
+    config PARAM_MMU_VERSION
+      default "1.1"  
+
+    config PARAM_CHAIN_COUNT
+      default 36   
+    config PARAM_COLOR_ORDER
+      default "GRBW,GRBW,GRBW,GRBW,GRBW,GRBW,GRBW,GRBW,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB,GRB"
+    config PARAM_EXIT_LEDS 
+      default "neopixel:$(UNIT_NAME)_leds (2,4,6,8)"
+    config PARAM_STATUS_LEDS
+      default "neopixel:$(UNIT_NAME)_leds (1,3,5,7)"
+    config PARAM_LOGO_LEDS
+      default "neopixel:$(UNIT_NAME)_leds (9-36)"
+  endif
+endif

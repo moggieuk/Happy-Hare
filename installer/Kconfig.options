@@ -11,20 +11,18 @@ menu "Software Options"
       This allows for additional selector recovery steps but is difficult to tune.
       Not recommended if you are new to MMU/Happy-Hare.
       The MCU must have DIAG output for steppers. Possible to configure later
-    depends on PARAM_SELECTOR_TYPE = "LinearSelector"
+    depends on LINEAR_SELECTOR
   config PARAM_SELECTOR_TOUCH_ENABLE
     int
     default 1 if BOOL_ENABLE_SELECTOR_TOUCH
     default 0
 
   if BOARD_TYPE_EASY_BRD
-    comment " !!! IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..]  MAKE A NOTE NOW !!! "
+    comment " !!! IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..] on the EASY-BRD. MAKE A NOTE NOW !!! "
       depends on BOOL_ENABLE_SELECTOR_TOUCH
-    comment " !!! IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..]  MAKE A NOTE NOW !!! "
+    comment " !!! IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..] on the EASY-BRD. MAKE A NOTE NOW !!! "
       depends on !BOOL_ENABLE_SELECTOR_TOUCH
   endif
-
-  rsource "Kconfig.sync"
 
   config BOOL_ENABLE_CLOG_DETECTION
     bool "Enable clog detection?"

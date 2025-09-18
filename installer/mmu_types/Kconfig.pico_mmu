@@ -1,10 +1,10 @@
 config MMU_TYPE_PICO_MMU_1_0
+  bool "Pico MMU"
   help
     Pick MMU is a type-A that uses a single servo and cam mechanism
     to both select and grip the filament in the chosen gate. It is a
     simple compact design but is limited to about 4 gates.
-   
-  bool "Pico MMU"
+  select SERVO_SELECTOR
   select MMU_HAS_SERVO
   select PARAM_REQUIRE_BOWDEN_MOVE
   select PARAM_FILAMENT_ALWAYS_GRIPPED
@@ -14,22 +14,21 @@ config MMU_TYPE_PICO_MMU_1_0
   imply BOOL_ENABLE_LEDS
 
 if MMU_TYPE_PICO_MMU_1_0
-  rsource "../servos/Kconfig"
+  source "servos/Kconfig"
   if SHOW_MMU_ADDITIONS_WITH_TYPE
-    rsource "../mmu_additions/Kconfig"
+    source "mmu_additions/Kconfig"
   endif
-endif
 
-if MMU_TYPE_PICO_MMU_1_0
+  ####################
+  ##### Defaults #####
+  ####################
+
   config PARAM_MMU_VENDOR
     default "PicoMMU"
   config PARAM_MMU_VERSION
     default "1.0"  
   config PARAM_NUM_GATES
     default 4
-  choice CHOICE_SELECTOR_TYPE
-    default SERVO_SELECTOR
-  endchoice
 
   config PARAM_GEAR_GEAR_RATIO
     default "1.28:1"

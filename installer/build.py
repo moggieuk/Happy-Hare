@@ -38,7 +38,7 @@ LEVEL_NOTICE = 25
 # Enhanced representation of Kconfig file
 class KConfig(kconfiglib.Kconfig):
     def __init__(self, config_file):
-        super(KConfig, self).__init__("installer/Kconfig")
+        super(KConfig, self).__init__("Kconfig")
         self.load_config(config_file)
         self.config_file = config_file
 

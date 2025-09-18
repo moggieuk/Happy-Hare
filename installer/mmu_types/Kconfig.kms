@@ -1,9 +1,10 @@
 config MMU_TYPE_KMS_1_0
- help
-   KMS is a type-B MMU with kits from BIQU. It had many features (including
-   integrated encoder) in a sealed enclosure utilizing a passive respooler
-   system based on Filamentalist.
   bool "KMS v1.0"
+  help
+    KMS is a type-B MMU with kits from BIQU. It had many features (including
+    integrated encoder) in a sealed enclosure utilizing a passive respooler
+    system based on Filamentalist.
+  select VIRTUAL_SELECTOR
   select MMU_HAS_ENCODER
   select MMU_HAS_ESPOOLER
   select MMU_HAS_LEDS
@@ -13,16 +14,16 @@ config MMU_TYPE_KMS_1_0
   select BOOL_ENABLE_SYNC_TO_EXTRUDER
   select BOOL_ENABLE_SYNC_FORM_TIP
   select BOOL_ENABLE_SYNC_PURGE
-  imply OPTION_KMS_BUFFER
   select MMU_DISABLE_FILAMENT_BUFFER_OPTION
+  imply OPTION_KMS_BUFFER
 
 if MMU_TYPE_KMS_1_0
   config OPTION_KMS_BUFFER
+    bool "KMS buffer"
     help
       Select if using the KMS brand buffer connected to the bowden tube using its
       integrated mcu. Don't select if using a different buffer system (instead add
       under MMU additions)
-    bool "KMS buffer"
     select MMU_HAS_SYNC_FEEDBACK_BUFFER
     select MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION
     select MMU_HAS_SENSOR_SYNC_FEEDBACK_TENSION
@@ -30,20 +31,19 @@ endif
 
 if MMU_TYPE_KMS_1_0
   if SHOW_MMU_ADDITIONS_WITH_TYPE
-    rsource "../mmu_additions/Kconfig"
+    source "mmu_additions/Kconfig"
   endif
-endif
 
-if MMU_TYPE_KMS_1_0
+  ####################
+  ##### Defaults #####
+  ####################
+
   config PARAM_MMU_VENDOR
     default "KMS"
   config PARAM_MMU_VERSION
     default "1.0"  
   config PARAM_NUM_GATES
     default 4
-  choice CHOICE_SELECTOR_TYPE
-    default VIRTUAL_SELECTOR
-  endchoice
   choice CHOICE_BOARD_TYPE
     default BOARD_TYPE_KMS_1_0
   endchoice

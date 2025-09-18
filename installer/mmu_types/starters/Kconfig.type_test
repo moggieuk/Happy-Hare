@@ -1,8 +1,8 @@
 config MMU_CUSTOM_TYPE_EVERYTHING
+  bool "Test config with everything"
   help 
     Select this custom starter config for testing or to create
     a fully populated set of klipper config files.
-  bool "Test config with everything"
   select MMU_HAS_SELECTOR
   select MMU_HAS_SERVO
   select MMU_HAS_ENCODER
@@ -18,6 +18,7 @@ config MMU_CUSTOM_TYPE_EVERYTHING
   select MMU_HAS_SENSOR_GEAR_TOUCH
   select MMU_HAS_FILAMENT_BUFFER # Really this is mutually exclusive with eSpooler
   select PARAM_HAS_BYPASS
+  select MACRO_SELECTOR
   imply PARAM_REQUIRE_BOWDEN_MOVE
   imply PARAM_VARIABLE_ROTATION_DISTANCES
   imply PARAM_VARIABLE_BOWDEN_LENGTHS
@@ -30,7 +31,4 @@ if MMU_CUSTOM_TYPE_EVERYTHING
     default "1.0"
   config PARAM_NUM_GATES
     default 4
-  choice CHOICE_SELECTOR_TYPE
-    default MACRO_SELECTOR
-  endchoice
 endif 
