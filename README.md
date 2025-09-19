@@ -70,17 +70,17 @@ Some users have inquired about making donations to support this project (and to 
   - KMS
   - Custom...
 - Klipperscreen and Mainsail/Fluidd UI
-- Support for all type of sensor: pre-gate, post-gear, combiner gate sensors, extruder entry sensors, toolhead sensors
+- Support for all type of sensor: entry, exit, share exit sensor, extruder entry sensor, toolhead sensor
 - Full Spoolman integration
 - Multiple MMUs managed as one (limited to type-A until v4 release)
 - Support for motorized eSpooler filament buffer systems for rewinding
 - Suite of startup macros that include sophisticated parking options for filament change or error operations
-- Implements a Tool-to-Gate mapping so that the physical spool can be mapped to any tool
+- Implements a Tool-to-Lane mapping so that the physical spool can be mapped to any tool
 - EndlessSpool allowing a spool to automatically be mapped and take over from a spool that runs out
 - Sophisticated logging options (console and separate mmu.log file)
-- Can define material type and color in each gate for visualization and customized settings (like Pressure Advance)
+- Can define material type and color in each lane for visualization and customized settings (like Pressure Advance)
 - Automated calibration and tuning for easy setup
-- Supports MMU "bypass" gate functionality
+- Supports MMU "bypass" lane functionality
 - Moonraker update-manager support
 - Moonraker gcode pre-parsing to extract important print information
 - Complete persistence of state and statistics across restarts
