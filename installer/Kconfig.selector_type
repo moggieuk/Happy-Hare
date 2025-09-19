@@ -1,47 +1,47 @@
-choice CHOICE_SELECTOR_TYPE
+choice
   prompt "Selector type?" if MMU_CUSTOM_TYPE_A
   help
-	This must be a valid selector class that matches the control requiored by
-	your MMU design. Use VirtualSelector for all type-b designs.
+  	This must be a valid selector class that matches the control requiored by
+	  your MMU design. Use VirtualSelector for all type-b designs.
 
   config CHOICE_VIRTUAL_SELECTOR
-	bool "VirtualSelector"
-	select VIRTUAL_SELECTOR
-	help
-	  Use this for type-B MMU designs without a selector but instead separate gear motors
+	  bool "VirtualSelector"
+	  select VIRTUAL_SELECTOR
+	  help
+	    Use this for type-B MMU designs without a selector but instead separate gear motors
 
   config CHOICE_LINEAR_SELECTOR
-	bool "LinearSelector"
-	select LINEAR_SELECTOR
-	help
-	  This uses stepper for linear movement and servo for filament gripping
+    bool "LinearSelector"
+    select LINEAR_SELECTOR
+    help
+      This uses stepper for linear movement and servo for filament gripping
 
   config CHOICE_SERVO_SELECTOR
-	bool "ServoSelector"
+    bool "ServoSelector"
     select SERVO_SELECTOR
-	help
-	  This uses a servo (and usually a cam mechanism) to select. Filament can optionally
-	  be unselected by selecting an opposing gate or moving to designated position.
+    help
+      This uses a servo (and usually a cam mechanism) to select. Filament can optionally
+      be unselected by selecting an opposing gate or moving to designated position.
 
   config CHOICE_INDEXED_SELECTOR
-	bool "IndexedSelector"
-	select INDEXED_SELECTOR
-	help
-	  This uses a stepper motor for selection and relies on specific homing sensors for
-	  each gate (e.g. BTT ViViD).
+    bool "IndexedSelector"
+    select INDEXED_SELECTOR
+    help
+      This uses a stepper motor for selection and relies on specific homing sensors for
+      each gate (e.g. BTT ViViD).
 
   config CHOICE_ROTARY_SELECTOR
-	bool "RotarySelector"
-	select ROTARY_SELECTOR
-	help
-	  This is a special selector for 3D-Chameleon which can selector opposing gates and also
-	  causes the gear movement to be reversed
+    bool "RotarySelector"
+    select ROTARY_SELECTOR
+    help
+      This is a special selector for 3D-Chameleon which can selector opposing gates and also
+      causes the gear movement to be reversed
 
   config CHOICE_MACRO_SELECTOR
-	bool "MacroSelector"
-	select MACRO_SELECTOR
-	help
-	  Universal selector that uses user defined macros for the selection process.
+    bool "MacroSelector"
+    select MACRO_SELECTOR
+    help
+      Universal selector that uses user defined macros for the selection process.
 endchoice
 
 config VIRTUAL_SELECTOR
@@ -55,7 +55,7 @@ config INDEXED_SELECTOR
 config ROTARY_SELECTOR
   bool
 config MACRO_SELECTOR
-  bool "MacroSelector"
+  bool 
 
 config PARAM_SELECTOR_TYPE
   string
