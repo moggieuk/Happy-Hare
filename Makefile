@@ -137,7 +137,7 @@ hh_configs_to_parse := \
 # Files/targets that need to be build
 build_targets := \
 	$(addprefix $(OUT)/mmu/, $(hh_config_files)) \
-	$(addprefix $(OUT)/klippy/, $(hh_klipper_extras_files)) \
+	$(addprefix $(OUT)/klipper/, $(hh_klipper_extras_files)) \
 	$(addprefix $(OUT)/moonraker/, $(hh_moonraker_components)) \
         $(OUT)/$(MOONRAKER_CONFIG_FILE) \
         $(OUT)/$(PRINTER_CONFIG_FILE)
@@ -150,7 +150,7 @@ processed_targets := \
 # Files/targets that need to be installed
 install_targets := \
 	$(addprefix $(KLIPPER_CONFIG_HOME)/mmu/, $(hh_config_files)) \
-	$(addprefix $(KLIPPER_HOME)/klippy/, $(hh_klipper_extras_files)) \
+	$(addprefix $(KLIPPER_HOME)/, $(hh_klipper_extras_files)) \
 	$(addprefix $(MOONRAKER_HOME)/moonraker/, $(hh_moonraker_components)) \
 	$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE) \
 	$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)
@@ -244,7 +244,7 @@ $(OUT)/mmu/base/%_parameters.cfg: \
 		"$(if $(filter y,$(CONFIG_MULTI_UNIT)),$(KCONFIG_CONFIG)_$*,$(KCONFIG_CONFIG))" $(hh_configs_to_parse)
 
 # Python files are linked to the out directory
-$(OUT)/klippy/extras/%.py: $(SRC)/extras/%.py
+$(OUT)/klipper/extras/%.py: $(SRC)/extras/%.py
 	$(Q)$(call link,$<,$@)
 
 $(OUT)/moonraker/components/%.py: $(SRC)/components/%.py
@@ -264,11 +264,11 @@ build: $(build_targets)
 ###########################
 
 # Check whether the required paths exist
-$(KLIPPER_HOME)/klippy/extras $(MOONRAKER_HOME)/moonraker/components:
+$(KLIPPER_HOME) $(MOONRAKER_HOME)/moonraker/components:
 	$(error The directory '$@' does not exist. Please check your config for the correct paths)
 
 # Install python files for klipper
-$(KLIPPER_HOME)/%: $(OUT)/% | $(KLIPPER_HOME)/klippy/extras
+$(KLIPPER_HOME)/%: $(OUT)/klipper/% | $(KLIPPER_HOME)
 	$(Q)$(call install,$<,$@)
 	$(Q)$(eval restart_klipper = 1)
 
