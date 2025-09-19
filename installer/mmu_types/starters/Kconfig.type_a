@@ -5,7 +5,6 @@ config MMU_CUSTOM_TYPE_A
     by sure to add options under "MMU Additions".
     You can fine tune the klipper configuration as necessary.
   bool "Custom type A - with selector"
-  imply LINEAR_SELECTOR
   imply MMU_HAS_SELECTOR
   imply MMU_HAS_SERVO
   imply PARAM_REQUIRE_BOWDEN_MOVE
@@ -35,9 +34,11 @@ if MMU_CUSTOM_TYPE_A
   if SHOW_MMU_ADDITIONS_WITH_TYPE
     source "mmu_additions/Kconfig"
   endif
-endif
 
-if MMU_CUSTOM_TYPE_A
+  ####################
+  ##### Defaults #####
+  ####################
+
   config PARAM_MMU_VENDOR
     default "Other"
   config PARAM_MMU_VERSION
@@ -57,6 +58,10 @@ if MMU_CUSTOM_TYPE_A
   config PARAM_SELECTOR_HOLD_CURRENT
     default "0.1"
 
+  # For TYPE A we need to use the choice instead of select/imply the selector type directly
+  choice CHOICE_SELECTOR_TYPE
+    default CHOICE_LINEAR_SELECTOR
+  endchoice
   choice CHOICE_GATE_HOMING_ENDSTOP
     default GATE_HOMING_ENDSTOP_GATE
   endchoice
