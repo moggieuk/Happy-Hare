@@ -96,7 +96,7 @@ restart_klipper = 0
 .SECONDEXPANSION:
 .DEFAULT_GOAL := build
 .PRECIOUS: $(KCONFIG_CONFIG)
-.PHONY: update menuconfig install uninstall check_root check_version diff test build clean variables
+.PHONY: menuconfig install uninstall check_version diff test build clean variables
 .SECONDARY: \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
