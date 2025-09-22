@@ -20,7 +20,7 @@ if BOARD_TYPE_MMB_1_0
   config PIN_GEAR_DIAG
     default "$(MMU_MCU):PA3" 
 
-  if PARAM_SELECTOR_TYPE = "VirtualSelector"
+  if VIRTUAL_SELECTOR
     config PIN_GEAR_UART_1 
       default "$(MMU_MCU):PC7" 
     config PIN_GEAR_STEP_1
@@ -82,7 +82,7 @@ if BOARD_TYPE_MMB_1_0
       default "$(MMU_MCU):PB2"
   endif
 
-  if PARAM_SELECTOR_TYPE != "VirtualSelector"
+  if !VIRTUAL_SELECTOR
     config PIN_SELECTOR_UART
       default "$(MMU_MCU):PC7" 
     config PIN_SELECTOR_STEP

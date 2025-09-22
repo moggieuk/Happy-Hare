@@ -76,13 +76,13 @@ menu "Motors"
 
     config PARAM_SERVO_DURATION
       string "Servo duration"
-      default "0.4" if PARAM_SELECTOR_TYPE = "LinearSelector"
-      default "0.5" if PARAM_SELECTOR_TYPE = "ServoSelector"
+      default "0.4" if LINEAR_SELECTOR
+      default "0.5" if SERVO_SELECTOR
 
     config PARAM_SERVO_DWELL
       string "Servo dwell"
-      default "0.5" if PARAM_SELECTOR_TYPE = "LinearSelector"
-      default "0.8" if PARAM_SELECTOR_TYPE = "ServoSelector"
+      default "0.5" if LINEAR_SELECTOR
+      default "0.8" if SERVO_SELECTOR
 
     config BOOL_SERVO_ALWAYS_ACTIVE
       bool "Servo always active?"

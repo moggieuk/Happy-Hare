@@ -21,7 +21,7 @@ if BOARD_TYPE_SKR_PICO_1
   config PIN_GEAR_DIAG
     default "$(MMU_MCU):gpio4" 
 
-  if PARAM_SELECTOR_TYPE = "VirtualSelector"
+  if VIRTUAL_SELECTOR
     config PIN_GEAR_STEP_1
       default "$(MMU_MCU):gpio6" 
     config PIN_GEAR_DIR_1
@@ -50,7 +50,7 @@ if BOARD_TYPE_SKR_PICO_1
       default "$(MMU_MCU):gpio16" 
   endif
 
-  if PARAM_SELECTOR_TYPE != "VirtualSelector"
+  if !VIRTUAL_SELECTOR
     config PIN_SELECTOR_STEP
       default "$(MMU_MCU):gpio19" 
     config PIN_SELECTOR_DIR

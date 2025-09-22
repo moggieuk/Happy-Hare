@@ -4,7 +4,7 @@ menu "Speeds"
     string "Gear homing speed (mm/s)"
     default "50"
 
-  if PARAM_SELECTOR_TYPE = "LinearSelector" || PARAM_SELECTOR_TYPE = "RotarySelector" || PARAM_SELECTOR_TYPE = "IndexedSelector"
+  if LINEAR_SELECTOR || ROTARY_SELECTOR || INDEXED_SELECTOR
     config PARAM_SELECTOR_MOVE_SPEED
       string "Speed of non-touch selector movement (mm/s)"
       default "200"
@@ -16,7 +16,7 @@ menu "Speeds"
 
     config PARAM_SELECTOR_HOMING_SPEED
       string "Speed of initial selector homing move (mm/s)"
-      depends on PARAM_SELECTOR_TYPE != "IndexedSelector"
+      depends on !INDEXED_SELECTOR
       default "60"
   endif 
 

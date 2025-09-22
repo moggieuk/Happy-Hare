@@ -22,7 +22,7 @@ menu "Pins"
       config PIN_GEAR_DIAG
         string "Gear diag pin"
 
-      if PARAM_SELECTOR_TYPE = "VirtualSelector"
+      if VIRTUAL_SELECTOR
         if PARAM_NUM_GATES > 1 
           config PIN_GEAR_UART_1 
             string "Gear 1 UART pin"
@@ -64,9 +64,7 @@ menu "Pins"
       endif
     endmenu
 
-    if PARAM_SELECTOR_TYPE = "LinearSelector" || \
-       PARAM_SELECTOR_TYPE = "RotarySelector" || \
-       PARAM_SELECTOR_TYPE = "IndexedSelector"
+    if LINEAR_SELECTOR || ROTARY_SELECTOR || INDEXED_SELECTOR
       menu "Selector pins"
         config PIN_SELECTOR_UART
           string "Selector UART pin"
