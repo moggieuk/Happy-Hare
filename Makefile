@@ -1,4 +1,4 @@
-SHELL := /usr/bin/env bash
+SHELL := /usr/bin/env sh
 PY    := python
 Q  ?= @                           # For quiet make builds, override with make Q= for verbose output
 V  ?=                             # For verbose output (mostly from python builder), set to -v to enable

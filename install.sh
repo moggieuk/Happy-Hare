@@ -1,11 +1,11 @@
-#!/usr/bin/env bash
+#!/usr/bin/env sh
 #
 # Happy Hare MMU Software
 #
 # Installer / Updater launch script with familar options
 #
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 
 if [ -n "$(which tput 2>/dev/null)" ]; then
     C_OFF=$(tput -Txterm-256color sgr0)
@@ -47,20 +47,26 @@ usage() {
 
 ordinal() {
     case "$1" in
-        *1[0-9] | *[04-9]) echo "$1"th ;;
-        *1) echo "$1"st ;;
-        *2) echo "$1"nd ;;
-        *3) echo "$1"rd ;;
+    *1[0-9] | *[04-9]) echo "$1"th ;;
+    *1) echo "$1"st ;;
+    *2) echo "$1"nd ;;
+    *3) echo "$1"rd ;;
     esac
 }
 
 prompt_yn() {
     while true; do
-        read -n1 -p "$@ (y/n)? " yn
-        case "${yn}" in 
-            Y|y) echo -n "y"; break ;;
-            N|n) echo -n "n"; break ;;
-        esac        
+        read -n1 -p "$* (y/n)? " yn
+        case "${yn}" in
+        Y | y)
+            echo -n "y"
+            break
+            ;;
+        N | n)
+            echo -n "n"
+            break
+            ;;
+        esac
     done
 }
 
@@ -68,31 +74,31 @@ trim() {
     name=${1-}
     name=${name#"${name%%[![:space:]]*}"} # Remove leading whitespace
     name=${name%"${name##*[![:space:]]}"} # Remove trailing whitespace
-    echo $name
+    echo "${name}"
 }
 
 while getopts "iudzsb:nk:c:m:a:tqv" arg; do
     case $arg in
-        i) F_MENUCONFIG=y ;;
-        u|d) F_UNINSTALL=y ;;
-        z) export F_SKIP_UPDATE="${F_SKIP_UPDATE:=y}" ;;
-        s) export F_NO_SERVICE=y ;;
-        b) export BRANCH="${OPTARG}" ;;
-        n) export F_MULTI_UNIT=y ;;
-        k) export CONFIG_KLIPPER_HOME="${OPTARG}" ;;
-        c) export CONFIG_KLIPPER_CONFIG_HOME="${OPTARG}" ;;
-        m) export CONFIG_MOONRAKER_HOME="${OPTARG}" ;;
-        # TODO: Repetier-Server stub support
-        # r)
-        #     PRINTER_CONFIG=${OPTARG}.cfg
-        #     KLIPPER_SERVICE=klipper_${OPTARG}.service
-        #     echo "Repetier-Server <stub> specified. Over-riding printer.cfg to [${PRINTER_CONFIG}] & klipper.service to [${KLIPPER_SERVICE}]"
-        #     ;;
-        a) export CONFIG_KLIPPER_SERVICE="${OPTARG}.service" ;;
-        t) export TESTDIR=/tmp/mmu_test ;;
-        q) export Q= ;;   # Developer: Disable quite mode in Makefile
-        v) export V=-v ;; # Developer: Enable verbose mode in builder and debug in Makefile
-        *) usage ;;
+    i) F_MENUCONFIG=y ;;
+    u | d) F_UNINSTALL=y ;;
+    z) export F_SKIP_UPDATE="${F_SKIP_UPDATE:=y}" ;;
+    s) export F_NO_SERVICE=y ;;
+    b) export BRANCH="${OPTARG}" ;;
+    n) export F_MULTI_UNIT=y ;;
+    k) export CONFIG_KLIPPER_HOME="${OPTARG}" ;;
+    c) export CONFIG_KLIPPER_CONFIG_HOME="${OPTARG}" ;;
+    m) export CONFIG_MOONRAKER_HOME="${OPTARG}" ;;
+    # TODO: Repetier-Server stub support
+    # r)
+    #     PRINTER_CONFIG=${OPTARG}.cfg
+    #     KLIPPER_SERVICE=klipper_${OPTARG}.service
+    #     echo "Repetier-Server <stub> specified. Over-riding printer.cfg to [${PRINTER_CONFIG}] & klipper.service to [${KLIPPER_SERVICE}]"
+    #     ;;
+    a) export CONFIG_KLIPPER_SERVICE="${OPTARG}.service" ;;
+    t) export TESTDIR=/tmp/mmu_test ;;
+    q) export Q= ;;   # Developer: Disable quite mode in Makefile
+    v) export V=-v ;; # Developer: Enable verbose mode in builder and debug in Makefile
+    *) usage ;;
     esac
 done
 
@@ -135,10 +141,13 @@ if [ "${TESTDIR}" ]; then
     touch "${CONFIG_KLIPPER_CONFIG_HOME}/printer.cfg"
     if [ ! "${F_UNINSTALL}" ]; then
         echo -e "${C_INFO}When complete look in ${TESTDIR} for results${C_OFF}\n"
-        [ $(prompt_yn "Continue") != "y" ] && { echo; exit 0; } || echo; echo
+        [ "$(prompt_yn "Continue")" != "y" ] && {
+            echo
+            exit 0
+        } || echo
+        echo
     fi
 fi
-
 
 #####################
 ##### Uninstall #####
@@ -146,14 +155,17 @@ fi
 
 if [ "${F_UNINSTALL}" ]; then
     echo -e "${C_WARNING}This will uninstall and cleanup prior config${C_OFF}\n"
-    [ $(prompt_yn "Are you sure") != "y" ] && { echo; exit 0; } || echo; echo
+    [ "$(prompt_yn "Are you sure")" != "y" ] && {
+        echo
+        exit 0
+    } || echo
+    echo
     SECONDS=0
     make -C "${SCRIPT_DIR}" uninstall
     [ "${TESTDIR}" ] && rm -rf "${TESTDIR}"
     echo "${C_INFO}Elapsed: ${SECONDS} seconds${C_OFF}"
     exit 0
 fi
-
 
 ######################
 ##### Menuconfig #####
@@ -169,7 +181,7 @@ if [ ! -e "${KCONFIG_CONFIG}" ]; then
 fi
 
 if [ -n "${F_MENUCONFIG:-}" ]; then
-
+    #shellcheck source=.config
     [ -r "${KCONFIG_CONFIG}" ] && . "${KCONFIG_CONFIG}"
 
     if [ -n "${F_MULTI_UNIT:-}" ] || [ -n "${CONFIG_MULTI_UNIT:-}" ]; then
@@ -188,6 +200,7 @@ if [ -n "${F_MENUCONFIG:-}" ]; then
         exit 1
     fi
 
+    #shellcheck source=.config
     . "${KCONFIG_CONFIG}"
 
     # Now we are sure of having multi-unit names, move the original combined config
@@ -212,7 +225,6 @@ if [ -n "${F_MENUCONFIG:-}" ]; then
         IFS=${OLDIFS}
     fi
 fi
-
 
 ###################
 ##### Install #####

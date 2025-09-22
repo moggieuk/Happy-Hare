@@ -8,6 +8,8 @@ RUN apk update \
  && apk add make git sudo \
  && apk cache clean
 
+RUN pip install jinja2
+
 ARG REPO=https://github.com/Klipper3d/klipper
 ARG VERSION=master
 
