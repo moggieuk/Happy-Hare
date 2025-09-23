@@ -613,6 +613,8 @@ class MmuLedManager:
                 elif effect == "filament_color":
                     if gate is not None:
                         rgb = self.mmu.gate_color_rgb[gate]
+                        if rgb == (0,0,0):
+                            rgb = mmu_unit.leds.black_light
                         stop_effect_and_set_gate_rgb(rgb, unit, segment, gate)
                     else:
                         stop_gate_effect(unit, segment, None) # Stop all gates
@@ -630,6 +632,8 @@ class MmuLedManager:
                 elif effect == "slicer_color":
                     if gate is not None:
                         rgb = self.mmu.slicer_color_rgb[gate]
+                        if rgb == (0,0,0):
+                            rgb = mmu_unit.leds.black_light
                         stop_effect_and_set_gate_rgb(rgb, unit, segment, gate)
                     else:
                         stop_gate_effect(unit, segment, None) # Stop all gates
