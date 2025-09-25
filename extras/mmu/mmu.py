@@ -4470,8 +4470,10 @@ class Mmu:
             _,_,measured,delta = self.trace_filament_move("Loading filament to nozzle", length, speed=speed, motor=motor, wait=True)
             self._set_filament_remaining(0.)
 
-            # Proportional-only pre-settle during extruder load (no tension/compression switches present)
+            # Proportional-only tension adjustments during extruder load for reliability 
+            # (no tension/compression switches present)
             if (
+                self.toolhead_post_load_tension_adjust and 
                 (self.sync_to_extruder or self.sync_purge)
                 and not (has_tension or has_compression)
                 and self.sync_feedback_manager.is_enabled()
@@ -4481,9 +4483,10 @@ class Mmu:
                 neutral_band = 0.2   # treat |state| <= this as neutral
                 settle_time = 0.10   # seconds between nudges
                 max_len = float(self.sync_feedback_manager.sync_feedback_buffer_maxrange)
+                max_steps = int(max_len / inc) + 1
                 total = 0.0
                 steps = 0
-                while abs(total) < max_len and steps < 200:
+                while abs(total) < max_len and steps < max_steps:
                     state = float(self.sync_feedback_manager.state)
                     if abs(state) <= neutral_band:
                         break
@@ -4499,7 +4502,7 @@ class Mmu:
                         self.mmu.reactor.pause(settle_time)
                     except Exception:
                         time.sleep(settle_time)
-                self.log_info("Proportional sensor settling - extruder load complete (gear-only total: %.2fmm)" % total)
+                self.log_info("Proportional sensor settling - extruder load complete (gear-only move: %.2fmm)" % total)
             # End of Proportional-only pre-settle
 
             # Encoder based validation test if short of deterministic sensors and test makes sense
@@ -4544,34 +4547,6 @@ class Mmu:
                     tension_active = self.sensor_manager.check_sensor(self.SENSOR_TENSION)
                     compression_active = self.sensor_manager.check_sensor(self.SENSOR_COMPRESSION)
                     _,_ = self._adjust_filament_tension()
-
-                elif (
-                    self.toolhead_post_load_tension_adjust
-                    and (self.sync_to_extruder or self.sync_purge)
-                    and not (has_tension or has_compression)
-                    and self.sync_feedback_manager.is_enabled()
-                ):
-                    # Proportional-only toolhead load re-centering (no tension/compression switches present)
-                    state = float(self.sync_feedback_manager.state)
-                    if abs(state) > 0.5:
-                        rng = float(self.sync_feedback_manager.sync_feedback_buffer_maxrange)
-                        # tension (state < 0) -> feed forward (+) to reduce tension
-                        # compression (state > 0) -> retract (-) to reduce compression
-                        nudge = (0.25 * rng) * (1.0 if state < 0.0 else -1.0)
-                        if nudge > rng:
-                            nudge = rng
-                        if nudge < -rng:
-                            nudge = -rng
-                        _a,_b,_c,_d = self.trace_filament_move(
-                            "Proportional sensor settling - toolhead load",
-                            nudge, motor="gear", wait=True
-                        )
-                        self.log_info("Proportional sensor settling - toolhead load complete (gear-only move: %.2fmm, state=%.3f)" % (nudge, state))
-                    else:
-                        self.log_info(
-                            "Proportional sensor settling - toolhead load skipped "
-                            "(state already neutral: %.3f)" % state
-                        )
 
             self._random_failure() # Testing
             self.movequeues_wait()
