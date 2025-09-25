@@ -4700,13 +4700,12 @@ class Mmu:
     #               For example for a sensor with 14mm range, a 0.15 tolerance is approx 2.1mm either side of centre.
     # settle_time:  delay between moves to allow sensor feedback to update
     # timeout_s:    hard stop to avoid hanging if the sensor never clears
-    def _adjust_filament_tension_proportional(self, nudge_mm=0.5, neutral_band=0.15, settle_time=0.20, timeout_s=10.0):
+    def _adjust_filament_tension_proportional(self, neutral_band=0.15, settle_time=0.20, timeout_s=10.0):
         # sanity-check parameters before doing anything
-        if nudge_mm <= 0.0:
-            self.log_debug("Proportional adjust skipped: invalid nudge size %.3f" % nudge_mm)
-            return 0., False
-        if neutral_band < 0.0:
-            neutral_band = 0.0
+        # neutral band needs to have a non zero and non trivial value. Enforce 5% (0.05)
+        # as the lower limit of acceptable neutral band tolerance.
+        if neutral_band < 0.05:
+            neutral_band = 0.05
 
         # maxrange is full end-to-end sensor span; use half as the per-side budget from neutral to either end
         maxrange_span_mm = float(self.sync_feedback_manager.sync_feedback_buffer_maxrange)
@@ -4714,6 +4713,7 @@ class Mmu:
             self.log_debug("Proportional adjust skipped: buffer maxrange <= 0")
             return 0., False
         per_side_budget_mm = 0.5 * maxrange_span_mm
+        nudge_mm = per_side_budget_mm * neutral_band
 
         # cap total nudge iterations to stay within the overall sensor range
         max_steps = math.ceil(maxrange_span_mm / nudge_mm)
@@ -4780,7 +4780,7 @@ class Mmu:
             # direction: tension -> feed forward; compression -> retract
             nudge_move_mm = nudge_mm if prop_state < 0.0 else -nudge_mm
             # don't exceed the end to end sensor span (maxrange_span_mm). Serves as "ultimate" failsafe.
-            if abs(moved_total_mm + nudge_move_mm) > maxrange_span_mm:
+            if abs(moved_total_mm + nudge_move_mm) >= maxrange_span_mm:
                 self.log_info(
                     "Proportional adjust: aborted (exceeded buffer) "
                     "(nudge=%.2fmm, initial=%.2fmm, nudges=%.2fmm, total=%.2fmm, steps=%d, final_state=%.3f)" %
