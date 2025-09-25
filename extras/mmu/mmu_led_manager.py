@@ -612,9 +612,12 @@ class MmuLedManager:
 
                 elif effect == "filament_color":
                     if gate is not None:
-                        rgb = self.mmu.gate_color_rgb[gate]
-                        if rgb == (0,0,0):
-                            rgb = mmu_unit.leds.black_light
+                        if self.mmu.gate_status[gate] == self.mmu.GATE_EMPTY:
+                            rgb = mmu_unit.leds.empty_light
+                        else:
+                            rgb = self.mmu.gate_color_rgb[gate]
+                            if rgb == (0,0,0):
+                                rgb = mmu_unit.leds.black_light
                         stop_effect_and_set_gate_rgb(rgb, unit, segment, gate)
                     else:
                         stop_gate_effect(unit, segment, None) # Stop all gates
@@ -631,15 +634,24 @@ class MmuLedManager:
 
                 elif effect == "slicer_color":
                     if gate is not None:
-                        rgb = self.mmu.slicer_color_rgb[gate]
-                        if rgb == (0,0,0):
-                            rgb = mmu_unit.leds.black_light
+                        if self.mmu.gate_status[gate] == self.mmu.GATE_EMPTY:
+                            rgb = mmu_unit.leds.empty_light
+                        else:
+                            rgb = self.mmu.slicer_color_rgb[gate]
+                            if rgb == (0, 0, 0):
+                                rgb = mmu_unit.leds.black_light
                         stop_effect_and_set_gate_rgb(rgb, unit, segment, gate)
                     else:
-                        stop_gate_effect(unit, segment, None) # Stop all gates
+                        stop_gate_effect(unit, segment, None)  # Stop all gates
                         for g, is_last in with_last(range(mmu_unit.first_gate, mmu_unit.first_gate + mmu_unit.num_gates)):
                             rgb = self.mmu.slicer_color_rgb[g]
+                            if self.mmu.gate_status[g] != self.mmu.GATE_EMPTY:
+                                if rgb == (0, 0, 0):
+                                    rgb = mmu_unit.leds.black_light
+                            else:
+                                rgb = mmu_unit.leds.empty_light
                             set_gate_rgb(rgb, unit, segment, g, transmit=is_last)
+
 
                 elif isinstance(effect, tuple) or ',' in effect: # RGB color
                     rgb = MmuLeds.string_to_rgb(effect)
