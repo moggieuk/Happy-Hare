@@ -4695,10 +4695,12 @@ class Mmu:
     # Returns: distance_moved_mm, success_bool
     #
     # nudge_mm:     per-move adjustment distance in mm (small feed or retract)
-    # neutral_band: absolute value of proportional sensor reading considered "neutral"
+    # neutral_band: absolute value of proportional sensor reading considered "neutral". 
+    #               This can be loosely interpreted as a % over the max range of detection of the sensor.
+    #               For example for a sensor with 14mm range, a 0.15 tolerance is approx 2.1mm either side of centre.
     # settle_time:  delay between moves to allow sensor feedback to update
     # timeout_s:    hard stop to avoid hanging if the sensor never clears
-    def _adjust_filament_tension_proportional(self, nudge_mm=0.3, neutral_band=0.1, settle_time=0.20, timeout_s=1.5):
+    def _adjust_filament_tension_proportional(self, nudge_mm=0.5, neutral_band=0.15, settle_time=0.20, timeout_s=10.0):
         # sanity-check parameters before doing anything
         if nudge_mm <= 0.0:
             self.log_debug("Proportional adjust skipped: invalid nudge size %.3f" % nudge_mm)
@@ -4713,14 +4715,14 @@ class Mmu:
             return 0., False
         per_side_budget_mm = 0.5 * maxrange_span_mm
 
-        # cap total nudge iterations to stay within the per-side budget
-        max_steps = math.ceil(per_side_budget_mm / nudge_mm)
+        # cap total nudge iterations to stay within the overall sensor range
+        max_steps = math.ceil(maxrange_span_mm / nudge_mm)
 
         moved_total_mm   = 0.0  # total net distance moved during this adjustment
         moved_nudges_mm  = 0.0  # sum of all nudge moves
         moved_initial_mm = 0.0  # size of the initial proportional move (if any)
         steps            = 0    # total moves performed
-        t_start          = self.mmu.reactor.monotonic()
+        t_start          = self.reactor.monotonic()
 
         # --- initial proportional correction ---
         # negative sensor state = tension -> feed filament. positive sensor state = compression -> retract filament
@@ -4736,9 +4738,10 @@ class Mmu:
                     initial_move_mm, motor="gear", wait=True
                 )
                 moved_total_mm += initial_move_mm
+                moved_initial_mm = initial_move_mm
                 steps += 1
                 try:
-                    self.mmu.reactor.pause(settle_time)
+                    self.reactor.pause(settle_time)
                 except Exception:
                     time.sleep(settle_time)
 
@@ -4753,21 +4756,21 @@ class Mmu:
             return moved_total_mm, True
 
         # --- fine adjustment loop (nudges) ---
-        while abs(moved_total_mm) < per_side_budget_mm and steps < max_steps:
+        while abs(moved_total_mm) < maxrange_span_mm and steps < max_steps:
+            prop_state = float(self.sync_feedback_manager.state)
             # timeout safety: avoid hanging if the sensor never clears
-            if (self.mmu.reactor.monotonic() - t_start) > timeout_s:
+            if (self.reactor.monotonic() - t_start) > timeout_s:
                 self.log_info(
                     "Proportional adjust: timed out "
                     "(nudge=%.2fmm, initial=%.2fmm, nudges=%.2fmm, total=%.2fmm, steps=%d, final_state=%.3f)" %
                     (nudge_mm, moved_initial_mm, moved_nudges_mm, moved_total_mm, steps, prop_state)
                 )
                 return moved_total_mm, False
-
-            prop_state = float(self.sync_feedback_manager.state)
+                
             if abs(prop_state) <= neutral_band:
                 # confirm neutral after a short wait
                 try:
-                    self.mmu.reactor.pause(settle_time)
+                    self.reactor.pause(settle_time)
                 except Exception:
                     time.sleep(settle_time)
                 prop_state = float(self.sync_feedback_manager.state)
@@ -4793,7 +4796,7 @@ class Mmu:
             moved_nudges_mm += nudge_move_mm
             steps           += 1
             try:
-                self.mmu.reactor.pause(settle_time)
+                self.reactor.pause(settle_time)
             except Exception:
                 time.sleep(settle_time)
 
