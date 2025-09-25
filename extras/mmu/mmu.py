@@ -4529,7 +4529,6 @@ class Mmu:
             self.log_debug("Filament should be loaded to nozzle")
             return homing_movement # Will only have value if we have toolhead sensor
 
-
     # Extract filament past extruder gear (to end of bowden). Assume that tip has already been formed
     # and we are parked somewhere in the extruder either by slicer or by stand alone tip creation
     # But be careful:
