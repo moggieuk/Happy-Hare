@@ -30,7 +30,8 @@ import logging, time, math
 
 class MmuSyncFeedbackManager:
 
-    FEEDBACK_INTERVAL     = 0.25     # How often to check extruder movement
+    FEEDBACK_INTERVAL     = 0.25    # How often to check extruder movement
+    SIGNIFICANT_MOVEMENT  = 5.      # Min extruder movement to trigger direction change (don't want small retracts to trigger)
     MOVEMENT_THRESHOLD    = 50      # Default extruder movement threshold trigger when stuck in one state
     MULTIPLIER_RUNAWAY    = 0.25    # Used to limit range in runaway conditions (25%)
     MULTIPLIER_WHEN_STUCK = 0.01    # Used to "widen" clamp if we are not getting to neutral soon enough (1%)
@@ -64,13 +65,8 @@ class MmuSyncFeedbackManager:
         self.sync_feedback_buffer_maxrange = self.mmu.config.getfloat('sync_feedback_buffer_maxrange', 10., minval=0.)
         self.sync_multiplier_high = self.mmu.config.getfloat('sync_multiplier_high', 1.05, minval=1., maxval=2.)
         self.sync_multiplier_low = self.mmu.config.getfloat('sync_multiplier_low', 0.95, minval=0.5, maxval=1.)
-        # Make direction detection threshold configurable and reasonable for proportional updates
-        # Min extruder movement to trigger direction change
-        self.sync_movement_threshold = self.mmu.config.getfloat(
-            'sync_movement_threshold',
-            self.MOVEMENT_THRESHOLD,
-            above=0.5
-        )
+        # Make direction detection threshold configurable. This is the min extruder movement to trigger direction change
+        self.sync_movement_threshold = self.mmu.config.getfloat('sync_movement_threshold',self.SIGNIFICANT_MOVEMENT,above=0.5)
 
         # Setup events for managing motor synchronization
         self.mmu.printer.register_event_handler("mmu:synced", self._handle_mmu_synced)
