@@ -4522,6 +4522,16 @@ class Mmu:
                     tension_active = self.sensor_manager.check_sensor(self.SENSOR_TENSION)
                     compression_active = self.sensor_manager.check_sensor(self.SENSOR_COMPRESSION)
                     _,_ = self._adjust_filament_tension()
+                # Proportional-only tension adjustment post toolhead load (used if no tension/compression switches are present)
+                # Probably redundant but can help in case of extruder slippage.
+                if (
+                    self.toolhead_post_load_tension_adjust
+                    and (self.sync_to_extruder or self.sync_purge)
+                    and not (has_tension or has_compression)
+                    and self.sync_feedback_manager.is_enabled()
+                    and getattr(self.sync_feedback_manager, "_proportional_seen", False)
+                ):
+                    self._adjust_filament_tension_proportional()
 
             self._random_failure() # Testing
             self.movequeues_wait()
@@ -4949,6 +4959,12 @@ class Mmu:
                             self.wrap_gcode_command(self.post_load_macro, exception=True, wait=True)
                     else:
                         self.wrap_gcode_command(self.post_load_macro, exception=True, wait=True)
+            
+            # Re-enable end guard now that toolhead is fully loaded. If no sync feedback sensor, this does nothing.
+            # Do not enable end guard if bypass is selected as the sensor cannot reliably maintain
+            # neutral position as with bypass only the extruder pulls the filament.
+            if self.gate_selected != self.TOOL_GATE_BYPASS:
+                self.sync_feedback_manager.enable_endguard(reason="load_sequence_complete")
 
         except MmuError as ee:
             self._track_gate_statistics('load_failures', self.gate_selected)
@@ -4992,6 +5008,8 @@ class Mmu:
         if self.filament_pos == self.FILAMENT_POS_UNLOADED:
             self.log_debug("Filament already ejected")
             return
+            
+        self.sync_feedback_manager.disable_endguard(reason="unload_sequence_start")  
 
         try:
             if not extruder_only:

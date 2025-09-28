@@ -4,7 +4,8 @@
 #                          moggieuk@hotmail.com
 #
 # Goal: Manager class to handle sync-feedback and adjustment of gear rotation distance
-#       to keep MMU in sync with extruder
+#       to keep MMU in sync with extruder. It also implements clog and tangle detection
+#       if a proportional filament pressure sensor is installed.
 #
 # (\_/)
 # ( *,*)
@@ -75,6 +76,7 @@ class MmuSyncFeedbackManager:
         # G-code to run when EndGuard triggers.
         self._endguard_forward_mm   = 0.0
         self._endguard_triggered    = False
+        self.endguard_active        = 0  # runtime latch to activate/deactivate endguard during the load/unload process
 
         # Setup events for managing motor synchronization
         self.mmu.printer.register_event_handler("mmu:synced", self._handle_mmu_synced)
@@ -99,6 +101,9 @@ class MmuSyncFeedbackManager:
         self.sync_feedback_buffer_maxrange = gcmd.get_float('SYNC_FEEDBACK_BUFFER_MAXRANGE', self.sync_feedback_buffer_maxrange, minval=0.)
         self.sync_multiplier_high = gcmd.get_float('SYNC_MULTIPLIER_HIGH', self.sync_multiplier_high, minval=1., maxval=2.)
         self.sync_multiplier_low = gcmd.get_float('SYNC_MULTIPLIER_LOW', self.sync_multiplier_low, minval=0.5, maxval=1.)
+        self.endguard_enabled = gcmd.get_int('SYNC_ENDGUARD_ENABLED', self.endguard_enabled, minval=0, maxval=1)
+        self.endguard_band = gcmd.get_float('SYNC_ENDGUARD_BAND', self.endguard_band, minval=0.55, maxval=1.00)
+        self.endguard_distance_mm = gcmd.get_float('SYNC_ENDGUARD_DISTANCE_MM', self.endguard_distance_mm, minval=1.0)
 
     def get_test_config(self):
         msg = "\nsync_feedback_enabled = %d" % self.sync_feedback_enabled
@@ -106,6 +111,9 @@ class MmuSyncFeedbackManager:
         msg += "\nsync_feedback_buffer_maxrange = %.1f" % self.sync_feedback_buffer_maxrange
         msg += "\nsync_multiplier_high = %.2f" % self.sync_multiplier_high
         msg += "\nsync_multiplier_low = %.2f" % self.sync_multiplier_low
+        msg += "\nsync_endguard_enabled = %d" % self.endguard_enabled
+        msg += "\nsync_endguard_band = %.2f" % self.endguard_band
+        msg += "\nsync_endguard_distance_mm = %.1f" % self.endguard_distance_mm
         return msg
 
     def check_test_config(self, param):
@@ -153,6 +161,13 @@ class MmuSyncFeedbackManager:
         if self.mmu.is_enabled and self.sync_feedback_enabled and (self.active or detail):
             return 'compressed' if state > 0.5 else 'tension' if state < -0.5 else 'neutral'
         return "disabled"
+
+    # End guard enable/disable hooks
+    def enable_endguard(self, reason=None):
+        self.set_endguard_active(True, reason)
+
+    def disable_endguard(self, reason=None):
+        self.set_endguard_active(False, reason)
 
     #
     # Internal implementation --------------------------------------------------
@@ -518,12 +533,50 @@ class MmuSyncFeedbackManager:
     
     # EndGuard implementation (proportional filament pressure sensor clog and tangle detection)
 
+    def set_endguard_active(self, enabled, reason=None):
+        # Respect config: if EndGuard is disabled, ignore requests to change state.
+        if not getattr(self, "endguard_enabled", 0):
+            # Make sure runtime latch reflects disabled state
+            self.endguard_active = 0
+            return
+
+        # Apply requested state and (re)initialize local EndGuard state.
+        self.endguard_active = 1 if enabled else 0
+
+        # Clear any pending action/timer every time.
+        try:
+            self._endguard_action_pending = False
+            if hasattr(self, "_endguard_timer_handle"):
+                self.mmu.reactor.update_timer(self._endguard_timer_handle, self.mmu.reactor.NEVER)
+        except Exception:
+            pass
+
+        # Reset EndGuard counters/flags unconditionally.
+        self._reset_endguard()
+
+        if self.endguard_active:
+            # reset watchdogs and sync state
+            self._reset_extruder_watchdog()
+            self._reset_current_sync_state()
+            try:
+                self._ensure_rd_clamp(self.mmu.gate_selected)
+            except Exception:
+                pass
+
+        # Log endguard state.
+        try:
+            # IG ToDo: Clean up log states
+            self.mmu.log_info( "EndGuard: %s%s" % ( "enabled" if self.endguard_active else "disabled", (" (%s)" % reason) if reason else "" ) )
+        except Exception:
+            pass
+
+
     def _reset_endguard(self):
         self._endguard_forward_mm = 0.0
         self._endguard_triggered = False
 
     def _notify_endguard_forward_progress(self, movement):
-        if not getattr(self, "endguard_enabled", 0):
+        if not (getattr(self, "endguard_enabled", 0) and getattr(self, "endguard_active", 0)):
             return
         if movement <= 0.0:
             return
