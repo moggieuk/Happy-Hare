@@ -67,6 +67,14 @@ class MmuSyncFeedbackManager:
         self.sync_multiplier_low = self.mmu.config.getfloat('sync_multiplier_low', 0.95, minval=0.5, maxval=1.)
         # Make direction detection threshold configurable. This is the min extruder movement to trigger direction change
         self.sync_movement_threshold = self.mmu.config.getfloat('sync_movement_threshold',self.SIGNIFICANT_MOVEMENT,above=0.5)
+        
+        # EndGuard (proportional near-end watchdog)
+        self.endguard_enabled       = self.mmu.config.getint('sync_endguard_enabled', 0, minval=0, maxval=1)
+        self.endguard_band          = self.mmu.config.getfloat('sync_endguard_band', 0.80, minval=0.55, maxval=1.00)
+        self.endguard_distance_mm   = self.mmu.config.getfloat('sync_endguard_distance_mm', 6.0, minval=1.0)
+        # G-code to run when EndGuard triggers.
+        self._endguard_forward_mm   = 0.0
+        self._endguard_triggered    = False
 
         # Setup events for managing motor synchronization
         self.mmu.printer.register_event_handler("mmu:synced", self._handle_mmu_synced)
@@ -83,6 +91,7 @@ class MmuSyncFeedbackManager:
     def reinit(self):
         self.rd_clamps = {}         # Autotune - Array of [slow_rd, current_rd, fast_rd, tuned_rd, original_rd] indexed by gate
         self._reset_extruder_watchdog()
+        self._reset_endguard()
 
     def set_test_config(self, gcmd):
         self.sync_feedback_enabled = gcmd.get_int('SYNC_FEEDBACK_ENABLED', self.sync_feedback_enabled)
@@ -116,6 +125,7 @@ class MmuSyncFeedbackManager:
                 self.rd_clamps[gate] = [rd * self.sync_multiplier_high, rd, rd * self.sync_multiplier_low, None, rd]
 
             self._reset_extruder_watchdog()
+            self._reset_endguard()
             self._reset_current_sync_state()
             if self.sync_feedback_enabled:
                 self.mmu.log_debug("MmuSyncFeedbackManager: Set initial sync feedback state to: %s" % self.get_sync_feedback_string(detail=True))
@@ -175,12 +185,18 @@ class MmuSyncFeedbackManager:
                 )
                 if self.extruder_direction != prev_direction:
                     self._notify_direction_change(prev_direction, self.extruder_direction)
+                    # Feed EndGuard with the positive chunk consumed by the direction-change path
+                    if pos > self.last_recorded_extruder_position:
+                        self._notify_endguard_forward_progress(pos - self.last_recorded_extruder_position)
                     self.last_recorded_extruder_position = pos
 
             if (pos - self.last_recorded_extruder_position) >= self.sync_movement_threshold:
+                # Feed EndGuard on forward-only chunks as well
+                self._notify_endguard_forward_progress(pos - self.last_recorded_extruder_position)
                 # Ensure we are given periodic notifications to aid autotuning
                 self._notify_hit_movement_marker(pos - self.last_recorded_extruder_position)
                 self.last_recorded_extruder_position = pos # Move marker
+
 
         return eventtime + self.FEEDBACK_INTERVAL
 
@@ -189,7 +205,7 @@ class MmuSyncFeedbackManager:
         if not self.mmu.is_enabled: return
         msg = "MmuSyncFeedbackManager: Synced MMU to extruder%s" % (" (sync feedback activated)" if self.sync_feedback_enabled else "")
         if self.mmu.mmu_machine.filament_always_gripped:
-            self.mmu.log_debug(msg)
+            self.mmu.log_info(msg) #IG ToDo: REVERT LOGGING
         else:
             self.mmu.log_info(msg)
 
@@ -197,6 +213,7 @@ class MmuSyncFeedbackManager:
             # Enable sync feedback
             self.active = True
             self._reset_extruder_watchdog()
+            self._reset_endguard()
             self._reset_current_sync_state()
             self._adjust_gear_rotation_distance()
             self.mmu.reactor.update_timer(self.extruder_watchdog_timer, self.mmu.reactor.NOW)
@@ -206,7 +223,7 @@ class MmuSyncFeedbackManager:
         if not self.mmu.is_enabled: return
         msg = "MmuSyncFeedbackManager: Unsynced MMU from extruder%s" % (" (sync feedback deactivated)" if self.sync_feedback_enabled else "")
         if self.mmu.mmu_machine.filament_always_gripped:
-            self.mmu.log_debug(msg)
+            self.mmu.log_info(msg) #IG ToDo: REVERT LOGGING
         else:
             self.mmu.log_info(msg)
 
@@ -215,6 +232,7 @@ class MmuSyncFeedbackManager:
             self.active = False
             self.mmu.reactor.update_timer(self.extruder_watchdog_timer, self.mmu.reactor.NEVER)
             self.state = self.SYNC_STATE_NEUTRAL
+            self._reset_endguard()
             self._reset_gear_rotation_distance()
 
     # Gear/Extruder sync feedback event. State should be -1 (tension) and 1 (compressed)
@@ -239,6 +257,7 @@ class MmuSyncFeedbackManager:
             new_side = _side(self.state)
             if new_side != self._last_state_side:
                 self._reset_extruder_watchdog()
+                self._reset_endguard()
                 self._last_state_side = new_side
 
             if self.sync_feedback_enabled and self.active:
@@ -260,7 +279,7 @@ class MmuSyncFeedbackManager:
     # This signifies that the extruder has changed direction
     def _notify_direction_change(self, last_direction, new_direction):
         dir_str = lambda d: 'extrude' if d == self.mmu.DIRECTION_LOAD else 'retract' if d == self.mmu.DIRECTION_UNLOAD else 'static'
-        self.mmu.log_trace(
+        self.mmu.log_debug(
             "MmuSyncFeedbackManager: Sync direction changed from %s to %s" % (
                 dir_str(last_direction),
                 dir_str(new_direction)
@@ -320,6 +339,7 @@ class MmuSyncFeedbackManager:
         # No need to update the same rd value
         if not math.isclose(rd_clamp[1], old_clamp[1]):
             self._adjust_gear_rotation_distance()
+
 
     # Called to use binary search algorithm to slowly reduce clamping range to minimize switching
     # Note that this will converge on new calibrated value and update if autotune options is set
@@ -431,11 +451,11 @@ class MmuSyncFeedbackManager:
             if go_slower(self.state, self.extruder_direction):
                 # Compressed when extruding or tension when retracting, so increase the rotation distance of gear stepper to slow it down
                 rd = rd_clamp[0]
-                self.mmu.log_debug("MmuSyncFeedbackManager: Slowing gear motor down")
+                self.mmu.log_trace("MmuSyncFeedbackManager: Slowing gear motor down")
             else:
                 # Tension when extruding or compressed when retracting, so decrease the rotation distance of gear stepper to speed it up
                 rd = rd_clamp[2]
-                self.mmu.log_debug("MmuSyncFeedbackManager: Speeding gear motor up")
+                self.mmu.log_trace("MmuSyncFeedbackManager: Speeding gear motor up")
 
         if self._rd_applied is not None and abs(rd - self._rd_applied) < self.RDD_THRESHOLD:
             # No meaningful change; skip logging & write
@@ -494,4 +514,74 @@ class MmuSyncFeedbackManager:
         self.state = ss
         # Update cached side for later transition detection
         self._last_state_side = 0 if ss == self.SYNC_STATE_NEUTRAL else (1 if ss == self.SYNC_STATE_COMPRESSED else -1)
+
+    
+    # EndGuard implementation (proportional filament pressure sensor clog and tangle detection)
+
+    def _reset_endguard(self):
+        self._endguard_forward_mm = 0.0
+        self._endguard_triggered = False
+
+    def _notify_endguard_forward_progress(self, movement):
+        if not getattr(self, "endguard_enabled", 0):
+            return
+        if movement <= 0.0:
+            return
+        # If we already decided to act or have a pending action, stop accumulating/logging
+        if getattr(self, "_endguard_triggered", False) or getattr(self, "_endguard_action_pending", False):
+            return
+            
+        # accumulate only when hugging an end
+        if abs(self.state) >= self.endguard_band:
+            self._endguard_forward_mm += movement
+            self.mmu.log_info("EndGuard: +%.1fmm at |state|=%.3f -> total=%.1f/%.1f" % (movement, abs(self.state), self._endguard_forward_mm, self.endguard_distance_mm))
+            #IG ToDo: REVERT LOGGING to debug
+            if self._endguard_forward_mm >= self.endguard_distance_mm:
+                self._trigger_endguard_pause()
+        else:
+            if self._endguard_forward_mm > 0.0:
+                self.mmu.log_info("EndGuard: left band; resetting (total was %.1fmm)" % (self._endguard_forward_mm,)) #IG ToDo: REVERT LOGGING to debug
+            self._reset_endguard()
+
+    def _trigger_endguard_pause(self):
+        if self._endguard_triggered:
+            return
+        self._endguard_triggered = True
+        reason = ("Proportional sensor near end of travel during forward feed "
+                  f"(accum {self._endguard_forward_mm:.1f}mm ≥ {self.endguard_distance_mm:.1f}mm; "
+                  f"|state|={abs(self.state):.3f})")
+        self.mmu.log_always("MmuSyncFeedbackManager: EndGuard triggered: " + reason)
+
+        # Defer the actual action to the reactor to avoid event-context races
+        self._schedule_endguard_action(delay_s=0.05)
+
+
+    # EndGuard print pause reactor scheduling (one-shot)
+
+    def _schedule_endguard_action(self, delay_s=0.05):
+        if not hasattr(self, "_endguard_timer_handle"):
+            self._endguard_timer_handle = self.mmu.reactor.register_timer(self._endguard_timer)
+
+        if getattr(self, "_endguard_action_pending", False):
+            return  # already queued
+
+        self._endguard_action_pending = True
+        now = self.mmu.reactor.monotonic()
+        self.mmu.reactor.update_timer(self._endguard_timer_handle, now + float(delay_s))
+        self.mmu.log_debug("EndGuard: deferred pause scheduled in %.2fs" % (float(delay_s),))
+
+
+    def _endguard_timer(self, eventtime):
+        # One-shot; run the configured action outside the event callback context
+        if not getattr(self, "_endguard_action_pending", False):
+            return self.mmu.reactor.NEVER
+        
+        self._endguard_action_pending = False
+            
+        try:
+            self.mmu.gcode.run_script('M400\nMMU_PAUSE MSG="Endguard detected clog or tangle"')
+        except Exception:
+            self.mmu.log_always("EndGuard: failed to invoke MMU_PAUSE")
+        
+        return self.mmu.reactor.NEVER
 
