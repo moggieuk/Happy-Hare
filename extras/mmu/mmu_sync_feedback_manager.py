@@ -560,10 +560,6 @@ class MmuSyncFeedbackManager:
             # reset watchdogs and sync state
             self._reset_extruder_watchdog()
             self._reset_current_sync_state()
-            try:
-                self._ensure_rd_clamp(self.mmu.gate_selected)
-            except Exception:
-                pass
 
         # Log endguard state.
         try:
