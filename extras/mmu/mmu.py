@@ -578,6 +578,9 @@ class Mmu:
         self.gcode.register_command('MMU_MOTORS_OFF', self.cmd_MMU_MOTORS_OFF, desc = self.cmd_MMU_MOTORS_OFF_help)
         self.gcode.register_command('MMU_MOTORS_ON', self.cmd_MMU_MOTORS_ON, desc = self.cmd_MMU_MOTORS_ON_help)
         self.gcode.register_command('MMU_SYNC_GEAR_MOTOR', self.cmd_MMU_SYNC_GEAR_MOTOR, desc=self.cmd_MMU_SYNC_GEAR_MOTOR_help)
+        
+		# Proportional Filament Pressure Sensor - exposed macro to centre the sensor by moving the gear stepper.
+        self.gcode.register_command('MMU_ADJUST_TENSION', self.cmd_MMU_ADJUST_TENSION, desc=self.cmd_MMU_ADJUST_TENSION_help)
 
         # Core MMU functionality
         self.gcode.register_command('MMU', self.cmd_MMU, desc = self.cmd_MMU_help)
@@ -2267,6 +2270,60 @@ class Mmu:
         if not self.is_in_print():
             self._standalone_sync = bool(sync) # Make sticky if not in a print
         self.reset_sync_gear_to_extruder(sync)
+
+
+    cmd_MMU_ADJUST_TENSION_help = (
+        "Sets filament tension to neutral using the proportional sync-feedback buffer. "
+        "Parameters: NEUTRAL_BAND=<0.05..0.45 default 0.15>, "
+        "SETTLE_TIME=<seconds default 0.20>, TIMEOUT=<seconds default 10.0>."
+    )
+    def cmd_MMU_ADJUST_TENSION(self, gcmd):
+        self.log_to_file(gcmd.get_commandline())
+        if self.check_if_disabled(): 
+            return
+        # Do not attempt to adjust tension if bypass gate is selected.    
+        if self.gate_selected == self.TOOL_GATE_BYPASS:
+            return
+
+        # Parse user parameters
+        neutral_band = gcmd.get_float('NEUTRAL_BAND', 0.15)
+        settle_time  = gcmd.get_float('SETTLE_TIME', 0.20, above=0.0)
+        timeout_s    = gcmd.get_float('TIMEOUT', 10.0, above=0.0)
+
+        # Only valid when there are no discrete tension/compression switches
+        has_tension     = self.sensor_manager.has_sensor(self.SENSOR_TENSION)
+        has_compression = self.sensor_manager.has_sensor(self.SENSOR_COMPRESSION)
+        if has_tension or has_compression:
+            self.log_always("MMU_ADJUST_TENSION: skipped (tension/compression switches present)")
+            return
+
+        # Require proportional sync-feedback to be enabled and observed at least once
+        sfm = getattr(self, "sync_feedback_manager", None)
+        if ( sfm is None or not getattr(sfm, "_proportional_seen", False) ):
+            self.log_always("MMU_ADJUST_TENSION: proportional sync-feedback not available/enabled/seen")
+            return
+
+        try:
+            # - keep gear/extruder synced - cannot adjust sync feedback sensor if gears are not synced
+            # - avoid spurious runout during tiny corrective moves (unlikely)
+            with self.wrap_sync_gear_to_extruder():
+                with self._wrap_suspend_runout():
+                    moved_mm, ok = self._adjust_filament_tension_proportional(
+                        neutral_band=neutral_band,
+                        settle_time=settle_time,
+                        timeout_s=timeout_s
+                    )
+                    # Reset pending endguard actions
+                    self.sync_feedback_manager.clear_pending_endguard(reason="proportional sensor centering")
+
+            # User-facing summary
+            self.log_info(
+                "MMU_ADJUST_TENSION: moved=%.2fmm, result=%s (NEUTRAL_BAND=%.2f, SETTLE_TIME=%.2fs, TIMEOUT=%.1fs)" %
+                (moved_mm, ("success" if ok else "incomplete"), neutral_band, settle_time, timeout_s)
+            )
+
+        except MmuError as ee:
+            self.handle_mmu_error("Error in MMU_ADJUST_TENSION: %s" % str(ee))
 
 
 #########################
