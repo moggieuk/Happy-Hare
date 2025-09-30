@@ -581,6 +581,9 @@ class Mmu:
         
 		# Proportional Filament Pressure Sensor - exposed macro to centre the sensor by moving the gear stepper.
         self.gcode.register_command('MMU_ADJUST_TENSION', self.cmd_MMU_ADJUST_TENSION, desc=self.cmd_MMU_ADJUST_TENSION_help)
+		# Proportional Filament Pressure Sensor - expose enable/disable endguard macros.
+        self.gcode.register_command('MMU_ENABLE_ENDGUARD',  self.cmd_MMU_ENABLE_ENDGUARD,  desc=self.cmd_MMU_ENABLE_ENDGUARD_help)
+        self.gcode.register_command('MMU_DISABLE_ENDGUARD', self.cmd_MMU_DISABLE_ENDGUARD, desc=self.cmd_MMU_DISABLE_ENDGUARD_help)
 
         # Core MMU functionality
         self.gcode.register_command('MMU', self.cmd_MMU, desc = self.cmd_MMU_help)
@@ -2300,7 +2303,7 @@ class Mmu:
         # Require proportional sync-feedback to be enabled and observed at least once
         sfm = getattr(self, "sync_feedback_manager", None)
         if ( sfm is None or not getattr(sfm, "_proportional_seen", False) ):
-            self.log_always("MMU_ADJUST_TENSION: proportional sync-feedback not available/enabled/seen")
+            self.log_info("MMU_ADJUST_TENSION: proportional sync-feedback not available/enabled/seen")
             return
 
         try:
@@ -2313,9 +2316,6 @@ class Mmu:
                         settle_time=settle_time,
                         timeout_s=timeout_s
                     )
-                    # Reset pending endguard actions
-                    self.sync_feedback_manager.clear_pending_endguard(reason="proportional sensor centering")
-
             # User-facing summary
             self.log_info(
                 "MMU_ADJUST_TENSION: moved=%.2fmm, result=%s (NEUTRAL_BAND=%.2f, SETTLE_TIME=%.2fs, TIMEOUT=%.1fs)" %
@@ -2323,8 +2323,41 @@ class Mmu:
             )
 
         except MmuError as ee:
-            self.handle_mmu_error("Error in MMU_ADJUST_TENSION: %s" % str(ee))
+            self.log_always("Error in MMU_ADJUST_TENSION: %s" % str(ee))
 
+    cmd_MMU_ENABLE_ENDGUARD_help = (
+        "Enable EndGuard (proportional clog-tangle detection)."
+    )
+    def cmd_MMU_ENABLE_ENDGUARD(self, gcmd):
+        self.log_to_file(gcmd.get_commandline())
+        if self.check_if_disabled():
+            return
+        sfm = getattr(self, "sync_feedback_manager", None)
+        if sfm is None:
+            self.log_info("MMU_ENABLE_ENDGUARD: sync_feedback_manager not available")
+            return
+        try:
+            sfm.enable_endguard()
+            self.log_info("MMU_ENABLE_ENDGUARD: EndGuard enabled")
+        except Exception as e:
+            self.log_always("MMU_ENABLE_ENDGUARD failed: %s" % (e,))
+
+    cmd_MMU_DISABLE_ENDGUARD_help = (
+        "Disable EndGuard (proportional clog-tangle detection)."
+    )
+    def cmd_MMU_DISABLE_ENDGUARD(self, gcmd):
+        self.log_to_file(gcmd.get_commandline())
+        if self.check_if_disabled():
+            return
+        sfm = getattr(self, "sync_feedback_manager", None)
+        if sfm is None:
+            self.log_info("MMU_DISABLE_ENDGUARD: sync_feedback_manager not available")
+            return
+        try:
+            sfm.disable_endguard()
+            self.log_info("MMU_DISABLE_ENDGUARD: EndGuard disabled")
+        except Exception as e:
+            self.log_always("MMU_DISABLE_ENDGUARD failed: %s" % (e,))
 
 #########################
 # CALIBRATION FUNCTIONS #

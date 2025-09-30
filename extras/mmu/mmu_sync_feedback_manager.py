@@ -171,9 +171,6 @@ class MmuSyncFeedbackManager:
     def disable_endguard(self, reason=None):
         self.set_endguard_active(False, reason)
 
-    def clear_pending_endguard(self, reason=None):
-        self._clear_pending_endguard(reason)
-
     #
     # Internal implementation --------------------------------------------------
     #
@@ -548,16 +545,9 @@ class MmuSyncFeedbackManager:
         # Apply requested state and (re)initialize local EndGuard state.
         self.endguard_active = 1 if enabled else 0
 
-        # Clear any pending action/timer every time.
-        try:
-            self._endguard_action_pending = False
-            if hasattr(self, "_endguard_timer_handle"):
-                self.mmu.reactor.update_timer(self._endguard_timer_handle, self.mmu.reactor.NEVER)
-        except Exception:
-            pass
-
-        # Reset EndGuard counters/flags unconditionally.
-        self._reset_endguard()
+        # Reset EndGuard unconditionally. Will also attempt to cancel any pending scheduled
+        # pauses (no guarantee that it will succeed before klipper schedules the pause.)
+        self._clear_pending_endguard()
 
         if self.endguard_active:
             # reset watchdogs and sync state
@@ -569,15 +559,13 @@ class MmuSyncFeedbackManager:
             self.mmu.log_info( "EndGuard: %s%s" % ( "enabled" if self.endguard_active else "disabled", (" (%s)" % reason) if reason else "" ) )
         except Exception:
             pass
-
-
-    def _reset_endguard(self):
-        self._endguard_forward_mm = 0.0
-        self._endguard_triggered = False
         
     def _clear_pending_endguard(self, reason=None):
         #  Cancel any scheduled EndGuard action (pause) and optionally reset accumulation.
         #  This does NOT change endguard_enabled/active; it only clears pending/triggered state.
+        #  Note that if a pause has been scheduled and executed, this function cannot undo it.
+        #  Therefore, make sure endguard is disabled before any operations that may over-drive 
+        #  the sync feedback sensor!
         #  reason: Optional string appended to the log.
         #  Returns True if something was actually cleared/canceled; False otherwise.
 
@@ -621,6 +609,12 @@ class MmuSyncFeedbackManager:
         return cleared
 
 
+    def _reset_endguard(self):
+    # Reset endguard measuring state when initialising and also when switching sides in 
+    # the proportional filament sensor. This does not clear the endguard state and timers
+    # For that use _clear_pending_endguard.
+        self._endguard_forward_mm = 0.0
+        self._endguard_triggered = False
 
     def _notify_endguard_forward_progress(self, movement):
         if not (getattr(self, "endguard_enabled", 0) and getattr(self, "endguard_active", 0)):
@@ -653,12 +647,12 @@ class MmuSyncFeedbackManager:
         self.mmu.log_always("MmuSyncFeedbackManager: EndGuard triggered: " + reason)
 
         # Defer the actual action to the reactor to avoid event-context races
-        self._schedule_endguard_action(delay_s=0.05)
+        self._schedule_endguard_action(delay_s=0.15)
 
 
     # EndGuard print pause reactor scheduling (one-shot)
 
-    def _schedule_endguard_action(self, delay_s=0.05):
+    def _schedule_endguard_action(self, delay_s=0.15):
         if not hasattr(self, "_endguard_timer_handle"):
             self._endguard_timer_handle = self.mmu.reactor.register_timer(self._endguard_timer)
 
@@ -667,7 +661,9 @@ class MmuSyncFeedbackManager:
 
         self._endguard_action_pending = True
         now = self.mmu.reactor.monotonic()
-        self.mmu.reactor.update_timer(self._endguard_timer_handle, now + float(delay_s))
+        # enforce a minimum delay to avoid same-cycle execution in flush context
+        delay = max(float(delay_s), 0.05)
+        self.mmu.reactor.update_timer(self._endguard_timer_handle, now + delay)
         self.mmu.log_debug("EndGuard: deferred pause scheduled in %.2fs" % (float(delay_s),))
 
 
@@ -675,11 +671,11 @@ class MmuSyncFeedbackManager:
         # One-shot; run the configured action outside the event callback context
         if not getattr(self, "_endguard_action_pending", False):
             return self.mmu.reactor.NEVER
-        
+          
         self._endguard_action_pending = False
             
         try:
-            self.mmu.gcode.run_script('M400\nMMU_PAUSE MSG="Endguard detected clog or tangle"')
+            self.mmu.gcode.run_script('MMU_PAUSE MSG="Endguard detected clog or tangle"')
         except Exception:
             self.mmu.log_always("EndGuard: failed to invoke MMU_PAUSE")
         
