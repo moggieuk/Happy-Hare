@@ -2278,7 +2278,7 @@ class Mmu:
     cmd_MMU_ADJUST_TENSION_help = (
         "Sets filament tension to neutral using the proportional sync-feedback buffer. "
         "Parameters: NEUTRAL_BAND=<0.05..0.45 default 0.15>, "
-        "SETTLE_TIME=<seconds default 0.20>, TIMEOUT=<seconds default 10.0>."
+        "SETTLE_TIME=<seconds default 0.30>, TIMEOUT=<seconds default 10.0>."
     )
     def cmd_MMU_ADJUST_TENSION(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
@@ -2290,7 +2290,7 @@ class Mmu:
 
         # Parse user parameters
         neutral_band = gcmd.get_float('NEUTRAL_BAND', 0.15)
-        settle_time  = gcmd.get_float('SETTLE_TIME', 0.20, above=0.0)
+        settle_time  = gcmd.get_float('SETTLE_TIME', 0.30, above=0.0)
         timeout_s    = gcmd.get_float('TIMEOUT', 10.0, above=0.0)
 
         # Only valid when there are no discrete tension/compression switches
@@ -4800,7 +4800,7 @@ class Mmu:
     #               For example for a sensor with 14mm range, a 0.15 tolerance is approx 2.1mm either side of centre.
     # settle_time:  delay between moves to allow sensor feedback to update
     # timeout_s:    hard stop to avoid hanging if the sensor never clears
-    def _adjust_filament_tension_proportional(self, neutral_band=0.15, settle_time=0.20, timeout_s=10.0):
+    def _adjust_filament_tension_proportional(self, neutral_band=0.15, settle_time=0.30, timeout_s=10.0):
         # sanity-check parameters before doing anything
         # neutral band needs to have a non zero and non trivial value. Enforce 5% (0.05)
         # as the lower limit of acceptable neutral band tolerance.
