@@ -70,9 +70,9 @@ class MmuSyncFeedbackManager:
         self.sync_movement_threshold = self.mmu.config.getfloat('sync_movement_threshold',self.SIGNIFICANT_MOVEMENT,above=0.5)
         
         # EndGuard (proportional near-end watchdog)
-        self.endguard_enabled       = self.mmu.config.getint('sync_endguard_enabled', 0, minval=0, maxval=1)
-        self.endguard_band          = self.mmu.config.getfloat('sync_endguard_band', 0.80, minval=0.55, maxval=1.00)
-        self.endguard_distance_mm   = self.mmu.config.getfloat('sync_endguard_distance_mm', 6.0, minval=1.0)
+        self.sync_endguard_enabled  = self.mmu.config.getint('sync_endguard_enabled', 0, minval=0, maxval=1)
+        self.sync_endguard_band     = self.mmu.config.getfloat('sync_endguard_band', 0.80, minval=0.55, maxval=1.00)
+        self.sync_endguard_distance_mm  = self.mmu.config.getfloat('sync_endguard_distance_mm', 6.0, minval=1.0)
         # G-code to run when EndGuard triggers.
         self._endguard_forward_mm   = 0.0
         self._endguard_triggered    = False
@@ -102,9 +102,9 @@ class MmuSyncFeedbackManager:
         self.sync_multiplier_high = gcmd.get_float('SYNC_MULTIPLIER_HIGH', self.sync_multiplier_high, minval=1., maxval=2.)
         self.sync_multiplier_low = gcmd.get_float('SYNC_MULTIPLIER_LOW', self.sync_multiplier_low, minval=0.5, maxval=1.)
         self.sync_movement_threshold = gcmd.get_float('SYNC_MOVEMENT_THRESHOLD', self.sync_movement_threshold, minval=0.5)
-        self.endguard_enabled = gcmd.get_int('SYNC_ENDGUARD_ENABLED', self.endguard_enabled, minval=0, maxval=1)
-        self.endguard_band = gcmd.get_float('SYNC_ENDGUARD_BAND', self.endguard_band, minval=0.55, maxval=1.00)
-        self.endguard_distance_mm = gcmd.get_float('SYNC_ENDGUARD_DISTANCE_MM', self.endguard_distance_mm, minval=1.0)
+        self.sync_endguard_enabled = gcmd.get_int('SYNC_ENDGUARD_ENABLED', self.sync_endguard_enabled, minval=0, maxval=1)
+        self.sync_endguard_band = gcmd.get_float('SYNC_ENDGUARD_BAND', self.sync_endguard_band, minval=0.55, maxval=1.00)
+        self.sync_endguard_distance_mm = gcmd.get_float('SYNC_ENDGUARD_DISTANCE_MM', self.sync_endguard_distance_mm, minval=1.0)
 
     def get_test_config(self):
         msg = "\nsync_feedback_enabled = %d" % self.sync_feedback_enabled
@@ -113,9 +113,9 @@ class MmuSyncFeedbackManager:
         msg += "\nsync_multiplier_high = %.2f" % self.sync_multiplier_high
         msg += "\nsync_multiplier_low = %.2f" % self.sync_multiplier_low
         msg += "\nsync_movement_threshold = %.2f" % self.sync_movement_threshold
-        msg += "\nsync_endguard_enabled = %d" % self.endguard_enabled
-        msg += "\nsync_endguard_band = %.2f" % self.endguard_band
-        msg += "\nsync_endguard_distance_mm = %.1f" % self.endguard_distance_mm
+        msg += "\nsync_endguard_enabled = %d" % self.sync_endguard_enabled
+        msg += "\nsync_endguard_band = %.2f" % self.sync_endguard_band
+        msg += "\nsync_endguard_distance_mm = %.1f" % self.sync_endguard_distance_mm
         return msg
 
     def check_test_config(self, param):
@@ -537,32 +537,71 @@ class MmuSyncFeedbackManager:
 
     def set_endguard_active(self, enabled, reason=None):
         # Respect config: if EndGuard is disabled, ignore requests to change state.
-        if not getattr(self, "endguard_enabled", 0):
+        if not getattr(self, "sync_endguard_enabled", 0):
             # Make sure runtime latch reflects disabled state
             self.endguard_active = 0
+            try:
+                if hasattr(self, "_endguard_arm_timer"):
+                    self.mmu.reactor.update_timer(self._endguard_arm_timer, self.mmu.reactor.NEVER)
+            except Exception:
+                pass
+            self._clear_pending_endguard(reason="disabled in config")
             return
-
-        # Apply requested state and (re)initialize local EndGuard state.
-        self.endguard_active = 1 if enabled else 0
 
         # Reset EndGuard unconditionally. Will also attempt to cancel any pending scheduled
         # pauses (no guarantee that it will succeed before klipper schedules the pause.)
-        self._clear_pending_endguard()
-
-        if self.endguard_active:
-            # reset watchdogs and sync state
-            self._reset_extruder_watchdog()
-            self._reset_current_sync_state()
-
-        # Log endguard state.
+        self._clear_pending_endguard(reason=("arming" if enabled else "disabling"))
+        
+        # Cancel any previously scheduled deferred arm
         try:
-            self.mmu.log_info( "EndGuard: %s%s" % ( "enabled" if self.endguard_active else "disabled", (" (%s)" % reason) if reason else "" ) )
+            if hasattr(self, "_endguard_arm_timer"):
+                self.mmu.reactor.update_timer(self._endguard_arm_timer, self.mmu.reactor.NEVER)
         except Exception:
             pass
         
+        if enabled:
+            # Rebaseline BEFORE arming; this guarantees the first watchdog tick is a no-op baseline seed.
+            self._reset_extruder_watchdog()     # last_recorded_extruder_position = None
+            self._reset_current_sync_state()
+            
+            # Defer arming by a short reactor delay to avoid same-cycle interleaving
+            delay_s = 0.10  # ~100 ms; just enough to skip current event-loop tail
+            
+            # Arm endguard in the next reactor tick to ensure any inflight activities are complete (safeguard)
+            def _arm(evt):
+                self.endguard_active = 1
+                try:
+                    self.mmu.log_info("EndGuard: enabled (deferred)%s" % ((" (%s)" % reason) if reason else ""))
+                except Exception:
+                    pass
+                return self.mmu.reactor.NEVER
+            
+            # Register and schedule the one-shot arm
+            self._endguard_arm_timer = self.mmu.reactor.register_timer(_arm)
+            now = self.mmu.reactor.monotonic()
+            self.mmu.reactor.update_timer(self._endguard_arm_timer, now + delay_s)
+            
+            # Update logs
+            try:
+                self.mmu.log_debug("EndGuard: enable requested; arming in %.2fs%s" %(delay_s, (" (%s)" % reason) if reason else ""))
+            except Exception:
+                pass
+            
+            # Ensure latch remains inactive until the deferred arm fires
+            self.endguard_active = 0
+        else:
+            self.endguard_active = 0
+            
+            # Update logs
+            try:
+                self.mmu.log_info("EndGuard: disabled%s" % ((" (%s)" % reason) if reason else ""))
+            except Exception:
+                pass
+
+        
     def _clear_pending_endguard(self, reason=None):
         #  Cancel any scheduled EndGuard action (pause) and optionally reset accumulation.
-        #  This does NOT change endguard_enabled/active; it only clears pending/triggered state.
+        #  This does NOT change sync_endguard_enabled/active; it only clears pending/triggered state.
         #  Note that if a pause has been scheduled and executed, this function cannot undo it.
         #  Therefore, make sure endguard is disabled before any operations that may over-drive 
         #  the sync feedback sensor!
@@ -617,7 +656,7 @@ class MmuSyncFeedbackManager:
         self._endguard_triggered = False
 
     def _notify_endguard_forward_progress(self, movement):
-        if not (getattr(self, "endguard_enabled", 0) and getattr(self, "endguard_active", 0)):
+        if not (getattr(self, "sync_endguard_enabled", 0) and getattr(self, "endguard_active", 0)):
             return
         if movement <= 0.0:
             return
@@ -626,11 +665,11 @@ class MmuSyncFeedbackManager:
             return
             
         # accumulate only when hugging an end
-        if abs(self.state) >= self.endguard_band:
+        if abs(self.state) >= self.sync_endguard_band:
             self._endguard_forward_mm += movement
-            self.mmu.log_info("EndGuard: +%.1fmm at |state|=%.3f -> total=%.1f/%.1f" % (movement, abs(self.state), self._endguard_forward_mm, self.endguard_distance_mm))
+            self.mmu.log_info("EndGuard: +%.1fmm at |state|=%.3f -> total=%.1f/%.1f" % (movement, abs(self.state), self._endguard_forward_mm, self.sync_endguard_distance_mm))
             #IG ToDo: REVERT LOGGING to debug
-            if self._endguard_forward_mm >= self.endguard_distance_mm:
+            if self._endguard_forward_mm >= self.sync_endguard_distance_mm:
                 self._trigger_endguard_pause()
         else:
             if self._endguard_forward_mm > 0.0:
@@ -642,7 +681,7 @@ class MmuSyncFeedbackManager:
             return
         self._endguard_triggered = True
         reason = ("Proportional sensor near end of travel during forward feed "
-                  f"(accum {self._endguard_forward_mm:.1f}mm ≥ {self.endguard_distance_mm:.1f}mm; "
+                  f"(accum {self._endguard_forward_mm:.1f}mm ≥ {self.sync_endguard_distance_mm:.1f}mm; "
                   f"|state|={abs(self.state):.3f})")
         self.mmu.log_always("MmuSyncFeedbackManager: EndGuard triggered: " + reason)
 
