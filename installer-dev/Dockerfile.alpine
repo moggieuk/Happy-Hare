@@ -1,5 +1,3 @@
-## Get Klipper Source and Build venv
-##
 FROM python:3.11-alpine AS build
 
 RUN adduser -D klippy
