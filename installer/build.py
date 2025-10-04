@@ -271,18 +271,22 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
         unit_name = m.group(1) if m else 'mmu'
         build_mmu_parameters_cfg(builder, hhcfg, unit_name)
 
-    # 6.Update the builder Config from the existing master HH Config to ensure all user edits are preserved
-    hhcfg.update_builder(builder, origin=os.path.basename(dest_file))
-    logging.debug("Updated '%s' using previous config options" % dest_file)
+    skip_retain_cfg = os.getenv("F_SKIP_RETAIN_CFG", "n").lower()
+    if skip_retain_cfg == 'y':
+        logging.info("Skipping update from previous .cfg config")
+    else:
+        # 6.Update the builder Config from the existing master HH Config to ensure all user edits are preserved
+        hhcfg.update_builder(builder, origin=os.path.basename(dest_file))
+        logging.debug("Updated '%s' using previous config options" % dest_file)
 
-    # 7.Report on deprecated/unused options
-    first = True
-    origin = re.sub(r'^mmu[/\\]', '', dest_file_basename)
-    for section, option in hhcfg.unused_options_for(origin):
-        if first:
-            first = False
-            logging.warning("The following parameters in {} have been dropped:".format(dest_file_basename))
-        logging.warning("[{}] {}: {}".format(section, option, hhcfg.get(section, option)))
+        # 7.Report on deprecated/unused options
+        first = True
+        origin = re.sub(r'^mmu[/\\]', '', dest_file_basename)
+        for section, option in hhcfg.unused_options_for(origin):
+            if first:
+                first = False
+                logging.warning("The following parameters in {} have been dropped:".format(dest_file_basename))
+            logging.warning("[{}] {}: {}".format(section, option, hhcfg.get(section, option)))
 
     # 8.Write builder Config to destination cfg file
     if os.path.islink(dest_file):

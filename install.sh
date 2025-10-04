@@ -26,21 +26,22 @@ usage() {
     echo "${SPACE} [-a <kiauh_alternate_klipper>] [config_file]" # [-r <repetier_server stub>]"
     echo "${C_OFF}"
     echo "${C_INFO}(no flags for safe re-install / upgrade)${C_OFF}"
-    echo "-i for interactive install"
-    echo "-u or -d for uninstall"
-    echo "-z skip github update check (nullifies -b <branch>)"
-    echo "-s to skip restart of services"
-    echo "-b to switch to specified feature branch (sticky)"
-    echo "-n to specify a multiple MMU unit setup"
-    echo "-k <dir> to specify location of non-default klipper home directory"
-    echo "-c <dir> to specify location of non-default klipper config directory"
-    echo "-m <dir> to specify location of non-default moonraker home directory"
+    echo "${C_INFO}[config_file]${C_OFF} is optional, if not specified the default config filename (.config) will be used."
+    echo "  -i for interactive install"
+    echo "  -u or -d for uninstall"
+    echo "  -z skip github update check (nullifies -b <branch>)"
+    echo "  -s to skip restart of services"
+    echo "  -b to switch to specified feature branch (sticky)"
+    echo "  -n to specify a multiple MMU unit setup"
+    echo "  -k <dir> to specify location of non-default klipper home directory"
+    echo "  -c <dir> to specify location of non-default klipper config directory"
+    echo "  -m <dir> to specify location of non-default moonraker home directory"
     # TODO: Repetier-Server stub support
     # echo "-r specify Repetier-Server <stub> to override printer.cfg and klipper.service names"
-    echo "-a <name> to specify alternative klipper-service-name when installed with Kiauh"
-    echo "-t activate test mode to create test config files in /tmp"
-    echo "${C_INFO}[config_file]${C_OFF} is optional, if not specified the default config filename (.config) will be used."
-    echo "(-q verbose make --no-print-directory; -v verbose builder)"
+    echo "  -a <name> to specify alternative klipper-service-name when installed with Kiauh"
+    echo "  -t activate test mode to create test config files in /tmp"
+    echo "  (-q verbose make --no-print-directory)"
+    echo "  (-v verbose builder)"
     echo
     exit 0
 }
@@ -147,7 +148,6 @@ if [ "${TESTDIR}" ]; then
             exit 0
         fi
         echo
-        echo
     fi
 fi
 
@@ -159,13 +159,13 @@ if [ "${F_UNINSTALL}" ]; then
     echo "${C_WARNING}This will uninstall and cleanup prior config${C_OFF}"
     echo
     if prompt_yn "Are you sure"; then
+        echo
         exit 0
     fi
     echo
-    echo
-    command time -f "${C_INFO}Elapsed: %e seconds${C_OFF}" \
-        make --no-print-directory -C "${SCRIPT_DIR}" uninstall &&
-        [ "${TESTDIR}" ] && rm -rf "${TESTDIR}"
+    SECONDS=0
+    make --no-print-directory -C "${SCRIPT_DIR}" uninstall && [ "${TESTDIR}" ] && rm -rf "${TESTDIR}"
+    echo "${C_INFO}Elapsed: ${SECONDS} seconds${C_OFF}"
     exit 0
 fi
 
@@ -177,9 +177,31 @@ fi
 # and—if multi-unit—runs menuconfig once per listed unit to create/update each unit’s own
 # config file, passing UNIT_* parameters to the Makefile/Kconfig for customization.
 
-if [ ! -e "${KCONFIG_CONFIG}" ]; then
-    echo "${C_INFO}No '${KCONFIG_CONFIG}' found, forcing interactive menu"
+if [ ! -e "${KCONFIG_CONFIG}" ] && [ -z "${CONFIG_MULTI_UNIT:-}" ] && [ -n "${F_MULTI_UNIT:-}" ]; then
+    echo "${C_INFO}No '${KCONFIG_CONFIG}' found, forcing interactive menu${C_OFF}"
+    echo
     F_MENUCONFIG=y
+fi
+
+if [ -r "${KCONFIG_CONFIG}" ] && [ ! -n "${F_MENUCONFIG:-}" ]; then
+    echo "${C_NOTICE}Current '${KCONFIG_CONFIG}' is not a multi-unit configuration, updating and forcing interactive menu${C_OFF}"
+    echo
+    F_MENUCONFIG=y
+fi
+
+# If re-running with -i give the choice of refreshing from Kconfig or retaining custom .cfg modifications
+if [ -r "${KCONFIG_CONFIG}" ] && [ -n "${F_MENUCONFIG:-}" ]; then
+    echo "${C_WARNING}You are running an interactive install with existing menuconfig ('${KCONFIG_CONFIG}'). You have two options:${C_OFF}"
+    echo "- Refresh klipper .cfg config from '${KCONFIG_CONFIG}' ${C_WARNING}(select Y)${C_OFF}"
+    echo "  This will OVERWRITE any custom changes you have made to your Happy Hare .cfg files but is useful if you"
+    echo "  make ALL changes via this interactive installer (will still generate a config backup)"
+    echo "- Retain your custom .cfg changes and only add NEW menuconfig options ${C_WARNING}(select N)${C_OFF}"
+    echo "  With this option, updated parameter values in menuconfig will have no effect and may not reflect your current config"
+    echo
+    if ! prompt_yn "Refresh klipper .cfg"; then
+        export F_SKIP_RETAIN_CFG=y
+    fi
+    echo
 fi
 
 if [ -n "${F_MENUCONFIG:-}" ]; then
@@ -188,7 +210,6 @@ if [ -n "${F_MENUCONFIG:-}" ]; then
 
     if [ -n "${F_MULTI_UNIT:-}" ] || [ -n "${CONFIG_MULTI_UNIT:-}" ]; then
         if [ -r "${KCONFIG_CONFIG}" ] && [ -z "${CONFIG_MULTI_UNIT:-}" ] && [ -n "${F_MULTI_UNIT:-}" ]; then
-            echo "${C_NOTICE}Current '${KCONFIG_CONFIG}' is not a multi-unit configuration, updating and forcing interactive menu"
             tmpconfig="$(mktemp -t tmpconfig.XXXXXX)"
             cp -- "${KCONFIG_CONFIG}" "${tmpconfig}"
         fi
@@ -232,5 +253,6 @@ fi
 ##### Install #####
 ###################
 
-command time -f "${C_INFO}Elapsed: %e seconds${C_OFF}" \
-    make --no-print-directory -C "${SCRIPT_DIR}" KCONFIG_CONFIG="${KCONFIG_CONFIG}" install
+SECONDS=0
+make --no-print-directory -C "${SCRIPT_DIR}" KCONFIG_CONFIG="${KCONFIG_CONFIG}" install
+echo "${C_INFO}Elapsed: ${SECONDS} seconds${C_OFF}"
