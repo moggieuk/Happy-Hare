@@ -4,6 +4,9 @@
 #
 # Installer / Updater launch script with familar options
 #
+# Carefully written to only use options that are widely available
+# Please report any incompatability via github issue
+#
 
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 
@@ -189,9 +192,7 @@ if [ ! -e "${KCONFIG_CONFIG}" ] && [ -z "${CONFIG_MULTI_UNIT:-}" ] && [ -n "${F_
     echo "${C_INFO}No '${KCONFIG_CONFIG}' found, forcing interactive menu${C_OFF}"
     echo
     F_MENUCONFIG=y
-fi
-
-if [ -r "${KCONFIG_CONFIG}" ] && [ ! -n "${F_MENUCONFIG:-}" ]; then
+elif [ -r "${KCONFIG_CONFIG}" ] && [ ! -n "${F_MENUCONFIG:-}" ]; then
     echo "${C_NOTICE}Current '${KCONFIG_CONFIG}' is not a multi-unit configuration, updating and forcing interactive menu${C_OFF}"
     echo
     F_MENUCONFIG=y
@@ -202,8 +203,8 @@ if [ -r "${KCONFIG_CONFIG}" ] && [ -n "${F_MENUCONFIG:-}" ]; then
     echo "${C_WARNING}You are running an interactive install with existing menuconfig ('${KCONFIG_CONFIG}'). You have two options:${C_OFF}"
     echo "- Refresh klipper .cfg config from '${KCONFIG_CONFIG}' ${C_WARNING}(select Y)${C_OFF}"
     echo "  This will OVERWRITE any custom changes you have made to your Happy Hare .cfg files but is useful if you"
-    echo "  make ALL changes via this interactive installer (will still generate a config backup)"
-    echo "- Retain your custom .cfg changes and only add NEW menuconfig options ${C_WARNING}(select N)${C_OFF}"
+    echo "  make ALL changes via this interactive installer (but will still generate a config backup)"
+    echo "- Retain your custom .cfg changes and only add NEW or missing menuconfig options ${C_WARNING}(select N)${C_OFF}"
     echo "  With this option, updated parameter values in menuconfig will have no effect and may not reflect your current config"
     echo
     if ! prompt_yn "Refresh klipper .cfg"; then
