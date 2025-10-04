@@ -9,6 +9,9 @@
 set -e # Exit immediately on error
 
 self_update() {
+    echo "PAUL SELF UPDATE DISABLED"
+    exit 0
+
     git_cmd="git branch --show-current"
     if which timeout >/dev/null 2>&1; then
         # timeout is unavailable on some systems (e.g. Creality K1). So only add it if found
