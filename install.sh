@@ -82,6 +82,7 @@ time_elapsed() {
     "${@}"
     END_TIME=$(python -c "import time; print(time.time())")
     echo "${START_TIME} ${END_TIME}" | awk '{printf "Elapsed: %.1f seconds", $2 - $1}'
+    echo
 }
 
 while getopts "iudzsb:nk:c:m:a:tqv" arg; do
