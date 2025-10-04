@@ -6074,13 +6074,15 @@ class Mmu:
         self._restore_tool_override(self.tool_selected) # Restore M220 and M221 overrides
 
     # Primary method to unload current tool but retain selection
-    def _unload_tool(self, form_tip=None):
+    def _unload_tool(self, form_tip=None, prev_tool=None):
         if self.filament_pos == self.FILAMENT_POS_UNLOADED:
             self.log_info("Tool already unloaded")
             return
 
         self.log_debug("Unloading tool %s" % self._selected_tool_string())
-        self._set_last_tool(self.tool_selected)
+        # Use the actual tool that was in use *before* this toolchange began.
+        # Falls back to current selection if not provided (backwards compatible).
+        self._set_last_tool(self.tool_selected if prev_tool is None else prev_tool)
         self._record_tool_override() # Remember M220 and M221 overrides
         self.unload_sequence(form_tip=form_tip)
 
@@ -6593,12 +6595,15 @@ class Mmu:
                         self._track_time_start('total')
                         self.printer.send_event("mmu:toolchange", self._last_tool, self._next_tool)
 
+                        # Remember the tool that was actually in use before any load attempts.
+                        prev_tool = self.tool_selected
+
                         attempts = 2 if self.retry_tool_change_on_error and (self.is_printing() or standalone) else 1 # TODO Replace with inattention timer
                         try:
                             for i in range(attempts):
                                 try:
                                     if self.filament_pos != self.FILAMENT_POS_UNLOADED:
-                                        self._unload_tool(form_tip=do_form_tip)
+                                        self._unload_tool(form_tip=do_form_tip, prev_tool=prev_tool)
                                     self._select_and_load_tool(tool, purge=do_purge)
                                     break
                                 except MmuError as ee:
