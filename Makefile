@@ -96,7 +96,7 @@ restart_klipper = 0
 .SECONDEXPANSION:
 .DEFAULT_GOAL := build
 .PRECIOUS: $(KCONFIG_CONFIG)
-.PHONY: menuconfig install uninstall check_version diff test build clean variables
+.PHONY: menuconfig install uninstall check_version diff test build clean variables python_deps
 .SECONDARY: \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
@@ -253,7 +253,7 @@ $(OUT)/moonraker/components/%.py: $(SRC)/components/%.py
 $(OUT):
 	$(Q)mkdir -p "$@"
 
-$(build_targets): $(KCONFIG_CONFIG) | $(OUT) check_version 
+$(build_targets): $(KCONFIG_CONFIG) | $(OUT) check_version python_deps
 
 build: $(build_targets)
 
@@ -312,7 +312,7 @@ $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu): $(addprefix $(OUT)/mmu/, $(hh_co
 	$(Q)$(call backup,$(basename $@))
 
 
-$(install_targets): build
+$(install_targets): build | python_deps 
 
 install: $(install_targets)
 	$(Q)rm -rf $(addprefix $(KLIPPER_HOME)/klippy/extras/,$(hh_old_klipper_modules))
@@ -349,11 +349,14 @@ uninstall:
 ########################
 
 # Look for version number in current config files and report
-check_version: $(hh_configs_to_parse)
+check_version: $(hh_configs_to_parse) | python_deps
 	$(Q)$(PY) -m installer.build $(V) --check-version "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)
 
 clean:
 	$(Q)rm -rf $(OUT)
+
+python_deps:
+	$(Q)pip -qq install -r $(SRC)/installer/requirements.txt
 
 diff= \
 	git diff -U2 --color --src-prefix="current: " --dst-prefix="built: " --minimal --word-diff=color --stat --no-index -- "$(1)" "$(2)" | \

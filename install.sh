@@ -131,6 +131,7 @@ if [ "$1" ]; then
 fi
 
 export KCONFIG_CONFIG="${KCONFIG_CONFIG-.config}"
+export PATH="${SCRIPT_DIR}:${PATH}"
 
 if [ "${F_MENUCONFIG}" ] && [ "${F_UNINSTALL}" ]; then
     echo "${C_ERROR}Can't install and uninstall at the same time!${C_OFF}"
