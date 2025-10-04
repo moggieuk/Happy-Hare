@@ -77,6 +77,13 @@ trim() {
     echo "${name}"
 }
 
+time_elapsed() {
+    START_TIME=$(python -c "import time; print(time.time())")
+    "${@}"
+    END_TIME=$(python -c "import time; print(time.time())")
+    echo "${START_TIME} ${END_TIME}" | awk '{printf "Elapsed: %.1f seconds", $2 - $1}'
+}
+
 while getopts "iudzsb:nk:c:m:a:tqv" arg; do
     case $arg in
     i) F_MENUCONFIG=y ;;
@@ -163,9 +170,9 @@ if [ "${F_UNINSTALL}" ]; then
         exit 0
     fi
     echo
-    SECONDS=0
-    make --no-print-directory -C "${SCRIPT_DIR}" uninstall && [ "${TESTDIR}" ] && rm -rf "${TESTDIR}"
-    echo "${C_INFO}Elapsed: ${SECONDS} seconds${C_OFF}"
+    echo
+    time_elapsed make --no-print-directory -C "${SCRIPT_DIR}" uninstall &&
+        [ "${TESTDIR}" ] && rm -rf "${TESTDIR}"
     exit 0
 fi
 
@@ -253,6 +260,4 @@ fi
 ##### Install #####
 ###################
 
-SECONDS=0
-make --no-print-directory -C "${SCRIPT_DIR}" KCONFIG_CONFIG="${KCONFIG_CONFIG}" install
-echo "${C_INFO}Elapsed: ${SECONDS} seconds${C_OFF}"
+time_elapsed make --no-print-directory -C "${SCRIPT_DIR}" KCONFIG_CONFIG="${KCONFIG_CONFIG}" install
