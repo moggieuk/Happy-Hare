@@ -584,74 +584,73 @@ class MmuLedManager:
                     continue
 
                 elif effect == "off":
+
                     stop_effect_and_set_gate_rgb((0,0,0), unit, segment, gate, fadetime=fadetime)
 
-                elif effect == "gate_status": # Filament availability (gate_map)
-                    if gate is not None:
-                        suffix = '_sel' if gate == self.mmu.gate_selected else ''
-                        if gate == self.mmu.gate_selected and self.mmu.filament_pos > self.mmu.FILAMENT_POS_EXTRUDER_ENTRY:
-                            set_gate_effect(self.effect_name(unit, 'gate_selected'), unit, segment, gate, fadetime=fadetime)
-                        elif self.mmu.gate_status[gate] == self.mmu.GATE_UNKNOWN:
-                            set_gate_effect(self.effect_name(unit, 'gate_unknown%s' % suffix), unit, segment, gate, fadetime=fadetime)
-                        elif self.mmu.gate_status[gate] > self.mmu.GATE_EMPTY:
-                            set_gate_effect(self.effect_name(unit, 'gate_available%s' % suffix), unit, segment, gate, fadetime=fadetime)
+                elif effect == "gate_status":  # Filament availability (gate_map)
+
+                    def _effect_for_gate(g):
+                        # Selected gate, with filament past extruder entry: force 'gate_selected'
+                        if g == self.mmu.gate_selected and self.mmu.filament_pos > self.mmu.FILAMENT_POS_EXTRUDER_ENTRY:
+                            return self.effect_name(unit, 'gate_selected')
+
+                        suffix = '_sel' if g == self.mmu.gate_selected else ''
+                        status = self.mmu.gate_status[g]
+
+                        if status == self.mmu.GATE_UNKNOWN:
+                            key = 'gate_unknown'
+                        elif status > self.mmu.GATE_EMPTY:
+                            key = 'gate_available'
                         else:
-                            set_gate_effect(self.effect_name(unit, 'gate_empty%s' % suffix), unit, segment, gate, fadetime=fadetime)
+                            key = 'gate_empty'
+
+                        return self.effect_name(unit, '%s%s' % (key, suffix))
+
+                    if gate is not None:
+                        set_gate_effect(_effect_for_gate(gate), unit, segment, gate, fadetime=fadetime)
                     else:
                         for g in range(mmu_unit.first_gate, mmu_unit.first_gate + mmu_unit.num_gates):
-                            status = self.mmu.gate_status[g]
-                            suffix = '_sel' if g == self.mmu.gate_selected else ''
-                            if g == self.mmu.gate_selected and self.mmu.filament_pos > self.mmu.FILAMENT_POS_EXTRUDER_ENTRY:
-                                set_gate_effect(self.effect_name(unit, 'gate_selected'), unit, segment, g, fadetime=fadetime)
-                            elif status == self.mmu.GATE_UNKNOWN:
-                                set_gate_effect(self.effect_name(unit, 'gate_unknown%s' % suffix), unit, segment, g, fadetime=fadetime)
-                            elif status > self.mmu.GATE_EMPTY:
-                                set_gate_effect(self.effect_name(unit, 'gate_available%s' % suffix), unit, segment, g, fadetime=fadetime)
-                            else:
-                                set_gate_effect(self.effect_name(unit, 'gate_empty%s' % suffix), unit, segment, g, fadetime=fadetime)
+                            set_gate_effect(_effect_for_gate(g), unit, segment, g, fadetime=fadetime)
 
                 elif effect == "filament_color":
+
+                    def _resolve_filament_rgb(g):
+                        rgb = self.mmu.gate_color_rgb[g]
+                        if self.mmu.gate_status[g] == self.mmu.GATE_EMPTY:
+                            return mmu_unit.leds.empty_light
+                        if self.mmu.gate_color[g] == "":
+                            return mmu_unit.leds.white_light
+                        if rgb == (0, 0, 0):
+                            return mmu_unit.leds.black_light
+                        return rgb
+
                     if gate is not None:
-                        if self.mmu.gate_status[gate] == self.mmu.GATE_EMPTY:
-                            rgb = mmu_unit.leds.empty_light
-                        else:
-                            rgb = self.mmu.gate_color_rgb[gate]
-                            if rgb == (0,0,0):
-                                rgb = mmu_unit.leds.black_light
+                        rgb = _resolve_filament_rgb(gate)
+                        stop_effect_and_set_gate_rgb(rgb, unit, segment, gate)
+                    else:
+                        stop_gate_effect(unit, segment, None)
+                        for g, is_last in with_last(range(mmu_unit.first_gate, mmu_unit.first_gate + mmu_unit.num_gates)):
+                            rgb = _resolve_filament_rgb(g)
+                            set_gate_rgb(rgb, unit, segment, g, transmit=is_last)
+
+                elif effect == "slicer_color":
+
+                    def _resolve_slicer_rgb(g):
+                        rgb = self.mmu.slicer_color_rgb[g]
+                        if self.mmu.gate_status[g] == self.mmu.GATE_EMPTY:
+                            return mmu_unit.leds.empty_light
+                        if rgb == (0, 0, 0):
+                            return mmu_unit.leds.black_light
+                        return rgb
+
+                    if gate is not None:
+                        rgb = _resolve_slicer_rgb(gate)
                         stop_effect_and_set_gate_rgb(rgb, unit, segment, gate)
                     else:
                         stop_gate_effect(unit, segment, None) # Stop all gates
                         for g, is_last in with_last(range(mmu_unit.first_gate, mmu_unit.first_gate + mmu_unit.num_gates)):
-                            rgb = self.mmu.gate_color_rgb[g]
-                            if self.mmu.gate_status[g] != self.mmu.GATE_EMPTY:
-                                if self.mmu.gate_color[g] == "":
-                                    rgb = mmu_unit.leds.white_light
-                                elif rgb == (0,0,0):
-                                    rgb = mmu_unit.leds.black_light
-                            else:
-                                rgb = mmu_unit.leds.empty_light
+                            rgb = _resolve_slicer_rgb(g)
                             set_gate_rgb(rgb, unit, segment, g, transmit=is_last)
-
-                elif effect == "slicer_color":
-                    if gate is not None:
-                        if self.mmu.gate_status[gate] == self.mmu.GATE_EMPTY:
-                            rgb = mmu_unit.leds.empty_light
-                        else:
-                            rgb = self.mmu.slicer_color_rgb[gate]
-                            if rgb == (0, 0, 0):
-                                rgb = mmu_unit.leds.black_light
-                        stop_effect_and_set_gate_rgb(rgb, unit, segment, gate)
-                    else:
-                        stop_gate_effect(unit, segment, None)  # Stop all gates
-                        for g, is_last in with_last(range(mmu_unit.first_gate, mmu_unit.first_gate + mmu_unit.num_gates)):
-                            rgb = self.mmu.slicer_color_rgb[g]
-                            if self.mmu.gate_status[g] != self.mmu.GATE_EMPTY:
-                                if rgb == (0, 0, 0):
-                                    rgb = mmu_unit.leds.black_light
-                            else:
-                                rgb = mmu_unit.leds.empty_light
-                            set_gate_rgb(rgb, unit, segment, g, transmit=is_last)
-
 
                 elif isinstance(effect, tuple) or ',' in effect: # RGB color
                     rgb = MmuLeds.string_to_rgb(effect)
@@ -679,9 +678,11 @@ class MmuLedManager:
                 pass
 
             elif effect == "off":
+
                 stop_effect_and_set_gate_rgb((0,0,0), unit, segment, gate, fadetime=fadetime)
     
             elif effect in ["filament_color", "on"]:
+
                 stop_gate_effect(unit, segment, None)
                 rgb = mmu_unit.leds.white_light
                 if self.mmu.gate_selected >= 0 and self.mmu.filament_pos > self.mmu.FILAMENT_POS_UNLOADED:
@@ -694,6 +695,7 @@ class MmuLedManager:
                 set_gate_rgb(rgb, unit, segment, None)
     
             elif effect == "slicer_color":
+
                 stop_gate_effect(unit, segment, None)
                 rgb = (0,0,0)
                 if self.mmu.gate_selected >= 0 and self.mmu.filament_pos > self.mmu.FILAMENT_POS_UNLOADED:
@@ -721,6 +723,7 @@ class MmuLedManager:
                 pass
 
             elif effect == "off":
+
                 stop_effect_and_set_gate_rgb((0,0,0), unit, segment, None, fadetime=fadetime)
 
             elif isinstance(effect, tuple) or ',' in effect: # RGB color
@@ -729,6 +732,7 @@ class MmuLedManager:
                     stop_effect_and_set_gate_rgb(rgb, unit, segment, None)
 
             elif effect != "": # Named effect
+
                 set_gate_effect(effect, unit, segment, None, fadetime=fadetime)
 
             self.effect_state.setdefault(unit, {})[segment] = effect
