@@ -355,9 +355,11 @@ clean:
 	$(Q)rm -rf $(OUT)
 
 python_deps:
+	$(Q)echo "$(C_INFO)Checking for python depenencies$(C_OFF)"
 	$(Q)pip -qq install -r $(SRC)/installer/requirements.txt
 
-$(OUT)/kconfig.pickle: $(KCONFIG_CONFIG)
+$(OUT)/kconfig.pickle: $(KCONFIG_CONFIG) | python_deps
+	$(Q)echo "$(C_INFO)Pre-parsing KConfig$(C_OFF)"
 	$(Q)$(PY) -m installer.build $(V) --pre-parse-kconfig "$(KCONFIG_CONFIG)"
 
 diff= \

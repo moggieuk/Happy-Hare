@@ -452,11 +452,9 @@ def check_version(kconfig_file, input_files):
 def pre_parse_kconfig(kconfig):
     out = os.getenv("OUT")
     kcfg = KConfig(kconfig)
-    sys.setrecursionlimit(10000)
-
+    sys.setrecursionlimit(20000)  # Increase recursion limit for pickling kconfiglib structures
     with open(out + "/kconfig.pickle", "wb") as f:
         dill.dump(kcfg, f, recurse=True)
-    #     pickle.dump(kcfg, f)
 
 
 def load_parsed_kconfig():
