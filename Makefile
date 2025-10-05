@@ -4,7 +4,7 @@ Q  ?= @                           # For quiet make builds, override with make Q=
 V  ?=                             # For verbose output (mostly from python builder), set to -v to enable
 UT ?= *                           # For unittests, e.g. make UT=test_build.py test
 
-MAKEFLAGS += --jobs 8             # Parallel build
+MAKEFLAGS += --jobs 16             # Parallel build
 
 # By default KCONFIG_CONFIG is '.config', but it can be overridden by the user
 export KCONFIG_CONFIG ?= .config
@@ -15,7 +15,7 @@ ifeq ($(CHECK_OUTPUT_SYNC),)
   ifeq ($(findstring menuconfig,$(MAKECMDGOALS)),)
     # Check whether $KCONFIG_CONFIG is outdated. if so menuconfig will be triggered and output-sync should stay disabled
     ifeq ($(shell $(MAKE) CHECK_OUTPUT_SYNC=y -q $(KCONFIG_CONFIG) > /dev/null && echo y),y)
-      MAKEFLAGS += --output-sync
+      MAKEFLAGS += --output-sync=line
     endif
   endif
   -include $(KCONFIG_CONFIG) # Won't exist on first invocation
@@ -355,7 +355,7 @@ clean:
 	$(Q)rm -rf $(OUT)
 
 python_deps:
-	$(Q)echo "$(C_INFO)Checking for python depenencies$(C_OFF)"
+	$(Q)echo "$(C_INFO)Checking for python dependencies$(C_OFF)"
 	$(Q)pip -qq install -r $(SRC)/installer/requirements.txt
 
 $(OUT)/kconfig.pickle: $(KCONFIG_CONFIG) | python_deps
