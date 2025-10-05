@@ -45,8 +45,8 @@ class MmuSyncFeedbackManager:
     
     # proportional tension / compression control tunables
     RDD_THRESHOLD         = 1e-4     # Min Rotation Distance delta to trigger application of it.
-    SIDE_THRESHOLD        = 1e-3     # Magnitude of side motion before considering state as tension/compression. Units are arbitrary 
-    								 # and loosely linked to the distance the magnet travels over the hall effect sensor.
+    SIDE_THRESHOLD        = 0.10     # Magnitude of side motion before considering state as tension/compression. 
+    								 # a 0.1 side threshold means sensor values of 0.4-0.6 are considered neutral
 
     def __init__(self, mmu):
         self.mmu = mmu
