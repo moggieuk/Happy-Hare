@@ -18,10 +18,12 @@ import os
 import copy
 import logging
 import subprocess
+import dill
+
 from jinja2 import Environment, FileSystemLoader, UndefinedError
 
 import kconfiglib
-from .parser   import ConfigBuilder, WhitespaceNode
+from .parser import ConfigBuilder, WhitespaceNode
 from .upgrades import Upgrades
 
 # Documented params that are not in templates
@@ -34,6 +36,7 @@ happy_hare = '\n(\\_/)\n( *,*)\n(")_(") {caption}\n'
 unhappy_hare = '\n(\\_/)\n( V,V)\n(")^(") {caption}\n'
 
 LEVEL_NOTICE = 25
+
 
 # Enhanced representation of Kconfig file
 class KConfig(kconfiglib.Kconfig):
@@ -57,13 +60,13 @@ class KConfig(kconfiglib.Kconfig):
         return int(self.syms[sym].user_value)
 
     def get(self, sym):
-        """ Get the value of the symbol """
+        """Get the value of the symbol"""
         if sym not in self.syms:
             raise KeyError("Symbol '{}' not found in Kconfig".format(sym))
         return self.syms[sym].user_value
 
     def as_dict(self):
-        """ Return the Kconfig as a dictionary """
+        """Return the Kconfig as a dictionary"""
         result = {}
         for sym in self.syms:
             if self.syms[sym].user_value is None:
@@ -143,16 +146,16 @@ class HHConfig(ConfigBuilder):
         for section in builder.sections(scope="included"):
             for option in builder.options(section):
                 if self.has_option(section, option):
-                    if not option.startswith("gcode"): # Don't ever resuse the gcode
+                    if not option.startswith("gcode"):  # Don't ever resuse the gcode
                         builder.set(section, option, self.get(section, option))
                     self.used_options.add((section, option))
 
         # If existing config has excluded options use them in lieu of builder excluded options
         if self.excluded_nodes(origin=origin) and builder.excluded_nodes():
             logging.info("Preserving existing excluded config sections")
-            builder.delete_excluded()                      # Ensure template is clean
-            self._copy_excluded_to(builder, origin=origin) # Copy in previous excluded nodes
-            self.delete_excluded(origin=origin)            # Prevent them being reported in unsed option set
+            builder.delete_excluded()  # Ensure template is clean
+            self._copy_excluded_to(builder, origin=origin)  # Copy in previous excluded nodes
+            self.delete_excluded(origin=origin)  # Prevent them being reported in unsed option set
 
     def _copy_excluded_to(self, builder, origin=None, insert_blank_line=True):
         """
@@ -171,7 +174,6 @@ class HHConfig(ConfigBuilder):
 
         return copied
 
- 
     def unused_options_for(self, origin):
         return [
             (section, key)
@@ -203,7 +205,7 @@ def jinja_env():
 
 
 def render_template(template_file, kcfg, extra_params):
-    """ Render the template config file after expanding KConfig params (and extra params) dictionary """
+    """Render the template config file after expanding KConfig params (and extra params) dictionary"""
     try:
         env = jinja_env()
         template = env.get_template(os.path.relpath(template_file))
@@ -215,10 +217,12 @@ def render_template(template_file, kcfg, extra_params):
         exit(1)
 
 
-def build(cfg_file, dest_file, kconfig_file, input_files): # TODO Really input_files should exclude first directory config/mmu to make origin consistent everywhere
+def build(
+    cfg_file, dest_file, kconfig_file, input_files
+):  # TODO Really input_files should exclude first directory config/mmu to make origin consistent everywhere
     cfg_file_basename = cfg_file[len(os.getenv("SRC")) + 1 :]
 
-    kcfg = KConfig(kconfig_file)
+    kcfg = load_parsed_kconfig()
     extra_params = dict()
     unit_kcfgs = dict()
 
@@ -259,7 +263,10 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
 
     # 3.Render cfg template expanding KConfig parameters
     buffer = render_template(cfg_file_basename, kcfg, extra_params)
-    logging.debug("Rendered template '%s' using Kconfig '%s' with extra_params: %s" % (cfg_file_basename, kcfg.config_file, extra_params))
+    logging.debug(
+        "Rendered template '%s' using Kconfig '%s' with extra_params: %s"
+        % (cfg_file_basename, kcfg.config_file, extra_params)
+    )
 
     # 4.Generate builder Config from rendered template
     builder = ConfigBuilder()
@@ -267,12 +274,12 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
 
     # 5.Special case mmu_parameters.cfg because it may contain hidden and supplemental options not present in cfg template
     if cfg_file_basename == "config/base/mmu_parameters.cfg":
-        m = re.match(r'(?:^|.*[\\/])(?P<unit>[^\\/]+)_parameters\.cfg$', dest_file)
-        unit_name = m.group(1) if m else 'mmu'
+        m = re.match(r"(?:^|.*[\\/])(?P<unit>[^\\/]+)_parameters\.cfg$", dest_file)
+        unit_name = m.group(1) if m else "mmu"
         build_mmu_parameters_cfg(builder, hhcfg, unit_name)
 
     skip_retain_cfg = os.getenv("F_SKIP_RETAIN_CFG", "n").lower()
-    if skip_retain_cfg == 'y':
+    if skip_retain_cfg == "y":
         logging.info("Skipping update from previous .cfg config")
     else:
         # 6.Update the builder Config from the existing master HH Config to ensure all user edits are preserved
@@ -281,7 +288,7 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
 
         # 7.Report on deprecated/unused options
         first = True
-        origin = re.sub(r'^mmu[/\\]', '', dest_file_basename)
+        origin = re.sub(r"^mmu[/\\]", "", dest_file_basename)
         for section, option in hhcfg.unused_options_for(origin):
             if first:
                 first = False
@@ -298,11 +305,10 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
         f.write(data.encode("utf-8"))
 
 
-
 def install_moonraker(moonraker_cfg, existing_cfg, kconfig):
     logging.info("Checking for moonraker.conf additions")
 
-    kcfg = KConfig(kconfig)
+    kcfg = load_parsed_kconfig()
     buffer = render_template(moonraker_cfg, kcfg, {})
     update = ConfigBuilder()
     update.read_buf(buffer)
@@ -398,7 +404,7 @@ def restart_service(name, service, kconfig):
     else:
         logging.info("Restarting {}...".format(name))
 
-    kcfg = KConfig(kconfig)
+    kcfg = load_parsed_kconfig()
     if kcfg.is_enabled("INIT_SYSTEMD"):
         if not service.endswith(".service"):
             service = service + ".service"
@@ -415,7 +421,7 @@ def restart_service(name, service, kconfig):
 
 def check_version(kconfig_file, input_files):
     hhcfg = HHConfig(input_files)
-    kcfg = KConfig(kconfig_file)
+    kcfg = load_parsed_kconfig()
 
     current_version = hhcfg.get("mmu", "happy_hare_version")
     if current_version is None:
@@ -443,6 +449,22 @@ def check_version(kconfig_file, input_files):
     logging.log(LEVEL_NOTICE, "Trying to upgrade to " + target_version)
 
 
+def pre_parse_kconfig(kconfig):
+    out = os.getenv("OUT")
+    kcfg = KConfig(kconfig)
+    sys.setrecursionlimit(10000)
+
+    with open(out + "/kconfig.pickle", "wb") as f:
+        dill.dump(kcfg, f, recurse=True)
+    #     pickle.dump(kcfg, f)
+
+
+def load_parsed_kconfig():
+    out = os.getenv("OUT")
+    with open(out + "/kconfig.pickle", "rb") as f:
+        return dill.load(f)
+
+
 def main():
     logging.addLevelName(logging.DEBUG, os.getenv("C_DEBUG", ""))
     logging.addLevelName(logging.INFO, os.getenv("C_INFO", ""))
@@ -462,6 +484,7 @@ def main():
     parser.add_argument("--install-includes", nargs=2)
     parser.add_argument("--uninstall-includes", nargs=1)
     parser.add_argument("--restart-service", nargs=3)
+    parser.add_argument("--pre-parse-kconfig", nargs=1)
     args = parser.parse_args()
 
     if args.verbose:
@@ -492,6 +515,9 @@ def main():
 
     if args.check_version:
         check_version(args.check_version[0], args.check_version[1:])
+
+    if args.pre_parse_kconfig:
+        pre_parse_kconfig(args.pre_parse_kconfig[0])
 
 
 if __name__ == "__main__":

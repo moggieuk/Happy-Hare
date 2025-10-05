@@ -101,7 +101,6 @@ restart_klipper = 0
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE))
-.NOTPARALLEL: clean
 
 
 
@@ -253,7 +252,7 @@ $(OUT)/moonraker/components/%.py: $(SRC)/components/%.py
 $(OUT):
 	$(Q)mkdir -p "$@"
 
-$(build_targets): $(KCONFIG_CONFIG) | $(OUT) check_version python_deps
+$(build_targets): $(KCONFIG_CONFIG) $(OUT)/kconfig.pickle | $(OUT) check_version python_deps 
 
 build: $(build_targets)
 
@@ -349,7 +348,7 @@ uninstall:
 ########################
 
 # Look for version number in current config files and report
-check_version: $(hh_configs_to_parse) | python_deps
+check_version: $(hh_configs_to_parse) $(OUT)/kconfig.pickle | python_deps
 	$(Q)$(PY) -m installer.build $(V) --check-version "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)
 
 clean:
@@ -357,6 +356,9 @@ clean:
 
 python_deps:
 	$(Q)pip -qq install -r $(SRC)/installer/requirements.txt
+
+$(OUT)/kconfig.pickle: $(KCONFIG_CONFIG)
+	$(Q)$(PY) -m installer.build $(V) --pre-parse-kconfig "$(KCONFIG_CONFIG)"
 
 diff= \
 	git diff -U2 --color --src-prefix="current: " --dst-prefix="built: " --minimal --word-diff=color --stat --no-index -- "$(1)" "$(2)" | \
