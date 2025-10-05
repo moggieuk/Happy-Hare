@@ -2254,6 +2254,7 @@ questionaire() {
         option MELLOW_BRD_1         'Mellow EASY-BRD v1.x (with CANbus)'
         option MELLOW_BRD_2         'Mellow EASY-BRD v2.x (with CANbus)'
         option AFC_LITE_1           'AFC Lite v1.0'
+        option WGB_3                'WGB v3.0'
         option SKR_PICO_1           'BTT SKR Pico v1.0'
         option EBB42_12             'BTT EBB 42 CANbus v1.2 (for MMX or Pico)'
         option OTHER                'Not in list / Unknown'
@@ -2297,6 +2298,10 @@ questionaire() {
                 ;;
             "$AFC_LITE_1")
                 _hw_brd_type="AFC_LITE_1"
+                pattern="Klipper_stm32"
+                ;;
+            "$WGB_3")
+                _hw_brd_type="WGB_3"
                 pattern="Klipper_stm32"
                 ;;
             "$SKR_PICO_1")
