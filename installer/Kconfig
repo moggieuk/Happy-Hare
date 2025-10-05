@@ -13,6 +13,7 @@ to_bool = $(shell, $(1) && echo y || echo n)
 serial = $(shell, ls /dev/serial/by-id/* 2>/dev/null | grep 'Klipper_$(2)' | tail -n +$(1) | head -n 1)
 serial_exists = $(to_bool, [ -e '$(serial,$(1),$(2))' ])
 serial_config = $(shell, basename '$(serial,$(1),$(2))' | sed 's/-/_/g' | awk '{print "PARAM_SERIAL_" toupper($0)}')
+buffer_serial_config = $(shell, basename '$(serial,$(1),$(2))' | sed 's/-/_/g' | awk '{print "PARAM_SERIAL_BUFFER_" toupper($0)}')
 
 # Used for comment padding
 pad = $(shell, printf "%-$(1)s" "$(2)")

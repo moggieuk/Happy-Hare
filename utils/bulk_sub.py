@@ -59,8 +59,19 @@ DEFAULT_PATTERNS: List[Tuple[str, str]] = [
     (r"(?<!_)mmu_gear(?!_)", "mmu_exit"),
     ("mmu_gate", "mmu_shared_exit"),
     ("pre_gate_sensors", "entry_sensors"),
-    ("gear sensor", "exit sensor"),
-    ("pre-gate", "entry"),
+    ("gear sensor", "mmu exit sensor"),
+    ("pre-gate", "mmu entry"),
+    ("PRE_GATE", "ENTRY"),
+    ("POST_GEAR", "EXIT"),
+    ("GEAR", "EXIT"),
+
+    ("gates/lanes", "lanes"),
+    ("GATE", "LANE"),
+    ("Gate", "Lane"),
+    ("gate", "lane"),
+
+    ("TTG", "TTL"),
+    ("ttg", "ttl"),
 ]
 
 # Set B - Gate >> Lane
@@ -79,7 +90,7 @@ DEFAULT_PATTERNS: List[Tuple[str, str]] = [
 
 IGNORE_DIRS = {
     ".git", ".hg", ".svn", "__pycache__", ".venv", "venv", "node_modules",
-    "build", "dist", ".mypy_cache", ".ruff_cache", ".pytest_cache",
+    "build", "dist", ".mypy_cache", ".ruff_cache", ".pytest_cache", "utils"
 }
 TARGET_EXTS = (".py", ".cfg", "Kconfig*")
 

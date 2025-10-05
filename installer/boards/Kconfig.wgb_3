@@ -1,0 +1,106 @@
+config BOARD_TYPE_WGB_1_0
+  bool "WGB v3.0"
+
+if BOARD_TYPE_WGB_1_0
+  config PARAM_BOARD_TYPE
+    default "WGB_3"
+
+  choice CHOICE_SERIAL_DEVICE
+    default $(serial_config,1,stm32)
+  endchoice
+
+  config PIN_GEAR_UART 
+    default "$(MMU_MCU):PC12" 
+  config PIN_GEAR_STEP
+    default "$(MMU_MCU):PD4" 
+  config PIN_GEAR_DIR
+    default "$(MMU_MCU):PD3" 
+  config PIN_GEAR_ENABLE
+    default "!$(MMU_MCU):PD5" 
+  config PIN_GEAR_DIAG
+    default "$(MMU_MCU):PD6" 
+
+  config PIN_GEAR_UART_1 
+    default "$(MMU_MCU):PC10" 
+  config PIN_GEAR_STEP_1
+    default "$(MMU_MCU):PD0" 
+  config PIN_GEAR_DIR_1
+    default "$(MMU_MCU):PC11" 
+  config PIN_GEAR_ENABLE_1
+    default "!$(MMU_MCU):PD1" 
+  config PIN_GEAR_DIAG_1
+    default "$(MMU_MCU):PD2" 
+
+  config PIN_GEAR_UART_2 
+    default "$(MMU_MCU):PA9" 
+  config PIN_GEAR_STEP_2
+    default "$(MMU_MCU):PC8" 
+  config PIN_GEAR_DIR_2
+    default "$(MMU_MCU):PA10" 
+  config PIN_GEAR_ENABLE_2
+    default "!$(MMU_MCU):PC9" 
+  config PIN_GEAR_DIAG_2
+    default "$(MMU_MCU):PA8" 
+
+  config PIN_GEAR_UART_3 
+    default "$(MMU_MCU):PC6" 
+  config PIN_GEAR_STEP_3
+    default "$(MMU_MCU):PD13" 
+  config PIN_GEAR_DIR_3
+    default "$(MMU_MCU):PD12" 
+  config PIN_GEAR_ENABLE_3
+    default "!$(MMU_MCU):PD14" 
+  config PIN_GEAR_DIAG_3
+    default "$(MMU_MCU):PD15" 
+
+  config PIN_PRE_GATE_0
+    default "^$(MMU_MCU):PA1" 
+  config PIN_PRE_GATE_1
+    default "^$(MMU_MCU):PA2" 
+  config PIN_PRE_GATE_2
+    default "^$(MMU_MCU):PA3" 
+  config PIN_PRE_GATE_3
+    default "^$(MMU_MCU):PA4" 
+
+  config PIN_GEAR_SENSOR_0
+    default "^$(MMU_MCU):PA5" 
+  config PIN_GEAR_SENSOR_1
+    default "^$(MMU_MCU):PA6" 
+  config PIN_GEAR_SENSOR_2
+    default "^$(MMU_MCU):PA7" 
+  config PIN_GEAR_SENSOR_3
+    default "^$(MMU_MCU):PC4" 
+
+  config PIN_ESPOOLER_EN_0
+    default "$(MMU_MCU):PD11" 
+  config PIN_ESPOOLER_RWD_0
+    default "$(MMU_MCU):PE15" 
+  config PIN_ESPOOLER_FWD_0
+    default "$(MMU_MCU):PB10" 
+
+  config PIN_ESPOOLER_EN_1
+    default "$(MMU_MCU):PD10" 
+  config PIN_ESPOOLER_RWD_1
+    default "$(MMU_MCU):PE13" 
+  config PIN_ESPOOLER_FWD_1
+    default "$(MMU_MCU):PE14" 
+
+  config PIN_ESPOOLER_EN_2
+    default "$(MMU_MCU):PD9" 
+  config PIN_ESPOOLER_RWD_2
+    default "$(MMU_MCU):PE12" 
+  config PIN_ESPOOLER_FWD_2
+    default "$(MMU_MCU):PE11" 
+
+  config PIN_ESPOOLER_EN_3
+    default "$(MMU_MCU):PD8" 
+  config PIN_ESPOOLER_RWD_3
+    default "$(MMU_MCU):PE8" 
+  config PIN_ESPOOLER_FWD_3
+    default "$(MMU_MCU):PE10" 
+
+  config PIN_NEOPIXEL
+    default "$(MMU_MCU):PB15"
+  config PIN_GATE_SENSOR
+    default "^$(MMU_MCU):PE7"
+endif

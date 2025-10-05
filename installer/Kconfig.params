@@ -3,6 +3,12 @@
 # Also allow editing of behavior parameters which are generally determined
 # by MMU type but can be tuned, especially for custom designs.
 
+config MMU_HAS_BUFFER_MCU
+  bool
+
+config PARAM_SERIAL_BUFFER
+  string
+
 config MMU_HAS_SELECTOR
   bool
 
@@ -34,7 +40,7 @@ config PARAM_MISC_HARDWARE
   string
   default ""
 
-# Future TODO: multi-mmu units can share the same buffer and encoder. For now assume one per unit
+# TODO: multi-mmu units can share the same buffer and encoder. For now assume one per unit
 config PARAM_SYNC_FEEDBACK_BUFFER_NAME
   string
   default UNIT_NAME

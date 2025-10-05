@@ -9,7 +9,8 @@ if BOARD_TYPE_VVD_1_0
     default $(serial_config,1,stm32)
   endchoice
 
-  # PAUL TODO add second serial board for buffer (if fitted)
+  config PARAM_SERIAL_BUFFER
+    default "SET_ME"
 
   config PIN_SELECTOR_UART
     default "$(MMU_MCU):PB3" 
