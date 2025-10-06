@@ -15,7 +15,7 @@ ifeq ($(CHECK_OUTPUT_SYNC),)
   ifeq ($(findstring menuconfig,$(MAKECMDGOALS)),)
     # Check whether $KCONFIG_CONFIG is outdated. if so menuconfig will be triggered and output-sync should stay disabled
     ifeq ($(shell $(MAKE) CHECK_OUTPUT_SYNC=y -q $(KCONFIG_CONFIG) > /dev/null && echo y),y)
-      MAKEFLAGS += --output-sync
+      MAKEFLAGS += --output-sync=line
     endif
   endif
   -include $(KCONFIG_CONFIG) # Won't exist on first invocation
@@ -101,7 +101,6 @@ restart_klipper = 0
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE))
-.NOTPARALLEL: clean
 
 
 
@@ -253,7 +252,7 @@ $(OUT)/moonraker/components/%.py: $(SRC)/components/%.py
 $(OUT):
 	$(Q)mkdir -p "$@"
 
-$(build_targets): $(KCONFIG_CONFIG) | $(OUT) check_version python_deps
+$(build_targets): $(KCONFIG_CONFIG) $(OUT)/kconfig.pickle | $(OUT) check_version python_deps 
 
 build: $(build_targets)
 
@@ -349,14 +348,19 @@ uninstall:
 ########################
 
 # Look for version number in current config files and report
-check_version: $(hh_configs_to_parse) | python_deps
+check_version: $(hh_configs_to_parse) $(OUT)/kconfig.pickle | python_deps
 	$(Q)$(PY) -m installer.build $(V) --check-version "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)
 
 clean:
 	$(Q)rm -rf $(OUT)
 
 python_deps:
+	$(Q)echo "$(C_INFO)Checking for python dependencies$(C_OFF)"
 	$(Q)pip -qq install -r $(SRC)/installer/requirements.txt
+
+$(OUT)/kconfig.pickle: $(KCONFIG_CONFIG) | python_deps $(OUT) 
+	$(Q)echo "$(C_INFO)Pre-parsing KConfig$(C_OFF)"
+	$(Q)$(PY) -m installer.build $(V) --pre-parse-kconfig "$(KCONFIG_CONFIG)"
 
 diff= \
 	git diff -U2 --color --src-prefix="current: " --dst-prefix="built: " --minimal --word-diff=color --stat --no-index -- "$(1)" "$(2)" | \

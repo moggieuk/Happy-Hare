@@ -8,8 +8,8 @@ This provides a quick way to run through the installer in a docker environment, 
 > currently symbolic links aren't copied 
 
 There are two targets:
-- debian, to mimic most common klipper installs (mainsail OS, Raspian OS, etc)
-- alpine, to mimic a busybox environment like with Creality K1 
+- debian, to mimic most common klipper installs (mainsail OS, Raspian OS, etc). Uses Python 3.11
+- alpine, to mimic a busybox environment like on the Creality K1. Uses Python 2.7
 
 ## Usage
 

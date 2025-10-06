@@ -1,3 +1,5 @@
+# coding=UTF-8
+#
 # Happy Hare MMU Software
 #
 # A tiny tokenizer > parser > AST > writer pipeline for Klipper-style .cfg files.
@@ -153,10 +155,9 @@ class MagicExclusionNode(BodyNode):
         BodyNode.__init__(self, "magic_exclusion", body)
         self.origin = origin
 
+
 def _is_magic_comment_token(peek):
-    return (peek is not None
-            and peek.type == "comment"
-            and MAGIC_EXCLUSION_COMMENT.match(peek.value.lstrip()))
+    return peek is not None and peek.type == "comment" and MAGIC_EXCLUSION_COMMENT.match(peek.value.lstrip())
 
 
 class SectionNode(BodyNode):
@@ -255,6 +256,7 @@ class Parser(object):
         Remove any node (and its subtree) for which predicate(node) is True.
         Operates in-place.
         """
+
         def _filter_tree(parent, cur):
             # If this node should be removed, prune it from the parent and stop descending.
             if predicate(cur):
@@ -273,7 +275,6 @@ class Parser(object):
         _filter_tree(None, node)
 
     def parse_document(self, tokenizer):
-
         def _parse_regular(peek, body):
             if peek.type == "section":
                 body.append(self.parse_section(tokenizer))
@@ -336,7 +337,7 @@ class Parser(object):
         peek = tokenizer.peek()
         while peek and peek.type != "section":
             if _is_magic_comment_token(peek):
-                break # Do not consume here—let parse_document() handle it
+                break  # Do not consume here—let parse_document() handle it
 
             if peek.type == "comment":
                 body.append(self.parse_comment(tokenizer))
@@ -373,7 +374,9 @@ class Parser(object):
         peek = tokenizer.peek()
         while peek:
             if peek.type == "whitespace":
-                if peek.value.startswith("\n") and peek.value.endswith("\n"):  # multi-line value ends with a newline without a tab/space after it
+                if peek.value.startswith("\n") and peek.value.endswith(
+                    "\n"
+                ):  # multi-line value ends with a newline without a tab/space after it
                     break
 
                 token = tokenizer.take("whitespace")
@@ -381,8 +384,8 @@ class Parser(object):
                 # Ensure whitespace for empty options is tokenized in ValueLineNode (only newline is standalone)
                 m = re.search(r"\r?\n", token.value)
                 if m and m.start() > 0:
-                    tokenizer.unread(token.value[m.start():])
-                    token.value = token.value[:m.start()]
+                    tokenizer.unread(token.value[m.start() :])
+                    token.value = token.value[: m.start()]
 
                 if len(body) == 0 and len(current_line) == 0 and len(current_entry) == 0:
                     current_line.append(WhitespaceNode(token.value))
@@ -510,10 +513,12 @@ class ConfigBuilder(object):
         Return a list of all MagicExclusionNode instances in the current document,
         across all files that have been read/merged.
         """
+
         def collect_magic(node, acc, _depth):
             if isinstance(node, MagicExclusionNode) and (origin is None or node.origin == origin):
                 acc.append(node)
             return True, acc  # Keep descending
+
         return self.document.walk(collect_magic, [])
 
     def delete_excluded(self, origin=None):
@@ -525,7 +530,9 @@ class ConfigBuilder(object):
         if to_remove == 0:
             return 0
         # Filter_tree prunes matching nodes and their entire subtree in-place
-        self.parser.filter_tree(self.document, lambda n: isinstance(n, MagicExclusionNode) and (origin is None or n.origin == origin))
+        self.parser.filter_tree(
+            self.document, lambda n: isinstance(n, MagicExclusionNode) and (origin is None or n.origin == origin)
+        )
         return to_remove
 
     def _iter_section_nodes(self, node, inside_excluded=False):
@@ -771,12 +778,10 @@ class ConfigBuilder(object):
         return self.document.walk(collect_placeholders, [])
 
 
-
-
 # Simple built-in command line round-trip test for the config parser. Use
 # "--check" option to perform byte-by-btye comparison
 # "--print" option to pretty print node tree
-# 
+#
 # Usage:
 #   python parser.py path/to/printer.cfg <in.cfg>
 #   python parser.py path/to/printer.cfg --out <path/to/out.cfg> <in.cfg>
@@ -788,7 +793,7 @@ if __name__ == "__main__":
     import sys
     from pathlib import Path
 
-    def _decode_with_fallback(data: bytes, forced_encoding: str | None = None):
+    def _decode_with_fallback(data, forced_encoding):
         """
         Return (text, used_encoding). Prefers utf-8/utf-8-sig, falls back to latin-1.
         Preserves UTF-8 BOM by switching to 'utf-8-sig' when present.
@@ -806,16 +811,14 @@ if __name__ == "__main__":
         except UnicodeDecodeError:
             return data.decode("latin-1"), "latin-1"
 
-    def _encode_with_bom_awareness(text: str, used_encoding: str) -> bytes:
+    def _encode_with_bom_awareness(text, used_encoding):
         if used_encoding == "utf-8-sig":
             # Prepend BOM when encoding (utf-8-sig handles it automatically)
             return text.encode("utf-8-sig")
         return text.encode(used_encoding)
 
     def _make_parser():
-        ap = argparse.ArgumentParser(
-            description="Parse a Klipper-style config and write it back unchanged."
-        )
+        ap = argparse.ArgumentParser(description="Parse a Klipper-style config and write it back unchanged.")
         ap.add_argument("cfg", type=Path, help="Input config file")
         ap.add_argument(
             "--out",
@@ -850,9 +853,7 @@ if __name__ == "__main__":
 
         # Decode with basic BOM/encoding handling
         try:
-            original_text, used_encoding = _decode_with_fallback(
-                original_bytes, forced_encoding=args.encoding
-            )
+            original_text, used_encoding = _decode_with_fallback(original_bytes, forced_encoding=args.encoding)
         except Exception as e:
             sys.stderr.write("[ERROR] Decoding failed: {}\n".format(e))
             sys.exit(2)
@@ -884,7 +885,7 @@ if __name__ == "__main__":
             sys.exit(2)
 
         # Pretty print node structure for debugging
-        if args.print:
+        if getattr(args, "print"):
             builder.pretty_print_document()
 
         if args.check:
