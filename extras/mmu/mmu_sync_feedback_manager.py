@@ -56,7 +56,6 @@ class MmuSyncFeedbackManager:
         self.active = False         # Actively operating?
         self.last_recorded_extruder_position = None
         self._last_state_side = 0   # track sign of proportional state to detect transitions
-        self._last_watchdog_reset = 0.0
         self._rd_applied = None     # track live applied RD so UI can show true adjustment
         self._proportional_seen = False  # true once we receive at least one proportional event
 
@@ -534,7 +533,8 @@ class MmuSyncFeedbackManager:
                 ss = self.SYNC_STATE_NEUTRAL
         self.state = ss
         # Update cached side for later transition detection
-        self._last_state_side = 0 if ss == self.SYNC_STATE_NEUTRAL else (1 if ss == self.SYNC_STATE_COMPRESSED else -1)
+        # state here (ss) is already quantised hence safe to use in the last state side variable that always expects -1 0 1 values.
+        self._last_state_side = ss
 
     
     # EndGuard implementation (proportional filament pressure sensor clog and tangle detection)
