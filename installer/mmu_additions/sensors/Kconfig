@@ -5,9 +5,9 @@ menu "Filament Sensors"
     detection and homing option.
 
   # Force a logical order from mmu to extruder
-  rsource "Kconfig.pre_gate"
-  rsource "Kconfig.post_gear"
-  rsource "Kconfig.gate"
+  rsource "Kconfig.entry"
+  rsource "Kconfig.exit"
+  rsource "Kconfig.shared_exit"
   rsource "Kconfig.sync_feedback"
 
 # PAUL

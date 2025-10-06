@@ -65,13 +65,13 @@ DEFAULT_PATTERNS: List[Tuple[str, str]] = [
     ("POST_GEAR", "EXIT"),
     ("GEAR", "EXIT"),
 
-    ("gates/lanes", "lanes"),
-    ("GATE", "LANE"),
-    ("Gate", "Lane"),
-    ("gate", "lane"),
-
-    ("TTG", "TTL"),
-    ("ttg", "ttl"),
+#    ("gates/lanes", "lanes"),
+#    ("GATE", "LANE"),
+#    ("Gate", "Lane"),
+#    ("gate", "lane"),
+#
+#    ("TTG", "TTL"),
+#    ("ttg", "ttl"),
 ]
 
 # Set B - Gate >> Lane

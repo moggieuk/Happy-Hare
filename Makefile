@@ -4,7 +4,7 @@ Q  ?= @                           # For quiet make builds, override with make Q=
 V  ?=                             # For verbose output (mostly from python builder), set to -v to enable
 UT ?= *                           # For unittests, e.g. make UT=test_build.py test
 
-MAKEFLAGS += --jobs 8             # Parallel build
+MAKEFLAGS += --jobs 16            # Parallel build
 
 # By default KCONFIG_CONFIG is '.config', but it can be overridden by the user
 export KCONFIG_CONFIG ?= .config

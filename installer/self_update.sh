@@ -58,4 +58,5 @@ self_update() {
     fi
 }
 
-self_update
+# PAUL temp protection
+#self_update
