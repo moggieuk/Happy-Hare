@@ -4613,16 +4613,6 @@ class Mmu:
                     tension_active = self.sensor_manager.check_sensor(self.SENSOR_TENSION)
                     compression_active = self.sensor_manager.check_sensor(self.SENSOR_COMPRESSION)
                     _,_ = self._adjust_filament_tension()
-                # Proportional-only tension adjustment post toolhead load (used if no tension/compression switches are present)
-                # Probably redundant but can help in case of extruder slippage.
-                if (
-                    self.toolhead_post_load_tension_adjust
-                    and (self.sync_to_extruder or self.sync_purge)
-                    and not (has_tension or has_compression)
-                    and self.sync_feedback_manager.is_enabled()
-                    and getattr(self.sync_feedback_manager, "_proportional_seen", False)
-                ):
-                    self._adjust_filament_tension_proportional()
 
             self._random_failure() # Testing
             self.movequeues_wait()
