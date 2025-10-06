@@ -2175,7 +2175,7 @@ questionaire() {
     if [ "${_hw_mmu_vendor}" == "KMS" ]; then
         pattern="Klipper_stm32"
         for line in `ls /dev/serial/by-id 2>/dev/null | grep -E "Klipper_"`; do
-            if echo ${line} | grep --quiet "${pattern}"; then
+            if echo ${line} | grep -q "${pattern}"; then
                 echo -e "${PROMPT}${SECTION}Is '/dev/serial/by-id/${line}' a ${EMPHASIZE}KMS${PROMPT} controller serial port?${INPUT}"
                 OPTIONS=()
                 option KMS     'KMS MMU'
@@ -2208,7 +2208,7 @@ questionaire() {
     elif [ "${_hw_mmu_vendor}" == "VVD" ]; then
         pattern="Klipper_stm32"
         for line in `ls /dev/serial/by-id 2>/dev/null | grep -E "Klipper_"`; do
-            if echo ${line} | grep --quiet "${pattern}"; then
+            if echo ${line} | grep -q "${pattern}"; then
                 echo -e "${PROMPT}${SECTION}Is '/dev/serial/by-id/${line}' a ${EMPHASIZE}KMS${PROMPT} controller serial port?${INPUT}"
                 OPTIONS=()
                 option VVD     'ViVid MMU'
@@ -2254,6 +2254,7 @@ questionaire() {
         option MELLOW_BRD_1         'Mellow EASY-BRD v1.x (with CANbus)'
         option MELLOW_BRD_2         'Mellow EASY-BRD v2.x (with CANbus)'
         option AFC_LITE_1           'AFC Lite v1.0'
+        option WGB_3                'WGB v3.0'
         option SKR_PICO_1           'BTT SKR Pico v1.0'
         option EBB42_12             'BTT EBB 42 CANbus v1.2 (for MMX or Pico)'
         option OTHER                'Not in list / Unknown'
@@ -2299,6 +2300,10 @@ questionaire() {
                 _hw_brd_type="AFC_LITE_1"
                 pattern="Klipper_stm32"
                 ;;
+            "$WGB_3")
+                _hw_brd_type="WGB_3"
+                pattern="Klipper_stm32"
+                ;;
             "$SKR_PICO_1")
                 _hw_brd_type="SKR_PICO_1"
                 pattern="Klipper_rp2040"
@@ -2314,7 +2319,7 @@ questionaire() {
         esac
 
         for line in `ls /dev/serial/by-id 2>/dev/null | grep -E "Klipper_"`; do
-            if echo ${line} | grep --quiet "${pattern}"; then
+            if echo ${line} | grep -q "${pattern}"; then
                 echo -e "${PROMPT}${SECTION}This looks like your ${EMPHASIZE}${_hw_brd_type}${PROMPT} controller serial port. Is that correct?${INPUT}"
                 yn=$(prompt_yn "/dev/serial/by-id/${line}")
                 echo
