@@ -65,14 +65,18 @@ class MmuSyncFeedbackManager:
         self.sync_feedback_buffer_maxrange = self.mmu.config.getfloat('sync_feedback_buffer_maxrange', 10., minval=0.)
         self.sync_multiplier_high = self.mmu.config.getfloat('sync_multiplier_high', 1.05, minval=1., maxval=2.)
         self.sync_multiplier_low = self.mmu.config.getfloat('sync_multiplier_low', 0.95, minval=0.5, maxval=1.)
+        self.sync_movement_threshold = self.mmu.config.getfloat('sync_movement_threshold', self.MOVEMENT_THRESHOLD, above=self.SIGNIFICANT_MOVEMENT) # Not yet exposed
         # Make direction detection threshold configurable. This is the min extruder movement to trigger direction change
-        self.sync_movement_threshold = self.mmu.config.getfloat('sync_movement_threshold',self.SIGNIFICANT_MOVEMENT,above=0.5)
+        self.sync_significant_movement_threshold = self.mmu.config.getfloat('sync_significant_movement_threshold',self.SIGNIFICANT_MOVEMENT,above=0.5, below=self.sync_movement_threshold)
+        # Log error if sync_significant_movement_threshold is not less than or equal to the sync_movement_threshold (user config guard)
+        if self.sync_significant_movement_threshold > self.sync_movement_threshold:
+            self.mmu.log_error( "Significant movement threshold higher than movement threshold")
         
         # EndGuard (proportional near-end watchdog)
         self.sync_endguard_enabled  = self.mmu.config.getint('sync_endguard_enabled', 0, minval=0, maxval=1)
         self.sync_endguard_band     = self.mmu.config.getfloat('sync_endguard_band', 0.80, minval=0.55, maxval=1.00)
         self.sync_endguard_distance_mm  = self.mmu.config.getfloat('sync_endguard_distance_mm', 6.0, minval=1.0)
-        # G-code to run when EndGuard triggers.
+        self.endguard_last_recorded_extruder_position  = None
         self._endguard_forward_mm   = 0.0
         self._endguard_triggered    = False
         self.endguard_active        = 0  # runtime latch to activate/deactivate endguard during the load/unload process
@@ -100,7 +104,7 @@ class MmuSyncFeedbackManager:
         self.sync_feedback_buffer_maxrange = gcmd.get_float('SYNC_FEEDBACK_BUFFER_MAXRANGE', self.sync_feedback_buffer_maxrange, minval=0.)
         self.sync_multiplier_high = gcmd.get_float('SYNC_MULTIPLIER_HIGH', self.sync_multiplier_high, minval=1., maxval=2.)
         self.sync_multiplier_low = gcmd.get_float('SYNC_MULTIPLIER_LOW', self.sync_multiplier_low, minval=0.5, maxval=1.)
-        self.sync_movement_threshold = gcmd.get_float('SYNC_MOVEMENT_THRESHOLD', self.sync_movement_threshold, minval=0.5)
+        self.sync_significant_movement_threshold = gcmd.get_float('SYNC_SIGNIFICANT_MOVEMENT_THRESHOLD', self.sync_significant_movement_threshold, minval=0.5, maxval=self.sync_movement_threshold)
         self.sync_endguard_enabled = gcmd.get_int('SYNC_ENDGUARD_ENABLED', self.sync_endguard_enabled, minval=0, maxval=1)
         self.sync_endguard_band = gcmd.get_float('SYNC_ENDGUARD_BAND', self.sync_endguard_band, minval=0.55, maxval=1.00)
         self.sync_endguard_distance_mm = gcmd.get_float('SYNC_ENDGUARD_DISTANCE_MM', self.sync_endguard_distance_mm, minval=1.0)
@@ -111,7 +115,7 @@ class MmuSyncFeedbackManager:
         msg += "\nsync_feedback_buffer_maxrange = %.1f" % self.sync_feedback_buffer_maxrange
         msg += "\nsync_multiplier_high = %.2f" % self.sync_multiplier_high
         msg += "\nsync_multiplier_low = %.2f" % self.sync_multiplier_low
-        msg += "\nsync_movement_threshold = %.2f" % self.sync_movement_threshold
+        msg += "\nsync_significant_movement_threshold = %.2f" % self.sync_significant_movement_threshold
         msg += "\nsync_endguard_enabled = %d" % self.sync_endguard_enabled
         msg += "\nsync_endguard_band = %.2f" % self.sync_endguard_band
         msg += "\nsync_endguard_distance_mm = %.1f" % self.sync_endguard_distance_mm
@@ -128,7 +132,7 @@ class MmuSyncFeedbackManager:
     # Regardless of state or gate this will set a sensible rotation distance
     def reset_sync_starting_state_for_gate(self, gate):
         if gate >= 0:
-            # Initialize rotation distance clampling range for gate
+            # Initialize rotation distance clamping range for gate
             if not self.rd_clamps.get(gate):
                 rd = self.mmu.get_rotation_distance(gate)
                 self.rd_clamps[gate] = [rd * self.sync_multiplier_high, rd, rd * self.sync_multiplier_low, None, rd]
@@ -184,6 +188,7 @@ class MmuSyncFeedbackManager:
     def _reset_extruder_watchdog(self):
         self.extruder_direction = 0 # Extruder not moving to force neutral start position
         self.last_recorded_extruder_position = None
+        self.endguard_last_recorded_extruder_position = None
 
     # Called periodically to check extruder movement
     def _check_extruder_movement(self, eventtime):
@@ -191,31 +196,43 @@ class MmuSyncFeedbackManager:
             estimated_print_time = self.mmu.printer.lookup_object('mcu').estimated_print_time(eventtime)
             extruder = self.mmu.toolhead.get_extruder()
             pos = extruder.find_past_position(estimated_print_time)
+            
             if self.last_recorded_extruder_position is None:
                 self.last_recorded_extruder_position = pos
+            
+            if self.endguard_last_recorded_extruder_position is None:
+                self.endguard_last_recorded_extruder_position = pos
 
             # Have we changed direction?
-            if abs(pos - self.last_recorded_extruder_position) > self.sync_movement_threshold:
+            if abs(pos - self.last_recorded_extruder_position) > self.sync_significant_movement_threshold:
                 prev_direction = self.extruder_direction
                 self.extruder_direction = (
                     self.mmu.DIRECTION_LOAD if pos > self.last_recorded_extruder_position
                     else self.mmu.DIRECTION_UNLOAD if pos < self.last_recorded_extruder_position
                     else 0
                 )
+                delta = pos - self.last_recorded_extruder_position
                 if self.extruder_direction != prev_direction:
                     self._notify_direction_change(prev_direction, self.extruder_direction)
                     # Feed EndGuard with the positive chunk consumed by the direction-change path
-                    if pos > self.last_recorded_extruder_position:
-                        self._notify_endguard_forward_progress(pos - self.last_recorded_extruder_position)
+                    if delta > 0.0:
+                        self._notify_endguard_forward_progress(delta)
+                        if delta >= self.sync_movement_threshold:
+                            self._notify_hit_movement_marker(delta)
                     self.last_recorded_extruder_position = pos
+                    self.endguard_last_recorded_extruder_position = pos
 
+            # Feed auto tuning on sync_movement_threshold intervals
             if (pos - self.last_recorded_extruder_position) >= self.sync_movement_threshold:
-                # Feed EndGuard on forward-only chunks as well
-                self._notify_endguard_forward_progress(pos - self.last_recorded_extruder_position)
                 # Ensure we are given periodic notifications to aid autotuning
                 self._notify_hit_movement_marker(pos - self.last_recorded_extruder_position)
                 self.last_recorded_extruder_position = pos # Move marker
-
+            
+            # Feed endguard on sync_significant_movement_threshold intervals
+            if (pos - self.endguard_last_recorded_extruder_position) >= self.sync_significant_movement_threshold:
+                # Feed EndGuard on forward-only chunks as well
+                self._notify_endguard_forward_progress(pos - self.endguard_last_recorded_extruder_position)
+                self.endguard_last_recorded_extruder_position = pos # Move marker
 
         return eventtime + self.FEEDBACK_INTERVAL
 
@@ -658,6 +675,7 @@ class MmuSyncFeedbackManager:
     # For that use _clear_pending_endguard.
         self._endguard_forward_mm = 0.0
         self._endguard_triggered = False
+        self.endguard_last_recorded_extruder_position = None
 
     def _notify_endguard_forward_progress(self, movement):
         if not (getattr(self, "sync_endguard_enabled", 0) and getattr(self, "endguard_active", 0)):
