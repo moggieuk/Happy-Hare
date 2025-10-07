@@ -262,6 +262,7 @@ class Mmu:
         self.toolchange_purge_volume = 0.
         self.mmu_logger = None                # Setup on connect
         self._standalone_sync = False         # Used to indicate synced extruder intention whilst out of print
+        self._suppress_release_grip = False   # Used to suppress the relaxing of grip on recursive calls to prevent servo flutter
         self.bowden_start_pos = None
         self.has_blobifier = False            # Post load blobbling macro (like BLOBIFIER)
         self.has_mmu_cutter = False           # Post unload cutting macro (like EREC)
@@ -904,9 +905,9 @@ class Mmu:
         # TODO: A little bit hacky until a more universal approach is implemented
         sequence_vars_macro = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
         if sequence_vars_macro:
-            self.has_blobifier = 'blob' in sequence_vars_macro.variables.get('user_post_load_extension', '').lower() # E.g. "BLOBIFIER"
-            self.has_mmu_cutter = 'cut' in sequence_vars_macro.variables.get('user_post_unload_extension', '').lower() # E.g "EREC_CUTTER_ACTION"
-        self.has_toolhead_cutter = 'cut' in self.form_tip_macro.lower() # E.g. "_MMU_CUT_TIP"
+            self.has_blobifier = 'blob' in sequence_vars_macro.variables.get('user_post_load_extension', '').lower()   # E.g. "BLOBIFIER" (old method of adding)
+            self.has_mmu_cutter = 'cut' in sequence_vars_macro.variables.get('user_post_unload_extension', '').lower() # E.g. "EREC_CUTTER_ACTION"
+        self.has_toolhead_cutter = 'cut' in self.form_tip_macro.lower()                                                # E.g. "_MMU_CUT_TIP"
 
         # Sub components
         self.selector.handle_connect()
@@ -4949,7 +4950,7 @@ class Mmu:
                     # full bowden length or max possible length if bowden is uncalibrated
                     _,_ = self._unload_gate(homing_max=bowden_move if calibrated else self.bowden_homing_max)
 
-            # Set future "from buffer" flag
+            # Set future "from buffer" flag (also used for faster loading speed)
             if unload_to_buffer and self.gate_status[self.gate_selected] != self.GATE_EMPTY:
                 self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE_FROM_BUFFER)
 
@@ -5339,6 +5340,22 @@ class Mmu:
 
         return actual, homed, measured, delta
 
+    # This is used to protect just the mmu_toolhead sync state and is used to wrap individual moves. Typically
+    # the starting state will be unsynced so this will simply unsync at the end of the move. It does not manage
+    # grip (servo) movement control since that would lead to unecessary "flutter" and premature wear
+    @contextlib.contextmanager
+    def _wrap_sync_mode(self, sync_mode):
+        prev_sync_mode = self.mmu_toolhead.sync_mode
+        self.mmu_toolhead.sync(sync_mode)
+        self._restore_gear_current()
+        try:
+            yield self
+        finally:
+            # Don't restore because it results in too much delay on rapid back-to-back moves and in theory shouldn't
+            # be necessary because the user is protected with wrap_sync_gear_to_extruder() in outermost `MMU_XXX` commands
+            #self.mmu_toolhead.sync(prev_sync_mode)
+            pass
+
     # Used to force accelaration override for homing moves
     @contextlib.contextmanager
     def wrap_accel(self, accel):
@@ -5574,8 +5591,9 @@ class Mmu:
 
         # Handle filament grip before sync (type-A MMU) because of potential "buzz" movement
         if sync:
-            self.selector.filament_drive()
-        else:
+            self.selector.filament_drive()    
+        elif not self._suppress_release_grip:
+            # There are situations where we want this to be lazy to avoid "flutter" (of servo)
             self.selector.filament_release()
 
         # Sync / Unsync
@@ -5596,6 +5614,7 @@ class Mmu:
 
     # This is used to protect synchronization, current and grip states and is used as an outermost wrapper
     # for "MMU_" commands back into Happy Hare during a print or standalone operation
+    #   supress_fix_grip: prevents subsequent recursive calls from relaxing grip thus avoiding flutter
     @contextlib.contextmanager
     def wrap_sync_gear_to_extruder(self):
         prev_sync = self.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
@@ -5608,26 +5627,22 @@ class Mmu:
         try:
             yield self
         finally:
-            self.reset_sync_gear_to_extruder(prev_sync)
+            with self._wrap_suppress_release_grip():
+                self.reset_sync_gear_to_extruder(prev_sync)
 
             # Restore espooler state
             if self.has_espooler():
                 self.espooler.set_operation(self.gate_selected, espooler_state[1], espooler_state[0])
 
-    # This is used to protect just the mmu_toolhead sync state and is used to wrap individual moves. Typically
-    # the starting state will be unsynced so this will simply unsync at the end of the move. It does not manage
-    # grip (servo) movement control since that would lead to unecessary "flutter" and premature wear
     @contextlib.contextmanager
-    def _wrap_sync_mode(self, sync_mode):
-        prev_sync_mode = self.mmu_toolhead.sync_mode
-        self.mmu_toolhead.sync(sync_mode)
-        self._restore_gear_current()
+    def _wrap_suppress_release_grip(self):
+        clear_suppress = not self._suppress_release_grip
+        self._suppress_release_grip = True
         try:
             yield self
         finally:
-            # Don't restore because it results in too much delay on rapid back-to-back moves
-            #self.mmu_toolhead.sync(prev_sync_mode)
-            pass
+            if clear_suppress:
+                self._suppress_release_grip = False
 
     def _adjust_gear_current(self, gate=None, percent=100, reason=""):
         gate = gate if gate is not None else self.gate_selected
