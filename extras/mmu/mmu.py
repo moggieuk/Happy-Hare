@@ -2302,8 +2302,8 @@ class Mmu:
 
         # Require proportional sync-feedback to be enabled and observed at least once
         sfm = getattr(self, "sync_feedback_manager", None)
-        if ( sfm is None or not getattr(sfm, "_proportional_seen", False) ):
-            self.log_info("MMU_ADJUST_TENSION: proportional sync-feedback not available/enabled/seen")
+        if ( sfm is None or not getattr(sfm, "sync_feedback_proportional_sensor", False) ):
+            self.log_info("MMU_ADJUST_TENSION: proportional sync-feedback not enabled")
             return
 
         try:
@@ -4561,13 +4561,13 @@ class Mmu:
             _,_,measured,delta = self.trace_filament_move("Loading filament to nozzle", length, speed=speed, motor=motor, wait=True)
             self._set_filament_remaining(0.)
 
-            # Proportional-only tension adjustment (used if no tension/compression switches are present)
+            # Proportional-only tension adjustment
             if (
                 self.toolhead_post_load_tension_adjust
                 and (self.sync_to_extruder or self.sync_purge)
                 and not (has_tension or has_compression)
                 and self.sync_feedback_manager.is_enabled()
-                and getattr(self.sync_feedback_manager, "_proportional_seen", False)
+                and getattr(self.sync_feedback_manager, "sync_feedback_proportional_sensor", False)
             ):
                 self._adjust_filament_tension_proportional()
 
@@ -4608,6 +4608,7 @@ class Mmu:
                     and (self.sync_to_extruder or self.sync_purge)
                     and (has_tension or has_compression)
                     and self.sync_feedback_manager.is_enabled()
+                    and not getattr(self.sync_feedback_manager, "sync_feedback_proportional_sensor", False) # Do not use this path if a proportional sensor is available
                 ):
                     # Try to put filament in neutral tension by centering between sensors
                     tension_active = self.sensor_manager.check_sensor(self.SENSOR_TENSION)
