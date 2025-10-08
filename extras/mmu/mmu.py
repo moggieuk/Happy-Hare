@@ -1796,18 +1796,18 @@ class Mmu:
     def format_help(self, msg):
         lines = msg.splitlines()
         if not lines:
-            return msg     
+            return msg
 
         first_line = lines[0]
         if ":" in first_line:
             cmd, helpstr = first_line.split(":", 1)
             formatted_help = "{5}%s{6}:%s" % (cmd.strip(), helpstr)
         else:
-            formatted_help = first_line 
+            formatted_help = first_line
 
         param_width = max(10, max((len(line.split("=", 1)[0].strip()) + 1 for line in lines[1:] if "=" in line), default=0))
         formatted_params = []
-        for line in lines[1:]:      
+        for line in lines[1:]:
             if "=" in line:
                 key, value = line.split("=", 1)
                 padded = key.strip().ljust(param_width, UI_SPACE) + "= " + value.strip()
@@ -5096,7 +5096,7 @@ class Mmu:
                 # Use stepper movement (tip forming)
                 filament_remaining = 0.
                 park_pos = stepper_movement + self.toolhead_residual_filament + self.toolchange_retract
-                msg = "After tip forming, extruder moved: %.1fmm thus park_pos calculated as %.1fmm (encoder measured %.1fmm)" % (stepper_movement, park_pos, measured)
+                msg = "After tip forming, extruder moved: %.1fmm thus park_pos calculated as %.1fmm (encoder measured %.1fmm total movement)" % (stepper_movement, park_pos, measured)
                 if test:
                     self.log_always(msg)
                 else:
@@ -5107,7 +5107,7 @@ class Mmu:
                     self.log_warning("Warning: output_park_pos was reported as 0mm and may not be set correctly\nWill attempt to continue...")
                 reported = True
                 filament_remaining = park_pos - stepper_movement - self.toolhead_residual_filament - self.toolchange_retract
-                msg = "After tip cutting, park_pos reported as: %.1fmm with calculated %.1fmm filament remaining in extruder (extruder moved: %.1fmm, encoder measured %.1fmm)" % (park_pos, filament_remaining, stepper_movement, measured)
+                msg = "After tip cutting, park_pos reported as: %.1fmm with calculated %.1fmm filament remaining in extruder (extruder moved: %.1fmm, encoder measured %.1fmm total movement)" % (park_pos, filament_remaining, stepper_movement, measured)
                 if test:
                     self.log_always(msg)
                 else:
@@ -5591,7 +5591,7 @@ class Mmu:
 
         # Handle filament grip before sync (type-A MMU) because of potential "buzz" movement
         if sync:
-            self.selector.filament_drive()    
+            self.selector.filament_drive()
         elif not self._suppress_release_grip:
             # There are situations where we want this to be lazy to avoid "flutter" (of servo)
             self.selector.filament_release()
@@ -5617,32 +5617,30 @@ class Mmu:
     #   supress_fix_grip: prevents subsequent recursive calls from relaxing grip thus avoiding flutter
     @contextlib.contextmanager
     def wrap_sync_gear_to_extruder(self):
-        prev_sync = self.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
+        prev_sync = (self.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER)
 
         # Turn espooler in-print assist off
         espooler_state = None
         if self.has_espooler():
             espooler_state = self.espooler.get_operation(self.gate_selected)
             self._espooler_assist_off()
-        try:
-            yield self
-        finally:
-            with self._wrap_suppress_release_grip():
-                self.reset_sync_gear_to_extruder(prev_sync)
 
-            # Restore espooler state
-            if self.has_espooler():
-                self.espooler.set_operation(self.gate_selected, espooler_state[1], espooler_state[0])
-
-    @contextlib.contextmanager
-    def _wrap_suppress_release_grip(self):
+        # Outermost-only suppression of grip release
         clear_suppress = not self._suppress_release_grip
         self._suppress_release_grip = True
         try:
             yield self
         finally:
+            # Only the outermost wrapper clears suppression
             if clear_suppress:
                 self._suppress_release_grip = False
+
+            # Restore sync state (logic can act on global suppression flag)
+            self.reset_sync_gear_to_extruder(prev_sync)
+
+            # Restore espooler state
+            if self.has_espooler() and espooler_state is not None:
+                self.espooler.set_operation(self.gate_selected, espooler_state[1], espooler_state[0])
 
     def _adjust_gear_current(self, gate=None, percent=100, reason=""):
         gate = gate if gate is not None else self.gate_selected
