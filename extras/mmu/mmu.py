@@ -5445,9 +5445,9 @@ class Mmu:
             self._set_filament_pos_state(self.FILAMENT_POS_LOADED, silent=silent)
 
         # Somewhere in extruder
-        elif filament_detected and can_heat and self.check_filament_still_in_extruder(): # Encoder based
+        elif filament_detected and can_heat and self.check_filament_in_extruder(): # Encoder based
             self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER, silent=silent) # Will start from tip forming
-        elif ts is False and filament_detected and (self.strict_filament_recovery or strict) and can_heat and self.check_filament_still_in_extruder():
+        elif ts is False and filament_detected and (self.strict_filament_recovery or strict) and can_heat and self.check_filament_in_extruder():
             # This case adds an additional encoder based test to see if filament is still being gripped by extruder
             # even though TS doesn't see it. It's a pedantic option so on turned on by strict flag
             self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER, silent=silent) # Will start from tip forming
@@ -5513,16 +5513,25 @@ class Mmu:
             self.log_debug("No sensors configured!")
         return runout
 
-    # Check for filament in extruder by moving extruder motor. Even with toolhead sensor this can
-    # happen if the filament is in the short distance from sensor to gears. Requires encoder
     # Return True/False if detected or None if test not possible
-    def check_filament_still_in_extruder(self):
+    def check_filament_in_extruder(self):
         # First double check extruder entry sensor if fitted
-        if self.sensor_manager.check_sensor(self.SENSOR_EXTRUDER_ENTRY) is False:
-            return False
+        es = self.sensor_manager.check_sensor(self.SENSOR_EXTRUDER_ENTRY)
+        if es is not None:
+            return es
+
+        # Now toolhead if fitted
+        ts = self.sensor_manager.check_sensor(self.SENSOR_TOOLHEAD)
+        if ts is True:
+            return True
+
+        # Finally resort to movement test with encoder
         detected,_ = self.test_filament_still_in_extruder_by_retracting()
         return detected
 
+    # Check for filament in extruder by moving extruder motor. Even with toolhead sensor this can
+    # happen if the filament is in the short distance from sensor to gears. Requires encoder
+    # Return True/False if detected or None if test not possible
     def test_filament_still_in_extruder_by_retracting(self):
         detected = None
         measured = 0
