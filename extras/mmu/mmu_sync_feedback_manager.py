@@ -55,7 +55,7 @@ class MmuSyncFeedbackManager:
         self.extruder_direction = 0 # 0 = Extruder not moving
         self.active = False         # Actively operating?
         self.last_recorded_extruder_position = None
-        self._last_state_side = 0   # track sign of proportional state to detect transitions
+        self._last_state_side = self.SYNC_STATE_NEUTRAL # track sign of proportional state to detect transitions
         self._rd_applied = None     # track live applied RD so UI can show true adjustment
 
         # Process config
@@ -294,15 +294,19 @@ class MmuSyncFeedbackManager:
             # Only reset on deadband transitions (tension<->neutral<->compression) so ΔE can accumulate.
             # Hysteresis: hold side while in deadband; release to NEUTRAL only on true zero-crossing.
             def _side(v, prev):
-                # Outside deadband: (re)latch to sign immediately
-                if abs(v) >= self.PROP_DEADBAND_THRESHOLD:
-                    return self.SYNC_STATE_COMPRESSED if v > self.SYNC_STATE_NEUTRAL else self.SYNC_STATE_EXPANDED
-                # Inside deadband: keep previous side; only go NEUTRAL when crossing neutral (0)
-                if prev == self.SYNC_STATE_COMPRESSED and v <= self.SYNC_STATE_NEUTRAL:
-                    return self.SYNC_STATE_NEUTRAL
-                if prev == self.SYNC_STATE_EXPANDED and v >= self.SYNC_STATE_NEUTRAL:
-                    return self.SYNC_STATE_NEUTRAL
-                return prev  # hold previous (including NEUTRAL) while hovering in deadband
+                # Use latched when proportional sensor present and we are not auto tuning RD.
+                if(bool(self.sync_feedback_proportional_sensor) and not getattr(self.mmu, "autotune_rotation_distance", False)):
+                    # Outside deadband: (re)latch to sign immediately
+                    if abs(v) >= self.PROP_DEADBAND_THRESHOLD:
+                        return self.SYNC_STATE_COMPRESSED if v > self.SYNC_STATE_NEUTRAL else self.SYNC_STATE_EXPANDED
+                    # Inside deadband: keep previous side; only go NEUTRAL when crossing neutral (0)
+                    if prev == self.SYNC_STATE_COMPRESSED and v <= self.SYNC_STATE_NEUTRAL:
+                        return self.SYNC_STATE_NEUTRAL
+                    if prev == self.SYNC_STATE_EXPANDED and v >= self.SYNC_STATE_NEUTRAL:
+                        return self.SYNC_STATE_NEUTRAL
+                    return prev  # hold previous (including NEUTRAL) while hovering in deadband
+                else:
+                    return self.SYNC_STATE_NEUTRAL if abs(v) < self.PROP_DEADBAND_THRESHOLD else (self.SYNC_STATE_COMPRESSED if v > self.SYNC_STATE_NEUTRAL else self.SYNC_STATE_EXPANDED)
 
             old_side = self._last_state_side
             new_side = _side(self.state, old_side)
