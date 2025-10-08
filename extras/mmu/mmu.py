@@ -5433,11 +5433,8 @@ class Mmu:
         ts = self.sensor_manager.check_sensor(self.SENSOR_TOOLHEAD)
         es = self.sensor_manager.check_sensor(self.SENSOR_EXTRUDER_ENTRY)
 
-        # We ignore the gate endstop trigger if using gear sensor and parking distance is not a retract (i.e. sensor expected to be triggered))
-        if self.gate_homing_endstop == self.SENSOR_GEAR_PREFIX and self.gate_parking_distance <= 0:
-            gs = None
-        else:
-            gs = self.sensor_manager.check_sensor(self.sensor_manager.get_mapped_endstop_name(self.gate_homing_endstop))
+        gs = self.sensor_manager.check_sensor(self.sensor_manager.get_mapped_endstop_name(self.gate_homing_endstop))
+
         filament_detected = self.sensor_manager.check_any_sensors_in_path()
         if not filament_detected:
             filament_detected = self.check_filament_in_mmu() # Include encoder detection method
@@ -5457,6 +5454,10 @@ class Mmu:
         # At extruder entry
         elif es:
             self._set_filament_pos_state(self.FILAMENT_POS_HOMED_ENTRY, silent=silent) # Allows for fast bowden unload move
+
+        # Parked at gate (when parking distance is not a retract i.e. gs sensor expected to be triggered)
+        elif gs and filament_detected and self.gate_parking_distance <= 0:
+            self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=silent)
 
         # Somewhere in bowden
         elif gs or filament_detected:
@@ -5519,7 +5520,7 @@ class Mmu:
         measured = 0
         if self.has_encoder() and not self.mmu_machine.filament_always_gripped:
             with self._require_encoder(): # Force quality measurement
-                self.log_debug("Checking for possibility of filament still in extruder gears...")
+                self.log_info("Checking for possibility of filament still in extruder gears...")
                 self._ensure_safe_extruder_temperature(wait=False)
                 self.selector.filament_release()
                 move = self.encoder_move_step_size

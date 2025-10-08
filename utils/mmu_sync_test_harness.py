@@ -49,7 +49,7 @@ class Reactor:
     NEVER = float("inf")
     def __init__(self): self._timer = None; self._when = self.NEVER
     def register_timer(self, func): self._timer = func; return func
-    def update_timer(self, timer, when): 
+    def update_timer(self, timer, when):
         if timer is self._timer: self._when = when
     def run_due(self, now):
         if self._timer and self._when <= now:
@@ -123,7 +123,7 @@ class LoggerMixin:
     def log_error(self, msg): print("[ERROR]", msg)
     def log_always(self, msg): print("[ALWAYS]", msg)
 
-class MMUMachine: 
+class MMUMachine:
     def __init__(self): self.filament_always_gripped = False
 
 class MockMMU(LoggerMixin):
@@ -288,7 +288,7 @@ def main():
         except (EOFError, KeyboardInterrupt):
             print()
             break
-        if not raw: 
+        if not raw:
             show_status(mgr, mmu, extruder)
             continue
 
