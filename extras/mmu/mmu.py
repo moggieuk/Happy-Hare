@@ -5425,7 +5425,8 @@ class Mmu:
             elif self.filament_pos not in [self.FILAMENT_POS_LOADED, self.FILAMENT_POS_UNLOADED]:
                 self.log_error("Filament not detected as either unloaded or fully loaded. Please check and use MMU_RECOVER to correct state or fix before continuing")
 
-    # This is a recovery routine to determine the most conservative location of the filament for unload purposes
+    # This is a recovery routine to determine the most conservative location of the filament (for unload purposes)
+    # Also, ensures that the filament availabilty is updated if filament is found
     def recover_filament_pos(self, strict=False, can_heat=True, message=False, silent=False):
         if message:
             self.log_info("Attempting to recover filament position...")
@@ -5467,9 +5468,13 @@ class Mmu:
         else:
             self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=silent)
 
-        # If filament is found then ensure gate status is correct
-        if self.gate_selected != self.TOOL_GATE_UNKNOWN and self.filament_pos >= self.FILAMENT_POS_START_BOWDEN and self.gate_status[self.gate_selected] == self.GATE_EMPTY:
-            self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE)
+        # If filament is detected then ensure gate status is correct
+        if self.gate_selected != self.TOOL_GATE_UNKNOWN and filament_detected:
+            gate_status = self.gate_status[self.gate_selected]
+            if self.filament_pos >= self.FILAMENT_POS_START_BOWDEN and gate_status < self.GATE_AVAILABLE:
+                self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE)
+            elif gate_status == self.GATE_EMPTY:
+                self._set_gate_status(self.gate_selected, self.GATE_UNKNOWN)
 
     # Check for filament in MMU using available sensors or encoder
     def check_filament_in_mmu(self):
@@ -5512,6 +5517,9 @@ class Mmu:
     # happen if the filament is in the short distance from sensor to gears. Requires encoder
     # Return True/False if detected or None if test not possible
     def check_filament_still_in_extruder(self):
+        # First double check extruder entry sensor if fitted
+        if self.sensor_manager.check_sensor(self.SENSOR_EXTRUDER_ENTRY) is False:
+            return False
         detected,_ = self.test_filament_still_in_extruder_by_retracting()
         return detected
 
