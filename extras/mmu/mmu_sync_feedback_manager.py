@@ -30,10 +30,10 @@ import logging
 
 class MmuSyncFeedbackManager:
 
-    FEEDBACK_INTERVAL      = 0.5     # How often to check extruder movement
+    FEEDBACK_INTERVAL      = 0.5     # How often to check extruder movement (seconds)
     SIGNIFICANT_MOVEMENT   = 5.      # Min extruder movement to trigger direction change (don't want small retracts to trigger)
     MOVEMENT_THRESHOLD     = 50      # Default extruder movement threshold trigger when stuck in one state
-    MULTIPLIER_RUNAWAY     = 0.25    # Used to limit range in runaway conditions (25%)
+    MULTIPLIER_RUNAWAY     = 0.30    # Used to limit range in runaway conditions (30%)
     MULTIPLIER_WHEN_STUCK  = 0.01    # Used to "widen" rd clamp if we are not getting to neutral soon enough (1%)
     MULTIPLIER_WHEN_GOOD   = 0.005   # Used to move off trigger when tuned rotation distance has been found (0.5%)
     AUTOTUNE_TOLERANCE     = 0.0025  # The desired accuracy of autotuned rotation distance (0.25% or 2.5mm per m)
