@@ -319,7 +319,7 @@ install: $(install_targets)
 	$(Q)$(call restart_service,$(restart_klipper),Klipper,$(CONFIG_SERVICE_KLIPPER))
 	$(Q)$(PY) -m installer.build $(V) --print-happy-hare "Done! Happy Hare $(CONFIG_F_VERSION) is ready!"
 
-uninstall:
+uninstall: | python_deps $(OUT)/kconfig.pickle
 	$(Q)$(if $(MOONRAKER_CONFIG_FILE), \
 		$(call backup,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)))
 	$(Q)$(if $(PRINTER_CONFIG_FILE), \
