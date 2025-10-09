@@ -15,4 +15,5 @@ choice
 
   rsource "Kconfig.*"
   rsource "starters/Kconfig.*"
+
 endchoice

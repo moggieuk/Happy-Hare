@@ -1,0 +1,22 @@
+config TOOLHEAD_TYPE_OTHER
+  bool "Other/Unknown requiring calibration"
+
+
+if TOOLHEAD_TYPE_OTHER
+
+  config PARAM_TOOLHEAD_TYPE
+    default "Other/Unknown"
+
+  config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
+    default "72"
+
+  config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
+    default "62"
+
+  config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
+    default "8"
+
+  config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
+    default "0"
+  
+endif

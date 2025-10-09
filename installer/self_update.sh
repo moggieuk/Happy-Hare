@@ -58,5 +58,5 @@ self_update() {
     fi
 }
 
-# PAUL temp protection
+# PAUL temp protection against overwriting changes
 #self_update

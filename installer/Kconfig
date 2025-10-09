@@ -106,16 +106,19 @@ endif
 # Only show if we have a single-unit setup
 if !MULTI_UNIT_ENTRY_POINT
 
-  # Base MMU
+  # Base MMU menu
   rsource "mmu_types/Kconfig"
 
-  # MMU Additions/Customization (optionally inline with base type)
+  # MMU Additions/Customization menu (optionally inline with base type)
   if !SHOW_MMU_ADDITIONS_WITH_TYPE
     rsource "mmu_additions/Kconfig"
   endif
 
-  # MCU Selection
+  # MCU Selection menu
   rsource "boards/Kconfig"
+
+  # Toolhead Selection menu
+  rsource "toolheads/Kconfig"
 
   # MCU Connection
   rsource "Kconfig.serial"
@@ -134,6 +137,7 @@ if !MULTI_UNIT_ENTRY_POINT
       klipper config files.
 
     rsource "Kconfig.num_gates"
+    rsource "Kconfig.toolhead"
     rsource "Kconfig.leds"
     rsource "Kconfig.encoder"
     rsource "Kconfig.endstops"

@@ -1,0 +1,15 @@
+config PARAM_TOOLHEAD_TYPE
+  string
+
+choice 
+  prompt "Toolhead"
+    help 
+      Toolhead type (extruder and hotend combo)
+      If your toolhead appears in this list you are lucky and can benefit from tuned values
+      from others. It is still recommended you learn how to measure and calibrate your own
+      because of the number of modifications and versions of hardware. If you are unsure,
+      just select the default and perform calibration as described in the wiki
+
+    rsource "Kconfig.*"
+
+endchoice

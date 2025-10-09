@@ -217,9 +217,8 @@ def render_template(template_file, kcfg, extra_params):
         exit(1)
 
 
-def build(
-    cfg_file, dest_file, kconfig_file, input_files
-):  # TODO Really input_files should exclude first directory config/mmu to make origin consistent everywhere
+# TODO Really input_files should exclude first directory config/mmu to make origin consistent everywhere
+def build(cfg_file, dest_file, kconfig_file, input_files):
     cfg_file_basename = cfg_file[len(os.getenv("SRC")) + 1 :]
 
     kcfg = load_parsed_kconfig()

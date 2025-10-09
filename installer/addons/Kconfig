@@ -3,5 +3,6 @@ menu "Addon Macros"
     Macro support for addons
     MMU functionality can be extended with popular addon macro options.
     Select which to include here and configure pins and features.
+
   rsource "Kconfig.*"
 endmenu

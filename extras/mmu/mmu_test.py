@@ -572,6 +572,8 @@ class MmuTest:
                                 else:
                                     self.mmu.gcode.run_script_from_command("_MMU_STEP_HOMING_MOVE MOVE=10 ENDSTOP=%s" % endstop)
 
+                    log("TEST COMPLETE")
+
                 except MmuError as ee:
                     log("TEST TERMINATED WITH MMU EXCEPTION: %s" % str(ee))
 
