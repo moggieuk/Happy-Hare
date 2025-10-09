@@ -771,6 +771,10 @@ class MmuToolHead(toolhead.ToolHead, object):
                     self._register(self.mmu_toolhead, s) # s.set_trapq(self.mmu_toolhead.get_trapq())
                     s.set_position([0., self.mmu_toolhead.get_position()[1], 0.])
 
+            # Required for klipper >= 0.13.0-330
+            if self.motion_queuing and hasattr(self.motion_queuing, 'check_step_generation_scan_windows'):
+                self.motion_queuing.check_step_generation_scan_windows()
+
             # Debugging
             #logging.info("MMU: ////////// CUTOVER fence t_cut=%.6f, old_trapq=%s, new_trapq=%s, from.last=%.6f, to.last=%.6f",
             #             t0, self._match_trapq(old_trapq), self._match_trapq(new_trapq),
