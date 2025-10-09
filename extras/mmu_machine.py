@@ -620,7 +620,6 @@ class MmuToolHead(toolhead.ToolHead, object):
 
     def quiesce(self, full_quiesce=True):
         with self._resync_lock:
-            logging.info("PAUL: ======= quiesce(%s)" % full_quiesce)
             ths = [self.printer_toolhead, self.mmu_toolhead]
             t_cut = self._quiesce_align_get_tcut(ths, full=full_quiesce)
 
@@ -628,33 +627,27 @@ class MmuToolHead(toolhead.ToolHead, object):
     # and return a strict fence time t_cut. 'wait' shouldn't be needed but
     # is helpful when debugging
     def _quiesce_align_get_tcut(self, ths, full=False, wait=False):
-        logging.info("PAUL: [A] _quiesce_align_get_tcut(full=%s, wait=%s)" % (full, wait))
         start = time.time()
         # Drain whatever is already planned
         for th in ths:
             th.flush_step_generation()
-        logging.info("PAUL: >>>> After initial flush. Elapsed=%.6f" % (time.time() - start))
         if full:
             for th in ths:
                 th.wait_moves()
             for th in ths:
                 th.flush_step_generation()
-            logging.info("PAUL: >>>> After full wait. Elapsed=%.6f" % (time.time() - start))
 
         # Align planners to a common future time
         last_times = [th.get_last_move_time() for th in ths]
-        logging.info("PAUL: >>>> Last times:%s" % last_times)
         t_future = max(last_times) + SYNC_AIR_GAP
         for th, lm in zip(ths, last_times):
             dt = t_future - lm
             if dt > 0.0:
-                logging.info("PAUL: >>>> dwell(%s)" % dt)
                 th.dwell(dt)
 
         # Materialize the air gap before choosing the fence
         for th in ths:
             th.flush_step_generation()
-        logging.info("PAUL: >>>> After dwell/flush. Elapsed=%.6f" % (time.time() - start))
 
         # Optional wait and flush to aid debugging
         if wait:
@@ -664,9 +657,6 @@ class MmuToolHead(toolhead.ToolHead, object):
                 th.flush_step_generation()
 
         self.mmu.log_stepper("_quiesce_align_get_tcut(full=%s, wait=%s) Elapsed:%.6f" % (full, wait, time.time() - start))
-        logging.info("PAUL: +++++ quiesce END TOTAL TIME: %.6f" % (time.time() - start))
-        if (time.time() - start) > 1:
-            logging.info("PAUL: ******************** LONG WAIT !!!!!!!! ************************")
         return t_future + EPS
 
     def is_synced(self):
@@ -702,11 +692,9 @@ class MmuToolHead(toolhead.ToolHead, object):
 
         def _finalize_if_valid(tq, t):
             if tq is not None and tq != ffi_main.NULL:
-                logging.info("PAUL: finalizing trapq %s to %.6f" % (self._match_trapq(tq), t))
                 self.trapq_finalize_moves(tq, t, t - MOVE_HISTORY_EXPIRE)
 
         self.mmu.log_stepper("resync(%s --> %s)" % (self.sync_mode_to_string(self.sync_mode), self.sync_mode_to_string(new_sync_mode)))
-        logging.info("PAUL: ====== resync(%s --> %s)" % (self.sync_mode_to_string(self.sync_mode), self.sync_mode_to_string(new_sync_mode)))
 
         # ---------------- Phase A: FENCE if messing with extruder -----------
 
@@ -728,7 +716,6 @@ class MmuToolHead(toolhead.ToolHead, object):
             # ---------------- Phase B: UNSYNC current mode at t0 ----------------
 
             self.mmu.log_stepper("unsync(%s)" % ("mode=gear_only" if new_sync_mode == self.GEAR_ONLY  else ""))
-            logging.info("PAUL: [B] unsync(%s)" % ("mode=gear_only" if new_sync_mode == self.GEAR_ONLY  else ""))
 
             # Figure out who is CURRENTLY driving (old owner) and who will receive (new owner)
             if self.sync_mode in [self.EXTRUDER_SYNCED_TO_GEAR, self.EXTRUDER_ONLY_ON_GEAR]:
@@ -790,7 +777,6 @@ class MmuToolHead(toolhead.ToolHead, object):
                 self.printer.send_event("mmu:unsynced")
 
             # Now “unsynced” at t0
-            logging.info("PAUL: unsync() end")
 
         self.sync_mode = self.GEAR_ONLY if new_sync_mode == self.GEAR_ONLY else None
         if new_sync_mode in [self.GEAR_ONLY, None]:
@@ -799,7 +785,6 @@ class MmuToolHead(toolhead.ToolHead, object):
         # ---------------- Phase C: SYNC into new mode at t1 -----------------
 
         self.mmu.log_stepper("sync(mode=%d %s)" % (new_sync_mode, ("gear+extruder" if new_sync_mode == self.EXTRUDER_SYNCED_TO_GEAR  else "extruder" if new_sync_mode == self.EXTRUDER_ONLY_ON_GEAR else "extruder+gear")))
-        logging.info("PAUL: [C] sync(mode=%d %s)" % (new_sync_mode, ("gear+extruder" if new_sync_mode == self.EXTRUDER_SYNCED_TO_GEAR  else "extruder" if new_sync_mode == self.EXTRUDER_ONLY_ON_GEAR else "extruder+gear")))
 
         t1 = t0 + EPS  # Later fence for the second cut over (t1 = t0 + EPS)
 
@@ -867,7 +852,6 @@ class MmuToolHead(toolhead.ToolHead, object):
         if self.sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
             self.printer.send_event("mmu:synced")
 
-        logging.info("PAUL: sync() end")
         return prev_sync_mode
 
     def is_selector_homed(self):
