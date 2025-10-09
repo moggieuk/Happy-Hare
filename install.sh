@@ -188,11 +188,11 @@ fi
 # and—if multi-unit—runs menuconfig once per listed unit to create/update each unit’s own
 # config file, passing UNIT_* parameters to the Makefile/Kconfig for customization.
 
-if [ ! -e "${KCONFIG_CONFIG}" ] && [ -z "${CONFIG_MULTI_UNIT:-}" ] && [ -n "${F_MULTI_UNIT:-}" ]; then
+if [ ! -e "${KCONFIG_CONFIG}" ] && [ -z "${F_MENUCONFIG:-}" ]; then
     echo "${C_INFO}No '${KCONFIG_CONFIG}' found, forcing interactive menu${C_OFF}"
     echo
     F_MENUCONFIG=y
-elif [ -r "${KCONFIG_CONFIG}" ] && [ -n "${F_MENUCONFIG:-}" ]; then
+elif [ -r "${KCONFIG_CONFIG}" ] && [ -z "${F_MENUCONFIG:-}" ] && [ -n "${F_MULTI_UNIT:-}" ]; then
     echo "${C_NOTICE}Current '${KCONFIG_CONFIG}' is not a multi-unit configuration, updating and forcing interactive menu${C_OFF}"
     echo
     F_MENUCONFIG=y
