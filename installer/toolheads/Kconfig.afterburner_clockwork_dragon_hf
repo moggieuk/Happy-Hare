@@ -1,6 +1,0 @@
-config TOOLHEAD_TYPE_AFTERBURNER_CLOCKWORK_DRAGON_HF
-  bool "Afterburner Clockwork Dragon HF"
-if TOOLHEAD_TYPE_AFTERBURNER_CLOCKWORK_DRAGON_HF
-  config PARAM_TOOLHEAD_TYPE
-    default "Afterburner Clockwork Dragon HF"
-endif
