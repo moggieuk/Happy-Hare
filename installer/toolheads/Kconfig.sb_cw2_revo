@@ -1,11 +1,11 @@
-config TOOLHEAD_TYPE_OTHER
-  bool "Other/Unknown requiring calibration"
+config TOOLHEAD_TYPE_STEALTHBURNER_CW2_REVO
+  bool "Stealthburner CW2 Revo"
 
 
-if TOOLHEAD_TYPE_OTHER
+if TOOLHEAD_TYPE_STEALTHBURNER_CW2_REVO
 
   config PARAM_TOOLHEAD_TYPE
-    default "Other/Unknown"
+    default "Stealthburner CW2 Revo"
 
   config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
     default "72"
@@ -17,6 +17,7 @@ if TOOLHEAD_TYPE_OTHER
     default "8"
 
   config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
-    default "0"
+    default "4"
   
 endif
+
