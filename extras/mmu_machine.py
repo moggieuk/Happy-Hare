@@ -369,9 +369,9 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
 
-        #self.all_mcus = [m for n, m in self.printer.lookup_objects(module='mcu')] # Older Klipper
-        #self.mcu = self.all_mcus[0]                                               # Older Klipper
-        self.mcu = self.printer.lookup_object('mcu') # Klipper approx >= 0.13.0-328 (safer lookup, guarantee's primary mcu or config error)
+        self.all_mcus = [m for n, m in self.printer.lookup_objects(module='mcu')] # Older Klipper
+        self.mcu = self.all_mcus[0]                                               # Older Klipper
+        #self.mcu = self.printer.lookup_object('mcu') # Klipper approx >= 0.13.0-328 (safer lookup, guarantee's primary mcu or config error)
 
         self._resync_lock = self.reactor.mutex()
 
