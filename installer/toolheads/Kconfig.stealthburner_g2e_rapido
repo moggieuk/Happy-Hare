@@ -1,0 +1,12 @@
+config TOOLHEAD_TYPE_STEALTHBURNER_G2E_RAPIDO
+  bool "Stealthburner G2E Rapido"
+if TOOLHEAD_TYPE_STEALTHBURNER_G2E_RAPIDO
+  config PARAM_TOOLHEAD_TYPE
+    default "Stealthburner G2E Rapido"
+  config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
+    default "99.38"
+  config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
+    default "79.78"
+  config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
+    default "13.29"
+endif

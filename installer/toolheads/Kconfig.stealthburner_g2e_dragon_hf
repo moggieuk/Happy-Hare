@@ -1,0 +1,12 @@
+config TOOLHEAD_TYPE_STEALTHBURNER_G2E_DRAGON_HF
+  bool "Stealthburner G2E Dragon HF"
+if TOOLHEAD_TYPE_STEALTHBURNER_G2E_DRAGON_HF
+  config PARAM_TOOLHEAD_TYPE
+    default "Stealthburner G2E Dragon HF"
+  config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
+    default "99.5"
+  config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
+    default "79"
+  config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
+    default "13.29"
+endif

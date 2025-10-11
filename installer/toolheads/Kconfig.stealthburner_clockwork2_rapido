@@ -1,0 +1,12 @@
+config TOOLHEAD_TYPE_STEALTHBURNER_CLOCKWORK2_RAPIDO
+  bool "Stealthburner Clockwork2 Rapido"
+if TOOLHEAD_TYPE_STEALTHBURNER_CLOCKWORK2_RAPIDO
+  config PARAM_TOOLHEAD_TYPE
+    default "Stealthburner Clockwork2 Rapido"
+  config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
+    default "84.82"
+  config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
+    default "74.84"
+  config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
+    default "13"
+endif
