@@ -1,5 +1,6 @@
 config TOOLHEAD_TYPE_STEALTHBURNER_G2E_DRAGON_HF
   bool "Stealthburner G2E Dragon HF"
+
 if TOOLHEAD_TYPE_STEALTHBURNER_G2E_DRAGON_HF
   config PARAM_TOOLHEAD_TYPE
     default "Stealthburner G2E Dragon HF"
@@ -9,4 +10,6 @@ if TOOLHEAD_TYPE_STEALTHBURNER_G2E_DRAGON_HF
     default "79"
   config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
     default "13.29"
+  config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
+    default "2"
 endif

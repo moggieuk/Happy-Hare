@@ -1,5 +1,6 @@
 config TOOLHEAD_TYPE_JABBERWOCKY
   bool "Jabberwocky"
+
 if TOOLHEAD_TYPE_JABBERWOCKY
   config PARAM_TOOLHEAD_TYPE
     default "Jabberwocky"
@@ -9,4 +10,6 @@ if TOOLHEAD_TYPE_JABBERWOCKY
     default "42.6"
   config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
     default "9.8"
+  config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
+    default "2"
 endif

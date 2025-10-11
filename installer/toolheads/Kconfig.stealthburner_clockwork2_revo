@@ -1,12 +1,15 @@
 config TOOLHEAD_TYPE_STEALTHBURNER_CLOCKWORK2_REVO
   bool "Stealthburner Clockwork2 Revo"
+
 if TOOLHEAD_TYPE_STEALTHBURNER_CLOCKWORK2_REVO
   config PARAM_TOOLHEAD_TYPE
     default "Stealthburner Clockwork2 Revo"
   config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
-    default "72"
+    default "72.2"
   config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
-    default "62"
+    default "63.1"
   config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
     default "13"
+  config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
+    default "2.6"
 endif

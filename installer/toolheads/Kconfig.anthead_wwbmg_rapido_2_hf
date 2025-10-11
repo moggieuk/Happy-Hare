@@ -1,5 +1,6 @@
 config TOOLHEAD_TYPE_ANTHEAD_WWBMG_RAPIDO_2_HF
   bool "AntHead WWBMG Rapido 2 HF"
+
 if TOOLHEAD_TYPE_ANTHEAD_WWBMG_RAPIDO_2_HF
   config PARAM_TOOLHEAD_TYPE
     default "AntHead WWBMG Rapido 2 HF"
@@ -9,4 +10,6 @@ if TOOLHEAD_TYPE_ANTHEAD_WWBMG_RAPIDO_2_HF
     default "83.860"
   config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
     default "6.716"
+  config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
+    default "2"
 endif

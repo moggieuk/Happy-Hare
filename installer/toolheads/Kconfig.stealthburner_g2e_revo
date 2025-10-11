@@ -1,5 +1,6 @@
 config TOOLHEAD_TYPE_STEALTHBURNER_G2E_REVO
   bool "Stealthburner G2E Revo"
+
 if TOOLHEAD_TYPE_STEALTHBURNER_G2E_REVO
   config PARAM_TOOLHEAD_TYPE
     default "Stealthburner G2E Revo"
@@ -9,4 +10,6 @@ if TOOLHEAD_TYPE_STEALTHBURNER_G2E_REVO
     default "79.58"
   config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
     default "13.29"
+  config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
+    default "2"
 endif

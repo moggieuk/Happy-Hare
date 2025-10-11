@@ -1,4 +1,4 @@
-menu "Toolhead Dimensions and Calibration"
+menu "Toolhead dimensions and calibration"
   help
     These settings are based on the physical dimensions of your toolhead and some physical
     properties like how much filament remains in the extruder after unload. They are used
