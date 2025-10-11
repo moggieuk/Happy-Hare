@@ -11,5 +11,5 @@ if TOOLHEAD_TYPE_ANTHEAD_WWBMG_RAPIDO_2_HF
   config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
     default "6.716"
   config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
-    default "2"
+    default "5"
 endif
