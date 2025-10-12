@@ -8067,7 +8067,9 @@ class Mmu:
 
         # Ensure everything is synced
         self._update_gate_color_rgb()
-        self._persist_gate_map(spoolman_sync=bool(changed_gate_ids), gate_ids=changed_gate_ids) # This will also update LED status
+
+        # Caution, make sure that an update from spoolman does end up in infinite loop!
+        self._persist_gate_map(spoolman_sync=bool(changed_gate_ids) and not from_spoolman, gate_ids=changed_gate_ids) # This will also update LED status
 
         if not quiet:
             self.log_info(self._gate_map_to_string(detail))
