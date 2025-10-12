@@ -369,9 +369,11 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
 
-        #self.all_mcus = [m for n, m in self.printer.lookup_objects(module='mcu')] # Older Klipper
-        #self.mcu = self.all_mcus[0]                                               # Older Klipper
+        self.all_mcus = [m for n, m in self.printer.lookup_objects(module='mcu')] # Older Klipper
+        self.mcu = self.all_mcus[0]                                               # Older Klipper
+        logging.info("PAUL: self.mcu(old)=%s" % self.mcu)
         self.mcu = self.printer.lookup_object('mcu') # Klipper approx >= 0.13.0-328 (safer lookup, guarantee's primary mcu or config error)
+        logging.info("PAUL: self.mcu(new)=%s" % self.mcu)
 
         self._resync_lock = self.reactor.mutex()
 
@@ -771,9 +773,10 @@ class MmuToolHead(toolhead.ToolHead, object):
                     self._register(self.mmu_toolhead, s) # s.set_trapq(self.mmu_toolhead.get_trapq())
                     s.set_position([0., self.mmu_toolhead.get_position()[1], 0.])
 
-            # Required for klipper >= 0.13.0-330
-            if self.motion_queuing and hasattr(self.motion_queuing, 'check_step_generation_scan_windows'):
-                self.motion_queuing.check_step_generation_scan_windows()
+#            # Required for klipper >= 0.13.0-330
+#            if self.motion_queuing and hasattr(self.motion_queuing, 'check_step_generation_scan_windows'):
+#                logging.info("PAUL: ======= calling check_step_generation_scan_windows")
+#                self.motion_queuing.check_step_generation_scan_windows()
 
             # Debugging
             #logging.info("MMU: ////////// CUTOVER fence t_cut=%.6f, old_trapq=%s, new_trapq=%s, from.last=%.6f, to.last=%.6f",
@@ -791,6 +794,11 @@ class MmuToolHead(toolhead.ToolHead, object):
 
             # Now “unsynced” at t0
             logging.info("PAUL: unsync() end")
+
+        # Required for klipper >= 0.13.0-330
+        if self.motion_queuing and hasattr(self.motion_queuing, 'check_step_generation_scan_windows'):
+            logging.info("PAUL: ======= calling check_step_generation_scan_windows")
+            self.motion_queuing.check_step_generation_scan_windows()
 
         self.sync_mode = self.GEAR_ONLY if new_sync_mode == self.GEAR_ONLY else None
         if new_sync_mode in [self.GEAR_ONLY, None]:
