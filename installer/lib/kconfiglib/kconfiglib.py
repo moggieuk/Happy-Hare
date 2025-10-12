@@ -816,6 +816,7 @@ class Kconfig(object):
         "_set_match",
         "_srctree_prefix",
         "_unset_match",
+        "_default_match", # Happy Hare
         "_warn_assign_no_prompt",
         "choices",
         "comments",
@@ -979,8 +980,8 @@ class Kconfig(object):
         self.config_prefix = os.getenv("CONFIG_", "CONFIG_")
         # Regular expressions for parsing .config files
         self._set_match = _re_match(self.config_prefix + r"([^=]+)=(.*)")
-        self._unset_match = _re_match(r"# {}([^ ]+) is not set".format(
-            self.config_prefix))
+        self._unset_match = _re_match(r"# {}([^ ]+) is not set".format(self.config_prefix))
+        self._default_match = _re_match(r"# {}([^ ]+) is default".format(self.config_prefix)) # Happy Hare
 
         self.config_header = os.getenv("KCONFIG_CONFIG_HEADER", "")
         self.header_header = os.getenv("KCONFIG_AUTOHEADER_HEADER", "")
@@ -1146,7 +1147,7 @@ class Kconfig(object):
 
         return None
 
-    def load_config(self, filename=None, replace=True, verbose=None):
+    def load_config(self, filename=None, replace=True, verbose=None, filter_defaults=True): # Happy Hare - added filter_defaults
         """
         Loads symbol values from a file in the .config format. Equivalent to
         calling Symbol.set_value() to set each of the values.
@@ -1236,7 +1237,7 @@ class Kconfig(object):
         # This stub only exists to make sure _warn_assign_no_prompt gets
         # reenabled
         try:
-            self._load_config(filename, replace)
+            self._load_config(filename, replace, filter_defaults) # Happy Hare - added filter_defaults
         except UnicodeDecodeError as e:
             _decoding_error(e, filename)
         finally:
@@ -1244,7 +1245,7 @@ class Kconfig(object):
 
         return ("Loaded" if replace else "Merged") + msg
 
-    def _load_config(self, filename, replace):
+    def _load_config(self, filename, replace, filter_defaults=True): # Happy Hare - added filter_defaults
         with self._open_config(filename) as f:
             if replace:
                 self.missing_syms = []
@@ -1264,6 +1265,8 @@ class Kconfig(object):
             # Small optimizations
             set_match = self._set_match
             unset_match = self._unset_match
+            default_match = self._default_match # Happy Hare
+            names_with_default = []             # Happy Hare
             get_sym = self.syms.get
 
             for linenr, line in enumerate(f, 1):
@@ -1274,6 +1277,11 @@ class Kconfig(object):
                 if match:
                     name, val = match.groups()
                     sym = get_sym(name)
+
+                    # Happy Hare - completely ignore if implicitly saved as default
+                    if filter_defaults and name in names_with_default:
+                        continue
+
                     if not sym or not sym.nodes:
                         self._undef_assign(name, val, filename, linenr)
                         continue
@@ -1332,6 +1340,11 @@ class Kconfig(object):
                             self._warn("ignoring malformed line '{}'"
                                        .format(line),
                                        filename, linenr)
+
+                        # Happy Hare - record params that have default value
+                        match = default_match(line)
+                        if match:
+                            names_with_default.append(match.group(1))
 
                         continue
 
@@ -1651,6 +1664,16 @@ class Kconfig(object):
                     # '# end of ...' comment
                     after_end_comment = False
                     add("\n")
+
+                # Happy Hare added - mark PARAMS that are defaults to allow subsequent resetting
+                if (
+                    node.item.__class__ is Symbol and
+                    item.orig_type in [BOOL, TRISTATE, STRING, INT, HEX] and
+                    not item._was_set and
+                    item.name.startswith('PARAM')
+                ):
+                    add("# %s%s is default\n" % (self.config_prefix, item.name))
+
                 add(conf_string)
 
             elif expr_value(node.dep) and \

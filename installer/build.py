@@ -42,11 +42,11 @@ LEVEL_NOTICE = 25
 class KConfig(kconfiglib.Kconfig):
     def __init__(self, config_file):
         super(KConfig, self).__init__("Kconfig")
-        self.load_config(config_file)
+        self.load_config(config_file, filter_defaults=False)
         self.config_file = config_file
 
     def load_unit(self, unit_config_file):
-        self.load_config(unit_config_file)
+        self.load_config(unit_config_file, filter_defaults=False)
 
     def is_selected(self, choice, value):
         if isinstance(value, list):
