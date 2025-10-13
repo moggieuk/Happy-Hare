@@ -137,25 +137,32 @@ class HHConfig(ConfigBuilder):
                 self.origins.pop((section_name, option))
             self.remove_section(section_name)
 
-    def update_builder(self, builder, origin=None):
+    def update_builder(self, builder, ignore_params, origin=None):
         """
-        Update the builder config with the existing config HH data
+        Update the builder config selectively from the existing config HH data
+        kfg is None if all existing .cfg values should be retained else it is a kconfig
+        where only params not contained should be retained
         """
 
         # Copy over included options
         for section in builder.sections(scope="included"):
             for option in builder.options(section):
                 if self.has_option(section, option):
-                    if not option.startswith("gcode"):  # Don't ever resuse the gcode
+                    if (
+                        not option.startswith("gcode")     # Don't ever resuse the gcode
+                        and option not in ignore_params
+                    ):
                         builder.set(section, option, self.get(section, option))
+                    elif not option.startswith("gcode"):
+                        logging.debug("Ignoring previous param in section [%s] %s: %s" % (section, option, self.get(section, option)))
                     self.used_options.add((section, option))
 
         # If existing config has excluded options use them in lieu of builder excluded options
         if self.excluded_nodes(origin=origin) and builder.excluded_nodes():
             logging.info("Preserving existing excluded config sections")
-            builder.delete_excluded()  # Ensure template is clean
-            self._copy_excluded_to(builder, origin=origin)  # Copy in previous excluded nodes
-            self.delete_excluded(origin=origin)  # Prevent them being reported in unsed option set
+            builder.delete_excluded()                      # Ensure template is clean
+            self._copy_excluded_to(builder, origin=origin) # Copy in previous excluded nodes
+            self.delete_excluded(origin=origin)            # Prevent them being reported in unsed option set
 
     def _copy_excluded_to(self, builder, origin=None, insert_blank_line=True):
         """
@@ -280,22 +287,28 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
         unit_name = m.group(1) if m else "mmu"
         build_mmu_parameters_cfg(builder, hhcfg, unit_name)
 
-    skip_retain_cfg = os.getenv("F_SKIP_RETAIN_OLD_CFG", "n").lower()
-    if skip_retain_cfg == "y":
-        logging.info("Skipping merge from previous .cfg")
+    # How much of the existing .cfg do we apply?
+    skip_retain_cfg = os.getenv("F_SKIP_RETAIN_OLD_CFG", "n").lower() == 'y'
+    if skip_retain_cfg:
+        # Then we ignore if supplied by kcfg
+        ignore_params = [
+            (k.lower()[6:] if k.lower().startswith("param_") else k.lower())
+            for k in kcfg.as_dict()
+        ]
     else:
-        # 6.Update the builder Config from the existing master HH Config to ensure all user edits are preserved
-        hhcfg.update_builder(builder, origin=os.path.basename(dest_file))
-        logging.debug("Updated '%s' using previous config options" % dest_file)
+        ignore_params = [] # Don't ignore any existing params
+        
+    # 6.Update the builder Config from the existing master HH Config to ensure required user edits are preserved
+    hhcfg.update_builder(builder, ignore_params, origin=os.path.basename(dest_file))
 
-        # 7.Report on deprecated/unused options
-        first = True
-        origin = re.sub(r"^mmu[/\\]", "", dest_file_basename)
-        for section, option in hhcfg.unused_options_for(origin):
-            if first:
-                first = False
-                logging.warning("The following parameters in {} have been dropped:".format(dest_file_basename))
-            logging.warning("[{}] {}: {}".format(section, option, hhcfg.get(section, option)))
+    # 7.Report on deprecated/unused options
+    first = True
+    origin = re.sub(r"^mmu[/\\]", "", dest_file_basename)
+    for section, option in hhcfg.unused_options_for(origin):
+        if first:
+            first = False
+            logging.warning("The following parameters in {} have been dropped:".format(dest_file_basename))
+        logging.warning("[{}] {}: {}".format(section, option, hhcfg.get(section, option)))
 
     # 8.Write builder Config to destination cfg file
     if os.path.islink(dest_file):

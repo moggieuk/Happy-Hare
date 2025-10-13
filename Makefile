@@ -226,7 +226,7 @@ $(OUT)/mmu/%.cfg: $(SRC)/config/%.cfg $(hh_configs_to_parse)
 		$(PY) -m installer.build $(V) --build "$<" "$@" "$(KCONFIG_CONFIG)" $(hh_configs_to_parse), \
 	        $(info $(C_INFO)Skipping build of mmu/$*$(C_OFF)))
 
-## Conditional per-unit prereqiusit ".config_<unit>" when multi-unit, else to ".config" (and pickles)
+## Conditional per-unit prerequisite ".config_<unit>" when multi-unit, else to ".config" (and pickles)
 KCONF_REQS = $(if $(filter y,$(CONFIG_MULTI_UNIT)), \
              $(KCONFIG_CONFIG)_% $(OUT)/$(notdir $(KCONFIG_CONFIG))_%.pickle, \
              $(KCONFIG_CONFIG)   $(OUT)/$(notdir $(KCONFIG_CONFIG)).pickle)
