@@ -218,25 +218,28 @@ def render_template(template_file, kcfg, extra_params):
 
 
 # TODO Really input_files should exclude first directory config/mmu to make origin consistent everywhere
-def build(cfg_file, dest_file, kconfig_file, input_files):
+def build(cfg_file, dest_file, kconfig, input_files):
+    logging.debug("Building {} -> {} with kconfig {}".format(cfg_file, dest_file, kconfig))
+
     cfg_file_basename = cfg_file[len(os.getenv("SRC")) + 1 :]
-
-    kcfg = load_parsed_kconfig()
+    kcfg = load_parsed_kconfig(kconfig)
     extra_params = dict()
-    unit_kcfgs = dict()
-
-    # PARAM_TOTAL_NUM_GATES is required to create the Tx macro wrappers
-    if kcfg.is_enabled("MULTI_UNIT_ENTRY_POINT"):
-        total_num_gates = 0
-        for unit in kcfg.get("PARAM_MMU_UNITS").split(","):
-            unit = unit.strip()
-            unit_kcfgs[unit] = KConfig(kconfig_file + "_" + unit)
-            total_num_gates += unit_kcfgs[unit].getint("PARAM_NUM_GATES")
-
-        # Total sum of gates for all units
-        extra_params["PARAM_TOTAL_NUM_GATES"] = total_num_gates
-    else:
-        extra_params["PARAM_TOTAL_NUM_GATES"] = kcfg.getint("PARAM_NUM_GATES")
+# PAUL TODO FIX ME
+#    unit_kcfgs = dict()
+#
+#    # PARAM_TOTAL_NUM_GATES is required to create the Tx macro wrappers
+#    if kcfg.is_enabled("MULTI_UNIT_ENTRY_POINT"):
+#        total_num_gates = 0
+#        for unit in kcfg.get("PARAM_MMU_UNITS").split(","):
+#            unit = unit.strip()
+#            unit_kcfgs[unit] = KConfig(kconfig_file + "_" + unit)
+#            total_num_gates += unit_kcfgs[unit].getint("PARAM_NUM_GATES")
+#
+#        # Total sum of gates for all units
+#        extra_params["PARAM_TOTAL_NUM_GATES"] = total_num_gates
+#    else:
+#        extra_params["PARAM_TOTAL_NUM_GATES"] = kcfg.getint("PARAM_NUM_GATES")
+    extra_params["PARAM_TOTAL_NUM_GATES"] = 7 # PAUL TEMP patch
 
     build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_params)
 
@@ -279,7 +282,7 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
 
     skip_retain_cfg = os.getenv("F_SKIP_RETAIN_OLD_CFG", "n").lower()
     if skip_retain_cfg == "y":
-        logging.info("Skipping update from previous .cfg config")
+        logging.info("Skipping merge from previous .cfg")
     else:
         # 6.Update the builder Config from the existing master HH Config to ensure all user edits are preserved
         hhcfg.update_builder(builder, origin=os.path.basename(dest_file))
@@ -307,7 +310,7 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
 def install_moonraker(moonraker_cfg, existing_cfg, kconfig):
     logging.info("Checking for moonraker.conf additions")
 
-    kcfg = load_parsed_kconfig()
+    kcfg = load_parsed_kconfig(kconfig)
     buffer = render_template(moonraker_cfg, kcfg, {})
     update = ConfigBuilder()
     update.read_buf(buffer)
@@ -353,7 +356,7 @@ def uninstall_moonraker(moonraker_cfg):
 def install_includes(dest_file, kconfig):
     logging.info("Checking for printer.cfg includes")
 
-    kcfg = KConfig(kconfig)
+    kcfg = load_parsed_kconfig(kconfig)
     builder = ConfigBuilder(dest_file)
 
     def check_include(builder, param, include):
@@ -403,7 +406,7 @@ def restart_service(name, service, kconfig):
     else:
         logging.info("Restarting {}...".format(name))
 
-    kcfg = load_parsed_kconfig()
+    kcfg = load_parsed_kconfig(kconfig)
     if kcfg.is_enabled("INIT_SYSTEMD"):
         if not service.endswith(".service"):
             service = service + ".service"
@@ -418,9 +421,9 @@ def restart_service(name, service, kconfig):
             logging.warning("Service '/etc/init.d/{}' not found! Restart manually or check your config".format(service))
 
 
-def check_version(kconfig_file, input_files):
+def check_version(kconfig, input_files):
     hhcfg = HHConfig(input_files)
-    kcfg = load_parsed_kconfig()
+    kcfg = load_parsed_kconfig(kconfig)
 
     current_version = hhcfg.get("mmu", "happy_hare_version")
     if current_version is None:
@@ -450,16 +453,30 @@ def check_version(kconfig_file, input_files):
 
 def pre_parse_kconfig(kconfig):
     out = os.getenv("OUT")
+    base = os.path.basename(kconfig)
+    pickle_file = "%s/%s.pickle" % (out, base)
+    logging.debug(" > Pickling kconfig file: %s -> %s" % (kconfig, pickle_file))
     kcfg = KConfig(kconfig)
     sys.setrecursionlimit(20000)  # Increase recursion limit for pickling kconfiglib structures
-    with open(out + "/kconfig.pickle", "wb") as f:
+    with open(pickle_file, "wb") as f:
         dill.dump(kcfg, f, recurse=True)
 
 
-def load_parsed_kconfig():
+def load_parsed_kconfig(kconfig):
     out = os.getenv("OUT")
-    with open(out + "/kconfig.pickle", "rb") as f:
-        return dill.load(f)
+    base = os.path.basename(kconfig)
+    pickle_file = "%s/%s.pickle" % (out, base)
+    logging.debug(" > Loading pickled kconfig file: %s" % pickle_file)
+    try:
+        with open(pickle_file, "rb") as f:
+            return dill.load(f)
+    except FileNotFoundError:
+        # This shouldn't happen because we want make to decide on staleness
+        logging.warning("Pre-parsed kconfig for '%s' not available... Parsing original" % kconfig)
+        return KConfig(kconfig)
+    except Exception as e:
+        logging.error("Error unpickling '%s' (%s)" % (pickle_file, e))
+        exit(1)
 
 
 def main():

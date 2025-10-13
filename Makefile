@@ -95,7 +95,7 @@ restart_klipper = 0
 
 .SECONDEXPANSION:
 .DEFAULT_GOAL := build
-.PRECIOUS: $(KCONFIG_CONFIG)
+.PRECIOUS: $(KCONFIG_CONFIG) $(KCONFIG_CONFIG)_%
 .PHONY: menuconfig install uninstall check_version diff test build clean variables python_deps
 .SECONDARY: \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
@@ -226,18 +226,20 @@ $(OUT)/mmu/%.cfg: $(SRC)/config/%.cfg $(hh_configs_to_parse)
 		$(PY) -m installer.build $(V) --build "$<" "$@" "$(KCONFIG_CONFIG)" $(hh_configs_to_parse), \
 	        $(info $(C_INFO)Skipping build of mmu/$*$(C_OFF)))
 
-# Conditional per-unit prereqiusit ".config_<unit>" when multi-unit, else to ".config"
-KCONF_REQ = $$(if $$(filter y,$$(CONFIG_MULTI_UNIT)),$$(KCONFIG_CONFIG)_%,)
+## Conditional per-unit prereqiusit ".config_<unit>" when multi-unit, else to ".config" (and pickles)
+KCONF_REQS = $(if $(filter y,$(CONFIG_MULTI_UNIT)), \
+             $(KCONFIG_CONFIG)_% $(OUT)/$(notdir $(KCONFIG_CONFIG))_%.pickle, \
+             $(KCONFIG_CONFIG)   $(OUT)/$(notdir $(KCONFIG_CONFIG)).pickle)
 
 # Shared target rules don't work on old make so separate for portability
 $(OUT)/mmu/base/%_hardware.cfg: \
-  $$(SRC)/config/base/mmu_hardware.cfg $$(hh_configs_to_parse) $(KCONF_REQ)
+  $(SRC)/config/base/mmu_hardware.cfg $(hh_configs_to_parse) $(KCONF_REQS)
 	$(Q)$(call link,$<,$@)
 	$(Q)$(PY) -m installer.build $(V) --build "$<" "$@" \
 		"$(if $(filter y,$(CONFIG_MULTI_UNIT)),$(KCONFIG_CONFIG)_$*,$(KCONFIG_CONFIG))" $(hh_configs_to_parse)
 
 $(OUT)/mmu/base/%_parameters.cfg: \
-  $$(SRC)/config/base/mmu_parameters.cfg $$(hh_configs_to_parse) $(KCONF_REQ)
+  $(SRC)/config/base/mmu_parameters.cfg $(hh_configs_to_parse) $(KCONF_REQS)
 	$(Q)$(call link,$<,$@)
 	$(Q)$(PY) -m installer.build $(V) --build "$<" "$@" \
 		"$(if $(filter y,$(CONFIG_MULTI_UNIT)),$(KCONFIG_CONFIG)_$*,$(KCONFIG_CONFIG))" $(hh_configs_to_parse)
@@ -252,7 +254,7 @@ $(OUT)/moonraker/components/%.py: $(SRC)/components/%.py
 $(OUT):
 	$(Q)mkdir -p "$@"
 
-$(build_targets): $(KCONFIG_CONFIG) $(OUT)/kconfig.pickle | $(OUT) check_version python_deps 
+$(build_targets): $(KCONFIG_CONFIG) $(OUT)/$(notdir $(KCONFIG_CONFIG)).pickle | $(OUT) check_version python_deps
 
 build: $(build_targets)
 
@@ -311,7 +313,7 @@ $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu): $(addprefix $(OUT)/mmu/, $(hh_co
 	$(Q)$(call backup,$(basename $@))
 
 
-$(install_targets): build | python_deps 
+$(install_targets): build | python_deps
 
 install: $(install_targets)
 	$(Q)rm -rf $(addprefix $(KLIPPER_HOME)/klippy/extras/,$(hh_old_klipper_modules))
@@ -319,7 +321,7 @@ install: $(install_targets)
 	$(Q)$(call restart_service,$(restart_klipper),Klipper,$(CONFIG_SERVICE_KLIPPER))
 	$(Q)$(PY) -m installer.build $(V) --print-happy-hare "Done! Happy Hare $(CONFIG_F_VERSION) is ready!"
 
-uninstall: | python_deps $(OUT)/kconfig.pickle
+uninstall: | python_deps $(OUT)/$(notdir $(KCONFIG_CONFIG)).pickle
 	$(Q)$(if $(MOONRAKER_CONFIG_FILE), \
 		$(call backup,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)))
 	$(Q)$(if $(PRINTER_CONFIG_FILE), \
@@ -348,7 +350,7 @@ uninstall: | python_deps $(OUT)/kconfig.pickle
 ########################
 
 # Look for version number in current config files and report
-check_version: $(hh_configs_to_parse) $(OUT)/kconfig.pickle | python_deps
+check_version: $(hh_configs_to_parse) $(OUT)/$(notdir $(KCONFIG_CONFIG)).pickle | python_deps
 	$(Q)$(PY) -m installer.build $(V) --check-version "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)
 
 clean:
@@ -358,9 +360,14 @@ python_deps:
 	$(Q)echo "$(C_INFO)Checking for python dependencies$(C_OFF)"
 	$(Q)pip -qq install -r $(SRC)/installer/requirements.txt
 
-$(OUT)/kconfig.pickle: $(KCONFIG_CONFIG) | python_deps $(OUT) 
-	$(Q)echo "$(C_INFO)Pre-parsing KConfig$(C_OFF)"
+$(OUT)/$(notdir $(KCONFIG_CONFIG)).pickle: $(KCONFIG_CONFIG) | python_deps $(OUT)
+	$(Q)echo "$(C_INFO)Pre-parsing Kconfig $(notdir $(KCONFIG_CONFIG))$(C_OFF)"
 	$(Q)$(PY) -m installer.build $(V) --pre-parse-kconfig "$(KCONFIG_CONFIG)"
+
+$(OUT)/$(notdir $(KCONFIG_CONFIG))_%.pickle: $(KCONFIG_CONFIG)_% | python_deps $(OUT)
+	$(Q)echo "$(C_INFO)Pre-parsing Kconfig $(notdir $(KCONFIG_CONFIG)_$*)$(C_OFF)"
+	$(Q)$(PY) -m installer.build $(V) --pre-parse-kconfig "$(KCONFIG_CONFIG)_$*"
+
 
 diff= \
 	git diff -U2 --color --src-prefix="current: " --dst-prefix="built: " --minimal --word-diff=color --stat --no-index -- "$(1)" "$(2)" | \
@@ -408,7 +415,7 @@ $(KCONFIG_CONFIG): $(SRC)/installer/Kconfig* $(SRC)/installer/**/Kconfig*
 # If KCONFIG_CONFIG is outdated or doesn't exist run menuconfig first. If the user doesn't save the config,
 # we will update it with olddefconfig. touch in case .config does not get updated by olddefconfig.py
 # Only if install or menuconfig is not the target (else it will run twice)
-ifeq ($(filter menuconfig uninstall,$(MAKECMDGOALS)),)
+ifeq ($(filter menuconfig uninstall variables,$(MAKECMDGOALS)),)
 	$(Q)$(MAKE) MAKEFLAGS= menuconfig
 	$(Q)$(PY) -m olddefconfig $(SRC)/installer/Kconfig >/dev/null # Always update the .config file in case the user doesn't save it
 	$(Q)touch $(KCONFIG_CONFIG)

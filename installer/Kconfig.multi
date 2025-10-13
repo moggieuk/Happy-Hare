@@ -4,7 +4,7 @@ rsource "addons/Kconfig"
 # Popular software options
 rsource "Kconfig.options"
 
-menu "Printer"
+menu "Printer (toolhead) sensors"
   help
     Printer Capabilities
     Here you can configure printer toolhead options such as sensors

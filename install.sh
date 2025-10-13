@@ -200,12 +200,17 @@ fi
 
 # If re-running with -i give the choice of refreshing from Kconfig or retaining custom .cfg modifications
 if [ -r "${KCONFIG_CONFIG}" ] && [ -n "${F_MENUCONFIG:-}" ]; then
-    echo "${C_WARNING}You are running an interactive install with existing menuconfig ('${KCONFIG_CONFIG}'). You have two options:${C_OFF}"
-    echo "- Refresh/restore klipper .cfg config from '${KCONFIG_CONFIG}' ${C_WARNING}(select Y)${C_OFF}"
-    echo "  This will OVERWRITE any custom changes you have made to your Happy Hare .cfg files but is useful if you"
-    echo "  make ALL changes via this interactive installer (but will still generate a config backup)"
-    echo "- Retain your custom .cfg changes and only add NEW or missing menuconfig options ${C_WARNING}(select N)${C_OFF}"
-    echo "  With this option, updated parameter values in menuconfig will have no effect and may not reflect your current config"
+    echo "${C_WARNING}You are running an interactive install with existing menuconfig ('${KCONFIG_CONFIG}').${C_OFF}"
+    echo "${C_WARNING}Read carefully, you have two options:${C_OFF}"
+    echo
+    echo "- Refresh/restore .cfg config from menuconfig ${C_WARNING}(select Y)${C_OFF}"
+    echo "  This will OVERWRITE changes you have made directly to your Happy Hare .cfg files that are also set by"
+    echo "  menuconfig but is the right choice if you make or core changes via this interactive installer."
+    echo "- Retain all your .cfg changes ${C_WARNING}(select N)${C_OFF}"
+    echo "  This will never change any existing parameter value and thus is limited to only ADDING NEW or missing"
+    echo "  config sections/options. Existing parameter values in menuconfig may not reflect your current config."
+    echo
+    echo "  (Note that in both cases a backup of your existing .cfg files is made)"
     echo
     if ! prompt_yn "Refresh/restore klipper .cfg"; then
         export F_SKIP_RETAIN_OLD_CFG=y
@@ -258,8 +263,8 @@ if [ -n "${F_MENUCONFIG:-}" ]; then
     fi
 fi
 
-###################
-##### Install #####
-###################
+#############################
+##### Install / Upgrade #####
+#############################
 
-time_elapsed make --no-print-directory -C "${SCRIPT_DIR}" KCONFIG_CONFIG="${KCONFIG_CONFIG}" install
+time_elapsed make --no-print-directory -C "${SCRIPT_DIR}" install
