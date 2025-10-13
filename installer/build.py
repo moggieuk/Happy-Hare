@@ -231,22 +231,20 @@ def build(cfg_file, dest_file, kconfig, input_files):
     cfg_file_basename = cfg_file[len(os.getenv("SRC")) + 1 :]
     kcfg = load_parsed_kconfig(kconfig)
     extra_params = dict()
-# PAUL TODO FIX ME
-#    unit_kcfgs = dict()
-#
-#    # PARAM_TOTAL_NUM_GATES is required to create the Tx macro wrappers
-#    if kcfg.is_enabled("MULTI_UNIT_ENTRY_POINT"):
-#        total_num_gates = 0
-#        for unit in kcfg.get("PARAM_MMU_UNITS").split(","):
-#            unit = unit.strip()
-#            unit_kcfgs[unit] = KConfig(kconfig_file + "_" + unit)
-#            total_num_gates += unit_kcfgs[unit].getint("PARAM_NUM_GATES")
-#
-#        # Total sum of gates for all units
-#        extra_params["PARAM_TOTAL_NUM_GATES"] = total_num_gates
-#    else:
-#        extra_params["PARAM_TOTAL_NUM_GATES"] = kcfg.getint("PARAM_NUM_GATES")
-    extra_params["PARAM_TOTAL_NUM_GATES"] = 7 # PAUL TEMP patch
+
+    # PARAM_TOTAL_NUM_GATES is required to create the Tx macro wrappers
+    if kcfg.is_enabled("MULTI_UNIT_ENTRY_POINT"):
+        unit_kcfgs = dict()
+        total_num_gates = 0
+        for unit in kcfg.get("PARAM_MMU_UNITS").split(","):
+            unit = unit.strip()
+            unit_kcfgs[unit] = load_parsed_kconfig(kconfig + "_" + unit)
+            total_num_gates += unit_kcfgs[unit].getint("PARAM_NUM_GATES")
+
+        # Total sum of gates for all units
+        extra_params["PARAM_TOTAL_NUM_GATES"] = total_num_gates
+    else:
+        extra_params["PARAM_TOTAL_NUM_GATES"] = kcfg.getint("PARAM_NUM_GATES")
 
     build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_params)
 
