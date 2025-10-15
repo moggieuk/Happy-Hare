@@ -140,8 +140,8 @@ class HHConfig(ConfigBuilder):
     def update_builder(self, builder, ignore_params, origin=None):
         """
         Update the builder config selectively from the existing config HH data
-        kfg is None if all existing .cfg values should be retained else it is a kconfig
-        where only params not contained should be retained
+        ignore_params is a list of params that should not be updated. It is empty
+        for the non-interactive upgrade case where all previous params are retained
         """
 
         # Copy over included options
@@ -153,8 +153,9 @@ class HHConfig(ConfigBuilder):
                         and option not in ignore_params
                     ):
                         builder.set(section, option, self.get(section, option))
+                        logging.debug("Using previous [%s] %s: %s" % (section, option, self.get(section, option)))
                     elif not option.startswith("gcode"):
-                        logging.debug("Ignoring previous param in section [%s] %s: %s" % (section, option, self.get(section, option)))
+                        logging.debug("Ignoring previous [%s] %s: %s" % (section, option, self.get(section, option)))
                     self.used_options.add((section, option))
 
         # If existing config has excluded options use them in lieu of builder excluded options

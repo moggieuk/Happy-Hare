@@ -742,28 +742,60 @@ class ConfigBuilder(object):
             logging.warning("{} in section [{}] has no value".format(option_name, section_name))
             value = ""
         value = value.strip()
-        idx = value.find("\n")
 
+        # TODO don't think this is useful anymore(?)
+        idx = value.find("\n")
         if idx != -1:
             value = value[:idx] + re.sub(r"^(?=\S)", r"    ", value[idx:], flags=re.MULTILINE)
 
+        # Build/rebuild first ValueLineNode with updated value
         if self.has_option(section_name, option_name):
             option = self._get_option(section_name, option_name)
+            if option.body:
+                vln = option.body[0]
+                value_replaced = False
 
-            if option.body and isinstance(option.body[0].body[0], WhitespaceNode):
-                value = option.body[0].body[0].value + value
+                if isinstance(vln.body[0], CommentNode):
+                    vln.body.insert(0, ValueEntryNode(value))
+                else:
+                    for b in vln.body:
+                        if isinstance(b, ValueEntryNode):
+                            b.value = value
+                            value_replaced = True
+                            break
+                    else:
+                        vln.body.append(ValueEntryNode(value))
+
+                # Hack to remove other parts of a multi-lined value. E.g.
+                #   [mmu_led_effect mmu_strobe]
+                #   layers:       strobe    1 1.5 add (1,1,1)
+                #                 breathing 2 0   difference (0.95,0,0) # animate
+                #                 static    0 0   top (1,0,0)
+                # If ValueEntryNode is whitespace, retain because probably just comment. E.g.
+                # print_start_detection: 1   # ADVANCED: xxx
+                #                            # ADVANCED: yyy
+                # Side effects:
+                #  - comments on values in subsequent lines will be removed
+                #  - trailing whitespace on value will be removed (good thing)
+                if value_replaced:
+                    removes = []
+                    for i, vln in enumerate(option.body[1:]):
+                        if isinstance(vln.body[0], ValueEntryNode) and vln.body[0].value.strip() != '':
+                            removes.append(i + 1)
+                    for i in reversed(removes):
+                        option.body.pop(i)
+
             else:
-                value = " " + value
-            value = self.parser.parse_value(Tokenizer(value, CONFIG_SPEC))
-            option.body = value
+                body = self.parser.parse_value(Tokenizer(value, CONFIG_SPEC))
+                option.body = body
 
         else:
-            value = self.parser.parse_value(Tokenizer(" " + value, CONFIG_SPEC))
+            body = self.parser.parse_value(Tokenizer(" " + value, CONFIG_SPEC))
             section = self._get_section(section_name)
-            section.body.append(OptionNode(option_name, value, self.parser.default_assign_op))
+            section.body.append(OptionNode(option_name, body, self.parser.default_assign_op))
             section.body.append(WhitespaceNode("\n"))
             option = self._get_option(section_name, option_name)
-            option.body = value
+            option.body = body
 
     def items(self, section_name):
         section = self._get_section(section_name)
