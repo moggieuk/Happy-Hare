@@ -741,9 +741,7 @@ class LinearSelector(BaseSelector, object):
                 trig_pos = [0., 0., 0., 0.]
                 with self.mmu.wrap_accel(accel):
                     pos[0] = new_pos
-                    self.mmu.log_info("Debug homing move start")
                     trig_pos = hmove.homing_move(pos, speed, probe_pos=True, triggered=homing_move > 0, check_triggered=True)
-                    self.mmu.log_info("Debug homing move complete")
                     if hmove.check_no_movement():
                         self.mmu.log_stepper("No movement detected")
                     if self.selector_rail.is_endstop_virtual(endstop_name):
@@ -752,9 +750,7 @@ class LinearSelector(BaseSelector, object):
                         if delta < 1.0:
                             homed = False
                             self.mmu.log_trace("Truing selector %.4fmm to %.2fmm" % (delta, new_pos))
-                            self.mmu.log_info("Debug regular move start")
                             self.mmu_toolhead.move(pos, speed)
-                            self.mmu.log_info("Debug regular move complete")
                         else:
                             homed = True
                     else:
@@ -766,7 +762,6 @@ class LinearSelector(BaseSelector, object):
                 pos = self.mmu_toolhead.get_position()
                 if self.mmu.log_enabled(self.mmu.LOG_STEPPER):
                     self.mmu.log_stepper("SELECTOR HOMING MOVE: requested position=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s >> %s" % (new_pos, speed, accel, endstop_name, "%s actual pos=%.2f, trig_pos=%.2f" % ("HOMED" if homed else "DID NOT HOMED",  pos[0], trig_pos[0])))
-            self.mmu.log_info("Debug finished selection movement")
         else:
             pos = self.mmu_toolhead.get_position()
             with self.mmu.wrap_accel(accel):
