@@ -1094,8 +1094,7 @@ copy_config_files() {
 
             # Handle LED option - Comment out if disabled (section is last, go comment to end of file)
             if [ "${file}" == "mmu_hardware.cfg" -a "$SETUP_LED" == "no" ]; then
-                sed "/^\[neopixel mmu_leds\]/,+4 {/^[^#]/ s/^/#/}" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
-                sed "/^\[mmu_leds\]/,+6 {/^[^#]/ s/^/#/}" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                sed '/^\[\(neopixel mmu_leds\|mmu_leds\)\]/,${ /^[^#]/ s/^/#/ }' "${dest}" > "${dest}.tmp" && mv "${dest}.tmp" "${dest}"
             fi
 
             # Handle Encoder option - Comment out if not fitted so can easily be added later
