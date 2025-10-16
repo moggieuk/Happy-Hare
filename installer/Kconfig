@@ -54,9 +54,7 @@ if !MULTI_UNIT_ENTRY_POINT
   config MMU_MCU
     string
     default "$(MMU_MCU)"
-endif
 
-if MULTI_UNIT_ENTRY_POINT
   config PARAM_MMU_UNITS
     string
     default "$(UNIT_NAME)"
