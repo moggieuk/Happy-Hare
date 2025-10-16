@@ -1676,7 +1676,8 @@ class Kconfig(object):
                     ) or (
                         item.orig_type in _BOOL_TRISTATE and
                         not item._was_set and
-                        item.str_value != "n"
+                        item.str_value != "n" and
+                        item.name.startswith('CHOICE')
                     )
                 ):
                     add("# %s%s is default\n" % (self.config_prefix, item.name))

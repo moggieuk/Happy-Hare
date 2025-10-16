@@ -42,6 +42,7 @@ import os
 import re
 import sys
 import time
+import fnmatch
 from pathlib import Path
 from typing import Iterable, List, Sequence, Tuple
 
@@ -52,21 +53,33 @@ from typing import Iterable, List, Sequence, Tuple
 DEFAULT_PATTERNS: List[Tuple[str, str]] = [
     # Example:
     # (r"(?<!_)mmu_gear(?!_)", "mmu_gear"),
-    ("SENSOR_PRE_GATE_PREFIX", "SENSOR_ENTRY_PREFIX"),
-    ("SENSOR_GEAR_PREFIX", "SENSOR_EXIT_PREFIX"),
-    ("SENSOR_GATE", "SENSOR_SHARED_EXIT"),
-    ("mmu_pre_gate", "mmu_entry"),
-    ("pre_gate_switch_pin", "mmu_entry_switch_pin"),
-    ("post_gear_switch_pin", "mmu_exit_switch_pin"),
-    ("gear_switch_pin", "mmu_shared_exit_switch_pin"),
-    ("(?<!_)mmu_gear(?!_)", "mmu_exit"),
-    ("mmu_gate(?!_map)", "mmu_shared_exit"),
-    ("(?<!stepper_)mmu_gear(?!_touch|_rotation)", "mmu_exit"),
-    ("pre_gate_sensors", "entry_sensors"),
-    ("gear sensor", "mmu exit sensor"),
-    ("pre-gate", "mmu entry"),
-    ("PRE_GATE", "ENTRY"),
-    ("POST_GEAR", "EXIT"),
+    ("GATE_HOMING_ENDSTOP_EXTRUDER",        "CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER"),
+    ("GATE_HOMING_ENDSTOP_GEAR",            "CHOICE_GATE_HOMING_ENDSTOP_GEAR"),
+    ("GATE_HOMING_ENDSTOP_GATE",            "CHOICE_GATE_HOMING_ENDSTOP_GATE"),
+    ("GATE_HOMING_ENDSTOP_ENCODER",         "CHOICE_GATE_HOMING_ENDSTOP_ENCODER"),
+    ("GATE_HOMING_ENDSTOP_NONE",            "CHOICE_GATE_HOMING_ENDSTOP_NONE"),
+    ("EXTRUDER_HOMING_ENDSTOP_EXTRUDER",    "CHOICE_EXTRUDER_HOMING_ENDSTOP_EXTRUDER"),
+    ("EXTRUDER_HOMING_ENDSTOP_COMPRESSION", "CHOICE_EXTRUDER_HOMING_ENDSTOP_COMPRESSION"),
+    ("EXTRUDER_HOMING_ENDSTOP_TOUCH",       "CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH"),
+    ("EXTRUDER_HOMING_ENDSTOP_COLLISION",   "CHOICE_EXTRUDER_HOMING_ENDSTOP_COLLISION"),
+    ("EXTRUDER_HOMING_ENDSTOP_NONE",        "CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE"),
+
+#    ("SENSOR_PRE_GATE_PREFIX", "SENSOR_ENTRY_PREFIX"),
+#    ("SENSOR_GEAR_PREFIX", "SENSOR_EXIT_PREFIX"),
+#    ("SENSOR_GATE", "SENSOR_SHARED_EXIT"),
+#    ("mmu_pre_gate", "mmu_entry"),
+#    ("pre_gate_switch_pin", "mmu_entry_switch_pin"),
+#    ("post_gear_switch_pin", "mmu_exit_switch_pin"),
+#    ("gear_switch_pin", "mmu_shared_exit_switch_pin"),
+#    ("(?<!_)mmu_gear(?!_)", "mmu_exit"),
+#    ("mmu_gate(?!_map)", "mmu_shared_exit"),
+#    ("(?<!stepper_)mmu_gear(?!_touch|_rotation)", "mmu_exit"),
+#    ("pre_gate_sensors", "entry_sensors"),
+#    ("gear sensor", "mmu exit sensor"),
+#    ("pre-gate", "mmu entry"),
+#    ("PRE_GATE", "ENTRY"),
+#    ("POST_GEAR", "EXIT"),
+
 
 #    ("(?<!CALIBRATE_)GEAR(?!_(?:0|RDS|STEPPER)\b)", "EXIT"),
 #    ("gates/lanes", "lanes"),
@@ -96,7 +109,8 @@ IGNORE_DIRS = {
     ".git", ".hg", ".svn", "__pycache__", ".venv", "venv", "node_modules",
     "build", "dist", ".mypy_cache", ".ruff_cache", ".pytest_cache", "utils"
 }
-TARGET_EXTS = (".py", ".cfg", "Kconfig*")
+# PAUL TARGET_EXTS = (".py", ".cfg", "Kconfig*")
+TARGETS = ("*.py", "*.cfg", "Kconfig*")
 
 
 # ---- Diff colorization -------------------------------------------------------
@@ -194,7 +208,8 @@ def iter_target_files(root: Path) -> Iterable[Path]:
         for name in filenames:
             if name.endswith(".orig"):
                 continue
-            if name.lower().endswith(TARGET_EXTS):
+            if any(fnmatch.fnmatchcase(name, pat) for pat in TARGETS):
+# PAUL            if name.lower().endswith(TARGET_EXTS):
                 yield Path(dirpath) / name
 
 
@@ -248,7 +263,8 @@ def _collect_backups(root: Path) -> dict[Path, Path]:
                     continue
                 orig = Path(m.group(1))
                 # Only revert backups for targeted file types
-                if orig.suffix.lower() not in TARGET_EXTS:
+# PAUL                if orig.suffix.lower() not in TARGET_EXTS:
+                if not any(fnmatch.fnmatchcase(orig.suffix, pat) for pat in TARGETS):
                     continue
                 prev = mapping.get(orig)
                 if not prev or bpath.stat().st_mtime > prev.stat().st_mtime:

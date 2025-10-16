@@ -225,6 +225,7 @@ if [ -n "${F_MENUCONFIG:-}" ]; then
     if [ -n "${F_MULTI_UNIT:-}" ] || [ -n "${CONFIG_MULTI_UNIT:-}" ]; then
         if [ -r "${KCONFIG_CONFIG}" ] && [ -z "${CONFIG_MULTI_UNIT:-}" ] && [ -n "${F_MULTI_UNIT:-}" ]; then
             tmpconfig="$(mktemp -t tmpconfig.XXXXXX)"
+            echo cp -- "${KCONFIG_CONFIG}" "${tmpconfig}"
             cp -- "${KCONFIG_CONFIG}" "${tmpconfig}"
         fi
         make --no-print-directory -C "${SCRIPT_DIR}" F_MULTI_UNIT_ENTRY_POINT=y F_MULTI_UNIT=y menuconfig
@@ -249,7 +250,6 @@ if [ -n "${F_MENUCONFIG:-}" ]; then
 
     if [ -n "${CONFIG_MULTI_UNIT:-}" ]; then
         i=0
-        OLDIFS=${IFS-}
         IFS=,
         set -f # Avoid globbing
         for name in ${CONFIG_PARAM_MMU_UNITS:-}; do
@@ -259,7 +259,6 @@ if [ -n "${F_MENUCONFIG:-}" ]; then
             i=$((i + 1))
         done
         set +f
-        IFS=${OLDIFS}
     fi
 fi
 

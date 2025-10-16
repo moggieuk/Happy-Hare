@@ -7,52 +7,52 @@
 #
 
 # Gate homing preference flags (hidden)
-config PREFERS_GATE_HOMING_ENDSTOP_EXTRUDER
+config PREFERS_CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
   bool
   def_bool n
   depends on MMU_HAS_SENSOR_EXTRUDER && !REQUIRE_BOWDEN_MOVE
 
-config PREFERS_GATE_HOMING_ENDSTOP_GEAR
+config PREFERS_CHOICE_GATE_HOMING_ENDSTOP_GEAR
   bool
   def_bool n
   depends on MMU_HAS_SENSOR_POST_GEAR
 
-config PREFERS_GATE_HOMING_ENDSTOP_GATE
+config PREFERS_CHOICE_GATE_HOMING_ENDSTOP_GATE
   bool
   def_bool n
   depends on MMU_HAS_SENSOR_GATE
 
-config PREFERS_GATE_HOMING_ENDSTOP_ENCODER
+config PREFERS_CHOICE_GATE_HOMING_ENDSTOP_ENCODER
   bool
   def_bool n
   depends on MMU_HAS_ENCODER
 
-config PREFERS_GATE_HOMING_ENDSTOP_NONE
+config PREFERS_CHOICE_GATE_HOMING_ENDSTOP_NONE
   bool
   def_bool n
 
 # Extruder homing preference flags (hidden)
-config PREFERS_EXTRUDER_HOMING_ENDSTOP_EXTRUDER
+config PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_EXTRUDER
   bool
   def_bool n
   depends on MMU_HAS_SENSOR_EXTRUDER
 
-config PREFERS_EXTRUDER_HOMING_ENDSTOP_COMPRESSION
+config PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_COMPRESSION
   bool
   def_bool n
   depends on MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION
 
-config PREFERS_EXTRUDER_HOMING_ENDSTOP_TOUCH
+config PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH
   bool
   def_bool n
   depends on MMU_HAS_SENSOR_GEAR_TOUCH
 
-config PREFERS_EXTRUDER_HOMING_ENDSTOP_COLLISION
+config PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_COLLISION
   bool
   def_bool n
   depends on MMU_HAS_ENCODER
 
-config PREFERS_EXTRUDER_HOMING_ENDSTOP_NONE
+config PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE
   bool
   def_bool n
 
@@ -65,46 +65,46 @@ menu "Endstops"
       This allows you to choose the best option for your design
 
     # mmu_type preferences (first true wins)
-    default GATE_HOMING_ENDSTOP_EXTRUDER if PREFERS_GATE_HOMING_ENDSTOP_EXTRUDER
-    default GATE_HOMING_ENDSTOP_GEAR     if PREFERS_GATE_HOMING_ENDSTOP_GEAR
-    default GATE_HOMING_ENDSTOP_GATE     if PREFERS_GATE_HOMING_ENDSTOP_GATE
-    default GATE_HOMING_ENDSTOP_ENCODER  if PREFERS_GATE_HOMING_ENDSTOP_ENCODER
-    default GATE_HOMING_ENDSTOP_NONE     if PREFERS_GATE_HOMING_ENDSTOP_NONE
+    default CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER if PREFERS_CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
+    default CHOICE_GATE_HOMING_ENDSTOP_GEAR     if PREFERS_CHOICE_GATE_HOMING_ENDSTOP_GEAR
+    default CHOICE_GATE_HOMING_ENDSTOP_GATE     if PREFERS_CHOICE_GATE_HOMING_ENDSTOP_GATE
+    default CHOICE_GATE_HOMING_ENDSTOP_ENCODER  if PREFERS_CHOICE_GATE_HOMING_ENDSTOP_ENCODER
+    default CHOICE_GATE_HOMING_ENDSTOP_NONE     if PREFERS_CHOICE_GATE_HOMING_ENDSTOP_NONE
 
     # Heuristic fallbacks
-    default GATE_HOMING_ENDSTOP_EXTRUDER if MMU_HAS_SENSOR_EXTRUDER && !REQUIRE_BOWDEN_MOVE
-    default GATE_HOMING_ENDSTOP_GEAR     if MMU_HAS_SENSOR_POST_GEAR
-    default GATE_HOMING_ENDSTOP_GATE     if MMU_HAS_SENSOR_GATE
-    default GATE_HOMING_ENDSTOP_ENCODER  if MMU_HAS_ENCODER
-    default GATE_HOMING_ENDSTOP_NONE
+    default CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER if MMU_HAS_SENSOR_EXTRUDER && !REQUIRE_BOWDEN_MOVE
+    default CHOICE_GATE_HOMING_ENDSTOP_GEAR     if MMU_HAS_SENSOR_POST_GEAR
+    default CHOICE_GATE_HOMING_ENDSTOP_GATE     if MMU_HAS_SENSOR_GATE
+    default CHOICE_GATE_HOMING_ENDSTOP_ENCODER  if MMU_HAS_ENCODER
+    default CHOICE_GATE_HOMING_ENDSTOP_NONE
 
-    config GATE_HOMING_ENDSTOP_EXTRUDER
+    config CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
       bool "Extruder entry sensor"
       depends on MMU_HAS_SENSOR_EXTRUDER && !REQUIRE_BOWDEN_MOVE
       help 
         Use extruder entry sensor (Only for some type-B designs,
         where multiple bowdens are combined near the toolhead).
 
-    config GATE_HOMING_ENDSTOP_GEAR
+    config CHOICE_GATE_HOMING_ENDSTOP_GEAR
       bool "Individual mmu exit sensors"
       depends on MMU_HAS_SENSOR_POST_GEAR
       help
         Use individual per-gate endstop sensor after drive gear (often implemented as
         per-gate entry sensors on the filament combiner ("aka hub")
 
-    config GATE_HOMING_ENDSTOP_GATE
+    config CHOICE_GATE_HOMING_ENDSTOP_GATE
       bool "Shared Gate sensor"
       depends on MMU_HAS_SENSOR_GATE
       help
         Use gate endstop which is shared by all MMU gates.
 
-    config GATE_HOMING_ENDSTOP_ENCODER
+    config CHOICE_GATE_HOMING_ENDSTOP_ENCODER
       bool "Encoder movement"
       depends on MMU_HAS_ENCODER
       help 
         Detect filament position using movement of the encoder.
 
-    config GATE_HOMING_ENDSTOP_NONE
+    config CHOICE_GATE_HOMING_ENDSTOP_NONE
       bool "No homing endstop available"
       help
         Ensure you have specified all filament sensors and encoders because
@@ -114,11 +114,11 @@ menu "Endstops"
   # Create no-prompt param from choice
   config PARAM_GATE_HOMING_ENDSTOP
     string 
-    default "extruder"        if GATE_HOMING_ENDSTOP_EXTRUDER
-    default "mmu_gear"        if GATE_HOMING_ENDSTOP_GEAR
-    default "mmu_gate"        if GATE_HOMING_ENDSTOP_GATE
-    default "encoder"         if GATE_HOMING_ENDSTOP_ENCODER
-    default ""                if GATE_HOMING_ENDSTOP_NONE
+    default "extruder"        if CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
+    default "mmu_gear"        if CHOICE_GATE_HOMING_ENDSTOP_GEAR
+    default "mmu_gate"        if CHOICE_GATE_HOMING_ENDSTOP_GATE
+    default "encoder"         if CHOICE_GATE_HOMING_ENDSTOP_ENCODER
+    default ""                if CHOICE_GATE_HOMING_ENDSTOP_NONE
 
 
   choice CHOICE_EXTRUDER_HOMING_ENDSTOP
@@ -129,47 +129,47 @@ menu "Endstops"
       it is necessary to choose the best option for your design
 
     # mmu_type preferences (first true wins)
-    default EXTRUDER_HOMING_ENDSTOP_EXTRUDER    if PREFERS_EXTRUDER_HOMING_ENDSTOP_EXTRUDER
-    default EXTRUDER_HOMING_ENDSTOP_COMPRESSION if PREFERS_EXTRUDER_HOMING_ENDSTOP_COMPRESSION
-    default EXTRUDER_HOMING_ENDSTOP_TOUCH       if PREFERS_EXTRUDER_HOMING_ENDSTOP_TOUCH
-    default EXTRUDER_HOMING_ENDSTOP_COLLISION   if PREFERS_EXTRUDER_HOMING_ENDSTOP_COLLISION
-    default EXTRUDER_HOMING_ENDSTOP_NONE        if PREFERS_EXTRUDER_HOMING_ENDSTOP_NONE
+    default CHOICE_EXTRUDER_HOMING_ENDSTOP_EXTRUDER    if PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_EXTRUDER
+    default CHOICE_EXTRUDER_HOMING_ENDSTOP_COMPRESSION if PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_COMPRESSION
+    default CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH       if PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH
+    default CHOICE_EXTRUDER_HOMING_ENDSTOP_COLLISION   if PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_COLLISION
+    default CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE        if PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE
 
     # Heuristic fallbacks
-    default EXTRUDER_HOMING_ENDSTOP_EXTRUDER    if MMU_HAS_SENSOR_EXTRUDER
-    default EXTRUDER_HOMING_ENDSTOP_COMPRESSION if MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION
-    default EXTRUDER_HOMING_ENDSTOP_TOUCH       if MMU_HAS_GEAR_TOUCH
-    default EXTRUDER_HOMING_ENDSTOP_COLLISION   if MMU_HAS_ENCODER
-    default EXTRUDER_HOMING_ENDSTOP_NONE
+    default CHOICE_EXTRUDER_HOMING_ENDSTOP_EXTRUDER    if MMU_HAS_SENSOR_EXTRUDER
+    default CHOICE_EXTRUDER_HOMING_ENDSTOP_COMPRESSION if MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION
+    default CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH       if MMU_HAS_GEAR_TOUCH
+    default CHOICE_EXTRUDER_HOMING_ENDSTOP_COLLISION   if MMU_HAS_ENCODER
+    default CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE
 
-    config EXTRUDER_HOMING_ENDSTOP_EXTRUDER
+    config CHOICE_EXTRUDER_HOMING_ENDSTOP_EXTRUDER
       bool "Extruder entry sensor"
       depends on MMU_HAS_SENSOR_EXTRUDER
       help
         If you have a "filament entry" endstop configured
         (Requires 'extruder' endstop)
 
-    config EXTRUDER_HOMING_ENDSTOP_COMPRESSION
+    config CHOICE_EXTRUDER_HOMING_ENDSTOP_COMPRESSION
       bool "Filament compression"
       depends on MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION
       help
         If you have a "sync-feedback" sensor (often called a "buffer")
         with compression switch configured. E.g like Belay or TurtleNeck
 
-    config EXTRUDER_HOMING_ENDSTOP_TOUCH
+    config CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH
       bool "Stallguard Touch detection"
       depends on MMU_HAS_SENSOR_GEAR_TOUCH
       help
         Use touch detection when the gear stepper hits the extruder
         (Requires stallguard)
 
-    config EXTRUDER_HOMING_ENDSTOP_COLLISION
+    config CHOICE_EXTRUDER_HOMING_ENDSTOP_COLLISION
       bool "Encoder collision detection"
       depends on MMU_HAS_ENCODER
       help
         Detect the collision with the extruder gear by monitoring encoder movement
 
-    config EXTRUDER_HOMING_ENDSTOP_NONE
+    config CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE
       bool "No homing endstop"
       help
         Don't attempt to home. Only possibility if lacking all sensor options.
@@ -179,10 +179,10 @@ menu "Endstops"
   # Create no-prompt param from choice
   config PARAM_EXTRUDER_HOMING_ENDSTOP
     string 
-    default "extruder"             if EXTRUDER_HOMING_ENDSTOP_EXTRUDER
-    default "filament_compression" if EXTRUDER_HOMING_ENDSTOP_COMPRESSION
-    default "mmu_gear_touch"       if EXTRUDER_HOMING_ENDSTOP_TOUCH
-    default "collision"            if EXTRUDER_HOMING_ENDSTOP_COLLISION
-    default "none"                 if EXTRUDER_HOMING_ENDSTOP_NONE
+    default "extruder"             if CHOICE_EXTRUDER_HOMING_ENDSTOP_EXTRUDER
+    default "filament_compression" if CHOICE_EXTRUDER_HOMING_ENDSTOP_COMPRESSION
+    default "mmu_gear_touch"       if CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH
+    default "collision"            if CHOICE_EXTRUDER_HOMING_ENDSTOP_COLLISION
+    default "none"                 if CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE
 
 endmenu

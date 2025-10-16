@@ -66,10 +66,10 @@ space := $(empty) $(empty)
 
 # Replace ~ with $(HOME) and remove quotes
 unwrap                   = $(subst ~,$(HOME),$(patsubst "%",%,$(1)))
-space_to_underscore      = $(subst $(space),_,$(1))
-comma_to_space           = $(subst $(comma),$(space),$(1))
-# Convert a comma separated list to a space separated list with spaces replaced with underscores
-convert_list             = $(call comma_to_space,$(call space_to_underscore,$(1)))
+
+define convert_list
+$(strip $(foreach t,$(subst $(comma), ,$(1)),$(subst $(space),_,$(strip $(t)))))
+endef
 
 # We strip these from surrounding quotes, and replace ~ with $(HOME)
 KLIPPER_HOME            := $(call unwrap,$(CONFIG_KLIPPER_HOME))
@@ -79,7 +79,8 @@ PRINTER_CONFIG_FILE     := $(call unwrap,$(CONFIG_PRINTER_CONFIG_FILE))
 MOONRAKER_CONFIG_FILE   := $(call unwrap,$(CONFIG_MOONRAKER_CONFIG_FILE))
 
 # unit_names: from CONFIG_PARAM_MMU_UNITS in multi-unit, else default to mmu0
-unit_names := $(if $(filter y,$(CONFIG_MULTI_UNIT)),$(strip $(subst ",,$(call convert_list,$(CONFIG_PARAM_MMU_UNITS)))),mmu0)
+#unit_names := $(if $(filter y,$(CONFIG_MULTI_UNIT)),$(strip $(subst ",,$(call convert_list,$(call strip_ws_around_commas,$(CONFIG_PARAM_MMU_UNITS))))),mmu0)
+unit_names := $(if $(filter y,$(CONFIG_MULTI_UNIT)),$(call convert_list,$(subst ",,$(CONFIG_PARAM_MMU_UNITS))),mmu0)
 
 # Use sudo if the klipper home is at a system location (not owned by user)
 SUDO := $(shell \
@@ -129,8 +130,7 @@ hh_config_files := \
 # Look for installed configs that would need be parsed by the build script
 # This allows for easy upgrades and option movement across files
 hh_configs_to_parse := \
-	$(subst $(KLIPPER_CONFIG_HOME),$(IN), \
-	$(wildcard $(KLIPPER_CONFIG_HOME)/mmu/base/*.cfg \
+	$(subst $(KLIPPER_CONFIG_HOME),$(IN),$(wildcard $(KLIPPER_CONFIG_HOME)/mmu/base/*.cfg \
 		$(KLIPPER_CONFIG_HOME)/mmu/addons/*.cfg))
 
 # Files/targets that need to be build
