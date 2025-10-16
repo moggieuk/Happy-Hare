@@ -80,11 +80,7 @@ comment "$(pad,50,( *,*))"
 comment "$(pad,50,(\")_(\") $(caption))"
 comment "$(pad,50,)"
 
-# Common/shared settings
-#if (MULTI_UNIT && MULTI_UNIT_ENTRY_POINT) || !MULTI_UNIT
-
 if MULTI_UNIT_ENTRY_POINT
-
   config PARAM_MMU_UNITS
     prompt "MMU unit names"
     help
@@ -96,12 +92,8 @@ if MULTI_UNIT_ENTRY_POINT
       A separate configurator will be run for each MMU after this initial screen is closed
 
   comment "Shared System Options"
-
   rsource "Kconfig.multi"
-
 endif
-
-#endif
 
 # Only show if we have a single-unit setup
 if !MULTI_UNIT_ENTRY_POINT
@@ -136,18 +128,19 @@ if !MULTI_UNIT_ENTRY_POINT
       change later by re-running "./install.sh -i" or editing the generated
       klipper config files.
 
-    rsource "Kconfig.num_gates"
-    rsource "Kconfig.toolhead"
-    rsource "Kconfig.leds"
-    rsource "Kconfig.encoder"
-    rsource "Kconfig.endstops"
-    rsource "Kconfig.gates"
-    rsource "Kconfig.motors"
-    rsource "Kconfig.sync"
-    rsource "Kconfig.speeds"
-    rsource "Kconfig.calibration"
-    rsource "Kconfig.pins"
-    rsource "Kconfig.params"
+    source "Kconfig.num_gates"
+    source "Kconfig.toolhead"
+    source "Kconfig.leds"
+    source "Kconfig.encoder"
+    source "sensors/Kconfig"
+    source "Kconfig.endstops"
+    source "Kconfig.gates"
+    source "Kconfig.motors"
+    source "Kconfig.sync"
+    source "Kconfig.speeds"
+    source "Kconfig.calibration"
+    source "Kconfig.pins"
+    source "Kconfig.params"
 
   endmenu
 endif

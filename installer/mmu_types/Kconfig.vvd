@@ -68,12 +68,13 @@ if MMU_TYPE_VVD_1_0
   config PARAM_GATE_HOMING_MAX
     default "500"
   
-  choice CHOICE_GATE_HOMING_ENDSTOP
-    default GATE_HOMING_ENDSTOP_GEAR
-  endchoice
-  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
-    default EXTRUDER_HOMING_ENDSTOP_NONE
-  endchoice
+# PAUL
+#  choice CHOICE_GATE_HOMING_ENDSTOP
+#    default GATE_HOMING_ENDSTOP_GEAR
+#  endchoice
+#  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
+#    default EXTRUDER_HOMING_ENDSTOP_NONE
+#  endchoice
 
   config PARAM_CHAIN_COUNT
     default 28   

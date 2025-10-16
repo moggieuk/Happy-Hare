@@ -9,12 +9,9 @@ menu "Filament Sensors"
   rsource "Kconfig.exit"
   rsource "Kconfig.shared_exit"
   rsource "Kconfig.sync_feedback"
-
-# PAUL
-#if !MULTI_UNIT # Exclude (part of MULTI_UNIT_ENTRY_POINT config)
-#  rsource "Kconfig.extruder"
-#  rsource "Kconfig.toolhead"
-#endif
-
   rsource "Kconfig.gear_touch"
+  if !MULTI_UNIT
+    rsource "Kconfig.extruder"
+    rsource "Kconfig.toolhead"
+  endif
 endmenu

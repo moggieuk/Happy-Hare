@@ -102,10 +102,11 @@ if MMU_TYPE_KMS_1_0
   config BOOL_AUTOTUNE_ENCODER
     default n
   
-  choice CHOICE_GATE_HOMING_ENDSTOP
-    default GATE_HOMING_ENDSTOP_GATE
-  endchoice
-  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
-    default EXTRUDER_HOMING_ENDSTOP_NONE
-  endchoice
+# PAUL
+#  choice CHOICE_GATE_HOMING_ENDSTOP
+#    default GATE_HOMING_ENDSTOP_GATE
+#  endchoice
+#  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
+#    default EXTRUDER_HOMING_ENDSTOP_NONE
+#  endchoice
 endif 

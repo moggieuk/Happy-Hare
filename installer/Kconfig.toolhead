@@ -31,16 +31,17 @@ menu "Toolhead dimensions and calibration"
       in the calculation of purge volume.
       Note that this value can also be measured with 'MMU_CALIBRATE_TOOLHEAD' command (see Happy Hare wiki)
 
-  config PARAM_TOOLHEAD_OOZE_REDUCTION
-    string "Ooze reduction"
-    default "0"
-    help
-      This is for tuning to fix blobbing. It is expected that this value is NEAR ZERO as it represents a further
-      reduction in extruder load length to fix blobbing. If using a wipetower and you experience blobs on it,
-      increase this value (reduce the quantity of filament loaded). If you experience gaps, decrease this value.
-      If gaps and already at 0 then perhaps the 'toolhead_extruder_to_nozzle' or 'toolhead_residual_filament'
-      settings are incorrect. Similarly a value >+5mm also suggests the four settings above are not correct.
-      Recommend starting with 0
+# This is for tuning. Don't expose
+#  config PARAM_TOOLHEAD_OOZE_REDUCTION
+#    string "Ooze reduction"
+#    default "0"
+#    help
+#      This is for tuning to fix blobbing. It is expected that this value is NEAR ZERO as it represents a further
+#      reduction in extruder load length to fix blobbing. If using a wipetower and you experience blobs on it,
+#      increase this value (reduce the quantity of filament loaded). If you experience gaps, decrease this value.
+#      If gaps and already at 0 then perhaps the 'toolhead_extruder_to_nozzle' or 'toolhead_residual_filament'
+#      settings are incorrect. Similarly a value >+5mm also suggests the four settings above are not correct.
+#      Recommend starting with 0
 
 endmenu
 

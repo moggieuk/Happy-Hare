@@ -1665,12 +1665,19 @@ class Kconfig(object):
                     after_end_comment = False
                     add("\n")
 
-                # Happy Hare added - mark PARAMS that are defaults to allow subsequent resetting
+                # Happy Hare added - mark PARAMS and CHOICE selections (which result in _BOOL_TRISTATE with name PARAM_*)
+                # that are default value to allow subsequent resetting
                 if (
                     node.item.__class__ is Symbol and
-                    item.orig_type in [BOOL, TRISTATE, STRING, INT, HEX] and
-                    not item._was_set and
-                    item.name.startswith('PARAM')
+                    (
+                        item.orig_type in [BOOL, TRISTATE, STRING, INT, HEX] and
+                        not item._was_set and
+                        item.name.startswith('PARAM')
+                    ) or (
+                        item.orig_type in _BOOL_TRISTATE and
+                        not item._was_set and
+                        item.str_value != "n"
+                    )
                 ):
                     add("# %s%s is default\n" % (self.config_prefix, item.name))
 

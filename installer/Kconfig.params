@@ -78,5 +78,16 @@ menu "Design Attributes"
 
   config PARAM_FILAMENT_ALWAYS_GRIPPED
     bool "Filament always gripped?"
+    help
+      Whether the design is always gripping the filament. For most type-B designs this
+      will be true, but type-A designs have a choice.
+
+  config PARAM_CAN_CROSSLOAD
+    bool "Can crossload/unload?"
+    help
+      Whether the design supports the pre-loading or unloading of the non active gate.
+      For type-B designs with mmu_exit sensor (or one on each entry to filament combiner)
+      this is possible. It is not possible with type-A designs with a single filament
+      drive stepper.
 
 endmenu

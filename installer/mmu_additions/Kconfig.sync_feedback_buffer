@@ -10,7 +10,6 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
     help
       Select sync-feedback buffer options
 
-    rsource "sensors/Kconfig.sync_feedback"
-
+    source "sensors/Kconfig.sync_feedback"
   endmenu
 endif

@@ -341,14 +341,18 @@ class Mmu:
         self.default_gate_spool_id = list(config.getintlist('gate_spool_id', []))
         self.default_gate_speed_override = list(config.getintlist('gate_speed_override', []))
 
+# MOGGIE PAUL bowden_fast_unload_portion: 95          # % of calibrated bowden length for fast (non-homing) unloading move
+# MOGGIE PAUL bowden_fast_load_portion: 95            # % of calibrated bowden length for fast (non-homing) loading move
         # Configuration for gate loading and unloading
         self.gate_homing_endstop = config.getchoice('gate_homing_endstop', {o: o for o in self.GATE_ENDSTOPS}, self.SENSOR_ENCODER)
-        self.gate_endstop_to_encoder = config.getfloat('gate_endstop_to_encoder', 0., minval=0.)
-        self.gate_unload_buffer = config.getfloat('gate_unload_buffer', 30., minval=0.) # How far to short bowden move to avoid overshooting the gate
-        self.gate_homing_max = config.getfloat('gate_homing_max', 2 * self.gate_unload_buffer, minval=self.gate_unload_buffer)
-        self.gate_preload_homing_max = config.getfloat('gate_preload_homing_max', self.gate_homing_max)
+        self.gate_homing_max = config.getfloat('gate_homing_max', 100, minval=10)
         self.gate_parking_distance = config.getfloat('gate_parking_distance', 23.) # Can be +ve or -ve
+        self.gate_unload_buffer = config.getfloat('gate_unload_buffer', 30., minval=0.) # How far to short bowden move to avoid overshooting the gate # PAUL make this dynamic based on bowden_fast_unload_portion
+        self.gate_preload_endstop = config.getchoice('gate_preload_endstop', {o: o for o in self.GATE_ENDSTOPS}, self.SENSOR_ENCODER) # PAUL new - implement
+        self.gate_preload_homing_max = config.getfloat('gate_preload_homing_max', self.gate_homing_max)
         self.gate_preload_parking_distance = config.getfloat('gate_preload_parking_distance', -10.) # Can be +ve or -ve
+        self.gate_preload_attempts = config.getint('gate_preload_attempts', 1, minval=1, maxval=20) # How many times to try to grab the filament
+        self.gate_endstop_to_encoder = config.getfloat('gate_endstop_to_encoder', 0., minval=0.)
         self.gate_load_retries = config.getint('gate_load_retries', 1, minval=1, maxval=5)
         self.gate_autoload = config.getint('gate_autoload', 1, minval=0, maxval=1)
         self.gate_final_eject_distance = config.getfloat('gate_final_eject_distance', 0)
@@ -358,6 +362,8 @@ class Mmu:
 
         # Configuration for (fast) bowden move
         self.bowden_homing_max = config.getfloat('bowden_homing_max', 2000., minval=100.)
+        self.bowden_fast_unload_portion = config.getfloat('bowden_fast_unload_portion', 95, minval=50, maxval=100): 95 # % of calibrated bowden length for fast (non-homing) unloading move # PAUL new - implement me
+        self.bowden_fast_load_portion = config.getfloat('bowden_fast_load_portion', 95, minval=50, maxval=100): 95     # % of calibrated bowden length for fast (non-homing) loading move # PAUL new - implement me
         self.bowden_apply_correction = config.getint('bowden_apply_correction', 0, minval=0, maxval=1)
         self.bowden_allowable_load_delta = config.getfloat('bowden_allowable_load_delta', 10., minval=1.)
         self.bowden_allowable_unload_delta = config.getfloat('bowden_allowable_unload_delta', self.bowden_allowable_load_delta, minval=1.)
@@ -369,7 +375,7 @@ class Mmu:
         self.extruder_force_homing = config.getint('extruder_force_homing', 0, minval=0, maxval=1)
         self.extruder_homing_endstop = config.getchoice('extruder_homing_endstop', {o: o for o in self.EXTRUDER_ENDSTOPS}, self.SENSOR_EXTRUDER_NONE)
         self.extruder_homing_max = config.getfloat('extruder_homing_max', 50., above=10.) # Extruder homing max
-        self.extruder_homing_buffer = config.getfloat('extruder_homing_buffer', 30., minval=0.) # How far to short bowden load move to avoid overshooting
+        self.extruder_homing_buffer = config.getfloat('extruder_homing_buffer', 30., minval=0.) # How far to short bowden load move to avoid overshooting # PAUL make this dynamic based on bowden_fast_load_portion
         self.extruder_collision_homing_step = config.getint('extruder_collision_homing_step', 3,  minval=2, maxval=5)
         self.toolhead_homing_max = config.getfloat('toolhead_homing_max', 20., minval=0.) # Toolhead sensor homing max
         self.toolhead_extruder_to_nozzle = config.getfloat('toolhead_extruder_to_nozzle', 0., minval=5.) # For "sensorless"
@@ -438,7 +444,6 @@ class Mmu:
 
         # Optional features
         self.has_filament_buffer = bool(config.getint('has_filament_buffer', 1, minval=0, maxval=1))
-        self.preload_attempts = config.getint('preload_attempts', 1, minval=1, maxval=20) # How many times to try to grab the filament
         self.encoder_move_validation = config.getint('encoder_move_validation', 1, minval=0, maxval=1) # Use encoder to check load/unload movement
         self.enable_clog_detection = config.getint('enable_clog_detection', 2, minval=0, maxval=2)
         self.spoolman_support = config.getchoice('spoolman_support', {o: o for o in self.SPOOLMAN_OPTIONS}, self.SPOOLMAN_OFF)
@@ -4071,7 +4076,7 @@ class Mmu:
                         return
         else:
             # Full gate load if no gear sensor
-            for _ in range(self.preload_attempts):
+            for _ in range(self.gate_preload_attempts):
                 self.log_always("Loading...")
                 try:
                     self._load_gate(allow_retry=False)
@@ -7131,7 +7136,7 @@ class Mmu:
         self.force_purge_standalone = gcmd.get_int('FORCE_PURGE_STANDALONE', self.force_purge_standalone, minval=0, maxval=1)
         self.strict_filament_recovery = gcmd.get_int('STRICT_FILAMENT_RECOVERY', self.strict_filament_recovery, minval=0, maxval=1)
         self.filament_recovery_on_pause = gcmd.get_int('FILAMENT_RECOVERY_ON_PAUSE', self.filament_recovery_on_pause, minval=0, maxval=1)
-        self.preload_attempts = gcmd.get_int('PRELOAD_ATTEMPTS', self.preload_attempts, minval=1, maxval=20)
+        self.gate_preload_attempts = gcmd.get_int('GATE_PRELOAD_ATTEMPTS', self.gate_preload_attempts, minval=1, maxval=20)
         self.encoder_move_validation = gcmd.get_int('ENCODER_MOVE_VALIDATION', self.encoder_move_validation, minval=0, maxval=1)
         self.autotune_rotation_distance = gcmd.get_int('AUTOTUNE_ROTATION_DISTANCE', self.autotune_rotation_distance, minval=0, maxval=1)
         self.autotune_bowden_length = gcmd.get_int('AUTOTUNE_BOWDEN_LENGTH', self.autotune_bowden_length, minval=0, maxval=1)
@@ -7292,7 +7297,7 @@ class Mmu:
             msg += "\nendless_spool_eject_gate = %d" % self.endless_spool_eject_gate
             msg += "\nspoolman_support = %s" % self.spoolman_support
             msg += "\nt_macro_color = %s" % self.t_macro_color
-            msg += "\npreload_attempts = %d" % self.preload_attempts
+            msg += "\ngate_preload_attempts = %d" % self.gate_preload_attempts
             if self.has_encoder():
                 msg += "\nstrict_filament_recovery = %d" % self.strict_filament_recovery
                 msg += "\nencoder_move_validation = %d" % self.encoder_move_validation
