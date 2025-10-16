@@ -11,11 +11,13 @@ export KCONFIG_CONFIG ?= .config
 
 # Enable output-sync if menuconfig will not be trigger. menuconfig.py will crash if output-sync is enabled on certain systems
 ifeq ($(CHECK_OUTPUT_SYNC),)
-  # Never enable output-sync for menuconfig
-  ifeq ($(findstring menuconfig,$(MAKECMDGOALS)),)
-    # Check whether $KCONFIG_CONFIG is outdated. if so menuconfig will be triggered and output-sync should stay disabled
-    ifeq ($(shell $(MAKE) CHECK_OUTPUT_SYNC=y -q $(KCONFIG_CONFIG) > /dev/null && echo y),y)
-      MAKEFLAGS += --output-sync=line
+  # Never probe for menuconfig or uninstall and only if KCONFIG exists
+  ifeq ($(strip $(filter menuconfig uninstall,$(MAKECMDGOALS))),)
+    ifneq ($(wildcard $(KCONFIG_CONFIG)),)
+      # Check whether $KCONFIG_CONFIG is outdated. if so menuconfig will be triggered and output-sync should stay disabled
+      ifeq ($(shell $(MAKE) CHECK_OUTPUT_SYNC=y -q $(KCONFIG_CONFIG) >/dev/null 2>&1 && echo y),y)
+        MAKEFLAGS += --output-sync=line
+      endif
     endif
   endif
   -include $(KCONFIG_CONFIG) # Won't exist on first invocation
