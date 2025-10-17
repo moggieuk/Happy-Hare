@@ -45,8 +45,9 @@ class MmuSyncFeedbackManager:
     
     # proportional tension / compression control tunables
     RDD_THRESHOLD         = 1e-4     # Min Rotation Distance delta to trigger application of it.
-    PROP_DEADBAND_THRESHOLD = 0.20  # Magnitude of side motion before considering state as tension/compression. 
-    								 # a 0.2 side threshold means sensor values of ~2mm either side are considered neutral
+    PROP_DEADBAND_THRESHOLD = 0.25  # Magnitude of side motion before considering state as tension/compression. 
+    								 # a 0.25 side threshold means sensor values of ~2.5mm either side are considered neutral
+    PROP_RELEASE_THRESHOLD  = 0.20  # Magnitude of side motion to consider the virtual switch as released.
 
     def __init__(self, mmu):
         self.mmu = mmu
@@ -301,7 +302,7 @@ class MmuSyncFeedbackManager:
             # Hysteresis: hold side while in deadband; release to NEUTRAL only on true zero-crossing.
             def _side(v, prev):
                 # Use latched when proportional sensor present and we are not auto tuning RD.
-                if(bool(self.sync_feedback_proportional_sensor) and not getattr(self.mmu, "autotune_rotation_distance", False)):
+                if (bool(self.sync_feedback_proportional_sensor) and not getattr(self.mmu, "autotune_rotation_distance", False)):
                     # Outside deadband: (re)latch to sign immediately
                     if abs(v) >= self.PROP_DEADBAND_THRESHOLD:
                         return self.SYNC_STATE_COMPRESSION if v > self.SYNC_STATE_NEUTRAL else self.SYNC_STATE_TENSION
@@ -312,6 +313,29 @@ class MmuSyncFeedbackManager:
                         return self.SYNC_STATE_NEUTRAL
                     return prev  # hold previous (including NEUTRAL) while hovering in deadband
                 else:
+                    # Proportional sensor with autotune enabled: emulate switch with small release hysteresis
+                    if bool(self.sync_feedback_proportional_sensor):
+                        if prev == self.SYNC_STATE_COMPRESSION:
+                            if v > self.PROP_RELEASE_THRESHOLD:
+                                return self.SYNC_STATE_COMPRESSION
+                            if v <= -self.PROP_DEADBAND_THRESHOLD:
+                                return self.SYNC_STATE_TENSION
+                            return self.SYNC_STATE_NEUTRAL
+
+                        if prev == self.SYNC_STATE_TENSION:
+                            if v < -self.PROP_RELEASE_THRESHOLD:
+                                return self.SYNC_STATE_TENSION
+                            if v >= self.PROP_DEADBAND_THRESHOLD:
+                                return self.SYNC_STATE_COMPRESSION
+                            return self.SYNC_STATE_NEUTRAL
+
+                        if v >= self.PROP_DEADBAND_THRESHOLD:
+                            return self.SYNC_STATE_COMPRESSION
+                        if v <= -self.PROP_DEADBAND_THRESHOLD:
+                            return self.SYNC_STATE_TENSION
+                        return self.SYNC_STATE_NEUTRAL
+
+                    # Non-proportional path
                     return self.SYNC_STATE_NEUTRAL if abs(v) < self.PROP_DEADBAND_THRESHOLD else (self.SYNC_STATE_COMPRESSION if v > self.SYNC_STATE_NEUTRAL else self.SYNC_STATE_TENSION)
 
             old_side = self._last_state_side
@@ -411,7 +435,7 @@ class MmuSyncFeedbackManager:
                 rd_clamp[0] *= (1 + self.MULTIPLIER_WHEN_STUCK)
 
                 if not check_clamp_runaway(rd_clamp):
-                    self.mmu.log_trace(
+                    self.mmu.log_debug(
                         "MmuSyncFeedbackManager: Extruder moved too far in compressed state (%.1fmm). Increased slow_rd clamp value by %.1f%% from %.4f to %.4f" % (
                             movement,
                             self.MULTIPLIER_WHEN_STUCK * 100,
@@ -475,6 +499,10 @@ class MmuSyncFeedbackManager:
                     )
                     if self.mmu.autotune_rotation_distance:
                         self.mmu.save_rotation_distance(self.mmu.gate_selected, _tuned_rd)
+                    # We have found a tuned RD value - widen clamps to prevent oscillation of the tuned RD value
+                    # due to the nudge off the trigger point.
+                    #rd_clamp[0] = _tuned_rd * (1.05)  # slow edge up
+                    #rd_clamp[2] = _tuned_rd * (0.95)  # fast edge down
                 return _tuned_rd
             return None
 
