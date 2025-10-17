@@ -581,7 +581,7 @@ class MmuSyncFeedbackManager:
         
         if effective_state == self.SYNC_STATE_NEUTRAL:
             # Start with mid point of previous clamps
-            start_rd = (rd_clamp[0] + rd_clamp[2]) / 2.
+            selected_rd = (rd_clamp[0] + rd_clamp[2]) / 2.
         else:
             if self.extruder_direction == 0:
                 # Start based simply on sensor state (assuming extrude direction)
@@ -593,24 +593,31 @@ class MmuSyncFeedbackManager:
 
             if go_slower:
                 # Compressed when extruding or tension when retracting, so increase the rotation distance of gear stepper to slow it down
-                start_rd = rd_clamp[0]
-                self.mmu.log_debug("MmuSyncFeedbackManager: Slowing gear motor down")
+                selected_rd = rd_clamp[0]
+                decision = "Slowing down" # string for logging purposes. 
             else:
                 # Tension when extruding or compressed when retracting, so decrease the rotation distance of gear stepper to speed it up
-                start_rd = rd_clamp[2]
-                self.mmu.log_debug("MmuSyncFeedbackManager: Speeding gear motor up")
+                selected_rd = rd_clamp[2]
+                decision = "Speeding up" # string for logging purposes. 
 
-        rd_clamp[1] = start_rd
         
-        if self._rd_applied is not None and abs(start_rd - self._rd_applied) < self.RDD_THRESHOLD:
+        if self._rd_applied is not None and abs(selected_rd - self._rd_applied) < self.RDD_THRESHOLD:
             # No meaningful change; skip logging & RD adjustment.
             # This is critical for the proportional pressure sensor as it emits events every 200ms
             # hence without a gate, it would apply RD on every cycle.
+            # Switch based should always result to false, hence apply the change immediately.
             return False
+        
+        rd_clamp[1] = selected_rd
+        if 'decision' in locals():  # only present when not neutral
+            self.mmu.log_debug("MmuSyncFeedbackManager: %s gear motor %s" % (
+                decision, "(proportional hysteresis)" if bool(self.sync_feedback_proportional_sensor) else ""
+            ))
+
         
         self.mmu.log_debug(
             "MmuSyncFeedbackManager: Adjusted gear rotation_distance: %.4f (slow:%.4f, current: %.4f, fast:%.4f, tuned:%s, initial:%.4f)" % (
-                start_rd,
+                selected_rd,
                 rd_clamp[0],
                 rd_clamp[1],
                 rd_clamp[2],
@@ -618,8 +625,8 @@ class MmuSyncFeedbackManager:
                 rd_clamp[4]
             )
         )
-        self._rd_applied = start_rd
-        self.mmu.set_rotation_distance(start_rd)
+        self._rd_applied = selected_rd
+        self.mmu.set_rotation_distance(selected_rd)
         return True
 
     # Reset rotation_distance to calibrated value of current gate (not necessarily current value if autotuning)
