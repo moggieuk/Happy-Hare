@@ -678,7 +678,7 @@ class LinearSelector(BaseSelector, object):
                     if travel < 4.0: # Filament stuck in the current gate (based on ERCF design)
                         self.mmu.log_info("Selector is blocked by filament inside gate, will try to recover...")
                         self.move("Realigning selector by a distance of: %.1fmm" % -travel, init_pos)
-                        self.mmu_toolhead.flush_step_generation() # TTC mitigation when homing move + regular + get_last_move_time() is close succession
+                        self.mmu_toolhead.flush_step_generation() # TTC mitigation when homing move + regular + get_last_move_time() in close succession
 
                         # See if we can detect filament in gate area
                         found = self.mmu.check_filament_in_gate()
@@ -749,7 +749,7 @@ class LinearSelector(BaseSelector, object):
                         delta = abs(new_pos - trig_pos[0])
                         if delta < 1.0:
                             homed = False
-                            self.mmu.log_trace("Trying selector %.4fmm to %.2fmm" % (delta, new_pos))
+                            self.mmu.log_trace("Truing selector %.4fmm to %.2fmm" % (delta, new_pos))
                             self.mmu_toolhead.move(pos, speed)
                         else:
                             homed = True
@@ -758,7 +758,7 @@ class LinearSelector(BaseSelector, object):
             except self.mmu.printer.command_error:
                 homed = False
             finally:
-                self.mmu_toolhead.flush_step_generation() # TTC mitigation when homing move + regular + get_last_move_time() is close succession
+                self.mmu_toolhead.flush_step_generation() # TTC mitigation when homing move + regular + get_last_move_time() in close succession
                 pos = self.mmu_toolhead.get_position()
                 if self.mmu.log_enabled(self.mmu.LOG_STEPPER):
                     self.mmu.log_stepper("SELECTOR HOMING MOVE: requested position=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s >> %s" % (new_pos, speed, accel, endstop_name, "%s actual pos=%.2f, trig_pos=%.2f" % ("HOMED" if homed else "DID NOT HOMED",  pos[0], trig_pos[0])))

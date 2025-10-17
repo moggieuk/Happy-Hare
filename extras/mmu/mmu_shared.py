@@ -13,7 +13,7 @@
 #
 import sys
 
-# Default to use unicode on Python2. Not worth the hassle until klipper drops py2 support!
+# Default to not using unicode on Python2. Not worth the hassle until klipper drops py2 support!
 UI_SPACE, UI_SEPARATOR, UI_DASH, UI_DEGREE, UI_BLOCK, UI_CASCADE = ' ', '.', '-', '^', '*', '-'
 UI_BOX_TL, UI_BOX_BL, UI_BOX_TR, UI_BOX_BR = '+', '+', '+', '+'
 UI_BOX_L,  UI_BOX_R,  UI_BOX_T,  UI_BOX_B  = '+', '+', '+', '+'

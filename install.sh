@@ -10,7 +10,7 @@
 #               2024  Unsweeticetea <iamzevle@gmail.com>
 #               2024  Dmitry Kychanov <k1-801@mail.ru>
 #
-VERSION=3.4 # Important: Keep synced with mmy.py
+VERSION=3.41 # Important: Keep synced with mmy.py
 
 F_VERSION=$(echo "$VERSION" | sed 's/\([0-9]\+\)\.\([0-9]\)\([0-9]\)/\1.\2.\3/')
 SCRIPT="$(readlink -f "$0")"
@@ -1544,7 +1544,7 @@ questionaire() {
     OPTIONS=()
     option ERCF11         'Enraged Rabbit Carrot Feeder v1.1'
     option ERCF20         'ERCF v2.0'
-    option ERCF25         'ERCF v2.5'
+    option ERCF30         'ERCF v3.0'
     option TRADRACK       'Tradrack v1.0'
     option ANGRY_BEAVER   'Angry Beaver v1.0'
     option BOX_TURTLE     'Box Turtle v1.0'
@@ -1575,6 +1575,7 @@ questionaire() {
             _hw_gear_gear_ratio="80:20"
             _hw_gear_run_current=0.5
             _hw_gear_hold_current=0.1
+            _hw_sel_gear_ratio="1:1"
             _hw_sel_run_current=0.4
             _hw_sel_hold_current=0.2
             _hw_encoder_resolution=0.7059
@@ -1625,6 +1626,7 @@ questionaire() {
             _hw_gear_gear_ratio="80:20"
             _hw_gear_run_current=0.5
             _hw_gear_hold_current=0.1
+            _hw_sel_gear_ratio="1:1"
             _hw_sel_run_current=0.4
             _hw_sel_hold_current=0.2
             _hw_encoder_resolution=1.0
@@ -1637,7 +1639,7 @@ questionaire() {
             _param_servo_buzz_gear_on_down=1
             ;;
 
-        "$ERCF25")
+        "$ERCF30")
             HAS_ENCODER=yes
             HAS_SELECTOR=yes
             HAS_SERVO=yes
@@ -1649,14 +1651,15 @@ questionaire() {
             _hw_require_bowden_move=1
             _hw_filament_always_gripped=0
             _hw_gear_gear_ratio="1:1"
-            _hw_gear_run_current=1.0
+            _hw_gear_run_current=0.8
             _hw_gear_hold_current=0.2
-            _hw_sel_run_current=0.4
+            _hw_sel_gear_ratio="1:1"
+            _hw_sel_run_current=0.7
             _hw_sel_hold_current=0.2
             _hw_encoder_resolution=1.0
             _param_extruder_homing_endstop="collision"
             _param_gate_homing_endstop="encoder"
-            _param_gate_parking_distance=10
+            _param_gate_parking_distance=16
             _param_servo_buzz_gear_on_down=3
             _param_servo_duration=0.4
             _param_servo_always_active=0
@@ -1677,6 +1680,7 @@ questionaire() {
             _hw_gear_gear_ratio="50:17"
             _hw_gear_run_current=1.27
             _hw_gear_hold_current=0.2
+            _hw_sel_gear_ratio="1:1"
             _hw_sel_run_current=0.63
             _hw_sel_hold_current=0.2
             _param_extruder_homing_endstop="none"
@@ -1832,6 +1836,7 @@ questionaire() {
             _hw_gear_gear_ratio="1:1"
             _hw_gear_run_current=0.7
             _hw_gear_hold_current=0.1
+            _hw_sel_gear_ratio="1:1"
             _hw_sel_run_current=0.63
             _hw_sel_hold_current=0.2
 
@@ -2077,6 +2082,7 @@ questionaire() {
             _hw_gear_gear_ratio="1:1"
             _hw_gear_run_current=0.7
             _hw_gear_hold_current=0.1
+            _hw_sel_gear_ratio="1:1"
             _hw_sel_run_current=0.5
             _hw_sel_hold_current=0.1
 
@@ -2254,6 +2260,7 @@ questionaire() {
         option MELLOW_BRD_1         'Mellow EASY-BRD v1.x (with CANbus)'
         option MELLOW_BRD_2         'Mellow EASY-BRD v2.x (with CANbus)'
         option AFC_LITE_1           'AFC Lite v1.0'
+        option WGB_3                'WGB v3.0'
         option SKR_PICO_1           'BTT SKR Pico v1.0'
         option EBB42_12             'BTT EBB 42 CANbus v1.2 (for MMX or Pico)'
         option OTHER                'Not in list / Unknown'
@@ -2297,6 +2304,10 @@ questionaire() {
                 ;;
             "$AFC_LITE_1")
                 _hw_brd_type="AFC_LITE_1"
+                pattern="Klipper_stm32"
+                ;;
+            "$WGB_3")
+                _hw_brd_type="WGB_3"
                 pattern="Klipper_stm32"
                 ;;
             "$SKR_PICO_1")
