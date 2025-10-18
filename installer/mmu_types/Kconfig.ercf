@@ -1,40 +1,56 @@
 config MMU_FAMILY_ERCF
-  bool "Enraged Rabbit Carrot Feeder (ERCF)"
+  bool "ERCF - Enraged Rabbit Carrot Feeder"
   help
     The Enraged Rabbit Carrot Feeder (ERCF) is the original DIY MMU design
     with a large community and many popular mods. It is available in two
     main versions, the original v1.1 and the upgraded v2.0.
   select LINEAR_SELECTOR
   select MMU_HAS_ENCODER
-  select MMU_HAS_SERVO
-  select MMU_HAS_SELECTOR
+  select MMU_HAS_SELECTOR_SERVO
+  select MMU_HAS_SELECTOR_STEPPER
   select PARAM_VARIABLE_ROTATION_DISTANCES
-  select PARAM_REQUIRE_BOWDEN_MOVE
-  imply MMU_HAS_FILAMENT_BUFFER
+  select UNSELECT_VARIABLE_BOWDEN_LENGTHS
+  imply  PARAM_REQUIRE_BOWDEN_MOVE
+  select UNSELECT_CAN_CROSSLOAD
 
 if MMU_FAMILY_ERCF
-  choice 
+  choice
     prompt "Version"
+    default MMU_TYPE_ERCF_3_0
 
     config MMU_TYPE_ERCF_1_1
       bool "ERCF v1.1"
       help
-        ERCF v1.1 is the original DIY MMU for klipper. 
+        ERCF v1.1 is the original DIY MMU for klipper.
         Originally fitted with a TCRT5000 based encoder.
+      imply MMU_HAS_FILAMENT_BUFFER
+      imply PREFERS_CHOICE_GATE_HOMING_ENDSTOP_ENCODER
 
     config MMU_TYPE_ERCF_2_0
       bool "ERCF v2.0"
       help
-        ERCF v2.0 is a community upgraded version incorporating 
+        ERCF v2.0 is a community upgraded version incorporating
         popular mods and filler with custom Binky based encoder.
       imply MMU_HAS_LEDS
       imply PARAM_HAS_BYPASS
+      imply MMU_HAS_FILAMENT_BUFFER
+      imply PREFERS_CHOICE_GATE_HOMING_ENDSTOP_ENCODER
+
+    config MMU_TYPE_ERCF_3_0
+      bool "ERCF v3.0"
+      help
+        ERCF v3.0 is the 3rd generation ERCF with faster filament
+        loading/unloading, improved Binky based encoder and many
+        ease of use features with hinged gates.
+      imply MMU_HAS_LEDS
+      imply PARAM_HAS_BYPASS
+      imply PREFERS_CHOICE_GATE_HOMING_ENDSTOP_ENCODER
   endchoice
 
   source "Kconfig.num_gates"
   source "servos/Kconfig"
 
-  if MMU_TYPE_ERCF_1_1 
+  if MMU_TYPE_ERCF_1_1
     menu "Project Options"
       help
         The ERCF project has a few popular modifications that were later
@@ -58,7 +74,7 @@ if MMU_FAMILY_ERCF
 
       config MMU_HAS_FILAMENT_BUFFER
         prompt "Has ERCP filament buffer?"
-        help 
+        help
           Does MMU have the Enraged Rabbit Carrot Patch (ERCP) filament buffer
           to catch the uncoiled filament on unload.
 
@@ -82,7 +98,21 @@ if MMU_FAMILY_ERCF
 
       config MMU_HAS_FILAMENT_BUFFER
         bool "Has Cotton Tail filament buffer?"
-        help 
+        help
+          Does MMU have the Cotton Tail filament buffer to catch the uncoiled
+          filament on unload. NOTE unselect if you are using Filamentalist.
+    endmenu
+  endif
+
+  if MMU_TYPE_ERCF_3_0
+    menu "Project Options"
+      help
+        The ERCF project has a few popular modifications. If you have any
+        upgrades or non-default options you can specify them here.
+
+      config MMU_HAS_FILAMENT_BUFFER
+        bool "Has Cotton Tail filament buffer?"
+        help
           Does MMU have the Cotton Tail filament buffer to catch the uncoiled
           filament on unload. NOTE unselect if you are using Filamentalist.
     endmenu
@@ -95,45 +125,28 @@ if MMU_FAMILY_ERCF
   ####################
   ##### Defaults #####
   ####################
-#
-  config PARAM_MMU_VENDOR
+
+  # Shared identity
+  config PARAM_VENDOR
     default "ERCF"
 
-  config PARAM_GEAR_GEAR_RATIO
-    default "80:20"
-  config PARAM_GEAR_RUN_CURRENT
-    default "0.5"
-  config PARAM_GEAR_HOLD_CURRENT
-    default "0.1"    
-
+  # Shared selector servo
   config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
     default 3
   config PARAM_SERVO_DURATION
     default "0.4"
 
-  config PARAM_SELECTOR_RUN_CURRENT
-    default "0.4"
-  config PARAM_SELECTOR_HOLD_CURRENT
-    default "0.2"
-
-# PAUL
-#  choice CHOICE_GATE_HOMING_ENDSTOP
-#    default CHOICE_GATE_HOMING_ENDSTOP_ENCODER
-#  endchoice
-#  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
-#    default CHOICE_EXTRUDER_HOMING_ENDSTOP_COLLISION
-#  endchoice
-
-  if MMU_TYPE_ERCF_1_1 
-    config PARAM_MMU_VERSION
+  if MMU_TYPE_ERCF_1_1
+    config PARAM_VERSION
       default "1.1sbt" if MOD_SPRINGY && MOD_BINKY && MOD_TRIPLE_DECKY
-      default "1.1sb" if MOD_SPRINGY && MOD_BINKY
-      default "1.1st" if MOD_SPRINGY && MOD_TRIPLE_DECKY
-      default "1.1bt" if MOD_BINKY && MOD_TRIPLE_DECKY
-      default "1.1s" if MOD_SPRINGY
-      default "1.1b" if MOD_BINKY
-      default "1.1t" if MOD_TRIPLE_DECKY
+      default "1.1sb"  if MOD_SPRINGY && MOD_BINKY
+      default "1.1st"  if MOD_SPRINGY && MOD_TRIPLE_DECKY
+      default "1.1bt"  if MOD_BINKY && MOD_TRIPLE_DECKY
+      default "1.1s"   if MOD_SPRINGY
+      default "1.1b"   if MOD_BINKY
+      default "1.1t"   if MOD_TRIPLE_DECKY
       default "1.1"
+
     config PARAM_NUM_GATES
       default 9
 
@@ -141,40 +154,66 @@ if MMU_FAMILY_ERCF
       default BOARD_TYPE_EASY_BRD_RP2040
     endchoice
 
+    # Gear stepper
+    config PARAM_GEAR_GEAR_RATIO
+      default "80:20"
+    config PARAM_GEAR_RUN_CURRENT
+      default "0.5"
+    config PARAM_GEAR_HOLD_CURRENT
+      default "0.1"
+
+    # Selector stepper
+    config PARAM_SELECTOR_GEAR_RATIO
+      default "1:1"
+    config PARAM_SELECTOR_RUN_CURRENT
+      default "0.4"
+    config PARAM_SELECTOR_HOLD_CURRENT
+      default "0.2"
+
+    # Speeds
+
+    # Distances
     config PARAM_GATE_PARKING_DISTANCE
       default "23"
       default "13" if MOD_THUMPER_BLOCKS
 
-# PAUL
-#    choice CHOICE_GATE_HOMING_ENDSTOP
-#      default CHOICE_GATE_HOMING_ENDSTOP_ENCODER
-#    endchoice
-#    choice CHOICE_EXTRUDER_HOMING_ENDSTOP
-#      default CHOICE_EXTRUDER_HOMING_ENDSTOP_COLLISION
-#    endchoice
-
+    # Modifications
     choice CHOICE_ENCODER_TYPE
-      default ENCODER_TYPE_BINKY if MOD_BINKY
+      default ENCODER_TYPE_BINKY    if MOD_BINKY
       default ENCODER_TYPE_TCRT5000 if !MOD_BINKY
     endchoice
   endif
 
   if MMU_TYPE_ERCF_2_0
-    config PARAM_MMU_VENDOR
-      default "ERCF"
-    config PARAM_MMU_VERSION
+    config PARAM_VERSION
       default "2.0"
+
     config PARAM_NUM_GATES
       default 8
+
     choice CHOICE_BOARD_TYPE
       default BOARD_TYPE_MMB_2_0
     endchoice
-    choice CHOICE_ENCODER_TYPE
-      default ENCODER_TYPE_BINKY
-    endchoice
 
-    config PARAM_ENCODER_RESOLUTION
-      default "1.0"
+    # Gear stepper
+    config PARAM_GEAR_GEAR_RATIO
+      default "80:20"
+    config PARAM_GEAR_RUN_CURRENT
+      default "0.5"
+    config PARAM_GEAR_HOLD_CURRENT
+      default "0.1"
+
+    # Selector stepper
+    config PARAM_SELECTOR_GEAR_RATIO
+      default "1:1"
+    config PARAM_SELECTOR_RUN_CURRENT
+      default "0.4"
+    config PARAM_SELECTOR_HOLD_CURRENT
+      default "0.2"
+
+    # Speeds
+
+    # Distances
     config PARAM_GATE_PARKING_DISTANCE
       default "13"
       default "11" if MOD_THUMPER_BLOCKS
@@ -182,5 +221,43 @@ if MMU_FAMILY_ERCF
     choice CHOICE_ENCODER_TYPE
       default ENCODER_TYPE_BINKY
     endchoice
-  endif 
+  endif
+
+  if MMU_TYPE_ERCF_3_0
+    config PARAM_VERSION
+      default "3.0"
+
+    config PARAM_NUM_GATES
+      default 8
+
+    choice CHOICE_BOARD_TYPE
+      default BOARD_TYPE_MMB_2_0
+    endchoice
+
+    # Gear stepper
+    config PARAM_GEAR_GEAR_RATIO
+      default "1:1"
+    config PARAM_GEAR_RUN_CURRENT
+      default "0.8"
+    config PARAM_GEAR_HOLD_CURRENT
+      default "0.2"
+
+    # Selector stepper
+    config PARAM_SELECTOR_GEAR_RATIO
+      default "1:1"
+    config PARAM_SELECTOR_RUN_CURRENT
+      default "0.7"
+    config PARAM_SELECTOR_HOLD_CURRENT
+      default "0.2"
+
+    # Speeds
+
+    # Distances
+    config PARAM_GATE_PARKING_DISTANCE
+      default "16"
+
+    choice CHOICE_ENCODER_TYPE
+      default ENCODER_TYPE_BINKY
+    endchoice
+  endif
 endif

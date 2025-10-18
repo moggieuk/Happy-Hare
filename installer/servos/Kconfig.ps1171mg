@@ -1,7 +1,7 @@
 # JX PS-1171MG servo
 # Used by Tradrack v1.0
 
-if PARAM_MMU_VENDOR = "Tradrack"
+if PARAM_VENDOR = "Tradrack"
   config SERVO_TYPE_JX_PS1171MG
     bool "JX PS-1171MG"
 

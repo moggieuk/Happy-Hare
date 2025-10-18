@@ -1,8 +1,9 @@
-happy_hare_version = 4.0
-formatted_version = $(shell, echo "$(happy_hare_version)0" | sed 's/\([0-9]\+\)\.\([0-9]\)\([0-9]\)[0]*/\1.\2.\3/')
+# IMPORTANT keep version string up-to-date and constistent with git tag
+happy_hare_version := 4.0
 
+f_version   := $(shell, printf '%s0\n' "$(happy_hare_version)" | sed -E 's/^([0-9]+)\.([0-9])([0-9]).*/\1.\2.\3/')
+hh_message  := $(shell, echo "Happy Hare v$(f_version)")
 unit_suffix := $(shell, [ -n "$$UNIT_NAME" ] && echo " - Unit '$(UNIT_NAME)'" || echo "")
-hh_message  := $(shell, echo "Happy Hare v$(formatted_version)")
 title       := $(shell, [ "$F_MULTI_UNIT_ENTRY_POINT" = "y" ] && echo "$(hh_message) Configuration" || echo "$(hh_message) Configuration$(unit_suffix)")
 caption     := $(shell, [ "$F_MULTI_UNIT_ENTRY_POINT" = "y" ] && echo "$(hh_message)" || echo "Configuration$(unit_suffix)")
 
@@ -10,9 +11,9 @@ caption     := $(shell, [ "$F_MULTI_UNIT_ENTRY_POINT" = "y" ] && echo "$(hh_mess
 to_bool = $(shell, $(1) && echo y || echo n)
 
 # Used to get the serial device paths
-serial = $(shell, ls /dev/serial/by-id/* 2>/dev/null | grep 'Klipper_$(2)' | tail -n +$(1) | head -n 1)
-serial_exists = $(to_bool, [ -e '$(serial,$(1),$(2))' ])
-serial_config = $(shell, basename '$(serial,$(1),$(2))' | sed 's/-/_/g' | awk '{print "PARAM_SERIAL_" toupper($0)}')
+serial               = $(shell, ls /dev/serial/by-id/* 2>/dev/null | grep 'Klipper_$(2)' | tail -n +$(1) | head -n 1)
+serial_exists        = $(to_bool, [ -e '$(serial,$(1),$(2))' ])
+serial_config        = $(shell, basename '$(serial,$(1),$(2))' | sed 's/-/_/g' | awk '{print "PARAM_SERIAL_" toupper($0)}')
 buffer_serial_config = $(shell, basename '$(serial,$(1),$(2))' | sed 's/-/_/g' | awk '{print "PARAM_SERIAL_BUFFER_" toupper($0)}')
 
 # Used for comment padding
@@ -26,16 +27,16 @@ quote := "
 ml = $(shell, printf '%s' "$(1)" | awk -v ORS='\\n' '1')
 
 
+### Start of configuration
 mainmenu "$(title)"
 
-### Start of configuration
 config PARAM_HAPPY_HARE_VERSION
   string
   default "$(happy_hare_version)"
 
-config F_VERSION
+config FORMATTED_VERSION
   string
-  default "$(formatted_version)"
+  default "$(f_version)"
 
 config MULTI_UNIT
   bool
@@ -45,38 +46,38 @@ config MULTI_UNIT_ENTRY_POINT
   bool
   default "$(F_MULTI_UNIT_ENTRY_POINT)"
 
-# Make environment variable available as config tokens
-if !MULTI_UNIT_ENTRY_POINT
-  config UNIT_NAME
-    string
-    default "$(UNIT_NAME)"
-
-  config MMU_MCU
-    string
-    default "$(MMU_MCU)"
-
+if MULTI_UNIT_ENTRY_POINT || !MULTI_UNIT
   config PARAM_MMU_UNITS
     string
     default "$(UNIT_NAME)"
 endif
 
-if MULTI_UNIT && !MULTI_UNIT_ENTRY_POINT
+if !MULTI_UNIT_ENTRY_POINT
+  config UNIT_NAME
+    string
+    default "$(UNIT_NAME)"
+
+  config MCU_NAME
+    string
+    default "$(MCU_NAME)"
+
   config UNIT_INDEX
     int
     default $(shell, echo "${UNIT_INDEX-0}")
 endif
-
-# y to shows MMU additions menu inline with type
-# n to show as top level menu
-config SHOW_MMU_ADDITIONS_WITH_TYPE
-  bool
-  default n
 
 comment "$(pad,50,)"
 comment "$(pad,50,(\\_/))"
 comment "$(pad,50,( *,*))"
 comment "$(pad,50,(\")_(\") $(caption))"
 comment "$(pad,50,)"
+
+# UI rendering option:
+#  y to shows MMU additions menu inline with type
+#  n to show as top level menu
+config SHOW_MMU_ADDITIONS_WITH_TYPE
+  bool
+  default n
 
 if MULTI_UNIT_ENTRY_POINT
   config PARAM_MMU_UNITS
@@ -90,55 +91,23 @@ if MULTI_UNIT_ENTRY_POINT
       A separate configurator will be run for each MMU after this initial screen is closed
 
   comment "Shared System Options"
-  rsource "Kconfig.multi"
+  source "toolheads/Kconfig"        # Toolhead Selection menu
+  source "addons/Kconfig"           # Addon Macro Features
+  source "Kconfig.options"          # Popular software options
+  source "Kconfig.raw"              # Raw access to appropriate parameters
 endif
 
-# Only show if we have a single-unit setup
 if !MULTI_UNIT_ENTRY_POINT
-
-  # Base MMU menu
-  rsource "mmu_types/Kconfig"
-
-  # MMU Additions/Customization menu (optionally inline with base type)
+  source "mmu_types/Kconfig"        # Base MMU type menu
   if !SHOW_MMU_ADDITIONS_WITH_TYPE
-    rsource "mmu_additions/Kconfig"
+    source "mmu_additions/Kconfig"  # MMU Additions/Customization menu (if not inlined with mmu type)
   endif
-
-  # MCU Selection menu
-  rsource "boards/Kconfig"
-
-  # Toolhead Selection menu
-  rsource "toolheads/Kconfig"
-
-  # MCU Connection
-  rsource "Kconfig.serial"
-
+  source "boards/Kconfig"           # MCU Selection menu
+  source "Kconfig.serial"           # MCU Connection
   if !MULTI_UNIT
-    rsource "Kconfig.multi"
+    source "toolheads/Kconfig"      # Toolhead Selection menu
+    source "addons/Kconfig"         # Addon Macro Features
+    source "Kconfig.options"        # Popular software options
   endif
-
-  # Raw access to suggested settings
-  menu "Advanced/Raw Settings"
-    help
-      Advanced/Raw Settings
-      Allows override of designer defaults. Only change these settings if
-      you know what you are doing (or have MMU customizations). You can always
-      change later by re-running "./install.sh -i" or editing the generated
-      klipper config files.
-
-    source "Kconfig.num_gates"
-    source "Kconfig.toolhead"
-    source "Kconfig.leds"
-    source "Kconfig.encoder"
-    source "sensors/Kconfig"
-    source "Kconfig.endstops"
-    source "Kconfig.gates"
-    source "Kconfig.motors"
-    source "Kconfig.sync"
-    source "Kconfig.speeds"
-    source "Kconfig.calibration"
-    source "Kconfig.pins"
-    source "Kconfig.params"
-
-  endmenu
+  source "Kconfig.raw"              # Raw access to appropriate parameters
 endif

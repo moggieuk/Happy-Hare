@@ -25,9 +25,9 @@ if MMU_CUSTOM_TYPE_B
 endif
 
 if MMU_CUSTOM_TYPE_B
-  config PARAM_MMU_VENDOR
+  config PARAM_VENDOR
     default "Other"
-  config PARAM_MMU_VERSION
+  config PARAM_VERSION
     default "1.0"
   config PARAM_NUM_GATES
     default 4
@@ -38,13 +38,4 @@ if MMU_CUSTOM_TYPE_B
     default "0.7"
   config PARAM_GEAR_HOLD_CURRENT
     default "0.1"
-
-# PAUL
-#  choice CHOICE_GATE_HOMING_ENDSTOP
-#    default CHOICE_GATE_HOMING_ENDSTOP_GATE if MMU_WITH_SHARED_GATE
-#    default CHOICE_GATE_HOMING_ENDSTOP_GEAR if MMU_WITH_GEAR_SENSORS
-#  endchoice
-#  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
-#    default CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE
-#  endchoice
 endif 

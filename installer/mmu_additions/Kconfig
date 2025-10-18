@@ -1,4 +1,4 @@
-menu "MMU Additions"
+menu "MMU Additions/Modifications"
   help
     Enhancements to base design
     If the base MMU design lacks a particular feature there are often

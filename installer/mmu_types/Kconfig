@@ -1,7 +1,7 @@
-config PARAM_MMU_VENDOR
+config PARAM_VENDOR
   string
 
-config PARAM_MMU_VERSION
+config PARAM_VERSION
   string
 
 choice 
@@ -15,5 +15,4 @@ choice
 
   rsource "Kconfig.*"
   rsource "starters/Kconfig.*"
-
 endchoice

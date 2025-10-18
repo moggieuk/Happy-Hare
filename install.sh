@@ -254,7 +254,7 @@ if [ -n "${F_MENUCONFIG:-}" ]; then
         for name in ${CONFIG_PARAM_MMU_UNITS:-}; do
             name=$(trim "$name")
             [ -n "$name" ] || continue
-            make --no-print-directory -C "${SCRIPT_DIR}" KCONFIG_CONFIG="${KCONFIG_CONFIG}_${name}" F_MULTI_UNIT=y UNIT_INDEX="${i}" UNIT_NAME="${name}" MMU_MCU="${name}" menuconfig
+            make --no-print-directory -C "$SCRIPT_DIR" KCONFIG_CONFIG="${KCONFIG_CONFIG}_${name}" F_MULTI_UNIT=y UNIT_INDEX="$i" UNIT_NAME="$name" MCU_NAME="$name" menuconfig
             i=$((i + 1))
         done
         set +f

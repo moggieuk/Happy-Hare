@@ -6,12 +6,14 @@ config MMU_TYPE_TRADRACK_1_0
    but also uses the same BMG gear to drive all filaments. It has a shared
    gate sensor but a Binky based encoder is a popular option.
   select LINEAR_SELECTOR
-  select MMU_HAS_SELECTOR
-  select MMU_HAS_SERVO
+  select MMU_HAS_SELECTOR_STEPPER
+  select MMU_HAS_SELECTOR_SERVO
   select MMU_HAS_SENSOR_GATE
-  select PARAM_REQUIRE_BOWDEN_MOVE
-  imply BOOL_SERVO_ALWAYS_ACTIVE
-  
+  select PARAM_VARIABLE_ROTATION_DISTANCES
+  select UNSELECT_VARIABLE_BOWDEN_LENGTHS
+  imply  PARAM_REQUIRE_BOWDEN_MOVE
+  select UNSELECT_CAN_CROSSLOAD
+
 if MMU_TYPE_TRADRACK_1_0
   source "Kconfig.num_gates"
   source "servos/Kconfig"
@@ -35,19 +37,20 @@ if MMU_TYPE_TRADRACK_1_0
     source "mmu_additions/Kconfig"
   endif
 
-  config PARAM_MMU_VENDOR
+  # Identify
+  config PARAM_VENDOR
     default "Tradrack"
-  config PARAM_MMU_VERSION
+  config PARAM_VERSION
     default "1.0"
+
   config PARAM_NUM_GATES
     default 10
+
   choice CHOICE_BOARD_TYPE
     default BOARD_TYPE_MMB_2_0
   endchoice
 
-  config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
-    default 0
-
+  # Gear stepper
   config PARAM_GEAR_GEAR_RATIO
     default "50:17"
   config PARAM_GEAR_RUN_CURRENT
@@ -55,28 +58,24 @@ if MMU_TYPE_TRADRACK_1_0
   config PARAM_GEAR_HOLD_CURRENT
     default "0.2"
 
+  # Selector stepper
+  config PARAM_SELECTOR_GEAR_RATIO
+    default "1:1"
   config PARAM_SELECTOR_RUN_CURRENT
     default "0.63"
   config PARAM_SELECTOR_HOLD_CURRENT
     default "0.2"
 
-  config PARAM_SERVO_DURATION
-    default "0.4"
+  # Selector servo
   config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
     default 0
+  config PARAM_SERVO_DURATION
+    default "0.4"
 
+  # Distances
   config PARAM_GATE_PARKING_DISTANCE
-    default "48" if MOD_BINKY 
+    default "48" if MOD_BINKY
     default "17.5"
   config PARAM_GATE_ENDSTOP_TO_ENCODER
     default "31" if MOD_BINKY
-
-# PAUL
-#  choice CHOICE_GATE_HOMING_ENDSTOP
-#    default CHOICE_GATE_HOMING_ENDSTOP_GATE
-#  endchoice
-#  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
-#    default CHOICE_EXTRUDER_HOMING_ENDSTOP_COLLISION if MOD_BINKY
-#    default CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE
-#  endchoice
-endif 
+endif

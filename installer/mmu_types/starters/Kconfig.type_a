@@ -5,8 +5,9 @@ config MMU_CUSTOM_TYPE_A
     by sure to add options under "MMU Additions".
     You can fine tune the klipper configuration as necessary.
   bool "Custom type A - with selector"
-  imply MMU_HAS_SELECTOR
-  imply MMU_HAS_SERVO
+  imply LINEAR_SELECTOR
+  imply MMU_HAS_SELECTOR_STEPPER
+  imply MMU_HAS_SELECTOR_SERVO
   imply PARAM_REQUIRE_BOWDEN_MOVE
   imply PARAM_VARIABLE_ROTATION_DISTANCES
   
@@ -14,12 +15,12 @@ if MMU_CUSTOM_TYPE_A
   source "Kconfig.selector_type" 
   source "Kconfig.num_gates"
 
-  config MMU_HAS_SELECTOR
+  config MMU_HAS_SELECTOR_STEPPER
     help
       Select if the filament selection mechanism uses a stepper motor.
     bool "Has selector stepper motor?"
 
-  config MMU_HAS_SERVO
+  config MMU_HAS_SELECTOR_SERVO
     help
       Select if the filament selection or gripping mechanism uses a servo.
     bool "Has selector servo?"
@@ -39,9 +40,9 @@ if MMU_CUSTOM_TYPE_A
   ##### Defaults #####
   ####################
 
-  config PARAM_MMU_VENDOR
+  config PARAM_VENDOR
     default "Other"
-  config PARAM_MMU_VERSION
+  config PARAM_VERSION
     default "1.0"
   config PARAM_NUM_GATES
     default 8
@@ -57,16 +58,4 @@ if MMU_CUSTOM_TYPE_A
     default "0.5"
   config PARAM_SELECTOR_HOLD_CURRENT
     default "0.1"
-
-  # For TYPE A we need to use the choice instead of select/imply the selector type directly
-  choice CHOICE_SELECTOR_TYPE
-    default CHOICE_LINEAR_SELECTOR
-  endchoice
-# PAUL
-#  choice CHOICE_GATE_HOMING_ENDSTOP
-#    default CHOICE_GATE_HOMING_ENDSTOP_GATE
-#  endchoice
-#  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
-#    default CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE
-#  endchoice
 endif 

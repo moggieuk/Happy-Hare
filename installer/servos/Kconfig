@@ -1,5 +1,22 @@
-if MMU_HAS_SERVO
+# Selector servo parameter tokens which must be inside
+# if MMU_HAS_SELECTOR_SERVO clause in cfg templates
+#
+# Responsible for setting defaults for::
+#   PARAM_SERVO_MIN_PULSE_WIDTH
+#   PARAM_SERVO_MAX_PULSE_WIDTH
+#   PARAM_SERVO_MAX_ANGLE
+#   PARAM_SERVO_ALWAYS_ACTIVE
+#   PARAM_SERVO_DURATION
+#   PARAM_SERVO_DWELL
+#
+# Optionally depending on selector type:
+#   PARAM_SERVO_UP_ANGLE
+#   PARAM_SERVO_MOVE_ANGLE
+#   PARAM_SERVO_DOWN_ANGLE
+#   PARAM_SERVO_ACTIVE_DOWN
+#   PARAM_SELECTOR_GATE_ANGLES
 
+if MMU_HAS_SELECTOR_SERVO
   choice CHOICE_SERVO_TYPE 
     prompt "Selector servo type"
     help
@@ -30,5 +47,4 @@ if MMU_HAS_SERVO
     config PARAM_SERVO_DOWN_ANGLE
       default 0
   endif
-
 endif

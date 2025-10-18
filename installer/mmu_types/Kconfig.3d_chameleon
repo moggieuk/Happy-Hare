@@ -4,25 +4,30 @@ config MMU_TYPE_3D_CHAMELEON_1_0
     3D Chameleon is a 4 gate MMU using innovative "opposing gate"
     filament selection mechanism.
   select ROTARY_SELECTOR
-  select MMU_HAS_SELECTOR
-  select PARAM_REQUIRE_BOWDEN_MOVE
+  select MMU_HAS_SELECTOR_STEPPER
+  imply  PARAM_REQUIRE_BOWDEN_MOVE
+  select UNSELECT_HAS_BYPASS
+
+
+####################
+##### Defaults #####
+####################
 
 if MMU_TYPE_3D_CHAMELEON_1_0
+
   if SHOW_MMU_ADDITIONS_WITH_TYPE
     source "mmu_additions/Kconfig"
   endif
 
-  ####################
-  ##### Defaults #####
-  ####################
-
-  config PARAM_MMU_VENDOR
+  # Identity
+  config PARAM_VENDOR
     default "3DChameleon"
-  config PARAM_MMU_VERSION
+  config PARAM_VERSION
     default "1.0" 
   config PARAM_NUM_GATES
     default 4
 
+  # Gear stepper
   config PARAM_GEAR_GEAR_RATIO
     default "1:1"
   config PARAM_GEAR_RUN_CURRENT
@@ -30,24 +35,22 @@ if MMU_TYPE_3D_CHAMELEON_1_0
   config PARAM_GEAR_HOLD_CURRENT
     default "0.1"
 
-  config PARAM_GEAR_HOMING_SPEED
-    default "80"
-
+  # Selector stepper
+  config PARAM_SELECTOR_GEAR_RATIO
+    default "1:1"
   config PARAM_SELECTOR_RUN_CURRENT
     default "0.63"
   config PARAM_SELECTOR_HOLD_CURRENT
     default "0.2"
 
+  # Speeds
+  config PARAM_GEAR_HOMING_SPEED
+    default "80"
+
+  # Distances
   config PARAM_GATE_PARKING_DISTANCE
     default "250"
   config PARAM_GATE_HOMING_MAX
     default "500"
 
-# PAUL
-#  choice CHOICE_GATE_HOMING_ENDSTOP
-#    default CHOICE_GATE_HOMING_ENDSTOP_GATE
-#  endchoice
-#  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
-#    default CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE
-#  endchoice
 endif 

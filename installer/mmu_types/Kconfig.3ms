@@ -6,7 +6,7 @@ config MMU_TYPE_3MS_1_0
   select VIRTUAL_SELECTOR
   select PARAM_VARIABLE_ROTATION_DISTANCES
   select PARAM_FILAMENT_ALWAYS_GRIPPED
-  select BOOL_ENABLE_SYNC_TO_EXTRUDER
+  select BOOL_ENABLE_SYNC_TO_EXTRUDER # PAUL set with FILAMENT_ALWAYS_GRIPPED?
   select BOOL_ENABLE_SYNC_FORM_TIP
   select BOOL_ENABLE_SYNC_PURGE
 
@@ -19,9 +19,9 @@ if MMU_TYPE_3MS_1_0
   ##### Defaults #####
   ####################
 
-  config PARAM_MMU_VENDOR
+  config PARAM_VENDOR
     default "3MS"
-  config PARAM_MMU_VERSION
+  config PARAM_VERSION
     default "1.0" 
   config PARAM_NUM_GATES
     default 4
@@ -40,12 +40,4 @@ if MMU_TYPE_3MS_1_0
     default "500"
   config PARAM_GATE_PARKING_DISTANCE
     default "250"
-
-# PAUL
-#  choice CHOICE_GATE_HOMING_ENDSTOP
-#    default CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
-#  endchoice
-#  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
-#    default CHOICE_EXTRUDER_HOMING_ENDSTOP_EXTRUDER
-#  endchoice
 endif 

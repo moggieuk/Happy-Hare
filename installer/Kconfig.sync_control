@@ -1,0 +1,93 @@
+# This module is responsible for sync-feedback buffer and
+# motor synchronization parameters:
+#
+#   PARAM_SYNC_TO_EXTRUDER
+#   PARAM_SYNC_FORM_TIP
+#   PARAM_SYNC_PURGE
+#
+#   PARAM_SYNC_FEEDBACK_BUFFER_NAME
+#   PARAM_SYNC_FEEDBACK_ENABLE
+#   PARAM_SYNC_FEEDBACK_BUFFER_RANGE
+#   PARAM_SYNC_FEEDBACK_BUFFER_MAXRANGE
+
+menu "MMU/Extruder Sync"
+  help
+    Some MMU designs allow fine control over when the MMU stepper is
+    synced with the extruder stepper. Synchronization helps to
+    overcome friction in the filament path.
+
+  if !FILAMENT_ALWAYS_GRIPPED
+    config BOOL_ENABLE_SYNC_TO_EXTRUDER
+      bool "Enable sync to extruder?"
+      help
+        This controls whether the extruder and gear steppers are synchronized
+        during printing operations.
+    config PARAM_SYNC_TO_EXTRUDER
+      int
+      default 1 if BOOL_ENABLE_SYNC_TO_EXTRUDER
+      default 0
+
+    config BOOL_ENABLE_SYNC_FORM_TIP
+      bool "Enable syncing while tip forming?"
+      default y if ENABLE_SYNC_TO_EXTRUDER
+      help
+        This controls whether the extruder and gear steppers are synchronized
+        during tip forming operation.
+    config PARAM_SYNC_FORM_TIP
+      int
+      default 1 if BOOL_ENABLE_FORM_TIP
+      default 0
+
+    config BOOL_ENABLE_SYNC_PURGE
+      bool "Enable syncing while purging?"
+      default y if ENABLE_SYNC_TO_EXTRUDER
+      help
+        This controls whether the extruder and gear steppers are synchronized
+        during purging operation.
+    config PARAM_SYNC_PURGE
+      int
+      default 1 if BOOL_ENABLE_SYNC_PURGE
+      default 0
+  endif
+
+  if MMU_HAS_SYNC_FEEDBACK_BUFFER
+    config PARAM_SYNC_FEEDBACK_BUFFER_NAME
+      string "Sync feedback buffer name"
+      default UNIT_NAME
+
+    config BOOL_ENABLE_SYNC_FEEDBACK
+      bool "Enable sync feedback?"
+      help
+        Sync feedback will be used to dynamically adjust the gear stepper speed to
+        match the extruder.
+      depends on !FILAMENT_ALWAYS_GRIPPED
+    config PARAM_SYNC_FEEDBACK_ENABLE
+      int
+      default 1 if BOOL_ENABLE_SYNC_FEEDBACK
+      default 0
+
+    config PARAM_SYNC_FEEDBACK_BUFFER_RANGE
+      int "Sync feedback buffer (sensor) range"
+      default "10"
+      help
+        Travel in "buffer" between compression/tension or one sensor and end:
+
+        <------maxrange------>       <------maxrange------>       <------maxrange------>       <------maxrange------>
+             <--range--->                  <----range----->       <----range----->                       <> range=0
+        |====================|       |====================|       |====================|       |====================|
+             ^          ^                  ^                                     ^                       ^^
+        compression   tension        compression-only                      tension-only
+
+    config PARAM_SYNC_FEEDBACK_BUFFER_MAXRANGE
+      int "Sync feedback buffer max range"
+      default "12"
+      help
+        The maximum distance the sync-feedback buffer can move from hard limit to hard limit:
+
+        <------maxrange------>       <------maxrange------>       <------maxrange------>       <------maxrange------>
+             <--range--->                  <----range----->       <----range----->                       <> range=0
+        |====================|       |====================|       |====================|       |====================|
+             ^          ^                  ^                                     ^                       ^^
+        compression   tension        compression-only                      tension-only
+  endif
+endmenu

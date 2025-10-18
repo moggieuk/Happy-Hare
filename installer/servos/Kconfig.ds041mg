@@ -1,7 +1,7 @@
 # Savox GDW_DS041MG servo
 # Used by ERCF v1.1, v2.0
 
-if PARAM_MMU_VENDOR = "ERCF"
+if PARAM_VENDOR = "ERCF"
   config SERVO_TYPE_GDW_DS041MG
     bool "GDW DS041MG"
 

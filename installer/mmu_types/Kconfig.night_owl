@@ -25,9 +25,9 @@ if MMU_TYPE_NIGHT_OWL_1_0
   ##### Defaults #####
   ####################
 
-  config PARAM_MMU_VENDOR
+  config PARAM_VENDOR
     default "NightOwl"
-  config PARAM_MMU_VERSION
+  config PARAM_VERSION
     default "1.0"
   config PARAM_NUM_GATES
     default 2
@@ -45,12 +45,4 @@ if MMU_TYPE_NIGHT_OWL_1_0
     default "100"
   config PARAM_GATE_FINAL_EJECT_DISTANCE
     default "100"
-
-# PAUL
-#  choice CHOICE_GATE_HOMING_ENDSTOP
-#    default CHOICE_GATE_HOMING_ENDSTOP_GEAR
-#  endchoice
-#  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
-#    default CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE
-#  endchoice
 endif 

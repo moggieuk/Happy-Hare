@@ -1,66 +1,74 @@
-# This choice is only used for custom MMU type A
-# All other types should directly use the booleans further down below.
+# The choice menu is only used for custom MMU type A.
+# All other types should directly set a selector by enabling exactly one
+# helper flag, similar to:
+#   "select LINEAR_SELECTOR"
+#
+# Defines parameter tokens:
+#   PARAM_SELECTOR_TYPE
+
 choice CHOICE_SELECTOR_TYPE 
-  prompt "Selector type?" if MMU_CUSTOM_TYPE_A
+  prompt "Selector type?"
+  depends on MMU_CUSTOM_TYPE_A
+  default CHOICE_SELECTOR_TYPE_LINEAR_SELECTOR
   help
-  	This must be a valid selector class that matches the control required by
-	  your MMU design. Use VirtualSelector for all type-b designs.
+    This must be a valid selector class that matches the control required by
+    your MMU design. Use VirtualSelector for all type-b designs.
 
-  config CHOICE_VIRTUAL_SELECTOR
-	  bool "VirtualSelector"
-	  help
-	    Use this for type-B MMU designs without a selector but instead separate gear motors
+  config CHOICE_SELECTOR_TYPE_VIRTUAL_SELECTOR
+    bool "VirtualSelector"
+    help
+      Use this for type-B MMU designs without a selector but instead separate gear motors
 
-  config CHOICE_LINEAR_SELECTOR
+  config CHOICE_SELECTOR_TYPE_LINEAR_SELECTOR
     bool "LinearSelector" 
     help
       This uses stepper for linear movement and servo for filament gripping
 
-  config CHOICE_SERVO_SELECTOR
+  config CHOICE_SELECTOR_TYPE_SERVO_SELECTOR
     bool "ServoSelector" 
     help
       This uses a servo (and usually a cam mechanism) to select. Filament can optionally
       be unselected by selecting an opposing gate or moving to designated position.
 
-  config CHOICE_INDEXED_SELECTOR
+  config CHOICE_SELECTOR_TYPE_INDEXED_SELECTOR
     bool "IndexedSelector"
     help
       This uses a stepper motor for selection and relies on specific homing sensors for
       each gate (e.g. BTT ViViD).
 
-  config CHOICE_ROTARY_SELECTOR
+  config CHOICE_SELECTOR_TYPE_ROTARY_SELECTOR
     bool "RotarySelector"
     help
-      This is a special selector for 3D-Chameleon which can selector opposing gates and also
+      This is a special selector for 3D-Chameleon which can select opposing gates and also
       causes the gear movement to be reversed
 
-  config CHOICE_MACRO_SELECTOR
+  config CHOICE_SELECTOR_TYPE_MACRO_SELECTOR
     bool "MacroSelector" 
     help
       Universal selector that uses user defined macros for the selection process.
 endchoice
 
-# Because these don't have a prompt they will always follow the default value.
-# So they will not stay selected incorrectly when switching between MMU types.
+# Because these don't have a prompt they will always follow the default value
+# So they will not stay incorrectly selected when switching between MMU types
 config VIRTUAL_SELECTOR
-  def_bool CHOICE_VIRTUAL_SELECTOR
+  def_bool CHOICE_SELECTOR_TYPE_VIRTUAL_SELECTOR
 config LINEAR_SELECTOR
-  def_bool CHOICE_LINEAR_SELECTOR
+  def_bool CHOICE_SELECTOR_TYPE_LINEAR_SELECTOR
 config SERVO_SELECTOR
-  def_bool CHOICE_SERVO_SELECTOR
+  def_bool CHOICE_SELECTOR_TYPE_SERVO_SELECTOR
 config INDEXED_SELECTOR
-  def_bool CHOICE_INDEXED_SELECTOR
+  def_bool CHOICE_SELECTOR_TYPE_INDEXED_SELECTOR
 config ROTARY_SELECTOR
-  def_bool CHOICE_ROTARY_SELECTOR
+  def_bool CHOICE_SELECTOR_TYPE_ROTARY_SELECTOR
 config MACRO_SELECTOR
-  def_bool CHOICE_MACRO_SELECTOR
+  def_bool CHOICE_SELECTOR_TYPE_MACRO_SELECTOR
 
 config PARAM_SELECTOR_TYPE
   string
   default "VirtualSelector" if VIRTUAL_SELECTOR
-  default "LinearSelector" if LINEAR_SELECTOR
-  default "ServoSelector" if SERVO_SELECTOR
-  default "RotarySelector" if ROTARY_SELECTOR
+  default "LinearSelector"  if LINEAR_SELECTOR
+  default "ServoSelector"   if SERVO_SELECTOR
+  default "RotarySelector"  if ROTARY_SELECTOR
   default "IndexedSelector" if INDEXED_SELECTOR
-  default "MacroSelector" if MACRO_SELECTOR
-
+  default "MacroSelector"   if MACRO_SELECTOR
+  default "VirtualSelector" # Saftey default

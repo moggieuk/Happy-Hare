@@ -1,7 +1,7 @@
 # Savox SH-0255MG servo
-# Used by ERCF v1.1, v2.0
+# Used by ERCF v1.0, v2.0, v3.0
 
-if PARAM_MMU_VENDOR = "ERCF"
+if PARAM_VENDOR = "ERCF"
   config SERVO_TYPE_SAVOX_SH0255MG
     bool "Savox SH-0255MG"
 
@@ -21,7 +21,7 @@ if PARAM_MMU_VENDOR = "ERCF"
 
     config PARAM_SERVO_MOVE_ANGLE
       default 135 if MMU_TYPE_ERCF_2_0 && MOD_THUMPER_BLOCKS
-      default 109 if MMU_TYPE_ERCF_2_0
+      default 109 if MMU_TYPE_ERCF_2_0 || MMU_TYPE_ERCF_3_0
       default PARAM_SERVO_UP_ANGLE
 
     config PARAM_SERVO_DOWN_ANGLE

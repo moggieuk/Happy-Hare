@@ -1,5 +1,5 @@
 config BOARD_TYPE_MMB_1_0
-  bool "BTT MMB v1.0 (with CANbus)"
+  bool "BTT MMB v1.0 with CANbus"
 
 if BOARD_TYPE_MMB_1_0
   config PARAM_BOARD_TYPE
@@ -10,116 +10,116 @@ if BOARD_TYPE_MMB_1_0
   endchoice
 
   config PIN_GEAR_UART 
-    default "$(MMU_MCU):PA10" 
+    default "$(MCU_NAME):PA10" 
   config PIN_GEAR_STEP
-    default "$(MMU_MCU):PB15" 
+    default "$(MCU_NAME):PB15" 
   config PIN_GEAR_DIR
-    default "$(MMU_MCU):PB14" 
+    default "$(MCU_NAME):PB14" 
   config PIN_GEAR_ENABLE
-    default "!$(MMU_MCU):PA8" 
+    default "!$(MCU_NAME):PA8" 
   config PIN_GEAR_DIAG
-    default "$(MMU_MCU):PA3" 
+    default "$(MCU_NAME):PA3" 
 
   if VIRTUAL_SELECTOR
     config PIN_GEAR_UART_1 
-      default "$(MMU_MCU):PC7" 
+      default "$(MCU_NAME):PC7" 
     config PIN_GEAR_STEP_1
-      default "$(MMU_MCU):PD2" 
+      default "$(MCU_NAME):PD2" 
     config PIN_GEAR_DIR_1
-      default "$(MMU_MCU):PB13" 
+      default "$(MCU_NAME):PB13" 
     config PIN_GEAR_ENABLE_1
-      default "!$(MMU_MCU):PD1" 
+      default "!$(MCU_NAME):PD1" 
     config PIN_GEAR_DIAG_1
-      default "$(MMU_MCU):PA4" 
+      default "$(MCU_NAME):PA4" 
 
     config PIN_GEAR_UART_2 
-      default "$(MMU_MCU):PC6" 
+      default "$(MCU_NAME):PC6" 
     config PIN_GEAR_STEP_2
-      default "$(MMU_MCU):PD0" 
+      default "$(MCU_NAME):PD0" 
     config PIN_GEAR_DIR_2
-      default "$(MMU_MCU):PB3" 
+      default "$(MCU_NAME):PB3" 
     config PIN_GEAR_ENABLE_2
-      default "!$(MMU_MCU):PA15" 
+      default "!$(MCU_NAME):PA15" 
     config PIN_GEAR_DIAG_2
-      default "$(MMU_MCU):PB9"
+      default "$(MCU_NAME):PB9"
 
     config PIN_GEAR_UART_3 
-      default "$(MMU_MCU):PA9" 
+      default "$(MCU_NAME):PA9" 
     config PIN_GEAR_STEP_3
-      default "$(MMU_MCU):PB6" 
+      default "$(MCU_NAME):PB6" 
     config PIN_GEAR_DIR_3
-      default "$(MMU_MCU):PB7" 
+      default "$(MCU_NAME):PB7" 
     config PIN_GEAR_ENABLE_3
-      default "!$(MMU_MCU):PB5" 
+      default "!$(MCU_NAME):PB5" 
     config PIN_GEAR_DIAG_3
-      default "$(MMU_MCU):PB8" 
+      default "$(MCU_NAME):PB8" 
 
     config PIN_PRE_GATE_0
-      default "$(MMU_MCU):PB11" 
+      default "$(MCU_NAME):PB11" 
     config PIN_PRE_GATE_1
-      default "$(MMU_MCU):PA3" 
+      default "$(MCU_NAME):PA3" 
     config PIN_PRE_GATE_2
-      default "$(MMU_MCU):PB9" 
+      default "$(MCU_NAME):PB9" 
     config PIN_PRE_GATE_3
-      default "$(MMU_MCU):PB8" 
+      default "$(MCU_NAME):PB8" 
 
     config PIN_GEAR_SENSOR_0
-      default "$(MMU_MCU):PC15"
+      default "$(MCU_NAME):PC15"
     config PIN_GEAR_SENSOR_1
-      default "$(MMU_MCU):PC13"
+      default "$(MCU_NAME):PC13"
     config PIN_GEAR_SENSOR_2
-      default "$(MMU_MCU):PC14"
+      default "$(MCU_NAME):PC14"
     config PIN_GEAR_SENSOR_3
-      default "$(MMU_MCU):PC12"
+      default "$(MCU_NAME):PC12"
     
     config PIN_ESPOOLER_RWD_0
-      default "$(MMU_MCU):PA0"
+      default "$(MCU_NAME):PA0"
     config PIN_ESPOOLER_RWD_1
-      default "$(MMU_MCU):PA1"
+      default "$(MCU_NAME):PA1"
     config PIN_ESPOOLER_RWD_2
-      default "$(MMU_MCU):PB10"
+      default "$(MCU_NAME):PB10"
     config PIN_ESPOOLER_RWD_3
-      default "$(MMU_MCU):PB2"
+      default "$(MCU_NAME):PB2"
   endif
 
   if !VIRTUAL_SELECTOR
     config PIN_SELECTOR_UART
-      default "$(MMU_MCU):PC7" 
+      default "$(MCU_NAME):PC7" 
     config PIN_SELECTOR_STEP
-      default "$(MMU_MCU):PD2" 
+      default "$(MCU_NAME):PD2" 
     config PIN_SELECTOR_DIR
-      default "$(MMU_MCU):PB13" 
+      default "$(MCU_NAME):PB13" 
     config PIN_SELECTOR_ENABLE
-      default "!$(MMU_MCU):PD1" 
+      default "!$(MCU_NAME):PD1" 
     config PIN_SELECTOR_DIAG
-      default "$(MMU_MCU):PA4" 
+      default "$(MCU_NAME):PA4" 
     config PIN_SELECTOR_ENDSTOP
-      default "^$(MMU_MCU):PB2" 
+      default "^$(MCU_NAME):PB2" 
     config PIN_SELECTOR_SERVO
-      default "$(MMU_MCU):PA0" 
+      default "$(MCU_NAME):PA0" 
 
     config PIN_PRE_GATE_0
-      default "^$(MMU_MCU):PB9" 
+      default "^$(MCU_NAME):PB9" 
     config PIN_PRE_GATE_1
-      default "^$(MMU_MCU):PB8" 
+      default "^$(MCU_NAME):PB8" 
     config PIN_PRE_GATE_2
-      default "^$(MMU_MCU):PC15" 
+      default "^$(MCU_NAME):PC15" 
     config PIN_PRE_GATE_3
-      default "^$(MMU_MCU):PC13" 
+      default "^$(MCU_NAME):PC13" 
     config PIN_PRE_GATE_4
-      default "^$(MMU_MCU):PC14"
+      default "^$(MCU_NAME):PC14"
     config PIN_PRE_GATE_5
-      default "^$(MMU_MCU):PB12"
+      default "^$(MCU_NAME):PB12"
     config PIN_PRE_GATE_6
-      default "^$(MMU_MCU):PB11"
+      default "^$(MCU_NAME):PB11"
     config PIN_PRE_GATE_7
-      default "^$(MMU_MCU):PB10"
+      default "^$(MCU_NAME):PB10"
   endif
 
   config PIN_ENCODER
-    default "^$(MMU_MCU):PA1" if MMU_HAS_ENCODER
+    default "^$(MCU_NAME):PA1" if MMU_HAS_ENCODER
   config PIN_NEOPIXEL
-    default "$(MMU_MCU):PA2" 
+    default "$(MCU_NAME):PA2" 
   config PIN_GATE_SENSOR
-    default "^$(MMU_MCU):PA3" if !MMU_HAS_ENCODER
+    default "^$(MCU_NAME):PA3" if !MMU_HAS_ENCODER
 endif

@@ -1,5 +1,5 @@
 config BOARD_TYPE_EASY_BRD 
-  bool "Standard EASY-BRD (with SAMD21)"
+  bool "Standard EASY-BRD with SAMD21"
 
 if BOARD_TYPE_EASY_BRD
   config PARAM_BOARD_TYPE
@@ -10,31 +10,31 @@ if BOARD_TYPE_EASY_BRD
   endchoice
 
   config PIN_GEAR_UART
-    default "$(MMU_MCU):PA8" 
+    default "$(MCU_NAME):PA8" 
   config PIN_GEAR_STEP
-    default "$(MMU_MCU):PA4" 
+    default "$(MCU_NAME):PA4" 
   config PIN_GEAR_DIR
-    default "$(MMU_MCU):PA10" 
+    default "$(MCU_NAME):PA10" 
   config PIN_GEAR_ENABLE
-    default "!$(MMU_MCU):PA2" 
+    default "!$(MCU_NAME):PA2" 
 
   config PIN_SELECTOR_UART
     default PIN_GEAR_UART 
   config PIN_SELECTOR_STEP
-    default "$(MMU_MCU):PA9" 
+    default "$(MCU_NAME):PA9" 
   config PIN_SELECTOR_DIR
-    default "$(MMU_MCU):PB8" 
+    default "$(MCU_NAME):PB8" 
   config PIN_SELECTOR_ENABLE
-    default "!$(MMU_MCU):PA11" 
+    default "!$(MCU_NAME):PA11" 
   config PIN_SELECTOR_DIAG
-    default "$(MMU_MCU):PA7" if BOOL_ENABLE_SELECTOR_TOUCH 
+    default "$(MCU_NAME):PA7" if BOOL_ENABLE_SELECTOR_TOUCH 
   config PIN_SELECTOR_ENDSTOP
-    default "^$(MMU_MCU):PB9" if !BOOL_ENABLE_SELECTOR_TOUCH
+    default "^$(MCU_NAME):PB9" if !BOOL_ENABLE_SELECTOR_TOUCH
   config PIN_SELECTOR_SERVO
-    default "$(MMU_MCU):PA5" 
+    default "$(MCU_NAME):PA5" 
 
   config PIN_ENCODER
-    default "^$(MMU_MCU):PA6" if MMU_HAS_ENCODER
+    default "^$(MCU_NAME):PA6" if MMU_HAS_ENCODER
   config PIN_GATE_SENSOR
-    default "^$(MMU_MCU):PA6" if !MMU_HAS_ENCODER
+    default "^$(MCU_NAME):PA6" if !MMU_HAS_ENCODER
 endif

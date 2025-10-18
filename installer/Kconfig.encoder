@@ -1,6 +1,17 @@
-if MMU_HAS_ENCODER
+# Encoder parameter tokens which must be inside if MMU_HAS_ENCODER clause
+# in cfg templates
+#
+# Responsible for setting:
+#   PARAM_ENCODER_NAME
+#   PARAM_ENCODER_RESOLUTION
+#   PARAM_GATE_ENDSTOP_TO_ENCODER
 
+if MMU_HAS_ENCODER
   menu "Encoder"
+    config PARAM_ENCODER_NAME
+      string "Encoder name"
+      default UNIT_NAME
+
     config PARAM_ENCODER_RESOLUTION
       help
         Ensure this matches the resolution of your encoder. It represents
@@ -10,7 +21,7 @@ if MMU_HAS_ENCODER
       default "1.0"
 
     config PARAM_GATE_ENDSTOP_TO_ENCODER
-      prompt "Gate endstop to encoder distance (mm)"
+      string "Gate endstop to encoder distance (mm)"
+      default "10"
   endmenu
-
 endif

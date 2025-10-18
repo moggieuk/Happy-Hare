@@ -10,31 +10,31 @@ if BOARD_TYPE_EASY_BRD_RP2040
   endchoice
 
   config PIN_GEAR_UART
-    default "$(MMU_MCU):gpio6" 
+    default "$(MCU_NAME):gpio6" 
   config PIN_GEAR_STEP
-    default "$(MMU_MCU):gpio27" 
+    default "$(MCU_NAME):gpio27" 
   config PIN_GEAR_DIR
-    default "$(MMU_MCU):gpio28" 
+    default "$(MCU_NAME):gpio28" 
   config PIN_GEAR_ENABLE
-    default "!$(MMU_MCU):gpio26" 
+    default "!$(MCU_NAME):gpio26" 
 
   config PIN_SELECTOR_UART
-    default "$(MMU_MCU):gpio6" 
+    default "$(MCU_NAME):gpio6" 
   config PIN_SELECTOR_STEP
-    default "$(MMU_MCU):gpio7" 
+    default "$(MCU_NAME):gpio7" 
   config PIN_SELECTOR_DIR
-    default "$(MMU_MCU):gpio0" 
+    default "$(MCU_NAME):gpio0" 
   config PIN_SELECTOR_ENABLE
-    default "!$(MMU_MCU):gpio29" 
+    default "!$(MCU_NAME):gpio29" 
   config PIN_SELECTOR_DIAG
-    default "$(MMU_MCU):gpio2" if BOOL_ENABLE_SELECTOR_TOUCH 
+    default "$(MCU_NAME):gpio2" if BOOL_ENABLE_SELECTOR_TOUCH 
   config PIN_SELECTOR_ENDSTOP
-    default "^$(MMU_MCU):gpio1" if !BOOL_ENABLE_SELECTOR_TOUCH
+    default "^$(MCU_NAME):gpio1" if !BOOL_ENABLE_SELECTOR_TOUCH
   config PIN_SELECTOR_SERVO
-    default "$(MMU_MCU):gpio4" 
+    default "$(MCU_NAME):gpio4" 
 
   config PIN_ENCODER
-    default "^$(MMU_MCU):gpio3" if MMU_HAS_ENCODER
+    default "^$(MCU_NAME):gpio3" if MMU_HAS_ENCODER
   config PIN_GATE_SENSOR
-    default "^$(MMU_MCU):gpio3" if !MMU_HAS_ENCODER 
+    default "^$(MCU_NAME):gpio3" if !MMU_HAS_ENCODER 
 endif

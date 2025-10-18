@@ -1,7 +1,7 @@
 # MG-996R servo
 # Used by PicoMMU and MMX as RotarySelector
 
-if PARAM_MMU_VENDOR = "MMX" || PARAM_MMU_VENDOR = "PicoMMU"
+if PARAM_VENDOR = "MMX" || PARAM_VENDOR = "PicoMMU"
   config SERVO_TYPE_MG_996R
     bool "MG-996R"
 
@@ -21,7 +21,7 @@ if PARAM_MMU_VENDOR = "MMX" || PARAM_MMU_VENDOR = "PicoMMU"
     config PARAM_SERVO_DWELL
       default "1.0"
 
-    if PARAM_MMU_VENDOR = "MMX"
+    if PARAM_VENDOR = "MMX"
       config PARAM_SELECTOR_GATE_ANGLES
         string
         default "45, 90, 135, 180"

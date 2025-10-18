@@ -11,24 +11,24 @@ if MMU_HAS_ENCODER
     help
       Select the base of the encoder design.
 
-  config ENCODER_TYPE_BINKY
-    bool "Binky based"
-    help
-      Select for Binky based encoders.
+    config ENCODER_TYPE_BINKY
+      bool "Binky based"
+      help
+        Select for Binky based encoders.
 
-  config ENCODER_TYPE_TCRT5000
-    bool "TCRT 5000 based"
-    help
-      Select for older TCRT5000 based encoders.
+    config ENCODER_TYPE_TCRT5000
+      bool "TCRT 5000 based"
+      help
+        Select for older TCRT5000 based encoders.
 
-  config ENCODER_TYPE_OTHER
-    bool "Other"
-    help
-      Select for any other encoder and ensure you set the resolution correctly.
+    config ENCODER_TYPE_OTHER
+      bool "Other"
+      help
+        Select for any other encoder and ensure you set the resolution correctly.
   endchoice
 
   config PARAM_ENCODER_RESOLUTION
     default "0.7059" if ENCODER_TYPE_TCRT5000
-    default "1.0" if ENCODER_TYPE_BINKY
-    default "1.0" if ENCODER_TYPE_OTHER
+    default "1.0"    if ENCODER_TYPE_BINKY
+    default "1.0"    if ENCODER_TYPE_OTHER
 endif

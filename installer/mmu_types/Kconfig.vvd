@@ -1,7 +1,7 @@
 config MMU_TYPE_VVD_1_0
   bool "BTT ViViD"
   select INDEXED_SELECTOR
-  select MMU_HAS_SELECTOR
+  select MMU_HAS_SELECTOR_STEPPER
   select MMU_HAS_LEDS
   select MMU_HAS_SENSOR_PRE_GATE
   select MMU_HAS_ESPOOLER
@@ -32,9 +32,9 @@ if MMU_TYPE_VVD_1_0
   ##### Defaults #####
   ####################
 
-  config PARAM_MMU_VENDOR
+  config PARAM_VENDOR
     default "VVD"
-  config PARAM_MMU_VERSION
+  config PARAM_VERSION
     default "1.0" 
   config PARAM_NUM_GATES
     default 4
@@ -68,14 +68,6 @@ if MMU_TYPE_VVD_1_0
   config PARAM_GATE_HOMING_MAX
     default "500"
   
-# PAUL
-#  choice CHOICE_GATE_HOMING_ENDSTOP
-#    default CHOICE_GATE_HOMING_ENDSTOP_GEAR
-#  endchoice
-#  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
-#    default CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE
-#  endchoice
-
   config PARAM_CHAIN_COUNT
     default 28   
   config PARAM_COLOR_ORDER

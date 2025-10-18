@@ -53,16 +53,8 @@ from typing import Iterable, List, Sequence, Tuple
 DEFAULT_PATTERNS: List[Tuple[str, str]] = [
     # Example:
     # (r"(?<!_)mmu_gear(?!_)", "mmu_gear"),
-    ("GATE_HOMING_ENDSTOP_EXTRUDER",        "CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER"),
-    ("GATE_HOMING_ENDSTOP_GEAR",            "CHOICE_GATE_HOMING_ENDSTOP_GEAR"),
-    ("GATE_HOMING_ENDSTOP_GATE",            "CHOICE_GATE_HOMING_ENDSTOP_GATE"),
-    ("GATE_HOMING_ENDSTOP_ENCODER",         "CHOICE_GATE_HOMING_ENDSTOP_ENCODER"),
-    ("GATE_HOMING_ENDSTOP_NONE",            "CHOICE_GATE_HOMING_ENDSTOP_NONE"),
-    ("EXTRUDER_HOMING_ENDSTOP_EXTRUDER",    "CHOICE_EXTRUDER_HOMING_ENDSTOP_EXTRUDER"),
-    ("EXTRUDER_HOMING_ENDSTOP_COMPRESSION", "CHOICE_EXTRUDER_HOMING_ENDSTOP_COMPRESSION"),
-    ("EXTRUDER_HOMING_ENDSTOP_TOUCH",       "CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH"),
-    ("EXTRUDER_HOMING_ENDSTOP_COLLISION",   "CHOICE_EXTRUDER_HOMING_ENDSTOP_COLLISION"),
-    ("EXTRUDER_HOMING_ENDSTOP_NONE",        "CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE"),
+    ("PARAM_MMU_VENDOR",  "PARAM_VENDOR"),
+    ("PARAM_MMU_VERSION", "PARAM_VERSION"),
 
 #    ("SENSOR_PRE_GATE_PREFIX", "SENSOR_ENTRY_PREFIX"),
 #    ("SENSOR_GEAR_PREFIX", "SENSOR_EXIT_PREFIX"),
@@ -110,7 +102,7 @@ IGNORE_DIRS = {
     "build", "dist", ".mypy_cache", ".ruff_cache", ".pytest_cache", "utils"
 }
 # PAUL TARGET_EXTS = (".py", ".cfg", "Kconfig*")
-TARGETS = ("*.py", "*.cfg", "Kconfig*")
+TARGETS = ("*.py", "*.cfg", "Kconfig*", "Makefile", "*.sh")
 
 
 # ---- Diff colorization -------------------------------------------------------

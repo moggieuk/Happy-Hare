@@ -22,9 +22,9 @@ if MMU_TYPE_ANGRY_BEAVER_1_0
   ##### Defaults #####
   ####################
 
-  config PARAM_MMU_VENDOR
+  config PARAM_VENDOR
     default "AngryBeaver"
-  config PARAM_MMU_VERSION
+  config PARAM_VERSION
     default "1.0" 
   config PARAM_NUM_GATES
     default 4
@@ -46,12 +46,4 @@ if MMU_TYPE_ANGRY_BEAVER_1_0
     default "500"
   config PARAM_GATE_PARKING_DISTANCE
     default "50"
-
-# PAUL
-#  choice CHOICE_GATE_HOMING_ENDSTOP
-#    default CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
-#  endchoice
-#  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
-#    default CHOICE_EXTRUDER_HOMING_ENDSTOP_EXTRUDER
-#  endchoice
 endif 

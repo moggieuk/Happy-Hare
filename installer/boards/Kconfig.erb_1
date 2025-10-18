@@ -10,60 +10,60 @@ if BOARD_TYPE_ERB_1
   endchoice
 
   config PIN_GEAR_UART
-    default "$(MMU_MCU):gpio20" 
+    default "$(MCU_NAME):gpio20" 
   config PIN_GEAR_STEP
-    default "$(MMU_MCU):gpio10" 
+    default "$(MCU_NAME):gpio10" 
   config PIN_GEAR_DIR
-    default "$(MMU_MCU):gpio9" 
+    default "$(MCU_NAME):gpio9" 
   config PIN_GEAR_ENABLE
-    default "!$(MMU_MCU):gpio8"
+    default "!$(MCU_NAME):gpio8"
   config PIN_GEAR_DIAG
-    default "$(MMU_MCU):gpio13"
+    default "$(MCU_NAME):gpio13"
 
   config PIN_SELECTOR_UART
-    default "$(MMU_MCU):gpio17" 
+    default "$(MCU_NAME):gpio17" 
   config PIN_SELECTOR_STEP
-    default "$(MMU_MCU):gpio16" 
+    default "$(MCU_NAME):gpio16" 
   config PIN_SELECTOR_DIR
-    default "$(MMU_MCU):gpio15" 
+    default "$(MCU_NAME):gpio15" 
   config PIN_SELECTOR_ENABLE
-    default "!$(MMU_MCU):gpio14" 
+    default "!$(MCU_NAME):gpio14" 
   config PIN_SELECTOR_DIAG
-    default "$(MMU_MCU):gpio19" if BOOL_ENABLE_SELECTOR_TOUCH 
+    default "$(MCU_NAME):gpio19" if BOOL_ENABLE_SELECTOR_TOUCH 
   config PIN_SELECTOR_ENDSTOP
-    default "^$(MMU_MCU):gpio24" if !BOOL_ENABLE_SELECTOR_TOUCH
+    default "^$(MCU_NAME):gpio24" if !BOOL_ENABLE_SELECTOR_TOUCH
   config PIN_SELECTOR_SERVO
-    default "$(MMU_MCU):gpio23" 
+    default "$(MCU_NAME):gpio23" 
 
   config PIN_PRE_GATE_0
-    default "^$(MMU_MCU):gpio0"
+    default "^$(MCU_NAME):gpio0"
   config PIN_PRE_GATE_1
-    default "^$(MMU_MCU):gpio1"
+    default "^$(MCU_NAME):gpio1"
   config PIN_PRE_GATE_2
-    default "^$(MMU_MCU):gpio2"
+    default "^$(MCU_NAME):gpio2"
   config PIN_PRE_GATE_3
-    default "^$(MMU_MCU):gpio3"
+    default "^$(MCU_NAME):gpio3"
   config PIN_PRE_GATE_4
-    default "^$(MMU_MCU):gpio4"
+    default "^$(MCU_NAME):gpio4"
   config PIN_PRE_GATE_5
-    default "^$(MMU_MCU):gpio5"
+    default "^$(MCU_NAME):gpio5"
   config PIN_PRE_GATE_6
-    default "^$(MMU_MCU):gpio6"
+    default "^$(MCU_NAME):gpio6"
   config PIN_PRE_GATE_7
-    default "^$(MMU_MCU):gpio7"
+    default "^$(MCU_NAME):gpio7"
   config PIN_PRE_GATE_8
-    default "^$(MMU_MCU):gpio26"
+    default "^$(MCU_NAME):gpio26"
   config PIN_PRE_GATE_9
-    default "^$(MMU_MCU):gpio27"
+    default "^$(MCU_NAME):gpio27"
   config PIN_PRE_GATE_10
-    default "^$(MMU_MCU):gpio28"
+    default "^$(MCU_NAME):gpio28"
   config PIN_PRE_GATE_11
-    default "^$(MMU_MCU):gpio29"
+    default "^$(MCU_NAME):gpio29"
 
   config PIN_ENCODER
-    default "^$(MMU_MCU):gpio22" if MMU_HAS_ENCODER
+    default "^$(MCU_NAME):gpio22" if MMU_HAS_ENCODER
   config PIN_GATE_SENSOR
-    default "^$(MMU_MCU):gpio22" if !MMU_HAS_ENCODER
+    default "^$(MCU_NAME):gpio22" if !MMU_HAS_ENCODER
   config PIN_NEOPIXEL
-    default "$(MMU_MCU):gpio21"
+    default "$(MCU_NAME):gpio21"
 endif

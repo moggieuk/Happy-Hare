@@ -1,5 +1,5 @@
 config BOARD_TYPE_EBB42_1_2
-  bool "BTT EBB 42 CANbus V1.2 (for MMX or Pico)"
+  bool "BTT EBB 42 CANbus V1.2"
 
 if BOARD_TYPE_EBB42_1_2
   config PARAM_BOARD_TYPE
@@ -10,28 +10,28 @@ if BOARD_TYPE_EBB42_1_2
   endchoice
 
   config PIN_GEAR_UART 
-    default "$(MMU_MCU):PA15" 
+    default "$(MCU_NAME):PA15" 
   config PIN_GEAR_STEP
-    default "$(MMU_MCU):PD0" 
+    default "$(MCU_NAME):PD0" 
   config PIN_GEAR_DIR
-    default "$(MMU_MCU):PD1" 
+    default "$(MCU_NAME):PD1" 
   config PIN_GEAR_ENABLE
-    default "!$(MMU_MCU):PD2" 
+    default "!$(MCU_NAME):PD2" 
 
   config PIN_SELECTOR_SERVO
-    default "$(MMU_MCU):PB9"
+    default "$(MCU_NAME):PB9"
 
   config PIN_PRE_GATE_0
-    default "^$(MMU_MCU):PB7" 
+    default "^$(MCU_NAME):PB7" 
   config PIN_PRE_GATE_1
-    default "^$(MMU_MCU):PB5" 
+    default "^$(MCU_NAME):PB5" 
   config PIN_PRE_GATE_2
-    default "^$(MMU_MCU):PB6" 
+    default "^$(MCU_NAME):PB6" 
   config PIN_PRE_GATE_3
-    default "^$(MMU_MCU):PB8"
+    default "^$(MCU_NAME):PB8"
 
   config PIN_NEOPIXEL
-    default "$(MMU_MCU):PD3" 
+    default "$(MCU_NAME):PD3" 
   config PIN_GATE_SENSOR
-    default "^$(MMU_MCU):PB4" if !MMU_HAS_ENCODER
+    default "^$(MCU_NAME):PB4" if !MMU_HAS_ENCODER
 endif

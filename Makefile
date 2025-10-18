@@ -59,7 +59,7 @@ export IN  := $(OUT)/in
 
 # Default unit and mcu naming
 export UNIT_NAME ?= mmu0
-export MMU_MCU ?= mmu0
+export MCU_NAME ?= mmu0
 
 # Helper functions/constants
 comma := ,

@@ -1,3 +1,9 @@
+# Type setting and raw modification of toolhead dimensional parameters:
+#   PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
+#   PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
+#   PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
+#   PARAM_TOOLHEAD_RESIDUAL_FILAMENT
+
 menu "Toolhead dimensions and calibration"
   help
     These settings are based on the physical dimensions of your toolhead and some physical
@@ -42,6 +48,4 @@ menu "Toolhead dimensions and calibration"
 #      If gaps and already at 0 then perhaps the 'toolhead_extruder_to_nozzle' or 'toolhead_residual_filament'
 #      settings are incorrect. Similarly a value >+5mm also suggests the four settings above are not correct.
 #      Recommend starting with 0
-
 endmenu
-

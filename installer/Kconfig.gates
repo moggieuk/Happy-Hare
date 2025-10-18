@@ -44,10 +44,6 @@ menu "Gate loading & parking"
       Filament parking distance (mm) after homing to configured gate sensor
       or `mmu_gear' sensor if available
 
-  config PARAM_GATE_ENDSTOP_TO_ENCODER
-    string "Gate endstop to encoder distance (mm)"
-    default "10"
-
   config PARAM_GATE_FINAL_EJECT_DISTANCE
     string "Distance to eject filament after unload (mm)"
     default "0"

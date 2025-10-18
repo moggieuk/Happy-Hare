@@ -5,7 +5,7 @@ config MMU_TYPE_PICO_MMU_1_0
     to both select and grip the filament in the chosen gate. It is a
     simple compact design but is limited to about 4 gates.
   select SERVO_SELECTOR
-  select MMU_HAS_SERVO
+  select MMU_HAS_SELECTOR_SERVO
   select PARAM_REQUIRE_BOWDEN_MOVE
   select PARAM_FILAMENT_ALWAYS_GRIPPED
   select BOOL_ENABLE_SYNC_TO_EXTRUDER
@@ -23,9 +23,9 @@ if MMU_TYPE_PICO_MMU_1_0
   ##### Defaults #####
   ####################
 
-  config PARAM_MMU_VENDOR
+  config PARAM_VENDOR
     default "PicoMMU"
-  config PARAM_MMU_VERSION
+  config PARAM_VERSION
     default "1.0"  
   config PARAM_NUM_GATES
     default 4
@@ -49,12 +49,4 @@ if MMU_TYPE_PICO_MMU_1_0
     default 4   
   config PARAM_EXIT_LEDS 
     default "neopixel:$(UNIT_NAME)_leds (1-4)"
-
-# PAUL
-#  choice CHOICE_GATE_HOMING_ENDSTOP
-#    default CHOICE_GATE_HOMING_ENDSTOP_GATE
-#  endchoice
-#  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
-#    default CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE
-#  endchoice
 endif 

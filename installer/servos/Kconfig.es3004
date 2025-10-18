@@ -1,7 +1,7 @@
 # Emax ES3004 Servo
 # Used by PicoMMU
 
-if PARAM_MMU_VENDOR = "PicoMMU"
+if PARAM_VENDOR = "PicoMMU"
   config SERVO_TYPE_EMAX_ES3004
     bool "Emax ES3004"
 

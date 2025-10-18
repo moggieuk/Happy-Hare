@@ -1,3 +1,12 @@
+# This module's purpose is to set:
+#   PARAM_BOARD_TYPE
+#
+# and a variable list of "PIN_" parameters depending on availability on that particular
+# mcu board. E.g.
+#   PIN_GEAR_DIAG
+#   PIN_SELECTOR_STEP
+#   PIN_ENTRY_SENSOR
+
 config PARAM_BOARD_TYPE
   string
 
@@ -10,7 +19,7 @@ choice CHOICE_BOARD_TYPE
     the default pin layout for your setup. After selecting board
     pins can be customized in Advanced Settings.
 
-  if !MMU_TYPE_KMS_1_0 && ! MMU_TYPE_VVD_1_0
+  if !MMU_TYPE_KMS_1_0 && !MMU_TYPE_VVD_1_0
     rsource "Kconfig.*"
 
     config BOARD_TYPE_OTHER

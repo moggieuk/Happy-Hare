@@ -41,9 +41,9 @@ if MMU_TYPE_KMS_1_0
   ##### Defaults #####
   ####################
 
-  config PARAM_MMU_VENDOR
+  config PARAM_VENDOR
     default "KMS"
-  config PARAM_MMU_VERSION
+  config PARAM_VERSION
     default "1.0"  
   config PARAM_NUM_GATES
     default 4
@@ -101,12 +101,4 @@ if MMU_TYPE_KMS_1_0
     default n
   config BOOL_AUTOTUNE_ENCODER
     default n
-  
-# PAUL
-#  choice CHOICE_GATE_HOMING_ENDSTOP
-#    default CHOICE_GATE_HOMING_ENDSTOP_GATE
-#  endchoice
-#  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
-#    default CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE
-#  endchoice
 endif 

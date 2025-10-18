@@ -9,120 +9,117 @@ if BOARD_TYPE_KMS_1_0
     default $(serial_config,1,stm32)
   endchoice
 
-  config PARAM_SERIAL_BUFFER
-    default "SET_ME"
-
   config PIN_GEAR_UART 
-    default "$(MMU_MCU):PB4"
+    default "$(MCU_NAME):PB4"
   config PIN_GEAR_STEP
-    default "$(MMU_MCU):PB5" 
+    default "$(MCU_NAME):PB5" 
   config PIN_GEAR_DIR
-    default "$(MMU_MCU):PB6" 
+    default "$(MCU_NAME):PB6" 
   config PIN_GEAR_ENABLE
-    default "!$(MMU_MCU):PB3" 
+    default "!$(MCU_NAME):PB3" 
 
   config PIN_GEAR_UART_1 
-    default "$(MMU_MCU):PB8" 
+    default "$(MCU_NAME):PB8" 
   config PIN_GEAR_STEP_1
-    default "$(MMU_MCU):PB9" 
+    default "$(MCU_NAME):PB9" 
   config PIN_GEAR_DIR_1
-    default "!$(MMU_MCU):PC10" 
+    default "!$(MCU_NAME):PC10" 
   config PIN_GEAR_ENABLE_1
-    default "!$(MMU_MCU):PB7" 
+    default "!$(MCU_NAME):PB7" 
 
   config PIN_GEAR_UART_2 
-    default "$(MMU_MCU):PD3" 
+    default "$(MCU_NAME):PD3" 
   config PIN_GEAR_STEP_2
-    default "$(MMU_MCU):PD4" 
+    default "$(MCU_NAME):PD4" 
   config PIN_GEAR_DIR_2
-    default "$(MMU_MCU):PD5" 
+    default "$(MCU_NAME):PD5" 
   config PIN_GEAR_ENABLE_2
-    default "!$(MMU_MCU):PD6" 
+    default "!$(MCU_NAME):PD6" 
 
   config PIN_GEAR_UART_3 
-    default "$(MMU_MCU):PC9" 
+    default "$(MCU_NAME):PC9" 
   config PIN_GEAR_STEP_3
-    default "$(MMU_MCU):PD0" 
+    default "$(MCU_NAME):PD0" 
   config PIN_GEAR_DIR_3
-    default "!$(MMU_MCU):PD1" 
+    default "!$(MCU_NAME):PD1" 
   config PIN_GEAR_ENABLE_3
-    default "!$(MMU_MCU):PD2" 
+    default "!$(MCU_NAME):PD2" 
 
   config PIN_PRE_GATE_0
-    default "$(MMU_MCU):PA0" 
+    default "$(MCU_NAME):PA0" 
   config PIN_PRE_GATE_1
-    default "$(MMU_MCU):PA1" 
+    default "$(MCU_NAME):PA1" 
   config PIN_PRE_GATE_2
-    default "$(MMU_MCU):PA2" 
+    default "$(MCU_NAME):PA2" 
   config PIN_PRE_GATE_3
-    default "$(MMU_MCU):PA3" 
+    default "$(MCU_NAME):PA3" 
 
   config PIN_GEAR_SENSOR_0
-    default "$(MMU_MCU):PA5"
+    default "$(MCU_NAME):PA5"
   config PIN_GEAR_SENSOR_1
-    default "$(MMU_MCU):PA6"
+    default "$(MCU_NAME):PA6"
   config PIN_GEAR_SENSOR_2
-    default "$(MMU_MCU):PA7"
+    default "$(MCU_NAME):PA7"
   config PIN_GEAR_SENSOR_3
-    default "$(MMU_MCU):PC4"
+    default "$(MCU_NAME):PC4"
   
   config PIN_ESPOOLER_FWD_0
-    default "$(MMU_MCU):PA8"
+    default "$(MCU_NAME):PA8"
   config PIN_ESPOOLER_RWD_0
-    default "$(MMU_MCU):PB15"
+    default "$(MCU_NAME):PB15"
   config PIN_ESPOOLER_FWD_1
-    default "$(MMU_MCU):PB13"
+    default "$(MCU_NAME):PB13"
   config PIN_ESPOOLER_RWD_1
-    default "$(MMU_MCU):PB14"
+    default "$(MCU_NAME):PB14"
   config PIN_ESPOOLER_FWD_2
-    default "$(MMU_MCU):PA9"
+    default "$(MCU_NAME):PA9"
   config PIN_ESPOOLER_RWD_2
-    default "$(MMU_MCU):PC6"
+    default "$(MCU_NAME):PC6"
   config PIN_ESPOOLER_FWD_3
-    default "$(MMU_MCU):PD8"
+    default "$(MCU_NAME):PD8"
   config PIN_ESPOOLER_RWD_3
-    default "$(MMU_MCU):PC7"
+    default "$(MCU_NAME):PC7"
 
   config PIN_ENCODER
-    default "$(MMU_MCU):PC5"
+    default "$(MCU_NAME):PC5"
   config PIN_NEOPIXEL
-    default "$(MMU_MCU):PC13" 
+    default "$(MCU_NAME):PC13" 
   config PIN_GATE_SENSOR
-    default "$(MMU_MCU):PC0"
+    default "$(MCU_NAME):PC0"
 
   if OPTION_KMS_BUFFER
     config PIN_SYNC_FEEDBACK_TENSION
-      default "!$(MMU_MCU)_buffer:PA1"
+      default "!$(MCU_NAME)_buffer:PA1"
     config PIN_SYNC_FEEDBACK_COMPRESSION
-      default "!$(MMU_MCU)_buffer:PA0"
+      default "!$(MCU_NAME)_buffer:PA0"
   endif
 
   config PARAM_MISC_HARDWARE
     default "$(ml,\
 [temperature_sensor $(UNIT_NAME)_enviroment]\n\
 sensor_type: HTU21D\n\
-i2c_mcu: $(MMU_MCU)\n\
+i2c_mcu: $(MCU_NAME)\n\
 htu21d_report_time: 10\n\
-i2c_software_scl_pin: $(MMU_MCU):PB10\n\
-i2c_software_sda_pin: $(MMU_MCU):PB11\n\
+i2c_software_scl_pin: $(MCU_NAME):PB10\n\
+i2c_software_sda_pin: $(MCU_NAME):PB11\n\
 \n\
 [heater_fan $(UNIT_NAME)_fan_left]\n\
-pin: $(MMU_MCU):PC3\n\
+pin: $(MCU_NAME):PC3\n\
 shutdown_speed: 0\n\
 heater: MMU_heater_kms\n\
 \n\
 [heater_fan $(UNIT_NAME)_fan_right]\n\
-pin: $(MMU_MCU):PC1\n\
+pin: $(MCU_NAME):PC1\n\
 shutdown_speed: 0\n\
 heater: $(UNIT_NAME)_heater\n\
 \n\
 [heater_generic $(UNIT_NAME)_heater]\n\
 gcode_id: $(UNIT_NAME)\n\
-heater_pin: $(MMU_MCU):PB1\n\
+heater_pin: $(MCU_NAME):PB1\n\
 max_power:1.0\n\
 sensor_type: EPCOS 100K B57560G104F\n\
 pullup_resistor: 2200\n\
-sensor_pin: $(MMU_MCU):PA4\n\
+sensor_pin: $(MCU_NAME):PA4\n\
 control: watermark\n\
 min_temp: 0\n\
 max_temp: 70\n\

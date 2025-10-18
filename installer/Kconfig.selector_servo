@@ -1,50 +1,23 @@
-menu "Motors"
+# Selector servo parameter tokens which must be inside
+# if MMU_HAS_SELECTOR_SERVO clause in cfg templates
+#
+# Responsible for setting:
+#   PARAM_SERVO_MIN_PULSE_WIDTH
+#   PARAM_SERVO_MAX_PULSE_WIDTH
+#   PARAM_SERVO_MAX_ANGLE
+#   PARAM_SERVO_ALWAYS_ACTIVE
+#   PARAM_SERVO_DURATION
+#   PARAM_SERVO_DWELL
+#
+# Optionally depending on selector type:
+#   PARAM_SERVO_UP_ANGLE
+#   PARAM_SERVO_MOVE_ANGLE
+#   PARAM_SERVO_DOWN_ANGLE
+#   PARAM_SERVO_ACTIVE_DOWN
+#   PARAM_SELECTOR_GATE_ANGLES
 
-  comment 'v----- GEAR STEPPER -----v'
-  
-  config PARAM_GEAR_GEAR_RATIO
-    string "Gear ratio"
-    default "1:1"
-
-  config PARAM_GEAR_ROTATION_DISTANCE
-    string "Gear rotation distance"
-    default "22.7316868"
-
-  config PARAM_GEAR_RUN_CURRENT
-    string "Gear run current"
-    default "0.7"
-
-  config PARAM_GEAR_HOLD_CURRENT
-    string "Gear hold current"
-    default "0.1"
-
-  if MMU_HAS_SELECTOR
-    comment 'v--- SELECTOR STEPPER ---v'
-
-    config PARAM_SELECTOR_GEAR_RATIO
-      string "Selector gear ratio"
-      default "1:1"
-
-    config PARAM_SELECTOR_ROTATION_DISTANCE
-      string "Selector rotation distance"
-      default "40"
-
-    config PARAM_SELECTOR_RUN_CURRENT
-      string "Selector run current"
-      default "0.5"
-
-    config PARAM_SELECTOR_HOLD_CURRENT
-      string "Selector hold current"
-      default "0.2"
-
-    config PARAM_SELECTOR_ENDSTOP_NAME
-      string
-      default "mmu_sel_home"
-  endif 
-
-  if MMU_HAS_SERVO
-    comment 'v---- SELECTOR SERVO ----v'
-
+if MMU_HAS_SELECTOR_SERVO
+  menu "Selector servo"
     config PARAM_SERVO_MAX_ANGLE
       int "Servo maximum angle"
       range 0 360
@@ -72,7 +45,7 @@ menu "Motors"
 
     config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
       int "How often to buzz servo on down angle"
-      default 1 
+      default 1
 
     config PARAM_SERVO_DURATION
       string "Servo duration"
@@ -107,6 +80,5 @@ menu "Motors"
       int
       default 1 if BOOL_SERVO_ACTIVE_DOWN
       default 0
-  endif 
-
-endmenu
+  endmenu
+endif

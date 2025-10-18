@@ -1,0 +1,50 @@
+# Raw direct access to suggested parameters
+# Generally grouped by sections of the .cfg files
+# (Once user edits values here they are sticky and
+# will override defaults)
+
+menu "Advanced/Raw Settings"
+  help
+    Advanced/Raw Settings
+    Allows override of designer defaults. Only change these settings if
+    you know what you are doing (or have MMU customizations). You can always
+    change later by re-running "./install.sh -i" or editing the generated
+    klipper config files.
+
+  if !MULTI_UNIT_ENTRY_POINT
+    source "Kconfig.num_gates"
+  endif
+
+  if !MULTI_UNIT || MULTI_UNIT_ENTRY_POINT
+    source "Kconfig.toolhead"
+  endif
+
+  if MULTI_UNIT_ENTRY_POINT
+    menu "Printer filament sensors"
+      help
+        Printer toolhead capabilities
+        Here you can configure printer toolhead options such as sensors
+      source "sensors/Kconfig.toolhead"
+      source "sensors/Kconfig.extruder"
+    endmenu
+  endif
+
+  if !MULTI_UNIT_ENTRY_POINT
+    source "Kconfig.gates"
+    source "Kconfig.leds"
+    source "Kconfig.encoder"
+    source "sensors/Kconfig"
+    source "Kconfig.endstops"
+    source "Kconfig.filament_speeds"
+    source "Kconfig.gear_stepper"
+    source "Kconfig.selector_stepper"
+    source "Kconfig.selector_servo"
+    source "Kconfig.sync_control"
+    source "Kconfig.calibration"
+    source "Kconfig.pins"
+    source "Kconfig.capabilities"
+  endif
+  if !MULTI_UNIT || MULTI_UNIT_ENTRY_POINT
+    source "Kconfig.paths_services" # Advanced install options
+  endif
+endmenu

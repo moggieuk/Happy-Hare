@@ -1,7 +1,7 @@
 # Feetech FT1117M servo
 # Used by Tradrack v1.0
 
-if PARAM_MMU_VENDOR = "Tradrack"
+if PARAM_VENDOR = "Tradrack"
   config SERVO_TYPE_FEETECH_FT1117M
     bool "Feetech FT1117M"
 

@@ -1,59 +1,51 @@
-#
 # This module selects default gate and extruder homing endstops based on the
 # best strategy given available sensors. The default can be overruled by the
 # mmu_type if it sets something like:
 #   select MMU_TYPE_PREFERS_XXX
 # If so, this preference is used instead
 #
+# Responsible for setting:
+#   PARAM_GATE_HOMING_ENDSTOP
+#   PARAM_EXTRUDER_HOMING_ENDSTOP
 
 # Gate homing preference flags (hidden)
 config PREFERS_CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
-  bool
   def_bool n
   depends on MMU_HAS_SENSOR_EXTRUDER && !REQUIRE_BOWDEN_MOVE
 
 config PREFERS_CHOICE_GATE_HOMING_ENDSTOP_GEAR
-  bool
   def_bool n
   depends on MMU_HAS_SENSOR_POST_GEAR
 
 config PREFERS_CHOICE_GATE_HOMING_ENDSTOP_GATE
-  bool
   def_bool n
   depends on MMU_HAS_SENSOR_GATE
 
 config PREFERS_CHOICE_GATE_HOMING_ENDSTOP_ENCODER
-  bool
   def_bool n
   depends on MMU_HAS_ENCODER
 
 config PREFERS_CHOICE_GATE_HOMING_ENDSTOP_NONE
-  bool
   def_bool n
 
 # Extruder homing preference flags (hidden)
 config PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_EXTRUDER
-  bool
   def_bool n
   depends on MMU_HAS_SENSOR_EXTRUDER
 
 config PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_COMPRESSION
-  bool
   def_bool n
   depends on MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION
 
 config PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH
-  bool
   def_bool n
   depends on MMU_HAS_SENSOR_GEAR_TOUCH
 
 config PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_COLLISION
-  bool
   def_bool n
   depends on MMU_HAS_ENCODER
 
 config PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE
-  bool
   def_bool n
 
 menu "Endstops"

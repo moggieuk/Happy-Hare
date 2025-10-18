@@ -9,100 +9,97 @@ if BOARD_TYPE_VVD_1_0
     default $(serial_config,1,stm32)
   endchoice
 
-  config PARAM_SERIAL_BUFFER
-    default "SET_ME"
-
   config PIN_SELECTOR_UART
-    default "$(MMU_MCU):PB3" 
+    default "$(MCU_NAME):PB3" 
   config PIN_SELECTOR_STEP
-    default "$(MMU_MCU):PD3" 
+    default "$(MCU_NAME):PD3" 
   config PIN_SELECTOR_DIR
-    default "$(MMU_MCU):PD2" 
+    default "$(MCU_NAME):PD2" 
   config PIN_SELECTOR_ENABLE
-    default "!$(MMU_MCU):PB4" 
+    default "!$(MCU_NAME):PB4" 
 
   config PIN_SELECTOR_ENDSTOP
-    default "!$(MMU_MCU):PD0, !$(MMU_MCU):PA15, !$(MMU_MCU):PD1, !$(MMU_MCU):PC13"
+    default "!$(MCU_NAME):PD0, !$(MCU_NAME):PA15, !$(MCU_NAME):PD1, !$(MCU_NAME):PC13"
   config PARAM_SELECTOR_ENDSTOP_NAME
     default "$(UNIT_NAME)_gate0, $(UNIT_NAME)_gate1, $(UNIT_NAME)_gate2, $(UNIT_NAME)_gate3"
 
   config PIN_GEAR_UART 
-    default "$(MMU_MCU):PB7"
+    default "$(MCU_NAME):PB7"
   config PIN_GEAR_STEP
-    default "$(MMU_MCU):PB6" 
+    default "$(MCU_NAME):PB6" 
   config PIN_GEAR_DIR
-    default "$(MMU_MCU):PB5" 
+    default "$(MCU_NAME):PB5" 
   config PIN_GEAR_ENABLE
-    default "!$(MMU_MCU):PB8" 
+    default "!$(MCU_NAME):PB8" 
 
   config PIN_PRE_GATE_0
-    default "!$(MMU_MCU):PA0" 
+    default "!$(MCU_NAME):PA0" 
   config PIN_PRE_GATE_1
-    default "!$(MMU_MCU):PA1" 
+    default "!$(MCU_NAME):PA1" 
   config PIN_PRE_GATE_2
-    default "!$(MMU_MCU):PA2" 
+    default "!$(MCU_NAME):PA2" 
   config PIN_PRE_GATE_3
-    default "!$(MMU_MCU):PA3" 
+    default "!$(MCU_NAME):PA3" 
 
   config PIN_ESPOOLER_FWD_0
-    default "$(MMU_MCU):PA8"
+    default "$(MCU_NAME):PA8"
   config PIN_ESPOOLER_RWD_0
-    default "$(MMU_MCU):PB15"
+    default "$(MCU_NAME):PB15"
   config PIN_ESPOOLER_FWD_1
-    default "$(MMU_MCU):PB13"
+    default "$(MCU_NAME):PB13"
   config PIN_ESPOOLER_RWD_1
-    default "$(MMU_MCU):PB14"
+    default "$(MCU_NAME):PB14"
   config PIN_ESPOOLER_FWD_2
-    default "$(MMU_MCU):PA9"
+    default "$(MCU_NAME):PA9"
   config PIN_ESPOOLER_RWD_2
-    default "$(MMU_MCU):PC6"
+    default "$(MCU_NAME):PC6"
   config PIN_ESPOOLER_FWD_3
-    default "$(MMU_MCU):PD8"
+    default "$(MCU_NAME):PD8"
   config PIN_ESPOOLER_RWD_3
-    default "$(MMU_MCU):PC7"
+    default "$(MCU_NAME):PC7"
 
   config PIN_ENCODER
-    default "$(MMU_MCU):PC5"
+    default "$(MCU_NAME):PC5"
   config PIN_NEOPIXEL
-    default "$(MMU_MCU):PC13" 
+    default "$(MCU_NAME):PC13" 
   config PIN_GATE_SENSOR
-    default "$(MMU_MCU):PC0"
+    default "$(MCU_NAME):PC0"
 
   if OPTION_VVD_BUFFER
     config PIN_SYNC_FEEDBACK_TENSION
-      default "$(MMU_MCU)_buffer:PA4"
+      default "$(MCU_NAME)_buffer:PA4"
     config PIN_SYNC_FEEDBACK_COMPRESSION
-      default "$(MMU_MCU)_buffer:PA5"
+      default "$(MCU_NAME)_buffer:PA5"
   endif
 
   config PARAM_MISC_HARDWARE
     default "$(ml,\
 [neopixel $(UNIT_NAME)_leds_1]\n\
-pin: $(MMU_MCU):PC6\n\
+pin: $(MCU_NAME):PC6\n\
 chain_count: 14\n\
 color_order: GRB\n\
  \n\
 [neopixel $(UNIT_NAME)_leds_2]\n\
-pin: $(MMU_MCU):PC7\n\
+pin: $(MCU_NAME):PC7\n\
 chain_count: 14\n\
 color_order: GRB\n\
 \n\
 [temperature_sensor $(UNIT_NAME)_env_left]\n\
 sensor_type: AHT10 # Actually a ACT30$(comma) set 'update_aht10_commands: 1' in mmu_parameters.cfg\n\
-i2c_mcu: $(MMU_MCU)\n\
+i2c_mcu: $(MCU_NAME)\n\
 i2c_bus: i2c1_PA9_PA10\n\
 aht10_report_time: 10\n\
 \n\
 [temperature_sensor $(UNIT_NAME)_env_right]\n\
 sensor_type: AHT10 # Actually a ACT30$(comma) set 'update_aht10_commands: 1' in mmu_parameters.cfg\n\
-i2c_mcu: $(MMU_MCU)\n\
+i2c_mcu: $(MCU_NAME)\n\
 i2c_software_scl_pin: PA7\n\
 i2c_software_sda_pin: PA6\n\
 aht10_report_time: 10\n\
 \n\
 [heater_generic $(UNIT_NAME)_heater]\n\
 gcode_id:  $(UNIT_NAME)_heater\n\
-heater_pin: $(MMU_MCU):PC14\n\
+heater_pin: $(MCU_NAME):PC14\n\
 sensor_type: temperature_combined\n\
 sensor_list: temperature_sensor ${UNIT_NAME}_env_left$(comma) temperature_sensor ${UNIT_NAME}_env_right\n\
 combination_method: mean\n\
@@ -121,17 +118,17 @@ hysteresis: 10\n\
 heating_gain: 1\n\
 \n\
 [heater_fan $(UNIT_NAME)_fan]\n\
-pin: $(MMU_MCU):PC15\n\
+pin: $(MCU_NAME):PC15\n\
 shutdown_speed: 0\n\
 heater: $(UNIT_NAME)_heater\n\
 \n\
 # Electronics cooling fan\n\
 [controller_fan $(UNIT_NAME)_mcu_fan]\n\
-pin: $(MMU_MCU):PA14\n\
+pin: $(MCU_NAME):PA14\n\
 stepper: stepper mmu_selector_$(UNIT_NAME)$(comma) stepper mmu_gear_$(UNIT_NAME)\n\
 \n\
 [temperature_sensor ptc_ntc100k]\n\
-sensor_pin: $(MMU_MCU):PA4\n\
+sensor_pin: $(MCU_NAME):PA4\n\
 sensor_type: Generic 3950\n\
 pullup_resistor: 2200\n\
 )"

@@ -54,14 +54,14 @@ menu "Software Options"
     prompt "Select spoolman spool manager support"
     default SPOOLMAN_OFF
     help
-      `                  | Activate/  | Fetch filament attributes | Filament gate    | Filament gate     |
-        spoolman_support | Deactivate | attributes from spoolman  | assignment shown | assignment pulled |
-                         | spool?     | based on spool_id?        | in spoolman db?  | from spoolman db? |
-        -----------------+------------+---------------------------+------------------+-------------------+
-             off         |     no     |           no              |        no        |        no         |
-             readonly    |     yes    |           yes             |        no        |        no         |
-             push        |     yes    |           yes             |        yes       |        no         |
-             pull        |     yes    |           yes             |        yes       |        yes        |
+      |                  | Activate/  | Fetch filament attributes | Filament gate    | Filament gate     |
+      | spoolman_support | Deactivate | attributes from spoolman  | assignment shown | assignment pulled |
+      |                  | spool?     | based on spool_id?        | in spoolman db?  | from spoolman db? |
+      +------------------+------------+---------------------------+------------------+-------------------+
+      |      off         |     no     |           no              |        no        |        no         |
+      |      readonly    |     yes    |           yes             |        no        |        no         |
+      |      push        |     yes    |           yes             |        yes       |        no         |
+      |      pull        |     yes    |           yes             |        yes       |        yes        |
 
     config SPOOLMAN_OFF
       bool "Off"
@@ -96,28 +96,24 @@ menu "Software Options"
 
   config INSTALL_CLIENT_MACROS
     bool "Install default client macros supplied with Happy Hare? (strongly recommended)"
+    default y
     help
       Includes the Happy Hare "client macros" with augmented pause/resume/cancel behavior.
       This is highly recommended and incorporates all functionality from popular alternatives
       like mainsail client macros but also works in conjunction with Happy Hare toolhead movement.
-    default y
 
-  menu "Advanced"
+  config REPETIER
+    bool "Enable Repetier support?"
+    help
+      Enable ONLY if you need Repetier support otherwise leave disabled
 
-    config REPETIER
-      bool "Enable Repetier support?"
-      help
-        Enable ONLY if you need Repetier support otherwise leave disabled
+  config REPETIER_NAME
+    string "Repetier name"
+    depends on REPETIER
 
-    config REPETIER_NAME
-      string "Repetier name"
-      depends on REPETIER
-
-    config OCTOPRINT
-      bool "Enable Octoprint support?"
-      help
-        Enable ONLY if you need to use Octoprint otherwise recommended to leave disabled
-
-  endmenu
+  config OCTOPRINT
+    bool "Enable Octoprint support?"
+    help
+      Enable ONLY if you need to use Octoprint otherwise recommended to leave disabled
 
 endmenu

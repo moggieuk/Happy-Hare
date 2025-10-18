@@ -41,7 +41,7 @@ if MMU_FAMILY_QUATTRO_BOX
   ##### Defaults #####
   ####################
   
-  config PARAM_MMU_VENDOR
+  config PARAM_VENDOR
     default "QuattroBox"
   config PARAM_NUM_GATES
     default 4
@@ -66,16 +66,8 @@ if MMU_FAMILY_QUATTRO_BOX
   config PARAM_GATE_FINAL_EJECT_DISTANCE
     default "200"
 
-# PAUL
-#  choice CHOICE_GATE_HOMING_ENDSTOP
-#    default CHOICE_GATE_HOMING_ENDSTOP_GATE
-#  endchoice
-#  choice CHOICE_EXTRUDER_HOMING_ENDSTOP
-#    default CHOICE_EXTRUDER_HOMING_ENDSTOP_COLLISION
-#  endchoice
-
   if MMU_TYPE_QUATTRO_BOX_1_0
-    config PARAM_MMU_VERSION
+    config PARAM_VERSION
       default "1.0"  
     config PARAM_CHAIN_COUNT
       default 32   
@@ -90,7 +82,7 @@ if MMU_FAMILY_QUATTRO_BOX
   endif 
 
   if MMU_TYPE_QUATTRO_BOX_1_1
-    config PARAM_MMU_VERSION
+    config PARAM_VERSION
       default "1.1"  
 
     config PARAM_CHAIN_COUNT

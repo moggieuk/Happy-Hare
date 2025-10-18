@@ -1,7 +1,7 @@
 # Savox MG-90S servo
 # Used by ERCF v1.1, v2.0
 
-if PARAM_MMU_VENDOR = "ERCF"
+if PARAM_VENDOR = "ERCF"
   config SERVO_TYPE_MG_90S
     bool "MG-90S"
 
