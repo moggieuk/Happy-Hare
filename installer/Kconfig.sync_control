@@ -57,6 +57,7 @@ menu "MMU/Extruder Sync"
 
     config BOOL_ENABLE_SYNC_FEEDBACK
       bool "Enable sync feedback?"
+      def_bool y
       help
         Sync feedback will be used to dynamically adjust the gear stepper speed to
         match the extruder.

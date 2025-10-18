@@ -7,5 +7,5 @@ menu "MMU Additions/Modifications"
     the best possible starter configuration.
 
   rsource "Kconfig.*"
-  source "sensors/Kconfig" # Useful to include sensors here too
+  source "Kconfig.sensors" # Useful to include sensors here too
 endmenu

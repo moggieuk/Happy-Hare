@@ -24,8 +24,8 @@ menu "Advanced/Raw Settings"
       help
         Printer toolhead capabilities
         Here you can configure printer toolhead options such as sensors
-      source "sensors/Kconfig.toolhead"
       source "sensors/Kconfig.extruder"
+      source "sensors/Kconfig.toolhead"
     endmenu
   endif
 
@@ -33,7 +33,7 @@ menu "Advanced/Raw Settings"
     source "Kconfig.gates"
     source "Kconfig.leds"
     source "Kconfig.encoder"
-    source "sensors/Kconfig"
+    source "Kconfig.sensors"
     source "Kconfig.endstops"
     source "Kconfig.filament_speeds"
     source "Kconfig.gear_stepper"

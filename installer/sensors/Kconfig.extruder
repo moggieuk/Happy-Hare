@@ -1,12 +1,12 @@
 config MMU_HAS_SENSOR_EXTRUDER
+  bool "Extruder (entry) sensor?"
   help
     Select if you have a filament sensor at or just prior to
     the extruder entry. This is normally connected to a pin on your main
     printer MCU so specify it here.
-  bool "Extruder (entry) sensor?"
   
 if MMU_HAS_SENSOR_EXTRUDER
   config PIN_EXTRUDER_SENSOR
     string "Extruder sensor pin"
-    default "pinX"
+    default ""
 endif

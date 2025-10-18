@@ -1,9 +1,9 @@
-  config MMU_HAS_SENSOR_GEAR_TOUCH
-    help
-      Select if you have a TMC driver with DIAG pin available and
-      wish to configure gear "touch" homing. This can be used to
-      detect filament collisions with the extruder.
+config MMU_HAS_SENSOR_GEAR_TOUCH
+  bool "Configure gear \"touch\" sensor?"
+  help
+    Select if you have a TMC driver with DIAG pin available and
+    wish to configure gear "touch" homing. This can be used to
+    detect filament collisions with the extruder.
 
-      CAUTION: this requires careful stallguard tuning and not
-      recommended for first time setups.
-    bool "Configure gear \"touch\" sensor?"
+    CAUTION: this requires careful stallguard tuning and not
+    recommended for first time setups.
