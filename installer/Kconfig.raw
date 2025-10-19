@@ -13,6 +13,7 @@ menu "Advanced/Raw Settings"
 
   if !MULTI_UNIT_ENTRY_POINT
     source "Kconfig.num_gates"
+    source "Kconfig.speeds"
   endif
 
   if !MULTI_UNIT || MULTI_UNIT_ENTRY_POINT
@@ -30,15 +31,14 @@ menu "Advanced/Raw Settings"
   endif
 
   if !MULTI_UNIT_ENTRY_POINT
-    source "Kconfig.gates"
+    source "Kconfig.gear_stepper"
+    source "Kconfig.selector_stepper"
+    source "Kconfig.selector_servo"
     source "Kconfig.leds"
     source "Kconfig.encoder"
     source "Kconfig.sensors"
     source "Kconfig.endstops"
-    source "Kconfig.filament_speeds"
-    source "Kconfig.gear_stepper"
-    source "Kconfig.selector_stepper"
-    source "Kconfig.selector_servo"
+    source "Kconfig.gates"
     source "Kconfig.sync_control"
     source "Kconfig.calibration"
     source "Kconfig.pins"

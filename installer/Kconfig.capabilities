@@ -10,13 +10,13 @@
 #   MMU_HAS_ESPOOLER
 #   MMU_HAS_FILAMENT_BUFFER
 #   MMU_HAS_LEDS
+#
 #   PARAM_MISC_HARDWARE
 #
-# Behavior parameters which are generally determined by MMU type
-#
-#   imply  XXX          .. to suggest on
-#   select XXX          .. to force on
-#   select UNSELECT_XXX .. to force off/disable
+# Behavior parameters are generally determined by MMU type, use
+#   "imply  XXX"          .. to suggest on
+#   "select XXX"          .. to force on
+#   "select UNSELECT_XXX" .. to force off/disable
 #
 # but can be tuned, especially for custom designs.
 #
@@ -58,11 +58,10 @@ config PARAM_MISC_HARDWARE
   string
   default ""
 
-menu "Design Attributes"
+menu "Design attributes"
   source "Kconfig.selector_type" 
 
   config UNSELECT_HAS_BYPASS
-    bool
     def_bool n
   comment "Has filament bypass? DISABLED"
     depends on UNSELECT_HAS_BYPASS
@@ -73,7 +72,6 @@ menu "Design Attributes"
       Whether the MMU design has a built in bypass that can be selected (e.g. ERCF)
 
   config UNSELECT_VARIABLE_BOWDEN_LENGTHS
-    bool
     def_bool n
   comment "Variable bowden lengths? DISABLED" 
     depends on UNSELECT_VARIABLE_BOWDEN_LENGTHS
@@ -86,7 +84,6 @@ menu "Design Attributes"
       Linear Selector and single bowden exit from the MMU.
 
   config UNSELECT_VARIABLE_ROTATION_DISTANCES
-    bool
     def_bool n
   comment "Variable rotation distances? DISABLED" 
     depends on UNSELECT_VARIABLE_ROTATION_DISTANCES
@@ -98,7 +95,6 @@ menu "Design Attributes"
       the same vendor the rotation distance can vary, hence this option.
 
   config UNSELECT_REQUIRE_BOWDEN_MOVE
-    bool
     def_bool n
   comment "Require bowden move? DISABLED" 
     depends on UNSELECT_REQUIRE_BOWDEN_MOVE
@@ -109,20 +105,18 @@ menu "Design Attributes"
       Whether the design requires a calibrated fast bowden move to reach the extruder.
       This is not necessary if there is a filament splitter/combiner near the toolhead.
 
-  config UNSELECT_VARIABLE_BOWDEN_LENGTHS
-    bool
+  config UNSELECT_FILAMENT_ALWAYS_GRIPPED
     def_bool n
   comment "Filament always gripped? DISABLED"
-    depends on UNSELECT_VARIABLE_BOWDEN_LENGTHS
+    depends on UNSELECT_FILAMENT_ALWAYS_GRIPPED
   config PARAM_FILAMENT_ALWAYS_GRIPPED
     bool "Filament always gripped?"
-    depends on !UNSELECT_VARIABLE_BOWDEN_LENGTHS
+    depends on !UNSELECT_FILAMENT_ALWAYS_GRIPPED
     help
       Whether the design is always gripping the filament. For most type-B designs this
       will be true, but type-A designs have a choice.
 
   config UNSELECT_CAN_CROSSLOAD
-    bool
     def_bool n
   comment "Can crossload/unload? DISABLED"
     depends on UNSELECT_CAN_CROSSLOAD

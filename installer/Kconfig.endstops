@@ -48,7 +48,7 @@ config PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_COLLISION
 config PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE
   def_bool n
 
-menu "Endstops"
+menu "Bowden move endstops"
 
   choice CHOICE_GATE_HOMING_ENDSTOP 
     prompt "Gate homing endstop"
@@ -111,7 +111,6 @@ menu "Endstops"
     default "mmu_gate"        if CHOICE_GATE_HOMING_ENDSTOP_GATE
     default "encoder"         if CHOICE_GATE_HOMING_ENDSTOP_ENCODER
     default ""                if CHOICE_GATE_HOMING_ENDSTOP_NONE
-
 
   choice CHOICE_EXTRUDER_HOMING_ENDSTOP
     prompt "Extruder homing endstop" 

@@ -10,7 +10,7 @@
 #   PARAM_SYNC_FEEDBACK_BUFFER_RANGE
 #   PARAM_SYNC_FEEDBACK_BUFFER_MAXRANGE
 
-menu "MMU/Extruder Sync"
+menu "MMU/Extruder sync"
   help
     Some MMU designs allow fine control over when the MMU stepper is
     synced with the extruder stepper. Synchronization helps to
@@ -19,6 +19,7 @@ menu "MMU/Extruder Sync"
   if !FILAMENT_ALWAYS_GRIPPED
     config BOOL_ENABLE_SYNC_TO_EXTRUDER
       bool "Enable sync to extruder?"
+      default y if FILAMENT_ALWAYS_GRIPPED
       help
         This controls whether the extruder and gear steppers are synchronized
         during printing operations.
@@ -57,7 +58,7 @@ menu "MMU/Extruder Sync"
 
     config BOOL_ENABLE_SYNC_FEEDBACK
       bool "Enable sync feedback?"
-      def_bool y
+      default y
       help
         Sync feedback will be used to dynamically adjust the gear stepper speed to
         match the extruder.

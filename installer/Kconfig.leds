@@ -1,3 +1,16 @@
+# LED parameter token types and defaults. Must be used within
+# a "if MMU_HAS_LEDS" is cfg templates
+#
+# Responsible for setting:
+#   PARAM_LED_ENABLE
+#   PARAM_ANIMATE_LEDS
+#   PARAM_CHAIN_COUNT
+#   PARAM_COLOR_ORDER
+#   PARAM_EXIT_LEDS
+#   PARAM_ENTRY_LEDS
+#   PARAM_STATUS_LEDS
+#   PARAM_LOGO_LEDS
+
 if MMU_HAS_LEDS
   menu "Leds"
 

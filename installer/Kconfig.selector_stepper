@@ -7,13 +7,10 @@
 #   PARAM_SELECTOR_RUN_CURRENT
 #   PARAM_SELECTOR_HOLD_CURRENT
 #   PARAM_SELECTOR_ENDSTOP_NAME
-#
-#   PARAM_SELECTOR_MOVE_SPEED
-#   PARAM_SELECTOR_HOMING_SPEED
-#   PARAM_SELECTOR_TOUCH_SPEED
 
 if MMU_HAS_SELECTOR_STEPPER
   menu "Selector steper"
+
     config PARAM_SELECTOR_GEAR_RATIO
       string "Selector gear ratio"
       default "1:1"
@@ -34,20 +31,5 @@ if MMU_HAS_SELECTOR_STEPPER
       string
       default "mmu_sel_home"
 
-    comment "Speeds"
-
-    config PARAM_SELECTOR_MOVE_SPEED
-      string "Speed of non-touch selector movement (mm/s)"
-      default "200"
-
-    config PARAM_SELECTOR_HOMING_SPEED
-      string "Speed of selector homing moves (mm/s)"
-      depends on !INDEXED_SELECTOR
-      default "60"
-
-    config PARAM_SELECTOR_TOUCH_SPEED
-      string "Speed of touch selector movement (mm/s)"
-      depends on LINEAR_SELECTOR # PAUL not sure this is correct
-      default "80"
   endmenu
 endif 

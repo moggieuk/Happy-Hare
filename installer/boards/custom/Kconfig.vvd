@@ -85,13 +85,13 @@ chain_count: 14\n\
 color_order: GRB\n\
 \n\
 [temperature_sensor $(UNIT_NAME)_env_left]\n\
-sensor_type: AHT10 # Actually a ACT30$(comma) set 'update_aht10_commands: 1' in mmu_parameters.cfg\n\
+sensor_type: AHT10 # Actually a ACT30$(comma) set 'update_aht10_commands: 1' in mmu.cfg\n\
 i2c_mcu: $(MCU_NAME)\n\
 i2c_bus: i2c1_PA9_PA10\n\
 aht10_report_time: 10\n\
 \n\
 [temperature_sensor $(UNIT_NAME)_env_right]\n\
-sensor_type: AHT10 # Actually a ACT30$(comma) set 'update_aht10_commands: 1' in mmu_parameters.cfg\n\
+sensor_type: AHT10 # Actually a ACT30$(comma) set 'update_aht10_commands: 1' in mmu.cfg\n\
 i2c_mcu: $(MCU_NAME)\n\
 i2c_software_scl_pin: PA7\n\
 i2c_software_sda_pin: PA6\n\

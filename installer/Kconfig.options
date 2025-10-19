@@ -1,3 +1,18 @@
+# Defines parameter token types and defaults for popular software options
+#
+# Responsible for setting:
+#   PARAM_ENABLE_CLOG_DETECTION
+#   PARAM_ENABLE_ENDLESS_SPOOL
+#   PARAM_SPOOLMAN_SUPPORT
+#   PARAM_FORCE_FORM_TIP_STANDALONE
+#   PARAM_FORM_TIP_MACRO
+#   PARAM_EXTRUDER_FORM_TIP_CURRENT
+#   PARAM_SLICER_TIP_PARK_POS
+#   PARAM_PURGE_MACRO
+#   PARAM_EXTRUDER_PURGE_CURRENT
+#   PARAM_FORCE_PURGE_STANDALONE
+#   PARAM_SELECTOR_TOUCH_ENABLE
+
 menu "Software Options"
   help
     Software Options
@@ -5,24 +20,70 @@ menu "Software Options"
     configuration can be achieved later by editing generated klipper
     config files.
 
-  config BOOL_ENABLE_SELECTOR_TOUCH
-    bool "Enable touch selector operation using TMC Stallguard?"
+  config BOOL_FORCE_FORM_TIP_STANDALONE
+    bool "Happy Hare controlled tip forming/cutting"
+    def_bool y
     help
-      This allows for additional selector recovery steps but is difficult to tune.
-      Not recommended if you are new to MMU/Happy-Hare.
-      The MCU must have DIAG output for steppers. Possible to configure later
-    depends on LINEAR_SELECTOR
-  config PARAM_SELECTOR_TOUCH_ENABLE
+      You can choose whether you want the slicer or Happy Hare (recommended) to control tip forming.
+      To use tip cutting ensure this selection is checked and be sure to turn off in your slicer
+  config PARAM_FORCE_FORM_TIP_STANDALONE
     int
-    default 1 if BOOL_ENABLE_SELECTOR_TOUCH
+    default 1 if BOOL_FORCE_FORM_TIP_STANDALONE
     default 0
 
-  if BOARD_TYPE_EASY_BRD
-    comment " !!! IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..] on the EASY-BRD. MAKE A NOTE NOW !!! "
-      depends on BOOL_ENABLE_SELECTOR_TOUCH
-    comment " !!! IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..] on the EASY-BRD. MAKE A NOTE NOW !!! "
-      depends on !BOOL_ENABLE_SELECTOR_TOUCH
-  endif
+  menu "Form tip settings"
+    if BOOL_FORCE_FORM_TIP_STANDALONE
+      config PARAM_FORM_TIP_MACRO
+        string "Tip forming/cutting macro"
+        default "_MMU_FORM_TIP"
+        help
+          Name of macro to call to perform the tip forming (or cutting) operation
+
+      config PARAM_EXTRUDER_FORM_TIP_CURRENT
+        int "Extruder tip forming current"
+        default 100
+        help
+          % of extruder current (100%-150%) to use when forming tip (100 to disable feature)
+    endif
+
+    config PARAM_SLICER_TIP_PARK_POS
+      string "Slicer tip park pos"
+      default "0"
+      depends on !BOOL_FORCE_FORM_TIP_STANDALONE
+      help
+        This specifies the position of filament in extruder after slicer completes tip forming
+        and is usually a setting in the slicer config.
+        (It is necessary to help Happy Hare complete the extruder unloading process)
+  endmenu
+
+  config BOOL_FORCE_PURGE_STANDALONE
+    bool "Happy Hare controlled purge"
+    def_bool y
+    help
+      You can choose whether you want the slicer or Happy Hare (recommended) to control filament purging.
+      To use intelligent volume purging or purge systems like Blobifier ensure this selection is checked
+      and be sure to turn off in your slicer
+  config PARAM_FORCE_PURGE_STANDALONE
+    int
+    default 1 if BOOL_FORCE_PURGE_STANDALONE
+    default 0
+
+  menu "Purge settings"
+    depends on BOOL_FORCE_PURGE_STANDALONE
+
+    config PARAM_PURGE_MACRO
+      string "Tip forming/cutting macro"
+      default "_MMU_PURGE"
+      help
+        Name of macro to call to perform the standalone purging operation.
+        E.g. BLOBIFIER, _MMU_PURGE
+
+    config PARAM_EXTRUDER_PURGE_CURRENT
+      int "Extruder purging current"
+      default 100
+      help
+        % of extruder current (100%-150%) to use when purging (100 to disable feature)
+  endmenu
 
   config BOOL_ENABLE_CLOG_DETECTION
     bool "Enable clog detection?"
@@ -102,18 +163,39 @@ menu "Software Options"
       This is highly recommended and incorporates all functionality from popular alternatives
       like mainsail client macros but also works in conjunction with Happy Hare toolhead movement.
 
-  config REPETIER
-    bool "Enable Repetier support?"
+  config BOOL_ENABLE_SELECTOR_TOUCH
+    bool "Enable touch selector operation using TMC Stallguard?"
     help
-      Enable ONLY if you need Repetier support otherwise leave disabled
+      This allows for additional selector recovery steps but is difficult to tune.
+      Not recommended if you are new to MMU/Happy-Hare.
+      The MCU must have DIAG output for steppers. Possible to configure later
+    depends on LINEAR_SELECTOR
+  config PARAM_SELECTOR_TOUCH_ENABLE
+    int
+    default 1 if BOOL_ENABLE_SELECTOR_TOUCH
+    default 0
 
-  config REPETIER_NAME
-    string "Repetier name"
-    depends on REPETIER
+  if BOARD_TYPE_EASY_BRD
+    comment " !!! IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..] on the EASY-BRD. MAKE A NOTE NOW !!! "
+      depends on BOOL_ENABLE_SELECTOR_TOUCH
+    comment " !!! IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..] on the EASY-BRD. MAKE A NOTE NOW !!! "
+      depends on !BOOL_ENABLE_SELECTOR_TOUCH
+  endif
 
-  config OCTOPRINT
-    bool "Enable Octoprint support?"
-    help
-      Enable ONLY if you need to use Octoprint otherwise recommended to leave disabled
+  menu "Advanced"
+    config REPETIER
+      bool "Enable Repetier support?"
+      help
+        Enable ONLY if you need Repetier support otherwise leave disabled
+
+    config REPETIER_NAME
+      string "Repetier name"
+      depends on REPETIER
+
+    config OCTOPRINT
+      bool "Enable Octoprint support?"
+      help
+        Enable ONLY if you need to use Octoprint otherwise recommended to leave disabled
+  endmenu
 
 endmenu

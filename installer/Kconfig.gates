@@ -1,14 +1,30 @@
-menu "Gate loading & parking"
+# This module defines types and parameters for control of the filament at the gate
+# E.g. gate parking, preloading, etc.
+#
+# Responsible for setting:
+#   PARAM_GATE_PARKING_DISTANCE
+#   PARAM_GATE_HOMING_MAX
+#   PARAM_GATE_PRELOAD_ENDSTOP
+#   PARAM_GATE_PRELOAD_PARKING_DISTANCE
+#   PARAM_GATE_PRELOAD_HOMING_MAX
+#   PARAM_GATE_FINAL_EJECT_DISTANCE
 
-  config PARAM_GATE_HOMING_MAX
-    string "Maximum homing distance to the gate (mm)"
-    default "100"
+menu "Gate loading & parking"
 
   config PARAM_GATE_PARKING_DISTANCE
     string "Gate parking distance (mm)"
     default "23"
     help
-      Filament parking distance (mm) after homing to configured gate sensor
+      Parking position relative to homing endstop (must be retraction unless endstop is mmu_gear)
+
+      Positive values for movement in the extrude direction (past sensor)
+      Negative values for movement in the retract direction (back off sensor)
+
+  config PARAM_GATE_HOMING_MAX
+    string "Maximum homing distance to the gate (mm)"
+    default "100"
+    help
+      Maximum extra move distance to home (or actual move distance if using "encoder" endstop)
 
   choice CHOICE_GATE_PRELOAD_ENDSTOP 
     prompt "Gate preload endstop"
@@ -16,36 +32,39 @@ menu "Gate loading & parking"
       Typically this will be the individual mmu exit sensor if is configured else the same
       as the gate homing endstop
 
-    config GATE_PRELOAD_ENDSTOP_DEFAULT
+    config CHOICE_GATE_PRELOAD_ENDSTOP_DEFAULT
       bool "Same as gate homing endstop"
       help
         Use gate homing endstop (no individual mmu exit sensors are available))
 
-    config GATE_PRELOAD_ENDSTOP_GEAR
+    config CHOICE_GATE_PRELOAD_ENDSTOP_GEAR
       bool "Individual mmu exit sensors" if MMU_HAS_SENSOR_POST_GEAR
       help
-        Use individual per gate exit sensor (often implemented as the per-gate hub entry sensor)
+        Use individual per-gate exit sensor (often implemented as the per-gate hub entry sensor)
   endchoice
-
   # Create no-prompt param from choice
   config PARAM_GATE_PRELOAD_ENDSTOP
     string 
-    default "" if !MMU_HAS_SENSOR_POST_GEAR
-    default "mmu_gear" if MMU_HAS_SENSOR_POST_GEAR
-
-  config PARAM_GATE_PRELOAD_HOMING_MAX
-    string "Maximum homing distance to the mmu_gear endstop (mm)"
-    default "100"
+    default "mmu_gear" if CHOICE_GATE_PRELOAD_ENDSTOP_GEAR
+    default ""         # Defaults to gate homing endstop
 
   config PARAM_GATE_PRELOAD_PARKING_DISTANCE
     string "Preload parking distance (mm)"
     default "0"
     help
-      Filament parking distance (mm) after homing to configured gate sensor
-      or `mmu_gear' sensor if available
+      Filament parking distance (mm) after homing to configured gate homing sensor
+      or per-gate "mmu_exit" sensor if available.
+      Positive values for movement in the extrude direction (past sensor)
+      Negative values for movement in the retract direction (back off sensor)
+
+  config PARAM_GATE_PRELOAD_HOMING_MAX
+    string "Maximum homing distance to the mmu_gear endstop (mm)"
+    default "100"
 
   config PARAM_GATE_FINAL_EJECT_DISTANCE
     string "Distance to eject filament after unload (mm)"
     default "0"
+    help
+      Additional distance to eject filament on MMU_EJECT to clear MMU's grip
 
 endmenu

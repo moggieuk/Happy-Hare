@@ -1,7 +1,7 @@
 if MMU_HAS_SYNC_FEEDBACK_BUFFER
   config MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION
     bool "Sync-Feedback Compression sensor (aka buffer out)?"
-    def_bool y
+    default y
     help
       A sync-feedback sensor (often referred to as a "buffer") is
       a sensor that can detect filament compression and/or tension.
@@ -14,7 +14,7 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
 
   config MMU_HAS_SENSOR_SYNC_FEEDBACK_TENSION
     bool "Sync-Feedback Tension sensor (aka buffer in)?"
-    def_bool y
+    default y
     help
       A sync-feedback sensor (often referred to as a "buffer") is
       a sensor that can detect filament compression and/or tension.

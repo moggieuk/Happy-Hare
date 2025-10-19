@@ -1,0 +1,154 @@
+# Speed settings for gear stepper, selector stepper and extruder movement
+#
+# Responsible for setting:
+#   PARAM_GEAR_FROM_FILAMENT_BUFFER_SPEED
+#   PARAM_GEAR_FROM_FILAMENT_BUFFER_ACCEL
+#   PARAM_GEAR_FROM_SPOOL_SPEED
+#   PARAM_GEAR_FROM_SPOOL_ACCEL
+#   PARAM_GEAR_UNLOAD_SPEED
+#   PARAM_GEAR_UNLOAD_ACCEL
+#   PARAM_GEAR_HOMING_SPEED
+#   PARAM_GEAR_SHORT_MOVE_SPEED
+#   PARAM_GEAR_SHORT_MOVE_ACCEL
+#   PARAM_GEAR_SHORT_MOVE_THRESHOLD
+#
+# These must be in a "if MMU_HAS_SELECTOR" clause in cfg templates
+#   PARAM_SELECTOR_MOVE_SPEED
+#   PARAM_SELECTOR_HOMING_SPEED
+#   PARAM_SELECTOR_TOUCH_SPEED
+#
+# These are shared by all mmu_units
+#   PARAM_EXTRUDER_LOAD_SPEED
+#   PARAM_EXTRUDER_UNLOAD_SPEED
+#   PARAM_EXTRUDER_SYNC_LOAD_SPEED
+#   PARAM_EXTRUDER_SYNC_UNLOAD_SPEED
+#   PARAM_EXTRUDER_HOMING_SPEED
+#   PARAM_EXTRUDER_ACCEL
+
+menu "Speeds"
+
+  comment "Bowden movement speeds (mm/s)"
+
+  config PARAM_GEAR_FROM_FILAMENT_BUFFER_SPEED
+    string "Normal bowden load speed"
+    default "150"
+    help
+      Speed for normal filament loading (or from filament buffer if fitted)
+
+  config PARAM_GEAR_FROM_FILAMENT_BUFFER_ACCEL
+    string "Normal bowden load accelaration"
+    default "400"
+
+  config PARAM_GEAR_FROM_SPOOL_SPEED
+    string "Loading from spool speed"
+    default "80"
+    depends on MMU_HAS_FILAMANT_BUFFER
+    help
+      Fast speed when loading filament from the spool and the filament is not yet buffered
+      (first time load). This can be helpful in allowing a slower than normal speed to overcome
+      friction without the stepper loosing steps
+
+  config PARAM_GEAR_FROM_SPOOL_ACCEL
+    string "Loading from spool accelaration"
+    depends on MMU_HAS_FILAMANT_BUFFER
+    default "100"
+
+  config PARAM_GEAR_UNLOAD_SPEED
+    string "Normal bowden unload speed"
+    default "80"
+    help
+      You can use a lower speed when unloading filament. This is useful if you have an eSpool
+      rewinder system that limits speed
+
+  config PARAM_GEAR_UNLOAD_ACCEL
+    string "Normal bowden unload accelaration"
+    default "100"
+
+  config PARAM_GEAR_HOMING_SPEED
+    string "Gear homing speed"
+    default "50"
+    help
+      Speed of gear stepper only homing moves (e.g. homing to gate or extruder)
+
+  config PARAM_GEAR_SHORT_MOVE_SPEED
+    string "Short movement speed"
+    default "80"
+    help
+      Speed when making short moves (e.g. incremental retracts with encoder)
+
+  config PARAM_GEAR_SHORT_MOVE_ACCEL
+    string "Short movement accelaration"
+    default "400"
+
+  config PARAM_GEAR_SHORT_MOVE_THRESHOLD
+    string "Short move threshold"
+    default "70"
+    help
+      Individual move distance below which is considered a short move
+
+  if !MULTI_UNIT || MULTI_UNIT_ENTRY_POINT
+    if !PARAM_FILAMENT_ALWAYS_GRIPPED
+      config PARAM_EXTRUDER_LOAD_SPEED
+        string "Extruder load speed"
+        default "16"
+        help
+          Speed of load move inside extruder from homing position to meltzone
+
+      config PARAM_EXTRUDER_UNLOAD_SPEED
+        string "Extruder unload speed"
+        default "16"
+        help
+          Speed of unload moves inside of extruder
+          (very initial move from meltzone is 50% of this)
+    endif
+
+    config PARAM_EXTRUDER_SYNC_LOAD_SPEED
+      string "Extruder sync load speed"
+      default "18"
+      help
+        Speed of load move inside extruder from homing position to meltzone
+        when synced with MMU gear stepper
+
+    config PARAM_EXTRUDER_SYNC_UNLOAD_SPEED
+      string "Extruder sync unload speed"
+      default "18"
+      help
+        Speed of unload moves inside of extruder when synced with MMU gear stepper
+        (very initial move from meltzone is 50% of this)
+
+    config PARAM_EXTRUDER_HOMING_SPEED
+      string "Extruder homing speed"
+      default "16"
+      help
+        Speed of extruder only homing moves (e.g. to toolhead sensor)
+
+    config PARAM_EXTRUDER_ACCEL
+      string "Extruder accelaration"
+      default "1500"
+      help
+        The accelaration of the extruder stepper is limited to this value when performing MMU
+        filament load/unload moves. This prevents too rapid a movement that could cause the
+        extruder stepper to loose steps
+  endif
+
+  if MMU_HAS_SELECTOR_STEPPER
+    menu "Selector movement"
+
+      config PARAM_SELECTOR_MOVE_SPEED
+        string "Speed of non-touch selector movement (mm/s)"
+        default "200"
+
+      config PARAM_SELECTOR_HOMING_SPEED
+        string "Speed of selector homing moves (mm/s)"
+        depends on !INDEXED_SELECTOR
+        default "60"
+
+      config PARAM_SELECTOR_TOUCH_SPEED
+        string "Speed of touch selector movement (mm/s)"
+        depends on LINEAR_SELECTOR # PAUL not sure this is correct
+        default "80"
+
+    endmenu
+  endif 
+
+endmenu

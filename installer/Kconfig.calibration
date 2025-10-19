@@ -1,7 +1,22 @@
-menu "Calibration / Autotuning"
+# Calibration and autotuning parameter token types and defaults
+#
+# Behavior parameters are generally determined by MMU type, use
+#   "imply  XXX"          .. to suggest on
+#   "select XXX"          .. to force on
+#   "select UNSELECT_XXX" .. to force off/disable
+#
+# Responsible for setting:
+#   PARAM_AUTOCAL_BOWDEN_LENGTH
+#   PARAM_AUTOTUNE_BOWDEN_LENGTH
+#   PARAM_SKIP_CAL_ROTATION_DISTANCE
+#   PARAM_AUTOTUNE_ROTATION_DISTANCE
+#   PARAM_SKIP_CAL_ENCODER
+#   PARAM_AUTOTUNE_ENCODER
 
+menu "Calibration/Autotuning"
   config BOOL_AUTOCAL_BOWDEN_LENGTH
     bool "Auto calibration bowden length"
+    default y
     help
       Automated bowden length calibration.
       The calibrated bowden length will be established on first load. It can also be set
@@ -15,6 +30,7 @@ menu "Calibration / Autotuning"
 
   config BOOL_AUTOTUNE_BOWDEN_LENGTH
     bool "Autotune bowden length"
+    default n
     help
       Automated bowden length tuning.
       Once calibrated this setting will tune the bowden distance over time.
@@ -26,6 +42,7 @@ menu "Calibration / Autotuning"
 
   config BOOL_SKIP_CAL_ROTATION_DISTANCE
     bool "Skip rotation distance calibration"
+    default n
     help
       Skip rotation distance calibration (MMU_CALIBRATE_GEAR).
       This will rely on installed default value (although it can still be calibrated).
@@ -37,7 +54,7 @@ menu "Calibration / Autotuning"
 
   config BOOL_AUTOTUNE_ROTATION_DISTANCE
     bool "Autotune rotation distance"
-    depends on MMU_HAS_SYNC_FEEDBACK_BUFFER
+    default y if MMU_HAS_SYNC_FEEDBACK_BUFFER && MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION && MMU_HAS_SENSOR_SYNC_FEEDBACK_TENSION
     help
       Automated gate calibration/tuning.
       Requires sync-feedback sensor (aka "buffer") with both compression and tension switches
@@ -49,6 +66,7 @@ menu "Calibration / Autotuning"
 
   config BOOL_SKIP_CAL_ENCODER
     bool "Skip encoder calibration"
+    default n
     help
       Skip encoder calibration (MMU_CALIBRATE_ENCODER).
       Will rely on installed default value (although it can still be calibrated).
@@ -60,6 +78,7 @@ menu "Calibration / Autotuning"
 
   config BOOL_AUTOTUNE_ENCODER
     bool "Autotune encoder"
+    default n
     help
       Automated encoder tuning.
       Not Implemented Yet!
@@ -67,5 +86,4 @@ menu "Calibration / Autotuning"
     int
     default 1 if BOOL_AUTOTUNE_ENCODER
     default 0
-
 endmenu

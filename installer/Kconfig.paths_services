@@ -7,14 +7,14 @@ menu "Paths & Services"
   config KLIPPER_HOME
     string "Klipper directory"
     default "$(CONFIG_KLIPPER_HOME)" if $(to_bool, [ -n "$(CONFIG_KLIPPER_HOME)" ])
-    default "/usr/share/klipper" if $(to_bool, [ -d "/usr/share/klipper" ])
+    default "/usr/share/klipper"     if $(to_bool, [ -d "/usr/share/klipper" ])
     default "~/klipper"
 
   config MOONRAKER_HOME
     string "Moonraker directory"
     depends on !OCTOPRINT
     default "$(CONFIG_MOONRAKER_HOME)" if $(to_bool, [ -n "$(CONFIG_MOONRAKER_HOME)" ])
-    default "/usr/data/moonraker" if $(to_bool, [ -e "/usr/data/moonraker" ])
+    default "/usr/data/moonraker"      if $(to_bool, [ -e "/usr/data/moonraker" ])
     default "~/moonraker"
 
   config KLIPPER_CONFIG_HOME
@@ -40,7 +40,7 @@ menu "Paths & Services"
 
   config PARAM_MMU_VARS_CFG
     string "save_variables path"
-    default "$(CONFIG_KLIPPER_CONFIG_HOME)/mmu/mmu_vars.cfg" if $(to_bool, [ -n "$(CONFIG_KLIPPER_CONFIG_HOME)" ])
+    default "$(shell, printf %s/mmu/mmu_vars.cfg $(CONFIG_KLIPPER_CONFIG_HOME))" if $(to_bool, [ -n "$(CONFIG_KLIPPER_CONFIG_HOME)" ])
     default "/usr/data/printer_data/config/mmu/mmu_vars.cfg" if $(to_bool, [ -e "/usr/data/printer_data" ])
     default "~/printer_data/config/mmu/mmu_vars.cfg"
 
@@ -52,7 +52,7 @@ menu "Paths & Services"
     string "Klipper service name"
     depends on !REPETIER
     default "${CONFIG_SERVICE_KLIPPER}" if $(to_bool, [ -n "$(CONFIG_SERVICE_KLIPPER)" ])
-    default "klipper.service" if INIT_SYSTEMD
+    default "klipper.service"           if INIT_SYSTEMD
     default "klipper_service"
 
   config SERVICE_MOONRAKER
@@ -71,5 +71,4 @@ menu "Paths & Services"
     default $(to_bool, [ -d /etc/systemd/system ])
     help
       Set if host computer using /etc/systemd/system for service restart
-
 endmenu
