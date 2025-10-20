@@ -638,9 +638,7 @@ class MmuSyncFeedbackManager:
         
         rd_clamp[1] = selected_rd
         if 'decision' in locals():  # only present when not neutral
-            self.mmu.log_debug("MmuSyncFeedbackManager: %s gear motor %s" % (
-                decision, "(proportional hysteresis)" if bool(self.sync_feedback_proportional_sensor) else ""
-            ))
+            self.mmu.log_debug("MmuSyncFeedbackManager: %s gear motor" % (decision))
 
         
         self.mmu.log_debug(
