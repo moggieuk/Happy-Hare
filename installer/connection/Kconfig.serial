@@ -2,12 +2,12 @@
 #   PARAM_SERIAL_DEVICE
 #   PARAM_BUFFER_SERIAL_DEVICE (if MMU_HAS_BUFFER_MCU is true)
 
-config MCU_CONNECTION_TYPE_SERIAL
+config CHOICE_MCU_CONNECTION_TYPE_SERIAL
   bool "Serial"
   help
     Select if your MMU connects via serial connetion to mcu board
 
-if MCU_CONNECTION_TYPE_SERIAL
+if CHOICE_MCU_CONNECTION_TYPE_SERIAL
   # Make the first 10 available serial tty devices selectable, it's unlikely people have more.
   # And if they do, they probably know what they are doing and have no issue manually selecting it.
   # Not the prettiest configuration, but it works

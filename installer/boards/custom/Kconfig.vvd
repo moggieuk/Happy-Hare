@@ -10,7 +10,7 @@ if BOARD_TYPE_VVD_1_0
   endchoice
 
   choice BUFFER_SERIAL_DEVICE
-    default $(serial_config,2,stm32)
+    default $(buffer_serial_config,1,stm32)
   endchoice
 
   config PIN_SELECTOR_UART

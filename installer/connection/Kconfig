@@ -14,17 +14,15 @@ config PARAM_SERIAL_DEVICE
 config PARAM_CANBUS_UUID
   hex
 
-if MMU_HAS_BUFFER_MCU
-  config PARAM_BUFFER_SERIAL_DEVICE
-    string
+config PARAM_BUFFER_SERIAL_DEVICE
+  string
 
-  config PARAM_BUFFER_CANBUS_UUID
-    hex
-endif
+config PARAM_BUFFER_CANBUS_UUID
+  hex
 
 choice MCU_CONNECTION_TYPE
   prompt "MCU connection"
-  default MCU_CONNECTION_TYPE_SERIAL
+  default CHOICE_MCU_CONNECTION_TYPE_SERIAL
   help 
     Choose the type of mcu connection for the MMU
 
