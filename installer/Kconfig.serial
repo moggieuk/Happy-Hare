@@ -2,86 +2,15 @@
 #   PARAM_SERIAL
 #   PARAM_BUFFER_SERIAL (if MMU_HAS_BUFFER_MCU is true)
 
-# Make the first 10 available serial tty devices selectable, it's unlikely people have more.
-# And if they do, they probably know what they are doing and have no issue manually selecting it.
-# Not the prettiest configuration, but it works
-choice CHOICE_SERIAL_DEVICE 
-  prompt "MMU's mcu serial device"
-  help
-    MCU connection for MMU
-    Specify the path of the serial device connected to the MMU's mcu.
-    It's best to use the /dev/serial/by-id/ path, as it's unique and
-    doesn't change when you plug in multiple serial devices.
-    Example: /dev/serial/by-id/usb-Klipper_MCU_12345678-if00
-    (CANbus must be configured manually by editing config files)
-  depends on $(serial_exists,1) # Only show if there are any serial tty devices to select. Likely an issue with the setup if none available
+menu "Serial"
 
-  config $(serial_config,1)
-    bool "$(serial,1)"
-    depends on $(serial_exists,1)
-  config $(serial_config,2)
-    bool "$(serial,2)"
-    depends on $(serial_exists,2)
-  config $(serial_config,3)
-    bool "$(serial,3)"
-    depends on $(serial_exists,3)
-  config $(serial_config,4)
-    bool "$(serial,4)"
-    depends on $(serial_exists,4)
-  config $(serial_config,5)
-    bool "$(serial,5)"
-    depends on $(serial_exists,5)
-  config $(serial_config,6)
-    bool "$(serial,6)"
-    depends on $(serial_exists,6)
-  config $(serial_config,7)
-    bool "$(serial,7)"
-    depends on $(serial_exists,7)
-  config $(serial_config,8)
-    bool "$(serial,8)"
-    depends on $(serial_exists,8)
-  config $(serial_config,9)
-    bool "$(serial,9)"
-    depends on $(serial_exists,9)
-  config $(serial_config,10)
-    bool "$(serial,10)"
-    depends on $(serial_exists,10)
-  config PARAM_SERIAL_OTHER
-    bool "Other Manually Entered"
-endchoice
-
-config PARAM_SERIAL
-  string
-  prompt "MMU's mcu serial device path" if PARAM_SERIAL_OTHER || !$(serial_exists,1)
-  help
-    MCU connection for MMU
-    Specify the path of the serial device connected to the MMU's mcu.
-    It's best to use the /dev/serial/by-id/ path, as it's unique and
-    doesn't change when you plug in multiple serial devices.
-    Example: /dev/serial/by-id/usb-Klipper_MCU_12345678-if00
-    (CANbus must be configured manually by editing config files)
-  default "$(serial,1)"  if $(serial_config,1)
-  default "$(serial,2)"  if $(serial_config,2)
-  default "$(serial,3)"  if $(serial_config,3)
-  default "$(serial,4)"  if $(serial_config,4)
-  default "$(serial,5)"  if $(serial_config,5)
-  default "$(serial,6)"  if $(serial_config,6)
-  default "$(serial,7)"  if $(serial_config,7)
-  default "$(serial,8)"  if $(serial_config,8)
-  default "$(serial,9)"  if $(serial_config,9)
-  default "$(serial,10)" if $(serial_config,10)
-  default ""
-
-
-# Some new designs have mcu integrated in sync-feedback buffer
-config MMU_HAS_BUFFER_MCU
-  def_bool n
-
-if MMU_HAS_BUFFER_MCU
-  choice CHOICE_SERIAL_BUFFER_DEVICE
-    prompt "MMU's buffer mcu serial device"
+  # Make the first 10 available serial tty devices selectable, it's unlikely people have more.
+  # And if they do, they probably know what they are doing and have no issue manually selecting it.
+  # Not the prettiest configuration, but it works
+  choice CHOICE_SERIAL_DEVICE
+    prompt "MMU's mcu serial device"
     help
-      MCU connection for sync-feedback buffer
+      MCU connection for MMU
       Specify the path of the serial device connected to the MMU's mcu.
       It's best to use the /dev/serial/by-id/ path, as it's unique and
       doesn't change when you plug in multiple serial devices.
@@ -89,59 +18,134 @@ if MMU_HAS_BUFFER_MCU
       (CANbus must be configured manually by editing config files)
     depends on $(serial_exists,1) # Only show if there are any serial tty devices to select. Likely an issue with the setup if none available
 
-    config $(buffer_serial_config,1)
+    config $(serial_config,1)
       bool "$(serial,1)"
       depends on $(serial_exists,1)
-    config $(buffer_serial_config,2)
+    config $(serial_config,2)
       bool "$(serial,2)"
       depends on $(serial_exists,2)
-    config $(buffer_serial_config,3)
+    config $(serial_config,3)
       bool "$(serial,3)"
       depends on $(serial_exists,3)
-    config $(buffer_serial_config,4)
+    config $(serial_config,4)
       bool "$(serial,4)"
       depends on $(serial_exists,4)
-    config $(buffer_serial_config,5)
+    config $(serial_config,5)
       bool "$(serial,5)"
       depends on $(serial_exists,5)
-    config $(buffer_serial_config,6)
+    config $(serial_config,6)
       bool "$(serial,6)"
       depends on $(serial_exists,6)
-    config $(buffer_serial_config,7)
+    config $(serial_config,7)
       bool "$(serial,7)"
       depends on $(serial_exists,7)
-    config $(buffer_serial_config,8)
+    config $(serial_config,8)
       bool "$(serial,8)"
       depends on $(serial_exists,8)
-    config $(buffer_serial_config,9)
+    config $(serial_config,9)
       bool "$(serial,9)"
       depends on $(serial_exists,9)
-    config $(buffer_serial_config,10)
+    config $(serial_config,10)
       bool "$(serial,10)"
       depends on $(serial_exists,10)
-    config PARAM_SERIAL_BUFFER_OTHER
+    config PARAM_SERIAL_OTHER
       bool "Other Manually Entered"
   endchoice
 
-  config PARAM_SERIAL_BUFFER
+  config PARAM_SERIAL
     string
-    prompt "MMU's buffer mcu serial device path" if PARAM_SERIAL_BUFFER_OTHER || !$(serial_exists,1)
+    prompt "MMU's mcu serial device path" if PARAM_SERIAL_OTHER || !$(serial_exists,1)
     help
-      MCU connection for sync-feedback buffer
-      Specify the path of the serial device connected to the MMU's buffer mcu.
+      MCU connection for MMU
+      Specify the path of the serial device connected to the MMU's mcu.
       It's best to use the /dev/serial/by-id/ path, as it's unique and
       doesn't change when you plug in multiple serial devices.
       Example: /dev/serial/by-id/usb-Klipper_MCU_12345678-if00
       (CANbus must be configured manually by editing config files)
-    default "$(serial,1)"  if $(buffer_serial_config,1)
-    default "$(serial,2)"  if $(buffer_serial_config,2)
-    default "$(serial,3)"  if $(buffer_serial_config,3)
-    default "$(serial,4)"  if $(buffer_serial_config,4)
-    default "$(serial,5)"  if $(buffer_serial_config,5)
-    default "$(serial,6)"  if $(buffer_serial_config,6)
-    default "$(serial,7)"  if $(buffer_serial_config,7)
-    default "$(serial,8)"  if $(buffer_serial_config,8)
-    default "$(serial,9)"  if $(buffer_serial_config,9)
-    default "$(serial,10)" if $(buffer_serial_config,10)
+    default "$(serial,1)"  if $(serial_config,1)
+    default "$(serial,2)"  if $(serial_config,2)
+    default "$(serial,3)"  if $(serial_config,3)
+    default "$(serial,4)"  if $(serial_config,4)
+    default "$(serial,5)"  if $(serial_config,5)
+    default "$(serial,6)"  if $(serial_config,6)
+    default "$(serial,7)"  if $(serial_config,7)
+    default "$(serial,8)"  if $(serial_config,8)
+    default "$(serial,9)"  if $(serial_config,9)
+    default "$(serial,10)" if $(serial_config,10)
     default ""
-endif
+
+
+  # Some new designs have mcu integrated in sync-feedback buffer
+  config MMU_HAS_BUFFER_MCU
+    def_bool n
+
+  if MMU_HAS_BUFFER_MCU
+    choice CHOICE_SERIAL_BUFFER_DEVICE
+      prompt "MMU's buffer mcu serial device"
+      help
+        MCU connection for sync-feedback buffer
+        Specify the path of the serial device connected to the MMU's mcu.
+        It's best to use the /dev/serial/by-id/ path, as it's unique and
+        doesn't change when you plug in multiple serial devices.
+        Example: /dev/serial/by-id/usb-Klipper_MCU_12345678-if00
+        (CANbus must be configured manually by editing config files)
+      depends on $(serial_exists,1) # Only show if there are any serial tty devices to select. Likely an issue with the setup if none available
+
+      config $(buffer_serial_config,1)
+        bool "$(serial,1)"
+        depends on $(serial_exists,1)
+      config $(buffer_serial_config,2)
+        bool "$(serial,2)"
+        depends on $(serial_exists,2)
+      config $(buffer_serial_config,3)
+        bool "$(serial,3)"
+        depends on $(serial_exists,3)
+      config $(buffer_serial_config,4)
+        bool "$(serial,4)"
+        depends on $(serial_exists,4)
+      config $(buffer_serial_config,5)
+        bool "$(serial,5)"
+        depends on $(serial_exists,5)
+      config $(buffer_serial_config,6)
+        bool "$(serial,6)"
+        depends on $(serial_exists,6)
+      config $(buffer_serial_config,7)
+        bool "$(serial,7)"
+        depends on $(serial_exists,7)
+      config $(buffer_serial_config,8)
+        bool "$(serial,8)"
+        depends on $(serial_exists,8)
+      config $(buffer_serial_config,9)
+        bool "$(serial,9)"
+        depends on $(serial_exists,9)
+      config $(buffer_serial_config,10)
+        bool "$(serial,10)"
+        depends on $(serial_exists,10)
+      config PARAM_SERIAL_BUFFER_OTHER
+        bool "Other Manually Entered"
+    endchoice
+
+    config PARAM_SERIAL_BUFFER
+      string
+      prompt "MMU's buffer mcu serial device path" if PARAM_SERIAL_BUFFER_OTHER || !$(serial_exists,1)
+      help
+        MCU connection for sync-feedback buffer
+        Specify the path of the serial device connected to the MMU's buffer mcu.
+        It's best to use the /dev/serial/by-id/ path, as it's unique and
+        doesn't change when you plug in multiple serial devices.
+        Example: /dev/serial/by-id/usb-Klipper_MCU_12345678-if00
+        (CANbus must be configured manually by editing config files)
+      default "$(serial,1)"  if $(buffer_serial_config,1)
+      default "$(serial,2)"  if $(buffer_serial_config,2)
+      default "$(serial,3)"  if $(buffer_serial_config,3)
+      default "$(serial,4)"  if $(buffer_serial_config,4)
+      default "$(serial,5)"  if $(buffer_serial_config,5)
+      default "$(serial,6)"  if $(buffer_serial_config,6)
+      default "$(serial,7)"  if $(buffer_serial_config,7)
+      default "$(serial,8)"  if $(buffer_serial_config,8)
+      default "$(serial,9)"  if $(buffer_serial_config,9)
+      default "$(serial,10)" if $(buffer_serial_config,10)
+      default ""
+  endif
+
+endmenu
