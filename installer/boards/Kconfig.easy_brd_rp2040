@@ -5,7 +5,7 @@ if BOARD_TYPE_EASY_BRD_RP2040
   config PARAM_BOARD_TYPE
     default "EASY-BRD-RP2040"
 
-  choice CHOICE_SERIAL_DEVICE
+  choice SERIAL_DEVICE
     default $(serial_config,1,rp2040)
   endchoice
 

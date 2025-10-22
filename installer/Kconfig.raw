@@ -8,8 +8,8 @@ menu "Advanced/Raw Settings"
     Advanced/Raw Settings
     Allows override of designer defaults. Only change these settings if
     you know what you are doing (or have MMU customizations). You can always
-    change later by re-running "./install.sh -i" or editing the generated
-    klipper config files.
+    change later by re-running "./install.sh -i" to run this editor (recommended)
+    (or editing the generated klipper config files)
 
   if !MULTI_UNIT_ENTRY_POINT
     source "Kconfig.num_gates"

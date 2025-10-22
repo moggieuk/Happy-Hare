@@ -5,7 +5,7 @@ if BOARD_TYPE_MMB_2_0
   config PARAM_BOARD_TYPE
     default "$(MCU_NAME):MMB20"
 
-  choice CHOICE_SERIAL_DEVICE
+  choice SERIAL_DEVICE
     default $(serial_config,1,stm32)
   endchoice
 

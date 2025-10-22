@@ -5,7 +5,7 @@ if BOARD_TYPE_SKR_PICO_1
   config PARAM_BOARD_TYPE
     default "SKR_PICO_1"
 
-  choice CHOICE_SERIAL_DEVICE
+  choice SERIAL_DEVICE
     default $(serial_config,1,rp2040)
   endchoice
 

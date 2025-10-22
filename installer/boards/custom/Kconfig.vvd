@@ -5,8 +5,12 @@ if BOARD_TYPE_VVD_1_0
   config PARAM_BOARD_TYPE
     default "VVD10"
 
-  choice CHOICE_SERIAL_DEVICE
+  choice SERIAL_DEVICE
     default $(serial_config,1,stm32)
+  endchoice
+
+  choice BUFFER_SERIAL_DEVICE
+    default $(serial_config,2,stm32)
   endchoice
 
   config PIN_SELECTOR_UART
@@ -71,66 +75,4 @@ if BOARD_TYPE_VVD_1_0
     config PIN_SYNC_FEEDBACK_COMPRESSION
       default "$(MCU_NAME)_buffer:PA5"
   endif
-
-  config PARAM_MISC_HARDWARE
-    default "$(ml,\
-[neopixel $(UNIT_NAME)_leds_1]\n\
-pin: $(MCU_NAME):PC6\n\
-chain_count: 14\n\
-color_order: GRB\n\
- \n\
-[neopixel $(UNIT_NAME)_leds_2]\n\
-pin: $(MCU_NAME):PC7\n\
-chain_count: 14\n\
-color_order: GRB\n\
-\n\
-[temperature_sensor $(UNIT_NAME)_env_left]\n\
-sensor_type: AHT10 # Actually a ACT30$(comma) set 'update_aht10_commands: 1' in mmu.cfg\n\
-i2c_mcu: $(MCU_NAME)\n\
-i2c_bus: i2c1_PA9_PA10\n\
-aht10_report_time: 10\n\
-\n\
-[temperature_sensor $(UNIT_NAME)_env_right]\n\
-sensor_type: AHT10 # Actually a ACT30$(comma) set 'update_aht10_commands: 1' in mmu.cfg\n\
-i2c_mcu: $(MCU_NAME)\n\
-i2c_software_scl_pin: PA7\n\
-i2c_software_sda_pin: PA6\n\
-aht10_report_time: 10\n\
-\n\
-[heater_generic $(UNIT_NAME)_heater]\n\
-gcode_id:  $(UNIT_NAME)_heater\n\
-heater_pin: $(MCU_NAME):PC14\n\
-sensor_type: temperature_combined\n\
-sensor_list: temperature_sensor ${UNIT_NAME}_env_left$(comma) temperature_sensor ${UNIT_NAME}_env_right\n\
-combination_method: mean\n\
-maximum_deviation: 100\n\
-control: pid\n\
-pid_Kp: 51.604\n\
-pid_Ki: 1.121\n\
-pid_Kd: 593.934\n\
-min_temp: -100\n\
-max_temp: 70\n\
-\n\
-[verify_heater $(UNIT_NAME)_heater]\n\
-max_error: 300\n\
-check_gain_time: 600\n\
-hysteresis: 10\n\
-heating_gain: 1\n\
-\n\
-[heater_fan $(UNIT_NAME)_fan]\n\
-pin: $(MCU_NAME):PC15\n\
-shutdown_speed: 0\n\
-heater: $(UNIT_NAME)_heater\n\
-\n\
-# Electronics cooling fan\n\
-[controller_fan $(UNIT_NAME)_mcu_fan]\n\
-pin: $(MCU_NAME):PA14\n\
-stepper: stepper mmu_selector_$(UNIT_NAME)$(comma) stepper mmu_gear_$(UNIT_NAME)\n\
-\n\
-[temperature_sensor ptc_ntc100k]\n\
-sensor_pin: $(MCU_NAME):PA4\n\
-sensor_type: Generic 3950\n\
-pullup_resistor: 2200\n\
-)"
-
 endif

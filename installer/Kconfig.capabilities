@@ -10,6 +10,7 @@
 #   MMU_HAS_ESPOOLER
 #   MMU_HAS_FILAMENT_BUFFER
 #   MMU_HAS_LEDS
+#   MMU_HAS_BUFFER_MCU
 #
 #   PARAM_MISC_HARDWARE
 #
@@ -35,7 +36,6 @@ config MMU_HAS_SELECTOR_SERVO
 
 config MMU_HAS_ENCODER
   bool
-  default n
 
 config MMU_HAS_SYNC_FEEDBACK_BUFFER
   bool
@@ -44,15 +44,17 @@ config MMU_HAS_ESPOOLER
   bool
 config MMU_DISABLE_ESPOOLER_OPTION
   bool
-  default n
 
 config MMU_HAS_FILAMENT_BUFFER
   bool
 config MMU_DISABLE_FILAMENT_BUFFER_OPTION
   bool
-  default n
 
 config MMU_HAS_LEDS
+  bool
+
+# Some new designs have mcu integrated in sync-feedback buffer mcu
+config MMU_HAS_BUFFER_MCU
   bool
 
 config PARAM_MISC_HARDWARE

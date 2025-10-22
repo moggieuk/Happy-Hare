@@ -24,7 +24,6 @@ choice BOARD_TYPE
 
     config BOARD_TYPE_OTHER
       bool "Not listed / Other"
-      select OVERRIDE_PINS # Force user to define pins
   endif
 
   # KMS has custom mcu

@@ -31,8 +31,8 @@ to_bool = $(shell, $(1) && echo y || echo n)
 # Used to get the serial device paths
 serial               = $(shell, ls /dev/serial/by-id/* 2>/dev/null | grep 'Klipper_$(2)' | tail -n +$(1) | head -n 1)
 serial_exists        = $(to_bool, [ -e '$(serial,$(1),$(2))' ])
-serial_config        = $(shell, basename '$(serial,$(1),$(2))' | sed 's/-/_/g' | awk '{print "PARAM_SERIAL_" toupper($0)}')
-buffer_serial_config = $(shell, basename '$(serial,$(1),$(2))' | sed 's/-/_/g' | awk '{print "PARAM_SERIAL_BUFFER_" toupper($0)}')
+serial_config        = $(shell, basename '$(serial,$(1),$(2))' | sed 's/-/_/g' | awk '{print "CHOICE_SERIAL_DEVICE_" toupper($0)}')
+buffer_serial_config = $(shell, basename '$(serial,$(1),$(2))' | sed 's/-/_/g' | awk '{print "CHOICE_BUFFER_SERIAL_DEVICE_" toupper($0)}')
 
 # Used for comment padding
 pad = $(shell, printf "%-$(1)s" "$(2)")
@@ -122,7 +122,7 @@ if !MULTI_UNIT_ENTRY_POINT
   endif
   source "boards/Kconfig"           # MCU Selection menu
   source "Kconfig.pins"             # Raw pin editing
-  source "Kconfig.serial"           # MCU Connection
+  source "connection/Kconfig"       # MCU Connection
   if !MULTI_UNIT
     source "toolheads/Kconfig"      # Toolhead Selection menu
     source "addons/Kconfig"         # Addon Macro Features
