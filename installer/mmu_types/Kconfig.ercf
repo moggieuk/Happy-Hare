@@ -78,10 +78,7 @@ if MMU_FAMILY_ERCF
           Does MMU have the Enraged Rabbit Carrot Patch (ERCP) filament buffer
           to catch the uncoiled filament on unload.
 
-      config PARAM_HAS_BYPASS
-        prompt "Built with filament bypass block?"
-        help
-          Select if you built the filament bypass block option.
+      source "Kconfig.bypass"
     endmenu
   endif
 
@@ -150,7 +147,7 @@ if MMU_FAMILY_ERCF
     config PARAM_NUM_GATES
       default 9
 
-    choice CHOICE_BOARD_TYPE
+    choice BOARD_TYPE
       default BOARD_TYPE_EASY_BRD_RP2040
     endchoice
 
@@ -179,8 +176,8 @@ if MMU_FAMILY_ERCF
 
     # Modifications
     choice CHOICE_ENCODER_TYPE
-      default ENCODER_TYPE_BINKY    if MOD_BINKY
-      default ENCODER_TYPE_TCRT5000 if !MOD_BINKY
+      default CHOICE_ENCODER_TYPE_BINKY    if MOD_BINKY
+      default CHOICE_ENCODER_TYPE_TCRT5000 if !MOD_BINKY
     endchoice
   endif
 
@@ -191,7 +188,7 @@ if MMU_FAMILY_ERCF
     config PARAM_NUM_GATES
       default 8
 
-    choice CHOICE_BOARD_TYPE
+    choice BOARD_TYPE
       default BOARD_TYPE_MMB_2_0
     endchoice
 
@@ -211,7 +208,7 @@ if MMU_FAMILY_ERCF
     config PARAM_SELECTOR_HOLD_CURRENT
       default "0.2"
 
-    # Speeds
+    # Speed overrides
 
     # Distances
     config PARAM_GATE_PARKING_DISTANCE
@@ -219,7 +216,7 @@ if MMU_FAMILY_ERCF
       default "11" if MOD_THUMPER_BLOCKS
 
     choice CHOICE_ENCODER_TYPE
-      default ENCODER_TYPE_BINKY
+      default CHOICE_ENCODER_TYPE_BINKY
     endchoice
   endif
 
@@ -230,7 +227,7 @@ if MMU_FAMILY_ERCF
     config PARAM_NUM_GATES
       default 8
 
-    choice CHOICE_BOARD_TYPE
+    choice BOARD_TYPE
       default BOARD_TYPE_MMB_2_0
     endchoice
 
@@ -257,7 +254,7 @@ if MMU_FAMILY_ERCF
       default "16"
 
     choice CHOICE_ENCODER_TYPE
-      default ENCODER_TYPE_BINKY
+      default CHOICE_ENCODER_TYPE_BINKY
     endchoice
   endif
 endif

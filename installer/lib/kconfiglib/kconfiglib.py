@@ -555,6 +555,7 @@ from os.path import dirname, exists, expandvars, islink, join, realpath
 
 
 VERSION = (14, 1, 0)
+HH_DEFAULT_TOKEN = " #DEFAULT#" # Happy Hare: Added
 
 
 # File layout:
@@ -816,7 +817,6 @@ class Kconfig(object):
         "_set_match",
         "_srctree_prefix",
         "_unset_match",
-        "_default_match", # Happy Hare
         "_warn_assign_no_prompt",
         "choices",
         "comments",
@@ -979,9 +979,10 @@ class Kconfig(object):
 
         self.config_prefix = os.getenv("CONFIG_", "CONFIG_")
         # Regular expressions for parsing .config files
-        self._set_match = _re_match(self.config_prefix + r"([^=]+)=(.*)")
-        self._unset_match = _re_match(r"# {}([^ ]+) is not set".format(self.config_prefix))
-        self._default_match = _re_match(r"# {}([^ ]+) is default".format(self.config_prefix)) # Happy Hare
+        # Orig: _re_match(self.config_prefix + r"([^=]+)=(.*)")
+        #       _re_match(r"# {}([^ ]+) is not set".format(self.config_prefix))
+        self._set_match = _re_match(r"{0}([^=]+)=(.*?)(?={1}$|$)({1})?$".format(self.config_prefix, HH_DEFAULT_TOKEN)) # Happy Hare: modifed to include DEFAULT marker as group 3
+        self._unset_match = _re_match(r"# {}([^ ]+) is not set({})?$".format(self.config_prefix, HH_DEFAULT_TOKEN)) # Happy Hare: modifed to include DEFAULT marker as group 3
 
         self.config_header = os.getenv("KCONFIG_CONFIG_HEADER", "")
         self.header_header = os.getenv("KCONFIG_AUTOHEADER_HEADER", "")
@@ -1265,8 +1266,6 @@ class Kconfig(object):
             # Small optimizations
             set_match = self._set_match
             unset_match = self._unset_match
-            default_match = self._default_match # Happy Hare
-            names_with_default = []             # Happy Hare
             get_sym = self.syms.get
 
             for linenr, line in enumerate(f, 1):
@@ -1275,11 +1274,11 @@ class Kconfig(object):
 
                 match = set_match(line)
                 if match:
-                    name, val = match.groups()
+                    name, val, default = match.groups()
                     sym = get_sym(name)
 
                     # Happy Hare - completely ignore if implicitly saved as default
-                    if filter_defaults and name in names_with_default:
+                    if filter_defaults and default is not None:
                         continue
 
                     if not sym or not sym.nodes:
@@ -1341,14 +1340,14 @@ class Kconfig(object):
                                        .format(line),
                                        filename, linenr)
 
-                        # Happy Hare - record params that have default value
-                        match = default_match(line)
-                        if match:
-                            names_with_default.append(match.group(1))
-
                         continue
 
-                    name = match.group(1)
+                    name, default = match.groups()
+
+                    # Happy Hare - completely ignore if implicitly saved as default
+                    if filter_defaults and default is not None:
+                        continue
+
                     sym = get_sym(name)
                     if not sym or not sym.nodes:
                         self._undef_assign(name, "n", filename, linenr)
@@ -1665,24 +1664,20 @@ class Kconfig(object):
                     after_end_comment = False
                     add("\n")
 
-                # Happy Hare added - mark PARAMS and CHOICE selections (which result in _BOOL_TRISTATE with name PARAM_*)
-                # that are default value to allow subsequent resetting
+                # Happy Hare added - mark PARAMS and CHOICE selections which are still default values
+                # as such so they can be ignored on reloading .config and thus reset
                 if (
-                    node.item.__class__ is Symbol and
-                    (
-                        item.orig_type in [BOOL, TRISTATE, STRING, INT, HEX] and
-                        not item._was_set and
-                        item.name.startswith('PARAM')
-                    ) or (
-                        item.orig_type in _BOOL_TRISTATE and
-                        not item._was_set and
-                        item.str_value != "n" and
-                        item.name.startswith('CHOICE')
-                    )
+                    isinstance(item, Symbol) and
+                    not item._was_set and
+                    item.name.startswith(('PARAM_', 'PIN_', 'BOOL_', 'MMU_HAS_', 'CHOICE_', 'UNSELECT_'))
+                ) or (
+                    isinstance(item, Choice) and
+                    not item._was_set and
+                    item.name.startswith('CHOICE_')
                 ):
-                    add("# %s%s is default\n" % (self.config_prefix, item.name))
-
-                add(conf_string)
+                    add("{}{}\n".format(conf_string.rstrip('\n'), HH_DEFAULT_TOKEN))
+                else:
+                    add(conf_string)
 
             elif expr_value(node.dep) and \
                  ((item is MENU and expr_value(node.visibility)) or
@@ -3200,6 +3195,12 @@ class Kconfig(object):
 
                 node.selects.append((self._expect_nonconst_sym(),
                                      self._parse_cond()))
+
+            elif t0 is _T_FORCESHOW: # Happy Hare: Added to allow forced showing of some Symbols
+                if node.item.__class__ is not Symbol:
+                    self._parse_error("only symbols can force show")
+
+                node.forceshow = True
 
             elif t0 is None:
                 # Blank line
@@ -5665,6 +5666,7 @@ class MenuNode(object):
         "selects",
         "implies",
         "ranges",
+        "forceshow",   # Happy Hare: Added to force UI visibility
     )
 
     def __init__(self):
@@ -6906,6 +6908,7 @@ except AttributeError:
     _T_ENDMENU,
     _T_ENV,
     _T_EQUAL,
+    _T_FORCESHOW, # Happy Hare: Added
     _T_GREATER,
     _T_GREATER_EQUAL,
     _T_HELP,
@@ -6936,7 +6939,7 @@ except AttributeError:
     _T_TRISTATE,
     _T_UNEQUAL,
     _T_VISIBLE,
-) = range(1, 51)
+) = range(1, 52) # Happy Hare: 51->52
 
 # Keyword to token map, with the get() method assigned directly as a small
 # optimization
@@ -6960,6 +6963,7 @@ _get_keyword = {
     "endif":          _T_ENDIF,
     "endmenu":        _T_ENDMENU,
     "env":            _T_ENV,
+    "forceshow":      _T_FORCESHOW, # Happy Hare: Added
     "grsource":       _T_ORSOURCE,  # Backwards compatibility
     "gsource":        _T_OSOURCE,   # Backwards compatibility
     "help":           _T_HELP,

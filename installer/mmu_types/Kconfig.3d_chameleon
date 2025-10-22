@@ -6,8 +6,10 @@ config MMU_TYPE_3D_CHAMELEON_1_0
   select ROTARY_SELECTOR
   select MMU_HAS_SELECTOR_STEPPER
   imply  PARAM_REQUIRE_BOWDEN_MOVE
+  select PARAM_VARIABLE_ROTATION_DISTANCES
+  select UNSELECT_VARIABLE_BOWDEN_LENGTHS
   select UNSELECT_HAS_BYPASS
-
+  select UNSELECT_CAN_CROSSLOAD
 
 ####################
 ##### Defaults #####
@@ -24,6 +26,7 @@ if MMU_TYPE_3D_CHAMELEON_1_0
     default "3DChameleon"
   config PARAM_VERSION
     default "1.0" 
+
   config PARAM_NUM_GATES
     default 4
 
@@ -43,7 +46,12 @@ if MMU_TYPE_3D_CHAMELEON_1_0
   config PARAM_SELECTOR_HOLD_CURRENT
     default "0.2"
 
-  # Speeds
+  config PARAM_SELECTOR_GATE_DIRECTIONS
+    default "[1, 1, 0, 0]"
+  config PARAM_SELECTOR_RELEASE_GATES
+    default "[2, 3, 0, 1]"
+
+  # Speeds overrides
   config PARAM_GEAR_HOMING_SPEED
     default "80"
 

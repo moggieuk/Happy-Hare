@@ -41,7 +41,6 @@ menu "Advanced/Raw Settings"
     source "Kconfig.gates"
     source "Kconfig.sync_control"
     source "Kconfig.calibration"
-    source "Kconfig.pins"
     source "Kconfig.capabilities"
   endif
   if !MULTI_UNIT || MULTI_UNIT_ENTRY_POINT

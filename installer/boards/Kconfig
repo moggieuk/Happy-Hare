@@ -10,7 +10,7 @@
 config PARAM_BOARD_TYPE
   string
 
-choice CHOICE_BOARD_TYPE
+choice BOARD_TYPE
   prompt "Board type"
   default BOARD_TYPE_OTHER
   help 

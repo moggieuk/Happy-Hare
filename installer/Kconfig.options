@@ -113,7 +113,7 @@ menu "Software Options"
 
   choice CHOICE_SPOOLMAN_SUPPORT
     prompt "Select spoolman spool manager support"
-    default SPOOLMAN_OFF
+    default CHOICE_SPOOLMAN_SUPPORT_OFF
     help
       |                  | Activate/  | Fetch filament attributes | Filament gate    | Filament gate     |
       | spoolman_support | Deactivate | attributes from spoolman  | assignment shown | assignment pulled |
@@ -124,19 +124,19 @@ menu "Software Options"
       |      push        |     yes    |           yes             |        yes       |        no         |
       |      pull        |     yes    |           yes             |        yes       |        yes        |
 
-    config SPOOLMAN_OFF
+    config CHOICE_SPOOLMAN_SUPPORT_OFF
       bool "Off"
       help
         Don't connect to spoolman
-    config SPOOLMAN_RO
+    config CHOICE_SPOOLMAN_SUPPORT_RO
       bool "Read-only"
       help
         Fetch filament attributes based on spool ID
-    config SPOOLMAN_PUSH
+    config CHOICE_SPOOLMAN_SUPPORT_PUSH
       bool "Push"
       help
         Fetch filament attributes and publish gate assignment to spoolman
-    config SPOOLMAN_PULL
+    config CHOICE_SPOOLMAN_SUPPORT_PULL
       bool "Pull"
       help
         Fetch filament attributes and pull gate assignment from spoolman (print farms)
@@ -144,10 +144,10 @@ menu "Software Options"
 
   config PARAM_SPOOLMAN_SUPPORT
     string
-    default "off" if SPOOLMAN_OFF
-    default "readonly" if SPOOLMAN_RO
-    default "push" if SPOOLMAN_PUSH
-    default "pull" if SPOOLMAN_PULL
+    default "off" if CHOICE_SPOOLMAN_SUPPORT_OFF
+    default "readonly" if CHOICE_SPOOLMAN_SUPPORT_RO
+    default "push" if CHOICE_SPOOLMAN_SUPPORT_PUSH
+    default "pull" if CHOICE_SPOOLMAN_SUPPORT_PULL
 
   config INSTALL_12864_MENU
     bool "Install Mini 12864 menu configuration?"

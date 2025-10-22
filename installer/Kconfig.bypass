@@ -1,0 +1,16 @@
+# Defines MMU's abilty to select a bypass gate. Separated out of capabilities
+# because it is used in several places
+#
+# Responsible for defining:
+#   PARAM_HAS_BYPASS
+
+config UNSELECT_HAS_BYPASS
+  def_bool n
+#comment "--Has filament bypass?"
+#  depends on UNSELECT_HAS_BYPASS
+config PARAM_HAS_BYPASS
+  bool "Has filament bypass?"
+  forceshow
+  depends on !UNSELECT_HAS_BYPASS
+  help
+    Whether the MMU design has a built in bypass that can be selected (e.g. ERCF)

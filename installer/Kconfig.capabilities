@@ -20,7 +20,7 @@
 #
 # but can be tuned, especially for custom designs.
 #
-#   PARAM_HAS_BYPASS
+#   (PARAM_HAS_BYPASS) set in Kconfig.bypass
 #   PARAM_VARIABLE_BOWDEN_LENGTHS
 #   PARAM_VARIABLE_ROTATION_DISTANCES
 #   PARAM_REQUIRE_BOWDEN_MOVE
@@ -35,6 +35,7 @@ config MMU_HAS_SELECTOR_SERVO
 
 config MMU_HAS_ENCODER
   bool
+  default n
 
 config MMU_HAS_SYNC_FEEDBACK_BUFFER
   bool
@@ -61,22 +62,13 @@ config PARAM_MISC_HARDWARE
 menu "Design attributes"
   source "Kconfig.selector_type" 
 
-  config UNSELECT_HAS_BYPASS
-    def_bool n
-  comment "Has filament bypass? DISABLED"
-    depends on UNSELECT_HAS_BYPASS
-  config PARAM_HAS_BYPASS
-    bool "Has filament bypass?"
-    depends on !UNSELECT_HAS_BYPASS
-    help
-      Whether the MMU design has a built in bypass that can be selected (e.g. ERCF)
+  source "Kconfig.bypass" 
 
   config UNSELECT_VARIABLE_BOWDEN_LENGTHS
     def_bool n
-  comment "Variable bowden lengths? DISABLED" 
-    depends on UNSELECT_VARIABLE_BOWDEN_LENGTHS
   config PARAM_VARIABLE_BOWDEN_LENGTHS
     bool "Variable bowden lengths?" 
+    forceshow
     depends on !UNSELECT_VARIABLE_BOWDEN_LENGTHS
     help
       Whether filament path from parked position in the gate to the extruder is different
@@ -85,10 +77,9 @@ menu "Design attributes"
 
   config UNSELECT_VARIABLE_ROTATION_DISTANCES
     def_bool n
-  comment "Variable rotation distances? DISABLED" 
-    depends on UNSELECT_VARIABLE_ROTATION_DISTANCES
   config PARAM_VARIABLE_ROTATION_DISTANCES
     bool "Variable rotation distances?"
+    forceshow
     depends on !UNSELECT_VARIABLE_ROTATION_DISTANCES
     help
       Whether the design has different drive gears (typically BMG gears). Even if from
@@ -96,10 +87,9 @@ menu "Design attributes"
 
   config UNSELECT_REQUIRE_BOWDEN_MOVE
     def_bool n
-  comment "Require bowden move? DISABLED" 
-    depends on UNSELECT_REQUIRE_BOWDEN_MOVE
   config PARAM_REQUIRE_BOWDEN_MOVE
     bool "Require bowden move?"
+    forceshow
     depends on !UNSELECT_REQUIRE_BOWDEN_MOVE
     help
       Whether the design requires a calibrated fast bowden move to reach the extruder.
@@ -107,10 +97,9 @@ menu "Design attributes"
 
   config UNSELECT_FILAMENT_ALWAYS_GRIPPED
     def_bool n
-  comment "Filament always gripped? DISABLED"
-    depends on UNSELECT_FILAMENT_ALWAYS_GRIPPED
   config PARAM_FILAMENT_ALWAYS_GRIPPED
     bool "Filament always gripped?"
+    forceshow
     depends on !UNSELECT_FILAMENT_ALWAYS_GRIPPED
     help
       Whether the design is always gripping the filament. For most type-B designs this
@@ -118,10 +107,9 @@ menu "Design attributes"
 
   config UNSELECT_CAN_CROSSLOAD
     def_bool n
-  comment "Can crossload/unload? DISABLED"
-    depends on UNSELECT_CAN_CROSSLOAD
   config PARAM_CAN_CROSSLOAD
     bool "Can crossload/unload?"
+    forceshow
     depends on !UNSELECT_CAN_CROSSLOAD
     help
       Whether the design supports the pre-loading or unloading of the non active gate.

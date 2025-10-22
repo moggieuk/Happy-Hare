@@ -46,7 +46,7 @@ if MMU_TYPE_TRADRACK_1_0
   config PARAM_NUM_GATES
     default 10
 
-  choice CHOICE_BOARD_TYPE
+  choice BOARD_TYPE
     default BOARD_TYPE_MMB_2_0
   endchoice
 
@@ -65,12 +65,18 @@ if MMU_TYPE_TRADRACK_1_0
     default "0.63"
   config PARAM_SELECTOR_HOLD_CURRENT
     default "0.2"
+  config PARAM_SELECTOR_GATE_DIRECTIONS
+    default "[1, 1, 0, 0]"
+  config PARAM_SELECTOR_RELEASE_GATES
+    default "[2, 3, 0, 1]"
 
   # Selector servo
   config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
     default 0
   config PARAM_SERVO_DURATION
     default "0.4"
+
+  # Speeds overrides
 
   # Distances
   config PARAM_GATE_PARKING_DISTANCE

@@ -10,7 +10,7 @@
 config PARAM_TOOLHEAD_TYPE
   string
 
-choice CHOICE_TOOLHEAD_TYPE
+choice TOOLHEAD_TYPE
   prompt "Toolhead"
   help 
     Toolhead type (extruder and hotend combo)

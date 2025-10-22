@@ -1,3 +1,21 @@
+# IMPORTANT: Happy Hare TOKEN naming convention and kconfig features:
+#   PARAM_*                Symbols of various types used in template rendering
+#   PIN_*                  Used for string symbols representing pins
+#   BOOL_*                 Boolean symbols often used to set prompt-less int PARAMS
+#   MMU_HAS_*              Used for MMU hardware components like encoder
+#   CHOICE_X, CHOICE_X_*   Named choice "X" or boolean selection config
+#   UNSELECT_*             Special boolean symbol used to implement forced "unselect"
+#
+# The above list is special is that default values will be stored in the .config but will not
+# force setting on subsequent runs. They therefore remain as modifiable defaults until user explicitly
+# changes them. Also when they are changed from default values menuconfig will mark as
+# "(NOT DEFAULT)" and allow the "r" keystroke to reset back to default value
+#   
+# Other names will be store and handled as normal Kconfig variables. Therefore if you
+# don't want the abilty to "reset to default" and you want past values to be "sticky" you
+# must use alternative names (or unamed choice)
+
+
 # IMPORTANT keep version string up-to-date and constistent with git tag
 happy_hare_version := 4.0
 
@@ -103,6 +121,7 @@ if !MULTI_UNIT_ENTRY_POINT
     source "mmu_additions/Kconfig"  # MMU Additions/Customization menu (if not inlined with mmu type)
   endif
   source "boards/Kconfig"           # MCU Selection menu
+  source "Kconfig.pins"             # Raw pin editing
   source "Kconfig.serial"           # MCU Connection
   if !MULTI_UNIT
     source "toolheads/Kconfig"      # Toolhead Selection menu

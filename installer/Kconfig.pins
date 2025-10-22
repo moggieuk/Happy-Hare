@@ -1,21 +1,14 @@
-# This just defines the pins menu layout. To change the actual defaults create a Kconfig.board_type under the boards directory.
+# This just defines the symbol types and pins menu layout. To change the actual
+# defaults create a Kconfig.board_type under the boards directory.
+#
 menu "Pins"
 
   config HAS_ESPOOLER_ENABLE_PIN
     def_bool n
 
-  config OVERRIDE_PINS
-    bool "Override pins? (Note: Changes to the board type will no longer have effect on these pin values when this option is enabled)"
-    default n
-    help
-      If you want to override the default pin layout for your board, select this option. 
-      This will allow you to specify custom pins for each function.
-      Note: When this option is enabled, changing the board type might no longer have an effect on these pin values.
-
-  if OVERRIDE_PINS
     menu "Gear pins"
-      config PIN_GEAR_UART 
-        string "Gear UART pin" 
+      config PIN_GEAR_UART
+        string "Gear UART pin"
       config PIN_GEAR_STEP
         string "Gear step pin"
       config PIN_GEAR_DIR
@@ -26,8 +19,8 @@ menu "Pins"
         string "Gear diag pin"
 
       if VIRTUAL_SELECTOR
-        if PARAM_NUM_GATES > 1 
-          config PIN_GEAR_UART_1 
+        if PARAM_NUM_GATES > 1
+          config PIN_GEAR_UART_1
             string "Gear 1 UART pin"
           config PIN_GEAR_STEP_1
             string "Gear 1 step pin"
@@ -40,7 +33,7 @@ menu "Pins"
         endif
 
         if PARAM_NUM_GATES > 2
-          config PIN_GEAR_UART_2 
+          config PIN_GEAR_UART_2
             string "Gear 2 UART pin"
           config PIN_GEAR_STEP_2
             string "Gear 2 step pin"
@@ -53,7 +46,7 @@ menu "Pins"
         endif
 
         if PARAM_NUM_GATES > 3
-          config PIN_GEAR_UART_3 
+          config PIN_GEAR_UART_3
             string "Gear 3 UART pin"
           config PIN_GEAR_STEP_3
             string "Gear 3 step pin"
@@ -227,14 +220,13 @@ menu "Pins"
       string "Gate sensor pin"
       depends on !MMU_HAS_ENCODER
 
-   config PIN_SYNC_FEEDBACK_TENSION
-     string "Sync feedback tension pin"
+    config PIN_SYNC_FEEDBACK_TENSION
+      string "Sync feedback tension pin"
 
-   config PIN_SYNC_FEEDBACK_COMPRESSION
-     string "Sync feedback compression pin"
+    config PIN_SYNC_FEEDBACK_COMPRESSION
+      string "Sync feedback compression pin"
 
     config PIN_GANTRY_SERVO
       string "Gantry servo pin"
-  endif
 
 endmenu

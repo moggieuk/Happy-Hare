@@ -7,5 +7,6 @@ if !MMU_DISABLE_ESPOOLER_OPTION
       assist in print. Select if you have added a DC motor controlled
       eSpooler.
     prompt "Has eSpooler?"
+    forceshow
 
 endif

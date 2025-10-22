@@ -4,6 +4,7 @@ config MMU_HAS_LEDS
     will still need to finialize configuration in the generated klipper
     config files or you can edit parameters in "Advanced" section.
   prompt "Has Leds?"
+  forceshow
 
 if MMU_HAS_LEDS
   menu "Led Options"

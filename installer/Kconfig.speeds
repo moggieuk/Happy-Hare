@@ -145,7 +145,7 @@ menu "Speeds"
 
       config PARAM_SELECTOR_TOUCH_SPEED
         string "Speed of touch selector movement (mm/s)"
-        depends on LINEAR_SELECTOR # PAUL not sure this is correct
+        depends on LINEAR_SELECTOR
         default "80"
 
     endmenu

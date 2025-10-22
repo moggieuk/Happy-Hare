@@ -38,7 +38,7 @@ if MMU_TYPE_VVD_1_0
     default "1.0" 
   config PARAM_NUM_GATES
     default 4
-  choice CHOICE_BOARD_TYPE
+  choice BOARD_TYPE
     default BOARD_TYPE_VVD_1_0
   endchoice
 

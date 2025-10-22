@@ -235,6 +235,9 @@ from kconfiglib import Symbol, Choice, MENU, COMMENT, MenuNode, \
 # Related PEP: https://www.python.org/dev/peps/pep-0538/
 _CHANGE_C_LC_CTYPE_TO_UTF8 = True
 
+# Happy Hare: Added control over initial value indentation
+_VALUE_INDENT = 6
+
 # How many steps an implicit submenu will be indented. Implicit submenus are
 # created when an item depends on the symbol before it. Note that symbols
 # defined with 'menuconfig' create a separate menu instead of indenting.
@@ -264,7 +267,7 @@ _N_SCROLL_ARROWS = 14
 #"""[1:-1].split("\n")
 # Happy Hare: Remove show-help text...
 _MAIN_HELP_LINES = """
-+[Space/Enter] Toggle/enter
++[Space/Enter] Toggle/enter      [R] Reset parameter to default
 +[Q] Quit (prompts for save)     [ESC] Leave menu
 """[1:-1].split("\n")
 
@@ -893,23 +896,23 @@ def _menuconfig(stdscr):
             else:
                 _leave_menu()
 
-        elif False and c in ("o", "O"):
+        elif False and c in ("o", "O"): # Happy Hare: Disable
             _load_dialog()
 
-        elif False and c in ("s", "S"):
+        elif False and c in ("s", "S"): # Happy Hare: Disable
             filename = _save_dialog(_kconf.write_config, _conf_filename,
                                     "configuration")
             if filename:
                 _conf_filename = filename
                 _conf_changed = False
 
-        elif False and c in ("d", "D"):
+        elif False and c in ("d", "D"): # Happy Hare: Disable
             filename = _save_dialog(_kconf.write_min_config, _minconf_filename,
                                     "minimal configuration")
             if filename:
                 _minconf_filename = filename
 
-        elif False and c == "/":
+        elif False and c == "/": # Happy Hare: Disable
             _jump_to_dialog()
             # The terminal might have been resized while the fullscreen jump-to
             # dialog was open
@@ -921,22 +924,27 @@ def _menuconfig(stdscr):
             # dialog was open
             _resize_main()
 
-        # Happy Hare: Completely disable turning help on/off
-        #elif c in ("f", "F"):
-        #    _show_help = not _show_help
-        #    # _set_style(_help_win, "show-help" if _show_help else "help")
-        #    _resize_main()
+        elif False and c in ("f", "F"): # Happy Hare: Disable
+            _show_help = not _show_help
+            # _set_style(_help_win, "show-help" if _show_help else "help")
+            _resize_main()
 
-        elif False and c in ("c", "C"):
+# PAUL temp enabled to be able to see name when debugging
+        elif c in ("c", "C"): # Happy Hare: Disable
             _show_name = not _show_name
 
-        elif False and c in ("a", "A"):
+# PAUL temp enabled to be able to see name when debugging
+        elif c in ("a", "A"): # Happy Hare: Disable
             _toggle_show_all()
 
         elif c in ("q", "Q"):
             res = _quit_dialog()
             if res:
                 return res
+
+        elif c in ("r", "R"): # Happy Hare: Added to "unset" user change and reset to default
+            sel_node = _shown[_sel_node_i]
+            _reset_node(sel_node)
 
 
 def _quit_dialog():
@@ -1401,7 +1409,7 @@ def _draw_main():
 
     # Indicate when show-name/show-help/show-all mode is enabled
     enabled_modes = []
-    # Happy Hare - Always showing the help lines anyways
+    # Happy Hare: Always show the help lines
     # if _show_help:
     #     enabled_modes.append("show-help (toggle with [F])")
     if _show_name:
@@ -1416,17 +1424,17 @@ def _draw_main():
     # Update the help window, which shows either key bindings or help texts
     #
 
-    if _show_help and _node_has_help():  # Happy Hare
+    if _show_help and _node_has_help():  # Happy Hare: Added
         _set_style(_help_win, "show-help")
         _resize_main()
         _help_win.erase()
 
         node = _shown[_sel_node_i]
-        help_lines = node.help.split("\n")  # Happy Hare - Retain line formatting
+        help_lines = node.help.split("\n")  # Happy Hare: Retain line formatting
         for i in range(min(_height(_help_win), len(help_lines))):
             _safe_addstr(_help_win, i, 0, help_lines[i])
 
-        # Happy Hare - Reset the background of the main help lines
+        # Happy Hare: Reset the background of the main help lines
         _set_style(_help_win, "help")
         for i in range(len(_MAIN_HELP_LINES)):
             _help_win.chgat(_SHOW_HELP_HEIGHT + i, 0, -1, _style["help"])
@@ -1435,7 +1443,7 @@ def _draw_main():
         _resize_main()
         _help_win.erase()
 
-    # Happy Hare - Always show the main help lines
+    # Happy Hare: Always show the main help lines
     for i, line in enumerate(_MAIN_HELP_LINES):
         _safe_addstr(_help_win, (_SHOW_HELP_HEIGHT if _show_help and _node_has_help() else 0) + i, 0, line)
 
@@ -1578,8 +1586,146 @@ def _visible(node):
     # Returns True if the node should appear in the menu (outside show-all
     # mode)
 
-    return node.prompt and expr_value(node.prompt[1]) and not \
+    # Happy Hare: Add (and impl) "or node.forceshow" to be able to force showing
+    return node.prompt and (expr_value(node.prompt[1]) or hasattr(node, 'forceshow')) and not \
         (node.item == MENU and not expr_value(node.visibility))
+#    return node.prompt and expr_value(node.prompt[1]) and not \
+#        (node.item == MENU and not expr_value(node.visibility))
+
+
+def _reset_node(node): # Happy Hare: Added method
+    # Clears user set value and marks as never set
+    # Returns False if the value of 'node' can't be changed.
+
+    if not isinstance(node.item, (Symbol, Choice)):
+        return False
+
+    # sc = symbol/choice
+    sc = node.item
+
+    # Case 1: the object is a Choice
+    if isinstance(sc, Choice) and sc.name and sc.name.startswith('CHOICE_'):
+        if sc.user_selection is not None:
+            sc.unset_value()
+            sc._was_set = False
+
+        # Clear other choice siblings
+        for m in sc.syms:
+            if m.user_value is not None:
+                m.unset_value()
+                m._was_set = False
+
+    # Case 2: the object is a Symbol
+    elif isinstance(sc, Symbol) and sc.name and sc.name.startswith(('PARAM_', 'PIN_', 'BOOL_', 'MMU_HAS_', 'CHOICE_', 'UNSELECT_')):
+        owning_choice = None
+
+        # If member of a choice, clear parent and other siblings
+        if sc.choice is not None:
+            owning_choice = sc.choice
+            owning_choice.unset_value()
+            owning_choice._was_set = False
+
+            # Also clear lingering user_value on members (for a truly pristine state)
+            for m in owning_choice.syms:
+                if m.user_value is not None:
+                    m.unset_value()
+                    m._was_set = False
+
+        # Ensure this symbol is always unset
+        sc.unset_value()
+        sc._was_set = False
+
+    if _is_y_mode_choice_sym(sc) and not node.list:
+        # Immediately jump to the parent menu after making a choice selection,
+        # like 'make menuconfig' does, except if the menu node has children
+        # (which can happen if a symbol 'depends on' a choice symbol that
+        # immediately precedes it).
+        _leave_menu()
+    else:
+        _update_menu()
+
+    return True
+
+
+def _value_repr(item): # Happy Hare: Added method
+    # Uniform textual value for compare/display
+    if isinstance(item, Choice):
+        sel = item.selection
+        return sel.name if sel is not None else "(none)"
+    if item.type in (BOOL, TRISTATE):
+        return item.str_value # "n"/"m"/"y"
+    return item.str_value     # strings/ints/hex already as text
+    
+
+def differs_from_default(node, sc, reset=True): # Happy Hare: Added method
+    # Return (changed, current_value, default_value_if_user_cleared).
+
+    def _get_choice_sym(ch):
+        if ch.name:
+            s = ch.kconfig.syms.get(ch.name) # O(1) lookup
+            if s is not None and all(m is not s for m in ch.syms): # not a member sanity check
+                return s
+        return None
+
+    # Snapshot what we need to restore
+    if isinstance(sc, Choice):
+        cur = _value_repr(sc)
+        saved_user_sel = sc.user_selection
+        saved_members   = {m: m.user_value for m in sc.syms if m.user_value is not None}
+        saved_choice_sym = _get_choice_sym(sc)
+        saved_choice_uv  = saved_choice_sym.user_value if saved_choice_sym else None
+
+        # Clear user selection to see the default choice
+        sc.unset_value()
+        default = _value_repr(sc)
+
+        # Restore
+        if saved_user_sel is not None:
+            saved_user_sel.set_value("y")
+        for m, uv in saved_members.items():
+            # restore exact user_value
+            if m.type in (BOOL, TRISTATE):
+                m.set_value(("n","m","y")[uv])
+            else:
+                m.set_value(uv)
+        if saved_choice_sym is not None and saved_choice_uv is not None:
+            # Controlling symbol's user_value (named choices)
+            if saved_choice_sym.type in (BOOL, TRISTATE):
+                saved_choice_sym.set_value(("n","m","y")[saved_choice_uv])
+            else:
+                saved_choice_sym.set_value(saved_choice_uv)
+
+    elif isinstance(sc, Symbol):
+        ch = sc.choice
+        if ch is not None:
+            # Treat symbols tied to a choice via the choice itself
+            return differs_from_default(node, ch, reset)
+
+        # Regular (non-choice) symbol
+        cur = _value_repr(sc)
+        saved_uv = sc.user_value
+
+        # Clear just this symbol's user value
+        sc.unset_value()
+        default = _value_repr(sc)
+
+        # Restore
+        if saved_uv is not None:
+            if sc.type in (BOOL, TRISTATE):
+                sc.set_value(("n","m","y")[saved_uv])
+            else:
+                sc.set_value(saved_uv)
+
+    else:
+        # Not a symbol/choice
+        return (False, None, None)
+
+    # If default is the same as current, double down on just resetting the node
+    if cur == default and reset:
+        _reset_node(node) # This also clears choice members and clears _was_set flag
+        return (False, cur, default)
+
+    return (cur != default, cur, default)
 
 
 def _change_node(node):
@@ -1636,7 +1782,6 @@ def _change_node(node):
         # (which can happen if a symbol 'depends on' a choice symbol that
         # immediately precedes it).
         _leave_menu()
-
 
     return True
 
@@ -2991,7 +3136,8 @@ def _node_str(node):
         parent = parent.parent
 
     # This approach gives nice alignment for empty string symbols ("()  Foo")
-    s = "{:{}}".format(_value_str(node), 3 + indent)
+    #s = "{:{}}".format(_value_str(node), 3 + indent)
+    s = "{:>{}}".format(_value_str(node), _VALUE_INDENT + indent) # Happy Hare: Revised to right-aligned formatting
 
     if _should_show_name(node):
         if isinstance(node.item, Symbol):
@@ -3006,17 +3152,28 @@ def _node_str(node):
             s += " *** {} ***".format(node.prompt[0])
         else:
             s += " " + node.prompt[0]
+            if (
+                node.item not in (MENU, COMMENT) and
+                node.item.orig_type and
+                node.item.orig_type not in (STRING, INT, HEX) and
+                not _is_y_mode_choice_sym(node.item) and
+                len(node.item.assignable) <= 1 and
+                not isinstance(node.item, Choice)
+            ):
+                s += " (FIXED)"
 
         if isinstance(node.item, Symbol):
             sym = node.item
 
-            # Print "(NEW)" next to symbols without a user value (from e.g. a
-            # .config), but skip it for choice symbols in choices in y mode,
-            # and for symbols of UNKNOWN type (which generate a warning though)
-            if sym.user_value is None and sym.orig_type and \
-               not (sym.choice and sym.choice.tri_value == 2):
 
-                s += " (NEW)"
+# Happy Hare: More useful to display non-default values
+#            # Print "(NEW)" next to symbols without a user value (from e.g. a
+#            # .config), but skip it for choice symbols in choices in y mode,
+#            # and for symbols of UNKNOWN type (which generate a warning though)
+#            if sym.user_value is None and sym.orig_type and \
+#               not (sym.choice and sym.choice.tri_value == 2):
+#
+#                s += " (NEW)"
 
     if isinstance(node.item, Choice) and node.item.tri_value == 2:
         # Print the prompt of the selected symbol after the choice for
@@ -3036,6 +3193,29 @@ def _node_str(node):
                     if sym_node.prompt:
                         s += " ({})".format(sym_node.prompt[0])
                         break
+
+    # Happy Hare: Append "not default" message where the "r" reset keystroke is available
+    # By limiting to known prefixes, we can still prevent reset of certain symbols/choices
+    # To be able to be reset, symbols must have prompt and be named:
+    #   PARAM_, PIN_, BOOL_, or MMU_HAS_
+    # To be able to be reset, choices must be named and the name start with CHOICE_
+    if isinstance(node.item, Symbol):
+        sym = node.item
+        if (
+            (sym.user_value is not None or sym._was_set) and
+            sym.name.startswith(('PARAM_', 'PIN_', 'BOOL_', 'MMU_HAS_')) and
+            differs_from_default(node, sym)[0]
+        ):
+            s += " (NOT DEFAULT)"
+    elif isinstance(node.item, Choice):
+        ch = node.item
+        sel = ch.selection
+        if (
+            sel and sel.user_value is not None and
+            ch.name and ch.name.startswith("CHOICE_") and
+            differs_from_default(ch)[0]
+        ):
+            s += " (NOT DEFAULT)"
 
     # Print "--->" next to nodes that have menus that can potentially be
     # entered. Print "----" if the menu is empty. We don't allow those to be

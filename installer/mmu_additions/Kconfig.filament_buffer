@@ -2,6 +2,7 @@ if !MMU_DISABLE_FILAMENT_BUFFER_OPTION
 
   config MMU_HAS_FILAMENT_BUFFER
     bool "Has filament buffer to catch loose filament?"
+    forceshow
     help
       Does MMU have a buffer to catch the uncoiled filament on unload. Note
       that a passive rewinder like Filamentalist is not a filament buffer
