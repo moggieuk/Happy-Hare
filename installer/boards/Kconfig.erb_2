@@ -5,7 +5,7 @@ if BOARD_TYPE_ERB_2
   config PARAM_BOARD_TYPE
     default "ERBv2"
 
-  choice CHOICE_SERIAL_DEVICE
+  choice SERIAL_DEVICE
     default $(serial_config,1,rp2040)
   endchoice
 

@@ -9,7 +9,7 @@ if BOARD_TYPE_AFC_LITE_1_0
   config HAS_ESPOOLER_ENABLE_PIN
     default y
 
-  choice CHOICE_SERIAL_DEVICE
+  choice SERIAL_DEVICE
     default $(serial_config,1,stm32)
   endchoice
 

@@ -5,7 +5,7 @@ if BOARD_TYPE_EASY_BRD
   config PARAM_BOARD_TYPE
     default "EASY-BRD"
   
-  choice CHOICE_SERIAL_DEVICE
+  choice SERIAL_DEVICE
     default $(serial_config,1,samd21)
   endchoice
 

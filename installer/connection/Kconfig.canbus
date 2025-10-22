@@ -1,0 +1,30 @@
+# Module sets the serial connection tokens:
+#   PARAM_CANBUS_UUID
+#   PARAM_BUFFER_CANBUS_UUID (if MMU_HAS_BUFFER_MCU is true)
+
+config CHOICE_MCU_CONNECTION_TYPE_CANBUS
+  bool "CANbus"
+  help
+    Select if your MMU connects via CANbus connetion to mcu board
+
+if CHOICE_MCU_CONNECTION_TYPE_CANBUS
+  config PARAM_CANBUS_UUID
+  hex "Canbus UUID for MMU"
+  help
+    Specifiy the CANbus UUID that is used for connection to the MMU.
+    It is a 6 byte ID represented in hex. For example:
+      canbus_uuid: 127081e7e3c6
+
+    Enter only the uuid portion (12 hex digits)
+
+  if MMU_HAS_BUFFER_MCU
+    config PARAM_BUFFER_CANBUS_UUID
+    hex "Canbus UUID for Buffer"
+    help
+      Specifiy the CANbus UUID that is used for connection to the "buffer".
+      It is a 6 byte ID represented in hex. For example:
+        canbus_uuid: 127081e7e3c6
+
+      Enter only the uuid portion (12 hex digits)
+  endif
+endif

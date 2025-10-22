@@ -3213,7 +3213,7 @@ def _node_str(node):
         if (
             sel and sel.user_value is not None and
             ch.name and ch.name.startswith("CHOICE_") and
-            differs_from_default(ch)[0]
+            differs_from_default(node, ch)[0]
         ):
             s += " (NOT DEFAULT)"
 
