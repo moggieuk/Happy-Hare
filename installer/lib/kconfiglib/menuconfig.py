@@ -3150,8 +3150,10 @@ def _node_str(node):
         parent = parent.parent
 
     # This approach gives nice alignment for empty string symbols ("()  Foo")
-    #s = "{:{}}".format(_value_str(node), 3 + indent)
-    s = "{:>{}}".format(_value_str(node), _VALUE_INDENT + indent) # Happy Hare: Revised to right-aligned formatting
+    # Happy Hare: Orig: s = "{:{}}".format(_value_str(node), 3 + indent)
+    v = _value_str(node)
+    tcc = _token_char_count(v)
+    s = "{:>{}}".format(v, _VALUE_INDENT + indent + tcc) # Happy Hare: Revised to right-aligned formatting
 
     if _should_show_name(node):
         if isinstance(node.item, Symbol):
@@ -3263,7 +3265,10 @@ def _value_str(node):
         return ""
 
     if item.orig_type in (STRING, INT, HEX):
-        return "({})".format(item.str_value)
+        if item._was_set: # Happy Hare: Added style formatting for non-defaults
+            return "([[B]]{}[[/B]])".format(item.str_value)
+        else:
+            return "({})".format(item.str_value)
 
     # BOOL or TRISTATE
 
@@ -3437,8 +3442,19 @@ def _safe_addstr(win, *args):
         pass
 
 
+# Happy Hare: Tight matching of allowable markup tokens
+#_TAG_RE = re.compile(r"\[\[(/?)([A-Za-z]+)(?::(\d+))?\]\]")
+_TAG_RE = re.compile(r"""
+\[\[
+(?= (?:/?(?:B|U|REV|DIM) | C:[0-9]+ | /C | RESET ) \]\] ) # whitelist gate
+(?P<slash>/)?(?P<name>[A-Z]+)(?::(?P<digits>[0-9]+))?     # captures: /?, name, :digits
+\]\]
+""", re.X)
+# Happy Hare: Added to count how many "tag" characters there are in the string
+def _token_char_count(s):
+    return sum(len(m.group(0)) for m in _TAG_RE.finditer(s))
+
 # Happy Hare: Added alternative to _safe_addstr() that allows simple embedded markup
-_TAG_RE = re.compile(r"\[\[(/?)([A-Za-z]+)(?::(\d+))?\]\]")
 def _safe_addstr_markup(win, *args):
     # Render text with inline tags using _safe_addstr().
     # Call styles:
