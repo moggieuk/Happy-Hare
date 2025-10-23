@@ -8,6 +8,9 @@
 # Please report any incompatability via github issue
 #
 
+# Exit immediately on error (really important to catch menuconfig errors / non-saves / aborts)
+set -e
+
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 
 if [ -n "$(which tput 2>/dev/null)" ]; then

@@ -555,7 +555,7 @@ from os.path import dirname, exists, expandvars, islink, join, realpath
 
 
 VERSION = (14, 1, 0)
-HH_DEFAULT_TOKEN = " #DEFAULT#" # Happy Hare: Added
+HH_DEFAULT_TOKEN = " #~DEFAULT~#" # Happy Hare: Added
 
 
 # File layout:
@@ -1259,6 +1259,7 @@ class Kconfig(object):
 
                 for sym in self.unique_defined_syms:
                     sym._was_set = False
+                    sym._was_default = False # Happy Hare: Added
 
                 for choice in self.unique_choices:
                     choice._was_set = False
@@ -1276,10 +1277,6 @@ class Kconfig(object):
                 if match:
                     name, val, default = match.groups()
                     sym = get_sym(name)
-
-                    # Happy Hare - completely ignore if implicitly saved as default
-                    if filter_defaults and default is not None:
-                        continue
 
                     if not sym or not sym.nodes:
                         self._undef_assign(name, val, filename, linenr)
@@ -1317,6 +1314,12 @@ class Kconfig(object):
                             # Set the choice's mode
                             sym.choice.set_value(val)
 
+                            # Happy Hare - now clear value if implicitity saved as default and mark accordingly
+                            if filter_defaults and default is not None:
+                                sym.choice.unset_value()
+                                sym.choice._was_set = False
+                                sym.choice._was_default = True
+
                     elif sym.orig_type is STRING:
                         match = _conf_string_match(val)
                         if not match:
@@ -1344,10 +1347,6 @@ class Kconfig(object):
 
                     name, default = match.groups()
 
-                    # Happy Hare - completely ignore if implicitly saved as default
-                    if filter_defaults and default is not None:
-                        continue
-
                     sym = get_sym(name)
                     if not sym or not sym.nodes:
                         self._undef_assign(name, "n", filename, linenr)
@@ -1364,6 +1363,12 @@ class Kconfig(object):
                     self._assigned_twice(sym, val, filename, linenr)
 
                 sym.set_value(val)
+
+                # Happy Hare - now clear value if implicitity saved as default and mark accordingly
+                if filter_defaults and default is not None:
+                    sym.unset_value()
+                    sym._was_set = False
+                    sym._was_default = True
 
         if replace:
             # If we're replacing the configuration, unset the symbols that
@@ -1621,9 +1626,14 @@ class Kconfig(object):
         after_end_comment = False
 
         node = self.top_node
+        menu_depth = 0 # Happy Hare: Added menu_depth
         while 1:
             # Jump to the next node with an iterative tree walk
             if node.list:
+                # If we're about to enter a *visible* MENU, bump depth
+                if node.item is MENU and expr_value(node.dep) and expr_value(node.visibility):
+                    menu_depth += 1
+
                 node = node.list
             elif node.next:
                 node = node.next
@@ -1635,8 +1645,12 @@ class Kconfig(object):
                     if node.item is MENU and expr_value(node.dep) and \
                        expr_value(node.visibility) and \
                        node is not self.top_node:
-                        add("# end of {}\n".format(node.prompt[0]))
+                        # Happy Hare: Orig: add("# end of {}\n".format(node.prompt[0]))
+                        # Happy Hare: Reformated and indented
+                        indent = "  " * max(menu_depth - 1, 0)
+                        add("# {}end of {}\n".format(indent, node.prompt[0]))
                         after_end_comment = True
+                        menu_depth = max(menu_depth - 1, 0)
 
                     if node.next:
                         node = node.next
@@ -1658,11 +1672,12 @@ class Kconfig(object):
                 if not conf_string:
                     continue
 
-                if after_end_comment:
-                    # Add a blank line before the first symbol printed after an
-                    # '# end of ...' comment
-                    after_end_comment = False
-                    add("\n")
+                 # Happy Hare: Comment formatting cleanup
+                 #if after_end_comment:
+                 #    # Add a blank line before the first symbol printed after an
+                 #    # '# end of ...' comment
+                 #    after_end_comment = False
+                 #    add("\n")
 
                 # Happy Hare added - mark PARAMS and CHOICE selections which are still default values
                 # as such so they can be ignored on reloading .config and thus reset
@@ -1683,7 +1698,10 @@ class Kconfig(object):
                  ((item is MENU and expr_value(node.visibility)) or
                   item is COMMENT):
 
-                add("\n#\n# {}\n#\n".format(node.prompt[0]))
+                # Happy Hare: Orig: add("\n#\n# {}\n#\n".format(node.prompt[0]))
+                # Happy Hare: Reformated and indented
+                indent = "  " * menu_depth
+                add("# {}{}\n".format(indent, node.prompt[0]))
                 after_end_comment = False
 
     def write_min_config(self, filename, header=None):
@@ -4285,6 +4303,7 @@ class Symbol(object):
         "_old_val",
         "_visited",
         "_was_set",
+        "_was_default", # Happy Hare: Added
         "_write_to_conf",
         "choice",
         "defaults",
@@ -5191,6 +5210,7 @@ class Choice(object):
         "_dependents",
         "_visited",
         "_was_set",
+        "_was_default", # Happy Hare: Added
         "defaults",
         "direct_dep",
         "is_constant",

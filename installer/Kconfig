@@ -21,10 +21,10 @@ happy_hare_version := 4.0
 
 f_version   := $(shell, printf '%s0\n' "$(happy_hare_version)" | sed -E 's/^([0-9]+)\.([0-9])([0-9]).*/\1.\2.\3/')
 hh_message  := $(shell, echo "Happy Hare v$(f_version)")
-unit_suffix := $(shell, [ -n "$$UNIT_NAME" ] && echo "Unit: [[REV]]$(UNIT_NAME)[[/REV]]" || echo "")
+unit_suffix := $(shell, [ -n "$$UNIT_NAME" ] && echo "Unit: [[B]]$(UNIT_NAME)[[/B]]" || echo "")
 title       := $(shell, [ "$F_MULTI_UNIT_ENTRY_POINT" = "y" ] && echo "$(hh_message) Configuration for [[B]]Multi Unit Setup[[/B]]" || echo "$(hh_message) Configuration - $(unit_suffix)")
 caption     := $(shell, [ "$F_MULTI_UNIT_ENTRY_POINT" = "y" ] && echo "$(hh_message) - [[B]]Shared Config[[/B]]" || echo "Configuration - $(unit_suffix)")
-caption_pad := $(shell, [ "$F_MULTI_UNIT_ENTRY_POINT" = "y" ] && echo "61" || echo "65")
+caption_pad := $(shell, [ "$F_MULTI_UNIT_ENTRY_POINT" = "y" ] && echo "61" || echo "61")
 
 # Used to convert a shell command result to a y/n value
 to_bool = $(shell, $(1) && echo y || echo n)
