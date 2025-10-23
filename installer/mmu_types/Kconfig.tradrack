@@ -29,13 +29,13 @@ if MMU_TYPE_TRADRACK_1_0
       imply MMU_HAS_ENCODER
   endmenu
 
-  ####################
-  ##### Defaults #####
-  ####################
-
   if SHOW_MMU_ADDITIONS_WITH_TYPE
     source "mmu_additions/Kconfig"
   endif
+
+  ####################
+  ##### Defaults #####
+  ####################
 
   # Identify
   config PARAM_VENDOR

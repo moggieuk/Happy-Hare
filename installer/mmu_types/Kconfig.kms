@@ -34,6 +34,7 @@ if MMU_TYPE_KMS_1_0
 endif
 
 if MMU_TYPE_KMS_1_0
+
   if SHOW_MMU_ADDITIONS_WITH_TYPE
     source "mmu_additions/Kconfig"
   endif

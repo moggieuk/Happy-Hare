@@ -12,6 +12,7 @@ config MMU_CUSTOM_TYPE_B
   imply PARAM_REQUIRE_BOWDEN_MOVE
 
 if MMU_CUSTOM_TYPE_B
+
   config PARAM_REQUIRE_BOWDEN_MOVE
     help
       If you have a single long bowden tube connecting you toolhead
@@ -38,4 +39,5 @@ if MMU_CUSTOM_TYPE_B
     default "0.7"
   config PARAM_GEAR_HOLD_CURRENT
     default "0.1"
+
 endif 

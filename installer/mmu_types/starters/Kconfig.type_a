@@ -12,6 +12,7 @@ config MMU_CUSTOM_TYPE_A
   imply PARAM_VARIABLE_ROTATION_DISTANCES
   
 if MMU_CUSTOM_TYPE_A 
+
   source "Kconfig.selector_type" 
   source "Kconfig.num_gates"
 
@@ -58,4 +59,5 @@ if MMU_CUSTOM_TYPE_A
     default "0.5"
   config PARAM_SELECTOR_HOLD_CURRENT
     default "0.1"
+
 endif 

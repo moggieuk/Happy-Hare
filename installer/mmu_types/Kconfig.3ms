@@ -8,6 +8,7 @@ config MMU_TYPE_3MS_1_0
   select PARAM_FILAMENT_ALWAYS_GRIPPED
 
 if MMU_TYPE_3MS_1_0
+
   if SHOW_MMU_ADDITIONS_WITH_TYPE
     source "mmu_additions/Kconfig"
   endif
@@ -37,4 +38,5 @@ if MMU_TYPE_3MS_1_0
     default "500"
   config PARAM_GATE_PARKING_DISTANCE
     default "250"
+
 endif 

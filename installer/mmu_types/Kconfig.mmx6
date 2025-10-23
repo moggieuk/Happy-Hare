@@ -1,18 +1,26 @@
-config MMU_TYPE_MMX_1_0
-  bool "MMX 1.0"
+config MMU_TYPE_MMX6_1_0
+  bool "MMX6 1.0"
   help
-    MMX is a 4 gate type-A MMU initially based on Pico MMU. It
-    uses a servo and cam mechanism to select filament gate.
-  select MMU_HAS_SELECTOR_SERVO
+    MMX6 is a 6 gate type-A MMU using a stepper to control
+    cam mechanism to select filament gate.
+  select MMU_HAS_SELECTOR_STEPPER
   select MMU_HAS_LEDS
   select PARAM_REQUIRE_BOWDEN_MOVE
   select PARAM_FILAMENT_ALWAYS_GRIPPED
-  select SERVO_SELECTOR
+  select ROTARY_SELECTOR
   
 
-if MMU_TYPE_MMX_1_0
+if MMU_TYPE_MMX6_1_0
 
-  source "servos/Kconfig"
+  menu "Project Options"
+    help
+      If you have any project upgrades then you can specify them here.
+
+    config MOD_PRO
+      bool "Pro version"
+      help
+        Select if building with the LDO "pro" version of the kit.
+  endmenu
 
   if SHOW_MMU_ADDITIONS_WITH_TYPE
     source "mmu_additions/Kconfig"
@@ -22,12 +30,13 @@ if MMU_TYPE_MMX_1_0
   ##### Defaults #####
   ####################
 
+  # PAUL These are placeholders. TODO..
   config PARAM_VENDOR
-    default "MMX"
+    default "MMX6"
   config PARAM_VERSION
     default "1.0"
   config PARAM_NUM_GATES
-    default 4
+    default 6
 
   config PARAM_GEAR_GEAR_RATIO
     default "80:20"
@@ -42,9 +51,6 @@ if MMU_TYPE_MMX_1_0
     default "1000"
   config PARAM_CHAIN_COUNT
     default 4   
-
-  config PARAM_SELECTOR_GATE_ANGLES
-    default "60,0,180,120"
 
   config PARAM_EXIT_LEDS 
     default "neopixel:$(UNIT_NAME)_leds (1-4)"
