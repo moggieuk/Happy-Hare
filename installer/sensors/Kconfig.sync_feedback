@@ -1,3 +1,7 @@
+# Responsible for setting:
+#   MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION
+#   MMU_HAS_SENSOR_SYNC_FEEDBACK_TENSION
+
 if MMU_HAS_SYNC_FEEDBACK_BUFFER
   config MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION
     bool "Sync-Feedback Compression sensor (aka buffer out)?"

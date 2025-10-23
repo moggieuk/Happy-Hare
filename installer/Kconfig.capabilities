@@ -53,6 +53,9 @@ config MMU_DISABLE_FILAMENT_BUFFER_OPTION
 config MMU_HAS_LEDS
   bool
 
+config MMU_HAS_ENVIRONMENT_SENSOR
+  bool
+
 # Some new designs have mcu integrated in sync-feedback buffer mcu
 config MMU_HAS_BUFFER_MCU
   bool

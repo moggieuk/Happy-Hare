@@ -1,0 +1,10 @@
+# Defines whether MMU has environment sensor
+#
+# Responsible for setting:
+#   MMU_HAS_ENVIRONMENT_SENSOR
+
+config MMU_HAS_ENVIRONMENT_SENSOR
+  help
+    Select if the MMU has a humidity/temperature sensor in the filament storate enclosure
+  prompt "Environment sensor?"
+  forceshow

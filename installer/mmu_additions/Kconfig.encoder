@@ -1,3 +1,9 @@
+# Defines whether MMU has environment sensor
+#
+# Responsible for setting:
+#   MMU_HAS_ENCODER
+#   PARAM_ENCODER_RESOLUTION
+
 config MMU_HAS_ENCODER
   help
     An encoder measures filament movement and can be used to validate

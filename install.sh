@@ -246,7 +246,7 @@ if [ -n "${F_MENUCONFIG:-}" ]; then
     # Now we are sure of having multi-unit names, move the original combined config
     # to first unit config before running menuconfig on it
     if [ -n "${tmpconfig:-}" ]; then
-        first_unit=$(trim "${CONFIG_PARAM_MMU_UNITS%%,*}")
+        first_unit=$(trim "${CONFIG_MMU_UNITS%%,*}")
         [ -n "${first_unit}" ] && mv "${tmpconfig}" "${KCONFIG_CONFIG}_${first_unit}"
     fi
 
@@ -254,7 +254,7 @@ if [ -n "${F_MENUCONFIG:-}" ]; then
         i=0
         IFS=,
         set -f # Avoid globbing
-        for name in ${CONFIG_PARAM_MMU_UNITS:-}; do
+        for name in ${CONFIG_MMU_UNITS:-}; do
             name=$(trim "$name")
             [ -n "$name" ] || continue
             make --no-print-directory -C "$SCRIPT_DIR" KCONFIG_CONFIG="${KCONFIG_CONFIG}_${name}" F_MULTI_UNIT=y UNIT_INDEX="$i" UNIT_NAME="$name" MCU_NAME="$name" menuconfig

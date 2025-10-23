@@ -49,7 +49,7 @@ ml = $(shell, printf '%s' "$(1)" | awk -v ORS='\\n' '1')
 ### Start of configuration
 mainmenu "$(title)"
 
-config PARAM_HAPPY_HARE_VERSION
+config HAPPY_HARE_VERSION
   string
   default "$(happy_hare_version)"
 
@@ -66,7 +66,7 @@ config MULTI_UNIT_ENTRY_POINT
   default "$(F_MULTI_UNIT_ENTRY_POINT)"
 
 if MULTI_UNIT_ENTRY_POINT || !MULTI_UNIT
-  config PARAM_MMU_UNITS
+  config MMU_UNITS
     string
     default "$(UNIT_NAME)"
 endif
@@ -99,7 +99,7 @@ config SHOW_MMU_ADDITIONS_WITH_TYPE
   default n
 
 if MULTI_UNIT_ENTRY_POINT
-  config PARAM_MMU_UNITS
+  config MMU_UNITS
     prompt "MMU unit names"
     help
       Comma-separated list of unit names. Careful: Use only alphanumeric characters.

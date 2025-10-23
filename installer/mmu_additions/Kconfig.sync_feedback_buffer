@@ -1,3 +1,10 @@
+# Defines whether MMU is equipped with sync-feedback "buffer" in bowden path
+#
+# Responsible for setting:
+#   MMU_HAS_SYNC_FEEDBACK_BUFFER
+#   (MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION)
+#   (MMU_HAS_SENSOR_SYNC_FEEDBACK_TENSION)
+
 config MMU_HAS_SYNC_FEEDBACK_BUFFER
   prompt "Has sync-feedback buffer?"
   forceshow

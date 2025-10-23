@@ -1,3 +1,9 @@
+# Defines whether MMU has environment sensor
+#
+# Responsible for setting:
+#   MMU_HAS_ENCODER
+#   PARAM_ENCODER_RESOLUTION
+
 if !MMU_DISABLE_ESPOOLER_OPTION
 
   config MMU_HAS_ESPOOLER
