@@ -51,7 +51,8 @@ class VirtualMmuLedChain:
             chain.led_helper.led_state[led] = color
             chains_to_update.add(chain)
         for chain in chains_to_update:
-            chain.led_helper.update_func(chain.led_helper.led_state, None)
+            chain.led_helper.need_transmit = True
+            chain.led_helper._check_transmit()
 
     def get_status(self, eventtime=None):
         state = []
