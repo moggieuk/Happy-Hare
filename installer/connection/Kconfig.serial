@@ -5,7 +5,7 @@
 config CHOICE_MCU_CONNECTION_TYPE_SERIAL
   bool "Serial"
   help
-    Select if your MMU connects via serial connetion to mcu board
+    Select if your MMU connects via a serial connection to mcu board
 
 if CHOICE_MCU_CONNECTION_TYPE_SERIAL
   # Make the first 10 available serial tty devices selectable, it's unlikely people have more.

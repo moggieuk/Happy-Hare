@@ -1363,7 +1363,7 @@ def _draw_main():
         _safe_hline(_top_sep_win, 0, 4, curses.ACS_UARROW, _N_SCROLL_ARROWS)
 
     # Add the 'mainmenu' text as the title, centered at the top
-    _safe_addstr(_top_sep_win,
+    _safe_addstr_markup(_top_sep_win,
                  0, max((term_width - len(_kconf.mainmenu_text))//2, 0),
                  _kconf.mainmenu_text)
 
@@ -1393,7 +1393,8 @@ def _draw_main():
         else:
             style = _style["inv-selection" if i == _sel_node_i else "inv-list"]
 
-        _safe_addstr(_menu_win, i - _menu_scroll, 0, _node_str(node), style)
+        # Happy Hare: _safe_addstr(_menu_win, i - _menu_scroll, 0, _node_str(node), style)
+        _safe_addstr_markup(_menu_win, i - _menu_scroll, 0, _node_str(node), style) # Happy Hare: Added
 
     _menu_win.noutrefresh()
 
@@ -3421,6 +3422,81 @@ def _safe_addstr(win, *args):
             win.addnstr(y, x, s, maxlen, attr)
     except curses.error:
         pass
+
+
+# Happy Hare: Added alternative to _safe_addstr() that allows simple embedded markup
+_TAG_RE = re.compile(r"\[\[(/?)([A-Za-z]+)(?::(\d+))?\]\]")
+def _safe_addstr_markup(win, *args):
+    # Render text with inline tags using _safe_addstr().
+    # Call styles:
+    #   addstr_markup(win, "text", base_attr)
+    #   addstr_markup(win, y, x, "text", base_attr)
+    # [[B]]...[[/B]]     → bold on/off
+    # [[U]]...[[/U]]     → underline on/off
+    # [[REV]]...[[/REV]] → reverse on/off
+    # [[DIM]]...[[/DIM]] → dim on/off
+    # [[C:n]]...[[/C]]   → color_pair(n) on/off (n is an int)
+    # [[RESET]]          → reset to base_attr (pushes a clean state)
+    # Parse args similar to _safe_addstr
+    if isinstance(args[0], str):
+        y, x = win.getyx()
+        text = args[0]
+        base_attr = args[1] if len(args) == 2 else None
+    else:
+        y, x, text = args[:3]
+        base_attr = args[3] if len(args) == 4 else None
+
+    # Move to starting position once; subsequent _safe_addstr() calls will advance the cursor
+    win.move(y, x)
+
+    # Attribute stack (top is current). Start with base_attr if provided, else 0 (keep simple).
+    attr_stack = [0 if base_attr is None else base_attr]
+
+    def cur_attr():
+        return attr_stack[-1]
+
+    pos = 0
+    for m in _TAG_RE.finditer(text):
+        # Emit plain text before this tag
+        if m.start() > pos:
+            chunk = text[pos:m.start()]
+            # Pass attribute; if you want "inherit current window style" for plain chunks,
+            # you could pass None here instead of cur_attr().
+            _safe_addstr(win, chunk, cur_attr())
+
+        closing, name, arg = m.groups()
+        name = name.upper()
+
+        if not closing:  # opening tag
+            a = cur_attr()
+            if name in ("B", "BOLD"):
+                attr_stack.append(a | curses.A_BOLD)
+            elif name in ("U", "UNDERLINE"):
+                attr_stack.append(a | curses.A_UNDERLINE)
+            elif name in ("REV", "REVERSE"):
+                attr_stack.append(a | curses.A_REVERSE)
+            elif name == "DIM":
+                attr_stack.append(a | curses.A_DIM)
+            elif name in ("C", "COLOR"):
+                n = int(arg or 0)
+                # Replace only the color bits; keep other attrs
+                attr_stack.append((a & ~curses.A_COLOR) | curses.color_pair(n))
+            elif name == "RESET":
+                # Reset to base attribute
+                attr_stack.append(attr_stack[0])
+            else:
+                # Unknown tag → render it literally
+                _safe_addstr(win, m.group(0), cur_attr())
+        else:
+            # Closing tag: pop one level if possible (assumes well-nested tags)
+            if len(attr_stack) > 1:
+                attr_stack.pop()
+
+        pos = m.end()
+
+    # Emit any trailing text
+    if pos < len(text):
+        _safe_addstr(win, text[pos:], cur_attr())
 
 
 def _safe_addch(win, *args):

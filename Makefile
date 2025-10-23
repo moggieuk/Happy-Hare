@@ -408,9 +408,9 @@ variables:
 ##### Menuconfig targets #####
 ##############################
 
-MENUCONFIG_STYLE ?= aquatic
+MENUCONFIG_STYLE ?= default
 ifeq ($(F_MULTI_UNIT_ENTRY_POINT),y)
-  MENUCONFIG_STYLE := default
+  MENUCONFIG_STYLE := aquatic
 endif
 
 $(KCONFIG_CONFIG): $(SRC)/installer/Kconfig* $(SRC)/installer/**/Kconfig* 

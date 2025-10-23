@@ -1,6 +1,11 @@
-# This just defines the symbol types and pins menu layout. To change the actual
-# defaults create a Kconfig.board_type under the boards directory.
+# This defines the symbol types, pins menu layout and changes to defaults.
+# The defaults are set in the Kconfig.board_type under the boards directory.
+# Note that
 #
+# Responsible for defining all "PIN_*" parameters
+
+# PAUL TODO .. add contraints based on MMU capabilities
+
 menu "Pins"
 
   config HAS_ESPOOLER_ENABLE_PIN
@@ -79,7 +84,7 @@ menu "Pins"
       endmenu
     endif
 
-    menu "Pre-gate pins"
+    menu "Mmu entry sensor pins"
       config PIN_PRE_GATE_0
         string "Pre-gate 0 pin"
         depends on PARAM_NUM_GATES > 0
@@ -118,7 +123,7 @@ menu "Pins"
         depends on PARAM_NUM_GATES > 11
     endmenu
 
-    menu "Gear sensor pins"
+    menu "Mmu exit sensor pins"
       config PIN_GEAR_SENSOR_0
         string "Gear sensor 0 pin"
         depends on PARAM_NUM_GATES > 0
@@ -215,10 +220,10 @@ menu "Pins"
 
     config PIN_NEOPIXEL
       string "Neopixel pin"
+      depends on MMU_HAS_LED
 
     config PIN_GATE_SENSOR
-      string "Gate sensor pin"
-      depends on !MMU_HAS_ENCODER
+      string "MMU Shared exit sensor pin"
 
     config PIN_SYNC_FEEDBACK_TENSION
       string "Sync feedback tension pin"
