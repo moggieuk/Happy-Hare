@@ -2258,6 +2258,7 @@ questionaire() {
         option EASY_BRD_RP2040      'EASY-BRD with RP2040'
         option MELLOW_BRD_1         'Mellow EASY-BRD v1.x (with CANbus)'
         option MELLOW_BRD_2         'Mellow EASY-BRD v2.x (with CANbus)'
+		option TZB_1                'TZB v1.0'
         option AFC_LITE_1           'AFC Lite v1.0'
         option WGB_3                'WGB v3.0'
         option SKR_PICO_1           'BTT SKR Pico v1.0'
@@ -2301,6 +2302,10 @@ questionaire() {
                 _hw_brd_type="MELLOW-EASY-BRD-CANv2"
                 pattern="Klipper_rp2040"
                 ;;
+			"$TZB_1")
+                _hw_brd_type="TZB_1"
+                pattern="Klipper_stm32"
+                ;;	
             "$AFC_LITE_1")
                 _hw_brd_type="AFC_LITE_1"
                 pattern="Klipper_stm32"
