@@ -368,8 +368,11 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.mmu = mmu
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
-        self.all_mcus = [m for n, m in self.printer.lookup_objects(module='mcu')]
-        self.mcu = self.all_mcus[0]
+
+        self.all_mcus = [m for n, m in self.printer.lookup_objects(module='mcu')] # Older Klipper
+        self.mcu = self.all_mcus[0]                                               # Older Klipper
+        #self.mcu = self.printer.lookup_object('mcu') # Klipper approx >= 0.13.0-328 (safer lookup, guarantee's primary mcu or config error)
+
         self._resync_lock = self.reactor.mutex()
 
         if hasattr(toolhead, 'BUFFER_TIME_HIGH'):
@@ -618,7 +621,7 @@ class MmuToolHead(toolhead.ToolHead, object):
     def quiesce(self, full_quiesce=True):
         with self._resync_lock:
             ths = [self.printer_toolhead, self.mmu_toolhead]
-            t_cut = self._quiesce_align_get_tcut(ths, full=full_quiesce)
+            t_cut = self._quiesce_align_get_tcut(ths, full=full_quiesce, wait=full_quiesce)
 
     # Drain required toolheads, align to a common future time, materialize it,
     # and return a strict fence time t_cut. 'wait' shouldn't be needed but
@@ -634,7 +637,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             for th in ths:
                 th.flush_step_generation()
 
-        # Align planners to a common *future* time
+        # Align planners to a common future time
         last_times = [th.get_last_move_time() for th in ths]
         t_future = max(last_times) + SYNC_AIR_GAP
         for th, lm in zip(ths, last_times):
@@ -755,6 +758,10 @@ class MmuToolHead(toolhead.ToolHead, object):
                     self._register(self.mmu_toolhead, s) # s.set_trapq(self.mmu_toolhead.get_trapq())
                     s.set_position([0., self.mmu_toolhead.get_position()[1], 0.])
 
+            ## Required for klipper >= 0.13.0-330
+            #if self.motion_queuing and hasattr(self.motion_queuing, 'check_step_generation_scan_windows'):
+            #    self.motion_queuing.check_step_generation_scan_windows()
+
             # Debugging
             #logging.info("MMU: ////////// CUTOVER fence t_cut=%.6f, old_trapq=%s, new_trapq=%s, from.last=%.6f, to.last=%.6f",
             #             t0, self._match_trapq(old_trapq), self._match_trapq(new_trapq),
@@ -770,6 +777,10 @@ class MmuToolHead(toolhead.ToolHead, object):
                 self.printer.send_event("mmu:unsynced")
 
             # Now “unsynced” at t0
+
+        # Required for klipper >= 0.13.0-330
+        if self.motion_queuing and hasattr(self.motion_queuing, 'check_step_generation_scan_windows'):
+            self.motion_queuing.check_step_generation_scan_windows()
 
         self.sync_mode = self.GEAR_ONLY if new_sync_mode == self.GEAR_ONLY else None
         if new_sync_mode in [self.GEAR_ONLY, None]:

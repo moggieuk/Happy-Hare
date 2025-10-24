@@ -10,7 +10,7 @@
 #               2024  Unsweeticetea <iamzevle@gmail.com>
 #               2024  Dmitry Kychanov <k1-801@mail.ru>
 #
-VERSION=3.4 # Important: Keep synced with mmy.py
+VERSION=3.41 # Important: Keep synced with mmy.py
 
 F_VERSION=$(echo "$VERSION" | sed 's/\([0-9]\+\)\.\([0-9]\)\([0-9]\)/\1.\2.\3/')
 SCRIPT="$(readlink -f "$0")"
@@ -19,11 +19,17 @@ SCRIPTPATH="$(dirname "$SCRIPT")"
 SCRIPTNAME="$0"
 ARGS=( "$@" )
 
-# Creality K1 series printers run on MIPS, with a limited instruction set and different default klipper directories
-# Checking for machine type is the easiest way so far to spot them (will be set to 1 if on MIPS):
-IS_MIPS=0
-if [ $(uname -m) = "mips" ]; then
-    IS_MIPS=1
+# Provide klipper installation path and settings for different systems
+
+OS_CREALITY_K1="creality-k1"
+OS_FLYOS_FAST="flyos-fast"
+OS_TYPE=""
+if [ $(uname -m) = "mips" ] && [ -d "/usr/data/creality" ]; then
+    OS_TYPE="${OS_CREALITY_K1}"
+    echo "Detected Creality K1 series printer"
+elif [ $(sed -n 's/^NAME="\(.*\)"/\1/p' /etc/os-release 2>/dev/null) = "FlyOS-Fast" ]; then
+    OS_TYPE="${OS_FLYOS_FAST}"
+    echo "Detected FlyOS-Fast"
 fi
 
 KLIPPER_HOME="${HOME}/klipper"
@@ -33,10 +39,16 @@ OCTOPRINT_KLIPPER_CONFIG_HOME="${HOME}"
 KLIPPER_LOGS_HOME="${HOME}/printer_data/logs"
 OLD_KLIPPER_CONFIG_HOME="${HOME}/klipper_config"
 
-if [ "$IS_MIPS" -eq 1 ]; then
+if [ "$OS_TYPE" = "$OS_CREALITY_K1" ]; then
     KLIPPER_HOME="/usr/share/klipper"
     MOONRAKER_HOME="/usr/data/moonraker/moonraker"
     KLIPPER_CONFIG_HOME="/usr/data/printer_data/config"
+    unset OCTOPRINT_KLIPPER_CONFIG_HOME
+    unset OLD_KLIPPER_CONFIG_HOME
+elif [ "$OS_TYPE" = "$OS_FLYOS_FAST" ]; then
+    KLIPPER_HOME="/data/klipper"
+    MOONRAKER_HOME="/data/moonraker"
+    KLIPPER_CONFIG_HOME="/usr/share/printer_data/config"
     unset OCTOPRINT_KLIPPER_CONFIG_HOME
     unset OLD_KLIPPER_CONFIG_HOME
 fi
@@ -118,8 +130,8 @@ self_update() {
     cd "$SCRIPTPATH"
 
     set +e
-    # timeout is unavailable on MIPS
-    if [ "$IS_MIPS" -ne 1 ]; then
+    # There is no timeout function provided in the system
+    if [ -n "$(which timeout)" ]; then
         BRANCH=$(timeout 3s git branch --show-current)
     else
         BRANCH=$(git branch --show-current)
@@ -197,26 +209,23 @@ function nextsuffix {
 }
 
 verify_not_root() {
-    if [ "$IS_MIPS" -ne 1 ]; then
+    if [ "$OS_TYPE" = "$OS_CREALITY_K1" ]; then
+        echo -e "${WARNING}This script is run on a ${OS_TYPE} system, so we want it to be run as root"
+        return
+    elif [ "$OS_TYPE" = "$OS_FLYOS_FAST" ]; then
+        echo -e "${WARNING}This script is run on a ${OS_TYPE} system, so we want it to be run as root"
+        return
+    else
         if [ "$EUID" -eq 0 ]; then
             echo -e "${ERROR}This script must not run as root"
             exit -1
         fi
-    else
-        echo -e "${WARNING}This script is running on a MIPS system, so we expect it to be run as root"
     fi
 }
 
 check_klipper() {
     if [ "$NOSERVICE" -ne 1 ]; then
-        if [ "$IS_MIPS" -ne 1 ]; then
-            if [ "$(systemctl list-units --full -all -t service --no-legend | grep -F "${KLIPPER_SERVICE}")" ]; then
-                echo -e "${DIM}Klipper ${KLIPPER_SERVICE} systemd service found"
-            else
-                echo -e "${ERROR}Klipper ${KLIPPER_SERVICE} systemd service not found! Please install Klipper first"
-                exit -1
-            fi
-        else
+        if [ "$OS_TYPE" = "$OS_CREALITY_K1" ]; then
             # There is no systemd on MIPS, we can only check the running processes
             running_klipper_pid=$(ps -o pid,comm,args | grep [^]]/klipper/klippy/klippy.py | awk '{print $1}')
             KLIPPER_PID_FILE=/var/run/klippy.pid
@@ -227,13 +236,22 @@ check_klipper() {
                 echo -e "${ERROR}Klipper service not found! Please install Klipper first"
                 exit -1
             fi
+        else
+            if [ "$(systemctl list-units --full -all -t service --no-legend | grep -F "${KLIPPER_SERVICE}")" ]; then
+                echo -e "${DIM}Klipper ${KLIPPER_SERVICE} systemd service found"
+            else
+                echo -e "${ERROR}Klipper ${KLIPPER_SERVICE} systemd service not found! Please install Klipper first"
+                exit -1
+            fi
         fi
     fi
 }
 
 check_octoprint() {
-    if [ "$IS_MIPS" -eq 1 ]; then
+    if [ "$OS_TYPE" = "$OS_CREALITY_K1" ]; then
         OCTOPRINT=0 # Octoprint can not be set up on MIPS
+    elif [ "$OS_TYPE" = "$OS_FLYOS_FAST" ]; then
+        OCTOPRINT=0 # Octoprint can not be set up on FlyOS-Fast
     elif [ "$NOSERVICE" -ne 1 ]; then
         if [ "$(sudo systemctl list-units --full -all -t service --no-legend | grep -F "octoprint.service")" ]; then
             echo -e "${DIM}OctoPrint service found"
@@ -1094,8 +1112,7 @@ copy_config_files() {
 
             # Handle LED option - Comment out if disabled (section is last, go comment to end of file)
             if [ "${file}" == "mmu_hardware.cfg" -a "$SETUP_LED" == "no" ]; then
-                sed "/^\[neopixel mmu_leds\]/,+4 {/^[^#]/ s/^/#/}" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
-                sed "/^\[mmu_leds\]/,+6 {/^[^#]/ s/^/#/}" ${dest} > ${dest}.tmp && mv ${dest}.tmp ${dest}
+                sed '/^\[\(neopixel mmu_leds\|mmu_leds\)\]/,${ /^[^#]/ s/^/#/ }' "${dest}" > "${dest}.tmp" && mv "${dest}.tmp" "${dest}"
             fi
 
             # Handle Encoder option - Comment out if not fitted so can easily be added later
@@ -1347,14 +1364,14 @@ install_update_manager() {
         restart=0
 
         update_section=$(grep -c '\[update_manager happy-hare\]' ${file} || true)
-        if [ "${update_section}" -eq 0 ]; then
+        if [ "${update_section}" -eq 0 ] && [ "$OS_TYPE" != "$OS_FLYOS_FAST" ]; then
             echo "" >> "${file}"
             while read -r line; do
                 echo -e "${line}" >> "${file}"
             done < "${SRCDIR}/moonraker_update.txt"
             echo "" >> "${file}"
             # The path for Happy-Hare on MIPS is /usr/data/Happy-Hare
-            if [ "$IS_MIPS" -eq 1 ]; then
+            if [ "$OS_TYPE" = "$OS_CREALITY_K1" ]; then
                 sed -i 's|path: ~/Happy-Hare|path: /usr/data/Happy-Hare|' "${file}"
                 echo -e "${INFO}Update Happy-Hare path for MIPS architecture."
             fi
@@ -1433,12 +1450,12 @@ restart_klipper() {
     if [ "$NOSERVICE" -ne 1 ]; then
         echo -e "${INFO}Restarting Klipper..."
 
-        if [ "$IS_MIPS" -ne 1 ]; then
-            sudo systemctl restart ${KLIPPER_SERVICE}
-        else
+        if [ "$OS_TYPE" = "$OS_CREALITY_K1" ]; then
             set +e
             /etc/init.d/*klipper_service restart
             set -e
+        else
+            sudo systemctl restart ${KLIPPER_SERVICE}
         fi
     else
         echo -e "${WARNING}Klipper restart suppressed - Please restart ${KLIPPER_SERVICE} by hand"
@@ -1449,12 +1466,12 @@ restart_moonraker() {
     if [ "$NOSERVICE" -ne 1 ]; then
         echo -e "${INFO}Restarting Moonraker..."
 
-        if [ "$IS_MIPS" -ne 1 ]; then
-            sudo systemctl restart moonraker
-        else
+        if [ "$OS_TYPE" = "$OS_CREALITY_K1" ]; then
             set +e
             /etc/init.d/*moonraker_service restart
             set -e
+        else
+            sudo systemctl restart moonraker
         fi
     else
         echo -e "${WARNING}Moonraker restart suppressed - Please restart by hand"
@@ -1544,7 +1561,7 @@ questionaire() {
     OPTIONS=()
     option ERCF11         'Enraged Rabbit Carrot Feeder v1.1'
     option ERCF20         'ERCF v2.0'
-    option ERCF25         'ERCF v2.5'
+    option ERCF30         'ERCF v3.0'
     option TRADRACK       'Tradrack v1.0'
     option ANGRY_BEAVER   'Angry Beaver v1.0'
     option BOX_TURTLE     'Box Turtle v1.0'
@@ -1575,6 +1592,7 @@ questionaire() {
             _hw_gear_gear_ratio="80:20"
             _hw_gear_run_current=0.5
             _hw_gear_hold_current=0.1
+            _hw_sel_gear_ratio="1:1"
             _hw_sel_run_current=0.4
             _hw_sel_hold_current=0.2
             _hw_encoder_resolution=0.7059
@@ -1625,6 +1643,7 @@ questionaire() {
             _hw_gear_gear_ratio="80:20"
             _hw_gear_run_current=0.5
             _hw_gear_hold_current=0.1
+            _hw_sel_gear_ratio="1:1"
             _hw_sel_run_current=0.4
             _hw_sel_hold_current=0.2
             _hw_encoder_resolution=1.0
@@ -1637,7 +1656,7 @@ questionaire() {
             _param_servo_buzz_gear_on_down=1
             ;;
 
-        "$ERCF25")
+        "$ERCF30")
             HAS_ENCODER=yes
             HAS_SELECTOR=yes
             HAS_SERVO=yes
@@ -1649,14 +1668,15 @@ questionaire() {
             _hw_require_bowden_move=1
             _hw_filament_always_gripped=0
             _hw_gear_gear_ratio="1:1"
-            _hw_gear_run_current=1.0
+            _hw_gear_run_current=0.8
             _hw_gear_hold_current=0.2
-            _hw_sel_run_current=0.4
+            _hw_sel_gear_ratio="1:1"
+            _hw_sel_run_current=0.7
             _hw_sel_hold_current=0.2
             _hw_encoder_resolution=1.0
             _param_extruder_homing_endstop="collision"
             _param_gate_homing_endstop="encoder"
-            _param_gate_parking_distance=10
+            _param_gate_parking_distance=16
             _param_servo_buzz_gear_on_down=3
             _param_servo_duration=0.4
             _param_servo_always_active=0
@@ -1677,6 +1697,7 @@ questionaire() {
             _hw_gear_gear_ratio="50:17"
             _hw_gear_run_current=1.27
             _hw_gear_hold_current=0.2
+            _hw_sel_gear_ratio="1:1"
             _hw_sel_run_current=0.63
             _hw_sel_hold_current=0.2
             _param_extruder_homing_endstop="none"
@@ -1832,6 +1853,7 @@ questionaire() {
             _hw_gear_gear_ratio="1:1"
             _hw_gear_run_current=0.7
             _hw_gear_hold_current=0.1
+            _hw_sel_gear_ratio="1:1"
             _hw_sel_run_current=0.63
             _hw_sel_hold_current=0.2
 
@@ -2077,6 +2099,7 @@ questionaire() {
             _hw_gear_gear_ratio="1:1"
             _hw_gear_run_current=0.7
             _hw_gear_hold_current=0.1
+            _hw_sel_gear_ratio="1:1"
             _hw_sel_run_current=0.5
             _hw_sel_hold_current=0.1
 
@@ -2253,7 +2276,9 @@ questionaire() {
         option EASY_BRD_RP2040      'EASY-BRD with RP2040'
         option MELLOW_BRD_1         'Mellow EASY-BRD v1.x (with CANbus)'
         option MELLOW_BRD_2         'Mellow EASY-BRD v2.x (with CANbus)'
+		option TZB_1                'TZB v1.0'
         option AFC_LITE_1           'AFC Lite v1.0'
+        option WGB_3                'WGB v3.0'
         option SKR_PICO_1           'BTT SKR Pico v1.0'
         option EBB42_12             'BTT EBB 42 CANbus v1.2 (for MMX or Pico)'
         option OTHER                'Not in list / Unknown'
@@ -2295,8 +2320,16 @@ questionaire() {
                 _hw_brd_type="MELLOW-EASY-BRD-CANv2"
                 pattern="Klipper_rp2040"
                 ;;
+			"$TZB_1")
+                _hw_brd_type="TZB_1"
+                pattern="Klipper_stm32"
+                ;;	
             "$AFC_LITE_1")
                 _hw_brd_type="AFC_LITE_1"
+                pattern="Klipper_stm32"
+                ;;
+            "$WGB_3")
+                _hw_brd_type="WGB_3"
                 pattern="Klipper_stm32"
                 ;;
             "$SKR_PICO_1")

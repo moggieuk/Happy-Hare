@@ -37,7 +37,7 @@ from .mmu_sync_feedback_manager import MmuSyncFeedbackManager
 
 # Main klipper module
 class Mmu:
-    VERSION = 3.40 # When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
+    VERSION = 3.41 # When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
 
     BOOT_DELAY = 2.5 # Delay before running bootup tasks
 
@@ -262,6 +262,7 @@ class Mmu:
         self.toolchange_purge_volume = 0.
         self.mmu_logger = None                # Setup on connect
         self._standalone_sync = False         # Used to indicate synced extruder intention whilst out of print
+        self._suppress_release_grip = False   # Used to suppress the relaxing of grip on recursive calls to prevent servo flutter
         self.bowden_start_pos = None
         self.has_blobifier = False            # Post load blobbling macro (like BLOBIFIER)
         self.has_mmu_cutter = False           # Post unload cutting macro (like EREC)
@@ -904,9 +905,9 @@ class Mmu:
         # TODO: A little bit hacky until a more universal approach is implemented
         sequence_vars_macro = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
         if sequence_vars_macro:
-            self.has_blobifier = 'blob' in sequence_vars_macro.variables.get('user_post_load_extension', '').lower() # E.g. "BLOBIFIER"
-            self.has_mmu_cutter = 'cut' in sequence_vars_macro.variables.get('user_post_unload_extension', '').lower() # E.g "EREC_CUTTER_ACTION"
-        self.has_toolhead_cutter = 'cut' in self.form_tip_macro.lower() # E.g. "_MMU_CUT_TIP"
+            self.has_blobifier = 'blob' in sequence_vars_macro.variables.get('user_post_load_extension', '').lower()   # E.g. "BLOBIFIER" (old method of adding)
+            self.has_mmu_cutter = 'cut' in sequence_vars_macro.variables.get('user_post_unload_extension', '').lower() # E.g. "EREC_CUTTER_ACTION"
+        self.has_toolhead_cutter = 'cut' in self.form_tip_macro.lower()                                                # E.g. "_MMU_CUT_TIP"
 
         # Sub components
         self.selector.handle_connect()
@@ -1795,18 +1796,18 @@ class Mmu:
     def format_help(self, msg):
         lines = msg.splitlines()
         if not lines:
-            return msg     
+            return msg
 
         first_line = lines[0]
         if ":" in first_line:
             cmd, helpstr = first_line.split(":", 1)
             formatted_help = "{5}%s{6}:%s" % (cmd.strip(), helpstr)
         else:
-            formatted_help = first_line 
+            formatted_help = first_line
 
         param_width = max(10, max((len(line.split("=", 1)[0].strip()) + 1 for line in lines[1:] if "=" in line), default=0))
         formatted_params = []
-        for line in lines[1:]:      
+        for line in lines[1:]:
             if "=" in line:
                 key, value = line.split("=", 1)
                 padded = key.strip().ljust(param_width, UI_SPACE) + "= " + value.strip()
@@ -4949,7 +4950,7 @@ class Mmu:
                     # full bowden length or max possible length if bowden is uncalibrated
                     _,_ = self._unload_gate(homing_max=bowden_move if calibrated else self.bowden_homing_max)
 
-            # Set future "from buffer" flag
+            # Set future "from buffer" flag (also used for faster loading speed)
             if unload_to_buffer and self.gate_status[self.gate_selected] != self.GATE_EMPTY:
                 self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE_FROM_BUFFER)
 
@@ -5095,7 +5096,7 @@ class Mmu:
                 # Use stepper movement (tip forming)
                 filament_remaining = 0.
                 park_pos = stepper_movement + self.toolhead_residual_filament + self.toolchange_retract
-                msg = "After tip forming, extruder moved: %.1fmm thus park_pos calculated as %.1fmm (encoder measured %.1fmm)" % (stepper_movement, park_pos, measured)
+                msg = "After tip forming, extruder moved: %.1fmm thus park_pos calculated as %.1fmm (encoder measured %.1fmm total movement)" % (stepper_movement, park_pos, measured)
                 if test:
                     self.log_always(msg)
                 else:
@@ -5106,7 +5107,7 @@ class Mmu:
                     self.log_warning("Warning: output_park_pos was reported as 0mm and may not be set correctly\nWill attempt to continue...")
                 reported = True
                 filament_remaining = park_pos - stepper_movement - self.toolhead_residual_filament - self.toolchange_retract
-                msg = "After tip cutting, park_pos reported as: %.1fmm with calculated %.1fmm filament remaining in extruder (extruder moved: %.1fmm, encoder measured %.1fmm)" % (park_pos, filament_remaining, stepper_movement, measured)
+                msg = "After tip cutting, park_pos reported as: %.1fmm with calculated %.1fmm filament remaining in extruder (extruder moved: %.1fmm, encoder measured %.1fmm total movement)" % (park_pos, filament_remaining, stepper_movement, measured)
                 if test:
                     self.log_always(msg)
                 else:
@@ -5339,6 +5340,22 @@ class Mmu:
 
         return actual, homed, measured, delta
 
+    # This is used to protect just the mmu_toolhead sync state and is used to wrap individual moves. Typically
+    # the starting state will be unsynced so this will simply unsync at the end of the move. It does not manage
+    # grip (servo) movement control since that would lead to unecessary "flutter" and premature wear
+    @contextlib.contextmanager
+    def _wrap_sync_mode(self, sync_mode):
+        prev_sync_mode = self.mmu_toolhead.sync_mode
+        self.mmu_toolhead.sync(sync_mode)
+        self._restore_gear_current()
+        try:
+            yield self
+        finally:
+            # Don't restore because it results in too much delay on rapid back-to-back moves and in theory shouldn't
+            # be necessary because the user is protected with wrap_sync_gear_to_extruder() in outermost `MMU_XXX` commands
+            #self.mmu_toolhead.sync(prev_sync_mode)
+            pass
+
     # Used to force accelaration override for homing moves
     @contextlib.contextmanager
     def wrap_accel(self, accel):
@@ -5408,7 +5425,8 @@ class Mmu:
             elif self.filament_pos not in [self.FILAMENT_POS_LOADED, self.FILAMENT_POS_UNLOADED]:
                 self.log_error("Filament not detected as either unloaded or fully loaded. Please check and use MMU_RECOVER to correct state or fix before continuing")
 
-    # This is a recovery routine to determine the most conservative location of the filament for unload purposes
+    # This is a recovery routine to determine the most conservative location of the filament (for unload purposes)
+    # Also, ensures that the filament availabilty is updated if filament is found
     def recover_filament_pos(self, strict=False, can_heat=True, message=False, silent=False):
         if message:
             self.log_info("Attempting to recover filament position...")
@@ -5416,11 +5434,8 @@ class Mmu:
         ts = self.sensor_manager.check_sensor(self.SENSOR_TOOLHEAD)
         es = self.sensor_manager.check_sensor(self.SENSOR_EXTRUDER_ENTRY)
 
-        # We ignore the gate endstop trigger if using gear sensor and parking distance is not a retract (i.e. sensor expected to be triggered))
-        if self.gate_homing_endstop == self.SENSOR_GEAR_PREFIX and self.gate_parking_distance <= 0:
-            gs = None
-        else:
-            gs = self.sensor_manager.check_sensor(self.sensor_manager.get_mapped_endstop_name(self.gate_homing_endstop))
+        gs = self.sensor_manager.check_sensor(self.sensor_manager.get_mapped_endstop_name(self.gate_homing_endstop))
+
         filament_detected = self.sensor_manager.check_any_sensors_in_path()
         if not filament_detected:
             filament_detected = self.check_filament_in_mmu() # Include encoder detection method
@@ -5430,9 +5445,9 @@ class Mmu:
             self._set_filament_pos_state(self.FILAMENT_POS_LOADED, silent=silent)
 
         # Somewhere in extruder
-        elif filament_detected and can_heat and self.check_filament_still_in_extruder(): # Encoder based
+        elif filament_detected and can_heat and self.check_filament_in_extruder(): # Encoder based
             self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER, silent=silent) # Will start from tip forming
-        elif ts is False and filament_detected and (self.strict_filament_recovery or strict) and can_heat and self.check_filament_still_in_extruder():
+        elif ts is False and filament_detected and (self.strict_filament_recovery or strict) and can_heat and self.check_filament_in_extruder():
             # This case adds an additional encoder based test to see if filament is still being gripped by extruder
             # even though TS doesn't see it. It's a pedantic option so on turned on by strict flag
             self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER, silent=silent) # Will start from tip forming
@@ -5440,6 +5455,10 @@ class Mmu:
         # At extruder entry
         elif es:
             self._set_filament_pos_state(self.FILAMENT_POS_HOMED_ENTRY, silent=silent) # Allows for fast bowden unload move
+
+        # Parked at gate (when parking distance is not a retract i.e. gs sensor expected to be triggered)
+        elif gs and filament_detected and self.gate_parking_distance <= 0:
+            self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=silent)
 
         # Somewhere in bowden
         elif gs or filament_detected:
@@ -5449,9 +5468,13 @@ class Mmu:
         else:
             self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED, silent=silent)
 
-        # If filament is found then ensure gate status is correct
-        if self.gate_selected != self.TOOL_GATE_UNKNOWN and self.filament_pos >= self.FILAMENT_POS_START_BOWDEN and self.gate_status[self.gate_selected] == self.GATE_EMPTY:
-            self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE)
+        # If filament is detected then ensure gate status is correct
+        if self.gate_selected != self.TOOL_GATE_UNKNOWN and filament_detected:
+            gate_status = self.gate_status[self.gate_selected]
+            if self.filament_pos >= self.FILAMENT_POS_START_BOWDEN and gate_status < self.GATE_AVAILABLE:
+                self._set_gate_status(self.gate_selected, self.GATE_AVAILABLE)
+            elif gate_status == self.GATE_EMPTY:
+                self._set_gate_status(self.gate_selected, self.GATE_UNKNOWN)
 
     # Check for filament in MMU using available sensors or encoder
     def check_filament_in_mmu(self):
@@ -5490,19 +5513,31 @@ class Mmu:
             self.log_debug("No sensors configured!")
         return runout
 
-    # Check for filament in extruder by moving extruder motor. Even with toolhead sensor this can
-    # happen if the filament is in the short distance from sensor to gears. Requires encoder
     # Return True/False if detected or None if test not possible
-    def check_filament_still_in_extruder(self):
+    def check_filament_in_extruder(self):
+        # First double check extruder entry sensor if fitted
+        es = self.sensor_manager.check_sensor(self.SENSOR_EXTRUDER_ENTRY)
+        if es is not None:
+            return es
+
+        # Now toolhead if fitted
+        ts = self.sensor_manager.check_sensor(self.SENSOR_TOOLHEAD)
+        if ts is True:
+            return True
+
+        # Finally resort to movement test with encoder
         detected,_ = self.test_filament_still_in_extruder_by_retracting()
         return detected
 
+    # Check for filament in extruder by moving extruder motor. Even with toolhead sensor this can
+    # happen if the filament is in the short distance from sensor to gears. Requires encoder
+    # Return True/False if detected or None if test not possible
     def test_filament_still_in_extruder_by_retracting(self):
         detected = None
         measured = 0
         if self.has_encoder() and not self.mmu_machine.filament_always_gripped:
             with self._require_encoder(): # Force quality measurement
-                self.log_debug("Checking for possibility of filament still in extruder gears...")
+                self.log_info("Checking for possibility of filament still in extruder gears...")
                 self._ensure_safe_extruder_temperature(wait=False)
                 self.selector.filament_release()
                 move = self.encoder_move_step_size
@@ -5575,7 +5610,8 @@ class Mmu:
         # Handle filament grip before sync (type-A MMU) because of potential "buzz" movement
         if sync:
             self.selector.filament_drive()
-        else:
+        elif not self._suppress_release_grip:
+            # There are situations where we want this to be lazy to avoid "flutter" (of servo)
             self.selector.filament_release()
 
         # Sync / Unsync
@@ -5596,38 +5632,33 @@ class Mmu:
 
     # This is used to protect synchronization, current and grip states and is used as an outermost wrapper
     # for "MMU_" commands back into Happy Hare during a print or standalone operation
+    #   supress_fix_grip: prevents subsequent recursive calls from relaxing grip thus avoiding flutter
     @contextlib.contextmanager
     def wrap_sync_gear_to_extruder(self):
-        prev_sync = self.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
+        prev_sync = (self.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER)
 
         # Turn espooler in-print assist off
         espooler_state = None
         if self.has_espooler():
             espooler_state = self.espooler.get_operation(self.gate_selected)
             self._espooler_assist_off()
+
+        # Outermost-only suppression of grip release
+        clear_suppress = not self._suppress_release_grip
+        self._suppress_release_grip = True
         try:
             yield self
         finally:
+            # Only the outermost wrapper clears suppression
+            if clear_suppress:
+                self._suppress_release_grip = False
+
+            # Restore sync state (logic can act on global suppression flag)
             self.reset_sync_gear_to_extruder(prev_sync)
 
             # Restore espooler state
-            if self.has_espooler():
+            if self.has_espooler() and espooler_state is not None:
                 self.espooler.set_operation(self.gate_selected, espooler_state[1], espooler_state[0])
-
-    # This is used to protect just the mmu_toolhead sync state and is used to wrap individual moves. Typically
-    # the starting state will be unsynced so this will simply unsync at the end of the move. It does not manage
-    # grip (servo) movement control since that would lead to unecessary "flutter" and premature wear
-    @contextlib.contextmanager
-    def _wrap_sync_mode(self, sync_mode):
-        prev_sync_mode = self.mmu_toolhead.sync_mode
-        self.mmu_toolhead.sync(sync_mode)
-        self._restore_gear_current()
-        try:
-            yield self
-        finally:
-            # Don't restore because it results in too much delay on rapid back-to-back moves
-            #self.mmu_toolhead.sync(prev_sync_mode)
-            pass
 
     def _adjust_gear_current(self, gate=None, percent=100, reason=""):
         gate = gate if gate is not None else self.gate_selected
@@ -7831,7 +7862,7 @@ class Mmu:
     cmd_MMU_M400_help = "Wait on both move queues"
     def cmd_MMU_M400(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        self.movequeues_wait(toolhead=True, mmu_toolhead=True)
+        self.mmu_toolhead.quiesce()
 
     cmd_MMU_TTG_MAP_help = "aka MMU_REMAP_TTG Display or remap a tool to a specific gate and set gate availability"
     def cmd_MMU_TTG_MAP(self, gcmd):
@@ -8036,7 +8067,9 @@ class Mmu:
 
         # Ensure everything is synced
         self._update_gate_color_rgb()
-        self._persist_gate_map(spoolman_sync=bool(changed_gate_ids), gate_ids=changed_gate_ids) # This will also update LED status
+
+        # Caution, make sure that an update from spoolman does end up in infinite loop!
+        self._persist_gate_map(spoolman_sync=bool(changed_gate_ids) and not from_spoolman, gate_ids=changed_gate_ids) # This will also update LED status
 
         if not quiet:
             self.log_info(self._gate_map_to_string(detail))
