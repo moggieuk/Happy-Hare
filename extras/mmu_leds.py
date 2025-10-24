@@ -52,7 +52,10 @@ class VirtualMmuLedChain:
             chains_to_update.add(chain)
         for chain in chains_to_update:
             chain.led_helper.need_transmit = True
-            chain.led_helper._check_transmit()
+            if hasattr(chain.led_helper, '_check_transmit'):
+                chain.led_helper._check_transmit() # New klipper
+            else:
+                chain.led_helper.check_transmit(None)  # Older klipper / Kalico
 
     def get_status(self, eventtime=None):
         state = []

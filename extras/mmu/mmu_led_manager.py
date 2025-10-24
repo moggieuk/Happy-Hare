@@ -704,8 +704,7 @@ class MmuLedManager:
     
             elif isinstance(effect, tuple) or ',' in effect: # RGB color
                 rgb = MmuLeds.string_to_rgb(effect)
-                if gate is not None:
-                    stop_effect_and_set_gate_rgb(rgb, unit, segment, None)
+                stop_effect_and_set_gate_rgb(rgb, unit, segment, None)
     
             elif effect != "": # Named effect
                 set_gate_effect(effect, unit, segment, None, fadetime=fadetime)
@@ -728,8 +727,7 @@ class MmuLedManager:
 
             elif isinstance(effect, tuple) or ',' in effect: # RGB color
                 rgb = MmuLeds.string_to_rgb(effect)
-                if gate is not None:
-                    stop_effect_and_set_gate_rgb(rgb, unit, segment, None)
+                stop_effect_and_set_gate_rgb(rgb, unit, segment, None)
 
             elif effect != "": # Named effect
 
