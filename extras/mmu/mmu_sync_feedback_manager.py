@@ -12,7 +12,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import logging, time, math
+import logging
 
 # Happy Hare imports
 #from ..                  import mmu_machine
@@ -30,22 +30,22 @@ import logging, time, math
 
 class MmuSyncFeedbackManager:
 
-    FEEDBACK_INTERVAL     = 0.5     # How often to check extruder movement
-    SIGNIFICANT_MOVEMENT  = 5.      # Min extruder movement to trigger direction change (don't want small retracts to trigger)
-    MOVEMENT_THRESHOLD    = 50      # Default extruder movement threshold trigger when stuck in one state
-    MULTIPLIER_RUNAWAY    = 0.25    # Used to limit range in runaway conditions (25%)
-    MULTIPLIER_WHEN_STUCK = 0.01    # Used to "widen" clamp if we are not getting to neutral soon enough (1%)
-    MULTIPLIER_WHEN_GOOD  = 0.005   # Used to move off trigger when tuned rotation distance has been found (0.5%)
-    AUTOTUNE_TOLERANCE    = 0.0025  # The desired accuracy of autotuned rotation distance (0.25% or 2.5mm per m)
+    FEEDBACK_INTERVAL      = 0.5     # How often to check extruder movement (seconds)
+    SIGNIFICANT_MOVEMENT   = 5.      # Min extruder movement to trigger direction change (don't want small retracts to trigger)
+    MOVEMENT_THRESHOLD     = 50      # Default extruder movement threshold trigger when stuck in one state
+    MULTIPLIER_RUNAWAY     = 0.30    # Used to limit range in runaway conditions (30%)
+    MULTIPLIER_WHEN_STUCK  = 0.01    # Used to "widen" rd clamp if we are not getting to neutral soon enough (1%)
+    MULTIPLIER_WHEN_GOOD   = 0.005   # Used to move off trigger when tuned rotation distance has been found (0.5%)
+    AUTOTUNE_TOLERANCE     = 0.0025  # The desired accuracy of autotuned rotation distance (0.25% or 2.5mm per m)
 
-    SYNC_STATE_NEUTRAL    = 0
-    SYNC_STATE_COMPRESSED = 1
-    SYNC_STATE_EXPANDED   = -1
+    SYNC_STATE_NEUTRAL     = 0
+    SYNC_STATE_COMPRESSION = 1
+    SYNC_STATE_TENSION     = -1
 
     def __init__(self, mmu):
         self.mmu = mmu
 
-        self.state = 0.             # 0 = Neutral
+        self.state = float(self.SYNC_STATE_NEUTRAL) # 0 = Neutral (but a float to allow proportional support)
         self.extruder_direction = 0 # 0 = Extruder not moving
         self.active = False         # Actively operating?
         self.last_recorded_extruder_position = None
@@ -100,7 +100,7 @@ class MmuSyncFeedbackManager:
     # Regardless of state or gate this will set a sensible rotation distance
     def reset_sync_starting_state_for_gate(self, gate):
         if gate >= 0:
-            # Initialize rotation distance clampling range for gate
+            # Initialize rotation distance clamping range for gate
             if not self.rd_clamps.get(gate):
                 rd = self.mmu.get_rotation_distance(gate)
                 self.rd_clamps[gate] = [rd * self.sync_multiplier_high, rd, rd * self.sync_multiplier_low, None, rd]
@@ -110,8 +110,9 @@ class MmuSyncFeedbackManager:
             if self.sync_feedback_enabled:
                 self.mmu.log_debug("MmuSyncFeedbackManager: Set initial sync feedback state to: %s" % self.get_sync_feedback_string(detail=True))
 
-            # Always set initial rotation distance (may have been previously autotuned)
+            # Set initial rotation distance (may have been previously autotuned)
             if not self._adjust_gear_rotation_distance():
+                # Must not be available/enabled/active so use last or initial value
                 self.mmu.set_rotation_distance(self.rd_clamps[gate][1])
         else:
             self._reset_gear_rotation_distance()
@@ -129,19 +130,23 @@ class MmuSyncFeedbackManager:
         if state is None:
             state = self.state
         if self.mmu.is_enabled and self.sync_feedback_enabled and (self.active or detail):
-            return 'compressed' if state > 0.5 else 'expanded' if state < -0.5 else 'neutral'
+            return 'compressed' if state > 0.5 else 'tension' if state < -0.5 else 'neutral'
         return "disabled"
 
     #
     # Internal implementation --------------------------------------------------
     #
 
+    # Python 2 doesn't support math.isclose() so simple emulation
+    def _math_isclose(self, a, b, rel_tol=1e-9, abs_tol=0.0):
+        return abs(a - b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)
+
     def _setup_extruder_watchdog_timer(self):
         self.extruder_watchdog_timer = self.mmu.reactor.register_timer(self._check_extruder_movement)
 
     # Starting assumption is that extruder is not moving and measurement is 0mm
     def _reset_extruder_watchdog(self):
-        self.extruder_direction = 0 # Extruder not moving to force neutral start position
+        self.extruder_direction = 0 # Extruder not moving
         self.last_recorded_extruder_position = None
 
     # Called periodically to check extruder movement
@@ -154,7 +159,7 @@ class MmuSyncFeedbackManager:
                 self.last_recorded_extruder_position = pos
 
             # Have we changed direction?
-            if abs(pos - self.last_recorded_extruder_position) > self.SIGNIFICANT_MOVEMENT:
+            if abs(pos - self.last_recorded_extruder_position) >= self.SIGNIFICANT_MOVEMENT:
                 prev_direction = self.extruder_direction
                 self.extruder_direction = (
                     self.mmu.DIRECTION_LOAD if pos > self.last_recorded_extruder_position
@@ -165,9 +170,9 @@ class MmuSyncFeedbackManager:
                     self._notify_direction_change(prev_direction, self.extruder_direction)
                     self.last_recorded_extruder_position = pos
 
-            if (pos - self.last_recorded_extruder_position) >= self.sync_movement_threshold:
+            if abs(pos - self.last_recorded_extruder_position) >= self.sync_movement_threshold:
                 # Ensure we are given periodic notifications to aid autotuning
-                self._notify_hit_movement_marker(pos - self.last_recorded_extruder_position)
+                self._notify_hit_movement_marker(abs(pos - self.last_recorded_extruder_position))
                 self.last_recorded_extruder_position = pos # Move marker
 
         return eventtime + self.FEEDBACK_INTERVAL
@@ -202,10 +207,9 @@ class MmuSyncFeedbackManager:
             # Disable sync feedback
             self.active = False
             self.mmu.reactor.update_timer(self.extruder_watchdog_timer, self.mmu.reactor.NEVER)
-            self.state = self.SYNC_STATE_NEUTRAL
             self._reset_gear_rotation_distance()
 
-    # Gear/Extruder sync feedback event. State should be -1 (expanded) and 1 (compressed)
+    # Gear/Extruder sync feedback event. State should be -1 (tension) and 1 (compressed)
     # or can be a proportional float value between -1.0 and 1.0
     def _handle_sync_feedback(self, eventtime, state):
         if not self.mmu.is_enabled: return
@@ -228,7 +232,7 @@ class MmuSyncFeedbackManager:
                     self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_TENSION) and
                     self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_COMPRESSION)
                 )
-                if state != old_state and has_dual_sensors and self.mmu.autotune_rotation_distance:
+                if state != old_state and has_dual_sensors and self.mmu.autotune_rotation_distance: # TODO could separate "autotune and save" from just autotune?
                     self._adjust_clamps(state, old_state)
                 self._adjust_gear_rotation_distance()
         else:
@@ -249,8 +253,7 @@ class MmuSyncFeedbackManager:
         self._adjust_gear_rotation_distance()
 
     # This signifies we have been sitting in same state for longer than the movement threshold so
-    # rotation_distance may need an additional nudge. Also allows us to "clamp down" on perfect
-    # calibration if we have dual sensors
+    # rotation_distance may need an additional nudge
     def _notify_hit_movement_marker(self, movement):
         # Dynamically inspect sensor availability so we can be reactive to user enable/disable mid print
         has_dual_sensors = (
@@ -259,50 +262,82 @@ class MmuSyncFeedbackManager:
         )
 
         # Currently we don't do anything if using fixed multipliers (single sensor case) TODO we could though!
-        if not (has_dual_sensors and self.mmu.autotune_rotation_distance): return
+        if not (has_dual_sensors and self.mmu.autotune_rotation_distance): return # TODO could separate "save autotune" from autotune?
+
+        # Report and limit runaway conditions which could occur with bad configuration
+        # (like tension/compression sensor reversal or perhaps during a long clog)
+        def check_clamp_runaway(rd_clamp):
+            max_slow_clamp = rd_clamp[4] * (1 + self.MULTIPLIER_RUNAWAY)
+            max_fast_clamp = rd_clamp[4] * (1 - self.MULTIPLIER_RUNAWAY)
+            exceeded = rd_clamp[0] > max_slow_clamp or rd_clamp[2] < max_fast_clamp
+            if exceeded:
+                self.mmu.log_warning(
+                    "MmuSyncFeedbackManager: Exceeded rotation_distance autotune range)\n"
+                    "It is likely that the sync-feedback sensor is malfunctioning or misconfigured\n"
+                    "(perhaps tension and compression sensors are reversed) or the extruder is clogged.\n"
+                    "Continuing, but limiting rotation_distance to range (%.4f to %.4f)"
+                    % (max_fast_clamp, max_slow_clamp)
+                )
+            rd_clamp[0] = min(rd_clamp[0], max_slow_clamp)
+            rd_clamp[2] = max(rd_clamp[2], max_fast_clamp)
+            return exceeded
+
 
         rd_clamp = self.rd_clamps[self.mmu.gate_selected]
         old_clamp = rd_clamp.copy()
 
-        if self.state == self.SYNC_STATE_COMPRESSED:
-            # Compression state too long means filament feed too fast, need to go slower so increase slow clamp rotation distance
-            rd_clamp[0] *= (1 + self.MULTIPLIER_WHEN_STUCK)
-            self.mmu.log_debug(
-                "MmuSyncFeedbackManager: Extruder moved too far in compressed state (%.1fmm). Increased slow clamp value by %d%% from %.4f to %.4f" % (
-                    movement,
-                    self.MULTIPLIER_WHEN_STUCK * 100,
-                    old_clamp[0],
-                    rd_clamp[0]
-                )
-            )
-            # Adjust clamp and use new slow rd that is known to make sensor move towards expanded
+        if self.state == self.SYNC_STATE_COMPRESSION:
+            # Compression state too long means filament feed is too fast, need to go slower so larger rotation distance
+            # If we are at the previous slow clamp value (we expect to be) we need to increase its value (make even slower)
+
+            # Widen clamp range by increasing slow clamp value by fixed % (make it even slower)
+            if rd_clamp[1] >= rd_clamp[0]:
+                rd_clamp[0] *= (1 + self.MULTIPLIER_WHEN_STUCK)
+
+                if not check_clamp_runaway(rd_clamp):
+                    self.mmu.log_trace(
+                        "MmuSyncFeedbackManager: Extruder moved too far in compressed state (%.1fmm). Increased slow_rd clamp value by %.1f%% from %.4f to %.4f" % (
+                            movement,
+                            self.MULTIPLIER_WHEN_STUCK * 100,
+                            old_clamp[0],
+                            rd_clamp[0]
+                        )
+                    )
+
+            # Switch to the new slow clamp value (to hopefully move towards tension state)
             rd_clamp[1] = rd_clamp[0]
 
-        elif self.state == self.SYNC_STATE_EXPANDED:
-            # Expanded state too long means filament feed too slow, need to go faster so smaller rotation distance
-            # Increase compressed value by fixed % and set new_rd to compressed value
-            rd_clamp[2] *= (1 - self.MULTIPLIER_WHEN_STUCK)
-            self.mmu.log_debug(
-                "MmuSyncFeedbackManager: Extruder moved too far in expanded state (%.1fmm). Decreased fast clamp value by %d%% from %.4f to %.4f" % (
-                    movement,
-                    self.MULTIPLIER_WHEN_STUCK * 100,
-                    old_clamp[2],
-                    rd_clamp[2]
-                )
-            )
-            # Adjust clamp and use new fast rd that is known to make sensor move towards compressed
+        elif self.state == self.SYNC_STATE_TENSION:
+            # Tension state too long means filament feed is too slow, need to go faster so smaller rotation distance
+            # If we are at the previous fast clamp value (we expect to be) we need to decrease its value (make even faster)
+
+            # Widen clamp range by decreasing fast clamp value by fixed % (make it even faster)
+            if rd_clamp[1] <= rd_clamp[2]:
+                rd_clamp[2] *= (1 - self.MULTIPLIER_WHEN_STUCK)
+
+                if not check_clamp_runaway(rd_clamp):
+                    self.mmu.log_trace(
+                        "MmuSyncFeedbackManager: Extruder moved too far in tension state (%.1fmm). Decreased fast_rd clamp value by %.1f%% from %.4f to %.4f" % (
+                            movement,
+                            self.MULTIPLIER_WHEN_STUCK * 100,
+                            old_clamp[2],
+                            rd_clamp[2]
+                        )
+                    )
+
+            # Switch to the new fast clamp value (to hopefully move towards compressed state)
             rd_clamp[1] = rd_clamp[2]
 
         elif self.state == self.SYNC_STATE_NEUTRAL:
             self.mmu.log_trace("MmuSyncFeedbackManager: Ignoring extruder move marker trigger because in neutral state")
             return # Do nothing, we want to stay in this state
 
-        # No need to update the same rd value
-        if not math.isclose(rd_clamp[1], old_clamp[1]):
+        # Update if current rd has changed
+        if not self._math_isclose(rd_clamp[1], old_clamp[1]):
             self._adjust_gear_rotation_distance()
 
     # Called to use binary search algorithm to slowly reduce clamping range to minimize switching
-    # Note that this will converge on new calibrated value and update if autotune options is set
+    # Note that this will converge on new calibrated rd value and update it if autotune options are set
     def _adjust_clamps(self, state, old_state):
         if state == old_state: return # Shouldn't happen
         rd_clamp = self.rd_clamps[self.mmu.gate_selected]
@@ -310,11 +345,11 @@ class MmuSyncFeedbackManager:
         tuned_rd = None
 
         def check_if_tuned(rd_clamp):
-            if math.isclose(rd_clamp[0], rd_clamp[2], rel_tol=self.AUTOTUNE_TOLERANCE):
-                tuned_rd = (rd_clamp[0] + rd_clamp[2]) / 2.
-                if not rd_clamp[3] or not math.isclose(tuned_rd, rd_clamp[3]):
+            if self._math_isclose(rd_clamp[0], rd_clamp[2], rel_tol=self.AUTOTUNE_TOLERANCE):
+                _tuned_rd = (rd_clamp[0] + rd_clamp[2]) / 2.
+                if not rd_clamp[3] or not self._math_isclose(_tuned_rd, rd_clamp[3]):
                     # New tuned setting
-                    rd_clamp[3] = tuned_rd
+                    rd_clamp[3] = _tuned_rd
                     self.mmu.log_always(
                         "MmuSyncFeedbackManager: New autotuned rotation_distance for gate %d: %.4f" % (
                             self.mmu.gate_selected,
@@ -322,52 +357,54 @@ class MmuSyncFeedbackManager:
                         )
                     )
                     if self.mmu.autotune_rotation_distance:
-                        self.mmu.save_rotation_distance(self.mmu.gate_selected, tuned_rd)
-                return tuned_rd
+                        self.mmu.save_rotation_distance(self.mmu.gate_selected, _tuned_rd)
+                return _tuned_rd
             return None
 
-        if state == self.SYNC_STATE_COMPRESSED:  # Transition from neutral --> compressed
-            # Use current rotation distance to clamp fast setting
+        if state == self.SYNC_STATE_COMPRESSION:  # Transition from neutral --> compressed
+            # MMU is driving filament too quickly, need to go slower so larger rotation distance (the "slow" clamp)
+            # Also use current rotation distance to clamp fast setting because we know it is too fast
             rd_clamp[2] = rd_clamp[1]
             self.mmu.log_trace(
                 "MmuSyncFeedbackManager: Neutral -> Compressed. Going too fast. "
-                "Adjusted fast clamp (%.4f -> %.4f)" % (
+                "Adjusted fast_rd clamp (%.4f -> %.4f)" % (
                     old_clamp[2],
                     rd_clamp[2]
                 )
             )
 
-            # If we have good calibration, adjust a little to make move off trigger
+            # If we have good calibration, adjust a little to move off trigger
             tuned_rd = check_if_tuned(rd_clamp)
             if tuned_rd:
                 rd_clamp[0] *= (1 + self.MULTIPLIER_WHEN_GOOD)
                 self.mmu.log_trace(
-                    "MmuSyncFeedbackManager: Have good rotation_distance, adjusting slow clamp slightly "
-                    "(%.4f -> %.4f) to move off trigger" % (
+                    "MmuSyncFeedbackManager: Have good rotation_distance, adjusting current_rd and slow_rd clamp "
+                    "slightly (%.4f -> %.4f) to move off trigger" % (
                         old_clamp[0],
                         rd_clamp[0]
                     )
                 )
             rd_clamp[1] = rd_clamp[0]  # Set current rd to slow setting
 
-        elif state == self.SYNC_STATE_EXPANDED:  # Transition from neutral --> expanded
-            # Use current rotation distance to clamp slow setting
+        elif state == self.SYNC_STATE_TENSION:  # Transition from neutral --> tension
+            # MMU is driving filament too slowly, need to go faster so smaller rotation distance (the "fast" clamp)
+            # Also use current rotation distance to clamp slow setting because we know it is too slow
             rd_clamp[0] = rd_clamp[1]
             self.mmu.log_trace(
-                "MmuSyncFeedbackManager: Neutral -> Expanded. Going too slow. "
-                "Adjusted slow clamp (%.4f -> %.4f)" % (
+                "MmuSyncFeedbackManager: Neutral -> Tension. Going too slow. "
+                "Adjusted slow_rd clamp (%.4f -> %.4f)" % (
                     old_clamp[0],
                     rd_clamp[0]
                 )
             )
 
-            # If we have good calibration, adjust a little to make move off trigger
+            # If we have good calibration, adjust a little to move off trigger
             tuned_rd = check_if_tuned(rd_clamp)
             if tuned_rd:
                 rd_clamp[2] *= (1 - self.MULTIPLIER_WHEN_GOOD)
                 self.mmu.log_trace(
-                    "MmuSyncFeedbackManager: Have good rotation_distance, adjusting fast clamp slightly "
-                    "(%.4f -> %.4f) to move off trigger" % (
+                    "MmuSyncFeedbackManager: Have good rotation_distance, adjusting current_rd and fast_rd clamp "
+                    "slightly (%.4f -> %.4f) to move off trigger" % (
                         old_clamp[2],
                         rd_clamp[2]
                     )
@@ -395,43 +432,58 @@ class MmuSyncFeedbackManager:
         rd_clamp[0] = min(rd_clamp[0], rd_clamp[4] * (1 + self.MULTIPLIER_RUNAWAY))
         rd_clamp[2] = max(rd_clamp[2], rd_clamp[4] * (1 - self.MULTIPLIER_RUNAWAY))
 
-    # Update gear rotation_distance based on current state. This correctly handled
-    # the direction of movement (although it will almost always be extruding)
+    # Update gear rotation_distance based on current state. This correctly handles
+    # the direction of movement (although it will almost always be neutral or extruding)
     # Return True if rotation_distance set/reset
     def _adjust_gear_rotation_distance(self):
         if not self.sync_feedback_enabled or not self.active: return False
 
         rd_clamp = self.rd_clamps[self.mmu.gate_selected]
-        if self.state == self.SYNC_STATE_NEUTRAL or self.extruder_direction == 0:
-            rd = rd_clamp[1]
+        if self.state == self.SYNC_STATE_NEUTRAL:
+            # Start with mid point of previous clamps
+            start_rd = (rd_clamp[0] + rd_clamp[2]) / 2.
         else:
-            go_slower = lambda s, d: abs(s - d) < abs(s + d)
-            if go_slower(self.state, self.extruder_direction):
-                # Compressed when extruding or expanded when retracting, so increase the rotation distance of gear stepper to slow it down
-                rd = rd_clamp[0]
-                self.mmu.log_trace("MmuSyncFeedbackManager: Slowing gear motor down")
+            if self.extruder_direction == 0:
+                # Start based simply on sensor state (assuming extrude direction)
+                go_slower = self.state == self.SYNC_STATE_COMPRESSION
             else:
-                # Expanded when extruding or compressed when retracting, so decrease the rotation distance of gear stepper to speed it up
-                rd = rd_clamp[2]
-                self.mmu.log_trace("MmuSyncFeedbackManager: Speeding gear motor up")
+                # Start based simply on sensor state and extruder direction
+                calc = lambda s, d: abs(s - d) < abs(s + d)
+                go_slower = calc(self.state, self.extruder_direction)
 
+            if go_slower:
+                # Compressed when extruding or tension when retracting, so increase the rotation distance of gear stepper to slow it down
+                start_rd = rd_clamp[0]
+                self.mmu.log_debug("MmuSyncFeedbackManager: Slowing gear motor down")
+            else:
+                # Tension when extruding or compressed when retracting, so decrease the rotation distance of gear stepper to speed it up
+                start_rd = rd_clamp[2]
+                self.mmu.log_debug("MmuSyncFeedbackManager: Speeding gear motor up")
+
+        rd_clamp[1] = start_rd
         self.mmu.log_trace(
-            "MmuSyncFeedbackManager: Gear rotation_distance: %.4f (slow:%.4f, default: %.4f, fast:%.4f)%s" % (
-                rd,
+            "MmuSyncFeedbackManager: Adjusted gear rotation_distance: %.4f (slow:%.4f, current: %.4f, fast:%.4f, tuned:%s, initial:%.4f)" % (
+                start_rd,
                 rd_clamp[0],
                 rd_clamp[1],
                 rd_clamp[2],
-                (" tuned: %.4f" % rd_clamp[3]) if rd_clamp[3] else ""
+                ("%.4f" % rd_clamp[3]) if rd_clamp[3] else "None",
+                rd_clamp[4]
             )
         )
-        self.mmu.set_rotation_distance(rd)
+        self.mmu.set_rotation_distance(start_rd)
         return True
 
     # Reset rotation_distance to calibrated value of current gate (not necessarily current value if autotuning)
     def _reset_gear_rotation_distance(self):
         rd = self.mmu.get_rotation_distance(self.mmu.gate_selected)
-        self.mmu.log_trace("MmuSyncFeedbackManager: Reset rotation distance to calibrated value (%.4f)" % rd)
+        self.mmu.log_trace("MmuSyncFeedbackManager: Reset rotation distance to last calibrated value (%.4f)" % rd)
         self.mmu.set_rotation_distance(rd)
+
+        # This is mostly for optics because value will be reset on next sync() event
+        if self.rd_clamps.get(self.mmu.gate_selected):
+            rd_clamp = self.rd_clamps[self.mmu.gate_selected]
+            rd_clamp[1] = rd
 
     # Reset current sync state based on current sensor feedback
     def _reset_current_sync_state(self):
@@ -447,11 +499,11 @@ class MmuSyncFeedbackManager:
             if tension_active == compression_active:
                 ss = self.SYNC_STATE_NEUTRAL
             elif tension_active and not compression_active:
-                ss = self.SYNC_STATE_EXPANDED
+                ss = self.SYNC_STATE_TENSION
             else:
-                ss = self.SYNC_STATE_COMPRESSED
+                ss = self.SYNC_STATE_COMPRESSION
         elif has_compression and not has_tension:
-            ss = self.SYNC_STATE_COMPRESSED if compression_active else self.SYNC_STATE_EXPANDED
+            ss = self.SYNC_STATE_COMPRESSION if compression_active else self.SYNC_STATE_TENSION
         elif has_tension and not has_compression:
-            ss = self.SYNC_STATE_EXPANDED if tension_active else self.SYNC_STATE_COMPRESSED
+            ss = self.SYNC_STATE_TENSION if tension_active else self.SYNC_STATE_COMPRESSION
         self.state = ss

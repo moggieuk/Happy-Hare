@@ -368,8 +368,11 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.mmu = mmu
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
-        self.all_mcus = [m for n, m in self.printer.lookup_objects(module='mcu')]
-        self.mcu = self.all_mcus[0]
+
+        self.all_mcus = [m for n, m in self.printer.lookup_objects(module='mcu')] # Older Klipper
+        self.mcu = self.all_mcus[0]                                               # Older Klipper
+        #self.mcu = self.printer.lookup_object('mcu') # Klipper approx >= 0.13.0-328 (safer lookup, guarantee's primary mcu or config error)
+
         self._resync_lock = self.reactor.mutex()
 
         if hasattr(toolhead, 'BUFFER_TIME_HIGH'):
@@ -420,6 +423,9 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.requested_accel_to_decel = self.min_cruise_ratio * self.max_accel # Backward klipper compatibility 31de734d193d
         self._calc_junction_deviation()
 
+        # This is now a big switch that gates changes to the Toolhead in Klipper
+        self.motion_queuing = self.printer.load_object(config, 'motion_queuing', None)
+
         # Input stall detection
         self.check_stall_time = 0.
         self.print_stall = 0
@@ -433,21 +439,29 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.special_queuing_state = "NeedPrime"
         self.priming_timer = None
         self.drip_completion = None # TODO No longer part of Klipper >v0.13.0-46
-        # Flush tracking
-        self.flush_timer = self.reactor.register_timer(self._flush_handler)
-        self.do_kick_flush_timer = True
-        self.last_flush_time = self.last_sg_flush_time = self.min_restart_time = 0. # last_sg_flush_time deprecated
-        self.need_flush_time = self.step_gen_time = self.clear_history_time = 0.
-        # Kinematic step generation scan window time tracking
-        self.kin_flush_delay = toolhead.SDS_CHECK_TIME # Happy Hare: Use base class
-        self.kin_flush_times = []
-        self.motion_queuing = self.printer.load_object(config, 'motion_queuing', None)
+
+        if not self.motion_queuing:
+            # Flush tracking
+            self.flush_timer = self.reactor.register_timer(self._flush_handler)
+            self.do_kick_flush_timer = True
+            self.last_flush_time = self.last_sg_flush_time = self.min_restart_time = 0. # last_sg_flush_time deprecated
+            self.need_flush_time = self.step_gen_time = self.clear_history_time = 0.
+            # Kinematic step generation scan window time tracking
+            self.kin_flush_delay = toolhead.SDS_CHECK_TIME # Happy Hare: Use base class
+            self.kin_flush_times = []
+
         if self.motion_queuing:
-            # Setup for generating moves
-            self.trapq = self.motion_queuing.allocate_trapq()
-            self.trapq_append = self.motion_queuing.lookup_trapq_append()
             ffi_main, ffi_lib = chelper.get_ffi()
             self.trapq_finalize_moves = ffi_lib.trapq_finalize_moves # Want my own binding so I know its available
+
+            # Setup for generating moves
+            try:
+                self.motion_queuing.register_flush_callback(self._handle_step_flush, can_add_trapq=True) # Latest klipper >= v0.13.0-267
+            except AttributeError:
+                self.motion_queuing.setup_lookahead_flush_callback(self._check_flush_lookahead)
+
+            self.trapq = self.motion_queuing.allocate_trapq()
+            self.trapq_append = self.motion_queuing.lookup_trapq_append()
         else:
             # Setup iterative solver
             ffi_main, ffi_lib = chelper.get_ffi()
@@ -457,6 +471,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             # Motion flushing
             self.step_generators = []
             self.flush_trapqs = [self.trapq]
+
         # Create kinematics class
         gcode = self.printer.lookup_object('gcode')
         self.Coord = gcode.Coord
@@ -606,7 +621,7 @@ class MmuToolHead(toolhead.ToolHead, object):
     def quiesce(self, full_quiesce=True):
         with self._resync_lock:
             ths = [self.printer_toolhead, self.mmu_toolhead]
-            t_cut = self._quiesce_align_get_tcut(ths, full=full_quiesce)
+            t_cut = self._quiesce_align_get_tcut(ths, full=full_quiesce, wait=full_quiesce)
 
     # Drain required toolheads, align to a common future time, materialize it,
     # and return a strict fence time t_cut. 'wait' shouldn't be needed but
@@ -622,7 +637,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             for th in ths:
                 th.flush_step_generation()
 
-        # Align planners to a common *future* time
+        # Align planners to a common future time
         last_times = [th.get_last_move_time() for th in ths]
         t_future = max(last_times) + SYNC_AIR_GAP
         for th, lm in zip(ths, last_times):
@@ -724,7 +739,7 @@ class MmuToolHead(toolhead.ToolHead, object):
                 pos = [0., following_toolhead.get_position()[1], 0.]
 
             # Hard close the old trapq up to the fence (don’t wipe)
-            # Anything ≤ t0 moves to history so it can’t be emitted later.
+            # Anything <= t0 moves to history so it can’t be emitted later.
             _finalize_if_valid(old_trapq, t0)
 
             # Rebind steppers back to the NEW owner’s trapq and restore kinematics
@@ -743,13 +758,17 @@ class MmuToolHead(toolhead.ToolHead, object):
                     self._register(self.mmu_toolhead, s) # s.set_trapq(self.mmu_toolhead.get_trapq())
                     s.set_position([0., self.mmu_toolhead.get_position()[1], 0.])
 
+            ## Required for klipper >= 0.13.0-330
+            #if self.motion_queuing and hasattr(self.motion_queuing, 'check_step_generation_scan_windows'):
+            #    self.motion_queuing.check_step_generation_scan_windows()
+
             # Debugging
             #logging.info("MMU: ////////// CUTOVER fence t_cut=%.6f, old_trapq=%s, new_trapq=%s, from.last=%.6f, to.last=%.6f",
             #             t0, self._match_trapq(old_trapq), self._match_trapq(new_trapq),
             #             driving_toolhead.get_last_move_time(),
             #             following_toolhead.get_last_move_time())
 
-            # FORCE the RECEIVER (following_toolhead) planner to ≥ t0 and materialize it
+            # FORCE the RECEIVER (following_toolhead) planner to >= t0 and materialize it
             dt = max(EPS, t0 - following_toolhead.get_last_move_time())
             if dt: following_toolhead.dwell(dt)
             following_toolhead.flush_step_generation()
@@ -758,6 +777,10 @@ class MmuToolHead(toolhead.ToolHead, object):
                 self.printer.send_event("mmu:unsynced")
 
             # Now “unsynced” at t0
+
+        # Required for klipper >= 0.13.0-330
+        if self.motion_queuing and hasattr(self.motion_queuing, 'check_step_generation_scan_windows'):
+            self.motion_queuing.check_step_generation_scan_windows()
 
         self.sync_mode = self.GEAR_ONLY if new_sync_mode == self.GEAR_ONLY else None
         if new_sync_mode in [self.GEAR_ONLY, None]:
@@ -822,7 +845,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         #             following_toolhead.get_last_move_time(),
         #             driving_toolhead.get_last_move_time())
 
-        # FORCE the NEW/RECEIVER (driving_toolhead) planner to ≥ t1 and materialize it
+        # FORCE the NEW/RECEIVER (driving_toolhead) planner to >= t1 and materialize it
         dt = max(EPS, t1 - driving_toolhead.get_last_move_time())
         driving_toolhead.dwell(dt)
         driving_toolhead.flush_step_generation()
