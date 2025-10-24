@@ -621,7 +621,7 @@ class MmuToolHead(toolhead.ToolHead, object):
     def quiesce(self, full_quiesce=True):
         with self._resync_lock:
             ths = [self.printer_toolhead, self.mmu_toolhead]
-            t_cut = self._quiesce_align_get_tcut(ths, full=full_quiesce)
+            t_cut = self._quiesce_align_get_tcut(ths, full=full_quiesce, wait=full_quiesce)
 
     # Drain required toolheads, align to a common future time, materialize it,
     # and return a strict fence time t_cut. 'wait' shouldn't be needed but

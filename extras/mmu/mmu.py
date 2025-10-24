@@ -7862,7 +7862,7 @@ class Mmu:
     cmd_MMU_M400_help = "Wait on both move queues"
     def cmd_MMU_M400(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        self.movequeues_wait(toolhead=True, mmu_toolhead=True)
+        self.mmu_toolhead.quiesce()
 
     cmd_MMU_TTG_MAP_help = "aka MMU_REMAP_TTG Display or remap a tool to a specific gate and set gate availability"
     def cmd_MMU_TTG_MAP(self, gcmd):
