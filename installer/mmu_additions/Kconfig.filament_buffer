@@ -1,3 +1,9 @@
+# Defines whether MMU is equipped with (passive) filament buffer
+# i.e. space for filament to uncoil to
+#
+# Responsible for setting:
+#   MMU_HAS_FILAMENT_BUFFER
+
 if !MMU_DISABLE_FILAMENT_BUFFER_OPTION
 
   config MMU_HAS_FILAMENT_BUFFER

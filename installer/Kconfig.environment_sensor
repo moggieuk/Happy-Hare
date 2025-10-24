@@ -1,0 +1,21 @@
+# Raw type and editing of environemnt sensor parameter
+#
+# Responsible for setting:
+#   PARAM_ENVIRONMENT_SENSOR (if MMU_HAS_ENVIRONMENT_SENSOR)
+
+if MMU_HAS_ENVIRONMENT_SENSOR
+
+  menu "Environment sensor"
+    config PARAM_ENVIRONMENT_SENSOR
+      string "Environment sensor name"
+      default ""
+      help
+        Enter the fullname of environment sensor for MMU filament storage.
+        The "temperature" and "humidity" will be polled and displayed in the UI
+
+        E.g. If you have a section like this: [temperature_sensor MMU_enclosure], then enter
+             without the square brackets:
+          "temperature_sensor MMU_enclosure"
+  endmenu
+
+endif

@@ -87,6 +87,8 @@ menu "Speeds"
       Individual move distance below which is considered a short move
 
   if !MULTI_UNIT || MULTI_UNIT_ENTRY_POINT
+    comment "Extruder movement speeds (mm/s)"
+
     if !PARAM_FILAMENT_ALWAYS_GRIPPED
       config PARAM_EXTRUDER_LOAD_SPEED
         string "Extruder load speed"

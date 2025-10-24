@@ -80,9 +80,9 @@ MOONRAKER_HOME          := $(call unwrap,$(CONFIG_MOONRAKER_HOME))
 PRINTER_CONFIG_FILE     := $(call unwrap,$(CONFIG_PRINTER_CONFIG_FILE))
 MOONRAKER_CONFIG_FILE   := $(call unwrap,$(CONFIG_MOONRAKER_CONFIG_FILE))
 
-# unit_names: from CONFIG_PARAM_MMU_UNITS in multi-unit, else default to mmu0
-#unit_names := $(if $(filter y,$(CONFIG_MULTI_UNIT)),$(strip $(subst ",,$(call convert_list,$(call strip_ws_around_commas,$(CONFIG_PARAM_MMU_UNITS))))),mmu0)
-unit_names := $(if $(filter y,$(CONFIG_MULTI_UNIT)),$(call convert_list,$(subst ",,$(CONFIG_PARAM_MMU_UNITS))),mmu0)
+# unit_names: from CONFIG_MMU_UNITS in multi-unit, else default to mmu0
+#unit_names := $(if $(filter y,$(CONFIG_MULTI_UNIT)),$(strip $(subst ",,$(call convert_list,$(call strip_ws_around_commas,$(CONFIG_MMU_UNITS))))),mmu0)
+unit_names := $(if $(filter y,$(CONFIG_MULTI_UNIT)),$(call convert_list,$(subst ",,$(CONFIG_MMU_UNITS))),mmu0)
 
 # Use sudo if the klipper home is at a system location (not owned by user)
 SUDO := $(shell \
@@ -408,9 +408,9 @@ variables:
 ##### Menuconfig targets #####
 ##############################
 
-MENUCONFIG_STYLE ?= aquatic
+MENUCONFIG_STYLE ?= default
 ifeq ($(F_MULTI_UNIT_ENTRY_POINT),y)
-  MENUCONFIG_STYLE := default
+  MENUCONFIG_STYLE := aquatic
 endif
 
 $(KCONFIG_CONFIG): $(SRC)/installer/Kconfig* $(SRC)/installer/**/Kconfig* 

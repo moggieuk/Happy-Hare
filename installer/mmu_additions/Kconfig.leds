@@ -1,3 +1,11 @@
+# Defines whether MMU is equipped with (passive) filament buffer
+# i.e. space for filament to uncoil to
+#
+# Responsible for setting:
+#   MMU_HAS_LEDS
+#   BOOL_ENABLE_LEDS
+#   BOOL_ANIMATE_LEDS
+
 config MMU_HAS_LEDS
   help
     Select if your MMU has LEDs. This will install the LED driver but

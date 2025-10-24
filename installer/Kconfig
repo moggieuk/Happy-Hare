@@ -21,9 +21,10 @@ happy_hare_version := 4.0
 
 f_version   := $(shell, printf '%s0\n' "$(happy_hare_version)" | sed -E 's/^([0-9]+)\.([0-9])([0-9]).*/\1.\2.\3/')
 hh_message  := $(shell, echo "Happy Hare v$(f_version)")
-unit_suffix := $(shell, [ -n "$$UNIT_NAME" ] && echo " - Unit '$(UNIT_NAME)'" || echo "")
-title       := $(shell, [ "$F_MULTI_UNIT_ENTRY_POINT" = "y" ] && echo "$(hh_message) Configuration" || echo "$(hh_message) Configuration$(unit_suffix)")
-caption     := $(shell, [ "$F_MULTI_UNIT_ENTRY_POINT" = "y" ] && echo "$(hh_message)" || echo "Configuration$(unit_suffix)")
+unit_suffix := $(shell, [ -n "$$UNIT_NAME" ] && echo "Unit: [[B]]$(UNIT_NAME)[[/B]]" || echo "")
+title       := $(shell, [ "$F_MULTI_UNIT_ENTRY_POINT" = "y" ] && echo "$(hh_message) Configuration for [[B]]Multi Unit Setup[[/B]]" || echo "$(hh_message) Configuration - $(unit_suffix)")
+caption     := $(shell, [ "$F_MULTI_UNIT_ENTRY_POINT" = "y" ] && echo "$(hh_message) - [[B]]Shared Config[[/B]]" || echo "Configuration - $(unit_suffix)")
+caption_pad := $(shell, [ "$F_MULTI_UNIT_ENTRY_POINT" = "y" ] && echo "61" || echo "61")
 
 # Used to convert a shell command result to a y/n value
 to_bool = $(shell, $(1) && echo y || echo n)
@@ -48,7 +49,7 @@ ml = $(shell, printf '%s' "$(1)" | awk -v ORS='\\n' '1')
 ### Start of configuration
 mainmenu "$(title)"
 
-config PARAM_HAPPY_HARE_VERSION
+config HAPPY_HARE_VERSION
   string
   default "$(happy_hare_version)"
 
@@ -65,7 +66,7 @@ config MULTI_UNIT_ENTRY_POINT
   default "$(F_MULTI_UNIT_ENTRY_POINT)"
 
 if MULTI_UNIT_ENTRY_POINT || !MULTI_UNIT
-  config PARAM_MMU_UNITS
+  config MMU_UNITS
     string
     default "$(UNIT_NAME)"
 endif
@@ -87,7 +88,7 @@ endif
 comment "$(pad,50,)"
 comment "$(pad,50,(\\_/))"
 comment "$(pad,50,( *,*))"
-comment "$(pad,50,(\")_(\") $(caption))"
+comment "$(pad,$(caption_pad),(\")_(\") $(caption))"
 comment "$(pad,50,)"
 
 # UI rendering option:
@@ -98,7 +99,7 @@ config SHOW_MMU_ADDITIONS_WITH_TYPE
   default n
 
 if MULTI_UNIT_ENTRY_POINT
-  config PARAM_MMU_UNITS
+  config MMU_UNITS
     prompt "MMU unit names"
     help
       Comma-separated list of unit names. Careful: Use only alphanumeric characters.

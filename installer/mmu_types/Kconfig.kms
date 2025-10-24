@@ -7,6 +7,7 @@ config MMU_TYPE_KMS_1_0
   select VIRTUAL_SELECTOR
   select MMU_HAS_ENCODER
   select MMU_HAS_ESPOOLER
+  select MMU_HAS_ENVIRONMENT_SENSOR
   select MMU_HAS_LEDS
   select MMU_HAS_SENSOR_PRE_GATE
   select PARAM_VARIABLE_ROTATION_DISTANCES
@@ -33,6 +34,7 @@ if MMU_TYPE_KMS_1_0
 endif
 
 if MMU_TYPE_KMS_1_0
+
   if SHOW_MMU_ADDITIONS_WITH_TYPE
     source "mmu_additions/Kconfig"
   endif
@@ -101,6 +103,9 @@ if MMU_TYPE_KMS_1_0
     default n
   config BOOL_AUTOTUNE_ENCODER
     default n
+
+  config PARAM_ENVIRONMENT_SENSOR
+    default "temperature_sensor $(UNIT_NAME)_enviroment"
 
   config PARAM_MISC_HARDWARE
     default "$(ml,\

@@ -5,6 +5,7 @@ config MMU_TYPE_VVD_1_0
   select MMU_HAS_LEDS
   select MMU_HAS_SENSOR_PRE_GATE
   select MMU_HAS_ESPOOLER
+  select MMU_HAS_ENVIRONMENT_SENSOR
   select PARAM_REQUIRE_BOWDEN_MOVE
   select MMU_DISABLE_FILAMENT_BUFFER_OPTION
   imply OPTION_VVD_BUFFER
@@ -74,6 +75,9 @@ if MMU_TYPE_VVD_1_0
     default "GRB"
   config PARAM_EXIT_LEDS 
     default "neopixel:$(UNIT_NAME)_leds_1 (1-14)\\n             neopixel:$(UNIT_NAME)_leds_2 (1-14)"
+
+  config PARAM_ENVIRONMENT_SENSOR
+    default "temperature_sensor $(UNIT_NAME)_env_left"
 
   config PARAM_MISC_HARDWARE
     default "$(ml,\

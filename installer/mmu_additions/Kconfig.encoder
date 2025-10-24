@@ -1,3 +1,9 @@
+# Defines whether MMU has environment sensor
+#
+# Responsible for setting:
+#   MMU_HAS_ENCODER
+#   PARAM_ENCODER_RESOLUTION
+
 config MMU_HAS_ENCODER
   help
     An encoder measures filament movement and can be used to validate
@@ -13,7 +19,12 @@ if MMU_HAS_ENCODER
       Select the base of the encoder design.
 
     config CHOICE_ENCODER_TYPE_BINKY
-      bool "Binky based"
+      bool "Binky v1 based"
+      help
+        Select for Binky based encoders.
+
+    config CHOICE_ENCODER_TYPE_BINKY_V2
+      bool "Binky v2 (ERCF v3)"
       help
         Select for Binky based encoders.
 
@@ -31,5 +42,6 @@ if MMU_HAS_ENCODER
   config PARAM_ENCODER_RESOLUTION
     default "0.7059" if CHOICE_ENCODER_TYPE_TCRT5000
     default "1.0"    if CHOICE_ENCODER_TYPE_BINKY
+    default "1.5"    if CHOICE_ENCODER_TYPE_BINKY_V2
     default "1.0"    if CHOICE_ENCODER_TYPE_OTHER
 endif

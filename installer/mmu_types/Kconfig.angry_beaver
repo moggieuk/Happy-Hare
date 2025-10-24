@@ -14,6 +14,7 @@ config MMU_TYPE_ANGRY_BEAVER_1_0
   select BOOL_ENABLE_SYNC_PURGE
 
 if MMU_TYPE_ANGRY_BEAVER_1_0
+
   if SHOW_MMU_ADDITIONS_WITH_TYPE
     source "mmu_additions/Kconfig"
   endif
@@ -46,4 +47,5 @@ if MMU_TYPE_ANGRY_BEAVER_1_0
     default "500"
   config PARAM_GATE_PARKING_DISTANCE
     default "50"
+
 endif 

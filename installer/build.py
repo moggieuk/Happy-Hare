@@ -237,7 +237,7 @@ def build(cfg_file, dest_file, kconfig, input_files):
     if kcfg.is_enabled("MULTI_UNIT_ENTRY_POINT"):
         unit_kcfgs = dict()
         total_num_gates = 0
-        for unit in kcfg.get("PARAM_MMU_UNITS").split(","):
+        for unit in kcfg.get("MMU_UNITS").split(","):
             unit = unit.strip()
             unit_kcfgs[unit] = load_parsed_kconfig(kconfig + "_" + unit)
             total_num_gates += unit_kcfgs[unit].getint("PARAM_NUM_GATES")
@@ -258,7 +258,7 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
     hhcfg = HHConfig(input_files)
 
     # 2.Run upgrade transform on aggregated master HH Config
-    to_version = kcfg.get("PARAM_HAPPY_HARE_VERSION")
+    to_version = kcfg.get("HAPPY_HARE_VERSION")
     if hhcfg.has_option("mmu", "happy_hare_version"):
         from_version = hhcfg.get("mmu", "happy_hare_version")
     else:
@@ -443,7 +443,7 @@ def check_version(kconfig, input_files):
         return
 
     logging.log(LEVEL_NOTICE, "Current version: " + current_version)
-    target_version = kcfg.get("PARAM_HAPPY_HARE_VERSION")
+    target_version = kcfg.get("HAPPY_HARE_VERSION")
     if target_version is None:
         logging.error("Target version is not defined in .config file")
         exit(1)

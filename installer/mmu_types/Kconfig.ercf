@@ -254,7 +254,7 @@ if MMU_FAMILY_ERCF
       default "16"
 
     choice CHOICE_ENCODER_TYPE
-      default CHOICE_ENCODER_TYPE_BINKY
+      default CHOICE_ENCODER_TYPE_BINKY_V2
     endchoice
   endif
 endif

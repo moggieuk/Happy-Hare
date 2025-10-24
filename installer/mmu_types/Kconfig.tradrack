@@ -29,13 +29,13 @@ if MMU_TYPE_TRADRACK_1_0
       imply MMU_HAS_ENCODER
   endmenu
 
-  ####################
-  ##### Defaults #####
-  ####################
-
   if SHOW_MMU_ADDITIONS_WITH_TYPE
     source "mmu_additions/Kconfig"
   endif
+
+  ####################
+  ##### Defaults #####
+  ####################
 
   # Identify
   config PARAM_VENDOR
@@ -84,4 +84,8 @@ if MMU_TYPE_TRADRACK_1_0
     default "17.5"
   config PARAM_GATE_ENDSTOP_TO_ENCODER
     default "31" if MOD_BINKY
+
+  choice CHOICE_ENCODER_TYPE
+    default CHOICE_ENCODER_TYPE_BINKY if MOD_BINKY
+  endchoice
 endif

@@ -5,7 +5,7 @@
 config CHOICE_MCU_CONNECTION_TYPE_CANBUS
   bool "CANbus"
   help
-    Select if your MMU connects via CANbus connetion to mcu board
+    Select if your MMU connects with a CANbus connection to mcu board
 
 if CHOICE_MCU_CONNECTION_TYPE_CANBUS
   config PARAM_CANBUS_UUID

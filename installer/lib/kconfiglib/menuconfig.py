@@ -735,7 +735,9 @@ def menuconfig(kconf):
 
     # Enter curses mode. _menuconfig() returns a string to print on exit, after
     # curses has been de-initialized.
-    print(curses.wrapper(_menuconfig))
+    msg, code = curses.wrapper(_menuconfig) # Happy Hare: Modified to also return exit code
+    print(msg)
+    sys.exit(code)
 
 
 def _load_config():
@@ -762,14 +764,14 @@ def _needs_save():
 
     for sym in _kconf.unique_defined_syms:
         if sym.user_value is None:
-            if sym.config_string:
+            if sym.config_string and not sym._was_default:
                 # Unwritten symbol
                 return True
         elif sym.orig_type in (BOOL, TRISTATE):
-            if sym.tri_value != sym.user_value:
+            if sym.tri_value != sym.user_value and not sym._was_default:
                 # Written bool/tristate symbol, new value
                 return True
-        elif sym.str_value != sym.user_value:
+        elif sym.str_value != sym.user_value and not sym._was_default:
             # Written string/int/hex symbol, new value
             return True
 
@@ -890,9 +892,9 @@ def _menuconfig(stdscr):
                    "\x1B", "h", "H"):  # \x1B = ESC
 
             if c == "\x1B" and _cur_menu is _kconf.top_node:
-                res = _quit_dialog()
+                res, code = _quit_dialog()
                 if res:
-                    return res
+                    return res, code
             else:
                 _leave_menu()
 
@@ -938,18 +940,20 @@ def _menuconfig(stdscr):
             _toggle_show_all()
 
         elif c in ("q", "Q"):
-            res = _quit_dialog()
+            res, code = _quit_dialog()
             if res:
-                return res
+                return res, code
 
         elif c in ("r", "R"): # Happy Hare: Added to "unset" user change and reset to default
             sel_node = _shown[_sel_node_i]
             _reset_node(sel_node)
 
 
+# Happy Hare: Modified to also return status for subsequent action
 def _quit_dialog():
     if not _conf_changed:
-        return "No changes to save (for '{}')".format(_conf_filename)
+        msg = "No changes to save (for '{}')".format(_conf_filename)
+        return (msg, 0) # Nothing to write
 
     while True:
         c = _key_dialog(
@@ -960,16 +964,25 @@ def _quit_dialog():
             "ync")
 
         if c is None or c == "c":
-            return None
+            return (None, 0) # Ignore quit request
 
         if c == "y":
             # Returns a message to print
             msg = _try_save(_kconf.write_config, _conf_filename, "configuration")
             if msg:
-                return msg
+                return (msg, 0) # Write successful or no write needed (config unchanged)
+            else:
+                msg = "Aborting because error saving configuration ({})".format(_conf_filename)
+                return (msg, 1) # Generic error saving
 
         elif c == "n":
-            return "Configuration ({}) was not saved".format(_conf_filename)
+            if _conf_changed:
+                msg = "Aborting because configuration {} was not saved".format(_conf_filename)
+                code = 2 # User abort
+            else:
+                msg = "Configuration ({}) was not saved".format(_conf_filename)
+                code = 0 # Ok, not to save
+            return (msg, code)
 
 
 def _init():
@@ -1363,7 +1376,7 @@ def _draw_main():
         _safe_hline(_top_sep_win, 0, 4, curses.ACS_UARROW, _N_SCROLL_ARROWS)
 
     # Add the 'mainmenu' text as the title, centered at the top
-    _safe_addstr(_top_sep_win,
+    _safe_addstr_markup(_top_sep_win,
                  0, max((term_width - len(_kconf.mainmenu_text))//2, 0),
                  _kconf.mainmenu_text)
 
@@ -1393,7 +1406,8 @@ def _draw_main():
         else:
             style = _style["inv-selection" if i == _sel_node_i else "inv-list"]
 
-        _safe_addstr(_menu_win, i - _menu_scroll, 0, _node_str(node), style)
+        # Happy Hare: _safe_addstr(_menu_win, i - _menu_scroll, 0, _node_str(node), style)
+        _safe_addstr_markup(_menu_win, i - _menu_scroll, 0, _node_str(node), style) # Happy Hare: Added
 
     _menu_win.noutrefresh()
 
@@ -3136,8 +3150,10 @@ def _node_str(node):
         parent = parent.parent
 
     # This approach gives nice alignment for empty string symbols ("()  Foo")
-    #s = "{:{}}".format(_value_str(node), 3 + indent)
-    s = "{:>{}}".format(_value_str(node), _VALUE_INDENT + indent) # Happy Hare: Revised to right-aligned formatting
+    # Happy Hare: Orig: s = "{:{}}".format(_value_str(node), 3 + indent)
+    v = _value_str(node)
+    tcc = _token_char_count(v)
+    s = "{:>{}}".format(v, _VALUE_INDENT + indent + tcc) # Happy Hare: Revised to right-aligned formatting
 
     if _should_show_name(node):
         if isinstance(node.item, Symbol):
@@ -3160,7 +3176,7 @@ def _node_str(node):
                 len(node.item.assignable) <= 1 and
                 not isinstance(node.item, Choice)
             ):
-                s += " (FIXED)"
+                s += " [[DIM]](FIXED)[[/DIM]]"
 
         if isinstance(node.item, Symbol):
             sym = node.item
@@ -3184,7 +3200,7 @@ def _node_str(node):
                 # Use the prompt used at this choice location, in case the
                 # choice symbol is defined in multiple locations
                 if sym_node.parent is node and sym_node.prompt:
-                    s += " ({})".format(sym_node.prompt[0])
+                    s += " ([[B]]{}[[/B]])".format(sym_node.prompt[0])
                     break
             else:
                 # If the symbol isn't defined at this choice location, then
@@ -3206,7 +3222,7 @@ def _node_str(node):
             sym.name.startswith(('PARAM_', 'PIN_', 'BOOL_', 'MMU_HAS_')) and
             differs_from_default(node, sym)[0]
         ):
-            s += " (NOT DEFAULT)"
+            s += " [[DIM]](NOT DEFAULT)[[/DIM]]"
     elif isinstance(node.item, Choice):
         ch = node.item
         sel = ch.selection
@@ -3215,7 +3231,7 @@ def _node_str(node):
             ch.name and ch.name.startswith("CHOICE_") and
             differs_from_default(node, ch)[0]
         ):
-            s += " (NOT DEFAULT)"
+            s += " [[DIM]](NOT DEFAULT)[[/DIM]]"
 
     # Print "--->" next to nodes that have menus that can potentially be
     # entered. Print "----" if the menu is empty. We don't allow those to be
@@ -3249,7 +3265,10 @@ def _value_str(node):
         return ""
 
     if item.orig_type in (STRING, INT, HEX):
-        return "({})".format(item.str_value)
+        if item._was_set: # Happy Hare: Added style formatting for non-defaults
+            return "([[B]]{}[[/B]])".format(item.str_value)
+        else:
+            return "({})".format(item.str_value)
 
     # BOOL or TRISTATE
 
@@ -3421,6 +3440,92 @@ def _safe_addstr(win, *args):
             win.addnstr(y, x, s, maxlen, attr)
     except curses.error:
         pass
+
+
+# Happy Hare: Tight matching of allowable markup tokens
+#_TAG_RE = re.compile(r"\[\[(/?)([A-Za-z]+)(?::(\d+))?\]\]")
+_TAG_RE = re.compile(r"""
+\[\[
+(?= (?:/?(?:B|U|REV|DIM) | C:[0-9]+ | /C | RESET ) \]\] ) # whitelist gate
+(?P<slash>/)?(?P<name>[A-Z]+)(?::(?P<digits>[0-9]+))?     # captures: /?, name, :digits
+\]\]
+""", re.X)
+# Happy Hare: Added to count how many "tag" characters there are in the string
+def _token_char_count(s):
+    return sum(len(m.group(0)) for m in _TAG_RE.finditer(s))
+
+# Happy Hare: Added alternative to _safe_addstr() that allows simple embedded markup
+def _safe_addstr_markup(win, *args):
+    # Render text with inline tags using _safe_addstr().
+    # Call styles:
+    #   addstr_markup(win, "text", base_attr)
+    #   addstr_markup(win, y, x, "text", base_attr)
+    # [[B]]...[[/B]]     → bold on/off
+    # [[U]]...[[/U]]     → underline on/off
+    # [[REV]]...[[/REV]] → reverse on/off
+    # [[DIM]]...[[/DIM]] → dim on/off
+    # [[C:n]]...[[/C]]   → color_pair(n) on/off (n is an int)
+    # [[RESET]]          → reset to base_attr (pushes a clean state)
+    # Parse args similar to _safe_addstr
+    if isinstance(args[0], str):
+        y, x = win.getyx()
+        text = args[0]
+        base_attr = args[1] if len(args) == 2 else None
+    else:
+        y, x, text = args[:3]
+        base_attr = args[3] if len(args) == 4 else None
+
+    # Move to starting position once; subsequent _safe_addstr() calls will advance the cursor
+    win.move(y, x)
+
+    # Attribute stack (top is current). Start with base_attr if provided, else 0 (keep simple).
+    attr_stack = [0 if base_attr is None else base_attr]
+
+    def cur_attr():
+        return attr_stack[-1]
+
+    pos = 0
+    for m in _TAG_RE.finditer(text):
+        # Emit plain text before this tag
+        if m.start() > pos:
+            chunk = text[pos:m.start()]
+            # Pass attribute; if you want "inherit current window style" for plain chunks,
+            # you could pass None here instead of cur_attr().
+            _safe_addstr(win, chunk, cur_attr())
+
+        closing, name, arg = m.groups()
+        name = name.upper()
+
+        if not closing:  # opening tag
+            a = cur_attr()
+            if name in ("B", "BOLD"):
+                attr_stack.append(a | curses.A_BOLD)
+            elif name in ("U", "UNDERLINE"):
+                attr_stack.append(a | curses.A_UNDERLINE)
+            elif name in ("REV", "REVERSE"):
+                attr_stack.append(a | curses.A_REVERSE)
+            elif name == "DIM":
+                attr_stack.append(a | curses.A_DIM)
+            elif name in ("C", "COLOR"):
+                n = int(arg or 0)
+                # Replace only the color bits; keep other attrs
+                attr_stack.append((a & ~curses.A_COLOR) | curses.color_pair(n))
+            elif name == "RESET":
+                # Reset to base attribute
+                attr_stack.append(attr_stack[0])
+            else:
+                # Unknown tag → render it literally
+                _safe_addstr(win, m.group(0), cur_attr())
+        else:
+            # Closing tag: pop one level if possible (assumes well-nested tags)
+            if len(attr_stack) > 1:
+                attr_stack.pop()
+
+        pos = m.end()
+
+    # Emit any trailing text
+    if pos < len(text):
+        _safe_addstr(win, text[pos:], cur_attr())
 
 
 def _safe_addch(win, *args):
