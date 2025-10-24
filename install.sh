@@ -19,11 +19,17 @@ SCRIPTPATH="$(dirname "$SCRIPT")"
 SCRIPTNAME="$0"
 ARGS=( "$@" )
 
-# Creality K1 series printers run on MIPS, with a limited instruction set and different default klipper directories
-# Checking for machine type is the easiest way so far to spot them (will be set to 1 if on MIPS):
-IS_MIPS=0
-if [ $(uname -m) = "mips" ]; then
-    IS_MIPS=1
+# Provide klipper installation path and settings for different systems
+
+OS_CREALITY_K1="creality-k1"
+OS_FLYOS_FAST="flyos-fast"
+OS_TYPE=""
+if [ $(uname -m) = "mips" ] && [ -d "/usr/data/creality" ]; then
+    OS_TYPE="${OS_CREALITY_K1}"
+    echo "Detected Creality K1 series printer"
+elif [ $(sed -n 's/^NAME="\(.*\)"/\1/p' /etc/os-release 2>/dev/null) = "FlyOS-Fast" ]; then
+    OS_TYPE="${OS_FLYOS_FAST}"
+    echo "Detected FlyOS-Fast"
 fi
 
 KLIPPER_HOME="${HOME}/klipper"
@@ -33,10 +39,16 @@ OCTOPRINT_KLIPPER_CONFIG_HOME="${HOME}"
 KLIPPER_LOGS_HOME="${HOME}/printer_data/logs"
 OLD_KLIPPER_CONFIG_HOME="${HOME}/klipper_config"
 
-if [ "$IS_MIPS" -eq 1 ]; then
+if [ "$OS_TYPE" = "$OS_CREALITY_K1" ]; then
     KLIPPER_HOME="/usr/share/klipper"
     MOONRAKER_HOME="/usr/data/moonraker/moonraker"
     KLIPPER_CONFIG_HOME="/usr/data/printer_data/config"
+    unset OCTOPRINT_KLIPPER_CONFIG_HOME
+    unset OLD_KLIPPER_CONFIG_HOME
+elif [ "$OS_TYPE" = "$OS_FLYOS_FAST" ]; then
+    KLIPPER_HOME="/data/klipper"
+    MOONRAKER_HOME="/data/moonraker"
+    KLIPPER_CONFIG_HOME="/usr/share/printer_data/config"
     unset OCTOPRINT_KLIPPER_CONFIG_HOME
     unset OLD_KLIPPER_CONFIG_HOME
 fi
@@ -118,8 +130,8 @@ self_update() {
     cd "$SCRIPTPATH"
 
     set +e
-    # timeout is unavailable on MIPS
-    if [ "$IS_MIPS" -ne 1 ]; then
+    # There is no timeout function provided in the system
+    if [ -n "$(which timeout)" ]; then
         BRANCH=$(timeout 3s git branch --show-current)
     else
         BRANCH=$(git branch --show-current)
@@ -197,26 +209,23 @@ function nextsuffix {
 }
 
 verify_not_root() {
-    if [ "$IS_MIPS" -ne 1 ]; then
+    if [ "$OS_TYPE" = "$OS_CREALITY_K1" ]; then
+        echo -e "${WARNING}This script is run on a ${OS_TYPE} system, so we want it to be run as root"
+        return
+    elif [ "$OS_TYPE" = "$OS_FLYOS_FAST" ]; then
+        echo -e "${WARNING}This script is run on a ${OS_TYPE} system, so we want it to be run as root"
+        return
+    else
         if [ "$EUID" -eq 0 ]; then
             echo -e "${ERROR}This script must not run as root"
             exit -1
         fi
-    else
-        echo -e "${WARNING}This script is running on a MIPS system, so we expect it to be run as root"
     fi
 }
 
 check_klipper() {
     if [ "$NOSERVICE" -ne 1 ]; then
-        if [ "$IS_MIPS" -ne 1 ]; then
-            if [ "$(systemctl list-units --full -all -t service --no-legend | grep -F "${KLIPPER_SERVICE}")" ]; then
-                echo -e "${DIM}Klipper ${KLIPPER_SERVICE} systemd service found"
-            else
-                echo -e "${ERROR}Klipper ${KLIPPER_SERVICE} systemd service not found! Please install Klipper first"
-                exit -1
-            fi
-        else
+        if [ "$OS_TYPE" = "$OS_CREALITY_K1" ]; then
             # There is no systemd on MIPS, we can only check the running processes
             running_klipper_pid=$(ps -o pid,comm,args | grep [^]]/klipper/klippy/klippy.py | awk '{print $1}')
             KLIPPER_PID_FILE=/var/run/klippy.pid
@@ -227,13 +236,22 @@ check_klipper() {
                 echo -e "${ERROR}Klipper service not found! Please install Klipper first"
                 exit -1
             fi
+        else
+            if [ "$(systemctl list-units --full -all -t service --no-legend | grep -F "${KLIPPER_SERVICE}")" ]; then
+                echo -e "${DIM}Klipper ${KLIPPER_SERVICE} systemd service found"
+            else
+                echo -e "${ERROR}Klipper ${KLIPPER_SERVICE} systemd service not found! Please install Klipper first"
+                exit -1
+            fi
         fi
     fi
 }
 
 check_octoprint() {
-    if [ "$IS_MIPS" -eq 1 ]; then
+    if [ "$OS_TYPE" = "$OS_CREALITY_K1" ]; then
         OCTOPRINT=0 # Octoprint can not be set up on MIPS
+    elif [ "$OS_TYPE" = "$OS_FLYOS_FAST" ]; then
+        OCTOPRINT=0 # Octoprint can not be set up on FlyOS-Fast
     elif [ "$NOSERVICE" -ne 1 ]; then
         if [ "$(sudo systemctl list-units --full -all -t service --no-legend | grep -F "octoprint.service")" ]; then
             echo -e "${DIM}OctoPrint service found"
@@ -1346,14 +1364,14 @@ install_update_manager() {
         restart=0
 
         update_section=$(grep -c '\[update_manager happy-hare\]' ${file} || true)
-        if [ "${update_section}" -eq 0 ]; then
+        if [ "${update_section}" -eq 0 ] && [ "$OS_TYPE" != "$OS_FLYOS_FAST" ]; then
             echo "" >> "${file}"
             while read -r line; do
                 echo -e "${line}" >> "${file}"
             done < "${SRCDIR}/moonraker_update.txt"
             echo "" >> "${file}"
             # The path for Happy-Hare on MIPS is /usr/data/Happy-Hare
-            if [ "$IS_MIPS" -eq 1 ]; then
+            if [ "$OS_TYPE" = "$OS_CREALITY_K1" ]; then
                 sed -i 's|path: ~/Happy-Hare|path: /usr/data/Happy-Hare|' "${file}"
                 echo -e "${INFO}Update Happy-Hare path for MIPS architecture."
             fi
@@ -1432,12 +1450,12 @@ restart_klipper() {
     if [ "$NOSERVICE" -ne 1 ]; then
         echo -e "${INFO}Restarting Klipper..."
 
-        if [ "$IS_MIPS" -ne 1 ]; then
-            sudo systemctl restart ${KLIPPER_SERVICE}
-        else
+        if [ "$OS_TYPE" = "$OS_CREALITY_K1" ]; then
             set +e
             /etc/init.d/*klipper_service restart
             set -e
+        else
+            sudo systemctl restart ${KLIPPER_SERVICE}
         fi
     else
         echo -e "${WARNING}Klipper restart suppressed - Please restart ${KLIPPER_SERVICE} by hand"
@@ -1448,12 +1466,12 @@ restart_moonraker() {
     if [ "$NOSERVICE" -ne 1 ]; then
         echo -e "${INFO}Restarting Moonraker..."
 
-        if [ "$IS_MIPS" -ne 1 ]; then
-            sudo systemctl restart moonraker
-        else
+        if [ "$OS_TYPE" = "$OS_CREALITY_K1" ]; then
             set +e
             /etc/init.d/*moonraker_service restart
             set -e
+        else
+            sudo systemctl restart moonraker
         fi
     else
         echo -e "${WARNING}Moonraker restart suppressed - Please restart by hand"
