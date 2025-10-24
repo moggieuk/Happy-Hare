@@ -4864,6 +4864,13 @@ class Mmu:
             if not extruder_only:
                 current_action = self._set_action(self.ACTION_UNLOADING)
 
+            # Deactivate spool immediately before tip forming/cutting
+            # Tip forming/cutting macros use the extruder to execute, hence
+            # any retraction / de retraction moves are accounted in Spoolman.
+            # By de-activating early, the retraction performed from the macro 
+            # is deliberately not accounted in spoolman
+            self._spoolman_activate_spool(0)
+
             # Run PRE_UNLOAD user defined macro
             if macros_and_track:
                 self._track_time_start('unload')
@@ -4900,7 +4907,6 @@ class Mmu:
                         self.log_warning("Warning: Filament not seen near gate after tip forming move. Unload may not be possible")
 
                     self.wrap_gcode_command(self.post_form_tip_macro, exception=True, wait=True)
-
             # Note: Conditionals deliberately coded this way to match macro alternative
             homing_movement = None # Track how much homing is done for calibrated bowden length optimization
             deficit = 0.           # Amount of homing that would be expected (because bowden load is shortened)
@@ -4978,9 +4984,6 @@ class Mmu:
             # Notify autotune manager
             if full and not extruder_only and not self.gcode_unload_sequence:
                 self.calibration_manager.unload_telemetry(bowden_move_ratio, homing_movement, deficit)
-
-            # Deactivate spool in Spoolman as it is now unloaded.
-            self._spoolman_activate_spool(0)
 
             # POST_UNLOAD user defined macro
             if macros_and_track:
