@@ -621,7 +621,7 @@ class MmuToolHead(toolhead.ToolHead, object):
     def quiesce(self, full_quiesce=True):
         with self._resync_lock:
             ths = [self.printer_toolhead, self.mmu_toolhead]
-            t_cut = self._quiesce_align_get_tcut(ths, full=full_quiesce)
+            t_cut = self._quiesce_align_get_tcut(ths, full=full_quiesce, wait=full_quiesce)
 
     # Drain required toolheads, align to a common future time, materialize it,
     # and return a strict fence time t_cut. 'wait' shouldn't be needed but
@@ -758,9 +758,9 @@ class MmuToolHead(toolhead.ToolHead, object):
                     self._register(self.mmu_toolhead, s) # s.set_trapq(self.mmu_toolhead.get_trapq())
                     s.set_position([0., self.mmu_toolhead.get_position()[1], 0.])
 
-            # Required for klipper >= 0.13.0-330
-            if self.motion_queuing and hasattr(self.motion_queuing, 'check_step_generation_scan_windows'):
-                self.motion_queuing.check_step_generation_scan_windows()
+            ## Required for klipper >= 0.13.0-330
+            #if self.motion_queuing and hasattr(self.motion_queuing, 'check_step_generation_scan_windows'):
+            #    self.motion_queuing.check_step_generation_scan_windows()
 
             # Debugging
             #logging.info("MMU: ////////// CUTOVER fence t_cut=%.6f, old_trapq=%s, new_trapq=%s, from.last=%.6f, to.last=%.6f",
@@ -777,6 +777,10 @@ class MmuToolHead(toolhead.ToolHead, object):
                 self.printer.send_event("mmu:unsynced")
 
             # Now “unsynced” at t0
+
+        # Required for klipper >= 0.13.0-330
+        if self.motion_queuing and hasattr(self.motion_queuing, 'check_step_generation_scan_windows'):
+            self.motion_queuing.check_step_generation_scan_windows()
 
         self.sync_mode = self.GEAR_ONLY if new_sync_mode == self.GEAR_ONLY else None
         if new_sync_mode in [self.GEAR_ONLY, None]:
@@ -1230,7 +1234,8 @@ class MmuPrinterRail(_StepperPrinterRail, object):
 
     def set_direction(self, direction):
         for stepper in self.steppers:
-            stepper.set_dir_inverted(direction)
+            if not isinstance(stepper, (MmuExtruderStepper, ExtruderStepper)):
+                stepper.set_dir_inverted(direction)
 
     class MockEndstop:
         def add_stepper(self, *args, **kwargs):

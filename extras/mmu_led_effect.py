@@ -228,8 +228,11 @@ class ledFrameHandler:
             if not effect.runOnShutown:
                 for chain in self.ledChains:
                     chain.led_helper.set_color(None, (0.0, 0.0, 0.0, 0.0))
-                    chain.led_helper.update_func(chain.led_helper.led_state, None)
-
+                    chain.led_helper.need_transmit = True
+                    if hasattr(chain.led_helper, '_check_transmit'):
+                        chain.led_helper._check_transmit() # New klipper
+                    else:
+                        chain.led_helper.check_transmit(None)  # Older klipper / Kalico
         pass
     
     def _handle_homing_move_begin(self, hmove):
@@ -353,7 +356,11 @@ class ledFrameHandler:
             if hasattr(chain,"prev_data"):
                 chain.prev_data = None # workaround to force update of dotstars
             if not self.shutdown: 
-                chain.led_helper.update_func(chain.led_helper.led_state, None)
+                chain.led_helper.need_transmit = True
+                if hasattr(chain.led_helper, '_check_transmit'):
+                    chain.led_helper._check_transmit() # New klipper
+                else:
+                    chain.led_helper.check_transmit(None)  # Older klipper / Kalico
         if self.effects:
             next_eventtime=min(self.effects, key=lambda x: x.nextEventTime)\
                             .nextEventTime
