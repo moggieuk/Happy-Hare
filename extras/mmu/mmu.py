@@ -2913,7 +2913,7 @@ class Mmu:
                 self._disable_runout() # Disable runout/clog detection while in pause state
                 self._track_pause_start()
                 self.resume_to_state = 'printing' if self.is_in_print() else 'ready'
-                self.reason_for_pause = reason
+                self.reason_for_pause = reason # Only store reason on first error
                 self._display_mmu_error()
                 self.paused_extruder_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
                 self.log_trace("Saved desired extruder temperature: %.1f%sC" % (self.paused_extruder_temp, UI_DEGREE))
@@ -3008,6 +3008,9 @@ class Mmu:
 
             # Restablish desired syncing state and grip (servo) position
             self.reset_sync_gear_to_extruder(self.sync_to_extruder, force_in_print=force_in_print)
+
+        # Good place to reset the _next_tool marker because after any user fix on toolchange error/pause
+        self._next_tool = self.TOOL_GATE_UNKNOWN
 
         # Restore print position as final step so no delay
         self._restore_toolhead_position(operation, restore=restore)
@@ -6392,7 +6395,7 @@ class Mmu:
                         self.toolchange_purge_volume = self._get_purge_volume(self.tool_selected, tool)
 
                         # Ok, now ready to park and perform the swap
-                        self._next_tool = tool # Valid only during the change process
+                        self._next_tool = tool # Valid only during the change process - cleared in _continue_after()
                         self._save_toolhead_position_and_park('toolchange', next_pos=next_pos)
                         self._set_next_position(next_pos) # This can also clear next_position
                         self._track_time_start('total')
@@ -6421,7 +6424,6 @@ class Mmu:
                                 self.gcode.run_script_from_command("M117 T%s" % tool)
                         finally:
                             self._track_time_end('total')
-                            self._next_tool = self.TOOL_GATE_UNKNOWN
 
                     # Updates swap statistics
                     self.num_toolchanges += 1
