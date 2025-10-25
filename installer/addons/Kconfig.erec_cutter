@@ -9,6 +9,6 @@ if ADDON_EREC_CUTTER
   menu "EREC filament cutter pins"
     config PIN_EREC_CUTTER_SERVO
       string "EREC filament cutter servo pin"
-      default "mmu:PA7"
+      default ""
   endmenu
 endif

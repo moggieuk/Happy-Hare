@@ -12,13 +12,13 @@ config PARAM_SERIAL_DEVICE
   string
 
 config PARAM_CANBUS_UUID
-  hex
+  string
 
 config PARAM_BUFFER_SERIAL_DEVICE
   string
 
 config PARAM_BUFFER_CANBUS_UUID
-  hex
+  string
 
 choice MCU_CONNECTION_TYPE
   prompt "MCU connection"

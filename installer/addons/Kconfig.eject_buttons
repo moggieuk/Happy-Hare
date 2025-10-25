@@ -4,3 +4,56 @@ config ADDON_EJECT_BUTTONS
     The pin connections will still need to be setup in the macro.
   bool "Enable eject buttons support?"
 
+if ADDON_EJECT_BUTTONS
+  menu "Eject button pins"
+
+    config PIN_EJECT_BUTTON_0
+      string "Eject button gate 0"
+      depends on PARAM_NUM_GATES >= 1
+
+    config PIN_EJECT_BUTTON_1
+      string "Eject button gate 1"
+      depends on PARAM_NUM_GATES >= 2
+
+    config PIN_EJECT_BUTTON_2
+      string "Eject button gate 2"
+      depends on PARAM_NUM_GATES >= 3
+
+    config PIN_EJECT_BUTTON_3
+      string "Eject button gate 3"
+      depends on PARAM_NUM_GATES >= 4
+
+    config PIN_EJECT_BUTTON_4
+      string "Eject button gate 4"
+      depends on PARAM_NUM_GATES >= 5
+
+    config PIN_EJECT_BUTTON_5
+      string "Eject button gate 5"
+      depends on PARAM_NUM_GATES >= 6
+
+    config PIN_EJECT_BUTTON_6
+      string "Eject button gate 6"
+      depends on PARAM_NUM_GATES >= 7
+
+    config PIN_EJECT_BUTTON_7
+      string "Eject button gate 7"
+      depends on PARAM_NUM_GATES >= 8
+
+    config PIN_EJECT_BUTTON_8
+      string "Eject button gate 8"
+      depends on PARAM_NUM_GATES >= 9
+
+    config PIN_EJECT_BUTTON_9
+      string "Eject button gate 9"
+      depends on PARAM_NUM_GATES >= 10
+
+    config PIN_EJECT_BUTTON_10
+      string "Eject button gate 10"
+      depends on PARAM_NUM_GATES >= 11
+
+    config PIN_EJECT_BUTTON_11
+      string "Eject button gate 11"
+      depends on PARAM_NUM_GATES >= 12
+
+  endmenu
+endif

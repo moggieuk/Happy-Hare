@@ -1,0 +1,90 @@
+config BOARD_TYPE_TZB_1_0
+  bool "TZB v1.0 / designed for ERCF"
+
+if BOARD_TYPE_TZB_1_0
+  config PARAM_BOARD_TYPE
+    default "TZB10"
+
+  choice SERIAL_DEVICE
+    default $(serial_config,1,stm32)
+  endchoice
+
+  config PIN_GEAR_UART 
+    default "$(MCU_NAME):PD1"
+  config PIN_GEAR_STEP
+    default "$(MCU_NAME):PD0" 
+  config PIN_GEAR_DIR
+    default "$(MCU_NAME):PA15" 
+  config PIN_GEAR_ENABLE
+    default "!$(MCU_NAME):PD3" 
+  config PIN_GEAR_DIAG
+    default "$(MCU_NAME):PD2" 
+
+  config PIN_SELECTOR_UART
+    default "$(MCU_NAME):PB5" 
+  config PIN_SELECTOR_STEP
+    default "$(MCU_NAME):PB4" 
+  config PIN_SELECTOR_DIR
+    default "$(MCU_NAME):PB3" 
+  config PIN_SELECTOR_ENABLE
+    default "!$(MCU_NAME):PB7" 
+  config PIN_SELECTOR_DIAG
+    default "$(MCU_NAME):PB6"
+
+  config PIN_SELECTOR_ENDSTOP
+    default "^$(MCU_NAME):PA4"
+  config PIN_SELECTOR_SERVO
+    default "$(MCU_NAME):PA0" 
+
+  config PIN_ENCODER
+    default "^$(MCU_NAME):PA2"
+  config PIN_GATE_SENSOR
+    default ""
+  config PIN_NEOPIXEL
+    default "$(MCU_NAME):PA5"
+
+  config PIN_PRE_GATE_0
+    default "^$(MCU_NAME):PB14"
+  config PIN_PRE_GATE_1
+    default "^$(MCU_NAME):PB13"
+  config PIN_PRE_GATE_2
+    default "^$(MCU_NAME):PB12"
+  config PIN_PRE_GATE_3
+    default "^$(MCU_NAME):PA7"
+  config PIN_PRE_GATE_4
+    default "^$(MCU_NAME):PA6"
+  config PIN_PRE_GATE_5
+    default "^$(MCU_NAME):PB2"
+  config PIN_PRE_GATE_6
+    default "^$(MCU_NAME):PA13"
+  config PIN_PRE_GATE_7
+    default "^$(MCU_NAME):PA10"
+  config PIN_PRE_GATE_8
+    default "^$(MCU_NAME):PC7"
+  config PIN_PRE_GATE_9
+    default "^$(MCU_NAME):PC6"
+  config PIN_PRE_GATE_10
+    default "^$(MCU_NAME):PA9"
+  config PIN_PRE_GATE_11
+    default "^$(MCU_NAME):PA8"
+
+  config PIN_SYNC_FEEDBACK_TENSION
+    default "^$(MCU_NAME):PB1"
+  config PIN_SYNC_FEEDBACK_COMPRESSION
+    default "^$(MCU_NAME):PB0"
+  config PIN_SYNC_FEEDBACK_PROPORTIONAL
+    default "$(MCU_NAME):PA3"
+
+  config PIN_EREC_CUTTER_SERVO
+    default "$(MCU_NAME):PA3"
+
+  config PARAM_MISC_HARDWARE
+    default "$(ml,\
+[temperature_sensor $(UNIT_NAME)_enclosure]\n\
+sensor_type: BME280\n\
+i2c_mcu: $(MCU_NAME)\n\
+i2c_bus: i2c2_PB10_PB11\n\
+i2c_address: 118\n\
+)" if MMU_HAS_ENVIRONMENT_SENSOR
+
+endif
