@@ -77,7 +77,7 @@ class MmuSyncFeedbackManager:
         
         # EndGuard (proportional near-end watchdog)
         self.sync_endguard_enabled  = self.mmu.config.getint('sync_endguard_enabled', 0, minval=0, maxval=1)
-        self.sync_endguard_band     = self.mmu.config.getfloat('sync_endguard_band', 0.80, minval=0.55, maxval=1.00)
+        self.sync_endguard_band     = self.mmu.config.getfloat('sync_endguard_band', 0.90, minval=0.55, maxval=1.00)
         self.sync_endguard_distance_mm  = self.mmu.config.getfloat('sync_endguard_distance_mm', 6.0, minval=1.0)
         self.endguard_last_recorded_extruder_position  = None
         self._endguard_forward_mm   = 0.0
