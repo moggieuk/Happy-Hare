@@ -498,7 +498,7 @@ class MmuSyncFeedbackManager:
                         )
                     )
                     if self.mmu.autotune_rotation_distance:
-                        self.mmu.save_rotation_distance(self.mmu.gate_selected, _tuned_rd)
+                        self.mmu.save_rotation_distance(self.mmu.gate_selected, round(_tuned_rd, 4)) # Round to 4 decimals for saving.
                     # We have found a tuned RD value - widen clamps to prevent oscillation of the tuned RD value
                     # due to the nudge off the trigger point.
                     rd_clamp[0] = _tuned_rd * self.sync_multiplier_high
