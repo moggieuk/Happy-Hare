@@ -1325,7 +1325,7 @@ class Mmu:
                 self._disable_runout() # Initially disable clog/runout detection
 
             self.reset_sync_gear_to_extruder(False) # Intention is not to sync unless we have to
-            self.movequeues_wait()
+            self.mmu_toolhead.quiesce()
 
             # Sync with spoolman. Delay as long as possible to maximize the chance it is contactable after startup/reboot
             self._spoolman_sync()
@@ -1334,6 +1334,10 @@ class Mmu:
             self.log_error('Error booting up MMU: %s' % str(e))
         self.mmu_macro_event(self.MACRO_EVENT_RESTART)
 
+    # Wrap execution of gcode command to allow for control over:
+    #  - error handling
+    #  - passing of additional variables
+    #  - waiting on completion
     def wrap_gcode_command(self, command, exception=False, variables=None, wait=False):
         try:
             command = command.replace("''", "")
@@ -1346,9 +1350,11 @@ class Mmu:
                     gcode_macro.variables.update(variables)
 
             self.log_trace("Running macro: %s%s" % (command, " (with override variables)" if variables is not None else ""))
+
             self.gcode.run_script_from_command(command)
             if wait:
-                self.movequeues_wait()
+                self.mmu_toolhead.quiesce()
+
         except Exception as e:
             if exception is not None:
                 if exception:
@@ -1363,6 +1369,8 @@ class Mmu:
             self.wrap_gcode_command("%s EVENT=%s %s" % (self.mmu_event_macro, event_name, params))
 
     # Wait on desired move queues
+    # TODO: perhaps better now to remove this method and
+    # TODO: always just call self.mmu_toolhead.quiesce()
     def movequeues_wait(self, toolhead=True, mmu_toolhead=True):
         #self.log_trace("movequeues_wait(toolhead=%s, mmu_toolhead=%s)" % (toolhead, mmu_toolhead))
         if toolhead:
@@ -1821,13 +1829,13 @@ class Mmu:
     def _color_message(self, msg):
         try:
             html_msg = msg.format(
-                '</span>',                       # {0}
-                '<span style="color:#C0C0C0">',  # {1}
-                '<span style="color:#FF69B4">',  # {2}
-                '<span style="color:#90EE90">',  # {3}
-                '<span style="color:#87CEEB">',  # {4}
-                '<b>',                           # {5}
-                '</b>'                           # {6}
+                '</span>',                       # {0} COLOR OFF
+                '<span style="color:#C0C0C0">',  # {1} COLOR GREY
+                '<span style="color:#FF69B4">',  # {2} COLOR RED
+                '<span style="color:#90EE90">',  # {3} COLOR GREEN
+                '<span style="color:#87CEEB">',  # {4} COLOR CYAN
+                '<b>',                           # {5} BOLD ON
+                '</b>'                           # {6} BOLD OFF
             )
         except (IndexError, KeyError, ValueError) as e:
             html_msg = msg
@@ -2149,6 +2157,9 @@ class Mmu:
                 msg += "\n\n%s" % self._es_groups_to_string()
             msg += "\n\n%s" % self._gate_map_to_string()
 
+        if self.reason_for_pause:
+            msg += "\n\n{2}MMU is paused because:\n%s{0}" % self.reason_for_pause
+
         self.log_always(msg, color=True)
 
         # Always warn if not fully calibrated or needs recovery
@@ -2223,7 +2234,7 @@ class Mmu:
     def cmd_MMU_MOTORS_OFF(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if self.check_if_disabled(): return
-        self.sync_gear_to_extruder(False)
+        self.sync_gear_to_extruder(False, force_grip=True)
         self.motors_onoff(on=False)
 
     cmd_MMU_MOTORS_ON_help = "Turn on all MMU motors and servos"
@@ -2902,7 +2913,7 @@ class Mmu:
                 self._disable_runout() # Disable runout/clog detection while in pause state
                 self._track_pause_start()
                 self.resume_to_state = 'printing' if self.is_in_print() else 'ready'
-                self.reason_for_pause = reason
+                self.reason_for_pause = reason # Only store reason on first error
                 self._display_mmu_error()
                 self.paused_extruder_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
                 self.log_trace("Saved desired extruder temperature: %.1f%sC" % (self.paused_extruder_temp, UI_DEGREE))
@@ -2997,6 +3008,9 @@ class Mmu:
 
             # Restablish desired syncing state and grip (servo) position
             self.reset_sync_gear_to_extruder(self.sync_to_extruder, force_in_print=force_in_print)
+
+        # Good place to reset the _next_tool marker because after any user fix on toolchange error/pause
+        self._next_tool = self.TOOL_GATE_UNKNOWN
 
         # Restore print position as final step so no delay
         self._restore_toolhead_position(operation, restore=restore)
@@ -4809,7 +4823,8 @@ class Mmu:
                 with self._wrap_track_time('post_load'):
 
                     # Restore the expected sync state now before running this macro
-                    self.reset_sync_gear_to_extruder(not extruder_only and self.sync_purge)
+                    # (we also must force correction of filament grip for old blobifer/unsynced functionality)
+                    self.reset_sync_gear_to_extruder(not extruder_only and self.sync_purge, force_grip=True)
 
                     if self.has_blobifier: # Legacy blobifer integration. purge_macro now preferred
                         with self.wrap_action(self.ACTION_PURGING):
@@ -5572,7 +5587,7 @@ class Mmu:
     #   If bypass is selected we cannot sync
     #   If in a print then used desired sync state if actively printing or desired or necessary sync state
     #   If not consider desired (_standalone_sync) or necessary (always_gripped) sync state
-    def reset_sync_gear_to_extruder(self, sync_intention, force_in_print=False):
+    def reset_sync_gear_to_extruder(self, sync_intention, force_grip=False, force_in_print=False):
         if self.gate_selected == self.TOOL_GATE_BYPASS:
             sync = False
         elif self.is_in_print(force_in_print):
@@ -5596,11 +5611,11 @@ class Mmu:
                     sync_intention
                 )
             )
-        self.sync_gear_to_extruder(sync)
+        self.sync_gear_to_extruder(sync, force_grip=force_grip)
         return sync
 
     # Sync/unsync gear motor with extruder, handle filament engagement and current control
-    def sync_gear_to_extruder(self, sync, gate=None):
+    def sync_gear_to_extruder(self, sync, gate=None, force_grip=False):
         # Safety in case somehow called with bypass/unknown selected. Usually this is called after
         # self.gate_selected is set, but can be before on type-B designs hence optional gate parameter
         gate = gate if gate is not None else self.gate_selected
@@ -5613,8 +5628,10 @@ class Mmu:
         # Handle filament grip before sync (type-A MMU) because of potential "buzz" movement
         if sync:
             self.selector.filament_drive()
-        elif not self._suppress_release_grip:
+        elif force_grip or not self._suppress_release_grip:
             # There are situations where we want this to be lazy to avoid "flutter" (of servo)
+            #   '_suppress_release_grip' is True unless we are the outermost caller
+            #   'force_grip' is normally False but can be used to force grip prior to outermost caller
             self.selector.filament_release()
 
         # Sync / Unsync
@@ -6381,7 +6398,7 @@ class Mmu:
                         self.toolchange_purge_volume = self._get_purge_volume(self.tool_selected, tool)
 
                         # Ok, now ready to park and perform the swap
-                        self._next_tool = tool # Valid only during the change process
+                        self._next_tool = tool # Valid only during the change process - cleared in _continue_after()
                         self._save_toolhead_position_and_park('toolchange', next_pos=next_pos)
                         self._set_next_position(next_pos) # This can also clear next_position
                         self._track_time_start('total')
@@ -6410,7 +6427,6 @@ class Mmu:
                                 self.gcode.run_script_from_command("M117 T%s" % tool)
                         finally:
                             self._track_time_end('total')
-                            self._next_tool = self.TOOL_GATE_UNKNOWN
 
                     # Updates swap statistics
                     self.num_toolchanges += 1
