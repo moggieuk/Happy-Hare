@@ -1,4 +1,7 @@
-# Module sets the serial connection tokens:
+# Module sets the canbus connection tokens
+# Make the first 10 available uuid selectable, it's very unlikely people have more.
+#
+# Responsible for setting:
 #   PARAM_CANBUS_UUID
 #   PARAM_BUFFER_CANBUS_UUID (if MMU_HAS_BUFFER_MCU is true)
 
@@ -8,23 +11,130 @@ config CHOICE_MCU_CONNECTION_TYPE_CANBUS
     Select if your MMU connects with a CANbus connection to mcu board
 
 if CHOICE_MCU_CONNECTION_TYPE_CANBUS
+  choice CANBUS_UUID
+    prompt "Select canbus UUID for MMU"
+    help
+      MCU connection for MMU
+      Select the CANbus uuid belonging to the MMU's mcu or select
+      "Other" and enter it manually.
+    depends on $(canbus_uuid_count) >= 1 # Only show if there is at least one unused uuid to select
+
+    config $(canbus_config,1)
+      bool "$(canbus_uuid,1)"
+      depends on $(canbus_uuid_count) >= 1
+    config $(canbus_config,2)
+      bool "$(canbus_uuid,2)"
+      depends on $(canbus_uuid_count) >= 2
+    config $(canbus_config,3)
+      bool "$(canbus_uuid,3)"
+      depends on $(canbus_uuid_count) >= 3
+    config $(canbus_config,4)
+      bool "$(canbus_uuid,4)"
+      depends on $(canbus_uuid_count) >= 4
+    config $(canbus_config,5)
+      bool "$(canbus_uuid,5)"
+      depends on $(canbus_uuid_count) >= 5
+    config $(canbus_config,6)
+      bool "$(canbus_uuid,6)"
+      depends on $(canbus_uuid_count) >= 6
+    config $(canbus_config,7)
+      bool "$(canbus_uuid,7)"
+      depends on $(canbus_uuid_count) >= 7
+    config $(canbus_config,8)
+      bool "$(canbus_uuid,8)"
+      depends on $(canbus_uuid_count) >= 8
+    config $(canbus_config,9)
+      bool "$(canbus_uuid,9)"
+      depends on $(canbus_uuid_count) >= 9
+    config $(canbus_config,10)
+      bool "$(canbus_uuid,10)"
+      depends on $(canbus_uuid_count) >= 10
+    config CHOICE_CANBUS_UUID_OTHER
+      bool "Other / manually entered"
+  endchoice
+
   config PARAM_CANBUS_UUID
-  hex "Canbus UUID for MMU"
+  prompt "MMU's mcu canbus uuid" if CHOICE_CANBUS_UUID_OTHER || $(canbus_uuid_count) = 0
   help
     Specifiy the CANbus UUID that is used for connection to the MMU.
-    It is a 6 byte ID represented in hex. For example:
-      canbus_uuid: 127081e7e3c6
-
+    It is a 6 byte ID represented in hex.
+    This can be found with:
+      ~/klipper/klippy-env/bin/python ~/klipper/klipper/scripts/canbus_query.py can0
     Enter only the uuid portion (12 hex digits)
+      E.g. 127081e7e3c6
+    default "$(canbus_uuid,1)"  if $(canbus_config,1)
+    default "$(canbus_uuid,2)"  if $(canbus_config,2)
+    default "$(canbus_uuid,3)"  if $(canbus_config,3)
+    default "$(canbus_uuid,4)"  if $(canbus_config,4)
+    default "$(canbus_uuid,5)"  if $(canbus_config,5)
+    default "$(canbus_uuid,6)"  if $(canbus_config,6)
+    default "$(canbus_uuid,7)"  if $(canbus_config,7)
+    default "$(canbus_uuid,8)"  if $(canbus_config,8)
+    default "$(canbus_uuid,9)"  if $(canbus_config,9)
+    default "$(canbus_uuid,10)" if $(canbus_config,10)
+    default ""
 
   if MMU_HAS_BUFFER_MCU
-    config PARAM_BUFFER_CANBUS_UUID
-    hex "Canbus UUID for Buffer"
-    help
-      Specifiy the CANbus UUID that is used for connection to the "buffer".
-      It is a 6 byte ID represented in hex. For example:
-        canbus_uuid: 127081e7e3c6
+    choice BUFFER_CANBUS_UUID
+      prompt "Select CANbus uuid for Buffer"
+      help
+        MCU connection for sync-feedback buffer
+        Select the CANbus uuid belonging to the MMU's mcu or select
+        "Other" and enter it manually.
+      depends on $(canbus_uuid_count) >= 1 # Only show if there is at least one unused uuid to select
 
-      Enter only the uuid portion (12 hex digits)
+      config $(buffer_canbus_config,1)
+        bool "$(canbus_uuid,1)"
+        depends on $(canbus_uuid_count) >= 1
+      config $(buffer_canbus_config,2)
+        bool "$(canbus_uuid,2)"
+        depends on $(canbus_uuid_count) >= 2
+      config $(buffer_canbus_config,3)
+        bool "$(canbus_uuid,3)"
+        depends on $(canbus_uuid_count) >= 3
+      config $(buffer_canbus_config,4)
+        bool "$(canbus_uuid,4)"
+        depends on $(canbus_uuid_count) >= 4
+      config $(buffer_canbus_config,5)
+        bool "$(canbus_uuid,5)"
+        depends on $(canbus_uuid_count) >= 5
+      config $(buffer_canbus_config,6)
+        bool "$(canbus_uuid,6)"
+        depends on $(canbus_uuid_count) >= 6
+      config $(buffer_canbus_config,7)
+        bool "$(canbus_uuid,7)"
+        depends on $(canbus_uuid_count) >= 7
+      config $(buffer_canbus_config,8)
+        bool "$(canbus_uuid,8)"
+        depends on $(canbus_uuid_count) >= 8
+      config $(buffer_canbus_config,9)
+        bool "$(canbus_uuid,9)"
+        depends on $(canbus_uuid_count) >= 9
+      config $(buffer_canbus_config,10)
+        bool "$(canbus_uuid,10)"
+        depends on $(canbus_uuid_count) >= 10
+      config CHOICE_BUFFER_CANBUS_UUID_OTHER
+        bool "Other / manually entered"
+    endchoice
+
+    config PARAM_BUFFER_CANBUS_UUID
+      prompt "Canbus UUID for Buffer" if CHOICE_BUFFER_CANBUS_UUID_OTHER || $(canbus_uuid_count) = 0
+      help
+        Specifiy the CANbus UUID that is used for connection to the "buffer".
+        It is a 6 byte ID represented in hex. For example:
+          canbus_uuid: 127081e7e3c6
+
+        Enter only the uuid portion (12 hex digits)
+      default "$(canbus_uuid,1)"  if $(buffer_canbus_config,1)
+      default "$(canbus_uuid,2)"  if $(buffer_canbus_config,2)
+      default "$(canbus_uuid,3)"  if $(buffer_canbus_config,3)
+      default "$(canbus_uuid,4)"  if $(buffer_canbus_config,4)
+      default "$(canbus_uuid,5)"  if $(buffer_canbus_config,5)
+      default "$(canbus_uuid,6)"  if $(buffer_canbus_config,6)
+      default "$(canbus_uuid,7)"  if $(buffer_canbus_config,7)
+      default "$(canbus_uuid,8)"  if $(buffer_canbus_config,8)
+      default "$(canbus_uuid,9)"  if $(buffer_canbus_config,9)
+      default "$(canbus_uuid,10)" if $(buffer_canbus_config,10)
+      default ""
   endif
 endif

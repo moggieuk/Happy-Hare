@@ -424,6 +424,6 @@ ifeq ($(filter menuconfig uninstall variables,$(MAKECMDGOALS)),)
 endif
 
 menuconfig: $(SRC)/installer/Kconfig
-	$(Q)MENUCONFIG_STYLE="$(MENUCONFIG_STYLE)" $(PY) -m menuconfig Kconfig
+	$(Q)MENUCONFIG_STYLE="$(MENUCONFIG_STYLE)" KLIPPER_HOME=$(KLIPPER_HOME) $(PY) -m menuconfig Kconfig
 	$(Q)touch $(KCONFIG_CONFIG) # Prevent install rule re-running if no change
 

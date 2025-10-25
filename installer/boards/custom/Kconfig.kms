@@ -97,4 +97,36 @@ if BOARD_TYPE_KMS_1_0
     config PIN_SYNC_FEEDBACK_COMPRESSION
       default "!$(MCU_NAME)_buffer:PA0"
   endif
+
+  config PARAM_MISC_HARDWARE
+    default "$(ml,\
+[temperature_sensor $(UNIT_NAME)_enviroment]\n\
+sensor_type: HTU21D\n\
+i2c_mcu: $(MCU_NAME)\n\
+htu21d_report_time: 10\n\
+i2c_software_scl_pin: $(MCU_NAME):PB10\n\
+i2c_software_sda_pin: $(MCU_NAME):PB11\n\
+\n\
+[heater_fan $(UNIT_NAME)_fan_left]\n\
+pin: $(MCU_NAME):PC3\n\
+shutdown_speed: 0\n\
+heater: MMU_heater_kms\n\
+\n\
+[heater_fan $(UNIT_NAME)_fan_right]\n\
+pin: $(MCU_NAME):PC1\n\
+shutdown_speed: 0\n\
+heater: $(UNIT_NAME)_heater\n\
+\n\
+[heater_generic $(UNIT_NAME)_heater]\n\
+gcode_id: $(UNIT_NAME)\n\
+heater_pin: $(MCU_NAME):PB1\n\
+max_power:1.0\n\
+sensor_type: EPCOS 100K B57560G104F\n\
+pullup_resistor: 2200\n\
+sensor_pin: $(MCU_NAME):PA4\n\
+control: watermark\n\
+min_temp: 0\n\
+max_temp: 70\n\
+)"
+
 endif

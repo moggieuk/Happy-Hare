@@ -7,11 +7,11 @@ if ADDON_BLOBIFIER
   menu "Blobifier pins"
     config PIN_BLOBIFIER_SERVO
       string "Blobifier servo pin"
-      default "PG14"
+      default ""
 
     config PIN_BLOBIFIER_BUCKET_SWITCH
       string "Blobifier bucket switch pin"
-      default "PG15"
+      default ""
   endmenu
 endif
 

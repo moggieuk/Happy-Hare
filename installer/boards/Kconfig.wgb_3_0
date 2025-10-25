@@ -1,9 +1,9 @@
-config BOARD_TYPE_WGB_1_0
-  bool "WGB v3.0"
+config BOARD_TYPE_WGB_3_0
+  bool "WGB v3.0 / designed for Box Turtle"
 
-if BOARD_TYPE_WGB_1_0
+if BOARD_TYPE_WGB_3_0
   config PARAM_BOARD_TYPE
-    default "WGB_3"
+    default "WGB30"
 
   choice SERIAL_DEVICE
     default $(serial_config,1,stm32)
