@@ -1234,7 +1234,8 @@ class MmuPrinterRail(_StepperPrinterRail, object):
 
     def set_direction(self, direction):
         for stepper in self.steppers:
-            stepper.set_dir_inverted(direction)
+            if stepper._name != "extruder":
+                stepper.set_dir_inverted(direction)
 
     class MockEndstop:
         def add_stepper(self, *args, **kwargs):
