@@ -1,0 +1,15 @@
+config TOOLHEAD_TYPE_ANTHEAD_WWG2_TZV6
+  bool "AntHead WWG2 TZv6"
+
+if TOOLHEAD_TYPE_ANTHEAD_WWG2_TZV6
+  config PARAM_TOOLHEAD_TYPE
+    default "AntHead WWG2 TZv6"
+  config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
+    default "68.6"
+  config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
+    default "50.9"
+  config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
+    default "13"
+  config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
+    default "1.2"
+endif

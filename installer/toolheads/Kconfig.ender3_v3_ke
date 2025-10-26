@@ -1,15 +1,15 @@
-config TOOLHEAD_TYPE_JABBERWOCKY
-  bool "Jabberwocky"
+config TOOLHEAD_TYPE_ENDER3_V3_KE
+  bool "Ender3 V3 KE"
 
-if TOOLHEAD_TYPE_JABBERWOCKY
+if TOOLHEAD_TYPE_ENDER3_V3_KE
   config PARAM_TOOLHEAD_TYPE
-    default "Jabberwocky"
+    default "Ender3 V3 KE"
   config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
-    default "55.1"
+    default "90"
   config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
-    default "42.6"
+    default "62"
   config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
-    default "9.8"
+    default "29"
   config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
     default "2"
 endif

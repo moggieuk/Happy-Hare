@@ -1,0 +1,15 @@
+config TOOLHEAD_TYPE_XOL_METRIX_SHERPA_MINI_CNC_RAPIDO_1_UHF
+  bool "XOL Metrix Sherpa Mini CNC Rapido 1 UHF"
+
+if TOOLHEAD_TYPE_XOL_METRIX_SHERPA_MINI_CNC_RAPIDO_1_UHF
+  config PARAM_TOOLHEAD_TYPE
+    default "XOL Metrix Sherpa Mini CNC Rapido 1 UHF"
+  config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
+    default "102"
+  config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
+    default "82"
+  config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
+    default "38"
+  config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
+    default "40"
+endif
