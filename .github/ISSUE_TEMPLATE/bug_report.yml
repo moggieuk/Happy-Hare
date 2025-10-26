@@ -1,0 +1,79 @@
+name: Bug report
+description: Report a bug with enough detail for us to reproduce it
+title: "[Bug]: <short summary>"
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: "Thanks! Please complete all required fields."
+
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      placeholder: "One-sentence description"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: "Numbered steps are best"
+      placeholder: "1) ... 2) ... 3) ..."
+    validations:
+      required: false
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: false
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: false
+
+  - type: dropdown
+    id: mmu_type
+    attributes:
+      label: MMU Type
+      options: ["3D Chameleon", "3MS", "AngryBeaver", "BoxTurtle", "ERCF", "KMS", "MMX", "QuattroBox", "NightOwl", "Pico", "Prusa", "Tradrack", "ViViD", "Other/Unknown"]
+    validations:
+      required: true
+
+  - type: input
+    id: hh_version
+    attributes:
+      label: Happy Hare version in '3.1.4-16' format
+    validations:
+      required: true
+
+  - type: input
+    id: klipper_version
+    attributes:
+      label: Klipper version in '0.13.0-121' format
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs (`mmu.log`)
+      description: "The `mmu.log` is almost always needed.  Optional if a klipper error, please attach `klippy.log`"
+      render: shell
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues
+          required: true
+        - label: I can reproduce with the latest version of Klipper and Happy Hare
+          required: false
+
