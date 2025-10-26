@@ -45,9 +45,13 @@ class MmuSyncFeedbackManager:
     
     # proportional tension / compression control tunables
     RDD_THRESHOLD         = 1e-4     # Min Rotation Distance delta to trigger application of it.
-    PROP_DEADBAND_THRESHOLD = 0.30  # Magnitude of side motion before considering state as tension/compression. 
-    								 # a 0.30 side threshold means sensor values of ~3mm either side are considered neutral
-    PROP_RELEASE_THRESHOLD  = 0.20  # Magnitude of side motion to consider the virtual switch as released.
+    PROP_DEADBAND_THRESHOLD = 0.20  # Magnitude of side motion before considering state as tension/compression. 
+    								 # a 0.20 side threshold means sensor values of ~2mm either side are considered neutral
+
+    PROP_DEADBAND_AUTOTUNE_THRESHOLD = 0.30  # For the auto tune path, use a slightly larger triggering threshold
+                                             # to reduce false triggering due to system oscillations.
+    PROP_RELEASE_AUTOTUNE_THRESHOLD  = 0.20  # Sensor reading threshold where the trigger is released, emulating virtual switch
+                                             # deadband. 0.3-0.2=0.1 for a 10mm sensor ~1mm of virtual switch hysteresis.
 
     def __init__(self, mmu):
         self.mmu = mmu
@@ -316,22 +320,22 @@ class MmuSyncFeedbackManager:
                     # Proportional sensor with autotune enabled: emulate switch with small release hysteresis
                     if bool(self.sync_feedback_proportional_sensor):
                         if prev == self.SYNC_STATE_COMPRESSION:
-                            if v > self.PROP_RELEASE_THRESHOLD:
+                            if v > self.PROP_RELEASE_AUTOTUNE_THRESHOLD:
                                 return self.SYNC_STATE_COMPRESSION
-                            if v <= -self.PROP_DEADBAND_THRESHOLD:
+                            if v <= -self.PROP_DEADBAND_AUTOTUNE_THRESHOLD:
                                 return self.SYNC_STATE_TENSION
                             return self.SYNC_STATE_NEUTRAL
 
                         if prev == self.SYNC_STATE_TENSION:
-                            if v < -self.PROP_RELEASE_THRESHOLD:
+                            if v < -self.PROP_RELEASE_AUTOTUNE_THRESHOLD:
                                 return self.SYNC_STATE_TENSION
-                            if v >= self.PROP_DEADBAND_THRESHOLD:
+                            if v >= self.PROP_DEADBAND_AUTOTUNE_THRESHOLD:
                                 return self.SYNC_STATE_COMPRESSION
                             return self.SYNC_STATE_NEUTRAL
 
-                        if v >= self.PROP_DEADBAND_THRESHOLD:
+                        if v >= self.PROP_DEADBAND_AUTOTUNE_THRESHOLD:
                             return self.SYNC_STATE_COMPRESSION
-                        if v <= -self.PROP_DEADBAND_THRESHOLD:
+                        if v <= -self.PROP_DEADBAND_AUTOTUNE_THRESHOLD:
                             return self.SYNC_STATE_TENSION
                         return self.SYNC_STATE_NEUTRAL
 
