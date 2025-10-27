@@ -5,6 +5,9 @@ if BOARD_TYPE_ERB_1
   config PARAM_BOARD_TYPE
     default "ERB"
 
+  choice MCU_CONNECTION_TYPE
+    default CHOICE_MCU_CONNECTION_TYPE_SERIAL
+  endchoice
   choice SERIAL_DEVICE
     default $(serial_config,1,rp2040)
   endchoice

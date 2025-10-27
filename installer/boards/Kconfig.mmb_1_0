@@ -5,6 +5,9 @@ if BOARD_TYPE_MMB_1_0
   config PARAM_BOARD_TYPE
     default "MMB10"
 
+  choice MCU_CONNECTION_TYPE
+    default CHOICE_MCU_CONNECTION_TYPE_SERIAL
+  endchoice
   choice SERIAL_DEVICE
     default $(serial_config,1,stm32)
   endchoice
