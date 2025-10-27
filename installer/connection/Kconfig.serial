@@ -2,8 +2,8 @@
 # Make the first 10 available serial tty devices selectable, it's unlikely people have more.
 #
 # Responsible for setting:
-#   PARAM_SERIAL_DEVICE
-#   PARAM_BUFFER_SERIAL_DEVICE (if MMU_HAS_BUFFER_MCU is true)
+#   SERIAL_DEVICE
+#   BUFFER_SERIAL_DEVICE (if MMU_HAS_BUFFER_MCU is true)
 
 config CHOICE_MCU_CONNECTION_TYPE_SERIAL
   bool "Serial"
@@ -53,7 +53,7 @@ if CHOICE_MCU_CONNECTION_TYPE_SERIAL
       bool "Other / manually entered"
   endchoice
 
-  config PARAM_SERIAL_DEVICE
+  config SERIAL_DEVICE
     prompt "MMU mcu serial device path" if CHOICE_SERIAL_DEVICE_OTHER || !$(serial_exists,1)
     help
       MCU connection for MMU
@@ -118,7 +118,7 @@ if CHOICE_MCU_CONNECTION_TYPE_SERIAL
         bool "Other / manually entered"
     endchoice
 
-    config PARAM_BUFFER_SERIAL_DEVICE
+    config BUFFER_SERIAL_DEVICE
       prompt "Buffer mcu serial device path" if CHOICE_BUFFER_SERIAL_DEVICE_OTHER || !$(serial_exists,1)
       help
         MCU connection for sync-feedback buffer

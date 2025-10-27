@@ -2,8 +2,8 @@
 # Make the first 10 available uuid selectable, it's very unlikely people have more.
 #
 # Responsible for setting:
-#   PARAM_CANBUS_UUID
-#   PARAM_BUFFER_CANBUS_UUID (if MMU_HAS_BUFFER_MCU is true)
+#   CANBUS_UUID
+#   BUFFER_CANBUS_UUID (if MMU_HAS_BUFFER_MCU is true)
 
 config CHOICE_MCU_CONNECTION_TYPE_CANBUS
   bool "CANbus"
@@ -53,7 +53,7 @@ if CHOICE_MCU_CONNECTION_TYPE_CANBUS
       bool "Other / manually entered"
   endchoice
 
-  config PARAM_CANBUS_UUID
+  config CANBUS_UUID
   prompt "MMU's mcu canbus uuid" if CHOICE_CANBUS_UUID_OTHER || $(canbus_uuid_count) = 0
   help
     Specifiy the CANbus UUID that is used for connection to the MMU.
@@ -117,7 +117,7 @@ if CHOICE_MCU_CONNECTION_TYPE_CANBUS
         bool "Other / manually entered"
     endchoice
 
-    config PARAM_BUFFER_CANBUS_UUID
+    config BUFFER_CANBUS_UUID
       prompt "Canbus UUID for Buffer" if CHOICE_BUFFER_CANBUS_UUID_OTHER || $(canbus_uuid_count) = 0
       help
         Specifiy the CANbus UUID that is used for connection to the "buffer".
