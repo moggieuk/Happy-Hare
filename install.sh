@@ -2108,6 +2108,7 @@ questionaire() {
             OPTIONS=() # reset option array
             option TYPE_A_WITH_ENCODER                            'Type-A (selector) with Encoder'
             option TYPE_A_NO_ENCODER                              'Type-A (selector), No Encoder'
+            option TYPE_A_NO_ENCODER_NO_SERVO_NO_ESPOOLER         'Type-A (selector), No Encoder, No Servo, No ESpooler'
             option TYPE_B_WITH_ENCODER                            'Type-B (mutliple filament drive steppers) with Encoder'
             option TYPE_B_WITH_SHARED_GATE_AND_ENCODER            'Type-B (multiple filament drive steppers) with shared Gate sensor and Encoder'
             option TYPE_B_WITH_SHARED_GATE_NO_ENCODER             'Type-B (multiple filament drive steppers) with shared Gate sensor, No Encoder'
@@ -2124,6 +2125,15 @@ questionaire() {
                     ;;
                 "$TYPE_A_NO_ENCODER")
                     HAS_ENCODER=no
+                    _param_gate_homing_endstop="mmu_gate"
+                    _param_extruder_homing_endstop="none"
+                    echo
+                    echo -e "${WARNING}    IMPORTANT: Since you have a custom MMU with selector you will need to setup some CAD dimensions in mmu_parameters.cfg... See doc"
+                    ;;
+                "$TYPE_A_NO_ENCODER_NO_SERVO_NO_ESPOOLER")
+                    HAS_ENCODER=no
+                    HAS_SERVO=no
+                    HAS_ESPOOLER=no
                     _param_gate_homing_endstop="mmu_gate"
                     _param_extruder_homing_endstop="none"
                     echo
