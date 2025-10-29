@@ -250,7 +250,7 @@ class MmuSyncFeedbackManager:
         has_compression  = self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_COMPRESSION)
         has_proportional = self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_PROPORTIONAL)
 
-        if self.mmu.sync_feedback_enabled and (
+        if self.sync_feedback_enabled and (
             has_proportional
             or (has_compression and has_tension)
         ):
@@ -848,7 +848,7 @@ class MmuSyncFeedbackManager:
         has_compression  = sm.has_sensor(self.mmu.SENSOR_COMPRESSION)
         has_proportional = sm.has_sensor(self.mmu.SENSOR_PROPORTIONAL)
         sufficent_sensors = has_proportional or (has_compression and has_tension) # PAUL TODO not yet coded to support dual switch sensor setup but it seems like it should be possible??
-        if not self.mmu.sync_feedback_enabled or not sufficient_sensors:
+        if not self.sync_feedback_enabled or not sufficent_sensors:
             return False
 
         # Respect config: if Flowguard is disabled, ignore requests to change state.
