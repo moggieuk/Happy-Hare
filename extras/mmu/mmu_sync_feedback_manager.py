@@ -50,8 +50,8 @@ class MmuSyncFeedbackManager:
 
     PROP_DEADBAND_AUTOTUNE_THRESHOLD = 0.30  # For the auto tune path, use a slightly larger triggering threshold
                                              # to reduce false triggering due to system oscillations.
-    PROP_RELEASE_AUTOTUNE_THRESHOLD  = 0.20  # Sensor reading threshold where the trigger is released, emulating virtual switch
-                                             # deadband. 0.3-0.2=0.1 for a 10mm sensor ~1mm of virtual switch hysteresis.
+    PROP_RELEASE_AUTOTUNE_THRESHOLD  = 0.25  # Sensor reading threshold where the trigger is released, emulating virtual switch
+                                             # deadband. 0.3-0.25=0.05 for a 10mm sensor ~0.5mm of virtual switch hysteresis.
 
     def __init__(self, mmu):
         self.mmu = mmu
@@ -471,7 +471,7 @@ class MmuSyncFeedbackManager:
                 rd_clamp[2] *= (1 - self.MULTIPLIER_WHEN_STUCK)
 
                 if not check_clamp_runaway(rd_clamp):
-                    self.mmu.log_trace(
+                    self.mmu.log_debug(
                         "MmuSyncFeedbackManager: Extruder moved too far in tension state (%.1fmm). Decreased fast_rd clamp value by %.1f%% from %.4f to %.4f" % (
                             movement,
                             self.MULTIPLIER_WHEN_STUCK * 100,
