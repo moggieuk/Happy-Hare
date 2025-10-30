@@ -4672,6 +4672,7 @@ class Mmu:
                 elif tension_active:
                     direction = 1 if use_gear_motor else -1
                     actual,fhomed,_,_ = self.trace_filament_move("Homing to compression sensor", max_move * direction, speed=speed, motor=motor, homing_move=1, endstop_name=self.SENSOR_COMPRESSION)
+                direction = not direction
             else:
                 # Normally configured buffer with neutral (no-trigger) gap
                 direction = 0
@@ -4882,7 +4883,7 @@ class Mmu:
             # Deactivate spool immediately before tip forming/cutting
             # Tip forming/cutting macros use the extruder to execute, hence
             # any retraction / de retraction moves are accounted in Spoolman.
-            # By de-activating early, the retraction performed from the macro 
+            # By de-activating early, the retraction performed from the macro
             # is deliberately not accounted in spoolman
             self._spoolman_activate_spool(0)
 
