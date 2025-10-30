@@ -579,6 +579,12 @@ class Mmu:
         self.gcode.register_command('MMU_MOTORS_OFF', self.cmd_MMU_MOTORS_OFF, desc = self.cmd_MMU_MOTORS_OFF_help)
         self.gcode.register_command('MMU_MOTORS_ON', self.cmd_MMU_MOTORS_ON, desc = self.cmd_MMU_MOTORS_ON_help)
         self.gcode.register_command('MMU_SYNC_GEAR_MOTOR', self.cmd_MMU_SYNC_GEAR_MOTOR, desc=self.cmd_MMU_SYNC_GEAR_MOTOR_help)
+        
+		# Proportional Filament Pressure Sensor - exposed macro to centre the sensor by moving the gear stepper.
+        self.gcode.register_command('MMU_ADJUST_TENSION', self.cmd_MMU_ADJUST_TENSION, desc=self.cmd_MMU_ADJUST_TENSION_help)
+		# Proportional Filament Pressure Sensor - expose enable/disable endguard macros.
+        self.gcode.register_command('MMU_ENABLE_ENDGUARD',  self.cmd_MMU_ENABLE_ENDGUARD,  desc=self.cmd_MMU_ENABLE_ENDGUARD_help)
+        self.gcode.register_command('MMU_DISABLE_ENDGUARD', self.cmd_MMU_DISABLE_ENDGUARD, desc=self.cmd_MMU_DISABLE_ENDGUARD_help)
 
         # Core MMU functionality
         self.gcode.register_command('MMU', self.cmd_MMU, desc = self.cmd_MMU_help)
@@ -2280,6 +2286,91 @@ class Mmu:
             self._standalone_sync = bool(sync) # Make sticky if not in a print
         self.reset_sync_gear_to_extruder(sync)
 
+
+    cmd_MMU_ADJUST_TENSION_help = (
+        "Sets filament tension to neutral using the proportional sync-feedback buffer. "
+        "Parameters: NEUTRAL_BAND=<0.05..0.45 default 0.15>, "
+        "SETTLE_TIME=<seconds default 0.30>, TIMEOUT=<seconds default 10.0>."
+    )
+    def cmd_MMU_ADJUST_TENSION(self, gcmd):
+        self.log_to_file(gcmd.get_commandline())
+        if self.check_if_disabled(): 
+            return
+        # Do not attempt to adjust tension if bypass gate is selected.    
+        if self.gate_selected == self.TOOL_GATE_BYPASS:
+            return
+
+        # Parse user parameters
+        neutral_band = gcmd.get_float('NEUTRAL_BAND', 0.1)
+        settle_time  = gcmd.get_float('SETTLE_TIME', 0.30, above=0.0)
+        timeout_s    = gcmd.get_float('TIMEOUT', 10.0, above=0.0)
+
+        # Only valid when there are no discrete tension/compression switches
+        has_tension     = self.sensor_manager.has_sensor(self.SENSOR_TENSION)
+        has_compression = self.sensor_manager.has_sensor(self.SENSOR_COMPRESSION)
+        if has_tension or has_compression:
+            self.log_always("MMU_ADJUST_TENSION: skipped (tension/compression switches present)")
+            return
+
+        # Require proportional sync-feedback to be enabled and observed at least once
+        sfm = getattr(self, "sync_feedback_manager", None)
+        if ( sfm is None or not getattr(sfm, "sync_feedback_proportional_sensor", False) ):
+            self.log_info("MMU_ADJUST_TENSION: proportional sync-feedback not enabled")
+            return
+
+        try:
+            # - keep gear/extruder synced - cannot adjust sync feedback sensor if gears are not synced
+            # - avoid spurious runout during tiny corrective moves (unlikely)
+            with self.wrap_sync_gear_to_extruder():
+                with self._wrap_suspend_runout():
+                    moved_mm, ok = self._adjust_filament_tension_proportional(
+                        neutral_band=neutral_band,
+                        settle_time=settle_time,
+                        timeout_s=timeout_s
+                    )
+                    self.sync_feedback_manager.reset_sync_starting_state_for_gate(self.gate_selected) # Will always set rotation_distance
+            # User-facing summary
+            self.log_info(
+                "MMU_ADJUST_TENSION: moved=%.2fmm, result=%s (NEUTRAL_BAND=%.2f, SETTLE_TIME=%.2fs, TIMEOUT=%.1fs)" %
+                (moved_mm, ("success" if ok else "incomplete"), neutral_band, settle_time, timeout_s)
+            )
+
+        except MmuError as ee:
+            self.log_always("Error in MMU_ADJUST_TENSION: %s" % str(ee))
+
+    cmd_MMU_ENABLE_ENDGUARD_help = (
+        "Enable EndGuard (proportional clog-tangle detection)."
+    )
+    def cmd_MMU_ENABLE_ENDGUARD(self, gcmd):
+        self.log_to_file(gcmd.get_commandline())
+        if self.check_if_disabled():
+            return
+        sfm = getattr(self, "sync_feedback_manager", None)
+        if sfm is None:
+            self.log_info("MMU_ENABLE_ENDGUARD: sync_feedback_manager not available")
+            return
+        try:
+            sfm.enable_endguard()
+            self.log_info("MMU_ENABLE_ENDGUARD: EndGuard enabled")
+        except Exception as e:
+            self.log_always("MMU_ENABLE_ENDGUARD failed: %s" % (e,))
+
+    cmd_MMU_DISABLE_ENDGUARD_help = (
+        "Disable EndGuard (proportional clog-tangle detection)."
+    )
+    def cmd_MMU_DISABLE_ENDGUARD(self, gcmd):
+        self.log_to_file(gcmd.get_commandline())
+        if self.check_if_disabled():
+            return
+        sfm = getattr(self, "sync_feedback_manager", None)
+        if sfm is None:
+            self.log_info("MMU_DISABLE_ENDGUARD: sync_feedback_manager not available")
+            return
+        try:
+            sfm.disable_endguard()
+            self.log_info("MMU_DISABLE_ENDGUARD: EndGuard disabled")
+        except Exception as e:
+            self.log_always("MMU_DISABLE_ENDGUARD failed: %s" % (e,))
 
 #########################
 # CALIBRATION FUNCTIONS #
@@ -4485,6 +4576,16 @@ class Mmu:
             _,_,measured,delta = self.trace_filament_move("Loading filament to nozzle", length, speed=speed, motor=motor, wait=True)
             self._set_filament_remaining(0.)
 
+            # Proportional-only tension adjustment
+            if (
+                self.toolhead_post_load_tension_adjust
+                and (self.sync_to_extruder or self.sync_purge)
+                and not (has_tension or has_compression)
+                and self.sync_feedback_manager.is_enabled()
+                and getattr(self.sync_feedback_manager, "sync_feedback_proportional_sensor", False)
+            ):
+                self._adjust_filament_tension_proportional()
+
             # Encoder based validation test if short of deterministic sensors and test makes sense
             if (
                 self.gate_selected != self.TOOL_GATE_BYPASS
@@ -4522,6 +4623,7 @@ class Mmu:
                     and (self.sync_to_extruder or self.sync_purge)
                     and (has_tension or has_compression)
                     and self.sync_feedback_manager.is_enabled()
+                    and not getattr(self.sync_feedback_manager, "sync_feedback_proportional_sensor", False) # Do not use this path if a proportional sensor is available
                 ):
                     # Try to put filament in neutral tension by centering between sensors
                     tension_active = self.sensor_manager.check_sensor(self.SENSOR_TENSION)
@@ -4693,6 +4795,132 @@ class Mmu:
         return actual, fhomed
 
 
+    # Helper to relax filament tension using the proportional sync-feedback buffer.
+    # Only use when no tension/compression switches are present.
+    # Do not mix with _adjust_filament_tension() (switch-based) in the same sequence.
+    #
+    # Returns: distance_moved_mm, success_bool
+    #
+    # nudge_mm:     per-move adjustment distance in mm (small feed or retract)
+    # neutral_band: absolute value of proportional sensor reading considered "neutral". 
+    #               This can be loosely interpreted as a % over the max range of detection of the sensor.
+    #               For example for a sensor with 14mm range, a 0.15 tolerance is approx 1.4mm either side of centre.
+    # settle_time:  delay between moves to allow sensor feedback to update
+    # timeout_s:    hard stop to avoid hanging if the sensor never clears
+    def _adjust_filament_tension_proportional(self, neutral_band=0.1, settle_time=0.30, timeout_s=10.0):
+        # Wait for move queues to clear
+        self.movequeues_wait()
+        # sanity-check parameters before doing anything
+        # neutral band needs to have a non zero and non trivial value. Enforce 5% (0.05)
+        # as the lower limit of acceptable neutral band tolerance.
+        if neutral_band < 0.05:
+            neutral_band = 0.05
+
+        # maxrange is full end-to-end sensor span; use half as the per-side budget from neutral to either end
+        maxrange_span_mm = float(self.sync_feedback_manager.sync_feedback_buffer_maxrange)
+        if maxrange_span_mm <= 0.0:
+            self.log_debug("Proportional adjust skipped: buffer maxrange <= 0")
+            return 0., False
+        per_side_budget_mm = 0.5 * maxrange_span_mm
+        nudge_mm = per_side_budget_mm * neutral_band
+
+        # cap total nudge iterations to stay within the overall sensor range
+        max_steps = math.ceil(maxrange_span_mm / nudge_mm)
+
+        moved_total_mm   = 0.0  # total net distance moved during this adjustment
+        moved_nudges_mm  = 0.0  # sum of all nudge moves
+        moved_initial_mm = 0.0  # size of the initial proportional move (if any)
+        steps            = 0    # total moves performed
+        t_start          = self.reactor.monotonic()
+
+        # --- initial proportional correction ---
+        # negative sensor state = tension -> feed filament. positive sensor state = compression -> retract filament
+        prop_state = float(self.sync_feedback_manager.state)  # [-1..+1], 0 ≈ neutral
+        if abs(prop_state) > neutral_band:
+            # initial move distance as a proportion to how off centre we are based on the sensor readings.
+            # this will get the sensor close but likely will need a few fine adjustments (nudges) to get it
+            # within the centre range depending on how large the bowden tube slack is.
+            initial_move_mm = -prop_state * per_side_budget_mm
+            if abs(initial_move_mm) >= nudge_mm:
+                self.trace_filament_move(
+                    "Proportional initial adjust - extruder load",
+                    initial_move_mm, motor="gear", wait=True
+                )
+                moved_total_mm += initial_move_mm
+                moved_initial_mm = initial_move_mm
+                steps += 1
+                try:
+                    self.reactor.pause(settle_time)
+                except Exception:
+                    time.sleep(settle_time)
+
+        # --- check proportional sensor state after initial move and return if within neutral deadband ---
+        prop_state = float(self.sync_feedback_manager.state)
+        if abs(prop_state) <= neutral_band:
+            self.log_info(
+                "Proportional adjust: neutral after initial "
+                "(nudge=%.2fmm, initial=%.2fmm, nudges=%.2fmm, total=%.2fmm, steps=%d, final_state=%.3f, success=yes)" %
+                (nudge_mm, moved_initial_mm, moved_nudges_mm, moved_total_mm, steps, prop_state)
+            )
+            return moved_total_mm, True
+
+        # --- fine adjustment loop (nudges) ---
+        while abs(moved_total_mm) < maxrange_span_mm and steps < max_steps:
+            prop_state = float(self.sync_feedback_manager.state)
+            # timeout safety: avoid hanging if the sensor never clears
+            if (self.reactor.monotonic() - t_start) > timeout_s:
+                self.log_info(
+                    "Proportional adjust: timed out "
+                    "(nudge=%.2fmm, initial=%.2fmm, nudges=%.2fmm, total=%.2fmm, steps=%d, final_state=%.3f)" %
+                    (nudge_mm, moved_initial_mm, moved_nudges_mm, moved_total_mm, steps, prop_state)
+                )
+                return moved_total_mm, False
+                
+            if abs(prop_state) <= neutral_band:
+                # confirm neutral after a short wait
+                try:
+                    self.reactor.pause(settle_time)
+                except Exception:
+                    time.sleep(settle_time)
+                prop_state = float(self.sync_feedback_manager.state)
+                if abs(prop_state) <= neutral_band:
+                    break
+
+            # direction: tension -> feed forward; compression -> retract
+            nudge_move_mm = nudge_mm if prop_state < 0.0 else -nudge_mm
+            # don't exceed the end to end sensor span (maxrange_span_mm). Serves as "ultimate" failsafe.
+            if abs(moved_total_mm + nudge_move_mm) >= maxrange_span_mm:
+                self.log_info(
+                    "Proportional adjust: aborted (exceeded buffer) "
+                    "(nudge=%.2fmm, initial=%.2fmm, nudges=%.2fmm, total=%.2fmm, steps=%d, final_state=%.3f)" %
+                    (nudge_mm, moved_initial_mm, moved_nudges_mm, moved_total_mm, steps, prop_state)
+                )
+                return moved_total_mm, False
+
+            self.trace_filament_move(
+                "Proportional adjust - extruder load",
+                nudge_move_mm, motor="gear", wait=True
+            )
+            moved_total_mm  += nudge_move_mm
+            moved_nudges_mm += nudge_move_mm
+            steps           += 1
+            try:
+                self.reactor.pause(settle_time)
+            except Exception:
+                time.sleep(settle_time)
+
+        # final check
+        final_state = float(self.sync_feedback_manager.state)
+        success = abs(final_state) <= neutral_band
+        self.log_info(
+            "Proportional adjust: complete "
+            "(nudge=%.2fmm, initial=%.2fmm, nudges=%.2fmm, total=%.2fmm, steps=%d, final_state=%.3f, success=%s)" %
+            (nudge_mm, moved_initial_mm, moved_nudges_mm, moved_total_mm, steps, final_state, "yes" if success else "no")
+        )
+        return moved_total_mm, success
+
+
+
 ##############################################
 # LOAD / UNLOAD SEQUENCES AND FILAMENT TESTS #
 ##############################################
@@ -4831,6 +5059,12 @@ class Mmu:
                             self.wrap_gcode_command(self.post_load_macro, exception=True, wait=True)
                     else:
                         self.wrap_gcode_command(self.post_load_macro, exception=True, wait=True)
+            
+            # Re-enable end guard now that toolhead is fully loaded. If no sync feedback sensor, this does nothing.
+            # Do not enable end guard if bypass is selected as the sensor cannot reliably maintain
+            # neutral position as with bypass only the extruder pulls the filament.
+            if self.gate_selected != self.TOOL_GATE_BYPASS:
+                self.sync_feedback_manager.enable_endguard(reason="load_sequence_complete")
 
         except MmuError as ee:
             self._track_gate_statistics('load_failures', self.gate_selected)
@@ -4874,6 +5108,8 @@ class Mmu:
         if self.filament_pos == self.FILAMENT_POS_UNLOADED:
             self.log_debug("Filament already ejected")
             return
+            
+        self.sync_feedback_manager.disable_endguard(reason="unload_sequence_start")  
 
         try:
             if not extruder_only:
