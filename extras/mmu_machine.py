@@ -22,6 +22,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import logging, importlib, math, os, time, re
+from email.policy import default
 
 # Klipper imports
 import stepper, chelper, toolhead
@@ -35,6 +36,7 @@ TMC_CHIPS = ["tmc2209", "tmc2130", "tmc2208", "tmc2660", "tmc5160", "tmc2240"]
 # Stepper config sections
 SELECTOR_STEPPER_CONFIG = "stepper_mmu_selector" # Optional
 GEAR_STEPPER_CONFIG     = "stepper_mmu_gear"
+IDLER_STEPPER_CONFIG    = "stepper_mmu_idler"
 
 SHAREABLE_STEPPER_PARAMS = ['rotation_distance', 'gear_ratio', 'microsteps', 'full_steps_per_rotation']
 OTHER_STEPPER_PARAMS     = ['step_pin', 'dir_pin', 'enable_pin', 'endstop_pin', 'rotation_distance', 'pressure_advance', 'pressure_advance_smooth_time']
@@ -116,7 +118,12 @@ class MmuMachine:
             has_bypass = 1
 
         elif self.mmu_vendor == VENDOR_PRUSA:
-            raise config.error("Prusa MMU is not yet supported")
+            selector_type = 'LinearSelector'
+            variable_rotation_distances = 0
+            variable_bowden_lengths = 0
+            require_bowden_move = 1
+            filament_always_gripped = 0
+            has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_ANGRY_BEAVER:
             selector_type = 'VirtualSelector'
@@ -323,9 +330,11 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.gear_max_accel = config.getfloat('gear_max_accel', 500, above=0.)
         self.selector_max_velocity = config.getfloat('selector_max_velocity', 250, above=0.)
         self.selector_max_accel = config.getfloat('selector_max_accel', 1500, above=0.)
+        self.idler_max_velocity = config.getfloat('idler_max_velocity', 100, above=0.)
+        self.idler_max_accel = config.getfloat('self_idler_max_accel', 80, above=0.)
 
-        self.max_velocity = max(self.selector_max_velocity, self.gear_max_velocity)
-        self.max_accel = max(self.selector_max_accel, self.gear_max_accel)
+        self.max_velocity = max(self.selector_max_velocity, self.gear_max_velocity, self.idler_max_velocity)
+        self.max_accel = max(self.selector_max_accel, self.gear_max_accel, self.idler_max_accel)
 
         min_cruise_ratio = 0.5
         if config.getfloat('minimum_cruise_ratio', None) is None:
@@ -441,6 +450,9 @@ class MmuToolHead(toolhead.ToolHead, object):
 
     def get_gear_limits(self):
         return self.gear_max_velocity, self.gear_max_accel
+
+    def get_idler_limits(self):
+        return self.idler_max_velocity, self.idler_max_accel
 
     # Gear/Extruder synchronization and stepper swapping management...
 
@@ -690,6 +702,10 @@ class MmuKinematics:
         self.rails.append(MmuLookupMultiRail(config.getsection(GEAR_STEPPER_CONFIG), need_position_minmax=False, default_position_endstop=0.))
         self.rails[1].setup_itersolve('cartesian_stepper_alloc', b'y')
 
+        if self.mmu_machine.mmu_vendor == VENDOR_PRUSA:
+            self.rails.append(MmuLookupMultiRail(config.getsection(IDLER_STEPPER_CONFIG), need_position_minmax=True, default_position_endstop=0.))
+            self.rails[2].setup_itersolve('cartesian_stepper_alloc', b'z')
+
         for s in self.get_steppers():
             s.set_trapq(toolhead.get_trapq())
             toolhead.register_step_generator(s.generate_steps)
@@ -697,6 +713,7 @@ class MmuKinematics:
         # Setup boundary checks
         self.selector_max_velocity, self.selector_max_accel = toolhead.get_selector_limits()
         self.gear_max_velocity, self.gear_max_accel = toolhead.get_gear_limits()
+        self.idler_max_velocity, self.idler_max_accel = toolhead.get_idler_limits()
         self.move_accel = None
         self.limits = [(1.0, -1.0)] * len(self.rails)
 
@@ -728,10 +745,13 @@ class MmuKinematics:
 
     def home(self, homing_state):
         for axis in homing_state.get_axes():
-            if not axis == 0: # Saftey: Only selector (axis[0]) can be homed TODO: make dependent on exact configuration
+            # Safety: Only selector (axis[0]) or idler (axis[2] can be homed TODO: make dependent on exact configuration
+            if not (axis == 0 or axis == 2):
                 continue
+            logging.info("Homing axis %s of %s", axis, homing_state)
             rail = self.rails[axis]
             position_min, position_max = rail.get_range()
+            logging.info("Range is min %s max %s", position_min, position_max)
             hi = rail.get_homing_info()
             homepos = [None, None, None, None]
             homepos[axis] = hi.position_endstop
@@ -740,6 +760,7 @@ class MmuKinematics:
                 forcepos[axis] -= 1.5 * (hi.position_endstop - position_min)
             else:
                 forcepos[axis] += 1.5 * (position_max - hi.position_endstop)
+            logging.info("Homing info %s %s %s", axis, forcepos, homepos)
             homing_state.home_rails([rail], forcepos, homepos) # Perform homing
 
     def set_accel_limit(self, accel):
@@ -781,9 +802,11 @@ class MmuHoming(Homing, object):
         # Perform first home
         endstops = [es for rail in rails for es in rail.get_endstops()]
         hi = rails[0].get_homing_info()
+        logging.info('Endsstops %s ', endstops)
         hmove = HomingMove(self.printer, endstops, self.toolhead) # Happy Hare: Override default toolhead
         hmove.homing_move(homepos, hi.speed)
         # Perform second home
+        logging.info('Retract distance %s', hi.retract_dist)
         if hi.retract_dist:
             # Retract
             startpos = self._fill_coord(forcepos)
@@ -818,6 +841,7 @@ class MmuHoming(Homing, object):
                                        + self.adjust_pos.get(s.get_name(), 0.))
                         for s in kin.get_steppers()}
             newpos = kin.calc_position(kin_spos)
+            logging.info('Calculated %s %s %s', str(kin_spos), str(self.adjust_pos), str(newpos))
             for axis in homing_axes:
                 homepos[axis] = newpos[axis]
             self.toolhead.set_position(homepos)

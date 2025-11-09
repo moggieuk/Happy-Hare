@@ -120,6 +120,7 @@ class Mmu:
 
     SENSOR_SELECTOR_TOUCH      = "mmu_sel_touch"  # For LinearSelector
     SENSOR_SELECTOR_HOME       = "mmu_sel_home"   # For LinearSelector
+    SENSOR_IDLER_TOUCH         = "mmu_idler_touch"
     SENSOR_PRE_GATE_PREFIX     = "mmu_pre_gate"
 
     EXTRUDER_ENDSTOPS = [SENSOR_EXTRUDER_COLLISION, SENSOR_GEAR_TOUCH, SENSOR_EXTRUDER_ENTRY, SENSOR_EXTRUDER_NONE, SENSOR_COMPRESSION]

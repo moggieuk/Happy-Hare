@@ -653,7 +653,10 @@ class LinearSelector(BaseSelector, object):
 
     def _home_selector(self):
         self.mmu.unselect_gate()
-        self.servo.servo_move()
+        if hasattr(self.servo, 'home'):
+            self.servo.home()
+        else:
+            self.servo.servo_move()
         self.mmu.movequeues_wait()
         try:
             homing_state = mmu_machine.MmuHoming(self.mmu.printer, self.mmu_toolhead)
@@ -1044,10 +1047,16 @@ class LinearSelectorIdler:
         # Gate-specific offsets
         self.is_homed = False
 
+        self.idler_state = self.IDLER_UNKNOWN_STATE
+
+        self.mmu_toolhead = None
+        self.idler_rail = None
+        self.ider_stepper = None
+
         # Get the idler stepper
-        self.idler = mmu.printer.lookup_object('mmu_idler', None)
-        if not self.idler:
-            raise mmu.config.error("No [mmu_idler] definition found in mmu_hardware.cfg")
+        # self.idler = mmu.printer.lookup_object('mmu_idler', None)
+        # if not self.idler:
+        #     raise mmu.config.error("No [mmu_idler] definition found in mmu_hardware.cfg")
 
         # Register GCODE commands specific to this module
         gcode = self.mmu.printer.lookup_object('gcode')
@@ -1059,9 +1068,12 @@ class LinearSelectorIdler:
     def reinit(self):
         self.idler_state = self.IDLER_UNKNOWN_STATE
         self.idler_position = self.IDLER_UNKNOWN_STATE
+        self.active_gate = -1
 
     def handle_connect(self):
         self.mmu_toolhead = self.mmu.mmu_toolhead
+        self.idler_rail = self.mmu_toolhead.get_kinematics().rails[2]
+        self.idler_stepper = self.idler_rail.steppers[0]
 
         # Load idler offsets (calibration set with MMU_CALIBRATE_IDLER)
         self.idler_offsets = self.mmu.save_variables.allVariables.get(self.VARS_MMU_IDLER_OFFSETS, None)
@@ -1104,7 +1116,7 @@ class LinearSelectorIdler:
             self.home()
             return
         if reset:
-            self.mmu.delete_variable(self.VARS_MMU_IDLER_POSITIONS, write=True)
+            self.mmu.delete_variable(self.VARS_MMU_IDLER_OFFSETS, write=True)
             self.mmu.log_info("Calibrated idler positions have been reset to configured defaults")
         elif save:
             position = gcmd.get_int('POSITION', None)
@@ -1118,14 +1130,16 @@ class LinearSelectorIdler:
         else:
             position = gcmd.get_int('POSITION', None)
             if position is not None:
-                self.mmu.log_debug("Setting idler to position: %d" % position)
-                self.idler.do_move(position)
+                cur_pos = self.mmu_toolhead.get_position()
+                cur_pos[2] = position
+                self.mmu.log_debug("Setting idler to position: %s" % cur_pos)
+                speed, accel = self.mmu_toolhead.get_idler_limits()
+                with self.mmu.wrap_accel(accel):
+                    self.mmu_toolhead.move(cur_pos, speed)
             elif gate is not None:
-                self.mmu.log_debug("Setting idler to gate: %d" % gate)
                 self._set_idler_to_gate(gate)
-                self.idler.do_move(self.idler_offsets[gate])
             else:
-                self.mmu.log_always("Current idler position: %s" % (self.idler.get_position()))
+                self.mmu.log_always("Current idler position: %s" % (self.mmu_toolhead.get_position()))
                 self.mmu.log_info("Use POS= or POSITION= to move position")
 
     def _set_idler_to_gate(self, gate):
@@ -1133,17 +1147,26 @@ class LinearSelectorIdler:
             return
         if gate >= len(self.idler_offsets):
             self.mmu.log_error("Gate number does not exist")
+            return
         if len(self.idler_offsets) != self.mmu.num_gates + 1:
             self.mmu.log_info("Ignoring setting idler to gate %d, not initialised", gate)
             return
 
         self.mmu.log_info('Setting idler to gate %d, number of offsets %d ' % (gate, len(self.idler_offsets)))
-        position = self.idler_offsets[gate]
+        target_idler_pos = self.idler_offsets[gate]
 
-        self.mmu.log_trace(
-            "Setting idler to down position for gate %d at: %d" % (self.mmu.gate_selected, position))
 
-        self.idler.do_move(position)
+        cur_pos = self.mmu_toolhead.get_position()
+        cur_pos[2] = target_idler_pos
+
+        speed, accel = self.mmu_toolhead.get_idler_limits()
+        with self.mmu.wrap_accel(accel):
+            self.mmu_toolhead.move(cur_pos, speed)
+
+        if self.mmu.log_enabled(self.mmu.LOG_STEPPER):
+            self.mmu.log_stepper("IDLER MOVE: position=%.1f, speed=%.1f, accel=%.1f" % (target_idler_pos, speed, accel))
+        self.mmu.movequeues_wait(toolhead=False, mmu_toolhead=True)
+
         self.active_gate = gate
         if gate != self._disengaged_gate:
             self.idler_state = self.IDLER_DOWN_STATE
@@ -1186,11 +1209,16 @@ class LinearSelectorIdler:
         return self.idler_state
 
     def disable_motors(self):
-        self.servo_move()
+        stepper_enable = self.mmu.printer.lookup_object('stepper_enable')
+        se = stepper_enable.lookup_enable(self.idler_stepper.get_name())
+        se.motor_disable(self.mmu_toolhead.get_last_move_time())
+        self.is_homed = False
         self.reinit() # Reset state
 
     def enable_motors(self):
-        self.servo_move()
+        stepper_enable = self.mmu.printer.lookup_object('stepper_enable')
+        se = stepper_enable.lookup_enable(self.idler_stepper.get_name())
+        se.motor_enable(self.mmu_toolhead.get_last_move_time())
 
     def buzz_motor(self):
         self.mmu.movequeues_wait()
@@ -1227,12 +1255,20 @@ class LinearSelectorIdler:
         }
 
     def home(self):
-        """Home the idler to establish a reference position"""
-        self.mmu.movequeues_wait()
-        self.mmu.log_info("Homing idler...")
-        self.idler.do_homing_move(-95, self.idler.speed, self.idler.accel, True, True)
-        self.is_homed = True
-        return True
+        if self.mmu.check_if_bypass(): return
+        with self.mmu.wrap_action(self.mmu.ACTION_HOMING):
+            self.mmu.log_info("Homing MMU Idler...")
+            # self.mmu.unselect_gate() # Gate must be re-selected for the idler to return to the correct position
+            self.mmu.movequeues_wait()
+            try:
+                homing_state = mmu_machine.MmuHoming(self.mmu.printer, self.mmu_toolhead)
+                homing_state.set_axes([2])
+                self.mmu.mmu_toolhead.get_kinematics().home(homing_state)
+                self.is_homed = True
+                self.mmu.log_info("Homed MMU Idler...")
+            except Exception as e:  # Homing failed
+                raise MmuError(
+                    "Homing idler failed. Klipper reports: %s" % str(e))
 
     def get_uncalibrated_gates(self, check_gates):
         """Return a list of gates that are not calibrated"""
