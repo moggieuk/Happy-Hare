@@ -3058,7 +3058,13 @@ class Mmu:
 
         # Be deliberate about order of these tasks
         if run_error_macro:
-            self.wrap_gcode_command(self.error_macro)
+            cmd = self.error_macro
+            reason = self.reason_for_pause.replace("\n", ". ")
+            for c in "#;'":
+                reason = reason.replace(c, "")
+            if reason:
+                cmd += ' REASON="%s"' % reason
+            self.wrap_gcode_command(cmd)
 
         if run_pause_macro:
             self.wrap_gcode_command(self.pause_macro)
