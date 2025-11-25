@@ -1468,6 +1468,8 @@ class Mmu:
             'sync_drive': self.mmu_toolhead.is_synced(),
             'sync_feedback_state': self.sync_feedback_manager.get_sync_feedback_string(),
             'sync_feedback_enabled': self.sync_feedback_manager.is_enabled(),
+            'sync_feedback_bias_raw': self.sync_feedback_manager.get_sync_bias_raw(),
+            'sync_feedback_bias_modelled': self.sync_feedback_manager.get_sync_bias_modelled(),
             'clog_detection': self.enable_clog_detection, # DEPRECATED use clog_detection_enabled
             'clog_detection_enabled': self.enable_clog_detection,
             'endless_spool': self.enable_endless_spool,   # DEPRECATED use endless_spool_enabled
@@ -2856,7 +2858,7 @@ class Mmu:
             self.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=%s VARIABLE=next_pos VALUE=False" % self.park_macro)
             msg = "Happy Hare initialized ready for print"
             if self.filament_pos == self.FILAMENT_POS_LOADED:
-                msg += " (initial tool T%s loaded)" % self.tool_selected
+                msg += " (initial tool %s loaded)" % self._selected_tool_string()
             else:
                 msg += " (no filament preloaded)"
             if self.ttg_map != self.default_ttg_map:
@@ -6673,6 +6675,9 @@ class Mmu:
         if self.check_if_disabled(): return
         tool = gcmd.get_int('TOOL', self.TOOL_GATE_UNKNOWN, minval=-2, maxval=self.num_gates - 1)
         mod_gate = gcmd.get_int('GATE', self.TOOL_GATE_UNKNOWN, minval=-2, maxval=self.num_gates - 1)
+        if gcmd.get_int('BYPASS', None, minval=0, maxval=1):
+            mod_gate = self.TOOL_GATE_BYPASS
+            tool = self.TOOL_GATE_BYPASS
         loaded = gcmd.get_int('LOADED', -1, minval=0, maxval=1)
         strict = gcmd.get_int('STRICT', 0, minval=0, maxval=1)
 

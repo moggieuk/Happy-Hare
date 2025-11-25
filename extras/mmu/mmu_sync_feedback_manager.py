@@ -184,6 +184,12 @@ class MmuSyncFeedbackManager:
     def has_sensor(self):
         return self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_TENSION) or self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_COMPRESSION)
 
+    def get_sync_bias_raw(self):
+        return float(self.state) # TODO separate sensor_value(float) from state(int)
+
+    def get_sync_bias_modelled(self): # TODO to allow prediction for UI
+        return self.get_sync_bias_raw()
+
     def get_sync_feedback_string(self, state=None, detail=False):
         if state is None:
             state = self.state
