@@ -1313,6 +1313,7 @@ class SyncController:
                 "flowguard": flowguard_out, # Keys: "trigger", "reason", "level", "max_clog", "max_tangle", "active"
                 "autotune": autotune_out,   # Keys: "rd", "note", "save"
             }
+        }
 
         # Additional debug/logging info
         if cfg.log_sync or simulation:

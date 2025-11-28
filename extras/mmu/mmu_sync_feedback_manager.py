@@ -22,18 +22,10 @@
 import logging
 
 # Happy Hare imports
-from ..                   import mmu_machine
-from ..mmu_machine        import MmuToolHead
-from ..mmu_sensors        import MmuRunoutHelper
 
 # MMU subcomponent clases
-from .mmu_shared          import *
-from .mmu_logger          import MmuLogger
-from .mmu_selector        import *
-from .mmu_test            import MmuTest
-from .mmu_utils           import DebugStepperMovement, PurgeVolCalculator
-from .mmu_sensor_manager  import MmuSensorManager
-from .mmu_sync_controller import SyncControllerConfig, SyncController
+from .mmu_sync_controller  import SyncControllerConfig, SyncController
+from .mmu_extruder_monitor import ExtruderMonitor
 
 
 class MmuSyncFeedbackManager:
@@ -52,10 +44,10 @@ class MmuSyncFeedbackManager:
         self.sync_feedback_enabled           = self.mmu.config.getint('sync_feedback_enabled', 0, minval=0, maxval=1)
         self.sync_feedback_buffer_range      = self.mmu.config.getfloat('sync_feedback_buffer_range', 10., minval=0.)
         self.sync_feedback_buffer_maxrange   = self.mmu.config.getfloat('sync_feedback_buffer_maxrange', 10., minval=0.)
-        self.sync_feedback_speed_multiplier  = self.mmu.config.getfloat('sync_feedback_speed_multipler', 5, minval=1, maxval=50)
-        self.sync_feedback_boost_multiplier  = self.mmu.config.getfloat('sync_feedback_boost_multipler', 5, minval=1, maxval=50)
+        self.sync_feedback_speed_multiplier  = self.mmu.config.getfloat('sync_feedback_speed_multiplier', 5, minval=1, maxval=50)
+        self.sync_feedback_boost_multiplier  = self.mmu.config.getfloat('sync_feedback_boost_multiplier', 5, minval=1, maxval=50)
         self.sync_feedback_extrude_threshold = self.mmu.config.getfloat('sync_feedback_extrude_threshold', 5, above=1.)
-        self.sync_feedback_debug_log         = self.mmu.config.get('SF_FEEDBACK_DEBUG_LOG', self.sync_feedback_debug_log, "")
+        self.sync_feedback_debug_log         = self.mmu.config.get('sync_feedback_debug_log', "")
 
         # Flowguard
         self.flowguard_enabled    = self.mmu.config.getint('flowguard_enabled', 1, minval=0, maxval=1)
@@ -69,7 +61,7 @@ class MmuSyncFeedbackManager:
 
         # Register GCODE commands ---------------------------------------------------------------------------
 
-        self.mmu.gcode.register_command('MMU_SF_FEEDBACK', self.cmd_MMU_SF_FEEDBACK, desc=self.cmd_MMU_SF_FEEDBACK_help)
+        self.mmu.gcode.register_command('MMU_SYNC_FEEDBACK', self.cmd_MMU_SYNC_FEEDBACK, desc=self.cmd_MMU_SYNC_FEEDBACK_help)
         self.mmu.gcode.register_command('MMU_FLOWGUARD',  self.cmd_MMU_FLOWGUARD, desc=self.cmd_MMU_FLOWGUARD_help)
 
         self.extruder_monitor = ExtruderMonitor(mmu)
@@ -84,13 +76,13 @@ class MmuSyncFeedbackManager:
         
 
     def set_test_config(self, gcmd):
-        self.sync_feedback_enabled           = gcmd.get_int('SF_FEEDBACK_ENABLED', self.sync_feedback_enabled, minval=0, maxval=1)
-        self.sync_feedback_buffer_range      = gcmd.get_float('SF_FEEDBACK_BUFFER_RANGE', self.sync_feedback_buffer_range, minval=0.)
-        self.sync_feedback_buffer_maxrange   = gcmd.get_float('SF_FEEDBACK_BUFFER_MAXRANGE', self.sync_feedback_buffer_maxrange, minval=0.)
-        self.sync_feedback_speed_multiplier  = gcmd.get_float('SF_FEEDBACK_SPEED_MULTIPLER', self.sync_feedback_speed_multiplier, minval=1., maxval=50)
-        self.sync_feedback_boost_multiplier  = gcmd.get_float('SF_FEEDBACK_BOOST_MULTIPLER', self.sync_feedback_boost_multiplier, minval=1., maxval=50)
-        self.sync_feedback_extrude_threshold = gcmd.get_float('SF_FEEDBACK_EXTRUDE_THRESHOLD', self.sync_feedback_extrude_threshold, above=1.)
-        self.sync_feedback_debug_log         = gcmd.get('SF_FEEDBACK_DEBUG_LOG', self.sync_feedback_debug_log, "")
+        self.sync_feedback_enabled           = gcmd.get_int('SYNC_FEEDBACK_ENABLED', self.sync_feedback_enabled, minval=0, maxval=1)
+        self.sync_feedback_buffer_range      = gcmd.get_float('SYNC_FEEDBACK_BUFFER_RANGE', self.sync_feedback_buffer_range, minval=0.)
+        self.sync_feedback_buffer_maxrange   = gcmd.get_float('SYNC_FEEDBACK_BUFFER_MAXRANGE', self.sync_feedback_buffer_maxrange, minval=0.)
+        self.sync_feedback_speed_multiplier  = gcmd.get_float('SYNC_FEEDBACK_SPEED_MULTIPLER', self.sync_feedback_speed_multiplier, minval=1., maxval=50)
+        self.sync_feedback_boost_multiplier  = gcmd.get_float('SYNC_FEEDBACK_BOOST_MULTIPLER', self.sync_feedback_boost_multiplier, minval=1., maxval=50)
+        self.sync_feedback_extrude_threshold = gcmd.get_float('SYNC_FEEDBACK_EXTRUDE_THRESHOLD', self.sync_feedback_extrude_threshold, above=1.)
+        self.sync_feedback_debug_log         = gcmd.get('SYNC_FEEDBACK_DEBUG_LOG', self.sync_feedback_debug_log, "")
 
         flowguard_enabled = gcmd.get_int('FLOWGUARD_ENABLED', self.flowguard_enabled, minval=0, maxval=1)
         if flowguard_enabled != self.flowguard_enabled:
@@ -109,7 +101,7 @@ class MmuSyncFeedbackManager:
         msg += "\nsync_feedback_speed_multiplier = %.1f" % self.sync_feedback_speed_multiplier
         msg += "\nsync_feedback_boost_multiplier = %.1f" % self.sync_feedback_boost_multiplier
         msg += "\nsync_feedback_extrude_threshold = %.1f" % self.sync_feedback_extrude_threshold
-        msg += "\nsync_feedback_debug_log = %s" % (gcmd.get('SF_FEEDBACK_DEBUG_LOG', self.sync_feedback_debug_log)
+        msg += "\nsync_feedback_debug_log = %s" % self.sync_feedback_debug_log
 
         msg += "\nflowguard_enabled = %d" % self.sync_flowguard_enabled
         msg += "\nflowguard_max_relief = %.1f" % self.flowguard_max_relief
@@ -155,7 +147,7 @@ class MmuSyncFeedbackManager:
         return self.get_sync_bias_raw()
 
     def get_sync_feedback_string(self, state=None, detail=False):
-        if tension is None:
+        if state is None:
             state = self.state
 
         if self.mmu.is_enabled and self.sync_feedback_enabled and (self.active or detail):
@@ -401,8 +393,8 @@ class MmuSyncFeedbackManager:
         output = status['output']
 
         # Handle flowguard trip
-        flowgurd = output['flowguard']
-        flowguard_trigger = flowguard.get('trigger', None):
+        flowguard = output['flowguard']
+        flowguard_trigger = flowguard.get('trigger', None)
         if flowguard_trigger:
             if self.flowguard_enabled:
                 self.mmu.log_error("MmuSyncFeedbackManager: Flowguard detected a %s.\nReason for trip: %s" % (flowguard_trigger, flowguard['reason']))
@@ -474,10 +466,11 @@ class MmuSyncFeedbackManager:
         has_compression    = sm.has_sensor(self.mmu.SENSOR_COMPRESSION)
         has_proportional   = sm.has_sensor(self.mmu.SENSOR_PROPORTIONAL)
         return (
-            "P" if has_proportional else
-            "D" if has_compression and has_tension else
-            "CO" if has_compression else
-            "TO" if has_tension
+            "P" if has_proportional
+            else "D" if has_compression and has_tension
+            else "CO" if has_compression
+            else "TO" if has_tension
+            else "Unknown"
         )
 
 

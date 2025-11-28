@@ -15,6 +15,8 @@ import random, logging, math, re
 
 # Happy Hare imports
 from ..mmu_sensors import MmuRunoutHelper
+
+# MMU subcomponent clases
 from .mmu_shared   import MmuError
 
 class MmuSensorManager:
