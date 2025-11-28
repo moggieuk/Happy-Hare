@@ -5952,7 +5952,7 @@ class Mmu:
             self.sensor_manager.reset_active_unit(new_unit)
 
         self.sensor_manager.reset_active_gate(self.gate_selected) # Call after unit_selected is set
-        self.sync_feedback_manager.reset_sync_starting_state_for_gate(self.gate_selected) # Will always set rotation_distance
+        self.sync_feedback_manager.set_default_rd(self.gate_selected) # Will always set rotation_distance
 
         self.save_variable(self.VARS_MMU_GATE_SELECTED, self.gate_selected, write=True)
         self.active_filament = {
@@ -5975,7 +5975,8 @@ class Mmu:
         rd = self.rotation_distances[gate if gate >= 0 and self.mmu_machine.variable_rotation_distances else 0]
         if rd <= 0:
             rd = self.default_rotation_distance
-            self.log_debug("Gate not calibrated, falling back to default: %.4f" % rd)
+            if gate < 0:
+                self.log_debug("Gate %d not calibrated, falling back to default rotation_distance: %.4f" % (gate, rd))
         return rd
 
     def set_rotation_distance(self, rd):
