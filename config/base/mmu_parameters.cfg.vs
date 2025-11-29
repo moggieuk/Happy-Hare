@@ -376,8 +376,28 @@ sync_gear_current: 70			# % of gear_stepper current (10%-100%) to use when synci
 sync_feedback_enabled: 0		# Turn off even if sensor is installed and active
 sync_feedback_buffer_range: 6		# Travel in "buffer" between compression/tension or one sensor and end (see above)
 sync_feedback_buffer_maxrange: 12	# Absolute maximum end-to-end travel (mm) provided by buffer (see above)
-sync_multiplier_high: 1.05		# Maximum factor to apply to gear stepper 'rotation_distance'
-sync_multiplier_low: 0.95		# Minimum factor to apply
+sync_feedback_speed_multiplier: 4	# % - "twolevel" mmu speed delta to keep filament neutral in buffer (recommend 4%)
+sync_feedback_boost_multiplier: 5	# % - "twolevel" extra mmu speed boost for finding initial neutral position (recommend 5%)
+sync_feedback_extrude_threshold: 5	# Extruder movement (mm) for updates (keep small but set > retract distance)
+
+# If defined this forces debugging to a telemetry log file /tmp/sync.jsonl. This is great if trying to tune clog/tangle detection
+# or for getting help on the Happy Hare forum. To plot graph of sync-feedback operation, run:
+#  ~/Happy-Hare/utils/plot_sync_feedback.sh
+#
+sync_feedback_debug_log: 0		# 0 = disable (normal opertion), 1 = enable telemetry log (for debugging)
+
+# Flowguard: This feature automatically detects extruder clogs and MMU tangles using the sync-feedback buffer.
+flowguard_enabled: 1			# 0 = Flowguard protection disabled, 1 = Enabled
+
+# The flowguard_max_relief is the amount of relief movement (mm) that Happy Hare will wait until triggering a clog or runout. A smaller
+# value is more sensitive to triggering. Since the relief depends on 'sync_feedback speed_multiplier' and 'sync_feedback_buffer_range'
+# it is generally a good starting point if using 5% sync_feedback_speed_multiplier to use about the same distance as sync_feedback_buffer_range.
+# Note that one sided switches (Compression-only and Tension-only) can generally be lower.
+flowguard_max_relief: 8
+
+# The max_motion is the absolute max permitted extruder movement while the sensor is in an extreme state. Consider this added
+# protection on top of the primary max_relief amount. Again a smaller value is more sensitive to triggering.
+flowguard_max_motion: 80
 
 
 # ESpooler control -----------------------------------------------------------------------------------------------------

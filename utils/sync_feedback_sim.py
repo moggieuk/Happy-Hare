@@ -816,7 +816,7 @@ Commands (history enabled — use Up/Down arrows):
   p | plot                               - Save plot to sim_plot.png (always saves to file).
   d | display                            - Display plot window (does not save).
   status                                 - Show controller/printer state
-  quit | q                               - Plot (save) and exit
+  quit | q                               - Exit
 """)
 
 def _summary_txt(ctrl: SyncController, last_autotune_rd, last_sensor, last_sensor_ui, last_flowguard: Optional[Dict[str, Any]], spring_mm: float):
@@ -824,7 +824,7 @@ def _summary_txt(ctrl: SyncController, last_autotune_rd, last_sensor, last_senso
     sensor_str = "N/A" if last_sensor is None else (f"{last_sensor:.3f}" if isinstance(last_sensor, float) else str(last_sensor))
     sensor_ui_str = "N/A" if last_sensor_ui is None else f"{last_sensor_ui:.3f}"
     if isinstance(last_flowguard, dict) and last_flowguard.get('trigger'):
-        fg_str = f"trigger={last_flowguard.get('trigger', "")}, reason={last_flowguard.get('reason')}"
+        fg_str = f"trigger={last_flowguard.get('trigger', '')}, reason={last_flowguard.get('reason')}"
     else:
         fg_str = "N/A"
     return f"RD={ctrl.rd_current:.4f} | Autotune={autotune_str} | sensor={sensor_str} | sensor_ui={sensor_ui_str} | Bowden/Buffer spring={spring_mm:.3f}mm | FlowGuard: {fg_str}"
@@ -1376,15 +1376,6 @@ def _run_cli():
         # ----------------------------------------------------------------------
         if low in ("q", "quit", "exit"):
             _summary_print(ctrl, last_autotune_rd, last_sensor, last_sensor_ui, last_flowguard, printer.spring_mm())
-            _plot_from_log(
-                cfg, logger,
-                mode="save",
-                out_path=args.out,
-                show_ticks=args.show_ticks,
-                show_mm_axis=(args.x_mm != "off"),
-                mm_axis_mode=("abs" if args.x_mm == "abs" else "signed"),
-                summary_txt=_summary_txt(ctrl, last_autotune_rd, last_sensor, last_sensor_ui, last_flowguard, printer.spring_mm())
-            )
             break
 
         # ----------------------------------------------------------------------

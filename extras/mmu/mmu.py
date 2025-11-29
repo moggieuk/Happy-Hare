@@ -912,6 +912,7 @@ class Mmu:
 
         # Sub components
         self.selector.handle_connect()
+        self.sync_feedback_manager.handle_connect()
 
     def _ensure_list_size(self, lst, size, default_value=-1):
         lst = lst[:size]
@@ -923,6 +924,7 @@ class Mmu:
 
         # Sub components
         self.selector.handle_disconnect()
+        self.sync_feedback_manager.handle_disconnect()
 
     def handle_ready(self):
         # Pull retraction length from macro config
@@ -2275,7 +2277,7 @@ class Mmu:
     def cmd_MMU_SYNC_GEAR_MOTOR(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if self.check_if_disabled(): return
-        if self.check_if_bypass(): return
+        if self.check_if_bypass(unloaded_ok=False): return
         if self.check_if_not_homed(): return
         sync = gcmd.get_int('SYNC', 1, minval=0, maxval=1)
         if not sync and self.check_if_always_gripped(): return
@@ -3306,8 +3308,8 @@ class Mmu:
             return True
         return False
 
-    def check_if_bypass(self):
-        if self.tool_selected == self.TOOL_GATE_BYPASS and self.filament_pos not in [self.FILAMENT_POS_UNLOADED]:
+    def check_if_bypass(self, unloaded_ok=True):
+        if self.tool_selected == self.TOOL_GATE_BYPASS and (not unloaded_ok or self.filament_pos not in [self.FILAMENT_POS_UNLOADED]):
             self.log_error("Operation not possible. MMU is currently using bypass. Unload or select a different gate first")
             return True
         return False

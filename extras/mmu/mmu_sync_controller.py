@@ -1317,23 +1317,21 @@ class SyncController:
 
         # Additional debug/logging info
         if cfg.log_sync or simulation:
-            out.extend({
-                "input": {
-                    "tick": self._tick,
-                    "t_s": eventtime,
-                    "dt_s": dt_s,
-                    "d_mm": extruder_delta_mm,
-                    "sensor": sensor_reading,
-                },
-                "output": {
-                    "rd_target": rd_target,
-                    "rd_ref": self.rd_ref,
-                    "rd_ref_smoothed": self._rd_ref,
-                    "rd_note": rd_note,
-                    "x_est": self.state.x,
-                    "c_est": self.state.c,
-                }
+            out["output"].update({
+                "rd_target": rd_target,
+                "rd_ref": self.rd_ref,
+                "rd_ref_smoothed": self._rd_ref,
+                "rd_note": rd_note,
+                "x_est": self.state.x,
+                "c_est": self.state.c
             })
+            out["input"] = {
+                "tick": self._tick,
+                "t_s": eventtime,
+                "dt_s": dt_s,
+                "d_mm": extruder_delta_mm,
+                "sensor": sensor_reading
+            }
 
         if cfg.log_sync:
             self._append_log(out)
