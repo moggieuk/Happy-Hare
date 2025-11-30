@@ -164,7 +164,6 @@ class MmuSensorManager:
         sensor = self.sensors.get(name, None)
         if sensor is not None and sensor.runout_helper.sensor_enabled:
             detected = bool(sensor.runout_helper.filament_present)
-            self.mmu.log_stepper("[%s sensor is %s]" % (name, "TRIGGERED" if detected else "empty"))
             return detected
         else:
             return None
@@ -175,7 +174,6 @@ class MmuSensorManager:
         sensor = self.sensors.get(sensor_name, None)
         if sensor is not None and sensor.runout_helper.sensor_enabled:
             detected = bool(sensor.runout_helper.filament_present)
-            self.mmu.log_stepper("]%s sensor is %s]" % (sensor_name, "TRIGGERED" if detected else "empty"))
             return detected
         else:
             return None
