@@ -301,6 +301,7 @@ class _AutotuneEngine:
         self._autotune_last_motion_mm = -1e12
         self._autotune_baseline = self.ctrl.rd_ref # Persisted rd setting
         self._autotune_current = self.ctrl.rd_ref  # Current recommendation
+        self._autotune_min_cert_score = 0.5        # Don't persist less than this score
 
         # Suggestion tracking
         self._rd_cert_fifo = deque(maxlen=int(max(1, ctrl.cfg.autotune_cert_window)))
@@ -520,12 +521,12 @@ class _AutotuneEngine:
         status = {"rd": rec_rd, "note": "Autotune: {} {} and {}".format(travel, note, _note)}
 
         # Should we recommend saving as new default reference?
-        # PAUL if len(self._rd_cert_fifo) > PAUL: # PAUL
-        frac = self._frac_speed_delta(rec_rd, self._autotune_baseline)
-        min_frac = cfg.autotune_min_save_frac
-        if frac >= min_frac:
-            self._autotune_baseline = rec_rd
-            status["save"] = True
+        if self._rd_cert_last_score >= self._autotune_min_cert_score:
+            frac = self._frac_speed_delta(rec_rd, self._autotune_baseline)
+            min_frac = cfg.autotune_min_save_frac
+            if frac >= min_frac:
+                self._autotune_baseline = rec_rd
+                status["save"] = True
 
         self.restart(rec_rd, reset_totals=False, reset_cooldown=False, reset_confidence=False)
         return status
