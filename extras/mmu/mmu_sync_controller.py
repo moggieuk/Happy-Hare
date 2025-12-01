@@ -1592,13 +1592,6 @@ class SyncController:
         if cfg.sensor_type in ("CO", "TO"):
             # Desired level from current contact state
             in_contact = self._onesided_contact(sensor_reading)
-
-# PAUL
-#            if d_ext == 0.0:
-#                desired_level = self._os_target_level
-#            else:
-#                flip = (cfg.sensor_type == "CO") != (d_ext > 0.0) # XOR
-#                desired_level = "high" if (in_contact != flip) else "low"
             if cfg.sensor_type == "CO":
                 desired_level = "high" if in_contact else "low"
             else: # "TO"
@@ -1607,12 +1600,6 @@ class SyncController:
         else:
             # Desired level from polarity
             pol = self._extreme_polarity(sensor_reading) # {+1, -1, 0}
-
-# PAUL
-#            if d_ext == 0.0 or pol == 0:
-#                desired_level = self._os_target_level
-#            else:
-#                desired_level = "high" if ((pol > 0) == (d_ext > 0.0)) else "low"
             if pol == 0:
                 desired_level = self._os_target_level
             else:
