@@ -146,24 +146,15 @@ class MmuSyncFeedbackManager:
         return self.active
 
 
-    def get_sync_bias_raw(self):
-        return float(self._get_sensor_state())
-
-
-    def get_sync_bias_modelled(self):
-        if self.mmu.is_enabled and self.sync_feedback_enabled and self.active:
-            # This is a better representation for UI when the controller is active
-            return self.estimated_state
-        else:
-            # Otherwise return the real state
-            return float(self._get_sensor_state())
-
-
-    def get_sync_feedback_string(self, detail=False):
+    def get_sync_feedback_string(self, state=None, detail=False):
+        if state is None:
+            state = self._get_sensor_state()
         if self.mmu.is_enabled and self.sync_feedback_enabled and (self.active or detail):
             # Polarity varies slightly between modes on proportional sensor so ask controller
-            polarity = self.ctrl.polarity()
+            polarity = self.ctrl.polarity(state)
             return 'compressed' if polarity > 0 else 'tension' if polarity < 0 else 'neutral'
+        elif self.mmu.is_enabled and self.sync_feedback_enabled:
+            return "inactive"
         return "disabled"
 
 
@@ -288,15 +279,26 @@ class MmuSyncFeedbackManager:
                 self.mmu.log_error("Error in MMU_SYNC_FEEDBACK: %s" % str(ee))
 
 
+    def get_status(self, eventtime=None):
+        return {
+            'sync_feedback_state': self.get_sync_feedback_string(),
+            'sync_feedback_type': self.ctrl.get_type_mode(),
+            'sync_feedback_enabled': self.is_enabled(),
+            'sync_feedback_bias_raw': self._get_sync_bias_raw(),
+            'sync_feedback_bias_modelled': self._get_sync_bias_modelled(),
+        }
+
+
     #
     # Internal implementation --------------------------------------------------
     #
 
-    def _handle_mmu_synced(self, eventtime):
+    def _handle_mmu_synced(self, eventtime=None):
         """
         Event indicating that gear stepper is now synced with extruder
         """
         if not self.mmu.is_enabled: return
+        if eventtime is None: eventtime = self.mmu.reactor.monotonic()
 
         msg = "MmuSyncFeedbackManager: Synced MMU to extruder%s" % (" (sync feedback activated)" if self.sync_feedback_enabled else "")
         if self.mmu.mmu_machine.filament_always_gripped:
@@ -310,23 +312,26 @@ class MmuSyncFeedbackManager:
         self.active = True
         self.new_autotuned_rd = None
 
-        self._init_controller()
+        # Allow dynamic changing of effective "sensor type" based on currently enabled sensors
+        self.ctrl.cfg.sensor_type = self._get_sensor_type()
 
-        # Reset controller with initial rd and sensor reading
+        # Reset controller with initial rd and sensor reading (will also reset autotune and flowguard)
         starting_state = self._get_sensor_state()
         self.estimated_state = starting_state
-        status = self.ctrl.reset(enventtime, rd_start, starting_state)
+        rd_start = self.mmu.get_rotation_distance(self.mmu.gate_selected)
+        status = self.ctrl.reset(eventtime, rd_start, starting_state)
         self._process_status(status) # May adjust rotation_distance
 
         # Turn on extruder movement events
         self.extruder_monitor.register_callback(self._handle_extruder_movement, self.sync_feedback_extrude_threshold)
 
 
-    def _handle_mmu_unsynced(self, eventtime):
+    def _handle_mmu_unsynced(self, eventtime=None):
         """
         Event indicating that gear stepper has been unsynced from extruder
         """
         if not (self.mmu.is_enabled and self.sync_feedback_enabled and self.active): return
+        if eventtime is None: eventtime = self.mmu.reactor.monotonic()
 
         msg = "MmuSyncFeedbackManager: Unsynced MMU from extruder%s" % (" (sync feedback deactivated)" if self.sync_feedback_enabled else "")
         if self.mmu.mmu_machine.filament_always_gripped:
@@ -341,13 +346,13 @@ class MmuSyncFeedbackManager:
 
         if self.new_autotuned_rd is not None:
             self.mmu.log_info("MmuSyncFeedbackManager: Persisted Autotune rd recommendation: %.4f\n" % self.new_autotuned_rd)
-            # PAUL TODO persist and adjust bowden length here -- add bowden adjustment to log_info
+            self.mmu.log_warning("PAUL: TODO: not really persisted yet!! (must also adjust bowden length for gate")
 
         # Restore default (last tuned) rotation distance
-        self.set_default_rd(self, self.mmu.current_gate)
+        self.set_default_rd(self.mmu.gate_selected)
 
         # Optional but let's turn off extruder movement events
-        extruder_monitor.remove_callback(self._handle_extruder_movement)
+        self.extruder_monitor.remove_callback(self._handle_extruder_movement)
 
 
     def _handle_extruder_movement(self, eventtime, move):
@@ -356,9 +361,12 @@ class MmuSyncFeedbackManager:
         periodic rotation_distance adjustment, autotune and flowguard checking
         """
         if not (self.mmu.is_enabled and self.sync_feedback_enabled and self.active): return
+        if eventtime is None: eventtime = self.mmu.reactor.monotonic()
 
         state = self._get_sensor_state()
-        status = self.sync_controller.update(eventtime, move, state)
+        self.mmu.log_error("PAUL: MmuSyncFeedbackManager: Extruder movement event, move=%.1f" % move) # PAUL
+        self.mmu.log_trace("MmuSyncFeedbackManager: Extruder movement event, move=%.1f" % move)
+        status = self.ctrl.update(eventtime, move, state)
         self._process_status(status)
 
 
@@ -369,16 +377,17 @@ class MmuSyncFeedbackManager:
         or can be a proportional float value between -1.0 and 1.0
         """
         if not (self.mmu.is_enabled and self.sync_feedback_enabled and self.active): return
-
-        msg = "MmuSyncFeedbackManager: Sync tension changed from %s to %s" % (" (sync feedback deactivated)" if self.sync_feedback_enabled else "")
-        msg = "MmuSyncFeedbackManager: Sync tension changed from %s to %s%s" % (" (sync feedback deactivated)" if self.sync_feedback_enabled else "")
+        if eventtime is None: eventtime = self.mmu.reactor.monotonic()
+ 
+        msg = "MmuSyncFeedbackManager: Sync state changed to %s" % (self.get_sync_feedback_string(state))
         if self.mmu.mmu_machine.filament_always_gripped:
             self.mmu.log_debug(msg)
         else:
             self.mmu.log_info(msg)
+        self.mmu.log_error("PAUL: " + msg) # PAUL
 
         move = self.extruder_monitor.get_and_reset_accumulated(self._handle_extruder_movement)
-        status = self.sync_controller.update(eventtime, move, state)
+        status = self.ctrl.update(eventtime, move, state)
         self._process_status(status)
 
 
@@ -421,22 +430,25 @@ class MmuSyncFeedbackManager:
 
             # PAUL self.ctrl.flowguard.reset() # PAUL the next sync should reset. This allows us to see in the UI the cause..
 
-        # Update instaneous gear stepper rotation_distance
-        if output['rd_current'] != output['rd_prev']:
-            self.mmu.log_debug("MmuSyncFeedbackManager: Updating rotation distance for gate %d from %.4f to %.4f" % (gate, rd_prev, rd_current))
-            self.mmu.set_rotation_distance(rd)
-        
         # Handle new autotune suggestions
         autotune = output['autotune']
         rd = autotune.get('rd', None)
         note = autotune.get('note', None)
         save = autotune.get('save', None)
         if rd is not None:
+            msg = "MmuSyncFeedbackManager: Autotune suggested new operational reference rd: %.4f\n%s" % (rd, note)
             if save and self.mmu.autotune_rotation_distance:
-                self.mmu.log_debug("MmuSyncFeedbackManager: Autotune recommended new rd: %.4f\n%s\nThis will be persisted and bowden length updated when extruder is unsynced" % (rd, note))
+                msg += "\nThis suggestion will be persisted (and bowden length adjusted) when extruder is next unsynced"
                 self.new_autotune_rd= rd
+                self.mmu.log_info(msg)
             else:
-                self.mmu.log_debug("MmuSyncFeedbackManager: Autotune recommended new rd: %.4f (not saved)\n%s" % (rd, note))
+                self.mmu.log_debug(msg)
+
+        # Always update instaneous gear stepper rotation_distance
+        rd_current, rd_prev = output['rd_current'], output['rd_prev']
+        if rd_current != rd_prev:
+            self.mmu.set_rotation_distance(rd_current)
+            self.mmu.log_debug("MmuSyncFeedbackManager: Updated rotation distance for gate %d from %.4f to %.4f" % (self.mmu.gate_selected, rd_prev, rd_current))
 
 
     def _init_controller(self):
@@ -469,37 +481,64 @@ class MmuSyncFeedbackManager:
             self.flowguard_enabled = False
 
 
+    def _get_sync_bias_raw(self):
+        return float(self._get_sensor_state())
+
+
+    def _get_sync_bias_modelled(self):
+        if self.mmu.is_enabled and self.sync_feedback_enabled and self.active:
+            # This is a better representation for UI when the controller is active
+            return self.estimated_state
+        else:
+            # Otherwise return the real state
+            return float(self._get_sensor_state())
+
+
     def _get_sensor_state(self):
         """
-        Get current tnsion state based on current sensor feedback.
-        Returns float in range [-1.0 .. 1.0]
+        Get current tension state based on current sensor feedback.
+        Returns float in range [-1.0 .. 1.0] for proportional, {-1, 0, 1) for switch
         """
         sm = self.mmu.sensor_manager
-        has_tension        = sm.has_sensor(self.mmu.SENSOR_TENSION)
-        has_compression    = sm.has_sensor(self.mmu.SENSOR_COMPRESSION)
+# PAUL
+#        has_tension        = sm.has_sensor(self.mmu.SENSOR_TENSION)
+#        has_compression    = sm.has_sensor(self.mmu.SENSOR_COMPRESSION)
         has_proportional   = sm.has_sensor(self.mmu.SENSOR_PROPORTIONAL)
-        tension_active     = sm.check_sensor(self.mmu.SENSOR_TENSION)
-        compression_active = sm.check_sensor(self.mmu.SENSOR_COMPRESSION)
-
-        ss = self.SF_STATE_NEUTRAL
+#        tension_active     = sm.check_sensor(self.mmu.SENSOR_TENSION)
+#        compression_active = sm.check_sensor(self.mmu.SENSOR_COMPRESSION)
 
         if has_proportional:
             sensor = sm.sensors.get(self.mmu.SENSOR_PROPORTIONAL)
-            return sensor.get_status.get('value', 0.)
+            return sensor.get_status(0).get('value', 0.)
 
-        if has_tension and has_compression:
-            # Allow for sync-feedback sensor designs with minimal travel where both sensors can be triggered at same time
-            if tension_active == compression_active:
-                ss = self.SF_STATE_NEUTRAL
-            elif tension_active and not compression_active:
-                ss = self.SF_STATE_TENSION
-            else:
-                ss = self.SF_STATE_COMPRESSION
-        elif has_compression and not has_tension:
-            ss = self.SF_STATE_COMPRESSION if compression_active else self.SF_STATE_TENSION
-        elif has_tension and not has_compression:
-            ss = self.SF_STATE_TENSION if tension_active else self.SF_STATE_COMPRESSION
+        tension_active     = sm.check_sensor(self.mmu.SENSOR_TENSION)
+        compression_active = sm.check_sensor(self.mmu.SENSOR_COMPRESSION)
+#PAUL         has_tension        = tension_active is not None
+#PAUL         has_compression    = compression_active is not None
+
+        if tension_active == compression_active:
+            ss = self.SF_STATE_NEUTRAL
+        elif compression_active:
+            ss = self.SF_STATE_COMPRESSION
+        elif tension_active:
+            ss = self.SF_STATE_TENSION
+        else:
+            ss = self.SF_STATE_NEUTRAL
         return ss
+
+#        if has_tension and has_compression:
+#            # Allow for sync-feedback sensor designs with minimal travel where both sensors can be triggered at same time
+#            if tension_active == compression_active:
+#                ss = self.SF_STATE_NEUTRAL
+#            elif tension_active and not compression_active:
+#                ss = self.SF_STATE_TENSION
+#            else:
+#                ss = self.SF_STATE_COMPRESSION
+#        elif has_compression and not has_tension:
+#            ss = self.SF_STATE_COMPRESSION if compression_active else self.SF_STATE_TENSION
+#        elif has_tension and not has_compression:
+#            ss = self.SF_STATE_TENSION if tension_active else self.SF_STATE_COMPRESSION
+#        return ss
 
 
     def _get_sensor_type(self):

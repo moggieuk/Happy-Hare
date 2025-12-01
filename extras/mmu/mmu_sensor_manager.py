@@ -33,13 +33,15 @@ class MmuSensorManager:
         sensor_names.extend([
             self.mmu.SENSOR_GATE,
             self.mmu.SENSOR_TENSION,
-            self.mmu.SENSOR_COMPRESSION
+            self.mmu.SENSOR_COMPRESSION,
+            self.mmu.SENSOR_PROPORTIONAL
         ])
         if self.mmu.mmu_machine.num_units > 1:
             for i in range(self.mmu.mmu_machine.num_units):
                 sensor_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_GATE, i))
                 sensor_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_TENSION, i))
                 sensor_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_COMPRESSION, i))
+                sensor_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_PROPORTIONAL, i))
         sensor_names.extend([
             self.mmu.SENSOR_EXTRUDER_ENTRY,
             self.mmu.SENSOR_TOOLHEAD
@@ -103,6 +105,7 @@ class MmuSensorManager:
             self.mmu.SENSOR_GATE: self.get_mapped_endstop_name(self.mmu.SENSOR_GATE),
             self.mmu.SENSOR_COMPRESSION: self.get_mapped_endstop_name(self.mmu.SENSOR_COMPRESSION),
             self.mmu.SENSOR_TENSION: self.get_mapped_endstop_name(self.mmu.SENSOR_TENSION),
+            self.mmu.SENSOR_PROPORTIONAL: self.get_mapped_endstop_name(self.mmu.SENSOR_PROPORTIONAL),
             self.mmu.SENSOR_EXTRUDER_ENTRY: self.mmu.SENSOR_EXTRUDER_ENTRY,
             self.mmu.SENSOR_TOOLHEAD: self.mmu.SENSOR_TOOLHEAD
         }
@@ -244,8 +247,8 @@ class MmuSensorManager:
             if state is not None or detail:
                 sensor = self.all_sensors.get(name)
                 if name in [self.mmu.SENSOR_PROPORTIONAL]:
-                    # Special case analogue sensor
-                    value = sensor.get_status.get('value', 0.)
+                    # Special case analog sensor
+                    value = sensor.get_status(0).get('value', 0.)
                     summary += "%s: %.2f" % (name, ("(%.2f, currently disabled)" % value) if state is None else value)
                 else:
                     trig = "%s" % 'TRIGGERED' if sensor.runout_helper.filament_present else 'Open'
@@ -297,7 +300,7 @@ class MmuSensorManager:
     def _get_all_sensors_for_gate(self,  gate):
         return self._get_sensors(-1, gate, lambda p, pc: pc is not None)
 
-    def get_status(self):
+    def get_status(self, eventtime=None):
         result = {
             name: bool(sensor.runout_helper.filament_present) if sensor.runout_helper.sensor_enabled else None
             for name, sensor in self.viewable_sensors.items()

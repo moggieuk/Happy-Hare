@@ -221,7 +221,7 @@ class SyncControllerConfig:
     os_min_flip_mm: float = 0.0             # minimum motion between flips (anti-chatter)
 
     # Optional two-level for P/D type sensors
-    use_twolevel_for_type_pd: bool = True   # Option for type-D or type-P sensors
+    use_twolevel_for_type_pd: Optional[bool] = None # True/False to force option for type-D or type-P sensors
     pd_twolevel_threshold: float = 0.80     # P extreme if z>=+thr or z<=-thr
     pd_twolevel_hysteresis: float = 0.2     # shrink threshold by this when exiting a twolevel extreme
 
@@ -868,7 +868,7 @@ class _FlowguardEngine:
             if (abs(self._arm_motion_mm) > 0.0 and changed) or (abs(self._arm_motion_mm) >= fallback_dist):
                 self._armed = True
             else:
-                return self.get_status()
+                return self.status()
         self._arm_last_state = state_now
 
         # Capture pre-update accumulator values so we can tell which test crossed this tick
@@ -1006,9 +1006,9 @@ class _FlowguardEngine:
             self._tens_motion_mm = 0.0
             self._relief_tens_mm = 0.0
 
-        return self.get_status()
+        return self.status()
 
-    def get_status(self):
+    def status(self):
         s = {
             "trigger": self._trigger,
             "reason": self._reason,
@@ -1058,6 +1058,7 @@ class SyncController:
 
     def __init__(self, cfg: SyncControllerConfig, c0= 1.0, x0: Optional[float] = None):
         self.cfg = cfg
+        self._set_twolevel_active()
 
         self._tick = 0
         self._log_ready = False
@@ -1076,7 +1077,6 @@ class SyncController:
         # Allows initial wider range of rd until first autotune candidate
         self._twolevel_boost_active = True
 
-        self.twolevel_active = True
         self._twolevel_hys_state = 0 # -1, 0, +1 (last hysteretic extreme for type-P)
 
         # Set absolute limits for rd range
@@ -1107,13 +1107,7 @@ class SyncController:
         Seeds internal time to `t_s` and zeroes elapsed time.
         """
         cfg = self.cfg
-
-        # Twolevel mode is updated on each reset to allow responsive behavior to sensor disable
-        self.twolevel_active = (
-            self.cfg.sensor_type in ("CO", "TO")
-            or (self.cfg.use_twolevel_for_type_pd and self.cfg.sensor_type in ("P", "D"))
-        )
-
+        self._set_twolevel_active()
         self._log_ready = False
 
         # Rotation distance & baseline (always rebase)
@@ -1166,7 +1160,7 @@ class SyncController:
             self._os_since_flip_mm = 0.0
 
         # Two-level init for P/D (optional)
-        if self.cfg.sensor_type in ("P", "D") and self.cfg.use_twolevel_for_type_pd:
+        if self.cfg.sensor_type in ("P", "D") and self.twolevel_active:
             pol0 = self._extreme_polarity(sensor_reading)
             if pol0 > 0:
                 self._os_target_level = "high"
@@ -1345,7 +1339,26 @@ class SyncController:
     def polarity(self, sensor_reading):
         return self._extreme_polarity(sensor_reading)
 
+
+    def get_type_mode(self):
+        sensor_type = self.cfg.sensor_type
+        if sensor_type in ['P', 'D']:
+            sensor_type += " (TwoLevel mode)" if self.twolevel_active else " (EKF mode)"
+        return sensor_type
+ 
+
     # --------------------------------- Internal Impl ------------------------------------
+
+    def _set_twolevel_active(self):
+        """
+        Twolevel mode is updated on each reset to allow responsive behavior to sensor disable
+        """
+        self.twolevel_active = (
+            self.cfg.sensor_type in ("CO", "TO")
+            or (self.cfg.sensor_type == "P" and self.cfg.use_twolevel_for_type_pd is True)
+            or (self.cfg.sensor_type == "D" and self.cfg.use_twolevel_for_type_pd is not False)
+        )
+
 
     def _set_min_max_rd(self, rd):
         """
@@ -1530,7 +1543,7 @@ class SyncController:
             return 1 if z >= thr else -1 if z <= -thr else 0
 
         # Add hysteresis on twolevel extreme for type-P sensor
-        hi = abs(float( cfg.pd_twolevel_threshold))
+        hi = abs(float(cfg.pd_twolevel_threshold))
         lo = max(0.0, hi - cfg.pd_twolevel_hysteresis)
         s = self._twolevel_hys_state
 
@@ -1579,20 +1592,30 @@ class SyncController:
             # Desired level from current contact state
             in_contact = self._onesided_contact(sensor_reading)
 
-            if d_ext == 0.0:
-                desired_level = self._os_target_level
-            else:
-                flip = (cfg.sensor_type == "CO") != (d_ext > 0.0) # XOR
-                desired_level = "high" if (in_contact != flip) else "low"
+# PAUL
+#            if d_ext == 0.0:
+#                desired_level = self._os_target_level
+#            else:
+#                flip = (cfg.sensor_type == "CO") != (d_ext > 0.0) # XOR
+#                desired_level = "high" if (in_contact != flip) else "low"
+            if cfg.sensor_type == "CO":
+                desired_level = "high" if in_contact else "low"
+            else: # "TO"
+                desired_level = "low" if in_contact else "high"
 
         else:
             # Desired level from polarity
-            pol = self._extreme_polarity(sensor_reading) # +1, -1, 0
+            pol = self._extreme_polarity(sensor_reading) # {+1, -1, 0}
 
-            if d_ext == 0.0 or pol == 0:
+# PAUL
+#            if d_ext == 0.0 or pol == 0:
+#                desired_level = self._os_target_level
+#            else:
+#                desired_level = "high" if ((pol > 0) == (d_ext > 0.0)) else "low"
+            if pol == 0:
                 desired_level = self._os_target_level
             else:
-                desired_level = "high" if ((pol > 0) == (d_ext > 0.0)) else "low"
+                desired_level = "high" if (pol > 0) else "low"
 
         # Flip only if we've moved enough since the last flip
         if desired_level != self._os_target_level and abs(self._os_since_flip_mm) >= cfg.os_min_flip_mm:

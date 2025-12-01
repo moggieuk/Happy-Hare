@@ -106,7 +106,7 @@ class BaseSelector:
     def has_bypass(self):
         return self.mmu.mmu_machine.has_bypass
 
-    def get_status(self):
+    def get_status(self, eventtime):
         return {
             'has_bypass': self.has_bypass()
         }
@@ -389,9 +389,9 @@ class LinearSelector(BaseSelector, object):
     def has_bypass(self):
         return self.mmu.mmu_machine.has_bypass and self.bypass_offset >= 0
 
-    def get_status(self):
-        status = super(LinearSelector, self).get_status()
-        status.update(self.servo.get_status())
+    def get_status(self, eventtime):
+        status = super(LinearSelector, self).get_status(eventtime)
+        status.update(self.servo.get_status(eventtime))
         return status
 
     def get_mmu_status_config(self):
@@ -1043,7 +1043,7 @@ class LinearSelectorServo:
                 "DOWN" if self.servo_state == self.SERVO_DOWN_STATE else "MOVE" if self.servo_state == self.SERVO_MOVE_STATE else "unknown")
         return msg
 
-    def get_status(self):
+    def get_status(self, eventtime):
         return {
             'servo': "Up" if self.servo_state == self.SERVO_UP_STATE else
                      "Down" if self.servo_state == self.SERVO_DOWN_STATE else
@@ -1251,8 +1251,8 @@ class RotarySelector(BaseSelector, object):
             return False
         return True
 
-    def get_status(self):
-        status = super(RotarySelector, self).get_status()
+    def get_status(self, eventtime):
+        status = super(RotarySelector, self).get_status(eventtime)
         status.update({
             'grip': "Gripped" if self.grip_state == self.mmu.FILAMENT_DRIVE_STATE else "Released",
         })
@@ -1712,8 +1712,8 @@ class ServoSelector(BaseSelector, object):
     def has_bypass(self):
         return self.mmu.mmu_machine.has_bypass and self.selector_bypass_angle >= 0
 
-    def get_status(self):
-        status = super(ServoSelector, self).get_status()
+    def get_status(self, eventtime):
+        status = super(ServoSelector, self).get_status(eventtime)
         status.update({
             'grip': "Gripped" if self.servo_state == self.mmu.FILAMENT_DRIVE_STATE else "Released",
         })

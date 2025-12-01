@@ -1470,10 +1470,6 @@ class Mmu:
             'action': self._get_action_string(),
             'has_bypass': self.selector.has_bypass(),
             'sync_drive': self.mmu_toolhead.is_synced(),
-            'sync_feedback_state': self.sync_feedback_manager.get_sync_feedback_string(),
-            'sync_feedback_enabled': self.sync_feedback_manager.is_enabled(),
-            'sync_feedback_bias_raw': self.sync_feedback_manager.get_sync_bias_raw(),
-            'sync_feedback_bias_modelled': self.sync_feedback_manager.get_sync_bias_modelled(),
             'clog_detection': self.enable_clog_detection, # DEPRECATED use clog_detection_enabled
             'clog_detection_enabled': self.enable_clog_detection,
             'endless_spool': self.enable_endless_spool,   # DEPRECATED use endless_spool_enabled
@@ -1485,8 +1481,9 @@ class Mmu:
             'bowden_progress': self._get_bowden_progress(), # Simple 0-100%. -1 if not performing bowden move
             'espooler_active': self.espooler.get_operation(self.gate_selected)[0] if self.has_espooler() else ''
         }
-        status.update(self.selector.get_status())
-        status['sensors'] = self.sensor_manager.get_status()
+        status.update(self.selector.get_status(eventtime))
+        status.update(self.sync_feedback_manager.get_status(eventtime))
+        status['sensors'] = self.sensor_manager.get_status(eventtime)
         if self.has_encoder():
             status['encoder'] = self.encoder_sensor.get_status(eventtime)
         return status
@@ -2014,7 +2011,7 @@ class Mmu:
         msg += "\nGear stepper at %d%% current and is %s to extruder" % (self.gear_percentage_run_current, "SYNCED" if self.mmu_toolhead.is_gear_synced_to_extruder() else "not synced")
         if self._standalone_sync:
             msg += ". Standalone sync mode is ENABLED"
-        if not self.sync_feedback_manager.is_enabled():
+        if self.sync_feedback_manager.is_enabled():
             msg += "\nSync feedback indicates filament in bowden is: %s" % self.sync_feedback_manager.get_sync_feedback_string(detail=True).upper()
             if not self.sync_feedback_manager.is_active():
                 msg += " (not currently active)"
