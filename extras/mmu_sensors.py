@@ -404,7 +404,7 @@ class MmuProportionalSensor:
 
     def get_status(self, eventtime):
         s = {
-            "enabled":          bool(self.runout_sensor.sensor_enabled),
+            "enabled":          bool(self.runout_helper.sensor_enabled),
             "value":            self.value,             # in [-1.0, 1.0] (mapped * multipler)
             "value_raw":        self.value_raw,         # raw
         }
