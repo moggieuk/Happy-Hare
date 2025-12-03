@@ -7759,7 +7759,11 @@ class Mmu:
                     # Always update gate map from pre-gate sensor
                     self._set_gate_status(gate, self.GATE_EMPTY)
 
-                elif eventtime >= self.runout_last_enable_time:
+                elif eventtime < self.runout_last_enable_time:
+                    self.log_debug("Assertion failure: Late sensor runout event on %s. Ignored" % sensor)
+                elif sensor and self.sensor_manager.check_sensor(sensor):
+                    self.log_debug("Assertion failure: Runout handler suspects sensor malfunction on %s. Ignored" % sensor)
+                else:
                     if sensor.startswith(self.SENSOR_PRE_GATE_PREFIX) and gate == self.gate_selected:
                         if self.enable_endless_spool and self.endless_spool_eject_gate == gate:
                             self.log_trace("Ignoring filament runout detected by %s because endless_spool_eject_gate is active on that gate" % sensor)
@@ -7777,8 +7781,6 @@ class Mmu:
 
                     else:
                         self.log_debug("Assertion failure: Unexpected/unhandled sensor runout event type on %s. Ignored" % sensor)
-                else:
-                    self.log_debug("Assertion failure: Late sensor runout event on %s. Ignored" % sensor)
 
                 if process_runout:
                     self._runout(event_type="runout", sensor=sensor) # Will send_resume_command() or fail and pause
