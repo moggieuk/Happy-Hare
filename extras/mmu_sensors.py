@@ -235,6 +235,107 @@ class MmuAdcSwitchSensor:
 
         return self._last_trigger_time
 
+# Analog Filament Pressure Sensor (FPS) used for proportional sync-feedback
+# Publishes mmu:sync_feedback values in range [-1.0, 1.0]
+# Maps [0..set_point] -> [-1..0]  and  [set_point..1] -> [0..1]
+# Range multiplier is applied to the ADC reading after set_point mapping.
+# Copyright (C) 2023-2025 JR Lomas (discord:knight_rad.iant) <lomas.jr@gmail.com>
+class MmuFpsSensor:
+    def __init__(self, config, name="sync_feedback_fps"):
+        self.printer = config.get_printer()
+        self.reactor = self.printer.get_reactor()
+        self.name = name
+
+        # config
+        self._pin = config.get('sync_feedback_fps_pin')
+        self._sample_count = config.getint('sync_feedback_fps_sample_count', 5)
+        self._sample_time = config.getfloat('sync_feedback_fps_sample_time', 0.005)
+        self._report_time = config.getfloat('sync_feedback_fps_report_time', 0.200)
+        self._reversed = config.getboolean('sync_feedback_fps_reversed', False)
+        self._set_point = config.getfloat('sync_feedback_fps_set_point', 0.5)
+        self._range_multiplier = config.getfloat('sync_feedback_fps_range_multiplier', 1.0)
+        self._use_kalico = config.getboolean('sync_feedback_fps_use_kalico', False) # ToDo: Find a better way to determine whether Kalico is in use
+
+        # state
+        self.fps_value = 0.0          # raw ADC 0..1 (after reversal if set)
+        self.fps_value_scaled = 0.0   # scaled ADC (after range_multiplier, clamped 0..1)
+        self.fps_value_offset = 0.0     # "offsetted" mapped value in [-1, 1] around set_point
+
+        # setup ADC
+        ppins = self.printer.lookup_object('pins')
+        self.adc = ppins.setup_pin('adc', self._pin)
+        if self._use_kalico:
+            self.adc.setup_minmax(self._sample_time, self._sample_count)
+        else:
+            self.adc.setup_adc_sample(self._sample_time, self._sample_count)
+        self.adc.setup_adc_callback(self._report_time, self._adc_callback)
+
+        # attach runout_helper (no gcode actions; just enable/disable plumbing to remove UI nag)
+        self.runout_helper = MmuRunoutHelper(
+            self.printer,
+            self.name,                  # name exposed to QUERY_/SET_FILAMENT_SENSOR
+            0,                          # event_delay (not used here)
+            insert_gcode=None,          # no gcode actions for analog FPS
+            remove_gcode=None,
+            runout_gcode=None,
+            insert_remove_in_print=False,
+            button_handler=None,        # no button handler for analog
+            switch_pin=self._pin
+        )
+
+        # expose status
+        self.printer.add_object(self.name, self)
+        self.printer.register_event_handler("klippy:ready", self._on_ready)
+
+    def _on_ready(self):
+        pass
+
+    def _remap(self, v_raw: float) -> float:
+        # 1) reverse if specified
+        v = 1.0 - v_raw if self._reversed else v_raw
+        
+        # 2) clamp ADC to [0,1] for safety
+        if v < 0.0: v = 0.0
+        if v > 1.0: v = 1.0
+        
+        # 3) map around set_point to [-1,1]
+        # guard extremes so we don't divide by ~0
+        sp = max(1e-6, min(1.0 - 1e-6, self._set_point))
+        if v >= sp:
+            out = (v - sp) / (1.0 - sp)
+        else:
+            out = (v - sp) / sp
+        
+        # store pre-multiplier mapped value for display    
+        self.fps_value_offset = out
+        
+        # 4) apply range multiplier AFTER mapping; clamp to [-1,1]
+        out = out * self._range_multiplier
+        
+        # final guard
+        return max(-1.0, min(1.0, out))
+
+    def _adc_callback(self, read_time, read_value):
+        # raw after optional reversal; keep unclamped here since _remap clamps
+        self.fps_value = 1.0 - read_value if self._reversed else read_value
+    
+        # mapped & scaled value
+        event_val = self._remap(read_value)  # _remap handles reverse + scaling + mapping
+        self.fps_value_scaled = event_val
+        
+        # publish proportional sync-feedback event
+        self.printer.send_event("mmu:sync_feedback", read_time, event_val)
+
+    def get_status(self, eventtime):
+        return {
+            "fps_value": float(self.fps_value),                 # raw (after reversal if set)
+            "fps_value_offset": float(self.fps_value_offset),   # after offset but before range multiplier
+            "fps_value_scaled": float(self.fps_value_scaled),   # mapped * multiplier
+            "set_point": float(self._set_point),
+            "range_multiplier": float(self._range_multiplier),
+        }
+
+
 class MmuSensors:
     def __init__(self, config):
         from .mmu import Mmu # For sensor names
@@ -294,6 +395,13 @@ class MmuSensors:
             if len(switch_pins) not in [1, num_units]:
                 raise config.error("Invalid number of pins specified with sync_feedback_compression_pin. Expected 1 or %d but counted %d" % (num_units, len(switch_pins)))
             self._create_mmu_sensor(config, Mmu.SENSOR_COMPRESSION, None, switch_pins, 0, button_handler=self._sync_compression_callback)
+        
+        # Setup analog Filament Pressure Sensor for proportional sync feedback
+        # Uses single analog input; publishes mmu:sync_feedback in [-1, 1]
+        fps_pin = config.get('sync_feedback_fps_pin', None)
+        if fps_pin:
+            self.sensors["sync_feedback_fps"] = MmuFpsSensor(config)
+
 
     def _create_mmu_sensor(self, config, name_prefix, gate, switch_pins, event_delay, insert=False, remove=False, runout=False, insert_remove_in_print=False, button_handler=None):
         switch_pins = [switch_pins] if not isinstance(switch_pins, list) else switch_pins
