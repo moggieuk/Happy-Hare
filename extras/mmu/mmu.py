@@ -3091,8 +3091,8 @@ class Mmu:
             # If this is the final "restore toolhead position" call then allow macro to restore position, then sanity check
             # Note: if user calls BASE_RESUME, print will restart but from incorrect position that could be restored later!
             if not self.is_paused() or operation == "resume":
-                # Controlled by the RESTORE=0 flag to MMU_LOAD, MMU_EJECT, MMU_CHANGE_TOOL (only real use case is final unload)
-                restore_macro = self.restore_position_macro if restore else "%s SKIP_RESTORE=1" % self.restore_position_macro
+                # Controlled by the RESTORE=0 flag to MMU_LOAD, MMU_EJECT, MMU_CHANGE_TOOL (only real use case is final unload and perhaps initial load)
+                restore_macro = "%s RESTORE=%d" % (self.restore_position_macro, int(restore))
                 # Restore macro position and clear saved
                 self.wrap_gcode_command(restore_macro) # Restore macro position and clear saved
 
@@ -6260,7 +6260,6 @@ class Mmu:
         if self.check_if_not_calibrated(self.CALIBRATED_ESSENTIAL, check_gates=[]): return # TODO Hard to tell what gates to check so don't check for now
         self._fix_started_state()
 
-        self.last_statistics = {}
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
         standalone = bool(gcmd.get_int('STANDALONE', 0, minval=0, maxval=1))
         restore = bool(gcmd.get_int('RESTORE', 1, minval=0, maxval=1))
@@ -6362,6 +6361,7 @@ class Mmu:
 
                         # Ok, now ready to park and perform the swap
                         self._next_tool = tool # Valid only during the change process - cleared in _continue_after()
+                        self.last_statistics = {}
                         self._save_toolhead_position_and_park('toolchange', next_pos=next_pos)
                         self._set_next_position(next_pos) # This can also clear next_position
                         self._track_time_start('total')
@@ -6413,7 +6413,6 @@ class Mmu:
         if self.check_if_not_calibrated(self.CALIBRATED_ESSENTIAL, check_gates=[self.gate_selected]): return
         self._fix_started_state()
 
-        self.last_statistics = {}
         in_bypass = self.gate_selected == self.TOOL_GATE_BYPASS
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1) or in_bypass)
         skip_purge = bool(gcmd.get_int('SKIP_PURGE', 0, minval=0, maxval=1))
@@ -6429,15 +6428,17 @@ class Mmu:
 
                     self._note_toolchange("> %s" % self._selected_tool_string())
 
-                    if not extruder_only:
+                    if extruder_only:
+                        self.load_sequence(bowden_move=0., extruder_only=True, purge=do_purge)
+
+                    else:
+                        self.last_statistics = {}
                         self._save_toolhead_position_and_park('load')
                         if self.tool_selected == self.TOOL_GATE_UNKNOWN:
                             self.log_error("Selected gate is not mapped to any tool. Will load filament but be sure to use MMU_TTG_MAP to assign tool")
                         self._select_and_load_tool(self.tool_selected, purge=do_purge)
                         self._persist_gate_statistics()
                         self._continue_after('load', restore=restore)
-                    else:
-                        self.load_sequence(bowden_move=0., extruder_only=True, purge=do_purge)
 
                     self._persist_swap_statistics()
 
@@ -6535,6 +6536,8 @@ class Mmu:
         restore = bool(gcmd.get_int('RESTORE', 1, minval=0, maxval=1))
         do_form_tip = self.FORM_TIP_STANDALONE if not skip_tip else self.FORM_TIP_NONE
 
+        self._note_toolchange("< %s" % self._selected_tool_string())
+
         if extruder_only:
             self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER, silent=True) # Ensure tool tip is performed
             self.unload_sequence(bowden_move=0., form_tip=do_form_tip, extruder_only=True)
@@ -6543,9 +6546,8 @@ class Mmu:
                 self.log_always("Please pull the filament out from the MMU")
         else:
             if self.filament_pos != self.FILAMENT_POS_UNLOADED:
-                self._save_toolhead_position_and_park('unload')
                 self.last_statistics = {}
-                self._note_toolchange("")
+                self._save_toolhead_position_and_park('unload')
                 self._unload_tool(form_tip=do_form_tip)
                 self._persist_gate_statistics()
                 self._continue_after('unload', restore=restore)
@@ -7244,7 +7246,7 @@ class Mmu:
                     if self.endless_spool_eject_gate > 0:
                         self.log_info("Ejecting filament remains to designated waste gate %d" % self.endless_spool_eject_gate)
                         self.select_gate(self.endless_spool_eject_gate)
-                    self._unload_tool()
+                    self._unload_tool(form_tip=self.FORM_TIP_STANDALONE)
                     self._eject_from_gate() # Push completely out of gate
                     self.select_gate(next_gate) # Necessary if unloaded to waste gate
                     self._remap_tool(self.tool_selected, next_gate)
@@ -8400,7 +8402,14 @@ class Mmu:
                             # Force initial eject
                             if filament_pos != self.FILAMENT_POS_UNLOADED:
                                 self.log_info("Unloading current tool prior to checking gates")
-                                self._unload_tool() # Can throw MmuError
+
+                                # Perform full unload sequence including parking
+                                self._note_toolchange("< %s" % self._selected_tool_string())
+                                self.last_statistics = {}
+                                self._save_toolhead_position_and_park('unload')
+                                self._unload_tool(form_tip=self.FORM_TIP_STANDALONE)
+                                self._persist_gate_statistics()
+                                self._continue_after('unload')
 
                             if len(gates_tools) > 1:
                                 self.log_info("Will check gates: %s" % ', '.join(str(g) for g,t in gates_tools))
@@ -8444,7 +8453,14 @@ class Mmu:
                                     elif tool_selected != self.TOOL_GATE_UNKNOWN:
                                         if filament_pos == self.FILAMENT_POS_LOADED:
                                             self.log_info("Restoring tool loaded prior to checking gates")
-                                            self._select_and_load_tool(tool_selected, purge=self.PURGE_NONE)
+
+                                            # Perform full load sequence including parking
+                                            self._note_toolchange("> %s" % self._selected_tool_string(tool=tool_selected))
+                                            self.last_statistics = {}
+                                            self._save_toolhead_position_and_park('load')
+                                            self._select_and_load_tool(tool_selected, purge=self.PURGE_STANDALONE) # if user has set up standalone purging, respect option and purge.
+                                            self._persist_gate_statistics()
+                                            self._continue_after('load')
                                         else:
                                             self.select_tool(tool_selected)
                                 except MmuError as ee:
