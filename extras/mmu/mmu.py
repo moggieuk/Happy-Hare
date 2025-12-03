@@ -299,7 +299,7 @@ class Mmu:
         self.default_idle_timeout = config.getint('default_idle_timeout', -1, minval=120)
         self.pending_spool_id_timeout = config.getint('pending_spool_id_timeout', default=20, minval=-1) # Not currently exposed
         self.disable_heater = config.getint('disable_heater', 600, minval=60)
-        self.default_extruder_temp = config.getfloat('default_extruder_temp', 200.)
+        self.default_extruder_temp = config.getfloat('default_extruder_temp', 200., minval=0.)
         self.extruder_temp_variance = config.getfloat('extruder_temp_variance', 2., minval=1.)
         self.gcode_load_sequence = config.getint('gcode_load_sequence', 0)
         self.gcode_unload_sequence = config.getint('gcode_unload_sequence', 0)
@@ -8065,7 +8065,7 @@ class Mmu:
                     name = name if name is not None else self.gate_filament_name[gate]
                     material = (material if material is not None else self.gate_material[gate]).upper()
                     color = (color if color is not None else self.gate_color[gate]).lower()
-                    temperature = temperature or self.gate_temperature
+                    temperature = temperature or self.gate_temperature[gate]
                     color = self._validate_color(color)
                     if color is None:
                         raise gcmd.error("Color specification must be in form 'rrggbb' or 'rrggbbaa' hexadecimal value (no '#') or valid color name or empty string")
