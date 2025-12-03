@@ -132,10 +132,10 @@ class MmuSensorManager:
 
     # Return dict of all sensor states (or None if sensor disabled)
     def get_all_sensors(self, inactive=False):
-        result = {}
+        names = {}
         for name, sensor in self.sensors.items() if not inactive else self.all_sensors.items():
-            result[name] = bool(sensor.runout_helper.filament_present) if sensor.runout_helper.sensor_enabled else None
-        return result
+            names[name] = bool(sensor.runout_helper.filament_present) if sensor.runout_helper.sensor_enabled else None
+        return names
 
     def has_sensor(self, name):
         return self.sensors[name].runout_helper.sensor_enabled if name in self.sensors else False
@@ -148,6 +148,9 @@ class MmuSensorManager:
 
     def get_unit_sensor_name(self, name, unit):
         return "unit_%d_%s" % (unit, name) # Must match mmu_sensors
+
+    def get_unitless_sensor_name(self, name):
+        return re.sub(r'unit_\d+_', '', name)
 
     # Get unit or gate specific endstop if it exists
     # Take generic name and look for "<unit>_genericName" and "genericName_<gate>"

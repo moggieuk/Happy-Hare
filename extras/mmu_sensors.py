@@ -340,13 +340,15 @@ class MmuProportionalSensor:
         self.adc.setup_adc_callback(self._report_time, self._adc_callback)
 
         # Attach runout_helper (no gcode actions; just enable/disable plumbing to remove UI nag)
+        clog_gcode   = ("%s SENSOR=%s" % (CLOG_GCODE,   name))
+        tangle_gcode = ("%s SENSOR=%s" % (TANGLE_GCODE, name))
         self.runout_helper = MmuRunoutHelper(
             self.printer,
             self.name,                  # Name exposed to QUERY_/SET_FILAMENT_SENSOR
             0,                          # Event_delay (not used here)
             gcodes={
-                "clog":   CLOG_GCODE,
-                "tangle": TANGLE_GCODE,
+                "clog":   clog_gcode,
+                "tangle": tangle_gcode,
             },
             insert_remove_in_print=False,
             button_handler=None,       # No button handler for analog

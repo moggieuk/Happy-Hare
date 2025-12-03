@@ -7750,23 +7750,27 @@ class Mmu:
         self._fix_started_state()
         eventtime = gcmd.get_float('EVENTTIME', self.reactor.monotonic())
         gate = gcmd.get_int('GATE', None)
-        sensor = gcmd.get('SENSOR', "")
+        raw_sensor = gcmd.get('SENSOR', "")
+        sensor = self.sensor_manager.get_unitless_sensor_name(raw_sensor)
         process_runout = False
 
         try:
             with self.wrap_sync_gear_to_extruder():
-                if sensor.startswith(self.SENSOR_PRE_GATE_PREFIX) and gate != self.gate_selected:
-                    # Always update gate map from pre-gate sensor
-                    self._set_gate_status(gate, self.GATE_EMPTY)
+                if eventtime < self.runout_last_enable_time:
+                    self.log_debug("Assertion failure: Late sensor runout event on %s. Ignored" % raw_sensor)
 
-                elif eventtime < self.runout_last_enable_time:
-                    self.log_debug("Assertion failure: Late sensor runout event on %s. Ignored" % sensor)
                 elif sensor and self.sensor_manager.check_sensor(sensor):
-                    self.log_debug("Assertion failure: Runout handler suspects sensor malfunction on %s. Ignored" % sensor)
+                    self.log_debug("Assertion failure: Runout handler suspects sensor malfunction on %s. Ignored" % raw_sensor)
+
                 else:
+                    # Always update gate map from pre-gate sensor
+                    if sensor.startswith(self.SENSOR_PRE_GATE_PREFIX) and gate != self.gate_selected:
+                        self._set_gate_status(gate, self.GATE_EMPTY)
+
+                    # Real runout to process...
                     if sensor.startswith(self.SENSOR_PRE_GATE_PREFIX) and gate == self.gate_selected:
                         if self.enable_endless_spool and self.endless_spool_eject_gate == gate:
-                            self.log_trace("Ignoring filament runout detected by %s because endless_spool_eject_gate is active on that gate" % sensor)
+                            self.log_trace("Ignoring filament runout detected by %s because endless_spool_eject_gate is active on that gate" % raw_sensor)
                         else:
                             process_runout = True
 
@@ -7780,7 +7784,7 @@ class Mmu:
                         raise MmuError("Filament runout occured at extruder. Manual intervention is required")
 
                     else:
-                        self.log_debug("Assertion failure: Unexpected/unhandled sensor runout event type on %s. Ignored" % sensor)
+                        self.log_debug("Assertion failure: Unexpected/unhandled sensor runout event on %s. Ignored" % raw_sensor)
 
                 if process_runout:
                     self._runout(event_type="runout", sensor=sensor) # Will send_resume_command() or fail and pause
@@ -7824,7 +7828,8 @@ class Mmu:
         self._fix_started_state()
         eventtime = gcmd.get_float('EVENTTIME', self.reactor.monotonic())
         gate = gcmd.get_int('GATE', None)
-        sensor = gcmd.get('SENSOR', "")
+        raw_sensor = gcmd.get('SENSOR', "")
+        sensor = self.sensor_manager.get_unitless_sensor_name(raw_sensor)
 
         try:
             with self.wrap_sync_gear_to_extruder():
@@ -7852,7 +7857,7 @@ class Mmu:
                     self.log_debug("Ignoring extruder insertion because %s" % msg)
 
                 else:
-                    self.log_debug("Assertion failure: Unexpected/unhandled sensor insert event. Ignored")
+                    self.log_debug("Assertion failure: Unexpected/unhandled sensor insert event on %s. Ignored" % raw_sensor)
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
 
@@ -7869,7 +7874,8 @@ class Mmu:
         self._fix_started_state()
         eventtime = gcmd.get_float('EVENTTIME', self.reactor.monotonic())
         gate = gcmd.get_int('GATE', None)
-        sensor = gcmd.get('SENSOR', "")
+        raw_sensor = gcmd.get('SENSOR', "")
+        sensor = self.sensor_manager.get_unitless_sensor_name(raw_sensor)
 
         try:
             with self.wrap_sync_gear_to_extruder():
@@ -7878,10 +7884,10 @@ class Mmu:
                     if not(self.enable_endless_spool and self.endless_spool_eject_gate > 0):
                         self._set_gate_status(gate, self.GATE_EMPTY)
                     else:
-                        self.log_trace("Ignoring filament removal detected by %s because endless_spool_eject_gate is active" % sensor)
+                        self.log_trace("Ignoring filament removal detected by %s because endless_spool_eject_gate is active" % raw_sensor)
 
                 else:
-                    self.log_debug("Assertion failure: Unexpected/unhandled sensor remove event. Ignored")
+                    self.log_debug("Assertion failure: Unexpected/unhandled sensor remove event on %s. Ignored" % raw_sensor)
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
 
