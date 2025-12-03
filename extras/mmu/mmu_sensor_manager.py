@@ -95,7 +95,7 @@ class MmuSensorManager:
                 if self.mmu.homing_extruder and name in [self.mmu.SENSOR_TOOLHEAD, self.mmu.SENSOR_COMPRESSION, self.mmu.SENSOR_TENSION]:
                     mcu_endstop.add_stepper(self.mmu.mmu_extruder_stepper.stepper)
             else:
-                logging.warning("MMU: Improper setup: Filament sensor %s is not defined in [mmu_sensors]" % name)
+                logging.warning("MMU: Filament sensor %s is not defined in [mmu_sensors]" % name)
 
     # Reset the "viewable" sensors used in UI (unit must be updated first)
     def reset_active_gate(self, gate):
