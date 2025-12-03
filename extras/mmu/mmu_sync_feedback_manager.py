@@ -26,7 +26,7 @@ import logging, math
 # MMU subcomponent clases
 from .mmu_sync_controller  import SyncControllerConfig, SyncController
 from .mmu_extruder_monitor import ExtruderMonitor
-from .mmu_shared import MmuError
+from .mmu_shared           import MmuError
 
 class MmuSyncFeedbackManager:
 
@@ -272,7 +272,7 @@ class MmuSyncFeedbackManager:
 
         if adjust_tension:
             try:
-                with self.wrap_sync_gear_to_extruder(): # Cannot adjust sync feedback sensor if gears are not synced
+                with self.mmu.wrap_sync_gear_to_extruder(): # Cannot adjust sync feedback sensor if gears are not synced
                     with self.mmu._wrap_suspend_runout_clog_flowguard(): # Avoid spurious runout during tiny corrective moves (unlikely)
                         actual,success = self.adjust_filament_tension()
                         if success:
