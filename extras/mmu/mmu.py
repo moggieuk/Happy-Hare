@@ -2009,7 +2009,7 @@ class Mmu:
         msg += "\nGear stepper at %d%% current and is %s to extruder" % (self.gear_percentage_run_current, "SYNCED" if self.mmu_toolhead.is_gear_synced_to_extruder() else "not synced")
         if self._standalone_sync:
             msg += ". Standalone sync mode is ENABLED"
-        if not self.sync_feedback_manager.is_enabled():
+        if self.sync_feedback_manager.is_enabled():
             msg += "\nSync feedback indicates filament in bowden is: %s" % self.sync_feedback_manager.get_sync_feedback_string(detail=True).upper()
             if not self.sync_feedback_manager.is_active():
                 msg += " (not currently active)"
