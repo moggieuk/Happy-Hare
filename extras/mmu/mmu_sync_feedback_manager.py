@@ -26,6 +26,7 @@ import logging, math
 # MMU subcomponent clases
 from .mmu_sync_controller  import SyncControllerConfig, SyncController
 from .mmu_extruder_monitor import ExtruderMonitor
+from .mmu_shared import MmuError
 
 class MmuSyncFeedbackManager:
 
