@@ -1071,7 +1071,7 @@ class SyncController:
 
     # ------------------------------------ PUBLIC API ------------------------------------
 
-    def reset(self, eventtime, rd_init, sensor_reading, simulation=False):
+    def reset(self, eventtime, rd_init, sensor_reading, log_file=None, simulation=False):
         """
         Full controller reset for a gear motor swap or new cold start.
         Seeds internal time to `t_s` and zeroes elapsed time.
@@ -1145,7 +1145,7 @@ class SyncController:
 
         # Setup special json debug log
         if self.cfg.log_sync:
-            self._init_log()
+            self._init_log(log_file)
 
         return self.update(eventtime, 0.0, sensor_reading, simulation=simulation)
 
@@ -1669,11 +1669,14 @@ class SyncController:
 
     # -------------- Logging helpers  --------------
 
-    def _init_log(self):
+    def _init_log(self, log_file=None):
         """
         (Re)create the log file and write a single header entry.
         Clears any existing file.
         """
+        if log_file is not None:
+            self.cfg.log_file = log_file
+
         header = {
             "header": {
                 "rd_start": self.cfg.rd_start,
