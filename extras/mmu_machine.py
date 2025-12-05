@@ -464,8 +464,8 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.gear_max_accel = config.getfloat('gear_max_accel', 500, above=0.)
         self.selector_max_velocity = config.getfloat('selector_max_velocity', 250, above=0.)
         self.selector_max_accel = config.getfloat('selector_max_accel', 1500, above=0.)
-        self.idler_max_velocity = config.getfloat('idler_max_velocity', 100, above=0.)
-        self.idler_max_accel = config.getfloat('self_idler_max_accel', 80, above=0.)
+        self.idler_max_velocity = config.getfloat('idler_max_velocity', 150, above=0.)
+        self.idler_max_accel = config.getfloat('self_idler_max_accel', 400, above=0.)
 
         self.max_velocity = max(self.selector_max_velocity, self.gear_max_velocity, self.idler_max_velocity)
         self.max_accel = max(self.selector_max_accel, self.gear_max_accel, self.idler_max_accel)
