@@ -127,7 +127,7 @@ class MmuSyncFeedbackManager:
     # Sync feedback manager public access...
     #
 
-    def set_default_rd(self):
+    def set_default_rd(self, gate):
         """
         Ensure correct starting rotation distance
         """
@@ -433,7 +433,7 @@ class MmuSyncFeedbackManager:
                     sensor_key = self.mmu.SENSOR_PROPORTIONAL
                 elif has_compression and not has_tension:
                     sensor_key = self.mmu.SENSOR_COMPRESSION
-                elif has tension and not has_compression:
+                elif has_tension and not has_compression:
                     sensor_key = self.mmu.SENSOR_TENSION
                 elif f_trigger == "clog":
                     sensor_key = self.mmu.SENSOR_COMPRESSION
