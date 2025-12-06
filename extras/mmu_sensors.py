@@ -175,8 +175,9 @@ class MmuRunoutHelper:
 
     def note_clog_tangle(self, event_type):
         #logging.info("MMU: filament sensor %s: %s event detected, Eventtime %.2f" % (self.name, event_type, eventtime))
+        now = self.reactor.monotonic()
         self.min_event_systime = self.reactor.NEVER # Prevent more callbacks until this one is complete
-        self.reactor.register_callback(lambda reh: self._runout_event_handler(eventtime, event_type))
+        self.reactor.register_callback(lambda reh: self._runout_event_handler(now, event_type))
 
 
     def enable_runout(self, restore):
