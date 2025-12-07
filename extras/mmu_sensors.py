@@ -414,7 +414,7 @@ class MmuProportionalSensor:
         }
 
         if self._debug:
-            s.extend({
+            s.update({
                 "value_signed":     self.value_signed, # raw after reversal if set
                 "value_offset":     self.value_offset, # after offset but before range multiplier
                 "set_point":        self._set_point,
