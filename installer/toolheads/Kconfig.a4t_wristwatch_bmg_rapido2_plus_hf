@@ -1,0 +1,15 @@
+config TOOLHEAD_TYPE_A4T_WRISTWATCH_BMG_RAPIDO2_PLUS_HF
+  bool "A4T Wristwatch BMG Rapido2 Plus HF"
+
+if TOOLHEAD_TYPE_A4T_WRISTWATCH_BMG_RAPIDO2_PLUS_HF
+  config PARAM_TOOLHEAD_TYPE
+    default "A4T Wristwatch BMG Rapido2 Plus HF"
+  config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
+    default "88.5"
+  config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
+    default "77"
+  config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
+    default "9.7"
+  config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
+    default "20.0"
+endif

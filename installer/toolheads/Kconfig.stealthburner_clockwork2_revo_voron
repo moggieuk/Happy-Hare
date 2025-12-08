@@ -1,0 +1,15 @@
+config TOOLHEAD_TYPE_STEALTHBURNER_CLOCKWORK2_REVO_VORON
+  bool "Stealthburner Clockwork2 Revo Voron"
+
+if TOOLHEAD_TYPE_STEALTHBURNER_CLOCKWORK2_REVO_VORON
+  config PARAM_TOOLHEAD_TYPE
+    default "Stealthburner Clockwork2 Revo Voron"
+  config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
+    default "85.1"
+  config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
+    default "75.8"
+  config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
+    default "16.6"
+  config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
+    default "2"
+endif
