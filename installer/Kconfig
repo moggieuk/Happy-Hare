@@ -32,15 +32,14 @@ to_bool = $(shell, $(1) && echo y || echo n)
 # Used to count arguments
 count   = $(shell, set -- $(1); echo $#)
 
-# Used to get the serial device paths (must be dynamic because of $(2) filtering
-serial_devices      := $(shell, ls /dev/serial/by-id/* 2>/dev/null)
-serial_device_count  = $(count, $(serial_devices))
-serial_device        = $(shell, echo $(serial_devices) | grep 'Klipper_$(2)' | tail -n +$(1) | head -n 1)0
-serial_config        = $(shell, basename '$(serial,$(1),$(2))' | sed 's/-/_/g' | awk '{print "CHOICE_SERIAL_DEVICE_" toupper($0)}')
-buffer_serial_config = $(shell, basename '$(serial,$(1),$(2))' | sed 's/-/_/g' | awk '{print "CHOICE_BUFFER_SERIAL_DEVICE_" toupper($0)}')
+# Used to dynamically get the serial device paths (ls is not expensive to run multiple time)
+serial_device        = $(shell, ls /dev/serial/by-id/* 2>/dev/null | grep 'Klipper_$(2)' | tail -n +$(1) | head -n 1)
+serial_exists        = $(to_bool, [ -e '$(serial_device,$(1),$(2))' ])
+serial_config        = $(shell, basename '$(serial_device,$(1),$(2))' | sed 's/-/_/g' | awk 'BEGIN{out="CHOICE_SERIAL_DEVICE_OTHER"} NF && $$0!="." {out="CHOICE_SERIAL_DEVICE_" toupper($$0)} END{print out}')
+buffer_serial_config = $(shell, basename '$(serial_device,$(1),$(2))' | sed 's/-/_/g' | awk 'BEGIN{out="CHOICE_BUFFER_SERIAL_DEVICE_OTHER"} NF && $$0!="." {out="CHOICE_BUFFER_SERIAL_DEVICE_" toupper($$0)} END{print out}')
 
 # Grab the UUIDs that are not in use by klipper as a space-separated list, e.g. "43a8... 25ff... aaba..."
-canbus_query        := $(shell, echo "$(KLIPPER_HOME)/klippy-env/bin/python $(KLIPPER_HOME)/scripts/canbus_query.py can0")
+canbus_query        := $(shell, echo "$(KLIPPER_HOME)/../klippy-env/bin/python $(KLIPPER_HOME)/scripts/canbus_query.py can0")
 canbus_uuids        := $(shell, $(canbus_query) 2>/dev/null | sed -n 's/.*canbus_uuid=\([0-9a-fA-F][0-9a-fA-F]*\).*/\1/p')
 canbus_uuid_count   := $(count, $(canbus_uuids))
 canbus_uuid          = $(shell, echo $(canbus_uuids) | awk -v n=$(1) '{ print $n }')

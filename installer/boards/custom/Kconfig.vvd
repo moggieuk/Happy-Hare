@@ -5,10 +5,12 @@ if BOARD_TYPE_VVD_1_0
   config PARAM_BOARD_TYPE
     default "VVD10"
 
+  choice MCU_CONNECTION_TYPE
+    default CHOICE_MCU_CONNECTION_TYPE_SERIAL
+  endchoice
   choice SERIAL_DEVICE
     default $(serial_config,1,stm32)
   endchoice
-
   choice BUFFER_SERIAL_DEVICE
     default $(buffer_serial_config,1,stm32)
   endchoice
