@@ -393,12 +393,12 @@ sync_purge: 0				# Synchronize during standalone purging (last part of load)
 sync_feedback_enabled: 0		# Turn off even if sensor is installed and active
 sync_feedback_buffer_range: 6		# Travel in "buffer" between compression/tension or one sensor and end (see above)
 sync_feedback_buffer_maxrange: 12	# Absolute maximum end-to-end travel (mm) provided by buffer (see above)
-sync_feedback_speed_multiplier: 4	# % - "twolevel" mmu speed delta to keep filament neutral in buffer (recommend 4%)
-sync_feedback_boost_multiplier: 5	# % - "twolevel" extra mmu speed boost for finding initial neutral position (recommend 5%)
+sync_feedback_speed_multiplier: 5	# % "twolevel" gear speed delta to keep filament neutral in buffer (recommend 5%)
+sync_feedback_boost_multiplier: 3	# % "twolevel" extra gear speed boost for finding initial neutral position (recommend 3%)
 sync_feedback_extrude_threshold: 5	# Extruder movement (mm) for updates (keep small but set > retract distance)
 
-# If defined this forces debugging to a telemetry log file /tmp/sync.jsonl. This is great if trying to tune clog/tangle detection
-# or for getting help on the Happy Hare forum. To plot graph of sync-feedback operation, run:
+# If defined this forces debugging to a telemetry log file "sync_<gate>.jsonl". This is great if trying to tune clog/tangle
+# detection or for getting help on the Happy Hare forum. To plot graph of sync-feedback operation, run:
 #  ~/Happy-Hare/utils/plot_sync_feedback.sh
 #
 sync_feedback_debug_log: 0		# 0 = disable (normal opertion), 1 = enable telemetry log (for debugging)

@@ -636,7 +636,7 @@ class _AutotuneEngine:
         dh_sum = 0.0
         for (dl, dh) in self._tl_cycles[-self._tl_cycle_window:]:
             tot = max(1e-12, dl + dh)
-            fh_list.append(dh / tot)  # per-cycle fraction (for variance)
+            fh_list.append(dh / tot) # per-cycle fraction (for variance)
             dl_sum += dl
             dh_sum += dh
 
@@ -697,7 +697,7 @@ class _AutotuneEngine:
 
         if n >= 2:
             mean_sq = sum(v*v for v in vals) / float(n)
-            var = max(0.0, mean_sq - m*m) * n / float(max(1, n - 1))  # unbiased
+            var = max(0.0, mean_sq - m*m) * n / float(max(1, n - 1)) # unbiased
             s = math.sqrt(var)
         else:
             s = 0.0
@@ -816,7 +816,7 @@ class _FlowguardEngine:
         Returns: Status Dict {"trigger", "reason", ...}
         """
         cfg = self.ctrl.cfg
-        effort = self._relief_effort(d_ext)  # +ve => compression effort, -ve => tension effort
+        effort = self._relief_effort(d_ext) # +ve => compression effort, -ve => tension effort
 
         # Arming logic to prevent false triggers on startup if thresholds are tight
         self._arm_motion_mm += d_ext
@@ -1078,7 +1078,9 @@ class SyncController:
         """
         cfg = self.cfg
         self._set_twolevel_active()
+
         self._log_ready = False
+        self._current_log_file = log_file or cfg.log_file
 
         # Rotation distance & baseline (always rebase)
         self.rd_current = rd_init
@@ -1145,7 +1147,7 @@ class SyncController:
 
         # Setup special json debug log
         if self.cfg.log_sync:
-            self._init_log(log_file)
+            self._init_log()
 
         return self.update(eventtime, 0.0, sensor_reading, simulation=simulation)
 
@@ -1297,7 +1299,7 @@ class SyncController:
         if sensor_type == 'P':
             sensor_type += " (TwoLevel mode)" if self.twolevel_active else " (EKF mode)"
         return sensor_type
- 
+
 
     # --------------------------------- Internal Impl ------------------------------------
 
@@ -1415,7 +1417,7 @@ class SyncController:
         s.P12 = FP11*F21 + FP12*F22
         s.P22 = FP21*F21 + FP22*F22 + cfg.q_c
 
-        s.x = max(-1.25, min(1.25, x_pred))  # Soft clamp in estimate space
+        s.x = max(-1.25, min(1.25, x_pred)) # Soft clamp in estimate space
         s.c = max(cfg.c_min, min(cfg.c_max, c_pred))
 
 
@@ -1644,7 +1646,7 @@ class SyncController:
         if cfg.sensor_type in ['CO', 'TO']:
 
             def triangle_half(p, lo=0.3, hi=0.8):
-                base = (1.0 - 2.0*p) if p <= 0.5 else (2.0*p - 1.0)  # in [0,1]
+                base = (1.0 - 2.0*p) if p <= 0.5 else (2.0*p - 1.0) # in [0,1]
                 return lo + (hi - lo) * base
 
             if cfg.sensor_type == "CO":
@@ -1674,9 +1676,6 @@ class SyncController:
         (Re)create the log file and write a single header entry.
         Clears any existing file.
         """
-        if log_file is not None:
-            self.cfg.log_file = log_file
-
         header = {
             "header": {
                 "rd_start": self.cfg.rd_start,
@@ -1687,7 +1686,7 @@ class SyncController:
             }
         }
 
-        with open(self.cfg.log_file, "a", encoding="utf-8") as f:
+        with open(self._current_log_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(header, ensure_ascii=False) + "\n")
         self._log_ready = True
 
