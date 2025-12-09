@@ -19,7 +19,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import logging, math, time
+import logging, math, time, os
 
 # Happy Hare imports
 
@@ -127,17 +127,16 @@ class MmuSyncFeedbackManager:
     # Sync feedback manager public access...
     #
 
-    def set_default_rd(self, gate=None):
+    def set_default_rd(self):
         """
         Ensure correct starting rotation distance
         """
-        if gate == None:
-            gate = self.mmu.gate_selected
+        gate = self.mmu.gate_selected
+        if gate < 0: return
 
-        rd = self.mmu.get_rotation_distance(gate)
-        if gate >= 0:
-            self.mmu.log_debug("MmuSyncFeedbackManager: Setting default rotation distance for gate %d to %.4f" % (gate, rd))
-        self.mmu.set_rotation_distance(rd)
+        rd = self.mmu.calibration_manager.get_gear_rd(gate)
+        self.mmu.log_debug("MmuSyncFeedbackManager: Setting default rotation distance for gate %d to %.4f" % (gate, rd))
+        self.mmu.set_gear_rotation_distance(rd)
 
 
     def is_enabled(self):
@@ -199,7 +198,17 @@ class MmuSyncFeedbackManager:
 
         # All sensors must be disabled...
         return 0, False
-        
+
+
+    def wipe_debug_logs(self):
+        for gate in range(self.num_gates):
+            log_path = self._debug_log_path(gate)
+            if os.path.exists(log_path):
+                try:
+                    os.remove(log_path)
+                except OSError as e:
+                    self.mmu.log_debug("Unable to wipe sync feedback debug log: %s")
+
 
     #
     # GCODE Commands -----------------------------------------------------------
@@ -311,6 +320,18 @@ class MmuSyncFeedbackManager:
     # Internal implementation --------------------------------------------------
     #
 
+    def _debug_log_path(self, gate=None):
+        if gate is None: gate = self.mmu.gate_selected
+
+        logfile_path = self.mmu.printer.start_args['log_file']
+        dirname = os.path.dirname(logfile_path)
+        if dirname is None:
+            sync_log = '/tmp/sync_%d.jsonl' % self.mmu.gate_selected
+        else:
+            sync_log = dirname + '/mmu.log' % self.mmu.gate_selected
+        return sync_log
+
+
     def _handle_mmu_synced(self, eventtime=None):
         """
         Event indicating that gear stepper is now synced with extruder
@@ -336,8 +357,8 @@ class MmuSyncFeedbackManager:
         # Reset controller with initial rd and sensor reading (will also reset autotune and flowguard)
         starting_state = self._get_sensor_state()
         self.estimated_state = starting_state
-        rd_start = self.mmu.get_rotation_distance(self.mmu.gate_selected)
-        status = self.ctrl.reset(eventtime, rd_start, starting_state, log_file="/tmp/sync_%d.jsonl" % self.mmu.gate_selected)
+        rd_start = self.mmu.calibration_manager.get_gear_rd()
+        status = self.ctrl.reset(eventtime, rd_start, starting_state, log_file=self._debug_log_path())
         self._process_status(status) # May adjust rotation_distance
 
         # Turn on extruder movement events
@@ -363,8 +384,8 @@ class MmuSyncFeedbackManager:
         self.active = False
 
         if self.new_autotuned_rd is not None:
-            self.mmu.log_info("MmuSyncFeedbackManager: Persisted Autotune rd recommendation: %.4f\n" % self.new_autotuned_rd)
-            self.mmu.log_warning("PAUL: TODO: not really persisted yet!! (must also adjust bowden length for gate")
+            self.mmu.log_info("MmuSyncFeedbackManager: New Autotuned rotation distance (%.4f) for gate %d\n" % (self.new_autotuned_rd, self.mmu.gate_selected))
+            self.mmu.calibration_manager.update_gear_rd(self.new_autotuned_rd)
 
         # Restore default (last tuned) rotation distance
         self.set_default_rd()
@@ -410,7 +431,7 @@ class MmuSyncFeedbackManager:
 
     def _process_status(self, status):
         """
-        Common logic to process the rd recommendations of the sync controller
+        Common logic to process the rotation distance recommendations of the sync controller
         """
         output = status['output']
 
@@ -448,9 +469,6 @@ class MmuSyncFeedbackManager:
             else:
                 self.mmu.log_debug("MmuSyncFeedbackManager: FlowGuard detected a %s, but handling is disabled.\nReason for trip: %s" % (f_trigger, f_reason))
 
-            # PAUL -- don't think we need this because reset on next sync(). Being lazy allows the mainsail UI to display cause..
-            # self.ctrl.flowguard.reset()
-
         # Handle new autotune suggestions
         autotune = output['autotune']
         rd = autotune.get('rd', None)
@@ -469,7 +487,7 @@ class MmuSyncFeedbackManager:
         rd_current, rd_prev = output['rd_current'], output['rd_prev']
         if rd_current != rd_prev:
             self.mmu.log_debug("MmuSyncFeedbackManager: Altered rotation distance for gate %d from %.4f to %.4f" % (self.mmu.gate_selected, rd_prev, rd_current))
-            self.mmu.set_rotation_distance(rd_current)
+            self.mmu.set_gear_rotation_distance(rd_current)
 
 
     def _init_controller(self):
@@ -478,7 +496,7 @@ class MmuSyncFeedbackManager:
         and debugging purposes so instantiate it here with current config
         Returns: the SyncController object
         """
-        rd_start = self.mmu.get_rotation_distance(self.mmu.gate_selected)
+        rd_start = self.mmu.calibration_manager.get_gear_rd()
         cfg = SyncControllerConfig(
             log_sync = bool(self.sync_feedback_debug_log),
             buffer_range_mm = self.sync_feedback_buffer_range,
