@@ -201,13 +201,13 @@ class MmuSyncFeedbackManager:
 
 
     def wipe_debug_logs(self):
-        for gate in range(self.num_gates):
+        for gate in range(self.mmu.num_gates):
             log_path = self._debug_log_path(gate)
             if os.path.exists(log_path):
                 try:
                     os.remove(log_path)
                 except OSError as e:
-                    self.mmu.log_debug("Unable to wipe sync feedback debug log: %s")
+                    self.mmu.log_debug("Unable to wipe sync feedback debug log: %s" % log_path)
 
 
     #
@@ -325,11 +325,11 @@ class MmuSyncFeedbackManager:
 
         logfile_path = self.mmu.printer.start_args['log_file']
         dirname = os.path.dirname(logfile_path)
-        if dirname is None:
-            sync_log = '/tmp/sync_%d.jsonl' % self.mmu.gate_selected
-        else:
-            sync_log = dirname + '/mmu.log' % self.mmu.gate_selected
-        return sync_log
+
+        if not dirname:
+            dirname = "/tmp"
+
+        return os.path.join(dirname, 'sync_%d.jsonl' % self.mmu.gate_selected)
 
 
     def _handle_mmu_synced(self, eventtime=None):
