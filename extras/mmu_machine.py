@@ -61,6 +61,7 @@ VENDOR_QUATTRO_BOX    = "QuattroBox"
 VENDOR_MMX            = "MMX"
 VENDOR_VVD            = "VVD"
 VENDOR_KMS            = "KMS"
+VENDOR_EMU            = "EMU"
 VENDOR_OTHER          = "Other"
 
 UNIT_ALT_DISPLAY_NAMES = {
@@ -70,7 +71,7 @@ UNIT_ALT_DISPLAY_NAMES = {
     VENDOR_VVD:          "BTT VVD",
 }
 
-VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_ANGRY_BEAVER, VENDOR_BOX_TURTLE, VENDOR_NIGHT_OWL, VENDOR_3MS, VENDOR_3D_CHAMELEON, VENDOR_PICO_MMU, VENDOR_QUATTRO_BOX, VENDOR_MMX, VENDOR_VVD, VENDOR_KMS, VENDOR_OTHER]
+VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_ANGRY_BEAVER, VENDOR_BOX_TURTLE, VENDOR_NIGHT_OWL, VENDOR_3MS, VENDOR_3D_CHAMELEON, VENDOR_PICO_MMU, VENDOR_QUATTRO_BOX, VENDOR_MMX, VENDOR_VVD, VENDOR_KMS, VENDOR_EMU, VENDOR_OTHER]
 
 
 # Define type/style of MMU and expand configuration for convenience. Validate hardware configuration
@@ -233,6 +234,14 @@ class MmuMachine:
             has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_KMS:
+            selector_type = 'VirtualSelector'
+            variable_rotation_distances = 1
+            variable_bowden_lengths = 0
+            require_bowden_move = 1
+            filament_always_gripped = 1
+            has_bypass = 0
+
+        elif self.mmu_vendor == VENDOR_EMU:
             selector_type = 'VirtualSelector'
             variable_rotation_distances = 1
             variable_bowden_lengths = 0
