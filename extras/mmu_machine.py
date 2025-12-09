@@ -244,10 +244,10 @@ class MmuMachine:
         elif self.mmu_vendor == VENDOR_EMU:
             selector_type = 'VirtualSelector'
             variable_rotation_distances = 1
-            variable_bowden_lengths = 0
+            variable_bowden_lengths = 1
             require_bowden_move = 1
             filament_always_gripped = 1
-            has_bypass = 0
+            has_bypass = 1
 
         # Still allow MMU design attributes to be altered or set for custom MMU
         self.selector_type = config.getchoice('selector_type', {o: o for o in ['LinearSelector', 'VirtualSelector', 'MacroSelector', 'RotarySelector', 'ServoSelector', 'IndexedSelector']}, selector_type)
