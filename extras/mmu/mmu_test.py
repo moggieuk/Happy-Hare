@@ -88,6 +88,7 @@ class MmuTest:
             self.mmu.log_info("RUN_SEQUENCE=1 : Run through the set of sequence macros tracking time")
             self.mmu.log_info("GET_POS=1 : Fetch the current filament position state")
             self.mmu.log_info("SET_POS=<pos_state> : Set the current filament position state")
+            self.mmu.log_info("SET_RD=<gear_rd> [GATE=]: Update the specified gate's rotation distance")
             self.mmu.log_info("GET_POSITION=1 : Fetch the current filament position")
             self.mmu.log_info("SET_POSITION=<pos> : Fetch the current filament position")
             self.mmu.log_info("SYNC_LOAD_TEST=1 : Hammer stepper syncing and movement. Params: LOOP|HOME|WAIT")
@@ -425,10 +426,19 @@ class MmuTest:
                 gear_only = bool(gcmd.get_int('GEAR_ONLY', 0, minval=0, maxval=1))
                 self.mmu.mmu_toolhead.sync(MmuToolHead.GEAR_ONLY if gear_only else None)
 
+
             pos = gcmd.get_float('SET_POS', -1, minval=0, maxval=10)
             if pos >= 0:
                 have_run_test = True
                 self.mmu._set_filament_pos_state(pos)
+
+
+            rd = gcmd.get_float('SET_RD', None, above=0)
+            if rd is not None:
+                have_run_test = True
+                gate = gcmd.get_int('GATE', -1, minval=-2, maxval=self.mmu.num_gates)
+                if gate >= 0:
+                    self.mmu.calibration_manager.update_gear_rd(rd, gate)
 
 
             position = gcmd.get_float('SET_POSITION', -1, minval=0)
