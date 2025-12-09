@@ -201,6 +201,13 @@ class MmuSyncFeedbackManager:
 
 
     def wipe_debug_logs(self):
+        """
+        Called to wipe any sync debug files on print start
+        """
+        if self.active:
+            # Can't wipe if already synced and active
+            return
+
         for gate in range(self.mmu.num_gates):
             log_path = self._debug_log_path(gate)
             if os.path.exists(log_path):
