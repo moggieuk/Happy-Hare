@@ -1698,6 +1698,6 @@ class SyncController:
         if not self._log_ready:
             return
 
-        with open(self.cfg.log_file, "a", encoding="utf-8") as f:
+        with open(self._current_log_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
