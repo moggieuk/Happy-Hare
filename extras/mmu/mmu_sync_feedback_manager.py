@@ -165,14 +165,14 @@ class MmuSyncFeedbackManager:
         return "disabled"
 
 
-    def enable_flowguard(self):
+    def activate_flowguard(self):
         if self.flowguard_enabled and not self.flowguard_active:
             self.flowguard_active = True
             self.ctrl.flowguard.reset()
             self.mmu.log_info("MmuSyncFeedbackManager: FlowGuard monitoring activated")
 
 
-    def disable_flowguard(self):
+    def deactivate_flowguard(self):
         if self.flowguard_enabled and self.flowguard_active:
             self.flowguard_active = False
             self.mmu.log_info("MmuSyncFeedbackManager: FlowGuard monitoring deactivated")
@@ -452,7 +452,7 @@ class MmuSyncFeedbackManager:
         f_trigger = self.flowguard_status.get('trigger', None)
         f_reason = self.flowguard_status.get('reason', "")
         if f_trigger:
-            if self.flowguard_enabled:
+            if self.flowguard_enabled and self.flowguard_active:
                 self.mmu.log_error("MmuSyncFeedbackManager: FlowGuard detected a %s.\nReason for trip: %s" % (f_trigger, f_reason))
 
                 # Pick most appropriate sensor to assign event to (primariliy for optics)
@@ -474,6 +474,7 @@ class MmuSyncFeedbackManager:
                 sensor = sm.sensors.get(sensor_key)
 
                 sensor.runout_helper.note_clog_tangle(f_trigger)
+                self.deactivate_flowguard()
             else:
                 self.mmu.log_debug("MmuSyncFeedbackManager: FlowGuard detected a %s, but handling is disabled.\nReason for trip: %s" % (f_trigger, f_reason))
 

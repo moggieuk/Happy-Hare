@@ -895,20 +895,16 @@ class _FlowguardEngine:
 
             comp_motion_trig = (abs(self._comp_motion_mm) >= cfg.flowguard_motion_mm)
             comp_relief_trig = (abs(self._relief_comp_mm) >= cfg.flowguard_relief_mm)
-            self._headroom -= self._comp_motion_mm
+            self._headroom        -= self._comp_motion_mm
             self._relief_headroom -= self._relief_comp_mm
 
-            if comp_motion_trig or comp_relief_trig:
-                crossed_motion = (abs(prev_comp_motion) < cfg.flowguard_motion_mm) and comp_motion_trig
-                crossed_relief = (abs(prev_comp_relief) < cfg.flowguard_relief_mm) and comp_relief_trig
-                if crossed_motion and not crossed_relief:
-                    test = "flowguard_motion"
-                elif crossed_relief and not crossed_motion:
-                    test = "flowguard_relief"
-                elif crossed_motion and crossed_relief:
-                    test = "flowguard_motion and flowguard_relief"
+            if (comp_motion_trig or comp_relief_trig) and not self._trigger:
+                if comp_relief_trig and not comp_motion_trig:
+                    test = "flowguard_max_relief"
+                elif comp_motion_trig and comp_relief_trig:
+                    test = "flowguard_max_motion and flowguard_max_relief"
                 else:
-                    test = "none"
+                    test = "flowguard_max_motion"
                 self._trigger = "clog"
                 self._reason = "Compression stuck after %.2f mm motion and %.2f mm relief (triggering parameter: %s)" % (
                     abs(self._comp_motion_mm), abs(self._relief_comp_mm), test
@@ -935,20 +931,16 @@ class _FlowguardEngine:
 
             tens_motion_trig = (abs(self._tens_motion_mm) >= cfg.flowguard_motion_mm)
             tens_relief_trig = (abs(self._relief_tens_mm) >= cfg.flowguard_relief_mm)
-            self._headroom -= self._tens_motion_mm
+            self._headroom        -= self._tens_motion_mm
             self._relief_headroom -= self._relief_tens_mm
 
-            if tens_motion_trig or tens_relief_trig:
-                crossed_motion = (abs(prev_tens_motion) < cfg.flowguard_motion_mm) and tens_motion_trig
-                crossed_relief = (abs(prev_tens_relief) < cfg.flowguard_relief_mm) and tens_relief_trig
-                if crossed_motion and not crossed_relief:
-                    test = "flowguard_motion"
-                elif crossed_relief and not crossed_motion:
-                    test = "flowguard_relief"
-                elif crossed_motion and crossed_relief:
-                    test = "flowguard_motion and flowguard_relief"
+            if (tens_motion_trig or tens_relief_trig) and not self._trigger:
+                if tens_relief_trig and not tens_motion_trig:
+                    test = "flowguard_max_relief"
+                elif tens_motion_trig and tens_relief_trig:
+                    test = "flowguard_max_motion and flowguard_max_relief"
                 else:
-                    test = "none"
+                    test = "flowguard_max_motion"
                 self._trigger = "tangle"
                 self._reason = "Tension stuck after %.2f mm motion and %.2f mm relief (triggering parameter: %s)" % (
                     abs(self._tens_motion_mm), abs(self._relief_tens_mm), test
@@ -1183,7 +1175,7 @@ class SyncController:
             flowguard_out = self.flowguard.update_flowguard(d_ext, int(sensor_reading) if cfg.sensor_type in ("CO", "TO", "D") else sensor_reading)
 
             # Determine immediate RD target from two-level rules
-            prev_level = self._os_target_level  # Capture before helper changes (detect flips)
+            prev_level = self._os_target_level # Capture before helper changes (detect flips)
             rd_target = self._twolevel_rd_target(rd_prev, d_ext, sensor_reading)
             flipped_this_tick = (self._os_target_level != prev_level)
 
@@ -1204,7 +1196,7 @@ class SyncController:
             flowguard_out = self.flowguard.update_flowguard(d_ext, sensor_reading)
 
             # Compute immediate RD target
-            desired_eff = self._desired_effective_gear_mm(d_ext, dt_s) # = ĉ * u_des
+            desired_eff = self._desired_effective_gear_mm(d_ext, dt_s) # = c_hat * u_des
             c_hat = max(cfg.c_min, min(cfg.c_max, self.state.c))
             u_des = desired_eff / c_hat
             rd_target = self._rd_from_desired_gear_mm(d_ext, u_des)
