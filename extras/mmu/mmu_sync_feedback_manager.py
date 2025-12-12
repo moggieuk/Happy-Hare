@@ -30,9 +30,9 @@ from .mmu_shared           import MmuError
 
 class MmuSyncFeedbackManager:
 
-    SF_STATE_NEUTRAL      = 0
-    SF_STATE_COMPRESSION  = 1
-    SF_STATE_TENSION      = -1
+    SF_STATE_NEUTRAL     = 0
+    SF_STATE_COMPRESSION = 1
+    SF_STATE_TENSION     = -1
     
     def __init__(self, mmu):
         self.mmu = mmu
@@ -141,14 +141,14 @@ class MmuSyncFeedbackManager:
 
     def is_enabled(self):
         """
-        This is whether the user has enabled the sync-feedback (the "big" switch)
+        This is whether the user has enabled the sync-feedback feature (the "big" switch)
         """
         return self.sync_feedback_enabled
 
 
     def is_active(self):
         """
-        Returns whether the sync-feedback is currently active.
+        Returns whether the sync-feedback is currently active (when synced)
         """
         return self.active
 

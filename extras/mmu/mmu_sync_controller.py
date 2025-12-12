@@ -986,12 +986,12 @@ class _FlowguardEngine:
 
     def status(self):
         s = {
-            "trigger": self._trigger,
-            "reason": self._reason,
+            "active": self._armed,
             "level": self._level,
             "max_clog": self._max_clog,
             "max_tangle": self._max_tangle,
-            "active": self._armed
+            "trigger": self._trigger,
+            "reason": self._reason,
         }
 
         # When debug logging
