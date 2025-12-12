@@ -437,8 +437,11 @@ class _AutotuneEngine:
           - Otherwise, only query the PD near-neutral window.
         If rd is recommended, run through shared statistical tests
         """
+        status = {"rd": None, "note": "", "save": False}
+
         if self._paused:
-            return {"rd": None, "note": "paused"}
+            status["note"] = "Autotune: Paused"
+            return status
 
         cfg = self.ctrl.cfg
 
@@ -453,34 +456,40 @@ class _AutotuneEngine:
         req_mm = cfg.autotune_cooldown_mm
         req_s  = cfg.autotune_cooldown_s
         if since_mm < req_mm or since_s < req_s:
-            return {"rd": None, "note": None}
+            return status
 
         if self.ctrl.twolevel_active:
             rec_rd, note = self._recommend_rd_from_twolevel()
         else:
             rec_rd, note = self._recommend_rd_from_ekf_path(d_ext, dt_s)
 
+
         # No recommendation but optional reject note
         if rec_rd is None:
-            return {"rd": None, "note": "Autotune: {} {}".format(travel, note) if note else None}
+            status["note"] = "Autotune: {} {}".format(travel, note) if note else ""
+            return status
 
         # Perform final shared checks on recommendation...
 
         if not (self.ctrl.rd_low <= rec_rd <= self.ctrl.rd_high):
-            return {"rd": None, "note": "Autotune: {} Rejected rd {:.4f} because out of bounds!".format(travel, rec_rd)}
+            status["note"] = "Autotune: {} Rejected rd {:.4f} because out of bounds!".format(travel, rec_rd)
+            return status
 
         # This makes is progressively harder to accept autotune
         rec_rd, _note = self._autotune_confident(rec_rd)
         if rec_rd is None:
-            return {"rd": None, "note": "Autotune: {} {}".format(travel, _note) if _note else None}
+            status["note"] = "Autotune: {} {}".format(travel, _note) if _note else ""
+            return status
 
         # Do nothing on truly trivial changes
         if not report_trivial and math.isclose(rec_rd, self._autotune_current, abs_tol=1e-3):
-            return {"rd": None, "note": "Autotune: {} Rejected rd {:.4f} because too trivial a delta".format(travel, rec_rd)}
+            status["note"] = "Autotune: {} Rejected rd {:.4f} because too trivial a delta".format(travel, rec_rd)
+            return status
 
         # We have new tuned rd value...
         self._autotune_current = rec_rd
-        status = {"rd": rec_rd, "note": "Autotune: {} {} and {}".format(travel, note, _note)}
+        status["rd"] = rec_rd
+        status["note"] = "Autotune: {} {} and {}".format(travel, note, _note)
 
         # Should we recommend saving as new default reference?
         if self._rd_cert_last_score >= self._autotune_min_cert_score:
@@ -522,7 +531,16 @@ class _AutotuneEngine:
 
 
     def get_rec_rd(self):
+        """
+        Return the current recommended RD
+        """
         return self._autotune_current
+
+    def get_tuned_rd(self):
+        """
+        Return the last tuned RD. Initially this is the starting value
+        """
+        return self._autotune_baseline
 
 
     # ---------------------------- Internal Impl -----------------------------
@@ -1259,6 +1277,7 @@ class SyncController:
             "output": {
                 "rd_prev": rd_prev,
                 "rd_current": self.rd_current,
+                "rd_tuned": self.autotune.get_tuned_rd(),
                 "sensor_ui": sensor_expected,
                 "flowguard": flowguard_out, # Keys: "trigger", "reason", "level", "max_clog", "max_tangle", "active"
                 "autotune": autotune_out,   # Keys: "rd", "note", "save"
