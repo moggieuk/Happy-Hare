@@ -1337,9 +1337,11 @@ class Mmu:
 
             # Sync with spoolman. Delay as long as possible to maximize the chance it is contactable after startup/reboot
             self._spoolman_sync()
+
         except Exception as e:
             logging.error(traceback.format_exc())
             self.log_error('Error booting up MMU: %s' % str(e))
+
         self.mmu_macro_event(self.MACRO_EVENT_RESTART)
 
     # Wrap execution of gcode command to allow for control over:
@@ -2592,6 +2594,7 @@ class Mmu:
             msg += "3) 'CUT=1' holding blade in for: variable_blade_pos\n"
             msg += "Desired gate should be selected but the filament unloaded\n"
             msg += "('SAVE=0' to run without persisting results)\n"
+            msg += "Note: On Type-B MMU's you might experience noise/grinding as movement limits are explored (reduce gear stepper current if a problem)\n"
             self.log_always(msg)
             return
 
@@ -2712,7 +2715,7 @@ class Mmu:
 
         try:
             with self.wrap_sync_gear_to_extruder():
-                with self._wrap_gear_current(percent=self.sync_gear_current, reason="while calibrating sync_feedback psensor"):
+                with self.wrap_gear_current(percent=self.sync_gear_current, reason="while calibrating sync_feedback psensor"):
                     self.selector.filament_drive()
                     self.calibrating = True
                     s_maxrange = self.sync_feedback_manager.sync_feedback_buffer_maxrange
@@ -2735,7 +2738,7 @@ class Mmu:
 
                             msg = "Finding compression limit..."
                             self.log_always(msg)
-                            _,_,_,_ = self.trace_filament_move(msg, max_movement, motor="gear", speed=8)
+                            _,_,_,_ = self.trace_filament_move(msg, max_movement, motor="gear", speed=8, wait=True)
                             c_avg = _avg_raw()
                             if c_avg is None:
                                 self.log_always("Invalid compression sample; aborting this attempt.")
@@ -2744,7 +2747,7 @@ class Mmu:
 
                             msg = "Finding tension limit..."
                             self.log_always(msg)
-                            _,_,_,_ = self.trace_filament_move(msg, -max_movement, motor="gear", speed=8)
+                            _,_,_,_ = self.trace_filament_move(msg, -max_movement, motor="gear", speed=8, wait=True)
                             t_avg = _avg_raw()
                             if t_avg is None:
                                 self.log_always("Invalid tension sample; aborting this attempt.")
@@ -4514,7 +4517,7 @@ class Mmu:
         step = self.extruder_collision_homing_step * math.ceil(self.encoder_resolution * 10) / 10
         self.log_debug("Homing to extruder gear, up to %.1fmm in %.1fmm steps" % (max_length, step))
 
-        with self._wrap_gear_current(self.extruder_collision_homing_current, "for collision detection"):
+        with self.wrap_gear_current(self.extruder_collision_homing_current, "for collision detection"):
             homed = False
             measured = delta = 0.
             i = 0
@@ -4638,7 +4641,7 @@ class Mmu:
                     and self.enable_clog_detection
                 ):
                     # Tightening move to prevent erroneous encoder clog detection/runout if gear stepper is not synced with extruder
-                    with self._wrap_gear_current(percent=50, reason="to tighten filament in bowden"):
+                    with self.wrap_gear_current(percent=50, reason="to tighten filament in bowden"):
                         # Filament will already be gripped so perform fixed MMU only retract
                         pullback = min(self.encoder_sensor.get_clog_detection_length() * self.toolhead_post_load_tighten / 100, 15) # % of current clog detection length or 15mm min
                         _,_,measured,delta = self.trace_filament_move("Tighening filament in bowden", -pullback, motor="gear", wait=True)
@@ -5442,7 +5445,8 @@ class Mmu:
     def _wrap_sync_mode(self, sync_mode):
         prev_sync_mode = self.mmu_toolhead.sync_mode
         self.mmu_toolhead.sync(sync_mode)
-        self._restore_gear_current()
+# PAUL restoring gear_current is an issue here. Why do we need it?
+# PAUL        self._restore_gear_current()
         try:
             yield self
         finally:
@@ -5778,7 +5782,7 @@ class Mmu:
             self.gear_percentage_run_current = self.gear_restore_percent_run_current
 
     @contextlib.contextmanager
-    def _wrap_gear_current(self, percent=100, reason=""):
+    def wrap_gear_current(self, percent=100, reason=""):
         self.gear_restore_percent_run_current = self.gear_percentage_run_current
         self._adjust_gear_current(percent=percent, reason=reason)
         try:
