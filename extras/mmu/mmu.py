@@ -2728,8 +2728,9 @@ class Mmu:
                     loops = 3
                     c_vals = []
                     t_vals = []
+                    self.log_always("Calibrating using %.1fmm filament movements" % max_movement)
                     for i in range(loops):
-                        self.log_always("Calibrating pass %d/%d" % (i+1, loops))
+                        self.log_always("Pass %d/%d" % (i+1, loops))
 
                         msg = "Finding compression limit..."
                         self.log_always(msg)
