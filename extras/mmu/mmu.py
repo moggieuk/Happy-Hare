@@ -763,10 +763,10 @@ class Mmu:
         if self.extruder_tmc is None:
             self.log_debug("TMC driver not found for extruder, cannot use current increase for tip forming move")
 
-        # Establish gear_stepper initial gear_stepper and extruder currents
+        # Establish gear_stepper initial gear_stepper and extruder currents and current percentage
         self.gear_default_run_current = self.gear_tmc.get_status(0)['run_current'] if self.gear_tmc else None
         self.extruder_default_run_current = self.extruder_tmc.get_status(0)['run_current'] if self.extruder_tmc else None
-        self.gear_percentage_run_current = self.gear_restore_percent_run_current = self.extruder_percentage_run_current = 100.
+        self.gear_percentage_run_current = self.gear_restore_percent_run_current = self.extruder_percentage_run_current = 100
 
         # Use gc to find all active TMC current helpers - used for direct stepper current control
         self.tmc_current_helpers = {}
@@ -5445,8 +5445,6 @@ class Mmu:
     def _wrap_sync_mode(self, sync_mode):
         prev_sync_mode = self.mmu_toolhead.sync_mode
         self.mmu_toolhead.sync(sync_mode)
-# PAUL restoring gear_current is an issue here. Why do we need it?
-# PAUL        self._restore_gear_current()
         try:
             yield self
         finally:
@@ -5699,7 +5697,7 @@ class Mmu:
     def sync_gear_to_extruder(self, sync, gate=None, force_grip=False):
         # Safety in case somehow called with bypass/unknown selected. Usually this is called after
         # self.gate_selected is set, but can be before on type-B designs hence optional gate parameter
-        gate = gate if gate is not None else self.gate_selected
+        if gate is None: gate = self.gate_selected
 
         # Protect cases where we shouldn't sync (note type-B always have homed selector)
         if gate < 0 or not self.selector.is_homed:
@@ -5733,7 +5731,7 @@ class Mmu:
 
     # This is used to protect synchronization, current and grip states and is used as an outermost wrapper
     # for "MMU_" commands back into Happy Hare during a print or standalone operation
-    #   supress_fix_grip: prevents subsequent recursive calls from relaxing grip thus avoiding flutter
+    #   supress_release_grip: prevents subsequent recursive calls from relaxing grip thus avoiding flutter
     @contextlib.contextmanager
     def wrap_sync_gear_to_extruder(self):
         prev_sync = (self.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER)
@@ -5761,25 +5759,8 @@ class Mmu:
             if self.has_espooler() and espooler_state is not None:
                 self.espooler.set_operation(self.gate_selected, espooler_state[1], espooler_state[0])
 
-    def _adjust_gear_current(self, gate=None, percent=100, reason=""):
-        gate = gate if gate is not None else self.gate_selected
-        if gate >= 0:
-            if self.gear_tmc and 0 < percent < 200 and percent != self.gear_percentage_run_current:
-                gear_stepper_name = mmu_machine.GEAR_STEPPER_CONFIG
-                if self.mmu_machine.multigear and gate > 0:
-                    gear_stepper_name = "%s_%d" % (mmu_machine.GEAR_STEPPER_CONFIG, gate)
-                msg = "Modifying MMU %s run current to %d%% ({:.2f}A) %s" % (gear_stepper_name, percent, reason)
-                self._set_tmc_current(gear_stepper_name, (self.gear_default_run_current * percent) / 100., msg)
-                self.gear_percentage_run_current = percent
 
-    def _restore_gear_current(self):
-        if self.gear_tmc and self.gear_percentage_run_current != self.gear_restore_percent_run_current:
-            gear_stepper_name = mmu_machine.GEAR_STEPPER_CONFIG
-            if self.mmu_machine.multigear and self.gate_selected > 0:
-                gear_stepper_name = "%s_%d" % (mmu_machine.GEAR_STEPPER_CONFIG, self.gate_selected)
-            msg = "Restoring MMU %s run current to %d%% ({:.2f}A)" % (gear_stepper_name, self.gear_restore_percent_run_current)
-            self._set_tmc_current(gear_stepper_name, self.gear_default_run_current, msg)
-            self.gear_percentage_run_current = self.gear_restore_percent_run_current
+    # ---------- TMC Current Control ----------
 
     @contextlib.contextmanager
     def wrap_gear_current(self, percent=100, reason=""):
@@ -5791,6 +5772,34 @@ class Mmu:
             self._restore_gear_current()
             self.gear_restore_percent_run_current = 100
 
+    def _adjust_gear_current(self, gate=None, percent=100, reason=""):
+        if gate is None: gate = self.gate_selected
+        if gate < 0: return
+        if not (0 < percent < 200): return
+        if not self.gear_tmc: return
+        if percent == self.gear_percentage_run_current: return
+
+        gear_stepper_name = mmu_machine.GEAR_STEPPER_CONFIG
+        if self.mmu_machine.multigear and gate > 0:
+            gear_stepper_name = "%s_%d" % (mmu_machine.GEAR_STEPPER_CONFIG, gate)
+        msg = "Modifying MMU %s run current to %d%% ({}A) %s" % (gear_stepper_name, percent, reason)
+        target_current = (self.gear_default_run_current * percent) / 100.0
+        self._set_tmc_current(gear_stepper_name, target_current, msg)
+        self.gear_percentage_run_current = percent
+
+    def _restore_gear_current(self, gate=None):
+        if gate is None: gate = self.gate_selected
+        if gate < 0: return
+        if not self.gear_tmc: return
+        if self.gear_percentage_run_current == self.gear_restore_percent_run_current: return
+
+        gear_stepper_name = mmu_machine.GEAR_STEPPER_CONFIG
+        if self.mmu_machine.multigear and gate > 0:
+            gear_stepper_name = "%s_%d" % (mmu_machine.GEAR_STEPPER_CONFIG, gate)
+        msg = "Restoring MMU %s run current to %d%% ({}A)" % (gear_stepper_name, self.gear_restore_percent_run_current)
+        self._set_tmc_current(gear_stepper_name, self.gear_default_run_current, msg)
+        self.gear_percentage_run_current = self.gear_restore_percent_run_current
+
     @contextlib.contextmanager
     def _wrap_extruder_current(self, percent=100, reason=""):
         self._adjust_extruder_current(percent, reason)
@@ -5800,16 +5809,21 @@ class Mmu:
             self._restore_extruder_current()
 
     def _adjust_extruder_current(self, percent=100, reason=""):
-        if self.extruder_tmc and 0 < percent < 200 and percent != self.extruder_percentage_run_current:
-            msg = "Modifying extruder stepper run current to %d%% ({:.2f}A) %s" % (percent, reason)
-            self._set_tmc_current(self.extruder_name, (self.extruder_default_run_current * percent) / 100., msg)
-            self.extruder_percentage_run_current = percent
+        if not self.extruder_tmc: return
+        if not (0 < percent < 200): return
+        if percent == self.extruder_percentage_run_current: return
+
+        msg = "Modifying extruder stepper run current to %d%% ({}A) %s" % (percent, reason)
+        self._set_tmc_current(self.extruder_name, (self.extruder_default_run_current * percent) / 100., msg)
+        self.extruder_percentage_run_current = percent
 
     def _restore_extruder_current(self):
-        if self.extruder_tmc and self.extruder_percentage_run_current != 100:
-            msg="Restoring extruder stepper run current to 100% ({:.2f}A)"
-            self._set_tmc_current(self.extruder_name, self.extruder_default_run_current, msg)
-            self.extruder_percentage_run_current = 100
+        if not self.extruder_tmc: return
+        if self.extruder_percentage_run_current == 100: return
+
+        msg="Restoring extruder stepper run current to 100% ({}A)"
+        self._set_tmc_current(self.extruder_name, self.extruder_default_run_current, msg)
+        self.extruder_percentage_run_current = 100
 
     # Alter the stepper current without console logging
     def _set_tmc_current(self, stepper, run_current, msg):
@@ -5821,33 +5835,42 @@ class Mmu:
                 req_hold_cur, max_cur = c[2], c[3] # Kalico now has 5 elements rather than 4 in tuple, so unpack just what we need...
                 new_cur = max(min(run_current, max_cur), 0)
                 current_helper.set_current(new_cur, req_hold_cur, print_time)
-                self.log_debug(msg.format(new_cur))
+                self.log_debug(msg.format("%.2f" % new_cur))
+                return
             except Exception as e:
-                # Fallback
                 self.log_debug("Unexpected error setting stepper current: %s. Falling back to default approach" % str(e))
-                self.log_debug(msg.format(run_current))
-                self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f" % (stepper, run_current))
-        else:
-            self.log_debug(msg.format(run_current))
-            self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f" % (stepper, run_current))
+
+        # Fallback or missing helper
+        self.log_debug(msg.format("%.2f" % run_current))
+        self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f" % (stepper, run_current))
+
+
+    # ---------- Pressure Advance Control ----------
 
     @contextlib.contextmanager
     def _wrap_pressure_advance(self, pa=0, reason=""):
-        initial_pa = self.toolhead.get_extruder().get_status(0).get('pressure_advance', None)
-        if initial_pa is not None:
+        extruder = self.toolhead.get_extruder()
+        initial_pa = extruder.get_status(0).get('pressure_advance')
+
+        if initial_pa is None:
+            yield self
+            return
+
+        try:
             if reason:
                 self.log_debug("Setting pressure advance %s: %.4f" % (reason, pa))
             self._set_pressure_advance(pa)
-        try:
+
             yield self
+
         finally:
-            if initial_pa is not None:
-                if reason:
-                    self.log_debug("Restoring pressure advance: %.4f" % initial_pa)
-                self._set_pressure_advance(initial_pa)
+            if reason:
+                self.log_debug("Restoring pressure advance: %.4f" % initial_pa)
+            self._set_pressure_advance(initial_pa)
 
     def _set_pressure_advance(self, pa):
         self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f QUIET=1" % pa)
+
 
     # Logic shared with MMU_TEST_MOVE and _MMU_STEP_MOVE
     def _move_cmd(self, gcmd, trace_str, allow_bypass=False):
