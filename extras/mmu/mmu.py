@@ -2702,7 +2702,7 @@ class Mmu:
             for _ in range(int(max(1, n))):
                 self.movequeues_dwell(dwell_s)
                 raw = sensor.get_status(0).get('raw_value', None)
-                if raw is None or not isinstance(raw, float):
+                if raw is None:
                     return None
                 samples.append(float(raw))
             return (sum(samples) / len(samples))
@@ -2717,7 +2717,7 @@ class Mmu:
 
                 raw0 = _avg_raw()
                 if raw0 is None:
-                    raise gcmd.error("Sensor malfunction. Could not read valid ADC output")
+                    raise gcmd.error("Sensor malfunction. Could not read valid ADC output\nAre you sure you configured in [mmu_sensors]?")
 
                 calibrated = False
                 for attempt in range(2, 3, 4):
@@ -4492,7 +4492,7 @@ class Mmu:
             raise MmuError("Failed to reach extruder '%s' endstop after moving %.1fmm" % (self.extruder_homing_endstop, max_length))
 
         if measured > (max_length * 0.8):
-            self.log_warning("Warning: 80%% of 'extruder_homing_max' was used homing. You may want to adjust your calibrated bowden length ('%s') or increase 'extruder_homing_max'" % self.VARS_MMU_CALIB_BOWDEN_LENGTH)
+            self.log_warning("Warning: 80%% of 'extruder_homing_max' was used homing. You may want to increase 'extruder_homing_max'" % self.VARS_MMU_CALIB_BOWDEN_LENGTH)
 
         self._set_filament_pos_state(self.FILAMENT_POS_HOMED_EXTRUDER)
         return homing_movement, extra
