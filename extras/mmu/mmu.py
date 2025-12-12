@@ -2694,15 +2694,15 @@ class Mmu:
 
         def _avg_raw(n=8, dwell_s=0.1):
             """
-            Sample sensor.get_status(0)['raw_value'] n times with dwell between reads
+            Sample sensor.get_status(0)['value_raw'] n times with dwell between reads
             and return the average
             """
             sensor = self.sensor_manager.all_sensors.get(self.SENSOR_PROPORTIONAL)
             samples = []
             for _ in range(int(max(1, n))):
                 self.movequeues_dwell(dwell_s)
-                raw = sensor.get_status(0).get('raw_value', None)
-                if raw is None:
+                raw = sensor.get_status(0).get('value_raw', None)
+                if raw is None or not isinstance(raw, float):
                     return None
                 samples.append(float(raw))
             return (sum(samples) / len(samples))
@@ -2720,7 +2720,8 @@ class Mmu:
                     raise gcmd.error("Sensor malfunction. Could not read valid ADC output\nAre you sure you configured in [mmu_sensors]?")
 
                 calibrated = False
-                for attempt in range(2, 3, 4):
+                self.log_always("Starting calibration. Please excuse the noise - you might hear a bit of grinding but it won't take long!")
+                for attempt in range(2, 4):
                     max_movement = s_maxrange * attempt # Start small but increasing movements
 
                     loops = 3
@@ -2752,7 +2753,7 @@ class Mmu:
                     c_sd = _sd(c_vals)
                     t_sd = _sd(t_vals)
 
-                    if c_sd <= SD_THRESHOLD and t_sd <= SD_THRESHOLD and attempt > 2:
+                    if c_sd <= SD_THRESHOLD and t_sd <= SD_THRESHOLD:
                         calibrated = True
                         break
 
@@ -2763,7 +2764,7 @@ class Mmu:
 
                 if calibrated:
                     msg = "Calibration Results:\n"
-                    msg += "As wired the recommended setting in\n"
+                    msg += "As wired the recommended setting (in mmu_hardware.cfg) is:\n"
                     msg += "[mmu_sensors]\n"
                     msg += "sync_feedback_analog_max_compression: %.4f\n" % c_raw
                     msg += "sync_feedback_analog_max_tension: %.4f\n" % t_raw
