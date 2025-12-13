@@ -511,7 +511,7 @@ class MmuSensors:
         mmu_machine = self.printer.lookup_object("mmu_machine", None)
         num_units = mmu_machine.num_units if mmu_machine else 1
         event_delay = config.get('event_delay', 0.5)
-        self.gcode = self.printer.lookup_object('gcode')
+
         # Setup "mmu_pre_gate" sensors...
         for gate in range(23):
             switch_pin = config.get('pre_gate_switch_pin_%d' % gate, None)
@@ -537,8 +537,6 @@ class MmuSensors:
                 else:
                     self._create_mmu_sensor(config, Mmu.SENSOR_GEAR_PREFIX, gate, switch_pin, event_delay, runout=True)
 
-        self.gcode.respond_info("gates read")
-        
         # Setup single extruder (entrance) sensor...
         switch_pin = config.get('extruder_switch_pin', None)
         if switch_pin:
