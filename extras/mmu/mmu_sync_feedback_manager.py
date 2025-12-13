@@ -121,7 +121,7 @@ class MmuSyncFeedbackManager:
         return msg
 
     def has_sensor(self): ## PAUL, quick hack to suppress errors in interim until response coded 
-        return False
+        return self.sync_feedback_enabled
         
 
     def check_test_config(self, param):
