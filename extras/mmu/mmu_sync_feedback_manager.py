@@ -120,6 +120,9 @@ class MmuSyncFeedbackManager:
         msg += "\nflowguard_max_motion = %.1f" % self.flowguard_max_motion
         return msg
 
+    def has_sensor(self): ## PAUL, quick hack to suppress errors in interim until response coded 
+        return False
+        
 
     def check_test_config(self, param):
         return vars(self).get(param) is None
