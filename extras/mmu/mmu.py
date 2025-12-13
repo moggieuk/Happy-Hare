@@ -2745,10 +2745,10 @@ class Mmu:
                         elif c_sd != 0.5 and abs(c_sd - c_avg) < 0.1:
                             break
                           
-                        self.log_always("Seeking... ADC value %.4f" % c_avg)
+                        self.log_always("Seeking ... ADC value %.4f" % c_avg)
 
                     # backoff from compressed extreme  
-                    msg = "Backing off compressed limit..."
+                    msg = "Backing off compressed limit"
                     self.log_always(msg)
                     _,_,_,_ = self.trace_filament_move(msg, -(s_maxrange / 2), motor="gear", speed=8, wait=True)
 
@@ -2765,7 +2765,7 @@ class Mmu:
                         elif t_sd != 0.5 and abs(t_sd - t_avg) < 0.1:
                             break
                           
-                        self.log_always("Seeking... ADC value %.4f" % t_avg)
+                        self.log_always("Seeking ... ADC value %.4f" % t_avg)
 
                     # backoff from tension extreme  
                     _,_,_,_ = self.trace_filament_move(msg, (s_maxrange / 2), motor="gear", speed=8, wait=True)
