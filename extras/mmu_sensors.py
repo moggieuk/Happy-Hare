@@ -236,7 +236,7 @@ class MmuAdcSwitchSensor:
         return self._last_trigger_time
 
 # Supports using a hall filament width sensor as an endstop
-# Derived from Klipper hall_filament_width_sensor, includ
+# Derived from Klipper hall_filament_width_sensor, includes all original functionality plus endstop compatibility
 class MmuHallFilamentWidthSensor:
     def __init__(self, config, name, pin1, pin2, cal_dia1, raw_dia1, cal_dia2, raw_dia2, 
                  hall_runout_dia_min=1., hall_runout_dia_max=2., hall_measurement_interval=10, hall_measurement_delay=1, 
@@ -297,7 +297,7 @@ class MmuHallFilamentWidthSensor:
         self.mcu_adc2.setup_minmax(self.ADC_SAMPLE_TIME, self.ADC_SAMPLE_COUNT)
         self.mcu_adc2.setup_adc_callback(self.ADC_REPORT_TIME, self.adc2_callback)
         
-        # Timer loop for Flow Compensation & Logging
+        # Timer loop for flow Compensation & logging
         self.extrude_factor_update_timer = self.reactor.register_timer(self.extrude_factor_update_event)
         
         # Register commands
@@ -307,7 +307,7 @@ class MmuHallFilamentWidthSensor:
         self.gcode.register_command('ENABLE_FILAMENT_WIDTH_LOG', self.cmd_log_enable)
         self.gcode.register_command('DISABLE_FILAMENT_WIDTH_LOG', self.cmd_log_disable)
         
-        # Flow Compensation Commands
+        # Flow compensation commands
         self.gcode.register_command('RESET_FILAMENT_WIDTH_SENSOR', self.cmd_ClearFilamentArray)
         self.gcode.register_command('DISABLE_FILAMENT_WIDTH_SENSOR', self.cmd_M406)
         self.gcode.register_command('ENABLE_FILAMENT_WIDTH_SENSOR', self.cmd_M405)
@@ -328,13 +328,12 @@ class MmuHallFilamentWidthSensor:
         self.runout_helper = MmuRunoutHelper(self.printer, name, event_delay, insert_gcode, remove_gcode, runout_gcode, 
                                              insert_remove_in_print, button_handler, self.pin2)
         
-        self.printer.add_object("mmu_hall_filament_width_sensor", self)
+        self.printer.add_object("hall_filament_width_sensor", self)
         
 
     def get_status(self, eventtime):
         status = self.runout_helper.get_status(eventtime)
         
-        # This allows: { printer["mmu_hall_filament_width_sensor"].Diameter }
         status.update({
             "Diameter": self.diameter,
             "Raw": (self.lastFilamentWidthReading + self.lastFilamentWidthReading2),
@@ -547,7 +546,7 @@ class MmuSensors:
         if switch_pin:
             self._create_mmu_sensor(config, Mmu.SENSOR_TOOLHEAD, None, switch_pin, event_delay)
 
-        # For Qidi printers or any other that use a hall_filament_width_sensor
+        # For Qidi printers or any other that use a hall_filament_width_sensor as an endstop
         hall_sensor_endstop = config.get('hall_sensor_endstop', None)
         if hall_sensor_endstop is not None:
             if hall_sensor_endstop == 'gate':
