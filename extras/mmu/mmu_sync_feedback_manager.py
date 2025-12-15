@@ -479,6 +479,7 @@ class MmuSyncFeedbackManager:
                 self.deactivate_flowguard()
             else:
                 self.mmu.log_debug("MmuSyncFeedbackManager: FlowGuard detected a %s, but handling is disabled.\nReason for trip: %s" % (f_trigger, f_reason))
+                self.ctrl.flowguard.reset() # Prevent repetitive messages
 
         # Handle new autotune suggestions
         autotune = output['autotune']
