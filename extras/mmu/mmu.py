@@ -2749,7 +2749,6 @@ class Mmu:
                         else:
                            break
  
-
                     # backoff compressed extreme  
                     msg = "Backing off compressed limit"
                     self.log_always(msg)
@@ -2760,7 +2759,7 @@ class Mmu:
                     msg = "Finding tension limit stepping up to %.2fmm\n" % s_maxrange
                     self.log_always(msg)
 
-                    t_sd = c_sd # seed starting point
+                    t_sd = c_sd # seed starting point from last reading
                     ramp = not ramp 
 
                     for attempt in range (0, s_maxrange, 2):
