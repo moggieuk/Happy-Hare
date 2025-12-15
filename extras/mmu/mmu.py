@@ -2703,14 +2703,16 @@ class Mmu:
             sensor = self.sensor_manager.all_sensors.get(self.SENSOR_PROPORTIONAL)
             
             k = 0.1 # 1st order,low pass filer coefficient, 0.1 for 10 samples 
-            filter_raw = sensor.get_status(0).get('value_raw', None)
+            avg = sensor.get_status(0).get('value_raw', None)
 
             for _ in range(int(max(1, n-1))):
                 self.movequeues_dwell(dwell_s)
-                filter_raw += k * (sensor.get_status(0).get('value_raw', None) - filter_raw) # 1st order low pass filter
-                if filter_raw is None or not isinstance(filter_raw, float):
+                raw = sensor.get_status(0).get('value_raw', None) 
+                if raw is None or not isinstance(raw, float):
                     return None
-            return (filter_raw)
+                avg += k * (raw - avg) # 1st order low pass filter
+
+            return (avg)
 
         def _sd(xs):
             return stdev(xs) if len(xs) >= 2 else 0.0
