@@ -166,15 +166,16 @@ class MmuSyncFeedbackManager:
         return "disabled"
 
 
-    def activate_flowguard(self):
+    def activate_flowguard(self, eventtime):
         if self.flowguard_enabled and not self.flowguard_active:
             self.flowguard_active = True
-            self.ctrl.flowguard.reset()
+            # This resets controller with last good autotuned RD, resets flowguard and resumes autotune
+            self._reset_controller(self, eventtime, hard_reset=False)
             self.ctrl.autotune.resume()
             self.mmu.log_info("MmuSyncFeedbackManager: FlowGuard monitoring activated and autotune resumed")
 
 
-    def deactivate_flowguard(self):
+    def deactivate_flowguard(self, eventtime):
         if self.flowguard_enabled and self.flowguard_active:
             self.flowguard_active = False
             self.ctrl.autotune.pause() # Very likley this is a period that we want to exclude from autotuning
@@ -437,7 +438,7 @@ class MmuSyncFeedbackManager:
 
         state = self._get_sensor_state()
         status = self.ctrl.update(eventtime, move, state)
-        self._process_status(status)
+        self._process_status(eventtime, status)
 
 
     def _handle_sync_feedback(self, eventtime, state):
@@ -457,10 +458,10 @@ class MmuSyncFeedbackManager:
 
         move = self.extruder_monitor.get_and_reset_accumulated(self._handle_extruder_movement)
         status = self.ctrl.update(eventtime, move, state)
-        self._process_status(status)
+        self._process_status(eventtime, status)
 
 
-    def _process_status(self, status):
+    def _process_status(self, eventtime, status):
         """
         Common logic to process the rotation distance recommendations of the sync controller
         """
@@ -495,7 +496,7 @@ class MmuSyncFeedbackManager:
                 sensor = sm.sensors.get(sensor_key)
 
                 sensor.runout_helper.note_clog_tangle(f_trigger)
-                self.deactivate_flowguard()
+                self.deactivate_flowguard(eventtime)
             else:
                 self.mmu.log_debug("MmuSyncFeedbackManager: FlowGuard detected a %s, but handling is disabled.\nReason for trip: %s" % (f_trigger, f_reason))
                 self.ctrl.flowguard.reset() # Prevent repetitive messages
@@ -523,21 +524,26 @@ class MmuSyncFeedbackManager:
             self.flow_rate = round(min(1.0, (rd_tuned / rd_current)) * 100., 2)
 
 
-    def _reset_controller(self, eventtime):
+    def _reset_controller(self, eventtime, hard_reset=True):
         """
-        Completely reset sync-feedback: throw away autotune info, reset rd to
-        last calibrated value. Typically called when handling sync but also can
-        be explicitly called but MMU_SYNC_FEEDBACK command
+        hard_reset: Completely reset sync-feedback: throw away autotune info, reset rd to
+                    last calibrated value. Typically called when handling sync but also can
+                    be explicitly called but MMU_SYNC_FEEDBACK command
+        soft_reset: Rebase sync-feedback to last autotuned value. Typically called when
+                    resuming flowguard (after some activity we want to exclude from tuning)
         """
         # Allow dynamic changing of effective "sensor type" based on currently enabled sensors
         self.ctrl.cfg.sensor_type = self._get_sensor_type()
 
-        # Reset controller with initial rd and sensor reading (will also reset autotune and flowguard)
+        # Reset controller with initial rd and sensor reading (will also reset flowguard and autotune on hard_reset)
         starting_state = self._get_sensor_state()
         self.estimated_state = starting_state
-        rd_start = self.mmu.calibration_manager.get_gear_rd()
-        status = self.ctrl.reset(eventtime, rd_start, starting_state, log_file=self._telemetry_log_path())
-        self._process_status(status) # May adjust rotation_distance
+        if hard_reset:
+            rd_start = self.mmu.calibration_manager.get_gear_rd()
+        else:
+            rd_start = self.ctrl.autotune.get_rec_rd()
+        status = self.ctrl.reset(eventtime, rd_start, starting_state, log_file=self._telemetry_log_path(), hard_reset=hard_reset)
+        self._process_status(eventtime, status) # May adjust rotation_distance
 
 
     def _init_controller(self):
