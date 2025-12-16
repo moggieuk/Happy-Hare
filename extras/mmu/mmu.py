@@ -4296,7 +4296,8 @@ class Mmu:
                             self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
                             raise MmuError("Bowden pre-unload test failed. Filament seems to be stuck in the extruder or filament not loaded\nOptionally use MMU_RECOVER to recover filament position")
                         length -= self.encoder_move_step_size
-                        self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
+
+                self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
 
                 # Record starting position for bowden progress tracking
                 self.bowden_start_pos = self.get_encoder_distance(dwell=None)
@@ -4924,6 +4925,7 @@ class Mmu:
                         self.log_warning("Warning: Filament not seen near gate after tip forming move. Unload may not be possible")
 
                     self.wrap_gcode_command(self.post_form_tip_macro, exception=True, wait=True)
+
             # Note: Conditionals deliberately coded this way to match macro alternative
             homing_movement = None # Track how much homing is done for calibrated bowden length optimization
             deficit = 0.           # Amount of homing that would be expected (because bowden load is shortened)
