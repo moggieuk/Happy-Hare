@@ -259,6 +259,7 @@ class MmuSyncFeedbackManager:
     cmd_MMU_SYNC_FEEDBACK_param_help = (
         "MMU_SYNC_FEEDBACK: %s\n" % cmd_MMU_SYNC_FEEDBACK_help
         + "ENABLE         = [1|0] enable/disable sync feedback control\n"
+        + "RESET          = [1|0] reset sync controller and return RD to last known good value\n"
         + "ADJUST_TENSION = [1|0] apply correction to neutralize filament tension\n"
         + "AUTOTUNE       = [1|0] allow saving of autotuned rotation distance\n"
         + "(no parameters for status report)"
@@ -281,12 +282,18 @@ class MmuSyncFeedbackManager:
             return
 
         enable = gcmd.get_int('ENABLE', None, minval=0, maxval=1)
+        reset = gcmd.get_int('RESET', None, minval=0, maxval=1)
         autotune = gcmd.get_int('AUTOTUNE', None, minval=0, maxval=1)
         adjust_tension = gcmd.get_int('ADJUST_TENSION', 0, minval=0, maxval=1)
 
         if enable is not None:
             self.sync_feedback_enabled = enable
             self.mmu.log_always("Sync feedback feature is %s" % ("enabled" if enable else "disabled"))
+
+        if reset is not None and self.sync_feedback_enabled:
+            self.mmu.log_always("Sync feedback reset")
+            eventtime = self.mmu.reactor.monotonic()
+            self._reset_controller(eventtime)
 
         if autotune is not None:
             self.mmu.autotune_rotation_distance = autotune
@@ -310,7 +317,14 @@ class MmuSyncFeedbackManager:
             if self.sync_feedback_enabled:
                 active = " and currently active" if self.active else " (not currently active)"
                 mode = self.ctrl.get_type_mode()
-                self.mmu.log_always("Sync feedback feature with type-%s sensor is enabled%s" % (mode, active))
+
+                rd_start = self.mmu.calibration_manager.get_gear_rd()
+                rd_current = self.ctrl.get_current_rd()
+                rd_rec = self.ctrl.autotune.get_rec_rd()
+                rd_info = "RD: Current:%.2f, Autotune recommended:%.2f, Default:%.2f" % (rd_current, rd_rec, rd_start)
+
+                self.mmu.log_always("Sync feedback feature with type-%s sensor is enabled%s\n%s" % (mode, active, rd_info))
+
             else:
                 self.mmu.log_always("Sync feedback feature is disabled")
     
@@ -361,15 +375,8 @@ class MmuSyncFeedbackManager:
         self.active = True
         self.new_autotuned_rd = None
 
-        # Allow dynamic changing of effective "sensor type" based on currently enabled sensors
-        self.ctrl.cfg.sensor_type = self._get_sensor_type()
-
-        # Reset controller with initial rd and sensor reading (will also reset autotune and flowguard)
-        starting_state = self._get_sensor_state()
-        self.estimated_state = starting_state
-        rd_start = self.mmu.calibration_manager.get_gear_rd()
-        status = self.ctrl.reset(eventtime, rd_start, starting_state, log_file=self._telemetry_log_path())
-        self._process_status(status) # May adjust rotation_distance
+        # Throw away current autotune info and reset rd
+        self._reset_controller(eventtime)
 
         # Turn on extruder movement events
         self.extruder_monitor.register_callback(self._handle_extruder_movement, self.sync_feedback_extrude_threshold)
@@ -505,6 +512,23 @@ class MmuSyncFeedbackManager:
         if self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_PROPORTIONAL):
             # if rd_current > rd_true then flowrate must be reduced
             self.flow_rate = round(min(1.0, (rd_tuned / rd_current)) * 100., 2)
+
+
+    def _reset_controller(self, eventtime):
+        """
+        Completely reset sync-feedback: throw away autotune info, reset rd to
+        last calibrated value. Typically called when handling sync but also can
+        be explicitly called but MMU_SYNC_FEEDBACK command
+        """
+        # Allow dynamic changing of effective "sensor type" based on currently enabled sensors
+        self.ctrl.cfg.sensor_type = self._get_sensor_type()
+
+        # Reset controller with initial rd and sensor reading (will also reset autotune and flowguard)
+        starting_state = self._get_sensor_state()
+        self.estimated_state = starting_state
+        rd_start = self.mmu.calibration_manager.get_gear_rd()
+        status = self.ctrl.reset(eventtime, rd_start, starting_state, log_file=self._telemetry_log_path())
+        self._process_status(status) # May adjust rotation_distance
 
 
     def _init_controller(self):
