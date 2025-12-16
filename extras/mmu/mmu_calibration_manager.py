@@ -140,11 +140,15 @@ class MmuCalibrationManager:
     def get_gear_rd(self, gate=None):
         if gate == None: gate = self.mmu.gate_selected
 
-        rd = self.mmu.rotation_distances[gate if gate >= 0 and self.mmu.mmu_machine.variable_rotation_distances else 0]
+        if gate < 0:
+            rd = self.mmu.default_rotation_distance
+        else:
+            rd = self.mmu.rotation_distances[gate if gate >= 0 and self.mmu.mmu_machine.variable_rotation_distances else 0]
+
         if rd <= 0:
             rd = self.mmu.default_rotation_distance
-            if gate < 0:
-                self.mmu.log_debug("Gate %d not calibrated, falling back to default rotation_distance: %.4f" % (gate, rd))
+            self.mmu.log_debug("Gate %d not calibrated, falling back to default rotation_distance: %.4f" % (gate, rd))
+
         return rd
 
 
@@ -484,33 +488,36 @@ class MmuCalibrationManager:
         msg = "Autotune: bowden move ratio: %.4f, Extra homing movement: %s" % (bowden_move_ratio, "n/a" if homing_movement is None else "%.1fmm" % homing_movement)
         if homing_movement is not None:
 
-# TODO: now a better way with sync-feedback buffer. Keep for non-sync-feedback use cases?
-#            # TODO Currently only works with gate >0. Could work with gate 0 if variable_rotation_distance is True
-#            # TODO and bowden is calibrated and we don't tune bowden below
-#
-#            # Encoder based automatic calibration of gate's gear rotation_distance
-#            if (
-#                self.mmu.autotune_rotation_distance and
-#                self.mmu.mmu_machine.variable_rotation_distances and
-#                self.mmu.gate_selected > 0 and
-#                bowden_move_ratio > 0 and
-#                homing_movement > 0
-#            ):
-#                if direction in [self.mmu.DIRECTION_LOAD, self.mmu.DIRECTION_UNLOAD]:
-#                    current_rd = self.mmu.gear_rail.steppers[0].get_rotation_distance()[0]
-#                    new_rd = round(bowden_move_ratio * current_rd, 4)
-#                    gate0_rd = self.mmu.rotation_distances[0]
-#
-#                    # Allow max 10% variation from gate 0 for autotune
-#                    if math.isclose(new_rd, gate0_rd, rel_tol=0.1):
-#                        if not self.mmu.calibrating and self.mmu.rotation_distances[self.mmu.gate_selected] > 0:
-#                            # Tuning existing calibration
-#                            new_rd = round((self.mmu.rotation_distances[self.mmu.gate_selected] * 5 + new_rd) / 6, 4) # Moving average
-#                            msg += ". Autotuned rotation_distance: %.4f for gate %d" % (new_rd, self.mmu.gate_selected)
-#                        if not math.isclose(current_rd, new_rd):
-#                            _ = self.mmu.update_gear_rd(new_rd, self.mmu.gate_selected)
-#                    else:
-#                        msg += ". Calculated rotation_distance: %.4f for gate %d failed sanity check and has been ignored" % (new_rd, self.mmu.gate_selected)
+            # If sync-feedback is available it provides a better way to autotune rotation distance. This is retained for legacy cases
+            has_tension, has_compression, has_proportional = self.mmu.sync_feedback_manager.get_active_sensors()
+
+            # Encoder based automatic calibration of gate's gear rotation_distance
+            # TODO Currently only works with gate >0. Could work with gate 0 if variable_rotation_distance is True
+            # TODO and bowden is calibrated and we don't tune bowden below
+            if (
+                False and # TODO Temporarily disabled based on user's feedback until tested further
+                not any([has_tension, has_compression, has_proportional]) and
+                self.mmu.autotune_rotation_distance and
+                self.mmu.mmu_machine.variable_rotation_distances and
+                self.mmu.gate_selected > 0 and
+                bowden_move_ratio > 0 and
+                homing_movement > 0
+            ):
+                if direction in [self.mmu.DIRECTION_LOAD, self.mmu.DIRECTION_UNLOAD]:
+                    current_rd = self.mmu.gear_rail.steppers[0].get_rotation_distance()[0]
+                    new_rd = round(bowden_move_ratio * current_rd, 4)
+                    gate0_rd = self.mmu.rotation_distances[0]
+
+                    # Allow max 10% variation from gate 0 for autotune
+                    if math.isclose(new_rd, gate0_rd, rel_tol=0.1):
+                        if not self.mmu.calibrating and self.mmu.rotation_distances[self.mmu.gate_selected] > 0:
+                            # Tuning existing calibration
+                            new_rd = round((self.mmu.rotation_distances[self.mmu.gate_selected] * 5 + new_rd) / 6, 4) # Moving average
+                            msg += ". Autotuned rotation_distance: %.4f for gate %d" % (new_rd, self.mmu.gate_selected)
+                        if not math.isclose(current_rd, new_rd):
+                            _ = self.mmu.update_gear_rd(new_rd, self.mmu.gate_selected)
+                    else:
+                        msg += ". Calculated rotation_distance: %.4f for gate %d failed sanity check and has been ignored" % (new_rd, self.mmu.gate_selected)
 
 
             # Automatic calibration of bowden length based on actual homing movement telemetry

@@ -354,7 +354,8 @@ class _AutotuneEngine:
     def pause(self):
         """
         Called to pause autotune generally because we received a large retract or we know
-        we are going to do an extended retract. Tuning only work reliably in a single direction
+        we are going to do an extended retract (tuning only work reliably in a extruder direction)
+        or we are performing movement that is known to cause underextrusion (like blobifer purge).
         """
         if not self._paused:
             self._paused = True
@@ -861,7 +862,7 @@ class _FlowguardEngine:
         prev_tens_motion = self._tens_motion_mm
         prev_tens_relief = self._relief_tens_mm
 
-        # Start with direct extremes (sensor-gated; P/D may fall back to x̂)
+        # Start with direct extremes (sensor-gated; P/D may fall back to x_hat)
         comp_ext, tens_ext = self.ctrl._extreme_flags(sensor_reading)
 
         # One-sided open-side test (while switch is open)
@@ -1101,7 +1102,7 @@ class SyncController:
         # Rebase autotune helper on the new start
         self.autotune.restart(rd_init)
 
-        # Seed x̂ from sensor reading
+        # Seed x_hat from sensor reading
         if cfg.sensor_type == "P":
             z = float(sensor_reading)
             x0 = max(-1.0, min(1.0, z))
