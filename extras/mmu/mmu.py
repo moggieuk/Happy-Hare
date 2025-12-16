@@ -5039,6 +5039,7 @@ class Mmu:
                         self.log_warning("Warning: Filament not seen near gate after tip forming move. Unload may not be possible")
 
                     self.wrap_gcode_command(self.post_form_tip_macro, exception=True, wait=True)
+
             # Note: Conditionals deliberately coded this way to match macro alternative
             homing_movement = None # Track how much homing is done for calibrated bowden length optimization
             deficit = 0.           # Amount of homing that would be expected (because bowden load is shortened)
