@@ -266,7 +266,7 @@ class Mmu:
         self.mmu_logger = None                # Setup on connect
         self._standalone_sync = False         # Used to indicate synced extruder intention whilst out of print
         self._suppress_release_grip = False   # Used to suppress the relaxing of grip on recursive calls to prevent servo flutter
-        self.bowden_start_pos = None
+        self.bowden_start_pos = None          # If set then we can measure bowden progress
         self.has_blobifier = False            # Post load blobbling macro (like BLOBIFIER)
         self.has_mmu_cutter = False           # Post unload cutting macro (like EREC)
         self.has_toolhead_cutter = False      # Form tip cutting macro (like _MMU_CUT_TIP)
@@ -1429,7 +1429,8 @@ class Mmu:
         if (self.bowden_start_pos is not None):
             bowden_length = self.calibration_manager.get_bowden_length()
             if bowden_length > 0:
-                progress = (self.get_encoder_distance(dwell=None) - self.bowden_start_pos) / bowden_length
+                current = self.get_encoder_distance(dwell=None) if self.has_encoder() else self._get_live_filament_position()
+                progress = abs(current - self.bowden_start_pos) / bowden_length
                 if self.filament_direction == self.DIRECTION_UNLOAD:
                     progress = 1 - progress
                 return round(max(0, min(100, progress * 100)))
@@ -3395,6 +3396,14 @@ class Mmu:
     def _get_filament_position(self):
         return self.mmu_toolhead.get_position()[1]
 
+    def _get_live_filament_position(self):
+        """
+        Return the approximate live filament position
+        """
+        gear_stepper = self.gear_rail.steppers[0]
+        mcu_pos = gear_stepper.get_mcu_position()
+        return mcu_pos * gear_stepper.get_step_dist()
+
     def _set_filament_position(self, position = 0.):
         pos = self.mmu_toolhead.get_position()
         pos[1] = position
@@ -4359,8 +4368,8 @@ class Mmu:
                 self._set_filament_direction(self.DIRECTION_LOAD)
                 self.selector.filament_drive()
 
-                # Record starting position for bowden progress tracking
-                self.bowden_start_pos = self.get_encoder_distance(dwell=None) - start_pos
+                # Record starting position for bowden progress tracking. Prefer encoder if available
+                self.bowden_start_pos = (self.get_encoder_distance(dwell=None) if self.has_encoder() else self._get_live_filament_position()) - start_pos
 
                 if self.gate_selected > 0 and self.rotation_distances[self.gate_selected] <= 0:
                     self.log_warning("Warning: gate %d not calibrated! Using default rotation distance" % self.gate_selected)
@@ -4442,18 +4451,22 @@ class Mmu:
                             self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
                             raise MmuError("Bowden pre-unload test failed. Filament seems to be stuck in the extruder or filament not loaded\nOptionally use MMU_RECOVER to recover filament position")
                         length -= self.encoder_move_step_size
-                        self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
 
-                # Record starting position for bowden progress tracking
-                self.bowden_start_pos = self.get_encoder_distance(dwell=None)
+                self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
+
+                # Record starting position for bowden progress tracking. Prefer encoder if available
+                self.bowden_start_pos = self.get_encoder_distance(dwell=None) if self.has_encoder() else self._get_live_filament_position()
 
                 # Sensor validation
                 if self.sensor_manager.check_all_sensors_before(self.FILAMENT_POS_START_BOWDEN, self.gate_selected, loading=False) is False:
                     sensors = self.sensor_manager.get_all_sensors()
                     sensor_msg = ''
+                    sname = []
                     for name, state in sensors.items():
                         sensor_msg += "%s (%s), " % (name.upper(), "Disabled" if state is None else ("Detected" if state is True else "Empty"))
-                    self.log_warning("Warning: Possible sensor malfunction - a sensor indicated filament not present before unloading bowden\nWill attempt to continue...")
+                        if state is False:
+                            sname.append(name)
+                    self.log_warning("Warning: Possible sensor malfunction - %s sensor indicated no filament present prior to unloading bowden\nWill ignore and attempt to continue..." % ", ".join(sname))
                     self.log_debug("Sensor state: %s" % sensor_msg)
 
                 # "Fast" unload

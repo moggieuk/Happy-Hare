@@ -508,11 +508,8 @@ class MmuSyncFeedbackManager:
         if rd is not None:
             msg = "MmuSyncFeedbackManager: Autotune suggested new operational reference rd: %.4f\n%s" % (rd, note)
             if save and self.mmu.autotune_rotation_distance:
-                msg += "\nThis suggestion will be persisted (and bowden length adjusted) when extruder is next unsynced"
                 self.new_autotuned_rd = rd
-                self.mmu.log_info(msg)
-            else:
-                self.mmu.log_debug(msg)
+            self.mmu.log_debug(msg)
 
         # Always update instaneous gear stepper rotation_distance
         rd_current, rd_prev, rd_tuned = output['rd_current'], output['rd_prev'], output['rd_tuned']
