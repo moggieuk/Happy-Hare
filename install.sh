@@ -10,7 +10,7 @@
 #               2024  Unsweeticetea <iamzevle@gmail.com>
 #               2024  Dmitry Kychanov <k1-801@mail.ru>
 #
-VERSION=3.41 # Important: Keep synced with mmy.py
+VERSION=3.42 # Important: Keep synced with mmy.py
 
 F_VERSION=$(echo "$VERSION" | sed 's/\([0-9]\+\)\.\([0-9]\)\([0-9]\)/\1.\2.\3/')
 SCRIPT="$(readlink -f "$0")"
@@ -722,6 +722,12 @@ read_previous_config() {
     #if [ "${variable_led_enable}" != "" ]; then
     #    _hw_led_enable=$(convert_boolean_string_to_int "${variable_led_enable}")
     #fi
+
+    # v3.4.2 - not upgraded because new values will correct user adjustments
+    # sync_multiplier_high: 1.05
+    # sync_multiplier_low: 0.95
+    # >> sync_feedback_speed_multiplier: 5
+    # >> sync_feedback_extrude_threshold: 5
 }
 
 check_for_999() {

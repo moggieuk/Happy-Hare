@@ -39,7 +39,7 @@ from .mmu_calibration_manager   import MmuCalibrationManager
 
 # Main klipper module
 class Mmu:
-    VERSION = 3.41 # When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
+    VERSION = 3.42 # When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
 
     BOOT_DELAY = 2.5 # Delay before running bootup tasks
 
