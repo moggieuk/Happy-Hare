@@ -2704,20 +2704,26 @@ class Mmu:
             "and sync_feedback_analog_neutral_point) will be determined by this calibration."
         )
 
-        def _avg_raw(n=8, dwell_s=0.1):
+        if not self.sensor_manager.has_sensor(self.SENSOR_PROPORTIONAL):
+            raise gcmd.error("Proportional (analog sync-feedback) sensor not found\n" + usage)
+
+        def _avg_raw(n=10, dwell_s=0.05):
             """
             Sample sensor.get_status(0)['value_raw'] n times with dwell between reads
-            and return the average
+            and return moving average
             """
             sensor = self.sensor_manager.all_sensors.get(self.SENSOR_PROPORTIONAL)
-            samples = []
-            for _ in range(int(max(1, n))):
+            
+            k = 0.1 # 1st order,low pass filter coefficient, 0.1 for 10 samples 
+            avg = sensor.get_status(0).get('value_raw', None)
+
+            for _ in range(int(max(1, n-1))):
                 self.movequeues_dwell(dwell_s)
-                raw = sensor.get_status(0).get('value_raw', None)
+                raw = sensor.get_status(0).get('value_raw', None) 
                 if raw is None or not isinstance(raw, float):
                     return None
-                samples.append(float(raw))
-            return (sum(samples) / len(samples))
+                avg += k * (raw - avg) # 1st order low pass filter
+            return (avg)
 
         def _sd(xs):
             return stdev(xs) if len(xs) >= 2 else 0.0
@@ -2727,75 +2733,75 @@ class Mmu:
                 with self.wrap_gear_current(percent=self.sync_gear_current, reason="while calibrating sync_feedback psensor"):
                     self.selector.filament_drive()
                     self.calibrating = True
-                    s_maxrange = self.sync_feedback_manager.sync_feedback_buffer_maxrange
+                    s_maxrange = math.ceil(self.sync_feedback_manager.sync_feedback_buffer_maxrange * 1.8)
 
-                    raw0 = _avg_raw()
-                    if raw0 is None:
+                    raw = _avg_raw()
+                    if raw is None:
                         raise gcmd.error("Sensor malfunction. Could not read valid ADC output\nAre you sure you configured in [mmu_sensors]?")
 
                     calibrated = False
                     self.log_always("Starting calibration. Please excuse the noise - you might hear a bit of grinding but it won't take long!")
-                    for attempt in range(2, 5):
-                        max_movement = s_maxrange * attempt # Start small but increasing movements
-
-                        loops = 3
-                        c_vals = []
-                        t_vals = []
-                        self.log_always("Calibrating using %.1fmm filament movements" % max_movement)
-                        for i in range(loops):
-                            self.log_always("Pass %d/%d" % (i+1, loops))
-
-                            msg = "Finding compression limit..."
-                            self.log_always(msg)
-                            _,_,_,_ = self.trace_filament_move(msg, max_movement, motor="gear", speed=8, wait=True)
-                            c_avg = _avg_raw()
-                            if c_avg is None:
-                                self.log_always("Invalid compression sample; aborting this attempt.")
-                                break
-                            c_vals.append(c_avg)
-
-                            msg = "Finding tension limit..."
-                            self.log_always(msg)
-                            _,_,_,_ = self.trace_filament_move(msg, -max_movement, motor="gear", speed=8, wait=True)
-                            t_avg = _avg_raw()
-                            if t_avg is None:
-                                self.log_always("Invalid tension sample; aborting this attempt.")
-                                break
-                            t_vals.append(t_avg)
-
-                            self.log_always("Pass %d: Measured max compression: %.4f and max tension: %.4f (mid: %.4f)" % (i+1, c_avg, t_avg, (c_avg + t_avg) / 2.0))
-
-                        c_raw = sum(c_vals) / len(c_vals)
-                        t_raw = sum(t_vals) / len(t_vals)
-                        mid_raw = (c_raw + t_raw) / 2.0
-                        c_sd = _sd(c_vals)
-                        t_sd = _sd(t_vals)
-
-                        if c_sd <= SD_THRESHOLD and t_sd <= SD_THRESHOLD:
-                            calibrated = True
-                            break
-
-                        msg = "Variance too high (compression sd=%.4f, tension sd=%.4f, threshold=%.4f)\n" % (c_sd, t_sd, SD_THRESHOLD)
-                        msg += "Trying again with wider movement range"
-                        self.log_always(msg)
-
-
-                if calibrated and c_raw != t_raw: # Also check for "stuck" reading
-                    msg = "Calibration Results:\n"
-                    msg += "As wired the recommended setting (in mmu_hardware.cfg) is:\n"
-                    msg += "[mmu_sensors]\n"
-                    msg += "sync_feedback_analog_max_compression: %.4f\n" % c_raw
-                    msg += "sync_feedback_analog_max_tension: %.4f\n" % t_raw
-                    msg += "sync_feedback_analog_neutral_point: %.4f\n" % mid_raw
-                    msg += "After updating, restart klipper"
+                    
+                    # seek compressed extreme - depending on magnetic field, values could move in + or - direction 
+                    msg = "Finding compression limit stepping up to %.2fmm\n" % s_maxrange
                     self.log_always(msg)
-                else:
-                    msg = (
-                        "Did not obtain stable values for extreme sensor value.\n"
-                        "Perhaps sync_feedback_buffer_maxrange parameter is incorrect?\n"
-                        "Alternatively with forced movement range by adding MOVE="
-                    )
-                    self.log_warning(msg)
+
+                    c_sd = raw
+                    ramp = None
+
+                    for attempt in range (0, s_maxrange, 2):
+                        _,_,_,_ = self.trace_filament_move(msg, 2.0, motor="gear", speed=8, wait=True)
+                        raw = _avg_raw()
+
+                        if ramp == None:
+                           ramp = (raw > c_sd)
+
+                        if (ramp and raw > c_sd) or (not ramp and raw < c_sd):
+                           c_sd = raw
+                           self.log_always("Seeking ... ADC value %.4f" % c_sd)
+                        else:
+                           break
+ 
+                    # backoff compressed extreme  
+                    msg = "Backing off compressed limit"
+                    self.log_always(msg)
+                    _,_,_,_ = self.trace_filament_move(msg, -(s_maxrange / 2), motor="gear", speed=8, wait=True)
+
+
+                    # seek tension extreme - depending on magnetic field, values could move in + or - direction 
+                    msg = "Finding tension limit stepping up to %.2fmm\n" % s_maxrange
+                    self.log_always(msg)
+
+                    t_sd = c_sd # seed starting point from last reading
+                    ramp = not ramp 
+
+                    for attempt in range (0, s_maxrange, 2):
+                        _,_,_,_ = self.trace_filament_move(msg, -2.0, motor="gear", speed=8, wait=True)
+                        raw = _avg_raw()
+
+                        if (ramp and raw > t_sd) or (not ramp and raw < t_sd):
+                           t_sd = raw
+                           self.log_always("Seeking ... ADC value %.4f" % t_sd)
+                        else:
+                           break
+ 
+                    # backoff tension extreme  
+                    _,_,_,_ = self.trace_filament_move(msg, (s_maxrange / 2), motor="gear", speed=8, wait=True)
+
+                    if 0.5 <= abs(c_sd - t_sd) <= 1.0: # we need usable sensor range
+                        msg =  "Calibration Results:\n"
+                        msg += "As wired, recommended settings (in mmu_hardware.cfg) are:\n"
+                        msg += "[mmu_sensors]\n"
+                        msg += "sync_feedback_analog_max_compression: %.4f\n" % c_sd
+                        msg += "sync_feedback_analog_max_tension:     %.4f\n" % t_sd
+                        msg += "sync_feedback_analog_neutral_point:   %.4f\n" % ((c_sd + t_sd) / 2.0)
+                        self.log_always(msg)
+                    else:
+                        msg = (
+                               "Did not obtain usable values for extreme sensor values.\n"
+                               "Perhaps sync_feedback_buffer_maxrange parameter is incorrect?\n"
+                               )
+                        self.log_warning(msg)
 
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
