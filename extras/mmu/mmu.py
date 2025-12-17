@@ -2687,6 +2687,10 @@ class Mmu:
     cmd_MMU_CALIBRATE_PSENSOR_help = "Calibrate analog proprotional sync-feedback sensor"
     def cmd_MMU_CALIBRATE_PSENSOR(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
+
+        if not self.sensor_manager.has_sensor(self.SENSOR_PROPORTIONAL):
+            raise gcmd.error("Proportional (analog sync-feedback) sensor not found\n" + usage)
+
         if self.check_if_disabled(): return
         if self.check_if_bypass(): return
         if self.check_if_not_loaded(): return
@@ -2696,8 +2700,8 @@ class Mmu:
 
         usage = (
             "Ensure your sensor is configured by setting sync_feedback_analog_pin in [mmu_sensors].\n"
-            "The other settings (sync_feedback_analog_reversed, sync_feedback_analog_set_point, "
-            "sync_feedback_analog_scale) will be determined by this calibration."
+            "The other settings (sync_feedback_analog_max_compression, sync_feedback_analog_max_tension "
+            "and sync_feedback_analog_neutral_point) will be determined by this calibration."
         )
 
         if not self.sensor_manager.has_sensor(self.SENSOR_PROPORTIONAL):
@@ -4625,7 +4629,7 @@ class Mmu:
             ):
                 max_range = self.sync_feedback_manager.sync_feedback_buffer_maxrange * 2 # Arbitary but buffer_maxrange is not enough to overcome bowden slack
                 if length > max_range:
-                    self.log_debug("Monitoring extruder entrance transistion for up to %.1fmm..." % max_range)
+                    self.log_debug("Monitoring extruder entrance transition for up to %.1fmm..." % max_range)
                     actual,success = self.sync_feedback_manager.adjust_filament_tension(use_gear_motor=False, max_move=max_range)
                     if success:
                         length -= actual
