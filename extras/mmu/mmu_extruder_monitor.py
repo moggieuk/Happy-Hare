@@ -24,7 +24,7 @@ class ExtruderMonitor:
     - Global enable/disable is controlled by (re)scheduling the reactor timer.
     """
 
-    CHECK_INTERVAL = 0.25 # How often to check extruder movement (seconds)
+    CHECK_INTERVAL = 0.5 # How often to check extruder movement (seconds)
 
     def __init__(self, mmu):
         self.mmu = mmu
