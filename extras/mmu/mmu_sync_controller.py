@@ -228,12 +228,12 @@ class SyncControllerConfig:
         # FlowGuard relief threshold (how much "counter-effort" must be proven)
         if self.flowguard_relief_mm is None:
             mult = 0.3 if self.sensor_type in ['P'] else 0.7
-            self.flowguard_relief_mm = mult * self.buffer_range_mm
+            self.flowguard_relief_mm = max(mult * self.buffer_range_mm, self.buffer_max_range_mm)
 
         # FlowGuard motion threshold (how much motion while pegged before tripping)
         if self.flowguard_motion_mm is None:
             mult = 6.0 if self.sensor_type in ['P'] else 10.0
-            self.flowguard_motion_mm = mult * self.buffer_range_mm
+            self.flowguard_motion_mm = mult * self.buffer_max_range_mm
 
 
 # ------------------------------- EKF State ------------------------------
@@ -354,7 +354,8 @@ class _AutotuneEngine:
     def pause(self):
         """
         Called to pause autotune generally because we received a large retract or we know
-        we are going to do an extended retract. Tuning only work reliably in a single direction
+        we are going to do an extended retract (tuning only work reliably in a extruder direction)
+        or we are performing movement that is known to cause underextrusion (like blobifer purge).
         """
         if not self._paused:
             self._paused = True
@@ -861,7 +862,7 @@ class _FlowguardEngine:
         prev_tens_motion = self._tens_motion_mm
         prev_tens_relief = self._relief_tens_mm
 
-        # Start with direct extremes (sensor-gated; P/D may fall back to x̂)
+        # Start with direct extremes (sensor-gated; P/D may fall back to x_hat)
         comp_ext, tens_ext = self.ctrl._extreme_flags(sensor_reading)
 
         # One-sided open-side test (while switch is open)
@@ -1081,7 +1082,7 @@ class SyncController:
 
     # ------------------------------------ PUBLIC API ------------------------------------
 
-    def reset(self, eventtime, rd_init, sensor_reading, log_file=None, simulation=False):
+    def reset(self, eventtime, rd_init, sensor_reading, log_file=None, hard_reset=True, simulation=False):
         """
         Full controller reset for a gear motor swap or new cold start.
         Seeds internal time to `t_s` and zeroes elapsed time.
@@ -1098,10 +1099,7 @@ class SyncController:
         self._twolevel_boost_active = True
         self._set_min_max_rd(rd_init)
 
-        # Rebase autotune helper on the new start
-        self.autotune.restart(rd_init)
-
-        # Seed x̂ from sensor reading
+        # Seed x_hat from sensor reading
         if cfg.sensor_type == "P":
             z = float(sensor_reading)
             x0 = max(-1.0, min(1.0, z))
@@ -1151,6 +1149,10 @@ class SyncController:
             else:
                 self._os_target_level = "low"  # neutral start; will flip on first extreme
             self._os_since_flip_mm = 0.0
+
+        if hard_reset:
+            # Rebase autotune helper on the new start
+            self.autotune.restart(rd_init)
 
         # Reset FlowGuard engine state on controller reset
         self.flowguard.reset()
@@ -1310,6 +1312,13 @@ class SyncController:
         if sensor_type == 'P':
             sensor_type += " (TwoLevel mode)" if self.twolevel_active else " (EKF mode)"
         return sensor_type
+
+
+    def get_current_rd(self):
+        """
+        Return the current RD in use
+        """
+        return self.rd_current
 
 
     # --------------------------------- Internal Impl ------------------------------------

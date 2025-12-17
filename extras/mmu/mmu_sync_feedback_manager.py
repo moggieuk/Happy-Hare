@@ -166,17 +166,20 @@ class MmuSyncFeedbackManager:
         return "disabled"
 
 
-    def activate_flowguard(self):
+    def activate_flowguard(self, eventtime):
         if self.flowguard_enabled and not self.flowguard_active:
             self.flowguard_active = True
-            self.ctrl.flowguard.reset()
-            self.mmu.log_info("MmuSyncFeedbackManager: FlowGuard monitoring activated")
+            # This resets controller with last good autotuned RD, resets flowguard and resumes autotune
+            self._reset_controller(eventtime, hard_reset=False)
+            self.ctrl.autotune.resume()
+            self.mmu.log_info("MmuSyncFeedbackManager: FlowGuard monitoring activated and autotune resumed")
 
 
-    def deactivate_flowguard(self):
+    def deactivate_flowguard(self, eventtime):
         if self.flowguard_enabled and self.flowguard_active:
             self.flowguard_active = False
-            self.mmu.log_info("MmuSyncFeedbackManager: FlowGuard monitoring deactivated")
+            self.ctrl.autotune.pause() # Very likley this is a period that we want to exclude from autotuning
+            self.mmu.log_info("MmuSyncFeedbackManager: FlowGuard monitoring deactivated and autotune paused")
 
 
     def adjust_filament_tension(self, use_gear_motor=True, max_move=None):
@@ -186,13 +189,11 @@ class MmuSyncFeedbackManager:
         extruder entry check using compression sensor 'max_move' is advisory maximum travel distance
         Returns distance of the correction move and whether operation was successful (or None if not performed)
         """
-        has_tension      = self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_TENSION)
-        has_compression  = self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_COMPRESSION)
-        has_proportional = self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_PROPORTIONAL)
+        has_tension, has_compression, has_proportional = self.get_active_sensors()
         max_move = max_move or self.sync_feedback_buffer_maxrange
 
         if has_proportional:
-            return self._adjust_filament_tension_proportional() # Doesn't support extruder stepper or max_move
+            return self._adjust_filament_tension_proportional() # Doesn't yet support extruder stepper or max_move parameter
 
         if has_tension or has_compression:
             return self._adjust_filament_tension_switch(use_gear_motor=use_gear_motor, max_move=max_move)
@@ -217,6 +218,17 @@ class MmuSyncFeedbackManager:
                         self.mmu.log_error("REMOVED log_path=%s" % log_path)
                     except OSError as e:
                         self.mmu.log_debug("Unable to wipe sync feedback debug log: %s" % log_path)
+
+
+    def get_active_sensors(self):
+        """
+        Returns tuple of active sync-feedback sensors
+        """
+        sm = self.mmu.sensor_manager
+        has_tension      = sm.has_sensor(self.mmu.SENSOR_TENSION)
+        has_compression  = sm.has_sensor(self.mmu.SENSOR_COMPRESSION)
+        has_proportional = sm.has_sensor(self.mmu.SENSOR_PROPORTIONAL)
+        return has_tension, has_compression, has_proportional
 
 
     #
@@ -259,6 +271,7 @@ class MmuSyncFeedbackManager:
     cmd_MMU_SYNC_FEEDBACK_param_help = (
         "MMU_SYNC_FEEDBACK: %s\n" % cmd_MMU_SYNC_FEEDBACK_help
         + "ENABLE         = [1|0] enable/disable sync feedback control\n"
+        + "RESET          = [1|0] reset sync controller and return RD to last known good value\n"
         + "ADJUST_TENSION = [1|0] apply correction to neutralize filament tension\n"
         + "AUTOTUNE       = [1|0] allow saving of autotuned rotation distance\n"
         + "(no parameters for status report)"
@@ -272,21 +285,25 @@ class MmuSyncFeedbackManager:
             self.mmu.log_always(self.mmu.format_help(self.cmd_MMU_SYNC_FEEDBACK_param_help), color=True)
             return
 
-        has_tension      = self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_TENSION)
-        has_compression  = self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_COMPRESSION)
-        has_proportional = self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_PROPORTIONAL)
+        has_tension, has_compression, has_proportional = self.get_active_sensors()
 
         if not (has_proportional or has_tension or has_compression):
             self.mmu.log_warning("No sync-feedback sensors are present/active")
             return
 
         enable = gcmd.get_int('ENABLE', None, minval=0, maxval=1)
+        reset = gcmd.get_int('RESET', None, minval=0, maxval=1)
         autotune = gcmd.get_int('AUTOTUNE', None, minval=0, maxval=1)
         adjust_tension = gcmd.get_int('ADJUST_TENSION', 0, minval=0, maxval=1)
 
         if enable is not None:
             self.sync_feedback_enabled = enable
             self.mmu.log_always("Sync feedback feature is %s" % ("enabled" if enable else "disabled"))
+
+        if reset is not None and self.sync_feedback_enabled:
+            self.mmu.log_always("Sync feedback reset")
+            eventtime = self.mmu.reactor.monotonic()
+            self._reset_controller(eventtime)
 
         if autotune is not None:
             self.mmu.autotune_rotation_distance = autotune
@@ -310,7 +327,19 @@ class MmuSyncFeedbackManager:
             if self.sync_feedback_enabled:
                 active = " and currently active" if self.active else " (not currently active)"
                 mode = self.ctrl.get_type_mode()
-                self.mmu.log_always("Sync feedback feature with type-%s sensor is enabled%s" % (mode, active))
+
+                rd_start = self.mmu.calibration_manager.get_gear_rd()
+                rd_current = self.ctrl.get_current_rd()
+                rd_rec = self.ctrl.autotune.get_rec_rd()
+                rd_info = "RD: Current:%.2f, Autotune recommended:%.2f, Default:%.2f" % (rd_current, rd_rec, rd_start)
+
+                has_tension, has_compression, has_proportional = self.get_active_sensors()
+                state = "Sensor state: %s" % self.get_sync_feedback_string()
+                if has_proportional:
+                    state += " (flowrate: %.1f%%)" % self.flow_rate
+
+                self.mmu.log_always("Sync feedback feature with type-%s sensor is enabled%s\n%s\n%s" % (mode, active, rd_info, state))
+
             else:
                 self.mmu.log_always("Sync feedback feature is disabled")
     
@@ -361,15 +390,8 @@ class MmuSyncFeedbackManager:
         self.active = True
         self.new_autotuned_rd = None
 
-        # Allow dynamic changing of effective "sensor type" based on currently enabled sensors
-        self.ctrl.cfg.sensor_type = self._get_sensor_type()
-
-        # Reset controller with initial rd and sensor reading (will also reset autotune and flowguard)
-        starting_state = self._get_sensor_state()
-        self.estimated_state = starting_state
-        rd_start = self.mmu.calibration_manager.get_gear_rd()
-        status = self.ctrl.reset(eventtime, rd_start, starting_state, log_file=self._telemetry_log_path())
-        self._process_status(status) # May adjust rotation_distance
+        # Throw away current autotune info and reset rd
+        self._reset_controller(eventtime)
 
         # Turn on extruder movement events
         self.extruder_monitor.register_callback(self._handle_extruder_movement, self.sync_feedback_extrude_threshold)
@@ -416,7 +438,7 @@ class MmuSyncFeedbackManager:
 
         state = self._get_sensor_state()
         status = self.ctrl.update(eventtime, move, state)
-        self._process_status(status)
+        self._process_status(eventtime, status)
 
 
     def _handle_sync_feedback(self, eventtime, state):
@@ -436,10 +458,10 @@ class MmuSyncFeedbackManager:
 
         move = self.extruder_monitor.get_and_reset_accumulated(self._handle_extruder_movement)
         status = self.ctrl.update(eventtime, move, state)
-        self._process_status(status)
+        self._process_status(eventtime, status)
 
 
-    def _process_status(self, status):
+    def _process_status(self, eventtime, status):
         """
         Common logic to process the rotation distance recommendations of the sync controller
         """
@@ -458,10 +480,7 @@ class MmuSyncFeedbackManager:
                 self.mmu.log_error("MmuSyncFeedbackManager: FlowGuard detected a %s.\nReason for trip: %s" % (f_trigger, f_reason))
 
                 # Pick most appropriate sensor to assign event to (primariliy for optics)
-                sm = self.mmu.sensor_manager
-                has_tension      = sm.has_sensor(self.mmu.SENSOR_TENSION)
-                has_compression  = sm.has_sensor(self.mmu.SENSOR_COMPRESSION)
-                has_proportional = self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_PROPORTIONAL)
+                has_tension, has_compression, has_proportional = self.get_active_sensors()
 
                 if has_proportional:
                     sensor_key = self.mmu.SENSOR_PROPORTIONAL
@@ -473,12 +492,14 @@ class MmuSyncFeedbackManager:
                     sensor_key = self.mmu.SENSOR_COMPRESSION
                 else: # "tangle"
                     sensor_key = self.mmu.SENSOR_TENSION
+                sm = self.mmu.sensor_manager
                 sensor = sm.sensors.get(sensor_key)
 
                 sensor.runout_helper.note_clog_tangle(f_trigger)
-                self.deactivate_flowguard()
+                self.deactivate_flowguard(eventtime)
             else:
                 self.mmu.log_debug("MmuSyncFeedbackManager: FlowGuard detected a %s, but handling is disabled.\nReason for trip: %s" % (f_trigger, f_reason))
+                self.ctrl.flowguard.reset() # Prevent repetitive messages
 
         # Handle new autotune suggestions
         autotune = output['autotune']
@@ -488,11 +509,8 @@ class MmuSyncFeedbackManager:
         if rd is not None:
             msg = "MmuSyncFeedbackManager: Autotune suggested new operational reference rd: %.4f\n%s" % (rd, note)
             if save and self.mmu.autotune_rotation_distance:
-                msg += "\nThis suggestion will be persisted (and bowden length adjusted) when extruder is next unsynced"
                 self.new_autotuned_rd = rd
-                self.mmu.log_info(msg)
-            else:
-                self.mmu.log_debug(msg)
+            self.mmu.log_debug(msg)
 
         # Always update instaneous gear stepper rotation_distance
         rd_current, rd_prev, rd_tuned = output['rd_current'], output['rd_prev'], output['rd_tuned']
@@ -504,6 +522,28 @@ class MmuSyncFeedbackManager:
         if self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_PROPORTIONAL):
             # if rd_current > rd_true then flowrate must be reduced
             self.flow_rate = round(min(1.0, (rd_tuned / rd_current)) * 100., 2)
+
+
+    def _reset_controller(self, eventtime, hard_reset=True):
+        """
+        hard_reset: Completely reset sync-feedback: throw away autotune info, reset rd to
+                    last calibrated value. Typically called when handling sync but also can
+                    be explicitly called but MMU_SYNC_FEEDBACK command
+        soft_reset: Rebase sync-feedback to last autotuned value. Typically called when
+                    resuming flowguard (after some activity we want to exclude from tuning)
+        """
+        # Allow dynamic changing of effective "sensor type" based on currently enabled sensors
+        self.ctrl.cfg.sensor_type = self._get_sensor_type()
+
+        # Reset controller with initial rd and sensor reading (will also reset flowguard and autotune on hard_reset)
+        starting_state = self._get_sensor_state()
+        self.estimated_state = starting_state
+        if hard_reset:
+            rd_start = self.mmu.calibration_manager.get_gear_rd()
+        else:
+            rd_start = self.ctrl.autotune.get_rec_rd()
+        status = self.ctrl.reset(eventtime, rd_start, starting_state, log_file=self._telemetry_log_path(), hard_reset=hard_reset)
+        self._process_status(eventtime, status) # May adjust rotation_distance
 
 
     def _init_controller(self):
@@ -584,10 +624,7 @@ class MmuSyncFeedbackManager:
           "CO" => compression-only switch z ∈ {0,+1}
           "TO" => tension_only switch z ∈ {-1,0}
         """
-        sm = self.mmu.sensor_manager
-        has_tension        = sm.has_sensor(self.mmu.SENSOR_TENSION)
-        has_compression    = sm.has_sensor(self.mmu.SENSOR_COMPRESSION)
-        has_proportional   = sm.has_sensor(self.mmu.SENSOR_PROPORTIONAL)
+        has_tension, has_compression, has_proportional = self.get_active_sensors()
         return (
             "P" if has_proportional
             else "D" if has_compression and has_tension

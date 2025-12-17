@@ -39,7 +39,7 @@ from .mmu_calibration_manager   import MmuCalibrationManager
 
 # Main klipper module
 class Mmu:
-    VERSION = 3.41 # When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
+    VERSION = 3.42 # When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
 
     BOOT_DELAY = 2.5 # Delay before running bootup tasks
 
@@ -266,7 +266,7 @@ class Mmu:
         self.mmu_logger = None                # Setup on connect
         self._standalone_sync = False         # Used to indicate synced extruder intention whilst out of print
         self._suppress_release_grip = False   # Used to suppress the relaxing of grip on recursive calls to prevent servo flutter
-        self.bowden_start_pos = None
+        self.bowden_start_pos = None          # If set then we can measure bowden progress
         self.has_blobifier = False            # Post load blobbling macro (like BLOBIFIER)
         self.has_mmu_cutter = False           # Post unload cutting macro (like EREC)
         self.has_toolhead_cutter = False      # Form tip cutting macro (like _MMU_CUT_TIP)
@@ -766,18 +766,8 @@ class Mmu:
         # Establish gear_stepper initial gear_stepper and extruder currents and current percentage
         self.gear_default_run_current = self.gear_tmc.get_status(0)['run_current'] if self.gear_tmc else None
         self.extruder_default_run_current = self.extruder_tmc.get_status(0)['run_current'] if self.extruder_tmc else None
-        self.gear_percentage_run_current = self.gear_restore_percent_run_current = self.extruder_percentage_run_current = 100
-
-        # Use gc to find all active TMC current helpers - used for direct stepper current control
-        self.tmc_current_helpers = {}
-        refcounts = {}
-        for obj in gc.get_objects():
-            if isinstance(obj, TMCCommandHelper):
-                ref_count = sys.getrefcount(obj)
-                stepper_name = obj.stepper_name
-                if stepper_name not in refcounts or ref_count > refcounts[stepper_name]:
-                    refcounts[stepper_name] = ref_count
-                    self.tmc_current_helpers[stepper_name] = obj.current_helper
+        self.gear_percentage_run_current = self.extruder_percentage_run_current = 100 # Current run percentages
+        self._gear_current_locked = False # True if gear current is currently locked by wrap_gear_current()
 
         # Sanity check that required klipper options are enabled
         self.print_stats = self.printer.lookup_object("print_stats", None)
@@ -1424,7 +1414,8 @@ class Mmu:
         if (self.bowden_start_pos is not None):
             bowden_length = self.calibration_manager.get_bowden_length()
             if bowden_length > 0:
-                progress = (self.get_encoder_distance(dwell=None) - self.bowden_start_pos) / bowden_length
+                current = self.get_encoder_distance(dwell=None) if self.has_encoder() else self._get_live_filament_position()
+                progress = abs(current - self.bowden_start_pos) / bowden_length
                 if self.filament_direction == self.DIRECTION_UNLOAD:
                     progress = 1 - progress
                 return round(max(0, min(100, progress * 100)))
@@ -2013,7 +2004,7 @@ class Mmu:
         msg += "\nPrint state is %s" % self.print_state.upper()
         msg += ". Tool %s selected on gate %s%s" % (self._selected_tool_string(), self._selected_gate_string(), self._selected_unit_string())
         msg += ". Toolhead position saved" if self.saved_toolhead_operation else ""
-        msg += "\nGear stepper at %d%% current and is %s to extruder" % (self.gear_percentage_run_current, "SYNCED" if self.mmu_toolhead.is_gear_synced_to_extruder() else "not synced")
+        msg += "\nMMU gear stepper at %d%% current and is %s to extruder" % (self.gear_percentage_run_current, "SYNCED" if self.mmu_toolhead.is_gear_synced_to_extruder() else "not synced")
         if self._standalone_sync:
             msg += ". Standalone sync mode is ENABLED"
         if self.sync_feedback_manager.is_enabled():
@@ -2079,10 +2070,23 @@ class Mmu:
                     msg += "\n- Purging is managed by slicer only when printing"
 
             # Tightening
-            if self._can_use_encoder() and not self.sync_to_extruder and self.enable_clog_detection and self.toolhead_post_load_tighten:
+            has_tension = self.sensor_manager.has_sensor(self.SENSOR_TENSION)
+            has_compression = self.sensor_manager.has_sensor(self.SENSOR_COMPRESSION)
+            has_proportional = self.sensor_manager.has_sensor(self.SENSOR_PROPORTIONAL)
+            if (
+                self.toolhead_post_load_tighten
+                and not self.sync_to_extruder
+                and self._can_use_encoder()
+                and self.enable_clog_detection
+            ):
                 msg += "\n- Filament in bowden is tightened by %.1fmm (%d%% of clog detection length) at reduced gear current to prevent false clog detection" % (min(self.encoder_sensor.get_clog_detection_length() * self.toolhead_post_load_tighten / 100, 15), self.toolhead_post_load_tighten)
-            elif self.sync_feedback_manager.has_sensor() and (self.sync_to_extruder or self.sync_purge) and self.toolhead_post_load_tension_adjust:
-                msg += "\n- Filament in bowden will be adjusted a maxium of %.1fmm to neutralize tension" % (self.sync_feedback_manager.sync_feedback_buffer_range or self.sync_feedback_manager.sync_feedback_buffer_maxrange)
+            elif (
+                self.toolhead_post_load_tension_adjust
+                and (self.sync_to_extruder or self.sync_purge)
+                and (has_tension or has_compression or has_proportional)
+                and self.sync_feedback_manager.is_enabled()
+            ):
+                msg += "\n- Filament in bowden will be adjusted a maximum of %.1fmm to neutralize tension" % (self.sync_feedback_manager.sync_feedback_buffer_range or self.sync_feedback_manager.sync_feedback_buffer_maxrange)
 
             msg += "\n\nUnload Sequence:"
 
@@ -2285,8 +2289,12 @@ class Mmu:
         if self.check_if_not_homed(): return
         sync = gcmd.get_int('SYNC', 1, minval=0, maxval=1)
         if not sync and self.check_if_always_gripped(): return
-        if not self.is_in_print():
+        if not self.is_in_print() and self._standalone_sync != bool(sync):
             self._standalone_sync = bool(sync) # Make sticky if not in a print
+            if self._standalone_sync:
+                self.log_info("MMU gear stepper will be synced with extruder whenever filament is in extruder")
+            else:
+                self.log_info("MMU gear stepper is unsynced from extruder")
         self.reset_sync_gear_to_extruder(sync)
 
 
@@ -2394,7 +2402,7 @@ class Mmu:
             if measured > 0:
                 current_rd = self.gear_rail.steppers[0].get_rotation_distance()[0]
                 new_rd = round(current_rd * measured / length, 4)
-                self.log_always("Gear stepper 'rotation_distance' calculated to be %.4f (currently: %.4f)" % (new_rd, current_rd))
+                self.log_always("MMU gear stepper 'rotation_distance' calculated to be %.4f (currently: %.4f)" % (new_rd, current_rd))
                 if save:
                     self.set_gear_rotation_distance(new_rd)
                     self.calibration_manager.update_gear_rd(new_rd, console_msg=True)
@@ -2594,7 +2602,7 @@ class Mmu:
             msg += "3) 'CUT=1' holding blade in for: variable_blade_pos\n"
             msg += "Desired gate should be selected but the filament unloaded\n"
             msg += "('SAVE=0' to run without persisting results)\n"
-            msg += "Note: On Type-B MMU's you might experience noise/grinding as movement limits are explored (reduce gear stepper current if a problem)\n"
+            msg += "Note: On Type-B MMU's you might experience noise/grinding as movement limits are explored (select bypass or reduce gear stepper current if a problem)\n"
             self.log_always(msg)
             return
 
@@ -3249,22 +3257,24 @@ class Mmu:
         self.saved_toolhead_operation = ''
 
     def _disable_runout_clog_flowguard(self):
+        eventtime = self.reactor.monotonic()
         enabled = self.runout_enabled
         self.runout_enabled = False
         self.log_trace("Disabled runout/clog/flowguard detection")
         if self.has_encoder() and self.encoder_sensor.is_enabled():
             self.encoder_sensor.disable()
         self.sensor_manager.disable_runout(self.gate_selected)
-        self.sync_feedback_manager.deactivate_flowguard()
+        self.sync_feedback_manager.deactivate_flowguard(eventtime)
         return enabled
 
     def _enable_runout_clog_flowguard(self):
+        eventtime = self.reactor.monotonic()
         self.runout_enabled = True
         self.log_trace("Enabled runout/clog/flowguard detection")
         if self.has_encoder() and not self.encoder_sensor.is_enabled():
             self.encoder_sensor.enable()
         self.sensor_manager.enable_runout(self.gate_selected)
-        self.sync_feedback_manager.activate_flowguard()
+        self.sync_feedback_manager.activate_flowguard(eventtime)
         self.runout_last_enable_time = self.reactor.monotonic()
 
     @contextlib.contextmanager
@@ -3375,6 +3385,14 @@ class Mmu:
 
     def _get_filament_position(self):
         return self.mmu_toolhead.get_position()[1]
+
+    def _get_live_filament_position(self):
+        """
+        Return the approximate live filament position
+        """
+        gear_stepper = self.gear_rail.steppers[0]
+        mcu_pos = gear_stepper.get_mcu_position()
+        return mcu_pos * gear_stepper.get_step_dist()
 
     def _set_filament_position(self, position = 0.):
         pos = self.mmu_toolhead.get_position()
@@ -4340,8 +4358,8 @@ class Mmu:
                 self._set_filament_direction(self.DIRECTION_LOAD)
                 self.selector.filament_drive()
 
-                # Record starting position for bowden progress tracking
-                self.bowden_start_pos = self.get_encoder_distance(dwell=None) - start_pos
+                # Record starting position for bowden progress tracking. Prefer encoder if available
+                self.bowden_start_pos = (self.get_encoder_distance(dwell=None) if self.has_encoder() else self._get_live_filament_position()) - start_pos
 
                 if self.gate_selected > 0 and self.rotation_distances[self.gate_selected] <= 0:
                     self.log_warning("Warning: gate %d not calibrated! Using default rotation distance" % self.gate_selected)
@@ -4426,16 +4444,19 @@ class Mmu:
 
                 self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
 
-                # Record starting position for bowden progress tracking
-                self.bowden_start_pos = self.get_encoder_distance(dwell=None)
+                # Record starting position for bowden progress tracking. Prefer encoder if available
+                self.bowden_start_pos = self.get_encoder_distance(dwell=None) if self.has_encoder() else self._get_live_filament_position()
 
                 # Sensor validation
                 if self.sensor_manager.check_all_sensors_before(self.FILAMENT_POS_START_BOWDEN, self.gate_selected, loading=False) is False:
                     sensors = self.sensor_manager.get_all_sensors()
                     sensor_msg = ''
+                    sname = []
                     for name, state in sensors.items():
                         sensor_msg += "%s (%s), " % (name.upper(), "Disabled" if state is None else ("Detected" if state is True else "Empty"))
-                    self.log_warning("Warning: Possible sensor malfunction - a sensor indicated filament not present before unloading bowden\nWill attempt to continue...")
+                        if state is False:
+                            sname.append(name)
+                    self.log_warning("Warning: Possible sensor malfunction - %s sensor indicated no filament present prior to unloading bowden\nWill ignore and attempt to continue..." % ", ".join(sname))
                     self.log_debug("Sensor state: %s" % sensor_msg)
 
                 # "Fast" unload
@@ -5335,76 +5356,95 @@ class Mmu:
             speed *= adjust
             accel *= adjust
 
+        def _set_sync_mode(sync_mode):
+            self.mmu_toolhead.sync(sync_mode)
+            if sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER:
+                self._adjust_gear_current(percent=self.sync_gear_current, reason="for extruder synced move")
+            else:
+                self._restore_gear_current() # 100%
+
         with self._wrap_espooler(motor, dist, speed, accel, homing_move):
             wait = wait or self._wait_for_espooler # Allow eSpooler wrapper to force wait
 
             # Gear rail is driving the filament
             start_pos = self.mmu_toolhead.get_position()[1]
             if motor in ["gear", "gear+extruder", "extruder"]:
-                with self._wrap_sync_mode(MmuToolHead.EXTRUDER_SYNCED_TO_GEAR if motor == "gear+extruder" else MmuToolHead.EXTRUDER_ONLY_ON_GEAR if motor == "extruder" else MmuToolHead.GEAR_ONLY):
-                    if homing_move != 0:
-                        trig_pos = [0., 0., 0., 0.]
-                        hmove = HomingMove(self.printer, endstops, self.mmu_toolhead)
-                        init_ext_mcu_pos = self.mmu_extruder_stepper.stepper.get_mcu_position() # For non-homing extruder or if extruder not on gear rail
-                        init_pos = pos[1]
-                        pos[1] += dist
-                        for _ in range(self.canbus_comms_retries):  # HACK: We can repeat because homing move
-                            got_comms_timeout = False # HACK: Logic to try to mask CANbus timeout issues
-                            try:
-                                #initial_mcu_pos = self.mmu_extruder_stepper.stepper.get_mcu_position()
-                                #init_pos = pos[1]
-                                #pos[1] += dist
-                                with self.wrap_accel(accel):
-                                    trig_pos = hmove.homing_move(pos, speed, probe_pos=True, triggered=homing_move > 0, check_triggered=True)
-                                homed = True
-                                if self.gear_rail.is_endstop_virtual(endstop_name):
-                                    # Stallguard doesn't do well at slow speed. Try to infer move completion
-                                    if abs(trig_pos[1] - dist) < 1.0:
-                                        homed = False
-                            except self.printer.command_error as e:
-                                # CANbus mcu's often seen to exhibit "Communication timeout" so surface errors to user
-                                if abs(trig_pos[1] - dist) > 0. and "after full movement" not in str(e):
-                                    if 'communication timeout' in str(e).lower():
-                                        got_comms_timeout = True
-                                        speed *= 0.8 # Reduce speed by 20%
-                                    self.log_error("Did not complete homing move: %s" % str(e))
-                                else:
-                                    if self.log_enabled(self.LOG_STEPPER):
-                                        self.log_stepper("Did not home: %s" % str(e))
-                                homed = False
-                            finally:
-                                halt_pos = self.mmu_toolhead.get_position()
-                                ext_actual = (self.mmu_extruder_stepper.stepper.get_mcu_position() - init_ext_mcu_pos) * self.mmu_extruder_stepper.stepper.get_step_dist()
-
-                                # Support setup where a non-homing extruder is being used
-                                if motor == "extruder" and not self.homing_extruder:
-                                    # This isn't super accurate if extruder isn't (homing) MmuExtruder because doesn't have required endstop, thus this will
-                                    # overrun and even move slightly even if already homed. We can only correct the actual gear rail position.
-                                    halt_pos[1] += ext_actual
-                                    self.mmu_toolhead.set_position(halt_pos) # Correct the gear rail position
-
-                                actual = halt_pos[1] - init_pos
+                _set_sync_mode(MmuToolHead.EXTRUDER_SYNCED_TO_GEAR if motor == "gear+extruder" else MmuToolHead.EXTRUDER_ONLY_ON_GEAR if motor == "extruder" else MmuToolHead.GEAR_ONLY)
+                if homing_move != 0:
+                    trig_pos = [0., 0., 0., 0.]
+                    hmove = HomingMove(self.printer, endstops, self.mmu_toolhead)
+                    init_ext_mcu_pos = self.mmu_extruder_stepper.stepper.get_mcu_position() # For non-homing extruder or if extruder not on gear rail
+                    init_pos = pos[1]
+                    pos[1] += dist
+                    for _ in range(self.canbus_comms_retries):  # HACK: We can repeat because homing move
+                        got_comms_timeout = False # HACK: Logic to try to mask CANbus timeout issues
+                        try:
+                            #initial_mcu_pos = self.mmu_extruder_stepper.stepper.get_mcu_position()
+                            #init_pos = pos[1]
+                            #pos[1] += dist
+                            with self.wrap_accel(accel):
+                                trig_pos = hmove.homing_move(pos, speed, probe_pos=True, triggered=homing_move > 0, check_triggered=True)
+                            homed = True
+                            if self.gear_rail.is_endstop_virtual(endstop_name):
+                                # Stallguard doesn't do well at slow speed. Try to infer move completion
+                                if abs(trig_pos[1] - dist) < 1.0:
+                                    homed = False
+                        except self.printer.command_error as e:
+                            # CANbus mcu's often seen to exhibit "Communication timeout" so surface errors to user
+                            if abs(trig_pos[1] - dist) > 0. and "after full movement" not in str(e):
+                                if 'communication timeout' in str(e).lower():
+                                    got_comms_timeout = True
+                                    speed *= 0.8 # Reduce speed by 20%
+                                self.log_error("Did not complete homing move: %s" % str(e))
+                            else:
                                 if self.log_enabled(self.LOG_STEPPER):
-                                    self.log_stepper("%s HOMING MOVE: max dist=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s, wait=%s >> %s" % (motor.upper(), dist, speed, accel, endstop_name, wait, "%s halt_pos=%.1f (rail moved=%.1f, extruder moved=%.1f), start_pos=%.1f, trig_pos=%.1f" % ("HOMED" if homed else "DID NOT HOMED",  halt_pos[1], actual, ext_actual, start_pos, trig_pos[1])))
-                            if not got_comms_timeout:
-                                break
-                    else:
-                        if self.log_enabled(self.LOG_STEPPER):
-                            self.log_stepper("%s MOVE: dist=%.1f, speed=%.1f, accel=%.1f, wait=%s" % (motor.upper(), dist, speed, accel, wait))
-                        pos[1] += dist
-                        with self.wrap_accel(accel):
-                            self.mmu_toolhead.move(pos, speed)
+                                    self.log_stepper("Did not home: %s" % str(e))
+                            homed = False
+                        finally:
+                            halt_pos = self.mmu_toolhead.get_position()
+                            ext_actual = (self.mmu_extruder_stepper.stepper.get_mcu_position() - init_ext_mcu_pos) * self.mmu_extruder_stepper.stepper.get_step_dist()
+
+                            # Support setup where a non-homing extruder is being used
+                            if motor == "extruder" and not self.homing_extruder:
+                                # This isn't super accurate if extruder isn't (homing) MmuExtruder because doesn't have required endstop, thus this will
+                                # overrun and even move slightly even if already homed. We can only correct the actual gear rail position.
+                                halt_pos[1] += ext_actual
+                                self.mmu_toolhead.set_position(halt_pos) # Correct the gear rail position
+
+                            actual = halt_pos[1] - init_pos
+                            if self.log_enabled(self.LOG_STEPPER):
+                                self.log_stepper("%s HOMING MOVE: max dist=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s, wait=%s >> %s" % (
+                                        motor.upper(), dist, speed, accel, endstop_name, wait,
+                                        (
+                                            "%s halt_pos=%.1f (rail moved=%.1f, extruder moved=%.1f), "
+                                            "start_pos=%.1f, trig_pos=%.1f"
+                                            % (
+                                                "HOMED" if homed else "DID NOT HOMED",
+                                                halt_pos[1], actual, ext_actual, start_pos, trig_pos[1],
+                                            )
+                                        ),
+                                    )
+                                )
+
+                        if not got_comms_timeout:
+                            break
+                else:
+                    if self.log_enabled(self.LOG_STEPPER):
+                        self.log_stepper("%s MOVE: dist=%.1f, speed=%.1f, accel=%.1f, wait=%s" % (motor.upper(), dist, speed, accel, wait))
+                    pos[1] += dist
+                    with self.wrap_accel(accel):
+                        self.mmu_toolhead.move(pos, speed)
 
             # Extruder is driving, gear rail is following
             elif motor in ["synced"]:
-                with self._wrap_sync_mode(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER):
-                    if homing_move != 0:
-                        self.log_error("Not possible to perform homing move while synced")
-                    else:
-                        if self.log_enabled(self.LOG_STEPPER):
-                            self.log_stepper("%s MOVE: dist=%.1f, speed=%.1f, accel=%.1f, wait=%s" % (motor.upper(), dist, speed, accel, wait))
-                        ext_pos[3] += dist
-                        self.toolhead.move(ext_pos, speed)
+                _set_sync_mode(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER)
+                if homing_move != 0:
+                    self.log_error("Not possible to perform homing move while synced")
+                else:
+                    if self.log_enabled(self.LOG_STEPPER):
+                        self.log_stepper("%s MOVE: dist=%.1f, speed=%.1f, accel=%.1f, wait=%s" % (motor.upper(), dist, speed, accel, wait))
+                    ext_pos[3] += dist
+                    self.toolhead.move(ext_pos, speed)
 
             self.mmu_toolhead.flush_step_generation() # TTC mitigation (TODO still required?)
             self.toolhead.flush_step_generation()     # TTC mitigation (TODO still required?)
@@ -5442,21 +5482,6 @@ class Mmu:
                     self.gate_statistics[self.gate_selected]['quality'] = (cur_quality * 9 + quality) / 10
 
         return actual, homed, measured, delta
-
-    # This is used to protect just the mmu_toolhead sync state and is used to wrap individual moves. Typically
-    # the starting state will be unsynced so this will simply unsync at the end of the move. It does not manage
-    # grip (servo) movement control since that would lead to unecessary "flutter" and premature wear
-    @contextlib.contextmanager
-    def _wrap_sync_mode(self, sync_mode):
-        prev_sync_mode = self.mmu_toolhead.sync_mode
-        self.mmu_toolhead.sync(sync_mode)
-        try:
-            yield self
-        finally:
-            # Don't restore because it results in too much delay on rapid back-to-back moves and in theory shouldn't
-            # be necessary because the user is protected with wrap_sync_gear_to_extruder() in outermost `MMU_XXX` commands
-            #self.mmu_toolhead.sync(prev_sync_mode)
-            pass
 
     # Used to force accelaration override for homing moves
     @contextlib.contextmanager
@@ -5729,10 +5754,10 @@ class Mmu:
         if sync:
             # Reset current on old gear stepper before adjusting new
             if self.mmu_machine.multigear and gate != self.gate_selected:
-                self._restore_gear_current()
-            self._adjust_gear_current(gate=gate, percent=self.sync_gear_current, reason="for extruder syncing")
+                self._restore_gear_current() # 100%
+            _ = self._adjust_gear_current(gate=gate, percent=self.sync_gear_current, reason="for extruder syncing")
         else:
-            self._restore_gear_current()
+            self._restore_gear_current() # 100%
 
     # This is used to protect synchronization, current and grip states and is used as an outermost wrapper
     # for "MMU_" commands back into Happy Hare during a print or standalone operation
@@ -5765,88 +5790,75 @@ class Mmu:
                 self.espooler.set_operation(self.gate_selected, espooler_state[1], espooler_state[0])
 
 
-    # ---------- TMC Current Control ----------
+    # ---------- TMC Stepper Current Control ----------
 
     @contextlib.contextmanager
     def wrap_gear_current(self, percent=100, reason=""):
-        self.gear_restore_percent_run_current = self.gear_percentage_run_current
-        self._adjust_gear_current(percent=percent, reason=reason)
+        """
+            Run block of logic with gear stepper current set to desired percentage and then
+            restore to previous setting
+        """
+        prev_percent = self._adjust_gear_current(percent=percent, reason=reason)
+        self._gear_current_locked = True
         try:
             yield self
         finally:
-            self._restore_gear_current()
-            self.gear_restore_percent_run_current = 100
+            self._gear_current_locked = False
+            self._restore_gear_current(percent=prev_percent)
 
-    def _adjust_gear_current(self, gate=None, percent=100, reason=""):
+    def _adjust_gear_current(self, gate=None, percent=100, reason="", restore=False):
+        current_percent = self.gear_percentage_run_current
+
+        if self._gear_current_locked: return current_percent
         if gate is None: gate = self.gate_selected
-        if gate < 0: return
-        if not (0 < percent < 200): return
-        if not self.gear_tmc: return
-        if percent == self.gear_percentage_run_current: return
+        if gate < 0: return current_percent
+        if not (0 < percent < 200): return current_percent
+        if not self.gear_tmc: return current_percent
+        if percent == self.gear_percentage_run_current: return current_percent
 
         gear_stepper_name = mmu_machine.GEAR_STEPPER_CONFIG
         if self.mmu_machine.multigear and gate > 0:
             gear_stepper_name = "%s_%d" % (mmu_machine.GEAR_STEPPER_CONFIG, gate)
-        msg = "Modifying MMU %s run current to %d%% ({}A) %s" % (gear_stepper_name, percent, reason)
+        if restore:
+            msg = "Restoring MMU %s run current to %d%% ({}A)" % (gear_stepper_name, percent)
+        else:
+            msg = "Modifying MMU %s run current to %d%% ({}A) %s" % (gear_stepper_name, percent, reason)
         target_current = (self.gear_default_run_current * percent) / 100.0
         self._set_tmc_current(gear_stepper_name, target_current, msg)
-        self.gear_percentage_run_current = percent
+        self.gear_percentage_run_current = percent # Update global record of current %
+        return percent
 
-    def _restore_gear_current(self, gate=None):
-        if gate is None: gate = self.gate_selected
-        if gate < 0: return
-        if not self.gear_tmc: return
-        if self.gear_percentage_run_current == self.gear_restore_percent_run_current: return
-
-        gear_stepper_name = mmu_machine.GEAR_STEPPER_CONFIG
-        if self.mmu_machine.multigear and gate > 0:
-            gear_stepper_name = "%s_%d" % (mmu_machine.GEAR_STEPPER_CONFIG, gate)
-        msg = "Restoring MMU %s run current to %d%% ({}A)" % (gear_stepper_name, self.gear_restore_percent_run_current)
-        self._set_tmc_current(gear_stepper_name, self.gear_default_run_current, msg)
-        self.gear_percentage_run_current = self.gear_restore_percent_run_current
+    def _restore_gear_current(self, gate=None, percent=100):
+        _ = self._adjust_gear_current(gate=gate, percent=percent, restore=True)
 
     @contextlib.contextmanager
     def _wrap_extruder_current(self, percent=100, reason=""):
-        self._adjust_extruder_current(percent, reason)
+        prev_percent = self._adjust_extruder_current(percent, reason)
         try:
             yield self
         finally:
-            self._restore_extruder_current()
+            self._restore_extruder_current(percent=prev_percent)
 
-    def _adjust_extruder_current(self, percent=100, reason=""):
-        if not self.extruder_tmc: return
-        if not (0 < percent < 200): return
-        if percent == self.extruder_percentage_run_current: return
+    def _adjust_extruder_current(self, percent=100, reason="", restore=False):
+        current_percent = self.extruder_percentage_run_current
 
-        msg = "Modifying extruder stepper run current to %d%% ({}A) %s" % (percent, reason)
+        if not self.extruder_tmc: return current_percent
+        if not (0 < percent < 200): return current_percent
+        if percent == self.extruder_percentage_run_current: return current_percent
+
+        if restore:
+            msg = "Restoring extruder stepper run current to %d%% ({}A)"
+        else:
+            msg = "Modifying extruder stepper run current to %d%% ({}A) %s" % (percent, reason)
         self._set_tmc_current(self.extruder_name, (self.extruder_default_run_current * percent) / 100., msg)
-        self.extruder_percentage_run_current = percent
+        self.extruder_percentage_run_current = percent # Update global record of current %
+        return percent
 
-    def _restore_extruder_current(self):
-        if not self.extruder_tmc: return
-        if self.extruder_percentage_run_current == 100: return
+    def _restore_extruder_current(self, percent=100):
+        _ = self._adjust_extruder_current(percent=percent, restore=True)
 
-        msg="Restoring extruder stepper run current to 100% ({}A)"
-        self._set_tmc_current(self.extruder_name, self.extruder_default_run_current, msg)
-        self.extruder_percentage_run_current = 100
-
-    # Alter the stepper current without console logging
     def _set_tmc_current(self, stepper, run_current, msg):
-        current_helper = self.tmc_current_helpers.get(stepper, None)
-        if current_helper:
-            try:
-                print_time = self.toolhead.get_last_move_time()
-                c = list(current_helper.get_current())
-                req_hold_cur, max_cur = c[2], c[3] # Kalico now has 5 elements rather than 4 in tuple, so unpack just what we need...
-                new_cur = max(min(run_current, max_cur), 0)
-                current_helper.set_current(new_cur, req_hold_cur, print_time)
-                self.log_debug(msg.format("%.2f" % new_cur))
-                return
-            except Exception as e:
-                self.log_debug("Unexpected error setting stepper current: %s. Falling back to default approach" % str(e))
-
-        # Fallback or missing helper
-        self.log_debug(msg.format("%.2f" % run_current))
+        self.log_info(msg.format("%.2f" % run_current))
         self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f" % (stepper, run_current))
 
 

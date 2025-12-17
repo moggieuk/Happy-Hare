@@ -559,8 +559,9 @@ console_always_output_full: 1	# 1 = Show full table, 0 = Only show totals out of
 #                               toolhead sensor
 #  skip_cal_rotation_distance - This will rely on installed default value (although it can still be calibrated). Usually
 #                               a good choice if autotune is enabled
-#  autotune_rotation_distance - Requires sync-feedback sensor (aka "buffer") with both compression and tension switches
-#                               or accurately calibrated encoder (encoder works only with gate 0)
+#  autotune_rotation_distance - Requires sync-feedback sensor (aka "buffer") or calibrated encoder. If set then either the
+#                               "autotuner" (sync-feedback buffer) or encoder telemetry will be used to adjust the
+#                               persisted gear rotation distance.
 #  skip_cal_encoder           - Will rely on installed default value (although it can still be calibrates).
 #                               Not recommended but allows for easier initial setup especially when 'autotune_encoder'
 #                               is enabled.
