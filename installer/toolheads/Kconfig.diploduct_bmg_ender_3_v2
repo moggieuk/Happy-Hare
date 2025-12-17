@@ -1,15 +1,15 @@
-config TOOLHEAD_TYPE_E34M1_SHERPA_MINI_ALPS_V6
-  bool "E34M1 Sherpa Mini Alps v6"
+config TOOLHEAD_TYPE_DIPLODUCT_BMG_ENDER_3_V2
+  bool "Diploduct BMG Ender 3 V2"
 
-if TOOLHEAD_TYPE_E34M1_SHERPA_MINI_ALPS_V6
+if TOOLHEAD_TYPE_DIPLODUCT_BMG_ENDER_3_V2
   config PARAM_TOOLHEAD_TYPE
-    default "E34M1 Sherpa Mini Alps v6"
+    default "Diploduct BMG Ender 3 V2"
   config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
-    default "72"
+    default "106.82"
   config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
     default "62"
   config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
     default "8"
   config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
-    default "0"
+    default "2"
 endif

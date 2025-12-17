@@ -4,6 +4,12 @@ config TOOLHEAD_TYPE_AFTERBURNER_CLOCKWORK_DRAGON_HF
 if TOOLHEAD_TYPE_AFTERBURNER_CLOCKWORK_DRAGON_HF
   config PARAM_TOOLHEAD_TYPE
     default "Afterburner Clockwork Dragon HF"
+  config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
+    default "76.8"
+  config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
+    default "67.7"
+  config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
+    default "8"
   config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
-    default "5"
+    default "22.3"
 endif
