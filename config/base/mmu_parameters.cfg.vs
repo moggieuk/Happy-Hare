@@ -386,19 +386,6 @@ sync_feedback_extrude_threshold: 5	# Extruder movement (mm) for updates (keep sm
 #
 sync_feedback_debug_log: 0		# 0 = disable (normal opertion), 1 = enable telemetry log (for debugging)
 
-# Flowguard: This feature automatically detects extruder clogs and MMU tangles using the sync-feedback buffer.
-flowguard_enabled: 1			# 0 = Flowguard protection disabled, 1 = Enabled
-
-# The flowguard_max_relief is the amount of relief movement (mm) that Happy Hare will wait until triggering a clog or runout. A smaller
-# value is more sensitive to triggering. Since the relief depends on 'sync_feedback speed_multiplier' and 'sync_feedback_buffer_range'
-# it is generally a good starting point if using 5% sync_feedback_speed_multiplier to use about the same distance as sync_feedback_buffer_range.
-# Note that one sided switches (Compression-only and Tension-only) can generally be lower.
-flowguard_max_relief: 8
-
-# The max_motion is the absolute max permitted extruder movement while the sensor is in an extreme state. Consider this added
-# protection on top of the primary max_relief amount. Again a smaller value is more sensitive to triggering.
-flowguard_max_motion: 80
-
 
 # ESpooler control -----------------------------------------------------------------------------------------------------
 # ███████╗███████╗██████╗  ██████╗  ██████╗ ██╗     ███████╗██████╗ 
@@ -444,6 +431,41 @@ espooler_assist_burst_trigger: 0		# If trigger assist switch is fitted 0=disable
 espooler_assist_burst_trigger_max: 3		# If trigger assist switch is fitted this limits the max number of back-to-back advances
 
 
+# Filament Clog and Tangle Detection ---------------------------------------------------------------------------------
+#  ██████╗██╗      ██████╗  ██████╗         ██╗    ████████╗ █████╗ ███╗   ██╗ ██████╗ ██╗     ███████╗
+# ██╔════╝██║     ██╔═══██╗██╔════╝        ██╔╝    ╚══██╔══╝██╔══██╗████╗  ██║██╔════╝ ██║     ██╔════╝
+# ██║     ██║     ██║   ██║██║  ███╗      ██╔╝        ██║   ███████║██╔██╗ ██║██║  ███╗██║     █████╗ 
+# ██║     ██║     ██║   ██║██║   ██║     ██╔╝         ██║   ██╔══██║██║╚██╗██║██║   ██║██║     ██╔══╝ 
+# ╚██████╗███████╗╚██████╔╝╚██████╔╝    ██╔╝          ██║   ██║  ██║██║ ╚████║╚██████╔╝███████╗███████╗
+#  ╚═════╝╚══════╝ ╚═════╝  ╚═════╝     ╚═╝           ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝ ╚══════╝╚══════╝
+#
+# Options are available to automatically detects extruder clogs and MMU tangles. Each option works independently and
+# can be combined. Flowguard can even discern the difference between an extruder clog and a spool tangle!
+#
+# Flowguard:  This intelligently measures filament tension (only available if sync-feedback buffer is fitted)
+#
+# Encoder detection: This monitors encoder movement and compares to extruder (only available if encoder is fitted)
+#
+flowguard_enabled: 1			# 0 = Flowguard protection disabled, 1 = Enabled
+
+# The flowguard_max_relief is the amount of relief movement (mm) that Happy Hare will wait until triggering a clog or runout.
+# A smaller value is more sensitive to triggering. Since the relief depends on 'sync_feedback_speed_multiplier' and
+# 'sync_feedback_buffer_range'. It is generally a good starting point if using 5% sync_feedback_speed_multiplier to use
+# about the same distance as sync_feedback_buffer_range. Note that one sided switches (Compression-only and Tension-only)
+# can generally be lower.
+flowguard_max_relief: 8
+
+# The max_motion is the absolute max permitted extruder movement while the sensor is in an extreme state. Consider this
+# added protection on top of the primary max_relief amount. Again a smaller value is more sensitive to triggering.
+flowguard_max_motion: 80
+
+# Encoder clog/tangle detection watches for movement over either a static or automatically adjusted distance - if no encoder
+# movement is seen when the extruder moves this distance a clog/tangle event will be run. Allowing the distance to be
+# adjusted automatically will generally allow for a quicker trigger but use a static length if you run into false triggers.
+# Note that this feature cannot disinguish between clog or tangle.
+enable_clog_detection: 2		# 0 = Disable, 1 = Static length clog detection, 2 = Automatic length clog detection
+
+
 # Filament Management Options ----------------------------------------------------------------------------------------
 # ███████╗██╗██╗            ███╗   ███╗ ██████╗ ███╗   ███╗████████╗
 # ██╔════╝██║██║            ████╗ ████║██╔════╝ ████╗ ████║╚══██╔══╝
@@ -452,7 +474,6 @@ espooler_assist_burst_trigger_max: 3		# If trigger assist switch is fitted this 
 # ██║     ██║███████╗██╗    ██║ ╚═╝ ██║╚██████╔╝██║ ╚═╝ ██║   ██║   
 # ╚═╝     ╚═╝╚══════╝╚═╝    ╚═╝     ╚═╝ ╚═════╝ ╚═╝     ╚═╝   ╚═╝   
 #
-# - Clog detection is available when encoder is fitted and it can detect when filament is not moving and pause the print
 # - EndlessSpool feature allows detection of runout on one spool and the automatic mapping of tool to an alternative
 #   gate (spool). Set to '1', this feature requires clog detection or gate sensor or pre-gate sensors. EndlessSpool
 #   functionality can optionally be extended to attempt to load an empty gate with 'endless_spool_on_load'. On some MMU
@@ -460,7 +481,6 @@ espooler_assist_burst_trigger_max: 3		# If trigger assist switch is fitted this 
 #   defaulting to current gate. A custom gate will disable pre-gate runout detection for EndlessSpool because filament
 #   end must completely pass through the gate for selector to move
 #
-enable_clog_detection: 2		# 0 = disable, 1 = static length clog detection, 2 = automatic length clog detection
 enable_endless_spool: 1			# 0 = disable, 1 = enable endless spool
 endless_spool_on_load: 0		# 0 = don't apply endless spool on load, 1 = run endless spool if gate is empty
 endless_spool_eject_gate: -1		# Which gate to eject the filament remains. -1 = current gate
