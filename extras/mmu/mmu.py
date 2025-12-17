@@ -5855,7 +5855,7 @@ class Mmu:
         _ = self._adjust_extruder_current(percent=percent, restore=True)
 
     def _set_tmc_current(self, stepper, run_current, msg):
-        self.log_debug(msg.format("%.2f" % run_current))
+        self.log_info(msg.format("%.2f" % run_current))
         self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f" % (stepper, run_current))
 
 
