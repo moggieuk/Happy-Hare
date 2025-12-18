@@ -47,48 +47,31 @@ class MmuCalibrationManager:
     def update_bowden_length(self, length, gate=None, console_msg=False):
         if gate == None: gate = self.mmu.gate_selected
         if gate < 0:
-            self.mmu.log_debug("Assertion failure: cannot save bowden length for gate: %d" % gate)
+            self.mmu.log_debug("Assertion failure: cannot save bowden length for gate: %s" % self.mmu.selected_gate_string(gate))
             return
 
         all_gates = not self.mmu.mmu_machine.variable_bowden_lengths
 
-        if length < 0:
+        if length < 0: # Reset
+            action = "reset"
             if all_gates:
                 self.mmu.bowden_lengths = [-1] * self.mmu.num_gates
             else:
                 self.mmu.bowden_lengths[gate] = -1
 
-            self.mmu.log_always("Calibrated bowden length has been reset for %s" % ("all gates" if all_gates else "gate %d" % gate))
-
         else:
             length = round(length, 1)
-            clog_updated = False
-
+            action = "saved"
             if all_gates:
                 self.mmu.bowden_lengths = [length] * self.mmu.num_gates
             else:
                 self.mmu.bowden_lengths[gate] = length
 
-            if self.mmu.has_encoder() and self.mmu.save_variables.allVariables.get(self.mmu.VARS_MMU_CALIB_CLOG_LENGTH, None) is None:
-                clog_detection_length = self.calc_clog_detection_length(length)
-                self.save_clog_detection_length(clog_detection_length)
-                clog_updated = True
-
-            # If using encoder and clog length not set, set it now
-            if self.mmu.has_encoder() and self.mmu.save_variables.allVariables.get(self.mmu.VARS_MMU_CALIB_CLOG_LENGTH, None) is None:
-                clog_detection_length = self.calc_clog_detection_length(length)
-                self.save_clog_detection_length(clog_detection_length)
-                clog_updated = True
-
-            msg = "Calibrated bowden length %.1fmm%s has been saved %s" % (
-                length,
-                (" and clog detection length %.1fmm" % clog_detection_length) if clog_updated else "",
-                ("for all gates" if all_gates else "gate %d" % gate),
-            )
-            if console_msg:
-                self.mmu.log_always(msg)
-            else:
-                self.mmu.log_debug(msg)
+        msg = "Calibrated bowden length %.1fmm has been %s %s" % (length, action, ("for all gates" if all_gates else "gate %d" % gate))
+        if console_msg:
+            self.mmu.log_always(msg)
+        else:
+            self.mmu.log_debug(msg)
 
         # Update calibration status
         if not any(x == -1 for x in self.mmu.bowden_lengths):
@@ -119,16 +102,27 @@ class MmuCalibrationManager:
         self.mmu.write_variables()
 
 
-    # -------------------- Encoder based clog length manipulation --------------------
+    # -------------------- Encoder based runout/clog/tangle length manipulation --------------------
 
     def calc_clog_detection_length(self, bowden_length):
         cal_min = round((bowden_length * 2) / 100., 1) # 2% of bowden length seems to be good starting point
         return max(cal_min, 8.)                        # Never less than 8mm
 
 
-    def save_clog_detection_length(self, length, force=True):
-        if length and (force or self.mmu.save_variables.allVariables.get(self.mmu.VARS_MMU_CALIB_CLOG_LENGTH, None) is not None):
-            self.mmu.save_variable(self.mmu.VARS_MMU_CALIB_CLOG_LENGTH, length)
+    def update_clog_detection_length(self, length, force=False):
+        """
+        Persist the calibrated encoder clog detection length and notify the encoder of change if in auto mode
+        """
+        self.mmu.log_error("PAUL: length=%s, force=%s" % (length, force))
+        if not self.mmu.has_encoder(): return
+        if not length: return
+
+        auto = (self.mmu.sync_feedback_manager.flowguard_encoder_mode == self.mmu.encoder_sensor.RUNOUT_AUTOMATIC)
+
+        if force or auto:
+            self.mmu.save_variable(self.mmu.VARS_MMU_CALIB_CLOG_LENGTH, length, write=bool(force))
+
+        if auto:
             self.mmu.encoder_sensor.set_clog_detection_length(length)
 
 

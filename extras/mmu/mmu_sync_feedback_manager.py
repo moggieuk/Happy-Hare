@@ -39,7 +39,7 @@ class MmuSyncFeedbackManager:
 
         self.estimated_state = float(self.SF_STATE_NEUTRAL)
         self.active = False           # Sync-feedback actively operating?
-        self.flowguard_active = False # Flowguard armed?
+        self.flowguard_active = False # FlowGuard armed?
         self.ctrl = None
         self.flow_rate = 100.         # Estimated % flowrate (calc only for proportional sensors)
 
@@ -53,10 +53,12 @@ class MmuSyncFeedbackManager:
         self.sync_feedback_debug_log         = self.mmu.config.getint('sync_feedback_debug_log', 0)
         self.sync_feedback_force_twolevel    = self.mmu.config.getint('sync_feedback_force_twolevel', 0) # Not exposed
 
-        # Flowguard
-        self.flowguard_enabled    = self.mmu.config.getint('flowguard_enabled', 1, minval=0, maxval=1)
-        self.flowguard_max_relief = self.mmu.config.getfloat('flowguard_max_relief', 8, above=1.)
-        self.flowguard_max_motion = self.mmu.config.getfloat('flowguard_max_motion', 80, above=10.)
+        # FlowGuard
+        self.flowguard_enabled      = self.mmu.config.getint('flowguard_enabled', 1, minval=0, maxval=1)
+        self.flowguard_max_relief   = self.mmu.config.getfloat('flowguard_max_relief', 8, above=1.)
+        self.flowguard_max_motion   = self.mmu.config.getfloat('flowguard_max_motion', 80, above=10.)
+        self.flowguard_encoder_mode = self.mmu.config.getint('flowguard_encoder_mode', 2, minval=0, maxval=2)
+        self.flowguard_encoder_max_motion = self.mmu.config.getfloat('flowguard_encoder_max_motion', 20, above=0.)
 
         # Setup events for managing motor synchronization
         self.mmu.printer.register_event_handler("mmu:synced", self._handle_mmu_synced)
@@ -91,33 +93,46 @@ class MmuSyncFeedbackManager:
         
 
     def set_test_config(self, gcmd):
-        self.sync_feedback_enabled           = gcmd.get_int('SYNC_FEEDBACK_ENABLED', self.sync_feedback_enabled, minval=0, maxval=1)
-        self.sync_feedback_buffer_range      = gcmd.get_float('SYNC_FEEDBACK_BUFFER_RANGE', self.sync_feedback_buffer_range, minval=0.)
-        self.sync_feedback_buffer_maxrange   = gcmd.get_float('SYNC_FEEDBACK_BUFFER_MAXRANGE', self.sync_feedback_buffer_maxrange, minval=0.)
-        self.sync_feedback_speed_multiplier  = gcmd.get_float('SYNC_FEEDBACK_SPEED_MULTIPLIER', self.sync_feedback_speed_multiplier, minval=1., maxval=50)
-        self.sync_feedback_boost_multiplier  = gcmd.get_float('SYNC_FEEDBACK_BOOST_MULTIPLIER', self.sync_feedback_boost_multiplier, minval=1., maxval=50)
-        self.sync_feedback_extrude_threshold = gcmd.get_float('SYNC_FEEDBACK_EXTRUDE_THRESHOLD', self.sync_feedback_extrude_threshold, above=1.)
-        self.sync_feedback_debug_log         = gcmd.get_int('SYNC_FEEDBACK_DEBUG_LOG', self.sync_feedback_debug_log, minval=0, maxval=1)
+        if self.has_sync_feedback():
+            self.sync_feedback_enabled           = gcmd.get_int('SYNC_FEEDBACK_ENABLED', self.sync_feedback_enabled, minval=0, maxval=1)
+            self.sync_feedback_buffer_range      = gcmd.get_float('SYNC_FEEDBACK_BUFFER_RANGE', self.sync_feedback_buffer_range, minval=0.)
+            self.sync_feedback_buffer_maxrange   = gcmd.get_float('SYNC_FEEDBACK_BUFFER_MAXRANGE', self.sync_feedback_buffer_maxrange, minval=0.)
+            self.sync_feedback_speed_multiplier  = gcmd.get_float('SYNC_FEEDBACK_SPEED_MULTIPLIER', self.sync_feedback_speed_multiplier, minval=1., maxval=50)
+            self.sync_feedback_boost_multiplier  = gcmd.get_float('SYNC_FEEDBACK_BOOST_MULTIPLIER', self.sync_feedback_boost_multiplier, minval=1., maxval=50)
+            self.sync_feedback_extrude_threshold = gcmd.get_float('SYNC_FEEDBACK_EXTRUDE_THRESHOLD', self.sync_feedback_extrude_threshold, above=1.)
+            self.sync_feedback_debug_log         = gcmd.get_int('SYNC_FEEDBACK_DEBUG_LOG', self.sync_feedback_debug_log, minval=0, maxval=1)
 
-        flowguard_enabled = gcmd.get_int('FLOWGUARD_ENABLED', self.flowguard_enabled, minval=0, maxval=1)
-        if flowguard_enabled != self.flowguard_enabled:
-            self._config_flowguard_feature(flowguard_enabled)
-        self.flowguard_max_relief = gcmd.get_float('FLOWGUARD_MAX_RELIEF', self.flowguard_max_relief, above=1.)
-        self.flowguard_max_motion = gcmd.get_float('FLOWGUARD_MAX_MOTION', self.flowguard_max_motion, above=10.)
+            flowguard_enabled = gcmd.get_int('FLOWGUARD_ENABLED', self.flowguard_enabled, minval=0, maxval=1)
+            if flowguard_enabled != self.flowguard_enabled:
+                self._config_flowguard_feature(flowguard_enabled)
+            self.flowguard_max_relief = gcmd.get_float('FLOWGUARD_MAX_RELIEF', self.flowguard_max_relief, above=1.)
+            self.flowguard_max_motion = gcmd.get_float('FLOWGUARD_MAX_MOTION', self.flowguard_max_motion, above=10.)
+
+        if self.mmu.has_encoder():
+            self.flowguard_encoder_mode = gcmd.get_int('FLOWGUARD_ENCODER_MODE', self.flowguard_encoder_mode, minval=0, maxval=2)
+            self.mmu.encoder_sensor.set_mode(self.flowguard_encoder_mode) # Notify sensor of change
+            self.flowguard_encoder_max_motion = gcmd.get_float('FLOWGUARD_ENCODER_MAX_MOTION', self.flowguard_encoder_max_motion, above=0.)
 
 
     def get_test_config(self):
-        msg  = "\nsync_feedback_enabled = %d" % self.sync_feedback_enabled
-        msg += "\nsync_feedback_buffer_range = %.1f" % self.sync_feedback_buffer_range
-        msg += "\nsync_feedback_buffer_maxrange = %.1f" % self.sync_feedback_buffer_maxrange
-        msg += "\nsync_feedback_speed_multiplier = %.1f" % self.sync_feedback_speed_multiplier
-        msg += "\nsync_feedback_boost_multiplier = %.1f" % self.sync_feedback_boost_multiplier
-        msg += "\nsync_feedback_extrude_threshold = %.1f" % self.sync_feedback_extrude_threshold
-        msg += "\nsync_feedback_debug_log = %d" % self.sync_feedback_debug_log
+        msg  = ""
+        if self.has_sync_feedback():
+            msg += "\nsync_feedback_enabled = %d" % self.sync_feedback_enabled
+            msg += "\nsync_feedback_buffer_range = %.1f" % self.sync_feedback_buffer_range
+            msg += "\nsync_feedback_buffer_maxrange = %.1f" % self.sync_feedback_buffer_maxrange
+            msg += "\nsync_feedback_speed_multiplier = %.1f" % self.sync_feedback_speed_multiplier
+            msg += "\nsync_feedback_boost_multiplier = %.1f" % self.sync_feedback_boost_multiplier
+            msg += "\nsync_feedback_extrude_threshold = %.1f" % self.sync_feedback_extrude_threshold
+            msg += "\nsync_feedback_debug_log = %d" % self.sync_feedback_debug_log
+    
+            msg += "\n\nFLOWGUARD:"
+            msg += "\nflowguard_enabled = %d" % self.flowguard_enabled
+            msg += "\nflowguard_max_relief = %.1f" % self.flowguard_max_relief
+            msg += "\nflowguard_max_motion = %.1f" % self.flowguard_max_motion
 
-        msg += "\nflowguard_enabled = %d" % self.flowguard_enabled
-        msg += "\nflowguard_max_relief = %.1f" % self.flowguard_max_relief
-        msg += "\nflowguard_max_motion = %.1f" % self.flowguard_max_motion
+        if self.mmu.has_encoder():
+            msg += "\nflowguard_encoder_mode = %d" % self.flowguard_encoder_mode
+            msg += "\nflowguard_encoder_max_motion = %.1f" % self.flowguard_encoder_max_motion
         return msg
 
 
@@ -231,6 +246,10 @@ class MmuSyncFeedbackManager:
         return has_tension, has_compression, has_proportional
 
 
+    def has_sync_feedback(self):
+        return all(s is not None for s in self.get_active_sensors())
+
+
     #
     # GCODE Commands -----------------------------------------------------------
     #
@@ -285,10 +304,14 @@ class MmuSyncFeedbackManager:
             self.mmu.log_always(self.mmu.format_help(self.cmd_MMU_SYNC_FEEDBACK_param_help), color=True)
             return
 
+        if not self.has_sync_feedback():
+            self.mmu.log_warning("No sync-feedback sensors!")
+            return
+
         has_tension, has_compression, has_proportional = self.get_active_sensors()
 
         if not (has_proportional or has_tension or has_compression):
-            self.mmu.log_warning("No sync-feedback sensors are present/active")
+            self.mmu.log_warning("No sync-feedback sensors are enabled!")
             return
 
         enable = gcmd.get_int('ENABLE', None, minval=0, maxval=1)
@@ -327,26 +350,29 @@ class MmuSyncFeedbackManager:
         if enable is None and autotune is None and not adjust_tension:
             # Just report status
             if self.sync_feedback_enabled:
-                active = " and currently active" if self.active else " (not currently active)"
                 mode = self.ctrl.get_type_mode()
+                active = " and currently active" if self.active else " (not currently active)"
+                msg = "Sync feedback feature with type-%s sensor is enabled%s\n" % (mode, active)
 
                 rd_start = self.mmu.calibration_manager.get_gear_rd()
                 rd_current = self.ctrl.get_current_rd()
                 rd_rec = self.ctrl.autotune.get_rec_rd()
-                rd_info = "RD: Current:%.2f, Autotune recommended:%.2f, Default:%.2f" % (rd_current, rd_rec, rd_start)
+                msg += "- Current RD: %.2f, Autotune recommended: %.2f, Default: %.2f\n" % (rd_current, rd_rec, rd_start)
 
                 has_tension, has_compression, has_proportional = self.get_active_sensors()
-                state = "Sync feedback state: %s" % self.get_sync_feedback_string(detail=True)
+                msg += "- State: %s\n" % self.get_sync_feedback_string(detail=True)
+                msg += "- FlowGuard: %s" % ("Active" if self.flowguard_active else "Inactive")
                 if has_proportional:
-                    state += " (flowrate: %.1f%%)" % self.flow_rate
+                    msg += " (Flowrate: %.1f%%)" % self.flow_rate
 
-                self.mmu.log_always("Sync feedback feature with type-%s sensor is enabled%s\n%s\n%s" % (mode, active, rd_info, state))
+                self.mmu.log_always(msg)
 
             else:
                 self.mmu.log_always("Sync feedback feature is disabled")
     
 
     def get_status(self, eventtime=None):
+        self.flowguard_status['encoder_mode'] = self.flowguard_encoder_mode # Ok to mutate status
         return {
             'sync_feedback_state': self.get_sync_feedback_string(),
             'sync_feedback_enabled': self.is_enabled(),

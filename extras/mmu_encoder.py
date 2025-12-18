@@ -228,7 +228,7 @@ class MmuEncoder:
         self.detection_length = clog_length
         self._reset_filament_runout_params()
 
-    def update_clog_detection_length(self):
+    def note_clog_detection_length(self):
         self._update_detection_length()
 
     def set_mode(self, mode):
