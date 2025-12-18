@@ -184,7 +184,7 @@ class LinearSelector(BaseSelector, object):
         self.selector_move_speed = mmu.config.getfloat('selector_move_speed', 200, minval=1.)
         self.selector_homing_speed = mmu.config.getfloat('selector_homing_speed', 100, minval=1.)
         self.selector_touch_speed = mmu.config.getfloat('selector_touch_speed', 60, minval=1.)
-        self.selector_touch_enable = mmu.config.getint('selector_touch_enable', 1, minval=0, maxval=1)
+        self.selector_touch_enabled = mmu.config.getint('selector_touch_enabled', 1, minval=0, maxval=1)
 
         # To simplfy config CAD related parameters are set based on vendor and version setting
         #
@@ -403,7 +403,7 @@ class LinearSelector(BaseSelector, object):
         self.selector_move_speed = gcmd.get_float('SELECTOR_MOVE_SPEED', self.selector_move_speed, minval=1.)
         self.selector_homing_speed = gcmd.get_float('SELECTOR_HOMING_SPEED', self.selector_homing_speed, minval=1.)
         self.selector_touch_speed = gcmd.get_float('SELECTOR_TOUCH_SPEED', self.selector_touch_speed, minval=1.)
-        self.selector_touch_enable = gcmd.get_int('SELECTOR_TOUCH_ENABLE', self.selector_touch_enable, minval=0, maxval=1)
+        self.selector_touch_enabled = gcmd.get_int('SELECTOR_TOUCH_ENABLED', self.selector_touch_enabled, minval=0, maxval=1)
 
         # Sub components
         self.servo.set_test_config(gcmd)
@@ -413,7 +413,7 @@ class LinearSelector(BaseSelector, object):
         msg += "\nselector_move_speed = %.1f" % self.selector_move_speed
         msg += "\nselector_homing_speed = %.1f" % self.selector_homing_speed
         msg += "\nselector_touch_speed = %.1f" % self.selector_touch_speed
-        msg += "\nselector_touch_enable = %d" % self.selector_touch_enable
+        msg += "\nselector_touch_enabled = %d" % self.selector_touch_enabled
 
         # Sub components
         msg += self.servo.get_test_config()
@@ -722,7 +722,7 @@ class LinearSelector(BaseSelector, object):
 
         # Set appropriate speeds and accel if not supplied
         if homing_move != 0:
-            speed = speed or (self.selector_touch_speed if self.selector_touch_enable or endstop_name == self.mmu.SENSOR_SELECTOR_TOUCH else self.selector_homing_speed)
+            speed = speed or (self.selector_touch_speed if self.selector_touch_enabled or endstop_name == self.mmu.SENSOR_SELECTOR_TOUCH else self.selector_homing_speed)
         else:
             speed = speed or self.selector_move_speed
         accel = accel or self.mmu_toolhead.get_selector_limits()[1]
@@ -798,7 +798,7 @@ class LinearSelector(BaseSelector, object):
         return traveled, homed
 
     def use_touch_move(self):
-        return self.selector_tmc and self.mmu.SENSOR_SELECTOR_TOUCH in self.selector_rail.get_extra_endstop_names() and self.selector_touch_enable
+        return self.selector_tmc and self.mmu.SENSOR_SELECTOR_TOUCH in self.selector_rail.get_extra_endstop_names() and self.selector_touch_enabled
 
 
 
@@ -1082,7 +1082,7 @@ class RotarySelector(BaseSelector, object):
         self.selector_move_speed = mmu.config.getfloat('selector_move_speed', 200, minval=1.)
         self.selector_homing_speed = mmu.config.getfloat('selector_homing_speed', 100, minval=1.)
         self.selector_touch_speed = mmu.config.getfloat('selector_touch_speed', 60, minval=1.) # Not used with 3DChameleon but allows for param in config
-        self.selector_touch_enable = mmu.config.getint('selector_touch_enable', 1, minval=0, maxval=1) # Not used with 3DChameleon but allows for param in config
+        self.selector_touch_enabled = mmu.config.getint('selector_touch_enabled', 1, minval=0, maxval=1) # Not used with 3DChameleon but allows for param in config
 
         # To simplfy config CAD related parameters are set based on vendor and version setting
         #
@@ -1875,7 +1875,7 @@ class IndexedSelector(BaseSelector, object):
         self.selector_move_speed = mmu.config.getfloat('selector_move_speed', 100, minval=1.)
         self.selector_homing_speed = mmu.config.getfloat('selector_homing_speed', self.selector_move_speed, minval=1.)
         self.selector_touch_speed = mmu.config.getfloat('selector_touch_speed', 60, minval=1.) # Not used with ViViD but allows for param in config
-        self.selector_touch_enable = mmu.config.getint('selector_touch_enable', 1, minval=0, maxval=1) # Not used with ViViD but allows for param in config
+        self.selector_touch_enabled = mmu.config.getint('selector_touch_enabled', 1, minval=0, maxval=1) # Not used with ViViD but allows for param in config
         self.selector_index_distance = mmu.config.getfloat('selector_index_distance', 5, minval=0.)
 
         # To simplfy config CAD related parameters are set based on vendor and version setting
