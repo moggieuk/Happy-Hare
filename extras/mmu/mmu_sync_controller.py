@@ -33,8 +33,9 @@ from __future__  import annotations
 from dataclasses import dataclass
 from typing      import Optional, Literal, Dict, Any
 from collections import deque
+
 import math
-import json # for debug log
+import io, json # for debug log
 
 
 # Sync-Feedback sensor type:
@@ -1706,18 +1707,19 @@ class SyncController:
             }
         }
 
-        with open(self._current_log_file, "a", encoding="utf-8") as f:
-            f.write(json.dumps(header, ensure_ascii=False) + "\n")
+        with io.open(self._current_log_file, "w", encoding="utf-8") as f:
+            json.dump(header, f, ensure_ascii=False)
+            f.write("\n")
         self._log_ready = True
 
 
-    def _append_log_entry(self, record: dict):
+    def _append_log_entry(self, record):
         """
         Append a single JSON object to the log as one line.
         """
         if not self._log_ready:
             return
 
-        with open(self._current_log_file, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False) + "\n")
-
+        with io.open(self._current_log_file, "a", encoding="utf-8") as f:
+            json.dump(record, f, ensure_ascii=False)
+            f.write("\n")
