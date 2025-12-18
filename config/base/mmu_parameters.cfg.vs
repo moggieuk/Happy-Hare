@@ -463,7 +463,7 @@ flowguard_max_motion: 80
 # movement is seen when the extruder moves this distance a clog/tangle event will be run. Allowing the distance to be
 # adjusted automatically will generally allow for a quicker trigger but use a static length if you run into false triggers.
 # Note that this feature cannot disinguish between clog or tangle.
-enable_clog_detection: 2		# 0 = Disable, 1 = Static length clog detection, 2 = Automatic length clog detection
+encoder_clog_detection_mode: 2		# 0 = Disable, 1 = Static length clog detection, 2 = Automatic length clog detection
 
 
 # Filament Management Options ----------------------------------------------------------------------------------------
@@ -481,7 +481,7 @@ enable_clog_detection: 2		# 0 = Disable, 1 = Static length clog detection, 2 = A
 #   defaulting to current gate. A custom gate will disable pre-gate runout detection for EndlessSpool because filament
 #   end must completely pass through the gate for selector to move
 #
-enable_endless_spool: 1			# 0 = disable, 1 = enable endless spool
+endless_spool_enabled: 1		# 0 = disable, 1 = enable endless spool
 endless_spool_on_load: 0		# 0 = don't apply endless spool on load, 1 = run endless spool if gate is empty
 endless_spool_eject_gate: -1		# Which gate to eject the filament remains. -1 = current gate
 #endless_spool_groups:			# Default EndlessSpool groups (see later in file)
