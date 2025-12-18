@@ -1707,7 +1707,7 @@ class SyncController:
             }
         }
 
-        with io.open(self._current_log_file, "w", encoding="utf-8") as f:
+        with io.open(self._current_log_file, "a", encoding="utf-8") as f:
             json.dump(header, f, ensure_ascii=False)
             f.write("\n")
         self._log_ready = True
