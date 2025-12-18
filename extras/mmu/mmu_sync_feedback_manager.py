@@ -334,8 +334,8 @@ class MmuSyncFeedbackManager:
 
         if adjust_tension:
             try:
-                with self.mmu.wrap_sync_gear_to_extruder(): # Cannot adjust sync feedback sensor if gears are not synced
-                    with self.mmu._wrap_suspend_runout_clog_flowguard(): # Avoid spurious runout during tiny corrective moves (unlikely)
+                with self.mmu.wrap_sync_gear_to_extruder():            # Cannot adjust sync feedback sensor if gears are not synced
+                    with self.mmu._wrap_suspend_filament_monitoring(): # Avoid spurious runout during tiny corrective moves (unlikely)
                         actual,success = self.adjust_filament_tension()
                         if success:
                             self.mmu.log_info("Neutralized tension after moving %.2fmm" % actual)
