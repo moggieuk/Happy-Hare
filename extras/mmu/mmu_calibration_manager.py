@@ -109,21 +109,22 @@ class MmuCalibrationManager:
         return max(cal_min, 8.)                        # Never less than 8mm
 
 
-    def update_clog_detection_length(self, length, force=False):
+    def update_clog_detection_length(self, cdl, force=False):
         """
         Persist the calibrated encoder clog detection length and notify the encoder of change if in auto mode
+        If not forced then save if auto but don't update the encoder
         """
-        self.mmu.log_error("PAUL: length=%s, force=%s" % (length, force))
+        self.mmu.log_error("PAUL: cdl=%s, force=%s" % (cdl, force))
         if not self.mmu.has_encoder(): return
-        if not length: return
+        if not cdl: return
 
         auto = (self.mmu.sync_feedback_manager.flowguard_encoder_mode == self.mmu.encoder_sensor.RUNOUT_AUTOMATIC)
 
-        if force or auto:
-            self.mmu.save_variable(self.mmu.VARS_MMU_CALIB_CLOG_LENGTH, length, write=bool(force))
+        if auto or force:
+            self.mmu.save_variable(self.mmu.VARS_MMU_CALIB_CLOG_LENGTH, cdl, write=bool(force))
 
-        if auto:
-            self.mmu.encoder_sensor.set_clog_detection_length(length)
+        if auto and not force:
+            self.mmu.encoder_sensor.set_clog_detection_length(cdl)
 
 
     # -------------------- Gear stepper rotation distance manipulation --------------------
