@@ -235,82 +235,36 @@ class MmuAdcSwitchSensor:
 
         return self._last_trigger_time
 
-# Supports using a hall filament width sensor as an endstop
-# Derived from Klipper hall_filament_width_sensor, includes all original functionality plus endstop compatibility
-class MmuHallFilamentWidthSensor:
-    def __init__(self, config, name, pin1, pin2, cal_dia1, raw_dia1, cal_dia2, raw_dia2, 
-                 hall_runout_dia_min=1., hall_runout_dia_max=2., hall_measurement_interval=10, hall_measurement_delay=1, 
-                 hall_logging=False, hall_nominal_dia=1.75, hall_max_difference=0.2, 
-                 enable_compensation=False, use_current_dia_while_delay=False,
+# Standalone Hall Filament Sensor Endstop using Multi-Use Pins
+# Coexists with standard Klipper hall_filament_width_sensor by sharing the ADC pins
+class MmuHallEndstop:
+    def __init__(self, config, name, pin1, pin2, cal_dia1, raw_dia1, cal_dia2, raw_dia2,
+                 hall_runout_dia=1.,
                  insert=False, remove=False, runout=False, insert_remove_in_print=False, button_handler=None):
-        
-        self.ADC_REPORT_TIME = 0.050 # Faster reporting for endstop response
-        self.ADC_SAMPLE_TIME = 0.005 # Faster sampling
-        self.ADC_SAMPLE_COUNT = 10
-        
+
         self.printer = config.get_printer()
-        self.reactor = self.printer.get_reactor()
         self.name = name
-        
-        # Sensor specific configuration
-        self.pin1 = pin1
-        self.pin2 = pin2
+
+        # Configurable sampling for fast endstop response
+        # Defaults: 1ms sample, 8 samples = 8ms. Report every 10ms.
+        self.sample_time = config.getfloat('hall_sample_time', 0.001, above=0.0)
+        self.sample_count = config.getint('hall_sample_count', 8, minval=1)
+        self.report_time = config.getfloat('hall_report_time', 0.010, above=0.0)
+
+        # Sensor configuration for diameter calculation
+        self.pin1_name = pin1
+        self.pin2_name = pin2
         self.dia1 = cal_dia1
         self.rawdia1 = raw_dia1
         self.dia2 = cal_dia2
         self.rawdia2 = raw_dia2
-        
-        self.hall_min_diameter = hall_runout_dia_min
-        self.MEASUREMENT_INTERVAL_MM = hall_measurement_interval
-        self.measurement_delay = hall_measurement_delay
-        self.is_log = hall_logging
-        
-        # Flow Compensation Configs
-        self.is_active = enable_compensation
-        self.nominal_filament_dia = hall_nominal_dia
-        self.measurement_max_difference = hall_max_difference
-        self.use_current_dia_while_delay = use_current_dia_while_delay
-        
-        self.max_diameter = (self.nominal_filament_dia + self.measurement_max_difference)
-        self.min_diameter = (self.nominal_filament_dia - self.measurement_max_difference)
-        self.filament_width = self.nominal_filament_dia
-        
-        # Arrays and State
-        self.filament_array = []
-        self.firstExtruderUpdatePosition = 0
-        
+        self.hall_min_diameter = hall_runout_dia
+
+        # State
         self.lastFilamentWidthReading = 0
         self.lastFilamentWidthReading2 = 0
-        self.diameter = self.nominal_filament_dia
-        
-        # Printer objects
-        self.toolhead = self.ppins = self.mcu_adc = None
-        self.printer.register_event_handler("klippy:ready", self.handle_ready)
-        
-        # Start ADC
-        self.ppins = self.printer.lookup_object('pins')
-        self.mcu_adc = self.ppins.setup_pin('adc', self.pin1)
-        self.mcu_adc.setup_minmax(self.ADC_SAMPLE_TIME, self.ADC_SAMPLE_COUNT)
-        self.mcu_adc.setup_adc_callback(self.ADC_REPORT_TIME, self.adc_callback)
-        
-        self.mcu_adc2 = self.ppins.setup_pin('adc', self.pin2)
-        self.mcu_adc2.setup_minmax(self.ADC_SAMPLE_TIME, self.ADC_SAMPLE_COUNT)
-        self.mcu_adc2.setup_adc_callback(self.ADC_REPORT_TIME, self.adc2_callback)
-        
-        # Timer loop for flow Compensation & logging
-        self.extrude_factor_update_timer = self.reactor.register_timer(self.extrude_factor_update_event)
-        
-        # Register commands
-        self.gcode = self.printer.lookup_object('gcode')
-        self.gcode.register_command('QUERY_FILAMENT_WIDTH', self.cmd_M407)
-        self.gcode.register_command('QUERY_RAW_FILAMENT_WIDTH', self.cmd_Get_Raw_Values)
-        self.gcode.register_command('ENABLE_FILAMENT_WIDTH_LOG', self.cmd_log_enable)
-        self.gcode.register_command('DISABLE_FILAMENT_WIDTH_LOG', self.cmd_log_disable)
-        
-        # Flow compensation commands
-        self.gcode.register_command('RESET_FILAMENT_WIDTH_SENSOR', self.cmd_ClearFilamentArray)
-        self.gcode.register_command('DISABLE_FILAMENT_WIDTH_SENSOR', self.cmd_M406)
-        self.gcode.register_command('ENABLE_FILAMENT_WIDTH_SENSOR', self.cmd_M405)
+        self.diameter = 0
+        self.is_active = True # Always active for endstop purposes? or should be toggleable?
 
         # Endstop state variables
         self._steppers = []
@@ -319,52 +273,48 @@ class MmuHallFilamentWidthSensor:
         self._homing = False
         self._triggered = False
 
-        event_delay = 0.5 
-                       
+        # Setup Hardware (Multi-Use)
+        ppins = self.printer.lookup_object('pins')
+
+        # ADC 1
+        if self.pin1_name:
+            ppins.allow_multi_use_pin(self.pin1_name)
+            self.mcu_adc = ppins.setup_pin('adc', self.pin1_name)
+            self.mcu_adc.setup_minmax(self.sample_time, self.sample_count)
+            self.mcu_adc.setup_adc_callback(self.report_time, self.adc_callback)
+
+        # ADC 2 (Optional)
+        self.mcu_adc2 = None
+        if self.pin2_name:
+            ppins.allow_multi_use_pin(self.pin2_name)
+            self.mcu_adc2 = ppins.setup_pin('adc', self.pin2_name)
+            self.mcu_adc2.setup_minmax(self.sample_time, self.sample_count)
+            self.mcu_adc2.setup_adc_callback(self.report_time, self.adc2_callback)
+
+        # Setup runout helper/virtual sensor for MMU integration
+        event_delay = 0.5
         insert_gcode = ("%s SENSOR=%s" % (INSERT_GCODE, name)) if insert else None
         remove_gcode = ("%s SENSOR=%s" % (REMOVE_GCODE, name)) if remove else None
         runout_gcode = ("%s SENSOR=%s" % (RUNOUT_GCODE, name)) if runout else None
-        
-        self.runout_helper = MmuRunoutHelper(self.printer, name, event_delay, insert_gcode, remove_gcode, runout_gcode, 
-                                             insert_remove_in_print, button_handler, self.pin2)
-        
-        self.printer.add_object("hall_filament_width_sensor", self)
-        
 
-    def get_status(self, eventtime):
-        status = self.runout_helper.get_status(eventtime)
-        
-        status.update({
-            "Diameter": self.diameter,
-            "Raw": (self.lastFilamentWidthReading + self.lastFilamentWidthReading2),
-            "is_active": self.is_active
-        })
-        return status
+        # We pass "None" for switch_pin because we manage the pin state via ADC logic
+        self.runout_helper = MmuRunoutHelper(self.printer, name, event_delay, insert_gcode, remove_gcode, runout_gcode,
+                                             insert_remove_in_print, button_handler, None)
 
-    def handle_ready(self):
-        self.toolhead = self.printer.lookup_object('toolhead')
-        if self.is_active:
-            self.reactor.update_timer(self.extrude_factor_update_timer, self.reactor.NOW)
+        self.printer.add_object("mmu_hall_endstop %s" % name, self)
 
     def _calc_diameter(self):
+        # Duplicate of Klipper hall_filament_width_sensor logic
         try:
             val_sum = self.lastFilamentWidthReading + self.lastFilamentWidthReading2
             slope = (self.dia2 - self.dia1) / (self.rawdia2 - self.rawdia1)
             diameter_new = round(slope * (val_sum - self.rawdia1) + self.dia1, 2)
-            self.diameter = (5.0 * self.diameter + diameter_new) / 6
+            # Use same smoothing factor as Klipper? Or faster for endstop?
+            # Klipper: self.diameter = (5.0 * self.diameter + diameter_new) / 6
+            # For endstop we probably want instant reaction or less smoothing
+            self.diameter = (2.0 * self.diameter + diameter_new) / 3 # Slightly faster smoothing
         except ZeroDivisionError:
-            self.diameter = self.nominal_filament_dia
-
-    def _check_trigger(self, eventtime):
-        is_present = self.diameter > self.hall_min_diameter
-        self.runout_helper.note_filament_present(eventtime, is_present)
-        
-        if self._homing:
-            if is_present == self._triggered:
-                if self._trigger_completion is not None:
-                    self._last_trigger_time = eventtime
-                    self._trigger_completion.complete(True)
-                    self._trigger_completion = None
+            self.diameter = 1.75 # Default fallback
 
     def adc_callback(self, read_time, read_value):
         self.lastFilamentWidthReading = round(read_value * 10000)
@@ -376,94 +326,24 @@ class MmuHallFilamentWidthSensor:
         self._calc_diameter()
         self._check_trigger(read_time)
 
-    def update_filament_array(self, last_epos):
-        if len(self.filament_array) > 0:
-            next_reading_position = (self.filament_array[-1][0] + self.MEASUREMENT_INTERVAL_MM)
-            if next_reading_position <= (last_epos + self.measurement_delay):
-                self.filament_array.append([last_epos + self.measurement_delay, self.diameter])
-                if self.is_log:
-                    self.gcode.respond_info("Filament width: %.3f (Raw: %d)" % 
-                                            (self.diameter, self.lastFilamentWidthReading + self.lastFilamentWidthReading2))
-        else:
-            self.filament_array.append([self.measurement_delay + last_epos, self.diameter])
-            self.firstExtruderUpdatePosition = (self.measurement_delay + last_epos)
+    def _check_trigger(self, eventtime):
+        is_present = self.diameter > self.hall_min_diameter
+        self.runout_helper.note_filament_present(eventtime, is_present)
 
-    def extrude_factor_update_event(self, eventtime):
-        pos = self.toolhead.get_position()
-        last_epos = pos[3]
-        self.update_filament_array(last_epos)
-        
-        if self.diameter > 0.5:
-            if len(self.filament_array) > 0:
-                pending_position = self.filament_array[0][0]
-                if pending_position <= last_epos:
-                    item = self.filament_array.pop(0)
-                    self.filament_width = item[1]
-                else:
-                    if ((self.use_current_dia_while_delay) and 
-                        (self.firstExtruderUpdatePosition == pending_position)):
-                        self.filament_width = self.diameter
-                    elif self.firstExtruderUpdatePosition == pending_position:
-                        self.filament_width = self.nominal_filament_dia
-                
-                if ((self.filament_width <= self.max_diameter) and 
-                    (self.filament_width >= self.min_diameter)):
-                    percentage = round(self.nominal_filament_dia**2 / self.filament_width**2 * 100)
-                    self.gcode.run_script("M221 S" + str(percentage))
-                else:
-                    self.gcode.run_script("M221 S100")
-        else:
-            self.gcode.run_script("M221 S100")
-            self.filament_array = []
+        if self._homing:
+            if is_present == self._triggered:
+                if self._trigger_completion is not None:
+                    self._last_trigger_time = eventtime
+                    self._trigger_completion.complete(True)
+                    self._trigger_completion = None
 
-        if self.is_active:
-            return eventtime + 1
-        else:
-            return self.reactor.NEVER
-
-    def cmd_M407(self, gcmd):
-        if self.diameter > self.hall_min_diameter:
-            gcmd.respond_info("Filament dia (measured mm): %.3f" % self.diameter)
-        else:
-            gcmd.respond_info("Filament NOT present (val: %.3f)" % self.diameter)
-
-    def cmd_Get_Raw_Values(self, gcmd):
-        total = self.lastFilamentWidthReading + self.lastFilamentWidthReading2
-        gcmd.respond_info("ADC1: %d, ADC2: %d, SUM: %d, Diameter: %.3f" % 
-                          (self.lastFilamentWidthReading, self.lastFilamentWidthReading2, total, self.diameter))
-        
-    def cmd_log_enable(self, gcmd):
-        self.is_log = True
-        gcmd.respond_info("Filament width logging Turned On")
-
-    def cmd_log_disable(self, gcmd):
-        self.is_log = False
-        gcmd.respond_info("Filament width logging Turned Off")
-
-    def cmd_ClearFilamentArray(self, gcmd):
-        self.filament_array = []
-        gcmd.respond_info("Filament width measurements cleared!")
-        self.gcode.run_script_from_command("M221 S100")
-
-    def cmd_M405(self, gcmd):
-        response = "Filament width sensor Turned On"
-        if self.is_active:
-            response = "Filament width sensor is already On"
-        else:
-            self.is_active = True
-            self.reactor.update_timer(self.extrude_factor_update_timer, self.reactor.NOW)
-        gcmd.respond_info(response)
-
-    def cmd_M406(self, gcmd):
-        response = "Filament width sensor Turned Off"
-        if not self.is_active:
-            response = "Filament width sensor is already Off"
-        else:
-            self.is_active = False
-            self.reactor.update_timer(self.extrude_factor_update_timer, self.reactor.NEVER)
-            self.filament_array = []
-            self.gcode.run_script_from_command("M221 S100")
-        gcmd.respond_info(response)
+    def get_status(self, eventtime):
+        status = self.runout_helper.get_status(eventtime)
+        status.update({
+            "Diameter": self.diameter,
+            "Raw": (self.lastFilamentWidthReading + self.lastFilamentWidthReading2)
+        })
+        return status
 
     # Required to implement a HH MMU endstop -------
 
@@ -499,6 +379,7 @@ class MmuHallFilamentWidthSensor:
             raise self.printer.command_error("No trigger on %s after full movement" % self.name)
 
         return self._last_trigger_time
+
 
 
 class MmuSensors:
@@ -564,28 +445,13 @@ class MmuSensors:
             self.hall_dia2 = config.getfloat('hall_cal_dia2', 2.0)
             self.hall_rawdia1 = config.getint('hall_raw_dia1', 9500)
             self.hall_rawdia2 = config.getint('hall_raw_dia2', 10500)
-            self.hall_MEASUREMENT_INTERVAL_MM = config.getint('hall_measurement_interval', 10)
-            self.hall_measurement_delay = config.getfloat('hall_measurement_delay', above=0.)
-            self.hall_runout_dia_min = config.getfloat('hall_min_diameter', 1.0)
-            self.hall_runout_dia_max = config.getfloat('hall_max_diameter', 2.0)    
-            self.hall_is_log = config.getboolean('hall_logging', False)
-            self.hall_use_current_dia_while_delay = config.getboolean('hall_use_current_dia_while_delay', False)
-            self.hall_enable_compensation = config.getboolean('hall_extrusion_factor_compensation', False)
-            self.hall_nominal_dia = config.getfloat('hall_default_nominal_filament_diameter', 1.75)
-            self.hall_max_difference = config.getfloat('hall_max_difference', 0.2)
-                    
-            s = MmuHallFilamentWidthSensor(config, Mmu.SENSOR_GATE, self.hall_pin1, self.hall_pin2, 
-                                        self.hall_dia1, self.hall_rawdia1, self.hall_dia2, self.hall_rawdia2, 
-                                        hall_runout_dia_min=self.hall_runout_dia_min, 
-                                        hall_runout_dia_max=self.hall_runout_dia_max,
-                                        hall_measurement_interval=self.hall_MEASUREMENT_INTERVAL_MM,
-                                        hall_measurement_delay=self.hall_measurement_delay,
-                                        hall_logging=self.hall_is_log,
-                                        hall_nominal_dia=self.hall_nominal_dia,
-                                        hall_max_difference=self.hall_max_difference,
-                                        enable_compensation=self.hall_enable_compensation,
-                                        use_current_dia_while_delay=self.hall_use_current_dia_while_delay,
-                                        insert=True, runout=True)
+            self.hall_runout_dia = config.getfloat('hall_min_diameter', 1.0)
+            # self.hall_runout_dia_max = config.getfloat('hall_max_diameter', 2.0) - Unused for trigger
+
+            s = MmuHallEndstop(config, Mmu.SENSOR_GATE, self.hall_pin1, self.hall_pin2,
+                               self.hall_dia1, self.hall_rawdia1, self.hall_dia2, self.hall_rawdia2,
+                               hall_runout_dia=self.hall_runout_dia,
+                               insert=True, runout=True)
             self.sensors[target_name] = s            
 
         # Setup motor syncing feedback sensors...
