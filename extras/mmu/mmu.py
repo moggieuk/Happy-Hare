@@ -1794,7 +1794,7 @@ class Mmu:
             mode = self.sync_feedback_manager.flowguard_encoder_mode
             if mode == self.encoder_sensor.RUNOUT_AUTOMATIC:
                 cdl = self.encoder_sensor.get_clog_detection_length()
-            self.calibration_manager.update_clog_detection_length(round(cdl, 1))
+                self.calibration_manager.update_clog_detection_length(round(cdl, 1))
 
         self.write_variables()
 
