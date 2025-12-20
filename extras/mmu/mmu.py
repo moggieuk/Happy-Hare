@@ -7200,7 +7200,6 @@ class Mmu:
         if self.has_encoder():
             cal_clog_length = self.save_variables.allVariables.get(self.VARS_MMU_CALIB_CLOG_LENGTH, None)
             clog_length = gcmd.get_float('MMU_CALIBRATION_CLOG_LENGTH', cal_clog_length, minval=1., maxval=100.)
-            self.log_error("PAUL: cal_clog_length=%s, clog_length=%s" % (cal_clog_length, clog_length))
             if clog_length != cal_clog_length:
                 self.calibration_manager.update_clog_detection_length(clog_length, force=True)
 

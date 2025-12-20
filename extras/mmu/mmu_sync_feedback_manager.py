@@ -204,7 +204,6 @@ class MmuSyncFeedbackManager:
         """
         Changing detection mode so ensure correct clog detection length
         """
-        self.mmu.log_error("PAUL: update mode=%s" % (mode))
         if not self.mmu.has_encoder(): return
 
         # Notify sensor of mode
