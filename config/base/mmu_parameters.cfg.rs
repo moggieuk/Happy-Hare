@@ -477,15 +477,17 @@ flowguard_max_relief: 8
 # Note that this will have to increase if 'sync_feedback_speed_multiplier' is decreased because of slower recovery.
 flowguard_max_motion: 120
 
-# Encoder clog/tangle detection watches for movement over either a static or automatically adjusted distance - if no encoder
-# movement is seen when the extruder moves this distance a clog/tangle event will be run. Allowing the distance to be
-# adjusted automatically will generally allow for a quicker trigger but use a static length if you run into false triggers.
+# Encoder runout/clog/tangle detection watches for movement over either a static or automatically adjusted distance - if
+# no encoder movement is seen when the extruder moves this distance runout/ clog/tangle event will be generated. Allowing
+# the distance to be adjusted automatically (mode=2) will generally allow for a quicker trigger but use a static length
+# (mode=1, set max_motion) if you get false triggers (see flowguard guide on wiki for more details)
 # Note that this feature cannot disinguish between clog or tangle.
 flowguard_encoder_mode: 2		# 0 = Disable, 1 = Static length clog detection, 2 = Automatic length clog detection
 
-# The encoder_max_motion is the absolute max permitted extruder movement without the encoder seeing movement. Smaller values
-# are more sensitive but beware of going too small - slack and friction in the bowden may cause gaps in encoder movement.
-# Note that this value is overriden by any calibrated value stored in 'mmu_vars.cfg'
+# The encoder_max_motion is the absolute max permitted extruder movement without the encoder seeing movement when using
+# status mode (mode=1). Smaller values are more sensitive but beware of going too small - slack and friction in the
+# bowden may cause gaps in encoder movement.
+# Note that this value is overriden by any calibrated value stored in 'mmu_vars.cfg' if in automatic mode (mode=2).
 flowguard_encoder_max_motion: 20
 
 

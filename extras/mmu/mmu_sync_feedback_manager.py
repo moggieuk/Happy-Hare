@@ -248,7 +248,6 @@ class MmuSyncFeedbackManager:
 
             # Can't wipe if already synced and active
             if gate != self.mmu.gate_selected or not self.active:
-                self.mmu.log_error("log_path=%s" % log_path)
                 if os.path.exists(log_path):
                     try:
                         os.remove(log_path)
