@@ -1,14 +1,23 @@
 # Happy Hare MMU Software
 # Implementation of various selector variations:
 #
-# VirtualSelector
-#  - Used to simply select correct gear stepper
-#  - For type-B AMS-like designs like 8-track
+# VirtualSelector:
+#  Implements selector for type-B MMU's with gear driver per gate
+#   - Uses gear driver stepper per-gate
+#   - For type-B designs like BoxTurtle, KMS, QuattroBox
 #
-# LinearSelector
+# LinearServoSelector
+#  Implements Linear Selector for type-A MMU's with servo
 #  - Stepper controlled linear movement with endstop
 #  - Servo controlled filament gripping
 #  - Supports type-A classic MMU's like ERCF and Tradrack
+#
+# LinearMultiGearServoSelector:
+#  Implements Linear Selector for type-C MMU's with multiple gear steppers:
+#   - Uses gear driver stepper per-gate
+#   - Uses selector stepper for gate selection with endstop
+#   - Uses servo for filament gripping
+#   - Supports type-A classic MMU's like ERCF and Tradrack
 #
 # Rotary Selector
 # - Rotary Selector for 3D Chamelon using stepper selection
@@ -129,8 +138,10 @@ class BaseSelector:
 
 
 ################################################################################
-# Virtual Selector
-# Implements selector for type-B MMU's with gear driver per gate
+# VirtualSelector:
+#  Implements selector for type-B MMU's with gear driver per gate
+#   - Uses gear driver stepper per-gate
+#   - For type-B designs like BoxTurtle, KMS, QuattroBox
 ################################################################################
 
 class VirtualSelector(BaseSelector, object):
@@ -166,18 +177,18 @@ class VirtualSelector(BaseSelector, object):
 
 ################################################################################
 # Linear Selector
-# Implements Linear Selector for type-A MMU's that uses stepper conrolled
+# Implements Linear Selector for type-A MMU's that uses stepper controlled
 # rail[0] on mmu toolhead
 ################################################################################
 
-class LinearSelector(BaseSelector, object):
+class LinearServoSelector(BaseSelector, object):
 
     # mmu_vars.cfg variables
     VARS_MMU_SELECTOR_OFFSETS = "mmu_selector_offsets"
     VARS_MMU_SELECTOR_BYPASS  = "mmu_selector_bypass"
 
     def __init__(self, mmu):
-        super(LinearSelector, self).__init__(mmu)
+        super(LinearServoSelector, self).__init__(mmu)
         self.bypass_offset = -1
 
         # Process config
@@ -390,7 +401,7 @@ class LinearSelector(BaseSelector, object):
         return self.mmu.mmu_machine.has_bypass and self.bypass_offset >= 0
 
     def get_status(self, eventtime):
-        status = super(LinearSelector, self).get_status(eventtime)
+        status = super(LinearServoSelector, self).get_status(eventtime)
         status.update(self.servo.get_status(eventtime))
         return status
 
@@ -1050,6 +1061,33 @@ class LinearSelectorServo:
                      "Move" if self.servo_state == self.SERVO_MOVE_STATE else
                      "Unknown",
         }
+
+
+
+################################################################################
+# LinearMultiGearServoSelector:
+#  Implements Linear Selector for type-C MMU's that:
+#   - Uses gear driver stepper gate
+#   - Uses selector stepper for gate selection with endstop
+#   - Uses servo for filament gripping
+#   - Supports type-A classic MMU's like ERCF and Tradrack
+# 
+################################################################################
+
+class LinearMultiGearServoSelector(LinearServoSelector, object):
+
+    def __init__(self, mmu):
+        super(LinearMultiGearServoSelector, self).__init__(mmu)
+
+    # Selector "Interface" methods ---------------------------------------------
+
+    def select_gate(self, gate):
+        self.mmu_toolhead.select_gear_stepper(gate) # Select correct gear drive stepper or none if bypass
+        super(LinearMultiGearServoSelector, self).select_gate(gate)
+
+    def restore_gate(self, gate):
+        self.mmu.mmu_toolhead.select_gear_stepper(gate) # Select correct gear drive stepper or none if bypass
+        super(LinearMultiGearServoSelector, self).restore_gate(gate)
 
 
 
