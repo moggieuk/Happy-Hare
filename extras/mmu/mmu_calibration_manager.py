@@ -17,7 +17,7 @@ import logging, math
 # Happy Hare imports
 
 # MMU subcomponent clases
-from . import mmu_shared
+from .mmu_shared import *
 
 
 class MmuCalibrationManager:
