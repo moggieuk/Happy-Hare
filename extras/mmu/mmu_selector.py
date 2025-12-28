@@ -194,7 +194,7 @@ class LinearSelector(BaseSelector, object):
     VARS_MMU_SELECTOR_BYPASS  = "mmu_selector_bypass"
 
     def __init__(self, mmu):
-        self.mmu = mmu
+        super(LinearSelector, self).__init__(mmu)
         self.bypass_offset = -1
 
         # Process config
