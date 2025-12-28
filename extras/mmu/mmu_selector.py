@@ -260,7 +260,15 @@ class LinearSelector(BaseSelector, object):
         self.cad_selector_tolerance = mmu.config.getfloat('cad_selector_tolerance', self.cad_selector_tolerance, above=0.) # Extra movement allowed by selector
 
         # Sub components (optional servo)
-        self.servo = LinearSelectorServo(mmu) if isinstance(self, LinearServoSelector) else None
+        if isinstance(self, LinearServoSelector):
+            self.servo = LinearSelectorServo(mmu) if isinstance(self, LinearServoSelector) else None
+        else:
+            self.servo = None
+            # Read all controller parameters related to to stop klipper complaining. This is done to allow
+            # for uniform and shared mmu_parameters.cfg file regardless of configuration.
+            for option in ['servo_']:
+                for key in mmu.config.get_prefix_options(option):
+                    _ = mmu.config.get(key)
 
         # Register GCODE commands specific to this module
         gcode = mmu.printer.lookup_object('gcode')
