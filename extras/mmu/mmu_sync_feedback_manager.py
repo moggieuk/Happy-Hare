@@ -189,14 +189,14 @@ class MmuSyncFeedbackManager:
             # This resets controller with last good autotuned RD, resets flowguard and resumes autotune
             self._reset_controller(eventtime, hard_reset=False)
             self.ctrl.autotune.resume()
-            self.mmu.log_info("MmuSyncFeedbackManager: FlowGuard monitoring activated and autotune resumed")
+            self.mmu.log_info("FlowGuard monitoring activated and autotune resumed")
 
 
     def deactivate_flowguard(self, eventtime):
         if self.flowguard_enabled and self.flowguard_active:
             self.flowguard_active = False
             self.ctrl.autotune.pause() # Very likley this is a period that we want to exclude from autotuning
-            self.mmu.log_info("MmuSyncFeedbackManager: FlowGuard monitoring deactivated and autotune paused")
+            self.mmu.log_info("FlowGuard monitoring deactivated and autotune paused")
 
 
     # This is "FlowGuard" on the encoder so manage it here
@@ -526,7 +526,7 @@ class MmuSyncFeedbackManager:
         f_reason = self.flowguard_status.get('reason', "")
         if f_trigger:
             if self.flowguard_enabled and self.flowguard_active:
-                self.mmu.log_error("MmuSyncFeedbackManager: FlowGuard detected a %s.\nReason for trip: %s" % (f_trigger, f_reason))
+                self.mmu.log_error("FlowGuard detected a %s.\nReason for trip: %s" % (f_trigger, f_reason))
 
                 # Pick most appropriate sensor to assign event to (primariliy for optics)
                 has_tension, has_compression, has_proportional = self.get_active_sensors()
@@ -547,7 +547,7 @@ class MmuSyncFeedbackManager:
                 sensor.runout_helper.note_clog_tangle(f_trigger)
                 self.deactivate_flowguard(eventtime)
             else:
-                self.mmu.log_debug("MmuSyncFeedbackManager: FlowGuard detected a %s, but handling is disabled.\nReason for trip: %s" % (f_trigger, f_reason))
+                self.mmu.log_debug("FlowGuard detected a %s, but handling is disabled.\nReason for trip: %s" % (f_trigger, f_reason))
                 self.ctrl.flowguard.reset() # Prevent repetitive messages
 
         # Handle new autotune suggestions

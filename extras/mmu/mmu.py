@@ -2511,18 +2511,18 @@ class Mmu:
                         self._unload_tool()
                         length = self.calibration_manager.calibrate_bowden_length_sensor(approx_bowden_length)
 
-                    elif self.has_encoder() and not self.mmu_machine.filament_always_gripped:
+                    elif self.has_encoder():
                         # Method 3: Automatic averaging method with encoder and extruder collision. Uses repeats for accuracy
                         self._unload_tool()
                         length = self.calibration_manager.calibrate_bowden_length_collision(approx_bowden_length, extruder_homing_max, repeats)
 
                     else:
-                        raise gcmd.error("Invalid configuration or options provided. Perhaps you tried COLLISION=1 without encoder or on MMU that can't release filament?")
+                        raise gcmd.error("Invalid configuration or options provided. Perhaps you tried COLLISION=1 without encoder or don't have extruder_homing_endstop set?")
 
                     cdl = None
                     msg = "Calibrated bowden length is %.1fmm" % length
                     if self.has_encoder():
-                        cdl = self.calc_clog_detection_length(length)
+                        cdl = self.calibration_manager.calc_clog_detection_length(length)
                         msg += ". Recommended flowguard_encoder_max_motion (clog detection length): %.1fmm" % cdl
                     self.log_always(msg)
 
@@ -4913,7 +4913,7 @@ class Mmu:
             # Notify manager if calibrating/autotuning
             if calibrating:
                 self.calibration_manager.update_bowden_length(calibrated_bowden_length, console_msg=True)
-                cdl = self.calc_clog_detection_length(calibrated_bowden_length)
+                cdl = self.calibration_manager.calc_clog_detection_length(calibrated_bowden_length)
                 self.calibration_manager.update_clog_detection_length(cdl, force=True)
 
             elif full and not extruder_only and not self.gcode_load_sequence:
