@@ -512,7 +512,7 @@ class _AutotuneEngine:
         Return None if we don't have enough evidence yet.
           phase      : progress in [0,1] within current segment (distance-based)
           level      : "low" | "high" (segment we're currently in)
-          extruding  : true if extruding   
+          extruding  : true if extruding
         """
         level = self._tl_seg_level
         if level is None:
@@ -711,7 +711,7 @@ class _AutotuneEngine:
         vals = [float(v) for v in samples if v is not None]
         n = len(vals)
         if n == 0:
-            return 0.0, None, None, 0, None
+            return 0.0, None, None, 0
 
         m = sum(vals) / float(n)
 
@@ -1005,7 +1005,7 @@ class _FlowguardEngine:
 
         return s
 
-    def _relief_effort(self, d_ext: float) -> float:
+    def _relief_effort(self, d_ext):
         """
         Signed relief 'effort' this tick (mm-equivalent).
         Positive => compression effort, negative => tension effort.
@@ -1038,11 +1038,12 @@ class SyncController:
       - Autotune of baseline RD (time/motion near neutral, or two-level duty estimator)
     """
 
-    def __init__(self, cfg: SyncControllerConfig, c0= 1.0, x0: Optional[float] = None):
+    def __init__(self, cfg: SyncControllerConfig, c0=1.0, x0=None):
         self.cfg = cfg
         self._set_twolevel_active()
 
         self._tick = 0
+        self._last_time_s = None
         self._log_ready = False
 
         self.K = 2.0 / cfg.buffer_range_mm   # mm => normalized delta in x
@@ -1065,7 +1066,7 @@ class SyncController:
 
         # Readiness (lag-aware)
         self._mm_since_info = 0.0
-        self._last_info_z: Optional[float] = None
+        self._last_info_z = None
 
         # UI visualization
         self._vis_est = 0.0
