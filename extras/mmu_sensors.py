@@ -47,7 +47,7 @@ RUNOUT_GCODE = "__MMU_SENSOR_RUNOUT"
 # direct access to button events in addition to creating a "remove" / "runout" distinction
 class MmuRunoutHelper:
     def __init__(self, printer, name, event_delay, insert_gcode, remove_gcode, runout_gcode, insert_remove_in_print, button_handler, switch_pin):
-
+        logging.info("MMU: Created runout helper for sensor: %s" % name)
         self.printer, self.name = printer, name
         self.insert_gcode, self.remove_gcode, self.runout_gcode = insert_gcode, remove_gcode, runout_gcode
         self.insert_remove_in_print = insert_remove_in_print
@@ -237,29 +237,39 @@ class MmuAdcSwitchSensor:
 
 # Standalone hall filament sensor endstop using multi use pins
 # Coexists with standard Klipper hall_filament_width_sensor by sharing the ADC pins
-# ADC parameters configurable for fast endstop response if overrun is a problem (default is slighly faster than adc_button)
+# Not as fast as a simple switch sensor - expect a few mm of overrun when homing filament
 class MmuHallSensor:
-    def __init__(self, config, name, gate, pin1, pin2, a_range, sample_time=0.001, sample_count=8, report_time=0.010,
+    def __init__(self, config, name, gate, pin1, pin2, a_range, adc_sample_time=0.001, adc_sample_count=8, adc_report_time=0.010,
                  insert=False, remove=False, runout=False, insert_remove_in_print=False, button_handler=None):
 
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.name = name
+        logging.info("MMU: MmuHallSensor initialized: %s (id: %s)" % (self.name, id(self)))
 
         # Configurable sampling for fast endstop response
         # Defaults: 1ms sample, 8 samples = 8ms. Report every 10ms.
-        self.sample_time = sample_time
-        self.sample_count = sample_count
-        self.report_time = report_time
+        self.sample_time = adc_sample_time
+        self.sample_count = adc_sample_count
+        self.report_time = adc_report_time
 
         # Sensor configuration for trigger detection
         self.pin1_name = pin1
         self.pin2_name = pin2
         self.a_min, self.a_max = a_range
 
+        # Last read time
+        self.lastReadTime = 0
+        self.lastTriggerTime = 0
+
         # State
-        self.last_reading = 0
-        self.last_reading2 = 0
+        # Klipper by default scales the ADC values to 0-20000, but adc functions return 0.-20.
+        # We operate on the floats internally to avoid conversions for speed
+        # Configs and Raw values are scaled to 0-20000 for consistency with Klipper
+        self._val1 = 0.
+        self._val2 = 0.
+        self._trigger_threshold = self.a_min / 10000.0
+        self.present = False
 
         # Endstop state variables
         self._steppers = []
@@ -295,26 +305,33 @@ class MmuHallSensor:
         remove_gcode = ("%s SENSOR=%s%s" % (REMOVE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if remove else None
         runout_gcode = ("%s SENSOR=%s%s" % (RUNOUT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if runout else None
 
-        # We pass pin1 for switch_pin, but it's not really used - Happy Hare expects something else than None though
         self.runout_helper = MmuRunoutHelper(self.printer, name, event_delay, insert_gcode, remove_gcode, runout_gcode,
                                              insert_remove_in_print, button_handler, self.pin1_name)
 
         self.printer.add_object("mmu_hall_sensor %s" % name, self)
 
     def adc_callback(self, read_time, read_value):
-        self.last_reading = round(read_value * 10000)
+        self._val1 = read_value
         self._check_trigger(read_time)
+        self.lastReadTime = read_time
 
     def adc2_callback(self, read_time, read_value):
-        self.last_reading2 = round(read_value * 10000)
+        self._val2 = read_value
         self._check_trigger(read_time)
+        self.lastReadTime = read_time
 
     def _check_trigger(self, eventtime):
-        is_present = self.last_reading + self.last_reading2 > self.a_min
-        self.runout_helper.note_filament_present(eventtime, is_present)
+        self.present = (self._val1 + self._val2) > self._trigger_threshold
+        # Optimization to only call runout helper if state changed or we have a button handler
+        # Benchmarked, float math + conditional call makes the class almost twice as fast! (Qidi Plus4, aarch64)
+        if self.runout_helper.button_handler or self.present != self.runout_helper.filament_present:
+            self.runout_helper.note_filament_present(eventtime, self.present)
 
+        if self.present:
+            self.lastTriggerTime = eventtime
+        
         if self._homing:
-            if is_present == self._triggered:
+            if self.present == self._triggered:
                 if self._trigger_completion is not None:
                     self._last_trigger_time = eventtime
                     self._trigger_completion.complete(True)
@@ -323,7 +340,7 @@ class MmuHallSensor:
     def get_status(self, eventtime):
         status = self.runout_helper.get_status(eventtime)
         status.update({
-            "Raw": (self.last_reading + self.last_reading2)
+            "Raw": round((self._val1 + self._val2) * 10000)
         })
         return status
 
@@ -381,8 +398,10 @@ class MmuSensors:
                 a_range = config.getfloatlist('pre_gate_analog_range_%d' % gate, None, count=2)
                 switch_pin_2 = config.get('pre_gate_switch_pin2_%d' % gate, None)
                 a_pullup = config.getfloat('pre_gate_analog_pullup_resistor_%d' % gate, 4700.)
-                self._create_sensor(config, Mmu.SENSOR_PRE_GATE_PREFIX, gate, switch_pin, switch_pin_2, a_range, a_pullup,
-                                    event_delay, insert=True, remove=True, runout=True, insert_remove_in_print=True)
+                adc_config = config.getlist('pre_gate_adc_settings_%d' % gate, None, count=3)
+                self._create_sensor(config, Mmu.SENSOR_PRE_GATE_PREFIX, gate, switch_pin, switch_pin_2,
+                                    a_range, a_pullup, event_delay, insert=True, remove=True, runout=True,
+                                    insert_remove_in_print=True, adc_config=adc_config)
 
         # Setup single "mmu_gate" sensor(s)...
         switch_pins = list(config.getlist('gate_switch_pin', []))
@@ -390,7 +409,10 @@ class MmuSensors:
             a_range = config.getfloatlist('gate_analog_range', None, count=2)
             switch_pins_2 = list(config.getlist('gate_switch_pin2', []))
             a_pullup = config.getfloat('gate_analog_pullup_resistor', 4700.)
-            self._create_sensor(config, Mmu.SENSOR_GATE, None, switch_pins, switch_pins_2, a_range, a_pullup, event_delay, runout=True)
+            adc_config = config.getlist('gate_adc_settings', None, count=3)
+
+            self._create_sensor(config, Mmu.SENSOR_GATE, None, switch_pins, switch_pins_2,
+                                a_range, a_pullup, event_delay, runout=True, adc_config=adc_config)
 
         # Setup "mmu_gear" sensors...
         for gate in range(23):
@@ -398,9 +420,10 @@ class MmuSensors:
             if switch_pin:
                 a_range = config.getfloatlist('post_gear_analog_range_%d' % gate, None, count=2)
                 switch_pin_2 = config.get('post_gear_switch_pin2_%d' % gate, None)
-                a_pullup = config.getfloat('post_gear_analog_pullup_resister_%d' % gate, 4700.)
-                self._create_sensor(config, Mmu.SENSOR_GEAR_PREFIX, gate, switch_pin, switch_pin_2, a_range, a_pullup,
-                                    event_delay, runout=True)
+                a_pullup = config.getfloat('post_gear_analog_pullup_resistor_%d' % gate, 4700.)
+                adc_config = config.getlist('post_gear_adc_settings_%d' % gate, None, count=3)
+                self._create_sensor(config, Mmu.SENSOR_GEAR_PREFIX, gate, switch_pin, switch_pin_2,
+                                    a_range, a_pullup, event_delay, runout=True, adc_config=adc_config)
 
         # Setup single extruder (entrance) sensor...
         switch_pin = config.get('extruder_switch_pin', None)
@@ -408,8 +431,9 @@ class MmuSensors:
             a_range = config.getfloatlist('extruder_analog_range', None, count=2)
             switch_pin_2 = config.get('extruder_switch_pin2', None)
             a_pullup = config.getfloat('extruder_analog_pullup_resistor', 4700.)
-            self._create_sensor(config, Mmu.SENSOR_EXTRUDER_ENTRY, None, switch_pin, switch_pin_2, a_range, a_pullup,
-                                event_delay, insert=True, runout=True)
+            adc_config = config.getlist('extruder_adc_settings', None, count=3)
+            self._create_sensor(config, Mmu.SENSOR_EXTRUDER_ENTRY, None, switch_pin, switch_pin_2,
+                                a_range, a_pullup, event_delay, insert=True, runout=True, adc_config=adc_config)
 
         # Setup single toolhead sensor...
         switch_pin = config.get('toolhead_switch_pin', None)
@@ -417,8 +441,9 @@ class MmuSensors:
             a_range = config.getfloatlist('toolhead_analog_range', None, count=2)
             switch_pin_2 = config.get('toolhead_switch_pin2', None)
             a_pullup = config.getfloat('toolhead_analog_pullup_resistor', 4700.)
-            self._create_sensor(config, Mmu.SENSOR_TOOLHEAD, None, switch_pin, switch_pin_2, a_range, a_pullup,
-                                event_delay)
+            adc_config = config.getlist('toolhead_adc_settings', None, count=3)
+            self._create_sensor(config, Mmu.SENSOR_TOOLHEAD, None, switch_pin, switch_pin_2,
+                                a_range, a_pullup, event_delay, adc_config=adc_config)
 
         # Setup motor syncing feedback sensors...
         switch_pins = list(config.getlist('sync_feedback_tension_pin', []))
@@ -428,9 +453,10 @@ class MmuSensors:
         if switch_pins:
             self._create_sensor(config, Mmu.SENSOR_COMPRESSION, None, switch_pins, None, None, None, 0, button_handler=self._sync_compression_callback)
 
-    # Internal sensor creation method that handles all sensor types (switch, analog and hall)
+    # Internal sensor creation function that handles all sensor types (switch, analog and hall)
     def _create_sensor(self, config, name_prefix, gate, switch_pins, switch_pins_2, analog_range, pullup, event_delay,
-                       insert=False, remove=False, runout=False, insert_remove_in_print=False, button_handler=None):
+                       insert=False, remove=False, runout=False, insert_remove_in_print=False, button_handler=None,
+                       adc_config=None):
         switch_pins = [switch_pins] if not isinstance(switch_pins, list) else switch_pins
         switch_pins_2 = [switch_pins_2] if switch_pins_2 and not isinstance(switch_pins_2, list) else (switch_pins_2 or [])
 
@@ -447,19 +473,33 @@ class MmuSensors:
 
                 # Determine sensor type
                 if analog_range is not None:
+                    if adc_config:
+                        adc_sample_time = float(adc_config[0])
+                        adc_sample_count = int(adc_config[1])
+                        adc_report_time = float(adc_config[2])
+                    else:
+                        # Defaults
+                        adc_sample_time = 0.001
+                        adc_sample_count = 8
+                        adc_report_time = 0.010
+
                     if switch_pin_2 is not None:
-                        # Hall sensor case (e.g. Qidi extruder sensor or hall_filament_width_sensor)
+                        # 2 sensing pins = Hall sensor case (e.g. Qidi extruder sensor or hall_filament_width_sensor)
                         s = MmuHallSensor(config, name, gate, switch_pin, switch_pin_2, analog_range,
                                            insert=insert, remove=remove, runout=runout,
-                                           insert_remove_in_print=insert_remove_in_print, button_handler=button_handler)
+                                           insert_remove_in_print=insert_remove_in_print, button_handler=button_handler,
+                                           adc_sample_time=adc_sample_time, adc_sample_count=adc_sample_count, adc_report_time=adc_report_time)
                         self.sensors[name] = s
+                        logging.info("MMU: Added hall sensor to manager: %s" % name)
                     elif pullup is not None:
-                        # ADC switch sensor case (ViVid-style endstops)
+                        # 1 sensing pin + pullup = ADC switch sensor case (ViVid-style endstops)
+                        # Pullup is right now never None, but it is checked here for future proofing
                         s = MmuAdcSwitchSensor(config, name, gate, switch_pin, event_delay, analog_range,
                                                insert=insert, remove=remove, runout=runout,
                                                insert_remove_in_print=insert_remove_in_print, button_handler=button_handler,
                                                a_pullup=pullup)
                         self.sensors[name] = s
+                        logging.info("MMU: Added analog sensor to manager: %s" % name)
                     else:
                         raise config.error("Invalid sensor definition for analog sensor %s. Missing pullup or secondary pin" % name)
                 else:
@@ -483,6 +523,7 @@ class MmuSensors:
         fs.runout_helper = ro_helper
         fs.get_status = ro_helper.get_status
         self.sensors[name] = fs
+        logging.info("MMU: Added simple switch sensor to manager: %s" % name)
 
     def _is_empty_pin(self, switch_pin):
         if switch_pin == '': return True
