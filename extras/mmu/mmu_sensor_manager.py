@@ -14,7 +14,7 @@
 import random, logging, math, re
 
 # Happy Hare imports
-from ..mmu_sensors import MmuRunoutHelper
+from ..mmu_sensors import MmuRunoutHelper, MmuAdcSensorBase
 from .mmu_shared   import MmuError
 
 class MmuSensorManager:
@@ -74,7 +74,7 @@ class MmuSensorManager:
         for name in self.endstop_names:
             sensor = self.all_sensors.get(name, None)
             if sensor is not None:
-                if sensor.__class__.__name__ in ["MmuAdcSwitchSensor", "MmuHallSensor"]:
+                if isinstance(sensor, MmuAdcSensorBase):
                     sensor_pin = sensor.runout_helper.switch_pin
                     mcu_endstop = self.mmu.gear_rail.add_extra_endstop(sensor_pin, name, mcu_endstop=sensor)
                 else:
@@ -92,6 +92,10 @@ class MmuSensorManager:
                     mcu_endstop.add_stepper(self.mmu.mmu_extruder_stepper.stepper)
             else:
                 logging.warning("MMU: Improper setup: Filament sensor %s is not defined in [mmu_sensors]" % name)
+
+        # Register "MMU_SENSOR_STATUS" command
+        self.gcode = self.mmu.printer.lookup_object('gcode')
+        self.gcode.register_command("MMU_SENSOR_STATUS", self.cmd_MMU_SENSOR_STATUS, desc=self.cmd_MMU_SENSOR_STATUS_help)
 
     # Reset the "viewable" sensors used in UI (unit must be updated first)
     def reset_active_gate(self, gate):
@@ -298,3 +302,32 @@ class MmuSensorManager:
             for name, sensor in self.viewable_sensors.items()
         }
         return result
+
+    cmd_MMU_SENSOR_STATUS_help = "Get status of MMU sensors. Usage: MMU_SENSOR_STATUS [SENSOR=<name>]"
+    def cmd_MMU_SENSOR_STATUS(self, gcmd):
+        eventtime = self.mmu.reactor.monotonic()
+        name = gcmd.get("SENSOR", None)
+        if name:
+            # Try to resolve logic similar to what user sees (viewable sensors first, then raw names)
+            sensor = self.viewable_sensors.get(name)
+            if not sensor:
+                sensor = self.all_sensors.get(name)
+            
+            if sensor:
+                self._report_sensor_status(gcmd, name, sensor, eventtime)
+            else:
+                gcmd.respond_info("MMU Sensor '%s' not found" % name)
+        else:
+            gcmd.respond_info("MMU Sensor Status:")
+            # Report all physical sensors
+            for name in sorted(self.all_sensors.keys()):
+                self._report_sensor_status(gcmd, name, self.all_sensors[name], eventtime)
+
+    def _report_sensor_status(self, gcmd, name, sensor, eventtime):
+        try:
+            status = sensor.get_status(eventtime)
+            # Format the status dict
+            status_str = ", ".join(["%s: %s" % (k, v) for k, v in status.items()])
+            gcmd.respond_info("%s: %s" % (name, status_str))
+        except Exception as e:
+             gcmd.respond_info("%s: Error reading status (%s)" % (name, str(e)))
