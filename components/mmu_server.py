@@ -786,6 +786,9 @@ FLUSH_MULTIPLIER_REGEX = r"^;\s*flush_multiplier\s*=\s*(.*)$" #flush multiplier 
 FILAMENT_NAMES_REGEX = r"^;\s*(filament_settings_id)\s*=\s*(.*)$"
 METADATA_FILAMENT_NAMES = "!filament_names!"
 
+FILAMENT_USAGES_REGEX = r"^;\s*(filament\sused\s\[g\]\s=\s(.*))$"
+METADATA_FILAMENT_USAGES = "!filament_usages!"
+
 # Detection for next pos processing
 T_PATTERN  = r'^T(\d+)\s*(?:;.*)?$'
 G1_PATTERN = r'^G[01](?=.*\sX(-?[\d.]+))(?=.*\sY(-?[\d.]+)).*$'
@@ -801,8 +804,8 @@ def gcode_processed_already(file_path):
 
 def parse_gcode_file(file_path):
     slicer_regex = re.compile(SLICER_REGEX, re.IGNORECASE)
-    has_tools_placeholder = has_total_toolchanges = has_colors_placeholder = has_temps_placeholder = has_materials_placeholder = has_purge_volumes_placeholder = filament_names_placeholder = False
-    found_colors = found_temps = found_materials = found_purge_volumes = found_filament_names = found_flush_multiplier = False
+    has_tools_placeholder = has_total_toolchanges = has_colors_placeholder = has_temps_placeholder = has_materials_placeholder = has_purge_volumes_placeholder = filament_names_placeholder = filament_usages_placeholder = False
+    found_colors = found_temps = found_materials = found_purge_volumes = found_filament_names = found_filament_usages = found_flush_multiplier = False
     slicer = None
 
     tools_used = set()
@@ -812,6 +815,7 @@ def parse_gcode_file(file_path):
     materials = []
     purge_volumes = []
     filament_names = []
+    filament_usages = []
     flush_multiplier = 1.0 # Initialize flush_multiplier to 1.0
 
     with open(file_path, 'r') as in_file:
@@ -846,7 +850,10 @@ def parse_gcode_file(file_path):
             filament_names_regex = re.compile(FILAMENT_NAMES_REGEX[slicer], re.IGNORECASE)
         else:
             filament_names_regex = re.compile(FILAMENT_NAMES_REGEX, re.IGNORECASE)
-
+        if isinstance(FILAMENT_USAGES_REGEX, dict):
+            filament_usages_regex = re.compile(FILAMENT_USAGES_REGEX[slicer], re.IGNORECASE)
+        else:
+            filament_usages_regex = re.compile(FILAMENT_USAGES_REGEX, re.IGNORECASE)
         if isinstance(FLUSH_MULTIPLIER_REGEX, dict):
             flush_multiplier_regex = re.compile(FLUSH_MULTIPLIER_REGEX[slicer], re.IGNORECASE)
         else:
@@ -943,10 +950,19 @@ def parse_gcode_file(file_path):
                         filament_names.extend(filament_names_csv)
                         found_filament_names = True
 
-    return (has_tools_placeholder or has_total_toolchanges or has_colors_placeholder or has_temps_placeholder or has_materials_placeholder or has_purge_volumes_placeholder or filament_names_placeholder,
-            sorted(tools_used), total_toolchanges, colors, temps, materials, purge_volumes, filament_names, slicer)
+                # !filament_usages! processing
+                if not filament_usages_placeholder and METADATA_FILAMENT_USAGES in line:
+                    filament_usages_placeholder = True
 
-def process_file(input_filename, output_filename, insert_nextpos, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names):
+                if not found_filament_usages:
+                    match = filament_usages_regex.match(line)
+                    if match:
+                        filament_usages_csv = [e.strip() for e in re.split(',|;', match.group(2).strip())]
+                        filament_usages.extend(filament_usages_csv)
+                        found_filament_usages = True
+    return (has_tools_placeholder or has_total_toolchanges or has_colors_placeholder or has_temps_placeholder or has_materials_placeholder or has_purge_volumes_placeholder or filament_names_placeholder or filament_usages_placeholder, sorted(tools_used), total_toolchanges, colors, temps, materials, purge_volumes, filament_names, filament_usages, slicer)
+
+def process_file(input_filename, output_filename, insert_nextpos, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names, filament_usages):
 
     t_pattern = re.compile(T_PATTERN)
     g1_pattern = re.compile(G1_PATTERN)
@@ -957,7 +973,7 @@ def process_file(input_filename, output_filename, insert_nextpos, tools_used, to
         outfile.write(f'{HAPPY_HARE_FINGERPRINT}\n')
 
         for line in infile:
-            line = add_placeholder(line, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names)
+            line = add_placeholder(line, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names, filament_usages)
             if tool is not None:
                 # Buffer subsequent lines after a "T" line until next "G1" x,y move line is found
                 buffer.append(line)
@@ -991,7 +1007,7 @@ def process_file(input_filename, output_filename, insert_nextpos, tools_used, to
         # Finally append "; referenced_tools =" as new metadata (why won't Prusa pick up my PR?)
         outfile.write("; referenced_tools = %s\n" % ",".join(map(str, tools_used)))
 
-def add_placeholder(line, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names):
+def add_placeholder(line, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names, filament_usages):
     # Ignore comment lines to preserve slicer metadata comments
     if not line.startswith(";"):
         if METADATA_TOOL_DISCOVERY in line:
@@ -1011,6 +1027,8 @@ def add_placeholder(line, tools_used, total_toolchanges, colors, temps, material
             line = line.replace(METADATA_PURGE_VOLUMES, ",".join(map(str, purge_volumes)))
         if METADATA_FILAMENT_NAMES in line:
             line = line.replace(METADATA_FILAMENT_NAMES, ",".join(map(str, filament_names)))
+        if METADATA_FILAMENT_USAGES in line:
+            line = line.replace(METADATA_FILAMENT_USAGES, ",".join(map(str, filament_usages)))
     else:
         if METADATA_BEGIN_PURGING in line:
             line = line + "_MMU_STEP_SET_ACTION STATE=12\n"
@@ -1032,7 +1050,7 @@ def main(path, filename, insert_placeholders=False, insert_nextpos=False):
 
                 if insert_placeholders:
                     start = time.time()
-                    has_placeholder, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names, slicer = parse_gcode_file(file_path)
+                    has_placeholder, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names, filament_usages, slicer = parse_gcode_file(file_path)
                     metadata.logger.info("Reading placeholders took %.2fs. Detected gcode by slicer: %s" % (time.time() - start, slicer))
                 else:
                     tools_used = total_toolchanges = colors = temps = materials = purge_volumes = filament_names = slicer = None
@@ -1045,7 +1063,7 @@ def main(path, filename, insert_placeholders=False, insert_nextpos=False):
                         msg.append("Writing MMU placeholders")
                     if insert_nextpos:
                         msg.append("Inserting next position to tool changes")
-                    process_file(file_path, tmp_file, insert_nextpos, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names)
+                    process_file(file_path, tmp_file, insert_nextpos, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names, filament_usages)
                     metadata.logger.info("mmu_server: %s took %.2fs" % (",".join(msg), time.time() - start))
 
                     # Move temporary file back in place
