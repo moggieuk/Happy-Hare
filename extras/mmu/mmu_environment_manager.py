@@ -39,6 +39,8 @@ class MmuEnvironmentManager:
         self.heater_default_dry_temp = self.mmu.config.getfloat('heater_default_dry_temp', 45, above=0.)
         self.heater_default_dry_time = self.mmu.config.getfloat('heater_default_dry_time', 300, above=0.)
         self.heater_default_humidity = self.mmu.config.getfloat('heater_default_humidity', 10, above=0.)
+        self.heater_vent_macro       = self.mmu.config.get(     'heater_vent_macro', '')
+        self.heater_vent_interval    = self.mmu.config.getfloat('heater_vent_interval', 0, minval=0)
 
         # Build tuples of drying temp / drying time indexed by filament type
         drying_data_str = self.mmu.config.get('drying_data', {})
@@ -64,24 +66,15 @@ class MmuEnvironmentManager:
     #
 
     def reinit(self):
-        logging.info("PAUL: mmu_environment_manager: reinit()")
         self._drying = False
         self._drying_temp = None
         self._drying_humidity_target = None
         self._drying_start_time = self._drying_end_time = None
         self._drying_gates = []
+        self._drying_vent_interval = None
 
 
-    def handle_connect(self):
-        logging.info("PAUL: mmu_environment_manager: _handle_connect()")
-
-
-    def handle_disconnect(self):
-        logging.info("PAUL: mmu_environment_manager: _handle_disconnect()")
-
-
-    def handle_ready(self):
-        logging.info("PAUL: mmu_environment_manager: _handle_ready()")
+    # No ready/connect/disconnect lifecycle hooks
 
 
     def set_test_config(self, gcmd):
@@ -89,14 +82,18 @@ class MmuEnvironmentManager:
             self.heater_default_dry_temp = gcmd.get_float('HEATER_DEFAULT_DRY_TEMP', self.heater_default_dry_temp, above=0.)
             self.heater_default_dry_time = gcmd.get_float('HEATER_DEFAULT_DRY_TIME', self.heater_default_dry_time, above=0.)
             self.heater_default_humidity = gcmd.get_float('HEATER_DEFAULT_HUMIDITY', self.heater_default_humidity, above=0.)
+            self.heater_vent_macro       = gcmd.get(      'HEATER_VENT_MACRO', self.heater_vent_macro)
+            self.heater_vent_interval    = gcmd.get_float('HEATER_VENT_INTERVAL', self.heater_vent_interval, minval=0)
 
 
     def get_test_config(self):
-        msg  = ""
         if self.has_heater():
+            msg = "\n\nHEATER:"
             msg += "\nheater_default_dry_temp = %.1f" % self.heater_default_dry_temp
             msg += "\nheater_default_dry_time = %.1f" % self.heater_default_dry_time
             msg += "\nheater_default_humidity = %.1f" % self.heater_default_humidity
+            msg += "\nheater_vent_macro = %s" % self.heater_vent_macro
+            msg += "\nheater_vent_interval = %.1f" % self.heater_vent_interval
 
         return msg
 
@@ -137,6 +134,7 @@ class MmuEnvironmentManager:
         + "HUMIDITY = % Terminate drying when humidty goal is reached\n"
         + "GATES = x,y Gates to dry ONLY IF MMU has individual spool heaters/dryers\n"
         + "DRYING_DATA = [0|1] Dump configured drying data for filament types\n"
+        + "VENT_INTERVAL = #(mins) How often to call 'vent' macro\n"
         + "(no parameters for status report)"
     )
     def cmd_MMU_HEATER(self, gcmd):
@@ -153,6 +151,7 @@ class MmuEnvironmentManager:
         time = gcmd.get_int('TIME', self.heater_default_dry_time, minval=0)
         temp = gcmd.get_float('TEMP', None, minval=0., maxval=100.)
         humidity = gcmd.get_float('HUMIDITY', self.heater_default_humidity, minval=0)
+        vent_interval = gcmd.get_float('VENT_INTERVAL', self.heater_vent_interval, minval=0)
         gates = gcmd.get('GATES', "!")
         if gates != "!":
             gatelist = []
@@ -160,8 +159,9 @@ class MmuEnvironmentManager:
             try:
                 for gate in gates.split(','):
                     gate = int(gate)
-                    if 0 <= gate < self.num_gates:
+                    if 0 <= gate < self.mmu.num_gates:
                         gatelist.append(gate)
+                gates = gatelist
             except ValueError:
                 raise gcmd.error("Invalid GATES parameter: %s" % gates)
         else:
@@ -186,7 +186,7 @@ class MmuEnvironmentManager:
             for material in sorted(self.drying_data.keys()):
                 temp, minutes = self.drying_data[material]
 
-                msg += "{:<6} {:>3}°C for {}\n".format(
+                msg += u"{:<6} {:>3}°C for {}\n".format(
                     material + ":",
                     temp,
                     _format_minutes(minutes)
@@ -208,6 +208,10 @@ class MmuEnvironmentManager:
             return
 
         if dry:
+            if self._drying:
+                self.mmu.log_always("MMU already in filament drying cycle. Stop current cycle first")
+                return
+
             def_temp, def_time = self._get_max_drying_temp_time(gates)
 
             if temp is not None:
@@ -225,6 +229,7 @@ class MmuEnvironmentManager:
             self._drying_start_time = self.mmu.reactor.monotonic()
             self._drying_end_time = self._drying_start_time + self._drying_time * 60
             self._drying_gates = gates
+            self._drying_vent_interval = vent_interval
 
             self._start_drying_cycle()
 
@@ -253,7 +258,20 @@ class MmuEnvironmentManager:
             else:
                 cur_temp, cur_target = self._get_heater_status()
                 msg += "\nEnvironment sensor not available / misconfigured"
-            msg += u"\nDrying temp: %.1f°C (current: %.1f)°C" % (self._drying_temp, cur_temp)
+            msg += u"\nDrying temp: %.1f°C (current: %.1f°C)" % (self._drying_temp, cur_temp)
+
+            if self._vent_timer is not None and self._vent_timer > 0:
+                msg += "\nVenting operational (runing macro %s every %s, next in %s)" % (
+                    self.heater_vent_macro,
+                    _format_minutes(self._drying_vent_interval),
+                    _format_minutes(int(self._vent_timer / 60)),
+                )
+            else:
+                if not self.heater_vent_macro:
+                    vent_reason = "heater_vent_macro not set"
+                else:
+                    vent_reason = "heater_vent_interval is 0"
+                msg += "\nVenting not operational (%s)" % vent_reason
 
         # Report status
         self.mmu.log_always(msg)
@@ -273,10 +291,7 @@ class MmuEnvironmentManager:
         """
         Event indicating that the MMU unit was disabled
         """
-        if not self.mmu.is_enabled: return
         if eventtime is None: eventtime = self.mmu.reactor.monotonic()
-
-        self.mmu.log_warning("PAUL mmu_environment_manager: _handle_mmu_disabled()")
         self._stop_drying_cycle()
         self._heater_off()
 
@@ -285,9 +300,8 @@ class MmuEnvironmentManager:
         """
         Reactor callback to periodically check drying status and to rationalize state
         """
-        self.mmu.log_warning("PAUL mmu_environment_manager: _check_mmu_environment()")
+        self.mmu.log_warning("PAUL TEMP DEBUG: mmu_environment_manager: _check_mmu_environment()")
         if not self._drying:
-            logging.info("PAUL NOT DRYING!!")
             return self.mmu.reactor.NEVER
 
         cur_temp, cur_humidity = self._get_environment_status()
@@ -295,6 +309,17 @@ class MmuEnvironmentManager:
             self.mmu.log_info("MmuEnvironmentManager: Drying cycle terminated because humidity goal %.1f%% reached" % self._drying_humidity_target)
             self._stop_drying_cycle()
             return self.mmu.reactor.NEVER
+
+        # Run periodic venting (macro)
+        if self._vent_timer is not None and self._vent_timer > 0:
+            self._vent_timer -= self.CHECK_INTERVAL
+
+            if self._vent_timer <= 0 and self.heater_vent_macro:
+                self.mmu.log_info("MmuEnvironmentManager: Running heater vent macro '%s'" % self.heater_vent_macro)
+                self.mmu.wrap_gcode_command(self.heater_vent_macro, exception=False) # Will report errors without exception
+
+                # Reset countdown regardless (prevents hammering if undefined or failing)
+                self._vent_timer = self._drying_vent_interval * 60.0 if self._drying_vent_interval else None
 
         # Reschedule
         return eventtime + self.CHECK_INTERVAL
@@ -304,6 +329,13 @@ class MmuEnvironmentManager:
         if not self._drying:
             self.mmu.log_info("MmuEnvironmentManager: Filament drying started")
             self._drying = True
+
+            # Vent timer countdown (seconds). 0/None disables venting.
+            if self._drying_vent_interval and self._drying_vent_interval > 0:
+                self._vent_timer = self._drying_vent_interval * 60.0 # To seconds
+            else:
+                self._vent_timer = None
+
             self._heater_on(self._drying_temp)
             self.mmu.reactor.update_timer(self._periodic_timer, self.mmu.reactor.NOW)
 
@@ -317,17 +349,17 @@ class MmuEnvironmentManager:
 
 
     def _heater_on(self, temp):
-        self.mmu.log_warning("PAUL HEATER ON, TEMP=%s" % temp)
-        self.mmu.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=%s TARGET=%.1f" % (self.mmu.extruder_name, temp))
+        self.mmu.log_info(u"MmuEnvironmentManager: Heater %s set to target temp of %.1f°C" % (self.mmu.mmu_machine.filament_heater, temp))
+        self.mmu.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=%s TARGET=%.1f" % (self.mmu.mmu_machine.filament_heater, temp))
 
 
     def _heater_off(self):
-        self.mmu.log_warning("PAUL HEATER OFF")
-        self.mmu.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=%s TARGET=0" % self.mmu.extruder_name)
+        self.mmu.log_info(u"MmuEnvironmentManager: Heater %s turned off" % self.mmu.mmu_machine.filament_heater)
+        self.mmu.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=%s TARGET=0" % self.mmu.mmu_machine.filament_heater)
 
 
     def _get_heater_status(self):
-        status = self.mmu.printer.lookup_object(self.mmu.extruder_name).get_status(0)
+        status = self.mmu.printer.lookup_object(self.mmu.mmu_machine.filament_heater).get_status(0)
         temperature = status.get('temperature')
         target = status.get('target')
         power = status.get('power')
@@ -340,7 +372,6 @@ class MmuEnvironmentManager:
         Note that some configured sensors may only offer temperature
         """
         sensor = self.mmu.mmu_machine.environment_sensor
-        sensor = "temperature_sensor Printer_environment" # PAUL TEMP
         obj = self.mmu.printer.lookup_object(sensor, None)
         if obj is None:
             return None, None

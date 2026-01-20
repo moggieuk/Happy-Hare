@@ -255,7 +255,7 @@ class Mmu:
         self.gcode = self.printer.lookup_object('gcode')
         self.gcode_move = self.printer.load_object(config, 'gcode_move')
 
-        self.managers = []                    # List of mmu manager classes to encapsulate functionality
+        self.managers = []                    # List of mmu manager classes to encapsulate functionality. Managers add themselves
         self.mmu_machine = self.printer.lookup_object("mmu_machine")
         self.num_gates = self.mmu_machine.num_gates
         self.calibration_status = 0b0
@@ -916,8 +916,6 @@ class Mmu:
         for m in self.managers:
             if hasattr(m, 'handle_connect'):
                 m.handle_connect()
-#PAUL        self.selector.handle_connect()
-#PAUL        self.sync_feedback_manager.handle_connect()
 
     def _ensure_list_size(self, lst, size, default_value=-1):
         lst = lst[:size]
@@ -931,8 +929,6 @@ class Mmu:
         for m in self.managers:
             if hasattr(m, 'handle_disconnect'):
                 m.handle_disconnect()
-#PAUL        self.selector.handle_disconnect()
-#PAUL        self.sync_feedback_manager.handle_disconnect()
 
     def handle_ready(self):
         # Pull retraction length from macro config
@@ -994,7 +990,6 @@ class Mmu:
         for m in self.managers:
             if hasattr(m, 'handle_ready'):
                 m.handle_ready()
-#PAUL        self.selector.handle_ready()
 
         # Schedule bootup tasks to run after klipper and hopefully spoolman have settled
         self._schedule_mmu_bootup_tasks(self.BOOT_DELAY)
@@ -1025,8 +1020,6 @@ class Mmu:
         for m in self.managers:
             if hasattr(m, 'reinit'):
                 m.reinit()
-#PAUL        self.selector.reinit()
-#PAUL        self.sync_feedback_manager.reinit()
 
     def _clear_slicer_tool_map(self):
         skip = self.slicer_tool_map.get('skip_automap', False) if self.slicer_tool_map else False
@@ -7100,6 +7093,7 @@ class Mmu:
             if vars(self).get(p.lower()) is None
             and self.selector.check_test_config(p.lower())
             and self.sync_feedback_manager.check_test_config(p.lower())
+            and self.environment_manager.check_test_config(p.lower())
             and p.lower() not in [
                 self.VARS_MMU_CALIB_BOWDEN_LENGTH,
                 self.VARS_MMU_CALIB_CLOG_LENGTH
@@ -7133,7 +7127,7 @@ class Mmu:
         self.sync_purge = gcmd.get_int('SYNC_PURGE', self.sync_purge, minval=0, maxval=1)
         if self.mmu_machine.filament_always_gripped:
             self.sync_to_extruder = self.sync_form_tip = self.sync_purge = 1
-        self.sync_feedback_manager.set_test_config(gcmd)
+# PAUL        self.sync_feedback_manager.set_test_config(gcmd)
 
         # TMC current control
         self.sync_gear_current = gcmd.get_int('SYNC_GEAR_CURRENT', self.sync_gear_current, minval=10, maxval=100)
@@ -7277,7 +7271,9 @@ class Mmu:
         self.serious = gcmd.get_int('SERIOUS', self.serious, minval=0, maxval=1)
 
         # Sub components
+        self.sync_feedback_manager.set_test_config(gcmd)
         self.selector.set_test_config(gcmd)
+        self.environment_manager.set_test_config(gcmd)
 
         if not quiet:
             msg = "FILAMENT MOVEMENT SPEEDS:"
@@ -7369,6 +7365,9 @@ class Mmu:
                 msg += "\nespooler_assist_burst_trigger = %d" % self.espooler_assist_burst_trigger
                 msg += "\nespooler_assist_burst_trigger_max = %d" % self.espooler_assist_burst_trigger_max
                 msg += "\nespooler_operations = %s"  % self.espooler_operations
+
+            # Heater/Environment
+            msg += self.environment_manager.get_test_config()
 
             msg += "\n\nLOGGING:"
             msg += "\nlog_level = %d" % self.log_level
