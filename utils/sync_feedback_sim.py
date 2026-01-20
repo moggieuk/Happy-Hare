@@ -630,7 +630,7 @@ def plot_progress(
             ax_sensor.plot(t_axis, c_est, label="c_est (debug)",  linestyle="--", linewidth=DEBUG_LW,     color=C_EST_COLOR)
 
         # FlowGuard: Headroom normalized and reflected to fit on this scale
-        ax_sensor.plot(t_axis, fg_headroom,   label="flowguard headroom (normalized)",   linestyle="--",  linewidth=SECONDARY_LW, color=HEADROOM_COLOR)
+        ax_sensor.plot(t_axis, fg_headroom,   label="flowguard headroom (norm. motion)", linestyle="--",  linewidth=SECONDARY_LW, color=HEADROOM_COLOR)
         ax_sensor.plot(t_axis, fg_r_headroom, label="flowguard headroom (norm. relief)", linestyle="-.",  linewidth=SECONDARY_LW, color=HEADROOM_COLOR)
 
     elif t_axis:
