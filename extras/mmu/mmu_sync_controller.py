@@ -661,7 +661,7 @@ class _AutotuneEngine(object):
         # Potential new candidate:
         # Convert mean speed back to an rd estimate
         mean_rd = 1.0 / mean_v
-        note = "EKF logic suggests rd≈{:.4f} after {:.1f}s/{:.1f}mm near neutral".format(mean_rd, self._stable_time, self._stable_motion_mm)
+        note = u"EKF logic suggests rd≈{:.4f} after {:.1f}s/{:.1f}mm near neutral".format(mean_rd, self._stable_time, self._stable_motion_mm)
         return mean_rd, note
 
 
@@ -731,7 +731,7 @@ class _AutotuneEngine(object):
 
         # Potential new candidate
         score = ("%.2f" % z) if z is not None else "perfect"
-        note = ("Two-level logic suggests rd≈{:.4f} (duty {:.2f} over {} cycles, z-score={})").format(rd_est, fh_mean, len(fh_list), score)
+        note = (u"Two-level logic suggests rd≈{:.4f} (duty {:.2f} over {} cycles, z-score={})").format(rd_est, fh_mean, len(fh_list), score)
         return rd_est, note
 
 
@@ -838,7 +838,7 @@ class _FlowguardEngine(object):
         self._level = 0.0
         self._max_clog = 0.0
         self._max_tangle = 0.0
-        self._headroom = 0.0        # Debugging
+        self._motion_headroom = 0.0 # Debugging
         self._relief_headroom = 0.0 # Debugging
 
         # FlowGuard arming test
@@ -853,11 +853,7 @@ class _FlowguardEngine(object):
         - For P/D sensors:
             Uses controller._extreme_flags() on the sensor reading.
         - For CO/TO sensors:
-            Uses the sensor directly for the *seen* side, and an additional
-            open-side test while z==0 to infer the *unseen* extreme based on:
-              * accumulated motion, and
-              * accumulated "relief effort" (sign of delta_rel opposite of the extreme)
-
+            Uses the sensor directly for the *seen* side, and infer the unseen side
             CO (compression-only): unseen = TENSION; relief effort is COMPRESSION (delta_rel > 0)
             TO (tension-only)    : unseen = COMPRESSION; relief effort is TENSION (delta_rel < 0)
         Returns: Status Dict {"trigger", "reason", ...}
@@ -875,13 +871,13 @@ class _FlowguardEngine(object):
         if self._arm_last_state is None:
             self._arm_last_state = state_now
 
-        self._headroom = cfg.flowguard_motion_mm
+        self._motion_headroom = cfg.flowguard_motion_mm
         self._relief_headroom = cfg.flowguard_relief_mm
 
         if not self._armed:
             # Arm when we've moved and observed any change in coarse state
             changed = (state_now != self._arm_last_state)
-            fallback_dist = 0.5 * cfg.flowguard_motion_mm # In case sensor is stuck
+            fallback_dist = 1.0 * cfg.flowguard_motion_mm # Safey in case sensor is initially stuck
             if (abs(self._arm_motion_mm) > 0.0 and changed) or (abs(self._arm_motion_mm) >= fallback_dist):
                 self._armed = True
             else:
@@ -897,7 +893,7 @@ class _FlowguardEngine(object):
 
             comp_motion_trig = (abs(self._comp_motion_mm) >= cfg.flowguard_motion_mm)
             comp_relief_trig = (abs(self._relief_comp_mm) >= cfg.flowguard_relief_mm)
-            self._headroom        -= self._comp_motion_mm
+            self._motion_headroom -= self._comp_motion_mm
             self._relief_headroom -= self._relief_comp_mm
 
             if (comp_motion_trig or comp_relief_trig) and not self._trigger:
@@ -933,7 +929,7 @@ class _FlowguardEngine(object):
 
             tens_motion_trig = (abs(self._tens_motion_mm) >= cfg.flowguard_motion_mm)
             tens_relief_trig = (abs(self._relief_tens_mm) >= cfg.flowguard_relief_mm)
-            self._headroom        -= self._tens_motion_mm
+            self._motion_headroom -= self._tens_motion_mm
             self._relief_headroom -= self._relief_tens_mm
 
             if (tens_motion_trig or tens_relief_trig) and not self._trigger:
@@ -981,7 +977,7 @@ class _FlowguardEngine(object):
         # When debug logging
         if self.ctrl.cfg.log_sync:
             s.update({
-                "headroom": self._headroom,
+                "headroom": self._motion_headroom,
                 "relief_headroom": self._relief_headroom,
             })
 
