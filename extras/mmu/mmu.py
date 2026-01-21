@@ -6236,10 +6236,10 @@ class Mmu:
             else:
                 if spool_id == 0:
                     self.log_debug("Deactivating spool...")
-                    spool_id = -1 # Spoolman API changed and id=0 no longer deactivates
+                    spool_id = None # Moonraker API changed and id=0 no longer deactivates
                 else:
                     self.log_debug("Activating spool %s..." % spool_id)
-                webhooks.call_remote_method("spoolman_set_active_spool", spool_id=spool_id)
+                    webhooks.call_remote_method("spoolman_set_active_spool", spool_id=spool_id)
         except Exception as e:
             self.log_error("Error while setting active spool: %s\n%s" % (str(e), self.SPOOLMAN_CONFIG_ERROR))
 

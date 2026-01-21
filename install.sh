@@ -387,7 +387,10 @@ parse_file() {
                         fi
                     fi
                     # Set/overwrite value in memory
-                    if echo "$value" | grep -q '^{.*}$'; then
+                    if echo "$value" | grep -q '^{ .*}$'; then
+                        # Special case drying_data dict format. This is fragile, can't wait for v4 to launch!
+                        eval "${combined}=\"${value}\""
+                    elif echo "$value" | grep -q '^{.*}$'; then
                         eval "${combined}=\$${value}"
                     elif [ "${value%"${value#?}"}" = "'" ]; then
                         eval "${combined}=\'${value}\'"

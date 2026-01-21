@@ -448,7 +448,27 @@ espooler_assist_burst_trigger: 0		# If trigger assist switch is fitted 0=disable
 espooler_assist_burst_trigger_max: 3		# If trigger assist switch is fitted this limits the max number of back-to-back advances
 
 
-# FLowguard Clog and Tangle Detection --------------------------------------------------------------------------------
+# Heater / Environment Management ------------------------------------------------------------------------------------
+# ██╗  ██╗███████╗ █████╗ ████████╗███████╗██████╗
+# ██║  ██║██╔════╝██╔══██╗╚══██╔══╝██╔════╝██╔══██╗
+# ███████║█████╗  ███████║   ██║   █████╗  ██████╔╝
+# ██╔══██║██╔══╝  ██╔══██║   ██║   ██╔══╝  ██╔══██╗
+# ██║  ██║███████╗██║  ██║   ██║   ███████╗██║  ██║
+# ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝   ╚═╝   ╚══════╝╚═╝  ╚═╝
+#
+heater_default_dry_temp: 45			# Default drying temperature if filament type is not matched in drying_data
+heater_default_dry_time: 300			# Default drying cycle time in minutes
+heater_default_humidity: 25			# Default humidity % goal. Drying will terminate if this value is reached
+heater_vent_macro: _MMU_VENT			# Name of macro to periodicaly call during drying cycle
+heater_vent_interval:    0			# Interval in minutes to call heater_vent_macro during drying cycle, 0=disabled
+
+# Drying data for MMU_HEATER DRY=1 command in form (type is case insensitive):
+#   'filament_type': (temp, drying_time_mins)
+# (Careful with formatting of this line - changes will break upgrade)
+drying_data: { 'pla': (45, 300), 'pla+': (50, 300), 'petg': (55, 300), 'tpu': (55, 300), 'tpe': (55, 300), 'abs': (65, 300), 'asa': (65, 300), 'nylon': (75, 600), 'pc': (75, 600), 'pva': (75, 600), 'hips': (75, 600) }
+
+
+# FlowGuard Clog and Tangle Detection --------------------------------------------------------------------------------
 # ███████╗██╗      ██████╗ ██╗    ██╗ ██████╗ ██╗   ██╗ █████╗ ██████╗ ██████╗
 # ██╔════╝██║     ██╔═══██╗██║    ██║██╔════╝ ██║   ██║██╔══██╗██╔══██╗██╔══██╗
 # █████╗  ██║     ██║   ██║██║ █╗ ██║██║  ███╗██║   ██║███████║██████╔╝██║  ██║

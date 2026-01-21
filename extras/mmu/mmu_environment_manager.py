@@ -113,11 +113,11 @@ class MmuEnvironmentManager:
 
 
     def has_heater(self):
-        return True # TODO (move to mmu.py?)
+        return self.mmu.mmu_machine.filament_heater != ''
 
 
     def has_env_sensor(self):
-        return True # TODO (move to mmu.py?)
+        return self.mmu.mmu_machine.environment_sensor != ''
 
 
     #
@@ -194,10 +194,12 @@ class MmuEnvironmentManager:
 
             self.mmu.log_always(msg)
 
-        # Heater off / Cancel drying cycle
+        # Cancel drying cycle / Heater off
         if off or temp == 0:
-            self._stop_drying_cycle()
-            self._heater_off()
+            if self._drying:
+                self._stop_drying_cycle()
+            else:
+                self._heater_off()
             return
 
         # Raw heater control
@@ -300,7 +302,6 @@ class MmuEnvironmentManager:
         """
         Reactor callback to periodically check drying status and to rationalize state
         """
-        self.mmu.log_warning("PAUL TEMP DEBUG: mmu_environment_manager: _check_mmu_environment()")
         if not self._drying:
             return self.mmu.reactor.NEVER
 
@@ -314,7 +315,7 @@ class MmuEnvironmentManager:
         if self._vent_timer is not None and self._vent_timer > 0:
             self._vent_timer -= self.CHECK_INTERVAL
 
-            if self._vent_timer <= 0 and self.heater_vent_macro:
+            if self._vent_timer < 0 and self.heater_vent_macro:
                 self.mmu.log_info("MmuEnvironmentManager: Running heater vent macro '%s'" % self.heater_vent_macro)
                 self.mmu.wrap_gcode_command(self.heater_vent_macro, exception=False) # Will report errors without exception
 
