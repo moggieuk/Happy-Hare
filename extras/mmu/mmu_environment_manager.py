@@ -178,6 +178,8 @@ class MmuEnvironmentManager:
                 parts.append("%d hour%s" % (hours, "" if hours == 1 else "s"))
             if mins:
                 parts.append("%d minute%s" % (mins, "" if mins == 1 else "s"))
+            if not (hours or mins):
+                parts.append("0 minutes")
             return " ".join(parts)
 
         if drying_data:
@@ -262,11 +264,11 @@ class MmuEnvironmentManager:
                 msg += "\nEnvironment sensor not available / misconfigured"
             msg += u"\nDrying temp: %.1f°C (current: %.1f°C)" % (self._drying_temp, cur_temp)
 
-            if self._vent_timer is not None and self._vent_timer > 0:
+            if self._vent_timer is not None:
                 msg += "\nVenting operational (runing macro %s every %s, next in %s)" % (
                     self.heater_vent_macro,
                     _format_minutes(self._drying_vent_interval),
-                    _format_minutes(int(self._vent_timer / 60)),
+                    _format_minutes(max(self.CHECK_INTERVAL, self._vent_timer) / 60),
                 )
             else:
                 if not self.heater_vent_macro:
@@ -305,14 +307,20 @@ class MmuEnvironmentManager:
         if not self._drying:
             return self.mmu.reactor.NEVER
 
+        # Cycle complete?
+        if (self._drying_end_time - self.mmu.reactor.monotonic()) <= 0:
+            cur_temp, cur_humidity = self._get_environment_status()
+            self._stop_drying_cycle("Drying cycle complete\nFinal humidity: %.1f%%)" % cur_humidity)
+            return self.mmu.reactor.NEVER
+
+        # Humidity goal reached?
         cur_temp, cur_humidity = self._get_environment_status()
         if cur_humidity is not None and cur_humidity <= self._drying_humidity_target:
-            self.mmu.log_info("MmuEnvironmentManager: Drying cycle terminated because humidity goal %.1f%% reached" % self._drying_humidity_target)
-            self._stop_drying_cycle()
+            self._stop_drying_cycle("Drying cycle terminated because humidity goal %.1f%% reached" % self._drying_humidity_target)
             return self.mmu.reactor.NEVER
 
         # Run periodic venting (macro)
-        if self._vent_timer is not None and self._vent_timer > 0:
+        if self._vent_timer is not None:
             self._vent_timer -= self.CHECK_INTERVAL
 
             if self._vent_timer < 0 and self.heater_vent_macro:
@@ -332,7 +340,7 @@ class MmuEnvironmentManager:
             self._drying = True
 
             # Vent timer countdown (seconds). 0/None disables venting.
-            if self._drying_vent_interval and self._drying_vent_interval > 0:
+            if self._drying_vent_interval:
                 self._vent_timer = self._drying_vent_interval * 60.0 # To seconds
             else:
                 self._vent_timer = None
@@ -341,9 +349,9 @@ class MmuEnvironmentManager:
             self.mmu.reactor.update_timer(self._periodic_timer, self.mmu.reactor.NOW)
 
 
-    def _stop_drying_cycle(self):
+    def _stop_drying_cycle(self, msg="Filament drying stopped"):
         if self._drying:
-            self.mmu.log_info("MmuEnvironmentManager: Filament drying stopped")
+            self.mmu.log_info("MmuEnvironmentManager: %s" % msg)
             self.mmu.reactor.update_timer(self._periodic_timer, self.mmu.reactor.NEVER)
             self._heater_off()
             self._drying = False
