@@ -6236,6 +6236,7 @@ class Mmu:
             else:
                 if spool_id == 0:
                     self.log_debug("Deactivating spool...")
+                    spool_id = -1 # Spoolman API changed and id=0 no longer deactivates
                 else:
                     self.log_debug("Activating spool %s..." % spool_id)
                 webhooks.call_remote_method("spoolman_set_active_spool", spool_id=spool_id)

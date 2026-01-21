@@ -79,6 +79,7 @@ class MmuMachine:
 
     def __init__(self, config):
         # Essential information for validation and setup
+        self.config = config
         self.printer = config.get_printer()
         self.gate_counts = list(config.getintlist('num_gates', []))
         self.num_units = len(self.gate_counts)
