@@ -473,9 +473,7 @@ def plot_progress(
     mm_deltas       = [r["input"]["d_mm"] for r in records[:end_idx]]
 
     # Normalized headroom: -1 = full, 0 = trigger
-    max_headroom    = max(r["output"]["flowguard"]["headroom"] for r in records[:end_idx])
     max_r_headroom  = max(r["output"]["flowguard"]["relief_headroom"] for r in records[:end_idx])
-    fg_headroom     = [-r["output"]["flowguard"]["headroom"] / max_headroom for r in records[:end_idx]]
     fg_r_headroom   = [-r["output"]["flowguard"]["relief_headroom"] / max_r_headroom for r in records[:end_idx]]
 
     # Optional debug series
@@ -630,7 +628,6 @@ def plot_progress(
             ax_sensor.plot(t_axis, c_est, label="c_est (debug)",  linestyle="--", linewidth=DEBUG_LW,     color=C_EST_COLOR)
 
         # FlowGuard: Headroom normalized and reflected to fit on this scale
-        ax_sensor.plot(t_axis, fg_headroom,   label="flowguard headroom (norm. motion)", linestyle="--",  linewidth=SECONDARY_LW, color=HEADROOM_COLOR)
         ax_sensor.plot(t_axis, fg_r_headroom, label="flowguard headroom (norm. relief)", linestyle="-.",  linewidth=SECONDARY_LW, color=HEADROOM_COLOR)
 
     elif t_axis:
@@ -1194,7 +1191,7 @@ def _make_seed_record(ctrl: SyncController, printer: SimplePrinterModel, t_s: fl
             "x_est": ctrl.state.x,
             "c_est": ctrl.state.c,
             "sensor_ui": sensor_ui,
-            "flowguard": {"trigger": "", "reason": "", "level": 0.0, "max_clog": 0.0, "max_tangle": 0.0, "active": False, "headroom": -1.0, "relief_headroom": -1.0},
+            "flowguard": {"trigger": "", "reason": "", "level": 0.0, "max_clog": 0.0, "max_tangle": 0.0, "active": False, "relief_headroom": -1.0},
             "autotune": {"rd": None, "note": None},
         },
         "truth": {
@@ -1361,7 +1358,6 @@ def _run_cli():
     print(f" Buffer Max Range      : {cfg.buffer_max_range_mm} mm  (physical limit)")
     print(f" Autotune motion       : {cfg.autotune_motion_mm} mm")
     print(f" Flowguard relief      : {cfg.flowguard_relief_mm} mm")
-    print(f" Flowguard motion      : {cfg.flowguard_motion_mm} mm")
     print(f" MMU Gear RD start     : {cfg.rd_start} mm")
     print(f" Sensor lag            : {cfg.sensor_lag_mm} mm")
     print(f" Simulator:")
