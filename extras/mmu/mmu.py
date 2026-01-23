@@ -1488,9 +1488,12 @@ class Mmu:
             'endless_spool': self.endless_spool_enabled,           # DEPRECATED
             'endless_spool_enabled': self.endless_spool_enabled,   # DEPRECATED
         }
-        status.update(self.selector.get_status(eventtime)) # PAUL make this a manager loop
-        status.update(self.sync_feedback_manager.get_status(eventtime))
-        status.update(self.environment_manager.get_status(eventtime))
+
+        # Sub components
+        for m in self.managers:
+            if hasattr(m, 'get_status'):
+                status.update(m.get_status(eventtime))
+
         status['sensors'] = self.sensor_manager.get_status(eventtime)
         if self.has_encoder():
             status['encoder'] = self.encoder_sensor.get_status(eventtime)
@@ -7129,7 +7132,6 @@ class Mmu:
         self.sync_purge = gcmd.get_int('SYNC_PURGE', self.sync_purge, minval=0, maxval=1)
         if self.mmu_machine.filament_always_gripped:
             self.sync_to_extruder = self.sync_form_tip = self.sync_purge = 1
-# PAUL        self.sync_feedback_manager.set_test_config(gcmd)
 
         # TMC current control
         self.sync_gear_current = gcmd.get_int('SYNC_GEAR_CURRENT', self.sync_gear_current, minval=10, maxval=100)
@@ -7273,9 +7275,9 @@ class Mmu:
         self.serious = gcmd.get_int('SERIOUS', self.serious, minval=0, maxval=1)
 
         # Sub components
-        self.sync_feedback_manager.set_test_config(gcmd)
-        self.selector.set_test_config(gcmd)
-        self.environment_manager.set_test_config(gcmd)
+        for m in self.managers:
+            if hasattr(m, 'set_test_config'):
+                m.set_test_config(gcmd)
 
         if not quiet:
             msg = "FILAMENT MOVEMENT SPEEDS:"
