@@ -489,7 +489,7 @@ flowguard_enabled: 1			# 0 = Flowguard protection disabled, 1 = Enabled
 # that Happy Hare will wait until triggering a clog or runout. A smaller value is more sensitive to triggering. Since the
 # relief movement is hightly dependent on filament "spring" in the bowden tube, filament friction, and
 # 'sync_feedback_buffer_range', it is generally good to start high and then decrease if a more sensitive trigger is desired.
-# Analog proportional (type P) sensors can generally have a much lower value. Increase if you have false triggers
+# Analog proportional (type P) sensors can generally have a much lower value. Increase if you have false triggers.
 flowguard_max_relief: 40
 
 # Encoder runout/clog/tangle detection watches for movement over either a static or automatically adjusted distance - if

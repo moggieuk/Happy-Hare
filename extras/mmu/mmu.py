@@ -1488,8 +1488,9 @@ class Mmu:
             'endless_spool': self.endless_spool_enabled,           # DEPRECATED
             'endless_spool_enabled': self.endless_spool_enabled,   # DEPRECATED
         }
-        status.update(self.selector.get_status(eventtime))
+        status.update(self.selector.get_status(eventtime)) # PAUL make this a manager loop
         status.update(self.sync_feedback_manager.get_status(eventtime))
+        status.update(self.environment_manager.get_status(eventtime))
         status['sensors'] = self.sensor_manager.get_status(eventtime)
         if self.has_encoder():
             status['encoder'] = self.encoder_sensor.get_status(eventtime)

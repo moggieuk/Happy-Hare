@@ -272,6 +272,7 @@ class MmuMachine:
         self.filament_heaters = list(config.getlist('filament_heaters', []))
         if len(self.filament_heaters) not in [0, self.num_gates]:
             raise config.error("'filament_heaters' must be empty, a single value or a comma separated list of 'num_gate' elements")
+        self.max_concurrent_heaters = config.getint('max_concurrent_heaters', self.num_gates)
 
         # By default HH uses a modified homing extruder. Because this might have unknown consequences on certain
         # set-ups it can be disabled. If disabled, homing moves will still work, but the delay in mcu to mcu comms
