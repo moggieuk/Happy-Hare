@@ -19,6 +19,9 @@
 #     Individual control of per-gate heaters and lifecycle is possible by specifying gates of
 #     interest. The periodic venting macro will be called with a GATE parameter listing the
 #     currently heated gates.
+# The manager will support automatic spool rotation if equiped with eSpooler and the dry cycle
+# is initiated with this option. IMPORTANT: filament must be removed from the MMU inlet and
+# fastened to the spool. Also, the GATES parameter must be supplied.
 #
 # Implements commands:
 #   MMU_HEATER
@@ -61,6 +64,7 @@ class MmuEnvironmentManager:
         self.heater_default_humidity = self.mmu.config.getfloat('heater_default_humidity', 10, above=0.)
         self.heater_vent_macro       = self.mmu.config.get(     'heater_vent_macro', '')
         self.heater_vent_interval    = self.mmu.config.getfloat('heater_vent_interval', 0, minval=0)
+        self.heater_rotate_interval  = self.mmu.config.getfloat('heater_rotate_interval', 5, minval=1)
 
         # Build tuples of drying temp / drying time indexed by filament type
         drying_data_str = self.mmu.config.get('drying_data', {})
@@ -101,6 +105,10 @@ class MmuEnvironmentManager:
         self._completed_gates = [] # Gates that have completed drying cycle
         self._vent_timer = None
 
+        # Optional auto spool rotation (eSpooler)
+        self._rotate_timer = None
+        self._rotate_enabled = False
+
 
     # No ready/connect/disconnect lifecycle hooks
 
@@ -112,6 +120,7 @@ class MmuEnvironmentManager:
             self.heater_default_humidity = gcmd.get_float('HEATER_DEFAULT_HUMIDITY', self.heater_default_humidity, above=0.)
             self.heater_vent_macro       = gcmd.get(      'HEATER_VENT_MACRO', self.heater_vent_macro)
             self.heater_vent_interval    = gcmd.get_float('HEATER_VENT_INTERVAL', self.heater_vent_interval, minval=0)
+            self.heater_rotate_interval  = gcmd.get_float('HEATER_ROTATE_INTERVAL', self.heater_rotate_interval, minval=0)
 
 
     def get_test_config(self):
@@ -122,6 +131,7 @@ class MmuEnvironmentManager:
             msg += "\nheater_default_humidity = %.1f" % self.heater_default_humidity
             msg += "\nheater_vent_macro = %s" % self.heater_vent_macro
             msg += "\nheater_vent_interval = %.1f" % self.heater_vent_interval
+            msg += "\nheater_rotate_interval = %.1f" % self.heater_rotate_interval
 
         return msg
 
@@ -174,12 +184,14 @@ class MmuEnvironmentManager:
     cmd_MMU_HEATER_param_help = (
         "MMU_HEATER: %s\n" % cmd_MMU_HEATER_help
         + "STOP = [0|1] Turn off heater and drying cycle\n"
+        + "DRYING_DATA = [0|1] Dump configured drying data for filament types\n"
         + "DRY = [0|1] Disable/enable filament heater for filament drying cycle\n"
         + "TIMER = #(mins) Force drying time\n"
         + "TEMP = #(degrees) Force temperature\n"
         + "HUMIDITY = % Terminate drying when humidty goal is reached\n"
         + "GATES = x,y Gates to control ONLY IF MMU has per-gate heaters/dryers\n"
-        + "DRYING_DATA = [0|1] Dump configured drying data for filament types\n"
+        + "ROTATE = [0|1] Rotate spool (requires eSpooler and explicit GATES)\n"
+        + "ROTATE_INTERVAL = #(mins) How often to rotate spools when drying (requires eSpooler)\n"
         + "VENT_INTERVAL = #(mins) How often to call 'vent' macro in drying cycle\n"
         + "(no parameters for status report)"
     )
@@ -198,26 +210,32 @@ class MmuEnvironmentManager:
         temp = gcmd.get_float('TEMP', None, minval=0., maxval=100.)
         humidity = gcmd.get_float('HUMIDITY', self.heater_default_humidity, minval=0.)
         vent_interval = gcmd.get_float('VENT_INTERVAL', self.heater_vent_interval, minval=0.)
-        gates = gcmd.get('GATES', "!")
-        all_gates = False
-        if gates != "!":
-            gatelist = []
+        rotate = gcmd.get_int('ROTATE', 0, minval=0, maxval=1)
+        rotate_interval = gcmd.get_float('ROTATE_INTERVAL', self.heater_rotate_interval, minval=1.)
+
+        gates_str = gcmd.get('GATES', "!")
+        gates = []
+        if gates_str != "!":
             # Supplied list of gates
+            gates_param = True
             try:
-                for gate in gates.split(','):
+                for gate in gates_str.split(','):
                     gate = int(gate)
                     if 0 <= gate < self.mmu.num_gates:
-                        gatelist.append(gate)
-                gates = gatelist
+                        gates.append(gate)
             except ValueError:
-                raise gcmd.error("Invalid GATES parameter: %s" % gates)
+                raise gcmd.error("Invalid GATES parameter: %s" % gates_str)
         else:
-            # Default to all non empty gates
-            gates = [
+            gates_param = False
+            all_gates = list(range(self.mmu.num_gates))
+            empty_gates = [
+                i for i, status in enumerate(self.mmu.gate_status)
+                if status == self.mmu.GATE_EMPTY
+            ]
+            full_gates = [
                 i for i, status in enumerate(self.mmu.gate_status)
                 if status != self.mmu.GATE_EMPTY
             ]
-            all_gates = True
 
         def _format_minutes(minutes):
             hours, mins = divmod(int(minutes), 60)
@@ -227,7 +245,7 @@ class MmuEnvironmentManager:
             if mins:
                 parts.append("%d minute%s" % (mins, "" if mins == 1 else "s"))
             if not (hours or mins):
-                parts.append("0 minutes")
+                parts.append("<1 minute")
             return " ".join(parts)
 
         # Display drying data table ---------------------------------------------
@@ -243,6 +261,9 @@ class MmuEnvironmentManager:
         # Cancel drying cycle / Heater off --------------------------------------
         if stop or temp == 0:
             if self._has_per_gate_heaters():
+                if not gates_param:
+                    gates = all_gates
+
                 if self._drying:
                     # STOP=1 with explicit GATES=... cancels only those gates in multi-heater mode
                     cancelled = self._cancel_gates(gates, reason="cancelled")
@@ -277,9 +298,12 @@ class MmuEnvironmentManager:
 
         # Raw heater control ----------------------------------------------------
         if not dry and temp is not None:
+            if not gates_param:
+                gates = full_gates # Default to all non empty gates
+
             # In per-gate mode, apply TEMP to the selected gate heaters
             if self._has_per_gate_heaters():
-                if not gates or all_gates:
+                if not gates:
                     self.mmu.log_always("No gates selected for raw heater control")
                     return
 
@@ -287,29 +311,29 @@ class MmuEnvironmentManager:
                     self.mmu.log_error("Exceeded max concurrent heaters")
                     return
 
-            # Best-effort: set each selected gate heater to TEMP
-            #  - If gate is queued in a drying cycle: only update _gate_drying target (do not turn on yet)
-            #  - If gate is active: update _gate_drying and apply immediately
-            #  - If not in drying cycle OR gate not in current drying gates: apply immediately
-            for gate in gates:
-                gd = self._gate_drying.get(gate)
+                # Best-effort: set each selected gate heater to TEMP
+                #  - If gate is queued in a drying cycle: only update _gate_drying target (do not turn on yet)
+                #  - If gate is active: update _gate_drying and apply immediately
+                #  - If not in drying cycle OR gate not in current drying gates: apply immediately
+                for gate in gates:
+                    gd = self._gate_drying.get(gate)
 
-                if self._drying and gd is not None:
-                    state = gd.get('state')
+                    if self._drying and gd is not None:
+                        state = gd.get('state')
 
-                    # Update per-gate target in all cases when part of cycle
-                    gd['temp'] = temp
+                        # Update per-gate target in all cases when part of cycle
+                        gd['temp'] = temp
 
-                    if state == 'queued':
-                        # Don't power on yet; it will be applied when the gate becomes active
+                        if state == 'queued':
+                            # Don't power on yet; it will be applied when the gate becomes active
+                            continue
+
+                        # Active (or any unexpected state): apply immediately
+                        self._heater_on(temp, gate=gate)
                         continue
 
-                    # Active (or any unexpected state): apply immediately
+                    # Not in drying cycle, or gate not part of current cycle: apply immediately
                     self._heater_on(temp, gate=gate)
-                    continue
-
-                # Not in drying cycle, or gate not part of current cycle: apply immediately
-                self._heater_on(temp, gate=gate)
 
                 return
 
@@ -322,12 +346,29 @@ class MmuEnvironmentManager:
         # Initiate drying cycle -------------------------------------------------
         if dry:
             if not self.has_env_sensor():
-                self.mmu.log_warning("MMU environment sensor not found. Check `environment_sensor` configuration")
+                self.mmu.log_warning("MMU environment sensor not found. Check 'environment_sensor' configuration")
                 return
 
             if self._drying:
                 self.mmu.log_always("MMU already in filament drying cycle. Stop current cycle first")
                 return
+
+            # Optional spool rotation (requires eSpooler and explicit gates)
+#PAUL            if rotate and not self.mmu.has_espooler():
+            if rotate and not True: #PAUL
+                self.mmu.log_warning("Rotation requested but eSpooler not fitted - ignoring")
+                rotate = 0
+
+            if rotate and not gates_param:
+                raise gcmd.error("ROTATE requires explicit GATES parameter")
+
+            if not rotate and not gates_param:
+                gates = full_gates # Default to all non empty gates
+
+            if rotate:
+                for gate in gates:
+                    if self.mmu.gate_status[gate] != self.mmu.GATE_EMPTY:
+                        self.mmu.log_warning("Gate %d is not empty and cannot rotate (filament end must be removed from the gate and secured to the spool for rotation)" % gate)
 
             # Per-gate recommended temps/times, plus overall notes
             per_gate_plan = self._get_drying_plan(gates)
@@ -367,13 +408,22 @@ class MmuEnvironmentManager:
             self._drying_end_time = self._drying_start_time + self._drying_time * 60
             self._drying_gates = gates
             self._drying_vent_interval = vent_interval
+            self._drying_rotate_interval = rotate_interval
+
+            # Optional spool rotation state
+#PAUL            self._rotate_enabled = bool(rotate and self.mmu.has_espooler())
+            self._rotate_enabled = True # PAUL
+            if self._rotate_enabled:
+                self._rotate_timer = rotate_interval * 60.0
+            else:
+                self._rotate_timer = None
 
             # Initiate drying cycle
             self._start_drying_cycle(per_gate_plan)
-            msg = "MMU filament drying cycle started:"
+            msg = u"MMU filament drying cycle started:"
 
         elif self._drying:
-            msg = "MMU is in filament drying cycle:"
+            msg = u"MMU is in filament drying cycle:"
 
         else: # Not in drying cycle, but let's check heaters
             if self._has_per_gate_heaters():
@@ -396,40 +446,40 @@ class MmuEnvironmentManager:
                     for gate, target, actual in heaters_on:
                         msg += u"\nGate %d: Target temperature %.1f°C (current: %.1f°C)" % (gate, target, actual)
                     if heaters_off:
-                        msg += "\nGate heaters off: %s" % ", ".join([str(g) for g in heaters_off])
+                        msg += u"\nGate heaters off: %s" % u",".join([str(g) for g in heaters_off])
                 else:
-                    msg = "Not in drying cycle and all gate heaters are off"
+                    msg = u"Not in drying cycle and all gate heaters are off"
 
             else:
                 cur_temp, cur_target = self._get_heater_status()
                 if cur_target != 0:
                     msg = u"Not in drying cycle but heater is on. Target temperature: %.1f°C (current: %.1f°C)" % (cur_target, cur_temp)
                 else:
-                    msg = "Not in drying cycle and heater is off"
+                    msg = u"Not in drying cycle and heater is off"
 
         # Display status report of drying cycle ---------------------------------
         if self._drying:
             now = self.mmu.reactor.monotonic()
 
             if self._drying_gates:
-                msg += "\nDrying filaments in gates: %s" % ", ".join(str(g) for g in self._drying_gates)
+                msg += u"\nDrying filaments in gates: %s" % u",".join(str(g) for g in self._drying_gates)
 
             if not self._has_per_gate_heaters():
                 remaining_mins = _format_minutes((self._drying_end_time - now) // 60)
                 cur_temp, cur_humidity = self._get_environment_status()
-                msg += "\nCycle time: %s (remaining: %s)" % (_format_minutes(self._drying_time), remaining_mins)
+                msg += u"\nCycle time: %s (remaining: %s)" % (_format_minutes(self._drying_time), remaining_mins)
                 if cur_temp is not None:
-                    msg += "\nTarget humidity: %.1f%%" % self._drying_humidity_target
+                    msg += u"\nTarget humidity: %.1f%%" % self._drying_humidity_target
                     if cur_humidity is not None:
-                        msg += " (current: %.1f%%)" % cur_humidity
+                        msg += u" (current: %.1f%%)" % cur_humidity
                 else:
                     cur_temp, cur_target = self._get_heater_status()
-                    msg += "\nEnvironment sensor not available / misconfigured"
+                    msg += u"\nEnvironment sensor not available / misconfigured"
                 msg += u"\nDrying temp: %.1f°C (current: %.1f°C)" % (self._drying_temp, cur_temp)
 
             else:
                 # Per-gate status report
-                msg += "\nPer-gate dryer mode (max concurrent heaters: %d). Humidty target %.1f%%" % (self.mmu.mmu_machine.max_concurrent_heaters, self._drying_humidity_target)
+                msg += u"\nPer-gate dryer mode (max concurrent heaters: %d). Humidty target %.1f%%" % (self.mmu.mmu_machine.max_concurrent_heaters, self._drying_humidity_target)
                 for gate in self._drying_gates:
                     gd = self._gate_drying.get(gate, {})
                     state = gd.get('state', 'unknown')
@@ -449,22 +499,22 @@ class MmuEnvironmentManager:
                         if last_t is not None:
                             line += u"Drying %s %.1f°C (target %.1f°C)" % (material, last_t, t)
                         if last_h is not None:
-                            line += ", humidity %.1f%%" % last_h
+                            line += u", humidity %.1f%%" % last_h
                         if rem_txt is not None:
-                            line += ", %s remaining" % rem_txt
+                            line += u", %s remaining" % rem_txt
                     elif state == 'queued':
                         line += u"(queued waiting for heater slot, target %.1f°C)" % t
                     elif state == 'done':
                         reason = gd.get('done_reason', 'complete')
-                        line += "(%s" % reason
+                        line += u"(%s" % reason
                         if last_h is not None:
-                            line += ", final humidity: %.1f%%" % last_h
-                        line += ")"
+                            line += u", final humidity: %.1f%%" % last_h
+                        line += u")"
                     msg += line
 
             # Venting status
             if self._vent_timer is not None:
-                msg += "\nVenting operational (runing macro %s every %s, next in %s)" % (
+                msg += u"\nVenting operational (runing macro %s every %s, next in %s)" % (
                     self.heater_vent_macro,
                     _format_minutes(self._drying_vent_interval),
                     _format_minutes(max(self.CHECK_INTERVAL, self._vent_timer) / 60),
@@ -474,7 +524,14 @@ class MmuEnvironmentManager:
                     vent_reason = "heater_vent_macro not set"
                 else:
                     vent_reason = "heater_vent_interval is 0"
-                msg += "\nVenting not operational (%s)" % vent_reason
+                msg += u"\nVenting not operational (%s)" % vent_reason
+
+            # Rotation status (eSpooler)
+            if self._rotate_enabled:
+                msg += u"\nSpool rotation enabled (every %s, next in %s)" % (
+                    _format_minutes(self._drying_rotate_interval),
+                    _format_minutes(max(self.CHECK_INTERVAL, self._rotate_timer) / 60),
+                )
 
         # Report status
         self.mmu.log_always(msg)
@@ -607,6 +664,30 @@ class MmuEnvironmentManager:
                 # Reset countdown regardless (prevents hammering if undefined or failing)
                 self._vent_timer = self._drying_vent_interval * 60.0 if self._drying_vent_interval else None
 
+        # Run periodic spool rotation (eSpooler)
+        if self._rotate_timer is not None and self._rotate_enabled:
+            self._rotate_timer -= self.CHECK_INTERVAL
+
+            if self._rotate_timer < 0:
+                # Re-check EMPTY status at time of rotation (supports dynamic state changes)
+                if self._has_per_gate_heaters():
+                    candidates = list(self._active_gates)
+                else:
+                    candidates = list(self._drying_gates)
+
+                rotate_gates = []
+                for gate in candidates:
+                    try:
+                        if self.mmu.gate_status[gate] == self.mmu.GATE_EMPTY:
+                            rotate_gates.append(gate)
+                    except Exception:
+                        pass
+
+                if rotate_gates:
+                    self._rotate_spools(rotate_gates)
+
+                self._rotate_timer = self._drying_rotate_interval * 60.0 # To seconds
+
         # Reschedule
         return eventtime + self.CHECK_INTERVAL
 
@@ -719,6 +800,10 @@ class MmuEnvironmentManager:
             self._active_gates = []
             self._pending_gates = []
             self._completed_gates = []
+
+            # Stop rotation
+            self._rotate_timer = None
+            self._rotate_enabled = False
 
 
     def _cancel_gates(self, gates, reason="cancelled"):
@@ -875,6 +960,19 @@ class MmuEnvironmentManager:
                     break
 
         return (temperature, humidity)
+
+
+    def _rotate_spools(self, gates):
+        """
+        eSpooler-driven spool rotation.
+        Move the spools in the retract direction a small distance, 30 degrees or so
+        """
+        self.mmu.log_info("Rotating spools in gates: %s" % ",".join(map(str, gates)))
+        power = self.mmu.espooler_assist_burst_power
+        duration = self.mmu.espooler_assist_burst_duration
+        for gate in gates:
+            # This event will cause a small rewind action to rotate the spool (reverse of burst assist action)
+            self.mmu.printer.send_event("mmu:espooler_rotate", gate, power / 100., duration)
 
 
     def _get_max_drying_temp_time(self, gates):

@@ -301,7 +301,7 @@ class MmuESpooler:
 
             # Don't change the operation if it is just an in-print assist burst move.
             # If we would change operation, any MMU operation calling the get_operation(gate) method while the motor is performing a burst move
-            # (e. g. a runout which is wrapped by wrap_sync_gear_to_extruder()) would get the burst pwm value instead of 0
+            # (e.g. a runout which is wrapped by wrap_sync_gear_to_extruder()) would get the burst pwm value instead of 0
             if operation != None:
                 self.operation[self._key(gate)] = (operation, value)
 
