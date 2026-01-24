@@ -298,7 +298,7 @@ class Mmu:
         self.default_idle_timeout = config.getint('default_idle_timeout', -1, minval=120)
         self.pending_spool_id_timeout = config.getint('pending_spool_id_timeout', default=20, minval=-1) # Not currently exposed
         self.disable_heater = config.getint('disable_heater', 600, minval=60)
-        self.default_extruder_temp = config.getfloat('default_extruder_temp', 200.)
+        self.default_extruder_temp = config.getfloat('default_extruder_temp', 200., minval=0.)
         self.extruder_temp_variance = config.getfloat('extruder_temp_variance', 2., minval=1.)
         self.gcode_load_sequence = config.getint('gcode_load_sequence', 0)
         self.gcode_unload_sequence = config.getint('gcode_unload_sequence', 0)
@@ -1325,7 +1325,7 @@ class Mmu:
                 self._disable_runout() # Initially disable clog/runout detection
 
             self.reset_sync_gear_to_extruder(False) # Intention is not to sync unless we have to
-            self.movequeues_wait()
+            self.mmu_toolhead.quiesce()
 
             # Sync with spoolman. Delay as long as possible to maximize the chance it is contactable after startup/reboot
             self._spoolman_sync()
@@ -1334,6 +1334,10 @@ class Mmu:
             self.log_error('Error booting up MMU: %s' % str(e))
         self.mmu_macro_event(self.MACRO_EVENT_RESTART)
 
+    # Wrap execution of gcode command to allow for control over:
+    #  - error handling
+    #  - passing of additional variables
+    #  - waiting on completion
     def wrap_gcode_command(self, command, exception=False, variables=None, wait=False):
         try:
             command = command.replace("''", "")
@@ -1346,9 +1350,11 @@ class Mmu:
                     gcode_macro.variables.update(variables)
 
             self.log_trace("Running macro: %s%s" % (command, " (with override variables)" if variables is not None else ""))
+
             self.gcode.run_script_from_command(command)
             if wait:
-                self.movequeues_wait()
+                self.mmu_toolhead.quiesce()
+
         except Exception as e:
             if exception is not None:
                 if exception:
@@ -1363,6 +1369,8 @@ class Mmu:
             self.wrap_gcode_command("%s EVENT=%s %s" % (self.mmu_event_macro, event_name, params))
 
     # Wait on desired move queues
+    # TODO: perhaps better now to remove this method and
+    # TODO: always just call self.mmu_toolhead.quiesce()
     def movequeues_wait(self, toolhead=True, mmu_toolhead=True):
         #self.log_trace("movequeues_wait(toolhead=%s, mmu_toolhead=%s)" % (toolhead, mmu_toolhead))
         if toolhead:
@@ -1459,6 +1467,8 @@ class Mmu:
             'sync_drive': self.mmu_toolhead.is_synced(),
             'sync_feedback_state': self.sync_feedback_manager.get_sync_feedback_string(),
             'sync_feedback_enabled': self.sync_feedback_manager.is_enabled(),
+            'sync_feedback_bias_raw': self.sync_feedback_manager.get_sync_bias_raw(),
+            'sync_feedback_bias_modelled': self.sync_feedback_manager.get_sync_bias_modelled(),
             'clog_detection': self.enable_clog_detection, # DEPRECATED use clog_detection_enabled
             'clog_detection_enabled': self.enable_clog_detection,
             'endless_spool': self.enable_endless_spool,   # DEPRECATED use endless_spool_enabled
@@ -1821,13 +1831,13 @@ class Mmu:
     def _color_message(self, msg):
         try:
             html_msg = msg.format(
-                '</span>',                       # {0}
-                '<span style="color:#C0C0C0">',  # {1}
-                '<span style="color:#FF69B4">',  # {2}
-                '<span style="color:#90EE90">',  # {3}
-                '<span style="color:#87CEEB">',  # {4}
-                '<b>',                           # {5}
-                '</b>'                           # {6}
+                '</span>',                       # {0} COLOR OFF
+                '<span style="color:#C0C0C0">',  # {1} COLOR GREY
+                '<span style="color:#FF69B4">',  # {2} COLOR RED
+                '<span style="color:#90EE90">',  # {3} COLOR GREEN
+                '<span style="color:#87CEEB">',  # {4} COLOR CYAN
+                '<b>',                           # {5} BOLD ON
+                '</b>'                           # {6} BOLD OFF
             )
         except (IndexError, KeyError, ValueError) as e:
             html_msg = msg
@@ -1999,7 +2009,7 @@ class Mmu:
         msg += "\nGear stepper at %d%% current and is %s to extruder" % (self.gear_percentage_run_current, "SYNCED" if self.mmu_toolhead.is_gear_synced_to_extruder() else "not synced")
         if self._standalone_sync:
             msg += ". Standalone sync mode is ENABLED"
-        if not self.sync_feedback_manager.is_enabled():
+        if self.sync_feedback_manager.is_enabled():
             msg += "\nSync feedback indicates filament in bowden is: %s" % self.sync_feedback_manager.get_sync_feedback_string(detail=True).upper()
             if not self.sync_feedback_manager.is_active():
                 msg += " (not currently active)"
@@ -2149,6 +2159,9 @@ class Mmu:
                 msg += "\n\n%s" % self._es_groups_to_string()
             msg += "\n\n%s" % self._gate_map_to_string()
 
+        if self.reason_for_pause:
+            msg += "\n\n{2}MMU is paused because:\n%s{0}" % self.reason_for_pause
+
         self.log_always(msg, color=True)
 
         # Always warn if not fully calibrated or needs recovery
@@ -2223,7 +2236,7 @@ class Mmu:
     def cmd_MMU_MOTORS_OFF(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if self.check_if_disabled(): return
-        self.sync_gear_to_extruder(False)
+        self.sync_gear_to_extruder(False, force_grip=True)
         self.motors_onoff(on=False)
 
     cmd_MMU_MOTORS_ON_help = "Turn on all MMU motors and servos"
@@ -2844,7 +2857,7 @@ class Mmu:
             self.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=%s VARIABLE=next_pos VALUE=False" % self.park_macro)
             msg = "Happy Hare initialized ready for print"
             if self.filament_pos == self.FILAMENT_POS_LOADED:
-                msg += " (initial tool T%s loaded)" % self.tool_selected
+                msg += " (initial tool %s loaded)" % self._selected_tool_string()
             else:
                 msg += " (no filament preloaded)"
             if self.ttg_map != self.default_ttg_map:
@@ -2902,7 +2915,7 @@ class Mmu:
                 self._disable_runout() # Disable runout/clog detection while in pause state
                 self._track_pause_start()
                 self.resume_to_state = 'printing' if self.is_in_print() else 'ready'
-                self.reason_for_pause = reason
+                self.reason_for_pause = reason # Only store reason on first error
                 self._display_mmu_error()
                 self.paused_extruder_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
                 self.log_trace("Saved desired extruder temperature: %.1f%sC" % (self.paused_extruder_temp, UI_DEGREE))
@@ -2997,6 +3010,9 @@ class Mmu:
 
             # Restablish desired syncing state and grip (servo) position
             self.reset_sync_gear_to_extruder(self.sync_to_extruder, force_in_print=force_in_print)
+
+        # Good place to reset the _next_tool marker because after any user fix on toolchange error/pause
+        self._next_tool = self.TOOL_GATE_UNKNOWN
 
         # Restore print position as final step so no delay
         self._restore_toolhead_position(operation, restore=restore)
@@ -4280,7 +4296,8 @@ class Mmu:
                             self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
                             raise MmuError("Bowden pre-unload test failed. Filament seems to be stuck in the extruder or filament not loaded\nOptionally use MMU_RECOVER to recover filament position")
                         length -= self.encoder_move_step_size
-                        self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
+
+                self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN)
 
                 # Record starting position for bowden progress tracking
                 self.bowden_start_pos = self.get_encoder_distance(dwell=None)
@@ -4809,7 +4826,8 @@ class Mmu:
                 with self._wrap_track_time('post_load'):
 
                     # Restore the expected sync state now before running this macro
-                    self.reset_sync_gear_to_extruder(not extruder_only and self.sync_purge)
+                    # (we also must force correction of filament grip for old blobifer/unsynced functionality)
+                    self.reset_sync_gear_to_extruder(not extruder_only and self.sync_purge, force_grip=True)
 
                     if self.has_blobifier: # Legacy blobifer integration. purge_macro now preferred
                         with self.wrap_action(self.ACTION_PURGING):
@@ -4863,6 +4881,13 @@ class Mmu:
         try:
             if not extruder_only:
                 current_action = self._set_action(self.ACTION_UNLOADING)
+
+            # Deactivate spool immediately before tip forming/cutting
+            # Tip forming/cutting macros use the extruder to execute, hence
+            # any retraction / de retraction moves are accounted in Spoolman.
+            # By de-activating early, the retraction performed from the macro 
+            # is deliberately not accounted in spoolman
+            self._spoolman_activate_spool(0)
 
             # Run PRE_UNLOAD user defined macro
             if macros_and_track:
@@ -4978,9 +5003,6 @@ class Mmu:
             # Notify autotune manager
             if full and not extruder_only and not self.gcode_unload_sequence:
                 self.calibration_manager.unload_telemetry(bowden_move_ratio, homing_movement, deficit)
-
-            # Deactivate spool in Spoolman as it is now unloaded.
-            self._spoolman_activate_spool(0)
 
             # POST_UNLOAD user defined macro
             if macros_and_track:
@@ -5569,7 +5591,7 @@ class Mmu:
     #   If bypass is selected we cannot sync
     #   If in a print then used desired sync state if actively printing or desired or necessary sync state
     #   If not consider desired (_standalone_sync) or necessary (always_gripped) sync state
-    def reset_sync_gear_to_extruder(self, sync_intention, force_in_print=False):
+    def reset_sync_gear_to_extruder(self, sync_intention, force_grip=False, force_in_print=False):
         if self.gate_selected == self.TOOL_GATE_BYPASS:
             sync = False
         elif self.is_in_print(force_in_print):
@@ -5593,11 +5615,11 @@ class Mmu:
                     sync_intention
                 )
             )
-        self.sync_gear_to_extruder(sync)
+        self.sync_gear_to_extruder(sync, force_grip=force_grip)
         return sync
 
     # Sync/unsync gear motor with extruder, handle filament engagement and current control
-    def sync_gear_to_extruder(self, sync, gate=None):
+    def sync_gear_to_extruder(self, sync, gate=None, force_grip=False):
         # Safety in case somehow called with bypass/unknown selected. Usually this is called after
         # self.gate_selected is set, but can be before on type-B designs hence optional gate parameter
         gate = gate if gate is not None else self.gate_selected
@@ -5610,8 +5632,10 @@ class Mmu:
         # Handle filament grip before sync (type-A MMU) because of potential "buzz" movement
         if sync:
             self.selector.filament_drive()
-        elif not self._suppress_release_grip:
+        elif force_grip or not self._suppress_release_grip:
             # There are situations where we want this to be lazy to avoid "flutter" (of servo)
+            #   '_suppress_release_grip' is True unless we are the outermost caller
+            #   'force_grip' is normally False but can be used to force grip prior to outermost caller
             self.selector.filament_release()
 
         # Sync / Unsync
@@ -6049,12 +6073,14 @@ class Mmu:
     def _spoolman_update_filaments(self, gate_ids=None, quiet=True):
         if self.spoolman_support == self.SPOOLMAN_OFF: return
         if gate_ids is None: # All gates
-            gate_ids = [(i, self.gate_spool_id[i]) for i in range(self.num_gates) if self.gate_spool_id[i] >= 0]
-        if len(gate_ids) > 0:
-            self.log_debug("Requesting the following gate/spool_id pairs from Spoolman: %s" % gate_ids)
+            pruned_gate_ids = [(g, self.gate_spool_id[g]) for g in range(self.num_gates) if self.gate_spool_id[g] >= 0]
+        else:
+            pruned_gate_ids = [(g, sid) for g, sid in gate_ids if sid >= 0]
+        if len(pruned_gate_ids) > 0:
+            self.log_debug("Requesting the following gate/spool_id pairs from Spoolman: %s" % pruned_gate_ids)
             try:
                 webhooks = self.printer.lookup_object('webhooks')
-                webhooks.call_remote_method("spoolman_get_filaments", gate_ids=gate_ids, silent=quiet)
+                webhooks.call_remote_method("spoolman_get_filaments", gate_ids=pruned_gate_ids, silent=quiet)
             except Exception as e:
                 self.log_error("Error while fetching filament attributes from spoolman: %s\n%s" % (str(e), self.SPOOLMAN_CONFIG_ERROR))
 
@@ -6378,7 +6404,7 @@ class Mmu:
                         self.toolchange_purge_volume = self._get_purge_volume(self.tool_selected, tool)
 
                         # Ok, now ready to park and perform the swap
-                        self._next_tool = tool # Valid only during the change process
+                        self._next_tool = tool # Valid only during the change process - cleared in _continue_after()
                         self._save_toolhead_position_and_park('toolchange', next_pos=next_pos)
                         self._set_next_position(next_pos) # This can also clear next_position
                         self._track_time_start('total')
@@ -6407,7 +6433,6 @@ class Mmu:
                                 self.gcode.run_script_from_command("M117 T%s" % tool)
                         finally:
                             self._track_time_end('total')
-                            self._next_tool = self.TOOL_GATE_UNKNOWN
 
                     # Updates swap statistics
                     self.num_toolchanges += 1
@@ -6697,6 +6722,9 @@ class Mmu:
         if self.check_if_disabled(): return
         tool = gcmd.get_int('TOOL', self.TOOL_GATE_UNKNOWN, minval=-2, maxval=self.num_gates - 1)
         mod_gate = gcmd.get_int('GATE', self.TOOL_GATE_UNKNOWN, minval=-2, maxval=self.num_gates - 1)
+        if gcmd.get_int('BYPASS', None, minval=0, maxval=1):
+            mod_gate = self.TOOL_GATE_BYPASS
+            tool = self.TOOL_GATE_BYPASS
         loaded = gcmd.get_int('LOADED', -1, minval=0, maxval=1)
         strict = gcmd.get_int('STRICT', 0, minval=0, maxval=1)
 
@@ -7540,7 +7568,10 @@ class Mmu:
         self.gate_material = list(self.default_gate_material)
         self.gate_color = list(self.default_gate_color)
         self.gate_temperature = list(self.default_gate_temperature)
-        self.gate_spool_id = list(self.default_gate_spool_id)
+        if self.spoolman_support in [self.SPOOLMAN_OFF, self.SPOOLMAN_PULL]:
+            self.gate_spool_id = [-1] * self.num_gates
+        else:
+            self.gate_spool_id = list(self.default_gate_spool_id)
         self.gate_speed_override = list(self.default_gate_speed_override)
         self._update_gate_color_rgb()
         self._persist_gate_map(spoolman_sync=True)
@@ -7950,60 +7981,62 @@ class Mmu:
                 return
 
         changed_gate_ids = []
-        if gate_map:
+
+        if gate_map: # --------- BATCH UPDATE from spoolman or UI --------
             try:
                 self.log_debug("Received gate map update (replace: %s)" % replace)
                 if replace:
-                    # Replace map (should only be in spoolman "pull" mode)
+                    # Replace complete map including spool_id (should only be in spoolman "pull" mode)
+                    if self.spoolman_support != self.SPOOLMAN_PULL:
+                        self.mmu.log_debug("Assertion failure: received gate map replacement update but not in spoolman 'pull' mode")
+
+                    # If from spoolman gate_map should be a full gate list with spool_id = -1 for unset gates
                     for gate, fil in gate_map.items():
                         if not (0 <= gate < self.num_gates):
                             self.log_debug("Warning: Illegal gate number %d supplied in gate map update - ignored" % gate)
                             continue
+
+                        # Update gate attributes if we have valid spool_id
                         spool_id = self.safe_int(fil.get('spool_id', -1))
                         self.gate_spool_id[gate] = spool_id
-                        if spool_id >= 0:
-                            self.gate_filament_name[gate] = fil.get('name', '')
-                            self.gate_material[gate] = fil.get('material', '')
-                            self.gate_color[gate] = fil.get('color', '')
-                            self.gate_temperature[gate] = self.safe_int(fil.get('temp', self.default_extruder_temp))
-                            if self.gate_temperature[gate] <= 0:
-                                self.gate_temperature[gate] = self.default_extruder_temp
-                            self.gate_speed_override[gate] = self.safe_int(fil.get('speed_override', self.gate_speed_override[gate]))
-                        else:
-                            # Clear attributes (should only get here in spoolman "pull" mode)
-                            self.gate_filament_name[gate] = ''
-                            self.gate_material[gate] = ''
-                            self.gate_color[gate] = ''
-                            self.gate_temperature[gate] = self.safe_int(self.default_extruder_temp)
+                        self.gate_filament_name[gate] = fil.get('name', '')
+                        self.gate_material[gate] = fil.get('material', '')
+                        self.gate_color[gate] = fil.get('color', '')
+                        self.gate_temperature[gate] = max(
+                            self.safe_int(fil.get('temp', self.default_extruder_temp)),
+                            self.default_extruder_temp
+                        )
+                        # gate_speed_override and gate_status can be set locally
                 else:
-                    # Update map (ui or spoolman "readonly" or "push" modes)
+                    # Update map (ui or from spoolman in "readonly" and "push" modes)
                     ids_dict = {}
                     for gate, fil in gate_map.items():
                         if not (0 <= gate < self.num_gates):
                             self.log_debug("Warning: Illegal gate number %d supplied in gate map update - ignored" % gate)
                             continue
 
-                        # Only update gate attributes if we don't have spool_id
-                        if fil:
+                        spool_id = self.safe_int(fil.get('spool_id', -1))
+                        if (not from_spoolman or spool_id != -1):
+                            # Update attributes but don't allow spoolman to accidently clear
                             self.gate_filament_name[gate] = fil.get('name', '')
                             self.gate_material[gate] = fil.get('material', '')
                             self.gate_color[gate] = fil.get('color', '')
-                            self.gate_status[gate] = self.safe_int(fil.get('status', self.gate_status[gate])) # For UI manual fixing of availabilty
-                            self.gate_temperature[gate] = self.safe_int(fil.get('temp', self.default_extruder_temp))
-                            if self.gate_temperature[gate] <= 0:
-                                self.gate_temperature[gate] = self.default_extruder_temp
+                            self.gate_temperature[gate] = max(
+                                self.safe_int(fil.get('temp', self.default_extruder_temp)),
+                                self.default_extruder_temp
+                            )
                             self.gate_speed_override[gate] = self.safe_int(fil.get('speed_override', self.gate_speed_override[gate]))
+                            self.gate_status[gate] = self.safe_int(fil.get('status', self.gate_status[gate])) # For UI manual fixing of availabilty
 
                         # If spool_id has changed, clean up possible stale use of old one
-                        if fil:
-                            spool_id = fil.get('spool_id', -1)
-                            if spool_id != self.gate_spool_id[gate]:
-                                self.log_debug("Spool_id changed for gate %d in MMU_GATE_MAP" % gate)
-                                mod_gate_ids = self.assign_spool_id(gate, spool_id)
-                                for (gate, sid) in mod_gate_ids:
-                                    ids_dict[gate] = sid
+                        if spool_id != self.gate_spool_id[gate]:
+                            self.log_debug("Spool_id changed for gate %d in MMU_GATE_MAP" % gate)
+                            mod_gate_ids = self.assign_spool_id(gate, spool_id)
+                            for (gate, sid) in mod_gate_ids:
+                                ids_dict[gate] = sid
 
                     changed_gate_ids = list(ids_dict.items())
+
             except Exception as e:
                 self.log_debug("Invalid MAP parameter: %s\nException: %s" % (gate_map, str(e)))
                 raise gcmd.error("Invalid MAP parameter. See mmu.log for details")
@@ -8035,22 +8068,23 @@ class Mmu:
 
                 if self.spoolman_support != self.SPOOLMAN_PULL:
                     # Local gate map, can update attributes
+                    spool_id = spool_id or self.gate_spool_id[gate]
                     name = name if name is not None else self.gate_filament_name[gate]
                     material = (material if material is not None else self.gate_material[gate]).upper()
                     color = (color if color is not None else self.gate_color[gate]).lower()
-                    temperature = temperature or self.gate_temperature
-                    spool_id = spool_id or self.gate_spool_id[gate]
+                    temperature = temperature or self.gate_temperature[gate]
                     color = self._validate_color(color)
                     if color is None:
                         raise gcmd.error("Color specification must be in form 'rrggbb' or 'rrggbbaa' hexadecimal value (no '#') or valid color name or empty string")
-                    self.gate_status[gate] = available
                     self.gate_filament_name[gate] = name
                     self.gate_material[gate] = material
                     self.gate_color[gate] = color
                     self.gate_temperature[gate] = temperature
                     self.gate_speed_override[gate] = speed_override
+                    self.gate_status[gate] = available
 
                     if spool_id != self.gate_spool_id[gate]:
+                        self.log_debug("Spool_id changed for gate %d in MMU_GATE_MAP" % gate)
                         mod_gate_ids = self.assign_spool_id(gate, spool_id)
                         for (gate, sid) in mod_gate_ids:
                             ids_dict[gate] = sid
