@@ -42,7 +42,7 @@ body:
     id: mmu_type
     attributes:
       label: MMU Type
-      options: ["3D Chameleon", "3MS", "AngryBeaver", "BoxTurtle", "ERCF", "KMS", "MMX", "QuattroBox", "NightOwl", "Pico", "Prusa", "Tradrack", "ViViD", "Other/Unknown"]
+      options: ["3D Chameleon", "3MS", "AngryBeaver", "BoxTurtle", "EMU", "ERCF", "KMS", "MMX", "QuattroBox", "NightOwl", "Pico", "Prusa", "Tradrack", "ViViD", "Other/Unknown"]
     validations:
       required: true
 
