@@ -460,12 +460,12 @@ heater_default_dry_temp: 45			# Default drying temperature if filament type is n
 heater_default_dry_time: 300			# Default drying cycle time in minutes
 heater_default_humidity: 25			# Default humidity % goal. Drying will terminate if this value is reached
 heater_vent_macro: _MMU_VENT			# Name of macro to periodicaly call during drying cycle
-heater_vent_interval:    0			# Interval in minutes to call heater_vent_macro during drying cycle, 0=disabled
+heater_vent_interval: 0				# Interval in minutes to call heater_vent_macro during drying cycle, 0=disable venting
 
-# Drying data for MMU_HEATER DRY=1 command in form (type is case insensitive):
+# Drying data for MMU_HEATER DRY=1 command in form (material type is case insensitive):
 #   'filament_type': (temp, drying_time_mins)
-# (Careful with formatting of this line - changes will break upgrade)
-drying_data: { 'pla': (45, 300), 'pla+': (50, 300), 'petg': (55, 300), 'tpu': (55, 300), 'tpe': (55, 300), 'abs': (65, 300), 'asa': (65, 300), 'nylon': (75, 600), 'pc': (75, 600), 'pva': (75, 600), 'hips': (75, 600) }
+# (Careful with formatting of this line - changes will break upgrade logic)
+drying_data: { 'pla': (45, 300), 'pla+': (55, 300), 'petg': (60, 300), 'tpu': (55, 300), 'abs': (70, 300), 'abs+': (75, 300), 'asa': (65, 300), 'nylon': (75, 600), 'pc': (75, 600), 'pva': (75, 600), 'hips': (75, 600) }
 
 
 # FlowGuard Clog and Tangle Detection --------------------------------------------------------------------------------
