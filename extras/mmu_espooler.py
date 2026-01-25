@@ -36,7 +36,8 @@ class MmuESpooler:
         self.burst_trigger_enabled = {}
         self.burst_trigger_state = {}
         self.back_to_back_burst_count = {}
-        self.burst_gates = set() # Gates with burst assist in operation
+        self.burst_gates = set()        # Gates with burst assist in operation
+        self.rotate_burst_gates = set() # Gates currently in "rotate burst" (reverse move for drying)
 
         # Get config
         self.motor_mcu_pins = {}
@@ -117,8 +118,9 @@ class MmuESpooler:
             else:
                 self.gcrqs.setdefault(mcu, GCodeRequestQueue(config, mcu, self._set_pin))
 
-        # Setup event handler for DC espooler motor operation
-        self.printer.register_event_handler("mmu:espooler_advance", self._handle_espooler_advance)
+        # Setup event handlers for DC espooler motor operation
+        self.printer.register_event_handler("mmu:espooler_advance", self._handle_espooler_advance) # Extrude direction
+        self.printer.register_event_handler("mmu:espooler_rotate", self._handle_espooler_rotate)   # Retract direction
 
         # Register event handlers
         self.printer.register_event_handler('klippy:ready', self._handle_ready)
@@ -174,23 +176,6 @@ class MmuESpooler:
                 self._reset_burst_trigger(gate, True)
 
 
-    # This resets burst trigger and repeats burst if sensor still triggered. It is used to cap the
-    # back-to-back firing of burst triggers to prevent obvious overruns if sensor is defective
-    def _reset_burst_trigger(self, gate, force=False):
-        if gate in self.burst_gates:
-            self._update(gate, 0, None)
-        if not force and self.burst_trigger_state.get(gate, 0):
-            # Still triggered
-            if self.back_to_back_burst_count[gate] < self.mmu.espooler_assist_burst_trigger_max:
-                self.back_to_back_burst_count[gate] += 1
-                self.advance(gate)
-            else:
-                self.mmu.log_error("Espooler assist suspended bcause of suspected malfunction. Assist sensor may be stuck in triggered state")
-        else:
-            # Allow future triggers
-            self.burst_gates.discard(gate)
-            self.back_to_back_burst_count[gate] = 0
-
     # Direct call to initiate burst assist
     def advance(self, gate=None):
         # Advance by "mmu defined" parameters
@@ -210,6 +195,10 @@ class MmuESpooler:
             )
         )
 
+        # Safety
+        if gate in self.rotate_burst_gates:
+            return
+
         if self._valid_gate(gate):
             cur_op, cur_value = self.get_operation(gate)
             msg = "Got espooler advance event for gate %d: value=%.2f duration=%.1f" % (gate, value, duration)
@@ -223,6 +212,74 @@ class MmuESpooler:
                 msg += " (Ignored because espooler state is %s, value: %.2f)" % (cur_op, cur_value)
                 self.mmu.log_debug(msg)
 
+    # This resets burst trigger and repeats burst if sensor still triggered. It is used to cap the
+    # back-to-back firing of burst triggers to prevent obvious overruns if sensor is defective
+    def _reset_burst_trigger(self, gate, force=False):
+        if gate in self.burst_gates:
+            self._update(gate, 0, None) # Motor off
+        if not force and self.burst_trigger_state.get(gate, 0):
+            # Still triggered
+            if self.back_to_back_burst_count[gate] < self.mmu.espooler_assist_burst_trigger_max:
+                self.back_to_back_burst_count[gate] += 1
+                self.advance(gate)
+            else:
+                self.mmu.log_error("Espooler assist suspended bcause of suspected malfunction. Assist sensor may be stuck in triggered state")
+        else:
+            # Allow future triggers
+            self.burst_gates.discard(gate)
+            self.back_to_back_burst_count[gate] = 0
+
+
+    def rotate(self, gate):
+        """
+        Direct call to initiate a drying spool rotation
+        Rotate in respool direction by "mmu defined" parameters
+        """
+        self._handle_espooler_rotate(gate, self.mmu.espooler_rotate_burst_power / 100, self.mmu.espooler_rotate_burst_duration)
+
+    def _handle_espooler_rotate(self, gate, value, duration):
+        """
+        Rotate burst: short rewind movement for spool "respool" direction used for filament drying
+        - Only allowed when gate is ESPOOLER_OFF.
+        - While active for a gate, no other operations for that gate are allowed.
+        - Stops via scheduled callback.
+        """
+        from .mmu import Mmu  # For operation names
+
+        if not self._valid_gate(gate):
+            return
+
+        # Per-gate lock: ignore if this gate is already in a rotate burst
+        if gate in self.rotate_burst_gates:
+            self.mmu.log_debug("Got espooler rotate event for gate %d but rotate burst already active (ignored)" % gate)
+            return
+
+        cur_op, cur_value = self.get_operation(gate)
+        msg = "Got espooler rotate event for gate %d: value=%.2f duration=%.1f" % (gate, value, duration)
+
+        # Only allowed if fully OFF
+        if cur_op == Mmu.ESPOOLER_OFF and cur_value == 0 and duration > 0 and value > 0:
+            self.mmu.log_debug(msg)
+
+            # Take per-gate lock and start rewind motor
+            self.rotate_burst_gates.add(gate)
+            self._update(gate, value, Mmu.ESPOOLER_REWIND)
+
+            # Schedule stop
+            waketime = self.reactor.monotonic() + duration
+            self.reactor.register_callback(lambda pt: self._reset_rotate_burst(gate=gate), waketime)
+        else:
+            msg += " (Ignored because espooler state is %s, value: %.2f)" % (cur_op, cur_value)
+            self.mmu.log_debug(msg)
+
+    def _reset_rotate_burst(self, gate):
+        if gate in self.rotate_burst_gates:
+            self._update(gate, 0, None) # Motor off
+            from .mmu import Mmu
+            self.operation[self._key(gate)] = (Mmu.ESPOOLER_OFF, 0)
+            self.rotate_burst_gates.discard(gate)
+
+
     # Direct call to change the operation of the espooler
     def set_operation(self, gate, value, operation):
         from .mmu import Mmu # For operation names
@@ -230,8 +287,15 @@ class MmuESpooler:
         if self.mmu.log_enabled(Mmu.LOG_TRACE):
             self.mmu.log_trace("ESPOOLER: set_operation(gate=%s, value=%s, operation=%s)" % (gate, value, operation))
 
-        # Turn off assist for all gates except specified gate if still wanted
+        # Note that all gates with have gate=None
         for g in range(self.first_gate, self.first_gate + self.num_gates):
+
+            # Handle possibilty of switching rotation burst off (e.g. if duration was set incorrectly)
+            if operation == Mmu.ESPOOLER_OFF and (gate is None or g == gate):
+                if g in self.rotate_burst_gates:
+                    self._reset_rotate_burst(g)
+
+            # Turn off assist for all gates except specified gate if still wanted
             if (
                 (self.get_operation(g)[0] == Mmu.ESPOOLER_PRINT and g != gate) or
                 (g == gate and operation == Mmu.ESPOOLER_PRINT and value != 0)

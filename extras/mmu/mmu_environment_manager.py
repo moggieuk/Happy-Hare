@@ -189,7 +189,7 @@ class MmuEnvironmentManager:
         + "TIMER = #(mins) Force drying time\n"
         + "TEMP = #(degrees) Force temperature\n"
         + "HUMIDITY = % Terminate drying when humidty goal is reached\n"
-        + "GATES = x,y Gates to control ONLY IF MMU has per-gate heaters/dryers\n"
+        + "GATES = g1,g2 Gates to control ONLY IF MMU has per-gate heaters/dryers\n"
         + "ROTATE = [0|1] Rotate spool (requires eSpooler and explicit GATES)\n"
         + "ROTATE_INTERVAL = #(mins) How often to rotate spools when drying (requires eSpooler)\n"
         + "VENT_INTERVAL = #(mins) How often to call 'vent' macro in drying cycle\n"

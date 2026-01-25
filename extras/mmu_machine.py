@@ -348,7 +348,14 @@ class MmuMachine:
             unit_info['filament_always_gripped'] = self.filament_always_gripped
             unit_info['has_bypass'] = self.has_bypass
             unit_info['multi_gear'] = self.multigear
-            unit_info['environment_sensor'] = self.environment_sensor[0] if self.environment_sensor else ""
+            if self.environment_sensor or self.filament_heater:
+                # Single heater/sensor
+                unit_info['environment_sensor'] = self.environment_sensor
+                unit_info['filament_heater'] = self.filament_heater
+            elif self.environment_sensors or self.filament_heaters:
+                # Per-gate heater/sensors
+                unit_info['environment_sensors'] = self.environment_sensors
+                unit_info['filament_heaters'] = self.filament_heaters
             gate_count += unit
             self.unit_status["unit_%d" % i] = unit_info
             self.unit_status['num_units'] = len(self.gate_counts)

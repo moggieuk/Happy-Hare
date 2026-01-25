@@ -455,8 +455,9 @@ class Mmu:
         self.espooler_assist_burst_duration = config.getfloat("espooler_assist_burst_duration", .4, above=0., maxval=10.)
         self.espooler_assist_burst_trigger = config.getint("espooler_assist_burst_trigger", 0, minval=0, maxval=1)
         self.espooler_assist_burst_trigger_max = config.getint("espooler_assist_burst_trigger_max", 3, minval=1)
+        self.espooler_rotate_burst_power = config.getint("espooler_rotate_burst_power", self.espooler_assist_burst_power, minval=0, maxval=100)
+        self.espooler_rotate_burst_duration = config.getfloat("espooler_rotate_burst_duration", self.espooler_assist_burst_duration, above=0., maxval=10.)
         self.espooler_operations = list(config.getlist('espooler_operations', self.ESPOOLER_OPERATIONS))
-
 
         # Optional features
         self.has_filament_buffer = bool(config.getint('has_filament_buffer', 1, minval=0, maxval=1))
@@ -3859,8 +3860,24 @@ class Mmu:
         self.log_info(self._get_encoder_summary(detail=True))
 
     cmd_MMU_ESPOOLER_help = "Direct control of espooler or display of current status"
+    cmd_MMU_ESPOOLER_param_help = (
+        "MMU_ESPOOLER: %s\n" % cmd_MMU_ESPOOLER_help
+        + "ALLOFF = [0|1] Quick way to turn all espoolers off\n"
+        + "GATE = g1 Specify gate to operate on\n"
+        + "OPERATION = [assist|burst|off|print|rewind|rotate] Invoke espooler operation\n"
+        + "POWER = [0-100] Override default % power to apply to espooler motor\n"
+        + "DURATION = [0-10] Specify duration of PWM signal in seconds for burst and rotate operations\n"
+        + "QUIET = [0|1] Used to suppress console/log output\n"
+        + "(no parameters for status report)"
+    )
     def cmd_MMU_ESPOOLER(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
+        if self.check_if_disabled(): return
+
+        if gcmd.get_int('HELP', 0, minval=0, maxval=1):
+            self.log_always(self.format_help(self.cmd_MMU_ESPOOLER_param_help), color=True)
+            return
+
         if self._check_has_espooler(): return
 
         operation = gcmd.get('OPERATION', None)
@@ -3888,6 +3905,16 @@ class Mmu:
                     self.printer.send_event("mmu:espooler_advance", gate, power / 100., duration)
                 else:
                     raise gcmd.error("Espooler on gate %d is not in 'print' mode" % gate)
+
+            elif operation == 'rotate':
+                power = gcmd.get_int('POWER', self.espooler_rotate_burst_power, minval=0, maxval=100)
+                duration = gcmd.get_float('DURATION', self.espooler_rotate_burst_duration, above=0., maxval=10.)
+                cur_op, cur_value = self.espooler.get_operation(gate)
+                if cur_op == self.ESPOOLER_OFF:
+                    self.log_info("Sending 'mmu:espooler_rotate' event(gate=%d, power=%d, duration=%.2fs)" % (gate, power, duration))
+                    self.printer.send_event("mmu:espooler_rotate", gate, power / 100., duration)
+                else:
+                    raise gcmd.error("Espooler on gate %d is busy performing '%s'" % cur_op)
 
             else:
                 if operation not in self.ESPOOLER_OPERATIONS:
