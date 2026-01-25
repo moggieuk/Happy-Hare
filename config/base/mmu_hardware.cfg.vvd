@@ -81,18 +81,21 @@ mmu_version: 1.0			# MMU hardware version number (add mod suffix documented abov
 #variable_rotation_distances: 1		# 1 = If MMU design has dissimilar drive/BMG gears, thus rotation distance, 0 = One drive gear (e.g. Tradrack)
 #require_bowden_move: 1			# 1 = If MMU design has bowden move that is included in load/unload, 0 = zero length bowden (skip bowden move)
 #filament_always_gripped: 1		# 1 = Filament is always trapped by MMU (most type-B designs), 0 = MMU can release filament
-has_bypass: 1				# 1 = Bypass gate available, 0 = No filament bypass possible
+#has_bypass: {has_bypass}				# 1 = Bypass gate available, 0 = No filament bypass possible
+
+homing_extruder: 1			# CAUTION: Normally this should be 1. 0 will disable the homing extruder capability
 
 # Uncomment to change the display name in UI's.  Defaults to the vendor name
 #display_name: My Precious
 
-# Fullname of environment sensor for MMU filament storage (displays temp and humidity in UI)
+# Fullname of environment sensor for MMU filament storage (displays temp and humidity in UI). Leave empty if sensor is not fitted
 # Polls for "temperature" and "humidity"
 # E.g. If you have a section like this: [temperature_sensor MMU_enclosure]
-# Set: environment_sensor: temperature_sensor MMU_enclosure
-environment_sensor: temperature_sensor MMU_vivid_left
+#      Set: environment_sensor: temperature_sensor MMU_enclosure
+environment_sensor:
 
-homing_extruder: 1			# CAUTION: Normally this should be 1. 0 will disable the homing extruder capability
+# Simple name of filament heater if available. Leave empty if heater is not fitted
+filament_heater:
 
 
 # FILAMENT DRIVE GEAR STEPPER(S) --------------------------------------------------------------------------------------
