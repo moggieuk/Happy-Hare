@@ -274,6 +274,10 @@ class MmuMachine:
             raise config.error("'filament_heaters' must be empty, a single value or a comma separated list of 'num_gate' elements")
         self.max_concurrent_heaters = config.getint('max_concurrent_heaters', self.num_gates)
 
+        # Check mutually exclusive environment options
+        if (self.environment_sensor or self.filament_heater) and (self.environment_sensors or self.filament_heaters):
+            raise config.error("Can't configure single multiple MMU heaters/environment sensors")
+
         # By default HH uses a modified homing extruder. Because this might have unknown consequences on certain
         # set-ups it can be disabled. If disabled, homing moves will still work, but the delay in mcu to mcu comms
         # can lead to several mm of error depending on speed. Also homing of just the extruder is not possible.
