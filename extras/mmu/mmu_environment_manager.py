@@ -203,6 +203,9 @@ class MmuEnvironmentManager:
             self.mmu.log_always(self.mmu.format_help(self.cmd_MMU_HEATER_param_help), color=True)
             return
 
+        if not self.has_heater():
+            raise gcmd.error("No MMU heater configured")
+
         drying_data = gcmd.get_int('DRYING_DATA', 0, minval=0, maxval=1)
         stop = gcmd.get_int('STOP', None, minval=0, maxval=1)
         dry = gcmd.get_int('DRY', None, minval=0, maxval=1)
@@ -354,8 +357,7 @@ class MmuEnvironmentManager:
                 return
 
             # Optional spool rotation (requires eSpooler and explicit gates)
-#PAUL            if rotate and not self.mmu.has_espooler():
-            if rotate and not True: #PAUL
+            if rotate and not self.mmu.has_espooler():
                 self.mmu.log_warning("Rotation requested but eSpooler not fitted - ignoring")
                 rotate = 0
 
@@ -411,8 +413,7 @@ class MmuEnvironmentManager:
             self._drying_rotate_interval = rotate_interval
 
             # Optional spool rotation state
-#PAUL            self._rotate_enabled = bool(rotate and self.mmu.has_espooler())
-            self._rotate_enabled = True # PAUL
+            self._rotate_enabled = bool(rotate and self.mmu.has_espooler())
             if self._rotate_enabled:
                 self._rotate_timer = rotate_interval * 60.0
             else:
