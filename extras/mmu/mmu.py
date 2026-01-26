@@ -147,7 +147,7 @@ class Mmu:
     ESPOOLER_OFF    = 'off'
     ESPOOLER_REWIND = 'rewind'
     ESPOOLER_ASSIST = 'assist'
-    ESPOOLER_PRINT  = 'print'  # Special in-print assist state
+    ESPOOLER_PRINT  = 'print'  # Special in-print assist state for active gate
     ESPOOLER_OPERATIONS = [ESPOOLER_OFF, ESPOOLER_REWIND, ESPOOLER_ASSIST, ESPOOLER_PRINT]
 
     # Name used to save gcode state
@@ -455,8 +455,8 @@ class Mmu:
         self.espooler_assist_burst_duration = config.getfloat("espooler_assist_burst_duration", .4, above=0., maxval=10.)
         self.espooler_assist_burst_trigger = config.getint("espooler_assist_burst_trigger", 0, minval=0, maxval=1)
         self.espooler_assist_burst_trigger_max = config.getint("espooler_assist_burst_trigger_max", 3, minval=1)
-        self.espooler_rotate_burst_power = config.getint("espooler_rotate_burst_power", 50, minval=0, maxval=100)
-        self.espooler_rotate_burst_duration = config.getfloat("espooler_rotate_burst_duration", .4, above=0., maxval=10.)
+        self.espooler_rewind_burst_power = config.getint("espooler_rewind_burst_power", 50, minval=0, maxval=100)
+        self.espooler_rewind_burst_duration = config.getfloat("espooler_rewind_burst_duration", .4, above=0., maxval=10.)
         self.espooler_operations = list(config.getlist('espooler_operations', self.ESPOOLER_OPERATIONS))
 
         # Optional features
@@ -3844,6 +3844,7 @@ class Mmu:
         msg += seq_msg if steps else ""
         self.log_always(msg)
 
+
     cmd_MMU_ENCODER_help = "Display encoder position and stats or enable/disable runout detection logic in encoder"
     def cmd_MMU_ENCODER(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
@@ -3860,15 +3861,18 @@ class Mmu:
             return
         self.log_info(self._get_encoder_summary(detail=True))
 
+
     cmd_MMU_ESPOOLER_help = "Direct control of espooler or display of current status"
     cmd_MMU_ESPOOLER_param_help = (
         "MMU_ESPOOLER: %s\n" % cmd_MMU_ESPOOLER_help
         + "ALLOFF = [0|1] Quick way to turn all espoolers off\n"
-        + "GATE = g1 Specify gate to operate on\n"
-        + "OPERATION = [assist|burst|off|print|rewind|rotate] Invoke espooler operation\n"
+        + "BURST = [0|1] Jog in direction of OPERATION (assist|rewind) using configured burst duration and power\n"
+        + "GATE = g Specify gate to operate on (defaults to current gate)\n"
+        + "OPERATION = [assist|off|print|rewind] Set espooler operation mode\n"
         + "POWER = [0-100] Override default % power to apply to espooler motor\n"
-        + "DURATION = [0-10] Specify duration of PWM signal in seconds for burst and rotate operations\n"
+        + "DURATION = [0-10] Override duration of PWM signal (seconds) for burst operations\n"
         + "QUIET = [0|1] Used to suppress console/log output\n"
+        + "RESET = [0|1] Turn of in-print assist\n"
         + "(no parameters for status report)"
     )
     def cmd_MMU_ESPOOLER(self, gcmd):
@@ -3882,8 +3886,15 @@ class Mmu:
         if self._check_has_espooler(): return
 
         operation = gcmd.get('OPERATION', None)
+        burst = gcmd.get_int('BURST', 0, minval=0, maxval=1)
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
         alloff = bool(gcmd.get_int('ALLOFF', 0, minval=0, maxval=1))
+        reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
+
+        if reset:
+            # Turn off in-print assist mode
+            self.espooler.reset_print_assist_mode()
+
         if alloff:
             for gate in range(self.num_gates):
                 self.espooler.set_operation(gate, 0, self.ESPOOLER_OFF)
@@ -3897,37 +3908,38 @@ class Mmu:
             if gate < 0:
                 raise gcmd.error("Invalid gate")
 
-            if operation == 'burst':
-                power = gcmd.get_int('POWER', self.espooler_assist_burst_power, minval=0, maxval=100)
-                duration = gcmd.get_float('DURATION', self.espooler_assist_burst_duration, above=0., maxval=10.)
-                cur_op, cur_value = self.espooler.get_operation(gate)
-                if cur_op == self.ESPOOLER_PRINT:
-                    self.log_info("Sending 'mmu:espooler_advance' event(gate=%d, power=%d, duration=%.2fs)" % (gate, power, duration))
-                    self.printer.send_event("mmu:espooler_advance", gate, power / 100., duration)
-                else:
-                    raise gcmd.error("Espooler on gate %d is not in 'print' mode" % gate)
-
-            elif operation == 'rotate':
-                power = gcmd.get_int('POWER', self.espooler_rotate_burst_power, minval=0, maxval=100)
-                duration = gcmd.get_float('DURATION', self.espooler_rotate_burst_duration, above=0., maxval=10.)
-                cur_op, cur_value = self.espooler.get_operation(gate)
-                if cur_op == self.ESPOOLER_OFF:
-                    self.log_info("Sending 'mmu:espooler_rotate' event(gate=%d, power=%d, duration=%.2fs)" % (gate, power, duration))
-                    self.printer.send_event("mmu:espooler_rotate", gate, power / 100., duration)
-                else:
-                    raise gcmd.error("Espooler on gate %d is busy performing '%s' operation" % (gate, cur_op))
-
+            # Determine power
+            if burst:
+                default_power = self.espooler_assist_burst_power if operation == self.ESPOOLER_ASSIST else self.espooler_rewind_burst_power
             else:
-                if operation not in self.ESPOOLER_OPERATIONS:
-                    raise gcmd.error("Invalid operation. Options are: %s" % ", ".join(self.ESPOOLER_OPERATIONS))
-
                 default_power = self.espooler_printing_power if operation == self.ESPOOLER_PRINT else 50
-                power = gcmd.get_int('POWER', default_power, minval=0, maxval=100) if operation != self.ESPOOLER_OFF else 0
+            power = gcmd.get_int('POWER', default_power, minval=0, maxval=100) if operation != self.ESPOOLER_OFF else 0
 
-                if operation != self.ESPOOLER_OFF:
-                    self.espooler.set_operation(gate, power / 100, operation)
+            if burst:
+                default_duration = self.espooler_assist_burst_duration if operation == self.ESPOOLER_ASSIST else self.espooler_rewind_burst_duration
+                duration = gcmd.get_float('DURATION', default_duration, above=0., maxval=10.)
+
+                if operation in [self.ESPOOLER_ASSIST, self.ESPOOLER_REWIND]:
+                    self.log_info("Sending 'mmu:espooler_burst' event(gate=%d, power=%d, duration=%.2fs, direction=%s)" % (gate, power, duration, operation))
+                    self.printer.send_event("mmu:espooler_burst", gate, power / 100., duration, self.ESPOOLER_ASSIST)
                 else:
-                    self.espooler.set_operation(gate, 0, operation)
+                    self.log_error("Must specify 'assist' or 'rewind' operation for burst")
+
+            elif operation not in self.ESPOOLER_OPERATIONS:
+                raise gcmd.error("Invalid operation. Options are: %s" % ", ".join(self.ESPOOLER_OPERATIONS))
+
+            elif operation == self.ESPOOLER_PRINT:
+                if self.is_printing():
+                    self.log_warning("Cannot set in-print assist mode for non selected gate while printing")
+                else:
+                    if gate != self.gate_selected:
+                        self.log_warning("In-print assist mode set for non selected gate - for testing only")
+                    self.espooler.set_operation(gate, 0, self.ESPOOLER_PRINT)
+
+            elif operation != self.ESPOOLER_OFF:
+                self.espooler.set_operation(gate, power / 100, operation)
+            else:
+                self.espooler.set_operation(gate, 0, self.ESPOOLER_OFF)
 
         if not quiet:
             msg = ""
@@ -3948,6 +3960,7 @@ class Mmu:
                 else:
                     msg += "not fitted"
             self.log_always(msg)
+
 
     cmd_MMU_RESET_help = "Forget persisted state and re-initialize defaults"
     def cmd_MMU_RESET(self, gcmd):
@@ -5629,11 +5642,13 @@ class Mmu:
 
     # Turn on print espooler in-print assist mode for current gate
     def _espooler_assist_on(self):
+        self.log_error("PAUL: _espooler_assist_on (gate:%d)" % self.gate_selected)
         if self.has_espooler() and self.is_printing() and self.ESPOOLER_PRINT in self.espooler_operations:
             self.espooler.set_operation(self.gate_selected, self.espooler_printing_power / 100, self.ESPOOLER_PRINT)
 
     # Turn off espooler in-print assist mode
     def _espooler_assist_off(self):
+        self.log_error("PAUL: _espooler_assist_off")
         if self.has_espooler():
             self.espooler.set_operation(None, 0, self.ESPOOLER_OFF) # PAUL this is a special off case..
 
@@ -7280,6 +7295,8 @@ class Mmu:
             self.espooler_assist_extruder_move_length = gcmd.get_float("ESPOOLER_ASSIST_EXTRUDER_MOVE_LENGTH", self.espooler_assist_extruder_move_length, above=10.)
             self.espooler_assist_burst_power = gcmd.get_int("ESPOOLER_ASSIST_BURST_POWER", self.espooler_assist_burst_power, minval=0, maxval=100)
             self.espooler_assist_burst_duration = gcmd.get_float("ESPOOLER_ASSIST_BURST_DURATION", self.espooler_assist_burst_duration, above=0., maxval=10.)
+            self.espooler_rewind_burst_power = gcmd.get_int("ESPOOLER_REWIND_BURST_POWER", self.espooler_rewind_burst_power, minval=0, maxval=100)
+            self.espooler_rewind_burst_duration = gcmd.get_float("ESPOOLER_REWIND_BURST_DURATION", self.espooler_rewind_burst_duration, above=0., maxval=10.)
             espooler_assist_burst_trigger = gcmd.get_int("ESPOOLER_ASSIST_BURST_TRIGGER", self.espooler_assist_burst_trigger, minval=0, maxval=1)
             if espooler_assist_burst_trigger != self.espooler_assist_burst_trigger:
                 self._espooler_assist_off() # Ensure we reset correctly
@@ -7400,6 +7417,8 @@ class Mmu:
                 msg += "\nespooler_assist_burst_duration = %s" % self.espooler_assist_burst_duration
                 msg += "\nespooler_assist_burst_trigger = %d" % self.espooler_assist_burst_trigger
                 msg += "\nespooler_assist_burst_trigger_max = %d" % self.espooler_assist_burst_trigger_max
+                msg += "\nespooler_rewind_burst_power = %d" % self.espooler_rewind_burst_power
+                msg += "\nespooler_rewind_burst_duration = %s" % self.espooler_rewind_burst_duration
                 msg += "\nespooler_operations = %s"  % self.espooler_operations
 
             # Heater/Environment
