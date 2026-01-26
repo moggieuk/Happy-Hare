@@ -447,11 +447,12 @@ espooler_assist_burst_duration: 0.4		# The duration of the burst move is seconds
 espooler_assist_burst_trigger: 0		# If trigger assist switch is fitted 0=disable, 1=enable
 espooler_assist_burst_trigger_max: 3		# If trigger assist switch is fitted this limits the max number of back-to-back advances
 #
-# The following burst configuration defaults to the assist burst values if left empty. They control the small rotation
-# in the rewind direction optionally used when running the filament drying cycle
+# The following burst configuration is used to control the small rotation in the REWIND direction optionally used
+# when running running the filament drying cycle. The goal is to rotate the spool 60-90 degrees. It can also be
+# used to tighten the filament with 'MMU_ESPOOLER COMMAND=rotate'
 #
-espooler_rotate_burst_power: 			# The % power of the rewind burst move
-espooler_rotate_burst_duration: 		# The duration of the rewind burst move is seconds
+espooler_rotate_burst_power: 100		# The % power of the rewind burst move
+espooler_rotate_burst_duration: 0.4		# The duration of the rewind burst move is seconds
 
 
 # Heater / Environment Management ------------------------------------------------------------------------------------

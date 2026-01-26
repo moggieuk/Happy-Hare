@@ -278,6 +278,15 @@ class MmuMachine:
         if (self.environment_sensor or self.filament_heater) and (self.environment_sensors or self.filament_heaters):
             raise config.error("Can't configure single multiple MMU heaters/environment sensors")
 
+        # Check all heater and environment sensor objects are valid
+        for obj_name in self.filament_heaters + [self.filament_heater] + self.environment_sensors + [self.environment_sensor]:
+            if obj_name:
+                try:
+                    # If we can't load heater/sensor then it is misconfigured
+                    obj = self.printer.load_object(config, obj_name)
+                except Exception as e:
+                    raise config.error("Object '%s' could not be loaded as a valid heater or environment sensor in [mmu_machine]\nError: %s" % (obj_name, str(e)))
+
         # By default HH uses a modified homing extruder. Because this might have unknown consequences on certain
         # set-ups it can be disabled. If disabled, homing moves will still work, but the delay in mcu to mcu comms
         # can lead to several mm of error depending on speed. Also homing of just the extruder is not possible.

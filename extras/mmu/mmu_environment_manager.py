@@ -428,6 +428,7 @@ class MmuEnvironmentManager:
 
         else: # Not in drying cycle, but let's check heaters
             if self._has_per_gate_heaters():
+                # Per-gate heaters
                 heaters_on = []
                 heaters_off = []
                 # Report all gates (0..num_gates-1)
@@ -452,8 +453,11 @@ class MmuEnvironmentManager:
                     msg = u"Not in drying cycle and all gate heaters are off"
 
             else:
+                # Single shared heater
                 cur_temp, cur_target = self._get_heater_status()
-                if cur_target != 0:
+                if cur_target is None:
+                    msg = u"Heater if not found / misconfigured"
+                elif cur_target != 0:
                     msg = u"Not in drying cycle but heater is on. Target temperature: %.1f°C (current: %.1f°C)" % (cur_target, cur_temp)
                 else:
                     msg = u"Not in drying cycle and heater is off"
@@ -466,6 +470,7 @@ class MmuEnvironmentManager:
                 msg += u"\nDrying filaments in gates: %s" % u",".join(str(g) for g in self._drying_gates)
 
             if not self._has_per_gate_heaters():
+                # Single heater status report
                 remaining_mins = _format_minutes((self._drying_end_time - now) // 60)
                 cur_temp, cur_humidity = self._get_environment_status()
                 msg += u"\nCycle time: %s (remaining: %s)" % (_format_minutes(self._drying_time), remaining_mins)
@@ -474,8 +479,10 @@ class MmuEnvironmentManager:
                     if cur_humidity is not None:
                         msg += u" (current: %.1f%%)" % cur_humidity
                 else:
-                    cur_temp, cur_target = self._get_heater_status()
                     msg += u"\nEnvironment sensor not available / misconfigured"
+                    # Use heater's temp instead
+                    cur_temp, _ = self._get_heater_status()
+                    if cur_temp is None: cur_temp = -1 # Saftey, should not be possible to get here
                 msg += u"\nDrying temp: %.1f°C (current: %.1f°C)" % (self._drying_temp, cur_temp)
 
             else:
@@ -914,14 +921,14 @@ class MmuEnvironmentManager:
         Returns (None, None) if heater is not configured / not found.
         """
         if gate is None:
-            obj = self.mmu.printer.lookup_object(self.mmu.mmu_machine.filament_heater, None)
+            heater_name = self.mmu.mmu_machine.filament_heater
         else:
             heaters = self.mmu.mmu_machine.filament_heaters
             if gate < 0 or gate >= len(heaters) or not heaters[gate]:
                 return (None, None)
+            heater_name = heaters[gate]
 
-            obj = self.mmu.printer.lookup_object(heaters[gate], None)
-
+        obj = self.mmu.printer.lookup_object(heater_name, None)
         if obj is None:
             return (None, None)
 

@@ -274,31 +274,38 @@ class MmuESpooler:
 
     def _reset_rotate_burst(self, gate):
         if gate in self.rotate_burst_gates:
-            self._update(gate, 0, None) # Motor off
             from .mmu import Mmu
-            self.operation[self._key(gate)] = (Mmu.ESPOOLER_OFF, 0)
+            self._update(gate, 0, Mmu.ESPOOLER_OFF)
+# PAUL why? doesn't _update() set it?            self.operation[self._key(gate)] = (Mmu.ESPOOLER_OFF, 0)
             self.rotate_burst_gates.discard(gate)
 
 
     # Direct call to change the operation of the espooler
+    # Operations are:
+    #   ESPOOLER_OFF    = Force motor off
+    #   ESPOOLER_REWIND = Set motor in rewind (retract) direction
+    #   ESPOOLER_ASSIST = Set motor in forward (assist) direction
+    #   ESPOOLER_PRINT  = Special in-print assist state when we wait for burst triggers
     def set_operation(self, gate, value, operation):
         from .mmu import Mmu # For operation names
 
         if self.mmu.log_enabled(Mmu.LOG_TRACE):
             self.mmu.log_trace("ESPOOLER: set_operation(gate=%s, value=%s, operation=%s)" % (gate, value, operation))
 
-        # Note that all gates with have gate=None
+        # Note that gates=None means all gates
         for g in range(self.first_gate, self.first_gate + self.num_gates):
 
-            # Handle possibilty of switching rotation burst off (e.g. if duration was set incorrectly)
-            if operation == Mmu.ESPOOLER_OFF and (gate is None or g == gate):
-                if g in self.rotate_burst_gates:
-                    self._reset_rotate_burst(g)
+# PAUL vvv
+#            # Handle possibilty of switching rotation burst off (e.g. if duration was set incorrectly)
+#            if operation == Mmu.ESPOOLER_OFF and (gate is None or g == gate):
+#                if g in self.rotate_burst_gates:
+#                    self._reset_rotate_burst(g)
+# PAUL ^^^
 
-            # Turn off assist for all gates except specified gate if still wanted
+            # Turn off print assist for all gates except specified gate if still wanted
             if (
                 (self.get_operation(g)[0] == Mmu.ESPOOLER_PRINT and g != gate) or
-                (g == gate and operation == Mmu.ESPOOLER_PRINT and value != 0)
+                (g == gate and operation == Mmu.ESPOOLER_PRINT and value != 0) # PAUL don't understand this part of the condition! Should it be value == 0?
             ):
                 self._update(g, 0, Mmu.ESPOOLER_OFF)
 
@@ -310,10 +317,12 @@ class MmuESpooler:
                 if self.mmu.log_enabled(Mmu.LOG_TRACE):
                     self.mmu.log_trace("ESPOOLER: In-print assist for gate %d canceled" % g)
 
+        # Set new operation for specified gate
         if gate is not None and gate >= 0:
             self.mmu.log_debug("Espooler for gate %d set to %s (pwm: %.2f)" % (gate, operation, value))
             self._update(gate, value, operation)
 
+            # If new operation is 'print' mode setup burst triggers
             if operation == Mmu.ESPOOLER_PRINT and value == 0:
                 if self.mmu.log_enabled(Mmu.LOG_TRACE):
                     self.mmu.log_trace("ESPOOLER: Entering in-print assist mode for gate %d" % gate)
