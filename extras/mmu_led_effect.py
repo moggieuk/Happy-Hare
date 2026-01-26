@@ -88,7 +88,7 @@ class MmuLedEffect:
                         # Per gate
                         if segment in MmuLeds.PER_GATE_SEGMENTS and (not define_on or 'gates' in define_on):
                             for idx in range(mmu_unit.first_gate, mmu_unit.first_gate + mmu_unit.num_gates):
-                                led0 = idx * leds_per_gate - mmu_unit.first_gate + 1
+                                led0 = (idx - mmu_unit.first_gate) * leds_per_gate + 1
                                 led_spec = str(led0)
                                 if leds_per_gate > 1:
                                     led_spec = "%d-%d" % (led0, led0 + leds_per_gate - 1)
