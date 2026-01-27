@@ -469,3 +469,9 @@ control:watermark
 #pid_Kd=
 min_temp:0
 max_temp:70
+
+[verify_heater MMU_heater_kms]
+max_error: 300
+check_gain_time: 600
+hysteresis: 10
+heating_gain: 1

@@ -370,7 +370,7 @@ class MmuEnvironmentManager:
             if rotate:
                 for gate in gates:
                     if self.mmu.gate_status[gate] != self.mmu.GATE_EMPTY:
-                        self.mmu.log_warning("Gate %d is not empty and cannot rotate (filament end must be removed from the gate and secured to the spool for rotation)" % gate)
+                        self.mmu.log_warning("Gate %d is not empty so cannot rotate (filament end must be removed from the gate and secured to the spool for rotation)" % gate)
 
             # Per-gate recommended temps/times, plus overall notes
             per_gate_plan = self._get_drying_plan(gates)
@@ -522,7 +522,7 @@ class MmuEnvironmentManager:
 
             # Venting status
             if self._vent_timer is not None:
-                msg += u"\nVenting operational (runing macro %s every %s, next in %s)" % (
+                msg += u"\nVenting operational (running macro %s every %s, next in %s)" % (
                     self.heater_vent_macro,
                     _format_minutes(self._drying_vent_interval),
                     _format_minutes(max(self.CHECK_INTERVAL, self._vent_timer) / 60),
@@ -874,9 +874,13 @@ class MmuEnvironmentManager:
 
 
     def _heater_on(self, temp, gate=None):
-        if gate is None:
+        """
+        Turn MMU heater on.
+        """
+        if not self._has_per_gate_heaters():
             self.mmu.log_debug(u"MmuEnvironmentManager: Heater %s set to target temp of %.1f°C" % (self.mmu.mmu_machine.filament_heater, temp))
-            self.mmu.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=%s TARGET=%.1f" % (self.mmu.mmu_machine.filament_heater, temp))
+            hname = self._heater_name(self.mmu.mmu_machine.filament_heater)
+            self.mmu.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=%s TARGET=%.1f" % (hname, temp))
             return
 
         heaters = self.mmu.mmu_machine.filament_heaters
@@ -884,24 +888,29 @@ class MmuEnvironmentManager:
             self.mmu.log_warning("MmuEnvironmentManager: No heater configured for gate %d" % gate)
             return
 
-        heater_name = heaters[gate]
+        hname = self._heater_name(heaters[gate])
         self.mmu.log_debug(u"MmuEnvironmentManager: Gate %d heater %s set to target temp of %.1f°C" % (gate, heater_name, temp))
-        self.mmu.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=%s TARGET=%.1f" % (heater_name, temp))
+        self.mmu.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=%s TARGET=%.1f" % (hname, temp))
 
 
     def _heater_off(self, gate=None):
-        if gate is None and not self._has_per_gate_heaters():
+        """
+        Turn MMU heater off. If gate=None then turn off all heaters
+        """
+        if not self._has_per_gate_heaters():
             self.mmu.log_debug("MmuEnvironmentManager: Heater %s turned off" % self.mmu.mmu_machine.filament_heater)
-            self.mmu.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=%s TARGET=0" % self.mmu.mmu_machine.filament_heater)
+            hname = self._heater_name(self.mmu.mmu_machine.filament_heater)
+            self.mmu.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=%s TARGET=0" % hname)
             return
 
-        if gate is None and self._has_per_gate_heaters():
+        if gate is None:
             # Turn off all known heaters (best effort)
             self.mmu.log_debug("MmuEnvironmentManager: All gate heaters turned off")
             heaters = self.mmu.mmu_machine.filament_heaters
             for i in range(len(heaters)):
                 if heaters[i]:
-                    self.mmu.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=%s TARGET=0" % heaters[i])
+                    hname = self._heater_name(heaters[i])
+                    self.mmu.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=%s TARGET=0" % hname)
             return
 
         heaters = self.mmu.mmu_machine.filament_heaters
@@ -909,9 +918,16 @@ class MmuEnvironmentManager:
             return
         _,target = self._get_heater_status(gate)
         if target:
-            heater_name = heaters[gate]
-            self.mmu.log_debug("MmuEnvironmentManager: Gate %d heater %s turned off" % (gate, heater_name))
-            self.mmu.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=%s TARGET=0" % heater_name)
+            hname = self._heater_name(heaters[gate])
+            self.mmu.log_debug("MmuEnvironmentManager: Gate %d heater %s turned off" % (gate, hname))
+            self.mmu.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=%s TARGET=0" % hname)
+
+
+    def _heater_name(self, heater_obj_name):
+        """
+        Return just the simple heater name from the heater object name
+        """
+        return heater_obj_name.split(None, 1)[1].strip()
 
 
     def _get_heater_status(self, gate=None):

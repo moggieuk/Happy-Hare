@@ -1331,6 +1331,9 @@ class Mmu:
                 self._display_visual_state()
             self.report_necessary_recovery()
 
+            # Ensure espooler print assist is correct
+            self._adjust_espooler_assist()
+
             # Initially disable clog/runout detection
             self._disable_filament_monitoring()
 
@@ -1484,7 +1487,6 @@ class Mmu:
             'spoolman_support': self.spoolman_support,
             'bowden_progress': self._get_bowden_progress(), # Simple 0-100%. -1 if not performing bowden move
             'espooler_active': self.espooler.get_operation(self.gate_selected)[0] if self.has_espooler() else '',
-# PAUL add per gate espooler
             'clog_detection': self.sync_feedback_manager.flowguard_encoder_mode,         # DEPRECATED
             'clog_detection_enabled': self.sync_feedback_manager.flowguard_encoder_mode, # DEPRECATED
             'endless_spool': self.endless_spool_enabled,           # DEPRECATED
@@ -1495,6 +1497,10 @@ class Mmu:
         for m in self.managers:
             if hasattr(m, 'get_status'):
                 status.update(m.get_status(eventtime))
+
+        # Not yet refactored as manager class
+        if self.has_espooler():
+            status.update(self.espooler.get_status(eventtime))
 
         status['sensors'] = self.sensor_manager.get_status(eventtime)
         if self.has_encoder():
@@ -3024,8 +3030,8 @@ class Mmu:
             # (must call after print_state is set so we know we are printing)
             self.reset_sync_gear_to_extruder(self.sync_to_extruder)
 
-            # Start espooler for current gate
-            self._espooler_assist_on()
+            # Ensure espooler wasn't reset
+            self._adjust_espooler_assist()
 
     # Hack: Force state transistion to printing for any early moves if MMU_PRINT_START not yet run
     def _fix_started_state(self):
@@ -3038,7 +3044,6 @@ class Mmu:
         if not self.is_in_endstate():
             self.log_trace("_on_print_end(%s)" % state)
             self.movequeues_wait()
-            self._espooler_assist_off()
             self._clear_saved_toolhead_position()
             self.resume_to_state = "ready"
             self.paused_extruder_temp = None
@@ -3064,7 +3069,6 @@ class Mmu:
         self._fix_started_state() # Get out of 'started' state before transistion to mmu pause
 
         run_pause_macro = run_error_macro = recover_pos = send_event = False
-        self._espooler_assist_off()
         if self.is_in_print(force_in_print):
             if not self.is_mmu_paused():
                 self._disable_filament_monitoring() # Disable filament monitoring while in paused state
@@ -3172,8 +3176,8 @@ class Mmu:
         # Restore print position as final step so no delay
         self._restore_toolhead_position(operation, restore=restore)
 
-        # Restart espooler if configured
-        self._espooler_assist_on()
+        # Ensure espooler wasn't reset
+        self._adjust_espooler_assist()
 
         # Ready to continue printing...
 
@@ -3182,8 +3186,6 @@ class Mmu:
             self.wrap_gcode_command("%s%s" % (self.clear_position_macro, " RESET=1" if reset else ""))
 
     def _save_toolhead_position_and_park(self, operation, next_pos=None):
-        self._espooler_assist_off() # Ensure espooler is off before parking
-
         if operation not in ['complete', 'cancel'] and 'xyz' not in self.toolhead.get_status(self.reactor.monotonic())['homed_axes']:
             self.gcode.run_script_from_command(self.toolhead_homing_macro)
             self.movequeues_wait()
@@ -3446,6 +3448,22 @@ class Mmu:
             self.save_variable(self.VARS_MMU_FILAMENT_POS, state, write=True)
         elif self.save_variables.allVariables.get(self.VARS_MMU_FILAMENT_POS, 0) != self.FILAMENT_POS_UNKNOWN:
             self.save_variable(self.VARS_MMU_FILAMENT_POS, self.FILAMENT_POS_UNKNOWN, write=True)
+
+        self._adjust_espooler_assist()
+
+    def _adjust_espooler_assist(self):
+        """
+        Ensure espooler print assist is in correct state based on whether the filament is in the extruder or not
+        """
+        if self.has_espooler():
+            if self.filament_pos == self.FILAMENT_POS_LOADED:
+                if self.ESPOOLER_PRINT in self.espooler_operations and self.espooler_printing_power == 0:
+                    # Enable in-print assist because filament is in the extruder
+                    self.espooler.set_print_assist_mode(self.gate_selected)
+            else:
+                # Ensure in-print assist mode is removed
+                # (it could have been enabled manually with MMU_ESPOOLER)
+                self.espooler.reset_print_assist_mode()
 
     def _set_filament_direction(self, direction):
         self.filament_direction = direction
@@ -3929,7 +3947,7 @@ class Mmu:
 
                 if operation in [self.ESPOOLER_ASSIST, self.ESPOOLER_REWIND]:
                     self.log_info("Sending 'mmu:espooler_burst' event(gate=%d, power=%d, duration=%.2fs, direction=%s)" % (gate, power, duration, operation))
-                    self.printer.send_event("mmu:espooler_burst", gate, power / 100., duration, self.ESPOOLER_ASSIST)
+                    self.printer.send_event("mmu:espooler_burst", gate, power / 100., duration, operation)
                 else:
                     self.log_error("Must specify 'assist' or 'rewind' operation for burst")
 
@@ -3942,7 +3960,7 @@ class Mmu:
                 else:
                     if gate != self.gate_selected:
                         self.log_warning("In-print assist mode set for non selected gate - for testing only")
-                    self.espooler.set_operation(gate, 0, self.ESPOOLER_PRINT)
+                    self.espooler.set_operation(gate, power / 100, self.ESPOOLER_PRINT)
 
             elif operation != self.ESPOOLER_OFF:
                 self.espooler.set_operation(gate, power / 100, operation)
@@ -5640,25 +5658,13 @@ class Mmu:
                 self._wait_for_espooler = not homing_move
                 self.espooler.set_operation(self.gate_selected, pwm_value, espooler_operation)
         try:
-            # Note gate_selected doesn't change in this use case
+            # Note gate_selected doesn't change in this use case, it's just filament movement
             yield self
 
         finally:
             self._wait_for_espooler = False
             if espooler_operation != self.ESPOOLER_OFF:
                 self.espooler.set_operation(self.gate_selected, 0, self.ESPOOLER_OFF)
-
-    # Turn on print espooler in-print assist mode for current gate
-    def _espooler_assist_on(self):
-        self.log_error("PAUL: _espooler_assist_on (gate:%d)" % self.gate_selected)
-        if self.has_espooler() and self.is_printing() and self.ESPOOLER_PRINT in self.espooler_operations:
-            self.espooler.set_operation(self.gate_selected, self.espooler_printing_power / 100, self.ESPOOLER_PRINT)
-
-    # Turn off espooler in-print assist mode
-    def _espooler_assist_off(self):
-        self.log_error("PAUL: _espooler_assist_off")
-        if self.has_espooler():
-            self.espooler.set_operation(None, 0, self.ESPOOLER_OFF) # PAUL this is a special off case..
 
 
 ##############################################
@@ -5888,12 +5894,6 @@ class Mmu:
         prev_sync = (self.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER)
         gate_selected = self.gate_selected
 
-        # Turn espooler in-print assist off
-        espooler_state = None
-        if self.has_espooler():
-            espooler_state = self.espooler.get_operation(gate_selected)
-            self._espooler_assist_off()
-
         # Outermost-only suppression of grip release
         clear_suppress = not self._suppress_release_grip
         self._suppress_release_grip = True
@@ -5906,11 +5906,6 @@ class Mmu:
 
             # Restore sync state (logic can act on global suppression flag)
             self.reset_sync_gear_to_extruder(prev_sync)
-
-            # Restore espooler state
-            if self.has_espooler() and espooler_state is not None and gate_selected == self.gate_selected: # PAUL added same gate check
-                # Only restoring if the same gate is selected
-                self.espooler.set_operation(gate_selected, espooler_state[1], espooler_state[0])
 
 
     # ---------- TMC Stepper Current Control ----------
@@ -6192,7 +6187,6 @@ class Mmu:
                 self._set_gate_selected(gate)
                 self.led_manager.gate_map_changed(_prev_gate)
                 self.led_manager.gate_map_changed(gate)
-                self._espooler_assist_on() # Will switch assist print mode on current gate if printing
 
         except MmuError as ee:
             self.unselect_gate()
@@ -6201,10 +6195,8 @@ class Mmu:
             self._next_gate = None
 
     def unselect_gate(self):
-        self._espooler_assist_off() # PAUL moved to here
         self.selector.select_gate(self.TOOL_GATE_UNKNOWN) # Required for type-B MMU's to unsync
         self._set_gate_selected(self.TOOL_GATE_UNKNOWN)
-#PAUL        self._espooler_assist_off()
 
     def select_tool(self, tool):
         if tool < 0 or tool >= self.num_gates:
@@ -7303,13 +7295,10 @@ class Mmu:
             self.espooler_assist_extruder_move_length = gcmd.get_float("ESPOOLER_ASSIST_EXTRUDER_MOVE_LENGTH", self.espooler_assist_extruder_move_length, above=10.)
             self.espooler_assist_burst_power = gcmd.get_int("ESPOOLER_ASSIST_BURST_POWER", self.espooler_assist_burst_power, minval=0, maxval=100)
             self.espooler_assist_burst_duration = gcmd.get_float("ESPOOLER_ASSIST_BURST_DURATION", self.espooler_assist_burst_duration, above=0., maxval=10.)
+            self.espooler_assist_burst_trigger = gcmd.get_int("ESPOOLER_ASSIST_BURST_TRIGGER", self.espooler_assist_burst_trigger, minval=0, maxval=1)
+            self.espooler_assist_burst_trigger_max = gcmd.get_int("ESPOOLER_ASSIST_BURST_TRIGGER_MAX", self.espooler_assist_burst_trigger_max, minval=1)
             self.espooler_rewind_burst_power = gcmd.get_int("ESPOOLER_REWIND_BURST_POWER", self.espooler_rewind_burst_power, minval=0, maxval=100)
             self.espooler_rewind_burst_duration = gcmd.get_float("ESPOOLER_REWIND_BURST_DURATION", self.espooler_rewind_burst_duration, above=0., maxval=10.)
-            espooler_assist_burst_trigger = gcmd.get_int("ESPOOLER_ASSIST_BURST_TRIGGER", self.espooler_assist_burst_trigger, minval=0, maxval=1)
-            if espooler_assist_burst_trigger != self.espooler_assist_burst_trigger:
-                self._espooler_assist_off() # Ensure we reset correctly
-                self.espooler_assist_burst_trigger = espooler_assist_burst_trigger
-            self.espooler_assist_burst_trigger_max = gcmd.get_int("ESPOOLER_ASSIST_BURST_TRIGGER_MAX", self.espooler_assist_burst_trigger_max, minval=1)
 
             espooler_operations = list(gcmd.get('ESPOOLER_OPERATIONS', ','.join(self.espooler_operations)).split(','))
             for op in espooler_operations:
