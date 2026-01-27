@@ -3866,6 +3866,7 @@ class Mmu:
     cmd_MMU_ESPOOLER_param_help = (
         "MMU_ESPOOLER: %s\n" % cmd_MMU_ESPOOLER_help
         + "ALLOFF = [0|1] Quick way to turn all espoolers off\n"
+        + "TRIGGER = [0|1] Fire in-print trigger for testing\n"
         + "BURST = [0|1] Jog in direction of OPERATION (assist|rewind) using configured burst duration and power\n"
         + "GATE = g Specify gate to operate on (defaults to current gate)\n"
         + "OPERATION = [assist|off|print|rewind] Set espooler operation mode\n"
@@ -3890,10 +3891,18 @@ class Mmu:
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
         alloff = bool(gcmd.get_int('ALLOFF', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
+        trigger = bool(gcmd.get_int('TRIGGER', 0, minval=0, maxval=1))
+        gate = gcmd.get_int('GATE', None, minval=0, maxval=self.num_gates - 1)
 
         if reset:
             # Turn off in-print assist mode
             self.espooler.reset_print_assist_mode()
+
+        if trigger:
+            # Mimick in-print assist trigger
+            # No gate specified = similar to extruder movement
+            # With gate specified = similar to filament tension trigger
+            self.espooler.advance(gate)
 
         if alloff:
             for gate in range(self.num_gates):
@@ -3902,7 +3911,6 @@ class Mmu:
         elif operation is not None:
             operation = operation.lower()
 
-            gate = gcmd.get_int('GATE', None, minval=0, maxval=self.num_gates - 1)
             if gate is None:
                 gate = self.gate_selected
             if gate < 0:

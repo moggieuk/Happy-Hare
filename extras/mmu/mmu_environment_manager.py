@@ -976,11 +976,11 @@ class MmuEnvironmentManager:
         Move the spools in the retract direction a small distance, 30 degrees or so
         """
         self.mmu.log_info("Rotating spools in gates: %s" % ",".join(map(str, gates)))
-        power = self.mmu.espooler_assist_burst_power
-        duration = self.mmu.espooler_assist_burst_duration
+        power = self.mmu.espooler_rewind_burst_power
+        duration = self.mmu.espooler_rewind_burst_duration
         for gate in gates:
-            # This event will cause a small rewind action to rotate the spool (reverse of burst assist action)
-            self.mmu.printer.send_event("mmu:espooler_rotate", gate, power / 100., duration)
+            # This event will cause a small rewind action to rotate the spool
+            self.mmu.printer.send_event("mmu:espooler_burst", gate, power / 100., duration, self.mmu.ESPOOLER_REWIND)
 
 
     def _get_max_drying_temp_time(self, gates):

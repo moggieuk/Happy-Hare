@@ -448,7 +448,9 @@ espooler_assist_reduced_speed: 50		# Control the % of the rewind speed that is a
 espooler_printing_power: 0			# If >0, fixes the % of PWM power while printing. 0=allows burst movement
 espooler_operations: rewind, assist, print	# List of operational modes (allows disabling even if h/w is configured)
 #
-# The following burst configuration is used only if 'print' operation is enabled and 'espooler_printing_power: 0'
+# The following burst configuration is used to control the small rotation in the ASSIST direction optionally used
+# when in 'print' operation is enabled, 'espooler_printing_power: 0' and is triggered (tension switch or extruder movement).
+# It can also be used to loosen filament with 'MMU_ESPOOLER COMMAND=assist BURST=1'
 #
 espooler_assist_extruder_move_length: 100	# Distance (mm) extruder needs to move between each assist burst
 espooler_assist_burst_power: 100		# The % power of the burst move
@@ -458,10 +460,10 @@ espooler_assist_burst_trigger_max: 3		# If trigger assist switch is fitted this 
 #
 # The following burst configuration is used to control the small rotation in the REWIND direction optionally used
 # when running running the filament drying cycle. The goal is to rotate the spool 60-90 degrees. It can also be
-# used to tighten the filament with 'MMU_ESPOOLER COMMAND=rotate'
+# used to tighten the filament with 'MMU_ESPOOLER COMMAND=rewind BURST=1'
 #
-espooler_rotate_burst_power: 100		# The % power of the rewind burst move
-espooler_rotate_burst_duration: 0.4		# The duration of the rewind burst move is seconds
+espooler_rewind_burst_power: 100		# The % power of the rewind burst move
+espooler_rewind_burst_duration: 0.4		# The duration of the rewind burst move is seconds
 
 
 # Heater / Environment Management ------------------------------------------------------------------------------------
