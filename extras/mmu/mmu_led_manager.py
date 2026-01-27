@@ -1,9 +1,15 @@
+# -*- coding: utf-8 -*-
 # Happy Hare MMU Software
 #
-# Manager to centralize mmu_led operations accross all mmu_units
-#
-# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
+#
+# Goal: Manager class to centralize mmu_led operations accross all mmu_units
+#
+# Implements commands:
+#   MMU_SET_LED
+#   MMU_LED
+#
 #
 # (\_/)
 # ( *,*)

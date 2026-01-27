@@ -3,7 +3,7 @@
 # Allows for flexible creation of virtual leds chains - one for each of the supported
 # segments (exit, entry, status). Entry and exit are indexed by gate number.
 #
-# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
 # (\_/)

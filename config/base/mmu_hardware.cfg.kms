@@ -3,7 +3,7 @@
 #
 # EDIT THIS FILE BASED ON YOUR SETUP
 #
-# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
@@ -95,18 +95,30 @@ mmu_version: 1.0			# MMU hardware version number (add mod suffix documented abov
 #variable_rotation_distances: 1		# 1 = If MMU design has dissimilar drive/BMG gears, thus rotation distance, 0 = One drive gear (e.g. Tradrack)
 #require_bowden_move: 1			# 1 = If MMU design has bowden move that is included in load/unload, 0 = zero length bowden (skip bowden move)
 #filament_always_gripped: 1		# 1 = Filament is always trapped by MMU (most type-B designs), 0 = MMU can release filament
-has_bypass: 1				# 1 = Bypass gate available, 0 = No filament bypass possible
+#has_bypass: {has_bypass}				# 1 = Bypass gate available, 0 = No filament bypass possible
+
+homing_extruder: 1			# CAUTION: Normally this should be 1. 0 will disable the homing extruder capability
 
 # Uncomment to change the display name in UI's.  Defaults to the vendor name
 #display_name: My Precious
 
-# Fullname of environment sensor for MMU filament storage (displays temp and humidity in UI)
+# Fullname of environment sensor for MMU filament storage (displays temp and humidity in UI). Leave empty if sensor is not fitted
 # Polls for "temperature" and "humidity"
 # E.g. If you have a section like this: [temperature_sensor MMU_enclosure]
-# Set: environment_sensor: temperature_sensor MMU_enclosure
+#      Set: environment_sensor: temperature_sensor MMU_enclosure
 environment_sensor: temperature_sensor MMU_enviroment_kms
 
-homing_extruder: 1			# CAUTION: Normally this should be 1. 0 will disable the homing extruder capability
+# Full name of filament heater object. Leave empty if heater is not fitted
+# E.g. If you have a section like this: [heater_generic MMU_heater]
+#      Set: filament_heater: heater_generic MMU_heater
+filament_heater: heater_generic MMU_heater_kms
+
+# PER-GATE heaters and environment sensors. Some modular MMU designs have per-gate control (e.g. EMU). For this type of MMU, leave
+# 'environment_sensor' and 'filament_heater' empty and define a list of heaters and sensors here. Note the length of the list must
+# match the number of gates. Leave this settings empty if defining a single sensor/heater.
+environment_sensors:                    # Comma separated list of full environment sensor object names
+filament_heaters:                       # Comma separated list of full heater object names
+max_concurrent_heaters: 1               # Limit the number of simultaneously active heaters (power/PSU protection)
 
 
 # FILAMENT DRIVE GEAR STEPPER(S)  --------------------------------------------------------------------------------------
@@ -457,3 +469,9 @@ control:watermark
 #pid_Kd=
 min_temp:0
 max_temp:70
+
+[verify_heater MMU_heater_kms]
+max_error: 300
+check_gain_time: 600
+hysteresis: 10
+heating_gain: 1

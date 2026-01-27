@@ -1,7 +1,7 @@
 # Happy Hare MMU Software
 # Main module wrapper
 #
-# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
 # Goal: Firmware to control any Klipper based MMU

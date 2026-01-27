@@ -4,7 +4,7 @@
 # All existing servo functionality is available with the addition of a 'DURATION'
 # parameter for setting PWM pulse train with auto off
 #
-# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
 # Based on original servo.py Copyright (C) 2017-2020  Kevin O'Connor <kevin@koconnor.net>

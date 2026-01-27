@@ -1,7 +1,7 @@
 # Happy Hare MMU Software
 # Logging helpers
 #
-# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
 # (\_/)
@@ -11,6 +11,9 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import logging, logging.handlers, threading, os, queue, atexit
+
+# MMU subcomponent clases
+from .mmu_shared import *
 
 class MmuLogger:
     def __init__(self, logfile_path):
@@ -29,7 +32,7 @@ class MmuLogger:
         atexit.register(self.shutdown)
 
     def log(self, message):
-        self.logger.info(message)
+        self.logger.info(message.replace(UI_SPACE, ' ').replace(UI_SEPARATOR, ' '))
 
     def shutdown(self):
         if self.queue_listener is not None:

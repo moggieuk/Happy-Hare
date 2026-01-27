@@ -1,14 +1,31 @@
 # Happy Hare MMU Software
-# Implementation of various selector variations:
 #
-# VirtualSelector
-#  - Used to simply select correct gear stepper
-#  - For type-B AMS-like designs like 8-track
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
 #
-# LinearSelector
+# Goal: Implementation of various selector variations:
+#
+# VirtualSelector:
+#  Implements selector for type-B MMU's with gear driver per gate
+#   - Uses gear driver stepper per-gate
+#   - For type-B designs like BoxTurtle, KMS, QuattroBox
+#
+# LinearSelector:
+#  Implements Linear Selector for type-A MMU's without servo
+#  - Stepper controlled linear movement with endstop
+#  - Supports type-A with combined selection and filament gripping line ERCFv3
+#
+# LinearServoSelector:
+#  Implements Linear Selector for type-A MMU's with servo
 #  - Stepper controlled linear movement with endstop
 #  - Servo controlled filament gripping
-#  - Supports type-A classic MMU's like ERCF and Tradrack
+#  - Supports type-A classic MMU's like ERCFv1.1, ERCFv2.0 and Tradrack
+#
+# LinearMultiGearSelector:
+#  Implements Linear Selector for type-C MMU's with multiple gear steppers:
+#   - Uses gear driver stepper per-gate
+#   - Uses selector stepper for gate selection with endstop
+#   - Supports type-A classic MMU's like ERCF and Tradrack
 #
 # Rotary Selector
 # - Rotary Selector for 3D Chamelon using stepper selection
@@ -25,8 +42,13 @@
 # - Stepper based Selector for ViViD with per-gate index sensors
 #
 #
-# Copyright (C) 2022-2025  moggieuk#6538 (discord)
-#                          moggieuk@hotmail.com
+# Implements commands (selector dependent):
+#    MMU_CALIBRATE_SELECTOR
+#    MMU_SOAKTEST_SELECTOR
+#    MMU_SERVO
+#    MMU_GRIP
+#    MMU_RELEASE
+#
 #
 # (\_/)
 # ( *,*)
@@ -55,6 +77,7 @@ class BaseSelector:
 
     def __init__(self, mmu):
         self.mmu = mmu
+        self.mmu.managers.append(self)
         self.is_homed = False
         self.mmu_unit = 0
 
@@ -106,7 +129,7 @@ class BaseSelector:
     def has_bypass(self):
         return self.mmu.mmu_machine.has_bypass
 
-    def get_status(self):
+    def get_status(self, eventtime):
         return {
             'has_bypass': self.has_bypass()
         }
@@ -129,8 +152,10 @@ class BaseSelector:
 
 
 ################################################################################
-# Virtual Selector
-# Implements selector for type-B MMU's with gear driver per gate
+# VirtualSelector:
+#  Implements selector for type-B MMU's with gear driver per gate
+#   - Uses gear driver stepper per-gate
+#   - For type-B designs like BoxTurtle, KMS, QuattroBox
 ################################################################################
 
 class VirtualSelector(BaseSelector, object):
@@ -165,9 +190,11 @@ class VirtualSelector(BaseSelector, object):
 
 
 ################################################################################
-# Linear Selector
-# Implements Linear Selector for type-A MMU's that uses stepper conrolled
-# rail[0] on mmu toolhead
+# LinearSelector:
+#  Implements Linear Selector for type-A MMU's with servo
+#  - Stepper controlled linear movement with endstop
+#  - Optional servo controlled filament gripping
+#  - Supports type-A classic MMU's like ERCF and Tradrack
 ################################################################################
 
 class LinearSelector(BaseSelector, object):
@@ -184,7 +211,7 @@ class LinearSelector(BaseSelector, object):
         self.selector_move_speed = mmu.config.getfloat('selector_move_speed', 200, minval=1.)
         self.selector_homing_speed = mmu.config.getfloat('selector_homing_speed', 100, minval=1.)
         self.selector_touch_speed = mmu.config.getfloat('selector_touch_speed', 60, minval=1.)
-        self.selector_touch_enable = mmu.config.getint('selector_touch_enable', 1, minval=0, maxval=1)
+        self.selector_touch_enabled = mmu.config.getint('selector_touch_enabled', 1, minval=0, maxval=1)
 
         # To simplfy config CAD related parameters are set based on vendor and version setting
         #
@@ -242,8 +269,16 @@ class LinearSelector(BaseSelector, object):
         self.cad_bypass_block_delta = mmu.config.getfloat('cad_bypass_block_delta', self.cad_bypass_block_delta, above=0.) # ERCF v1.1 only
         self.cad_selector_tolerance = mmu.config.getfloat('cad_selector_tolerance', self.cad_selector_tolerance, above=0.) # Extra movement allowed by selector
 
-        # Sub components
-        self.servo = LinearSelectorServo(mmu)
+        # Sub components (optional servo)
+        if isinstance(self, LinearServoSelector):
+            self.servo = LinearSelectorServo(mmu) if isinstance(self, LinearServoSelector) else None
+        else:
+            self.servo = None
+            # Read all controller parameters related to to stop klipper complaining. This is done to allow
+            # for uniform and shared mmu_parameters.cfg file regardless of configuration.
+            for option in ['servo_']:
+                for key in mmu.config.get_prefix_options(option):
+                    _ = mmu.config.get(key)
 
         # Register GCODE commands specific to this module
         gcode = mmu.printer.lookup_object('gcode')
@@ -262,7 +297,8 @@ class LinearSelector(BaseSelector, object):
 
     def reinit(self):
         # Sub components
-        self.servo.reinit()
+        if self.servo:
+            self.servo.reinit()
 
     def handle_connect(self):
         self.mmu_toolhead = self.mmu.mmu_toolhead
@@ -304,7 +340,8 @@ class LinearSelector(BaseSelector, object):
             self.mmu.log_debug("TMC driver not found for selector_stepper, cannot use 'touch' movement and recovery")
 
         # Sub components
-        self.servo.handle_connect()
+        if self.servo:
+            self.servo.handle_connect()
 
     def _ensure_list_size(self, lst, size, default_value=-1):
         lst = lst[:size]
@@ -313,11 +350,13 @@ class LinearSelector(BaseSelector, object):
 
     def handle_disconnect(self):
         # Sub components
-        self.servo.handle_disconnect()
+        if self.servo:
+            self.servo.handle_disconnect()
 
     def handle_ready(self):
         # Sub components
-        self.servo.handle_ready()
+        if self.servo:
+            self.servo.handle_ready()
 
     def home(self, force_unload = None):
         if self.mmu.check_if_bypass(): return
@@ -351,23 +390,28 @@ class LinearSelector(BaseSelector, object):
             self.set_position(self.selector_offsets[gate])
 
     def filament_drive(self, buzz_gear=True):
-        self.servo.servo_down(buzz_gear=buzz_gear)
+        if self.servo:
+            self.servo.servo_down(buzz_gear=buzz_gear)
 
     def filament_release(self, measure=False):
-        return self.servo.servo_up(measure=measure)
+        if self.servo:
+            return self.servo.servo_up(measure=measure)
 
     def filament_hold_move(self): # AKA position for holding filament and moving selector
-        self.servo.servo_move()
+        if self.servo:
+            self.servo.servo_move()
 
     def get_filament_grip_state(self):
-        return self.servo.get_filament_grip_state()
+        if self.servo:
+            return self.servo.get_filament_grip_state()
 
     def disable_motors(self):
         stepper_enable = self.mmu.printer.lookup_object('stepper_enable')
         se = stepper_enable.lookup_enable(self.selector_stepper.get_name())
         se.motor_disable(self.mmu_toolhead.get_last_move_time())
         self.is_homed = False
-        self.servo.disable_motors()
+        if self.servo:
+            self.servo.disable_motors()
 
     def enable_motors(self):
         stepper_enable = self.mmu.printer.lookup_object('stepper_enable')
@@ -380,7 +424,7 @@ class LinearSelector(BaseSelector, object):
             self.move(None, pos + 5, wait=False)
             self.move(None, pos - 5, wait=False)
             self.move(None, pos, wait=False)
-        elif motor == "servo":
+        elif motor == "servo" and self.servo:
             self.servo.buzz_motor()
         else:
             return False
@@ -389,39 +433,43 @@ class LinearSelector(BaseSelector, object):
     def has_bypass(self):
         return self.mmu.mmu_machine.has_bypass and self.bypass_offset >= 0
 
-    def get_status(self):
-        status = super(LinearSelector, self).get_status()
-        status.update(self.servo.get_status())
+    def get_status(self, eventtime):
+        status = super(LinearSelector, self).get_status(eventtime)
+        if self.servo:
+            status.update(self.servo.get_status(eventtime))
         return status
 
     def get_mmu_status_config(self):
         msg = "\nSelector is NOT HOMED" if not self.is_homed else ""
-        msg += self.servo.get_mmu_status_config()
+        if self.servo:
+            msg += self.servo.get_mmu_status_config()
         return msg
 
     def set_test_config(self, gcmd):
         self.selector_move_speed = gcmd.get_float('SELECTOR_MOVE_SPEED', self.selector_move_speed, minval=1.)
         self.selector_homing_speed = gcmd.get_float('SELECTOR_HOMING_SPEED', self.selector_homing_speed, minval=1.)
         self.selector_touch_speed = gcmd.get_float('SELECTOR_TOUCH_SPEED', self.selector_touch_speed, minval=1.)
-        self.selector_touch_enable = gcmd.get_int('SELECTOR_TOUCH_ENABLE', self.selector_touch_enable, minval=0, maxval=1)
+        self.selector_touch_enabled = gcmd.get_int('SELECTOR_TOUCH_ENABLED', self.selector_touch_enabled, minval=0, maxval=1)
 
         # Sub components
-        self.servo.set_test_config(gcmd)
+        if self.servo:
+            self.servo.set_test_config(gcmd)
 
     def get_test_config(self):
         msg = "\n\nSELECTOR:"
         msg += "\nselector_move_speed = %.1f" % self.selector_move_speed
         msg += "\nselector_homing_speed = %.1f" % self.selector_homing_speed
         msg += "\nselector_touch_speed = %.1f" % self.selector_touch_speed
-        msg += "\nselector_touch_enable = %d" % self.selector_touch_enable
+        msg += "\nselector_touch_enabled = %d" % self.selector_touch_enabled
 
         # Sub components
-        msg += self.servo.get_test_config()
+        if self.servo:
+            msg += self.servo.get_test_config()
 
         return msg
 
     def check_test_config(self, param):
-        return (vars(self).get(param) is None) and self.servo.check_test_config(param)
+        return (vars(self).get(param) is None) and (self.servo is None or self.servo.check_test_config(param))
 
     def get_uncalibrated_gates(self, check_gates):
         return [gate for gate, value in enumerate(self.selector_offsets) if value == -1 and gate in check_gates]
@@ -443,7 +491,7 @@ class LinearSelector(BaseSelector, object):
             with self.mmu.wrap_sync_gear_to_extruder():
                 self.mmu.calibrating = True
                 self.mmu.reinit()
-                self.servo.servo_move()
+                self.filament_hold_move()
                 successful = False
                 if gate != -1:
                     successful = self._calibrate_selector(gate, extrapolate=not single, save=save)
@@ -656,7 +704,7 @@ class LinearSelector(BaseSelector, object):
 
     def _home_selector(self):
         self.mmu.unselect_gate()
-        self.servo.servo_move()
+        self.filament_hold_move()
         self.mmu.movequeues_wait()
         try:
             homing_state = mmu_machine.MmuHoming(self.mmu.printer, self.mmu_toolhead)
@@ -684,7 +732,7 @@ class LinearSelector(BaseSelector, object):
                         found = self.mmu.check_filament_in_gate()
                         if not found:
                             # Push filament into view of the gate endstop
-                            self.servo.servo_down()
+                            self.filament_drive()
                             _,_,measured,_ = self.mmu.trace_filament_move("Locating filament", self.mmu.gate_parking_distance + self.mmu.gate_endstop_to_encoder + 10.)
                             if self.mmu.has_encoder() and measured < self.mmu.encoder_min:
                                 raise MmuError("Unblocking selector failed bacause unable to move filament to clear")
@@ -722,7 +770,7 @@ class LinearSelector(BaseSelector, object):
 
         # Set appropriate speeds and accel if not supplied
         if homing_move != 0:
-            speed = speed or (self.selector_touch_speed if self.selector_touch_enable or endstop_name == self.mmu.SENSOR_SELECTOR_TOUCH else self.selector_homing_speed)
+            speed = speed or (self.selector_touch_speed if self.selector_touch_enabled or endstop_name == self.mmu.SENSOR_SELECTOR_TOUCH else self.selector_homing_speed)
         else:
             speed = speed or self.selector_move_speed
         accel = accel or self.mmu_toolhead.get_selector_limits()[1]
@@ -798,7 +846,7 @@ class LinearSelector(BaseSelector, object):
         return traveled, homed
 
     def use_touch_move(self):
-        return self.selector_tmc and self.mmu.SENSOR_SELECTOR_TOUCH in self.selector_rail.get_extra_endstop_names() and self.selector_touch_enable
+        return self.selector_tmc and self.mmu.SENSOR_SELECTOR_TOUCH in self.selector_rail.get_extra_endstop_names() and self.selector_touch_enabled
 
 
 
@@ -1043,13 +1091,53 @@ class LinearSelectorServo:
                 "DOWN" if self.servo_state == self.SERVO_DOWN_STATE else "MOVE" if self.servo_state == self.SERVO_MOVE_STATE else "unknown")
         return msg
 
-    def get_status(self):
+    def get_status(self, eventtime):
         return {
             'servo': "Up" if self.servo_state == self.SERVO_UP_STATE else
                      "Down" if self.servo_state == self.SERVO_DOWN_STATE else
                      "Move" if self.servo_state == self.SERVO_MOVE_STATE else
                      "Unknown",
         }
+
+
+
+################################################################################
+# LinearServoSelector:
+#  Implements Linear Selector for type-A MMU's with servo
+#  - Stepper controlled linear movement with endstop
+#  - Servo controlled filament gripping
+#  - Supports type-A with combined selection and filament gripping line ERCFv3
+#
+class LinearServoSelector(LinearSelector, object):
+
+    def __init__(self, mmu):
+        super(LinearServoSelector, self).__init__(mmu)
+
+
+
+################################################################################
+# LinearMultiGearSelector:
+#  Implements Linear Selector for type-C MMU's that:
+#   - Uses gear driver stepper gate
+#   - Uses selector stepper for gate selection with endstop
+#   - Supports type-A classic MMU's like ERCF and Tradrack
+# 
+################################################################################
+
+class LinearMultiGearSelector(LinearSelector, object):
+
+    def __init__(self, mmu):
+        super(LinearMultiGearSelector, self).__init__(mmu)
+
+    # Selector "Interface" methods ---------------------------------------------
+
+    def select_gate(self, gate):
+        self.mmu_toolhead.select_gear_stepper(gate) # Select correct gear drive stepper or none if bypass
+        super(LinearMultiGearSelector, self).select_gate(gate)
+
+    def restore_gate(self, gate):
+        self.mmu.mmu_toolhead.select_gear_stepper(gate) # Select correct gear drive stepper or none if bypass
+        super(LinearMultiGearSelector, self).restore_gate(gate)
 
 
 
@@ -1082,7 +1170,7 @@ class RotarySelector(BaseSelector, object):
         self.selector_move_speed = mmu.config.getfloat('selector_move_speed', 200, minval=1.)
         self.selector_homing_speed = mmu.config.getfloat('selector_homing_speed', 100, minval=1.)
         self.selector_touch_speed = mmu.config.getfloat('selector_touch_speed', 60, minval=1.) # Not used with 3DChameleon but allows for param in config
-        self.selector_touch_enable = mmu.config.getint('selector_touch_enable', 1, minval=0, maxval=1) # Not used with 3DChameleon but allows for param in config
+        self.selector_touch_enabled = mmu.config.getint('selector_touch_enabled', 1, minval=0, maxval=1) # Not used with 3DChameleon but allows for param in config
 
         # To simplfy config CAD related parameters are set based on vendor and version setting
         #
@@ -1251,8 +1339,8 @@ class RotarySelector(BaseSelector, object):
             return False
         return True
 
-    def get_status(self):
-        status = super(RotarySelector, self).get_status()
+    def get_status(self, eventtime):
+        status = super(RotarySelector, self).get_status(eventtime)
         status.update({
             'grip': "Gripped" if self.grip_state == self.mmu.FILAMENT_DRIVE_STATE else "Released",
         })
@@ -1712,8 +1800,8 @@ class ServoSelector(BaseSelector, object):
     def has_bypass(self):
         return self.mmu.mmu_machine.has_bypass and self.selector_bypass_angle >= 0
 
-    def get_status(self):
-        status = super(ServoSelector, self).get_status()
+    def get_status(self, eventtime):
+        status = super(ServoSelector, self).get_status(eventtime)
         status.update({
             'grip': "Gripped" if self.servo_state == self.mmu.FILAMENT_DRIVE_STATE else "Released",
         })
@@ -1875,7 +1963,7 @@ class IndexedSelector(BaseSelector, object):
         self.selector_move_speed = mmu.config.getfloat('selector_move_speed', 100, minval=1.)
         self.selector_homing_speed = mmu.config.getfloat('selector_homing_speed', self.selector_move_speed, minval=1.)
         self.selector_touch_speed = mmu.config.getfloat('selector_touch_speed', 60, minval=1.) # Not used with ViViD but allows for param in config
-        self.selector_touch_enable = mmu.config.getint('selector_touch_enable', 1, minval=0, maxval=1) # Not used with ViViD but allows for param in config
+        self.selector_touch_enabled = mmu.config.getint('selector_touch_enabled', 1, minval=0, maxval=1) # Not used with ViViD but allows for param in config
         self.selector_index_distance = mmu.config.getfloat('selector_index_distance', 5, minval=0.)
 
         # To simplfy config CAD related parameters are set based on vendor and version setting

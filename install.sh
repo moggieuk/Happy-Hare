@@ -3,14 +3,15 @@
 #
 # Installer / Updater script
 #
-# Copyright (C) 2022  moggieuk#6538 (discord) moggieuk@hotmail.com
+# Copyright (C) 2022-2026 moggieuk#6538 (discord)
+#                         moggieuk@hotmail.com
 #
 # Creality K1 Support
 #               2024  hamyy <oudy_1999@hotmail.com>
 #               2024  Unsweeticetea <iamzevle@gmail.com>
 #               2024  Dmitry Kychanov <k1-801@mail.ru>
 #
-VERSION=3.41 # Important: Keep synced with mmy.py
+VERSION=3.42 # Important: Keep synced with mmy.py
 
 F_VERSION=$(echo "$VERSION" | sed 's/\([0-9]\+\)\.\([0-9]\)\([0-9]\)/\1.\2.\3/')
 SCRIPT="$(readlink -f "$0")"
@@ -386,7 +387,10 @@ parse_file() {
                         fi
                     fi
                     # Set/overwrite value in memory
-                    if echo "$value" | grep -q '^{.*}$'; then
+                    if echo "$value" | grep -q '^{ .*}$'; then
+                        # Special case drying_data dict format. This is fragile, can't wait for v4 to launch!
+                        eval "${combined}=\"${value}\""
+                    elif echo "$value" | grep -q '^{.*}$'; then
                         eval "${combined}=\$${value}"
                     elif [ "${value%"${value#?}"}" = "'" ]; then
                         eval "${combined}=\'${value}\'"
@@ -722,6 +726,25 @@ read_previous_config() {
     #if [ "${variable_led_enable}" != "" ]; then
     #    _hw_led_enable=$(convert_boolean_string_to_int "${variable_led_enable}")
     #fi
+
+    # v3.4.2 - not upgraded because new values will correct user adjustments
+    # sync_multiplier_high: 1.05
+    # sync_multiplier_low: 0.95
+    # >> sync_feedback_speed_multiplier: 5
+    # >> sync_feedback_extrude_threshold: 5
+    # v3.4.2 - name rationalization
+    # selector_touch_enable >> selector_touch_enabled
+    # enable_clog_detection >> flowguard_encoder_mode
+    # enable_endless_spool >> endless_spool_enabled
+    if [ "${_param_selector_touch_enable}" != "" ]; then
+        _param_selector_touch_enabled=${_param_selector_touch_enable}
+    fi
+    if [ "${_param_enable_clog_detection}" != "" ]; then
+        _param_flowguard_encoder_mode=${_param_enable_clog_detection}
+    fi
+    if [ "${_param_enable_endless_spool}" != "" ]; then
+        _param_endless_spool_enabled=${_param_enable_endless_spool}
+    fi
 }
 
 check_for_999() {
