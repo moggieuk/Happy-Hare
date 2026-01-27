@@ -400,7 +400,7 @@ class MmuEnvironmentManager:
                     self.mmu.log_info(u"Defaulting to lowest drying temperature of %.1f°C for longest %s given filaments types currently in MMU"
                                       % (lowest, _format_minutes(longest)))
                     temp = lowest
-                    timer = longest
+                    timer = timer or longest
 
             # Note that in multi-heater mode, each gate's temp and end_time is tracked independently
             self._drying_time = timer or self.heater_default_dry_time
