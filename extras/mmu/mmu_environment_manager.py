@@ -59,6 +59,7 @@ class MmuEnvironmentManager:
         self.mmu.managers.append(self)
 
         # Process config
+        self.heater_max_temp         = self.mmu.config.getfloat('heater_max_temp', 65, above=0.) # Never to exceed temp to avoid melting enclosure
         self.heater_default_dry_temp = self.mmu.config.getfloat('heater_default_dry_temp', 45, above=0.)
         self.heater_default_dry_time = self.mmu.config.getfloat('heater_default_dry_time', 300, above=0.)
         self.heater_default_humidity = self.mmu.config.getfloat('heater_default_humidity', 10, above=0.)
@@ -76,7 +77,9 @@ class MmuEnvironmentManager:
             raise self.mmu.config.error("Unparsable 'drying_data' parameter: %s" % str(e))
 
         # Listen of important mmu events
+        self.mmu.printer.register_event_handler("mmu:enabled", self._handle_mmu_enabled)
         self.mmu.printer.register_event_handler("mmu:disabled", self._handle_mmu_disabled)
+        self.mmu.printer.register_event_handler("mmu:espooler_burst_done", self._handle_espooler_burst_done)
 
         # Register GCODE commands ---------------------------------------------------------------------------
         self.mmu.gcode.register_command('MMU_HEATER', self.cmd_MMU_HEATER, desc=self.cmd_MMU_HEATER_help)
@@ -108,6 +111,7 @@ class MmuEnvironmentManager:
         # Optional auto spool rotation (eSpooler)
         self._rotate_timer = None
         self._rotate_enabled = False
+        self.spools_to_rotate = [] # Queue of spools that we are rotating (one at a time)
 
 
     # No ready/connect/disconnect lifecycle hooks
@@ -210,7 +214,7 @@ class MmuEnvironmentManager:
         stop = gcmd.get_int('STOP', None, minval=0, maxval=1)
         dry = gcmd.get_int('DRY', None, minval=0, maxval=1)
         timer = gcmd.get_float('TIMER', None, minval=0.)
-        temp = gcmd.get_float('TEMP', None, minval=0., maxval=100.)
+        temp = gcmd.get_float('TEMP', None, minval=0., maxval=self.heater_max_temp)
         humidity = gcmd.get_float('HUMIDITY', self.heater_default_humidity, minval=0.)
         vent_interval = gcmd.get_float('VENT_INTERVAL', self.heater_vent_interval, minval=0.)
         rotate = gcmd.get_int('ROTATE', 0, minval=0, maxval=1)
@@ -386,7 +390,7 @@ class MmuEnvironmentManager:
                             self.mmu.log_warning(u"Warning: Gate %d has unknown filament type. Cannot validate temperature %.1f°C" % (gate, temp))
                     per_gate_plan[gate]['temp'] = temp
             else:
-                # Default to each gate's recommended temperature and dry time
+                # Default to each filament type recommended temperature and dry time
                 lowest = self.heater_default_dry_temp
                 longest = self.heater_default_dry_time
                 for gate in gates:
@@ -413,7 +417,8 @@ class MmuEnvironmentManager:
             self._drying_rotate_interval = rotate_interval
 
             # Optional spool rotation state
-            self._rotate_enabled = bool(rotate and self.mmu.has_espooler())
+            self.spools_to_rotate = []
+            self._rotate_enabled = bool(rotate)
             if self._rotate_enabled:
                 self._rotate_timer = rotate_interval * 60.0
             else:
@@ -575,9 +580,16 @@ class MmuEnvironmentManager:
         """
         Event indicating that the MMU unit was disabled
         """
-        if eventtime is None: eventtime = self.mmu.reactor.monotonic()
         self._stop_drying_cycle()
         self._heater_off()
+        self.spools_to_rotate = []
+
+
+    def _handle_mmu_enabled(self, eventtime=None):
+        """
+        Event indicating that the MMU unit was enabled
+        """
+        self.reinit()
 
 
     def _check_mmu_environment(self, eventtime):
@@ -683,16 +695,16 @@ class MmuEnvironmentManager:
                 else:
                     candidates = list(self._drying_gates)
 
-                rotate_gates = []
+                gates_to_rotate = []
                 for gate in candidates:
                     try:
                         if self.mmu.gate_status[gate] == self.mmu.GATE_EMPTY:
-                            rotate_gates.append(gate)
+                            gates_to_rotate.append(gate)
                     except Exception:
                         pass
 
-                if rotate_gates:
-                    self._rotate_spools(rotate_gates)
+                if gates_to_rotate:
+                    self._rotate_spools_in_gates(gates_to_rotate)
 
                 self._rotate_timer = self._drying_rotate_interval * 60.0 # To seconds
 
@@ -889,7 +901,7 @@ class MmuEnvironmentManager:
             return
 
         hname = self._heater_name(heaters[gate])
-        self.mmu.log_debug(u"MmuEnvironmentManager: Gate %d heater %s set to target temp of %.1f°C" % (gate, heater_name, temp))
+        self.mmu.log_debug(u"MmuEnvironmentManager: Gate %d heater %s set to target temp of %.1f°C" % (gate, hname, temp))
         self.mmu.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=%s TARGET=%.1f" % (hname, temp))
 
 
@@ -986,17 +998,34 @@ class MmuEnvironmentManager:
         return (temperature, humidity)
 
 
-    def _rotate_spools(self, gates):
+    def _rotate_spools_in_gates(self, gates):
         """
         eSpooler-driven spool rotation.
-        Move the spools in the retract direction a small distance, 30 degrees or so
+        Move the spools in the retract direction a small distance, 90 degrees is perfect
         """
         self.mmu.log_info("Rotating spools in gates: %s" % ",".join(map(str, gates)))
+        self.spools_to_rotate = list(gates)
+        # Initiate rotation of first spool -- they are moved in sequence for asetics and to avoid possiblity of overload
+        self._rotate_spool(self.spools_to_rotate[0])
+
+
+    def _rotate_spool(self, gate):
+        """
+        Send event to  cause a small rewind action to rotate the spool in gate
+        """
         power = self.mmu.espooler_rewind_burst_power
         duration = self.mmu.espooler_rewind_burst_duration
-        for gate in gates:
-            # This event will cause a small rewind action to rotate the spool
-            self.mmu.printer.send_event("mmu:espooler_burst", gate, power / 100., duration, self.mmu.ESPOOLER_REWIND)
+        self.mmu.printer.send_event("mmu:espooler_burst", gate, power / 100., duration, self.mmu.ESPOOLER_REWIND)
+
+
+    def _handle_espooler_burst_done(self, eventtime, gate):
+        """
+        Event indicating that a spool rotation completed
+        """
+        if gate in self.spools_to_rotate:
+            self.spools_to_rotate.remove(gate)
+            if self.spools_to_rotate:
+                self._rotate_spool(self.spools_to_rotate[0])
 
 
     def _get_max_drying_temp_time(self, gates):
@@ -1045,6 +1074,7 @@ class MmuEnvironmentManager:
 
         If a material is not found in self.drying_data, use defaults.
         """
+        max_temp = self.heater_max_temp
         default_temp = self.heater_default_dry_temp
         default_time = self.heater_default_dry_time
 
@@ -1055,7 +1085,7 @@ class MmuEnvironmentManager:
             temp, duration = self.drying_data.get(key, (default_temp, default_time))
             plan[gate] = {
                 'material': material,
-                'temp': float(temp),
+                'temp': float(min(max_temp, temp)),
                 'timer': int(duration),
             }
         return plan
