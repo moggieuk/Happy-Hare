@@ -42,6 +42,7 @@
 import ast, logging
 
 # Happy Hare imports
+from ..mmu_machine         import VENDOR_VVD
 
 # MMU subcomponent clases
 from .mmu_shared           import *
@@ -370,7 +371,8 @@ class MmuEnvironmentManager:
                 return
 
             # Optional spool rotation (requires eSpooler and explicit gates)
-            if rotate and not self.mmu.has_espooler():
+            # (BTT ViViD is allowed if not in print)
+            if rotate and not (self.mmu.has_espooler() or self.mmu.mmu_machine.mmu_vendor == VENDOR_VVD):
                 self.mmu.log_warning("Rotation requested but eSpooler not fitted - ignoring")
                 rotate = 0
 
@@ -1015,9 +1017,19 @@ class MmuEnvironmentManager:
         Move the spools in the retract direction a small distance, 90 degrees is perfect
         """
         self.mmu.log_info("Rotating spools in gates: %s..." % ",".join(map(str, gates)))
-        self.spools_to_rotate = list(gates)
-        # Initiate rotation of first spool -- they are moved in sequence for asetics and to avoid possiblity of overload
-        self._rotate_spool(self.spools_to_rotate[0])
+        if self.mmu.mmu_machine.mmu_vendor != VENDOR_VVD:
+            self.spools_to_rotate = list(gates)
+            # Initiate rotation of first spool -- they are moved in sequence for asetics and to avoid possiblity of overload
+            self._rotate_spool(self.spools_to_rotate[0])
+            return
+
+        # Special case VVD design because of unique spool rotation using shared gear stepper coupled to gate selection
+        if not self.mmu.is_in_print():
+            gate_selected = self.mmu.gate_selected
+            for gate in gates:
+                self.mmu.select_gate(gate)
+                _,_,_,_ = self.mmu.trace_filament_move("Rotating spool for drying", -100, motor="gear", wait=True)
+            self.mmu.select_gate(gate_selected)
 
 
     def _rotate_spool(self, gate):

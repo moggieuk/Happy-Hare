@@ -3886,12 +3886,14 @@ class Mmu:
         + "ALLOFF = [0|1] Quick way to turn all espoolers off\n"
         + "TRIGGER = [0|1] Fire in-print trigger for testing\n"
         + "BURST = [0|1] Jog in direction of OPERATION (assist|rewind) using configured burst duration and power\n"
+        + "DURATION = [0-10] Override duration of PWM signal (seconds) for burst operations\n"
         + "GATE = g Specify gate to operate on (defaults to current gate)\n"
+        + "LOOSEN = [0|1] Quick way to loosen filament on spool\n"
         + "OPERATION = [assist|off|print|rewind] Set espooler operation mode\n"
         + "POWER = [0-100] Override default % power to apply to espooler motor\n"
-        + "DURATION = [0-10] Override duration of PWM signal (seconds) for burst operations\n"
         + "QUIET = [0|1] Used to suppress console/log output\n"
         + "RESET = [0|1] Turn of in-print assist\n"
+        + "TIGHTEN = [0|1] Quick way to tighten filament on spool\n"
         + "(no parameters for status report)"
     )
     def cmd_MMU_ESPOOLER(self, gcmd):
@@ -3906,6 +3908,8 @@ class Mmu:
 
         operation = gcmd.get('OPERATION', None)
         burst = gcmd.get_int('BURST', 0, minval=0, maxval=1)
+        tighten = gcmd.get_int('TIGHTEN', 0, minval=0, maxval=1)
+        loosen = gcmd.get_int('LOOSEN', 0, minval=0, maxval=1)
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
         alloff = bool(gcmd.get_int('ALLOFF', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
@@ -3925,6 +3929,17 @@ class Mmu:
         if alloff:
             for gate in range(self.num_gates):
                 self.espooler.set_operation(gate, 0, self.ESPOOLER_OFF)
+
+        elif tighten or loosen:
+            if gate is None:
+                gate = self.gate_selected
+            if gate < 0:
+                raise gcmd.error("Invalid gate")
+
+            power = self.espooler_assist_burst_power if loosen else self.espooler_rewind_burst_power
+            duration = self.espooler_assist_burst_duration if loosen else self.espooler_rewind_burst_duration
+            operation = self.ESPOOLER_ASSIST if loosen else self.ESPOOLER_REWIND
+            self.printer.send_event("mmu:espooler_burst", gate, power / 100., duration, operation)
 
         elif operation is not None:
             operation = operation.lower()
