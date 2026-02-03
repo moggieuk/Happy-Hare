@@ -33,11 +33,14 @@ class MmuESpooler:
         self.mmu = None
         self.respool_gates = []       # List of gates that can perform respool operation
         self.assist_gates = []        # List of gates that can perform assist operation
-        self.print_assist_gate = None # Current gate in "print assist" mode (should only be one or None)
-        self.burst_trigger_enabled = {}    # Key: Gate, Value: True|False
-        self.burst_trigger_state = {}      # Key: Gate, Value: 0|1 trigger button state
-        self.back_to_back_burst_count = {} # Key: Gate, Value: Count of back-to-back bursts
-        self.burst_gates = {}         # Key:Gate, Value:(operation, callback_timer) for gates currently in "burst"
+        self.burst_gates = {}         # Key:Gate, Value:(operation, callback_timer) for gates currently executing a "burst"
+
+        # The following implement the "burst assist". Currently only the print_assist_gate has burst_trigger_enabled
+        # but the orthogonal indicators would allow for future change in behavior
+        self.print_assist_gate = None      # Current gate in "print assist" mode (should only be one or None)
+        self.burst_trigger_enabled = {}    # Key: Gate, Value: True|False representing if trigger is enabled for each gate
+        self.burst_trigger_state = {}      # Key: Gate, Value: 0|1 trigger button state for each gate trigger
+        self.back_to_back_burst_count = {} # Key: Gate, Value: Count of back-to-back bursts for each gate
 
         # Get config
         self.motor_mcu_pins = {} # Key: pin_name, Value: mcu_pin
@@ -148,7 +151,7 @@ class MmuESpooler:
             self.extruder_monitor = None
 
 
-    def _handle_mmu_disabled(self, eventtime=None):
+    def _handle_mmu_disabled(self):
         """
         Event indicating that the MMU unit was disabled. Make sure the espooler triggers are disabled
         """
@@ -172,17 +175,20 @@ class MmuESpooler:
         """
         Callback from button sensor to initiate burst assist
         """
+        self.mmu.log_trace("ESPOOLER: Trigger fired for gate %d, state=%s" % (gate, state))
         self.burst_trigger_state[gate] = state
-        if self.mmu and self.mmu.espooler_assist_burst_trigger: # Don't handle if not ready or disabled
+        if self.mmu and self.mmu.espooler_assist_burst_trigger and self.burst_trigger_enabled.get(gate, False): # Don't handle if not ready or disabled
             if self.mmu.espooler_assist_burst_trigger and state:
                 self.back_to_back_burst_count[gate] += 1
                 self.advance(gate)
-            elif not state and self.back_to_back_burst_count[gate] >= self.mmu.espooler_assist_burst_trigger_max:
+            else:
                 # Allow future triggers
                 self.back_to_back_burst_count[gate] = 0
 
 
-    def enable_burst_trigger(self, gate, enable):
+    def _set_burst_trigger_enable(self, gate, enable):
+        from .mmu import Mmu  # For operation names
+
         if self._valid_gate(gate):
             cur_enabled = self.burst_trigger_enabled.get(gate, False)
             if not cur_enabled and enable:
@@ -259,8 +265,10 @@ class MmuESpooler:
 
         # Only allowed if not moving (OFF or PRINT) but always allow interuption of in-print assist gate
         cur_op, cur_value = self.get_operation(gate)
-        msg = "Got espooler rotate event for gate %d: value=%.2f duration=%.1f" % (gate, value, duration)
+        msg = "ESPOOLER: Got espooler rotate event for gate %d: value=%.2f duration=%.1f" % (gate, value, duration)
         if cur_op in [Mmu.ESPOOLER_OFF, Mmu.ESPOOLER_PRINT] or gate == self.print_assist_gate:
+            self.mmu.log_trace(msg)
+
             # Schedule future return to ESPOOLER_OFF / ESPOOLER_PRINT state
             waketime = self.reactor.monotonic() + duration
             timer = self.reactor.register_timer(lambda pt: self._stop_espooler_burst(gate=gate), waketime)
@@ -270,19 +278,17 @@ class MmuESpooler:
             self.burst_gates[gate] = (operation, timer)
         else:
             msg += " (Ignored because espooler state is %s, value: %.2f)" % (cur_op, cur_value)
-        self.mmu.log_debug(msg)
+            self.mmu.log_trace(msg)
 
 
     def _stop_espooler_burst(self, gate):
         """
-        Scheduled callback to terminate a "jog" burst
+        Scheduled (timer event) callback to terminate an espooler burst
         """
         from .mmu import Mmu  # For operation names
         operation = Mmu.ESPOOLER_PRINT if gate == self.print_assist_gate else Mmu.ESPOOLER_OFF
         if gate in self.burst_gates:
-            self.set_operation(gate, 0, operation)
-            del self.burst_gates[gate]
-            self.printer.send_event("mmu:espooler_burst_done", gate)
+            self.set_operation(gate, 0, operation) # This will call _dequeue_espooler_burst()
 
         # Monitor triggers for print assist gate
         if gate == self.print_assist_gate:
@@ -292,7 +298,7 @@ class MmuESpooler:
                     self.back_to_back_burst_count[gate] += 1
                     self.advance(gate)
                 else:
-                    self.mmu.log_error("Espooler assist suspended bcause of suspected malfunction. Assist sensor may be stuck in triggered state")
+                    self.mmu.log_error("Espooler assist temporarily suspended because of suspected malfunction. Assist trigger sensor may be stuck in triggered state")
             else:
                 # Trigger has cleared, allow future triggers
                 self.back_to_back_burst_count[gate] = 0
@@ -300,9 +306,9 @@ class MmuESpooler:
         return self.reactor.NEVER # This is setup as a one-shot timer (so early cancellation is possible)
 
 
-    def _cancel_espooler_burst(self, gate):
+    def _dequeue_espooler_burst(self, gate):
         """
-        Cancel "espooler off" callback and remove from burst list
+        Cancel "espooler off" callback and remove from burst list. Send completion event
         """
         # Cancel callback and remove from burst list
         if gate in self.burst_gates:
@@ -312,6 +318,8 @@ class MmuESpooler:
             except Exception as e:
                 self.mmu.log_debug("Error cancelling burst callback: Exception: %s" % str(e))
             del self.burst_gates[gate]
+
+            # Notify listeners
             self.printer.send_event("mmu:espooler_burst_done", gate)
 
 
@@ -332,16 +340,17 @@ class MmuESpooler:
         pg = self.print_assist_gate
         if pg is not None:
             self.print_assist_gate = None
-            self.mmu.log_trace("ESPOOLER: In-print assist for gate %d canceled" % pg)
-            self._cancel_espooler_burst(pg)
+            self.mmu.log_trace("ESPOOLER: Cancelling in-print assist for gate %d" % pg)
             self._update_pwm(pg, 0, Mmu.ESPOOLER_OFF)
             self.operation[pg] = (Mmu.ESPOOLER_OFF, 0)
 
             # Disable all triggers
             if self.mmu.espooler_assist_burst_trigger:
-                self.enable_burst_trigger(pg, False)
+                self._set_burst_trigger_enable(pg, False)
             if self.extruder_monitor:
                 self.extruder_monitor.watch(False)
+
+            self._dequeue_espooler_burst(pg)
 
 
     # Change operation in progress and DC motor PWM control -------------------------------------------------------------
@@ -357,6 +366,7 @@ class MmuESpooler:
         """
         from .mmu import Mmu # For operation names
 
+        # To aid debugging...
         if self.mmu.log_enabled(Mmu.LOG_TRACE):
             self.mmu.log_trace("ESPOOLER: set_operation(gate=%s, value=%s, operation=%s)" % (gate, value, operation))
 
@@ -373,11 +383,6 @@ class MmuESpooler:
 
             # OFF ----------------------------------------
             if operation == Mmu.ESPOOLER_OFF:
-                self._cancel_espooler_burst(g)
-
-                if cur_op != Mmu.ESPOOLER_OFF:
-                    self.mmu.log_debug("Espooler for gate %d turned off" % g)
-
                 # Always update PWM as safety precaution
                 self._update_pwm(g, 0, Mmu.ESPOOLER_OFF)
 
@@ -386,26 +391,33 @@ class MmuESpooler:
                 else:
                     self.operation[g] = (Mmu.ESPOOLER_PRINT, 0)
 
+                if cur_op != Mmu.ESPOOLER_OFF:
+                    self.mmu.log_debug("Espooler for gate %d turned off" % g)
+
+                # Ensure any existing burst is canceled
+                self._dequeue_espooler_burst(g)
+
             # ASSIST or REWIND ---------------------------
             elif operation in [Mmu.ESPOOLER_ASSIST, Mmu.ESPOOLER_REWIND]:
-                self._cancel_espooler_burst(g)
                 if cur_op not in [Mmu.ESPOOLER_OFF, Mmu.ESPOOLER_PRINT]:
                     # Stop PWM before sending new
                     self._update_pwm(g, 0, operation)
 
                 conf_gates = self.assist_gates if operation == Mmu.ESPOOLER_ASSIST else self.respool_gates
                 if g in conf_gates:
-                    self.mmu.log_debug("Espooler for gate %d set to %s (pwm: %.2f)" % (g, operation, value))
                     self._update_pwm(g, value, operation)
                     self.operation[g] = (operation, value)
+                    self.mmu.log_debug("Espooler for gate %d set to %s (pwm: %.2f)" % (g, operation, value))
                 else:
                     self.mmu.log_debug("Espooler for gate %d not configured to perform %s operation" % (g, operation))
+
+                # Ensure any existing burst is canceled
+                self._dequeue_espooler_burst(g)
 
             # SPECIAL PRINT ASSIST MODE ------------------
             elif operation == Mmu.ESPOOLER_PRINT:
                 # Practically this will only be called on a single gate at a time
-                if self.mmu.log_enabled(Mmu.LOG_TRACE):
-                    self.mmu.log_trace("ESPOOLER: Entering in-print assist mode for gate %d" % g)
+                self.mmu.log_trace("ESPOOLER: Entering in-print assist mode for gate %d" % g)
 
                 # Only one gate can be in print assist mode at a time so clear previous
                 if g != self.print_assist_gate and self.print_assist_gate is not None:
@@ -413,17 +425,21 @@ class MmuESpooler:
 
                 # Only set sticky in-print trigger mode if pwm value is 0, else ignore
                 if value == 0:
-                    self.mmu.log_debug("Espooler for gate %d set to %s (pwm: %.2f)" % (g, operation, value))
                     self.print_assist_gate = g
-                    self._cancel_espooler_burst(g)
+
                     self._update_pwm(g, 0, operation)
                     self.operation[g] = (operation, 0)
 
                     # Enable appropriate triggers
                     if self.mmu.espooler_assist_burst_trigger:
-                        self.enable_burst_trigger(g, True)
+                        self._set_burst_trigger_enable(g, True)
                     elif self.extruder_monitor:
                         self.extruder_monitor.watch(True)
+
+                    self.mmu.log_debug("Espooler for gate %d set to %s (pwm: %.2f)" % (g, operation, value))
+
+                    # Ensure any existing burst is canceled
+                    self._dequeue_espooler_burst(g)
 
 
     def get_operation(self, gate):
@@ -542,7 +558,7 @@ class MmuESpooler:
         # Called periodically to check extruder movement
         def _extruder_pos_update_event(self, eventtime):
             extruder_pos = self._get_extruder_pos(eventtime)
-            #self.espooler.mmu.log_trace("TEMP: current_extruder_pos: %s (last: %s)" % (extruder_pos, self.last_extruder_pos))
+            #self.espooler.mmu.log_trace("ESPOOLER: current_extruder_pos: %s (last: %s)" % (extruder_pos, self.last_extruder_pos))
             if self.last_extruder_pos is not None and extruder_pos > self.last_extruder_pos + self.espooler.mmu.espooler_assist_extruder_move_length:
                 self.espooler.advance() # Initiate burst
                 self.last_extruder_pos = extruder_pos

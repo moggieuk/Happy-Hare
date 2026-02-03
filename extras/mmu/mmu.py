@@ -3946,7 +3946,7 @@ class Mmu:
                 duration = gcmd.get_float('DURATION', default_duration, above=0., maxval=10.)
 
                 if operation in [self.ESPOOLER_ASSIST, self.ESPOOLER_REWIND]:
-                    self.log_info("Sending 'mmu:espooler_burst' event(gate=%d, power=%d, duration=%.2fs, direction=%s)" % (gate, power, duration, operation))
+                    self.log_info("Espooler burst on gate %d for %.1fs at %d%% power in %s direction" % (gate, duration, power, operation))
                     self.printer.send_event("mmu:espooler_burst", gate, power / 100., duration, operation)
                 else:
                     self.log_error("Must specify 'assist' or 'rewind' operation for burst")
@@ -4376,12 +4376,15 @@ class Mmu:
 
         if full: # Means recovery operation
             # Safety step because this method is used as a defensive way to unload the entire bowden from unknown position
-            # It handles the cases of filament still in extruder with not toolhead sensor or the small window where filament
-            # is between extruder entrance and toolhead sensor (if toolhead sensor is available)
+            # It handles the cases of filament still in extruder with no toolhead sensor or, if toolhead sensor is available,
+            # the small window where filament is between extruder entrance and toolhead sensor
             homing_max += self.gate_homing_max # Full bowden may not be quite enough
-            length = self.toolhead_extruder_to_nozzle - self.toolhead_sensor_to_nozzle if self.sensor_manager.has_sensor(self.SENSOR_TOOLHEAD) else self.toolhead_extruder_to_nozzle
-            length = min(length + self.toolhead_unload_safety_margin, homing_max)
-            self.log_debug("Performing synced pre-unload bowden move to ensure filament is not trapped in extruder")
+            length = self.toolhead_extruder_to_nozzle
+            if self.sensor_manager.has_sensor(self.SENSOR_TOOLHEAD):
+                length -= self.toolhead_sensor_to_nozzle # Can safely reduce the base move distance because starting point in toolhead sensor
+            length += self.toolhead_unload_safety_margin # Add safety margin
+
+            self.log_debug("Performing synced pre-unload bowden move of %.1fmm to ensure filament is not trapped in extruder" % length)
             if self.gate_homing_endstop == self.SENSOR_ENCODER:
                 _,_,_,_ = self.trace_filament_move("Bowden safety pre-unload move", -length, motor="gear+extruder")
             else:

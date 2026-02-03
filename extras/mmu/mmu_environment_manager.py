@@ -114,7 +114,7 @@ class MmuEnvironmentManager:
         self.spools_to_rotate = [] # Queue of spools that we are rotating (one at a time)
 
 
-    # No ready/connect/disconnect lifecycle hooks
+    # Module has no ready/connect/disconnect lifecycle hooks
 
 
     def set_test_config(self, gcmd):
@@ -220,7 +220,13 @@ class MmuEnvironmentManager:
         rotate = gcmd.get_int('ROTATE', 0, minval=0, maxval=1)
         rotate_interval = gcmd.get_float('ROTATE_INTERVAL', self.heater_rotate_interval, minval=1.)
 
-        gates_str = gcmd.get('GATES', "!")
+        # GATE is a common user mistake so interpret as GATES of one element
+        gate = gcmd.get_int('GATE', None, minval=0, maxval=self.mmu.num_gates - 1)
+        if gate is not None:
+            gates_str = str(gate)
+        else:
+            gates_str = gcmd.get('GATES', "!")
+
         gates = []
         if gates_str != "!":
             # Supplied list of gates
@@ -290,15 +296,18 @@ class MmuEnvironmentManager:
                         self._stop_drying_cycle("Drying cycle stopped (all selected gates cancelled)")
 
                 else:
+                    # Always make sure heater is turned off
                     for gate in gates:
                         self._heater_off(gate=gate)
 
             else:
                 # Otherwise stop whole cycle / single heater off
                 if self._drying:
+                    self.mmu.log_info("Cancelled drying cycle")
                     self._stop_drying_cycle()
 
                 else:
+                    # Always make sure heater is turned off
                     self._heater_off()
 
             return
@@ -541,10 +550,12 @@ class MmuEnvironmentManager:
 
             # Rotation status (eSpooler)
             if self._rotate_enabled:
-                msg += u"\nSpool rotation enabled (every %s, next in %s)" % (
+                msg += u"\nSpool rotation enabled (running every %s, next in %s)" % (
                     _format_minutes(self._drying_rotate_interval),
                     _format_minutes(max(self.CHECK_INTERVAL, self._rotate_timer) / 60),
                 )
+            elif self.mmu.has_espooler():
+                msg += u"\nSpool rotation not enabled"
 
         # Report status
         self.mmu.log_always(msg)
@@ -576,7 +587,7 @@ class MmuEnvironmentManager:
     # Internal implementation --------------------------------------------------
     #
 
-    def _handle_mmu_disabled(self, eventtime=None):
+    def _handle_mmu_disabled(self):
         """
         Event indicating that the MMU unit was disabled
         """
@@ -585,7 +596,7 @@ class MmuEnvironmentManager:
         self.spools_to_rotate = []
 
 
-    def _handle_mmu_enabled(self, eventtime=None):
+    def _handle_mmu_enabled(self):
         """
         Event indicating that the MMU unit was enabled
         """
@@ -1003,7 +1014,7 @@ class MmuEnvironmentManager:
         eSpooler-driven spool rotation.
         Move the spools in the retract direction a small distance, 90 degrees is perfect
         """
-        self.mmu.log_info("Rotating spools in gates: %s" % ",".join(map(str, gates)))
+        self.mmu.log_info("Rotating spools in gates: %s..." % ",".join(map(str, gates)))
         self.spools_to_rotate = list(gates)
         # Initiate rotation of first spool -- they are moved in sequence for asetics and to avoid possiblity of overload
         self._rotate_spool(self.spools_to_rotate[0])
@@ -1018,7 +1029,7 @@ class MmuEnvironmentManager:
         self.mmu.printer.send_event("mmu:espooler_burst", gate, power / 100., duration, self.mmu.ESPOOLER_REWIND)
 
 
-    def _handle_espooler_burst_done(self, eventtime, gate):
+    def _handle_espooler_burst_done(self, gate):
         """
         Event indicating that a spool rotation completed
         """
