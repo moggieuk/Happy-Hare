@@ -114,6 +114,7 @@ class MmuLeds:
         self.white_light = MmuLeds.string_to_rgb(config.get('white_light', '(1,1,1)'))
         self.black_light = MmuLeds.string_to_rgb(config.get('black_light', '(0.01,0,0.02)'))
         self.empty_light = MmuLeds.string_to_rgb(config.get('empty_light', '(0,0,0)'))
+        self.loaded_light = MmuLeds.string_to_rgb(config.get('loaded_light', '(1,1,1)'))
 
         # Read operation to effect mappings
         self.effects = {}
@@ -135,7 +136,8 @@ class MmuLeds:
             'effect_gate_empty',
             'effect_gate_available_sel',
             'effect_gate_unknown_sel',
-            'effect_gate_empty_sel'
+            'effect_gate_empty_sel',
+            'effect_gate_available2'
         ]
         for key in effect_keys:
             parts = [part.strip() for part in config.get(key, '').split(",", 1)]

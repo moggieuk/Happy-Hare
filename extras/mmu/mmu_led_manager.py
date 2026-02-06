@@ -103,8 +103,8 @@ class MmuLedManager:
         + "UNIT          = #(int) default all units\n"
         + "ENABLE        = [0|1]\n"
         + "ANIMATION     = [0|1]\n"
-        + "EXIT_EFFECT   = [off|gate_status|filament_color|slicer_color|r,g,b|_effect_]\n"
-        + "ENTRY_EFFECT  = [off|gate_status|filament_color|slicer_color|r,g,b|_effect_]\n"
+        + "EXIT_EFFECT   = [off|gate_status|available_status|filament_color|slicer_color|r,g,b|_effect_]\n"
+        + "ENTRY_EFFECT  = [off|gate_status|available_status|filament_color|slicer_color|r,g,b|_effect_]\n"
         + "STATUS_EFFECT = [off|on|filament_color|slicer_color|r,g,b|_effect_]\n"
         + "LOGO_EFFECT   = [off|r,g,b|_effect_]\n"
         + "REFRESH       = [0|1]\n"
@@ -410,7 +410,7 @@ class MmuLedManager:
     def gate_map_changed(self, gate):
         if gate is not None and gate < 0:
             gate = None
-        gate_effects = {'gate_status', 'filament_color', 'slicer_color'}
+        gate_effects = {'gate_status', 'available_status', 'filament_color', 'slicer_color'}
         units = [self.mmu_machine.get_mmu_unit_by_gate(gate)] if gate is not None else self.mmu_machine.units
         for mmu_unit in units:
             leds = mmu_unit.leds
@@ -605,6 +605,22 @@ class MmuLedManager:
                             key = 'gate_empty'
 
                         return self.effect_name(unit, '%s%s' % (key, suffix))
+
+                    if gate is not None:
+                        set_gate_effect(_effect_for_gate(gate), unit, segment, gate, fadetime=fadetime)
+                    else:
+                        for g in range(mmu_unit.first_gate, mmu_unit.first_gate + mmu_unit.num_gates):
+                            set_gate_effect(_effect_for_gate(g), unit, segment, g, fadetime=fadetime)
+
+                elif effect == "available_status":
+                    def _effect_for_gate(g):
+                        status = self.mmu.gate_status[g]
+                        if status > self.mmu.GATE_EMPTY:
+                            key = 'gate_available2'
+                        else:
+                            key = 'gate_empty'
+                        
+                        return self.effect_name(unit, '%s' % key)
 
                     if gate is not None:
                         set_gate_effect(_effect_for_gate(gate), unit, segment, gate, fadetime=fadetime)
