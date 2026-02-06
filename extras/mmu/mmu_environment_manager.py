@@ -23,15 +23,18 @@
 # is initiated with this option. IMPORTANT: filament must be removed from the MMU inlet and
 # fastened to the spool. Also, the GATES parameter must be supplied.
 #
+# TODO For HHv4 this needs to operate per unit (gate range)
+#
 # Implements commands:
 #   MMU_HEATER
 #
 # Implements printer variables:
-#   drying_cycle           {boolean} : in drying cycle or not
-#   drying_per_gate        {boolean} : true if per-gate heaters
-#   drying_active_gates    [{int}    : list of gates actively in drying cycle
-#   drying_pending_gates   [{int}]   : list of gates pending drying cycle
-#   drying_completed_gates [{int}]   : list of gates that have completed drying cycle
+#   drying_state   [{string} : list indexed by gate with values:
+#                                DRYING_STATE_ACTIVE    'active'    actively drying
+#                                DRYING_STATE_QUEUED    'queued'    waiting to start
+#                                DRYING_STATE_COMPLETE  'complete'  completed drying
+#                                DRYING_STATE_CANCELLED 'cancelled' cycle was canceled prematurely
+#                                DRYING_STATUS_NONE     ''          not part of the current cycle
 #
 # (\_/)
 # ( *,*)
@@ -54,6 +57,13 @@ class MmuEnvironmentManager:
 
     # Environment sensor chips with humidity
     ENV_SENSOR_CHIPS = ["bme280", "htu21d", "sht3x", "lm75"]
+
+    # Drying states (mostly relevant for per-gate heaters)
+    DRYING_STATE_NONE     = ''
+    DRYING_STATE_QUEUED   = 'queued'
+    DRYING_STATE_ACTIVE   = 'active'
+    DRYING_STATE_COMPLETE = 'complete'
+    DRYING_STATE_CANCELED = 'canceled'
 
     def __init__(self, mmu):
         self.mmu = mmu
@@ -94,7 +104,6 @@ class MmuEnvironmentManager:
     #
 
     def reinit(self):
-        self._drying = False
         self._drying_temp = None
         self._drying_humidity_target = None
         self._drying_start_time = self._drying_end_time = None
@@ -103,10 +112,12 @@ class MmuEnvironmentManager:
 
         # Per-gate drying state (multi-heater mode)
         # gate -> dict(state, start_time, end_time, temp, humidity_target, done_reason, last_temp, last_humidity)
-        self._gate_drying = {}
-        self._active_gates = []    # Currently heated gates (that have filament present)
-        self._pending_gates = []   # Queued gates awaiting heater capacity
-        self._completed_gates = [] # Gates that have completed drying cycle
+        self._gate_drying = {}    # Contains details required for managing drying for scheduled gates
+
+        # Drying state indexed by gate
+        self._drying_state = [self.DRYING_STATE_NONE] * self.mmu.num_gates
+
+        self._drying_queue = []   # Queued gates awaiting heater capacity (FIFO)
         self._vent_timer = None
 
         # Optional auto spool rotation (eSpooler)
@@ -152,7 +163,10 @@ class MmuEnvironmentManager:
         """
         Returns whether the MMU heater is currently in drying cycle
         """
-        return self._drying
+        for s in self._drying_state:
+            if s == self.DRYING_STATE_ACTIVE or s == self.DRYING_STATE_QUEUED:
+                return True
+        return False
 
 
     def _has_per_gate_heaters(self):
@@ -179,6 +193,13 @@ class MmuEnvironmentManager:
             sensors = self.mmu.mmu_machine.environment_sensors
             return bool(sensors)
         return self.mmu.mmu_machine.environment_sensor != ''
+
+
+    def _get_active_gates(self):
+        """
+        Return list of active gates from per-gate drying states
+        """
+        return [i for i, s in enumerate(self._drying_state) if s == self.DRYING_STATE_ACTIVE]
 
 
     #
@@ -278,7 +299,7 @@ class MmuEnvironmentManager:
                 if not gates_param:
                     gates = all_gates
 
-                if self._drying:
+                if self.is_drying():
                     # STOP=1 with explicit GATES=... cancels only those gates in multi-heater mode
                     cancelled = self._cancel_gates(gates, reason="cancelled")
                     if cancelled:
@@ -290,11 +311,11 @@ class MmuEnvironmentManager:
                     all_done = True
                     for g in self._drying_gates:
                         gd = self._gate_drying.get(g)
-                        if not gd or gd.get('state') != 'done':
+                        if not gd or gd.get('state') not in [self.DRYING_STATE_COMPLETE, self.DRYING_STATE_CANCELLED]:
                             all_done = False
                             break
                     if all_done:
-                        self._stop_drying_cycle("Drying cycle stopped (all selected gates cancelled)")
+                        self._stop_drying_cycle("Drying cycle stopped (all selected gates cancelled)", reset_state=True)
 
                 else:
                     # Always make sure heater is turned off
@@ -303,9 +324,9 @@ class MmuEnvironmentManager:
 
             else:
                 # Otherwise stop whole cycle / single heater off
-                if self._drying:
+                if self.is_drying():
                     self.mmu.log_info("Cancelled drying cycle")
-                    self._stop_drying_cycle()
+                    self._stop_drying_cycle(reset_state=True)
 
                 else:
                     # Always make sure heater is turned off
@@ -335,13 +356,13 @@ class MmuEnvironmentManager:
                 for gate in gates:
                     gd = self._gate_drying.get(gate)
 
-                    if self._drying and gd is not None:
+                    if self.is_drying() and gd is not None:
                         state = gd.get('state')
 
                         # Update per-gate target in all cases when part of cycle
                         gd['temp'] = temp
 
-                        if state == 'queued':
+                        if state == self.DRYING_STATE_QUEUED:
                             # Don't power on yet; it will be applied when the gate becomes active
                             continue
 
@@ -356,7 +377,7 @@ class MmuEnvironmentManager:
 
             # Single heater mode
             self._heater_on(temp)
-            if self._drying:
+            if self.is_drying():
                 self._drying_temp = temp
             return
 
@@ -366,7 +387,7 @@ class MmuEnvironmentManager:
                 self.mmu.log_warning("MMU environment sensor not found. Check 'environment_sensor' configuration")
                 return
 
-            if self._drying:
+            if self.is_drying():
                 self.mmu.log_always("MMU already in filament drying cycle. Stop current cycle first")
                 return
 
@@ -412,10 +433,13 @@ class MmuEnvironmentManager:
 
                 # If we only have a single heater apply the lowest temp for longest time
                 if not self._has_per_gate_heaters():
-                    self.mmu.log_info(u"Defaulting to lowest drying temperature of %.1f°C for longest %s given filaments types currently in MMU"
-                                      % (lowest, _format_minutes(longest)))
                     temp = lowest
-                    timer = timer or longest
+                    info = "specified"
+                    if timer is None:
+                        timer = longest
+                        info = "longest"
+                    self.mmu.log_info(u"Defaulting to lowest drying temperature of %.1f°C for %s %s given filaments types currently in MMU"
+                                      % (temp, info, _format_minutes(timer)))
 
             # Note that in multi-heater mode, each gate's temp and end_time is tracked independently
             self._drying_time = timer or self.heater_default_dry_time
@@ -439,7 +463,7 @@ class MmuEnvironmentManager:
             self._start_drying_cycle(per_gate_plan)
             msg = u"MMU filament drying cycle started:"
 
-        elif self._drying:
+        elif self.is_drying():
             msg = u"MMU is in filament drying cycle:"
 
         else: # Not in drying cycle, but let's check heaters
@@ -479,7 +503,7 @@ class MmuEnvironmentManager:
                     msg = u"Not in drying cycle and heater is off"
 
         # Display status report of drying cycle ---------------------------------
-        if self._drying:
+        if self.is_drying():
             now = self.mmu.reactor.monotonic()
 
             if self._drying_gates:
@@ -506,34 +530,37 @@ class MmuEnvironmentManager:
                 msg += u"\nPer-gate dryer mode (max concurrent heaters: %d). Humidty target %.1f%%" % (self.mmu.mmu_machine.max_concurrent_heaters, self._drying_humidity_target)
                 for gate in self._drying_gates:
                     gd = self._gate_drying.get(gate, {})
-                    state = gd.get('state', 'unknown')
+                    state = gd.get('state', self.DRYING_STATE_NONE)
                     material = gd.get('material', None)
                     t = gd.get('temp', None)
                     last_t = gd.get('last_temp', None)
                     last_h = gd.get('last_humidity', None)
                     end_t = gd.get('end_time', None)
-                    if end_t is not None and state == 'active':
+                    if end_t is not None and state == self.DRYING_STATE_ACTIVE:
                         rem = max(0, int((end_t - now) // 60))
                         rem_txt = _format_minutes(rem)
                     else:
                         rem_txt = None
 
                     line = u"\nGate %d: " % gate
-                    if state == 'active':
+                    if state == self.DRYING_STATE_ACTIVE:
                         if last_t is not None:
                             line += u"Drying %s %.1f°C (target %.1f°C)" % (material, last_t, t)
                         if last_h is not None:
                             line += u", humidity %.1f%%" % last_h
                         if rem_txt is not None:
                             line += u", %s remaining" % rem_txt
-                    elif state == 'queued':
+
+                    elif state == self.DRYING_STATE_QUEUED:
                         line += u"(queued waiting for heater slot, target %.1f°C)" % t
-                    elif state == 'done':
-                        reason = gd.get('done_reason', 'complete')
+
+                    elif state in [self.DRYING_STATE_COMPLETE, self.DRYING_STATE_CANCELLED]:
+                        reason = gd.get('done_reason', 'complete' if state == self.DRYING_STATE_COMPLETE else 'cancelled')
                         line += u"(%s" % reason
                         if last_h is not None:
                             line += u", final humidity: %.1f%%" % last_h
                         line += u")"
+
                     msg += line
 
             # Venting status
@@ -570,18 +597,8 @@ class MmuEnvironmentManager:
         and look up appropriate heator and environemnt sensor objects directly
         """
         status = {
-            'drying_cycle': self._drying,
+            'drying_state': list(self._drying_state),
         }
-        if self._drying:
-            status.update({
-                'drying_per_gate': self._has_per_gate_heaters(),
-            })
-        if self._drying and self._has_per_gate_heaters():
-            status.update({
-                'drying_active_gates': list(self._active_gates),
-                'drying_pending_gates': list(self._pending_gates),
-                'drying_completed_gates': list(self._completed_gates),
-            })
         return status
 
 
@@ -593,7 +610,7 @@ class MmuEnvironmentManager:
         """
         Event indicating that the MMU unit was disabled
         """
-        self._stop_drying_cycle()
+        self._stop_drying_cycle(reset_state=True)
         self._heater_off()
         self.spools_to_rotate = []
 
@@ -609,7 +626,7 @@ class MmuEnvironmentManager:
         """
         Reactor callback to periodically check drying status and to rationalize state
         """
-        if not self._drying:
+        if not self.is_drying():
             return self.mmu.reactor.NEVER
 
         now = self.mmu.reactor.monotonic()
@@ -618,9 +635,9 @@ class MmuEnvironmentManager:
         if self._has_per_gate_heaters():
             # Update active gates: check completion / humidity threshold
             completed_any = False
-            for gate in list(self._active_gates):
+            for gate in list(self._get_active_gates()):
                 gd = self._gate_drying.get(gate)
-                if not gd or gd.get('state') != 'active':
+                if not gd or gd.get('state') != self.DRYING_STATE_ACTIVE:
                     continue
 
                 # Read environment sensor
@@ -631,12 +648,11 @@ class MmuEnvironmentManager:
                 # Cycle complete (per gate)
                 if gd.get('end_time') is not None and (gd['end_time'] - now) <= 0:
                     self._heater_off(gate=gate)
-                    gd['state'] = 'done'
+                    gd['state'] = self.DRYING_STATE_COMPLETE
                     gd['done_reason'] = 'timer complete'
                     completed_any = True
                     try:
-                        self._active_gates.remove(gate)
-                        self._completed_gates.append(gate)
+                        self._drying_state[gate] = self.DRYING_STATE_COMPLETE
                     except Exception:
                         pass
                     continue
@@ -644,12 +660,11 @@ class MmuEnvironmentManager:
                 # Humidity goal reached (per gate)
                 if cur_humidity is not None and cur_humidity <= self._drying_humidity_target:
                     self._heater_off(gate=gate)
-                    gd['state'] = 'done'
+                    gd['state'] = self.DRYING_STATE_COMPLETE
                     gd['done_reason'] = 'humidity goal reached'
                     completed_any = True
                     try:
-                        self._active_gates.remove(gate)
-                        self._completed_gates.append(gate)
+                        self._drying_state[gate] = self.DRYING_STATE_COMPLETE
                     except Exception:
                         pass
                     continue
@@ -662,11 +677,11 @@ class MmuEnvironmentManager:
             all_done = True
             for gate in self._drying_gates:
                 gd = self._gate_drying.get(gate)
-                if not gd or gd.get('state') != 'done':
+                if not gd or gd.get('state') not in [self.DRYING_STATE_COMPLETE, self.DRYING_STATE_CANCELLED]:
                     all_done = False
                     break
             if all_done:
-                self._stop_drying_cycle("Drying cycle complete (all gates)")
+                self._stop_drying_cycle("Drying cycle complete (all gates)", reset_state=False)
                 return self.mmu.reactor.NEVER
 
         else: # Single heater mode
@@ -674,13 +689,25 @@ class MmuEnvironmentManager:
             # Cycle complete?
             if (self._drying_end_time - now) <= 0:
                 cur_temp, cur_humidity = self._get_environment_status()
-                self._stop_drying_cycle("Drying cycle complete. Final humidity: %.1f%%" % cur_humidity)
+                for gate in range(self.mmu.num_gates):
+                    try:
+                        if self._drying_state[gate] == self.DRYING_STATE_ACTIVE:
+                            self._drying_state[gate] = self.DRYING_STATE_COMPLETE
+                    except Exception:
+                        pass
+                self._stop_drying_cycle("Drying cycle complete. Final humidity: %.1f%%" % cur_humidity, reset_state=False)
                 return self.mmu.reactor.NEVER
 
             # Humidity goal reached?
             cur_temp, cur_humidity = self._get_environment_status()
             if cur_humidity is not None and cur_humidity <= self._drying_humidity_target:
-                self._stop_drying_cycle("Drying cycle terminated because humidity goal %.1f%% reached" % self._drying_humidity_target)
+                for gate in range(self.mmu.num_gates):
+                    try:
+                        if self._drying_state[gate] == self.DRYING_STATE_ACTIVE:
+                            self._drying_state[gate] = self.DRYING_STATE_COMPLETE
+                    except Exception:
+                        pass
+                self._stop_drying_cycle("Drying cycle terminated because humidity goal %.1f%% reached" % self._drying_humidity_target, reset_state=False)
                 return self.mmu.reactor.NEVER
 
         # Run periodic venting (macro)
@@ -690,7 +717,7 @@ class MmuEnvironmentManager:
             if self._vent_timer < 0 and self.heater_vent_macro:
                 cmd = self.heater_vent_macro
                 if self._has_per_gate_heaters():
-                    cmd += " GATES=%s" % ",".join(map(str, self._active_gates))
+                    cmd += " GATES=%s" % ",".join(map(str, self._get_active_gates()))
                 self.mmu.log_debug("MmuEnvironmentManager: Running heater vent macro '%s'" % cmd)
                 self.mmu.wrap_gcode_command(cmd, exception=False) # Will report errors without exception
 
@@ -704,9 +731,9 @@ class MmuEnvironmentManager:
             if self._rotate_timer < 0:
                 # Re-check EMPTY status at time of rotation (supports dynamic state changes)
                 if self._has_per_gate_heaters():
-                    candidates = list(self._active_gates)
+                    candidates = list(self._get_active_gates())
                 else:
-                    candidates = list(self._drying_gates)
+                    candidates = list(range(self.mmu.num_gates))
 
                 gates_to_rotate = []
                 for gate in candidates:
@@ -726,57 +753,69 @@ class MmuEnvironmentManager:
 
 
     def _start_drying_cycle(self, per_gate_plan=None):
-        if not self._drying:
-            self.mmu.log_debug("MmuEnvironmentManager: Filament drying started")
-            self._drying = True
+        if self.is_drying():
+            return
 
-            # Vent timer countdown (seconds). 0/None disables venting.
-            if self._drying_vent_interval:
-                self._vent_timer = self._drying_vent_interval * 60.0 # To seconds
-            else:
-                self._vent_timer = None
+        self.mmu.log_debug("MmuEnvironmentManager: Filament drying started")
 
-            # Turn on heater or heaters depending on mode
-            if not self._has_per_gate_heaters():
-                # Single heater mode
-                self._heater_on(self._drying_temp)
+        # Reset state at the beginning of a new cycle
+        self._drying_state = [self.DRYING_STATE_NONE] * self.mmu.num_gates
 
-            else:
-                # Multi heater mode: Initialize per-gate state and start as many as possible
-                self._gate_drying = {}
-                self._active_gates = []
-                self._pending_gates = []
-                self._completed_gates = []
+        # Vent timer countdown (seconds). 0/None disables venting.
+        if self._drying_vent_interval:
+            self._vent_timer = self._drying_vent_interval * 60.0 # To seconds
+        else:
+            self._vent_timer = None
 
-                if per_gate_plan is None:
-                    per_gate_plan = self._get_drying_plan(self._drying_gates)
+        # Turn on heater or heaters depending on mode
+        if not self._has_per_gate_heaters():
+            # Single heater mode
+            for gate in range(self.mmu.num_gates):
+                try:
+                    self._drying_state[gate] = self.DRYING_STATE_ACTIVE
+                except Exception:
+                    pass
+            self._heater_on(self._drying_temp)
 
-                # Queue all selected gates; we'll start up to max_concurrent_heaters
-                for gate in self._drying_gates:
-                    plan = per_gate_plan.get(gate, {})
-                    gtemp = plan.get('temp', self.heater_default_dry_temp)
-                    gtime = plan.get('timer', self.heater_default_dry_time)
-                    material = plan.get('material', "unknown")
+        else:
+            # Multi heater mode: Initialize per-gate state and start as many as possible
+            self._gate_drying = {}
+            self._drying_queue = []
+            self._drying_state = [self.DRYING_STATE_NONE] * self.mmu.num_gates
 
-                    self._gate_drying[gate] = {
-                        'state': 'queued',
-                        'start_time': None,
-                        'end_time': None,
-                        'material': material,
-                        'temp': gtemp,
-                        'timer': gtime,
-                        'humidity_target': self._drying_humidity_target,
-                        'done_reason': None,
-                        'last_temp': None,
-                        'last_humidity': None,
-                    }
-                    self._pending_gates.append(gate)
+            if per_gate_plan is None:
+                per_gate_plan = self._get_drying_plan(self._drying_gates)
 
-                # Turn heater on if possible else queue
-                self._start_next_queued_gates(self.mmu.reactor.monotonic())
+            # Queue all selected gates; we'll start up to max_concurrent_heaters
+            for gate in self._drying_gates:
+                plan = per_gate_plan.get(gate, {})
+                gtemp = plan.get('temp', self.heater_default_dry_temp)
+                gtime = plan.get('timer', self.heater_default_dry_time)
+                material = plan.get('material', "unknown")
 
-            # Enable
-            self.mmu.reactor.update_timer(self._periodic_timer, self.mmu.reactor.NOW)
+                self._gate_drying[gate] = {
+                    'state': self.DRYING_STATE_QUEUED,
+                    'start_time': None,
+                    'end_time': None,
+                    'material': material,
+                    'temp': gtemp,
+                    'timer': gtime,
+                    'humidity_target': self._drying_humidity_target,
+                    'done_reason': None,
+                    'last_temp': None,
+                    'last_humidity': None,
+                }
+                self._drying_queue.append(gate)
+                try:
+                    self._drying_state[gate] = self.DRYING_STATE_QUEUED
+                except Exception:
+                    pass
+
+            # Turn heater on if possible else queue
+            self._start_next_queued_gates(self.mmu.reactor.monotonic())
+
+        # Enable
+        self.mmu.reactor.update_timer(self._periodic_timer, self.mmu.reactor.NOW)
 
 
     def _start_next_queued_gates(self, now):
@@ -789,10 +828,10 @@ class MmuEnvironmentManager:
         if max_h <= 0:
             max_h = 1
 
-        while len(self._active_gates) < max_h and self._pending_gates:
-            gate = self._pending_gates.pop(0)
+        while len(self._get_active_gates()) < max_h and self._drying_queue:
+            gate = self._drying_queue.pop(0)
             gd = self._gate_drying.get(gate)
-            if not gd or gd.get('state') != 'queued':
+            if not gd or gd.get('state') != self.DRYING_STATE_QUEUED:
                 continue
 
             # Use per-gate time (from material) else user forced timer or default time
@@ -802,26 +841,30 @@ class MmuEnvironmentManager:
 
             gd['start_time'] = now
             gd['end_time'] = now + (int(per_gate_minutes) * 60)
-            gd['state'] = 'active'
+            gd['state'] = self.DRYING_STATE_ACTIVE
             gd['done_reason'] = None
+
+            try:
+                self._drying_state[gate] = self.DRYING_STATE_ACTIVE
+            except Exception:
+                pass
 
             # Read environment sensor
             cur_temp, cur_humidity = self._get_environment_status(gate=gate)
             gd['last_temp'] = cur_temp
             gd['last_humidity'] = cur_humidity
 
-            self._active_gates.append(gate)
             self._heater_on(gd.get('temp'), gate=gate)
 
 
-    def _stop_drying_cycle(self, msg="Filament drying stopped"):
-        if self._drying:
-            self.mmu.log_debug("MmuEnvironmentManager: %s" % msg)
+    def _stop_drying_cycle(self, msg="Filament drying stopped", reset_state=True):
+        if self.is_drying() or self._drying_end_time is not None:
+            self.mmu.log_info(msg)
             self.mmu.reactor.update_timer(self._periodic_timer, self.mmu.reactor.NEVER)
 
             # Turn off all heaters in either mode
             if self._has_per_gate_heaters():
-                for gate in list(self._active_gates):
+                for gate in list(self._get_active_gates()):
                     self._heater_off(gate=gate)
                 # Best effort: also turn off any configured heaters for selected gates
                 for gate in self._drying_gates:
@@ -829,10 +872,11 @@ class MmuEnvironmentManager:
             else:
                 self._heater_off()
 
-            self._drying = False
-            self._active_gates = []
-            self._pending_gates = []
-            self._completed_gates = []
+            self._drying_queue = []
+            self._drying_gates = []
+
+            if reset_state:
+                self._drying_state = [self.DRYING_STATE_NONE] * self.mmu.num_gates
 
             # Stop rotation
             self._rotate_timer = None
@@ -859,35 +903,29 @@ class MmuEnvironmentManager:
 
             state = gd.get('state')
 
-            if state == 'active':
+            if state == self.DRYING_STATE_ACTIVE:
                 # Turn off heater and mark done
                 self._heater_off(gate=gate)
-                gd['state'] = 'done'
+                gd['state'] = self.DRYING_STATE_COMPLETE
                 gd['done_reason'] = reason
                 gd['end_time'] = now
-                try:
-                    self._active_gates.remove(gate)
-                except Exception:
-                    pass
-                if gate not in self._completed_gates:
-                    self._completed_gates.append(gate)
+                self._drying_state[gate] = self.DRYING_STATE_CANCELLED
                 cancelled += 1
 
-            elif state == 'queued':
+            elif state == self.DRYING_STATE_QUEUED:
                 # Remove from pending queue and mark done
                 try:
-                    while gate in self._pending_gates:
-                        self._pending_gates.remove(gate)
+                    while gate in self._drying_queue:
+                        self._drying_queue.remove(gate)
                 except Exception:
                     pass
-                gd['state'] = 'done'
+                gd['state'] = self.DRYING_STATE_COMPLETE
                 gd['done_reason'] = reason
                 gd['end_time'] = now
-                if gate not in self._completed_gates:
-                    self._completed_gates.append(gate)
+                self._drying_state[gate] = self.DRYING_STATE_CANCELLED
                 cancelled += 1
 
-            elif state == 'done':
+            elif state == self.DRYING_STATE_COMPLETE:
                 # Already done; no-op
                 pass
 

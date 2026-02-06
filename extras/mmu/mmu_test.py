@@ -833,11 +833,11 @@ class MmuTest:
                 loop = gcmd.get_int('LOOP', 0, minval=0, maxval=1)
 
                 if not loop:
-                    sensors = self.mmu.sensor_manager._get_sensors_before(pos, gate, loading=loading)
+                    sensors = self.mmu.sensor_manager.get_sensors_before(pos, gate, loading=loading)
                     self.mmu.log_always("check_all_sensors_before(%s,%s)=%s" % (pos, gate, self.mmu.sensor_manager.check_all_sensors_before(pos, gate, loading=loading)))
                     self.mmu.log_always("sensors before=%s" % sensors)
 
-                    sensors = self.mmu.sensor_manager._get_sensors_after(pos, gate, loading=loading)
+                    sensors = self.mmu.sensor_manager.get_sensors_after(pos, gate, loading=loading)
                     self.mmu.log_always("check_all_sensors_after(%s,%s)=%s" % (pos, gate, self.mmu.sensor_manager.check_all_sensors_after(pos, gate, loading=loading)))
                     self.mmu.log_always("sensors after=%s" % sensors)
                 else:
