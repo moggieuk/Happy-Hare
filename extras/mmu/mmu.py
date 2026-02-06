@@ -1426,7 +1426,7 @@ class Mmu:
                 "Unknown") # Error case - should not happen
 
     def _get_bowden_progress(self):
-        if (self.bowden_start_pos is not None):
+        if self.bowden_start_pos is not None:
             bowden_length = self.calibration_manager.get_bowden_length()
             if bowden_length > 0:
                 current = self.get_encoder_distance(dwell=None) if self.has_encoder() else self._get_live_filament_position()
@@ -3439,15 +3439,16 @@ class Mmu:
         self.save_variable(self.VARS_MMU_LAST_TOOL, tool, write=True)
 
     def _set_filament_pos_state(self, state, silent=False):
-        self.filament_pos = state
-        if self.gate_selected != self.TOOL_GATE_BYPASS or state == self.FILAMENT_POS_UNLOADED or state == self.FILAMENT_POS_LOADED:
-            self._display_visual_state(silent=silent)
+        if self.filament_pos != state:
+            self.filament_pos = state
+            if self.gate_selected != self.TOOL_GATE_BYPASS or state == self.FILAMENT_POS_UNLOADED or state == self.FILAMENT_POS_LOADED:
+                self._display_visual_state(silent=silent)
 
-        # Minimal save_variable writes
-        if state in [self.FILAMENT_POS_LOADED, self.FILAMENT_POS_UNLOADED]:
-            self.save_variable(self.VARS_MMU_FILAMENT_POS, state, write=True)
-        elif self.save_variables.allVariables.get(self.VARS_MMU_FILAMENT_POS, 0) != self.FILAMENT_POS_UNKNOWN:
-            self.save_variable(self.VARS_MMU_FILAMENT_POS, self.FILAMENT_POS_UNKNOWN, write=True)
+            # Minimal save_variable writes
+            if state in [self.FILAMENT_POS_LOADED, self.FILAMENT_POS_UNLOADED]:
+                self.save_variable(self.VARS_MMU_FILAMENT_POS, state, write=True)
+            elif self.save_variables.allVariables.get(self.VARS_MMU_FILAMENT_POS, 0) != self.FILAMENT_POS_UNKNOWN:
+                self.save_variable(self.VARS_MMU_FILAMENT_POS, self.FILAMENT_POS_UNKNOWN, write=True)
 
         self._adjust_espooler_assist()
 
@@ -4505,6 +4506,7 @@ class Mmu:
                 self.log_debug("Loading bowden tube")
                 self._set_filament_direction(self.DIRECTION_LOAD)
                 self.selector.filament_drive()
+                self._set_filament_pos_state(self.FILAMENT_POS_START_BOWDEN)
 
                 # Record starting position for bowden progress tracking. Prefer encoder if available
                 self.bowden_start_pos = (self.get_encoder_distance(dwell=None) if self.has_encoder() else self._get_live_filament_position()) - start_pos
@@ -5699,26 +5701,31 @@ class Mmu:
 
     # This is a recovery routine to determine the most conservative location of the filament (for unload purposes)
     # Also, ensures that the filament availabilty is updated if filament is found
+    # 
     def recover_filament_pos(self, strict=False, can_heat=True, message=False, silent=False):
         if message:
             self.log_info("Attempting to recover filament position...")
 
         ts = self.sensor_manager.check_sensor(self.SENSOR_TOOLHEAD)
         es = self.sensor_manager.check_sensor(self.SENSOR_EXTRUDER_ENTRY)
-
         gs = self.sensor_manager.check_sensor(self.sensor_manager.get_mapped_endstop_name(self.gate_homing_endstop))
 
         filament_detected = self.sensor_manager.check_any_sensors_in_path()
+        looks_loaded = self.sensor_manager.check_all_sensors_in_path()
         if not filament_detected:
             filament_detected = self.check_filament_in_mmu() # Include encoder detection method
 
-        # Loaded
+        # Definitely loaded
         if ts:
             self._set_filament_pos_state(self.FILAMENT_POS_LOADED, silent=silent)
 
+        # Probably loaded: Unless strict we will continue to assume loaded in the absence of sensors to say otherwise
+        elif not strict and self.filament_pos == self.FILAMENT_POS_LOADED and looks_loaded:
+            pass
+
         # Somewhere in extruder
         elif filament_detected and can_heat and self.check_filament_in_extruder(): # Encoder based
-            self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER, silent=silent) # Will start from tip forming
+            self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER, silent=silent) # Will start from tip forming on unload
         elif ts is False and filament_detected and (self.strict_filament_recovery or strict) and can_heat and self.check_filament_in_extruder():
             # This case adds an additional encoder based test to see if filament is still being gripped by extruder
             # even though TS doesn't see it. It's a pedantic option so on turned on by strict flag
@@ -5735,6 +5742,12 @@ class Mmu:
         # Somewhere in bowden
         elif gs or filament_detected:
             self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN, silent=silent) # Prevents fast bowden unload move
+
+            # Sensor sanity check
+            if self.sensor_manager.check_all_sensors_before(self.FILAMENT_POS_HOMED_GATE, self.gate_selected, loading=False) is False:
+                sensors = self.sensor_manager.get_sensors_before(self.FILAMENT_POS_HOMED_GATE, self.gate_selected, loading=False)
+                malfunction = ", ".join(sorted(k for k, v in sensors.items() if v is False))
+                self.log_warning("Filament determined to be somewhere in bowden but the following sensors are unexpectedly not triggered: %s\nCheck for further sensor malfunction with MMU_SENSORS command. Also validate the correct gate is selected.\nRe-run MMU_RECOVER when ready" % malfunction)
 
         # Unloaded
         else:
