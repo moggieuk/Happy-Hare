@@ -340,16 +340,17 @@ effect_gate_empty_sel:     mmu_ready_orange2,       (0.1, 0.04, 0)
 # Define any additional hardware for this MMU unit, e.g. heaters, chamber temperature probes, etc
 #
 [temperature_sensor MMU_vivid_left]
-sensor_type: AHT10 # Actually a ACT30, set 'update_aht10_commands: 1' in mmu_parameters.cfg
+sensor_type: AHT3X
 i2c_mcu: mmu
-i2c_bus: i2c1_PA9_PA10
+i2c_software_scl_pin: mmu:PA9
+i2c_software_sda_pin: mmu:PA10
 aht10_report_time: 10
 
 [temperature_sensor MMU_vivid_right]
-sensor_type: AHT10 # Actually a ACT30, set 'update_aht10_commands: 1' in mmu_parameters.cfg
+sensor_type: AHT3X # Actually a ACT30, set 'update_aht10_commands: 1' in mmu_parameters.cfg
 i2c_mcu: mmu
-i2c_software_scl_pin: PA7
-i2c_software_sda_pin: PA6
+i2c_software_scl_pin: mmu:PA7
+i2c_software_sda_pin: mmu:PA6
 aht10_report_time: 10
 
 [heater_generic MMU_heater_vivid]
