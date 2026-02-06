@@ -188,7 +188,7 @@ class MmuSensorManager:
     #         None if NO sensors available (disambiguate from non-triggered sensor)
     # Can be used as a "filament continuity test"
     def check_all_sensors_before(self, pos, gate, loading=True):
-        sensors = self._get_sensors_before(pos, gate, loading)
+        sensors = self.get_sensors_before(pos, gate, loading)
         if all(state is None for state in sensors.values()):
             return None
         return all(state is not False for state in sensors.values())
@@ -197,7 +197,7 @@ class MmuSensorManager:
     #         None if NO sensors available (disambiguate from non-triggered sensor)
     # Can be used as a filament visibility test over a portion of the travel
     def check_any_sensors_before(self, pos, gate, loading=True):
-        sensors = self._get_sensors_before(pos, gate, loading)
+        sensors = self.get_sensors_before(pos, gate, loading)
         if all(state is None for state in sensors.values()):
             return None
         return any(state is True for state in sensors.values())
@@ -206,7 +206,7 @@ class MmuSensorManager:
     #         None if NO sensors available (disambiguate from non-triggered sensor)
     # Can be used as a "filament continuity test"
     def check_all_sensors_after(self, pos, gate, loading=True):
-        sensors = self._get_sensors_after(pos, gate, loading)
+        sensors = self.get_sensors_after(pos, gate, loading)
         if all(state is None for state in sensors.values()):
             return None
         return all(state is not False for state in sensors.values())
@@ -215,15 +215,23 @@ class MmuSensorManager:
     #         None if no sensors available (disambiguate from non-triggered sensor)
     # Can be used to validate position
     def check_any_sensors_after(self, pos, gate, loading=True):
-        sensors = self._get_sensors_after(pos, gate, loading)
+        sensors = self.get_sensors_after(pos, gate, loading)
         if all(state is None for state in sensors.values()):
             return None
         return any(state is True for state in sensors.values())
 
-    # Returns True is any sensors in current filament path are triggered (EXCLUDES pre-gate)
+    # Returns True if all sensors in current filament path are triggered
     #         None if no sensors available (disambiguate from non-triggered sensor)
-    def check_any_sensors_in_path(self, exclude_gear=False):
-        sensors = self._get_all_sensors_for_gate(self.mmu.gate_selected)
+    def check_all_sensors_in_path(self):
+        sensors = self.get_sensors_before(self.mmu.FILAMENT_POS_LOADED, self.mmu.gate_selected)
+        if all(state is None for state in sensors.values()):
+            return None
+        return all(state is not False for state in sensors.values())
+
+    # Returns True if any sensors in current filament path are triggered (EXCLUDES pre-gate)
+    #         None if no sensors available (disambiguate from non-triggered sensor)
+    def check_any_sensors_in_path(self):
+        sensors = self.get_all_sensors_for_gate(self.mmu.gate_selected)
         if all(state is None for state in sensors.values()):
             return None
         return any(state is True for state in sensors.values())
@@ -232,14 +240,14 @@ class MmuSensorManager:
     #         None if no sensors available (disambiguate from non-triggered sensor)
     # Can be used to spot failure in "continuity" i.e. runout
     def check_for_runout(self):
-        sensors = self._get_sensors_before(self.mmu.FILAMENT_POS_LOADED, self.mmu.gate_selected)
+        sensors = self.get_sensors_before(self.mmu.FILAMENT_POS_LOADED, self.mmu.gate_selected)
         if all(state is None for state in sensors.values()):
             return None
         return any(state is False for state in sensors.values())
 
     # Error with explanation if any filament sensors don't detect filament
     def confirm_loaded(self):
-        sensors = self._get_sensors_before(self.mmu.FILAMENT_POS_LOADED, self.mmu.gate_selected)
+        sensors = self.get_sensors_before(self.mmu.FILAMENT_POS_LOADED, self.mmu.gate_selected)
         if any(state is False for state in sensors.values()):
             MmuError("Loaded check failed:\nFilament not detected by sensors: %s" % ', '.join([name for name, state in sensors.items() if state is False]))
 
@@ -297,13 +305,13 @@ class MmuSensorManager:
                     result[name] = bool(sensor.runout_helper.filament_present) if sensor.runout_helper.sensor_enabled else None
         return result # TODO handle bypass and return only EXTRUDER_ENTRY and TOOLHEAD sensors
 
-    def _get_sensors_before(self, pos, gate, loading=True):
+    def get_sensors_before(self, pos, gate, loading=True):
         return self._get_sensors(pos, gate, lambda p, pc: pc is None or (loading and p >= pc) or (not loading and p > pc))
 
-    def _get_sensors_after(self, pos, gate, loading=True):
+    def get_sensors_after(self, pos, gate, loading=True):
         return self._get_sensors(pos, gate, lambda p, pc: pc is not None and ((loading and p < pc) or (not loading and p <= pc)))
 
-    def _get_all_sensors_for_gate(self,  gate):
+    def get_all_sensors_for_gate(self,  gate):
         return self._get_sensors(-1, gate, lambda p, pc: pc is not None)
 
     def get_status(self, eventtime=None):
