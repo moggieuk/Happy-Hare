@@ -200,10 +200,10 @@ extra_endstop_names: unit0_gate0, unit0_gate1, unit0_gate2, unit0_gate3
 # it will be ignored. You can also just comment out what you are not using.
 #
 [mmu_sensors]
-pre_gate_switch_pin_0: !mmu:PA0
-pre_gate_switch_pin_1: !mmu:PA1
-pre_gate_switch_pin_2: !mmu:PA2
-pre_gate_switch_pin_3: !mmu:PA3
+pre_gate_switch_pin_0: mmu:PA0
+pre_gate_switch_pin_1: mmu:PA1
+pre_gate_switch_pin_2: mmu:PA2
+pre_gate_switch_pin_3: mmu:PA3
 
 post_gear_switch_pin_0: buffer:PA0
 #post_gear_analog_range_0: 0, 500 # Delete if using updated digital sensor
