@@ -6593,7 +6593,27 @@ class Mmu:
             if tool < 0 or tool > self.num_gates - 1:
                 raise gcmd.error("Invalid tool")
         else:
-            tool = gcmd.get_int('TOOL', minval=0, maxval=self.num_gates - 1)
+            # Special case for UI driven change tool where gate is chosen
+            tool = None
+            gate = gcmd.get_int('GATE', None, minval=0, maxval=self.num_gates - 1)
+            if gate is not None:
+                if gate == self.gate_selected:
+                    self.log_always("Gate %s is already loaded as %s" % (gate, self.selected_tool_string(tool)))
+                    return
+
+                possible_tools = [tool for tool in range(self.num_gates) if self.ttg_map[tool] == gate]
+                if not possible_tools:
+                    self.log_error("No tool associated with gate %s. Check tool-to-gate mapping with MMU_TTG_MAP" % gate)
+                    return
+
+                if self.tool_selected in possible_tools:
+                    self._remap_tool(self.tool_selected, gate)
+                    tool = self.tool_selected
+                else:
+                    tool = possible_tools[0]
+
+            if tool is None:
+                tool = gcmd.get_int('TOOL', minval=0, maxval=self.num_gates - 1)
 
         try:
             with self.wrap_sync_gear_to_extruder():
