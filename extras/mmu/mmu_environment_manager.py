@@ -59,11 +59,11 @@ class MmuEnvironmentManager:
     ENV_SENSOR_CHIPS = ["bme280", "htu21d", "sht3x", "lm75"]
 
     # Drying states (mostly relevant for per-gate heaters)
-    DRYING_STATE_NONE     = ''
-    DRYING_STATE_QUEUED   = 'queued'
-    DRYING_STATE_ACTIVE   = 'active'
-    DRYING_STATE_COMPLETE = 'complete'
-    DRYING_STATE_CANCELED = 'canceled'
+    DRYING_STATE_NONE      = ''
+    DRYING_STATE_QUEUED    = 'queued'
+    DRYING_STATE_ACTIVE    = 'active'
+    DRYING_STATE_COMPLETE  = 'complete'
+    DRYING_STATE_CANCELLED = 'canceled'
 
     def __init__(self, mmu):
         self.mmu = mmu
@@ -410,6 +410,10 @@ class MmuEnvironmentManager:
 
             # Per-gate recommended temps/times, plus overall notes
             per_gate_plan = self._get_drying_plan(gates)
+            # If TIMER specified, override all selected gates to that time (multi-heater mode uses per-gate timers)
+            if timer is not None and self._has_per_gate_heaters():
+                for gate in gates:
+                    per_gate_plan[gate]['timer'] = timer
 
             # If TEMP specified, override all selected gates to that temp (still warn if above recommendation)
             if temp is not None:
