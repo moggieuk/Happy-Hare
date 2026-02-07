@@ -1479,7 +1479,7 @@ class Mmu:
             'tool_speed_multipliers': self.tool_speed_multipliers,
             'slicer_tool_map': self.slicer_tool_map,
             'action': self._get_action_string(),
-            'has_bypass': self.selector.has_bypass(),
+            'has_bypass': self.selector.has_bypass(), # TODO deprecate because this is a per unit selector bypass
             'sync_drive': self.mmu_toolhead.is_synced(),
             'print_start_detection': self.print_start_detection, # For Klippain. Not really sure it is necessary
             'reason_for_pause': self.reason_for_pause if self.is_mmu_paused() else "",
@@ -6246,9 +6246,6 @@ class Mmu:
 
     def select_bypass(self):
         if self.tool_selected == self.TOOL_GATE_BYPASS and self.gate_selected == self.TOOL_GATE_BYPASS: return
-        if not self.selector.has_bypass():
-            self.log_always("Bypass not configured")
-            return
         self.log_info("Selecting filament bypass...")
         self.select_gate(self.TOOL_GATE_BYPASS)
         self._set_tool_selected(self.TOOL_GATE_BYPASS)
@@ -7006,10 +7003,6 @@ class Mmu:
         strict = gcmd.get_int('STRICT', 0, minval=0, maxval=1)
 
         try:
-            if self.TOOL_GATE_BYPASS in (tool, mod_gate) and not self.selector.has_bypass():
-                self.log_always("Bypass not configured")
-                return
-
             if tool == self.TOOL_GATE_BYPASS:
                 self.selector.restore_gate(self.TOOL_GATE_BYPASS)
                 self._set_gate_selected(self.TOOL_GATE_BYPASS)

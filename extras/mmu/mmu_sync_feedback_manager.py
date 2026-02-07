@@ -523,7 +523,7 @@ class MmuSyncFeedbackManager:
         self.estimated_state = output['sensor_ui']
 
         # Handle flowguard trip
-        self.flowguard_status = output['flowguard']
+        self.flowguard_status = dict(output['flowguard'])
         self.flowguard_status['enabled'] = bool(self.flowguard_enabled)
         f_trigger = self.flowguard_status.get('trigger', None)
         f_reason = self.flowguard_status.get('reason', "")
