@@ -3456,13 +3456,13 @@ class Mmu:
     def _gate_homing_string(self):
         return "ENCODER" if self.gate_homing_endstop == self.SENSOR_ENCODER else "%s sensor" % self.gate_homing_endstop
 
-    def _ensure_safe_extruder_temperature(self, source="auto", wait=False):
+    def _ensure_safe_extruder_temperature(self, source="auto", wait=False, verify_only=False):
         extruder = self.printer.lookup_object(self.extruder_name)
         current_temp = extruder.get_status(0)['temperature']
         current_target_temp = extruder.heater.target_temp
         klipper_minimum_temp = extruder.get_heater().min_extrude_temp
         gate_temp = self.gate_temperature[self.gate_selected] if self.gate_selected >= 0 and self.gate_temperature[self.gate_selected] > 0 else self.default_extruder_temp
-        self.log_trace("_ensure_safe_extruder_temperature: current_temp=%s, paused_extruder_temp=%s, current_target_temp=%s, klipper_minimum_temp=%s, gate_temp=%s, default_extruder_temp=%s, source=%s" % (current_temp, self.paused_extruder_temp, current_target_temp, klipper_minimum_temp, gate_temp, self.default_extruder_temp, source))
+        self.log_trace("_ensure_safe_extruder_temperature: current_temp=%s, paused_extruder_temp=%s, current_target_temp=%s, klipper_minimum_temp=%s, gate_temp=%s, default_extruder_temp=%s, source=%s, verify_only=%s" % (current_temp, self.paused_extruder_temp, current_target_temp, klipper_minimum_temp, gate_temp, self.default_extruder_temp, source, verify_only))
 
         if source == "pause":
             new_target_temp = self.paused_extruder_temp if self.paused_extruder_temp is not None else current_temp # Pause temp should not be None
@@ -3520,7 +3520,7 @@ class Mmu:
                 self.log_info("Heating extruder to %s temp (%.1f%sC)" % (source, new_target_temp, UI_DEGREE))
             wait = True # Always wait to warm up
 
-        if new_target_temp > 0:
+        if new_target_temp > 0 and not verify_only:
             self.gcode.run_script_from_command("M104 S%.1f" % new_target_temp)
 
             # Optionally wait until temperature is stable or at minimum safe temp so extruder can move
@@ -3528,6 +3528,8 @@ class Mmu:
                 with self.wrap_action(self.ACTION_HEATING):
                     self.log_info("Waiting for extruder to reach target (%s) temperature: %.1f%sC" % (source, new_target_temp, UI_DEGREE))
                     self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=%s MINIMUM=%.1f MAXIMUM=%.1f" % (self.extruder_name, new_target_temp - self.extruder_temp_variance, new_target_temp + self.extruder_temp_variance))
+        elif verify_only and current_temp < klipper_minimum_temp:
+            raise MmuError("Extruder temperature (%.1f%sC) is below minimum extrusion temperature (%.1f%sC)" % (current_temp, UI_DEGREE, klipper_minimum_temp))
 
     def _selected_tool_string(self, tool=None):
         if tool is None:
@@ -5055,7 +5057,7 @@ class Mmu:
 
         with self.wrap_action(self.ACTION_CUTTING_TIP if self.has_toolhead_cutter else self.ACTION_FORMING_TIP):
             sync = self.reset_sync_gear_to_extruder(not extruder_only and self.sync_form_tip)
-            self._ensure_safe_extruder_temperature(wait=True)
+            self._ensure_safe_extruder_temperature(wait=True, verify_only=True)
 
             # Perform the tip forming move and establish park_pos
             initial_encoder_position = self.get_encoder_distance()
