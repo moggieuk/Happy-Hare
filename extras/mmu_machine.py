@@ -145,6 +145,7 @@ class MmuMachine:
             variable_bowden_lengths = 0
             require_bowden_move = 1
             filament_always_gripped = 0
+            can_crossload = 0
             has_bypass = 1
 
         elif self.mmu_vendor == VENDOR_TRADRACK:
@@ -153,6 +154,7 @@ class MmuMachine:
             variable_bowden_lengths = 0
             require_bowden_move = 1
             filament_always_gripped = 0
+            can_crossload = 0
             has_bypass = 1
 
         elif self.mmu_vendor == VENDOR_PRUSA:
@@ -164,6 +166,7 @@ class MmuMachine:
             variable_bowden_lengths = 0
             require_bowden_move = 0
             filament_always_gripped = 1
+            can_crossload = 1
             has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_BOX_TURTLE:
@@ -172,6 +175,7 @@ class MmuMachine:
             variable_bowden_lengths = 0
             require_bowden_move = 1
             filament_always_gripped = 1
+            can_crossload = 1
             has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_NIGHT_OWL:
@@ -180,6 +184,7 @@ class MmuMachine:
             variable_bowden_lengths = 0
             require_bowden_move = 1
             filament_always_gripped = 1
+            can_crossload = 1
             has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_3MS:
@@ -188,6 +193,7 @@ class MmuMachine:
             variable_bowden_lengths = 0
             require_bowden_move = 0
             filament_always_gripped = 1
+            can_crossload = 1
             has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_3D_CHAMELEON:
@@ -214,6 +220,7 @@ class MmuMachine:
             variable_bowden_lengths = 0
             require_bowden_move = 1
             filament_always_gripped = 1
+            can_crossload = 1
             has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_MMX:
@@ -240,6 +247,7 @@ class MmuMachine:
             variable_bowden_lengths = 0
             require_bowden_move = 1
             filament_always_gripped = 1
+            can_crossload = 1
             has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_EMU:
@@ -248,6 +256,7 @@ class MmuMachine:
             variable_bowden_lengths = 1
             require_bowden_move = 1
             filament_always_gripped = 1
+            can_crossload = 1
             has_bypass = 1
 
         # Still allow MMU design attributes to be altered or set for custom MMU
@@ -355,6 +364,7 @@ class MmuMachine:
             unit_info['variable_bowden_lengths'] = self.variable_bowden_lengths
             unit_info['require_bowden_move'] = self.require_bowden_move
             unit_info['filament_always_gripped'] = self.filament_always_gripped
+            unit_info['can_crossload'] = self.can_crossload
             unit_info['has_bypass'] = self.has_bypass
             unit_info['multi_gear'] = self.multigear
             if self.environment_sensor or self.filament_heater:
