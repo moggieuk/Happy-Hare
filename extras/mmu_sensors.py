@@ -79,12 +79,14 @@ class MmuRunoutHelper:
 
         # Replace previous runout_helper mux commands with ours
         prev = self.gcode.mux_commands.get("QUERY_FILAMENT_SENSOR")
-        _, prev_values = prev
-        prev_values[self.name] = self.cmd_QUERY_FILAMENT_SENSOR
+        if prev:
+            _, prev_values = prev
+            prev_values[self.name] = self.cmd_QUERY_FILAMENT_SENSOR
 
         prev = self.gcode.mux_commands.get("SET_FILAMENT_SENSOR")
-        _, prev_values = prev
-        prev_values[self.name] = self.cmd_SET_FILAMENT_SENSOR
+        if prev:
+            _, prev_values = prev
+            prev_values[self.name] = self.cmd_SET_FILAMENT_SENSOR
 
 
     def _handle_ready(self):
