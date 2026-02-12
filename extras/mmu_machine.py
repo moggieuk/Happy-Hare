@@ -61,6 +61,7 @@ VENDOR_QUATTRO_BOX    = "QuattroBox"
 VENDOR_MMX            = "MMX"
 VENDOR_VVD            = "VVD"
 VENDOR_KMS            = "KMS"
+VENDOR_EMU            = "EMU"
 VENDOR_OTHER          = "Other"
 
 UNIT_ALT_DISPLAY_NAMES = {
@@ -70,7 +71,7 @@ UNIT_ALT_DISPLAY_NAMES = {
     VENDOR_VVD:          "BTT VVD",
 }
 
-VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_ANGRY_BEAVER, VENDOR_BOX_TURTLE, VENDOR_NIGHT_OWL, VENDOR_3MS, VENDOR_3D_CHAMELEON, VENDOR_PICO_MMU, VENDOR_QUATTRO_BOX, VENDOR_MMX, VENDOR_VVD, VENDOR_KMS, VENDOR_OTHER]
+VENDORS = [VENDOR_ERCF, VENDOR_TRADRACK, VENDOR_PRUSA, VENDOR_ANGRY_BEAVER, VENDOR_BOX_TURTLE, VENDOR_NIGHT_OWL, VENDOR_3MS, VENDOR_3D_CHAMELEON, VENDOR_PICO_MMU, VENDOR_QUATTRO_BOX, VENDOR_MMX, VENDOR_VVD, VENDOR_KMS, VENDOR_EMU, VENDOR_OTHER]
 
 
 # Define type/style of MMU and expand configuration for convenience. Validate hardware configuration
@@ -129,16 +130,16 @@ class MmuMachine:
         #  - Is filament always gripped by MMU
         #  - Does selector mechanism still allow selection of gates when filament is loaded (implied for Multigear designs)
         #  - Does design has a filament bypass
-        selector_type = 'LinearSelector'
+        selector_type = 'LinearServoSelector'
         variable_rotation_distances = 1
         variable_bowden_lengths = 0
         require_bowden_move = 1     # Will allow mmu_gate sensor and extruder sensor to share the same pin
         filament_always_gripped = 0 # Whether MMU design has ability to release filament (overrides gear/extruder syncing)
         can_crossload = 0           # Design allows preloading/eject in one gate while another gate is loaded (also requires post_gear sensor)
-        has_bypass = 0              # Whether MMU design has bypass gate (also has to be calibrated on type-A designs with LinearSelector)
+        has_bypass = 0              # Whether MMU design has bypass gate (also has to be calibrated on type-A designs with LinearServoSelector)
 
         if self.mmu_vendor == VENDOR_ERCF:
-            selector_type = 'LinearSelector'
+            selector_type = 'LinearServoSelector'
             variable_rotation_distances = 1
             variable_bowden_lengths = 0
             require_bowden_move = 1
@@ -146,7 +147,7 @@ class MmuMachine:
             has_bypass = 1
 
         elif self.mmu_vendor == VENDOR_TRADRACK:
-            selector_type = 'LinearSelector'
+            selector_type = 'LinearServoSelector'
             variable_rotation_distances = 0
             variable_bowden_lengths = 0
             require_bowden_move = 1
@@ -240,8 +241,16 @@ class MmuMachine:
             filament_always_gripped = 1
             has_bypass = 0
 
+        elif self.mmu_vendor == VENDOR_EMU:
+            selector_type = 'VirtualSelector'
+            variable_rotation_distances = 1
+            variable_bowden_lengths = 1
+            require_bowden_move = 1
+            filament_always_gripped = 1
+            has_bypass = 1
+
         # Still allow MMU design attributes to be altered or set for custom MMU
-        self.selector_type = config.getchoice('selector_type', {o: o for o in ['LinearSelector', 'VirtualSelector', 'MacroSelector', 'RotarySelector', 'ServoSelector', 'IndexedSelector']}, selector_type)
+        self.selector_type = config.getchoice('selector_type', {o: o for o in ['VirtualSelector', 'LinearSelector', 'LinearServoSelector', 'LinearMultiGearSelector', 'RotarySelector', 'MacroSelector', 'ServoSelector', 'IndexedSelector']}, selector_type)
         self.variable_rotation_distances = bool(config.getint('variable_rotation_distances', variable_rotation_distances))
         self.variable_bowden_lengths = bool(config.getint('variable_bowden_lengths', variable_bowden_lengths))
         self.require_bowden_move = bool(config.getint('require_bowden_move', require_bowden_move))
@@ -978,7 +987,7 @@ class MmuKinematics:
 
         # Setup "axis" rails
         self.rails = []
-        if self.mmu_machine.selector_type in ['LinearSelector', 'RotarySelector']:
+        if self.mmu_machine.selector_type in ['LinearSelector', 'LinearServoSelector', 'LinearMultiGearSelector', 'RotarySelector']:
             self.rails.append(MmuLookupMultiRail(config.getsection(SELECTOR_STEPPER_CONFIG), need_position_minmax=True, default_position_endstop=0.))
             self.rails[0].setup_itersolve('cartesian_stepper_alloc', b'x')
         elif self.mmu_machine.selector_type in ['IndexedSelector']:
@@ -1043,7 +1052,7 @@ class MmuKinematics:
         self.move_accel = accel
 
     def check_move(self, move):
-        if self.mmu_machine.selector_type in ['LinearSelector', 'RotarySelector']:
+        if self.mmu_machine.selector_type in ['LinearSelector', 'LinearServoSelector', 'LinearMultiGearSelector', 'RotarySelector']:
             limits = self.limits
             xpos, _ = move.end_pos[:2]
             if xpos != 0. and (xpos < limits[0][0] or xpos > limits[0][1]):
