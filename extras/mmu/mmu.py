@@ -3529,7 +3529,7 @@ class Mmu:
                     self.log_info("Waiting for extruder to reach target (%s) temperature: %.1f%sC" % (source, new_target_temp, UI_DEGREE))
                     self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=%s MINIMUM=%.1f MAXIMUM=%.1f" % (self.extruder_name, new_target_temp - self.extruder_temp_variance, new_target_temp + self.extruder_temp_variance))
         elif verify_only and current_temp < klipper_minimum_temp:
-            raise MmuError("Extruder temperature (%.1f%sC) is below minimum extrusion temperature (%.1f%sC)" % (current_temp, UI_DEGREE, klipper_minimum_temp))
+            raise MmuError("Extruder temperature (%.1f%sC) is below minimum extrusion temperature (%.1f%sC)" % (current_temp, UI_DEGREE, klipper_minimum_temp, UI_DEGREE))
 
     def _selected_tool_string(self, tool=None):
         if tool is None:
