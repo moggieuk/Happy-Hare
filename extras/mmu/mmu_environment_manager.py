@@ -140,6 +140,7 @@ class MmuEnvironmentManager:
 
 
     def get_test_config(self):
+        msg = ""
         if self.has_heater():
             msg = "\n\nHEATER:"
             msg += "\nheater_default_dry_temp = %.1f" % self.heater_default_dry_temp
