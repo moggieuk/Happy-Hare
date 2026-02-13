@@ -117,7 +117,7 @@ def load_config_prefix(config):
 
 # --------------------------------------------------------------------------------------
 #
-# This is and embedded version (v0.0.16-0-ga558cb7c) of the excellent led_effects
+# This is and embedded version (v0.0.18-0-g24d26c72) of the excellent led_effects
 # It is included for ease of Happy Hare setup and to avoid dependencies that were
 # tripping up users. It doesn't not prelude the adding of the original led-effects
 # as well.
@@ -125,6 +125,8 @@ def load_config_prefix(config):
 # Changes:
 #   - Command names have been changed to hide from original (added '_MMU_' prefix)
 #   - 'ledEffect' -> '_ledEffect' to avoid name collision with real module
+#   - def load_config_prefix(config) removed
+#   - self.handler loads object 'mmu_led_effect'
 #
 # --------------------------------------------------------------------------------------
 
@@ -292,7 +294,13 @@ class ledFrameHandler:
                 self.heaters[effect.heater] = self.printer.lookup_object(effect.heater)
             else:
                 pheater = self.printer.lookup_object('heaters')
-                self.heaters[effect.heater] = pheater.lookup_heater(effect.heater)
+
+                heater = pheater.lookup_heater(effect.heater)
+                if heater is None:
+                    raise self.printer.config_error(
+                        "LED Effect '%s': unknown heater '%s'." 
+                            % (effect.name, effect.heater,))
+                self.heaters[effect.heater] = heater
             self.heaterLast[effect.heater] = 100
             self.heaterCurrent[effect.heater] = 0
             self.heaterTarget[effect.heater]  = 0
@@ -557,6 +565,10 @@ class _ledEffect:
                         self.leds.append((ledChain, int(i)))
                 else:
                     for led in ledIndices:
+                        if led > ledChain.led_helper.led_count:
+                            raise self.printer.config_error(
+                                "LED effect '%s': index out of range for chain '%s' with %d LEDs."
+                                    % (self.name, chainName, ledChain.led_helper.led_count))
                         self.leds.append((ledChain, led))
 
         self.ledCount = len(self.leds)
@@ -607,13 +619,13 @@ class _ledEffect:
                 for i in palette: 
                     if len(i) > COLORS: 
                         raise Exception(
-                            "Color %s has too many elements." % (str(i),))
+                            "LED effect '%s': Color %s has too many elements." % (self.name, str(i),))
                 palette=[pad(c) for c in palette]                               # pad to COLORS colors
                 palette=[k for c in palette for k in c]                         # flatten list
             except Exception as e:
                 raise self.printer.config_error(
-                    "Error parsing palette in '%s' for layer \"%s\": %s"\
-                        % (self.config.get_name(), parms[0], e,))
+                    "LED effect '%s': Error parsing palette in '%s' for layer \"%s\": %s"\
+                        % (self.name, self.config.get_name(), parms[0], e,))
             self.layers.insert(0, layer(handler       = self,
                                         frameHandler  = self.handler,
                                         effectRate    = float(parms[1]),
@@ -1024,7 +1036,8 @@ class _ledEffect:
             self.paletteColors = colorArray(COLORS, self.paletteColors)
 
             if self.effectRate <= 0:
-                raise Exception("effect rate for cylon must be > 0")
+                raise self.handler.printer.config_error(
+                    "LED Effect '%s': effect rate for cylon must be > 0" % (self.handler.name,))
 
             # How many frames per sweep animation.
             frames = int(self.effectRate / self.frameRate)
@@ -1394,7 +1407,7 @@ class _ledEffect:
             frame = []
 
             for h in range(self.heatLen):
-                c = randint(0,self.effectCutoff)
+                c = randint(0,int(self.effectCutoff))
                 self.heatMap[h] -= (self.heatMap[h] - c >= 0 ) * c
 
             for i in range(self.ledCount - 1, self.heatSource, -1):
@@ -1684,3 +1697,7 @@ class _ledEffect:
                 self.fadeValue = 0
             
             return [self.fadeValue * i for i in self.thisFrame[self.coloridx]]
+
+# --------------------------------------------------------------------------------------
+# ----------------------- End of klipper_led_effects import ----------------------------
+# --------------------------------------------------------------------------------------
