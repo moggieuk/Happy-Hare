@@ -965,7 +965,7 @@ class MmuEnvironmentManager:
         """
         Turn MMU heater off. If gate=None then turn off all heaters
         """
-        if not self._has_per_gate_heaters():
+        if not self._has_per_gate_heaters() and self.mmu.mmu_machine.filament_heater:
             self.mmu.log_debug("MmuEnvironmentManager: Heater %s turned off" % self.mmu.mmu_machine.filament_heater)
             hname = self._heater_name(self.mmu.mmu_machine.filament_heater)
             self.mmu.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=%s TARGET=0" % hname)
