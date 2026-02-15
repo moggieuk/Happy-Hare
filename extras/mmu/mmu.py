@@ -1829,30 +1829,112 @@ class Mmu:
     def _persist_counters(self):
         self.save_variable(self.VARS_MMU_COUNTERS, self.counters, write=True)
 
-    def format_help(self, msg):
+
+    def format_help(self, msg, supplement=None):
+        """
+        Format a help message and optional supplement into a nicely aligned block.
+
+        The input `msg` is expected to be multi-line with the first line containing
+        either "command: description" or just a single heading line. Subsequent
+        lines may contain parameter definitions in the form "name = value".
+
+        This function:
+          - Keeps the heading (and highlights the command using UI markers "{5}" / "{6}").
+          - Aligns parameter names into a column (minimum width 10).
+          - Prefixes parameter lines with a cascade/UI marker using `UI_CASCADE`.
+          - Uses `UI_SPACE` as the fill character when padding parameter names.
+          - Optionally appends a supplement block (if provided) wrapped with UI markers.
+
+        Args:
+            msg: The main help message (multi-line).
+            supplement: Optional supplemental text (multi-line) appended after the main block.
+
+        Returns:
+            The formatted help string.
+        """
+        if not msg:
+            return ""
+
         lines = msg.splitlines()
         if not lines:
             return msg
 
-        first_line = lines[0]
+        # Format the heading (first line). If the heading contains ":", split into
+        # command and description and wrap the command in UI markers.
+        first_line = lines[0].rstrip()
         if ":" in first_line:
             cmd, helpstr = first_line.split(":", 1)
-            formatted_help = "{5}%s{6}:%s" % (cmd.strip(), helpstr)
+            formatted_help = "{5}" + cmd.strip() + "{6} : " + helpstr.strip()
         else:
             formatted_help = first_line
 
-        param_width = max(10, max((len(line.split("=", 1)[0].strip()) + 1 for line in lines[1:] if "=" in line), default=0))
-        formatted_params = []
-        for line in lines[1:]:
-            if "=" in line:
-                key, value = line.split("=", 1)
-                padded = key.strip().ljust(param_width, UI_SPACE) + "= " + value.strip()
-                formatted_line = "{4}%s %s{0}" % (UI_CASCADE, padded)
+        # Compute parameter name column width: minimum 10, else longest name+1.
+        param_lines = [ln for ln in lines[1:] if "=" in ln]
+        def param_name_length(ln):
+            name = ln.split("=", 1)[0].strip()
+            return len(name) + 1
+
+        param_width = max(10, max((param_name_length(ln) for ln in param_lines), default=0))
+
+        # Build formatted parameter lines
+        formatted_params: list[str] = []
+        for ln in lines[1:]:
+            if "=" in ln:
+                key, value = ln.split("=", 1)
+                key_str = key.strip()
+                value_str = value.strip()
+                padded_key = key_str.ljust(param_width, UI_SPACE)
+                padded = f"{padded_key}= {value_str}"
+                formatted_line = f"{{4}}{UI_CASCADE} {padded}{{0}}"
             else:
-                formatted_line = "{4}%s %s{0}" % (UI_CASCADE, line)
+                formatted_line = f"{{4}}{UI_CASCADE} {ln.rstrip()}{{0}}"
             formatted_params.append(formatted_line)
 
-        return "\n".join([formatted_help] + formatted_params) + '\n'
+        # Handle supplement if provided
+        formatted_supplement = ""
+        if supplement is not None:
+            supp_lines = supplement.splitlines()
+            if supp_lines:
+                first = supp_lines[0].strip()
+                formatted_supplement = "{3}{5}" + first + "{6}"
+                if len(supp_lines) > 1:
+                    formatted_supplement += "\n" + "\n".join(line.rstrip() for line in supp_lines[1:])
+                formatted_supplement += "{0}"
+
+        main_block = "\n".join([formatted_help] + formatted_params) if formatted_params else formatted_help
+        return main_block + (("\n" + formatted_supplement) if formatted_supplement else "")
+
+#    def format_help(self, msg, supplement=None):
+#        lines = msg.splitlines()
+#        if not lines:
+#            return msg
+#
+#        first_line = lines[0]
+#        if ":" in first_line:
+#            cmd, helpstr = first_line.split(":", 1)
+#            formatted_help = "{5}%s{6}:%s" % (cmd.strip(), helpstr)
+#        else:
+#            formatted_help = first_line
+#
+#        param_width = max(10, max((len(line.split("=", 1)[0].strip()) + 1 for line in lines[1:] if "=" in line), default=0))
+#        formatted_params = []
+#        for line in lines[1:]:
+#            if "=" in line:
+#                key, value = line.split("=", 1)
+#                padded = key.strip().ljust(param_width, UI_SPACE) + "= " + value.strip()
+#                formatted_line = "{4}%s %s{0}" % (UI_CASCADE, padded)
+#            else:
+#                formatted_line = "{4}%s %s{0}" % (UI_CASCADE, line)
+#            formatted_params.append(formatted_line)
+#
+#        formatted_supplement = ""
+#        if supplement is not None:
+#            lines = supplement.splitlines()
+#            formatted_supplement = "{3}{5}%s{6}" % lines[0]
+#            formatted_supplement += lines[1:]
+#            formatted_supplement += "{0}"
+#
+#        return "\n".join([formatted_help] + formatted_params) + formatted_supplement
 
     def _color_message(self, msg):
         try:
@@ -2315,15 +2397,22 @@ class Mmu:
         if self.check_if_disabled(): return
         if self.check_if_bypass(unloaded_ok=False): return
         if self.check_if_not_homed(): return
-        sync = gcmd.get_int('SYNC', 1, minval=0, maxval=1)
-        if not sync and self.check_if_always_gripped(): return
-        if not self.is_in_print() and self._standalone_sync != bool(sync):
-            self._standalone_sync = bool(sync) # Make sticky if not in a print
+        sync = bool(gcmd.get_int('SYNC', 1, minval=0, maxval=1))
+
+# PAUL        if not sync and self.check_if_always_gripped(): return
+        if self.check_if_always_gripped(): return
+
+        if not self.is_in_print() and self._standalone_sync != sync:
+            self._standalone_sync = sync # Make sticky if not in a print
             if self._standalone_sync:
                 self.log_info("MMU gear stepper will be synced with extruder whenever filament is in extruder")
             else:
                 self.log_info("MMU gear stepper is unsynced from extruder")
-        self.reset_sync_gear_to_extruder(sync)
+
+        if sync and self.filament_pos < self.FILAMENT_POS_EXTRUDER_ENTRY:
+            self.log_warning("Will temporarily sync, but filament position does not indicate in extruder!\nUse 'MMU_RECOVER' to correct the filament position.")
+
+        self.reset_sync_gear_to_extruder(sync, force_grip=True, skip_extruder_check=True)
 
 
 #########################
@@ -3520,7 +3609,7 @@ class Mmu:
 
     def check_if_always_gripped(self):
         if self.mmu_machine.filament_always_gripped:
-            self.log_error("Operation not possible. MMU design doesn't allow for manual override of syncing state")
+            self.log_error("Operation not possible. MMU design doesn't allow for manual override of syncing state.\nSyncing will be enabled if filament is inside the extruder.\nUse `MMU_RECOVER` to correct filament position if necessary.")
             return True
         return False
 
@@ -5701,7 +5790,6 @@ class Mmu:
 
     # This is a recovery routine to determine the most conservative location of the filament (for unload purposes)
     # Also, ensures that the filament availabilty is updated if filament is found
-    # 
     def recover_filament_pos(self, strict=False, can_heat=True, message=False, silent=False):
         if message:
             self.log_info("Attempting to recover filament position...")
@@ -5846,97 +5934,187 @@ class Mmu:
             self.trace_filament_move(None, -5, accel=self.gear_buzz_accel)
         return None
 
-    # Reset correct sync state based on MMU type and state
-    #   sync_intention: sync intention when printing based on sync_to_extruder, sync_form_tip, sync_purge
-    #   force_in_print used to mimick printing behavior often for testing
-    #
-    # This logic is tricky. Have to consider:
-    #   If bypass is selected we cannot sync
-    #   If in a print then use desired sync state if actively printing or desired or necessary sync state
-    #   If not consider desired (_standalone_sync) or necessary (always_gripped) sync state
-    def reset_sync_gear_to_extruder(self, sync_intention, force_grip=False, force_in_print=False):
-        if self.gate_selected == self.TOOL_GATE_BYPASS:
+
+    def reset_sync_gear_to_extruder(self, sync_intention, force_grip=False, force_in_print=False, skip_extruder_check=False):
+        """
+        Reset the gear-to-extruder sync state based on MMU type and current state.
+
+        Args:
+            sync_intention (bool):
+                Desired sync state during printing, derived from parameters such as
+                `sync_to_extruder`, `sync_form_tip`, and `sync_purge`.
+
+            force_grip (bool, optional):
+                If True, forces an immediate filament grip state change
+                (typically triggers a servo movement).
+
+            force_in_print (bool, optional):
+                Forces the logic to behave as if the printer is currently in a print.
+                Primarily used for testing.
+
+            skip_extruder_check (bool, optional):
+                Normally, syncing only occurs if filament is present in the extruder.
+                When True, this overrides that check. Used by the
+                `MMU_SYNC_GEAR_MOTOR` command.
+
+        Returns:
+            bool: The final sync state that was applied.
+        """
+        bypass_selected = self.gate_selected == self.TOOL_GATE_BYPASS
+        in_print_context = self.is_in_print(force_in_print)
+        actively_printing = self.is_printing(force_in_print)
+
+        filament_past_entry = self.filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY
+        extruder_check_ok = filament_past_entry or skip_extruder_check
+
+        always_gripped = self.mmu_machine.filament_always_gripped
+        standalone_sync_requested = self._standalone_sync
+
+        # In a non-print context we also honor the caller's explicit intention.
+        wants_sync_out_of_print = always_gripped or standalone_sync_requested or sync_intention
+
+        if bypass_selected:
             sync = False
-        elif self.is_in_print(force_in_print):
-            sync = (
-                (self.is_printing(force_in_print) and self.sync_to_extruder) or
-                (
-                    not self.is_printing(force_in_print) and
-                    self.filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY and
-                    (
-                        self.mmu_machine.filament_always_gripped or
-                        self._standalone_sync
-                    )
-                )
-            )
+
+        elif in_print_context:
+            if actively_printing:
+                # During active printing, respect the print-time sync setting.
+                sync = bool(self.sync_to_extruder)
+            else:
+                # In print context but not actively printing (e.g., paused/warming),
+                # sync only if filament is present (or overridden) and sync is needed/requested
+                sync = extruder_check_ok and (always_gripped or standalone_sync_requested)
+
         else:
-            sync = (
-                self.filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY and
-                (
-                    self.mmu_machine.filament_always_gripped or
-                    self._standalone_sync or
-                    sync_intention
-                )
-            )
+            # Not in a print: sync if filament is present (or overridden) and any
+            # condition requires/requests syncing.
+            sync = extruder_check_ok and wants_sync_out_of_print
+
         self.sync_gear_to_extruder(sync, force_grip=force_grip)
         return sync
 
-    # Sync/unsync gear motor with extruder, handle filament engagement and current control
-    def sync_gear_to_extruder(self, sync, gate=None, force_grip=False):
-        # Safety in case somehow called with bypass/unknown selected. Usually this is called after
-        # self.gate_selected is set, but can be before on type-B designs hence optional gate parameter
-        if gate is None: gate = self.gate_selected
 
-        # Protect cases where we shouldn't sync (note type-B always have homed selector)
-        if gate < 0 or not self.selector.is_homed:
+    def sync_gear_to_extruder(self, sync, gate=None, force_grip=False):
+        """
+        Sync or unsync the gear motor with the extruder, handling filament engagement and current control.
+
+        This method:
+          - Applies safety guards to prevent syncing when bypass/unknown gates are selected or the
+            selector is not homed.
+          - Manages filament grip/release (especially important on type-A designs to avoid "buzz"
+            and to reduce servo flutter).
+          - Updates the toolhead sync mode.
+          - Adjusts gear stepper current while synced, and restores it when unsynced. On multigear
+            machines, it also ensures the previously-used gear stepper's current is restored when
+            switching gates.
+
+        Args:
+            sync (bool):
+                True to sync the gear motor to the extruder; False to unsync.
+
+            gate (Optional[int]):
+                Gate to apply current adjustments to. If None, defaults to `self.gate_selected`.
+                This is optional because on some type-B designs this method may be called before
+                `self.gate_selected` is finalized.
+
+            force_grip (bool, optional):
+                If True, forces a filament release action when unsyncing even if release suppression
+                is enabled higher in the call stack.
+
+        Returns:
+            None
+        """
+        # Default to current selection; some designs call this before gate selection is finalized.
+        if gate is None:
+            gate = self.gate_selected
+
+        bypass_or_unknown_gate = gate < 0
+        selector_ready = getattr(self.selector, "is_homed", False)
+
+        # Protect cases where we should not sync (type-B always has a homed selector).
+        if bypass_or_unknown_gate or not selector_ready:
             sync = False
             self._standalone_sync = False
 
-        # Handle filament grip before sync (type-A MMU) because of potential "buzz" movement
+        # Filament grip handling (do this before syncing to avoid "buzz" movement on type-A MMUs).
         if sync:
             self.selector.filament_drive()
-        elif force_grip or not self._suppress_release_grip:
-            # There are situations where we want this to be lazy to avoid "flutter" (of servo)
-            #   '_suppress_release_grip' is True unless we are the outermost caller
-            #   'force_grip' is normally False but can be used to force grip prior to outermost caller
-            self.selector.filament_release()
-
-        # Sync / Unsync
-        new_sync_mode = MmuToolHead.GEAR_SYNCED_TO_EXTRUDER if sync else None
-        if new_sync_mode != self.mmu_toolhead.sync_mode:
-            self.movequeues_wait() # TODO Safety but should not be required(?)
-            self.mmu_toolhead.sync(new_sync_mode)
-
-        # See if we need to set a reduced gear current. If we do then make sure it is
-        # restored on previous gear stepper if we are on a multigear MMU
-        if sync:
-            # Reset current on old gear stepper before adjusting new
-            if self.mmu_machine.multigear and gate != self.gate_selected:
-                self._restore_gear_current() # 100%
-            _ = self._adjust_gear_current(gate=gate, percent=self.sync_gear_current, reason="for extruder syncing")
         else:
-            self._restore_gear_current() # 100%
+            # There are situations where we want to be lazy to avoid servo "flutter":
+            #   - `_suppress_release_grip` is True unless we are the outermost caller.
+            #   - `force_grip` can override that suppression.
+            should_release = force_grip or not self._suppress_release_grip
+            if should_release:
+                self.selector.filament_release()
 
-    # This is used to protect synchronization, current and grip states and is used as an outermost wrapper
-    # for "MMU_" commands back into Happy Hare during a print or standalone operation
-    #   supress_release_grip: prevents subsequent recursive calls from relaxing grip thus avoiding flutter
+        # Sync / unsync toolhead mode (avoid redundant calls).
+        desired_sync_mode = MmuToolHead.GEAR_SYNCED_TO_EXTRUDER if sync else None
+        if desired_sync_mode != self.mmu_toolhead.sync_mode:
+            self.movequeues_wait()  # Safety: likely unnecessary but ensures no queued moves conflict.
+            self.mmu_toolhead.sync(desired_sync_mode)
+
+        # Current control:
+        # - While synced, optionally reduce current for the active gear stepper.
+        # - On multigear systems, restore current on the previously-used gear stepper if gate differs.
+        # - When unsynced, restore current to 100%.
+        if sync:
+            if self.mmu_machine.multigear and gate != self.gate_selected:
+                self._restore_gear_current()  # Restore previous gear stepper to 100%
+
+            self._adjust_gear_current(
+                gate=gate,
+                percent=self.sync_gear_current,
+                reason="for extruder syncing",
+            )
+        else:
+            self._restore_gear_current()  # 100%
+
+
     @contextlib.contextmanager
     def wrap_sync_gear_to_extruder(self):
-        prev_sync = (self.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER)
-        gate_selected = self.gate_selected
+        """
+        Context manager that protects gear/extruder synchronization, current,
+        and filament grip state.
 
-        # Outermost-only suppression of grip release
-        clear_suppress = not self._suppress_release_grip
+        This is intended to be used as the outermost wrapper around "MMU_*"
+        command handlers that may temporarily alter sync, motor current, or
+        grip state during a print or standalone operation.
+
+        Behavior:
+            - Captures the current sync state before entering the context.
+            - Suppresses filament release in nested calls to prevent servo
+              "flutter" caused by repeated grip/release transitions.
+            - Ensures only the outermost wrapper clears suppression.
+            - Restores the previous sync state on exit (via
+              `reset_sync_gear_to_extruder`), allowing normal logic to
+              reconcile grip and current safely.
+
+        Yields:
+            self: Allows the caller to operate within the protected context.
+        Example:
+            with self.wrap_sync_gear_to_extruder():
+                self.sync_gear_to_extruder(True)
+                ...
+        """
+        # Capture current sync state so it can be restored on exit.
+        previous_sync = (
+            self.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
+        )
+
+        # Suppress grip release only at the outermost level.
+        outermost_wrapper = not self._suppress_release_grip
         self._suppress_release_grip = True
+
         try:
             yield self
         finally:
-            # Only the outermost wrapper clears suppression
-            if clear_suppress:
+            # Only the outermost wrapper clears suppression.
+            if outermost_wrapper:
                 self._suppress_release_grip = False
 
-            # Restore sync state (logic can act on global suppression flag)
-            self.reset_sync_gear_to_extruder(prev_sync)
+            # Restore prior sync state. Logic inside reset_sync_gear_to_extruder
+            # may consult the global suppression flag when reconciling grip.
+            self.reset_sync_gear_to_extruder(previous_sync)
 
 
     # ---------- TMC Stepper Current Control ----------
@@ -6131,7 +6309,7 @@ class Mmu:
                 self.log_debug("Set extrusion multiplier for tool T%d as %d%%" % (tool, extrude_percent))
             self._restore_tool_override(tool)
 
-    # Primary method to select and loads tool. Assumes we are unloaded.
+    # Primary method to select and loads tool. Assumes we are unloaded
     def _select_and_load_tool(self, tool, purge=None):
 
         try:
@@ -6167,8 +6345,8 @@ class Mmu:
             return
 
         self.log_debug("Unloading tool %s" % self.selected_tool_string())
-        # Use the actual tool that was in use *before* this toolchange began.
-        # Falls back to current selection if not provided (backwards compatible).
+        # Use the actual tool that was in use *before* this toolchange began
+        # Falls back to current selection if not provided (backwards compatible)
         self._set_last_tool(self.tool_selected if prev_tool is None else prev_tool)
         self._record_tool_override() # Remember M220 and M221 overrides
         self.unload_sequence(form_tip=form_tip)
@@ -6681,7 +6859,7 @@ class Mmu:
                         self._track_time_start('total')
                         self.printer.send_event("mmu:toolchange", self._last_tool, self._next_tool)
 
-                        # Remember the tool that was actually in use before any load attempts.
+                        # Remember the tool that was actually in use before any load attempts
                         prev_tool = self.tool_selected
 
                         attempts = 2 if self.retry_tool_change_on_error and (self.is_printing() or standalone) else 1 # TODO Replace with inattention timer
@@ -6990,10 +7168,30 @@ class Mmu:
         else:
             self.wrap_gcode_command("__CANCEL_PRINT", exception=None)
 
-    cmd_MMU_RECOVER_help = "Recover the filament location and set MMU state after manual intervention/movement"
+    cmd_MMU_RECOVER_help = "Recover the filament location or manually fix MMU state after intervention/error"
+    cmd_MMU_RECOVER_param_help = (
+        "MMU_RECOVER: %s\n" % cmd_MMU_RECOVER_help
+        + "TOOL = t Optionally force the assignment of specified tool number\n"
+        + "GATE = g Optionally force the assignment of the specified gate number (fixes TTG map)\n"
+        + "BYPASS = 1 Used to force the assignemnt of the bypass Tool/Gate\n"
+        + "LOADED = [0|1] Force unloaded or loaded (in the extruder) state\n"
+        + "STRICT = 1 If auto-recovering state, allows extended tests including extruder heating\n"
+        + "(no parameters for automatic filament position recovery)"
+    )
+    cmd_MMU_RECOVER_supplement_help = (
+        "Examples:\n"
+        + "MMU_RECOVER ...automatically recover filament position\n"
+        + "MMU_RECOVER LOADED=1 ...to indicate filament is in the extruder\n"
+        + "MMU_RECOVER TOOL=2 GATE=3 ...to indicate T2 is currently loaded from gate 3"
+    )
     def cmd_MMU_RECOVER(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if self.check_if_disabled(): return
+
+        if gcmd.get_int('HELP', 0, minval=0, maxval=1):
+            self.log_always(self.format_help(self.cmd_MMU_RECOVER_param_help, self.cmd_MMU_RECOVER_supplement_help), color=True)
+            return
+
         tool = gcmd.get_int('TOOL', self.TOOL_GATE_UNKNOWN, minval=-2, maxval=self.num_gates - 1)
         mod_gate = gcmd.get_int('GATE', self.TOOL_GATE_UNKNOWN, minval=-2, maxval=self.num_gates - 1)
         if gcmd.get_int('BYPASS', None, minval=0, maxval=1):
