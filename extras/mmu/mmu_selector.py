@@ -296,6 +296,7 @@ class LinearSelector(BaseSelector, object):
         gcode = mmu.printer.lookup_object('gcode')
         gcode.register_command('MMU_CALIBRATE_SELECTOR', self.cmd_MMU_CALIBRATE_SELECTOR, desc = self.cmd_MMU_CALIBRATE_SELECTOR_help)
         gcode.register_command('MMU_SOAKTEST_SELECTOR', self.cmd_MMU_SOAKTEST_SELECTOR, desc = self.cmd_MMU_SOAKTEST_SELECTOR_help)
+        gcode.register_command('MMU_SELECTOR_MOVE', self.cmd_MMU_SELECTOR_MOVE, desc = self.cmd_MMU_SELECTOR_MOVE_help)
 
         # Selector stepper setup before MMU toolhead is instantiated
         section = mmu_machine.SELECTOR_STEPPER_CONFIG
@@ -552,6 +553,29 @@ class LinearSelector(BaseSelector, object):
                         self.filament_drive()
         except MmuError as ee:
             self.mmu.handle_mmu_error("Soaktest abandoned because of error: %s" % str(ee))
+
+    cmd_MMU_SELECTOR_MOVE_help = "Move selector to absolute position in mm"
+    def cmd_MMU_SELECTOR_MOVE(self, gcmd):
+        self.mmu.log_to_file(gcmd.get_commandline())
+        if self.mmu.check_if_disabled(): return
+        if not self.is_homed:
+            self.mmu.log_error("Selector is not homed. Please home the selector first with MMU_HOME")
+            return
+
+        position = gcmd.get_float('POSITION', None)
+        speed = gcmd.get_float('SPEED', None)
+
+        if position is None:
+            self.mmu.log_error("POSITION parameter is required")
+            return
+
+        try:
+            with self.mmu.wrap_action(self.mmu.ACTION_SELECTING):
+                self.mmu.log_always("Moving selector to position: %.1fmm" % position)
+                self.move("Selector move to position %.1fmm" % position, position, speed=speed, wait=True)
+                self.mmu.log_always("Selector moved to position: %.1fmm" % position)
+        except Exception as e:
+            self.mmu.log_error("Selector move failed: %s" % str(e))
 
     def _get_max_selector_movement(self, gate=-1):
         n = gate if gate >= 0 else self.mmu.num_gates - 1
