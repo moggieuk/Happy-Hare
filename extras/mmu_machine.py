@@ -373,8 +373,8 @@ class MmuMachine:
                 unit_info['filament_heater'] = self.filament_heater
             elif self.environment_sensors or self.filament_heaters:
                 # Per-gate heater/sensors
-                unit_info['environment_sensors'] = self.environment_sensors
-                unit_info['filament_heaters'] = self.filament_heaters
+                unit_info['environment_sensors'] = self.environment_sensors[gate_count:gate_count + unit]
+                unit_info['filament_heaters'] = self.filament_heaters[gate_count:gate_count + unit]
             gate_count += unit
             self.unit_status["unit_%d" % i] = unit_info
             self.unit_status['num_units'] = len(self.gate_counts)
