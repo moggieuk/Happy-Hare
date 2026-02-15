@@ -2392,14 +2392,23 @@ class Mmu:
                 raise gcmd.error("Motor '%s' not known" % motor)
 
     cmd_MMU_SYNC_GEAR_MOTOR_help = "Sync the MMU gear motor to the extruder stepper"
+    cmd_MMU_SYNC_GEAR_MOTOR_param_help = (
+        "MMU_SYNC_GEAR_MOTOR: %s\n" % cmd_MMU_SYNC_GEAR_MOTOR_help
+        + "SYNC = [0|1] Specify whether to force extruder/mmu syncing out of a print"
+        + "(no parameters will default SYNC=1)"
+    )
     def cmd_MMU_SYNC_GEAR_MOTOR(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if self.check_if_disabled(): return
+
+        if gcmd.get_int('HELP', 0, minval=0, maxval=1):
+            self.log_always(self.format_help(self.cmd_MMU_SYNC_GEAR_MOTOR_param_help), color=True)
+            return
+
         if self.check_if_bypass(unloaded_ok=False): return
         if self.check_if_not_homed(): return
         sync = bool(gcmd.get_int('SYNC', 1, minval=0, maxval=1))
 
-# PAUL        if not sync and self.check_if_always_gripped(): return
         if self.check_if_always_gripped(): return
 
         if not self.is_in_print() and self._standalone_sync != sync:
