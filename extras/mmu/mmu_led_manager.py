@@ -29,7 +29,8 @@ class MmuLedManager:
     def __init__(self, mmu):
         self.mmu = mmu
         self.mmu_machine = mmu.mmu_machine
-        self.inside_timer = self.pending_update = False
+        self.inside_timer = False
+        self.pending_update = [False] * self.mmu_machine.num_units
         self.effect_state = {} # Current state used to minimise updates {unit: {segment: effect}}
 
         # Event handlers
@@ -47,9 +48,9 @@ class MmuLedManager:
 
     def led_timer_handler(self, eventtime):
         self.inside_timer = True
-        self.pending_update = False
         try:
             for unit in range(self.mmu_machine.num_units):
+                self.pending_update[unit] = False
                 self._set_led(unit, None, exit_effect='default', entry_effect='default', status_effect='default', logo_effect='default')
         finally:
             self.inside_timer = False
@@ -57,7 +58,7 @@ class MmuLedManager:
 
     def schedule_led_command(self, duration, unit):
         if not self.inside_timer:
-            self.pending_update = True
+            self.pending_update[unit] = True
             self.mmu.reactor.update_timer(self.led_timer, self.mmu.reactor.monotonic() + duration)
 
     cmd_MMU_SET_LED_help = "Directly control MMU leds"
@@ -333,7 +334,7 @@ class MmuLedManager:
     # (this could be changed to klipper event)
     def print_state_changed(self, state, old_state):
         gate = self.mmu.gate_selected
-        if state in ['initilized', 'printing', 'ready', 'cancelled', 'standby']:
+        if state in ['initialized', 'printing', 'ready', 'cancelled', 'standby']:
             units_to_update = range(self.mmu_machine.num_units)
         else:
             units_to_update = [self.mmu.unit_selected]
@@ -571,7 +572,7 @@ class MmuLedManager:
                 return
 
             # Don't allow changes to shortcut animations - important changes will be seen when update timer fires
-            if self.pending_update:
+            if self.pending_update[unit]:
                 return
 
             # Schedule a return to defaults after duration
