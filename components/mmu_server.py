@@ -57,6 +57,7 @@ class MmuServer:
         self.spoolman: SpoolManager = self.server.lookup_component("spoolman", None)
         self.klippy_apis: APIComp = self.server.lookup_component("klippy_apis")
         self.http_client: HttpClient = self.server.lookup_component("http_client")
+        self.database: MoonrakerDatabase = self.server.lookup_component("database")
 
         # Full cache of spool_ids and location + key attributes (printer, gate, attr_dict))
         # Example: {2: ('BigRed', 0, {"material": "pla", "color": "ff56e0"}), 3: ('BigRed', 3, {"material": "abs"}), ...
@@ -76,6 +77,10 @@ class MmuServer:
             self.server.register_remote_method("spoolman_unset_spool_gate", self.unset_spool_gate)
             self.server.register_remote_method("spoolman_get_spool_info", self.display_spool_info)
             self.server.register_remote_method("spoolman_display_spool_location", self.display_spool_location)
+
+        # Moonraker lane data push for slicer integration
+        self.server.register_remote_method("moonraker_push_lane_data", self.push_lane_data)
+        self.server.register_remote_method("moonraker_cleanup_lane_data", self.cleanup_lane_data)
 
         # Replace file_manager/metadata with this file
         self.setup_placeholder_processor(config)
@@ -730,6 +735,103 @@ class MmuServer:
             else:
                 msg = f"No gates assigned for printer: {printer_name}"
             await self._log_n_send(msg)
+
+    async def push_lane_data(self, gate_ids):
+        '''
+        Pushes lane data to Moonraker database for slicer integration (OrcaSlicer)
+        gate_ids: list of tuples [(gate, spool_id), ...]
+        '''
+        try:
+            from datetime import datetime, timezone
+
+            # Get MMU state from Klipper
+            mmu_state = await self.klippy_apis.query_objects({"mmu": None})
+            mmu = mmu_state.get('mmu', {})
+
+            gate_material = mmu.get('gate_material', [])
+            gate_color = mmu.get('gate_color', [])
+            gate_temperature = mmu.get('gate_temperature', [])
+            gate_status = mmu.get('gate_status', [])
+
+            # Build batch of lane data
+            batch_data = {}
+            scan_time = datetime.now(timezone.utc).isoformat()
+
+            for gate, spool_id in gate_ids:
+                if gate < 0:
+                    continue
+
+                # Lane uses same 0-based numbering as gate
+                lane = gate
+                lane_key = f"lane{lane}"
+
+                # Check if gate is empty (status -1/unknown or 0/empty, or spool_id -1)
+                gate_status_val = gate_status[gate] if gate < len(gate_status) else -1
+                is_empty = gate_status_val in [-1, 0] or spool_id == -1
+
+                if is_empty:
+                    # Empty gate format
+                    lane_data = {
+                        "color": "",
+                        "material": "",
+                        "bed_temp": "",
+                        "nozzle_temp": "",
+                        "scan_time": "",
+                        "td": "",
+                        "lane": str(lane),
+                        "spool_id": None
+                    }
+                else:
+                    # Populated gate format
+                    lane_data = {
+                        "color": gate_color[gate] if gate < len(gate_color) else '',
+                        "td": 4.0,
+                        "material": gate_material[gate] if gate < len(gate_material) else '',
+                        "bed_temp": "",
+                        "nozzle_temp": gate_temperature[gate] if gate < len(gate_temperature) else 200,
+                        "scan_time": scan_time,
+                        "lane": str(lane),
+                        "spool_id": spool_id if spool_id > 0 else None
+                    }
+
+                batch_data[lane_key] = lane_data
+
+            # Push all lane data in a single batch
+            if batch_data:
+                await self.database.insert_batch("lane_data", batch_data)
+
+        except Exception as e:
+            logging.error(f"Error pushing lane data: {e}")
+
+    async def cleanup_lane_data(self, num_gates):
+        '''
+        Removes lane data for gates that no longer exist (e.g., if MMU size was reduced)
+        num_gates: current number of gates in the MMU
+        '''
+        try:
+            # Get all items in the lane_data namespace
+            lane_items = await self.database.get_item("lane_data", None, {})
+
+            # Delete lanes beyond the current num_gates (0-based: valid lanes are 0 to num_gates-1)
+            keys_to_delete = []
+            for lane_key, lane_value in lane_items.items():
+                # Extract lane number from the data object's lane field
+                if isinstance(lane_value, dict):
+                    lane_str = lane_value.get('lane', '')
+                    try:
+                        lane_num = int(lane_str)
+                        # If lane number >= num_gates, it's out of bounds, mark for deletion
+                        if lane_num >= num_gates:
+                            keys_to_delete.append(lane_key)
+                    except (ValueError, TypeError):
+                        continue
+
+            # Delete the old lanes
+            await self.database.delete_batch("lane_data", keys_to_delete)
+            logging.info(f"Removed old lane data: {keys_to_delete}")
+
+        except Exception as e:
+            logging.error(f"Error cleaning up lane data: {e}")
 
 
 
