@@ -1343,6 +1343,9 @@ class Mmu:
             # Sync with spoolman. Delay as long as possible to maximize the chance it is contactable after startup/reboot
             self._spoolman_sync()
 
+            # Sync lane data to Moonraker for slicer integration and cleanup old lanes
+            self._moonraker_sync_lane_data()
+
         except Exception as e:
             logging.error(traceback.format_exc())
             self.log_error('Error booting up MMU: %s' % str(e))
@@ -2966,6 +2969,8 @@ class Mmu:
                 self._spoolman_push_gate_map(mod_gate_ids)
             elif self.spoolman_support == self.SPOOLMAN_READONLY:
                 self._spoolman_update_filaments(mod_gate_ids)
+
+            self._moonraker_push_lane_data(mod_gate_ids)
 
         # Disable timer to prevent reuse
         self.pending_spool_id = -1
@@ -6479,6 +6484,25 @@ class Mmu:
             if self.gear_rail.steppers:
                 self.gear_rail.steppers[0].set_rotation_distance(rd)
 
+    def _moonraker_push_lane_data(self, gate_ids = None):
+        gate_ids = [(i, self.gate_spool_id[i]) for i in range(self.num_gates)] if gate_ids is None else gate_ids
+        if gate_ids:
+            try:
+                webhooks = self.printer.lookup_object('webhooks')
+                webhooks.call_remote_method("moonraker_push_lane_data", gate_ids=gate_ids)
+            except Exception as e:
+                self.log_debug("Failed to push lane data to Moonraker: %s" % str(e))
+
+    def _moonraker_sync_lane_data(self):
+        # Push all current gate data to Moonraker
+        self._moonraker_push_lane_data()
+
+        # Request cleanup of old lanes that no longer exist
+        try:
+            webhooks = self.printer.lookup_object('webhooks')
+            webhooks.call_remote_method("moonraker_cleanup_lane_data", num_gates=self.num_gates)
+        except Exception as e:
+            self.log_debug("Failed to cleanup old lane data: %s" % str(e))
 
 ### SPOOLMAN INTEGRATION #########################################################
 
@@ -8048,6 +8072,8 @@ class Mmu:
                     self._spoolman_push_gate_map(gate_ids)
             elif self.spoolman_support == self.SPOOLMAN_READONLY:
                 self._spoolman_update_filaments(gate_ids)
+
+        self._moonraker_push_lane_data(gate_ids)
 
         self.led_manager.gate_map_changed(None)
         if self.printer.lookup_object("gcode_macro %s" % self.mmu_event_macro, None) is not None:
