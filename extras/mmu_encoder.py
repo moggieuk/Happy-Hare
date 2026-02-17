@@ -1,7 +1,7 @@
 # Happy Hare MMU Software
 # Driver for encoder that supports movement measurement, runout/clog detection and flow rate calc
 #
-# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
 # Based on:
@@ -35,11 +35,6 @@ class MmuEncoder:
         self.name = config.get_name().split()[-1]
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
-
-#    def __init__(self, config):
-#        self.name = config.get_name().split()[-1]
-#        self.printer = config.get_printer()
-#        self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object('gcode')
         encoder_pin = config.get('encoder_pin')
 
@@ -61,19 +56,19 @@ class MmuEncoder:
         self.average_samples = config.getint('average_samples', 4, minval=1)
         # The extrusion interval where new detection_length is calculated (also done on toolchange)
         self.next_calibration_point = self.calibration_length = config.getfloat('calibration_length', 10000., minval=50.) # 10m
-        # Detection length will be adjusted by MMU calibration so this is just default
-        self.detection_length = self.min_headroom = config.getfloat('detection_length', 10., above=2.)
-
+        # Detection length will be set by MMU calibration
+        self.detection_length = self.min_headroom = config.getfloat('detection_length', 10., above=2.) # TODO this is now in flowguard!
         self.event_delay = config.getfloat('event_delay', 2., above=0.)
         self.pause_delay = config.getfloat('pause_delay', 0, above=0.)
         self.runout_gcode = '__MMU_ENCODER_RUNOUT'
         self.insert_gcode = '__MMU_ENCODER_INSERT'
         self._enabled = True # Runout/Clog functionality
         self.min_event_systime = self.reactor.NEVER
-        self.extruder = self.estimated_print_time = None
+        self.extruder = None
         self.filament_detected = False
         self.detection_mode = self.RUNOUT_STATIC
         self.last_extruder_pos = self.filament_runout_pos = 0.
+        self.filament_runout_pos = self.min_headroom = self.detection_length
 
         # For flowrate functionality
         self.flowrate_last_encoder_pos = 0.
@@ -83,15 +78,9 @@ class MmuEncoder:
 
         # Register event handlers
         self.printer.register_event_handler('klippy:ready', self._handle_ready)
-# PAUL        self.printer.register_event_handler('klippy:connect', self._handle_connect)
         self.printer.register_event_handler('idle_timeout:printing', self._handle_printing)
         self.printer.register_event_handler('idle_timeout:ready', self._handle_not_printing)
         self.printer.register_event_handler('idle_timeout:idle', self._handle_not_printing)
-
-# PAUL
-#    def _handle_connect(self):
-#        self.last_extruder_pos = 0.
-#        self.filament_runout_pos = self.min_headroom = self.detection_length
 
     def _handle_ready(self):
         self.mmu = self.printer.lookup_object('mmu')
@@ -100,7 +89,6 @@ class MmuEncoder:
         self.filament_runout_pos = self.min_headroom = self.detection_length
 
         self.min_event_systime = self.reactor.monotonic() + 2. # Don't process events too early
-        self.estimated_print_time = self.printer.lookup_object('mcu').estimated_print_time
         self._reset_filament_runout_params()
         self._extruder_pos_update_timer = self.reactor.register_timer(self._extruder_pos_update_event)
 
@@ -113,11 +101,13 @@ class MmuEncoder:
     def _get_extruder_pos(self, eventtime=None):
         if eventtime is None:
             eventtime = self.reactor.monotonic()
-        print_time = self.estimated_print_time(eventtime)
-        if self.extruder:
-            return self.extruder.find_past_position(print_time)
-        else:
+
+        print_time = self.printer.lookup_object('mcu').estimated_print_time(eventtime)
+
+        if not self.extruder:
             return 0.
+
+        return self.extruder.find_past_position(print_time)
 
     # Called periodically to check filament movement
     def _extruder_pos_update_event(self, eventtime):
@@ -232,11 +222,10 @@ class MmuEncoder:
         return self.detection_length
 
     def set_clog_detection_length(self, clog_length):
-        clog_length = max(clog_length, 2.)
-        self.detection_length = clog_length
+        self.detection_length = max(clog_length, 2.)
         self._reset_filament_runout_params()
 
-    def update_clog_detection_length(self):
+    def note_clog_detection_length(self):
         self._update_detection_length()
 
     def set_mode(self, mode):

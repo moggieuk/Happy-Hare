@@ -3,7 +3,7 @@
 # Allows for flexible creation of virtual leds chains - one for each of the supported
 # segments (exit, entry, status). Entry and exit are indexed by gate number.
 #
-# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
 # (\_/)
@@ -51,7 +51,11 @@ class VirtualMmuLedChain:
             chain.led_helper.led_state[led] = color
             chains_to_update.add(chain)
         for chain in chains_to_update:
-            chain.led_helper.update_func(chain.led_helper.led_state, None)
+            chain.led_helper.need_transmit = True
+            if hasattr(chain.led_helper, '_check_transmit'):
+                chain.led_helper._check_transmit() # New klipper
+            else:
+                chain.led_helper.check_transmit(None)  # Older klipper / Kalico
 
     def get_status(self, eventtime=None):
         state = []

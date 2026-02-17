@@ -12,10 +12,6 @@
 #   Wrapper around `filament_switch_sensor` setting up insert/runout callbacks with modified runout event handling
 #   Named `mmu_gear`
 #
-# mmu_gate sensor(s):
-#   Wrapper around `filament_switch_sensor` setting up insert/runout callbacks with modified runout event handling
-#   Named `mmu_gate`
-#
 # Copyright (C) 2022-2025  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
@@ -74,28 +70,103 @@ class MmuSensors:
         for i, gate in enumerate(range(self.first_gate, self.first_gate + self.num_gates)):
             switch_pin = config.get('post_gear_switch_pin_%d' % i, None)
 
-            # EXPERIMENT/HACK to support ViViD analog buffer "endstops"
-            a_range = config.getfloatlist('post_gear_analog_range_%d' % gate, None, count=2)
-            if a_range is not None: # PAUL TEST ME
-                a_pullup = config.getfloat('post_gear_analog_pullup_resister_%d' % gate, 4700.)
-                self.post_gear_sensors[gate] = MmuAdcSwitchSensor(
-                    config,
-                    Mmu.SENSOR_GEAR_PREFIX,
-                    gate,
-                    switch_pin,
-                    event_delay,
-                    a_range,
-                    runout=True,
-                    a_pullup=a_pullup)
-            else:
-                self.post_gear_sensors[gate] = sf.create_mmu_sensor(
-                    config,
-                    Mmu.SENSOR_GEAR_PREFIX,
-                    gate,
-                    switch_pin,
-                    event_delay,
-                    runout=True
-                )
+            if switch_pin:
+                a_range = config.getfloatlist('post_gear_analog_range_%d' % gate, None, count=2)
+                if a_range is not None:
+                    a_pullup = config.getfloat('post_gear_analog_pullup_resister_%d' % gate, 4700.)
+                    self.post_gear_sensors[gate] = MmuAdcSwitchSensor(
+                        config,
+                        Mmu.SENSOR_GEAR_PREFIX,
+                        gate,
+                        switch_pin,
+                        event_delay,
+                        a_range,
+                        runout=True,
+                        a_pullup=a_pullup)
+                else:
+                    self.post_gear_sensors[gate] = sf.create_mmu_sensor(
+                        config,
+                        Mmu.SENSOR_GEAR_PREFIX,
+                        gate,
+                        switch_pin,
+                        event_delay,
+                        runout=True)
+
+# PAUL from v342 (reference)
+# --------
+#        # Setup "mmu_gear" sensors...
+#        for gate in range(23):
+#            switch_pin = config.get('post_gear_switch_pin_%d' % gate, None)
+#            if switch_pin:
+#                a_range = config.getfloatlist('post_gear_analog_range_%d' % gate, None, count=2)
+#                if a_range is not None:
+#                    a_pullup = config.getfloat('post_gear_analog_pullup_resister_%d' % gate, 4700.)
+#                    s = MmuAdcSwitchSensor(config, Mmu.SENSOR_GEAR_PREFIX, gate, switch_pin, event_delay, a_range, runout=True, a_pullup=a_pullup)
+#                    self.sensors["%s_%d" % (Mmu.SENSOR_GEAR_PREFIX, gate)] = s
+#                else:
+#                    self._create_mmu_sensor(config, Mmu.SENSOR_GEAR_PREFIX, gate, switch_pin, event_delay, runout=True)
+# --------
+#
+#        # Setup single extruder (entrance) sensor...
+#        switch_pin = config.get('extruder_switch_pin', None)
+#        if switch_pin:
+#            self._create_mmu_sensor(config, Mmu.SENSOR_EXTRUDER_ENTRY, None, switch_pin, event_delay, insert=True, runout=True)
+#
+#        # Setup single toolhead sensor...
+#        switch_pin = config.get('toolhead_switch_pin', None)
+#        if switch_pin:
+#            self._create_mmu_sensor(config, Mmu.SENSOR_TOOLHEAD, None, switch_pin, event_delay)
+#
+# --------
+#
+#        # For Qidi printers or any other that use a hall_filament_width_sensor as an endstop
+#        hall_sensor_endstop = config.get('hall_sensor_endstop', None)
+#        if hall_sensor_endstop is not None:
+#            if hall_sensor_endstop == 'gate':
+#                target_name = Mmu.SENSOR_GATE
+#            elif hall_sensor_endstop == 'extruder':
+#                target_name = Mmu.SENSOR_EXTRUDER_ENTRY
+#            elif hall_sensor_endstop == 'toolhead':
+#                target_name = Mmu.SENSOR_TOOLHEAD
+#            else:
+#                target_name = hall_sensor_endstop
+#
+#            self.hall_pin1 = config.get('hall_adc1')
+#            self.hall_pin2 = config.get('hall_adc2')
+#            self.hall_dia1 = config.getfloat('hall_cal_dia1', 1.5)
+#            self.hall_dia2 = config.getfloat('hall_cal_dia2', 2.0)
+#            self.hall_rawdia1 = config.getint('hall_raw_dia1', 9500)
+#            self.hall_rawdia2 = config.getint('hall_raw_dia2', 10500)
+#            self.hall_runout_dia = config.getfloat('hall_min_diameter', 1.0)
+#            # self.hall_runout_dia_max = config.getfloat('hall_max_diameter', 2.0) - Unused for trigger
+#
+#            s = MmuHallEndstop(config, target_name, self.hall_pin1, self.hall_pin2,
+#                               self.hall_dia1, self.hall_rawdia1, self.hall_dia2, self.hall_rawdia2,
+#                               hall_runout_dia=self.hall_runout_dia,
+#                               insert=True, runout=True)
+#            self.sensors[target_name] = s
+#
+# --------
+#
+#        # Setup motor syncing feedback sensors...
+#        switch_pins = list(config.getlist('sync_feedback_tension_pin', []))
+#        if switch_pins:
+#            if len(switch_pins) not in [1, num_units]:
+#                raise config.error("Invalid number of pins specified with sync_feedback_tension_pin. Expected 1 or %d but counted %d" % (num_units, len(switch_pins)))
+#            self._create_mmu_sensor(config, Mmu.SENSOR_TENSION, None, switch_pins, 0, clog=True, tangle=True, button_handler=self._sync_tension_callback)
+#        switch_pins = list(config.getlist('sync_feedback_compression_pin', []))
+#        if switch_pins:
+#            if len(switch_pins) not in [1, num_units]:
+#                raise config.error("Invalid number of pins specified with sync_feedback_compression_pin. Expected 1 or %d but counted %d" % (num_units, len(switch_pins)))
+#            self._create_mmu_sensor(config, Mmu.SENSOR_COMPRESSION, None, switch_pins, 0, clog=True, tangle=True, button_handler=self._sync_compression_callback)
+#
+#        # Setup analog (proportional) sync feedback
+#        # Uses single analog input; value scaled in [-1, 1]
+#        analog_pin = config.get('sync_feedback_analog_pin', None)
+#        if analog_pin:
+#            self.sensors[Mmu.SENSOR_PROPORTIONAL] = MmuProportionalSensor(config, name=Mmu.SENSOR_PROPORTIONAL)
+#
+# --------
 
 
 def load_config_prefix(config):

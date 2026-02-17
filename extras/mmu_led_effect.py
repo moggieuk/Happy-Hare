@@ -3,7 +3,7 @@
 # as well as on each individual LED for per-gate effects. This relies on the [mmu_leds] section
 # for each mmu_unit
 #
-# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
 # (\_/)
@@ -71,24 +71,24 @@ class MmuLedEffect:
                     raise config.error("Unknown LED segment name specified in '%s'" % define_on_str)
                 config.fileconfig.set(config.get_name(), 'frame_rate', config.get('frame_rate', frame_rate))
                 led_effect_section = config.get_name().split()[1]
-    
+
                 # This condition makes it a no-op if [mmu_leds] is not present or led_effects not installed
                 for segment in MmuLeds.SEGMENTS:
                     led_segment_name = "unit%d_mmu_%s_leds" % (unit_index, segment)
                     led_chain = self.printer.lookup_object(led_segment_name)
                     num_leds = led_chain.led_helper.led_count
                     leds_per_gate = num_leds // mmu_unit.num_gates
-    
+
                     if num_leds > 0:
                         # Full segment effects
                         if not define_on or segment in define_on:
                             section_to = "_led_effect unit%d_%s_%s" % (unit_index, led_effect_section, segment)
                             self._add_led_effect(config, section_to, led_segment_name)
-    
+
                         # Per gate
                         if segment in MmuLeds.PER_GATE_SEGMENTS and (not define_on or 'gates' in define_on):
                             for idx in range(mmu_unit.first_gate, mmu_unit.first_gate + mmu_unit.num_gates):
-                                led0 = idx * leds_per_gate - mmu_unit.first_gate + 1
+                                led0 = (idx - mmu_unit.first_gate) * leds_per_gate + 1
                                 led_spec = str(led0)
                                 if leds_per_gate > 1:
                                     led_spec = "%d-%d" % (led0, led0 + leds_per_gate - 1)
@@ -112,12 +112,23 @@ def load_config_prefix(config):
 
 
 
-#
-# This is and embedded version (v0.0.13-0) of led_effects
-# It has been very slightly altered and renamed and is included for ease of Happy Hare setup
-# and avoid dependencies
-#
 
+
+
+# --------------------------------------------------------------------------------------
+#
+# This is and embedded version (v0.0.18-0-g24d26c72) of the excellent led_effects
+# It is included for ease of Happy Hare setup and to avoid dependencies that were
+# tripping up users. It doesn't not prelude the adding of the original led-effects
+# as well.
+#
+# Changes:
+#   - Command names have been changed to hide from original (added '_MMU_' prefix)
+#   - 'ledEffect' -> '_ledEffect' to avoid name collision with real module
+#   - def load_config_prefix(config) removed
+#   - self.handler loads object 'mmu_led_effect'
+#
+# --------------------------------------------------------------------------------------
 
 # Support for addressable LED visual effects
 # using neopixel and dotstar LEDs
@@ -210,6 +221,28 @@ class ledFrameHandler:
 
     cmd_STOP_LED_EFFECTS_help = 'Stops all led_effects'
 
+    def _transmit_chain(self, chain):
+
+        # Force update (dotstar workaround)
+        if hasattr(chain, "prev_data"):
+            chain.prev_data = None
+
+        helper = getattr(chain, 'led_helper', None)
+        if helper is None:
+            raise RuntimeError("Klipper version not compatible: chain has no 'led_helper'.")
+
+        # Request a transmit
+        helper.need_transmit = True
+
+        if hasattr(helper, '_check_transmit'):
+            helper._check_transmit()
+        elif hasattr(helper, 'check_transmit'):
+            # Older Klipper / Kalico API
+            helper.check_transmit(None)
+        else:
+            raise RuntimeError("Klipper version not compatible: led_helper missing '_check_transmit' and 'check_transmit'.")
+
+
     def _handle_ready(self):
         self.shutdown = False
         self.reactor = self.printer.get_reactor()
@@ -228,8 +261,8 @@ class ledFrameHandler:
             if not effect.runOnShutown:
                 for chain in self.ledChains:
                     chain.led_helper.set_color(None, (0.0, 0.0, 0.0, 0.0))
-                    chain.led_helper.update_func(chain.led_helper.led_state, None)
-
+                    self._transmit_chain(chain)
+                    
         pass
     
     def _handle_homing_move_begin(self, hmove):
@@ -261,7 +294,13 @@ class ledFrameHandler:
                 self.heaters[effect.heater] = self.printer.lookup_object(effect.heater)
             else:
                 pheater = self.printer.lookup_object('heaters')
-                self.heaters[effect.heater] = pheater.lookup_heater(effect.heater)
+
+                heater = pheater.lookup_heater(effect.heater)
+                if heater is None:
+                    raise self.printer.config_error(
+                        "LED Effect '%s': unknown heater '%s'." 
+                            % (effect.name, effect.heater,))
+                self.heaters[effect.heater] = heater
             self.heaterLast[effect.heater] = 100
             self.heaterCurrent[effect.heater] = 0
             self.heaterTarget[effect.heater]  = 0
@@ -353,10 +392,8 @@ class ledFrameHandler:
                     chainsToUpdate.add(chain)
 
         for chain in chainsToUpdate:
-            if hasattr(chain,"prev_data"):
-                chain.prev_data = None # workaround to force update of dotstars
             if not self.shutdown: 
-                chain.led_helper.update_func(chain.led_helper.led_state, None)
+                self._transmit_chain(chain)
         if self.effects:
             next_eventtime=min(self.effects, key=lambda x: x.nextEventTime)\
                             .nextEventTime
@@ -482,12 +519,18 @@ class _ledEffect:
         self.printer.register_event_handler('klippy:ready', self._handle_ready)
         self.gcode.register_mux_command('_MMU_SET_LED_EFFECT', 'EFFECT', self.name,
                                          self.cmd_SET_LED_EFFECT,
-                                         desc=self.cmd_SET_LED_help)
+                                         desc=self.cmd_SET_LED_EFFECT_help)
 
         if self.analogPin:
             ppins = self.printer.lookup_object('pins')
             self.mcu_adc = ppins.setup_pin('adc', self.analogPin)
-            self.mcu_adc.setup_adc_sample(ANALOG_SAMPLE_TIME, ANALOG_SAMPLE_COUNT)
+            if hasattr(self.mcu_adc, 'setup_adc_sample'):
+                self.mcu_adc.setup_adc_sample(ANALOG_SAMPLE_TIME, ANALOG_SAMPLE_COUNT)
+            elif hasattr(self.mcu_adc, 'setup_minmax'):
+                self.mcu_adc.setup_minmax(ANALOG_SAMPLE_TIME, ANALOG_SAMPLE_COUNT)
+            else:
+                raise RuntimeError(
+                    "Klipper version not compatible: mcu_adc missing 'setup_adc_sample' and 'setup_minmax'.")
             self.mcu_adc.setup_adc_callback(ANALOG_REPORT_TIME, self.adcCallback)
             query_adc = self.printer.load_object(self.config, 'query_adc')
             query_adc.register_adc(self.name, self.mcu_adc)
@@ -496,7 +539,7 @@ class _ledEffect:
             buttons = self.printer.load_object(config, "buttons")
             buttons.register_buttons(self.buttonPins, self.button_callback)
 
-    cmd_SET_LED_help = 'Starts or Stops the specified led_effect'
+    cmd_SET_LED_EFFECT_help = 'Starts or Stops the specified led_effect'
 
     def _handle_ready(self):
         self.configChains = self.configLeds.split('\n')
@@ -522,6 +565,10 @@ class _ledEffect:
                         self.leds.append((ledChain, int(i)))
                 else:
                     for led in ledIndices:
+                        if led > ledChain.led_helper.led_count:
+                            raise self.printer.config_error(
+                                "LED effect '%s': index out of range for chain '%s' with %d LEDs."
+                                    % (self.name, chainName, ledChain.led_helper.led_count))
                         self.leds.append((ledChain, led))
 
         self.ledCount = len(self.leds)
@@ -572,13 +619,13 @@ class _ledEffect:
                 for i in palette: 
                     if len(i) > COLORS: 
                         raise Exception(
-                            "Color %s has too many elements." % (str(i),))
+                            "LED effect '%s': Color %s has too many elements." % (self.name, str(i),))
                 palette=[pad(c) for c in palette]                               # pad to COLORS colors
                 palette=[k for c in palette for k in c]                         # flatten list
             except Exception as e:
                 raise self.printer.config_error(
-                    "Error parsing palette in '%s' for layer \"%s\": %s"\
-                        % (self.config.get_name(), parms[0], e,))
+                    "LED effect '%s': Error parsing palette in '%s' for layer \"%s\": %s"\
+                        % (self.name, self.config.get_name(), parms[0], e,))
             self.layers.insert(0, layer(handler       = self,
                                         frameHandler  = self.handler,
                                         effectRate    = float(parms[1]),
@@ -663,6 +710,9 @@ class _ledEffect:
             if gcmd.get_int('RESTART', 0) >= 1:
                 self.reset_frame()
             self.set_enabled(True)
+    
+    def get_status(self, eventtime):
+        return {'enabled':self.enabled}
 
     def _handle_shutdown(self):
         self.set_enabled(self.runOnShutown)
@@ -978,6 +1028,41 @@ class _ledEffect:
 
             self.frameCount = len(self.thisFrame)
 
+    #Cylon, single LED bounces from start to end of strip
+    class layerCylon(_layerBase):
+        def __init__(self,  **kwargs):
+            super(_ledEffect.layerCylon, self).__init__(**kwargs)
+
+            self.paletteColors = colorArray(COLORS, self.paletteColors)
+
+            if self.effectRate <= 0:
+                raise self.handler.printer.config_error(
+                    "LED Effect '%s': effect rate for cylon must be > 0" % (self.handler.name,))
+
+            # How many frames per sweep animation.
+            frames = int(self.effectRate / self.frameRate)
+
+            direction = True
+
+            for _ in range(len(self.paletteColors) % 2 + 1):
+                for c in range(0, len(self.paletteColors)):
+                    color = self.paletteColors[c]
+
+                    for frame in range(frames):
+                        pct = frame / (frames - 1)
+                        newFrame = []
+
+                        p = int(round((self.ledCount - 2) * pct) if direction else 1 + round(((self.ledCount - 2) * (1 - pct))))
+
+                        for i in range(self.ledCount):
+                            newFrame += color if p == i else [0.0] * COLORS
+
+                        self.thisFrame.append(newFrame)
+
+                    direction = not direction
+
+            self.frameCount = len(self.thisFrame)
+
     #Color gradient over all LEDs
     class layerGradient(_layerBase):
         def __init__(self,  **kwargs):
@@ -1051,7 +1136,7 @@ class _ledEffect:
             if heaterTarget > 0.0 and heaterCurrent > 0.0:
                 if (heaterCurrent >= self.effectRate):
                     if (heaterCurrent <= heaterTarget-2):
-                        s = int(((heaterCurrent - self.effectRate) / heaterTarget) * 200)
+                        s = int(((heaterCurrent - self.effectRate) / (heaterTarget - self.effectRate)) * 200)
                         s = min(len(self.thisFrame)-1,s)
                         return self.thisFrame[s]
                     elif self.effectCutoff > 0:
@@ -1322,7 +1407,7 @@ class _ledEffect:
             frame = []
 
             for h in range(self.heatLen):
-                c = randint(0,self.effectCutoff)
+                c = randint(0,int(self.effectCutoff))
                 self.heatMap[h] -= (self.heatMap[h] - c >= 0 ) * c
 
             for i in range(self.ledCount - 1, self.heatSource, -1):
@@ -1495,7 +1580,6 @@ class _ledEffect:
                 self.counter += 1 
             
             return frame
-
     class layerSwitchButton(_layerBase):
         def __init__(self,  **kwargs):
             super(_ledEffect.layerSwitchButton, self).__init__(**kwargs)
@@ -1613,3 +1697,7 @@ class _ledEffect:
                 self.fadeValue = 0
             
             return [self.fadeValue * i for i in self.thisFrame[self.coloridx]]
+
+# --------------------------------------------------------------------------------------
+# ----------------------- End of klipper_led_effects import ----------------------------
+# --------------------------------------------------------------------------------------

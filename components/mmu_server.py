@@ -1,7 +1,7 @@
 # Happy Hare MMU Software
 # Moonraker support for a file-preprocessor that injects MMU metadata into gcode files
 #
-# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
 # Original slicer parsing
@@ -57,6 +57,7 @@ class MmuServer:
         self.spoolman: SpoolManager = self.server.lookup_component("spoolman", None)
         self.klippy_apis: APIComp = self.server.lookup_component("klippy_apis")
         self.http_client: HttpClient = self.server.lookup_component("http_client")
+        self.database: MoonrakerDatabase = self.server.lookup_component("database")
 
         # Full cache of spool_ids and location + key attributes (printer, gate, attr_dict))
         # Example: {2: ('BigRed', 0, {"material": "pla", "color": "ff56e0"}), 3: ('BigRed', 3, {"material": "abs"}), ...
@@ -76,6 +77,10 @@ class MmuServer:
             self.server.register_remote_method("spoolman_unset_spool_gate", self.unset_spool_gate)
             self.server.register_remote_method("spoolman_get_spool_info", self.display_spool_info)
             self.server.register_remote_method("spoolman_display_spool_location", self.display_spool_location)
+
+        # Moonraker lane data push for slicer integration
+        self.server.register_remote_method("moonraker_push_lane_data", self.push_lane_data)
+        self.server.register_remote_method("moonraker_cleanup_lane_data", self.cleanup_lane_data)
 
         # Replace file_manager/metadata with this file
         self.setup_placeholder_processor(config)
@@ -203,9 +208,11 @@ class MmuServer:
         if not hasattr(self, 'mmu_backend_present'):
             await self._init_mmu_backend()
             if self._mmu_backend_enabled():
+                if self.config.has_option("num_gates"):
+                    logging.warning("The 'num_gates' option in the moonraker [mmu_server] section is ignored when an MMU backend is present and enabled.")
                 self.nb_gates = self.mmu_backend_config.get('mmu', {}).get('num_gates', 0)
             else:
-                self.nb_gates = 1 # for standalone usage (no mmu backend considering standard printer setup)
+                self.nb_gates = self.config.getint("num_gates", 1) # for standalone usage (no mmu backend considering standard or (custom defined) printer setup)
             logging.info(f"MMU num_gates: {self.nb_gates}")
         return True
 
@@ -729,6 +736,103 @@ class MmuServer:
                 msg = f"No gates assigned for printer: {printer_name}"
             await self._log_n_send(msg)
 
+    async def push_lane_data(self, gate_ids):
+        '''
+        Pushes lane data to Moonraker database for slicer integration (OrcaSlicer)
+        gate_ids: list of tuples [(gate, spool_id), ...]
+        '''
+        try:
+            from datetime import datetime, timezone
+
+            # Get MMU state from Klipper
+            mmu_state = await self.klippy_apis.query_objects({"mmu": None})
+            mmu = mmu_state.get('mmu', {})
+
+            gate_material = mmu.get('gate_material', [])
+            gate_color = mmu.get('gate_color', [])
+            gate_temperature = mmu.get('gate_temperature', [])
+            gate_status = mmu.get('gate_status', [])
+
+            # Build batch of lane data
+            batch_data = {}
+            scan_time = datetime.now(timezone.utc).isoformat()
+
+            for gate, spool_id in gate_ids:
+                if gate < 0:
+                    continue
+
+                # Lane uses same 0-based numbering as gate
+                lane = gate
+                lane_key = f"lane{lane}"
+
+                # Check if gate is empty (status -1/unknown or 0/empty, or spool_id -1)
+                gate_status_val = gate_status[gate] if gate < len(gate_status) else -1
+                is_empty = gate_status_val in [-1, 0] or spool_id == -1
+
+                if is_empty:
+                    # Empty gate format
+                    lane_data = {
+                        "color": "",
+                        "material": "",
+                        "bed_temp": "",
+                        "nozzle_temp": "",
+                        "scan_time": "",
+                        "td": "",
+                        "lane": str(lane),
+                        "spool_id": None
+                    }
+                else:
+                    # Populated gate format
+                    lane_data = {
+                        "color": gate_color[gate] if gate < len(gate_color) else '',
+                        "td": 4.0,
+                        "material": gate_material[gate] if gate < len(gate_material) else '',
+                        "bed_temp": "",
+                        "nozzle_temp": gate_temperature[gate] if gate < len(gate_temperature) else 200,
+                        "scan_time": scan_time,
+                        "lane": str(lane),
+                        "spool_id": spool_id if spool_id > 0 else None
+                    }
+
+                batch_data[lane_key] = lane_data
+
+            # Push all lane data in a single batch
+            if batch_data:
+                await self.database.insert_batch("lane_data", batch_data)
+
+        except Exception as e:
+            logging.error(f"Error pushing lane data: {e}")
+
+    async def cleanup_lane_data(self, num_gates):
+        '''
+        Removes lane data for gates that no longer exist (e.g., if MMU size was reduced)
+        num_gates: current number of gates in the MMU
+        '''
+        try:
+            # Get all items in the lane_data namespace
+            lane_items = await self.database.get_item("lane_data", None, {})
+
+            # Delete lanes beyond the current num_gates (0-based: valid lanes are 0 to num_gates-1)
+            keys_to_delete = []
+            for lane_key, lane_value in lane_items.items():
+                # Extract lane number from the data object's lane field
+                if isinstance(lane_value, dict):
+                    lane_str = lane_value.get('lane', '')
+                    try:
+                        lane_num = int(lane_str)
+                        # If lane number >= num_gates, it's out of bounds, mark for deletion
+                        if lane_num >= num_gates:
+                            keys_to_delete.append(lane_key)
+                    except (ValueError, TypeError):
+                        continue
+
+            # Delete the old lanes
+            await self.database.delete_batch("lane_data", keys_to_delete)
+            logging.info(f"Removed old lane data: {keys_to_delete}")
+
+        except Exception as e:
+            logging.error(f"Error cleaning up lane data: {e}")
+
 
 
     # Switch out the metadata processor with this module which handles placeholders
@@ -752,6 +856,7 @@ AUTHORZIED_SLICERS = ['PrusaSlicer', 'SuperSlicer', 'OrcaSlicer', 'BambuStudio']
 HAPPY_HARE_FINGERPRINT = "; processed by HappyHare"
 MMU_REGEX = r"^" + HAPPY_HARE_FINGERPRINT
 SLICER_REGEX = r"^;.*generated by ([a-z]*) .*$|^; (BambuStudio) .*$"
+ORCASLICER_VERSION_REGEX = r"^;\s*generated by OrcaSlicer\s+(\d+(?:\.\d+){0,3})"
 
 TOOL_DISCOVERY_REGEX = r"((^MMU_CHANGE_TOOL(_STANDALONE)? .*?TOOL=)|(^T))(?P<tool>\d{1,2})"
 
@@ -788,6 +893,33 @@ METADATA_FILAMENT_NAMES = "!filament_names!"
 T_PATTERN  = r'^T(\d+)\s*(?:;.*)?$'
 G1_PATTERN = r'^G[01](?=.*\sX(-?[\d.]+))(?=.*\sY(-?[\d.]+)).*$'
 
+def _parse_version_tuple(version_str: str, parts: int = 3):
+    """Parse a version like '2.3.2-dev'/'2.3.2' into a comparable tuple (2, 3, 2).
+
+    Only the numeric dot-separated prefix is considered; missing parts are padded with zeros.
+    """
+    if not version_str:
+        return None
+    m = re.match(r"^\s*(\d+(?:\.\d+)*)", version_str)
+    if not m:
+        return None
+    nums = m.group(1).split(".")
+    out = []
+    for s in nums[:parts]:
+        try:
+            out.append(int(s))
+        except ValueError:
+            out.append(0)
+    while len(out) < parts:
+        out.append(0)
+    return tuple(out)
+
+def _format_volume(v: float) -> str:
+    """Format a purge volume number without trailing .0, keeping up to 1 decimal place."""
+    v = round(float(v), 1)
+    s = f"{v:.1f}"
+    return s.rstrip("0").rstrip(".")
+
 def gcode_processed_already(file_path):
     """Expects first line of gcode to be the HAPPY_HARE_FINGERPRINT '; processed by HappyHare'"""
 
@@ -799,9 +931,11 @@ def gcode_processed_already(file_path):
 
 def parse_gcode_file(file_path):
     slicer_regex = re.compile(SLICER_REGEX, re.IGNORECASE)
+    orca_version_regex = re.compile(ORCASLICER_VERSION_REGEX, re.IGNORECASE)
     has_tools_placeholder = has_total_toolchanges = has_colors_placeholder = has_temps_placeholder = has_materials_placeholder = has_purge_volumes_placeholder = filament_names_placeholder = False
     found_colors = found_temps = found_materials = found_purge_volumes = found_filament_names = found_flush_multiplier = False
     slicer = None
+    orca_version = None
 
     tools_used = set()
     total_toolchanges = 0
@@ -814,11 +948,20 @@ def parse_gcode_file(file_path):
 
     with open(file_path, 'r') as in_file:
         for line in in_file:
+            if not line.startswith(";"):
+                continue
+
             # Discover slicer
-            if not slicer and line.startswith(";"):
+            if not slicer:
                 match = slicer_regex.match(line)
                 if match:
                     slicer = match.group(1) or match.group(2)
+
+            # Capture OrcaSlicer version (numeric prefix only, e.g. 2.3.2 from 2.3.2-dev)
+            if orca_version is None:
+                mver = orca_version_regex.match(line)
+                if mver:
+                    orca_version = _parse_version_tuple(mver.group(1))
     if slicer in AUTHORZIED_SLICERS:
         if isinstance(TOOL_DISCOVERY_REGEX, dict):
             tools_regex = re.compile(TOOL_DISCOVERY_REGEX[slicer], re.IGNORECASE)
@@ -918,13 +1061,23 @@ def parse_gcode_file(file_path):
                 if not found_purge_volumes:
                     match = purge_volumes_regex.match(line)
                     if match:
-                        purge_volumes_csv = match.group(2).strip().split(',')
-                        # Multiply each value by flush_multiplier
+                        purge_volumes_csv = [v.strip() for v in match.group(2).strip().split(',')]
+                        
+                        # OrcaSlicer 2.3.2+ already bakes flush_multiplier into the flush_volumes_matrix.
+                        # OrcaSlicer <=2.3.1 requires applying flush_multiplier here to match the UI.
+                        apply_flush_multiplier = True
+                        if slicer == "OrcaSlicer" and orca_version is not None and orca_version >= (2, 3, 2):
+                            apply_flush_multiplier = False
+                        
                         for volume_str in purge_volumes_csv:
+                            # If we shouldn't apply multiplier, keep the raw value as-is (preserves integer formatting).
+                            if not apply_flush_multiplier or flush_multiplier == 1.0:
+                                purge_volumes.append(volume_str)
+                                continue
                             try:
                                 volume = float(volume_str)
-                                multiplied_volume = round(volume * flush_multiplier,1)
-                                purge_volumes.append(str(multiplied_volume))
+                                multiplied_volume = volume * flush_multiplier
+                                purge_volumes.append(_format_volume(multiplied_volume))
                             except ValueError:
                                 # If conversion fails, keep the original value
                                 purge_volumes.append(volume_str)

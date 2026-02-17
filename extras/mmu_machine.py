@@ -67,6 +67,37 @@ class MmuMachine:
             event_delay
         )
 
+# PAUL TODO integrate this for alternative extruder entrance sensor...
+# PAUL force options of 'extruder' or 'toolhead' only
+#        # For Qidi printers or any other that use a hall_filament_width_sensor as an endstop
+#        hall_sensor_endstop = config.get('hall_sensor_endstop', None)
+#        if hall_sensor_endstop is not None:
+#            if hall_sensor_endstop == 'extruder':
+#                target_name = Mmu.SENSOR_EXTRUDER_ENTRY
+#            elif hall_sensor_endstop == 'toolhead':
+#                target_name = Mmu.SENSOR_TOOLHEAD
+#            else:
+#                target_name = hall_sensor_endstop
+#
+#            self.hall_pin1 = config.get('hall_adc1')
+#            self.hall_pin2 = config.get('hall_adc2')
+#            self.hall_dia1 = config.getfloat('hall_cal_dia1', 1.5)
+#            self.hall_dia2 = config.getfloat('hall_cal_dia2', 2.0)
+#            self.hall_rawdia1 = config.getint('hall_raw_dia1', 9500)
+#            self.hall_rawdia2 = config.getint('hall_raw_dia2', 10500)
+#            self.hall_runout_dia = config.getfloat('hall_min_diameter', 1.0)
+#            # self.hall_runout_dia_max = config.getfloat('hall_max_diameter', 2.0) - Unused for trigger
+#
+#            s = MmuHallEndstop(config, target_name, self.hall_pin1, self.hall_pin2,
+#                               self.hall_dia1, self.hall_rawdia1, self.hall_dia2, self.hall_rawdia2,
+#                               hall_runout_dia=self.hall_runout_dia,
+#                               insert=True, runout=True)
+# OLD:self.sensors[target_name] = s
+#            if hall_sensor_endstop == 'extruder':
+#                self.extruder_sensor = s
+#            elif hall_sensor_endstop == 'toolhead':
+#                self.toolhead_sensor = s
+
         self.num_gates = 0     # Total number of vitual mmu gates
         self.units = []        # Unit by index
         self.unit_by_name = {} # Unit lookup by name
@@ -88,20 +119,21 @@ class MmuMachine:
             self.unit_by_name[name] = unit
             self.unit_by_gate[self.num_gates:self.num_gates + unit.num_gates] = [unit] * unit.num_gates
 
-            unit_info = {}
-            unit_info['name'] = unit.display_name
-            unit_info['vendor'] = unit.mmu_vendor
-            unit_info['version'] = unit.mmu_version_string
-            unit_info['num_gates'] = unit.num_gates
-            unit_info['first_gate'] = self.num_gates
-            unit_info['selector_type'] = unit.selector_type
-            unit_info['variable_rotation_distances'] = unit.variable_rotation_distances
-            unit_info['variable_bowden_lengths'] = unit.variable_bowden_lengths
-            unit_info['require_bowden_move'] = unit.require_bowden_move
-            unit_info['filament_always_gripped'] = unit.filament_always_gripped
-            unit_info['has_bypass'] = unit.has_bypass
-            unit_info['multi_gear'] = unit.multigear
-            self.unit_status["unit_%d" % i] = unit_info
+            # PAUL can't we just call get_status() on the mmu_unit?
+            #unit_info = {}
+            #unit_info['name'] = unit.display_name
+            #unit_info['vendor'] = unit.mmu_vendor
+            #unit_info['version'] = unit.mmu_version_string
+            #unit_info['num_gates'] = unit.num_gates
+            #unit_info['first_gate'] = self.num_gates
+            #unit_info['selector_type'] = unit.selector_type
+            #unit_info['variable_rotation_distances'] = unit.variable_rotation_distances
+            #unit_info['variable_bowden_lengths'] = unit.variable_bowden_lengths
+            #unit_info['require_bowden_move'] = unit.require_bowden_move
+            #unit_info['filament_always_gripped'] = unit.filament_always_gripped
+            #unit_info['has_bypass'] = unit.has_bypass
+            #unit_info['multi_gear'] = unit.multigear
+            self.unit_status["unit_%d" % i] = unit.get_status(0)
 
             self.num_gates += unit.num_gates
 

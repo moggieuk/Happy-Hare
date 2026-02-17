@@ -39,13 +39,13 @@ if BOARD_TYPE_VVD_1_0
     default "!$(MCU_NAME):PB8" 
 
   config PIN_PRE_GATE_0
-    default "!$(MCU_NAME):PA0" 
+    default "$(MCU_NAME):PA0" 
   config PIN_PRE_GATE_1
-    default "!$(MCU_NAME):PA1" 
+    default "$(MCU_NAME):PA1" 
   config PIN_PRE_GATE_2
-    default "!$(MCU_NAME):PA2" 
+    default "$(MCU_NAME):PA2" 
   config PIN_PRE_GATE_3
-    default "!$(MCU_NAME):PA3" 
+    default "$(MCU_NAME):PA3" 
 
   config PIN_ESPOOLER_FWD_0
     default "$(MCU_NAME):PA8"
@@ -91,13 +91,14 @@ chain_count: 14\n\
 color_order: GRB\n\
 \n\
 [temperature_sensor $(UNIT_NAME)_env_left]\n\
-sensor_type: AHT10 # Actually a ACT30$(comma) set 'update_aht10_commands: 1' in mmu.cfg\n\
+sensor_type: AHT3X # Use an AHT10 and set 'update_aht10_commands: 1' in mmu_parameters.cfg if the AHT3X sensor_type isn't supported (older Klipper versions)\n\
 i2c_mcu: $(MCU_NAME)\n\
-i2c_bus: i2c1_PA9_PA10\n\
+i2c_software_scl_pin: PA9\n\
+i2c_software_sda_pin: PA10\n\
 aht10_report_time: 10\n\
 \n\
 [temperature_sensor $(UNIT_NAME)_env_right]\n\
-sensor_type: AHT10 # Actually a ACT30$(comma) set 'update_aht10_commands: 1' in mmu.cfg\n\
+sensor_type: AHT3X # Use an AHT10 and set 'update_aht10_commands: 1' in mmu_parameters.cfg if the AHT3X sensor_type isn't supported (older Klipper versions)\n\
 i2c_mcu: $(MCU_NAME)\n\
 i2c_software_scl_pin: PA7\n\
 i2c_software_sda_pin: PA6\n\

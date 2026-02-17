@@ -124,11 +124,17 @@ gcode_id: $(UNIT_NAME)\n\
 heater_pin: $(MCU_NAME):PB1\n\
 max_power:1.0\n\
 sensor_type: EPCOS 100K B57560G104F\n\
-pullup_resistor: 2200\n\
+pullup_resistor: 1800\n\
 sensor_pin: $(MCU_NAME):PA4\n\
 control: watermark\n\
 min_temp: 0\n\
 max_temp: 70\n\
+\n\
+[verify_heater MMU_heater_kms]\n\
+max_error: 300\n\
+check_gain_time: 600\n\
+hysteresis: 10\n\
+heating_gain: 1\n\
 )"
 
 endif

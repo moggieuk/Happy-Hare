@@ -28,7 +28,7 @@ class MmuBuffer:
         event_delay = config.get('event_delay', 0.5)
         sf = MmuSensorFactory(self.printer)
 
-        # Setup motor syncing feedback sensors for unit...
+        # Setup motor syncing feedback compression sensor for unit...
         switch_pin = config.get('sync_feedback_compression_pin', None)
         self.compression_sensor = sf.create_mmu_sensor(
             config,
@@ -39,6 +39,7 @@ class MmuBuffer:
             button_handler=sf.sync_compression_callback
         )
 
+        # Setup motor syncing feedback tension sensor for unit...
         switch_pin = config.get('sync_feedback_tension_pin', None)
         self.tension_sensor = sf.create_mmu_sensor(
             config,
@@ -49,7 +50,13 @@ class MmuBuffer:
             button_handler=sf.sync_tension_callback
         )
 
-# TODO with analogue pin support
+        # Setup analog (proportional) sync feedback
+        # Uses single analog input; value scaled in [-1, 1]
+        analog_pin = config.get('sync_feedback_analog_pin', None)
+        if analog_pin:
+            self.proportional_sensor = MmuProportionalSensor(config, name=Mmu.SENSOR_PROPORTIONAL)
+# PAUL merge            self.sensors[Mmu.SENSOR_PROPORTIONAL] = MmuProportionalSensor(config, name=Mmu.SENSOR_PROPORTIONAL)
+# PAUL TODO this doesn't feel correct ^^^
 
 def load_config_prefix(config):
     return MmuBuffer(config)
