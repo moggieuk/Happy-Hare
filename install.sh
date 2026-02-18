@@ -220,20 +220,24 @@ fi
 # If re-running with -i give the choice of refreshing from Kconfig or retaining custom .cfg modifications
 if [ -r "${KCONFIG_CONFIG}" ] && [ -n "${F_MENUCONFIG:-}" ]; then
     echo "${C_WARNING}You are running an interactive install with existing menuconfig ('${KCONFIG_CONFIG}').${C_OFF}"
+    echo
     echo "${C_WARNING}Read carefully, you have two options:${C_OFF}"
     echo
     echo "- Refresh/restore .cfg from menuconfig ${C_WARNING}(select Y)${C_OFF}"
     echo "  This will OVERWRITE changes you have made directly to your Happy Hare .cfg files that are ALSO set by"
-    echo "  menuconfig but is the best choice if you make core changes via this interactive installer (recommended)"
-    echo "- Retain ALL your .cfg changes ${C_WARNING}(select N)${C_OFF}"
-    echo "  This will never change any existing parameter value and thus is limited to only ADDING NEW or missing"
-    echo "  config sections/options. Parameter values in menuconfig may not reflect your actual .cfg config"
+    echo "  menuconfig but is the BEST choice if you make core changes via this interactive installer (recommended)"
     echo
-    echo "  (Note that in both cases a backup of your existing .cfg files will be made)"
+    echo "- Blindly retain ALL your .cfg changes ${C_WARNING}(select N)${C_OFF}"
+    echo "  This will NEVER CHANGE any existing parameter value and thus is limited to only ADDING NEW or missing"
+    echo "  config sections/options. Also parameter values in menuconfig may not reflect your actual .cfg config"
+    echo
+    echo "  (Note that in both cases a BACKUP of your existing .cfg files will be made)"
     echo
     if ! prompt_yn "Refresh/restore .cfg"; then
         export F_SKIP_RETAIN_OLD_CFG=y
     fi
+    echo
+    echo "${C_INFO}Launching menuconfig...${C_OFF}"
     echo
 fi
 
@@ -284,5 +288,4 @@ fi
 ##### Install / Upgrade #####
 #############################
 
-echo PAUL time_elapsed make --no-print-directory -C "${SCRIPT_DIR}" install
 time_elapsed make --no-print-directory -C "${SCRIPT_DIR}" install

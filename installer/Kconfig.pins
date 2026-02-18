@@ -231,8 +231,8 @@ menu "Pins"
     config PIN_SYNC_FEEDBACK_COMPRESSION
       string "Sync feedback compression pin"
 
-    config PIN_SYNC_FEEDBACK_PROPORTIONAL
-      string "Sync feedback proportional (analogue) pin"
+    config PIN_SYNC_FEEDBACK_ANALOG
+      string "Sync feedback proportional (analog) pin"
 
     config PIN_GANTRY_SERVO
       string "Gantry servo pin"

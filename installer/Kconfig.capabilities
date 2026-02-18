@@ -10,6 +10,8 @@
 #   MMU_HAS_ESPOOLER
 #   MMU_HAS_FILAMENT_BUFFER
 #   MMU_HAS_LEDS
+#   MMU_HAS_ENVIRONMENT_SENSOR
+#   MMU_HAS_HEATER
 #   MMU_HAS_BUFFER_MCU
 #
 #   PARAM_MISC_HARDWARE
@@ -54,6 +56,9 @@ config MMU_HAS_LEDS
   bool
 
 config MMU_HAS_ENVIRONMENT_SENSOR
+  bool
+
+config MMU_HAS_HEATER
   bool
 
 # Some new designs have mcu integrated in sync-feedback buffer mcu
@@ -108,7 +113,8 @@ menu "Design attributes"
     depends on !UNSELECT_FILAMENT_ALWAYS_GRIPPED
     help
       Whether the design is always gripping the filament. For most type-B designs this
-      will be true, but type-A designs have a choice.
+      will be true, but type-A designs usually have a choice because of their filament
+      release mechanism..
 
   config UNSELECT_CAN_CROSSLOAD
     def_bool n
@@ -119,6 +125,6 @@ menu "Design attributes"
     help
       Whether the design supports the pre-loading or unloading of the non active gate.
       For type-B designs with mmu_exit sensor (or one on each entry to filament combiner)
-      this is possible. It is not possible with type-A designs with a single filament
+      this is possible. It is not possible with most type-A designs with a single filament
       drive stepper.
 endmenu

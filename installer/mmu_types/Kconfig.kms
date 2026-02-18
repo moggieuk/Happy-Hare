@@ -8,6 +8,7 @@ config MMU_TYPE_KMS_1_0
   select MMU_HAS_ENCODER
   select MMU_HAS_ESPOOLER
   select MMU_HAS_ENVIRONMENT_SENSOR
+  select MMU_HAS_HEATER
   select MMU_HAS_LEDS
   select MMU_HAS_SENSOR_PRE_GATE
   select PARAM_VARIABLE_ROTATION_DISTANCES
@@ -106,5 +107,8 @@ if MMU_TYPE_KMS_1_0
 
   config PARAM_ENVIRONMENT_SENSOR
     default "temperature_sensor $(UNIT_NAME)_enviroment"
+
+  config PARAM_FILAMENT_HEATER
+    default "heater_generic $(UNIT_NAME)_heater"
 
 endif 

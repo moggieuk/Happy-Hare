@@ -75,7 +75,7 @@ if BOARD_TYPE_TZB_1_0
     default "^$(MCU_NAME):PB1"
   config PIN_SYNC_FEEDBACK_COMPRESSION
     default "^$(MCU_NAME):PB0"
-  config PIN_SYNC_FEEDBACK_PROPORTIONAL
+  config PIN_SYNC_FEEDBACK_ANALOG
     default "$(MCU_NAME):PA3"
 
   config PIN_EREC_CUTTER_SERVO

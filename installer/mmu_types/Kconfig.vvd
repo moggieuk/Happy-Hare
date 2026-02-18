@@ -6,6 +6,7 @@ config MMU_TYPE_VVD_1_0
   select MMU_HAS_SENSOR_PRE_GATE
   select MMU_HAS_ESPOOLER
   select MMU_HAS_ENVIRONMENT_SENSOR
+  select MMU_HAS_HEATER
   select PARAM_REQUIRE_BOWDEN_MOVE
   select MMU_DISABLE_FILAMENT_BUFFER_OPTION
   imply OPTION_VVD_BUFFER
@@ -78,5 +79,10 @@ if MMU_TYPE_VVD_1_0
 
   config PARAM_ENVIRONMENT_SENSOR
     default "temperature_sensor $(UNIT_NAME)_env_left"
+
+  config PARAM_FILAMENT_HEATER
+    default "heater_generic $(UNIT_NAME)_heater"
+  config PARAM_HEATER_MAX_TEMP
+    default "75"
 
 endif 
