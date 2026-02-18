@@ -832,7 +832,7 @@ class _FlowguardEngine(object):
         self._relief_headroom = 0.0 # Debugging
 
         # FlowGuard arming test
-        self._armed = False         # Disarmed until a state change while moving
+        self._armed = False         # Disarmed until a state change while moving or verified near neutral
         self._arm_motion_mm = 0.0   # Motion since last (or initial) state sample
         self._arm_last_state = None
 
@@ -864,9 +864,11 @@ class _FlowguardEngine(object):
         self._relief_headroom = cfg.flowguard_relief_mm
 
         if not self._armed:
-            # Arm when we've moved and observed any change in coarse state
-            changed = (state_now != self._arm_last_state)
-            if abs(self._arm_motion_mm) > 0.0 and changed:
+            # Arm when we've moved and observed any change in coarse state or know we are near neutral
+            changed_state = (state_now != self._arm_last_state)
+            moved = abs(self._arm_motion_mm) > 0.0
+            near_neutral = abs(sensor_reading) < cfg.autotune_stable_x_thresh
+            if moved and (changed or near_neutral):
                 self._armed = True
             else:
                 return self.status()
