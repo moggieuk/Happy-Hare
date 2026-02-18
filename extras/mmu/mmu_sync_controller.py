@@ -868,7 +868,7 @@ class _FlowguardEngine(object):
             changed_state = (state_now != self._arm_last_state)
             moved = abs(self._arm_motion_mm) > 0.0
             near_neutral = abs(sensor_reading) < cfg.autotune_stable_x_thresh
-            if moved and (changed or near_neutral):
+            if moved and (changed_state or near_neutral):
                 self._armed = True
             else:
                 return self.status()
