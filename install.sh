@@ -166,18 +166,18 @@ if [ "${TESTDIR}" ]; then
     fi
 fi
 
-if [ ! -d "${CONFIG_KLIPPER_HOME}" ]; then
-    echo "Error: Klipper config directory not found: ${CONFIG_KLIPPER_HOME}"
+if [ -n "${CONFIG_KLIPPER_HOME+x}" ] && [ ! -d "${CONFIG_KLIPPER_HOME}" ]; then
+    echo "${C_ERROR}Klipper config directory not found: ${CONFIG_KLIPPER_HOME}${C_OFF}"
     exit 1
 fi
 
-if [ ! -d "${CONFIG_KLIPPER_CONFIG_HOME}" ]; then
-    echo "Error: Klipper config directory not found: ${CONFIG_KLIPPER_CONFIG_HOME}"
+if [ -n "${CONFIG_KLIPPER_CONFIG_HOME+x}" ] && [ ! -d "${CONFIG_KLIPPER_CONFIG_HOME}" ]; then
+    echo "${C_ERROR}Klipper config directory not found: ${CONFIG_KLIPPER_CONFIG_HOME}${C_OFF}"
     exit 1
 fi
 
-if [ ! -d "${CONFIG_MOONRAKER_HOME}" ]; then
-    echo "Error: Moonraker home directory not found: ${CONFIG_MOONRAKER_HOME}"
+if [ -n "${CONFIG_MOONRAKER_HOME+x}" ] && [ ! -d "${CONFIG_MOONRAKER_HOME}" ]; then
+    echo "${C_ERROR}Moonraker home directory not found: ${CONFIG_MOONRAKER_HOME}${C_OFF}"
     exit 1
 fi
 
