@@ -265,7 +265,7 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
         from_version = to_version
 
     if from_version != to_version:
-        logging.debug("Upgrading {} from v{} to v{}".format(cfg_file, from_version, to_version))
+        logging.debug("Upgrading {} from v{} to v{}".format(cfg_file_basename, from_version, to_version))
         upgrades = Upgrades()
         upgrades.upgrade(hhcfg, from_version, to_version)
 

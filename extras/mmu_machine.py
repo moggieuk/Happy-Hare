@@ -1,7 +1,7 @@
 # Happy Hare MMU Software
 #
 # Definition of virtual MMU
-#   - allows for specification of multiple mmu_units
+#   - allows for specification and aggregation of multiple mmu_units
 #
 # Copyright (C) 2022-2025  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com

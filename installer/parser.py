@@ -22,7 +22,14 @@ import logging
 import re
 import copy
 
-# Note {placeholder} style placeholders are no longer used with jinja templating
+# Notes:
+# {placeholder} style placeholders are no longer used with jinja templating
+# {template} is used to support advanced multi-line config lists/dicts like:
+#   drying_data: {
+#       'pla':   (45, 300),
+#       'hips':  (75, 600)
+#   }
+#
 CONFIG_SPEC = [
     ("comment", re.compile(r"^[ \t]*[#;].*?(?=\{[^}]+\})")),
     ("comment", re.compile(r"^[ \t]*[#;].*")),
@@ -31,6 +38,9 @@ CONFIG_SPEC = [
     ("word", re.compile(r"^\w[\w%]*")),
     ("assign_op", re.compile(r"^[:=]")),
     ("placeholder", re.compile(r"^\{(?:PIN_|PARAM_)[^%}]+\}")),
+    ("template", re.compile(r"^\{\%[^\n]*\%\}")),
+    ("template", re.compile(r"^\{\#[^\n]*\#\}")),
+    ("template", re.compile(r"^\{\{[^\n]*\}\}")),
     ("unknown", re.compile(r"^\S")),
 ]
 
@@ -41,25 +51,80 @@ if sys.version_info[0] >= 3:
 
 
 class Token(object):
-    def __init__(self, type, value):
+    def __init__(self, type, value, line=None, col=None, pos=None, origin=None):
         self.type = type
         self.value = value
+        self.line = line
+        self.col = col
+        self.pos = pos
+        self.origin = origin
 
     def __repr__(self):
         return "{}: {}".format(self.type, self.value)
 
 
 class Tokenizer(object):
-    def __init__(self, buf, spec):
+    def __init__(self, buf, spec, origin=None):
+        self.buf = buf
         self.slice = buf[:]
         self.next_token = None
         self.spec = spec
+        self.origin = origin
+
+        self.pos = 0
+        self.line = 1
+        self.col = 1
 
     def __iter__(self):
         return self
 
     def next(self):
         return self.__next__()
+
+    def _recompute_line_col(self):
+        if self.pos <= 0:
+            self.line = 1
+            self.col = 1
+            return
+        self.line = self.buf.count("\n", 0, self.pos) + 1
+        last_nl = self.buf.rfind("\n", 0, self.pos)
+        if last_nl == -1:
+            self.col = self.pos + 1
+        else:
+            self.col = self.pos - last_nl
+
+    def _format_error_context(self, line=None, col=None, origin=None, window=2):
+        origin = origin if origin is not None else self.origin
+        line = line if line is not None else self.line
+        col = col if col is not None else self.col
+
+        lines = self.buf.splitlines(True)  # keepends
+        if not lines:
+            loc = ""
+            if origin:
+                loc += "{}:".format(origin)
+            loc += "{}:{}".format(line, col)
+            return "  at {}\n".format(loc)
+
+        idx = max(0, min(len(lines) - 1, line - 1))
+        start = max(0, idx - window)
+        end = min(len(lines), idx + window + 1)
+
+        context = []
+        for i in range(start, end):
+            prefix = ">" if i == idx else " "
+            txt = lines[i].rstrip("\n").rstrip("\r")
+            context.append("{} {:4d} | {}".format(prefix, i + 1, txt))
+
+        caret_pad = len("{} {:4d} | ".format(">", idx + 1))
+        pointer = " " * (caret_pad + max(0, col - 1)) + "^"
+
+        loc = ""
+        if origin:
+            loc += "{}:".format(origin)
+        loc += "{}:{}".format(line, col)
+
+        return "  at {}\n\n{}\n{}".format(loc, "\n".join(context), pointer)
 
     def __next__(self):
         if self.next_token is not None:
@@ -70,13 +135,27 @@ class Tokenizer(object):
         if len(self.slice) == 0:
             raise StopIteration
 
+        start_line = self.line
+        start_col = self.col
+        start_pos = self.pos
+
         for token_type, regex in self.spec:
             match = regex.match(self.slice)
             if match:
-                self.slice = self.slice[match.end() :]
-                return Token(token_type, match.group(0))
+                value = match.group(0)
 
-        raise SyntaxError("Unexpected token '{}'".format(self.slice[0]))
+                # Advance absolute position counters
+                self.pos += len(value)
+                self._recompute_line_col()
+
+                self.slice = self.slice[match.end() :]
+                return Token(token_type, value, start_line, start_col, start_pos, self.origin)
+
+        # Unknown/unmatchable byte (should be rare since 'unknown' exists, but keep defensive)
+        ch = self.slice[0]
+        raise SyntaxError(
+            "Unexpected token '{}' \n{}".format(ch, self._format_error_context(start_line, start_col, self.origin))
+        )
 
     def peek(self):
         if self.next_token is None:
@@ -91,12 +170,27 @@ class Tokenizer(object):
         if token and token.type == token_type:
             return token
         else:
-            raise SyntaxError("Expected {}, got {}".format(token_type, token.type))
+            got = token.type if token else None
+            raise SyntaxError(
+                "Expected {}, got {} \n{}".format(
+                    token_type,
+                    got,
+                    self._format_error_context(
+                        token.line if token else self.line,
+                        token.col if token else self.col,
+                        self.origin,
+                    ),
+                )
+            )
 
     def unread(self, s):
         if s:
             self.next_token = None
             self.slice = s + self.slice
+            self.pos -= len(s)
+            if self.pos < 0:
+                self.pos = 0
+            self._recompute_line_col()
 
     def consume(self, token_type):
         peek = self.peek()
@@ -240,15 +334,38 @@ class WhitespaceNode(Node):
         return self.value
 
 
+class TemplateNode(Node):
+    def __init__(self, value):
+        Node.__init__(self, "template")
+        self.value = value
+
+    def serialize(self):
+        return self.value
+
+
 class Parser(object):
     def __init__(self, default_assign_op=":", default_comment_ch="#"):
         self.origin = None
         self.default_assign_op = default_assign_op
         self.default_comment_ch = default_comment_ch
 
+    def _syntax_error(self, tokenizer, message, peek=None):
+        if peek is not None and getattr(peek, "line", None) is not None:
+            line = peek.line
+            col = peek.col
+        else:
+            line = getattr(tokenizer, "line", None)
+            col = getattr(tokenizer, "col", None)
+
+        origin = self.origin or getattr(tokenizer, "origin", None)
+
+        token_info = " '{}'".format(peek) if peek is not None else ""
+        ctx = tokenizer._format_error_context(line, col, origin) if hasattr(tokenizer, "_format_error_context") else ""
+        raise SyntaxError("{}{} \n{}".format(message, token_info, ctx))
+
     def parse(self, buffer, origin=None):
         self.origin = origin
-        tokenizer = Tokenizer(buffer, CONFIG_SPEC)
+        tokenizer = Tokenizer(buffer, CONFIG_SPEC, origin=origin)
         return self._post_process(self.parse_document(tokenizer))
 
     def filter_tree(self, node, predicate):
@@ -284,8 +401,10 @@ class Parser(object):
                 body.append(self.parse_whitespace(tokenizer))
             elif peek.type == "placeholder":
                 body.append(self.parse_placeholder(tokenizer))
+            elif peek.type == "template":
+                body.append(self.parse_template(tokenizer))
             else:
-                raise SyntaxError("Unexpected token '{}' at:\n {}".format(peek, tokenizer.slice[:20]))
+                self._syntax_error(tokenizer, "Unexpected token", peek)
 
         body = []
         peek = tokenizer.peek()
@@ -347,8 +466,10 @@ class Parser(object):
                 body.append(self.parse_placeholder(tokenizer))
             elif peek.type == "whitespace":
                 body.append(self.parse_whitespace(tokenizer))
+            elif peek.type == "template":
+                body.append(self.parse_template(tokenizer))
             else:
-                raise SyntaxError("Unexpected token '{}' at:\n {}".format(peek, tokenizer.slice[:20]))
+                self._syntax_error(tokenizer, "Unexpected token", peek)
             peek = tokenizer.peek()
 
         return SectionNode(token.value[1:-1], body)
@@ -371,26 +492,86 @@ class Parser(object):
         current_entry = ""
         current_line = []
 
+        brace_depth = 0
+        bracket_depth = 0
+        paren_depth = 0
+        in_sq = False
+        in_dq = False
+        esc = False
+
+        # Helper to balance bracketing in multi-line config options
+        def _scan_balance(s):
+            nonlocal brace_depth, bracket_depth, paren_depth, in_sq, in_dq, esc
+            for ch in s:
+                if esc:
+                    esc = False
+                    continue
+                if ch == "\\":
+                    esc = True
+                    continue
+                if in_sq:
+                    if ch == "'":
+                        in_sq = False
+                    continue
+                if in_dq:
+                    if ch == '"':
+                        in_dq = False
+                    continue
+                if ch == "'":
+                    in_sq = True
+                elif ch == '"':
+                    in_dq = True
+                elif ch == "{":
+                    brace_depth += 1
+                elif ch == "}":
+                    brace_depth = max(0, brace_depth - 1)
+                elif ch == "[":
+                    bracket_depth += 1
+                elif ch == "]":
+                    bracket_depth = max(0, bracket_depth - 1)
+                elif ch == "(":
+                    paren_depth += 1
+                elif ch == ")":
+                    paren_depth = max(0, paren_depth - 1)
+
         peek = tokenizer.peek()
         while peek:
             if peek.type == "whitespace":
-                if peek.value.startswith("\n") and peek.value.endswith(
-                    "\n"
-                ):  # multi-line value ends with a newline without a tab/space after it
-                    break
-
+                if peek.value.startswith("\n") and peek.value.endswith("\n"):
+                    # Original rule: end multi-line value when newline isn't followed by indent.
+                    # Extension: if we're inside a bracketed structure, keep going so we can see the closing brace.
+                    if (brace_depth == 0 and bracket_depth == 0 and paren_depth == 0 and not in_sq and not in_dq):
+                        # Your existing as_is exception for gcode blocks
+                        if as_is:
+                            next_ch = tokenizer.slice[:1]  # IMPORTANT: slice is already after peek
+                            if next_ch in ("#", ";"):
+                                pass
+                            elif next_ch == "{":
+                                next2 = tokenizer.slice[1:2]
+                                if next2 in ("%", "{", "#"):  # {%  {{  {#
+                                    pass
+                                else:
+                                    break
+                            else:
+                                break
+                        else:
+                            break
+                    # else: we're inside {...}/(...)/[...] so don't break
+ 
                 token = tokenizer.take("whitespace")
-
+ 
                 # Ensure whitespace for empty options is tokenized in ValueLineNode (only newline is standalone)
                 m = re.search(r"\r?\n", token.value)
                 if m and m.start() > 0:
                     tokenizer.unread(token.value[m.start() :])
                     token.value = token.value[: m.start()]
-
+ 
                 if len(body) == 0 and len(current_line) == 0 and len(current_entry) == 0:
                     current_line.append(WhitespaceNode(token.value))
                 else:
                     current_entry += token.value
+                    _scan_balance(token.value)
+ 
                 idx = current_entry.find("\n")
                 while idx != -1:
                     current_line.append(ValueEntryNode(current_entry[: idx + 1]))
@@ -398,29 +579,37 @@ class Parser(object):
                     body.append(ValueLineNode(current_line))
                     current_line = []
                     idx = current_entry.find("\n")
-
+ 
             elif not as_is and peek.type == "comment":
                 if len(current_entry) > 0:
                     current_line.append(ValueEntryNode(current_entry))
                     current_entry = ""
                 current_line.append(self.parse_comment(tokenizer))
-
+ 
             elif not as_is and peek.type == "placeholder":
                 if len(current_entry) > 0:
                     current_line.append(ValueEntryNode(current_entry))
                     current_entry = ""
                 current_line.append(self.parse_placeholder(tokenizer))
+ 
+            elif peek.type == "template":
+                t = tokenizer.take("template").value
+                current_entry += t
+                _scan_balance(t)
+ 
             else:
-                current_entry += next(tokenizer).value
-
+                v = next(tokenizer).value
+                current_entry += v
+                _scan_balance(v)
+ 
             peek = tokenizer.peek()
-
+ 
         if len(current_entry) > 0:
             current_line.append(ValueEntryNode(current_entry))
-
+ 
         if len(current_line) > 0:
             body.append(ValueLineNode(current_line))
-
+ 
         return body
 
     def parse_comment(self, tokenizer):
@@ -456,6 +645,10 @@ class Parser(object):
     def parse_whitespace(self, tokenizer):
         token = tokenizer.take("whitespace")
         return WhitespaceNode(token.value)
+
+    def parse_template(self, tokenizer):
+        token = tokenizer.take("template")
+        return TemplateNode(token.value)
 
 
 def collect(node, ctx):
@@ -743,10 +936,10 @@ class ConfigBuilder(object):
             value = ""
         value = value.strip()
 
-        # TODO don't think this is useful anymore(?)
-        idx = value.find("\n")
-        if idx != -1:
-            value = value[:idx] + re.sub(r"^(?=\S)", r"    ", value[idx:], flags=re.MULTILINE)
+#        # Neatly indent multi-line values (not required and breaks multi-line drying_data: {...})
+#        idx = value.find("\n")
+#        if idx != -1:
+#            value = value[:idx] + re.sub(r"^(?=\S)", r"    ", value[idx:], flags=re.MULTILINE)
 
         # Build/rebuild first ValueLineNode with updated value
         if self.has_option(section_name, option_name):
@@ -951,3 +1144,4 @@ if __name__ == "__main__":
             print("Wrote round-tripped file to: {}".format(out_path))
 
     _main()
+

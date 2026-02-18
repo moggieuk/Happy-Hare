@@ -166,6 +166,22 @@ if [ "${TESTDIR}" ]; then
     fi
 fi
 
+if [ ! -d "${CONFIG_KLIPPER_HOME}" ]; then
+    echo "Error: Klipper config directory not found: ${CONFIG_KLIPPER_HOME}"
+    exit 1
+fi
+
+if [ ! -d "${CONFIG_KLIPPER_CONFIG_HOME}" ]; then
+    echo "Error: Klipper config directory not found: ${CONFIG_KLIPPER_CONFIG_HOME}"
+    exit 1
+fi
+
+if [ ! -d "${CONFIG_MOONRAKER_HOME}" ]; then
+    echo "Error: Moonraker home directory not found: ${CONFIG_MOONRAKER_HOME}"
+    exit 1
+fi
+
+
 #####################
 ##### Uninstall #####
 #####################
@@ -268,4 +284,5 @@ fi
 ##### Install / Upgrade #####
 #############################
 
+echo PAUL time_elapsed make --no-print-directory -C "${SCRIPT_DIR}" install
 time_elapsed make --no-print-directory -C "${SCRIPT_DIR}" install

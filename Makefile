@@ -321,7 +321,7 @@ install: $(install_targets)
 	$(Q)rm -rf $(addprefix $(KLIPPER_HOME)/klippy/extras/,$(hh_old_klipper_modules))
 	$(Q)$(call restart_service,$(restart_moonraker),Moonraker,$(CONFIG_SERVICE_MOONRAKER))
 	$(Q)$(call restart_service,$(restart_klipper),Klipper,$(CONFIG_SERVICE_KLIPPER))
-	$(Q)$(PY) -m installer.build $(V) --print-happy-hare "Done! Happy Hare $(CONFIG_F_VERSION) is ready!"
+	$(Q)$(PY) -m installer.build $(V) --print-happy-hare "Done! Happy Hare $(CONFIG_F_VERSION)is ready!"
 
 uninstall: | python_deps
 	$(Q)$(if $(MOONRAKER_CONFIG_FILE), \
