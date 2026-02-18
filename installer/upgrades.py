@@ -148,3 +148,8 @@ class Upgrades:
                 aliases = aliases.replace("MMU_DC_MOT_{}_B".format(i + 1), "MMU_DC_MOT_{}_B".format(i))
                 aliases = aliases.replace("MMU_DC_MOT_{}_EN".format(i + 1), "MMU_DC_MOT_{}_EN".format(i))
                 cfg.set("board_pins mmu", "aliases", aliases)
+
+    def upgrade_3_41_to_3_42(self, cfg):
+        cfg.rename_option("mmu", "sync_feedback_enable", "sync_feedback_enabled")
+        cfg.rename_option("mmu", "selector_touch_enable", "selector_touch_enabled")
+        cfg.rename_option("mmu", "endless_spool_enable", "endless_spool_enabled")

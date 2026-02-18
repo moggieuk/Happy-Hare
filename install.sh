@@ -236,8 +236,13 @@ if [ -r "${KCONFIG_CONFIG}" ] && [ -n "${F_MENUCONFIG:-}" ]; then
     if ! prompt_yn "Refresh/restore .cfg"; then
         export F_SKIP_RETAIN_OLD_CFG=y
     fi
+
     echo
-    echo "${C_INFO}Launching menuconfig...${C_OFF}"
+    if [ "${F_SKIP_RETAIN_OLD_CFG:-}" = "y" ]; then
+        echo "${C_INFO}Launching menuconfig...${C_OFF}"
+    else
+        echo "${C_INFO}Launching menuconfig (manual config changes will be retained)...${C_OFF}"
+    fi
     echo
 fi
 

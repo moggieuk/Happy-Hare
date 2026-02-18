@@ -294,6 +294,7 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
             (k.lower()[6:] if k.lower().startswith("param_") else k.lower())
             for k in kcfg.as_dict()
         ]
+        logging.info("PAUL *****: skip_retain_cfg. Ingore_params=%s" % ignore_params)
     else:
         ignore_params = [] # Don't ignore any existing params
         

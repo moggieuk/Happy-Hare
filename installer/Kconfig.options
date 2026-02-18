@@ -12,7 +12,7 @@
 #   PARAM_PURGE_MACRO
 #   PARAM_EXTRUDER_PURGE_CURRENT
 #   PARAM_FORCE_PURGE_STANDALONE
-#   PARAM_SELECTOR_TOUCH_ENABLE
+#   PARAM_SELECTOR_TOUCH_ENABLED
 
 menu "Software Options"
   help
@@ -180,23 +180,23 @@ menu "Software Options"
       This is highly recommended and incorporates all functionality from popular alternatives
       like mainsail client macros but also works in conjunction with Happy Hare toolhead movement.
 
-  config BOOL_ENABLE_SELECTOR_TOUCH
+  config BOOL_SELECTOR_TOUCH_ENABLED
     bool "Enable touch selector operation using TMC Stallguard?"
     help
       This allows for additional selector recovery steps but is difficult to tune.
       Not recommended if you are new to MMU/Happy-Hare.
       The MCU must have DIAG output for steppers. Possible to configure later
     depends on LINEAR_SELECTOR
-  config PARAM_SELECTOR_TOUCH_ENABLE
+  config PARAM_SELECTOR_TOUCH_ENABLED
     int
-    default 1 if BOOL_ENABLE_SELECTOR_TOUCH
+    default 1 if SELECTOR_TOUCH_ENABLED
     default 0
 
   if BOARD_TYPE_EASY_BRD
     comment " !!! IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..] on the EASY-BRD. MAKE A NOTE NOW !!! "
-      depends on BOOL_ENABLE_SELECTOR_TOUCH
+      depends on BOOL_SELECTOR_TOUCH_ENABLED
     comment " !!! IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..] on the EASY-BRD. MAKE A NOTE NOW !!! "
-      depends on !BOOL_ENABLE_SELECTOR_TOUCH
+      depends on !BOOL_SELECTOR_TOUCH_ENABLED
   endif
 
   menu "Advanced"

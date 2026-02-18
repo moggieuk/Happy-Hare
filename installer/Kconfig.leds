@@ -2,8 +2,8 @@
 # a "if MMU_HAS_LEDS" is cfg templates
 #
 # Responsible for setting:
-#   PARAM_LED_ENABLE
-#   PARAM_ANIMATE_LEDS
+#   PARAM_ENABLED    (leds)
+#   PARAM_ANIMATION  (leds)
 #   PARAM_CHAIN_COUNT
 #   PARAM_COLOR_ORDER
 #   PARAM_EXIT_LEDS
@@ -15,26 +15,26 @@ if MMU_HAS_LEDS
   menu "Leds"
 
     config BOOL_ENABLE_LEDS
-      bool "Enable on start?"
+      bool "Enable LEDs?"
       default y
       help
         This allows you to install but turn off LED on startup.
-    config PARAM_LED_ENABLE
-      int
-      default 0
-      default 1 if BOOL_ENABLE_LEDS
+    config PARAM_ENABLED
+      string
+      default "True" if BOOL_ENABLE_LEDS
+      default "False"
 
-    config BOOL_ANIMATE_LEDS
+    config BOOL_ENABLE_LEDS_ANIMATION
       bool "Enable animation?"
       default y
       help
         This allows you to turn off LED animations perhaps reducing the overhead
-        on your main klipper CPU. Only disable if you have frequent TTC errors.
-        (rarely necessary)
-    config PARAM_LED_ANIMATION
-      int
-      default 0
-      default 1 if BOOL_ANIMATE_LEDS
+        on your main klipper CPU. Only disable if you have frequent TTC errors
+        caused by overload (rarely necessary).
+    config PARAM_ANIMATION
+      string
+      default "True" if BOOL_ENABLE_LEDS_ANIMATION
+      default "False"
 
     config PARAM_CHAIN_COUNT
       int "Chain count"
