@@ -287,6 +287,10 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
         build_mmu_parameters_cfg(builder, hhcfg, unit_name)
 
     # How much of the existing .cfg do we apply?
+    # IMPORTANT: for this to work, the kconfig PARAM_xyx name must match the
+    #            klipper config token name 'xyz:'. There is no namespacing to
+    #            this so relies on all kconfig controlled parameters having
+    #            unique names .. so far so good
     skip_retain_cfg = os.getenv("F_SKIP_RETAIN_OLD_CFG", "n").lower() == 'y'
     if skip_retain_cfg:
         # Then we ignore if supplied by kcfg
@@ -294,7 +298,6 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
             (k.lower()[6:] if k.lower().startswith("param_") else k.lower())
             for k in kcfg.as_dict()
         ]
-        logging.info("PAUL *****: skip_retain_cfg. Ingore_params=%s" % ignore_params)
     else:
         ignore_params = [] # Don't ignore any existing params
         
