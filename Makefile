@@ -99,7 +99,7 @@ restart_klipper = 0
 .SECONDEXPANSION:
 .DEFAULT_GOAL := build
 .PRECIOUS: $(KCONFIG_CONFIG) $(KCONFIG_CONFIG)_%
-.PHONY: menuconfig install uninstall check_version diff test build clean variables python_deps
+.PHONY: menuconfig install uninstall check_version diff test build clean variables python_deps fix_links
 .SECONDARY: \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
@@ -344,6 +344,12 @@ uninstall: | python_deps
 	$(Q)$(call restart_service,1,Moonraker,$(CONFIG_SERVICE_MOONRAKER))
 	$(Q)$(call restart_service,1,Klipper,$(CONFIG_SERVICE_KLIPPER))
 	$(Q)$(PY) -m installer.build $(V) --print-unhappy-hare "Done. Very unHappy Hare."
+
+fix_links:
+	$(Q)$(foreach f,$(hh_klipper_extras_files),$(call link,$(SRC)/$(f),$(KLIPPER_HOME)/klippy/$(f)))
+	$(Q)$(foreach f,$(hh_moonraker_components),$(call link,$(SRC)/$(f),$(MOONRAKER_HOME)/moonraker/$(f)))
+	$(Q)$(call restart_service,1,Moonraker,$(CONFIG_SERVICE_MOONRAKER))
+	$(Q)$(call restart_service,1,Klipper,$(CONFIG_SERVICE_KLIPPER))
 
 
 

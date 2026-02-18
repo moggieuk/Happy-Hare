@@ -35,6 +35,7 @@ usage() {
     echo "${C_INFO}[config_file]${C_OFF} is optional, if not specified the default config filename (.config) will be used."
     echo "  -i for interactive install"
     echo "  -u or -d for uninstall"
+    echo "  -f to just restore klipper/moonraker symlinks (recover after hard klipper update)"
     echo "  -z skip github update check (nullifies -b <branch>)"
     echo "  -s to skip restart of services"
     echo "  -b to switch to specified feature branch (sticky)"
@@ -91,8 +92,12 @@ time_elapsed() {
     echo
 }
 
-while getopts "iudzsb:nk:c:m:a:tqv" arg; do
+while getopts "fiudzsb:nk:c:m:a:tqv" arg; do
     case $arg in
+    f)
+        FIX_LINKS=y
+        F_SKIP_UPDATE=y
+        ;;
     i) F_MENUCONFIG=y ;;
     u | d) F_UNINSTALL=y ;;
     z) export F_SKIP_UPDATE="${F_SKIP_UPDATE:=y}" ;;
@@ -125,7 +130,7 @@ elif [ ! "${F_SKIP_UPDATE}" ] && [ ! "${F_UNINSTALL}" ]; then
     F_SKIP_UPDATE=force exec "$0" "$@"
 else
     [ -t 1 ] && clear
-    echo "${C_NOTICE}Skipping self update${C_OFF}"
+    echo "${C_NOTICE}Skipping (git) self update${C_OFF}"
 fi
 
 shift $((OPTIND - 1))
@@ -180,6 +185,15 @@ if [ -n "${CONFIG_MOONRAKER_HOME+x}" ] && [ ! -d "${CONFIG_MOONRAKER_HOME}" ]; t
     echo "${C_ERROR}Moonraker home directory not found: ${CONFIG_MOONRAKER_HOME}${C_OFF}"
     exit 1
 fi
+
+# Handle the quick fix of klipper/moonraker symlinks
+# (users delete them if they "hard" update klipper/moonraker)
+if [ "${FIX_LINKS}" ]; then
+    echo "${C_INFO}Restoring Happy Hare klipper extras and moonraker components links${C_OFF}"
+    time_elapsed make --no-print-directory -C "${SCRIPT_DIR}" fix_links
+    exit 0
+fi
+
 
 
 #####################
