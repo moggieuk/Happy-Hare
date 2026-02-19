@@ -832,7 +832,7 @@ class _FlowguardEngine(object):
         self._relief_headroom = 0.0 # Debugging
 
         # FlowGuard arming test
-        self._armed = False         # Disarmed until a state change while moving
+        self._armed = False         # Disarmed until we know it is safe
         self._arm_motion_mm = 0.0   # Motion since last (or initial) state sample
         self._arm_last_state = None
 

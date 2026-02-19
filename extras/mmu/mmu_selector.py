@@ -1185,8 +1185,8 @@ class LinearSelectorServo:
 #
 class LinearServoSelector(LinearSelector, object):
 
-    def __init__(self, mmu):
-        super(LinearServoSelector, self).__init__(mmu)
+    def __init__(self, mmu, mmu_unit):
+        super(LinearServoSelector, self).__init__(mmu, mmu_unit)
 
 
 
@@ -1201,8 +1201,8 @@ class LinearServoSelector(LinearSelector, object):
 
 class LinearMultiGearSelector(LinearSelector, object):
 
-    def __init__(self, mmu):
-        super(LinearMultiGearSelector, self).__init__(mmu)
+    def __init__(self, mmu, mmu_unit):
+        super(LinearMultiGearSelector, self).__init__(mmu, mmu_unit)
 
     # Selector "Interface" methods ---------------------------------------------
 

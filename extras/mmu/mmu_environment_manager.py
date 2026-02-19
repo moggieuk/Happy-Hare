@@ -45,7 +45,7 @@
 import ast, logging
 
 # Happy Hare imports
-from ..mmu_machine         import VENDOR_VVD
+from ..mmu_unit            import VENDOR_VVD
 
 # MMU subcomponent clases
 from .mmu_shared           import *

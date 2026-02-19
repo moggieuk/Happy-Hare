@@ -105,12 +105,12 @@ class MmuSensorManager:
         self.bypass_sensors_map = common_sensors
 
 ## From v340 vvv
-        mmu_sensors = self.mmu.printer.lookup_object("mmu_sensors") # PAUL use this instead
-        self.all_sensors = mmu_sensors.sensors # PAUL use this instead
-        # Special case for "no bowden" (one unit) designs where mmu_gate is an alias for extruder sensor
-        if not self.mmu.mmu_machine.require_bowden_move and self.all_sensors.get(self.mmu.SENSOR_EXTRUDER_ENTRY, None) and self.mmu.SENSOR_GATE not in self.all_sensors:
-            self.all_sensors[self.mmu.SENSOR_GATE] = self.all_sensors[self.mmu.SENSOR_EXTRUDER_ENTRY]
-        logging.info("PAUL: all_sensors=%s\n" % self.all_sensors.keys())
+#        mmu_sensors = self.mmu.printer.lookup_object("mmu_sensors") # PAUL use this instead
+#        self.all_sensors = mmu_sensors.sensors # PAUL use this instead
+#        # Special case for "no bowden" (one unit) designs where mmu_gate is an alias for extruder sensor
+#        if not self.mmu.mmu_machine.require_bowden_move and self.all_sensors.get(self.mmu.SENSOR_EXTRUDER_ENTRY, None) and self.mmu.SENSOR_GATE not in self.all_sensors:
+#            self.all_sensors[self.mmu.SENSOR_GATE] = self.all_sensors[self.mmu.SENSOR_EXTRUDER_ENTRY]
+#        logging.info("PAUL: all_sensors=%s\n" % self.all_sensors.keys())
 ## From v340 ^^^
 
 # PAUL.. testing how did we do?
@@ -185,8 +185,8 @@ class MmuSensorManager:
 
                     # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
                     # otherwise the extruder can continue to move a small (speed dependent) distance
-                    if self.mmu.homing_extruder and name in [self.mmu.SENSOR_TOOLHEAD, self.mmu.SENSOR_COMPRESSION, self.mmu.SENSOR_TENSION]:
-                        mcu_endstop.add_stepper(self.mmu.mmu_extruder_stepper.stepper)
+                    if self.mmu_machine.homing_extruder and name in [self.mmu.SENSOR_TOOLHEAD, self.mmu.SENSOR_COMPRESSION, self.mmu.SENSOR_TENSION]:
+                        mcu_endstop.add_stepper(self.mmu_machine.mmu_extruder_stepper.stepper)
                 else:
                     logging.warning("MMU: Filament sensor %s is not defined in [mmu_sensors]" % name)
 # Orig v4... ^^^
