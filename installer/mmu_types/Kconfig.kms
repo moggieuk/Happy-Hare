@@ -18,6 +18,7 @@ config MMU_TYPE_KMS_1_0
   select BOOL_ENABLE_SYNC_FORM_TIP
   select BOOL_ENABLE_SYNC_PURGE
   select MMU_DISABLE_FILAMENT_BUFFER_OPTION
+  select MMU_DISABLE_NUM_GATES_OPTION
   imply OPTION_KMS_BUFFER
 
 if MMU_TYPE_KMS_1_0
@@ -62,12 +63,8 @@ if MMU_TYPE_KMS_1_0
     default "0.1"
 
   # "Leds" config
-  config PARAM_CHAIN_COUNT
-    default 4
   config PARAM_COLOR_ORDER
     default "GRBW"
-  config PARAM_EXIT_LEDS 
-    default "neopixel:$(UNIT_NAME)_leds (1-4)"
 
   # "Gates" config
   config PARAM_GATE_HOMING_MAX

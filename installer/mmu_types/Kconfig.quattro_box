@@ -67,8 +67,10 @@ if MMU_FAMILY_QUATTRO_BOX
     default "200"
 
   if MMU_TYPE_QUATTRO_BOX_1_0
+
     config PARAM_VERSION
       default "1.0"  
+
     config PARAM_CHAIN_COUNT
       default 32   
     config PARAM_COLOR_ORDER
@@ -96,4 +98,5 @@ if MMU_FAMILY_QUATTRO_BOX
     config PARAM_LOGO_LEDS
       default "neopixel:$(UNIT_NAME)_leds (9-36)"
   endif
+
 endif

@@ -46,7 +46,7 @@ if MMU_HAS_LEDS
 
     config PARAM_EXIT_LEDS
       string "Exit leds"
-      default "neopixel:mmu_leds (1-4)"
+      @defaults template="neopixel:$(UNIT_NAME)_leds (1-%d)" ifsym=PARAM_NUM_GATES min=1 max=24@
 
     config PARAM_ENTRY_LEDS
       string "Entry leds"

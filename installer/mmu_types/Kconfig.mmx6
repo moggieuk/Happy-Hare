@@ -49,10 +49,8 @@ if MMU_TYPE_MMX6_1_0
     default "25"
   config PARAM_GATE_HOMING_MAX
     default "1000"
-  config PARAM_CHAIN_COUNT
-    default 4   
 
-  config PARAM_EXIT_LEDS 
-    default "neopixel:$(UNIT_NAME)_leds (1-4)"
+  config PARAM_CHAIN_COUNT
+    default PARAM_NUM_GATES
 
 endif 

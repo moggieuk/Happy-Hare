@@ -44,12 +44,8 @@ config MMU_HAS_SYNC_FEEDBACK_BUFFER
 
 config MMU_HAS_ESPOOLER
   bool
-config MMU_DISABLE_ESPOOLER_OPTION
-  bool
 
 config MMU_HAS_FILAMENT_BUFFER
-  bool
-config MMU_DISABLE_FILAMENT_BUFFER_OPTION
   bool
 
 config MMU_HAS_LEDS
@@ -61,9 +57,21 @@ config MMU_HAS_ENVIRONMENT_SENSOR
 config MMU_HAS_HEATER
   bool
 
+
 # Some new designs have mcu integrated in sync-feedback buffer mcu
 config MMU_HAS_BUFFER_MCU
   bool
+
+# Flags used to disable the visibility of particular options to reduce confusion
+config MMU_DISABLE_NUM_GATES_OPTION
+  bool
+
+config MMU_DISABLE_ESPOOLER_OPTION
+  bool
+
+config MMU_DISABLE_FILAMENT_BUFFER_OPTION
+  bool
+
 
 config PARAM_MISC_HARDWARE
   string

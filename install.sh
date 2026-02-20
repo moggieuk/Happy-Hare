@@ -115,7 +115,7 @@ while getopts "fiudzsb:nk:c:m:a:tqv" arg; do
     #     ;;
     a) export CONFIG_KLIPPER_SERVICE="${OPTARG}.service" ;;
     t) export TESTDIR=/tmp/mmu_test ;;
-    q) export Q= ;;   # Developer: Disable quite mode in Makefile
+    q) export Q= ;;   # Developer: Disable quiet mode in Makefile
     v) export V=-v ;; # Developer: Enable verbose mode in builder and debug in Makefile
     *) usage ;;
     esac

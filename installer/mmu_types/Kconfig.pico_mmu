@@ -14,6 +14,7 @@ config MMU_TYPE_PICO_MMU_1_0
   imply BOOL_ENABLE_LEDS
 
 if MMU_TYPE_PICO_MMU_1_0
+
   source "servos/Kconfig"
   if SHOW_MMU_ADDITIONS_WITH_TYPE
     source "mmu_additions/Kconfig"
@@ -45,8 +46,4 @@ if MMU_TYPE_PICO_MMU_1_0
   config PARAM_GATE_PARKING_DISTANCE
     default "25"
 
-  config PARAM_CHAIN_COUNT
-    default 4   
-  config PARAM_EXIT_LEDS 
-    default "neopixel:$(UNIT_NAME)_leds (1-4)"
 endif 
