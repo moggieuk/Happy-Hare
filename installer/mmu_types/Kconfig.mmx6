@@ -3,11 +3,10 @@ config MMU_TYPE_MMX6_1_0
   help
     MMX6 is a 6 gate type-A MMU using a stepper to control
     cam mechanism to select filament gate.
-  select MMU_HAS_SELECTOR_STEPPER
+  select ROTARY_SELECTOR
   select MMU_HAS_LEDS
   select PARAM_REQUIRE_BOWDEN_MOVE
   select PARAM_FILAMENT_ALWAYS_GRIPPED
-  select ROTARY_SELECTOR
   
 
 if MMU_TYPE_MMX6_1_0

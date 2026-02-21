@@ -4,10 +4,10 @@
 # Responsible for setting:
 #   CHOICE_MMU_CONNECTION_TYPE_SERIAL
 #   CHOICE_MMU_CONNECTION_TYPE_CANBUS
-#   MMU_SERIAL_DEVICE
-#   MMU_CANBUS_UUID
+#   PARAM_MMU_SERIAL_DEVICE
+#   PARAM_MMU_CANBUS_UUID
 
-choice MMU_CONNECTION_TYPE
+choice CHOICE_MMU_CONNECTION_TYPE
   prompt "MCU connection"
   default CHOICE_MMU_CONNECTION_TYPE_SERIAL
   help 
@@ -29,7 +29,7 @@ endchoice
 
 if CHOICE_MMU_CONNECTION_TYPE_SERIAL
 
-  choice MMU_CHOICE_SERIAL_DEVICE
+  choice CHOICE_MMU_SERIAL_CONNECTION
     prompt "Select serial device for MMU"
     help
       MCU connection for MMU
@@ -67,12 +67,12 @@ if CHOICE_MMU_CONNECTION_TYPE_SERIAL
     config $(mmu_serial_config,10)
       bool "$(serial_device,10)"
       depends on $(serial_exists,10)
-    config MMU_CHOICE_SERIAL_DEVICE_OTHER
+    config CHOICE_MMU_SERIAL_DEVICE_OTHER
       bool "Other / manually entered"
   endchoice
 
   config MMU_SERIAL_DEVICE_OTHER
-    string "MMU mcu serial device path" if MMU_CHOICE_SERIAL_DEVICE_OTHER || !$(serial_exists,1)
+    string "Enter serial device path" if CHOICE_MMU_SERIAL_DEVICE_OTHER || !$(serial_exists,1)
     default "-enter-device-path-"
     help
       MCU connection for MMU
@@ -81,8 +81,9 @@ if CHOICE_MMU_CONNECTION_TYPE_SERIAL
       doesn't change when you plug in multiple serial devices.
       Example: /dev/serial/by-id/usb-Klipper_MCU_12345678-if00
 
-  config MMU_SERIAL_DEVICE
+  config PARAM_MMU_SERIAL_DEVICE
     string
+    default MMU_SERIAL_DEVICE_OTHER if CHOICE_MMU_SERIAL_DEVICE_OTHER
     default "$(serial_device,1)"  if $(mmu_serial_config,1)
     default "$(serial_device,2)"  if $(mmu_serial_config,2)
     default "$(serial_device,3)"  if $(mmu_serial_config,3)
@@ -93,7 +94,6 @@ if CHOICE_MMU_CONNECTION_TYPE_SERIAL
     default "$(serial_device,8)"  if $(mmu_serial_config,8)
     default "$(serial_device,9)"  if $(mmu_serial_config,9)
     default "$(serial_device,10)" if $(mmu_serial_config,10)
-    default MMU_SERIAL_DEVICE_OTHER if MMU_CHOICE_SERIAL_DEVICE_OTHER
 
 endif
 
@@ -101,7 +101,7 @@ endif
 
 if CHOICE_MMU_CONNECTION_TYPE_CANBUS
 
-  choice MMU_CANBUS_UUID
+  choice CHOICE_MMU_CANBUS_CONNECTION
     prompt "Select canbus UUID for MMU"
     help
       MCU connection for MMU
@@ -139,12 +139,12 @@ if CHOICE_MMU_CONNECTION_TYPE_CANBUS
     config $(mmu_canbus_config,10)
       bool "$(canbus_uuid,10)"
       depends on $(canbus_uuid_count) >= 10
-    config MMU_CHOICE_CANBUS_UUID_OTHER
+    config CHOICE_MMU_CANBUS_UUID_OTHER
       bool "Other / manually entered"
   endchoice
 
-  config MMU_CANBUS_DEVICE_OTHER
-    string "MMU's mcu canbus uuid" if CHOICE_CANBUS_UUID_OTHER || $(canbus_uuid_count) = 0
+  config MMU_CANBUS_UUID_OTHER
+    string "Enter CANbus uuid" if CHOICE_MMU_CANBUS_UUID_OTHER || $(canbus_uuid_count) = 0
     default "-enter-canbus-id-"
     help
       Specifiy the CANbus UUID that is used for connection to the MMU.
@@ -154,8 +154,9 @@ if CHOICE_MMU_CONNECTION_TYPE_CANBUS
       Enter only the uuid portion (12 hex digits)
         E.g. 127081e7e3c6
 
-  config MMU_CANBUS_UUID
+  config PARAM_MMU_CANBUS_UUID
     string
+    default MMU_CANBUS_UUID_OTHER if CHOICE_MMU_CANBUS_UUID_OTHER
     default "$(canbus_uuid,1)"  if $(mmu_canbus_config,1)
     default "$(canbus_uuid,2)"  if $(mmu_canbus_config,2)
     default "$(canbus_uuid,3)"  if $(mmu_canbus_config,3)
@@ -166,6 +167,5 @@ if CHOICE_MMU_CONNECTION_TYPE_CANBUS
     default "$(canbus_uuid,8)"  if $(mmu_canbus_config,8)
     default "$(canbus_uuid,9)"  if $(mmu_canbus_config,9)
     default "$(canbus_uuid,10)" if $(mmu_canbus_config,10)
-    default MMU_CANBUS_DEVICE_OTHER if MMU_CHOICE_CANBUS_DEVICE_OTHER
 
 endif

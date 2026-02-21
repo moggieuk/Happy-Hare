@@ -25,30 +25,6 @@ menu "Gate loading & parking"
     help
       Maximum extra move distance to home (or actual move distance if using "encoder" endstop)
 
-# PAUL
-#  choice CHOICE_GATE_PRELOAD_ENDSTOP 
-#    prompt "Gate preload endstop"
-#    help
-#      Typically this will be the individual mmu exit sensor if is configured else the same
-#      as the gate homing endstop
-#
-#    config CHOICE_GATE_PRELOAD_ENDSTOP_DEFAULT
-#      bool "Same as gate homing endstop"
-#      help
-#        Use gate homing endstop (no individual mmu exit sensors are available))
-#
-#    config CHOICE_GATE_PRELOAD_ENDSTOP_GEAR
-#      bool "Individual mmu exit sensors" if MMU_HAS_SENSOR_POST_GEAR
-#      help
-#        Use individual per-gate exit sensor (often implemented as the per-gate hub entry sensor)
-#  endchoice
-#
-#  # Create no-prompt param from choice
-#  config PARAM_GATE_PRELOAD_ENDSTOP
-#    string 
-#    default "mmu_gear" if CHOICE_GATE_PRELOAD_ENDSTOP_GEAR
-#    default ""         # Defaults to gate homing endstop
-
   config PARAM_GATE_PRELOAD_PARKING_DISTANCE
     string "Preload parking distance (mm)"
     default "0"

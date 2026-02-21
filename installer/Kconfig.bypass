@@ -6,8 +6,6 @@
 
 config UNSELECT_HAS_BYPASS
   def_bool n
-#comment "--Has filament bypass?"
-#  depends on UNSELECT_HAS_BYPASS
 config PARAM_HAS_BYPASS
   bool "Has filament bypass?"
   forceshow

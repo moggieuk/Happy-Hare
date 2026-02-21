@@ -4,7 +4,6 @@ config MMU_TYPE_3D_CHAMELEON_1_0
     3D Chameleon is a 4 gate MMU using innovative "opposing gate"
     filament selection mechanism.
   select ROTARY_SELECTOR
-  select MMU_HAS_SELECTOR_STEPPER
   imply  PARAM_REQUIRE_BOWDEN_MOVE
   select PARAM_VARIABLE_ROTATION_DISTANCES
   select UNSELECT_VARIABLE_BOWDEN_LENGTHS

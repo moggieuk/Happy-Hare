@@ -14,6 +14,27 @@
 # Other names will be store and handled as normal Kconfig variables. Therefore if you
 # don't want the abilty to "reset to default" and you want past values to be "sticky" you
 # must use alternative names (or unamed choice)
+#
+# Capability parmams:
+#   MMU_HAS_BUFFER_MCU
+#   MMU_HAS_ENCODER
+#   MMU_HAS_ENVIRONMENT_SENSOR
+#   MMU_HAS_ESPOOLER
+#   MMU_HAS_FILAMENT_BUFFER
+#   MMU_HAS_HEATER
+#   MMU_HAS_LEDS
+#   MMU_HAS_SELECTOR_SERVO
+#   MMU_HAS_SELECTOR_STEPPER
+#   MMU_HAS_SENSOR_EXTRUDER
+#   MMU_HAS_SENSOR_GATE
+#   MMU_HAS_SENSOR_GEAR_TOUCH
+#   MMU_HAS_SENSOR_POST_GEAR
+#   MMU_HAS_SENSOR_PRE_GATE
+#   MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION
+#   MMU_HAS_SENSOR_SYNC_FEEDBACK_PROPORTIONAL
+#   MMU_HAS_SENSOR_SYNC_FEEDBACK_TENSION
+#   MMU_HAS_SENSOR_TOOLHEAD
+#   MMU_HAS_SYNC_FEEDBACK_BUFFER
 
 
 # IMPORTANT keep version string up-to-date and constistent with git tag
@@ -35,16 +56,16 @@ count   = $(shell, set -- $(1); echo $#)
 # Used to dynamically get the serial device paths (ls is not expensive to run multiple time)
 serial_device        = $(shell, ls /dev/serial/by-id/* 2>/dev/null | grep 'Klipper_$(2)' | tail -n +$(1) | head -n 1)
 serial_exists        = $(to_bool, [ -e '$(serial_device,$(1),$(2))' ])
-mmu_serial_config    = $(shell, basename '$(serial_device,$(1),$(2))' | sed 's/-/_/g' | awk 'BEGIN{out="CHOICE_MMU_SERIAL_DEVICE_OTHER"} NF && $$0!="." {out="CHOICE_MMU_SERIAL_DEVICE_" toupper($$0)} END{print out}')
-buffer_serial_config = $(shell, basename '$(serial_device,$(1),$(2))' | sed 's/-/_/g' | awk 'BEGIN{out="CHOICE_BUFFER_SERIAL_DEVICE_OTHER"} NF && $$0!="." {out="CHOICE_BUFFER_SERIAL_DEVICE_" toupper($$0)} END{print out}')
+mmu_serial_config    = $(shell, basename '$(serial_device,$(1),$(2))' | sed 's/-/_/g' | awk 'BEGIN{out="CHOICE_MMU_SERIAL_DEVICE_NONE" } NF && $$0!="." {out="CHOICE_MMU_SERIAL_DEVICE_" toupper($$0)} END{print out}')
+buffer_serial_config = $(shell, basename '$(serial_device,$(1),$(2))' | sed 's/-/_/g' | awk 'BEGIN{out="CHOICE_BUFFER_SERIAL_DEVICE_NONE"} NF && $$0!="." {out="CHOICE_BUFFER_SERIAL_DEVICE_" toupper($$0)} END{print out}')
 
 # Grab the UUIDs that are not in use by klipper as a space-separated list, e.g. "43a8... 25ff... aaba..."
 canbus_query        := $(shell, echo "$(KLIPPER_HOME)/../klippy-env/bin/python $(KLIPPER_HOME)/scripts/canbus_query.py can0")
 canbus_uuids        := $(shell, $(canbus_query) 2>/dev/null | sed -n 's/.*canbus_uuid=\([0-9a-fA-F][0-9a-fA-F]*\).*/\1/p')
 canbus_uuid_count   := $(count, $(canbus_uuids))
 canbus_uuid          = $(shell, echo $(canbus_uuids) | awk -v n=$(1) '{ print $n }')
-mmu_canbus_config    = $(shell, echo $(canbus_uuid,$(1)) | awk '{print "CHOICE_MMU_CANBUS_UUID_" toupper($0)}')
-buffer_canbus_config = $(shell, echo $(canbus_uuid,$(1)) | awk '{print "CHOICE_BUFFER_CANBUS_UUID_" toupper($0)}')
+mmu_canbus_config    = $(shell, echo $(canbus_uuid,$(1)) | awk 'BEGIN{out="CHOICE_MMU_CANBUS_UUID_NONE"} NF {out="CHOICE_MMU_CANBUS_UUID_" toupper($$0)} END{print out}')
+buffer_canbus_config = $(shell, echo $(canbus_uuid,$(1)) | awk 'BEGIN{out="CHOICE_BUFFER_CANBUS_UUID_NONE"} NF {out="CHOICE_BUFFER_CANBUS_UUID_" toupper($$0)} END{print out}')
 
 # Used for comment padding
 pad = $(shell, printf "%-$(1)s" "$(2)")

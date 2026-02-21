@@ -4,10 +4,10 @@
 # Responsible for setting:
 #   CHOICE_BUFFER_CONNECTION_TYPE_SERIAL
 #   CHOICE_BUFFER_CONNECTION_TYPE_CANBUS
-#   BUFFER_SERIAL_DEVICE
-#   BUFFER_CANBUS_UUID
+#   PARAM_BUFFER_SERIAL_DEVICE
+#   PARAM_BUFFER_CANBUS_UUID
 
-choice BUFFER_CONNECTION_TYPE
+choice CHOICE_BUFFER_CONNECTION_TYPE
   prompt "MCU connection for sync-feedback buffer"
   default CHOICE_BUFFER_CONNECTION_TYPE_SERIAL
   help 
@@ -29,7 +29,7 @@ endchoice
 
 if CHOICE_BUFFER_CONNECTION_TYPE_SERIAL
 
-  choice BUFFER_CHOICE_SERIAL_DEVICE
+  choice CHOICE_BUFFER_SERIAL_CONNECTION
     prompt "Select serial device for sync-feedback buffer"
     help
       MCU connection for sync-feedback buffer
@@ -67,12 +67,12 @@ if CHOICE_BUFFER_CONNECTION_TYPE_SERIAL
     config $(buffer_serial_config,9)
       bool "$(serial_device,10)"
       depends on $(serial_exists,10)
-    config BUFFER_CHOICE_SERIAL_DEVICE_OTHER
+    config CHOICE_BUFFER_SERIAL_DEVICE_OTHER
       bool "Other / manually entered"
   endchoice
 
   config BUFFER_SERIAL_DEVICE_OTHER
-    string "BUFFER mcu serial device path" if BUFFER_CHOICE_SERIAL_DEVICE_OTHER || !$(serial_exists,1)
+    string "Enter serial device path" if CHOICE_BUFFER_SERIAL_DEVICE_OTHER || !$(serial_exists,1)
     default "-enter-device-path-"
     help
       MCU connection for sync-feedback buffer
@@ -81,7 +81,7 @@ if CHOICE_BUFFER_CONNECTION_TYPE_SERIAL
       doesn't change when you plug in multiple serial devices.
       Example: /dev/serial/by-id/usb-Klipper_MCU_12345678-if00
 
-  config BUFFER_SERIAL_DEVICE
+  config PARAM_BUFFER_SERIAL_DEVICE
     string
     default "$(serial_device,1)"  if $(buffer_serial_config,1)
     default "$(serial_device,2)"  if $(buffer_serial_config,2)
@@ -93,7 +93,7 @@ if CHOICE_BUFFER_CONNECTION_TYPE_SERIAL
     default "$(serial_device,8)"  if $(buffer_serial_config,8)
     default "$(serial_device,9)"  if $(buffer_serial_config,9)
     default "$(serial_device,10)" if $(buffer_serial_config,10)
-    default BUFFER_SERIAL_DEVICE_OTHER if BUFFER_CHOICE_SERIAL_DEVICE_OTHER
+    default BUFFER_SERIAL_DEVICE_OTHER if CHOICE_BUFFER_SERIAL_DEVICE_OTHER
 
 endif
 
@@ -101,7 +101,7 @@ endif
 
 if CHOICE_BUFFER_CONNECTION_TYPE_CANBUS
 
-  choice BUFFER_CANBUS_UUID
+  choice CHOICE_BUFFER_CANBUS_CONNECTION
     prompt "Select canbus UUID for BUFFER"
     help
       MCU connection for BUFFER
@@ -139,12 +139,12 @@ if CHOICE_BUFFER_CONNECTION_TYPE_CANBUS
     config $(buffer_canbus_config,10)
       bool "$(canbus_uuid,10)"
       depends on $(canbus_uuid_count) >= 10
-    config BUFFER_CHOICE_CANBUS_UUID_OTHER
+    config CHOICE_BUFFER_CANBUS_UUID_OTHER
       bool "Other / manually entered"
   endchoice
 
-  config BUFFER_CANBUS_DEVICE_OTHER
-    string "Canbus UUID for sync-feedback buffer" if CHOICE_BUFFER_CANBUS_UUID_OTHER || $(canbus_uuid_count) = 0
+  config BUFFER_CANBUS_UUID_OTHER
+    string "Enter CANbus UUID" if CHOICE_BUFFER_CANBUS_UUID_OTHER || $(canbus_uuid_count) = 0
     default "-enter-canbus-id-"
     help
       Specifiy the CANbus UUID that is used for connection to the sync-feedback buffer
@@ -154,7 +154,7 @@ if CHOICE_BUFFER_CONNECTION_TYPE_CANBUS
       Enter only the uuid portion (12 hex digits)
         E.g. 127081e7e3c6
 
-  config BUFFER_CANBUS_UUID
+  config PARAM_BUFFER_CANBUS_UUID
     string
     default "$(canbus_uuid,1)"  if $(buffer_canbus_config,1)
     default "$(canbus_uuid,2)"  if $(buffer_canbus_config,2)
@@ -166,6 +166,6 @@ if CHOICE_BUFFER_CONNECTION_TYPE_CANBUS
     default "$(canbus_uuid,8)"  if $(buffer_canbus_config,8)
     default "$(canbus_uuid,9)"  if $(buffer_canbus_config,9)
     default "$(canbus_uuid,10)" if $(buffer_canbus_config,10)
-    default BUFFER_CANBUS_DEVICE_OTHER if BUFFER_CHOICE_CANBUS_DEVICE_OTHER
+    default BUFFER_CANBUS_UUID_OTHER if CHOICE_BUFFER_CANBUS_UUID_OTHER
 
 endif

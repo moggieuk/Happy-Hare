@@ -20,7 +20,7 @@ menu "Software Options"
     config files.
 
   config BOOL_FORCE_FORM_TIP_STANDALONE
-    bool "Happy Hare controlled tip forming/cutting"
+    bool "Happy Hare controlled in-print tip forming/cutting"
     def_bool y
     help
       You can choose whether you want the slicer or Happy Hare (recommended) to control tip forming.
@@ -43,7 +43,7 @@ menu "Software Options"
       (It is necessary to help Happy Hare complete the extruder unloading process)
 
   config BOOL_FORCE_PURGE_STANDALONE
-    bool "Happy Hare controlled purge"
+    bool "Happy Hare controlled in-print purge"
     def_bool y
     help
       You can choose whether you want the slicer or Happy Hare (recommended) to control filament purging.

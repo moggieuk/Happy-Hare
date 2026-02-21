@@ -1,10 +1,12 @@
 # Module sets the serial or CANbus connection tokens to MMU
 # and optionally sync-feedback buffer
-#
+
 menu "MCU connection"
   rsource "Kconfig.mmu_mcu"
-  if MMU_HAS_BUFFER_MCU
-    comment ""
-    rsource "Kconfig.buffer_mcu"
-  endif
 endmenu
+
+if MMU_HAS_BUFFER_MCU
+  menu "Buffer MCU connection"
+    rsource "Kconfig.buffer_mcu"
+  endmenu
+endif

@@ -5,16 +5,16 @@ if BOARD_TYPE_KMS_1_0
   config PARAM_BOARD_TYPE
     default "KMS10"
 
-  choice MMU_CONNECTION_TYPE
+  choice CHOICE_MMU_CONNECTION_TYPE
     default CHOICE_MMU_CONNECTION_TYPE_SERIAL
   endchoice
-  choice MMU_SERIAL_DEVICE
+  choice CHOICE_MMU_SERIAL_CONNECTION
     default $(mmu_serial_config,1,stm32)
   endchoice
-  choice BUFFER_CONNECTION_TYPE
+  choice CHOICE_BUFFER_CONNECTION_TYPE
     default CHOICE_BUFFER_CONNECTION_TYPE_SERIAL
   endchoice
-  choice BUFFER_SERIAL_DEVICE
+  choice CHOICE_BUFFER_SERIAL_CONNECTION
     default $(buffer_serial_config,1,stm32)
   endchoice
 

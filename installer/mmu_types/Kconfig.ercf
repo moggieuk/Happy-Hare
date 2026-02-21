@@ -4,16 +4,15 @@ config MMU_FAMILY_ERCF
     The Enraged Rabbit Carrot Feeder (ERCF) is the original DIY MMU design
     with a large community and many popular mods. It is available in two
     main versions, the original v1.1 and the upgraded v2.0.
-  select LINEAR_SELECTOR
+  select LINEAR_SERVO_SELECTOR
   select MMU_HAS_ENCODER
-  select MMU_HAS_SELECTOR_SERVO
-  select MMU_HAS_SELECTOR_STEPPER
   select PARAM_VARIABLE_ROTATION_DISTANCES
   select UNSELECT_VARIABLE_BOWDEN_LENGTHS
   imply  PARAM_REQUIRE_BOWDEN_MOVE
   select UNSELECT_CAN_CROSSLOAD
 
 if MMU_FAMILY_ERCF
+
   choice
     prompt "Version"
     default MMU_TYPE_ERCF_3_0

@@ -5,10 +5,10 @@ if BOARD_TYPE_MELLOW_EASY_BRD_CAN_1
   config PARAM_BOARD_TYPE
     default "MELLOW-EASY-BRD-CAN"
 
-  choice MMU_CONNECTION_TYPE
+  choice CHOICE_MMU_CONNECTION_TYPE
     default CHOICE_MMU_CONNECTION_TYPE_SERIAL
   endchoice
-  choice MMU_SERIAL_DEVICE
+  choice CHOICE_MMU_SERIAL_CONNECTION
     default $(mmu_serial_config,1,rp2040)
   endchoice
 

@@ -5,7 +5,6 @@ config MMU_TYPE_PICO_MMU_1_0
     to both select and grip the filament in the chosen gate. It is a
     simple compact design but is limited to about 4 gates.
   select SERVO_SELECTOR
-  select MMU_HAS_SELECTOR_SERVO
   select PARAM_REQUIRE_BOWDEN_MOVE
   select PARAM_FILAMENT_ALWAYS_GRIPPED
   select BOOL_ENABLE_SYNC_TO_EXTRUDER

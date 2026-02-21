@@ -12,7 +12,7 @@
 #   PARAM_GEAR_SHORT_MOVE_ACCEL
 #   PARAM_GEAR_SHORT_MOVE_THRESHOLD
 #
-# These must be in a "if MMU_HAS_SELECTOR" clause in cfg templates
+# These must be in a "if MMU_HAS_SELECTOR_STEPPER" clause in cfg templates
 #   PARAM_SELECTOR_MOVE_SPEED
 #   PARAM_SELECTOR_HOMING_SPEED
 #   PARAM_SELECTOR_TOUCH_SPEED
@@ -42,7 +42,7 @@ menu "Speeds"
   config PARAM_GEAR_FROM_SPOOL_SPEED
     string "Loading from spool speed"
     default "80"
-    depends on MMU_HAS_FILAMANT_BUFFER
+    depends on MMU_HAS_FILAMENT_BUFFER
     help
       Fast speed when loading filament from the spool and the filament is not yet buffered
       (first time load). This can be helpful in allowing a slower than normal speed to overcome
@@ -50,7 +50,7 @@ menu "Speeds"
 
   config PARAM_GEAR_FROM_SPOOL_ACCEL
     string "Loading from spool acceleration"
-    depends on MMU_HAS_FILAMANT_BUFFER
+    depends on MMU_HAS_FILAMENT_BUFFER
     default "100"
 
   config PARAM_GEAR_UNLOAD_SPEED

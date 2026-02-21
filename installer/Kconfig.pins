@@ -220,7 +220,7 @@ menu "Pins"
 
     config PIN_NEOPIXEL
       string "Neopixel pin"
-      depends on MMU_HAS_LED
+      depends on MMU_HAS_LEDS
 
     config PIN_GATE_SENSOR
       string "MMU Shared exit sensor pin"

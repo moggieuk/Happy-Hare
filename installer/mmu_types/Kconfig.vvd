@@ -1,7 +1,6 @@
 config MMU_TYPE_VVD_1_0
   bool "BTT ViViD"
   select INDEXED_SELECTOR
-  select MMU_HAS_SELECTOR_STEPPER
   select MMU_HAS_LEDS
   select MMU_HAS_SENSOR_PRE_GATE
   select MMU_HAS_ESPOOLER
