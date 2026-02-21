@@ -2129,6 +2129,7 @@ class Mmu:
 
         if config:
             self.calibrated_bowden_length = self.calibration_manager.get_bowden_length() # Temp scalar pulled from list for _f_calc()
+            cutter_before_extruder = self.has_toolhead_cutter and self._is_cutter_before_extruder()
             msg += "\n\nLOAD SEQUENCE:"
 
             # Gate loading
@@ -2204,7 +2205,22 @@ class Mmu:
             msg += "\n\nUNLOAD SEQUENCE:"
 
             # Tip forming
-            if self.force_form_tip_standalone:
+            if self.has_toolhead_cutter:
+                cut_tip_vars = self.printer.lookup_object("gcode_macro _MMU_CUT_TIP_VARS", None)
+                if cut_tip_vars:
+                    try:
+                        blade_pos = float(cut_tip_vars.variables.get('blade_pos', 0))
+                        retract_length = float(cut_tip_vars.variables.get('retract_length', 0))
+                        pushback_length = float(cut_tip_vars.variables.get('pushback_length', 0))
+                        if cutter_before_extruder:
+                            msg += "\n- Filament is cut by Happy Hare using '%s' macro with blade configured at %.1fmm before the extruder. (Retract: %.1fmm, Pushback: %.1fmm)" % (self.form_tip_macro, blade_pos, retract_length, pushback_length)
+                        else:
+                            msg += "\n- Filament is cut by Happy Hare using '%s' macro with blade configured %.1fmm after the extruder. (Retract: %.1fmm, Pushback: %.1fmm)" % (self.form_tip_macro, blade_pos, retract_length, pushback_length)
+                    except Exception:
+                        pass
+                else:
+                    msg += "\n- Filament is cut by Happy Hare using '%s' macro" % self.form_tip_macro
+            elif self.force_form_tip_standalone:
                 if self.form_tip_macro:
                     msg += "\n- Tip is always formed by Happy Hare using '%s' macro after initial retract of %s with extruder current of %d%%" % (
                         self.form_tip_macro, self._f_calc("toolchange_retract"), self.extruder_form_tip_current)
@@ -2228,10 +2244,15 @@ class Mmu:
 
             # Bowden unloading
             if self.mmu_machine.require_bowden_move:
-                if self.has_encoder() and self.bowden_pre_unload_test and not self.sensor_manager.has_sensor(self.SENSOR_EXTRUDER_ENTRY):
-                    msg += "\n- Bowden is unloaded with a short %s validation move before %s fast move" % (self._f_calc("encoder_move_step_size"), self._f_calc("calibrated_bowden_length - gate_unload_buffer - encoder_move_step_size"))
+                current_pos = -self._get_filament_position()
+                bowden_calc = "calibrated_bowden_length - gate_unload_buffer"
+                if cutter_before_extruder and current_pos > self.toolhead_extruder_to_nozzle:
+                    bowden_calc += " - (-filament_pos - toolhead_extruder_to_nozzle)"
+
+                if self.has_encoder() and self.bowden_pre_unload_test and not self.sensor_manager.has_sensor(self.SENSOR_EXTRUDER_ENTRY) and not cutter_before_extruder:
+                    msg += "\n- Bowden is unloaded with a short %s validation move before %s fast move" % (self._f_calc("encoder_move_step_size"), self._f_calc(bowden_calc + " - encoder_move_step_size"))
                 else:
-                    msg += "\n- Bowden is unloaded with a fast %s move" % self._f_calc("calibrated_bowden_length - gate_unload_buffer")
+                    msg += "\n- Bowden is unloaded with a fast %s move" % self._f_calc(bowden_calc)
             else:
                 msg += "\n- No fast bowden move is required"
 
@@ -4189,7 +4210,7 @@ class Mmu:
                     # Ensure sync state and mimick in print if requested
                     self.reset_sync_gear_to_extruder(self.sync_form_tip, force_in_print=force_in_print)
 
-                    _,_,_ = self._do_form_tip(test=not self.is_in_print(force_in_print))
+                    _,_,_,_ = self._do_form_tip(test=not self.is_in_print(force_in_print))
                     self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
 
         except MmuError as ee:
@@ -4663,6 +4684,17 @@ class Mmu:
             return ratio, deficit # For auto-calibration
         finally:
             self.bowden_start_pos = None
+   
+    # Return True if the cutter configuration indicates it is located before the extruder gears
+    def _is_cutter_before_extruder(self):
+        cut_tip_vars = self.printer.lookup_object("gcode_macro _MMU_CUT_TIP_VARS", None)
+        if cut_tip_vars:
+            try:
+                blade_pos = float(cut_tip_vars.variables.get('blade_pos', 0))
+                return blade_pos > self.toolhead_extruder_to_nozzle
+            except Exception:
+                pass
+        return False
 
     # Fast unload of filament from exit of extruder gear (end of bowden) to position close to MMU (gate_unload_buffer away)
     def _unload_bowden(self, length=None):
@@ -4675,6 +4707,13 @@ class Mmu:
 
         # Shorten move by gate buffer used to ensure we don't overshoot homing point
         length -= self.gate_unload_buffer
+        
+        cutter_before_extruder = self._is_cutter_before_extruder()
+
+        # If filament is already retracted into bowden tube (e.g. from cutting before extruder)
+        current_pos = -self._get_filament_position()
+        if cutter_before_extruder and current_pos > self.toolhead_extruder_to_nozzle:
+            length -= (current_pos - self.toolhead_extruder_to_nozzle)
 
         try:
             if length > 0:
@@ -4682,8 +4721,8 @@ class Mmu:
                 self._set_filament_direction(self.DIRECTION_UNLOAD)
                 self.selector.filament_drive()
 
-                # Optional pre-unload safety step
-                if (full and self.has_encoder() and self.bowden_pre_unload_test and
+                # Optional pre-unload safety step (skip if cutter is before extruder)
+                if (full and self.has_encoder() and self.bowden_pre_unload_test and not cutter_before_extruder and
                     self.sensor_manager.check_sensor(self.SENSOR_EXTRUDER_ENTRY) is not False and
                     self.sensor_manager.check_all_sensors_before(self.FILAMENT_POS_START_BOWDEN, self.gate_selected, loading=False) is not False
                 ):
@@ -4750,6 +4789,8 @@ class Mmu:
 
         if self.extruder_homing_endstop == self.SENSOR_EXTRUDER_NONE:
             homed = True
+            if self.has_toolhead_cutter and self._is_cutter_before_extruder():
+                self.log_warning("Warning: 'extruder_homing_endstop' is set to 'none'. This is highly recommended to be 'extruder' or 'collision' for reliable cutter-before-extruder configurations!")
 
         elif self.extruder_homing_endstop == self.SENSOR_EXTRUDER_COLLISION:
             if self.has_encoder():
@@ -4899,7 +4940,7 @@ class Mmu:
                 and not extruder_only
             ):
                 self.log_debug("Total measured movement: %.1fmm, total delta: %.1fmm" % (measured, delta))
-                if measured < self.encoder_min:
+                if length >= self.encoder_min and measured < self.encoder_min:
                     raise MmuError("Move to nozzle failed (encoder didn't sense any movement). Extruder may not have picked up filament or filament did not find homing sensor")
                 elif delta > length * (self.toolhead_move_error_tolerance / 100.):
                     self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER)
@@ -5417,7 +5458,7 @@ class Mmu:
 
             # Perform the tip forming move and establish park_pos
             initial_encoder_position = self.get_encoder_distance()
-            park_pos, remaining, reported = self._do_form_tip()
+            park_pos, remaining, reported, before_extruder = self._do_form_tip()
             measured = self.get_encoder_distance(dwell=None) - initial_encoder_position
             self._set_filament_remaining(remaining, self.gate_color[self.gate_selected] if self.gate_selected != self.TOOL_GATE_UNKNOWN else '')
 
@@ -5442,7 +5483,11 @@ class Mmu:
             self._set_filament_position(-park_pos)
             self.set_encoder_distance(initial_encoder_position + park_pos)
 
-            if detected or extruder_only:
+            if reported and before_extruder:
+                # The cutter is located before the extruder.
+                # Therefore the filament is definitely somewhere before the extruder entry
+                self._set_filament_pos_state(self.FILAMENT_POS_END_BOWDEN)
+            elif detected or extruder_only:
                 # Definitely in extruder
                 self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER)
             else:
@@ -5493,9 +5538,29 @@ class Mmu:
                 else:
                     self.log_trace(msg)
 
-            if not test:
-                # Important sanity checks to spot misconfiguration
-                if park_pos > self.toolhead_extruder_to_nozzle:
+            # assume we are in extruder
+            before_extruder = False
+            if reported and self.has_toolhead_cutter and self._is_cutter_before_extruder():
+                self.log_debug("park_pos (%.1fmm) indicates cutter is located before extruder (toolhead_extruder_to_nozzle is %.1fmm)." % (park_pos, self.toolhead_extruder_to_nozzle))
+                before_extruder = True
+            if before_extruder:
+                cut_tip_vars = self.printer.lookup_object("gcode_macro _MMU_CUT_TIP_VARS", None)
+                if cut_tip_vars:
+                    try:
+                        blade_pos = float(cut_tip_vars.variables.get('blade_pos', 0))
+                        retract_length = float(cut_tip_vars.variables.get('retract_length', 0))
+                        if retract_length < (blade_pos - self.toolhead_extruder_to_nozzle):
+                            self.log_warning("Warning: 'retract_length' (%.1fmm) in mmu_cut_tip.cfg should be greater than the distance from the cutter to the extruder entrance (%.1fmm) for reliable pushback!" % (retract_length, blade_pos - self.toolhead_extruder_to_nozzle))
+                    except Exception:
+                        pass
+
+                if filament_remaining > self.toolhead_extruder_to_nozzle:
+                    self.log_debug("Clamping filament_remaining (%.1fmm) to toolhead_extruder_to_nozzle (%.1fmm) for cutter-before-extruder cut" % (filament_remaining, self.toolhead_extruder_to_nozzle))
+                    filament_remaining = self.toolhead_extruder_to_nozzle
+
+            elif not test:
+                # Important sanity checks to spot misconfiguration; this may be dead with cutter before extruder support?
+                if park_pos > self.toolhead_extruder_to_nozzle and not self._is_cutter_before_extruder():
                     self.log_warning("Warning: park_pos (%.1fmm) cannot be greater than 'toolhead_extruder_to_nozzle' distance of %.1fmm! Assumming fully unloaded from extruder\nWill attempt to continue..." % (park_pos, self.toolhead_extruder_to_nozzle))
                     park_pos = self.toolhead_extruder_to_nozzle
                     filament_remaining = 0.
@@ -5505,7 +5570,7 @@ class Mmu:
                     park_pos = 0.
                     filament_remaining = 0.
 
-        return park_pos, filament_remaining, reported
+        return park_pos, filament_remaining, reported, before_extruder
 
     def purge_standalone(self):
         if self.purge_macro:
