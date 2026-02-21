@@ -5,6 +5,7 @@
 # If so, this preference is used instead
 #
 # Responsible for setting:
+#   PARAM_GATE_PRELOAD_ENDSTOP
 #   PARAM_GATE_HOMING_ENDSTOP
 #   PARAM_EXTRUDER_HOMING_ENDSTOP
 
@@ -111,6 +112,35 @@ menu "Bowden move endstops"
     default "mmu_gate"        if CHOICE_GATE_HOMING_ENDSTOP_GATE
     default "encoder"         if CHOICE_GATE_HOMING_ENDSTOP_ENCODER
     default ""                if CHOICE_GATE_HOMING_ENDSTOP_NONE
+
+  # ------
+
+  choice CHOICE_GATE_PRELOAD_ENDSTOP 
+    prompt "Gate preload endstop"
+    help
+      Typically this will be the individual mmu exit sensor if is configured else the same
+      as the gate homing endstop
+
+    config CHOICE_GATE_PRELOAD_ENDSTOP_DEFAULT
+      bool "Same as gate homing endstop"
+      help
+        Use gate homing endstop (no individual mmu exit sensors are available)
+
+    config CHOICE_GATE_PRELOAD_ENDSTOP_GEAR
+      bool "Individual mmu exit sensors" if MMU_HAS_SENSOR_POST_GEAR
+      help
+        Use individual per-gate exit sensor (often implemented as the per-gate hub entry sensor)
+        This can be useful on type-B MMU's when preloading filament while another gate has filament
+        loaded and the gate endstop is shared.
+  endchoice
+
+  # Create no-prompt param from choice
+  config PARAM_GATE_PRELOAD_ENDSTOP
+    string 
+    default "mmu_gear" if CHOICE_GATE_PRELOAD_ENDSTOP_GEAR
+    default ""         # Defaults to gate homing endstop
+
+  # ------
 
   choice CHOICE_EXTRUDER_HOMING_ENDSTOP
     prompt "Extruder homing endstop" 

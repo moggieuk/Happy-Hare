@@ -4,6 +4,9 @@
 #   PARAM_SYNC_TO_EXTRUDER
 #   PARAM_SYNC_FORM_TIP
 #   PARAM_SYNC_PURGE
+#   PARAM_SYNC_GEAR_CURRENT
+#   PARAM_EXTRUDER_FORM_TIP_CURRENT
+#   PARAM_EXTRUDER_PURGE_CURRENT
 #
 #   PARAM_SYNC_FEEDBACK_BUFFER_NAME
 #   PARAM_SYNC_FEEDBACK_ENABLE
@@ -16,42 +19,8 @@ menu "MMU/Extruder sync"
     synced with the extruder stepper. Synchronization helps to
     overcome friction in the filament path.
 
-  if !FILAMENT_ALWAYS_GRIPPED
-    config BOOL_ENABLE_SYNC_TO_EXTRUDER
-      bool "Enable sync to extruder?"
-      default y if FILAMENT_ALWAYS_GRIPPED
-      help
-        This controls whether the extruder and gear steppers are synchronized
-        during printing operations.
-    config PARAM_SYNC_TO_EXTRUDER
-      int
-      default 1 if BOOL_ENABLE_SYNC_TO_EXTRUDER
-      default 0
-
-    config BOOL_ENABLE_SYNC_FORM_TIP
-      bool "Enable syncing while tip forming?"
-      default y if ENABLE_SYNC_TO_EXTRUDER
-      help
-        This controls whether the extruder and gear steppers are synchronized
-        during tip forming operation.
-    config PARAM_SYNC_FORM_TIP
-      int
-      default 1 if BOOL_ENABLE_FORM_TIP
-      default 0
-
-    config BOOL_ENABLE_SYNC_PURGE
-      bool "Enable syncing while purging?"
-      default y if ENABLE_SYNC_TO_EXTRUDER
-      help
-        This controls whether the extruder and gear steppers are synchronized
-        during purging operation.
-    config PARAM_SYNC_PURGE
-      int
-      default 1 if BOOL_ENABLE_SYNC_PURGE
-      default 0
-  endif
-
   if MMU_HAS_SYNC_FEEDBACK_BUFFER
+
     config PARAM_SYNC_FEEDBACK_BUFFER_NAME
       string "Sync feedback buffer name"
       default UNIT_NAME
@@ -62,7 +31,8 @@ menu "MMU/Extruder sync"
       help
         Sync feedback will be used to dynamically adjust the gear stepper speed to
         match the extruder.
-      depends on !FILAMENT_ALWAYS_GRIPPED
+      depends on !PARAM_FILAMENT_ALWAYS_GRIPPED
+
     config PARAM_SYNC_FEEDBACK_ENABLE
       int
       default 1 if BOOL_ENABLE_SYNC_FEEDBACK
@@ -91,5 +61,64 @@ menu "MMU/Extruder sync"
         |====================|       |====================|       |====================|       |====================|
              ^          ^                  ^                                     ^                       ^^
         compression   tension        compression-only                      tension-only
+
   endif
+
+  config BOOL_ENABLE_SYNC_TO_EXTRUDER
+    bool "Enable sync to extruder?"
+    depends on !PARAM_FILAMENT_ALWAYS_GRIPPED
+    default y if PARAM_FILAMENT_ALWAYS_GRIPPED
+    help
+      This controls whether the extruder and gear steppers are synchronized
+      during printing operations.
+
+  config PARAM_SYNC_TO_EXTRUDER
+    int
+    default 1 if BOOL_ENABLE_SYNC_TO_EXTRUDER
+    default 0
+
+  config PARAM_SYNC_GEAR_CURRENT
+    int "Synchronized gear current"
+    default 100
+    help
+      % of gear_stepper current (10%-100%) to use when syncing with extruder during print
+
+  config BOOL_ENABLE_SYNC_FORM_TIP
+    bool "Enable syncing while tip forming?"
+    depends on !PARAM_FILAMENT_ALWAYS_GRIPPED
+    default y if ENABLE_SYNC_TO_EXTRUDER
+    help
+      This controls whether the extruder and gear steppers are synchronized
+      during tip forming operation.
+
+  config PARAM_SYNC_FORM_TIP
+    int
+    default 1 if BOOL_ENABLE_FORM_TIP
+    default 0
+
+  config PARAM_EXTRUDER_FORM_TIP_CURRENT
+    int "Extruder tip forming current"
+    default 100
+    help
+      % of extruder current (100%-150%) to use when forming tip (100 to disable feature)
+
+  config BOOL_ENABLE_SYNC_PURGE
+    bool "Enable syncing while purging?"
+    depends on !PARAM_FILAMENT_ALWAYS_GRIPPED
+    default y if ENABLE_SYNC_TO_EXTRUDER
+    help
+      This controls whether the extruder and gear steppers are synchronized
+      during purging operation.
+
+  config PARAM_SYNC_PURGE
+    int
+    default 1 if BOOL_ENABLE_SYNC_PURGE
+    default 0
+
+  config PARAM_EXTRUDER_PURGE_CURRENT
+    int "Extruder purging current"
+    default 100
+    help
+      % of extruder current (100%-150%) to use when purging (100 to disable feature)
+
 endmenu

@@ -48,7 +48,8 @@ class MmuParameters:
         self.gate_homing_max = config.getfloat('gate_homing_max', 100, minval=10)
         self.gate_parking_distance = config.getfloat('gate_parking_distance', 23.)  # Can be +ve or -ve
 #       self.gate_unload_buffer = config.getfloat('gate_unload_buffer', 30., minval=0.) # How far to short bowden move to avoid overshooting the gate # PAUL make this dynamic based on bowden_fast_unload_portion
-        self.gate_preload_endstop = config.getchoice('gate_preload_endstop', {o: o for o in self.mmu.GATE_ENDSTOPS}, self.mmu.SENSOR_ENCODER) # PAUL new - implement
+        self.gate_preload_endstop = config.getchoice('gate_preload_endstop', {o: o for o in self.mmu.GATE_ENDSTOPS + ['']}, '') # PAUL new - implement
+        self.gate_preload_endstop = self.gate_preload_endstop or self.gate_homing_endstop
         self.gate_preload_homing_max = config.getfloat('gate_preload_homing_max', self.gate_homing_max)
         self.gate_preload_parking_distance = config.getfloat('gate_preload_parking_distance', -10.)  # Can be +ve or -ve
         self.gate_preload_attempts = config.getint('gate_preload_attempts', 1, minval=1, maxval=20)

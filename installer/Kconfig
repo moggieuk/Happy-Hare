@@ -35,7 +35,7 @@ count   = $(shell, set -- $(1); echo $#)
 # Used to dynamically get the serial device paths (ls is not expensive to run multiple time)
 serial_device        = $(shell, ls /dev/serial/by-id/* 2>/dev/null | grep 'Klipper_$(2)' | tail -n +$(1) | head -n 1)
 serial_exists        = $(to_bool, [ -e '$(serial_device,$(1),$(2))' ])
-serial_config        = $(shell, basename '$(serial_device,$(1),$(2))' | sed 's/-/_/g' | awk 'BEGIN{out="CHOICE_SERIAL_DEVICE_OTHER"} NF && $$0!="." {out="CHOICE_SERIAL_DEVICE_" toupper($$0)} END{print out}')
+mmu_serial_config    = $(shell, basename '$(serial_device,$(1),$(2))' | sed 's/-/_/g' | awk 'BEGIN{out="CHOICE_MMU_SERIAL_DEVICE_OTHER"} NF && $$0!="." {out="CHOICE_MMU_SERIAL_DEVICE_" toupper($$0)} END{print out}')
 buffer_serial_config = $(shell, basename '$(serial_device,$(1),$(2))' | sed 's/-/_/g' | awk 'BEGIN{out="CHOICE_BUFFER_SERIAL_DEVICE_OTHER"} NF && $$0!="." {out="CHOICE_BUFFER_SERIAL_DEVICE_" toupper($$0)} END{print out}')
 
 # Grab the UUIDs that are not in use by klipper as a space-separated list, e.g. "43a8... 25ff... aaba..."
@@ -43,7 +43,7 @@ canbus_query        := $(shell, echo "$(KLIPPER_HOME)/../klippy-env/bin/python $
 canbus_uuids        := $(shell, $(canbus_query) 2>/dev/null | sed -n 's/.*canbus_uuid=\([0-9a-fA-F][0-9a-fA-F]*\).*/\1/p')
 canbus_uuid_count   := $(count, $(canbus_uuids))
 canbus_uuid          = $(shell, echo $(canbus_uuids) | awk -v n=$(1) '{ print $n }')
-canbus_config        = $(shell, echo $(canbus_uuid,$(1)) | awk '{print "CHOICE_CANBUS_UUID_" toupper($0)}')
+mmu_canbus_config    = $(shell, echo $(canbus_uuid,$(1)) | awk '{print "CHOICE_MMU_CANBUS_UUID_" toupper($0)}')
 buffer_canbus_config = $(shell, echo $(canbus_uuid,$(1)) | awk '{print "CHOICE_BUFFER_CANBUS_UUID_" toupper($0)}')
 
 # Used for comment padding

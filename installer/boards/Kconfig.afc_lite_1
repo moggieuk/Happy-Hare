@@ -9,11 +9,11 @@ if BOARD_TYPE_AFC_LITE_1_0
   config HAS_ESPOOLER_ENABLE_PIN
     default y
 
-  choice MCU_CONNECTION_TYPE
-    default CHOICE_MCU_CONNECTION_TYPE_SERIAL
+  choice MMU_CONNECTION_TYPE
+    default CHOICE_MMU_CONNECTION_TYPE_SERIAL
   endchoice
-  choice SERIAL_DEVICE
-    default $(serial_config,1,stm32)
+  choice MMU_SERIAL_DEVICE
+    default $(mmu_serial_config,1,stm32)
   endchoice
 
   config PIN_GEAR_UART 

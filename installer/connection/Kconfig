@@ -1,31 +1,10 @@
-# Module sets the serial or CANbus connection tokens:
+# Module sets the serial or CANbus connection tokens to MMU
+# and optionally sync-feedback buffer
 #
-#   MCU_CONNECTION_TYPE_SERIAL (boolean)
-#   MCU_CONNECTION_TYPE_CANBUS (boolean)
-#
-#   PARAM_SERIAL_DEVICE
-#   PARAM_CANBUS_UUID
-#   PARAM_BUFFER_SERIAL_DEVICE (if MMU_HAS_BUFFER_MCU is true)
-#   PARAM_BUFFER_CANBUS_UUID (if MMU_HAS_BUFFER_MCU is true)
-
-config SERIAL_DEVICE
-  string
-
-config CANBUS_UUID
-  string
-
-config BUFFER_SERIAL_DEVICE
-  string
-
-config BUFFER_CANBUS_UUID
-  string
-
-choice MCU_CONNECTION_TYPE
-  prompt "MCU connection"
-  default CHOICE_MCU_CONNECTION_TYPE_SERIAL
-  help 
-    Choose the type of mcu connection for the MMU
-
-  rsource "Kconfig.serial"
-  rsource "Kconfig.canbus"
-endchoice
+menu "MCU connection"
+  rsource "Kconfig.mmu_mcu"
+  if MMU_HAS_BUFFER_MCU
+    comment ""
+    rsource "Kconfig.buffer_mcu"
+  endif
+endmenu

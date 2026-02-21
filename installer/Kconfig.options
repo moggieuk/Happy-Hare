@@ -1,17 +1,15 @@
 # Defines parameter token types and defaults for popular software options
 #
 # Responsible for setting:
-#   PARAM_ENDLESS_SPOOL_ENABLED
+#   PARAM_FORCE_FORM_TIP_STANDALONE
+#   PARAM_SLICER_TIP_PARK_POS
+#   PARAM_FORCE_PURGE_STANDALONE
+#   PARAM_FORM_TIP_MACRO
+#   PARAM_PURGE_MACRO
 #   PARAM_FLOWGUARD_ENABLED
 #   PARAM_FLOWGUARD_ENCODER_MODE
 #   PARAM_SPOOLMAN_SUPPORT
-#   PARAM_FORCE_FORM_TIP_STANDALONE
-#   PARAM_FORM_TIP_MACRO
-#   PARAM_EXTRUDER_FORM_TIP_CURRENT
-#   PARAM_SLICER_TIP_PARK_POS
-#   PARAM_PURGE_MACRO
-#   PARAM_EXTRUDER_PURGE_CURRENT
-#   PARAM_FORCE_PURGE_STANDALONE
+#   PARAM_ENDLESS_SPOOL_ENABLED
 #   PARAM_SELECTOR_TOUCH_ENABLED
 
 menu "Software Options"
@@ -27,35 +25,22 @@ menu "Software Options"
     help
       You can choose whether you want the slicer or Happy Hare (recommended) to control tip forming.
       To use tip cutting ensure this selection is checked and be sure to turn off in your slicer
+
   config PARAM_FORCE_FORM_TIP_STANDALONE
     int
     default 1 if BOOL_FORCE_FORM_TIP_STANDALONE
     default 0
 
-  menu "Form tip settings"
-    if BOOL_FORCE_FORM_TIP_STANDALONE
-      config PARAM_FORM_TIP_MACRO
-        string "Tip forming/cutting macro"
-        default "_MMU_FORM_TIP"
-        help
-          Name of macro to call to perform the tip forming (or cutting) operation
-
-      config PARAM_EXTRUDER_FORM_TIP_CURRENT
-        int "Extruder tip forming current"
-        default 100
-        help
-          % of extruder current (100%-150%) to use when forming tip (100 to disable feature)
-    endif
-
-    config PARAM_SLICER_TIP_PARK_POS
-      string "Slicer tip park pos"
-      default "0"
-      depends on !BOOL_FORCE_FORM_TIP_STANDALONE
-      help
-        This specifies the position of filament in extruder after slicer completes tip forming
-        and is usually a setting in the slicer config.
-        (It is necessary to help Happy Hare complete the extruder unloading process)
-  endmenu
+  config PARAM_SLICER_TIP_PARK_POS
+    string
+    default "0"
+  config PARAM_SLICER_TIP_PARK_POS
+    prompt "Slicer tip park pos"
+    depends on !BOOL_FORCE_FORM_TIP_STANDALONE
+    help
+      This specifies the position of filament in extruder after slicer completes tip forming
+      and is usually a setting in the slicer config.
+      (It is necessary to help Happy Hare complete the extruder unloading process)
 
   config BOOL_FORCE_PURGE_STANDALONE
     bool "Happy Hare controlled purge"
@@ -64,60 +49,119 @@ menu "Software Options"
       You can choose whether you want the slicer or Happy Hare (recommended) to control filament purging.
       To use intelligent volume purging or purge systems like Blobifier ensure this selection is checked
       and be sure to turn off in your slicer
+
   config PARAM_FORCE_PURGE_STANDALONE
     int
     default 1 if BOOL_FORCE_PURGE_STANDALONE
     default 0
 
-  menu "Purge settings"
-    depends on BOOL_FORCE_PURGE_STANDALONE
+  # --------
 
-    config PARAM_PURGE_MACRO
-      string "Tip forming/cutting macro"
-      default "_MMU_PURGE"
-      help
-        Name of macro to call to perform the standalone purging operation.
-        E.g. BLOBIFIER, _MMU_PURGE
+  choice FORM_TIP_MACRO
+    prompt "Select tip forming/cutting macro"
+    default CHOICE_FORM_TIP_MACRO_FORM_TIP
+    help
+      Name of macro to call to perform the tip forming (or cutting) operation
+      E.g. _MMU_FORM_TIP, _MMU_CUT_TIP
 
-    config PARAM_EXTRUDER_PURGE_CURRENT
-      int "Extruder purging current"
-      default 100
-      help
-        % of extruder current (100%-150%) to use when purging (100 to disable feature)
-  endmenu
+      "Other" and enter it manually for custom implementation.
+
+    config CHOICE_FORM_TIP_MACRO_FORM_TIP
+      bool "_MMU_FORM_TIP"
+    config CHOICE_FORM_TIP_MACRO_CUT_TIP
+      bool "_MMU_CUT_TIP"
+    config CHOICE_FORM_TIP_MACRO_OTHER
+      bool "Other / manually entered"
+  endchoice
+
+  config FORM_TIP_MACRO_OTHER
+    string "Tip forming/cutting  macro" if CHOICE_FORM_TIP_MACRO_OTHER
+    default "-your-macro-"
+    help
+      Name of macro to call to perform the tip forming or cutting operation.
+      Built in ones include: _MMU_FORM_TIP, _MMU_CUT_TIP
+
+      But you can specifiy your own here
+
+  config PARAM_FORM_TIP_MACRO
+    string
+    default "_MMU_FORM_TIP" if CHOICE_FORM_TIP_MACRO_FORM_TIP
+    default "_MMU_CUT_TIP" if CHOICE_FORM_TIP_MACRO_CUT_TIP
+    default FORM_TIP_MACRO_OTHER if CHOICE_FORM_TIP_MACRO_OTHER
+
+  # --------
+
+  choice PURGE_MACRO
+    prompt "Select purging macro"
+    default CHOICE_PURGE_MACRO_PURGE
+    help
+      Name of macro to call to perform the standalone purging operation.
+      E.g. BLOBIFIER, _MMU_PURGE
+
+      "Other" and enter it manually for custom implementation.
+
+    config CHOICE_PURGE_MACRO_PURGE
+      bool "_MMU_PURGE"
+    config CHOICE_PURGE_MACRO_BLOBIFIER
+      bool "BLOBIFIER"
+    config CHOICE_PURGE_MACRO_OTHER
+      bool "Other / manually entered"
+  endchoice
+
+  config PURGE_MACRO_OTHER
+    string "Purging macro" if CHOICE_PURGE_MACRO_OTHER
+    default "-your-macro-"
+    help
+      Name of macro to call to perform the standalone purging operation.
+      Built in ones include: BLOBIFIER, _MMU_PURGE
+
+      But you can specifiy your own here
+
+  config PARAM_PURGE_MACRO
+    string
+    default "_MMU_PURGE" if CHOICE_PURGE_MACRO_PURGE
+    default "BLOBIFIER" if CHOICE_PURGE_MACRO_BLOBIFIER
+    default PURGE_MACRO_OTHER if CHOICE_PURGE_MACRO_OTHER
+
+  # --------
 
   menu "FlowGuard (clog/tangle/runout detection)"
     depends on MMU_HAS_SYNC_FEEDBACK_BUFFER || MMU_HAS_ENCODER
 
-  config BOOL_FLOWGUARD_ENABLED
-    bool "Enable FlowGuard?"
-    def_bool y
-    help
-      Flowguard is a feature that uses the sync-feedback buffer and/or encoder to detect
-      filament clogs, tangles and runoutout. If enabled the print will be paused to allow
-      you to correct the issue possibily saving your print but certainly saving your printer.
-  config PARAM_FLOWGUARD_ENABLED
-    int
-    default 1 if BOOL_FLOWGUARD_ENABLED
-    default 0
+    config BOOL_FLOWGUARD_ENABLED
+      bool "Enable FlowGuard?"
+      def_bool y
+      help
+        Flowguard is a feature that uses the sync-feedback buffer and/or encoder to detect
+        filament clogs, tangles and runoutout. If enabled the print will be paused to allow
+        you to correct the issue possibily saving your print but certainly saving your printer.
 
-  config BOOL_FLOWGUARD_ENCODER_MODE
-    bool "Enable encoder based flowguard clog/tangle/runout detection?"
-    help
-      Clog detection uses the encoder to detect when filament is no longer moving and pauses print
-    depends on MMU_HAS_ENCODER
-  config BOOL_FLOWGUARD_ENCODER_MODE_AUTO
-    bool "Enable automatic detection length?"
-    help
-      This constantly tunes the clog/tangle/runout detection length to help avoid false triggering
-    depends on BOOL_FLOWGUARD_ENCODER_MODE
-    default y
-  config PARAM_FLOWGUARD_ENCODER_MODE
-    int 
-    default 2 if BOOL_FLOWGUARD_ENCODER_MODE_AUTO
-    default 1 if BOOL_FLOWGUARD_ENCODER_MODE
-    default 0
+    config PARAM_FLOWGUARD_ENABLED
+      int
+      default 1 if BOOL_FLOWGUARD_ENABLED
+      default 0
+
+    config BOOL_FLOWGUARD_ENCODER_MODE
+      bool "Enable encoder based flowguard clog/tangle/runout detection?"
+      help
+        Clog detection uses the encoder to detect when filament is no longer moving and pauses print
+      depends on MMU_HAS_ENCODER
+
+    config BOOL_FLOWGUARD_ENCODER_MODE_AUTO
+      bool "Enable automatic detection length?"
+      help
+        This constantly tunes the clog/tangle/runout detection length to help avoid false triggering
+      depends on BOOL_FLOWGUARD_ENCODER_MODE
+      default y
+
+    config PARAM_FLOWGUARD_ENCODER_MODE
+      int 
+      default 2 if BOOL_FLOWGUARD_ENCODER_MODE_AUTO
+      default 1 if BOOL_FLOWGUARD_ENCODER_MODE
+      default 0
   endmenu
+
+  # --------
 
   config BOOL_ENDLESS_SPOOL_ENABLED
     bool "Enable EndlessSpool?"
@@ -145,14 +189,17 @@ menu "Software Options"
       bool "Off"
       help
         Don't connect to spoolman
+
     config CHOICE_SPOOLMAN_SUPPORT_RO
       bool "Read-only"
       help
         Fetch filament attributes based on spool ID
+
     config CHOICE_SPOOLMAN_SUPPORT_PUSH
       bool "Push"
       help
         Fetch filament attributes and publish gate assignment to spoolman
+
     config CHOICE_SPOOLMAN_SUPPORT_PULL
       bool "Pull"
       help
@@ -165,6 +212,8 @@ menu "Software Options"
     default "readonly" if CHOICE_SPOOLMAN_SUPPORT_RO
     default "push" if CHOICE_SPOOLMAN_SUPPORT_PUSH
     default "pull" if CHOICE_SPOOLMAN_SUPPORT_PULL
+
+  # --------
 
   config INSTALL_12864_MENU
     bool "Install Mini 12864 menu configuration?"
@@ -187,6 +236,7 @@ menu "Software Options"
       Not recommended if you are new to MMU/Happy-Hare.
       The MCU must have DIAG output for steppers. Possible to configure later
     depends on LINEAR_SELECTOR
+
   config PARAM_SELECTOR_TOUCH_ENABLED
     int
     default 1 if SELECTOR_TOUCH_ENABLED

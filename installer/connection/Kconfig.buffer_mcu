@@ -1,0 +1,171 @@
+# Module sets the serial connection tokens
+# Make the first 10 available serial tty devices selectable, it's unlikely people have more.
+#
+# Responsible for setting:
+#   CHOICE_BUFFER_CONNECTION_TYPE_SERIAL
+#   CHOICE_BUFFER_CONNECTION_TYPE_CANBUS
+#   BUFFER_SERIAL_DEVICE
+#   BUFFER_CANBUS_UUID
+
+choice BUFFER_CONNECTION_TYPE
+  prompt "MCU connection for sync-feedback buffer"
+  default CHOICE_BUFFER_CONNECTION_TYPE_SERIAL
+  help 
+    Choose the type of mcu connection for sync-feedback buffer
+    Serial or CANbus
+
+  config CHOICE_BUFFER_CONNECTION_TYPE_SERIAL
+    bool "Serial"
+    help
+      Select if your sync-feedback buffer connects via a serial connection to mcu board
+
+  config CHOICE_BUFFER_CONNECTION_TYPE_CANBUS
+    bool "CANbus"
+    help
+      Select if your sync-feedback buffer  connects with a CANbus connection to mcu board
+endchoice
+
+# --------
+
+if CHOICE_BUFFER_CONNECTION_TYPE_SERIAL
+
+  choice BUFFER_CHOICE_SERIAL_DEVICE
+    prompt "Select serial device for sync-feedback buffer"
+    help
+      MCU connection for sync-feedback buffer
+      Select the serial device connected to the sync-feedback buffer  mcu
+      or select "Other" and enter it manually.
+    depends on $(serial_exists,1) # Only show if there is at least one serial tty devices to select
+
+    config $(buffer_serial_config,1)
+      bool "$(serial_device,1)"
+      depends on $(serial_exists,1)
+    config $(buffer_serial_config,2)
+      bool "$(serial_device,2)"
+      depends on $(serial_exists,2)
+    config $(buffer_serial_config,3)
+      bool "$(serial_device,3)"
+      depends on $(serial_exists,3)
+    config $(buffer_serial_config,4)
+      bool "$(serial_device,4)"
+      depends on $(serial_exists,4)
+    config $(buffer_serial_config,5)
+      bool "$(serial_device,5)"
+      depends on $(serial_exists,5)
+    config $(buffer_serial_config,6)
+      bool "$(serial_device,6)"
+      depends on $(serial_exists,6)
+    config $(buffer_serial_config,7)
+      bool "$(serial_device,7)"
+      depends on $(serial_exists,7)
+    config $(buffer_serial_config,8)
+      bool "$(serial_device,8)"
+      depends on $(serial_exists,8)
+    config $(buffer_serial_config,9)
+      bool "$(serial_device,9)"
+      depends on $(serial_exists,9)
+    config $(buffer_serial_config,9)
+      bool "$(serial_device,10)"
+      depends on $(serial_exists,10)
+    config BUFFER_CHOICE_SERIAL_DEVICE_OTHER
+      bool "Other / manually entered"
+  endchoice
+
+  config BUFFER_SERIAL_DEVICE_OTHER
+    string "BUFFER mcu serial device path" if BUFFER_CHOICE_SERIAL_DEVICE_OTHER || !$(serial_exists,1)
+    default "-enter-device-path-"
+    help
+      MCU connection for sync-feedback buffer
+      Specify the path of the serial device connected to the BUFFER's mcu.
+      It's best to use the /dev/serial/by-id/ path, as it's unique and
+      doesn't change when you plug in multiple serial devices.
+      Example: /dev/serial/by-id/usb-Klipper_MCU_12345678-if00
+
+  config BUFFER_SERIAL_DEVICE
+    string
+    default "$(serial_device,1)"  if $(buffer_serial_config,1)
+    default "$(serial_device,2)"  if $(buffer_serial_config,2)
+    default "$(serial_device,3)"  if $(buffer_serial_config,3)
+    default "$(serial_device,4)"  if $(buffer_serial_config,4)
+    default "$(serial_device,5)"  if $(buffer_serial_config,5)
+    default "$(serial_device,6)"  if $(buffer_serial_config,6)
+    default "$(serial_device,7)"  if $(buffer_serial_config,7)
+    default "$(serial_device,8)"  if $(buffer_serial_config,8)
+    default "$(serial_device,9)"  if $(buffer_serial_config,9)
+    default "$(serial_device,10)" if $(buffer_serial_config,10)
+    default BUFFER_SERIAL_DEVICE_OTHER if BUFFER_CHOICE_SERIAL_DEVICE_OTHER
+
+endif
+
+# --------
+
+if CHOICE_BUFFER_CONNECTION_TYPE_CANBUS
+
+  choice BUFFER_CANBUS_UUID
+    prompt "Select canbus UUID for BUFFER"
+    help
+      MCU connection for BUFFER
+      Select the CANbus uuid belonging to the BUFFER's mcu or select
+      "Other" and enter it manually.
+    depends on $(canbus_uuid_count) >= 1 # Only show if there is at least one unused uuid to select
+
+    config $(buffer_canbus_config,1)
+      bool "$(canbus_uuid,1)"
+      depends on $(canbus_uuid_count) >= 1
+    config $(buffer_canbus_config,2)
+      bool "$(canbus_uuid,2)"
+      depends on $(canbus_uuid_count) >= 2
+    config $(buffer_canbus_config,3)
+      bool "$(canbus_uuid,3)"
+      depends on $(canbus_uuid_count) >= 3
+    config $(buffer_canbus_config,4)
+      bool "$(canbus_uuid,4)"
+      depends on $(canbus_uuid_count) >= 4
+    config $(buffer_canbus_config,5)
+      bool "$(canbus_uuid,5)"
+      depends on $(canbus_uuid_count) >= 5
+    config $(buffer_canbus_config,6)
+      bool "$(canbus_uuid,6)"
+      depends on $(canbus_uuid_count) >= 6
+    config $(buffer_canbus_config,7)
+      bool "$(canbus_uuid,7)"
+      depends on $(canbus_uuid_count) >= 7
+    config $(buffer_canbus_config,8)
+      bool "$(canbus_uuid,8)"
+      depends on $(canbus_uuid_count) >= 8
+    config $(buffer_canbus_config,9)
+      bool "$(canbus_uuid,9)"
+      depends on $(canbus_uuid_count) >= 9
+    config $(buffer_canbus_config,10)
+      bool "$(canbus_uuid,10)"
+      depends on $(canbus_uuid_count) >= 10
+    config BUFFER_CHOICE_CANBUS_UUID_OTHER
+      bool "Other / manually entered"
+  endchoice
+
+  config BUFFER_CANBUS_DEVICE_OTHER
+    string "Canbus UUID for sync-feedback buffer" if CHOICE_BUFFER_CANBUS_UUID_OTHER || $(canbus_uuid_count) = 0
+    default "-enter-canbus-id-"
+    help
+      Specifiy the CANbus UUID that is used for connection to the sync-feedback buffer
+      It is a 6 byte ID represented in hex.
+      This can be found with:
+        ~/klipper/klippy-env/bin/python ~/klipper/klipper/scripts/canbus_query.py can0
+      Enter only the uuid portion (12 hex digits)
+        E.g. 127081e7e3c6
+
+  config BUFFER_CANBUS_UUID
+    string
+    default "$(canbus_uuid,1)"  if $(buffer_canbus_config,1)
+    default "$(canbus_uuid,2)"  if $(buffer_canbus_config,2)
+    default "$(canbus_uuid,3)"  if $(buffer_canbus_config,3)
+    default "$(canbus_uuid,4)"  if $(buffer_canbus_config,4)
+    default "$(canbus_uuid,5)"  if $(buffer_canbus_config,5)
+    default "$(canbus_uuid,6)"  if $(buffer_canbus_config,6)
+    default "$(canbus_uuid,7)"  if $(buffer_canbus_config,7)
+    default "$(canbus_uuid,8)"  if $(buffer_canbus_config,8)
+    default "$(canbus_uuid,9)"  if $(buffer_canbus_config,9)
+    default "$(canbus_uuid,10)" if $(buffer_canbus_config,10)
+    default BUFFER_CANBUS_DEVICE_OTHER if BUFFER_CHOICE_CANBUS_DEVICE_OTHER
+
+endif
