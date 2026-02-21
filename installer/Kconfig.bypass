@@ -11,4 +11,9 @@ config PARAM_HAS_BYPASS
   forceshow
   depends on !UNSELECT_HAS_BYPASS
   help
-    Whether the MMU design has a built in bypass that can be selected (e.g. ERCF)
+    Typically this would be selected when the MMU design has a built in selectable bypass gate.
+    A good example is the ERCF design.
+
+    However it can also be selected if you wish the rendering of the bypass gate to be within
+    the MMU enclosure in the Mainsail/Fluidd UI. If you don't select the bypass gate will be
+    rendered separately.

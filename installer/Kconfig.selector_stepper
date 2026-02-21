@@ -13,7 +13,7 @@
 
 
 if MMU_HAS_SELECTOR_STEPPER
-  menu "Selector steper"
+  menu "Selector stepper"
 
     config PARAM_SELECTOR_GEAR_RATIO
       string "Selector gear ratio"

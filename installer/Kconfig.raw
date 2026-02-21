@@ -13,6 +13,7 @@ menu "Advanced/Raw Settings"
 
   if !MULTI_UNIT_ENTRY_POINT
     source "Kconfig.num_gates"
+    source "Kconfig.capabilities"
     source "Kconfig.speeds"
   endif
 
@@ -43,7 +44,6 @@ menu "Advanced/Raw Settings"
     source "Kconfig.gates"
     source "Kconfig.sync_control"
     source "Kconfig.calibration"
-    source "Kconfig.capabilities"
   endif
   if !MULTI_UNIT || MULTI_UNIT_ENTRY_POINT
     source "Kconfig.paths_services" # Advanced install options

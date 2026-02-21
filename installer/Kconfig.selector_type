@@ -2,6 +2,8 @@
 # All other types should directly set a selector by enabling exactly one
 # helper flag, similar to:
 #   "select LINEAR_SERVO_SELECTOR"
+# or:
+#   "imply LINEAR_SERVO_SELECTOR"
 #
 # Defines parameter tokens:
 #   PARAM_SELECTOR_TYPE
@@ -71,6 +73,7 @@ config LINEAR_SELECTOR
 
 config LINEAR_SERVO_SELECTOR
   def_bool CHOICE_SELECTOR_TYPE_LINEAR_SERVO_SELECTOR
+  depends on !LINEAR_SELECTOR # This allows for removal of servo (Jack Rabbit on ERCFv3) but set with "imply" to avoid warnings
   select MMU_HAS_SELECTOR_STEPPER
   select MMU_HAS_SELECTOR_SERVO
 
