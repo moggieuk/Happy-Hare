@@ -3,7 +3,7 @@ config BOARD_TYPE_TZB_1_0
 
 if BOARD_TYPE_TZB_1_0
   config PARAM_BOARD_TYPE
-    default "TZB10"
+    default "TZB v1"
 
   choice CHOICE_MMU_CONNECTION_TYPE
     default CHOICE_MMU_CONNECTION_TYPE_SERIAL

@@ -255,12 +255,6 @@ class VirtualSelector(BaseSelector, object):
         super(VirtualSelector, self).__init__(mmu, mmu_unit)
         self.is_homed = True
 
-        # Read all controller parameters related to selector or servo to stop klipper complaining. This
-        # is done to allow for uniform and shared mmu_parameters.cfg file regardless of configuration.
-        for option in ['selector_', 'servo_', 'cad_']:
-            for key in mmu.config.get_prefix_options(option):
-                _ = mmu.config.get(key)
-
     # Selector "Interface" methods ---------------------------------------------
 
     def handle_connect(self):
@@ -1260,8 +1254,8 @@ class RotarySelector(PhysicalSelector, object):
         self.cad_bypass_offset = 0 # Doesn't have bypass
         self.cad_selector_tolerance = 15.
 
-        self.cad_gate_directions = [1, 1, 0, 0]
-        self.cad_release_gates = [2, 3, 0, 1]
+        self.selector_cad_directions = [1, 1, 0, 0]
+        self.selector_release_gates = [2, 3, 0, 1]
 
         # But still allow all CAD parameters to be customized
         self.cad_gate0_pos = mmu.config.getfloat('cad_gate0_pos', self.cad_gate0_pos, minval=0.)
@@ -1269,8 +1263,8 @@ class RotarySelector(PhysicalSelector, object):
         self.cad_last_gate_offset = mmu.config.getfloat('cad_last_gate_offset', self.cad_last_gate_offset, above=0.)
         self.cad_selector_tolerance = mmu.config.getfloat('cad_selector_tolerance', self.cad_selector_tolerance, above=0.) # Extra movement allowed by selector
 
-        self.cad_gate_directions = list(mmu.config.getintlist('cad_gate_directions',self.cad_gate_directions))
-        self.cad_release_gates = list(mmu.config.getintlist('cad_release_gates', self.cad_release_gates))
+        self.selector_cad_directions = list(mmu.config.getintlist('selector_cad_directions',self.selector_cad_directions))
+        self.selector_release_gates = list(mmu.config.getintlist('selector_release_gates', self.selector_release_gates))
 
         # Register GCODE commands specific to this module
         self.register_mux_command('MMU_CALIBRATE_SELECTOR', self.cmd_MMU_CALIBRATE_SELECTOR, desc=self.cmd_MMU_CALIBRATE_SELECTOR_help)
@@ -1367,13 +1361,13 @@ class RotarySelector(PhysicalSelector, object):
         lgate = self.local_gate(gate)
         if lgate >= 0:
             if release:
-                release_pos = self.selector_offsets[self.cad_release_gates[lgate]]
+                release_pos = self.selector_offsets[self.selector_release_gates[lgate]]
                 self.mmu.log_trace("Setting selector to filament release position at position: %.1f" % release_pos)
                 self._position(release_pos)
                 self.grip_state = self.mmu.FILAMENT_RELEASE_STATE
 
                 # Precaution to ensure correct postion/gate restoration on restart
-                self.mmu.var_manager.set(self.VARS_MMU_SELECTOR_GATE_POS, self.cad_release_gates[lgate], write=True, namespace=self.mmu_unit.name)
+                self.mmu.var_manager.set(self.VARS_MMU_SELECTOR_GATE_POS, self.selector_release_gates[lgate], write=True, namespace=self.mmu_unit.name)
             else:
                 grip_pos = self.selector_offsets[lgate]
                 self.mmu.log_trace("Setting selector to filament grip position at position: %.1f" % grip_pos)
@@ -1384,7 +1378,7 @@ class RotarySelector(PhysicalSelector, object):
                 self.mmu.var_manager.set(self.VARS_MMU_SELECTOR_GATE_POS, lgate, write=True, namespace=self.mmu_unit.name)
 
             # Ensure gate filament drive is in the correct direction
-            self.mmu_toolhead.get_kinematics().rails[1].set_direction(self.cad_gate_directions[lgate])
+            self.mmu_toolhead.get_kinematics().rails[1].set_direction(self.selector_cad_directions[lgate])
             self.mmu.movequeues_wait()
         else:
             self.grip_state = self.mmu.FILAMENT_UNKNOWN_STATE
@@ -1713,14 +1707,14 @@ class MacroSelector(BaseSelector, object):
 class ServoSelector(PhysicalSelector, object):
 
     # mmu_vars.cfg variables
-    VARS_MMU_SELECTOR_ANGLES       = "mmu_selector_angles"
-    VARS_MMU_SELECTOR_BYPASS_ANGLE = "mmu_selector_bypass_angle"
+    VARS_MMU_SELECTOR_ANGLES       = "mmu_selector_angles" # PAUL rename TODO
+    VARS_MMU_SELECTOR_BYPASS_ANGLE = "mmu_selector_bypass_angle" # PAUL rename TODO
 
     def __init__(self, mmu, mmu_unit):
         super(ServoSelector, self).__init__(mmu, mmu_unit)
         self.is_homed = True
         self.servo_state = self.mmu.FILAMENT_UNKNOWN_STATE
-        self.selector_bypass_angle = -1
+        self.servo_bypass_angle = -1
 
         # Get hardware
         self.servo = self.mmu_unit.selector_servo
@@ -1734,20 +1728,14 @@ class ServoSelector(PhysicalSelector, object):
         self.servo_min_angle = mmu.config.getfloat('servo_min_angle', 0, above=0)                    # Not exposed
         self.servo_max_angle = mmu.config.getfloat('servo_max_angle', self.servo.max_angle, above=0) # Not exposed
         self.servo_angle = self.servo_min_angle + (self.servo_max_angle - self.servo_min_angle) / 2
-        self.selector_release_angle = mmu.config.getfloat('selector_release_angle', -1, minval=-1, maxval=self.servo_max_angle)
-        self.selector_bypass_angle = mmu.config.getfloat('selector_bypass_angle', -1, minval=-1, maxval=self.servo_max_angle)
-        self.selector_angles = list(mmu.config.getintlist('selector_gate_angles', []))
+        self.servo_release_angle = mmu.config.getfloat('servo_release_angle', -1, minval=-1, maxval=self.servo_max_angle)
+        self.servo_bypass_angle = mmu.config.getfloat('servo_bypass_angle', -1, minval=-1, maxval=self.servo_max_angle)
+        self.servo_gate_angles = list(mmu.config.getintlist('servo_gate_angles', []))
 
         # Register GCODE commands specific to this module
         self.register_mux_command('MMU_CALIBRATE_SELECTOR', self.cmd_MMU_CALIBRATE_SELECTOR, desc=self.cmd_MMU_CALIBRATE_SELECTOR_help)
         self.register_mux_command('MMU_GRIP', self.cmd_MMU_GRIP, desc=self.cmd_MMU_GRIP_help)
         self.register_mux_command('MMU_RELEASE', self.cmd_MMU_RELEASE, desc=self.cmd_MMU_RELEASE_help)
-
-        # Read all controller parameters related to selector or servo to stop klipper complaining. This
-        # is done to allow for uniform and shared mmu_parameters.cfg file regardless of configuration.
-        for option in ['selector_', 'servo_', 'cad_']:
-            for key in mmu.config.get_prefix_options(option):
-                _ = mmu.config.get(key)
 
     # Selector "Interface" methods ---------------------------------------------
 
@@ -1759,26 +1747,26 @@ class ServoSelector(PhysicalSelector, object):
         self.mmu.var_manager.upgrade(self.VARS_MMU_SELECTOR_BYPASS_ANGLE, self.mmu_unit.name) # v3 upgrade
 
         # Load and merge calibrated selector angles (calibration set with MMU_CALIBRATE_SELECTOR) ------------
-        self.selector_angles = self._ensure_list_size(self.selector_angles, self.mmu_unit.num_gates)
+        self.servo_gate_angles = self._ensure_list_size(self.servo_gate_angles, self.mmu_unit.num_gates)
 
-        cal_selector_angles = self.mmu.var_manager.get(self.VARS_MMU_SELECTOR_ANGLES, [], namespace=self.mmu_unit.name)
-        if cal_selector_angles:
-            self.mmu.log_debug("Loaded saved selector angles: %s" % cal_selector_angles)
+        cal_servo_gate_angles = self.mmu.var_manager.get(self.VARS_MMU_SELECTOR_ANGLES, [], namespace=self.mmu_unit.name)
+        if cal_servo_gate_angles:
+            self.mmu.log_debug("Loaded saved selector angles: %s" % cal_servo_gate_angles)
         else:
             self.mmu.log_always("Warning: Selector angles not found in mmu_vars.cfg. Using configured defaults")
 
         # Merge calibrated angles with conf angles
-        for gate, angle in enumerate(zip(self.selector_angles, cal_selector_angles)):
+        for gate, angle in enumerate(zip(self.servo_gate_angles, cal_servo_gate_angles)):
             if angle[1] >= 0:
-                self.selector_angles[gate] = angle[1]
+                self.servo_gate_angles[gate] = angle[1]
 
-        if not any(x == -1 for x in self.selector_angles):
+        if not any(x == -1 for x in self.servo_gate_angles):
             self.mmu.calibration_manager.mark_calibrated(self.mmu_unit, self.mmu.calibration_manager.CALIBRATED_SELECTOR)
 
-        selector_bypass_angle = self.mmu.var_manager.get(self.VARS_MMU_SELECTOR_BYPASS_ANGLE, -1, namespace=self.mmu_unit.name)
-        if selector_bypass_angle >= 0:
-            self.selector_bypass_angle = selector_bypass_angle
-            self.mmu.log_debug("Loaded saved bypass angle: %s" % self.selector_bypass_angle)
+        servo_bypass_angle = self.mmu.var_manager.get(self.VARS_MMU_SELECTOR_BYPASS_ANGLE, -1, namespace=self.mmu_unit.name)
+        if servo_bypass_angle >= 0:
+            self.servo_bypass_angle = servo_bypass_angle
+            self.mmu.log_debug("Loaded saved bypass angle: %s" % self.servo_bypass_angle)
 
     def _ensure_list_size(self, lst, size, default_value=-1):
         lst = lst[:size]
@@ -1796,8 +1784,8 @@ class ServoSelector(PhysicalSelector, object):
     def restore_gate(self, gate):
         if gate == self.mmu.TOOL_GATE_BYPASS:
             self.servo_state = self.mmu.FILAMENT_RELEASE_STATE
-            self.mmu.log_trace("Setting servo to bypass angle: %.1f" % self.selector_bypass_angle)
-            self._set_servo_angle(self.selector_bypass_angle)
+            self.mmu.log_trace("Setting servo to bypass angle: %.1f" % self.servo_bypass_angle)
+            self._set_servo_angle(self.servo_bypass_angle)
         else:
             if self.mmu_unit.filament_always_gripped:
                 self._grip(self.local_gate(gate))
@@ -1816,8 +1804,8 @@ class ServoSelector(PhysicalSelector, object):
     # Common logic for servo manipulation
     def _grip(self, gate, release=False):
         if gate == self.mmu.TOOL_GATE_BYPASS:
-            self.mmu.log_trace("Setting servo to bypass angle: %.1f" % self.selector_bypass_angle)
-            self._set_servo_angle(self.selector_bypass_angle)
+            self.mmu.log_trace("Setting servo to bypass angle: %.1f" % self.servo_bypass_angle)
+            self._set_servo_angle(self.servo_bypass_angle)
             self.servo_state = self.mmu.FILAMENT_UNKNOWN_STATE
         elif gate >= 0:
             if release:
@@ -1826,7 +1814,7 @@ class ServoSelector(PhysicalSelector, object):
                 self._set_servo_angle(release_angle)
                 self.servo_state = self.mmu.FILAMENT_RELEASE_STATE
             else:
-                angle = self.selector_angles[self.local_gate(gate)]
+                angle = self.servo_gate_angles[self.local_gate(gate)]
                 self.mmu.log_trace("Setting servo to filament grip position at angle: %.1f" % angle)
                 self._set_servo_angle(angle)
                 self.servo_state = self.mmu.FILAMENT_DRIVE_STATE
@@ -1839,8 +1827,8 @@ class ServoSelector(PhysicalSelector, object):
     def buzz_motor(self, motor):
         if motor == "selector":
             prev_servo_angle = self.servo_angle
-            low = max(min(self.selector_angles), self.servo_min_angle)
-            high = min(max(self.selector_angles), self.servo_max_angle)
+            low = max(min(self.servo_gate_angles), self.servo_min_angle)
+            high = min(max(self.servo_gate_angles), self.servo_max_angle)
             mid = (low + high) / 2
             move = (high - low) / 4
             self._set_servo_angle(angle=mid)
@@ -1852,7 +1840,7 @@ class ServoSelector(PhysicalSelector, object):
         return True
 
     def has_bypass(self):
-        return self.mmu_unit.has_bypass and self.selector_bypass_angle >= 0
+        return self.mmu_unit.has_bypass and self.servo_bypass_angle >= 0
 
     def get_status(self, eventtime):
         status = super(ServoSelector, self).get_status(eventtime)
@@ -1868,7 +1856,7 @@ class ServoSelector(PhysicalSelector, object):
         return msg
 
     def get_uncalibrated_gates(self, check_gates):
-        return [lgate + self.mmu_unit.first_gate for lgate, value in enumerate(self.selector_angles) if value == -1 and lgate + self.mmu_unit.first_gate in check_gates]
+        return [lgate + self.mmu_unit.first_gate for lgate, value in enumerate(self.servo_gate_angles) if value == -1 and lgate + self.mmu_unit.first_gate in check_gates]
 
     # Internal Implementation --------------------------------------------------
 
@@ -1919,13 +1907,13 @@ class ServoSelector(PhysicalSelector, object):
             msg = ""
             if not self.mmu.calibration_manager.check_calibrated(self.mmu_unit, self.mmu.calibration_manager.CALIBRATED_SELECTOR):
                 msg += "Calibration not complete\n"
-            msg += "Current selector gate angle positions are: %s degrees" % self.selector_angles
-            if self.selector_release_angle >= 0:
-                msg += "\nRelease angle is fixed at: %s degrees" % self.selector_release_angle
+            msg += "Current selector gate angle positions are: %s degrees" % self.servo_gate_angles
+            if self.servo_release_angle >= 0:
+                msg += "\nRelease angle is fixed at: %s degrees" % self.servo_release_angle
             else:
                 msg += "\nRelease angles configured to be between each gate angle"
             if self.has_bypass():
-                msg += "\nBypass angle: %s" % self.selector_bypass_angle
+                msg += "\nBypass angle: %s" % self.servo_bypass_angle
             else:
                 msg += "\nBypass angle not configured"
             self.mmu.log_info(msg)
@@ -1937,29 +1925,29 @@ class ServoSelector(PhysicalSelector, object):
 
         elif save:
             if gate == self.mmu.TOOL_GATE_BYPASS:
-                self.selector_bypass_angle = self.servo_angle
-                self.mmu.var_manager.set(self.VARS_MMU_SELECTOR_BYPASS_ANGLE, self.selector_bypass_angle, write=True, namespace=self.mmu_unit.name)
+                self.servo_bypass_angle = self.servo_angle
+                self.mmu.var_manager.set(self.VARS_MMU_SELECTOR_BYPASS_ANGLE, self.servo_bypass_angle, write=True, namespace=self.mmu_unit.name)
                 self.mmu.log_info("Servo angle '%d' for bypass position has been saved" % self.servo_angle)
             elif gate >= 0:
                 if single:
-                    self.selector_angles[gate] = self.servo_angle
-                    self.mmu.var_manager.set(self.VARS_MMU_SELECTOR_ANGLES, self.selector_angles, write=True, namespace=self.mmu_unit.name)
+                    self.servo_gate_angles[gate] = self.servo_angle
+                    self.mmu.var_manager.set(self.VARS_MMU_SELECTOR_ANGLES, self.servo_gate_angles, write=True, namespace=self.mmu_unit.name)
                     self.mmu.log_info("Servo angle '%d' for gate %d has been saved" % (self.servo_angle, gate))
                 else:
                     # If possible evenly distribute based on spacing
                     angles = self._generate_gate_angles(self.servo_angle, gate, spacing)
                     if angles:
-                        self.selector_angles = angles
-                        self.mmu.var_manager.set(self.VARS_MMU_SELECTOR_ANGLES, self.selector_angles, write=True, namespace=self.mmu_unit.name)
-                        self.mmu.log_info("Selector gate angle positions %s has been saved" % self.selector_angles)
+                        self.servo_gate_angles = angles
+                        self.mmu.var_manager.set(self.VARS_MMU_SELECTOR_ANGLES, self.servo_gate_angles, write=True, namespace=self.mmu_unit.name)
+                        self.mmu.log_info("Selector gate angle positions %s has been saved" % self.servo_gate_angles)
                     else:
                         self.mmu.log_error("Not possible to distribute angles with separation of %.1f degrees with gate %d at %.1f%s" % (spacing, gate, self.servo_angle, usage))
             else:
                 self.mmu.log_error("No gate specified%s" % usage)
         else:
-            self.mmu.log_always("Current selector servo angle: %d, Selector gate angle positions: %s" % (self.servo_angle, self.selector_angles))
+            self.mmu.log_always("Current selector servo angle: %d, Selector gate angle positions: %s" % (self.servo_angle, self.servo_gate_angles))
 
-        if not any(x == -1 for x in self.selector_angles):
+        if not any(x == -1 for x in self.servo_gate_angles):
             self.mmu.calibration_manager.mark_calibrated(self.mmu_unit, self.mmu.calibration_manager.CALIBRATED_SELECTOR)
 
     def _set_servo_angle(self, angle):
@@ -1970,9 +1958,9 @@ class ServoSelector(PhysicalSelector, object):
             self.mmu.movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
 
     def _get_closest_released_angle(self):
-        if self.selector_release_angle >= 0:
-            return self.selector_release_angle
-        neutral_angles = [(self.selector_angles[i] + self.selector_angles[i + 1]) / 2 for i in range(len(self.selector_angles) - 1)]
+        if self.servo_release_angle >= 0:
+            return self.servo_release_angle
+        neutral_angles = [(self.servo_gate_angles[i] + self.servo_gate_angles[i + 1]) / 2 for i in range(len(self.servo_gate_angles) - 1)]
         closest_angle = 0
         min_difference = float('inf')
         for angle in neutral_angles:

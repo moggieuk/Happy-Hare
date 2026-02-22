@@ -238,8 +238,10 @@ if [ -r "${KCONFIG_CONFIG}" ] && [ -n "${F_MENUCONFIG:-}" ]; then
     echo "${C_WARNING}Read carefully, you have two options:${C_OFF}"
     echo
     echo "- Refresh/restore .cfg from menuconfig ${C_WARNING}(select Y)${C_OFF}"
-    echo "  This will OVERWRITE changes you have made directly to your Happy Hare .cfg files that are ALSO set by"
-    echo "  menuconfig but is the BEST choice if you make core changes via this interactive installer (recommended)"
+    echo "  Recommended"
+    echo "  This will OVERWRITE changes made directly to your Happy Hare .cfg files that are ALSO set by menuconfig"
+    echo "  but is the BEST choice if you make core changes via this interactive installer. Note that changes to .cfg"
+    echo "  files that are not part of menuconfig will be retained."
     echo
     echo "- Blindly retain ALL your .cfg changes ${C_WARNING}(select N)${C_OFF}"
     echo "  This will NEVER CHANGE any existing parameter value and thus is limited to only ADDING NEW or missing"

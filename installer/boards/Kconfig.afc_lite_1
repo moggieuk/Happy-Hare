@@ -3,7 +3,7 @@ config BOARD_TYPE_AFC_LITE_1_0
 
 if BOARD_TYPE_AFC_LITE_1_0
   config PARAM_BOARD_TYPE
-    default "AFC_LITE_1"
+    default "AFC Lite v1"
 
   # This board is unusual and has separate enable pins for espooler motor control
   config HAS_ESPOOLER_ENABLE_PIN

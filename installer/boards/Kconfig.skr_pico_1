@@ -3,7 +3,7 @@ config BOARD_TYPE_SKR_PICO_1
 
 if BOARD_TYPE_SKR_PICO_1
   config PARAM_BOARD_TYPE
-    default "SKR_PICO_1"
+    default "BTT SKR Pico v1"
 
   choice CHOICE_MMU_CONNECTION_TYPE
     default CHOICE_MMU_CONNECTION_TYPE_SERIAL

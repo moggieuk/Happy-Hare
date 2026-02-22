@@ -17,6 +17,7 @@
 #   PARAM_SELECTOR_GATE_ANGLES
 
 if MMU_HAS_SELECTOR_SERVO
+
   choice CHOICE_SERVO_TYPE 
     prompt "Selector servo type"
     help
@@ -46,5 +47,7 @@ if MMU_HAS_SELECTOR_SERVO
 
     config PARAM_SERVO_DOWN_ANGLE
       default 0
+
   endif
+
 endif

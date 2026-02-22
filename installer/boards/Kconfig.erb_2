@@ -3,7 +3,7 @@ config BOARD_TYPE_ERB_2
 
 if BOARD_TYPE_ERB_2
   config PARAM_BOARD_TYPE
-    default "ERBv2"
+    default "Fysetc Burrows ERB v2"
 
   choice CHOICE_MMU_CONNECTION_TYPE
     default CHOICE_MMU_CONNECTION_TYPE_SERIAL

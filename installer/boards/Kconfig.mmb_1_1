@@ -3,7 +3,7 @@ config BOARD_TYPE_MMB_1_1
 
 if BOARD_TYPE_MMB_1_1
   config PARAM_BOARD_TYPE
-    default "MMB11"
+    default "BTT MMB v1.1"
 
   choice CHOICE_MMU_CONNECTION_TYPE
     default CHOICE_MMU_CONNECTION_TYPE_SERIAL

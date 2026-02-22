@@ -3,7 +3,7 @@ config BOARD_TYPE_MMB_2_0
 
 if BOARD_TYPE_MMB_2_0
   config PARAM_BOARD_TYPE
-    default "$(MCU_NAME):MMB20"
+    default "BTT MMB v2"
 
   choice CHOICE_MMU_CONNECTION_TYPE
     default CHOICE_MMU_CONNECTION_TYPE_SERIAL

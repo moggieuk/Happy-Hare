@@ -1,5 +1,6 @@
 # This module's purpose is to set the toolhead type and defaults for
 # associated dimensional parameters:
+#
 #   PARAM_TOOLHEAD_TYPE
 #   PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
 #   PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
@@ -10,8 +11,9 @@
 config PARAM_TOOLHEAD_TYPE
   string
 
-choice TOOLHEAD_TYPE
+choice CHOICE_TOOLHEAD_TYPE
   prompt "Toolhead"
+  default CHOICE_TOOLHEAD_TYPE_OTHER
   help 
     Toolhead type (extruder and hotend combo)
     If your toolhead appears in this list you are lucky and can benefit from tuned values

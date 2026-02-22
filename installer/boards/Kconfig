@@ -24,6 +24,11 @@ choice BOARD_TYPE
 
     config BOARD_TYPE_OTHER
       bool "Not listed / Other"
+
+    if BOARD_TYPE_OTHER
+      config PARAM_BOARD_TYPE
+        default "Unknown"
+    endif
   endif
 
   # KMS has custom mcu
