@@ -533,12 +533,12 @@ class Mmu:
             self.log_debug("Warning: Using original klipper extruder stepper. Extruder homing not possible")
 
 # PAUL move this into mmu_machine
-        # Dynamically instantiate and register the selector class for each unit
-        for unit in self.mmu_machine.units:
-            selector = globals()[unit.selector_type](self, unit)
-            if not isinstance(selector, BaseSelector):
-                raise self.config.error("Invalid Selector class for MMU unit %s" % unit.name)
-            unit.set_selector(selector)
+#        # Dynamically instantiate and register the selector class for each unit
+#        for unit in self.mmu_machine.units:
+#            selector = globals()[unit.selector_type](self, unit)
+#            if not isinstance(selector, BaseSelector):
+#                raise self.config.error("Invalid Selector class for MMU unit %s" % unit.name)
+#            unit.set_selector(selector)
 
         # Managers are responsible for handling multiple mmu_units
         self.sensor_manager = MmuSensorManager(self) # Must be done during initialization because also setsup homing endstops

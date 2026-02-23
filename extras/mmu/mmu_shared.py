@@ -32,6 +32,7 @@ if sys.version_info[0] >= 3:
     UI_EMOTICONS = [UI_DASH, '\U0001F60E', '\U0001F603', '\U0001F60A', '\U0001F610', '\U0001F61F', '\U0001F622', '\U0001F631']
     UI_SQUARE, UI_CUBE = '\u00B2', '\u00B3'
 
+PAUL = "test"
 
 # Mmu exception error class
 class MmuError(Exception):

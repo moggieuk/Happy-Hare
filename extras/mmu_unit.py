@@ -24,12 +24,15 @@
 import logging, importlib, math, os, time, re
 
 # Happy Hare imports
-from .                   import mmu_machine, mmu_espooler, mmu_sensors, mmu_encoder, mmu_leds
+from .                    import mmu_machine, mmu_espooler, mmu_sensors, mmu_encoder, mmu_leds
+from .mmu_shared          import *
+from .dev.mmu_parameters import MmuParameters
+from .dev.mmu_selector   import *
 
 # Klipper imports
 import stepper, chelper, toolhead
-from kinematics.extruder import PrinterExtruder, DummyExtruder, ExtruderStepper
-from .homing             import Homing, HomingMove
+from kinematics.extruder  import PrinterExtruder, DummyExtruder, ExtruderStepper
+from .homing              import Homing, HomingMove
 
 # For toolhead synchronization
 EPS           = 1e-6       # ~1 microsecond safety
@@ -39,56 +42,40 @@ MOVE_HISTORY_EXPIRE = 30.0 # From motion_queuing.py
 # TMC chips to search for
 TMC_CHIPS = ["tmc2209", "tmc2130", "tmc2208", "tmc2660", "tmc5160", "tmc2240"]
 
-# Stepper config sections
-SELECTOR_STEPPER_CONFIG = "stepper_mmu_selector" # Optional
-GEAR_STEPPER_CONFIG     = "stepper_mmu_gear"
+#PAUL# Stepper config sections
+#PAUL SELECTOR_STEPPER_CONFIG = "stepper_mmu_selector" # Optional  now self.selector_stepper
+#PAUL GEAR_STEPPER_CONFIG     = "stepper_mmu_gear" PAUL: now self.gear_stepper
 
 SHAREABLE_STEPPER_PARAMS = ['rotation_distance', 'gear_ratio', 'microsteps', 'full_steps_per_rotation']
 OTHER_STEPPER_PARAMS     = ['step_pin', 'dir_pin', 'enable_pin', 'endstop_pin', 'rotation_distance', 'pressure_advance', 'pressure_advance_smooth_time']
 
 SHAREABLE_TMC_PARAMS     = ['run_current', 'hold_current', 'interpolate', 'sense_resistor', 'stealthchop_threshold']
 
-# Vendor MMU's supported
-VENDOR_ERCF           = "ERCF"
-VENDOR_TRADRACK       = "Tradrack"
-VENDOR_PRUSA          = "Prusa"
-VENDOR_ANGRY_BEAVER   = "AngryBeaver"
-VENDOR_BOX_TURTLE     = "BoxTurtle"
-VENDOR_NIGHT_OWL      = "NightOwl"
-VENDOR_3MS            = "3MS"
-VENDOR_3D_CHAMELEON   = "3DChameleon"
-VENDOR_PICO_MMU       = "PicoMMU"
-VENDOR_QUATTRO_BOX    = "QuattroBox"
-VENDOR_MMX            = "MMX"
-VENDOR_VVD            = "VVD"
-VENDOR_KMS            = "KMS"
-VENDOR_EMU            = "EMU"
-VENDOR_OTHER          = "Other"
+SELECTOR_VIRTUAL           = 'VirtualSelector'         # Type-B design
+SELECTOR_LINEAR            = 'LinearSelector'          # Type-A with linear stepper
+SELECTOR_LINEAR_SERVO      = 'LinearServoSelector'     # Type-A with linear stepper and servo filament grip
+SELECTOR_SERVO             = 'ServoSelector'           # Type-A with servo gate selector
+SELECTOR_ROTARY            = 'RotarySelector'          # Type-A (Chameleon) design
+SELECTOR_MACRO             = 'MacroSelector'           # Fully user implemented
+SELECTOR_INDEXED           = 'IndexedSelector'         # Type-A with rotating indexed stepper gate selection (BTT ViViD design)
+SELECTOR_LINEAR_MULTI_GEAR = 'LinearMultiGearSelector' # Type-C with linear stepper
 
-UNIT_ALT_DISPLAY_NAMES = {
-    VENDOR_ANGRY_BEAVER: "Angry Beaver",
-    VENDOR_BOX_TURTLE:   "Box Turtle",
-    VENDOR_NIGHT_OWL:    "Night Owl",
-    VENDOR_VVD:          "BTT ViViD",
-}
-
-VENDORS = [
-    VENDOR_ERCF,
-    VENDOR_TRADRACK,
-    VENDOR_PRUSA,
-    VENDOR_ANGRY_BEAVER,
-    VENDOR_BOX_TURTLE,
-    VENDOR_NIGHT_OWL,
-    VENDOR_3MS,
-    VENDOR_3D_CHAMELEON,
-    VENDOR_PICO_MMU,
-    VENDOR_QUATTRO_BOX,
-    VENDOR_MMX,
-    VENDOR_VVD,
-    VENDOR_KMS,
-    VENDOR_EMU,
-    VENDOR_OTHER
+SELECTOR_TYPES = [
+    SELECTOR_VIRTUAL,
+    SELECTOR_LINEAR,
+    SELECTOR_LINEAR_SERVO,
+    SELECTOR_SERVO,
+    SELECTOR_ROTARY,
+    SELECTOR_MACRO,
+    SELECTOR_INDEXED,
+    SELECTOR_LINEAR_MULTI_GEAR
 ]
+
+SELECTOR_MULTI_GEAR_TYPES = [
+    SELECTOR_VIRTUAL,
+    SELECTOR_LINEAR_MULTI_GEAR
+]
+
 
 # Define type/style of MMU and expand configuration for convenience. Validate hardware configuration
 class MmuUnit:
@@ -97,7 +84,7 @@ class MmuUnit:
         if len(args) < 3:
             raise config.error("[%s] cannot be instantiated directly. Add to 'mmu_units' in [mmu_machine]" % config.get_name())
         self.mmu_machine, self.unit_index, self.first_gate = args
-        self.selector = None
+#PAUL not needed        self.selector = None
 
         parts = config.get_name().split(maxsplit=1)
         if len(parts) < 2:
@@ -107,6 +94,7 @@ class MmuUnit:
         self.printer = config.get_printer()
         self.num_gates = config.getint('num_gates')
         self.mmu_vendor = config.getchoice('vendor', {o: o for o in VENDORS}, VENDOR_OTHER)
+
         self.mmu_version_string = config.get('version', "1.0")
         version = re.sub("[^0-9.]", "", self.mmu_version_string) or "1.0"
         try:
@@ -114,8 +102,8 @@ class MmuUnit:
         except ValueError:
             raise config.error("Invalid version parameter")
 
-        self.selector_name = "%s_%s" % (SELECTOR_STEPPER_CONFIG, self.name)
-        self.gear_name = "%s_%s" % (GEAR_STEPPER_CONFIG, self.name)
+        self.display_name = config.get('display_name', UNIT_ALT_DISPLAY_NAMES.get(self.mmu_vendor, self.mmu_vendor))
+
 
         # MMU design for control purposes can be broken down into the following choices:
         #  - Selector type or no (Virtual) selector
@@ -125,16 +113,16 @@ class MmuUnit:
         #  - Is filament always gripped by MMU
         #  - Does selector mechanism still allow selection of gates when filament is loaded (implied for Multigear designs)
         #  - Does design has a filament bypass
-        selector_type = 'LinearServoSelector'
+        selector_type = SELECTOR_LINEAR_SERVO
         variable_rotation_distances = 1
         variable_bowden_lengths = 0
         require_bowden_move = 1     # Will allow mmu_gate sensor and extruder sensor to share the same pin
         filament_always_gripped = 0 # Whether MMU design has ability to release filament (overrides gear/extruder syncing)
         can_crossload = 1           # Design allows preloading/eject in one gate while another gate is loaded (also requires post_gear sensor)
-        has_bypass = 0              # Whether MMU design has bypass gate (also has to be calibrated on type-A designs with LinearServoSelector)
+        has_bypass = 0              # Whether MMU design has bypass gate (also has to be calibrated on type-A designs)
 
         if self.mmu_vendor == VENDOR_ERCF:
-            selector_type = 'LinearServoSelector'
+            selector_type = SELECTOR_LINEAR_SERVO
             variable_rotation_distances = 1
             variable_bowden_lengths = 0
             require_bowden_move = 1
@@ -143,7 +131,7 @@ class MmuUnit:
             has_bypass = 1
 
         elif self.mmu_vendor == VENDOR_TRADRACK:
-            selector_type = 'LinearServoSelector'
+            selector_type = SELECTOR_LINEAR_SERVO
             variable_rotation_distances = 0
             variable_bowden_lengths = 0
             require_bowden_move = 1
@@ -155,7 +143,7 @@ class MmuUnit:
             raise config.error("Prusa MMU is not yet supported")
 
         elif self.mmu_vendor == VENDOR_ANGRY_BEAVER:
-            selector_type = 'VirtualSelector'
+            selector_type = SELECTOR_VIRTUAL
             variable_rotation_distances = 1
             variable_bowden_lengths = 0
             require_bowden_move = 0
@@ -164,7 +152,7 @@ class MmuUnit:
             has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_BOX_TURTLE:
-            selector_type = 'VirtualSelector'
+            selector_type = SELECTOR_VIRTUAL
             variable_rotation_distances = 1
             variable_bowden_lengths = 0
             require_bowden_move = 1
@@ -173,7 +161,7 @@ class MmuUnit:
             has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_NIGHT_OWL:
-            selector_type = 'VirtualSelector'
+            selector_type = SELECTOR_VIRTUAL
             variable_rotation_distances = 1
             variable_bowden_lengths = 0
             require_bowden_move = 1
@@ -182,7 +170,7 @@ class MmuUnit:
             has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_3MS:
-            selector_type = 'VirtualSelector'
+            selector_type = SELECTOR_VIRTUAL
             variable_rotation_distances = 1
             variable_bowden_lengths = 0
             require_bowden_move = 0
@@ -191,7 +179,7 @@ class MmuUnit:
             has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_3D_CHAMELEON:
-            selector_type = 'RotarySelector'
+            selector_type = SELECTOR_ROTARY
             variable_rotation_distances = 0
             variable_bowden_lengths = 1
             require_bowden_move = 1
@@ -200,7 +188,7 @@ class MmuUnit:
             has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_PICO_MMU:
-            selector_type = 'ServoSelector'
+            selector_type = SELECTOR_SERVO
             variable_rotation_distances = 0
             variable_bowden_lengths = 0
             require_bowden_move = 1
@@ -209,7 +197,7 @@ class MmuUnit:
             has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_QUATTRO_BOX:
-            selector_type = 'VirtualSelector'
+            selector_type = SELECTOR_VIRTUAL
             variable_rotation_distances = 1
             variable_bowden_lengths = 0
             require_bowden_move = 1
@@ -218,7 +206,7 @@ class MmuUnit:
             has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_MMX:
-            selector_type = 'ServoSelector'
+            selector_type = SELECTOR_SERVO
             variable_rotation_distances = 1
             variable_bowden_lengths = 0
             require_bowden_move = 1
@@ -227,7 +215,7 @@ class MmuUnit:
             has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_VVD:
-            selector_type = 'IndexedSelector'
+            selector_type = SELECTOR_INDEXED
             variable_rotation_distances = 1
             variable_bowden_lengths = 0
             require_bowden_move = 1
@@ -236,7 +224,7 @@ class MmuUnit:
             has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_KMS:
-            selector_type = 'VirtualSelector'
+            selector_type = SELECTOR_VIRTUAL
             variable_rotation_distances = 1
             variable_bowden_lengths = 0
             require_bowden_move = 1
@@ -245,7 +233,7 @@ class MmuUnit:
             has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_EMU:
-            selector_type = 'VirtualSelector'
+            selector_type = SELECTOR_VIRTUAL
             variable_rotation_distances = 1
             variable_bowden_lengths = 1
             require_bowden_move = 1
@@ -261,24 +249,16 @@ class MmuUnit:
         self.can_crossload = bool(config.getint('can_crossload', can_crossload))
         self.has_bypass = bool(config.getint('has_bypass', has_bypass))
 
-        # How filaments are selected
-        self.selector_type = config.getchoice(
-            'selector_type', 
-            {o: o for o in ['VirtualSelector', 'LinearSelector', 'LinearServoSelector', 'LinearMultiGearSelector', 'RotarySelector', 'MacroSelector', 'ServoSelector', 'IndexedSelector']},
-            selector_type
-        )
-
-        # Other attributes
-        self.display_name = config.get('display_name', UNIT_ALT_DISPLAY_NAMES.get(self.mmu_vendor, self.mmu_vendor))
+        # Optional heater and evironment sensors --------
 
         self.environment_sensor = config.get('environment_sensor', '')
-        self.filament_heater = config.get('filament_heater', '')
+        self.filament_heater    = config.get('filament_heater', '')
 
         # Special handling for EMU MMU's that can have a heater and environment sensor per gate
         self.environment_sensors = list(config.getlist('environment_sensors', []))
         if len(self.environment_sensors) not in [0, self.num_gates]:
             raise config.error("'environment_sensors' must be empty or a comma separated list of 'num_gates' elements")
-        self.filament_heaters = list(config.getlist('filament_heaters', []))
+        self.filament_heaters   = list(config.getlist('filament_heaters', []))
         if len(self.filament_heaters) not in [0, self.num_gates]:
             raise config.error("'filament_heaters' must be empty or a comma separated list of 'num_gates' elements")
         self.max_concurrent_heaters = config.getint('max_concurrent_heaters', self.num_gates)
@@ -296,78 +276,81 @@ class MmuUnit:
                 except Exception as e:
                     raise config.error("Object '%s' could not be loaded as a valid heater or environment sensor in [mmu_machine]\nError: %s" % (obj_name, str(e)))
 
-        # Expand config to allow lazy (incomplete) repetitious gear configuration for type-B MMU's
-        self.multigear = False
+        # MMU Kinematics --------
+
+        self.selector_type = config.getchoice('selector_type', {o: o for o in SELECTOR_TYPES}, selector_type)
+        self.multigear = self.selector_type in SELECTOR_MULTI_GEAR_TYPES
+
+        self.selector_stepper    = config.get('selector_stepper', None)
+        self.selector_servo      = config.get('selector_servo', None)
+        self.gear_stepper        = config.get('gear_stepper', None)
+        self.extra_gear_steppers = config.getlist('extra_gear_steppers', [])
+        if self.multigear and len(self.extra_gear_steppers) != self.num_gates - 1:
+            raise config.error("extra_gear_steppers is not the correct length, expected %d elements" % self.num_gates - 1)
 
         # Find the TMC controller for base gear stepper so we can fill in missing config for other matching steppers
-        # and ensure all gear steppers are loaded
+        # and ensure all gear steppers can be loaded
         self.gear_tmc = None
         base_gear_tmc = base_tmc_section = None
         for chip in TMC_CHIPS:
-            base_tmc_section = '%s %s' % (chip, self.gear_name)
+            base_tmc_section = '%s %s' % (chip, self.gear_stepper)
             if config.has_section(base_tmc_section):
                 base_gear_tmc = chip
                 self.gear_tmc = self.printer.load_object(config, base_tmc_section) # Load base gear stepper now
-                logging.info("MMU: Loaded: %s" % base_tmc_section)
+                logging.info("MMU: Loaded: [%s]" % base_tmc_section)
                 break
 
         if self.gear_tmc is None:
-            raise config.error("Gear stepper configuration not found for mmu_unit %s" % self.name)
+            raise config.error("Gear stepper TMC configuration not found for %s on mmu_unit %s" % (self.gear_stepper, self.name))
 
-        last_gear = 24
-        for i in range(1, last_gear): # Don't allow "_0" or it is confusing with unprefixed initial stepper
-            section = "%s_%d" % (self.gear_name, i)
-            if not config.has_section(section):
-                last_gear = i
-                break
+        if self.multigear:
+            for i in range(1, self.num_gates):
+                section = self.extra_gear_steppers[i - 1]
+                if not config.has_section(section):
+                    raise config.error("Gear stepper configuration [%s] not found for mmu_unit %s" % (section, self.name))
+                    break
 
-            self.multigear = True
-
-            # Share stepper config section with additional steppers
-            stepper_section = "%s_%d" % (self.gear_name, i)
-            for key in SHAREABLE_STEPPER_PARAMS:
-                if not config.fileconfig.has_option(stepper_section, key) and config.fileconfig.has_option(self.gear_name, key):
-                    base_value = config.fileconfig.get(self.gear_name, key)
-                    if base_value:
-                        logging.info("MMU: Sharing gear stepper config %s=%s with %s" % (key, base_value, stepper_section))
-                        config.fileconfig.set(stepper_section, key, base_value)
-
-            # If tmc controller for this additional stepper matches the base we can fill in missing TMC config
-            tmc_section = '%s %s_%d' % (base_gear_tmc, self.gear_name, i)
-            if config.has_section(tmc_section):
-                for key in SHAREABLE_TMC_PARAMS:
-                    if config.fileconfig.has_option(base_tmc_section, key) and not config.fileconfig.has_option(tmc_section, key):
-                        base_value = config.fileconfig.get(base_tmc_section, key)
+                # Share base stepper config section with extra steppers
+                stepper_section = self.gear_steppers[i - 1]
+                for key in SHAREABLE_STEPPER_PARAMS:
+                    if not config.fileconfig.has_option(stepper_section, key) and config.fileconfig.has_option(self.gear_stepper, key):
+                        base_value = config.fileconfig.get(self.gear_stepper, key)
                         if base_value:
-                            logging.info("MMU: Sharing gear tmc config %s=%s with %s" % (key, base_value, tmc_section))
-                            config.fileconfig.set(tmc_section, key, base_value)
-                _ = self.printer.load_object(config, tmc_section) # Load supplementary gear stepper now
-                logging.info("MMU: Loaded: %s" % tmc_section)
-            else:
-                # Regardless of tmc chip type, find and load all gear steppers
-                for chip in TMC_CHIPS:
-                    extra_tmc_section = '%s %s_%d' % (chip, self.gear_name, i)
-                    if config.has_section(extra_tmc_section):
-                        _ = self.printer.load_object(config, extra_tmc_section)
-                        logging.info("MMU: Loaded: %s" % extra_tmc_section)
-                        break
+                            logging.info("MMU: Sharing gear stepper config %s=%s with [%s]" % (key, base_value, stepper_section))
+                            config.fileconfig.set(stepper_section, key, base_value)
 
-        # H/W validation checks
-        if self.multigear and last_gear != self.num_gates:
-            raise config.error("MMU unit is configured with %d gates but %d gear stepper configurations were found" % (self.num_gates, last_gear))
-
+                # If tmc controller for this extra stepper matches the base we can fill in missing TMC config
+                tmc_section = '%s %s' % (base_gear_tmc, stepper_section)
+                if config.has_section(tmc_section):
+                    for key in SHAREABLE_TMC_PARAMS:
+                        if config.fileconfig.has_option(base_tmc_section, key) and not config.fileconfig.has_option(tmc_section, key):
+                            base_value = config.fileconfig.get(base_tmc_section, key)
+                            if base_value:
+                                logging.info("MMU: Sharing gear tmc config %s=%s with [%s]" % (key, base_value, tmc_section))
+                                config.fileconfig.set(tmc_section, key, base_value)
+                    _ = self.printer.load_object(config, tmc_section) # Load extra gear stepper now
+                    logging.info("MMU: Loaded: [%s]" % tmc_section)
+                else:
+                    # Regardless of tmc chip type, find and try to load all extra gear steppers (may be complete config on different TMC)
+                    for chip in TMC_CHIPS:
+                        alt_tmc_section = '%s %s' % (chip, stepper_section)
+                        if config.has_section(alt_tmc_section):
+                            _ = self.printer.load_object(config, alt_tmc_section)
+                            logging.info("MMU: Loaded: [%s]" % alt_tmc_section)
+                            break
+    
         # Load selector stepper if applicable
-        if self.selector_type in ['LinearSelector', 'LinearServoSelector', 'RotarySelector', 'IndexedSelector']:
+        if self.selector_stepper is not None:
             found = False
             for chip in TMC_CHIPS:
-                tmc_section = '%s %s' % (chip, self.selector_name)
+                tmc_section = '%s %s' % (chip, self.selector_stepper)
                 if config.has_section(tmc_section):
                     _ = self.printer.load_object(config, tmc_section)
-                    logging.info("MMU: Loaded: %s" % tmc_section)
+                    logging.info("MMU: Loaded: [%s]" % tmc_section)
                     found = True
                     break
             if not found:
-                raise config.error("Selector stepper configuration not found for mmu_unit %s" % self.name)
+                raise config.error("Selector stepper TMC configuration not found for %s on mmu_unit %s" % (self.selector_stepper, self.name))
 
         # Now we have all the parts to create MmuToolHead
         self.mmu_toolhead = MmuToolHead(config, self)
@@ -386,7 +369,7 @@ class MmuUnit:
             section = 'mmu_servo %s' % servo_name
             if config.has_section(section):
                 self.selector_servo = self.printer.load_object(config, section)
-                logging.info("MMU: Loaded: %s" % section)
+                logging.info("MMU: Loaded: [%s]" % section)
             else:
                 raise config.error("Selector servo not found. Perhaps missing '[mmu_servo %s]' definition" % servo_name)
         else:
@@ -447,27 +430,45 @@ class MmuUnit:
             self.buffer = self.printer.lookup_object(section, None)
             if self.buffer is None:
                 self.buffer = self.printer.load_object(config, section)
-                logging.info("MMU: Loaded: %s" % section)
+                logging.info("MMU: Loaded: [%s]" % section)
             else:
-                logging.info("MMU: Skipping: %s" % section)
+                logging.info("MMU: Skipping: [%s]" % section)
         else:
             logging.info("MMU: - No mmu_buffer specified")
 
+        # Load parameters config for this unit
+        mmu_parameters = config.getsection('mmu_parameters %s' % self.name)
+        self.params = MmuParameters(self, mmu_parameters)
+        logging.info("MMU: Read: [%s]" % mmu_parameters.get_name())
 
-    def set_selector(self, selector):
-        self.selector = selector
+        # Load selector
+        self.selector = globals()[self.selector_type](self, mmu_parameters)
+        if not isinstance(self.selector, BaseSelector):
+            raise self.config.error("Invalid Selector class for MMU unit %s" % self.name)
+#PAUL        unit.set_selector(selector)
+
+
+# PAUL
+#    def set_selector(self, selector):
+#        self.selector = selector
 
     def reinit(self):
-        if self.selector:
-            self.selector.reinit()
+        self.selector.reinit()
+#PAUL
+#        if self.selector:
+#            self.selector.reinit()
 
     def enable_motors(self):
-        if self.selector:
-            self.selector.enable_motors()
+        self.selector.enable_motors()
+#PAUL
+#        if self.selector:
+#            self.selector.enable_motors()
 
     def disable_motors(self):
-        if self.selector:
-            self.selector.disable_motors()
+        self.selector.disable_motors()
+#PAUL
+#        if self.selector:
+#            self.selector.disable_motors()
 
     def manages_gate(self, gate):
         return self.first_gate <= gate < self.first_gate + self.num_gates
@@ -656,7 +657,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
 
     def handle_connect(self):
-        # Used for logging to mmu.log
+        # Master MMU controller
         self.mmu = self.printer.lookup_object('mmu')
 
 
@@ -679,9 +680,9 @@ class MmuToolHead(toolhead.ToolHead, object):
         if not self.mmu_unit.multigear: return
         with self._resync_lock:
             if gate == 0:
-                self._reconfigure_rail_no_lock([self.mmu_unit.gear_name])
+                self._reconfigure_rail_no_lock([self.mmu_unit.gear_stepper])
             elif gate > 0:
-                self._reconfigure_rail_no_lock(["%s_%d" % (self.mmu_unit.gear_name, gate)])
+                self._reconfigure_rail_no_lock(["%s_%d" % (self.mmu_unit.gear_stepper, gate)])
             else:
                 self._reconfigure_rail_no_lock(None)
 
@@ -1103,14 +1104,14 @@ class MmuKinematics:
         # Setup "axis" rails
         self.rails = []
         if self.mmu_unit.selector_type in ['LinearSelector', 'LinearServoSelector', 'LinearMultiGearSelector', 'RotarySelector']:
-            self.rails.append(MmuLookupMultiRail(config.getsection(self.mmu_unit.selector_name), need_position_minmax=False, default_position_endstop=0.)) # PAUL need_position_minmax was True
+            self.rails.append(MmuLookupMultiRail(config.getsection(self.mmu_unit.selector_stepper), need_position_minmax=False, default_position_endstop=0.)) # PAUL need_position_minmax was True
             self.rails[0].setup_itersolve('cartesian_stepper_alloc', b'x')
         elif self.mmu_unit.selector_type in ['IndexedSelector']:
-            self.rails.append(MmuLookupMultiRail(config.getsection(self.mmu_unit.selector_name), need_position_minmax=False, default_position_endstop=0.))
+            self.rails.append(MmuLookupMultiRail(config.getsection(self.mmu_unit.selector_stepper), need_position_minmax=False, default_position_endstop=0.))
             self.rails[0].setup_itersolve('cartesian_stepper_alloc', b'x')
         else:
             self.rails.append(DummyRail())
-        self.rails.append(MmuLookupMultiRail(config.getsection(self.mmu_unit.gear_name), need_position_minmax=False, default_position_endstop=0.))
+        self.rails.append(MmuLookupMultiRail(config.getsection(self.mmu_unit.gear_stepper), need_position_minmax=False, default_position_endstop=0.))
         self.rails[1].setup_itersolve('cartesian_stepper_alloc', b'y')
 
         for s in self.get_steppers():

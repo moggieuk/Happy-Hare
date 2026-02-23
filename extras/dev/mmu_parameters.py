@@ -17,6 +17,7 @@ import gc, sys, ast, random, logging, time, contextlib, math, os.path, re, unico
 # Klipper imports
 
 # Happy Hare imports
+from ..mmu_shared         import *
 
 # MMU subcomponent clases
 
@@ -24,9 +25,8 @@ import gc, sys, ast, random, logging, time, contextlib, math, os.path, re, unico
 # Main klipper module
 class MmuParameters:
 
-    def __init__(self, mmu, mmu_unit, config):
+    def __init__(self, mmu_unit, config):
         self._config = config
-        self.mmu = mmu
         self._mmu_unit = mmu_unit
 
         # Read user configuration ---------------------------------------------------------------------------
@@ -44,11 +44,11 @@ class MmuParameters:
         self.startup_home_if_unloaded = config.getint('startup_home_if_unloaded', 0, minval=0, maxval=1)
         
         # Configuration for gate loading and unloading
-        self.gate_homing_endstop = config.getchoice('gate_homing_endstop', {o: o for o in self.mmu.GATE_ENDSTOPS}, self.mmu.SENSOR_ENCODER)
+        self.gate_homing_endstop = config.getchoice('gate_homing_endstop', {o: o for o in GATE_ENDSTOPS}, SENSOR_ENCODER)
         self.gate_homing_max = config.getfloat('gate_homing_max', 100, minval=10)
         self.gate_parking_distance = config.getfloat('gate_parking_distance', 23.)  # Can be +ve or -ve
 #       self.gate_unload_buffer = config.getfloat('gate_unload_buffer', 30., minval=0.) # How far to short bowden move to avoid overshooting the gate # PAUL make this dynamic based on bowden_fast_unload_portion
-        self.gate_preload_endstop = config.getchoice('gate_preload_endstop', {o: o for o in self.mmu.GATE_ENDSTOPS + ['']}, '') # PAUL new - implement: SENSOR_GEAR_PREFIX or '' # PAUL is this really useful? maybe just the parking_distance is needed?
+        self.gate_preload_endstop = config.getchoice('gate_preload_endstop', {o: o for o in GATE_ENDSTOPS + ['']}, '') # PAUL new - implement: SENSOR_GEAR_PREFIX or '' # PAUL is this really useful? maybe just the parking_distance is needed?
         self.gate_preload_endstop = self.gate_preload_endstop or self.gate_homing_endstop
         self.gate_preload_homing_max = config.getfloat('gate_preload_homing_max', self.gate_homing_max)
         self.gate_preload_parking_distance = config.getfloat('gate_preload_parking_distance', -10.)  # Can be +ve or -ve
@@ -69,7 +69,7 @@ class MmuParameters:
         
         # Configuration for extruder and toolhead homing
         self.extruder_force_homing = config.getint('extruder_force_homing', 0, minval=0, maxval=1)
-        self.extruder_homing_endstop = config.getchoice('extruder_homing_endstop', {o: o for o in self.mmu.EXTRUDER_ENDSTOPS}, self.mmu.SENSOR_EXTRUDER_NONE)
+        self.extruder_homing_endstop = config.getchoice('extruder_homing_endstop', {o: o for o in EXTRUDER_ENDSTOPS}, SENSOR_EXTRUDER_NONE)
         self.extruder_homing_max = config.getfloat('extruder_homing_max', 50., above=10.)
 #        self.extruder_homing_buffer = config.getfloat('extruder_homing_buffer', 30., minval=0.) # How far to short bowden load move to avoid overshooting # PAUL make this dynamic based on bowden_fast_load_portion
         self.extruder_collision_homing_step = config.getint('extruder_collision_homing_step', 3,  minval=2, maxval=5)
@@ -119,12 +119,8 @@ class MmuParameters:
         self.espooler_assist_burst_trigger_max = config.getint("espooler_assist_burst_trigger_max", 3, minval=1)
         self.espooler_rewind_burst_power = config.getint("espooler_rewind_burst_power", 50, minval=0, maxval=100)
         self.espooler_rewind_burst_duration = config.getfloat("espooler_rewind_burst_duration", .4, above=0., maxval=10.)
-        self.espooler_operations = list(config.getlist('espooler_operations', self.mmu.ESPOOLER_OPERATIONS))
+        self.espooler_operations = list(config.getlist('espooler_operations', ESPOOLER_OPERATIONS))
         
         # Optional features
         self.has_filament_buffer = bool(config.getint('has_filament_buffer', 1, minval=0, maxval=1))
         self.encoder_move_validation = config.getint('encoder_move_validation', 1, minval=0, maxval=1)
-
-def load_config_prefix(config):
-    return MmuParameters(config)
-

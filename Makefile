@@ -111,7 +111,7 @@ restart_klipper = 0
 ##### File sets #####
 #####################
 
-hh_klipper_extras_files := $(wildcard extras/*.py extras/mmu/*.py)
+hh_klipper_extras_files := $(wildcard extras/*.py extras/mmu/*.py extras/paul/*.py)
 hh_old_klipper_modules  := mmu.py mmu_toolhead.py # These will get removed upon install
 hh_moonraker_components := $(wildcard components/*.py)
 
@@ -271,7 +271,7 @@ $(KLIPPER_HOME)/klippy/extras $(MOONRAKER_HOME)/moonraker/components:
 	$(error The directory '$@' does not exist. Please check your config for the correct paths)
 
 # Install python files for klipper
-$(KLIPPER_HOME)/%: $(OUT)/klipper/% | $(KLIPPER_HOME)/klippy/extras
+$(KLIPPER_HOME)/%: $(OUT)/% | $(KLIPPER_HOME)/klippy/extras
 	$(Q)$(call install,$<,$@)
 	$(Q)$(eval restart_klipper = 1)
 
