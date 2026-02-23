@@ -24,10 +24,11 @@
 import logging, importlib, math, os, time, re
 
 # Happy Hare imports
-from .                    import mmu_machine, mmu_espooler, mmu_sensors, mmu_encoder, mmu_leds
-from .mmu_shared          import *
-from .dev.mmu_parameters import MmuParameters
-from .dev.mmu_selector   import *
+from .                            import mmu_machine, mmu_espooler, mmu_sensors, mmu_encoder, mmu_leds
+from .mmu_shared                  import *
+from .dev.mmu_parameters          import MmuParameters
+from .dev.mmu_calibration_manager import MmuCalibrationManager
+from .dev.mmu_selector            import *
 
 # Klipper imports
 import stepper, chelper, toolhead
@@ -84,7 +85,6 @@ class MmuUnit:
         if len(args) < 3:
             raise config.error("[%s] cannot be instantiated directly. Add to 'mmu_units' in [mmu_machine]" % config.get_name())
         self.mmu_machine, self.unit_index, self.first_gate = args
-#PAUL not needed        self.selector = None
 
         parts = config.get_name().split(maxsplit=1)
         if len(parts) < 2:
@@ -288,6 +288,8 @@ class MmuUnit:
         if self.multigear and len(self.extra_gear_steppers) != self.num_gates - 1:
             raise config.error("extra_gear_steppers is not the correct length, expected %d elements" % self.num_gates - 1)
 
+        logging.info("MMU: Building mmu_unit [%s] ---------------------------" % config.get_name())
+
         # Find the TMC controller for base gear stepper so we can fill in missing config for other matching steppers
         # and ensure all gear steppers can be loaded
         self.gear_tmc = None
@@ -381,7 +383,7 @@ class MmuUnit:
         if config.has_section(section):
             c = config.getsection(section)
             self.sensors = mmu_sensors.MmuSensors(c, self.mmu_machine, self, self.first_gate, self.num_gates)
-            logging.info("MMU: Created: %s" % c.get_name())
+            logging.info("MMU: Created: [%s]" % c.get_name())
             self.printer.add_object(c.get_name(), self.sensors) # Register mmu_sensors to stop it being loaded by klipper
         else:
             logging.info("MMU: - No mmu_sensors specified")
@@ -392,7 +394,7 @@ class MmuUnit:
         if config.has_section(section):
             c = config.getsection(section)
             self.espooler = mmu_espooler.MmuESpooler(c, self.mmu_machine, self, self.first_gate, self.num_gates)
-            logging.info("MMU: Created: %s" % c.get_name())
+            logging.info("MMU: Created: [%s]" % c.get_name())
             self.printer.add_object(c.get_name(), self.espooler) # Register mmu_espooler to stop it being loaded by klipper
         else:
             logging.info("MMU: - No mmu_espooler specified")
@@ -403,7 +405,7 @@ class MmuUnit:
         if config.has_section(section):
             c = config.getsection(section)
             self.leds = mmu_leds.MmuLeds(c, self.mmu_machine, self, self.first_gate, self.num_gates)
-            logging.info("MMU: Created: %s" % c.get_name())
+            logging.info("MMU: Created: [%s]" % c.get_name())
             self.printer.add_object(c.get_name(), self.leds) # Register mmu_leds to stop it being loaded by klipper
         else:
             logging.info("MMU: - No mmu_leds specified")
@@ -417,7 +419,7 @@ class MmuUnit:
             if self.encoder is None and config.has_section(section):
                 c = config.getsection(section)
                 self.encoder = mmu_encoder.MmuEncoder(c, self.mmu_machine, self)
-                logging.info("MMU: Created: %s" % c.get_name())
+                logging.info("MMU: Created: [%s]" % c.get_name())
                 self.printer.add_object(c.get_name(), self.encoder) # Register mmu_encoder to stop it being loaded by klipper
         else:
             logging.info("MMU: - No mmu_encoder specified")
@@ -445,30 +447,21 @@ class MmuUnit:
         self.selector = globals()[self.selector_type](self, mmu_parameters)
         if not isinstance(self.selector, BaseSelector):
             raise self.config.error("Invalid Selector class for MMU unit %s" % self.name)
-#PAUL        unit.set_selector(selector)
+        logging.info("MMU: Created %s selector" % self.selector_type)
 
+        # Create autotune manager to oversee calibration updates based on available telemetry
+        self.calibration_manager = MmuCalibrationManager(self, mmu_parameters)
+        logging.info("MMU: Created calibration manager")
 
-# PAUL
-#    def set_selector(self, selector):
-#        self.selector = selector
 
     def reinit(self):
         self.selector.reinit()
-#PAUL
-#        if self.selector:
-#            self.selector.reinit()
 
     def enable_motors(self):
         self.selector.enable_motors()
-#PAUL
-#        if self.selector:
-#            self.selector.enable_motors()
 
     def disable_motors(self):
         self.selector.disable_motors()
-#PAUL
-#        if self.selector:
-#            self.selector.disable_motors()
 
     def manages_gate(self, gate):
         return self.first_gate <= gate < self.first_gate + self.num_gates

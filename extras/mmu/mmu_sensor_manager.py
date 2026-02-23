@@ -36,8 +36,8 @@ class MmuSensorManager:
             return {key: sensor for sensor, key in pairs if sensor}
         
         common_sensors = collect_sensors([
-            (self.mmu_machine.extruder_sensor, self.mmu.SENSOR_EXTRUDER_ENTRY),
-            (self.mmu_machine.toolhead_sensor, self.mmu.SENSOR_TOOLHEAD),
+            (self.mmu_machine.extruder_sensor, SENSOR_EXTRUDER_ENTRY),
+            (self.mmu_machine.toolhead_sensor, SENSOR_TOOLHEAD),
         ])
 
 #=======
@@ -68,32 +68,32 @@ class MmuSensorManager:
             
         for mmu_unit in self.mmu_machine.units:
             unit_sensors = collect_sensors([
-                (mmu_unit.sensors.gate_sensor, self.mmu.SENSOR_GATE),
-                (mmu_unit.buffer and mmu_unit.buffer.compression_sensor, self.mmu.SENSOR_COMPRESSION),
-                (mmu_unit.buffer and mmu_unit.buffer.tension_sensor, self.mmu.SENSOR_TENSION),
-                (mmu_unit.buffer and mmu_unit.buffer.proportional_sensor, self.mmu.SENSOR_PROPORTIONAL),
+                (mmu_unit.sensors.gate_sensor, SENSOR_GATE),
+                (mmu_unit.buffer and mmu_unit.buffer.compression_sensor, SENSOR_COMPRESSION),
+                (mmu_unit.buffer and mmu_unit.buffer.tension_sensor, SENSOR_TENSION),
+                (mmu_unit.buffer and mmu_unit.buffer.proportional_sensor, SENSOR_PROPORTIONAL),
             ])
             qualified_unit_sensors = collect_sensors([
-                (mmu_unit.sensors.gate_sensor, self.get_unit_sensor_name(self.mmu.SENSOR_GATE, mmu_unit.unit_index)),
-                (mmu_unit.buffer and mmu_unit.buffer.compression_sensor, self.get_unit_sensor_name(self.mmu.SENSOR_COMPRESSION, mmu_unit.unit_index)),
-                (mmu_unit.buffer and mmu_unit.buffer.tension_sensor, self.get_unit_sensor_name(self.mmu.SENSOR_TENSION, mmu_unit.unit_index)),
-                (mmu_unit.buffer and mmu_unit.buffer.proportional_sensor, self.get_unit_sensor_name(self.mmu.SENSOR_PROPORTIONAL, mmu_unit.unit_index)),
+                (mmu_unit.sensors.gate_sensor, self.get_unit_sensor_name(SENSOR_GATE, mmu_unit.unit_index)),
+                (mmu_unit.buffer and mmu_unit.buffer.compression_sensor, self.get_unit_sensor_name(SENSOR_COMPRESSION, mmu_unit.unit_index)),
+                (mmu_unit.buffer and mmu_unit.buffer.tension_sensor, self.get_unit_sensor_name(SENSOR_TENSION, mmu_unit.unit_index)),
+                (mmu_unit.buffer and mmu_unit.buffer.proportional_sensor, self.get_unit_sensor_name(SENSOR_PROPORTIONAL, mmu_unit.unit_index)),
             ])
             self.all_sensors_map.update(qualified_unit_sensors)
         
             for gate in range(mmu_unit.first_gate, mmu_unit.first_gate + mmu_unit.num_gates):
                 self.gate_sensors.append(collect_sensors([
-                    (mmu_unit.sensors.pre_gate_sensors.get(gate), self.mmu.SENSOR_PRE_GATE_PREFIX),
-                    (mmu_unit.sensors.post_gear_sensors.get(gate), self.mmu.SENSOR_GEAR_PREFIX),
-                    (mmu_unit.sensors.gate_sensor, self.mmu.SENSOR_GATE),
-                    (mmu_unit.buffer and mmu_unit.buffer.compression_sensor, self.mmu.SENSOR_COMPRESSION),
-                    (mmu_unit.buffer and mmu_unit.buffer.tension_sensor, self.mmu.SENSOR_TENSION),
-                    (self.mmu_machine.extruder_sensor, self.mmu.SENSOR_EXTRUDER_ENTRY),
-                    (self.mmu_machine.toolhead_sensor, self.mmu.SENSOR_TOOLHEAD),
+                    (mmu_unit.sensors.pre_gate_sensors.get(gate), SENSOR_PRE_GATE_PREFIX),
+                    (mmu_unit.sensors.post_gear_sensors.get(gate), SENSOR_GEAR_PREFIX),
+                    (mmu_unit.sensors.gate_sensor, SENSOR_GATE),
+                    (mmu_unit.buffer and mmu_unit.buffer.compression_sensor, SENSOR_COMPRESSION),
+                    (mmu_unit.buffer and mmu_unit.buffer.tension_sensor, SENSOR_TENSION),
+                    (self.mmu_machine.extruder_sensor, SENSOR_EXTRUDER_ENTRY),
+                    (self.mmu_machine.toolhead_sensor, SENSOR_TOOLHEAD),
                 ]))
                 qualified_gate_sensors = collect_sensors([
-                    (mmu_unit.sensors.pre_gate_sensors.get(gate), self.get_gate_sensor_name(self.mmu.SENSOR_PRE_GATE_PREFIX, gate)),
-                    (mmu_unit.sensors.post_gear_sensors.get(gate), self.get_gate_sensor_name(self.mmu.SENSOR_GEAR_PREFIX, gate)),
+                    (mmu_unit.sensors.pre_gate_sensors.get(gate), self.get_gate_sensor_name(SENSOR_PRE_GATE_PREFIX, gate)),
+                    (mmu_unit.sensors.post_gear_sensors.get(gate), self.get_gate_sensor_name(SENSOR_GEAR_PREFIX, gate)),
                 ])
                 unit_sensors.update(qualified_gate_sensors)
                 self.all_sensors_map.update(qualified_gate_sensors)
@@ -173,7 +173,7 @@ class MmuSensorManager:
             unit = self.mmu_machine.get_mmu_unit_by_index(i)
             gear_rail = unit.mmu_toolhead.get_kinematics().rails[1]
             for name, sensor in self.unit_sensors[i].items():
-                if not name.startswith(self.mmu.SENSOR_PRE_GATE_PREFIX):
+                if not name.startswith(SENSOR_PRE_GATE_PREFIX):
                     logging.info("PAUL: creating endstop for unit=%d, sensor.name=%s" % (i, sensor.runout_helper.name))
                     sensor_pin = sensor.runout_helper.switch_pin
                     ppins = self.mmu.printer.lookup_object('pins')
@@ -185,7 +185,7 @@ class MmuSensorManager:
 
                     # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
                     # otherwise the extruder can continue to move a small (speed dependent) distance
-                    if self.mmu_machine.homing_extruder and name in [self.mmu.SENSOR_TOOLHEAD, self.mmu.SENSOR_COMPRESSION, self.mmu.SENSOR_TENSION]:
+                    if self.mmu_machine.homing_extruder and name in [SENSOR_TOOLHEAD, SENSOR_COMPRESSION, SENSOR_TENSION]:
                         mcu_endstop.add_stepper(self.mmu_machine.mmu_extruder_stepper.stepper)
                 else:
                     logging.warning("MMU: Filament sensor %s is not defined in [mmu_sensors]" % name)
@@ -222,7 +222,7 @@ class MmuSensorManager:
                 if state is not None or detail:
                     sensor = self.all_sensors_map.get(name) if unit is None else self.unit_sensors[unit].get(name)
 
-                    if name in [self.mmu.SENSOR_PROPORTIONAL]:
+                    if name in [SENSOR_PROPORTIONAL]:
                         # Special case analog sensor
                         value = sensor.get_status(0).get('value', 0.)
                         value_raw = sensor.get_status(0).get('value_raw', 0.)
@@ -300,10 +300,10 @@ class MmuSensorManager:
     # Get unit or gate specific endstop if it exists
     # Take generic name and look for "<unit>_genericName" and "genericName_<gate>"
     def get_mapped_endstop_name(self, endstop_name):
-        if endstop_name in [self.mmu.SENSOR_GATE, self.mmu.SENSOR_COMPRESSION, self.mmu.SENSOR_TENSION]:
+        if endstop_name in [SENSOR_GATE, SENSOR_COMPRESSION, SENSOR_TENSION]:
             return self.get_unit_sensor_name(endstop_name, mmu.unit_selected)
 
-        if endstop_name in [self.mmu.SENSOR_PRE_GATE_PREFIX, self.mmu.SENSOR_GEAR_PREFIX, self.mmu.SENSOR_GEAR_TOUCH]: # PAUL TODO verify SENSOR_GEAR_TOUCH operation for calibration
+        if endstop_name in [SENSOR_PRE_GATE_PREFIX, SENSOR_GEAR_PREFIX, SENSOR_GEAR_TOUCH]: # PAUL TODO verify SENSOR_GEAR_TOUCH operation for calibration
             return self.get_gate_sensor_name(endstop_name, mmu.gate_selected)
 
         return endstop_name
@@ -366,7 +366,7 @@ class MmuSensorManager:
     # Returns True if all sensors in current filament path are triggered
     #         None if no sensors available (disambiguate from non-triggered sensor)
     def check_all_sensors_in_path(self):
-        sensors = self.get_sensors_before(self.mmu.FILAMENT_POS_LOADED, self.mmu.gate_selected)
+        sensors = self.get_sensors_before(FILAMENT_POS_LOADED, self.mmu.gate_selected)
         if all(state is None for state in sensors.values()):
             return None
         return all(state is not False for state in sensors.values())
@@ -383,14 +383,14 @@ class MmuSensorManager:
     #         None if no sensors available (disambiguate from non-triggered sensor)
     # Can be used to spot failure in "continuity" i.e. runout
     def check_for_runout(self):
-        sensors = self.get_sensors_before(self.mmu.FILAMENT_POS_LOADED, self.mmu.gate_selected)
+        sensors = self.get_sensors_before(FILAMENT_POS_LOADED, self.mmu.gate_selected)
         if all(state is None for state in sensors.values()):
             return None
         return any(state is False for state in sensors.values())
 
     # Error with explanation if any filament sensors don't detect filament
     def confirm_loaded(self):
-        sensors = self.get_sensors_before(self.mmu.FILAMENT_POS_LOADED, self.mmu.gate_selected)
+        sensors = self.get_sensors_before(FILAMENT_POS_LOADED, self.mmu.gate_selected)
         if any(state is False for state in sensors.values()):
             MmuError("Loaded check failed:\nFilament not detected by sensors: %s" % ', '.join([name for name, state in sensors.items() if state is False]))
 
@@ -435,11 +435,11 @@ class MmuSensorManager:
         if gate >= 0:
             # Note: For gear sensor the position of POS_HOMED_GATE is only valid if is not usually triggered (i.e. parking retract)
             sensor_selection = [
-                (self.mmu.SENSOR_PRE_GATE_PREFIX, None),
-                (self.mmu.SENSOR_GEAR_PREFIX, self.mmu.FILAMENT_POS_HOMED_GATE if self.mmu.gate_homing_endstop == self.mmu.SENSOR_GEAR_PREFIX and self.mmu.gate_parking_distance <= 0 else None), # PAUL check parking distance sign with v4
-                (self.mmu.SENSOR_GATE, self.mmu.FILAMENT_POS_HOMED_GATE),
-                (self.mmu.SENSOR_EXTRUDER_ENTRY, self.mmu.FILAMENT_POS_HOMED_ENTRY),
-                (self.mmu.SENSOR_TOOLHEAD, self.mmu.FILAMENT_POS_HOMED_TS),
+                (SENSOR_PRE_GATE_PREFIX, None),
+                (SENSOR_GEAR_PREFIX, FILAMENT_POS_HOMED_GATE if self.mmu.gate_homing_endstop == SENSOR_GEAR_PREFIX and self.mmu.gate_parking_distance <= 0 else None), # PAUL check parking distance sign with v4
+                (SENSOR_GATE, FILAMENT_POS_HOMED_GATE),
+                (SENSOR_EXTRUDER_ENTRY, FILAMENT_POS_HOMED_ENTRY),
+                (SENSOR_TOOLHEAD, FILAMENT_POS_HOMED_TS),
             ]
             for name, position_check in sensor_selection:
                 sensor = self.active_sensors_map.get(name, None)

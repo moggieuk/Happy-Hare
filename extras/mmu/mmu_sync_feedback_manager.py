@@ -41,7 +41,6 @@ class MmuSyncFeedbackManager:
     
     def __init__(self, mmu):
         self.mmu = mmu
-        self.mmu.managers.append(self)
 
         self.estimated_state = float(self.SF_STATE_NEUTRAL)
         self.active = False           # Sync-feedback actively operating?
@@ -49,21 +48,22 @@ class MmuSyncFeedbackManager:
         self.ctrl = None
         self.flow_rate = 100.         # Estimated % flowrate (calc only for proportional sensors)
 
-        # Process config
-        self.sync_feedback_enabled           = self.mmu.config.getint('sync_feedback_enabled', 0, minval=0, maxval=1)
-        self.sync_feedback_buffer_range      = self.mmu.config.getfloat('sync_feedback_buffer_range', 10., minval=0.)
-        self.sync_feedback_buffer_maxrange   = self.mmu.config.getfloat('sync_feedback_buffer_maxrange', 10., minval=0.)
-        self.sync_feedback_speed_multiplier  = self.mmu.config.getfloat('sync_feedback_speed_multiplier', 5, minval=1, maxval=50)
-        self.sync_feedback_boost_multiplier  = self.mmu.config.getfloat('sync_feedback_boost_multiplier', 5, minval=1, maxval=50)
-        self.sync_feedback_extrude_threshold = self.mmu.config.getfloat('sync_feedback_extrude_threshold', 5, above=1.)
-        self.sync_feedback_debug_log         = self.mmu.config.getint('sync_feedback_debug_log', 0)
-        self.sync_feedback_force_twolevel    = self.mmu.config.getint('sync_feedback_force_twolevel', 0) # Not exposed
-
-        # FlowGuard
-        self.flowguard_enabled               = self.mmu.config.getint('flowguard_enabled', 1, minval=0, maxval=1)
-        self.flowguard_max_relief            = self.mmu.config.getfloat('flowguard_max_relief', 8, above=1.)
-        self.flowguard_encoder_mode          = self.mmu.config.getint('flowguard_encoder_mode', 2, minval=0, maxval=2)
-        self.flowguard_encoder_max_motion    = self.mmu.config.getfloat('flowguard_encoder_max_motion', 20, above=0.)
+# PAUL moved to mmu_parameters
+#        # Process config
+#        self.sync_feedback_enabled           = self.mmu.config.getint('sync_feedback_enabled', 0, minval=0, maxval=1)
+#        self.sync_feedback_buffer_range      = self.mmu.config.getfloat('sync_feedback_buffer_range', 10., minval=0.)
+#        self.sync_feedback_buffer_maxrange   = self.mmu.config.getfloat('sync_feedback_buffer_maxrange', 10., minval=0.)
+#        self.sync_feedback_speed_multiplier  = self.mmu.config.getfloat('sync_feedback_speed_multiplier', 5, minval=1, maxval=50)
+#        self.sync_feedback_boost_multiplier  = self.mmu.config.getfloat('sync_feedback_boost_multiplier', 5, minval=1, maxval=50)
+#        self.sync_feedback_extrude_threshold = self.mmu.config.getfloat('sync_feedback_extrude_threshold', 5, above=1.)
+#        self.sync_feedback_debug_log         = self.mmu.config.getint('sync_feedback_debug_log', 0)
+#        self.sync_feedback_force_twolevel    = self.mmu.config.getint('sync_feedback_force_twolevel', 0) # Not exposed
+#
+#        # FlowGuard
+#        self.flowguard_enabled               = self.mmu.config.getint('flowguard_enabled', 1, minval=0, maxval=1)
+#        self.flowguard_max_relief            = self.mmu.config.getfloat('flowguard_max_relief', 8, above=1.)
+#        self.flowguard_encoder_mode          = self.mmu.config.getint('flowguard_encoder_mode', 2, minval=0, maxval=2)
+#        self.flowguard_encoder_max_motion    = self.mmu.config.getfloat('flowguard_encoder_max_motion', 20, above=0.)
 
         # Setup events for managing motor synchronization
         self.mmu.printer.register_event_handler("mmu:synced", self._handle_mmu_synced)
@@ -71,7 +71,7 @@ class MmuSyncFeedbackManager:
         self.mmu.printer.register_event_handler("mmu:sync_feedback", self._handle_sync_feedback)
 
         # Initial flowguard status
-        self.flowguard_status = {'trigger': '', 'reason': '', 'level': 0.0, 'max_clog': 0.0, 'max_tangle': 0.0, 'active': False, 'enabled': bool(self.flowguard_enabled)}
+        self.flowguard_status = {'trigger': '', 'reason': '', 'level': 0.0, 'max_clog': 0.0, 'max_tangle': 0.0, 'active': False, 'enabled': False}
 
         # Register GCODE commands ---------------------------------------------------------------------------
 
@@ -216,7 +216,7 @@ class MmuSyncFeedbackManager:
         # Figure out the correct detection length based on mode
         cdl = self.flowguard_encoder_max_motion
         if mode == self.mmu.encoder_sensor.RUNOUT_AUTOMATIC:
-            cdl = self.mmu.save_variables.allVariables.get(self.mmu.VARS_MMU_CALIB_CLOG_LENGTH, cdl)
+            cdl = self.mmu.save_variables.allVariables.get(VARS_MMU_CALIB_CLOG_LENGTH, cdl)
 
         # Notify sensor of detection length
         self.mmu.encoder_sensor.set_clog_detection_length(cdl)
@@ -264,9 +264,9 @@ class MmuSyncFeedbackManager:
         Returns tuple of active sync-feedback sensors
         """
         sm = self.mmu.sensor_manager
-        has_tension      = sm.has_sensor(self.mmu.SENSOR_TENSION)
-        has_compression  = sm.has_sensor(self.mmu.SENSOR_COMPRESSION)
-        has_proportional = sm.has_sensor(self.mmu.SENSOR_PROPORTIONAL)
+        has_tension      = sm.has_sensor(SENSOR_TENSION)
+        has_compression  = sm.has_sensor(SENSOR_COMPRESSION)
+        has_proportional = sm.has_sensor(SENSOR_PROPORTIONAL)
         return has_tension, has_compression, has_proportional
 
 
@@ -535,15 +535,15 @@ class MmuSyncFeedbackManager:
                 has_tension, has_compression, has_proportional = self.get_active_sensors()
 
                 if has_proportional:
-                    sensor_key = self.mmu.SENSOR_PROPORTIONAL
+                    sensor_key = SENSOR_PROPORTIONAL
                 elif has_compression and not has_tension:
-                    sensor_key = self.mmu.SENSOR_COMPRESSION
+                    sensor_key = SENSOR_COMPRESSION
                 elif has_tension and not has_compression:
-                    sensor_key = self.mmu.SENSOR_TENSION
+                    sensor_key = SENSOR_TENSION
                 elif f_trigger == "clog":
-                    sensor_key = self.mmu.SENSOR_COMPRESSION
+                    sensor_key = SENSOR_COMPRESSION
                 else: # "tangle"
-                    sensor_key = self.mmu.SENSOR_TENSION
+                    sensor_key = SENSOR_TENSION
                 sm = self.mmu.sensor_manager
                 sensor = sm.sensors.get(sensor_key)
 
@@ -571,7 +571,7 @@ class MmuSyncFeedbackManager:
             self.mmu.set_gear_rotation_distance(rd_current)
 
         # Proportional sensor (with autotune) allows for estimation of flow rate!
-        if self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_PROPORTIONAL):
+        if self.mmu.sensor_manager.has_sensor(SENSOR_PROPORTIONAL):
             # if rd_current > rd_true then flowrate must be reduced
             self.flow_rate = round(min(1.0, (rd_tuned / rd_current)) * 100., 2)
 
@@ -649,13 +649,13 @@ class MmuSyncFeedbackManager:
         Returns float in range [-1.0 .. 1.0] for proportional, {-1, 0, 1) for switch
         """
         sm = self.mmu.sensor_manager
-        has_proportional   = sm.has_sensor(self.mmu.SENSOR_PROPORTIONAL)
+        has_proportional   = sm.has_sensor(SENSOR_PROPORTIONAL)
         if has_proportional:
-            sensor = sm.sensors.get(self.mmu.SENSOR_PROPORTIONAL)
+            sensor = sm.sensors.get(SENSOR_PROPORTIONAL)
             return sensor.get_status(0).get('value', 0.)
 
-        tension_active     = sm.check_sensor(self.mmu.SENSOR_TENSION)
-        compression_active = sm.check_sensor(self.mmu.SENSOR_COMPRESSION)
+        tension_active     = sm.check_sensor(SENSOR_TENSION)
+        compression_active = sm.check_sensor(SENSOR_COMPRESSION)
 
         if tension_active == compression_active:
             ss = self.SF_STATE_NEUTRAL
@@ -719,15 +719,15 @@ class MmuSyncFeedbackManager:
 
             if self.sync_feedback_buffer_range == 0:
                 msg = "Homing to tension sensor"
-                sensor = self.mmu.SENSOR_TENSION
+                sensor = SENSOR_TENSION
                 homing_dir = 1
             elif has_compression:
                 msg = "Reverse homing off compression sensor"
-                sensor = self.mmu.SENSOR_COMPRESSION
+                sensor = SENSOR_COMPRESSION
                 homing_dir = -1
             else:
                 msg = "Homing to tension sensor"
-                sensor = self.mmu.SENSOR_TENSION
+                sensor = SENSOR_TENSION
                 homing_dir = 1
 
         else:
@@ -737,15 +737,15 @@ class MmuSyncFeedbackManager:
 
             if self.sync_feedback_buffer_range == 0:
                 msg = "Homing to compression sensor"
-                sensor = self.mmu.SENSOR_COMPRESSION
+                sensor = SENSOR_COMPRESSION
                 homing_dir = 1
             elif has_tension:
                 msg = "Reverse homing off tension sensor"
-                sensor = self.mmu.SENSOR_TENSION
+                sensor = SENSOR_TENSION
                 homing_dir = -1
             else:
                 msg = "Homing to compression sensor"
-                sensor = self.mmu.SENSOR_COMPRESSION
+                sensor = SENSOR_COMPRESSION
                 homing_dir = 1
 
         actual,fhomed,_,_ = self.mmu.trace_filament_move(

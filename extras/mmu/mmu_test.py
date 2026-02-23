@@ -124,16 +124,16 @@ class MmuTest:
                 compression_sensor_filament_present = tension_sensor_filament_present = False
 
                 # Use the temporary sensors for the test if the real ones are not present or disabled
-                compression_test_sensor = mmu_sensors.sensors.get(self.mmu.SENSOR_COMPRESSION, None)
+                compression_test_sensor = mmu_sensors.sensors.get(SENSOR_COMPRESSION, None)
                 if compression_test_sensor is None or not compression_test_sensor.runout_helper.sensor_enabled:
-                    mmu_sensors._create_mmu_sensor(config, self.mmu.SENSOR_COMPRESSION, None, 'test_'+self.mmu.SENSOR_COMPRESSION+'_pin', 0, button_handler=mmu_sensors._sync_compression_callback)
-                    compression_test_sensor = mmu_sensors.sensors.get(self.mmu.SENSOR_COMPRESSION, None)
-                    sensors_to_remove.append(self.mmu.SENSOR_COMPRESSION)
-                tension_test_sensor = mmu_sensors.sensors.get(self.mmu.SENSOR_TENSION, None)
+                    mmu_sensors._create_mmu_sensor(config, SENSOR_COMPRESSION, None, 'test_'+SENSOR_COMPRESSION+'_pin', 0, button_handler=mmu_sensors._sync_compression_callback)
+                    compression_test_sensor = mmu_sensors.sensors.get(SENSOR_COMPRESSION, None)
+                    sensors_to_remove.append(SENSOR_COMPRESSION)
+                tension_test_sensor = mmu_sensors.sensors.get(SENSOR_TENSION, None)
                 if tension_test_sensor is None or not tension_test_sensor.runout_helper.sensor_enabled:
-                    mmu_sensors._create_mmu_sensor(config, self.mmu.SENSOR_TENSION, None, 'test_'+self.mmu.SENSOR_TENSION+'_pin', 0, button_handler=mmu_sensors._sync_tension_callback)
-                    tension_test_sensor = mmu_sensors.sensors.get(self.mmu.SENSOR_TENSION, None)
-                    sensors_to_remove.append(self.mmu.SENSOR_TENSION)
+                    mmu_sensors._create_mmu_sensor(config, SENSOR_TENSION, None, 'test_'+SENSOR_TENSION+'_pin', 0, button_handler=mmu_sensors._sync_tension_callback)
+                    tension_test_sensor = mmu_sensors.sensors.get(SENSOR_TENSION, None)
+                    sensors_to_remove.append(SENSOR_TENSION)
 
                 if sync_state == 'loop':
                     nb_iterations = gcmd.get_int('LOOP', 1000, minval=1, maxval=10000000)
@@ -670,7 +670,7 @@ class MmuTest:
                 speed = gcmd.get_float('SPEED', None)
                 accel = gcmd.get_float('ACCEL', None)
                 loop = gcmd.get_int('LOOP', 1, minval=1)
-                endstop = gcmd.get('ENDSTOP', self.mmu.SENSOR_SELECTOR_TOUCH if self.mmu.selector.use_touch_move() else self.mmu.SENSOR_SELECTOR_HOME)
+                endstop = gcmd.get('ENDSTOP', SENSOR_SELECTOR_TOUCH if self.mmu.selector.use_touch_move() else SENSOR_SELECTOR_HOME)
                 for i in range(loop):
                     pos = self.mmu.mmu_toolhead.get_position()[0]
                     self.mmu.log_always("Rail starting pos: %s" % pos)
@@ -793,7 +793,7 @@ class MmuTest:
                 self.mmu._auto_calibrate(direction, ratio, homing_movement)
 
 
-            select_gate = gcmd.get_int('GATE_MOTOR', -99, minval=self.mmu.TOOL_GATE_BYPASS, maxval=self.mmu.num_gates)
+            select_gate = gcmd.get_int('GATE_MOTOR', -99, minval=TOOL_GATE_BYPASS, maxval=self.mmu.num_gates)
             if not select_gate == -99:
                 have_run_test = True
                 self.mmu.mmu_toolhead.select_gear_stepper(select_gate)

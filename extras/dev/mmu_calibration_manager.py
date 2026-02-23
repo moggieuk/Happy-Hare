@@ -26,7 +26,7 @@ import logging, math
 # Happy Hare imports
 
 # MMU subcomponent clases
-from .mmu_shared import *
+from ..mmu_shared import *
 
 
 class MmuCalibrationManager:
@@ -48,10 +48,10 @@ class MmuCalibrationManager:
     VARS_MMU_ENCODER_CLOG_LENGTH     = "mmu_encoder_clog_length" # Autotuned clog detection length if in automatic mode
 
 
-    def __init__(self, mmu_unit):
-        self.mmu_unit = mmu_unit                # This physical MMU
-        self.mmu = unit.mmu			# Shared MMU operation class
-        self.mmu_machine = self.mmu.mmu_machine # Entire Logical MMU
+    def __init__(self, mmu_unit, config):
+        self.mmu_unit = mmu_unit                # This physical MMU unit
+        self.mmu_machine = mmu_unit.mmu_machine # Entire Logical combined MMU
+        self.printer = config.get_printer()
 
 # PAUL why not have a calibration manger per unit?
 #        mmu_unit = self.mmu_unit(gate)
@@ -60,16 +60,20 @@ class MmuCalibrationManager:
 
         self.calibration_status = 0b0
 
+# PAUL should be mux commands??
         # Register GCODE commands ---------------------------------------------------------------------------
-        self.gcode.register_command('MMU_CALIBRATE_GEAR', self.cmd_MMU_CALIBRATE_GEAR, desc=self.cmd_MMU_CALIBRATE_GEAR_help)
-        self.gcode.register_command('MMU_CALIBRATE_ENCODER', self.cmd_MMU_CALIBRATE_ENCODER, desc=self.cmd_MMU_CALIBRATE_ENCODER_help)
-        self.gcode.register_command('MMU_CALIBRATE_BOWDEN', self.cmd_MMU_CALIBRATE_BOWDEN, desc = self.cmd_MMU_CALIBRATE_BOWDEN_help)
-        self.gcode.register_command('MMU_CALIBRATE_GATES', self.cmd_MMU_CALIBRATE_GATES, desc = self.cmd_MMU_CALIBRATE_GATES_help)
-        self.gcode.register_command('MMU_CALIBRATE_TOOLHEAD', self.cmd_MMU_CALIBRATE_TOOLHEAD, desc = self.cmd_MMU_CALIBRATE_TOOLHEAD_help)
-        self.gcode.register_command('MMU_CALIBRATE_PSENSOR', self.cmd_MMU_CALIBRATE_PSENSOR, desc = self.cmd_MMU_CALIBRATE_PSENSOR_help)
+        gcode = self.printer.lookup_object('gcode')
+        gcode.register_command('MMU_CALIBRATE_GEAR', self.cmd_MMU_CALIBRATE_GEAR, desc=self.cmd_MMU_CALIBRATE_GEAR_help)
+        gcode.register_command('MMU_CALIBRATE_ENCODER', self.cmd_MMU_CALIBRATE_ENCODER, desc=self.cmd_MMU_CALIBRATE_ENCODER_help)
+        gcode.register_command('MMU_CALIBRATE_BOWDEN', self.cmd_MMU_CALIBRATE_BOWDEN, desc = self.cmd_MMU_CALIBRATE_BOWDEN_help)
+        gcode.register_command('MMU_CALIBRATE_GATES', self.cmd_MMU_CALIBRATE_GATES, desc = self.cmd_MMU_CALIBRATE_GATES_help)
+        gcode.register_command('MMU_CALIBRATE_TOOLHEAD', self.cmd_MMU_CALIBRATE_TOOLHEAD, desc = self.cmd_MMU_CALIBRATE_TOOLHEAD_help)
+        gcode.register_command('MMU_CALIBRATE_PSENSOR', self.cmd_MMU_CALIBRATE_PSENSOR, desc = self.cmd_MMU_CALIBRATE_PSENSOR_help)
 
 
     def handle_connect():
+        self.mmu = self.printer.lookup_object('mmu') # Shared MMU operation class
+
         # Load bowden length configuration (calibration set with MMU_CALIBRATE_BOWDEN) ----------------------
         bowden_lengths = self.mmu.var_manager.get(self.VARS_MMU_CALIB_BOWDEN_LENGTHS, None, namespace=mmu_unit.name)
         bowden_home = self.mmu.var_manager.get(self.VARS_MMU_CALIB_BOWDEN_HOME, self.gate_homing_endstop, namespace=mmu_unit.name)

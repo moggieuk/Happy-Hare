@@ -29,6 +29,7 @@ class MmuLedManager:
     def __init__(self, mmu):
         self.mmu = mmu
         self.mmu_machine = mmu.mmu_machine
+
         self.inside_timer = False
         self.pending_update = [False] * self.mmu_machine.num_units
         self.effect_state = {} # Current state used to minimise updates {unit: {segment: effect}}

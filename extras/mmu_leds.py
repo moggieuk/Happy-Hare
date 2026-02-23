@@ -42,7 +42,7 @@ class VirtualMmuLedChain:
                 raise config.error("MMU LED chain '%s' referenced in '%s' cannot be loaded:\n%s" % (chain_name, self.name, str(e)))
 
         # Register led object with klipper
-        logging.info("MMU: Created: %s" % led_section)
+        logging.info("MMU: Created: [%s]" % led_section)
         self.printer.add_object(self.name, self)
 
     def update_leds(self, led_state, print_time):

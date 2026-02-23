@@ -20,8 +20,7 @@ import logging, time
 class MmuBuffer:
 
     def __init__(self, config):
-        from .mmu                  import Mmu # For sensor names
-        from .mmu.mmu_sensor_utils import MmuSensorFactory
+        from .mmu.mmu_sensor_utils import MmuSensorFactory # PAUL move me?
 
         self.name = config.get_name().split()[-1]
         self.printer = config.get_printer()
@@ -32,7 +31,7 @@ class MmuBuffer:
         switch_pin = config.get('sync_feedback_compression_pin', None)
         self.compression_sensor = sf.create_mmu_sensor(
             config,
-            "%s_%s" % (self.name, Mmu.SENSOR_COMPRESSION),
+            "%s_%s" % (self.name, SENSOR_COMPRESSION),
             None,
             switch_pin,
             0,
@@ -43,7 +42,7 @@ class MmuBuffer:
         switch_pin = config.get('sync_feedback_tension_pin', None)
         self.tension_sensor = sf.create_mmu_sensor(
             config,
-            "%s_%s" % (self.name, Mmu.SENSOR_TENSION),
+            "%s_%s" % (self.name, SENSOR_TENSION),
             None,
             switch_pin,
             0,
@@ -54,8 +53,8 @@ class MmuBuffer:
         # Uses single analog input; value scaled in [-1, 1]
         analog_pin = config.get('sync_feedback_analog_pin', None)
         if analog_pin:
-            self.proportional_sensor = MmuProportionalSensor(config, name=Mmu.SENSOR_PROPORTIONAL)
-# PAUL merge            self.sensors[Mmu.SENSOR_PROPORTIONAL] = MmuProportionalSensor(config, name=Mmu.SENSOR_PROPORTIONAL)
+            self.proportional_sensor MmuProportionalSensor(config, name=SENSOR_PROPORTIONAL)
+# PAUL merge            self.sensors[SENSOR_PROPORTIONAL] = MmuProportionalSensor(config, name=SENSOR_PROPORTIONAL)
 # PAUL TODO this doesn't feel correct ^^^
 
 def load_config_prefix(config):

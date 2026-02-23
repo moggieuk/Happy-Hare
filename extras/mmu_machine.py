@@ -16,7 +16,6 @@ import logging
 
 # Happy Hare imports
 from .                     import mmu_unit
-from .mmu                  import Mmu
 from .mmu.mmu_sensor_utils import MmuSensorFactory
 
 # Klipper imports
@@ -49,7 +48,7 @@ class MmuMachine:
         switch_pin = config.get('extruder_switch_pin', None)
         self.extruder_sensor = sf.create_mmu_sensor(
             config,
-            Mmu.SENSOR_EXTRUDER_ENTRY,
+            SENSOR_EXTRUDER_ENTRY,
             None,
             switch_pin,
             event_delay,
@@ -61,7 +60,7 @@ class MmuMachine:
         switch_pin = config.get('toolhead_switch_pin', None)
         self.toolhead_sensor = sf.create_mmu_sensor(
             config,
-            Mmu.SENSOR_TOOLHEAD,
+            SENSOR_TOOLHEAD,
             None,
             switch_pin,
             event_delay
@@ -73,9 +72,9 @@ class MmuMachine:
 #        hall_sensor_endstop = config.get('hall_sensor_endstop', None)
 #        if hall_sensor_endstop is not None:
 #            if hall_sensor_endstop == 'extruder':
-#                target_name = Mmu.SENSOR_EXTRUDER_ENTRY
+#                target_name = SENSOR_EXTRUDER_ENTRY
 #            elif hall_sensor_endstop == 'toolhead':
-#                target_name = Mmu.SENSOR_TOOLHEAD
+#                target_name = SENSOR_TOOLHEAD
 #            else:
 #                target_name = hall_sensor_endstop
 #

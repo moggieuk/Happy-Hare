@@ -19,6 +19,7 @@
 #     Individual control of per-gate heaters and lifecycle is possible by specifying gates of
 #     interest. The periodic venting macro will be called with a GATE parameter listing the
 #     currently heated gates.
+#
 # The manager will support automatic spool rotation if equiped with eSpooler and the dry cycle
 # is initiated with this option. IMPORTANT: filament must be removed from the MMU inlet and
 # fastened to the spool. Also, the GATES parameter must be supplied.
@@ -42,7 +43,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import ast, logging
+import logging
 
 # Happy Hare imports
 from ..mmu_unit            import VENDOR_VVD
@@ -67,25 +68,25 @@ class MmuEnvironmentManager:
 
     def __init__(self, mmu):
         self.mmu = mmu
-        self.mmu.managers.append(self)
 
-        # Process config
-        self.heater_max_temp         = self.mmu.config.getfloat('heater_max_temp', 65, above=0.) # Never to exceed temp to avoid melting enclosure
-        self.heater_default_dry_temp = self.mmu.config.getfloat('heater_default_dry_temp', 45, above=0.)
-        self.heater_default_dry_time = self.mmu.config.getfloat('heater_default_dry_time', 300, above=0.)
-        self.heater_default_humidity = self.mmu.config.getfloat('heater_default_humidity', 10, above=0.)
-        self.heater_vent_macro       = self.mmu.config.get(     'heater_vent_macro', '')
-        self.heater_vent_interval    = self.mmu.config.getfloat('heater_vent_interval', 0, minval=0)
-        self.heater_rotate_interval  = self.mmu.config.getfloat('heater_rotate_interval', 5, minval=1)
+# PAUL        # Process config
+# PAUL        self.heater_max_temp         = self.mmu.config.getfloat('heater_max_temp', 65, above=0.) # Never to exceed temp to avoid melting enclosure
+# PAUL        self.heater_default_dry_temp = self.mmu.config.getfloat('heater_default_dry_temp', 45, above=0.)
+# PAUL        self.heater_default_dry_time = self.mmu.config.getfloat('heater_default_dry_time', 300, above=0.)
+# PAUL        self.heater_default_humidity = self.mmu.config.getfloat('heater_default_humidity', 10, above=0.)
+# PAUL        self.heater_vent_macro       = self.mmu.config.get(     'heater_vent_macro', '')
+# PAUL        self.heater_vent_interval    = self.mmu.config.getfloat('heater_vent_interval', 0, minval=0)
+# PAUL        self.heater_rotate_interval  = self.mmu.config.getfloat('heater_rotate_interval', 5, minval=1)
 
-        # Build tuples of drying temp / drying time indexed by filament type
-        drying_data_str = self.mmu.config.get('drying_data', {})
-        try:
-            drying_data = ast.literal_eval(drying_data_str)
-            # Store as upper case keys (If there are duplicate keys differing only by case, the last one wins)
-            self.drying_data = dict((str(k).upper(), v) for k, v in drying_data.items())
-        except Exception as e:
-            raise self.mmu.config.error("Unparsable 'drying_data' parameter: %s" % str(e))
+#PAUL
+#        # Build tuples of drying temp / drying time indexed by filament type
+#        drying_data_str = self.mmu.config.get('drying_data', {})
+#        try:
+#            drying_data = ast.literal_eval(drying_data_str)
+#            # Store as upper case keys (If there are duplicate keys differing only by case, the last one wins)
+#            self.drying_data = dict((str(k).upper(), v) for k, v in drying_data.items())
+#        except Exception as e:
+#            raise self.mmu.config.error("Unparsable 'drying_data' parameter: %s" % str(e))
 
         # Listen of important mmu events
         self.mmu.printer.register_event_handler("mmu:enabled", self._handle_mmu_enabled)
@@ -266,11 +267,11 @@ class MmuEnvironmentManager:
             all_gates = list(range(self.mmu.num_gates))
             empty_gates = [
                 i for i, status in enumerate(self.mmu.gate_status)
-                if status == self.mmu.GATE_EMPTY
+                if status == GATE_EMPTY
             ]
             full_gates = [
                 i for i, status in enumerate(self.mmu.gate_status)
-                if status != self.mmu.GATE_EMPTY
+                if status != GATE_EMPTY
             ]
 
         def _format_minutes(minutes):
@@ -406,7 +407,7 @@ class MmuEnvironmentManager:
 
             if rotate:
                 for gate in gates:
-                    if self.mmu.gate_status[gate] != self.mmu.GATE_EMPTY:
+                    if self.mmu.gate_status[gate] != GATE_EMPTY:
                         self.mmu.log_warning("Gate %d is not empty so cannot rotate (filament end must be removed from the gate and secured to the spool for rotation)" % gate)
 
             # Per-gate recommended temps/times, plus overall notes
@@ -743,7 +744,7 @@ class MmuEnvironmentManager:
                 gates_to_rotate = []
                 for gate in candidates:
                     try:
-                        if self.mmu.gate_status[gate] == self.mmu.GATE_EMPTY:
+                        if self.mmu.gate_status[gate] == GATE_EMPTY:
                             gates_to_rotate.append(gate)
                     except Exception:
                         pass
@@ -1081,7 +1082,7 @@ class MmuEnvironmentManager:
         """
         power = self.mmu.espooler_rewind_burst_power
         duration = self.mmu.espooler_rewind_burst_duration
-        self.mmu.printer.send_event("mmu:espooler_burst", gate, power / 100., duration, self.mmu.ESPOOLER_REWIND)
+        self.mmu.printer.send_event("mmu:espooler_burst", gate, power / 100., duration, ESPOOLER_REWIND)
 
 
     def _handle_espooler_burst_done(self, gate):

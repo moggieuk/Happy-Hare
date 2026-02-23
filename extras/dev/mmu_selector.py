@@ -74,8 +74,11 @@ class BaseSelector:
 
     def __init__(self, mmu_unit, config):
         self.mmu_unit = mmu_unit
-        self.mmu_toolhead = self.mmu_unit.mmu_toolhead # PAUL to be deprecated
+        self.config = config
         self.printer = config.get_printer()
+
+        self.mmu_toolhead = self.mmu_unit.mmu_toolhead # PAUL to be deprecated
+
 #        self.mmu.managers.append(self) # PAUL TODO fix me
         self.is_homed = False
 
@@ -928,8 +931,10 @@ class LinearSelectorServo:
     VARS_MMU_SERVO_ANGLES = "mmu_servo_angles"
 
     def __init__(self, mmu_unit, selector, config):
-# PAUL        self.mmu = mmu
         self.mmu_unit = mmu_unit
+        self.selector = selector
+        self.config = config
+        self.printer = config.get_printer()
 
         # Servo states
         self.SERVO_MOVE_STATE      = FILAMENT_HOLD_STATE
@@ -963,7 +968,7 @@ class LinearSelectorServo:
         self.servo_angle = self.SERVO_UNKNOWN_STATE
 
     def handle_connect(self):
-        super(LinearServoSelector, self).handle_connect()
+        self.mmu = self.printer.lookup_object('mmu')
 
         # Override defaults with saved/calibrated servo positions (set with MMU_SERVO)
         try:
