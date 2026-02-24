@@ -4780,7 +4780,7 @@ class Mmu:
             raise MmuError("Failed to reach extruder '%s' endstop after moving %.1fmm" % (self.extruder_homing_endstop, max_length))
 
         if measured > (max_length * 0.8):
-            self.log_warning("Warning: 80%% of 'extruder_homing_max' was used homing. You may want to increase 'extruder_homing_max'" % self.VARS_MMU_CALIB_BOWDEN_LENGTH)
+            self.log_warning("Warning: 80%% of 'extruder_homing_max' was used homing. You may want to increase 'extruder_homing_max'")
 
         self._set_filament_pos_state(self.FILAMENT_POS_HOMED_EXTRUDER)
         return homing_movement, extra
