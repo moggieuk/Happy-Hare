@@ -20,10 +20,9 @@
 import logging
 
 # Happy Hare imports
-from ..mmu_leds  import MmuLeds
+from ..mmu_leds     import MmuLeds
+from .mmu_shared    import *
 
-# MMU subcomponent clases
-from .mmu_shared import *
 
 class MmuLedManager:
     def __init__(self, mmu):

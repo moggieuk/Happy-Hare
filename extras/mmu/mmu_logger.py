@@ -12,8 +12,8 @@
 #
 import logging, logging.handlers, threading, os, queue, atexit
 
-# MMU subcomponent clases
-from .mmu_shared import *
+# Happy Hare imports
+from .mmu_shared    import *
 
 class MmuLogger:
     def __init__(self, logfile_path):

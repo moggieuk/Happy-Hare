@@ -16,7 +16,10 @@ import logging
 
 # Happy Hare imports
 from .                     import mmu_unit
+from .mmu_unit             import MmuUnit
+from .mmu.mmu_shared       import *
 from .mmu.mmu_sensor_utils import MmuSensorFactory
+from .mmu.mmu_operation    import MmuOperation
 
 # Klipper imports
 from kinematics.extruder   import ExtruderStepper
@@ -33,7 +36,7 @@ class MmuMachine:
         # By default HH uses its modified homing extruder. Because this might have unknown consequences on certain
         # set-ups it can be disabled. If disabled, homing moves will still work, but the delay in mcu to mcu comms
         # can lead to several mm of error depending on speed. Also homing of just the extruder is not possible.
-        self.extruder_name = config.get('extruder_name', 'extruder')
+        self.extruder_name = config.get('extruder_name', 'extruder') # PAUL should be per-unit!
         self.homing_extruder = bool(config.getint('homing_extruder', 1, minval=0, maxval=1))
 
         # Setup sensors common to all mmu_units
@@ -110,7 +113,7 @@ class MmuMachine:
             if not config.has_section(section):
                 raise config.error("Expected [%s] section not found" % section)
             c = config.getsection(section)
-            unit = mmu_unit.MmuUnit(c, self, i, self.num_gates)
+            unit = MmuUnit(c, self, i, self.num_gates)
             logging.info("MMU: Created: %s" % c.get_name())
             self.printer.add_object(c.get_name(), unit) # Register mmu_unit to prevent it being loaded by klipper
 
@@ -118,20 +121,6 @@ class MmuMachine:
             self.unit_by_name[name] = unit
             self.unit_by_gate[self.num_gates:self.num_gates + unit.num_gates] = [unit] * unit.num_gates
 
-            # PAUL can't we just call get_status() on the mmu_unit?
-            #unit_info = {}
-            #unit_info['name'] = unit.display_name
-            #unit_info['vendor'] = unit.mmu_vendor
-            #unit_info['version'] = unit.mmu_version_string
-            #unit_info['num_gates'] = unit.num_gates
-            #unit_info['first_gate'] = self.num_gates
-            #unit_info['selector_type'] = unit.selector_type
-            #unit_info['variable_rotation_distances'] = unit.variable_rotation_distances
-            #unit_info['variable_bowden_lengths'] = unit.variable_bowden_lengths
-            #unit_info['require_bowden_move'] = unit.require_bowden_move
-            #unit_info['filament_always_gripped'] = unit.filament_always_gripped
-            #unit_info['has_bypass'] = unit.has_bypass
-            #unit_info['multi_gear'] = unit.multigear
             self.unit_status["unit_%d" % i] = unit.get_status(0)
 
             self.num_gates += unit.num_gates
@@ -151,6 +140,18 @@ class MmuMachine:
                 if config.fileconfig.has_option('extruder', i):
                     self.old_ext_options[i] = config.fileconfig.get('extruder', i)
                     config.fileconfig.remove_option('extruder', i)
+
+# PAUL vvvv
+        # Create master mmu operations # PAUL rework
+        if not config.has_section('mmu'):
+            raise config.error("Expected [mmu] section not found")
+        c = config.getsection('mmu')
+        self.mmu_operation = MmuOperation(self, c)
+        logging.info("MMU: Created: %s" % c.get_name())
+        #self.printer.add_object(c.get_name(), mmu_operation) # Register mmu to prevent it being loaded by klipper
+# PAUL don't need object since can be found trough mmu_machine
+        self.printer.add_object('mmu', self.mmu_operation) # Register mmu to prevent it being loaded by klipper
+# PAUL ^^^^
 
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
 

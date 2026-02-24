@@ -14,10 +14,8 @@
 import random, logging, math, re
 
 # Happy Hare imports
+from .mmu_shared       import *
 from .mmu_sensor_utils import MmuRunoutHelper
-
-# MMU subcomponent clases
-from .mmu_shared   import MmuError
 
 class MmuSensorManager:
     def __init__(self, mmu):
@@ -436,7 +434,7 @@ class MmuSensorManager:
             # Note: For gear sensor the position of POS_HOMED_GATE is only valid if is not usually triggered (i.e. parking retract)
             sensor_selection = [
                 (SENSOR_PRE_GATE_PREFIX, None),
-                (SENSOR_GEAR_PREFIX, FILAMENT_POS_HOMED_GATE if self.mmu.gate_homing_endstop == SENSOR_GEAR_PREFIX and self.mmu.gate_parking_distance <= 0 else None), # PAUL check parking distance sign with v4
+                (SENSOR_GEAR_PREFIX, FILAMENT_POS_HOMED_GATE if self.mmu.UNIT.p.gate_homing_endstop == SENSOR_GEAR_PREFIX and self.mmu.UNIT.p.gate_parking_distance <= 0 else None), # PAUL check parking distance sign with v4
                 (SENSOR_GATE, FILAMENT_POS_HOMED_GATE),
                 (SENSOR_EXTRUDER_ENTRY, FILAMENT_POS_HOMED_ENTRY),
                 (SENSOR_TOOLHEAD, FILAMENT_POS_HOMED_TS),

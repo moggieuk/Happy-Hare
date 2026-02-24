@@ -17,13 +17,11 @@ import gc, sys, ast, random, logging, time, contextlib, math, os.path, re, unico
 # Klipper imports
 
 # Happy Hare imports
-from ..mmu_shared         import *
-
-# MMU subcomponent clases
+from .mmu_shared         import *
 
 
 # Main klipper module
-class MmuParameters:
+class MmuUnitParameters:
 
     def __init__(self, mmu_unit, config):
         self._config = config

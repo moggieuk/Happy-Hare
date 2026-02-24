@@ -99,45 +99,45 @@ class MmuSyncFeedbackManager:
 
     def set_test_config(self, gcmd):
         if self.has_sync_feedback():
-            self.sync_feedback_enabled           = gcmd.get_int('SYNC_FEEDBACK_ENABLED', self.sync_feedback_enabled, minval=0, maxval=1)
-            self.sync_feedback_buffer_range      = gcmd.get_float('SYNC_FEEDBACK_BUFFER_RANGE', self.sync_feedback_buffer_range, minval=0.)
-            self.sync_feedback_buffer_maxrange   = gcmd.get_float('SYNC_FEEDBACK_BUFFER_MAXRANGE', self.sync_feedback_buffer_maxrange, minval=0.)
-            self.sync_feedback_speed_multiplier  = gcmd.get_float('SYNC_FEEDBACK_SPEED_MULTIPLIER', self.sync_feedback_speed_multiplier, minval=1., maxval=50)
-            self.sync_feedback_boost_multiplier  = gcmd.get_float('SYNC_FEEDBACK_BOOST_MULTIPLIER', self.sync_feedback_boost_multiplier, minval=1., maxval=50)
-            self.sync_feedback_extrude_threshold = gcmd.get_float('SYNC_FEEDBACK_EXTRUDE_THRESHOLD', self.sync_feedback_extrude_threshold, above=1.)
-            self.sync_feedback_debug_log         = gcmd.get_int('SYNC_FEEDBACK_DEBUG_LOG', self.sync_feedback_debug_log, minval=0, maxval=1)
+            self.UNIT.p.sync_feedback_enabled           = gcmd.get_int('SYNC_FEEDBACK_ENABLED', self.UNIT.p.sync_feedback_enabled, minval=0, maxval=1)
+            self.UNIT.p.sync_feedback_buffer_range      = gcmd.get_float('SYNC_FEEDBACK_BUFFER_RANGE', self.UNIT.p.sync_feedback_buffer_range, minval=0.)
+            self.UNIT.p.sync_feedback_buffer_maxrange   = gcmd.get_float('SYNC_FEEDBACK_BUFFER_MAXRANGE', self.UNIT.p.sync_feedback_buffer_maxrange, minval=0.)
+            self.UNIT.p.sync_feedback_speed_multiplier  = gcmd.get_float('SYNC_FEEDBACK_SPEED_MULTIPLIER', self.UNIT.p.sync_feedback_speed_multiplier, minval=1., maxval=50)
+            self.UNIT.p.sync_feedback_boost_multiplier  = gcmd.get_float('SYNC_FEEDBACK_BOOST_MULTIPLIER', self.UNIT.p.sync_feedback_boost_multiplier, minval=1., maxval=50)
+            self.UNIT.p.sync_feedback_extrude_threshold = gcmd.get_float('SYNC_FEEDBACK_EXTRUDE_THRESHOLD', self.UNIT.p.sync_feedback_extrude_threshold, above=1.)
+            self.UNIT.p.sync_feedback_debug_log         = gcmd.get_int('SYNC_FEEDBACK_DEBUG_LOG', self.UNIT.p.sync_feedback_debug_log, minval=0, maxval=1)
 
-            flowguard_enabled = gcmd.get_int('FLOWGUARD_ENABLED', self.flowguard_enabled, minval=0, maxval=1)
-            if flowguard_enabled != self.flowguard_enabled:
+            flowguard_enabled = gcmd.get_int('FLOWGUARD_ENABLED', self.UNIT.p.flowguard_enabled, minval=0, maxval=1)
+            if flowguard_enabled != self.UNIT.p.flowguard_enabled:
                 self._config_flowguard_feature(flowguard_enabled)
-            self.flowguard_max_relief = gcmd.get_float('FLOWGUARD_MAX_RELIEF', self.flowguard_max_relief, above=1.)
+            self.UNIT.p.flowguard_max_relief = gcmd.get_float('FLOWGUARD_MAX_RELIEF', self.UNIT.p.flowguard_max_relief, above=1.)
 
         if self.mmu.has_encoder():
-            mode = gcmd.get_int('FLOWGUARD_ENCODER_MODE', self.flowguard_encoder_mode, minval=0, maxval=2)
-            if mode != self.flowguard_encoder_mode:
-                self.flowguard_encoder_mode = mode
+            mode = gcmd.get_int('FLOWGUARD_ENCODER_MODE', self.UNIT.p.flowguard_encoder_mode, minval=0, maxval=2)
+            if mode != self.UNIT.p.flowguard_encoder_mode:
+                self.UNIT.p.flowguard_encoder_mode = mode
                 self.set_encoder_mode()
-            self.flowguard_encoder_max_motion = gcmd.get_float('FLOWGUARD_ENCODER_MAX_MOTION', self.flowguard_encoder_max_motion, above=0.)
+            self.UNIT.p.flowguard_encoder_max_motion = gcmd.get_float('FLOWGUARD_ENCODER_MAX_MOTION', self.UNIT.p.flowguard_encoder_max_motion, above=0.)
 
 
     def get_test_config(self):
         msg  = ""
         if self.has_sync_feedback():
-            msg += "\nsync_feedback_enabled = %d" % self.sync_feedback_enabled
-            msg += "\nsync_feedback_buffer_range = %.1f" % self.sync_feedback_buffer_range
-            msg += "\nsync_feedback_buffer_maxrange = %.1f" % self.sync_feedback_buffer_maxrange
-            msg += "\nsync_feedback_speed_multiplier = %.1f" % self.sync_feedback_speed_multiplier
-            msg += "\nsync_feedback_boost_multiplier = %.1f" % self.sync_feedback_boost_multiplier
-            msg += "\nsync_feedback_extrude_threshold = %.1f" % self.sync_feedback_extrude_threshold
-            msg += "\nsync_feedback_debug_log = %d" % self.sync_feedback_debug_log
+            msg += "\nsync_feedback_enabled = %d" % self.UNIT.p.sync_feedback_enabled
+            msg += "\nsync_feedback_buffer_range = %.1f" % self.UNIT.p.sync_feedback_buffer_range
+            msg += "\nsync_feedback_buffer_maxrange = %.1f" % self.UNIT.p.sync_feedback_buffer_maxrange
+            msg += "\nsync_feedback_speed_multiplier = %.1f" % self.UNIT.p.sync_feedback_speed_multiplier
+            msg += "\nsync_feedback_boost_multiplier = %.1f" % self.UNIT.p.sync_feedback_boost_multiplier
+            msg += "\nsync_feedback_extrude_threshold = %.1f" % self.UNIT.p.sync_feedback_extrude_threshold
+            msg += "\nsync_feedback_debug_log = %d" % self.UNIT.p.sync_feedback_debug_log
     
             msg += "\n\nFLOWGUARD:"
-            msg += "\nflowguard_enabled = %d" % self.flowguard_enabled
-            msg += "\nflowguard_max_relief = %.1f" % self.flowguard_max_relief
+            msg += "\nflowguard_enabled = %d" % self.UNIT.p.flowguard_enabled
+            msg += "\nflowguard_max_relief = %.1f" % self.UNIT.p.flowguard_max_relief
 
         if self.mmu.has_encoder():
-            msg += "\nflowguard_encoder_mode = %d" % self.flowguard_encoder_mode
-            msg += "\nflowguard_encoder_max_motion = %.1f" % self.flowguard_encoder_max_motion
+            msg += "\nflowguard_encoder_mode = %d" % self.UNIT.p.flowguard_encoder_mode
+            msg += "\nflowguard_encoder_max_motion = %.1f" % self.UNIT.p.flowguard_encoder_max_motion
         return msg
 
 
@@ -164,7 +164,7 @@ class MmuSyncFeedbackManager:
         """
         This is whether the user has enabled the sync-feedback feature (the "big" switch)
         """
-        return self.sync_feedback_enabled
+        return self.UNIT.p.sync_feedback_enabled
 
 
     def is_active(self):
@@ -177,17 +177,17 @@ class MmuSyncFeedbackManager:
     def get_sync_feedback_string(self, state=None, detail=False):
         if state is None:
             state = self._get_sensor_state()
-        if (self.mmu.is_enabled and self.sync_feedback_enabled and self.active) or detail:
+        if (self.mmu.is_enabled and self.UNIT.p.sync_feedback_enabled and self.active) or detail:
             # Polarity varies slightly between modes on proportional sensor so ask controller
             polarity = self.ctrl.polarity(state)
             return 'compressed' if polarity > 0 else 'tension' if polarity < 0 else 'neutral'
-        elif self.mmu.is_enabled and self.sync_feedback_enabled:
+        elif self.mmu.is_enabled and self.UNIT.p.sync_feedback_enabled:
             return "inactive"
         return "disabled"
 
 
     def activate_flowguard(self, eventtime):
-        if self.flowguard_enabled and not self.flowguard_active:
+        if self.UNIT.p.flowguard_enabled and not self.flowguard_active:
             self.flowguard_active = True
             # This resets controller with last good autotuned RD, resets flowguard and resumes autotune
             self._reset_controller(eventtime, hard_reset=False)
@@ -196,7 +196,7 @@ class MmuSyncFeedbackManager:
 
 
     def deactivate_flowguard(self, eventtime):
-        if self.flowguard_enabled and self.flowguard_active:
+        if self.UNIT.p.flowguard_enabled and self.flowguard_active:
             self.flowguard_active = False
             self.ctrl.autotune.pause() # Very likley this is a period that we want to exclude from autotuning
             self.mmu.log_info("FlowGuard monitoring deactivated and autotune paused")
@@ -210,11 +210,11 @@ class MmuSyncFeedbackManager:
         if not self.mmu.has_encoder(): return
 
         # Notify sensor of mode
-        if mode is None: mode = self.flowguard_encoder_mode
+        if mode is None: mode = self.UNIT.p.flowguard_encoder_mode
         self.mmu.encoder_sensor.set_mode(mode)
 
         # Figure out the correct detection length based on mode
-        cdl = self.flowguard_encoder_max_motion
+        cdl = self.UNIT.p.flowguard_encoder_max_motion
         if mode == self.mmu.encoder_sensor.RUNOUT_AUTOMATIC:
             cdl = self.mmu.save_variables.allVariables.get(VARS_MMU_CALIB_CLOG_LENGTH, cdl)
 
@@ -230,7 +230,7 @@ class MmuSyncFeedbackManager:
         Returns distance of the correction move and whether operation was successful (or None if not performed)
         """
         has_tension, has_compression, has_proportional = self.get_active_sensors()
-        max_move = max_move or self.sync_feedback_buffer_maxrange
+        max_move = max_move or self.UNIT.p.sync_feedback_buffer_maxrange
 
         if has_proportional:
             return self._adjust_filament_tension_proportional() # Doesn't yet support extruder stepper or max_move parameter
@@ -288,7 +288,7 @@ class MmuSyncFeedbackManager:
         self.mmu.log_to_file(gcmd.get_commandline())
         if self.mmu.check_if_disabled(): return
 
-        if not self.sync_feedback_enabled:
+        if not self.UNIT.p.sync_feedback_enabled:
             self.mmu.log_warning("Sync feedback is disabled or not configured. FlowGuard is unavailable")
             return
 
@@ -303,7 +303,7 @@ class MmuSyncFeedbackManager:
             return
 
         # Just report status
-        if self.flowguard_enabled:
+        if self.UNIT.p.flowguard_enabled:
             active = " and currently active" if self.flowguard_active else " (not currently active)"
             self.mmu.log_always("FlowGuard monitoring feature is enabled%s" % active)
         else:
@@ -344,16 +344,16 @@ class MmuSyncFeedbackManager:
         adjust_tension = gcmd.get_int('ADJUST_TENSION', 0, minval=0, maxval=1)
 
         if enable is not None:
-            self.sync_feedback_enabled = enable
+            self.UNIT.p.sync_feedback_enabled = enable
             self.mmu.log_always("Sync feedback feature is %s" % ("enabled" if enable else "disabled"))
 
-        if reset is not None and self.sync_feedback_enabled:
+        if reset is not None and self.UNIT.p.sync_feedback_enabled:
             self.mmu.log_always("Sync feedback reset")
             eventtime = self.mmu.reactor.monotonic()
             self._reset_controller(eventtime)
 
         if autotune is not None:
-            self.mmu.autotune_rotation_distance = autotune
+            self.mmu.UNIT.p.autotune_rotation_distance = autotune
             self.mmu.log_always("Save Autotuned rotation distance feature is %s" % ("enabled" if autotune else "disabled"))
 
         if adjust_tension:
@@ -373,7 +373,7 @@ class MmuSyncFeedbackManager:
 
         if enable is None and autotune is None and not adjust_tension:
             # Just report status
-            if self.sync_feedback_enabled:
+            if self.UNIT.p.sync_feedback_enabled:
                 mode = self.ctrl.get_type_mode()
                 active = " and currently active" if self.active else " (not currently active)"
                 msg = "Sync feedback feature with type-%s sensor is enabled%s\n" % (mode, active)
@@ -396,7 +396,7 @@ class MmuSyncFeedbackManager:
     
 
     def get_status(self, eventtime=None):
-        self.flowguard_status['encoder_mode'] = self.flowguard_encoder_mode # Ok to mutate status
+        self.flowguard_status['encoder_mode'] = self.UNIT.p.flowguard_encoder_mode # Ok to mutate status
         return {
             'sync_feedback_state': self.get_sync_feedback_string(),
             'sync_feedback_enabled': self.is_enabled(),
@@ -430,7 +430,7 @@ class MmuSyncFeedbackManager:
         if not self.mmu.is_enabled: return
         if eventtime is None: eventtime = self.mmu.reactor.monotonic()
 
-        msg = "MmuSyncFeedbackManager: Synced MMU to extruder%s" % (" (sync feedback activated)" if self.sync_feedback_enabled else "")
+        msg = "MmuSyncFeedbackManager: Synced MMU to extruder%s" % (" (sync feedback activated)" if self.UNIT.p.sync_feedback_enabled else "")
         if self.mmu.mmu_machine.filament_always_gripped:
             self.mmu.log_debug(msg)
         else:
@@ -446,17 +446,17 @@ class MmuSyncFeedbackManager:
         self._reset_controller(eventtime)
 
         # Turn on extruder movement events
-        self.extruder_monitor.register_callback(self._handle_extruder_movement, self.sync_feedback_extrude_threshold)
+        self.extruder_monitor.register_callback(self._handle_extruder_movement, self.UNIT.p.sync_feedback_extrude_threshold)
 
 
     def _handle_mmu_unsynced(self, eventtime=None):
         """
         Event indicating that gear stepper has been unsynced from extruder
         """
-        if not (self.mmu.is_enabled and self.sync_feedback_enabled and self.active): return
+        if not (self.mmu.is_enabled and self.UNIT.p.sync_feedback_enabled and self.active): return
         if eventtime is None: eventtime = self.mmu.reactor.monotonic()
 
-        msg = "MmuSyncFeedbackManager: Unsynced MMU from extruder%s" % (" (sync feedback deactivated)" if self.sync_feedback_enabled else "")
+        msg = "MmuSyncFeedbackManager: Unsynced MMU from extruder%s" % (" (sync feedback deactivated)" if self.UNIT.p.sync_feedback_enabled else "")
         if self.mmu.mmu_machine.filament_always_gripped:
             self.mmu.log_debug(msg)
         else:
@@ -483,7 +483,7 @@ class MmuSyncFeedbackManager:
         Event call when extruder has moved more than threshold. This also allows for
         periodic rotation_distance adjustment, autotune and flowguard checking
         """
-        if not (self.mmu.is_enabled and self.sync_feedback_enabled and self.active): return
+        if not (self.mmu.is_enabled and self.UNIT.p.sync_feedback_enabled and self.active): return
         if eventtime is None: eventtime = self.mmu.reactor.monotonic()
 
         self.mmu.log_trace("MmuSyncFeedbackManager: Extruder movement event, move=%.1f" % move)
@@ -499,7 +499,7 @@ class MmuSyncFeedbackManager:
         'state' should be -1 (tension), 0 (neutral), 1 (compressed)
         or can be a proportional float value between -1.0 and 1.0
         """
-        if not (self.mmu.is_enabled and self.sync_feedback_enabled and self.active): return
+        if not (self.mmu.is_enabled and self.UNIT.p.sync_feedback_enabled and self.active): return
         if eventtime is None: eventtime = self.mmu.reactor.monotonic()
  
         msg = "MmuSyncFeedbackManager: Sync state changed to %s" % (self.get_sync_feedback_string(state))
@@ -524,11 +524,11 @@ class MmuSyncFeedbackManager:
 
         # Handle flowguard trip
         self.flowguard_status = dict(output['flowguard'])
-        self.flowguard_status['enabled'] = bool(self.flowguard_enabled)
+        self.flowguard_status['enabled'] = bool(self.UNIT.p.flowguard_enabled)
         f_trigger = self.flowguard_status.get('trigger', None)
         f_reason = self.flowguard_status.get('reason', "")
         if f_trigger:
-            if self.flowguard_enabled and self.flowguard_active:
+            if self.UNIT.p.flowguard_enabled and self.flowguard_active:
                 self.mmu.log_error("FlowGuard detected a %s.\nReason for trip: %s" % (f_trigger, f_reason))
 
                 # Pick most appropriate sensor to assign event to (primariliy for optics)
@@ -560,7 +560,7 @@ class MmuSyncFeedbackManager:
         save = autotune.get('save', None)
         if rd is not None:
             msg = "MmuSyncFeedbackManager: Autotune suggested new operational reference rd: %.4f\n%s" % (rd, note)
-            if save and self.mmu.autotune_rotation_distance:
+            if save and self.mmu.UNIT.p.autotune_rotation_distance:
                 self.new_autotuned_rd = rd
             self.mmu.log_debug(msg)
 
@@ -606,13 +606,13 @@ class MmuSyncFeedbackManager:
         """
         rd_start = self.mmu.calibration_manager.get_gear_rd()
         cfg = SyncControllerConfig(
-            log_sync = bool(self.sync_feedback_debug_log),
-            buffer_range_mm = self.sync_feedback_buffer_range,
-            buffer_max_range_mm = self.sync_feedback_buffer_maxrange,
+            log_sync = bool(self.UNIT.p.sync_feedback_debug_log),
+            buffer_range_mm = self.UNIT.p.sync_feedback_buffer_range,
+            buffer_max_range_mm = self.UNIT.p.sync_feedback_buffer_maxrange,
             sensor_type = self._get_sensor_type(),
-            use_twolevel_for_type_p = self.sync_feedback_force_twolevel,
+            use_twolevel_for_type_p = self.UNIT.p.sync_feedback_force_twolevel,
             rd_start = rd_start,
-            flowguard_relief_mm = self.flowguard_max_relief,
+            flowguard_relief_mm = self.UNIT.p.flowguard_max_relief,
         )
         self.ctrl = SyncController(cfg)
         return self.ctrl
@@ -620,14 +620,14 @@ class MmuSyncFeedbackManager:
 
     def _config_flowguard_feature(self, enable):
         if enable:
-            self.mmu.log_info("FlowGuard monitoring feature %senabled" % ("already " if self.flowguard_enabled else ""))
-            if not self.flowguard_enabled:
-                self.flowguard_enabled = True
+            self.mmu.log_info("FlowGuard monitoring feature %senabled" % ("already " if self.UNIT.p.flowguard_enabled else ""))
+            if not self.UNIT.p.flowguard_enabled:
+                self.UNIT.p.flowguard_enabled = True
                 if self.ctrl:
                     self.ctrl.flowguard.reset()
         else:
-            self.mmu.log_info("FlowGuard monitoring feature %sdisabled" % ("already " if not self.flowguard_enabled else ""))
-            self.flowguard_enabled = False
+            self.mmu.log_info("FlowGuard monitoring feature %sdisabled" % ("already " if not self.UNIT.p.flowguard_enabled else ""))
+            self.UNIT.p.flowguard_enabled = False
 
 
     def _get_sync_bias_raw(self):
@@ -635,7 +635,7 @@ class MmuSyncFeedbackManager:
 
 
     def _get_sync_bias_modelled(self):
-        if self.mmu.is_enabled and self.sync_feedback_enabled and self.active and self.mmu.is_printing():
+        if self.mmu.is_enabled and self.UNIT.p.sync_feedback_enabled and self.active and self.mmu.is_printing():
             # This is a better representation for UI when the controller is active
             return self.estimated_state
         else:
@@ -704,11 +704,11 @@ class MmuSyncFeedbackManager:
             self.mmu.log_debug("No active sync feedback sensors; cannot adjust filament tension")
             return actual, fhomed
 
-        max_move = max_move or self.sync_feedback_buffer_maxrange
+        max_move = max_move or self.UNIT.p.sync_feedback_buffer_maxrange
         self.mmu.log_debug("Monitoring extruder entrance transition for up to %.1fmm..." % max_move)
 
         motor = "gear" if use_gear_motor else "extruder"
-        speed = min(self.mmu.gear_homing_speed, self.mmu.extruder_homing_speed) # Keep this tension adjustment slow
+        speed = min(self.mmu.UNIT.p.gear_homing_speed, self.mmu.mmu.p.extruder_homing_speed) # Keep this tension adjustment slow
 
         # Determine direction based on state and motor type
         # Note that if sync_feedback_buffer_range is 0, it implies
@@ -717,7 +717,7 @@ class MmuSyncFeedbackManager:
             self.mmu.log_debug("Relaxing filament compression")
             direction = -1 if use_gear_motor else 1
 
-            if self.sync_feedback_buffer_range == 0:
+            if self.UNIT.p.sync_feedback_buffer_range == 0:
                 msg = "Homing to tension sensor"
                 sensor = SENSOR_TENSION
                 homing_dir = 1
@@ -735,7 +735,7 @@ class MmuSyncFeedbackManager:
             self.mmu.log_debug("Relaxing filament tension")
             direction = 1 if use_gear_motor else -1
 
-            if self.sync_feedback_buffer_range == 0:
+            if self.UNIT.p.sync_feedback_buffer_range == 0:
                 msg = "Homing to compression sensor"
                 sensor = SENSOR_COMPRESSION
                 homing_dir = 1
@@ -757,10 +757,10 @@ class MmuSyncFeedbackManager:
             endstop_name=sensor,
         )
 
-        if fhomed and self.sync_feedback_buffer_range != 0:
+        if fhomed and self.UNIT.p.sync_feedback_buffer_range != 0:
             if use_gear_motor:
                 # Move just a little more to find perfect neutral spot between sensors
-                _,_,_,_ = self.mmu.trace_filament_move("Centering sync feedback buffer", (self.sync_feedback_buffer_range * direction) / 2.)
+                _,_,_,_ = self.mmu.trace_filament_move("Centering sync feedback buffer", (self.UNIT.p.sync_feedback_buffer_range * direction) / 2.)
         else:
             self.mmu.log_debug("Failed to reach neutral filament tension after moving %.1fmm" % max_move)
 
@@ -793,7 +793,7 @@ class MmuSyncFeedbackManager:
             neutral_band = 0.05
 
         # maxrange is full end-to-end sensor span; use half as the per-side budget from neutral to either end
-        maxrange_span_mm = float(self.sync_feedback_buffer_maxrange)
+        maxrange_span_mm = float(self.UNIT.p.sync_feedback_buffer_maxrange)
         if maxrange_span_mm <= 0.0:
             self.mmu.log_debug("Proportional adjust skipped: buffer maxrange <= 0")
             return 0., False

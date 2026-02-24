@@ -17,6 +17,9 @@
 #
 import logging, time
 
+# Happy Hare imports
+from .mmu_shared       import *
+
 
 INSERT_GCODE = "__MMU_SENSOR_INSERT"
 REMOVE_GCODE = "__MMU_SENSOR_REMOVE"
@@ -641,8 +644,7 @@ class MmuSensorFactory:
         """
         Button event handler for sync-feedback tension switch
         """
-        from .mmu import Mmu # For sensor names
-        c_sensor_name = t_sensor_name.replace(Mmu.SENSOR_TENSION, Mmu.SENSOR_COMPRESSION)
+        c_sensor_name = t_sensor_name.replace(SENSOR_TENSION, SENSOR_COMPRESSION)
         compression_sensor = self.printer.lookup_object("filament_switch_sensor %s" % c_sensor_name, None)
         compression_enabled = compression_sensor.runout_helper.sensor_enabled if compression_sensor else False
         compression_state = compression_sensor.runout_helper.filament_present if compression_enabled else False
@@ -660,8 +662,7 @@ class MmuSensorFactory:
         """
         Button event handler for sync-feedback compression switch
         """
-        from .mmu import Mmu
-        t_sensor_name = c_sensor_name.replace(Mmu.SENSOR_COMPRESSION, Mmu.SENSOR_TENSION)
+        t_sensor_name = c_sensor_name.replace(SENSOR_COMPRESSION, SENSOR_TENSION)
         tension_sensor = self.printer.lookup_object("filament_switch_sensor %s" % t_sensor_name, None)
         tension_enabled = tension_sensor.runout_helper.sensor_enabled if tension_sensor else False
         tension_state = tension_sensor.runout_helper.filament_present if tension_enabled else False

@@ -23,17 +23,18 @@
 #
 import logging, importlib, math, os, time, re
 
-# Happy Hare imports
-from .                            import mmu_machine, mmu_espooler, mmu_sensors, mmu_encoder, mmu_leds
-from .mmu_shared                  import *
-from .dev.mmu_parameters          import MmuParameters
-from .dev.mmu_calibration_manager import MmuCalibrationManager
-from .dev.mmu_selector            import *
-
 # Klipper imports
 import stepper, chelper, toolhead
 from kinematics.extruder  import PrinterExtruder, DummyExtruder, ExtruderStepper
 from .homing              import Homing, HomingMove
+
+# Happy Hare imports
+from .                            import mmu_machine, mmu_espooler, mmu_sensors, mmu_encoder, mmu_leds
+from .mmu.mmu_shared              import *
+from .mmu.mmu_unit_parameters     import MmuUnitParameters
+from .mmu.mmu_calibration_manager import MmuCalibrationManager
+from .mmu.mmu_selector            import *
+
 
 # For toolhead synchronization
 EPS           = 1e-6       # ~1 microsecond safety
@@ -440,7 +441,7 @@ class MmuUnit:
 
         # Load parameters config for this unit
         mmu_parameters = config.getsection('mmu_parameters %s' % self.name)
-        self.params = MmuParameters(self, mmu_parameters)
+        self.params = MmuUnitParameters(self, mmu_parameters)
         logging.info("MMU: Read: [%s]" % mmu_parameters.get_name())
 
         # Load selector

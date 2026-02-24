@@ -19,9 +19,11 @@ import logging, time
 
 from . import output_pin
 
-from .mmu_shared  import *
+from .mmu.mmu_shared  import *
 
 MAX_SCHEDULE_TIME = 5.0
+
+# PAUL fix where UNIT appears .. indicates parameter on the mmu_unit
 
 class MmuESpooler:
 
@@ -178,8 +180,8 @@ class MmuESpooler:
         """
         self.mmu.log_trace("ESPOOLER: Trigger fired for gate %d, state=%s" % (gate, state))
         self.burst_trigger_state[gate] = state
-        if self.mmu and self.mmu.espooler_assist_burst_trigger and self.burst_trigger_enabled.get(gate, False): # Don't handle if not ready or disabled
-            if self.mmu.espooler_assist_burst_trigger and state:
+        if self.mmu and self.mmu.UNIT.espooler_assist_burst_trigger and self.burst_trigger_enabled.get(gate, False): # Don't handle if not ready or disabled
+            if self.mmu.UNIT.espooler_assist_burst_trigger and state:
                 self.back_to_back_burst_count[gate] += 1
                 self.advance(gate)
             else:
@@ -226,11 +228,11 @@ class MmuESpooler:
         (used in spool drying rotation, filament tightening and manual jogging)
         """
         if operation == ESPOOLER_ASSIST:
-            power = self.mmu.espooler_assist_burst_power
-            duration = self.mmu.espooler_assist_burst_duration
+            power = self.mmu.UNIT.espooler_assist_burst_power
+            duration = self.mmu.UNIT.espooler_assist_burst_duration
         elif operation == ESPOOLER_REWIND:
-            power = self.mmu.espooler_rewind_burst_power
-            duration = self.mmu.espooler_rewind_burst_duration
+            power = self.mmu.UNIT.espooler_rewind_burst_power
+            duration = self.mmu.UNIT.espooler_rewind_burst_duration
         else:
             return
    
@@ -286,7 +288,7 @@ class MmuESpooler:
         if gate == self.print_assist_gate:
             if self.burst_trigger_state.get(gate, 0):
                 # Still triggered
-                if self.back_to_back_burst_count[gate] < self.mmu.espooler_assist_burst_trigger_max:
+                if self.back_to_back_burst_count[gate] < self.mmu.UNIT.espooler_assist_burst_trigger_max:
                     self.back_to_back_burst_count[gate] += 1
                     self.advance(gate)
                 else:
@@ -335,7 +337,7 @@ class MmuESpooler:
             self.operation[pg] = (ESPOOLER_OFF, 0)
 
             # Disable all triggers
-            if self.mmu.espooler_assist_burst_trigger:
+            if self.mmu.UNIT.espooler_assist_burst_trigger:
                 self._set_burst_trigger_enable(pg, False)
             if self.extruder_monitor:
                 self.extruder_monitor.watch(False)
@@ -419,7 +421,7 @@ class MmuESpooler:
                     self.operation[g] = (operation, 0)
 
                     # Enable appropriate triggers
-                    if self.mmu.espooler_assist_burst_trigger:
+                    if self.mmu.UNIT.espooler_assist_burst_trigger:
                         self._set_burst_trigger_enable(g, True)
                     elif self.extruder_monitor:
                         self.extruder_monitor.watch(True)
@@ -522,7 +524,7 @@ class MmuESpooler:
         def watch(self, enable):
             if not self.enabled and enable:
                 # Ensure first burst after initial extruder movement
-                self.last_extruder_pos = self._get_extruder_pos() - self.espooler.mmu.espooler_assist_extruder_move_length + 1.
+                self.last_extruder_pos = self._get_extruder_pos() - self.espooler.mmu.UNIT.espooler_assist_extruder_move_length + 1.
                 self.enabled = True
                 self.reactor.update_timer(self._extruder_pos_update_timer, self.reactor.NOW) # Enabled
             elif not enable:
@@ -544,7 +546,7 @@ class MmuESpooler:
         def _extruder_pos_update_event(self, eventtime):
             extruder_pos = self._get_extruder_pos(eventtime)
             #self.espooler.mmu.log_trace("ESPOOLER: current_extruder_pos: %s (last: %s)" % (extruder_pos, self.last_extruder_pos))
-            if self.last_extruder_pos is not None and extruder_pos > self.last_extruder_pos + self.espooler.mmu.espooler_assist_extruder_move_length:
+            if self.last_extruder_pos is not None and extruder_pos > self.last_extruder_pos + self.espooler.mmu.UNIT.espooler_assist_extruder_move_length:
                 self.espooler.advance() # Initiate burst
                 self.last_extruder_pos = extruder_pos
             return eventtime + self.CHECK_MOVEMENT_PERIOD

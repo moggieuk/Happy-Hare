@@ -46,10 +46,7 @@
 import logging
 
 # Happy Hare imports
-from ..mmu_unit            import VENDOR_VVD
-
-# MMU subcomponent clases
-from .mmu_shared           import *
+from .mmu_shared    import *
 
 
 class MmuEnvironmentManager:
@@ -73,7 +70,7 @@ class MmuEnvironmentManager:
 # PAUL        self.heater_max_temp         = self.mmu.config.getfloat('heater_max_temp', 65, above=0.) # Never to exceed temp to avoid melting enclosure
 # PAUL        self.heater_default_dry_temp = self.mmu.config.getfloat('heater_default_dry_temp', 45, above=0.)
 # PAUL        self.heater_default_dry_time = self.mmu.config.getfloat('heater_default_dry_time', 300, above=0.)
-# PAUL        self.heater_default_humidity = self.mmu.config.getfloat('heater_default_humidity', 10, above=0.)
+# PAUL        self.heater_default_dry_humidity = self.mmu.config.getfloat('heater_default_dry_humidity', 10, above=0.)
 # PAUL        self.heater_vent_macro       = self.mmu.config.get(     'heater_vent_macro', '')
 # PAUL        self.heater_vent_interval    = self.mmu.config.getfloat('heater_vent_interval', 0, minval=0)
 # PAUL        self.heater_rotate_interval  = self.mmu.config.getfloat('heater_rotate_interval', 5, minval=1)
@@ -132,24 +129,24 @@ class MmuEnvironmentManager:
 
     def set_test_config(self, gcmd):
         if self.has_heater():
-            self.heater_default_dry_temp = gcmd.get_float('HEATER_DEFAULT_DRY_TEMP', self.heater_default_dry_temp, above=0.)
-            self.heater_default_dry_time = gcmd.get_float('HEATER_DEFAULT_DRY_TIME', self.heater_default_dry_time, above=0.)
-            self.heater_default_humidity = gcmd.get_float('HEATER_DEFAULT_HUMIDITY', self.heater_default_humidity, above=0.)
-            self.heater_vent_macro       = gcmd.get(      'HEATER_VENT_MACRO', self.heater_vent_macro)
-            self.heater_vent_interval    = gcmd.get_float('HEATER_VENT_INTERVAL', self.heater_vent_interval, minval=0)
-            self.heater_rotate_interval  = gcmd.get_float('HEATER_ROTATE_INTERVAL', self.heater_rotate_interval, minval=0)
+            self.UNIT.p.heater_default_dry_temp = gcmd.get_float('HEATER_DEFAULT_DRY_TEMP', self.UNIT.p.heater_default_dry_temp, above=0.)
+            self.UNIT.p.heater_default_dry_time = gcmd.get_float('HEATER_DEFAULT_DRY_TIME', self.UNIT.p.heater_default_dry_time, above=0.)
+            self.heater_default_dry_humidity = gcmd.get_float('HEATER_DEFAULT_DRY_HUMIDITY', self.heater_default_dry_humidity, above=0.)
+            self.UNIT.p.heater_vent_macro       = gcmd.get(      'HEATER_VENT_MACRO', self.UNIT.p.heater_vent_macro)
+            self.UNIT.p.heater_vent_interval    = gcmd.get_float('HEATER_VENT_INTERVAL', self.UNIT.p.heater_vent_interval, minval=0)
+            self.UNIT.p.heater_rotate_interval  = gcmd.get_float('HEATER_ROTATE_INTERVAL', self.UNIT.p.heater_rotate_interval, minval=0)
 
 
     def get_test_config(self):
         msg = ""
         if self.has_heater():
             msg = "\n\nHEATER:"
-            msg += "\nheater_default_dry_temp = %.1f" % self.heater_default_dry_temp
-            msg += "\nheater_default_dry_time = %.1f" % self.heater_default_dry_time
-            msg += "\nheater_default_humidity = %.1f" % self.heater_default_humidity
-            msg += "\nheater_vent_macro = %s" % self.heater_vent_macro
-            msg += "\nheater_vent_interval = %.1f" % self.heater_vent_interval
-            msg += "\nheater_rotate_interval = %.1f" % self.heater_rotate_interval
+            msg += "\nheater_default_dry_temp = %.1f" % self.UNIT.p.heater_default_dry_temp
+            msg += "\nheater_default_dry_time = %.1f" % self.UNIT.p.heater_default_dry_time
+            msg += "\nheater_default_dry_humidity = %.1f" % self.heater_default_dry_humidity
+            msg += "\nheater_vent_macro = %s" % self.UNIT.p.heater_vent_macro
+            msg += "\nheater_vent_interval = %.1f" % self.UNIT.p.heater_vent_interval
+            msg += "\nheater_rotate_interval = %.1f" % self.UNIT.p.heater_rotate_interval
 
         return msg
 
@@ -238,11 +235,11 @@ class MmuEnvironmentManager:
         stop = gcmd.get_int('STOP', None, minval=0, maxval=1)
         dry = gcmd.get_int('DRY', None, minval=0, maxval=1)
         timer = gcmd.get_float('TIMER', None, minval=0.)
-        temp = gcmd.get_float('TEMP', None, minval=0., maxval=self.heater_max_temp)
-        humidity = gcmd.get_float('HUMIDITY', self.heater_default_humidity, minval=0.)
-        vent_interval = gcmd.get_float('VENT_INTERVAL', self.heater_vent_interval, minval=0.)
+        temp = gcmd.get_float('TEMP', None, minval=0., maxval=self.UNIT.p.heater_max_temp)
+        humidity = gcmd.get_float('HUMIDITY', self.heater_default_dry_humidity, minval=0.)
+        vent_interval = gcmd.get_float('VENT_INTERVAL', self.UNIT.p.heater_vent_interval, minval=0.)
         rotate = gcmd.get_int('ROTATE', 0, minval=0, maxval=1)
-        rotate_interval = gcmd.get_float('ROTATE_INTERVAL', self.heater_rotate_interval, minval=1.)
+        rotate_interval = gcmd.get_float('ROTATE_INTERVAL', self.UNIT.p.heater_rotate_interval, minval=1.)
 
         # GATE is a common user mistake so interpret as GATES of one element
         gate = gcmd.get_int('GATE', None, minval=0, maxval=self.mmu.num_gates - 1)
@@ -289,7 +286,7 @@ class MmuEnvironmentManager:
         if drying_data:
             msg = u"Drying data:\n"
             for material in sorted(self.drying_data.keys()):
-                t, minutes = self.drying_data[material]
+                t, minutes = self.mmu.p.drying_data[material]
                 # Avoid format() on unicode with alignment in Py2 edge-cases; keep it simple
                 msg += u"%s %s°C for %s\n" % (material + ":", int(t), _format_minutes(minutes))
             self.mmu.log_always(msg)
@@ -429,8 +426,8 @@ class MmuEnvironmentManager:
                     per_gate_plan[gate]['temp'] = temp
             else:
                 # Default to each filament type recommended temperature and dry time
-                lowest = self.heater_default_dry_temp
-                longest = self.heater_default_dry_time
+                lowest = self.UNIT.p.heater_default_dry_temp
+                longest = self.UNIT.p.heater_default_dry_time
                 for gate in gates:
                     t = per_gate_plan[gate]['temp']
                     d = per_gate_plan[gate]['timer']
@@ -448,8 +445,8 @@ class MmuEnvironmentManager:
                                       % (temp, info, _format_minutes(timer)))
 
             # Note that in multi-heater mode, each gate's temp and end_time is tracked independently
-            self._drying_time = timer or self.heater_default_dry_time
-            self._drying_temp = temp or self.heater_default_dry_temp
+            self._drying_time = timer or self.UNIT.p.heater_default_dry_time
+            self._drying_temp = temp or self.UNIT.p.heater_default_dry_temp
             self._drying_humidity_target = humidity
             self._drying_start_time = self.mmu.reactor.monotonic()
             self._drying_end_time = self._drying_start_time + self._drying_time * 60
@@ -572,12 +569,12 @@ class MmuEnvironmentManager:
             # Venting status
             if self._vent_timer is not None:
                 msg += u"\nVenting operational (running macro %s every %s, next in %s)" % (
-                    self.heater_vent_macro,
+                    self.UNIT.p.heater_vent_macro,
                     _format_minutes(self._drying_vent_interval),
                     _format_minutes(max(self.CHECK_INTERVAL, self._vent_timer) / 60),
                 )
             else:
-                if not self.heater_vent_macro:
+                if not self.UNIT.p.heater_vent_macro:
                     vent_reason = "heater_vent_macro not set"
                 else:
                     vent_reason = "heater_vent_interval is 0"
@@ -720,8 +717,8 @@ class MmuEnvironmentManager:
         if self._vent_timer is not None:
             self._vent_timer -= self.CHECK_INTERVAL
 
-            if self._vent_timer < 0 and self.heater_vent_macro:
-                cmd = self.heater_vent_macro
+            if self._vent_timer < 0 and self.UNIT.p.heater_vent_macro:
+                cmd = self.UNIT.p.heater_vent_macro
                 if self._has_per_gate_heaters():
                     cmd += " GATES=%s" % ",".join(map(str, self._get_active_gates()))
                 self.mmu.log_debug("MmuEnvironmentManager: Running heater vent macro '%s'" % cmd)
@@ -795,8 +792,8 @@ class MmuEnvironmentManager:
             # Queue all selected gates; we'll start up to max_concurrent_heaters
             for gate in self._drying_gates:
                 plan = per_gate_plan.get(gate, {})
-                gtemp = plan.get('temp', self.heater_default_dry_temp)
-                gtime = plan.get('timer', self.heater_default_dry_time)
+                gtemp = plan.get('temp', self.UNIT.p.heater_default_dry_temp)
+                gtime = plan.get('timer', self.UNIT.p.heater_default_dry_time)
                 material = plan.get('material', "unknown")
 
                 self._gate_drying[gate] = {
@@ -1080,8 +1077,8 @@ class MmuEnvironmentManager:
         """
         Send event to  cause a small rewind action to rotate the spool in gate
         """
-        power = self.mmu.espooler_rewind_burst_power
-        duration = self.mmu.espooler_rewind_burst_duration
+        power = self.mmu.UNIT.p.espooler_rewind_burst_power
+        duration = self.mmu.UNIT.p.espooler_rewind_burst_duration
         self.mmu.printer.send_event("mmu:espooler_burst", gate, power / 100., duration, ESPOOLER_REWIND)
 
 
@@ -1104,8 +1101,8 @@ class MmuEnvironmentManager:
           - self.heater_default_dry_temp
           - self.heater_default_dry_time
         """
-        default_temp = self.heater_default_dry_temp
-        default_time = self.heater_default_dry_time
+        default_temp = self.UNIT.p.heater_default_dry_temp
+        default_time = self.UNIT.p.heater_default_dry_time
 
         lowest_temp = None
         longest_time = None
@@ -1141,9 +1138,9 @@ class MmuEnvironmentManager:
 
         If a material is not found in self.drying_data, use defaults.
         """
-        max_temp = self.heater_max_temp
-        default_temp = self.heater_default_dry_temp
-        default_time = self.heater_default_dry_time
+        max_temp = self.UNIT.p.heater_max_temp
+        default_temp = self.UNIT.p.heater_default_dry_temp
+        default_time = self.UNIT.p.heater_default_dry_time
 
         plan = {}
         for gate in gates:

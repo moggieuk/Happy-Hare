@@ -23,6 +23,8 @@
 #
 import logging, time
 
+from .mmu.mmu_shared   import *
+
 class MmuSensors:
 
     def __init__(self, config, *args):

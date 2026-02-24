@@ -62,8 +62,7 @@ import random, logging, math, re, traceback
 from ..homing        import Homing, HomingMove
 
 # Happy Hare imports
-from ..mmu_shared    import *
-# PAULfrom .               import mmu_unit as MmuUnit
+from .mmu_shared    import *
 
 
 ################################################################################

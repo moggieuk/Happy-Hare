@@ -26,10 +26,10 @@ import kconfiglib
 from .parser import ConfigBuilder, WhitespaceNode
 from .upgrades import Upgrades
 
-# Documented params that are not in templates
-supplemental_params = "cad_gate0_pos cad_gate_width cad_bypass_offset cad_last_gate_offset cad_block_width cad_bypass_block_width cad_bypass_block_delta cad_selector_tolerance gate_material gate_color gate_spool_id gate_status gate_filament_name gate_temperature gate_speed_override endless_spool_groups tool_to_gate_map"
+# Documented params that are not in templates or are commented out. This list prevents removal on updrade/reinstall
+supplemental_params = "cad_gate0_pos cad_gate_width cad_bypass_offset cad_last_gate_offset cad_block_width cad_bypass_block_width cad_bypass_block_delta cad_selector_tolerance cad_gate_width cad_max_rotations default_gate_material gate_color gate_spool_id default_gate_status default_gate_filament_name default_gate_temperature default_gate_speed_override default_endless_spool_groups default_ttg_map"
 
-# Other legal params that aren't exposed
+# Other legal params that aren't exposed. This list prevents removal on upgrade/reinstall
 hidden_params = "serious suppress_kalico_warning test_random_failures test_force_in_print error_dialog_macro error_macro toolhead_homing_macro park_macro save_position_macro restore_position_macro clear_position_macro encoder_dwell encoder_move_step_size gear_buzz_accel"
 
 happy_hare = '\n(\\_/)\n( *,*)\n(")_(") {caption}\n'
