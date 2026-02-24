@@ -277,7 +277,10 @@ class MmuServer:
         material = filament.get('material', '')
         color_hex = filament.get('color_hex', '').strip('#')[:8].lower() # Remove problematic First # character if present
         temp = filament.get('settings_extruder_temp', '')
-        return {'spool_id': spool_id, 'material': material, 'color': color_hex, 'name': name, 'temp': temp}
+        bed_temp = filament.get('settings_bed_temp', '')
+        vendor = filament.get('vendor', {}).get('name', '')
+        filament_id = filament.get('id', '')
+        return {'spool_id': spool_id, 'material': material, 'color': color_hex, 'name': name, 'temp': temp, 'bed_temp': bed_temp, 'vendor': vendor, 'filament_id': filament_id}
 
     async def _build_spool_location_cache(self, fix=False, silent=False) -> bool:
         '''
@@ -752,10 +755,10 @@ class MmuServer:
             gate_color = mmu.get('gate_color', [])
             gate_temperature = mmu.get('gate_temperature', [])
             gate_status = mmu.get('gate_status', [])
+            gate_filament_name = mmu.get('gate_filament_name', [])
 
             # Build batch of lane data
             batch_data = {}
-            scan_time = datetime.now(timezone.utc).isoformat()
 
             for gate, spool_id in gate_ids:
                 if gate < 0:
@@ -772,26 +775,33 @@ class MmuServer:
                 if is_empty:
                     # Empty gate format
                     lane_data = {
-                        "color": "",
-                        "material": "",
-                        "bed_temp": "",
-                        "nozzle_temp": "",
-                        "scan_time": "",
-                        "td": "",
+                        "vendor_name": None,
+                        "name": None,
+                        "color": None,
+                        "material": None,
+                        "bed_temp": None,
+                        "nozzle_temp": None,
+                        "scan_time": None,
+                        "td": None,
                         "lane": str(lane),
-                        "spool_id": None
+                        "spool_id": None,
+                        "filament_id": None
                     }
                 else:
+                    spool_attrs = self.spool_location.get(spool_id, ('', -1, {}))[2] if spool_id in self.spool_location else {}
                     # Populated gate format
                     lane_data = {
-                        "color": gate_color[gate] if gate < len(gate_color) else '',
-                        "td": 4.0,
-                        "material": gate_material[gate] if gate < len(gate_material) else '',
-                        "bed_temp": "",
+                        "vendor_name": spool_attrs.get('vendor', None) or None,
+                        "name": (gate_filament_name[gate] if gate < len(gate_filament_name) else None) or spool_attrs.get('name', None) or None,
+                        "color": gate_color[gate] if gate < len(gate_color) else None,
+                        "td": None, # we don't currently capture transmision distance and isn't standard in spoolman
+                        "material": gate_material[gate] if gate < len(gate_material) else None,
+                        "bed_temp": spool_attrs.get('bed_temp', None) or None,
                         "nozzle_temp": gate_temperature[gate] if gate < len(gate_temperature) else 200,
-                        "scan_time": scan_time,
-                        "lane": str(lane),
-                        "spool_id": spool_id if spool_id > 0 else None
+                        "scan_time": None,
+                        "lane": str(lane), # currently orca reads this as a string, but it is actually an int representing the gate number
+                        "spool_id": spool_id if spool_id > 0 else None,
+                        "filament_id": spool_attrs.get('filament_id', None) or None
                     }
 
                 batch_data[lane_key] = lane_data
