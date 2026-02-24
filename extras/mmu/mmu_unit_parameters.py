@@ -1,5 +1,4 @@
 # Happy Hare MMU Software
-# Main module
 #
 # Copyright (C) 2022-2025  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
@@ -12,15 +11,12 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import gc, sys, ast, random, logging, time, contextlib, math, os.path, re, unicodedata, traceback
-
-# Klipper imports
+import logging
 
 # Happy Hare imports
-from .mmu_shared         import *
+from .mmu_constants import *
 
 
-# Main klipper module
 class MmuUnitParameters:
 
     def __init__(self, mmu_unit, config):

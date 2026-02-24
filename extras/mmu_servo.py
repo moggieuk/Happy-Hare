@@ -1,11 +1,12 @@
 # Happy Hare MMU Software
 #
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Goal:
 # Custom servo support that carefully synchronizes PWM changes to avoid "kickback" caused by
 # a truncated final pulse with digital servos. All existing servo functionality is available
 # with the addition of a 'DURATION' parameter for setting PWM pulse train with auto off
-#
-# Copyright (C) 2022-2026  moggieuk#6538 (discord)
-#                          moggieuk@hotmail.com
 #
 # Based on original servo.py Copyright (C) 2017-2020  Kevin O'Connor <kevin@koconnor.net>
 #
@@ -19,6 +20,7 @@ import logging, time
 
 SERVO_SIGNAL_PERIOD = 0.020
 PIN_MIN_TIME = 0.100
+
 
 class MmuServo:
     def __init__(self, config):

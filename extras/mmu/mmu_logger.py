@@ -13,7 +13,8 @@
 import logging, logging.handlers, threading, os, queue, atexit
 
 # Happy Hare imports
-from .mmu_shared    import *
+from .mmu_constants import *
+
 
 class MmuLogger:
     def __init__(self, logfile_path):

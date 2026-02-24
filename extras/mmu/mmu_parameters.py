@@ -1,7 +1,6 @@
 # Happy Hare MMU Software
-# Main module
 #
-# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
 # Goal: Container for all shared mmu parameters
@@ -14,13 +13,10 @@
 #
 import logging, ast
 
-# Klipper imports
-
 # Happy Hare imports
-from .mmu_shared    import *
+from .mmu_constants import *
 
 
-# Main klipper module
 class MmuParameters:
 
     def __init__(self, mmu_machine, config):

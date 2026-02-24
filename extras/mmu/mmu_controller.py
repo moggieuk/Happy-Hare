@@ -20,23 +20,20 @@ from ..homing                   import Homing, HomingMove
 from ..tmc                      import TMCCommandHelper
 
 # Happy Hare imports
-#PAULfrom .                         import mmu_unit
-#PAULfrom .mmu_unit                      import MmuToolHead
-from .mmu_shared                import *
+from .mmu_constants             import *
 from .mmu_logger                import MmuLogger
 from .mmu_test                  import MmuTest
-from .mmu_utils                 import DebugStepperMovement, PurgeVolCalculator
+from .mmu_utils                 import MmuError, DebugStepperMovement, PurgeVolCalculator
 from .mmu_sensor_manager        import MmuSensorManager
 from .mmu_sensor_utils          import MmuRunoutHelper
 from .mmu_led_manager           import MmuLedManager
 from .mmu_sync_feedback_manager import MmuSyncFeedbackManager
-#PAULfrom .mmu.mmu_calibration_manager   import MmuCalibrationManager
 from .mmu_environment_manager   import MmuEnvironmentManager
 from .mmu_parameters            import MmuParameters
 
 
 # Main klipper module
-class MmuOperation:
+class MmuController:
 
     def __init__(self, mmu_machine, config):
         self.mmu_machine = mmu_machine
@@ -70,17 +67,14 @@ class MmuOperation:
         self.printer.register_event_handler("klippy:disconnect", self.handle_disconnect)
         self.printer.register_event_handler("klippy:ready", self.handle_ready)
 
-        self.kalico = bool(self.printer.lookup_object('danger_options', False))
-        self.p = MmuParameters(self.mmu_machine, config) # Read the shared mmu_parameters
+        # Parameters
+        self.p = mmu_machine.params
 
 # MOGGIE vv 
         self.extruder_name = self.mmu_machine.extruder_name # TODO Idea: This could be per-gate to map gates to different extruders!
 # MOGGIE ^^
 
-        # Instruct users to re-run ./install.sh if version number changes
-        self.config_version = config.getfloat('happy_hare_version', 2.2) # v2.2 was the last release before versioning
-        if self.config_version is not None and self.config_version < VERSION:
-            raise self.config.error("Looks like you upgraded (v%s -> v%s)?\n%s" % (self.config_version, VERSION, UPGRADE_REMINDER))
+        self.kalico = bool(self.printer.lookup_object('danger_options', False))
 
         self.tool_extrusion_multipliers = []
         self.tool_speed_multipliers = []
@@ -957,7 +951,7 @@ class MmuOperation:
 
         try:
             # Splash...
-            msg = '{1}(\_/){0}\n{1}( {0}*,*{1}){0}\n{1}(")_("){0} {5}{2}H{0}{3}a{0}{4}p{0}{2}p{0}{3}y{0} {4}H{0}{2}a{0}{3}r{0}{4}e{0} {1}%s{0} {2}R{0}{3}e{0}{4}a{0}{2}d{0}{3}y{0}{1}...{0}{6}' % self._fversion(self.config_version)
+            msg = '{1}(\_/){0}\n{1}( {0}*,*{1}){0}\n{1}(")_("){0} {5}{2}H{0}{3}a{0}{4}p{0}{2}p{0}{3}y{0} {4}H{0}{2}a{0}{3}r{0}{4}e{0} {1}%s{0} {2}R{0}{3}e{0}{4}a{0}{2}d{0}{3}y{0}{1}...{0}{6}' % self._fversion(self.mmu_machine.happy_hare_version)
             self.log_always(msg, color=True)
             if self.p.kalico:
                 msg = "Warning: You are running on Kalico (Danger-Klipper). Support is not guaranteed!"
@@ -1789,7 +1783,7 @@ class MmuOperation:
         detail = gcmd.get_int('DETAIL', 0, minval=0, maxval=1)
         on_off = lambda x: "ON" if x else "OFF"
 
-        msg = "MMU: Happy Hare %s controlling %d units:" % (self._fversion(self.config_version), self.mmu_machine.num_units)
+        msg = "MMU: Happy Hare %s controlling %d units:" % (self._fversion(self.mmu_machine.happy_hare_version), self.mmu_machine.num_units)
         msg += (" (DISABLED)" if not self.is_enabled else " (PAUSED)" if self.is_mmu_paused() else "")
         for i in range(self.mmu_machine.num_units):
             unit = self.mmu_machine.get_mmu_unit_by_index(i)

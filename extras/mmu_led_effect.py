@@ -1,10 +1,13 @@
 # Happy Hare MMU Software
+#
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Goal:
 # Wrapper around led_effect klipper module (included) to replicate any effect on entire strip
 # as well as on each individual LED for per-gate effects. This relies on the [mmu_leds] section
 # for each mmu_unit
 #
-# Copyright (C) 2022-2026  moggieuk#6538 (discord)
-#                          moggieuk@hotmail.com
 #
 # (\_/)
 # ( *,*)
@@ -14,8 +17,9 @@
 #
 import logging
 
-# Klipper imports
+# Happy Hare imports
 from .mmu_leds import MmuLeds
+
 
 # [mmu_led_effect] is a simple wrapper that makes it easy to define led animations
 #

@@ -13,14 +13,12 @@
 #
 import random, logging, math
 
-from ..mmu_sensors import MmuSensors
-
 # Happy Hare imports
-from ..mmu_unit    import MmuToolHead
+from ..mmu_unit     import MmuToolHead
+from ..mmu_sensors  import MmuSensors
+from .mmu_constants import *
+from .mmu_utils     import MmuError, PurgeVolCalculator, DebugStepperMovement
 
-# MMU subcomponent clases
-from .mmu_shared   import *
-from .mmu_utils    import PurgeVolCalculator, DebugStepperMovement
 
 class SyncStateTest(object):
     '''

@@ -1,6 +1,9 @@
 # Happy Hare MMU Software
 #
-# Definition of basic physical characteristics of MMU (including type/style)
+# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Goal: Definition of basic physical characteristics of MMU (including type/style)
 #   - allows for hardware configuration validation
 #
 # Implementation of MMU "Toolhead" to allow for:
@@ -9,9 +12,6 @@
 #   - extra "standby" endstops
 #   - extruder endstops and extruder only homing
 #   - switchable drive steppers on rails
-#
-# Copyright (C) 2022-2025  moggieuk#6538 (discord)
-#                          moggieuk@hotmail.com
 #
 # Kinematics logic based on code by Kevin O'Connor <kevin@koconnor.net>
 #
@@ -25,12 +25,12 @@ import logging, importlib, math, os, time, re
 
 # Klipper imports
 import stepper, chelper, toolhead
-from kinematics.extruder  import PrinterExtruder, DummyExtruder, ExtruderStepper
-from .homing              import Homing, HomingMove
+from kinematics.extruder import PrinterExtruder, DummyExtruder, ExtruderStepper
+from .homing             import Homing, HomingMove
 
 # Happy Hare imports
 from .                            import mmu_machine, mmu_espooler, mmu_sensors, mmu_encoder, mmu_leds
-from .mmu.mmu_shared              import *
+from .mmu.mmu_constants           import *
 from .mmu.mmu_unit_parameters     import MmuUnitParameters
 from .mmu.mmu_calibration_manager import MmuCalibrationManager
 from .mmu.mmu_selector            import *
@@ -289,8 +289,6 @@ class MmuUnit:
         if self.multigear and len(self.extra_gear_steppers) != self.num_gates - 1:
             raise config.error("extra_gear_steppers is not the correct length, expected %d elements" % self.num_gates - 1)
 
-        logging.info("MMU: Building mmu_unit [%s] ---------------------------" % config.get_name())
-
         # Find the TMC controller for base gear stepper so we can fill in missing config for other matching steppers
         # and ensure all gear steppers can be loaded
         self.gear_tmc = None
@@ -440,9 +438,9 @@ class MmuUnit:
             logging.info("MMU: - No mmu_buffer specified")
 
         # Load parameters config for this unit
-        mmu_parameters = config.getsection('mmu_parameters %s' % self.name)
-        self.params = MmuUnitParameters(self, mmu_parameters)
-        logging.info("MMU: Read: [%s]" % mmu_parameters.get_name())
+        mmu_parameters = c = config.getsection('mmu_unit_parameters %s' % self.name)
+        self.params = MmuUnitParameters(self, c)
+        logging.info("MMU: Read: [%s]" % c.get_name())
 
         # Load selector
         self.selector = globals()[self.selector_type](self, mmu_parameters)
@@ -652,7 +650,7 @@ class MmuToolHead(toolhead.ToolHead, object):
 
     def handle_connect(self):
         # Master MMU controller
-        self.mmu = self.printer.lookup_object('mmu')
+        self.mmu = self.mmu_machine.mmu_controller
 
 
     # Ensure the correct number of axes for convenience - MMU only has two

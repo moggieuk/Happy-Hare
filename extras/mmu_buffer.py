@@ -1,13 +1,13 @@
 # Happy Hare MMU Software
 #
-# Easy setup of sync-feedback "buffer"
+# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Goal: Easy setup of sync-feedback "buffer"
 #
 # sync feedback sensor(s):
 #   Creates buttons handlers (with filament_switch_sensor for visibility and control) and publishes events based on state change
 #   Named `sync_feedback_compression` & `sync_feedback_tension`
-#
-# Copyright (C) 2022-2025  moggieuk#6538 (discord)
-#                          moggieuk@hotmail.com
 #
 # (\_/)
 # ( *,*)
@@ -16,6 +16,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import logging, time
+
 
 class MmuBuffer:
 

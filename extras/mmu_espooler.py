@@ -1,13 +1,15 @@
 # Happy Hare MMU Software
 #
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Goal:
 # Implements h/w "eSpooler" control for a MMU unit that is powered by a DC motor
 # (normally PWM speed controlled) that can be used to rewind a filament spool or be
 # driven peridically in the forward direction to provide "forward assist" functionality.
 # For simplicity of setup it is assumed that all pins are of the same type/config per mmu_unit.
 # Control is via direct control or klipper events.
 #
-# Copyright (C) 2022-2026  moggieuk#6538 (discord)
-#                          moggieuk@hotmail.com
 #
 # (\_/)
 # ( *,*)
@@ -17,9 +19,11 @@
 #
 import logging, time
 
+# Klipper imports
 from . import output_pin
 
-from .mmu.mmu_shared  import *
+# Happy Hare imports
+from .mmu.mmu_constants import *
 
 MAX_SCHEDULE_TIME = 5.0
 
@@ -31,6 +35,7 @@ class MmuESpooler:
         if len(args) < 2:
             raise config.error("[%s] cannot be instantiated directly. It must be loaded by [mmu_unit]" % config.get_name())
         self.mmu_machine, self.mmu_unit, self.first_gate, self.num_gates = args
+
         self.name = config.get_name().split()[-1]
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
@@ -144,7 +149,7 @@ class MmuESpooler:
 
     def _handle_ready(self):
         self.toolhead = self.printer.lookup_object('toolhead')
-        self.mmu = self.printer.lookup_object('mmu')
+        self.mmu = self.mmu_machine.mmu_controller
 
         # Setup extruder monitor
         try:

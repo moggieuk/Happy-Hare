@@ -1,6 +1,9 @@
 # Happy Hare MMU Software
 # Utility classes for Happy Hare MMU
 #
+# MmuError
+# Goal: Wrapper exception for all MMU errors
+#
 # DebugStepperMovement
 # Goal: Internal testing class for debugging synced movement
 #
@@ -16,7 +19,12 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import math
+import logging, math
+
+
+# Mmu exception error class
+class MmuError(Exception):
+    pass
 
 
 # Internal testing class for debugging synced movement

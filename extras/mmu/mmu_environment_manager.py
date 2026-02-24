@@ -46,7 +46,7 @@
 import logging
 
 # Happy Hare imports
-from .mmu_shared    import *
+from .mmu_constants    import *
 
 
 class MmuEnvironmentManager:

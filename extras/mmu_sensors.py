@@ -1,6 +1,9 @@
 # Happy Hare MMU Software
 #
-# Easy setup of all filament sensors for mmu_unit
+# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Goal: Easy setup of all filament sensors for mmu_unit
 #
 # Pre-gate sensors:
 #   Simplifed filament switch sensor easy configuration of pre-gate sensors used to detect runout and insertion of filament
@@ -12,8 +15,6 @@
 #   Wrapper around `filament_switch_sensor` setting up insert/runout callbacks with modified runout event handling
 #   Named `mmu_gear`
 #
-# Copyright (C) 2022-2025  moggieuk#6538 (discord)
-#                          moggieuk@hotmail.com
 #
 # (\_/)
 # ( *,*)
@@ -23,7 +24,8 @@
 #
 import logging, time
 
-from .mmu.mmu_shared   import *
+from .mmu.mmu_constants import *
+
 
 class MmuSensors:
 

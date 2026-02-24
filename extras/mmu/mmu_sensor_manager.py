@@ -11,11 +11,13 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import random, logging, math, re
+import logging, re
 
 # Happy Hare imports
-from .mmu_shared       import *
+from .mmu_constants    import *
+from .mmu_utils        import MmuError
 from .mmu_sensor_utils import MmuRunoutHelper
+
 
 class MmuSensorManager:
     def __init__(self, mmu):

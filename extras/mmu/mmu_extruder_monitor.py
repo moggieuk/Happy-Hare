@@ -12,7 +12,8 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 
-from .mmu_shared import MmuError
+from .mmu_utils import MmuError
+
 
 class ExtruderMonitor:
     """

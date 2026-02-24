@@ -62,7 +62,8 @@ import random, logging, math, re, traceback
 from ..homing        import Homing, HomingMove
 
 # Happy Hare imports
-from .mmu_shared    import *
+from .mmu_constants import *
+from .mmu_utils     import MmuError
 
 
 ################################################################################
@@ -73,6 +74,7 @@ class BaseSelector:
 
     def __init__(self, mmu_unit, config):
         self.mmu_unit = mmu_unit
+        self.mmu_machine = mmu_unit.mmu_machine
         self.config = config
         self.printer = config.get_printer()
 
@@ -99,7 +101,7 @@ class BaseSelector:
         pass
 
     def handle_connect(self):
-        self.mmu = self.printer.lookup_object('mmu')
+        self.mmu = self.mmu_machine.mmu_controller # Shared MMU controller class
 
     def handle_ready(self):
         pass
@@ -967,7 +969,7 @@ class LinearSelectorServo:
         self.servo_angle = self.SERVO_UNKNOWN_STATE
 
     def handle_connect(self):
-        self.mmu = self.printer.lookup_object('mmu')
+        self.mmu = self.mmu_unit.mmu_machine.mmu_controller # Shared MMU controller class
 
         # Override defaults with saved/calibrated servo positions (set with MMU_SERVO)
         try:

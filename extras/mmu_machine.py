@@ -1,10 +1,11 @@
 # Happy Hare MMU Software
 #
-# Definition of virtual MMU
-#   - allows for specification and aggregation of multiple mmu_units
-#
 # Copyright (C) 2022-2025  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
+#
+# Goal: Definition of logical MMU
+#   - allows for specification and aggregation of multiple mmu_units
+#
 #
 # (\_/)
 # ( *,*)
@@ -14,21 +15,28 @@
 #
 import logging
 
+# Klipper imports
+from kinematics.extruder   import ExtruderStepper
+
 # Happy Hare imports
 from .                     import mmu_unit
 from .mmu_unit             import MmuUnit
-from .mmu.mmu_shared       import *
+from .mmu.mmu_constants    import *
 from .mmu.mmu_sensor_utils import MmuSensorFactory
-from .mmu.mmu_operation    import MmuOperation
+from .mmu.mmu_parameters   import MmuParameters
+from .mmu.mmu_controller   import MmuController
 
-# Klipper imports
-from kinematics.extruder   import ExtruderStepper
 
 class MmuMachine:
 
     def __init__(self, config):
         self.printer = config.get_printer()
         self.config = config
+
+        # Instruct users to re-run ./install.sh if version number changes
+        self.happy_hare_version = config.getfloat('happy_hare_version', 2.2) # v2.2 was the last release before versioning
+        if self.happy_hare_version is not None and self.happy_hare_version < VERSION:
+            raise self.config.error("Looks like you upgraded (v%s -> v%s)?\n%s" % (self.p.happy_hare_version, VERSION, UPGRADE_REMINDER))
 
         self.unit_names = list(config.getlist('units'))
         self.num_units = len(self.unit_names)
@@ -106,9 +114,11 @@ class MmuMachine:
         self.unit_by_gate = [] # Quick unit lookup by gate
         self.unit_status = {}  # Aggregated status for backward comptability
 
+        logging.info("MMU: Loaded [%s]" % config.get_name())
+
         for i, name in enumerate(self.unit_names):
             section = "mmu_unit %s" % name
-            logging.info("MMU: Loading section %s" % section)
+            logging.info("MMU: Building mmu_unit #%d [%s] ---------------------------" % (i, section))
 
             if not config.has_section(section):
                 raise config.error("Expected [%s] section not found" % section)
@@ -141,17 +151,16 @@ class MmuMachine:
                     self.old_ext_options[i] = config.fileconfig.get('extruder', i)
                     config.fileconfig.remove_option('extruder', i)
 
-# PAUL vvvv
+        # Load parameters config for mmu machine
+        if not config.has_section('mmu_parameters'):
+            raise config.error("Expected [mmu_parameters] section not found")
+        c = config.getsection('mmu_parameters')
+        self.params = MmuParameters(self, c)
+        logging.info("MMU: Read: [%s]" % c.get_name())
+
         # Create master mmu operations # PAUL rework
-        if not config.has_section('mmu'):
-            raise config.error("Expected [mmu] section not found")
-        c = config.getsection('mmu')
-        self.mmu_operation = MmuOperation(self, c)
-        logging.info("MMU: Created: %s" % c.get_name())
-        #self.printer.add_object(c.get_name(), mmu_operation) # Register mmu to prevent it being loaded by klipper
-# PAUL don't need object since can be found trough mmu_machine
-        self.printer.add_object('mmu', self.mmu_operation) # Register mmu to prevent it being loaded by klipper
-# PAUL ^^^^
+        self.mmu_controller = MmuController(self, c)
+        logging.info("MMU: Created MmuController")
 
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
 

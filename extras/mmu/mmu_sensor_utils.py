@@ -18,7 +18,7 @@
 import logging, time
 
 # Happy Hare imports
-from .mmu_shared       import *
+from .mmu_constants import *
 
 
 INSERT_GCODE = "__MMU_SENSOR_INSERT"

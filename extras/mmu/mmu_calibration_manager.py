@@ -23,10 +23,9 @@
 #
 import logging, math
 
-# Happy Hare classes
-
-# MMU subcomponent clases
-from .mmu_shared    import *
+# Happy Hare imports
+from .mmu_constants import *
+from .mmu_utils     import MmuError
 
 
 class MmuCalibrationManager:
@@ -72,7 +71,7 @@ class MmuCalibrationManager:
 
 
     def handle_connect():
-        self.mmu = self.printer.lookup_object('mmu') # Shared MMU operation class
+        self.mmu = self.mmu_machine.mmu_controller # Shared MMU controller class
 
         # Load bowden length configuration (calibration set with MMU_CALIBRATE_BOWDEN) ----------------------
         bowden_lengths = self.mmu.var_manager.get(self.VARS_MMU_CALIB_BOWDEN_LENGTHS, None, namespace=mmu_unit.name)

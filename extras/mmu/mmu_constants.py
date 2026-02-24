@@ -264,7 +264,3 @@ UI_BOX_L,  UI_BOX_R,  UI_BOX_T,  UI_BOX_B  = '\u251C', '\u2524', '\u252C', '\u25
 UI_BOX_M,  UI_BOX_H,  UI_BOX_V             = '\u253C', '\u2500', '\u2502'
 UI_EMOTICONS = [UI_DASH, '\U0001F60E', '\U0001F603', '\U0001F60A', '\U0001F610', '\U0001F61F', '\U0001F622', '\U0001F631']
 UI_SQUARE, UI_CUBE = '\u00B2', '\u00B3'
-
-# Mmu exception error class
-class MmuError(Exception):
-    pass

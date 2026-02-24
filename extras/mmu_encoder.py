@@ -1,8 +1,9 @@
 # Happy Hare MMU Software
-# Driver for encoder that supports movement measurement, runout/clog detection and flow rate calc
 #
 # Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
+#
+# Goal: Driver for encoder that supports movement measurement, runout/clog detection and flow rate calc
 #
 # Based on:
 # Original Enraged Rabbit Carrot Feeder Project  Copyright (C) 2021  Ette
@@ -19,6 +20,7 @@ import logging, time
 
 # Klipper imports
 from . import pulse_counter
+
 
 class MmuEncoder:
     CHECK_MOVEMENT_TIMEOUT = 0.250
@@ -77,13 +79,16 @@ class MmuEncoder:
         self.flowrate_samples = config.getint('flowrate_samples', 20, minval=5)
 
         # Register event handlers
+        self.printer.register_event_handler('klippy:connect', self._handle_connect)
         self.printer.register_event_handler('klippy:ready', self._handle_ready)
         self.printer.register_event_handler('idle_timeout:printing', self._handle_printing)
         self.printer.register_event_handler('idle_timeout:ready', self._handle_not_printing)
         self.printer.register_event_handler('idle_timeout:idle', self._handle_not_printing)
 
+    def _handle_connect(self):
+        self.mmu = self.mmu_machine.mmu_controller
+
     def _handle_ready(self):
-        self.mmu = self.printer.lookup_object('mmu')
         self.extruder = self.printer.lookup_object(self.mmu_machine.extruder_name)
         self.last_extruder_pos = 0.
         self.filament_runout_pos = self.min_headroom = self.detection_length
