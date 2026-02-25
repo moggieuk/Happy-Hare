@@ -24,14 +24,13 @@
 #
 import logging, time
 
-from .mmu.mmu_constants import *
+# Happy Hare imports
+from .mmu_constants import *
 
 
 class MmuSensors:
 
     def __init__(self, config, *args):
-        if len(args) < 2:
-            raise config.error("[%s] cannot be instantiated directly. It must be loaded by [mmu_unit]" % config.get_name())
         self.mmu_machine, self.mmu_unit, self.first_gate, self.num_gates = args
         self.name = config.get_name().split()[-1]
         self.printer = config.get_printer()
@@ -169,7 +168,3 @@ class MmuSensors:
 #            self.sensors[SENSOR_PROPORTIONAL] = MmuProportionalSensor(config, name=SENSOR_PROPORTIONAL)
 #
 # --------
-
-
-def load_config_prefix(config):
-    return MmuSensors(config)

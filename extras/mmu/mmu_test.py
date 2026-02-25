@@ -15,8 +15,8 @@ import random, logging, math
 
 # Happy Hare imports
 from ..mmu_unit     import MmuToolHead
-from ..mmu_sensors  import MmuSensors
 from .mmu_constants import *
+from .mmu_sensors   import MmuSensors
 from .mmu_utils     import MmuError, PurgeVolCalculator, DebugStepperMovement
 
 

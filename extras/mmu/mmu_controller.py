@@ -62,11 +62,6 @@ class MmuController:
         self._is_running_test = False         # True while running QA or soak tests
         self.slicer_tool_map = None
 
-        # Event handlers
-        self.printer.register_event_handler('klippy:connect', self.handle_connect)
-        self.printer.register_event_handler("klippy:disconnect", self.handle_disconnect)
-        self.printer.register_event_handler("klippy:ready", self.handle_ready)
-
         # Parameters
         self.p = mmu_machine.params
 
@@ -78,26 +73,6 @@ class MmuController:
 
         self.tool_extrusion_multipliers = []
         self.tool_speed_multipliers = []
-
-#        # PAUL vvvvvv temp hack to load in mmu_parameters...
-#        logging.info("PAUL: about to load mmu_parameters...")
-#        #mmu0_parameters = self.printer.load_object(config, 'mmu_parameters mmu0')
-#        mmu0_config = config.getsection('mmu_parameters mmu0')
-#        unit0 = self.mmu_machine.get_mmu_unit_by_name('mmu0')
-#        mmu0_parameters = MmuParameters(self, unit0, mmu0_config)
-#        src = getattr(mmu0_parameters, "__dict__", None)
-#        if not isinstance(src, dict):
-#            return  # nothing to copy (or other uses __slots__ only)
-#
-#        for name, value in src.items():
-#            if name.startswith("_"):
-#                continue
-#            if hasattr(self, name):
-#                logging.info("PAUL: attribute %s already exists on mmu !!!!!!!!!!!!" % name)
-#                continue
-#            setattr(self, name, value)
-#        logging.info("PAUL: loaded")
-#        # PAUL ^^^^^^^^
 
         # Complete setup of other components
         self._setup_logging()
@@ -304,9 +279,9 @@ class MmuController:
             self.mmu_logger.log("\n\n\nMMU Startup -----------------------------------------------\n")
 
     def handle_connect(self):
-        raise self.config.error("PAUL STOP HERE")
         self.toolhead = self.printer.lookup_object('toolhead')
         self.sensor_manager.reset_active_unit(self.unit_selected)
+        self.var_manager = self.mmu_machine.var_manager
 
         # Sanity check extruder name
         extruder = self.printer.lookup_object(self.extruder_name, None)
@@ -329,31 +304,30 @@ class MmuController:
         self.gear_percentage_run_current = self.extruder_percentage_run_current = 100 # Current run percentages
         self._gear_current_locked = False # True if gear current is currently locked by wrap_gear_current()
 
-# PAUL old
-#        # Establish gear_stepper initial gear_stepper and extruder currents and current percentage
-#        self.gear_tmc = self.mmu_unit().gear_tmc
-#        if self.gear_tmc is None:
-#            self.log_debug("TMC driver not found for gear_stepper, cannot use current reduction for collision detection or while synchronized printing")
-#        else:
-#            self.log_debug("Found TMC on gear_stepper. Current control enabled. Stallguard 'touch' homing possible")
-#        self.extruder_tmc = self.mmu_machine.extruder_tmc
-#        self.gear_default_run_current = self.gear_tmc.get_status(0)['run_current'] if self.gear_tmc else None
-#        self.extruder_default_run_current = self.extruder_tmc.get_status(0)['run_current'] if self.extruder_tmc else None
-#        self.gear_percentage_run_current = self.gear_restore_percent_run_current = self.extruder_percentage_run_current = 100.
-#
-#        self.gear_percentage_run_current = self.extruder_percentage_run_current = 100 # Current run percentages
-#        self._gear_current_locked = False # True if gear current is currently locked by wrap_gear_current()
-#
-#        # Use gc to find all active TMC current helpers - used for direct stepper current control for cleaner user log feedback
-#        self.tmc_current_helpers = {}
-#        refcounts = {}
-#        for obj in gc.get_objects():
-#            if isinstance(obj, TMCCommandHelper):
-#                ref_count = sys.getrefcount(obj)
-#                stepper_name = obj.stepper_name
-#                if stepper_name not in refcounts or ref_count > refcounts[stepper_name]:
-#                    refcounts[stepper_name] = ref_count
-#                    self.tmc_current_helpers[stepper_name] = obj.current_helper
+        # Establish gear_stepper initial gear_stepper and extruder currents and current percentage
+        self.gear_tmc = self.mmu_unit().gear_tmc
+        if self.gear_tmc is None:
+            self.log_debug("TMC driver not found for gear_stepper, cannot use current reduction for collision detection or while synchronized printing")
+        else:
+            self.log_debug("Found TMC on gear_stepper. Current control enabled. Stallguard 'touch' homing possible")
+        self.extruder_tmc = self.mmu_machine.extruder_tmc
+        self.gear_default_run_current = self.gear_tmc.get_status(0)['run_current'] if self.gear_tmc else None
+        self.extruder_default_run_current = self.extruder_tmc.get_status(0)['run_current'] if self.extruder_tmc else None
+        self.gear_percentage_run_current = self.gear_restore_percent_run_current = self.extruder_percentage_run_current = 100.
+
+        self.gear_percentage_run_current = self.extruder_percentage_run_current = 100 # Current run percentages
+        self._gear_current_locked = False # True if gear current is currently locked by wrap_gear_current()
+
+        # Use gc to find all active TMC current helpers - used for direct stepper current control for cleaner user log feedback
+        self.tmc_current_helpers = {}
+        refcounts = {}
+        for obj in gc.get_objects():
+            if isinstance(obj, TMCCommandHelper):
+                ref_count = sys.getrefcount(obj)
+                stepper_name = obj.stepper_name
+                if stepper_name not in refcounts or ref_count > refcounts[stepper_name]:
+                    refcounts[stepper_name] = ref_count
+                    self.tmc_current_helpers[stepper_name] = obj.current_helper
 
         # Sanity check that required klipper options are enabled
         self.print_stats = self.printer.lookup_object("print_stats", None)
@@ -367,35 +341,34 @@ class MmuController:
         if self.p.default_idle_timeout < 0:
             self.p.default_idle_timeout = self.printer.lookup_object("idle_timeout").idle_timeout
 
-        # Create "save_variables" manager for write efficiency and mmu_unit namespacing
-        self.var_manager = SaveVariableManager(self)
-
+        raise self.config.error("PAUL STOP HERE")
         # Create autotune manager to oversee calibration updates based on available telemetry
 #PAUL        self.calibration_manager = MmuCalibrationManager(self)
 
-        # Upgrade step 1: Legacy or scalar variables to lists -------------------------------------------------------
-        bowden_length = self.var_manager.get(VARS_MMU_CALIB_BOWDEN_LENGTH, None)
-        if bowden_length:
-            self.log_debug("Upgrading %s variable" % (VARS_MMU_CALIB_BOWDEN_LENGTH))
-            bowden_lengths = self._ensure_list_size([round(bowden_length, 1)], self.num_gates)
-            self.var_manager.delete(VARS_MMU_CALIB_BOWDEN_LENGTH)
-            # Can't write file now so we let this occur naturally on next write
-            self.var_manager.set(VARS_MMU_CALIB_BOWDEN_LENGTHS, bowden_lengths)
-            self.var_manager.set(VARS_MMU_CALIB_BOWDEN_HOME, self.mmu_unit().p.gate_homing_endstop)
-
-        rotation_distance = self.var_manager.get(VARS_MMU_GEAR_ROTATION_DISTANCE, None)
-        if rotation_distance:
-            self.log_debug("Upgrading %s and %s variables" % (VARS_MMU_GEAR_ROTATION_DISTANCE, VARS_MMU_CALIB_PREFIX))
-            rotation_distances = []
-            for i in range(self.num_gates):
-                ratio = self.var_manager.get("%s%d" % (VARS_MMU_CALIB_PREFIX, i), 0)
-                rotation_distances.append(round(rotation_distance * ratio, 4))
-                self.var_manager.delete("%s%d" % (VARS_MMU_CALIB_PREFIX, i))
-            self.var_manager.delete(VARS_MMU_GEAR_ROTATION_DISTANCE)
-            # Can't write file now so we let this occur naturally on next write
-            self.var_manager.set(VARS_MMU_GEAR_ROTATION_DISTANCES, rotation_distances)
-        else:
-            self.var_manager.delete("%s0" % VARS_MMU_CALIB_PREFIX)
+# PAUL too old to care
+#        # Upgrade step 1: Legacy or scalar variables to lists -------------------------------------------------------
+#        bowden_length = self.var_manager.get(VARS_MMU_CALIB_BOWDEN_LENGTH, None)
+#        if bowden_length:
+#            self.log_debug("Upgrading %s variable" % (VARS_MMU_CALIB_BOWDEN_LENGTH))
+#            bowden_lengths = self._ensure_list_size([round(bowden_length, 1)], self.num_gates)
+#            self.var_manager.delete(VARS_MMU_CALIB_BOWDEN_LENGTH)
+#            # Can't write file now so we let this occur naturally on next write
+#            self.var_manager.set(VARS_MMU_CALIB_BOWDEN_LENGTHS, bowden_lengths)
+#            self.var_manager.set(VARS_MMU_CALIB_BOWDEN_HOME, self.mmu_unit().p.gate_homing_endstop)
+#
+#        rotation_distance = self.var_manager.get(VARS_MMU_GEAR_ROTATION_DISTANCE, None)
+#        if rotation_distance:
+#            self.log_debug("Upgrading %s and %s variables" % (VARS_MMU_GEAR_ROTATION_DISTANCE, VARS_MMU_CALIB_PREFIX))
+#            rotation_distances = []
+#            for i in range(self.num_gates):
+#                ratio = self.var_manager.get("%s%d" % (VARS_MMU_CALIB_PREFIX, i), 0)
+#                rotation_distances.append(round(rotation_distance * ratio, 4))
+#                self.var_manager.delete("%s%d" % (VARS_MMU_CALIB_PREFIX, i))
+#            self.var_manager.delete(VARS_MMU_GEAR_ROTATION_DISTANCE)
+#            # Can't write file now so we let this occur naturally on next write
+#            self.var_manager.set(VARS_MMU_GEAR_ROTATION_DISTANCES, rotation_distances)
+#        else:
+#            self.var_manager.delete("%s0" % VARS_MMU_CALIB_PREFIX)
 
         # Upgrade step 2: Separate per mmu_unit ---------------------------------------------------------------------
         # Assume non-namespaced variables pertain to first mmu_unit or first encoder. This isn't perfect but it
@@ -516,6 +489,8 @@ class MmuController:
             else:
                 self.log_warning("Warning: Encoder resolution for %s not found in mmu_vars.cfg. Probably not calibrated" % mmu_unit.encoder.name)
 
+
+
         # Establish existence of Blobifier and filament cutter options
         # TODO: A little bit hacky until a more universal approach is implemented
         sequence_vars_macro = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
@@ -524,9 +499,10 @@ class MmuController:
             self.has_mmu_cutter = 'cut' in sequence_vars_macro.variables.get('user_post_unload_extension', '').lower() # E.g. "EREC_CUTTER_ACTION"
         self.has_toolhead_cutter = 'cut' in self.form_tip_macro.lower()                                                # E.g. "_MMU_CUT_TIP"
 
-        # Let selector know
-        for unit in self.mmu_machine.units:
-            unit.selector.handle_connect()
+# PAUL now in unit
+#        # Let selector know
+#        for unit in self.mmu_machine.units:
+#            unit.selector.handle_connect()
 
 # PAUL add in subcomponent loop... from v342
 #        # Sub components
@@ -534,7 +510,7 @@ class MmuController:
 #            if hasattr(m, 'handle_connect'):
 #                m.handle_connect()
 
-    def _ensure_list_size(self, lst, size, default_value=-1):
+    def _ensure_list_size(self, lst, size, default_value=-1): # PAUL not needed here
         lst = lst[:size]
         lst.extend([default_value] * (size - len(lst)))
         return lst

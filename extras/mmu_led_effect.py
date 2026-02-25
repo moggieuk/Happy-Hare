@@ -18,7 +18,7 @@
 import logging
 
 # Happy Hare imports
-from .mmu_leds import MmuLeds
+from .mmu.mmu_leds import MmuLeds
 
 
 # [mmu_led_effect] is a simple wrapper that makes it easy to define led animations

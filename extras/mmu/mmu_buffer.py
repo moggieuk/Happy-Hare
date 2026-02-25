@@ -17,11 +17,16 @@
 #
 import logging, time
 
+# Happy Hare imports
+from .mmu_constants    import *
+from .mmu_sensor_utils import MmuSensorFactory
+
 
 class MmuBuffer:
 
-    def __init__(self, config):
-        from .mmu.mmu_sensor_utils import MmuSensorFactory # PAUL move me?
+    def __init__(self, config, mmu_machine, mmu_unit):
+        self.mmu_machine = mmu_machine
+        self.mmu_units = [mmu_unit] # mmu_unit is just the first to load, not necessarily all
 
         self.name = config.get_name().split()[-1]
         self.printer = config.get_printer()
@@ -54,9 +59,12 @@ class MmuBuffer:
         # Uses single analog input; value scaled in [-1, 1]
         analog_pin = config.get('sync_feedback_analog_pin', None)
         if analog_pin:
-            self.proportional_sensor MmuProportionalSensor(config, name=SENSOR_PROPORTIONAL)
+            self.proportional_sensor = MmuProportionalSensor(config, name=SENSOR_PROPORTIONAL)
 # PAUL merge            self.sensors[SENSOR_PROPORTIONAL] = MmuProportionalSensor(config, name=SENSOR_PROPORTIONAL)
 # PAUL TODO this doesn't feel correct ^^^
 
-def load_config_prefix(config):
-    return MmuBuffer(config)
+#def load_config_prefix(config): # PAUL?
+#    return MmuBuffer(config)
+
+    def add_unit(self, mmu_unit):
+        self.mmu_units.append(mmu_unit)

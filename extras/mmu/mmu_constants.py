@@ -186,7 +186,7 @@ VARS_MMU_FILAMENT_REMAINING_COLOR = "mmu_state_filament_remaining_color"
 VARS_MMU_SWAP_STATISTICS          = "mmu_statistics_swaps"
 VARS_MMU_COUNTERS                 = "mmu_statistics_counters"
 
-# Per-encoder variables (calibration)
+# Per-encoder variables (calibration) # PAUL these probably belong in mmu_encoder
 VARS_MMU_ENCODER_RESOLUTION       = "mmu_encoder_resolution"
 VARS_MMU_CALIB_CLOG_LENGTH        = "mmu_calibration_clog_length"
 
@@ -195,10 +195,6 @@ VARS_MMU_GATE_STATISTICS_PREFIX   = "mmu_statistics_gate_"
 VARS_MMU_GEAR_ROTATION_DISTANCES  = "mmu_gear_rotation_distances"
 VARS_MMU_CALIB_BOWDEN_LENGTHS     = "mmu_calibration_bowden_lengths" # Per-gate calibrated bowden lengths
 VARS_MMU_CALIB_BOWDEN_HOME        = "mmu_calibration_bowden_home"    # Was encoder, gate or gear sensor used as reference point
-
-VARS_MMU_CALIB_BOWDEN_LENGTH      = "mmu_calibration_bowden_length"  # DEPRECATED (for upgrade only)
-VARS_MMU_GEAR_ROTATION_DISTANCE   = "mmu_gear_rotation_distance"     # DEPRECATED (for upgrade only)
-VARS_MMU_CALIB_PREFIX             = "mmu_calibration_"               # DEPRECATED (for upgrade only)
 
 # Mainsail/Fluid visualization of extruder colors and other attributes
 T_MACRO_COLOR_ALLGATES = 'allgates' # Color from gate map (all tools). Will add spool_id if spoolman is enabled

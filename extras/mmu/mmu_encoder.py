@@ -19,22 +19,27 @@
 import logging, time
 
 # Klipper imports
-from . import pulse_counter
+from .. import pulse_counter
+
+# Happy Hare imports
+from .mmu_constants           import *
+from .mmu_calibration_manager import CALIBRATED_ENCODER
 
 
 class MmuEncoder:
+
     CHECK_MOVEMENT_TIMEOUT = 0.250
 
     RUNOUT_DISABLED = 0
     RUNOUT_STATIC = 1
     RUNOUT_AUTOMATIC = 2
 
-    def __init__(self, config, *args):
-        if len(args) < 2:
-            raise config.error("[%s] cannot be instantiated directly. It must be loaded by [mmu_unit]" % config.get_name())
-        self.mmu_machine, self.mmu_unit = args
+    def __init__(self, config, mmu_machine, mmu_unit):
+        self.mmu_machine = mmu_machine
+        self.mmu_units = [mmu_unit] # mmu_unit is just the first to load, not necessarily all
         self.mmu = None
         self.name = config.get_name().split()[-1]
+
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object('gcode')
@@ -85,8 +90,25 @@ class MmuEncoder:
         self.printer.register_event_handler('idle_timeout:ready', self._handle_not_printing)
         self.printer.register_event_handler('idle_timeout:idle', self._handle_not_printing)
 
+
+    def add_unit(self, mmu_unit):
+        self.mmu_units.append(mmu_unit)
+
+
     def _handle_connect(self):
         self.mmu = self.mmu_machine.mmu_controller
+
+# PAUL TODO
+        cal_res = self.mmu_machine.var_manager.get(VARS_MMU_ENCODER_RESOLUTION, None, namespace=self.name)
+        if cal_res:
+            self.set_resolution(cal_res)
+            self.log_debug("Loaded saved resolution for encoder %s: %.4f" % (self.name, cal_res))
+
+            for unit in mmu_units:
+                self.calibration_manager.mark_calibrated(unit, CalibrationManager.CALIBRATED_ENCODER)
+        else:
+            self.mmu.log_warning("Warning: Encoder resolution for %s not found in mmu_vars.cfg. Probably not calibrated" % self.name)
+
 
     def _handle_ready(self):
         self.extruder = self.printer.lookup_object(self.mmu_machine.extruder_name)
@@ -303,6 +325,3 @@ class MmuEncoder:
                 'enabled': self._enabled,
                 'flow_rate': int(round(min(self.extrusion_flowrate, 1.) * 100))
         }
-
-def load_config_prefix(config):
-    return MmuEncoder(config)

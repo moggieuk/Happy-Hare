@@ -23,6 +23,7 @@ PIN_MIN_TIME = 0.100
 
 
 class MmuServo:
+
     def __init__(self, config):
         self.printer = config.get_printer()
         self.min_width = config.getfloat('minimum_pulse_width', .001, above=0., below=SERVO_SIGNAL_PERIOD)

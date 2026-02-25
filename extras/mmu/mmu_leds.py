@@ -17,10 +17,11 @@
 import logging, re
 
 # Klipper imports
-from . import led as klipper_led
+from .. import led as klipper_led
 
 
 class VirtualMmuLedChain:
+
     def __init__(self, config, unit_name, segment, config_chains):
         self.printer = config.get_printer()
         self.name = "%s_mmu_%s_leds" % (unit_name, segment)
