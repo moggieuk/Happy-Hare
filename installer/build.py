@@ -20,17 +20,55 @@ import logging
 import subprocess
 import dill
 
-from jinja2 import Environment, FileSystemLoader, UndefinedError
+from jinja2  import Environment, FileSystemLoader, UndefinedError
+from pathlib import Path
 
 import kconfiglib
-from .parser import ConfigBuilder, WhitespaceNode
+from .parser   import ConfigBuilder, WhitespaceNode
 from .upgrades import Upgrades
 
-# Documented params that are not in templates or are commented out. This list prevents removal on updrade/reinstall
-supplemental_params = "cad_gate0_pos cad_gate_width cad_bypass_offset cad_last_gate_offset cad_block_width cad_bypass_block_width cad_bypass_block_delta cad_selector_tolerance cad_gate_width cad_max_rotations default_gate_material gate_color gate_spool_id default_gate_status default_gate_filament_name default_gate_temperature default_gate_speed_override default_endless_spool_groups default_ttg_map"
+# Documented params that are not in templates or are commented out.
+# This list prevents removal on upgrade/reinstall.
+supplemental_params = [
+    "cad_gate0_pos",
+    "cad_gate_width",
+    "cad_bypass_offset",
+    "cad_last_gate_offset",
+    "cad_block_width",
+    "cad_bypass_block_width",
+    "cad_bypass_block_delta",
+    "cad_selector_tolerance",
+    "cad_gate_width",  # appears twice in original string
+    "cad_max_rotations",
+    "default_gate_material",
+    "default_gate_color",
+    "default_gate_spool_id",
+    "default_gate_status",
+    "default_gate_filament_name",
+    "default_gate_temperature",
+    "default_gate_speed_override",
+    "default_endless_spool_groups",
+    "default_ttg_map",
+]
 
-# Other legal params that aren't exposed. This list prevents removal on upgrade/reinstall
-hidden_params = "serious suppress_kalico_warning test_random_failures test_force_in_print error_dialog_macro error_macro toolhead_homing_macro park_macro save_position_macro restore_position_macro clear_position_macro encoder_dwell encoder_move_step_size gear_buzz_accel"
+# Other legal params that aren't exposed.
+# This list prevents removal on upgrade/reinstall.
+hidden_params = [
+    "serious",
+    "suppress_kalico_warning",
+    "test_random_failures",
+    "test_force_in_print",
+    "error_dialog_macro",
+    "error_macro",
+    "toolhead_homing_macro",
+    "park_macro",
+    "save_position_macro",
+    "restore_position_macro",
+    "clear_position_macro",
+    "encoder_dwell",
+    "encoder_move_step_size",
+    "gear_buzz_accel",
+]
 
 happy_hare = '\n(\\_/)\n( *,*)\n(")_(") {caption}\n'
 unhappy_hare = '\n(\\_/)\n( V,V)\n(")^(") {caption}\n'
@@ -190,9 +228,8 @@ class HHConfig(ConfigBuilder):
         ]
 
 
-def build_mmu_parameters_cfg(builder, hhcfg, unit_name):
-    section = "mmu_parameters %s" % unit_name
-    for param in supplemental_params.split() + hidden_params.split():
+def add_supplemental_params(builder, hhcfg, section):
+    for param in supplemental_params + hidden_params:
         if hhcfg.has_option(section, param):
             logging.debug(" > Reinserting hidden / supplemental option: %s" % param)
             builder.copy_option(hhcfg, section, param)
@@ -280,11 +317,22 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
     builder = ConfigBuilder()
     builder.read_buf(buffer)
 
-    # 5.Special case mmu_parameters.cfg because it may contain hidden and supplemental options not present in cfg template
+    # 5.Special case cfg files that contains parameters so we can add back any optional,
+    #   hidden or supplemental params because they are not present in cfg template
     if cfg_file_basename == "config/base/mmu_parameters.cfg":
-        m = re.match(r"(?:^|.*[\\/])(?P<unit>[^\\/]+)_parameters\.cfg$", dest_file)
-        unit_name = m.group(1) if m else "mmu"
-        build_mmu_parameters_cfg(builder, hhcfg, unit_name)
+        name = Path(dest_file).name
+        prefix = "mmu_parameters_"
+        suffix = ".cfg"
+        if name.startswith(prefix) and name.endswith(suffix):
+            unit_name = name[len(prefix):-len(suffix)]
+        else:
+            unit_name = "mmu"
+        section = "mmu_unit_parameters %s" % unit_name
+        add_supplemental_params(builder, hhcfg, section)
+
+    elif cfg_file_basename == "config/base/mmu.cfg":
+        add_supplemental_params(builder, hhcfg, "mmu_parameters")
+
 
     # How much of the existing .cfg do we apply?
     # IMPORTANT: for this to work, the kconfig PARAM_xyx name must match the

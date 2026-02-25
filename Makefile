@@ -121,8 +121,8 @@ repo_cfgs := \
 
 # Per-unit files: <unit>_{hardware,parameters}.cfg
 hh_unit_config_files := \
-	$(addprefix base/,$(addsuffix _hardware.cfg,$(unit_names))) \
-	$(addprefix base/,$(addsuffix _parameters.cfg,$(unit_names)))
+	$(addprefix base/mmu_hardware_,$(addsuffix .cfg,$(unit_names))) \
+	$(addprefix base/mmu_parameters_,$(addsuffix .cfg,$(unit_names)))
 
 # Final config set: all repo cfgs (minus the single-unit defaults) + per-unit files
 hh_config_files := \
@@ -234,13 +234,13 @@ KCONF_REQS = $(if $(filter y,$(CONFIG_MULTI_UNIT)), \
              $(KCONFIG_CONFIG)   $(OUT)/$(notdir $(KCONFIG_CONFIG)).pickle)
 
 # Shared target rules don't work on old make so separate for portability
-$(OUT)/mmu/base/%_hardware.cfg: \
+$(OUT)/mmu/base/mmu_hardware_%.cfg: \
   $(SRC)/config/base/mmu_hardware.cfg $(hh_configs_to_parse) $(KCONF_REQS)
 	$(Q)$(call link,$<,$@)
 	$(Q)$(PY) -m installer.build $(V) --build "$<" "$@" \
 		"$(if $(filter y,$(CONFIG_MULTI_UNIT)),$(KCONFIG_CONFIG)_$*,$(KCONFIG_CONFIG))" $(hh_configs_to_parse)
 
-$(OUT)/mmu/base/%_parameters.cfg: \
+$(OUT)/mmu/base/mmu_parameters_%.cfg: \
   $(SRC)/config/base/mmu_parameters.cfg $(hh_configs_to_parse) $(KCONF_REQS)
 	$(Q)$(call link,$<,$@)
 	$(Q)$(PY) -m installer.build $(V) --build "$<" "$@" \
