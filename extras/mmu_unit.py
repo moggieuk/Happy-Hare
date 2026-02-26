@@ -29,15 +29,15 @@ from kinematics.extruder import PrinterExtruder, DummyExtruder, ExtruderStepper
 from .homing             import Homing, HomingMove
 
 # Happy Hare imports
-from .mmu.mmu_constants           import *
-from .mmu.mmu_encoder             import MmuEncoder
-from .mmu.mmu_buffer              import MmuBuffer
-from .mmu.mmu_espooler            import MmuESpooler
-from .mmu.mmu_leds                import MmuLeds
-from .mmu.mmu_sensors             import MmuSensors
-from .mmu.mmu_unit_parameters     import MmuUnitParameters
-from .mmu.mmu_calibration_manager import MmuCalibrationManager
-from .mmu.mmu_selector            import *
+from .mmu.mmu_constants                import *
+from .mmu.unit.mmu_encoder             import MmuEncoder
+from .mmu.unit.mmu_buffer              import MmuBuffer
+from .mmu.unit.mmu_espooler            import MmuESpooler
+from .mmu.unit.mmu_leds                import MmuLeds
+from .mmu.unit.mmu_sensors             import MmuSensors
+from .mmu.unit.mmu_unit_parameters     import MmuUnitParameters
+from .mmu.unit.mmu_calibration_manager import MmuCalibrationManager
+from .mmu.unit.mmu_selector            import *
 
 
 # For toolhead synchronization

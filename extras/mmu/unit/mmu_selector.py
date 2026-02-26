@@ -59,11 +59,11 @@
 import random, logging, math, re, traceback
 
 # Klipper imports
-from ..homing        import Homing, HomingMove
+from ...homing        import Homing, HomingMove
 
 # Happy Hare imports
-from .mmu_constants import *
-from .mmu_utils     import MmuError
+from ..mmu_constants import *
+from ..mmu_utils     import MmuError
 
 
 ################################################################################

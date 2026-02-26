@@ -14,10 +14,10 @@
 import random, logging, math
 
 # Happy Hare imports
-from ..mmu_unit     import MmuToolHead
-from .mmu_constants import *
-from .mmu_sensors   import MmuSensors
-from .mmu_utils     import MmuError, PurgeVolCalculator, DebugStepperMovement
+from ..mmu_unit        import MmuToolHead
+from .mmu_constants    import *
+from .unit.mmu_sensors import MmuSensors
+from .mmu_utils        import MmuError, PurgeVolCalculator, DebugStepperMovement
 
 
 class SyncStateTest(object):

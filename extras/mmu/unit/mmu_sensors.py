@@ -25,7 +25,7 @@
 import logging, time
 
 # Happy Hare imports
-from .mmu_constants import *
+from ..mmu_constants import *
 
 
 class MmuSensors:

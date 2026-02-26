@@ -20,8 +20,8 @@
 import logging
 
 # Happy Hare imports
-from .mmu_constants  import *
-from .mmu_leds       import MmuLeds
+from .mmu_constants import *
+from .unit.mmu_leds import MmuLeds
 
 
 class MmuLedManager:

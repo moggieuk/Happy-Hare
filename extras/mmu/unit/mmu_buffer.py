@@ -18,8 +18,8 @@
 import logging, time
 
 # Happy Hare imports
-from .mmu_constants    import *
-from .mmu_sensor_utils import MmuSensorFactory
+from ..mmu_constants    import *
+from ..mmu_sensor_utils import MmuSensorFactory
 
 
 class MmuBuffer:

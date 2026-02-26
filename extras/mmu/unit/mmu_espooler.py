@@ -20,10 +20,10 @@
 import logging, time
 
 # Klipper imports
-from .. import output_pin
+from ... import output_pin
 
 # Happy Hare imports
-from .mmu_constants import *
+from ..mmu_constants import *
 
 MAX_SCHEDULE_TIME = 5.0
 

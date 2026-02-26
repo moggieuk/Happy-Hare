@@ -14,7 +14,7 @@
 import logging
 
 # Happy Hare imports
-from .mmu_constants import *
+from ..mmu_constants import *
 
 
 class MmuUnitParameters:

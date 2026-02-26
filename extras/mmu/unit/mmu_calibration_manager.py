@@ -24,8 +24,8 @@
 import logging, math
 
 # Happy Hare imports
-from .mmu_constants import *
-from .mmu_utils     import MmuError
+from ..mmu_constants import *
+from ..mmu_utils     import MmuError
 
 # Calibration steps
 CALIBRATED_GEAR_0    = 0b00001 # Specifically rotation_distance for gate 0

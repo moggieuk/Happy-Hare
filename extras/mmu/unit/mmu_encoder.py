@@ -19,10 +19,10 @@
 import logging, time
 
 # Klipper imports
-from .. import pulse_counter
+from ... import pulse_counter
 
 # Happy Hare imports
-from .mmu_constants           import *
+from ..mmu_constants          import *
 from .mmu_calibration_manager import CALIBRATED_ENCODER
 
 
