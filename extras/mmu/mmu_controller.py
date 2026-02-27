@@ -37,6 +37,7 @@ from .unit.mmu_encoder          import RUNOUT_DISABLED, RUNOUT_STATIC, RUNOUT_AU
 class MmuController:
 
     def __init__(self, mmu_machine, config):
+        logging.info("PAUL: init() for MmuController")
         self.mmu_machine = mmu_machine
         self.config = config
         self.printer = config.get_printer()
@@ -66,8 +67,8 @@ class MmuController:
         # Parameters
         self.p = mmu_machine.params
 
-# MOGGIE vv 
-        self.extruder_name = self.mmu_machine.extruder_name # TODO Idea: This could be per-gate to map gates to different extruders!
+# MOGGIE PAUL FIX ME .. just getting first unit vv 
+        self.extruder_name = self.mmu_unit(0).extruder_name # TODO Idea: This could be per-gate to map gates to different extruders!
 # MOGGIE ^^
 
         self.kalico = bool(self.printer.lookup_object('danger_options', False))
@@ -77,27 +78,30 @@ class MmuController:
 
         # Complete setup of other components
         self._setup_logging()
-        if not self.mmu_machine.homing_extruder:
-            self.log_debug("Warning: Using original klipper extruder stepper. Extruder homing not possible")
+#        if not self.mmu_machine.homing_extruder:
+#            self.log_debug("Warning: Using original klipper extruder stepper. Extruder homing not possible")
 
-# PAUL move this into mmu_machine
+# PAUL move this
 #        # Dynamically instantiate and register the selector class for each unit
 #        for unit in self.mmu_machine.units:
 #            selector = globals()[unit.selector_type](self, unit)
 #            if not isinstance(selector, BaseSelector):
 #                raise self.config.error("Invalid Selector class for MMU unit %s" % unit.name)
 #            unit.set_selector(selector)
-
+#
         # Managers are responsible for handling multiple mmu_units and encapsulate specific
         # functionality to reduce the complexity of main class
-        self.sensor_manager        = MmuSensorManager(self) # Must be done during initialization because also setsup homing endstops
+        self.sensor_manager        = MmuSensorManager(self) # Must be done during initialization because also sets up homing endstops
         self.led_manager           = MmuLedManager(self)
-        #self.environment_manager   = MmuEnvironmentManager(self)
-        self.managers = [
-            self.sensor_manager,
-            self.led_manager,
-            #self.environment_manager,
-        ]
+        self.environment_manager   = MmuEnvironmentManager(self)
+
+# PAUL
+#        #self.environment_manager   = MmuEnvironmentManager(self)
+#        self.managers = [
+#            self.sensor_manager,
+#            self.led_manager,
+#            #self.environment_manager,
+#        ]
 
         # Establish defaults for "reset" operation ----------------------------------------------------------
         # These lists are the defaults (used when reset) and will be overriden by values in mmu_vars.cfg...
@@ -282,6 +286,8 @@ class MmuController:
         self.sensor_manager.reset_active_unit(self.unit_selected)
         self.var_manager = self.mmu_machine.var_manager
 
+
+# PAUL all this must be multi-extruder !!! AND multi-gear
         # Sanity check extruder name
         extruder = self.printer.lookup_object(self.extruder_name, None)
         if not extruder:
@@ -294,7 +300,7 @@ class MmuController:
         else:
             self.log_debug("Found TMC on gear_stepper. Current control enabled. Stallguard 'touch' homing possible")
 
-        self.extruder_tmc = self.mmu_machine.extruder_tmc
+        self.extruder_tmc = self.mmu_unit(0).extruder_tmc # PAUL HACK
         if self.extruder_tmc is None:
             self.log_debug("TMC driver not found for extruder, cannot use current increase for tip forming move")
 
@@ -304,29 +310,17 @@ class MmuController:
         self._gear_current_locked = False # True if gear current is currently locked by wrap_gear_current()
 
         # Establish gear_stepper initial gear_stepper and extruder currents and current percentage
-        self.gear_tmc = self.mmu_unit().gear_tmc
+        self.gear_tmc = self.mmu_unit(0).gear_tmc # PAUL HACK
         if self.gear_tmc is None:
             self.log_debug("TMC driver not found for gear_stepper, cannot use current reduction for collision detection or while synchronized printing")
         else:
             self.log_debug("Found TMC on gear_stepper. Current control enabled. Stallguard 'touch' homing possible")
         self.extruder_tmc = self.mmu_machine.extruder_tmc
         self.gear_default_run_current = self.gear_tmc.get_status(0)['run_current'] if self.gear_tmc else None
-        self.extruder_default_run_current = self.extruder_tmc.get_status(0)['run_current'] if self.extruder_tmc else None
         self.gear_percentage_run_current = self.gear_restore_percent_run_current = self.extruder_percentage_run_current = 100.
 
         self.gear_percentage_run_current = self.extruder_percentage_run_current = 100 # Current run percentages
         self._gear_current_locked = False # True if gear current is currently locked by wrap_gear_current()
-
-        # Use gc to find all active TMC current helpers - used for direct stepper current control for cleaner user log feedback
-        self.tmc_current_helpers = {}
-        refcounts = {}
-        for obj in gc.get_objects():
-            if isinstance(obj, TMCCommandHelper):
-                ref_count = sys.getrefcount(obj)
-                stepper_name = obj.stepper_name
-                if stepper_name not in refcounts or ref_count > refcounts[stepper_name]:
-                    refcounts[stepper_name] = ref_count
-                    self.tmc_current_helpers[stepper_name] = obj.current_helper
 
         # Sanity check that required klipper options are enabled
         self.print_stats = self.printer.lookup_object("print_stats", None)
@@ -462,13 +456,9 @@ class MmuController:
     # This is key to multi mmu-unit support
 
     def mmu_unit(self, gate=None):
-        if gate is None:
-            gate = self.gate_selected
-        mmu_unit = self.mmu_machine.get_mmu_unit_by_gate(gate)
-        if mmu_unit:
-            return mmu_unit
-        self.log_assertion("No unit found for gate %d, returning unit 0" % (gate))
-        return self.mmu_machine.get_mmu_unit_by_gate(0)
+        if gate is None: gate = self.gate_selected
+        if gate < 0: gate = 0
+        return self.mmu_machine.get_mmu_unit_by_gate(gate)
 
     def selector(self, gate=None):
         return self.mmu_unit(gate).selector
@@ -959,9 +949,6 @@ class MmuController:
             'enabled': self.is_enabled,
             'num_gates': self.num_gates,
             'is_homed': self.selector().is_homed,
-            'is_locked': self.is_mmu_paused(), # DEPRECATED (alias for is_paused)
-            'is_paused': self.is_mmu_paused(), # DEPRECATED (use print_state)
-            'is_in_print': self.is_in_print(), # DEPRECATED (use print_state)
             'print_state': self.print_state,
             'unit': self.unit_selected,
             'tool': self.tool_selected,
@@ -972,7 +959,6 @@ class MmuController:
             'next_tool': self._next_tool,
             'toolchange_purge_volume': self.toolchange_purge_volume,
             'last_toolchange': self._last_toolchange,
-            'runout': self.is_handling_runout, # DEPRECATED (use operation)
             'operation': self.saved_toolhead_operation,
             'filament': "Loaded" if self.filament_pos == FILAMENT_POS_LOADED else
                         "Unloaded" if self.filament_pos == FILAMENT_POS_UNLOADED else
@@ -996,38 +982,38 @@ class MmuController:
             'tool_speed_multipliers': self.tool_speed_multipliers,
             'slicer_tool_map': self.slicer_tool_map,
             'action': self._get_action_string(),
-            'has_bypass': self.selector().has_bypass(), # TODO deprecate because this is a per unit selector bypass
             'sync_drive': self.mmu_toolhead().is_synced(),
-            'print_start_detection': self.p.print_start_detection, # For Klippain. Not really sure it is necessary
             'reason_for_pause': self.reason_for_pause if self.is_mmu_paused() else "",
             'extruder_filament_remaining': self.filament_remaining + self.p.toolhead_residual_filament,
             'spoolman_support': self.p.spoolman_support,
             'bowden_progress': self._get_bowden_progress(), # Simple 0-100%. -1 if not performing bowden move
             'espooler_active': self.espooler.get_operation(self.gate_selected)[0] if self.has_espooler() else '',
-            'endless_spool': self.endless_spool_enabled,           # DEPRECATED
-            'endless_spool_enabled': self.endless_spool_enabled,   # DEPRECATED
+            'endless_spool_enabled': self.endless_spool_enabled,
+            'print_start_detection': self.p.print_start_detection, # For Klippain. Not really sure it is necessary
+
+            # DEPRECATED but still used or likely to be used
+            'runout': self.is_handling_runout, # DEPRECATED but still used in HH macros (better to use operation)
+            'is_paused': self.is_mmu_paused(), # DEPRECATED (better to use print_state)
+
+            # PAUL I think these are ok to delete but check/fix Klipperscreen
+            'is_locked': self.is_mmu_paused(), # DEPRECATED (alias for is_paused)
+            'is_in_print': self.is_in_print(), # DEPRECATED (use print_state)
+            'endless_spool': self.endless_spool_enabled,           # DEPRECATED PAUL check UI need
+            'has_bypass': self.selector().has_bypass(), # TODO deprecate because this is a per unit selector bypass
+            'clog_detection': False,           # DEPRECATED PAUL check UI need
+            'clog_detection_enabled': False,   # DEPRECATED PAUL check UI need
         }
 
-        # Sub components
-        for m in self.managers:
-            if hasattr(m, 'get_status'):
-                status.update(m.get_status(eventtime))
-
-        # Not yet refactored as manager class # PAUL TODO make a manager
-        if self.has_espooler():
-            status.update(self.espooler.get_status(eventtime))
-
         status['sensors'] = self.sensor_manager.get_status(eventtime)
+        status.update(self.environment_manager.get_status(eventtime))
+
+        if self.has_espooler():
+            status.update(self.espooler().get_status(eventtime))
+
         if self.has_encoder():
             status['encoder'] = self.encoder().get_status(eventtime)
-        return status
 
-# PAUL old logic
-#        status.update(self.selector().get_status())
-#        status['sensors'] = self.sensor_manager.get_status()
-#        if self.has_encoder():
-#            status['encoder'] = self.encoder().get_status(eventtime)
-#        return status
+        return status
 
     def _reset_statistics(self):
         self.statistics = {}
@@ -4764,7 +4750,7 @@ class MmuController:
                             ext_actual = (self.mmu_extruder_stepper.stepper.get_mcu_position() - init_ext_mcu_pos) * self.mmu_extruder_stepper.stepper.get_step_dist()
 
                             # Support setup where a non-homing extruder is being used
-                            if motor == "extruder" and not self.homing_extruder:
+                            if motor == "extruder" and not self.unit().homing_extruder:
                                 # This isn't super accurate if extruder isn't (homing) MmuExtruder because doesn't have required endstop, thus this will
                                 # overrun and even move slightly even if already homed. We can only correct the actual gear rail position.
                                 halt_pos[1] += ext_actual
@@ -5394,6 +5380,7 @@ class MmuController:
 
 
 
+# PAUL old reference code
 #    # Reset correct sync state based on MMU type and state
 #    #   sync_intention: sync intention when printing based on sync_to_extruder, sync_form_tip, sync_purge
 #    #   force_in_print used to mimick printing behavior often for testing

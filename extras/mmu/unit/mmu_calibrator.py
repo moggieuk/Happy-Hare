@@ -39,6 +39,7 @@ CALIBRATED_ALL       = 0b11111
 class MmuCalibrator:
 
     def __init__(self, config, mmu_unit, params):
+        logging.info("PAUL: init() for MmuCalibrator")
         self.config = config
         self.mmu_unit = mmu_unit                # This physical MMU unit
         self.mmu_machine = mmu_unit.mmu_machine # Entire Logical combined MMU

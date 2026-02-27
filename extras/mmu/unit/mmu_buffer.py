@@ -25,6 +25,7 @@ from ..mmu_sensor_utils import MmuSensorFactory
 class MmuBuffer:
 
     def __init__(self, config, mmu_unit, params):
+        logging.info("PAUL: init() for MmuBuffer")
         self.config = config
         self.mmu_unit = mmu_unit                # This physical MMU unit
         self.mmu_machine = mmu_unit.mmu_machine # Entire Logical combined MMU

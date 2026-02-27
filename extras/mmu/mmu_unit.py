@@ -50,10 +50,6 @@ MOVE_HISTORY_EXPIRE = 30.0 # From motion_queuing.py
 # TMC chips to search for
 TMC_CHIPS = ["tmc2209", "tmc2130", "tmc2208", "tmc2660", "tmc5160", "tmc2240"]
 
-#PAUL# Stepper config sections
-#PAUL SELECTOR_STEPPER_CONFIG = "stepper_mmu_selector" # Optional  now self.selector_stepper
-#PAUL GEAR_STEPPER_CONFIG     = "stepper_mmu_gear" PAUL: now self.gear_stepper
-
 SHAREABLE_STEPPER_PARAMS = ['rotation_distance', 'gear_ratio', 'microsteps', 'full_steps_per_rotation']
 OTHER_STEPPER_PARAMS     = ['step_pin', 'dir_pin', 'enable_pin', 'endstop_pin', 'rotation_distance', 'pressure_advance', 'pressure_advance_smooth_time']
 
@@ -88,17 +84,15 @@ SELECTOR_MULTI_GEAR_TYPES = [
 # Define type/style of MMU and expand configuration for convenience. Validate hardware configuration
 class MmuUnit:
 
-    def __init__(self, config, *args):
-        if len(args) < 3:
-            raise config.error("[%s] cannot be instantiated directly. Add to 'mmu_units' in [mmu_machine]" % config.get_name())
-        self.mmu_machine, self.unit_index, self.first_gate = args
-
-        parts = config.get_name().split(maxsplit=1)
-        if len(parts) < 2:
-            raise config.error("Section name must be like '[mmu_unit <name>]'")
-        self.name = parts[1]
-
+    def __init__(self, config, mmu_machine, unit_index, first_gate):
+        logging.info("PAUL: init() for MmuUnit")
+        self.config = config
+        self.mmu_machine = mmu_machine
+        self.unit_index = unit_index
+        self.first_gate = first_gate
+        self.name = config.get_name().split()[-1]
         self.printer = config.get_printer()
+
         self.num_gates = config.getint('num_gates')
         self.mmu_vendor = config.getchoice('vendor', {o: o for o in VENDORS}, VENDOR_OTHER)
 
@@ -110,6 +104,25 @@ class MmuUnit:
             raise config.error("Invalid version parameter")
 
         self.display_name = config.get('display_name', UNIT_ALT_DISPLAY_NAMES.get(self.mmu_vendor, self.mmu_vendor))
+
+        # By default HH uses its modified homing extruder. Because this might have unknown consequences on certain
+        # set-ups it can be disabled. If disabled, homing moves will still work, but the delay in mcu to mcu comms
+        # can lead to several mm of error depending on speed. Also homing of just the extruder is not possible.
+        self.extruder_name = config.get('extruder_name', 'extruder') # PAUL should be per-unit!
+        self.homing_extruder = bool(config.getint('homing_extruder', 1, minval=0, maxval=1))
+
+        # Setup homing extruder
+        self.mmu_extruder_stepper = None
+        if self.homing_extruder and False: # PAUL
+            # Create MmuExtruderStepper for later insertion into PrinterExtruder on Toolhead (on klippy:connect)
+            self.mmu_extruder_stepper = MmuExtruderStepper(config.getsection(self.extruder_name), self)
+
+            # Nullify original extruder stepper definition so Klipper doesn't try to create it again. Restore in handle_connect()
+            self.old_ext_options = {}
+            for i in SHAREABLE_STEPPER_PARAMS + OTHER_STEPPER_PARAMS:
+                if config.fileconfig.has_option(self.extruder_name, i):
+                    self.old_ext_options[i] = config.fileconfig.get(self.extruder_name, i)
+                    config.fileconfig.remove_option(self.extruder_name, i)
 
 
         # MMU design for control purposes can be broken down into the following choices:
@@ -393,7 +406,6 @@ class MmuUnit:
         if config.has_section(section):
             c = config.getsection(section)
             self.sensors = MmuSensors(c, self, self.p)
-            self.printer.add_object(c.get_name(), self.sensors) # Register mmu_sensors to stop it being loaded by klipper
             logging.info("MMU: Created: [%s]" % c.get_name())
         else:
             logging.info("MMU: - No mmu_sensors specified")
@@ -404,7 +416,6 @@ class MmuUnit:
         if config.has_section(section):
             c = config.getsection(section)
             self.espooler = MmuESpooler(c, self, self.p)
-            self.printer.add_object(c.get_name(), self.espooler) # Register mmu_espooler to stop it being loaded by klipper
             logging.info("MMU: Created: [%s]" % c.get_name())
         else:
             logging.info("MMU: - No mmu_espooler specified")
@@ -415,7 +426,6 @@ class MmuUnit:
         if config.has_section(section):
             c = config.getsection(section)
             self.leds = MmuLeds(c, self, self.p)
-            self.printer.add_object(c.get_name(), self.leds) # Register mmu_leds to stop it being loaded by klipper
             logging.info("MMU: Created: [%s]" % c.get_name())
         else:
             logging.info("MMU: - No mmu_leds specified")
@@ -430,7 +440,6 @@ class MmuUnit:
                 if config.has_section(section):
                     c = config.getsection(section)
                     self.encoder = MmuEncoder(c, self, self.p)
-                    self.printer.add_object(c.get_name(), self.encoder) # Register mmu_encoder to stop it being loaded by klipper
                     logging.info("MMU: Created: [%s]" % c.get_name())
                 else:
                     raise config.error("Encoder section [%s] not found!" % section)
@@ -449,7 +458,6 @@ class MmuUnit:
                 if config.has_section(section):
                     c = config.getsection(section)
                     self.buffer = MmuBuffer(c, self, self.p)
-                    self.printer.add_object(c.get_name(), self.buffer) # Register object with klipper
                     logging.info("MMU: Created: [%s]" % c.get_name())
                 else:
                     raise config.error("Buffer section [%s] not found!" % section)
@@ -480,7 +488,31 @@ class MmuUnit:
     def handle_connect(self):
         # Master MMU controller
         self.mmu = self.mmu_machine.mmu_controller
-#PAUL        self.calibrator.handle_connect()
+
+        self.printer_toolhead = self.printer.lookup_object('toolhead') # PAUL how does multiple extruders work?
+        printer_extruder = self.printer_toolhead.get_extruder()
+
+        if self.homing_extruder and self.mmu_extruder_stepper is not None:
+            # Restore original extruder options in case user macros reference them
+            for key, value in self.old_ext_options.items():
+                self.config.fileconfig.set(self.extruder_name, key, value)
+
+            # Now we can switch in homing MmuExtruderStepper
+            printer_extruder.extruder_stepper = self.mmu_extruder_stepper
+            self.mmu_extruder_stepper.stepper.set_trapq(printer_extruder.get_trapq())
+        else:         
+            self.mmu_extruder_stepper = printer_extruder.extruder_stepper
+            self.mmu.log_debug("Warning: Using original klipper extruder stepper. Extruder homing not possible")
+
+        # Find TMC for extruder for current control
+        self.extruder_tmc = None
+        for chip in TMC_CHIPS:
+            self.extruder_tmc = self.printer.lookup_object("%s %s" % (chip, printer_extruder.name), None) # PAUL fix, change printer_extruder.name
+            break
+        if self.extruder_tmc is not None:
+            self.mmu.log_debug("MMU: Found %s on extruder '%s'. Current control enabled. %s" % (chip, printer_extruder.name, "Stallguard 'touch' extruder homing possible." if self.homing_extruder else ""))
+        else:
+            self.mmu.log_debug("MMU: TMC driver not found for extruder, cannot use current increase for tip forming move")
 
         # This monitors extruder movement. We create one per MMU unit to allow for each
         # unit to be connected to a different extruder.
@@ -698,6 +730,7 @@ class MmuToolHead(toolhead.ToolHead, object):
 
     def handle_connect(self):
         self.mmu = self.mmu_machine.mmu_controller # Master MMU controller for logging
+        self.printer_toolhead = self.printer.lookup_object('toolhead')
 
 
     # Ensure the correct number of axes for convenience - MMU only has two
@@ -1069,7 +1102,7 @@ class MmuToolHead(toolhead.ToolHead, object):
 
     def dump_rails(self, show_endstops=True):
         msg = "MMU TOOLHEAD: %s Last move time: %s\n" % (self.get_position(), self.mmu_toolhead.get_last_move_time())
-        extruder_name = self.printer_toolhead.get_extruder().get_name()
+        extruder_name = self.printer_toolhead.get_extruder().get_name() # PAUL no! use this extruder name
         for axis, rail in enumerate(self.get_kinematics().rails):
             msg += "\n" if axis > 0 else ""
             header = "RAIL: %s (Steppers: %d, Default endstops: %d, Extra endstops: %d) %s" % (rail.rail_name, len(rail.steppers), len(rail.endstops), len(rail.extra_endstops), '-' * 100)
@@ -1448,6 +1481,7 @@ class MmuExtruderStepper(ExtruderStepper, object):
         self.printer.set_rollover_info(self.name, "%s: %s" % (self.name, msg))
         if not gcmd.get_int('QUIET', 0, minval=0, maxval=1):
             gcmd.respond_info(msg, log=False)
+
 
 class DummyRail:
     def __init__(self):

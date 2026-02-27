@@ -36,6 +36,7 @@ RUNOUT_AUTOMATIC = 2
 class MmuEncoder:
 
     def __init__(self, config, mmu_unit, params):
+        logging.info("PAUL: init() for MmuEncoder")
         self.config = config
         self.mmu_unit = mmu_unit                # This physical MMU unit
         self.mmu_machine = mmu_unit.mmu_machine # Entire Logical combined MMU
@@ -102,6 +103,11 @@ class MmuEncoder:
         logging.info("PAUL: handle_connect: MmuEncoder")
         self.mmu = self.mmu_machine.mmu_controller
 
+        # Validate that all mmu's sharing encoder use same extruder (necessary for runout/clog/tangle detection)
+        for unit in self.connected_units:
+            if unit.extruder_name != self.mmu_unit.extruder_name:
+                raise config.error("MMU unit %s shares encoder %s with %s but has a different extruder!" % (unit.name, self.name, self.mmu_unit.name))
+
         cal_res = self.mmu_machine.var_manager.get(VARS_MMU_ENCODER_RESOLUTION, None, namespace=self.name)
         if cal_res:
             self.set_resolution(cal_res)
@@ -119,7 +125,8 @@ class MmuEncoder:
 
     def _handle_ready(self):
         logging.info("PAUL: handle_ready: MmuEncoder")
-        self.extruder = self.printer.lookup_object(self.mmu_machine.extruder_name)
+
+        self.extruder = self.printer.lookup_object(self.mmu_unit.extruder_name)
         self.last_extruder_pos = 0.
         self.filament_runout_pos = self.min_headroom = self.detection_length
 

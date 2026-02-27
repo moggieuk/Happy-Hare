@@ -78,6 +78,7 @@ class MmuLeds:
     SEGMENTS = PER_GATE_SEGMENTS + ['status', 'logo']
 
     def __init__(self, config, mmu_unit, params):
+        logging.info("PAUL: init() for MmuLeds")
         self.config = config
         self.mmu_unit = mmu_unit                # This physical MMU unit
         self.mmu_machine = mmu_unit.mmu_machine # Entire Logical combined MMU

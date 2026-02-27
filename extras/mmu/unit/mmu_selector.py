@@ -73,6 +73,7 @@ from ..mmu_utils      import MmuError
 class BaseSelector:
 
     def __init__(self, config, mmu_unit, params):
+        logging.info("PAUL: init() for BaseSelector")
         self.config = config
         self.mmu_unit = mmu_unit                # This physical MMU unit
         self.mmu_machine = mmu_unit.mmu_machine # Entire Logical combined MMU

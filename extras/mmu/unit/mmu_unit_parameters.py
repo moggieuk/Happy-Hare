@@ -20,6 +20,7 @@ from ..mmu_constants import *
 class MmuUnitParameters:
 
     def __init__(self, mmu_unit, config):
+        logging.info("PAUL: init() for MmuUnitParameters")
         self._config = config
         self._mmu_unit = mmu_unit
 
