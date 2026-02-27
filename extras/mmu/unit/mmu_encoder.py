@@ -22,27 +22,30 @@ import logging, time
 from ... import pulse_counter
 
 # Happy Hare imports
-from ..mmu_constants          import *
-from .mmu_calibration_manager import CALIBRATED_ENCODER
+from ..mmu_constants import *
+from .mmu_calibrator import CALIBRATED_ENCODER
+
+
+CHECK_MOVEMENT_TIMEOUT = 0.250
+
+RUNOUT_DISABLED = 0
+RUNOUT_STATIC = 1
+RUNOUT_AUTOMATIC = 2
 
 
 class MmuEncoder:
 
-    CHECK_MOVEMENT_TIMEOUT = 0.250
-
-    RUNOUT_DISABLED = 0
-    RUNOUT_STATIC = 1
-    RUNOUT_AUTOMATIC = 2
-
-    def __init__(self, config, mmu_machine, mmu_unit):
-        self.mmu_machine = mmu_machine
-        self.mmu_units = [mmu_unit] # mmu_unit is just the first to load, not necessarily all
-        self.mmu = None
+    def __init__(self, config, mmu_unit, params):
+        self.config = config
+        self.mmu_unit = mmu_unit                # This physical MMU unit
+        self.mmu_machine = mmu_unit.mmu_machine # Entire Logical combined MMU
+        self.p = params                         # mmu_unit_parameters object
         self.name = config.get_name().split()[-1]
-
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object('gcode')
+
+        self.connected_units = [mmu_unit] # mmu_unit is just the first to load, not necessarily all
         encoder_pin = config.get('encoder_pin')
 
         # For counter functionality...
@@ -73,7 +76,7 @@ class MmuEncoder:
         self.min_event_systime = self.reactor.NEVER
         self.extruder = None
         self.filament_detected = False
-        self.detection_mode = self.RUNOUT_STATIC
+        self.detection_mode = RUNOUT_STATIC
         self.last_extruder_pos = self.filament_runout_pos = 0.
         self.filament_runout_pos = self.min_headroom = self.detection_length
 
@@ -92,25 +95,30 @@ class MmuEncoder:
 
 
     def add_unit(self, mmu_unit):
-        self.mmu_units.append(mmu_unit)
+        self.connected_units.append(mmu_unit)
 
 
     def _handle_connect(self):
+        logging.info("PAUL: handle_connect: MmuEncoder")
         self.mmu = self.mmu_machine.mmu_controller
 
-# PAUL TODO
         cal_res = self.mmu_machine.var_manager.get(VARS_MMU_ENCODER_RESOLUTION, None, namespace=self.name)
         if cal_res:
             self.set_resolution(cal_res)
             self.log_debug("Loaded saved resolution for encoder %s: %.4f" % (self.name, cal_res))
 
-            for unit in mmu_units:
-                self.calibration_manager.mark_calibrated(unit, CalibrationManager.CALIBRATED_ENCODER)
+            for unit in self.connected_units:
+                unit.calibrator.mark_calibrated(unit, CalibrationManager.CALIBRATED_ENCODER)
         else:
-            self.mmu.log_warning("Warning: Encoder resolution for %s not found in mmu_vars.cfg. Probably not calibrated" % self.name)
+            self.mmu.log_warning("Warning: Encoder resolution for %s was not found in mmu_vars.cfg. Probably not calibrated" % self.name)
+
+        # Ensure correct starting FlowGuard mode and detection length
+        for unit in self.connected_units:
+            unit.sync_feedback.set_encoder_mode()
 
 
     def _handle_ready(self):
+        logging.info("PAUL: handle_ready: MmuEncoder")
         self.extruder = self.printer.lookup_object(self.mmu_machine.extruder_name)
         self.last_extruder_pos = 0.
         self.filament_runout_pos = self.min_headroom = self.detection_length
@@ -118,6 +126,7 @@ class MmuEncoder:
         self.min_event_systime = self.reactor.monotonic() + 2. # Don't process events too early
         self._reset_filament_runout_params()
         self._extruder_pos_update_timer = self.reactor.register_timer(self._extruder_pos_update_event)
+
 
     def _handle_printing(self, print_time):
         self.reactor.update_timer(self._extruder_pos_update_timer, self.reactor.NOW) # Enabled
@@ -153,9 +162,9 @@ class MmuEncoder:
             if self.filament_runout_pos - extruder_pos < self.min_headroom:
                 self.min_headroom = self.filament_runout_pos - extruder_pos
                 if self.min_headroom < self.desired_headroom:
-                    if self.detection_mode == self.RUNOUT_AUTOMATIC:
+                    if self.detection_mode == RUNOUT_AUTOMATIC:
                         self.mmu.log_debug("Automatic clog detection: new min_headroom (< %.1fmm desired): %.1fmm" % (self.desired_headroom, self.min_headroom))
-                    elif self.detection_mode == self.RUNOUT_STATIC:
+                    elif self.detection_mode == RUNOUT_STATIC:
                         self.mmu.log_debug("Warning: Only %.1fmm of headroom to clog/runout" % self.min_headroom)
             self._handle_filament_event(extruder_pos < self.filament_runout_pos)
 
@@ -167,7 +176,7 @@ class MmuEncoder:
                 self.flowrate_last_encoder_pos = encoder_pos
 
             self.last_extruder_pos = extruder_pos
-        return eventtime + self.CHECK_MOVEMENT_TIMEOUT
+        return eventtime + CHECK_MOVEMENT_TIMEOUT
 
     def _reset_filament_runout_params(self, eventtime=None):
         if eventtime is None:
@@ -183,7 +192,7 @@ class MmuEncoder:
     # Called periodically to tune the clog detection length
     def _update_detection_length(self, increase_only=False):
         if not self._enabled: return
-        if self.detection_mode != self.RUNOUT_AUTOMATIC:
+        if self.detection_mode != RUNOUT_AUTOMATIC:
             return
         current_detection_length = self.detection_length
         if self.min_headroom < self.desired_headroom:
@@ -211,7 +220,7 @@ class MmuEncoder:
             return
         self.filament_detected = filament_detected
         eventtime = self.reactor.monotonic()
-        if eventtime < self.min_event_systime or self.detection_mode == self.RUNOUT_DISABLED or not self._enabled:
+        if eventtime < self.min_event_systime or self.detection_mode == RUNOUT_DISABLED or not self._enabled:
             return
         is_printing = self.printer.lookup_object("idle_timeout").get_status(eventtime)["state"] == "Printing"
         if filament_detected:
@@ -256,7 +265,7 @@ class MmuEncoder:
         self._update_detection_length()
 
     def set_mode(self, mode):
-        if self.RUNOUT_DISABLED <= mode <= self.RUNOUT_AUTOMATIC:
+        if RUNOUT_DISABLED <= mode <= RUNOUT_AUTOMATIC:
             self.detection_mode = mode
 
     def enable(self):

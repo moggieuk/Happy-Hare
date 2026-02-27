@@ -125,7 +125,7 @@ class MmuUnitParameters:
         # FlowGuard
         self.flowguard_enabled            = config.getint('flowguard_enabled', 1, minval=0, maxval=1)
         self.flowguard_max_relief         = config.getfloat('flowguard_max_relief', 8, above=1.)
-        self.flowguard_encoder_mode       = config.getint('flowguard_encoder_mode', 2, minval=0, maxval=2)
+        self.flowguard_encoder_mode       = config.getint('flowguard_encoder_mode', 2, minval=0, maxval=2) # PAUL use constants?
         self.flowguard_encoder_max_motion = config.getfloat('flowguard_encoder_max_motion', 20, above=0.)
 
         # Heater/Dryer control
@@ -141,3 +141,51 @@ class MmuUnitParameters:
         self.startup_home_if_unloaded = config.getint('startup_home_if_unloaded', 0, minval=0, maxval=1)
         self.has_filament_buffer      = bool(config.getint('has_filament_buffer', 1, minval=0, maxval=1))
         self.encoder_move_validation  = config.getint('encoder_move_validation', 1, minval=0, maxval=1)
+
+
+    def set_test_config(self, gcmd):
+        if self._mmu_unit.has_sync_feedback():
+            self.sync_feedback_enabled           = gcmd.get_int('SYNC_FEEDBACK_ENABLED', self.sync_feedback_enabled, minval=0, maxval=1)
+            self.sync_feedback_buffer_range      = gcmd.get_float('SYNC_FEEDBACK_BUFFER_RANGE', self.sync_feedback_buffer_range, minval=0.)
+            self.sync_feedback_buffer_maxrange   = gcmd.get_float('SYNC_FEEDBACK_BUFFER_MAXRANGE', self.sync_feedback_buffer_maxrange, minval=0.)
+            self.sync_feedback_speed_multiplier  = gcmd.get_float('SYNC_FEEDBACK_SPEED_MULTIPLIER', self.sync_feedback_speed_multiplier, minval=1., maxval=50)
+            self.sync_feedback_boost_multiplier  = gcmd.get_float('SYNC_FEEDBACK_BOOST_MULTIPLIER', self.sync_feedback_boost_multiplier, minval=1., maxval=50)
+            self.sync_feedback_extrude_threshold = gcmd.get_float('SYNC_FEEDBACK_EXTRUDE_THRESHOLD', self.sync_feedback_extrude_threshold, above=1.)
+            self.sync_feedback_debug_log         = gcmd.get_int('SYNC_FEEDBACK_DEBUG_LOG', self.sync_feedback_debug_log, minval=0, maxval=1)
+
+            flowguard_enabled = gcmd.get_int('FLOWGUARD_ENABLED', self.flowguard_enabled, minval=0, maxval=1)
+            if flowguard_enabled != self.flowguard_enabled:
+                self._mmu_unit.sync_feedback.config_flowguard_feature(flowguard_enabled)
+            self.flowguard_max_relief = gcmd.get_float('FLOWGUARD_MAX_RELIEF', self.flowguard_max_relief, above=1.)
+
+        if self._mmu_unit.has_encoder():
+            mode = gcmd.get_int('FLOWGUARD_ENCODER_MODE', self.flowguard_encoder_mode, minval=0, maxval=2)
+            if mode != self.flowguard_encoder_mode:
+                self.flowguard_encoder_mode = mode
+                self._mmu_unit.encoder.set_encoder_mode(mode)
+            self.flowguard_encoder_max_motion = gcmd.get_float('FLOWGUARD_ENCODER_MAX_MOTION', self.flowguard_encoder_max_motion, above=0.)
+
+
+    def get_test_config(self):
+        msg  = ""
+        if self._mmu_unit.has_sync_feedback():
+            msg += "\nsync_feedback_enabled = %d" % self.sync_feedback_enabled
+            msg += "\nsync_feedback_buffer_range = %.1f" % self.sync_feedback_buffer_range
+            msg += "\nsync_feedback_buffer_maxrange = %.1f" % self.sync_feedback_buffer_maxrange
+            msg += "\nsync_feedback_speed_multiplier = %.1f" % self.sync_feedback_speed_multiplier
+            msg += "\nsync_feedback_boost_multiplier = %.1f" % self.sync_feedback_boost_multiplier
+            msg += "\nsync_feedback_extrude_threshold = %.1f" % self.sync_feedback_extrude_threshold
+            msg += "\nsync_feedback_debug_log = %d" % self.sync_feedback_debug_log
+
+            msg += "\n\nFLOWGUARD:"
+            msg += "\nflowguard_enabled = %d" % self.flowguard_enabled
+            msg += "\nflowguard_max_relief = %.1f" % self.flowguard_max_relief
+
+        if self.mmu_unit.has_encoder():
+            msg += "\nflowguard_encoder_mode = %d" % self.flowguard_encoder_mode
+            msg += "\nflowguard_encoder_max_motion = %.1f" % self.flowguard_encoder_max_motion
+        return msg
+
+
+    def check_test_config(self, param):
+        return vars(self).get(param) is None

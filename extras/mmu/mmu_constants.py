@@ -186,7 +186,7 @@ VARS_MMU_FILAMENT_REMAINING_COLOR = "mmu_state_filament_remaining_color"
 VARS_MMU_SWAP_STATISTICS          = "mmu_statistics_swaps"
 VARS_MMU_COUNTERS                 = "mmu_statistics_counters"
 
-# Per-encoder variables (calibration) # PAUL these probably belong in mmu_encoder
+# Per-encoder variables (calibration)
 VARS_MMU_ENCODER_RESOLUTION       = "mmu_encoder_resolution"
 VARS_MMU_CALIB_CLOG_LENGTH        = "mmu_calibration_clog_length"
 
@@ -195,6 +195,14 @@ VARS_MMU_GATE_STATISTICS_PREFIX   = "mmu_statistics_gate_"
 VARS_MMU_GEAR_ROTATION_DISTANCES  = "mmu_gear_rotation_distances"
 VARS_MMU_CALIB_BOWDEN_LENGTHS     = "mmu_calibration_bowden_lengths" # Per-gate calibrated bowden lengths
 VARS_MMU_CALIB_BOWDEN_HOME        = "mmu_calibration_bowden_home"    # Was encoder, gate or gear sensor used as reference point
+
+# Per-unit selector
+VARS_MMU_SELECTOR_OFFSETS         = "mmu_selector_offsets"
+VARS_MMU_SELECTOR_BYPASS          = "mmu_selector_bypass"
+VARS_MMU_SELECTOR_GATE_POS        = "mmu_selector_gate_pos"
+VARS_MMU_SELECTOR_ANGLES          = "mmu_selector_angles"
+VARS_MMU_SELECTOR_BYPASS_ANGLE    = "mmu_selector_bypass_angle"
+VARS_MMU_SERVO_ANGLES             = "mmu_servo_angles"               # Used on linear selectors with servo for filament grip
 
 # Mainsail/Fluid visualization of extruder colors and other attributes
 T_MACRO_COLOR_ALLGATES = 'allgates' # Color from gate map (all tools). Will add spool_id if spoolman is enabled

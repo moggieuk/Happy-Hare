@@ -24,12 +24,16 @@ from ..mmu_sensor_utils import MmuSensorFactory
 
 class MmuBuffer:
 
-    def __init__(self, config, mmu_machine, mmu_unit):
-        self.mmu_machine = mmu_machine
-        self.mmu_units = [mmu_unit] # mmu_unit is just the first to load, not necessarily all
-
-        self.name = config.get_name().split()[-1]
+    def __init__(self, config, mmu_unit, params):
+        self.config = config
+        self.mmu_unit = mmu_unit                # This physical MMU unit
+        self.mmu_machine = mmu_unit.mmu_machine # Entire Logical combined MMU
+        self.p = params                         # mmu_unit_parameters
         self.printer = config.get_printer()
+        self.name = config.get_name().split()[-1]
+
+        self.connected_units = [mmu_unit] # mmu_unit is just the first to load, not necessarily all
+
         event_delay = config.get('event_delay', 0.5)
         sf = MmuSensorFactory(self.printer)
 
@@ -67,4 +71,4 @@ class MmuBuffer:
 #    return MmuBuffer(config)
 
     def add_unit(self, mmu_unit):
-        self.mmu_units.append(mmu_unit)
+        self.connected_units.append(mmu_unit)

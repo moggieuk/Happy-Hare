@@ -30,17 +30,22 @@ from ..mmu_constants import *
 
 class MmuSensors:
 
-    def __init__(self, config, *args):
-        self.mmu_machine, self.mmu_unit, self.first_gate, self.num_gates = args
-        self.name = config.get_name().split()[-1]
+    def __init__(self, config, mmu_unit, params):
+        self.config = config
+        self.mmu_unit = mmu_unit                # This physical MMU unit
+        self.mmu_machine = mmu_unit.mmu_machine # Entire Logical combined MMU
+        self.p = params                         # mmu_unit_parameters
         self.printer = config.get_printer()
+        self.name = config.get_name().split()[-1]
 
         event_delay = config.get('event_delay', 0.5)
         sf = self.mmu_machine.sensor_factory
+        first_gate = mmu_unit.first_gate
+        num_gates = mmu_unit.num_gates
 
         # Setup "mmu_pre_gate" sensors...
         self.pre_gate_sensors = {}
-        for i, gate in enumerate(range(self.first_gate, self.first_gate + self.num_gates)):
+        for i, gate in enumerate(range(first_gate, first_gate + num_gates)):
             switch_pin = config.get('pre_gate_switch_pin_%d' % i, None)
             self.pre_gate_sensors[gate] = sf.create_mmu_sensor(
                 config,
@@ -68,7 +73,7 @@ class MmuSensors:
 
         # Setup "mmu_gear" sensors...
         self.post_gear_sensors = {}
-        for i, gate in enumerate(range(self.first_gate, self.first_gate + self.num_gates)):
+        for i, gate in enumerate(range(first_gate, first_gate + num_gates)):
             switch_pin = config.get('post_gear_switch_pin_%d' % i, None)
 
             if switch_pin:

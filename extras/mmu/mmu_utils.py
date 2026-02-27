@@ -1,17 +1,21 @@
 # Happy Hare MMU Software
-# Utility classes for Happy Hare MMU
-#
-# MmuError
-# Goal: Wrapper exception for all MMU errors
-#
-# DebugStepperMovement
-# Goal: Internal testing class for debugging synced movement
-#
-# PurgeVolCalculator
-# Goal: Purge volume calculator based on color change
 #
 # Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
+#
+# Utility classes for Happy Hare MMU
+#
+# MmuError
+# Goal: Wrapper exception for all MMU errors.
+#
+# SaveVariableManager
+# Goal: Centralization of all save_variable manipulation for per-unit namespacing and efficiency.
+#
+# DebugStepperMovement
+# Goal: Internal testing class for debugging synced movement.
+#
+# PurgeVolCalculator
+# Goal: Purge volume calculator based on color change
 #
 # (\_/)
 # ( *,*)
@@ -19,12 +23,77 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import logging, math
+import logging, math, contextlib
+
+# Happy Hare imports
+from .mmu_constants import *
 
 
 # Mmu exception error class
 class MmuError(Exception):
     pass
+
+
+# Centralization of all save_variable manipulation for per-unit namespacing and efficiency
+class SaveVariableManager:
+
+    def __init__(self, mmu_machine, config):
+        self.mmu_machine = mmu_machine
+        self.gcode = self.mmu_machine.printer.lookup_object('gcode')
+        self.save_variables = self.mmu_machine.printer.load_object(config, 'save_variables')
+
+        self._can_write_variables = True
+
+        # Sanity check to see that mmu_vars.cfg is included.  This will verify path
+        # because default deliberately has 'mmu_revision' entry
+        if self.save_variables:
+            revision_var = self.save_variables.allVariables.get(VARS_MMU_REVISION, None)
+            if revision_var is None:
+                self.save_variables.allVariables[VARS_MMU_REVISION] = 0
+        else:
+            revision_var = None
+        if not self.save_variables or revision_var is None:
+            raise config.error("Calibration settings file (mmu_vars.cfg) not found. Check [save_variables] section in mmu_macro_vars.cfg\nAlso ensure you only have a single [save_variables] section defined in your printer config and it contains the line: mmu__revision = 0. If not, add this line and restart")
+
+    # Namespace variable with mmu unit name if necessary
+    def namespace(self, variable, namespace):
+        if namespace is not None:
+            return variable.replace("mmu_", "mmu_%s_" % namespace)
+        return variable
+
+    # Wrappers so we can minimize actual disk writes and batch updates
+    def get(self, variable, default, namespace=None):
+        return self.save_variables.allVariables.get(self.namespace(variable, namespace), default)
+
+    def set(self, variable, value, namespace=None, write=False):
+        self.save_variables.allVariables[self.namespace(variable, namespace)] = value
+        if write:
+            self.write()
+
+    def delete(self, variable, namespace=None, write=False):
+        _ = self.save_variables.allVariables.pop(self.namespace(variable, namespace), None)
+        if write:
+            self.write()
+
+    def write(self):
+        if self._can_write_variables:
+            mmu_vars_revision = self.save_variables.allVariables.get(VARS_MMU_REVISION, 0) + 1
+            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (VARS_MMU_REVISION, mmu_vars_revision))
+
+    def upgrade(self, variable, namespace): # PAUL need this method?
+        val = self.get(variable, None)
+        if val is not None:
+            self.set(variable, val, namespace)
+            self.delete(variable)
+
+    @contextlib.contextmanager
+    def wrap_suspend_write_variables(self):
+        self._can_write_variables = False
+        try:
+            yield self
+        finally:
+            self._can_write_variables = True
+            self.write()
 
 
 # Internal testing class for debugging synced movement

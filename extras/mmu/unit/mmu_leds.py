@@ -77,12 +77,16 @@ class MmuLeds:
     PER_GATE_SEGMENTS = ['exit', 'entry']
     SEGMENTS = PER_GATE_SEGMENTS + ['status', 'logo']
 
-    def __init__(self, config, *args):
-        if len(args) < 2:
-            raise config.error("[%s] cannot be instantiated directly. It must be loaded by [mmu_unit]" % config.get_name())
-        self.mmu_machine, self.mmu_unit, self.first_gate, self.num_gates = args
+    def __init__(self, config, mmu_unit, params):
+        self.config = config
+        self.mmu_unit = mmu_unit                # This physical MMU unit
+        self.mmu_machine = mmu_unit.mmu_machine # Entire Logical combined MMU
+        self.p = params                         # mmu_unit_parameters
         self.name = config.get_name().split()[-1]
+        self.first_gate = mmu_unit.first_gate
+        self.num_gates = mmu_unit.num_gates
         self.printer = config.get_printer()
+
         self.frame_rate = config.getint('frame_rate', 24)
 
         # Create virtual led chains

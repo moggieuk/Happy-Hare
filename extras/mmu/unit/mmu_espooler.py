@@ -32,16 +32,20 @@ MAX_SCHEDULE_TIME = 5.0
 
 class MmuESpooler:
 
-    def __init__(self, config, *args):
-        self.mmu_machine, self.mmu_unit, self.first_gate, self.num_gates = args
-
+    def __init__(self, config, mmu_unit, params):
+        self.config = config
+        self.mmu_unit = mmu_unit                # This physical MMU unit
+        self.mmu_machine = mmu_unit.mmu_machine # Entire Logical combined MMU
+        self.p = params                         # mmu_unit_parameters
         self.name = config.get_name().split()[-1]
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
-        self.mmu = None
+
         self.respool_gates = []       # List of gates that can perform respool operation
         self.assist_gates = []        # List of gates that can perform assist operation
         self.burst_gates = {}         # Key:Gate, Value:(operation, callback_timer) for gates currently executing a "burst"
+        self.first_gate = mmu_unit.first_gate
+        self.num_gates = mmu_unit.num_gates
 
         # The following implement the "burst assist". Currently only the print_assist_gate has burst_trigger_enabled
         # but the orthogonal indicators would allow for future change in behavior
@@ -143,12 +147,17 @@ class MmuESpooler:
         self.printer.register_event_handler("mmu:disabled", self._handle_mmu_disabled)
 
         # Register event handlers
+        self.printer.register_event_handler('klippy:connect', self._handle_connect)
         self.printer.register_event_handler('klippy:ready', self._handle_ready)
 
 
-    def _handle_ready(self):
-        self.toolhead = self.printer.lookup_object('toolhead')
+    def _handle_connect(self):
+        logging.info("PAUL: handle_connect: MmuEspooler")
         self.mmu = self.mmu_machine.mmu_controller
+
+    def _handle_ready(self):
+        logging.info("PAUL: handle_ready: MmuEspooler")
+        self.toolhead = self.printer.lookup_object('toolhead')
 
         # Setup extruder monitor
         try:

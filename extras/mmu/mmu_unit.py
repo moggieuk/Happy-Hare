@@ -25,19 +25,21 @@ import logging, importlib, math, os, time, re
 
 # Klipper imports
 import stepper, chelper, toolhead
-from kinematics.extruder import PrinterExtruder, DummyExtruder, ExtruderStepper
-from .homing             import Homing, HomingMove
+from kinematics.extruder  import PrinterExtruder, DummyExtruder, ExtruderStepper
+from ..homing             import Homing, HomingMove
 
 # Happy Hare imports
-from .mmu.mmu_constants                import *
-from .mmu.unit.mmu_encoder             import MmuEncoder
-from .mmu.unit.mmu_buffer              import MmuBuffer
-from .mmu.unit.mmu_espooler            import MmuESpooler
-from .mmu.unit.mmu_leds                import MmuLeds
-from .mmu.unit.mmu_sensors             import MmuSensors
-from .mmu.unit.mmu_unit_parameters     import MmuUnitParameters
-from .mmu.unit.mmu_calibration_manager import MmuCalibrationManager
-from .mmu.unit.mmu_selector            import *
+from .mmu_constants            import *
+from .mmu_extruder_monitor     import ExtruderMonitor
+from .unit.mmu_encoder         import MmuEncoder
+from .unit.mmu_buffer          import MmuBuffer
+from .unit.mmu_espooler        import MmuESpooler
+from .unit.mmu_leds            import MmuLeds
+from .unit.mmu_sensors         import MmuSensors
+from .unit.mmu_unit_parameters import MmuUnitParameters
+from .unit.mmu_calibrator      import MmuCalibrator
+from .unit.mmu_sync_feedback   import MmuSyncFeedback
+from .unit.mmu_selector        import *
 
 
 # For toolhead synchronization
@@ -380,14 +382,19 @@ class MmuUnit:
         else:
             logging.info("MMU: - No selector servo specified")
 
+        # Load parameters config for this unit
+        params = c = config.getsection('mmu_unit_parameters %s' % self.name)
+        self.p = MmuUnitParameters(self, c)
+        logging.info("MMU: Read: [%s]" % c.get_name())
+
         # Load mmu_sensors
         self.sensors = None
         section = 'mmu_sensors %s' % self.name
         if config.has_section(section):
             c = config.getsection(section)
-            self.sensors = MmuSensors(c, self.mmu_machine, self, self.first_gate, self.num_gates)
-            logging.info("MMU: Created: [%s]" % c.get_name())
+            self.sensors = MmuSensors(c, self, self.p)
             self.printer.add_object(c.get_name(), self.sensors) # Register mmu_sensors to stop it being loaded by klipper
+            logging.info("MMU: Created: [%s]" % c.get_name())
         else:
             logging.info("MMU: - No mmu_sensors specified")
 
@@ -396,9 +403,9 @@ class MmuUnit:
         section = 'mmu_espooler %s' % self.name
         if config.has_section(section):
             c = config.getsection(section)
-            self.espooler = MmuESpooler(c, self.mmu_machine, self, self.first_gate, self.num_gates)
-            logging.info("MMU: Created: [%s]" % c.get_name())
+            self.espooler = MmuESpooler(c, self, self.p)
             self.printer.add_object(c.get_name(), self.espooler) # Register mmu_espooler to stop it being loaded by klipper
+            logging.info("MMU: Created: [%s]" % c.get_name())
         else:
             logging.info("MMU: - No mmu_espooler specified")
 
@@ -407,13 +414,13 @@ class MmuUnit:
         section = 'mmu_leds %s' % self.name
         if config.has_section(section):
             c = config.getsection(section)
-            self.leds = MmuLeds(c, self.mmu_machine, self, self.first_gate, self.num_gates)
-            logging.info("MMU: Created: [%s]" % c.get_name())
+            self.leds = MmuLeds(c, self, self.p)
             self.printer.add_object(c.get_name(), self.leds) # Register mmu_leds to stop it being loaded by klipper
+            logging.info("MMU: Created: [%s]" % c.get_name())
         else:
             logging.info("MMU: - No mmu_leds specified")
 
-        # Load optional mmu_encoder (could be a shared encoder)
+        # Load optional mmu_encoder (can be a shared encoder)
         self.encoder = None
         encoder_name = config.get('encoder', None)
         if encoder_name:
@@ -422,8 +429,8 @@ class MmuUnit:
             if not self.encoder:
                 if config.has_section(section):
                     c = config.getsection(section)
-                    self.encoder = MmuEncoder(c, self.mmu_machine, self)
-                    self.printer.add_object(c.get_name(), self.encoder) # Register object with klipper for get_status()
+                    self.encoder = MmuEncoder(c, self, self.p)
+                    self.printer.add_object(c.get_name(), self.encoder) # Register mmu_encoder to stop it being loaded by klipper
                     logging.info("MMU: Created: [%s]" % c.get_name())
                 else:
                     raise config.error("Encoder section [%s] not found!" % section)
@@ -432,7 +439,7 @@ class MmuUnit:
         else:
             logging.info("MMU: - No mmu_encoder specified")
 
-        # Load optional sync-feedback mmu_buffer (could be a shared buffer)
+        # Load optional sync-feedback mmu_buffer (can be a shared buffer)
         self.buffer = None
         buffer_name = config.get('buffer', None)
         if buffer_name:
@@ -441,8 +448,8 @@ class MmuUnit:
             if not self.buffer:
                 if config.has_section(section):
                     c = config.getsection(section)
-                    self.buffer = MmuBuffer(c, self.mmu_machine, self)
-                    self.printer.add_object(c.get_name(), self.buffer) # Register object with klipper for get_status()
+                    self.buffer = MmuBuffer(c, self, self.p)
+                    self.printer.add_object(c.get_name(), self.buffer) # Register object with klipper
                     logging.info("MMU: Created: [%s]" % c.get_name())
                 else:
                     raise config.error("Buffer section [%s] not found!" % section)
@@ -451,31 +458,19 @@ class MmuUnit:
         else:
             logging.info("MMU: - No mmu_buffer specified")
 
-# PAUL
-#                self.buffer = self.printer.lookup_object(section, None)
-#                if self.buffer is None:
-#                    self.buffer = self.printer.load_object(config, section)
-#                    self.printer.add_object(c.get_name(), self.encoder) # Register mmu_encoder to stop it being loaded by klipper
-#                    logging.info("MMU: Loaded: [%s]" % section)
-#                else:
-#                    logging.info("MMU: Skipping: [%s]" % section)
-#            else:
-#                logging.info("MMU: - No mmu_buffer specified")
-
-        # Load parameters config for this unit
-        mmu_parameters = c = config.getsection('mmu_unit_parameters %s' % self.name)
-        self.p = MmuUnitParameters(self, c)
-        logging.info("MMU: Read: [%s]" % c.get_name())
-
-        # Load selector
-        self.selector = globals()[self.selector_type](self, mmu_parameters)
+        # Load selector (reads it's own config from mmu_unit_parameters)
+        self.selector = globals()[self.selector_type](params, self, self.p)
         if not isinstance(self.selector, BaseSelector):
             raise self.config.error("Invalid Selector class for MMU unit %s" % self.name)
         logging.info("MMU: Created %s selector" % self.selector_type)
 
-        # Create autotune manager to oversee calibration updates based on available telemetry
-        self.calibration_manager = MmuCalibrationManager(self, mmu_parameters)
-        logging.info("MMU: Created calibration manager")
+        # Create calibrator to oversee autotune / calibration updates based on available telemetry
+        self.calibrator = MmuCalibrator(params, self, self.p)
+        logging.info("MMU: Created: calibrator for unit %s" % self.name)
+
+        # Load sync-feedback controller (created even if no buffer or encoder)
+        self.sync_feedback = MmuSyncFeedback(params, self, self.p)
+        logging.info("MMU: Created: sync-feedback / autotune controller for unit %s" % self.name)
 
         # Event handlers
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
@@ -485,7 +480,11 @@ class MmuUnit:
     def handle_connect(self):
         # Master MMU controller
         self.mmu = self.mmu_machine.mmu_controller
-        self.calibration_manager.handle_connect()
+#PAUL        self.calibrator.handle_connect()
+
+        # This monitors extruder movement. We create one per MMU unit to allow for each
+        # unit to be connected to a different extruder.
+        self.extruder_monitor = ExtruderMonitor(self.mmu)
 
     def handle_disconnect(self):
         pass
@@ -494,7 +493,14 @@ class MmuUnit:
         pass
 
     def reinit(self):
+        self.sync_feedback.reinit()
         self.selector.reinit()
+
+    def has_encoder(self):
+        return self.encoder is not None
+
+    def has_espooler(self):
+        return self.espooler is not None
 
     def enable_motors(self):
         self.selector.enable_motors()

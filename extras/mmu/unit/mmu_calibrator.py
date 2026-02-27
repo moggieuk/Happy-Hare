@@ -36,11 +36,13 @@ CALIBRATED_GEAR_RDS  = 0b10000 # rotation_distance for other gates (optional)
 CALIBRATED_ESSENTIAL = 0b01111
 CALIBRATED_ALL       = 0b11111
 
-class MmuCalibrationManager:
+class MmuCalibrator:
 
-    def __init__(self, mmu_unit, config):
+    def __init__(self, config, mmu_unit, params):
+        self.config = config
         self.mmu_unit = mmu_unit                # This physical MMU unit
         self.mmu_machine = mmu_unit.mmu_machine # Entire Logical combined MMU
+        self.p = params                         # mmu_unit_parameters
         self.printer = config.get_printer()
 
         self.calibration_status = 0b0
@@ -56,8 +58,12 @@ class MmuCalibrationManager:
         gcode.register_command('MMU_CALIBRATE_TOOLHEAD', self.cmd_MMU_CALIBRATE_TOOLHEAD, desc = self.cmd_MMU_CALIBRATE_TOOLHEAD_help)
         gcode.register_command('MMU_CALIBRATE_PSENSOR', self.cmd_MMU_CALIBRATE_PSENSOR, desc = self.cmd_MMU_CALIBRATE_PSENSOR_help)
 
+        # Event handlers
+        self.printer.register_event_handler('klippy:connect', self.handle_connect)
+
 
     def handle_connect(self):
+        logging.info("PAUL: handle_connect: MmuCalibrator")
         self.mmu = self.mmu_machine.mmu_controller # Shared MMU controller class
         self.var_manager = self.mmu_machine.var_manager
 
@@ -259,7 +265,7 @@ class MmuCalibrationManager:
         if gate == None: gate = self.mmu.gate_selected
 
         if gate < 0:
-            rd = self.default_rotation_distance
+            rd = self.default_rotation_distances[0]
         else:
             rd = self.rotation_distances[gate if gate >= 0 and self.mmu.mmu_machine.variable_rotation_distances else 0]
 
@@ -268,6 +274,14 @@ class MmuCalibrationManager:
             self.mmu.log_debug("Gate %d not calibrated, falling back to default rotation_distance: %.4f" % (gate, rd))
 
         return rd
+
+
+    # Set the active gear stepper rotation distance # PAUL belong in this module?
+    def set_gear_rotation_distance(self, rd):
+        if rd:
+            self.log_trace("Setting gear motor rotation distance: %.4f" % rd)
+            if self.gear_rail.steppers:
+                self.gear_rail.steppers[0].set_rotation_distance(rd)
 
 
     # Save rotation_distance for gate (and associated gates) adjusting any calibrated bowden length
