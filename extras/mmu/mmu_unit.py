@@ -108,14 +108,14 @@ class MmuUnit:
         # By default HH uses its modified homing extruder. Because this might have unknown consequences on certain
         # set-ups it can be disabled. If disabled, homing moves will still work, but the delay in mcu to mcu comms
         # can lead to several mm of error depending on speed. Also homing of just the extruder is not possible.
-        self.extruder_name = config.get('extruder_name', 'extruder') # PAUL should be per-unit!
+        self.extruder_name = config.get('extruder_name', 'extruder')
         self.homing_extruder = bool(config.getint('homing_extruder', 1, minval=0, maxval=1))
 
         # Setup homing extruder
-        self.mmu_extruder_stepper = None
+        self._extruder_stepper = None
         if self.homing_extruder and False: # PAUL
             # Create MmuExtruderStepper for later insertion into PrinterExtruder on Toolhead (on klippy:connect)
-            self.mmu_extruder_stepper = MmuExtruderStepper(config.getsection(self.extruder_name), self)
+            self._extruder_stepper = MmuExtruderStepper(config.getsection(self.extruder_name), self)
 
             # Nullify original extruder stepper definition so Klipper doesn't try to create it again. Restore in handle_connect()
             self.old_ext_options = {}
@@ -301,9 +301,9 @@ class MmuUnit:
         self.selector_type = config.getchoice('selector_type', {o: o for o in SELECTOR_TYPES}, selector_type)
         self.multigear = self.selector_type in SELECTOR_MULTI_GEAR_TYPES
 
-        self.selector_stepper    = config.get('selector_stepper', None)
-        self.selector_servo      = config.get('selector_servo', None)
-        self.gear_stepper        = config.get('gear_stepper', None)
+        self.selector_stepper    = config.get('selector_stepper', None) # Name of selector stepper
+        self.selector_servo      = config.get('selector_servo', None)   # Name of selector servo if fitted
+        self.gear_stepper        = config.get('gear_stepper', None)     # Name of base gear stepper (allways present)
         self.extra_gear_steppers = config.getlist('extra_gear_steppers', [])
         if self.multigear and len(self.extra_gear_steppers) != self.num_gates - 1:
             raise config.error("extra_gear_steppers is not the correct length, expected %d elements" % self.num_gates - 1)
@@ -311,11 +311,11 @@ class MmuUnit:
         # Find the TMC controller for base gear stepper so we can fill in missing config for other matching steppers
         # and ensure all gear steppers can be loaded
         self.gear_tmc = None
-        base_gear_tmc = base_tmc_section = None
+        base_gear_tmc_chip = base_tmc_section = None
         for chip in TMC_CHIPS:
             base_tmc_section = '%s %s' % (chip, self.gear_stepper)
             if config.has_section(base_tmc_section):
-                base_gear_tmc = chip
+                base_gear_tmc_chip = chip
                 self.gear_tmc = self.printer.load_object(config, base_tmc_section) # Load base gear stepper now
                 logging.info("MMU: Loaded: [%s]" % base_tmc_section)
                 break
@@ -340,7 +340,7 @@ class MmuUnit:
                             config.fileconfig.set(stepper_section, key, base_value)
 
                 # If tmc controller for this extra stepper matches the base we can fill in missing TMC config
-                tmc_section = '%s %s' % (base_gear_tmc, stepper_section)
+                tmc_section = '%s %s' % (base_gear_tmc_chip, stepper_section)
                 if config.has_section(tmc_section):
                     for key in SHAREABLE_TMC_PARAMS:
                         if config.fileconfig.has_option(base_tmc_section, key) and not config.fileconfig.has_option(tmc_section, key):
@@ -394,6 +394,9 @@ class MmuUnit:
                 raise config.error("Selector servo not found. Perhaps missing '[mmu_servo %s]' definition" % servo_name)
         else:
             logging.info("MMU: - No selector servo specified")
+
+
+        # Load subcomponents -----------------
 
         # Load parameters config for this unit
         params = c = config.getsection('mmu_unit_parameters %s' % self.name)
@@ -480,68 +483,199 @@ class MmuUnit:
         self.sync_feedback = MmuSyncFeedback(params, self, self.p)
         logging.info("MMU: Created: sync-feedback / autotune controller for unit %s" % self.name)
 
+        self.subcomponents = [
+            self.sensors,
+            self.espooler,
+            self.leds,
+            self.encoder,
+            self.buffer,
+            self.selector,
+            self.calibrator,
+            self.sync_feedback
+        ]
+
         # Event handlers
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
-        self.printer.register_event_handler("klippy:disconnect", self.handle_disconnect)
-        self.printer.register_event_handler("klippy:ready", self.handle_ready)
+
 
     def handle_connect(self):
-        # Master MMU controller
-        self.mmu = self.mmu_machine.mmu_controller
+        logging.info("PAUL: handle_connect: MmuUnit")
+        self.mmu = self.mmu_machine.mmu_controller # Master MMU controller
 
+        # Find and record all gear steppers, controlling tmc chip (if available) and default current indexed by gate
+        # PAUL this will change with new MmuStepper class
+        self.mmu_gear_names = []
+        self.mmu_gear_steppers = []
+        self.mmu_gear_tmcs = []
+        self.mmu_gear_currents = []
+
+        if self.multigear:
+            names = [self.gear_stepper] + self.extra_gear_steppers
+        else:
+            names = [self.gear_stepper] * self.num_gates
+        by_name = {s.get_name(): s for s in self.mmu_toolhead.all_gear_rail_steppers}
+
+        not_found = set()
+        for name in names:
+            self.mmu_gear_names.append(name)
+            s = by_name.get(name)
+            if s is None:
+                not_found.add(name)
+                continue
+
+            self.mmu_gear_steppers.append(s)
+
+            for chip in TMC_CHIPS:
+                c = self.printer.lookup_object("%s %s" % (chip, name), None)
+                if c is not None:
+                    self.mmu_gear_tmcs.append(c)
+                    self.mmu_gear_currents.append(c.get_status(0).get("run_current"))
+                    break
+            else:
+                self.mmu_gear_tmcs.append(None)
+                self.mmu_gear_currents.append(None)
+
+        if not_found:
+            raise self.config.error(
+                "Internal error: Not all MMU gear steppers were found for unit %s! Missing: %s"
+                % (self.name, ", ".join(not_found))
+            )
+
+        gates_with_tmc    = [i + self.first_gate for i, tmc in enumerate(self.mmu_gear_tmcs) if tmc is not None]
+        gates_without_tmc = [i + self.first_gate for i, tmc in enumerate(self.mmu_gear_tmcs) if tmc is None]
+
+        if gates_with_tmc:
+            self.mmu.log_debug(
+                "Unit %s: Found TMC on gear_stepper (gates: %s). Current control enabled. Stallguard 'touch' homing possible"
+                % (self.name, ", ".join(map(str, gates_with_tmc)))
+            )
+
+        if gates_without_tmc:
+            self.mmu.log_debug(
+                "Unit %s: TMC driver not found for gear stepper (gates: %s), cannot use current reduction for collision detection or while synchronized printing"
+                % (self.name, ", ".join(map(str, gates_without_tmc)))
+            )
+
+        for i in self.mmu_gear_steppers: # PAUL
+            logging.info("PAUL: gear=%s" % i.get_name())
+
+        # Setup extruder --------
         self.printer_toolhead = self.printer.lookup_object('toolhead') # PAUL how does multiple extruders work?
         printer_extruder = self.printer_toolhead.get_extruder()
 
-        if self.homing_extruder and self.mmu_extruder_stepper is not None:
+        if self.homing_extruder and self._extruder_stepper is not None:
             # Restore original extruder options in case user macros reference them
             for key, value in self.old_ext_options.items():
                 self.config.fileconfig.set(self.extruder_name, key, value)
 
             # Now we can switch in homing MmuExtruderStepper
-            printer_extruder.extruder_stepper = self.mmu_extruder_stepper
-            self.mmu_extruder_stepper.stepper.set_trapq(printer_extruder.get_trapq())
+            printer_extruder.extruder_stepper = self._extruder_stepper
+            self._extruder_stepper.stepper.set_trapq(printer_extruder.get_trapq())
         else:         
-            self.mmu_extruder_stepper = printer_extruder.extruder_stepper
+            self._extruder_stepper = printer_extruder.extruder_stepper
             self.mmu.log_debug("Warning: Using original klipper extruder stepper. Extruder homing not possible")
 
-        # Find TMC for extruder for current control
-        self.extruder_tmc = None
+        # Find TMC for extruder for current control --------
+        self._extruder_tmc = self._extruder_current = None
         for chip in TMC_CHIPS:
-            self.extruder_tmc = self.printer.lookup_object("%s %s" % (chip, printer_extruder.name), None) # PAUL fix, change printer_extruder.name
-            break
-        if self.extruder_tmc is not None:
-            self.mmu.log_debug("MMU: Found %s on extruder '%s'. Current control enabled. %s" % (chip, printer_extruder.name, "Stallguard 'touch' extruder homing possible." if self.homing_extruder else ""))
+            c = self.printer.lookup_object("%s %s" % (chip, self.extruder_name), None)
+            if c is not None:
+                self._extruder_tmc = c
+                self._extruder_current = c.get_status(0).get("run_current")
+                break
+
+        if self._extruder_tmc:
+            msg = (
+                "Unit %s: Found %s on extruder %s. "
+                "Current control enabled."
+            ) % (self.name, chip, self.extruder_name)
+
+            if self.homing_extruder:
+                msg += " Stallguard 'touch' extruder homing possible."
+
+            self.mmu.log_debug(msg)
         else:
-            self.mmu.log_debug("MMU: TMC driver not found for extruder, cannot use current increase for tip forming move")
+            self.mmu.log_debug(
+                "Unit %s: TMC driver not found for extruder %s. "
+                "Cannot use current increase for tip forming move."
+                % (self.name, self.extruder_name)
+            )
 
         # This monitors extruder movement. We create one per MMU unit to allow for each
         # unit to be connected to a different extruder.
         self.extruder_monitor = ExtruderMonitor(self.mmu)
 
-    def handle_disconnect(self):
-        pass
-
-    def handle_ready(self):
-        pass
 
     def reinit(self):
-        self.sync_feedback.reinit()
-        self.selector.reinit()
+        for obj in self.subcomponents:
+            if obj is not None:
+                method = getattr(obj, "reinit", None)
+                if callable(method):
+                    method()
+
 
     def has_encoder(self):
         return self.encoder is not None
 
+
     def has_espooler(self):
         return self.espooler is not None
+
 
     def enable_motors(self):
         self.selector.enable_motors()
 
+
     def disable_motors(self):
         self.selector.disable_motors()
 
+
     def manages_gate(self, gate):
         return self.first_gate <= gate < self.first_gate + self.num_gates
+
+
+    # Convert mmu_machine gate number to relative gate on mmu_unit
+    def local_gate(self, gate, force_physical=False):
+        if self.manages_gate(gate):
+            lgate = gate - self.mmu_unit.first_gate
+        elif gate < 0:
+            lgate = gate # bypass/unknown
+        else:
+            self.mmu.log_assertion("Fatal: Gate %d is not managed by unit %s" % (gate, self.name))
+            lgate = TOOL_GATE_UNKNOWN
+        return lgate if not force_physical else max(0, lgate)
+
+
+    # Return gear name associated with gate
+    def gear_name(self, gate):
+        lgate = self.local_gate(gate, True)
+        return self.mmu_gear_names[lgate]
+
+    def gear_stepper(self, gate):
+        lgate = self.local_gate(gate, True)
+        return self.mmu_gear_steppers[lgate]
+
+    def gear_tmc(self, gate):
+        lgate = self.local_gate(gate, True)
+        return self.mmu_gear_tmcs[lgate]
+
+    def gear_default_current(self, gate):
+        lgate = self.local_gate(gate, True)
+        return self.mmu_gear_currents[lgate]
+
+
+    def extruder_name(self):
+        return self.extruder_name
+
+    def extruder_stepper(self):
+        return self._extruder_stepper
+
+    def extruder_tmc(self):
+        return self._extruder_tmc
+
+    def extruder_default_current(self):
+        return self._extruder_current
+
 
     def get_status(self, eventtime):
         unit_info = {

@@ -31,6 +31,13 @@ from .mmu_led_manager           import MmuLedManager
 from .mmu_environment_manager   import MmuEnvironmentManager
 from .mmu_parameters            import MmuParameters
 from .unit.mmu_encoder          import RUNOUT_DISABLED, RUNOUT_STATIC, RUNOUT_AUTOMATIC
+from .unit.mmu_calibrator       import (CALIBRATED_GEAR_0,
+                                        CALIBRATED_ENCODER,
+                                        CALIBRATED_SELECTOR,
+                                        CALIBRATED_BOWDENS,
+                                        CALIBRATED_GEAR_RDS,
+                                        CALIBRATED_ESSENTIAL,
+                                        CALIBRATED_ALL)
 
 
 # Main klipper module
@@ -63,6 +70,9 @@ class MmuController:
         self.has_toolhead_cutter = False      # Form tip cutting macro (like _MMU_CUT_TIP)
         self._is_running_test = False         # True while running QA or soak tests
         self.slicer_tool_map = None
+
+        self.gear_run_current_percent = self.extruder_run_current_percent = 100 # Current run percentages
+        self._gear_run_current_locked = False # True if gear current is currently locked by wrap_gear_current()
 
         # Parameters
         self.p = mmu_machine.params
@@ -268,6 +278,12 @@ class MmuController:
         self._reset_statistics()
         self.counters = {}
 
+        # Event handlers
+        self.printer.register_event_handler('klippy:connect', self.handle_connect)
+        self.printer.register_event_handler('klippy:disconnect', self.handle_disconnect)
+        self.printer.register_event_handler('klippy:ready', self.handle_ready)
+
+
     def _setup_logging(self):
         # Setup background file based logging before logging any messages
         if self.mmu_logger is None and self.p.log_file_level >= 0:
@@ -281,46 +297,12 @@ class MmuController:
             self.mmu_logger = MmuLogger(mmu_log)
             self.mmu_logger.log("\n\n\nMMU Startup -----------------------------------------------\n")
 
+
     def handle_connect(self):
+        logging.info("PAUL: handle_connect: MmuController")
         self.toolhead = self.printer.lookup_object('toolhead')
         self.sensor_manager.reset_active_unit(self.unit_selected)
         self.var_manager = self.mmu_machine.var_manager
-
-
-# PAUL all this must be multi-extruder !!! AND multi-gear
-        # Sanity check extruder name
-        extruder = self.printer.lookup_object(self.extruder_name, None)
-        if not extruder:
-            raise self.config.error("Extruder named '%s' not found on printer" % self.extruder_name)
-
-        # Establish gear_stepper initial gear_stepper and extruder currents and current percentage
-        self.gear_tmc = self.mmu_unit().gear_tmc
-        if self.gear_tmc is None:
-            self.log_debug("TMC driver not found for gear_stepper, cannot use current reduction for collision detection or while synchronized printing")
-        else:
-            self.log_debug("Found TMC on gear_stepper. Current control enabled. Stallguard 'touch' homing possible")
-
-        self.extruder_tmc = self.mmu_unit(0).extruder_tmc # PAUL HACK
-        if self.extruder_tmc is None:
-            self.log_debug("TMC driver not found for extruder, cannot use current increase for tip forming move")
-
-        self.gear_default_run_current = self.gear_tmc.get_status(0)['run_current'] if self.gear_tmc else None
-        self.extruder_default_run_current = self.extruder_tmc.get_status(0)['run_current'] if self.extruder_tmc else None
-        self.gear_percentage_run_current = self.extruder_percentage_run_current = 100 # Current run percentages
-        self._gear_current_locked = False # True if gear current is currently locked by wrap_gear_current()
-
-        # Establish gear_stepper initial gear_stepper and extruder currents and current percentage
-        self.gear_tmc = self.mmu_unit(0).gear_tmc # PAUL HACK
-        if self.gear_tmc is None:
-            self.log_debug("TMC driver not found for gear_stepper, cannot use current reduction for collision detection or while synchronized printing")
-        else:
-            self.log_debug("Found TMC on gear_stepper. Current control enabled. Stallguard 'touch' homing possible")
-        self.extruder_tmc = self.mmu_machine.extruder_tmc
-        self.gear_default_run_current = self.gear_tmc.get_status(0)['run_current'] if self.gear_tmc else None
-        self.gear_percentage_run_current = self.gear_restore_percent_run_current = self.extruder_percentage_run_current = 100.
-
-        self.gear_percentage_run_current = self.extruder_percentage_run_current = 100 # Current run percentages
-        self._gear_current_locked = False # True if gear current is currently locked by wrap_gear_current()
 
         # Sanity check that required klipper options are enabled
         self.print_stats = self.printer.lookup_object("print_stats", None)
@@ -342,29 +324,11 @@ class MmuController:
             self.has_mmu_cutter = 'cut' in sequence_vars_macro.variables.get('user_post_unload_extension', '').lower() # E.g. "EREC_CUTTER_ACTION"
         self.has_toolhead_cutter = 'cut' in self.p.form_tip_macro.lower()                                              # E.g. "_MMU_CUT_TIP"
 
-# PAUL now in unit
-#        # Let selector know
-#        for unit in self.mmu_machine.units:
-#            unit.selector.handle_connect()
-
-# PAUL add in subcomponent loop... from v342
-#        # Sub components
-#        for m in self.managers:
-#            if hasattr(m, 'handle_connect'):
-#                m.handle_connect()
-
     def handle_disconnect(self):
         self.log_debug('Klipper disconnected!')
 
-        # Let selector know
-        for unit in self.mmu_machine.units:
-            unit.selector.handle_disconnect()
-# PAUL add in subcomponent loop... from v342
-#        for m in self.managers:
-#            if hasattr(m, 'handle_disconnect'):
-#                m.handle_disconnect()
-
     def handle_ready(self):
+        logging.info("PAUL: handle_ready: MmuController")
         # Pull retraction length from macro config
         sequence_vars_macro = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
         if sequence_vars_macro:
@@ -415,17 +379,10 @@ class MmuController:
         except Exception as e:
             self.log_error('Error trying to wrap PAUSE/RESUME/CLEAR_PAUSE/CANCEL_PRINT macros: %s' % str(e))
 
-        # Let selector know
-        for unit in self.mmu_machine.units:
-            unit.selector.handle_ready()
-# PAUL add in subcomponent loop... from v342
-#        for m in self.managers:
-#            if hasattr(m, 'handle_ready'):
-#                m.handle_ready()
-
         # Schedule bootup tasks to run after klipper and hopefully spoolman have settled
 # PAUL temp disable
 #        self._schedule_mmu_bootup_tasks(BOOT_DELAY)
+
 
     def reinit(self):
         self.is_enabled = self.runout_enabled = True
@@ -814,7 +771,7 @@ class MmuController:
             if self.p.startup_reset_ttg_map:
                 self._reset_ttg_map()
 
-            if self.mmu_unit().p.startup_home_if_unloaded and not self.check_if_not_calibrated(CalibrationManager.CALIBRATED_SELECTOR) and self.filament_pos == FILAMENT_POS_UNLOADED:
+            if self.mmu_unit().p.startup_home_if_unloaded and not self.check_if_not_calibrated(CALIBRATED_SELECTOR) and self.filament_pos == FILAMENT_POS_UNLOADED:
                 self.home(0)
 
             if self.p.log_startup_status:
@@ -934,7 +891,7 @@ class MmuController:
 
     def _get_bowden_progress(self):
         if self.bowden_start_pos is not None:
-            bowden_length = self.calibration_manager.get_bowden_length()
+            bowden_length = self.mmu_unit().calibrator.get_bowden_length()
             if bowden_length > 0:
                 current = self.get_encoder_distance(dwell=None) if self.has_encoder() else self._get_live_filament_position()
                 progress = abs(current - self.bowden_start_pos) / bowden_length
@@ -1323,10 +1280,10 @@ class MmuController:
             adj_gate = gate - mmu_unit.first_gate
             self.var_manager.set("%s%d" % (VARS_MMU_GATE_STATISTICS_PREFIX, adj_gate), self.gate_statistics[gate], namespace=mmu_unit.name)
 
-# PAUL old logic
+# PAUL old logic .. check it is elsewhere
 #        # Also a good place to persist current clog length
 #        if self.has_encoder():
-#            self.calibration_manager.save_clog_detection_length(round(self.encoder().get_clog_detection_length(), 1), force=False)
+#            self.mmu_unit(gate).calibrator.save_clog_detection_length(round(self.encoder().get_clog_detection_length(), 1), force=False)
 
         # Also a good place to update the persisted calibrated clog length (for auto mode)
         if self.has_encoder():
@@ -1616,7 +1573,7 @@ class MmuController:
         msg += "\nPrint state is %s" % self.print_state.upper()
         msg += ". Tool %s selected on gate %s%s" % (self.selected_tool_string(), self.selected_gate_string(), self.selected_unit_string())
         msg += ". Toolhead position saved" if self.saved_toolhead_operation else ""
-        msg += "\nMMU gear stepper at %d%% current and is %s to extruder" % (self.gear_percentage_run_current, "SYNCED" if self.mmu_toolhead().is_gear_synced_to_extruder() else "not synced")
+        msg += "\nMMU gear stepper at %d%% current and is %s to extruder" % (self.gear_run_current_percent, "SYNCED" if self.mmu_toolhead().is_gear_synced_to_extruder() else "not synced")
         if self._standalone_sync:
             msg += ". Standalone sync mode is ENABLED"
         if self.mmu_unit().sync_feedback.is_enabled():
@@ -2693,8 +2650,8 @@ class MmuController:
                 rmsg = omsg = ""
                 if (
                     (not use_autotune or not self.mmu_unit().p.autocal_selector) and
-                    (required & CalibrationManager.CALIBRATED_SELECTOR) and
-                    not self.calibration_manager.check_calibrated(mmu_unit, CalibrationManager.CALIBRATED_SELECTOR)
+                    (required & CALIBRATED_SELECTOR) and
+                    not self.calibration_manager.check_calibrated(mmu_unit, CALIBRATED_SELECTOR)
                 ):
                     unit_check_gates = [gate for gate in check_gates if mmu_unit.manages_gate(gate)]
                     uncalibrated = mmu_unit.selector.get_uncalibrated_gates(unit_check_gates)
@@ -2707,8 +2664,8 @@ class MmuController:
 
                 if (
                     (not use_autotune or not self.mmu_unit().p.skip_cal_rotation_distance) and
-                    (required & CalibrationManager.CALIBRATED_GEAR_0) and
-                    not self.calibration_manager.check_calibrated(mmu_unit, CalibrationManager.CALIBRATED_GEAR_0)
+                    (required & CALIBRATED_GEAR_0) and
+                    not self.calibration_manager.check_calibrated(mmu_unit, CALIBRATED_GEAR_0)
                 ):
                     uncalibrated = self.rotation_distances[mmu_unit.first_gate] == -1
                     if uncalibrated:
@@ -2721,8 +2678,8 @@ class MmuController:
 
                 if (
                     (not use_autotune or not self.mmu_unit().p.skip_cal_encoder) and
-                    (required & CalibrationManager.CALIBRATED_ENCODER) and
-                    not self.calibration_manager.check_calibrated(mmu_unit, CalibrationManager.CALIBRATED_ENCODER)
+                    (required & CALIBRATED_ENCODER) and
+                    not self.calibration_manager.check_calibrated(mmu_unit, CALIBRATED_ENCODER)
                 ):
                     info = "\n- Use MMU_CALIBRATE_ENCODER (with first gate selected)"
                     if self.mmu_unit().p.skip_cal_encoder:
@@ -2733,8 +2690,8 @@ class MmuController:
                 if (
                     mmu_unit.variable_rotation_distances and
                     (not use_autotune or not (self.mmu_unit().p.skip_cal_rotation_distance or self.mmu_unit().p.autotune_rotation_distance)) and
-                    (required & CalibrationManager.CALIBRATED_GEAR_RDS) and
-                    not self.calibration_manager.check_calibrated(mmu_unit, CalibrationManager.CALIBRATED_GEAR_RDS)
+                    (required & CALIBRATED_GEAR_RDS) and
+                    not self.calibration_manager.check_calibrated(mmu_unit, CALIBRATED_GEAR_RDS)
                 ):
                     uncalibrated = [lgate for lgate, value in enumerate(self.rotation_distances[mmu_unit.first_gate:mmu_unit.first_gate + mmu_unit.num_gates]) if lgate != 0 and value == -1 and lgate + mmu_unit.first_gate in check_gates]
                     if uncalibrated:
@@ -2751,8 +2708,8 @@ class MmuController:
 
                 if (
                     (not use_autotune or not self.mmu_unit().p.autocal_bowden_length) and
-                    (required & CalibrationManager.CALIBRATED_BOWDENS) and
-                    not self.calibration_manager.check_calibrated(mmu_unit, CalibrationManager.CALIBRATED_BOWDENS)
+                    (required & CALIBRATED_BOWDENS) and
+                    not self.calibration_manager.check_calibrated(mmu_unit, CALIBRATED_BOWDENS)
                 ):
                     if mmu_unit.variable_bowden_lengths:
                         uncalibrated = [lgate for lgate, value in enumerate(self.bowden_lengths[mmu_unit.first_gate:mmu_unit.first_gate + mmu_unit.num_gates]) if value == -1 and lgate + mmu_unit.first_gate in check_gates]
@@ -4992,7 +4949,7 @@ class MmuController:
 
     # Report on need to recover and necessary calibration
     def report_necessary_recovery(self, use_autotune=True):
-        if not self.check_if_not_calibrated(CalibrationManager.CALIBRATED_ALL, silent=None, use_autotune=use_autotune):
+        if not self.check_if_not_calibrated(CALIBRATED_ALL, silent=None, use_autotune=use_autotune):
             if self.filament_pos != FILAMENT_POS_UNLOADED and TOOL_GATE_UNKNOWN in [self.gate_selected, self.tool_selected]:
                 self.log_error("Filament detected but tool/gate is unknown. Plese use MMU_RECOVER GATE=xx to correct state")
             elif self.filament_pos not in [FILAMENT_POS_LOADED, FILAMENT_POS_UNLOADED]:
@@ -5380,107 +5337,6 @@ class MmuController:
 
 
 
-# PAUL old reference code
-#    # Reset correct sync state based on MMU type and state
-#    #   sync_intention: sync intention when printing based on sync_to_extruder, sync_form_tip, sync_purge
-#    #   force_in_print used to mimick printing behavior often for testing
-#    #
-#    # This logic is tricky. Have to consider:
-#    #   If bypass is selected we cannot sync
-#    #   If in a print then used desired sync state if actively printing or desired or necessary sync state
-#    #   If not consider desired (_standalone_sync) or necessary (always_gripped) sync state
-#    def reset_sync_gear_to_extruder(self, sync_intention, force_in_print=False):
-#        if self.gate_selected == self.TOOL_GATE_BYPASS:
-#            sync = False
-#        elif self.is_in_print(force_in_print):
-#            sync = (
-#                (self.is_printing(force_in_print) and self.sync_to_extruder) or
-#                (
-#                    not self.is_printing(force_in_print) and
-#                    self.filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY and
-#                    (
-#                        self.mmu_unit().filament_always_gripped or
-#                        self._standalone_sync
-#                    )
-#                )
-#            )
-#        else:
-#            sync = (
-#                self.filament_pos >= self.FILAMENT_POS_EXTRUDER_ENTRY and
-#                (
-#                    self.mmu_unit().filament_always_gripped or
-#                    self._standalone_sync or
-#                    sync_intention
-#                )
-#            )
-#        self.sync_gear_to_extruder(sync)
-#        return sync
-#
-#    # Sync/unsync gear motor with extruder, handle filament engagement and current control
-#    def sync_gear_to_extruder(self, sync, gate=None):
-##        self.log_error("PAUL: sync_gear_to_extruder(sync=%s)" % sync)
-#        # Safety in case somehow called with bypass/unknown selected. Usually this is called after
-#        # self.gate_selected is set, but can be before on type-B designs hence optional gate parameter
-#        gate = gate if gate is not None else self.gate_selected
-#
-#        # Protect cases where we shouldn't sync (note type-B always have homed selector)
-#        if gate < 0 or not self.selector().is_homed:
-#            sync = False
-#            self._standalone_sync = False
-#
-#        # Handle filament grip before sync (type-A MMU) because of potential "buzz" movement
-#        if sync:
-#            self.selector().filament_drive()
-#        elif not self._suppress_release_grip:
-#            # There are situations where we want this to be lazy to avoid "flutter" (of servo)
-#            self.selector().filament_release()
-#
-#        # Sync / Unsync
-#        new_sync_mode = MmuToolHead.GEAR_SYNCED_TO_EXTRUDER if sync else None
-#        if new_sync_mode != self.mmu_toolhead().sync_mode:
-#            self.movequeues_wait() # TODO Safety but should not be required(?)
-#            self.mmu_toolhead().sync(new_sync_mode)
-#
-#        # See if we need to set a reduced gear current. If we do then make sure it is
-#        # restored on previous gear stepper if we are on a multigear MMU
-#        if sync:
-#            # Reset current on old gear stepper before adjusting new
-#            if self.mmu_unit().multigear and gate != self.gate_selected:
-#                self._restore_gear_current()
-#            self._adjust_gear_current(gate=gate, percent=self.sync_gear_current, reason="for extruder syncing")
-#        else:
-#            self._restore_gear_current()
-#
-#    # This is used to protect synchronization, current and grip states and is used as an outermost wrapper
-#    # for "MMU_" commands back into Happy Hare during a print or standalone operation
-#    #   supress_fix_grip: prevents subsequent recursive calls from relaxing grip thus avoiding flutter
-#    @contextlib.contextmanager
-#    def wrap_sync_gear_to_extruder(self):
-#        prev_sync = self.mmu_toolhead().sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
-#
-#        # Turn espooler in-print assist off
-#        espooler_state = None
-#        if self.has_espooler():
-#            espooler_state = self.espooler().get_operation(self.gate_selected)
-#            self._espooler_assist_off()
-#
-#        # Outermost-only suppression of grip release
-#        clear_suppress = not self._suppress_release_grip
-#        self._suppress_release_grip = True
-#        try:
-#            yield self
-#        finally:
-#            # Only the outermost wrapper clears suppression
-#            if clear_suppress:
-#                self._suppress_release_grip = False
-#
-#            # Restore sync state (logic can act on global suppression flag)
-#            self.reset_sync_gear_to_extruder(prev_sync)
-#
-#            # Restore espooler state
-#            if self.has_espooler() and espooler_state is not None:
-#                self.espooler().set_operation(self.gate_selected, espooler_state[1], espooler_state[0])
-
     # ---------- TMC Stepper Current Control ----------
             
     @contextlib.contextmanager
@@ -5490,33 +5346,31 @@ class MmuController:
             restore to previous setting
         """ 
         prev_percent = self._adjust_gear_current(percent=percent, reason=reason)
-        self._gear_current_locked = True 
+        self._gear_run_current_locked = True 
         try:
             yield self
         finally:
-            self._gear_current_locked = False
+            self._gear_run_current_locked = False
             self._restore_gear_current(percent=prev_percent)
     
     def _adjust_gear_current(self, gate=None, percent=100, reason="", restore=False):
-        current_percent = self.gear_percentage_run_current
+        current_percent = self.gear_run_current_percent
 
-        if self._gear_current_locked: return current_percent
+        if self._gear_run_current_locked: return current_percent
         if gate is None: gate = self.gate_selected
         if gate < 0: return current_percent
         if not (0 < percent < 200): return current_percent
-        if not self.gear_tmc: return current_percent
-        if percent == self.gear_percentage_run_current: return current_percent
+        if self.mmu_unit(gate).gear_tmc(gate) is None: return current_percent
+        if percent == self.gear_run_current_percent: return current_percent
           
-        gear_stepper_name = mmu_machine.GEAR_STEPPER_CONFIG
-        if self.mmu_machine.multigear and gate > 0:
-            gear_stepper_name = "%s_%d" % (mmu_machine.GEAR_STEPPER_CONFIG, gate)
+        sname = self.mmu_unit(gate).gear_name(gate)
         if restore:
-            msg = "Restoring MMU %s run current to %d%% ({}A)" % (gear_stepper_name, percent)
+            msg = "Restoring MMU %s run current to %d%% ({}A)" % (sname, percent)
         else:   
-            msg = "Modifying MMU %s run current to %d%% ({}A) %s" % (gear_stepper_name, percent, reason)
-        target_current = (self.gear_default_run_current * percent) / 100.0
-        self._set_tmc_current(gear_stepper_name, target_current, msg)
-        self.gear_percentage_run_current = percent # Update global record of current %
+            msg = "Modifying MMU %s run current to %d%% ({}A) %s" % (sname, percent, reason)
+        target_current = (self.mmu_unit(gate).gear_default_current(gate) * percent) / 100.0
+        self._set_tmc_current(sname, target_current, msg)
+        self.gear_run_current_percent = percent # Update global record of current %
         return percent
 
     def _restore_gear_current(self, gate=None, percent=100):
@@ -5531,18 +5385,20 @@ class MmuController:
             self._restore_extruder_current(percent=prev_percent)
 
     def _adjust_extruder_current(self, percent=100, reason="", restore=False):
-        current_percent = self.extruder_percentage_run_current
+        current_percent = self.extruder_run_current_percent
 
-        if not self.extruder_tmc: return current_percent
         if not (0 < percent < 200): return current_percent
-        if percent == self.extruder_percentage_run_current: return current_percent
+        if self.mmu_unit().extruder_tmc is None: return current_percent
+        if percent == self.extruder_run_current_percent: return current_percent
 
+        sname = self.mmu_unit().extruder_name()
         if restore:
-            msg = "Restoring extruder stepper run current to %d%% ({}A)"
+            msg = "Restoring extruder stepper %s run current to %d%% ({}A)" % (sname, percent)
         else:
-            msg = "Modifying extruder stepper run current to %d%% ({}A) %s" % (percent, reason)
-        self._set_tmc_current(self.extruder_name, (self.extruder_default_run_current * percent) / 100., msg)
-        self.extruder_percentage_run_current = percent # Update global record of current %
+            msg = "Modifying extruder stepper %s run current to %d%% ({}A) %s" % (sname, percent, reason)
+        target_current = (self.mmu_unit().extruder_default_current * percent) / 100.0
+        self._set_tmc_current(sname, target_current, msg)
+        self.extruder_run_current_percent = percent # Update global record of current %
         return percent
 
     def _restore_extruder_current(self, percent=100):
@@ -6086,7 +5942,7 @@ class MmuController:
         if self.check_if_disabled(): return
         self._fix_started_state()
 
-        if self.check_if_not_calibrated(CalibrationManager.CALIBRATED_SELECTOR):
+        if self.check_if_not_calibrated(CALIBRATED_SELECTOR):
             self.log_always("Not calibrated. Will home to endstop only!")
             tool = -1
             force_unload = 0
@@ -6109,7 +5965,7 @@ class MmuController:
         if self.check_if_not_homed(): return
         if self.check_if_loaded(): return
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.num_gates - 1)
-        if self.check_if_not_calibrated(CalibrationManager.CALIBRATED_SELECTOR, check_gates=[gate] if gate >= 0 else None): return
+        if self.check_if_not_calibrated(CALIBRATED_SELECTOR, check_gates=[gate] if gate >= 0 else None): return
         self._fix_started_state()
 
         bypass = gcmd.get_int('BYPASS', -1, minval=0, maxval=1)
@@ -6132,7 +5988,7 @@ class MmuController:
         if self.check_if_disabled(): return
         if self.check_if_not_homed(): return
         if self.check_if_loaded(): return
-        if self.check_if_not_calibrated(CalibrationManager.CALIBRATED_SELECTOR): return
+        if self.check_if_not_calibrated(CALIBRATED_SELECTOR): return
         self._fix_started_state()
 
         try:
@@ -6155,7 +6011,7 @@ class MmuController:
         self.log_to_file(gcmd.get_commandline())
         if self.check_if_disabled(): return
         if self.check_if_bypass(): return
-        if self.check_if_not_calibrated(CalibrationManager.CALIBRATED_ESSENTIAL, check_gates=[]): return # TODO Hard to tell what gates to check so don't check for now
+        if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[]): return # TODO Hard to tell what gates to check so don't check for now
         self._fix_started_state()
 
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
@@ -6323,7 +6179,7 @@ class MmuController:
         self.log_to_file(gcmd.get_commandline())
         if self.check_if_disabled(): return
         if self.check_if_not_homed(): return
-        if self.check_if_not_calibrated(CalibrationManager.CALIBRATED_ESSENTIAL, check_gates=[self.gate_selected]): return
+        if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[self.gate_selected]): return
         self._fix_started_state()
 
         in_bypass = self.gate_selected == TOOL_GATE_BYPASS
@@ -6391,7 +6247,7 @@ class MmuController:
 
         gate = gcmd.get_int('GATE', self.gate_selected, minval=0, maxval=self.num_gates - 1)
         force = bool(gcmd.get_int('FORCE', 0, minval=0, maxval=1))
-        if self.check_if_not_calibrated(CalibrationManager.CALIBRATED_ESSENTIAL, check_gates=[gate]): return
+        if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[gate]): return
         self._fix_started_state()
 
         can_crossload = (self.mmu_unit().can_crossload or self.mmu_unit().multigear) and self.sensor_manager.has_gate_sensor(SENSOR_GEAR_PREFIX, gate)
@@ -6685,7 +6541,7 @@ class MmuController:
         if self.check_if_bypass(): return
         if self.check_if_not_homed(): return
         if self.check_if_loaded(): return
-        if self.check_if_not_calibrated(CalibrationManager.CALIBRATED_ESSENTIAL): return
+        if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL): return
         loops = gcmd.get_int('LOOP', 2)
         rand = gcmd.get_int('RANDOM', 0)
         to_nozzle = gcmd.get_int('FULL', 0)
@@ -6728,7 +6584,7 @@ class MmuController:
         if self.check_if_disabled(): return
         if self.check_if_bypass(): return
         if self.check_if_not_homed(): return
-        if self.check_if_not_calibrated(CalibrationManager.CALIBRATED_ESSENTIAL, check_gates=[self.gate_selected]): return
+        if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[self.gate_selected]): return
         direction = gcmd.get_int('DIRECTION', 1, minval=-1, maxval=1)
         step = gcmd.get_float('STEP', 1, minval=0.5, maxval=20)
         sensitivity = gcmd.get_float('SENSITIVITY', self.encoder().get_resolution(), minval=0.1, maxval=10)
@@ -6764,7 +6620,7 @@ class MmuController:
         if self.check_if_disabled(): return
         if self.check_if_bypass(): return
         if self.check_if_loaded(): return
-        if self.check_if_not_calibrated(CalibrationManager.CALIBRATED_ESSENTIAL, check_gates=[self.gate_selected]): return
+        if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[self.gate_selected]): return
         full = gcmd.get_int('FULL', 0, minval=0, maxval=1)
         try:
             with self.wrap_sync_gear_to_extruder():

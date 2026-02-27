@@ -185,8 +185,8 @@ class MmuSensorManager:
 
                     # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
                     # otherwise the extruder can continue to move a small (speed dependent) distance
-                    if unit.mmu_extruder_stepper is not None and name in [SENSOR_TOOLHEAD, SENSOR_COMPRESSION, SENSOR_TENSION]:
-                        mcu_endstop.add_stepper(unit.mmu_extruder_stepper.stepper)
+                    if unit.extruder_stepper() is not None and name in [SENSOR_TOOLHEAD, SENSOR_COMPRESSION, SENSOR_TENSION]:
+                        mcu_endstop.add_stepper(unit.extruder_stepper().stepper)
                 else:
                     logging.warning("MMU: Filament sensor %s is not defined in [mmu_sensors]" % name)
 # Orig v4... ^^^
