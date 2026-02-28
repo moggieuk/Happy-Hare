@@ -52,10 +52,10 @@ class MmuSyncFeedbackManager:
         self.last_recorded_extruder_position = None
         self._last_state_side = 0   # track sign of proportional state to detect transitions
         self._rd_applied = None     # track live applied RD so UI can show true adjustment
-        self._proportional_seen = False  # true once we receive at least one proportional event
 
         # Process config
         self.sync_feedback_enabled = self.mmu.config.getint('sync_feedback_enabled', 0, minval=0, maxval=1)
+        self.sync_feedback_proportional_sensor = self.mmu.config.getint('sync_feedback_proportional_sensor', 0, minval=0, maxval=1)
         self.sync_feedback_buffer_range = self.mmu.config.getfloat('sync_feedback_buffer_range', 10., minval=0.)
         self.sync_feedback_buffer_maxrange = self.mmu.config.getfloat('sync_feedback_buffer_maxrange', 10., minval=0.)
         self.sync_multiplier_high = self.mmu.config.getfloat('sync_multiplier_high', 1.05, minval=1., maxval=2.)
@@ -103,6 +103,7 @@ class MmuSyncFeedbackManager:
 
     def set_test_config(self, gcmd):
         self.sync_feedback_enabled = gcmd.get_int('SYNC_FEEDBACK_ENABLED', self.sync_feedback_enabled)
+        self.sync_feedback_proportional_sensor = gcmd.get_int('SYNC_FEEDBACK_PROPORTIONAL_SENSOR', self.sync_feedback_proportional_sensor, minval=0, maxval=1)
         self.sync_feedback_buffer_range = gcmd.get_float('SYNC_FEEDBACK_BUFFER_RANGE', self.sync_feedback_buffer_range, minval=0.)
         self.sync_feedback_buffer_maxrange = gcmd.get_float('SYNC_FEEDBACK_BUFFER_MAXRANGE', self.sync_feedback_buffer_maxrange, minval=0.)
         self.sync_multiplier_high = gcmd.get_float('SYNC_MULTIPLIER_HIGH', self.sync_multiplier_high, minval=1., maxval=2.)
@@ -114,6 +115,7 @@ class MmuSyncFeedbackManager:
 
     def get_test_config(self):
         msg = "\nsync_feedback_enabled = %d" % self.sync_feedback_enabled
+        msg += "\nsync_feedback_proportional_sensor = %d" % self.sync_feedback_proportional_sensor
         msg += "\nsync_feedback_buffer_range = %.1f" % self.sync_feedback_buffer_range
         msg += "\nsync_feedback_buffer_maxrange = %.1f" % self.sync_feedback_buffer_maxrange
         msg += "\nsync_multiplier_high = %.2f" % self.sync_multiplier_high
@@ -173,10 +175,13 @@ class MmuSyncFeedbackManager:
         if state is None:
             state = self.state
         if self.mmu.is_enabled and self.sync_feedback_enabled and (self.active or detail):
-            if abs(float(state)) < self.PROP_DEADBAND_THRESHOLD:
-                return 'neutral'
-            return 'compressed' if float(state) > 0.0 else 'tension'
-
+            if self.sync_feedback_proportional_sensor:
+                # Show the latched side to match control behavior
+                s = self._last_state_side
+                return 'neutral' if s == 0 else ('compressed' if s > 0 else 'tension')
+            else:
+                # Dual-switch path
+                return 'compressed' if float(state) > 0.0 else 'tension' if float(state) < 0.0 else 'neutral'
         return "disabled"
 
     # End guard enable/disable/reset hooks
@@ -284,7 +289,6 @@ class MmuSyncFeedbackManager:
         if abs(state) <= 1:
             old_state = self.state
             self.state = float(state)
-            self._proportional_seen = True
             self.mmu.log_trace(
                 "MmuSyncFeedbackManager(%s): Got sync force feedback update. State: %s (%s)" % (
                     "active" if self.sync_feedback_enabled and self.active else "inactive",
@@ -294,23 +298,45 @@ class MmuSyncFeedbackManager:
             )
             # IMPORTANT: Do NOT reset the last_recorded_extruder_position every proportional tick.
             # Only reset on deadband transitions (tension<->neutral<->compression) so ΔE can accumulate.
-            def _side(v):
-                return 0 if abs(v) < self.PROP_DEADBAND_THRESHOLD else (1 if v > 0.0 else -1)
-            new_side = _side(self.state)
-            if new_side != self._last_state_side:
+            # Hysteresis: hold side while in deadband; release to NEUTRAL only on true zero-crossing.
+            def _side(v, prev):
+                # Outside deadband: (re)latch to sign immediately
+                if abs(v) >= self.PROP_DEADBAND_THRESHOLD:
+                    return self.SYNC_STATE_COMPRESSED if v > self.SYNC_STATE_NEUTRAL else self.SYNC_STATE_EXPANDED
+                # Inside deadband: keep previous side; only go NEUTRAL when crossing neutral (0)
+                if prev == self.SYNC_STATE_COMPRESSED and v <= self.SYNC_STATE_NEUTRAL:
+                    return self.SYNC_STATE_NEUTRAL
+                if prev == self.SYNC_STATE_EXPANDED and v >= self.SYNC_STATE_NEUTRAL:
+                    return self.SYNC_STATE_NEUTRAL
+                return prev  # hold previous (including NEUTRAL) while hovering in deadband
+
+            old_side = self._last_state_side
+            new_side = _side(self.state, old_side)
+
+            if new_side != old_side:
                 self.last_recorded_extruder_position = None # Reset extruder watchdog position
                 self._reset_endguard()                      # reset endguard accumulators as we are counting from a new side.
                 self._last_state_side = new_side            # switch sides
 
             if self.sync_feedback_enabled and self.active:
                 # Dynamically inspect sensor availability so we can be reactive to user enable/disable mid print
-                # Note that proportional feedback sensors do not have tension switch so clamp logic will be bypassed
+                # Proportional sensor does not have any switches, hence will bypass the dual switch autotune path
                 has_dual_sensors = (
                     self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_TENSION) and
                     self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_COMPRESSION)
                 )
-                if state != old_state and has_dual_sensors and self.mmu.autotune_rotation_distance:
+                # Proportional sensor is in use
+                use_proportional = bool(self.sync_feedback_proportional_sensor)
+
+                # Dual-switch RD autotune path. Use state transitions
+                if state != old_state and has_dual_sensors and not use_proportional and self.mmu.autotune_rotation_distance:
                     self._adjust_clamps(state, old_state)
+
+                # Proportional RD autotune path. Use debounced side threshold transitions
+                # Only active when proportional is selected, and autotune enabled.
+                if new_side != old_side and use_proportional and self.mmu.autotune_rotation_distance:
+                    self._adjust_clamps(new_side, old_side)
+
                 self._adjust_gear_rotation_distance()
         else:
             self.mmu.log_info(msg)
@@ -330,14 +356,23 @@ class MmuSyncFeedbackManager:
         )
         self._adjust_gear_rotation_distance()
 
-    def _process_status(self, eventtime, status):
-        """
-        Common logic to process the rotation distance recommendations of the sync controller
-        """
-        output = status['output']
+    # This signifies we have been sitting in same state for longer than the movement threshold so
+    # rotation_distance may need an additional nudge. Also allows us to "clamp down" on perfect
+    # calibration if we have dual sensors
+    def _notify_hit_movement_marker(self, movement):
+        # Dynamically inspect sensor availability so we can be reactive to user enable/disable mid print
+        has_dual_sensors = (
+            self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_TENSION) and
+            self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_COMPRESSION)
+        )
+        use_proportional = bool(self.sync_feedback_proportional_sensor)
 
-        # Handle estimated sensor position
-        self.estimated_state = output['sensor_ui']
+        # Allow nudges for:
+        #   - dual sensors + autotune OR
+        #   - proportional + autotune.
+        # Currently we don't do anything if using fixed multipliers (single sensor case) TODO we could though!
+        if not (self.mmu.autotune_rotation_distance and (has_dual_sensors or use_proportional)):
+            return
 
         # Handle flowguard trip
         self.flowguard_status = dict(output['flowguard'])
@@ -348,23 +383,41 @@ class MmuSyncFeedbackManager:
             if self.flowguard_enabled and self.flowguard_active:
                 self.mmu.log_error("FlowGuard detected a %s.\nReason for trip: %s" % (f_trigger, f_reason))
 
-                # Pick most appropriate sensor to assign event to (primariliy for optics)
-                has_tension, has_compression, has_proportional = self.get_active_sensors()
+        # Effective state for nudger:
+        # - Dual switches: use self.state
+        # - Proportional: use hysteresis-latched side in _last_state_side
+        effective_state = self.state if (has_dual_sensors and not use_proportional) else self._last_state_side
 
-                if has_proportional:
-                    sensor_key = self.mmu.SENSOR_PROPORTIONAL
-                elif has_compression and not has_tension:
-                    sensor_key = self.mmu.SENSOR_COMPRESSION
-                elif has_tension and not has_compression:
-                    sensor_key = self.mmu.SENSOR_TENSION
-                elif f_trigger == "clog":
-                    sensor_key = self.mmu.SENSOR_COMPRESSION
-                else: # "tangle"
-                    sensor_key = self.mmu.SENSOR_TENSION
-                sm = self.mmu.sensor_manager
-                sensor = sm.sensors.get(sensor_key)
+        if effective_state == self.SYNC_STATE_COMPRESSED:
+            # Compression state too long means filament feed too fast, need to go slower so increase slow clamp rotation distance
+            rd_clamp[0] *= (1 + self.MULTIPLIER_WHEN_STUCK)
+            self.mmu.log_debug(
+                "MmuSyncFeedbackManager: Extruder moved too far in compressed state (%.1fmm). Increased slow clamp value by %d%% from %.4f to %.4f" % (
+                    movement,
+                    self.MULTIPLIER_WHEN_STUCK * 100,
+                    old_clamp[0],
+                    rd_clamp[0]
+                )
+            )
+            # Adjust clamp and use new slow rd that is known to make sensor move towards tension
+            rd_clamp[1] = rd_clamp[0]
 
-        elif self.state == self.SYNC_STATE_NEUTRAL:
+        elif effective_state == self.SYNC_STATE_EXPANDED:
+            # Tension state too long means filament feed too slow, need to go faster so smaller rotation distance
+            # Increase compressed value by fixed % and set new_rd to compressed value
+            rd_clamp[2] *= (1 - self.MULTIPLIER_WHEN_STUCK)
+            self.mmu.log_debug(
+                "MmuSyncFeedbackManager: Extruder moved too far in tension state (%.1fmm). Decreased fast clamp value by %d%% from %.4f to %.4f" % (
+                    movement,
+                    self.MULTIPLIER_WHEN_STUCK * 100,
+                    old_clamp[2],
+                    rd_clamp[2]
+                )
+            )
+            # Adjust clamp and use new fast rd that is known to make sensor move towards compressed
+            rd_clamp[1] = rd_clamp[2]
+
+        elif effective_state == self.SYNC_STATE_NEUTRAL:
             self.mmu.log_trace("MmuSyncFeedbackManager: Ignoring extruder move marker trigger because in neutral state")
             return # Do nothing, we want to stay in this state
 
@@ -476,19 +529,41 @@ class MmuSyncFeedbackManager:
         if not self.sync_feedback_enabled or not self.active: return False
 
         rd_clamp = self.rd_clamps[self.mmu.gate_selected]
-        if self.state == self.SYNC_STATE_NEUTRAL or self.extruder_direction == 0 or abs(float(self.state)) < self.PROP_DEADBAND_THRESHOLD:
-        # set RD to the neutral RD also when proportional sensor reports within side threshold deadband
+        effective_state = self.SYNC_STATE_NEUTRAL # Initialise effective state to neutral (unnecessary, here for code readability)
+
+        # If using proportional feedback, consume hysteresis-quantised side (_last_state_side).
+        use_proportional_hysteresis = bool(self.sync_feedback_proportional_sensor)
+
+        # Choose the effective side the sensor is at to drive RD:
+        if use_proportional_hysteresis:
+            effective_state = self._last_state_side
+        else:
+        # If not using proportional feedback sensor -> use the hardware state.
+            if self.state == self.SYNC_STATE_NEUTRAL:
+                effective_state = self.SYNC_STATE_NEUTRAL
+            elif self.state == self.SYNC_STATE_COMPRESSED:
+                effective_state = self.SYNC_STATE_COMPRESSED
+            else:
+                effective_state = self.SYNC_STATE_EXPANDED
+
+        if effective_state == self.SYNC_STATE_NEUTRAL or self.extruder_direction == 0:
+            # neutral/current
             rd = rd_clamp[1]
         else:
-            go_slower = lambda s, d: abs(s - d) < abs(s + d)
-            if go_slower(self.state, self.extruder_direction):
-                # Compressed when extruding or tension when retracting, so increase the rotation distance of gear stepper to slow it down
+            s = float(effective_state)      # +1 compressed, -1 expanded(tension)
+            d = float(self.extruder_direction)        # +1 extrude, -1 retract (logical)
+            go_slower = lambda ss, dd: abs(ss - dd) < abs(ss + dd)
+
+            if go_slower(s, d):
+                # Compressed when extruding or tension when retracting → slow gear down
                 rd = rd_clamp[0]
-                self.mmu.log_trace("MmuSyncFeedbackManager: Slowing gear motor down")
+                self.mmu.log_trace("MmuSyncFeedbackManager: Slowing gear motor down" + (" (prop-hys)" if use_proportional_hysteresis else ""))
             else:
-                # Tension when extruding or compressed when retracting, so decrease the rotation distance of gear stepper to speed it up
+                # Tension when extruding or compressed when retracting → speed gear up
                 rd = rd_clamp[2]
-                self.mmu.log_trace("MmuSyncFeedbackManager: Speeding gear motor up")
+                self.mmu.log_trace("MmuSyncFeedbackManager: Speeding gear motor up" + (" (prop-hys)" if use_proportional_hysteresis else ""))
+
+
 
         if self._rd_applied is not None and abs(rd - self._rd_applied) < self.RDD_THRESHOLD:
             # No meaningful change; skip logging & RD adjustment.
@@ -554,98 +629,40 @@ class MmuSyncFeedbackManager:
 
         tension_active     = sm.check_sensor(self.mmu.SENSOR_TENSION)
         compression_active = sm.check_sensor(self.mmu.SENSOR_COMPRESSION)
+        use_proportional = bool(self.sync_feedback_proportional_sensor)
 
-        if tension_active == compression_active:
-            ss = self.SF_STATE_NEUTRAL
-        elif compression_active:
-            ss = self.SF_STATE_COMPRESSION
-        elif tension_active:
-            ss = self.SF_STATE_TENSION
-        else:
-            ss = self.SF_STATE_NEUTRAL
-        return ss
-
-
-    def _get_sensor_type(self):
-        """
-        Return symbolic sensor type based on current active sensors
-          "P" => proportional z ∈ [-1, +1]; enables EKF
-          "D" => discrete dual-switch z ∈ {-1,0,+1}; Optional EKF
-          "CO" => compression-only switch z ∈ {0,+1}
-          "TO" => tension_only switch z ∈ {-1,0}
-        """
-        has_tension, has_compression, has_proportional = self.get_active_sensors()
-        return (
-            "P" if has_proportional
-            else "D" if has_compression and has_tension
-            else "CO" if has_compression
-            else "TO" if has_tension
-            else "Unknown"
-        )
-
-
-    def _adjust_filament_tension_switch(self, use_gear_motor=True, max_move=None):
-        """
-        Helper to relax filament tension using the sync-feedback buffer. This can be performed either with the
-        gear motor (default) or extruder motor (which is also good as an extruder loading check)
-        Returns distance moved and whether operation was successful and neutral was found (or None if not performed)
-        """
-        fhomed = None
-        actual = 0.
-
-        state = self._get_sensor_state()
-        if state == self.SF_STATE_NEUTRAL:
-            return actual, True
-
-        has_tension, has_compression, _ = self.get_active_sensors()
-        if not (has_tension or has_compression):
-            self.mmu.log_debug("No active sync feedback sensors; cannot adjust filament tension")
-            return actual, fhomed
-
-        max_move = max_move or self.sync_feedback_buffer_maxrange
-        self.mmu.log_debug("Monitoring extruder entrance transition for up to %.1fmm..." % max_move)
-
-        motor = "gear" if use_gear_motor else "extruder"
-        speed = min(self.mmu.gear_homing_speed, self.mmu.extruder_homing_speed) # Keep this tension adjustment slow
-
-        # Determine direction based on state and motor type
-        # Note that if sync_feedback_buffer_range is 0, it implies
-        # special case where neutral point overlaps both sensors
-        if state == self.SF_STATE_COMPRESSION:
-            self.mmu.log_debug("Relaxing filament compression")
-            direction = -1 if use_gear_motor else 1
-
-            if self.sync_feedback_buffer_range == 0:
-                msg = "Homing to tension sensor"
-                sensor = self.mmu.SENSOR_TENSION
-                homing_dir = 1
-            elif has_compression:
-                msg = "Reverse homing off compression sensor"
-                sensor = self.mmu.SENSOR_COMPRESSION
-                homing_dir = -1
+        ss = self.SYNC_STATE_NEUTRAL
+        if has_tension and has_compression and not use_proportional:
+            # Allow for sync-feedback sensor designs with minimal travel where both sensors can be triggered at same time
+            if tension_active == compression_active:
+                ss = self.SYNC_STATE_NEUTRAL
+            elif tension_active and not compression_active:
+                ss = self.SYNC_STATE_EXPANDED
             else:
                 ss = self.SYNC_STATE_COMPRESSED
-        elif has_compression and not has_tension:
+        elif has_compression and not has_tension and not use_proportional:
             ss = self.SYNC_STATE_COMPRESSED if compression_active else self.SYNC_STATE_EXPANDED
-        elif has_tension and not has_compression:
+        elif has_tension and not has_compression and not use_proportional:
             ss = self.SYNC_STATE_EXPANDED if tension_active else self.SYNC_STATE_COMPRESSED
         else:
-            # No switches: fall back to proportional state if we have seen any
-            if self._proportional_seen:
+            # Proportional sensor
+            if use_proportional:
                 ss = self.SYNC_STATE_NEUTRAL if abs(self.state) < self.PROP_DEADBAND_THRESHOLD else (
                     self.SYNC_STATE_COMPRESSED if self.state > 0 else self.SYNC_STATE_EXPANDED
                 )
-            else:
+            else: # No sensors at all
                 ss = self.SYNC_STATE_NEUTRAL
         self.state = ss
-        # Update cached side for later transition detection
-        # state here (ss) is already quantised hence safe to use in the last state side variable that always expects -1 0 1 values.
+        # Update quantised cached side for later transition detection
         self._last_state_side = ss
 
 
     # EndGuard implementation (proportional filament pressure sensor clog and tangle detection)
 
     def set_endguard_active(self, enabled, reason=None):
+        use_proportional = bool(self.sync_feedback_proportional_sensor)
+        if not use_proportional:
+            return
         # Respect config: if EndGuard is disabled, ignore requests to change state.
         if not getattr(self, "sync_endguard_enabled", 0):
             # Make sure runtime latch reflects disabled state
@@ -769,6 +786,9 @@ class MmuSyncFeedbackManager:
     def _notify_endguard_forward_progress(self, movement):
         if not (getattr(self, "sync_endguard_enabled", 0) and getattr(self, "endguard_active", 0)):
             return
+        use_proportional = bool(self.sync_feedback_proportional_sensor)
+        if not use_proportional:
+            return
         if movement <= 0.0:
             return
         # If we already decided to act or have a pending action, stop accumulating/logging
@@ -814,7 +834,7 @@ class MmuSyncFeedbackManager:
         # enforce a minimum delay to avoid same-cycle execution in flush context
         delay = max(float(delay_s), 0.05)
         self.mmu.reactor.update_timer(self._endguard_timer_handle, now + delay)
-        self.mmu.log_debug("EndGuard: deferred pause scheduled in %.2fs" % (float(delay_s),))
+        self.mmu.log_debug("EndGuard: deferred pause scheduled in %.2fs" % (float(delay),))
 
 
     def _endguard_timer(self, eventtime):
@@ -826,7 +846,7 @@ class MmuSyncFeedbackManager:
 
         try:
             # Run the pause portion of pause_resume execute immediately.
-            pause_resume = self.printer.lookup_object('pause_resume')
+            pause_resume = self.mmu.printer.lookup_object('pause_resume')
             pause_resume.send_pause_command()
             self.mmu.gcode.run_script('MMU_PAUSE MSG="Endguard detected clog or tangle"')
         except Exception:
