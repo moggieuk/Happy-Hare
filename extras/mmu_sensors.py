@@ -480,7 +480,7 @@ class MmuHallEndstop:
         # Setup Hardware (Multi-Use)
         ppins = self.printer.lookup_object('pins')
 
-        _kalico = bool(self.printer.lookup_object('danger_options', False))
+        _kalico = hasattr(self.adc, "setup_minmax")
         # ADC 1
         if self.pin1_name:
             ppins.allow_multi_use_pin(self.pin1_name)
