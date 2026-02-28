@@ -1269,7 +1269,7 @@ class SyncController:
             "output": {
                 "rd_prev": rd_prev,
                 "rd_current": self.rd_current,
-                "rd_tuned": self.autotune.get_tuned_rd(),
+                "rd_tuned": self.autotune.get_tuned_rd(), # What autotune believes to be accurate
                 "sensor_ui": sensor_expected,
                 "flowguard": flowguard_out, # Keys: "trigger", "reason", "level", "max_clog", "max_tangle", "active"
                 "autotune": autotune_out,   # Keys: "rd", "note", "save"
@@ -1279,8 +1279,8 @@ class SyncController:
         # Additional debug/logging info
         if cfg.log_sync or simulation:
             out["output"].update({
-                "rd_target": rd_target,
-                "rd_ref": self.rd_ref,
+                "rd_target": rd_target,     # Unclamped target on which rd_current is based
+                "rd_ref": self.rd_ref,      # What EKF or twolevel logic is using as baseline
                 "rd_note": rd_note,
                 "x_est": self.state.x,
                 "c_est": self.state.c
