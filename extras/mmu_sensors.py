@@ -482,20 +482,23 @@ class MmuHallSensor:
         insert_gcode = ("%s SENSOR=%s%s" % (INSERT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if insert else None
         remove_gcode = ("%s SENSOR=%s%s" % (REMOVE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if remove else None
         runout_gcode = ("%s SENSOR=%s%s" % (RUNOUT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if runout else None
-        clog_gcode   = ("%s SENSOR=%s%s" % (CLOG_GCODE,   name, (" GATE=%d" % gate) if gate is not None else "")) if clog else None
-        tangle_gcode = ("%s SENSOR=%s%s" % (TANGLE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if tangle else None
+        #clog_gcode   = ("%s SENSOR=%s%s" % (CLOG_GCODE,   name, (" GATE=%d" % gate) if gate is not None else "")) if clog else None
+        #tangle_gcode = ("%s SENSOR=%s%s" % (TANGLE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if tangle else None
 
-        self.runout_helper = MmuRunoutHelper(self.printer, name, event_delay,
+        self.runout_helper = MmuRunoutHelper(
+            self.printer, 
+            name, 
+            event_delay,
             {
                 "insert": insert_gcode,
                 "remove": remove_gcode,
                 "runout": runout_gcode,
-                "clog":   clog_gcode, #nneded?
-                "tangle": tangle_gcode, #needed?
+                #"clog":   clog_gcode, #nneded?
+                #"tangle": tangle_gcode, #needed?
             },
             insert_remove_in_print,
             button_handler=None,
-            self._pin=None
+            switch_pin=None
         )
 
         self.printer.add_object("mmu_hall_sensor %s" % name, self)
@@ -665,15 +668,7 @@ class MmuSensors:
         # Setup single toolhead sensor...
         switch_pin = config.get('toolhead_switch_pin', None)
         if switch_pin:
-            a_range = config.getfloatlist('toolhead_analog_range', None, count=2)
-            switch_pin_2 = config.get('toolhead_switch_pin2', None)
-            if a_range and switch_pin_2:
-                adc_config = config.getlist('toolhead_adc_settings', None, count=3)
-                adc_s_time, adc_s_count, adc_r_time = (float(adc_config[0]), int(adc_config[1]), float(adc_config[2])) if adc_config else (0.001, 5, 0.010)
-                s = MmuHallSensor(config, Mmu.SENSOR_TOOLHEAD, None, switch_pin, switch_pin_2, a_range, adc_s_time, adc_s_count, adc_r_time)
-                self.sensors[Mmu.SENSOR_TOOLHEAD] = s
-            else:
-                self._create_mmu_sensor(config, Mmu.SENSOR_TOOLHEAD, None, switch_pin, event_delay)
+            self._create_mmu_sensor(config, Mmu.SENSOR_TOOLHEAD, None, switch_pin, event_delay)
 
 
         # Setup motor syncing feedback sensors...
