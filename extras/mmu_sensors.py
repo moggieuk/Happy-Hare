@@ -45,6 +45,7 @@ RUNOUT_GCODE = "__MMU_SENSOR_RUNOUT"
 CLOG_GCODE   = "__MMU_SENSOR_CLOG"
 TANGLE_GCODE = "__MMU_SENSOR_TANGLE"
 
+VIRTUAL_ENDSTOP = 'virtual_endstop'
 
 # -------------------------------------------------------------------------------------------------
 # Enhanced "runout helper" that gives greater control of when filament sensor events are fired and
@@ -496,8 +497,6 @@ class MmuHallSensor:
         insert_gcode = ("%s SENSOR=%s%s" % (INSERT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if insert else None
         remove_gcode = ("%s SENSOR=%s%s" % (REMOVE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if remove else None
         runout_gcode = ("%s SENSOR=%s%s" % (RUNOUT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if runout else None
-        #clog_gcode   = ("%s SENSOR=%s%s" % (CLOG_GCODE,   name, (" GATE=%d" % gate) if gate is not None else "")) if clog else None
-        #tangle_gcode = ("%s SENSOR=%s%s" % (TANGLE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if tangle else None
 
         self.runout_helper = MmuRunoutHelper(
             self.printer, 
@@ -507,12 +506,10 @@ class MmuHallSensor:
                 "insert": insert_gcode,
                 "remove": remove_gcode,
                 "runout": runout_gcode,
-                #"clog":   clog_gcode, #nneded?
-                #"tangle": tangle_gcode, #needed?
             },
             insert_remove_in_print,
             button_handler=None,
-            switch_pin='virtual_endstop'
+            switch_pin=VIRTUAL_ENDSTOP
         )
 
         self.printer.add_object("mmu_hall_sensor %s" % name, self)
@@ -656,7 +653,7 @@ class MmuSensors:
         if switch_pins:
             if len(switch_pins) not in [1, num_units]:
                 raise config.error("Invalid number of pins specified with gate_switch_pin. Expected 1 or %d but counted %d" % (num_units, len(switch_pins)))
-                self._create_mmu_sensor(config, Mmu.SENSOR_GATE, None, switch_pins, event_delay, runout=True)
+            self._create_mmu_sensor(config, Mmu.SENSOR_GATE, None, switch_pins, event_delay, runout=True)
 
         # Setup "mmu_gear" sensors...
         for gate in range(23):
