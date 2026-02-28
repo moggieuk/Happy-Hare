@@ -50,6 +50,7 @@ class MmuSyncFeedbackManager:
         self.sync_feedback_boost_multiplier  = self.mmu.config.getfloat('sync_feedback_boost_multiplier', 5, minval=1, maxval=50)
         self.sync_feedback_extrude_threshold = self.mmu.config.getfloat('sync_feedback_extrude_threshold', 5, above=1.)
         self.sync_feedback_debug_log         = self.mmu.config.getint('sync_feedback_debug_log', 0)
+        self.sync_feedback_force_twolevel    = self.mmu.config.getint('sync_feedback_force_twolevel', 0) # Not exposed
 
         # Flowguard
         self.flowguard_enabled    = self.mmu.config.getint('flowguard_enabled', 1, minval=0, maxval=1)
@@ -480,6 +481,7 @@ class MmuSyncFeedbackManager:
             buffer_range_mm = self.sync_feedback_buffer_range,
             buffer_max_range_mm = self.sync_feedback_buffer_maxrange,
             sensor_type = self._get_sensor_type(),
+            use_twolevel_for_type_p = self.sync_feedback_force_twolevel,
             rd_start = rd_start,
             flowguard_relief_mm = self.flowguard_max_relief,
             flowguard_motion_mm = self.flowguard_max_motion,
