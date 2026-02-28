@@ -201,21 +201,22 @@ class MmuSyncFeedbackManager:
         return 0, False
 
 
-    def wipe_debug_logs(self):
+    def wipe_telemetry_logs(self):
         """
         Called to wipe any sync debug files on print start
         """
-        if self.active:
-            # Can't wipe if already synced and active
-            return
-
         for gate in range(self.mmu.num_gates):
-            log_path = self._debug_log_path(gate)
-            if os.path.exists(log_path):
-                try:
-                    os.remove(log_path)
-                except OSError as e:
-                    self.mmu.log_debug("Unable to wipe sync feedback debug log: %s" % log_path)
+            log_path = self._telemetry_log_path(gate)
+
+            # Can't wipe if already synced and active
+            if gate != self.mmu.gate_selected or not self.active:
+                self.mmu.log_error("log_path=%s" % log_path)
+                if os.path.exists(log_path):
+                    try:
+                        os.remove(log_path)
+                        self.mmu.log_error("REMOVED log_path=%s" % log_path)
+                    except OSError as e:
+                        self.mmu.log_debug("Unable to wipe sync feedback debug log: %s" % log_path)
 
 
     #
@@ -328,7 +329,7 @@ class MmuSyncFeedbackManager:
     # Internal implementation --------------------------------------------------
     #
 
-    def _debug_log_path(self, gate=None):
+    def _telemetry_log_path(self, gate=None):
         if gate is None: gate = self.mmu.gate_selected
 
         logfile_path = self.mmu.printer.start_args['log_file']
@@ -337,7 +338,7 @@ class MmuSyncFeedbackManager:
         if not dirname:
             dirname = "/tmp"
 
-        return os.path.join(dirname, 'sync_%d.jsonl' % self.mmu.gate_selected)
+        return os.path.join(dirname, 'sync_%d.jsonl' % gate)
 
 
     def _handle_mmu_synced(self, eventtime=None):
@@ -366,7 +367,7 @@ class MmuSyncFeedbackManager:
         starting_state = self._get_sensor_state()
         self.estimated_state = starting_state
         rd_start = self.mmu.calibration_manager.get_gear_rd()
-        status = self.ctrl.reset(eventtime, rd_start, starting_state, log_file=self._debug_log_path())
+        status = self.ctrl.reset(eventtime, rd_start, starting_state, log_file=self._telemetry_log_path())
         self._process_status(status) # May adjust rotation_distance
 
         # Turn on extruder movement events

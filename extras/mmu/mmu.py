@@ -3104,7 +3104,7 @@ class Mmu:
             self._set_print_state("started", call_macro=False)
 
         if not pre_start_only and self.print_state not in ["printing"]:
-            self.sync_feedback_manager.wipe_debug_logs()
+            self.sync_feedback_manager.wipe_telemetry_logs()
             self.log_trace("_on_print_start(->printing)")
             self.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=%s VARIABLE=min_lifted_z VALUE=0" % self.park_macro) # Sequential printing movement "floor"
             self.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=%s VARIABLE=next_pos VALUE=False" % self.park_macro)
