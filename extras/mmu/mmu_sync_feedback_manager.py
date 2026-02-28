@@ -39,7 +39,7 @@ class MmuSyncFeedbackManager:
 
     # proportional tension / compression control tunables
     RDD_THRESHOLD         = 1e-4     # Min Rotation Distance delta to trigger application of it.
-    SIDE_THRESHOLD        = 0.10     # Magnitude of side motion before considering state as tension/compression.
+    PROP_DEADBAND_THRESHOLD = 0.10  # Magnitude of side motion before considering state as tension/compression.
     								 # a 0.1 side threshold means sensor values of 0.4-0.6 are considered neutral
 
     def __init__(self, mmu):
@@ -166,13 +166,12 @@ class MmuSyncFeedbackManager:
 
     def get_sync_feedback_string(self, state=None, detail=False):
         if state is None:
-            state = self._get_sensor_state()
-        if (self.mmu.is_enabled and self.sync_feedback_enabled and self.active) or detail:
-            # Polarity varies slightly between modes on proportional sensor so ask controller
-            polarity = self.ctrl.polarity(state)
-            return 'compressed' if polarity > 0 else 'tension' if polarity < 0 else 'neutral'
-        elif self.mmu.is_enabled and self.sync_feedback_enabled:
-            return "inactive"
+            state = self.state
+        if self.mmu.is_enabled and self.sync_feedback_enabled and (self.active or detail):
+            if abs(float(state)) < self.PROP_DEADBAND_THRESHOLD:
+                return 'neutral'
+            return 'compressed' if float(state) > 0.0 else 'tension'
+
         return "disabled"
 
     # End guard enable/disable/reset hooks
@@ -268,9 +267,9 @@ class MmuSyncFeedbackManager:
                 )
             )
             # IMPORTANT: Do NOT reset the extruder watchdog every proportional tick.
-            # Only reset on *side* transitions (tension<->compression) so ΔE can accumulate.
+            # Only reset on deadband transitions (tension<->compression) so ΔE can accumulate.
             def _side(v):
-                return 0 if abs(v) < self.SIDE_THRESHOLD else (1 if v > 0.0 else -1)
+                return 0 if abs(v) < self.PROP_DEADBAND_THRESHOLD else (1 if v > 0.0 else -1)
             new_side = _side(self.state)
             if new_side != self._last_state_side:
                 self._reset_extruder_watchdog()
@@ -451,7 +450,8 @@ class MmuSyncFeedbackManager:
         if not self.sync_feedback_enabled or not self.active: return False
 
         rd_clamp = self.rd_clamps[self.mmu.gate_selected]
-        if self.state == self.SYNC_STATE_NEUTRAL or self.extruder_direction == 0:
+        if self.state == self.SYNC_STATE_NEUTRAL or self.extruder_direction == 0 or abs(float(self.state)) < self.PROP_DEADBAND_THRESHOLD:
+        # set RD to the neutral RD also when proportional sensor reports within side threshold deadband
             rd = rd_clamp[1]
         else:
             go_slower = lambda s, d: abs(s - d) < abs(s + d)
@@ -605,7 +605,7 @@ class MmuSyncFeedbackManager:
         else:
             # No switches: fall back to proportional state if we have seen any
             if self._proportional_seen:
-                ss = self.SYNC_STATE_NEUTRAL if abs(self.state) < 0.5 else (
+                ss = self.SYNC_STATE_NEUTRAL if abs(self.state) < self.PROP_DEADBAND_THRESHOLD else (
                     self.SYNC_STATE_COMPRESSED if self.state > 0 else self.SYNC_STATE_EXPANDED
                 )
             else:
