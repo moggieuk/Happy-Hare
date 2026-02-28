@@ -264,14 +264,11 @@ class MmuProportionalSensor:
         self.adc = ppins.setup_pin('adc', self._pin)
 
         if hasattr(self.adc, "setup_minmax"):
+            # Kalico and older klipper
             self.adc.setup_minmax(self._sample_time, self._sample_count)
         else:
+            # New klipper
             self.adc.setup_adc_sample(self._sample_time, self._sample_count)
-#        _kalico = bool(self.printer.lookup_object('danger_options', False))
-#        if _kalico:
-#            self.adc.setup_minmax(self._sample_time, self._sample_count)
-#        else:
-#            self.adc.setup_adc_sample(self._sample_time, self._sample_count)
         self.adc.setup_adc_callback(self._report_time, self._adc_callback)
 
         # Attach runout_helper (no gcode actions; just enable/disable plumbing to remove UI nag)
