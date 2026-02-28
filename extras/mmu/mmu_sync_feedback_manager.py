@@ -647,13 +647,13 @@ class MmuSyncFeedbackManager:
             self._reset_current_sync_state()
 
             # Defer arming by a short reactor delay to avoid same-cycle interleaving
-            delay_s = 0.10  # ~100 ms; just enough to skip current event-loop tail
+            delay_s = 1.00  # ~1s; stay well clear of any immediate resume print operations
 
-            # Arm endguard in the next reactor tick to ensure any inflight activities are complete (safeguard)
+            # Arm endguard in a deferred manner to ensure any resume activities are complete (safeguard)
             def _arm(evt):
                 self.endguard_active = 1
                 try:
-                    self.mmu.log_info("EndGuard: enabled (deferred)%s" % ((" (%s)" % reason) if reason else ""))
+                    self.mmu.log_debug("EndGuard: enabled (deferred)%s" % ((" (%s)" % reason) if reason else ""))
                 except Exception:
                     pass
                 return self.mmu.reactor.NEVER
