@@ -8472,7 +8472,7 @@ class Mmu:
                 if replace:
                     # Replace complete map including spool_id (should only be in spoolman "pull" mode)
                     if self.spoolman_support != self.SPOOLMAN_PULL:
-                        self.mmu.log_debug("Assertion failure: received gate map replacement update but not in spoolman 'pull' mode")
+                        self.log_debug("Assertion failure: received gate map replacement update but not in spoolman 'pull' mode")
 
                     # If from spoolman gate_map should be a full gate list with spool_id = -1 for unset gates
                     for gate, fil in gate_map.items():
