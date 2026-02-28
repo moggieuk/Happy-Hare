@@ -275,6 +275,7 @@ class Mmu:
         self.has_toolhead_cutter = False      # Form tip cutting macro (like _MMU_CUT_TIP)
         self._is_running_test = False         # True while running QA or soak tests
         self.slicer_tool_map = None
+        self.spoolman_gates_weight = {}
 
         # Event handlers
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
@@ -458,6 +459,8 @@ class Mmu:
         self.espooler_rewind_burst_power = config.getint("espooler_rewind_burst_power", 50, minval=0, maxval=100)
         self.espooler_rewind_burst_duration = config.getfloat("espooler_rewind_burst_duration", .4, above=0., maxval=10.)
         self.espooler_operations = list(config.getlist('espooler_operations', self.ESPOOLER_OPERATIONS))
+        self.espooler_assist_burst_min_weight = config.getfloat("espooler_assist_burst_min_weight", 0., above=0., maxval=2000.)
+        self.espooler_assist_burst_spool_prop = config.getfloat("espooler_assist_burst_spool_prop", 0., above=0., maxval=1.)
 
         # Optional features
         self.has_filament_buffer = bool(config.getint('has_filament_buffer', 1, minval=0, maxval=1))
@@ -651,6 +654,7 @@ class Mmu:
         self.gcode.register_command('_MMU_STEP_SET_FILAMENT', self.cmd_MMU_STEP_SET_FILAMENT, desc = self.cmd_MMU_STEP_SET_FILAMENT_help)
         self.gcode.register_command('_MMU_STEP_SET_ACTION', self.cmd_MMU_STEP_SET_ACTION, desc = self.cmd_MMU_STEP_SET_ACTION_help)
         self.gcode.register_command('_MMU_M400', self.cmd_MMU_M400, desc = self.cmd_MMU_M400_help) # Wait on both movequeues
+        self.gcode.register_command('_MMU_SPOOLMAN_WEIGHT', self.cmd_MMU_SPOOLMAN_WEIGHT, desc = self.cmd_MMU_SPOOLMAN_WEIGHT_help)
 
         # Internal handlers for Runout & Insertion for all sensor options
         self.gcode.register_command('__MMU_ENCODER_RUNOUT', self.cmd_MMU_ENCODER_RUNOUT, desc = self.cmd_MMU_ENCODER_RUNOUT_help)
@@ -6688,6 +6692,39 @@ class Mmu:
                 self._spoolman_display_spool_location(printer=printer)
             else:
                 self.log_error("Spoolman gate map not available. Spoolman mode is: %s" % self.spoolman_support)
+
+    # Dump spool weight
+    def _spoolman_dump_spool_weight(self, gate):
+
+        if gate is None or self.spoolman_support == self.SPOOLMAN_OFF or (
+            self.espooler_assist_burst_min_weight == 0 and self.espooler_assist_burst_spool_prop == 0): return
+
+        self.spoolman_gates_weight.pop(gate, None) #empty gate for dictionary
+
+        try:
+            webhooks = self.printer.lookup_object('webhooks')
+            webhooks.call_remote_method("spoolman_get_spool_weight", gate=gate)
+        except Exception as e:
+            self.log_error("Error while displaying spool info: %s\n%s" % (str(e), self.SPOOLMAN_CONFIG_ERROR))
+
+    cmd_MMU_SPOOLMAN_WEIGHT_help = "Set spool filament remaining_weight"
+
+    def cmd_MMU_SPOOLMAN_WEIGHT(self, gcmd):
+
+        if self.spoolman_support == self.SPOOLMAN_OFF or (
+                self.espooler_assist_burst_min_weight == 0 and self.espooler_assist_burst_spool_prop == 0): return
+
+        gate = gcmd.get_int('GATE', None)
+        if gate is not None:
+            spool_id = gcmd.get_int('SPOOL_ID', None)
+            weight = gcmd.get_float('WEIGHT', -1.0)
+            spool_weight = gcmd.get_float('SPOOL_WEIGHT', -1.0)
+            remaining_weight = gcmd.get_float('REMAINING_WEIGHT', -1.0)
+            self.spoolman_gates_weight[gate] = {'spool_id': spool_id,
+                                                'weight': weight,
+                                                'spool_weight': spool_weight,
+                                                'remaining_weight': remaining_weight}
+            self.log_debug('Spoolman update: Remaining weight received. Gate: %s, Spool ID: %s, Weight: %sg' % (gate, spool_id, remaining_weight))
 
 
 ### CORE GCODE COMMANDS ##########################################################
