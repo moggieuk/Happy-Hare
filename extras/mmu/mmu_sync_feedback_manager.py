@@ -425,6 +425,7 @@ class MmuSyncFeedbackManager:
                 self.mmu.log_error("MmuSyncFeedbackManager: FlowGuard detected a %s.\nReason for trip: %s" % (f_trigger, f_reason))
 
                 # Pick most appropriate sensor to assign event to (primariliy for optics)
+                sm = self.mmu.sensor_manager
                 has_tension      = sm.has_sensor(self.mmu.SENSOR_TENSION)
                 has_compression  = sm.has_sensor(self.mmu.SENSOR_COMPRESSION)
                 has_proportional = self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_PROPORTIONAL)
