@@ -650,6 +650,19 @@ class MmuFpsSensor:
             self.adc.setup_adc_sample(self._sample_time, self._sample_count)
         self.adc.setup_adc_callback(self._report_time, self._adc_callback)
 
+        # attach runout_helper (no gcode actions; just enable/disable plumbing to remove UI nag)
+        self.runout_helper = MmuRunoutHelper(
+            self.printer,
+            self.name,                  # name exposed to QUERY_/SET_FILAMENT_SENSOR
+            0,                          # event_delay (not used here)
+            insert_gcode=None,          # no gcode actions for analog FPS
+            remove_gcode=None,
+            runout_gcode=None,
+            insert_remove_in_print=False,
+            button_handler=None,        # no button handler for analog
+            switch_pin=self._pin
+        )
+
         # expose status
         self.printer.add_object(self.name, self)
         self.printer.register_event_handler("klippy:ready", self._on_ready)
