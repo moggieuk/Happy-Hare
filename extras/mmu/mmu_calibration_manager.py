@@ -336,11 +336,13 @@ class MmuCalibrationManager:
 
 
     def calibrate_encoder(self, length, repeats, speed, min_speed, max_speed, accel, save=True):
+        pos_values, neg_values = [], []
+        self.mmu.log_always("%s over %.1fmm..." % ("Calibrating" if save else "Validating calibration", length))
+        speed_incr = (max_speed - min_speed) / repeats
+        test_speed = min_speed
+        mean = 0
+
         try:
-            pos_values, neg_values = [], []
-            self.mmu.log_always("%s over %.1fmm..." % ("Calibrating" if save else "Validating calibration", length))
-            speed_incr = (max_speed - min_speed) / repeats
-            test_speed = min_speed
             for x in range(repeats):
                 if speed_incr > 0.:
                     self.mmu.log_always("Test run #%d, Speed=%.1f mm/s" % (x, test_speed))
@@ -394,6 +396,7 @@ class MmuCalibrationManager:
         except MmuError as ee:
             # Add some more context to the error and re-raise
             raise MmuError("Calibration of encoder failed. Aborting, because:\n%s" % str(ee))
+
         finally:
             if mean == 0:
                 self.mmu._set_filament_pos_state(self.mmu.FILAMENT_POS_UNKNOWN)
