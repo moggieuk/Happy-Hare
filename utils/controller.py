@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 #
+# Happy Hare MMU Software
 # Sync Feedback Manager
 #
 # This module implements a motion-triggered filament tension controller — that adapts gear
@@ -17,6 +18,16 @@
 # Autotune: An autotuning option can be enabled for dynamic tuning (and persistence) of
 #           calibrated MMU gear rotation_distance.
 #
+#
+# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
 
 from __future__  import annotations
 from dataclasses import dataclass
@@ -26,10 +37,11 @@ import math
 import json # for debug log
 
 
-# P  = proportional float [-1,1]
-# D  = dual-switch {-1,0,1}
-# CO = compression-only {0,1}
-# TO = tension-only {0,-1}
+# Sync-Feedback sensor type:
+#  P  = proportional float [-1.0 - 1.0]
+#  D  = dual-switch {-1,0,1}
+#  CO = compression-only {0,1}
+#  TO = tension-only {0,-1}
 SensorType = Literal["P", "D", "CO", "TO"]
 
 # -----------------------------------------------------------------------------
@@ -37,10 +49,10 @@ SensorType = Literal["P", "D", "CO", "TO"]
 # -----------------------------------------------------------------------------
 #
 # Mechanics
-# - buffer_range_mm (mm)    Usable sensor travel that maps linearly to x ∈ [-1,+1].       # PAUL existing parameter
+# - buffer_range_mm (mm)    Usable sensor travel that maps linearly to x ∈ [-1,+1].       # PAUL hook up existing parameter
 #                           All control logic is normalized by this. Increase if your
 #                           sensor saturates too easily; decrease for a “tighter” x scale.
-# - buffer_max_range_mm (mm)Physical clamp of the spring/buffer travel (|x| clipping).    # PAUL existing parameter
+# - buffer_max_range_mm (mm)Physical clamp of the spring/buffer travel (|x| clipping).    # PAUL hook up existing parameter
 #                           Must be ≥ buffer_range_mm. Used by the simulator and for
 #                           visualization/safety margins.
 # - sensor_type             "P" => proportional z ∈ [-1, +1]; enables KD
@@ -52,22 +64,22 @@ SensorType = Literal["P", "D", "CO", "TO"]
 # - sensor_lag_mm (mm)      Motion required before treating sensor changes as “fresh info”.
 #                           r ramps from 0→1 across this distance (gates smoothing/rates).
 #                           0 disables gating (r=1 always).
-# - info_delta_a            For Type-A only: minimum |Δz| to count as “new info”.
+# - info_delta_a            For Type-P only: minimum |Δz| to count as “new info”.
 #                           Helps suppress tiny noise from constantly resetting the lag meter.
 #
 # Gains (PD on x with deadband)
-# - kp                      Proportional gain on x (after deadband). Larger → stronger pull
+# - kp                      Proportional gain on x (after deadband). Larger => stronger pull
 #                           toward neutral; too high can oscillate near zero.
-# - kd                      Derivative on x (Type-A only; requires dt>0). Dampens fast x
+# - kd                      Derivative on x (Type-P only; requires dt>0). Dampens fast x
 #                           changes. Set 0 to disable if your signal is noisy.
 # - ctrl_deadband           No-action band around x=0. Prevents over-correcting tiny errors.
 #
 # EKF noises
-# - q_x                     Process noise on x. Larger trusts the model less → faster tracking,
+# - q_x                     Process noise on x. Larger trusts the model less => faster tracking,
 #                           but noisier estimates.
 # - q_c                     Process noise on c (calibration). Larger lets c drift/learn faster.
-# - r_type_prop             Measurement noise for Type-A. Larger trusts the sensor less.
-# - r_type_switch_extreme   Effective measurement noise for Type-B when z is ±1 (extremes only).
+# - r_type_prop             Measurement noise for Type-P. Larger trusts the sensor less.
+# - r_type_switch_extreme   Effective measurement noise for Type-D when z is ±1 (extremes only).
 #
 # Calibration bounds
 # - c_min, c_max            Hard clamps for c (effective compliance/throughput factor).
@@ -76,15 +88,15 @@ SensorType = Literal["P", "D", "CO", "TO"]
 # FlowGuard (distance-based)
 # - flowguard_extreme_threshold  Threshold in x or z treated as “pegged” (≈ jam/tangle).
 #                                Used for detection, readiness floor, and relief logic.
-# - flowguard_relief_mm (mm)     Required accumulated “relief” motion to prove we tried to      # PAUL user parameter, recommend buffer_max_range or CO/TO or buffer_max_range / 2 for D/P
+# - flowguard_relief_mm (mm)     Required accumulated “relief” motion to prove we tried to      # PAUL hook up user parameter, recommend buffer_max_range or CO/TO or buffer_max_range / 2 for D/P
 #                                correct an extreme. If None, defaults to buffer_max_range_mm.
-# - flowguard_motion_mm (mm)     Required accumulated motion while extreme to declare a fault.  # PAUL user parameter
+# - flowguard_motion_mm (mm)     Required accumulated motion while extreme to declare a fault.  # PAUL hook up user parameter
 #                                If None, defaults to rd_filter_len_mm.
 #
 # Rotation distance
 # - rd_start (mm)                Default/persisted baseline RD. Used as mirror reference for mapping  # PAUL last calibrated value
-# - rd_min_max_speed_multiplier  Allowed RD bounds based on % speed                           # PAUL user parameter
-# - rd_twolevel_speed_multiplier Min/Max RD based on % speed for twolevel operation           # PAUL user parameter
+# - rd_min_max_speed_multiplier  Allowed RD bounds based on % speed                           # PAUL hook up user parameter
+# - rd_twolevel_speed_multiplier Min/Max RD based on % speed for twolevel operation           # PAUL hook up user parameter
 #
 # Distance-based smoothing & slew
 # - rd_filter_len_mm (mm)    Exponential smoothing length vs extruder motion.
@@ -112,13 +124,13 @@ SensorType = Literal["P", "D", "CO", "TO"]
 # - autotune_stable_x_thresh Consider “near neutral” if |x| ≤ this.
 #                            Determines when we accumulate samples for autotune.
 # - autotune_stable_time_s   Minimum time spent near neutral before we consider autotuning.
-# - autotune_basis           "time" | "motion" | "either" | "both" — which gates must pass.
+# - autotune_basis           "time" | "motion" | "either" | "both" — which tests must pass.
 # - autotune_motion_mm       Motion near neutral required if basis uses motion.
 #                            considered too small to avoid recommending trivial changes.
 # - autotune_var_rel_frac    Max allowed std(speed) near neutral required for autotune to propose an update
 # - autotune_var_len_mm      Distance over which to estimate RD mean/variance during the near-neutral “stable” window.
 # Twolevel logic:
-# - autotune_significance_z  Z-score gate for twolevel estimator (0 disables, 2≈95% confidence).
+# - autotune_significance_z  Z-score tests for twolevel estimator (0 disables, 2≈95% confidence).
 # Shared logic:
 # - autotune_cooldown_s/mm   Minimum time/motion since the last autotune before another suggestion.
 # - autotune_min_delta_frac  Minimum fractional change in speed (where speed = 1 / RD) required for
@@ -169,9 +181,9 @@ class SyncFeedbackManagerConfig:
 
     # Rotation distance
     rd_start: float = 20.0                     # initial baseline (previous calibrated value)
-    rd_min_max_speed_multiplier:  float = 0.5  # ±50% speed
+    rd_min_max_speed_multiplier:  float = 0.25 # ±25% speed
     rd_twolevel_speed_multiplier: float = 0.05 # ±5% speed
-    rd_twolevel_boost_multiplier: float = 0.10 # ±% extra boost speed
+    rd_twolevel_boost_multiplier: float = 0.05 # ±5% extra boost speed
 
     # Distance-based smoothing & slew
     rd_filter_len_mm: float = 40.0          # exp smoothing length (mm of extruder motion for ~63% step @ r=1)
@@ -179,7 +191,7 @@ class SyncFeedbackManagerConfig:
 
     # Extreme behavior control
     readiness_extreme_floor: float = 0.7    # when pegged, raise r to at least this
-    rate_extreme_multiplier: float = 3.0    # multiply rate cap when pegged
+    rate_extreme_multiplier: float = 2.0    # multiply rate cap when pegged
     snap_at_extremes: bool = True           # enable relief-biased snap when pegged
     extreme_relief_frac: float = 0.25       # fraction of |d_ext| of guaranteed relief per update
 
@@ -191,7 +203,7 @@ class SyncFeedbackManagerConfig:
     autotune_enabled: bool = True           # if False, autotune never proposes/applies updates
     autotune_save: bool = True              # if False, autotune never persists changes
 
-    # EKF logic gates
+    # EKF logic tests
     autotune_stable_x_thresh: float = 0.12
     autotune_stable_time_s: float = 4.0
     autotune_basis: str = "both"
@@ -199,10 +211,10 @@ class SyncFeedbackManagerConfig:
     autotune_var_rel_frac: float = 0.004    # allow ≈0.4% relative speed std
     autotune_var_len_mm:float = None
 
-    # Twolevel logic gates
+    # Twolevel logic tests
     autotune_significance_z: float = 1.0    # z-score (twolevel confidence) threshold to accept new RD (0 disables, 1≈68%, 2≈96%)
 
-    # Shared gates
+    # Shared tests
     autotune_cooldown_s: float = 10.0
     autotune_cooldown_mm: float = 100.0
     autotune_min_delta_frac: float = 0.001  # Only consider > ≈0.1% speed change
@@ -214,7 +226,7 @@ class SyncFeedbackManagerConfig:
     autotune_cert_n0: float = 3.0           # prior sample penalty
     autotune_cert_hysteresis: float = 0.001 # min score improvement to accept
 
-    os_min_flip_mm: float = 3.0             # minimum motion between flips (anti-chatter)
+    os_min_flip_mm: Optional[float] = None  # minimum motion between flips (anti-chatter)
 
     # Optional two-level for P/D type sensors
     use_twolevel_for_type_pd: bool = True
@@ -228,15 +240,36 @@ class SyncFeedbackManagerConfig:
         if self.buffer_max_range_mm < self.buffer_range_mm:
             raise ValueError("buffer_max_range_mm must be ≥ buffer_range_mm")
 
+        # Autotune window defaults
         if self.autotune_motion_mm is None:
-            self.autotune_motion_mm =  2.0 * self.rd_filter_len_mm
+            self.autotune_motion_mm = 2.0 * self.rd_filter_len_mm
         if self.autotune_var_len_mm is None:
             self.autotune_var_len_mm = 1.8 * self.rd_filter_len_mm
 
+        # FlowGuard relief threshold (how much "counter-effort" must be proven)
         if self.flowguard_relief_mm is None:
-            self.flowguard_relief_mm = self.buffer_range_mm * (0.5 if self.sensor_type in ['CO', 'TO'] else 1.2)
+            if self.sensor_type == "P":
+                mult = 1.0
+            elif self.sensor_type == "D":
+                mult = 1.1
+                self.flowguard_relief_mm = 1.1 * self.buffer_range_mm
+            else: # "CO" or "TO"
+                mult = 0.7
+            self.flowguard_relief_mm = mult * self.buffer_range_mm
+
+        # FlowGuard motion threshold (how much motion while pegged before tripping)
         if self.flowguard_motion_mm is None:
-            self.flowguard_motion_mm = self.rd_filter_len_mm * (2.0 if self.sensor_type in ['CO', 'TO', 'D'] else 1.0)
+            if self.sensor_type == "P":
+                mult = 1.25
+            elif self.sensor_type == "D":
+                mult = 1.75
+            else: # "CO" or "TO"
+                mult = 2.5
+            self.flowguard_motion_mm = mult * self.rd_filter_len_mm
+
+        # Min "flip" times
+        if self.os_min_flip_mm is None:
+           self.os_min_flip_mm = 3.0 if self.sensor_type in ("D", "CO", "TO") else 2.0
 
 
 # ------------------------------- EKF State ------------------------------
@@ -310,7 +343,7 @@ class _AutotuneEngine:
 
     # -------------------------------- API -----------------------------------
 
-    def restart(self, rd_init, reset_totals=True, reset_cooldown=True, reset_significant=True):
+    def restart(self, rd_init, reset_totals=True, reset_cooldown=True, reset_confidence=True):
         """
         Rebase all autotune anchors/windows on a fresh baseline for new starting rd value
           - Cooldown timers are either reset-to-now (default) or to a large negative origin
@@ -327,7 +360,7 @@ class _AutotuneEngine:
             self._autotune_last_motion_mm = -1e12
 
         # Suggestion tracking
-        if reset_significant:
+        if reset_confidence:
             self._rd_cert_fifo = deque(maxlen=int(max(1, self.ctrl.cfg.autotune_cert_window)))
             self._rd_cert_last_score = -1.0
 
@@ -361,7 +394,6 @@ class _AutotuneEngine:
         """
         Called once per update() in two-level branch to keep buckets/evidence up-to-date.
         """
-        #print(f"PAUL: note_twolevel_tick: os_level={os_level}, flipped={flipped}, d_ext={d_ext}")
         cfg = self.ctrl.cfg
 
         # Flip handling
@@ -413,8 +445,6 @@ class _AutotuneEngine:
             self._tl_seg_level = os_level
             self._tl_seg_mm = 0.0
 
-        #print(f"PAUL: _tl_samples_low={self._tl_samples_low}, _tl_samples_high={self._tl_samples_high}")
-
 
     def note_d_sensor(self, sensor_reading):
         """
@@ -423,13 +453,13 @@ class _AutotuneEngine:
         self._ekf_seen_sensor_states.add(sensor_reading)
 
 
-    def update(self, d_ext, dt_s):
+    def update(self, d_ext, dt_s, report_trivial=False):
         """
         On sensor update, recommend rd update based on mode:
           - If two-level mode is active (CO/TO, or P/D with use_twolevel_for_type_pd=True),
             only query the two-level estimator.
           - Otherwise, only query the PD near-neutral window.
-        If rd is recommended, run through shared statistical gates
+        If rd is recommended, run through shared statistical tests
         """
         cfg = self.ctrl.cfg
 
@@ -464,13 +494,34 @@ class _AutotuneEngine:
             return {"rd": None, "note": "Autotune: {} Rejected rd {:.4f} because out of bounds!".format(travel, rec_rd)}
 
         # This makes is progressively harder to accept autotune
-        rec_rd, _note = self._autotune_significant(rec_rd)
+        rec_rd, _note = self._autotune_confident(rec_rd)
         if rec_rd is None:
             return {"rd": None, "note": "Autotune: {} {}".format(travel, _note) if _note else None}
 
-        self._save_autotune(rec_rd)
-        self.restart(rec_rd, reset_totals=False, reset_cooldown=False, reset_significant=False)
+        # Do nothing on truly trivial changes
+        if not report_trivial and math.isclose(rec_rd, self._autotune_current, abs_tol=1e-3):
+            return {"rd": None, "note": "Autotune: {} Rejected rd {:.4f} because too trival a delta".format(travel, rec_rd)}
+
+        # We have new tuned rd value...
+        self.restart(rec_rd, reset_totals=False, reset_cooldown=False, reset_confidence=False)
         return {"rd": rec_rd, "note": "Autotune: {} {} and {}".format(travel, note, _note)}
+
+
+    # PAUL: TODO Call this at the END of a sync period when gear is unsynced.
+    def save_autotune(self, rd_new):
+        """
+        Called to perist the new rd and update bowden length
+        """
+        cfg = self.ctrl.cfg
+
+        frac = self._frac_speed_delta(rd_new, self._autotune_baseline)
+        min_frac = cfg.autotune_min_save_frac
+        if frac < min_frac:
+            print("Autotune: Did not persist rd {:.4f} because fractional speed change {:.2f}% is below threshold {:.2f}%".format(rd_new, frac * 100.0, min_frac * 100.0))
+            return
+
+        #print("PAUL TODO persist the tuned rd and updated bowden length")
+        self._autotune_baseline = rd_new
 
     # ---------------------------- Internal Impl -----------------------------
 
@@ -481,16 +532,16 @@ class _AutotuneEngine:
         """
         cfg = self.ctrl.cfg
 
-        # Stability gate near neutral
-        stable_gate = abs(self.ctrl.state.x) < cfg.autotune_stable_x_thresh
+        # Stability tests near neutral
+        stability_test = abs(self.ctrl.state.x) < cfg.autotune_stable_x_thresh
 
         # Require at least one transition for D-type sensors
         if cfg.sensor_type == "D" and len(self._ekf_seen_sensor_states) < 2:
-            stable_gate = False
+            stability_test = False
 
         # Accrue stable time/motion
         move = abs(d_ext)
-        if stable_gate:
+        if stability_test:
             self._stable_time += dt_s
             self._stable_motion_mm += move
 
@@ -515,7 +566,7 @@ class _AutotuneEngine:
             # if move == 0.0: leave EMA unchanged this tick
 
         else:
-            # Leaving stable gate -> drop stats so we don't carry trendy junk
+            # Leaving stable test -> drop stats so we don't carry trendy junk
             self._stable_time = 0.0
             self._stable_motion_mm = 0.0
             self._rd_ema_mean = None
@@ -544,7 +595,7 @@ class _AutotuneEngine:
         mean_rd = max(self._rd_ema_mean, 1e-9)
         var_rd  = max(0.0, self._rd_ema_var)
 
-        # Speed-relative variance gate: Var(1/R) ≈ Var(R)/R^4  → std(speed)/mean(speed) ≤ f
+        # Speed-relative variance test: Var(1/R) ≈ Var(R)/R^4  => std(speed)/mean(speed) ≤ f
         f = cfg.autotune_var_rel_frac
         rel_thresh_rd2 = (f * mean_rd) ** 2
         if var_rd > rel_thresh_rd2:
@@ -618,7 +669,7 @@ class _AutotuneEngine:
                 if z < float(cfg.autotune_significance_z):
                     note = ("Rejected rd {:.4f} because z-score {:.2f} not significant (<{:.2f})").format(rd_est, z, cfg.autotune_significance_z)
                     return None, note
-            # else: se_rd ~ 0 → treat as pass (perfect/no-variance case)
+            # else: se_rd ~ 0 => treat as pass (perfect/no-variance case)
 
         # Potential new candidate
         score = ("%.2f" % z) if z is not None else "perfect"
@@ -631,7 +682,7 @@ class _AutotuneEngine:
         Certainty in [0,1]. Higher = more certain.
           - tau_rel: target relative SE; smaller => stricter (e.g., 0.01 = 1%)
           - n0: prior sample penalty; larger => more skepticism with small n
-        Returns: (score, mean, se, n, rel_se)
+        Returns: (score, mean, se, n)
         """
         vals = [float(v) for v in samples if v is not None]
         n = len(vals)
@@ -664,10 +715,10 @@ class _AutotuneEngine:
         return score, m, se, n
 
     def _frac_speed_delta(self, rd_new, rd_ref):
-        # |v(new)-v(ref)| / v(ref) with v = 1/rd → |rd_ref/rd_new - 1|
+        # |v(new)-v(ref)| / v(ref) with v = 1/rd => |rd_ref/rd_new - 1|
         return abs((rd_ref / max(1e-9, rd_new)) - 1.0)
 
-    def _autotune_significant(self, rec_rd):
+    def _autotune_confident(self, rec_rd):
         """
         All speed-relative:
           - min fractional speed delta vs last saved value
@@ -685,7 +736,8 @@ class _AutotuneEngine:
         self._rd_cert_fifo.append(rec_rd)
         score, mean, se, n = self._certainty_score(self._rd_cert_fifo, tau_rel=tau_rel, n0=n0)
         prev = self._rd_cert_last_score
-        improved = (score > (prev + hyster)) and score > 0
+        threshold = 0 if prev == 0 else max(prev + hyster, 0)
+        improved = score > threshold
 
         if not improved:
             if prev < 0:
@@ -699,23 +751,6 @@ class _AutotuneEngine:
         note = "with certainty score of {:.3f} (prev {:.3f}), n={}, mean {:.4f}, SE {:.4f}".format(
                 score, prev, n, mean if mean is not None else float('nan'), se if se is not None else float('nan'))
         return mean, note
-
-    def _save_autotune(self, rd_new):
-        """
-        Called to perist the new rd and update bowden length
-        """
-        cfg = self.ctrl.cfg
-
-        # Fractional speed change: |v(rec)-v(last)| / v(last) with v = 1/rd  →  |last/rec - 1|
-        frac = self._frac_speed_delta(rd_new, self._autotune_baseline)
-        min_frac = cfg.autotune_min_save_frac
-        if frac < min_frac:
-            print("Autotune: Did not persist rd {:.4f} because fractional speed change {:.2f}% is below threshold {:.2f}%".format(rd_new * 100, frac, min_frac * 100))
-            return
-
-        print("PAUL TODO persist the tuned rd and updated bowden length")
-        self._autotune_baseline = rd_new
-
 
 # ----------------------------- Flowguard Engine -------------------------
 
@@ -747,6 +782,13 @@ class _FlowguardEngine:
         self._to_open_motion_mm = 0.0
         self._to_open_relief_mm = 0.0
 
+        self._min_headroom = self.ctrl.cfg.flowguard_motion_mm
+
+        # FlowGuard arming test
+        self._armed = False        # disarmed until a state change while moving
+        self._arm_motion_mm = 0.0  # motion since last (or initial) state sample
+        self._arm_last_state = None
+
     def update(self, d_ext, d_gear, sensor_reading):
         """
         Distance-based FlowGuard with symmetric handling for one-sided switches.
@@ -755,7 +797,7 @@ class _FlowguardEngine:
             Uses controller._extreme_flags() (sensor first, may fall back to x̂ for P/D only).
         - For CO/TO sensors:
             Uses the sensor directly for the *seen* side, and an additional
-            open-side gate while z==0 to infer the *unseen* extreme based on:
+            open-side test while z==0 to infer the *unseen* extreme based on:
               * accumulated motion, and
               * accumulated "relief effort" (sign of delta_rel opposite of the extreme)
 
@@ -776,7 +818,27 @@ class _FlowguardEngine:
         tangle = False
         reason = None
 
-        # Capture pre-update accumulator values so we can tell which gate crossed this tick
+        # Arming logic to prevent false triggers on startup if thresholds are tight
+        self._arm_motion_mm += move_mm
+        state_now = self.ctrl._extreme_polarity(sensor_reading)
+        if self._arm_last_state is None:
+            self._arm_last_state = state_now
+
+        headroom = cfg.flowguard_motion_mm
+        relief_headroom = cfg.flowguard_relief_mm
+
+        if not self._armed:
+            # Arm when we've moved and observed any change in coarse state
+            changed = (state_now != self._arm_last_state)
+            fallback_dist = 0.5 * cfg.flowguard_motion_mm # In case sensor is stuck
+            if (self._arm_motion_mm > 0.0 and changed) or (self._arm_motion_mm >= fallback_dist):
+                print(f"PAUL: Armed: c1={(self._arm_motion_mm > 0.0 and changed)}, c2={(self._arm_motion_mm >= fallback_dist)}")
+                self._armed = True
+            else:
+                return {"clog": clog, "tangle": tangle, "reason": reason, "headroom": headroom, "min_headroom": self._min_headroom, "relief_headroom": relief_headroom, "armed": self._armed} # PAUL armed added
+        self._arm_last_state = state_now
+
+        # Capture pre-update accumulator values so we can tell which test crossed this tick
         prev_comp_motion = self._comp_motion_mm
         prev_comp_relief = self._relief_comp_mm
         prev_tens_motion = self._tens_motion_mm
@@ -784,9 +846,8 @@ class _FlowguardEngine:
 
         # Start with direct extremes (sensor-gated; P/D may fall back to x̂)
         comp_ext, tens_ext = self.ctrl._extreme_flags(sensor_reading)
-        #print(f"PAUL: sensor_reading={sensor_reading}, c_hat={c_hat}, d_gear={d_gear:.2f}mm, d_ext={d_ext}, delta_rel={delta_rel}, comp_ext={comp_ext}, tems_ext={tens_ext}")
 
-        # One-sided open-side gate (while switch is open)
+        # One-sided open-side test (while switch is open)
         # This only augments CO/TO; it never affects PD types.
         if cfg.sensor_type in ("CO", "TO"):
             z_now = int(sensor_reading)
@@ -805,7 +866,9 @@ class _FlowguardEngine:
                     # Unseen extreme is TENSION; relief is COMPRESSION effort (delta_rel > 0)
                     self._co_open_motion_mm += move_mm
                     if delta_rel > 0:
-                        self._co_open_relief_mm += delta_rel
+                        # PAUL self._co_open_relief_mm += delta_rel
+                        self._co_open_relief_mm += self._relief_mm_from_rd(d_ext)
+
                     if (self._co_open_motion_mm >= cfg.flowguard_motion_mm and
                         self._co_open_relief_mm >= cfg.flowguard_relief_mm):
                         tens_ext = True
@@ -814,6 +877,8 @@ class _FlowguardEngine:
                     self._to_open_motion_mm += move_mm
                     if delta_rel < 0:
                         self._to_open_relief_mm += (-delta_rel)
+                        self._to_open_relief_mm += self._relief_mm_from_rd(d_ext)
+
                     if (self._to_open_motion_mm >= cfg.flowguard_motion_mm and
                         self._to_open_relief_mm >= cfg.flowguard_relief_mm):
                         comp_ext = True
@@ -829,25 +894,28 @@ class _FlowguardEngine:
 
             # Relief for compression is *tension* effort (delta_rel < 0)
             if delta_rel < 0:
-                self._relief_comp_mm += (-delta_rel)
+                # PAUL self._relief_comp_mm += (-delta_rel)
+                self._relief_comp_mm += self._relief_mm_from_rd(d_ext)
 
             comp_motion_trig = (self._comp_motion_mm >= cfg.flowguard_motion_mm)
             comp_relief_trig = (self._relief_comp_mm >= cfg.flowguard_relief_mm)
+            headroom -= self._comp_motion_mm
+            relief_headroom -= self._relief_comp_mm
 
             if comp_motion_trig or comp_relief_trig:
                 crossed_motion = (prev_comp_motion < cfg.flowguard_motion_mm) and comp_motion_trig
                 crossed_relief = (prev_comp_relief < cfg.flowguard_relief_mm) and comp_relief_trig
                 if crossed_motion and not crossed_relief:
-                    gate = "flowguard_motion"
+                    test = "flowguard_motion"
                 elif crossed_relief and not crossed_motion:
-                    gate = "flowguard_relief"
+                    test = "flowguard_relief"
                 elif crossed_motion and crossed_relief:
-                    gate = "flowguard_motion and flowguard_relief"
+                    test = "flowguard_motion and flowguard_relief"
                 else:
-                    gate = "none"
+                    test = "none"
                 clog = True
                 reason = "Compression stuck after %.2f mm motion and %.2f mm relief (triggering parameter: %s)" % (
-                    self._comp_motion_mm, self._relief_comp_mm, gate
+                    self._comp_motion_mm, self._relief_comp_mm, test
                 )
 
             # Reset the tension side when compression extreme is active
@@ -859,25 +927,28 @@ class _FlowguardEngine:
 
             # Relief for tension is *compression* effort (delta_rel > 0)
             if delta_rel > 0:
-                self._relief_tens_mm += delta_rel
+                # PAUL self._relief_tens_mm += delta_rel
+                self._relief_tens_mm += self._relief_mm_from_rd(d_ext)
 
             tens_motion_trig = (self._tens_motion_mm >= cfg.flowguard_motion_mm)
             tens_relief_trig = (self._relief_tens_mm >= cfg.flowguard_relief_mm)
+            headroom -= self._tens_motion_mm
+            relief_headroom -= self._relief_tens_mm
 
             if tens_motion_trig or tens_relief_trig:
                 crossed_motion = (prev_tens_motion < cfg.flowguard_motion_mm) and tens_motion_trig
                 crossed_relief = (prev_tens_relief < cfg.flowguard_relief_mm) and tens_relief_trig
                 if crossed_motion and not crossed_relief:
-                    gate = "flowguard_motion"
+                    test = "flowguard_motion"
                 elif crossed_relief and not crossed_motion:
-                    gate = "flowguard_relief"
+                    test = "flowguard_relief"
                 elif crossed_motion and crossed_relief:
-                    gate = "flowguard_motion and flowguard_relief"
+                    test = "flowguard_motion and flowguard_relief"
                 else:
-                    gate = "none"
+                    test = "none"
                 tangle = True
                 reason = "Tension stuck after %.2f mm motion and %.2f mm relief (triggering parameter: %s)" % (
-                    self._tens_motion_mm, self._relief_tens_mm, gate
+                    self._tens_motion_mm, self._relief_tens_mm, test
                 )
 
             # Reset the compression side when tension extreme is active
@@ -890,7 +961,40 @@ class _FlowguardEngine:
             self._tens_motion_mm = 0.0
             self._relief_tens_mm = 0.0
 
-        return {"clog": clog, "tangle": tangle, "reason": reason}
+        # Maintain min_headroom marker
+        if headroom < self._min_headroom:
+            self._min_headroom = headroom
+
+        # Capture stats before potential reset
+        min_headroom = self._min_headroom
+
+        # Auto-reset to allow print continuation
+        if clog or tangle:
+            self.reset()
+
+        return {"clog": clog, "tangle": tangle, "reason": reason, "headroom": headroom, "min_headroom": min_headroom, "relief_headroom": relief_headroom, "armed": self._armed} # PAUL armed added
+
+
+    def _relief_mm_from_rd(self, d_ext):
+        """
+        Relief contribution this tick, in mm, derived from the *commanded* RD offset.
+        Magnitude is |rd_ref/rd_current - 1| * |d_ext|.
+        (Independent of c_hat so EKF drift can't zero it out.)
+        """
+        rd_ref = self.ctrl._rd_ref
+        rd_cur = self.ctrl.rd_current
+        if abs(rd_cur) < 1e-9:
+            return 0.0
+        relief_factor = abs((rd_ref / rd_cur) - 1.0) # per-mm relative differential
+        return abs(d_ext) * relief_factor
+
+# PAUL idea...
+#    def _relief_mm_from_rd_model(self, d_ext, delta_rel, mix=0.7):
+#        # mix in [0,1]: 1.0 => RD-only, 0.0 => model-only
+#        rd_part = self._relief_mm_from_rd(d_ext)
+#        model_part = abs(delta_rel)
+#        return mix * rd_part + (1.0 - mix) * model_part
+
 
 
 # -------------------------- Controller Core ----------------------------
@@ -920,7 +1024,7 @@ class SyncFeedbackManager:
             or (self.cfg.use_twolevel_for_type_pd and self.cfg.sensor_type in ("P", "D"))
         )
 
-        self.K = 2.0 / cfg.buffer_range_mm   # mm → normalized delta in x
+        self.K = 2.0 / cfg.buffer_range_mm   # mm => normalized delta in x
         self.state = EKFState()
         self.state.c = max(cfg.c_min, min(cfg.c_max, c0))
         if x0 is not None:
@@ -946,7 +1050,7 @@ class SyncFeedbackManager:
 
         # Two-level flip-flop state (reused for CO/TO and optional P/D)
         self._os_target_level = "low" # "low" or "high"
-        self._os_since_flip_mm = 0.0
+        self._os_since_flip_mm = 2.0
 
         # FlowGuard engine (encapsulates non-shared FlowGuard state/logic)
         self.flowguard = _FlowguardEngine(self)
@@ -1013,7 +1117,7 @@ class SyncFeedbackManager:
 
         # Two-level init for P/D (optional)
         if self.cfg.sensor_type in ("P", "D") and self.cfg.use_twolevel_for_type_pd:
-            pol0 = self._pd_extreme_polarity(sensor_reading)
+            pol0 = self._extreme_polarity(sensor_reading, self.cfg.pd_twolevel_threshold)
             if pol0 > 0:
                 self._os_target_level = "high"
             elif pol0 < 0:
@@ -1043,11 +1147,12 @@ class SyncFeedbackManager:
             raise RuntimeError("Controller must be reset(t_s=...) before first update().")
 
         # Compute dt and advance time cursors
-        dt_s = eventtime - self._last_time_s
+        dt_s = max(0.0, float(eventtime - self._last_time_s)) # Protect against non-monotonic clock
         self._last_time_s = eventtime
         d_ext = float(extruder_delta_mm)
 
         rd_prev = self.rd_current
+        rd_note = None
         d_gear = self._gear_mm_from_rd(d_ext, rd_prev)
 
         if self.twolevel_active:
@@ -1056,26 +1161,20 @@ class SyncFeedbackManager:
             self._ekf_predict(extruder_mm=d_ext, gear_mm=d_gear) # Shadow EKF for FlowGuard only
 
             if cfg.sensor_type == "P":
-                sensor_for_logic = sensor_reading
                 self._ekf_update_type_prop(sensor_reading) # Update EKF with whatever the sensor can tell us
             else: # Type-D/CO/TO
-                sensor_for_logic = int(sensor_reading)
-                self._ekf_update_type_switch(sensor_for_logic)
+                self._ekf_update_type_switch(int(sensor_reading))
 
             # FlowGuard update
-            flowguard_out = self.flowguard.update(d_ext, d_gear, sensor_for_logic if cfg.sensor_type in ("CO", "TO") else sensor_reading)
+            flowguard_out = self.flowguard.update(d_ext, d_gear, int(sensor_reading) if cfg.sensor_type in ("CO", "TO", "D") else sensor_reading)
 
             # Determine immediate RD target from two-level rules
             prev_level = self._os_target_level  # Capture before helper changes (detect flips)
-            rd_target, rd_reason = self._twolevel_rd_target(rd_prev, d_ext, sensor_reading)
+            rd_target = self._twolevel_rd_target(rd_prev, d_ext, sensor_reading)
             flipped_this_tick = (self._os_target_level != prev_level)
 
             # Delegate two-level evidence collection to autotune helper
             self.autotune.note_twolevel_tick(self._os_target_level, flipped_this_tick, d_ext)
-
-            # Now apply the newly decided RD for future motion
-            rd_applied = self._clamp_to_envelope(rd_target)
-            self._apply_rd(rd_applied)
 
         else:
             # ------------- KALMAN/TYPE-PD BRANCH --------------
@@ -1090,17 +1189,15 @@ class SyncFeedbackManager:
                 self._ekf_update_type_switch(z)
 
             # FlowGuard update
-            flowguard_out = self.flowguard.update(d_ext, d_gear, sensor_reading)
+            flowguard_out = self.flowguard.update(d_ext, d_gear, int(sensor_reading) if cfg.sensor_type == "D" else sensor_reading)
 
-            # Compute instant RD target
-            desired_eff = self._desired_effective_gear_mm(d_ext, dt_s)  # = ĉ * u_des
+            # Compute immediate RD target
+            desired_eff = self._desired_effective_gear_mm(d_ext, dt_s) # = ĉ * u_des
             c_hat = max(cfg.c_min, min(cfg.c_max, self.state.c))
             u_des = desired_eff / c_hat
             rd_target = self._rd_from_desired_gear_mm(d_ext, u_des)
-            rd_reason = None
             if rd_target is None:
-                rd_target = rd_prev  # no extruder motion; hold RD
-                rd_reason = "Extruder idle; RD held."
+                rd_target = rd_prev # no extruder motion; hold RD
 
             # Relief-biased snap at extremes (guaranteed relief per update)
             comp_ext, tens_ext = self._extreme_flags(sensor_reading)
@@ -1112,45 +1209,45 @@ class SyncFeedbackManager:
                 # Derived from: delta_rel = d_ext * (c_hat * rd_ref / rd - 1)
                 sgn = 1.0 if d_ext > 0 else -1.0
                 denom = 1.0 - (sgn * zsign) * relief_frac
-                denom = max(0.05, denom)  # avoid blow-up
-                rd_relief = (c_hat * rd_ref) / denom
-
-                rd_target = self._clamp_to_envelope(rd_relief)
-                rd_reason = "Relief-biased snap at extreme"
+                denom = max(0.05, denom)
+                rd_target = (c_hat * rd_ref) / denom
+                rd_note = "Relief-biased snap at extreme"
 
             # Neutral trim near zero (direction aware)
             if not (comp_ext or tens_ext) and d_ext != 0.0:
                 trim_band = cfg.trim_band if cfg.trim_band is not None else max(0.06, cfg.ctrl_deadband)
                 xhat = float(self.state.x)
                 if abs(xhat) <= trim_band:
-                    # Make trim relieve error in the *current motion direction*
+                    # Make trim relieve error in the *current motion direction*.
                     dir_sign = 1.0 if d_ext > 0 else -1.0       # forward(+), retract(-)
                     factor = 1.0 + cfg.k_trim * xhat * dir_sign
-                    factor = max(0.90, min(1.10, factor))       # keep the same safety clamps # PAUL..
+                    factor = max(0.90, min(1.10, factor))       # safety
                     rd_target *= factor
-                    rd_reason = (rd_reason + " + neutral trim") if rd_reason else "Neutral trim near zero (dir-aware)"
 
-            # Clamp & smooth
+            # Smooth target
             rd_clamped = self._clamp_to_envelope(rd_target)
-            rd_applied = self._smooth_rd_by_distance(
-                rd_prev, rd_clamped, d_ext, sensor_reading=sensor_reading
-            )
-            self._apply_rd(rd_applied)
+            rd_target = self._smooth_rd_by_distance(rd_prev, rd_clamped, d_ext, sensor_reading=sensor_reading)
 
         # ------------- SHARED --------------
+
+        # Now clamp and apply the newly decided RD for future motion
+        rd_applied = self._clamp_to_envelope(rd_target)
+        self._apply_rd(rd_applied)
 
         # Update UI helper
         sensor_expected = self._expected_sensor_reading(sensor_reading, d_ext)
 
         # Autotune decision
-        autotune_out = self.autotune.update(d_ext, dt_s)
-        auto_rd = autotune_out.get('rd', None)
+        autotune_out = self.autotune.update(d_ext, dt_s, report_trivial=self._twolevel_boost_active)
+        auto_rd = autotune_out.get('rd')
         if auto_rd is not None:
             self.rd_ref = auto_rd
             if self.twolevel_active:
                 # Reset twolevel rd high/low after first autotune candidate
                 self._twolevel_boost_active = False
                 self._set_low_high_rd(auto_rd)
+        if flowguard_out.get('clog') or flowguard_out.get('tangle'):
+            self.autotune.restart(self.rd_ref)
 
         # Maintain smoothed rd_ref to prevent sudden estimation spikes
         self._update_rd_ref_by_distance(d_ext, sensor_reading)
@@ -1160,6 +1257,7 @@ class SyncFeedbackManager:
             out = {
                 "input": {
                     "tick": self._tick,
+                    "t_s": eventtime,
                     "dt_s": dt_s,
                     "d_mm": extruder_delta_mm,
                     "sensor": sensor_reading,
@@ -1169,11 +1267,11 @@ class SyncFeedbackManager:
                     "rd_ref": self.rd_ref,           # Debugging
                     "rd_ref_smoothed": self._rd_ref, # Debugging
                     "rd_current": self.rd_current,
-                    "rd_reason": rd_reason,
+                    "rd_note": rd_note,              # Debugging
                     "x_est": self.state.x,           # Debugging
                     "c_est": self.state.c,           # Debugging
                     "sensor_ui": sensor_expected,
-                    "flowguard": flowguard_out, # Keys: "clog", "tangle", "reason"
+                    "flowguard": flowguard_out, # Keys: "clog", "tangle", "reason", "headroom", "min_headroom"
                     "autotune": autotune_out,   # Keys: "rd", "note"
                 }
             }
@@ -1193,7 +1291,8 @@ class SyncFeedbackManager:
         """
         Set absolute immutable min/max rd "speeds"
         """
-        f_minmax = max(0.0, min(1.0, self.cfg.rd_min_max_speed_multiplier))
+        f_minmax = max(0.0, min(0.99, self.cfg.rd_min_max_speed_multiplier))
+
         self.rd_min  = rd / (1.0 + f_minmax)
         self.rd_max = rd / (1.0 - f_minmax)
         self._set_low_high_rd(rd) # Also set current low/high in effect
@@ -1203,7 +1302,7 @@ class SyncFeedbackManager:
         """
         Set high/low rd "speeds"
         """
-        f_minmax = max(0.0, min(1.0, self.cfg.rd_min_max_speed_multiplier))
+        f_minmax = max(0.0, min(0.99, self.cfg.rd_min_max_speed_multiplier))
         if self.twolevel_active:
             f_norm = self.cfg.rd_twolevel_speed_multiplier
             f_boost = self.cfg.rd_twolevel_boost_multiplier if self._twolevel_boost_active else 0.0
@@ -1324,9 +1423,7 @@ class SyncFeedbackManager:
     # ----------- Sensor reading helpers  ----------
 
     def _onesided_contact(self, sensor_reading):
-        """
-        True if the one-sided sensor is in-contact (triggered)
-        """
+        """ True if the one-sided sensor is in-contact (triggered) """
         cfg = self.cfg
 
         if cfg.sensor_type == "CO":
@@ -1338,73 +1435,34 @@ class SyncFeedbackManager:
         return False
 
 
-    def _pd_extreme_polarity(self, sensor_reading):
+    def _extreme_polarity(self, sensor_reading, threshold=None):
         """
-        +1 = compression extreme, -1 = tension extreme, 0 = neutral.
-        P: extreme if z >= +threshold or z <= -threshold.
-        D: extreme if z == +1 or z == -1, neutral if z == 0.
+        Reduce sensor to a coarse (extreme) states
+          P : +1 if ≥ threshold, -1 if ≤ -threshold, else 0
+          D : {-1,0,+1} as-is
+          CO: {0, +1} as-is
+          TO: {-1, 0} as-is
+        Normally this is the flowguard threshold but the P/D twolevel is
+        usually a slightly lesser test
         """
         cfg = self.cfg
         if cfg.sensor_type == "P":
             z = float(sensor_reading)
-            thr = abs(cfg.pd_twolevel_threshold)
-            if z >= thr:
-                return +1
-            if z <= -thr:
-                return -1
-            return 0
-        elif cfg.sensor_type == "D":
-            z = int(sensor_reading)
-            return +1 if z == 1 else (-1 if z == -1 else 0)
-        return 0
+            thr = abs(float(cfg.flowguard_extreme_threshold if threshold is None else cfg.pd_twolevel_threshold))
+            return 1 if z >= thr else -1 if z <= -thr else 0
+        else:
+            return int(sensor_reading)
 
 
     def _is_extreme(self, sensor_reading):
-        """
-        True if current reading is pegged per sensor type.
-        """
-        cfg = self.cfg
-
-        if cfg.sensor_type == "P":
-            z = float(sensor_reading)
-            return abs(z) >= cfg.flowguard_extreme_threshold
-        else:
-            z = int(sensor_reading)
-            if cfg.sensor_type == "D":
-                return z in (-1, 1)
-            elif cfg.sensor_type == "CO":
-                return (z == 1)
-            elif cfg.sensor_type == "TO":
-                return (z == -1)
-        return False
+        """ True if current reading is pegged per sensor type """
+        return self._extreme_polarity(sensor_reading) != 0
 
 
     def _extreme_flags(self, sensor_reading):
-        cfg = self.cfg
-        comp_ext = tens_ext = False
-
-        if cfg.sensor_type == "P":
-            z = float(sensor_reading)
-            comp_ext = (z >= cfg.flowguard_extreme_threshold)
-            tens_ext = (z <= -cfg.flowguard_extreme_threshold)
-        elif cfg.sensor_type == "D":
-            z = int(sensor_reading)
-            comp_ext = (z == 1)
-            tens_ext = (z == -1)
-        elif cfg.sensor_type == "CO":
-            # CO directly observes compression only
-            z = int(sensor_reading)
-            comp_ext = (z == 1)
-            tens_ext = False
-            return comp_ext, tens_ext  # no x̂ fallback for unseen side
-        elif cfg.sensor_type == "TO":
-            # TO directly observes tension only
-            z = int(sensor_reading)
-            comp_ext = False
-            tens_ext = (z == -1)
-            return comp_ext, tens_ext  # no x̂ fallback for unseen side
-
-        return comp_ext, tens_ext
+        """ Return (compression_extreme, tension_extreme) """
+        p = self._extreme_polarity(sensor_reading)
+        return (p == 1, p == -1)
 
     # -------------- Twolevel helpers  -------------
 
@@ -1425,8 +1483,6 @@ class SyncFeedbackManager:
         self._os_since_flip_mm += move
 
         if cfg.sensor_type in ("CO", "TO"):
-            rd_reason = "Two-level (CO/TO)"
-
             # Desired level from current contact state
             in_contact = self._onesided_contact(sensor_reading)
 
@@ -1435,10 +1491,8 @@ class SyncFeedbackManager:
             else: # TO
                 desired_level = "low" if in_contact else "high"
         else:
-            rd_reason = "Two-level (P/D)"
-
             # Desired level from polarity
-            pol = self._pd_extreme_polarity(sensor_reading)  # +1, -1, 0
+            pol = self._extreme_polarity(sensor_reading, cfg.pd_twolevel_threshold) # +1, -1, 0
 
             if pol > 0:
                 desired_level = "high"
@@ -1456,7 +1510,7 @@ class SyncFeedbackManager:
         # Map level to RD
         rd_target = self.rd_low if self._os_target_level == "low" else self.rd_high
 
-        return rd_target, rd_reason
+        return rd_target
 
     # ----------------- EKF helpers  ---------------
 
@@ -1480,7 +1534,7 @@ class SyncFeedbackManager:
         move = abs(float(d_ext))
 
         # Exponential smoothing for soft glide from rd_prev toward rd_target.
-        # Bigger move or higher r → bigger step.
+        # Bigger move or higher r => bigger step.
         L = max(1e-9, self.cfg.rd_filter_len_mm)
         alpha_base = 1.0 - math.exp(-move / L)
         r = self._update_readiness_and_get_r(sensor_reading, move) if sensor_reading is not None else 1.0
@@ -1499,13 +1553,14 @@ class SyncFeedbackManager:
             elif rd_delta < -max_step:
                 rd_filtered = rd_prev - max_step
 
-        return self._clamp_to_envelope(rd_filtered)
+        return rd_filtered
 
 
     def _update_rd_ref_by_distance(self, d_ext, sensor_reading=None):
         """
         Glide the internal reference RD (used for mapping calculations) toward the
-        autotuner's current recommendation using the same motion-length constant as RD smoothing.
+        autotuner's current recommendation using the same motion-length constant
+        as RD smoothing.
         """
         move = abs(float(d_ext))
 
@@ -1548,7 +1603,6 @@ class SyncFeedbackManager:
         # Extreme boost
         if self._is_extreme(sensor_reading):
             r = max(r, cfg.readiness_extreme_floor)
-
         return r
 
 
@@ -1586,9 +1640,9 @@ class SyncFeedbackManager:
         """
         Called to immediately apply the new rd to the gear stepper
         """
-        self.rd_current = rd
         if not math.isclose(self.rd_current, rd):
-            print(f"PAUL: FINISH ME -----> Apply rd: {rd:.4f}")
+            self.rd_current = rd
+            #print(f"PAUL: FINISH ME -----> Apply rd: {rd:.4f}")
 
     # -------------- Logging helpers  --------------
 
