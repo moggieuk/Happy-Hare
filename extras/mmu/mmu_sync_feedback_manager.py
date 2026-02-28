@@ -39,8 +39,8 @@ class MmuSyncFeedbackManager:
 
     # proportional tension / compression control tunables
     RDD_THRESHOLD         = 1e-4     # Min Rotation Distance delta to trigger application of it.
-    PROP_DEADBAND_THRESHOLD = 0.10  # Magnitude of side motion before considering state as tension/compression.
-    								 # a 0.1 side threshold means sensor values of 0.4-0.6 are considered neutral
+    PROP_DEADBAND_THRESHOLD = 0.20  # Magnitude of side motion before considering state as tension/compression.
+    								 # a 0.2 side threshold means sensor values of ~2mm either side are considered neutral
 
     def __init__(self, mmu):
         self.mmu = mmu
@@ -491,7 +491,9 @@ class MmuSyncFeedbackManager:
                 self.mmu.log_trace("MmuSyncFeedbackManager: Speeding gear motor up")
 
         if self._rd_applied is not None and abs(rd - self._rd_applied) < self.RDD_THRESHOLD:
-            # No meaningful change; skip logging & write
+            # No meaningful change; skip logging & RD adjustment.
+            # This is critical for the proportional pressure sensor as it emits events every 200ms
+            # hence without a gate, it would apply RD on every cycle.
             return False
 
         self.mmu.log_debug(
@@ -505,7 +507,6 @@ class MmuSyncFeedbackManager:
         )
         self._rd_applied = rd
         self.mmu.set_rotation_distance(rd)
-        self.mmu.log_debug("Applied RD now: %.4f" % self._rd_applied)
         return True
 
     # Reset rotation_distance to calibrated value of current gate (not necessarily current value if autotuning)
@@ -824,6 +825,9 @@ class MmuSyncFeedbackManager:
         self._endguard_action_pending = False
 
         try:
+            # Run the pause portion of pause_resume execute immediately.
+            pause_resume = self.printer.lookup_object('pause_resume')
+            pause_resume.send_pause_command()
             self.mmu.gcode.run_script('MMU_PAUSE MSG="Endguard detected clog or tangle"')
         except Exception:
             self.mmu.log_always("EndGuard: failed to invoke MMU_PAUSE")
