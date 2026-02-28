@@ -60,6 +60,32 @@ log_visual: 1				# 1 log visual representation of filament, 0 = disable
 log_startup_status: 1			# Whether to log tool to gate status on startup, 1 = summary (default), 0 = disable
 log_m117_messages: 1			# Whether send toolchange message via M117 to screen
 
+# Consistency ----------------------------------------------------------------------------------------------------------
+#  ██████╗ ██████╗ ███╗   ██╗███████╗██╗███████╗████████╗███████╗███╗   ██╗ ██████╗██╗   ██╗
+# ██╔════╝██╔═══██╗████╗  ██║██╔════╝██║██╔════╝╚══██╔══╝██╔════╝████╗  ██║██╔════╝╚██╗ ██╔╝
+# ██║     ██║   ██║██╔██╗ ██║███████╗██║███████╗   ██║   █████╗  ██╔██╗ ██║██║      ╚████╔╝
+# ██║     ██║   ██║██║╚██╗██║╚════██║██║╚════██║   ██║   ██╔══╝  ██║╚██╗██║██║       ╚██╔╝
+# ╚██████╗╚██████╔╝██║ ╚████║███████║██║███████║   ██║   ███████╗██║ ╚████║╚██████╗   ██║
+#  ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝╚══════╝╚═╝╚══════╝   ╚═╝   ╚══════╝╚═╝  ╚═══╝ ╚═════╝   ╚═╝
+#
+# Happy Hare can perform consistency checks between your MMU spool setup and the job requirements parsed from the
+# gcode file. This includes validating filament names, materials, and available weight. The checks can be configured
+# to generate informational messages, warnings, or errors that will pause the print.
+#
+# When endless spool groups are configured, Happy Hare will sum up the available filament weight across all gates in
+# the group to determine if there is sufficient material. Optionally it can also verify that all gates in an endless
+# spool group have consistent materials and filament names.
+#
+# Severity levels control how mismatches are reported:
+#   0 = info (logged but print continues)
+#   1 = warning (logged with warning but print continues)
+#   2 = error (logged as error and print is paused for user intervention)
+#
+consistency_checks_enable: False				# True to enable consistency checking, False to disable
+consistency_check_endless_groups: False			# True to verify material/name consistency within endless spool groups, False to disable
+consistency_name_severity: 1				# Severity level for filament name mismatches (0=info, 1=warning, 2=error)
+consistency_material_severity: 1			# Severity level for material type mismatches (0=info, 1=warning, 2=error)
+consistency_weight_severity: 2				# Severity level for insufficient filament weight (0=info, 1=warning, 2=error)
 
 # Movement speeds ------------------------------------------------------------------------------------------------------
 # ███████╗██████╗ ███████╗███████╗██████╗ ███████╗
