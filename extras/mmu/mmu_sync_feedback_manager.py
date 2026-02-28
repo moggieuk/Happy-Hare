@@ -39,8 +39,8 @@ class MmuSyncFeedbackManager:
 
     # proportional tension / compression control tunables
     RDD_THRESHOLD         = 1e-4     # Min Rotation Distance delta to trigger application of it.
-    PROP_DEADBAND_THRESHOLD = 0.25  # Magnitude of side motion before considering state as tension/compression.
-    								 # a 0.25 side threshold means sensor values of ~2.5mm either side are considered neutral
+    PROP_DEADBAND_THRESHOLD = 0.30  # Magnitude of side motion before considering state as tension/compression.
+    								 # a 0.30 side threshold means sensor values of ~3mm either side are considered neutral
     PROP_RELEASE_THRESHOLD  = 0.20  # Magnitude of side motion to consider the virtual switch as released.
 
     def __init__(self, mmu):
