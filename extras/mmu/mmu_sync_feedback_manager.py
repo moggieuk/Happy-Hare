@@ -296,13 +296,24 @@ class MmuSyncFeedbackManager:
         if abs(state) <= 1:
             old_state = self.state
             self.state = float(state)
-            self.mmu.log_trace(
-                "MmuSyncFeedbackManager(%s): Got sync force feedback update. State: %s (%s)" % (
-                    "active" if self.sync_feedback_enabled and self.active else "inactive",
-                    self.get_sync_feedback_string(detail=True),
-                    float(state)
+            if (bool(self.sync_feedback_proportional_sensor)):
+            # If proportional sensor is fitted, events are published every 200ms. Demote logging state to stepper log level
+            # to prevent spamming of trace level.
+                self.mmu.log_stepper(
+                    "MmuSyncFeedbackManager(%s): Got sync force feedback update. State: %s (%s)" % (
+                        "active" if self.sync_feedback_enabled and self.active else "inactive",
+                        self.get_sync_feedback_string(detail=True),
+                        float(state)
+                    )
                 )
-            )
+            else:
+                self.mmu.log_trace(
+                    "MmuSyncFeedbackManager(%s): Got sync force feedback update. State: %s (%s)" % (
+                        "active" if self.sync_feedback_enabled and self.active else "inactive",
+                        self.get_sync_feedback_string(detail=True),
+                        float(state)
+                    )
+                )
             # IMPORTANT: Do NOT reset the last_recorded_extruder_position every proportional tick.
             # Only reset on deadband transitions (tension<->neutral<->compression) so ΔE can accumulate.
             # Hysteresis: hold side while in deadband; release to NEUTRAL only on true zero-crossing.
