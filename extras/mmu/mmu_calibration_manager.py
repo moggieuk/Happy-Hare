@@ -1,14 +1,10 @@
 # Happy Hare MMU Software
 #
-# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+# Copyright (C) 2022-2025  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
 # Goal: Manager class to handle all aspects of MMU calibration and autotuning. In
 #       paricular manage persistence of bowden lengths and gear rotation distances.
-#
-# Implements commands:
-#   MMU_SET_LED
-#
 #
 # (\_/)
 # ( *,*)
@@ -21,7 +17,7 @@ import logging, math
 # Happy Hare imports
 
 # MMU subcomponent clases
-from .mmu_shared import *
+from .mmu_shared           import MmuError
 
 
 class MmuCalibrationManager:
@@ -51,31 +47,48 @@ class MmuCalibrationManager:
     def update_bowden_length(self, length, gate=None, console_msg=False):
         if gate == None: gate = self.mmu.gate_selected
         if gate < 0:
-            self.mmu.log_debug("Assertion failure: cannot save bowden length for gate: %s" % self.mmu.selected_gate_string(gate))
+            self.mmu.log_debug("Assertion failure: cannot save bowden length for gate: %d" % gate)
             return
 
         all_gates = not self.mmu.mmu_machine.variable_bowden_lengths
 
-        if length < 0: # Reset
-            action = "reset"
+        if length < 0:
             if all_gates:
                 self.mmu.bowden_lengths = [-1] * self.mmu.num_gates
             else:
                 self.mmu.bowden_lengths[gate] = -1
 
+            self.mmu.log_always("Calibrated bowden length has been reset for %s" % ("all gates" if all_gates else "gate %d" % gate))
+
         else:
             length = round(length, 1)
-            action = "saved"
+            clog_updated = False
+
             if all_gates:
                 self.mmu.bowden_lengths = [length] * self.mmu.num_gates
             else:
                 self.mmu.bowden_lengths[gate] = length
 
-        msg = "Calibrated bowden length %.1fmm has been %s %s" % (length, action, ("for all gates" if all_gates else "gate %d" % gate))
-        if console_msg:
-            self.mmu.log_always(msg)
-        else:
-            self.mmu.log_debug(msg)
+            if self.mmu.has_encoder() and self.mmu.save_variables.allVariables.get(self.mmu.VARS_MMU_CALIB_CLOG_LENGTH, None) is None:
+                clog_detection_length = self.calc_clog_detection_length(length)
+                self.save_clog_detection_length(clog_detection_length)
+                clog_updated = True
+
+            # If using encoder and clog length not set, set it now
+            if self.mmu.has_encoder() and self.mmu.save_variables.allVariables.get(self.mmu.VARS_MMU_CALIB_CLOG_LENGTH, None) is None:
+                clog_detection_length = self.calc_clog_detection_length(length)
+                self.save_clog_detection_length(clog_detection_length)
+                clog_updated = True
+
+            msg = "Calibrated bowden length %.1fmm%s has been saved %s" % (
+                length,
+                (" and clog detection length %.1fmm" % clog_detection_length) if clog_updated else "",
+                ("for all gates" if all_gates else "gate %d" % gate),
+            )
+            if console_msg:
+                self.mmu.log_always(msg)
+            else:
+                self.mmu.log_debug(msg)
 
         # Update calibration status
         if not any(x == -1 for x in self.mmu.bowden_lengths):
@@ -106,28 +119,17 @@ class MmuCalibrationManager:
         self.mmu.write_variables()
 
 
-    # -------------------- Encoder based runout/clog/tangle length manipulation --------------------
+    # -------------------- Encoder based clog length manipulation --------------------
 
     def calc_clog_detection_length(self, bowden_length):
         cal_min = round((bowden_length * 2) / 100., 1) # 2% of bowden length seems to be good starting point
         return max(cal_min, 8.)                        # Never less than 8mm
 
 
-    def update_clog_detection_length(self, cdl, force=False):
-        """
-        Persist the calibrated encoder clog detection length and notify the encoder of change if in auto mode
-        If not forced then save if auto but don't update the encoder
-        """
-        if not self.mmu.has_encoder(): return
-        if not cdl: return
-
-        auto = (self.mmu.sync_feedback_manager.flowguard_encoder_mode == self.mmu.encoder_sensor.RUNOUT_AUTOMATIC)
-
-        if auto or force:
-            self.mmu.save_variable(self.mmu.VARS_MMU_CALIB_CLOG_LENGTH, cdl, write=bool(force))
-
-        if auto and not force:
-            self.mmu.encoder_sensor.set_clog_detection_length(cdl)
+    def save_clog_detection_length(self, length, force=True):
+        if length and (force or self.mmu.save_variables.allVariables.get(self.mmu.VARS_MMU_CALIB_CLOG_LENGTH, None) is not None):
+            self.mmu.save_variable(self.mmu.VARS_MMU_CALIB_CLOG_LENGTH, length)
+            self.mmu.encoder_sensor.set_clog_detection_length(length)
 
 
     # -------------------- Gear stepper rotation distance manipulation --------------------
@@ -138,15 +140,11 @@ class MmuCalibrationManager:
     def get_gear_rd(self, gate=None):
         if gate == None: gate = self.mmu.gate_selected
 
-        if gate < 0:
-            rd = self.mmu.default_rotation_distance
-        else:
-            rd = self.mmu.rotation_distances[gate if gate >= 0 and self.mmu.mmu_machine.variable_rotation_distances else 0]
-
+        rd = self.mmu.rotation_distances[gate if gate >= 0 and self.mmu.mmu_machine.variable_rotation_distances else 0]
         if rd <= 0:
             rd = self.mmu.default_rotation_distance
-            self.mmu.log_debug("Gate %d not calibrated, falling back to default rotation_distance: %.4f" % (gate, rd))
-
+            if gate < 0:
+                self.mmu.log_debug("Gate %d not calibrated, falling back to default rotation_distance: %.4f" % (gate, rd))
         return rd
 
 
@@ -340,13 +338,11 @@ class MmuCalibrationManager:
 
 
     def calibrate_encoder(self, length, repeats, speed, min_speed, max_speed, accel, save=True):
-        pos_values, neg_values = [], []
-        self.mmu.log_always("%s over %.1fmm..." % ("Calibrating" if save else "Validating calibration", length))
-        speed_incr = (max_speed - min_speed) / repeats
-        test_speed = min_speed
-        mean = 0
-
         try:
+            pos_values, neg_values = [], []
+            self.mmu.log_always("%s over %.1fmm..." % ("Calibrating" if save else "Validating calibration", length))
+            speed_incr = (max_speed - min_speed) / repeats
+            test_speed = min_speed
             for x in range(repeats):
                 if speed_incr > 0.:
                     self.mmu.log_always("Test run #%d, Speed=%.1f mm/s" % (x, test_speed))
@@ -400,7 +396,6 @@ class MmuCalibrationManager:
         except MmuError as ee:
             # Add some more context to the error and re-raise
             raise MmuError("Calibration of encoder failed. Aborting, because:\n%s" % str(ee))
-
         finally:
             if mean == 0:
                 self.mmu._set_filament_pos_state(self.mmu.FILAMENT_POS_UNKNOWN)
@@ -489,36 +484,33 @@ class MmuCalibrationManager:
         msg = "Autotune: bowden move ratio: %.4f, Extra homing movement: %s" % (bowden_move_ratio, "n/a" if homing_movement is None else "%.1fmm" % homing_movement)
         if homing_movement is not None:
 
-            # If sync-feedback is available it provides a better way to autotune rotation distance. This is retained for legacy cases
-            has_tension, has_compression, has_proportional = self.mmu.sync_feedback_manager.get_active_sensors()
-
-            # Encoder based automatic calibration of gate's gear rotation_distance
-            # TODO Currently only works with gate >0. Could work with gate 0 if variable_rotation_distance is True
-            # TODO and bowden is calibrated and we don't tune bowden below
-            if (
-                False and # TODO Temporarily disabled based on user's feedback until tested further
-                not any([has_tension, has_compression, has_proportional]) and
-                self.mmu.autotune_rotation_distance and
-                self.mmu.mmu_machine.variable_rotation_distances and
-                self.mmu.gate_selected > 0 and
-                bowden_move_ratio > 0 and
-                homing_movement > 0
-            ):
-                if direction in [self.mmu.DIRECTION_LOAD, self.mmu.DIRECTION_UNLOAD]:
-                    current_rd = self.mmu.gear_rail.steppers[0].get_rotation_distance()[0]
-                    new_rd = round(bowden_move_ratio * current_rd, 4)
-                    gate0_rd = self.mmu.rotation_distances[0]
-
-                    # Allow max 10% variation from gate 0 for autotune
-                    if math.isclose(new_rd, gate0_rd, rel_tol=0.1):
-                        if not self.mmu.calibrating and self.mmu.rotation_distances[self.mmu.gate_selected] > 0:
-                            # Tuning existing calibration
-                            new_rd = round((self.mmu.rotation_distances[self.mmu.gate_selected] * 5 + new_rd) / 6, 4) # Moving average
-                            msg += ". Autotuned rotation_distance: %.4f for gate %d" % (new_rd, self.mmu.gate_selected)
-                        if not math.isclose(current_rd, new_rd):
-                            _ = self.mmu.update_gear_rd(new_rd, self.mmu.gate_selected)
-                    else:
-                        msg += ". Calculated rotation_distance: %.4f for gate %d failed sanity check and has been ignored" % (new_rd, self.mmu.gate_selected)
+# PAUL: now a better way with sync-feedback buffer. Keep for non-sync-feedback use cases?
+#            # TODO Currently only works with gate >0. Could work with gate 0 if variable_rotation_distance is True
+#            # TODO and bowden is calibrated and we don't tune bowden below
+#
+#            # Encoder based automatic calibration of gate's gear rotation_distance
+#            if (
+#                self.mmu.autotune_rotation_distance and
+#                self.mmu.mmu_machine.variable_rotation_distances and
+#                self.mmu.gate_selected > 0 and
+#                bowden_move_ratio > 0 and
+#                homing_movement > 0
+#            ):
+#                if direction in [self.mmu.DIRECTION_LOAD, self.mmu.DIRECTION_UNLOAD]:
+#                    current_rd = self.mmu.gear_rail.steppers[0].get_rotation_distance()[0]
+#                    new_rd = round(bowden_move_ratio * current_rd, 4)
+#                    gate0_rd = self.mmu.rotation_distances[0]
+#
+#                    # Allow max 10% variation from gate 0 for autotune
+#                    if math.isclose(new_rd, gate0_rd, rel_tol=0.1):
+#                        if not self.mmu.calibrating and self.mmu.rotation_distances[self.mmu.gate_selected] > 0:
+#                            # Tuning existing calibration
+#                            new_rd = round((self.mmu.rotation_distances[self.mmu.gate_selected] * 5 + new_rd) / 6, 4) # Moving average
+#                            msg += ". Autotuned rotation_distance: %.4f for gate %d" % (new_rd, self.mmu.gate_selected)
+#                        if not math.isclose(current_rd, new_rd):
+#                            _ = self.mmu.update_gear_rd(new_rd, self.mmu.gate_selected)
+#                    else:
+#                        msg += ". Calculated rotation_distance: %.4f for gate %d failed sanity check and has been ignored" % (new_rd, self.mmu.gate_selected)
 
 
             # Automatic calibration of bowden length based on actual homing movement telemetry

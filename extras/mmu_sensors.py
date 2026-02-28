@@ -319,20 +319,21 @@ class MmuProportionalSensor:
 
         # Config
         self._pin = config.get('sync_feedback_analog_pin')
-        self._reversed = config.getboolean('sync_feedback_analog_reversed', False)
         self._set_point = config.getfloat('sync_feedback_analog_set_point', 0.5)
-        self._scale = config.getfloat('sync_feedback_analog_scale', 1.0)
+        max_tension =     config.getfloat('sync_feedback_analog_max_tension', 1)
+        max_compression = config.getfloat('sync_feedback_analog_max_compression', 0)
+        self._gamma =     config.getfloat('sync_feedback_analog_gamma', 1) # Not exposed
+
+        eps = 1e-12
+        self._d_lo = max(self._set_point - max_tension, eps)
+        self._d_hi = max(max_compression - self._set_point, eps)
 
         self._sample_time = config.getfloat('sync_feedback_analog_sample_time', 0.005) # Not exposed
         self._sample_count = config.getint('sync_feedback_analog_sample_count', 5)     # Not exposed
         self._report_time = config.getfloat('sync_feedback_analog_report_time', 0.100) # Not exposed
-        self._debug = config.getboolean('sync_feedback_analog_debug', False)           # Not exposed
 
         # State
         self.value_raw = 0.0      # Raw ADC value
-        self.value_signed = 0.0   # Correctly signed after optional inversion
-        self.value_offset = 0.0   # After offset but before range multiplier
-        self._last_polarity = 0   # Last extreme condition
         self.value = 0.0          # In [-1.0, 1.0] (signed, offset and scaled)
 
         # Setup ADC
@@ -365,41 +366,25 @@ class MmuProportionalSensor:
         # Expose status
         self.printer.add_object(self.name, self)
 
-
-    def _remap(self, v_raw: float) -> float:
-        # 1) Reverse if specified
-        v = 1.0 - v_raw if self._reversed else v_raw
-
-        # 2) clamp ADC to [0,1] for safety
-        if v < 0.0: v = 0.0
-        if v > 1.0: v = 1.0
-
-        # 3) Map around set_point to [-1,1]
-        # (guard extremes so we don't divide by ~0)
-        sp = max(1e-6, min(1.0 - 1e-6, self._set_point))
-        if v >= sp:
-            out = (v - sp) / (1.0 - sp)
+    def _map_reading(self, v_raw):
+        if v_raw >= self._set_point:
+            y = (v_raw - self._set_point) / self._d_hi      # 0 → +1 nominal
         else:
-            out = (v - sp) / sp
+            y = -(self._set_point - v_raw) / self._d_lo     # 0 → -1 nominal
 
-        # Store pre-multiplier mapped value for display
-        self.value_offset = out
+        # Optional shaping (gamma=1 => linear)
+        if self._gamma != 1.0:
+            y = (abs(y) ** self._gamma) * (1.0 if y >= 0 else -1.0)
 
-        # 4) Apply range multiplier AFTER mapping; clamp to [-1,1]
-        out = out * self._scale
-
-        # 5) Clamp range
-        return max(-1.0, min(1.0, out))
+        # Clamp
+        if y < -1.0: y = -1.0
+        if y >  1.0: y =  1.0
+        return y
 
 
     def _adc_callback(self, read_time, read_value):
         self.value_raw = float(read_value)
-
-        # Raw after optional reversal; keep unclamped here since _remap clamps
-        self.value_signed = 1.0 - read_value if self._reversed else read_value
-
-        # Mapped & scaled value
-        self.value = self._remap(read_value)  # _remap handles reverse + scaling + mapping
+        self.value = self._map_reading(read_value) # Mapped & scaled value
 
         # Publish sync-feedback event immediately if extreme to match switch sensors
         # TODO really extreme should be determined by is_extreme() in mmu_sync_feedback manager (with hysteresis), but object hasn't been created yet
@@ -412,20 +397,11 @@ class MmuProportionalSensor:
 
 
     def get_status(self, eventtime):
-        s = {
+        return {
             "enabled":          bool(self.runout_helper.sensor_enabled),
-            "value":            self.value,             # in [-1.0, 1.0] (mapped * multipler)
+            "value":            self.value,             # in [-1.0, 1.0] (mapped)
             "value_raw":        self.value_raw,         # raw
         }
-
-        if self._debug:
-            s.update({
-                "value_signed":     self.value_signed, # raw after reversal if set
-                "value_offset":     self.value_offset, # after offset but before range multiplier
-                "set_point":        self._set_point,
-                "scale":            self._scale,
-            })
-        return s
 
 
 class MmuSensors:
