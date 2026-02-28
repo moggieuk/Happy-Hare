@@ -228,12 +228,12 @@ class SyncControllerConfig:
         # FlowGuard relief threshold (how much "counter-effort" must be proven)
         if self.flowguard_relief_mm is None:
             mult = 0.3 if self.sensor_type in ['P'] else 0.7
-            self.flowguard_relief_mm = mult * self.buffer_range_mm
+            self.flowguard_relief_mm = max(mult * self.buffer_range_mm, self.buffer_max_range_mm)
 
         # FlowGuard motion threshold (how much motion while pegged before tripping)
         if self.flowguard_motion_mm is None:
             mult = 6.0 if self.sensor_type in ['P'] else 10.0
-            self.flowguard_motion_mm = mult * self.buffer_range_mm
+            self.flowguard_motion_mm = mult * self.buffer_max_range_mm
 
 
 # ------------------------------- EKF State ------------------------------
@@ -1310,6 +1310,13 @@ class SyncController:
         if sensor_type == 'P':
             sensor_type += " (TwoLevel mode)" if self.twolevel_active else " (EKF mode)"
         return sensor_type
+
+
+    def get_current_rd(self):
+        """
+        Return the current RD in use
+        """
+        return self.rd_current
 
 
     # --------------------------------- Internal Impl ------------------------------------
