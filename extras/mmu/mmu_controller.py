@@ -43,10 +43,10 @@ from .unit.mmu_calibrator       import (CALIBRATED_GEAR_0,
 # Main klipper module
 class MmuController:
 
-    def __init__(self, mmu_machine, config):
+    def __init__(self, config, mmu_machine):
         logging.info("PAUL: init() for MmuController")
-        self.mmu_machine = mmu_machine
         self.config = config
+        self.mmu_machine = mmu_machine
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.gcode = self.printer.lookup_object('gcode')
@@ -3827,7 +3827,7 @@ class MmuController:
             raise MmuError("Failed to reach extruder '%s' endstop after moving %.1fmm" % (self.mmu_unit().p.extruder_homing_endstop, max_length))
 
         if measured > (max_length * 0.8):
-            self.log_warning("Warning: 80%% of 'extruder_homing_max' was used homing. You may want to increase 'extruder_homing_max'" % VARS_MMU_CALIB_BOWDEN_LENGTH)
+            self.log_warning("Warning: 80%% of 'extruder_homing_max' was used homing. You may want to increase 'extruder_homing_max'")
 
         self._set_filament_pos_state(FILAMENT_POS_HOMED_EXTRUDER)
         return homing_movement, extra

@@ -54,7 +54,7 @@ class MmuEnvironmentManager:
     CHECK_INTERVAL = 30 # How often to check heater and environment sensors (seconds)
 
     # Environment sensor chips with humidity
-    ENV_SENSOR_CHIPS = ["bme280", "htu21d", "sht3x", "lm75"]
+    ENV_SENSOR_CHIPS = ["bme280", "htu21d", "sht3x", "lm75", "aht10"]
 
     # Drying states (mostly relevant for per-gate heaters)
     DRYING_STATE_NONE      = ''

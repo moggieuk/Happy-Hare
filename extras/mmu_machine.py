@@ -133,16 +133,16 @@ class MmuMachine:
         if not config.has_section('mmu_parameters'):
             raise config.error("Expected [mmu_parameters] section not found")
         c = config.getsection('mmu_parameters')
-        self.params = MmuParameters(self, c)
+        self.params = MmuParameters(c, self)
         logging.info("MMU: Read: [%s]" % c.get_name())
 
         # Create master mmu operations
-        self.mmu_controller = MmuController(self, c)
+        self.mmu_controller = MmuController(c, self)
         self.printer.add_object('mmu', self.mmu_controller) # Register with klipper for get_status() under legacy name
         logging.info("MMU: Created MmuController")
 
         # Efficient and namespaced save variable management
-        self.var_manager = SaveVariableManager(self, c)
+        self.var_manager = SaveVariableManager(c, self)
         logging.info("MMU: Created SaveVariableManager")
 
 

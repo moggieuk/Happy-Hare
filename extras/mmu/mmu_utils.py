@@ -37,12 +37,14 @@ class MmuError(Exception):
 # Centralization of all save_variable manipulation for per-unit namespacing and efficiency
 class SaveVariableManager:
 
-    def __init__(self, mmu_machine, config):
+    def __init__(self, config, mmu_machine):
+        self.config = config
         self.mmu_machine = mmu_machine
+        self.printer = config.get_printer()
         self.gcode = self.mmu_machine.printer.lookup_object('gcode')
         self.save_variables = self.mmu_machine.printer.load_object(config, 'save_variables')
 
-        self._can_write_variables = True
+        self._can_write_variables = False # Whether it is ok to write to "save_variables"
 
         # Sanity check to see that mmu_vars.cfg is included.  This will verify path
         # because default deliberately has 'mmu_revision' entry
@@ -54,6 +56,13 @@ class SaveVariableManager:
             revision_var = None
         if not self.save_variables or revision_var is None:
             raise config.error("Calibration settings file (mmu_vars.cfg) not found. Check [save_variables] section in mmu_macro_vars.cfg\nAlso ensure you only have a single [save_variables] section defined in your printer config and it contains the line: mmu__revision = 0. If not, add this line and restart")
+
+        self.printer.register_event_handler("klippy:ready", self.handle_ready)
+
+    def handle_ready(self):
+        logging.info("PAUL: handle_ready in SaveVariableManager")
+        self._can_write_variables = True # This prevents early writes until klipper is ready
+        self.write()                     # Flush anything that was pending
 
     # Namespace variable with mmu unit name if necessary
     def namespace(self, variable, namespace):

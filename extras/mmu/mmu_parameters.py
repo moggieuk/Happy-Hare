@@ -19,9 +19,9 @@ from .mmu_constants import *
 
 class MmuParameters:
 
-    def __init__(self, mmu_machine, config):
-        self._mmu_machine = mmu_machine
+    def __init__(self, config, mmu_machine):
         self._config = config
+        self._mmu_machine = mmu_machine
 
         # Read user configuration ---------------------------------------------------------------------------
 
