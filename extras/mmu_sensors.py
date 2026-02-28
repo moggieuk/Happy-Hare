@@ -512,13 +512,14 @@ class MmuHallSensor:
             },
             insert_remove_in_print,
             button_handler=None,
-            switch_pin=self._pin
+            switch_pin=None
         )
 
         self.printer.add_object("mmu_hall_sensor %s" % name, self)
         logging.info("MMU: MmuHallSensor initialized: %s (id: %s)" % (self.name, id(self)))
 
     # Helper to setup ADC without repeating code - Kalico compatibility (setup_adc_samples vs setup_minmax)
+    # This can be moved to a common ADC sensor class in the future
     def _setup_adc(self, pin_name, sample_time, sample_count, callback, report_time, multi_use=False):
         ppins = self.printer.lookup_object('pins')
         if multi_use:
