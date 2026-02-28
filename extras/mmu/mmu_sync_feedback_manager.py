@@ -46,6 +46,11 @@ class MmuSyncFeedbackManager:
     SYNC_STATE_COMPRESSED = 1
     SYNC_STATE_EXPANDED   = -1
 
+    # proportional tension / compression control tunables
+    RDD_THRESHOLD         = 1e-4     # Min Rotation Distance delta to trigger application of it.
+    SIDE_THRESHOLD        = 1e-3     # Magnitude of side motion before considering state as tension/compression. Units are arbitrary
+    								 # and loosely linked to the distance the magnet travels over the hall effect sensor.
+
     def __init__(self, mmu):
         self.mmu = mmu
         self.mmu.managers.append(self)
@@ -534,7 +539,7 @@ class MmuSyncFeedbackManager:
             # IMPORTANT: Do NOT reset the extruder watchdog every proportional tick.
             # Only reset on *side* transitions (tension<->compression) so ΔE can accumulate.
             def _side(v):
-                return 0 if abs(v) < 1e-3 else (1 if v > 0.0 else -1)
+                return 0 if abs(v) < self.SIDE_THRESHOLD else (1 if v > 0.0 else -1)
             new_side = _side(self.state)
             if new_side != self._last_state_side:
                 self._reset_extruder_watchdog()
@@ -716,8 +721,7 @@ class MmuSyncFeedbackManager:
                 rd = rd_clamp[2]
                 self.mmu.log_debug("MmuSyncFeedbackManager: Speeding gear motor up")
 
-        EPS = 1e-4
-        if self._rd_applied is not None and abs(rd - self._rd_applied) < EPS:
+        if self._rd_applied is not None and abs(rd - self._rd_applied) < self.RDD_THRESHOLD:
             # No meaningful change; skip logging & write
             return False
 
