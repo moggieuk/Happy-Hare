@@ -3137,6 +3137,8 @@ class Mmu:
             self._reset_job_statistics() # Reset job stats but leave persisted totals alone
             self.reactor.update_timer(self.hotend_off_timer, self.reactor.NEVER) # Don't automatically turn off extruder heaters
             self.is_handling_runout = False
+            if self.consistency_checks_enable:
+                self._spoolman_sync()
             self._clear_slicer_tool_map()
             self._enable_filament_monitoring() # Enable filament monitoring while printing
             self._initialize_encoder(dwell=None) # Encoder 0000
