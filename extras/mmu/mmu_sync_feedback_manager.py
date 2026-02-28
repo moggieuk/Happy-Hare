@@ -710,11 +710,11 @@ class MmuSyncFeedbackManager:
             if go_slower(self.state, self.extruder_direction):
                 # Compressed when extruding or tension when retracting, so increase the rotation distance of gear stepper to slow it down
                 rd = rd_clamp[0]
-                self.mmu.log_info("MmuSyncFeedbackManager: Slowing gear motor down")
+                self.mmu.log_debug("MmuSyncFeedbackManager: Slowing gear motor down")
             else:
                 # Tension when extruding or compressed when retracting, so decrease the rotation distance of gear stepper to speed it up
                 rd = rd_clamp[2]
-                self.mmu.log_info("MmuSyncFeedbackManager: Speeding gear motor up")
+                self.mmu.log_debug("MmuSyncFeedbackManager: Speeding gear motor up")
 
         EPS = 1e-4
         if self._rd_applied is not None and abs(rd - self._rd_applied) < EPS:
