@@ -545,7 +545,7 @@ flowguard_encoder_mode: 2		# 0 = Disable, 1 = Static length clog detection, 2 = 
 flowguard_encoder_max_motion: 20
 
 
-# FLowguard Clog and Tangle Detection --------------------------------------------------------------------------------
+# FlowGuard Clog and Tangle Detection --------------------------------------------------------------------------------
 # ███████╗██╗      ██████╗ ██╗    ██╗ ██████╗ ██╗   ██╗ █████╗ ██████╗ ██████╗
 # ██╔════╝██║     ██╔═══██╗██║    ██║██╔════╝ ██║   ██║██╔══██╗██╔══██╗██╔══██╗
 # █████╗  ██║     ██║   ██║██║ █╗ ██║██║  ███╗██║   ██║███████║██████╔╝██║  ██║
@@ -564,16 +564,16 @@ flowguard_enabled: 1			# 0 = Flowguard protection disabled, 1 = Enabled
 
 # The flowguard_max_relief is the amount of relief movement (effective mm change in filament length between MMU and extruder)
 # that Happy Hare will wait until triggering a clog or runout. A smaller value is more sensitive to triggering. Since the
-# relief movement depends highly on bowden "spring", filament friction, and 'sync_feedback_buffer_range', it is generally a
-# good starting point to use at least double the 'sync_feedback_buffer_range' then decrease if more sensitive trigger is desired.
-# Analog proportional (type P) sensors can generally have a lower value.
-flowguard_max_relief: 12
+# relief movement is hightly dependent on filament "spring" in the bowden tube, filament friction, and
+# 'sync_feedback_buffer_range', it is generally good to start high and then decrease if a more sensitive trigger is desired.
+# Analog proportional (type P) sensors can generally have a much lower value. Increase if you have false triggers
+flowguard_max_relief: 40
 
 # The max_motion is the absolute max permitted extruder movement (mm) while the sensor is in an extreme state. Consider
 # this added protection on top of the primary max_relief amount. Again a smaller value is more sensitive to triggering.
 # Note that this will have to increase if 'sync_feedback_speed_multiplier' is decreased because of slower recovery.
-# Analog proportional (type P) sensors can generally have a lower value.
-flowguard_max_motion: 150
+# Analog proportional (type P) sensors can generally have a much lower value. Increase if you have false triggers
+flowguard_max_motion: 500
 
 # Encoder runout/clog/tangle detection watches for movement over either a static or automatically adjusted distance - if
 # no encoder movement is seen when the extruder moves this distance runout/ clog/tangle event will be generated. Allowing
@@ -584,7 +584,7 @@ flowguard_encoder_mode: 2		# 0 = Disable, 1 = Static length clog detection, 2 = 
 
 # The encoder_max_motion is the absolute max permitted extruder movement without the encoder seeing movement when using
 # status mode (mode=1). Smaller values are more sensitive but beware of going too small - slack and friction in the
-# bowden may cause gaps in encoder movement.
+# bowden may cause gaps in encoder movement. Increase if you have false triggers
 # Note that this value is overriden by any calibrated value stored in 'mmu_vars.cfg' if in automatic mode (mode=2).
 flowguard_encoder_max_motion: 20
 
