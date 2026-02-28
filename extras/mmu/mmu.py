@@ -6153,7 +6153,7 @@ class Mmu:
         self.extruder_percentage_run_current = percent # Update global record of current %
         return percent
 
-    def _restore_extruder_current(self):
+    def _restore_extruder_current(self, percent=100):
         _ = self._adjust_extruder_current(percent=percent, restore=True)
 
     # Alter the stepper current without console logging
