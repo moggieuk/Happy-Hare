@@ -422,6 +422,7 @@ def plot_progress(
     DEBUG_LW        = 1.0
     SECONDARY_LW    = 1.0
 
+    HEADER_ZORDER   = 999
     TRIPBOX_ZORDER  = 1000
     AUTOTUNE_ZORDER = 1001
 
@@ -519,6 +520,11 @@ def plot_progress(
             has_fg_armed = True
             fg_armed.append((i, -1.0))
 
+    # Header sparators representing reset() points in controller
+    header_break_idxs = [
+        i for i, r in enumerate(records[:end_idx])
+        if r.get("meta", {}).get("header_break") is True
+    ]
 
     # Main axes setup -------------------------------------------------------------
     fig, ax_rd = plt.subplots(figsize=(12, 6), constrained_layout=True)
@@ -599,6 +605,16 @@ def plot_progress(
         if is_clog or is_tangle:
             ax_rd.axvline(t_axis[i], linestyle="-.", linewidth=BOLD_LW, alpha=0.7, color="red")
 
+    # Draw header separators
+    for i in header_break_idxs:
+        ax_rd.axvline(
+            t_axis[i],
+            linestyle="--",
+            linewidth=1.5,
+            color="0.25",
+            alpha=0.6,
+            zorder=HEADER_ZORDER,
+        )
 
     # Plots against sensor axis (right) -------------------------------------------
     if len(t_axis) >= 2:
@@ -881,6 +897,7 @@ def _load_log_file(path: str) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
     """
     header: Dict[str, Any] = {}
     records: List[Dict[str, Any]] = []
+    pending_break = False
 
     if not os.path.exists(path):
         raise FileNotFoundError(f"No such file: {path}")
@@ -904,7 +921,16 @@ def _load_log_file(path: str) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
             if isinstance(maybe, dict):
                 header = maybe
             continue
+
+        if isinstance(obj, dict) and "header" in obj and header:
+            pending_break = True
+            continue
+
         if isinstance(obj, dict) and ("input" in obj or "output" in obj):
+            if pending_break:
+                obj.setdefault("meta", {})
+                obj["meta"]["header_break"] = True
+                pending_break = False
             records.append(obj)
 
     return header, records
@@ -926,7 +952,11 @@ def _plot_log_file(path: str, *, out_path: str, show_ticks: bool, show_mm_axis: 
             dt = float(r.get("input", {}).get("dt_s"))
         except Exception:
             dt = r.get("meta", {}).get("dt_s", 1.0)  # defensive fallback
-        rr["meta"] = {"dt_s": dt}
+
+        rr_meta = dict(r.get("meta", {}))
+        rr_meta["dt_s"] = dt
+        rr["meta"] = rr_meta
+
         records.append(rr)
 
     # Detect whether truth is present (simulator logs carry this)
