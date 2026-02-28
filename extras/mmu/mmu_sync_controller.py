@@ -1082,7 +1082,7 @@ class SyncController:
 
     # ------------------------------------ PUBLIC API ------------------------------------
 
-    def reset(self, eventtime, rd_init, sensor_reading, log_file=None, simulation=False):
+    def reset(self, eventtime, rd_init, sensor_reading, log_file=None, hard_reset=True, simulation=False):
         """
         Full controller reset for a gear motor swap or new cold start.
         Seeds internal time to `t_s` and zeroes elapsed time.
@@ -1098,9 +1098,6 @@ class SyncController:
         self.rd_ref = rd_init
         self._twolevel_boost_active = True
         self._set_min_max_rd(rd_init)
-
-        # Rebase autotune helper on the new start
-        self.autotune.restart(rd_init)
 
         # Seed x_hat from sensor reading
         if cfg.sensor_type == "P":
@@ -1152,6 +1149,10 @@ class SyncController:
             else:
                 self._os_target_level = "low"  # neutral start; will flip on first extreme
             self._os_since_flip_mm = 0.0
+
+        if hard_reset:
+            # Rebase autotune helper on the new start
+            self.autotune.restart(rd_init)
 
         # Reset FlowGuard engine state on controller reset
         self.flowguard.reset()
