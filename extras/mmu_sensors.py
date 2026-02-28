@@ -561,26 +561,29 @@ class MmuHallSensor:
 
         # Optimization - only process trigger on secondary pin if homing
         # During printing (normal runout detection), the primary callback frequency is sufficient
+        # When homing, if we didn't process here, we might miss the trigger by 1 cycle if the
+        # primary callback was called just before the 2nd callback was triggered
+        # Therefore to avoid doubling the response time, we check for trigger here too if homing
         if not self._homing:
             return
 
-#        present = (self._val1 + read_value) > self._trigger_threshold
-#        if present != self.present:
-#            self.present = present
-#            self.last_button = present
+        present = (self._val1 + read_value) > self._trigger_threshold
+        if present != self.present:
+            self.present = present
+            self.last_button = present
             # Optimization to only call runout helper if state changed or we have a button handler
-#            if self.runout_helper.button_handler or present != self.runout_helper.filament_present:
-#                self.runout_helper.note_filament_present(read_time, present)
+            if self.runout_helper.button_handler or present != self.runout_helper.filament_present:
+                self.runout_helper.note_filament_present(read_time, present)
 
-#        if self._homing:
-#            if present == self._triggered:
-#                if self._trigger_completion is not None:
-#                    self._last_trigger_time = read_time
-#                    self._trigger_completion.complete(True)
-#                    self._trigger_completion = None
+        if self._homing:
+            if present == self._triggered:
+                if self._trigger_completion is not None:
+                    self._last_trigger_time = read_time
+                    self._trigger_completion.complete(True)
+                    self._trigger_completion = None
         
-#        if present:
-#           self.lastTriggerTime = read_time
+        if present:
+            self.lastTriggerTime = read_time
 
     def get_status(self, eventtime):
         status = self.runout_helper.get_status(eventtime)
