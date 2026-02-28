@@ -2476,6 +2476,7 @@ class Mmu:
                         settle_time=settle_time,
                         timeout_s=timeout_s
                     )
+                    self.sync_feedback_manager.reset_sync_starting_state_for_gate(self.gate_selected) # Will always set rotation_distance
             # User-facing summary
             self.log_info(
                 "MMU_ADJUST_TENSION: moved=%.2fmm, result=%s (NEUTRAL_BAND=%.2f, SETTLE_TIME=%.2fs, TIMEOUT=%.1fs)" %
