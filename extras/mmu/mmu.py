@@ -4892,40 +4892,15 @@ class Mmu:
             _,_,measured,delta = self.trace_filament_move("Loading filament to nozzle", length, speed=speed, motor=motor, wait=True)
             self._set_filament_remaining(0.)
 
-            # Proportional-only tension adjustments during extruder load for reliability 
-            # (no tension/compression switches present)
+            # Proportional-only tension adjustment (used if no tension/compression switches are present)
             if (
-                self.toolhead_post_load_tension_adjust and 
-                (self.sync_to_extruder or self.sync_purge)
+                self.toolhead_post_load_tension_adjust
+                and (self.sync_to_extruder or self.sync_purge)
                 and not (has_tension or has_compression)
                 and self.sync_feedback_manager.is_enabled()
                 and getattr(self.sync_feedback_manager, "_proportional_seen", False)
             ):
-                inc = 0.3            # mm per nudge (tune 0.2–0.5)
-                neutral_band = 0.2   # treat |state| <= this as neutral
-                settle_time = 0.10   # seconds between nudges
-                max_len = float(self.sync_feedback_manager.sync_feedback_buffer_maxrange)
-                max_steps = int(max_len / inc) + 1
-                total = 0.0
-                steps = 0
-                while abs(total) < max_len and steps < max_steps:
-                    state = float(self.sync_feedback_manager.state)
-                    if abs(state) <= neutral_band:
-                        break
-                    move = inc if state < 0.0 else -inc   # tension -> +feed, compression -> -retract
-                    if abs(total + move) > max_len:
-                        break
-                    _a,_b,_c,_d = self.trace_filament_move(
-                        "Proportional sensor settling - extruder load", move, motor="gear", wait=True
-                    )
-                    total += move
-                    steps += 1
-                    try:
-                        self.mmu.reactor.pause(settle_time)
-                    except Exception:
-                        time.sleep(settle_time)
-                self.log_info("Proportional sensor settling - extruder load complete (gear-only move: %.2fmm)" % total)
-            # End of Proportional-only pre-settle
+                self._adjust_filament_tension_proportional()
 
             # Encoder based validation test if short of deterministic sensors and test makes sense
             if (
@@ -5086,6 +5061,127 @@ class Mmu:
             self.movequeues_wait()
             self.log_debug("Filament should be out of extruder")
             return synced
+
+
+    # Helper to relax filament tension using the proportional sync-feedback buffer.
+    # Only use when no tension/compression switches are present.
+    # Do not mix with _adjust_filament_tension() (switch-based) in the same sequence.
+    #
+    # Returns: distance_moved_mm, success_bool
+    #
+    # nudge_mm:     per-move adjustment distance in mm (small feed or retract)
+    # neutral_band: absolute value of proportional sensor reading considered "neutral"
+    # settle_time:  delay between moves to allow sensor feedback to update
+    # timeout_s:    hard stop to avoid hanging if the sensor never clears
+    def _adjust_filament_tension_proportional(self, nudge_mm=0.3, neutral_band=0.1, settle_time=0.20, timeout_s=1.5):
+        # sanity-check parameters before doing anything
+        if nudge_mm <= 0.0:
+            self.log_debug("Proportional adjust skipped: invalid nudge size %.3f" % nudge_mm)
+            return 0., False
+        if neutral_band < 0.0:
+            neutral_band = 0.0
+
+        # maxrange is full end-to-end sensor span; use half as the per-side budget from neutral to either end
+        maxrange_span_mm = float(self.sync_feedback_manager.sync_feedback_buffer_maxrange)
+        if maxrange_span_mm <= 0.0:
+            self.log_debug("Proportional adjust skipped: buffer maxrange <= 0")
+            return 0., False
+        per_side_budget_mm = 0.5 * maxrange_span_mm
+
+        # cap total nudge iterations to stay within the per-side budget
+        max_steps = math.ceil(per_side_budget_mm / nudge_mm)
+
+        moved_total_mm   = 0.0  # total net distance moved during this adjustment
+        moved_nudges_mm  = 0.0  # sum of all nudge moves
+        moved_initial_mm = 0.0  # size of the initial proportional move (if any)
+        steps            = 0    # total moves performed
+        t_start          = self.mmu.reactor.monotonic()
+
+        # --- initial proportional correction ---
+        # negative sensor state = tension -> feed filament. positive sensor state = compression -> retract filament
+        prop_state = float(self.sync_feedback_manager.state)  # [-1..+1], 0 ≈ neutral
+        if abs(prop_state) > neutral_band:
+            # initial move distance as a proportion to how off centre we are based on the sensor readings.
+            # this will get the sensor close but likely will need a few fine adjustments (nudges) to get it
+            # within the centre range depending on how large the bowden tube slack is.
+            initial_move_mm = -prop_state * per_side_budget_mm
+            if abs(initial_move_mm) >= nudge_mm:
+                self.trace_filament_move(
+                    "Proportional initial adjust - extruder load",
+                    initial_move_mm, motor="gear", wait=True
+                )
+                moved_total_mm += initial_move_mm
+                steps += 1
+                try:
+                    self.mmu.reactor.pause(settle_time)
+                except Exception:
+                    time.sleep(settle_time)
+
+        # --- check proportional sensor state after initial move and return if within neutral deadband ---
+        prop_state = float(self.sync_feedback_manager.state)
+        if abs(prop_state) <= neutral_band:
+            self.log_info(
+                "Proportional adjust: neutral after initial "
+                "(nudge=%.2fmm, initial=%.2fmm, nudges=%.2fmm, total=%.2fmm, steps=%d, final_state=%.3f, success=yes)" %
+                (nudge_mm, moved_initial_mm, moved_nudges_mm, moved_total_mm, steps, prop_state)
+            )
+            return moved_total_mm, True
+
+        # --- fine adjustment loop (nudges) ---
+        while abs(moved_total_mm) < per_side_budget_mm and steps < max_steps:
+            # timeout safety: avoid hanging if the sensor never clears
+            if (self.mmu.reactor.monotonic() - t_start) > timeout_s:
+                self.log_info(
+                    "Proportional adjust: timed out "
+                    "(nudge=%.2fmm, initial=%.2fmm, nudges=%.2fmm, total=%.2fmm, steps=%d, final_state=%.3f)" %
+                    (nudge_mm, moved_initial_mm, moved_nudges_mm, moved_total_mm, steps, prop_state)
+                )
+                return moved_total_mm, False
+
+            prop_state = float(self.sync_feedback_manager.state)
+            if abs(prop_state) <= neutral_band:
+                # confirm neutral after a short wait
+                try:
+                    self.mmu.reactor.pause(settle_time)
+                except Exception:
+                    time.sleep(settle_time)
+                prop_state = float(self.sync_feedback_manager.state)
+                if abs(prop_state) <= neutral_band:
+                    break
+
+            # direction: tension -> feed forward; compression -> retract
+            nudge_move_mm = nudge_mm if prop_state < 0.0 else -nudge_mm
+            # don't exceed the end to end sensor span (maxrange_span_mm). Serves as "ultimate" failsafe.
+            if abs(moved_total_mm + nudge_move_mm) > maxrange_span_mm:
+                self.log_info(
+                    "Proportional adjust: aborted (exceeded buffer) "
+                    "(nudge=%.2fmm, initial=%.2fmm, nudges=%.2fmm, total=%.2fmm, steps=%d, final_state=%.3f)" %
+                    (nudge_mm, moved_initial_mm, moved_nudges_mm, moved_total_mm, steps, prop_state)
+                )
+                return moved_total_mm, False
+
+            self.trace_filament_move(
+                "Proportional adjust - extruder load",
+                nudge_move_mm, motor="gear", wait=True
+            )
+            moved_total_mm  += nudge_move_mm
+            moved_nudges_mm += nudge_move_mm
+            steps           += 1
+            try:
+                self.mmu.reactor.pause(settle_time)
+            except Exception:
+                time.sleep(settle_time)
+
+        # final check
+        final_state = float(self.sync_feedback_manager.state)
+        success = abs(final_state) <= neutral_band
+        self.log_info(
+            "Proportional adjust: complete "
+            "(nudge=%.2fmm, initial=%.2fmm, nudges=%.2fmm, total=%.2fmm, steps=%d, final_state=%.3f, success=%s)" %
+            (nudge_mm, moved_initial_mm, moved_nudges_mm, moved_total_mm, steps, final_state, "yes" if success else "no")
+        )
+        return moved_total_mm, success
+
 
 
 ##############################################
