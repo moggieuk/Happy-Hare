@@ -638,18 +638,6 @@ class MmuSensors:
         if switch_pins:
             if len(switch_pins) not in [1, num_units]:
                 raise config.error("Invalid number of pins specified with gate_switch_pin. Expected 1 or %d but counted %d" % (num_units, len(switch_pins)))
-            a_range = config.getfloatlist('gate_analog_range', None, count=2)
-            switch_pins_2 = list(config.getlist('gate_switch_pin2', []))
-            
-            if a_range and switch_pins_2:
-                adc_config = config.getlist('gate_adc_settings', None, count=3)
-                adc_s_time, adc_s_count, adc_r_time = (float(adc_config[0]), int(adc_config[1]), float(adc_config[2])) if adc_config else (0.001, 5, 0.010)
-                for unit, pin in enumerate(switch_pins):
-                    pin2 = switch_pins_2[unit]
-                    name = Mmu.SENSOR_GATE if len(switch_pins) == 1 else "unit_%d_%s" % (unit, Mmu.SENSOR_GATE)
-                    s = MmuHallSensor(config, name, None, pin, pin2, a_range, adc_s_time, adc_s_count, adc_r_time, runout=True)
-                    self.sensors[name] = s
-            else:
                 self._create_mmu_sensor(config, Mmu.SENSOR_GATE, None, switch_pins, event_delay, runout=True)
 
         # Setup "mmu_gear" sensors...
@@ -658,16 +646,9 @@ class MmuSensors:
             if switch_pin:
                 a_range = config.getfloatlist('post_gear_analog_range_%d' % gate, None, count=2)
                 if a_range is not None:
-                    switch_pin_2 = config.get('post_gear_switch_pin2_%d' % gate, None)
-                    if switch_pin_2:
-                        adc_config = config.getlist('post_gear_adc_settings_%d' % gate, None, count=3)
-                        adc_s_time, adc_s_count, adc_r_time = (float(adc_config[0]), int(adc_config[1]), float(adc_config[2])) if adc_config else (0.001, 5, 0.010)
-                        s = MmuHallSensor(config, "%s_%d" % (Mmu.SENSOR_GEAR_PREFIX, gate), gate, switch_pin, switch_pin_2, a_range, adc_s_time, adc_s_count, adc_r_time, runout=True)
-                        self.sensors["%s_%d" % (Mmu.SENSOR_GEAR_PREFIX, gate)] = s
-                    else:
-                        a_pullup = config.getfloat('post_gear_analog_pullup_resister_%d' % gate, 4700.)
-                        s = MmuAdcSwitchSensor(config, Mmu.SENSOR_GEAR_PREFIX, gate, switch_pin, event_delay, a_range, runout=True, a_pullup=a_pullup)
-                        self.sensors["%s_%d" % (Mmu.SENSOR_GEAR_PREFIX, gate)] = s
+                    a_pullup = config.getfloat('post_gear_analog_pullup_resister_%d' % gate, 4700.)
+                    s = MmuAdcSwitchSensor(config, Mmu.SENSOR_GEAR_PREFIX, gate, switch_pin, event_delay, a_range, runout=True, a_pullup=a_pullup)
+                    self.sensors["%s_%d" % (Mmu.SENSOR_GEAR_PREFIX, gate)] = s
                 else:
                     self._create_mmu_sensor(config, Mmu.SENSOR_GEAR_PREFIX, gate, switch_pin, event_delay, runout=True)
 
@@ -676,7 +657,7 @@ class MmuSensors:
         if switch_pin:
             a_range = config.getfloatlist('extruder_analog_range', None, count=2)
             switch_pin_2 = config.get('extruder_switch_pin2', None)
-            if a_range and switch_pin_2:
+            if a_range and switch_pin_2: # Hall sensor
                 adc_config = config.getlist('extruder_adc_settings', None, count=3)
                 adc_s_time, adc_s_count, adc_r_time = (float(adc_config[0]), int(adc_config[1]), float(adc_config[2])) if adc_config else (0.001, 5, 0.010)
                 s = MmuHallSensor(config, Mmu.SENSOR_EXTRUDER_ENTRY, None, switch_pin, switch_pin_2, a_range, adc_s_time, adc_s_count, adc_r_time, insert=True, runout=True)
