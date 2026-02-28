@@ -620,9 +620,10 @@ class MmuSyncFeedbackManager:
     def _config_flowguard_feature(self, enable):
         if enable:
             self.mmu.log_info("FlowGuard monitoring feature %senabled" % ("already " if self.flowguard_enabled else ""))
-            self.flowguard_enabled = True
-            if self.ctrl:
-                self.ctrl.flowguard.reset()
+            if not self.flowguard_enabled:
+                self.flowguard_enabled = True
+                if self.ctrl:
+                    self.ctrl.flowguard.reset()
         else:
             self.mmu.log_info("FlowGuard monitoring feature %sdisabled" % ("already " if not self.flowguard_enabled else ""))
             self.flowguard_enabled = False
