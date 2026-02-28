@@ -316,23 +316,36 @@ class MmuProportionalSensor:
         self._last_extreme = None
 
         # Config
-        self._pin = config.get('sync_feedback_analog_pin')
-        self._set_point = config.getfloat('sync_feedback_analog_set_point', 0.5)
-        max_tension =     config.getfloat('sync_feedback_analog_max_tension', 1)
-        max_compression = config.getfloat('sync_feedback_analog_max_compression', 0)
-        self._gamma =     config.getfloat('sync_feedback_analog_gamma', 1) # Not exposed
+        self._pin           = config.get('sync_feedback_analog_pin')
+        max_tension         = config.getfloat('sync_feedback_analog_max_tension', 1)
+        max_compression     = config.getfloat('sync_feedback_analog_max_compression', 0)
 
+        # Determine the actual raw min/max sensor values
+        raw_min = min(max_tension, max_compression)
+        raw_max = max(max_tension, max_compression)
+        mid_point = (max_tension + max_compression) / 2.0
+
+        self._neutral_point = config.getfloat('sync_feedback_analog_neutral_point', mid_point, minval=raw_min, maxval=raw_max)
+
+        self._gamma         = config.getfloat('sync_feedback_analog_gamma', 1)           # Not exposed
+        self._sample_time   = config.getfloat('sync_feedback_analog_sample_time', 0.005) # Not exposed
+        self._sample_count  = config.getint('sync_feedback_analog_sample_count', 5)      # Not exposed
+        self._report_time   = config.getfloat('sync_feedback_analog_report_time', 0.100) # Not exposed
+
+        self._reversed = (max_compression < max_tension)
         eps = 1e-12
-        self._d_lo = max(self._set_point - max_tension, eps)
-        self._d_hi = max(max_compression - self._set_point, eps)
-
-        self._sample_time = config.getfloat('sync_feedback_analog_sample_time', 0.005) # Not exposed
-        self._sample_count = config.getint('sync_feedback_analog_sample_count', 5)     # Not exposed
-        self._report_time = config.getfloat('sync_feedback_analog_report_time', 0.100) # Not exposed
+        if not self._reversed:
+            # Tension low, Compression high value
+            self._d_neg = max(self._neutral_point - max_tension, eps)
+            self._d_pos = max(max_compression - self._neutral_point, eps)
+        else:
+            # Compression low, Tension high value
+            self._d_pos = max(self._neutral_point - max_compression, eps)
+            self._d_neg = max(max_tension - self._neutral_point, eps)
 
         # State
         self.value_raw = 0.0 # Raw ADC value
-        self.value = 0.0     # In [-1.0, 1.0] (signed, offset and scaled)
+        self.value = 0.0     # In [-1.0, 1.0]
 
         # Setup ADC
         ppins = self.printer.lookup_object('pins')
@@ -365,11 +378,20 @@ class MmuProportionalSensor:
         self.printer.add_object(self.name, self)
 
     def _map_reading(self, v_raw):
+        n = self._neutral_point
+
         v = float(v_raw)
-        if v >= self._set_point:
-            y = (v - self._set_point) / self._d_hi      # 0 → +1 nominal
+        # Map around neutral_point into [-1, 1]
+        if not self._reversed:
+            if v >= n:
+                y = (v - n) / self._d_pos
+            else:
+                y = -(n - v) / self._d_neg
         else:
-            y = -(self._set_point - v) / self._d_lo     # 0 → -1 nominal
+            if v <= n:
+                y = (n - v) / self._d_pos
+            else:
+                y = -(v - n) / self._d_neg
 
         # Optional shaping (gamma=1 => linear)
         if self._gamma != 1.0:

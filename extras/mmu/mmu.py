@@ -2844,6 +2844,7 @@ class Mmu:
 
         try:
             with self.wrap_sync_gear_to_extruder():
+                self.selector.filament_drive()
                 self.calibrating = True
                 s_maxrange = self.sync_feedback_manager.sync_feedback_buffer_maxrange
 
@@ -2882,6 +2883,7 @@ class Mmu:
 
                     c_raw = sum(c_vals) / len(c_vals)
                     t_raw = sum(t_vals) / len(t_vals)
+                    mid_raw = (c_raw + t+raw) / 2.0
                     c_sd = _sd(c_vals)
                     t_sd = _sd(t_vals)
 
@@ -2900,7 +2902,7 @@ class Mmu:
                     msg += "[mmu_sensors]\n"
                     msg += "sync_feedback_analog_max_compression: %.4f\n" % c_raw
                     msg += "sync_feedback_analog_max_tension: %.4f\n" % t_raw
-                    msg += "sync_feedback_analog_set_point: 0.5\n"
+                    msg += "sync_feedback_analog_neutral_point: %.4f\n" % mid_raw
                     msg += "After updating, restart klipper"
                     self.log_always(msg)
                 else:
