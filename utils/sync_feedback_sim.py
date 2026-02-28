@@ -851,7 +851,7 @@ def _plot_from_log(
         print("jsonl log file is empty; nothing to plot.")
         return
 
-    use_twolevel = cfg.use_twolevel_for_type_pd or cfg.sensor_type in ['CO', 'TO']
+    use_twolevel = cfg.use_twolevel_for_type_p or cfg.sensor_type in ['CO', 'TO']
     twolevel_txt = " (twoLevel)" if use_twolevel else ""
     sensor_txt = f"{cfg.sensor_type}{twolevel_txt}" if cfg.sensor_type else None
     try:
@@ -1188,8 +1188,7 @@ def _run_cli():
     ap.add_argument("--sensor-type", choices=["P", "D", "CO", "TO"], default="P")
     ap.add_argument("--buffer-range-mm", type=float, default=8.0)
     ap.add_argument("--buffer-max-range-mm", type=float, default=12.0)
-    ap.add_argument("--use-twolevel", dest="use_twolevel", action="store_true", help="Enable user two-level behavior")
-    ap.add_argument("--no-use-twolevel", dest="use_twolevel", action="store_false", help="Enable user two-level behavior")
+    ap.add_argument("--use-twolevel", dest="use_twolevel", action="store_true", help="Enable user two-level behavior for type-P sensor")
     ap.set_defaults(use_twolevel=False)
     ap.add_argument("--tick-dt-s", type=float, default=1.0, help="default dt used only for manual 'tick', 'clog' and 'tangle'")
     ap.add_argument("--rd-start", type=float, default=20.0, help="starting extruder rotation distance")
@@ -1240,7 +1239,7 @@ def _run_cli():
         log_sync=True, # tell controller to also create log trace for debugging
         buffer_range_mm=args.buffer_range_mm,
         buffer_max_range_mm=args.buffer_max_range_mm,
-        use_twolevel_for_type_pd=args.use_twolevel,
+        use_twolevel_for_type_p=args.use_twolevel,
         sensor_type=args.sensor_type,
         rd_start=args.rd_start,
         sensor_lag_mm=args.sensor_lag_mm,
@@ -1253,7 +1252,7 @@ def _run_cli():
     logger.write_header({
         "rd_start": cfg.rd_start,
         "sensor_type": cfg.sensor_type,
-        "twolevel_active": bool(cfg.use_twolevel_for_type_pd or cfg.sensor_type in ['CO', 'TO']),
+        "twolevel_active": bool(cfg.use_twolevel_for_type_p or cfg.sensor_type in ['CO', 'TO']),
         "buffer_range_mm": cfg.buffer_range_mm,
         "buffer_max_range_mm": cfg.buffer_max_range_mm,
         "switch_hysteresis": args.switch_hysteresis,
@@ -1326,7 +1325,7 @@ def _run_cli():
     # Show whichever attribute exists on cfg
     print("=== Filament Tension Controller CLI ===")
     print(f" Sensor Type           : {cfg.sensor_type}")
-    print(f" Use TwoLevel          : {cfg.use_twolevel_for_type_pd}")
+    print(f" Use TwoLevel          : {cfg.use_twolevel_for_type_p}")
     print(f" Buffer Range (sensor) : {cfg.buffer_range_mm} mm")
     print(f" Buffer Max Range      : {cfg.buffer_max_range_mm} mm  (physical limit)")
     print(f" Autotune motion       : {cfg.autotune_motion_mm} mm")
@@ -1426,7 +1425,7 @@ def _run_cli():
             logger.write_header({
                 "rd_start": cfg.rd_start,
                 "sensor_type": cfg.sensor_type,
-                "twolevel_active": bool(cfg.use_twolevel_for_type_pd),
+                "twolevel_active": bool(cfg.use_twolevel_for_type_p),
                 "buffer_range_mm": cfg.buffer_range_mm,
                 "buffer_max_range_mm": cfg.buffer_max_range_mm,
                 "switch_hysteresis": args.switch_hysteresis,
