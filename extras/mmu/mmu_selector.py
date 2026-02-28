@@ -5,7 +5,7 @@
 #   - Uses gear driver stepper per-gate
 #   - For type-B designs like BoxTurtle, KMS, QuattroBox
 #
-# LinearServoSelector
+# LinearServoSelector:
 #  Implements Linear Selector for type-A MMU's with servo
 #  - Stepper controlled linear movement with endstop
 #  - Servo controlled filament gripping
@@ -187,9 +187,11 @@ class VirtualSelector(BaseSelector, object):
 
 
 ################################################################################
-# Linear Selector
-# Implements Linear Selector for type-A MMU's that uses stepper controlled
-# rail[0] on mmu toolhead
+# LinearServoSelector:
+#  Implements Linear Selector for type-A MMU's with servo
+#  - Stepper controlled linear movement with endstop
+#  - Servo controlled filament gripping
+#  - Supports type-A classic MMU's like ERCF and Tradrack
 ################################################################################
 
 class LinearServoSelector(BaseSelector, object):
