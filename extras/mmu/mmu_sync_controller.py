@@ -909,7 +909,7 @@ class _FlowguardEngine(object):
             tens_relief_trig = (abs(self._relief_tens_mm) >= cfg.flowguard_relief_mm)
             self._relief_headroom -= self._relief_tens_mm
 
-            if tens_motion_trig and not self._trigger:
+            if tens_relief_trig and not self._trigger:
                 self._trigger = "tangle"
                 self._reason = "Tension stuck after %.2f mm motion and %.2f mm relief (triggering parameter: flowguard_max_relief)" % (
                     self._tens_motion_mm, self._relief_tens_mm
