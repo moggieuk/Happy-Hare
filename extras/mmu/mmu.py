@@ -770,7 +770,8 @@ class Mmu:
         # Establish gear_stepper initial gear_stepper and extruder currents and current percentage
         self.gear_default_run_current = self.gear_tmc.get_status(0)['run_current'] if self.gear_tmc else None
         self.extruder_default_run_current = self.extruder_tmc.get_status(0)['run_current'] if self.extruder_tmc else None
-        self.gear_percentage_run_current = self.gear_restore_percent_run_current = self.extruder_percentage_run_current = 100
+        self.gear_percentage_run_current = self.extruder_percentage_run_current = 100 # Current run percentages
+        self._gear_current_locked = False # True if gear current is currently locked by wrap_gear_current()
 
         # Use gc to find all active TMC current helpers - used for direct stepper current control
         self.tmc_current_helpers = {}
@@ -782,6 +783,10 @@ class Mmu:
                 if stepper_name not in refcounts or ref_count > refcounts[stepper_name]:
                     refcounts[stepper_name] = ref_count
                     self.tmc_current_helpers[stepper_name] = obj.current_helper
+        if self.tmc_current_helpers:
+            self.log_debug("TMC current helpers found for: %s" % ", ".join(self.tmc_current_helpers.keys()))
+        else:
+            self.log_debug("No TMC current helpers found")
 
         # Sanity check that required klipper options are enabled
         self.print_stats = self.printer.lookup_object("print_stats", None)
@@ -2192,7 +2197,7 @@ class Mmu:
                 self.toolhead_post_load_tighten
                 and not self.sync_to_extruder
                 and self._can_use_encoder()
-                and self.sync_feedback_manager.flowguard_encoder_mode
+                and self.enable_clog_detection
             ):
                 msg += "\n- Filament in bowden is tightened by %.1fmm (%d%% of clog detection length) at reduced gear current to prevent false clog detection" % (min(self.encoder_sensor.get_clog_detection_length() * self.toolhead_post_load_tighten / 100, 15), self.toolhead_post_load_tighten)
             elif (
@@ -2407,21 +2412,15 @@ class Mmu:
         if self.check_if_disabled(): return
         if self.check_if_bypass(unloaded_ok=False): return
         if self.check_if_not_homed(): return
-        sync = bool(gcmd.get_int('SYNC', 1, minval=0, maxval=1))
-
-        if self.check_if_always_gripped(): return
-
-        if not self.is_in_print() and self._standalone_sync != sync:
-            self._standalone_sync = sync # Make sticky if not in a print
+        sync = gcmd.get_int('SYNC', 1, minval=0, maxval=1)
+        if not sync and self.check_if_always_gripped(): return
+        if not self.is_in_print() and self._standalone_sync != bool(sync):
+            self._standalone_sync = bool(sync) # Make sticky if not in a print
             if self._standalone_sync:
                 self.log_info("MMU gear stepper will be synced with extruder whenever filament is in extruder")
             else:
                 self.log_info("MMU gear stepper is unsynced from extruder")
-
-        if sync and self.filament_pos < self.FILAMENT_POS_EXTRUDER_ENTRY:
-            self.log_warning("Will temporarily sync, but filament position does not indicate in extruder!\nUse 'MMU_RECOVER' to correct the filament position.")
-
-        self.reset_sync_gear_to_extruder(sync, force_grip=True, skip_extruder_check=True)
+        self.reset_sync_gear_to_extruder(sync)
 
 
 #########################
@@ -2730,7 +2729,7 @@ class Mmu:
             msg += "3) 'CUT=1' holding blade in for: variable_blade_pos\n"
             msg += "Desired gate should be selected but the filament unloaded\n"
             msg += "('SAVE=0' to run without persisting results)\n"
-            msg += "Note: On Type-B MMU's you might experience noise/grinding as movement limits are explored (reduce gear stepper current if a problem)\n"
+            msg += "Note: On Type-B MMU's you might experience noise/grinding as movement limits are explored (select bypass or reduce gear stepper current if a problem)\n"
             self.log_always(msg)
             return
 
@@ -2837,13 +2836,13 @@ class Mmu:
             and return moving average
             """
             sensor = self.sensor_manager.all_sensors.get(self.SENSOR_PROPORTIONAL)
-            
-            k = 0.1 # 1st order,low pass filter coefficient, 0.1 for 10 samples 
+
+            k = 0.1 # 1st order,low pass filter coefficient, 0.1 for 10 samples
             avg = sensor.get_status(0).get('value_raw', None)
 
             for _ in range(int(max(1, n-1))):
                 self.movequeues_dwell(dwell_s)
-                raw = sensor.get_status(0).get('value_raw', None) 
+                raw = sensor.get_status(0).get('value_raw', None)
                 if raw is None or not isinstance(raw, float):
                     return None
                 avg += k * (raw - avg) # 1st order low pass filter
@@ -2865,8 +2864,8 @@ class Mmu:
 
                     calibrated = False
                     self.log_always("Starting calibration. Please excuse the noise - you might hear a bit of grinding but it won't take long!")
-                    
-                    # seek compressed extreme - depending on magnetic field, values could move in + or - direction 
+
+                    # seek compressed extreme - depending on magnetic field, values could move in + or - direction
                     msg = "Finding compression limit stepping up to %.2fmm\n" % s_maxrange
                     self.log_always(msg)
 
@@ -2885,19 +2884,19 @@ class Mmu:
                            self.log_always("Seeking ... ADC value %.4f" % c_sd)
                         else:
                            break
- 
-                    # backoff compressed extreme  
+
+                    # backoff compressed extreme
                     msg = "Backing off compressed limit"
                     self.log_always(msg)
                     _,_,_,_ = self.trace_filament_move(msg, -(s_maxrange / 2), motor="gear", speed=8, wait=True)
 
 
-                    # seek tension extreme - depending on magnetic field, values could move in + or - direction 
+                    # seek tension extreme - depending on magnetic field, values could move in + or - direction
                     msg = "Finding tension limit stepping up to %.2fmm\n" % s_maxrange
                     self.log_always(msg)
 
                     t_sd = c_sd # seed starting point from last reading
-                    ramp = not ramp 
+                    ramp = not ramp
 
                     for attempt in range (0, s_maxrange, 2):
                         _,_,_,_ = self.trace_filament_move(msg, -2.0, motor="gear", speed=8, wait=True)
@@ -2908,8 +2907,8 @@ class Mmu:
                            self.log_always("Seeking ... ADC value %.4f" % t_sd)
                         else:
                            break
- 
-                    # backoff tension extreme  
+
+                    # backoff tension extreme
                     _,_,_,_ = self.trace_filament_move(msg, (s_maxrange / 2), motor="gear", speed=8, wait=True)
 
                     if 0.5 <= abs(c_sd - t_sd) <= 1.0: # we need usable sensor range
@@ -5731,21 +5730,6 @@ class Mmu:
 
         return actual, homed, measured, delta
 
-    # This is used to protect just the mmu_toolhead sync state and is used to wrap individual moves. Typically
-    # the starting state will be unsynced so this will simply unsync at the end of the move. It does not manage
-    # grip (servo) movement control since that would lead to unecessary "flutter" and premature wear
-    @contextlib.contextmanager
-    def _wrap_sync_mode(self, sync_mode):
-        prev_sync_mode = self.mmu_toolhead.sync_mode
-        self.mmu_toolhead.sync(sync_mode)
-        try:
-            yield self
-        finally:
-            # Don't restore because it results in too much delay on rapid back-to-back moves and in theory shouldn't
-            # be necessary because the user is protected with wrap_sync_gear_to_extruder() in outermost `MMU_XXX` commands
-            #self.mmu_toolhead.sync(prev_sync_mode)
-            pass
-
     # Used to force accelaration override for homing moves
     @contextlib.contextmanager
     def wrap_accel(self, accel):
@@ -6032,36 +6016,27 @@ class Mmu:
         # Filament grip handling (do this before syncing to avoid "buzz" movement on type-A MMUs).
         if sync:
             self.selector.filament_drive()
-        else:
-            # There are situations where we want to be lazy to avoid servo "flutter":
-            #   - `_suppress_release_grip` is True unless we are the outermost caller.
-            #   - `force_grip` can override that suppression.
-            should_release = force_grip or not self._suppress_release_grip
-            if should_release:
-                self.selector.filament_release()
+        elif force_grip or not self._suppress_release_grip:
+            # There are situations where we want this to be lazy to avoid "flutter" (of servo)
+            #   '_suppress_release_grip' is True unless we are the outermost caller
+            #   'force_grip' is normally False but can be used to force grip prior to outermost caller
+            self.selector.filament_release()
 
-        # Sync / unsync toolhead mode (avoid redundant calls).
-        desired_sync_mode = MmuToolHead.GEAR_SYNCED_TO_EXTRUDER if sync else None
-        if desired_sync_mode != self.mmu_toolhead.sync_mode:
-            self.movequeues_wait()  # Safety: likely unnecessary but ensures no queued moves conflict.
-            self.mmu_toolhead.sync(desired_sync_mode)
+        # Sync / Unsync
+        new_sync_mode = MmuToolHead.GEAR_SYNCED_TO_EXTRUDER if sync else None
+        if new_sync_mode != self.mmu_toolhead.sync_mode:
+            self.movequeues_wait() # TODO Safety but should not be required(?)
+            self.mmu_toolhead.sync(new_sync_mode)
 
-        # Current control:
-        # - While synced, optionally reduce current for the active gear stepper.
-        # - On multigear systems, restore current on the previously-used gear stepper if gate differs.
-        # - When unsynced, restore current to 100%.
+        # See if we need to set a reduced gear current. If we do then make sure it is
+        # restored on previous gear stepper if we are on a multigear MMU
         if sync:
+            # Reset current on old gear stepper before adjusting new
             if self.mmu_machine.multigear and gate != self.gate_selected:
-                self._restore_gear_current()  # Restore previous gear stepper to 100%
-
-            self._adjust_gear_current(
-                gate=gate,
-                percent=self.sync_gear_current,
-                reason="for extruder syncing",
-            )
+                self._restore_gear_current() # 100%
+            _ = self._adjust_gear_current(gate=gate, percent=self.sync_gear_current, reason="for extruder syncing")
         else:
-            self._restore_gear_current()  # 100%
-
+            self._restore_gear_current() # 100%
 
     # This is used to protect synchronization, current and grip states and is used as an outermost wrapper
     # for "MMU_" commands back into Happy Hare during a print or standalone operation
@@ -6114,12 +6089,16 @@ class Mmu:
 
 
 
-    # ---------- TMC Current Control ----------
+    # ---------- TMC Stepper Current Control ----------
 
     @contextlib.contextmanager
     def wrap_gear_current(self, percent=100, reason=""):
-        self.gear_restore_percent_run_current = self.gear_percentage_run_current
-        self._adjust_gear_current(percent=percent, reason=reason)
+        """
+            Run block of logic with gear stepper current set to desired percentage and then
+            restore to previous setting
+        """
+        prev_percent = self._adjust_gear_current(percent=percent, reason=reason)
+        self._gear_current_locked = True
         try:
             yield self
         finally:
@@ -6151,34 +6130,6 @@ class Mmu:
     def _restore_gear_current(self, gate=None, percent=100):
         _ = self._adjust_gear_current(gate=gate, percent=percent, restore=True)
 
-    def _adjust_gear_current(self, gate=None, percent=100, reason=""):
-        if gate is None: gate = self.gate_selected
-        if gate < 0: return
-        if not (0 < percent < 200): return
-        if not self.gear_tmc: return
-        if percent == self.gear_percentage_run_current: return
-
-        gear_stepper_name = mmu_machine.GEAR_STEPPER_CONFIG
-        if self.mmu_machine.multigear and gate > 0:
-            gear_stepper_name = "%s_%d" % (mmu_machine.GEAR_STEPPER_CONFIG, gate)
-        msg = "Modifying MMU %s run current to %d%% ({}A) %s" % (gear_stepper_name, percent, reason)
-        target_current = (self.gear_default_run_current * percent) / 100.0
-        self._set_tmc_current(gear_stepper_name, target_current, msg)
-        self.gear_percentage_run_current = percent
-
-    def _restore_gear_current(self, gate=None):
-        if gate is None: gate = self.gate_selected
-        if gate < 0: return
-        if not self.gear_tmc: return
-        if self.gear_percentage_run_current == self.gear_restore_percent_run_current: return
-
-        gear_stepper_name = mmu_machine.GEAR_STEPPER_CONFIG
-        if self.mmu_machine.multigear and gate > 0:
-            gear_stepper_name = "%s_%d" % (mmu_machine.GEAR_STEPPER_CONFIG, gate)
-        msg = "Restoring MMU %s run current to %d%% ({}A)" % (gear_stepper_name, self.gear_restore_percent_run_current)
-        self._set_tmc_current(gear_stepper_name, self.gear_default_run_current, msg)
-        self.gear_percentage_run_current = self.gear_restore_percent_run_current
-
     @contextlib.contextmanager
     def _wrap_extruder_current(self, percent=100, reason=""):
         prev_percent = self._adjust_extruder_current(percent, reason)
@@ -6187,22 +6138,23 @@ class Mmu:
         finally:
             self._restore_extruder_current(percent=prev_percent)
 
-    def _adjust_extruder_current(self, percent=100, reason=""):
-        if not self.extruder_tmc: return
-        if not (0 < percent < 200): return
-        if percent == self.extruder_percentage_run_current: return
+    def _adjust_extruder_current(self, percent=100, reason="", restore=False):
+        current_percent = self.extruder_percentage_run_current
 
-        msg = "Modifying extruder stepper run current to %d%% ({}A) %s" % (percent, reason)
+        if not self.extruder_tmc: return current_percent
+        if not (0 < percent < 200): return current_percent
+        if percent == self.extruder_percentage_run_current: return current_percent
+
+        if restore:
+            msg = "Restoring extruder stepper run current to %d%% ({}A)"
+        else:
+            msg = "Modifying extruder stepper run current to %d%% ({}A) %s" % (percent, reason)
         self._set_tmc_current(self.extruder_name, (self.extruder_default_run_current * percent) / 100., msg)
-        self.extruder_percentage_run_current = percent
+        self.extruder_percentage_run_current = percent # Update global record of current %
+        return percent
 
     def _restore_extruder_current(self):
-        if not self.extruder_tmc: return
-        if self.extruder_percentage_run_current == 100: return
-
-        msg="Restoring extruder stepper run current to 100% ({}A)"
-        self._set_tmc_current(self.extruder_name, self.extruder_default_run_current, msg)
-        self.extruder_percentage_run_current = 100
+        _ = self._adjust_extruder_current(percent=percent, restore=True)
 
     # Alter the stepper current without console logging
     def _set_tmc_current(self, stepper, run_current, msg):
@@ -6214,7 +6166,7 @@ class Mmu:
                 req_hold_cur, max_cur = c[2], c[3] # Kalico now has 5 elements rather than 4 in tuple, so unpack just what we need...
                 new_cur = max(min(run_current, max_cur), 0)
                 current_helper.set_current(new_cur, req_hold_cur, print_time)
-                self.log_debug(msg.format("%.2f" % new_cur))
+                self.log_info(msg.format("%.2f" % new_cur))
                 return
             except Exception as e:
                 self.log_debug("Unexpected error setting stepper current: %s. Falling back to default approach" % str(e))
