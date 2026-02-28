@@ -435,8 +435,7 @@ class LinearSelector(BaseSelector, object):
 
     def get_status(self, eventtime):
         status = super(LinearSelector, self).get_status(eventtime)
-        if self.servo:
-            status.update(self.servo.get_status(eventtime))
+        status.update(self.servo.get_status(eventtime))
         return status
 
     def get_mmu_status_config(self):
@@ -1121,7 +1120,7 @@ class LinearServoSelector(LinearSelector, object):
 #   - Uses gear driver stepper gate
 #   - Uses selector stepper for gate selection with endstop
 #   - Supports type-A classic MMU's like ERCF and Tradrack
-# 
+#
 ################################################################################
 
 class LinearMultiGearSelector(LinearSelector, object):
@@ -1574,7 +1573,7 @@ class RotarySelector(BaseSelector, object):
 #     SET_PIN PIN=d0 VALUE={params.S0}
 #     SET_PIN PIN=d1 VALUE={params.S1}
 #     SET_PIN PIN=d2 VALUE={params.S2}
-# 
+#
 # Example optocoupler-style SELECT_TOOL macro:
 # [gcode_macro SELECT_TOOL]
 # gcode:

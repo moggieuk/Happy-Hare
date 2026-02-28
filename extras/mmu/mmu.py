@@ -1484,6 +1484,10 @@ class Mmu:
             'action': self._get_action_string(),
             'has_bypass': self.selector.has_bypass(), # TODO deprecate because this is a per unit selector bypass
             'sync_drive': self.mmu_toolhead.is_synced(),
+            'clog_detection': self.enable_clog_detection, # DEPRECATED use clog_detection_enabled
+            'clog_detection_enabled': self.enable_clog_detection,
+            'endless_spool': self.enable_endless_spool,   # DEPRECATED use endless_spool_enabled
+            'endless_spool_enabled': self.enable_endless_spool,
             'print_start_detection': self.print_start_detection, # For Klippain. Not really sure it is necessary
             'reason_for_pause': self.reason_for_pause if self.is_mmu_paused() else "",
             'extruder_filament_remaining': self.filament_remaining + self.toolhead_residual_filament,
@@ -1495,16 +1499,8 @@ class Mmu:
             'endless_spool': self.endless_spool_enabled,           # DEPRECATED
             'endless_spool_enabled': self.endless_spool_enabled,   # DEPRECATED
         }
-
-        # Sub components
-        for m in self.managers:
-            if hasattr(m, 'get_status'):
-                status.update(m.get_status(eventtime))
-
-        # Not yet refactored as manager class
-        if self.has_espooler():
-            status.update(self.espooler.get_status(eventtime))
-
+        status.update(self.selector.get_status(eventtime))
+        status.update(self.sync_feedback_manager.get_status(eventtime))
         status['sensors'] = self.sensor_manager.get_status(eventtime)
         if self.has_encoder():
             status['encoder'] = self.encoder_sensor.get_status(eventtime)
