@@ -6922,7 +6922,6 @@ class Mmu:
                         self.load_sequence(bowden_move=0., extruder_only=True, purge=do_purge)
 
                     else:
-                        self._next_tool = self.tool_selected # Valid only during the load process - cleared in _continue_after()
                         self.last_statistics = {}
                         self._save_toolhead_position_and_park('load')
                         if self.tool_selected == self.TOOL_GATE_UNKNOWN:
@@ -7029,7 +7028,7 @@ class Mmu:
         restore = bool(gcmd.get_int('RESTORE', 1, minval=0, maxval=1))
         do_form_tip = self.FORM_TIP_STANDALONE if not skip_tip else self.FORM_TIP_NONE
 
-        self._note_toolchange("< %s" % self.selected_tool_string())
+        self._note_toolchange("< %s" % self._selected_tool_string())
 
         if extruder_only:
             self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER, silent=True) # Ensure tool tip is performed
@@ -7757,7 +7756,7 @@ class Mmu:
                     if self.endless_spool_eject_gate > 0:
                         self.log_info("Ejecting filament remains to designated waste gate %d" % self.endless_spool_eject_gate)
                         self.select_gate(self.endless_spool_eject_gate)
-                    self._unload_tool()
+                    self._unload_tool(form_tip=self.FORM_TIP_STANDALONE)
                     self._eject_from_gate() # Push completely out of gate
                     self.select_gate(next_gate) # Necessary if unloaded to waste gate
                     self._remap_tool(self.tool_selected, next_gate)
@@ -8917,7 +8916,7 @@ class Mmu:
                                 self.log_info("Unloading current tool prior to checking gates")
 
                                 # Perform full unload sequence including parking
-                                self._note_toolchange("< %s" % self.selected_tool_string())
+                                self._note_toolchange("< %s" % self._selected_tool_string())
                                 self.last_statistics = {}
                                 self._save_toolhead_position_and_park('unload')
                                 self._unload_tool(form_tip=self.FORM_TIP_STANDALONE)
@@ -8968,10 +8967,10 @@ class Mmu:
                                             self.log_info("Restoring tool loaded prior to checking gates")
 
                                             # Perform full load sequence including parking
-                                            self._note_toolchange("> %s" % self.selected_tool_string(tool=tool_selected))
+                                            self._note_toolchange("> %s" % self._selected_tool_string(tool=tool_selected))
                                             self.last_statistics = {}
                                             self._save_toolhead_position_and_park('load')
-                                            self._select_and_load_tool(tool_selected, purge=self.PURGE_NONE)
+                                            self._select_and_load_tool(tool_selected, purge=self.PURGE_STANDALONE) # if user has set up standalone purging, respect option and purge.
                                             self._persist_gate_statistics()
                                             self._continue_after('load')
                                         else:
