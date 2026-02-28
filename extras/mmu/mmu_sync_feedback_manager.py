@@ -19,14 +19,13 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import logging, math, time, os
+import logging, math
 
 # Happy Hare imports
 
 # MMU subcomponent clases
 from .mmu_sync_controller  import SyncControllerConfig, SyncController
 from .mmu_extruder_monitor import ExtruderMonitor
-from .mmu_shared import MmuError
 
 class MmuSyncFeedbackManager:
 
