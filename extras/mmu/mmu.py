@@ -6724,7 +6724,7 @@ class Mmu:
                                                 'weight': weight,
                                                 'spool_weight': spool_weight,
                                                 'remaining_weight': remaining_weight}
-            self.log_debug(f'Spoolman update: Remaining weight received. Gate: {gate}, Spool ID: {spool_id}, Weight: {remaining_weight}g')
+            self.log_debug('Spoolman update: Remaining weight received. Gate: %s, Spool ID: %s, Weight: %sg' % (gate, spool_id, remaining_weight))
 
 
 ### CORE GCODE COMMANDS ##########################################################
