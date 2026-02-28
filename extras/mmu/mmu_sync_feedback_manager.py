@@ -369,7 +369,6 @@ class MmuSyncFeedbackManager:
         if eventtime is None: eventtime = self.mmu.reactor.monotonic()
 
         state = self._get_sensor_state()
-        self.mmu.log_error("PAUL: MmuSyncFeedbackManager: Extruder movement event, move=%.1f" % move) # PAUL
         self.mmu.log_trace("MmuSyncFeedbackManager: Extruder movement event, move=%.1f" % move)
         status = self.ctrl.update(eventtime, move, state)
         self._process_status(status)
@@ -389,7 +388,6 @@ class MmuSyncFeedbackManager:
             self.mmu.log_debug(msg)
         else:
             self.mmu.log_info(msg)
-        self.mmu.log_error("PAUL: " + msg) # PAUL
 
         move = self.extruder_monitor.get_and_reset_accumulated(self._handle_extruder_movement)
         status = self.ctrl.update(eventtime, move, state)
@@ -433,7 +431,8 @@ class MmuSyncFeedbackManager:
             else:
                 self.mmu.log_debug("MmuSyncFeedbackManager: FlowGuard detected a %s, but handling is disabled.\nReason for trip: %s" % (flowguard_trigger, flowguard['reason']))
 
-            # PAUL self.ctrl.flowguard.reset() # PAUL the next sync should reset. This allows us to see in the UI the cause..
+            # PAUL -- don't think we need this because reset on next sync(). Being lazy allows the mainsail UI to display cause..
+            # self.ctrl.flowguard.reset()
 
         # Handle new autotune suggestions
         autotune = output['autotune']
@@ -452,8 +451,8 @@ class MmuSyncFeedbackManager:
         # Always update instaneous gear stepper rotation_distance
         rd_current, rd_prev = output['rd_current'], output['rd_prev']
         if rd_current != rd_prev:
+            self.mmu.log_debug("MmuSyncFeedbackManager: Altered rotation distance for gate %d from %.4f to %.4f" % (self.mmu.gate_selected, rd_prev, rd_current))
             self.mmu.set_rotation_distance(rd_current)
-            self.mmu.log_debug("MmuSyncFeedbackManager: Updated rotation distance for gate %d from %.4f to %.4f" % (self.mmu.gate_selected, rd_prev, rd_current))
 
 
     def _init_controller(self):
@@ -505,21 +504,13 @@ class MmuSyncFeedbackManager:
         Returns float in range [-1.0 .. 1.0] for proportional, {-1, 0, 1) for switch
         """
         sm = self.mmu.sensor_manager
-# PAUL
-#        has_tension        = sm.has_sensor(self.mmu.SENSOR_TENSION)
-#        has_compression    = sm.has_sensor(self.mmu.SENSOR_COMPRESSION)
         has_proportional   = sm.has_sensor(self.mmu.SENSOR_PROPORTIONAL)
-#        tension_active     = sm.check_sensor(self.mmu.SENSOR_TENSION)
-#        compression_active = sm.check_sensor(self.mmu.SENSOR_COMPRESSION)
-
         if has_proportional:
             sensor = sm.sensors.get(self.mmu.SENSOR_PROPORTIONAL)
             return sensor.get_status(0).get('value', 0.)
 
         tension_active     = sm.check_sensor(self.mmu.SENSOR_TENSION)
         compression_active = sm.check_sensor(self.mmu.SENSOR_COMPRESSION)
-#PAUL         has_tension        = tension_active is not None
-#PAUL         has_compression    = compression_active is not None
 
         if tension_active == compression_active:
             ss = self.SF_STATE_NEUTRAL
@@ -530,20 +521,6 @@ class MmuSyncFeedbackManager:
         else:
             ss = self.SF_STATE_NEUTRAL
         return ss
-
-#        if has_tension and has_compression:
-#            # Allow for sync-feedback sensor designs with minimal travel where both sensors can be triggered at same time
-#            if tension_active == compression_active:
-#                ss = self.SF_STATE_NEUTRAL
-#            elif tension_active and not compression_active:
-#                ss = self.SF_STATE_TENSION
-#            else:
-#                ss = self.SF_STATE_COMPRESSION
-#        elif has_compression and not has_tension:
-#            ss = self.SF_STATE_COMPRESSION if compression_active else self.SF_STATE_TENSION
-#        elif has_tension and not has_compression:
-#            ss = self.SF_STATE_TENSION if tension_active else self.SF_STATE_COMPRESSION
-#        return ss
 
 
     def _get_sensor_type(self):
