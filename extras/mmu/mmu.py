@@ -4913,7 +4913,7 @@ class Mmu:
                     if abs(total + move) > max_len:
                         break
                     _a,_b,_c,_d = self.trace_filament_move(
-                        "Proportional pre-settle during load", move, motor="gear", wait=True
+                        "Proportional pre-settle during toolhead load", move, motor="gear", wait=True
                     )
                     total += move
                     steps += 1
@@ -4921,7 +4921,7 @@ class Mmu:
                         self.mmu.reactor.pause(settle_time)
                     except Exception:
                         time.sleep(settle_time)
-                self.log_info("Proportional pre-settle during load complete (gear-only total: %.2fmm)" % total)
+                self.log_info("Proportional pre-settle during toolhead load complete (gear-only total: %.2fmm)" % total)
             # End of Proportional-only pre-settle
 
             # Encoder based validation test if short of deterministic sensors and test makes sense
