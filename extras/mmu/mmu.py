@@ -4169,43 +4169,17 @@ class Mmu:
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
 
-
     cmd_MMU_TEST_PURGE_help = "Convenience macro for calling the standalone purging macro"
     def cmd_MMU_TEST_PURGE(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if self.check_if_disabled(): return
-        last_tool = gcmd.get_int('LAST_TOOL', self._last_tool, minval=0, maxval=self.num_gates - 1)
-        next_tool = gcmd.get_int('NEXT_TOOL', self.tool_selected, minval=0, maxval=self.num_gates - 1)
-        if next_tool < 0: next_tool = 0
+        reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
+        show = bool(gcmd.get_int('SHOW', 0, minval=0, maxval=1))
+        run = bool(gcmd.get_int('RUN', 1, minval=0, maxval=1))
 
-        if not self.purge_macro:
-            self.log_warning("Purge not possible because `purge_macro` is not defined")
-            return
-
-        try:
-            # Determine purge volume for test (mimick regular call to purge macro)
-            self.toolchange_purge_volume = self._calc_purge_volume(last_tool, next_tool)
-
-            _last_tool, _next_tool = self._last_tool, self._next_tool
-            self._last_tool, self._next_tool = last_tool, next_tool # Valid only during this test
-
-            msg = "Note that the suggested purge volume is based on the current MMU_SLICER_TOOL_MAP"
-            msg += "\nIf this is not set you might find it useful to run 'MMU_CALC_PURGE_VOLUMES MULTIPLIER=..'"
-            msg += "\nto create a purge volume map from current filament colors. You can also specify"
-            msg += "'LAST_TOOL=.. NEXT_TOOL=..' to this command to override currently loaded tool"
-            self.log_info(msg)
-
-            self.log_info("Calling purge macro '%s'" % self.purge_macro)
-            with self.wrap_action(self.ACTION_PURGING):
-                self.purge_standalone()
-
-        except MmuError as ee:
-            self.handle_mmu_error(str(ee))
-
-        finally:
-            self.toolchange_purge_volume = 0.
-            self._last_tool, self._next_tool = _last_tool, _next_tool # Restore real values
-
+        with self.wrap_action(self.ACTION_PURGING):
+            self.purge_standalone()
+# PAUL
 
     cmd_MMU_STEP_LOAD_GATE_help = "User composable loading step: Move filament from gate to start of bowden"
     def cmd_MMU_STEP_LOAD_GATE(self, gcmd):
@@ -5482,18 +5456,21 @@ class Mmu:
         return park_pos, filament_remaining, reported
 
     def purge_standalone(self):
-        gcode_macro = self.printer.lookup_object("gcode_macro %s" % self.purge_macro, None)
-        if gcode_macro:
-            self.log_info("Purging...")
-            with self._wrap_extruder_current(self.extruder_purge_current, "for filament purge"):
-                # The macro to decide on the purge volume, but expect to be based on this.
-                msg = "Suggested purge volume of %.1fmm%s\n" % (self.toolchange_purge_volume, UI_CUBE)
-                msg += "Calculated from: "
-                msg += "toolhead_residual_filament: %.1fmm, " % self.toolhead_residual_filament
-                msg += "filament_remaining (cut fragment): %.1fmm " % self.filament_remaining
-                msg += "and slicer purge volume for toolchange"
-                self.log_debug(msg)
-                self.wrap_gcode_command(self.purge_macro, exception=True, wait=True)
+        if self.purge_macro:
+            gcode_macro = self.printer.lookup_object("gcode_macro %s" % self.purge_macro, None)
+            if gcode_macro:
+                self.log_info("Purging...")
+                with self._wrap_extruder_current(self.extruder_purge_current, "for filament purge"):
+                    # The macro to decide on the purge volume, but expect to be based on this.
+                    msg = "Suggested purge volume of %.1fmm%s\n" % (self.toolchange_purge_volume, UI_CUBE)
+                    msg += "Calculated from: "
+                    msg += "toolhead_residual_filament: %.1fmm, " % self.toolhead_residual_filament
+                    msg += "filament_remaining (cut fragment): %.1fmm " % self.filament_remaining
+                    msg += "and slicer purge volume for toolchange"
+                    self.log_debug(msg)
+                    self.wrap_gcode_command(self.purge_macro, exception=True, wait=True)
+            else:
+                self.log_warning("Purge macro %s not found" % self.purge_macro)
 
 
 #################################
