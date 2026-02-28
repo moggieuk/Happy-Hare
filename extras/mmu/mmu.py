@@ -3367,13 +3367,12 @@ class Mmu:
 
     def _disable_runout_clog_flowguard(self):
         enabled = self.runout_enabled
-        if enabled:
-            self.log_trace("Disabled runout/clog/flowguard detection")
-            if self.has_encoder() and self.encoder_sensor.is_enabled():
-                self.encoder_sensor.disable()
-            self.sensor_manager.disable_runout(self.gate_selected)
-            self.sync_feedback_manager.disable_flowguard()
-            self.runout_enabled = False
+        self.runout_enabled = False
+        self.log_trace("Disabled runout/clog/flowguard detection")
+        if self.has_encoder() and self.encoder_sensor.is_enabled():
+            self.encoder_sensor.disable()
+        self.sensor_manager.disable_runout(self.gate_selected)
+        self.sync_feedback_manager.deactivate_flowguard()
         return enabled
 
     def _enable_runout_clog_flowguard(self):
@@ -3382,7 +3381,7 @@ class Mmu:
         if self.has_encoder() and not self.encoder_sensor.is_enabled():
             self.encoder_sensor.enable()
         self.sensor_manager.enable_runout(self.gate_selected)
-        self.sync_feedback_manager.enable_flowguard()
+        self.sync_feedback_manager.activate_flowguard()
         self.runout_last_enable_time = self.reactor.monotonic()
 
     @contextlib.contextmanager
