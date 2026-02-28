@@ -114,7 +114,6 @@ class MmuCalibrationManager:
         Persist the calibrated encoder clog detection length and notify the encoder of change if in auto mode
         If not forced then save if auto but don't update the encoder
         """
-        self.mmu.log_error("PAUL: cdl=%s, force=%s" % (cdl, force))
         if not self.mmu.has_encoder(): return
         if not cdl: return
 
