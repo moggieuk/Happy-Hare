@@ -483,6 +483,13 @@ class Mmu:
         self.log_startup_status = config.getint('log_startup_status', 1, minval=0, maxval=2)
         self.log_m117_messages = config.getint('log_m117_messages', 1, minval=0, maxval=1)
 
+        # Consistency checks config
+        self.consistency_checks_enable = config.getboolean('consistency_checks_enable', False) # !FIXME PAUL: Might be default enabled when feature is foolproof and if wanted
+        self.consistency_check_endless_groups = config.getboolean('consistency_check_endless_groups', True)
+        self.consistency_name_severity = config.getint('consistency_name_severity', 2, minval=0, maxval=2)
+        self.consistency_material_severity = config.getint('consistency_material_severity', 2, minval=0, maxval=2)
+        self.consistency_weight_severity = config.getint('consistency_weight_severity', 3, minval=0, maxval=2)
+
         # Cosmetic console stuff
         self.console_stat_columns = list(config.getlist('console_stat_columns', ['unload', 'load', 'total']))
         self.console_stat_rows = list(config.getlist('console_stat_rows', ['total', 'job', 'job_average']))
@@ -8973,7 +8980,17 @@ class Mmu:
     cmd_MMU_CHECK_JOB_CONSISTENCY_help = "Checks the consistency between the mmu spool setup and the job requirements. (filament name, quantity, material ...). Also adds up available filament when in an endless spool group."
     def cmd_MMU_CHECK_JOB_CONSISTENCY(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_if_disabled(): return
+        if self.check_if_disabled() or not self.consistency_checks_enable: return
+        # determine how checks will be logged and if they will pause the print
+        def get_logger_from_severity(severity):
+            if severity == 0: return self.log_info
+            if severity == 1: return self.log_warning
+            if severity == 2: return self.log_error
+            else : raise MmuError("Invalid consistency weight severity: %d" % severity)
+
+        name_mismatch_logging = get_logger_from_severity(self.consistency_name_severity)
+        weight_mismatch_logging = get_logger_from_severity(self.consistency_weight_severity)
+        material_mismatch_logging = get_logger_from_severity(self.consistency_material_severity)
         self.log_info("Checking consistency between MMU setup and job requirements...")
         # for each referenced tool , if it is used, check if material is sufficient (add up weights on gates when in a endless spool group, and verify that the group is itself consistent - same material)
         for ref_tool in self.slicer_tool_map['referenced_tools']:
@@ -8991,20 +9008,21 @@ class Mmu:
                     for group in range(self.num_gates):
                         # Check endless spool group consistency and update total available weight
                         if self.endless_spool_groups[group] == group_id and group != mapped_gate:
-                            if self.gate_material[group] != self.gate_material[mapped_gate]:
-                                self.log_info(f"Material mismatch in endless spool group {group_id} : gate {mapped_gate} has {self.gate_material[mapped_gate]} but gate {group} has {self.gate_material[group]}")
-                            if self.gate_filament_name[group] != self.gate_filament_name[mapped_gate]:
-                                self.log_info(f"Filament name mismatch in endless spool group {group_id} : gate {mapped_gate} has {self.gate_filament_name[mapped_gate]} but gate {group} has {self.gate_filament_name[group]}")
+                            if self.consistency_check_endless_groups:
+                                if self.gate_material[group] != self.gate_material[mapped_gate]:
+                                    material_mismatch_logging(f"Material mismatch in endless spool group {group_id} : gate {mapped_gate} has {self.gate_material[mapped_gate]} but gate {group} has {self.gate_material[group]}")
+                                if self.gate_filament_name[group] != self.gate_filament_name[mapped_gate]:
+                                    name_mismatch_logging(f"Filament name mismatch in endless spool group {group_id} : gate {mapped_gate} has {self.gate_filament_name[mapped_gate]} but gate {group} has {self.gate_filament_name[group]}")
                             total_available_weight += self.gate_filament_weight[group] if self.gate_filament_weight[group] else .0
 
-                self.log_info(f"Tool T{ref_tool} mapped to gate {mapped_gate} requires {required_usage}g of {required_material} ({required_name})")
-                self.log_info(f"Total available filament weight for tool T{ref_tool} is {total_available_weight}g")
+                self.log_debug(f"Tool T{ref_tool} mapped to gate {mapped_gate} requires {required_usage}g of {required_material} ({required_name})")
+                self.log_debug(f"Total available filament weight for tool T{ref_tool} is {total_available_weight}g")
                 if self.gate_material[mapped_gate] != required_material:
-                    self.log_info(f"Material mismatch for tool T{ref_tool} on gate {mapped_gate} : required {required_material} but gate has {self.gate_material[mapped_gate]}")
+                    material_mismatch_logging(f"Material mismatch for tool T{ref_tool} on gate {mapped_gate} : required {required_material} but gate has {self.gate_material[mapped_gate]}")
                 if self.gate_filament_name[mapped_gate] != required_name:
-                    self.log_info(f"Filament name mismatch for tool T{ref_tool} on gate {mapped_gate} : required {required_name} but gate has {self.gate_filament_name[mapped_gate]}")
+                    name_mismatch_logging(f"Filament name mismatch for tool T{ref_tool} on gate {mapped_gate} : required {required_name} but gate has {self.gate_filament_name[mapped_gate]}")
                 if total_available_weight < required_usage:
-                    self.log_info(f"Insufficient filament for tool T{ref_tool} on gate {mapped_gate} : required {required_usage}g but only {total_available_weight}g available")
+                    weight_mismatch_logging(f"Insufficient filament for tool T{ref_tool} on gate {mapped_gate} : required {required_usage}g but only {total_available_weight}g available")
         self.log_info("MMU job consistency check completed.")
 
     cmd_MMU_PRELOAD_help = "Preloads filament at specified or current gate"
