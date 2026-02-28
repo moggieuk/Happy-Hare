@@ -19,7 +19,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import logging, math
+import logging, math, time
 
 # Happy Hare imports
 
@@ -41,6 +41,7 @@ class MmuSyncFeedbackManager:
         self.estimated_state = float(self.SF_STATE_NEUTRAL)
         self.active = False                       # Actively operating?
         self.flowguard_active = False
+        self.ctrl = None
 
         # Process config
         self.sync_feedback_enabled           = self.mmu.config.getint('sync_feedback_enabled', 0, minval=0, maxval=1)
@@ -93,8 +94,8 @@ class MmuSyncFeedbackManager:
         self.sync_feedback_enabled           = gcmd.get_int('SYNC_FEEDBACK_ENABLED', self.sync_feedback_enabled, minval=0, maxval=1)
         self.sync_feedback_buffer_range      = gcmd.get_float('SYNC_FEEDBACK_BUFFER_RANGE', self.sync_feedback_buffer_range, minval=0.)
         self.sync_feedback_buffer_maxrange   = gcmd.get_float('SYNC_FEEDBACK_BUFFER_MAXRANGE', self.sync_feedback_buffer_maxrange, minval=0.)
-        self.sync_feedback_speed_multiplier  = gcmd.get_float('SYNC_FEEDBACK_SPEED_MULTIPLER', self.sync_feedback_speed_multiplier, minval=1., maxval=50)
-        self.sync_feedback_boost_multiplier  = gcmd.get_float('SYNC_FEEDBACK_BOOST_MULTIPLER', self.sync_feedback_boost_multiplier, minval=1., maxval=50)
+        self.sync_feedback_speed_multiplier  = gcmd.get_float('SYNC_FEEDBACK_SPEED_MULTIPLIER', self.sync_feedback_speed_multiplier, minval=1., maxval=50)
+        self.sync_feedback_boost_multiplier  = gcmd.get_float('SYNC_FEEDBACK_BOOST_MULTIPLIER', self.sync_feedback_boost_multiplier, minval=1., maxval=50)
         self.sync_feedback_extrude_threshold = gcmd.get_float('SYNC_FEEDBACK_EXTRUDE_THRESHOLD', self.sync_feedback_extrude_threshold, above=1.)
         self.sync_feedback_debug_log         = gcmd.get_int('SYNC_FEEDBACK_DEBUG_LOG', self.sync_feedback_debug_log, minval=0, maxval=1)
 
@@ -127,7 +128,7 @@ class MmuSyncFeedbackManager:
     # Sync feedback manager public access...
     #
 
-    def set_default_rd(self, gate):
+    def set_default_rd(self):
         """
         Ensure correct starting rotation distance
         """
@@ -181,7 +182,7 @@ class MmuSyncFeedbackManager:
         Relax the filament tension, preferring proportional control if available else sync-feedback sensor switches.
         By default uses gear stepper to achive the result but optionally can use just extruder stepper for
         extruder entry check using compression sensor 'max_move' is advisory maximum travel distance
-        Return distance moved for correction and success flag
+        Returns distance of the correction move and whether operation was successful (or None if not performed)
         """
         has_tension      = self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_TENSION)
         has_compression  = self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_COMPRESSION)
@@ -213,15 +214,14 @@ class MmuSyncFeedbackManager:
         if self.mmu.check_if_disabled(): return
 
         if not self.sync_feedback_enabled:
-            self.log_warning("Sync feedback is disabled or not configured. FlowGuard is unavailable")
+            self.mmu.log_warning("Sync feedback is disabled or not configured. FlowGuard is unavailable")
             return
-
-        help = gcmd.get_int('HELP', 0, minval=0, maxval=1)
-        enable = gcmd.get_int('ENABLE', None, minval=0, maxval=1)
 
         if gcmd.get_int('HELP', 0, minval=0, maxval=1):
             self.mmu.log_always(self.mmu.format_help(self.cmd_MMU_FLOWGUARD_param_help), color=True)
             return
+
+        enable = gcmd.get_int('ENABLE', None, minval=0, maxval=1)
 
         if enable is not None:
             self._config_flowguard_feature(enable)
@@ -266,11 +266,11 @@ class MmuSyncFeedbackManager:
 
         if enable is not None:
             self.sync_feedback_enabled = enable
-            self.mmu.log_always("Sync feedback feature is %s" % "enabled" if enable else "disabled")
+            self.mmu.log_always("Sync feedback feature is %s" % ("enabled" if enable else "disabled"))
 
         if autotune is not None:
             self.mmu.autotune_rotation_distance = autotune
-            self.mmu.log_always("Save Autotuned rotation distance feature is %s" % "enabled" if autotune else "disabled")
+            self.mmu.log_always("Save Autotuned rotation distance feature is %s" % ("enabled" if autotune else "disabled"))
 
         if adjust_tension:
             try:
@@ -365,7 +365,7 @@ class MmuSyncFeedbackManager:
             self.mmu.log_warning("PAUL: TODO: not really persisted yet!! (must also adjust bowden length for gate")
 
         # Restore default (last tuned) rotation distance
-        self.set_default_rd(self.mmu.gate_selected)
+        self.set_default_rd()
 
         # Optional but let's turn off extruder movement events
         self.extruder_monitor.remove_callback(self._handle_extruder_movement)
@@ -432,9 +432,9 @@ class MmuSyncFeedbackManager:
 
                 if has_proportional:
                     sensor_key = self.mmu.SENSOR_PROPORTIONAL
-                elif not has_tension:
+                elif has_compression and not has_tension:
                     sensor_key = self.mmu.SENSOR_COMPRESSION
-                elif not has_compression:
+                elif has tension and not has_compression:
                     sensor_key = self.mmu.SENSOR_TENSION
                 elif f_trigger == "clog":
                     sensor_key = self.mmu.SENSOR_COMPRESSION
@@ -458,7 +458,7 @@ class MmuSyncFeedbackManager:
             msg = "MmuSyncFeedbackManager: Autotune suggested new operational reference rd: %.4f\n%s" % (rd, note)
             if save and self.mmu.autotune_rotation_distance:
                 msg += "\nThis suggestion will be persisted (and bowden length adjusted) when extruder is next unsynced"
-                self.new_autotune_rd= rd
+                self.new_autotuned_rd = rd
                 self.mmu.log_info(msg)
             else:
                 self.mmu.log_debug(msg)
@@ -495,7 +495,8 @@ class MmuSyncFeedbackManager:
         if enable:
             self.mmu.log_info("FlowGuard monitoring feature %senabled" % ("already " if self.flowguard_enabled else ""))
             self.flowguard_enabled = True
-            self.ctrl.flowguard.reset()
+            if self.ctrl:
+                self.ctrl.flowguard.reset()
         else:
             self.mmu.log_info("FlowGuard monitoring feature %sdisabled" % ("already " if not self.flowguard_enabled else ""))
             self.flowguard_enabled = False
@@ -572,7 +573,7 @@ class MmuSyncFeedbackManager:
         compression_active = self.mmu.sensor_manager.check_sensor(self.mmu.SENSOR_COMPRESSION)
 
         max_move = max_move or self.sync_feedback_buffer_maxrange
-        self.mmu.log_debug("Monitoring extruder entrance transistion for up to %.1fmm..." % max_move)
+        self.mmu.log_debug("Monitoring extruder entrance transition for up to %.1fmm..." % max_move)
         if (compression_active is True) != (tension_active is True): # Equality means already neutral
 
             if use_gear_motor:
@@ -651,7 +652,7 @@ class MmuSyncFeedbackManager:
         nudge_mm = per_side_budget_mm * neutral_band
 
         # Cap total nudge iterations to stay within the overall sensor range
-        max_steps = math.ceil(maxrange_span_mm / nudge_mm)
+        max_steps = int(math.ceil(maxrange_span_mm / nudge_mm))
 
         moved_total_mm   = 0.0  # total net distance moved during this adjustment
         moved_nudges_mm  = 0.0  # sum of all nudge moves
