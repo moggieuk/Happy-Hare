@@ -382,9 +382,11 @@ class MmuSyncFeedbackManager:
         if not (self.mmu.is_enabled and self.sync_feedback_enabled and self.active): return
         if eventtime is None: eventtime = self.mmu.reactor.monotonic()
 
-        state = self._get_sensor_state()
         self.mmu.log_trace("MmuSyncFeedbackManager: Extruder movement event, move=%.1f" % move)
-        self._process_update(eventtime, move, state)
+
+        state = self._get_sensor_state()
+        status = self.ctrl.update(eventtime, move, state)
+        self._process_status(status)
 
 
     def _handle_sync_feedback(self, eventtime, state):
@@ -403,14 +405,14 @@ class MmuSyncFeedbackManager:
             self.mmu.log_info(msg)
 
         move = self.extruder_monitor.get_and_reset_accumulated(self._handle_extruder_movement)
-        self._process_update(eventtime, move, state)
+        status = self.ctrl.update(eventtime, move, state)
+        self._process_status(status)
 
 
-    def _process_update(self, eventtime, move, state):
+    def _process_status(self, status):
         """
         Common logic to process the rd recommendations of the sync controller
         """
-        status = self.ctrl.update(eventtime, move, state)
         output = status['output']
 
         # Handle estimated sensor position
