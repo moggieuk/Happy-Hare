@@ -45,8 +45,6 @@ RUNOUT_GCODE = "__MMU_SENSOR_RUNOUT"
 CLOG_GCODE   = "__MMU_SENSOR_CLOG"
 TANGLE_GCODE = "__MMU_SENSOR_TANGLE"
 
-VIRTUAL_ENDSTOP = 'virtual_endstop'
-
 # -------------------------------------------------------------------------------------------------
 # Enhanced "runout helper" that gives greater control of when filament sensor events are fired and
 # direct access to button events in addition to creating a "remove" / "runout" distinction
@@ -509,7 +507,7 @@ class MmuHallSensor:
             },
             insert_remove_in_print,
             button_handler=None,
-            switch_pin=VIRTUAL_ENDSTOP
+            switch_pin=None
         )
 
         self.printer.add_object("mmu_hall_sensor %s" % name, self)
