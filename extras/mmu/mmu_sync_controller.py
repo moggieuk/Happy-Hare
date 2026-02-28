@@ -182,7 +182,7 @@ class SyncControllerConfig:
     snap_at_extremes: bool = True           # enable relief-biased snap when pegged
     extreme_relief_frac: float = 0.25       # fraction of |d_ext| of guaranteed relief per update
 
-    # EKF logic tests
+    # EKF autotune logic tests
     autotune_stable_x_thresh: float = 0.12
     autotune_stable_time_s: float = 4.0
     autotune_basis: str = "both"
@@ -199,7 +199,7 @@ class SyncControllerConfig:
     autotune_min_save_frac: float = 0.001   # Only consider saving if > ≈0.1% speed change from last persisted value
 
     # Certainty tracking of rd recommendations
-    autotune_cert_window: int = 8           # fifo length (1..8)
+    autotune_cert_window: int = 8           # fifo length of rd certainty scores
     autotune_cert_tau_rel: float = 0.01     # target relative SE (e.g. 1%)
     autotune_cert_n0: float = 3.0           # prior sample penalty
     autotune_cert_hysteresis: float = 0.001 # min score improvement to accept
@@ -1281,7 +1281,7 @@ class SyncController:
             }
 
         if cfg.log_sync:
-            self._append_log(out)
+            self._append_log_entry(out)
 
         self.state.x_prev = self.state.x
         self._tick += 1
@@ -1687,11 +1687,12 @@ class SyncController:
             }
         }
 
-        with open(self.cfg.log_file, "w", encoding="utf-8") as f:
+        with open(self.cfg.log_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(header, ensure_ascii=False) + "\n")
         self._log_ready = True
 
-    def _append_log(self, record: dict):
+
+    def _append_log_entry(self, record: dict):
         """
         Append a single JSON object to the log as one line.
         """
