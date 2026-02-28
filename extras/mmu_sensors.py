@@ -315,6 +315,7 @@ class MmuProportionalSensor:
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.name = name
+        self._last_extreme = None
 
         # Config
         self._pin = config.get('sync_feedback_analog_pin')

@@ -162,7 +162,7 @@ class SyncControllerConfig:
     c_max: float = 4.0
 
     # FlowGuard (distance-based)
-    flowguard_extreme_threshold: float = 0.95
+    flowguard_extreme_threshold: float = 0.9
     flowguard_relief_mm: Optional[float] = None
     flowguard_motion_mm: Optional[float] = None
 
