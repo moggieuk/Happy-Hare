@@ -4892,8 +4892,39 @@ class Mmu:
             _,_,measured,delta = self.trace_filament_move("Loading filament to nozzle", length, speed=speed, motor=motor, wait=True)
             self._set_filament_remaining(0.)
 
-            # Encoder based validation test to validate the filament was picked up by extruder. This runs if we are
-            # short of deterministic sensors and test makes sense
+            # Proportional-only pre-settle during toolhead load (no tension/compression switches present)
+            if (
+                (self.sync_to_extruder or self.sync_purge)
+                and not (has_tension or has_compression)
+                and self.sync_feedback_manager.is_enabled()
+                and getattr(self.sync_feedback_manager, "_proportional_seen", False)
+            ):
+                inc = 0.3            # mm per nudge (tune 0.2–0.5)
+                neutral_band = 0.2   # treat |state| <= this as neutral
+                settle_time = 0.10   # seconds between nudges
+                max_len = float(self.sync_feedback_manager.sync_feedback_buffer_maxrange)
+                total = 0.0
+                steps = 0
+                while abs(total) < max_len and steps < 200:
+                    state = float(self.sync_feedback_manager.state)
+                    if abs(state) <= neutral_band:
+                        break
+                    move = inc if state < 0.0 else -inc   # tension -> +feed, compression -> -retract
+                    if abs(total + move) > max_len:
+                        break
+                    _a,_b,_c,_d = self.trace_filament_move(
+                        "Proportional pre-settle during load", move, motor="gear", wait=True
+                    )
+                    total += move
+                    steps += 1
+                    try:
+                        self.mmu.reactor.pause(settle_time)
+                    except Exception:
+                        time.sleep(settle_time)
+                self.log_info("Proportional pre-settle during load complete (gear-only total: %.2fmm)" % total)
+            # End of Proportional-only pre-settle
+
+            # Encoder based validation test if short of deterministic sensors and test makes sense
             if (
                 self.gate_selected != self.TOOL_GATE_BYPASS
                 and self._can_use_encoder()
@@ -4941,11 +4972,40 @@ class Mmu:
                     else:
                         self.log_warning("Unsuccessful in relaxing filament tension after adjusting %.1fmm" % actual)
 
+                elif (
+                    self.toolhead_post_load_tension_adjust
+                    and (self.sync_to_extruder or self.sync_purge)
+                    and not (has_tension or has_compression)
+                    and self.sync_feedback_manager.is_enabled()
+                ):
+                    # Proportional-only post-load re-centering (no tension/compression switches present)
+                    state = float(self.sync_feedback_manager.state)
+                    if abs(state) > 0.5:
+                        rng = float(self.sync_feedback_manager.sync_feedback_buffer_maxrange)
+                        # tension (state < 0) -> feed forward (+) to reduce tension
+                        # compression (state > 0) -> retract (-) to reduce compression
+                        nudge = (0.25 * rng) * (1.0 if state < 0.0 else -1.0)
+                        if nudge > rng:
+                            nudge = rng
+                        if nudge < -rng:
+                            nudge = -rng
+                        _a,_b,_c,_d = self.trace_filament_move(
+                            "Proportional post-load tension adjust",
+                            nudge, motor="gear", wait=True
+                        )
+                        self.log_info("Proportional post-load tension adjust complete (gear-only move: %.2fmm, state=%.3f)" % (nudge, state))
+                    else:
+                        self.log_info(
+                            "Proportional post-load tension adjust skipped "
+                            "(state already neutral: %.3f)" % state
+                        )
+
             self._random_failure() # Testing
             self.movequeues_wait()
             self._set_filament_pos_state(self.FILAMENT_POS_LOADED)
             self.log_debug("Filament should be loaded to nozzle")
             return homing_movement # Will only have value if we have toolhead sensor
+
 
     # Extract filament past extruder gear (to end of bowden). Assume that tip has already been formed
     # and we are parked somewhere in the extruder either by slicer or by stand alone tip creation
