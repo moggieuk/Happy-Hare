@@ -171,7 +171,7 @@ class MmuSyncFeedbackManager:
         if self.flowguard_enabled and not self.flowguard_active:
             self.flowguard_active = True
             # This resets controller with last good autotuned RD, resets flowguard and resumes autotune
-            self._reset_controller(self, eventtime, hard_reset=False)
+            self._reset_controller(eventtime, hard_reset=False)
             self.ctrl.autotune.resume()
             self.mmu.log_info("MmuSyncFeedbackManager: FlowGuard monitoring activated and autotune resumed")
 
