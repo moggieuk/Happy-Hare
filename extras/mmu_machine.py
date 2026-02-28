@@ -253,11 +253,10 @@ class MmuMachine:
         elif self.mmu_vendor == VENDOR_EMU:
             selector_type = 'VirtualSelector'
             variable_rotation_distances = 1
-            variable_bowden_lengths = 1
+            variable_bowden_lengths = 0
             require_bowden_move = 1
             filament_always_gripped = 1
-            can_crossload = 1
-            has_bypass = 1
+            has_bypass = 0
 
         # Still allow MMU design attributes to be altered or set for custom MMU
         self.selector_type = config.getchoice('selector_type', {o: o for o in ['VirtualSelector', 'LinearSelector', 'LinearServoSelector', 'LinearMultiGearSelector', 'RotarySelector', 'MacroSelector', 'ServoSelector', 'IndexedSelector']}, selector_type)
@@ -383,7 +382,7 @@ class MmuMachine:
         if index >= 0 and index < self.num_units:
             return self.units[index]
         return None
-        
+
     def get_mmu_unit_by_gate(self, gate): # Hack to allow some v4 functionality into the v3 line
         if gate >= 0 and gate < self.num_gates:
             return self.unit_by_gate[gate]
@@ -399,7 +398,7 @@ class MmuUnit:
         self.unit_index = unit_index
         self.first_gate = first_gate
         self.num_gates = num_gates
-        self.leds = None 
+        self.leds = None
 
     def manages_gate(self, gate):
         return self.first_gate <= gate < self.first_gate + self.num_gates

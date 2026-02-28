@@ -300,7 +300,7 @@ class MmuSyncFeedbackManager:
                         if success:
                             self.mmu.log_info("Neutralized tension after moving %.2fmm" % actual)
                         else:
-                            self.mmu.log_warning("Moved %.2fmm without neutralizing tension")
+                            self.mmu.log_warning("Moved %.2fmm without neutralizing tension" % actual)
 
             except MmuError as ee:
                 self.mmu.log_error("Error in MMU_SYNC_FEEDBACK: %s" % str(ee))
