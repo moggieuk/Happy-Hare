@@ -39,9 +39,10 @@ class MmuSyncFeedbackManager:
         self.mmu.managers.append(self)
 
         self.estimated_state = float(self.SF_STATE_NEUTRAL)
-        self.active = False                       # Actively operating?
-        self.flowguard_active = False
+        self.active = False           # Sync-feedback actively operating?
+        self.flowguard_active = False # Flowguard armed?
         self.ctrl = None
+        self.flow_rate = 100.         # Estimated % flowrate (calc only for proportional sensors)
 
         # Process config
         self.sync_feedback_enabled           = self.mmu.config.getint('sync_feedback_enabled', 0, minval=0, maxval=1)
@@ -321,6 +322,7 @@ class MmuSyncFeedbackManager:
             'sync_feedback_enabled': self.is_enabled(),
             'sync_feedback_bias_raw': self._get_sync_bias_raw(),
             'sync_feedback_bias_modelled': self._get_sync_bias_modelled(),
+            'sync_feedback_flow_rate': self.flow_rate,
             'flowguard': self.flowguard_status,
         }
 
@@ -494,10 +496,15 @@ class MmuSyncFeedbackManager:
                 self.mmu.log_debug(msg)
 
         # Always update instaneous gear stepper rotation_distance
-        rd_current, rd_prev = output['rd_current'], output['rd_prev']
+        rd_current, rd_prev, rd_tuned = output['rd_current'], output['rd_prev'], output['rd_tuned']
         if rd_current != rd_prev:
             self.mmu.log_debug("MmuSyncFeedbackManager: Altered rotation distance for gate %d from %.4f to %.4f" % (self.mmu.gate_selected, rd_prev, rd_current))
             self.mmu.set_gear_rotation_distance(rd_current)
+
+        # Proportional sensor (with autotune) allows for estimation of flow rate!
+        if self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_PROPORTIONAL):
+            # if rd_current > rd_true then flowrate must be reduced
+            self.flow_rate = round(min(1.0, (rd_tuned / rd_current)) * 100., 2)
 
 
     def _init_controller(self):
