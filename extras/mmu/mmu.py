@@ -5482,20 +5482,18 @@ class Mmu:
         return park_pos, filament_remaining, reported
 
     def purge_standalone(self):
-        if self.purge_macro:
-            gcode_macro = self.printer.lookup_object("gcode_macro %s" % self.purge_macro, None)
-            if gcode_macro:
-                self.log_info("Purging...")
-                with self._wrap_extruder_current(self.extruder_purge_current, "for filament purge"):
-                    # The macro to decide on the purge volume, but expect to be based on this.
-                    msg = "Suggested purge volume of %.1fmm%s calculated from:\n" % (self.toolchange_purge_volume, UI_CUBE)
-                    msg += "- toolhead_residual_filament: %.1fmm\n" % self.toolhead_residual_filament
-                    msg += "- filament_remaining (previous cut fragment): %.1fmm\n" % self.filament_remaining
-                    msg += "- slicer purge volume for toolchange %s > %s" % (self.selected_tool_string(self._last_tool), self.selected_tool_string(self._next_tool))
-                    self.log_debug(msg)
-                    self.wrap_gcode_command(self.purge_macro, exception=True, wait=True)
-            else:
-                self.log_warning("Purge macro %s not found" % self.purge_macro)
+        gcode_macro = self.printer.lookup_object("gcode_macro %s" % self.purge_macro, None)
+        if gcode_macro:
+            self.log_info("Purging...")
+            with self._wrap_extruder_current(self.extruder_purge_current, "for filament purge"):
+                # The macro to decide on the purge volume, but expect to be based on this.
+                msg = "Suggested purge volume of %.1fmm%s\n" % (self.toolchange_purge_volume, UI_CUBE)
+                msg += "Calculated from: "
+                msg += "toolhead_residual_filament: %.1fmm, " % self.toolhead_residual_filament
+                msg += "filament_remaining (cut fragment): %.1fmm " % self.filament_remaining
+                msg += "and slicer purge volume for toolchange"
+                self.log_debug(msg)
+                self.wrap_gcode_command(self.purge_macro, exception=True, wait=True)
 
 
 #################################
@@ -6267,23 +6265,12 @@ class Mmu:
                 self.log_debug("Set extrusion multiplier for tool T%d as %d%%" % (tool, extrude_percent))
             self._restore_tool_override(tool)
 
-    # Primary method to select and loads tool. Assumes we are unloaded
-    def _select_and_load_tool(self, tool, purge=None):
-        self.log_debug('Loading tool %s...' % self.selected_tool_string(tool))
-        self.select_tool(tool)
-        gate = self.ttg_map[tool] if tool >= 0 else self.gate_selected
-        if self.gate_status[gate] == self.GATE_EMPTY:
-            if self.endless_spool_enabled and self.endless_spool_on_load:
-                next_gate, msg = self._get_next_endless_spool_gate(tool, gate)
-                if next_gate == -1:
-                    raise MmuError("Gate %d is empty!\nNo alternatives gates available after checking %s" % (gate, msg))
+    # Primary method to select and loads tool. Assumes we are unloaded.
+    def _select_and_load_tool(self, tool, purge=None, prev_tool=-1):
 
-                self.log_error("Gate %d is empty! Checking for alternative gates %s" % (gate, msg))
-                self.log_info("Remapping %s to gate %d" % (self.selected_tool_string(tool), next_gate))
-                self._remap_tool(tool, next_gate)
-                self.select_tool(tool)
-            else:
-                raise MmuError("Gate %d is empty (and EndlessSpool on load is disabled)\nLoad gate, remap tool to another gate or correct state with 'MMU_CHECK_GATE GATE=%d' or 'MMU_GATE_MAP GATE=%d AVAILABLE=1'" % (gate, gate, gate))
+        try:
+            # Determine purge volume for toolchange/load. Valid only during toolchange/load operation
+            self.toolchange_purge_volume = self._calc_purge_volume(prev_tool, tool)
 
             self.log_debug('Loading tool %s...' % self.selected_tool_string(tool))
             self.select_tool(tool)
@@ -6837,7 +6824,7 @@ class Mmu:
                                 try:
                                     if self.filament_pos != self.FILAMENT_POS_UNLOADED:
                                         self._unload_tool(form_tip=do_form_tip, prev_tool=prev_tool)
-                                    self._select_and_load_tool(tool, purge=do_purge)
+                                    self._select_and_load_tool(tool, purge=do_purge, prev_tool=prev_tool)
                                     break
                                 except MmuError as ee:
                                     if i == attempts - 1:
@@ -7730,7 +7717,7 @@ class Mmu:
                     self._eject_from_gate() # Push completely out of gate
                     self.select_gate(next_gate) # Necessary if unloaded to waste gate
                     self._remap_tool(self.tool_selected, next_gate)
-                    self._select_and_load_tool(self.tool_selected, purge=self.PURGE_STANDALONE) # if user has set up standalone purging, respect option and purge.
+                    self._select_and_load_tool(self.tool_selected, purge=self.PURGE_STANDALONE, prev_tool=self.tool_selected) # if user has set up standalone purging, respect option and purge.
 
                     self._continue_after("endless_spool")
                     self.pause_resume.send_resume_command() # Undo what runout sensor handling did
@@ -8948,7 +8935,7 @@ class Mmu:
                                             self._note_toolchange("> %s" % self.selected_tool_string(tool=tool_selected))
                                             self.last_statistics = {}
                                             self._save_toolhead_position_and_park('load')
-                                            self._select_and_load_tool(tool_selected, purge=self.PURGE_STANDALONE) # if user has set up standalone purging, respect option and purge.
+                                            self._select_and_load_tool(tool_selected, purge=self.PURGE_STANDALONE, prev_tool=tool_selected) # If user has set up standalone purging, respect option and purge.
                                             self._persist_gate_statistics()
                                             self._continue_after('load')
                                         else:
