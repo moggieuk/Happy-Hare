@@ -603,7 +603,7 @@ class MmuSyncFeedbackManager:
     # Reset rotation_distance to calibrated value of current gate (not necessarily current value if autotuning)
     def _reset_gear_rotation_distance(self):
         rd = self.mmu.get_rotation_distance(self.mmu.gate_selected)
-        self.mmu.log_trace("MmuSyncFeedbackManager: Reset rotation distance to calibrated value (%.4f)" % rd)
+        self.mmu.log_debug("MmuSyncFeedbackManager: Reset rotation distance to last calibrated value (%.4f)" % rd)
         self._rd_applied = rd
         self.mmu.set_rotation_distance(rd)
 
