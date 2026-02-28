@@ -8999,7 +8999,7 @@ class Mmu:
         def get_logger_from_severity(severity):
             if severity == 0: return self.log_info
             if severity == 1: return self.log_warning
-            if severity == 2: return self.log_error
+            if severity == 2: return self.handle_mmu_error
             else : raise MmuError("Invalid consistency weight severity: %d" % severity)
 
         name_mismatch_logging = get_logger_from_severity(self.consistency_name_severity)
@@ -9037,7 +9037,6 @@ class Mmu:
                     name_mismatch_logging(f"Filament name mismatch for tool T{ref_tool} on gate {mapped_gate} : required {required_name} but gate has {self.gate_filament_name[mapped_gate]}")
                 if total_available_weight < required_usage:
                     weight_mismatch_logging(f"Insufficient filament for tool T{ref_tool} on gate {mapped_gate} : required {required_usage}g but only {total_available_weight}g available")
-        self.log_info("MMU job consistency check completed.")
 
     cmd_MMU_PRELOAD_help = "Preloads filament at specified or current gate"
     def cmd_MMU_PRELOAD(self, gcmd):
