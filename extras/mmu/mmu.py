@@ -642,7 +642,7 @@ class Mmu:
         self.gcode.register_command('MMU_GATE_MAP', self.cmd_MMU_GATE_MAP, desc = self.cmd_MMU_GATE_MAP_help)
         self.gcode.register_command('MMU_ENDLESS_SPOOL', self.cmd_MMU_ENDLESS_SPOOL, desc = self.cmd_MMU_ENDLESS_SPOOL_help)
         self.gcode.register_command('MMU_CHECK_GATE', self.cmd_MMU_CHECK_GATE, desc = self.cmd_MMU_CHECK_GATE_help)
-        self.gcode.register_command('MMU_CHECK_JOB_CONSISTENCY', self.cmd_MMU_CHECK_JOB_CONSISTENCY, desc = self.cmd_MMU_CHECK_JOB_CONSISTENCY_help)
+        self.gcode.register_command('MMU_CHECK_MMU_SLICER_CONSISTENCY', self.cmd_MMU_CHECK_MMU_SLICER_CONSISTENCY, desc = self.cmd_MMU_CHECK_JOB_CMMU_SLICERISTENCY_help)
         self.gcode.register_command('MMU_TOOL_OVERRIDES', self.cmd_MMU_TOOL_OVERRIDES, desc = self.cmd_MMU_TOOL_OVERRIDES_help)
         self.gcode.register_command('MMU_SLICER_TOOL_MAP', self.cmd_MMU_SLICER_TOOL_MAP, desc = self.cmd_MMU_SLICER_TOOL_MAP_help)
         self.gcode.register_command('MMU_CALC_PURGE_VOLUMES', self.cmd_MMU_CALC_PURGE_VOLUMES, desc = self.cmd_MMU_CALC_PURGE_VOLUMES_help)
@@ -2039,7 +2039,49 @@ class Mmu:
         visual = "".join((t_str, g_str, lg_str, gs_str, en_str, bowden1, bowden2, es_str, ex_str, ts_str, nz_str, summary, counter))
         return visual
 
+    def _check_mmu_slicer_consistency(self):
+        # determine how checks will be logged and if they will pause the print
+        def get_logger_from_severity(severity):
+            if severity == 0: return self.log_info
+            if severity == 1: return self.log_warning
+            if severity == 2: return self.handle_mmu_error
+            else : raise MmuError("Invalid consistency weight severity: %d" % severity)
 
+        name_mismatch_logging = get_logger_from_severity(self.consistency_name_severity)
+        weight_mismatch_logging = get_logger_from_severity(self.consistency_weight_severity)
+        material_mismatch_logging = get_logger_from_severity(self.consistency_material_severity)
+        self.log_info("Checking consistency between MMU setup and job requirements...")
+        # for each referenced tool , if it is used, check if material is sufficient (add up weights on gates when in a endless spool group, and verify that the group is itself consistent - same material)
+        for ref_tool in self.slicer_tool_map['referenced_tools']:
+            tool_info = self.slicer_tool_map['tools'].get(str(ref_tool))
+            if tool_info and tool_info['in_use']:
+                mapped_gate = self.ttg_map[ref_tool]
+                required_material = tool_info['material']
+                required_name = tool_info['name']
+                required_usage = float(tool_info['usage']) if tool_info['usage'] else 0
+                # if the mapped gate is in an endless spool group, sum up all filament in that group
+                group_id = self.endless_spool_groups[mapped_gate]
+                total_available_weight = self.gate_filament_weight[mapped_gate] if self.gate_filament_weight[mapped_gate] else .0
+                is_in_group = self.endless_spool_groups.count(group_id) > 1
+                if is_in_group:
+                    for group in range(self.num_gates):
+                        # Check endless spool group consistency and update total available weight
+                        if self.endless_spool_groups[group] == group_id and group != mapped_gate:
+                            if self.consistency_check_endless_groups:
+                                if self.gate_material[group] != self.gate_material[mapped_gate]:
+                                    material_mismatch_logging(f"Material mismatch in endless spool group {self._es_grp_to_string(group_id)} : gate {mapped_gate} has {self.gate_material[mapped_gate]} but gate {group} has {self.gate_material[group]}")
+                                if self.gate_filament_name[group] != self.gate_filament_name[mapped_gate]:
+                                    name_mismatch_logging(f"Filament name mismatch in endless spool group {self._es_grp_to_string(group_id)} : gate {mapped_gate} has {self.gate_filament_name[mapped_gate]} but gate {group} has {self.gate_filament_name[group]}")
+                            total_available_weight += self.gate_filament_weight[group] if self.gate_filament_weight[group] else .0
+
+                self.log_debug(f"Tool T{ref_tool} mapped to gate {mapped_gate} requires {required_usage}g of {required_material} ({required_name})")
+                self.log_debug(f"Total available filament weight for tool T{ref_tool} is {total_available_weight}g")
+                if self.gate_material[mapped_gate] != required_material:
+                    material_mismatch_logging(f"Material mismatch for tool T{ref_tool} on gate {mapped_gate} : required {required_material} but gate has {self.gate_material[mapped_gate]}")
+                if self.gate_filament_name[mapped_gate] != required_name:
+                    name_mismatch_logging(f"Filament name mismatch for tool T{ref_tool} on gate {mapped_gate} : required {required_name} but gate has {self.gate_filament_name[mapped_gate]}")
+                if total_available_weight < required_usage:
+                    weight_mismatch_logging(f"Insufficient filament for tool T{ref_tool} on gate {mapped_gate} : required {required_usage}g but only {round(total_available_weight, 2)}g available")
 ### LOGGING AND STATISTICS FUNCTIONS GCODE FUNCTIONS #############################
 
     cmd_MMU_STATS_help = "Dump and optionally reset the MMU statistics"
@@ -7878,6 +7920,9 @@ class Mmu:
             msg += " NOT HOMED"
         return msg
 
+    def _es_grp_to_string(self, group):
+        return chr(ord('A') + group)
+
     def _es_groups_to_string(self, title=None):
         msg = "%s:\n" % title if title else "EndlessSpool Groups:\n"
         groups = {}
@@ -7888,7 +7933,7 @@ class Mmu:
             else:
                 groups[group].append(gate)
         msg += "\n".join(
-            "Group %s: Gates: %s" % (chr(ord('A') + group), ", ".join(map(str, gates)))
+            "Group %s: Gates: %s" % (self._es_grp_to_string(group), ", ".join(map(str, gates)))
             for group, gates in groups.items()
         )
         return msg
@@ -8991,52 +9036,11 @@ class Mmu:
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
 
-    cmd_MMU_CHECK_JOB_CONSISTENCY_help = "Checks the consistency between the mmu spool setup and the job requirements. (filament name, quantity, material ...). Also adds up available filament when in an endless spool group."
-    def cmd_MMU_CHECK_JOB_CONSISTENCY(self, gcmd):
+    cmd_MMU_CHECK_JOB_CMMU_SLICERISTENCY_help = "Checks the consistency between the mmu spool setup and the job requirements. (filament name, quantity, material ...). Also adds up available filament when in an endless spool group."
+    def cmd_MMU_CHECK_MMU_SLICER_CONSISTENCY(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if self.check_if_disabled() or not self.consistency_checks_enable: return
-        # determine how checks will be logged and if they will pause the print
-        def get_logger_from_severity(severity):
-            if severity == 0: return self.log_info
-            if severity == 1: return self.log_warning
-            if severity == 2: return self.handle_mmu_error
-            else : raise MmuError("Invalid consistency weight severity: %d" % severity)
-
-        name_mismatch_logging = get_logger_from_severity(self.consistency_name_severity)
-        weight_mismatch_logging = get_logger_from_severity(self.consistency_weight_severity)
-        material_mismatch_logging = get_logger_from_severity(self.consistency_material_severity)
-        self.log_info("Checking consistency between MMU setup and job requirements...")
-        # for each referenced tool , if it is used, check if material is sufficient (add up weights on gates when in a endless spool group, and verify that the group is itself consistent - same material)
-        for ref_tool in self.slicer_tool_map['referenced_tools']:
-            tool_info = self.slicer_tool_map['tools'].get(str(ref_tool))
-            if tool_info and tool_info['in_use']:
-                mapped_gate = self.ttg_map[ref_tool]
-                required_material = tool_info['material']
-                required_name = tool_info['name']
-                required_usage = float(tool_info['usage']) if tool_info['usage'] else 0
-                # if the mapped gate is in an endless spool group, sum up all filament in that group
-                group_id = self.endless_spool_groups[mapped_gate]
-                total_available_weight = self.gate_filament_weight[mapped_gate] if self.gate_filament_weight[mapped_gate] else .0
-                is_in_group = self.endless_spool_groups.count(group_id) > 1
-                if is_in_group:
-                    for group in range(self.num_gates):
-                        # Check endless spool group consistency and update total available weight
-                        if self.endless_spool_groups[group] == group_id and group != mapped_gate:
-                            if self.consistency_check_endless_groups:
-                                if self.gate_material[group] != self.gate_material[mapped_gate]:
-                                    material_mismatch_logging(f"Material mismatch in endless spool group {group_id} : gate {mapped_gate} has {self.gate_material[mapped_gate]} but gate {group} has {self.gate_material[group]}")
-                                if self.gate_filament_name[group] != self.gate_filament_name[mapped_gate]:
-                                    name_mismatch_logging(f"Filament name mismatch in endless spool group {group_id} : gate {mapped_gate} has {self.gate_filament_name[mapped_gate]} but gate {group} has {self.gate_filament_name[group]}")
-                            total_available_weight += self.gate_filament_weight[group] if self.gate_filament_weight[group] else .0
-
-                self.log_debug(f"Tool T{ref_tool} mapped to gate {mapped_gate} requires {required_usage}g of {required_material} ({required_name})")
-                self.log_debug(f"Total available filament weight for tool T{ref_tool} is {total_available_weight}g")
-                if self.gate_material[mapped_gate] != required_material:
-                    material_mismatch_logging(f"Material mismatch for tool T{ref_tool} on gate {mapped_gate} : required {required_material} but gate has {self.gate_material[mapped_gate]}")
-                if self.gate_filament_name[mapped_gate] != required_name:
-                    name_mismatch_logging(f"Filament name mismatch for tool T{ref_tool} on gate {mapped_gate} : required {required_name} but gate has {self.gate_filament_name[mapped_gate]}")
-                if total_available_weight < required_usage:
-                    weight_mismatch_logging(f"Insufficient filament for tool T{ref_tool} on gate {mapped_gate} : required {required_usage}g but only {total_available_weight}g available")
+        self._check_mmu_slicer_consistency()
 
     cmd_MMU_PRELOAD_help = "Preloads filament at specified or current gate"
     def cmd_MMU_PRELOAD(self, gcmd):
