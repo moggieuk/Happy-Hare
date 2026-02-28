@@ -266,15 +266,15 @@ class MmuSyncFeedbackManager:
                     float(state)
                 )
             )
-            # IMPORTANT: Do NOT reset the extruder watchdog every proportional tick.
-            # Only reset on deadband transitions (tension<->compression) so ΔE can accumulate.
+            # IMPORTANT: Do NOT reset the last_recorded_extruder_position every proportional tick.
+            # Only reset on deadband transitions (tension<->neutral<->compression) so ΔE can accumulate.
             def _side(v):
                 return 0 if abs(v) < self.PROP_DEADBAND_THRESHOLD else (1 if v > 0.0 else -1)
             new_side = _side(self.state)
             if new_side != self._last_state_side:
-                self._reset_extruder_watchdog()
-                self._reset_endguard()
-                self._last_state_side = new_side
+                self.last_recorded_extruder_position = None # Reset extruder watchdog position
+                self._reset_endguard()                      # reset endguard accumulators as we are counting from a new side.
+                self._last_state_side = new_side            # switch sides
 
             if self.sync_feedback_enabled and self.active:
                 # Dynamically inspect sensor availability so we can be reactive to user enable/disable mid print
