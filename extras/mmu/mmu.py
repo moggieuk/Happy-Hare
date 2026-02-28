@@ -9041,7 +9041,9 @@ class Mmu:
     cmd_MMU_CHECK_JOB_CMMU_SLICERISTENCY_help = "Checks the consistency between the mmu spool setup and the job requirements. (filament name, quantity, material ...). Also adds up available filament when in an endless spool group."
     def cmd_MMU_CHECK_MMU_SLICER_CONSISTENCY(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        if self.check_if_disabled() or not self.consistency_checks_enable: return
+        if self.check_if_disabled() or not self.consistency_checks_enable:
+            self.log_info("MMU consistency checks are disabled. To enable it set 'consistency_checks_enable: True' in the MMU config section. (Or run run the non persistent `MMU_TEST_CONFIG consistency_checks_enable=True` command)")
+            return
         self._check_mmu_slicer_consistency()
 
     cmd_MMU_PRELOAD_help = "Preloads filament at specified or current gate"
