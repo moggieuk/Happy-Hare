@@ -732,19 +732,6 @@ read_previous_config() {
     # sync_multiplier_low: 0.95
     # >> sync_feedback_speed_multiplier: 5
     # >> sync_feedback_extrude_threshold: 5
-    # v3.4.2 - name rationalization
-    # selector_touch_enable >> selector_touch_enabled
-    # enable_clog_detection >> flowguard_encoder_mode
-    # enable_endless_spool >> endless_spool_enabled
-    if [ "${_param_selector_touch_enable}" != "" ]; then
-        _param_selector_touch_enabled=${_param_selector_touch_enable}
-    fi
-    if [ "${_param_enable_clog_detection}" != "" ]; then
-        _param_flowguard_encoder_mode=${_param_enable_clog_detection}
-    fi
-    if [ "${_param_enable_endless_spool}" != "" ]; then
-        _param_endless_spool_enabled=${_param_enable_endless_spool}
-    fi
 }
 
 check_for_999() {
@@ -2089,7 +2076,7 @@ questionaire() {
             _param_gate_unload_buffer=50
             _param_gate_endstop_to_encoder=14
             _param_gate_autoload=1
-            _param_gate_final_eject_distance=300  
+            _param_gate_final_eject_distance=300
             _param_has_filament_buffer=0
 
             _param_autocal_bowden_length=1
@@ -2356,7 +2343,7 @@ questionaire() {
 			"$TZB_1")
                 _hw_brd_type="TZB_1"
                 pattern="Klipper_stm32"
-                ;;	
+                ;;
             "$AFC_LITE_1")
                 _hw_brd_type="AFC_LITE_1"
                 pattern="Klipper_stm32"
