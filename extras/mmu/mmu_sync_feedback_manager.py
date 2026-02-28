@@ -128,11 +128,14 @@ class MmuSyncFeedbackManager:
     # Sync feedback manager public access...
     #
 
-    def set_default_rd(self):
+    def set_default_rd(self, gate=None):
         """
         Ensure correct starting rotation distance
         """
-        rd = self.mmu.get_rotation_distance(self.mmu.gate_selected)
+        if gate == None:
+            gate = self.mmu.gate_selected
+
+        rd = self.mmu.get_rotation_distance(gate)
         if gate >= 0:
             self.mmu.log_debug("MmuSyncFeedbackManager: Setting default rotation distance for gate %d to %.4f" % (gate, rd))
         self.mmu.set_rotation_distance(rd)
@@ -434,7 +437,7 @@ class MmuSyncFeedbackManager:
                     sensor_key = self.mmu.SENSOR_PROPORTIONAL
                 elif has_compression and not has_tension:
                     sensor_key = self.mmu.SENSOR_COMPRESSION
-                elif has tension and not has_compression:
+                elif has_tension and not has_compression:
                     sensor_key = self.mmu.SENSOR_TENSION
                 elif f_trigger == "clog":
                     sensor_key = self.mmu.SENSOR_COMPRESSION
