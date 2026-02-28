@@ -51,6 +51,8 @@ class MmuSyncFeedbackManager:
         self.active = False         # Actively operating?
         self.last_recorded_extruder_position = None
         self._last_state_side = self.SYNC_STATE_NEUTRAL # track sign of proportional state to detect transitions
+        # - Dual switches: use self.state
+        # - Proportional: use hysteresis-latched side in _last_state_side
         self._rd_applied = None     # track live applied RD so UI can show true adjustment
 
         # Process config
@@ -538,7 +540,10 @@ class MmuSyncFeedbackManager:
         # If using proportional feedback, consume hysteresis-quantised side (_last_state_side).
         use_proportional_hysteresis = bool(self.sync_feedback_proportional_sensor)
 
-        # Choose the effective side the sensor is at to drive RD:
+        # Choose the effective side the sensor is at to drive RD
+        # Distinguish between proportional sensor and switch based sensor to derive effective state
+        # - Dual switches: use self.state
+        # - Proportional: use hysteresis-latched side in _last_state_side
         if use_proportional_hysteresis:
             effective_state = self._last_state_side
         else:
@@ -657,7 +662,8 @@ class MmuSyncFeedbackManager:
             else: # No sensors at all
                 ss = self.SYNC_STATE_NEUTRAL
         self.state = ss
-        # Update quantised cached side for later transition detection
+        # Update quantised cached side for later transition detection for the proportional sensor
+        # that uses hysteresis-latched side in _last_state_side
         self._last_state_side = ss
 
 
