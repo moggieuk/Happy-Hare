@@ -390,6 +390,8 @@ class MmuAdcSwitchSensor:
                 "insert": insert_gcode,
                 "remove": remove_gcode,
                 "runout": runout_gcode,
+                "clog":   clog_gcode,
+                "tangle": tangle_gcode,
             },
             insert_remove_in_print,
             button_handler,
