@@ -526,16 +526,33 @@ class MmuHallSensor:
         if multi_use:
             ppins.allow_multi_use_pin(pin_name)
         mcu_adc = ppins.setup_pin('adc', pin_name)
-        if hasattr(mcu_adc, 'setup_adc_sample'): # newer Klipper versions
-            mcu_adc.setup_adc_sample(sample_time, sample_count)
-        else: # older Klipper versions
+        if hasattr(mcu_adc, "setup_minmax"):
+            # Kalico and very old Klipper
             mcu_adc.setup_minmax(sample_time, sample_count)
-        mcu_adc.setup_adc_callback(report_time, callback)
+            mcu_adc.setup_adc_callback(report_time, callback)
+        else:
+            try:
+                # New Klipper (>= v0.13.0-557)
+                mcu_adc.setup_adc_sample(report_time, sample_time, sample_count)
+                mcu_adc.setup_adc_callback(callback)
+            except TypeError:
+                # Klipper versions between Kalico and New Klipper
+                mcu_adc.setup_adc_sample(sample_time, sample_count)
+                mcu_adc.setup_adc_callback(report_time, callback)
         return mcu_adc
 
     # Callbacks are heavily optimized - since the sensor is used for homing, performance impacts overrun
-    # No 
-    def adc_callback(self, read_time, read_value):
+    def adc_callback(self, *args):
+        # Old klipper: adc_callback(read_time, read_value)
+        # New klipper: adc_callback(samples) where samples is a list of (read_time, read_value)
+        if len(args) == 1:
+            samples = args[0]
+            read_time, read_value = samples[-1]
+        elif len(args) == 2:
+            read_time, read_value = args
+        else:
+            raise TypeError("adc_callback expected (read_time, read_value) or (samples), got %d args" % len(args))
+
         self._val1 = read_value
         self.lastReadTime = read_time
         
@@ -557,7 +574,17 @@ class MmuHallSensor:
         if present:
             self.lastTriggerTime = read_time
 
-    def adc2_callback(self, read_time, read_value):
+    def adc2_callback(self, *args):
+        # Old klipper: adc2_callback(read_time, read_value)
+        # New klipper: adc2_callback(samples) where samples is a list of (read_time, read_value)
+        if len(args) == 1:
+            samples = args[0]
+            read_time, read_value = samples[-1]
+        elif len(args) == 2:
+            read_time, read_value = args
+        else:
+            raise TypeError("adc2_callback expected (read_time, read_value) or (samples), got %d args" % len(args))
+
         self._val2 = read_value
         self.lastReadTime = read_time
 
