@@ -19,7 +19,7 @@
 #           calibrated MMU gear rotation_distance.
 #
 #
-# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+# Copyright (C) 2022-2025  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
 # (\_/)
@@ -832,7 +832,7 @@ class _FlowguardEngine(object):
         self._relief_headroom = 0.0 # Debugging
 
         # FlowGuard arming test
-        self._armed = False         # Disarmed until a state change while moving or verified near neutral
+        self._armed = False         # Disarmed until a state change while moving
         self._arm_motion_mm = 0.0   # Motion since last (or initial) state sample
         self._arm_last_state = None
 
@@ -864,11 +864,9 @@ class _FlowguardEngine(object):
         self._relief_headroom = cfg.flowguard_relief_mm
 
         if not self._armed:
-            # Arm when we've moved and observed any change in coarse state or know we are near neutral
-            changed_state = (state_now != self._arm_last_state)
-            moved = abs(self._arm_motion_mm) > 0.0
-            near_neutral = cfg.sensor_type in ("P") and abs(sensor_reading) < cfg.autotune_stable_x_thresh
-            if moved and (changed_state or near_neutral):
+            # Arm when we've moved and observed any change in coarse state
+            changed = (state_now != self._arm_last_state)
+            if abs(self._arm_motion_mm) > 0.0 and changed:
                 self._armed = True
             else:
                 return self.status()
@@ -1619,7 +1617,7 @@ class SyncController(object):
         if self._is_extreme(sensor_reading):
             self._vis_est = float(self._extreme_polarity(sensor_reading))
             return self._vis_est
-    
+
         # Get phase info
         ph = self.autotune.twolevel_phase(exclude_extreme=cfg.sensor_type == "D")
 

@@ -1,14 +1,10 @@
 # Happy Hare MMU Software
 #
-# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+# Copyright (C) 2022-2025  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
 # Goal: Manager class to handle all aspects of MMU calibration and autotuning. In
 #       paricular manage persistence of bowden lengths and gear rotation distances.
-#
-# Implements commands:
-#   MMU_SET_LED
-#
 #
 # (\_/)
 # ( *,*)

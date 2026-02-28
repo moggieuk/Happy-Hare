@@ -38,12 +38,12 @@ gear_max_accel: 1500			# Never to be exceeded gear acceleration regardless of sp
 
 
 # Selector servo configuration  ----------------------------------------------------------------------------------------
-# ███████╗███████╗██████╗ ██╗   ██╗ ██████╗ 
+# ███████╗███████╗██████╗ ██╗   ██╗ ██████╗
 # ██╔════╝██╔════╝██╔══██╗██║   ██║██╔═══██╗
 # ███████╗█████╗  ██████╔╝██║   ██║██║   ██║
 # ╚════██║██╔══╝  ██╔══██╗╚██╗ ██╔╝██║   ██║
 # ███████║███████╗██║  ██║ ╚████╔╝ ╚██████╔╝
-# ╚══════╝╚══════╝╚═╝  ╚═╝  ╚═══╝   ╚═════╝ 
+# ╚══════╝╚══════╝╚═╝  ╚═╝  ╚═══╝   ╚═════╝
 #
 # Selector servo positions are stored in `mmu_vars.cfg` after calibration.
 # Note that the "release angle" is by default the nearest position between calibrated selection angles. This can be overriden
@@ -61,12 +61,12 @@ selector_release_angle: -1		# Optionally force a specific "release" angle, -1=De
 
 
 # Logging --------------------------------------------------------------------------------------------------------------
-# ██╗      ██████╗  ██████╗  ██████╗ ██╗███╗   ██╗ ██████╗ 
-# ██║     ██╔═══██╗██╔════╝ ██╔════╝ ██║████╗  ██║██╔════╝ 
+# ██╗      ██████╗  ██████╗  ██████╗ ██╗███╗   ██╗ ██████╗
+# ██║     ██╔═══██╗██╔════╝ ██╔════╝ ██║████╗  ██║██╔════╝
 # ██║     ██║   ██║██║  ███╗██║  ███╗██║██╔██╗ ██║██║  ███╗
 # ██║     ██║   ██║██║   ██║██║   ██║██║██║╚██╗██║██║   ██║
 # ███████╗╚██████╔╝╚██████╔╝╚██████╔╝██║██║ ╚████║╚██████╔╝
-# ╚══════╝ ╚═════╝  ╚═════╝  ╚═════╝ ╚═╝╚═╝  ╚═══╝ ╚═════╝ 
+# ╚══════╝ ╚═════╝  ╚═════╝  ╚═════╝ ╚═╝╚═╝  ╚═══╝ ╚═════╝
 #
 # log_level & logfile_level can be set to one of (0 = essential, 1 = info, 2 = debug, 3 = trace, 4 = stepper moves)
 # Generally you can keep console logging to a minimal whilst still sending debug output to the mmu.log file
@@ -81,6 +81,32 @@ log_visual: 1				# 1 log visual representation of filament, 0 = disable
 log_startup_status: 1			# Whether to log tool to gate status on startup, 1 = summary (default), 0 = disable
 log_m117_messages: 1			# Whether send toolchange message via M117 to screen
 
+# Consistency ----------------------------------------------------------------------------------------------------------
+#  ██████╗ ██████╗ ███╗   ██╗███████╗██╗███████╗████████╗███████╗███╗   ██╗ ██████╗██╗   ██╗
+# ██╔════╝██╔═══██╗████╗  ██║██╔════╝██║██╔════╝╚══██╔══╝██╔════╝████╗  ██║██╔════╝╚██╗ ██╔╝
+# ██║     ██║   ██║██╔██╗ ██║███████╗██║███████╗   ██║   █████╗  ██╔██╗ ██║██║      ╚████╔╝
+# ██║     ██║   ██║██║╚██╗██║╚════██║██║╚════██║   ██║   ██╔══╝  ██║╚██╗██║██║       ╚██╔╝
+# ╚██████╗╚██████╔╝██║ ╚████║███████║██║███████║   ██║   ███████╗██║ ╚████║╚██████╗   ██║
+#  ╚═════╝ ╚═════╝ ╚═╝  ╚═══╝╚══════╝╚═╝╚══════╝   ╚═╝   ╚══════╝╚═╝  ╚═══╝ ╚═════╝   ╚═╝
+#
+# Happy Hare can perform consistency checks between your MMU spool setup and the job requirements parsed from the
+# gcode file. This includes validating filament names, materials, and available weight. The checks can be configured
+# to generate informational messages, warnings, or errors that will pause the print.
+#
+# When endless spool groups are configured, Happy Hare will sum up the available filament weight across all gates in
+# the group to determine if there is sufficient material. Optionally it can also verify that all gates in an endless
+# spool group have consistent materials and filament names.
+#
+# Severity levels control how mismatches are reported:
+#   0 = info (logged but print continues)
+#   1 = warning (logged with warning but print continues)
+#   2 = error (logged as error and print is paused for user intervention)
+#
+consistency_checks_enable: False				# True to enable consistency checking, False to disable
+consistency_check_endless_groups: False			# True to verify material/name consistency within endless spool groups, False to disable
+consistency_name_severity: 1				# Severity level for filament name mismatches (0=info, 1=warning, 2=error)
+consistency_material_severity: 1			# Severity level for material type mismatches (0=info, 1=warning, 2=error)
+consistency_weight_severity: 2				# Severity level for insufficient filament weight (0=info, 1=warning, 2=error)
 
 # Movement speeds ------------------------------------------------------------------------------------------------------
 # ███████╗██████╗ ███████╗███████╗██████╗ ███████╗
@@ -124,12 +150,12 @@ macro_toolhead_min_cruise_ratio: 0.5	# Default printer cruise ratio applied when
 
 
 # Gate loading/unloading -----------------------------------------------------------------------------------------------
-#  ██████╗  █████╗ ████████╗███████╗    ██╗      ██████╗  █████╗ ██████╗ 
+#  ██████╗  █████╗ ████████╗███████╗    ██╗      ██████╗  █████╗ ██████╗
 # ██╔════╝ ██╔══██╗╚══██╔══╝██╔════╝    ██║     ██╔═══██╗██╔══██╗██╔══██╗
 # ██║  ███╗███████║   ██║   █████╗      ██║     ██║   ██║███████║██║  ██║
 # ██║   ██║██╔══██║   ██║   ██╔══╝      ██║     ██║   ██║██╔══██║██║  ██║
 # ╚██████╔╝██║  ██║   ██║   ███████╗    ███████╗╚██████╔╝██║  ██║██████╔╝
-#  ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝    ╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚═════╝ 
+#  ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚══════╝    ╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚═════╝
 #
 # These settings control the loading and unloading filament at the gate which is the parking position inside the MMU.
 # Typically this would be switch sensor but you can also use an encoder. Even with encoder the endstop can be a switch
@@ -148,7 +174,7 @@ macro_toolhead_min_cruise_ratio: 0.5	# Default printer cruise ratio applied when
 gate_homing_endstop: encoder		# Name of gate endstop, "encoder" forces use of encoder for parking
 gate_homing_max: 70			# Maximum move distance to home to the gate (or actual move distance for encoder parking)
 gate_preload_homing_max: 70		# Maximum homing distance to the mmu_gear endstop (if MMU is fitted with one)
-gate_preload_parking_distance: 0	# Parking position relative to mmu_gear endstop (-ve value means move forward) 
+gate_preload_parking_distance: 0	# Parking position relative to mmu_gear endstop (-ve value means move forward)
 gate_unload_buffer: 50			# Amount to reduce the fast unload so that filament doesn't overshoot when parking
 gate_parking_distance: 23 		# Parking position in the gate (distance back from homing point, -ve value means move forward)
 gate_endstop_to_encoder: 10		# Distance between gate endstop and encoder (IF both fitted. +ve if encoder after endstop)
@@ -157,17 +183,17 @@ gate_final_eject_distance: 0		# Distance to eject filament on MMU_EJECT (Ignored
 
 
 # Bowden tube loading/unloading ----------------------------------------------------------------------------------------
-# ██████╗  ██████╗ ██╗    ██╗██████╗ ███████╗███╗   ██╗    ██╗      ██████╗  █████╗ ██████╗ 
+# ██████╗  ██████╗ ██╗    ██╗██████╗ ███████╗███╗   ██╗    ██╗      ██████╗  █████╗ ██████╗
 # ██╔══██╗██╔═══██╗██║    ██║██╔══██╗██╔════╝████╗  ██║    ██║     ██╔═══██╗██╔══██╗██╔══██╗
 # ██████╔╝██║   ██║██║ █╗ ██║██║  ██║█████╗  ██╔██╗ ██║    ██║     ██║   ██║███████║██║  ██║
 # ██╔══██╗██║   ██║██║███╗██║██║  ██║██╔══╝  ██║╚██╗██║    ██║     ██║   ██║██╔══██║██║  ██║
 # ██████╔╝╚██████╔╝╚███╔███╔╝██████╔╝███████╗██║ ╚████║    ███████╗╚██████╔╝██║  ██║██████╔╝
-# ╚═════╝  ╚═════╝  ╚══╝╚══╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝    ╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚═════╝ 
+# ╚═════╝  ╚═════╝  ╚══╝╚══╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝    ╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚═════╝
 #
 bowden_homing_max: 2000			# Maximum attempted bowden move (for calibration). Should be larger than your actual bowden!
 
 # If you MMU is equiped with an encoder the following options are available:
-# 
+#
 # In addition to different bowden loading speeds for buffer and non-buffered filament it is possible to detect missed
 # steps caused by "jerking" on a heavy spool. If bowden correction is enabled Happy Hare will "believe" the encoder
 # reading and make correction moves to bring the filament to within the 'bowden_allowable_load_delta' of the end of
@@ -180,18 +206,18 @@ bowden_allowable_load_delta: 20.0	# How close in mm the correction moves will at
 # reduce possibility of grinding filament. If enabled the trigger can be tuned by setting the "error tolerance" which
 # represents the fraction of allowable mismatch between actual movement and that seen by encoder. Setting to 50% tolerance
 # usually works well. Increasing will make test more tolerant. Value of 100% essentially disables error detection
-# 
+#
 bowden_pre_unload_test: 1		# 1 to check for bowden movement before full pull (slower), 0 don't check (faster)
 bowden_pre_unload_error_tolerance: 50	# ADVANCED: tune pre_unload_test
 
 
 # Extruder homing -----------------------------------------------------------------------------------------------------
-# ███████╗██╗  ██╗████████╗    ██╗  ██╗ ██████╗ ███╗   ███╗██╗███╗   ██╗ ██████╗ 
-# ██╔════╝╚██╗██╔╝╚══██╔══╝    ██║  ██║██╔═══██╗████╗ ████║██║████╗  ██║██╔════╝ 
+# ███████╗██╗  ██╗████████╗    ██╗  ██╗ ██████╗ ███╗   ███╗██╗███╗   ██╗ ██████╗
+# ██╔════╝╚██╗██╔╝╚══██╔══╝    ██║  ██║██╔═══██╗████╗ ████║██║████╗  ██║██╔════╝
 # █████╗   ╚███╔╝    ██║       ███████║██║   ██║██╔████╔██║██║██╔██╗ ██║██║  ███╗
 # ██╔══╝   ██╔██╗    ██║       ██╔══██║██║   ██║██║╚██╔╝██║██║██║╚██╗██║██║   ██║
 # ███████╗██╔╝ ██╗   ██║██╗    ██║  ██║╚██████╔╝██║ ╚═╝ ██║██║██║ ╚████║╚██████╔╝
-# ╚══════╝╚═╝  ╚═╝   ╚═╝╚═╝    ╚═╝  ╚═╝ ╚═════╝ ╚═╝     ╚═╝╚═╝╚═╝  ╚═══╝ ╚═════╝ 
+# ╚══════╝╚═╝  ╚═╝   ╚═╝╚═╝    ╚═╝  ╚═╝ ╚═════╝ ╚═╝     ╚═╝╚═╝╚═╝  ╚═══╝ ╚═════╝
 #
 # Happy Hare needs a reference "homing point" close to the extruder from which to accurately complete the loading of
 # the toolhead. This homing operation takes place after the fast bowden load and it is anticipated that that load
@@ -231,12 +257,12 @@ extruder_force_homing: 0
 
 
 # Toolhead loading and unloading --------------------------------------------------------------------------------------
-# ████████╗ ██████╗  ██████╗ ██╗     ██╗  ██╗███████╗ █████╗ ██████╗     ██╗      ██████╗  █████╗ ██████╗ 
+# ████████╗ ██████╗  ██████╗ ██╗     ██╗  ██╗███████╗ █████╗ ██████╗     ██╗      ██████╗  █████╗ ██████╗
 # ╚══██╔══╝██╔═══██╗██╔═══██╗██║     ██║  ██║██╔════╝██╔══██╗██╔══██╗    ██║     ██╔═══██╗██╔══██╗██╔══██╗
 #    ██║   ██║   ██║██║   ██║██║     ███████║█████╗  ███████║██║  ██║    ██║     ██║   ██║███████║██║  ██║
 #    ██║   ██║   ██║██║   ██║██║     ██╔══██║██╔══╝  ██╔══██║██║  ██║    ██║     ██║   ██║██╔══██║██║  ██║
 #    ██║   ╚██████╔╝╚██████╔╝███████╗██║  ██║███████╗██║  ██║██████╔╝    ███████╗╚██████╔╝██║  ██║██████╔╝
-#    ╚═╝    ╚═════╝  ╚═════╝ ╚══════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═════╝     ╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚═════╝ 
+#    ╚═╝    ╚═════╝  ╚═════╝ ╚══════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═════╝     ╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚═════╝
 #
 # It is possible to define highly customized loading and unloading sequences, however, unless you have a specialized
 # setup it is probably easier to opt for the built-in toolhead loading and unloading sequence which already offers a
@@ -308,12 +334,12 @@ toolhead_move_error_tolerance: 60
 
 
 # Tip forming ---------------------------------------------------------------------------------------------------------
-# ████████╗██╗██████╗     ███████╗ ██████╗ ██████╗ ███╗   ███╗██╗███╗   ██╗ ██████╗ 
-# ╚══██╔══╝██║██╔══██╗    ██╔════╝██╔═══██╗██╔══██╗████╗ ████║██║████╗  ██║██╔════╝ 
+# ████████╗██╗██████╗     ███████╗ ██████╗ ██████╗ ███╗   ███╗██╗███╗   ██╗ ██████╗
+# ╚══██╔══╝██║██╔══██╗    ██╔════╝██╔═══██╗██╔══██╗████╗ ████║██║████╗  ██║██╔════╝
 #    ██║   ██║██████╔╝    █████╗  ██║   ██║██████╔╝██╔████╔██║██║██╔██╗ ██║██║  ███╗
 #    ██║   ██║██╔═══╝     ██╔══╝  ██║   ██║██╔══██╗██║╚██╔╝██║██║██║╚██╗██║██║   ██║
 #    ██║   ██║██║         ██║     ╚██████╔╝██║  ██║██║ ╚═╝ ██║██║██║ ╚████║╚██████╔╝
-#    ╚═╝   ╚═╝╚═╝         ╚═╝      ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝╚═╝  ╚═══╝ ╚═════╝ 
+#    ╚═╝   ╚═╝╚═╝         ╚═╝      ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝╚═╝╚═╝  ╚═══╝ ╚═════╝
 #
 # Tip forming responsibility can be split between slicer (in-print) and standalone macro (not in-print) or forced to always
 # be done by Happy Hare's standalone macro. Since you always need the option to form tips without the slicer so it is
@@ -339,12 +365,12 @@ slicer_tip_park_pos: 0                  # This specifies the position of filamen
 
 
 # Purging -------------------------------------------------------------------------------------------------------------
-# ██████╗ ██╗   ██╗██████╗  ██████╗ ██╗███╗   ██╗ ██████╗ 
-# ██╔══██╗██║   ██║██╔══██╗██╔════╝ ██║████╗  ██║██╔════╝ 
+# ██████╗ ██╗   ██╗██████╗  ██████╗ ██╗███╗   ██╗ ██████╗
+# ██╔══██╗██║   ██║██╔══██╗██╔════╝ ██║████╗  ██║██╔════╝
 # ██████╔╝██║   ██║██████╔╝██║  ███╗██║██╔██╗ ██║██║  ███╗
 # ██╔═══╝ ██║   ██║██╔══██╗██║   ██║██║██║╚██╗██║██║   ██║
 # ██║     ╚██████╔╝██║  ██║╚██████╔╝██║██║ ╚████║╚██████╔╝
-# ╚═╝      ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚═╝╚═╝  ╚═══╝ ╚═════╝ 
+# ╚═╝      ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚═╝╚═╝  ╚═══╝ ╚═════╝
 #
 # After a toolchange it is necessary to purge the old filament. Similar to tip forming this can be done by the slicer and/or
 # by Happy Hare using an extension like Blobifer. If a purge_macro is defined it will be called when not printing or whenever
@@ -366,8 +392,8 @@ extruder_purge_current: 100             # % of extruder current (100%-150%) to u
 # Synchronized gear/extruder movement ----------------------------------------------------------------------------------
 # ███╗   ███╗ ██████╗ ████████╗ ██████╗ ██████╗     ███████╗██╗   ██╗███╗   ██╗ ██████╗
 # ████╗ ████║██╔═══██╗╚══██╔══╝██╔═══██╗██╔══██╗    ██╔════╝╚██╗ ██╔╝████╗  ██║██╔════╝
-# ██╔████╔██║██║   ██║   ██║   ██║   ██║██████╔╝    ███████╗ ╚████╔╝ ██╔██╗ ██║██║     
-# ██║╚██╔╝██║██║   ██║   ██║   ██║   ██║██╔══██╗    ╚════██║  ╚██╔╝  ██║╚██╗██║██║     
+# ██╔████╔██║██║   ██║   ██║   ██║   ██║██████╔╝    ███████╗ ╚████╔╝ ██╔██╗ ██║██║
+# ██║╚██╔╝██║██║   ██║   ██║   ██║   ██║██╔══██╗    ╚════██║  ╚██╔╝  ██║╚██╗██║██║
 # ██║ ╚═╝ ██║╚██████╔╝   ██║   ╚██████╔╝██║  ██║    ███████║   ██║   ██║ ╚████║╚██████╗
 # ╚═╝     ╚═╝ ╚═════╝    ╚═╝    ╚═════╝ ╚═╝  ╚═╝    ╚══════╝   ╚═╝   ╚═╝  ╚═══╝ ╚═════╝
 #
@@ -414,19 +440,19 @@ sync_feedback_debug_log: 0		# 0 = disable (normal opertion), 1 = enable telemetr
 
 
 # ESpooler control -----------------------------------------------------------------------------------------------------
-# ███████╗███████╗██████╗  ██████╗  ██████╗ ██╗     ███████╗██████╗ 
+# ███████╗███████╗██████╗  ██████╗  ██████╗ ██╗     ███████╗██████╗
 # ██╔════╝██╔════╝██╔══██╗██╔═══██╗██╔═══██╗██║     ██╔════╝██╔══██╗
 # █████╗  ███████╗██████╔╝██║   ██║██║   ██║██║     █████╗  ██████╔╝
 # ██╔══╝  ╚════██║██╔═══╝ ██║   ██║██║   ██║██║     ██╔══╝  ██╔══██╗
 # ███████╗███████║██║     ╚██████╔╝╚██████╔╝███████╗███████╗██║  ██║
 # ╚══════╝╚══════╝╚═╝      ╚═════╝  ╚═════╝ ╚══════╝╚══════╝╚═╝  ╚═╝
-#                                                                  
+#
 # If your MMU has a dc motor (often N20) controlled respooler/assist then how it operates can be controlled with these
 # settings. Typically the espooler will be controlled with PWM signal. This will be at the maximum at speeds equal or
 # above 'espooler.max_stepper_speed'. The PWM signal will scale downwards towards 0 for slower speeds. The falloff being
 # controlled by the 'espooler_speed_exponent' setting according to this formula and allows for non-linear characteristics
 # the DC motor (0.5 is a good starting value).
-# 
+#
 #     espooler_pwm = (stepper_speed / espooler_max_stepper_speed) ^ {espooler_speed_exponent}
 #
 # Regardless of h/w configuration you can enable/disable actions with the 'espooler_operations' list. E.g. remove 'play' to
@@ -528,13 +554,51 @@ flowguard_encoder_mode: 2		# 0 = Disable, 1 = Static length clog detection, 2 = 
 flowguard_encoder_max_motion: 20
 
 
+# FlowGuard Clog and Tangle Detection --------------------------------------------------------------------------------
+# ███████╗██╗      ██████╗ ██╗    ██╗ ██████╗ ██╗   ██╗ █████╗ ██████╗ ██████╗
+# ██╔════╝██║     ██╔═══██╗██║    ██║██╔════╝ ██║   ██║██╔══██╗██╔══██╗██╔══██╗
+# █████╗  ██║     ██║   ██║██║ █╗ ██║██║  ███╗██║   ██║███████║██████╔╝██║  ██║
+# ██╔══╝  ██║     ██║   ██║██║███╗██║██║   ██║██║   ██║██╔══██║██╔══██╗██║  ██║
+# ██║     ███████╗╚██████╔╝╚███╔███╔╝╚██████╔╝╚██████╔╝██║  ██║██║  ██║██████╔╝
+# ╚═╝     ╚══════╝ ╚═════╝  ╚══╝╚══╝  ╚═════╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝
+#
+# Options are available to automatically detects extruder clogs and MMU tangles. Each option works independently and
+# can be combined. Flowguard can even discern the difference between an extruder clog and a spool tangle!
+#
+# Flowguard:  This intelligently measures filament tension (only available if sync-feedback buffer is fitted)
+#
+# Encoder detection: This monitors encoder movement and compares to extruder (only available if encoder is fitted)
+#
+flowguard_enabled: 1			# 0 = Flowguard protection disabled, 1 = Enabled
+
+# The flowguard_max_relief is the amount of relief movement (effective mm change in filament length between MMU and extruder)
+# that Happy Hare will wait until triggering a clog or runout. A smaller value is more sensitive to triggering. Since the
+# relief movement is hightly dependent on filament "spring" in the bowden tube, filament friction, and
+# 'sync_feedback_buffer_range', it is generally good to start high and then decrease if a more sensitive trigger is desired.
+# Analog proportional (type P) sensors can generally have a much lower value. Increase if you have false triggers
+flowguard_max_relief: 40
+
+# Encoder runout/clog/tangle detection watches for movement over either a static or automatically adjusted distance - if
+# no encoder movement is seen when the extruder moves this distance runout/ clog/tangle event will be generated. Allowing
+# the distance to be adjusted automatically (mode=2) will generally allow for a quicker trigger but use a static length
+# (mode=1, set encoder_max_motion) if you get false triggers (see flowguard guide on wiki for more details)
+# Note that this feature cannot disinguish between clog or tangle.
+flowguard_encoder_mode: 2		# 0 = Disable, 1 = Static length clog detection, 2 = Automatic length clog detection
+
+# The encoder_max_motion is the absolute max permitted extruder movement without the encoder seeing movement when using
+# status mode (mode=1). Smaller values are more sensitive but beware of going too small - slack and friction in the
+# bowden may cause gaps in encoder movement. Increase if you have false triggers
+# Note that this value is overriden by any calibrated value stored in 'mmu_vars.cfg' if in automatic mode (mode=2).
+flowguard_encoder_max_motion: 20
+
+
 # Filament Management Options ----------------------------------------------------------------------------------------
 # ███████╗██╗██╗            ███╗   ███╗ ██████╗ ███╗   ███╗████████╗
 # ██╔════╝██║██║            ████╗ ████║██╔════╝ ████╗ ████║╚══██╔══╝
-# █████╗  ██║██║            ██╔████╔██║██║  ███╗██╔████╔██║   ██║   
-# ██╔══╝  ██║██║            ██║╚██╔╝██║██║   ██║██║╚██╔╝██║   ██║   
-# ██║     ██║███████╗██╗    ██║ ╚═╝ ██║╚██████╔╝██║ ╚═╝ ██║   ██║   
-# ╚═╝     ╚═╝╚══════╝╚═╝    ╚═╝     ╚═╝ ╚═════╝ ╚═╝     ╚═╝   ╚═╝   
+# █████╗  ██║██║            ██╔████╔██║██║  ███╗██╔████╔██║   ██║
+# ██╔══╝  ██║██║            ██║╚██╔╝██║██║   ██║██║╚██╔╝██║   ██║
+# ██║     ██║███████╗██╗    ██║ ╚═╝ ██║╚██████╔╝██║ ╚═╝ ██║   ██║
+# ╚═╝     ╚═╝╚══════╝╚═╝    ╚═╝     ╚═╝ ╚═════╝ ╚═╝     ╚═╝   ╚═╝
 #
 # - EndlessSpool feature allows detection of runout on one spool and the automatic mapping of tool to an alternative
 #   gate (spool). Set to '1', this feature requires clog detection or gate sensor or pre-gate sensors. EndlessSpool
@@ -661,8 +725,8 @@ autotune_encoder: 0		# Automated encoder tuning. 1=automatic, 0=manual/off
 # Miscellaneous, but you should review -------------------------------------------------------------------------------
 # ███╗   ███╗██╗███████╗ ██████╗
 # ████╗ ████║██║██╔════╝██╔════╝
-# ██╔████╔██║██║███████╗██║     
-# ██║╚██╔╝██║██║╚════██║██║     
+# ██╔████╔██║██║███████╗██║
+# ██║╚██╔╝██║██║╚════██║██║
 # ██║ ╚═╝ ██║██║███████║╚██████╗
 # ╚═╝     ╚═╝╚═╝╚══════╝ ╚═════╝
 #
@@ -701,7 +765,7 @@ gcode_unload_sequence: 0	# VERY ADVANCED: Gcode unloading sequence, 1=enabled, 0
 
 
 # ADVANCED: Klipper tuning -------------------------------------------------------------------------------------------
-# ██╗  ██╗██╗     ██╗██████╗ ██████╗ ███████╗██████╗ 
+# ██╗  ██╗██╗     ██╗██████╗ ██████╗ ███████╗██████╗
 # ██║ ██╔╝██║     ██║██╔══██╗██╔══██╗██╔════╝██╔══██╗
 # █████╔╝ ██║     ██║██████╔╝██████╔╝█████╗  ██████╔╝
 # ██╔═██╗ ██║     ██║██╔═══╝ ██╔═══╝ ██╔══╝  ██╔══██╗

@@ -19,7 +19,7 @@
 #           calibrated MMU gear rotation_distance.
 #
 #
-# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+# Copyright (C) 2022-2025  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
 # (\_/)
@@ -818,17 +818,17 @@ class _FlowguardEngine:
         """
         cfg = self.ctrl.cfg
         effort = self._relief_effort(d_ext) # +ve => compression effort, -ve => tension effort
-        
+
         # Get the current sensor state for FlowGuard purposes (CO/TO are always at extreme)
         state_now = self._flowguard_polarity(sensor_reading)
         comp_ext, tens_ext = (state_now == 1, state_now == -1)
-        
+
         # Arming logic to prevent false triggers on startup if thresholds are tight
         self._arm_motion_mm += d_ext
         state_now = self.ctrl._extreme_polarity(sensor_reading)
         if self._arm_last_state is None:
             self._arm_last_state = state_now
-        
+
         self._relief_headroom = cfg.flowguard_relief_mm
 
         if not self._armed:
@@ -1586,7 +1586,7 @@ class SyncController:
         if self._is_extreme(sensor_reading):
             self._vis_est = float(self._extreme_polarity(sensor_reading))
             return self._vis_est
-    
+
         # Get phase info
         ph = self.autotune.twolevel_phase(exclude_extreme=cfg.sensor_type == "D")
 

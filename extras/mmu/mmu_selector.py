@@ -1,10 +1,5 @@
 # Happy Hare MMU Software
 #
-# Copyright (C) 2022-2026  moggieuk#6538 (discord)
-#                          moggieuk@hotmail.com
-#
-# Goal: Implementation of various selector variations:
-#
 # VirtualSelector:
 #  Implements selector for type-B MMU's with gear driver per gate
 #   - Uses gear driver stepper per-gate
@@ -1121,7 +1116,7 @@ class LinearServoSelector(LinearSelector, object):
 #   - Uses gear driver stepper gate
 #   - Uses selector stepper for gate selection with endstop
 #   - Supports type-A classic MMU's like ERCF and Tradrack
-# 
+#
 ################################################################################
 
 class LinearMultiGearSelector(LinearSelector, object):
@@ -1574,7 +1569,7 @@ class RotarySelector(BaseSelector, object):
 #     SET_PIN PIN=d0 VALUE={params.S0}
 #     SET_PIN PIN=d1 VALUE={params.S1}
 #     SET_PIN PIN=d2 VALUE={params.S2}
-# 
+#
 # Example optocoupler-style SELECT_TOOL macro:
 # [gcode_macro SELECT_TOOL]
 # gcode:

@@ -2089,7 +2089,7 @@ questionaire() {
             _param_gate_unload_buffer=50
             _param_gate_endstop_to_encoder=14
             _param_gate_autoload=1
-            _param_gate_final_eject_distance=300  
+            _param_gate_final_eject_distance=300
             _param_has_filament_buffer=0
 
             _param_autocal_bowden_length=1
@@ -2356,7 +2356,7 @@ questionaire() {
 			"$TZB_1")
                 _hw_brd_type="TZB_1"
                 pattern="Klipper_stm32"
-                ;;	
+                ;;
             "$AFC_LITE_1")
                 _hw_brd_type="AFC_LITE_1"
                 pattern="Klipper_stm32"

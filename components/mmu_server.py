@@ -296,10 +296,11 @@ class MmuServer:
             reponse = await self.http_client.get(url=f'{self.spoolman.spoolman_url}/v1/spool')
             for spool_info in reponse.json():
                 spool_id = spool_info['id']
+                spool_remaining_weight = spool_info['remaining_weight']
                 printer_name = json.loads(spool_info['extra'].get(MMU_NAME_FIELD, "\"\"")).strip('"')
                 mmu_gate = int(spool_info['extra'].get(MMU_GATE_FIELD, -1))
                 filament_attr = self._get_filament_attr(spool_info)
-                self.spool_location[spool_id] = (printer_name, mmu_gate, filament_attr)
+                self.spool_location[spool_id] = (printer_name, mmu_gate, filament_attr, spool_remaining_weight)
 
                 if printer_name and mmu_gate >= 0:
                     if printer_name not in assignments:
@@ -337,15 +338,15 @@ class MmuServer:
             # Log results and update cache
             for sid, result in zip(tasks.keys(), results):
                 if result:
-                    old_printer, old_gate, filament_attr = self.spool_location.get(sid, ('', -1, {}))
-                    self.spool_location[sid] = ('', -1, filament_attr)
+                    old_printer, old_gate, filament_attr, old_weight = self.spool_location.get(sid, ('', -1, {}, 0))
+                    self.spool_location[sid] = ('', -1, filament_attr, old_weight)
                     await self._log_n_send(f"Spool {sid} unassigned from printer {old_printer} and gate {old_gate}", silent=silent)
         return True
 
     # Function to find the first spool_id with a matching 'printer/gate', just 'gate' or just 'printer'
     def _find_first_spool_id(self, target_printer, target_gate):
         return next((spoolid
-                for spoolid, (printer, gate, _) in self.spool_location.items()
+                for spoolid, (printer, gate, _, _) in self.spool_location.items()
                 if (target_printer is None or printer == target_printer) and gate == target_gate
             ), -1)
 
@@ -353,7 +354,7 @@ class MmuServer:
     def _find_all_spool_ids(self, target_printer, target_gate):
         return [
             spoolid
-            for spoolid, (printer, gate, _) in self.spool_location.items()
+            for spoolid, (printer, gate, _, _) in self.spool_location.items()
             if (target_printer is None or printer == target_printer) and (target_gate is None or gate == target_gate)
         ]
 
@@ -415,15 +416,13 @@ class MmuServer:
         If no mmu backend has been detected, ignore the request
         '''
         if self._mmu_backend_enabled():
-            gate_dict = {
-                gate: (
-                    {'spool_id': -1} if spool_id < 0 else
-                    self.spool_location.get(spool_id)[2].copy()
-                    if self.spool_location.get(spool_id)
-                    else logging.error(f"Spool id {spool_id} requested but not found in spoolman")
-                )
-                for gate, spool_id in gate_ids
-            }
+            gate_dict = {}
+            for gate, spool_id in gate_ids:
+                if spool_id < 0:
+                    gate_dict.update({gate : ({'spool_id': -1})})
+                else:
+                    gate_dict.update({gate : (self.spool_location.get(spool_id)[2].copy()) if self.spool_location.get(spool_id) else logging.error(f"Spool id {spool_id} requested but not found in spoolman")})
+                    gate_dict[gate]["remaining_weight"] = self.spool_location.get(spool_id)[3]
             try:
                 await self.klippy_apis.run_gcode(f"MMU_GATE_MAP MAP=\"{gate_dict}\" {'REPLACE=1' if replace else ''} FROM_SPOOLMAN=1 QUIET=1")
             except Exception as e:
@@ -477,7 +476,7 @@ class MmuServer:
             # If setting a full gate map, include updates for "dirty" spool id's
             # that are not otherwise going to be overwritten
             if len(gate_ids) == self.nb_gates:
-                for spool_id, (p_name, gate, _) in self.spool_location.items():
+                for spool_id, (p_name, gate, _, _) in self.spool_location.items():
                     if p_name == self.printer_hostname and not any(s == spool_id for _, s in gate_ids):
                         updates[spool_id] = -1
 
@@ -497,14 +496,14 @@ class MmuServer:
             # Log results and update cache
             for sid, result in zip(tasks.keys(), results):
                 if result:
-                    old_printer, old_gate, filament_attr = self.spool_location.get(sid, ('', -1, {}))
+                    old_printer, old_gate, filament_attr, old_remaining_weight = self.spool_location.get(sid, ('', -1, {}, .0))
                     gate = tasks[sid][1]
                     if updates[sid] < 0: # 'unset' case
-                        self.spool_location[sid] = ('', -1, filament_attr)
+                        self.spool_location[sid] = ('', -1, filament_attr, old_remaining_weight)
                         self.server.send_event("spoolman:unset_spool_gate", {"spool_id": sid, "printer": old_printer, "gate": old_gate})
                         await self._log_n_send(f"Spool {sid} unassigned from printer {old_printer} and gate {old_gate} in Spoolman db", silent=silent)
                     else: # 'set' case
-                        self.spool_location[sid] = (self.printer_hostname, gate, filament_attr)
+                        self.spool_location[sid] = (self.printer_hostname, gate, filament_attr, old_remaining_weight)
                         self.server.send_event("spoolman:set_spool_gate", {"spool_id": sid, "printer": self.printer_hostname, "gate": gate})
                         await self._log_n_send(f"Spool {sid} assigned to printer {self.printer_hostname} @ gate {gate} in Spoolman db", silent=silent)
 
@@ -544,10 +543,10 @@ class MmuServer:
             updated_gate_ids = {}
             for sid, result in zip(tasks.keys(), results):
                 if result:
-                    old_printer, old_gate, filament_attr = self.spool_location.get(sid, ('', -1, {}))
+                    old_printer, old_gate, filament_attr, old_remaining_weight = self.spool_location.get(sid, ('', -1, {}, 0))
                     if old_printer == self.printer_hostname and 0 <= old_gate < self.nb_gates and not updated_gate_ids.get(old_gate):
                         updated_gate_ids[old_gate] = -1
-                    self.spool_location[sid] = ('', -1, filament_attr)
+                    self.spool_location[sid] = ('', -1, filament_attr, old_remaining_weight)
                     self.server.send_event("spoolman:unset_spool_gate", {"spool_id": sid, "printer": old_printer, "gate": old_gate})
                     await self._log_n_send(f"Spool {sid} unassigned from printer {old_printer} and gate {old_gate}", silent=silent)
 
@@ -601,13 +600,13 @@ class MmuServer:
             updated_gate_ids = {}
             for sid, result in zip(tasks.keys(), results):
                 if result:
-                    old_printer, old_gate, filament_attr = self.spool_location.get(sid, ('', -1, {}))
+                    old_printer, old_gate, filament_attr, old_remaining_weight = self.spool_location.get(sid, ('', -1, {}, .0))
                     gate = tasks[sid][1]
                     if sid in old_sids and sid != spool_id:
                         # 'unset' case
                         if old_printer == self.printer_hostname and 0 <= old_gate < self.nb_gates and not updated_gate_ids.get(old_gate):
                             updated_gate_ids[old_gate] = -1
-                        self.spool_location[sid] = ('', -1, filament_attr)
+                        self.spool_location[sid] = ('', -1, filament_attr, old_remaining_weight)
                         self.server.send_event("spoolman:unset_spool_gate", {"spool_id": sid, "printer": old_printer, "gate": old_gate})
                         await self._log_n_send(f"Spool {sid} unassigned from printer {old_printer} and gate {old_gate} in Spoolman db", silent=silent)
                     else:
@@ -616,7 +615,7 @@ class MmuServer:
                             if old_printer == self.printer_hostname and 0 <= old_gate < self.nb_gates and not updated_gate_ids.get(old_gate):
                                 updated_gate_ids[old_gate] = -1
                             updated_gate_ids[gate] = sid
-                        self.spool_location[sid] = (self.printer_hostname, gate, filament_attr)
+                        self.spool_location[sid] = (self.printer_hostname, gate, filament_attr, old_remaining_weight)
                         self.server.send_event("spoolman:set_spool_gate", {"spool_id": sid, "printer": self.printer_hostname, "gate": gate})
                         await self._log_n_send(f"Spool {sid} assigned to printer {self.printer_hostname} @ gate {gate} in Spoolman db", silent=silent)
 
@@ -642,7 +641,7 @@ class MmuServer:
                 await self._log_n_send(f"Trying to unset spool but both spool_id {spool_id} and gate {gate} provided. Only one or the other expected", error=True, silent=silent)
                 return False
             if spool_id is not None:
-                if not self.spool_location.get(spool_id, ('', -1, {})):
+                if not self.spool_location.get(spool_id, ('', -1, {}, .0)):
                     await self._log_n_send(f"Trying to unset spool {spool_id} but not found in cache. Perhaps try refreshing cache", error=True, silent=silent)
                     return False
 
@@ -655,10 +654,10 @@ class MmuServer:
             updated_gate_ids = {}
             for sid, result in zip(tasks.keys(), results):
                 if result:
-                    old_printer, old_gate, filament_attr = self.spool_location.get(sid, ('', -1, {}))
+                    old_printer, old_gate, filament_attr, old_remaining_weight = self.spool_location.get(sid, ('', -1, {}, .0))
                     if old_printer == self.printer_hostname and 0 <= old_gate < self.nb_gates and not updated_gate_ids.get(old_gate):
                         updated_gate_ids[old_gate] = -1
-                    self.spool_location[sid] = ('', -1, filament_attr)
+                    self.spool_location[sid] = ('', -1, filament_attr, old_remaining_weight)
                     self.server.send_event("spoolman:unset_spool_gate", {"spool_id": sid, "old_printer": self.printer_hostname, "old_gate": gate})
                     await self._log_n_send(f"Spool {sid} unassigned from printer {old_printer} and gate {old_gate} in Spoolman db", silent=silent)
 
@@ -702,7 +701,7 @@ class MmuServer:
             msg += f"  - Remaining: {f_remaining_weight}\n"
 
             # Check if spool_id is assigned
-            spool = next((gate for sid, (printer, gate, _) in self.spool_location.items() if spool_id == sid and self.printer_hostname == printer), None)
+            spool = next((gate for sid, (printer, gate, _, _) in self.spool_location.items() if spool_id == sid and self.printer_hostname == printer), None)
             if spool is not None:
                 msg += f"  - Gate: {spool}"
             else:
@@ -719,7 +718,7 @@ class MmuServer:
         async with self.cache_lock:
             await self._initialize_mmu()
             printer_name = printer or self.printer_hostname
-            filtered = sorted(((spool_id, gate) for spool_id, (printer, gate, _) in self.spool_location.items() if printer == printer_name), key=lambda x: x[1])
+            filtered = sorted(((spool_id, gate) for spool_id, (printer, gate, _, _) in self.spool_location.items() if printer == printer_name), key=lambda x: x[1])
             if filtered:
                 msg = f"Spoolman gate assignment for printer: {printer_name}\n"
                 msg += "Gate | SpoolId\n"
@@ -899,6 +898,9 @@ FLUSH_MULTIPLIER_REGEX = r"^;\s*flush_multiplier\s*=\s*(.*)$" #flush multiplier 
 FILAMENT_NAMES_REGEX = r"^;\s*(filament_settings_id)\s*=\s*(.*)$"
 METADATA_FILAMENT_NAMES = "!filament_names!"
 
+FILAMENT_USAGES_REGEX = r"^;\s*(filament\sused\s\[g\]\s=\s(.*))$"
+METADATA_FILAMENT_USAGES = "!filament_usages!"
+
 # Detection for next pos processing
 T_PATTERN  = r'^T(\d+)\s*(?:;.*)?$'
 G1_PATTERN = r'^G[01](?=.*\sX(-?[\d.]+))(?=.*\sY(-?[\d.]+)).*$'
@@ -942,8 +944,8 @@ def gcode_processed_already(file_path):
 def parse_gcode_file(file_path):
     slicer_regex = re.compile(SLICER_REGEX, re.IGNORECASE)
     orca_version_regex = re.compile(ORCASLICER_VERSION_REGEX, re.IGNORECASE)
-    has_tools_placeholder = has_total_toolchanges = has_colors_placeholder = has_temps_placeholder = has_materials_placeholder = has_purge_volumes_placeholder = filament_names_placeholder = False
-    found_colors = found_temps = found_materials = found_purge_volumes = found_filament_names = found_flush_multiplier = False
+    has_tools_placeholder = has_total_toolchanges = has_colors_placeholder = has_temps_placeholder = has_materials_placeholder = has_purge_volumes_placeholder = filament_names_placeholder = filament_usages_placeholder = False
+    found_colors = found_temps = found_materials = found_purge_volumes = found_filament_names = found_filament_usages = found_flush_multiplier = False
     slicer = None
     orca_version = None
 
@@ -954,6 +956,7 @@ def parse_gcode_file(file_path):
     materials = []
     purge_volumes = []
     filament_names = []
+    filament_usages = []
     flush_multiplier = 1.0 # Initialize flush_multiplier to 1.0
 
     with open(file_path, 'r') as in_file:
@@ -997,7 +1000,10 @@ def parse_gcode_file(file_path):
             filament_names_regex = re.compile(FILAMENT_NAMES_REGEX[slicer], re.IGNORECASE)
         else:
             filament_names_regex = re.compile(FILAMENT_NAMES_REGEX, re.IGNORECASE)
-
+        if isinstance(FILAMENT_USAGES_REGEX, dict):
+            filament_usages_regex = re.compile(FILAMENT_USAGES_REGEX[slicer], re.IGNORECASE)
+        else:
+            filament_usages_regex = re.compile(FILAMENT_USAGES_REGEX, re.IGNORECASE)
         if isinstance(FLUSH_MULTIPLIER_REGEX, dict):
             flush_multiplier_regex = re.compile(FLUSH_MULTIPLIER_REGEX[slicer], re.IGNORECASE)
         else:
@@ -1072,13 +1078,13 @@ def parse_gcode_file(file_path):
                     match = purge_volumes_regex.match(line)
                     if match:
                         purge_volumes_csv = [v.strip() for v in match.group(2).strip().split(',')]
-                        
+
                         # OrcaSlicer 2.3.2+ already bakes flush_multiplier into the flush_volumes_matrix.
                         # OrcaSlicer <=2.3.1 requires applying flush_multiplier here to match the UI.
                         apply_flush_multiplier = True
                         if slicer == "OrcaSlicer" and orca_version is not None and orca_version >= (2, 3, 2):
                             apply_flush_multiplier = False
-                        
+
                         for volume_str in purge_volumes_csv:
                             # If we shouldn't apply multiplier, keep the raw value as-is (preserves integer formatting).
                             if not apply_flush_multiplier or flush_multiplier == 1.0:
@@ -1104,10 +1110,19 @@ def parse_gcode_file(file_path):
                         filament_names.extend(filament_names_csv)
                         found_filament_names = True
 
-    return (has_tools_placeholder or has_total_toolchanges or has_colors_placeholder or has_temps_placeholder or has_materials_placeholder or has_purge_volumes_placeholder or filament_names_placeholder,
-            sorted(tools_used), total_toolchanges, colors, temps, materials, purge_volumes, filament_names, slicer)
+                # !filament_usages! processing
+                if not filament_usages_placeholder and METADATA_FILAMENT_USAGES in line:
+                    filament_usages_placeholder = True
 
-def process_file(input_filename, output_filename, insert_nextpos, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names):
+                if not found_filament_usages:
+                    match = filament_usages_regex.match(line)
+                    if match:
+                        filament_usages_csv = [e.strip() for e in re.split(',|;', match.group(2).strip())]
+                        filament_usages.extend(filament_usages_csv)
+                        found_filament_usages = True
+    return (has_tools_placeholder or has_total_toolchanges or has_colors_placeholder or has_temps_placeholder or has_materials_placeholder or has_purge_volumes_placeholder or filament_names_placeholder or filament_usages_placeholder, sorted(tools_used), total_toolchanges, colors, temps, materials, purge_volumes, filament_names, filament_usages, slicer)
+
+def process_file(input_filename, output_filename, insert_nextpos, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names, filament_usages):
 
     t_pattern = re.compile(T_PATTERN)
     g1_pattern = re.compile(G1_PATTERN)
@@ -1118,7 +1133,7 @@ def process_file(input_filename, output_filename, insert_nextpos, tools_used, to
         outfile.write(f'{HAPPY_HARE_FINGERPRINT}\n')
 
         for line in infile:
-            line = add_placeholder(line, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names)
+            line = add_placeholder(line, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names, filament_usages)
             if tool is not None:
                 # Buffer subsequent lines after a "T" line until next "G1" x,y move line is found
                 buffer.append(line)
@@ -1152,7 +1167,7 @@ def process_file(input_filename, output_filename, insert_nextpos, tools_used, to
         # Finally append "; referenced_tools =" as new metadata (why won't Prusa pick up my PR?)
         outfile.write("; referenced_tools = %s\n" % ",".join(map(str, tools_used)))
 
-def add_placeholder(line, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names):
+def add_placeholder(line, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names, filament_usages):
     # Ignore comment lines to preserve slicer metadata comments
     if not line.startswith(";"):
         if METADATA_TOOL_DISCOVERY in line:
@@ -1172,6 +1187,8 @@ def add_placeholder(line, tools_used, total_toolchanges, colors, temps, material
             line = line.replace(METADATA_PURGE_VOLUMES, ",".join(map(str, purge_volumes)))
         if METADATA_FILAMENT_NAMES in line:
             line = line.replace(METADATA_FILAMENT_NAMES, ",".join(map(str, filament_names)))
+        if METADATA_FILAMENT_USAGES in line:
+            line = line.replace(METADATA_FILAMENT_USAGES, ",".join(map(str, filament_usages)))
     else:
         if METADATA_BEGIN_PURGING in line:
             line = line + "_MMU_STEP_SET_ACTION STATE=12\n"
@@ -1193,7 +1210,7 @@ def main(path, filename, insert_placeholders=False, insert_nextpos=False):
 
                 if insert_placeholders:
                     start = time.time()
-                    has_placeholder, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names, slicer = parse_gcode_file(file_path)
+                    has_placeholder, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names, filament_usages, slicer = parse_gcode_file(file_path)
                     metadata.logger.info("Reading placeholders took %.2fs. Detected gcode by slicer: %s" % (time.time() - start, slicer))
                 else:
                     tools_used = total_toolchanges = colors = temps = materials = purge_volumes = filament_names = slicer = None
@@ -1206,7 +1223,7 @@ def main(path, filename, insert_placeholders=False, insert_nextpos=False):
                         msg.append("Writing MMU placeholders")
                     if insert_nextpos:
                         msg.append("Inserting next position to tool changes")
-                    process_file(file_path, tmp_file, insert_nextpos, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names)
+                    process_file(file_path, tmp_file, insert_nextpos, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names, filament_usages)
                     metadata.logger.info("mmu_server: %s took %.2fs" % (",".join(msg), time.time() - start))
 
                     # Move temporary file back in place

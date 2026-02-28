@@ -89,6 +89,7 @@ class MmuRunoutHelper:
             prev_values[self.name] = self.cmd_SET_FILAMENT_SENSOR
 
 
+
     def _handle_ready(self):
         self.min_event_systime = self.reactor.monotonic() + 2. # Time to wait before first events are processed
 
@@ -265,16 +266,10 @@ class MmuProportionalSensor:
         if hasattr(self.adc, "setup_minmax"):
             # Kalico and older klipper
             self.adc.setup_minmax(self._sample_time, self._sample_count)
-            self.adc.setup_adc_callback(self._report_time, self._adc_callback)
         else:
-            try:
-                # New klipper (>= v0.13.0-557)
-                self.adc.setup_adc_sample(self._report_time, self._sample_time, self._sample_count)
-                self.adc.setup_adc_callback(self._adc_callback)
-            except TypeError:
-                # A few versions of klipper had these signatures
-                self.adc.setup_adc_sample(self._sample_time, self._sample_count)
-                self.adc.setup_adc_callback(self._report_time, self._adc_callback)
+            # New klipper
+            self.adc.setup_adc_sample(self._sample_time, self._sample_count)
+        self.adc.setup_adc_callback(self._report_time, self._adc_callback)
 
         # Attach runout_helper (no gcode actions; just enable/disable plumbing to remove UI nag)
         clog_gcode   = ("%s SENSOR=%s" % (CLOG_GCODE,   name))
@@ -320,28 +315,20 @@ class MmuProportionalSensor:
         if y >  1.0: y =  1.0
         return y
 
-    def _adc_callback(self, *args):
-        # Old klipper: _adc_callback(read_time, read_value)
-        # New klipper: _adc_callback(samples) where samples is a list of (read_time, read_value)
-        if len(args) == 1:
-            samples = args[0]
-            read_time, read_value = samples[-1]
-        elif len(args) == 2:
-            read_time, read_value = args
-        else:
-            raise TypeError("_adc_callback expected (read_time, read_value) or (samples), got %d args" % len(args))
 
+    def _adc_callback(self, read_time, read_value):
         self.value_raw = float(read_value)
         self.value = self._map_reading(read_value) # Mapped & scaled value
-        
+
         # Publish sync-feedback event immediately if extreme to match switch sensors
         # TODO really extreme should be determined by is_extreme() in mmu_sync_feedback manager (with hysteresis), but object hasn't been created yet
         # TODO so for now, use absolute extremes
         if abs(self.value) >= 1.0:
-            extreme = 1 if self.value > 0 else -1
+            extreme = abs(self.value) # 1 or -1
             if extreme != self._last_extreme: # Avoid repeated events
                 self._last_extreme = extreme
                 self.printer.send_event("mmu:sync_feedback", read_time, self.value)
+
 
     def get_status(self, eventtime):
         return {
@@ -493,7 +480,7 @@ class MmuHallEndstop:
         # Setup Hardware (Multi-Use)
         ppins = self.printer.lookup_object('pins')
 
-        _kalico = hasattr(self.adc, "setup_minmax") # Kalico and older klipper
+        _kalico = hasattr(self.adc, "setup_minmax")
         # ADC 1
         if self.pin1_name:
             ppins.allow_multi_use_pin(self.pin1_name)
@@ -674,7 +661,7 @@ class MmuSensors:
                 target_name = Mmu.SENSOR_TOOLHEAD
             else:
                 target_name = hall_sensor_endstop
-            
+
             self.hall_pin1 = config.get('hall_adc1')
             self.hall_pin2 = config.get('hall_adc2')
             self.hall_dia1 = config.getfloat('hall_cal_dia1', 1.5)
@@ -688,7 +675,7 @@ class MmuSensors:
                                self.hall_dia1, self.hall_rawdia1, self.hall_dia2, self.hall_rawdia2,
                                hall_runout_dia=self.hall_runout_dia,
                                insert=True, runout=True)
-            self.sensors[target_name] = s            
+            self.sensors[target_name] = s
 
         # Setup motor syncing feedback sensors...
         switch_pins = list(config.getlist('sync_feedback_tension_pin', []))
@@ -701,7 +688,7 @@ class MmuSensors:
             if len(switch_pins) not in [1, num_units]:
                 raise config.error("Invalid number of pins specified with sync_feedback_compression_pin. Expected 1 or %d but counted %d" % (num_units, len(switch_pins)))
             self._create_mmu_sensor(config, Mmu.SENSOR_COMPRESSION, None, switch_pins, 0, clog=True, tangle=True, button_handler=self._sync_compression_callback)
-        
+
         # Setup analog (proportional) sync feedback
         # Uses single analog input; value scaled in [-1, 1]
         analog_pin = config.get('sync_feedback_analog_pin', None)

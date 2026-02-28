@@ -13,11 +13,6 @@
 # Autotune: An autotuning option can be enabled for dynamic tuning (and persistence) of
 #           calibrated MMU gear rotation_distance.
 #
-# Implements commands:
-#   MMU_SYNC_FEEDBACK
-#   MMU_FLOWGUARD
-#
-#
 # (\_/)
 # ( *,*)
 # (")_(") Happy Hare Ready
@@ -38,7 +33,7 @@ class MmuSyncFeedbackManager:
     SF_STATE_NEUTRAL     = 0
     SF_STATE_COMPRESSION = 1
     SF_STATE_TENSION     = -1
-    
+
     def __init__(self, mmu):
         self.mmu = mmu
         self.mmu.managers.append(self)
@@ -95,7 +90,7 @@ class MmuSyncFeedbackManager:
 
     def handle_disconnect(self):
         pass
-        
+
 
     def set_test_config(self, gcmd):
         if self.has_sync_feedback():
@@ -393,7 +388,7 @@ class MmuSyncFeedbackManager:
 
             else:
                 self.mmu.log_always("Sync feedback feature is disabled")
-    
+
 
     def get_status(self, eventtime=None):
         self.flowguard_status['encoder_mode'] = self.flowguard_encoder_mode # Ok to mutate status
@@ -501,7 +496,7 @@ class MmuSyncFeedbackManager:
         """
         if not (self.mmu.is_enabled and self.sync_feedback_enabled and self.active): return
         if eventtime is None: eventtime = self.mmu.reactor.monotonic()
- 
+
         msg = "MmuSyncFeedbackManager: Sync state changed to %s" % (self.get_sync_feedback_string(state))
         if self.mmu.mmu_machine.filament_always_gripped:
             self.mmu.log_debug(msg)
@@ -523,7 +518,7 @@ class MmuSyncFeedbackManager:
         self.estimated_state = output['sensor_ui']
 
         # Handle flowguard trip
-        self.flowguard_status = dict(output['flowguard'])
+        self.flowguard_status = output['flowguard']
         self.flowguard_status['enabled'] = bool(self.flowguard_enabled)
         f_trigger = self.flowguard_status.get('trigger', None)
         f_reason = self.flowguard_status.get('reason', "")
@@ -774,7 +769,7 @@ class MmuSyncFeedbackManager:
         """
 
         # nudge_mm:     per-move adjustment distance in mm (small feed or retract)
-        # neutral_band: absolute value of proportional sensor reading considered "neutral". 
+        # neutral_band: absolute value of proportional sensor reading considered "neutral".
         #               This can be loosely interpreted as a % over the max range of detection of the sensor.
         #               For example for a sensor with 14mm range, a 0.15 tolerance is approx 1.4mm either side of centre.
         # settle_time:  delay between moves to allow sensor feedback to update
@@ -851,7 +846,7 @@ class MmuSyncFeedbackManager:
                     (nudge_mm, moved_initial_mm, moved_nudges_mm, moved_total_mm, steps, prop_state)
                 )
                 return moved_total_mm, False
-                
+
             if abs(prop_state) <= neutral_band:
                 # confirm neutral after a short wait
                 try:
