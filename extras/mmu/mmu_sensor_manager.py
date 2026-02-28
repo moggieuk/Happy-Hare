@@ -260,7 +260,10 @@ class MmuSensorManager:
                 if name in [self.mmu.SENSOR_PROPORTIONAL]:
                     # Special case analog sensor
                     value = sensor.get_status(0).get('value', 0.)
+                    value_raw = sensor.get_status(0).get('value_raw', 0.)
                     summary += "%s: %.2f" % (name, ("(%.2f, currently disabled)" % value) if state is None else value)
+                    if detail:
+                        summary += " (raw: %.2f)" % (value_raw)
                 else:
                     trig = "%s" % 'TRIGGERED' if sensor.runout_helper.filament_present else 'Open'
                     summary += "%s: %s" % (name, ("(%s, currently disabled)" % trig) if state is None else trig)
