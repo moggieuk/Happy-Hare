@@ -699,7 +699,7 @@ class LinearSelector(BaseSelector, object):
 
     def _home_selector(self):
         self.mmu.unselect_gate()
-        self.filament_hold_move() # PAUL self.servo.servo_move()
+        self.filament_hold_move()
         self.mmu.movequeues_wait()
         try:
             homing_state = mmu_machine.MmuHoming(self.mmu.printer, self.mmu_toolhead)
