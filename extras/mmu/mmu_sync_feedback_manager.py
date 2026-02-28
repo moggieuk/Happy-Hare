@@ -487,8 +487,8 @@ class MmuSyncFeedbackManager:
                         self.mmu.save_rotation_distance(self.mmu.gate_selected, _tuned_rd)
                     # We have found a tuned RD value - widen clamps to prevent oscillation of the tuned RD value
                     # due to the nudge off the trigger point.
-                    #rd_clamp[0] = _tuned_rd * (1.05)  # slow edge up
-                    #rd_clamp[2] = _tuned_rd * (0.95)  # fast edge down
+                    rd_clamp[0] = _tuned_rd * self.sync_multiplier_high
+                    rd_clamp[2] = _tuned_rd * self.sync_multiplier_low
                 return _tuned_rd
             return None
 
