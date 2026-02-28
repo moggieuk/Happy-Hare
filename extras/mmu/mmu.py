@@ -2883,7 +2883,7 @@ class Mmu:
 
                     c_raw = sum(c_vals) / len(c_vals)
                     t_raw = sum(t_vals) / len(t_vals)
-                    mid_raw = (c_raw + t+raw) / 2.0
+                    mid_raw = (c_raw + t_raw) / 2.0
                     c_sd = _sd(c_vals)
                     t_sd = _sd(t_vals)
 
