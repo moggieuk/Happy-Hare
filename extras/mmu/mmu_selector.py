@@ -5,6 +5,11 @@
 #   - Uses gear driver stepper per-gate
 #   - For type-B designs like BoxTurtle, KMS, QuattroBox
 #
+# LinearSelector:
+#  Implements Linear Selector for type-A MMU's without servo
+#  - Stepper controlled linear movement with endstop
+#  - Supports type-A with combined selection and filament gripping line ERCFv3
+#
 # LinearServoSelector:
 #  Implements Linear Selector for type-A MMU's with servo
 #  - Stepper controlled linear movement with endstop
@@ -15,13 +20,6 @@
 #  Implements Linear Selector for type-C MMU's with multiple gear steppers:
 #   - Uses gear driver stepper per-gate
 #   - Uses selector stepper for gate selection with endstop
-#   - Supports type-A classic MMU's like ERCF and Tradrack
-#
-# LinearMultiGearServoSelector:
-#  Implements Linear Selector for type-C MMU's with multiple gear steppers:
-#   - Uses gear driver stepper per-gate
-#   - Uses selector stepper for gate selection with endstop
-#   - Uses servo for filament gripping
 #   - Supports type-A classic MMU's like ERCF and Tradrack
 #
 # Rotary Selector
@@ -187,21 +185,21 @@ class VirtualSelector(BaseSelector, object):
 
 
 ################################################################################
-# LinearServoSelector:
+# LinearSelector:
 #  Implements Linear Selector for type-A MMU's with servo
 #  - Stepper controlled linear movement with endstop
-#  - Servo controlled filament gripping
+#  - Optional servo controlled filament gripping
 #  - Supports type-A classic MMU's like ERCF and Tradrack
 ################################################################################
 
-class LinearServoSelector(BaseSelector, object):
+class LinearSelector(BaseSelector, object):
 
     # mmu_vars.cfg variables
     VARS_MMU_SELECTOR_OFFSETS = "mmu_selector_offsets"
     VARS_MMU_SELECTOR_BYPASS  = "mmu_selector_bypass"
 
     def __init__(self, mmu):
-        super(LinearServoSelector, self).__init__(mmu)
+        self.mmu = mmu
         self.bypass_offset = -1
 
         # Process config
@@ -267,15 +265,7 @@ class LinearServoSelector(BaseSelector, object):
         self.cad_selector_tolerance = mmu.config.getfloat('cad_selector_tolerance', self.cad_selector_tolerance, above=0.) # Extra movement allowed by selector
 
         # Sub components (optional servo)
-        if isinstance(self, LinearServoSelector):
-            self.servo = LinearSelectorServo(mmu) if isinstance(self, LinearServoSelector) else None
-        else:
-            self.servo = None
-            # Read all controller parameters related to to stop klipper complaining. This is done to allow
-            # for uniform and shared mmu_parameters.cfg file regardless of configuration.
-            for option in ['servo_']:
-                for key in mmu.config.get_prefix_options(option):
-                    _ = mmu.config.get(key)
+        self.servo = LinearSelectorServo(mmu) if isinstance(self, LinearServoSelector) else None
 
         # Register GCODE commands specific to this module
         gcode = mmu.printer.lookup_object('gcode')
@@ -431,8 +421,9 @@ class LinearServoSelector(BaseSelector, object):
         return self.mmu.mmu_machine.has_bypass and self.bypass_offset >= 0
 
     def get_status(self, eventtime):
-        status = super(LinearServoSelector, self).get_status(eventtime)
-        status.update(self.servo.get_status(eventtime))
+        status = super(LinearSelector, self).get_status(eventtime)
+        if self.servo:
+            status.update(self.servo.get_status(eventtime))
         return status
 
     def get_mmu_status_config(self):
@@ -700,7 +691,7 @@ class LinearServoSelector(BaseSelector, object):
 
     def _home_selector(self):
         self.mmu.unselect_gate()
-        self.filament_hold_move()
+        self.filament_hold_move() # PAUL self.servo.servo_move()
         self.mmu.movequeues_wait()
         try:
             homing_state = mmu_machine.MmuHoming(self.mmu.printer, self.mmu_toolhead)
@@ -1098,29 +1089,42 @@ class LinearSelectorServo:
 
 
 ################################################################################
-# LinearMultiGearServoSelector:
+# LinearServoSelector:
+#  Implements Linear Selector for type-A MMU's with servo
+#  - Stepper controlled linear movement with endstop
+#  - Servo controlled filament gripping
+#  - Supports type-A with combined selection and filament gripping line ERCFv3
+#
+class LinearServoSelector(LinearSelector, object):
+
+    def __init__(self, mmu):
+        super(LinearServoSelector, self).__init__(mmu)
+
+
+
+################################################################################
+# LinearMultiGearSelector:
 #  Implements Linear Selector for type-C MMU's that:
 #   - Uses gear driver stepper gate
 #   - Uses selector stepper for gate selection with endstop
-#   - Uses servo for filament gripping
 #   - Supports type-A classic MMU's like ERCF and Tradrack
 #
 ################################################################################
 
-class LinearMultiGearServoSelector(LinearServoSelector, object):
+class LinearMultiGearSelector(LinearSelector, object):
 
     def __init__(self, mmu):
-        super(LinearMultiGearServoSelector, self).__init__(mmu)
+        super(LinearMultiGearSelector, self).__init__(mmu)
 
     # Selector "Interface" methods ---------------------------------------------
 
     def select_gate(self, gate):
         self.mmu_toolhead.select_gear_stepper(gate) # Select correct gear drive stepper or none if bypass
-        super(LinearMultiGearServoSelector, self).select_gate(gate)
+        super(LinearMultiGearSelector, self).select_gate(gate)
 
     def restore_gate(self, gate):
         self.mmu.mmu_toolhead.select_gear_stepper(gate) # Select correct gear drive stepper or none if bypass
-        super(LinearMultiGearServoSelector, self).restore_gate(gate)
+        super(LinearMultiGearSelector, self).restore_gate(gate)
 
 
 
