@@ -4191,7 +4191,7 @@ class Mmu:
                     # Ensure sync state and mimick in print if requested
                     self.reset_sync_gear_to_extruder(self.sync_form_tip, force_in_print=force_in_print)
 
-                    _,_,_ = self._do_form_tip(test=not self.is_in_print(force_in_print))
+                    _,_,_,_ = self._do_form_tip(test=not self.is_in_print(force_in_print))
                     self._set_filament_pos_state(self.FILAMENT_POS_UNLOADED)
 
         except MmuError as ee:
@@ -4896,6 +4896,7 @@ class Mmu:
             # short of deterministic sensors and test makes sense
             if (
                 self.gate_selected != self.TOOL_GATE_BYPASS
+                and length > self.encoder_min
                 and self._can_use_encoder()
                 and not fhomed
                 and not extruder_only
@@ -5419,7 +5420,7 @@ class Mmu:
 
             # Perform the tip forming move and establish park_pos
             initial_encoder_position = self.get_encoder_distance()
-            park_pos, remaining, reported = self._do_form_tip()
+            park_pos, remaining, reported, before_extruder = self._do_form_tip()
             measured = self.get_encoder_distance(dwell=None) - initial_encoder_position
             self._set_filament_remaining(remaining, self.gate_color[self.gate_selected] if self.gate_selected != self.TOOL_GATE_UNKNOWN else '')
 
@@ -5444,7 +5445,11 @@ class Mmu:
             self._set_filament_position(-park_pos)
             self.set_encoder_distance(initial_encoder_position + park_pos)
 
-            if detected or extruder_only:
+            if reported and before_extruder:
+                # The cutter is located before the extruder.
+                # Therefore the filament is definitely somewhere before the extruder entry
+                self._set_filament_pos_state(self.FILAMENT_POS_END_BOWDEN)
+            elif detected or extruder_only:
                 # Definitely in extruder
                 self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER)
             else:
@@ -5495,7 +5500,12 @@ class Mmu:
                 else:
                     self.log_trace(msg)
 
-            if not test:
+            # assume we are in extruder
+            before_extruder = False
+            if reported and self.has_toolhead_cutter and park_pos > self.toolhead_extruder_to_nozzle:
+                self.log_debug("park_pos (%.1fmm) is greater than 'toolhead_extruder_to_nozzle' distance of %.1fmm! Assuming cutter is located before extruder." % (park_pos, self.toolhead_extruder_to_nozzle))
+                before_extruder = True
+            elif not test:
                 # Important sanity checks to spot misconfiguration
                 if park_pos > self.toolhead_extruder_to_nozzle:
                     self.log_warning("Warning: park_pos (%.1fmm) cannot be greater than 'toolhead_extruder_to_nozzle' distance of %.1fmm! Assumming fully unloaded from extruder\nWill attempt to continue..." % (park_pos, self.toolhead_extruder_to_nozzle))
@@ -5507,7 +5517,7 @@ class Mmu:
                     park_pos = 0.
                     filament_remaining = 0.
 
-        return park_pos, filament_remaining, reported
+        return park_pos, filament_remaining, reported, before_extruder
 
     def purge_standalone(self):
         if self.purge_macro:
