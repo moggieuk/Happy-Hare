@@ -175,12 +175,15 @@ class MmuSyncFeedbackManager:
             return "inactive"
         return "disabled"
 
-    # End guard enable/disable hooks
+    # End guard enable/disable/reset hooks
     def enable_endguard(self, reason=None):
         self.set_endguard_active(True, reason)
 
     def disable_endguard(self, reason=None):
         self.set_endguard_active(False, reason)
+
+    def clear_pending_endguard(self, reason=None):
+        self._clear_pending_endguard(reason)
 
     #
     # Internal implementation --------------------------------------------------
@@ -653,6 +656,53 @@ class MmuSyncFeedbackManager:
     def _reset_endguard(self):
         self._endguard_forward_mm = 0.0
         self._endguard_triggered = False
+        
+    def _clear_pending_endguard(self, reason=None):
+        #  Cancel any scheduled EndGuard action (pause) and optionally reset accumulation.
+        #  This does NOT change endguard_enabled/active; it only clears pending/triggered state.
+        #  reason: Optional string appended to the log.
+        #  Returns True if something was actually cleared/canceled; False otherwise.
+
+        cleared = False
+
+        # Cancel any scheduled one-shot pause
+        try:
+            if hasattr(self, "_endguard_timer_handle"):
+                self.mmu.reactor.update_timer(self._endguard_timer_handle, self.mmu.reactor.NEVER)
+                cleared = True
+        except Exception:
+            pass
+
+        # Clear pending-action flag
+        if getattr(self, "_endguard_action_pending", False):
+            try:
+                self._endguard_action_pending = False
+                cleared = True
+            except Exception:
+                pass
+
+        # Clear "triggered" latch
+        if getattr(self, "_endguard_triggered", False):
+            self._endguard_triggered = False
+            cleared = True
+
+        # Reset accumulation counter
+        try:
+            if getattr(self, "_endguard_forward_mm", 0.0) != 0.0:
+                cleared = True
+            self._endguard_forward_mm = 0.0
+        except Exception:
+            pass
+
+        # Log outcome
+        try:
+            self.mmu.log_info("EndGuard pending actions cleared%s" % ((" (%s)" % reason) if reason else ""))
+        except Exception:
+            pass
+
+        return cleared
+
+
 
     def _notify_endguard_forward_progress(self, movement):
         if not (getattr(self, "endguard_enabled", 0) and getattr(self, "endguard_active", 0)):
