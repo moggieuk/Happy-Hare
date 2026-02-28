@@ -512,7 +512,7 @@ class MmuHallSensor:
             },
             insert_remove_in_print,
             button_handler=None,
-            switch_pin=None
+            switch_pin='virtual_endstop'
         )
 
         self.printer.add_object("mmu_hall_sensor %s" % name, self)
