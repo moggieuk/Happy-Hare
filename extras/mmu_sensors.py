@@ -270,7 +270,7 @@ class MmuProportionalSensor:
             try:
                 # New klipper (>= v0.13.0-557)
                 self.adc.setup_adc_sample(self._report_time, self._sample_time, self._sample_count)
-                self.adc.setup_adc_callback(self._adc_callback)
+                self.adc.setup_adc_callback_samples(self._adc_callback)
             except TypeError:
                 # A few versions of klipper had these signatures
                 self.adc.setup_adc_sample(self._sample_time, self._sample_count)
@@ -334,6 +334,9 @@ class MmuProportionalSensor:
                 self._last_extreme = extreme
                 self.printer.send_event("mmu:sync_feedback", read_time, self.value)
 
+    def _adc_callback_samples(self, samples):
+        for read_time, read_value in samples:
+            self._adc_callback(read_time, read_value)
 
     def get_status(self, eventtime):
         return {
