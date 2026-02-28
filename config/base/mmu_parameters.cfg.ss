@@ -402,7 +402,7 @@ sync_purge: 0				# Synchronize during standalone purging (last part of load)
 sync_feedback_enabled: 0		# Turn off even if sensor is installed and active
 sync_feedback_buffer_range: 6		# Travel in "buffer" between compression/tension or one sensor and end (see above)
 sync_feedback_buffer_maxrange: 12	# Absolute maximum end-to-end travel (mm) provided by buffer (see above)
-sync_feedback_speed_multiplier: 3	# % "twolevel" gear speed delta to keep filament neutral in buffer (recommend 3%)
+sync_feedback_speed_multiplier: 5	# % "twolevel" gear speed delta to keep filament neutral in buffer (recommend 5%)
 sync_feedback_boost_multiplier: 3	# % "twolevel" extra gear speed boost for finding initial neutral position (recommend 3%)
 sync_feedback_extrude_threshold: 5	# Extruder movement (mm) for updates (keep small but set > retract distance)
 
@@ -545,17 +545,18 @@ flowguard_encoder_max_motion: 20
 #
 flowguard_enabled: 1			# 0 = Flowguard protection disabled, 1 = Enabled
 
-# The flowguard_max_relief is the amount of relief movement (mm) that Happy Hare will wait until triggering a clog or runout.
-# A smaller value is more sensitive to triggering. Since the relief depends on 'sync_feedback_speed_multiplier' and
-# 'sync_feedback_buffer_range'. It is generally a good starting point if using 5% sync_feedback_speed_multiplier to use
-# about the same distance as sync_feedback_buffer_range. Note that one sided switches (Compression-only and Tension-only)
-# can generally be lower.
-flowguard_max_relief: 8
+# The flowguard_max_relief is the amount of relief movement (effective mm change in filament length between MMU and extruder)
+# that Happy Hare will wait until triggering a clog or runout. A smaller value is more sensitive to triggering. Since the
+# relief movement depends highly on bowden "spring", filament friction, and 'sync_feedback_buffer_range', it is generally a
+# good starting point to use at least double the 'sync_feedback_buffer_range' then decrease if more sensitive trigger is desired.
+# Analog proportional (type P) sensors can generally have a lower value.
+flowguard_max_relief: 12
 
-# The max_motion is the absolute max permitted extruder movement while the sensor is in an extreme state. Consider this
-# added protection on top of the primary max_relief amount. Again a smaller value is more sensitive to triggering.
+# The max_motion is the absolute max permitted extruder movement (mm) while the sensor is in an extreme state. Consider
+# this added protection on top of the primary max_relief amount. Again a smaller value is more sensitive to triggering.
 # Note that this will have to increase if 'sync_feedback_speed_multiplier' is decreased because of slower recovery.
-flowguard_max_motion: 120
+# Analog proportional (type P) sensors can generally have a lower value.
+flowguard_max_motion: 150
 
 # Encoder clog/tangle detection watches for movement over either a static or automatically adjusted distance - if no encoder
 # movement is seen when the extruder moves this distance a clog/tangle event will be run. Allowing the distance to be
