@@ -42,7 +42,7 @@ class MmuSyncFeedbackManager:
         self.mmu = mmu
         self.mmu.managers.append(self)
 
-        self.state = float(self.SF_STATE_NEUTRAL) # 0 = Neutral (but a float to allow proportional support)
+        self.estimated_state = float(self.SF_STATE_NEUTRAL)
         self.active = False                       # Actively operating?
         self.flowguard_active = False
 
@@ -53,7 +53,7 @@ class MmuSyncFeedbackManager:
         self.sync_feedback_speed_multiplier  = self.mmu.config.getfloat('sync_feedback_speed_multiplier', 5, minval=1, maxval=50)
         self.sync_feedback_boost_multiplier  = self.mmu.config.getfloat('sync_feedback_boost_multiplier', 5, minval=1, maxval=50)
         self.sync_feedback_extrude_threshold = self.mmu.config.getfloat('sync_feedback_extrude_threshold', 5, above=1.)
-        self.sync_feedback_debug_log         = self.mmu.config.get('sync_feedback_debug_log', "")
+        self.sync_feedback_debug_log         = self.mmu.config.getint('sync_feedback_debug_log', 0)
 
         # Flowguard
         self.flowguard_enabled    = self.mmu.config.getint('flowguard_enabled', 1, minval=0, maxval=1)
@@ -151,10 +151,20 @@ class MmuSyncFeedbackManager:
         return self.active
 
 
-    def get_sync_feedback_string(self, state=None, detail=False):
-        if state is None:
-            state = self.state
+    def get_sync_bias_raw(self):
+        return float(self._get_sensor_state())
 
+
+    def get_sync_bias_modelled(self):
+        if self.mmu.is_enabled and self.sync_feedback_enabled and self.active:
+            # This is a better representation for UI when the controller is active
+            return self.estimated_state
+        else:
+            # Otherwise return the real state
+            return float(self._get_sensor_state())
+
+
+    def get_sync_feedback_string(self, detail=False):
         if self.mmu.is_enabled and self.sync_feedback_enabled and (self.active or detail):
             # Polarity varies slightly between modes on proportional sensor so ask controller
             polarity = self.ctrl.polarity()
@@ -308,8 +318,9 @@ class MmuSyncFeedbackManager:
         self._init_controller()
 
         # Reset controller with initial rd and sensor reading
-        self.state = self._get_sensor_state()
-        status = self.ctrl.reset(enventtime, rd_start, self.state)
+        starting_state = self._get_sensor_state()
+        self.estimated_state = starting_state
+        status = self.ctrl.reset(enventtime, rd_start, starting_state)
         self._process_status(status) # May adjust rotation_distance
 
         # Turn on extruder movement events
@@ -362,7 +373,6 @@ class MmuSyncFeedbackManager:
         'state' should be -1 (tension), 0 (neutral), 1 (compressed)
         or can be a proportional float value between -1.0 and 1.0
         """
-        self.state = state
         if not (self.mmu.is_enabled and self.sync_feedback_enabled and self.active): return
 
         msg = "MmuSyncFeedbackManager: Sync tension changed from %s to %s" % (" (sync feedback deactivated)" if self.sync_feedback_enabled else "")
@@ -383,16 +393,38 @@ class MmuSyncFeedbackManager:
         """
         output = status['output']
 
+        # Handle estimated sensor position
+        self.estimated_state = output['sensor_ui']
+
         # Handle flowguard trip
         flowguard = output['flowguard']
         flowguard_trigger = flowguard.get('trigger', None)
         if flowguard_trigger:
             if self.flowguard_enabled:
                 self.mmu.log_error("MmuSyncFeedbackManager: FlowGuard detected a %s.\nReason for trip: %s" % (flowguard_trigger, flowguard['reason']))
-                self.mmu.log_error("PAUL: flowguard trip. TODO TODO TODO")
+
+                # Pick most appropriate sensor to assign event to (primariliy for optics)
+                has_tension      = sm.has_sensor(self.mmu.SENSOR_TENSION)
+                has_compression  = sm.has_sensor(self.mmu.SENSOR_COMPRESSION)
+                has_proportional = self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_PROPORTIONAL)
+
+                if has_proportional:
+                    sensor_key = self.mmu.SENSOR_PROPORTIONAL
+                elif not has_tension:
+                    sensor_key = self.mmu.SENSOR_COMPRESSION
+                elif not has_compression:
+                    sensor_key = self.mmu.SENSOR_TENSION
+                elif flowguard_trigger == "clog":
+                    sensor_key = self.mmu.SENSOR_COMPRESSION
+                else: # "tangle"
+                    sensor_key = self.mmu.SENSOR_TENSION
+                sensor = sm.sensors.get(sensor_key)
+
+                sensor.runout_helper.note_clog_tangle(flowguard_trigger)
             else:
                 self.mmu.log_debug("MmuSyncFeedbackManager: FlowGuard detected a %s, but handling is disabled.\nReason for trip: %s" % (flowguard_trigger, flowguard['reason']))
-            self.ctrl.flowguard.reset()
+
+            # PAUL self.ctrl.flowguard.reset() # PAUL the next sync should reset. This allows us to see in the UI the cause..
 
         # Update instaneous gear stepper rotation_distance
         if output['rd_current'] != output['rd_prev']:
@@ -565,9 +597,9 @@ class MmuSyncFeedbackManager:
         #               For example for a sensor with 14mm range, a 0.15 tolerance is approx 1.4mm either side of centre.
         # settle_time:  delay between moves to allow sensor feedback to update
         # timeout_s:    hard stop to avoid hanging if the sensor never clears
-        neutral_band = self.sync_proportional_neutral_band
-        settle_time = self.sync_proportional_settle_time
-        timeout = self.sync_proportional_timeout
+        neutral_band = 0.1
+        settle_time  = 0.1
+        timeout_s    = 10.0
 
         # Wait for move queues to clear
         self.mmu.mmu_toolhead.quiesce()
@@ -597,9 +629,9 @@ class MmuSyncFeedbackManager:
 
         # --- Initial proportional correction ---
         # Negative sensor state = tension -> feed filament. positive sensor state = compression -> retract filament
-        prop_state = float(self.state)  # [-1..+1], 0 ≈ neutral  # PAUL TODO
+        prop_state = self._get_sensor_state() # [-1..+1], 0 ≈ neutral
         if abs(prop_state) > neutral_band:
-            # Iinitial move distance as a proportion to how off centre we are based on the sensor readings.
+            # Initial move distance as a proportion to how off centre we are based on the sensor readings.
             # this will get the sensor close but likely will need a few fine adjustments (nudges) to get it
             # within the centre range depending on how large the bowden tube slack is.
             initial_move_mm = -prop_state * per_side_budget_mm
@@ -617,7 +649,7 @@ class MmuSyncFeedbackManager:
                     time.sleep(settle_time)
 
         # --- Check proportional sensor state after initial move and return if within neutral deadband ---
-        prop_state = float(self.state)  # PAUL TODO
+        prop_state = self._get_sensor_state()
         if abs(prop_state) <= neutral_band:
             self.mmu.log_info(
                 "Proportional adjust: neutral after initial "
@@ -628,7 +660,7 @@ class MmuSyncFeedbackManager:
 
         # --- Fine adjustment loop (nudges) ---
         while abs(moved_total_mm) < maxrange_span_mm and steps < max_steps:
-            prop_state = float(self.state)  # PAUL TODO
+            prop_state = self._get_sensor_state()
             # timeout safety: avoid hanging if the sensor never clears
             if (self.mmu.reactor.monotonic() - t_start) > timeout_s:
                 self.mmu.log_info(
@@ -644,7 +676,7 @@ class MmuSyncFeedbackManager:
                     self.mmu.reactor.pause(settle_time)
                 except Exception:
                     time.sleep(settle_time)
-                prop_state = float(self.state)  # PAUL TODO
+                prop_state = self._get_sensor_state()
                 if abs(prop_state) <= neutral_band:
                     break
 
@@ -672,7 +704,7 @@ class MmuSyncFeedbackManager:
                 time.sleep(settle_time)
 
         # Final check
-        final_state = float(self.state)
+        final_state = self._get_sensor_state()
         success = abs(final_state) <= neutral_band
         self.mmu.log_info(
             "Proportional adjust: complete "

@@ -520,6 +520,7 @@ class _AutotuneEngine:
         status = {"rd": rec_rd, "note": "Autotune: {} {} and {}".format(travel, note, _note)}
 
         # Should we recommend saving as new default reference?
+        # PAUL if len(self._rd_cert_fifo) > PAUL: # PAUL
         frac = self._frac_speed_delta(rec_rd, self._autotune_baseline)
         min_frac = cfg.autotune_min_save_frac
         if frac >= min_frac:
