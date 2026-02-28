@@ -440,34 +440,32 @@ class MmuAdcSwitchSensor:
 # EXPERIMENTAL
 # Standalone Hall Filament Sensor Endstop using Multi-Use Pins
 # Can coexists with standard Klipper hall_filament_width_sensor by sharing the ADC pins
-class MmuHallEndstop:
-    def __init__(self, config, name, pin1, pin2, cal_dia1, raw_dia1, cal_dia2, raw_dia2,
-                 hall_runout_dia=1.,
-                 insert=False, remove=False, runout=False, clog=False, tangle=False):
-
+class MmuHallSensor:
+    def __init__(self, config, name, gate, pin1, pin2, a_range, adc_sample_time=0.001, adc_sample_count=4, adc_report_time=0.010,
+                 insert=False, remove=False, runout=False, clog=False, tangle=False, insert_remove_in_print=False, button_handler=None):
         self.printer = config.get_printer()
+        self.reactor = self.printer.get_reactor()
         self.name = name
 
         # Configurable sampling for fast endstop response
-        # Defaults: 1ms sample, 8 samples = 8ms. Report every 10ms.
-        self.sample_time = config.getfloat('hall_sample_time', 0.001, above=0.0)
-        self.sample_count = config.getint('hall_sample_count', 8, minval=1)
-        self.report_time = config.getfloat('hall_report_time', 0.010, above=0.0)
+        self.sample_time = adc_sample_time
+        self.sample_count = adc_sample_count
+        self.report_time = adc_report_time
 
-        # Sensor configuration for diameter calculation
-        self.pin1_name = pin1
-        self.pin2_name = pin2
-        self.dia1 = cal_dia1
-        self.rawdia1 = raw_dia1
-        self.dia2 = cal_dia2
-        self.rawdia2 = raw_dia2
-        self.hall_min_diameter = hall_runout_dia
+        # Sensor configuration for trigger detection
+        self._pin = pin1
+        self._pin2 = pin2
+        self.a_min, self.a_max = a_range
+
+        # Last read time
+        self.lastReadTime = 0
+        self.lastTriggerTime = 0
 
         # State
-        self.lastFilamentWidthReading = 0
-        self.lastFilamentWidthReading2 = 0
-        self.diameter = 0
-        self.is_active = True # Always active for endstop purposes? or should be toggleable?
+        self._val1 = 0.
+        self._val2 = 0.
+        self._trigger_threshold = self.a_min / 10000.0
+        self.present = False
 
         # Endstop state variables
         self._steppers = []
@@ -476,38 +474,20 @@ class MmuHallEndstop:
         self._homing = False
         self._triggered = False
 
-        # Setup Hardware (Multi-Use)
-        ppins = self.printer.lookup_object('pins')
-
-        _kalico = hasattr(self.adc, "setup_minmax") # Kalico and older klipper
         # ADC 1
-        if self.pin1_name:
-            ppins.allow_multi_use_pin(self.pin1_name)
-            self.mcu_adc = ppins.setup_pin('adc', self.pin1_name)
-            if _kalico:
-                self.mcu_adc.setup_minmax(self.sample_time, self.sample_count)
-            else:
-                self.mcu_adc.setup_adc_sample(self.sample_time, self.sample_count)
-            self.mcu_adc.setup_adc_callback(self.report_time, self.adc_callback)
-
-        # ADC 2 (Optional)
-        self.mcu_adc2 = None
-        if self.pin2_name:
-            ppins.allow_multi_use_pin(self.pin2_name)
-            self.mcu_adc2 = ppins.setup_pin('adc', self.pin2_name)
-            if _kalico:
-                self.mcu_adc2.setup_minmax(self.sample_time, self.sample_count)
-            else:
-                self.mcu_adc2.setup_adc_sample(self.sample_time, self.sample_count)
-            self.mcu_adc2.setup_adc_callback(self.report_time, self.adc2_callback)
+        self.mcu_adc = self._setup_adc(self._pin, self.sample_time, self.sample_count, self.adc_callback, self.report_time, multi_use=True)
+        # ADC 2
+        if self._pin2:
+            self.mcu_adc2 = self._setup_adc(self._pin2, self.sample_time, self.sample_count, self.adc2_callback, self.report_time, multi_use=True)
 
         # Setup runout helper/virtual sensor for MMU integration
         event_delay = 0.5
-        insert_gcode = ("%s SENSOR=%s" % (INSERT_GCODE, name)) if insert else None
-        remove_gcode = ("%s SENSOR=%s" % (REMOVE_GCODE, name)) if remove else None
-        runout_gcode = ("%s SENSOR=%s" % (RUNOUT_GCODE, name)) if runout else None
+        insert_gcode = ("%s SENSOR=%s%s" % (INSERT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if insert else None
+        remove_gcode = ("%s SENSOR=%s%s" % (REMOVE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if remove else None
+        runout_gcode = ("%s SENSOR=%s%s" % (RUNOUT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if runout else None
+        clog_gcode   = ("%s SENSOR=%s%s" % (CLOG_GCODE,   name, (" GATE=%d" % gate) if gate is not None else "")) if clog else None
+        tangle_gcode = ("%s SENSOR=%s%s" % (TANGLE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if tangle else None
 
-        # We pass "None" for switch_pin because we manage the pin state via ADC logic
         self.runout_helper = MmuRunoutHelper(
             self.printer,
             name,
@@ -515,54 +495,85 @@ class MmuHallEndstop:
             {
                 "insert": insert_gcode,
                 "remove": remove_gcode,
-                "runout": runout_gcode
+                "runout": runout_gcode,
+                "clog":   clog_gcode,
+                "tangle": tangle_gcode,
             },
-            insert_remove_in_print=False,
-            button_handler=None,
-            switch_pin=None
+            insert_remove_in_print,
+            button_handler,
+            self._pin
         )
 
-        self.printer.add_object("mmu_hall_endstop %s" % name, self)
+        self.printer.add_object("mmu_hall_sensor %s" % name, self)
+        logging.info("MMU: MmuHallSensor initialized: %s (id: %s)" % (self.name, id(self)))
 
-    def _calc_diameter(self):
-        # Duplicate of Klipper hall_filament_width_sensor logic
-        try:
-            val_sum = self.lastFilamentWidthReading + self.lastFilamentWidthReading2
-            slope = (self.dia2 - self.dia1) / (self.rawdia2 - self.rawdia1)
-            diameter_new = round(slope * (val_sum - self.rawdia1) + self.dia1, 2)
-            # Use same smoothing factor as Klipper? Or faster for endstop?
-            # Klipper: self.diameter = (5.0 * self.diameter + diameter_new) / 6
-            # For endstop we probably want instant reaction or less smoothing
-            self.diameter = (2.0 * self.diameter + diameter_new) / 3 # Slightly faster smoothing
-        except ZeroDivisionError:
-            self.diameter = 1.75 # Default fallback
+    def _setup_adc(self, pin_name, sample_time, sample_count, callback, report_time, multi_use=False):
+        ppins = self.printer.lookup_object('pins')
+        if multi_use:
+            ppins.allow_multi_use_pin(pin_name)
+        mcu_adc = ppins.setup_pin('adc', pin_name)
+        if hasattr(mcu_adc, 'setup_adc_sample'): # newer Klipper versions
+            mcu_adc.setup_adc_sample(sample_time, sample_count)
+        else: # older Klipper versions
+            mcu_adc.setup_minmax(sample_time, sample_count)
+        mcu_adc.setup_adc_callback(report_time, callback)
+        return mcu_adc
 
     def adc_callback(self, read_time, read_value):
-        self.lastFilamentWidthReading = round(read_value * 10000)
-        self._calc_diameter()
-        self._check_trigger(read_time)
-
-    def adc2_callback(self, read_time, read_value):
-        self.lastFilamentWidthReading2 = round(read_value * 10000)
-        self._calc_diameter()
-        self._check_trigger(read_time)
-
-    def _check_trigger(self, eventtime):
-        is_present = self.diameter > self.hall_min_diameter
-        self.runout_helper.note_filament_present(eventtime, is_present)
+        self._val1 = read_value
+        self.lastReadTime = read_time
+        
+        present = (read_value + self._val2) > self._trigger_threshold
+        if present != self.present:
+            self.present = present
+            self.last_button = present
+            # Optimization to only call runout helper if state changed or we have a button handler
+            if self.runout_helper.button_handler or present != self.runout_helper.filament_present:
+                self.runout_helper.note_filament_present(read_time, present)
 
         if self._homing:
-            if is_present == self._triggered:
+            if present == self._triggered:
                 if self._trigger_completion is not None:
-                    self._last_trigger_time = eventtime
+                    self._last_trigger_time = read_time
                     self._trigger_completion.complete(True)
                     self._trigger_completion = None
+        
+        if present:
+            self.lastTriggerTime = read_time
+
+    def adc2_callback(self, read_time, read_value):
+        self._val2 = read_value
+        self.lastReadTime = read_time
+
+        # Optimization - only process trigger on secondary pin if homing
+        # During printing (normal runout detection), the primary callback frequency is sufficient
+        if not self._homing:
+            return
+
+        present = (self._val1 + read_value) > self._trigger_threshold
+        if present != self.present:
+            self.present = present
+            self.last_button = present
+            # Optimization to only call runout helper if state changed or we have a button handler
+            if self.runout_helper.button_handler or present != self.runout_helper.filament_present:
+                self.runout_helper.note_filament_present(read_time, present)
+
+        if self._homing:
+            if present == self._triggered:
+                if self._trigger_completion is not None:
+                    self._last_trigger_time = read_time
+                    self._trigger_completion.complete(True)
+                    self._trigger_completion = None
+        
+        if present:
+            self.lastTriggerTime = read_time
 
     def get_status(self, eventtime):
         status = self.runout_helper.get_status(eventtime)
         status.update({
-            "Diameter": self.diameter,
-            "Raw": (self.lastFilamentWidthReading + self.lastFilamentWidthReading2)
+            "Signal": round((self._val1 + self._val2) * 10000),
+            "ADC1": self._val1,
+            "ADC2": self._val2
         })
         return status
 
@@ -597,7 +608,9 @@ class MmuHallEndstop:
         self._trigger_completion = None
 
         if self._last_trigger_time is None:
-            raise self.printer.command_error("No trigger on %s after full movement" % self.name)
+            raise self.printer.command_error(
+                "No trigger on %s after full movement" % self.name
+            )
 
         return self._last_trigger_time
 
@@ -625,7 +638,19 @@ class MmuSensors:
         if switch_pins:
             if len(switch_pins) not in [1, num_units]:
                 raise config.error("Invalid number of pins specified with gate_switch_pin. Expected 1 or %d but counted %d" % (num_units, len(switch_pins)))
-            self._create_mmu_sensor(config, Mmu.SENSOR_GATE, None, switch_pins, event_delay, runout=True)
+            a_range = config.getfloatlist('gate_analog_range', None, count=2)
+            switch_pins_2 = list(config.getlist('gate_switch_pin2', []))
+            
+            if a_range and switch_pins_2:
+                adc_config = config.getlist('gate_adc_settings', None, count=3)
+                adc_s_time, adc_s_count, adc_r_time = (float(adc_config[0]), int(adc_config[1]), float(adc_config[2])) if adc_config else (0.001, 5, 0.010)
+                for unit, pin in enumerate(switch_pins):
+                    pin2 = switch_pins_2[unit]
+                    name = Mmu.SENSOR_GATE if len(switch_pins) == 1 else "unit_%d_%s" % (unit, Mmu.SENSOR_GATE)
+                    s = MmuHallSensor(config, name, None, pin, pin2, a_range, adc_s_time, adc_s_count, adc_r_time, runout=True)
+                    self.sensors[name] = s
+            else:
+                self._create_mmu_sensor(config, Mmu.SENSOR_GATE, None, switch_pins, event_delay, runout=True)
 
         # Setup "mmu_gear" sensors...
         for gate in range(23):
@@ -633,48 +658,45 @@ class MmuSensors:
             if switch_pin:
                 a_range = config.getfloatlist('post_gear_analog_range_%d' % gate, None, count=2)
                 if a_range is not None:
-                    a_pullup = config.getfloat('post_gear_analog_pullup_resister_%d' % gate, 4700.)
-                    s = MmuAdcSwitchSensor(config, Mmu.SENSOR_GEAR_PREFIX, gate, switch_pin, event_delay, a_range, runout=True, a_pullup=a_pullup)
-                    self.sensors["%s_%d" % (Mmu.SENSOR_GEAR_PREFIX, gate)] = s
+                    switch_pin_2 = config.get('post_gear_switch_pin2_%d' % gate, None)
+                    if switch_pin_2:
+                        adc_config = config.getlist('post_gear_adc_settings_%d' % gate, None, count=3)
+                        adc_s_time, adc_s_count, adc_r_time = (float(adc_config[0]), int(adc_config[1]), float(adc_config[2])) if adc_config else (0.001, 5, 0.010)
+                        s = MmuHallSensor(config, "%s_%d" % (Mmu.SENSOR_GEAR_PREFIX, gate), gate, switch_pin, switch_pin_2, a_range, adc_s_time, adc_s_count, adc_r_time, runout=True)
+                        self.sensors["%s_%d" % (Mmu.SENSOR_GEAR_PREFIX, gate)] = s
+                    else:
+                        a_pullup = config.getfloat('post_gear_analog_pullup_resister_%d' % gate, 4700.)
+                        s = MmuAdcSwitchSensor(config, Mmu.SENSOR_GEAR_PREFIX, gate, switch_pin, event_delay, a_range, runout=True, a_pullup=a_pullup)
+                        self.sensors["%s_%d" % (Mmu.SENSOR_GEAR_PREFIX, gate)] = s
                 else:
                     self._create_mmu_sensor(config, Mmu.SENSOR_GEAR_PREFIX, gate, switch_pin, event_delay, runout=True)
 
         # Setup single extruder (entrance) sensor...
         switch_pin = config.get('extruder_switch_pin', None)
         if switch_pin:
-            self._create_mmu_sensor(config, Mmu.SENSOR_EXTRUDER_ENTRY, None, switch_pin, event_delay, insert=True, runout=True)
+            a_range = config.getfloatlist('extruder_analog_range', None, count=2)
+            switch_pin_2 = config.get('extruder_switch_pin2', None)
+            if a_range and switch_pin_2:
+                adc_config = config.getlist('extruder_adc_settings', None, count=3)
+                adc_s_time, adc_s_count, adc_r_time = (float(adc_config[0]), int(adc_config[1]), float(adc_config[2])) if adc_config else (0.001, 5, 0.010)
+                s = MmuHallSensor(config, Mmu.SENSOR_EXTRUDER_ENTRY, None, switch_pin, switch_pin_2, a_range, adc_s_time, adc_s_count, adc_r_time, insert=True, runout=True)
+                self.sensors[Mmu.SENSOR_EXTRUDER_ENTRY] = s
+            else:
+                self._create_mmu_sensor(config, Mmu.SENSOR_EXTRUDER_ENTRY, None, switch_pin, event_delay, insert=True, runout=True)
 
         # Setup single toolhead sensor...
         switch_pin = config.get('toolhead_switch_pin', None)
         if switch_pin:
-            self._create_mmu_sensor(config, Mmu.SENSOR_TOOLHEAD, None, switch_pin, event_delay)
-
-        # For Qidi printers or any other that use a hall_filament_width_sensor as an endstop
-        hall_sensor_endstop = config.get('hall_sensor_endstop', None)
-        if hall_sensor_endstop is not None:
-            if hall_sensor_endstop == 'gate':
-                target_name = Mmu.SENSOR_GATE
-            elif hall_sensor_endstop == 'extruder':
-                target_name = Mmu.SENSOR_EXTRUDER_ENTRY
-            elif hall_sensor_endstop == 'toolhead':
-                target_name = Mmu.SENSOR_TOOLHEAD
+            a_range = config.getfloatlist('toolhead_analog_range', None, count=2)
+            switch_pin_2 = config.get('toolhead_switch_pin2', None)
+            if a_range and switch_pin_2:
+                adc_config = config.getlist('toolhead_adc_settings', None, count=3)
+                adc_s_time, adc_s_count, adc_r_time = (float(adc_config[0]), int(adc_config[1]), float(adc_config[2])) if adc_config else (0.001, 5, 0.010)
+                s = MmuHallSensor(config, Mmu.SENSOR_TOOLHEAD, None, switch_pin, switch_pin_2, a_range, adc_s_time, adc_s_count, adc_r_time)
+                self.sensors[Mmu.SENSOR_TOOLHEAD] = s
             else:
-                target_name = hall_sensor_endstop
-            
-            self.hall_pin1 = config.get('hall_adc1')
-            self.hall_pin2 = config.get('hall_adc2')
-            self.hall_dia1 = config.getfloat('hall_cal_dia1', 1.5)
-            self.hall_dia2 = config.getfloat('hall_cal_dia2', 2.0)
-            self.hall_rawdia1 = config.getint('hall_raw_dia1', 9500)
-            self.hall_rawdia2 = config.getint('hall_raw_dia2', 10500)
-            self.hall_runout_dia = config.getfloat('hall_min_diameter', 1.0)
-            # self.hall_runout_dia_max = config.getfloat('hall_max_diameter', 2.0) - Unused for trigger
+                self._create_mmu_sensor(config, Mmu.SENSOR_TOOLHEAD, None, switch_pin, event_delay)
 
-            s = MmuHallEndstop(config, target_name, self.hall_pin1, self.hall_pin2,
-                               self.hall_dia1, self.hall_rawdia1, self.hall_dia2, self.hall_rawdia2,
-                               hall_runout_dia=self.hall_runout_dia,
-                               insert=True, runout=True)
-            self.sensors[target_name] = s            
 
         # Setup motor syncing feedback sensors...
         switch_pins = list(config.getlist('sync_feedback_tension_pin', []))
