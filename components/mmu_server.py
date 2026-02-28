@@ -296,10 +296,11 @@ class MmuServer:
             reponse = await self.http_client.get(url=f'{self.spoolman.spoolman_url}/v1/spool')
             for spool_info in reponse.json():
                 spool_id = spool_info['id']
+                spool_remaining_weight = spool_info['remaining_weight']
                 printer_name = json.loads(spool_info['extra'].get(MMU_NAME_FIELD, "\"\"")).strip('"')
                 mmu_gate = int(spool_info['extra'].get(MMU_GATE_FIELD, -1))
                 filament_attr = self._get_filament_attr(spool_info)
-                self.spool_location[spool_id] = (printer_name, mmu_gate, filament_attr)
+                self.spool_location[spool_id] = (printer_name, mmu_gate, filament_attr, spool_remaining_weight)
 
                 if printer_name and mmu_gate >= 0:
                     if printer_name not in assignments:
@@ -337,15 +338,15 @@ class MmuServer:
             # Log results and update cache
             for sid, result in zip(tasks.keys(), results):
                 if result:
-                    old_printer, old_gate, filament_attr = self.spool_location.get(sid, ('', -1, {}))
-                    self.spool_location[sid] = ('', -1, filament_attr)
+                    old_printer, old_gate, filament_attr, old_weight = self.spool_location.get(sid, ('', -1, {}, 0))
+                    self.spool_location[sid] = ('', -1, filament_attr, old_weight)
                     await self._log_n_send(f"Spool {sid} unassigned from printer {old_printer} and gate {old_gate}", silent=silent)
         return True
 
     # Function to find the first spool_id with a matching 'printer/gate', just 'gate' or just 'printer'
     def _find_first_spool_id(self, target_printer, target_gate):
         return next((spoolid
-                for spoolid, (printer, gate, _) in self.spool_location.items()
+                for spoolid, (printer, gate, _, _) in self.spool_location.items()
                 if (target_printer is None or printer == target_printer) and gate == target_gate
             ), -1)
 
@@ -353,7 +354,7 @@ class MmuServer:
     def _find_all_spool_ids(self, target_printer, target_gate):
         return [
             spoolid
-            for spoolid, (printer, gate, _) in self.spool_location.items()
+            for spoolid, (printer, gate, _, _) in self.spool_location.items()
             if (target_printer is None or printer == target_printer) and (target_gate is None or gate == target_gate)
         ]
 
@@ -415,15 +416,13 @@ class MmuServer:
         If no mmu backend has been detected, ignore the request
         '''
         if self._mmu_backend_enabled():
-            gate_dict = {
-                gate: (
-                    {'spool_id': -1} if spool_id < 0 else
-                    self.spool_location.get(spool_id)[2].copy()
-                    if self.spool_location.get(spool_id)
-                    else logging.error(f"Spool id {spool_id} requested but not found in spoolman")
-                )
-                for gate, spool_id in gate_ids
-            }
+            gate_dict = {}
+            for gate, spool_id in gate_ids:
+                if spool_id < 0:
+                    gate_dict.update({gate : ({'spool_id': -1})})
+                else:
+                    gate_dict.update({gate : (self.spool_location.get(spool_id)[2].copy()) if self.spool_location.get(spool_id) else logging.error(f"Spool id {spool_id} requested but not found in spoolman")})
+                    gate_dict[gate]["remaining_weight"] = self.spool_location.get(spool_id)[3]
             try:
                 await self.klippy_apis.run_gcode(f"MMU_GATE_MAP MAP=\"{gate_dict}\" {'REPLACE=1' if replace else ''} FROM_SPOOLMAN=1 QUIET=1")
             except Exception as e:
@@ -477,7 +476,7 @@ class MmuServer:
             # If setting a full gate map, include updates for "dirty" spool id's
             # that are not otherwise going to be overwritten
             if len(gate_ids) == self.nb_gates:
-                for spool_id, (p_name, gate, _) in self.spool_location.items():
+                for spool_id, (p_name, gate, _, _) in self.spool_location.items():
                     if p_name == self.printer_hostname and not any(s == spool_id for _, s in gate_ids):
                         updates[spool_id] = -1
 
@@ -497,14 +496,14 @@ class MmuServer:
             # Log results and update cache
             for sid, result in zip(tasks.keys(), results):
                 if result:
-                    old_printer, old_gate, filament_attr = self.spool_location.get(sid, ('', -1, {}))
+                    old_printer, old_gate, filament_attr, old_remaining_weight = self.spool_location.get(sid, ('', -1, {}, .0))
                     gate = tasks[sid][1]
                     if updates[sid] < 0: # 'unset' case
-                        self.spool_location[sid] = ('', -1, filament_attr)
+                        self.spool_location[sid] = ('', -1, filament_attr, old_remaining_weight)
                         self.server.send_event("spoolman:unset_spool_gate", {"spool_id": sid, "printer": old_printer, "gate": old_gate})
                         await self._log_n_send(f"Spool {sid} unassigned from printer {old_printer} and gate {old_gate} in Spoolman db", silent=silent)
                     else: # 'set' case
-                        self.spool_location[sid] = (self.printer_hostname, gate, filament_attr)
+                        self.spool_location[sid] = (self.printer_hostname, gate, filament_attr, old_remaining_weight)
                         self.server.send_event("spoolman:set_spool_gate", {"spool_id": sid, "printer": self.printer_hostname, "gate": gate})
                         await self._log_n_send(f"Spool {sid} assigned to printer {self.printer_hostname} @ gate {gate} in Spoolman db", silent=silent)
 
@@ -544,10 +543,10 @@ class MmuServer:
             updated_gate_ids = {}
             for sid, result in zip(tasks.keys(), results):
                 if result:
-                    old_printer, old_gate, filament_attr = self.spool_location.get(sid, ('', -1, {}))
+                    old_printer, old_gate, filament_attr, old_remaining_weight = self.spool_location.get(sid, ('', -1, {}, 0))
                     if old_printer == self.printer_hostname and 0 <= old_gate < self.nb_gates and not updated_gate_ids.get(old_gate):
                         updated_gate_ids[old_gate] = -1
-                    self.spool_location[sid] = ('', -1, filament_attr)
+                    self.spool_location[sid] = ('', -1, filament_attr, old_remaining_weight)
                     self.server.send_event("spoolman:unset_spool_gate", {"spool_id": sid, "printer": old_printer, "gate": old_gate})
                     await self._log_n_send(f"Spool {sid} unassigned from printer {old_printer} and gate {old_gate}", silent=silent)
 
@@ -601,13 +600,13 @@ class MmuServer:
             updated_gate_ids = {}
             for sid, result in zip(tasks.keys(), results):
                 if result:
-                    old_printer, old_gate, filament_attr = self.spool_location.get(sid, ('', -1, {}))
+                    old_printer, old_gate, filament_attr, old_remaining_weight = self.spool_location.get(sid, ('', -1, {}, .0))
                     gate = tasks[sid][1]
                     if sid in old_sids and sid != spool_id:
                         # 'unset' case
                         if old_printer == self.printer_hostname and 0 <= old_gate < self.nb_gates and not updated_gate_ids.get(old_gate):
                             updated_gate_ids[old_gate] = -1
-                        self.spool_location[sid] = ('', -1, filament_attr)
+                        self.spool_location[sid] = ('', -1, filament_attr, old_remaining_weight)
                         self.server.send_event("spoolman:unset_spool_gate", {"spool_id": sid, "printer": old_printer, "gate": old_gate})
                         await self._log_n_send(f"Spool {sid} unassigned from printer {old_printer} and gate {old_gate} in Spoolman db", silent=silent)
                     else:
@@ -616,7 +615,7 @@ class MmuServer:
                             if old_printer == self.printer_hostname and 0 <= old_gate < self.nb_gates and not updated_gate_ids.get(old_gate):
                                 updated_gate_ids[old_gate] = -1
                             updated_gate_ids[gate] = sid
-                        self.spool_location[sid] = (self.printer_hostname, gate, filament_attr)
+                        self.spool_location[sid] = (self.printer_hostname, gate, filament_attr, old_remaining_weight)
                         self.server.send_event("spoolman:set_spool_gate", {"spool_id": sid, "printer": self.printer_hostname, "gate": gate})
                         await self._log_n_send(f"Spool {sid} assigned to printer {self.printer_hostname} @ gate {gate} in Spoolman db", silent=silent)
 
@@ -642,7 +641,7 @@ class MmuServer:
                 await self._log_n_send(f"Trying to unset spool but both spool_id {spool_id} and gate {gate} provided. Only one or the other expected", error=True, silent=silent)
                 return False
             if spool_id is not None:
-                if not self.spool_location.get(spool_id, ('', -1, {})):
+                if not self.spool_location.get(spool_id, ('', -1, {}, .0)):
                     await self._log_n_send(f"Trying to unset spool {spool_id} but not found in cache. Perhaps try refreshing cache", error=True, silent=silent)
                     return False
 
@@ -655,10 +654,10 @@ class MmuServer:
             updated_gate_ids = {}
             for sid, result in zip(tasks.keys(), results):
                 if result:
-                    old_printer, old_gate, filament_attr = self.spool_location.get(sid, ('', -1, {}))
+                    old_printer, old_gate, filament_attr, old_remaining_weight = self.spool_location.get(sid, ('', -1, {}, .0))
                     if old_printer == self.printer_hostname and 0 <= old_gate < self.nb_gates and not updated_gate_ids.get(old_gate):
                         updated_gate_ids[old_gate] = -1
-                    self.spool_location[sid] = ('', -1, filament_attr)
+                    self.spool_location[sid] = ('', -1, filament_attr, old_remaining_weight)
                     self.server.send_event("spoolman:unset_spool_gate", {"spool_id": sid, "old_printer": self.printer_hostname, "old_gate": gate})
                     await self._log_n_send(f"Spool {sid} unassigned from printer {old_printer} and gate {old_gate} in Spoolman db", silent=silent)
 
@@ -702,7 +701,7 @@ class MmuServer:
             msg += f"  - Remaining: {f_remaining_weight}\n"
 
             # Check if spool_id is assigned
-            spool = next((gate for sid, (printer, gate, _) in self.spool_location.items() if spool_id == sid and self.printer_hostname == printer), None)
+            spool = next((gate for sid, (printer, gate, _, _) in self.spool_location.items() if spool_id == sid and self.printer_hostname == printer), None)
             if spool is not None:
                 msg += f"  - Gate: {spool}"
             else:
@@ -719,7 +718,7 @@ class MmuServer:
         async with self.cache_lock:
             await self._initialize_mmu()
             printer_name = printer or self.printer_hostname
-            filtered = sorted(((spool_id, gate) for spool_id, (printer, gate, _) in self.spool_location.items() if printer == printer_name), key=lambda x: x[1])
+            filtered = sorted(((spool_id, gate) for spool_id, (printer, gate, _, _) in self.spool_location.items() if printer == printer_name), key=lambda x: x[1])
             if filtered:
                 msg = f"Spoolman gate assignment for printer: {printer_name}\n"
                 msg += "Gate | SpoolId\n"
