@@ -8309,11 +8309,19 @@ class Mmu:
 
     cmd_MMU_SENSOR_CLOG_help= "Internal MMU filament clog handler"
     def cmd_MMU_SENSOR_CLOG(self, gcmd):
-        self._clog_tangle(gcmd, "clog")
+        try:
+            with self.wrap_sync_gear_to_extruder():
+                self._clog_tangle(gcmd, "clog")
+        except MmuError as ee:
+            self.handle_mmu_error(str(ee))
 
     cmd_MMU_SENSOR_TANGLE_help= "Internal MMU filament tangle handler"
     def cmd_MMU_SENSOR_TANGLE(self, gcmd):
-        self._clog_tangle(gcmd, "tangle")
+        try:
+            with self.wrap_sync_gear_to_extruder():
+                self._clog_tangle(gcmd, "tangle")
+        except MmuError as ee:
+            self.handle_mmu_error(str(ee))
 
     # Common callback to handle clog/tangle event from an MMU sensors.
     # Note that pause_resume.send_pause_command() will have already been issued but no PAUSE command
