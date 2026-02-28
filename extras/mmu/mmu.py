@@ -914,9 +914,8 @@ class Mmu:
         self.has_toolhead_cutter = 'cut' in self.form_tip_macro.lower()                                                # E.g. "_MMU_CUT_TIP"
 
         # Sub components
-        for m in self.managers:
-            if hasattr(m, 'handle_connect'):
-                m.handle_connect()
+        self.selector.handle_connect()
+        self.sync_feedback_manager.handle_connect()
 
     def _ensure_list_size(self, lst, size, default_value=-1):
         lst = lst[:size]
@@ -927,9 +926,8 @@ class Mmu:
         self.log_debug('Klipper disconnected!')
 
         # Sub components
-        for m in self.managers:
-            if hasattr(m, 'handle_disconnect'):
-                m.handle_disconnect()
+        self.selector.handle_disconnect()
+        self.sync_feedback_manager.handle_disconnect()
 
     def handle_ready(self):
         self._can_write_variables = True
@@ -2405,11 +2403,6 @@ class Mmu:
     def cmd_MMU_SYNC_GEAR_MOTOR(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
         if self.check_if_disabled(): return
-
-        if gcmd.get_int('HELP', 0, minval=0, maxval=1):
-            self.log_always(self.format_help(self.cmd_MMU_SYNC_GEAR_MOTOR_param_help), color=True)
-            return
-
         if self.check_if_bypass(unloaded_ok=False): return
         if self.check_if_not_homed(): return
         sync = bool(gcmd.get_int('SYNC', 1, minval=0, maxval=1))
