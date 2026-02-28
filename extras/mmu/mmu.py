@@ -2881,6 +2881,8 @@ class Mmu:
                             break
                         t_vals.append(t_avg)
 
+                        self.log_always("Pass %d: Measured max compression:%.4f and max tension: %.4f (mid: %.4f)" % (i+1, c_avg, t_avg, (c_avg + t_avg) / 2.0))
+
                     c_raw = sum(c_vals) / len(c_vals)
                     t_raw = sum(t_vals) / len(t_vals)
                     mid_raw = (c_raw + t_raw) / 2.0
@@ -2896,7 +2898,7 @@ class Mmu:
                     self.log_always(msg)
 
 
-                if calibrated:
+                if calibrated and c_raw != t_raw: # Also check for "stuck" reading
                     msg = "Calibration Results:\n"
                     msg += "As wired the recommended setting (in mmu_hardware.cfg) is:\n"
                     msg += "[mmu_sensors]\n"
