@@ -320,8 +320,17 @@ class MmuProportionalSensor:
         if y >  1.0: y =  1.0
         return y
 
+    def _adc_callback(self, *args):
+        # Old klipper: _adc_callback(read_time, read_value)
+        # New klipper: _adc_callback(samples) where samples is a list of (read_time, read_value)
+        if len(args) == 1:
+            samples = args[0]
+            read_time, read_value = samples[-1]
+        elif len(args) == 2:
+            read_time, read_value = args
+        else:
+            raise TypeError("_adc_callback expected (read_time, read_value) or (samples), got %d args" % len(args))
 
-    def _adc_callback(self, read_time, read_value):
         self.value_raw = float(read_value)
         self.value = self._map_reading(read_value) # Mapped & scaled value
         
@@ -329,11 +338,10 @@ class MmuProportionalSensor:
         # TODO really extreme should be determined by is_extreme() in mmu_sync_feedback manager (with hysteresis), but object hasn't been created yet
         # TODO so for now, use absolute extremes
         if abs(self.value) >= 1.0:
-            extreme = abs(self.value) # 1 or -1
+            extreme = 1 if self.value > 0 else -1
             if extreme != self._last_extreme: # Avoid repeated events
                 self._last_extreme = extreme
                 self.printer.send_event("mmu:sync_feedback", read_time, self.value)
-
 
     def get_status(self, eventtime):
         return {
