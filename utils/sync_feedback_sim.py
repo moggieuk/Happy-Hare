@@ -467,6 +467,7 @@ def plot_progress(
 
     # Core series
     rd              = [r["output"]["rd_current"] for r in records[:end_idx]]
+    rd_tuned        = [r["output"].get("rd_tuned", None) for r in records[:end_idx]]
     z               = [r["input"]["sensor"] for r in records[:end_idx]]
     z_ui            = [r["output"]["sensor_ui"] for r in records[:end_idx]]
     mm_deltas       = [r["input"]["d_mm"] for r in records[:end_idx]]
@@ -571,11 +572,11 @@ def plot_progress(
             ax_rd.plot(t_axis, rd,              label="rotation_distance",   linestyle="-",  linewidth=MAIN_LW,  color=RD_COLOR, marker="o", markersize=2.5, markevery=1)
         else:
             ax_rd.plot(t_axis, rd,              label="rotation_distance",   linestyle="-",  linewidth=MAIN_LW,  color=RD_COLOR)
-
-        if show_rd_true and has_rd_true:
-            ax_rd.plot(t_axis, rd_true,         label="rd_true (simulator)", linestyle="-",  linewidth=MAIN_LW,  color=RD_TRUE_COLOR)
+        ax_rd.plot(t_axis, rd_tuned,            label="rd_tuned",            linestyle="-.", linewidth=DEBUG_LW, color=RD_COLOR)
 
         # Debug...
+        if has_rd_true and show_rd_true:
+            ax_rd.plot(t_axis, rd_true,         label="rd_true (simulator)", linestyle="-",  linewidth=MAIN_LW,  color=RD_TRUE_COLOR)
         if has_rd_ref:
             ax_rd.plot(t_axis, rd_ref,          label="rd_ref",              linestyle="-",  linewidth=DEBUG_LW, color=RD_REF_COLOR)
         if has_rd_ref_smoothed:
