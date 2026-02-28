@@ -168,6 +168,7 @@ class Mmu:
     VARS_MMU_GATE_MATERIAL            = "mmu_state_gate_material"
     VARS_MMU_GATE_COLOR               = "mmu_state_gate_color"
     VARS_MMU_GATE_FILAMENT_NAME       = "mmu_state_gate_filament_name"
+    VARS_MMU_GATE_FILAMENT_WEIGHT     = "mmu_state_gate_filament_weight"
     VARS_MMU_GATE_TEMPERATURE         = "mmu_state_gate_temperature"
     VARS_MMU_GATE_SPOOL_ID            = "mmu_state_gate_spool_id"
     VARS_MMU_GATE_SPEED_OVERRIDE      = "mmu_state_gate_speed_override"
@@ -355,6 +356,7 @@ class Mmu:
         self.default_ttg_map = list(config.getintlist('tool_to_gate_map', []))
         self.default_gate_status = list(config.getintlist('gate_status', []))
         self.default_gate_filament_name = list(config.getlist('gate_filament_name', []))
+        self.default_gate_filament_weight = list(config.getlist('gate_filament_weight', []))
         self.default_gate_material = list(config.getlist('gate_material', []))
         self.default_gate_color = list(config.getlist('gate_color', []))
         self.default_gate_temperature = list(config.getintlist('gate_temperature', []))
@@ -537,6 +539,7 @@ class Mmu:
         # Components of the gate map (status, material, color, spool_id, filament name, temperature, and speed override)
         self.gate_map_vars = [ (self.VARS_MMU_GATE_STATUS, 'gate_status', self.GATE_UNKNOWN),
                                (self.VARS_MMU_GATE_FILAMENT_NAME, 'gate_filament_name', ""),
+                               (self.VARS_MMU_GATE_FILAMENT_NAME, 'gate_filament_weight', ""),
                                (self.VARS_MMU_GATE_MATERIAL, 'gate_material', ""),
                                (self.VARS_MMU_GATE_COLOR, 'gate_color', ""),
                                (self.VARS_MMU_GATE_TEMPERATURE, 'gate_temperature', int(self.default_extruder_temp)),
@@ -632,6 +635,7 @@ class Mmu:
         self.gcode.register_command('MMU_GATE_MAP', self.cmd_MMU_GATE_MAP, desc = self.cmd_MMU_GATE_MAP_help)
         self.gcode.register_command('MMU_ENDLESS_SPOOL', self.cmd_MMU_ENDLESS_SPOOL, desc = self.cmd_MMU_ENDLESS_SPOOL_help)
         self.gcode.register_command('MMU_CHECK_GATE', self.cmd_MMU_CHECK_GATE, desc = self.cmd_MMU_CHECK_GATE_help)
+        self.gcode.register_command('MMU_CHECK_JOB_CONSISTENCY', self.cmd_MMU_CHECK_JOB_CONSISTENCY, desc = self.cmd_MMU_CHECK_JOB_CONSISTENCY_help)
         self.gcode.register_command('MMU_TOOL_OVERRIDES', self.cmd_MMU_TOOL_OVERRIDES, desc = self.cmd_MMU_TOOL_OVERRIDES_help)
         self.gcode.register_command('MMU_SLICER_TOOL_MAP', self.cmd_MMU_SLICER_TOOL_MAP, desc = self.cmd_MMU_SLICER_TOOL_MAP_help)
         self.gcode.register_command('MMU_CALC_PURGE_VOLUMES', self.cmd_MMU_CALC_PURGE_VOLUMES, desc = self.cmd_MMU_CALC_PURGE_VOLUMES_help)
@@ -1464,6 +1468,7 @@ class Mmu:
             'endless_spool_groups': self.endless_spool_groups,
             'gate_status': self.gate_status,
             'gate_filament_name': self.gate_filament_name,
+            'gate_filament_weight': self.gate_filament_weight,
             'gate_material': self.gate_material,
             'gate_color': self.gate_color,
             'gate_temperature': self.gate_temperature,
@@ -6407,6 +6412,7 @@ class Mmu:
         self.save_variable(self.VARS_MMU_GATE_SELECTED, self.gate_selected, write=True)
         self.active_filament = {
             'filament_name': self.gate_filament_name[gate],
+            'filament_weight': self.gate_filament_weight[gate],
             'material': self.gate_material[gate],
             'color': self.gate_color[gate],
             'spool_id': self.gate_spool_id[gate],
@@ -7878,6 +7884,7 @@ class Mmu:
         for g in range(self.num_gates):
             available = available_status[self.gate_status[g]]
             name = self.gate_filament_name[g] or "Unknown"
+            #! usage = self.gate_filament_weight[g] or "Unknown" TODO : Add usage tracking not sure if it might be helpful here
             material = self.gate_material[g] or "Unknown"
             color = self._format_color(self.gate_color[g] or "n/a")
             temperature = self.gate_temperature[g] or "n/a"
@@ -7971,6 +7978,7 @@ class Mmu:
     def _renew_gate_map(self):
         self.gate_status = list(self.gate_status)
         self.gate_filament_name = list(self.gate_filament_name)
+        self.gate_filament_weight = list(self.gate_filament_weight)
         self.gate_material = list(self.gate_material)
         self.gate_color = list(self.gate_color)
         self.gate_temperature = list(self.gate_temperature)
@@ -8484,6 +8492,7 @@ class Mmu:
                         spool_id = self.safe_int(fil.get('spool_id', -1))
                         self.gate_spool_id[gate] = spool_id
                         self.gate_filament_name[gate] = fil.get('name', '')
+                        self.gate_filament_weight[gate] = fil.get('remaining_weight', '')
                         self.gate_material[gate] = fil.get('material', '')
                         self.gate_color[gate] = fil.get('color', '')
                         self.gate_temperature[gate] = max(
@@ -8503,6 +8512,7 @@ class Mmu:
                         if (not from_spoolman or spool_id != -1):
                             # Update attributes but don't allow spoolman to accidently clear
                             self.gate_filament_name[gate] = fil.get('name', '')
+                            self.gate_filament_weight[gate] = fil.get('remaining_weight', '')
                             self.gate_material[gate] = fil.get('material', '')
                             self.gate_color[gate] = fil.get('color', '')
                             self.gate_temperature[gate] = max(
@@ -8544,6 +8554,7 @@ class Mmu:
             for gate in gatelist:
                 available = gcmd.get_int('AVAILABLE', self.gate_status[gate], minval=-1, maxval=2)
                 name = gcmd.get('NAME', None)
+                weight = gcmd.get('WEIGHT', None)
                 material = gcmd.get('MATERIAL', None)
                 color = gcmd.get('COLOR', None)
                 spool_id = gcmd.get_int('SPOOLID', None, minval=-1)
@@ -8554,6 +8565,7 @@ class Mmu:
                     # Local gate map, can update attributes
                     spool_id = spool_id or self.gate_spool_id[gate]
                     name = name if name is not None else self.gate_filament_name[gate]
+                    weight = weight if weight is not None else self.gate_filament_weight[gate]
                     material = (material if material is not None else self.gate_material[gate]).upper()
                     color = (color if color is not None else self.gate_color[gate]).lower()
                     temperature = temperature or self.gate_temperature[gate]
@@ -8561,6 +8573,7 @@ class Mmu:
                     if color is None:
                         raise gcmd.error("Color specification must be in form 'rrggbb' or 'rrggbbaa' hexadecimal value (no '#') or valid color name or empty string")
                     self.gate_filament_name[gate] = name
+                    self.gate_filament_weight[gate] = weight
                     self.gate_material[gate] = material
                     self.gate_color[gate] = color
                     self.gate_temperature[gate] = temperature
@@ -8675,6 +8688,7 @@ class Mmu:
         material = gcmd.get('MATERIAL', "unknown")
         color = gcmd.get('COLOR', "").lower()
         name = gcmd.get('NAME', "") # Filament name
+        usage = gcmd.get('USAGE', "") # Hidden option for spoolman integration
         temp = gcmd.get_int('TEMP', 0, minval=0)
         used = bool(gcmd.get_int('USED', 1, minval=0, maxval=1)) # Is used in print (i.e a referenced tool or not)
         purge_volumes = gcmd.get('PURGE_VOLUMES', "")
@@ -8696,7 +8710,7 @@ class Mmu:
             self._restore_automap_option(bool(skip_automap))
 
         if tool >= 0:
-            self.slicer_tool_map['tools'][str(tool)] = {'color': color, 'material': material, 'temp': temp, 'name': name, 'in_use': used}
+            self.slicer_tool_map['tools'][str(tool)] = {'color': color, 'material': material, 'temp': temp, 'name': name, 'usage': usage, 'in_use': used}
             if used:
                 self.slicer_tool_map['referenced_tools'] = sorted(set(self.slicer_tool_map['referenced_tools'] + [tool]))
                 if not self.slicer_tool_map['skip_automap'] and automap_strategy and automap_strategy != self.AUTOMAP_NONE:
@@ -8955,6 +8969,43 @@ class Mmu:
 
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
+
+    cmd_MMU_CHECK_JOB_CONSISTENCY_help = "Checks the consistency between the mmu spool setup and the job requirements. (filament name, quantity, material ...). Also adds up available filament when in an endless spool group."
+    def cmd_MMU_CHECK_JOB_CONSISTENCY(self, gcmd):
+        self.log_to_file(gcmd.get_commandline())
+        if self.check_if_disabled(): return
+        self.log_info("Checking consistency between MMU setup and job requirements...")
+        # for each referenced tool , if it is used, check if material is sufficient (add up weights on gates when in a endless spool group, and verify that the group is itself consistent - same material)
+        for ref_tool in self.slicer_tool_map['referenced_tools']:
+            tool_info = self.slicer_tool_map['tools'].get(str(ref_tool))
+            if tool_info and tool_info['in_use']:
+                mapped_gate = self.ttg_map[ref_tool]
+                required_material = tool_info['material']
+                required_name = tool_info['name']
+                required_usage = float(tool_info['usage']) if tool_info['usage'] else 0
+                # if the mapped gate is in an endless spool group, sum up all filament in that group
+                group_id = self.endless_spool_groups[mapped_gate]
+                total_available_weight = self.gate_filament_weight[mapped_gate] if self.gate_filament_weight[mapped_gate] else .0
+                is_in_group = self.endless_spool_groups.count(group_id) > 1
+                if is_in_group:
+                    for group in range(self.num_gates):
+                        # Check endless spool group consistency and update total available weight
+                        if self.endless_spool_groups[group] == group_id and group != mapped_gate:
+                            if self.gate_material[group] != self.gate_material[mapped_gate]:
+                                self.log_info(f"Material mismatch in endless spool group {group_id} : gate {mapped_gate} has {self.gate_material[mapped_gate]} but gate {group} has {self.gate_material[group]}")
+                            if self.gate_filament_name[group] != self.gate_filament_name[mapped_gate]:
+                                self.log_info(f"Filament name mismatch in endless spool group {group_id} : gate {mapped_gate} has {self.gate_filament_name[mapped_gate]} but gate {group} has {self.gate_filament_name[group]}")
+                            total_available_weight += self.gate_filament_weight[group] if self.gate_filament_weight[group] else .0
+
+                self.log_info(f"Tool T{ref_tool} mapped to gate {mapped_gate} requires {required_usage}g of {required_material} ({required_name})")
+                self.log_info(f"Total available filament weight for tool T{ref_tool} is {total_available_weight}g")
+                if self.gate_material[mapped_gate] != required_material:
+                    self.log_info(f"Material mismatch for tool T{ref_tool} on gate {mapped_gate} : required {required_material} but gate has {self.gate_material[mapped_gate]}")
+                if self.gate_filament_name[mapped_gate] != required_name:
+                    self.log_info(f"Filament name mismatch for tool T{ref_tool} on gate {mapped_gate} : required {required_name} but gate has {self.gate_filament_name[mapped_gate]}")
+                if total_available_weight < required_usage:
+                    self.log_info(f"Insufficient filament for tool T{ref_tool} on gate {mapped_gate} : required {required_usage}g but only {total_available_weight}g available")
+        self.log_info("MMU job consistency check completed.")
 
     cmd_MMU_PRELOAD_help = "Preloads filament at specified or current gate"
     def cmd_MMU_PRELOAD(self, gcmd):
