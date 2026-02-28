@@ -15,7 +15,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import logging, time
+import logging, time, math
 
 from . import output_pin
 
@@ -265,6 +265,37 @@ class MmuESpooler:
 
         # Only allowed if not moving (OFF or PRINT) but always allow interuption of in-print assist gate
         cur_op, cur_value = self.get_operation(gate)
+
+        if self.mmu.spoolman_support != self.mmu.SPOOLMAN_OFF and cur_op == Mmu.ESPOOLER_PRINT:
+
+            gate_weight_dict = self.mmu.spoolman_gates_weight.get(gate)
+
+            if gate_weight_dict is not None:
+
+                remaining_weight = gate_weight_dict['remaining_weight']
+
+                if remaining_weight > 0:
+                    if 0 < self.mmu.espooler_assist_burst_min_weight < remaining_weight:
+                        self.mmu.log_info(f'Spool advancement skipped: exceeds minimum limit. Spool {remaining_weight}g -> limit {self.mmu.espooler_assist_burst_min_weight}g')
+                        return  # bypass with spoolman remaining_weight>espooler_assist_burst_min_weight
+                    if self.mmu.espooler_assist_burst_spool_prop > 0:
+                        # calculate burst duration from weight and spool_prop
+                        full_spool_weight = gate_weight_dict[
+                            'spool_weight'] if self.mmu.espooler_assist_burst_min_weight == 0 else self.mmu.espooler_assist_burst_min_weight
+                        full_burst_time = self.mmu.espooler_assist_burst_duration
+                        if full_spool_weight and full_burst_time:
+                            calc_duration = full_burst_time + self.mmu.espooler_assist_burst_spool_prop - (
+                                    remaining_weight * self.mmu.espooler_assist_burst_spool_prop) / full_spool_weight
+
+                            duration = math.floor(calc_duration * 100) / 100
+
+                            self.mmu.log_info(f'Auto-calculating burst duration. Spool: {remaining_weight}g -> Duration: {duration}s')
+            else:
+                self.mmu.log_debug(f'Spool weight not found for Gate {gate}.')
+
+            self.mmu._spoolman_dump_spool_weight(gate)  # after gate_weight_dict
+
+
         msg = "ESPOOLER: Got espooler rotate event for gate %d: value=%.2f duration=%.1f" % (gate, value, duration)
         if cur_op in [Mmu.ESPOOLER_OFF, Mmu.ESPOOLER_PRINT] or gate == self.print_assist_gate:
             self.mmu.log_trace(msg)

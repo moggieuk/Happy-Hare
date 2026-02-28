@@ -77,6 +77,7 @@ class MmuServer:
             self.server.register_remote_method("spoolman_unset_spool_gate", self.unset_spool_gate)
             self.server.register_remote_method("spoolman_get_spool_info", self.display_spool_info)
             self.server.register_remote_method("spoolman_display_spool_location", self.display_spool_location)
+            self.server.register_remote_method("spoolman_get_spool_weight", self.get_spool_weight)
 
         # Moonraker lane data push for slicer integration
         self.server.register_remote_method("moonraker_push_lane_data", self.push_lane_data)
@@ -713,6 +714,50 @@ class MmuServer:
                 msg += f"Spool id {spool_id} is not assigned to this printer!\n"
                 msg += f"Run: MMU_SPOOLMAN SPOOLID={spool_id} GATE=.. to add"
             await self._log_n_send(msg)
+            return True
+
+    async def get_spool_weight(self, gate: int | None = None):
+        '''
+        Gets spool weight for active gate. Does not require Spoolman db extension
+        '''
+        async with self.cache_lock:
+
+            if not gate:
+                msg = f"Gate for get_spool_weight not found"
+                await self._log_n_send(msg, error=False)
+                return False
+
+            spool_id = next((sid for sid, (printer, g, _) in self.spool_location.items()
+                             if g == gate and printer == self.printer_hostname), None)
+
+            if spool_id is None or spool_id == -1:
+                msg = f"Spool id for gate {gate} not found"
+                await self._log_n_send(msg, error=False)
+                return False
+
+            spool_info = await self._fetch_spool_info(spool_id)
+            if not spool_info:
+                msg = f"Spool info for spool id {spool_id} not found"
+                await self._log_n_send(msg, error=True)
+                return False
+
+            filament_info = spool_info.get('filament', {})
+            weight = -1.0
+            spool_weight = -1.0
+            if filament_info:
+                weight = float(filament_info.get('weight', -1.0))
+                spool_weight = float(filament_info.get('spool_weight', -1.0))
+
+            remaining_weight = float(spool_info.get('remaining_weight', -1.0))
+
+            msg = f"_MMU_SPOOLMAN_WEIGHT GATE={gate} SPOOL_ID=\"{spool_id}\" WEIGHT={weight:.2f} SPOOL_WEIGHT={spool_weight:.2f} REMAINING_WEIGHT={remaining_weight:.2f}"
+
+            try:
+                await self.klippy_apis.run_gcode(msg)
+            except Exception as e:
+                await self._log_n_send(f"Exception running _MMU_SPOOLMAN_WEIGHT gcode: {str(e)}", error=True, silent=True)
+                return False
+
             return True
 
     async def display_spool_location(self, printer=None):
