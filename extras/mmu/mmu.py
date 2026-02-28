@@ -2796,8 +2796,8 @@ class Mmu:
 
 
     # Start: Filament must be loaded in extruder
-    cmd_MMU_CALIBRATE_PSENSOR_OLD_help = "Calibrate analog proprotional sync-feedback sensor"
-    def cmd_MMU_CALIBRATE_PSENSOR_OLD(self, gcmd):
+    cmd_MMU_CALIBRATE_PSENSOR_help = "Calibrate analog proprotional sync-feedback sensor"
+    def cmd_MMU_CALIBRATE_PSENSOR(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
 
         if not self.sensor_manager.has_sensor(self.SENSOR_PROPORTIONAL):
