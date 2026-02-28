@@ -45,7 +45,6 @@ RUNOUT_GCODE = "__MMU_SENSOR_RUNOUT"
 CLOG_GCODE   = "__MMU_SENSOR_CLOG"
 TANGLE_GCODE = "__MMU_SENSOR_TANGLE"
 
-
 # -------------------------------------------------------------------------------------------------
 # Enhanced "runout helper" that gives greater control of when filament sensor events are fired and
 # direct access to button events in addition to creating a "remove" / "runout" distinction
@@ -216,17 +215,168 @@ class MmuRunoutHelper:
 
 
 # -------------------------------------------------------------------------------------------------
+# Base class for ADC-based sensors ensuring compatibility with older/newer Klipper and Kalico
+class MmuAdcSensorBase:
+    def __init__(self, config, name):
+        self.printer = config.get_printer()
+        self.reactor = self.printer.get_reactor()
+        self.name = name
+
+    def _setup_adc(self, pin_name, sample_time, sample_count, callback, report_time, multi_use=False):
+        ppins = self.printer.lookup_object('pins')
+        if multi_use:
+            ppins.allow_multi_use_pin(pin_name)
+        mcu_adc = ppins.setup_pin('adc', pin_name)
+        if hasattr(mcu_adc, "setup_minmax"):
+            # Kalico and very old Klipper
+            mcu_adc.setup_minmax(sample_time, sample_count)
+            mcu_adc.setup_adc_callback(report_time, callback)
+        else:
+            try:
+                # New Klipper (>= v0.13.0-557)
+                mcu_adc.setup_adc_sample(report_time, sample_time, sample_count)
+                mcu_adc.setup_adc_callback(callback)
+            except TypeError:
+                # Klipper versions between Kalico and New Klipper
+                mcu_adc.setup_adc_sample(sample_time, sample_count)
+                mcu_adc.setup_adc_callback(report_time, callback)
+        return mcu_adc
+
+    # Helper method that subclasses can use to normalize the adc signatures
+    def _parse_adc_args(self, args):
+        # Old klipper: callback(read_time, read_value)
+        # New klipper: callback(samples) where samples is a list of (read_time, read_value)
+        if len(args) == 1:
+            samples = args[0]
+            read_time, read_value = samples[-1]
+        elif len(args) == 2:
+            read_time, read_value = args
+        else:
+            raise TypeError("adc callback expected (read_time, read_value) or (samples), got %d args" % len(args))
+        return read_time, read_value
+
+
+# -------------------------------------------------------------------------------------------------
 # Analog Filament Tension Sensor used for proportional sync-feedback
 # Maps sensor range to [-1,1]
-class MmuProportionalSensor:
+class MmuProportionalSensor(MmuAdcSensorBase):
 
     def __init__(self, config, name):
-        super().__init__(config, name)
-        self._pin = None
+        self.printer = config.get_printer()
+        self.reactor = self.printer.get_reactor()
+        self.name = name
+        self._last_extreme = None
+
+        # Config
+        self._pin           = config.get('sync_feedback_analog_pin')
+        max_tension         = config.getfloat('sync_feedback_analog_max_tension', 1)
+        max_compression     = config.getfloat('sync_feedback_analog_max_compression', 0)
+
+        # Determine the actual raw min/max sensor values
+        raw_min = min(max_tension, max_compression)
+        raw_max = max(max_tension, max_compression)
+        mid_point = (max_tension + max_compression) / 2.0
+
+        self._neutral_point = config.getfloat('sync_feedback_analog_neutral_point', mid_point, minval=raw_min, maxval=raw_max)
+
+        self._gamma         = config.getfloat('sync_feedback_analog_gamma', 1)           # Not exposed
+        self._sample_time   = config.getfloat('sync_feedback_analog_sample_time', 0.005) # Not exposed
+        self._sample_count  = config.getint('sync_feedback_analog_sample_count', 5)      # Not exposed
+        self._report_time   = config.getfloat('sync_feedback_analog_report_time', 0.100) # Not exposed
+
+        self._reversed = (max_compression < max_tension)
+        eps = 1e-12
+        if not self._reversed:
+            # Tension low, Compression high value
+            self._d_neg = max(self._neutral_point - max_tension, eps)
+            self._d_pos = max(max_compression - self._neutral_point, eps)
+        else:
+            # Compression low, Tension high value
+            self._d_pos = max(self._neutral_point - max_compression, eps)
+            self._d_neg = max(max_tension - self._neutral_point, eps)
+
+        # State
+        self.value_raw = 0.0 # Raw ADC value
+        self.value = 0.0     # In [-1.0, 1.0]
+
+        # Setup ADC
+        self.adc = self._setup_adc(self._pin, self._sample_time, self._sample_count, self._adc_callback, self._report_time, multi_use=False)
+
+        # Attach runout_helper (no gcode actions; just enable/disable plumbing to remove UI nag)
+        clog_gcode   = ("%s SENSOR=%s" % (CLOG_GCODE,   name))
+        tangle_gcode = ("%s SENSOR=%s" % (TANGLE_GCODE, name))
+        self.runout_helper = MmuRunoutHelper(
+            self.printer,
+            self.name,                  # Name exposed to QUERY_/SET_FILAMENT_SENSOR
+            0,                          # Event_delay (not used here)
+            {
+                "clog":   clog_gcode,
+                "tangle": tangle_gcode,
+            },
+            insert_remove_in_print=False,
+            button_handler=None,       # No button handler for analog
+            switch_pin=self._pin
+        )
+
+        # Expose status
+        self.printer.add_object(self.name, self)
+
+    def _map_reading(self, v_raw):
+        n = self._neutral_point
+
+        v = float(v_raw)
+        # Map around neutral_point into [-1, 1]
+        if not self._reversed:
+            if v >= n:
+                y = (v - n) / self._d_pos
+            else:
+                y = -(n - v) / self._d_neg
+        else:
+            if v <= n:
+                y = (n - v) / self._d_pos
+            else:
+                y = -(v - n) / self._d_neg
+
+        # Optional shaping (gamma=1 => linear)
+        if self._gamma != 1.0:
+            y = (abs(y) ** self._gamma) * (1.0 if y >= 0 else -1.0)
+
+        # Clamp
+        if y < -1.0: y = -1.0
+        if y >  1.0: y =  1.0
+        return y
+
+    def _adc_callback(self, *args):
+        read_time, read_value = self._parse_adc_args(args)
+
+        self.value_raw = float(read_value)
+        self.value = self._map_reading(read_value) # Mapped & scaled value
+        
+        # Publish sync-feedback event immediately if extreme to match switch sensors
+        # TODO really extreme should be determined by is_extreme() in mmu_sync_feedback manager (with hysteresis), but object hasn't been created yet
+        # TODO so for now, use absolute extremes
+        if abs(self.value) >= 1.0:
+            extreme = 1 if self.value > 0 else -1
+            if extreme != self._last_extreme: # Avoid repeated events
+                self._last_extreme = extreme
+                self.printer.send_event("mmu:sync_feedback", read_time, self.value)
+
+    def get_status(self, eventtime):
+        return {
+            "enabled":          bool(self.runout_helper.sensor_enabled),
+            "value":            self.value,             # in [-1.0, 1.0] (mapped)
+            "value_raw":        self.value_raw,         # raw
+        }
 
 
 
-
+# -------------------------------------------------------------------------------------------------
+# EXPERIMENTAL/HACK
+# Support ViViD analog buffer "endstops"
+# This class implments both the filament switch sensor and endstop. However:
+#  * it will not display in UI because no filament_switch_sensor exists in config
+#  * does not involve the mcu in the homing process so it can't be accurate
+#  * suffers from inherent averaging lag for analog inputs
 class MmuAdcSwitchSensor(MmuAdcSensorBase):
 
     def __init__(self, config, name_prefix, gate, switch_pin, event_delay,
@@ -234,6 +384,9 @@ class MmuAdcSwitchSensor(MmuAdcSensorBase):
                  insert=False, remove=False, runout=False, clog=False, tangle=False,
                  insert_remove_in_print=False, button_handler=None,
                  a_pullup=4700.):
+        
+        self.name = name = "%s_%d" % (name_prefix, gate)
+        super().__init__(config, name)
 
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
@@ -245,7 +398,7 @@ class MmuAdcSwitchSensor(MmuAdcSensorBase):
         buttons = self.printer.load_object(config, 'buttons')
         a_min, a_max = a_range
         buttons.register_adc_button(switch_pin, a_min, a_max, a_pullup, self._button_handler)
-        self.name = name = "%s_%d" % (name_prefix, gate)
+        
         insert_gcode = ("%s SENSOR=%s%s" % (INSERT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if insert else None
         remove_gcode = ("%s SENSOR=%s%s" % (REMOVE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if remove else None
         runout_gcode = ("%s SENSOR=%s%s" % (RUNOUT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if runout else None
@@ -326,6 +479,9 @@ class MmuHallSensor(MmuAdcSensorBase):
     def __init__(self, config, name, gate, pin1, pin2, a_range, adc_sample_time=0.001, adc_sample_count=4, adc_report_time=0.010,
                  insert=False, remove=False, runout=False, clog=False, tangle=False, insert_remove_in_print=False, button_handler=None):
         super().__init__(config, name)
+        
+        self.printer = config.get_printer()
+        self.reactor = self.printer.get_reactor()
 
         # Configurable sampling for fast endstop response
         self.sample_time = adc_sample_time
@@ -382,9 +538,10 @@ class MmuHallSensor(MmuAdcSensorBase):
         self.printer.add_object("mmu_hall_sensor %s" % name, self)
         logging.info("MMU: MmuHallSensor initialized: %s (id: %s)" % (self.name, id(self)))
 
+    # Callbacks are heavily optimized - since the sensor is used for homing, performance impacts overrun
+    def adc_callback(self, *args):
+        read_time, read_value = self._parse_adc_args(args)
 
-
-    def adc_callback(self, read_time, read_value):
         self._val1 = read_value
         self.lastReadTime = read_time
         
@@ -406,7 +563,9 @@ class MmuHallSensor(MmuAdcSensorBase):
         if present:
             self.lastTriggerTime = read_time
 
-    def adc2_callback(self, read_time, read_value):
+    def adc2_callback(self, *args):
+        read_time, read_value = self._parse_adc_args(args)
+
         self._val2 = read_value
         self.lastReadTime = read_time
 
