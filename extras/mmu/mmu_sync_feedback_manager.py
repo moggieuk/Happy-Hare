@@ -26,11 +26,7 @@ import logging, math, time, os
 # MMU subcomponent clases
 from .mmu_sync_controller  import SyncControllerConfig, SyncController
 from .mmu_extruder_monitor import ExtruderMonitor
-
-# MMU subcomponent clases
-from .mmu_sync_controller  import SyncControllerConfig, SyncController
-from .mmu_extruder_monitor import ExtruderMonitor
-from .mmu_shared           import MmuError
+from .mmu_shared import MmuError
 
 class MmuSyncFeedbackManager:
 
@@ -296,7 +292,7 @@ class MmuSyncFeedbackManager:
                 self.mmu.log_always("Sync feedback feature is enabled, type: %s%s" % (mode, active))
             else:
                 self.mmu.log_always("Sync feedback feature is disabled")
-    
+
 
     def get_status(self, eventtime=None):
         return {
