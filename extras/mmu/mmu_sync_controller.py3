@@ -19,7 +19,7 @@
 #           calibrated MMU gear rotation_distance.
 #
 #
-# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+# Copyright (C) 2022-2025  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
 # (\_/)
@@ -86,6 +86,8 @@ SensorType = Literal["P", "D", "CO", "TO"]
 #                                Used for detection, readiness floor, and relief logic.
 # - flowguard_relief_mm (mm)     Required accumulated “relief” motion to prove we tried to
 #                                correct an extreme. If None, defaults to buffer_max_range_mm.   USER EXPOSED
+# - flowguard_motion_mm (mm)     Required accumulated motion while extreme to declare a fault
+#                                If None, defaults to rd_filter_len_mm.                          USER EXPOSED
 #
 # Rotation distance
 # - rd_start (mm)                Default/persisted baseline RD. Used as mirror reference for mapping
@@ -127,7 +129,7 @@ SensorType = Literal["P", "D", "CO", "TO"]
 # - If RD reacts too sluggishly in normal operation, decrease rd_filter_len_mm and/or increase
 #   rd_rate_per_mm (watch stability near neutral).
 # - If you see chatter near x=0, reduce kp and/or kd, or increase r_type.
-# - If FlowGuard trips too early, raise flowguard_relief_mm.
+# - If FlowGuard trips too early, raise flowguard_motion_mm and/or flowguard_relief_mm slightly.
 # - If autotune fires too often, increase the cooldowns; if it
 #   never fires, reduce autotune_stable_time_s and/or autotune_motion_mm.
 
@@ -163,6 +165,7 @@ class SyncControllerConfig:
     # FlowGuard (distance-based)
     flowguard_extreme_threshold: float = 0.9
     flowguard_relief_mm: Optional[float] = None
+    flowguard_motion_mm: Optional[float] = None
 
     # Rotation distance
     rd_start: float = 20.0                     # initial baseline (previous calibrated value)
@@ -227,6 +230,11 @@ class SyncControllerConfig:
         if self.flowguard_relief_mm is None:
             mult = 0.3 if self.sensor_type in ['P'] else 0.7
             self.flowguard_relief_mm = max(mult * self.buffer_range_mm, self.buffer_max_range_mm)
+
+        # FlowGuard motion threshold (how much motion while pegged before tripping)
+        if self.flowguard_motion_mm is None:
+            mult = 6.0 if self.sensor_type in ['P'] else 10.0
+            self.flowguard_motion_mm = mult * self.buffer_max_range_mm
 
 
 # ------------------------------- EKF State ------------------------------
@@ -703,7 +711,7 @@ class _AutotuneEngine:
         vals = [float(v) for v in samples if v is not None]
         n = len(vals)
         if n == 0:
-            return 0.0, None, None, 0
+            return 0.0, None, None, 0, None
 
         m = sum(vals) / float(n)
 
@@ -790,13 +798,20 @@ class _FlowguardEngine:
         self._relief_comp_mm = 0.0
         self._relief_tens_mm = 0.0
 
+        # One-sided open-side episodic tracking
+        self._last_onesided_z = None
+        self._co_open_motion_mm = 0.0
+        self._co_open_relief_mm = 0.0
+        self._to_open_motion_mm = 0.0
+        self._to_open_relief_mm = 0.0
+
         # Condition monitoring
         self._trigger = ""
         self._reason = ""
         self._level = 0.0
         self._max_clog = 0.0
         self._max_tangle = 0.0
-        self._motion_headroom = 0.0 # Debugging
+        self._headroom = 0.0        # Debugging
         self._relief_headroom = 0.0 # Debugging
 
         # FlowGuard arming test
@@ -811,34 +826,84 @@ class _FlowguardEngine:
         - For P/D sensors:
             Uses controller._extreme_flags() on the sensor reading.
         - For CO/TO sensors:
-            Uses the sensor directly for the *seen* side, and infer the unseen side
+            Uses the sensor directly for the *seen* side, and an additional
+            open-side test while z==0 to infer the *unseen* extreme based on:
+              * accumulated motion, and
+              * accumulated "relief effort" (sign of delta_rel opposite of the extreme)
+
             CO (compression-only): unseen = TENSION; relief effort is COMPRESSION (delta_rel > 0)
             TO (tension-only)    : unseen = COMPRESSION; relief effort is TENSION (delta_rel < 0)
         Returns: Status Dict {"trigger", "reason", ...}
         """
         cfg = self.ctrl.cfg
         effort = self._relief_effort(d_ext) # +ve => compression effort, -ve => tension effort
-        
-        # Get the current sensor state for FlowGuard purposes (CO/TO are always at extreme)
-        state_now = self._flowguard_polarity(sensor_reading)
-        comp_ext, tens_ext = (state_now == 1, state_now == -1)
-        
         # Arming logic to prevent false triggers on startup if thresholds are tight
         self._arm_motion_mm += d_ext
         state_now = self.ctrl._extreme_polarity(sensor_reading)
         if self._arm_last_state is None:
             self._arm_last_state = state_now
-        
+
+        self._headroom = cfg.flowguard_motion_mm
         self._relief_headroom = cfg.flowguard_relief_mm
 
         if not self._armed:
             # Arm when we've moved and observed any change in coarse state
             changed = (state_now != self._arm_last_state)
-            if abs(self._arm_motion_mm) > 0.0 and changed:
+            fallback_dist = 0.5 * cfg.flowguard_motion_mm # In case sensor is stuck
+            if (abs(self._arm_motion_mm) > 0.0 and changed) or (abs(self._arm_motion_mm) >= fallback_dist):
                 self._armed = True
             else:
                 return self.status()
         self._arm_last_state = state_now
+
+        # Capture pre-update accumulator values so we can tell which test crossed this tick
+        prev_comp_motion = self._comp_motion_mm
+        prev_comp_relief = self._relief_comp_mm
+        prev_tens_motion = self._tens_motion_mm
+        prev_tens_relief = self._relief_tens_mm
+
+        # Start with direct extremes (sensor-gated; P/D may fall back to x_hat)
+        comp_ext, tens_ext = self.ctrl._extreme_flags(sensor_reading)
+
+        # One-sided open-side test (while switch is open)
+        # This only augments CO/TO; it never affects PD types.
+        if cfg.sensor_type in ("CO", "TO"):
+            z_now = int(sensor_reading)
+
+            # Reset episodic open-side tracking on any state change of the one-sided switch
+            if self._last_onesided_z is None or z_now != self._last_onesided_z:
+                self._co_open_motion_mm = 0.0
+                self._co_open_relief_mm = 0.0
+                self._to_open_motion_mm = 0.0
+                self._to_open_relief_mm = 0.0
+                self._last_onesided_z = z_now
+
+            if z_now == 0:
+                # Sensor open: unseen extreme may be present; we accumulate motion and relief effort
+                if cfg.sensor_type == "CO":
+                    # Unseen extreme is TENSION; relief is COMPRESSION effort
+                    self._co_open_motion_mm += d_ext
+                    if effort > 0:
+                        self._co_open_relief_mm += effort
+
+                    if (abs(self._co_open_motion_mm) >= cfg.flowguard_motion_mm and
+                        abs(self._co_open_relief_mm) >= cfg.flowguard_relief_mm):
+                        tens_ext = True
+                else: # "TO"
+                    # Unseen extreme is COMPRESSION; relief is TENSION effort
+                    self._to_open_motion_mm += d_ext
+                    if effort < 0:
+                        self._to_open_relief_mm += (-effort)
+
+                    if (abs(self._to_open_motion_mm) >= cfg.flowguard_motion_mm and
+                        abs(self._to_open_relief_mm) >= cfg.flowguard_relief_mm):
+                        comp_ext = True
+            else:
+                # When the one-sided switch is in contact, clear open-side accumulation
+                self._co_open_motion_mm = 0.0
+                self._co_open_relief_mm = 0.0
+                self._to_open_motion_mm = 0.0
+                self._to_open_relief_mm = 0.0
 
         if comp_ext: # Extreme Compression
             self._comp_motion_mm += d_ext
@@ -847,18 +912,27 @@ class _FlowguardEngine:
             if effort < 0:
                 self._relief_comp_mm += (-effort)
 
+            comp_motion_trig = (abs(self._comp_motion_mm) >= cfg.flowguard_motion_mm)
             comp_relief_trig = (abs(self._relief_comp_mm) >= cfg.flowguard_relief_mm)
+            self._headroom        -= self._comp_motion_mm
             self._relief_headroom -= self._relief_comp_mm
 
-            if comp_relief_trig and not self._trigger:
+            if (comp_motion_trig or comp_relief_trig) and not self._trigger:
+                if comp_relief_trig and not comp_motion_trig:
+                    test = "flowguard_max_relief"
+                elif comp_motion_trig and comp_relief_trig:
+                    test = "flowguard_max_motion and flowguard_max_relief"
+                else:
+                    test = "flowguard_max_motion"
                 self._trigger = "clog"
-                self._reason = "Compression stuck after %.2f mm motion and %.2f mm relief (triggering parameter: flowguard_max_relief)" % (
-                    self._comp_motion_mm, self._relief_comp_mm
+                self._reason = "Compression stuck after %.2f mm motion and %.2f mm relief (triggering parameter: %s)" % (
+                    abs(self._comp_motion_mm), abs(self._relief_comp_mm), test
                 )
 
             # Maintain normalized [0..1] clog headroom marker
+            mcm = abs(self._comp_motion_mm / cfg.flowguard_motion_mm)
             mcr = abs(self._relief_comp_mm / cfg.flowguard_relief_mm)
-            c_level = min(1.0, mcr)
+            c_level = min(1.0, max(mcm, mcr))
             self._level = c_level
             if c_level > self._max_clog:
                 self._max_clog = c_level
@@ -874,18 +948,27 @@ class _FlowguardEngine:
             if effort > 0:
                 self._relief_tens_mm += effort
 
+            tens_motion_trig = (abs(self._tens_motion_mm) >= cfg.flowguard_motion_mm)
             tens_relief_trig = (abs(self._relief_tens_mm) >= cfg.flowguard_relief_mm)
+            self._headroom        -= self._tens_motion_mm
             self._relief_headroom -= self._relief_tens_mm
 
-            if tens_relief_trig and not self._trigger:
+            if (tens_motion_trig or tens_relief_trig) and not self._trigger:
+                if tens_relief_trig and not tens_motion_trig:
+                    test = "flowguard_max_relief"
+                elif tens_motion_trig and tens_relief_trig:
+                    test = "flowguard_max_motion and flowguard_max_relief"
+                else:
+                    test = "flowguard_max_motion"
                 self._trigger = "tangle"
-                self._reason = "Tension stuck after %.2f mm motion and %.2f mm relief (triggering parameter: flowguard_max_relief)" % (
-                    self._tens_motion_mm, self._relief_tens_mm
+                self._reason = "Tension stuck after %.2f mm motion and %.2f mm relief (triggering parameter: %s)" % (
+                    abs(self._tens_motion_mm), abs(self._relief_tens_mm), test
                 )
 
             # Maintain normalized [0..-1] tangle headroom marker
+            mtm = -abs(self._tens_motion_mm / cfg.flowguard_motion_mm)
             mtr = -abs(self._relief_tens_mm / cfg.flowguard_relief_mm)
-            t_level = max(-1.0, mtr)
+            t_level = max(-1.0, min(mtm, mtr))
             self._level = t_level
             if self._level < self._max_tangle:
                 self._max_tangle = t_level
@@ -915,13 +998,13 @@ class _FlowguardEngine:
         # When debug logging
         if self.ctrl.cfg.log_sync:
             s.update({
-                "headroom": self._motion_headroom,
+                "headroom": self._headroom,
                 "relief_headroom": self._relief_headroom,
             })
 
         return s
 
-    def _relief_effort(self, d_ext):
+    def _relief_effort(self, d_ext: float) -> float:
         """
         Signed relief 'effort' this tick (mm-equivalent).
         Positive => compression effort, negative => tension effort.
@@ -936,23 +1019,6 @@ class _FlowguardEngine:
         if abs(rd_cur) < 1e-9:
             return 0.0
         return d_ext * ((rd_ref / rd_cur) - 1.0)
-
-    def _flowguard_polarity(self, sensor_reading):
-        """
-        FlowGuard-only coarse polarity.
-
-        For CO/TO, treat OPEN as an extreme on the unseen side so FlowGuard tracks immediately:
-          CO: z==1  -> +1 (compression), z==0 -> -1 (tension-as-open)
-          TO: z==-1 -> -1 (tension),     z==0 -> +1 (compression-as-open)
-
-        For P/D, defer to controller polarity.
-        """
-        cfg = self.ctrl.cfg
-        if cfg.sensor_type == "CO":
-            return 1 if int(sensor_reading) == 1 else -1
-        if cfg.sensor_type == "TO":
-            return -1 if int(sensor_reading) == -1 else 1
-        return self.ctrl._extreme_polarity(sensor_reading)
 
 
 # -------------------------- Controller Core ----------------------------
@@ -971,12 +1037,11 @@ class SyncController:
       - Autotune of baseline RD (time/motion near neutral, or two-level duty estimator)
     """
 
-    def __init__(self, cfg: SyncControllerConfig, c0=1.0, x0=None):
+    def __init__(self, cfg: SyncControllerConfig, c0= 1.0, x0: Optional[float] = None):
         self.cfg = cfg
         self._set_twolevel_active()
 
         self._tick = 0
-        self._last_time_s = None
         self._log_ready = False
 
         self.K = 2.0 / cfg.buffer_range_mm   # mm => normalized delta in x
@@ -999,7 +1064,7 @@ class SyncController:
 
         # Readiness (lag-aware)
         self._mm_since_info = 0.0
-        self._last_info_z = None
+        self._last_info_z: Optional[float] = None
 
         # UI visualization
         self._vis_est = 0.0
@@ -1586,7 +1651,7 @@ class SyncController:
         if self._is_extreme(sensor_reading):
             self._vis_est = float(self._extreme_polarity(sensor_reading))
             return self._vis_est
-    
+
         # Get phase info
         ph = self.autotune.twolevel_phase(exclude_extreme=cfg.sensor_type == "D")
 

@@ -2621,7 +2621,7 @@ class Mmu:
                     cdl = None
                     msg = "Calibrated bowden length is %.1fmm" % length
                     if self.has_encoder():
-                        cdl = self.calc_clog_detection_length(length)
+                        cdl = self.calibration_manager.calc_clog_detection_length(length)
                         msg += ". Recommended flowguard_encoder_max_motion (clog detection length): %.1fmm" % cdl
                     self.log_always(msg)
 
@@ -5131,7 +5131,7 @@ class Mmu:
             # Notify manager if calibrating/autotuning
             if calibrating:
                 self.calibration_manager.update_bowden_length(calibrated_bowden_length, console_msg=True)
-                cdl = self.calc_clog_detection_length(calibrated_bowden_length)
+                cdl = self.calibration_manager.calc_clog_detection_length(calibrated_bowden_length)
                 self.calibration_manager.update_clog_detection_length(cdl, force=True)
 
             elif full and not extruder_only and not self.gcode_load_sequence:
