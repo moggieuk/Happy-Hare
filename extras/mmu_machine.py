@@ -1250,7 +1250,11 @@ class MmuPrinterRail(_StepperPrinterRail, object):
         self.add_stepper_from_config(config, **kwargs)
 
     def add_extra_endstop(self, pin, name, register=True, bind_rail_steppers=True, mcu_endstop=None):
-        is_virtual = 'virtual_endstop' in pin
+        if pin is None:
+            is_virtual = False # ADC sensor case necessary since 'in' crashes on NoneType
+        else:
+            is_virtual = 'virtual_endstop' in pin
+
         if is_virtual:
             if name not in self.virtual_endstops:
                 self.virtual_endstops.append(name)
