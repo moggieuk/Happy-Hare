@@ -2854,7 +2854,7 @@ class Mmu:
 
                 calibrated = False
                 self.log_always("Starting calibration. Please excuse the noise - you might hear a bit of grinding but it won't take long!")
-                for attempt in range(2, 4):
+                for attempt in range(2, 5):
                     max_movement = s_maxrange * attempt # Start small but increasing movements
 
                     loops = 3
@@ -2882,7 +2882,7 @@ class Mmu:
                             break
                         t_vals.append(t_avg)
 
-                        self.log_always("Pass %d: Measured max compression:%.4f and max tension: %.4f (mid: %.4f)" % (i+1, c_avg, t_avg, (c_avg + t_avg) / 2.0))
+                        self.log_always("Pass %d: Measured max compression: %.4f and max tension: %.4f (mid: %.4f)" % (i+1, c_avg, t_avg, (c_avg + t_avg) / 2.0))
 
                     c_raw = sum(c_vals) / len(c_vals)
                     t_raw = sum(t_vals) / len(t_vals)
