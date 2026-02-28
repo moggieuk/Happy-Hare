@@ -618,7 +618,7 @@ class MmuHallEndstop:
 # Analog Filament Pressure Sensor (FPS) used for proportional sync-feedback
 # Publishes mmu:sync_feedback values in range [-1.0, 1.0]
 # Maps [0..set_point] -> [-1..0]  and  [set_point..1] -> [0..1]
-# Range multiplier is applied to the raw ADC reading before set_point mapping.
+# Range multiplier is applied to the ADC reading after set_point mapping.
 # Copyright (C) 2023-2025 JR Lomas (discord:knight_rad.iant) <lomas.jr@gmail.com>
 class MmuFpsSensor:
     def __init__(self, config, name="sync_feedback_fps"):
@@ -660,39 +660,44 @@ class MmuFpsSensor:
     def _remap(self, v_raw: float) -> float:
         # 1) reverse if specified
         v = 1.0 - v_raw if self._reversed else v_raw
-        # 2) apply range multiplier BEFORE mapping; clamp [0,1]
-        v = max(0.0, min(1.0, v * self._range_multiplier))
+
+        # 2) clamp ADC to [0,1] for safety
+        if v < 0.0: v = 0.0
+        if v > 1.0: v = 1.0
 
         # 3) map around set_point to [-1,1]
         # guard extremes so we don't divide by ~0
         sp = max(1e-6, min(1.0 - 1e-6, self._set_point))
-
         if v >= sp:
             out = (v - sp) / (1.0 - sp)
         else:
             out = (v - sp) / sp
 
+        # store pre-multiplier mapped value for display
+        self.fps_value_offset = out
+
+        # 4) apply range multiplier AFTER mapping; clamp to [-1,1]
+        out = out * self._range_multiplier
+
         # final guard
         return max(-1.0, min(1.0, out))
 
     def _adc_callback(self, read_time, read_value):
-        # keep raw for status; compute scaled for visibility too
+        # raw after optional reversal; keep unclamped here since _remap clamps
         self.fps_value = 1.0 - read_value if self._reversed else read_value
-        scaled = self.fps_value * self._range_multiplier
-        if scaled < 0.0: scaled = 0.0
-        if scaled > 1.0: scaled = 1.0
-        self.fps_value_scaled = scaled
 
+        # mapped & scaled value
         event_val = self._remap(read_value)  # _remap handles reverse + scaling + mapping
-        self.fps_value_offset = event_val
+        self.fps_value_scaled = event_val
 
+        # publish proportional sync-feedback event
         self.printer.send_event("mmu:sync_feedback", read_time, event_val)
 
     def get_status(self, eventtime):
         return {
             "fps_value": float(self.fps_value),                 # raw (after reversal if set)
-            "fps_value_scaled": float(self.fps_value_scaled),   # after range multiplier and clamped in [0,1]
-            "fps_value_offset": float(self.fps_value_offset),   # after offset and clamped in [-1,1]
+            "fps_value_offset": float(self.fps_value_offset),   # after offset but before range multiplier
+            "fps_value_scaled": float(self.fps_value_scaled),   # mapped * multiplier
             "set_point": float(self._set_point),
             "range_multiplier": float(self._range_multiplier),
         }
