@@ -28,7 +28,7 @@
 #
 # Requires: mmu_sync_feedback_manager.py (SyncControllerConfig, SyncController)
 #
-# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+# Copyright (C) 2022-2025  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
 # (\_/)
@@ -243,7 +243,7 @@ class SimplePrinterModel:
         """
         Advance the physical spring for a single commanded extruder motion (in mm),
         using the rotation distance that was actually in effect for that motion.
-    
+
         Physics (normalized spring x_true; spring_mm = x_true * (buffer_range_mm/2)):
           gear_mm = (extruder_rd_true / rd_used) * d_ext
           Δ_rel   = gear_mm - d_ext                     # positive = compression
@@ -422,7 +422,6 @@ def plot_progress(
     DEBUG_LW        = 1.0
     SECONDARY_LW    = 1.0
 
-    HEADER_ZORDER   = 999
     TRIPBOX_ZORDER  = 1000
     AUTOTUNE_ZORDER = 1001
 
@@ -467,13 +466,14 @@ def plot_progress(
 
     # Core series
     rd              = [r["output"]["rd_current"] for r in records[:end_idx]]
-    rd_tuned        = [r["output"].get("rd_tuned", None) for r in records[:end_idx]]
     z               = [r["input"]["sensor"] for r in records[:end_idx]]
     z_ui            = [r["output"]["sensor_ui"] for r in records[:end_idx]]
     mm_deltas       = [r["input"]["d_mm"] for r in records[:end_idx]]
 
     # Normalized headroom: -1 = full, 0 = trigger
+    max_headroom    = max(r["output"]["flowguard"]["headroom"] for r in records[:end_idx])
     max_r_headroom  = max(r["output"]["flowguard"]["relief_headroom"] for r in records[:end_idx])
+    fg_headroom     = [-r["output"]["flowguard"]["headroom"] / max_headroom for r in records[:end_idx]]
     fg_r_headroom   = [-r["output"]["flowguard"]["relief_headroom"] / max_r_headroom for r in records[:end_idx]]
 
     # Optional debug series
@@ -519,11 +519,6 @@ def plot_progress(
             has_fg_armed = True
             fg_armed.append((i, -1.0))
 
-    # Header sparators representing reset() points in controller
-    header_break_idxs = [
-        i for i, r in enumerate(records[:end_idx])
-        if r.get("meta", {}).get("header_break") is True
-    ]
 
     # Main axes setup -------------------------------------------------------------
     fig, ax_rd = plt.subplots(figsize=(12, 6), constrained_layout=True)
@@ -570,11 +565,11 @@ def plot_progress(
             ax_rd.plot(t_axis, rd,              label="rotation_distance",   linestyle="-",  linewidth=MAIN_LW,  color=RD_COLOR, marker="o", markersize=2.5, markevery=1)
         else:
             ax_rd.plot(t_axis, rd,              label="rotation_distance",   linestyle="-",  linewidth=MAIN_LW,  color=RD_COLOR)
-        ax_rd.plot(t_axis, rd_tuned,            label="rd_tuned",            linestyle="-.", linewidth=DEBUG_LW, color=RD_COLOR)
+
+        if show_rd_true and has_rd_true:
+            ax_rd.plot(t_axis, rd_true,         label="rd_true (simulator)", linestyle="-",  linewidth=MAIN_LW,  color=RD_TRUE_COLOR)
 
         # Debug...
-        if has_rd_true and show_rd_true:
-            ax_rd.plot(t_axis, rd_true,         label="rd_true (simulator)", linestyle="-",  linewidth=MAIN_LW,  color=RD_TRUE_COLOR)
         if has_rd_ref:
             ax_rd.plot(t_axis, rd_ref,          label="rd_ref",              linestyle="-",  linewidth=DEBUG_LW, color=RD_REF_COLOR)
         if has_rd_ref_smoothed:
@@ -604,16 +599,6 @@ def plot_progress(
         if is_clog or is_tangle:
             ax_rd.axvline(t_axis[i], linestyle="-.", linewidth=BOLD_LW, alpha=0.7, color="red")
 
-    # Draw header separators
-    for i in header_break_idxs:
-        ax_rd.axvline(
-            t_axis[i],
-            linestyle="--",
-            linewidth=1.5,
-            color="0.25",
-            alpha=0.6,
-            zorder=HEADER_ZORDER,
-        )
 
     # Plots against sensor axis (right) -------------------------------------------
     if len(t_axis) >= 2:
@@ -628,6 +613,7 @@ def plot_progress(
             ax_sensor.plot(t_axis, c_est, label="c_est (debug)",  linestyle="--", linewidth=DEBUG_LW,     color=C_EST_COLOR)
 
         # FlowGuard: Headroom normalized and reflected to fit on this scale
+        ax_sensor.plot(t_axis, fg_headroom,   label="flowguard headroom (normalized)",   linestyle="--",  linewidth=SECONDARY_LW, color=HEADROOM_COLOR)
         ax_sensor.plot(t_axis, fg_r_headroom, label="flowguard headroom (norm. relief)", linestyle="-.",  linewidth=SECONDARY_LW, color=HEADROOM_COLOR)
 
     elif t_axis:
@@ -830,7 +816,7 @@ Commands (history enabled — use Up/Down arrows):
   p | plot                               - Save plot to sim_plot.png (always saves to file).
   d | display                            - Display plot window (does not save).
   status                                 - Show controller/printer state
-  quit | q                               - Exit
+  quit | q                               - Plot (save) and exit
 """)
 
 def _summary_txt(ctrl: SyncController, last_autotune_rd, last_sensor, last_sensor_ui, last_flowguard: Optional[Dict[str, Any]], spring_mm: float):
@@ -838,7 +824,7 @@ def _summary_txt(ctrl: SyncController, last_autotune_rd, last_sensor, last_senso
     sensor_str = "N/A" if last_sensor is None else (f"{last_sensor:.3f}" if isinstance(last_sensor, float) else str(last_sensor))
     sensor_ui_str = "N/A" if last_sensor_ui is None else f"{last_sensor_ui:.3f}"
     if isinstance(last_flowguard, dict) and last_flowguard.get('trigger'):
-        fg_str = f"trigger={last_flowguard.get('trigger', '')}, reason={last_flowguard.get('reason')}"
+        fg_str = f"trigger={last_flowguard.get('trigger', "")}, reason={last_flowguard.get('reason')}"
     else:
         fg_str = "N/A"
     return f"RD={ctrl.rd_current:.4f} | Autotune={autotune_str} | sensor={sensor_str} | sensor_ui={sensor_ui_str} | Bowden/Buffer spring={spring_mm:.3f}mm | FlowGuard: {fg_str}"
@@ -865,7 +851,7 @@ def _plot_from_log(
         print("jsonl log file is empty; nothing to plot.")
         return
 
-    use_twolevel = cfg.use_twolevel_for_type_p or cfg.sensor_type in ['CO', 'TO']
+    use_twolevel = cfg.use_twolevel_for_type_pd or cfg.sensor_type in ['CO', 'TO']
     twolevel_txt = " (twoLevel)" if use_twolevel else ""
     sensor_txt = f"{cfg.sensor_type}{twolevel_txt}" if cfg.sensor_type else None
     try:
@@ -895,7 +881,6 @@ def _load_log_file(path: str) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
     """
     header: Dict[str, Any] = {}
     records: List[Dict[str, Any]] = []
-    pending_break = False
 
     if not os.path.exists(path):
         raise FileNotFoundError(f"No such file: {path}")
@@ -919,16 +904,7 @@ def _load_log_file(path: str) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
             if isinstance(maybe, dict):
                 header = maybe
             continue
-
-        if isinstance(obj, dict) and "header" in obj and header:
-            pending_break = True
-            continue
-
         if isinstance(obj, dict) and ("input" in obj or "output" in obj):
-            if pending_break:
-                obj.setdefault("meta", {})
-                obj["meta"]["header_break"] = True
-                pending_break = False
             records.append(obj)
 
     return header, records
@@ -950,11 +926,7 @@ def _plot_log_file(path: str, *, out_path: str, show_ticks: bool, show_mm_axis: 
             dt = float(r.get("input", {}).get("dt_s"))
         except Exception:
             dt = r.get("meta", {}).get("dt_s", 1.0)  # defensive fallback
-
-        rr_meta = dict(r.get("meta", {}))
-        rr_meta["dt_s"] = dt
-        rr["meta"] = rr_meta
-
+        rr["meta"] = {"dt_s": dt}
         records.append(rr)
 
     # Detect whether truth is present (simulator logs carry this)
@@ -1191,7 +1163,7 @@ def _make_seed_record(ctrl: SyncController, printer: SimplePrinterModel, t_s: fl
             "x_est": ctrl.state.x,
             "c_est": ctrl.state.c,
             "sensor_ui": sensor_ui,
-            "flowguard": {"trigger": "", "reason": "", "level": 0.0, "max_clog": 0.0, "max_tangle": 0.0, "active": False, "relief_headroom": -1.0},
+            "flowguard": {"trigger": "", "reason": "", "level": 0.0, "max_clog": 0.0, "max_tangle": 0.0, "active": False, "headroom": -1.0, "relief_headroom": -1.0},
             "autotune": {"rd": None, "note": None},
         },
         "truth": {
@@ -1216,7 +1188,8 @@ def _run_cli():
     ap.add_argument("--sensor-type", choices=["P", "D", "CO", "TO"], default="P")
     ap.add_argument("--buffer-range-mm", type=float, default=8.0)
     ap.add_argument("--buffer-max-range-mm", type=float, default=12.0)
-    ap.add_argument("--use-twolevel", dest="use_twolevel", action="store_true", help="Enable user two-level behavior for type-P sensor")
+    ap.add_argument("--use-twolevel", dest="use_twolevel", action="store_true", help="Enable user two-level behavior")
+    ap.add_argument("--no-use-twolevel", dest="use_twolevel", action="store_false", help="Enable user two-level behavior")
     ap.set_defaults(use_twolevel=False)
     ap.add_argument("--tick-dt-s", type=float, default=1.0, help="default dt used only for manual 'tick', 'clog' and 'tangle'")
     ap.add_argument("--rd-start", type=float, default=20.0, help="starting extruder rotation distance")
@@ -1267,7 +1240,7 @@ def _run_cli():
         log_sync=True, # tell controller to also create log trace for debugging
         buffer_range_mm=args.buffer_range_mm,
         buffer_max_range_mm=args.buffer_max_range_mm,
-        use_twolevel_for_type_p=args.use_twolevel,
+        use_twolevel_for_type_pd=args.use_twolevel,
         sensor_type=args.sensor_type,
         rd_start=args.rd_start,
         sensor_lag_mm=args.sensor_lag_mm,
@@ -1280,7 +1253,7 @@ def _run_cli():
     logger.write_header({
         "rd_start": cfg.rd_start,
         "sensor_type": cfg.sensor_type,
-        "twolevel_active": bool(cfg.use_twolevel_for_type_p or cfg.sensor_type in ['CO', 'TO']),
+        "twolevel_active": bool(cfg.use_twolevel_for_type_pd or cfg.sensor_type in ['CO', 'TO']),
         "buffer_range_mm": cfg.buffer_range_mm,
         "buffer_max_range_mm": cfg.buffer_max_range_mm,
         "switch_hysteresis": args.switch_hysteresis,
@@ -1353,11 +1326,12 @@ def _run_cli():
     # Show whichever attribute exists on cfg
     print("=== Filament Tension Controller CLI ===")
     print(f" Sensor Type           : {cfg.sensor_type}")
-    print(f" Use TwoLevel          : {cfg.use_twolevel_for_type_p}")
+    print(f" Use TwoLevel          : {cfg.use_twolevel_for_type_pd}")
     print(f" Buffer Range (sensor) : {cfg.buffer_range_mm} mm")
     print(f" Buffer Max Range      : {cfg.buffer_max_range_mm} mm  (physical limit)")
     print(f" Autotune motion       : {cfg.autotune_motion_mm} mm")
     print(f" Flowguard relief      : {cfg.flowguard_relief_mm} mm")
+    print(f" Flowguard motion      : {cfg.flowguard_motion_mm} mm")
     print(f" MMU Gear RD start     : {cfg.rd_start} mm")
     print(f" Sensor lag            : {cfg.sensor_lag_mm} mm")
     print(f" Simulator:")
@@ -1402,6 +1376,15 @@ def _run_cli():
         # ----------------------------------------------------------------------
         if low in ("q", "quit", "exit"):
             _summary_print(ctrl, last_autotune_rd, last_sensor, last_sensor_ui, last_flowguard, printer.spring_mm())
+            _plot_from_log(
+                cfg, logger,
+                mode="save",
+                out_path=args.out,
+                show_ticks=args.show_ticks,
+                show_mm_axis=(args.x_mm != "off"),
+                mm_axis_mode=("abs" if args.x_mm == "abs" else "signed"),
+                summary_txt=_summary_txt(ctrl, last_autotune_rd, last_sensor, last_sensor_ui, last_flowguard, printer.spring_mm())
+            )
             break
 
         # ----------------------------------------------------------------------
@@ -1452,7 +1435,7 @@ def _run_cli():
             logger.write_header({
                 "rd_start": cfg.rd_start,
                 "sensor_type": cfg.sensor_type,
-                "twolevel_active": bool(cfg.use_twolevel_for_type_p),
+                "twolevel_active": bool(cfg.use_twolevel_for_type_pd),
                 "buffer_range_mm": cfg.buffer_range_mm,
                 "buffer_max_range_mm": cfg.buffer_max_range_mm,
                 "switch_hysteresis": args.switch_hysteresis,
@@ -1538,10 +1521,10 @@ def _run_cli():
                 print("Bad numeric values.")
                 _summary_print(ctrl, last_autotune_rd, last_sensor, last_sensor_ui, last_flowguard, printer.spring_mm())
                 continue
-        
+
             if rd_true is not None:
                 printer.set_extruder_rd_true(rd_true)
-        
+
             total_mm = v * T
             stride = abs(args.stride_mm)
             max_stride = stride * (1.0 + max(0.0, args.sample_error))
@@ -1549,24 +1532,24 @@ def _run_cli():
             per_step = math.copysign(abs(total_mm) / n_steps, total_mm)
             dt_s = (abs(per_step) / abs(v)) if abs(v) > 1e-12 else default_dt_s
             max_str = f"-{max_stride:.1f}mm" if args.sample_error > 0 else ""
-        
+
             print(
                 f"Running sim: total={total_mm:.3f}mm at {v}mm/s | approx steps={n_steps} | "
                 f"stride≈{stride:.1f}mm{max_str} | printer_RD_true={printer.extruder_rd_true:.4f}mm | "
                 f"spring0={printer.spring_mm():.3f}mm ..."
             )
-        
+
             # --- Helpers -------------------------------------------------------
             def _new_stride_len(rem: float) -> float:
                 base = max(1e-9, abs(args.stride_mm))
                 if args.sample_error <= 1e-12:
                     return min(base, rem)
                 return min(base * (1.0 + random.random() * args.sample_error), rem)
-        
+
             def _read_sensor():
                 raw = printer.measure()
                 return int(raw) if cfg.sensor_type in ("CO", "TO", "D") else float(raw)
-        
+
             def _next_flip_distance(sensor_type: str, z0: int, x: float, g: float, s: float):
                 """
                 Distance (>=0) along commanded extrusion to next threshold crossing, else inf.
@@ -1590,12 +1573,12 @@ def _run_cli():
                         targets.append(+thr_off)
                     elif z0 == -1 and xvel_pos:
                         targets.append(-thr_off)
-        
+
                 lag_norm = 0.0
                 if targets and printer.chaos > 1e-12:
                     lag_mm_max = min(cfg.buffer_max_range_mm, float(printer.chaos) * cfg.buffer_max_range_mm)
                     lag_norm = (2.0 / cfg.buffer_range_mm) * (random.random() * lag_mm_max)
-        
+
                 best_d = math.inf
                 best_anchor = None
                 norm_clip = max(1e-9, cfg.buffer_max_range_mm / cfg.buffer_range_mm)
@@ -1609,25 +1592,25 @@ def _run_cli():
                             best_d = d_abs
                             best_anchor = anchor
                 return best_d, best_anchor
-        
+
             # --- Rolling-stride event scheduler -------------------------------
             sgn = 1.0 if total_mm >= 0 else -1.0
             remaining = abs(total_mm)
             stride_left = _new_stride_len(remaining)
             eps = 1e-12
             is_discrete = cfg.sensor_type in ("CO", "TO", "D")
-        
+
             while remaining > eps:
                 # PRE-MOVE read
                 z0 = _read_sensor()
-        
+
                 # RD in effect for the chunk we are about to simulate
                 rd_in_effect = getattr(ctrl, "rd_prev", ctrl.rd_current)
-        
+
                 # Normalized gain per +1 mm extruder
                 g = printer.gain_per_mm(rd_in_effect)
                 s = 1.0 if sgn > 0 else -1.0
-        
+
                 # Predict next flip and stride
                 x_now = printer.x_true
                 if cfg.sensor_type == "P":
@@ -1635,19 +1618,19 @@ def _run_cli():
                 else:
                     d_to_flip, _flip_anchor = _next_flip_distance(cfg.sensor_type, int(z0), x_now, g, s)
                 d_to_stride = stride_left
-        
+
                 # Advance to earliest of (remaining, flip, stride)
                 chunk_abs = min(remaining, d_to_stride, d_to_flip)
                 d_chunk = sgn * chunk_abs
                 dt_chunk = (chunk_abs / abs(v)) if abs(v) > 1e-12 else default_dt_s
                 sim_time_s = printer.advance_time(dt_chunk)
-        
+
                 # Physical spring evolution using rd_in_effect
                 printer.advance_physics(rd_in_effect, d_chunk)
-        
+
                 # Measure at event boundary
                 z1 = _read_sensor()
-        
+
                 # Event classification
                 if is_discrete:
                     actually_flipped = (int(z1) != int(z0))
@@ -1655,11 +1638,11 @@ def _run_cli():
                     actually_flipped = False
                 predicted_flip = abs(chunk_abs - d_to_flip) <= 1e-12
                 hit_stride = abs(chunk_abs - d_to_stride) <= 1e-12
-        
+
                 emit = (actually_flipped and not args.stride_only) or hit_stride
                 if emit:
                     out = ctrl.update(sim_time_s, d_chunk, z1, simulation=True)
-        
+
                     rec = {
                         **out,
                         "truth": {
@@ -1678,20 +1661,20 @@ def _run_cli():
                         },
                     }
                     logger.append(rec)
-        
+
                     # Session summary state
                     last_sensor = int(z1) if is_discrete else 0
                     oo = out.get("output", {})
                     last_sensor_ui = oo.get("sensor_ui", None)
                     last_flowguard = oo.get("flowguard", {"trigger": ""})
-        
+
                     auto = oo.get("autotune", {})
                     if auto.get("rd") is not None:
                         last_autotune_rd = auto["rd"]
                         print(f"AUTOTUNE: rd: {auto['rd']:.4f}, reason: {auto.get('note')}")
                     elif auto.get("note") and args.log_debug:
                         print(f"DEBUG: {auto['note']}")
-        
+
                     # FlowGuard trip?
                     fg = oo.get("flowguard", {"trigger": ""})
                     trip_kind = fg.get("trigger")
@@ -1700,21 +1683,21 @@ def _run_cli():
                         print(f"FlowGuard trip; {trip_kind}. Stopping simulation.")
                         ctrl.flowguard.reset() # Allow continuation after trigger
                         break
-        
+
                     # Reset stride from this instant after an event
                     stride_left = _new_stride_len(remaining - chunk_abs)
                 else:
                     # No controller update on non-event chunk
                     stride_left = max(0.0, stride_left - chunk_abs)
-        
+
                 # Consume distance
                 remaining -= chunk_abs
-        
+
             print(f"Simulation complete. Current RD={ctrl.rd_current:.4f}.")
             print("Type 'plot' to save a plot, or 'display' to open a window.")
             _summary_print(ctrl, last_autotune_rd, last_sensor, last_sensor_ui, last_flowguard, printer.spring_mm())
             continue
-        
+
         # ----------------------------------------------------------------------
         # Event-driven ping-pong: "inout <move_mm> <iterations> [<speed_mm_s> [<rd_true>]]"
         if line.startswith("inout "):
@@ -1723,7 +1706,7 @@ def _run_cli():
                 print("Usage: inout <move_mm> <iterations> [<speed_mm_s> [<extruder_rotation_distance>]]")
                 _summary_print(ctrl, last_autotune_rd, last_sensor, last_sensor_ui, last_flowguard, printer.spring_mm())
                 continue
-        
+
             try:
                 move_mm = float(parts[1])
                 iters   = int(parts[2])
@@ -1733,27 +1716,27 @@ def _run_cli():
                 print("Bad numeric values.")
                 _summary_print(ctrl, last_autotune_rd, last_sensor, last_sensor_ui, last_flowguard, printer.spring_mm())
                 continue
-        
+
             if iters <= 0 or abs(move_mm) < 1e-12:
                 print("Nothing to do (iters<=0 or move too small).")
                 _summary_print(ctrl, last_autotune_rd, last_sensor, last_sensor_ui, last_flowguard, printer.spring_mm())
                 continue
-        
+
             # Defaults
             default_speed = max(1e-9, abs(args.stride_mm) / max(1e-9, default_dt_s))
             v = abs(v_mm_s) if (v_mm_s is not None and abs(v_mm_s) > 1e-12) else default_speed
             if rd_true is not None:
                 printer.set_extruder_rd_true(rd_true)
-        
+
             stride = max(1e-9, abs(args.stride_mm))
             eps = 1e-12
             is_discrete = cfg.sensor_type in ("CO", "TO", "D")
             norm_clip = max(1e-9, cfg.buffer_max_range_mm / cfg.buffer_range_mm)
-        
+
             def _read_sensor():
                 raw = printer.measure()
                 return int(raw) if is_discrete else float(raw)
-        
+
             def _next_flip_distance(sensor_type: str, z0: int, x: float, g: float, s: float):
                 if sensor_type == "P" or abs(g) <= 1e-16:
                     return math.inf, None
@@ -1773,12 +1756,12 @@ def _run_cli():
                         targets.append(+thr_off)
                     elif z0 == -1 and xvel_pos:
                         targets.append(-thr_off)
-        
+
                 lag_norm = 0.0
                 if targets and printer.chaos > 1e-12:
                     lag_mm_max = min(cfg.buffer_max_range_mm, float(printer.chaos) * cfg.buffer_max_range_mm)
                     lag_norm = (2.0 / cfg.buffer_range_mm) * (random.random() * lag_mm_max)
-        
+
                 best_d = math.inf
                 best_anchor = None
                 for anchor in targets:
@@ -1791,7 +1774,7 @@ def _run_cli():
                             best_d = d_abs
                             best_anchor = anchor
                 return best_d, best_anchor
-        
+
             def _d_to_stride_net(net_since_evt: float, s: float) -> float:
                 """
                 Distance (>=0) along current commanded direction s (+1/-1)
@@ -1806,34 +1789,34 @@ def _run_cli():
                 if math.copysign(1.0, net_since_evt) == math.copysign(1.0, s):
                     return max(0.0, stride - a)
                 return math.inf
-        
+
             print(
                 f"Running inout: move={move_mm:.3f}mm, iters={iters}, "
                 f"speed={v:.3f}mm/s | stride={stride:.3f}mm | "
                 f"printer_RD_true={printer.extruder_rd_true:.4f}mm"
             )
-        
+
             emitted = 0
             net_since_event = 0.0    # signed net motion since last emitted event
-        
+
             # Alternate +move, then -move, repeated
             for rep in range(iters):
                 for phase_sign in (+1.0, -1.0):
                     seg_len = abs(move_mm)
                     sgn = math.copysign(1.0, phase_sign * (move_mm if move_mm != 0 else 1.0))
                     remaining = seg_len
-        
+
                     while remaining > eps:
                         # PRE-MOVE read
                         z0 = _read_sensor()
-        
+
                         # RD in effect for this chunk
                         rd_in_effect = getattr(ctrl, "rd_prev", ctrl.rd_current)
-        
+
                         # Motion gain and direction
                         g = printer.gain_per_mm(rd_in_effect)
                         s = 1.0 if sgn > 0 else -1.0
-        
+
                         # Predict next flip and next stride crossing of |net|
                         x_now = printer.x_true
                         if cfg.sensor_type == "P":
@@ -1841,19 +1824,19 @@ def _run_cli():
                         else:
                             d_to_flip, _ = _next_flip_distance(cfg.sensor_type, int(z0), x_now, g, s)
                         d_to_stride = _d_to_stride_net(net_since_event, s)
-        
+
                         # Advance to the earliest of (segment end, flip, stride)
                         chunk_abs = min(remaining, d_to_flip, d_to_stride)
                         d_chunk = sgn * chunk_abs
                         dt_chunk = (chunk_abs / v) if v > 1e-12 else default_dt_s
                         sim_time_s = printer.advance_time(dt_chunk)
-        
+
                         # Physical spring evolution with rd_in_effect
                         printer.advance_physics(rd_in_effect, d_chunk)
-        
+
                         # Read AFTER motion
                         z1 = _read_sensor()
-        
+
                         # Event classification
                         if is_discrete:
                             actually_flipped = (int(z1) != int(z0))
@@ -1866,7 +1849,7 @@ def _run_cli():
                         if emit:
                             label = "flip" if actually_flipped else "stride"
                             out = ctrl.update(sim_time_s, d_chunk, z1, simulation=True)
-        
+
                             rec = {
                                 **out,
                                 "truth": {
@@ -1885,20 +1868,20 @@ def _run_cli():
                             }
                             logger.append(rec)
                             emitted += 1
-        
+
                             # Session summary state
                             last_sensor = int(z1) if is_discrete else float(z1)
                             oo = out.get("output", {})
                             last_sensor_ui = oo.get("sensor_ui", None)
                             last_flowguard = oo.get("flowguard", {"trigger": ""})
-        
+
                             auto = oo.get("autotune", {})
                             if auto.get("rd") is not None:
                                 last_autotune_rd = auto["rd"]
                                 print(f"AUTOTUNE: rd: {auto['rd']:.4f}, reason: {auto.get('note')}")
                             elif auto.get("note") and args.log_debug:
                                 print(f"DEBUG: {auto['note']}")
-        
+
                             # FlowGuard trip?
                             fg = oo.get("flowguard", {"trigger": ""})
                             trip_kind = fg.get("trigger")
@@ -1909,32 +1892,32 @@ def _run_cli():
                                 remaining = 0.0
                                 rep = iters  # break outer loops
                                 break
-        
+
                             # Reset net tracker AFTER an emitted event
                             net_since_event = 0.0
                         else:
                             # Silent advance: accumulate signed net, no controller update
                             net_since_event += d_chunk
-        
+
                         # Consume portion of the segment
                         remaining -= chunk_abs
                     # end while
                 # end for phase
             # end for iters
-        
+
             print(f"InOut complete. Emitted {emitted} event(s). Current RD={ctrl.rd_current:.4f}.")
             if emitted == 0:
                 print("Note: No stride/flip events occurred (net never reached stride and no sensor flips).")
             _summary_print(ctrl, last_autotune_rd, last_sensor, last_sensor_ui, last_flowguard, printer.spring_mm())
             continue
-        
+
         # ----------------------------------------------------------------------
         # Manual update: "t|tick <d_ext_mm> [<sensor|'auto'>]"
         if line.startswith("t ") or line.startswith("tick "):
             parts = line.split()
             if parts[0] in ("t", "tick"):
                 parts = parts[1:]
-        
+
             if len(parts) == 0:
                 print("Usage: t <d_ext_mm> [<sensor|auto>]")
                 _summary_print(ctrl, last_autotune_rd, last_sensor, last_sensor_ui, last_flowguard, printer.spring_mm())
@@ -1943,14 +1926,14 @@ def _run_cli():
                 print("Too many parameters. Usage: t <d_ext_mm> [<sensor|auto>]")
                 _summary_print(ctrl, last_autotune_rd, last_sensor, last_sensor_ui, last_flowguard, printer.spring_mm())
                 continue
-        
+
             try:
                 d_ext = float(parts[0])
             except ValueError:
                 print("Bad numeric value for d_ext_mm.")
                 _summary_print(ctrl, last_autotune_rd, last_sensor, last_sensor_ui, last_flowguard, printer.spring_mm())
                 continue
-        
+
             # Sensor handling (pre-move)
             if len(parts) == 1 or parts[1].strip().lower() == "auto":
                 z = printer.measure()
@@ -1979,17 +1962,17 @@ def _run_cli():
                             print("Tension-only sensor (TO) must be -1 or 0.")
                         _summary_print(ctrl, last_autotune_rd, last_sensor, last_sensor_ui, last_flowguard, printer.spring_mm())
                         continue
-        
+
             # RD that was in effect during this tick (before controller updates)
             rd_in_effect = getattr(ctrl, "rd_prev", ctrl.rd_current)
-        
+
             # Advance time and update controller
             sim_time_s = printer.advance_time(default_dt_s)
             out = ctrl.update(sim_time_s, d_ext, z, simulation=True)
-        
+
             # Physical evolution using rd_in_effect for this motion
             printer.advance_physics(rd_in_effect, d_ext)
-        
+
             rec = {
                 **out,
                 "truth": {
@@ -2004,12 +1987,12 @@ def _run_cli():
                },
             }
             logger.append(rec)
-        
+
             last_sensor = z
             oo = out["output"]
             last_sensor_ui = oo["sensor_ui"]
             last_flowguard = oo["flowguard"]
-        
+
             print(f"RD={oo['rd_current']:.4f} | x={oo['x_est']:.3f} | c={oo['c_est']:.4f} | "
                   f"sensor_ui={oo['sensor_ui']:.3f} | Bowden/Buffer spring={printer.spring_mm():.3f}mm | "
                   f"FlowGuard: {oo['flowguard']} | Autotune: {oo['autotune']}")

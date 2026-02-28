@@ -1,6 +1,6 @@
 # Happy Hare MMU Software
 #
-# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+# Copyright (C) 2022-2025  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
 # Goal: Helper class for callback based extruder monitoring.
@@ -12,8 +12,6 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 
-from .mmu_shared import MmuError
-
 class ExtruderMonitor:
     """
     Periodically samples the extruder position and notifies registered callbacks
@@ -24,7 +22,7 @@ class ExtruderMonitor:
     - Global enable/disable is controlled by (re)scheduling the reactor timer.
     """
 
-    CHECK_INTERVAL = 0.5 # How often to check extruder movement (seconds)
+    CHECK_INTERVAL = 0.25 # How often to check extruder movement (seconds)
 
     def __init__(self, mmu):
         self.mmu = mmu

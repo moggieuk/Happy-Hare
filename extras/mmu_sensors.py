@@ -476,31 +476,33 @@ class MmuHallEndstop:
         return self._last_trigger_time
 
 
-# Analog Filament Pressure Sensor (FPS) used for proportional sync-feedback
-# Publishes mmu:sync_feedback values in range [-1.0, 1.0]
+# Analog Filament Tension Sensor used for proportional sync-feedback
 # Maps [0..set_point] -> [-1..0]  and  [set_point..1] -> [0..1]
 # Range multiplier is applied to the ADC reading after set_point mapping.
 # Copyright (C) 2023-2025 JR Lomas (discord:knight_rad.iant) <lomas.jr@gmail.com>
-class MmuFpsSensor:
-    def __init__(self, config, name="sync_feedback_fps"):
+class MmuProportionalSensor:
+    def __init__(self, config, name):
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.name = name
 
         # Config
-        self._pin = config.get('sync_feedback_fps_pin')
-        self._reversed = config.getboolean('sync_feedback_fps_reversed', False)
-        self._set_point = config.getfloat('sync_feedback_fps_set_point', 0.5)
-        self._range_multiplier = config.getfloat('sync_feedback_fps_range_multiplier', 1.0)
+        self._pin = config.get('sync_feedback_analog_pin')
+        self._reversed = config.getboolean('sync_feedback_analog_reversed', False)
+        self._set_point = config.getfloat('sync_feedback_analog_set_point', 0.5)
+        self._scale = config.getfloat('sync_feedback_analog_scale', 1.0)
 
-        self._sample_time = config.getfloat('sync_feedback_fps_sample_time', 0.005) # Not exposed
-        self._sample_count = config.getint('sync_feedback_fps_sample_count', 5)     # Not exposed
-        self._report_time = config.getfloat('sync_feedback_fps_report_time', 0.200) # Not exposed (keep above 200ms to avoid overloading Happy Hare)
+        self._sample_time = config.getfloat('sync_feedback_analog_sample_time', 0.005) # Not exposed
+        self._sample_count = config.getint('sync_feedback_analog_sample_count', 5)     # Not exposed
+        self._report_time = config.getfloat('sync_feedback_analog_report_time', 0.100) # Not exposed
+        self._debug = config.getboolean('sync_feedback_analog_debug', False))          # Not exposed
 
         # State
-        self.fps_value = 0.0          # raw ADC 0..1 (after reversal if set)
-        self.fps_value_scaled = 0.0   # scaled ADC (after range_multiplier, clamped 0..1)
-        self.fps_value_offset = 0.0   # "offsetted" mapped value in [-1, 1] around set_point
+        self.value_raw = 0.0      # raw ADC value
+        self.value_signed = 0.0   # correctly signed after optional inversion
+        self.value_offset = 0.0   # after offset but before range multiplier
+        self._last_value = 0.0
+        self.value = 0.0          # in [-1.0, 1.0] (signed, offset and scaled)
 
         # Setup ADC
         ppins = self.printer.lookup_object('pins')
@@ -528,10 +530,6 @@ class MmuFpsSensor:
 
         # Expose status
         self.printer.add_object(self.name, self)
-        self.printer.register_event_handler("klippy:ready", self._on_ready)
-
-    def _on_ready(self):
-        pass
 
     def _remap(self, v_raw: float) -> float:
         # 1) Reverse if specified
@@ -549,34 +547,45 @@ class MmuFpsSensor:
         else:
             out = (v - sp) / sp
 
-        # Sstore pre-multiplier mapped value for display
-        self.fps_value_offset = out
+        # Store pre-multiplier mapped value for display
+        self.value_offset = out
 
         # 4) Apply range multiplier AFTER mapping; clamp to [-1,1]
-        out = out * self._range_multiplier
+        out = out * self._scale
 
-        # Final guard
+        # 5) Clamp range
         return max(-1.0, min(1.0, out))
 
     def _adc_callback(self, read_time, read_value):
+        self.value_raw = float(read_value)
+
         # Raw after optional reversal; keep unclamped here since _remap clamps
-        self.fps_value = 1.0 - read_value if self._reversed else read_value
+        self.value_signed = 1.0 - read_value if self._reversed else read_value
 
         # Mapped & scaled value
-        event_val = self._remap(read_value)  # _remap handles reverse + scaling + mapping
-        self.fps_value_scaled = event_val
+        self._last_value = self.value
+        self.value = self._remap(read_value)  # _remap handles reverse + scaling + mapping
 
-        # Publish proportional sync-feedback event
-        self.printer.send_event("mmu:sync_feedback", read_time, event_val)
+        # Publish proportional sync-feedback event if extreme
+        # TODO really extreme should be determined by is_extreme() in mmu_sync_feedback manager (with hysteresis), but object doesn't exist yet in v3 codebase..
+        if abs(self.value) >= 1.0 and self.value != self._last_value:
+            self.printer.send_event("mmu:sync_feedback", read_time, event_val)
 
     def get_status(self, eventtime):
-        return {
-            "fps_value":        float(self.fps_value),         # raw (after reversal if set)
-            "fps_value_offset": float(self.fps_value_offset),  # after offset but before range multiplier
-            "fps_value_scaled": float(self.fps_value_scaled),  # mapped * multiplier
-            "set_point":        float(self._set_point),
-            "range_multiplier": float(self._range_multiplier),
+        s = {
+            "enabled":          bool(self.runout_sensor.sensor_enabled),
+            "value":            self.value,             # in [-1.0, 1.0] (mapped * multipler)
+            "value_raw":        self.value_raw,         # raw
         }
+
+        if self._debug:
+            s.extend({
+                "value_signed":     self.value_signed, # raw after reversal if set
+                "value_offset":     self.value_offset, # after offset but before range multiplier
+                "set_point":        self._set_point,
+                "scale":            self._scale,
+            })
+        return s
 
 
 class MmuSensors:
@@ -665,10 +674,10 @@ class MmuSensors:
             self._create_mmu_sensor(config, Mmu.SENSOR_COMPRESSION, None, switch_pins, 0, button_handler=self._sync_compression_callback)
 
         # Setup analog Filament Pressure Sensor for proportional sync feedback
-        # Uses single analog input; publishes mmu:sync_feedback in [-1, 1]
-        fps_pin = config.get('sync_feedback_fps_pin', None)
-        if fps_pin:
-            self.sensors[Mmu.SENSOR_PROPORTIONAL] = MmuFpsSensor(config)
+        # Uses single analog input; value scaled in [-1, 1]
+        analog_pin = config.get('sync_feedback_analog_pin', None)
+        if analog_pin:
+            self.sensors[Mmu.SENSOR_PROPORTIONAL] = MmuProportionalSensor(config, name=Mmu.SENSOR_PROPORTIONAL)
 
 
 
@@ -734,10 +743,42 @@ class MmuSensors:
         Button event handler for sync-feedback tension switch
         """
         from .mmu import Mmu # For sensor names
-        c_sensor_name = t_sensor_name.replace(Mmu.SENSOR_TENSION, Mmu.SENSOR_COMPRESSION)
-        compression_sensor = self.printer.lookup_object("filament_switch_sensor %s" % c_sensor_name, None)
-        compression_enabled = compression_sensor.runout_helper.sensor_enabled if compression_sensor else False
-        compression_state = compression_sensor.runout_helper.filament_present if compression_enabled else False
+        tension_enabled = runout_helper.sensor_enabled
+        compression_sensor = self.printer.lookup_object("filament_switch_sensor %s_sensor" % Mmu.SENSOR_COMPRESSION, None)
+        has_active_compression = compression_sensor.runout_helper.sensor_enabled if compression_sensor else False
+        compression_state = compression_sensor.runout_helper.filament_present if has_active_compression else False
+
+        if tension_enabled:
+            if has_active_compression:
+                if tension_state == compression_state:
+                    event_value = 0
+                elif tension_state and not compression_state:
+                    event_value = -1
+                else:
+                    event_value = 1
+            else:
+                if tension_state :
+                    event_value = -1
+                else:
+                    event_value = 1
+        else:
+            if has_active_compression:
+                if compression_state:
+                    event_value = 1
+                else:
+                    event_value = -1
+            else:
+                event_value = 0
+
+        # Send event now so it is processed as early as possible
+        self.printer.send_event("mmu:sync_feedback", eventtime, event_value)
+
+    def _sync_compression_callback(self, eventtime, compression_state, runout_helper):
+        from .mmu import Mmu
+        compression_enabled = runout_helper.sensor_enabled
+        tension_sensor = self.printer.lookup_object("filament_switch_sensor %s_sensor" % Mmu.SENSOR_TENSION, None)
+        has_active_tension = tension_sensor.runout_helper.sensor_enabled if tension_sensor else False
+        tension_state = tension_sensor.runout_helper.filament_present if has_active_tension else False
 
         if compression_enabled:
             event_value = 0 if tension_state == compression_state else (-1 if tension_state else 1) # {-1,0,1}
