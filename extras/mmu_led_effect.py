@@ -726,7 +726,17 @@ class _ledEffect:
     def _handle_shutdown(self):
         self.set_enabled(self.runOnShutown)
 
-    def adcCallback(self, read_time, read_value):
+    def adcCallback(self, *args):
+        # Old klipper: _adc_callback(read_time, read_value)
+        # New klipper: _adc_callback(samples) where samples is a list of (read_time, read_value)
+        if len(args) == 1:
+            samples = args[0]
+            read_time, read_value = samples[-1]
+        elif len(args) == 2:
+            read_time, read_value = args
+        else:
+            raise TypeError("_adc_callback expected (read_time, read_value) or (samples), got %d args" % len(args))
+
         self.analogValue = int(read_value * 1000.0) / 10.0
     
     def button_callback(self, eventtime, state):
