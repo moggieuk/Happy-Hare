@@ -7454,6 +7454,13 @@ class Mmu:
         self.endless_spool_on_load = gcmd.get_int('ENDLESS_SPOOL_ON_LOAD', self.endless_spool_on_load, minval=0, maxval=1)
         self.endless_spool_eject_gate = gcmd.get_int('ENDLESS_SPOOL_EJECT_GATE', self.endless_spool_eject_gate, minval=-1, maxval=self.num_gates - 1)
 
+        # Consistency check options
+        self.consistency_checks_enable = gcmd.get_int('CONSISTENCY_CHECKS_ENABLE', self.consistency_checks_enable, minval=0, maxval=1)
+        self.consistency_check_endless_groups = gcmd.get_int('CONSISTENCY_CHECK_ENDLESS_GROUPS', self.consistency_check_endless_groups, minval=0, maxval=1)
+        self.consistency_name_severity = gcmd.get_int('CONSISTENCY_NAME_SEVERITY', self.consistency_name_severity, minval=0, maxval=2)
+        self.consistency_material_severity = gcmd.get_int('CONSISTENCY_MATERIAL_SEVERITY', self.consistency_material_severity, minval=0, maxval=2)
+        self.consistency_weight_severity = gcmd.get_int('CONSISTENCY_WEIGHT_SEVERITY', self.consistency_weight_severity, minval=0, maxval=2)
+
         prev_spoolman_support = self.spoolman_support
         spoolman_support = gcmd.get('SPOOLMAN_SUPPORT', self.spoolman_support)
         if spoolman_support not in self.SPOOLMAN_OPTIONS:
@@ -7642,6 +7649,13 @@ class Mmu:
             msg += "\nlog_statistics = %d" % self.log_statistics
             msg += "\nlog_m117_messages = %d" % self.log_m117_messages
             msg += "\nconsole_gate_stat = %s" % self.console_gate_stat
+
+            msg += "\n\nCONSISTENCY CHECKS:"
+            msg += "\nconsistency_checks_enable = %d" % self.consistency_checks_enable
+            msg += "\nconsistency_check_endless_groups = %d" % self.consistency_check_endless_groups
+            msg += "\nconsistency_name_severity = %d" % self.consistency_name_severity
+            msg += "\nconsistency_material_severity = %d" % self.consistency_material_severity
+            msg += "\nconsistency_weight_severity = %d" % self.consistency_weight_severity
 
             msg += "\n\nOTHER:"
             msg += "\nextruder_temp_variance = %.1f" % self.extruder_temp_variance
