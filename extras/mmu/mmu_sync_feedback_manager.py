@@ -55,11 +55,10 @@ class MmuSyncFeedbackManager:
         self.sync_feedback_force_twolevel    = self.mmu.config.getint('sync_feedback_force_twolevel', 0) # Not exposed
 
         # FlowGuard
-        self.flowguard_enabled      = self.mmu.config.getint('flowguard_enabled', 1, minval=0, maxval=1)
-        self.flowguard_max_relief   = self.mmu.config.getfloat('flowguard_max_relief', 8, above=1.)
-# PAUL        self.flowguard_max_motion   = self.mmu.config.getfloat('flowguard_max_motion', 80, above=10.)
-        self.flowguard_encoder_mode = self.mmu.config.getint('flowguard_encoder_mode', 2, minval=0, maxval=2)
-        self.flowguard_encoder_max_motion = self.mmu.config.getfloat('flowguard_encoder_max_motion', 20, above=0.)
+        self.flowguard_enabled               = self.mmu.config.getint('flowguard_enabled', 1, minval=0, maxval=1)
+        self.flowguard_max_relief            = self.mmu.config.getfloat('flowguard_max_relief', 8, above=1.)
+        self.flowguard_encoder_mode          = self.mmu.config.getint('flowguard_encoder_mode', 2, minval=0, maxval=2)
+        self.flowguard_encoder_max_motion    = self.mmu.config.getfloat('flowguard_encoder_max_motion', 20, above=0.)
 
         # Setup events for managing motor synchronization
         self.mmu.printer.register_event_handler("mmu:synced", self._handle_mmu_synced)
@@ -107,7 +106,6 @@ class MmuSyncFeedbackManager:
             if flowguard_enabled != self.flowguard_enabled:
                 self._config_flowguard_feature(flowguard_enabled)
             self.flowguard_max_relief = gcmd.get_float('FLOWGUARD_MAX_RELIEF', self.flowguard_max_relief, above=1.)
-# PAUL            self.flowguard_max_motion = gcmd.get_float('FLOWGUARD_MAX_MOTION', self.flowguard_max_motion, above=10.)
 
         if self.mmu.has_encoder():
             mode = gcmd.get_int('FLOWGUARD_ENCODER_MODE', self.flowguard_encoder_mode, minval=0, maxval=2)
@@ -131,7 +129,6 @@ class MmuSyncFeedbackManager:
             msg += "\n\nFLOWGUARD:"
             msg += "\nflowguard_enabled = %d" % self.flowguard_enabled
             msg += "\nflowguard_max_relief = %.1f" % self.flowguard_max_relief
-# PAUL            msg += "\nflowguard_max_motion = %.1f" % self.flowguard_max_motion
 
         if self.mmu.has_encoder():
             msg += "\nflowguard_encoder_mode = %d" % self.flowguard_encoder_mode
@@ -611,7 +608,6 @@ class MmuSyncFeedbackManager:
             use_twolevel_for_type_p = self.sync_feedback_force_twolevel,
             rd_start = rd_start,
             flowguard_relief_mm = self.flowguard_max_relief,
-# PAUL            flowguard_motion_mm = self.flowguard_max_motion,
         )
         self.ctrl = SyncController(cfg)
         return self.ctrl
