@@ -94,7 +94,7 @@ SensorType = Literal["P", "D", "CO", "TO"]
 #                                If None, defaults to rd_filter_len_mm.
 #
 # Rotation distance
-# - rd_start (mm)                Default/persisted baseline RD. Used as mirror reference for mapping  # PAUL last calibrated value
+# - rd_start (mm)                Default/persisted baseline RD. Used as mirror reference for mapping
 # - rd_min_max_speed_multiplier  Allowed RD bounds based on % speed                           # PAUL hook up user parameter
 # - rd_twolevel_speed_multiplier Min/Max RD based on % speed for twolevel operation           # PAUL hook up user parameter
 #
@@ -326,6 +326,7 @@ class _AutotuneEngine:
         # Segment/cycle tracking for two-level duty estimator
         self._tl_seg_level = None          # "low" / "high"
         self._tl_seg_mm = 0.0
+        self._tl_seg_mm_extreme = 0.0
         self._tl_samples_low = []          # FIFO of extruder distances traveled while in "low" state
         self._tl_samples_high = []         # FIFO of extruder distances traveled while in "high" state
         self._tl_last_unpaired_low = None
@@ -380,6 +381,7 @@ class _AutotuneEngine:
         # Clear segment/cycle tracking for two-level duty estimator
         self._tl_seg_level = None
         self._tl_seg_mm = 0.0
+        self._tl_seg_mm_extreme = 0.0
         self._tl_samples_low = []
         self._tl_samples_high = []
         self._tl_last_unpaired_low = None
@@ -390,7 +392,7 @@ class _AutotuneEngine:
         self._ekf_seen_sensor_states.clear()
 
 
-    def note_twolevel_tick(self, os_level, flipped, d_ext):
+    def note_twolevel_tick(self, os_level, flipped, d_ext, is_extreme=False):
         """
         Called once per update() in two-level branch to keep buckets/evidence up-to-date.
         """
@@ -403,12 +405,14 @@ class _AutotuneEngine:
         else:
             self._tl_updates_since_flip += 1
 
-        # Only accumulate segments after the first flip to remove starting conditions
+        # Only accumulate segments after the first flip to remove startup conditions
         if self._tl_flips < 1:
             return
 
         # Accumulate current segment distance
         self._tl_seg_mm += abs(d_ext)
+        if is_extreme:
+            self._tl_seg_mm_extreme += abs(d_ext)
 
         # On flip: close previous segment (if started) and store sample
         if flipped:
@@ -444,6 +448,7 @@ class _AutotuneEngine:
             # Start new segment for the new level
             self._tl_seg_level = os_level
             self._tl_seg_mm = 0.0
+            self._tl_seg_mm_extreme = 0.0
 
 
     def note_d_sensor(self, sensor_reading):
@@ -462,9 +467,6 @@ class _AutotuneEngine:
         If rd is recommended, run through shared statistical tests
         """
         cfg = self.ctrl.cfg
-
-        if not cfg.autotune_enabled:
-            return {"rd": None, "note": None}
 
         # Track time/movement
         self._total_time_s += max(0.0, float(dt_s))
@@ -507,12 +509,15 @@ class _AutotuneEngine:
         return {"rd": rec_rd, "note": "Autotune: {} {} and {}".format(travel, note, _note)}
 
 
-    # PAUL: TODO Call this at the END of a sync period when gear is unsynced.
+    # PAUL: TODO HOOK ME UP - Call this at the END of a sync period when gear is unsynced.
     def save_autotune(self, rd_new):
         """
         Called to perist the new rd and update bowden length
         """
         cfg = self.ctrl.cfg
+
+        if not cfg.autotune_enabled:
+            return
 
         frac = self._frac_speed_delta(rd_new, self._autotune_baseline)
         min_frac = cfg.autotune_min_save_frac
@@ -522,6 +527,33 @@ class _AutotuneEngine:
 
         #print("PAUL TODO persist the tuned rd and updated bowden length")
         self._autotune_baseline = rd_new
+
+
+    def twolevel_phase(self, exclude_extreme=False):
+        """
+        Return (level, phase) for current two-level segment where
+        phase is measured between extremes (extreme motion removed).
+        Return None if we don't have enough evidence yet.
+          phase      : progress in [0,1] within current segment (distance-based)
+          level      : "low" | "high" (segment we're currently in)
+        """
+        level = self._tl_seg_level
+        if level is None:
+            return None
+
+        samples = self._tl_samples_high if level == "high" else self._tl_samples_low
+        if not samples:
+            return None
+
+        mean_len = sum(samples) / float(len(samples))
+        travel = self._tl_seg_mm
+        if exclude_extreme:
+            travel -= self._tl_seg_mm_extreme
+            mean_len -= self._tl_seg_mm_extreme
+        phase = max(0.0, min(1.0, travel / max(1e-6, mean_len)))
+
+        return phase, level
+
 
     # ---------------------------- Internal Impl -----------------------------
 
@@ -807,12 +839,7 @@ class _FlowguardEngine:
         """
         cfg = self.ctrl.cfg
         move_mm = abs(float(d_ext))
-
-        # Relative motion sign: + compression effort, - tension effort
-        # (ĉ * d_gear is what the filament *should* experience from gear;
-        #  d_ext is what the printer commanded the extruder to move)
-        c_hat = self.ctrl.state.c
-        delta_rel = c_hat * d_gear - d_ext  # +ve compression, -ve tension
+        effort = self._relief_effort(d_ext)  # + => compression effort, - => tension effort
 
         clog = False
         tangle = False
@@ -832,10 +859,9 @@ class _FlowguardEngine:
             changed = (state_now != self._arm_last_state)
             fallback_dist = 0.5 * cfg.flowguard_motion_mm # In case sensor is stuck
             if (self._arm_motion_mm > 0.0 and changed) or (self._arm_motion_mm >= fallback_dist):
-                print(f"PAUL: Armed: c1={(self._arm_motion_mm > 0.0 and changed)}, c2={(self._arm_motion_mm >= fallback_dist)}")
                 self._armed = True
             else:
-                return {"clog": clog, "tangle": tangle, "reason": reason, "headroom": headroom, "min_headroom": self._min_headroom, "relief_headroom": relief_headroom, "armed": self._armed} # PAUL armed added
+                return {"clog": clog, "tangle": tangle, "reason": reason, "headroom": headroom, "min_headroom": self._min_headroom, "relief_headroom": relief_headroom, "armed": self._armed}
         self._arm_last_state = state_now
 
         # Capture pre-update accumulator values so we can tell which test crossed this tick
@@ -863,21 +889,19 @@ class _FlowguardEngine:
             if z_now == 0:
                 # Sensor open: unseen extreme may be present; we accumulate motion and relief effort
                 if cfg.sensor_type == "CO":
-                    # Unseen extreme is TENSION; relief is COMPRESSION effort (delta_rel > 0)
+                    # Unseen extreme is TENSION; relief is COMPRESSION effort
                     self._co_open_motion_mm += move_mm
-                    if delta_rel > 0:
-                        # PAUL self._co_open_relief_mm += delta_rel
-                        self._co_open_relief_mm += self._relief_mm_from_rd(d_ext)
+                    if effort > 0:
+                        self._co_open_relief_mm += effort
 
                     if (self._co_open_motion_mm >= cfg.flowguard_motion_mm and
                         self._co_open_relief_mm >= cfg.flowguard_relief_mm):
                         tens_ext = True
                 else: # "TO"
-                    # Unseen extreme is COMPRESSION; relief is TENSION effort (delta_rel < 0)
+                    # Unseen extreme is COMPRESSION; relief is TENSION effort
                     self._to_open_motion_mm += move_mm
-                    if delta_rel < 0:
-                        self._to_open_relief_mm += (-delta_rel)
-                        self._to_open_relief_mm += self._relief_mm_from_rd(d_ext)
+                    if effort < 0:
+                        self._to_open_relief_mm += (-effort)
 
                     if (self._to_open_motion_mm >= cfg.flowguard_motion_mm and
                         self._to_open_relief_mm >= cfg.flowguard_relief_mm):
@@ -893,9 +917,8 @@ class _FlowguardEngine:
             self._comp_motion_mm += move_mm
 
             # Relief for compression is *tension* effort (delta_rel < 0)
-            if delta_rel < 0:
-                # PAUL self._relief_comp_mm += (-delta_rel)
-                self._relief_comp_mm += self._relief_mm_from_rd(d_ext)
+            if effort < 0:
+                self._relief_comp_mm += (-effort)
 
             comp_motion_trig = (self._comp_motion_mm >= cfg.flowguard_motion_mm)
             comp_relief_trig = (self._relief_comp_mm >= cfg.flowguard_relief_mm)
@@ -926,9 +949,8 @@ class _FlowguardEngine:
             self._tens_motion_mm += move_mm
 
             # Relief for tension is *compression* effort (delta_rel > 0)
-            if delta_rel > 0:
-                # PAUL self._relief_tens_mm += delta_rel
-                self._relief_tens_mm += self._relief_mm_from_rd(d_ext)
+            if effort > 0:
+                self._relief_tens_mm += effort
 
             tens_motion_trig = (self._tens_motion_mm >= cfg.flowguard_motion_mm)
             tens_relief_trig = (self._relief_tens_mm >= cfg.flowguard_relief_mm)
@@ -972,7 +994,20 @@ class _FlowguardEngine:
         if clog or tangle:
             self.reset()
 
-        return {"clog": clog, "tangle": tangle, "reason": reason, "headroom": headroom, "min_headroom": min_headroom, "relief_headroom": relief_headroom, "armed": self._armed} # PAUL armed added
+        return {"clog": clog, "tangle": tangle, "reason": reason, "headroom": headroom, "min_headroom": min_headroom, "relief_headroom": relief_headroom, "armed": self._armed}
+
+
+    def _relief_effort(self, d_ext: float) -> float:
+        """
+        Signed relief 'effort' this tick (mm-equivalent).
+        Positive => compression effort, negative => tension effort.
+        Uses commanded RD offset only (independent of EKF ĉ).
+        """
+        rd_ref = self.ctrl._rd_ref
+        rd_cur = self.ctrl.rd_current
+        if abs(rd_cur) < 1e-9:
+            return 0.0
+        return d_ext * ((rd_ref / rd_cur) - 1.0)
 
 
     def _relief_mm_from_rd(self, d_ext):
@@ -987,14 +1022,6 @@ class _FlowguardEngine:
             return 0.0
         relief_factor = abs((rd_ref / rd_cur) - 1.0) # per-mm relative differential
         return abs(d_ext) * relief_factor
-
-# PAUL idea...
-#    def _relief_mm_from_rd_model(self, d_ext, delta_rel, mix=0.7):
-#        # mix in [0,1]: 1.0 => RD-only, 0.0 => model-only
-#        rd_part = self._relief_mm_from_rd(d_ext)
-#        model_part = abs(delta_rel)
-#        return mix * rd_part + (1.0 - mix) * model_part
-
 
 
 # -------------------------- Controller Core ----------------------------
@@ -1158,13 +1185,6 @@ class SyncFeedbackManager:
         if self.twolevel_active:
             # ------------------- TWO-LEVEL BRANCH ------------------
 
-            self._ekf_predict(extruder_mm=d_ext, gear_mm=d_gear) # Shadow EKF for FlowGuard only
-
-            if cfg.sensor_type == "P":
-                self._ekf_update_type_prop(sensor_reading) # Update EKF with whatever the sensor can tell us
-            else: # Type-D/CO/TO
-                self._ekf_update_type_switch(int(sensor_reading))
-
             # FlowGuard update
             flowguard_out = self.flowguard.update(d_ext, d_gear, int(sensor_reading) if cfg.sensor_type in ("CO", "TO", "D") else sensor_reading)
 
@@ -1174,7 +1194,11 @@ class SyncFeedbackManager:
             flipped_this_tick = (self._os_target_level != prev_level)
 
             # Delegate two-level evidence collection to autotune helper
-            self.autotune.note_twolevel_tick(self._os_target_level, flipped_this_tick, d_ext)
+            if cfg.sensor_type in ("CO", "TO"):
+                extreme_active = self._onesided_contact(sensor_reading)
+            else:
+                extreme_active = (self._extreme_polarity(sensor_reading, cfg.pd_twolevel_threshold) != 0)
+            self.autotune.note_twolevel_tick(self._os_target_level, flipped_this_tick, d_ext, extreme_active)
 
         else:
             # ------------- KALMAN/TYPE-PD BRANCH --------------
@@ -1243,7 +1267,7 @@ class SyncFeedbackManager:
         if auto_rd is not None:
             self.rd_ref = auto_rd
             if self.twolevel_active:
-                # Reset twolevel rd high/low after first autotune candidate
+                # Reset boost (twolevel rd high/low) after first autotune candidate
                 self._twolevel_boost_active = False
                 self._set_low_high_rd(auto_rd)
         if flowguard_out.get('clog') or flowguard_out.get('tangle'):
@@ -1423,7 +1447,9 @@ class SyncFeedbackManager:
     # ----------- Sensor reading helpers  ----------
 
     def _onesided_contact(self, sensor_reading):
-        """ True if the one-sided sensor is in-contact (triggered) """
+        """
+        True if the one-sided sensor is in-contact (triggered)
+        """
         cfg = self.cfg
 
         if cfg.sensor_type == "CO":
@@ -1455,12 +1481,16 @@ class SyncFeedbackManager:
 
 
     def _is_extreme(self, sensor_reading):
-        """ True if current reading is pegged per sensor type """
+        """
+        True if current reading is pegged per sensor type 
+        """
         return self._extreme_polarity(sensor_reading) != 0
 
 
     def _extreme_flags(self, sensor_reading):
-        """ Return (compression_extreme, tension_extreme) """
+        """
+        Return (compression_extreme, tension_extreme)
+        """
         p = self._extreme_polarity(sensor_reading)
         return (p == 1, p == -1)
 
@@ -1608,31 +1638,60 @@ class SyncFeedbackManager:
 
     def _expected_sensor_reading(self, sensor_reading, d_ext):
         """
-        UI helper for prediction of idealized sensor reading
-        Can therefore be used to derive buffer piston position
+        UI helper for prediction of idealized sensor reading.
+        Returns a float in [-1, 1] depending on sensor type.
         """
         cfg = self.cfg
         move = abs(float(d_ext))
 
-        if cfg.sensor_type == "P" or (cfg.sensor_type == "D" and not cfg.use_twolevel_for_type_pd):
+        # Type P: always passthrough true sensor reading
+        if cfg.sensor_type == "P":
             self._vis_est = sensor_reading
             return self._vis_est
-
-        z = int(sensor_reading)
-        if z == 1:
-            self._vis_est = 1.0
+    
+        # Type D in EKF mode:
+        if cfg.sensor_type == "D" and not self.twolevel_active:
+            neutral_lim = max(0.0, cfg.flowguard_extreme_threshold - 0.03)
+            xhat = max(-neutral_lim, min(neutral_lim, float(self.state.x)))
+            vis_len = 5.0
+            alpha = 1.0 - math.exp(-move / vis_len) if vis_len > 0 else 1.0
+            self._vis_est = self._vis_est + alpha * (xhat - self._vis_est)
             return self._vis_est
-        if z == -1:
-            self._vis_est = -1.0
+    
+        # Get phase info
+        ph = self.autotune.twolevel_phase(exclude_extreme=cfg.sensor_type == "D")
+
+        # Snap to extremes for D/CO/TO when pegged or no phase info available
+        if self._is_extreme(sensor_reading) or ph is None:
+            self._vis_est = float(self._extreme_polarity(sensor_reading))
             return self._vis_est
 
-        neutral_lim = max(0.0, cfg.flowguard_extreme_threshold - 0.03)
-        xhat = max(-neutral_lim, min(neutral_lim, float(self.state.x)))
+        phase, level = ph
 
-        vis_len = 5.0  # mm; small damping for Type-D neutral visualization
-        alpha = 1.0 - math.exp(-move / vis_len) if vis_len > 0 else 1.0
-        self._vis_est = self._vis_est + alpha * (xhat - self._vis_est)
-        self._vis_est = max(-neutral_lim, min(neutral_lim, self._vis_est))
+        # Type CO/TO: Split phase to encompass rebound
+        if cfg.sensor_type in ['CO', 'TO']:
+
+            def triangle_half(p, lo=0.3, hi=0.8):
+                base = (1.0 - 2.0*p) if p <= 0.5 else (2.0*p - 1.0)  # in [0,1]
+                return lo + (hi - lo) * base
+
+            if cfg.sensor_type == "CO":
+                self._vis_est = triangle_half(phase)
+            else:
+                self._vis_est = -triangle_half(phase)
+
+            return self._vis_est
+
+        # Type D: Adjust phase to exclude extreme portion
+        def triangle_full(p, lo=-1.0, hi=1.0):
+            return lo + (hi - lo) * p
+
+        t = triangle_full(phase)
+        if level == "low":
+            x_pred = t  # Ramping up
+        else:
+            x_pred = -t # Ramping down
+        self._vis_est = x_pred
         return self._vis_est
 
 
@@ -1642,7 +1701,7 @@ class SyncFeedbackManager:
         """
         if not math.isclose(self.rd_current, rd):
             self.rd_current = rd
-            #print(f"PAUL: FINISH ME -----> Apply rd: {rd:.4f}")
+            #print(f"PAUL: HOOK ME UP -----> Apply rd: {rd:.4f} to stepper")
 
     # -------------- Logging helpers  --------------
 

@@ -1158,7 +1158,7 @@ def _run_cli():
         return
 
     cfg = SyncFeedbackManagerConfig(
-        log_sync=True, # PAUL tell controller to create log trace for debugging
+        log_sync=True, # tell controller to also create log trace for debugging
         buffer_range_mm=args.buffer_range_mm,
         buffer_max_range_mm=args.buffer_max_range_mm,
         use_twolevel_for_type_pd=args.use_twolevel,
@@ -1517,7 +1517,7 @@ def _run_cli():
                             targets.append(-thr_off)    # -1 -> 0 while moving +x
         
                 # Optional "chaos" lag toward/away from the threshold
-                if targets and getattr(printer, 'chaos', 0.0) > 1e-12:
+                if targets and printer.chaos > 1e-12:
                     lag_mm_max = min(cfg.buffer_max_range_mm, float(printer.chaos) * cfg.buffer_max_range_mm)
                     lag_norm = (2.0 / cfg.buffer_range_mm) * (random.random() * lag_mm_max)
                 else:
@@ -1539,10 +1539,6 @@ def _run_cli():
                             best_anchor = anchor
         
                 return best_d, best_anchor
-        
-            # Ensure controller mode matches sensor type (if supported)
-            if hasattr(ctrl, "set_twolevel_active"):
-                ctrl.set_twolevel_active(cfg.sensor_type in ("CO", "TO", "D"))
         
             # --- Rolling-stride event scheduler -------------------------------
             sgn = 1.0 if total_mm >= 0 else -1.0
@@ -1632,7 +1628,7 @@ def _run_cli():
                 if auto.get("rd") is not None:
                     last_autotune_rd = auto["rd"]
                     print(f"AUTOTUNE: rd: {auto['rd']:.4f}, reason: {auto.get('note')}")
-                elif auto.get("note") and getattr(args, 'log_debug', False):
+                elif auto.get("note") and args.log_debug:
                     print(f"DEBUG: {auto['note']}")
         
                 # FlowGuard trip?
