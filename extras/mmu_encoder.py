@@ -224,6 +224,7 @@ class MmuEncoder:
         return self.detection_length
 
     def set_clog_detection_length(self, clog_length):
+        logging.info("PAUL: set_clog_detection_length: %s" % clog_length)
         self.detection_length = max(clog_length, 2.)
         self._reset_filament_runout_params()
 
@@ -231,6 +232,7 @@ class MmuEncoder:
         self._update_detection_length()
 
     def set_mode(self, mode):
+        logging.info("PAUL: set_mode: %s" % mode)
         if self.RUNOUT_DISABLED <= mode <= self.RUNOUT_AUTOMATIC:
             self.detection_mode = mode
 

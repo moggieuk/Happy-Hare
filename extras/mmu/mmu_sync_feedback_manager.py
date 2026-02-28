@@ -110,8 +110,10 @@ class MmuSyncFeedbackManager:
             self.flowguard_max_motion = gcmd.get_float('FLOWGUARD_MAX_MOTION', self.flowguard_max_motion, above=10.)
 
         if self.mmu.has_encoder():
-            self.flowguard_encoder_mode = gcmd.get_int('FLOWGUARD_ENCODER_MODE', self.flowguard_encoder_mode, minval=0, maxval=2)
-            self.mmu.encoder_sensor.set_mode(self.flowguard_encoder_mode) # Notify sensor of change
+            mode = gcmd.get_int('FLOWGUARD_ENCODER_MODE', self.flowguard_encoder_mode, minval=0, maxval=2)
+            if mode != self.flowguard_encoder_mode:
+                self.flowguard_encoder_mode = mode
+                self.set_encoder_mode()
             self.flowguard_encoder_max_motion = gcmd.get_float('FLOWGUARD_ENCODER_MAX_MOTION', self.flowguard_encoder_max_motion, above=0.)
 
 
@@ -196,6 +198,27 @@ class MmuSyncFeedbackManager:
             self.flowguard_active = False
             self.ctrl.autotune.pause() # Very likley this is a period that we want to exclude from autotuning
             self.mmu.log_info("MmuSyncFeedbackManager: FlowGuard monitoring deactivated and autotune paused")
+
+
+    # This is "FlowGuard" on the encoder so manage it here
+    def set_encoder_mode(self, mode=None):
+        """
+        Changing detection mode so ensure correct clog detection length
+        """
+        self.mmu.log_error("PAUL: update mode=%s" % (mode))
+        if not self.mmu.has_encoder(): return
+
+        # Notify sensor of mode
+        if mode is None: mode = self.flowguard_encoder_mode
+        self.mmu.encoder_sensor.set_mode(mode)
+
+        # Figure out the correct detection length based on mode
+        cdl = self.flowguard_encoder_max_motion
+        if mode == self.mmu.encoder_sensor.RUNOUT_AUTOMATIC:
+            cdl = self.mmu.save_variables.allVariables.get(self.mmu.VARS_MMU_CALIB_CLOG_LENGTH, cdl)
+
+        # Notify sensor of detection length
+        self.mmu.encoder_sensor.set_clog_detection_length(cdl)
 
 
     def adjust_filament_tension(self, use_gear_motor=True, max_move=None):

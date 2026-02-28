@@ -882,10 +882,8 @@ class Mmu:
         # Load encoder configuration (calibration set with MMU_CALIBRATE_ENCODER) ---------------------------
         self.encoder_resolution = 1.0
         if self.has_encoder():
-            self.encoder_resolution = self.encoder_sensor.get_resolution()
-            self.encoder_sensor.set_logger(self.log_debug) # Combine with MMU log
-            self.encoder_sensor.set_extruder(self.extruder_name)
-            self.encoder_sensor.set_mode(self.sync_feedback_manager.flowguard_encoder_mode)
+            self.encoder_sensor.set_logger(self.log_debug)       # Combine with MMU log
+            self.encoder_sensor.set_extruder(self.extruder_name) # Ensure it has extruder name
 
             # Setup FlowGuard mode and detection length
             self.sync_feedback_manager.set_encoder_mode()
@@ -1331,14 +1329,6 @@ class Mmu:
                 self.log_always(self._mmu_visual_to_string())
                 self._display_visual_state()
             self.report_necessary_recovery()
-
-            # Setup encoder based FlowGuard (runout/clog/tangle detection)
-            if self.has_encoder():
-                auto = (self.sync_feedback_manager.flowguard_encoder_mode == self.encoder_sensor.RUNOUT_AUTOMATIC)
-                cdl = self.sync_feedback_manager.flowguard_encoder_max_motion
-                if auto:
-                    cdl = self.save_variables.allVariables.get(self.VARS_MMU_CALIB_CLOG_LENGTH, cdl)
-                self.encoder_sensor.set_clog_detection_length(cdl)
 
             # Initially disable clog/runout detection
             self._disable_filament_monitoring()
@@ -1813,8 +1803,10 @@ class Mmu:
 
         # Also a good place to update the persisted calibrated clog length (for auto mode)
         if self.has_encoder():
-            detection_length = self.encoder_sensor.get_clog_detection_length()
-            self.calibration_manager.update_clog_detection_length(round(detection_length, 1))
+            mode = self.sync_feedback_manager.flowguard_encoder_mode
+            if mode == self.encoder_sensor.RUNOUT_AUTOMATIC:
+                cdl = self.encoder_sensor.get_clog_detection_length()
+            self.calibration_manager.update_clog_detection_length(round(cdl, 1))
 
         self.write_variables()
 
@@ -2626,16 +2618,16 @@ class Mmu:
                     else:
                         raise gcmd.error("Invalid configuration or options provided. Perhaps you tried COLLISION=1 without encoder or don't have extruder_homing_endstop set?")
 
-                    clog_detection_length = None
+                    cdl = None
                     msg = "Calibrated bowden length is %.1fmm" % length
                     if self.has_encoder():
-                        clog_detection_length = self.calc_clog_detection_length(length)
-                        msg += ". Recommended flowguard_encoder_max_motion (clog detection length): %.1fmm" % clog_detection_length
+                        cdl = self.calc_clog_detection_length(length)
+                        msg += ". Recommended flowguard_encoder_max_motion (clog detection length): %.1fmm" % cdl
                     self.log_always(msg)
 
                     if save:
                         self.calibration_manager.update_bowden_length(length, console_msg=True)
-                        if clog_detection_length is not None:
+                        if cdl is not None:
                             self.calibration_manager.update_clog_detection_length(length, force=True)
 
         except MmuError as ee:
@@ -3957,7 +3949,7 @@ class Mmu:
         value = gcmd.get_float('VALUE', -1, minval=0.)
         enable = gcmd.get_int('ENABLE', -1, minval=0, maxval=1)
         if enable == 1:
-            self.encoder_sensor.set_mode(self.sync_feedback_manager.flowguard_encoder_mode)
+            self.sync_feedback_manager.set_encoder_mode()
         elif enable == 0:
             self.sync_feedback_manager.set_encoder_mode(self.encoder_sensor.RUNOUT_DISABLED)
         elif value >= 0.:
@@ -5141,6 +5133,7 @@ class Mmu:
                 self.calibration_manager.update_bowden_length(calibrated_bowden_length, console_msg=True)
                 cdl = self.calc_clog_detection_length(calibrated_bowden_length)
                 self.calibration_manager.update_clog_detection_length(cdl, force=True)
+
             elif full and not extruder_only and not self.gcode_load_sequence:
                 self.calibration_manager.note_load_telemetry(bowden_move_ratio, homing_movement, deficit)
 
