@@ -525,13 +525,22 @@ class _ledEffect:
             ppins = self.printer.lookup_object('pins')
             self.mcu_adc = ppins.setup_pin('adc', self.analogPin)
             if hasattr(self.mcu_adc, 'setup_adc_sample'):
-                self.mcu_adc.setup_adc_sample(ANALOG_SAMPLE_TIME, ANALOG_SAMPLE_COUNT)
+                try:
+                    # New klipper (>= v0.13.0-557)
+                    self.mcu_adc.setup_adc_sample(ANALOG_REPORT_TIME, ANALOG_SAMPLE_TIME, ANALOG_SAMPLE_COUNT)
+                    self.mcu_adc.setup_adc_callback(self.adcCallback)
+                except TypeError:
+                    # A few versions of klipper had these signatures
+                    self.mcu_adc.setup_adc_sample(ANALOG_SAMPLE_TIME, ANALOG_SAMPLE_COUNT)
+                    self.mcu_adc.setup_adc_callback(ANALOG_REPORT_TIME, self.adcCallback)
             elif hasattr(self.mcu_adc, 'setup_minmax'):
+                # Kalico and older klipper
                 self.mcu_adc.setup_minmax(ANALOG_SAMPLE_TIME, ANALOG_SAMPLE_COUNT)
+                self.mcu_adc.setup_adc_callback(ANALOG_REPORT_TIME, self.adcCallback)
             else:
                 raise RuntimeError(
                     "Klipper version not compatible: mcu_adc missing 'setup_adc_sample' and 'setup_minmax'.")
-            self.mcu_adc.setup_adc_callback(ANALOG_REPORT_TIME, self.adcCallback)
+
             query_adc = self.printer.load_object(self.config, 'query_adc')
             query_adc.register_adc(self.name, self.mcu_adc)
 
@@ -717,7 +726,17 @@ class _ledEffect:
     def _handle_shutdown(self):
         self.set_enabled(self.runOnShutown)
 
-    def adcCallback(self, read_time, read_value):
+    def adcCallback(self, *args):
+        # Old klipper: _adc_callback(read_time, read_value)
+        # New klipper: _adc_callback(samples) where samples is a list of (read_time, read_value)
+        if len(args) == 1:
+            samples = args[0]
+            read_time, read_value = samples[-1]
+        elif len(args) == 2:
+            read_time, read_value = args
+        else:
+            raise TypeError("_adc_callback expected (read_time, read_value) or (samples), got %d args" % len(args))
+
         self.analogValue = int(read_value * 1000.0) / 10.0
     
     def button_callback(self, eventtime, state):
