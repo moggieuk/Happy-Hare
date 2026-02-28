@@ -377,8 +377,6 @@ class MmuAdcSwitchSensor:
                 "insert": insert_gcode,
                 "remove": remove_gcode,
                 "runout": runout_gcode,
-                "clog":   clog_gcode,
-                "tangle": tangle_gcode,
             },
             insert_remove_in_print,
             button_handler,
@@ -477,8 +475,7 @@ class MmuHallSensor:
         # ADC 1
         self.mcu_adc = self._setup_adc(self._pin, self.sample_time, self.sample_count, self.adc_callback, self.report_time, multi_use=True)
         # ADC 2
-        if self._pin2:
-            self.mcu_adc2 = self._setup_adc(self._pin2, self.sample_time, self.sample_count, self.adc2_callback, self.report_time, multi_use=True)
+        self.mcu_adc2 = self._setup_adc(self._pin2, self.sample_time, self.sample_count, self.adc2_callback, self.report_time, multi_use=True)
 
         # Setup runout helper/virtual sensor for MMU integration
         event_delay = 0.5
@@ -488,25 +485,23 @@ class MmuHallSensor:
         clog_gcode   = ("%s SENSOR=%s%s" % (CLOG_GCODE,   name, (" GATE=%d" % gate) if gate is not None else "")) if clog else None
         tangle_gcode = ("%s SENSOR=%s%s" % (TANGLE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if tangle else None
 
-        self.runout_helper = MmuRunoutHelper(
-            self.printer,
-            name,
-            event_delay,
+        self.runout_helper = MmuRunoutHelper(self.printer, name, event_delay,
             {
                 "insert": insert_gcode,
                 "remove": remove_gcode,
                 "runout": runout_gcode,
-                "clog":   clog_gcode,
-                "tangle": tangle_gcode,
+                "clog":   clog_gcode, #nneded?
+                "tangle": tangle_gcode, #needed?
             },
             insert_remove_in_print,
-            button_handler,
-            self._pin
+            button_handler=None,
+            self._pin=None
         )
 
         self.printer.add_object("mmu_hall_sensor %s" % name, self)
         logging.info("MMU: MmuHallSensor initialized: %s (id: %s)" % (self.name, id(self)))
 
+    # Helper to setup ADC without repeating code - Kalico compatibility (setup_adc_samples vs setup_minmax)
     def _setup_adc(self, pin_name, sample_time, sample_count, callback, report_time, multi_use=False):
         ppins = self.printer.lookup_object('pins')
         if multi_use:
@@ -519,6 +514,8 @@ class MmuHallSensor:
         mcu_adc.setup_adc_callback(report_time, callback)
         return mcu_adc
 
+    # Callbacks are heavily optimized - since the sensor is used for homing, performance impacts overrun
+    # No 
     def adc_callback(self, read_time, read_value):
         self._val1 = read_value
         self.lastReadTime = read_time
@@ -550,23 +547,23 @@ class MmuHallSensor:
         if not self._homing:
             return
 
-        present = (self._val1 + read_value) > self._trigger_threshold
-        if present != self.present:
-            self.present = present
-            self.last_button = present
+#        present = (self._val1 + read_value) > self._trigger_threshold
+#        if present != self.present:
+#            self.present = present
+#            self.last_button = present
             # Optimization to only call runout helper if state changed or we have a button handler
-            if self.runout_helper.button_handler or present != self.runout_helper.filament_present:
-                self.runout_helper.note_filament_present(read_time, present)
+#            if self.runout_helper.button_handler or present != self.runout_helper.filament_present:
+#                self.runout_helper.note_filament_present(read_time, present)
 
-        if self._homing:
-            if present == self._triggered:
-                if self._trigger_completion is not None:
-                    self._last_trigger_time = read_time
-                    self._trigger_completion.complete(True)
-                    self._trigger_completion = None
+#        if self._homing:
+#            if present == self._triggered:
+#                if self._trigger_completion is not None:
+#                    self._last_trigger_time = read_time
+#                    self._trigger_completion.complete(True)
+#                    self._trigger_completion = None
         
-        if present:
-            self.lastTriggerTime = read_time
+#        if present:
+#           self.lastTriggerTime = read_time
 
     def get_status(self, eventtime):
         status = self.runout_helper.get_status(eventtime)
