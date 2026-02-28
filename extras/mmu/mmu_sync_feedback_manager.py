@@ -281,16 +281,24 @@ class MmuSyncFeedbackManager:
                         if success:
                             self.mmu.log_info("Neutralized tension after moving %.2fmm" % actual)
                         else:
-                            self.mmu.log_warning("Moved %.2fmm without neutralizing tenstion")
+                            self.mmu.log_warning("Moved %.2fmm without neutralizing tension")
 
             except MmuError as ee:
                 self.mmu.log_error("Error in MMU_SYNC_FEEDBACK: %s" % str(ee))
 
+        if enable is None and autotune is None and not adjust_tension:
+            # Just report status
+            if self.sync_feedback_enabled:
+                active = " and currently active" if self.active else " (not currently active)"
+                mode = self.ctrl.get_type_mode()
+                self.mmu.log_always("Sync feedback feature is enabled, mode: %s%s" % (mode, active))
+            else:
+                self.mmu.log_always("Sync feedback feature is disabled")
+    
 
     def get_status(self, eventtime=None):
         return {
             'sync_feedback_state': self.get_sync_feedback_string(),
-            'sync_feedback_type': self.ctrl.get_type_mode(),
             'sync_feedback_enabled': self.is_enabled(),
             'sync_feedback_bias_raw': self._get_sync_bias_raw(),
             'sync_feedback_bias_modelled': self._get_sync_bias_modelled(),
