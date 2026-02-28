@@ -104,6 +104,7 @@ class MmuSyncFeedbackManager:
         self.sync_feedback_buffer_maxrange = gcmd.get_float('SYNC_FEEDBACK_BUFFER_MAXRANGE', self.sync_feedback_buffer_maxrange, minval=0.)
         self.sync_multiplier_high = gcmd.get_float('SYNC_MULTIPLIER_HIGH', self.sync_multiplier_high, minval=1., maxval=2.)
         self.sync_multiplier_low = gcmd.get_float('SYNC_MULTIPLIER_LOW', self.sync_multiplier_low, minval=0.5, maxval=1.)
+        self.sync_movement_threshold = gcmd.get_float('SYNC_MOVEMENT_THRESHOLD', self.sync_movement_threshold, minval=0.5)
         self.endguard_enabled = gcmd.get_int('SYNC_ENDGUARD_ENABLED', self.endguard_enabled, minval=0, maxval=1)
         self.endguard_band = gcmd.get_float('SYNC_ENDGUARD_BAND', self.endguard_band, minval=0.55, maxval=1.00)
         self.endguard_distance_mm = gcmd.get_float('SYNC_ENDGUARD_DISTANCE_MM', self.endguard_distance_mm, minval=1.0)
@@ -114,6 +115,7 @@ class MmuSyncFeedbackManager:
         msg += "\nsync_feedback_buffer_maxrange = %.1f" % self.sync_feedback_buffer_maxrange
         msg += "\nsync_multiplier_high = %.2f" % self.sync_multiplier_high
         msg += "\nsync_multiplier_low = %.2f" % self.sync_multiplier_low
+        msg += "\nsync_movement_threshold = %.2f" % self.sync_movement_threshold
         msg += "\nsync_endguard_enabled = %d" % self.endguard_enabled
         msg += "\nsync_endguard_band = %.2f" % self.endguard_band
         msg += "\nsync_endguard_distance_mm = %.1f" % self.endguard_distance_mm
@@ -225,7 +227,7 @@ class MmuSyncFeedbackManager:
 
         msg = "MmuSyncFeedbackManager: Synced MMU to extruder%s" % (" (sync feedback activated)" if self.sync_feedback_enabled else "")
         if self.mmu.mmu_machine.filament_always_gripped:
-            self.mmu.log_info(msg) #IG ToDo: REVERT LOGGING
+            self.mmu.log_debug(msg)
         else:
             self.mmu.log_info(msg)
 
@@ -240,7 +242,7 @@ class MmuSyncFeedbackManager:
 
         msg = "MmuSyncFeedbackManager: Unsynced MMU from extruder%s" % (" (sync feedback deactivated)" if self.sync_feedback_enabled else "")
         if self.mmu.mmu_machine.filament_always_gripped:
-            self.mmu.log_info(msg) #IG ToDo: REVERT LOGGING
+            self.mmu.log_debug(msg)
         else:
             self.mmu.log_info(msg)
 
@@ -647,7 +649,6 @@ class MmuSyncFeedbackManager:
 
         # Log endguard state.
         try:
-            # IG ToDo: Clean up log states
             self.mmu.log_info( "EndGuard: %s%s" % ( "enabled" if self.endguard_active else "disabled", (" (%s)" % reason) if reason else "" ) )
         except Exception:
             pass
