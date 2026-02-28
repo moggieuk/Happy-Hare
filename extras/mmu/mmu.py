@@ -462,6 +462,7 @@ class Mmu:
         self.has_filament_buffer = bool(config.getint('has_filament_buffer', 1, minval=0, maxval=1))
         self.preload_attempts = config.getint('preload_attempts', 1, minval=1, maxval=20) # How many times to try to grab the filament
         self.encoder_move_validation = config.getint('encoder_move_validation', 1, minval=0, maxval=1) # Use encoder to check load/unload movement
+        self.encoder_clog_detection_mode = config.getint('encoder_clog_detection_mode', 2, minval=0, maxval=2)
         self.spoolman_support = config.getchoice('spoolman_support', {o: o for o in self.SPOOLMAN_OPTIONS}, self.SPOOLMAN_OFF)
         self.t_macro_color = config.getchoice('t_macro_color', {o: o for o in self.T_MACRO_COLOR_OPTIONS}, self.T_MACRO_COLOR_SLICER)
         self.default_endless_spool_enabled = config.getint('endless_spool_enabled', 0, minval=0, maxval=1)
@@ -882,8 +883,10 @@ class Mmu:
         # Load encoder configuration (calibration set with MMU_CALIBRATE_ENCODER) ---------------------------
         self.encoder_resolution = 1.0
         if self.has_encoder():
-            self.encoder_sensor.set_logger(self.log_debug)       # Combine with MMU log
-            self.encoder_sensor.set_extruder(self.extruder_name) # Ensure it has extruder name
+            self.encoder_resolution = self.encoder_sensor.get_resolution()
+            self.encoder_sensor.set_logger(self.log_debug) # Combine with MMU log
+            self.encoder_sensor.set_extruder(self.extruder_name)
+            self.encoder_sensor.set_mode(self.encoder_clog_detection_mode)
 
             # Setup FlowGuard mode and detection length
             self.sync_feedback_manager.set_encoder_mode()
@@ -1480,20 +1483,17 @@ class Mmu:
             'action': self._get_action_string(),
             'has_bypass': self.selector.has_bypass(), # TODO deprecate because this is a per unit selector bypass
             'sync_drive': self.mmu_toolhead.is_synced(),
-            'clog_detection': self.enable_clog_detection, # DEPRECATED use clog_detection_enabled
-            'clog_detection_enabled': self.enable_clog_detection,
-            'endless_spool': self.enable_endless_spool,   # DEPRECATED use endless_spool_enabled
-            'endless_spool_enabled': self.enable_endless_spool,
+            'encoder_clog_detection_mode': self.encoder_clog_detection_mode,
             'print_start_detection': self.print_start_detection, # For Klippain. Not really sure it is necessary
             'reason_for_pause': self.reason_for_pause if self.is_mmu_paused() else "",
             'extruder_filament_remaining': self.filament_remaining + self.toolhead_residual_filament,
             'spoolman_support': self.spoolman_support,
             'bowden_progress': self._get_bowden_progress(), # Simple 0-100%. -1 if not performing bowden move
             'espooler_active': self.espooler.get_operation(self.gate_selected)[0] if self.has_espooler() else '',
-            'clog_detection': self.sync_feedback_manager.flowguard_encoder_mode,         # DEPRECATED
-            'clog_detection_enabled': self.sync_feedback_manager.flowguard_encoder_mode, # DEPRECATED
-            'endless_spool': self.endless_spool_enabled,           # DEPRECATED
-            'endless_spool_enabled': self.endless_spool_enabled,   # DEPRECATED
+            'clog_detection': self.encoder_clog_detection_mode,         # DEPRECATED use clog_detection_enabled
+            'clog_detection_enabled': self.encoder_clog_detection_mode, # TODO really should be encoder_clog_detection_mode
+            'endless_spool': self.endless_spool_enabled,                # DEPRECATED use endless_spool_enabled
+            'endless_spool_enabled': self.endless_spool_enabled,        # TODO really should be endless_spool_enabled
         }
         status.update(self.selector.get_status(eventtime))
         status.update(self.sync_feedback_manager.get_status(eventtime))
@@ -2121,7 +2121,7 @@ class Mmu:
 
         if config:
             self.calibrated_bowden_length = self.calibration_manager.get_bowden_length() # Temp scalar pulled from list for _f_calc()
-            msg += "\n\nLoad Sequence:"
+            msg += "\n\nLOAD SEQUENCE:"
 
             # Gate loading
             msg += "\n- Filament loads into gate by homing a maximum of %s to %s" % (self._f_calc("gate_homing_max"), self._gate_homing_string())
@@ -2182,7 +2182,7 @@ class Mmu:
                 self.toolhead_post_load_tighten
                 and not self.sync_to_extruder
                 and self._can_use_encoder()
-                and self.enable_clog_detection
+                and self.encoder_clog_detection_mode
             ):
                 msg += "\n- Filament in bowden is tightened by %.1fmm (%d%% of clog detection length) at reduced gear current to prevent false clog detection" % (min(self.encoder_sensor.get_clog_detection_length() * self.toolhead_post_load_tighten / 100, 15), self.toolhead_post_load_tighten)
             elif (
@@ -2245,7 +2245,7 @@ class Mmu:
                 msg += "\nSelector touch (stallguard) is %s - blocked gate recovery %s possible" % (("ENABLED", "is") if self.selector.use_touch_move() else ("DISABLED", "is not"))
             if self.has_encoder():
                 msg += "\nMMU has an encoder. Non essential move validation is %s" % ("ENABLED" if self._can_use_encoder() else "DISABLED")
-                msg += "\nFlowGuard detection is %s" % ("AUTOMATIC" if self.sync_feedback_manager.flowguard_encoder_mode == self.encoder_sensor.RUNOUT_AUTOMATIC else "ENABLED" if self.sync_feedback_manager.flowguard_encoder_mode == self.encoder_sensor.RUNOUT_STATIC else "DISABLED")
+                msg += "\nRunout/Clog detection is %s" % ("AUTOMATIC" if self.encoder_clog_detection_mode == self.encoder_sensor.RUNOUT_AUTOMATIC else "ENABLED" if self.encoder_clog_detection_mode == self.encoder_sensor.RUNOUT_STATIC else "DISABLED")
                 msg += " (%.1fmm runout)" % self.encoder_sensor.get_clog_detection_length()
                 msg += ", EndlessSpool is %s" % ("ENABLED" if self.endless_spool_enabled else "DISABLED")
             else:
@@ -2627,9 +2627,8 @@ class Mmu:
 
                     cdl = None
                     msg = "Calibrated bowden length is %.1fmm" % length
-                    if self.has_encoder():
-                        cdl = self.calibration_manager.calc_clog_detection_length(length)
-                        msg += ". Recommended flowguard_encoder_max_motion (clog detection length): %.1fmm" % cdl
+                    if self.has_encoder() and self.encoder_clog_detection_mode:
+                        msg += ". Recommended clog detection length: %.1fmm" % self.calibration_manager.calc_clog_detection_length(length)
                     self.log_always(msg)
 
                     if save:
@@ -3954,7 +3953,7 @@ class Mmu:
         value = gcmd.get_float('VALUE', -1, minval=0.)
         enable = gcmd.get_int('ENABLE', -1, minval=0, maxval=1)
         if enable == 1:
-            self.sync_feedback_manager.set_encoder_mode()
+            self.encoder_sensor.set_mode(self.encoder_clog_detection_mode)
         elif enable == 0:
             self.sync_feedback_manager.set_encoder_mode(self.encoder_sensor.RUNOUT_DISABLED)
         elif value >= 0.:
@@ -4895,7 +4894,7 @@ class Mmu:
                     self.toolhead_post_load_tighten
                     and not self.sync_to_extruder
                     and self._can_use_encoder()
-                    and self.sync_feedback_manager.flowguard_encoder_mode
+                    and self.encoder_clog_detection_mode
                 ):
                     # Tightening move to prevent erroneous encoder clog detection/runout if gear stepper is not synced with extruder
                     with self.wrap_gear_current(percent=50, reason="to tighten filament in bowden"):
@@ -6271,6 +6270,14 @@ class Mmu:
 
     # Primary method to select and loads tool. Assumes we are unloaded
     def _select_and_load_tool(self, tool, purge=None):
+        self.log_debug('Loading tool %s...' % self._selected_tool_string(tool))
+        self.select_tool(tool)
+        gate = self.ttg_map[tool] if tool >= 0 else self.gate_selected
+        if self.gate_status[gate] == self.GATE_EMPTY:
+            if self.endless_spool_enabled and self.endless_spool_on_load:
+                next_gate, msg = self._get_next_endless_spool_gate(tool, gate)
+                if next_gate == -1:
+                    raise MmuError("Gate %d is empty!\nNo alternatives gates available after checking %s" % (gate, msg))
 
         try:
             # Determine purge volume for toolchange/load. Valid only during toolchange/load operation
@@ -7509,8 +7516,8 @@ class Mmu:
 
         # Available only with encoder
         if self.has_encoder():
-            self.enable_clog_detection = gcmd.get_int('ENABLE_CLOG_DETECTION', self.enable_clog_detection, minval=0, maxval=2)
-            self.encoder_sensor.set_mode(self.enable_clog_detection)
+            self.encoder_clog_detection_mode = gcmd.get_int('ENCODER_CLOG_DETECTION_MODE', self.encoder_clog_detection_mode, minval=0, maxval=2)
+            self.encoder_sensor.set_mode(self.encoder_clog_detection_mode)
             clog_length = gcmd.get_float('MMU_CALIBRATION_CLOG_LENGTH', self.encoder_sensor.get_clog_detection_length(), minval=1., maxval=100.)
             if clog_length != self.save_variables.allVariables.get(self.VARS_MMU_CALIB_CLOG_LENGTH, None):
                 self.calibration_manager.save_clog_detection_length(clog_length)
@@ -7634,6 +7641,8 @@ class Mmu:
 
             msg += "\n\nOTHER:"
             msg += "\nextruder_temp_variance = %.1f" % self.extruder_temp_variance
+            if self.has_encoder():
+                msg += "\nencoder_clog_detection_mode = %d" % self.encoder_clog_detection_mode
             msg += "\nendless_spool_enabled = %d" % self.endless_spool_enabled
             msg += "\nendless_spool_on_load = %d" % self.endless_spool_on_load
             msg += "\nendless_spool_eject_gate = %d" % self.endless_spool_eject_gate
@@ -7705,7 +7714,7 @@ class Mmu:
                     self.is_handling_runout = True # Will remain true until complete and continue or resume after error
 
             if event_type == "runout":
-                if self.enable_endless_spool:
+                if self.endless_spool_enabled:
                     self._set_gate_status(self.gate_selected, self.GATE_EMPTY) # Indicate current gate is empty
                     next_gate, msg = self._get_next_endless_spool_gate(self.tool_selected, self.gate_selected)
                     if next_gate == -1:
@@ -8244,7 +8253,7 @@ class Mmu:
 
                     # Real runout to process...
                     if sensor.startswith(self.SENSOR_PRE_GATE_PREFIX) and gate == self.gate_selected:
-                        if self.enable_endless_spool and self.endless_spool_eject_gate == gate:
+                        if self.endless_spool_enabled and self.endless_spool_eject_gate == gate:
                             self.log_trace("Ignoring filament runout detected by %s because endless_spool_eject_gate is active on that gate" % raw_sensor)
                         else:
                             process_runout = True
