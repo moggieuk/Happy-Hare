@@ -525,13 +525,22 @@ class _ledEffect:
             ppins = self.printer.lookup_object('pins')
             self.mcu_adc = ppins.setup_pin('adc', self.analogPin)
             if hasattr(self.mcu_adc, 'setup_adc_sample'):
-                self.mcu_adc.setup_adc_sample(ANALOG_SAMPLE_TIME, ANALOG_SAMPLE_COUNT)
+                try:
+                    # New klipper (>= v0.13.0-557)
+                    self.mcu_adc.setup_adc_sample(ANALOG_REPORT_TIME, ANALOG_SAMPLE_TIME, ANALOG_SAMPLE_COUNT)
+                    self.mcu_adc.setup_adc_callback(self.adcCallback)
+                except TypeError:
+                    # A few versions of klipper had these signatures
+                    self.mcu_adc.setup_adc_sample(ANALOG_SAMPLE_TIME, ANALOG_SAMPLE_COUNT)
+                    self.mcu_adc.setup_adc_callback(ANALOG_REPORT_TIME, self.adcCallback)
             elif hasattr(self.mcu_adc, 'setup_minmax'):
+                # Kalico and older klipper
                 self.mcu_adc.setup_minmax(ANALOG_SAMPLE_TIME, ANALOG_SAMPLE_COUNT)
+                self.mcu_adc.setup_adc_callback(ANALOG_REPORT_TIME, self.adcCallback)
             else:
                 raise RuntimeError(
                     "Klipper version not compatible: mcu_adc missing 'setup_adc_sample' and 'setup_minmax'.")
-            self.mcu_adc.setup_adc_callback(ANALOG_REPORT_TIME, self.adcCallback)
+
             query_adc = self.printer.load_object(self.config, 'query_adc')
             query_adc.register_adc(self.name, self.mcu_adc)
 

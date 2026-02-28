@@ -265,10 +265,16 @@ class MmuProportionalSensor:
         if hasattr(self.adc, "setup_minmax"):
             # Kalico and older klipper
             self.adc.setup_minmax(self._sample_time, self._sample_count)
+            self.adc.setup_adc_callback(self._report_time, self._adc_callback)
         else:
-            # New klipper
-            self.adc.setup_adc_sample(self._sample_time, self._sample_count)
-        self.adc.setup_adc_callback(self._report_time, self._adc_callback)
+            try:
+                # New klipper (>= v0.13.0-557)
+                self.adc.setup_adc_sample(self._report_time, self._sample_time, self._sample_count)
+                self.adc.setup_adc_callback(self._adc_callback)
+            except TypeError:
+                # A few versions of klipper had these signatures
+                self.adc.setup_adc_sample(self._sample_time, self._sample_count)
+                self.adc.setup_adc_callback(self._report_time, self._adc_callback)
 
         # Attach runout_helper (no gcode actions; just enable/disable plumbing to remove UI nag)
         clog_gcode   = ("%s SENSOR=%s" % (CLOG_GCODE,   name))
