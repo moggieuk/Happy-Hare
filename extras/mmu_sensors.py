@@ -306,9 +306,7 @@ class MmuAdcSwitchSensor:
 
 
 # Analog Filament Tension Sensor used for proportional sync-feedback
-# Maps [0..set_point] -> [-1..0]  and  [set_point..1] -> [0..1]
-# Range multiplier is applied to the ADC reading after set_point mapping.
-# Copyright (C) 2023-2025 JR Lomas (discord:knight_rad.iant) <lomas.jr@gmail.com>
+# Maps sensor range to [-1,1]
 class MmuProportionalSensor:
 
     def __init__(self, config, name):

@@ -484,7 +484,7 @@ class MmuCalibrationManager:
         msg = "Autotune: bowden move ratio: %.4f, Extra homing movement: %s" % (bowden_move_ratio, "n/a" if homing_movement is None else "%.1fmm" % homing_movement)
         if homing_movement is not None:
 
-# PAUL: now a better way with sync-feedback buffer. Keep for non-sync-feedback use cases?
+# TODO: now a better way with sync-feedback buffer. Keep for non-sync-feedback use cases?
 #            # TODO Currently only works with gate >0. Could work with gate 0 if variable_rotation_distance is True
 #            # TODO and bowden is calibrated and we don't tune bowden below
 #
