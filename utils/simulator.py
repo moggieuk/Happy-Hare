@@ -199,41 +199,51 @@ class SimplePrinterModel:
 
 # ------------------------------- Plotting -------------------------------
 
-def plot_log(
+def plot_progress(
     records: List[Dict[str, Any]],
     out_path: Optional[str] = None,
     dt_s: Optional[float] = None,
-    sensor_label: Optional[str] = None,   # "D", "CO", "TO"  or "P"
+    sensor_label: Optional[str] = None,   # "D", "CO", "TO" or "P"
     stop_on_fg_trip: bool = True,
     rd_start: Optional[float] = None,
     show_rd_true: bool = True,
     show_ticks: bool = False,
     show_mm_axis: bool = True,
+    show_tick_times: bool = True,
     mm_axis_mode: str = "abs",            # "abs" or "signed"
     summary_txt: str = "",
     title_txt: str = "Filament Sync Simulation",
 ):
-    """Plot RD (left axis), sensor reading/UI (right axis), Bowden/Buffer spring (2nd right), and autotune-recommendation markers."""
+    """
+    Plot RD (left axis), sensor reading/UI (right axis), Bowden/Buffer spring (2nd right), and autotune-recommendation markers.
+    """
     if not records:
         raise ValueError("No records to plot.")
 
     RD_COLOR        = "#0000ff80" # "tab:blue"   alpha=0.5
-    SENSOR_COLOR    = "#ff7f0e80" # "tab:orange" alpha=0.5
     RD_TRUE_COLOR   = "0.3"       # grey
+    RD_REF_COLOR    = "#00800080" # green
+
+    SENSOR_COLOR    = "#ff7f0e80" # "tab:orange" alpha=0.5
     EVENT_COLOR     = "0.5"       # grey
     SPRING_COLOR    = "#ff000080" # red          alpha=0.5
-    X_EST_COLOR     = "#00800080" # green        alpha=0.5
+    C_EST_COLOR     = "#30303080" # grey         alpha=0.5
+    X_EST_COLOR     = "#ff7f0e80" # "tab:orange" alpha=0.5
     AUTOTUNE_COLOR  = "#2ca02cff" # "tab:green"  alpha=1.0
     TICK_MARK_COLOR = "#40404080" # grey         alpha=0.5
     LOWLIGHT_TEXT   = "0.5"
 
+    # On RD axis
     RD_MAIN_LW      = 2.0
-    SENSOR_INPUT_LW = 1.0
-    SENSOR_UI_LW    = 0.8 
     RD_TRUE_LW      = 1.0
+    RD_REF_LW       = 1.0
+
+    # On sensor axis
+    SENSOR_INPUT_LW = 1.0
+    SENSOR_UI_LW    = 1.0
 
     TRIPBOX_ZORDER  = 1000
-    AUTOTUNE_ZORDER = 1001        # ensure dots are always on top
+    AUTOTUNE_ZORDER = 1001
 
     # Prefer absolute t_s if present, else reconstruct from dt_s grid
     have_ts = all(("meta" in r) and ("t_s" in r["meta"]) for r in records)
@@ -251,25 +261,9 @@ def plot_log(
             t_axis.append(t_acc)
             t_acc += float(step_dt)
 
-    rd  = [r["output"]["rd_applied"] for r in records]
-    z   = [r.get("input", {}).get("sensor") for r in records]
-    z_ui_raw = [r.get("output", {}).get("sensor_ui") for r in records]
-    z_ui = [max(-1.0, min(1.0, v)) if v is not None else None for v in z_ui_raw]
-    x_est = [r.get("output", {}).get("x_est") for r in records]
-
-    rd_true_series = [r.get("truth", {}).get("rd_true") for r in records]
-    spring_series  = [r.get("truth", {}).get("spring_mm") for r in records]
-
-    clog   = [bool(r.get("output", {}).get("flowguard", {}).get("clog", False)) for r in records]
-    tangle = [bool(r.get("output", {}).get("flowguard", {}).get("tangle", False)) for r in records]
-
-    # Autotune markers (where controller reported a new default RD)
-    autotune_recommendation = []
-    for i, r in enumerate(records):
-        auto_rd = r.get("output", {}).get("autotune", {}).get("rd")
-        if auto_rd is not None:
-            autotune_recommendation.append((i, float(auto_rd)))
-
+    # Flowguard
+    clog           = [bool(r["output"]["flowguard"]["clog"]) for r in records]
+    tangle         = [bool(r["output"]["flowguard"]["tangle"]) for r in records]
     first_trip_idx = next((i for i, (c, t) in enumerate(zip(clog, tangle)) if c or t), None)
 
     # Capture trip kind/reason *before* truncation so we can show a box
@@ -279,65 +273,51 @@ def plot_log(
         trip_kind = "CLOG" if clog[first_trip_idx] else "TANGLE"
         trip_reason = records[first_trip_idx].get("output", {}).get("flowguard", {}).get("reason")
 
+    # Truncate all series on limit
     end_idx = (first_trip_idx + 1) if (stop_on_fg_trip and first_trip_idx is not None) else len(records)
-    t_axis = t_axis[:end_idx]
-    rd = rd[:end_idx]
-    z = z[:end_idx]
-    z_ui = z_ui[:end_idx]
-    x_est = x_est[:end_idx] # Debugging
-    rd_true_series = rd_true_series[:end_idx] if rd_true_series else None
-    spring_series  = spring_series[:end_idx] if spring_series else None
-    autotune_recommendation = [(i, v) for (i, v) in autotune_recommendation if i < end_idx]
-    mm_deltas = [float(r.get("input", {}).get("d_mm", 0.0)) for r in records[:end_idx]]
 
-    has_spring_series = spring_series and any(v is not None for v in spring_series)
+    # Helper for optional series
+    def get_optional_series(records, key, end_idx, section="output"):
+        vals = [r.get(section, {}).get(key) for r in records[:end_idx]]
+        return [] if all(v is None for v in vals) else vals
 
+    # Core series
+    rd              = [r["output"]["rd_current"] for r in records[:end_idx]]
+    z               = [r["input"]["sensor"] for r in records[:end_idx]]
+    z_ui            = [r["output"]["sensor_ui"] for r in records[:end_idx]]
+    mm_deltas       = [r["input"]["d_mm"] for r in records[:end_idx]]
+
+    # Debug series
+    x_est           = get_optional_series(records, "x_est", end_idx)
+    c_est           = get_optional_series(records, "c_est", end_idx)
+    rd_target       = get_optional_series(records, "rd_target", end_idx)
+    rd_ref          = get_optional_series(records, "rd_ref", end_idx)
+    rd_ref_smoothed = get_optional_series(records, "rd_ref_smoothed", end_idx)
+
+    has_x_est = any(v is not None for v in x_est)
+    has_c_est = any(v is not None for v in c_est)
+    has_rd_target = any(v is not None for v in rd_target)
+    has_rd_ref = any(v is not None for v in rd_ref)
+    has_rd_ref_smoothed = any(v is not None for v in rd_ref_smoothed)
+
+    # Simulator only series
+    rd_true        = get_optional_series(records, "rd_true", end_idx, section="truth")
+    spring_mm      = get_optional_series(records, "spring_mm", end_idx, section="truth")
+
+    has_rd_true = rd_true and any(v is not None for v in rd_true)
+    has_spring_mm = spring_mm and any(v is not None for v in spring_mm)
+
+    # Autotune markers (where controller reported a new default RD)
+    autotune_recommendation = []
+    for i, r in enumerate(records[:end_idx]):
+        auto_rd = r.get("output", {}).get("autotune", {}).get("rd")
+        if auto_rd is not None:
+            autotune_recommendation.append((i, float(auto_rd)))
+
+
+    # Main axes setup -------------------------------------------------------------
     fig, ax_rd = plt.subplots(figsize=(12, 6))
     ax_sensor = ax_rd.twinx()
-
-    if has_spring_series:
-        ax_spring = ax_rd.twinx()
-        ax_spring.spines["right"].set_position(("axes", 1.12))
-        ax_spring.spines["right"].set_visible(True)
-        ax_spring.spines["right"].set_color(LOWLIGHT_TEXT)
-        ax_spring.set_frame_on(True)
-
-    # Make ledgend box smaller
-    plt.rcParams.update({
-        "legend.fontsize": 8,
-        "legend.framealpha": 0.75,
-        "legend.borderpad": 0.2,
-        "legend.labelspacing": 0.25,
-        "legend.handlelength": 1.0,
-        "legend.handletextpad": 0.4,
-    })
-
-    if len(t_axis) >= 2:
-        if show_ticks:
-            ax_rd.plot(t_axis, rd, label="rotation_distance", linewidth=RD_MAIN_LW, color=RD_COLOR, marker="o", markersize=2.5, markevery=1)
-        else:
-            ax_rd.plot(t_axis, rd, label="rotation_distance", linewidth=RD_MAIN_LW, color=RD_COLOR)
-
-    elif t_axis:
-        ax_rd.scatter(t_axis, rd, label="rotation_distance", color=RD_COLOR, zorder=3)
-
-    if show_rd_true and rd_true_series and all(v is not None for v in rd_true_series):
-        if len(t_axis) >= 2:
-            ax_rd.plot(t_axis, rd_true_series, label="rd_true (expected)", linestyle=":", linewidth=RD_TRUE_LW, color=RD_TRUE_COLOR)
-        elif t_axis:
-            ax_rd.scatter(t_axis, rd_true_series, label="rd_true (expected)", color=RD_TRUE_COLOR, zorder=3)
-
-    # Times where an actual movement happened (ticks) -------------------
-    tick_times = [t for t, d in zip(t_axis, mm_deltas)]
-
-    # Keep them just under the top, and a bit lower if the top distance axis is shown
-    y_top = 0.99
-    h     = 0.015   # height = 1.5% of axes; tweak to taste
-    y0, y1 = max(0, y_top - h), min(1, y_top)
-
-    for x in tick_times:
-        ax_rd.axvline(x, ymin=y0, ymax=y1, color=TICK_MARK_COLOR, linewidth=1.0, zorder=1200, clip_on=False, label="_nolegend_")
-    # -------------------------------------------------------------------
 
     ax_rd.set_ylabel("Rotation Distance (mm)")
     ax_rd.set_xlabel("Time (s)")
@@ -350,8 +330,8 @@ def plot_log(
     candidates_max = [rd_max_required]
     if rd:
         candidates_min.append(min(rd)); candidates_max.append(max(rd))
-    if show_rd_true and rd_true_series and all(v is not None for v in rd_true_series):
-        candidates_min.append(min(rd_true_series)); candidates_max.append(max(rd_true_series))
+    if show_rd_true and rd_true and all(v is not None for v in rd_true):
+        candidates_min.append(min(rd_true)); candidates_max.append(max(rd_true))
     rd_min = min(candidates_min)
     rd_max = max(candidates_max)
     if rd_min == rd_max:
@@ -359,50 +339,12 @@ def plot_log(
         rd_min, rd_max = rd0 - span, rd0 + span
     ax_rd.set_ylim(rd_min, rd_max)
 
-    # Simulator sensor and controller UI estimate
-    if len(t_axis) >= 2:
-        ax_sensor.plot(t_axis, z, label="sensor_reading", linewidth=SENSOR_INPUT_LW, color=SENSOR_COLOR)
-        ax_sensor.plot(t_axis, z_ui, label="sensor_ui (controller)", linewidth=SENSOR_UI_LW, linestyle=":", color=SENSOR_COLOR)
-        if all(v is not None for v in x_est):
-            ax_sensor.plot(t_axis, x_est, label="x_est (controller debug)", linewidth=SENSOR_UI_LW, linestyle=":", color=X_EST_COLOR)
-    elif t_axis:
-        ax_sensor.scatter(t_axis, z, label="sensor_reading", color=SENSOR_COLOR, zorder=2)
-        ax_sensor.scatter(t_axis, z_ui, label="sensor_ui (controller)", color=SENSOR_COLOR, zorder=2)
-        if all(v is not None for v in x_est):
-            ax_sensor.scatter(t_axis, x_est, label="x_est (controller debug)", color=X_EST_COLOR, zorder=2)
-
     # Sensor axes/grid
     ax_sensor.set_ylabel("Sensor")
-    ax_sensor.set_ylim(-1.1, 1.15)
-    ax_sensor.axhline(0.0, linewidth=1.0, alpha=0.4, color="0.5", zorder=0)
+    ax_sensor.set_ylim(-1.1, 1.3)
+    #ax_sensor.axhline(0.0, linewidth=1.0, alpha=0.4, color="0.5", zorder=0)
     ax_sensor.grid(True, axis="y", alpha=0.2)
 
-    # Simulated bowden/Buffer spring plot
-    if has_spring_series:
-        y_spring = [float("nan") if v is None else float(v) for v in spring_series]
-        finite_vals = [v for v in y_spring if not (math.isnan(v) or math.isinf(v))]
-        span = max(abs(min(finite_vals)), abs(max(finite_vals))) if finite_vals else 1.0
-        lim = max(span * 1.1, 0.5)
-        ax_spring.set_ylim(-lim, +lim)
-        if len(t_axis) >= 2:
-            ax_spring.plot(t_axis, y_spring, label="bowden spring (mm)", linestyle=":", linewidth=1.0, color=SPRING_COLOR)
-        elif t_axis:
-            ax_spring.scatter(t_axis, y_spring, label="bowden spring (mm)", color=SPRING_COLOR, zorder=2)
-        ax_spring.axhline(0.0, linewidth=1.0, alpha=0.2, color="grey")
-        ax_spring.set_ylabel("Simulated bowden/buffer spring (mm)", color=LOWLIGHT_TEXT, fontsize=8)
-        ax_spring.tick_params(axis="y", colors=LOWLIGHT_TEXT, which="both", width=1, length=4)
-
-    # Autotune dots
-    if autotune_recommendation:
-        t_marks = [t_axis[i] for (i, _) in autotune_recommendation]
-        y_marks = [v for (_, v) in autotune_recommendation]
-        ax_rd.scatter(t_marks, y_marks, marker="o", s=32, color=AUTOTUNE_COLOR, label="RD autotune", zorder=AUTOTUNE_ZORDER)
-
-    for i, (is_clog, is_tangle) in enumerate(zip(clog[:end_idx], tangle[:end_idx])):
-        if is_clog or is_tangle:
-            ax_rd.axvline(t_axis[i], linestyle="-.", linewidth=3.0, alpha=0.7, color="red")
-
-    # Simulated bowden/buffer spring plot
     sensor_txt = f"Type {sensor_label}" if sensor_label else "Sensor"
     title_txt = f"{title_txt} — {sensor_txt}"
     if stop_on_fg_trip and first_trip_idx is not None:
@@ -410,22 +352,87 @@ def plot_log(
     ax_rd.set_title(title_txt, pad=18) # Extra space above the top x-axis
     ax_rd.text(0.5, 1.1, summary_txt, transform=ax_rd.transAxes, ha="center", va="bottom", fontsize=6, color="0.4", wrap=True, zorder=999)
 
-    # Flowguard trip banner
-    if stop_on_fg_trip and first_trip_idx is not None and trip_reason:
-        ax_sensor.text(
-            0.01, 0.98,
-            f"{trip_kind} reason:\n{trip_reason}",
-            transform=ax_rd.transAxes,
-            va="top", ha="left",
-            fontsize=9,
-            wrap=True,
-            bbox=dict(boxstyle="round", facecolor="0.92", edgecolor="0.6", alpha=0.95),
-            zorder=TRIPBOX_ZORDER,
-            clip_on=False,
-        )
 
-    # Top x-axis in extruder mm, fixed-distance ticks mapped to main time axis
+    # Plots against RD axis (left) ------------------------------------------------
+    if len(t_axis) >= 2:
+        # Core...
+        if show_ticks:
+            ax_rd.plot(t_axis, rd,              label="rotation_distance",   linestyle="-",  linewidth=RD_MAIN_LW, color=RD_COLOR, marker="o", markersize=2.5, markevery=1)
+        else:
+            ax_rd.plot(t_axis, rd,              label="rotation_distance",   linestyle="-",  linewidth=RD_MAIN_LW, color=RD_COLOR)
+
+        if show_rd_true and has_rd_true:
+            ax_rd.plot(t_axis, rd_true,         label="rd_true (simulator)", linestyle=":",  linewidth=RD_TRUE_LW, color=RD_TRUE_COLOR)
+
+        # Debug...
+        if has_rd_ref:
+            ax_rd.plot(t_axis, rd_ref,          label="rd_ref",              linestyle="-",  linewidth=RD_REF_LW, color=RD_REF_COLOR)
+        if has_rd_ref_smoothed:
+            ax_rd.plot(t_axis, rd_ref_smoothed, label="rd_ref_smoothed",     linestyle="--", linewidth=RD_REF_LW, color=RD_REF_COLOR)
+        if has_rd_target:
+            ax_rd.plot(t_axis, rd_target,       label="rd_target",           linestyle="-.", linewidth=RD_REF_LW, color=RD_REF_COLOR)
+
+    elif t_axis:
+        ax_rd.scatter(t_axis, rd, label="rotation_distance", color=RD_COLOR, zorder=3)
+        if show_rd_true and has_rd_true:
+            ax_rd.scatter(t_axis, rd_true, label="rd_true (simulator)", color=RD_TRUE_COLOR, zorder=3)
+
+    # Autotune dots
+    if autotune_recommendation:
+        t_marks = [t_axis[i] for (i, _) in autotune_recommendation]
+        y_marks = [v for (_, v) in autotune_recommendation]
+        ax_rd.scatter(t_marks, y_marks, marker="o", s=32, color=AUTOTUNE_COLOR, label="RD autotune", zorder=AUTOTUNE_ZORDER)
+
+    # Flowguard terminator line
+    for i, (is_clog, is_tangle) in enumerate(zip(clog[:end_idx], tangle[:end_idx])):
+        if is_clog or is_tangle:
+            ax_rd.axvline(t_axis[i], linestyle="-.", linewidth=3.0, alpha=0.7, color="red")
+
+
+    # Plots against sensor axis (right) -------------------------------------------
+    if len(t_axis) >= 2:
+        # Core...
+        ax_sensor.plot(t_axis, z,         label="sensor_reading", linestyle="-",  linewidth=SENSOR_INPUT_LW, color=SENSOR_COLOR)
+        ax_sensor.plot(t_axis, z_ui,      label="sensor_ui",      linestyle=":",  linewidth=SENSOR_UI_LW,    color=SENSOR_COLOR)
+
+        # Debug...
+        if has_x_est:
+            ax_sensor.plot(t_axis, x_est, label="x_est (debug)",  linestyle="--", linewidth=SENSOR_UI_LW,    color=X_EST_COLOR)
+        if has_c_est:
+            ax_sensor.plot(t_axis, c_est, label="c_est (debug)",  linestyle="--", linewidth=SENSOR_UI_LW,    color=C_EST_COLOR)
+
+    elif t_axis:
+        ax_sensor.scatter(t_axis, z,      label="sensor_reading", color=SENSOR_COLOR, zorder=2)
+        ax_sensor.scatter(t_axis, z_ui,   label="sensor_ui",      color=SENSOR_COLOR, zorder=2)
+
+
+    # Plots against bowden/buffer spring (far right) ------------------------------
+    if has_spring_mm:
+        ax_spring = ax_rd.twinx()
+        ax_spring.spines["right"].set_position(("axes", 1.1))
+        ax_spring.spines["right"].set_visible(True)
+        ax_spring.spines["right"].set_color(LOWLIGHT_TEXT)
+        ax_spring.set_frame_on(True)
+
+        ax_spring.axhline(0.0, linewidth=1.0, alpha=0.2, color="grey")
+        ax_spring.set_ylabel("Simulated bowden/buffer spring (mm)", color=LOWLIGHT_TEXT, fontsize=8)
+        ax_spring.tick_params(axis="y", colors=LOWLIGHT_TEXT, which="both", width=1, length=4)
+
+        y_spring = [float("nan") if v is None else float(v) for v in spring_mm]
+        finite_vals = [v for v in y_spring if not (math.isnan(v) or math.isinf(v))]
+        span = max(abs(min(finite_vals)), abs(max(finite_vals))) if finite_vals else 1.0
+        lim = max(span * 1.1, 0.5)
+        ax_spring.set_ylim(-lim, +lim)
+
+        if len(t_axis) >= 2:
+            ax_spring.plot(t_axis, y_spring,    label="bowden spring (simulator)", linestyle=":", linewidth=1.0, color=SPRING_COLOR)
+        elif t_axis:
+            ax_spring.scatter(t_axis, y_spring, label="bowden spring (simulator)", color=SPRING_COLOR, zorder=2)
+
+
+    # Top non-linear extruder mm x-axis -------------------------------------------
     if show_mm_axis and len(t_axis) >= 2 and len(mm_deltas) >= 1:
+        # Fixed-distance ticks mapped to main time axis
         t_series = np.asarray(t_axis, dtype=float)
     
         mode = (mm_axis_mode or "abs").lower()
@@ -436,7 +443,7 @@ def plot_log(
             if np.any(np.diff(mm_series) <= 0):
                 mm_series = mm_series + 1e-12 * np.arange(mm_series.size)
         else:
-            # NOTE: signed displacement may be non-monotonic → inverse not unique.
+            # NOTE signed displacement may be non-monotonic → inverse not unique.
             # We'll still place ticks using the ABS distance for spacing,
             # but show signed labels at those times.
             mm_series_signed = np.cumsum(mm_deltas).astype(float)
@@ -511,31 +518,79 @@ def plot_log(
     
         ax_mm.set_xticks(t_ticks)
         ax_mm.set_xticklabels(labels)
-        # ----------------------------------------------
 
-        # Default legend box
-        lines_l, labels_l = ax_rd.get_legend_handles_labels()
-        lines_r1, labels_r1 = ax_sensor.get_legend_handles_labels()
-        if has_spring_series:
-            lines_r2, labels_r2 = ax_spring.get_legend_handles_labels()
-        else:
-            lines_r2, labels_r2 = [], []
-        legend = ax_rd.legend(lines_l + lines_r1 + lines_r2, labels_l + labels_r1 + labels_r2, loc="lower left")
+
+    # Plot times where an actual movement happened (ticks) ------------------------
+    if show_tick_times:
+        tick_times = [t for t, d in zip(t_axis, mm_deltas)]
+
+        # Keep them just under the top, and a bit lower if the top distance axis is shown
+        y_top = 0.99
+        h     = 0.015   # height = 1.5% of axes; tweak to taste
+        y0, y1 = max(0, y_top - h), min(1, y_top)
+
+        for x in tick_times:
+            ax_rd.axvline(x, ymin=y0, ymax=y1, color=TICK_MARK_COLOR, linewidth=1.0, zorder=1200, clip_on=False, label="_nolegend_")
+
+
+    # Flowguard trip banner -------------------------------------------------------
+    if stop_on_fg_trip and first_trip_idx is not None and trip_reason:
+        ax_sensor.text(
+            0.01, 0.98,
+            f"{trip_kind} reason:\n{trip_reason}",
+            transform=ax_rd.transAxes,
+            va="top", ha="left",
+            fontsize=9,
+            wrap=True,
+            bbox=dict(boxstyle="round", facecolor="0.92", edgecolor="0.6", alpha=0.95),
+            zorder=TRIPBOX_ZORDER,
+            clip_on=False,
+        )
+
+
+    # Legend box ------------------------------------------------------------------
+    rd_lines,     rd_labels     = ax_rd.get_legend_handles_labels()
+    sensor_lines, sensor_labels = ax_sensor.get_legend_handles_labels()
+    if has_spring_mm:
+        spring_lines, spring_labels = ax_spring.get_legend_handles_labels()
+    else:
+        spring_lines, spring_labels = [], []
+
+    legend = ax_rd.legend(
+        rd_lines + sensor_lines + spring_lines,
+        rd_labels + sensor_labels + spring_labels,
+        loc="lower left",
+        ncol=2,
+        handlelength=2.0,
+        handletextpad=0.8,
+        columnspacing=1.2,
+    )
 
     # Make legend lines more visible
     for lh in legend.legend_handles:
-        try:
-            lh.set_linewidth(1.25)
-        except Exception:
-            pass
+        lh.set_linewidth(1.25)
 
+
+    # Plot ------------------------------------------------------------------------
     plt.tight_layout()
+
+    # Make legend box smaller
+    plt.rcParams.update({
+        "legend.fontsize": 8,
+        "legend.framealpha": 0.75,
+        "legend.borderpad": 0.2,
+        "legend.labelspacing": 0.25,
+        "legend.handlelength": 1.0,
+        "legend.handletextpad": 0.4,
+    })
+
     if out_path:
         plt.savefig(out_path, dpi=150)
         plt.close(fig)
         print(f"Saved plot to {out_path}")
     else:
         plt.show()
+
 
 # ------------------------------ CLI Helpers ----------------------------
 
@@ -585,12 +640,15 @@ def _plot_from_log(
     if not records:
         print("jsonl log file is empty; nothing to plot.")
         return
+
+    use_twolevel = cfg.use_twolevel_for_type_pd or cfg.sensor_type in ['CO', 'TO']
+    twolevel_txt = " (twoLevel)" if use_twolevel else ""
+    sensor_txt = f"{cfg.sensor_type}{twolevel_txt}" if cfg.sensor_type else None
     try:
-        plot_log(
+        plot_progress(
             records,
             out_path=out_path if mode == "save" else None, 
-            sensor_label=cfg.sensor_type,
-            stop_on_fg_trip=True,
+            sensor_label=sensor_txt,
             rd_start=cfg.rd_start,
             show_rd_true=True,
             show_ticks=show_ticks,
@@ -672,7 +730,7 @@ def _plot_log_file(path: str, *, out_path: str, show_ticks: bool, show_mm_axis: 
     # Compose a small summary from the last record
     last = records[-1]
     sensor_last = last.get("input", {}).get("sensor")
-    rd_applied_last = last.get("output", {}).get("rd_applied")
+    rd_current_last = last.get("output", {}).get("rd_current")
     sensor_ui_last = last.get("output", {}).get("sensor_ui")
     fg_last = last.get("output", {}).get("flowguard", {})
     # Last non-None autotune rd
@@ -688,8 +746,8 @@ def _plot_log_file(path: str, *, out_path: str, show_ticks: bool, show_mm_axis: 
     sensor_txt = f"{sensor_type}{twolevel_txt}" if sensor_type else None
 
     summary_parts = []
-    if rd_start is not None and rd_applied_last is not None:
-        summary_parts.append(f"RD start={rd_start:.4f}, end={rd_applied_last:.4f}")
+    if rd_start is not None and rd_current_last is not None:
+        summary_parts.append(f"RD start={rd_start:.4f}, end={rd_current_last:.4f}")
     if autotune_last is not None:
         summary_parts.append(f"Autotune={autotune_last:.4f}")
     if sensor_last is not None:
@@ -701,18 +759,17 @@ def _plot_log_file(path: str, *, out_path: str, show_ticks: bool, show_mm_axis: 
         summary_parts.append(f"sensor_ui={float(sensor_ui_last):.3f}")
     if spring_mm is not None:
         summary_parts.append(f"Bowden/Buffer spring={float(spring_mm):.3f}mm")
-    if fg_last:
-        summary_parts.append(f"FlowGuard: clog={fg_last.get('clog')}, tangle={fg_last.get('tangle')}, reason={fg_last.get('reason')}")
+    #if fg_last:
+    #    summary_parts.append(f"FlowGuard: clog={fg_last.get('clog')}, tangle={fg_last.get('tangle')}, reason={fg_last.get('reason')}")
     summary_txt = " | ".join(summary_parts)
 
     # Save… then display...
     for p in [out_path, None]:
-        plot_log(
+        plot_progress(
             records,
             out_path=p,
             dt_s=None,                    # let plot() use per-record meta.dt_s
             sensor_label=sensor_txt,
-            stop_on_fg_trip=False,        # don't truncate controller logs
             rd_start=rd_start,
             show_rd_true=has_truth,       # show truth if present (sim logs)
             show_ticks=show_ticks,
@@ -871,16 +928,16 @@ def _make_seed_record(ctrl: SyncFeedbackManager, printer: SimplePrinterModel, t_
             "sensor": sensor_val,
         },
         "output": {
-            "rd_prev":    ctrl.rd_current,
-            "rd_instant": ctrl.rd_current,
-            "rd_applied": ctrl.rd_current,
-            "rd_reason":  "seed",
-            "gear_effect_mm": 0.0,
+            "rd_target": ctrl.rd_ref,
+            "rd_ref": ctrl.rd_ref,
+            "rd_ref_smoothed": ctrl.rd_ref,
+            "rd_current": ctrl.rd_ref,
+            "rd_reason": "seed",
             "x_est": ctrl.state.x,
             "c_est": ctrl.state.c,
             "sensor_ui": sensor_ui,
             "flowguard": {"clog": False, "tangle": False, "reason": None},
-            "autotune":  {"rd": None, "note": None},
+            "autotune": {"rd": None, "note": None},
         },
         "truth": {
             "rd_true": printer.extruder_rd_true,
@@ -1029,7 +1086,7 @@ def _run_cli():
     print(f" Simulator:")
     print(f"   Chaos factor        : {args.chaos}")
     print(f"   Initial sensor mode : {args.initial_sensor}")
-    print(f"   Stride per update   : {args.stride_mm} mm   (sim/extr. tests)")
+    print(f"   Stride per update   : {args.stride_mm} mm   (sim, clog & tangle)")
     print(f"   Default dt          : {default_dt_s} s    (manual 'tick' & clog/tangle test)")
     print(f"   Sample error factor : {args.sample_error}")
     print(f"   JSON log            : {logger.path}")
@@ -1447,7 +1504,7 @@ def _run_cli():
             last_sensor_ui = oo["sensor_ui"]
             last_flowguard = oo["flowguard"]
 
-            print(f"RD={oo['rd_applied']:.4f} | x={oo['x_est']:.3f} | c={oo['c_est']:.4f} | "
+            print(f"RD={oo['rd_current']:.4f} | x={oo['x_est']:.3f} | c={oo['c_est']:.4f} | "
                   f"sensor_ui={oo['sensor_ui']:.3f} | Bowden/Buffer spring={printer.spring_mm():.3f}mm | "
                   f"FlowGuard: {oo['flowguard']} | Autotune: {oo['autotune']}")
             _summary_print(ctrl, last_autotune_rd, last_sensor, last_sensor_ui, last_flowguard, printer.spring_mm())
