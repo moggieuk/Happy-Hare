@@ -495,7 +495,7 @@ class MmuProportionalSensor:
         self._sample_time = config.getfloat('sync_feedback_analog_sample_time', 0.005) # Not exposed
         self._sample_count = config.getint('sync_feedback_analog_sample_count', 5)     # Not exposed
         self._report_time = config.getfloat('sync_feedback_analog_report_time', 0.100) # Not exposed
-        self._debug = config.getboolean('sync_feedback_analog_debug', False))          # Not exposed
+        self._debug = config.getboolean('sync_feedback_analog_debug', False)           # Not exposed
 
         # State
         self.value_raw = 0.0      # raw ADC value
