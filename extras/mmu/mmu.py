@@ -773,21 +773,6 @@ class Mmu:
         self.gear_percentage_run_current = self.extruder_percentage_run_current = 100 # Current run percentages
         self._gear_current_locked = False # True if gear current is currently locked by wrap_gear_current()
 
-        # Use gc to find all active TMC current helpers - used for direct stepper current control
-        self.tmc_current_helpers = {}
-        refcounts = {}
-        for obj in gc.get_objects():
-            if isinstance(obj, TMCCommandHelper):
-                ref_count = sys.getrefcount(obj)
-                stepper_name = obj.stepper_name
-                if stepper_name not in refcounts or ref_count > refcounts[stepper_name]:
-                    refcounts[stepper_name] = ref_count
-                    self.tmc_current_helpers[stepper_name] = obj.current_helper
-        if self.tmc_current_helpers:
-            self.log_debug("TMC current helpers found for: %s" % ", ".join(self.tmc_current_helpers.keys()))
-        else:
-            self.log_debug("No TMC current helpers found")
-
         # Sanity check that required klipper options are enabled
         self.print_stats = self.printer.lookup_object("print_stats", None)
         if self.print_stats is None:
@@ -6158,22 +6143,7 @@ class Mmu:
     def _restore_extruder_current(self, percent=100):
         _ = self._adjust_extruder_current(percent=percent, restore=True)
 
-    # Alter the stepper current without console logging
     def _set_tmc_current(self, stepper, run_current, msg):
-        current_helper = self.tmc_current_helpers.get(stepper, None)
-        if current_helper:
-            try:
-                print_time = self.toolhead.get_last_move_time()
-                c = list(current_helper.get_current())
-                req_hold_cur, max_cur = c[2], c[3] # Kalico now has 5 elements rather than 4 in tuple, so unpack just what we need...
-                new_cur = max(min(run_current, max_cur), 0)
-                current_helper.set_current(new_cur, req_hold_cur, print_time)
-                self.log_info(msg.format("%.2f" % new_cur))
-                return
-            except Exception as e:
-                self.log_debug("Unexpected error setting stepper current: %s. Falling back to default approach" % str(e))
-
-        # Fallback or missing helper
         self.log_debug(msg.format("%.2f" % run_current))
         self.gcode.run_script_from_command("SET_TMC_CURRENT STEPPER=%s CURRENT=%.2f" % (stepper, run_current))
 
