@@ -290,7 +290,7 @@ class MmuSyncFeedbackManager:
             if self.sync_feedback_enabled:
                 active = " and currently active" if self.active else " (not currently active)"
                 mode = self.ctrl.get_type_mode()
-                self.mmu.log_always("Sync feedback feature is enabled, type: %s%s" % (mode, active))
+                self.mmu.log_always("Sync feedback feature with type-%s sensor is enabled%s" % (mode, active))
             else:
                 self.mmu.log_always("Sync feedback feature is disabled")
 
@@ -335,7 +335,7 @@ class MmuSyncFeedbackManager:
         starting_state = self._get_sensor_state()
         self.estimated_state = starting_state
         rd_start = self.mmu.get_rotation_distance(self.mmu.gate_selected)
-        status = self.ctrl.reset(eventtime, rd_start, starting_state)
+        status = self.ctrl.reset(eventtime, rd_start, starting_state, log_file="/tmp/sync_%d.jsonl" % self.mmu.gate_selected)
         self._process_status(status) # May adjust rotation_distance
 
         # Turn on extruder movement events
