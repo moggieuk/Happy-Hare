@@ -331,8 +331,8 @@ class MmuProportionalSensor:
         self._report_time = config.getfloat('sync_feedback_analog_report_time', 0.100) # Not exposed
 
         # State
-        self.value_raw = 0.0      # Raw ADC value
-        self.value = 0.0          # In [-1.0, 1.0] (signed, offset and scaled)
+        self.value_raw = 0.0 # Raw ADC value
+        self.value = 0.0     # In [-1.0, 1.0] (signed, offset and scaled)
 
         # Setup ADC
         ppins = self.printer.lookup_object('pins')
