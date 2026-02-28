@@ -691,7 +691,11 @@ class MmuServer:
                 await self._log_n_send(msg, error=True)
                 return False
 
-            material = spool_info.get('material', "n/a")
+            filament_info = spool_info.get('filament', {})
+            material = "n/a"
+            if filament_info:
+                material = filament_info.get('material', "n/a")
+
             used_weight = int(spool_info.get('used_weight', -1))
             f_used_weight = f"{used_weight} g" if used_weight >= 0 else "n/a"
             remaining_weight = int(spool_info.get('remaining_weight', -1))
