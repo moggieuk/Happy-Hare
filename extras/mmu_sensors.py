@@ -367,10 +367,11 @@ class MmuProportionalSensor:
         self.printer.add_object(self.name, self)
 
     def _map_reading(self, v_raw):
-        if v_raw >= self._set_point:
-            y = (v_raw - self._set_point) / self._d_hi      # 0 → +1 nominal
+        v = float(v_raw)
+        if v >= self._set_point:
+            y = (v - self._set_point) / self._d_hi      # 0 → +1 nominal
         else:
-            y = -(self._set_point - v_raw) / self._d_lo     # 0 → -1 nominal
+            y = -(self._set_point - v) / self._d_lo     # 0 → -1 nominal
 
         # Optional shaping (gamma=1 => linear)
         if self._gamma != 1.0:
