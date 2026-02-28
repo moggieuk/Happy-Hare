@@ -65,6 +65,9 @@ class MmuSyncFeedbackManager:
         self.mmu.printer.register_event_handler("mmu:unsynced", self._handle_mmu_unsynced)
         self.mmu.printer.register_event_handler("mmu:sync_feedback", self._handle_sync_feedback)
 
+        # Initial flowguard status
+        self.flowguard_status = {'trigger': '', 'reason': '', 'level': 0.0, 'max_clog': 0.0, 'max_tangle': 0.0, 'active': False, 'enabled': bool(self.flowguard_enabled)}
+
         # Register GCODE commands ---------------------------------------------------------------------------
 
         self.mmu.gcode.register_command('MMU_SYNC_FEEDBACK', self.cmd_MMU_SYNC_FEEDBACK, desc=self.cmd_MMU_SYNC_FEEDBACK_help)
@@ -291,6 +294,7 @@ class MmuSyncFeedbackManager:
             'sync_feedback_enabled': self.is_enabled(),
             'sync_feedback_bias_raw': self._get_sync_bias_raw(),
             'sync_feedback_bias_modelled': self._get_sync_bias_modelled(),
+            'flowguard': self.flowguard_status,
         }
 
 
@@ -370,8 +374,7 @@ class MmuSyncFeedbackManager:
 
         state = self._get_sensor_state()
         self.mmu.log_trace("MmuSyncFeedbackManager: Extruder movement event, move=%.1f" % move)
-        status = self.ctrl.update(eventtime, move, state)
-        self._process_status(status)
+        self._process_update(eventtime, move, state)
 
 
     def _handle_sync_feedback(self, eventtime, state):
@@ -390,25 +393,27 @@ class MmuSyncFeedbackManager:
             self.mmu.log_info(msg)
 
         move = self.extruder_monitor.get_and_reset_accumulated(self._handle_extruder_movement)
-        status = self.ctrl.update(eventtime, move, state)
-        self._process_status(status)
+        self._process_update(eventtime, move, state)
 
 
-    def _process_status(self, status):
+    def _process_update(self, eventtime, move, state):
         """
         Common logic to process the rd recommendations of the sync controller
         """
+        status = self.ctrl.update(eventtime, move, state)
         output = status['output']
 
         # Handle estimated sensor position
         self.estimated_state = output['sensor_ui']
 
         # Handle flowguard trip
-        flowguard = output['flowguard']
-        flowguard_trigger = flowguard.get('trigger', None)
-        if flowguard_trigger:
+        self.flowguard_status = output['flowguard']
+        self.flowguard_status['enabled'] = bool(self.flowguard_enabled)
+        f_trigger = self.flowguard_status.get('trigger', None)
+        f_reason = self.flowguard_status.get('reason', "")
+        if f_trigger:
             if self.flowguard_enabled:
-                self.mmu.log_error("MmuSyncFeedbackManager: FlowGuard detected a %s.\nReason for trip: %s" % (flowguard_trigger, flowguard['reason']))
+                self.mmu.log_error("MmuSyncFeedbackManager: FlowGuard detected a %s.\nReason for trip: %s" % (f_trigger, f_reason))
 
                 # Pick most appropriate sensor to assign event to (primariliy for optics)
                 has_tension      = sm.has_sensor(self.mmu.SENSOR_TENSION)
@@ -421,15 +426,15 @@ class MmuSyncFeedbackManager:
                     sensor_key = self.mmu.SENSOR_COMPRESSION
                 elif not has_compression:
                     sensor_key = self.mmu.SENSOR_TENSION
-                elif flowguard_trigger == "clog":
+                elif f_trigger == "clog":
                     sensor_key = self.mmu.SENSOR_COMPRESSION
                 else: # "tangle"
                     sensor_key = self.mmu.SENSOR_TENSION
                 sensor = sm.sensors.get(sensor_key)
 
-                sensor.runout_helper.note_clog_tangle(flowguard_trigger)
+                sensor.runout_helper.note_clog_tangle(f_trigger)
             else:
-                self.mmu.log_debug("MmuSyncFeedbackManager: FlowGuard detected a %s, but handling is disabled.\nReason for trip: %s" % (flowguard_trigger, flowguard['reason']))
+                self.mmu.log_debug("MmuSyncFeedbackManager: FlowGuard detected a %s, but handling is disabled.\nReason for trip: %s" % (f_trigger, f_reason))
 
             # PAUL -- don't think we need this because reset on next sync(). Being lazy allows the mainsail UI to display cause..
             # self.ctrl.flowguard.reset()
@@ -490,7 +495,7 @@ class MmuSyncFeedbackManager:
 
 
     def _get_sync_bias_modelled(self):
-        if self.mmu.is_enabled and self.sync_feedback_enabled and self.active:
+        if self.mmu.is_enabled and self.sync_feedback_enabled and self.active and self.mmu.is_printing():
             # This is a better representation for UI when the controller is active
             return self.estimated_state
         else:

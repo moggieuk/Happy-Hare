@@ -350,8 +350,8 @@ class MmuProportionalSensor:
             self.name,                  # Name exposed to QUERY_/SET_FILAMENT_SENSOR
             0,                          # Event_delay (not used here)
             gcodes={
-                "clog": self.CLOG_GCODE,
-                "tangle": self.TANGLE_GCODE,
+                "clog":   CLOG_GCODE,
+                "tangle": TANGLE_GCODE,
             },
             insert_remove_in_print=False,
             button_handler=None,       # No button handler for analog
