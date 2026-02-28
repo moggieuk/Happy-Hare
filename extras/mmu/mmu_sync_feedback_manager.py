@@ -208,7 +208,8 @@ class MmuSyncFeedbackManager:
     cmd_MMU_FLOWGUARD_help = "Enable/disable FlowGuard (clog-tangle detection)"
     cmd_MMU_FLOWGUARD_param_help = (
         "MMU_FLOWGUARD: %s\n" % cmd_MMU_FLOWGUARD_help
-        + "ENABLE = [1|0] enable/disable FlowGuard clog/tangle detection"
+        + "ENABLE = [1|0] enable/disable FlowGuard clog/tangle detection\n"
+        + "(no parameters for status report)"
     )
     def cmd_MMU_FLOWGUARD(self, gcmd):
         self.mmu.log_to_file(gcmd.get_commandline())
@@ -242,7 +243,8 @@ class MmuSyncFeedbackManager:
         "MMU_SYNC_FEEDBACK: %s\n" % cmd_MMU_SYNC_FEEDBACK_help
         + "ENABLE         = [1|0] enable/disable sync feedback control\n"
         + "ADJUST_TENSION = [1|0] apply correction to neutralize filament tension\n"
-        + "AUTOTUNE       = [1|0] allow saving of autotuned rotation distance"
+        + "AUTOTUNE       = [1|0] allow saving of autotuned rotation distance\n"
+        + "(no parameters for status report)"
     )
     def cmd_MMU_SYNC_FEEDBACK(self, gcmd):
         self.mmu.log_to_file(gcmd.get_commandline())
@@ -291,7 +293,7 @@ class MmuSyncFeedbackManager:
             if self.sync_feedback_enabled:
                 active = " and currently active" if self.active else " (not currently active)"
                 mode = self.ctrl.get_type_mode()
-                self.mmu.log_always("Sync feedback feature is enabled, mode: %s%s" % (mode, active))
+                self.mmu.log_always("Sync feedback feature is enabled, type: %s%s" % (mode, active))
             else:
                 self.mmu.log_always("Sync feedback feature is disabled")
     
