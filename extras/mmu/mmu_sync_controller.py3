@@ -86,8 +86,6 @@ SensorType = Literal["P", "D", "CO", "TO"]
 #                                Used for detection, readiness floor, and relief logic.
 # - flowguard_relief_mm (mm)     Required accumulated “relief” motion to prove we tried to
 #                                correct an extreme. If None, defaults to buffer_max_range_mm.   USER EXPOSED
-# - flowguard_motion_mm (mm)     Required accumulated motion while extreme to declare a fault
-#                                If None, defaults to rd_filter_len_mm.                          USER EXPOSED
 #
 # Rotation distance
 # - rd_start (mm)                Default/persisted baseline RD. Used as mirror reference for mapping
@@ -129,7 +127,7 @@ SensorType = Literal["P", "D", "CO", "TO"]
 # - If RD reacts too sluggishly in normal operation, decrease rd_filter_len_mm and/or increase
 #   rd_rate_per_mm (watch stability near neutral).
 # - If you see chatter near x=0, reduce kp and/or kd, or increase r_type.
-# - If FlowGuard trips too early, raise flowguard_motion_mm and/or flowguard_relief_mm slightly.
+# - If FlowGuard trips too early, raise flowguard_relief_mm.
 # - If autotune fires too often, increase the cooldowns; if it
 #   never fires, reduce autotune_stable_time_s and/or autotune_motion_mm.
 
@@ -165,7 +163,6 @@ class SyncControllerConfig:
     # FlowGuard (distance-based)
     flowguard_extreme_threshold: float = 0.9
     flowguard_relief_mm: Optional[float] = None
-    flowguard_motion_mm: Optional[float] = None
 
     # Rotation distance
     rd_start: float = 20.0                     # initial baseline (previous calibrated value)
@@ -230,11 +227,6 @@ class SyncControllerConfig:
         if self.flowguard_relief_mm is None:
             mult = 0.3 if self.sensor_type in ['P'] else 0.7
             self.flowguard_relief_mm = max(mult * self.buffer_range_mm, self.buffer_max_range_mm)
-
-        # FlowGuard motion threshold (how much motion while pegged before tripping)
-        if self.flowguard_motion_mm is None:
-            mult = 6.0 if self.sensor_type in ['P'] else 10.0
-            self.flowguard_motion_mm = mult * self.buffer_max_range_mm
 
 
 # ------------------------------- EKF State ------------------------------
@@ -837,14 +829,12 @@ class _FlowguardEngine:
         if self._arm_last_state is None:
             self._arm_last_state = state_now
 
-        self._motion_headroom = cfg.flowguard_motion_mm
         self._relief_headroom = cfg.flowguard_relief_mm
 
         if not self._armed:
             # Arm when we've moved and observed any change in coarse state
             changed = (state_now != self._arm_last_state)
-            fallback_dist = 1.0 * cfg.flowguard_motion_mm # Safey in case sensor is initially stuck
-            if (abs(self._arm_motion_mm) > 0.0 and changed) or (abs(self._arm_motion_mm) >= fallback_dist):
+            if abs(self._arm_motion_mm) > 0.0 and changed:
                 self._armed = True
             else:
                 return self.status()
@@ -857,27 +847,18 @@ class _FlowguardEngine:
             if effort < 0:
                 self._relief_comp_mm += (-effort)
 
-            comp_motion_trig = (abs(self._comp_motion_mm) >= cfg.flowguard_motion_mm)
             comp_relief_trig = (abs(self._relief_comp_mm) >= cfg.flowguard_relief_mm)
-            self._motion_headroom -= self._comp_motion_mm
             self._relief_headroom -= self._relief_comp_mm
 
-            if (comp_motion_trig or comp_relief_trig) and not self._trigger:
-                if comp_relief_trig and not comp_motion_trig:
-                    test = "flowguard_max_relief"
-                elif comp_motion_trig and comp_relief_trig:
-                    test = "flowguard_max_motion and flowguard_max_relief"
-                else:
-                    test = "flowguard_max_motion"
+            if comp_relief_trig and not self._trigger:
                 self._trigger = "clog"
-                self._reason = "Compression stuck after %.2f mm motion and %.2f mm relief (triggering parameter: %s)" % (
-                    abs(self._comp_motion_mm), abs(self._relief_comp_mm), test
+                self._reason = "Compression stuck after %.2f mm motion and %.2f mm relief (triggering parameter: flowguard_max_relief)" % (
+                    self._comp_motion_mm, self._relief_comp_mm
                 )
 
             # Maintain normalized [0..1] clog headroom marker
-            mcm = abs(self._comp_motion_mm / cfg.flowguard_motion_mm)
             mcr = abs(self._relief_comp_mm / cfg.flowguard_relief_mm)
-            c_level = min(1.0, max(mcm, mcr))
+            c_level = min(1.0, mcr)
             self._level = c_level
             if c_level > self._max_clog:
                 self._max_clog = c_level
@@ -893,27 +874,18 @@ class _FlowguardEngine:
             if effort > 0:
                 self._relief_tens_mm += effort
 
-            tens_motion_trig = (abs(self._tens_motion_mm) >= cfg.flowguard_motion_mm)
             tens_relief_trig = (abs(self._relief_tens_mm) >= cfg.flowguard_relief_mm)
-            self._motion_headroom -= self._tens_motion_mm
             self._relief_headroom -= self._relief_tens_mm
 
-            if (tens_motion_trig or tens_relief_trig) and not self._trigger:
-                if tens_relief_trig and not tens_motion_trig:
-                    test = "flowguard_max_relief"
-                elif tens_motion_trig and tens_relief_trig:
-                    test = "flowguard_max_motion and flowguard_max_relief"
-                else:
-                    test = "flowguard_max_motion"
+            if tens_relief_trig and not self._trigger:
                 self._trigger = "tangle"
-                self._reason = "Tension stuck after %.2f mm motion and %.2f mm relief (triggering parameter: %s)" % (
-                    abs(self._tens_motion_mm), abs(self._relief_tens_mm), test
+                self._reason = "Tension stuck after %.2f mm motion and %.2f mm relief (triggering parameter: flowguard_max_relief)" % (
+                    self._tens_motion_mm, self._relief_tens_mm
                 )
 
             # Maintain normalized [0..-1] tangle headroom marker
-            mtm = -abs(self._tens_motion_mm / cfg.flowguard_motion_mm)
             mtr = -abs(self._relief_tens_mm / cfg.flowguard_relief_mm)
-            t_level = max(-1.0, min(mtm, mtr))
+            t_level = max(-1.0, mtr)
             self._level = t_level
             if self._level < self._max_tangle:
                 self._max_tangle = t_level
