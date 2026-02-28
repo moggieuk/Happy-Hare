@@ -2844,59 +2844,60 @@ class Mmu:
 
         try:
             with self.wrap_sync_gear_to_extruder():
-                self.selector.filament_drive()
-                self.calibrating = True
-                s_maxrange = self.sync_feedback_manager.sync_feedback_buffer_maxrange
+                with self._wrap_gear_current(percent=self.sync_gear_current, reason="while calibrating sync_feedback psensor"):
+                    self.selector.filament_drive()
+                    self.calibrating = True
+                    s_maxrange = self.sync_feedback_manager.sync_feedback_buffer_maxrange
 
-                raw0 = _avg_raw()
-                if raw0 is None:
-                    raise gcmd.error("Sensor malfunction. Could not read valid ADC output\nAre you sure you configured in [mmu_sensors]?")
+                    raw0 = _avg_raw()
+                    if raw0 is None:
+                        raise gcmd.error("Sensor malfunction. Could not read valid ADC output\nAre you sure you configured in [mmu_sensors]?")
 
-                calibrated = False
-                self.log_always("Starting calibration. Please excuse the noise - you might hear a bit of grinding but it won't take long!")
-                for attempt in range(2, 5):
-                    max_movement = s_maxrange * attempt # Start small but increasing movements
+                    calibrated = False
+                    self.log_always("Starting calibration. Please excuse the noise - you might hear a bit of grinding but it won't take long!")
+                    for attempt in range(2, 5):
+                        max_movement = s_maxrange * attempt # Start small but increasing movements
 
-                    loops = 3
-                    c_vals = []
-                    t_vals = []
-                    self.log_always("Calibrating using %.1fmm filament movements" % max_movement)
-                    for i in range(loops):
-                        self.log_always("Pass %d/%d" % (i+1, loops))
+                        loops = 3
+                        c_vals = []
+                        t_vals = []
+                        self.log_always("Calibrating using %.1fmm filament movements" % max_movement)
+                        for i in range(loops):
+                            self.log_always("Pass %d/%d" % (i+1, loops))
 
-                        msg = "Finding compression limit..."
-                        self.log_always(msg)
-                        _,_,_,_ = self.trace_filament_move(msg, max_movement, motor="gear", speed=8)
-                        c_avg = _avg_raw()
-                        if c_avg is None:
-                            self.log_always("Invalid compression sample; aborting this attempt.")
+                            msg = "Finding compression limit..."
+                            self.log_always(msg)
+                            _,_,_,_ = self.trace_filament_move(msg, max_movement, motor="gear", speed=8)
+                            c_avg = _avg_raw()
+                            if c_avg is None:
+                                self.log_always("Invalid compression sample; aborting this attempt.")
+                                break
+                            c_vals.append(c_avg)
+
+                            msg = "Finding tension limit..."
+                            self.log_always(msg)
+                            _,_,_,_ = self.trace_filament_move(msg, -max_movement, motor="gear", speed=8)
+                            t_avg = _avg_raw()
+                            if t_avg is None:
+                                self.log_always("Invalid tension sample; aborting this attempt.")
+                                break
+                            t_vals.append(t_avg)
+
+                            self.log_always("Pass %d: Measured max compression: %.4f and max tension: %.4f (mid: %.4f)" % (i+1, c_avg, t_avg, (c_avg + t_avg) / 2.0))
+
+                        c_raw = sum(c_vals) / len(c_vals)
+                        t_raw = sum(t_vals) / len(t_vals)
+                        mid_raw = (c_raw + t_raw) / 2.0
+                        c_sd = _sd(c_vals)
+                        t_sd = _sd(t_vals)
+
+                        if c_sd <= SD_THRESHOLD and t_sd <= SD_THRESHOLD:
+                            calibrated = True
                             break
-                        c_vals.append(c_avg)
 
-                        msg = "Finding tension limit..."
+                        msg = "Variance too high (compression sd=%.4f, tension sd=%.4f, threshold=%.4f)\n" % (c_sd, t_sd, SD_THRESHOLD)
+                        msg += "Trying again with wider movement range"
                         self.log_always(msg)
-                        _,_,_,_ = self.trace_filament_move(msg, -max_movement, motor="gear", speed=8)
-                        t_avg = _avg_raw()
-                        if t_avg is None:
-                            self.log_always("Invalid tension sample; aborting this attempt.")
-                            break
-                        t_vals.append(t_avg)
-
-                        self.log_always("Pass %d: Measured max compression: %.4f and max tension: %.4f (mid: %.4f)" % (i+1, c_avg, t_avg, (c_avg + t_avg) / 2.0))
-
-                    c_raw = sum(c_vals) / len(c_vals)
-                    t_raw = sum(t_vals) / len(t_vals)
-                    mid_raw = (c_raw + t_raw) / 2.0
-                    c_sd = _sd(c_vals)
-                    t_sd = _sd(t_vals)
-
-                    if c_sd <= SD_THRESHOLD and t_sd <= SD_THRESHOLD:
-                        calibrated = True
-                        break
-
-                    msg = "Variance too high (compression sd=%.4f, tension sd=%.4f, threshold=%.4f)\n" % (c_sd, t_sd, SD_THRESHOLD)
-                    msg += "Trying again with wider movement range"
-                    self.log_always(msg)
 
 
                 if calibrated and c_raw != t_raw: # Also check for "stuck" reading
