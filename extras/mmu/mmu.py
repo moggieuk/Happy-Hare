@@ -1332,16 +1332,16 @@ class Mmu:
                 self._display_visual_state()
             self.report_necessary_recovery()
 
-# PAUL this should apply calibrated value IF mode is automatic? or just if enabled?
+            # Setup encoder based FlowGuard (runout/clog/tangle detection)
             if self.has_encoder():
-                # PAUL cdl depends on mode.. use flowguard static or calibrated for auto
-                # Also if auto and not calibrated, then use flowguard static length
-                cdl = self.save_variables.allVariables.get(self.VARS_MMU_CALIB_CLOG_LENGTH, None)
-                if cdl:
-                    self.encoder_sensor.set_clog_detection_length(cdl)
+                auto = (self.sync_feedback_manager.flowguard_encoder_mode == self.encoder_sensor.RUNOUT_AUTOMATIC)
+                cdl = self.sync_feedback_manager.flowguard_encoder_max_motion
+                if auto:
+                    cdl = self.save_variables.allVariables.get(self.VARS_MMU_CALIB_CLOG_LENGTH, cdl)
+                self.encoder_sensor.set_clog_detection_length(cdl)
 
             # Initially disable clog/runout detection
-            self._disable_runout_clog_flowguard()
+            self._disable_filament_monitoring()
 
             self.reset_sync_gear_to_extruder(False) # Intention is not to sync unless we have to
             self.mmu_toolhead.quiesce()
@@ -2607,7 +2607,7 @@ class Mmu:
 
         try:
             with self.wrap_sync_gear_to_extruder():
-                with self._wrap_suspend_runout_clog_flowguard():
+                with self._wrap_suspend_filament_monitoring():
                     self.calibrating = True
                     if manual:
                         # Method 1: Manual (reverse homing to gate) method
@@ -3092,7 +3092,7 @@ class Mmu:
             self.reactor.update_timer(self.hotend_off_timer, self.reactor.NEVER) # Don't automatically turn off extruder heaters
             self.is_handling_runout = False
             self._clear_slicer_tool_map()
-            self._enable_runout_clog_flowguard() # Enable filament monitoring while printing
+            self._enable_filament_monitoring() # Enable filament monitoring while printing
             self._initialize_encoder(dwell=None) # Encoder 0000
             self._set_print_state("started", call_macro=False)
 
@@ -3134,7 +3134,7 @@ class Mmu:
             self.paused_extruder_temp = None
             self.reactor.update_timer(self.hotend_off_timer, self.reactor.NEVER) # Don't automatically turn off extruder heaters
             self._restore_automap_option()
-            self._disable_runout_clog_flowguard() # Disable filament monitoring
+            self._disable_filament_monitoring() # Disable filament monitoring
 
             if self.printer.lookup_object("idle_timeout").idle_timeout != self.default_idle_timeout:
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout) # Restore original idle_timeout
@@ -3156,7 +3156,7 @@ class Mmu:
         run_pause_macro = run_error_macro = recover_pos = send_event = False
         if self.is_in_print(force_in_print):
             if not self.is_mmu_paused():
-                self._disable_runout_clog_flowguard() # Disable filament monitoring while in paused state
+                self._disable_filament_monitoring() # Disable filament monitoring while in paused state
                 self._track_pause_start()
                 self.resume_to_state = 'printing' if self.is_in_print() else 'ready'
                 self.reason_for_pause = reason # Only store reason on first error
@@ -3239,7 +3239,7 @@ class Mmu:
             self.paused_extruder_temp = None
             self._track_pause_end()
             if self.is_in_print(force_in_print):
-                self._enable_runout_clog_flowguard() # Enable filament monitoring while printing
+                self._enable_filament_monitoring() # Enable filament monitoring while printing
             self._set_print_state(self.resume_to_state)
             self.resume_to_state = "ready"
             self.printer.send_event("mmu:mmu_resumed")
@@ -3370,35 +3370,35 @@ class Mmu:
     def _clear_saved_toolhead_position(self):
         self.saved_toolhead_operation = ''
 
-    def _disable_runout_clog_flowguard(self):
+    def _disable_filament_monitoring(self):
         eventtime = self.reactor.monotonic()
         enabled = self.runout_enabled
         self.runout_enabled = False
-        self.log_trace("Disabled runout/clog/flowguard detection")
+        self.log_trace("Disabled FlowGuard and runout detection")
         if self.has_encoder() and self.encoder_sensor.is_enabled():
             self.encoder_sensor.disable()
         self.sensor_manager.disable_runout(self.gate_selected)
         self.sync_feedback_manager.deactivate_flowguard(eventtime)
         return enabled
 
-    def _enable_runout_clog_flowguard(self):
+    def _enable_filament_monitoring(self):
         eventtime = self.reactor.monotonic()
         self.runout_enabled = True
-        self.log_trace("Enabled runout/clog/flowguard detection")
+        self.log_trace("Enabled FlowGuard and runout detection")
         if self.has_encoder() and not self.encoder_sensor.is_enabled():
             self.encoder_sensor.enable()
         self.sensor_manager.enable_runout(self.gate_selected)
         self.sync_feedback_manager.activate_flowguard(eventtime)
-        self.runout_last_enable_time = self.reactor.monotonic()
+        self.runout_last_enable_time = eventtime
 
     @contextlib.contextmanager
-    def _wrap_suspend_runout_clog_flowguard(self):
-        enabled = self._disable_runout_clog_flowguard()
+    def _wrap_suspend_filament_monitoring(self):
+        enabled = self._disable_filament_monitoring()
         try:
             yield self
         finally:
             if enabled:
-                self._enable_runout_clog_flowguard()
+                self._enable_filament_monitoring()
 
     # To suppress visual filament position
     @contextlib.contextmanager
@@ -3857,7 +3857,7 @@ class Mmu:
     def _disable_mmu(self):
         if not self.is_enabled: return
         self.reinit()
-        self._disable_runout_clog_flowguard()
+        self._disable_filament_monitoring()
         self.reactor.update_timer(self.hotend_off_timer, self.reactor.NEVER)
         self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout)
         self.motors_onoff(on=False) # Will also unsync gear
@@ -4348,7 +4348,7 @@ class Mmu:
                 endstop_name = self.sensor_manager.get_gate_sensor_name(self.SENSOR_GEAR_PREFIX, self.gate_selected)
                 self.log_always("Preloading...")
                 msg = "Homing to %s sensor" % endstop_name
-                with self._wrap_suspend_runout_clog_flowguard():
+                with self._wrap_suspend_filament_monitoring():
                     actual,homed,measured,_ = self.trace_filament_move(msg, self.gate_preload_homing_max, motor="gear", homing_move=1, endstop_name=endstop_name)
                     if homed:
                         self.trace_filament_move("Final parking", -self.gate_preload_parking_distance)
@@ -6768,7 +6768,7 @@ class Mmu:
 
         try:
             with self.wrap_sync_gear_to_extruder():
-                with self._wrap_suspend_runout_clog_flowguard(): # Don't want runout accidently triggering during tool change
+                with self._wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during tool change
                     with self._wrap_suspendwrite_variables(): # Reduce I/O activity to a minimum
                         self._auto_home(tool=tool)
                         if self.has_encoder():
@@ -6887,7 +6887,7 @@ class Mmu:
 
         try:
             with self.wrap_sync_gear_to_extruder():
-                with self._wrap_suspend_runout_clog_flowguard(): # Don't want runout accidently triggering during filament load
+                with self._wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during filament load
                     if self.filament_pos != self.FILAMENT_POS_UNLOADED:
                         self.log_always("Filament already loaded")
                         return
@@ -6928,7 +6928,7 @@ class Mmu:
 
         try:
             with self.wrap_sync_gear_to_extruder():
-                with self._wrap_suspend_runout_clog_flowguard(): # Don't want runout accidently triggering during filament unload
+                with self._wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during filament unload
                     self._mmu_unload_eject(gcmd)
 
                     self._persist_swap_statistics()
@@ -6969,7 +6969,7 @@ class Mmu:
 
         try:
             with self.wrap_sync_gear_to_extruder():
-                with self._wrap_suspend_runout_clog_flowguard(): # Don't want runout accidently triggering during filament eject
+                with self._wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during filament eject
 
                     current_gate = self.gate_selected
                     if gate != current_gate:
@@ -7694,7 +7694,7 @@ class Mmu:
     # Handler for all "runout" type events including "clog" and "tangle".
     # If event_type is None then caller isn't sure (runout or clog)
     def _runout(self, event_type=None, sensor=None):
-        with self._wrap_suspend_runout_clog_flowguard(): # Don't want runout accidently triggering during handling
+        with self._wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during handling
             self.is_handling_runout = (event_type == "runout") # Best starting assumption
             self._save_toolhead_position_and_park('runout') # includes "clog" and "tangle"
 
@@ -8350,7 +8350,7 @@ class Mmu:
                         msg = "bypass autoload is disabled"
                     else:
                         self.log_debug("Autoloading extruder")
-                        with self._wrap_suspend_runout_clog_flowguard():
+                        with self._wrap_suspend_filament_monitoring():
                             self._note_toolchange("> Bypass")
                             self.load_sequence(bowden_move=0., extruder_only=True, purge=self.PURGE_NONE) # TODO PURGE_STANDALONE?
                         return
@@ -8852,8 +8852,8 @@ class Mmu:
 
         try:
             with self.wrap_sync_gear_to_extruder():
-                with self._wrap_suspend_runout_clog_flowguard(): # Don't want runout accidently triggering during gate check
-                    with self._wrap_suspendwrite_variables(): # Reduce I/O activity to a minimum
+                with self._wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during gate check
+                    with self._wrap_suspendwrite_variables():  # Reduce I/O activity to a minimum
                         with self.wrap_action(self.ACTION_CHECKING):
                             tool_selected = self.tool_selected
                             filament_pos = self.filament_pos
