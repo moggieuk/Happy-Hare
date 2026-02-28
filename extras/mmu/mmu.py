@@ -2808,7 +2808,12 @@ class Mmu:
         if self.check_if_not_loaded(): return
 
         SD_THRESHOLD = 0.02
+        MAX_MOVE_MULTIPLIER = 1.8
+        STEP_SIZE = 2.0
+        MOVE_SPEED = 8.0
+
         move = gcmd.get_float('MOVE', self.sync_feedback_manager.sync_feedback_buffer_maxrange, minval=1, maxval=100)
+        steps = math.ceil(move / STEP_SIZE)
 
         usage = (
             "Ensure your sensor is configured by setting sync_feedback_analog_pin in [mmu_sensors].\n"
@@ -2816,7 +2821,10 @@ class Mmu:
             "and sync_feedback_analog_neutral_point) will be determined by this calibration."
         )
 
-        def _avg_raw(n=8, dwell_s=0.1):
+        if not self.sensor_manager.has_sensor(self.SENSOR_PROPORTIONAL):
+            raise gcmd.error("Proportional (analog sync-feedback) sensor not found\n" + usage)
+
+        def _avg_raw(n=10, dwell_s=0.1):
             """
             Sample sensor.get_status(0)['value_raw'] n times with dwell between reads
             and return moving average
@@ -2834,83 +2842,76 @@ class Mmu:
                 avg += k * (raw - avg) # 1st order low pass filter
             return (avg)
 
-        def _sd(xs):
-            return stdev(xs) if len(xs) >= 2 else 0.0
+        def _seek_limit(msg, steps, step_size, prev_val, ramp, log_label):
+            self.log_always(msg)
+            for i in range(steps):
+                _ = self.trace_filament_move(msg, step_size, motor="gear", speed=MOVE_SPEED, wait=True)
+                val = _avg_raw()
+
+                delta = val - prev_val
+
+                if ramp is None:
+                    if delta == 0:
+                        self.log_always("No sensor change. Retrying")
+                        continue
+                    ramp = (delta > 0)
+
+                if (ramp and val >= prev_val) or (not ramp and val <= prev_val):
+                    prev_val = val
+                    self.log_always("Seeking ... ADC %s limit: %.4f" % (log_label, val))
+                else:
+                    # Limit found
+                    return prev_val, ramp, True
+
+            # Ran out of steps without detecting a clear limit
+            return prev_val, ramp, False
 
         try:
             with self.wrap_sync_gear_to_extruder():
                 with self.wrap_gear_current(percent=self.sync_gear_current, reason="while calibrating sync_feedback psensor"):
                     self.selector.filament_drive()
                     self.calibrating = True
-                    s_maxrange = math.ceil(self.sync_feedback_manager.sync_feedback_buffer_maxrange * 1.8)
+                    s_maxrange = math.ceil(self.sync_feedback_manager.sync_feedback_buffer_maxrange * MAX_MOVE_MULTIPLIER)
 
-                    raw = _avg_raw()
-                    if raw is None:
+                    raw0 = _avg_raw()
+                    if raw0 is None:
                         raise gcmd.error("Sensor malfunction. Could not read valid ADC output\nAre you sure you configured in [mmu_sensors]?")
 
-                    calibrated = False
-                    self.log_always("Starting calibration. Please excuse the noise - you might hear a bit of grinding but it won't take long!")
-
-                    # seek compressed extreme - depending on magnetic field, values could move in + or - direction
                     msg = "Finding compression limit stepping up to %.2fmm\n" % s_maxrange
-                    self.log_always(msg)
-
-                    c_sd = raw
+                    c_prev = raw0
                     ramp = None
+                    c_prev, ramp, found_c_limit = _seek_limit(msg, steps, STEP_SIZE, c_prev, ramp, "compressed")
 
-                    for attempt in range (0, s_maxrange, 2):
-                        _,_,_,_ = self.trace_filament_move(msg, 2.0, motor="gear", speed=8, wait=True)
-                        raw = _avg_raw()
-
-                        if ramp == None:
-                           ramp = (raw > c_sd)
-
-                        if (ramp and raw > c_sd) or (not ramp and raw < c_sd):
-                           c_sd = raw
-                           self.log_always("Seeking ... ADC value %.4f" % c_sd)
-                        else:
-                           break
-
-                    # backoff compressed extreme
+                    # Back off compressed extreme
                     msg = "Backing off compressed limit"
                     self.log_always(msg)
-                    _,_,_,_ = self.trace_filament_move(msg, -(s_maxrange / 2), motor="gear", speed=8, wait=True)
+                    _ = self.trace_filament_move(msg, -(s_maxrange / 2.0), motor="gear", speed=MOVE_SPEED, wait=True)
 
-
-                    # seek tension extreme - depending on magnetic field, values could move in + or - direction
                     msg = "Finding tension limit stepping up to %.2fmm\n" % s_maxrange
+                    t_prev = _avg_raw()
+                    ramp = (not ramp) if found_c_limit else None # If compression succeeded, inverse ramp; otherwise re-detect
+                    t_prev, ramp, found_t_limit = _seek_limit(msg, steps, -STEP_SIZE, t_prev, ramp, "tension")
+
+                    # Back off tension extreme
+                    msg = "Backing off tension limit"
                     self.log_always(msg)
+                    _ = self.trace_filament_move(msg, (s_maxrange / 2.0), motor="gear", speed=MOVE_SPEED, wait=True)
 
-                    t_sd = c_sd # seed starting point from last reading
-                    ramp = not ramp
-
-                    for attempt in range (0, s_maxrange, 2):
-                        _,_,_,_ = self.trace_filament_move(msg, -2.0, motor="gear", speed=8, wait=True)
-                        raw = _avg_raw()
-
-                        if (ramp and raw > t_sd) or (not ramp and raw < t_sd):
-                           t_sd = raw
-                           self.log_always("Seeking ... ADC value %.4f" % t_sd)
-                        else:
-                           break
-
-                    # backoff tension extreme
-                    _,_,_,_ = self.trace_filament_move(msg, (s_maxrange / 2), motor="gear", speed=8, wait=True)
-
-                    if 0.5 <= abs(c_sd - t_sd) <= 1.0: # we need usable sensor range
-                        msg =  "Calibration Results:\n"
-                        msg += "As wired, recommended settings (in mmu_hardware.cfg) are:\n"
-                        msg += "[mmu_sensors]\n"
-                        msg += "sync_feedback_analog_max_compression: %.4f\n" % c_sd
-                        msg += "sync_feedback_analog_max_tension:     %.4f\n" % t_sd
-                        msg += "sync_feedback_analog_neutral_point:   %.4f\n" % ((c_sd + t_sd) / 2.0)
-                        self.log_always(msg)
-                    else:
-                        msg = (
-                               "Did not obtain usable values for extreme sensor values.\n"
-                               "Perhaps sync_feedback_buffer_maxrange parameter is incorrect?\n"
-                               )
-                        self.log_warning(msg)
+            if (found_c_limit and found_t_limit):
+                msg =  "Calibration Results:\n"
+                msg += "As wired, recommended settings (in mmu_hardware.cfg) are:\n"
+                msg += "[mmu_sensors]\n"
+                msg += "sync_feedback_analog_max_compression: %.4f\n" % c_val
+                msg += "sync_feedback_analog_max_tension:     %.4f\n" % t_val
+                msg += "sync_feedback_analog_neutral_point:   %.4f\n" % ((c_val + t_val) / 2.0)
+                msg += "After updating, don't forget to restart klipper!"
+                self.log_always(msg)
+            else:
+                msg = "Warning: calibration did not find both compression and tension "
+                msg += "limits (compression=%s, tension=%s)\n" % (found_c_limit, found_t_limit)
+                msg += "Perhaps sync_feedback_buffer_maxrange parameter is incorrect?\n"
+                msg += "Alternatively with bigger movement range by running with MOVE="
+                self.log_warning(msg)
 
         except MmuError as ee:
             self.handle_mmu_error(str(ee))
