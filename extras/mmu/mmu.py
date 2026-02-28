@@ -2813,7 +2813,7 @@ class Mmu:
         MOVE_SPEED = 8.0
 
         move = gcmd.get_float('MOVE', self.sync_feedback_manager.sync_feedback_buffer_maxrange, minval=1, maxval=100)
-        steps = math.ceil(move / STEP_SIZE)
+        steps = math.ceil(move * MAX_MOVE_MULTIPLIER / STEP_SIZE)
 
         usage = (
             "Ensure your sensor is configured by setting sync_feedback_analog_pin in [mmu_sensors].\n"
@@ -2871,13 +2871,12 @@ class Mmu:
                 with self.wrap_gear_current(percent=self.sync_gear_current, reason="while calibrating sync_feedback psensor"):
                     self.selector.filament_drive()
                     self.calibrating = True
-                    s_maxrange = math.ceil(self.sync_feedback_manager.sync_feedback_buffer_maxrange * MAX_MOVE_MULTIPLIER)
 
                     raw0 = _avg_raw()
                     if raw0 is None:
                         raise gcmd.error("Sensor malfunction. Could not read valid ADC output\nAre you sure you configured in [mmu_sensors]?")
 
-                    msg = "Finding compression limit stepping up to %.2fmm\n" % s_maxrange
+                    msg = "Finding compression limit stepping up to %.2fmm\n" % (steps * STEP_SIZE)
                     c_prev = raw0
                     ramp = None
                     c_prev, ramp, found_c_limit = _seek_limit(msg, steps, STEP_SIZE, c_prev, ramp, "compressed")
@@ -2885,9 +2884,9 @@ class Mmu:
                     # Back off compressed extreme
                     msg = "Backing off compressed limit"
                     self.log_always(msg)
-                    _ = self.trace_filament_move(msg, -(s_maxrange / 2.0), motor="gear", speed=MOVE_SPEED, wait=True)
+                    _ = self.trace_filament_move(msg, -(steps * STEP_SIZE / 2.0), motor="gear", speed=MOVE_SPEED, wait=True)
 
-                    msg = "Finding tension limit stepping up to %.2fmm\n" % s_maxrange
+                    msg = "Finding tension limit stepping up to %.2fmm\n" % (steps * STEP_SIZE)
                     t_prev = _avg_raw()
                     ramp = (not ramp) if found_c_limit else None # If compression succeeded, inverse ramp; otherwise re-detect
                     t_prev, ramp, found_t_limit = _seek_limit(msg, steps, -STEP_SIZE, t_prev, ramp, "tension")
@@ -2895,15 +2894,15 @@ class Mmu:
                     # Back off tension extreme
                     msg = "Backing off tension limit"
                     self.log_always(msg)
-                    _ = self.trace_filament_move(msg, (s_maxrange / 2.0), motor="gear", speed=MOVE_SPEED, wait=True)
+                    _ = self.trace_filament_move(msg, (steps * STEP_SIZE / 2.0), motor="gear", speed=MOVE_SPEED, wait=True)
 
             if (found_c_limit and found_t_limit):
                 msg =  "Calibration Results:\n"
                 msg += "As wired, recommended settings (in mmu_hardware.cfg) are:\n"
                 msg += "[mmu_sensors]\n"
-                msg += "sync_feedback_analog_max_compression: %.4f\n" % c_val
-                msg += "sync_feedback_analog_max_tension:     %.4f\n" % t_val
-                msg += "sync_feedback_analog_neutral_point:   %.4f\n" % ((c_val + t_val) / 2.0)
+                msg += "sync_feedback_analog_max_compression: %.4f\n" % c_prev
+                msg += "sync_feedback_analog_max_tension:     %.4f\n" % t_prev
+                msg += "sync_feedback_analog_neutral_point:   %.4f\n" % ((c_prev + t_prev) / 2.0)
                 msg += "After updating, don't forget to restart klipper!"
                 self.log_always(msg)
             else:
