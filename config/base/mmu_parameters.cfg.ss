@@ -554,7 +554,8 @@ flowguard_max_relief: 8
 
 # The max_motion is the absolute max permitted extruder movement while the sensor is in an extreme state. Consider this
 # added protection on top of the primary max_relief amount. Again a smaller value is more sensitive to triggering.
-flowguard_max_motion: 80
+# Note that this will have to increase if 'sync_feedback_speed_multiplier' is decreased because of slower recovery.
+flowguard_max_motion: 120
 
 # Encoder clog/tangle detection watches for movement over either a static or automatically adjusted distance - if no encoder
 # movement is seen when the extruder moves this distance a clog/tangle event will be run. Allowing the distance to be
