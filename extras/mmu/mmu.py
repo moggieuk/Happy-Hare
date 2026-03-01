@@ -264,7 +264,7 @@ class Mmu:
         self._last_tool = self._next_tool = self.TOOL_GATE_UNKNOWN
         self._next_gate = None
         self.toolchange_retract = 0.          # Set from mmu_macro_vars
-        self._can_write_variables = True
+        self._can_write_variables = False
         self.toolchange_purge_volume = 0.
         self.mmu_logger = None                # Setup on connect
         self._standalone_sync = False         # Used to indicate synced extruder intention whilst out of print
@@ -932,6 +932,8 @@ class Mmu:
                 m.handle_disconnect()
 
     def handle_ready(self):
+        self._can_write_variables = True
+
         # Pull retraction length from macro config
         sequence_vars_macro = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
         if sequence_vars_macro:
@@ -4780,7 +4782,7 @@ class Mmu:
             raise MmuError("Failed to reach extruder '%s' endstop after moving %.1fmm" % (self.extruder_homing_endstop, max_length))
 
         if measured > (max_length * 0.8):
-            self.log_warning("Warning: 80%% of 'extruder_homing_max' was used homing. You may want to increase 'extruder_homing_max'" % self.VARS_MMU_CALIB_BOWDEN_LENGTH)
+            self.log_warning("Warning: 80%% of 'extruder_homing_max' was used homing. You may want to increase 'extruder_homing_max'")
 
         self._set_filament_pos_state(self.FILAMENT_POS_HOMED_EXTRUDER)
         return homing_movement, extra
