@@ -25,6 +25,7 @@ class VirtualMmuLedChain:
     def __init__(self, config, unit_name, segment, config_chains):
         self.printer = config.get_printer()
         self.name = "%s_mmu_%s_leds" % (unit_name, segment)
+        logging.info("PAUL: VirtualMmuLedChain(%s)" % self.name)
         self.config_chains = config_chains
 
         # Create temporary config section just to access led helper
@@ -37,6 +38,7 @@ class VirtualMmuLedChain:
         # We need to configure the chain now so we can validate
         self.leds = []
         for chain_name, leds in self.config_chains:
+            logging.info("PAUL: load_object(%s)" % chain_name)
             try:
                 chain = self.printer.load_object(config, chain_name)
                 if chain:
@@ -95,7 +97,8 @@ class MmuLeds:
         for segment in self.SEGMENTS:
             name = "%s_leds" % segment
             config_chains = [self.parse_chain(line) for line in config.get(name, '').split('\n') if line.strip()]
-            self.virtual_chains[segment] = VirtualMmuLedChain(config, "unit%d" % self.mmu_unit.unit_index, segment, config_chains)
+            logging.info("PAUL: config_chains=%s" % config_chains)
+            self.virtual_chains[segment] = VirtualMmuLedChain(config, self.mmu_unit, segment, config_chains)
 
             num_leds = len(self.virtual_chains[segment].leds)
             if segment in self.PER_GATE_SEGMENTS and num_leds > 0 and num_leds % self.num_gates:

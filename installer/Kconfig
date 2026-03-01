@@ -136,8 +136,8 @@ if MULTI_UNIT_ENTRY_POINT
     help
       Comma-separated list of unit names. Careful: Use only alphanumeric characters.
       If this is the first time configuring mulit-unit from previous single-unit install
-      then the first name must be mmu0 because that is how it was configured.
-      E.g. "mmu0,mmu1"
+      then the first name must be unit0 because that is how it was configured.
+      E.g. "unit0,unit1"
 
       A separate configurator will be run for each MMU after this initial screen is closed
 

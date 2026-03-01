@@ -302,7 +302,7 @@ class MmuUnit:
         # MMU Kinematics --------
 
         self.selector_type = config.getchoice('selector_type', {o: o for o in SELECTOR_REGISTRY.keys()}, selector_type)
-        self.multigear = isinstance(self.selector_type, VirtualSelector)
+        self.multigear = isinstance(self.selector_type, VirtualSelector) # Covers all derivatives including type-c MMU's
 
         self.selector_stepper    = config.get('selector_stepper', None) # Name of selector stepper
         self.selector_servo      = config.get('selector_servo', None)   # Name of selector servo if fitted
@@ -636,6 +636,9 @@ class MmuUnit:
     def manages_gate(self, gate):
         return self.first_gate <= gate < self.first_gate + self.num_gates
 
+
+    def gate_range(self):
+        return self.first_gate, self.first_gate + self.num_gates
 
     # Convert mmu_machine gate number to relative gate on mmu_unit
     def local_gate(self, gate, force_physical=False):

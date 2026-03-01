@@ -6,19 +6,11 @@
 # Goal: Implementation of LinearSelector:
 #  Implements Linear Selector for type-A MMU's without servo
 #  - Stepper controlled linear movement with endstop
+#  - No separate filament grip; assumes selection grips
 #
 # Implements commands:
 #    MMU_CALIBRATE_SELECTOR
-#    MMU_SOAKTEST_SELECTOR
-#
-# LinearServoSelector:
-#  Implements Linear Selector for type-A MMU's with servo
-#  - Stepper controlled linear movement with endstop
-#  - Supports type-A classic MMU's like ERCFv1.1, ERCFv2.0 and Tradrack
-#
-# Implements commands:
-#    MMU_CALIBRATE_SELECTOR
-#    MMU_SOAKTEST_SELECTOR
+#    MMU_SOAKTEST_SELECTOR (PhysicalSelector)
 #
 #
 # (\_/)
@@ -47,10 +39,6 @@ class LinearSelector(PhysicalSelector):
     Provides endstop-based homing and calibrated per-gate offsets (plus optional
     bypass offset). Also supports optional selector "touch" movement for
     blockage detection/recovery when a suitable controller/endstop is present.
-
-    Implements commands:
-      MMU_CALIBRATE_SELECTOR
-      MMU_SOAKTEST_SELECTOR
     """
 
     def __init__(self, config, mmu_unit, params):
@@ -295,6 +283,11 @@ class LinearSelector(PhysicalSelector):
         + "BYPASS       = [0|1]\n"
         + "BYPASS_BLOCK = [0|1]  ERCFv1.1 only\n"
     )
+    cmd_MMU_CALIBRATE_SELECTOR_supplement_help = (
+        "Examples:\n"
+        + "MMU_CALIBRATE_SELECTOR GATE=8 SAVE=0 ...calibrate gate logical gate 8, display but don't save results\n"
+        + "MMU_CALIBRATE_SELECTOR UNIT=0 BYPASS=1 ...calibrate the bypass gate position on unit 1"
+    )
     def cmd_MMU_CALIBRATE_SELECTOR(self, gcmd):
         """
         Calibrate and persist selector offsets (and optional bypass offset).
@@ -306,15 +299,14 @@ class LinearSelector(PhysicalSelector):
         self.mmu.log_to_file(gcmd.get_commandline())
         if self.mmu.check_if_disabled(): return
 
-        show_help = gcmd.get_int('HELP', 1, minval=0, maxval=1)
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         single = gcmd.get_int('SINGLE', 0, minval=0, maxval=1)
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_unit.num_gates - 1)
         if gate == -1 and gcmd.get_int('BYPASS', -1, minval=0, maxval=1) == 1:
             gate = TOOL_GATE_BYPASS
 
-        if show_help:
-            self.mmu.log_always(self.mmu.format_help(self.cmd_MMU_CALIBRATE_SELECTOR_param_help), color=True)
+        if gcmd.get_int('HELP', 0, minval=0, maxval=1):
+            self.mmu.log_always(self.mmu.format_help(self.cmd_MMU_CALIBRATE_SELECTOR_param_help, self.cmd_MMU_CALIBRATE_SELECTOR_supplement_help), color=True)
             return
 
         try:

@@ -67,6 +67,7 @@ class MmuLedEffect:
         _ = config.get('layers')
 
         for unit_index, mmu_unit in enumerate(mmu_machine.units):
+            unit_name = mmu_unit.name
             mmu_leds = self.printer.lookup_object('mmu_leds %s' % mmu_unit.name, None)
             if mmu_leds:
                 frame_rate = mmu_leds.frame_rate
@@ -78,8 +79,11 @@ class MmuLedEffect:
 
                 # This condition makes it a no-op if [mmu_leds] is not present or led_effects not installed
                 for segment in MmuLeds.SEGMENTS:
-                    led_segment_name = "unit%d_mmu_%s_leds" % (unit_index, segment)
+# PAUL                    led_segment_name = "unit%d_mmu_%s_leds" % (unit_index, segment)
+                    led_segment_name = "%s_mmu_%s_leds" % (unit_name, segment)
                     led_chain = self.printer.lookup_object(led_segment_name)
+                    if not led_chain:
+                        raise config.error("Led chain %s not found!" % led_chain)
                     num_leds = led_chain.led_helper.led_count
                     leds_per_gate = num_leds // mmu_unit.num_gates
 
