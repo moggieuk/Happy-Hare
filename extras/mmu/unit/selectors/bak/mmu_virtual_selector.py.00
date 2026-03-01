@@ -1,0 +1,52 @@
+# Happy Hare MMU Software
+#
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Goal: Implementation of VirtualSelector
+#  Implements selector for type-B MMU's with gear driver per gate
+#   - Uses gear driver stepper per-gate
+#   - For type-B designs like BoxTurtle, KMS, QuattroBox
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
+import logging
+
+# Happy Hare imports
+from ...mmu_constants   import *
+from ..mmu_calibrator   import CALIBRATED_SELECTOR
+from .mmu_base_selector import BaseSelector
+
+
+################################################################################
+# Virtual Selector
+#
+# Implements selector for type-B MMU's with gear driver per gate
+################################################################################
+
+class VirtualSelector(BaseSelector, object):
+
+    def __init__(self, config, mmu_unit, params):
+        super(VirtualSelector, self).__init__(config, mmu_unit, params)
+        self.is_homed = True
+
+    # Selector "Interface" methods ---------------------------------------------
+
+    def handle_connect(self):
+        super(VirtualSelector, self).handle_connect()
+        self.calibrator.mark_calibrated(CALIBRATED_SELECTOR) # No calibration necessary
+
+    def select_gate(self, gate):
+        if gate == self.mmu.gate_selected: return
+        self.mmu_toolhead.select_gear_stepper(self.local_gate(gate)) # Select correct drive stepper or none if bypass
+
+    def restore_gate(self, gate):
+        self.mmu_toolhead.select_gear_stepper(self.local_gate(gate)) # Select correct drive stepper or none if bypass
+
+    def get_mmu_status_config(self):
+        msg = "\nVirtual selector"
+        return msg

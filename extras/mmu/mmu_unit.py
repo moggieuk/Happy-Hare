@@ -25,21 +25,22 @@ import logging, importlib, math, os, time, re
 
 # Klipper imports
 import stepper, chelper, toolhead
-from kinematics.extruder  import PrinterExtruder, DummyExtruder, ExtruderStepper
-from ..homing             import Homing, HomingMove
+from kinematics.extruder                import PrinterExtruder, DummyExtruder, ExtruderStepper
+from ..homing                           import Homing, HomingMove
 
 # Happy Hare imports
-from .mmu_constants            import *
-from .mmu_extruder_monitor     import ExtruderMonitor
-from .unit.mmu_encoder         import MmuEncoder
-from .unit.mmu_buffer          import MmuBuffer
-from .unit.mmu_espooler        import MmuESpooler
-from .unit.mmu_leds            import MmuLeds
-from .unit.mmu_sensors         import MmuSensors
-from .unit.mmu_unit_parameters import MmuUnitParameters
-from .unit.mmu_calibrator      import MmuCalibrator
-from .unit.mmu_sync_feedback   import MmuSyncFeedback
-from .unit.mmu_selector        import *
+from .mmu_constants                     import *
+from .mmu_extruder_monitor              import ExtruderMonitor
+from .unit.mmu_encoder                  import MmuEncoder
+from .unit.mmu_buffer                   import MmuBuffer
+from .unit.mmu_espooler                 import MmuESpooler
+from .unit.mmu_leds                     import MmuLeds
+from .unit.mmu_sensors                  import MmuSensors
+from .unit.mmu_unit_parameters          import MmuUnitParameters
+from .unit.mmu_calibrator               import MmuCalibrator
+from .unit.mmu_sync_feedback            import MmuSyncFeedback
+from .unit.selectors                    import SELECTOR_REGISTRY
+from .unit.selectors.mmu_base_selectors import VirtualSelector
 
 
 # For toolhead synchronization
@@ -55,6 +56,7 @@ OTHER_STEPPER_PARAMS     = ['step_pin', 'dir_pin', 'enable_pin', 'endstop_pin', 
 
 SHAREABLE_TMC_PARAMS     = ['run_current', 'hold_current', 'interpolate', 'sense_resistor', 'stealthchop_threshold']
 
+# Default selector classes
 SELECTOR_VIRTUAL           = 'VirtualSelector'         # Type-B design
 SELECTOR_LINEAR            = 'LinearSelector'          # Type-A with linear stepper
 SELECTOR_LINEAR_SERVO      = 'LinearServoSelector'     # Type-A with linear stepper and servo filament grip
@@ -64,21 +66,22 @@ SELECTOR_MACRO             = 'MacroSelector'           # Fully user implemented
 SELECTOR_INDEXED           = 'IndexedSelector'         # Type-A with rotating indexed stepper gate selection (BTT ViViD design)
 SELECTOR_LINEAR_MULTI_GEAR = 'LinearMultiGearSelector' # Type-C with linear stepper
 
-SELECTOR_TYPES = [
-    SELECTOR_VIRTUAL,
-    SELECTOR_LINEAR,
-    SELECTOR_LINEAR_SERVO,
-    SELECTOR_SERVO,
-    SELECTOR_ROTARY,
-    SELECTOR_MACRO,
-    SELECTOR_INDEXED,
-    SELECTOR_LINEAR_MULTI_GEAR
-]
-
-SELECTOR_MULTI_GEAR_TYPES = [
-    SELECTOR_VIRTUAL,
-    SELECTOR_LINEAR_MULTI_GEAR
-]
+# PAUL replaced with SELECTOR_KEYS
+#SELECTOR_TYPES = [
+#    SELECTOR_VIRTUAL,
+#    SELECTOR_LINEAR,
+#    SELECTOR_LINEAR_SERVO,
+#    SELECTOR_SERVO,
+#    SELECTOR_ROTARY,
+#    SELECTOR_MACRO,
+#    SELECTOR_INDEXED,
+#    SELECTOR_LINEAR_MULTI_GEAR
+#]
+#
+#SELECTOR_MULTI_GEAR_TYPES = [
+#    SELECTOR_VIRTUAL,
+#    SELECTOR_LINEAR_MULTI_GEAR
+#]
 
 
 # Define type/style of MMU and expand configuration for convenience. Validate hardware configuration
@@ -298,8 +301,8 @@ class MmuUnit:
 
         # MMU Kinematics --------
 
-        self.selector_type = config.getchoice('selector_type', {o: o for o in SELECTOR_TYPES}, selector_type)
-        self.multigear = self.selector_type in SELECTOR_MULTI_GEAR_TYPES
+        self.selector_type = config.getchoice('selector_type', {o: o for o in SELECTOR_REGISTRY.keys()}, selector_type)
+        self.multigear = isinstance(self.selector_type, VirtualSelector)
 
         self.selector_stepper    = config.get('selector_stepper', None) # Name of selector stepper
         self.selector_servo      = config.get('selector_servo', None)   # Name of selector servo if fitted
@@ -470,9 +473,9 @@ class MmuUnit:
             logging.info("MMU: - No mmu_buffer specified")
 
         # Load selector (reads it's own config from mmu_unit_parameters)
-        self.selector = globals()[self.selector_type](params, self, self.p)
-        if not isinstance(self.selector, BaseSelector):
-            raise self.config.error("Invalid Selector class for MMU unit %s" % self.name)
+        self.selector = SELECTOR_REGISTRY[self.selector_type](params, self, self.p)
+#PAUL        if not isinstance(self.selector, BaseSelector):
+#PAUL            raise self.config.error("Invalid Selector class for MMU unit %s" % self.name)
         logging.info("MMU: Created %s selector" % self.selector_type)
 
         # Create calibrator to oversee autotune / calibration updates based on available telemetry
