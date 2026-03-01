@@ -456,11 +456,11 @@ class Mmu:
         self.espooler_assist_burst_duration = config.getfloat("espooler_assist_burst_duration", .4, above=0., maxval=10.)
         self.espooler_assist_burst_trigger = config.getint("espooler_assist_burst_trigger", 0, minval=0, maxval=1)
         self.espooler_assist_burst_trigger_max = config.getint("espooler_assist_burst_trigger_max", 3, minval=1)
+        self.espooler_assist_burst_min_weight = config.getfloat("espooler_assist_burst_min_weight", 0., minval=0., maxval=2000.)
+        self.espooler_assist_burst_spool_prop = config.getfloat("espooler_assist_burst_spool_prop", 0., minval=0., maxval=1.)
         self.espooler_rewind_burst_power = config.getint("espooler_rewind_burst_power", 50, minval=0, maxval=100)
         self.espooler_rewind_burst_duration = config.getfloat("espooler_rewind_burst_duration", .4, above=0., maxval=10.)
         self.espooler_operations = list(config.getlist('espooler_operations', self.ESPOOLER_OPERATIONS))
-        self.espooler_assist_burst_min_weight = config.getfloat("espooler_assist_burst_min_weight", 0., above=0., maxval=2000.)
-        self.espooler_assist_burst_spool_prop = config.getfloat("espooler_assist_burst_spool_prop", 0., above=0., maxval=1.)
 
         # Optional features
         self.has_filament_buffer = bool(config.getint('has_filament_buffer', 1, minval=0, maxval=1))
@@ -6724,7 +6724,7 @@ class Mmu:
                                                 'weight': weight,
                                                 'spool_weight': spool_weight,
                                                 'remaining_weight': remaining_weight}
-            self.log_debug('Spoolman update: Remaining weight received. Gate: %s, Spool ID: %s, Weight: %sg' % (gate, spool_id, remaining_weight))
+            self.log_debug('Spoolman update: Gate: %s, Spool ID: %s, Weight: %sg Remaining_weight: %sg' % (gate, spool_id, weight, remaining_weight))
 
 
 ### CORE GCODE COMMANDS ##########################################################
@@ -7611,6 +7611,8 @@ class Mmu:
             self.espooler_assist_burst_duration = gcmd.get_float("ESPOOLER_ASSIST_BURST_DURATION", self.espooler_assist_burst_duration, above=0., maxval=10.)
             self.espooler_assist_burst_trigger = gcmd.get_int("ESPOOLER_ASSIST_BURST_TRIGGER", self.espooler_assist_burst_trigger, minval=0, maxval=1)
             self.espooler_assist_burst_trigger_max = gcmd.get_int("ESPOOLER_ASSIST_BURST_TRIGGER_MAX", self.espooler_assist_burst_trigger_max, minval=1)
+            self.espooler_assist_burst_min_weight = gcmd.get_float("ESPOOLER_ASSIST_BURST_MIN_WEIGHT", self.espooler_assist_burst_min_weight, minval=0., maxval=2000.)
+            self.espooler_assist_burst_spool_prop = gcmd.get_float("ESPOOLER_ASSIST_BURST_SPOOL_PROP", self.espooler_assist_burst_spool_prop, minval=0., maxval=1.)
             self.espooler_rewind_burst_power = gcmd.get_int("ESPOOLER_REWIND_BURST_POWER", self.espooler_rewind_burst_power, minval=0, maxval=100)
             self.espooler_rewind_burst_duration = gcmd.get_float("ESPOOLER_REWIND_BURST_DURATION", self.espooler_rewind_burst_duration, above=0., maxval=10.)
 
@@ -7728,6 +7730,8 @@ class Mmu:
                 msg += "\nespooler_assist_burst_duration = %s" % self.espooler_assist_burst_duration
                 msg += "\nespooler_assist_burst_trigger = %d" % self.espooler_assist_burst_trigger
                 msg += "\nespooler_assist_burst_trigger_max = %d" % self.espooler_assist_burst_trigger_max
+                msg += "\nespooler_assist_burst_min_weight = %s" % self.espooler_assist_burst_min_weight
+                msg += "\nespooler_assist_burst_spool_prop = %s" % self.espooler_assist_burst_spool_prop
                 msg += "\nespooler_rewind_burst_power = %d" % self.espooler_rewind_burst_power
                 msg += "\nespooler_rewind_burst_duration = %s" % self.espooler_rewind_burst_duration
                 msg += "\nespooler_operations = %s"  % self.espooler_operations

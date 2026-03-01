@@ -722,7 +722,7 @@ class MmuServer:
         '''
         async with self.cache_lock:
 
-            if not gate:
+            if gate is None:
                 msg = f"Gate for get_spool_weight not found"
                 await self._log_n_send(msg, error=False)
                 return False

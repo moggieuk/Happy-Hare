@@ -293,10 +293,14 @@ class MmuESpooler:
                     return
 
                 if self.mmu.espooler_assist_burst_spool_prop > 0:
-                    full_spool_weight = gate_weight_dict['spool_weight'] if self.mmu.espooler_assist_burst_min_weight == 0 else self.mmu.espooler_assist_burst_min_weight
+                    full_spool_weight = gate_weight_dict['weight']
+
+                    if not full_spool_weight or full_spool_weight < remaining_weight:
+                        full_spool_weight = max(1000, remaining_weight)
+
                     full_burst_time = self.mmu.espooler_assist_burst_duration
 
-                    if full_spool_weight and full_burst_time:
+                    if full_burst_time:
                         duration = math.floor((full_burst_time + self.mmu.espooler_assist_burst_spool_prop - (
                                 remaining_weight * self.mmu.espooler_assist_burst_spool_prop) / float(full_spool_weight)) * 100) / 100
                         self.mmu.log_info('Auto-calculating burst duration. Spool: %sg -> Duration: %ss' % (remaining_weight, duration))
