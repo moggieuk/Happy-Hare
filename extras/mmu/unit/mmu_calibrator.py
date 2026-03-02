@@ -68,32 +68,32 @@ class MmuCalibrator:
         self.mmu = self.mmu_machine.mmu_controller # Shared MMU controller class
         self.var_manager = self.mmu_machine.var_manager
 
-        unit = self.mmu_unit
+        u = self.mmu_unit
 
         # Load bowden length configuration (calibration set with MMU_CALIBRATE_BOWDEN) ----------------------
-        bowden_lengths = self.var_manager.get(VARS_MMU_CALIB_BOWDEN_LENGTHS, None, namespace=unit.name)
-        bowden_home = self.var_manager.get(VARS_MMU_CALIB_BOWDEN_HOME, unit.p.gate_homing_endstop, namespace=unit.name)
-        if unit.require_bowden_move:
+        bowden_lengths = self.var_manager.get(VARS_MMU_CALIB_BOWDEN_LENGTHS, None, namespace=u.name)
+        bowden_home = self.var_manager.get(VARS_MMU_CALIB_BOWDEN_HOME, u.p.gate_homing_endstop, namespace=u.name)
+        if u.require_bowden_move:
             if bowden_lengths and bowden_home in GATE_ENDSTOPS:
                 bowden_lengths = [-1 if x < 0 else x for x in bowden_lengths] # Ensure -1 value for uncalibrated
                 # Ensure list size
-                if len(bowden_lengths) == unit.num_gates:
-                    self.mmu.log_debug("Loaded saved bowden lengths for unit %s: %s" % (unit.name, bowden_lengths))
+                if len(bowden_lengths) == u.num_gates:
+                    self.mmu.log_debug("Loaded saved bowden lengths for unit %s: %s" % (u.name, bowden_lengths))
                 else:
-                    self.mmu.log_error("Incorrect number of gates specified in %s. Adjusted length" % self.var_manager.namespace(VARS_MMU_CALIB_BOWDEN_LENGTHS, namespace=unit.name))
-                    bowden_lengths = self._ensure_list_size(bowden_lengths, unit.num_gates)
+                    self.mmu.log_error("Incorrect number of gates specified in %s. Adjusted length" % self.var_manager.namespace(VARS_MMU_CALIB_BOWDEN_LENGTHS, namespace=u.name))
+                    bowden_lengths = self._ensure_list_size(bowden_lengths, u.num_gates)
 
                 # Ensure they are identical (just for optics) if variable_bowden_lengths is False
-                if not unit.variable_bowden_lengths:
-                    bowden_lengths = [bowden_lengths[0]] * unit.num_gates
+                if not u.variable_bowden_lengths:
+                    bowden_lengths = [bowden_lengths[0]] * u.num_gates
 
                 if not any(x == -1 for x in bowden_lengths):
                     self.mark_calibrated(CALIBRATED_BOWDENS)
             else:
-                self.mmu.log_warning("Warning: Bowden lengths for unit %s not found in mmu_vars.cfg. Probably not calibrated yet" % unit.name)
-                bowden_lengths = [-1] * unit.num_gates
+                self.mmu.log_warning("Warning: Bowden lengths for unit %s not found in mmu_vars.cfg. Probably not calibrated yet" % u.name)
+                bowden_lengths = [-1] * u.num_gates
         else:
-            bowden_lengths = [0] * unit.num_gates
+            bowden_lengths = [0] * u.num_gates
             self.mark_calibrated(CALIBRATED_BOWDENS)
 
         self.bowden_lengths = bowden_lengths
@@ -103,32 +103,38 @@ class MmuCalibrator:
             self.adjust_bowden_lengths_on_homing_change()
 
         # Load gear rotation distance configuration (calibration set with MMU_CALIBRATE_GEAR/GATE) ---------------
-        gear_steppers = unit.mmu_toolhead.get_kinematics().rails[1].steppers
-        rds = [s.get_rotation_distance()[0] for s in gear_steppers[:unit.num_gates]] if len(gear_steppers) >= unit.num_gates else [gear_steppers[0].get_rotation_distance()[0]] * unit.num_gates
+        gear_steppers = u.mmu_toolhead.get_kinematics().rails[1].steppers
+
+        rds = (
+            [s.get_rotation_distance()[0] for s in gear_steppers[:u.num_gates]]
+            if len(gear_steppers) >= u.num_gates
+            else [gear_steppers[0].get_rotation_distance()[0]] * u.num_gates
+        )
         self.default_rotation_distances = rds
-        rotation_distances = self.var_manager.get(VARS_MMU_GEAR_ROTATION_DISTANCES, None, namespace=unit.name)
+
+        rotation_distances = self.var_manager.get(VARS_MMU_GEAR_ROTATION_DISTANCES, None, namespace=u.name)
         if rotation_distances:
             rotation_distances = [-1 if x == 0 else x for x in rotation_distances] # Ensure -1 value for uncalibrated
             # Ensure list size
-            if len(rotation_distances) == unit.num_gates:
-                self.mmu.log_debug("Loaded saved gear rotation distances for unit %s: %s" % (unit.name, rotation_distances))
+            if len(rotation_distances) == u.num_gates:
+                self.mmu.log_debug("Loaded saved gear rotation distances for unit %s: %s" % (u.name, rotation_distances))
             else:
-                self.mmu.log_error("Incorrect number of gates specified in %s. Adjusted length" % self.var_manager.namespace(VARS_MMU_GEAR_ROTATION_DISTANCES, namespace=unit.name))
-                rotation_distances = self._ensure_list_size(rotation_distances, unit.num_gates)
+                self.mmu.log_error("Incorrect number of gates specified in %s. Adjusted length" % self.var_manager.namespace(VARS_MMU_GEAR_ROTATION_DISTANCES, namespace=u.name))
+                rotation_distances = self._ensure_list_size(rotation_distances, u.num_gates)
 
             # Ensure they are identical (just for optics) if variable_rotation_distances is False
-            if not unit.variable_rotation_distances:
-                rotation_distances = [rotation_distances[0]] * unit.num_gates
+            if not u.variable_rotation_distances:
+                rotation_distances = [rotation_distances[0]] * u.num_gates
 
             if rotation_distances[0] != -1:
                 self.mark_calibrated(CALIBRATED_GEAR_0)
             if not any(x == -1 for x in rotation_distances):
                 self.mark_calibrated(CALIBRATED_GEAR_RDS)
         else:
-            self.mmu.log_warning("Warning: Gear rotation distances for unit %s not found in mmu_vars.cfg. Probably not calibrated yet" % unit.name)
-            rotation_distances = [-1] * unit.num_gates
+            self.mmu.log_warning("Warning: Gear rotation distances for unit %s not found in mmu_vars.cfg. Probably not calibrated yet" % u.name)
+            rotation_distances = [-1] * u.num_gates
 
-        self.var_manager.set(VARS_MMU_GEAR_ROTATION_DISTANCES, rotation_distances, namespace=unit.name)
+        self.var_manager.set(VARS_MMU_GEAR_ROTATION_DISTANCES, rotation_distances, namespace=u.name)
         self.rotation_distances = rotation_distances
 
         self.mmu.log_warning("PAUL: self.bowden_lengths=%s" % self.bowden_lengths)
@@ -268,10 +274,10 @@ class MmuCalibrator:
         if gate < 0:
             rd = self.default_rotation_distances[0]
         else:
-            rd = self.rotation_distances[gate if gate >= 0 and self.mmu.mmu_machine.variable_rotation_distances else 0]
+            rd = self.rotation_distances[gate if gate >= 0 and self.mmu.mmu_unit().variable_rotation_distances else 0]
 
         if rd <= 0:
-            rd = self.default_rotation_distance
+            rd = self.default_rotation_distances[gate]
             self.mmu.log_debug("Gate %d not calibrated, falling back to default rotation_distance: %.4f" % (gate, rd))
 
         return rd
@@ -280,7 +286,7 @@ class MmuCalibrator:
     # Set the active gear stepper rotation distance # PAUL belong in this module?
     def set_gear_rotation_distance(self, rd):
         if rd:
-            self.log_trace("Setting gear motor rotation distance: %.4f" % rd)
+            self.mmu.log_trace("Setting gear motor rotation distance: %.4f" % rd)
             if self.gear_rail.steppers:
                 self.gear_rail.steppers[0].set_rotation_distance(rd)
 
@@ -294,7 +300,7 @@ class MmuCalibrator:
 
         # Initial calibration on gate 0 also sets all gates as auto calibration starting point
         all_gates = (
-            not self.mmu.mmu_machine.variable_rotation_distances
+            not self.mmu.mmu_unit().variable_rotation_distances
             or (gate == 0 and self.rotation_distances[0] == 0.)
         )
 
@@ -581,7 +587,7 @@ class MmuCalibrator:
                 tolerance_range = (gate0_rd - gate0_rd * 0.2, gate0_rd + gate0_rd * 0.2) # Allow 20% variation from gate 0
                 if tolerance_range[0] <= new_rd < tolerance_range[1]:
                     if save:
-                        self.mmu.set_gear_rotation_distance(new_rd)
+                        self.set_gear_rotation_distance(new_rd)
                         self.update_gear_rd(new_rd, console_msg=True)
                 else:
                     self.mmu.log_always("Calibration ignored because it is not considered valid (>20% difference from gate 0)")
@@ -637,7 +643,7 @@ class MmuCalibrator:
                 False and # TODO Temporarily disabled based on user's feedback until tested further
                 not any([has_tension, has_compression, has_proportional]) and
                 self.mmu_unit.p.autotune_rotation_distance and
-                self.mmu_unit.p.variable_rotation_distances and
+                self.mmu_unit.variable_rotation_distances and
                 self.mmu.gate_selected > 0 and
                 bowden_move_ratio > 0 and
                 homing_movement > 0
@@ -715,7 +721,7 @@ class MmuCalibrator:
 
         with self.wrap_sync_gear_to_extruder():
             if reset:
-                self.set_gear_rotation_distance(self.default_rotation_distance)
+                self.set_gear_rotation_distance(self.default_rotation_distances[gate]) # PAUL need to set gate
                 self.update_gear_rd(-1)
                 return
 
@@ -874,7 +880,7 @@ class MmuCalibrator:
 
         if reset:
             if all_gates:
-                self.set_gear_rotation_distance(self.default_rotation_distance)
+                self.set_gear_rotation_distance(self.default_rotation_distance) # PAUL FIX ME ... "distances" per gate
 ## PAUL TODO... implement UNIT and select range of gates
 ##                mmu_unit = self.mmu_unit()
 ##                first_gate = self.mmu_unit.first_gate

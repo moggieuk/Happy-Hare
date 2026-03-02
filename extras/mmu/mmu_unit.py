@@ -296,17 +296,17 @@ class MmuUnit:
 
         # Find the TMC controller for base gear stepper so we can fill in missing config for other matching steppers
         # and ensure all gear steppers can be loaded
-        self.gear_tmc = None
+        gear_tmc = None
         base_gear_tmc_chip = base_tmc_section = None
         for chip in TMC_CHIPS:
             base_tmc_section = '%s %s' % (chip, self.gear_stepper)
             if config.has_section(base_tmc_section):
                 base_gear_tmc_chip = chip
-                self.gear_tmc = self.printer.load_object(config, base_tmc_section) # Load base gear stepper now
+                gear_tmc = self.printer.load_object(config, base_tmc_section) # Load base gear stepper now
                 logging.info("MMU: Loaded: [%s]" % base_tmc_section)
                 break
 
-        if self.gear_tmc is None:
+        if gear_tmc is None:
             raise config.error("Gear stepper TMC configuration not found for %s on mmu_unit %s" % (self.gear_stepper, self.name))
 
         if self.multigear:
@@ -631,7 +631,7 @@ class MmuUnit:
     # Convert mmu_machine gate number to relative gate on mmu_unit
     def local_gate(self, gate, force_physical=False):
         if self.manages_gate(gate):
-            lgate = gate - self.mmu_unit.first_gate
+            lgate = gate - self.first_gate
         elif gate < 0:
             lgate = gate # bypass/unknown
         else:

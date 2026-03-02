@@ -19,7 +19,7 @@
 import logging, traceback
 
 # Klipper imports
-from ....homing        import Homing, HomingMove
+from ....homing        import HomingMove
 
 # Happy Hare imports
 from ...mmu_constants    import *
@@ -274,14 +274,14 @@ class IndexedSelector(PhysicalSelector):
 
             halt_pos = self.mmu_toolhead.get_position()
             actual = halt_pos[0] - init_pos
-            if self.mmu.log_enabled(self.mmu.LOG_STEPPER):
+            if self.mmu.log_enabled(LOG_STEPPER):
                 self.mmu.log_stepper("SELECTOR HOMING MOVE: max dist=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s, wait=%s >> %s" % (dist, speed, accel, endstop_name, wait, "%s halt_pos=%.1f (rail moved=%.1f), trig_pos=%.1f" % ("HOMED" if homed else "DID NOT HOMED",  halt_pos[0], actual, trig_pos[0])))
 
         else:
             with self.mmu.wrap_accel(accel):
                 pos[0] += dist
                 self.mmu_toolhead.move(pos, speed)
-            if self.mmu.log_enabled(self.mmu.LOG_STEPPER):
+            if self.mmu.log_enabled(LOG_STEPPER):
                 self.mmu.log_stepper("SELECTOR MOVE: position=%.1f, speed=%.1f, accel=%.1f" % (dist, speed, accel))
 
         self.mmu_toolhead.flush_step_generation() # TTC mitigation (TODO: still required?)

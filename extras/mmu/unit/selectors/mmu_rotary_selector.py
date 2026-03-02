@@ -23,7 +23,7 @@
 import logging, traceback
 
 # Klipper imports
-from ....homing        import Homing, HomingMove
+from ....homing        import HomingMove
 
 # Happy Hare imports
 from ...mmu_constants    import *
@@ -412,11 +412,13 @@ class RotarySelector(PhysicalSelector):
         forces a hard-endstop home. Raises MmuError with Klipper context on
         failure (blockage/malfunction).
         """
+        from ...mmu_unit import MmuHoming
+
         self.mmu.unselect_gate()
         self.mmu.movequeues_wait()
         try:
             if self.has_endstop:
-                homing_state = MmuUnit.MmuHoming(self.printer, self.mmu_toolhead)
+                homing_state = MmuHoming(self.printer, self.mmu_toolhead)
                 homing_state.set_axes([0])
                 self.mmu_toolhead.get_kinematics().home(homing_state)
             else:
@@ -461,7 +463,7 @@ class RotarySelector(PhysicalSelector):
         with self.mmu.wrap_accel(accel):
             pos[0] = new_pos
             self.mmu_toolhead.move(pos, speed)
-        if self.mmu.log_enabled(self.mmu.LOG_STEPPER):
+        if self.mmu.log_enabled(LOG_STEPPER):
             self.mmu.log_stepper("SELECTOR MOVE: position=%.1f, speed=%.1f, accel=%.1f" % (new_pos, speed, accel))
         if wait:
             self.mmu.movequeues_wait(toolhead=False, mmu_toolhead=True)
@@ -482,11 +484,13 @@ class RotarySelector(PhysicalSelector):
         Returns (traveled_mm, homed_ok). Travel is computed from MCU step
         position delta multiplied by step distance.
         """
+        from ...mmu_unit import MmuHoming
+
         self.mmu.movequeues_wait()
         init_mcu_pos = self.selector_stepper.get_mcu_position()
         homed = False
         try:
-            homing_state = MmuUnit.MmuHoming(self.printer, self.mmu_toolhead)
+            homing_state = MmuHoming(self.printer, self.mmu_toolhead)
             homing_state.set_axes([0])
             self.mmu_toolhead.get_kinematics().home(homing_state)
             homed = True

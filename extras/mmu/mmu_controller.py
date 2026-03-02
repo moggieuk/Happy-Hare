@@ -4838,7 +4838,7 @@ class MmuController:
 #                                        speed *= 0.8 # Reduce speed by 20%
 #                                    self.log_error("Did not complete homing move: %s" % str(e))
 #                                else:
-#                                    if self.log_enabled(self.LOG_STEPPER):
+#                                    if self.log_enabled(LOG_STEPPER):
 #                                        self.log_stepper("Did not home: %s" % str(e))
 #                                homed = False
 #                            finally:
@@ -4853,7 +4853,7 @@ class MmuController:
 #                                    self.mmu_toolhead().set_position(halt_pos) # Correct the gear rail position
 #
 #                                actual = halt_pos[1] - init_pos
-#                                if self.log_enabled(self.LOG_STEPPER):
+#                                if self.log_enabled(LOG_STEPPER):
 #                                    self.log_stepper("%s HOMING MOVE: max dist=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s, wait=%s >> %s" % (motor.upper(), dist, speed, accel, endstop_name, wait, "%s halt_pos=%.1f (rail moved=%.1f, extruder moved=%.1f), start_pos=%.1f, trig_pos=%.1f" % ("HOMED" if homed else "DID NOT HOMED",  halt_pos[1], actual, ext_actual, start_pos, trig_pos[1])))
 #                            if not got_comms_timeout:
 #                                break
@@ -4870,7 +4870,7 @@ class MmuController:
 #                    if homing_move != 0:
 #                        self.log_error("Not possible to perform homing move while synced")
 #                    else:
-#                        if self.log_enabled(self.LOG_STEPPER):
+#                        if self.log_enabled(LOG_STEPPER):
 #                            self.log_stepper("%s MOVE: dist=%.1f, speed=%.1f, accel=%.1f, wait=%s" % (motor.upper(), dist, speed, accel, wait))
 #                        ext_pos[3] += dist
 #                        self.toolhead.move(ext_pos, speed)
@@ -5144,7 +5144,7 @@ class MmuController:
     def test_filament_still_in_extruder_by_retracting(self):
         detected = None
         measured = 0
-        if self.has_encoder() and not self.mmu_machine.filament_always_gripped:
+        if self.has_encoder() and not self.mmu_unit().filament_always_gripped:
             with self._require_encoder(): # Force quality measurement
                 self.log_info("Checking for possibility of filament still in extruder gears...")
                 self._ensure_safe_extruder_temperature(wait=False)
@@ -5203,7 +5203,7 @@ class MmuController:
         filament_past_entry = self.filament_pos >= FILAMENT_POS_EXTRUDER_ENTRY
         extruder_check_ok = filament_past_entry or skip_extruder_check
 
-        always_gripped = self.mmu_machine.filament_always_gripped
+        always_gripped = self.mmu_unit().filament_always_gripped
         standalone_sync_requested = self._standalone_sync
 
         # In a non-print context we also honor the caller's explicit intention.
@@ -5294,7 +5294,7 @@ class MmuController:
         # - On multigear systems, restore current on the previously-used gear stepper if gate differs.
         # - When unsynced, restore current to 100%.
         if sync:
-            if self.mmu_machine.multigear and gate != self.gate_selected:
+            if self.mmu_unit().multigear and gate != self.gate_selected:
                 self._restore_gear_current()  # Restore previous gear stepper to 100%
 
             self._adjust_gear_current(
@@ -6266,7 +6266,10 @@ class MmuController:
         if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[gate]): return
         self._fix_started_state()
 
-        can_crossload = (self.mmu_unit().can_crossload or self.mmu_unit().multigear) and self.sensor_manager.has_gate_sensor(SENSOR_GEAR_PREFIX, gate)
+        can_crossload = (
+            (self.mmu_unit().can_crossload or self.mmu_unit().multigear)
+            and self.sensor_manager.has_gate_sensor(SENSOR_GEAR_PREFIX, gate)
+        )
         if not can_crossload and gate != self.gate_selected:
             if self.check_if_loaded(): return
 
@@ -6304,7 +6307,7 @@ class MmuController:
                     finally:
                         if self.gate_selected != current_gate:
                             # If necessary or easy restore previous gate
-                            if self.is_in_print() or self.mmu_machine.multigear or self.filament_pos != FILAMENT_POS_UNLOADED:
+                            if self.is_in_print() or self.mmu_unit().multigear or self.filament_pos != FILAMENT_POS_UNLOADED:
                                 self.select_gate(current_gate)
                             else:
                                 # Lazy movement means we have side effect of changed tool/gate
@@ -8302,7 +8305,7 @@ class MmuController:
         if self.check_if_not_calibrated(self.CALIBRATED_ESSENTIAL, check_gates=[gate]): return
                                                 
         can_crossload = (                       
-            (self.mmu_machine.can_crossload or self.mmu_machine.multigear)
+            (self.mmu_unit().can_crossload or self.mmu_unit().multigear)
             and self.sensor_manager.has_gate_sensor(SENSOR_GEAR_PREFIX, gate)
         )                               
         if not can_crossload:   
@@ -8325,7 +8328,7 @@ class MmuController:
                         finally:
                             if self.gate_selected != current_gate:
                                 # If necessary or easy restore previous gate
-                                if self.is_in_print() or self.mmu_machine.multigear or self.filament_pos != FILAMENT_POS_UNLOADED:
+                                if self.is_in_print() or self.mmu_unit().multigear or self.filament_pos != FILAMENT_POS_UNLOADED:
                                     self.select_gate(current_gate)
                                 else:
                                     # Lazy movement means we have side effect of changed tool/gate

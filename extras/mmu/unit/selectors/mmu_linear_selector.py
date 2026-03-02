@@ -22,7 +22,7 @@
 import logging, traceback
 
 # Klipper imports
-from ....homing          import Homing, HomingMove
+from ....homing          import HomingMove
 
 # Happy Hare imports
 from ...mmu_constants    import *
@@ -455,7 +455,7 @@ class LinearSelector(PhysicalSelector):
         max_movement = self._get_max_selector_movement()
         self.mmu.log_always("Searching for end of selector... (up to %.1fmm)" % max_movement)
         if self.use_touch_move():
-            _,found_home = self.homing_move("Detecting end of selector movement", max_movement, homing_move=1, endstop_name=self.mmu.SENSOR_SELECTOR_TOUCH)
+            _,found_home = self.homing_move("Detecting end of selector movement", max_movement, homing_move=1, endstop_name=SENSOR_SELECTOR_TOUCH)
         else:
             # This might not sound good!
             self.move("Ensure we are clear off the physical endstop", self.cad_gate0_pos)
@@ -535,11 +535,13 @@ class LinearSelector(PhysicalSelector):
         return True
 
     def _home_selector(self):
+        from ...mmu_unit import MmuHoming
+
         self.mmu.unselect_gate()
         self.filament_hold_move()
         self.mmu.movequeues_wait()
         try:
-            homing_state = MmuUnit.MmuHoming(self.printer, self.mmu_toolhead)
+            homing_state = MmuHoming(self.printer, self.mmu_toolhead)
             homing_state.set_axes([0])
             self.mmu_toolhead.get_kinematics().home(homing_state)
             self.is_homed = True
@@ -552,7 +554,7 @@ class LinearSelector(PhysicalSelector):
             self.move("Positioning selector", target)
         else:
             init_pos = self.mmu_toolhead.get_position()[0]
-            halt_pos,homed = self.homing_move("Positioning selector with 'touch' move", target, homing_move=1, endstop_name=self.mmu.SENSOR_SELECTOR_TOUCH)
+            halt_pos,homed = self.homing_move("Positioning selector with 'touch' move", target, homing_move=1, endstop_name=SENSOR_SELECTOR_TOUCH)
             if homed: # Positioning move was not successful
                 with self.mmu.wrap_suppress_visual_log():
                     travel = abs(init_pos - halt_pos)
@@ -578,7 +580,7 @@ class LinearSelector(PhysicalSelector):
 
                         # Check if selector can now reach proper target
                         self._home_selector()
-                        halt_pos,homed = self.homing_move("Positioning selector with 'touch' move", target, homing_move=1, endstop_name=self.mmu.SENSOR_SELECTOR_TOUCH)
+                        halt_pos,homed = self.homing_move("Positioning selector with 'touch' move", target, homing_move=1, endstop_name=SENSOR_SELECTOR_TOUCH)
                         if homed: # Positioning move was not successful
                             self.is_homed = False
                             raise MmuError("Unblocking selector recovery failed. Path is probably internally blocked")
@@ -610,7 +612,7 @@ class LinearSelector(PhysicalSelector):
 
         # Set appropriate speeds and accel if not supplied
         if homing_move != 0:
-            speed = speed or (self.selector_touch_speed if self.selector_touch_enabled or endstop_name == self.mmu.SENSOR_SELECTOR_TOUCH else self.selector_homing_speed)
+            speed = speed or (self.selector_touch_speed if self.selector_touch_enabled or endstop_name == SENSOR_SELECTOR_TOUCH else self.selector_homing_speed)
         else:
             speed = speed or self.selector_move_speed
         accel = accel or self.mmu_toolhead.get_selector_limits()[1]
@@ -648,14 +650,14 @@ class LinearSelector(PhysicalSelector):
             finally:
                 self.mmu_toolhead.flush_step_generation() # TTC mitigation when homing move + regular + get_last_move_time() in close succession
                 pos = self.mmu_toolhead.get_position()
-                if self.mmu.log_enabled(self.mmu.LOG_STEPPER):
+                if self.mmu.log_enabled(LOG_STEPPER):
                     self.mmu.log_stepper("SELECTOR HOMING MOVE: requested position=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s >> %s" % (new_pos, speed, accel, endstop_name, "%s actual pos=%.2f, trig_pos=%.2f" % ("HOMED" if homed else "DID NOT HOMED",  pos[0], trig_pos[0])))
         else:
             pos = self.mmu_toolhead.get_position()
             with self.mmu.wrap_accel(accel):
                 pos[0] = new_pos
                 self.mmu_toolhead.move(pos, speed)
-            if self.mmu.log_enabled(self.mmu.LOG_STEPPER):
+            if self.mmu.log_enabled(LOG_STEPPER):
                 self.mmu.log_stepper("SELECTOR MOVE: position=%.1f, speed=%.1f, accel=%.1f" % (new_pos, speed, accel))
             if wait:
                 self.mmu.movequeues_wait(toolhead=False, mmu_toolhead=True)
@@ -677,11 +679,13 @@ class LinearSelector(PhysicalSelector):
         Returns (traveled_mm, homed_ok). Travel is computed from MCU step
         position delta multiplied by step distance.
         """
+        from ...mmu_unit import MmuHoming
+
         self.mmu.movequeues_wait()
         init_mcu_pos = self.selector_stepper.get_mcu_position()
         homed = False
         try:
-            homing_state = MmuUnit.MmuHoming(self.printer, self.mmu_toolhead)
+            homing_state = MmuHoming(self.printer, self.mmu_toolhead)
             homing_state.set_axes([0])
             self.mmu_toolhead.get_kinematics().home(homing_state)
             homed = True
@@ -692,4 +696,4 @@ class LinearSelector(PhysicalSelector):
         return traveled, homed
 
     def use_touch_move(self):
-        return self.mmu_unit.selector_touch and self.mmu.SENSOR_SELECTOR_TOUCH in self.selector_rail.get_extra_endstop_names() and self.selector_touch_enabled
+        return self.mmu_unit.selector_touch and SENSOR_SELECTOR_TOUCH in self.selector_rail.get_extra_endstop_names() and self.selector_touch_enabled
