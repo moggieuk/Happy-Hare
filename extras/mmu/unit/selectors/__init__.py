@@ -37,5 +37,3 @@ for m in pkgutil.iter_modules(__path__):
             and name not in EXCLUDED_CLASSES        # Filter list
         ):
             SELECTOR_REGISTRY[name] = obj
-
-logging.info("PAUL: ***** SELECTOR_REGISTRY=%s" % SELECTOR_REGISTRY)

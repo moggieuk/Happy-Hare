@@ -51,12 +51,25 @@ class BaseSelector:
         self.printer = config.get_printer()
 
         self.is_homed = False
+        self.local_gate_selected = None
         self.mmu_toolhead = self.mmu_unit.mmu_toolhead # PAUL to be deprecated
 
         # Event handlers
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
         self.printer.register_event_handler('klippy:disconnect', self.handle_disconnect)
         self.printer.register_event_handler('klippy:ready', self.handle_ready)
+
+    # Prevent overriding of methods with physical gate number as parameter
+    # It is important and all selector logic works with local gates
+    _final_methods = {"select_gate", "restore_gate"}
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        overridden = BaseSelector._final_methods.intersection(cls.__dict__.keys())
+        if overridden:
+            raise TypeError(
+                f"{cls.__name__} is not allowed to override: {', '.join(sorted(overridden))}"
+            )
 
     def register_mux_command(self, cmd, func, desc=None):
         """
@@ -101,9 +114,27 @@ class BaseSelector:
         pass
 
     def select_gate(self, gate):
+        """
+        Select physical gate position. Maybe a no-op if already selected.
+        Don't override this method, instead override _select_gate() after the local gate translation.
+        """
+        lgate = self._local_gate(gate)
+        self._select_gate(lgate)
+        self.local_gate_selected = lgate
+
+    def _select_gate(self, lgate):
         pass
 
     def restore_gate(self, gate):
+        """
+        Correct gate position of selector without checks. Used in state restoration
+        Don't override this method, instead override _restore_gate() after the local gate translation.
+        """
+        lgate = self._local_gate(gate)
+        self._restore_gate(lgate)
+        self.local_gate_selected = lgate
+
+    def _restore_gate(self, lgate):
         pass
 
     def filament_drive(self):
@@ -148,21 +179,29 @@ class BaseSelector:
         return True
 
     def get_uncalibrated_gates(self, check_gates):
+        """
+        Returns a list of absolute gate numbers (not local indices) that are still uncalibrated
+        """
         return []
 
-    # Convert gate number to relative gate on mmu_unit
-    def local_gate(self, gate):
+    def _local_gate(self, gate):
         """
         Convert an absolute gate number to a local gate index for this unit.
-
-        Returns the gate index relative to the unit's first_gate and logs
-        an informational message for debugging.
         """
-        if gate < 0: return gate
+        if gate < 0: return gate # Leave bypass/unknown as is
 
-        local_gate = gate - self.mmu_unit.first_gate
-        self.mmu.log_error("PAUL: local_gate(%s) on unit %s=%s" % (gate, self.mmu_unit.name, local_gate))
-        return local_gate
+        lgate = gate - self.mmu_unit.first_gate
+        self.mmu.log_error("PAUL: lgate(%s) on unit %s=%s" % (gate, self.mmu_unit.name, lgate))
+        return lgate
+
+    def _logical_gate(self, lgate):
+        """
+        Convert an local gate on this unit to absolute (logical) gate number.
+        """
+        if lgate < 0: return lgate # Leave bypass/unknown as is
+
+        gate = lgate + self.mmu_unit.first_gate
+        return gate
 
 
 
@@ -221,13 +260,12 @@ class PhysicalSelector(BaseSelector, object):
             self.mmu.log_always(self.mmu.format_help(self.cmd_MMU_SOAKTEST_SELECTOR_param_help, self.cmd_MMU_SOAKTEST_SELECTOR_supplement_help), color=True)
             return
 
-        self.mmu.log_info("PAUL: unit=%s" % unit)
-        return # PAUL
+        # Test and report using logical system-wide gate numbering (by design user never sees local gate numbers)
+        mmu_unit = self.mmu_machine.get_mmu_unit_by_index(unit) if unit is not None else self.mmu_unit
+        min_gate, max_gate = mmu_unit.gate_range()
+        self.mmu.log_always("Soak testing selector on unit %s (gates %d-%d) for %s iterations..." % (mmu_unit.name, min_gate, max_gate, loops))
 
         try:
-            mmu_unit = self.mmu_machine.get_mmu_unit_by_index(unit) if unit is not None else self.mmu_unit
-            min_gate, max_gate = mmu_unit.gate_range()
-
             with self.mmu.wrap_sync_gear_to_extruder():
                 for l in range(loops):
                     gate = random.randint(min_gate, max_gate - 1)
@@ -236,11 +274,11 @@ class PhysicalSelector(BaseSelector, object):
                         mmu_unit.selector.home()
                   
                     if random.randint(0, 10) == 0 and mmu_unit.has_bypass:
-                        self.mmu.log_always("Testing loop %d / %d. Selecting bypass..." % (l + 1, loops))
+                        self.mmu.log_always("Testing loop %d / %d. Selecting bypass" % (l + 1, loops))
                         mmu_unit.selector.select_bypass()
                     else:
-                        self.mmu.log_always("Testing loop %d / %d. Selecting gate %d..." % (l + 1, loops, gate))
-                        mmu_unit.selector.select_gate()
+                        self.mmu.log_always("Testing loop %d / %d. Selecting gate %d" % (l + 1, loops, gate))
+                        mmu_unit.selector.select_gate(gate)
 
                     if grip:
                         mmu_unit.selector.filament_drive()
@@ -260,7 +298,7 @@ class VirtualSelector(BaseSelector):
 
     def __init__(self, config, mmu_unit, params):
         super().__init__(config, mmu_unit, params)
-        self.is_homed = True
+        self.is_homed = True # Not applicable
 
     # Selector "Interface" methods ---------------------------------------------
 
@@ -268,11 +306,11 @@ class VirtualSelector(BaseSelector):
         super().handle_connect()
         self.calibrator.mark_calibrated(CALIBRATED_SELECTOR)
 
-    def select_gate(self, gate):
-        super().select_gate(gate)
-        if gate == self.mmu.gate_selected: return
-        self.mmu_unit.mmu_toolhead.select_gear_stepper(self.mmu_unit.local_gate(gate))
+    def _select_gate(self, lgate):
+        super()._select_gate(lgate)
+        if lgate == self.local_gate_selected: return
+        self.mmu_unit.mmu_toolhead.select_gear_stepper(lgate)
 
-    def restore_gate(self, gate):
-        super().restore_gate(gate)
-        self.mmu_unit.mmu_toolhead.select_gear_stepper(self.mmu_unit.local_gate(gate))
+    def restore_gate(self, lgate):
+        super()._restore_gate(lgate)
+        self.mmu_unit.mmu_toolhead.select_gear_stepper(lgate)

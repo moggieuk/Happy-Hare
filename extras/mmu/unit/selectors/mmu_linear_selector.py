@@ -195,9 +195,6 @@ class LinearSelector(PhysicalSelector):
             self._home_selector()
 
     def select_gate(self, gate):
-        """
-        Physically move selector to correct gate position
-        """
         super().select_gate(gate) # Important because LinearMultiGear*Selector inherits from this class
 
         if gate == self.mmu.gate_selected:
@@ -205,17 +202,13 @@ class LinearSelector(PhysicalSelector):
 
         with self.mmu.wrap_action(ACTION_SELECTING):
             self.filament_hold_move()
-            if gate == TOOL_GATE_BYPASS: # PAUL if local_gate == TOOL_GATE_BYPASS:
+            if gate == TOOL_GATE_BYPASS:
                 self._position(self.bypass_offset)
             elif gate >= 0:
-                self.mmu.log_error("PAUL: gate=%s, local_gate=%s, sel_offsets=%s" % (gate, self.local_gate(gate), self.selector_offsets))
                 self._position(self.selector_offsets[self.local_gate(gate)])
 
     def restore_gate(self, gate):
-        """
-        Correct rail position for selector
-        """
-        super().select_gate(gate) # Important because LinearMultiGear*Selector inherits from this class
+        super().retore_gate(gate) # Important because LinearMultiGear*Selector inherits from this class
 
         if gate == TOOL_GATE_BYPASS:
             self.set_position(self.bypass_offset)
@@ -270,7 +263,11 @@ class LinearSelector(PhysicalSelector):
         return (vars(self).get(param) is None)
 
     def get_uncalibrated_gates(self, check_gates):
-        return [lgate + self.mmu_unit.first_gate for lgate, value in enumerate(self.selector_offsets) if value == -1 and lgate + self.mmu_unit.first_gate in check_gates]
+        return [
+            lgate + self.mmu_unit.first_gate
+            for lgate, value in enumerate(self.selector_offsets)
+            if value == -1 and lgate + self.mmu_unit.first_gate in check_gates
+        ]
 
     # Internal Implementation --------------------------------------------------
 
@@ -281,7 +278,7 @@ class LinearSelector(PhysicalSelector):
         + "GATE         = #(int) Optional, default all gates on unit\n"
         + "SAVE         = [0|1]\n"
         + "BYPASS       = [0|1]\n"
-        + "BYPASS_BLOCK = [0|1]  ERCFv1.1 only\n"
+        + "BYPASS_BLOCK = [0|1] Special: If bypass block exists on ERCFv1.1 only\n"
     )
     cmd_MMU_CALIBRATE_SELECTOR_supplement_help = (
         "Examples:\n"
@@ -299,44 +296,66 @@ class LinearSelector(PhysicalSelector):
         self.mmu.log_to_file(gcmd.get_commandline())
         if self.mmu.check_if_disabled(): return
 
+        unit = gcmd.get_int('UNIT', None, minval=0, maxval=self.mmu.mmu_machine.num_units - 1)
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         single = gcmd.get_int('SINGLE', 0, minval=0, maxval=1)
-        gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_unit.num_gates - 1)
-        if gate == -1 and gcmd.get_int('BYPASS', -1, minval=0, maxval=1) == 1:
+        gate = gcmd.get_int('GATE', None, minval=0, maxval=self.mmu_unit.num_gates - 1)
+        bypass = bool(gcmd.get_int('BYPASS', None, minval=0, maxval=1))
+        ercf_v1_bypass_block = gcmd.get_int('BYPASS_BLOCK', -1, minval=1, maxval=3)
+        if gate is None and bypass:
             gate = TOOL_GATE_BYPASS
 
         if gcmd.get_int('HELP', 0, minval=0, maxval=1):
             self.mmu.log_always(self.mmu.format_help(self.cmd_MMU_CALIBRATE_SELECTOR_param_help, self.cmd_MMU_CALIBRATE_SELECTOR_supplement_help), color=True)
             return
 
+        mmu_unit = self.mmu_machine.get_mmu_unit_by_index(unit) if unit is not None else self.mmu_unit
+        min_gate, max_gate = mmu_unit.gate_range()
+
+        pos_str = "position"
+        if gate is None:
+           gate_str = "gates %d-%d" % (min_gate, max_gate)
+           pos_str = "positions"
+        elif gate == TOOL_GATE_BYPASS:
+           gate_str = "bypass"
+        else:
+           gate_str = "gate %d" % gate
+        self.mmu.log_always("Calibrating selector %s on unit %s for %s..." % (pos_str, mmu_unit.name, gate_str))
+
         try:
             with self.mmu.wrap_sync_gear_to_extruder():
                 self.mmu.calibrating = True
-                self.mmu.reinit()
+#PAUL why?                self.mmu.reinit()
                 self.filament_hold_move()
                 successful = False
-                if gate != -1:
-                    successful = self._calibrate_selector(gate, extrapolate=not single, save=save)
+                if gate is None:
+                    successful = self._calibrate_selector_auto(save=save, v1_bypass_block=ercf_v1_bypass_block)
                 else:
-                    successful = self._calibrate_selector_auto(save=save, v1_bypass_block=gcmd.get_int('BYPASS_BLOCK', -1, minval=1, maxval=3))
+                    successful = self._calibrate_selector(gate, extrapolate=not single, save=save)
 
                 if not any(x == -1 for x in self.selector_offsets):
-                    self.calibrator.mark_calibrated(CALIBRATED_SELECTOR)
+                    self.mmu_unit.calibrator.mark_calibrated(CALIBRATED_SELECTOR)
 
                 # If not fully calibrated turn off the selector stepper to ease next step, else activate by homing
-                if successful and self.calibrator.check_calibrated(CALIBRATED_SELECTOR):
+                if successful and self.mmu_unit.calibrator.check_calibrated(CALIBRATED_SELECTOR):
                     self.mmu.log_always("Selector calibration complete")
-                    self.mmu.select_tool(0)
+                    self.select_tool(min_gate)
                 else:
-                    self.mmu.motors_onoff(on=False, motor="selector")
+                    self.disable_motors()
 
         except MmuError as ee:
             self.mmu.handle_mmu_error(str(ee))
         finally:
             self.mmu.calibrating = False
 
-    def _get_max_selector_movement(self, gate=-1):
-        n = gate if gate >= 0 else self.mmu_unit.num_gates - 1
+    def _get_max_selector_movement(self, lgate=TOOL_GATE_UNKNOWN):
+        """
+        Return the maximum permissbile selector movement to reach 
+        the specifed LOCAL gate from home position.
+        If no local gate is specified then return maximum permissible
+        travel
+        """
+        n = lgate if lgate >= 0 else self.mmu_unit.num_gates - 1
 
         if self.mmu_unit.mmu_vendor == VENDOR_ERCF:
             # ERCF Designs
@@ -348,7 +367,7 @@ class LinearSelector(PhysicalSelector):
             # Everything else
             max_movement = self.cad_gate0_pos + (n * self.cad_gate_width)
 
-        max_movement += self.cad_last_gate_offset if gate in [TOOL_GATE_UNKNOWN] else 0.
+        max_movement += self.cad_last_gate_offset if lgate in [TOOL_GATE_UNKNOWN] else 0.
         max_movement += self.cad_selector_tolerance
         return max_movement
 

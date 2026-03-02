@@ -616,26 +616,20 @@ class MmuUnit:
                 if callable(method):
                     method()
 
-
     def has_encoder(self):
         return self.encoder is not None
-
 
     def has_espooler(self):
         return self.espooler is not None
 
-
     def enable_motors(self):
         self.selector.enable_motors()
-
 
     def disable_motors(self):
         self.selector.disable_motors()
 
-
     def manages_gate(self, gate):
         return self.first_gate <= gate < self.first_gate + self.num_gates
-
 
     def gate_range(self):
         return self.first_gate, self.first_gate + self.num_gates
