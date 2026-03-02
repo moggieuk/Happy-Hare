@@ -116,7 +116,7 @@ class MmuMachine:
                 raise config.error("Expected [%s] section not found" % section)
             c = config.getsection(section)
             unit = MmuUnit(c, self, i, self.num_gates)
-            logging.info("MMU: Created: %s" % c.get_name())
+            logging.info("MMU: Created: [%s]" % c.get_name())
 
             self.units.append(unit)
             self.unit_by_name[name] = unit

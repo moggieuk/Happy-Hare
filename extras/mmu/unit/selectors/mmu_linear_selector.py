@@ -194,26 +194,26 @@ class LinearSelector(PhysicalSelector):
                 self.mmu.unload_sequence()
             self._home_selector()
 
-    def select_gate(self, gate):
-        super().select_gate(gate) # Important because LinearMultiGear*Selector inherits from this class
+    def _select_gate(self, lgate):
+        super()._select_gate(lgate) # Important because LinearMultiGear*Selector inherits from this class
 
-        if gate == self.mmu.gate_selected:
-            return # PAUL if local_gate == self.gate_selected
+        if lgate == self.local_gate_selected:
+            return
 
         with self.mmu.wrap_action(ACTION_SELECTING):
             self.filament_hold_move()
-            if gate == TOOL_GATE_BYPASS:
+            if lgate == TOOL_GATE_BYPASS:
                 self._position(self.bypass_offset)
-            elif gate >= 0:
-                self._position(self.selector_offsets[self.local_gate(gate)])
+            elif lgate >= 0:
+                self._position(self.selector_offsets[lgate])
 
-    def restore_gate(self, gate):
-        super().retore_gate(gate) # Important because LinearMultiGear*Selector inherits from this class
+    def _restore_gate(self, lgate):
+        super()._restore_gate(lgate) # Important because LinearMultiGear*Selector inherits from this class
 
-        if gate == TOOL_GATE_BYPASS:
+        if lgate == TOOL_GATE_BYPASS:
             self.set_position(self.bypass_offset)
-        elif gate >= 0:
-            self.set_position(self.selector_offsets[self.local_gate(gate)])
+        elif lgate >= 0:
+            self.set_position(self.selector_offsets[lgate])
 
     def enable_motors(self):
         stepper_enable = self.printer.lookup_object('stepper_enable')
@@ -299,7 +299,7 @@ class LinearSelector(PhysicalSelector):
         unit = gcmd.get_int('UNIT', None, minval=0, maxval=self.mmu.mmu_machine.num_units - 1)
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         single = gcmd.get_int('SINGLE', 0, minval=0, maxval=1)
-        gate = gcmd.get_int('GATE', None, minval=0, maxval=self.mmu_unit.num_gates - 1)
+        gate = gcmd.get_int('GATE', None, minval=0, maxval=self.mmu.num_gates - 1)
         bypass = bool(gcmd.get_int('BYPASS', None, minval=0, maxval=1))
         ercf_v1_bypass_block = gcmd.get_int('BYPASS_BLOCK', -1, minval=1, maxval=3)
         if gate is None and bypass:
@@ -312,6 +312,9 @@ class LinearSelector(PhysicalSelector):
         mmu_unit = self.mmu_machine.get_mmu_unit_by_index(unit) if unit is not None else self.mmu_unit
         min_gate, max_gate = mmu_unit.gate_range()
 
+        if gate is not None and not mmu_unit.manages_gate(gate):
+            raise gcmd.error("Gate %d is not managed by %s (range=%d-%d)" % (gate, mmu_unit.name, min_gate, max_gate))
+
         pos_str = "position"
         if gate is None:
            gate_str = "gates %d-%d" % (min_gate, max_gate)
@@ -320,7 +323,9 @@ class LinearSelector(PhysicalSelector):
            gate_str = "bypass"
         else:
            gate_str = "gate %d" % gate
-        self.mmu.log_always("Calibrating selector %s on unit %s for %s..." % (pos_str, mmu_unit.name, gate_str))
+        self.mmu.log_always("Calibrating selector %s on %s for %s..." % (pos_str, mmu_unit.name, gate_str))
+
+        return # PAUL testing shortcut
 
         try:
             with self.mmu.wrap_sync_gear_to_extruder():

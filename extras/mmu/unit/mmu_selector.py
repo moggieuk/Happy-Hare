@@ -1071,7 +1071,7 @@ class LinearSelectorServo:
         self.mmu.log_trace("Setting servo to down (filament drive) position at angle: %d" % self.servo_angles['down'])
 
         if buzz_gear and self.servo_buzz_gear_on_down > 0:
-            self.mmu_unit.mmu_toolhead.sync(MmuToolHead.GEAR_ONLY) # Must be in correct sync mode before buzz to avoid delay
+            self.mmu_unit.mmu_toolhead.sync(MmuToolHead.DRIVE_GEAR_ONLY) # Must be in correct sync mode before buzz to avoid delay
 
         self.mmu.movequeues_wait() # Probably not necessary
         initial_encoder_position = self.mmu.get_encoder_distance(dwell=None)

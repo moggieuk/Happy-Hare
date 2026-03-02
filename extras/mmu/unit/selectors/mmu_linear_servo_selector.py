@@ -37,6 +37,7 @@ from ....homing           import Homing, HomingMove
 # Happy Hare imports
 from ...mmu_constants     import *
 from ...mmu_utils         import MmuError
+from ...mmu_unit          import DRIVE_GEAR_ONLY
 from ..mmu_calibrator     import CALIBRATED_SELECTOR
 from .mmu_linear_selector import LinearSelector
 
@@ -52,6 +53,10 @@ class LinearServoSelector(LinearSelector):
     def __init__(self, config, mmu_unit, params):
         super().__init__(config, mmu_unit, params)
         self.servo = LinearSelectorServo(config, mmu_unit, self)
+
+    def handle_connect(self):
+        super().handle_connect()
+        self.servo.handle_connect()
 
     def reinit(self):
         self.servo.reinit()
@@ -157,9 +162,7 @@ class LinearSelectorServo:
         Merges any persisted VARS_MMU_SERVO_ANGLES values into the configured
         servo angle map.
         """
-        super().handle_connect()
-
-        logging.info("PAUL: handle_connect: LinearSelectorServo")
+        logging.info("PAUL: +++++++++++++++++++++ : handle_connect: LinearSelectorServo")
         self.mmu = self.mmu_unit.mmu_machine.mmu_controller # Shared MMU controller class
         self.var_manager = self.mmu_machine.var_manager
 
@@ -255,12 +258,12 @@ class LinearSelectorServo:
         ensure filament is seated, preserving encoder distance across the buzz.
         """
         if self.mmu._is_running_test: return # Save servo while testing
-        if self.mmu.gate_selected == TOOL_GATE_BYPASS: return
+        if self.selector.local_gate_selected == TOOL_GATE_BYPASS: return
         if self.servo_state == SERVO_DOWN_STATE: return
         self.mmu.log_trace("Setting servo to down (filament drive) position at angle: %d" % self.servo_angles['down'])
 
         if buzz_gear and self.servo_buzz_gear_on_down > 0:
-            self.mmu_unit.mmu_toolhead.sync(MmuToolHead.GEAR_ONLY) # Must be in correct sync mode before buzz to avoid delay
+            self.mmu_unit.mmu_toolhead.sync(DRIVE_GEAR_ONLY) # Must be in correct sync mode before buzz to avoid delay
 
         self.mmu.movequeues_wait() # Probably not necessary
         initial_encoder_position = self.mmu.get_encoder_distance(dwell=None)
@@ -268,14 +271,14 @@ class LinearSelectorServo:
 
         if self.servo_angle != self.servo_angles['down'] and buzz_gear and self.servo_buzz_gear_on_down > 0:
             for _ in range(self.servo_buzz_gear_on_down):
-                self.mmu.trace_filament_move(None, 0.8, speed=25, accel=self.mmu.gear_buzz_accel, encoder_dwell=None, speed_override=False)
-                self.mmu.trace_filament_move(None, -0.8, speed=25, accel=self.mmu.gear_buzz_accel, encoder_dwell=None, speed_override=False)
+                self.mmu.trace_filament_move(None, 0.8, speed=25, accel=self.mmu_unit.p.gear_buzz_accel, encoder_dwell=None, speed_override=False)
+                self.mmu.trace_filament_move(None, -0.8, speed=25, accel=self.mmu_unit.p.gear_buzz_accel, encoder_dwell=None, speed_override=False)
             self.mmu.movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
 
         self.servo_angle = self.servo_angles['down']
         self.servo_state = SERVO_DOWN_STATE
         self.mmu.set_encoder_distance(initial_encoder_position)
-        self.mmu.mmu_macro_event(self.mmu.MACRO_EVENT_FILAMENT_GRIPPED)
+        self.mmu.mmu_macro_event(MACRO_EVENT_FILAMENT_GRIPPED)
 
     def servo_move(self): # Position servo for selector movement
         if self.mmu._is_running_test: return # Save servo while testing

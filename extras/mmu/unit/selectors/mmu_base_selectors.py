@@ -125,7 +125,7 @@ class BaseSelector:
     def _select_gate(self, lgate):
         pass
 
-    def restore_gate(self, gate):
+    def restore_gate(self, gate): # PAUL maybe we can remove this and leverage select_gate() in the future?
         """
         Correct gate position of selector without checks. Used in state restoration
         Don't override this method, instead override _restore_gate() after the local gate translation.
@@ -191,7 +191,6 @@ class BaseSelector:
         if gate < 0: return gate # Leave bypass/unknown as is
 
         lgate = gate - self.mmu_unit.first_gate
-        self.mmu.log_error("PAUL: lgate(%s) on unit %s=%s" % (gate, self.mmu_unit.name, lgate))
         return lgate
 
     def _logical_gate(self, lgate):
@@ -219,6 +218,15 @@ class PhysicalSelector(BaseSelector, object):
         # Register GCODE commands
         self.register_mux_command('MMU_SOAKTEST_SELECTOR', self.cmd_MMU_SOAKTEST_SELECTOR, desc=self.cmd_MMU_SOAKTEST_SELECTOR_help)
 
+    def handle_connect(self):
+        super().handle_connect() # PAUL
+
+    def _select_gate(self, lgate):
+        super()._select_gate(lgate)
+
+    def _restore_gate(self, lgate):
+        super()._restore_gate(lgate)
+
     cmd_MMU_SOAKTEST_SELECTOR_help = "Soak test of selector movement"
     cmd_MMU_SOAKTEST_SELECTOR_param_help = (
         "MMU_SOAKTEST_SELECTOR: %s\n" % cmd_MMU_SOAKTEST_SELECTOR_help
@@ -244,7 +252,7 @@ class PhysicalSelector(BaseSelector, object):
         """
         self.mmu.log_to_file(gcmd.get_commandline())
         if self.mmu.check_if_disabled(): return
-        if self.mmu_unit.manages_gate(self.mmu.current_gate) and self.mmu.check_if_loaded(): return
+        if self.mmu_unit.manages_gate(self.mmu.gate_selected) and self.mmu.check_if_loaded(): return
 
         if not self.mmu_unit.calibrator.check_calibrated(CALIBRATED_SELECTOR):
             self.mmu.log_error("Operation not possible. Selector not yet calibrated")
@@ -263,8 +271,9 @@ class PhysicalSelector(BaseSelector, object):
         # Test and report using logical system-wide gate numbering (by design user never sees local gate numbers)
         mmu_unit = self.mmu_machine.get_mmu_unit_by_index(unit) if unit is not None else self.mmu_unit
         min_gate, max_gate = mmu_unit.gate_range()
-        self.mmu.log_always("Soak testing selector on unit %s (gates %d-%d) for %s iterations..." % (mmu_unit.name, min_gate, max_gate, loops))
+        self.mmu.log_always("Soak testing selector on %s (gates %d-%d) for %s iterations..." % (mmu_unit.name, min_gate, max_gate, loops))
 
+        return # PAUL testing
         try:
             with self.mmu.wrap_sync_gear_to_extruder():
                 for l in range(loops):
@@ -311,6 +320,6 @@ class VirtualSelector(BaseSelector):
         if lgate == self.local_gate_selected: return
         self.mmu_unit.mmu_toolhead.select_gear_stepper(lgate)
 
-    def restore_gate(self, lgate):
+    def _restore_gate(self, lgate):
         super()._restore_gate(lgate)
         self.mmu_unit.mmu_toolhead.select_gear_stepper(lgate)

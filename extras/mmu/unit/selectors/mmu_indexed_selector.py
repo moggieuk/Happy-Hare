@@ -106,7 +106,7 @@ class IndexedSelector(PhysicalSelector):
                 self.mmu.unload_sequence()
             self._home_selector()
 
-    def select_gate(self, gate):
+    def _select_gate(self, gate):
         """
         Select a gate by moving until the corresponding index endstop triggers.
 

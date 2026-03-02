@@ -68,7 +68,7 @@ class MmuLedEffect:
 
         for unit_index, mmu_unit in enumerate(mmu_machine.units):
             unit_name = mmu_unit.name
-            mmu_leds = self.printer.lookup_object('mmu_leds %s' % mmu_unit.name, None)
+            mmu_leds = self.printer.lookup_object('mmu_leds %s' % unit_name, None)
             if mmu_leds:
                 frame_rate = mmu_leds.frame_rate
                 define_on = [segment.strip() for segment in define_on_str.split(',') if segment.strip()]
@@ -79,7 +79,6 @@ class MmuLedEffect:
 
                 # This condition makes it a no-op if [mmu_leds] is not present or led_effects not installed
                 for segment in MmuLeds.SEGMENTS:
-# PAUL                    led_segment_name = "unit%d_mmu_%s_leds" % (unit_index, segment)
                     led_segment_name = "%s_mmu_%s_leds" % (unit_name, segment)
                     led_chain = self.printer.lookup_object(led_segment_name)
                     if not led_chain:
@@ -113,7 +112,9 @@ class MmuLedEffect:
         c = config.getsection(section_to)
         led_effect = _ledEffect(c)
         logging.info("MMU: Created: %s on %s" % (c.get_name(), leds))
-        self.printer.add_object(c.get_name(), led_effect) # Register _led_effect to stop it trying to be loaded by klipper
+        # Register _led_effect with klipper
+        # NOTE: Not currently registering to reduce printer variables and unecessary get status() calls
+        #self.printer.add_object(c.get_name(), led_effect)
 
 def load_config_prefix(config):
     return MmuLedEffect(config)

@@ -56,7 +56,7 @@ OTHER_STEPPER_PARAMS     = ['step_pin', 'dir_pin', 'enable_pin', 'endstop_pin', 
 
 SHAREABLE_TMC_PARAMS     = ['run_current', 'hold_current', 'interpolate', 'sense_resistor', 'stealthchop_threshold']
 
-# Default selector classes
+# Default selector classes for known vendors
 SELECTOR_VIRTUAL           = 'VirtualSelector'         # Type-B design
 SELECTOR_LINEAR            = 'LinearSelector'          # Type-A with linear stepper
 SELECTOR_LINEAR_SERVO      = 'LinearServoSelector'     # Type-A with linear stepper and servo filament grip
@@ -65,23 +65,6 @@ SELECTOR_ROTARY            = 'RotarySelector'          # Type-A (Chameleon) desi
 SELECTOR_MACRO             = 'MacroSelector'           # Fully user implemented
 SELECTOR_INDEXED           = 'IndexedSelector'         # Type-A with rotating indexed stepper gate selection (BTT ViViD design)
 SELECTOR_LINEAR_MULTI_GEAR = 'LinearMultiGearSelector' # Type-C with linear stepper
-
-# PAUL replaced with SELECTOR_KEYS
-#SELECTOR_TYPES = [
-#    SELECTOR_VIRTUAL,
-#    SELECTOR_LINEAR,
-#    SELECTOR_LINEAR_SERVO,
-#    SELECTOR_SERVO,
-#    SELECTOR_ROTARY,
-#    SELECTOR_MACRO,
-#    SELECTOR_INDEXED,
-#    SELECTOR_LINEAR_MULTI_GEAR
-#]
-#
-#SELECTOR_MULTI_GEAR_TYPES = [
-#    SELECTOR_VIRTUAL,
-#    SELECTOR_LINEAR_MULTI_GEAR
-#]
 
 
 # Define type/style of MMU and expand configuration for convenience. Validate hardware configuration
@@ -412,6 +395,7 @@ class MmuUnit:
         if config.has_section(section):
             c = config.getsection(section)
             self.sensors = MmuSensors(c, self, self.p)
+            #self.printer.add_object(c.get_name(), self.sensors) # Not exposing because don't want direct access
             logging.info("MMU: Created: [%s]" % c.get_name())
         else:
             logging.info("MMU: - No mmu_sensors specified")
@@ -422,6 +406,7 @@ class MmuUnit:
         if config.has_section(section):
             c = config.getsection(section)
             self.espooler = MmuESpooler(c, self, self.p)
+            self.printer.add_object(c.get_name(), self.espooler)
             logging.info("MMU: Created: [%s]" % c.get_name())
         else:
             logging.info("MMU: - No mmu_espooler specified")
@@ -432,6 +417,7 @@ class MmuUnit:
         if config.has_section(section):
             c = config.getsection(section)
             self.leds = MmuLeds(c, self, self.p)
+            self.printer.add_object(c.get_name(), self.leds)
             logging.info("MMU: Created: [%s]" % c.get_name())
         else:
             logging.info("MMU: - No mmu_leds specified")
@@ -446,6 +432,7 @@ class MmuUnit:
                 if config.has_section(section):
                     c = config.getsection(section)
                     self.encoder = MmuEncoder(c, self, self.p)
+                    #self.printer.add_object(c.get_name(), self.encoder) # Not exposing because don't want direct access
                     logging.info("MMU: Created: [%s]" % c.get_name())
                 else:
                     raise config.error("Encoder section [%s] not found!" % section)
@@ -464,6 +451,7 @@ class MmuUnit:
                 if config.has_section(section):
                     c = config.getsection(section)
                     self.buffer = MmuBuffer(c, self, self.p)
+                    #self.printer.add_object(c.get_name(), self.buffer) # Not exposing because don't want direct access
                     logging.info("MMU: Created: [%s]" % c.get_name())
                 else:
                     raise config.error("Buffer section [%s] not found!" % section)
@@ -473,9 +461,14 @@ class MmuUnit:
             logging.info("MMU: - No mmu_buffer specified")
 
         # Load selector (reads it's own config from mmu_unit_parameters)
-        self.selector = SELECTOR_REGISTRY[self.selector_type](params, self, self.p)
-#PAUL        if not isinstance(self.selector, BaseSelector):
-#PAUL            raise self.config.error("Invalid Selector class for MMU unit %s" % self.name)
+        selector_class = SELECTOR_REGISTRY.get(self.selector_type)
+        if selector_class is None:
+            raise self.config.error(
+                "Invalid Selector class %s for unit %s. Options are: %s"
+                % (self.selector_type, self.name, ",".join(SELECTOR_REGISTRY))
+            )
+
+        self.selector = selector_class(params, self, self.p)
         logging.info("MMU: Created %s selector" % self.selector_type)
 
         # Create calibrator to oversee autotune / calibration updates based on available telemetry
@@ -629,6 +622,7 @@ class MmuUnit:
         self.selector.disable_motors()
 
     def manages_gate(self, gate):
+        if not isinstance(gate, int): return False
         return self.first_gate <= gate < self.first_gate + self.num_gates
 
     def gate_range(self):
@@ -711,11 +705,12 @@ class MmuUnit:
 # (code pulled from toolhead.py)
 class MmuToolHead(toolhead.ToolHead, object):
 
-    # Gear/Extruder synchronization modes (None = unsynced)
-    EXTRUDER_SYNCED_TO_GEAR = 1 # Aka 'gear+extruder'
-    EXTRUDER_ONLY_ON_GEAR   = 2 # Aka 'extruder' (only)
-    GEAR_SYNCED_TO_EXTRUDER = 3 # Aka 'extruder+gear'
-    GEAR_ONLY               = 4 # Aka 'gear' (same state as unsync() but with protective wait)
+# PAUL
+#    # Gear/Extruder synchronization modes (None = unsynced)
+#    DRIVE_EXTRUDER_SYNCED_TO_GEAR = 1 # Aka 'gear+extruder'
+#    DRIVE_EXTRUDER_ONLY_ON_GEAR   = 2 # Aka 'extruder' (only)
+#    DRIVE_GEAR_SYNCED_TO_EXTRUDER = 3 # Aka 'extruder+gear'
+#    DRIVE_GEAR_ONLY               = 4 # Aka 'gear' (same state as unsync() but with protective wait)
 
     def __init__(self, config, mmu_unit):
         self.mmu_unit = mmu_unit
@@ -898,7 +893,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         mmu_trapq = m_th.get_trapq()
 
         prev_sync_mode = self.sync_mode
-        if self.sync_mode not in [self.GEAR_ONLY, None]:
+        if self.sync_mode not in [DRIVE_GEAR_ONLY, None]:
             self._resync_no_lock(None) # Unsync first
         else:
             ths = [self.printer_toolhead, self.mmu_toolhead]
@@ -998,11 +993,11 @@ class MmuToolHead(toolhead.ToolHead, object):
 
     # Is extruder stepper synced to gear rail (general MMU synced movement)
     def is_extruder_synced_to_gear(self):
-        return self.sync_mode in [self.EXTRUDER_SYNCED_TO_GEAR, self.EXTRUDER_ONLY_ON_GEAR]
+        return self.sync_mode in [DRIVE_EXTRUDER_SYNCED_TO_GEAR, DRIVE_EXTRUDER_ONLY_ON_GEAR]
 
     # Is gear rail synced to extruder (for in print syncing)
     def is_gear_synced_to_extruder(self):
-        return self.sync_mode == self.GEAR_SYNCED_TO_EXTRUDER
+        return self.sync_mode == DRIVE_GEAR_SYNCED_TO_EXTRUDER
 
     def sync(self, new_sync_mode):
         with self._resync_lock:
@@ -1032,9 +1027,9 @@ class MmuToolHead(toolhead.ToolHead, object):
 
         # ---------------- Phase A: FENCE if messing with extruder -----------
 
-        user_control_states       = [self.GEAR_SYNCED_TO_EXTRUDER, None]
-        relocated_extruder_states = [self.EXTRUDER_SYNCED_TO_GEAR, self.EXTRUDER_ONLY_ON_GEAR]
-        mmu_control_states        = relocated_extruder_states + [self.GEAR_ONLY]
+        user_control_states       = [DRIVE_GEAR_SYNCED_TO_EXTRUDER, None]
+        relocated_extruder_states = [DRIVE_EXTRUDER_SYNCED_TO_GEAR, DRIVE_EXTRUDER_ONLY_ON_GEAR]
+        mmu_control_states        = relocated_extruder_states + [DRIVE_GEAR_ONLY]
         full_quiesce = (
             (new_sync_mode in user_control_states and self.sync_mode in mmu_control_states) or
             (new_sync_mode in mmu_control_states and self.sync_mode in user_control_states)
@@ -1045,14 +1040,14 @@ class MmuToolHead(toolhead.ToolHead, object):
         t0 = self._quiesce_align_get_tcut(ths, full=full_quiesce, wait=full_quiesce) # Build cutover fence
 
         # UNSYNC current mode (if any) to base state at t0
-        if self.sync_mode not in [self.GEAR_ONLY, None]:
+        if self.sync_mode not in [DRIVE_GEAR_ONLY, None]:
 
             # ---------------- Phase B: UNSYNC current mode at t0 ----------------
 
-            self.mmu.log_stepper("unsync(%s)" % ("mode=gear_only" if new_sync_mode == self.GEAR_ONLY  else ""))
+            self.mmu.log_stepper("unsync(%s)" % ("mode=gear_only" if new_sync_mode == DRIVE_GEAR_ONLY  else ""))
 
             # Figure out who is CURRENTLY driving (old owner) and who will receive (new owner)
-            if self.sync_mode in [self.EXTRUDER_SYNCED_TO_GEAR, self.EXTRUDER_ONLY_ON_GEAR]:
+            if self.sync_mode in [DRIVE_EXTRUDER_SYNCED_TO_GEAR, DRIVE_EXTRUDER_ONLY_ON_GEAR]:
                 driving_toolhead   = self.mmu_toolhead        # OLD owner (mmu/gear)
                 following_toolhead = self.printer_toolhead    # NEW owner (printer/extruder)
                 following_steppers = [following_toolhead.get_extruder().extruder_stepper.stepper]
@@ -1063,7 +1058,7 @@ class MmuToolHead(toolhead.ToolHead, object):
                 # Always remove the extruder stepper we appended to the gear rail (will always be at end of list)
                 gear_rail.steppers = gear_rail.steppers[:-len(following_steppers)]
 
-            elif self.sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
+            elif self.sync_mode == DRIVE_GEAR_SYNCED_TO_EXTRUDER:
                 driving_toolhead   = self.printer_toolhead    # OLD owner (printer/extruder)
                 following_toolhead = self.mmu_toolhead        # NEW owner (mmu/gear)
                 # All gear-rail steppers were following the extruder
@@ -1087,7 +1082,7 @@ class MmuToolHead(toolhead.ToolHead, object):
                 s.set_position(pos)
 
             # Restore previously disabled gear steppers (after the extruder is back on printer toolhead)
-            if self.sync_mode == self.EXTRUDER_ONLY_ON_GEAR:
+            if self.sync_mode == DRIVE_EXTRUDER_ONLY_ON_GEAR:
                 for s in self.selected_gear_steppers:
                     self._register(self.mmu_toolhead, s) # s.set_trapq(self.mmu_toolhead.get_trapq())
                     s.set_position([0., self.mmu_toolhead.get_position()[1], 0.])
@@ -1103,7 +1098,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             if dt: following_toolhead.dwell(dt)
             following_toolhead.flush_step_generation()
 
-            if self.sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
+            if self.sync_mode == DRIVE_GEAR_SYNCED_TO_EXTRUDER:
                 self.printer.send_event("mmu:unsynced")
 
             # Now “unsynced” at t0
@@ -1112,18 +1107,18 @@ class MmuToolHead(toolhead.ToolHead, object):
         if self.motion_queuing and hasattr(self.motion_queuing, 'check_step_generation_scan_windows'):
             self.motion_queuing.check_step_generation_scan_windows()
 
-        self.sync_mode = self.GEAR_ONLY if new_sync_mode == self.GEAR_ONLY else None
-        if new_sync_mode in [self.GEAR_ONLY, None]:
+        self.sync_mode = DRIVE_GEAR_ONLY if new_sync_mode == DRIVE_GEAR_ONLY else None
+        if new_sync_mode in [DRIVE_GEAR_ONLY, None]:
             return prev_sync_mode
 
         # ---------------- Phase C: SYNC into new mode at t1 -----------------
 
-        self.mmu.log_stepper("sync(mode=%d %s)" % (new_sync_mode, ("gear+extruder" if new_sync_mode == self.EXTRUDER_SYNCED_TO_GEAR  else "extruder" if new_sync_mode == self.EXTRUDER_ONLY_ON_GEAR else "extruder+gear")))
+        self.mmu.log_stepper("sync(mode=%d %s)" % (new_sync_mode, ("gear+extruder" if new_sync_mode == DRIVE_EXTRUDER_SYNCED_TO_GEAR  else "extruder" if new_sync_mode == DRIVE_EXTRUDER_ONLY_ON_GEAR else "extruder+gear")))
 
         t1 = t0 + EPS  # Later fence for the second cut over (t1 = t0 + EPS)
 
         # Figure out driver and follower based on sync mode
-        if new_sync_mode in [self.EXTRUDER_SYNCED_TO_GEAR, self.EXTRUDER_ONLY_ON_GEAR]:
+        if new_sync_mode in [DRIVE_EXTRUDER_SYNCED_TO_GEAR, DRIVE_EXTRUDER_ONLY_ON_GEAR]:
             driving_toolhead   = self.mmu_toolhead       # NEW owner (mmu/gear)
             following_toolhead = self.printer_toolhead   # OLD owner (printer/extruder)
             following_steppers = [following_toolhead.get_extruder().extruder_stepper.stepper]
@@ -1133,13 +1128,13 @@ class MmuToolHead(toolhead.ToolHead, object):
             pos = [0., driving_toolhead.get_position()[1], 0.]
 
             # Cripple gear steppers and inject the extruder steppers into the gear rail
-            if new_sync_mode == self.EXTRUDER_ONLY_ON_GEAR:
+            if new_sync_mode == DRIVE_EXTRUDER_ONLY_ON_GEAR:
                 for s in self.all_gear_rail_steppers:
                     self._unregister(self.mmu_toolhead, s) # s.set_trapq(None)
             # Inject the extruder steppers to the end of the gear rail
             gear_rail.steppers.extend(following_steppers)
 
-        elif new_sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
+        elif new_sync_mode == DRIVE_GEAR_SYNCED_TO_EXTRUDER:
             driving_toolhead = self.printer_toolhead     # NEW owner (printer/extruder)
             following_toolhead = self.mmu_toolhead       # OLD owner (mmu/gear)
             following_steppers = list(following_toolhead.get_kinematics().rails[1].get_steppers())
@@ -1183,7 +1178,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         # Now “synced” at t1
 
         self.sync_mode = new_sync_mode
-        if self.sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
+        if self.sync_mode == DRIVE_GEAR_SYNCED_TO_EXTRUDER:
             self.printer.send_event("mmu:synced")
 
         return prev_sync_mode
@@ -1224,13 +1219,13 @@ class MmuToolHead(toolhead.ToolHead, object):
         return hex(id(trapq))
 
     def sync_mode_to_string(self, mode):
-        if mode == self.EXTRUDER_SYNCED_TO_GEAR:
+        if mode == DRIVE_EXTRUDER_SYNCED_TO_GEAR:
             return "gear+extruder"
-        elif mode == self.EXTRUDER_ONLY_ON_GEAR:
+        elif mode == DRIVE_EXTRUDER_ONLY_ON_GEAR:
             return "extruder"
-        elif mode == self.GEAR_SYNCED_TO_EXTRUDER:
+        elif mode == DRIVE_GEAR_SYNCED_TO_EXTRUDER:
             return "extruder+gear"
-        elif mode == self.GEAR_ONLY:
+        elif mode == DRIVE_GEAR_ONLY:
             return "unsynced/gear"
         return "unsynced"
 

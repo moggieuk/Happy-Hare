@@ -14,7 +14,6 @@
 import random, logging, math
 
 # Happy Hare imports
-from .mmu_unit         import MmuToolHead
 from .mmu_constants    import *
 from .unit.mmu_sensors import MmuSensors
 from .mmu_utils        import MmuError, PurgeVolCalculator, DebugStepperMovement
@@ -101,7 +100,7 @@ class MmuTest:
             self.mmu.log_info("GATE_MOTOR=n : Select the specified gear motor on type-B designs")
             self.mmu.log_info("SYNC_G2E=1 : Sync gear to extruder (user mode)")
             self.mmu.log_info("SYNC_E2G=1 [EXTRUDER_ONLY=] : Sync extruder to gear optionally just the extruder on rail")
-            self.mmu.log_info("UNSYNC=1 [GEAR_ONLY=]: Unsync (user mode) or unsynced with assuption of no extruder movement")
+            self.mmu.log_info("UNSYNC=1 [DRIVE_GEAR_ONLY=]: Unsync (user mode) or unsynced with assuption of no extruder movement")
             return
 
         def log(msg):
@@ -398,19 +397,19 @@ class MmuTest:
 
             if gcmd.get_int('SYNC_G2E', 0, minval=0, maxval=1):
                 have_run_test = True
-                self.mmu.mmu_toolhead.sync(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER)
+                self.mmu.mmu_toolhead.sync(DRIVE_GEAR_SYNCED_TO_EXTRUDER)
 
 
             if gcmd.get_int('SYNC_E2G', 0, minval=0, maxval=1):
                 have_run_test = True
                 extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1))
-                self.mmu.mmu_toolhead.sync(MmuToolHead.EXTRUDER_ONLY_ON_GEAR if extruder_only else MmuToolHead.EXTRUDER_SYNCED_TO_GEAR)
+                self.mmu.mmu_toolhead.sync(DRIVE_EXTRUDER_ONLY_ON_GEAR if extruder_only else DRIVE_EXTRUDER_SYNCED_TO_GEAR)
 
 
             if gcmd.get_int('UNSYNC', 0, minval=0, maxval=1):
                 have_run_test = True
-                gear_only = bool(gcmd.get_int('GEAR_ONLY', 0, minval=0, maxval=1))
-                self.mmu.mmu_toolhead.sync(MmuToolHead.GEAR_ONLY if gear_only else None)
+                gear_only = bool(gcmd.get_int('DRIVE_GEAR_ONLY', 0, minval=0, maxval=1))
+                self.mmu.mmu_toolhead.sync(DRIVE_GEAR_ONLY if gear_only else None)
 
 
             pos = gcmd.get_float('SET_POS', -1, minval=0, maxval=10)
@@ -470,13 +469,13 @@ class MmuTest:
                 ops = [
                     ("unsync", None),
                     ("g", f"G1 E-24 F6000"),
-                    ("sync", MmuToolHead.GEAR_SYNCED_TO_EXTRUDER),
+                    ("sync", DRIVE_GEAR_SYNCED_TO_EXTRUDER),
                     ("g", f"G1 E8 F6000"),
                     ("unsync", None),
                     ("g", f"G1 E2 F6000"),
                     ("g", "MMU_TEST_HOMING_MOVE MOTOR=gear MOVE=30 ENDSTOP=toolhead STOP_ON_ENDSTOP=1"),
                     ("g", f"G1 E-24 F6000"),
-                    ("sync", MmuToolHead.EXTRUDER_SYNCED_TO_GEAR),
+                    ("sync", DRIVE_EXTRUDER_SYNCED_TO_GEAR),
                     ("g", f"G1 E-2 F6000"),
                     ("g", "MMU_TEST_MOVE MOTOR=gear MOVE=30 WAIT=1"),
                     ("g", "MMU_TEST_HOMING_MOVE MOTOR=gear+extruder MOVE=30 ENDSTOP=toolhead STOP_ON_ENDSTOP=1"),
@@ -553,8 +552,8 @@ class MmuTest:
                             raise MmuError("TEST ERROR: inital_pos=%.6f, final_pos=%.6f, tracked=%.6f (expected=%.6f)" % (initial_pos, final_pos, tracked, expected))
 
                         # Run a few randomized moves on the printer toolhead to simulate user movement
-                        # Sync state must either be unsynced or GEAR_SYNCED_TO_EXTRUDER
-                        sync = None if random.randint(0, 1) else MmuToolHead.GEAR_SYNCED_TO_EXTRUDER
+                        # Sync state must either be unsynced or DRIVE_GEAR_SYNCED_TO_EXTRUDER
+                        sync = None if random.randint(0, 1) else DRIVE_GEAR_SYNCED_TO_EXTRUDER
                         self.mmu.mmu_toolhead.sync(sync)
                         log(">> Extruder movement (%s)..." % ("not synced" if sync is None else "synced to extruder"))
                         for j in range(5):
@@ -601,7 +600,7 @@ class MmuTest:
                             self.mmu.select_gate(gate)
                     if move_type in (0, 1):
                         log("Loop: %d - Synced extruder movement with G1 Ex: %.1fmm" % (i, move))
-                        self.mmu.mmu_toolhead.sync(MmuToolHead.GEAR_SYNCED_TO_EXTRUDER)
+                        self.mmu.mmu_toolhead.sync(DRIVE_GEAR_SYNCED_TO_EXTRUDER)
                         self.mmu.gcode.run_script_from_command("G1 E%.2f F%d" % (move, speed * 60))
                     elif move_type == 2:
                         log("Loop: %d - Unsynced extruder movement with G1 Ex: %.1fmm" % (i, move))
@@ -635,7 +634,7 @@ class MmuTest:
                         log("Loop: %d - Synced extruder movement: %.1fmm" % (i, move))
                         self.mmu.gcode.run_script_from_command("MMU_TEST_MOVE MOTOR=synced MOVE=%.2f SPEED=%d WAIT=%d" % (move, speed, w))
                     else:
-                        sync = "---" if self.mmu.mmu_toolhead.sync_mode is None else "E2G" if self.mmu.mmu_toolhead.sync_mode == MmuToolHead.EXTRUDER_SYNCED_TO_GEAR else "G2E" if self.mmu.mmu_toolhead.sync_mode == MmuToolHead.GEAR_SYNCED_TO_EXTRUDER else "Ext"
+                        sync = "---" if self.mmu.mmu_toolhead.sync_mode is None else "E2G" if self.mmu.mmu_toolhead.sync_mode == DRIVE_EXTRUDER_SYNCED_TO_GEAR else "G2E" if self.mmu.mmu_toolhead.sync_mode == DRIVE_GEAR_SYNCED_TO_EXTRUDER else "Ext"
                         self.mmu.movequeues_wait()
                         tracking = abs(self.mmu._get_filament_position() - total) < 0.1
                         self.mmu.log_info(">>>>>> STATUS: sync: %s, pos=%.2f, total=%.2f" % (sync, self.mmu._get_filament_position(), total))

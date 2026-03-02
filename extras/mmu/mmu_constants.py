@@ -134,6 +134,13 @@ SENSOR_PRE_GATE_PREFIX     = "mmu_pre_gate"
 EXTRUDER_ENDSTOPS = [SENSOR_EXTRUDER_COLLISION, SENSOR_GEAR_TOUCH, SENSOR_EXTRUDER_ENTRY, SENSOR_EXTRUDER_NONE, SENSOR_COMPRESSION]
 GATE_ENDSTOPS     = [SENSOR_GATE, SENSOR_ENCODER, SENSOR_GEAR_PREFIX, SENSOR_EXTRUDER_ENTRY]
 
+# Gear/Extruder synchronization modes (None = unsynced)
+DRIVE_UNSYNCED                = None
+DRIVE_EXTRUDER_SYNCED_TO_GEAR = 1 # Aka 'gear+extruder'
+DRIVE_EXTRUDER_ONLY_ON_GEAR   = 2 # Aka 'extruder' (only)
+DRIVE_GEAR_SYNCED_TO_EXTRUDER = 3 # Aka 'extruder+gear'
+DRIVE_GEAR_ONLY               = 4 # Aka 'gear' (same state as unsync() but with protective wait)
+
 # Statistics output types
 GATE_STATS_STRING     = "string"
 GATE_STATS_PERCENTAGE = "percentage"

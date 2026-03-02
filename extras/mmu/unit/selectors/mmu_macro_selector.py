@@ -66,7 +66,7 @@ class MacroSelector(BaseSelector):
         logging.info("Happy Hare MacroSelector: Gate %d" % self.mmu.gate_selected)
         self.select_gate(self.mmu.gate_selected)
 
-    def select_gate(self, gate):
+    def _select_gate(self, lgate):
         """
         Select the specified gate by invoking the configured macro.
 

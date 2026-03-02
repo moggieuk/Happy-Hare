@@ -211,7 +211,7 @@ class MmuLedManager:
         gate = self.mmu.gate_selected
 
         # Check for unit specific actions
-        if action in [self.mmu.ACTION_HOMING, self.mmu.ACTION_SELECTING]:
+        if action in [ACTION_HOMING, ACTION_SELECTING]:
             units_to_update = [self.mmu.unit_selected]
         else:
             units_to_update = range(self.mmu_machine.num_units)
@@ -221,8 +221,8 @@ class MmuLedManager:
             # Load sequence...
             # idle -> loading -> load_ext -> [heat -> load_ext] -> loading* -> purging* -> loading* -> idle (*=excluded)
 
-            if action == self.mmu.ACTION_LOADING:
-                if old_action not in [self.mmu.ACTION_LOADING_EXTRUDER, self.mmu.ACTION_PURGING]:
+            if action == ACTION_LOADING:
+                if old_action not in [ACTION_LOADING_EXTRUDER, ACTION_PURGING]:
                     self._set_led(
                         unit, gate,
                         exit_effect=self.effect_name(unit, 'loading'),
@@ -230,7 +230,7 @@ class MmuLedManager:
                         fadetime=0.5
                     )
 
-            elif action == self.mmu.ACTION_LOADING_EXTRUDER:
+            elif action == ACTION_LOADING_EXTRUDER:
                 self._set_led(
                     unit, gate,
                     exit_effect=self.effect_name(unit, 'loading_extruder'),
@@ -238,14 +238,14 @@ class MmuLedManager:
                     fadetime=0.5
                 )
 
-            elif action == self.mmu.ACTION_PURGING:
+            elif action == ACTION_PURGING:
                 pass
 
             # Unload sequence...
             # idle -> unloading -> form_tip/cut -> [heat -> form_tip/cut] -> unloading* -> unload_ext -> unloading
             # [cutting* -> unloading*] -> idle (*=excluded)
-            elif action == self.mmu.ACTION_UNLOADING:
-                if old_action == self.mmu.ACTION_IDLE:
+            elif action == ACTION_UNLOADING:
+                if old_action == ACTION_IDLE:
                     self._set_led(
                         unit, gate,
                         exit_effect=self.effect_name(unit, 'unloading_extruder'),
@@ -254,8 +254,8 @@ class MmuLedManager:
                     )
 
                 elif old_action not in [
-                    self.mmu.ACTION_FORMING_TIP,
-                    self.mmu.ACTION_CUTTING_FILAMENT
+                    ACTION_FORMING_TIP,
+                    ACTION_CUTTING_FILAMENT
                 ]:
                     self._set_led(
                         unit, gate,
@@ -264,7 +264,7 @@ class MmuLedManager:
                         fadetime=0.5
                     )
 
-            elif action == self.mmu.ACTION_UNLOADING_EXTRUDER:
+            elif action == ACTION_UNLOADING_EXTRUDER:
                 self._set_led(
                     unit, gate,
                     exit_effect=self.effect_name(unit, 'unloading_extruder'),
@@ -272,7 +272,7 @@ class MmuLedManager:
                     fadetime=0.5
                 )
 
-            elif action in [self.mmu.ACTION_FORMING_TIP, self.mmu.ACTION_FORMING_TIP]:
+            elif action in [ACTION_FORMING_TIP, ACTION_FORMING_TIP]:
                 self._set_led(
                     unit, gate,
                     exit_effect=self.effect_name(unit, 'unloading_extruder'),
@@ -280,19 +280,19 @@ class MmuLedManager:
                     fadetime=0.5
                 )
 
-            elif action == self.mmu.ACTION_CUTTING_FILAMENT:
+            elif action == ACTION_CUTTING_FILAMENT:
                 pass
 
             # Other actions...
 
-            elif action == self.mmu.ACTION_HEATING:
+            elif action == ACTION_HEATING:
                 self._set_led(
                     unit, gate,
                     exit_effect=self.effect_name(unit, 'heating'),
                     status_effect=self.effect_name(unit, 'heating')
                 )
 
-            elif action == self.mmu.ACTION_IDLE:
+            elif action == ACTION_IDLE:
                 self._set_led(
                     unit, None,
                     exit_effect='default',
@@ -302,8 +302,8 @@ class MmuLedManager:
             # Type-A MMU actions involving selector (unit specific)...
 
             # idle -> home -> select -> home* -> idle (*=excluded)
-            elif action == self.mmu.ACTION_HOMING:
-                if old_action == self.mmu.ACTION_IDLE:
+            elif action == ACTION_HOMING:
+                if old_action == ACTION_IDLE:
                     self._set_led(
                         unit, None,
                         exit_effect=self.effect_name(unit, 'selecting'),
@@ -312,8 +312,8 @@ class MmuLedManager:
                     )
 
             # idle -> select -> idle
-            elif action == self.mmu.ACTION_SELECTING:
-                if old_action not in [self.mmu.ACTION_CHECKING]:
+            elif action == ACTION_SELECTING:
+                if old_action not in [ACTION_CHECKING]:
                     self._set_led(
                         unit, None,
                         exit_effect='default',
@@ -322,8 +322,8 @@ class MmuLedManager:
                     )
 
             # idle -> check -> select* -> check* -> select* -> check* -> idle
-            elif action == self.mmu.ACTION_CHECKING:
-                if old_action == self.mmu.ACTION_IDLE:
+            elif action == ACTION_CHECKING:
+                if old_action == ACTION_IDLE:
                     self._set_led(
                         unit, None,
                         exit_effect='default',

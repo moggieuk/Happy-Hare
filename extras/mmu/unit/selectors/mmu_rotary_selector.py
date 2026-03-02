@@ -159,15 +159,15 @@ class RotarySelector(PhysicalSelector):
 
     # Actual gate selection can be delayed (if not forcing grip) until the
     # filament_drive/release to reduce selector movement
-    def select_gate(self, gate):
-        super().select_gate(gate)
+    def _select_gate(self, lgate):
+        super()._select_gate(lgate)
 
         if gate != self.mmu.gate_selected:
             with self.mmu.wrap_action(ACTION_SELECTING):
                 if self.mmu_unit.filament_always_gripped:
                     self._grip(self.local_gate(gate))
 
-    def restore_gate(self, gate):
+    def _restore_gate(self, lgate):
         """
         Restore selector position/grip state based on last saved gate position.
 
@@ -175,7 +175,7 @@ class RotarySelector(PhysicalSelector):
         and infers grip vs release based on whether the restored gate matches the
         selected gate.
         """
-        super().select_gate(gate)
+        super()._restore_gate(lgate)
 
         gate_pos = self.var_manager.get(VARS_MMU_SELECTOR_GATE_POS, None, namespace=self.mmu_unit.name)
         if gate_pos is not None:
