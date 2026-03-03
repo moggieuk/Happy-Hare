@@ -197,10 +197,10 @@ class MmuLedManager:
                     available = lambda effect, enabled : ("'%s'" % str(effect)) if enabled else "unavailable"
                     msg += "\nUnit %s LEDs (%s)\n" % (unit, ("enabled" if enabled else "disabled"))
                     msg += "  Animation: %s\n" % ("enabled" if animation else "disabled")
-                    msg += "  Default exit effect: %s\n" % available(exit_effect, leds.get_status()['exit'])
-                    msg += "  Default entry effect: %s\n" % available(entry_effect, leds.get_status()['entry'])
-                    msg += "  Default status effect: %s\n" % available(status_effect, leds.get_status()['status'])
-                    msg += "  Default logo effect: %s\n" % available(logo_effect, leds.get_status()['logo'])
+                    msg += "  Exit effect: %s\n" % available(exit_effect, leds.get_status()['exit'])
+                    msg += "  Entry effect: %s\n" % available(entry_effect, leds.get_status()['entry'])
+                    msg += "  Status effect: %s\n" % available(status_effect, leds.get_status()['status'])
+                    msg += "  Logo effect: %s\n" % available(logo_effect, leds.get_status()['logo'])
             else:
                 msg += "No LEDs configured on MMU unit %d" % unit
         self.mmu.log_always(msg)
