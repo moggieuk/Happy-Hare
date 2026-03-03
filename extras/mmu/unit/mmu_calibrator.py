@@ -179,28 +179,31 @@ class MmuCalibrator:
 
 
     # Update bowden calibration for current gate and clog_detection if not yet calibrated
+    # Note: gate is the logical gate so important to convert to local per-unit lgate but report gate in messages
     def update_bowden_length(self, length, gate=None, console_msg=False):
         if gate == None: gate = self.mmu.gate_selected
-        if gate < 0:
+        lgate = self.mmu_unit.local_gate(gate)
+
+        if lgate < 0:
             self.mmu.log_debug("Assertion failure: cannot save bowden length for gate: %s" % self.mmu.selected_gate_string(gate))
             return
 
-        all_gates = not self.mmu.mmu_machine.variable_bowden_lengths
+        all_gates = not self.mmu_unit.variable_bowden_lengths
 
         if length < 0: # Reset
             action = "reset"
             if all_gates:
-                self.bowden_lengths = [-1] * self.mmu.num_gates
+                self.bowden_lengths = [-1] * self.mmu_unit.num_gates
             else:
-                self.bowden_lengths[gate] = -1
+                self.bowden_lengths[lgate] = -1
 
         else:
             length = round(length, 1)
             action = "saved"
             if all_gates:
-                self.bowden_lengths = [length] * self.mmu.num_gates
+                self.bowden_lengths = [length] * self.mmu_unit.num_gates
             else:
-                self.bowden_lengths[gate] = length
+                self.bowden_lengths[lgate] = length
 
         msg = "Calibrated bowden length %.1fmm has been %s %s" % (length, action, ("for all gates" if all_gates else "gate %d" % gate))
         if console_msg:
@@ -268,32 +271,43 @@ class MmuCalibrator:
     #  - If the rotation distance is changed for gate with calibrated bowden length then adjust bowden length
 
     # Return current calibrated gear rotation_distance or sensible default
+    # Note: gate is the logical gate so important to convert to local per-unit lgate but report gate in messages
     def get_gear_rd(self, gate=None):
         if gate == None: gate = self.mmu.gate_selected
+        lgate = self.mmu_unit.local_gate(gate)
 
-        if gate < 0:
+        if lgate < 0:
             rd = self.default_rotation_distances[0]
         else:
-            rd = self.rotation_distances[gate if gate >= 0 and self.mmu.mmu_unit().variable_rotation_distances else 0]
+            rd = self.rotation_distances[lgate if lgate >= 0 and self.mmu.mmu_unit().variable_rotation_distances else 0]
 
         if rd <= 0:
-            rd = self.default_rotation_distances[gate]
+            rd = self.default_rotation_distances[lgate]
             self.mmu.log_debug("Gate %d not calibrated, falling back to default rotation_distance: %.4f" % (gate, rd))
 
         return rd
 
 
     # Set the active gear stepper rotation distance # PAUL belong in this module?
-    def set_gear_rotation_distance(self, rd):
-        if rd:
-            self.mmu.log_trace("Setting gear motor rotation distance: %.4f" % rd)
-            if self.gear_rail.steppers:
-                self.gear_rail.steppers[0].set_rotation_distance(rd)
+    # Note: gate is the logical gate so important to convert to local per-unit lgate but report gate in messages
+    def set_gear_rotation_distance(self, rd, gate=None):
+        if gate == None: gate = self.mmu.gate_selected
+        lgate = self.mmu_unit.local_gate(gate)
+
+        if rd and lgate >= 0:
+            self.mmu.log_trace("Setting gate %d gear motor rotation distance: %.4f" % (gate, rd))
+            self.mmu_unit.gear_stepper_obj(lgate).set_rotation_distance(rd)
+# PAUL replaced this with line above. Modify elsewhere in file if it works
+#            if self.gear_rail.steppers:
+#                self.gear_rail.steppers[0].set_rotation_distance(rd)
 
 
     # Save rotation_distance for gate (and associated gates) adjusting any calibrated bowden length
+    # Note: gate is the logical gate so important to convert to local per-unit lgate but report gate in messages
     def update_gear_rd(self, rd, gate=None, console_msg=False):
         if gate == None: gate = self.mmu.gate_selected
+        lgate = self.mmu_unit.local_gate(gate)
+
         if gate < 0:
             self.mmu.log_debug("Assertion failure: cannot save gear rotation_distance for gate: %d" % gate)
             return
@@ -306,25 +320,25 @@ class MmuCalibrator:
 
         if rd < 0:
             if all_gates:
-                self.rotation_distances = [-1] * self.mmu.num_gates
+                self.rotation_distances = [-1] * self.mmu_unit.num_gates
             else:
                 self.rotation_distances[gate] = -1
 
             self.mmu.log_always("Gear rotation distance calibration has been reset for %s" % ("all gates" if all_gates else "gate %d" % gate))
 
         else:
-            prev_rd = self.get_gear_rd(gate)
+            prev_rd = self.get_gear_rd(lgate)
             rd = round(rd, 4)
 
             if all_gates:
-                self.rotation_distances = [rd] * self.mmu.num_gates
-                updated_gates = list(range(self.mmu.num_gates))
+                self.rotation_distances = [rd] * self.mmu_unit.num_gates
+                updated_gates = list(range(self.mmu_unit.num_gates))
             else:
-                self.rotation_distances[gate] = rd
-                updated_gates = [gate]
+                self.rotation_distances[lgate] = rd
+                updated_gates = [lgate]
 
             # Adjust calibrated bowden lengths
-            for g in updated_gates if self.mmu.mmu_machine.variable_bowden_lengths else [gate]:
+            for g in updated_gates if self.mmu_unit.variable_bowden_lengths else [lgate]:
                 prev_bowden = self.bowden_lengths[g] # Must get raw value
                 if prev_bowden > 0: # Is calibrated
                     new_bl = prev_bowden * (prev_rd / rd) # Adjust for same effective calibrated distance
@@ -544,7 +558,7 @@ class MmuCalibrator:
 
         finally:
             if mean == 0:
-                self.mmu._set_filament_pos_state(self.mmu.FILAMENT_POS_UNKNOWN)
+                self.mmu._set_filament_pos_state(FILAMENT_POS_UNKNOWN)
 
 
     # Automatically calibrate the rotation_distance for gate>0 using encoder measurements and gate 0 as reference
@@ -592,7 +606,7 @@ class MmuCalibrator:
                 else:
                     self.mmu.log_always("Calibration ignored because it is not considered valid (>20% difference from gate 0)")
             self.mmu._unload_gate()
-            self.mmu._set_filament_pos_state(self.mmu.FILAMENT_POS_UNLOADED)
+            self.mmu._set_filament_pos_state(FILAMENT_POS_UNLOADED)
         except MmuError as ee:
             # Add some more context to the error and re-raise
             raise MmuError("Calibration for gate %d failed. Aborting, because:\n%s" % (gate, str(ee)))

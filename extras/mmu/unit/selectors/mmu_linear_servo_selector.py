@@ -54,12 +54,20 @@ class LinearServoSelector(LinearSelector):
         super().__init__(config, mmu_unit, params)
         self.servo = LinearSelectorServo(config, mmu_unit, self)
 
+    # Selector "Interface" methods ---------------------------------------------
+
     def handle_connect(self):
         super().handle_connect()
+        logging.info("PAUL: =========== handle_connect: LinearServoSelector")
         self.servo.handle_connect()
 
-    def reinit(self):
-        self.servo.reinit()
+    def handle_ready(self):
+        super().handle_ready()
+        logging.info("PAUL: =========== handle_ready: LinearServoSelector")
+
+    def handle_disconnect(self):
+        super().handle_disconnect()
+        logging.info("PAUL: =========== handle_disconnect: LinearServoSelector")
 
     def filament_drive(self, buzz_gear=True):
         return self.servo.servo_down(buzz_gear=buzz_gear)
@@ -107,7 +115,7 @@ class LinearServoSelector(LinearSelector):
 
 
 
-# Servo states
+# Servo states for 3-position grip implementation (allows for separate "move" position)
 SERVO_MOVE_STATE      = FILAMENT_HOLD_STATE
 SERVO_DOWN_STATE      = FILAMENT_DRIVE_STATE
 SERVO_UP_STATE        = FILAMENT_RELEASE_STATE
@@ -149,9 +157,9 @@ class LinearSelectorServo:
         # Register GCODE commands specific to this module
         selector.register_mux_command('MMU_SERVO', self.cmd_MMU_SERVO, desc=self.cmd_MMU_SERVO_help)
 
-        self.reinit()
+        self._reinit()
 
-    def reinit(self):
+    def _reinit(self):
         self.servo_state = SERVO_UNKNOWN_STATE
         self.servo_angle = SERVO_UNKNOWN_STATE
 
@@ -162,7 +170,7 @@ class LinearSelectorServo:
         Merges any persisted VARS_MMU_SERVO_ANGLES values into the configured
         servo angle map.
         """
-        logging.info("PAUL: +++++++++++++++++++++ : handle_connect: LinearSelectorServo")
+        logging.info("PAUL: =========== handle_connect: LinearSelectorServo")
         self.mmu = self.mmu_unit.mmu_machine.mmu_controller # Shared MMU controller class
         self.var_manager = self.mmu_machine.var_manager
 
@@ -173,6 +181,7 @@ class LinearSelectorServo:
             self.servo_angles.update(servo_angles)
         except Exception as e:
             raise self.config.error("Exception whilst parsing servo angles from 'mmu_vars.cfg': %s" % str(e))
+
 
     cmd_MMU_SERVO_help = "Move MMU servo to position specified position or angle"
     cmd_MMU_SERVO_param_help = (
@@ -328,7 +337,7 @@ class LinearSelectorServo:
     def disable_motors(self):
         self.servo_move()
         self.servo_off()
-        self.reinit() # Reset state
+        self._reinit() # Reset state
 
     def enable_motors(self):
         self.servo_move()

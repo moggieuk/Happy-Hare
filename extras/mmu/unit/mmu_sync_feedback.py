@@ -96,7 +96,7 @@ class MmuSyncFeedback:
     # Sync feedback manager public access...
     #
 
-    def set_default_rd(self):
+    def set_default_rd(self): # PAUL better to call this set_starting_rd()
         """
         Ensure correct starting rotation distance
         """

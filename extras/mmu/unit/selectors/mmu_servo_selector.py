@@ -53,7 +53,6 @@ class ServoSelector(PhysicalSelector):
         super().__init__(config, mmu_unit, params)
         self.is_homed = True
 
-        self.servo_state = FILAMENT_UNKNOWN_STATE
         self.servo_bypass_angle = -1
 
         # Get hardware
@@ -77,10 +76,9 @@ class ServoSelector(PhysicalSelector):
         self.register_mux_command('MMU_GRIP', self.cmd_MMU_GRIP, desc=self.cmd_MMU_GRIP_help)
         self.register_mux_command('MMU_RELEASE', self.cmd_MMU_RELEASE, desc=self.cmd_MMU_RELEASE_help)
 
-    # Selector "Interface" methods ---------------------------------------------
+        self._reinit()
 
-    def reinit(self):
-        self.servo_state = FILAMENT_UNKNOWN_STATE
+    # Selector "Interface" methods ---------------------------------------------
 
     def handle_connect(self):
         """
@@ -156,6 +154,11 @@ class ServoSelector(PhysicalSelector):
         if not self.mmu_unit.filament_always_gripped:
             self._grip(self.local_gate(self.mmu.gate_selected), release=True)
         return 0. # Fake encoder movement
+
+    # --------------------------------------------------------------------------
+
+    def _reinit(self):
+        self.servo_state = FILAMENT_UNKNOWN_STATE
 
     # Common logic for servo manipulation
     def _grip(self, gate, release=False):

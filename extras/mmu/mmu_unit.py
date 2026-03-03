@@ -645,11 +645,11 @@ class MmuUnit:
         lgate = self.local_gate(gate, True)
         return self.mmu_gear_names[lgate]
 
-    def gear_stepper(self, gate):
+    def gear_stepper_obj(self, gate):
         lgate = self.local_gate(gate, True)
         return self.mmu_gear_steppers[lgate]
 
-    def gear_tmc(self, gate):
+    def gear_tmc_obj(self, gate):
         lgate = self.local_gate(gate, True)
         return self.mmu_gear_tmcs[lgate]
 
@@ -661,10 +661,10 @@ class MmuUnit:
     def extruder_name(self):
         return self.extruder_name
 
-    def extruder_stepper(self):
+    def extruder_stepper_obj(self):
         return self._extruder_stepper
 
-    def extruder_tmc(self):
+    def extruder_tmc_obj(self):
         return self._extruder_tmc
 
     def extruder_default_current(self):

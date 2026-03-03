@@ -4692,13 +4692,13 @@ class MmuController:
                 if homing_move != 0:
                     trig_pos = [0., 0., 0., 0.]
                     hmove = HomingMove(self.printer, endstops, self.mmu_toolhead())
-                    init_ext_mcu_pos = self.mmu_toolhead().extruder_stepper().stepper.get_mcu_position() # For non-homing extruder or if extruder not on gear rail
+                    init_ext_mcu_pos = self.mmu_toolhead().extruder_stepper_obj().stepper.get_mcu_position() # For non-homing extruder or if extruder not on gear rail
                     init_pos = pos[1]
                     pos[1] += dist
                     for _ in range(self.p.canbus_comms_retries):  # HACK: We can repeat because homing move
                         got_comms_timeout = False # HACK: Logic to try to mask CANbus timeout issues
                         try:
-                            #initial_mcu_pos = self.mmu_toolhead().extruder_stepper().stepper.get_mcu_position()
+                            #initial_mcu_pos = self.mmu_toolhead().extruder_stepper_obj().stepper.get_mcu_position()
                             #init_pos = pos[1]
                             #pos[1] += dist
                             with self.wrap_accel(accel):
@@ -4721,7 +4721,7 @@ class MmuController:
                             homed = False
                         finally:
                             halt_pos = self.mmu_toolhead().get_position()
-                            ext_actual = (self.mmu_toolhead().extruder_stepper().stepper.get_mcu_position() - init_ext_mcu_pos) * self.mmu_toolhead().extruder_stepper().stepper.get_step_dist()
+                            ext_actual = (self.mmu_toolhead().extruder_stepper_obj().stepper.get_mcu_position() - init_ext_mcu_pos) * self.mmu_toolhead().extruder_stepper_obj().stepper.get_step_dist()
 
                             # Support setup where a non-homing extruder is being used
                             if motor == "extruder" and not self.unit().homing_extruder:
@@ -5377,7 +5377,7 @@ class MmuController:
         if gate is None: gate = self.gate_selected
         if gate < 0: return current_percent
         if not (0 < percent < 200): return current_percent
-        if self.mmu_unit(gate).gear_tmc(gate) is None: return current_percent
+        if self.mmu_unit(gate).gear_tmc_obj(gate) is None: return current_percent
         if percent == self.gear_run_current_percent: return current_percent
           
         sname = self.mmu_unit(gate).gear_name(gate)
@@ -5405,7 +5405,7 @@ class MmuController:
         current_percent = self.extruder_run_current_percent
 
         if not (0 < percent < 200): return current_percent
-        if self.mmu_unit().extruder_tmc is None: return current_percent
+        if self.mmu_unit().extruder_tmc_obj() is None: return current_percent
         if percent == self.extruder_run_current_percent: return current_percent
 
         sname = self.mmu_unit().extruder_name()

@@ -124,6 +124,7 @@ class LinearSelector(PhysicalSelector):
         selector "touch" movement is available.
         """
         super().handle_connect()
+        logging.info("PAUL: =========== handle_connect: LinearSelector")
 
         self.selector_rail = self.mmu_toolhead.get_kinematics().rails[0]
         self.selector_stepper = self.selector_rail.steppers[0]
@@ -173,6 +174,14 @@ class LinearSelector(PhysicalSelector):
         lst = lst[:size]
         lst.extend([default_value] * (size - len(lst)))
         return lst
+
+    def handle_ready(self):
+        super().handle_ready()
+        logging.info("PAUL: =========== handle_ready: LinearSelector")
+
+    def handle_disconnect(self):
+        super().handle_disconnect()
+        logging.info("PAUL: =========== handle_disconnect: LinearSelector")
 
     def home(self, force_unload = None):
         """
@@ -330,7 +339,7 @@ class LinearSelector(PhysicalSelector):
         try:
             with self.mmu.wrap_sync_gear_to_extruder():
                 self.mmu.calibrating = True
-#PAUL why?                self.mmu.reinit()
+#PAUL why?                self.mmu.reinit() # PAUL check on this
                 self.filament_hold_move()
                 successful = False
                 if gate is None:

@@ -90,11 +90,8 @@ class BaseSelector:
         if cmd not in gcode.ready_gcode_handlers:
             gcode.register_command(cmd, func, desc=desc)
 
-    def reinit(self):
-        pass
-
     def handle_connect(self):
-        logging.info("PAUL: handle_connect: BaseSelector")
+        logging.info("PAUL: =========== handle_connect: BaseSelector")
         self.mmu = self.mmu_machine.mmu_controller # Shared MMU controller class
         self.var_manager = self.mmu_machine.var_manager
         self.calibrator = self.mmu_unit.calibrator
@@ -218,14 +215,27 @@ class PhysicalSelector(BaseSelector, object):
         # Register GCODE commands
         self.register_mux_command('MMU_SOAKTEST_SELECTOR', self.cmd_MMU_SOAKTEST_SELECTOR, desc=self.cmd_MMU_SOAKTEST_SELECTOR_help)
 
+    # Selector "Interface" methods ---------------------------------------------
+
     def handle_connect(self):
         super().handle_connect() # PAUL
+        logging.info("PAUL: =========== handle_connect: PhysicalSelector")
+
+    def handle_ready(self):
+        super().handle_ready() # PAUL
+        logging.info("PAUL: =========== handle_ready: PhysicalSelector")
+
+    def handle_disconnect(self):
+        super().handle_disconnect() # PAUL
+        logging.info("PAUL: =========== handle_disconnect: PhysicalSelector")
 
     def _select_gate(self, lgate):
         super()._select_gate(lgate)
 
     def _restore_gate(self, lgate):
         super()._restore_gate(lgate)
+
+    # --------------------------------------------------------------------------
 
     cmd_MMU_SOAKTEST_SELECTOR_help = "Soak test of selector movement"
     cmd_MMU_SOAKTEST_SELECTOR_param_help = (
@@ -313,7 +323,16 @@ class VirtualSelector(BaseSelector):
 
     def handle_connect(self):
         super().handle_connect()
+        logging.info("PAUL: =========== handle_connect: VirtualSelector")
         self.calibrator.mark_calibrated(CALIBRATED_SELECTOR)
+
+    def handle_ready(self):
+        super().handle_ready() # PAUL
+        logging.info("PAUL: =========== handle_ready: VirtualSelector")
+
+    def handle_disconnect(self):
+        super().handle_disconnect() # PAUL
+        logging.info("PAUL: =========== handle_disconnect: VirtualSelector")
 
     def _select_gate(self, lgate):
         super()._select_gate(lgate)

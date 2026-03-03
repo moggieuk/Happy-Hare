@@ -83,10 +83,9 @@ class RotarySelector(PhysicalSelector):
         self.register_mux_command('MMU_GRIP', self.cmd_MMU_GRIP, desc=self.cmd_MMU_GRIP_help)
         self.register_mux_command('MMU_RELEASE', self.cmd_MMU_RELEASE, desc=self.cmd_MMU_RELEASE_help)
 
-    # Selector "Interface" methods ---------------------------------------------
+        self._reinit()
 
-    def reinit(self):
-        self.grip_state = FILAMENT_DRIVE_STATE
+    # Selector "Interface" methods ---------------------------------------------
 
     def handle_connect(self):
         """
@@ -194,6 +193,11 @@ class RotarySelector(PhysicalSelector):
         if not self.mmu_unit.filament_always_gripped:
             self._grip(self.local_gate(self.mmu.gate_selected), release=True)
         return 0. # Fake encoder movement
+
+    # --------------------------------------------------------------------------
+
+    def _reinit(self):
+        self.grip_state = FILAMENT_DRIVE_STATE
 
     # Note there is no separation of gate selection and grip/release with this type of selector
     def _grip(self, gate, release=False):
@@ -324,7 +328,7 @@ class RotarySelector(PhysicalSelector):
 
         try:
             self.mmu.calibrating = True
-            self.mmu.reinit()
+#            self.mmu.reinit() # PAUL why?
             successful = False
 
             if self.has_endstop and not quick:
