@@ -29,7 +29,7 @@ from .mmu_sensor_manager        import MmuSensorManager
 from .mmu_sensor_utils          import MmuRunoutHelper
 from .mmu_led_manager           import MmuLedManager
 from .mmu_environment_manager   import MmuEnvironmentManager
-from .mmu_parameters            import MmuParameters
+from .mmu_machine_parameters    import MmuMachineParameters
 from .unit.mmu_encoder          import (RUNOUT_DISABLED,
                                         RUNOUT_STATIC,
                                         RUNOUT_AUTOMATIC)
