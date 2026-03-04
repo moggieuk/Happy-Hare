@@ -1,6 +1,6 @@
 # Happy Hare MMU Software
 #
-# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
 # Goal: Definition of logical MMU
@@ -16,13 +16,13 @@
 import logging
 
 # Happy Hare imports
-from .mmu                  import mmu_unit
-from .mmu.mmu_unit         import MmuUnit
-from .mmu.mmu_constants    import *
-from .mmu.mmu_utils        import SaveVariableManager
-from .mmu.mmu_sensor_utils import MmuSensorFactory
-from .mmu.mmu_parameters   import MmuParameters
-from .mmu.mmu_controller   import MmuController
+from .mmu                        import mmu_unit
+from .mmu.mmu_unit               import MmuUnit
+from .mmu.mmu_constants          import *
+from .mmu.mmu_utils              import SaveVariableManager
+from .mmu.mmu_sensor_utils       import MmuSensorFactory
+from .mmu.mmu_machine_parameters import MmuMachineParameters
+from .mmu.mmu_controller         import MmuController
 
 
 class MmuMachine:
@@ -133,11 +133,11 @@ class MmuMachine:
         if not config.has_section('mmu_parameters'):
             raise config.error("Expected [mmu_parameters] section not found")
         c = config.getsection('mmu_parameters')
-        self.params = MmuParameters(c, self)
+        self.params = MmuMachineParameters(c, self)
         logging.info("MMU: Read: [%s]" % c.get_name())
 
         # Create master mmu operations
-        self.mmu_controller = MmuController(c, self)
+        self.mmu_controller = self.mmu = MmuController(c, self)
         self.printer.add_object('mmu', self.mmu_controller) # Register with klipper for get_status() under legacy name
         logging.info("MMU: Created MmuController")
 

@@ -240,7 +240,7 @@ class PhysicalSelector(BaseSelector, object):
     cmd_MMU_SOAKTEST_SELECTOR_help = "Soak test of selector movement"
     cmd_MMU_SOAKTEST_SELECTOR_param_help = (
         "MMU_SOAKTEST_SELECTOR: %s\n" % cmd_MMU_SOAKTEST_SELECTOR_help
-        + "UNIT  = #(int) Optional if only one unit fitter to printer\n"
+        + "UNIT  = #(int) Optional if only one unit fitted to printer\n"
         + "LOOP  = #(int) Test loops\n"
         + "GRIP  = [0|1]  Force filament gripping after selection where optional\n"
         + "HOME  = [0|1]  Randomized homing\n"

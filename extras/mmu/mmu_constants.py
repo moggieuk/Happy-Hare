@@ -173,43 +173,43 @@ FILAMENT_DRIVE_STATE   = 1
 FILAMENT_HOLD_STATE    = 2
 
 # mmu_vars.cfg variables
-VARS_MMU_REVISION                 = "mmu__revision"
-VARS_MMU_ENABLE_ENDLESS_SPOOL     = "mmu_state_enable_endless_spool"
-VARS_MMU_ENDLESS_SPOOL_GROUPS     = "mmu_state_endless_spool_groups"
-VARS_MMU_TOOL_TO_GATE_MAP         = "mmu_state_tool_to_gate_map"
-VARS_MMU_GATE_STATUS              = "mmu_state_gate_status"
-VARS_MMU_GATE_MATERIAL            = "mmu_state_gate_material"
-VARS_MMU_GATE_COLOR               = "mmu_state_gate_color"
-VARS_MMU_GATE_FILAMENT_NAME       = "mmu_state_gate_filament_name"
-VARS_MMU_GATE_TEMPERATURE         = "mmu_state_gate_temperature"
-VARS_MMU_GATE_SPOOL_ID            = "mmu_state_gate_spool_id"
-VARS_MMU_GATE_SPEED_OVERRIDE      = "mmu_state_gate_speed_override"
-VARS_MMU_GATE_SELECTED            = "mmu_state_gate_selected"
-VARS_MMU_TOOL_SELECTED            = "mmu_state_tool_selected"
-VARS_MMU_LAST_TOOL                = "mmu_state_last_tool"
-VARS_MMU_FILAMENT_POS             = "mmu_state_filament_pos"
-VARS_MMU_FILAMENT_REMAINING       = "mmu_state_filament_remaining"
-VARS_MMU_FILAMENT_REMAINING_COLOR = "mmu_state_filament_remaining_color"
-VARS_MMU_SWAP_STATISTICS          = "mmu_statistics_swaps"
-VARS_MMU_COUNTERS                 = "mmu_statistics_counters"
+VARS_MMU_REVISION                  = "mmu__revision"
+VARS_MMU_ENABLE_ENDLESS_SPOOL      = "mmu_state_enable_endless_spool"
+VARS_MMU_ENDLESS_SPOOL_GROUPS      = "mmu_state_endless_spool_groups"
+VARS_MMU_TOOL_TO_GATE_MAP          = "mmu_state_tool_to_gate_map"
+VARS_MMU_GATE_STATUS               = "mmu_state_gate_status"
+VARS_MMU_GATE_MATERIAL             = "mmu_state_gate_material"
+VARS_MMU_GATE_COLOR                = "mmu_state_gate_color"
+VARS_MMU_GATE_FILAMENT_NAME        = "mmu_state_gate_filament_name"
+VARS_MMU_GATE_TEMPERATURE          = "mmu_state_gate_temperature"
+VARS_MMU_GATE_SPOOL_ID             = "mmu_state_gate_spool_id"
+VARS_MMU_GATE_SPEED_OVERRIDE       = "mmu_state_gate_speed_override"
+VARS_MMU_GATE_SELECTED             = "mmu_state_gate_selected"
+VARS_MMU_TOOL_SELECTED             = "mmu_state_tool_selected"
+VARS_MMU_LAST_TOOL                 = "mmu_state_last_tool"
+VARS_MMU_FILAMENT_POS              = "mmu_state_filament_pos"
+VARS_MMU_FILAMENT_REMAINING        = "mmu_state_filament_remaining"
+VARS_MMU_FILAMENT_REMAINING_COLOR  = "mmu_state_filament_remaining_color"
+VARS_MMU_SWAP_STATISTICS           = "mmu_statistics_swaps"
+VARS_MMU_COUNTERS                  = "mmu_statistics_counters"
 
 # Per-encoder variables (calibration)
-VARS_MMU_ENCODER_RESOLUTION       = "mmu_encoder_resolution"
-VARS_MMU_CALIB_CLOG_LENGTH        = "mmu_calibration_clog_length"
+VARS_MMU_ENCODER_RESOLUTION        = "mmu_encoder_resolution"
+VARS_MMU_CALIB_ENCODER_CLOG_LENGTH = "mmu_calibration_encoder_clog_length"
 
 # Per-unit variables
-VARS_MMU_GATE_STATISTICS_PREFIX   = "mmu_statistics_gate_"
-VARS_MMU_GEAR_ROTATION_DISTANCES  = "mmu_gear_rotation_distances"
-VARS_MMU_CALIB_BOWDEN_LENGTHS     = "mmu_calibration_bowden_lengths" # Per-gate calibrated bowden lengths
-VARS_MMU_CALIB_BOWDEN_HOME        = "mmu_calibration_bowden_home"    # Was encoder, gate or gear sensor used as reference point
+VARS_MMU_GATE_STATISTICS_PREFIX    = "mmu_statistics_gate_"
+VARS_MMU_GEAR_ROTATION_DISTANCES   = "mmu_gear_rotation_distances"
+VARS_MMU_CALIB_BOWDEN_LENGTHS      = "mmu_calibration_bowden_lengths" # Per-gate calibrated bowden lengths
+VARS_MMU_CALIB_BOWDEN_HOME         = "mmu_calibration_bowden_home"    # Was encoder, gate or gear sensor used as reference point
 
 # Per-unit selector
-VARS_MMU_SELECTOR_OFFSETS         = "mmu_selector_offsets"
-VARS_MMU_SELECTOR_BYPASS          = "mmu_selector_bypass"
-VARS_MMU_SELECTOR_GATE_POS        = "mmu_selector_gate_pos"
-VARS_MMU_SELECTOR_ANGLES          = "mmu_selector_angles"
-VARS_MMU_SELECTOR_BYPASS_ANGLE    = "mmu_selector_bypass_angle"
-VARS_MMU_SERVO_ANGLES             = "mmu_servo_angles"               # Used on linear selectors with servo for filament grip
+VARS_MMU_SELECTOR_OFFSETS          = "mmu_selector_offsets"
+VARS_MMU_SELECTOR_BYPASS           = "mmu_selector_bypass"
+VARS_MMU_SELECTOR_GATE_POS         = "mmu_selector_gate_pos"
+VARS_MMU_SELECTOR_ANGLES           = "mmu_selector_angles"
+VARS_MMU_SELECTOR_BYPASS_ANGLE     = "mmu_selector_bypass_angle"
+VARS_MMU_SERVO_ANGLES              = "mmu_servo_angles"               # Used on linear selectors with servo for filament grip
 
 # Mainsail/Fluid visualization of extruder colors and other attributes
 T_MACRO_COLOR_ALLGATES = 'allgates' # Color from gate map (all tools). Will add spool_id if spoolman is enabled

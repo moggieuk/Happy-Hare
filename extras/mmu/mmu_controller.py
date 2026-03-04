@@ -1,7 +1,7 @@
 # Happy Hare MMU Software
 # Main module
 #
-# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
 # Goal: Main control class for any Klipper based MMU (includes filament driver/gear control)
@@ -40,6 +40,7 @@ from .unit.mmu_calibrator       import (CALIBRATED_GEAR_0,
                                         CALIBRATED_GEAR_RDS,
                                         CALIBRATED_ESSENTIAL,
                                         CALIBRATED_ALL)
+from .commands                  import COMMAND_REGISTRY
 
 
 # Main klipper module
@@ -76,10 +77,10 @@ class MmuController:
         self.gear_run_current_percent = self.extruder_run_current_percent = 100 # Current run percentages
         self._gear_run_current_locked = False # True if gear current is currently locked by wrap_gear_current()
 
-        # Parameters
+        # Parameters shortcut
         self.p = mmu_machine.params
 
-# MOGGIE PAUL FIX ME .. just getting first unit vv 
+# MOGGIE PAUL FIX ME .. just getting first unit vv
         self.extruder_name = self.mmu_unit(0).extruder_name # TODO Idea: This could be per-gate to map gates to different extruders!
 # MOGGIE ^^
 
@@ -159,9 +160,10 @@ class MmuController:
         self.tool_speed_multipliers.extend([1.] * self.num_gates)
 
         # Register GCODE commands ---------------------------------------------------------------------------
+        self.register_commands()
 
         # Logging and Stats
-        self.gcode.register_command('MMU_RESET', self.cmd_MMU_RESET, desc = self.cmd_MMU_RESET_help)
+#PAUL        self.gcode.register_command('MMU_RESET', self.cmd_MMU_RESET, desc = self.cmd_MMU_RESET_help)
         self.gcode.register_command('MMU_STATS', self.cmd_MMU_STATS, desc = self.cmd_MMU_STATS_help)
         self.gcode.register_command('MMU_STATUS', self.cmd_MMU_STATUS, desc = self.cmd_MMU_STATUS_help)
 
@@ -173,9 +175,9 @@ class MmuController:
         # Core MMU functionality
         self.gcode.register_command('MMU', self.cmd_MMU, desc = self.cmd_MMU_help)
         self.gcode.register_command('MMU_LOG', self.cmd_MMU_LOG, desc = self.cmd_MMU_LOG_help)
-        self.gcode.register_command('MMU_HELP', self.cmd_MMU_HELP, desc = self.cmd_MMU_HELP_help)
+#PAUL        self.gcode.register_command('MMU_HELP', self.cmd_MMU_HELP, desc = self.cmd_MMU_HELP_help)
         self.gcode.register_command('MMU_ENCODER', self.cmd_MMU_ENCODER, desc = self.cmd_MMU_ENCODER_help)
-        self.gcode.register_command('MMU_ESPOOLER', self.cmd_MMU_ESPOOLER, desc = self.cmd_MMU_ESPOOLER_help)
+#PAUL        self.gcode.register_command('MMU_ESPOOLER', self.cmd_MMU_ESPOOLER, desc = self.cmd_MMU_ESPOOLER_help)
         self.gcode.register_command('MMU_HOME', self.cmd_MMU_HOME, desc = self.cmd_MMU_HOME_help)
         self.gcode.register_command('MMU_SELECT', self.cmd_MMU_SELECT, desc = self.cmd_MMU_SELECT_help)
         self.gcode.register_command('MMU_SELECT_BYPASS', self.cmd_MMU_SELECT_BYPASS, desc = self.cmd_MMU_SELECT_BYPASS_help) # Alias for MMU_SELECT BYPASS=1
@@ -202,7 +204,7 @@ class MmuController:
         self.gcode.register_command('MMU_TEST_MOVE', self.cmd_MMU_TEST_MOVE, desc = self.cmd_MMU_TEST_MOVE_help)
         self.gcode.register_command('MMU_TEST_HOMING_MOVE', self.cmd_MMU_TEST_HOMING_MOVE, desc = self.cmd_MMU_TEST_HOMING_MOVE_help)
         self.gcode.register_command('MMU_TEST_TRACKING', self.cmd_MMU_TEST_TRACKING, desc=self.cmd_MMU_TEST_TRACKING_help)
-        self.gcode.register_command('MMU_TEST_CONFIG', self.cmd_MMU_TEST_CONFIG, desc = self.cmd_MMU_TEST_CONFIG_help)
+# PAUL        self.gcode.register_command('MMU_TEST_CONFIG', self.cmd_MMU_TEST_CONFIG, desc = self.cmd_MMU_TEST_CONFIG_help)
         self.gcode.register_command('MMU_TEST_RUNOUT', self.cmd_MMU_TEST_RUNOUT, desc = self.cmd_MMU_TEST_RUNOUT_help)
         self.gcode.register_command('MMU_TEST_FORM_TIP', self.cmd_MMU_TEST_FORM_TIP, desc = self.cmd_MMU_TEST_FORM_TIP_help)
         self.gcode.register_command('MMU_TEST_PURGE', self.cmd_MMU_TEST_PURGE, desc = self.cmd_MMU_TEST_PURGE_help)
@@ -285,6 +287,17 @@ class MmuController:
         self.printer.register_event_handler('klippy:disconnect', self.handle_disconnect)
         self.printer.register_event_handler('klippy:ready', self.handle_ready)
 
+    def register_commands(self):
+        """
+        Instantiate all mmu command classes in COMMAND_REGISTRY.
+        """
+        _commands = []
+
+        for name, cls in sorted(COMMAND_REGISTRY.items()):
+            try:
+                _commands.append(cls(self))
+            except Exception:
+                raise self.config.error("Failed to register command class: %s", name)
 
     def _setup_logging(self):
         # Setup background file based logging before logging any messages
@@ -799,7 +812,7 @@ class MmuController:
 
 # PAUL older logic
 #            if self.has_encoder():
-#                cdl = self.var_manager.get(self.VARS_MMU_CALIB_CLOG_LENGTH, None, namespace=self.encoder().name)
+#                cdl = self.var_manager.get(self.VARS_MMU_CALIB_ENCODER_CLOG_LENGTH, None, namespace=self.encoder().name)
 #                if cdl:
 #                    self.encoder().set_clog_detection_length(cdl)
 #                self._disable_runout() # Initially disable clog/runout detection
@@ -2920,101 +2933,101 @@ class MmuController:
         else:
             self._disable_mmu()
 
-    cmd_MMU_HELP_help = "Display the complete set of MMU commands and function"
-    cmd_MMU_HELP_param_help = (
-        "MMU_HELP: %s\n" % cmd_MMU_HELP_help
-        + "ALL       = [0|1]\n"
-        + "TESTING   = [0|1]\n"
-        + "SLICER    = [0|1]\n"
-        + "CALLBACKS = [0|1]\n"
-        + "STEPS     = [0|1]\n"
-        + "CMD       = _command_\n"
-        + "SHOWPARMS = [0|1]\n"
-    )
-    def cmd_MMU_HELP(self, gcmd):
-        self.log_to_file(gcmd.get_commandline())
-        help = bool(gcmd.get_int('HELP', 0, minval=0, maxval=1))
-        testing = gcmd.get_int('TESTING', 0, minval=0, maxval=1)
-        slicer = gcmd.get_int('SLICER', 0, minval=0, maxval=1)
-        callbacks = gcmd.get_int('CALLBACKS', 0, minval=0, maxval=1)
-        steps = gcmd.get_int('STEPS', 0, minval=0, maxval=1)
-        show_all = gcmd.get_int('ALL', 0, minval=0, maxval=1)
-        if show_all:
-            testing = slicer = callback = steps = 1
-        cmd = gcmd.get('CMD', None)
-        show_params = bool(gcmd.get_int('SHOWPARAMS', 0, minval=0, maxval=1))
-
-        msg = "Happy Hare MMU commands:\n"
-        msg += "(use SLICER=1 CALLBACKS=1 TESTING=1 STEPS=1, ALL=1 for subsets (add 'SHOWPARAMS=1' for params). Use 'MMU_HELP CMD=command' or 'command HELP=1' for individual parameter summary)\n"
-        testing_msg = "\nCalibration and testing commands:\n"
-        slicer_msg = "\nPrint start/end or slicer macros (defined in mmu_software.cfg\n"
-        callback_msg = "\nCallbacks (defined in mmu_sequence.cfg, mmu_state.cfg)\n"
-        seq_msg = "\nAdvanced load/unload sequence and steps:\n"
-
-        if help:
-            self.log_always(self.format_help(self.cmd_MMU_HELP_param_help), color=True)
-            return
-
-        command_classes = [self, self.sensor_manager, self.led_manager, self.selector()] # All Happy Hare classes defining 'MMU_*' commands
-        def get_param_help(c):
-            cu = c.upper().lstrip('_')
-            for cls in command_classes:
-                attr_name = 'cmd_%s_param_help' % cu
-                if hasattr(cls, attr_name):
-                    return self.format_help(getattr(cls, attr_name))
-            return ''
-
-        if cmd is not None:
-            param_help = get_param_help(cmd)
-            if param_help:
-                self.log_always(param_help, color=True)
-            elif any(hasattr(cls, 'cmd_%s' % cmd) for cls in command_classes):
-                self.log_always("Sorry, command %s has no parameter help" % cmd)
-            else:
-                self.log_always("Command %s does not exist" % cmd)
-            return
-
-        cmds = list(self.gcode.ready_gcode_handlers.keys())
-        cmds.sort()
-
-        # Logic to partition commands:
-        for c in cmds:
-            cu = c.upper()
-            d = self.gcode.gcode_help.get(c, "n/a")
-
-            if (c.startswith("MMU_START") or c.startswith("MMU_END") or c in ["MMU_UPDATE_HEIGHT"]) and c not in ["MMU_ENDLESS_SPOOL"]:
-                if show_params and get_param_help(cu):
-                    slicer_msg += get_param_help(cu)
-                else:
-                    slicer_msg += "%s: %s\n" % (cu, d) # Print start/end macros
-
-            elif c.startswith("MMU") and not c.startswith("MMU__"):
-                if any(substring in c for substring in ["_CALIBRATE", "_TEST", "_SOAKTEST", "MMU_COLD_PULL"]):
-                    if show_params and get_param_help(cu):
-                        testing_msg += get_param_help(cu)
-                    else:
-                        testing_msg += "%s: %s\n" % (cu, d) # Testing and calibration commands
-                else:
-                    if c not in ["MMU_CHANGE_TOOL_STANDALONE", "MMU_CHECK_GATES", "MMU_REMAP_TTG", "MMU_FORM_TIP"]: # Remove aliases
-                        if show_params and get_param_help(cu):
-                            msg += get_param_help(cu)
-                        else:
-                            msg += self.format_help("%s: %s" % (cu, d)) # Base command
-
-            elif c.startswith("_MMU"):
-                if c.startswith("_MMU_STEP") or c in ["_MMU_M400", "_MMU_LOAD_SEQUENCE", "_MMU_UNLOAD_SEQUENCE"]:
-                    if show_params and get_param_help(cu):
-                        seq_msg += get_param_help(cu)
-                    else:
-                        seq_msg += "%s: %s\n" % (cu, d) # Invidual sequence step commands
-                elif c.startswith("_MMU_PRE_") or c.startswith("_MMU_POST_") or c in ["_MMU_ACTION_CHANGED", "_MMU_EVENT", "_MMU_PRINT_STATE_CHANGED"]:
-                    callback_msg += "%s: %s\n" % (cu, d) # Callbacks
-
-        msg += slicer_msg if slicer else ""
-        msg += callback_msg if callbacks else ""
-        msg += testing_msg if testing else ""
-        msg += seq_msg if steps else ""
-        self.log_always(msg, color=True)
+#    cmd_MMU_HELP_help = "Display the complete set of MMU commands and function"
+#    cmd_MMU_HELP_param_help = (
+#        "MMU_HELP: %s\n" % cmd_MMU_HELP_help
+#        + "ALL       = [0|1]\n"
+#        + "TESTING   = [0|1]\n"
+#        + "SLICER    = [0|1]\n"
+#        + "CALLBACKS = [0|1]\n"
+#        + "STEPS     = [0|1]\n"
+#        + "CMD       = _command_\n"
+#        + "SHOWPARMS = [0|1]\n"
+#    )
+#    def cmd_MMU_HELP(self, gcmd):
+#        self.log_to_file(gcmd.get_commandline())
+#        help = bool(gcmd.get_int('HELP', 0, minval=0, maxval=1))
+#        testing = gcmd.get_int('TESTING', 0, minval=0, maxval=1)
+#        slicer = gcmd.get_int('SLICER', 0, minval=0, maxval=1)
+#        callbacks = gcmd.get_int('CALLBACKS', 0, minval=0, maxval=1)
+#        steps = gcmd.get_int('STEPS', 0, minval=0, maxval=1)
+#        show_all = gcmd.get_int('ALL', 0, minval=0, maxval=1)
+#        if show_all:
+#            testing = slicer = callback = steps = 1
+#        cmd = gcmd.get('CMD', None)
+#        show_params = bool(gcmd.get_int('SHOWPARAMS', 0, minval=0, maxval=1))
+#
+#        msg = "Happy Hare MMU commands:\n"
+#        msg += "(use SLICER=1 CALLBACKS=1 TESTING=1 STEPS=1, ALL=1 for subsets (add 'SHOWPARAMS=1' for params). Use 'MMU_HELP CMD=command' or 'command HELP=1' for individual parameter summary)\n"
+#        testing_msg = "\nCalibration and testing commands:\n"
+#        slicer_msg = "\nPrint start/end or slicer macros (defined in mmu_software.cfg\n"
+#        callback_msg = "\nCallbacks (defined in mmu_sequence.cfg, mmu_state.cfg)\n"
+#        seq_msg = "\nAdvanced load/unload sequence and steps:\n"
+#
+#        if help:
+#            self.log_always(self.format_help(self.cmd_MMU_HELP_param_help), color=True)
+#            return
+#
+#        command_classes = [self, self.sensor_manager, self.led_manager, self.selector()] # All Happy Hare classes defining 'MMU_*' commands
+#        def get_param_help(c):
+#            cu = c.upper().lstrip('_')
+#            for cls in command_classes:
+#                attr_name = 'cmd_%s_param_help' % cu
+#                if hasattr(cls, attr_name):
+#                    return self.format_help(getattr(cls, attr_name))
+#            return ''
+#
+#        if cmd is not None:
+#            param_help = get_param_help(cmd)
+#            if param_help:
+#                self.log_always(param_help, color=True)
+#            elif any(hasattr(cls, 'cmd_%s' % cmd) for cls in command_classes):
+#                self.log_always("Sorry, command %s has no parameter help" % cmd)
+#            else:
+#                self.log_always("Command %s does not exist" % cmd)
+#            return
+#
+#        cmds = list(self.gcode.ready_gcode_handlers.keys())
+#        cmds.sort()
+#
+#        # Logic to partition commands:
+#        for c in cmds:
+#            cu = c.upper()
+#            d = self.gcode.gcode_help.get(c, "n/a")
+#
+#            if (c.startswith("MMU_START") or c.startswith("MMU_END") or c in ["MMU_UPDATE_HEIGHT"]) and c not in ["MMU_ENDLESS_SPOOL"]:
+#                if show_params and get_param_help(cu):
+#                    slicer_msg += get_param_help(cu)
+#                else:
+#                    slicer_msg += "%s: %s\n" % (cu, d) # Print start/end macros
+#
+#            elif c.startswith("MMU") and not c.startswith("MMU__"):
+#                if any(substring in c for substring in ["_CALIBRATE", "_TEST", "_SOAKTEST", "MMU_COLD_PULL"]):
+#                    if show_params and get_param_help(cu):
+#                        testing_msg += get_param_help(cu)
+#                    else:
+#                        testing_msg += "%s: %s\n" % (cu, d) # Testing and calibration commands
+#                else:
+#                    if c not in ["MMU_CHANGE_TOOL_STANDALONE", "MMU_CHECK_GATES", "MMU_REMAP_TTG", "MMU_FORM_TIP"]: # Remove aliases
+#                        if show_params and get_param_help(cu):
+#                            msg += get_param_help(cu)
+#                        else:
+#                            msg += self.format_help("%s: %s" % (cu, d)) # Base command
+#
+#            elif c.startswith("_MMU"):
+#                if c.startswith("_MMU_STEP") or c in ["_MMU_M400", "_MMU_LOAD_SEQUENCE", "_MMU_UNLOAD_SEQUENCE"]:
+#                    if show_params and get_param_help(cu):
+#                        seq_msg += get_param_help(cu)
+#                    else:
+#                        seq_msg += "%s: %s\n" % (cu, d) # Invidual sequence step commands
+#                elif c.startswith("_MMU_PRE_") or c.startswith("_MMU_POST_") or c in ["_MMU_ACTION_CHANGED", "_MMU_EVENT", "_MMU_PRINT_STATE_CHANGED"]:
+#                    callback_msg += "%s: %s\n" % (cu, d) # Callbacks
+#
+#        msg += slicer_msg if slicer else ""
+#        msg += callback_msg if callbacks else ""
+#        msg += testing_msg if testing else ""
+#        msg += seq_msg if steps else ""
+#        self.log_always(msg, color=True)
 
     cmd_MMU_ENCODER_help = "Display encoder position and stats or enable/disable runout detection logic in encoder"
     def cmd_MMU_ENCODER(self, gcmd):
@@ -3035,148 +3048,148 @@ class MmuController:
         self.log_info(self._get_encoder_summary(detail=True))
 
 
-    cmd_MMU_ESPOOLER_help = "Direct control of espooler or display of current status"
-    cmd_MMU_ESPOOLER_param_help = (
-        "MMU_ESPOOLER: %s\n" % cmd_MMU_ESPOOLER_help
-        + "ALLOFF = [0|1] Quick way to turn all espoolers off\n"
-        + "TRIGGER = [0|1] Fire in-print trigger for testing\n"
-        + "BURST = [0|1] Jog in direction of OPERATION (assist|rewind) using configured burst duration and power\n"
-        + "DURATION = [0-10] Override duration of PWM signal (seconds) for burst operations\n"
-        + "GATE = g Specify gate to operate on (defaults to current gate)\n"
-        + "LOOSEN = [0|1] Quick way to loosen filament on spool\n"
-        + "OPERATION = [assist|off|print|rewind] Set espooler operation mode\n"
-        + "POWER = [0-100] Override default % power to apply to espooler motor\n"
-        + "QUIET = [0|1] Used to suppress console/log output\n"
-        + "RESET = [0|1] Turn of in-print assist\n"
-        + "TIGHTEN = [0|1] Quick way to tighten filament on spool\n"
-        + "(no parameters for status report)"
-    )
-    def cmd_MMU_ESPOOLER(self, gcmd):
-        self.log_to_file(gcmd.get_commandline())
-        if self.check_if_disabled(): return
-
-        if gcmd.get_int('HELP', 0, minval=0, maxval=1):
-            self.log_always(self.format_help(self.cmd_MMU_ESPOOLER_param_help), color=True)
-            return
-
-        if self._check_has_espooler(): return
-
-        operation = gcmd.get('OPERATION', None)
-        burst = gcmd.get_int('BURST', 0, minval=0, maxval=1)
-        tighten = gcmd.get_int('TIGHTEN', 0, minval=0, maxval=1)
-        loosen = gcmd.get_int('LOOSEN', 0, minval=0, maxval=1)
-        quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
-        alloff = bool(gcmd.get_int('ALLOFF', 0, minval=0, maxval=1))
-        reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
-        trigger = bool(gcmd.get_int('TRIGGER', 0, minval=0, maxval=1))
-        gate = gcmd.get_int('GATE', None, minval=0, maxval=self.num_gates - 1)
-
-        if reset:
-            # Turn off in-print assist mode
-            self.espooler.reset_print_assist_mode()
-
-        if trigger:
-            # Mimick in-print assist trigger
-            # No gate specified = similar to extruder movement
-            # With gate specified = similar to filament tension trigger
-            self.espooler.advance(gate)
-
-        if alloff:
-            for gate in range(self.num_gates):
-                self.espooler.set_operation(gate, 0, ESPOOLER_OFF)
-
-        elif tighten or loosen:
-            if gate is None:
-                gate = self.gate_selected
-            if gate < 0:
-                raise gcmd.error("Invalid gate")
-
-            power = self.mmu_unit().p.espooler_assist_burst_power if loosen else self.mmu_unit().p.espooler_rewind_burst_power
-            duration = self.mmu_unit().p.espooler_assist_burst_duration if loosen else self.mmu_unit().p.espooler_rewind_burst_duration
-            operation = ESPOOLER_ASSIST if loosen else ESPOOLER_REWIND
-            self.printer.send_event("mmu:espooler_burst", gate, power / 100., duration, operation)
-
-        elif operation is not None:
-            operation = operation.lower()
-
-            if gate is None:
-                gate = self.gate_selected
-            if gate < 0:
-                raise gcmd.error("Invalid gate")
-
-            # Determine power
-            if burst:
-                default_power = self.mmu_unit().p.espooler_assist_burst_power if operation == ESPOOLER_ASSIST else self.mmu_unit().p.espooler_rewind_burst_power
-            else:
-                default_power = self.mmu_unit().p.espooler_printing_power if operation == ESPOOLER_PRINT else 50
-            power = gcmd.get_int('POWER', default_power, minval=0, maxval=100) if operation != ESPOOLER_OFF else 0
-
-            if burst:
-                default_duration = self.mmu_unit().p.espooler_assist_burst_duration if operation == ESPOOLER_ASSIST else self.mmu_unit().p.espooler_rewind_burst_duration
-                duration = gcmd.get_float('DURATION', default_duration, above=0., maxval=10.)
-
-                if operation in [ESPOOLER_ASSIST, ESPOOLER_REWIND]:
-                    self.log_info("Espooler burst on gate %d for %.1fs at %d%% power in %s direction" % (gate, duration, power, operation))
-                    self.printer.send_event("mmu:espooler_burst", gate, power / 100., duration, operation)
-                else:
-                    self.log_error("Must specify 'assist' or 'rewind' operation for burst")
-
-            elif operation not in ESPOOLER_OPERATIONS:
-                raise gcmd.error("Invalid operation. Options are: %s" % ", ".join(ESPOOLER_OPERATIONS))
-
-            elif operation == ESPOOLER_PRINT:
-                if self.is_printing():
-                    self.log_warning("Cannot set in-print assist mode for non selected gate while printing")
-                else:
-                    if gate != self.gate_selected:
-                        self.log_warning("In-print assist mode set for non selected gate - for testing only")
-                    self.espooler.set_operation(gate, power / 100, ESPOOLER_PRINT)
-
-            elif operation != ESPOOLER_OFF:
-                self.espooler.set_operation(gate, power / 100, operation)
-            else:
-                self.espooler.set_operation(gate, 0, ESPOOLER_OFF)
-
-        if not quiet:
-            msg = ""
-            for gate in range(self.num_gates):
-                if msg:
-                    msg += "\n"
-                msg += "{}".format(gate).ljust(2, UI_SPACE) + ": "
-                if self.has_espooler():
-                    operation, value = self.espooler.get_operation(gate)
-                    burst = ""
-                    if operation == ESPOOLER_PRINT and value == 0:
-                        burst = " [assist for %.1fs at %d%% power " % (self.mmu_unit().p.espooler_assist_burst_duration, self.mmu_unit().p.espooler_assist_burst_power)
-                        if self.mmu_unit().p.espooler_assist_burst_trigger:
-                            burst += "on trigger, max %d bursts]" % self.mmu_unit().p.espooler_assist_burst_trigger_max
-                        else:
-                            burst += "every %.1fmm of extruder movement]" % self.mmu_unit().p.espooler_assist_extruder_move_length
-                    msg += "{}".format(operation).ljust(7, UI_SPACE) + " (%d%%)%s" % (round(value * 100), burst)
-                else:
-                    msg += "not fitted"
-            self.log_always(msg)
-
-
-    cmd_MMU_RESET_help = "Forget persisted state and re-initialize defaults"
-    def cmd_MMU_RESET(self, gcmd):
-        self.log_to_file(gcmd.get_commandline())
-        if self.check_if_disabled(): return
-        confirm = gcmd.get_int('CONFIRM', 0, minval=0, maxval=1)
-        if confirm != 1:
-            self.log_always("You must re-run and add 'CONFIRM=1' to reset all state back to default")
-            return
-        self.reinit()
-        self._reset_statistics()
-        self._reset_endless_spool()
-        self._reset_ttg_map()
-        self._reset_gate_map()
-        self.var_manager.set(VARS_MMU_GATE_SELECTED, self.gate_selected)
-        self.var_manager.set(VARS_MMU_TOOL_SELECTED, self.tool_selected)
-        self.var_manager.set(VARS_MMU_FILAMENT_POS, self.filament_pos)
-        self.var_manager.write()
-        self.log_always("MMU state reset")
-        self._schedule_mmu_bootup_tasks()
+#    cmd_MMU_ESPOOLER_help = "Direct control of espooler or display of current status"
+#    cmd_MMU_ESPOOLER_param_help = (
+#        "MMU_ESPOOLER: %s\n" % cmd_MMU_ESPOOLER_help
+#        + "ALLOFF = [0|1] Quick way to turn all espoolers off\n"
+#        + "TRIGGER = [0|1] Fire in-print trigger for testing\n"
+#        + "BURST = [0|1] Jog in direction of OPERATION (assist|rewind) using configured burst duration and power\n"
+#        + "DURATION = [0-10] Override duration of PWM signal (seconds) for burst operations\n"
+#        + "GATE = g Specify gate to operate on (defaults to current gate)\n"
+#        + "LOOSEN = [0|1] Quick way to loosen filament on spool\n"
+#        + "OPERATION = [assist|off|print|rewind] Set espooler operation mode\n"
+#        + "POWER = [0-100] Override default % power to apply to espooler motor\n"
+#        + "QUIET = [0|1] Used to suppress console/log output\n"
+#        + "RESET = [0|1] Turn of in-print assist\n"
+#        + "TIGHTEN = [0|1] Quick way to tighten filament on spool\n"
+#        + "(no parameters for status report)"
+#    )
+#    def cmd_MMU_ESPOOLER(self, gcmd):
+#        self.log_to_file(gcmd.get_commandline())
+#        if self.check_if_disabled(): return
+#
+#        if gcmd.get_int('HELP', 0, minval=0, maxval=1):
+#            self.log_always(self.format_help(self.cmd_MMU_ESPOOLER_param_help), color=True)
+#            return
+#
+#        if self._check_has_espooler(): return
+#
+#        operation = gcmd.get('OPERATION', None)
+#        burst = gcmd.get_int('BURST', 0, minval=0, maxval=1)
+#        tighten = gcmd.get_int('TIGHTEN', 0, minval=0, maxval=1)
+#        loosen = gcmd.get_int('LOOSEN', 0, minval=0, maxval=1)
+#        quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
+#        alloff = bool(gcmd.get_int('ALLOFF', 0, minval=0, maxval=1))
+#        reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
+#        trigger = bool(gcmd.get_int('TRIGGER', 0, minval=0, maxval=1))
+#        gate = gcmd.get_int('GATE', None, minval=0, maxval=self.num_gates - 1)
+#
+#        if reset:
+#            # Turn off in-print assist mode
+#            self.espooler.reset_print_assist_mode()
+#
+#        if trigger:
+#            # Mimick in-print assist trigger
+#            # No gate specified = similar to extruder movement
+#            # With gate specified = similar to filament tension trigger
+#            self.espooler.advance(gate)
+#
+#        if alloff:
+#            for gate in range(self.num_gates):
+#                self.espooler.set_operation(gate, 0, ESPOOLER_OFF)
+#
+#        elif tighten or loosen:
+#            if gate is None:
+#                gate = self.gate_selected
+#            if gate < 0:
+#                raise gcmd.error("Invalid gate")
+#
+#            power = self.mmu_unit().p.espooler_assist_burst_power if loosen else self.mmu_unit().p.espooler_rewind_burst_power
+#            duration = self.mmu_unit().p.espooler_assist_burst_duration if loosen else self.mmu_unit().p.espooler_rewind_burst_duration
+#            operation = ESPOOLER_ASSIST if loosen else ESPOOLER_REWIND
+#            self.printer.send_event("mmu:espooler_burst", gate, power / 100., duration, operation)
+#
+#        elif operation is not None:
+#            operation = operation.lower()
+#
+#            if gate is None:
+#                gate = self.gate_selected
+#            if gate < 0:
+#                raise gcmd.error("Invalid gate")
+#
+#            # Determine power
+#            if burst:
+#                default_power = self.mmu_unit().p.espooler_assist_burst_power if operation == ESPOOLER_ASSIST else self.mmu_unit().p.espooler_rewind_burst_power
+#            else:
+#                default_power = self.mmu_unit().p.espooler_printing_power if operation == ESPOOLER_PRINT else 50
+#            power = gcmd.get_int('POWER', default_power, minval=0, maxval=100) if operation != ESPOOLER_OFF else 0
+#
+#            if burst:
+#                default_duration = self.mmu_unit().p.espooler_assist_burst_duration if operation == ESPOOLER_ASSIST else self.mmu_unit().p.espooler_rewind_burst_duration
+#                duration = gcmd.get_float('DURATION', default_duration, above=0., maxval=10.)
+#
+#                if operation in [ESPOOLER_ASSIST, ESPOOLER_REWIND]:
+#                    self.log_info("Espooler burst on gate %d for %.1fs at %d%% power in %s direction" % (gate, duration, power, operation))
+#                    self.printer.send_event("mmu:espooler_burst", gate, power / 100., duration, operation)
+#                else:
+#                    self.log_error("Must specify 'assist' or 'rewind' operation for burst")
+#
+#            elif operation not in ESPOOLER_OPERATIONS:
+#                raise gcmd.error("Invalid operation. Options are: %s" % ", ".join(ESPOOLER_OPERATIONS))
+#
+#            elif operation == ESPOOLER_PRINT:
+#                if self.is_printing():
+#                    self.log_warning("Cannot set in-print assist mode for non selected gate while printing")
+#                else:
+#                    if gate != self.gate_selected:
+#                        self.log_warning("In-print assist mode set for non selected gate - for testing only")
+#                    self.espooler.set_operation(gate, power / 100, ESPOOLER_PRINT)
+#
+#            elif operation != ESPOOLER_OFF:
+#                self.espooler.set_operation(gate, power / 100, operation)
+#            else:
+#                self.espooler.set_operation(gate, 0, ESPOOLER_OFF)
+#
+#        if not quiet:
+#            msg = ""
+#            for gate in range(self.num_gates):
+#                if msg:
+#                    msg += "\n"
+#                msg += "{}".format(gate).ljust(2, UI_SPACE) + ": "
+#                if self.has_espooler():
+#                    operation, value = self.espooler.get_operation(gate)
+#                    burst = ""
+#                    if operation == ESPOOLER_PRINT and value == 0:
+#                        burst = " [assist for %.1fs at %d%% power " % (self.mmu_unit().p.espooler_assist_burst_duration, self.mmu_unit().p.espooler_assist_burst_power)
+#                        if self.mmu_unit().p.espooler_assist_burst_trigger:
+#                            burst += "on trigger, max %d bursts]" % self.mmu_unit().p.espooler_assist_burst_trigger_max
+#                        else:
+#                            burst += "every %.1fmm of extruder movement]" % self.mmu_unit().p.espooler_assist_extruder_move_length
+#                    msg += "{}".format(operation).ljust(7, UI_SPACE) + " (%d%%)%s" % (round(value * 100), burst)
+#                else:
+#                    msg += "not fitted"
+#            self.log_always(msg)
+#
+#
+#    cmd_MMU_RESET_help = "Forget persisted state and re-initialize defaults"
+#    def cmd_MMU_RESET(self, gcmd):
+#        self.log_to_file(gcmd.get_commandline())
+#        if self.check_if_disabled(): return
+#        confirm = gcmd.get_int('CONFIRM', 0, minval=0, maxval=1)
+#        if confirm != 1:
+#            self.log_always("You must re-run and add 'CONFIRM=1' to reset all state back to default")
+#            return
+#        self.reinit()
+#        self._reset_statistics()
+#        self._reset_endless_spool()
+#        self._reset_ttg_map()
+#        self._reset_gate_map()
+#        self.var_manager.set(VARS_MMU_GATE_SELECTED, self.gate_selected)
+#        self.var_manager.set(VARS_MMU_TOOL_SELECTED, self.tool_selected)
+#        self.var_manager.set(VARS_MMU_FILAMENT_POS, self.filament_pos)
+#        self.var_manager.write()
+#        self.log_always("MMU state reset")
+#        self._schedule_mmu_bootup_tasks()
 
 
 #########################################################
@@ -4912,29 +4925,29 @@ class MmuController:
 #
 #        return actual, homed, measured, delta
 
-    # Used to force accelaration override for homing moves 
-    @contextlib.contextmanager  
+    # Used to force accelaration override for homing moves
+    @contextlib.contextmanager
     def wrap_accel(self, accel):
         self.mmu_toolhead().get_kinematics().set_accel_limit(accel)
-        try:                    
+        try:
             yield self
-        finally:            
+        finally:
             self.mmu_toolhead().get_kinematics().set_accel_limit(None)
-                                
+
     # Used to wrap certain unload moves and activate eSpooler. Ensures eSpooler is always stopped
-    @contextlib.contextmanager          
+    @contextlib.contextmanager
     def _wrap_espooler(self, motor, dist, speed, accel, homing_move):
-        self._wait_for_espooler = False     
+        self._wait_for_espooler = False
         espooler_operation = ESPOOLER_OFF
-                                                
-        if self.has_espooler():                 
-            pwm_value = 0                   
+
+        if self.has_espooler():
+            pwm_value = 0
             if abs(dist) >= self.mmu_unit().p.espooler_min_distance and speed > self.mmu_unit().p.espooler_min_stepper_speed:
                 if dist > 0 and ESPOOLER_ASSIST in self.mmu_unit().p.espooler_operations:
                     espooler_operation = ESPOOLER_ASSIST
                 elif dist < 0 and ESPOOLER_REWIND in self.mmu_unit().p.espooler_operations:
                     espooler_operation = ESPOOLER_REWIND
-                            
+
                 if espooler_operation == ESPOOLER_OFF:
                     pwm_value = 0
                 elif speed >= self.mmu_unit().p.espooler_max_stepper_speed:
@@ -4946,11 +4959,11 @@ class MmuController:
             # We want rewind to be faster than assist but never non-functional
             if espooler_operation == ESPOOLER_ASSIST:
                 pwm_value = max(pwm_value * (self.mmu_unit().p.espooler_assist_reduced_speed / 100), self.mmu_unit().p.espooler_printing_power / 100)
-                    
+
             if espooler_operation != ESPOOLER_OFF:
                 self._wait_for_espooler = not homing_move
-                self.espooler.set_operation(self.gate_selected, pwm_value, espooler_operation) 
-        try:        
+                self.espooler.set_operation(self.gate_selected, pwm_value, espooler_operation)
+        try:
             # Note gate_selected doesn't change in this use case, it's just filament movement
             yield self
 
@@ -5355,21 +5368,21 @@ class MmuController:
 
 
     # ---------- TMC Stepper Current Control ----------
-            
+
     @contextlib.contextmanager
     def wrap_gear_current(self, percent=100, reason=""):
-        """     
+        """
             Run block of logic with gear stepper current set to desired percentage and then
             restore to previous setting
-        """ 
+        """
         prev_percent = self._adjust_gear_current(percent=percent, reason=reason)
-        self._gear_run_current_locked = True 
+        self._gear_run_current_locked = True
         try:
             yield self
         finally:
             self._gear_run_current_locked = False
             self._restore_gear_current(percent=prev_percent)
-    
+
     def _adjust_gear_current(self, gate=None, percent=100, reason="", restore=False):
         current_percent = self.gear_run_current_percent
 
@@ -5379,11 +5392,11 @@ class MmuController:
         if not (0 < percent < 200): return current_percent
         if self.mmu_unit(gate).gear_tmc_obj(gate) is None: return current_percent
         if percent == self.gear_run_current_percent: return current_percent
-          
+
         sname = self.mmu_unit(gate).gear_name(gate)
         if restore:
             msg = "Restoring MMU %s run current to %d%% ({}A)" % (sname, percent)
-        else:   
+        else:
             msg = "Modifying MMU %s run current to %d%% ({}A) %s" % (sname, percent, reason)
         target_current = (self.mmu_unit(gate).gear_default_current(gate) * percent) / 100.0
         self._set_tmc_current(sname, target_current, msg)
@@ -6675,338 +6688,175 @@ class MmuController:
                 actual,homed,measured,_ = self._homing_move_cmd(gcmd, "Test homing move", allow_bypass=allow_bypass)
             self.log_always("%s after %.1fmm%s" % (("Homed" if homed else "Did not home"), actual, (" (measured %.1fmm)" % measured) if self._can_use_encoder() else ""))
 
-    cmd_MMU_TEST_CONFIG_help = "Runtime adjustment of MMU configuration for testing or in-print tweaking purposes"
-    def cmd_MMU_TEST_CONFIG(self, gcmd):
-        self.log_to_file(gcmd.get_commandline())
-        quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
 
-        # Try to catch illegal parameters
-        illegal_params = [
-            p for p in gcmd.get_command_parameters()
-            if vars(self).get(p.lower()) is None
-            and self.selector().check_test_config(p.lower())
-            and self.environment_manager.check_test_config(p.lower())
-            and self.mmu_unit().sync_feedback.check_test_config(p.lower())
-            and p.lower() not in [
-                VARS_MMU_CALIB_BOWDEN_LENGTH,
-                VARS_MMU_CALIB_CLOG_LENGTH
-            ]
-            and p.upper() not in ['QUIET']
-        ]
-        if illegal_params:
-            raise gcmd.error("Unknown parameter: %s" % illegal_params)
+##    cmd_MMU_TEST_CONFIG_help = "Runtime adjustment of MMU configuration for testing or in-print tweaking purposes"
+##    def cmd_MMU_TEST_CONFIG(self, gcmd):
+##        self.log_to_file(gcmd.get_commandline())
+##
+##        raw_params  = gcmd.get_command_parameters()
+##        raw_keys_lc = {k.lower() for k in raw_params.keys()}
+##
+##        quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
+##        unit_index = gcmd.get_int('UNIT', self.unit_selected, minval=0, maxval=self.mmu_machine.num_units)
+##
+##        unit = self.mmu_unit(unit_index)
+##        machine_params  = self.p   # MmuMachineParameters
+##        unit_params     = unit.p   # MmuUnitParameters
+##        # PAUL TODO selector_params = unit.p   # MmuSelectorParameters
+##
+##        # Apply to both sets (non-strict so we can aggregate unknown + guarded across both)
+##        m_applied, m_guarded, m_unknown = machine_params.apply_gcmd(gcmd, strict=False)
+##        u_applied, u_guarded, u_unknown = unit_params.apply_gcmd(gcmd, strict=False)
+##
+##        applied = sorted(set(m_applied + u_applied))
+##        guarded = sorted(set(m_guarded + u_guarded))
+##        unknown = sorted(set(m_unknown + u_unknown))
+##
+##        # Determine unknown params (but exclude any params that are known in either set)
+##        known = set(machine_params.get_known_param_names()) | set(unit_params.get_known_param_names())
+##        unknown = [n for n in unknown if n not in known]
+##
+##        # Determine set of legal params but that aren't available in current setup
+##        guarded = [n for n in guarded if n in known]
+##
+##        # Special-case calibration overrides (not ParamSpecs)
+##        special_keys = set()
+##
+##        # 1) Clog length
+##        key = 'mmu_calibration_clog_length'
+##        special_keys.add(key)
+##        if key in raw_keys_lc:
+##            unknown = [n for n in unknown if n != key]
+##
+##            if unit.has_encoder():
+##                length = gcmd.get_float('MMU_CALIBRATION_CLOG_LENGTH', minval=1., maxval=100.)
+##                unit.calibrator.update_clog_detection_length(length, force=True)
+##                applied = sorted(set(applied) | {key})
+##            else:
+##                raise gcmd.error("MMU_CALIBRATION_CLOG_LENGTH is only available when an encoder is present")
+##
+##        # 2) Bowden length
+##        key = 'mmu_calibration_bowden_length'
+##        special_keys.add(key)
+##        if key in raw_keys_lc:
+##            unknown = [n for n in unknown if n != key]
+##            length = gcmd.get_float('MMU_CALIBRATION_BOWDEN_LENGTH', minval=0.)
+##            unit.calibrator.update_bowden_length(self, length, console_msg=True)
+##            applied = sorted(set(applied) | {key})
+##
+##        # Final unknown param detection
+##        consumed_lc = set()
+##        consumed_lc.update({'quiet', 'unit'})
+##        consumed_lc.update({n.lower() for n in known})
+##        consumed_lc.update(special_keys)
+##
+##        # raw keys that aren't consumable
+##        truly_unknown = sorted(k for k in raw_keys_lc if k not in consumed_lc)
+##
+##        # Preserve your existing unknown/guarded behavior, but now with strict raw-args checking too
+##        if truly_unknown:
+##            raise gcmd.error("Unknown option(s): %s" % ", ".join(truly_unknown))
+##
+##        # Fail if user attempted anything invalid
+##        if unknown:
+##            raise gcmd.error("Unknown parameter(s): %s" % ", ".join(unknown))
+##        if guarded:
+##            raise gcmd.error("Parameter(s) not available for runtime change: %s" % ", ".join(guarded))
+##
+##        # Optional: report what changed (handy even if QUIET=1, but you can remove)
+##        if applied and not quiet:
+##            gcmd.respond_info("Applied: %s" % ", ".join(applied))
+##
+##        # List current params unless QUIET=1
+##        if not applied and not quiet:
+##            msg = []
+##            msg.append("Shared MMU machine parameters ----------------")
+##            msg.append(machine_params.format_params(include_hidden=False, include_guarded_out=False))
+##
+##            msg.append("")
+##            msg.append(f"\nMMU unit %s parameters ----------------" % unit.name)
+##            msg.append(unit_params.format_params(include_hidden=False, include_guarded_out=False))
+##
+##            # These are in mmu_vars.cfg and are offered here for convenience
+##            msg.append("\nCALIBRATION (mmu_vars.cfg):")
+##            if unit.variable_bowden_lengths:
+##                msg.append("\nmmu_calibration_bowden_lengths = %s" % unit.calibrator.bowden_lengths)
+##            else:
+##                msg.append("\nmmu_calibration_bowden_length = %.1f" % unit.calibrator.bowden_lengths[0])
+##            if unit.has_encoder():
+##                msg.append("\nmmu_calibration_clog_length = %.1f" % unit.encoder.get_clog_detection_length())
+##
+##            gcmd.respond_info("\n".join(msg))
+#
+#    cmd_MMU_TEST_CONFIG_help = "Runtime adjustment of MMU configuration for testing or in-print tweaking purposes"
+#    cmd_MMU_TEST_CONFIG_param_help = (
+#        "MMU_TEST_CONFIG: %s\n" % cmd_MMU_TEST_CONFIG_help
+#        + "UNIT  = #(int) Optional if only one unit fitted to printer\n"
+#        + "QUIET = [0|1] Suppress non essential console messages"
+#        + "(no parameters to dump of current settings)"
+#    )
+#    cmd_MMU_TEST_CONFIG_supplement_help = (
+#        "Examples:\n"
+#        + "MMU_TEST_CONFIG extruder_homing_max=150 ...set the extruder_homing_max parameter to 150"
+#        + "MMU_TEST_CONFIG toolhead_ooze_reduction=2.5 QUIET=1 ...silently set toolhead_ooze_reduction\n"
+#        + "MMU_TEST_CONFIG UNIT=1 sync_to_extruder=1 ...turn on extruder syncing for mmu unit 1"
+#    )
+#    def cmd_MMU_TEST_CONFIG(self, gcmd):
+#        self.log_to_file(gcmd.get_commandline())
+#
+#        if gcmd.get_int('HELP', 0, minval=0, maxval=1):
+#            self.mmu.log_always(self.format_help(self.cmd_MMU_TEST_CONFIG_param_help, self.cmd_MMU_TEST_CONFIG_supplement_help), color=True)
+#            return
+#
+#        raw_params = gcmd.get_command_parameters()
+#        raw_keys_lc = {k.lower() for k in raw_params.keys()}
+#
+#        quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
+#        unit_index = gcmd.get_int('UNIT', self.unit_selected, minval=0, maxval=self.mmu_machine.num_units)
+#
+#        unit = self.mmu_unit(unit_index)
+#        machine_params  = self.p   # MmuMachineParameters
+#        unit_params     = unit.p   # MmuUnitParameters
+#        # PAUL TODO selector_params = unit.p   # MmuSelectorParameters
+#
+#        # Apply to both sets (non-strict so we can aggregate unknown + guarded across both)
+#        m_applied, m_guarded, m_unknown = machine_params.apply_gcmd(gcmd, strict=False)
+#        u_applied, u_guarded, u_unknown = unit_params.apply_gcmd(gcmd, strict=False)
+#
+#        applied    = sorted(set(m_applied + u_applied))
+#        guarded    = sorted(set(m_guarded + u_guarded))
+#        unknown    = sorted(set(m_unknown + u_unknown))
+#
+#        # Determine unknown params
+#        known      = set(machine_params.get_known_param_names()) | set(unit_params.get_known_param_names())
+#        unknown    = [n for n in unknown if n not in known]
+#
+#        # Determine set of legal params but that aren't available in current setup
+#        guarded    = [n for n in guarded if n in known]
+#
+#        # Fail if user attempted anything invalid
+#        if unknown:
+#            raise gcmd.error("Unknown parameter(s): %s" % ", ".join(unknown))
+#        if guarded:
+#            raise gcmd.error("Parameter(s) not available for runtime change: %s" % ", ".join(guarded))
+#
+#        # Report what changed
+#        if applied and not quiet:
+#            self.log_info("Applied parameters: %s" % ", ".join(applied))
+#            self.log_info("(remember these are temporary changes until next restart)")
+#
+#        # Nothing done so list current params unless QUIET=1
+#        if not applied and not quiet:
+#            msg = []
+#            msg.append("Shared MMU machine parameters ----------------")
+#            msg.append(machine_params.format_params(include_hidden=False, include_guarded_out=False))
+#
+#            msg.append("")
+#            msg.append(f"\nMMU %s parameters ----------------" % unit.name)
+#            msg.append(unit_params.format_params(include_hidden=False, include_guarded_out=False))
+#
+#            self.log_info("\n".join(msg))
 
-        # Filament Speeds
-        self.mmu_unit().p.gear_from_filament_buffer_speed = gcmd.get_float('GEAR_FROM_FILAMENT_BUFFER_SPEED', self.mmu_unit().p.gear_from_filament_buffer_speed, minval=10.)
-        self.mmu_unit().p.gear_from_filament_buffer_accel = gcmd.get_float('GEAR_FROM_FILAMENT_BUFFER_ACCEL', self.mmu_unit().p.gear_from_filament_buffer_accel, minval=10.)
-        self.mmu_unit().p.gear_from_spool_speed = gcmd.get_float('GEAR_FROM_SPOOL_SPEED', self.mmu_unit().p.gear_from_spool_speed, minval=10.)
-        self.mmu_unit().p.gear_from_spool_accel = gcmd.get_float('GEAR_FROM_SPOOL_ACCEL', self.mmu_unit().p.gear_from_spool_accel, above=10.)
-        self.mmu_unit().p.gear_unload_speed = gcmd.get_float('GEAR_UNLOAD_SPEED', self.mmu_unit().p.gear_unload_speed, minval=10.)
-        self.mmu_unit().p.gear_unload_accel = gcmd.get_float('GEAR_UNLOAD_ACCEL', self.mmu_unit().p.gear_unload_accel, above=10.)
-        self.mmu_unit().p.gear_short_move_speed = gcmd.get_float('GEAR_SHORT_MOVE_SPEED', self.mmu_unit().p.gear_short_move_speed, minval=10.)
-        self.mmu_unit().p.gear_short_move_accel = gcmd.get_float('GEAR_SHORT_MOVE_ACCEL', self.mmu_unit().p.gear_short_move_accel, minval=10.)
-        self.mmu_unit().p.gear_short_move_threshold = gcmd.get_float('GEAR_SHORT_MOVE_THRESHOLD', self.mmu_unit().p.gear_short_move_threshold, minval=0.)
-        self.mmu_unit().p.gear_homing_speed = gcmd.get_float('GEAR_HOMING_SPEED', self.mmu_unit().p.gear_homing_speed, above=1.)
-        self.p.extruder_homing_speed = gcmd.get_float('EXTRUDER_HOMING_SPEED', self.p.extruder_homing_speed, above=1.)
-        self.p.extruder_load_speed = gcmd.get_float('EXTRUDER_LOAD_SPEED', self.p.extruder_load_speed, above=1.)
-        self.p.extruder_unload_speed = gcmd.get_float('EXTRUDER_UNLOAD_SPEED', self.p.extruder_unload_speed, above=1.)
-        self.p.extruder_sync_load_speed = gcmd.get_float('EXTRUDER_SYNC_LOAD_SPEED', self.p.extruder_sync_load_speed, above=1.)
-        self.p.extruder_sync_unload_speed = gcmd.get_float('EXTRUDER_SYNC_UNLOAD_SPEED', self.p.extruder_sync_unload_speed, above=1.)
-        self.p.extruder_accel = gcmd.get_float('EXTRUDER_ACCEL', self.p.extruder_accel, above=10.)
-
-        # Synchronous motor control
-        self.mmu_unit().p.sync_to_extruder = gcmd.get_int('SYNC_TO_EXTRUDER', self.mmu_unit().p.sync_to_extruder, minval=0, maxval=1)
-        self.mmu_unit().p.sync_form_tip = gcmd.get_int('SYNC_FORM_TIP', self.mmu_unit().p.sync_form_tip, minval=0, maxval=1)
-        self.mmu_unit().p.sync_purge = gcmd.get_int('SYNC_PURGE', self.mmu_unit().p.sync_purge, minval=0, maxval=1)
-        if self.mmu_unit().filament_always_gripped: # PAUL needs to be override pre-unit!
-            self.mmu_unit().p.sync_to_extruder = self.mmu_unit().p.sync_form_tip = self.mmu_unit().p.sync_purge = 1
-
-        # TMC current control
-        self.mmu_unit().p.sync_gear_current = gcmd.get_int('SYNC_GEAR_CURRENT', self.mmu_unit().p.sync_gear_current, minval=10, maxval=100)
-        self.mmu_unit().p.extruder_collision_homing_current = gcmd.get_int('EXTRUDER_COLLISION_HOMING_CURRENT', self.mmu_unit().p.extruder_collision_homing_current, minval=10, maxval=100)
-        self.p.extruder_form_tip_current = gcmd.get_int('EXTRUDER_FORM_TIP_CURRENT', self.p.extruder_form_tip_current, minval=100, maxval=150)
-        self.p.extruder_purge_current = gcmd.get_int('EXTRUDER_PURGE_CURRENT', self.p.extruder_purge_current, minval=100, maxval=150)
-
-        # Homing, loading and unloading controls
-        gate_homing_endstop = gcmd.get('GATE_HOMING_ENDSTOP', self.mmu_unit().p.gate_homing_endstop)
-        if gate_homing_endstop not in GATE_ENDSTOPS:
-            raise gcmd.error("gate_homing_endstop is invalid. Options are: %s" % GATE_ENDSTOPS)
-        if gate_homing_endstop != self.mmu_unit().p.gate_homing_endstop:
-            self.mmu_unit().p.gate_homing_endstop = gate_homing_endstop
-            self.mmu_unit().calibrator.adjust_bowden_lengths_on_homing_change()
-
-        # Special bowden calibration (get current length after potential gate_homing_endstop change)
-        gate_selected = max(self.gate_selected, 0) # Assume gate 0 if not known / bypass
-        bowden_length = gcmd.get_float('MMU_CALIBRATION_BOWDEN_LENGTH', self.bowden_lengths[gate_selected], minval=0.)
-        if bowden_length != self.bowden_lengths[gate_selected]:
-            self.mmu_unit().calibrator.update_bowden_length(bowden_length, gate_selected)
-
-        self.mmu_unit().p.gate_endstop_to_encoder = gcmd.get_float('GATE_SENSOR_TO_ENCODER', self.mmu_unit().p.gate_endstop_to_encoder)
-        self.mmu_unit().p.gate_autoload = gcmd.get_int('GATE_AUTOLOAD', self.mmu_unit().p.gate_autoload, minval=0, maxval=1)
-        self.mmu_unit().p.gate_final_eject_distance = gcmd.get_float('GATE_FINAL_EJECT_DISTANCE', self.mmu_unit().p.gate_final_eject_distance)
-        self.gate_unload_buffer = gcmd.get_float('GATE_UNLOAD_BUFFER', self.gate_unload_buffer, minval=0.)
-        self.mmu_unit().p.gate_homing_max = gcmd.get_float('GATE_HOMING_MAX', self.mmu_unit().p.gate_homing_max)
-        self.mmu_unit().p.gate_parking_distance = gcmd.get_float('GATE_PARKING_DISTANCE', self.mmu_unit().p.gate_parking_distance)
-        self.mmu_unit().p.gate_preload_homing_max = gcmd.get_float('GATE_PRELOAD_HOMING_MAX', self.mmu_unit().p.gate_preload_homing_max)
-        self.mmu_unit().p.gate_preload_parking_distance = gcmd.get_float('GATE_PRELOAD_PARKING_DISTANCE', self.mmu_unit().p.gate_preload_parking_distance)
-
-        self.p.bypass_autoload = gcmd.get_int('BYPASS_AUTOLOAD', self.p.bypass_autoload, minval=0, maxval=1)
-        self.mmu_unit().p.bowden_apply_correction = gcmd.get_int('BOWDEN_APPLY_CORRECTION', self.mmu_unit().p.bowden_apply_correction, minval=0, maxval=1)
-        self.mmu_unit().p.bowden_allowable_load_delta = gcmd.get_float('BOWDEN_ALLOWABLE_LOAD_DELTA', self.mmu_unit().p.bowden_allowable_load_delta, minval=1., maxval=50.)
-        self.bowden_allowable_unload_delta = gcmd.get_float('BOWDEN_ALLOWABLE_UNLOAD_DELTA', self.bowden_allowable_unload_delta, minval=1., maxval=50.)
-        self.mmu_unit().p.bowden_pre_unload_test = gcmd.get_int('BOWDEN_PRE_UNLOAD_TEST', self.mmu_unit().p.bowden_pre_unload_test, minval=0, maxval=1)
-
-        extruder_homing_endstop = gcmd.get('EXTRUDER_HOMING_ENDSTOP', self.mmu_unit().p.extruder_homing_endstop)
-        if extruder_homing_endstop not in EXTRUDER_ENDSTOPS:
-            raise gcmd.error("extruder_homing_endstop is invalid. Options are: %s" % EXTRUDER_ENDSTOPS)
-        self.mmu_unit().p.extruder_homing_endstop = extruder_homing_endstop
-
-        self.mmu_unit().p.extruder_homing_max = gcmd.get_float('EXTRUDER_HOMING_MAX', self.mmu_unit().p.extruder_homing_max, above=10.)
-        self.mmu_unit().p.extruder_force_homing = gcmd.get_int('EXTRUDER_FORCE_HOMING', self.mmu_unit().p.extruder_force_homing, minval=0, maxval=1)
-
-        self.mmu_unit().p.toolhead_homing_max = gcmd.get_float('TOOLHEAD_HOMING_MAX', self.mmu_unit().p.toolhead_homing_max, minval=0.)
-        self.p.toolhead_entry_to_extruder = gcmd.get_float('TOOLHEAD_ENTRY_TO_EXTRUDER', self.p.toolhead_entry_to_extruder, minval=0.)
-        self.p.toolhead_sensor_to_nozzle = gcmd.get_float('TOOLHEAD_SENSOR_TO_NOZZLE', self.p.toolhead_sensor_to_nozzle, minval=0.)
-        self.p.toolhead_extruder_to_nozzle = gcmd.get_float('TOOLHEAD_EXTRUDER_TO_NOZZLE', self.p.toolhead_extruder_to_nozzle, minval=0.)
-        self.p.toolhead_residual_filament = gcmd.get_float('TOOLHEAD_RESIDUAL_FILAMENT', self.p.toolhead_residual_filament, minval=0.)
-        self.p.toolhead_ooze_reduction = gcmd.get_float('TOOLHEAD_OOZE_REDUCTION', self.p.toolhead_ooze_reduction, minval=-5., maxval=20.)
-        self.mmu_unit().p.toolhead_unload_safety_margin = gcmd.get_float('TOOLHEAD_UNLOAD_SAFETY_MARGIN', self.mmu_unit().p.toolhead_unload_safety_margin, minval=0.)
-        self.mmu_unit().p.toolhead_post_load_tighten = gcmd.get_int('TOOLHEAD_POST_LOAD_TIGHTEN', self.mmu_unit().p.toolhead_post_load_tighten, minval=0, maxval=100)
-        self.mmu_unit().p.toolhead_post_load_tension_adjust = gcmd.get_int('TOOLHEAD_POST_LOAD_TENSION_ADJUST', self.mmu_unit().p.toolhead_post_load_tension_adjust, minval=0, maxval=1)
-        self.mmu_unit().p.toolhead_entry_tension_test = gcmd.get_int('TOOLHEAD_ENTRY_TENSION_TEST', self.mmu_unit().p.toolhead_entry_tension_test, minval=0, maxval=1)
-        self.p.gcode_load_sequence = gcmd.get_int('GCODE_LOAD_SEQUENCE', self.p.gcode_load_sequence, minval=0, maxval=1)
-        self.p.gcode_unload_sequence = gcmd.get_int('GCODE_UNLOAD_SEQUENCE', self.p.gcode_unload_sequence, minval=0, maxval=1)
-
-        # Software behavior options
-        self.p.extruder_temp_variance = gcmd.get_float('EXTRUDER_TEMP_VARIANCE', self.p.extruder_temp_variance, minval=1.)
-        self.endless_spool_enabled = gcmd.get_int('ENDLESS_SPOOL_ENABLED', self.endless_spool_enabled, minval=0, maxval=1)
-        self.p.endless_spool_on_load = gcmd.get_int('ENDLESS_SPOOL_ON_LOAD', self.p.endless_spool_on_load, minval=0, maxval=1)
-        self.p.endless_spool_eject_gate = gcmd.get_int('ENDLESS_SPOOL_EJECT_GATE', self.p.endless_spool_eject_gate, minval=-1, maxval=self.num_gates - 1)
-
-        prev_spoolman_support = self.p.spoolman_support
-        spoolman_support = gcmd.get('SPOOLMAN_SUPPORT', self.p.spoolman_support)
-        if spoolman_support not in SPOOLMAN_OPTIONS:
-            raise gcmd.error("spoolman_support is invalid. Options are: %s" % SPOOLMAN_OPTIONS)
-        if spoolman_support == SPOOLMAN_OFF:
-            self.gate_spool_id[:] = [-1] * self.num_gates
-        self.p.spoolman_support = spoolman_support
-
-        prev_t_macro_color = self.p.t_macro_color
-        t_macro_color = gcmd.get('T_MACRO_COLOR', self.p.t_macro_color)
-        if t_macro_color not in T_MACRO_COLOR_OPTIONS:
-            raise gcmd.error("t_macro_color is invalid. Options are: %s" % T_MACRO_COLOR_OPTIONS)
-        self.p.t_macro_color = t_macro_color
-
-        self.p.log_level = gcmd.get_int('LOG_LEVEL', self.p.log_level, minval=0, maxval=4)
-        self.p.log_file_level = gcmd.get_int('LOG_FILE_LEVEL', self.p.log_file_level, minval=0, maxval=4)
-        self.p.log_visual = gcmd.get_int('LOG_VISUAL', self.p.log_visual, minval=0, maxval=1)
-        self.p.log_statistics = gcmd.get_int('LOG_STATISTICS', self.p.log_statistics, minval=0, maxval=1)
-        self.p.log_m117_messages = gcmd.get_int('LOG_M117_MESSAGES', self.p.log_m117_messages, minval=0, maxval=1)
-
-        console_gate_stat = gcmd.get('CONSOLE_GATE_STAT', self.p.console_gate_stat)
-        if console_gate_stat not in GATE_STATS_TYPES:
-            raise gcmd.error("console_gate_stat is invalid. Options are: %s" % GATE_STATS_TYPES)
-        self.p.console_gate_stat = console_gate_stat
-
-        self.p.slicer_tip_park_pos = gcmd.get_float('SLICER_TIP_PARK_POS', self.p.slicer_tip_park_pos, minval=0.)
-        self.p.force_form_tip_standalone = gcmd.get_int('FORCE_FORM_TIP_STANDALONE', self.p.force_form_tip_standalone, minval=0, maxval=1)
-        self.p.force_purge_standalone = gcmd.get_int('FORCE_PURGE_STANDALONE', self.p.force_purge_standalone, minval=0, maxval=1)
-        self.p.strict_filament_recovery = gcmd.get_int('STRICT_FILAMENT_RECOVERY', self.p.strict_filament_recovery, minval=0, maxval=1)
-        self.p.filament_recovery_on_pause = gcmd.get_int('FILAMENT_RECOVERY_ON_PAUSE', self.p.filament_recovery_on_pause, minval=0, maxval=1)
-        self.mmu_unit().p.gate_preload_attempts = gcmd.get_int('GATE_PRELOAD_ATTEMPTS', self.mmu_unit().p.gate_preload_attempts, minval=1, maxval=20)
-        self.mmu_unit().p.encoder_move_validation = gcmd.get_int('ENCODER_MOVE_VALIDATION', self.mmu_unit().p.encoder_move_validation, minval=0, maxval=1)
-        self.mmu_unit().p.autotune_rotation_distance = gcmd.get_int('AUTOTUNE_ROTATION_DISTANCE', self.mmu_unit().p.autotune_rotation_distance, minval=0, maxval=1)
-        self.mmu_unit().p.autotune_bowden_length = gcmd.get_int('AUTOTUNE_BOWDEN_LENGTH', self.mmu_unit().p.autotune_bowden_length, minval=0, maxval=1)
-        self.p.retry_tool_change_on_error = gcmd.get_int('RETRY_TOOL_CHANGE_ON_ERROR', self.p.retry_tool_change_on_error, minval=0, maxval=1)
-        self.p.print_start_detection = gcmd.get_int('PRINT_START_DETECTION', self.p.print_start_detection, minval=0, maxval=1)
-        self.p.show_error_dialog = gcmd.get_int('SHOW_ERROR_DIALOG', self.p.show_error_dialog, minval=0, maxval=1)
-        form_tip_macro = gcmd.get('FORM_TIP_MACRO', self.p.form_tip_macro)
-        if form_tip_macro != self.p.form_tip_macro:
-            self.form_tip_vars = None # If macro is changed invalidate defaults
-        self.p.form_tip_macro = form_tip_macro
-        self.p.purge_macro = gcmd.get('PURGE_MACRO', self.p.purge_macro)
-
-        # Available only with espooler
-        if self.has_espooler():
-            self.mmu_unit().p.espooler_min_distance = gcmd.get_float('ESPOOLER_MIN_DISTANCE', self.mmu_unit().p.espooler_min_distance, above=0)
-            self.mmu_unit().p.espooler_max_stepper_speed = gcmd.get_float('ESPOOLER_MAX_STEPPER_SPEED', self.mmu_unit().p.espooler_max_stepper_speed, above=0)
-            self.mmu_unit().p.espooler_min_stepper_speed = gcmd.get_float('ESPOOLER_MIN_STEPPER_SPEED', self.mmu_unit().p.espooler_min_stepper_speed, minval=0., below=self.mmu_unit().p.espooler_max_stepper_speed)
-            self.mmu_unit().p.espooler_speed_exponent = gcmd.get_float('ESPOOLER_SPEED_EXPONENT', self.mmu_unit().p.espooler_speed_exponent, above=0)
-            self.mmu_unit().p.espooler_assist_reduced_speed = gcmd.get_int('ESPOOLER_ASSIST_REDUCED_SPEED', 50, minval=0, maxval=100)
-            self.mmu_unit().p.espooler_printing_power = gcmd.get_int('ESPOOLER_PRINTING_POWER', self.mmu_unit().p.espooler_printing_power, minval=0, maxval=100)
-            self.mmu_unit().p.espooler_assist_extruder_move_length = gcmd.get_float("ESPOOLER_ASSIST_EXTRUDER_MOVE_LENGTH", self.mmu_unit().p.espooler_assist_extruder_move_length, above=10.)
-            self.mmu_unit().p.espooler_assist_burst_power = gcmd.get_int("ESPOOLER_ASSIST_BURST_POWER", self.mmu_unit().p.espooler_assist_burst_power, minval=0, maxval=100)
-            self.mmu_unit().p.espooler_assist_burst_duration = gcmd.get_float("ESPOOLER_ASSIST_BURST_DURATION", self.mmu_unit().p.espooler_assist_burst_duration, above=0., maxval=10.)
-            self.mmu_unit().p.espooler_assist_burst_trigger = gcmd.get_int("ESPOOLER_ASSIST_BURST_TRIGGER", self.mmu_unit().p.espooler_assist_burst_trigger, minval=0, maxval=1)
-            self.mmu_unit().p.espooler_assist_burst_trigger_max = gcmd.get_int("ESPOOLER_ASSIST_BURST_TRIGGER_MAX", self.mmu_unit().p.espooler_assist_burst_trigger_max, minval=1)
-            self.mmu_unit().p.espooler_rewind_burst_power = gcmd.get_int("ESPOOLER_REWIND_BURST_POWER", self.mmu_unit().p.espooler_rewind_burst_power, minval=0, maxval=100)
-            self.mmu_unit().p.espooler_rewind_burst_duration = gcmd.get_float("ESPOOLER_REWIND_BURST_DURATION", self.mmu_unit().p.espooler_rewind_burst_duration, above=0., maxval=10.)
-
-            espooler_operations = list(gcmd.get('ESPOOLER_OPERATIONS', ','.join(self.mmu_unit().p.espooler_operations)).split(','))
-            for op in espooler_operations:
-                if op not in ESPOOLER_OPERATIONS:
-                    raise gcmd.error("espooler_operations '%s' is invalid. Options are: %s" % (op, ESPOOLER_OPERATIONS))
-            self.mmu_unit().p.espooler_operations = espooler_operations
-
-        # Available only with encoder
-        if self.has_encoder(): # PAUL is this correct to get clog
-            cal_clog_length = self.var_manager.get(VARS_MMU_CALIB_CLOG_LENGTH, None)
-            clog_length = gcmd.get_float('MMU_CALIBRATION_CLOG_LENGTH', cal_clog_length, minval=1., maxval=100.)
-            if clog_length != cal_clog_length:
-                self.mmu_unit().calibrator.update_clog_detection_length(clog_length, force=True)
-
-        # Currently hidden and testing options
-        self.p.test_random_failures = gcmd.get_int('TEST_RANDOM_FAILURES', self.p.test_random_failures, minval=0, maxval=1)
-        self.p.test_force_in_print = gcmd.get_int('TEST_FORCE_IN_PRINT', self.p.test_force_in_print, minval=0, maxval=1)
-        self.p.canbus_comms_retries = gcmd.get_int('CANBUS_COMMS_RETRIES', self.p.canbus_comms_retries, minval=1, maxval=10)
-        self.p.serious = gcmd.get_int('SERIOUS', self.p.serious, minval=0, maxval=1)
-
-        # Sub components
-# PAUL old        self.selector().set_test_config(gcmd)
-        for m in self.managers:
-            if hasattr(m, 'set_test_config'):
-                m.set_test_config(gcmd)
-
-        if not quiet:
-            msg = "FILAMENT MOVEMENT SPEEDS:"
-            msg += "\ngear_from_spool_speed = %.1f" % self.mmu_unit().p.gear_from_spool_speed
-            msg += "\ngear_from_spool_accel = %.1f" % self.mmu_unit().p.gear_from_spool_accel
-            msg += "\ngear_unload_speed = %.1f" % self.mmu_unit().p.gear_unload_speed
-            msg += "\ngear_unload_accel = %.1f" % self.mmu_unit().p.gear_unload_accel
-            if self.mmu_unit().p.has_filament_buffer:
-                msg += "\ngear_from_filament_buffer_speed = %.1f" % self.mmu_unit().p.gear_from_filament_buffer_speed
-                msg += "\ngear_from_filament_buffer_accel = %.1f" % self.mmu_unit().p.gear_from_filament_buffer_accel
-            msg += "\ngear_short_move_speed = %.1f" % self.mmu_unit().p.gear_short_move_speed
-            msg += "\ngear_short_move_accel = %.1f" % self.mmu_unit().p.gear_short_move_accel
-            msg += "\ngear_short_move_threshold = %.1f" % self.mmu_unit().p.gear_short_move_threshold
-            msg += "\ngear_homing_speed = %.1f" % self.mmu_unit().p.gear_homing_speed
-            msg += "\nextruder_homing_speed = %.1f" % self.p.extruder_homing_speed
-            msg += "\nextruder_load_speed = %.1f" % self.p.extruder_load_speed
-            msg += "\nextruder_unload_speed = %.1f" % self.p.extruder_unload_speed
-            msg += "\nextruder_sync_load_speed = %.1f" % self.p.extruder_sync_load_speed
-            msg += "\nextruder_sync_unload_speed = %.1f" % self.p.extruder_sync_unload_speed
-            msg += "\nextruder_accel = %.1f" % self.p.extruder_accel
-
-            msg += "\n\nMOTOR SYNC CONTROL:"
-            msg += "\nsync_to_extruder = %d" % self.mmu_unit().p.sync_to_extruder
-            msg += "\nsync_form_tip = %d" % self.mmu_unit().p.sync_form_tip
-            msg += "\nsync_purge = %d" % self.mmu_unit().p.sync_purge
-            msg += "\nsync_gear_current = %d%%" % self.mmu_unit().p.sync_gear_current
-            if self.has_encoder():
-                msg += "\nextruder_collision_homing_current = %d%%" % self.mmu_unit().p.extruder_collision_homing_current
-            msg += "\nextruder_form_tip_current = %d%%" % self.p.extruder_form_tip_current
-            msg += "\nextruder_purge_current = %d%%" % self.p.extruder_purge_current
-            msg += self.mmu_unit().sync_feedback.get_test_config()
-
-            msg += "\n\nLOADING/UNLOADING:"
-            msg += "\ngate_homing_endstop = %s" % self.mmu_unit().p.gate_homing_endstop
-            if self.mmu_unit().p.gate_homing_endstop in [SENSOR_GATE] and self.has_encoder():
-                msg += "\ngate_endstop_to_encoder = %s" % self.mmu_unit().p.gate_endstop_to_encoder
-            msg += "\ngate_unload_buffer = %s" % self.gate_unload_buffer
-            msg += "\ngate_homing_max = %s" % self.mmu_unit().p.gate_homing_max
-            msg += "\ngate_parking_distance = %s" % self.mmu_unit().p.gate_parking_distance
-            msg += "\ngate_preload_homing_max = %s" % self.mmu_unit().p.gate_preload_homing_max
-            msg += "\ngate_preload_parking_distance = %s" % self.mmu_unit().p.gate_preload_parking_distance
-            msg += "\ngate_autoload = %s" % self.mmu_unit().p.gate_autoload
-            msg += "\ngate_final_eject_distance = %s" % self.mmu_unit().p.gate_final_eject_distance
-            if self.sensor_manager.has_sensor(SENSOR_EXTRUDER_ENTRY):
-                msg += "\nbypass_autoload = %s" % self.p.bypass_autoload
-            if self.has_encoder():
-                msg += "\nbowden_apply_correction = %d" % self.mmu_unit().p.bowden_apply_correction
-                msg += "\nbowden_allowable_load_delta = %d" % self.mmu_unit().p.bowden_allowable_load_delta
-                msg += "\nbowden_pre_unload_test = %d" % self.mmu_unit().p.bowden_pre_unload_test
-            msg += "\nextruder_force_homing = %d" % self.mmu_unit().p.extruder_force_homing
-            msg += "\nextruder_homing_endstop = %s" % self.mmu_unit().p.extruder_homing_endstop
-            msg += "\nextruder_homing_max = %.1f" % self.mmu_unit().p.extruder_homing_max
-            msg += "\ntoolhead_extruder_to_nozzle = %.1f" % self.p.toolhead_extruder_to_nozzle
-            if self.sensor_manager.has_sensor(SENSOR_TOOLHEAD):
-                msg += "\ntoolhead_sensor_to_nozzle = %.1f" % self.p.toolhead_sensor_to_nozzle
-                msg += "\ntoolhead_homing_max = %.1f" % self.mmu_unit().p.toolhead_homing_max
-            if self.sensor_manager.has_sensor(SENSOR_EXTRUDER_ENTRY):
-                msg += "\ntoolhead_entry_to_extruder = %.1f" % self.p.toolhead_entry_to_extruder
-            msg += "\ntoolhead_residual_filament = %.1f" % self.p.toolhead_residual_filament
-            msg += "\ntoolhead_ooze_reduction = %.1f" % self.p.toolhead_ooze_reduction
-            msg += "\ntoolhead_unload_safety_margin = %d" % self.mmu_unit().p.toolhead_unload_safety_margin
-            msg += "\ntoolhead_entry_tension_test = %d" % self.mmu_unit().p.toolhead_entry_tension_test
-            msg += "\ntoolhead_post_load_tighten = %d" % self.mmu_unit().p.toolhead_post_load_tighten
-            msg += "\ntoolhead_post_load_tension_adjust = %d" % self.mmu_unit().p.toolhead_post_load_tension_adjust
-            msg += "\ngcode_load_sequence = %d" % self.p.gcode_load_sequence
-            msg += "\ngcode_unload_sequence = %d" % self.p.gcode_unload_sequence
-
-            msg += "\n\nTIP FORMING/CUTTING:"
-            msg += "\nform_tip_macro = %s" % self.p.form_tip_macro
-            msg += "\nforce_form_tip_standalone = %d" % self.p.force_form_tip_standalone
-            if not self.p.force_form_tip_standalone:
-                msg += "\nslicer_tip_park_pos = %.1f" % self.p.slicer_tip_park_pos
-
-            msg += "\n\nPURGING:"
-            msg += "\npurge_macro = %s" % self.p.purge_macro
-            msg += "\nforce_purge_standalone = %d" % self.p.force_purge_standalone
-
-            if self.has_espooler():
-                msg += "\n\nESPOOLER:"
-                msg += "\nespooler_min_distance = %s" % self.mmu_unit().p.espooler_min_distance
-                msg += "\nespooler_max_stepper_speed = %s" % self.mmu_unit().p.espooler_max_stepper_speed
-                msg += "\nespooler_min_stepper_speed = %s" % self.mmu_unit().p.espooler_min_stepper_speed
-                msg += "\nespooler_speed_exponent = %s" % self.mmu_unit().p.espooler_speed_exponent
-                msg += "\nespooler_assist_reduced_speed = %s%%" % self.mmu_unit().p.espooler_assist_reduced_speed
-                msg += "\nespooler_printing_power = %s%%" % self.mmu_unit().p.espooler_printing_power
-                msg += "\nespooler_assist_extruder_move_length = %s" % self.mmu_unit().p.espooler_assist_extruder_move_length
-                msg += "\nespooler_assist_burst_power = %d" % self.mmu_unit().p.espooler_assist_burst_power
-                msg += "\nespooler_assist_burst_duration = %s" % self.mmu_unit().p.espooler_assist_burst_duration
-                msg += "\nespooler_assist_burst_trigger = %d" % self.mmu_unit().p.espooler_assist_burst_trigger
-                msg += "\nespooler_assist_burst_trigger_max = %d" % self.mmu_unit().p.espooler_assist_burst_trigger_max
-                msg += "\nespooler_operations = %s"  % self.mmu_unit().p.espooler_operations
-
-            # Heater/Environment
-            msg += self.environment_manager.get_test_config()
-
-            msg += "\n\nLOGGING:"
-            msg += "\nlog_level = %d" % self.p.log_level
-            msg += "\nlog_visual = %d" % self.p.log_visual
-            if self.mmu_logger:
-                msg += "\nlog_file_level = %d" % self.p.log_file_level
-            msg += "\nlog_statistics = %d" % self.p.log_statistics
-            msg += "\nlog_m117_messages = %d" % self.p.log_m117_messages
-            msg += "\nconsole_gate_stat = %s" % self.p.console_gate_stat
-
-            msg += "\n\nOTHER:"
-            msg += "\nextruder_temp_variance = %.1f" % self.p.extruder_temp_variance
-            msg += "\nendless_spool_enabled = %d" % self.endless_spool_enabled
-            msg += "\nendless_spool_on_load = %d" % self.p.endless_spool_on_load
-            msg += "\nendless_spool_eject_gate = %d" % self.p.endless_spool_eject_gate
-            msg += "\nspoolman_support = %s" % self.p.spoolman_support
-            msg += "\nt_macro_color = %s" % self.p.t_macro_color
-            msg += "\npreload_attempts = %d" % self.preload_attempts
-            if self.has_encoder():
-                msg += "\nstrict_filament_recovery = %d" % self.p.strict_filament_recovery
-                msg += "\nencoder_move_validation = %d" % self.mmu_unit().p.encoder_move_validation
-                msg += "\nautotune_rotation_distance = %d" % self.mmu_unit().p.autotune_rotation_distance
-            msg += "\nautotune_bowden_length = %d" % self.mmu_unit().p.autotune_bowden_length
-            msg += "\nfilament_recovery_on_pause = %d" % self.p.filament_recovery_on_pause
-            msg += "\nretry_tool_change_on_error = %d" % self.p.retry_tool_change_on_error
-            msg += "\nprint_start_detection = %d" % self.p.print_start_detection
-            msg += "\nshow_error_dialog = %d" % self.p.show_error_dialog
-
-            # Selector and Servo
-            msg += self.selector().get_test_config()
-
-            # These are in mmu_vars.cfg and are offered here for convenience
-            msg += "\n\nCALIBRATION (mmu_vars.cfg):"
-            if self.mmu_unit().variable_bowden_lengths:
-                msg += "\nmmu_calibration_bowden_lengths = %s" % self.bowden_lengths
-            else:
-                msg += "\nmmu_calibration_bowden_length = %.1f" % self.bowden_lengths[0]
-            if self.has_encoder():
-                msg += "\nmmu_calibration_clog_length = %.1f" % self.encoder().get_clog_detection_length()
-
-            self.log_info(msg)
-
-        # Some changes need additional action to be taken
-        if prev_spoolman_support != self.p.spoolman_support:
-            self._spoolman_sync()
-        if prev_t_macro_color != self.p.t_macro_color:
-            self._update_t_macros()
 
 
 ###########################################
@@ -8299,32 +8149,32 @@ class MmuController:
         self.log_to_file(gcmd.get_commandline())
         if self.check_if_disabled(): return
         if self.check_if_printing(): return
-        if self.check_if_not_homed(): return 
-                                        
+        if self.check_if_not_homed(): return
+
         gate = gcmd.get_int('GATE', self.gate_selected, minval=0, maxval=self.num_gates - 1)
         if self.check_if_not_calibrated(self.CALIBRATED_ESSENTIAL, check_gates=[gate]): return
-                                                
-        can_crossload = (                       
+
+        can_crossload = (
             (self.mmu_unit().can_crossload or self.mmu_unit().multigear)
             and self.sensor_manager.has_gate_sensor(SENSOR_GEAR_PREFIX, gate)
-        )                               
-        if not can_crossload:   
+        )
+        if not can_crossload:
             if self.check_if_bypass(): return
             if self.check_if_loaded(): return
-                                
+
         self.log_always("Preloading filament in %s..." % ("current gate" if gate == self.gate_selected else "gate %d" % gate))
-        try:                
+        try:
             with self.wrap_sync_gear_to_extruder():
                 with self.wrap_suppress_visual_log():
                     with self.wrap_action(ACTION_CHECKING):
-                            
+
                         current_gate = self.gate_selected
                         if gate != current_gate:
                             self.select_gate(gate)
-                                
-                        try:    
+
+                        try:
                             self._preload_gate()
-                                
+
                         finally:
                             if self.gate_selected != current_gate:
                                 # If necessary or easy restore previous gate
@@ -8334,5 +8184,5 @@ class MmuController:
                                     # Lazy movement means we have side effect of changed tool/gate
                                     self._ensure_ttg_match()
                                     self._initialize_encoder() # Encoder 0000
-        except MmuError as ee:          
+        except MmuError as ee:
             self.handle_mmu_error("Filament preload for gate %d failed: %s" % (gate, str(ee)))

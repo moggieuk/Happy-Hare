@@ -259,7 +259,7 @@ class MmuCalibrator:
         auto = (self.mmu.sync_feedback_manager.mmu_unit.p.flowguard_encoder_mode == self.mmu_unit.encoder.RUNOUT_AUTOMATIC)
 
         if auto or force:
-            self.var_manager.save_variable(self.mmu.VARS_MMU_CALIB_CLOG_LENGTH, cdl, write=bool(force))
+            self.var_manager.save_variable(self.mmu.VARS_MMU_CALIB_ENCODER_CLOG_LENGTH, cdl, write=bool(force))
 
         if auto and not force:
             self.mmu_unit.encoder.set_clog_detection_length(cdl)

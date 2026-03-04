@@ -1,6 +1,6 @@
 # Happy Hare MMU Software
 #
-# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
 # Goal: Base class for all runtime changable mmu parameters
@@ -20,19 +20,19 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import logging
-from dataclasses     import dataclass, field
-from typing          import Any, Callable, Dict, Optional, Sequence, Union, List, Iterable
+from dataclasses    import dataclass, field
+from typing         import Any, Callable, Dict, Optional, Sequence, Union, List, Iterable, Tuple
 
 # Happy Hare imports
-from ..mmu_constants import *
+from .mmu_constants import *
 
 
 # ----------------------------
 # Parameter specification model
 # ----------------------------
 
-_Default = Union[Any, Callable[['TunableParametersBase'], Any]]
-_Guard = Optional[Callable[['TunableParametersBase'], bool]]
+_Default  = Union[Any, Callable[['TunableParametersBase'], Any]]
+_Guard    = Optional[Callable[['TunableParametersBase'], bool]]
 _OnChange = Optional[Callable[['TunableParametersBase', Any, Any], None]]
 
 
@@ -45,11 +45,11 @@ class ParamSpec:
       - default: value or callable(self)->value (for dependent defaults)
       - limits: pass-through kwargs like minval/maxval/above/below (values may be callables)
       - choices: for 'choice' (map used by config.getchoice)
-      - section: required section header label for get_test_config() output
-      - hidden: if True, omitted from get_test_config() (defaults False)
-      - guard: callable(self)->bool (feature gating)
+      - section: required section header label for listing output
+      - hidden: if True, omitted from listing output (defaults False)
+      - guard: callable(self)->bool (feature gating for runtime change / listing if desired)
       - on_change: callable(self, old, new) executed after runtime change
-      - fmt: printf-style format used by get_test_config()
+      - fmt: printf-style format used by listing output
     """
     name: str
     kind: str
@@ -78,6 +78,9 @@ class _SourceAdapter:
         self.src = src
         self.is_gcmd = is_gcmd
 
+    def _key(self, spec: ParamSpec) -> str:
+        return spec.name.upper() if self.is_gcmd else spec.name
+
     def _resolve_limits(self, owner: 'TunableParametersBase', spec: ParamSpec) -> Dict[str, Any]:
         """
         Allow limits to be specified as callables, e.g. below=lambda self: self.espooler_max_stepper_speed
@@ -90,7 +93,7 @@ class _SourceAdapter:
         return resolved
 
     def get_value(self, owner: 'TunableParametersBase', spec: ParamSpec, default: Any) -> Any:
-        key = spec.name
+        key = self._key(spec)
         limits = self._resolve_limits(owner, spec)
 
         if spec.kind == 'int':
@@ -164,23 +167,29 @@ class TunableParametersBase:
     Base class for spec-driven tunable parameter containers.
 
     Subclasses must:
-      - define self._ALL_SPECS (Sequence[ParamSpec])
+      - define self._SPECS (Sequence[ParamSpec])
       - call super().__init__(config) early in __init__
       - optionally override _post_load_fixups()
 
     This base class provides:
       - load from config via specs
-      - apply overrides from gcmd via specs
-      - get_test_config() using section + hidden flags
-      - generic get_param/set_param (validated)
-      - check_test_config helper
+      - apply overrides from gcmd via specs (strict validation + guarded-out detection)
+      - param listing for UI / diagnostics
     """
 
-    _ALL_SPECS: Sequence[ParamSpec] = ()
+    _SPECS: Sequence[ParamSpec] = ()
 
     def __init__(self, config):
         self._config = config
-        self._load_from(self._ALL_SPECS, config, is_gcmd=False)
+
+        # Build name->spec index once (fast lookups, easy validation)
+        self._spec_by_name: Dict[str, ParamSpec] = {}
+        for spec in self._SPECS:
+            if spec.name in self._spec_by_name:
+                raise ValueError(f"Duplicate ParamSpec name: {spec.name}")
+            self._spec_by_name[spec.name] = spec
+
+        self._load_from_config()
         self._post_load_fixups()
 
     # ----- Hooks -----
@@ -189,94 +198,147 @@ class TunableParametersBase:
         """Subclass hook for derived defaults / clamping / conversions."""
         return
 
-    # ----- Spec iteration / defaults -----
-
-    # All possible parameters
-    def _iter_all_specs(self, specs: Sequence[ParamSpec]) -> Iterable[ParamSpec]:
-        for spec in specs:
-            yield spec
-
-    # Parameters not removed by guard
-    def _iter_specs(self, specs: Sequence[ParamSpec]) -> Iterable[ParamSpec]:
-        for spec in specs:
-            if spec.guard is not None and not spec.guard(self):
-                continue
-            yield spec
+    # ----- Defaults / guards -----
 
     def _resolve_default(self, spec: ParamSpec) -> Any:
         return spec.default(self) if callable(spec.default) else spec.default
 
-    # ----- Core load/apply -----
+    def _is_available(self, spec: ParamSpec) -> bool:
+        """
+        Availability for runtime change. (You can also use this for listing if desired.)
+        """
+        return (spec.guard(self) if spec.guard is not None else True)
 
-    def _load_from(self, specs: Sequence[ParamSpec], src: Any, *, is_gcmd: bool) -> None:
-        adapter = _SourceAdapter(src, is_gcmd=is_gcmd)
-        for spec in self._iter_all_specs(specs):  # Ignore guard for initial creation (defensive)
-            default = self._resolve_default(spec) if not is_gcmd else getattr(self, spec.name, self._resolve_default(spec))
+    # ----- Load -----
+
+    def _load_from_config(self) -> None:
+        adapter = _SourceAdapter(self._config, is_gcmd=False)
+        for spec in self._SPECS:
+            default = self._resolve_default(spec)
             val = adapter.get_value(self, spec, default)
             setattr(self, spec.name, val)
 
-    def _apply_from_gcmd(self, specs: Sequence[ParamSpec], gcmd: Any) -> None:
+    # ----------------------------
+    # Public: apply runtime overrides
+    # ----------------------------
+
+    def get_known_param_names(self) -> Iterable[str]:
+        return self._spec_by_name.keys()
+
+    def apply_gcmd(self, gcmd: Any, *, strict: bool = True) -> Tuple[List[str], List[str], List[str]]:
+        """
+        Apply parameters present in the gcmd to this parameter set.
+
+        Returns (applied, guarded_out, unknown) as 3 lists of parameter names.
+
+        strict=True:
+          - raises ValueError if any unknown parameters are present
+          - raises ValueError if any guarded-out parameters are attempted to be set
+
+        Notes:
+          - Only applies keys explicitly present on the command line
+          - Keys are expected to match spec.name (lower-case)
+        """
+        raw = dict(getattr(gcmd, "get_command_parameters", lambda: {})())
+        supplied = {str(k).strip().lower() for k in raw.keys()}
+        supplied.discard('')
+        supplied.discard('quiet')
+        supplied.discard('unit')
+
+        unknown: List[str] = []
+        guarded_out: List[str] = []
+        applied: List[str] = []
+
         adapter = _SourceAdapter(gcmd, is_gcmd=True)
-        for spec in self._iter_specs(specs):
+
+        for name in sorted(supplied):
+            spec = self._spec_by_name.get(name)
+            if spec is None:
+                unknown.append(name)
+                continue
+
+            if not self._is_available(spec):
+                guarded_out.append(name)
+                continue
+
             current = getattr(self, spec.name)
             new_val = adapter.get_value(self, spec, current)
             if new_val != current:
-                setattr(self, spec.name, new_val)
+                # Call on_change handler before the actual parameter is updated
                 if spec.on_change is not None:
                     spec.on_change(self, current, new_val)
+                setattr(self, spec.name, new_val)
+                applied.append(name)
 
-    # ----- Public API -----
+        if strict and unknown:
+            raise ValueError("Unknown parameter(s): %s" % ", ".join(unknown))
+        if strict and guarded_out:
+            raise ValueError("Parameter(s) not available for runtime change: %s" % ", ".join(guarded_out))
 
-    def set_test_config(self, gcmd):
-        """
-        Apply runtime overrides. gcmd keys are expected to match spec.name.
-        """
-        self._apply_from_gcmd(self._ALL_SPECS, gcmd)
+        return applied, guarded_out, unknown
 
-    def get_test_config(self) -> str:
+    # ----------------------------
+    # Public: listing / formatting
+    # ----------------------------
+
+    def iter_params(self, *, include_hidden: bool = False, include_guarded_out: bool = False) -> Iterable[Tuple[ParamSpec, Any]]:
         """
-        Pretty-print current parameters that are not hidden, grouped by section.
+        Iterate (spec, value) in spec order, with optional filtering.
+        """
+        for spec in self._SPECS:
+            if not include_hidden and spec.hidden:
+                continue
+            if not include_guarded_out and not self._is_available(spec):
+                continue
+            yield spec, getattr(self, spec.name)
+
+    def format_params(self, *, include_hidden: bool = False, include_guarded_out: bool = False, show_sections: bool = True) -> str:
+        """
+        Pretty-print current parameters, optionally filtered.
         """
         lines: List[str] = []
         last_section: Optional[str] = None
 
-        for spec in self._iter_specs(self._ALL_SPECS):
-            if spec.hidden:
-                continue
-
-            if spec.section != last_section:
+        for spec, v in self.iter_params(include_hidden=include_hidden,
+                                        include_guarded_out=include_guarded_out):
+            if show_sections and spec.section != last_section:
                 if lines:
                     lines.append("")
                 lines.append(f"{spec.section}:")
                 last_section = spec.section
 
-            v = getattr(self, spec.name)
             fmt = spec.fmt or "%s"
             try:
                 rendered = fmt % v
-            except TypeError:
+            except Exception:
                 rendered = str(v)
             lines.append(f"{spec.name} = {rendered}")
 
         return "\n" + "\n".join(lines) if lines else ""
 
-    def get_param(self, name: str) -> Any:
-        """
-        Optional param getter. Direct instance variable access is also fine
-        """
-        if not hasattr(self, name):
-            raise AttributeError(f"Unknown parameter: {name}")
-        return getattr(self, name)
+    # ----------------------------
+    # Public: single param set (for non-gcmd callers)
+    # ----------------------------
 
-    def set_param(self, name: str, value: Any) -> None:
+    def set_param(self, name: str, value: Any, *, strict: bool = True) -> bool:
         """
-        Set parameters inforcing bounds and other checks
+        Set a single parameter with full validation/conversion.
+
+        Returns True if value changed, False if unchanged.
+
+        strict=True:
+          - raises AttributeError if unknown
+          - raises ValueError if guarded-out
         """
-        spec = self._find_spec(name)
+        spec = self._spec_by_name.get(name)
         if spec is None:
-            raise AttributeError(f"Unknown parameter: {name}")
-        if spec.guard is not None and not spec.guard(self):
-            raise ValueError(f"Parameter not available in this configuration: {name}")
+            if strict:
+                raise AttributeError(f"Unknown parameter: {name}")
+            return False
+        if not self._is_available(spec):
+            if strict:
+                raise ValueError(f"Parameter not available for runtime change: {name}")
+            return False
 
         class _Fake:
             def __init__(self, v): self._v = v
@@ -292,19 +354,5 @@ class TunableParametersBase:
             setattr(self, name, new)
             if spec.on_change is not None:
                 spec.on_change(self, old, new)
-
-    def check_test_config(self, param: str) -> bool:
-        """
-        Check if parameter exists.
-        """
-        if not hasattr(self, param):
-            return False
-        return getattr(self, param) is None
-
-    # ----- Helpers -----
-
-    def _find_spec(self, name: str) -> Optional[ParamSpec]:
-        for spec in self._ALL_SPECS:
-            if spec.name == name:
-                return spec
-        return None
+            return True
+        return False

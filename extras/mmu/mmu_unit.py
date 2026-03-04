@@ -1,6 +1,6 @@
 # Happy Hare MMU Software
 #
-# Copyright (C) 2022-2025  moggieuk#6538 (discord)
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
 # Goal: Definition of basic physical characteristics of MMU (including type/style)
@@ -609,11 +609,17 @@ class MmuUnit:
                 if callable(method):
                     method()
 
+    def has_buffer(self):
+        return self.buffer is not None
+
     def has_encoder(self):
         return self.encoder is not None
 
     def has_espooler(self):
         return self.espooler is not None
+
+    def has_heater(self):
+        return self.filament_heater or self.filament_heaters
 
     def enable_motors(self):
         self.selector.enable_motors()

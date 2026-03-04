@@ -164,7 +164,7 @@ class MmuSyncFeedback:
         # Figure out the correct detection length based on mode
         cdl = self.p.flowguard_encoder_max_motion
         if mode == RUNOUT_AUTOMATIC:
-            cdl = self.mmu_machine.var_manager.save_variables.allVariables.get(VARS_MMU_CALIB_CLOG_LENGTH, cdl)
+            cdl = self.mmu_machine.var_manager.save_variables.allVariables.get(VARS_MMU_CALIB_ENCODER_CLOG_LENGTH, cdl)
 
         # Notify sensor of detection length
         self.mmu_unit.encoder.set_clog_detection_length(cdl)
