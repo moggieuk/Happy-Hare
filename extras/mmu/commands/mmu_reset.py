@@ -13,7 +13,10 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 
-from .mmu_base_command import *
+# Happy Hare imports
+from ..mmu_constants   import *
+from ..mmu_utils       import MmuError
+from .mmu_base_command import BaseCommand
 
 
 class MmuResetCommand(BaseCommand):
@@ -42,6 +45,8 @@ class MmuResetCommand(BaseCommand):
         )
 
     def _run(self, gcmd):
+        # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+
         if self.mmu.check_if_disabled():
             return
 

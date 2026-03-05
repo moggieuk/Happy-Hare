@@ -12,10 +12,13 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-
 import logging
 
-from .mmu_base_command import *
+# Happy Hare imports
+from ..mmu_constants   import *
+from ..mmu_utils       import MmuError
+from .mmu_base_command import BaseCommand
+
 
 class MmuTestConfigCommand(BaseCommand):
 
@@ -47,6 +50,8 @@ class MmuTestConfigCommand(BaseCommand):
         )
 
     def _run(self, gcmd):
+        # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+
         raw_params = gcmd.get_command_parameters()
         raw_keys_lc = {k.lower() for k in raw_params.keys()}
 

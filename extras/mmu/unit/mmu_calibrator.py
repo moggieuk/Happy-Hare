@@ -170,11 +170,12 @@ class MmuCalibrator:
     #  - Testing has shown that the encoder based clog detection length is generally
     #    proportional to the bowden length
 
-    # Returns the currently calibrated bowden length or the default for gate 0 if not
+    # Returns the currently calibrated bowden length or the default for gate 0 if not calibrated
     def get_bowden_length(self, gate=None):
         if gate == None: gate = self.mmu.gate_selected
+        lgate = self.mmu_unit.local_gate(gate)
 
-        ref_gate = gate if gate >= 0 and self.mmu.mmu_machine.variable_bowden_lengths else 0
+        ref_gate = lgate if lgate >= 0 and self.mmu_unit.variable_bowden_lengths else 0
         return self.bowden_lengths[ref_gate]
 
 
@@ -240,6 +241,14 @@ class MmuCalibrator:
         self.var_manager.write_variables()
 
 
+    def is_bowden_length_default(self, gate=None):
+        if gate == None: gate = self.mmu.gate_selected
+        lgate = self.mmu_unit.local_gate(gate)
+
+        if lgate >= 0:
+            return self.bowden_lengths[lgate] >= 0
+        return True
+
 
     # -------------------- Encoder based runout/clog/tangle length manipulation --------------------
 
@@ -279,7 +288,7 @@ class MmuCalibrator:
         if lgate < 0:
             rd = self.default_rotation_distances[0]
         else:
-            rd = self.rotation_distances[lgate if lgate >= 0 and self.mmu.mmu_unit().variable_rotation_distances else 0]
+            rd = self.rotation_distances[lgate if lgate >= 0 and self.mmu_unit.variable_rotation_distances else 0]
 
         if rd <= 0:
             rd = self.default_rotation_distances[lgate]
@@ -290,7 +299,7 @@ class MmuCalibrator:
 
     # Set the active gear stepper rotation distance # PAUL belong in this module?
     # Note: gate is the logical gate so important to convert to local per-unit lgate but report gate in messages
-    def set_gear_rotation_distance(self, rd, gate=None):
+    def set_gear_rotation_distance(self, rd, gate=None): # PAUL change to set_gear_rd()?
         if gate == None: gate = self.mmu.gate_selected
         lgate = self.mmu_unit.local_gate(gate)
 
@@ -358,6 +367,15 @@ class MmuCalibrator:
 
         # Persist
         self.var_manager.save_variable(self.mmu.VARS_MMU_GEAR_ROTATION_DISTANCES, self.rotation_distances, write=True)
+
+
+    def is_gear_rd_default(self, gate=None):
+        if gate == None: gate = self.mmu.gate_selected
+        lgate = self.mmu_unit.local_gate(gate)
+
+        if lgate >= 0:
+            return self.rotation_distances[lgate] >= 0
+        return True
 
 
     #

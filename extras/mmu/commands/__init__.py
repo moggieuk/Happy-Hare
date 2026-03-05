@@ -12,7 +12,9 @@
 
 import inspect, pkgutil, importlib, logging
 
+# Happy Hare imports
 from .mmu_base_command import BaseCommand
+
 
 EXCLUDED_CLASSES = {
     "BaseCommand",
