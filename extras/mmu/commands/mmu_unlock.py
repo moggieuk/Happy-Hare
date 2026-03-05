@@ -3,7 +3,7 @@
 # Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
-# Implements MMU_UNLOAD command
+# Implements MMU_UNLOCK command
 #
 #
 # (\_/)
@@ -19,14 +19,14 @@ from ..mmu_utils       import MmuError
 from .mmu_base_command import *
 
 
-class MmuUnloadCommand(BaseCommand):
+class MmuUnlockCommand(BaseCommand):
 
-    CMD = "MMU_UNLOAD"
+    CMD = "MMU_UNLOCK"
 
-    HELP_BRIEF = "Unloads filament and parks it at the gate or optionally unloads just the extruder (EXTRUDER_ONLY=1)"
+    HELP_BRIEF = "Wakeup the MMU prior to resume to restore temperatures and timeouts"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
-        + "EXTRUDER_ONLY = [0|1]\n"
+        + "(no parameters)\n"
     )
     HELP_SUPPLEMENT = (
         ""  # add examples here if desired
@@ -47,19 +47,8 @@ class MmuUnloadCommand(BaseCommand):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
 
         if self.mmu.check_if_disabled(): return
-        if self.mmu.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[self.mmu.gate_selected]): return
-        self.mmu._fix_started_state()
 
-        if self.mmu.filament_pos == FILAMENT_POS_UNLOADED:
-            self.mmu.log_always("Filament not loaded")
-            return
+        self.mmu._clear_mmu_error_dialog()
 
-        try:
-            with self.mmu.wrap_sync_gear_to_extruder():
-                with self.mmu._wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during filament unload
-                    self.mmu._mmu_unload_eject(gcmd)
-
-                    self.mmu._persist_swap_statistics()
-
-        except MmuError as ee:
-            self.mmu.handle_mmu_error("%s.\nOccured when unloading tool" % str(ee))
+        if self.mmu.is_mmu_paused_and_locked():
+            self.mmu._mmu_unlock()

@@ -3,7 +3,7 @@
 # Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
-# Implements MMU_SELECT_BYPASS command
+# Implements MMU_LOG command
 #
 #
 # (\_/)
@@ -19,14 +19,16 @@ from ..mmu_utils       import MmuError
 from .mmu_base_command import *
 
 
-class MmuSelectBypassCommand(BaseCommand):
+class MmuLogCommand(BaseCommand):
 
-    CMD = "MMU_SELECT_BYPASS"
+    CMD = "MMU_LOG"
 
-    HELP_BRIEF = "Select the filament bypass"
+    HELP_BRIEF = "Logs messages in MMU log"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
-        + "(no parameters)\n"
+        + "MSG   = _text_\n"
+        + "ERROR = [0|1]\n"
+        + "DEBUG = [0|1]\n"
     )
     HELP_SUPPLEMENT = (
         ""  # add examples here if desired
@@ -40,20 +42,17 @@ class MmuSelectBypassCommand(BaseCommand):
             help_brief=self.HELP_BRIEF,
             help_params=self.HELP_PARAMS,
             help_supplement=self.HELP_SUPPLEMENT,
-            category=CATEGORY_ALIAS
+            category=CATEGORY_MACRO
         )
 
     def _run(self, gcmd):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
 
-        if self.mmu.check_if_disabled(): return
-        if self.mmu.check_if_not_homed(): return
-        if self.mmu.check_if_loaded(): return
-        if self.mmu.check_if_not_calibrated(CALIBRATED_SELECTOR): return
-        self.mmu._fix_started_state()
+        msg = gcmd.get('MSG', "").replace("\\n", "\n").replace(" ", UI_SPACE)
 
-        try:
-            with self.mmu.wrap_sync_gear_to_extruder():
-                self.mmu._select(1, -1, -1)
-        except MmuError as ee:
-            self.mmu.handle_mmu_error(str(ee))
+        if gcmd.get_int('ERROR', 0, minval=0, maxval=1):
+            self.mmu.log_error(msg)
+        elif gcmd.get_int('DEBUG', 0, minval=0, maxval=1):
+            self.mmu.log_debug(msg)
+        else:
+            self.mmu.log_info(msg)

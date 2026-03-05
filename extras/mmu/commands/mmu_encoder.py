@@ -16,7 +16,7 @@
 # Happy Hare imports
 from ..mmu_constants   import *
 from ..mmu_utils       import MmuError
-from .mmu_base_command import BaseCommand
+from .mmu_base_command import *
 
 
 class MmuEncoderCommand(BaseCommand):

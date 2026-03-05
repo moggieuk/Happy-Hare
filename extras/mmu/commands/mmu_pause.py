@@ -3,7 +3,7 @@
 # Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
-# Implements MMU_SELECT_BYPASS command
+# Implements MMU_PAUSE command
 #
 #
 # (\_/)
@@ -19,14 +19,15 @@ from ..mmu_utils       import MmuError
 from .mmu_base_command import *
 
 
-class MmuSelectBypassCommand(BaseCommand):
+class MmuPauseCommand(BaseCommand):
 
-    CMD = "MMU_SELECT_BYPASS"
+    CMD = "MMU_PAUSE"
 
-    HELP_BRIEF = "Select the filament bypass"
+    HELP_BRIEF = "Pause the current print and lock the MMU operations"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
-        + "(no parameters)\n"
+        + "MSG            = _text_\n"
+        + "FORCE_IN_PRINT = [0|1]\n"
     )
     HELP_SUPPLEMENT = (
         ""  # add examples here if desired
@@ -40,20 +41,15 @@ class MmuSelectBypassCommand(BaseCommand):
             help_brief=self.HELP_BRIEF,
             help_params=self.HELP_PARAMS,
             help_supplement=self.HELP_SUPPLEMENT,
-            category=CATEGORY_ALIAS
+            cateory=CATEGORY_GENERAL
         )
 
     def _run(self, gcmd):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
 
         if self.mmu.check_if_disabled(): return
-        if self.mmu.check_if_not_homed(): return
-        if self.mmu.check_if_loaded(): return
-        if self.mmu.check_if_not_calibrated(CALIBRATED_SELECTOR): return
-        self.mmu._fix_started_state()
 
-        try:
-            with self.mmu.wrap_sync_gear_to_extruder():
-                self.mmu._select(1, -1, -1)
-        except MmuError as ee:
-            self.mmu.handle_mmu_error(str(ee))
+        force_in_print = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1)) # Mimick in-print
+        msg = gcmd.get('MSG', "MMU_PAUSE macro was directly called")
+
+        self.mmu.handle_mmu_error(msg, force_in_print)

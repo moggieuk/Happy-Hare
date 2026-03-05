@@ -3,7 +3,7 @@
 # Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
-# Implements MMU_HOME command
+# Implements MMU_TEST_RUNOUT command
 #
 #
 # (\_/)
@@ -19,16 +19,17 @@ from ..mmu_utils       import MmuError
 from .mmu_base_command import *
 
 
-class MmuHomeCommand(BaseCommand):
+class MmuTestRunoutCommand(BaseCommand):
+    """
+    Manually invoke the clog/runout detection logic for testing.
+    """
 
-    CMD = "MMU_HOME"
+    CMD = "MMU_TEST_RUNOUT"
 
-    HELP_BRIEF = "Home the MMU selector"
+    HELP_BRIEF = "Manually invoke the clog/runout detection logic for testing"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
-        + "TOOL         = #(int) Gate/tool index (0..num_gates-1)\n"
-        + "FORCE_UNLOAD = [0|1]\n"
-        + "(no parameters: home current selector / default tool)\n"
+        + "TYPE = _event_type_ (optional, e.g. runout or clog)\n"
     )
     HELP_SUPPLEMENT = (
         ""  # add examples here if desired
@@ -42,27 +43,18 @@ class MmuHomeCommand(BaseCommand):
             help_brief=self.HELP_BRIEF,
             help_params=self.HELP_PARAMS,
             help_supplement=self.HELP_SUPPLEMENT,
-            category=CATEGORY_GENERAL
+            category=CATEGORY_TESTING
         )
 
     def _run(self, gcmd):
-        # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+        # BaseCommand wrapper already logs commandline + handles HELP=1.
 
         if self.mmu.check_if_disabled(): return
-        self.mmu._fix_started_state()
 
-        if self.mmu.check_if_not_calibrated(self.mmu.CALIBRATED_SELECTOR):
-            self.mmu.log_always("Not calibrated. Will home to endstop only!")
-            tool = -1
-            force_unload = 0
-        else:
-            tool = gcmd.get_int('TOOL', 0, minval=0, maxval=self.mmu.num_gates - 1)
-            force_unload = gcmd.get_int('FORCE_UNLOAD', None, minval=0, maxval=1)
+        event_type = gcmd.get('TYPE', None)
 
         try:
             with self.mmu.wrap_sync_gear_to_extruder():
-                self.mmu.home(tool, force_unload=force_unload)
-                if tool == -1:
-                    self.mmu.log_always("Homed")
+                self.mmu._runout(event_type=event_type, sensor="TEST")
         except MmuError as ee:
             self.mmu.handle_mmu_error(str(ee))

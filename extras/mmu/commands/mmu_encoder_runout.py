@@ -3,7 +3,7 @@
 # Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
-# Implements MMU_SELECT_BYPASS command
+# Implements MMU_ENCODER_RUNOUT command
 #
 #
 # (\_/)
@@ -19,18 +19,18 @@ from ..mmu_utils       import MmuError
 from .mmu_base_command import *
 
 
-class MmuSelectBypassCommand(BaseCommand):
+class MmuEncoderRunoutCommand(BaseCommand):
+    """
+    Internal encoder filament runout handler.
+    """
 
-    CMD = "MMU_SELECT_BYPASS"
+    CMD = "__MMU_ENCODER_RUNOUT"
 
-    HELP_BRIEF = "Select the filament bypass"
+    HELP_BRIEF = "Internal encoder filament runout handler"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
-        + "(no parameters)\n"
     )
-    HELP_SUPPLEMENT = (
-        ""  # add examples here if desired
-    )
+    HELP_SUPPLEMENT = ""  # Internal callback command
 
     def __init__(self, mmu):
         super().__init__(mmu)
@@ -40,20 +40,21 @@ class MmuSelectBypassCommand(BaseCommand):
             help_brief=self.HELP_BRIEF,
             help_params=self.HELP_PARAMS,
             help_supplement=self.HELP_SUPPLEMENT,
-            category=CATEGORY_ALIAS
+            category=CATEGORY_INTERNAL
         )
 
     def _run(self, gcmd):
-        # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+        # BaseCommand wrapper already logs commandline + handles HELP=1.
 
-        if self.mmu.check_if_disabled(): return
-        if self.mmu.check_if_not_homed(): return
-        if self.mmu.check_if_loaded(): return
-        if self.mmu.check_if_not_calibrated(CALIBRATED_SELECTOR): return
+        if not self.mmu.is_enabled:
+            # Undo what runout sensor handling did
+            self.mmu.pause_resume.send_resume_command()
+            return
+
         self.mmu._fix_started_state()
 
         try:
             with self.mmu.wrap_sync_gear_to_extruder():
-                self.mmu._select(1, -1, -1)
+                self.mmu._runout(sensor="Encoder")
         except MmuError as ee:
             self.mmu.handle_mmu_error(str(ee))
