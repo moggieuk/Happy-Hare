@@ -1484,7 +1484,6 @@ class LinearSelectorIdler:
     def filament_drive(self, buzz_gear=False):
         if self.mmu._is_running_test: return # Save idler while testing
         if self.mmu.gate_selected == self.mmu.TOOL_GATE_BYPASS: return
-        if self.active_gate == self.mmu.gate_selected: return
         if self.idler_state == self.IDLER_UNKNOWN_STATE:
             self.mmu.log_info("Idler state unknown, homing idler before driving filament")
             self.home()
