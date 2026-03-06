@@ -41,7 +41,7 @@ class MmuPrintStartCommand(BaseCommand):
             help_brief=self.HELP_BRIEF,
             help_params=self.HELP_PARAMS,
             help_supplement=self.HELP_SUPPLEMENT,
-            cateogy=CATEGORY_MACRO
+            category=CATEGORY_MACROS
         )
 
     def _run(self, gcmd):
@@ -72,7 +72,7 @@ class MmuPrintEndCommand(BaseCommand):
             help_brief=self.HELP_BRIEF,
             help_params=self.HELP_PARAMS,
             help_supplement=self.HELP_SUPPLEMENT,
-            cateogy=CATEGORY_MACRO
+            category=CATEGORY_MACROS
         )
 
     def _run(self, gcmd):

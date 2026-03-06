@@ -17,11 +17,12 @@ from ..mmu_constants import UI_SPACE, UI_CASCADE
 
 CATEGORY_GENERAL   = "GENERAL"
 CATEGORY_TESTING   = "TESTING"
-CATEGORY_STEPS     = "STEPS"
-CATEGORY_OTHER     = "OTHER"
+CATEGORY_STEPS     = "STEPS"     # Individual loading/unloading steps
 CATEGORY_ALIAS     = "ALIAS"
-CATEGORY_MACRO     = "MACRO"
-CATEGORY_INTERNAL  = "INTERNAL"
+CATEGORY_MACROS    = "MACROS"
+CATEGORY_CALLBACKS = "CALLBACKS"
+CATEGORY_INTERNAL  = "INTERNAL"  # Hidden from user
+CATEGORY_OTHER     = "OTHER"     # If not explicitly assigned (should be empty)
 
 
 class BaseCommand:
@@ -56,14 +57,14 @@ class BaseCommand:
             "help_params": help_params,
             "help_supplement": help_supplement or "",
             "category": category,
-#            "instance": self, # PAUL may not need?
+#            "instance": self, # Don't really need this
         }
+
+        # Register command with klipper
+        self.mmu.gcode.register_command(name, wrapped, desc=help_brief)
 
         # Record metadata in the category (global registry)
         BaseCommand._registered_commands.append(metadata)
-       
-        # Register command with klipper
-        self.mmu.gcode.register_command(name, wrapped, desc=help_brief)
 
 
     def format_help(self, msg, supplement=None):

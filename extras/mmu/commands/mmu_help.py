@@ -28,12 +28,15 @@ class MmuHelpCommand(BaseCommand):
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
         + "ALL       = [0|1] Show all commands (excluding aliases)\n"
+
         + "GENERAL   = [0|1] Regular MMU commands (DEFAULT ON)\n"
         + "TESTING   = [0|1] Calibration and testing commands\n"
-        + "SLICER    = [0|1] Print start/end or slicer macros (defined in mmu_software.cfg)\n"
-        + "CALLBACKS = [0|1] Callbacks macros (defined in mmu_sequence.cfg, mmu_state.cfg)\n"
         + "STEPS     = [0|1] Advanced load/unload sequence and steps commands\n"
+        + "MACROS    = [0|1] Print start/end or slicer macros (defined in mmu_software.cfg)\n"
+        + "CALLBACKS = [0|1] Callbacks macros (defined in mmu_sequence.cfg, mmu_state.cfg)\n"
         + "ALIAS     = [0|1] Show legacy aliased commands\n"
+        + "INTERNAL  = [0|1] \n" # PAUL hidden
+        + "OTHER     = [0|1] \n" # PAUL if not categorised (denotes error)
         + "CMD       = _cmd_ Show help on command (same as _cmd_ HELP=1)\n"
         + "SHOWPARMS = [0|1] Show parameter help\n"
         + "EXAMPLES  = [0|1] Show supplemental examples\n"
@@ -69,9 +72,13 @@ class MmuHelpCommand(BaseCommand):
         # Which categories exist + which flag controls showing them
         categories = [
             (CATEGORY_GENERAL,   flag("GENERAL", 1)),
+            (CATEGORY_ALIAS,     flag("ALIAS", 0)),
             (CATEGORY_TESTING,   flag("TESTING", 0)),
             (CATEGORY_STEPS,     flag("STEPS", 0)),
-            (CATEGORY_ALIAS,     flag("ALIAS", 0)),
+            (CATEGORY_MACROS,    flag("MACROS", 0)),
+            (CATEGORY_CALLBACKS, flag("CALLBACKS", 0)),
+            (CATEGORY_INTERNAL,  flag("INTERNAL", 0)),
+            (CATEGORY_OTHER,     flag("OTHER", 0)),
         ]
 
         if show_all:
@@ -102,6 +109,7 @@ class MmuHelpCommand(BaseCommand):
                     lines.append(self.format_help("%s : %s" % (c['name'], c['help_brief'])))
 
 # PAUL All this before needs sorting out after all commands are migrated
+        lines.append("\nPAUL -------------------------------- vvvv hack")
         # Command / macros that are not registered
         cmds = list(self.mmu.gcode.ready_gcode_handlers.keys())
         slicer_lines = []

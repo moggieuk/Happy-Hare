@@ -40,7 +40,7 @@ class MmuStepLoadGateCommand(BaseCommand):
 
     def __init__(self, mmu):
         super().__init__(mmu)
-        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT)
+        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
 
     def _run(self, gcmd):
         try:
@@ -62,7 +62,7 @@ class MmuStepUnloadGateCommand(BaseCommand):
 
     def __init__(self, mmu):
         super().__init__(mmu)
-        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT)
+        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
 
     def _run(self, gcmd):
         full = bool(gcmd.get_int('FULL', 0, minval=0, maxval=1))
@@ -84,7 +84,7 @@ class MmuStepLoadBowdenCommand(BaseCommand):
 
     def __init__(self, mmu):
         super().__init__(mmu)
-        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT)
+        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
 
     def _run(self, gcmd):
         length = gcmd.get_float('LENGTH', None, minval=0.)
@@ -105,7 +105,7 @@ class MmuStepUnloadBowdenCommand(BaseCommand):
 
     def __init__(self, mmu):
         super().__init__(mmu)
-        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT)
+        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
 
     def _run(self, gcmd):
         length = gcmd.get_float('LENGTH', self.mmu._get_bowden_length(self.mmu.gate_selected))
@@ -125,7 +125,7 @@ class MmuStepHomeExtruderCommand(BaseCommand):
 
     def __init__(self, mmu):
         super().__init__(mmu)
-        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT)
+        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
 
     def _run(self, gcmd):
         try:
@@ -144,7 +144,7 @@ class MmuStepLoadToolheadCommand(BaseCommand):
 
     def __init__(self, mmu):
         super().__init__(mmu)
-        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT)
+        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
 
     def _run(self, gcmd):
         extruder_only = gcmd.get_int('EXTRUDER_ONLY', 0)
@@ -164,7 +164,7 @@ class MmuStepUnloadToolheadCommand(BaseCommand):
 
     def __init__(self, mmu):
         super().__init__(mmu)
-        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT)
+        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
 
     def _run(self, gcmd):
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0))
@@ -190,7 +190,7 @@ class MmuStepHomingMoveCommand(BaseCommand):
 
     def __init__(self, mmu):
         super().__init__(mmu)
-        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT)
+        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
 
     def _run(self, gcmd):
         allow_bypass = bool(gcmd.get_int('ALLOW_BYPASS', 0, minval=0, maxval=1))
@@ -214,7 +214,7 @@ class MmuStepMoveCommand(BaseCommand):
 
     def __init__(self, mmu):
         super().__init__(mmu)
-        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT)
+        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
 
     def _run(self, gcmd):
         allow_bypass = bool(gcmd.get_int('ALLOW_BYPASS', 0, minval=0, maxval=1))
@@ -238,7 +238,7 @@ class MmuStepSetFilamentCommand(BaseCommand):
 
     def __init__(self, mmu):
         super().__init__(mmu)
-        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT)
+        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
 
     def _run(self, gcmd):
         state = gcmd.get_int('STATE', minval=FILAMENT_POS_UNKNOWN, maxval=FILAMENT_POS_LOADED)
@@ -255,7 +255,7 @@ class MmuStepSetActionCommand(BaseCommand):
 
     def __init__(self, mmu):
         super().__init__(mmu)
-        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT)
+        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
 
     def _run(self, gcmd):
         if gcmd.get_int('RESTORE', 0):
@@ -279,7 +279,7 @@ class MmuM400Command(BaseCommand):
 
     def __init__(self, mmu):
         super().__init__(mmu)
-        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT)
+        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
 
     def _run(self, gcmd):
         self.mmu.mmu_toolhead().quiesce()

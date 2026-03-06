@@ -14,9 +14,10 @@
 #
 
 # Happy Hare imports
-from ..mmu_constants   import *
-from ..mmu_utils       import MmuError
-from .mmu_base_command import *
+from ..mmu_constants     import *
+from ..mmu_utils         import MmuError
+from .mmu_base_command   import *
+from .mmu_command_mixins import UnloadEjectMixin
 
 
 class MmuEjectCommand(BaseCommand):
@@ -88,7 +89,7 @@ class MmuEjectCommand(BaseCommand):
                         self.mmu.select_gate(gate)
 
                     try:
-                        self.mmu._mmu_unload_eject(gcmd)
+                        self._handle_unload_eject(gcmd) # From mixin
                         if can_eject_from_gate:
                             self.mmu.log_always("Ejecting filament out of %s" % ("current gate" if gate == current_gate else "gate %d" % gate))
                             self.mmu._eject_from_gate()

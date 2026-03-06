@@ -14,12 +14,13 @@
 #
 
 # Happy Hare imports
-from ..mmu_constants   import *
-from ..mmu_utils       import MmuError
-from .mmu_base_command import *
+from ..mmu_constants     import *
+from ..mmu_utils         import MmuError
+from .mmu_base_command   import *
+from .mmu_command_mixins import SelectMixin
 
 
-class MmuSelectCommand(BaseCommand):
+class MmuSelectCommand(SelectMixin, BaseCommand):
 
     CMD = "MMU_SELECT"
 
@@ -63,7 +64,7 @@ class MmuSelectCommand(BaseCommand):
 
         try:
             with self.mmu.wrap_sync_gear_to_extruder():
-                self.mmu._select(bypass, tool, gate)
+                self._handle_select(bypass, tool, gate) # From mixin
                 msg = self.mmu._mmu_visual_to_string()
                 msg += "\n%s" % self.mmu._state_to_string()
                 self.mmu.log_info(msg, color=True)

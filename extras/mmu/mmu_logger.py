@@ -10,6 +10,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
+
 import logging, logging.handlers, threading, os, queue, atexit
 
 # Happy Hare imports
@@ -17,30 +18,51 @@ from .mmu_constants import *
 
 
 class MmuLogger:
+    """
+    Asynchronous rotating file logger for Happy Hare MMU.
+    """
+
     def __init__(self, logfile_path):
+        """
+        Configure logger and background queue listener.
+        """
         name = os.path.splitext(os.path.basename(logfile_path))[0]
         self.logger = logging.getLogger(name)
 
         self.queue_listener = None
         if not any(isinstance(h, QueueHandler) for h in self.logger.handlers):
-            handler = logging.handlers.TimedRotatingFileHandler(logfile_path, when='midnight', backupCount=3)
-            handler.setFormatter(MultiLineFormatter('%(asctime)s %(message)s', datefmt='%H:%M:%S'))
+            handler = logging.handlers.TimedRotatingFileHandler(
+                logfile_path,
+                when='midnight',
+                backupCount=3
+            )
+            handler.setFormatter(
+                MultiLineFormatter('%(asctime)s %(message)s', datefmt='%H:%M:%S')
+            )
             self.queue_listener = QueueListener(handler)
-            self.logger.addHandler(QueueHandler(self.queue_listener.bg_queue))
+            self.logger.addHandler(
+                QueueHandler(self.queue_listener.bg_queue)
+            )
 
         self.logger.setLevel(logging.INFO)
         self.logger.propagate = False
         atexit.register(self.shutdown)
 
     def log(self, message):
-        self.logger.info(message.replace(UI_SPACE, ' ').replace(UI_SEPARATOR, ' '))
+        self.logger.info(
+            message.replace(UI_SPACE, ' ').replace(UI_SEPARATOR, ' ')
+        )
 
     def shutdown(self):
         if self.queue_listener is not None:
             self.queue_listener.stop()
 
-# Poll log queue on background thread and log each message to logfile
+
 class QueueHandler(logging.Handler):
+    """
+    Handler that pushes log records into a queue.
+    """
+
     def __init__(self, log_queue):
         super(QueueHandler, self).__init__()
         self.queue = log_queue
@@ -51,8 +73,14 @@ class QueueHandler(logging.Handler):
         except Exception:
             self.handleError(record)
 
+
 class QueueListener:
+    """
+    Consumes queued records and writes them via a handler.
+    """
+
     def __init__(self, handler):
+        """Start background logging thread."""
         self.bg_queue = queue.Queue()
         self.handler = handler
         self.bg_thread = threading.Thread(target=self._bg_thread)
@@ -70,8 +98,13 @@ class QueueListener:
         self.bg_queue.put_nowait(None)
         self.bg_thread.join()
 
+
 # Class to improve formatting of multi-line messages
 class MultiLineFormatter(logging.Formatter):
+    """
+    Formatter that indents multi-line log messages.
+    """
+
     def format(self, record):
         indent = ' ' * 9
         formatted_message = super(MultiLineFormatter, self).format(record)

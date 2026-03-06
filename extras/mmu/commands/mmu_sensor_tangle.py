@@ -14,12 +14,13 @@
 #
 
 # Happy Hare imports
-from ..mmu_constants   import *
-from ..mmu_utils       import MmuError
-from .mmu_base_command import *
+from ..mmu_constants     import *
+from ..mmu_utils         import MmuError
+from .mmu_base_command   import *
+from .mmu_command_mixins import ClogTangleMixin
 
 
-class MmuSensorTangleCommand(BaseCommand):
+class MmuSensorTangleCommand(ClogTangleMixin, BaseCommand):
     """
     Internal MMU filament tangle handler.
     Triggered by tangle detection sensor/event.
@@ -30,6 +31,8 @@ class MmuSensorTangleCommand(BaseCommand):
     HELP_BRIEF = "Internal MMU filament tangle handler"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
+        + "EVENTTIME = #(float)\n"
+        + "SENSOR    = _sensor_name_\n"
     )
     HELP_SUPPLEMENT = ""  # Internal callback command
 
@@ -49,6 +52,6 @@ class MmuSensorTangleCommand(BaseCommand):
 
         try:
             with self.mmu.wrap_sync_gear_to_extruder():
-                self.mmu._clog_tangle(gcmd, "tangle")
+                self._handle_clog_tangle(gcmd, "tangle") # From mixin
         except MmuError as ee:
             self.mmu.handle_mmu_error(str(ee))

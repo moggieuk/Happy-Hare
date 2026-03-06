@@ -14,12 +14,13 @@
 #
 
 # Happy Hare imports
-from ..mmu_constants   import *
-from ..mmu_utils       import MmuError
-from .mmu_base_command import *
+from ..mmu_constants     import *
+from ..mmu_utils         import MmuError
+from .mmu_base_command   import *
+from .mmu_command_mixins import SelectMixin
 
 
-class MmuSelectBypassCommand(BaseCommand):
+class MmuSelectBypassCommand(SelectMixin, BaseCommand):
 
     CMD = "MMU_SELECT_BYPASS"
 
@@ -54,6 +55,6 @@ class MmuSelectBypassCommand(BaseCommand):
 
         try:
             with self.mmu.wrap_sync_gear_to_extruder():
-                self.mmu._select(1, -1, -1)
+                self._handle_select(1, -1, -1) # From mixin
         except MmuError as ee:
             self.mmu.handle_mmu_error(str(ee))

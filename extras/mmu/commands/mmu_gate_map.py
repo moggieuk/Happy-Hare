@@ -51,6 +51,7 @@ class MmuGateMapCommand(BaseCommand):
             help_brief=self.HELP_BRIEF,
             help_params=self.HELP_PARAMS,
             help_supplement=self.HELP_SUPPLEMENT,
+            category=CATEGORY_GENERAL
         )
 
     def _run(self, gcmd):

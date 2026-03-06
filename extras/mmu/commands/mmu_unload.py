@@ -14,9 +14,10 @@
 #
 
 # Happy Hare imports
-from ..mmu_constants   import *
-from ..mmu_utils       import MmuError
-from .mmu_base_command import *
+from ..mmu_constants     import *
+from ..mmu_utils         import MmuError
+from .mmu_base_command   import *
+from .mmu_command_mixins import UnloadEjectMixin
 
 
 class MmuUnloadCommand(BaseCommand):
@@ -57,7 +58,7 @@ class MmuUnloadCommand(BaseCommand):
         try:
             with self.mmu.wrap_sync_gear_to_extruder():
                 with self.mmu._wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during filament unload
-                    self.mmu._mmu_unload_eject(gcmd)
+                    self._handle_unload_eject(gcmd) # From mixin
 
                     self.mmu._persist_swap_statistics()
 
