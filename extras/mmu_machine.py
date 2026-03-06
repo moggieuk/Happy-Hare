@@ -41,6 +41,7 @@ TMC_CHIPS = ["tmc2209", "tmc2130", "tmc2208", "tmc2660", "tmc5160", "tmc2240"]
 # Stepper config sections
 SELECTOR_STEPPER_CONFIG = "stepper_mmu_selector" # Optional
 GEAR_STEPPER_CONFIG     = "stepper_mmu_gear"
+IDLER_STEPPER_CONFIG    = "stepper_mmu_idler"
 
 SHAREABLE_STEPPER_PARAMS = ['rotation_distance', 'gear_ratio', 'microsteps', 'full_steps_per_rotation']
 OTHER_STEPPER_PARAMS     = ['step_pin', 'dir_pin', 'enable_pin', 'endstop_pin', 'rotation_distance', 'pressure_advance', 'pressure_advance_smooth_time']
@@ -158,7 +159,12 @@ class MmuMachine:
             has_bypass = 1
 
         elif self.mmu_vendor == VENDOR_PRUSA:
-            raise config.error("Prusa MMU is not yet supported")
+            selector_type = 'LinearIdlerSelector'
+            variable_rotation_distances = 0
+            variable_bowden_lengths = 0
+            require_bowden_move = 1
+            filament_always_gripped = 0
+            has_bypass = 0
 
         elif self.mmu_vendor == VENDOR_ANGRY_BEAVER:
             selector_type = 'VirtualSelector'
@@ -260,7 +266,7 @@ class MmuMachine:
             has_bypass = 1
 
         # Still allow MMU design attributes to be altered or set for custom MMU
-        self.selector_type = config.getchoice('selector_type', {o: o for o in ['VirtualSelector', 'LinearSelector', 'LinearServoSelector', 'LinearMultiGearSelector', 'RotarySelector', 'MacroSelector', 'ServoSelector', 'IndexedSelector']}, selector_type)
+        self.selector_type = config.getchoice('selector_type', {o: o for o in ['VirtualSelector', 'LinearSelector', 'LinearIdlerSelector', 'LinearServoSelector', 'LinearMultiGearSelector', 'RotarySelector', 'MacroSelector', 'ServoSelector', 'IndexedSelector']}, selector_type)
         self.variable_rotation_distances = bool(config.getint('variable_rotation_distances', variable_rotation_distances))
         self.variable_bowden_lengths = bool(config.getint('variable_bowden_lengths', variable_bowden_lengths))
         self.require_bowden_move = bool(config.getint('require_bowden_move', require_bowden_move))
@@ -458,9 +464,11 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.gear_max_accel = config.getfloat('gear_max_accel', 500, above=0.)
         self.selector_max_velocity = config.getfloat('selector_max_velocity', 250, above=0.)
         self.selector_max_accel = config.getfloat('selector_max_accel', 1500, above=0.)
+        self.idler_max_velocity = config.getfloat('idler_max_velocity', 150, above=0.)
+        self.idler_max_accel = config.getfloat('self_idler_max_accel', 400, above=0.)
 
-        self.max_velocity = max(self.selector_max_velocity, self.gear_max_velocity)
-        self.max_accel = max(self.selector_max_accel, self.gear_max_accel)
+        self.max_velocity = max(self.selector_max_velocity, self.gear_max_velocity, self.idler_max_velocity)
+        self.max_accel = max(self.selector_max_accel, self.gear_max_accel, self.idler_max_accel)
 
         min_cruise_ratio = 0.5
         if config.getfloat('minimum_cruise_ratio', None) is None:
@@ -596,6 +604,9 @@ class MmuToolHead(toolhead.ToolHead, object):
 
     def get_gear_limits(self):
         return self.gear_max_velocity, self.gear_max_accel
+
+    def get_idler_limits(self):
+        return self.idler_max_velocity, self.idler_max_accel
 
     # Gear/Extruder synchronization and stepper swapping management...
 
@@ -1029,7 +1040,7 @@ class MmuKinematics:
 
         # Setup "axis" rails
         self.rails = []
-        if self.mmu_machine.selector_type in ['LinearSelector', 'LinearServoSelector', 'LinearMultiGearSelector', 'RotarySelector']:
+        if self.mmu_machine.selector_type in ['LinearSelector', 'LinearIdlerSelector', 'LinearServoSelector', 'LinearMultiGearSelector', 'RotarySelector']:
             self.rails.append(MmuLookupMultiRail(config.getsection(SELECTOR_STEPPER_CONFIG), need_position_minmax=True, default_position_endstop=0.))
             self.rails[0].setup_itersolve('cartesian_stepper_alloc', b'x')
         elif self.mmu_machine.selector_type in ['IndexedSelector']:
@@ -1040,6 +1051,10 @@ class MmuKinematics:
         self.rails.append(MmuLookupMultiRail(config.getsection(GEAR_STEPPER_CONFIG), need_position_minmax=False, default_position_endstop=0.))
         self.rails[1].setup_itersolve('cartesian_stepper_alloc', b'y')
 
+        if self.mmu_machine.selector_type in ['LinearIdlerSelector']:
+            self.rails.append(MmuLookupMultiRail(config.getsection(IDLER_STEPPER_CONFIG), need_position_minmax=True, default_position_endstop=0.))
+            self.rails[2].setup_itersolve('cartesian_stepper_alloc', b'z')
+
         for s in self.get_steppers():
             s.set_trapq(toolhead.get_trapq())
             if not self.toolhead.motion_queuing:
@@ -1048,6 +1063,7 @@ class MmuKinematics:
         # Setup boundary checks
         self.selector_max_velocity, self.selector_max_accel = toolhead.get_selector_limits()
         self.gear_max_velocity, self.gear_max_accel = toolhead.get_gear_limits()
+        self.idler_max_velocity, self.idler_max_accel = toolhead.get_idler_limits()
         self.move_accel = None
         self.limits = [(1.0, -1.0)] * len(self.rails)
 
@@ -1076,8 +1092,10 @@ class MmuKinematics:
 
     def home(self, homing_state):
         for axis in homing_state.get_axes():
-            if not axis == 0: # Saftey: Only selector (axis[0]) can be homed TODO: make dependent on exact configuration
+            # Safety: Only selector (axis[0]) or idler (axis[2] can be homed TODO: make dependent on exact configuration
+            if not (axis == 0 or axis == 2):
                 continue
+            logging.info("Homing axis %s of %s", axis, homing_state)
             rail = self.rails[axis]
             position_min, position_max = rail.get_range()
             hi = rail.get_homing_info()
@@ -1094,7 +1112,7 @@ class MmuKinematics:
         self.move_accel = accel
 
     def check_move(self, move):
-        if self.mmu_machine.selector_type in ['LinearSelector', 'LinearServoSelector', 'LinearMultiGearSelector', 'RotarySelector']:
+        if self.mmu_machine.selector_type in ['LinearSelector', 'LinearIdlerSelector', 'LinearServoSelector', 'LinearMultiGearSelector', 'RotarySelector']:
             limits = self.limits
             xpos, _ = move.end_pos[:2]
             if xpos != 0. and (xpos < limits[0][0] or xpos > limits[0][1]):
