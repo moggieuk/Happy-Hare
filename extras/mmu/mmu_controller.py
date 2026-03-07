@@ -30,16 +30,6 @@ from .mmu_sensor_utils          import MmuRunoutHelper
 from .mmu_led_manager           import MmuLedManager
 from .mmu_environment_manager   import MmuEnvironmentManager
 from .mmu_machine_parameters    import MmuMachineParameters
-from .unit.mmu_encoder          import (RUNOUT_DISABLED,
-                                        RUNOUT_STATIC,
-                                        RUNOUT_AUTOMATIC)
-from .unit.mmu_calibrator       import (CALIBRATED_GEAR_0,
-                                        CALIBRATED_ENCODER,
-                                        CALIBRATED_SELECTOR,
-                                        CALIBRATED_BOWDENS,
-                                        CALIBRATED_GEAR_RDS,
-                                        CALIBRATED_ESSENTIAL,
-                                        CALIBRATED_ALL)
 from .commands                  import COMMAND_REGISTRY
 from .commands.mmu_base_command import *
 
@@ -169,6 +159,7 @@ class MmuController:
                 raise self.config.error("Failed to register command class: %s", name)
 
         # Initializer tasks
+# PAUL MOVE TO Commands...
         self.gcode.register_command('__MMU_BOOTUP', self.cmd_MMU_BOOTUP, desc = self.cmd_MMU_BOOTUP_help) # Bootup tasks
 
 # PAUL moved into commands
@@ -1213,7 +1204,7 @@ class MmuController:
         # Also a good place to update the persisted calibrated clog length (for auto mode)
         if self.has_encoder():
             mode = self.mmu_unit().sync_feedback.p.flowguard_encoder_mode
-            if mode == RUNOUT_AUTOMATIC:
+            if mode == ENCODER_RUNOUT_AUTOMATIC:
                 cdl = self.encoder().get_clog_detection_length()
                 self.mmu_unit().calibrator.update_clog_detection_length(round(cdl, 1))
 

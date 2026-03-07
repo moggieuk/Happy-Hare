@@ -27,14 +27,6 @@ import logging, math
 from ..mmu_constants import *
 from ..mmu_utils     import MmuError
 
-# Calibration steps
-CALIBRATED_GEAR_0    = 0b00001 # Specifically rotation_distance for gate 0
-CALIBRATED_ENCODER   = 0b00010
-CALIBRATED_SELECTOR  = 0b00100 # Defaults true with VirtualSelector
-CALIBRATED_BOWDENS   = 0b01000 # Bowden length for all gates
-CALIBRATED_GEAR_RDS  = 0b10000 # rotation_distance for other gates (optional)
-CALIBRATED_ESSENTIAL = 0b01111
-CALIBRATED_ALL       = 0b11111
 
 class MmuCalibrator:
 
@@ -265,7 +257,7 @@ class MmuCalibrator:
         if not self.mmu.has_encoder(): return
         if not cdl: return
 
-        auto = (self.mmu.sync_feedback_manager.mmu_unit.p.flowguard_encoder_mode == self.mmu_unit.encoder.RUNOUT_AUTOMATIC)
+        auto = (self.mmu.sync_feedback_manager.mmu_unit.p.flowguard_encoder_mode == RUNOUT_AUTOMATIC)
 
         if auto or force:
             self.var_manager.save_variable(self.mmu.VARS_MMU_CALIB_ENCODER_CLOG_LENGTH, cdl, write=bool(force))

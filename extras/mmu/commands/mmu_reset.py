@@ -62,9 +62,9 @@ class MmuResetCommand(BaseCommand):
         self.mmu._reset_gate_map()
 
         # Persist key variables
-        self.mmu.var_manager.set(self.mmu.VARS_MMU_GATE_SELECTED, self.mmu.gate_selected)
-        self.mmu.var_manager.set(self.mmu.VARS_MMU_TOOL_SELECTED, self.mmu.tool_selected)
-        self.mmu.var_manager.set(self.mmu.VARS_MMU_FILAMENT_POS, self.mmu.filament_pos)
+        self.mmu.var_manager.set(VARS_MMU_GATE_SELECTED, self.mmu.gate_selected)
+        self.mmu.var_manager.set(VARS_MMU_TOOL_SELECTED, self.mmu.tool_selected)
+        self.mmu.var_manager.set(VARS_MMU_FILAMENT_POS, self.mmu.filament_pos)
         self.mmu.var_manager.write()
 
         self.mmu.log_always("MMU state reset")

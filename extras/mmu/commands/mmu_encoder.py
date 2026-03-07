@@ -14,9 +14,9 @@
 #
 
 # Happy Hare imports
-from ..mmu_constants   import *
-from ..mmu_utils       import MmuError
-from .mmu_base_command import *
+from ..mmu_constants    import *
+from ..mmu_utils        import MmuError
+from .mmu_base_command  import *
 
 
 class MmuEncoderCommand(BaseCommand):
@@ -52,11 +52,9 @@ class MmuEncoderCommand(BaseCommand):
         value = gcmd.get_float('VALUE', -1, minval=0.)
         enable = gcmd.get_int('ENABLE', -1, minval=0, maxval=1)
         if enable == 1:
-# PAUL old            self.encoder().set_mode(self.enable_clog_detection)
-            self.mmu.mmu_unit().sync_feedback.set_encoder_mode() # PAUL pass mode MOGGIE
+            self.mmu.mmu_unit().sync_feedback.set_encoder_mode() # Reset to default mode
         elif enable == 0:
-# PAUL old            self.encoder().set_mode(self.encoder().RUNOUT_DISABLED)
-            self.mmu.mmu_unit().sync_feedback.set_encoder_mode(self.mmu.RUNOUT_DISABLED) # PAUL contant name?? MOGGIE
+            self.mmu.mmu_unit().sync_feedback.set_encoder_mode(ENCODER_RUNOUT_DISABLED)
         elif value >= 0.:
             self.mmu.set_encoder_distance(value)
             return

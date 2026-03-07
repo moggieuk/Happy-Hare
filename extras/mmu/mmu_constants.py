@@ -235,6 +235,20 @@ AUTOMAP_CLOSEST_COLOR  = 'closest_color'
 AUTOMAP_COLOR          = 'color'
 AUTOMAP_OPTIONS        = [AUTOMAP_NONE, AUTOMAP_FILAMENT_NAME, AUTOMAP_SPOOL_ID, AUTOMAP_MATERIAL, AUTOMAP_CLOSEST_COLOR, AUTOMAP_COLOR]
 
+# Calibration steps
+CALIBRATED_GEAR_0    = 0b00001 # Specifically rotation_distance for gate 0
+CALIBRATED_ENCODER   = 0b00010
+CALIBRATED_SELECTOR  = 0b00100 # Defaults true with VirtualSelector
+CALIBRATED_BOWDENS   = 0b01000 # Bowden length for all gates
+CALIBRATED_GEAR_RDS  = 0b10000 # rotation_distance for other gates (optional)
+CALIBRATED_ESSENTIAL = 0b01111
+CALIBRATED_ALL       = 0b11111
+
+# Encoder runout/clog detection modes
+ENCODER_RUNOUT_DISABLED = 0
+ENCODER_RUNOUT_STATIC = 1
+ENCODER_RUNOUT_AUTOMATIC = 2
+
 EMPTY_GATE_STATS_ENTRY = {'pauses': 0, 'loads': 0, 'load_distance': 0.0, 'load_delta': 0.0, 'unloads': 0, 'unload_distance': 0.0, 'unload_delta': 0.0, 'load_failures': 0, 'unload_failures': 0, 'quality': -1.}
 
 W3C_COLORS = [('aliceblue','#F0F8FF'), ('antiquewhite','#FAEBD7'), ('aqua','#00FFFF'), ('aquamarine','#7FFFD4'), ('azure','#F0FFFF'), ('beige','#F5F5DC'),

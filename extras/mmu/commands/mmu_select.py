@@ -17,10 +17,9 @@
 from ..mmu_constants     import *
 from ..mmu_utils         import MmuError
 from .mmu_base_command   import *
-from .mmu_command_mixins import SelectMixin
 
 
-class MmuSelectCommand(SelectMixin, BaseCommand):
+class MmuSelectCommand(BaseCommand):
 
     CMD = "MMU_SELECT"
 
@@ -64,7 +63,16 @@ class MmuSelectCommand(SelectMixin, BaseCommand):
 
         try:
             with self.mmu.wrap_sync_gear_to_extruder():
-                self._handle_select(bypass, tool, gate) # From mixin
+                if bypass != -1:
+                    self.mmu.select_bypass()
+
+                elif tool != -1:
+                    self.mmu.select_tool(tool)
+
+                else:
+                    self.mmu.select_gate(gate)
+                    self.mmu._ensure_ttg_match()
+
                 msg = self.mmu._mmu_visual_to_string()
                 msg += "\n%s" % self.mmu._state_to_string()
                 self.mmu.log_info(msg, color=True)

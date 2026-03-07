@@ -80,21 +80,3 @@ class UnloadEjectMixin:
                 self.mmu._unload_tool(form_tip=do_form_tip)
                 self.mmu._persist_gate_statistics()
                 self.mmu._continue_after('unload', restore=restore)
-
-
-class SelectMixin:
-    """
-    Mixin providing shared logic for gate selection
-
-    Intended for use by:
-      MMU_SELECT and MMU_SELECT_BYPASS
-    """
-
-    def _handle_select(self, bypass, tool, gate):
-        if bypass != -1:
-            self.mmu.select_bypass()
-        elif tool != -1:
-            self.mmu.select_tool(tool)
-        else:
-            self.mmu.select_gate(gate)
-            self.mmu._ensure_ttg_match()

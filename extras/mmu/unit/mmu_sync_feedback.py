@@ -29,7 +29,6 @@ import logging, math, time, os
 # Happy Hare imports
 from ..mmu_constants      import *
 from ..mmu_utils          import MmuError
-from .mmu_encoder         import RUNOUT_DISABLED, RUNOUT_STATIC, RUNOUT_AUTOMATIC
 from .mmu_sync_controller import SyncControllerConfig, SyncController
 
 SF_STATE_NEUTRAL     = 0
@@ -163,7 +162,7 @@ class MmuSyncFeedback:
 
         # Figure out the correct detection length based on mode
         cdl = self.p.flowguard_encoder_max_motion
-        if mode == RUNOUT_AUTOMATIC:
+        if mode == ENCODER_RUNOUT_AUTOMATIC:
             cdl = self.mmu_machine.var_manager.save_variables.allVariables.get(VARS_MMU_CALIB_ENCODER_CLOG_LENGTH, cdl)
 
         # Notify sensor of detection length

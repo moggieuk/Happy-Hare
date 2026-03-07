@@ -63,7 +63,7 @@ class MmuCheckGateCommand(BaseCommand):
         tool = gcmd.get_int('TOOL', -1, minval=0, maxval=self.mmu.num_gates - 1)
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu.num_gates - 1)
         all_gates = gcmd.get_int('ALL', 0, minval=0, maxval=1)
-        if self.mmu.check_if_not_calibrated(self.mmu.CALIBRATED_ESSENTIAL, check_gates = None if gate == -1 else [gate]): return # TODO Incomplete/simplified gate selection
+        if self.mmu.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates = None if gate == -1 else [gate]): return # TODO Incomplete/simplified gate selection
 
         try:
             with self.mmu.wrap_sync_gear_to_extruder():

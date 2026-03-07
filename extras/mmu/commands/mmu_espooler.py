@@ -82,7 +82,7 @@ class MmuEspoolerCommand(BaseCommand):
 
         if alloff:
             for gate in range(self.mmu.num_gates):
-                self.mmu.espooler.set_operation(gate, 0, self.mmu.ESPOOLER_OFF)
+                self.mmu.espooler.set_operation(gate, 0, ESPOOLER_OFF)
 
         elif tighten or loosen:
             if gate is None:
@@ -92,7 +92,7 @@ class MmuEspoolerCommand(BaseCommand):
 
             power = self.mmu.mmu_unit().p.espooler_assist_burst_power if loosen else self.mmu.mmu_unit().p.espooler_rewind_burst_power
             duration = self.mmu.mmu_unit().p.espooler_assist_burst_duration if loosen else self.mmu.mmu_unit().p.espooler_rewind_burst_duration
-            operation = self.mmu.ESPOOLER_ASSIST if loosen else self.mmu.ESPOOLER_REWIND
+            operation = ESPOOLER_ASSIST if loosen else ESPOOLER_REWIND
             self.mmu.printer.send_event("mmu:espooler_burst", gate, power / 100., duration, operation)
 
         elif operation is not None:
@@ -105,53 +105,53 @@ class MmuEspoolerCommand(BaseCommand):
 
             # Determine power
             if burst:
-                default_power = self.mmu.mmu_unit().p.espooler_assist_burst_power if operation == self.mmu.ESPOOLER_ASSIST else self.mmu.mmu_unit().p.espooler_rewind_burst_power
+                default_power = self.mmu.mmu_unit().p.espooler_assist_burst_power if operation == ESPOOLER_ASSIST else self.mmu.mmu_unit().p.espooler_rewind_burst_power
             else:
-                default_power = self.mmu.mmu_unit().p.espooler_printing_power if operation == self.mmu.ESPOOLER_PRINT else 50
-            power = gcmd.get_int('POWER', default_power, minval=0, maxval=100) if operation != self.mmu.ESPOOLER_OFF else 0
+                default_power = self.mmu.mmu_unit().p.espooler_printing_power if operation == ESPOOLER_PRINT else 50
+            power = gcmd.get_int('POWER', default_power, minval=0, maxval=100) if operation != ESPOOLER_OFF else 0
 
             if burst:
-                default_duration = self.mmu.mmu_unit().p.espooler_assist_burst_duration if operation == self.mmu.ESPOOLER_ASSIST else self.mmu.mmu_unit().p.espooler_rewind_burst_duration
+                default_duration = self.mmu.mmu_unit().p.espooler_assist_burst_duration if operation == ESPOOLER_ASSIST else self.mmu.mmu_unit().p.espooler_rewind_burst_duration
                 duration = gcmd.get_float('DURATION', default_duration, above=0., maxval=10.)
 
-                if operation in [self.mmu.ESPOOLER_ASSIST, self.mmu.ESPOOLER_REWIND]:
+                if operation in [ESPOOLER_ASSIST, ESPOOLER_REWIND]:
                     self.mmu.log_info("Espooler burst on gate %d for %.1fs at %d%% power in %s direction" % (gate, duration, power, operation))
                     self.mmu.printer.send_event("mmu:espooler_burst", gate, power / 100., duration, operation)
                 else:
                     self.mmu.log_error("Must specify 'assist' or 'rewind' operation for burst")
 
-            elif operation not in self.mmu.ESPOOLER_OPERATIONS:
-                raise gcmd.error("Invalid operation. Options are: %s" % ", ".join(self.mmu.ESPOOLER_OPERATIONS))
+            elif operation not in ESPOOLER_OPERATIONS:
+                raise gcmd.error("Invalid operation. Options are: %s" % ", ".join(ESPOOLER_OPERATIONS))
 
-            elif operation == self.mmu.ESPOOLER_PRINT:
+            elif operation == ESPOOLER_PRINT:
                 if self.mmu.is_printing():
                     self.mmu.log_warning("Cannot set in-print assist mode for non selected gate while printing")
                 else:
                     if gate != self.mmu.gate_selected:
                         self.mmu.log_warning("In-print assist mode set for non selected gate - for testing only")
-                    self.mmu.espooler.set_operation(gate, power / 100, self.mmu.ESPOOLER_PRINT)
+                    self.mmu.espooler.set_operation(gate, power / 100, ESPOOLER_PRINT)
 
-            elif operation != self.mmu.ESPOOLER_OFF:
+            elif operation != ESPOOLER_OFF:
                 self.mmu.espooler.set_operation(gate, power / 100, operation)
             else:
-                self.mmu.espooler.set_operation(gate, 0, self.mmu.ESPOOLER_OFF)
+                self.mmu.espooler.set_operation(gate, 0, ESPOOLER_OFF)
 
         if not quiet:
             msg = ""
             for gate in range(self.mmu.num_gates):
                 if msg:
                     msg += "\n"
-                msg += "{}".format(gate).ljust(2, self.mmu.UI_SPACE) + ": "
+                msg += "{}".format(gate).ljust(2, UI_SPACE) + ": "
                 if self.mmu.has_espooler():
                     operation, value = self.mmu.espooler.get_operation(gate)
                     burst = ""
-                    if operation == self.mmu.ESPOOLER_PRINT and value == 0:
+                    if operation == ESPOOLER_PRINT and value == 0:
                         burst = " [assist for %.1fs at %d%% power " % (self.mmu.mmu_unit().p.espooler_assist_burst_duration, self.mmu.mmu_unit().p.espooler_assist_burst_power)
                         if self.mmu.mmu_unit().p.espooler_assist_burst_trigger:
                             burst += "on trigger, max %d bursts]" % self.mmu.mmu_unit().p.espooler_assist_burst_trigger_max
                         else:
                             burst += "every %.1fmm of extruder movement]" % self.mmu.mmu_unit().p.espooler_assist_extruder_move_length
-                    msg += "{}".format(operation).ljust(7, self.mmu.UI_SPACE) + " (%d%%)%s" % (round(value * 100), burst)
+                    msg += "{}".format(operation).ljust(7, UI_SPACE) + " (%d%%)%s" % (round(value * 100), burst)
                 else:
                     msg += "not fitted"
             self.mmu.log_always(msg)

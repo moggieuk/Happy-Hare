@@ -23,14 +23,8 @@ from ... import pulse_counter
 
 # Happy Hare imports
 from ..mmu_constants import *
-from .mmu_calibrator import CALIBRATED_ENCODER
-
 
 CHECK_MOVEMENT_TIMEOUT = 0.250
-
-RUNOUT_DISABLED = 0
-RUNOUT_STATIC = 1
-RUNOUT_AUTOMATIC = 2
 
 
 class MmuEncoder:
@@ -77,7 +71,7 @@ class MmuEncoder:
         self.min_event_systime = self.reactor.NEVER
         self.extruder = None
         self.filament_detected = False
-        self.detection_mode = RUNOUT_STATIC
+        self.detection_mode = ENCODER_RUNOUT_STATIC
         self.last_extruder_pos = self.filament_runout_pos = 0.
         self.filament_runout_pos = self.min_headroom = self.detection_length
 
@@ -114,7 +108,7 @@ class MmuEncoder:
             self.log_debug("Loaded saved resolution for encoder %s: %.4f" % (self.name, cal_res))
 
             for unit in self.connected_units:
-                unit.calibrator.mark_calibrated(unit, CalibrationManager.CALIBRATED_ENCODER)
+                unit.calibrator.mark_calibrated(unit, CALIBRATED_ENCODER)
         else:
             self.mmu.log_warning("Warning: Encoder resolution for %s was not found in mmu_vars.cfg. Probably not calibrated" % self.name)
 
@@ -169,9 +163,9 @@ class MmuEncoder:
             if self.filament_runout_pos - extruder_pos < self.min_headroom:
                 self.min_headroom = self.filament_runout_pos - extruder_pos
                 if self.min_headroom < self.desired_headroom:
-                    if self.detection_mode == RUNOUT_AUTOMATIC:
+                    if self.detection_mode == ENCODER_RUNOUT_AUTOMATIC:
                         self.mmu.log_debug("Automatic clog detection: new min_headroom (< %.1fmm desired): %.1fmm" % (self.desired_headroom, self.min_headroom))
-                    elif self.detection_mode == RUNOUT_STATIC:
+                    elif self.detection_mode == ENCODER_RUNOUT_STATIC:
                         self.mmu.log_debug("Warning: Only %.1fmm of headroom to clog/runout" % self.min_headroom)
             self._handle_filament_event(extruder_pos < self.filament_runout_pos)
 
@@ -199,7 +193,7 @@ class MmuEncoder:
     # Called periodically to tune the clog detection length
     def _update_detection_length(self, increase_only=False):
         if not self._enabled: return
-        if self.detection_mode != RUNOUT_AUTOMATIC:
+        if self.detection_mode != ENCODER_RUNOUT_AUTOMATIC:
             return
         current_detection_length = self.detection_length
         if self.min_headroom < self.desired_headroom:
@@ -227,7 +221,7 @@ class MmuEncoder:
             return
         self.filament_detected = filament_detected
         eventtime = self.reactor.monotonic()
-        if eventtime < self.min_event_systime or self.detection_mode == RUNOUT_DISABLED or not self._enabled:
+        if eventtime < self.min_event_systime or self.detection_mode == ENCODER_RUNOUT_DISABLED or not self._enabled:
             return
         is_printing = self.printer.lookup_object("idle_timeout").get_status(eventtime)["state"] == "Printing"
         if filament_detected:
@@ -272,7 +266,7 @@ class MmuEncoder:
         self._update_detection_length()
 
     def set_mode(self, mode):
-        if RUNOUT_DISABLED <= mode <= RUNOUT_AUTOMATIC:
+        if ENCODER_RUNOUT_DISABLED <= mode <= ENCODER_RUNOUT_AUTOMATIC:
             self.detection_mode = mode
 
     def enable(self):
