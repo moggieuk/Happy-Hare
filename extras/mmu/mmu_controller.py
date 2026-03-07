@@ -46,7 +46,6 @@ class MmuController:
         self.gcode = self.printer.lookup_object('gcode')
         self.gcode_move = self.printer.load_object(config, 'gcode_move')
 
-#        self.mmu_machine = self.printer.lookup_object("mmu_machine")
         self.num_gates = self.mmu_machine.num_gates
         self.gate_selected = TOOL_GATE_UNKNOWN # PAUL TEMP HACK to get through initialization
         self.w3c_colors = dict(W3C_COLORS)
@@ -281,7 +280,10 @@ class MmuController:
                     self.log_error(f'No existing {name} macro found!')
                     continue
 
+                # Rename existing command
                 self.gcode.register_command(f'__{name}', prev)
+
+                # Register replacement
                 wrapper_cls(self)
 
         except Exception as e:
@@ -290,8 +292,7 @@ class MmuController:
             )
 
         # Schedule bootup tasks to run after klipper and hopefully spoolman have settled
-# PAUL temp disable
-#        self._schedule_mmu_bootup_tasks(BOOT_DELAY)
+        self._schedule_mmu_bootup_tasks(BOOT_DELAY)
 
 
     def reinit(self):
@@ -626,13 +627,13 @@ class MmuController:
     cmd_MMU_BOOTUP_help = "Internal commands to complete bootup of MMU"
     def cmd_MMU_BOOTUP(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        self.selector.bootup() # PAUL TODO should be all units
+        self.selector().bootup() # PAUL TODO should be all units
 
         try:
             # Splash...
             msg = '{1}(\_/){0}\n{1}( {0}*,*{1}){0}\n{1}(")_("){0} {5}{2}H{0}{3}a{0}{4}p{0}{2}p{0}{3}y{0} {4}H{0}{2}a{0}{3}r{0}{4}e{0} {1}%s{0} {2}R{0}{3}e{0}{4}a{0}{2}d{0}{3}y{0}{1}...{0}{6}' % self._fversion(self.mmu_machine.happy_hare_version)
             self.log_always(msg, color=True)
-            if self.p.kalico:
+            if self.kalico:
                 msg = "Warning: You are running on Kalico (Danger-Klipper). Support is not guaranteed!"
                 if self.p.suppress_kalico_warning:
                     self.log_trace(msg + " Message was suppressed.")
@@ -720,7 +721,7 @@ class MmuController:
         except Exception as e:
             logging.error(traceback.format_exc())
             self.log_error('Error booting up MMU: %s' % str(e))
-            raise e # PAUL TESTING TEMP
+#            raise e # PAUL TESTING TEMP
 
         self.mmu_macro_event(MACRO_EVENT_RESTART)
 
@@ -4384,54 +4385,6 @@ class MmuController:
         self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f QUIET=1" % pa)
 
 
-
-    # Logic shared with MMU_TEST_MOVE and _MMU_STEP_MOVE
-    def _move_cmd(self, gcmd, trace_str, allow_bypass=False):
-        if self.check_if_disabled(): return (0., False, 0., 0.)
-        if not allow_bypass and self.check_if_bypass(): return (0., False, 0., 0.)
-        move = gcmd.get_float('MOVE', 100.)
-        speed = gcmd.get_float('SPEED', None)
-        accel = gcmd.get_float('ACCEL', None)
-        motor = gcmd.get('MOTOR', "gear")
-        wait = bool(gcmd.get_int('WAIT', 1, minval=0, maxval=1)) # Wait for move to complete (make move synchronous)
-        if motor not in ["gear", "extruder", "gear+extruder", "synced"]:
-            raise gcmd.error("Valid motor names are 'gear', 'extruder', 'gear+extruder' or 'synced'")
-        if motor == "extruder":
-            self.selector().filament_release()
-        else:
-            self.selector().filament_drive()
-        self.log_debug("Moving '%s' motor %.1fmm..." % (motor, move))
-        return self.trace_filament_move(trace_str, move, speed=speed, accel=accel, motor=motor, wait=wait)
-
-    # Logic shared with MMU_TEST_HOMING_MOVE and _MMU_STEP_HOMING_MOVE
-    def _homing_move_cmd(self, gcmd, trace_str, allow_bypass=False):
-        if self.check_if_disabled(): return (0., False, 0., 0.)
-        if not allow_bypass and self.check_if_bypass(): return (0., False, 0., 0.)
-        endstop = gcmd.get('ENDSTOP', "default")
-        move = gcmd.get_float('MOVE', 100.)
-        speed = gcmd.get_float('SPEED', None)
-        accel = gcmd.get_float('ACCEL', None) # Ignored for extruder led moves
-        motor = gcmd.get('MOTOR', "gear")
-        if motor not in ["gear", "extruder", "gear+extruder"]:
-            raise gcmd.error("Valid motor names are 'gear', 'extruder', 'gear+extruder'")
-        direction = -1 if move < 0 else 1
-        stop_on_endstop = gcmd.get_int('STOP_ON_ENDSTOP', direction, minval=-1, maxval=1)
-        if abs(stop_on_endstop) != 1:
-            raise gcmd.error("STOP_ON_ENDSTOP can only be 1 (extrude direction) or -1 (retract direction)")
-        endstop = self.sensor_manager.get_mapped_endstop_name(endstop)
-        valid_endstops = list(self.gear_rail().get_extra_endstop_names())
-        if endstop not in valid_endstops:
-            raise gcmd.error("Endstop name '%s' is not valid for motor '%s'. Options are: %s" % (endstop, motor, ', '.join(valid_endstops)))
-        if self.gear_rail().is_endstop_virtual(endstop) and stop_on_endstop == -1:
-            raise gcmd.error("Cannot reverse home on virtual (TMC stallguard) endstop '%s'" % endstop)
-        if motor == "extruder":
-            self.selector().filament_release()
-        else:
-            self.selector().filament_drive()
-        self.log_debug("Homing '%s' motor to '%s' endstop, up to %.1fmm..." % (motor, endstop, move))
-        return self.trace_filament_move(trace_str, move, speed=speed, accel=accel, motor=motor, homing_move=stop_on_endstop, endstop_name=endstop)
-
-
 ############################
 # TOOL SELECTION FUNCTIONS #
 ############################
@@ -5333,7 +5286,7 @@ class MmuController:
 class MmuWrapperCancelPrintCommand(BaseCommand):
 
     CMD = "CANCEL_PRINT"
-    HELP_BRIEF = "Wrapper around default CANCEL_PRINT command"
+    HELP_BRIEF = "Internal wrapper around default CANCEL_PRINT command"
     HELP_PARAMS = "%s: %s\n" % (CMD, HELP_BRIEF)
     HELP_SUPPLEMENT = ""
 
@@ -5356,7 +5309,7 @@ class MmuWrapperCancelPrintCommand(BaseCommand):
 class MmuWrapperResumeCommand(BaseCommand):
 
     CMD = "RESUME"
-    HELP_BRIEF = "Wrapper around default RESUME command"
+    HELP_BRIEF = "Internal wrapper around default RESUME command"
     HELP_PARAMS = "%s: %s\n" % (CMD, HELP_BRIEF)
     HELP_SUPPLEMENT = ""
 
@@ -5405,7 +5358,7 @@ class MmuWrapperResumeCommand(BaseCommand):
 class MmuWrapperPauseCommand(BaseCommand):
 
     CMD = "PAUSE"
-    HELP_BRIEF = "Wrapper around default PAUSE command"
+    HELP_BRIEF = "Internal wrapper around default PAUSE command"
     HELP_PARAMS = "%s: %s\n" % (CMD, HELP_BRIEF)
     HELP_SUPPLEMENT = ""
 
@@ -5424,7 +5377,7 @@ class MmuWrapperPauseCommand(BaseCommand):
 class MmuWrapperClearPauseCommand(BaseCommand):
 
     CMD = "CLEAR_PAUSE"
-    HELP_BRIEF = "Wrapper around default CLEAR_PAUSE command"
+    HELP_BRIEF = "Internal wrapper around default CLEAR_PAUSE command"
     HELP_PARAMS = "%s: %s\n" % (CMD, HELP_BRIEF)
     HELP_SUPPLEMENT = ""
 

@@ -80,3 +80,74 @@ class UnloadEjectMixin:
                 self.mmu._unload_tool(form_tip=do_form_tip)
                 self.mmu._persist_gate_statistics()
                 self.mmu._continue_after('unload', restore=restore)
+
+
+class MoveMixin:
+    """
+    Mixin providing shared logic for standard and homing move commands
+
+    Intended for use by:
+      MMU_TEST_MOVE, _MMU_STEP_MOVE
+      MMU_TEST_HOMING_MOVE, _MMU_STEP_HOMING_MOVE
+    """
+
+    def _move_cmd(self, gcmd, trace_str, allow_bypass=False):
+        if self.mmu.check_if_disabled():
+            return (0., False, 0., 0.)
+
+        if not allow_bypass and self.mmu.check_if_bypass():
+            return (0., False, 0., 0.)
+
+        move = gcmd.get_float('MOVE', 100.)
+        speed = gcmd.get_float('SPEED', None)
+        accel = gcmd.get_float('ACCEL', None)
+        motor = gcmd.get('MOTOR', "gear")
+        wait = bool(gcmd.get_int('WAIT', 1, minval=0, maxval=1)) # Wait for move to complete (make move synchronous)
+        s = self.mmu_unit().selector
+
+        if motor not in ["gear", "extruder", "gear+extruder", "synced"]:
+            raise gcmd.error("Valid motor names are 'gear', 'extruder', 'gear+extruder' or 'synced'")
+
+        if motor == "extruder":
+            s.filament_release()
+        else:
+            s.filament_drive()
+        self.mmu.log_debug("Moving '%s' motor %.1fmm..." % (motor, move))
+        return self.mmu.trace_filament_move(trace_str, move, speed=speed, accel=accel, motor=motor, wait=wait)
+
+    def _homing_move_cmd(self, gcmd, trace_str, allow_bypass=False):
+        if self.mmu.check_if_disabled():
+            return (0., False, 0., 0.)
+        if not allow_bypass and self.mmu.check_if_bypass():
+            return (0., False, 0., 0.)
+
+        endstop = gcmd.get('ENDSTOP', "default")
+        move = gcmd.get_float('MOVE', 100.)
+        speed = gcmd.get_float('SPEED', None)
+        accel = gcmd.get_float('ACCEL', None) # Ignored for extruder led moves
+        motor = gcmd.get('MOTOR', "gear")
+        s = self.mmu_unit().selector
+
+        if motor not in ["gear", "extruder", "gear+extruder"]:
+            raise gcmd.error("Valid motor names are 'gear', 'extruder', 'gear+extruder'")
+
+        direction = -1 if move < 0 else 1
+        stop_on_endstop = gcmd.get_int('STOP_ON_ENDSTOP', direction, minval=-1, maxval=1)
+        if abs(stop_on_endstop) != 1:
+            raise gcmd.error("STOP_ON_ENDSTOP can only be 1 (extrude direction) or -1 (retract direction)")
+
+        endstop = self.mmu.sensor_manager.get_mapped_endstop_name(endstop)
+        valid_endstops = list(self.mmu.gear_rail().get_extra_endstop_names())
+        if endstop not in valid_endstops:
+            raise gcmd.error("Endstop name '%s' is not valid for motor '%s'. Options are: %s" % (endstop, motor, ', '.join(valid_endstops)))
+
+        if self.mmu.gear_rail().is_endstop_virtual(endstop) and stop_on_endstop == -1:
+            raise gcmd.error("Cannot reverse home on virtual (TMC stallguard) endstop '%s'" % endstop)
+
+        if motor == "extruder":
+            s.filament_release()
+        else:
+            s.filament_drive()
+
+        self.mmu.log_debug("Homing '%s' motor to '%s' endstop, up to %.1fmm..." % (motor, endstop, move))
+        return self.mmu.trace_filament_move(trace_str, move, speed=speed, accel=accel, motor=motor, homing_move=stop_on_endstop, endstop_name=endstop)

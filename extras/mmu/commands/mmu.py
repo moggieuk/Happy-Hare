@@ -23,7 +23,7 @@ class MmuCommand(BaseCommand):
 
     CMD = "MMU"
 
-    HELP_BRIEF = "Enable/Disable functionality and reset state"
+    HELP_BRIEF = "Enable/Disable functionality (resets state when re-enabled)"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
         + "ENABLE = [0|1]\n"

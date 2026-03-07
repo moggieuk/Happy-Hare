@@ -26,9 +26,10 @@
 #
 
 # Happy Hare imports
-from ..mmu_constants   import *
-from ..mmu_utils       import MmuError
-from .mmu_base_command import *
+from ..mmu_constants     import *
+from ..mmu_utils         import MmuError
+from .mmu_base_command   import *
+from .mmu_command_mixins import MoveMixin
 
 
 class MmuStepLoadGateCommand(BaseCommand):
@@ -79,7 +80,11 @@ class MmuStepLoadBowdenCommand(BaseCommand):
 
     CMD = "_MMU_STEP_LOAD_BOWDEN"
     HELP_BRIEF = "User composable loading step: Smart loading of bowden"
-    HELP_PARAMS = "%s: %s\n" % (CMD, HELP_BRIEF)
+    HELP_PARAMS = (
+        "%s: %s\n" % (CMD, HELP_BRIEF)
+        + "LENGTH    = mm   Override the default calibrated bowden length)\n"
+        + "START_POS = mm   Postion of filament past the gate homing point at start of move\n"
+    )
     HELP_SUPPLEMENT = ""
 
     def __init__(self, mmu):
@@ -100,7 +105,10 @@ class MmuStepUnloadBowdenCommand(BaseCommand):
 
     CMD = "_MMU_STEP_UNLOAD_BOWDEN"
     HELP_BRIEF = "User composable unloading step: Smart unloading of bowden"
-    HELP_PARAMS = "%s: %s\n" % (CMD, HELP_BRIEF)
+    HELP_PARAMS = (
+        "%s: %s\n" % (CMD, HELP_BRIEF)
+        + "LENGTH   = mm   Override the default calibrated bowden length)\n"
+    )
     HELP_SUPPLEMENT = ""
 
     def __init__(self, mmu):
@@ -139,7 +147,10 @@ class MmuStepLoadToolheadCommand(BaseCommand):
 
     CMD = "_MMU_STEP_LOAD_TOOLHEAD"
     HELP_BRIEF = "User composable loading step: Toolhead loading"
-    HELP_PARAMS = "%s: %s\n" % (CMD, HELP_BRIEF)
+    HELP_PARAMS = (
+        "%s: %s\n" % (CMD, HELP_BRIEF)
+        + "EXTRUDER_ONLY   = [0|1] Extruder only load (e.g. when in bypass)\n"
+    )
     HELP_SUPPLEMENT = ""
 
     def __init__(self, mmu):
@@ -159,7 +170,11 @@ class MmuStepUnloadToolheadCommand(BaseCommand):
 
     CMD = "_MMU_STEP_UNLOAD_TOOLHEAD"
     HELP_BRIEF = "User composable unloading step: Toolhead unloading"
-    HELP_PARAMS = "%s: %s\n" % (CMD, HELP_BRIEF)
+    HELP_PARAMS = (
+        "%s: %s\n" % (CMD, HELP_BRIEF)
+        + "EXTRUDER_ONLY   = [0|1] Extruder only unload (e.g. when in bypass)\n"
+        + "PARK_POS        = mm    The starting position of the filament in extruder (after tip forming / retraction)\n"
+    )
     HELP_SUPPLEMENT = ""
 
     def __init__(self, mmu):
@@ -181,11 +196,14 @@ class MmuStepUnloadToolheadCommand(BaseCommand):
             self.mmu.handle_mmu_error("_MMU_STEP_UNLOAD_TOOLHEAD: %s" % str(ee))
 
 
-class MmuStepHomingMoveCommand(BaseCommand):
+class MmuStepHomingMoveCommand(MoveMixin, BaseCommand):
 
     CMD = "_MMU_STEP_HOMING_MOVE"
     HELP_BRIEF = "User composable loading step: Generic homing move"
-    HELP_PARAMS = "%s: %s\n" % (CMD, HELP_BRIEF)
+    HELP_PARAMS = (
+        "%s: %s\n" % (CMD, HELP_BRIEF)
+        + "(see MMU_TEST_HOMING_MOVE HELP=1 for options)\n"
+    )
     HELP_SUPPLEMENT = ""
 
     def __init__(self, mmu):
@@ -196,7 +214,7 @@ class MmuStepHomingMoveCommand(BaseCommand):
         allow_bypass = bool(gcmd.get_int('ALLOW_BYPASS', 0, minval=0, maxval=1))
         try:
             with self.mmu.wrap_sync_gear_to_extruder():
-                self.mmu._homing_move_cmd(
+                self._homing_move_cmd(
                     gcmd,
                     "User defined step homing move",
                     allow_bypass=allow_bypass
@@ -205,11 +223,14 @@ class MmuStepHomingMoveCommand(BaseCommand):
             self.mmu.handle_mmu_error("_MMU_STEP_HOMING_MOVE: %s" % str(ee))
 
 
-class MmuStepMoveCommand(BaseCommand):
+class MmuStepMoveCommand(MoveMixin, BaseCommand):
 
     CMD = "_MMU_STEP_MOVE"
     HELP_BRIEF = "User composable loading step: Generic move"
-    HELP_PARAMS = "%s: %s\n" % (CMD, HELP_BRIEF)
+    HELP_PARAMS = (
+        "%s: %s\n" % (CMD, HELP_BRIEF)
+        + "(see MMU_TEST_MOVE HELP=1 for options)\n"
+    )
     HELP_SUPPLEMENT = ""
 
     def __init__(self, mmu):
@@ -220,7 +241,7 @@ class MmuStepMoveCommand(BaseCommand):
         allow_bypass = bool(gcmd.get_int('ALLOW_BYPASS', 0, minval=0, maxval=1))
         try:
             with self.mmu.wrap_sync_gear_to_extruder():
-                self.mmu._move_cmd(
+                self._move_cmd(
                     gcmd,
                     "User defined step move",
                     allow_bypass=allow_bypass
@@ -233,7 +254,11 @@ class MmuStepSetFilamentCommand(BaseCommand):
 
     CMD = "_MMU_STEP_SET_FILAMENT"
     HELP_BRIEF = "User composable loading step: Set filament position state"
-    HELP_PARAMS = "%s: %s\n" % (CMD, HELP_BRIEF)
+    HELP_PARAMS = (
+        "%s: %s\n" % (CMD, HELP_BRIEF)
+        + "STATE   = _state_ Filament position state\n"
+        + "SILENT  = [0|1]   Set to suppress logging of new position\n"
+    )
     HELP_SUPPLEMENT = ""
 
     def __init__(self, mmu):
@@ -250,7 +275,11 @@ class MmuStepSetActionCommand(BaseCommand):
 
     CMD = "_MMU_STEP_SET_ACTION"
     HELP_BRIEF = "User composable loading step: Set action state"
-    HELP_PARAMS = "%s: %s\n" % (CMD, HELP_BRIEF)
+    HELP_PARAMS = (
+        "%s: %s\n" % (CMD, HELP_BRIEF)
+        + "RESTORE = [0|1]   Set to restore previous action state\n"
+        + "STATE   = _state_ Set action state and save previous for restore operation\n"
+    )
     HELP_SUPPLEMENT = ""
 
     def __init__(self, mmu):

@@ -37,9 +37,22 @@ class BaseCommand:
     def __init__(self, mmu):
         self.mmu = mmu
 
-    def register(self, name, handler, help_brief, help_params, help_supplement=None, category=CATEGORY_OTHER):
+    def register(
+        self,
+        name,
+        handler,
+        help_brief,
+        help_params,
+        help_supplement=None,
+        category=CATEGORY_OTHER,
+        per_unit=False,
+    ):
         """
         Register a gcode command with shared help behavior.
+
+        handler signature:
+          - per_unit=False: handler(gcmd)
+          - per_unit=True : handler(gcmd, mmu_unit)
         """
         def wrapped(gcmd):
             self.mmu.log_to_file(gcmd.get_commandline())
@@ -47,6 +60,35 @@ class BaseCommand:
             if gcmd.get_int('HELP', 0, minval=0, maxval=1):
                 self.mmu.log_always(self.format_help(help_params, help_supplement or ""), color=True)
                 return
+
+            # We don't use klipper's register_mux_command() because it isn't flexible really enough
+            # Instead provide flexible "UNIT" processing and pass the mmu_unit to the command handler
+            # Allow unit to be the name, index, or optional (implied) if only one unit configured
+            if per_unit:
+                unit = gcmd.get("UNIT", None)
+                m = self.mmu.mmu_machine
+                if unit is not None:
+                    # Try lookup by name first
+                    u = m.get_mmu_unit_by_name(unit)
+
+                    # If not found, try as unit index
+                    if u is None:
+                        try:
+                            unit_index = int(unit_param)
+                            u = m.get_mmu_unit_by_index(unit_index)
+                        except (ValueError, TypeError):
+                            pass
+
+                    if u is None:
+                        raise gcmd.error("Invalid UNIT '%s'. Must be a valid unit name or unit index" % unit)
+
+                elif m.num_units == 1:
+                    # Default to unit 0
+                    u = machine.get_mmu_unit_by_index(0)
+                else:
+                    raise gcmd.error("UNIT parameter is required")
+
+                return handler(gcmd, u)
 
             return handler(gcmd)
 
@@ -57,6 +99,7 @@ class BaseCommand:
             "help_params": help_params,
             "help_supplement": help_supplement or "",
             "category": category,
+            "per_unit": per_unit,
 #            "instance": self, # Don't really need this
         }
 

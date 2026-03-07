@@ -71,7 +71,7 @@ class BaseSelector:
                 f"{cls.__name__} is not allowed to override: {', '.join(sorted(overridden))}"
             )
 
-    def register_mux_command(self, cmd, func, desc=None):
+    def register_mux_command(self, cmd, func, desc=None): # PAUL use command base class
         """
         Turn mux commands into simple commands if the printer has a single mmu_unit
         so the user doesn't have to supply the UNIT=x parameter to command
@@ -82,7 +82,7 @@ class BaseSelector:
         else:
             self.register_command(cmd, func, desc=desc)
 
-    def register_command(self, cmd, func, desc=None):
+    def register_command(self, cmd, func, desc=None): # PAUL use command base class
         """
         Safey to ensure that common commands are only registered once
         """

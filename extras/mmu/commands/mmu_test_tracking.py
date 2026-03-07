@@ -29,9 +29,9 @@ class MmuTestTrackingCommand(BaseCommand):
     HELP_BRIEF = "Test the tracking of gear feed and encoder sensing"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
-        + "DIRECTION   = [-1|1]\n"
-        + "STEP        = #(float)\n"
-        + "SENSITIVITY = #(float)\n"
+        + "DIRECTION   = [-1|1]   Move in retract or extruder direction\n"
+        + "STEP        = #(float) mm of filament movement between encoder samples\n"
+        + "SENSITIVITY = #(float) Override the default/calibrated encoder resolution\n"
     )
     HELP_SUPPLEMENT = (
         ""  # add examples here if desired
@@ -59,12 +59,7 @@ class MmuTestTrackingCommand(BaseCommand):
 
         direction = gcmd.get_int('DIRECTION', 1, minval=-1, maxval=1)
         step = gcmd.get_float('STEP', 1, minval=0.5, maxval=20)
-        sensitivity = gcmd.get_float(
-            'SENSITIVITY',
-            self.mmu.encoder().get_resolution(),
-            minval=0.1,
-            maxval=10
-        )
+        sensitivity = gcmd.get_float('SENSITIVITY', self.mmu.encoder().get_resolution(), minval=0.1, maxval=10)
 
         if direction == 0:
             return

@@ -14,14 +14,15 @@
 #
 
 # Happy Hare imports
-from ..mmu_constants   import *
-from ..mmu_utils       import MmuError
-from .mmu_base_command import *
+from ..mmu_constants     import *
+from ..mmu_utils         import MmuError
+from .mmu_base_command   import *
+from .mmu_command_mixins import MoveMixin
 
 # PAUL FIX: Assumes DebugStepperMovement is available in MMU runtime contex
 
 
-class MmuTestMoveCommand(BaseCommand):
+class MmuTestMoveCommand(MoveMixin, BaseCommand):
     """
     Test filament move to help debug setup / options.
     """
@@ -31,8 +32,13 @@ class MmuTestMoveCommand(BaseCommand):
     HELP_BRIEF = "Test filament move to help debug setup / options"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
-        + "ALLOW_BYPASS = [0|1]\n"
-        + "DEBUG        = [0|1] (hidden)\n"
+        + "ALLOW_BYPASS = [0|1]  Ignore bypass check\n"
+        + "MOVE         = mm     Specify the move distance (default 100)\n"
+        + "SPEED        = mm/s   Optionally override the default speed\n"
+        + "ACCEL        = mm/s^2 Optionally override the default accelarateion\n"
+        + "MOTOR        = [gear|extruder|gear+extruder|synced] Select motor to operation on (default: gear)\n"
+        + "WAIT         = [0|1]  Wait for move to complete (make move synchronous)\n"
+        + "DEBUG        = [0|1]  Turn on developer stepper movement debugging\n"
     )
     HELP_SUPPLEMENT = (
         ""  # add examples here if desired
@@ -59,11 +65,7 @@ class MmuTestMoveCommand(BaseCommand):
 
         with self.mmu.wrap_sync_gear_to_extruder():
             with DebugStepperMovement(self.mmu, debug):
-                actual, _, measured, _ = self.mmu._move_cmd(
-                    gcmd,
-                    "Test move",
-                    allow_bypass=allow_bypass
-                )
+                actual, _, measured, _ = self._move_cmd(gcmd, "Test move", allow_bypass=allow_bypass) # From Mixin
 
             self.mmu.log_always(
                 "Moved %.1fmm%s" % (

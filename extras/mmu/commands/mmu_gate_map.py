@@ -37,7 +37,13 @@ class MmuGateMapCommand(BaseCommand):
         + "FROM_SPOOLMAN= [0|1] (hidden)\n"
         + "GATE         = g\n"
         + "NEXT_SPOOLID = id\n"
-        + "NAME, MATERIAL, COLOR, SPOOLID, TEMP, SPEED, AVAILABLE = per-gate attributes\n    "
+        + "NAME         = # Filament name\n"
+        + "MATERIAL     = # Material type\n"
+        + "COLOR        = # Filament color as w3c name or RRGGBB or RRGGBBaa (without #)\n"
+        + "SPOOLID      = # Optionally the spoolman ID for the filament (don't need to specify other attributes)\n"
+        + "TEMP         = # Default temperature of filament\n"
+        + "SPEED        = % Speed override (use <100 for soft TPU types)\n"
+        + "AVAILABLE    = [-1|0|1|2] Filament availability: Unknown | Empty | Available | Available from filament buffer\n"
     )
     HELP_SUPPLEMENT = (
         ""  # add examples here if desired

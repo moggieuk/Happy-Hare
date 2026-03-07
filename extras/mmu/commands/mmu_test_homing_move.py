@@ -14,14 +14,13 @@
 #
 
 # Happy Hare imports
-from ..mmu_constants   import *
-from ..mmu_utils       import MmuError
-from .mmu_base_command import *
+from ..mmu_constants     import *
+from ..mmu_utils         import MmuError, DebugStepperMovement
+from .mmu_base_command   import *
+from .mmu_command_mixins import MoveMixin
 
-# Assumes DebugStepperMovement is available in MMU runtime context
 
-
-class MmuTestHomingMoveCommand(BaseCommand):
+class MmuTestHomingMoveCommand(MoveMixin, BaseCommand):
     """
     Test filament homing move to help debug setup / options.
     """
@@ -31,8 +30,15 @@ class MmuTestHomingMoveCommand(BaseCommand):
     HELP_BRIEF = "Test filament homing move to help debug setup / options"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
-        + "ALLOW_BYPASS = [0|1]\n"
-        + "DEBUG        = [0|1] (hidden)\n"
+        + "ALLOW_BYPASS = [0|1]  Ignore bypass check\n"
+        + "MOVE         = mm     Specify the move distance (default 100)\n"
+        + "ENDSTOP      = _endstop_name_\n"
+        + "STOP_ON_ENDSTOP = [-1|0|1] 1 for extrude, -1 for retract, 0 for don't stop\n"
+        + "SPEED        = mm/s   Optionally override the default speed\n"
+        + "ACCEL        = mm/s^2 Optionally override the default accelarateion\n"
+        + "MOTOR        = [gear|extruder|gear+extruder] Select motor to operation on (default: gear)\n"
+        + "WAIT         = [0|1]  Wait for move to complete (make move synchronous)\n"
+        + "DEBUG        = [0|1]  Turn on developer stepper movement debugging\n"
     )
     HELP_SUPPLEMENT = (
         ""  # add examples here if desired
@@ -59,7 +65,7 @@ class MmuTestHomingMoveCommand(BaseCommand):
         with self.mmu.wrap_sync_gear_to_extruder():
             debug = bool(gcmd.get_int('DEBUG', 0, minval=0, maxval=1))  # Hidden option
             with DebugStepperMovement(self.mmu, debug):
-                actual, homed, measured, _ = self.mmu._homing_move_cmd(
+                actual, homed, measured, _ = self._homing_move_cmd(
                     gcmd,
                     "Test homing move",
                     allow_bypass=allow_bypass
