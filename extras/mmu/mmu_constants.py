@@ -249,6 +249,13 @@ ENCODER_RUNOUT_DISABLED = 0
 ENCODER_RUNOUT_STATIC = 1
 ENCODER_RUNOUT_AUTOMATIC = 2
 
+# Drying states (mostly relevant for per-gate heaters)
+DRYING_STATE_NONE      = ''
+DRYING_STATE_QUEUED    = 'queued'
+DRYING_STATE_ACTIVE    = 'active'
+DRYING_STATE_COMPLETE  = 'complete'
+DRYING_STATE_CANCELLED = 'canceled'
+
 EMPTY_GATE_STATS_ENTRY = {'pauses': 0, 'loads': 0, 'load_distance': 0.0, 'load_delta': 0.0, 'unloads': 0, 'unload_distance': 0.0, 'unload_delta': 0.0, 'load_failures': 0, 'unload_failures': 0, 'quality': -1.}
 
 W3C_COLORS = [('aliceblue','#F0F8FF'), ('antiquewhite','#FAEBD7'), ('aqua','#00FFFF'), ('aquamarine','#7FFFD4'), ('azure','#F0FFFF'), ('beige','#F5F5DC'),

@@ -4,6 +4,7 @@
 #                          moggieuk@hotmail.com
 #
 # Implements MMU_FLOWGUARD command
+#  - This is a "per-unit" command
 #
 #
 # (\_/)
@@ -26,7 +27,8 @@ class MmuFlowGuardCommand(BaseCommand):
     HELP_BRIEF = "Enable/disable FlowGuard (clog-tangle detection)"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
-        + "ENABLE = [1|0] enable/disable FlowGuard clog/tangle detection\n"
+        + "UNIT   = #(int)|_name_|ALL Specify unit by name, number or all-units\n"
+        + "ENABLE = [1|0] Enable/disable FlowGuard clog/tangle detection\n"
         + "(no parameters for status report)\n"
     )
     HELP_SUPPLEMENT = (

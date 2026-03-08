@@ -28,7 +28,6 @@ from .mmu_utils                 import MmuError, DebugStepperMovement, PurgeVolC
 from .mmu_sensor_manager        import MmuSensorManager
 from .mmu_sensor_utils          import MmuRunoutHelper
 from .mmu_led_manager           import MmuLedManager
-from .mmu_environment_manager   import MmuEnvironmentManager
 from .mmu_machine_parameters    import MmuMachineParameters
 from .commands                  import COMMAND_REGISTRY
 from .commands.mmu_base_command import *
@@ -96,15 +95,6 @@ class MmuController:
         # functionality to reduce the complexity of main class
         self.sensor_manager        = MmuSensorManager(self) # Must be done during initialization because also sets up homing endstops
         self.led_manager           = MmuLedManager(self)
-        self.environment_manager   = MmuEnvironmentManager(self)
-
-# PAUL
-#        #self.environment_manager   = MmuEnvironmentManager(self)
-#        self.managers = [
-#            self.sensor_manager,
-#            self.led_manager,
-#            #self.environment_manager,
-#        ]
 
         # Establish defaults for "reset" operation ----------------------------------------------------------
         # These lists are the defaults (used when reset) and will be overriden by values in mmu_vars.cfg...
@@ -874,7 +864,7 @@ class MmuController:
         }
 
         status['sensors'] = self.sensor_manager.get_status(eventtime)
-        status.update(self.environment_manager.get_status(eventtime))
+        status.update(self.mmu_unit().environment_manager.get_status(eventtime)) # PAUL must aggregate ALL units
 
         if self.has_espooler():
             status.update(self.espooler().get_status(eventtime))

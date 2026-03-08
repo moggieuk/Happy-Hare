@@ -41,6 +41,7 @@ from .unit.mmu_calibrator               import MmuCalibrator
 from .unit.mmu_sync_feedback            import MmuSyncFeedback
 from .unit.selectors                    import SELECTOR_REGISTRY
 from .unit.selectors.mmu_base_selectors import VirtualSelector
+from .unit.mmu_environment_manager      import MmuEnvironmentManager
 
 
 # For toolhead synchronization
@@ -475,9 +476,13 @@ class MmuUnit:
         self.calibrator = MmuCalibrator(params, self, self.p)
         logging.info("MMU: Created: calibrator for unit %s" % self.name)
 
-        # Load sync-feedback controller (created even if no buffer or encoder)
+        # Create sync-feedback controller (created even if no buffer or encoder)
         self.sync_feedback = MmuSyncFeedback(params, self, self.p)
         logging.info("MMU: Created: sync-feedback / autotune controller for unit %s" % self.name)
+
+        # Create environment manager
+        self.environment_manager = MmuEnvironmentManager(params, self, self.p)
+        logging.info("MMU: Created: heater and environment manager for unit %s" % self.name)
 
         self.subcomponents = [
             self.sensors,
@@ -487,7 +492,8 @@ class MmuUnit:
             self.buffer,
             self.selector,
             self.calibrator,
-            self.sync_feedback
+            self.sync_feedback,
+            self.environment_manager,
         ]
 
         # Event handlers
@@ -617,6 +623,9 @@ class MmuUnit:
 
     def has_espooler(self):
         return self.espooler is not None
+
+    def has_leds(self):
+        return self.leds is not None
 
     def has_heater(self):
         return self.filament_heater or self.filament_heaters

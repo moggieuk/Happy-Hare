@@ -24,6 +24,8 @@ CATEGORY_CALLBACKS = "CALLBACKS"
 CATEGORY_INTERNAL  = "INTERNAL"  # Hidden from user
 CATEGORY_OTHER     = "OTHER"     # If not explicitly assigned (should be empty)
 
+ALL_UNITS          = "ALL"
+
 
 class BaseCommand:
     """
@@ -65,30 +67,36 @@ class BaseCommand:
             # Instead provide flexible "UNIT" processing and pass the mmu_unit to the command handler
             # Allow unit to be the name, index, or optional (implied) if only one unit configured
             if per_unit:
-                unit = gcmd.get("UNIT", None)
-                m = self.mmu.mmu_machine
-                if unit is not None:
+                unit_param = gcmd.get("UNIT", None)
+                machine = self.mmu.mmu_machine
+                if unit_param is not None:
                     # Try lookup by name first
-                    u = m.get_mmu_unit_by_name(unit)
+                    unit = machine.get_mmu_unit_by_name(unit_param)
+
+                    if unit is None and unit_param == ALL_UNITS:
+                        # Repeat for all units
+                        for unit in machine.units:
+                            handler(gcmd, unit)
+                        return
 
                     # If not found, try as unit index
-                    if u is None:
+                    elif unit is None:
                         try:
                             unit_index = int(unit_param)
-                            u = m.get_mmu_unit_by_index(unit_index)
+                            unit = machine.get_mmu_unit_by_index(unit_index)
                         except (ValueError, TypeError):
                             pass
 
-                    if u is None:
-                        raise gcmd.error("Invalid UNIT '%s'. Must be a valid unit name or unit index" % unit)
+                    if unit is None:
+                        raise gcmd.error("Invalid UNIT '%s'. Must be a valid unit name or unit index" % unit_param)
 
-                elif m.num_units == 1:
+                elif machine.num_units == 1:
                     # Default to unit 0
-                    u = machine.get_mmu_unit_by_index(0)
+                    unit = machine.get_mmu_unit_by_index(0)
                 else:
                     raise gcmd.error("UNIT parameter is required")
 
-                return handler(gcmd, u)
+                return handler(gcmd, unit)
 
             return handler(gcmd)
 

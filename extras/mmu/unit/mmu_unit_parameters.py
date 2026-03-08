@@ -156,13 +156,13 @@ class MmuUnitParameters(TunableParametersBase):
         ParamSpec('flowguard_encoder_max_motion',     'float',  20.0, section="FLOWGUARD", guard=_guard_has_encoder, limits=dict(above=0.0), fmt="%.1f"),
 
         # Heater
-        ParamSpec('heater_max_temp',                  'float',  65.0, section="HEATER",    guard=_guard_has_heater, limits=dict(above=0.0)),
-        ParamSpec('heater_default_dry_temp',          'float',  45.0, section="HEATER",    guard=_guard_has_heater, limits=dict(above=0.0)),
-        ParamSpec('heater_default_dry_time',          'float', 300.0, section="HEATER",    guard=_guard_has_heater, limits=dict(above=0.0)),
-        ParamSpec('heater_default_humidity',          'float',  10.0, section="HEATER",    guard=_guard_has_heater, limits=dict(above=0.0)),
+        ParamSpec('heater_max_temp',                  'float',  65.0, section="HEATER",    guard=_guard_has_heater, limits=dict(above=0.0), fmt="%.1f"),
+        ParamSpec('heater_default_dry_temp',          'float',  45.0, section="HEATER",    guard=_guard_has_heater, limits=dict(above=0.0), fmt="%.1f"),
+        ParamSpec('heater_default_dry_time',          'float', 300.0, section="HEATER",    guard=_guard_has_heater, limits=dict(above=0.0), fmt="%.1f"),
+        ParamSpec('heater_default_humidity',          'float',  10.0, section="HEATER",    guard=_guard_has_heater, limits=dict(above=0.0), fmt="%.1f"),
         ParamSpec('heater_vent_macro',                'str',      '', section="HEATER",    guard=_guard_has_heater),
-        ParamSpec('heater_vent_interval',             'float',   0.0, section="HEATER",    guard=_guard_has_heater, limits=dict(minval=0.0)),
-        ParamSpec('heater_rotate_interval',           'float',   5.0, section="HEATER",    guard=_guard_has_heater, limits=dict(minval=1.0)),
+        ParamSpec('heater_vent_interval',             'float',   0.0, section="HEATER",    guard=_guard_has_heater, limits=dict(minval=0.0), fmt="%.1f"),
+        ParamSpec('heater_rotate_interval',           'float',   5.0, section="HEATER",    guard=_guard_has_heater, limits=dict(minval=1.0), fmt="%.1f"),
 
         # Automatic calibration / tuning options
         ParamSpec('autocal_selector',                 'int',       0, section="AUTOTUNE", limits=dict(minval=0, maxval=1)),
