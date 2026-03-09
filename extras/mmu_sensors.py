@@ -658,83 +658,69 @@ class MmuSensors:
         self.printer = config.get_printer()
         self.sensors = {}
         mmu_machine = self.printer.lookup_object("mmu_machine", None)
-        self.num_units = mmu_machine.num_units if mmu_machine else 1
-        event_delay = config.get("event_delay", 0.5)
+        num_units = mmu_machine.num_units if mmu_machine else 1
+        event_delay = config.get('event_delay', 0.5)
 
         # Setup "mmu_pre_gate" sensors...
         for gate in range(23):
-            switch_pin = config.get("pre_gate_switch_pin_%d" % gate, None)
+            switch_pin = config.get('pre_gate_switch_pin_%d' % gate, None)
             if switch_pin:
-                a_range = config.getfloatlist(
-                    "pre_gate_analog_range_%d" % gate, None, count=2
-                )
-                switch_pin_2 = config.get("pre_gate_switch_pin2_%d" % gate, None)
-                a_pullup = config.getfloat(
-                    "pre_gate_analog_pullup_resistor_%d" % gate, 4700.0
-                )
-                adc_config = config.getlist(
-                    "pre_gate_adc_settings_%d" % gate, None, count=3
-                )
+                a_range = config.getfloatlist('pre_gate_analog_range_%d' % gate, None, count=2)
+                switch_pin_2 = config.get('pre_gate_switch_pin2_%d' % gate, None)
+                a_pullup = config.getfloat('pre_gate_analog_pullup_resistor_%d' % gate, 4700.0)
+                adc_config = config.getlist('pre_gate_adc_settings_%d' % gate, None, count=3)
                 self._create_sensor(config, Mmu.SENSOR_PRE_GATE_PREFIX, gate, switch_pin, switch_pin_2, 
                                     a_range, a_pullup, event_delay, insert=True, remove=True, runout=True, 
                                     insert_remove_in_print=True, adc_config=adc_config)
 
         # Setup single "mmu_gate" sensor(s)...
-        switch_pins = list(config.getlist("gate_switch_pin", []))
+        switch_pins = list(config.getlist('gate_switch_pin', []))
         if switch_pins:
-            a_range = config.getfloatlist("gate_analog_range", None, count=2)
-            switch_pins_2 = list(config.getlist("gate_switch_pin2", []))
-            a_pullup = config.getfloat("gate_analog_pullup_resistor", 4700.0)
-            adc_config = config.getlist("gate_adc_settings", None, count=3)
+            a_range = config.getfloatlist('gate_analog_range', None, count=2)
+            switch_pins_2 = list(config.getlist('gate_switch_pin2', []))
+            a_pullup = config.getfloat('gate_analog_pullup_resistor', 4700.0)
+            adc_config = config.getlist('gate_adc_settings', None, count=3)
             self._create_sensor(config, Mmu.SENSOR_GATE, None, switch_pins, switch_pins_2, 
                                 a_range, a_pullup, event_delay, runout=True, adc_config=adc_config)
 
         # Setup "mmu_gear" sensors...
         for gate in range(23):
-            switch_pin = config.get("post_gear_switch_pin_%d" % gate, None)
+            switch_pin = config.get('post_gear_switch_pin_%d' % gate, None)
             if switch_pin:
-                a_range = config.getfloatlist(
-                    "post_gear_analog_range_%d" % gate, None, count=2
-                )
-                switch_pin_2 = config.get("post_gear_switch_pin2_%d" % gate, None)
-                a_pullup = config.getfloat(
-                    "post_gear_analog_pullup_resistor_%d" % gate, 4700.0
-                )
-                adc_config = config.getlist(
-                    "post_gear_adc_settings_%d" % gate, None, count=3
-                )
+                a_range = config.getfloatlist('post_gear_analog_range_%d' % gate, None, count=2)
+                switch_pin_2 = config.get('post_gear_switch_pin2_%d' % gate, None)
+                a_pullup = config.getfloat('post_gear_analog_pullup_resistor_%d' % gate, 4700.0)
+                adc_config = config.getlist('post_gear_adc_settings_%d' % gate, None, count=3)
                 self._create_sensor(config, Mmu.SENSOR_GEAR_PREFIX, gate, switch_pin, switch_pin_2, 
                                     a_range, a_pullup, event_delay, runout=True, adc_config=adc_config)
 
         # Setup single extruder (entrance) sensor...
-        switch_pin = config.get("extruder_switch_pin", None)
+        switch_pin = config.get('extruder_switch_pin', None)
         if switch_pin:
-            a_range = config.getfloatlist("extruder_analog_range", None, count=2)
-            switch_pin_2 = config.get("extruder_switch_pin2", None)
-            a_pullup = config.getfloat("extruder_analog_pullup_resistor", 4700.0)
-            adc_config = config.getlist("extruder_adc_settings", None, count=3)
+            a_range = config.getfloatlist('extruder_analog_range', None, count=2)
+            switch_pin_2 = config.get('extruder_switch_pin2', None)
+            a_pullup = config.getfloat('extruder_analog_pullup_resistor', 4700.0)
+            adc_config = config.getlist('extruder_adc_settings', None, count=3)
             self._create_sensor(config, Mmu.SENSOR_EXTRUDER_ENTRY, None, switch_pin, switch_pin_2, 
                                 a_range, a_pullup, event_delay, insert=True, runout=True, adc_config=adc_config)
 
         # Setup single toolhead sensor...
-        switch_pin = config.get("toolhead_switch_pin", None)
+        switch_pin = config.get('toolhead_switch_pin', None)
         if switch_pin:
-            a_range = config.getfloatlist("toolhead_analog_range", None, count=2)
-            switch_pin_2 = config.get("toolhead_switch_pin2", None)
-            a_pullup = config.getfloat("toolhead_analog_pullup_resistor", 4700.0)
-            adc_config = config.getlist("toolhead_adc_settings", None, count=3)
+            a_range = config.getfloatlist('toolhead_analog_range', None, count=2)
+            switch_pin_2 = config.get('toolhead_switch_pin2', None)
+            a_pullup = config.getfloat('toolhead_analog_pullup_resistor', 4700.0)
+            adc_config = config.getlist('toolhead_adc_settings', None, count=3)
             self._create_sensor(config, Mmu.SENSOR_TOOLHEAD, None, switch_pin, switch_pin_2, 
                                 a_range, a_pullup, event_delay, adc_config=adc_config)
 
         # Setup motor syncing feedback sensors...
-        switch_pins = list(config.getlist("sync_feedback_tension_pin", []))
+        switch_pins = list(config.getlist('sync_feedback_tension_pin', []))
         if switch_pins:
-            self._create_sensor(config, Mmu.SENSOR_TENSION, None, switch_pins, 
-                                None, None, None, 0, button_handler=self._sync_tension_callback)
-        switch_pins = list(config.getlist("sync_feedback_compression_pin", []))
+            self._create_sensor(config, Mmu.SENSOR_TENSION, None, switch_pins, None, None, None, 0, button_handler=self._sync_tension_callback)
+        switch_pins = list(config.getlist('sync_feedback_compression_pin', []))
         if switch_pins:
-            self._create_sensor(config, Mmu.SENSOR_COMPRESSION, None, switch_pins, 
-                                None, None, None, 0, button_handler=self._sync_compression_callback)
+            self._create_sensor(config, Mmu.SENSOR_COMPRESSION, None, switch_pins, None, None, None, 0, button_handler=self._sync_compression_callback)
 
         # Setup analog (proportional) sync feedback
         # Uses single analog input; value scaled in [-1, 1]
@@ -843,13 +829,13 @@ class MmuSensors:
         #logging.info("MMU: Added simple switch sensor to manager: %s" % name)
 
     def _is_empty_pin(self, switch_pin):
-        if switch_pin == "":
-            return True
-        ppins = self.printer.lookup_object("pins")
+        if switch_pin == '': return True
+        ppins = self.printer.lookup_object('pins')
         pin_params = ppins.parse_pin(switch_pin, can_invert=True, can_pullup=True)
-        pin_resolver = ppins.get_pin_resolver(pin_params["chip_name"])
-        real_pin = pin_resolver.aliases.get(pin_params["pin"], "_real_")
-        return real_pin == ""
+        pin_resolver = ppins.get_pin_resolver(pin_params['chip_name'])
+        real_pin = pin_resolver.aliases.get(pin_params['pin'], '_real_')
+        return real_pin == ''
+
 
     def _sync_tension_callback(self, eventtime, t_sensor_name, tension_state, runout_helper):
         """
@@ -868,6 +854,7 @@ class MmuSensors:
 
         # Send event now so it is processed as early as possible
         self.printer.send_event("mmu:sync_feedback", eventtime, event_value)
+
 
     def _sync_compression_callback(self, eventtime, c_sensor_name, compression_state, runout_helper):
         """
