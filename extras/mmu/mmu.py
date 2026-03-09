@@ -458,7 +458,8 @@ class Mmu:
         self.espooler_rewind_burst_power = config.getint("espooler_rewind_burst_power", 50, minval=0, maxval=100)
         self.espooler_rewind_burst_duration = config.getfloat("espooler_rewind_burst_duration", .4, above=0., maxval=10.)
         self.espooler_operations = list(config.getlist('espooler_operations', self.ESPOOLER_OPERATIONS))
-
+        self.allow_drying_rotation = config.getint('allow_drying_rotation', 0, minval=0, maxval=1)
+        
         # Optional features
         self.has_filament_buffer = bool(config.getint('has_filament_buffer', 1, minval=0, maxval=1))
         self.preload_attempts = config.getint('preload_attempts', 1, minval=1, maxval=20) # How many times to try to grab the filament

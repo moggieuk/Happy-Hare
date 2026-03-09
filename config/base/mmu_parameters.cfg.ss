@@ -480,7 +480,8 @@ heater_default_dry_time: 300		# Default drying cycle time in minutes
 heater_default_humidity: 25		# Default humidity % goal. Drying will terminate if this value is reached
 heater_vent_macro: _MMU_VENT		# Name of macro to periodicaly call during drying cycle
 heater_vent_interval: 0			# Interval in minutes to call heater_vent_macro during drying cycle, 0=disable venting
-heater_rotate_interval: 5		# Interval in minutes to rotate filament (requires eSpooler and filament end attached to spool)
+heater_rotate_interval: 5		# Interval in minutes to rotate filament (requires eSpooler or allow_drying_rotation)
+allow_drying_rotation: 0		# Allow filament rotation during drying even without eSpooler, 0 - no rotation, 1 - rotate
 
 # Drying data for MMU_HEATER DRY=1 command in form (material type is case insensitive):
 #   'filament_type': (temp, drying_time_mins)
