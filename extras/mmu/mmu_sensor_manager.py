@@ -14,7 +14,7 @@
 import random, logging, math, re
 
 # Happy Hare imports
-from ..mmu_sensors import MmuRunoutHelper
+from ..mmu_sensors import MmuRunoutHelper, MmuAdcSensorBase
 
 # MMU subcomponent clases
 from .mmu_shared   import MmuError
@@ -78,7 +78,7 @@ class MmuSensorManager:
         for name in self.endstop_names:
             sensor = self.all_sensors.get(name, None)
             if sensor is not None:
-                if sensor.__class__.__name__ in ["MmuAdcSwitchSensor", "MmuHallEndstop"]:
+                if isinstance(sensor, MmuAdcSensorBase):
                     sensor_pin = sensor.runout_helper.switch_pin
                     mcu_endstop = self.mmu.gear_rail.add_extra_endstop(sensor_pin, name, mcu_endstop=sensor)
                 else:
