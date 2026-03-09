@@ -653,7 +653,7 @@ class MmuHallSensor(MmuAdcSensorBase):
 class MmuSensors:
 
     def __init__(self, config):
-        from .mmu import Mmu  # For sensor names
+        from .mmu import Mmu # For sensor names
 
         self.printer = config.get_printer()
         self.sensors = {}
@@ -800,11 +800,11 @@ class MmuSensors:
         fs = self.printer.load_object(config, section)
 
         # Replace with custom runout_helper because of state specific behavior
-        insert_gcode = (("%s SENSOR=%s%s" % (INSERT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if insert else None)
-        remove_gcode = (("%s SENSOR=%s%s" % (REMOVE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if remove else None)
-        runout_gcode = (("%s SENSOR=%s%s" % (RUNOUT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if runout else None)
-        clog_gcode = (("%s SENSOR=%s%s" % (CLOG_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if clog else None)
-        tangle_gcode = (("%s SENSOR=%s%s" % (TANGLE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if tangle else None)
+        insert_gcode = ("%s SENSOR=%s%s" % (INSERT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if insert else None
+        remove_gcode = ("%s SENSOR=%s%s" % (REMOVE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if remove else None
+        runout_gcode = ("%s SENSOR=%s%s" % (RUNOUT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if runout else None
+        clog_gcode = ("%s SENSOR=%s%s" % (CLOG_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if clog else None
+        tangle_gcode = ("%s SENSOR=%s%s" % (TANGLE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if tangle else None
 
         gcodes = {
             "insert": insert_gcode,
