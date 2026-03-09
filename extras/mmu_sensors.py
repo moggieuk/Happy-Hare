@@ -383,21 +383,32 @@ class MmuAdcSwitchSensor(MmuAdcSensorBase):
                  a_range,
                  insert=False, remove=False, runout=False, clog=False, tangle=False,
                  insert_remove_in_print=False, button_handler=None,
-                 a_pullup=4700.):
+                 a_pullup=4700., adc_sample_time=0.001, adc_sample_count=4, adc_report_time=0.010):
         
         self.name = name = "%s_%d" % (name_prefix, gate)
         super().__init__(config, name)
 
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
-        self._pin = switch_pin
         self._steppers = []
         self._trigger_completion = None
         self._last_trigger_time = None
+        self._homing = False
+        self._triggered = False
 
-        buttons = self.printer.load_object(config, 'buttons')
-        a_min, a_max = a_range
-        buttons.register_adc_button(switch_pin, a_min, a_max, a_pullup, self._button_handler)
+        self.a_min, self.a_max = a_range
+        self.pullup = a_pullup
+        self.lastReadTime = 0
+        self._pin = switch_pin
+
+        # Debounce state
+        self.adc_debounce_time = 0.025
+        self.last_button = None
+        self.last_pressed = None
+        self.last_debouncetime = 0
+        self._val = 0.
+
+        self.mcu_adc = self._setup_adc(switch_pin, adc_sample_time, adc_sample_count, self.adc_callback, adc_report_time, multi_use=False)
         
         insert_gcode = ("%s SENSOR=%s%s" % (INSERT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if insert else None
         remove_gcode = ("%s SENSOR=%s%s" % (REMOVE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if remove else None
@@ -419,14 +430,53 @@ class MmuAdcSwitchSensor(MmuAdcSensorBase):
             button_handler,
             switch_pin,
         )
-        self.get_status = self.runout_helper.get_status
+
+        self.printer.add_object("mmu_adc_switch_sensor %s" % name, self)
+        logging.info("MMU: MmuAdcSwitchSensor initialized: %s (id: %s)" % (self.name, id(self)))
 
 
-    def _button_handler(self, eventtime, state):
-        self.runout_helper.note_filament_present(eventtime, state)
-        if self._trigger_completion is not None:
-            self._last_trigger_time = eventtime
-            self._trigger_completion.complete(True)
+    def adc_callback(self, *args):
+        read_time, read_value = self._parse_adc_args(args)
+        
+        self.lastReadTime = read_time
+        self._val = read_value
+        # Calculate resistance: R = R_pullup * val / (1 - val)
+        # Handle open circuit case (val close to 1.0)
+        adc = max(0.00001, min(0.99999, read_value))
+        r = self.pullup * adc / (1.0 - adc)
+
+        # Determine if button pressed (i.e. filament within resistance range)
+        is_present = r >= self.a_min and r <= self.a_max
+
+        # Debounce logic (match Klipper buttons.py behavior)
+        if is_present != self.last_button:
+            self.last_debouncetime = read_time
+
+        if (read_time - self.last_debouncetime) >= self.adc_debounce_time \
+           and self.last_button == is_present \
+           and self.last_pressed != is_present:
+            self.last_pressed = is_present
+
+            # Optimization to only call runout helper if state changed or we have a button handler
+            if self.runout_helper.button_handler or is_present != self.runout_helper.filament_present:
+                self.runout_helper.note_filament_present(read_time, is_present)
+
+            if self._homing:
+                if is_present == self._triggered:
+                    if self._trigger_completion is not None:
+                        self._last_trigger_time = read_time
+                        self._trigger_completion.complete(True)
+                        self._trigger_completion = None
+
+        self.last_button = is_present
+
+
+    def get_status(self, eventtime):
+        status = self.runout_helper.get_status(eventtime)
+        val = self._val
+        adc = max(0.00001, min(0.99999, val))
+        status.update({'Resistance': round(self.pullup * adc / (1.0 - adc)), 'ADC': val})
+        return status
 
 
     # Required to implement an endstop -------
@@ -650,7 +700,10 @@ class MmuSensors:
                         self.sensors["%s_%d" % (Mmu.SENSOR_GEAR_PREFIX, gate)] = s
                     else:
                         a_pullup = config.getfloat('post_gear_analog_pullup_resister_%d' % gate, 4700.)
-                        s = MmuAdcSwitchSensor(config, Mmu.SENSOR_GEAR_PREFIX, gate, switch_pin, event_delay, a_range, runout=True, a_pullup=a_pullup)
+                        adc_config = config.getlist('post_gear_adc_settings_%d' % gate, None, count=3)
+                        adc_s_time, adc_s_count, adc_r_time = (float(adc_config[0]), int(adc_config[1]), float(adc_config[2])) if adc_config else (0.001, 4, 0.010)
+                        s = MmuAdcSwitchSensor(config, Mmu.SENSOR_GEAR_PREFIX, gate, switch_pin, event_delay, a_range, runout=True, a_pullup=a_pullup,
+                                               adc_sample_time=adc_s_time, adc_sample_count=adc_s_count, adc_report_time=adc_r_time)
                         self.sensors["%s_%d" % (Mmu.SENSOR_GEAR_PREFIX, gate)] = s
                 else:
                     self._create_mmu_sensor(config, Mmu.SENSOR_GEAR_PREFIX, gate, switch_pin, event_delay, runout=True)
