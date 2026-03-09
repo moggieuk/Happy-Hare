@@ -503,8 +503,6 @@ class MmuHallSensor(MmuAdcSensorBase):
         self._trigger_threshold = self.a_min / 10000.0
         self.present = False
 
-
-
         # ADC 1
         self.mcu_adc = self._setup_adc(self._pin, self.sample_time, self.sample_count, self.adc_callback, self.report_time, multi_use=True)
         # ADC 2
@@ -600,9 +598,6 @@ class MmuHallSensor(MmuAdcSensorBase):
             "ADC2": self._val2
         })
         return status
-
-
-
 
 
 class MmuSensors:
