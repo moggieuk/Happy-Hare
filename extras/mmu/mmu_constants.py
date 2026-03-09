@@ -157,6 +157,7 @@ LOG_STEPPER   = 4
 LOG_LEVELS = ['ESSENTAL', 'INFO', 'DEBUG', 'TRACE', 'STEPPER']
 
 # States of espooler motor
+ESPOOLER_NONE   = ''
 ESPOOLER_OFF    = 'off'
 ESPOOLER_REWIND = 'rewind'
 ESPOOLER_ASSIST = 'assist'

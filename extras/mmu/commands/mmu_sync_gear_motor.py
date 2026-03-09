@@ -51,10 +51,8 @@ class MmuSyncGearMotorCommand(BaseCommand):
         if self.mmu.check_if_disabled():
             return
 
-        if self.mmu.check_if_bypass():
-            return
-        if self.mmu.check_if_not_homed():
-            return
+        if self.mmu.check_if_bypass(): return
+#PAUL        if self.mmu.check_if_not_homed(): return
 
         sync = gcmd.get_int('SYNC', 1, minval=0, maxval=1)
 

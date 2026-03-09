@@ -51,7 +51,7 @@ class ServoSelector(PhysicalSelector):
 
     def __init__(self, config, mmu_unit, params):
         super().__init__(config, mmu_unit, params)
-        self.is_homed = True
+        self.is_homed = True # No homing necessary
 
         self.servo_bypass_angle = -1
 

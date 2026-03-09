@@ -48,7 +48,7 @@ class MmuPreloadCommand(BaseCommand):
 
         if self.mmu.check_if_disabled(): return
         if self.mmu.check_if_printing(): return
-        if self.mmu.check_if_not_homed(): return
+#PAUL        if self.mmu.check_if_not_homed(): return # PAUL not correct - should be on unit 
 
         gate = gcmd.get_int('GATE', self.mmu.gate_selected, minval=0, maxval=self.mmu.num_gates - 1)
         if self.mmu.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[gate]): return

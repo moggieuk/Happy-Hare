@@ -50,8 +50,9 @@ class BaseSelector:
         self.p = params                         # mmu_unit_parameters
         self.printer = config.get_printer()
 
-        self.is_homed = False
-        self.local_gate_selected = None
+        self.is_homed = False                   # Whether selector is home and knows current position
+        self.requires_homing = True             # Whether selector requires homing
+        self.local_gate_selected = None		# Local gate selected # PAUL complete me on all selectors!
         self.mmu_toolhead = self.mmu_unit.mmu_toolhead # PAUL to be deprecated
 
         # Event handlers
@@ -156,7 +157,7 @@ class BaseSelector:
         return False
 
     def has_bypass(self):
-        return self.mmu_unit.has_bypass
+        return self.mmu_unit.has_bypass # PAUL shouldn't this also be on selector? like selects bypass?
 
     def get_status(self, eventtime):
         return {
@@ -230,6 +231,9 @@ class PhysicalSelector(BaseSelector, object):
         logging.info("PAUL: =========== handle_disconnect: PhysicalSelector")
 
     def _select_gate(self, lgate):
+        if lgate == TOOL_GATE_UNKNOWN: return
+        if not self.is_homed: # PAUL new clause
+            raise MmuError("Selector is not homed on %s" % self.mmu_unit.name)
         super()._select_gate(lgate)
 
     def _restore_gate(self, lgate):
@@ -317,7 +321,8 @@ class VirtualSelector(BaseSelector):
 
     def __init__(self, config, mmu_unit, params):
         super().__init__(config, mmu_unit, params)
-        self.is_homed = True # Not applicable
+        self.is_homed = True # Always "homed" since no selector movement
+        self.requires_homing = False
 
     # Selector "Interface" methods ---------------------------------------------
 

@@ -159,10 +159,11 @@ class MmuEnvironmentManager:
         We don't duplicate temperature or humidity data here but expect the client to read configuration
         and look up appropriate heator and environemnt sensor objects directly
         """
-        status = {
-            'drying_state': list(self._drying_state),
+        return {
+            'drying_state': list(self._drying_state)
         }
-        return status
+# PAUL
+        return list(self._drying_state) # PAUL this may not require a new list because the aggregator in mmu controller create a new one each time
 
 
     #

@@ -396,7 +396,7 @@ class MmuUnit:
         if config.has_section(section):
             c = config.getsection(section)
             self.sensors = MmuSensors(c, self, self.p)
-            #self.printer.add_object(c.get_name(), self.sensors) # Not exposing because don't want direct access
+            #self.printer.add_object(c.get_name(), self.sensors) # Not exposing because we don't want direct access
             logging.info("MMU: Created: [%s]" % c.get_name())
         else:
             logging.info("MMU: - No mmu_sensors specified")
@@ -407,7 +407,7 @@ class MmuUnit:
         if config.has_section(section):
             c = config.getsection(section)
             self.espooler = MmuESpooler(c, self, self.p)
-            self.printer.add_object(c.get_name(), self.espooler)
+            #self.printer.add_object(c.get_name(), self.espooler) # Note exposing because we don't want direct access # PAUL, sure?
             logging.info("MMU: Created: [%s]" % c.get_name())
         else:
             logging.info("MMU: - No mmu_espooler specified")
@@ -638,6 +638,10 @@ class MmuUnit:
 
     def manages_gate(self, gate):
         if not isinstance(gate, int): return False
+        if gate == TOOL_GATE_UNKNOWN:
+            return True
+        if gate == TOOL_GATE_BYPASS and self.selector.has_bypass(): # PAUL check has_bypass logic
+            return True
         return self.first_gate <= gate < self.first_gate + self.num_gates
 
     def gate_range(self):
@@ -645,7 +649,7 @@ class MmuUnit:
 
     # Convert mmu_machine gate number to relative gate on mmu_unit
     def local_gate(self, gate, force_physical=False):
-        if self.manages_gate(gate):
+        if gate >=0 and self.manages_gate(gate):
             lgate = gate - self.first_gate
         elif gate < 0:
             lgate = gate # bypass/unknown

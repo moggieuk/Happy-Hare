@@ -55,7 +55,7 @@ class MmuSoaktestLoadSequenceCommand(BaseCommand):
 
         if self.mmu.check_if_disabled(): return
         if self.mmu.check_if_bypass(): return
-        if self.mmu.check_if_not_homed(): return
+#PAUL        if self.mmu.check_if_not_homed(): return
         if self.mmu.check_if_loaded(): return
         if self.mmu.check_if_not_calibrated(CALIBRATED_ESSENTIAL): return
 

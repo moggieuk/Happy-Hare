@@ -511,9 +511,11 @@ class MmuESpooler:
     # -------------------------------------------------------------------------------------------------------------------
 
     def get_status(self, eventtime):
+# PAUL
         return {
             'espooler': [v[0] for v in self.operation.values()]
         }
+
 
 
     # Class to monitor extruder movement an generate espooler "advance" events
@@ -525,11 +527,9 @@ class MmuESpooler:
             self.espooler = espooler
             self.reactor = espooler.reactor
             self.estimated_print_time = espooler.printer.lookup_object('mcu').estimated_print_time
-# PAUL            self.extruder = espooler.printer.lookup_object(espooler.mmu.extruder_name, None) # PAUL should be on mmu_machine?
-            self.extruder = espooler.printer.lookup_object(espooler.mmu_machine.extruder_name, None)
+            self.extruder = espooler.printer.lookup_object(espooler.mmu_unit.extruder_name, None)
             if not self.extruder:
-# PAUL                raise espooler.config.error("Extruder named `%s` not found. Espooler extruder monitor disabled" % espooler.mmu.extruder_name) # PAUL should be on mmu_machine?
-                raise espooler.config.error("Extruder named `%s` not found. Espooler extruder monitor disabled" % espooler.mmu_machine.extruder_name)
+                raise espooler.config.error("Extruder named `%s` not found. Espooler extruder monitor disabled" % espooler.mmu_unit.extruder_name)
 
             self.enabled = False
             self.last_extruder_pos = None

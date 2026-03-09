@@ -109,7 +109,7 @@ class _SourceAdapter:
                 fn = getattr(self.src, 'get')
                 val = fn(key, default)
                 if spec.choices is not None and val not in spec.choices:
-                    raise ValueError(f"Invalid {spec.name}={val}; allowed: {list(spec.choices)}")
+                    raise ValueError(f"Invalid {spec.name}={val}; allowed: {list(spec.choices)}") # PAUL Can't raise this it crashes klipper
                 return val
             fn = getattr(self.src, 'getchoice')
             return fn(key, spec.choices, default)

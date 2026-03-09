@@ -190,7 +190,8 @@ class LinearSelector(PhysicalSelector):
         If bypass is active, homing is skipped. When requested (or required by
         filament state), triggers an unload sequence before selector homing.
         """
-        if self.mmu.check_if_bypass(): return
+        if self.mmu.check_if_bypass(): return  # PAUL needs to be bypass on THIS unit otherwise doesn't matter
+
         with self.mmu.wrap_action(ACTION_HOMING):
             self.mmu.log_info("Homing MMU...")
             if force_unload is not None:

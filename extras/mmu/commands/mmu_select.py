@@ -50,7 +50,7 @@ class MmuSelectCommand(BaseCommand):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
 
         if self.mmu.check_if_disabled(): return
-        if self.mmu.check_if_not_homed(): return
+#PAUL        if self.mmu.check_if_not_homed(): return
         if self.mmu.check_if_loaded(): return
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu.num_gates - 1)
         if self.mmu.check_if_not_calibrated(CALIBRATED_SELECTOR, check_gates=[gate] if gate >= 0 else None): return

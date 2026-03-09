@@ -26,9 +26,10 @@ class MmuHomeCommand(BaseCommand):
     HELP_BRIEF = "Home the MMU selector"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
-        + "TOOL         = #(int) Gate/tool index (0..num_gates-1)\n"
-        + "FORCE_UNLOAD = [0|1]\n"
-        + "(no parameters: home current selector / default tool)\n"
+        + "UNIT         = #(int)|_name_|ALL Specify unit by name, number or all-units\n"
+        + "TOOL         = #(int) Optionally select tool number after homing\n"
+        + "FORCE_UNLOAD = [0|1]  Force unloaded of filament\n"
+        + "(no parameters: home selector on single unit setup and select T0)\n"
     )
     HELP_SUPPLEMENT = (
         ""  # add examples here if desired
@@ -42,10 +43,11 @@ class MmuHomeCommand(BaseCommand):
             help_brief=self.HELP_BRIEF,
             help_params=self.HELP_PARAMS,
             help_supplement=self.HELP_SUPPLEMENT,
-            category=CATEGORY_GENERAL
+            category=CATEGORY_GENERAL,
+            per_unit=True
         )
 
-    def _run(self, gcmd):
+    def _run(self, gcmd, mmu_unit):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
 
         if self.mmu.check_if_disabled(): return
@@ -56,13 +58,22 @@ class MmuHomeCommand(BaseCommand):
             tool = -1
             force_unload = 0
         else:
-            tool = gcmd.get_int('TOOL', 0, minval=0, maxval=self.mmu.num_gates - 1)
+            tool = gcmd.get_int('TOOL', self.mmu.tool_selected, minval=0, maxval=self.mmu.num_gates - 1)
             force_unload = gcmd.get_int('FORCE_UNLOAD', None, minval=0, maxval=1)
 
         try:
             with self.mmu.wrap_sync_gear_to_extruder():
-                self.mmu.home(tool, force_unload=force_unload)
-                if tool == -1:
-                    self.mmu.log_always("Homed")
+                self.mmu.home_unit(mmu_unit, force_unload=force_unload)
+                self.mmu.log_always("Homed")
+
+                # Select chosen gate for tool if on this unit
+                if tool == TOOL_GATE_BYPASS:
+                    if mmu_unit.manages_gate(TOOL_GATE_BYPASS):
+                        self.mmu.select_bypass()
+                elif tool >= 0:
+                    gate = self.mmu.ttg_map[tool]
+                    if mmu_unit.manages_gate(gate):
+                        self.mmu.select_tool(tool)
+
         except MmuError as ee:
             self.mmu.handle_mmu_error(str(ee))

@@ -47,7 +47,7 @@ class MmuSelectBypassCommand(BaseCommand):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
 
         if self.mmu.check_if_disabled(): return
-        if self.mmu.check_if_not_homed(): return
+#PAUL        if self.mmu.check_if_not_homed(): return
         if self.mmu.check_if_loaded(): return
         if self.mmu.check_if_not_calibrated(CALIBRATED_SELECTOR): return
         self.mmu._fix_started_state()

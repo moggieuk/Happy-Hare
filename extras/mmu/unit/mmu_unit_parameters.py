@@ -174,7 +174,7 @@ class MmuUnitParameters(TunableParametersBase):
         ParamSpec('autotune_encoder',                 'int',       0, section="AUTOTUNE", limits=dict(minval=0, maxval=1), hidden=True),
 
         # Optional
-        ParamSpec('startup_home_if_unloaded',         'int',       0, section="OPTIONAL", limits=dict(minval=0, maxval=1)),
+        ParamSpec('startup_home_selector',            'int',       0, section="OPTIONAL", limits=dict(minval=0, maxval=1)),
         ParamSpec('has_filament_buffer',              'int',       1, section="OPTIONAL", limits=dict(minval=0, maxval=1)),
         ParamSpec('encoder_move_validation',          'int',       1, section="OPTIONAL", limits=dict(minval=0, maxval=1)),
     )

@@ -12,6 +12,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
+
 import logging
 
 # Happy Hare imports
@@ -64,8 +65,12 @@ class MmuTestConfigCommand(BaseCommand):
         # PAUL TODO selector_params = unit.p   # MmuSelectorParameters
 
         # Apply to both sets (non-strict so we can aggregate unknown + guarded across both)
-        m_applied, m_guarded, m_unknown = machine_params.apply_gcmd(gcmd, strict=False)
-        u_applied, u_guarded, u_unknown = unit_params.apply_gcmd(gcmd, strict=False)
+        try:
+            m_applied, m_guarded, m_unknown = machine_params.apply_gcmd(gcmd, strict=False)
+            u_applied, u_guarded, u_unknown = unit_params.apply_gcmd(gcmd, strict=False)
+# PAUL selector params
+        except Exception as e:
+            raise gcmd.error(str(e))
 
         applied    = sorted(set(m_applied + u_applied))
         guarded    = sorted(set(m_guarded + u_guarded))
@@ -88,7 +93,7 @@ class MmuTestConfigCommand(BaseCommand):
             self.mmu.log_info("Applied parameters: %s" % ", ".join(applied))
             self.mmu.log_info("(remember these are temporary changes until next restart)")
 
-        # Nothing done so list current params unless QUIET=1
+        # Nothing applied so list current params unless QUIET=1
         if not applied and not quiet:
             msg = []
             msg.append("Shared MMU machine parameters ----------------")

@@ -23,7 +23,6 @@ from ..tmc                      import TMCCommandHelper
 # Happy Hare imports
 from .mmu_constants             import *
 from .mmu_logger                import MmuLogger
-#PAUL moved from .mmu_test                  import MmuTest
 from .mmu_utils                 import MmuError, DebugStepperMovement, PurgeVolCalculator
 from .mmu_sensor_manager        import MmuSensorManager
 from .mmu_sensor_utils          import MmuRunoutHelper
@@ -47,54 +46,41 @@ class MmuController:
 
         self.num_gates = self.mmu_machine.num_gates
         self.gate_selected = TOOL_GATE_UNKNOWN # PAUL TEMP HACK to get through initialization
-        self.w3c_colors = dict(W3C_COLORS)
-        self.filament_remaining = 0.
+        self.w3c_colors = dict(W3C_COLORS)      # Standard symbolic color names
+        self.filament_remaining = 0.            # The amount of filament remaining in extruder hotend
         self._last_tool = self._next_tool = TOOL_GATE_UNKNOWN
         self._next_gate = None
-        self.toolchange_retract = 0.          # Set from mmu_macro_vars
-        self.toolchange_purge_volume = 0.
-        self.mmu_logger = None                # Setup on connect
-        self._standalone_sync = False         # Used to indicate synced extruder intention whilst out of print
-        self._suppress_release_grip = False   # Used to suppress the relaxing of grip on recursive calls to prevent servo flutter
-        self.bowden_start_pos = None          # If set then we can measure bowden progress
-        self.has_blobifier = False            # Post load blobbling macro (like BLOBIFIER)
-        self.has_mmu_cutter = False           # Post unload cutting macro (like EREC)
-        self.has_toolhead_cutter = False      # Form tip cutting macro (like _MMU_CUT_TIP)
-        self._is_running_test = False         # True while running QA or soak tests
-        self.slicer_tool_map = None
+        self.toolchange_retract = 0.            # Set from mmu_macro_vars
+        self.toolchange_purge_volume = 0.       # During toolchange, the calculated purge volume
+        self.mmu_logger = None                  # Setup on connect
+        self._standalone_sync = False           # Used to indicate synced extruder intention whilst out of print
+        self._suppress_release_grip = False     # Used to suppress the relaxing of grip on recursive calls to prevent servo flutter
+        self.bowden_start_pos = None            # If set then we can measure bowden progress
+        self.has_blobifier = False              # Post load blobbling macro (like BLOBIFIER)
+        self.has_mmu_cutter = False             # Post unload cutting macro (like EREC)
+        self.has_toolhead_cutter = False        # Form tip cutting macro (like _MMU_CUT_TIP)
+        self._is_running_test = False           # True while running QA or soak tests
+        self.slicer_tool_map = None             # Set by startup gcode from slicer during print
 
         self.gear_run_current_percent = self.extruder_run_current_percent = 100 # Current run percentages
-        self._gear_run_current_locked = False # True if gear current is currently locked by wrap_gear_current()
+        self._gear_run_current_locked = False   # True if gear current is currently locked by wrap_gear_current()
 
-        # Parameters shortcut
-        self.p = mmu_machine.params
-
-# MOGGIE PAUL FIX ME .. just getting first unit vv
-        self.extruder_name = self.mmu_unit(0).extruder_name # TODO Idea: This could be per-gate to map gates to different extruders!
-# MOGGIE ^^
+        self.p = mmu_machine.params             # Parameters shortcut
 
         self.kalico = bool(self.printer.lookup_object('danger_options', False))
 
-        self.tool_extrusion_multipliers = []
-        self.tool_speed_multipliers = []
+        # Tool speed and extrusion multipliers
+        self.tool_speed_multipliers     = [1.0] * self.num_gates # M220 record
+        self.tool_extrusion_multipliers = [1.0] * self.num_gates # M221 record
 
         # Complete setup of other components
         self._setup_logging()
-#        if not self.mmu_machine.homing_extruder:
-#            self.log_debug("Warning: Using original klipper extruder stepper. Extruder homing not possible")
 
-# PAUL move this
-#        # Dynamically instantiate and register the selector class for each unit
-#        for unit in self.mmu_machine.units:
-#            selector = globals()[unit.selector_type](self, unit)
-#            if not isinstance(selector, BaseSelector):
-#                raise self.config.error("Invalid Selector class for MMU unit %s" % unit.name)
-#            unit.set_selector(selector)
-#
-        # Managers are responsible for handling multiple mmu_units and encapsulate specific
-        # functionality to reduce the complexity of main class
-        self.sensor_manager        = MmuSensorManager(self) # Must be done during initialization because also sets up homing endstops
+        # Managers are responsible for collectively handling all gates accross multiple mmu_units and encapsulate
+        # specific functionality to reduce the complexity of this controller class
         self.led_manager           = MmuLedManager(self)
+        self.sensor_manager        = MmuSensorManager(self) # Must be done during initialization because also sets up homing endstops
+
 
         # Establish defaults for "reset" operation ----------------------------------------------------------
         # These lists are the defaults (used when reset) and will be overriden by values in mmu_vars.cfg...
@@ -135,9 +121,6 @@ class MmuController:
             self.p.default_ttg_map = list(range(self.num_gates))
         self.ttg_map = list(self.p.default_ttg_map)
 
-        # Tool speed and extrusion multipliers
-        self.tool_extrusion_multipliers.extend([1.] * self.num_gates)
-        self.tool_speed_multipliers.extend([1.] * self.num_gates)
 
         # Register GCODE commands ---------------------------------------------------------------------------
         for name, cls in sorted(COMMAND_REGISTRY.items()):
@@ -148,12 +131,9 @@ class MmuController:
                 raise self.config.error("Failed to register command class: %s", name)
 
         # Initializer tasks
-# PAUL MOVE TO Commands...
+# PAUL MOVE TO Commands...?
         self.gcode.register_command('__MMU_BOOTUP', self.cmd_MMU_BOOTUP, desc = self.cmd_MMU_BOOTUP_help) # Bootup tasks
 
-# PAUL moved into commands
-#        # Load development test commands
-#        self.mmu_test = MmuTest(self)
 
         # Apply Klipper hacks -------------------------------------------------------------------------------
         if self.p.update_trsync: # Timer too close mitigation
@@ -170,7 +150,7 @@ class MmuController:
             except Exception as e:
                 self.log_error("Unable to update BIT_MAX_TIME: %s" % str(e))
 
-        if self.p.update_aht10_commands: # Command set of AHT10 (on ViViD)
+        if self.p.update_aht10_commands: # Command set of AHT10 (on ViViD) for older klipper
             try:
                 from extras import aht10
                 aht10.AHT10_COMMANDS = {
@@ -180,6 +160,7 @@ class MmuController:
                 }
             except Exception as e:
                 self.log_error("Unable to update AHT10_COMMANDS: %s" % str(e))
+
 
         # Initialize state and statistics variables
         self.reinit()
@@ -193,7 +174,9 @@ class MmuController:
 
 
     def _setup_logging(self):
-        # Setup background file based logging before logging any messages
+        """
+        Setup background file based logging before logging any messages
+        """
         if self.mmu_logger is None and self.p.log_file_level >= 0:
             logfile_path = self.printer.start_args['log_file']
             dirname = os.path.dirname(logfile_path)
@@ -338,6 +321,7 @@ class MmuController:
         return self.espooler(gate) is not None
 
     def _check_has_espooler(self): # PAUL caution on how this command will multiplex # PAUL should this be for current gate/unit like _check_has_encoder??
+# PAUL: this could just look at any() on mmu_units.. has_espooler() ... would be more consistent
         if any(self.has_espooler(gate) for gate in range(self.num_gates)):
             return False
         self.log_error("No espoolers configured!")
@@ -621,8 +605,18 @@ class MmuController:
 
         try:
             # Splash...
-            msg = '{1}(\_/){0}\n{1}( {0}*,*{1}){0}\n{1}(")_("){0} {5}{2}H{0}{3}a{0}{4}p{0}{2}p{0}{3}y{0} {4}H{0}{2}a{0}{3}r{0}{4}e{0} {1}%s{0} {2}R{0}{3}e{0}{4}a{0}{2}d{0}{3}y{0}{1}...{0}{6}' % self._fversion(self.mmu_machine.happy_hare_version)
+            version = self._fversion(self.mmu_machine.happy_hare_version)
+            msg = (
+                "{1}(\\_/){0}\n"
+                "{1}( {0}*,*{1}){0}\n"
+                "{1}(\")_(\"){0} "
+                "{5}{2}H{0}{3}a{0}{4}p{0}{2}p{0}{3}y{0} "
+                "{4}H{0}{2}a{0}{3}r{0}{4}e{0} "
+                "{1}" + version + "{0} "
+                "{2}R{0}{3}e{0}{4}a{0}{2}d{0}{3}y{0}{1}...{0}{6}"
+            )
             self.log_always(msg, color=True)
+
             if self.kalico:
                 msg = "Warning: You are running on Kalico (Danger-Klipper). Support is not guaranteed!"
                 if self.p.suppress_kalico_warning:
@@ -638,7 +632,10 @@ class MmuController:
                     fsensor_name = section.get_name().split()[1]
                     pause_on_runout = section.getboolean('pause_on_runout', False)
                     pause_on_runout_msg = " and/or pause during prints unintentionally" if pause_on_runout else ""
-                    self.log_warning("Warning: filament_switch_sensor '%s' found in printer configuration. This may interfere with MMU functionality%s." % (fsensor_name, pause_on_runout_msg))
+                    self.log_warning(
+                        f"Warning: filament_switch_sensor '{fsensor_name}' found in printer configuration. "
+                        f"This may interfere with MMU functionality{pause_on_runout_msg}."
+                    )
 
             self._set_print_state("initialized")
 
@@ -673,8 +670,13 @@ class MmuController:
             if self.p.startup_reset_ttg_map:
                 self._reset_ttg_map()
 
-            if self.mmu_unit().p.startup_home_if_unloaded and not self.check_if_not_calibrated(CALIBRATED_SELECTOR) and self.filament_pos == FILAMENT_POS_UNLOADED:
-                self.home(0)
+            # This is recoverable so just report errors
+            for unit in self.mmu_machine.units:
+                if self.unit.p.startup_home_selector:
+                    try:
+                        self.home_unit(unit)
+                    except Exception as e:
+                        self.log_error(str(e))
 
             if self.p.log_startup_status:
                 self.log_always(self._mmu_visual_to_string())
@@ -696,24 +698,19 @@ class MmuController:
             # Sync lane data to Moonraker for slicer integration and cleanup old lanes
             self._moonraker_sync_lane_data()
 
-# PAUL older logic
-#            if self.has_encoder():
-#                cdl = self.var_manager.get(self.VARS_MMU_CALIB_ENCODER_CLOG_LENGTH, None, namespace=self.encoder().name)
-#                if cdl:
-#                    self.encoder().set_clog_detection_length(cdl)
-#                self._disable_runout() # Initially disable clog/runout detection
-#
-#            self.reset_sync_gear_to_extruder(False) # Intention is not to sync unless we have to
-#            self.movequeues_wait()
-#
-#            # Sync with spoolman. Delay as long as possible to maximize the chance it is contactable after startup/reboot
-#            self._spoolman_sync()
+            # Establish mmu/extruder sync state
+            self.reset_sync_gear_to_extruder(False)# Intention is not to sync unless we have to
+            self.movequeues_wait()
+
+            # Sync with spoolman. Delay as long as possible to maximize the chance it is contactable after startup/reboot
+            self._spoolman_sync()
+
         except Exception as e:
             logging.error(traceback.format_exc())
             self.log_error('Error booting up MMU: %s' % str(e))
-#            raise e # PAUL TESTING TEMP
 
         self.mmu_macro_event(MACRO_EVENT_RESTART)
+
 
     # Wrap execution of gcode command to allow for control over:
     #  - error handling
@@ -807,7 +804,7 @@ class MmuController:
         status = {
             'enabled': self.is_enabled,
             'num_gates': self.num_gates,
-            'is_homed': self.selector().is_homed,
+            'is_homed': self.selector().is_homed, # Always true on type-B MMU's
             'print_state': self.print_state,
             'unit': self.unit_selected,
             'tool': self.tool_selected,
@@ -846,7 +843,7 @@ class MmuController:
             'extruder_filament_remaining': self.filament_remaining + self.p.toolhead_residual_filament,
             'spoolman_support': self.p.spoolman_support,
             'bowden_progress': self._get_bowden_progress(), # Simple 0-100%. -1 if not performing bowden move
-            'espooler_active': self.espooler.get_operation(self.gate_selected)[0] if self.has_espooler() else '',
+            'espooler_active': self.espooler.get_operation(self.gate_selected)[0] if self.has_espooler() else ESPOOLER_NONE, # Legacy
             'endless_spool_enabled': self.endless_spool_enabled,
             'print_start_detection': self.p.print_start_detection, # For Klippain. Not really sure it is necessary
 
@@ -864,10 +861,34 @@ class MmuController:
         }
 
         status['sensors'] = self.sensor_manager.get_status(eventtime)
-        status.update(self.mmu_unit().environment_manager.get_status(eventtime)) # PAUL must aggregate ALL units
 
-        if self.has_espooler():
-            status.update(self.espooler().get_status(eventtime))
+# PAUL I could improve efficency here ... (1)don't create new lists in the called get_status, (2) cache an exclusion flag to bypass if NO units have feature
+#        # Merge environment manager status from all units because this attribute is a per-gate list
+#        env_status = []
+#        for unit in self.mmu_machine.units:
+#            env_status.extend(unit.environment_manager.get_status(eventime))
+#        status['drying_state'] = env_status
+#
+#        # Merge espooler status from all units because this attribute is a per-gate list
+#        espooler_status = []
+#        for unit in self.mmu_machine.units:
+#            espooler_status.extend([ESPOOLER_NONE] * unit.num_gates if unit.espooler is None else unit.espooler.get_status(eventime))
+#        status['espooler'] = espooler_status
+
+# PAUL do this instead...
+## Merge espooler status from all units because this attribute is a per-gate list
+#espooler_status = []
+#extend = espooler_status.extend  # optional; keep or drop
+#
+#for unit in self.mmu_machine.units:
+#    esp = unit.espooler
+#    if esp is None:
+#        extend([ESPOOLER_NONE] * unit.num_gates)
+#    else:
+#        unit_status = esp.get_status(eventtime)     # dict: {"espooler": [...]}
+#        extend(unit_status["espooler"])
+#
+#status["espooler"] = espooler_status
 
         if self.has_encoder():
             status['encoder'] = self.encoder().get_status(eventtime)
@@ -1458,11 +1479,11 @@ class MmuController:
     # Filament is assumed to be at the extruder and will be at extruder again when complete
     def _probe_toolhead(self, cold_temp=70, probe_depth=100, sensor_homing=80):
         # Ensure extruder is COLD
-        self.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=%s TARGET=0" % self.extruder_name)
-        current_temp = self.printer.lookup_object(self.extruder_name).get_status(0)['temperature']
+        self.gcode.run_script_from_command("SET_HEATER_TEMPERATURE HEATER=%s TARGET=0" % self.mmu_unit().extruder_name)
+        current_temp = self.printer.lookup_object(self.mmu_unit().extruder_name).get_status(0)['temperature']
         if current_temp > cold_temp:
             self.log_always("Waiting for extruder to cool")
-            self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=%s MINIMUM=0 MAXIMUM=%d" % (self.extruder_name, cold_temp))
+            self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=%s MINIMUM=0 MAXIMUM=%d" % (self.mmu_unit().extruder_name, cold_temp))
 
         # Enable the extruder stepper
         stepper_enable = self.printer.lookup_object('stepper_enable')
@@ -1761,7 +1782,7 @@ class MmuController:
                 self.resume_to_state = 'printing' if self.is_in_print() else 'ready'
                 self.reason_for_pause = reason # Only store reason on first error
                 self._display_mmu_error()
-                self.paused_extruder_temp = self.printer.lookup_object(self.extruder_name).heater.target_temp
+                self.paused_extruder_temp = self.printer.lookup_object(self.mmu_unit().extruder_name).heater.target_temp
                 self.log_trace("Saved desired extruder temperature: %.1f%sC" % (self.paused_extruder_temp, UI_DEGREE))
                 self.reactor.update_timer(self.hotend_off_timer, self.reactor.monotonic() + self.p.disable_heater) # Set extruder off timer
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.p.timeout_pause) # Set alternative pause idle_timeout
@@ -1995,12 +2016,12 @@ class MmuController:
 
     @contextlib.contextmanager
     def _wrap_suspend_filament_monitoring(self):
-        enabled = self._disable_runout()
+        enabled = self._disable_filament_monitoring()
         try:
             yield self
         finally:
             if enabled:
-                self._enable_runout()
+                self._enable_filament_monitoring()
 
     # To suppress visual filament position
     @contextlib.contextmanager
@@ -2160,7 +2181,7 @@ class MmuController:
             return True
         return False
 
-    def check_if_not_homed(self):
+    def check_if_not_homed(self, gate=None):
         if not self.selector().is_homed:
             self.log_error("Operation not possible. MMU selector is not homed")
             return True
@@ -2178,7 +2199,7 @@ class MmuController:
             return True
         return False
 
-    def check_if_gate_not_valid(self):
+    def check_if_invalid_gate(self):
         if self.gate_selected < 0:
             self.log_error("Operation not possible. No MMU gate selected")
             return True
@@ -2339,7 +2360,7 @@ class MmuController:
         return "ENCODER" if self.mmu_unit().p.gate_homing_endstop == SENSOR_ENCODER else "%s sensor" % self.mmu_unit().p.gate_homing_endstop
 
     def _ensure_safe_extruder_temperature(self, source="auto", wait=False):
-        extruder = self.printer.lookup_object(self.extruder_name)
+        extruder = self.printer.lookup_object(self.mmu_unit().extruder_name)
         current_temp = extruder.get_status(0)['temperature']
         current_target_temp = extruder.heater.target_temp
         klipper_minimum_temp = extruder.get_heater().min_extrude_temp
@@ -2409,7 +2430,7 @@ class MmuController:
             if wait and new_target_temp >= klipper_minimum_temp and abs(new_target_temp - current_temp) > self.p.extruder_temp_variance:
                 with self.wrap_action(ACTION_HEATING):
                     self.log_info("Waiting for extruder to reach target (%s) temperature: %.1f%sC" % (source, new_target_temp, UI_DEGREE))
-                    self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=%s MINIMUM=%.1f MAXIMUM=%.1f" % (self.extruder_name, new_target_temp - self.p.extruder_temp_variance, new_target_temp + self.p.extruder_temp_variance))
+                    self.gcode.run_script_from_command("TEMPERATURE_WAIT SENSOR=%s MINIMUM=%.1f MAXIMUM=%.1f" % (self.mmu_unit().extruder_name, new_target_temp - self.p.extruder_temp_variance, new_target_temp + self.p.extruder_temp_variance))
 
     def selected_tool_string(self, tool=None):
         if tool is None:
@@ -4499,12 +4520,13 @@ class MmuController:
 #        self._record_tool_override() # Remember M220 and M221 overrides
 #        self.unload_sequence(form_tip=form_tip)
 
-    def _auto_home(self, tool=0):
-        if not self.selector().is_homed or self.tool_selected == TOOL_GATE_UNKNOWN:
-            self.log_info("MMU selector not homed, will home before continuing")
-            self.home(tool)
-        elif self.filament_pos == FILAMENT_POS_UNKNOWN and self.selector().is_homed:
-            self.recover_filament_pos(message=True)
+# MOGGIE PAUL think we should get rid of this and try to autohome at startup
+#    def _auto_home(self, tool=0): # PAUL Called from MMU_CHANGE_TOOL. Could be integrated there?
+#        if not self.selector().is_homed or self.tool_selected == TOOL_GATE_UNKNOWN:
+#            self.log_info("MMU selector not homed, will home before continuing")
+#            self.home(tool)
+#        elif self.filament_pos == FILAMENT_POS_UNKNOWN and self.selector().is_homed:
+#            self.recover_filament_pos(message=True)
 
     # Important to always inform use of "toolchange" operation is case there is an error and manual recovery is necessary
     def _note_toolchange(self, m117_msg):
@@ -4523,14 +4545,19 @@ class MmuController:
 
 ### TOOL AND GATE SELECTION ######################################################
 
-    def home(self, tool, force_unload = None):
-        if self.check_if_bypass(): return
-        self._set_tool_selected(TOOL_GATE_UNKNOWN)
-        self.selector().home(force_unload=force_unload)
-        if tool >= 0:
-            self.select_tool(tool)
-        elif tool == TOOL_GATE_BYPASS:
-            self.select_bypass()
+
+    def home_unit(self, mmu_unit, force_unload=None):
+        if mmu_unit.selector.requires_homing: # Make a no-op for class-B MMU's
+            if mmu_unit.manages_gate(self.gate_selected):
+                if not force_unload and self.filament_pos not in [FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN]:
+                    raise MmuError("Cannot home %s because has filament loaded" % mmu_unit.name)
+                else:
+                    self._set_gate_selected(TOOL_GATE_UNKNOWN)
+                    mmu_unit.selector.home(force_unload)
+            else:
+                # Safe to just home selector
+                mmu_unit.selector.home()
+
 
     def select_gate(self, gate):
         try:
@@ -4550,9 +4577,11 @@ class MmuController:
         finally:
             self._next_gate = None
 
+
     def unselect_gate(self):
         self.selector().select_gate(TOOL_GATE_UNKNOWN) # Required for type-B MMU's to unsync
         self._set_gate_selected(TOOL_GATE_UNKNOWN)
+
 
     def select_tool(self, tool):
         if tool < 0 or tool >= self.num_gates:
@@ -4569,6 +4598,7 @@ class MmuController:
         self._set_tool_selected(tool)
         self.log_info("Tool %s enabled%s" % (self.selected_tool_string(tool), (" on gate %d" % gate) if tool != gate else ""))
 
+
     def select_bypass(self):
         if self.tool_selected == TOOL_GATE_BYPASS and self.gate_selected == TOOL_GATE_BYPASS: return
         self.log_info("Selecting filament bypass...")
@@ -4577,10 +4607,12 @@ class MmuController:
         self._set_filament_direction(DIRECTION_LOAD)
         self.log_info("Bypass enabled")
 
+
     def _set_tool_selected(self, tool):
         if tool != self.tool_selected:
             self.tool_selected = tool
             self.var_manager.set(VARS_MMU_TOOL_SELECTED, self.tool_selected, write=True)
+
 
     def _set_gate_selected(self, gate):
         self.gate_selected = gate
@@ -4601,6 +4633,7 @@ class MmuController:
             'spool_id': self.gate_spool_id[gate],
             'temperature': self.gate_temperature[gate],
         } if gate >= 0 else {}
+
 
     # Return unit number for gate
     def find_unit_by_gate(self, gate):

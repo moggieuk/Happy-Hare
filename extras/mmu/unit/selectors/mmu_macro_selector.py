@@ -39,6 +39,7 @@ class MacroSelector(BaseSelector):
         """
         super().__init__(config, mmu_unit, params)
         self.is_homed = True
+        self.requires_homing = False
 
         self.select_tool_macro = config.get('select_tool_macro')
         self.select_tool_num_switches = config.getint('select_tool_num_switches', default=0, minval=1)

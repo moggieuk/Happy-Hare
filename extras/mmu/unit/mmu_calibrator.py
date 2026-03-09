@@ -735,7 +735,8 @@ class MmuCalibrator:
         self.mmu.log_to_file(gcmd.get_commandline())
         if self.check_if_disabled(): return
         if self.check_if_bypass(): return
-        if self.check_if_gate_not_valid(): return
+        if self.check_if_invalid_gate(): return
+
         length = gcmd.get_float('LENGTH', 100., above=50.)
         measured = gcmd.get_float('MEASURED', -1, above=0.)
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
@@ -807,7 +808,7 @@ class MmuCalibrator:
         if self.check_if_not_homed(): return
         if self.check_if_bypass(): return
         if self.check_if_loaded(): return
-        if self.check_if_gate_not_valid(): return
+        if self.check_if_invalid_gate(): return
 
         repeats = gcmd.get_int('REPEATS', 3, minval=1, maxval=10)
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
