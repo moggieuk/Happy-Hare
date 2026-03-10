@@ -53,7 +53,7 @@ class IndexedSelector(PhysicalSelector):
         self.cad_gate_width = config.getfloat('cad_gate_width', self.cad_gate_width, above=0.)
         self.cad_max_rotations = config.getfloat('cad_max_rotations', self.cad_max_rotations, above=0.)
 
-        self.unit_gate_selected = 0 # TODO could be set as part of startup homing..
+        self.unit_gate_selected = 0 # TODO could be set as part of startup homing.. # PAUL complete the wiring for this
 
         # Selector stepper setup before MMU toolhead is instantiated
         section = mmu_machine.SELECTOR_STEPPER_CONFIG
@@ -83,8 +83,9 @@ class IndexedSelector(PhysicalSelector):
 # PAUL        self.selector_rail.homing_retract_speed = self.selector_homing_speed
 # PAUL        self._set_position(0) # Reset pos
 
-    def bootup(self):
-        self.select_gate(self.mmu.gate_selected)
+# PAUL I'm not sure why I need this - each selector should re-establish selected gate in handle_ready()
+#    def bootup(self):
+#        self.select_gate(self.mmu.gate_selected)
 
     def home(self, force_unload = None):
         """

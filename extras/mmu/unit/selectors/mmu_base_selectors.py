@@ -87,7 +87,7 @@ class BaseSelector:
         logging.info("PAUL: handle_disconnect: BaseSelector")
         pass
 
-    def bootup(self):
+    def bootup(self): # PAUL why do we need this?
         pass
 
     def home(self, force_unload = None):

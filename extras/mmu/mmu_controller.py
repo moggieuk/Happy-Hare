@@ -123,6 +123,7 @@ class MmuController:
 
 
         # Register GCODE commands ---------------------------------------------------------------------------
+
         for name, cls in sorted(COMMAND_REGISTRY.items()):
             logging.info("PAUL: cmd name=%s" % name)
             try:
@@ -136,6 +137,7 @@ class MmuController:
 
 
         # Apply Klipper hacks -------------------------------------------------------------------------------
+
         if self.p.update_trsync: # Timer too close mitigation
             try:
                 import mcu
@@ -601,7 +603,7 @@ class MmuController:
     cmd_MMU_BOOTUP_help = "Internal commands to complete bootup of MMU"
     def cmd_MMU_BOOTUP(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-        self.selector().bootup() # PAUL TODO should be all units
+#PAUL        self.selector().bootup() # PAUL TODO should be all units
 
         try:
             # Splash...
@@ -617,6 +619,7 @@ class MmuController:
             )
             self.log_always(msg, color=True)
 
+            # Kalico (especially "bleeding edge" users) need reminding of possible incompatibility
             if self.kalico:
                 msg = "Warning: You are running on Kalico (Danger-Klipper). Support is not guaranteed!"
                 if self.p.suppress_kalico_warning:
@@ -633,7 +636,7 @@ class MmuController:
                     pause_on_runout = section.getboolean('pause_on_runout', False)
                     pause_on_runout_msg = " and/or pause during prints unintentionally" if pause_on_runout else ""
                     self.log_warning(
-                        f"Warning: filament_switch_sensor '{fsensor_name}' found in printer configuration. "
+                        f"Warning: filament_switch_sensor '{fsensor_name}' found in printer configuration.\n"
                         f"This may interfere with MMU functionality{pause_on_runout_msg}."
                     )
 
@@ -666,16 +669,16 @@ class MmuController:
             ):
                 self.recover_filament_pos(can_heat=False, message=True, silent=True)
 
-            # Apply startup options
+            # Apply user startup options-----------
             if self.p.startup_reset_ttg_map:
                 self._reset_ttg_map()
 
-            # This is recoverable so just report errors
             for unit in self.mmu_machine.units:
                 if self.unit.p.startup_home_selector:
                     try:
                         self.home_unit(unit)
                     except Exception as e:
+                        # This is recoverable so just report errors
                         self.log_error(str(e))
 
             if self.p.log_startup_status:
@@ -683,14 +686,11 @@ class MmuController:
                 self._display_visual_state()
             self.report_necessary_recovery()
 
-            # Ensure espooler print assist is correct
+            # Ensure espooler print assist is in correct state
             self._adjust_espooler_assist()
 
             # Initially disable clog/runout detection
             self._disable_filament_monitoring()
-
-            self.reset_sync_gear_to_extruder(False) # Intention is not to sync unless we have to
-            self.mmu_toolhead().quiesce()
 
             # Sync with spoolman. Delay as long as possible to maximize the chance it is contactable after startup/reboot
             self._spoolman_sync()
@@ -698,12 +698,9 @@ class MmuController:
             # Sync lane data to Moonraker for slicer integration and cleanup old lanes
             self._moonraker_sync_lane_data()
 
-            # Establish mmu/extruder sync state
-            self.reset_sync_gear_to_extruder(False)# Intention is not to sync unless we have to
-            self.movequeues_wait()
-
-            # Sync with spoolman. Delay as long as possible to maximize the chance it is contactable after startup/reboot
-            self._spoolman_sync()
+            # Reset sync state (intention is not to sync unless we have to)
+            self.reset_sync_gear_to_extruder(False)
+            self.mmu_toolhead().quiesce()
 
         except Exception as e:
             logging.error(traceback.format_exc())
@@ -747,7 +744,7 @@ class MmuController:
             self.wrap_gcode_command("%s EVENT=%s %s" % (self.p.mmu_event_macro, event_name, params))
 
     # Wait on desired move queues
-    # TODO: perhaps better now to remove this method and
+    # TODO: PAUL: perhaps better now to remove this method and
     # TODO: always just call self.mmu_toolhead().quiesce()
     def movequeues_wait(self, toolhead=True, mmu_toolhead=True):
         #self.log_trace("movequeues_wait(toolhead=%s, mmu_toolhead=%s)" % (toolhead, mmu_toolhead))
@@ -2498,11 +2495,9 @@ class MmuController:
             raise MmuError("Randomized testing failure")
 
 
-
-
-##############################################
-# MODULAR FILAMENT LOAD AND UNLOAD FUNCTIONS #
-##############################################
+# -----------------------------------------------------------------------------------------------------------
+# MODULAR FILAMENT LOAD AND UNLOAD FUNCTIONS
+# -----------------------------------------------------------------------------------------------------------
 
     # Preload selected gate as little as possible. If a full gate load is the only option
     # this will then park correctly after pre-load
@@ -3218,9 +3213,9 @@ class MmuController:
             return synced
 
 
-##############################################
-# LOAD / UNLOAD SEQUENCES AND FILAMENT TESTS #
-##############################################
+# -----------------------------------------------------------------------------------------------------------
+# LOAD / UNLOAD SEQUENCES
+# -----------------------------------------------------------------------------------------------------------
 
     def load_sequence(self, bowden_move=None, skip_extruder=False, purge=None, extruder_only=False):
         self.movequeues_wait()
@@ -3501,14 +3496,14 @@ class MmuController:
             if runout:
                 self._eject_from_gate()
 
-# Currently disabled because it results in servo "flutter" that users don't like
-#            # Encoder based validation test
-#            if self._can_use_encoder():
-#                movement = self.selector().filament_release(measure=True)
-#                if movement > self.encoder().movement_min():
-#                    self._set_filament_pos_state(self.FILAMENT_POS_UNKNOWN)
-#                    self.log_trace("Encoder moved %.1fmm when filament was released!" % movement)
-#                    raise MmuError("Encoder sensed movement when the servo was released\nConcluding filament is stuck somewhere")
+             # Encoder based validation test
+             # Currently disabled because it results in servo "flutter" that users don't like
+             #if self._can_use_encoder():
+             #    movement = self.selector().filament_release(measure=True)
+             #    if movement > self.encoder().movement_min():
+             #        self._set_filament_pos_state(self.FILAMENT_POS_UNKNOWN)
+             #        self.log_trace("Encoder moved %.1fmm when filament was released!" % movement)
+             #        raise MmuError("Encoder sensed movement when the servo was released\nConcluding filament is stuck somewhere")
 
             self.movequeues_wait()
             msg = "Unload of %.1fmm filament successful" % self._get_filament_position()
@@ -3685,9 +3680,9 @@ class MmuController:
                 self.log_warning("Purge macro %s not found" % self.p.purge_macro)
 
 
-#################################
-# FILAMENT MOVEMENT AND CONTROL #
-#################################
+# -----------------------------------------------------------------------------------------------------------
+# FILAMENT MOVEMENT AND CONTROL
+# -----------------------------------------------------------------------------------------------------------
 
     # Convenience wrapper around all gear and extruder motor movement that retains sync state, tracks movement and creates trace log
     # motor = "gear"           - gear motor(s) only on rail
@@ -3952,9 +3947,9 @@ class MmuController:
                 self.espooler.set_operation(self.gate_selected, 0, ESPOOLER_OFF)
 
 
-##############################################
-# GENERAL FILAMENT RECOVERY AND MOVE HELPERS #
-##############################################
+# -----------------------------------------------------------------------------------------------------------
+# GENERAL FILAMENT RECOVERY AND MOVE HELPERS
+# -----------------------------------------------------------------------------------------------------------
 
     # Report on need to recover and necessary calibration
     def report_necessary_recovery(self, use_autotune=True):
@@ -4112,6 +4107,10 @@ class MmuController:
             self.trace_filament_move(None, -5, accel=self.mmu_unit().p.gear_buzz_accel)
         return None
 
+
+# -----------------------------------------------------------------------------------------------------------
+# MMU/Extruder Synchronization
+# -----------------------------------------------------------------------------------------------------------
 
     def reset_sync_gear_to_extruder(self, sync_intention, force_grip=False, force_in_print=False, skip_extruder_check=False):
         """
@@ -4295,8 +4294,9 @@ class MmuController:
             self.reset_sync_gear_to_extruder(previous_sync)
 
 
-
-    # ---------- TMC Stepper Current Control ----------
+# -----------------------------------------------------------------------------------------------------------
+# TMC Stepper Current Control
+# -----------------------------------------------------------------------------------------------------------
 
     @contextlib.contextmanager
     def wrap_gear_current(self, percent=100, reason=""):
@@ -4369,7 +4369,9 @@ class MmuController:
 
 
 
-    # ---------- Pressure Advance Control ----------
+# -----------------------------------------------------------------------------------------------------------
+# Pressure Advance Control
+# -----------------------------------------------------------------------------------------------------------
 
     @contextlib.contextmanager
     def _wrap_pressure_advance(self, pa=0, reason=""):
@@ -4396,9 +4398,9 @@ class MmuController:
         self.gcode.run_script_from_command("SET_PRESSURE_ADVANCE ADVANCE=%.4f QUIET=1" % pa)
 
 
-############################
-# TOOL SELECTION FUNCTIONS #
-############################
+# -----------------------------------------------------------------------------------------------------------
+# TOOL SELECTION FUNCTIONS
+# -----------------------------------------------------------------------------------------------------------
 
     def _record_tool_override(self):
         tool = self.tool_selected
@@ -4410,6 +4412,7 @@ class MmuController:
                 self.tool_extrusion_multipliers[tool] = current_extrude_factor
                 self.log_debug("Saved speed/extrusion multiplier for tool T%d as %d%% and %d%%" % (tool, current_speed_factor * 100, current_extrude_factor * 100))
 
+
     def _restore_tool_override(self, tool):
         if tool == self.tool_selected:
             current_speed_factor = self.gcode_move.get_status(0)['speed_factor']
@@ -4420,6 +4423,7 @@ class MmuController:
             self.gcode.run_script_from_command("M221 S%d" % (extrude_factor * 100))
             if current_speed_factor != speed_factor or current_extrude_factor != extrude_factor:
                 self.log_debug("Restored speed/extrusion multiplier for tool T%d as %d%% and %d%%" % (tool, speed_factor * 100, extrude_factor * 100))
+
 
     def _set_tool_override(self, tool, speed_percent, extrude_percent):
         if tool == -1:
@@ -4472,6 +4476,7 @@ class MmuController:
         finally:
             self.toolchange_purge_volume = 0.
 
+
     # Primary method to unload current tool but retain selection
     def _unload_tool(self, form_tip=None, prev_tool=None):
         if self.filament_pos == FILAMENT_POS_UNLOADED:
@@ -4485,54 +4490,13 @@ class MmuController:
         self._record_tool_override() # Remember M220 and M221 overrides
         self.unload_sequence(form_tip=form_tip)
 
-# PAUL old logic
-#    # Primary method to select and loads tool. Assumes we are unloaded.
-#    def _select_and_load_tool(self, tool, purge=None):
-#        self.log_debug('Loading tool %s...' % self.selected_tool_string(tool))
-#        self.select_tool(tool)
-#        gate = self.ttg_map[tool] if tool >= 0 else self.gate_selected
-#        if self.gate_status[gate] == self.GATE_EMPTY:
-#            if self.enable_endless_spool and self.endless_spool_on_load:
-#                next_gate, msg = self._get_next_endless_spool_gate(tool, gate)
-#                if next_gate == -1:
-#                    raise MmuError("Gate %d is empty!\nNo alternatives gates available after checking %s" % (gate, msg))
-#
-#                self.log_error("Gate %d is empty! Checking for alternative gates %s" % (gate, msg))
-#                self.log_info("Remapping %s to gate %d" % (self.selected_tool_string(tool), next_gate))
-#                self._remap_tool(tool, next_gate)
-#                self.select_tool(tool)
-#            else:
-#                raise MmuError("Gate %d is empty (and EndlessSpool on load is disabled)\nLoad gate, remap tool to another gate or correct state with 'MMU_CHECK_GATE GATE=%d' or 'MMU_GATE_MAP GATE=%d AVAILABLE=1'" % (gate, gate, gate))
-#
-#        self.load_sequence(purge=purge)
-#        self._restore_tool_override(self.tool_selected) # Restore M220 and M221 overrides
-#
-#    # Primary method to unload current tool but retain selection
-#    def _unload_tool(self, form_tip=None, prev_tool=None):
-#        if self.filament_pos == self.FILAMENT_POS_UNLOADED:
-#            self.log_info("Tool already unloaded")
-#            return
-#
-#        self.log_debug("Unloading tool %s" % self.selected_tool_string())
-#        # Use the actual tool that was in use *before* this toolchange began.
-#        # Falls back to current selection if not provided (backwards compatible).
-#        self._set_last_tool(self.tool_selected if prev_tool is None else prev_tool)
-#        self._record_tool_override() # Remember M220 and M221 overrides
-#        self.unload_sequence(form_tip=form_tip)
-
-# MOGGIE PAUL think we should get rid of this and try to autohome at startup
-#    def _auto_home(self, tool=0): # PAUL Called from MMU_CHANGE_TOOL. Could be integrated there?
-#        if not self.selector().is_homed or self.tool_selected == TOOL_GATE_UNKNOWN:
-#            self.log_info("MMU selector not homed, will home before continuing")
-#            self.home(tool)
-#        elif self.filament_pos == FILAMENT_POS_UNKNOWN and self.selector().is_homed:
-#            self.recover_filament_pos(message=True)
 
     # Important to always inform use of "toolchange" operation is case there is an error and manual recovery is necessary
     def _note_toolchange(self, m117_msg):
         self._last_toolchange = m117_msg
         if self.p.log_m117_messages:
             self.gcode.run_script_from_command("M117 %s" % m117_msg)
+
 
     # Tell the sequence macros about where to move to next
     def _set_next_position(self, next_pos):
@@ -4541,9 +4505,6 @@ class MmuController:
             self.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=%s VARIABLE=next_pos VALUE=True" % self.p.park_macro)
         else:
             self.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=%s VARIABLE=next_pos VALUE=False" % self.p.park_macro)
-
-
-### TOOL AND GATE SELECTION ######################################################
 
 
     def home_unit(self, mmu_unit, force_unload=None):
@@ -4624,20 +4585,12 @@ class MmuController:
         self.gate_selected = gate
         self.printer.send_event("mmu:gate_selected", self.gate_selected)
 
-        new_unit = self.find_unit_by_gate(gate)
+        new_unit = self._find_unit_by_gate(gate)
         if new_unit != self.unit_selected:
             self.unit_selected = new_unit
             self.printer.send_event("mmu:unit_selected", self.unit_selected)
 
-# PAUL MOGGIE
-#            self.sensor_manager.reset_active_unit(new_unit) # Change sensor_manager to listen for event
-#        self.sensor_manager.reset_active_gate(self.gate_selected) # Call after unit_selected is set
-# PAUL ^^
-
-# PAUL vv
-# PAUL also use event
-        self.mmu_unit().sync_feedback.set_default_rd() # Will always set rotation_distance
-# PAUL ^^
+        self.mmu_unit().sync_feedback.set_default_rd()
 
         self.var_manager.set(VARS_MMU_GATE_SELECTED, self.gate_selected, write=True)
         self.active_filament = {
@@ -4650,12 +4603,17 @@ class MmuController:
 
 
     # Return unit number for gate
-    def find_unit_by_gate(self, gate):
+    def _find_unit_by_gate(self, gate):
         unit = self.mmu_machine.get_mmu_unit_by_gate(gate)
         if unit:
             return unit.unit_index
-        self.log_assertion("Gate %d has no unit! Assuming unit 0" % gate)
-        return 0
+        self.log_error("PAUL: Gate %d has no unit! Assuming unit %d" % (gate, self.unit_selected))
+        return self.unit_selected
+
+
+# -----------------------------------------------------------------------------------------------------------
+# MOONRAKER HOOKS
+# -----------------------------------------------------------------------------------------------------------
 
     def _moonraker_push_lane_data(self, gate_ids = None):
         gate_ids = [(i, self.gate_spool_id[i]) for i in range(self.num_gates)] if gate_ids is None else gate_ids
@@ -4665,6 +4623,7 @@ class MmuController:
                 webhooks.call_remote_method("moonraker_push_lane_data", gate_ids=gate_ids)
             except Exception as e:
                 self.log_debug("Failed to push lane data to Moonraker: %s" % str(e))
+
 
     def _moonraker_sync_lane_data(self):
         # Push all current gate data to Moonraker
@@ -4677,20 +4636,51 @@ class MmuController:
         except Exception as e:
             self.log_debug("Failed to cleanup old lane data: %s" % str(e))
 
-### SPOOLMAN INTEGRATION #########################################################
 
-    def _spoolman_sync(self, quiet=True):
-        if self.p.spoolman_support == SPOOLMAN_PULL: # Remote gate map
-            # This will pull gate assignment and filament attributes from spoolman db thus replacing the local map
+# -----------------------------------------------------------------------------------------------------------
+# SPOOLMAN INTEGRATION
+# -----------------------------------------------------------------------------------------------------------
+
+    def _spoolman_sync(self, quiet = True):
+        """
+        Synchronize gate and filament data with Spoolman based on the configured support mode.
+
+        Behavior depends on `self.p.spoolman_support`:
+
+        - SPOOLMAN_PULL:
+            Pull gate assignments and filament attributes from the Spoolman
+            database, replacing the local gate map.
+
+        - SPOOLMAN_PUSH:
+            Push local gate assignments to Spoolman (for visualization), and
+            update local gate map filament attributes from Spoolman, potentially
+            overwriting local attribute data.
+
+        - SPOOLMAN_READONLY:
+            Update local filament attributes from Spoolman without modifying
+            gate assignments.
+
+        Args:
+            quiet (bool): If True, suppress non-critical logging during synchronization.
+        """
+        if self.p.spoolman_support == SPOOLMAN_PULL:   # Remote gate map
             self._spoolman_pull_gate_map(quiet=quiet)
+    
         elif self.p.spoolman_support == SPOOLMAN_PUSH: # Local gate map
-            # This will update spoolman with just the gate assignment (for visualization) and will update
-            # local gate map attributes with data from spoolman thus overwriting the local map
             self._spoolman_push_gate_map(quiet=quiet)
+    
         elif self.p.spoolman_support == SPOOLMAN_READONLY: # Get filament attributes only
             self._spoolman_update_filaments(quiet=quiet)
 
+
     def _spoolman_activate_spool(self, spool_id=-1):
+        """
+        Activate or deactivate a Spoolman spool via Moonraker.
+
+        Args:
+            spool_id: Spool ID to activate. 0 deactivates; negative values
+                result in no action.
+        """
         if self.p.spoolman_support == SPOOLMAN_OFF: return
         try:
             webhooks = self.printer.lookup_object('webhooks')
@@ -4699,34 +4689,54 @@ class MmuController:
             else:
                 if spool_id == 0:
                     self.log_debug("Deactivating spool...")
-                    spool_id = None # Moonraker API changed and id=0 no longer deactivates
+                    spool_id = None  # id=0 no longer deactivates
                 else:
                     self.log_debug("Activating spool %s..." % spool_id)
-                    webhooks.call_remote_method("spoolman_set_active_spool", spool_id=spool_id)
+                webhooks.call_remote_method("spoolman_set_active_spool", spool_id=spool_id)
         except Exception as e:
             self.log_error("Error while setting active spool: %s\n%s" % (str(e), SPOOLMAN_CONFIG_ERROR))
 
-    # Request to send filament data from spoolman db (via moonraker)
-    # gate=None means all gates with spool_id, else specific gate
+
     def _spoolman_update_filaments(self, gate_ids=None, quiet=True):
+        """
+        Request filament attributes from Spoolman for specified gates.
+
+        Args:
+            gate_ids: Optional list of (gate_id, spool_id) pairs. If None,
+                all gates with valid spool IDs are requested.
+            quiet: If True, suppress non-critical output.
+        """
         if self.p.spoolman_support == SPOOLMAN_OFF: return
-        if gate_ids is None: # All gates
-            pruned_gate_ids = [(g, self.gate_spool_id[g]) for g in range(self.num_gates) if self.gate_spool_id[g] >= 0]
+        if gate_ids is None:
+            pruned_gate_ids = [(g, self.gate_spool_id[g])
+                               for g in range(self.num_gates)
+                               if self.gate_spool_id[g] >= 0]
         else:
             pruned_gate_ids = [(g, sid) for g, sid in gate_ids if sid >= 0]
-        if len(pruned_gate_ids) > 0:
+
+        if pruned_gate_ids:
             self.log_debug("Requesting the following gate/spool_id pairs from Spoolman: %s" % pruned_gate_ids)
             try:
                 webhooks = self.printer.lookup_object('webhooks')
-                webhooks.call_remote_method("spoolman_get_filaments", gate_ids=pruned_gate_ids, silent=quiet)
+                webhooks.call_remote_method("spoolman_get_filaments",
+                                            gate_ids=pruned_gate_ids,
+                                            silent=quiet)
             except Exception as e:
                 self.log_error("Error while fetching filament attributes from spoolman: %s\n%s" % (str(e), SPOOLMAN_CONFIG_ERROR))
 
-    # Store the current gate to spool_id mapping in spoolman db (via moonraker)
+
     def _spoolman_push_gate_map(self, gate_ids=None, quiet=True):
+        """
+        Push the current gate-to-spool mapping to Spoolman.
+
+        Args:
+            gate_ids: Optional list of (gate_id, spool_id) pairs. If None,
+                all gates are pushed.
+            quiet: If True, suppress non-critical output.
+        """
         if self.p.spoolman_support == SPOOLMAN_OFF: return
         self.log_debug("Pushing gate mapping to Spoolman")
-        if gate_ids is None: # All gates
+        if gate_ids is None:
             gate_ids = [(i, self.gate_spool_id[i]) for i in range(self.num_gates)]
         try:
             webhooks = self.printer.lookup_object('webhooks')
@@ -4735,8 +4745,14 @@ class MmuController:
         except Exception as e:
             self.log_error("Error while pushing gate map to spoolman: %s\n%s" % (str(e), SPOOLMAN_CONFIG_ERROR))
 
-    # Request to update local gate based on the remote data stored in spoolman db
+
     def _spoolman_pull_gate_map(self, quiet=True):
+        """
+        Request and apply the gate map stored in Spoolman.
+
+        Args:
+            quiet: If True, suppress non-critical output.
+        """
         if self.p.spoolman_support == SPOOLMAN_OFF: return
         self.log_debug("Requesting the gate map from Spoolman")
         try:
@@ -4745,8 +4761,15 @@ class MmuController:
         except Exception as e:
             self.log_error("Error while requesting gate map from spoolman: %s\n%s" % (str(e), SPOOLMAN_CONFIG_ERROR))
 
-    # Clear the spool to gate association in spoolman db
+
     def _spoolman_clear_gate_map(self, sync=False, quiet=True):
+        """
+        Clear spool-to-gate associations in Spoolman.
+
+        Args:
+            sync: If True, request synchronous clearing.
+            quiet: If True, suppress non-critical output.
+        """
         if self.p.spoolman_support == SPOOLMAN_OFF: return
         self.log_debug("Requesting to clear the gate map in Spoolman")
         try:
@@ -4755,8 +4778,15 @@ class MmuController:
         except Exception as e:
             self.log_error("Error while clearing spoolman gate mapping: %s\n%s" % (str(e), SPOOLMAN_CONFIG_ERROR))
 
-    # Refresh the spoolman cache to pick up changes from elsewhere
+
     def _spoolman_refresh(self, fix, quiet=True):
+        """
+        Refresh the Spoolman cache to pick up external changes.
+
+        Args:
+            fix: Whether to request corrective reconciliation.
+            quiet: If True, suppress non-critical output.
+        """
         if self.p.spoolman_support == SPOOLMAN_OFF: return
         self.log_debug("Requesting to refresh the spoolman gate cache")
         try:
@@ -4765,27 +4795,56 @@ class MmuController:
         except Exception as e:
             self.log_error("Error while refreshing spoolman gate cache: %s\n%s" % (str(e), SPOOLMAN_CONFIG_ERROR))
 
-    # Force spool to map association in spoolman db
+
     def _spoolman_set_spool_gate(self, spool_id, gate, sync=False, quiet=True):
+        """
+        Force a spool-to-gate association in Spoolman.
+
+        Args:
+            spool_id: Spool ID to associate.
+            gate: Gate ID to assign the spool to.
+            sync: If True, request synchronous update.
+            quiet: If True, suppress non-critical output.
+        """
         if self.p.spoolman_support == SPOOLMAN_OFF: return
         self.log_debug("Setting spool %d to gate %d directly in spoolman db" % (spool_id, gate))
         try:
             webhooks = self.printer.lookup_object('webhooks')
-            webhooks.call_remote_method("spoolman_set_spool_gate", spool_id=spool_id, gate=gate, sync=sync, silent=quiet)
+            webhooks.call_remote_method("spoolman_set_spool_gate",
+                                        spool_id=spool_id, gate=gate,
+                                        sync=sync, silent=quiet)
         except Exception as e:
             self.log_error("Error while setting spoolman gate association: %s\n%s" % (str(e), SPOOLMAN_CONFIG_ERROR))
 
+
     def _spoolman_unset_spool_gate(self, spool_id=None, gate=None, sync=False, quiet=True):
+        """
+        Remove a spool-to-gate association in Spoolman.
+
+        Args:
+            spool_id: Optional spool ID to unassign.
+            gate: Optional gate ID to clear.
+            sync: If True, request synchronous update.
+            quiet: If True, suppress non-critical output.
+        """
         if self.p.spoolman_support == SPOOLMAN_OFF: return
         self.log_debug("Unsetting spool %s or gate %s in spoolman db" % (spool_id, gate))
         try:
             webhooks = self.printer.lookup_object('webhooks')
-            webhooks.call_remote_method("spoolman_unset_spool_gate", spool_id=spool_id, gate=gate, sync=sync, silent=quiet)
+            webhooks.call_remote_method("spoolman_unset_spool_gate",
+                                        spool_id=spool_id, gate=gate,
+                                        sync=sync, silent=quiet)
         except Exception as e:
             self.log_error("Error while unsetting spoolman gate association: %s\n%s" % (str(e), SPOOLMAN_CONFIG_ERROR))
 
-    # Dump spool info to console
+
     def _spoolman_display_spool_info(self, spool_id):
+        """
+        Request and display detailed information for a spool.
+
+        Args:
+            spool_id: Spool ID to query.
+        """
         if self.p.spoolman_support == SPOOLMAN_OFF: return
         try:
             webhooks = self.printer.lookup_object('webhooks')
@@ -4793,8 +4852,14 @@ class MmuController:
         except Exception as e:
             self.log_error("Error while displaying spool info: %s\n%s" % (str(e), SPOOLMAN_CONFIG_ERROR))
 
-    # Dump spool info to console
+
     def _spoolman_display_spool_location(self, printer=None):
+        """
+        Request and display the spool location map.
+
+        Args:
+            printer: Optional printer identifier to filter results.
+        """
         if self.p.spoolman_support == SPOOLMAN_OFF: return
         try:
             webhooks = self.printer.lookup_object('webhooks')
