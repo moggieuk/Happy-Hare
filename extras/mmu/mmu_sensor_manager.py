@@ -29,7 +29,7 @@ class MmuSensorManager:
         # and gate_sensors dropping gate suffix
         self.all_sensors_map = {}    # Map of all sensors on mmu_machine with fully qualified names
         self.unit_sensors = []       # Sensors on each mmu_unit without unit prefix (indexed by unit index)
-        self.gate_sensors = []       # Sensors on each gate with names stripped of gate and unit prefix/suffix (indexed by gate index)
+        self.gate_sensors = []       # Sensors on each gate with names stripped of gate suffix and unit prefix (indexed by gate index)
         self.bypass_sensor_map = {}  # Map of sensors when bypass is selected (extruder and toolhead only)
         self.active_sensors_map = {} # Points to current version of gate_sensors (simple names). Resets on gate change
         
@@ -105,6 +105,9 @@ class MmuSensorManager:
         self.all_sensors_map.update(common_sensors)
         self.bypass_sensors_map = common_sensors
 
+        self.mmu.printer.register_event_handler("mmu:gate_selected", self._handle_gate_selected)
+        self.mmu.printer.register_event_handler("mmu:unit_selected", self._handle_unit_selected)
+
 ## From v340 vvv
 #        mmu_sensors = self.mmu.printer.lookup_object("mmu_sensors") # PAUL use this instead
 #        self.all_sensors = mmu_sensors.sensors # PAUL use this instead
@@ -120,53 +123,9 @@ class MmuSensorManager:
             logging.info("PAUL: unit_sensors[%d]=%s\n" % (unit.unit_index, self.unit_sensors[unit.unit_index].keys()))
         for gate in range(self.mmu_machine.num_gates):
             logging.info("PAUL: gate_sensors[%d]=%s\n" % (gate, self.gate_sensors[gate].keys()))
+        logging.info("PAUL: bypass_sensor_map=%s\n" % self.bypass_sensor_map)
+        logging.info("PAUL: active_sensosr_map=%s\n" % self.active_sensors_map)
 # PAUL ^^^
-
-# V340 vvv
-#        # Setup subset of filament sensors that are also used for homing (endstops)
-#        self.endstop_names = []
-#        self.endstop_names.extend([self.get_gate_sensor_name(self.mmu.SENSOR_PRE_GATE_PREFIX, i) for i in range(self.mmu.num_gates)])
-#        self.endstop_names.extend([self.get_gate_sensor_name(self.mmu.SENSOR_GEAR_PREFIX, i) for i in range(self.mmu.num_gates)])
-#        self.endstop_names.extend([
-#            self.mmu.SENSOR_GATE,
-#            self.mmu.SENSOR_TENSION,
-#            self.mmu.SENSOR_COMPRESSION
-#        ])
-#        if self.mmu.mmu_machine.num_units > 1:
-#            for i in range(self.mmu.mmu_machine.num_units):
-#                self.endstop_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_GATE, i))
-#                self.endstop_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_COMPRESSION, i))
-#                self.endstop_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_TENSION, i))
-#        self.endstop_names.extend([
-#            self.mmu.SENSOR_EXTRUDER_ENTRY,
-#            self.mmu.SENSOR_TOOLHEAD
-#        ])
-#        # TODO Assumes one stepper but in theory could be on all
-#        self.endstop_names.extend([
-#            self.mmu.SENSOR_GEAR_TOUCH
-#        ])
-#        for name in self.endstop_names:
-#            sensor = self.all_sensors.get(name, None)
-#            if sensor is not None:
-#                if sensor.__class__.__name__ == "MmuAdcSwitchSensor":
-#                    sensor_pin = sensor.runout_helper.switch_pin
-#                    mcu_endstop = self.mmu.gear_rail.add_extra_endstop(sensor_pin, name, mcu_endstop=sensor)
-#                else:
-#                    # Add sensor pin as an extra endstop for gear rail
-#                    sensor_pin = sensor.runout_helper.switch_pin
-#                    ppins = self.mmu.printer.lookup_object('pins')
-#                    pin_params = ppins.parse_pin(sensor_pin, True, True)
-#                    share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
-#                    ppins.allow_multi_use_pin(share_name)
-#                    mcu_endstop = self.mmu.gear_rail.add_extra_endstop(sensor_pin, name)
-#
-#                # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
-#                # otherwise the extruder can continue to move a small (speed dependent) distance
-#                if self.mmu.homing_extruder and name in [self.mmu.SENSOR_TOOLHEAD, self.mmu.SENSOR_COMPRESSION, self.mmu.SENSOR_TENSION]:
-#                    mcu_endstop.add_stepper(self.mmu.mmu_extruder_stepper.stepper)
-#            else:
-#                logging.warning("MMU: Improper setup: Filament sensor %s is not defined in [mmu_sensors]" % name)
-# V340 ^^^
 
 # Orig v4... vvv
 # TEMP COMMENT .. moving to mmu_unit
@@ -193,51 +152,34 @@ class MmuSensorManager:
 #                    logging.warning("MMU: Filament sensor %s is not defined in [mmu_sensors]" % name)
 # Orig v4... ^^^
 
-        # Register commands
-        self.mmu.gcode.register_command('MMU_SENSORS', self.cmd_MMU_SENSORS, desc = self.cmd_MMU_SENSORS_help)
 
-    cmd_MMU_SENSORS_help = "Query state of sensors fitted to mmu"
-    cmd_MMU_SENSORS_param_help = (
-        "MMU_SENSORS: %s\n" % cmd_MMU_SENSORS_help
-        + "UNIT   = #(int)\n"
-        + "DETAIL = [0|1]"
-    )
-    def cmd_MMU_SENSORS(self, gcmd):
-        self.mmu.log_to_file(gcmd.get_commandline())
-        if self.mmu.check_if_disabled(): return
+    def _handle_gate_selected(self, gate):
+        """
+        Handler for gate changed event
+        Reset the relevent sensor list based on current gate handling bypass and unknown
+        """
+        self.mmu.log_info("PAUL: handle_gate_selected(%d)" % gate)
+        self.active_sensors_map = self.gate_sensors[gate] if gate > 0 else self.bypass_sensors_map
 
-        unit = gcmd.get_int('UNIT', None, minval=0, maxval=self.mmu_machine.num_units - 1)
-        help = bool(gcmd.get_int('HELP', 0, minval=0, maxval=1))
-        detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
 
-        if help:
-            self.mmu.log_always(self.mmu.format_help(self.cmd_MMU_SENSORS_param_help), color=True)
-            return
+    def _handle_unit_selected(self, unit):
+        """
+        Handler for unit changed event
+        Activate only sensors for current unit
+        """
+        self.mmu.log_info("PAUL: handle_unit_selected(%d)" % unit)
+        # We do this in two steps to allow sensor sharing
+        # First ensure any excluded sensor is completely deactivated
+        for sname, sensor in self.all_sensors_map.items():
+            if re.match(r'^unit\d+_', sname) and not sname.startswith("unit%d_" % unit):
+                sensor.runout_helper.enable_runout(False)
+                sensor.runout_helper.enable_button_feedback(False)
 
-        summary = ""
-        sensors = self.get_active_sensors(all_sensors=True) if unit is None else self.get_unit_sensors(unit)
-        if all(v is None for v in sensors.values()) and not detail:
-            summary += "No active sensors. Use DETAIL=1 to see all"
-        else:
-            for name in sorted(sensors):
-                state = sensors[name]
-                if state is not None or detail:
-                    sensor = self.all_sensors_map.get(name) if unit is None else self.unit_sensors[unit].get(name)
+        # Activate just this unit sensors
+        for sname, sensor in self.all_sensors_map.items():
+            if sname.startswith("unit%d_" % unit):
+                sensor.runout_helper.enable_button_feedback(True)
 
-                    if name in [SENSOR_PROPORTIONAL]:
-                        # Special case analog sensor
-                        value = sensor.get_status(0).get('value', 0.)
-                        value_raw = sensor.get_status(0).get('value_raw', 0.)
-                        summary += "%s: %.2f" % (name, ("(%.2f, currently disabled)" % value) if state is None else value)
-                        if detail:
-                            summary += " (raw: %.2f)" % (value_raw)
-                    else:
-                        trig = "%s" % 'TRIGGERED' if sensor.runout_helper.filament_present else 'Open'
-                        summary += "%s: %s" % (name, ("(%s, currently disabled)" % trig) if state is None else trig)
-                        if detail and sensor.runout_helper.runout_suspended is not None and state is not None:
-                            summary += "%s" % (", Runout enabled" if not sensor.runout_helper.runout_suspended else "")
-                    summary += "\n"
-        self.mmu.log_always(summary)
 
     # Return dict of all sensor states for just active or all sensors (returns None if sensor disabled)
     def get_active_sensors(self, all_sensors=False):
@@ -256,25 +198,6 @@ class MmuSensorManager:
                     if sensor.runout_helper.sensor_enabled else None)
             for sname, sensor in sensor_map.items()
         }
-
-    # Reset the relevent sensor list based on current gate
-    # handling bypass and unknown
-    def reset_active_gate(self, gate):
-        self.active_sensors_map = self.gate_sensors[gate] if self.mmu.gate_selected > 0 else self.bypass_sensors_map
-
-    # Activate only sensors for current unit
-    def reset_active_unit(self, unit):
-        # We do this in two steps to allow sensor sharing
-        # First ensure any excluded sensor is completely deactivated
-        for sname, sensor in self.all_sensors_map.items():
-            if re.match(r'^unit\d+_', sname) and not sname.startswith("unit%d_" % unit):
-                sensor.runout_helper.enable_runout(False)
-                sensor.runout_helper.enable_button_feedback(False)
-
-        # Activate just this unit sensors
-        for sname, sensor in self.all_sensors_map.items():
-            if sname.startswith("unit%d_" % unit):
-                sensor.runout_helper.enable_button_feedback(True)
 
     def has_sensor(self, sname):
         if sname in self.active_sensors_map:
@@ -395,29 +318,6 @@ class MmuSensorManager:
         sensors = self.get_sensors_before(FILAMENT_POS_LOADED, self.mmu.gate_selected)
         if any(state is False for state in sensors.values()):
             MmuError("Loaded check failed:\nFilament not detected by sensors: %s" % ', '.join([name for name, state in sensors.items() if state is False]))
-
-
-# V342
-#    # Return formatted summary of all sensors under management (include all mmu units)
-#    def get_sensor_summary(self, detail=False):
-#        summary = ""
-#        for name, state in self.get_all_sensors(inactive=True).items():
-#            if state is not None or detail:
-#                sensor = self.all_sensors.get(name)
-#                if name in [self.mmu.SENSOR_PROPORTIONAL]:
-#                    # Special case analog sensor
-#                    value = sensor.get_status(0).get('value', 0.)
-#                    value_raw = sensor.get_status(0).get('value_raw', 0.)
-#                    summary += "%s: %.2f" % (name, ("(%.2f, currently disabled)" % value) if state is None else value)
-#                    if detail:
-#                        summary += " (raw: %.2f)" % (value_raw)
-#                else:
-#                    trig = "%s" % 'TRIGGERED' if sensor.runout_helper.filament_present else 'Open'
-#                    summary += "%s: %s" % (name, ("(%s, currently disabled)" % trig) if state is None else trig)
-#                    if detail and sensor.runout_helper.runout_suspended is not None and state is not None:
-#                        summary += "%s" % (", Runout enabled" if not sensor.runout_helper.runout_suspended else "")
-#                summary += "\n"
-#        return summary
 
     def enable_runout(self, gate):
         logging.info("PAUL: enable_runout(gate=%d)" % gate)

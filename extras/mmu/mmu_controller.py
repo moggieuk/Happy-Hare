@@ -192,7 +192,8 @@ class MmuController:
     def handle_connect(self):
         logging.info("PAUL: handle_connect: MmuController")
         self.toolhead = self.printer.lookup_object('toolhead')
-        self.sensor_manager.reset_active_unit(self.unit_selected)
+# PAUL this is now done via gate_selected event in handle_ready .. load_persisted state.  Hopefully that isn't too late(?)
+# PAUL        self.sensor_manager.reset_active_unit(self.unit_selected) # PAUL .... EVENT NOW>>
         self.var_manager = self.mmu_machine.var_manager
 
         # Sanity check that required klipper options are enabled
@@ -557,11 +558,10 @@ class MmuController:
 
         # Don't allow unknown gate on type-B MMU's (could also be first time bootup)
         if self.mmu_unit().multigear and gate_selected == TOOL_GATE_UNKNOWN:
-# PAUL            gate_selected = 0
             gate_selected = self.mmu_unit().first_gate
 
         self.selector(gate_selected).restore_gate(gate_selected)
-        self._set_gate_selected(gate_selected)
+        self._set_gate_selected(gate_selected) # Will send gate_selected event to set active sensor map
         self._set_tool_selected(tool_selected)
         self._ensure_ttg_match() # Ensure tool/gate consistency
 
@@ -4138,7 +4138,7 @@ class MmuController:
         Returns:
             bool: The final sync state that was applied.
         """
-        bypass_selected = self.gate_selected == TOOL_GATE_BYPASS
+        bypass_selected = (self.gate_selected == TOOL_GATE_BYPASS)
         in_print_context = self.is_in_print(force_in_print)
         actively_printing = self.is_printing(force_in_print)
 
@@ -4600,7 +4600,12 @@ class MmuController:
 
 
     def select_bypass(self):
-        if self.tool_selected == TOOL_GATE_BYPASS and self.gate_selected == TOOL_GATE_BYPASS: return
+        if (
+            self.tool_selected == TOOL_GATE_BYPASS and
+            self.gate_selected == TOOL_GATE_BYPASS
+        ):
+            return
+
         self.log_info("Selecting filament bypass...")
         self.select_gate(TOOL_GATE_BYPASS)
         self._set_tool_selected(TOOL_GATE_BYPASS)
@@ -4611,19 +4616,28 @@ class MmuController:
     def _set_tool_selected(self, tool):
         if tool != self.tool_selected:
             self.tool_selected = tool
+            self.printer.send_event("mmu:tool_selected", self.tool_selected)
             self.var_manager.set(VARS_MMU_TOOL_SELECTED, self.tool_selected, write=True)
 
 
     def _set_gate_selected(self, gate):
         self.gate_selected = gate
+        self.printer.send_event("mmu:gate_selected", self.gate_selected)
 
         new_unit = self.find_unit_by_gate(gate)
         if new_unit != self.unit_selected:
             self.unit_selected = new_unit
-            self.sensor_manager.reset_active_unit(new_unit)
+            self.printer.send_event("mmu:unit_selected", self.unit_selected)
 
-        self.sensor_manager.reset_active_gate(self.gate_selected) # Call after unit_selected is set
+# PAUL MOGGIE
+#            self.sensor_manager.reset_active_unit(new_unit) # Change sensor_manager to listen for event
+#        self.sensor_manager.reset_active_gate(self.gate_selected) # Call after unit_selected is set
+# PAUL ^^
+
+# PAUL vv
+# PAUL also use event
         self.mmu_unit().sync_feedback.set_default_rd() # Will always set rotation_distance
+# PAUL ^^
 
         self.var_manager.set(VARS_MMU_GATE_SELECTED, self.gate_selected, write=True)
         self.active_filament = {

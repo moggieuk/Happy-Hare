@@ -69,36 +69,27 @@ class BaseCommand:
             if per_unit:
                 unit_param = gcmd.get("UNIT", None)
                 machine = self.mmu.mmu_machine
-                if unit_param is not None:
-                    # Try lookup by name first
-                    unit = machine.get_mmu_unit_by_name(unit_param)
 
-                    if unit is None and unit_param == ALL_UNITS:
-                        # Repeat for all units
-                        for unit in machine.units:
-                            handler(gcmd, unit)
-                        return
+                unit = self.get_unit(gcmd)
 
-                    # If not found, try as unit index
-                    elif unit is None:
-                        try:
-                            unit_index = int(unit_param)
-                            unit = machine.get_mmu_unit_by_index(unit_index)
-                        except (ValueError, TypeError):
-                            pass
+                if unit is not None:
+                    return handler(gcmd, unit)
 
-                    if unit is None:
-                        raise gcmd.error("Invalid UNIT '%s'. Must be a valid unit name or unit index" % unit_param)
+                elif unit_param == ALL_UNITS:
+                    # Repeat for all units
+                    for unit in machine.units:
+                        handler(gcmd, unit)
+                    return
 
                 elif machine.num_units == 1:
                     # Default to unit 0
                     unit = machine.get_mmu_unit_by_index(0)
-                else:
-                    raise gcmd.error("UNIT parameter is required")
+                    return handler(gcmd, unit)
 
-                return handler(gcmd, unit)
+                raise gcmd.error("UNIT parameter is required")
 
             return handler(gcmd)
+      
 
         # Record metadata for this command for help subsystem
         metadata = {
@@ -116,6 +107,29 @@ class BaseCommand:
 
         # Record metadata in the category (global registry)
         BaseCommand._registered_commands.append(metadata)
+
+
+    def get_unit(self, gcmd):
+        """
+        Helper to process the UNIT parameter and return the selected unit.
+        For commands that don't want to be "per-unit" but still accept UNIT parameter.
+        """
+        unit_param = gcmd.get("UNIT", None)
+        machine = self.mmu.mmu_machine
+
+        unit = None
+        if unit_param is not None:
+            # Try lookup by name first
+            unit = machine.get_mmu_unit_by_name(unit_param)
+
+            # If not found, try as unit index
+            if unit is None:
+                try:
+                    unit_index = int(unit_param)
+                    unit = machine.get_mmu_unit_by_index(unit_index)
+                except (ValueError, TypeError):
+                    pass
+        return unit
 
 
     def format_help(self, msg, supplement=None):
