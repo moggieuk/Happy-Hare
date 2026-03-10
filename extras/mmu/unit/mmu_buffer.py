@@ -63,13 +63,9 @@ class MmuBuffer:
         # Setup analog (proportional) sync feedback
         # Uses single analog input; value scaled in [-1, 1]
         analog_pin = config.get('sync_feedback_analog_pin', None)
+        self.proportional_sensor = None
         if analog_pin:
             self.proportional_sensor = MmuProportionalSensor(config, name=SENSOR_PROPORTIONAL)
-# PAUL merge            self.sensors[SENSOR_PROPORTIONAL] = MmuProportionalSensor(config, name=SENSOR_PROPORTIONAL)
-# PAUL TODO this doesn't feel correct ^^^
-
-#def load_config_prefix(config): # PAUL?
-#    return MmuBuffer(config)
 
     def add_unit(self, mmu_unit):
         self.connected_units.append(mmu_unit)

@@ -75,13 +75,14 @@ class MmuStatusCommand(BaseCommand):
 
             if unit.mmu_vendor != unit.display_name:
                 lines.append(
-                    f"\n+ {unit.display_name}, a {unit.mmu_vendor} "
+                    f"\n{i}) {unit.display_name}, a {unit.mmu_vendor} "
                     f"v{unit.mmu_version_string}"
                 )
             else:
                 lines.append(f"\n+ {unit.mmu_vendor} v{unit.mmu_version_string}")
 
-            lines.append(f" (gates {unit.first_gate}-{unit.first_gate + unit.num_gates})")
+            first, last = unit.gate_range()
+            lines.append(f" (gates {first}-{last})")
 
             lines.append(f"\n{UI_CASCADE} {self.mmu.selector().get_mmu_status_config()}")
 

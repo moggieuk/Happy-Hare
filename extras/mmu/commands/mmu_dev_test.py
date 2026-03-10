@@ -166,7 +166,7 @@ class MmuTestCommand(BaseCommand):
                 if compression_test_sensor is None or not compression_test_sensor.runout_helper.sensor_enabled:
                     mmu_sensors._create_mmu_sensor(
                         config, SENSOR_COMPRESSION, None, 'test_' + SENSOR_COMPRESSION + '_pin', 0,
-                        button_handler=mmu_sensors._sync_compression_callback
+                        button_handler=mmu_sensors.sync_compression_callback
                     )
                     compression_test_sensor = mmu_sensors.sensors.get(SENSOR_COMPRESSION, None)
                     sensors_to_remove.append(SENSOR_COMPRESSION)
@@ -175,7 +175,7 @@ class MmuTestCommand(BaseCommand):
                 if tension_test_sensor is None or not tension_test_sensor.runout_helper.sensor_enabled:
                     mmu_sensors._create_mmu_sensor(
                         config, SENSOR_TENSION, None, 'test_' + SENSOR_TENSION + '_pin', 0,
-                        button_handler=mmu_sensors._sync_tension_callback
+                        button_handler=mmu_sensors.sync_tension_callback
                     )
                     tension_test_sensor = mmu_sensors.sensors.get(SENSOR_TENSION, None)
                     sensors_to_remove.append(SENSOR_TENSION)

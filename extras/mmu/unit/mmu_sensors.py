@@ -160,12 +160,12 @@ class MmuSensors:
 #        if switch_pins:
 #            if len(switch_pins) not in [1, num_units]:
 #                raise config.error("Invalid number of pins specified with sync_feedback_tension_pin. Expected 1 or %d but counted %d" % (num_units, len(switch_pins)))
-#            self._create_mmu_sensor(config, SENSOR_TENSION, None, switch_pins, 0, clog=True, tangle=True, button_handler=self._sync_tension_callback)
+#            self._create_mmu_sensor(config, SENSOR_TENSION, None, switch_pins, 0, clog=True, tangle=True, button_handler=self.sync_tension_callback)
 #        switch_pins = list(config.getlist('sync_feedback_compression_pin', []))
 #        if switch_pins:
 #            if len(switch_pins) not in [1, num_units]:
 #                raise config.error("Invalid number of pins specified with sync_feedback_compression_pin. Expected 1 or %d but counted %d" % (num_units, len(switch_pins)))
-#            self._create_mmu_sensor(config, SENSOR_COMPRESSION, None, switch_pins, 0, clog=True, tangle=True, button_handler=self._sync_compression_callback)
+#            self._create_mmu_sensor(config, SENSOR_COMPRESSION, None, switch_pins, 0, clog=True, tangle=True, button_handler=self.sync_compression_callback)
 #
 #        # Setup analog (proportional) sync feedback
 #        # Uses single analog input; value scaled in [-1, 1]

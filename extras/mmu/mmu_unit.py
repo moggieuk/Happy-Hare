@@ -22,6 +22,9 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import logging, importlib, math, os, time, re
+from dataclasses                        import dataclass, replace
+from itertools                          import chain
+
 
 # Klipper imports
 import stepper, chelper, toolhead
@@ -112,151 +115,54 @@ class MmuUnit:
                     config.fileconfig.remove_option(self.extruder_name, i)
 
 
-        # MMU design for control purposes can be broken down into the following choices:
-        #  - Selector type or no (Virtual) selector
-        #  - Does each gate of the MMU have different BMG drive gears (or similar). I.e. drive rotation distance is variable
-        #  - Does each gate of the MMU have different bowden path
-        #  - Does design require "bowden move" (i.e. non zero length bowden)
-        #  - Is filament always gripped by MMU
-        #  - Does selector mechanism still allow selection of gates when filament is loaded (implied for Multigear designs)
-        #  - Does design has a filament bypass
-        selector_type = SELECTOR_LINEAR_SERVO
-        variable_rotation_distances = 1
-        variable_bowden_lengths = 0
-        require_bowden_move = 1     # Will allow mmu_gate sensor and extruder sensor to share the same pin
-        filament_always_gripped = 0 # Whether MMU design has ability to release filament (overrides gear/extruder syncing)
-        can_crossload = 1           # Design allows preloading/eject in one gate while another gate is loaded (also requires post_gear sensor)
-        has_bypass = 0              # Whether MMU design has bypass gate (also has to be calibrated on type-A designs)
+        # Determine default MMU "design" based on vendor ----------------------------------------------
 
-        if self.mmu_vendor == VENDOR_ERCF:
-            selector_type = SELECTOR_LINEAR_SERVO
-            variable_rotation_distances = 1
-            variable_bowden_lengths = 0
-            require_bowden_move = 1
-            filament_always_gripped = 0
-            can_crossload = 0
-            has_bypass = 1
+        @dataclass(frozen=True)
+        class MmuUnitProfile:
+            selector_type: str = SELECTOR_VIRTUAL    # Selector type or no (Virtual) selector
+            variable_rotation_distances: bool = True # Does each gate have different BMG drive gears (I.e. drive rotation distance is variable)
+            variable_bowden_lengths: bool = False    # Does each gate of the MMU have different bowden path
+            require_bowden_move: bool = True         # Does design require "bowden move" (i.e. non zero length bowden)
+            filament_always_gripped: bool = False    # Is filament always gripped by MMU (overrides gear/extruder syncing assumptions)
+            can_crossload: bool = True               # Does selector mechanism allow selection of gates when filament is loaded (implied for Multigear designs)
+            has_bypass: bool = False                 # Does design has selectable filament bypass (only type-A and type-C). Only one per mmu_machine!
 
-        elif self.mmu_vendor == VENDOR_TRADRACK:
-            selector_type = SELECTOR_LINEAR_SERVO
-            variable_rotation_distances = 0
-            variable_bowden_lengths = 0
-            require_bowden_move = 1
-            filament_always_gripped = 0
-            can_crossload = 0
-            has_bypass = 1
+        DEF_PROFILE = MmuUnitProfile()
 
-        elif self.mmu_vendor == VENDOR_PRUSA:
+        VENDOR_PROFILES = {
+            VENDOR_ERCF:         replace(DEF_PROFILE, selector_type=SELECTOR_LINEAR_SERVO, can_crossload=False, has_bypass=True),
+            VENDOR_TRADRACK:     replace(DEF_PROFILE, selector_type=SELECTOR_LINEAR_SERVO, variable_rotation_distances=False, can_crossload=False),
+            VENDOR_ANGRY_BEAVER: replace(DEF_PROFILE, require_bowden_move=False, filament_always_gripped=True),
+            VENDOR_BOX_TURTLE:   replace(DEF_PROFILE, filament_always_gripped=True),
+            VENDOR_NIGHT_OWL:    replace(DEF_PROFILE, filament_always_gripped=True),
+            VENDOR_3MS:          replace(DEF_PROFILE, require_bowden_move=False, filament_always_gripped=True),
+            VENDOR_3D_CHAMELEON: replace(DEF_PROFILE, selector_type=SELECTOR_ROTARY, variable_rotation_distances=False, variable_bowden_lengths=True),
+            VENDOR_PICO_MMU:     replace(DEF_PROFILE, selector_type=SELECTOR_SERVO,  variable_rotation_distances=False),
+            VENDOR_QUATTRO_BOX:  replace(DEF_PROFILE, filament_always_gripped=True),
+            VENDOR_MMX:          replace(DEF_PROFILE, selector_type=SELECTOR_SERVO),
+            VENDOR_VVD:          replace(DEF_PROFILE, selector_type=SELECTOR_INDEXED, filament_always_gripped=True),
+            VENDOR_KMS:          replace(DEF_PROFILE, filament_always_gripped=True),
+            VENDOR_EMU:          replace(DEF_PROFILE, variable_bowden_lengths=True, filament_always_gripped=True),
+        }
+
+        if self.mmu_vendor == VENDOR_PRUSA:
             raise config.error("Prusa MMU is not yet supported")
 
-        elif self.mmu_vendor == VENDOR_ANGRY_BEAVER:
-            selector_type = SELECTOR_VIRTUAL
-            variable_rotation_distances = 1
-            variable_bowden_lengths = 0
-            require_bowden_move = 0
-            filament_always_gripped = 1
-            can_crossload = 1
-            has_bypass = 0
-
-        elif self.mmu_vendor == VENDOR_BOX_TURTLE:
-            selector_type = SELECTOR_VIRTUAL
-            variable_rotation_distances = 1
-            variable_bowden_lengths = 0
-            require_bowden_move = 1
-            filament_always_gripped = 1
-            can_crossload = 1
-            has_bypass = 0
-
-        elif self.mmu_vendor == VENDOR_NIGHT_OWL:
-            selector_type = SELECTOR_VIRTUAL
-            variable_rotation_distances = 1
-            variable_bowden_lengths = 0
-            require_bowden_move = 1
-            filament_always_gripped = 1
-            can_crossload = 1
-            has_bypass = 0
-
-        elif self.mmu_vendor == VENDOR_3MS:
-            selector_type = SELECTOR_VIRTUAL
-            variable_rotation_distances = 1
-            variable_bowden_lengths = 0
-            require_bowden_move = 0
-            filament_always_gripped = 1
-            can_crossload = 1
-            has_bypass = 0
-
-        elif self.mmu_vendor == VENDOR_3D_CHAMELEON:
-            selector_type = SELECTOR_ROTARY
-            variable_rotation_distances = 0
-            variable_bowden_lengths = 1
-            require_bowden_move = 1
-            filament_always_gripped = 0
-            can_crossload = 1
-            has_bypass = 0
-
-        elif self.mmu_vendor == VENDOR_PICO_MMU:
-            selector_type = SELECTOR_SERVO
-            variable_rotation_distances = 0
-            variable_bowden_lengths = 0
-            require_bowden_move = 1
-            filament_always_gripped = 0
-            can_crossload = 1
-            has_bypass = 0
-
-        elif self.mmu_vendor == VENDOR_QUATTRO_BOX:
-            selector_type = SELECTOR_VIRTUAL
-            variable_rotation_distances = 1
-            variable_bowden_lengths = 0
-            require_bowden_move = 1
-            filament_always_gripped = 1
-            can_crossload = 1
-            has_bypass = 0
-
-        elif self.mmu_vendor == VENDOR_MMX:
-            selector_type = SELECTOR_SERVO
-            variable_rotation_distances = 1
-            variable_bowden_lengths = 0
-            require_bowden_move = 1
-            filament_always_gripped = 0
-            can_crossload = 1
-            has_bypass = 0
-
-        elif self.mmu_vendor == VENDOR_VVD:
-            selector_type = SELECTOR_INDEXED
-            variable_rotation_distances = 1
-            variable_bowden_lengths = 0
-            require_bowden_move = 1
-            filament_always_gripped = 1
-            can_crossload = 1
-            has_bypass = 0
-
-        elif self.mmu_vendor == VENDOR_KMS:
-            selector_type = SELECTOR_VIRTUAL
-            variable_rotation_distances = 1
-            variable_bowden_lengths = 0
-            require_bowden_move = 1
-            filament_always_gripped = 1
-            can_crossload = 1
-            has_bypass = 0
-
-        elif self.mmu_vendor == VENDOR_EMU:
-            selector_type = SELECTOR_VIRTUAL
-            variable_rotation_distances = 1
-            variable_bowden_lengths = 1
-            require_bowden_move = 1
-            filament_always_gripped = 1
-            can_crossload = 1
-            has_bypass = 1
+        profile = VENDOR_PROFILES.get(self.mmu_vendor, DEF_PROFILE)
 
         # Still allow MMU design attributes to be altered or set for custom MMU
-        self.variable_rotation_distances = bool(config.getint('variable_rotation_distances', variable_rotation_distances))
-        self.variable_bowden_lengths = bool(config.getint('variable_bowden_lengths', variable_bowden_lengths))
-        self.require_bowden_move = bool(config.getint('require_bowden_move', require_bowden_move))
-        self.filament_always_gripped = bool(config.getint('filament_always_gripped', filament_always_gripped))
-        self.can_crossload = bool(config.getint('can_crossload', can_crossload))
-        self.has_bypass = bool(config.getint('has_bypass', has_bypass))
+        self.selector_type =               config.getchoice('selector_type', {o: o for o in SELECTOR_REGISTRY.keys()}, profile.selector_type)
+        self.variable_rotation_distances = bool(config.getint('variable_rotation_distances', profile.variable_rotation_distances))
+        self.variable_bowden_lengths =     bool(config.getint('variable_bowden_lengths', profile.variable_bowden_lengths))
+        self.require_bowden_move =         bool(config.getint('require_bowden_move', profile.require_bowden_move))
+        self.filament_always_gripped =     bool(config.getint('filament_always_gripped', profile.filament_always_gripped))
+        self.can_crossload =               bool(config.getint('can_crossload', profile.can_crossload))
+        self.has_bypass =                  bool(config.getint('has_bypass', profile.has_bypass))
 
-        # Optional heater and evironment sensors --------
+        self.multigear = isinstance(self.selector_type, VirtualSelector) # Covers all derivatives including type-c MMU's
+
+
+        # Optional heater and evironment sensors --------------------------------------------------
 
         self.environment_sensor = config.get('environment_sensor', '')
         self.filament_heater    = config.get('filament_heater', '')
@@ -283,10 +189,8 @@ class MmuUnit:
                 except Exception as e:
                     raise config.error("Object '%s' could not be loaded as a valid heater or environment sensor in [mmu_machine]\nError: %s" % (obj_name, str(e)))
 
-        # MMU Kinematics --------
 
-        self.selector_type = config.getchoice('selector_type', {o: o for o in SELECTOR_REGISTRY.keys()}, selector_type)
-        self.multigear = isinstance(self.selector_type, VirtualSelector) # Covers all derivatives including type-c MMU's
+        # MMU Kinematics --------------------------------------------------------------------
 
         self.selector_stepper    = config.get('selector_stepper', None) # Name of selector stepper
         self.selector_servo      = config.get('selector_servo', None)   # Name of selector servo if fitted
@@ -389,7 +293,7 @@ class MmuUnit:
                 logging.info("MMU: - No selector servo specified")
 
 
-        # Load subcomponents -----------------
+        # Load subcomponents ------------------------------------------------------
 
         # Load parameters config for this unit
         params = c = config.getsection('mmu_unit_parameters %s' % self.name)
@@ -501,6 +405,47 @@ class MmuUnit:
             self.sync_feedback,
             self.environment_manager,
         ]
+
+
+        # Setup necessary filament sensors as homing endstops ---------------------------
+
+        def iter_endstop_sensors():
+            if self.sensors is None:
+                return ()
+
+            return (
+                sensor
+                for sensor in chain(
+                    (self.sensors.post_gear_sensors or {}).values(),
+                    (self.sensors.pre_gate_sensors or {}).values(),
+                    [self.sensors.gate_sensor],
+                    [self.buffer.compression_sensor] if self.buffer else [],
+                    [self.buffer.tension_sensor] if self.buffer else [],
+                    [self.mmu_machine.extruder_sensor],
+                    [self.mmu_machine.toolhead_sensor],
+                )
+                if sensor is not None
+            )
+
+        gear_rail = self.mmu_toolhead.get_kinematics().rails[1]
+        for sensor in iter_endstop_sensors():
+            sensor_name = sensor.runout_helper.name
+            logging.info("PAUL: creating endstop for unit=%s, sensor.name=%s" % (self.name, sensor_name))
+            sensor_pin = sensor.runout_helper.switch_pin
+            ppins = self.printer.lookup_object('pins')
+            pin_params = ppins.parse_pin(sensor_pin, True, True)
+            share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
+            ppins.allow_multi_use_pin(share_name)
+
+            # Ensure all steppers see endstop
+            if sensor_name not in gear_rail.get_extra_endstop_names():
+                mcu_endstop = gear_rail.add_extra_endstop(sensor_pin, sensor_name)
+
+            # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
+            # otherwise the extruder can continue to move a small (speed dependent) distance
+            if self._extruder_stepper is not None and sensor_name in [SENSOR_TOOLHEAD, SENSOR_COMPRESSION, SENSOR_TENSION]:
+                mcu_endstop.add_stepper(self._extruder_stepper.stepper)
+
 
         # Event handlers
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
@@ -651,7 +596,7 @@ class MmuUnit:
         return self.first_gate <= gate < self.first_gate + self.num_gates
 
     def gate_range(self):
-        return self.first_gate, self.first_gate + self.num_gates
+        return self.first_gate, self.first_gate + self.num_gates - 1
 
     # Convert mmu_machine gate number to relative gate on mmu_unit
     def local_gate(self, gate, force_physical=False):

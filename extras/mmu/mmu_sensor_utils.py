@@ -276,7 +276,8 @@ class MmuProportionalSensor:
         )
 
         # Expose status
-        self.printer.add_object(self.name, self)
+        self.printer.add_object(name, self)
+        logging.info("MMU: Created Proportional sync-feedback sensor %s]" % name)
 
     def _map_reading(self, v_raw):
         n = self._neutral_point
@@ -522,6 +523,7 @@ class MmuHallEndstop:
         )
 
         self.printer.add_object("mmu_hall_endstop %s" % name, self)
+        logging.info("MMU: Created [mmu_hall_endstop %s]" % name)
 
     def _calc_diameter(self):
         # Duplicate of Klipper hall_filament_width_sensor logic
@@ -645,6 +647,7 @@ class MmuSensorFactory:
             )
             fs.runout_helper = ro_helper
             fs.get_status = ro_helper.get_status
+            logging.info("MMU: Created [filament_switch_sensor %s]" % sensor)
         return fs
 
 
@@ -657,7 +660,7 @@ class MmuSensorFactory:
         return real_pin == ''
 
 
-    def _sync_tension_callback(self, eventtime, t_sensor_name, tension_state, runout_helper):
+    def sync_tension_callback(self, eventtime, t_sensor_name, tension_state, runout_helper):
         """
         Button event handler for sync-feedback tension switch
         """
@@ -675,7 +678,7 @@ class MmuSensorFactory:
         self.printer.send_event("mmu:sync_feedback", eventtime, event_value)
 
 
-    def _sync_compression_callback(self, eventtime, c_sensor_name, compression_state, runout_helper):
+    def sync_compression_callback(self, eventtime, c_sensor_name, compression_state, runout_helper):
         """
         Button event handler for sync-feedback compression switch
         """

@@ -24,8 +24,9 @@ class MmuSensorManager:
         self.mmu = mmu
         self.mmu_machine = mmu.mmu_machine
     
-        # Determine sensor maps now from every perspective: all, per-unit and per-gate. Note that keys are the simplest
-        # form to disambiguate with unit_sensors dropping unit prefix and gate_sensors dropping gate suffix
+        # Determine sensor maps now from every perspective: logocal mmu machine, per-unit and per-gate.
+        # Note that keys are the simplest form to disambiguate with unit_sensors dropping unit prefix
+        # and gate_sensors dropping gate suffix
         self.all_sensors_map = {}    # Map of all sensors on mmu_machine with fully qualified names
         self.unit_sensors = []       # Sensors on each mmu_unit without unit prefix (indexed by unit index)
         self.gate_sensors = []       # Sensors on each gate with names stripped of gate and unit prefix/suffix (indexed by gate index)
@@ -168,27 +169,28 @@ class MmuSensorManager:
 # V340 ^^^
 
 # Orig v4... vvv
-        # Setup filament sensors as homing (endstops) on respective mmu_unit
-        for i, sensors in enumerate(self.unit_sensors):
-            unit = self.mmu_machine.get_mmu_unit_by_index(i)
-            gear_rail = unit.mmu_toolhead.get_kinematics().rails[1]
-            for name, sensor in self.unit_sensors[i].items():
-                if not name.startswith(SENSOR_PRE_GATE_PREFIX):
-                    logging.info("PAUL: creating endstop for unit=%d, sensor.name=%s" % (i, sensor.runout_helper.name))
-                    sensor_pin = sensor.runout_helper.switch_pin
-                    ppins = self.mmu.printer.lookup_object('pins')
-                    pin_params = ppins.parse_pin(sensor_pin, True, True)
-                    share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
-                    ppins.allow_multi_use_pin(share_name) # can this be called more than once?
-                    if name not in gear_rail.get_extra_endstop_names():
-                        mcu_endstop = gear_rail.add_extra_endstop(sensor_pin, name) # paul results in shared gate, compression and tension endtop names!
-
-                    # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
-                    # otherwise the extruder can continue to move a small (speed dependent) distance
-                    if unit.extruder_stepper_obj() is not None and name in [SENSOR_TOOLHEAD, SENSOR_COMPRESSION, SENSOR_TENSION]:
-                        mcu_endstop.add_stepper(unit.extruder_stepper_obj().stepper)
-                else:
-                    logging.warning("MMU: Filament sensor %s is not defined in [mmu_sensors]" % name)
+# TEMP COMMENT .. moving to mmu_unit
+#        # Setup filament sensors as homing (endstops) on respective mmu_unit
+#        for i, sensors in enumerate(self.unit_sensors):
+#            unit = self.mmu_machine.get_mmu_unit_by_index(i)
+#            gear_rail = unit.mmu_toolhead.get_kinematics().rails[1]
+#            for name, sensor in self.unit_sensors[i].items():
+#                if not name.startswith(SENSOR_PRE_GATE_PREFIX):
+#                    logging.info("PAUL: creating endstop for unit=%d, sensor.name=%s" % (i, sensor.runout_helper.name))
+#                    sensor_pin = sensor.runout_helper.switch_pin
+#                    ppins = self.mmu.printer.lookup_object('pins')
+#                    pin_params = ppins.parse_pin(sensor_pin, True, True)
+#                    share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
+#                    ppins.allow_multi_use_pin(share_name) # can this be called more than once?
+#                    if name not in gear_rail.get_extra_endstop_names():
+#                        mcu_endstop = gear_rail.add_extra_endstop(sensor_pin, name) # paul results in shared gate, compression and tension endtop names!
+#
+#                    # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
+#                    # otherwise the extruder can continue to move a small (speed dependent) distance
+#                    if unit.extruder_stepper_obj() is not None and name in [SENSOR_TOOLHEAD, SENSOR_COMPRESSION, SENSOR_TENSION]:
+#                        mcu_endstop.add_stepper(unit.extruder_stepper_obj().stepper)
+#                else:
+#                    logging.warning("MMU: Filament sensor %s is not defined in [mmu_sensors]" % name)
 # Orig v4... ^^^
 
         # Register commands

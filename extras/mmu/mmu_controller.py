@@ -2336,7 +2336,7 @@ class MmuController:
                                 rmsg += info
 
                 if rmsg or omsg:
-                    msg = "Warning: Calibration steps are not complete for mmu unit %s:" % u.name
+                    msg = "Warning: Calibration steps are not complete for MMU %s:" % u.name
                     if rmsg:
                         msg += "\nRequired:%s" % rmsg
                     if omsg:

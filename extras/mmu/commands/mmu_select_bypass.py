@@ -26,7 +26,7 @@ class MmuSelectBypassCommand(BaseCommand):
     HELP_BRIEF = "Select the filament bypass"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
-        + "(no parameters)\n"
+        + "(alias for MMU_SELECT BYPASS=1)\n"
     )
     HELP_SUPPLEMENT = (
         ""  # add examples here if desired
