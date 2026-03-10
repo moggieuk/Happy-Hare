@@ -27,6 +27,7 @@ from ....homing          import HomingMove
 # Happy Hare imports
 from ...mmu_constants    import *
 from ...mmu_utils        import MmuError
+from ...commands         import register_command
 from ..mmu_calibrator    import CALIBRATED_SELECTOR
 from .mmu_base_selectors import PhysicalSelector
 
@@ -110,7 +111,10 @@ class LinearSelector(PhysicalSelector):
         self.cad_selector_tolerance = config.getfloat('cad_selector_tolerance', self.cad_selector_tolerance, above=0.) # Extra movement allowed by selector
 
         # Register GCODE commands specific to this module
-        self.register_mux_command('MMU_CALIBRATE_SELECTOR', self.cmd_MMU_CALIBRATE_SELECTOR, desc=self.cmd_MMU_CALIBRATE_SELECTOR_help)
+        try:
+            register_command(MmuCalibrateSelectorCommand)
+        except KeyError:
+            pass # Already registered
 
     # Selector "Interface" methods ---------------------------------------------
 
@@ -279,89 +283,8 @@ class LinearSelector(PhysicalSelector):
             if value == -1 and lgate + self.mmu_unit.first_gate in check_gates
         ]
 
+
     # Internal Implementation --------------------------------------------------
-
-    cmd_MMU_CALIBRATE_SELECTOR_help = "Calibration of the selector positions or postion of specified gate"
-    cmd_MMU_CALIBRATE_SELECTOR_param_help = (
-        "MMU_CALIBRATE_SELECTOR: %s\n" % cmd_MMU_CALIBRATE_SELECTOR_help
-        + "UNIT         = #(int)\n"
-        + "GATE         = #(int) Optional, default all gates on unit\n"
-        + "SAVE         = [0|1]\n"
-        + "BYPASS       = [0|1]\n"
-        + "BYPASS_BLOCK = [0|1] Special: If bypass block exists on ERCFv1.1 only\n"
-    )
-    cmd_MMU_CALIBRATE_SELECTOR_supplement_help = (
-        "Examples:\n"
-        + "MMU_CALIBRATE_SELECTOR GATE=8 SAVE=0 ...calibrate gate logical gate 8, display but don't save results\n"
-        + "MMU_CALIBRATE_SELECTOR UNIT=0 BYPASS=1 ...calibrate the bypass gate position on unit 1"
-    )
-    def cmd_MMU_CALIBRATE_SELECTOR(self, gcmd):
-        """
-        Calibrate and persist selector offsets (and optional bypass offset).
-
-        Supports manual gate/bypass calibration via travel-to-home measurement,
-        or an automated routine to infer spacing/offsets across gates. Writes
-        results to mmu_vars.cfg and marks selector calibrated when complete.
-        """
-        self.mmu.log_to_file(gcmd.get_commandline())
-        if self.mmu.check_if_disabled(): return
-
-        unit = gcmd.get_int('UNIT', None, minval=0, maxval=self.mmu.mmu_machine.num_units - 1)
-        save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
-        single = gcmd.get_int('SINGLE', 0, minval=0, maxval=1)
-        gate = gcmd.get_int('GATE', None, minval=0, maxval=self.mmu.num_gates - 1)
-        bypass = bool(gcmd.get_int('BYPASS', None, minval=0, maxval=1))
-        ercf_v1_bypass_block = gcmd.get_int('BYPASS_BLOCK', -1, minval=1, maxval=3)
-        if gate is None and bypass:
-            gate = TOOL_GATE_BYPASS
-
-        if gcmd.get_int('HELP', 0, minval=0, maxval=1):
-            self.mmu.log_always(self.mmu.format_help(self.cmd_MMU_CALIBRATE_SELECTOR_param_help, self.cmd_MMU_CALIBRATE_SELECTOR_supplement_help), color=True)
-            return
-
-        mmu_unit = self.mmu_machine.get_mmu_unit_by_index(unit) if unit is not None else self.mmu_unit
-        min_gate, max_gate = mmu_unit.gate_range()
-
-        if gate is not None and not mmu_unit.manages_gate(gate):
-            raise gcmd.error("Gate %d is not managed by %s (range=%d-%d)" % (gate, mmu_unit.name, min_gate, max_gate))
-
-        pos_str = "position"
-        if gate is None:
-           gate_str = "gates %d-%d" % (min_gate, max_gate)
-           pos_str = "positions"
-        elif gate == TOOL_GATE_BYPASS:
-           gate_str = "bypass"
-        else:
-           gate_str = "gate %d" % gate
-        self.mmu.log_always("Calibrating selector %s on %s for %s..." % (pos_str, mmu_unit.name, gate_str))
-
-        return # PAUL testing shortcut
-
-        try:
-            with self.mmu.wrap_sync_gear_to_extruder():
-                self.mmu.calibrating = True
-#PAUL why?                self.mmu.reinit() # PAUL check on this
-                self.filament_hold_move()
-                successful = False
-                if gate is None:
-                    successful = self._calibrate_selector_auto(save=save, v1_bypass_block=ercf_v1_bypass_block)
-                else:
-                    successful = self._calibrate_selector(gate, extrapolate=not single, save=save)
-
-                if not any(x == -1 for x in self.selector_offsets):
-                    self.mmu_unit.calibrator.mark_calibrated(CALIBRATED_SELECTOR)
-
-                # If not fully calibrated turn off the selector stepper to ease next step, else activate by homing
-                if successful and self.mmu_unit.calibrator.check_calibrated(CALIBRATED_SELECTOR):
-                    self.mmu.log_always("Selector calibration complete")
-                    self.select_tool(min_gate)
-                else:
-                    self.disable_motors()
-
-        except MmuError as ee:
-            self.mmu.handle_mmu_error(str(ee))
-        finally:
-            self.mmu.calibrating = False
 
     def _get_max_selector_movement(self, lgate=TOOL_GATE_UNKNOWN):
         """
@@ -707,3 +630,108 @@ class LinearSelector(PhysicalSelector):
 
     def use_touch_move(self):
         return self.mmu_unit.selector_touch and SENSOR_SELECTOR_TOUCH in self.selector_rail.get_extra_endstop_names() and self.selector_touch_enabled
+
+
+
+# -----------------------------------------------------------------------------------------------------------
+# MMU_SOAKTEST_SELECTOR command
+#  This "registered command" will be conditionally registered, then instantiated later by the main
+#  mmu_controller module when commands are loaded
+# -----------------------------------------------------------------------------------------------------------
+
+from ...commands.mmu_base_command import *
+
+class MmuCalibrateSelectorCommand(BaseCommand):
+
+    CMD = "MMU_CALIBRATE_SELECTOR"
+
+    HELP_BRIEF = "Calibration of the selector positions or postion of specified gate"
+    HELP_PARAMS = (
+        "MMU_CALIBRATE_SELECTOR: %s\n" % HELP_BRIEF
+        + "UNIT         = #(int)\n"
+        + "GATE         = #(int) Optional, default all gates on unit\n"
+        + "SAVE         = [0|1]\n"
+        + "BYPASS       = [0|1]\n"
+        + "BYPASS_BLOCK = [0|1] Special: If bypass block exists on ERCFv1.1 only\n"
+    )
+    HELP_SUPPLEMENT = (
+        "Examples:\n"
+        + "MMU_CALIBRATE_SELECTOR GATE=8 SAVE=0 ...calibrate gate logical gate 8, display but don't save results\n"
+        + "MMU_CALIBRATE_SELECTOR UNIT=0 BYPASS=1 ...calibrate the bypass gate position on unit 1"
+    )
+
+    def __init__(self, mmu):
+        super().__init__(mmu)
+        self.register(
+            name=self.CMD,
+            handler=self._run,
+            help_brief=self.HELP_BRIEF,
+            help_params=self.HELP_PARAMS,
+            help_supplement=self.HELP_SUPPLEMENT,
+            category=CATEGORY_TESTING,
+            per_unit=True,
+        )
+
+    def _run(self, gcmd, mmu_unit):
+        """
+        Calibrate and persist selector offsets (and optional bypass offset).
+
+        Supports manual gate/bypass calibration via travel-to-home measurement,
+        or an automated routine to infer spacing/offsets across gates. Writes
+        results to mmu_vars.cfg and marks selector calibrated when complete.
+        """
+
+        if self.mmu.check_if_disabled(): return
+
+        sel = mmu_unit.selector
+
+        save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
+        single = gcmd.get_int('SINGLE', 0, minval=0, maxval=1)
+        gate = gcmd.get_int('GATE', None, minval=0, maxval=self.mmu.num_gates - 1)
+        bypass = bool(gcmd.get_int('BYPASS', None, minval=0, maxval=1))
+        ercf_v1_bypass_block = gcmd.get_int('BYPASS_BLOCK', -1, minval=1, maxval=3)
+        if gate is None and bypass:
+            gate = TOOL_GATE_BYPASS
+
+        min_gate, max_gate = mmu_unit.gate_range()
+
+        if gate is not None and not mmu_unit.manages_gate(gate):
+            raise gcmd.error("Gate %d is not managed by %s (range=%d-%d)" % (gate, mmu_unit.name, min_gate, max_gate))
+
+        pos_str = "position"
+        if gate is None:
+           gate_str = "gates %d-%d" % (min_gate, max_gate)
+           pos_str = "positions"
+        elif gate == TOOL_GATE_BYPASS:
+           gate_str = "bypass"
+        else:
+           gate_str = "gate %d" % gate
+        self.mmu.log_always("Calibrating selector %s on %s for %s..." % (pos_str, mmu_unit.name, gate_str))
+
+        return # PAUL testing shortcut
+
+        try:
+            with self.mmu.wrap_sync_gear_to_extruder():
+                self.mmu.calibrating = True
+#PAUL why?                self.mmu.reinit() # PAUL check on this
+                self.mmu_unit.calibrator.filament_hold_move()
+                successful = False
+                if gate is None:
+                    successful = sel._calibrate_selector_auto(save=save, v1_bypass_block=ercf_v1_bypass_block)
+                else:
+                    successful = sel._calibrate_selector(gate, extrapolate=not single, save=save)
+
+                if not any(x == -1 for x in sel.selector_offsets):
+                    self.mmu_unit.calibrator.mark_calibrated(CALIBRATED_SELECTOR)
+
+                # If not fully calibrated turn off the selector stepper to ease next step, else activate by homing
+                if successful and self.mmu_unit.calibrator.check_calibrated(CALIBRATED_SELECTOR):
+                    self.mmu.log_always("Selector calibration complete")
+                    sel.select_tool(min_gate)
+                else:
+                    sel.disable_motors()
+
+        except MmuError as ee:
+            self.mmu.handle_mmu_error(str(ee))
+        finally:
+            self.mmu.calibrating = False

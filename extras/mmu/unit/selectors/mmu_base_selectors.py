@@ -31,6 +31,7 @@ import random, logging
 # Happy Hare imports
 from ...mmu_constants import *
 from ...mmu_utils     import MmuError
+from ...commands      import register_command
 from ..mmu_calibrator import CALIBRATED_SELECTOR
 
 
@@ -71,25 +72,6 @@ class BaseSelector:
             raise TypeError(
                 f"{cls.__name__} is not allowed to override: {', '.join(sorted(overridden))}"
             )
-
-    def register_mux_command(self, cmd, func, desc=None): # PAUL use command base class
-        """
-        Turn mux commands into simple commands if the printer has a single mmu_unit
-        so the user doesn't have to supply the UNIT=x parameter to command
-        """
-        gcode = self.printer.lookup_object('gcode')
-        if self.mmu_unit.mmu_machine.num_units > 1:
-            gcode.register_mux_command(cmd, 'UNIT', str(self.mmu_unit.unit_index), func, desc=desc)
-        else:
-            self.register_command(cmd, func, desc=desc)
-
-    def register_command(self, cmd, func, desc=None): # PAUL use command base class
-        """
-        Safey to ensure that common commands are only registered once
-        """
-        gcode = self.printer.lookup_object('gcode')
-        if cmd not in gcode.ready_gcode_handlers:
-            gcode.register_command(cmd, func, desc=desc)
 
     def handle_connect(self):
         logging.info("PAUL: =========== handle_connect: BaseSelector")
@@ -214,7 +196,12 @@ class PhysicalSelector(BaseSelector, object):
         super().__init__(config, mmu_unit, params)
 
         # Register GCODE commands
-        self.register_mux_command('MMU_SOAKTEST_SELECTOR', self.cmd_MMU_SOAKTEST_SELECTOR, desc=self.cmd_MMU_SOAKTEST_SELECTOR_help)
+        try:
+            register_command(MmuSoaktestSelectorCommand)
+            register_command(MmuGripCommand)
+            register_command(MmuReleaseCommand)
+        except KeyError:
+            pass # Already registered
 
     # Selector "Interface" methods ---------------------------------------------
 
@@ -239,74 +226,75 @@ class PhysicalSelector(BaseSelector, object):
     def _restore_gate(self, lgate):
         super()._restore_gate(lgate)
 
-    # --------------------------------------------------------------------------
-
-    cmd_MMU_SOAKTEST_SELECTOR_help = "Soak test of selector movement"
-    cmd_MMU_SOAKTEST_SELECTOR_param_help = (
-        "MMU_SOAKTEST_SELECTOR: %s\n" % cmd_MMU_SOAKTEST_SELECTOR_help
-        + "UNIT  = #(int) Optional if only one unit fitted to printer\n"
-        + "LOOP  = #(int) Test loops\n"
-        + "GRIP  = [0|1]  Force filament gripping after selection where optional\n"
-        + "HOME  = [0|1]  Randomized homing\n"
-    )
-    cmd_MMU_SOAKTEST_SELECTOR_supplement_help = (
-        "Examples:\n"
-        + "MMU_SOAKTEST_SELECTOR UNIT=1 LOOP=1000 ...make 1000 gate selections on unit 1\n"
-        + "MMU_SOAKTEST_SELECTOR HOME=1 ...randomly home whilst testing selection on current unit\n"
-        + "MMU_SOAKTEST_SELECTOR GRIP=1 ...force filament grip after selection (where servo/gripping available)"
-    )
-
-    def cmd_MMU_SOAKTEST_SELECTOR(self, gcmd):
-        """
-        Run a soak test exercising selector movement across random gates.
-
-        The command supports unit selection, loop count, optional gripping
-        and randomized homing. Errors from the MMU are handled and cause
-        the soak test to abort cleanly.
-        """
-        self.mmu.log_to_file(gcmd.get_commandline())
-        if self.mmu.check_if_disabled(): return
-        if self.mmu_unit.manages_gate(self.mmu.gate_selected) and self.mmu.check_if_loaded(): return
-
-        if not self.mmu_unit.calibrator.check_calibrated(CALIBRATED_SELECTOR):
-            self.mmu.log_error("Operation not possible. Selector not yet calibrated")
-            return
-
-        unit = gcmd.get_int('UNIT', None, minval=0, maxval=self.mmu.mmu_machine.num_units - 1)
-        loops = gcmd.get_int('LOOP', 100)
-        servo = gcmd.get_int('SERVO', 0) # Legacy option
-        grip = bool(gcmd.get_int('GRIP', servo))
-        home = bool(gcmd.get_int('HOME', 0))
-
-        if gcmd.get_int('HELP', 0, minval=0, maxval=1):
-            self.mmu.log_always(self.mmu.format_help(self.cmd_MMU_SOAKTEST_SELECTOR_param_help, self.cmd_MMU_SOAKTEST_SELECTOR_supplement_help), color=True)
-            return
-
-        # Test and report using logical system-wide gate numbering (by design user never sees local gate numbers)
-        mmu_unit = self.mmu_machine.get_mmu_unit_by_index(unit) if unit is not None else self.mmu_unit
-        min_gate, max_gate = mmu_unit.gate_range()
-        self.mmu.log_always("Soak testing selector on %s (gates %d-%d) for %s iterations..." % (mmu_unit.name, min_gate, max_gate, loops))
-
-        return # PAUL testing
-        try:
-            with self.mmu.wrap_sync_gear_to_extruder():
-                for l in range(loops):
-                    gate = random.randint(min_gate, max_gate - 1)
-
-                    if random.randint(0, 10) == 0 and home:
-                        mmu_unit.selector.home()
-                  
-                    if random.randint(0, 10) == 0 and mmu_unit.has_bypass:
-                        self.mmu.log_always("Testing loop %d / %d. Selecting bypass" % (l + 1, loops))
-                        mmu_unit.selector.select_bypass()
-                    else:
-                        self.mmu.log_always("Testing loop %d / %d. Selecting gate %d" % (l + 1, loops, gate))
-                        mmu_unit.selector.select_gate(gate)
-
-                    if grip:
-                        mmu_unit.selector.filament_drive()
-        except MmuError as ee:
-            self.mmu.handle_mmu_error("Soaktest abandoned because of error: %s" % str(ee))
+# PAUL
+#    # --------------------------------------------------------------------------
+#
+#    cmd_MMU_SOAKTEST_SELECTOR_help = "Soak test of selector movement"
+#    cmd_MMU_SOAKTEST_SELECTOR_param_help = (
+#        "MMU_SOAKTEST_SELECTOR: %s\n" % cmd_MMU_SOAKTEST_SELECTOR_help
+#        + "UNIT  = #(int) Optional if only one unit fitted to printer\n"
+#        + "LOOP  = #(int) Test loops\n"
+#        + "GRIP  = [0|1]  Force filament gripping after selection where optional\n"
+#        + "HOME  = [0|1]  Randomized homing\n"
+#    )
+#    cmd_MMU_SOAKTEST_SELECTOR_supplement_help = (
+#        "Examples:\n"
+#        + "MMU_SOAKTEST_SELECTOR UNIT=1 LOOP=1000 ...make 1000 gate selections on unit 1\n"
+#        + "MMU_SOAKTEST_SELECTOR HOME=1 ...randomly home whilst testing selection on current unit\n"
+#        + "MMU_SOAKTEST_SELECTOR GRIP=1 ...force filament grip after selection (where servo/gripping available)"
+#    )
+#
+#    def cmd_MMU_SOAKTEST_SELECTOR(self, gcmd):
+#        """
+#        Run a soak test exercising selector movement across random gates.
+#
+#        The command supports unit selection, loop count, optional gripping
+#        and randomized homing. Errors from the MMU are handled and cause
+#        the soak test to abort cleanly.
+#        """
+#        self.mmu.log_to_file(gcmd.get_commandline())
+#        if self.mmu.check_if_disabled(): return
+#        if self.mmu_unit.manages_gate(self.mmu.gate_selected) and self.mmu.check_if_loaded(): return
+#
+#        if not self.mmu_unit.calibrator.check_calibrated(CALIBRATED_SELECTOR):
+#            self.mmu.log_error("Operation not possible. Selector not yet calibrated")
+#            return
+#
+#        unit = gcmd.get_int('UNIT', None, minval=0, maxval=self.mmu.mmu_machine.num_units - 1)
+#        loops = gcmd.get_int('LOOP', 100)
+#        servo = gcmd.get_int('SERVO', 0) # Legacy option
+#        grip = bool(gcmd.get_int('GRIP', servo))
+#        home = bool(gcmd.get_int('HOME', 0))
+#
+#        if gcmd.get_int('HELP', 0, minval=0, maxval=1):
+#            self.mmu.log_always(self.mmu.format_help(self.cmd_MMU_SOAKTEST_SELECTOR_param_help, self.cmd_MMU_SOAKTEST_SELECTOR_supplement_help), color=True)
+#            return
+#
+#        # Test and report using logical system-wide gate numbering (by design user never sees local gate numbers)
+#        mmu_unit = self.mmu_machine.get_mmu_unit_by_index(unit) if unit is not None else self.mmu_unit
+#        min_gate, max_gate = mmu_unit.gate_range()
+#        self.mmu.log_always("Soak testing selector on %s (gates %d-%d) for %s iterations..." % (mmu_unit.name, min_gate, max_gate, loops))
+#
+#        return # PAUL testing
+#        try:
+#            with self.mmu.wrap_sync_gear_to_extruder():
+#                for l in range(loops):
+#                    gate = random.randint(min_gate, max_gate - 1)
+#
+#                    if random.randint(0, 10) == 0 and home:
+#                        mmu_unit.selector.home()
+#                  
+#                    if random.randint(0, 10) == 0 and mmu_unit.has_bypass:
+#                        self.mmu.log_always("Testing loop %d / %d. Selecting bypass" % (l + 1, loops))
+#                        mmu_unit.selector.select_bypass()
+#                    else:
+#                        self.mmu.log_always("Testing loop %d / %d. Selecting gate %d" % (l + 1, loops, gate))
+#                        mmu_unit.selector.select_gate(gate)
+#
+#                    if grip:
+#                        mmu_unit.selector.filament_drive()
+#        except MmuError as ee:
+#            self.mmu.handle_mmu_error("Soaktest abandoned because of error: %s" % str(ee))
 
 
 
@@ -347,3 +335,176 @@ class VirtualSelector(BaseSelector):
     def _restore_gate(self, lgate):
         super()._restore_gate(lgate)
         self.mmu_unit.mmu_toolhead.select_gear_stepper(lgate)
+
+
+
+# -----------------------------------------------------------------------------------------------------------
+# Calibration commands are defined here to keep close to helper logic
+# -----------------------------------------------------------------------------------------------------------
+
+from ...commands.mmu_base_command import *
+
+
+# -----------------------------------------------------------------------------------------------------------
+# MMU_SOAKTEST_SELECTOR command
+#  This "registered command" will be conditionally registered in PhysicalSelector, then instantiated later
+#  by the main mmu_controller module when commands are loaded
+# -----------------------------------------------------------------------------------------------------------
+
+class MmuSoaktestSelectorCommand(BaseCommand):
+
+    CMD = "MMU_SOAKTEST_SELECTOR"
+
+    HELP_BRIEF = "Soak test of selector movement"
+    HELP_PARAMS = (
+        "MMU_SOAKTEST_SELECTOR: %s\n" % HELP_BRIEF
+        + "UNIT  = #(int) Optional if only one unit fitted to printer\n"
+        + "LOOP  = #(int) Test loops\n"
+        + "GRIP  = [0|1]  Force filament gripping after selection where optional\n"
+        + "HOME  = [0|1]  Randomized homing\n"
+    )
+    HELP_SUPPLEMENT = (
+        "Examples:\n"
+        + "MMU_SOAKTEST_SELECTOR UNIT=1 LOOP=1000 ...make 1000 gate selections on unit 1\n"
+        + "MMU_SOAKTEST_SELECTOR HOME=1 ...randomly home whilst testing selection on current unit\n"
+        + "MMU_SOAKTEST_SELECTOR GRIP=1 ...force filament grip after selection (where servo/gripping available)"
+    )
+
+    def __init__(self, mmu):
+        super().__init__(mmu)
+        self.register(
+            name=self.CMD,
+            handler=self._run,
+            help_brief=self.HELP_BRIEF,
+            help_params=self.HELP_PARAMS,
+            help_supplement=self.HELP_SUPPLEMENT,
+            category=CATEGORY_TESTING,
+            per_unit=True,
+        )
+
+    def _run(self, gcmd, mmu_unit):
+        """
+        Run a soak test exercising selector movement across random gates.
+
+        The command supports unit selection, loop count, optional gripping
+        and randomized homing. Errors from the MMU are handled and cause
+        the soak test to abort cleanly.
+        """
+
+        if self.mmu.check_if_disabled(): return
+        if self.mmu_unit.calibrator.manages_gate(self.mmu.gate_selected) and self.mmu.check_if_loaded(): return
+
+        if not self.mmu_unit.calibrator.check_calibrated(CALIBRATED_SELECTOR):
+            self.mmu.log_error("Operation not possible. Selector not yet calibrated")
+            return
+
+        loops = gcmd.get_int('LOOP', 100)
+        servo = gcmd.get_int('SERVO', 0) # Legacy option
+        grip = bool(gcmd.get_int('GRIP', servo))
+        home = bool(gcmd.get_int('HOME', 0))
+
+        # Test and report using logical system-wide gate numbering (by design user never sees local gate numbers)
+        min_gate, max_gate = mmu_unit.gate_range()
+        self.mmu.log_always("Soak testing selector on %s (gates %d-%d) for %s iterations..." % (mmu_unit.name, min_gate, max_gate, loops))
+
+        return # PAUL testing
+        try:
+            with self.mmu.wrap_sync_gear_to_extruder():
+                for l in range(loops):
+                    gate = random.randint(min_gate, max_gate - 1)
+
+                    if random.randint(0, 10) == 0 and home:
+                        mmu_unit.selector.home()
+                  
+                    if random.randint(0, 10) == 0 and mmu_unit.has_bypass:
+                        self.mmu.log_always("Testing loop %d / %d. Selecting bypass" % (l + 1, loops))
+                        mmu_unit.selector.select_bypass()
+                    else:
+                        self.mmu.log_always("Testing loop %d / %d. Selecting gate %d" % (l + 1, loops, gate))
+                        mmu_unit.selector.select_gate(gate)
+
+                    if grip:
+                        mmu_unit.selector.filament_drive()
+        except MmuError as ee:
+            self.mmu.handle_mmu_error("Soaktest abandoned because of error: %s" % str(ee))
+
+
+
+# -----------------------------------------------------------------------------------------------------------
+# MMU_GRIP command
+#  This "registered command" will be conditionally registered in PhysicalSelector, then instantiated later
+#  by the main mmu_controller module when commands are loaded
+# -----------------------------------------------------------------------------------------------------------
+
+class MmuGripCommand(BaseCommand):
+
+    CMD = "MMU_GRIP"
+
+    HELP_BRIEF = "Grip filament in current gate"
+    HELP_PARAMS = (
+        "%s: %s\n" % (CMD, HELP_BRIEF)
+    )
+    HELP_SUPPLEMENT = ""
+
+    def __init__(self, mmu):
+        super().__init__(mmu)
+        self.register(
+            name=self.CMD,
+            handler=self._run,
+            help_brief=self.HELP_BRIEF,
+            help_params=self.HELP_PARAMS,
+            help_supplement=self.HELP_SUPPLEMENT,
+            category=CATEGORY_GENERAL,
+            per_unit=False,
+        )
+
+    def _run(self, gcmd):
+        # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+
+        gate = self.mmu.gate_selected
+        mmu_unit = self.mmu.mmu_unit(gate)
+
+        if gate >= 0:
+            mmu_unit.selector.filament_drive()
+
+
+
+# -----------------------------------------------------------------------------------------------------------
+# MMU_RELEASE command
+#  This "registered command" will be conditionally registered in PhysicalSelector, then instantiated later
+#  by the main mmu_controller module when commands are loaded
+# -----------------------------------------------------------------------------------------------------------
+
+class MmuReleaseCommand(BaseCommand):
+
+    CMD = "MMU_RELEASE"
+
+    HELP_BRIEF = "Ungrip filament in current gate"
+    HELP_PARAMS = (
+        "%s: %s\n" % (CMD, HELP_BRIEF)
+    )
+    HELP_SUPPLEMENT = ""
+
+    def __init__(self, mmu):
+        super().__init__(mmu)
+        self.register(
+            name=self.CMD,
+            handler=self._run,
+            help_brief=self.HELP_BRIEF,
+            help_params=self.HELP_PARAMS,
+            help_supplement=self.HELP_SUPPLEMENT,
+            category=CATEGORY_GENERAL,
+            per_unit=False,
+        )
+
+    def _run(self, gcmd, mmu_unit):
+        # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+
+        gate = self.mmu.gate_selected
+        mmu_unit = self.mmu.mmu_unit(gate)
+
+        if gate >= 0:
+            if not mmu_unit.filament_always_gripped:
+                mmu_unit.selector.filament_release()
+            else:
+                self.mmu.log_error("Selector configured to not allow filament release")

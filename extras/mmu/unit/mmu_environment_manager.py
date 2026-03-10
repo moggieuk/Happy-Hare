@@ -719,7 +719,7 @@ class MmuEnvironmentManager:
 
 # -----------------------------------------------------------------------------------------------------------
 # MMU_HEATER command
-#  This "registered command" will be instatiated later by the mmu_controller module
+#  This "registered command" will be instantiated later by the mmu_controller module
 # -----------------------------------------------------------------------------------------------------------
 
 from ..commands                  import register_command
@@ -751,7 +751,6 @@ class MmuHeaterCommand(BaseCommand):
 
     def __init__(self, mmu):
         super().__init__(mmu)
-        # Register command (BaseCommand wrapper will handle HELP logging)
         self.register(
             name=self.CMD,
             handler=self._run,

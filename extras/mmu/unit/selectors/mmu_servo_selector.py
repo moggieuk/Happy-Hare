@@ -7,10 +7,10 @@
 # - Servo based Selector for PicoMMU and clones
 #
 # Implements commands (selector dependent):
-#    MMU_CALIBRATE_SELECTOR
+#    MMU_CALIBRATE_SERVO_SELECTOR
 #    MMU_SOAKTEST_SELECTOR (PhysicalSelector)
-#    MMU_GRIP
-#    MMU_RELEASE
+#    MMU_GRIP              (PhysicalSelector)
+#    MMU_RELEASE           (PhysicalSelector)
 #
 #
 # (\_/)
@@ -27,6 +27,7 @@ from ....homing        import Homing, HomingMove
 # Happy Hare imports
 from ...mmu_constants    import *
 from ...mmu_utils        import MmuError
+from ...commands         import register_command
 from ..mmu_calibrator    import CALIBRATED_SELECTOR
 from .mmu_base_selectors import PhysicalSelector
 
@@ -43,10 +44,10 @@ class ServoSelector(PhysicalSelector):
       1           - Grip immediately on selection and do not release
 
     Implements commands:
-      MMU_CALIBRATE_SELECTOR
-      MMU_SOAKTEST_SELECTOR
-      MMU_GRIP
-      MMU_RELEASE
+      MMU_CALIBRATE_SERVO_SELECTOR
+      MMU_SOAKTEST_SELECTOR (PhysicalSelector)
+      MMU_GRIP              (PhysicalSelector)
+      MMU_RELEASE           (PhysicalSelector)
     """
 
     def __init__(self, config, mmu_unit, params):
@@ -72,9 +73,10 @@ class ServoSelector(PhysicalSelector):
         self.servo_gate_angles = list(config.getintlist('servo_gate_angles', []))
 
         # Register GCODE commands specific to this module
-        self.register_mux_command('MMU_CALIBRATE_SELECTOR', self.cmd_MMU_CALIBRATE_SELECTOR, desc=self.cmd_MMU_CALIBRATE_SELECTOR_help)
-        self.register_mux_command('MMU_GRIP', self.cmd_MMU_GRIP, desc=self.cmd_MMU_GRIP_help)
-        self.register_mux_command('MMU_RELEASE', self.cmd_MMU_RELEASE, desc=self.cmd_MMU_RELEASE_help)
+        try:
+            register_command(MmuCalibrateServoSelectorCommand)
+        except KeyError:
+            pass # Already registered
 
         self._reinit()
 
@@ -90,13 +92,13 @@ class ServoSelector(PhysicalSelector):
         """
         super().handle_connect()
 
-        self.var_manager.upgrade(VARS_MMU_SELECTOR_ANGLES, self.mmu_unit.name) # v3 upgrade
-        self.var_manager.upgrade(VARS_MMU_SELECTOR_BYPASS_ANGLE, self.mmu_unit.name) # v3 upgrade
+        self.mmu_machine.var_manager.upgrade(VARS_MMU_SELECTOR_ANGLES, self.mmu_unit.name) # v3 upgrade
+        self.mmu_machine.var_manager.upgrade(VARS_MMU_SELECTOR_BYPASS_ANGLE, self.mmu_unit.name) # v3 upgrade
 
-        # Load and merge calibrated selector angles (calibration set with MMU_CALIBRATE_SELECTOR) ------------
+        # Load and merge calibrated selector angles (calibration set with MMU_CALIBRATE_SERVO_SELECTOR) ------------
         self.servo_gate_angles = self._ensure_list_size(self.servo_gate_angles, self.mmu_unit.num_gates)
 
-        cal_servo_gate_angles = self.var_manager.get(VARS_MMU_SELECTOR_ANGLES, [], namespace=self.mmu_unit.name)
+        cal_servo_gate_angles = self.mmu_machine.var_manager.get(VARS_MMU_SELECTOR_ANGLES, [], namespace=self.mmu_unit.name)
         if cal_servo_gate_angles:
             self.mmu.log_debug("Loaded saved selector angles: %s" % cal_servo_gate_angles)
         else:
@@ -110,7 +112,7 @@ class ServoSelector(PhysicalSelector):
         if not any(x == -1 for x in self.servo_gate_angles):
             self.calibrator.mark_calibrated(self.calibrator.CALIBRATED_SELECTOR)
 
-        servo_bypass_angle = self.var_manager.get(VARS_MMU_SELECTOR_BYPASS_ANGLE, -1, namespace=self.mmu_unit.name)
+        servo_bypass_angle = self.mmu_machine.var_manager.get(VARS_MMU_SELECTOR_BYPASS_ANGLE, -1, namespace=self.mmu_unit.name)
         if servo_bypass_angle >= 0:
             self.servo_bypass_angle = servo_bypass_angle
             self.mmu.log_debug("Loaded saved bypass angle: %s" % self.servo_bypass_angle)
@@ -224,106 +226,8 @@ class ServoSelector(PhysicalSelector):
     def get_uncalibrated_gates(self, check_gates):
         return [lgate + self.mmu_unit.first_gate for lgate, value in enumerate(self.servo_gate_angles) if value == -1 and lgate + self.mmu_unit.first_gate in check_gates]
 
+
     # Internal Implementation --------------------------------------------------
-
-    cmd_MMU_GRIP_help = "Grip filament in current gate"
-    def cmd_MMU_GRIP(self, gcmd):
-        if self.mmu.gate_selected >= 0:
-            self.filament_drive()
-
-    cmd_MMU_RELEASE_help = "Ungrip filament in current gate"
-    def cmd_MMU_RELEASE(self, gcmd):
-        if self.mmu.gate_selected >= 0:
-            if not self.mmu_unit.filament_always_gripped:
-                self.filament_release()
-            else:
-                self.mmu.log_error("Selector configured to not allow filament release")
-
-    cmd_MMU_CALIBRATE_SELECTOR_help = "Calibration of the selector servo angle for specifed gate(s)"
-    cmd_MMU_CALIBRATE_SELECTOR_param_help = (
-        "MMU_CALIBRATE_SELECTOR: %s\n" % cmd_MMU_CALIBRATE_SELECTOR_help
-        + "UNIT    = #(int)\n"
-        + "GATE    = #(int) Optional, default all gates on unit\n"
-        + "SHOW    = [0,1]\n"
-        + "ANGLE   = #(int)\n"
-        + "SAVE    = [0|1]\n"
-        + "SINGLE  = [0|1]\n"
-        + "SPACING = #.#(float)\n"
-        + "BYPASS  = [0|1]\n"
-    )
-    def cmd_MMU_CALIBRATE_SELECTOR(self, gcmd):
-        """
-        Calibrate and persist selector servo angles for gates and bypass.
-
-        Supports:
-          - SHOW=1 to display current angles and calibration state
-          - ANGLE=<n> to move servo to an explicit angle
-          - SAVE=1 to save current angle as a gate/bypass calibration, optionally
-            distributing angles across gates using SPACING.
-        """
-        self.mmu.log_to_file(gcmd.get_commandline())
-        if self.mmu.check_if_disabled(): return
-
-        usage = "\nUsage: MMU_CALIBRATE_SELECTOR [GATE=x] [BYPASS=0|1] [SPACING=x] [ANGLE=x] [SAVE=0|1] [SINGLE=0|1] [SHOW=0|1]"
-        show = gcmd.get_int('SHOW', 0, minval=0, maxval=1)
-        angle = gcmd.get_int('ANGLE', None)
-        save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
-        single = gcmd.get_int('SINGLE', 0, minval=0, maxval=1)
-        spacing = gcmd.get_float('SPACING', 25., above=0, below=180) # TiPicoMMU is 25 degrees between gates
-        gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_unit.num_gates - 1)
-        if gate == -1 and gcmd.get_int('BYPASS', -1, minval=0, maxval=1) == 1:
-            gate = TOOL_GATE_BYPASS
-
-        if help:
-            self.mmu.log_always(self.mmu.format_help(self.cmd_MMU_CALIBRATE_SELECTOR_param_help), color=True)
-            return
-
-        if show:
-            msg = ""
-            if not self.calibrator.check_calibrated(self.calibrator.CALIBRATED_SELECTOR):
-                msg += "Calibration not complete\n"
-            msg += "Current selector gate angle positions are: %s degrees" % self.servo_gate_angles
-            if self.servo_release_angle >= 0:
-                msg += "\nRelease angle is fixed at: %s degrees" % self.servo_release_angle
-            else:
-                msg += "\nRelease angles configured to be between each gate angle"
-            if self.has_bypass():
-                msg += "\nBypass angle: %s" % self.servo_bypass_angle
-            else:
-                msg += "\nBypass angle not configured"
-            self.mmu.log_info(msg)
-
-        elif angle is not None:
-            self.mmu.log_debug("Setting selector servo to angle: %d" % angle)
-            self._set_servo_angle(angle)
-            self.servo_state = FILAMENT_UNKNOWN_STATE
-
-        elif save:
-            if gate == TOOL_GATE_BYPASS:
-                self.servo_bypass_angle = self.servo_angle
-                self.var_manager.set(VARS_MMU_SELECTOR_BYPASS_ANGLE, self.servo_bypass_angle, write=True, namespace=self.mmu_unit.name)
-                self.mmu.log_info("Servo angle '%d' for bypass position has been saved" % self.servo_angle)
-            elif gate >= 0:
-                if single:
-                    self.servo_gate_angles[gate] = self.servo_angle
-                    self.var_manager.set(VARS_MMU_SELECTOR_ANGLES, self.servo_gate_angles, write=True, namespace=self.mmu_unit.name)
-                    self.mmu.log_info("Servo angle '%d' for gate %d has been saved" % (self.servo_angle, gate))
-                else:
-                    # If possible evenly distribute based on spacing
-                    angles = self._generate_gate_angles(self.servo_angle, gate, spacing)
-                    if angles:
-                        self.servo_gate_angles = angles
-                        self.var_manager.set(VARS_MMU_SELECTOR_ANGLES, self.servo_gate_angles, write=True, namespace=self.mmu_unit.name)
-                        self.mmu.log_info("Selector gate angle positions %s has been saved" % self.servo_gate_angles)
-                    else:
-                        self.mmu.log_error("Not possible to distribute angles with separation of %.1f degrees with gate %d at %.1f%s" % (spacing, gate, self.servo_angle, usage))
-            else:
-                self.mmu.log_error("No gate specified%s" % usage)
-        else:
-            self.mmu.log_always("Current selector servo angle: %d, Selector gate angle positions: %s" % (self.servo_angle, self.servo_gate_angles))
-
-        if not any(x == -1 for x in self.servo_gate_angles):
-            self.calibrator.mark_calibrated(self.calibrator.CALIBRATED_SELECTOR)
 
     def _set_servo_angle(self, angle):
         """
@@ -372,3 +276,116 @@ class ServoSelector(PhysicalSelector):
                 return None # Not possible
             angles.append(round(a))
         return angles
+
+
+
+# -----------------------------------------------------------------------------------------------------------
+# MMU_CALIBRATE_SERVO_SELECTOR command
+#  This "registered command" will be conditionally registered, then instantiated later by the main
+#  mmu_controller module when commands are loaded
+# -----------------------------------------------------------------------------------------------------------
+
+from ...commands.mmu_base_command import *
+
+class MmuCalibrateServoSelectorCommand(BaseCommand):
+
+    CMD = "MMU_CALIBRATE_SERVO_SELECTOR"
+
+    HELP_BRIEF = "Calibration of the selector servo angle for specifed gate(s)"
+    HELP_PARAMS = (
+        "MMU_CALIBRATE_SERVO_SELECTOR: %s\n" % HELP_BRIEF
+        + "UNIT    = #(int)\n"
+        + "GATE    = #(int) Optional, default all gates on unit\n"
+        + "SHOW    = [0,1]\n"
+        + "ANGLE   = #(int)\n"
+        + "SAVE    = [0|1]\n"
+        + "SINGLE  = [0|1]\n"
+        + "SPACING = #.#(float)\n"
+        + "BYPASS  = [0|1]\n"
+    )
+    HELP_SUPPLEMENT = (
+        ""  # examples / supplement if desired
+    )
+
+    def __init__(self, mmu):
+        super().__init__(mmu)
+        self.register(
+            name=self.CMD,
+            handler=self._run,
+            help_brief=self.HELP_BRIEF,
+            help_params=self.HELP_PARAMS,
+            help_supplement=self.HELP_SUPPLEMENT,
+            category=CATEGORY_TESTING,
+            per_unit=True,
+        )
+
+    def _run(self, gcmd, mmu_unit):
+        """
+        Calibrate and persist selector servo angles for gates and bypass.
+
+        Supports:
+          - SHOW=1 to display current angles and calibration state
+          - ANGLE=<n> to move servo to an explicit angle
+          - SAVE=1 to save current angle as a gate/bypass calibration, optionally
+            distributing angles across gates using SPACING.
+        """
+        if self.mmu.check_if_disabled(): return
+
+        sel = mmu_unit.selector
+
+        usage = "\nUsage: MMU_CALIBRATE_SELECTOR [GATE=x] [BYPASS=0|1] [SPACING=x] [ANGLE=x] [SAVE=0|1] [SINGLE=0|1] [SHOW=0|1]"
+        show = gcmd.get_int('SHOW', 0, minval=0, maxval=1)
+        angle = gcmd.get_int('ANGLE', None)
+        save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
+        single = gcmd.get_int('SINGLE', 0, minval=0, maxval=1)
+        spacing = gcmd.get_float('SPACING', 25., above=0, below=180) # TiPicoMMU is 25 degrees between gates
+        gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu_unit.num_gates - 1) # PAUL No need gate and lgate
+        if gate == -1 and gcmd.get_int('BYPASS', -1, minval=0, maxval=1) == 1:
+            gate = TOOL_GATE_BYPASS
+
+        if show:
+            msg = ""
+            if not mmu_unit.calibrator.check_calibrated(CALIBRATED_SELECTOR):
+                msg += "Calibration not complete\n"
+            msg += "Current selector gate angle positions are: %s degrees" % sel.servo_gate_angles
+            if sel.servo_release_angle >= 0:
+                msg += "\nRelease angle is fixed at: %s degrees" % sel.servo_release_angle
+            else:
+                msg += "\nRelease angles configured to be between each gate angle"
+            if sel.has_bypass():
+                msg += "\nBypass angle: %s" % sel.servo_bypass_angle
+            else:
+                msg += "\nBypass angle not configured"
+            self.mmu.log_info(msg)
+
+        elif angle is not None:
+            self.mmu.log_debug("Setting selector servo to angle: %d" % angle)
+            sel._set_servo_angle(angle)
+            sel.servo_state = FILAMENT_UNKNOWN_STATE
+
+        elif save:
+            if gate == TOOL_GATE_BYPASS:
+                sel.servo_bypass_angle = sel.servo_angle
+                mmu_unit.calibrator.var_manager.set(VARS_MMU_SELECTOR_BYPASS_ANGLE, sel.servo_bypass_angle, write=True, namespace=mmu_unit.name)
+                self.mmu.log_info("Servo angle '%d' for bypass position has been saved" % sel.servo_angle)
+            elif gate >= 0:
+                if single:
+                    sel.servo_gate_angles[gate] = sel.servo_angle
+                    mmu_unit.calibrator.var_manager.set(VARS_MMU_SELECTOR_ANGLES, sel.servo_gate_angles, write=True, namespace=mmu_unit.name)
+                    self.mmu.log_info("Servo angle '%d' for gate %d has been saved" % (sel.servo_angle, gate))
+                else:
+                    # If possible evenly distribute based on spacing
+                    angles = sel._generate_gate_angles(sel.servo_angle, gate, spacing)
+                    if angles:
+                        sel.servo_gate_angles = angles
+                        mmu_unit.calibrator.var_manager.set(VARS_MMU_SELECTOR_ANGLES, sel.servo_gate_angles, write=True, namespace=mmu_unit.name)
+                        self.mmu.log_info("Selector gate angle positions %s has been saved" % sel.servo_gate_angles)
+                    else:
+                        self.mmu.log_error("Not possible to distribute angles with separation of %.1f degrees with gate %d at %.1f%s" % (spacing, gate, sel.servo_angle, usage))
+            else:
+                self.mmu.log_error("No gate specified%s" % usage)
+        else:
+            self.mmu.log_always("Current selector servo angle: %d, Selector gate angle positions: %s" % (sel.servo_angle, sel.servo_gate_angles))
+
+        if not any(x == -1 for x in sel.servo_gate_angles):
+            mmu_unit.calibrator.mark_calibrated(CALIBRATED_SELECTOR)

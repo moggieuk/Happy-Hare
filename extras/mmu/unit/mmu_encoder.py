@@ -304,6 +304,10 @@ class MmuEncoder:
     def set_resolution(self, resolution):
         self.resolution = resolution
 
+        # The threshold (mm) that determines real encoder movement
+        # (set to 1.5 pulses of encoder. i.e. to allow one rougue pulse)
+        self.encoder_min = 1.5 * resolution
+
     def get_resolution(self):
         return self.resolution
 

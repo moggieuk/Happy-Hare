@@ -4643,14 +4643,6 @@ class MmuController:
         self.log_assertion("Gate %d has no unit! Assuming unit 0" % gate)
         return 0
 
-# PAUL moved to calibrator
-#    # Set the active gear stepper rotation distance
-#    def set_gear_rotation_distance(self, rd):
-#        if rd:
-#            self.log_trace("Setting gear motor rotation distance: %.4f" % rd)
-#            if self.gear_rail.steppers:
-#                self.gear_rail.steppers[0].set_rotation_distance(rd)
-
     def _moonraker_push_lane_data(self, gate_ids = None):
         gate_ids = [(i, self.gate_spool_id[i]) for i in range(self.num_gates)] if gate_ids is None else gate_ids
         if gate_ids:

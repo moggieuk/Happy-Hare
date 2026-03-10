@@ -37,6 +37,7 @@ from ....homing           import Homing, HomingMove
 # Happy Hare imports
 from ...mmu_constants     import *
 from ...mmu_utils         import MmuError
+from ...commands          import register_command
 from ...mmu_unit          import DRIVE_GEAR_ONLY
 from ..mmu_calibrator     import CALIBRATED_SELECTOR
 from .mmu_linear_selector import LinearSelector
@@ -155,7 +156,10 @@ class LinearSelectorServo:
             raise self.config.error("Selector servo not found")
 
         # Register GCODE commands specific to this module
-        selector.register_mux_command('MMU_SERVO', self.cmd_MMU_SERVO, desc=self.cmd_MMU_SERVO_help)
+        try:
+            register_command(MmuServoCommand)
+        except KeyError:
+            pass # Already registered
 
         self._reinit()
 
@@ -181,70 +185,6 @@ class LinearSelectorServo:
             self.servo_angles.update(servo_angles)
         except Exception as e:
             raise self.config.error("Exception whilst parsing servo angles from 'mmu_vars.cfg': %s" % str(e))
-
-
-    cmd_MMU_SERVO_help = "Move MMU servo to position specified position or angle"
-    cmd_MMU_SERVO_param_help = (
-        "MMU_SERVO: %s\n" % cmd_MMU_SERVO_help
-        + "UNIT   = #(int) Optional, defaults to all units\n"
-        + "RESET  = [0|1]  Clear saved calibration\n"
-        + "SAVE   = [0|1]  Save current position against pos if calibrating\n"
-        + "POS    = [off|up|move|down]\n"
-    )
-    def cmd_MMU_SERVO(self, gcmd):
-        """
-        Handle MMU_SERVO command for moving/calibrating the selector servo.
-
-        Supports RESET of saved angles, POS-based movement (off/up/move/down),
-        optional SAVE to persist the current angle for a named position, and
-        direct ANGLE=<n> movement when POS is omitted.
-        """
-        self.mmu.log_to_file(gcmd.get_commandline())
-        if self.mmu.check_if_disabled(): return
-
-        show_help = bool(gcmd.get_int('HELP', 0, minval=0, maxval=1))
-        reset = gcmd.get_int('RESET', 0)
-        save = gcmd.get_int('SAVE', 0)
-        pos = gcmd.get('POS', "").lower()
-
-        if show_help:
-            self.mmu.log_always(self.mmu.format_help(self.cmd_MMU_SERVO_param_help), color=True)
-            return
-
-        if reset:
-            self.mmu.delete_variable(VARS_MMU_SERVO_ANGLES, write=True)
-            self.mmu.log_info("Calibrated servo angles have be reset to configured defaults")
-        elif pos == "off":
-            self.servo_off() # For 'servo_always_active' case
-        elif pos == "up":
-            if save:
-                self._servo_save_pos(pos)
-            else:
-                self.servo_up()
-        elif pos == "move":
-            if save:
-                self._servo_save_pos(pos)
-            else:
-                self.servo_move()
-        elif pos == "down":
-            if self.mmu.check_if_bypass(): return
-            if save:
-                self._servo_save_pos(pos)
-            else:
-                self.servo_down()
-        elif save:
-            self.mmu.log_error("Servo position not specified for save")
-        elif pos == "":
-            if self.mmu.check_if_bypass(): return
-            angle = gcmd.get_int('ANGLE', None)
-            if angle is not None:
-                self.mmu.log_debug("Setting servo to angle: %d" % angle)
-                self._set_servo_angle(angle)
-            else:
-                self.mmu.log_always("Current servo angle: %d, Positions: %s" % (self.servo_angle, self.servo_angles))
-                self.mmu.log_info("Use POS= or ANGLE= to move position")
-        else:
-            self.mmu.log_error("Unknown servo position '%s'" % pos)
 
     def _set_servo_angle(self, angle):
         self.servo.set_position(angle=angle, duration=None if self.servo_always_active else self.servo_duration)
@@ -398,3 +338,96 @@ class LinearSelectorServo:
                      "Move" if self.servo_state == SERVO_MOVE_STATE else
                      "Unknown",
         }
+
+
+
+# -----------------------------------------------------------------------------------------------------------
+# MMU_SERVO command
+#  This "registered command" will be conditionally registered, then instantiated later by the main
+#  mmu_controller module when commands are loaded
+# -----------------------------------------------------------------------------------------------------------
+
+from ...commands.mmu_base_command import *
+
+class MmuServoCommand(BaseCommand):
+
+    CMD = "MMU_SERVO"
+
+    HELP_BRIEF = "Move MMU servo to position specified position or angle"
+    HELP_PARAMS = (
+        "MMU_SERVO: %s\n" % HELP_BRIEF
+        + "UNIT   = #(int) Optional, defaults to all units\n"
+        + "RESET  = [0|1]  Clear saved calibration\n"
+        + "SAVE   = [0|1]  Save current position against pos if calibrating\n"
+        + "POS    = [off|up|move|down]\n"
+    )
+    HELP_SUPPLEMENT = (
+        ""  # examples / supplement if desired
+    )
+
+    def __init__(self, mmu):
+        super().__init__(mmu)
+        self.register(
+            name=self.CMD,
+            handler=self._run,
+            help_brief=self.HELP_BRIEF,
+            help_params=self.HELP_PARAMS,
+            help_supplement=self.HELP_SUPPLEMENT,
+            category=CATEGORY_GENERAL,
+            per_unit=True,
+        )
+
+    def _run(self, gcmd, mmu_unit):
+        """
+        Handle MMU_SERVO command for moving/calibrating the selector servo.
+
+        Supports RESET of saved angles, POS-based movement (off/up/move/down),
+        optional SAVE to persist the current angle for a named position, and
+        direct ANGLE=<n> movement when POS is omitted.
+        """
+
+        if self.mmu.check_if_disabled(): return
+
+        if not hasattr(mmu_unit.selector, "servo"):
+            raise gmcd.error("No servo fitted to selector on MMU %s" % mmu_unit.name)
+
+        servo = mmu_unit.selector.servo
+
+        reset = gcmd.get_int('RESET', 0)
+        save = gcmd.get_int('SAVE', 0)
+        pos = gcmd.get('POS', "").lower()
+
+        if reset:
+            mmu_unit.mmu_machine.var_manager.delete(VARS_MMU_SERVO_ANGLES, namespace=mmu_unit.name, write=True)
+            self.mmu.log_info("Calibrated servo angles have be reset to configured defaults")
+        elif pos == "off":
+            servo.servo_off() # For 'servo_always_active' case
+        elif pos == "up":
+            if save:
+                servo._servo_save_pos(pos)
+            else:
+                servo.servo_up()
+        elif pos == "move":
+            if save:
+                servo._servo_save_pos(pos)
+            else:
+                servo.servo_move()
+        elif pos == "down":
+            if self.mmu.check_if_bypass(): return
+            if save:
+                servo._servo_save_pos(pos)
+            else:
+                servo.servo_down()
+        elif save:
+            self.mmu.log_error("Servo position not specified for save")
+        elif pos == "":
+            if self.mmu.check_if_bypass(): return
+            angle = gcmd.get_int('ANGLE', None)
+            if angle is not None:
+                self.mmu.log_debug("Setting servo to angle: %d" % angle)
+                servo._set_servo_angle(angle)
+            else:
+                self.mmu.log_always("Current servo angle: %d, Positions: %s" % (servo.servo_angle, servo.servo_angles))
+                self.mmu.log_info("Use POS= or ANGLE= to move position")
+        else:
+            self.mmu.log_error("Unknown servo position '%s'" % pos)
