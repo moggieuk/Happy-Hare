@@ -62,6 +62,7 @@ class MmuSyncFeedbackManager:
         # FlowGuard
         self.flowguard_enabled               = self.mmu.config.getint('flowguard_enabled', 1, minval=0, maxval=1)
         self.flowguard_max_relief            = self.mmu.config.getfloat('flowguard_max_relief', 8, above=1.)
+        self.flowguard_extreme_threshold     = self.mmu.config.getfloat('flowguard_extreme_threshold', 0.9, minval=0.2, maxval=0.95)
         self.flowguard_encoder_mode          = self.mmu.config.getint('flowguard_encoder_mode', 2, minval=0, maxval=2)
         self.flowguard_encoder_max_motion    = self.mmu.config.getfloat('flowguard_encoder_max_motion', 20, above=0.)
 
@@ -111,6 +112,14 @@ class MmuSyncFeedbackManager:
             if flowguard_enabled != self.flowguard_enabled:
                 self._config_flowguard_feature(flowguard_enabled)
             self.flowguard_max_relief = gcmd.get_float('FLOWGUARD_MAX_RELIEF', self.flowguard_max_relief, above=1.)
+            self.flowguard_extreme_threshold = gcmd.get_float('FLOWGUARD_EXTREME_THRESHOLD', self.flowguard_extreme_threshold, minval=0.2, maxval=0.95)
+            if self.ctrl:
+              self.ctrl.cfg.flowguard_relief_mm = self.flowguard_max_relief
+              self.ctrl.cfg.flowguard_extreme_threshold = self.flowguard_extreme_threshold
+            
+            # Apply new extruder sampling threshold immediately if we're active
+            if self.active and self.sync_feedback_enabled:
+              self.extruder_monitor.register_callback( self._handle_extruder_movement, self.sync_feedback_extrude_threshold )
 
         if self.mmu.has_encoder():
             mode = gcmd.get_int('FLOWGUARD_ENCODER_MODE', self.flowguard_encoder_mode, minval=0, maxval=2)
@@ -134,6 +143,7 @@ class MmuSyncFeedbackManager:
             msg += "\n\nFLOWGUARD:"
             msg += "\nflowguard_enabled = %d" % self.flowguard_enabled
             msg += "\nflowguard_max_relief = %.1f" % self.flowguard_max_relief
+            msg += "\nflowguard_extreme_threshold = %.2f" % self.flowguard_extreme_threshold
 
         if self.mmu.has_encoder():
             msg += "\nflowguard_encoder_mode = %d" % self.flowguard_encoder_mode
@@ -613,6 +623,7 @@ class MmuSyncFeedbackManager:
             use_twolevel_for_type_p = self.sync_feedback_force_twolevel,
             rd_start = rd_start,
             flowguard_relief_mm = self.flowguard_max_relief,
+            flowguard_extreme_threshold = self.flowguard_extreme_threshold,
         )
         self.ctrl = SyncController(cfg)
         return self.ctrl
