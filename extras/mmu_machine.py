@@ -100,11 +100,12 @@ class MmuMachine:
 #            elif hall_sensor_endstop == 'toolhead':
 #                self.toolhead_sensor = s
 
-        self.num_gates = 0     # Total number of vitual mmu gates
-        self.units = []        # Unit by index
-        self.unit_by_name = {} # Unit lookup by name
-        self.unit_by_gate = [] # Quick unit lookup by gate
-        self.unit_status = {}  # Aggregated status for backward comptability
+        self.num_gates = 0           # Total number gates on system
+        self.units = []              # Unit by index
+        self.unit_by_name = {}       # Unit lookup by name
+        self.unit_by_gate = []       # Quick unit lookup by gate
+        self.unit_status = {}        # Aggregated status for backward comptability
+        self.unit_with_bypass = None # Unit with selectable bypass (only one allowed)
 
         logging.info("MMU: Loaded [%s]" % config.get_name())
 
@@ -121,8 +122,11 @@ class MmuMachine:
             self.units.append(unit)
             self.unit_by_name[name] = unit
             self.unit_by_gate[self.num_gates:self.num_gates + unit.num_gates] = [unit] * unit.num_gates
-
             self.unit_status["unit_%d" % i] = unit.get_status(0)
+            if unit.has_bypass:
+                if self.unit_with_bypass is not None:
+                    raise config.error("Only one mmu_unit can have bypass gate. Configured on %s and %s" % (self.unit_with_bypass.name, unit.name))
+                self.unit_with_bypass = unit
 
             self.num_gates += unit.num_gates
 
@@ -166,6 +170,8 @@ class MmuMachine:
     def get_mmu_unit_by_gate(self, gate):
         if gate >= 0 and gate < self.num_gates:
             return self.unit_by_gate[gate]
+        if gate == TOOL_GATE_BYPASS:
+            return self.unit_with_bypass
         return None
 
     def get_mmu_unit_by_name(self, name):

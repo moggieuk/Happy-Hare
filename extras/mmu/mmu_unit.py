@@ -427,7 +427,7 @@ class MmuUnit:
                 if sensor is not None
             )
 
-        gear_rail = self.mmu_toolhead.get_kinematics().rails[1]
+        gear_rail = self.mmu_toolhead.get_kinematics().rails[1] # PAUL temp this block should iterate over all necessary mmu_extruder_steppers
         for sensor in iter_endstop_sensors():
             sensor_name = sensor.runout_helper.name
             logging.info("PAUL: creating endstop for unit=%s, sensor.name=%s" % (self.name, sensor_name))

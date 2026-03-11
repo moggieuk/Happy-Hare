@@ -160,10 +160,8 @@ class MmuEnvironmentManager:
         and look up appropriate heator and environemnt sensor objects directly
         """
         return {
-            'drying_state': list(self._drying_state)
+            'drying_state': list(self._drying_state) # PAUL this may not require a new list because the aggregator in mmu controller create a new one each time
         }
-# PAUL
-        return list(self._drying_state) # PAUL this may not require a new list because the aggregator in mmu controller create a new one each time
 
 
     #

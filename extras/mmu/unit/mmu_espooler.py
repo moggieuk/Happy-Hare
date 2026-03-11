@@ -511,7 +511,6 @@ class MmuESpooler:
     # -------------------------------------------------------------------------------------------------------------------
 
     def get_status(self, eventtime):
-# PAUL
         return {
             'espooler': [v[0] for v in self.operation.values()]
         }

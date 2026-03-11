@@ -416,7 +416,7 @@ class MmuLedManager:
                 )
 
     # Called when gate map is updated to update LEDs
-    # (this could be changed to klipper event)
+    # (TODO this could be changed to klipper event)
     def gate_map_changed(self, gate):
         if gate is not None and gate < 0:
             gate = None

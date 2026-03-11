@@ -111,7 +111,8 @@ class MmuLedEffect:
  
         c = config.getsection(section_to)
         led_effect = _ledEffect(c)
-        logging.info("MMU: Created: %s on %s" % (c.get_name(), leds))
+        #logging.info("MMU: Created: %s on %s" % (c.get_name(), leds))
+
         # Register _led_effect with klipper
         # NOTE: Not currently registering to reduce printer variables and unecessary get status() calls
         #self.printer.add_object(c.get_name(), led_effect)

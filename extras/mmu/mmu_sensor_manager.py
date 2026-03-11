@@ -108,9 +108,8 @@ class MmuSensorManager:
         self.mmu.printer.register_event_handler("mmu:gate_selected", self._handle_gate_selected)
         self.mmu.printer.register_event_handler("mmu:unit_selected", self._handle_unit_selected)
 
-## From v340 vvv
-#        mmu_sensors = self.mmu.printer.lookup_object("mmu_sensors") # PAUL use this instead
-#        self.all_sensors = mmu_sensors.sensors # PAUL use this instead
+## PAUL Don't ,think we need this or can gate homing be extruder sensor in v4?
+# From v340 vvv
 #        # Special case for "no bowden" (one unit) designs where mmu_gate is an alias for extruder sensor
 #        if not self.mmu.mmu_machine.require_bowden_move and self.all_sensors.get(self.mmu.SENSOR_EXTRUDER_ENTRY, None) and self.mmu.SENSOR_GATE not in self.all_sensors:
 #            self.all_sensors[self.mmu.SENSOR_GATE] = self.all_sensors[self.mmu.SENSOR_EXTRUDER_ENTRY]
@@ -126,31 +125,6 @@ class MmuSensorManager:
         logging.info("PAUL: bypass_sensor_map=%s\n" % self.bypass_sensor_map)
         logging.info("PAUL: active_sensosr_map=%s\n" % self.active_sensors_map)
 # PAUL ^^^
-
-# Orig v4... vvv
-# TEMP COMMENT .. moving to mmu_unit
-#        # Setup filament sensors as homing (endstops) on respective mmu_unit
-#        for i, sensors in enumerate(self.unit_sensors):
-#            unit = self.mmu_machine.get_mmu_unit_by_index(i)
-#            gear_rail = unit.mmu_toolhead.get_kinematics().rails[1]
-#            for name, sensor in self.unit_sensors[i].items():
-#                if not name.startswith(SENSOR_PRE_GATE_PREFIX):
-#                    logging.info("PAUL: creating endstop for unit=%d, sensor.name=%s" % (i, sensor.runout_helper.name))
-#                    sensor_pin = sensor.runout_helper.switch_pin
-#                    ppins = self.mmu.printer.lookup_object('pins')
-#                    pin_params = ppins.parse_pin(sensor_pin, True, True)
-#                    share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
-#                    ppins.allow_multi_use_pin(share_name) # can this be called more than once?
-#                    if name not in gear_rail.get_extra_endstop_names():
-#                        mcu_endstop = gear_rail.add_extra_endstop(sensor_pin, name) # paul results in shared gate, compression and tension endtop names!
-#
-#                    # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
-#                    # otherwise the extruder can continue to move a small (speed dependent) distance
-#                    if unit.extruder_stepper_obj() is not None and name in [SENSOR_TOOLHEAD, SENSOR_COMPRESSION, SENSOR_TENSION]:
-#                        mcu_endstop.add_stepper(unit.extruder_stepper_obj().stepper)
-#                else:
-#                    logging.warning("MMU: Filament sensor %s is not defined in [mmu_sensors]" % name)
-# Orig v4... ^^^
 
 
     def _handle_gate_selected(self, gate):
@@ -169,6 +143,7 @@ class MmuSensorManager:
         """
         self.mmu.log_info("PAUL: handle_unit_selected(%d)" % unit)
         # We do this in two steps to allow sensor sharing
+
         # First ensure any excluded sensor is completely deactivated
         for sname, sensor in self.all_sensors_map.items():
             if re.match(r'^unit\d+_', sname) and not sname.startswith("unit%d_" % unit):
@@ -181,8 +156,11 @@ class MmuSensorManager:
                 sensor.runout_helper.enable_button_feedback(True)
 
 
-    # Return dict of all sensor states for just active or all sensors (returns None if sensor disabled)
     def get_active_sensors(self, all_sensors=False):
+        """
+        Return dict of all sensor states for just active or all sensors
+        (returns None if sensor disabled)
+        """
         logging.info("PAUL: active_sensors_map=%s", self.active_sensors_map)
         sensor_map = self.all_sensors_map if all_sensors else self.active_sensors_map
         return {
@@ -190,6 +168,7 @@ class MmuSensorManager:
                     if sensor.runout_helper.sensor_enabled else None)
             for sname, sensor in sensor_map.items()
         }
+
 
     def get_unit_sensors(self, unit):
         sensor_map = self.unit_sensors[unit]
@@ -199,11 +178,13 @@ class MmuSensorManager:
             for sname, sensor in sensor_map.items()
         }
 
+
     def has_sensor(self, sname):
         if sname in self.active_sensors_map:
             return self.active_sensors_map[sname].runout_helper.sensor_enabled
         else:
             return False
+
 
     # Note this looks at sensors on non-active gate
     def has_gate_sensor(self, sname, gate):
@@ -213,18 +194,33 @@ class MmuSensorManager:
         else:
             return False
 
+
     def get_gate_sensor_name(self, sname, gate):
+        """
+        Returns generic sensor name with added "_<gate#>" suffix
+        """
         return "%s_%d" % (sname, gate)
 
+
     def get_unit_sensor_name(self, sname, unit):
+        """
+        Returns generic sensor name with added "<unit#>_" prefix
+        """
         return "unit%d_%s" % (unit, sname)
 
+
     def get_unitless_sensor_name(self, name):
+        """
+        Returns sensor name stripped of unit prefix
+        """
         return re.sub(r'unit_\d+_', '', name)
 
-    # Get unit or gate specific endstop if it exists
-    # Take generic name and look for "<unit>_genericName" and "genericName_<gate>"
+
     def get_mapped_endstop_name(self, endstop_name):
+        """
+        Get unit or gate specific endstop if it exists
+        Take generic name and look for "<unit#>_genericName" and "genericName_<gate#>"
+        """
         if endstop_name in [SENSOR_GATE, SENSOR_COMPRESSION, SENSOR_TENSION]:
             return self.get_unit_sensor_name(endstop_name, mmu.unit_selected)
 
@@ -233,130 +229,182 @@ class MmuSensorManager:
 
         return endstop_name
 
-    # Return sensor state or None if not installed
+
     def check_sensor(self, name):
+        """
+        Return sensor state or None if unavailable/disabled.
+        """
         sensor = self.active_sensors_map.get(name, None)
         if sensor is not None and sensor.runout_helper.sensor_enabled:
-            detected = bool(sensor.runout_helper.filament_present)
-            return detected
-        else:
-            return None
+            return bool(sensor.runout_helper.filament_present)
+        return None
 
-    # Return per-gate sensor state or None if not installed
+
     def check_gate_sensor(self, name, gate):
+        """
+        Return per-gate sensor state or None if unavailable/disabled.
+        """
         sensor_name = self.get_gate_sensor_name(name, gate)
         sensor = self.all_sensors_map.get(sensor_name, None)
         if sensor is not None and sensor.runout_helper.sensor_enabled:
-            detected = bool(sensor.runout_helper.filament_present)
-            return detected
-        else:
-            return None
+            return bool(sensor.runout_helper.filament_present)
+        return None
 
-    # Returns True if ALL sensors before position detect filament
-    #         None if NO sensors available (disambiguate from non-triggered sensor)
-    # Can be used as a "filament continuity test"
+
     def check_all_sensors_before(self, pos, gate, loading=True):
+        """
+        Return True if all sensors before position detect filament.
+        Returns None if no sensors are available.
+        """
         sensors = self.get_sensors_before(pos, gate, loading)
-        if all(state is None for state in sensors.values()):
-            return None
+        if all(state is None for state in sensors.values()): return None
         return all(state is not False for state in sensors.values())
 
-    # Returns True if ANY sensor before position detects filament
-    #         None if NO sensors available (disambiguate from non-triggered sensor)
-    # Can be used as a filament visibility test over a portion of the travel
+
     def check_any_sensors_before(self, pos, gate, loading=True):
+        """
+        Return True if any sensor before position detects filament.
+        Returns None if no sensors are available.
+        """
         sensors = self.get_sensors_before(pos, gate, loading)
-        if all(state is None for state in sensors.values()):
-            return None
+        if all(state is None for state in sensors.values()): return None
         return any(state is True for state in sensors.values())
 
-    # Returns True if ALL sensors after position detect filament
-    #         None if NO sensors available (disambiguate from non-triggered sensor)
-    # Can be used as a "filament continuity test"
+
     def check_all_sensors_after(self, pos, gate, loading=True):
+        """
+        Return True if all sensors after position detect filament.
+        Returns None if no sensors are available.
+        """
         sensors = self.get_sensors_after(pos, gate, loading)
-        if all(state is None for state in sensors.values()):
-            return None
+        if all(state is None for state in sensors.values()): return None
         return all(state is not False for state in sensors.values())
 
-    # Returns True if ANY sensor after position detects filament
-    #         None if no sensors available (disambiguate from non-triggered sensor)
-    # Can be used to validate position
+
     def check_any_sensors_after(self, pos, gate, loading=True):
+        """
+        Return True if any sensor after position detects filament.
+        Returns None if no sensors are available.
+        """
         sensors = self.get_sensors_after(pos, gate, loading)
-        if all(state is None for state in sensors.values()):
-            return None
+        if all(state is None for state in sensors.values()): return None
         return any(state is True for state in sensors.values())
 
-    # Returns True if all sensors in current filament path are triggered
-    #         None if no sensors available (disambiguate from non-triggered sensor)
+
     def check_all_sensors_in_path(self):
+        """
+        Return True if all sensors in the active filament path are triggered.
+        Returns None if no sensors are available.
+        """
         sensors = self.get_sensors_before(FILAMENT_POS_LOADED, self.mmu.gate_selected)
-        if all(state is None for state in sensors.values()):
-            return None
+        if all(state is None for state in sensors.values()): return None
         return all(state is not False for state in sensors.values())
 
-    # Returns True if any sensors in current filament path are triggered (EXCLUDES pre-gate)
-    #         None if no sensors available (disambiguate from non-triggered sensor)
+
     def check_any_sensors_in_path(self):
+        """
+        Return True if any sensor in the active filament path is triggered.
+        Excludes pre-gate sensors. Returns None if no sensors are available.
+        """
         sensors = self.get_all_sensors_for_gate(self.mmu.gate_selected)
-        if all(state is None for state in sensors.values()):
-            return None
+        if all(state is None for state in sensors.values()): return None
         return any(state is True for state in sensors.values())
 
-    # Returns True is any sensors in filament path are not triggered
-    #         None if no sensors available (disambiguate from non-triggered sensor)
-    # Can be used to spot failure in "continuity" i.e. runout
+
     def check_for_runout(self):
+        """
+        Return True if any sensor in the filament path reports runout.
+        Returns None if no sensors are available.
+        """
         sensors = self.get_sensors_before(FILAMENT_POS_LOADED, self.mmu.gate_selected)
-        if all(state is None for state in sensors.values()):
-            return None
+        if all(state is None for state in sensors.values()): return None
         return any(state is False for state in sensors.values())
 
-    # Error with explanation if any filament sensors don't detect filament
+
     def confirm_loaded(self):
+        """
+        Raise an error if any sensor in the filament path fails to detect filament.
+        """
         sensors = self.get_sensors_before(FILAMENT_POS_LOADED, self.mmu.gate_selected)
         if any(state is False for state in sensors.values()):
-            MmuError("Loaded check failed:\nFilament not detected by sensors: %s" % ', '.join([name for name, state in sensors.items() if state is False]))
+            MmuError("Loaded check failed:\nFilament not detected by sensors: %s" %
+                     ', '.join([n for n, s in sensors.items() if s is False]))
+
 
     def enable_runout(self, gate):
         logging.info("PAUL: enable_runout(gate=%d)" % gate)
         self._set_sensor_runout(True, gate)
 
+
     def disable_runout(self, gate):
         logging.info("PAUL: disable_runout(gate=%d)" % gate)
         self._set_sensor_runout(False, gate)
+
 
     def _set_sensor_runout(self, enable, gate):
         for name, sensor in self.active_sensors_map.items():
             sensor.runout_helper.enable_runout(enable and gate >= 0)
 
-    # Defines sensors and relationship to filament_pos state for easy filament tracing
+
     def _get_sensors(self, pos, gate, position_condition):
-        result = {}
+        """
+        Common helper that defines sensors and relationship to filament_pos state for easy filament tracing.
+        Returns {sensor_name: True/False/None} where None means sensor disabled.
+        """
+        def read_sensor(name):
+            sensor = self.active_sensors_map.get(name)
+            if not sensor:
+                return None, None # (exists, value)
+            if not sensor.runout_helper.sensor_enabled:
+                return True, None
+            return True, bool(sensor.runout_helper.filament_present)
+
+        sensor_selection = []
+
         if gate >= 0:
             # Note: For gear sensor the position of POS_HOMED_GATE is only valid if is not usually triggered (i.e. parking retract)
+            u = self.mmu_machine.get_mmu_unit_by_gate(gate)
+
+            gear_homed_pos = None
+            is_gear_homing_endstop = (u.p.gate_homing_endstop == SENSOR_GEAR_PREFIX)
+            not_parking_retract = (u.p.gate_parking_distance <= 0) # PAUL check parking distance sign with v4 - direction reversed!
+            if is_gear_homing_endstop and not_parking_retract:
+                gear_homed_pos = FILAMENT_POS_HOMED_GATE
+
             sensor_selection = [
                 (SENSOR_PRE_GATE_PREFIX, None),
-                (SENSOR_GEAR_PREFIX, FILAMENT_POS_HOMED_GATE if self.mmu.UNIT.p.gate_homing_endstop == SENSOR_GEAR_PREFIX and self.mmu.UNIT.p.gate_parking_distance <= 0 else None), # PAUL check parking distance sign with v4
+                (SENSOR_GEAR_PREFIX, gear_homed_pos),
                 (SENSOR_GATE, FILAMENT_POS_HOMED_GATE),
                 (SENSOR_EXTRUDER_ENTRY, FILAMENT_POS_HOMED_ENTRY),
                 (SENSOR_TOOLHEAD, FILAMENT_POS_HOMED_TS),
             ]
-            for name, position_check in sensor_selection:
-                sensor = self.active_sensors_map.get(name, None)
-                if sensor and position_condition(pos, position_check):
-                    result[name] = bool(sensor.runout_helper.filament_present) if sensor.runout_helper.sensor_enabled else None
-        return result # TODO handle bypass and return only EXTRUDER_ENTRY and TOOLHEAD sensors
+
+        elif gate == TOOL_GATE_BYPASS:
+            sensor_selection = [
+                (SENSOR_EXTRUDER_ENTRY, FILAMENT_POS_HOMED_ENTRY),
+                (SENSOR_TOOLHEAD, FILAMENT_POS_HOMED_TS),
+            ]
+
+        result = {}
+        for name, position_check in sensor_selection:
+            exists, value = read_sensor(name)
+            if exists and position_condition(pos, position_check):
+                result[name] = value
+
+        return result
+
 
     def get_sensors_before(self, pos, gate, loading=True):
         return self._get_sensors(pos, gate, lambda p, pc: pc is None or (loading and p >= pc) or (not loading and p > pc))
 
+
     def get_sensors_after(self, pos, gate, loading=True):
         return self._get_sensors(pos, gate, lambda p, pc: pc is not None and ((loading and p < pc) or (not loading and p <= pc)))
 
+
     def get_all_sensors_for_gate(self,  gate):
         return self._get_sensors(-1, gate, lambda p, pc: pc is not None)
+
 
     def get_status(self, eventtime=None):
         result = {
