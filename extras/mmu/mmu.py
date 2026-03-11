@@ -663,6 +663,7 @@ class Mmu:
 
         # Initializer tasks
         self.gcode.register_command('__MMU_BOOTUP', self.cmd_MMU_BOOTUP, desc = self.cmd_MMU_BOOTUP_help) # Bootup tasks
+        self._verify_duplicate_mcu()
 
         # Load development test commands
         _ = MmuTest(self)
@@ -697,6 +698,21 @@ class Mmu:
         self.reinit()
         self._reset_statistics()
         self.counters = {}
+    
+    def _verify_duplicate_mcu(self):
+        main_mcu = self.config.getsection('mcu') # Main MCU is guaranteed
+        mmu_mcu = self.config.getsection('mcu mmu') # MMU MCU is common, but not guaranteed
+        if mmu_mcu.get('serial').strip() == main_mcu.get('serial').strip():
+            # Duplicate MCU serials!
+            # Klippy will give a possibly confusing error after a connection delay:
+            # Resource temporarily unavailable
+            # We can show the user an easier-to-understand message
+            raise self.config.error(
+                'Printer MCU and MMU MCU have the same serial address.\n' \
+                'Please either change the serial parameter in [mcu mmu] ' \
+                'in mmu/base/mmu.cfg, or remove it if you are not using ' \
+                'an external MMU MCU.'
+            )
 
     # Initialize MMU hardare. Note that logging not set up yet so use main klippy logger
     def _setup_mmu_hardware(self, config):
