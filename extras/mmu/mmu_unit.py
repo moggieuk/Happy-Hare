@@ -21,7 +21,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import logging, importlib, math, os, time, re
+import logging, importlib, math, os, time, re, traceback
 from dataclasses                        import dataclass, replace
 from itertools                          import chain
 
@@ -593,21 +593,36 @@ class MmuUnit:
             return True
         if gate == TOOL_GATE_BYPASS and self.selector.has_bypass(): # PAUL check has_bypass logic
             return True
-        return self.first_gate <= gate < self.first_gate + self.num_gates
+        return (self.first_gate <= gate < self.first_gate + self.num_gates)
 
     def gate_range(self):
         return self.first_gate, self.first_gate + self.num_gates - 1
 
-    # Convert mmu_machine gate number to relative gate on mmu_unit
+
     def local_gate(self, gate, force_physical=False):
+        """
+        Convert mmu_machine gate number to relative gate on mmu_unit
+        Args:
+          'force_physical' will default to local gate 0 if bypass/unknown
+           and is safe for when using result for array lookup
+        """
         if gate >=0 and self.manages_gate(gate):
             lgate = gate - self.first_gate
         elif gate < 0:
             lgate = gate # bypass/unknown
         else:
-            self.mmu.log_assertion("Fatal: Gate %d is not managed by unit %s" % (gate, self.name))
+            self.mmu.log_assertion("Fatal: Gate %d is not managed by %s" % (gate, self.name))
             lgate = TOOL_GATE_UNKNOWN
+
         return lgate if not force_physical else max(0, lgate)
+
+
+    def logical_gate(self, lgate):
+        """
+        Convert mmu_unit local gate number to logical mmu_machine number
+        """
+        if lgate < 0: return lgate # Leave bypass/unknown as is
+        return lgate + self.first_gate
 
 
     # Return gear name associated with gate
@@ -1275,7 +1290,7 @@ class MmuKinematics:
         # Setup "axis" rails
         self.rails = []
         if self.mmu_unit.selector_type in ['LinearSelector', 'LinearServoSelector', 'LinearMultiGearSelector', 'RotarySelector']:
-            self.rails.append(MmuLookupMultiRail(config.getsection(self.mmu_unit.selector_stepper), need_position_minmax=False, default_position_endstop=0.)) # PAUL need_position_minmax was True
+            self.rails.append(MmuLookupMultiRail(config.getsection(self.mmu_unit.selector_stepper), need_position_minmax=False, default_position_endstop=0.))
             self.rails[0].setup_itersolve('cartesian_stepper_alloc', b'x')
         elif self.mmu_unit.selector_type in ['IndexedSelector']:
             self.rails.append(MmuLookupMultiRail(config.getsection(self.mmu_unit.selector_stepper), need_position_minmax=False, default_position_endstop=0.))
@@ -1325,6 +1340,7 @@ class MmuKinematics:
                 continue
             rail = self.rails[axis]
             position_min, position_max = rail.get_range()
+            logging.info("PAUL: ======= pos_min/max = %s, %s" % (position_min, position_max))
             hi = rail.get_homing_info()
             homepos = [None, None, None, None]
             homepos[axis] = hi.position_endstop

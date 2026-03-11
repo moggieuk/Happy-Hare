@@ -15,11 +15,9 @@
 
 # Happy Hare imports
 from ..mmu_constants     import *
-from ..mmu_utils         import MmuError
+from ..mmu_utils         import MmuError, DebugStepperMovement
 from .mmu_base_command   import *
 from .mmu_command_mixins import MoveMixin
-
-# PAUL FIX: Assumes DebugStepperMovement is available in MMU runtime contex
 
 
 class MmuTestMoveCommand(MoveMixin, BaseCommand):

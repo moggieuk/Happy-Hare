@@ -196,13 +196,13 @@ VARS_MMU_COUNTERS                  = "mmu_statistics_counters"
 
 # Per-encoder variables (calibration)
 VARS_MMU_ENCODER_RESOLUTION        = "mmu_encoder_resolution"
-VARS_MMU_CALIB_ENCODER_CLOG_LENGTH = "mmu_calibration_encoder_clog_length"
+VARS_MMU_ENCODER_CLOG_LENGTH       = "mmu_encoder_clog_length"
 
 # Per-unit variables
 VARS_MMU_GATE_STATISTICS_PREFIX    = "mmu_statistics_gate_"
 VARS_MMU_GEAR_ROTATION_DISTANCES   = "mmu_gear_rotation_distances"
-VARS_MMU_CALIB_BOWDEN_LENGTHS      = "mmu_calibration_bowden_lengths" # Per-gate calibrated bowden lengths
-VARS_MMU_CALIB_BOWDEN_HOME         = "mmu_calibration_bowden_home"    # Was encoder, gate or gear sensor used as reference point
+VARS_MMU_BOWDEN_LENGTHS            = "mmu_bowden_lengths"             # Per-gate calibrated bowden lengths
+VARS_MMU_BOWDEN_HOME               = "mmu_bowden_home"                # Was encoder, gate or gear sensor used as reference point
 
 # Per-unit selector
 VARS_MMU_SELECTOR_OFFSETS          = "mmu_selector_offsets"

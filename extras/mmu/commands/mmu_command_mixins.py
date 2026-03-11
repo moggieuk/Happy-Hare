@@ -103,7 +103,7 @@ class MoveMixin:
         accel = gcmd.get_float('ACCEL', None)
         motor = gcmd.get('MOTOR', "gear")
         wait = bool(gcmd.get_int('WAIT', 1, minval=0, maxval=1)) # Wait for move to complete (make move synchronous)
-        s = self.mmu_unit().selector
+        s = self.mmu.selector()
 
         if motor not in ["gear", "extruder", "gear+extruder", "synced"]:
             raise gcmd.error("Valid motor names are 'gear', 'extruder', 'gear+extruder' or 'synced'")
@@ -126,7 +126,7 @@ class MoveMixin:
         speed = gcmd.get_float('SPEED', None)
         accel = gcmd.get_float('ACCEL', None) # Ignored for extruder led moves
         motor = gcmd.get('MOTOR', "gear")
-        s = self.mmu_unit().selector
+        s = self.mmu.selector()
 
         if motor not in ["gear", "extruder", "gear+extruder"]:
             raise gcmd.error("Valid motor names are 'gear', 'extruder', 'gear+extruder'")

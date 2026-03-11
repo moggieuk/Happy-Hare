@@ -96,7 +96,7 @@ class IndexedSelector(PhysicalSelector):
         """
         if self.mmu.check_if_bypass(): return
         with self.mmu.wrap_action(ACTION_HOMING):
-            self.mmu.log_info("Homing MMU...")
+            self.mmu.log_info("Homing MMU %s..." % self.mmu_unit.name)
             if force_unload is not None:
                 self.mmu.log_debug("(asked to %s)" % ("force unload" if force_unload else "not unload"))
             if force_unload is True:

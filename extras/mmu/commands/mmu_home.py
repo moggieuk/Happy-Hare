@@ -66,14 +66,22 @@ class MmuHomeCommand(BaseCommand):
                 self.mmu.home_unit(mmu_unit, force_unload=force_unload)
                 self.mmu.log_always("Homed")
 
-                # Select chosen gate for tool if on this unit
+                # Always select chosen tool
                 if tool == TOOL_GATE_BYPASS:
-                    if mmu_unit.manages_gate(TOOL_GATE_BYPASS):
-                        self.mmu.select_bypass()
+                    self.mmu.select_bypass()
                 elif tool >= 0:
                     gate = self.mmu.ttg_map[tool]
-                    if mmu_unit.manages_gate(gate):
-                        self.mmu.select_tool(tool)
+                    self.mmu.select_tool(tool)
+
+# PAUL
+#                # Select chosen gate for tool if on this unit
+#                if tool == TOOL_GATE_BYPASS:
+#                    if mmu_unit.manages_gate(TOOL_GATE_BYPASS):
+#                        self.mmu.select_bypass()
+#                elif tool >= 0:
+#                    gate = self.mmu.ttg_map[tool]
+#                    if mmu_unit.manages_gate(gate):
+#                        self.mmu.select_tool(tool)
 
         except MmuError as ee:
             self.mmu.handle_mmu_error(str(ee))

@@ -71,7 +71,7 @@ class MmuSyncFeedback:
 
     def reinit(self):
         pass
-# PAUL fix me
+# PAUL FIX ME
 #        self.mmu_unit.extruder_monitor.enable() # PAUL probably should be in unit class?  Remember monitor could be shared
 
 
@@ -90,7 +90,7 @@ class MmuSyncFeedback:
     # Sync feedback manager public access...
     #
 
-    def set_default_rd(self): # PAUL better to call this set_starting_rd()
+    def set_default_rd(self):
         """
         Ensure correct starting rotation distance
         """
@@ -99,6 +99,7 @@ class MmuSyncFeedback:
 
         rd = self.mmu_unit.calibrator.get_gear_rd(gate)
         self.mmu.log_debug("MmuSyncFeedback: Setting default rotation distance for gate %d to %.4f" % (gate, rd))
+        self.mmu.log_info("PAUL: calling calibrator %s" % self.mmu_unit.calibrator.mmu_unit.name)
         self.mmu_unit.calibrator.set_gear_rd(rd)
 
 
@@ -158,7 +159,7 @@ class MmuSyncFeedback:
         # Figure out the correct detection length based on mode
         cdl = self.p.flowguard_encoder_max_motion
         if mode == ENCODER_RUNOUT_AUTOMATIC:
-            cdl = self.mmu_machine.var_manager.save_variables.allVariables.get(VARS_MMU_CALIB_ENCODER_CLOG_LENGTH, cdl)
+            cdl = self.mmu_machine.var_manager.save_variables.allVariables.get(VARS_MMU_ENCODER_CLOG_LENGTH, cdl)
 
         # Notify sensor of detection length
         self.mmu_unit.encoder.set_clog_detection_length(cdl)
@@ -184,7 +185,7 @@ class MmuSyncFeedback:
         return 0.0, None
 
 
-    def wipe_telemetry_logs(self): # PAUL make sure telemetry log append unit_name
+    def wipe_telemetry_logs(self):
         """
         Called to wipe any sync debug files on print start
         """

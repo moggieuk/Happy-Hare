@@ -23,6 +23,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
+
 import logging, math, contextlib
 
 # Happy Hare imports
@@ -35,6 +36,8 @@ class MmuError(Exception):
     """
     pass
 
+
+# -----------------------------------------------------------------------------------------------------------
 
 class SaveVariableManager:
     """
@@ -74,12 +77,14 @@ class SaveVariableManager:
 
         self.printer.register_event_handler("klippy:ready", self.handle_ready)
 
+
     def handle_ready(self):
         """
         Enable writes once Klipper is ready and flush any pending updates.
         """
         self._can_write_variables = True # This prevents early writes until klipper is ready
         self.write()                     # Flush anything that was pending
+
 
     def namespace(self, variable, namespace):
         """
@@ -89,11 +94,13 @@ class SaveVariableManager:
             return variable.replace("mmu_", "mmu_%s_" % namespace)
         return variable
 
+
     def get(self, variable, default, namespace=None):
         """
         Get a variable value from save_variables with optional namespacing.
         """
         return self.save_variables.allVariables.get(self.namespace(variable, namespace), default)
+
 
     def set(self, variable, value, namespace=None, write=False):
         """
@@ -103,6 +110,7 @@ class SaveVariableManager:
         if write:
             self.write()
 
+
     def delete(self, variable, namespace=None, write=False):
         """
         Delete a variable with optional namespacing and optional immediate write.
@@ -110,6 +118,7 @@ class SaveVariableManager:
         _ = self.save_variables.allVariables.pop(self.namespace(variable, namespace), None)
         if write:
             self.write()
+
 
     def write(self):
         """
@@ -119,6 +128,7 @@ class SaveVariableManager:
             mmu_vars_revision = self.save_variables.allVariables.get(VARS_MMU_REVISION, 0) + 1
             self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (VARS_MMU_REVISION, mmu_vars_revision))
 
+
     def upgrade(self, variable, namespace): # PAUL need this method?
         """
         Move a variable to a namespaced key (if it exists), then delete the old key.
@@ -127,6 +137,7 @@ class SaveVariableManager:
         if val is not None:
             self.set(variable, val, namespace)
             self.delete(variable)
+
 
     @contextlib.contextmanager
     def wrap_suspend_write_variables(self):
@@ -141,7 +152,8 @@ class SaveVariableManager:
             self.write()
 
 
-# Internal testing class for debugging synced movement
+# -----------------------------------------------------------------------------------------------------------
+
 class DebugStepperMovement:
     """
     Context manager for debugging synced gear/extruder/rail movement.
@@ -157,6 +169,7 @@ class DebugStepperMovement:
         self.mmu = mmu
         self.debug = debug
 
+
     def __enter__(self):
         """
         Capture starting positions/steps if debugging is enabled.
@@ -167,6 +180,7 @@ class DebugStepperMovement:
             self.e_steps0 = self.mmu.mmu_extruder_stepper.stepper.get_mcu_position()
             self.e_pos0 = self.mmu.mmu_extruder_stepper.stepper.get_commanded_position()
             self.rail_pos0 = self.mmu.mmu_toolhead.get_position()[1]
+
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """
@@ -185,6 +199,8 @@ class DebugStepperMovement:
             self.mmu.log_always("Rail movement: %.4fmm" % (rail_pos1 - self.rail_pos0))
 
 
+# -----------------------------------------------------------------------------------------------------------
+
 class PurgeVolCalculator:
     """
     Compute purge volume for a color change using RGB/HSV-based heuristics.
@@ -197,6 +213,7 @@ class PurgeVolCalculator:
         self.min_purge_vol = min_purge_vol
         self.max_purge_vol = max_purge_vol
         self.multiplier = multiplier
+
 
     def calc_purge_vol_by_rgb(self, src_r, src_g, src_b, dst_r, dst_g, dst_b):
         """
@@ -233,6 +250,7 @@ class PurgeVolCalculator:
 
         return purge_volume
 
+
     def calc_purge_vol_by_hex(self, src_clr, dst_clr):
         """
         Calculate purge volume for a transition from source hex to destination hex.
@@ -240,6 +258,7 @@ class PurgeVolCalculator:
         src_rgb = self.hex_to_rgb(src_clr)
         dst_rgb = self.hex_to_rgb(dst_clr)
         return self.calc_purge_vol_by_rgb(*(src_rgb + dst_rgb))
+
 
     @staticmethod
     def RGB2HSV(r, g, b):
@@ -262,12 +281,14 @@ class PurgeVolCalculator:
         v = Cmax
         return h, s, v
 
+
     @staticmethod
     def to_radians(degree):
         """
         Convert degrees to radians.
         """
         return degree / 180.0 * math.pi
+
 
     @staticmethod
     def get_luminance(r, g, b):
@@ -276,12 +297,14 @@ class PurgeVolCalculator:
         """
         return r * 0.3 + g * 0.59 + b * 0.11
 
+
     @staticmethod
     def calc_triangle_3rd_edge(edge_a, edge_b, degree_ab):
         """
         Compute the third triangle edge using law of cosines (angle in degrees).
         """
         return math.sqrt(edge_a * edge_a + edge_b * edge_b - 2 * edge_a * edge_b * math.cos(PurgeVolCalculator.to_radians(degree_ab)))
+
 
     @staticmethod
     def DeltaHS_BBS(h1, s1, v1, h2, s2, v2):
@@ -296,6 +319,7 @@ class PurgeVolCalculator:
         dxy = math.sqrt(dx * dx + dy * dy)
 
         return min(1.2, dxy)
+
 
     @staticmethod
     def hex_to_rgb(hex_color):

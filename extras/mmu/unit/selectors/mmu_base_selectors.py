@@ -168,20 +168,13 @@ class BaseSelector:
         """
         Convert an absolute gate number to a local gate index for this unit.
         """
-        if gate < 0: return gate # Leave bypass/unknown as is
-
-        lgate = gate - self.mmu_unit.first_gate
-        return lgate
+        return self.mmu_unit.local_gate(gate)
 
     def _logical_gate(self, lgate):
         """
         Convert an local gate on this unit to absolute (logical) gate number.
         """
-        if lgate < 0: return lgate # Leave bypass/unknown as is
-
-        gate = lgate + self.mmu_unit.first_gate
-        return gate
-
+        return self.mmu_unit.logical_gate(lgate)
 
 
 class PhysicalSelector(BaseSelector, object):
@@ -329,7 +322,6 @@ class VirtualSelector(BaseSelector):
 
     def _select_gate(self, lgate):
         super()._select_gate(lgate)
-        if lgate == self.local_gate_selected: return
         self.mmu_unit.mmu_toolhead.select_gear_stepper(lgate)
 
     def _restore_gate(self, lgate):

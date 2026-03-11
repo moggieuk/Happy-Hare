@@ -134,8 +134,8 @@ class LinearSelector(PhysicalSelector):
         self.selector_stepper = self.selector_rail.steppers[0]
 
         # Adjust selector rail limits now we know the config
-        self.selector_rail.position_min = -1
-        self.selector_rail.position_max = self._get_max_selector_movement()
+        self.selector_rail.position_min = -1 # PAUL really don't want this
+        self.selector_rail.position_max = self._get_max_selector_movement() + 200 # PAUL added for testing only
         self.selector_rail.homing_speed = self.selector_homing_speed
         self.selector_rail.second_homing_speed = self.selector_homing_speed / 2.
         self.selector_rail.homing_retract_speed = self.selector_homing_speed
@@ -197,7 +197,7 @@ class LinearSelector(PhysicalSelector):
         if self.mmu.check_if_bypass(): return  # PAUL needs to be bypass on THIS unit otherwise doesn't matter
 
         with self.mmu.wrap_action(ACTION_HOMING):
-            self.mmu.log_info("Homing MMU...")
+            self.mmu.log_info("Homing MMU %s..." % self.mmu_unit.name)
             if force_unload is not None:
                 self.mmu.log_debug("(asked to %s)" % ("force unload" if force_unload else "not unload"))
             if force_unload is True:
@@ -211,6 +211,7 @@ class LinearSelector(PhysicalSelector):
     def _select_gate(self, lgate):
         super()._select_gate(lgate) # Important because LinearMultiGear*Selector inherits from this class
 
+        self.mmu.log_info("PAUL: _select_gate(lgate=%s) local_gate_selected=%s" % (lgate, self.local_gate_selected))
         if lgate == self.local_gate_selected:
             return
 
