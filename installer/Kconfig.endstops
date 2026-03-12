@@ -16,11 +16,11 @@ config PREFERS_CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
 
 config PREFERS_CHOICE_GATE_HOMING_ENDSTOP_GEAR
   def_bool n
-  depends on MMU_HAS_SENSOR_POST_GEAR
+  depends on MMU_HAS_SENSOR_EXIT
 
 config PREFERS_CHOICE_GATE_HOMING_ENDSTOP_GATE
   def_bool n
-  depends on MMU_HAS_SENSOR_GATE
+  depends on MMU_HAS_SENSOR_SHARED_EXIT
 
 config PREFERS_CHOICE_GATE_HOMING_ENDSTOP_ENCODER
   def_bool n
@@ -66,8 +66,8 @@ menu "Bowden move endstops"
 
     # Heuristic fallbacks
     default CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER if MMU_HAS_SENSOR_EXTRUDER && !REQUIRE_BOWDEN_MOVE
-    default CHOICE_GATE_HOMING_ENDSTOP_GEAR     if MMU_HAS_SENSOR_POST_GEAR
-    default CHOICE_GATE_HOMING_ENDSTOP_GATE     if MMU_HAS_SENSOR_GATE
+    default CHOICE_GATE_HOMING_ENDSTOP_GEAR     if MMU_HAS_SENSOR_EXIT
+    default CHOICE_GATE_HOMING_ENDSTOP_GATE     if MMU_HAS_SENSOR_SHARED_EXIT
     default CHOICE_GATE_HOMING_ENDSTOP_ENCODER  if MMU_HAS_ENCODER
     default CHOICE_GATE_HOMING_ENDSTOP_NONE
 
@@ -80,14 +80,14 @@ menu "Bowden move endstops"
 
     config CHOICE_GATE_HOMING_ENDSTOP_GEAR
       bool "Individual mmu exit sensors"
-      depends on MMU_HAS_SENSOR_POST_GEAR
+      depends on MMU_HAS_SENSOR_EXIT
       help
         Use individual per-gate endstop sensor after drive gear (often implemented as
         per-gate entry sensors on the filament combiner ("aka hub")
 
     config CHOICE_GATE_HOMING_ENDSTOP_GATE
       bool "Shared Gate sensor"
-      depends on MMU_HAS_SENSOR_GATE
+      depends on MMU_HAS_SENSOR_SHARED_EXIT
       help
         Use gate endstop which is shared by all MMU gates.
 
@@ -108,8 +108,8 @@ menu "Bowden move endstops"
   config PARAM_GATE_HOMING_ENDSTOP
     string 
     default "extruder"        if CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
-    default "mmu_gear"        if CHOICE_GATE_HOMING_ENDSTOP_GEAR
-    default "mmu_gate"        if CHOICE_GATE_HOMING_ENDSTOP_GATE
+    default "mmu_exit"        if CHOICE_GATE_HOMING_ENDSTOP_GEAR
+    default "mmu_shared_exit"        if CHOICE_GATE_HOMING_ENDSTOP_GATE
     default "encoder"         if CHOICE_GATE_HOMING_ENDSTOP_ENCODER
     default ""                if CHOICE_GATE_HOMING_ENDSTOP_NONE
 
@@ -127,7 +127,7 @@ menu "Bowden move endstops"
         Use gate homing endstop (no individual mmu exit sensors are available)
 
     config CHOICE_GATE_PRELOAD_ENDSTOP_GEAR
-      bool "Individual mmu exit sensors" if MMU_HAS_SENSOR_POST_GEAR
+      bool "Individual mmu exit sensors" if MMU_HAS_SENSOR_EXIT
       help
         Use individual per-gate exit sensor (often implemented as the per-gate hub entry sensor)
         This can be useful on type-B MMU's when preloading filament while another gate has filament
@@ -137,7 +137,7 @@ menu "Bowden move endstops"
   # Create no-prompt param from choice
   config PARAM_GATE_PRELOAD_ENDSTOP
     string 
-    default "mmu_gear" if CHOICE_GATE_PRELOAD_ENDSTOP_GEAR
+    default "mmu_exit" if CHOICE_GATE_PRELOAD_ENDSTOP_GEAR
     default ""         # Defaults to gate homing endstop
 
   # ------

@@ -6,14 +6,14 @@
 # Goal: Easy setup of all filament sensors for mmu_unit
 #
 # Pre-gate sensors:
-#   Simplifed filament switch sensor easy configuration of pre-gate sensors used to detect runout and insertion of filament
+#   Simplifed filament switch sensor easy configuration of mmu entry sensors used to detect runout and insertion of filament
 #   and preload into gate and update gate_map when possible to do so based on MMU state, not printer state
 #   Essentially this uses the default `filament_switch_sensor` but then replaces the runout_helper
-#   Each has name `mmu_pre_gate_X` where X is gate number
+#   Each has name `mmu_entry_X` where X is gate number
 #
-# mmu_gear sensor(s):
+# mmu_exit sensor(s):
 #   Wrapper around `filament_switch_sensor` setting up insert/runout callbacks with modified runout event handling
-#   Named `mmu_gear`
+#   Named `mmu_exit`
 #
 #
 # (\_/)
@@ -44,13 +44,13 @@ class MmuSensors:
         first_gate = mmu_unit.first_gate
         num_gates = mmu_unit.num_gates
 
-        # Setup "mmu_pre_gate" sensors...
-        self.pre_gate_sensors = {}
+        # Setup "mmu_entry" sensors...
+        self.entry_sensors = {}
         for i, gate in enumerate(range(first_gate, first_gate + num_gates)):
-            switch_pin = config.get('pre_gate_switch_pin_%d' % i, None)
-            self.pre_gate_sensors[gate] = sf.create_mmu_sensor(
+            switch_pin = config.get('mmu_entry_switch_pin_%d' % i, None)
+            self.entry_sensors[gate] = sf.create_mmu_sensor(
                 config,
-                SENSOR_PRE_GATE_PREFIX,
+                SENSOR_ENTRY_PREFIX,
                 gate,
                 switch_pin,
                 event_delay,
@@ -61,21 +61,21 @@ class MmuSensors:
             )
 
 
-        # Setup single "mmu_gate" sensor for unit...
+        # Setup single "mmu_shared_exit" sensor for unit...
         switch_pin = config.get('gate_switch_pin', None)
         self.gate_sensor = sf.create_mmu_sensor(
             config,
-            "unit%d_%s" % (self.mmu_unit.unit_index, SENSOR_GATE),
+            "unit%d_%s" % (self.mmu_unit.unit_index, SENSOR_SHARED_EXIT),
             None,
             switch_pin,
             event_delay,
             runout=True
         )
 
-        # Setup "mmu_gear" sensors...
+        # Setup "mmu_exit" sensors...
         self.post_gear_sensors = {}
         for i, gate in enumerate(range(first_gate, first_gate + num_gates)):
-            switch_pin = config.get('post_gear_switch_pin_%d' % i, None)
+            switch_pin = config.get('mmu_exit_switch_pin_%d' % i, None)
 
             if switch_pin:
                 a_range = config.getfloatlist('post_gear_analog_range_%d' % gate, None, count=2)
@@ -83,7 +83,7 @@ class MmuSensors:
                     a_pullup = config.getfloat('post_gear_analog_pullup_resister_%d' % gate, 4700.)
                     self.post_gear_sensors[gate] = MmuAdcSwitchSensor(
                         config,
-                        SENSOR_GEAR_PREFIX,
+                        SENSOR_EXIT_PREFIX,
                         gate,
                         switch_pin,
                         event_delay,
@@ -93,7 +93,7 @@ class MmuSensors:
                 else:
                     self.post_gear_sensors[gate] = sf.create_mmu_sensor(
                         config,
-                        SENSOR_GEAR_PREFIX,
+                        SENSOR_EXIT_PREFIX,
                         gate,
                         switch_pin,
                         event_delay,
@@ -101,17 +101,17 @@ class MmuSensors:
 
 # PAUL from v342 (reference)
 # --------
-#        # Setup "mmu_gear" sensors...
+#        # Setup "mmu_exit" sensors...
 #        for gate in range(23):
-#            switch_pin = config.get('post_gear_switch_pin_%d' % gate, None)
+#            switch_pin = config.get('mmu_exit_switch_pin_%d' % gate, None)
 #            if switch_pin:
 #                a_range = config.getfloatlist('post_gear_analog_range_%d' % gate, None, count=2)
 #                if a_range is not None:
 #                    a_pullup = config.getfloat('post_gear_analog_pullup_resister_%d' % gate, 4700.)
-#                    s = MmuAdcSwitchSensor(config, SENSOR_GEAR_PREFIX, gate, switch_pin, event_delay, a_range, runout=True, a_pullup=a_pullup)
-#                    self.sensors["%s_%d" % (SENSOR_GEAR_PREFIX, gate)] = s
+#                    s = MmuAdcSwitchSensor(config, SENSOR_EXIT_PREFIX, gate, switch_pin, event_delay, a_range, runout=True, a_pullup=a_pullup)
+#                    self.sensors["%s_%d" % (SENSOR_EXIT_PREFIX, gate)] = s
 #                else:
-#                    self._create_mmu_sensor(config, SENSOR_GEAR_PREFIX, gate, switch_pin, event_delay, runout=True)
+#                    self._create_mmu_sensor(config, SENSOR_EXIT_PREFIX, gate, switch_pin, event_delay, runout=True)
 # --------
 #
 #        # Setup single extruder (entrance) sensor...
@@ -130,7 +130,7 @@ class MmuSensors:
 #        hall_sensor_endstop = config.get('hall_sensor_endstop', None)
 #        if hall_sensor_endstop is not None:
 #            if hall_sensor_endstop == 'gate':
-#                target_name = SENSOR_GATE
+#                target_name = SENSOR_SHARED_EXIT
 #            elif hall_sensor_endstop == 'extruder':
 #                target_name = SENSOR_EXTRUDER_ENTRY
 #            elif hall_sensor_endstop == 'toolhead':

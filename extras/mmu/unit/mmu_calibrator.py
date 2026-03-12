@@ -390,7 +390,7 @@ class MmuCalibrator:
                         actual,_,_ = success
                         homed = True
 
-            else: # Gate sensor... SENSOR_GATE is shared, but SENSOR_GEAR_PREFIX is specific
+            else: # Gate sensor... SENSOR_SHARED_EXIT is shared, but SENSOR_EXIT_PREFIX is specific
                 actual, homed, measured, _ = self.mmu.trace_filament_move(
                     "Reverse homing off gate sensor",
                     -approx_bowden_length,

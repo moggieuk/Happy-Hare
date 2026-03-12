@@ -48,14 +48,13 @@ class MmuPreloadCommand(BaseCommand):
 
         if self.mmu.check_if_disabled(): return
         if self.mmu.check_if_printing(): return
-#PAUL        if self.mmu.check_if_not_homed(): return # PAUL not correct - should be on unit 
 
         gate = gcmd.get_int('GATE', self.mmu.gate_selected, minval=0, maxval=self.mmu.num_gates - 1)
         if self.mmu.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[gate]): return
 
         can_crossload = (
             (self.mmu.mmu_unit().can_crossload or self.mmu.mmu_unit().multigear)
-            and self.mmu.sensor_manager.has_gate_sensor(SENSOR_GEAR_PREFIX, gate)
+            and self.mmu.sensor_manager.has_gate_sensor(SENSOR_EXIT_PREFIX, gate)
         )
         if not can_crossload:
             if self.mmu.check_if_bypass(): return

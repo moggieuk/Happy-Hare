@@ -58,7 +58,7 @@ class MmuEjectCommand(BaseCommand):
 
         can_crossload = (
             (self.mmu.mmu_unit().can_crossload or self.mmu.mmu_unit().multigear)
-            and self.mmu.sensor_manager.has_gate_sensor(SENSOR_GEAR_PREFIX, gate)
+            and self.mmu.sensor_manager.has_gate_sensor(SENSOR_EXIT_PREFIX, gate)
         )
         if not can_crossload and gate != self.mmu.gate_selected:
             if self.mmu.check_if_loaded(): return

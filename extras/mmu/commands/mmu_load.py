@@ -49,7 +49,6 @@ class MmuLoadCommand(BaseCommand):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
 
         if self.mmu.check_if_disabled(): return
-#PAUL        if self.mmu.check_if_not_homed(): return
         if self.mmu.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[self.mmu.gate_selected]): return
         self.mmu._fix_started_state()
 

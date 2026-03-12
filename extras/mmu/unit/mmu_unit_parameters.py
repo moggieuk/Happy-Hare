@@ -44,7 +44,7 @@ class MmuUnitParameters(TunableParametersBase):
         return not self._mmu_unit.filament_always_gripped
 
     def _guard_encoder_offset(self):
-        return not (self.gate_homing_endstop in [SENSOR_GATE] and self._mmu_unit.has_encoder())
+        return not (self.gate_homing_endstop in [SENSOR_SHARED_EXIT] and self._mmu_unit.has_encoder())
 
     def _guard_has_sensor(sensor):
         #return lambda self: self._mmu_unit.has_sensor(sensor)

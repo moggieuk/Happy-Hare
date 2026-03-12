@@ -417,7 +417,7 @@ class MmuUnit:
                 sensor
                 for sensor in chain(
                     (self.sensors.post_gear_sensors or {}).values(),
-                    (self.sensors.pre_gate_sensors or {}).values(),
+                    (self.sensors.entry_sensors or {}).values(),
                     [self.sensors.gate_sensor],
                     [self.buffer.compression_sensor] if self.buffer else [],
                     [self.buffer.tension_sensor] if self.buffer else [],

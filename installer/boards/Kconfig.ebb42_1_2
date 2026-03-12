@@ -24,13 +24,13 @@ if BOARD_TYPE_EBB42_1_2
   config PIN_SELECTOR_SERVO
     default "$(MCU_NAME):PB9"
 
-  config PIN_PRE_GATE_0
+  config PIN_ENTRY_0
     default "^$(MCU_NAME):PB7" 
-  config PIN_PRE_GATE_1
+  config PIN_ENTRY_1
     default "^$(MCU_NAME):PB5" 
-  config PIN_PRE_GATE_2
+  config PIN_ENTRY_2
     default "^$(MCU_NAME):PB6" 
-  config PIN_PRE_GATE_3
+  config PIN_ENTRY_3
     default "^$(MCU_NAME):PB8"
 
   config PIN_NEOPIXEL

@@ -60,13 +60,13 @@ if BOARD_TYPE_AFC_LITE_1_0
   config PIN_GEAR_DIAG_3
     default "$(MCU_NAME):PC8" 
 
-  config PIN_PRE_GATE_0
+  config PIN_ENTRY_0
     default "^$(MCU_NAME):PC5" 
-  config PIN_PRE_GATE_1
+  config PIN_ENTRY_1
     default "^$(MCU_NAME):PB0" 
-  config PIN_PRE_GATE_2
+  config PIN_ENTRY_2
     default "^$(MCU_NAME):PB1" 
-  config PIN_PRE_GATE_3
+  config PIN_ENTRY_3
     default "^$(MCU_NAME):PB2" 
 
   config PIN_GEAR_SENSOR_0

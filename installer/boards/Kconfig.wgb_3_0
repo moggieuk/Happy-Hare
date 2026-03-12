@@ -56,13 +56,13 @@ if BOARD_TYPE_WGB_3_0
   config PIN_GEAR_DIAG_3
     default "$(MCU_NAME):PD15" 
 
-  config PIN_PRE_GATE_0
+  config PIN_ENTRY_0
     default "^$(MCU_NAME):PA1" 
-  config PIN_PRE_GATE_1
+  config PIN_ENTRY_1
     default "^$(MCU_NAME):PA2" 
-  config PIN_PRE_GATE_2
+  config PIN_ENTRY_2
     default "^$(MCU_NAME):PA3" 
-  config PIN_PRE_GATE_3
+  config PIN_ENTRY_3
     default "^$(MCU_NAME):PA4" 
 
   config PIN_GEAR_SENSOR_0

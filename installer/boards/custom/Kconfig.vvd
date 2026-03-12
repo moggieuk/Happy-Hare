@@ -41,13 +41,13 @@ if BOARD_TYPE_VVD_1_0
   config PIN_GEAR_ENABLE
     default "!$(MCU_NAME):PB8" 
 
-  config PIN_PRE_GATE_0
+  config PIN_ENTRY_0
     default "$(MCU_NAME):PA0" 
-  config PIN_PRE_GATE_1
+  config PIN_ENTRY_1
     default "$(MCU_NAME):PA1" 
-  config PIN_PRE_GATE_2
+  config PIN_ENTRY_2
     default "$(MCU_NAME):PA2" 
-  config PIN_PRE_GATE_3
+  config PIN_ENTRY_3
     default "$(MCU_NAME):PA3" 
 
   config PIN_ESPOOLER_FWD_0
@@ -135,7 +135,7 @@ heater: $(UNIT_NAME)_heater\n\
 # Electronics cooling fan\n\
 [controller_fan $(UNIT_NAME)_mcu_fan]\n\
 pin: $(MCU_NAME):PA14\n\
-stepper: stepper mmu_selector_$(UNIT_NAME)$(comma) stepper mmu_gear_$(UNIT_NAME)\n\
+stepper: stepper $(UNIT_NAME)_selector_stepper$(comma) stepper $(UNIT_NAME)_gear_stepper\n\
 \n\
 [temperature_sensor ptc_ntc100k]\n\
 sensor_pin: $(MCU_NAME):PA4\n\

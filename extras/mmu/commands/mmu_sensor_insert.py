@@ -27,7 +27,7 @@ class MmuSensorInsertCommand(BaseCommand):
         EVENTTIME will contain reactor time that the sensor triggered
                   and command was queued
         SENSOR    will contain sensor name
-        GATE      will be set if specific pre-gate or gear sensor
+        GATE      will be set if specific mmu entry or mmu exit sensor
     """
 
     CMD = "__MMU_SENSOR_INSERT"
@@ -66,7 +66,7 @@ class MmuSensorInsertCommand(BaseCommand):
         try:
             with self.mmu.wrap_sync_gear_to_extruder():
 
-                if sensor.startswith(SENSOR_PRE_GATE_PREFIX) and gate is not None:
+                if sensor.startswith(SENSOR_ENTRY_PREFIX) and gate is not None:
                     self.mmu._set_gate_status(gate, GATE_UNKNOWN)
                     self.mmu._check_pending_spool_id(gate)  # Have spool_id ready?
                     if not self.mmu.is_printing() and self.mmu.mmu_unit().p.gate_autoload:

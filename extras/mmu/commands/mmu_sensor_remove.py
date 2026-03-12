@@ -21,14 +21,14 @@ from .mmu_base_command import *
 
 class MmuSensorRemoveCommand(BaseCommand):
     """
-    Callback to handle removal event from an MMU sensor (only mmu_pre_gate for now).
+    Callback to handle removal event from an MMU sensor (only mmu_entry for now).
     A removal event can happen both in and out of a print.
 
     Params:
         EVENTTIME will contain reactor time that the sensor triggered
                   and command was queued
         SENSOR    will contain sensor name
-        GATE      will be set if specific pre-gate or gear sensor
+        GATE      will be set if specific mmu entry or mmu exit sensor
     """
 
     CMD = "__MMU_SENSOR_REMOVE"
@@ -67,8 +67,8 @@ class MmuSensorRemoveCommand(BaseCommand):
         try:
             with self.mmu.wrap_sync_gear_to_extruder():
 
-                if sensor.startswith(SENSOR_PRE_GATE_PREFIX) and gate is not None:
-                    # Ignore pre-gate runout if endless_spool_eject_gate feature is active
+                if sensor.startswith(SENSOR_ENTRY_PREFIX) and gate is not None:
+                    # Ignore mmu entry runout if endless_spool_eject_gate feature is active
                     # and we want filament to be consumed to clear gate
                     if not (self.mmu.endless_spool_enabled and self.mmu.p.endless_spool_eject_gate > 0):
                         self.mmu._set_gate_status(gate, GATE_EMPTY)

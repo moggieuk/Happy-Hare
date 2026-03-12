@@ -52,7 +52,6 @@ class MmuCheckGateCommand(BaseCommand):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
 
         if self.mmu.check_if_disabled(): return
-#PAUL        if self.mmu.check_if_not_homed(): return
         if self.mmu.check_if_bypass(): return
         self.mmu._fix_started_state()
 

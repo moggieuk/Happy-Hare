@@ -46,29 +46,29 @@ if BOARD_TYPE_TZB_1_0
   config PIN_NEOPIXEL
     default "$(MCU_NAME):PA5"
 
-  config PIN_PRE_GATE_0
+  config PIN_ENTRY_0
     default "^$(MCU_NAME):PB14"
-  config PIN_PRE_GATE_1
+  config PIN_ENTRY_1
     default "^$(MCU_NAME):PB13"
-  config PIN_PRE_GATE_2
+  config PIN_ENTRY_2
     default "^$(MCU_NAME):PB12"
-  config PIN_PRE_GATE_3
+  config PIN_ENTRY_3
     default "^$(MCU_NAME):PA7"
-  config PIN_PRE_GATE_4
+  config PIN_ENTRY_4
     default "^$(MCU_NAME):PA6"
-  config PIN_PRE_GATE_5
+  config PIN_ENTRY_5
     default "^$(MCU_NAME):PB2"
-  config PIN_PRE_GATE_6
+  config PIN_ENTRY_6
     default "^$(MCU_NAME):PA13"
-  config PIN_PRE_GATE_7
+  config PIN_ENTRY_7
     default "^$(MCU_NAME):PA10"
-  config PIN_PRE_GATE_8
+  config PIN_ENTRY_8
     default "^$(MCU_NAME):PC7"
-  config PIN_PRE_GATE_9
+  config PIN_ENTRY_9
     default "^$(MCU_NAME):PC6"
-  config PIN_PRE_GATE_10
+  config PIN_ENTRY_10
     default "^$(MCU_NAME):PA9"
-  config PIN_PRE_GATE_11
+  config PIN_ENTRY_11
     default "^$(MCU_NAME):PA8"
 
   config PIN_SYNC_FEEDBACK_TENSION

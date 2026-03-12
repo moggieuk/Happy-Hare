@@ -14,7 +14,7 @@ menu "Gate loading & parking"
     string "Gate parking distance (mm)"
     default "23"
     help
-      Parking position relative to homing endstop (must be retraction unless endstop is mmu_gear)
+      Parking position relative to homing endstop (must be retraction unless endstop is mmu_exit)
 
       Positive values for movement in the extrude direction (past sensor)
       Negative values for movement in the retract direction (back off sensor)
@@ -35,7 +35,7 @@ menu "Gate loading & parking"
       Negative values for movement in the retract direction (back off sensor)
 
   config PARAM_GATE_PRELOAD_HOMING_MAX
-    string "Maximum homing distance to the mmu_gear endstop (mm)"
+    string "Maximum homing distance to the mmu_exit endstop (mm)"
     default "100"
 
   config PARAM_GATE_FINAL_EJECT_DISTANCE

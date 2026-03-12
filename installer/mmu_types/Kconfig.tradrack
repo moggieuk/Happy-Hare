@@ -6,7 +6,7 @@ config MMU_TYPE_TRADRACK_1_0
    but also uses the same BMG gear to drive all filaments. It has a shared
    gate sensor but a Binky based encoder is a popular option.
   select LINEAR_SERVO_SELECTOR
-  select MMU_HAS_SENSOR_GATE
+  select MMU_HAS_SENSOR_SHARED_EXIT
   select PARAM_VARIABLE_ROTATION_DISTANCES
   select UNSELECT_VARIABLE_BOWDEN_LENGTHS
   imply  PARAM_REQUIRE_BOWDEN_MOVE

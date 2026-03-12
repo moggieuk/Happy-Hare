@@ -92,7 +92,7 @@ time_elapsed() {
     echo
 }
 
-while getopts "fiudzsb:nk:c:m:a:tqv" arg; do
+while getopts "hfiudzsb:nk:c:m:a:tqv" arg; do
     case $arg in
     f)
         FIX_LINKS=y
@@ -117,6 +117,7 @@ while getopts "fiudzsb:nk:c:m:a:tqv" arg; do
     t) export TESTDIR=/tmp/mmu_test ;;
     q) export Q= ;;   # Developer: Disable quiet mode in Makefile
     v) export V=-v ;; # Developer: Enable verbose mode in builder and debug in Makefile
+    h) usage ;;
     *) usage ;;
     esac
 done

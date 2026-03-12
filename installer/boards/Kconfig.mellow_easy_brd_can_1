@@ -38,25 +38,25 @@ if BOARD_TYPE_MELLOW_EASY_BRD_CAN_1
   config PIN_SELECTOR_SERVO
     default "$(MCU_NAME):gpio21" 
 
-  config PIN_PRE_GATE_0
+  config PIN_ENTRY_0
     default "^$(MCU_NAME):gpio10"
-  config PIN_PRE_GATE_1
+  config PIN_ENTRY_1
     default "^$(MCU_NAME):gpio26"
-  config PIN_PRE_GATE_2
+  config PIN_ENTRY_2
     default "^$(MCU_NAME):gpio11"
-  config PIN_PRE_GATE_3
+  config PIN_ENTRY_3
     default "^$(MCU_NAME):gpio27"
-  config PIN_PRE_GATE_4
+  config PIN_ENTRY_4
     default "^$(MCU_NAME):gpio12"
-  config PIN_PRE_GATE_5
+  config PIN_ENTRY_5
     default "^$(MCU_NAME):gpio28"
-  config PIN_PRE_GATE_6
+  config PIN_ENTRY_6
     default "^$(MCU_NAME):gpio24"
-  config PIN_PRE_GATE_7
+  config PIN_ENTRY_7
     default "^$(MCU_NAME):gpio29"
-  config PIN_PRE_GATE_8
+  config PIN_ENTRY_8
     default "^$(MCU_NAME):gpio13"
-  config PIN_PRE_GATE_9
+  config PIN_ENTRY_9
     default "^$(MCU_NAME):gpio25"
 
   config PIN_ENCODER

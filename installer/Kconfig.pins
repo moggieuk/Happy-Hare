@@ -85,40 +85,40 @@ menu "Pins"
     endif
 
     menu "Mmu entry sensor pins"
-      config PIN_PRE_GATE_0
+      config PIN_ENTRY_0
         string "Pre-gate 0 pin"
         depends on PARAM_NUM_GATES > 0
-      config PIN_PRE_GATE_1
+      config PIN_ENTRY_1
         string "Pre-gate 1 pin"
         depends on PARAM_NUM_GATES > 1
-      config PIN_PRE_GATE_2
+      config PIN_ENTRY_2
         string "Pre-gate 2 pin"
         depends on PARAM_NUM_GATES > 2
-      config PIN_PRE_GATE_3
+      config PIN_ENTRY_3
         string "Pre-gate 3 pin"
         depends on PARAM_NUM_GATES > 3
-      config PIN_PRE_GATE_4
+      config PIN_ENTRY_4
         string "Pre-gate 4 pin"
         depends on PARAM_NUM_GATES > 4
-      config PIN_PRE_GATE_5
+      config PIN_ENTRY_5
         string "Pre-gate 5 pin"
         depends on PARAM_NUM_GATES > 5
-      config PIN_PRE_GATE_6
+      config PIN_ENTRY_6
         string "Pre-gate 6 pin"
         depends on PARAM_NUM_GATES > 6
-      config PIN_PRE_GATE_7
+      config PIN_ENTRY_7
         string "Pre-gate 7 pin"
         depends on PARAM_NUM_GATES > 7
-      config PIN_PRE_GATE_8
+      config PIN_ENTRY_8
         string "Pre-gate 8 pin"
         depends on PARAM_NUM_GATES > 8
-      config PIN_PRE_GATE_9
+      config PIN_ENTRY_9
         string "Pre-gate 9 pin"
         depends on PARAM_NUM_GATES > 9
-      config PIN_PRE_GATE_10
+      config PIN_ENTRY_10
         string "Pre-gate 10 pin"
         depends on PARAM_NUM_GATES > 10
-      config PIN_PRE_GATE_11
+      config PIN_ENTRY_11
         string "Pre-gate 11 pin"
         depends on PARAM_NUM_GATES > 11
     endmenu

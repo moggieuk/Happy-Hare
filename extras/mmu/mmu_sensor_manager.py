@@ -48,17 +48,17 @@ class MmuSensorManager:
 #
 #        # Assemble all possible switch sensors in desired display order
 #        sensor_names = []
-#        sensor_names.extend([self.get_gate_sensor_name(self.mmu.SENSOR_PRE_GATE_PREFIX, i) for i in range(self.mmu.num_gates)])
-#        sensor_names.extend([self.get_gate_sensor_name(self.mmu.SENSOR_GEAR_PREFIX, i) for i in range(self.mmu.num_gates)])
+#        sensor_names.extend([self.get_gate_sensor_name(self.mmu.SENSOR_ENTRY_PREFIX, i) for i in range(self.mmu.num_gates)])
+#        sensor_names.extend([self.get_gate_sensor_name(self.mmu.SENSOR_EXIT_PREFIX, i) for i in range(self.mmu.num_gates)])
 #        sensor_names.extend([
-#            self.mmu.SENSOR_GATE,
+#            self.mmu.SENSOR_SHARED_EXIT,
 #            self.mmu.SENSOR_TENSION,
 #            self.mmu.SENSOR_COMPRESSION,
 #            self.mmu.SENSOR_PROPORTIONAL
 #        ])
 #        if self.mmu.mmu_machine.num_units > 1:
 #            for i in range(self.mmu.mmu_machine.num_units):
-#                sensor_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_GATE, i))
+#                sensor_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_SHARED_EXIT, i))
 #                sensor_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_TENSION, i))
 #                sensor_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_COMPRESSION, i))
 #                sensor_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_PROPORTIONAL, i))
@@ -69,13 +69,13 @@ class MmuSensorManager:
             
         for mmu_unit in self.mmu_machine.units:
             unit_sensors = collect_sensors([
-                (mmu_unit.sensors.gate_sensor, SENSOR_GATE),
+                (mmu_unit.sensors.gate_sensor, SENSOR_SHARED_EXIT),
                 (mmu_unit.buffer and mmu_unit.buffer.compression_sensor, SENSOR_COMPRESSION),
                 (mmu_unit.buffer and mmu_unit.buffer.tension_sensor, SENSOR_TENSION),
                 (mmu_unit.buffer and mmu_unit.buffer.proportional_sensor, SENSOR_PROPORTIONAL),
             ])
             qualified_unit_sensors = collect_sensors([
-                (mmu_unit.sensors.gate_sensor, self.get_unit_sensor_name(SENSOR_GATE, mmu_unit.unit_index)),
+                (mmu_unit.sensors.gate_sensor, self.get_unit_sensor_name(SENSOR_SHARED_EXIT, mmu_unit.unit_index)),
                 (mmu_unit.buffer and mmu_unit.buffer.compression_sensor, self.get_unit_sensor_name(SENSOR_COMPRESSION, mmu_unit.unit_index)),
                 (mmu_unit.buffer and mmu_unit.buffer.tension_sensor, self.get_unit_sensor_name(SENSOR_TENSION, mmu_unit.unit_index)),
                 (mmu_unit.buffer and mmu_unit.buffer.proportional_sensor, self.get_unit_sensor_name(SENSOR_PROPORTIONAL, mmu_unit.unit_index)),
@@ -84,17 +84,17 @@ class MmuSensorManager:
         
             for gate in range(mmu_unit.first_gate, mmu_unit.first_gate + mmu_unit.num_gates):
                 self.gate_sensors.append(collect_sensors([
-                    (mmu_unit.sensors.pre_gate_sensors.get(gate), SENSOR_PRE_GATE_PREFIX),
-                    (mmu_unit.sensors.post_gear_sensors.get(gate), SENSOR_GEAR_PREFIX),
-                    (mmu_unit.sensors.gate_sensor, SENSOR_GATE),
+                    (mmu_unit.sensors.entry_sensors.get(gate), SENSOR_ENTRY_PREFIX),
+                    (mmu_unit.sensors.post_gear_sensors.get(gate), SENSOR_EXIT_PREFIX),
+                    (mmu_unit.sensors.gate_sensor, SENSOR_SHARED_EXIT),
                     (mmu_unit.buffer and mmu_unit.buffer.compression_sensor, SENSOR_COMPRESSION),
                     (mmu_unit.buffer and mmu_unit.buffer.tension_sensor, SENSOR_TENSION),
                     (self.mmu_machine.extruder_sensor, SENSOR_EXTRUDER_ENTRY),
                     (self.mmu_machine.toolhead_sensor, SENSOR_TOOLHEAD),
                 ]))
                 qualified_gate_sensors = collect_sensors([
-                    (mmu_unit.sensors.pre_gate_sensors.get(gate), self.get_gate_sensor_name(SENSOR_PRE_GATE_PREFIX, gate)),
-                    (mmu_unit.sensors.post_gear_sensors.get(gate), self.get_gate_sensor_name(SENSOR_GEAR_PREFIX, gate)),
+                    (mmu_unit.sensors.entry_sensors.get(gate), self.get_gate_sensor_name(SENSOR_ENTRY_PREFIX, gate)),
+                    (mmu_unit.sensors.post_gear_sensors.get(gate), self.get_gate_sensor_name(SENSOR_EXIT_PREFIX, gate)),
                 ])
                 unit_sensors.update(qualified_gate_sensors)
                 self.all_sensors_map.update(qualified_gate_sensors)
@@ -110,9 +110,9 @@ class MmuSensorManager:
 
 ## PAUL Don't ,think we need this or can gate homing be extruder sensor in v4?
 # From v340 vvv
-#        # Special case for "no bowden" (one unit) designs where mmu_gate is an alias for extruder sensor
-#        if not self.mmu.mmu_machine.require_bowden_move and self.all_sensors.get(self.mmu.SENSOR_EXTRUDER_ENTRY, None) and self.mmu.SENSOR_GATE not in self.all_sensors:
-#            self.all_sensors[self.mmu.SENSOR_GATE] = self.all_sensors[self.mmu.SENSOR_EXTRUDER_ENTRY]
+#        # Special case for "no bowden" (one unit) designs where mmu_shared_exit is an alias for extruder sensor
+#        if not self.mmu.mmu_machine.require_bowden_move and self.all_sensors.get(self.mmu.SENSOR_EXTRUDER_ENTRY, None) and self.mmu.SENSOR_SHARED_EXIT not in self.all_sensors:
+#            self.all_sensors[self.mmu.SENSOR_SHARED_EXIT] = self.all_sensors[self.mmu.SENSOR_EXTRUDER_ENTRY]
 #        logging.info("PAUL: all_sensors=%s\n" % self.all_sensors.keys())
 ## From v340 ^^^
 
@@ -221,10 +221,10 @@ class MmuSensorManager:
         Get unit or gate specific endstop if it exists
         Take generic name and look for "<unit#>_genericName" and "genericName_<gate#>"
         """
-        if endstop_name in [SENSOR_GATE, SENSOR_COMPRESSION, SENSOR_TENSION]:
+        if endstop_name in [SENSOR_SHARED_EXIT, SENSOR_COMPRESSION, SENSOR_TENSION]:
             return self.get_unit_sensor_name(endstop_name, mmu.unit_selected)
 
-        if endstop_name in [SENSOR_PRE_GATE_PREFIX, SENSOR_GEAR_PREFIX, SENSOR_GEAR_TOUCH]: # PAUL TODO verify SENSOR_GEAR_TOUCH operation for calibration
+        if endstop_name in [SENSOR_ENTRY_PREFIX, SENSOR_EXIT_PREFIX, SENSOR_GEAR_TOUCH]: # PAUL TODO verify SENSOR_GEAR_TOUCH operation for calibration
             return self.get_gate_sensor_name(endstop_name, mmu.gate_selected)
 
         return endstop_name
@@ -304,7 +304,7 @@ class MmuSensorManager:
     def check_any_sensors_in_path(self):
         """
         Return True if any sensor in the active filament path is triggered.
-        Excludes pre-gate sensors. Returns None if no sensors are available.
+        Excludes mmu entry sensors. Returns None if no sensors are available.
         """
         sensors = self.get_all_sensors_for_gate(self.mmu.gate_selected)
         if all(state is None for state in sensors.values()): return None
@@ -362,19 +362,19 @@ class MmuSensorManager:
         sensor_selection = []
 
         if gate >= 0:
-            # Note: For gear sensor the position of POS_HOMED_GATE is only valid if is not usually triggered (i.e. parking retract)
+            # Note: For mmu exit sensor the position of POS_HOMED_GATE is only valid if is not usually triggered (i.e. parking retract)
             u = self.mmu_machine.get_mmu_unit_by_gate(gate)
 
             gear_homed_pos = None
-            is_gear_homing_endstop = (u.p.gate_homing_endstop == SENSOR_GEAR_PREFIX)
+            is_gear_homing_endstop = (u.p.gate_homing_endstop == SENSOR_EXIT_PREFIX)
             not_parking_retract = (u.p.gate_parking_distance <= 0) # PAUL check parking distance sign with v4 - direction reversed!
             if is_gear_homing_endstop and not_parking_retract:
                 gear_homed_pos = FILAMENT_POS_HOMED_GATE
 
             sensor_selection = [
-                (SENSOR_PRE_GATE_PREFIX, None),
-                (SENSOR_GEAR_PREFIX, gear_homed_pos),
-                (SENSOR_GATE, FILAMENT_POS_HOMED_GATE),
+                (SENSOR_ENTRY_PREFIX, None),
+                (SENSOR_EXIT_PREFIX, gear_homed_pos),
+                (SENSOR_SHARED_EXIT, FILAMENT_POS_HOMED_GATE),
                 (SENSOR_EXTRUDER_ENTRY, FILAMENT_POS_HOMED_ENTRY),
                 (SENSOR_TOOLHEAD, FILAMENT_POS_HOMED_TS),
             ]

@@ -1374,7 +1374,7 @@ class MmuController:
         arrow = "<" if self.filament_direction == DIRECTION_UNLOAD else ">"
         space = "."
         home  = "|"
-        gs = "(g)" # SENSOR_GATE or SENSOR_GEAR_PREFIX
+        gs = "(g)" # SENSOR_SHARED_EXIT or SENSOR_EXIT_PREFIX
         es = "(e)" # SENSOR_EXTRUDER
         ts = "(t)" # SENSOR_TOOLHEAD
         past  = lambda pos: arrow if self.filament_pos >= pos else space
@@ -1384,8 +1384,8 @@ class MmuController:
         t_str   = ("[T%s] " % str(self.tool_selected)) if self.tool_selected >= 0 else "BYPASS " if self.tool_selected == TOOL_GATE_BYPASS else "[T?] "
         g_str   = "{}".format(past(FILAMENT_POS_UNLOADED))
         lg_str  = "{0}{0}".format(past(FILAMENT_POS_HOMED_GATE)) if not self.mmu_unit().require_bowden_move else ""
-        gs_str  = "{0}{2} {1}{1}".format(*homed(FILAMENT_POS_HOMED_GATE, trig(gs, self.mmu_unit().p.gate_homing_endstop))) if self.mmu_unit().p.gate_homing_endstop in [SENSOR_GATE, SENSOR_GEAR_PREFIX, SENSOR_EXTRUDER_ENTRY] else ""
-        en_str  = " En {0}".format(past(FILAMENT_POS_IN_BOWDEN if self.mmu_unit().p.gate_homing_endstop in [SENSOR_GATE, SENSOR_GEAR_PREFIX, SENSOR_EXTRUDER_ENTRY] else FILAMENT_POS_START_BOWDEN)) if self.has_encoder() else ""
+        gs_str  = "{0}{2} {1}{1}".format(*homed(FILAMENT_POS_HOMED_GATE, trig(gs, self.mmu_unit().p.gate_homing_endstop))) if self.mmu_unit().p.gate_homing_endstop in [SENSOR_SHARED_EXIT, SENSOR_EXIT_PREFIX, SENSOR_EXTRUDER_ENTRY] else ""
+        en_str  = " En {0}".format(past(FILAMENT_POS_IN_BOWDEN if self.mmu_unit().p.gate_homing_endstop in [SENSOR_SHARED_EXIT, SENSOR_EXIT_PREFIX, SENSOR_EXTRUDER_ENTRY] else FILAMENT_POS_START_BOWDEN)) if self.has_encoder() else ""
         bowden1 = "{0}{0}{0}{0}".format(past(FILAMENT_POS_IN_BOWDEN)) if self.mmu_unit().require_bowden_move else ""
         bowden2 = "{0}{0}{0}{0}".format(past(FILAMENT_POS_END_BOWDEN)) if self.mmu_unit().require_bowden_move else ""
         es_str  = "{0}{2} {1}{1}".format(*homed(FILAMENT_POS_HOMED_ENTRY, trig(es, SENSOR_EXTRUDER_ENTRY))) if self.sensor_manager.has_sensor(SENSOR_EXTRUDER_ENTRY) and self.mmu_unit().require_bowden_move else ""
@@ -2032,7 +2032,7 @@ class MmuController:
             self.encoder().reset_counts()
 
     def _get_encoder_dead_space(self):
-        if self.has_encoder() and self.mmu_unit().p.gate_homing_endstop in [SENSOR_GATE, SENSOR_GEAR_PREFIX]:
+        if self.has_encoder() and self.mmu_unit().p.gate_homing_endstop in [SENSOR_SHARED_EXIT, SENSOR_EXIT_PREFIX]:
             return self.mmu_unit().p.gate_endstop_to_encoder
         else:
             return 0.
@@ -2467,15 +2467,15 @@ class MmuController:
     # Preload selected gate as little as possible. If a full gate load is the only option
     # this will then park correctly after pre-load
     def _preload_gate(self):
-        gate_sensor = self.sensor_manager.check_gate_sensor(SENSOR_GEAR_PREFIX, self.gate_selected)
+        gate_sensor = self.sensor_manager.check_gate_sensor(SENSOR_EXIT_PREFIX, self.gate_selected)
         if gate_sensor is not None:
             if gate_sensor:
                 self.log_always("Filament already preloaded")
                 self._set_gate_status(self.gate_selected, GATE_AVAILABLE)
                 return
             else:
-                # Minimal load to gear sensor if fitted
-                endstop_name = self.sensor_manager.get_gate_sensor_name(SENSOR_GEAR_PREFIX, self.gate_selected)
+                # Minimal load to mmu exit sensor if fitted
+                endstop_name = self.sensor_manager.get_gate_sensor_name(SENSOR_EXIT_PREFIX, self.gate_selected)
                 self.log_always("Preloading...")
                 msg = "Homing to %s sensor" % endstop_name
                 with self._wrap_suspend_filament_monitoring():
@@ -2487,7 +2487,7 @@ class MmuController:
                         self.log_always("Filament detected and loaded in gate %d" % self.gate_selected)
                         return
         else:
-            # Full gate load if no gear sensor
+            # Full gate load if no mmu exit sensor
             for _ in range(self.mmu_unit().p.gate_preload_attempts):
                 self.log_always("Loading...")
                 try:
@@ -2501,9 +2501,9 @@ class MmuController:
                     # Exception just means filament is not loaded yet, so continue
                     self.log_trace("Exception on preload: %s" % str(ee))
 
-        if self.sensor_manager.check_gate_sensor(SENSOR_PRE_GATE_PREFIX, self.gate_selected):
+        if self.sensor_manager.check_gate_sensor(SENSOR_ENTRY_PREFIX, self.gate_selected):
             self._set_gate_status(self.gate_selected, GATE_UNKNOWN)
-            self.log_warning("Filament detected by pre-gate %d sensor but did not complete preload" % self.gate_selected)
+            self.log_warning("Filament detected by mmu entry %d sensor but did not complete preload" % self.gate_selected)
         else:
             self._set_gate_status(self.gate_selected, GATE_EMPTY)
             raise MmuError("Filament not detected")
@@ -2520,8 +2520,8 @@ class MmuController:
         self.selector().filament_drive()
 
         self.log_always("Ejecting...")
-        if self.sensor_manager.has_gate_sensor(SENSOR_GEAR_PREFIX, gate):
-            endstop_name = self.sensor_manager.get_gate_sensor_name(SENSOR_GEAR_PREFIX, gate)
+        if self.sensor_manager.has_gate_sensor(SENSOR_EXIT_PREFIX, gate):
+            endstop_name = self.sensor_manager.get_gate_sensor_name(SENSOR_EXIT_PREFIX, gate)
             msg = "Reverse homing off %s sensor" % endstop_name
             actual,homed,measured,_ = self.trace_filament_move(msg, -self.mmu_unit().p.gate_homing_max, motor="gear", homing_move=-1, endstop_name=endstop_name)
             if homed:
@@ -2531,9 +2531,9 @@ class MmuController:
 
         if self.mmu_unit().p.gate_final_eject_distance > 0:
             msg = "Ejecting filament out of gate"
-            if self.sensor_manager.check_gate_sensor(SENSOR_PRE_GATE_PREFIX, gate) is not None:
+            if self.sensor_manager.check_gate_sensor(SENSOR_ENTRY_PREFIX, gate) is not None:
                 # Use homing move so we don't "over eject"
-                self.trace_filament_move(msg, -self.mmu_unit().p.gate_final_eject_distance, motor="gear", homing_move=-1, endstop_name=SENSOR_PRE_GATE_PREFIX, wait=True)
+                self.trace_filament_move(msg, -self.mmu_unit().p.gate_final_eject_distance, motor="gear", homing_move=-1, endstop_name=SENSOR_ENTRY_PREFIX, wait=True)
             else:
                 self.trace_filament_move(msg, -self.mmu_unit().p.gate_final_eject_distance, wait=True)
 
@@ -2570,7 +2570,7 @@ class MmuController:
                             self.selector().filament_release()
                             self.selector().filament_drive()
 
-        else: # Gate sensor... SENSOR_GATE is shared, but SENSOR_GEAR_PREFIX is gate specific
+        else: # Gate sensor... SENSOR_SHARED_EXIT is shared, but SENSOR_EXIT_PREFIX is gate specific
             for i in range(retries):
                 endstop_name = self.sensor_manager.get_mapped_endstop_name(self.mmu_unit().p.gate_homing_endstop)
                 msg = ("Initial homing to %s sensor" % endstop_name) if i == 0 else ("Retry homing to gate sensor (retry #%d)" % i)
@@ -2659,7 +2659,7 @@ class MmuController:
                     return actual, gate_homing_buffer
                 msg = "did not clear the encoder after moving %.1fmm" % homing_max
 
-        else: # Using mmu_gate or mmu_gear_N sensor
+        else: # Using mmu_shared_exit or mmu_exit_N sensor
             endstop_name = self.sensor_manager.get_mapped_endstop_name(self.mmu_unit().p.gate_homing_endstop)
             actual,homed,_,_ = self.trace_filament_move("Reverse homing off %s sensor" % endstop_name, -homing_max, motor="gear", homing_move=-1, endstop_name=endstop_name)
             if homed:
@@ -2698,7 +2698,7 @@ class MmuController:
                 raise MmuError("Attempting to %s encoder but encoder is not configured on MMU!" % direction)
         elif self.mmu_unit().p.gate_homing_endstop in GATE_ENDSTOPS:
             sensor = self.mmu_unit().p.gate_homing_endstop
-            if self.mmu_unit().p.gate_homing_endstop == SENSOR_GEAR_PREFIX:
+            if self.mmu_unit().p.gate_homing_endstop == SENSOR_EXIT_PREFIX:
                 sensor += "_%d" % self.gate_selected
             if not self.sensor_manager.has_sensor(sensor):
                 raise MmuError("Attempting to %s gate but sensor '%s' is not configured on MMU!" % (direction, sensor))
@@ -3701,8 +3701,8 @@ class MmuController:
     #         "synced"         - gear synced with extruder as in print (homing move not possible)
     #
     # If homing move then endstop name can be specified.
-    #         "mmu_gate"       - at the gate on MMU (when motor includes "gear")
-    #         "mmu_gear_N"     - post past the filament drive gear
+    #         "mmu_shared_exit"       - at the gate on MMU (when motor includes "gear")
+    #         "mmu_exit_N"     - post past the filament drive gear
     #         "extruder"       - just before extruder entrance (motor includes "gear" or "extruder")
     #         "toolhead"       - after extruder entrance (motor includes "gear" or "extruder")
     #         "mmu_gear_touch" - stallguard on gear (when motor includes "gear", only useful for motor="gear")
@@ -5154,16 +5154,16 @@ class MmuController:
         return next_gate, msg
 
 
-    # Use pre-gate (and gear) sensors to "correct" gate status
+    # Use mmu entry (and gear) sensors to "correct" gate status
     # Return updated gate_status adjusted by sensor readings
     def _validate_gate_status(self, gate_status):
         v_gate_status = list(gate_status) # Ensure that webhooks sees get_status() change
         for gate, status in enumerate(v_gate_status):
-            gear_detected = self.sensor_manager.check_gate_sensor(SENSOR_GEAR_PREFIX, gate)
+            gear_detected = self.sensor_manager.check_gate_sensor(SENSOR_EXIT_PREFIX, gate)
             if gear_detected is True:
                 v_gate_status[gate] = GATE_AVAILABLE
             else:
-                pre_detected = self.sensor_manager.check_gate_sensor(SENSOR_PRE_GATE_PREFIX, gate)
+                pre_detected = self.sensor_manager.check_gate_sensor(SENSOR_ENTRY_PREFIX, gate)
                 if pre_detected is True and status == GATE_EMPTY:
                     v_gate_status[gate] = GATE_UNKNOWN
                 elif pre_detected is False and status != GATE_EMPTY:
@@ -5171,7 +5171,7 @@ class MmuController:
         return v_gate_status
 
 
-    # Use post-gear sensors to correct the selected gate.
+    # Use post-mmu exit sensors to correct the selected gate.
     # Returns the unique detected gate index, or None if zero/multiple detected.
     def _validate_gate_selected(self):
         gate = None

@@ -57,13 +57,13 @@ if BOARD_TYPE_MMB_1_0
     config PIN_GEAR_DIAG_3
       default "$(MCU_NAME):PB8" 
 
-    config PIN_PRE_GATE_0
+    config PIN_ENTRY_0
       default "$(MCU_NAME):PB11" 
-    config PIN_PRE_GATE_1
+    config PIN_ENTRY_1
       default "$(MCU_NAME):PA3" 
-    config PIN_PRE_GATE_2
+    config PIN_ENTRY_2
       default "$(MCU_NAME):PB9" 
-    config PIN_PRE_GATE_3
+    config PIN_ENTRY_3
       default "$(MCU_NAME):PB8" 
 
     config PIN_GEAR_SENSOR_0
@@ -101,21 +101,21 @@ if BOARD_TYPE_MMB_1_0
     config PIN_SELECTOR_SERVO
       default "$(MCU_NAME):PA0" 
 
-    config PIN_PRE_GATE_0
+    config PIN_ENTRY_0
       default "^$(MCU_NAME):PB9" 
-    config PIN_PRE_GATE_1
+    config PIN_ENTRY_1
       default "^$(MCU_NAME):PB8" 
-    config PIN_PRE_GATE_2
+    config PIN_ENTRY_2
       default "^$(MCU_NAME):PC15" 
-    config PIN_PRE_GATE_3
+    config PIN_ENTRY_3
       default "^$(MCU_NAME):PC13" 
-    config PIN_PRE_GATE_4
+    config PIN_ENTRY_4
       default "^$(MCU_NAME):PC14"
-    config PIN_PRE_GATE_5
+    config PIN_ENTRY_5
       default "^$(MCU_NAME):PB12"
-    config PIN_PRE_GATE_6
+    config PIN_ENTRY_6
       default "^$(MCU_NAME):PB11"
-    config PIN_PRE_GATE_7
+    config PIN_ENTRY_7
       default "^$(MCU_NAME):PB10"
   endif
 

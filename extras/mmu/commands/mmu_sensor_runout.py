@@ -30,7 +30,7 @@ class MmuSensorRunoutCommand(BaseCommand):
         EVENTTIME will contain reactor time that the sensor triggered
                   and command was queued
         SENSOR    will contain sensor name
-        GATE      will be set if specific pre-gate or gear sensor
+        GATE      will be set if specific mmu entry or mmu exit sensor
     """
 
     CMD = "__MMU_SENSOR_RUNOUT"
@@ -81,12 +81,12 @@ class MmuSensorRunoutCommand(BaseCommand):
                     self.mmu.log_assertion("Runout handler suspects sensor malfunction on %s. Ignored" % raw_sensor)
 
                 else:
-                    # Always update gate map from pre-gate sensor
-                    if sensor.startswith(SENSOR_PRE_GATE_PREFIX) and gate != self.mmu.gate_selected:
+                    # Always update gate map from mmu entry sensor
+                    if sensor.startswith(SENSOR_ENTRY_PREFIX) and gate != self.mmu.gate_selected:
                         self.mmu._set_gate_status(gate, GATE_EMPTY)
 
                     # Real runout to process...
-                    if sensor.startswith(SENSOR_PRE_GATE_PREFIX) and gate == self.mmu.gate_selected:
+                    if sensor.startswith(SENSOR_ENTRY_PREFIX) and gate == self.mmu.gate_selected:
                         if self.mmu.endless_spool_enabled and self.mmu.p.endless_spool_eject_gate == gate:
                             self.mmu.log_trace(
                                 "Ignoring filament runout detected by %s because endless_spool_eject_gate is active on that gate"
@@ -95,10 +95,10 @@ class MmuSensorRunoutCommand(BaseCommand):
                         else:
                             process_runout = True
 
-                    elif sensor == SENSOR_GATE and gate is None:
+                    elif sensor == SENSOR_SHARED_EXIT and gate is None:
                         process_runout = True
 
-                    elif sensor.startswith(SENSOR_GEAR_PREFIX) and gate == self.mmu.gate_selected:
+                    elif sensor.startswith(SENSOR_EXIT_PREFIX) and gate == self.mmu.gate_selected:
                         process_runout = True
 
                     elif sensor.startswith(SENSOR_EXTRUDER_ENTRY):

@@ -1,4 +1,4 @@
-config MMU_HAS_SENSOR_GATE
+config MMU_HAS_SENSOR_SHARED_EXIT
   bool "Gate sensor (aka hub sensor)"
   help
     Select if you have a sensor that is shared by all gates

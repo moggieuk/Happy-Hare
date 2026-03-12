@@ -69,7 +69,7 @@ GATE_AVAILABLE_FROM_BUFFER = 2
 
 FILAMENT_POS_UNKNOWN = -1
 FILAMENT_POS_UNLOADED = 0       # Parked in gate
-FILAMENT_POS_HOMED_GATE = 1     # Homed at either gate or gear sensor (currently assumed mutually exclusive sensors)
+FILAMENT_POS_HOMED_GATE = 1     # Homed at either gate or mmu exit sensor (currently assumed mutually exclusive sensors)
 FILAMENT_POS_START_BOWDEN = 2   # Point of fast load portion
 FILAMENT_POS_IN_BOWDEN = 3      # Some unknown position in the bowden
 FILAMENT_POS_END_BOWDEN = 4     # End of fast load portion
@@ -112,8 +112,8 @@ MACRO_EVENT_FILAMENT_GRIPPED = "filament_gripped" # Params: None
 
 # Standard sensor and endstop or pseudo endstop names
 SENSOR_ENCODER             = "encoder"        # Fake Gate endstop
-SENSOR_GATE                = "mmu_gate"       # Gate
-SENSOR_GEAR_PREFIX         = "mmu_gear"
+SENSOR_SHARED_EXIT                = "mmu_shared_exit"       # Gate
+SENSOR_EXIT_PREFIX         = "mmu_exit"
 
 SENSOR_EXTRUDER_NONE       = "none"           # Fake Extruder endstop aka don't attempt home
 SENSOR_EXTRUDER_COLLISION  = "collision"      # Fake Extruder endstop
@@ -129,10 +129,10 @@ SENSOR_EXTRUDER_TOUCH      = "mmu_ext_touch"
 
 SENSOR_SELECTOR_TOUCH      = "mmu_sel_touch"  # For LinearSelector and LinearServoSelector
 SENSOR_SELECTOR_HOME       = "mmu_sel_home"   # For LinearSelector and LinearServoSelector
-SENSOR_PRE_GATE_PREFIX     = "mmu_pre_gate"
+SENSOR_ENTRY_PREFIX     = "mmu_entry"
 
 EXTRUDER_ENDSTOPS = [SENSOR_EXTRUDER_COLLISION, SENSOR_GEAR_TOUCH, SENSOR_EXTRUDER_ENTRY, SENSOR_EXTRUDER_NONE, SENSOR_COMPRESSION]
-GATE_ENDSTOPS     = [SENSOR_GATE, SENSOR_ENCODER, SENSOR_GEAR_PREFIX, SENSOR_EXTRUDER_ENTRY]
+GATE_ENDSTOPS     = [SENSOR_SHARED_EXIT, SENSOR_ENCODER, SENSOR_EXIT_PREFIX, SENSOR_EXTRUDER_ENTRY]
 
 # Gear/Extruder synchronization modes (None = unsynced)
 DRIVE_UNSYNCED                = None
@@ -202,7 +202,7 @@ VARS_MMU_ENCODER_CLOG_LENGTH       = "mmu_encoder_clog_length"
 VARS_MMU_GATE_STATISTICS_PREFIX    = "mmu_statistics_gate_"
 VARS_MMU_GEAR_ROTATION_DISTANCES   = "mmu_gear_rotation_distances"
 VARS_MMU_BOWDEN_LENGTHS            = "mmu_bowden_lengths"             # Per-gate calibrated bowden lengths
-VARS_MMU_BOWDEN_HOME               = "mmu_bowden_home"                # Was encoder, gate or gear sensor used as reference point
+VARS_MMU_BOWDEN_HOME               = "mmu_bowden_home"                # Was encoder, gate or mmu exit sensor used as reference point
 
 # Per-unit selector
 VARS_MMU_SELECTOR_OFFSETS          = "mmu_selector_offsets"
