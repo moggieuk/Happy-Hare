@@ -104,7 +104,13 @@ class BaseCommand:
         self.mmu.gcode.register_command(name, wrapped, desc=help_brief)
 
         # Record metadata in the category (global registry)
-        BaseCommand._registered_commands.append(metadata)
+        # This checks for duplicates and replaces in case of duplicate registration
+        for i, cmd in enumerate(BaseCommand._registered_commands):
+            if cmd["name"] == metadata["name"]:
+                BaseCommand._registered_commands[i] = metadata
+                break
+        else:
+            BaseCommand._registered_commands.append(metadata)
 
 
     def get_unit(self, gcmd):

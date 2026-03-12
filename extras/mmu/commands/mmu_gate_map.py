@@ -227,4 +227,4 @@ class MmuGateMapCommand(BaseCommand):
         self.mmu._persist_gate_map(spoolman_sync=bool(changed_gate_ids) and not from_spoolman, gate_ids=changed_gate_ids) # This will also update LED status
 
         if not quiet:
-            self.mmu.log_info(self.mmu._gate_map_to_string(detail))
+            self.mmu.log_always(self.mmu._gate_map_to_string(detail), color=True)

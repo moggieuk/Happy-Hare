@@ -12,9 +12,9 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
+
 import gc, sys, ast, random, logging, time, contextlib, math, os.path, re, unicodedata, traceback
 from itertools                  import repeat
-
 
 # Klipper imports
 import chelper
@@ -31,6 +31,10 @@ from .mmu_led_manager           import MmuLedManager
 from .mmu_machine_parameters    import MmuMachineParameters
 from .commands                  import COMMAND_REGISTRY
 from .commands.mmu_base_command import *
+
+# Color formatting in console output
+CONSOLE_COLOR_TOKENS_RE = re.compile(r"\{\{[^{}]*\}\}|\{[^{}]*\}")
+CONSOLE_COLOR_SPAN_RE = re.compile(r"\{\{([0-9a-fA-F]{3,8})\}\}|\{\{\}\}")
 
 
 # Main klipper module
@@ -410,11 +414,11 @@ class MmuController:
 
     # This retuns the hex color format without leading '#' E.g. ff00e080
     # Support alpha channel (Nice for Mainsail/Fluidd UI)
-    def _color_to_rgb_hex(self, color):
+    def _color_to_rgb_hex(self, color, default="000000"):
         if color in self.w3c_colors:
             color = self.w3c_colors.get(color)
         elif color == '':
-            color = "000000"
+            color = default
         rgb_hex = color.lstrip('#').lower()
         return rgb_hex[0:8]
 
@@ -684,7 +688,7 @@ class MmuController:
                         self.log_error(str(e))
 
             if self.p.log_startup_status:
-                self.log_always(self._mmu_visual_to_string())
+                self.log_always(self._mmu_visual_to_string(), color=True)
                 self._display_visual_state()
             self.report_necessary_recovery()
 
@@ -1245,23 +1249,45 @@ class MmuController:
 
 
     def _color_message(self, msg):
-        try:
-            html_msg = msg.format(
-                '</span>',                       # {0} COLOR OFF
-                '<span style="color:#C0C0C0">',  # {1} COLOR GREY
-                '<span style="color:#FF69B4">',  # {2} COLOR RED
-                '<span style="color:#90EE90">',  # {3} COLOR GREEN
-                '<span style="color:#87CEEB">',  # {4} COLOR CYAN
-                '<b>',                           # {5} BOLD ON
-                '</b>'                           # {6} BOLD OFF
-            )
-        except (IndexError, KeyError, ValueError) as e:
-            html_msg = msg
+        # Fast path
+        if "{" not in msg:
+            return msg, msg
 
-        msg = re.sub(r'\{\d\}', '', msg) # Remove numbered placeholders for plain msg
-        if self.p.serious:
-            html_msg = msg
-        return html_msg, msg
+        # 1) Plain msg cleanup
+        plain_msg = CONSOLE_COLOR_TOKENS_RE.sub("", msg)
+        want_color = self.p.console_show_colored_text
+        if not want_color:
+            return plain_msg, plain_msg
+
+        # 2) Replace fixed {0}..{6} tokens
+        html_msg = msg
+        if (
+            "{0}" in html_msg or "{1}" in html_msg or "{2}" in html_msg or
+            "{3}" in html_msg or "{4}" in html_msg or "{5}" in html_msg or
+            "{6}" in html_msg
+        ):
+            html_msg = (
+                html_msg
+                .replace("{0}", "</span>")
+                .replace("{1}", '<span style="color:#C0C0C0">')
+                .replace("{2}", '<span style="color:#FF69B4">')
+                .replace("{3}", '<span style="color:#90EE90">')
+                .replace("{4}", '<span style="color:#87CEEB">')
+                .replace("{5}", "<b>")
+                .replace("{6}", "</b>")
+            )
+
+        # 3) Replace dynamic {{RRGGBB}} and {{}} tokens if present
+        if "{{" in html_msg:
+            def repl(match):
+                hex_color = match.group(1)
+                if hex_color:
+                    return '<span style="color:#%s">' % hex_color
+                return "</span>"
+
+            html_msg = CONSOLE_COLOR_SPAN_RE.sub(repl, html_msg)
+
+        return html_msg, plain_msg
 
 
     def log_to_file(self, msg, prefix='> '):
@@ -4856,10 +4882,206 @@ class MmuController:
             self.log_error("Error while displaying spool location map: %s\n%s" % (str(e), SPOOLMAN_CONFIG_ERROR))
 
 
+# -----------------------------------------------------------------------------------------------------------
+# Console formatting methods
+# -----------------------------------------------------------------------------------------------------------
 
-###########################################
-# RUNOUT, ENDLESS SPOOL and GATE HANDLING #
-###########################################
+    def _get_filament_char(self, gate, show_letter=False, show_swatch=False):
+        """
+        Return a gate’s display character (swatch or status letter) based on UI and availability.
+
+        Args:
+            show_swatch: Flag to always return the swatch character
+            show_letter: Flag to provide letter indication of "from spool" or "from buffer" if not forcing swatch
+        """
+        show_letter = (
+            show_letter and
+            self.mmu_unit(gate).p.has_filament_buffer and
+            not self.has_espooler(gate)
+        )
+        gate_status = self.gate_status[gate]
+
+        swatch = "*" # Fallback character
+        if self.p.console_show_filament_color:
+            if self.gate_color[gate]:
+                rgb_hex = self._color_to_rgb_hex(self.gate_color[gate], "FFFFFF")
+                swatch = '{{%s}}%s{{}}' % (rgb_hex, UI_BULLET)
+            else:
+                swatch = UI_BULLET
+
+        if self.endless_spool_enabled and gate == self.p.endless_spool_eject_gate:
+            return "W" # Always show waste gate for filament tips if configured
+        elif gate_status == GATE_AVAILABLE_FROM_BUFFER:
+            return "B" if show_letter and not show_swatch else swatch
+        elif gate_status == GATE_AVAILABLE:
+            return "S" if show_letter and not show_swatch else swatch
+        elif gate_status == GATE_EMPTY:
+            return "-" if show_letter or show_swatch else UI_SEPARATOR
+        else:
+            return "?" if show_letter or show_swatch else UI_SEPARATOR
+
+
+    def _ttg_map_to_string(self, tool=None, show_groups=True):
+        """
+        Format the TTG map (and optionally EndlessSpool groups) into a human-readable string.
+
+        Args:
+            tool: Specify the specific tool to display else all tools will be displayed
+            show_groups: Flag to include the endless spool groups if available
+        """
+        if show_groups:
+            msg = "TTG Map & EndlessSpool Groups:\n"
+        else:
+            msg = "TTG Map:\n" # String used to filter in KS-HH
+
+        num_tools = self.num_gates
+        tools = range(num_tools) if tool is None else [tool]
+
+        for i in tools:
+            gate = self.ttg_map[i]
+            filament_char = self._get_filament_char(gate, show_swatch=True)
+            msg += "\n" if i and tool is None else ""
+            msg += "T{:<2}-> Gate{:>2}({})".format(i, gate, filament_char)
+
+            if show_groups and self.endless_spool_enabled:
+                group = self.endless_spool_groups[gate]
+                msg += " Group %s:" % chr(ord('A') + group)
+                gates_in_group = [(j + gate) % num_tools for j in range(num_tools)]
+                msg += " >".join("{:>2}".format(g) for g in gates_in_group if self.endless_spool_groups[g] == group)
+
+            if i == self.tool_selected:
+                msg += " [SELECTED]"
+        return msg
+
+
+    def _mmu_visual_to_string(self):
+        """
+        Build a multi-line ASCII visualization of units, gates, tools, availability, and selection state.
+        """
+        divider = UI_SPACE + UI_SEPARATOR + UI_SPACE
+        msg_units = "Unit : "
+        msg_gates = "Gate : "
+        msg_tools = "Tools: "
+        msg_avail = "Avail: "
+        msg_selct = "Selct: "
+        for unit in range(self.mmu_machine.num_units):
+            unit = self.mmu_machine.get_mmu_unit_by_index(unit)
+            gate_indices = range(unit.first_gate, unit.first_gate + unit.num_gates)
+            last_gate = gate_indices[-1] == self.num_gates - 1
+            sep = ("|" + divider) if not last_gate else "|"
+            tool_strings = []
+            select_strings = []
+            for g in gate_indices:
+                msg_gates += "".join("|{:^3}".format(g) if g < 10 else "| {:2}".format(g))
+
+                fc = self._get_filament_char(g)
+                fcs = self._get_filament_char(g, show_letter=True)
+                msg_avail += "".join("|%s%s%s" % (fc, fcs, fc))
+
+                tool_str = "+".join("T%d" % t for t in range(self.num_gates) if self.ttg_map[t] == g)
+                tool_strings.append(("|%s " % (tool_str if tool_str else " {} ".format(UI_SEPARATOR)))[:4])
+
+                if self.gate_selected == g and self.gate_selected != TOOL_GATE_UNKNOWN:
+                    if self.filament_pos < FILAMENT_POS_START_BOWDEN:
+                        center = UI_SEPARATOR
+                    else:
+                        center = self._get_filament_char(g, show_swatch=True)
+
+                    select_strings.append("|\\%s/|" % center)
+                else:
+                    select_strings.append("----")
+
+            unit_str = "{0:-^{width}}".format( " " + str(unit.name) + " ", width=len(gate_indices) * 4 + 1)
+            msg_units += unit_str + (divider if not last_gate else "")
+            msg_gates += sep
+            msg_avail += sep
+            msg_tools += "".join(tool_strings) + sep
+            msg_selct += ("".join(select_strings) + "-")[:len(gate_indices) * 4 + 1] + (divider if not last_gate else "")
+        lines = [msg_units] if len(self.mmu_machine.units) > 1 else []
+        lines.extend([msg_gates, msg_tools, msg_avail, msg_selct])
+        msg = "\n".join(lines)
+        if self.selector().is_homed:
+            msg += " " + self.selected_tool_string()
+        else:
+            msg += " NOT HOMED"
+        return msg
+
+
+    def _es_groups_to_string(self, title=None):
+        """
+        Return a formatted string listing EndlessSpool groups and their member gates.
+
+        Args:
+            title: Optionally supply a non-default title
+        """
+        msg = "%s:\n" % title if title else "EndlessSpool Groups:\n"
+        groups = {}
+        for gate in range(self.num_gates):
+            group = self.endless_spool_groups[gate]
+            if group not in groups:
+                groups[group] = [gate]
+            else:
+                groups[group].append(gate)
+        msg += "\n".join(
+            "Group %s: Gates: %s" % (chr(ord('A') + group), ", ".join(map(str, gates)))
+            for group, gates in groups.items()
+        )
+        return msg
+
+
+    def _gate_map_to_string(self, detail=False):
+        """
+        Format per-gate filament details into a readable summary.
+
+        Args:
+            detail: Optionally display with tool and swatch detail
+        """
+        msg = "Gates / Filaments:" # String used to filter in KlipperScreen-HH
+        available_status = {
+            GATE_AVAILABLE_FROM_BUFFER: "Buffered",
+            GATE_AVAILABLE: "On spool",
+            GATE_EMPTY: "Empty",
+            GATE_UNKNOWN: "Unknown"
+        }
+
+        for g in range(self.num_gates):
+            available = available_status[self.gate_status[g]]
+            name = self.gate_filament_name[g] or "Unknown"
+            material = self.gate_material[g] or "Unknown"
+            color = self._format_color(self.gate_color[g] or "n/a")
+            temperature = self.gate_temperature[g] or "n/a"
+
+            gate_fstr = ""
+            if detail:
+                filament_char = self._get_filament_char(g, show_swatch=True)
+                tools = ",".join("T{}".format(t) for t in range(self.num_gates) if self.ttg_map[t] == g)
+                tools_fstr = (" [{}]".format(tools) if tools else "")
+                gate_fstr = "{}".format(g).ljust(2, UI_SPACE)
+                gate_fstr = "{}({}){}:".format(gate_fstr, filament_char, tools_fstr).ljust(14 + len(filament_char), UI_SPACE)
+            else:
+                gate_fstr = "{}:".format(g).ljust(3, UI_SPACE)
+
+            available_fstr = "{};".format(available).ljust(11, UI_SPACE)
+            fil_fstr = "{} | {}{}C | {} | {}".format(material, temperature, UI_DEGREE, color, name)
+
+            spool_option = (str(self.gate_spool_id[g]) if self.gate_spool_id[g] > 0 else "n/a")
+            if self.p.spoolman_support == SPOOLMAN_OFF:
+                spool_fstr = ""
+            elif self.gate_spool_id[g] <= 0:
+                spool_fstr = "Id: {};".format(spool_option).ljust(12, UI_SPACE)
+            else:
+                spool_fstr = "Id: {}".format(spool_option).ljust(8, UI_SPACE) + "--> "
+
+            speed_fstr = " [Speed:{}%]".format(self.gate_speed_override[g]) if self.gate_speed_override[g] != 100 else ""
+            extra_fstr = " [Selected]" if detail and g == self.gate_selected else ""
+
+            msg += "\n{}{}{}{}{}{}".format(gate_fstr, available_fstr, spool_fstr, fil_fstr, speed_fstr, extra_fstr)
+        return msg
+
+
+# -----------------------------------------------------------------------------------------------------------
+# RUNOUT, ENDLESS SPOOL, TTG MAPPING and GATE HANDLING
+# -----------------------------------------------------------------------------------------------------------
 
     # Handler for all "runout" type events including "clog" and "tangle".
     # If event_type is None then caller isn't sure (runout or clog)
@@ -4881,7 +5103,7 @@ class MmuController:
             if event_type is None:
                 if not self.check_filament_runout():
                     if self.has_encoder():
-# MOGGIE encoder_sensor
+# MOGGIE encoder_sensor?
                         self.encoder_sensor.note_clog_detection_length()
                     # Eliminate runout
                     event_type = "clog/tangle"
@@ -4920,6 +5142,7 @@ class MmuController:
 
             raise MmuError("A %s has been detected on %s and requires manual intervention" % (type_str, sensor))
 
+
     def _get_next_endless_spool_gate(self, tool, gate):
         group = self.endless_spool_groups[gate]
         next_gate = -1
@@ -4934,6 +5157,7 @@ class MmuController:
         alt_gates = "(checked gates: %s)" % ",".join(map(str, checked_gates))
         msg = "for T%d in EndlessSpool Group %s %s" % (tool, chr(ord('A') + group), alt_gates)
         return next_gate, msg
+
 
     # Use pre-gate (and gear) sensors to "correct" gate status
     # Return updated gate_status adjusted by sensor readings
@@ -4951,6 +5175,7 @@ class MmuController:
                     v_gate_status[gate] = GATE_EMPTY
         return v_gate_status
 
+
     # Use post-gear sensors to correct the selected gate.
     # Returns the unique detected gate index, or None if zero/multiple detected.
     def _validate_gate_selected(self):
@@ -4963,139 +5188,6 @@ class MmuController:
                     return None
         return gate
 
-    def _get_filament_char(self, gate, no_space=False, show_source=False):
-        show_source &= self.mmu_unit().p.has_filament_buffer
-        gate_status = self.gate_status[gate]
-        if self.endless_spool_enabled and gate == self.p.endless_spool_eject_gate:
-            return "W"
-        elif gate_status == GATE_AVAILABLE_FROM_BUFFER:
-            return "B" if show_source else "*"
-        elif gate_status == GATE_AVAILABLE:
-            return "S" if show_source else "*"
-        elif gate_status == GATE_EMPTY:
-            return (UI_SEPARATOR if no_space else " ")
-        else:
-            return "?"
-
-    def _ttg_map_to_string(self, tool=None, show_groups=True):
-        if show_groups:
-            msg = "TTG Map & EndlessSpool Groups:\n"
-        else:
-            msg = "TTG Map:\n" # String used to filter in KS-HH
-        num_tools = self.num_gates
-        tools = range(num_tools) if tool is None else [tool]
-        for i in tools:
-            gate = self.ttg_map[i]
-            filament_char = self._get_filament_char(gate, show_source=False)
-            msg += "\n" if i and tool is None else ""
-            msg += "T{:<2}-> Gate{:>2}({})".format(i, gate, filament_char)
-
-            if show_groups and self.endless_spool_enabled:
-                group = self.endless_spool_groups[gate]
-                msg += " Group %s:" % chr(ord('A') + group)
-                gates_in_group = [(j + gate) % num_tools for j in range(num_tools)]
-                #msg += " >".join("{:>2}({})".format(g, self._get_filament_char(g, show_source=False)) for g in gates_in_group if self.endless_spool_groups[g] == group)
-                msg += " >".join("{:>2}".format(g) for g in gates_in_group if self.endless_spool_groups[g] == group)
-
-            if i == self.tool_selected:
-                msg += " [SELECTED]"
-        return msg
-
-    def _mmu_visual_to_string(self):
-        divider = UI_SPACE + UI_SEPARATOR + UI_SPACE
-        msg_units = "Unit : "
-        msg_gates = "Gate : "
-        msg_avail = "Avail: "
-        msg_tools = "Tools: "
-        msg_selct = "Selct: "
-        for unit in range(self.mmu_machine.num_units):
-            unit = self.mmu_machine.get_mmu_unit_by_index(unit)
-            gate_indices = range(unit.first_gate, unit.first_gate + unit.num_gates)
-            last_gate = gate_indices[-1] == self.num_gates - 1
-            sep = ("|" + divider) if not last_gate else "|"
-            tool_strings = []
-            select_strings = []
-            for g in gate_indices:
-                msg_gates += "".join("|{:^3}".format(g) if g < 10 else "| {:2}".format(g))
-                msg_avail += "".join("| %s " % self._get_filament_char(g, no_space=True, show_source=True))
-                tool_str = "+".join("T%d" % t for t in range(self.num_gates) if self.ttg_map[t] == g)
-                tool_strings.append(("|%s " % (tool_str if tool_str else " {} ".format(UI_SEPARATOR)))[:4])
-                if self.gate_selected == g and self.gate_selected != TOOL_GATE_UNKNOWN:
-                    select_strings.append("|\%s/|" % (UI_SEPARATOR if self.filament_pos < FILAMENT_POS_START_BOWDEN else "*"))
-                else:
-                    select_strings.append("----")
-            unit_str = "{0:-^{width}}".format( " " + str(unit.name) + " ", width=len(gate_indices) * 4 + 1)
-            msg_units += unit_str + (divider if not last_gate else "")
-            msg_gates += sep
-            msg_avail += sep
-            msg_tools += "".join(tool_strings) + sep
-            msg_selct += ("".join(select_strings) + "-")[:len(gate_indices) * 4 + 1] + (divider if not last_gate else "")
-        lines = [msg_units] if len(self.mmu_machine.units) > 1 else []
-        lines.extend([msg_gates, msg_tools, msg_avail, msg_selct])
-        msg = "\n".join(lines)
-        if self.selector().is_homed:
-            msg += " " + self.selected_tool_string()
-        else:
-            msg += " NOT HOMED"
-        return msg
-
-    def _es_groups_to_string(self, title=None):
-        msg = "%s:\n" % title if title else "EndlessSpool Groups:\n"
-        groups = {}
-        for gate in range(self.num_gates):
-            group = self.endless_spool_groups[gate]
-            if group not in groups:
-                groups[group] = [gate]
-            else:
-                groups[group].append(gate)
-        msg += "\n".join(
-            "Group %s: Gates: %s" % (chr(ord('A') + group), ", ".join(map(str, gates)))
-            for group, gates in groups.items()
-        )
-        return msg
-
-    def _gate_map_to_string(self, detail=False):
-        msg = "Gates / Filaments:" # String used to filter in KS-HH
-        available_status = {
-            GATE_AVAILABLE_FROM_BUFFER: "Buffer",
-            GATE_AVAILABLE: "Spool",
-            GATE_EMPTY: "Empty",
-            GATE_UNKNOWN: "Unknown"
-        }
-
-        for g in range(self.num_gates):
-            available = available_status[self.gate_status[g]]
-            name = self.gate_filament_name[g] or "Unknown"
-            material = self.gate_material[g] or "Unknown"
-            color = self._format_color(self.gate_color[g] or "n/a")
-            temperature = self.gate_temperature[g] or "n/a"
-
-            gate_fstr = ""
-            if detail:
-                filament_char = self._get_filament_char(g, show_source=False)
-                tools = ",".join("T{}".format(t) for t in range(self.num_gates) if self.ttg_map[t] == g)
-                tools_fstr = (" [{}]".format(tools) if tools else "")
-                gate_fstr = "{}".format(g).ljust(2, UI_SPACE)
-                gate_fstr = "{}({}){}:".format(gate_fstr, filament_char, tools_fstr).ljust(15, UI_SPACE)
-            else:
-                gate_fstr = "{}:".format(g).ljust(3, UI_SPACE)
-
-            available_fstr = "{};".format(available).ljust(9, UI_SPACE)
-            fil_fstr = "{} | {}{}C | {} | {}".format(material, temperature, UI_DEGREE, color, name)
-
-            spool_option = (str(self.gate_spool_id[g]) if self.gate_spool_id[g] > 0 else "n/a")
-            if self.p.spoolman_support == SPOOLMAN_OFF:
-                spool_fstr = ""
-            elif self.gate_spool_id[g] <= 0:
-                spool_fstr = "Id: {};".format(spool_option).ljust(12, UI_SPACE)
-            else:
-                spool_fstr = "Id: {}".format(spool_option).ljust(8, UI_SPACE) + "--> "
-
-            speed_fstr = " [Speed:{}%]".format(self.gate_speed_override[g]) if self.gate_speed_override[g] != 100 else ""
-            extra_fstr = " [Selected]" if detail and g == self.gate_selected else ""
-
-            msg += "\n{}{}{}{}{}{}".format(gate_fstr, available_fstr, spool_fstr, fil_fstr, speed_fstr, extra_fstr)
-        return msg
 
     # Remap a tool/gate relationship and gate filament availability
     def _remap_tool(self, tool, gate, available=None):
@@ -5106,6 +5198,7 @@ class MmuController:
         self._update_slicer_color_rgb() # Indexed by gate
         if available is not None:
             self._set_gate_status(gate, available)
+
 
     # Find and set a tool that maps to gate (for recovery)
     def _ensure_ttg_match(self):
@@ -5121,8 +5214,10 @@ class MmuController:
                 self.log_warning("Resetting tool selected to unknown because current gate (%d) isn't associated with tool in TTG map" % self.gate_selected)
                 self._set_tool_selected(TOOL_GATE_UNKNOWN)
 
+
     def _persist_ttg_map(self):
         self.var_manager.set(VARS_MMU_TOOL_TO_GATE_MAP, self.ttg_map, write=True)
+
 
     def _reset_ttg_map(self):
         self.log_debug("Resetting TTG map")
@@ -5131,16 +5226,19 @@ class MmuController:
         self._ensure_ttg_match()
         self._update_slicer_color_rgb() # Indexed by gate
 
+
     def _persist_endless_spool(self):
         self.var_manager.set(VARS_MMU_ENABLE_ENDLESS_SPOOL, self.endless_spool_enabled)
         self.var_manager.set(VARS_MMU_ENDLESS_SPOOL_GROUPS, self.endless_spool_groups)
         self.var_manager.write()
+
 
     def _reset_endless_spool(self):
         self.log_debug("Resetting Endless Spool mapping")
         self.endless_spool_enabled = self.p.default_endless_spool_enabled
         self.endless_spool_groups = list(self.p.default_endless_spool_groups)
         self._persist_endless_spool()
+
 
     def _set_gate_status(self, gate, state):
         if 0 <= gate < self.num_gates:
@@ -5151,8 +5249,10 @@ class MmuController:
                 self.led_manager.gate_map_changed(gate)
                 self.mmu_macro_event(MACRO_EVENT_GATE_MAP_CHANGED, "GATE=%d" % gate)
 
+
     def _persist_gate_status(self):
         self.var_manager.set(VARS_MMU_GATE_STATUS, self.gate_status, write=True)
+
 
     # Ensure that webhooks sees get_status() change after gate map update. It is important to call this prior to
     # updating gate_map so change is always seen. This approach removes need to copy lists on every call to get_status()
@@ -5164,6 +5264,7 @@ class MmuController:
         self.gate_temperature = list(self.gate_temperature)
         self.gate_spool_id = list(self.gate_spool_id)
         self.gate_speed_override = list(self.gate_speed_override)
+
 
     def _persist_gate_map(self, spoolman_sync=False, gate_ids=None):
         self.var_manager.set(VARS_MMU_GATE_STATUS, self.gate_status)
@@ -5189,6 +5290,7 @@ class MmuController:
         self.led_manager.gate_map_changed(None)
         if self.printer.lookup_object("gcode_macro %s" % self.p.mmu_event_macro, None) is not None:
             self.mmu_macro_event(MACRO_EVENT_GATE_MAP_CHANGED, "GATE=-1")
+ 
 
     def _reset_gate_map(self):
         self.log_debug("Resetting gate map")
@@ -5204,6 +5306,7 @@ class MmuController:
         self.gate_speed_override = list(self.p.default_gate_speed_override)
         self._update_gate_color_rgb()
         self._persist_gate_map(spoolman_sync=True)
+
 
     def _automap_gate(self, tool, strategy):
         if tool is None:
@@ -5323,6 +5426,7 @@ class MmuController:
                 for e in errors:
                     self.log_error(e)
 
+
     # Set 'color' and 'spool_id' variable on the Tx macro for Mainsail/Fluidd to pick up
     # We don't use SET_GCODE_VARIABLE because the macro variable may not exist ahead of time
     def _update_t_macros(self):
@@ -5364,6 +5468,9 @@ class MmuController:
                 t_macro.variables = t_vars
 
 
+# -----------------------------------------------------------------------------------------------------------
+# INTERNAL WRAPPER COMMANDS
+# -----------------------------------------------------------------------------------------------------------
 
 class MmuWrapperCancelPrintCommand(BaseCommand):
 

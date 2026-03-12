@@ -95,7 +95,7 @@ class MmuTtgMapCommand(BaseCommand):
                 msg = self.mmu._ttg_map_to_string(show_groups=detail)
                 if not detail and self.mmu.endless_spool_enabled:
                     msg += "\nDETAIL=1 to see EndlessSpool map"
-                self.mmu.log_info(msg)
+                self.mmu.log_info(msg, color=True)
 
         except MmuError as ee:
             self.mmu.handle_mmu_error(str(ee))
