@@ -31,13 +31,13 @@ class MmuRecoverCommand(BaseCommand):
         + "BYPASS = 1 Used to force the assignment of the bypass Tool/Gate\n"
         + "LOADED = [0|1] Force unloaded or loaded (in the extruder) state\n"
         + "STRICT = 1 If auto-recovering state, allows extended tests including extruder heating\n"
-        + "(no parameters for automatic filament position recovery)"
+        + "(no parameters for automatic filament position recovery)\n"
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
-        + "MMU_RECOVER ...automatically recover filament position\n"
-        + "MMU_RECOVER LOADED=1 ...to indicate filament is in the extruder\n"
-        + "MMU_RECOVER TOOL=2 GATE=3 ...to indicate T2 is currently loaded from gate 3"
+        + "MMU_RECOVER               ...automatically recover filament position\n"
+        + "MMU_RECOVER LOADED=1      ...to indicate filament is in the extruder\n"
+        + "MMU_RECOVER TOOL=2 GATE=3 ...to indicate T2 is currently loaded from gate 3\n"
     )
 
     def __init__(self, mmu):

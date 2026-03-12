@@ -30,13 +30,13 @@ class MmuTestConfigCommand(BaseCommand):
         "%s: %s\n" % (CMD, HELP_BRIEF)
         + "UNIT  = #(int) Optional if only one unit fitted to printer\n"
         + "QUIET = [0|1]  Suppress non essential console messages\n"
-        + "(no parameters to dump of current settings)"
+        + "(no parameters to dump of current settings)\n"
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
         + "%s extruder_homing_max=150             ...set the extruder_homing_max parameter to 150\n" % CMD
         + "%s toolhead_ooze_reduction=2.5 QUIET=1 ...silently set toolhead_ooze_reduction\n" % CMD
-        + "%s UNIT=1 sync_to_extruder=1           ...turn on extruder syncing for mmu unit 1" % CMD
+        + "%s UNIT=1 sync_to_extruder=1           ...turn on extruder syncing for mmu unit 1\n" % CMD
     )
 
     def __init__(self, mmu):

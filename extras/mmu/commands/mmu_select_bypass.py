@@ -23,10 +23,9 @@ class MmuSelectBypassCommand(BaseCommand):
 
     CMD = "MMU_SELECT_BYPASS"
 
-    HELP_BRIEF = "Select the filament bypass"
+    HELP_BRIEF = "Select the filament bypass (alias for MMU_SELECT BYPASS=1)"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
-        + "(alias for MMU_SELECT BYPASS=1)\n"
     )
     HELP_SUPPLEMENT = (
         ""  # add examples here if desired
@@ -40,7 +39,7 @@ class MmuSelectBypassCommand(BaseCommand):
             help_brief=self.HELP_BRIEF,
             help_params=self.HELP_PARAMS,
             help_supplement=self.HELP_SUPPLEMENT,
-            category=CATEGORY_ALIAS
+            category=CATEGORY_OTHER
         )
 
     def _run(self, gcmd):

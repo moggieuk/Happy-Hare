@@ -657,7 +657,7 @@ class MmuCalibrateSelectorCommand(BaseCommand):
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
-        + "MMU_CALIBRATE_SELECTOR GATE=8 SAVE=0 ...calibrate gate logical gate 8, display but don't save results\n"
+        + "MMU_CALIBRATE_SELECTOR GATE=8 SAVE=0   ...calibrate logical gate 8 position, display but don't save results\n"
         + "MMU_CALIBRATE_SELECTOR UNIT=0 BYPASS=1 ...calibrate the bypass gate position on unit 1"
     )
 

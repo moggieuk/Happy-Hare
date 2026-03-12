@@ -13,18 +13,17 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 # Happy Hare imports
-from ..mmu_constants import UI_SPACE, UI_CASCADE
+from ..mmu_constants import UI_SPACE, UI_CASCADE, UI_SUPERSCRIPT_1, UI_SUPERSCRIPT_2
 
 CATEGORY_GENERAL   = "GENERAL"
 CATEGORY_TESTING   = "CALIBRATION/TESTING"
-CATEGORY_STEPS     = "STEPS"     # Individual loading/unloading steps
-CATEGORY_ALIAS     = "ALIAS"
+CATEGORY_STEPS     = "STEPS"             # Individual loading/unloading steps
 CATEGORY_MACROS    = "MACROS"
-CATEGORY_CALLBACKS = "CALLBACKS"
-CATEGORY_INTERNAL  = "INTERNAL"  # Hidden from user
-CATEGORY_OTHER     = "OTHER"     # If not explicitly assigned (should be empty)
+CATEGORY_CALLBACKS = "CALLBACKS/HOOKS"
+CATEGORY_INTERNAL  = "INTERNAL (CAUTION!)" # Hidden from user
+CATEGORY_OTHER     = "OTHER/ALIAS"
 
-ALL_UNITS          = "ALL"
+ALL_UNITS          = "ALL"               # Token meaning all units on some commands
 
 
 class BaseCommand:
@@ -60,7 +59,7 @@ class BaseCommand:
             self.mmu.log_to_file(gcmd.get_commandline())
 
             if gcmd.get_int('HELP', 0, minval=0, maxval=1):
-                self.mmu.log_always(self.format_help(help_params, help_supplement or ""), color=True)
+                self.mmu.log_always(self.format_help(help_params, help_supplement or "", per_unit), color=True)
                 return
 
             # We don't use klipper's register_mux_command() because it isn't flexible really enough
@@ -99,7 +98,6 @@ class BaseCommand:
             "help_supplement": help_supplement or "",
             "category": category,
             "per_unit": per_unit,
-#            "instance": self, # Don't really need this
         }
 
         # Register command with klipper
@@ -132,7 +130,7 @@ class BaseCommand:
         return unit
 
 
-    def format_help(self, msg, supplement=None):
+    def format_help(self, msg, supplement=None, per_unit=False, not_registered=False):
         """
         Format a help message and optional supplement into a nicely aligned block.
 
@@ -163,12 +161,19 @@ class BaseCommand:
 
         # Format the heading (first line). If the heading contains ":", split into
         # command and description and wrap the command in UI markers.
+
         first_line = lines[0].rstrip()
         if ":" in first_line:
             cmd, helpstr = first_line.split(":", 1)
-            formatted_help = "{5}" + cmd.strip() + "{6} : " + helpstr.strip()
+            cmd_text = cmd.strip()
+            if per_unit:
+                cmd_text += UI_SUPERSCRIPT_1
+            elif not_registered:
+                cmd_text += UI_SUPERSCRIPT_2
+            formatted_help = "{5}" + cmd_text + "{6} : " + helpstr.strip()
         else:
             formatted_help = first_line
+
 
         # Compute parameter name column width: minimum 10, else longest name+1.
         param_lines = [ln for ln in lines[1:] if "=" in ln]
@@ -204,4 +209,6 @@ class BaseCommand:
                 formatted_supplement += "{0}"
 
         main_block = "\n".join([formatted_help] + formatted_params) if formatted_params else formatted_help
-        return main_block + (("\n" + formatted_supplement) if formatted_supplement else "\n")
+        return main_block + (
+            ("\n" + formatted_supplement + "\n") if formatted_supplement else "\n"
+        )
