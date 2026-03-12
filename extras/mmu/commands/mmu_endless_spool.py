@@ -29,10 +29,13 @@ class MmuEndlessSpoolCommand(BaseCommand):
         + "ENABLE = [0|1]\n"
         + "QUIET  = [0|1]\n"
         + "RESET  = [0|1]\n"
-        + "GROUPS = comma,separated,group,map\n"
+        + "GROUPS = comma separated list of group membership\n"
     )
     HELP_SUPPLEMENT = (
-        ""  # add examples here if desired
+        "Examples:\n"
+        + "%s GROUPS=1,1,1,1   ...Put all four gates into same endless spool group\n" % CMD
+        + "%s RESET=1          ...Reset to default grouping. Typically each gate is in own group\n" % CMD
+        + "%s ENABLE=0 QUIET=1 ...Disable endspool feature supressing console/log output\n" % CMD
     )
 
     def __init__(self, mmu):

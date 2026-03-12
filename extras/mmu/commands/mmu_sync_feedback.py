@@ -22,7 +22,7 @@ class MmuSyncFeedbackCommand(BaseCommand):
     HELP_BRIEF = "Controls sync feedback and applies filament tension adjustments"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
-        + "UNIT           = #(int)|_name_|ALL Specify unit by name, number or all-units\n"
+        + "UNIT           = #(int)|_name_|ALL Specify unit by name, number or all-units (optional if single unit)\n"
         + "ENABLE         = [1|0] enable/disable sync feedback control\n"
         + "RESET          = [1|0] reset sync controller and return RD to last known good value\n"
         + "ADJUST_TENSION = [1|0] apply correction to neutralize filament tension\n"

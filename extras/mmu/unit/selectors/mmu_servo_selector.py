@@ -293,8 +293,8 @@ class MmuCalibrateServoSelectorCommand(BaseCommand):
 
     HELP_BRIEF = "Calibration of the selector servo angle for specifed gate(s)"
     HELP_PARAMS = (
-        "MMU_CALIBRATE_SERVO_SELECTOR: %s\n" % HELP_BRIEF
-        + "UNIT    = #(int)\n"
+        "%s: %s\n" % (CMD, HELP_BRIEF)
+        + "UNIT    = #(int) Optional if only one unit fitted to printer\n"
         + "GATE    = #(int) Optional, default all gates on unit\n"
         + "SHOW    = [0,1]\n"
         + "ANGLE   = #(int)\n"

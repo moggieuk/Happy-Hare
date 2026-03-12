@@ -51,7 +51,7 @@ class LinearSelector(PhysicalSelector):
         self.selector_homing_speed = config.getfloat('selector_homing_speed', 100, minval=1.)
         self.selector_touch_speed = config.getfloat('selector_touch_speed', 60, minval=1.)
         self.selector_touch_enabled = config.getint('selector_touch_enabled', 1, minval=0, maxval=1)
-        self.selector_accel = config.getfloat('selector_accel', 1200, above=1.) # PAUL TODO implemenet
+        self.selector_accel = config.getfloat('selector_accel', 1200, above=1.)
 
         # To simplfy config CAD related parameters are set based on vendor and version setting
         #
@@ -549,7 +549,7 @@ class LinearSelector(PhysicalSelector):
             speed = speed or (self.selector_touch_speed if self.selector_touch_enabled or endstop_name == SENSOR_SELECTOR_TOUCH else self.selector_homing_speed)
         else:
             speed = speed or self.selector_move_speed
-        accel = accel or self.mmu_toolhead.get_selector_limits()[1]
+        accel = accel or self.selector_accel
 
         pos = self.mmu_toolhead.get_position()
         homed = False
@@ -648,17 +648,17 @@ class MmuCalibrateSelectorCommand(BaseCommand):
 
     HELP_BRIEF = "Calibration of the selector positions or postion of specified gate"
     HELP_PARAMS = (
-        "MMU_CALIBRATE_SELECTOR: %s\n" % HELP_BRIEF
-        + "UNIT         = #(int)\n"
+        "%s: %s\n" % (CMD, HELP_BRIEF)
+        + "UNIT         = #(int) Optional if only one unit fitted to printer\n"
         + "GATE         = #(int) Optional, default all gates on unit\n"
-        + "SAVE         = [0|1]\n"
+        + "SAVE         = [0|1] Whether to persist the calibration results\n"
         + "BYPASS       = [0|1]\n"
         + "BYPASS_BLOCK = [0|1] Special: If bypass block exists on ERCFv1.1 only\n"
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
-        + "MMU_CALIBRATE_SELECTOR GATE=8 SAVE=0   ...calibrate logical gate 8 position, display but don't save results\n"
-        + "MMU_CALIBRATE_SELECTOR UNIT=0 BYPASS=1 ...calibrate the bypass gate position on unit 1"
+        + "%s GATE=8 SAVE=0   ...calibrate logical gate 8 position, display but don't save results\n" % CMD
+        + "%s UNIT=0 BYPASS=1 ...calibrate the bypass gate position on unit 1\n" % CMD
     )
 
     def __init__(self, mmu):

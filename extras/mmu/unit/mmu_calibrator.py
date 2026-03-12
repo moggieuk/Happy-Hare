@@ -378,7 +378,7 @@ class MmuCalibrator:
     def calibrate_bowden_length_manual(self, approx_bowden_length):
         try:
             self.mmu.log_always("Calibrating bowden length on gate %d (manual method) using %s as gate reference point" % (self.mmu.gate_selected, self.mmu._gate_homing_string()))
-            self.mmu._set_filament_direction(self.mmu.DIRECTION_UNLOAD)
+            self.mmu._set_filament_direction(DIRECTION_UNLOAD)
             self.mmu.selector.filament_drive()
             self.mmu.log_always("Finding %s endstop position..." % self.mmu_unit.p.gate_homing_endstop)
             homed = False
@@ -628,13 +628,13 @@ class MmuCalibrator:
     def note_load_telemetry(self, bowden_move_ratio, homing_movement, deficit):
         if homing_movement is not None:
             homing_movement -= deficit
-        self._autotune(self.mmu.DIRECTION_LOAD, bowden_move_ratio, homing_movement)
+        self._autotune(DIRECTION_LOAD, bowden_move_ratio, homing_movement)
 
 
     def note_unload_telemetry(self, bowden_move_ratio, homing_movement, deficit):
         if homing_movement is not None:
             homing_movement -= deficit
-        self._autotune(self.mmu.DIRECTION_UNLOAD, bowden_move_ratio, homing_movement)
+        self._autotune(DIRECTION_UNLOAD, bowden_move_ratio, homing_movement)
 
 
     # Use data from load or unload operation to auto-calibrate / auto-tune
@@ -674,7 +674,7 @@ class MmuCalibrator:
                 bowden_move_ratio > 0 and
                 homing_movement > 0
             ):
-                if direction in [self.mmu.DIRECTION_LOAD, self.mmu.DIRECTION_UNLOAD]:
+                if direction in [DIRECTION_LOAD, DIRECTION_UNLOAD]:
                     current_rd = self.mmu_unit.gear_stepper_obj(gate).get_rotation_distance()[0]
                     new_rd = round(bowden_move_ratio * current_rd, 4)
                     gate0_rd = self.rotation_distances[0]
@@ -702,7 +702,7 @@ class MmuCalibrator:
                     not self.mmu.has_encoder()
                 )
             ):
-                if direction in [self.mmu.DIRECTION_LOAD, self.mmu.DIRECTION_UNLOAD]:
+                if direction in [DIRECTION_LOAD, DIRECTION_UNLOAD]:
                     bowden_length = self.get_bowden_length()
                     # We expect homing_movement to be 0 if perfectly calibrated and perfect movement
                     # Note that we only change calibrated bowden length if extra homing is >1% of bowden length
@@ -832,6 +832,7 @@ class MmuCalibrateGearCommand(BaseCommand):
     HELP_BRIEF = "Calibration routine for gear stepper rotational distance"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
+        + "UNIT     = #(int) Optional if only one unit fitted to printer\n"
         + "MEASURED = #(mm) Measured moved distance\n"
         + "LENGTH   = #(mm) Commanded distance (default: 100, min: 50)\n"
         + "SAVE     = [0|1] Save calculated rotation_distance (default: 1)\n"
@@ -905,6 +906,7 @@ class MmuCalibrateGatesCommand(BaseCommand):
     HELP_BRIEF = "Optional calibration of individual MMU gate"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
+        + "UNIT    = #(int) Optional if only one unit fitted to printer\n"
         + "LENGTH  = #(mm) Commanded distance (default: 400)\n"
         + "REPEATS = #(count) Number of repetitions (default: 3, min: 1, max: 10)\n"
         + "ALL     = [0|1] Calibrate all gates (default: 0)\n"
@@ -999,6 +1001,7 @@ class MmuCalibrateBowdenCommand(BaseCommand):
     HELP_BRIEF = "Calibration of reference bowden length for selected gate"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
+        + "UNIT          = #(int) Optional if only one unit fitted to printer\n"
         + "REPEATS       = #(count) Number of repetitions (default: 3, min: 1, max: 10)\n"
         + "SAVE          = [0|1] Save calibration (default: 1)\n"
         + "MANUAL        = [0|1] Use manual calibration method (default: 0)\n"
@@ -1128,6 +1131,7 @@ class MmuCalibrateToolheadCommand(BaseCommand):
     HELP_BRIEF = "Automated measurement of key toolhead parameters"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
+        + "UNIT  = #(int) Optional if only one unit fitted to printer\n"
         + "CLEAN = [0|1] Measure clean nozzle dimensions (after cold pull)\n"
         + "DIRTY = [0|1] Measure residual filament (dirty nozzle)\n"
         + "CUT   = [0|1] Measure blade position (hold cutter closed)\n"
@@ -1279,6 +1283,7 @@ class MmuCalibrateEncoderCommand(BaseCommand):
     HELP_BRIEF = "Calibration routine for the MMU encoder"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
+        + "UNIT     = #(int) Optional if only one unit fitted to printer\n"
         + "LENGTH   = #(mm) Commanded distance (default: 400)\n"
         + "REPEATS  = #(count) Number of repetitions (default: 3, min: 1, max: 10)\n"
         + "SPEED    = #(mm/s) Move speed (default: gear_from_buffer_speed, min: 10)\n"
@@ -1356,6 +1361,7 @@ class MmuCalibratePsensorCommand(BaseCommand):
     HELP_BRIEF = "Calibrate analog proprotional sync-feedback sensor"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
+        + "UNIT = #(int) Optional if only one unit fitted to printer\n"
         + "MOVE = #(mm) Movement range used to search limits (default: sync_feedback_buffer_maxrange, min: 1, max: 100)\n"
     )
     HELP_SUPPLEMENT = (

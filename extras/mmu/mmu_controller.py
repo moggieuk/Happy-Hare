@@ -4981,13 +4981,13 @@ class MmuController:
                 tool_str = "+".join("T%d" % t for t in range(self.num_gates) if self.ttg_map[t] == g)
                 tool_strings.append(("|%s " % (tool_str if tool_str else " {} ".format(UI_SEPARATOR)))[:4])
 
-                if self.gate_selected == g and self.gate_selected != TOOL_GATE_UNKNOWN:
+                if g == self.gate_selected:
                     if self.filament_pos < FILAMENT_POS_START_BOWDEN:
-                        center = UI_SEPARATOR
+                        fil_swatch = UI_SEPARATOR
                     else:
-                        center = self._get_filament_char(g, show_swatch=True)
+                        fil_swatch = self._get_filament_char(g, show_swatch=True)
 
-                    select_strings.append("|\\%s/|" % center)
+                    select_strings.append("|\*/|")
                 else:
                     select_strings.append("----")
 
@@ -4997,6 +4997,7 @@ class MmuController:
             msg_avail += sep
             msg_tools += "".join(tool_strings) + sep
             msg_selct += ("".join(select_strings) + "-")[:len(gate_indices) * 4 + 1] + (divider if not last_gate else "")
+            msg_selct = msg_selct.replace("*", fil_swatch)
         lines = [msg_units] if len(self.mmu_machine.units) > 1 else []
         lines.extend([msg_gates, msg_tools, msg_avail, msg_selct])
         msg = "\n".join(lines)
@@ -5029,12 +5030,9 @@ class MmuController:
         return msg
 
 
-    def _gate_map_to_string(self, detail=False):
+    def _gate_map_to_string(self):
         """
         Format per-gate filament details into a readable summary.
-
-        Args:
-            detail: Optionally display with tool and swatch detail
         """
         msg = "Gates / Filaments:" # String used to filter in KlipperScreen-HH
         available_status = {
@@ -5052,14 +5050,11 @@ class MmuController:
             temperature = self.gate_temperature[g] or "n/a"
 
             gate_fstr = ""
-            if detail:
-                filament_char = self._get_filament_char(g, show_swatch=True)
-                tools = ",".join("T{}".format(t) for t in range(self.num_gates) if self.ttg_map[t] == g)
-                tools_fstr = (" [{}]".format(tools) if tools else "")
-                gate_fstr = "{}".format(g).ljust(2, UI_SPACE)
-                gate_fstr = "{}({}){}:".format(gate_fstr, filament_char, tools_fstr).ljust(14 + len(filament_char), UI_SPACE)
-            else:
-                gate_fstr = "{}:".format(g).ljust(3, UI_SPACE)
+            filament_char = self._get_filament_char(g, show_swatch=True)
+            tools = ",".join("T{}".format(t) for t in range(self.num_gates) if self.ttg_map[t] == g)
+            tools_fstr = (" [{}]".format(tools) if tools else "")
+            gate_fstr = "{}".format(g).ljust(2, UI_SPACE)
+            gate_fstr = "{}({}){}:".format(gate_fstr, filament_char, tools_fstr).ljust(14 + len(filament_char), UI_SPACE)
 
             available_fstr = "{};".format(available).ljust(11, UI_SPACE)
             fil_fstr = "{} | {}{}C | {} | {}".format(material, temperature, UI_DEGREE, color, name)
@@ -5073,7 +5068,7 @@ class MmuController:
                 spool_fstr = "Id: {}".format(spool_option).ljust(8, UI_SPACE) + "--> "
 
             speed_fstr = " [Speed:{}%]".format(self.gate_speed_override[g]) if self.gate_speed_override[g] != 100 else ""
-            extra_fstr = " [Selected]" if detail and g == self.gate_selected else ""
+            extra_fstr = " [SELECTED]" if g == self.gate_selected else ""
 
             msg += "\n{}{}{}{}{}{}".format(gate_fstr, available_fstr, spool_fstr, fil_fstr, speed_fstr, extra_fstr)
         return msg

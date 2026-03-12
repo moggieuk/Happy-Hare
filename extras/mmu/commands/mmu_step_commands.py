@@ -36,7 +36,9 @@ class MmuStepLoadGateCommand(BaseCommand):
 
     CMD = "_MMU_STEP_LOAD_GATE"
     HELP_BRIEF = "User composable loading step: Move filament from gate to start of bowden"
-    HELP_PARAMS = "%s: %s\n" % (CMD, HELP_BRIEF)
+    HELP_PARAMS = (
+        "%s: %s\n" % (CMD, HELP_BRIEF)
+    )
     HELP_SUPPLEMENT = ""
 
     def __init__(self, mmu):
@@ -128,7 +130,9 @@ class MmuStepHomeExtruderCommand(BaseCommand):
 
     CMD = "_MMU_STEP_HOME_EXTRUDER"
     HELP_BRIEF = "User composable loading step: Home to extruder sensor or entrance through collision detection"
-    HELP_PARAMS = "%s: %s\n" % (CMD, HELP_BRIEF)
+    HELP_PARAMS = (
+        "%s: %s\n" % (CMD, HELP_BRIEF)
+    )
     HELP_SUPPLEMENT = ""
 
     def __init__(self, mmu):

@@ -44,10 +44,10 @@ class MmuHelpCommand(BaseCommand):
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
-        + "MMU_HELP ALL=1                                   ...Summerize all user commands\n"
-        + "MMU_HELP PARAMS=1                                ...Summerize basic commands showing parameters\n"
-        + "MMU_HELP GENERAL=0 TESTING=1 PARAMS=1 EXAMPLES=1 ...Provide details help on all testing/calibration commands\n"
-        + "MMU_HELP INTERNAL=1 PARAMS=1                     ...You are a developer? Caution!\n"
+        + "%s ALL=1                                   ...Summerize all user commands\n" % CMD
+        + "%s PARAMS=1                                ...Summerize basic commands showing parameters\n" % CMD
+        + "%s GENERAL=0 TESTING=1 PARAMS=1 EXAMPLES=1 ...Provide details help on all testing/calibration commands\n" % CMD
+        + "%s INTERNAL=1 PARAMS=1                     ...You are a developer? Caution!\n" % CMD
     )
 
     def __init__(self, mmu):

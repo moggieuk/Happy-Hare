@@ -26,13 +26,15 @@ class MmuHomeCommand(BaseCommand):
     HELP_BRIEF = "Home the MMU selector"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
-        + "UNIT         = #(int)|_name_|ALL Specify unit by name, number or all-units\n"
+        + "UNIT         = #(int)|_name_|ALL Specify unit by name, number or all-units (optional if single unit)\n"
         + "TOOL         = #(int) Optionally select tool number after homing\n"
         + "FORCE_UNLOAD = [0|1]  Force unloaded of filament\n"
         + "(no parameters: home selector on single unit setup and select T0)\n"
     )
     HELP_SUPPLEMENT = (
-        ""  # add examples here if desired
+        "Examples:\n"
+        + "%s UNIT=ALL              ...Home all mmu units with selector kinimatics\n"
+        + "%s UNIT=1 FORCE_UNLOAD=1 ...Home unit 1 unloading filament if necessary\n"
     )
 
     def __init__(self, mmu):

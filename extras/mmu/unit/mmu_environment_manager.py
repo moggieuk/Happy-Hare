@@ -731,6 +731,7 @@ class MmuHeaterCommand(BaseCommand):
     HELP_BRIEF = "Control MMU heater(s) and filament drying cycle"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
+        + "UNIT            = #(int) Optional if only one unit fitted to printer\n"
         + "STOP            = [0|1] Turn off heater and drying cycle\n"
         + "DRYING_DATA     = [0|1] Dump configured drying data for filament types\n"
         + "DRY             = [0|1] Disable/enable filament heater for filament drying cycle\n"

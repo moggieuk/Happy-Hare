@@ -27,7 +27,7 @@ class MmuLedCommand(BaseCommand):
     HELP_BRIEF = "Manage mode of operation of optional MMU LED's"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
-        + "UNIT          = #(int)|_name_|ALL Specify unit by name, number or all-units\n"
+        + "UNIT          = #(int)|_name_|ALL Specify unit by name, number or all-units (optional if single unit)\n"
         + "ENABLE        = [0|1] Enable/disable\n"
         + "ANIMATION     = [0|1] Enable/disable animations\n"
         + "EXIT_EFFECT   = [off|gate_status|filament_color|slicer_color|r,g,b|_effect_]\n"

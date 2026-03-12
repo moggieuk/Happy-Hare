@@ -29,7 +29,6 @@ class MmuGateMapCommand(BaseCommand):
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
         + "QUIET        = [0|1]\n"
-        + "DETAIL       = [0|1]\n"
         + "RESET        = [0|1]\n"
         + "GATES        = comma,separated,list OR single GATE\n"
         + "MAP          = dict string for bulk update (hidden)\n"
@@ -66,7 +65,6 @@ class MmuGateMapCommand(BaseCommand):
         if self.mmu.check_if_disabled(): return
 
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
-        detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         gates = gcmd.get('GATES', "!")
         gmapstr = gcmd.get('MAP', "{}")                                # Hidden option for bulk filament update (from moonraker/ui components)
@@ -227,4 +225,4 @@ class MmuGateMapCommand(BaseCommand):
         self.mmu._persist_gate_map(spoolman_sync=bool(changed_gate_ids) and not from_spoolman, gate_ids=changed_gate_ids) # This will also update LED status
 
         if not quiet:
-            self.mmu.log_always(self.mmu._gate_map_to_string(detail), color=True)
+            self.mmu.log_always(self.mmu._gate_map_to_string(), color=True)

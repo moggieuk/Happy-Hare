@@ -453,8 +453,8 @@ class MmuCalibrateRotarySelectorCommand(BaseCommand):
 
     HELP_BRIEF = "Calibration of the selector positions or postion of specified gate"
     HELP_PARAMS = (
-        "MMU_CALIBRATE_ROTARY_SELECTOR: %s\n" % HELP_BRIEF
-        + "UNIT   = #(int)\n"
+        "%s: %s\n" % (CMD, HELP_BRIEF)
+        + "UNIT   = #(int) Optional if only one unit fitted to printer\n"
         + "GATE   = #(int) Optional, default all gates on unit\n"
         + "SAVE   = [0|1]\n"
         + "SINGLE = [0|1]\n"

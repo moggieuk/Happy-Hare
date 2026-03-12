@@ -35,9 +35,9 @@ class MmuRecoverCommand(BaseCommand):
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
-        + "MMU_RECOVER               ...automatically recover filament position\n"
-        + "MMU_RECOVER LOADED=1      ...to indicate filament is in the extruder\n"
-        + "MMU_RECOVER TOOL=2 GATE=3 ...to indicate T2 is currently loaded from gate 3\n"
+        + "%s               ...automatically recover filament position\n" % CMD
+        + "%s LOADED=1      ...to indicate filament is in the extruder\n" % CMD
+        + "%s TOOL=2 GATE=3 ...to indicate T2 is currently loaded from gate 3\n" % CMD
     )
 
     def __init__(self, mmu):
