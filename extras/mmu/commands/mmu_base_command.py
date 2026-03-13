@@ -85,7 +85,7 @@ class BaseCommand:
                     unit = machine.get_mmu_unit_by_index(0)
                     return handler(gcmd, unit)
 
-                raise gcmd.error("UNIT parameter is required")
+                raise gcmd.error("UNIT parameter is required because you have more than one!")
 
             return handler(gcmd)
       

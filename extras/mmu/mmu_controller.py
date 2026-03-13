@@ -1983,7 +1983,7 @@ class MmuController:
     def _encoder_dwell(self, dwell):
         if self.has_encoder():
             if dwell:
-                self.movequeues_dwell(self.p.encoder_dwell)
+                self.movequeues_dwell(self.mmu_unit().p.encoder_dwell)
                 self.movequeues_wait()
                 return True
             elif dwell is False and self._can_use_encoder():
@@ -2674,20 +2674,21 @@ class MmuController:
 
     # Shared with manual bowden calibration routine
     def _reverse_home_to_encoder(self, homing_max):
-        max_steps = int(math.ceil(homing_max / self.p.encoder_move_step_size))
+        emss = self.mmu_unit().p.encoder_move_step_size
+        max_steps = int(math.ceil(homing_max / emss))
         delta = 0.
         actual = 0.
         for i in range(max_steps):
             msg = "Unloading step #%d from encoder" % (i+1)
-            sactual,_,_,sdelta = self.trace_filament_move(msg, -self.p.encoder_move_step_size)
+            sactual,_,_,sdelta = self.trace_filament_move(msg, -emss)
             delta += sdelta
             actual -= sactual
             # Large enough delta here means we are out of the encoder
-            if sdelta >= self.p.encoder_move_step_size * 0.2: # 20 %
+            if sdelta >= emss * 0.2: # 20 %
                 actual -= sdelta
                 park = self.mmu_unit().p.gate_parking_distance - sdelta # will be between 8 and 20mm (for 23mm gate_parking_distance, 15mm step)
                 return actual, park, delta
-        self.log_debug("Filament did not clear encoder even after moving %.1fmm" % (self.p.encoder_move_step_size * max_steps))
+        self.log_debug("Filament did not clear encoder even after moving %.1fmm" % (emss * max_steps))
         return None
 
 
@@ -2823,12 +2824,13 @@ class MmuController:
                     self.sensor_manager.check_all_sensors_before(FILAMENT_POS_START_BOWDEN, self.gate_selected, loading=False) is not False
                 ):
                     with self._require_encoder():
+                        emss = self.mmu_unit().p.encoder_move_step_size
                         self.log_debug("Performing bowden pre-unload test")
-                        _,_,_,delta = self.trace_filament_move("Bowden pre-unload test", -self.p.encoder_move_step_size)
-                        if delta > self.p.encoder_move_step_size * (self.mmu_unit().p.bowden_pre_unload_error_tolerance / 100.):
+                        _,_,_,delta = self.trace_filament_move("Bowden pre-unload test", -emss)
+                        if delta > emss * (self.mmu_unit().p.bowden_pre_unload_error_tolerance / 100.):
                             self._set_filament_pos_state(FILAMENT_POS_EXTRUDER_ENTRY)
                             raise MmuError("Bowden pre-unload test failed. Filament seems to be stuck in the extruder or filament not loaded\nOptionally use MMU_RECOVER to recover filament position")
-                        length -= self.p.encoder_move_step_size
+                        length -= emss
                         self._set_filament_pos_state(FILAMENT_POS_IN_BOWDEN)
 
                 self._set_filament_pos_state(FILAMENT_POS_IN_BOWDEN)
@@ -3175,7 +3177,7 @@ class MmuController:
                 # NOTE: This check which used to raise MmuError() is triping many folks up because they have poor tip forming
                 #       logic so just log error and continue. This disguises the root cause problem but will make folks happier
                 #       Not performed for slicer tip forming (validate=True) because everybody is ejecting the filament!
-                if validate and self._can_use_encoder() and length > self.p.encoder_move_step_size and not extruder_only and self.gate_selected != TOOL_GATE_BYPASS:
+                if validate and self._can_use_encoder() and length > self.mmu_unit().p.encoder_move_step_size and not extruder_only and self.gate_selected != TOOL_GATE_BYPASS:
                     self.log_debug("Total measured movement: %.1fmm, total delta: %.1fmm" % (measured, delta))
                     msg = None
                     if measured < self.encoder().movement_min:
@@ -4096,7 +4098,7 @@ class MmuController:
                 self.log_info("Checking for possibility of filament still in extruder gears...")
                 self._ensure_safe_extruder_temperature(wait=False)
                 self.selector().filament_release()
-                move = self.p.encoder_move_step_size
+                move = self.mmu_unit().p.encoder_move_step_size
                 _,_,measured,_ = self.trace_filament_move("Checking extruder", -move, speed=self.p.extruder_unload_speed, motor="extruder")
                 detected = measured > self.encoder().movement_min()
                 self.log_debug("Filament %s in extruder" % ("detected" if detected else "not detected"))

@@ -29,6 +29,7 @@ class MmuTestConfigCommand(BaseCommand):
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
         + "UNIT  = #(int) Optional if only one unit fitted to printer\n"
+        + "ALL   = [0|1]  Report all parameters even if not in user configfile (i.e system default values)\n"
         + "QUIET = [0|1]  Suppress non essential console messages\n"
         + "(no parameters to dump of current settings)\n"
     )
@@ -57,18 +58,17 @@ class MmuTestConfigCommand(BaseCommand):
         raw_keys_lc = {k.lower() for k in raw_params.keys()}
 
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
+        show_all = bool(gcmd.get_int('ALL', 0, minval=0, maxval=1))
         unit_index = gcmd.get_int('UNIT', self.mmu.unit_selected, minval=0, maxval=self.mmu.mmu_machine.num_units)
 
         unit = self.mmu.mmu_unit(unit_index)
         machine_params  = self.mmu.p # MmuMachineParameters
         unit_params     = unit.p     # MmuUnitParameters
-        # PAUL TODO selector_params = unit.p   # MmuSelectorParameters
 
         # Apply to both sets (non-strict so we can aggregate unknown + guarded across both)
         try:
             m_applied, m_guarded, m_unknown = machine_params.apply_gcmd(gcmd, strict=False)
             u_applied, u_guarded, u_unknown = unit_params.apply_gcmd(gcmd, strict=False)
-# PAUL selector params
         except Exception as e:
             raise gcmd.error(str(e))
 
@@ -97,10 +97,10 @@ class MmuTestConfigCommand(BaseCommand):
         if not applied and not quiet:
             msg = []
             msg.append("Shared MMU machine parameters ----------------")
-            msg.append(machine_params.format_params(include_hidden=False, include_guarded_out=False))
+            msg.append(machine_params.format_params(include_hidden=False, include_guarded_out=show_all, include_not_in_configfile=show_all))
 
             msg.append("")
             msg.append(f"\nMMU %s parameters ----------------" % unit.name)
-            msg.append(unit_params.format_params(include_hidden=False, include_guarded_out=False))
+            msg.append(unit_params.format_params(include_hidden=False, include_guarded_out=show_all, include_not_in_configfile=show_all))
 
             self.mmu.log_info("\n".join(msg))

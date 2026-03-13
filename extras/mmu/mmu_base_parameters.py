@@ -109,7 +109,7 @@ class _SourceAdapter:
                 fn = getattr(self.src, 'get')
                 val = fn(key, default)
                 if spec.choices is not None and val not in spec.choices:
-                    raise ValueError(f"Invalid {spec.name}={val}; allowed: {list(spec.choices)}") # PAUL Can't raise this it crashes klipper
+                    raise ValueError(f"Invalid {spec.name}={val}; allowed: {list(spec.choices)}")
                 return val
             fn = getattr(self.src, 'getchoice')
             return fn(key, spec.choices, default)
@@ -181,6 +181,7 @@ class TunableParametersBase:
 
     def __init__(self, config):
         self._config = config
+        self._not_in_configfile = set()
 
         # Build name->spec index once (fast lookups, easy validation)
         self._spec_by_name: Dict[str, ParamSpec] = {}
@@ -192,31 +193,51 @@ class TunableParametersBase:
         self._load_from_config()
         self._post_load_fixups()
 
+
     # ----- Hooks -----
 
     def _post_load_fixups(self) -> None:
         """Subclass hook for derived defaults / clamping / conversions."""
         return
 
+
     # ----- Defaults / guards -----
 
     def _resolve_default(self, spec: ParamSpec) -> Any:
         return spec.default(self) if callable(spec.default) else spec.default
 
-    def _is_available(self, spec: ParamSpec) -> bool:
+    def _is_available(self, spec):
         """
         Availability for runtime change. (You can also use this for listing if desired.)
         """
         return (spec.guard(self) if spec.guard is not None else True)
 
+    def _is_in_configfile(self, spec):
+        return spec.name not in self._not_in_configfile
+
+
     # ----- Load -----
 
-    def _load_from_config(self) -> None:
+    def _load_from_config(self):
         adapter = _SourceAdapter(self._config, is_gcmd=False)
+
+        # All keys explicitly present in this config section
+        present = set()
+        if hasattr(self._config, "get_prefix_options"):
+            present = {str(o).strip().lower() for o in self._config.get_prefix_options('')}
+        else:
+            present = set()
+
+        self._not_in_configfile.clear()
+
         for spec in self._SPECS:
+            if spec.name.lower() not in present:
+                self._not_in_configfile.add(spec.name)
+
             default = self._resolve_default(spec)
             val = adapter.get_value(self, spec, default)
             setattr(self, spec.name, val)
+
 
     # ----------------------------
     # Public: apply runtime overrides
@@ -244,6 +265,7 @@ class TunableParametersBase:
         supplied.discard('')
         supplied.discard('quiet')
         supplied.discard('unit')
+        supplied.discard('all')
 
         unknown: List[str] = []
         guarded_out: List[str] = []
@@ -277,11 +299,12 @@ class TunableParametersBase:
 
         return applied, guarded_out, unknown
 
+
     # ----------------------------
     # Public: listing / formatting
     # ----------------------------
 
-    def iter_params(self, *, include_hidden: bool = False, include_guarded_out: bool = False) -> Iterable[Tuple[ParamSpec, Any]]:
+    def iter_params(self, *, include_hidden=False, include_guarded_out=False, include_not_in_configfile=False):
         """
         Iterate (spec, value) in spec order, with optional filtering.
         """
@@ -290,9 +313,12 @@ class TunableParametersBase:
                 continue
             if not include_guarded_out and not self._is_available(spec):
                 continue
+            if not include_not_in_configfile and not self._is_in_configfile(spec):
+                continue
             yield spec, getattr(self, spec.name)
 
-    def format_params(self, *, include_hidden: bool = False, include_guarded_out: bool = False, show_sections: bool = True) -> str:
+
+    def format_params(self, *, include_hidden: bool = False, include_guarded_out: bool = False, include_not_in_configfile: bool = False, show_sections: bool = True) -> str:
         """
         Pretty-print current parameters, optionally filtered.
         """
@@ -300,7 +326,8 @@ class TunableParametersBase:
         last_section: Optional[str] = None
 
         for spec, v in self.iter_params(include_hidden=include_hidden,
-                                        include_guarded_out=include_guarded_out):
+                                        include_guarded_out=include_guarded_out,
+                                        include_not_in_configfile=include_not_in_configfile):
             if show_sections and spec.section != last_section:
                 if lines:
                     lines.append("")
@@ -315,6 +342,7 @@ class TunableParametersBase:
             lines.append(f"{spec.name} = {rendered}")
 
         return "\n" + "\n".join(lines) if lines else ""
+
 
     # ----------------------------
     # Public: single param set (for non-gcmd callers)

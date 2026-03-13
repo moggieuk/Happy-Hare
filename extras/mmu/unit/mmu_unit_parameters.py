@@ -25,6 +25,7 @@ class MmuUnitParameters(TunableParametersBase):
     """
 
     # ---- Guards ----
+
     def _guard_has_encoder(self):
         return self._mmu_unit.has_encoder()
 
@@ -48,10 +49,11 @@ class MmuUnitParameters(TunableParametersBase):
 
     def _guard_has_sensor(sensor):
         #return lambda self: self._mmu_unit.has_sensor(sensor)
-        return lambda self: self._mmu_unit.has_espooler() # PAUL temp
+        return lambda self: self._mmu_unit.has_espooler() # PAUL temp FIXME
 
 
     # ---- On-change hooks ----
+
     def _on_flowguard_enabled(self, old, new):
         if new != old:
             self._mmu_unit.sync_feedback.config_flowguard_feature(new)
@@ -66,6 +68,7 @@ class MmuUnitParameters(TunableParametersBase):
 
 
     # ---- Specs ----
+
     _SPECS: Sequence[ParamSpec] = (
         # Gate
         ParamSpec('gate_homing_endstop',              'choice', SENSOR_ENCODER, section="GATE HOMING", choices={o: o for o in GATE_ENDSTOPS}, on_change=_on_gate_homing_endstop),
@@ -122,6 +125,10 @@ class MmuUnitParameters(TunableParametersBase):
         ParamSpec('gear_short_move_threshold',        'float', lambda self: self.gate_homing_max, section="FILAMENT MOVEMENT SPEEDS", limits=dict(minval=1.0)),
         ParamSpec('gear_homing_speed',                'float', 150.0, section="FILAMENT MOVEMENT SPEEDS", limits=dict(minval=1.0)),
         ParamSpec('gear_buzz_accel',                  'float',1000.0, section="FILAMENT MOVEMENT SPEEDS", limits=dict(minval=10.0), hidden=True),
+
+        # Encoder
+        ParamSpec('encoder_dwell',                    'float',   0.1, section="ENCODER", limits=dict(minval=0.0, maxval=2.0),  hidden=True),
+        ParamSpec('encoder_move_step_size',           'float',  15.0, section="ENCODER", limits=dict(minval=5.0, maxval=25.0), hidden=True),
 
         # eSpooler
         ParamSpec('espooler_min_distance',            'float',  50.0, section="ESPOOLER",   guard=_guard_has_espooler, limits=dict(above=0.0)),
@@ -180,13 +187,13 @@ class MmuUnitParameters(TunableParametersBase):
     )
 
 
-    def __init__(self, mmu_unit, config):
+    def __init__(self, config, mmu_unit):
         logging.info("PAUL: init() for MmuUnitParameters")
         self._mmu_unit = mmu_unit
         super().__init__(config)
 
 
-    def _post_load_fixups(self) -> None:
+    def _post_load_fixups(self):
         # gate_preload_endstop: if blank, inherit gate_homing_endstop
         self.gate_preload_endstop = self.gate_preload_endstop or self.gate_homing_endstop
 

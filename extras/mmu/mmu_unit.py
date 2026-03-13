@@ -297,7 +297,7 @@ class MmuUnit:
 
         # Load parameters config for this unit
         params = c = config.getsection('mmu_unit_parameters %s' % self.name)
-        self.p = MmuUnitParameters(self, c)
+        self.p = MmuUnitParameters(c, self)
         logging.info("MMU: Read: [%s]" % c.get_name())
 
         # Load mmu_sensors

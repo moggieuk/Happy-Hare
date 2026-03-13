@@ -22,14 +22,16 @@ from .mmu_base_parameters import TunableParametersBase, ParamSpec
 class MmuMachineParameters(TunableParametersBase):
 
     # ---- Guards ----
+
     def _guard_has_sensor_extruder_entry(self):
-        return self._mmu_machine.mmu.sensor_manager.has_sensor(SENSOR_EXTRUDER_ENTRY) # PAUL TODO
+        return self._mmu_machine.mmu.sensor_manager.has_sensor(SENSOR_EXTRUDER_ENTRY)
 
     def _guard_has_sensor(sensor):
-        return lambda self: self._mmu_machine.mmu_controller.sensor_manager.has_sensor(sensor) # PAUL incorrect
+        return lambda self: self._mmu_machine.mmu.sensor_manager.has_sensor(sensor)
 
 
     # ---- On-change hooks ----
+
     def _on_spoolman_support(self, old, new):
         if new != old:
             self.mmu._spoolman_sync()
@@ -38,6 +40,8 @@ class MmuMachineParameters(TunableParametersBase):
         if new != old:
             self.mmu._update_t_macros()
 
+
+    # ---- Specs ----
 
     _SPECS: Sequence[ParamSpec] = (
         # Printer interaction config
@@ -94,10 +98,7 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('default_gate_speed_override',   'intlist', [], section="DEFAULT MAPS", hidden=True),
         ParamSpec('default_endless_spool_groups',  'intlist', [], section="DEFAULT MAPS", hidden=True),
 
-        ParamSpec('encoder_dwell',                 'float',  0.1, section="BYPASS_ENCODER", limits=dict(minval=0.0, maxval=2.0),  hidden=True), # PAUL MOVE to unit
-        ParamSpec('encoder_move_step_size',        'float', 15.0, section="BYPASS_ENCODER", limits=dict(minval=5.0, maxval=25.0), hidden=True), # PAUL MOVE to unit
-
-        # Configuration for extruder dimensions # PAUL these are per-toolhead so move to unit?
+        # Configuration for extruder dimensions
         ParamSpec('toolhead_extruder_to_nozzle',   'float',  0.0, section="TOOLHEAD/EXTRUDER", limits=dict(minval=5.0)),
         ParamSpec('toolhead_sensor_to_nozzle',     'float',  0.0, section="TOOLHEAD/EXTRUDER", guard=_guard_has_sensor(SENSOR_TOOLHEAD), limits=dict(minval=1.0)),
         ParamSpec('toolhead_entry_to_extruder',    'float',  0.0, section="TOOLHEAD/EXTRUDER", guard=_guard_has_sensor(SENSOR_EXTRUDER_ENTRY), limits=dict(minval=0.0)),
@@ -108,7 +109,7 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('extruder_form_tip_current',     'int',   100,  section="TOOLHEAD/EXTRUDER", limits=dict(minval=100, maxval=150)),
         ParamSpec('extruder_purge_current',        'int',   100,  section="TOOLHEAD/EXTRUDER", limits=dict(minval=100, maxval=150)),
 
-        # Filament move speeds and accelaration # PAUL these are per-toolhead so move to unit?
+        # Filament move speeds and accelaration
         ParamSpec('extruder_load_speed',           'float', 15.0, section="TOOLHEAD/EXTRUDER", limits=dict(minval=1.0)),
         ParamSpec('extruder_unload_speed',         'float', 15.0, section="TOOLHEAD/EXTRUDER", limits=dict(minval=1.0)),
         ParamSpec('extruder_sync_load_speed',      'float', 15.0, section="TOOLHEAD/EXTRUDER", limits=dict(minval=1.0)),
@@ -116,7 +117,7 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('extruder_accel',                'float', 400.0,section="TOOLHEAD/EXTRUDER", limits=dict(above=10.0)),
         ParamSpec('extruder_homing_speed',         'float', 15.0, section="TOOLHEAD/EXTRUDER", limits=dict(minval=1.0)),
 
-        # Macro toolhead tuning (max accel default is derived if 0) # PAUL these are per-toolhead so move to unit?
+        # Macro toolhead tuning (max accel default is derived if 0)
         ParamSpec('macro_toolhead_max_accel',      'float',  0.0, section="TOOLHEAD/EXTRUDER", limits=dict(minval=0.0)),
         ParamSpec('macro_toolhead_min_cruise_ratio','float', 0.0, section="TOOLHEAD/EXTRUDER", limits=dict(minval=0.0, below=1.0)),
 
@@ -167,11 +168,12 @@ class MmuMachineParameters(TunableParametersBase):
 
 
     def __init__(self, config, mmu_machine):
+        logging.info("PAUL: init() for MmuMachineParameters")
         self._mmu_machine = mmu_machine
         super().__init__(config)
 
 
-    def _post_load_fixups(self) -> None:
+    def _post_load_fixups(self):
         """
         Run once after initial loading to make final changes to instance variables
         """
