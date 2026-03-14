@@ -158,7 +158,7 @@ class LinearSelector(PhysicalSelector):
         super().handle_connect()
         logging.info("PAUL: =========== handle_connect: LinearSelector")
 
-        self.selector_rail = self.mmu_toolhead.get_kinematics().rails[0]
+        self.selector_rail = self.mmu_unit.mmu_toolhead.get_kinematics().rails[0]
         self.selector_stepper = self.selector_rail.steppers[0]
 
         # Adjust selector rail limits now we know the config
@@ -261,17 +261,17 @@ class LinearSelector(PhysicalSelector):
     def enable_motors(self):
         stepper_enable = self.printer.lookup_object('stepper_enable')
         se = stepper_enable.lookup_enable(self.selector_stepper.get_name())
-        se.motor_enable(self.mmu_toolhead.get_last_move_time())
+        se.motor_enable(self.mmu_unit.mmu_toolhead.get_last_move_time())
 
     def disable_motors(self):
         stepper_enable = self.printer.lookup_object('stepper_enable')
         se = stepper_enable.lookup_enable(self.selector_stepper.get_name())
-        se.motor_disable(self.mmu_toolhead.get_last_move_time())
+        se.motor_disable(self.mmu_unit.mmu_toolhead.get_last_move_time())
         self.is_homed = False
 
     def buzz_motor(self, motor):
         if motor == "selector":
-            pos = self.mmu_toolhead.get_position()[0]
+            pos = self.mmu_unit.mmu_toolhead.get_position()[0]
             self.move(None, pos + 5, wait=False)
             self.move(None, pos - 5, wait=False)
             self.move(None, pos, wait=False)
@@ -480,9 +480,9 @@ class LinearSelector(PhysicalSelector):
         self.filament_hold_move()
         self.mmu.movequeues_wait()
         try:
-            homing_state = MmuHoming(self.printer, self.mmu_toolhead)
+            homing_state = MmuHoming(self.printer, self.mmu_unit.mmu_toolhead)
             homing_state.set_axes([0])
-            self.mmu_toolhead.get_kinematics().home(homing_state)
+            self.mmu_unit.mmu_toolhead.get_kinematics().home(homing_state)
             self.is_homed = True
         except Exception as e: # Homing failed
             logging.error(traceback.format_exc())
@@ -492,7 +492,7 @@ class LinearSelector(PhysicalSelector):
         if not self.use_touch_move():
             self.move("Positioning selector", target)
         else:
-            init_pos = self.mmu_toolhead.get_position()[0]
+            init_pos = self.mmu_unit.mmu_toolhead.get_position()[0]
             halt_pos,homed = self.homing_move("Positioning selector with 'touch' move", target, homing_move=1, endstop_name=SENSOR_SELECTOR_TOUCH)
             if homed: # Positioning move was not successful
                 with self.mmu.wrap_suppress_visual_log():
@@ -500,7 +500,7 @@ class LinearSelector(PhysicalSelector):
                     if travel < 4.0: # Filament stuck in the current gate (based on ERCF design)
                         self.mmu.log_info("Selector is blocked by filament inside gate, will try to recover...")
                         self.move("Realigning selector by a distance of: %.1fmm" % -travel, init_pos)
-                        self.mmu_toolhead.flush_step_generation() # TTC mitigation when homing move + regular + get_last_move_time() in close succession
+                        self.mmu_unit.mmu_toolhead.flush_step_generation() # TTC mitigation when homing move + regular + get_last_move_time() in close succession
 
                         # See if we can detect filament in gate area
                         found = self.mmu.check_filament_in_gate()
@@ -547,7 +547,7 @@ class LinearSelector(PhysicalSelector):
         if trace_str:
             self.mmu.log_trace(trace_str)
 
-        self.mmu_toolhead.quiesce()
+        self.mmu_unit.mmu_toolhead.quiesce()
 
         # Set appropriate speeds and accel if not supplied
         if homing_move != 0:
@@ -556,7 +556,7 @@ class LinearSelector(PhysicalSelector):
             speed = speed or self.p.selector_move_speed
         accel = accel or self.p.selector_accel
 
-        pos = self.mmu_toolhead.get_position()
+        pos = self.mmu_unit.mmu_toolhead.get_position()
         homed = False
         if homing_move != 0:
             # Check for valid endstop
@@ -565,7 +565,7 @@ class LinearSelector(PhysicalSelector):
                 self.mmu.log_error("Endstop '%s' not found" % endstop_name)
                 return pos[0], homed
 
-            hmove = HomingMove(self.printer, endstops, self.mmu_toolhead)
+            hmove = HomingMove(self.printer, endstops, self.mmu_unit.mmu_toolhead)
             try:
                 trig_pos = [0., 0., 0., 0.]
                 with self.mmu.wrap_accel(accel):
@@ -579,7 +579,7 @@ class LinearSelector(PhysicalSelector):
                         if delta < 1.0:
                             homed = False
                             self.mmu.log_trace("Truing selector %.4fmm to %.2fmm" % (delta, new_pos))
-                            self.mmu_toolhead.move(pos, speed)
+                            self.mmu_unit.mmu_toolhead.move(pos, speed)
                         else:
                             homed = True
                     else:
@@ -587,15 +587,15 @@ class LinearSelector(PhysicalSelector):
             except self.printer.command_error:
                 homed = False
             finally:
-                self.mmu_toolhead.flush_step_generation() # TTC mitigation when homing move + regular + get_last_move_time() in close succession
-                pos = self.mmu_toolhead.get_position()
+                self.mmu_unit.mmu_toolhead.flush_step_generation() # TTC mitigation when homing move + regular + get_last_move_time() in close succession
+                pos = self.mmu_unit.mmu_toolhead.get_position()
                 if self.mmu.log_enabled(LOG_STEPPER):
                     self.mmu.log_stepper("SELECTOR HOMING MOVE: requested position=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s >> %s" % (new_pos, speed, accel, endstop_name, "%s actual pos=%.2f, trig_pos=%.2f" % ("HOMED" if homed else "DID NOT HOMED",  pos[0], trig_pos[0])))
         else:
-            pos = self.mmu_toolhead.get_position()
+            pos = self.mmu_unit.mmu_toolhead.get_position()
             with self.mmu.wrap_accel(accel):
                 pos[0] = new_pos
-                self.mmu_toolhead.move(pos, speed)
+                self.mmu_unit.mmu_toolhead.move(pos, speed)
             if self.mmu.log_enabled(LOG_STEPPER):
                 self.mmu.log_stepper("SELECTOR MOVE: position=%.1f, speed=%.1f, accel=%.1f" % (new_pos, speed, accel))
             if wait:
@@ -604,9 +604,9 @@ class LinearSelector(PhysicalSelector):
         return pos[0], homed
 
     def set_position(self, position):
-        pos = self.mmu_toolhead.get_position()
+        pos = self.mmu_unit.mmu_toolhead.get_position()
         pos[0] = position
-        self.mmu_toolhead.set_position(pos, homing_axes=(0,))
+        self.mmu_unit.mmu_toolhead.set_position(pos, homing_axes=(0,))
         self.enable_motors()
         self.is_homed = True
         return position
@@ -624,9 +624,9 @@ class LinearSelector(PhysicalSelector):
         init_mcu_pos = self.selector_stepper.get_mcu_position()
         homed = False
         try:
-            homing_state = MmuHoming(self.printer, self.mmu_toolhead)
+            homing_state = MmuHoming(self.printer, self.mmu_unit.mmu_toolhead)
             homing_state.set_axes([0])
-            self.mmu_toolhead.get_kinematics().home(homing_state)
+            self.mmu_unit.mmu_toolhead.get_kinematics().home(homing_state)
             homed = True
         except Exception:
             pass # Home not found
@@ -657,13 +657,15 @@ class MmuCalibrateSelectorCommand(BaseCommand):
         + "UNIT         = #(int) Optional if only one unit fitted to printer\n"
         + "GATE         = #(int) Optional, default all gates on unit\n"
         + "SAVE         = [0|1] Whether to persist the calibration results\n"
-        + "BYPASS       = [0|1]\n"
+        + "BYPASS       = [0|1] Specify bypass gate instead of regular gate\n"
         + "BYPASS_BLOCK = [0|1] Special: If bypass block exists on ERCFv1.1 only\n"
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
-        + "%s GATE=8 SAVE=0   ...calibrate logical gate 8 position, display but don't save results\n" % CMD
-        + "%s UNIT=0 BYPASS=1 ...calibrate the bypass gate position on unit 1\n" % CMD
+        + f"{CMD} GATE=8 SAVE=0   ...calibrate logical gate 8 position, display but don't save results\n"
+        + f"{CMD} UNIT=0 BYPASS=1 ...calibrate the bypass gate position on unit 1\n"
+        + f"{CMD}                 ...perform fully automatic calibration of all gates\n"
+        + f"{CMD} SAVE=0          ...perform automatic calibration and show results but don't save\n"
     )
 
     def __init__(self, mmu):

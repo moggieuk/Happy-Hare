@@ -14,12 +14,30 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import logging
+from typing                 import Sequence
 
 # Happy Hare imports
-from ...mmu_constants    import *
-from ..mmu_calibrator    import CALIBRATED_SELECTOR
-from .mmu_base_selectors import BaseSelector
+from ...mmu_constants       import *
+from ...mmu_base_parameters import TunableParametersBase, ParamSpec, _REQUIRED
+from ..mmu_calibrator       import CALIBRATED_SELECTOR
+from .mmu_base_selectors    import BaseSelector
 
+
+# -----------------------------------------------------------------------------------------------------------
+# Parameters for macro selector
+# -----------------------------------------------------------------------------------------------------------
+
+class MacroSelectorParameters(TunableParametersBase):
+
+    _SPECS: Sequence[ParamSpec] = (
+        ParamSpec('select_tool_macro',        'str', _REQUIRED, section="SELECTOR", limits=dict(minval=1.0)),
+        ParamSpec('select_tool_num_switches', 'int',  0,        section="SELECTOR", limits=dict(minval=1), hidden=True),
+    )
+
+
+# -----------------------------------------------------------------------------------------------------------
+# MacroSelector implementation
+# -----------------------------------------------------------------------------------------------------------
 
 class MacroSelector(BaseSelector):
     """
@@ -29,6 +47,7 @@ class MacroSelector(BaseSelector):
     either demultiplexer-style binary parameters (S0=, S1=, ...) or direct gate
     selection via GATE= for optocoupler-style setups.
     """
+    PARAMS_CLS = MacroSelectorParameters
 
     def __init__(self, config, mmu_unit, params):
         """
@@ -38,21 +57,20 @@ class MacroSelector(BaseSelector):
         select_tool_num_switches and validates gate count for demultiplexer mode.
         """
         super().__init__(config, mmu_unit, params)
+
         self.is_homed = True
         self.requires_homing = False
 
-        self.select_tool_macro = config.get('select_tool_macro')
-        self.select_tool_num_switches = config.getint('select_tool_num_switches', default=0, minval=1)
-
         # Check if using a demultiplexer-style setup
-        if self.select_tool_num_switches > 0:
+        if self.p.select_tool_num_switches > 0:
             self.binary_mode = True
-            max_num_tools = 2**self.select_tool_num_switches
+            max_num_tools = 2**self.p.select_tool_num_switches
             # Verify that there aren't too many tools for the demultiplexer
             if mmu_unit.num_gates > max_num_tools:
                 raise config.error('Maximum number of allowed tools is %d, but %d are present.' % (max_num_tools, mmu_unit.num_gates))
         else:
             self.binary_mode = False
+
 
     # Selector "Interface" methods ---------------------------------------------
 
@@ -77,11 +95,11 @@ class MacroSelector(BaseSelector):
         # Store parameters as list
         params = ['GATE=' + str(gate)]
         if self.binary_mode: # If demultiplexer, pass binary parameters to the macro in the form of S0=, S1=, S2=, etc.
-            binary = list(reversed('{0:b}'.format(gate).zfill(self.select_tool_num_switches)))
-            for i in range(self.select_tool_num_switches):
+            binary = list(reversed('{0:b}'.format(gate).zfill(self.p.select_tool_num_switches)))
+            for i in range(self.p.select_tool_num_switches):
                 char = binary[i]
                 params.append('S' + str(i) + '=' + str(char))
         params = ' '.join(params)
 
         # Call selector macro
-        self.mmu.wrap_gcode_command('%s %s' % (self.select_tool_macro, params))
+        self.mmu.wrap_gcode_command('%s %s' % (self.p.select_tool_macro, params))

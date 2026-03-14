@@ -57,7 +57,6 @@ class BaseSelector:
         self.is_homed = False                   # Whether selector is home and knows current position
         self.requires_homing = True             # Whether selector requires homing
         self.local_gate_selected = None		# Local gate selected # PAUL complete me on all selectors!
-        self.mmu_toolhead = self.mmu_unit.mmu_toolhead # PAUL to be deprecated
 
         # Event handlers
         self.printer.register_event_handler('klippy:connect', self.handle_connect)

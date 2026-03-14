@@ -91,7 +91,7 @@ class RotarySelector(PhysicalSelector):
         except KeyError:
             pass # Already registered
 
-        self._reinit() # PAUL do we need a separate method?
+        self.grip_state = FILAMENT_DRIVE_STATE
 
 
     # Selector "Interface" methods ---------------------------------------------
@@ -106,7 +106,7 @@ class RotarySelector(PhysicalSelector):
         """
         super().handle_connect()
 
-        self.selector_rail = self.mmu_toolhead.get_kinematics().rails[0]
+        self.selector_rail = self.mmu_unit.mmu_toolhead.get_kinematics().rails[0]
         self.selector_stepper = self.selector_rail.steppers[0]
 
         # Adjust selector rail limits now we know the config
@@ -203,10 +203,8 @@ class RotarySelector(PhysicalSelector):
             self._grip(self.local_gate(self.mmu.gate_selected), release=True)
         return 0. # Fake encoder movement
 
-    # --------------------------------------------------------------------------
 
-    def _reinit(self):
-        self.grip_state = FILAMENT_DRIVE_STATE
+    # --------------------------------------------------------------------------
 
     # Note there is no separation of gate selection and grip/release with this type of selector
     def _grip(self, gate, release=False):
@@ -237,7 +235,7 @@ class RotarySelector(PhysicalSelector):
                 self.var_manager.set(VARS_MMU_SELECTOR_GATE_POS, lgate, write=True, namespace=self.mmu_unit.name)
 
             # Ensure gate filament drive is in the correct direction
-            self.mmu_toolhead.get_kinematics().rails[1].set_direction(self.p.selector_gate_directions[lgate])
+            self.mmu_unit.mmu_toolhead.get_kinematics().rails[1].set_direction(self.p.selector_gate_directions[lgate])
             self.mmu.movequeues_wait()
         else:
             self.grip_state = FILAMENT_UNKNOWN_STATE
@@ -248,17 +246,17 @@ class RotarySelector(PhysicalSelector):
     def disable_motors(self):
         stepper_enable = self.printer.lookup_object('stepper_enable')
         se = stepper_enable.lookup_enable(self.selector_stepper.get_name())
-        se.motor_disable(self.mmu_toolhead.get_last_move_time())
+        se.motor_disable(self.mmu_unit.mmu_toolhead.get_last_move_time())
         self.is_homed = False
 
     def enable_motors(self):
         stepper_enable = self.printer.lookup_object('stepper_enable')
         se = stepper_enable.lookup_enable(self.selector_stepper.get_name())
-        se.motor_enable(self.mmu_toolhead.get_last_move_time())
+        se.motor_enable(self.mmu_unit.mmu_toolhead.get_last_move_time())
 
     def buzz_motor(self, motor):
         if motor == "selector":
-            pos = self.mmu_toolhead.get_position()[0]
+            pos = self.mmu_unit.mmu_toolhead.get_position()[0]
             self.move(None, pos + 5, wait=False)
             self.move(None, pos - 5, wait=False)
             self.move(None, pos, wait=False)
@@ -352,9 +350,9 @@ class RotarySelector(PhysicalSelector):
         self.mmu.movequeues_wait()
         try:
             if self.has_endstop:
-                homing_state = MmuHoming(self.printer, self.mmu_toolhead)
+                homing_state = MmuHoming(self.printer, self.mmu_unit.mmu_toolhead)
                 homing_state.set_axes([0])
-                self.mmu_toolhead.get_kinematics().home(homing_state)
+                self.mmu_unit.mmu_toolhead.get_kinematics().home(homing_state)
             else:
                 self._home_hard_endstop()
             self.is_homed = True
@@ -387,16 +385,16 @@ class RotarySelector(PhysicalSelector):
         if trace_str:
             self.mmu.log_trace(trace_str)
 
-        self.mmu_toolhead.quiesce()
+        self.mmu_unit.mmu_toolhead.quiesce()
 
         # Set appropriate speeds and accel if not supplied
         speed = speed or self.p.selector_move_speed
         accel = accel or self.p.selector_accel
 
-        pos = self.mmu_toolhead.get_position()
+        pos = self.mmu_unit.mmu_toolhead.get_position()
         with self.mmu.wrap_accel(accel):
             pos[0] = new_pos
-            self.mmu_toolhead.move(pos, speed)
+            self.mmu_unit.mmu_toolhead.move(pos, speed)
         if self.mmu.log_enabled(LOG_STEPPER):
             self.mmu.log_stepper("SELECTOR MOVE: position=%.1f, speed=%.1f, accel=%.1f" % (new_pos, speed, accel))
         if wait:
@@ -404,9 +402,9 @@ class RotarySelector(PhysicalSelector):
         return pos[0]
 
     def set_position(self, position):
-        pos = self.mmu_toolhead.get_position()
+        pos = self.mmu_unit.mmu_toolhead.get_position()
         pos[0] = position
-        self.mmu_toolhead.set_position(pos, homing_axes=(0,))
+        self.mmu_unit.mmu_toolhead.set_position(pos, homing_axes=(0,))
         self.enable_motors()
         self.is_homed = True
         return position
@@ -424,9 +422,9 @@ class RotarySelector(PhysicalSelector):
         init_mcu_pos = self.selector_stepper.get_mcu_position()
         homed = False
         try:
-            homing_state = MmuHoming(self.printer, self.mmu_toolhead)
+            homing_state = MmuHoming(self.printer, self.mmu_unit.mmu_toolhead)
             homing_state.set_axes([0])
-            self.mmu_toolhead.get_kinematics().home(homing_state)
+            self.mmu_unit.mmu_toolhead.get_kinematics().home(homing_state)
             homed = True
         except Exception:
             pass # Home not found
@@ -453,9 +451,9 @@ class MmuCalibrateRotarySelectorCommand(BaseCommand):
         "%s: %s\n" % (CMD, HELP_BRIEF)
         + "UNIT   = #(int) Optional if only one unit fitted to printer\n"
         + "GATE   = #(int) Optional, default all gates on unit\n"
-        + "SAVE   = [0|1]\n"
-        + "SINGLE = [0|1]\n"
-        + "QUICK  = [0|1]\n"
+        + "SAVE   = [0|1]  Whether to persist the calibration results\n"
+        + "SINGLE = [0|1]  Set to force the calibration of a single position only\n"
+        + "QUICK  = [0|1]  Calibrate all offsets based on CAD geometry (good for initial setup)\n"
     )
     HELP_SUPPLEMENT = (
         ""  # examples / supplement if desired
@@ -493,7 +491,6 @@ class MmuCalibrateRotarySelectorCommand(BaseCommand):
 
         try:
             self.mmu.calibrating = True
-#            self.mmu.reinit() # PAUL why?
             successful = False
 
             if sel.has_endstop and not quick:

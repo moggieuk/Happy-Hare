@@ -36,6 +36,7 @@ _Default  = Union[Any, Callable[['TunableParametersBase'], Any]]
 _Guard    = Optional[Callable[['TunableParametersBase'], bool]]
 _OnChange = Optional[Callable[['TunableParametersBase', Any, Any], None]]
 
+_REQUIRED = object() # Sentinel flag for when a parameter has no default and must be provided in configfile
 
 @dataclass(frozen=True)
 class ParamSpec:
@@ -207,6 +208,8 @@ class TunableParametersBase:
     # ----- Defaults / guards -----
 
     def _resolve_default(self, spec: ParamSpec) -> Any:
+        if spec.default is _REQUIRED:
+            return _REQUIRED
         return spec.default(self) if callable(spec.default) else spec.default
 
     def _is_available(self, spec):
@@ -234,11 +237,15 @@ class TunableParametersBase:
         self._not_in_configfile.clear()
 
         for spec in self._SPECS:
-            if spec.name.lower() not in present:
-                self._not_in_configfile.add(spec.name)
-
             default = self._resolve_default(spec)
-            val = adapter.get_value(self, spec, default)
+
+            if default is _REQUIRED:
+                if spec.name.lower() not in present:
+                    raise ValueError(f"Required parameter '{spec.name}' missing in config")
+                val = adapter.get_value(self, spec, None)
+            else:
+                val = adapter.get_value(self, spec, default)
+
             setattr(self, spec.name, val)
 
 
