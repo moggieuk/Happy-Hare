@@ -20,17 +20,42 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import logging, traceback
+from typing                 import Sequence
 
 # Klipper imports
-from ....homing        import Homing, HomingMove
+from ....homing             import Homing, HomingMove
 
 # Happy Hare imports
-from ...mmu_constants    import *
-from ...mmu_utils        import MmuError
-from ...commands         import register_command
-from ..mmu_calibrator    import CALIBRATED_SELECTOR
-from .mmu_base_selectors import PhysicalSelector
+from ...mmu_constants       import *
+from ...mmu_utils           import MmuError
+from ...commands            import register_command
+from ...mmu_base_parameters import TunableParametersBase, ParamSpec
+from ..mmu_calibrator       import CALIBRATED_SELECTOR
+from .mmu_base_selectors    import PhysicalSelector
 
+
+# -----------------------------------------------------------------------------------------------------------
+# Parameters for servo selector
+# -----------------------------------------------------------------------------------------------------------
+
+class ServoSelectorParameters(TunableParametersBase):
+
+    _SPECS: Sequence[ParamSpec] = (
+        ParamSpec('servo_min_angle',         'float',  0.0, section="SERVO", limits=dict(above=0.0), hidden=True),
+        ParamSpec('servo_max_angle',         'float',   90, section="SERVO", limits=dict(above=0.0), hidden=True),
+        ParamSpec('servo_release_angle',     'float', -1.0, section="SERVO", limits=dict(minval=-1.0, maxval=lambda self: self.servo_max_angle)),
+        ParamSpec('servo_bypass_angle',      'float', -1.0, section="SERVO", limits=dict(minval=-1.0, maxval=lambda self: self.servo_max_angle)),
+        ParamSpec('servo_gate_angles',       'intlist', [], section="SERVO",                         hidden=True),
+        ParamSpec('servo_dwell',             'float',  0.6, section="SERVO", limits=dict(minval=0.1)),
+        ParamSpec('servo_duration',          'float',  0.5, section="SERVO", limits=dict(minval=0.1)),
+        ParamSpec('servo_always_active',     'int',      0, section="SERVO", limits=dict(minval=0, maxval=1)),
+    )
+
+
+
+# -----------------------------------------------------------------------------------------------------------
+# ServoSelector implementation
+# -----------------------------------------------------------------------------------------------------------
 
 class ServoSelector(PhysicalSelector):
     """
@@ -49,28 +74,25 @@ class ServoSelector(PhysicalSelector):
       MMU_GRIP              (PhysicalSelector)
       MMU_RELEASE           (PhysicalSelector)
     """
+    PARAMS_CLS = ServoSelectorParameters
 
     def __init__(self, config, mmu_unit, params):
         super().__init__(config, mmu_unit, params)
         self.is_homed = True # No homing necessary
 
-        self.servo_bypass_angle = -1
 
         # Get hardware
         self.servo = self.mmu_unit.selector_servo
         if not self.servo:
             raise self.config.error("Selector servo not found")
 
-        # Process config
-        self.servo_duration = config.getfloat('servo_duration', 0.5, minval=0.1)
-        self.servo_dwell = config.getfloat('servo_dwell', 0.6, minval=0.1)
-        self.servo_always_active = config.getint('servo_always_active', 0, minval=0, maxval=1)
-        self.servo_min_angle = config.getfloat('servo_min_angle', 0, above=0)                    # Not exposed
-        self.servo_max_angle = config.getfloat('servo_max_angle', self.servo.max_angle, above=0) # Not exposed
-        self.servo_angle = self.servo_min_angle + (self.servo_max_angle - self.servo_min_angle) / 2
-        self.servo_release_angle = config.getfloat('servo_release_angle', -1, minval=-1, maxval=self.servo_max_angle)
-        self.servo_bypass_angle = config.getfloat('servo_bypass_angle', -1, minval=-1, maxval=self.servo_max_angle)
-        self.servo_gate_angles = list(config.getintlist('servo_gate_angles', []))
+        # Initial defaults from config but will be overriden by calibrated values
+        self.servo_bypass_angle = self.p.servo_bypass_angle
+        self.servo_release_angle = self.p.servo_release_angle
+        self.servo_gate_angles = self.p.servo_gate_angle
+
+        # Start servo in safe place
+        self.servo_angle = self.p.servo_min_angle + (self.p.servo_max_angle - self.p.servo_min_angle) / 2
 
         # Register GCODE commands specific to this module
         try:
@@ -116,6 +138,12 @@ class ServoSelector(PhysicalSelector):
         if servo_bypass_angle >= 0:
             self.servo_bypass_angle = servo_bypass_angle
             self.mmu.log_debug("Loaded saved bypass angle: %s" % self.servo_bypass_angle)
+
+        servo_release_angle = self.mmu_machine.var_manager.get(VARS_MMU_SELECTOR_RELEASE_ANGLE, -1, namespace=self.mmu_unit.name)
+        if servo_release_angle >= 0:
+            self.servo_release_angle = servo_release_angle
+            self.mmu.log_debug("Loaded saved release angle: %s" % self.servo_release_angle)
+
 
     def _ensure_list_size(self, lst, size, default_value=-1):
         lst = lst[:size]
@@ -195,8 +223,8 @@ class ServoSelector(PhysicalSelector):
     def buzz_motor(self, motor):
         if motor == "selector":
             prev_servo_angle = self.servo_angle
-            low = max(min(self.servo_gate_angles), self.servo_min_angle)
-            high = min(max(self.servo_gate_angles), self.servo_max_angle)
+            low = max(min(self.servo_gate_angles), self.p.servo_min_angle)
+            high = min(max(self.servo_gate_angles), self.p.servo_max_angle)
             mid = (low + high) / 2
             move = (high - low) / 4
             self._set_servo_angle(angle=mid)
@@ -238,9 +266,9 @@ class ServoSelector(PhysicalSelector):
         """
         if angle >= 0 and angle != self.servo_angle:
             self.mmu.movequeues_wait()
-            self.servo.set_position(angle=angle, duration=None if self.servo_always_active else self.servo_duration)
+            self.servo.set_position(angle=angle, duration=None if self.p.servo_always_active else self.p.servo_duration)
             self.servo_angle = angle
-            self.mmu.movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
+            self.mmu.movequeues_dwell(max(self.p.servo_dwell, self.p.servo_duration, 0))
 
     def _get_closest_released_angle(self):
         """
@@ -272,7 +300,7 @@ class ServoSelector(PhysicalSelector):
         start_angle = known_angle - known_gate * spacing
         for i in range(self.mmu_unit.num_gates):
             a = start_angle + i * spacing
-            if not (self.servo_min_angle <= a <= self.servo_max_angle):
+            if not (self.p.servo_min_angle <= a <= self.p.servo_max_angle):
                 return None # Not possible
             angles.append(round(a))
         return angles

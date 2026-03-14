@@ -48,8 +48,7 @@ class MmuUnitParameters(TunableParametersBase):
         return not (self.gate_homing_endstop in [SENSOR_SHARED_EXIT] and self._mmu_unit.has_encoder())
 
     def _guard_has_sensor(sensor):
-        #return lambda self: self._mmu_unit.has_sensor(sensor)
-        return lambda self: self._mmu_unit.has_espooler() # PAUL temp FIXME
+        return lambda self: self._mmu_unit.mmu.sensor_manager.has_sensor(sensor)
 
 
     # ---- On-change hooks ----
@@ -76,7 +75,7 @@ class MmuUnitParameters(TunableParametersBase):
         ParamSpec('gate_parking_distance',            'float',  23.0, section="GATE HOMING"),
 
         ParamSpec('gate_preload_endstop',             'choice',   '', section="GATE HOMING", choices={o: o for o in (GATE_ENDSTOPS + [''])}),
-        ParamSpec('gate_preload_homing_max',          'float', lambda self: self.gate_homing_max, section="GATE"),
+        ParamSpec('gate_preload_homing_max',          'float', lambda self: self.gate_homing_max, section="GATE HOMING"),
         ParamSpec('gate_preload_parking_distance',    'float', -10.0, section="GATE HOMING"),
         ParamSpec('gate_preload_attempts',            'int',       1, section="GATE HOMING", limits=dict(minval=1, maxval=20)),
         ParamSpec('gate_endstop_to_encoder',          'float',   0.0, section="GATE HOMING", guard=_guard_encoder_offset, limits=dict(minval=0.0)),
@@ -188,7 +187,6 @@ class MmuUnitParameters(TunableParametersBase):
 
 
     def __init__(self, config, mmu_unit):
-        logging.info("PAUL: init() for MmuUnitParameters")
         self._mmu_unit = mmu_unit
         super().__init__(config)
 

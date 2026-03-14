@@ -20,17 +20,107 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import logging, traceback
+from typing                 import Sequence
 
 # Klipper imports
-from ....homing          import HomingMove
+from ....homing             import HomingMove
 
 # Happy Hare imports
-from ...mmu_constants    import *
-from ...mmu_utils        import MmuError
-from ...commands         import register_command
-from ..mmu_calibrator    import CALIBRATED_SELECTOR
-from .mmu_base_selectors import PhysicalSelector
+from ...mmu_constants       import *
+from ...mmu_utils           import MmuError
+from ...commands            import register_command
+from ...mmu_base_parameters import TunableParametersBase, ParamSpec
+from ..mmu_calibrator       import CALIBRATED_SELECTOR
+from .mmu_base_selectors    import PhysicalSelector
 
+
+# -----------------------------------------------------------------------------------------------------------
+# Parameters for linear selector
+# -----------------------------------------------------------------------------------------------------------
+
+class LinearSelectorParameters(TunableParametersBase):
+
+    _SPECS: Sequence[ParamSpec] = (
+        ParamSpec('selector_move_speed',    'float',  200.0, section="SELECTOR", limits=dict(minval=1.0)),
+        ParamSpec('selector_homing_speed',  'float',  100.0, section="SELECTOR", limits=dict(minval=1.0)),
+        ParamSpec('selector_touch_speed',   'float',   60.0, section="SELECTOR", limits=dict(minval=1.0)),  # PAUL addd guard
+        ParamSpec('selector_touch_enabled', 'int',        1, section="SELECTOR", limits=dict(minval=0, maxval=1)),  # PAUL addd guard
+        ParamSpec('selector_accel',         'float', 1200.0, section="SELECTOR", limits=dict(above=1.0)),
+
+        ParamSpec('cad_gate0_pos',          'float', lambda self: self._cad_default('cad_gate0_pos'),          section="CAD", limits=dict(minval=0.0), hidden=True),
+        ParamSpec('cad_gate_width',         'float', lambda self: self._cad_default('cad_gate_width'),         section="CAD", limits=dict(above=0.0),  hidden=True),
+        ParamSpec('cad_bypass_offset',      'float', lambda self: self._cad_default('cad_bypass_offset'),      section="CAD", limits=dict(minval=0.0), hidden=True),
+        ParamSpec('cad_last_gate_offset',   'float', lambda self: self._cad_default('cad_last_gate_offset'),   section="CAD", limits=dict(minval=0.0), hidden=True),
+        ParamSpec('cad_block_width',        'float', lambda self: self._cad_default('cad_block_width'),        section="CAD", limits=dict(minval=0.0), hidden=True),
+        ParamSpec('cad_bypass_block_width', 'float', lambda self: self._cad_default('cad_bypass_block_width'), section="CAD", limits=dict(minval=0.0), hidden=True),
+        ParamSpec('cad_bypass_block_delta', 'float', lambda self: self._cad_default('cad_bypass_block_delta'), section="CAD", limits=dict(minval=0.0), hidden=True),
+        ParamSpec('cad_selector_tolerance', 'float', lambda self: self._cad_default('cad_selector_tolerance'), section="CAD", limits=dict(minval=0.0), hidden=True),
+    )
+
+    def __init__(self, config, selector):
+        self._selector = selector
+        super().__init__(config)
+
+    def _cad_default(self, name):
+        return self._get_cad_defaults()[name]
+
+    def _get_cad_defaults(self):
+        # To simplfy config CAD related parameters defaults are set based on vendor and version setting
+        #
+        # The initial defaults are for ERCFv1.1 - the first MMU supported by Happy Hare
+        #  cad_gate0_pos          - approximate distance from endstop to first gate
+        #  cad_gate_width         - width of each gate
+        #  cad_bypass_offset      - distance from end of travel to the bypass
+        #  cad_last_gate_offset   - distance from end of travel to last gate
+        #  cad_block_width        - width of bearing block (ERCF v1.1)
+        #  cad_bypass_block_width - width of bypass block (ERCF v1.1)
+        #  cad_bypass_block_delta - distance from previous gate to bypass (ERCF v1.1)
+        #  cad_selector_tolerance - extra movement allowed by selector
+        cad = {
+            'cad_gate0_pos': 4.2,
+            'cad_gate_width': 21.0,
+            'cad_bypass_offset': 0.0,
+            'cad_last_gate_offset': 2.0,
+            'cad_block_width': 5.0,
+            'cad_bypass_block_width': 6.0,
+            'cad_bypass_block_delta': 9.0,
+            'cad_selector_tolerance': 15.0,
+        }
+
+        vendor = self._selector.mmu_unit.mmu_vendor.lower()
+        version = self._selector.mmu_unit.mmu_version
+        version_string = self._selector.mmu_unit.mmu_version_string.lower()
+
+        if vendor == VENDOR_ERCF.lower():
+            if version >= 2.0:
+                cad.update({
+                    'cad_gate0_pos': 4.0,
+                    'cad_gate_width': 23.0,
+                    'cad_bypass_offset': 0.72,
+                    'cad_last_gate_offset': 14.4,
+                })
+            else:
+                if "t" in version_string:
+                    cad['cad_gate_width'] = 23.0
+                    cad['cad_block_width'] = 0.0
+                if "s" in version_string:
+                    cad['cad_last_gate_offset'] = 1.2
+
+        elif vendor == VENDOR_TRADRACK.lower():
+            cad.update({
+                'cad_gate0_pos': 2.5,
+                'cad_gate_width': 17.0,
+                'cad_bypass_offset': 0.0,
+                'cad_last_gate_offset': 0.0,
+            })
+
+        return cad
+
+
+
+# -----------------------------------------------------------------------------------------------------------
+# LinearSelector implementation
+# -----------------------------------------------------------------------------------------------------------
 
 class LinearSelector(PhysicalSelector):
     """
@@ -41,80 +131,18 @@ class LinearSelector(PhysicalSelector):
     bypass offset). Also supports optional selector "touch" movement for
     blockage detection/recovery when a suitable controller/endstop is present.
     """
+    PARAMS_CLS = LinearSelectorParameters
 
-    def __init__(self, config, mmu_unit, params):
-        super().__init__(config, mmu_unit, params)
-        self.bypass_offset = -1
-
-        # Process config
-        self.selector_move_speed = config.getfloat('selector_move_speed', 200, minval=1.)
-        self.selector_homing_speed = config.getfloat('selector_homing_speed', 100, minval=1.)
-        self.selector_touch_speed = config.getfloat('selector_touch_speed', 60, minval=1.)
-        self.selector_touch_enabled = config.getint('selector_touch_enabled', 1, minval=0, maxval=1)
-        self.selector_accel = config.getfloat('selector_accel', 1200, above=1.)
-
-        # To simplfy config CAD related parameters are set based on vendor and version setting
-        #
-        # These are default for ERCFv1.1 - the first MMU supported by Happy Hare
-        #  cad_gate0_pos          - approximate distance from endstop to first gate
-        #  cad_gate_width         - width of each gate
-        #  cad_bypass_offset      - distance from end of travel to the bypass
-        #  cad_last_gate_offset   - distance from end of travel to last gate
-        #  cad_block_width        - width of bearing block (ERCF v1.1)
-        #  cad_bypass_block_width - width of bypass block (ERCF v1.1)
-        #  cad_bypass_block_delta - distance from previous gate to bypass (ERCF v1.1)
-        #  cad_selector_tolerance - extra movement allowed by selector
-        #
-        self.cad_gate0_pos = 4.2
-        self.cad_gate_width = 21.
-        self.cad_bypass_offset = 0
-        self.cad_last_gate_offset = 2.
-        self.cad_block_width = 5.
-        self.cad_bypass_block_width = 6.
-        self.cad_bypass_block_delta = 9.
-        self.cad_selector_tolerance = 15.
-
-        # Specific vendor build parameters / tuning.
-        if self.mmu_unit.mmu_vendor.lower() == VENDOR_ERCF.lower():
-            if self.mmu_unit.mmu_version >= 2.0: # V2 community edition
-                self.cad_gate0_pos = 4.0
-                self.cad_gate_width = 23.
-                self.cad_bypass_offset = 0.72
-                self.cad_last_gate_offset = 14.4
-
-            else: # V1.1 original
-                # Modifications:
-                #  t = TripleDecky filament blocks
-                #  s = Springy sprung servo selector
-                #  b = Binky encoder upgrade
-                if "t" in self.mmu_unit.mmu_version_string:
-                    self.cad_gate_width = 23. # Triple Decky is wider filament block
-                    self.cad_block_width = 0. # Bearing blocks are not used
-
-                if "s" in self.mmu_unit.mmu_version_string:
-                    self.cad_last_gate_offset = 1.2 # Springy has additional bump stops
-
-        elif self.mmu_unit.mmu_vendor.lower() == VENDOR_TRADRACK.lower():
-            self.cad_gate0_pos = 2.5
-            self.cad_gate_width = 17.
-            self.cad_bypass_offset = 0     # Doesn't have bypass
-            self.cad_last_gate_offset = 0. # Doesn't have reliable hard stop at limit of travel
-
-        # But still allow all CAD parameters to be customized
-        self.cad_gate0_pos = config.getfloat('cad_gate0_pos', self.cad_gate0_pos, minval=0.)
-        self.cad_gate_width = config.getfloat('cad_gate_width', self.cad_gate_width, above=0.)
-        self.cad_bypass_offset = config.getfloat('cad_bypass_offset', self.cad_bypass_offset, minval=0.)
-        self.cad_last_gate_offset = config.getfloat('cad_last_gate_offset', self.cad_last_gate_offset, above=0.)
-        self.cad_block_width = config.getfloat('cad_block_width', self.cad_block_width, above=0.) # ERCF v1.1 only
-        self.cad_bypass_block_width = config.getfloat('cad_bypass_block_width', self.cad_bypass_block_width, above=0.) # ERCF v1.1 only
-        self.cad_bypass_block_delta = config.getfloat('cad_bypass_block_delta', self.cad_bypass_block_delta, above=0.) # ERCF v1.1 only
-        self.cad_selector_tolerance = config.getfloat('cad_selector_tolerance', self.cad_selector_tolerance, above=0.) # Extra movement allowed by selector
+    def __init__(self, config, mmu_unit, unit_params):
+        logging.info("PAUL: === init() for LinearSelector: PARAMS_CLS=%s" % self.PARAMS_CLS)
+        super().__init__(config, mmu_unit, unit_params)
 
         # Register GCODE commands specific to this module
         try:
             register_command(MmuCalibrateSelectorCommand)
         except KeyError:
             pass # Already registered
+
 
     # Selector "Interface" methods ---------------------------------------------
 
@@ -136,14 +164,14 @@ class LinearSelector(PhysicalSelector):
         # Adjust selector rail limits now we know the config
         self.selector_rail.position_min = -1 # PAUL really don't want this
         self.selector_rail.position_max = self._get_max_selector_movement() + 200 # PAUL added for testing only
-        self.selector_rail.homing_speed = self.selector_homing_speed
-        self.selector_rail.second_homing_speed = self.selector_homing_speed / 2.
-        self.selector_rail.homing_retract_speed = self.selector_homing_speed
+        self.selector_rail.homing_speed = self.p.selector_homing_speed
+        self.selector_rail.second_homing_speed = self.p.selector_homing_speed / 2.
+        self.selector_rail.homing_retract_speed = self.p.selector_homing_speed
         self.selector_rail.homing_positive_dir = False
 
         # Load selector offsets (calibration set with MMU_CALIBRATE_SELECTOR) -------------------------------
         self.var_manager.upgrade(VARS_MMU_SELECTOR_OFFSETS, self.mmu_unit.name) # v3 upgrade PAUL?
-        self.var_manager.upgrade(VARS_MMU_SELECTOR_BYPASS, self.mmu_unit.name) # v3 upgrade PAUL?
+        self.var_manager.upgrade(VARS_MMU_SELECTOR_BYPASS_OFFSET, self.mmu_unit.name) # v3 upgrade PAUL?
 
         self.selector_offsets = self.var_manager.get(VARS_MMU_SELECTOR_OFFSETS, None, namespace=self.mmu_unit.name)
         if self.selector_offsets:
@@ -161,12 +189,12 @@ class LinearSelector(PhysicalSelector):
             self.selector_offsets = [-1] * self.mmu_unit.num_gates
         self.var_manager.set(VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets, namespace=self.mmu_unit.name)
 
-        self.bypass_offset = self.var_manager.get(VARS_MMU_SELECTOR_BYPASS, -1, namespace=self.mmu_unit.name)
+        self.bypass_offset = self.var_manager.get(VARS_MMU_SELECTOR_BYPASS_OFFSET, -1, namespace=self.mmu_unit.name)
         if self.bypass_offset > 0:
             self.mmu.log_debug("Loaded saved bypass offset: %s" % self.bypass_offset)
         else:
             self.bypass_offset = -1 # Ensure -1 value for uncalibrated / non-existent
-        self.var_manager.set(VARS_MMU_SELECTOR_BYPASS, self.bypass_offset, namespace=self.mmu_unit.name)
+        self.var_manager.set(VARS_MMU_SELECTOR_BYPASS_OFFSET, self.bypass_offset, namespace=self.mmu_unit.name)
 
         # See if we have a TMC controller setup with stallguard
         if not self.mmu_unit.selector_touch:
@@ -254,29 +282,6 @@ class LinearSelector(PhysicalSelector):
     def has_bypass(self):
         return self.mmu_unit.has_bypass and self.bypass_offset >= 0
 
-    def get_mmu_status_config(self):
-        msg = super().get_mmu_status_config()
-        if not self.is_homed:
-            msg += " (NOT HOMED)"
-        return msg
-
-    def set_test_config(self, gcmd):
-        self.selector_move_speed = gcmd.get_float('SELECTOR_MOVE_SPEED', self.selector_move_speed, minval=1.)
-        self.selector_homing_speed = gcmd.get_float('SELECTOR_HOMING_SPEED', self.selector_homing_speed, minval=1.)
-        self.selector_touch_speed = gcmd.get_float('SELECTOR_TOUCH_SPEED', self.selector_touch_speed, minval=1.)
-        self.selector_touch_enabled = gcmd.get_int('SELECTOR_TOUCH_ENABLED', self.selector_touch_enabled, minval=0, maxval=1)
-
-    def get_test_config(self):
-        msg = "\n\nSELECTOR:"
-        msg += "\nselector_move_speed = %.1f" % self.selector_move_speed
-        msg += "\nselector_homing_speed = %.1f" % self.selector_homing_speed
-        msg += "\nselector_touch_speed = %.1f" % self.selector_touch_speed
-        msg += "\nselector_touch_enabled = %d" % self.selector_touch_enabled
-        return msg
-
-    def check_test_config(self, param):
-        return (vars(self).get(param) is None)
-
     def get_uncalibrated_gates(self, check_gates):
         return [
             lgate + self.mmu_unit.first_gate
@@ -299,15 +304,15 @@ class LinearSelector(PhysicalSelector):
         if self.mmu_unit.mmu_vendor == VENDOR_ERCF:
             # ERCF Designs
             if self.mmu_unit.mmu_version >= 2.0 or "t" in self.mmu_unit.mmu_version_string:
-                max_movement = self.cad_gate0_pos + (n * self.cad_gate_width)
+                max_movement = self.p.cad_gate0_pos + (n * self.p.cad_gate_width)
             else:
-                max_movement = self.cad_gate0_pos + (n * self.cad_gate_width) + (n//3) * self.cad_block_width
+                max_movement = self.p.cad_gate0_pos + (n * self.p.cad_gate_width) + (n//3) * self.p.cad_block_width
         else:
             # Everything else
-            max_movement = self.cad_gate0_pos + (n * self.cad_gate_width)
+            max_movement = self.p.cad_gate0_pos + (n * self.p.cad_gate_width)
 
-        max_movement += self.cad_last_gate_offset if lgate in [TOOL_GATE_UNKNOWN] else 0.
-        max_movement += self.cad_selector_tolerance
+        max_movement += self.p.cad_last_gate_offset if lgate in [TOOL_GATE_UNKNOWN] else 0.
+        max_movement += self.p.cad_selector_tolerance
         return max_movement
 
     # Manual selector offset calibration
@@ -353,7 +358,7 @@ class LinearSelector(PhysicalSelector):
             else:
                 self.bypass_offset = round(traveled, 1)
                 extrapolate = False
-                self.var_manager.set(VARS_MMU_SELECTOR_BYPASS, self.bypass_offset, write=True, namespace=self.mmu_unit.name)
+                self.var_manager.set(VARS_MMU_SELECTOR_BYPASS_OFFSET, self.bypass_offset, write=True, namespace=self.mmu_unit.name)
 
             if extrapolate:
                 self.mmu.log_always("All selector offsets have been extrapolated and saved:\n%s" % self.selector_offsets)
@@ -380,7 +385,7 @@ class LinearSelector(PhysicalSelector):
         # Step 1 - position of gate 0
         self.mmu.log_always("Measuring the selector position for gate 0...")
         traveled, found_home = self.measure_to_home()
-        if not found_home or traveled > self.cad_gate0_pos + self.cad_selector_tolerance:
+        if not found_home or traveled > self.p.cad_gate0_pos + self.p.cad_selector_tolerance:
             self.mmu.log_error("Selector didn't find home position or distance moved (%.1fmm) was larger than expected.\nAre you sure you aligned selector with gate 0 and removed filament?" % traveled)
             return False
         gate0_pos = traveled
@@ -392,12 +397,12 @@ class LinearSelector(PhysicalSelector):
             _,found_home = self.homing_move("Detecting end of selector movement", max_movement, homing_move=1, endstop_name=SENSOR_SELECTOR_TOUCH)
         else:
             # This might not sound good!
-            self.move("Ensure we are clear off the physical endstop", self.cad_gate0_pos)
+            self.move("Ensure we are clear off the physical endstop", self.p.cad_gate0_pos)
             self.move("Forceably detecting end of selector movement", max_movement, speed=self.selector_homing_speed)
             found_home = True
         if not found_home:
             msg = "Didn't detect the end of the selector"
-            if self.cad_last_gate_offset > 0:
+            if self.p.cad_last_gate_offset > 0:
                 self.mmu.log_error(msg)
                 return False
             else:
@@ -412,16 +417,16 @@ class LinearSelector(PhysicalSelector):
         self.mmu.log_always("Maximum selector movement is %.1fmm" % traveled)
 
         # Step 3b - bypass and last gate position (measured back from limit of travel)
-        if self.cad_bypass_offset > 0:
-            bypass_pos = traveled - self.cad_bypass_offset
+        if self.p.cad_bypass_offset > 0:
+            bypass_pos = traveled - self.p.cad_bypass_offset
         else:
             bypass_pos = -1
-        if self.cad_last_gate_offset > 0:
+        if self.p.cad_last_gate_offset > 0:
             # This allows the error to be averaged
-            last_gate_pos = traveled - self.cad_last_gate_offset
+            last_gate_pos = traveled - self.p.cad_last_gate_offset
         else:
             # This simply assumes theoretical distance
-            last_gate_pos = gate0_pos + (self.mmu_unit.num_gates - 1) * self.cad_gate_width
+            last_gate_pos = gate0_pos + (self.mmu_unit.num_gates - 1) * self.p.cad_gate_width
 
         # Step 4 - the calcs
         length = last_gate_pos - gate0_pos
@@ -430,24 +435,24 @@ class LinearSelector(PhysicalSelector):
 
         if self.mmu_unit.mmu_vendor.lower() == VENDOR_ERCF.lower() and self.mmu_unit.mmu_version == 1.1:
             # ERCF v1.1 special case
-            num_gates = adj_gate_width = int(round(length / (self.cad_gate_width + self.cad_block_width / 3))) + 1
+            num_gates = adj_gate_width = int(round(length / (self.p.cad_gate_width + self.p.cad_block_width / 3))) + 1
             num_blocks = (num_gates - 1) // 3
             bypass_offset = -1
             if num_gates > 1:
                 if v1_bypass_block >= 0:
-                    adj_gate_width = (length - (num_blocks - 1) * self.cad_block_width - self.cad_bypass_block_width) / (num_gates - 1)
+                    adj_gate_width = (length - (num_blocks - 1) * self.p.cad_block_width - self.p.cad_bypass_block_width) / (num_gates - 1)
                 else:
-                    adj_gate_width = (length - num_blocks * self.cad_block_width) / (num_gates - 1)
+                    adj_gate_width = (length - num_blocks * self.p.cad_block_width) / (num_gates - 1)
             self.mmu.log_debug("Adjusted gate width: %.1f" % adj_gate_width)
             for i in range(num_gates):
-                bypass_adj = (self.cad_bypass_block_width - self.cad_block_width) if (i // 3) >= v1_bypass_block else 0.
-                selector_offsets.append(round(gate0_pos + (i * adj_gate_width) + (i // 3) * self.cad_block_width + bypass_adj, 1))
+                bypass_adj = (self.p.cad_bypass_block_width - self.p.cad_block_width) if (i // 3) >= v1_bypass_block else 0.
+                selector_offsets.append(round(gate0_pos + (i * adj_gate_width) + (i // 3) * self.p.cad_block_width + bypass_adj, 1))
                 if ((i + 1) / 3) == v1_bypass_block:
-                    bypass_offset = selector_offsets[i] + self.cad_bypass_block_delta
+                    bypass_offset = selector_offsets[i] + self.p.cad_bypass_block_delta
 
         else:
             # Generic Type-A MMU case
-            num_gates = int(round(length / self.cad_gate_width)) + 1
+            num_gates = int(round(length / self.p.cad_gate_width)) + 1
             adj_gate_width = length / (num_gates - 1) if num_gates > 1 else length
             self.mmu.log_debug("Adjusted gate width: %.1f" % adj_gate_width)
             for i in range(num_gates):
@@ -463,7 +468,7 @@ class LinearSelector(PhysicalSelector):
             self.selector_offsets = selector_offsets
             self.bypass_offset = bypass_offset
             self.var_manager.set(VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets, namespace=self.mmu_unit.name)
-            self.var_manager.set(VARS_MMU_SELECTOR_BYPASS, self.bypass_offset, namespace=self.mmu_unit.name)
+            self.var_manager.set(VARS_MMU_SELECTOR_BYPASS_OFFSET, self.bypass_offset, namespace=self.mmu_unit.name)
             self.var_manager.write()
             self.mmu.log_always("Selector calibration has been saved")
         return True
@@ -546,10 +551,10 @@ class LinearSelector(PhysicalSelector):
 
         # Set appropriate speeds and accel if not supplied
         if homing_move != 0:
-            speed = speed or (self.selector_touch_speed if self.selector_touch_enabled or endstop_name == SENSOR_SELECTOR_TOUCH else self.selector_homing_speed)
+            speed = speed or (self.p.selector_touch_speed if self.p.selector_touch_enabled or endstop_name == SENSOR_SELECTOR_TOUCH else self.selector_homing_speed)
         else:
-            speed = speed or self.selector_move_speed
-        accel = accel or self.selector_accel
+            speed = speed or self.p.selector_move_speed
+        accel = accel or self.p.selector_accel
 
         pos = self.mmu_toolhead.get_position()
         homed = False
@@ -630,7 +635,7 @@ class LinearSelector(PhysicalSelector):
         return traveled, homed
 
     def use_touch_move(self):
-        return self.mmu_unit.selector_touch and SENSOR_SELECTOR_TOUCH in self.selector_rail.get_extra_endstop_names() and self.selector_touch_enabled
+        return self.mmu_unit.selector_touch and SENSOR_SELECTOR_TOUCH in self.selector_rail.get_extra_endstop_names() and self.p.selector_touch_enabled
 
 
 
@@ -709,6 +714,7 @@ class MmuCalibrateSelectorCommand(BaseCommand):
            gate_str = "gate %d" % gate
         self.mmu.log_always("Calibrating selector %s on %s for %s..." % (pos_str, mmu_unit.name, gate_str))
 
+        self.mmu.log_always("PAUL: testing ... early return")
         return # PAUL testing shortcut
 
         try:

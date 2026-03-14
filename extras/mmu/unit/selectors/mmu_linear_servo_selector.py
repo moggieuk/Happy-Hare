@@ -32,16 +32,41 @@
 import logging, traceback
 
 # Klipper imports
-from ....homing           import Homing, HomingMove
+from ....homing             import Homing, HomingMove
 
 # Happy Hare imports
-from ...mmu_constants     import *
-from ...mmu_utils         import MmuError
-from ...commands          import register_command
-from ...mmu_unit          import DRIVE_GEAR_ONLY
-from ..mmu_calibrator     import CALIBRATED_SELECTOR
-from .mmu_linear_selector import LinearSelector
+from ...mmu_constants       import *
+from ...mmu_utils           import MmuError
+from ...commands            import register_command
+from ...mmu_base_parameters import ParamSpec
+from ...mmu_unit            import DRIVE_GEAR_ONLY
+from ..mmu_calibrator       import CALIBRATED_SELECTOR
+from .mmu_linear_selector   import LinearSelector, LinearSelectorParameters
 
+
+# -----------------------------------------------------------------------------------------------------------
+# Additional parameters for linear servo selector
+# -----------------------------------------------------------------------------------------------------------
+
+class LinearServoSelectorParameters(LinearSelectorParameters):
+
+    _SPECS = (*LinearSelectorParameters._SPECS,
+        ParamSpec('servo_down_angle',         'int',    90, section="SERVO", hidden=True),
+        ParamSpec('servo_up_angle',           'int',    90, section="SERVO", hidden=True),
+        ParamSpec('servo_move_angle',         'int', lambda self: self.servo_up_angle, section="SERVO", hidden=True),
+
+        ParamSpec('servo_duration',           'float', 0.2, section="SERVO", limits=dict(minval=0.1)),
+        ParamSpec('servo_always_active',      'int',   0,   section="SERVO", limits=dict(minval=0, maxval=1)),
+        ParamSpec('servo_active_down',        'int',   0,   section="SERVO", limits=dict(minval=0, maxval=1)),
+        ParamSpec('servo_dwell',              'float', 0.4, section="SERVO", limits=dict(minval=0.1)),
+        ParamSpec('servo_buzz_gear_on_down',  'int',   3,   section="SERVO", limits=dict(minval=0, maxval=10)),
+    )
+
+
+
+# -----------------------------------------------------------------------------------------------------------
+# LinearServoSelector implementation
+# -----------------------------------------------------------------------------------------------------------
 
 class LinearServoSelector(LinearSelector):
     """
@@ -50,10 +75,14 @@ class LinearServoSelector(LinearSelector):
     Extends LinearSelector by constructing the selector with its servo component
     and supporting the additional servo-related commands and behaviors.
     """
+    PARAMS_CLS = LinearServoSelectorParameters
 
     def __init__(self, config, mmu_unit, params):
+        logging.info("PAUL: === init() for LinearServoSelector: PARAMS_CLS=%s" % self.PARAMS_CLS)
         super().__init__(config, mmu_unit, params)
+
         self.servo = LinearSelectorServo(config, mmu_unit, self)
+
 
     # Selector "Interface" methods ---------------------------------------------
 
@@ -102,19 +131,11 @@ class LinearServoSelector(LinearSelector):
         msg += self.servo.get_mmu_status_config()
         return msg
 
-    def set_test_config(self, gcmd):
-        super().set_test_config(gcmd)
-        self.servo.set_test_config(gcmd)
-
-    def get_test_config(self):
-        msg = super().get_test_config()
-        msg += self.servo.get_test_config()
-        return msg
-
-    def check_test_config(self, param):
-        return super().check_test_config(param) and self.servo.check_test_config(param)
 
 
+# -----------------------------------------------------------------------------------------------------------
+# Servo controller for LinearSelector with grip/release/hold positions
+# -----------------------------------------------------------------------------------------------------------
 
 # Servo states for 3-position grip implementation (allows for separate "move" position)
 SERVO_MOVE_STATE      = FILAMENT_HOLD_STATE
@@ -124,7 +145,7 @@ SERVO_UNKNOWN_STATE   = FILAMENT_UNKNOWN_STATE
 
 class LinearSelectorServo:
     """
-    Servo controller for LinearSelector filament grip/release/hold positions.
+    Servo controller for LinearSelector with grip/release/hold positions.
 
     Provides servo position management (up/move/down), optional gear buzzing on
     grip, calibration persistence via mmu_vars.cfg, and a MMU_SERVO command for
@@ -135,20 +156,17 @@ class LinearSelectorServo:
         self.config = config
         self.mmu_unit = mmu_unit                # This physical MMU unit
         self.mmu_machine = mmu_unit.mmu_machine # Entire Logical combined MMU
-        self.p = mmu_unit.p                     # mmu_unit_parameters
         self.selector = selector
         self.printer = config.get_printer()
 
-        # Process config
-        self.servo_angles = {}
-        self.servo_angles['down'] = config.getint('servo_down_angle', 90)
-        self.servo_angles['up'] = config.getint('servo_up_angle', 90)
-        self.servo_angles['move'] = config.getint('servo_move_angle', self.servo_angles['up'])
-        self.servo_duration = config.getfloat('servo_duration', 0.2, minval=0.1)
-        self.servo_always_active = config.getint('servo_always_active', 0, minval=0, maxval=1)
-        self.servo_active_down = config.getint('servo_active_down', 0, minval=0, maxval=1)
-        self.servo_dwell = config.getfloat('servo_dwell', 0.4, minval=0.1)
-        self.servo_buzz_gear_on_down = config.getint('servo_buzz_gear_on_down', 3, minval=0, maxval=10)
+        self.params = self.p = selector.p
+
+        # Default to config angles. This will be overrided by calibration in connect()
+        self.servo_angles = {
+            'down': self.p.servo_down_angle,
+            'up': self.p.servo_up_angle,
+            'move': self.p.servo_move_angle,
+        }
 
         # Get hardware
         self.servo = self.mmu_unit.selector_servo
@@ -187,7 +205,7 @@ class LinearSelectorServo:
             raise self.config.error("Exception whilst parsing servo angles from 'mmu_vars.cfg': %s" % str(e))
 
     def _set_servo_angle(self, angle):
-        self.servo.set_position(angle=angle, duration=None if self.servo_always_active else self.servo_duration)
+        self.servo.set_position(angle=angle, duration=None if self.p.servo_always_active else self.p.servo_duration)
         self.servo_angle = angle
         self.servo_state = SERVO_UNKNOWN_STATE
 
@@ -211,18 +229,18 @@ class LinearSelectorServo:
         if self.servo_state == SERVO_DOWN_STATE: return
         self.mmu.log_trace("Setting servo to down (filament drive) position at angle: %d" % self.servo_angles['down'])
 
-        if buzz_gear and self.servo_buzz_gear_on_down > 0:
+        if buzz_gear and self.p.servo_buzz_gear_on_down > 0:
             self.mmu_unit.mmu_toolhead.sync(DRIVE_GEAR_ONLY) # Must be in correct sync mode before buzz to avoid delay
 
         self.mmu.movequeues_wait() # Probably not necessary
         initial_encoder_position = self.mmu.get_encoder_distance(dwell=None)
-        self.servo.set_position(angle=self.servo_angles['down'], duration=None if self.servo_active_down or self.servo_always_active else self.servo_duration)
+        self.servo.set_position(angle=self.servo_angles['down'], duration=None if self.p.servo_active_down or self.p.servo_always_active else self.p.servo_duration)
 
-        if self.servo_angle != self.servo_angles['down'] and buzz_gear and self.servo_buzz_gear_on_down > 0:
-            for _ in range(self.servo_buzz_gear_on_down):
+        if self.servo_angle != self.servo_angles['down'] and buzz_gear and self.p.servo_buzz_gear_on_down > 0:
+            for _ in range(self.p.servo_buzz_gear_on_down):
                 self.mmu.trace_filament_move(None, 0.8, speed=25, accel=self.mmu_unit.p.gear_buzz_accel, encoder_dwell=None, speed_override=False)
                 self.mmu.trace_filament_move(None, -0.8, speed=25, accel=self.mmu_unit.p.gear_buzz_accel, encoder_dwell=None, speed_override=False)
-            self.mmu.movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
+            self.mmu.movequeues_dwell(max(self.p.servo_dwell, self.p.servo_duration, 0))
 
         self.servo_angle = self.servo_angles['down']
         self.servo_state = SERVO_DOWN_STATE
@@ -235,8 +253,8 @@ class LinearSelectorServo:
         self.mmu.log_trace("Setting servo to move (filament hold) position at angle: %d" % self.servo_angles['move'])
         if self.servo_angle != self.servo_angles['move']:
             self.mmu.movequeues_wait()
-            self.servo.set_position(angle=self.servo_angles['move'], duration=None if self.servo_always_active else self.servo_duration)
-            self.mmu.movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
+            self.servo.set_position(angle=self.servo_angles['move'], duration=None if self.p.servo_always_active else self.p.servo_duration)
+            self.mmu.movequeues_dwell(max(self.p.servo_dwell, self.p.servo_duration, 0))
             self.servo_angle = self.servo_angles['move']
             self.servo_state = SERVO_MOVE_STATE
 
@@ -255,8 +273,8 @@ class LinearSelectorServo:
             self.mmu.movequeues_wait()
             if measure:
                 initial_encoder_position = self.mmu.get_encoder_distance(dwell=None)
-            self.servo.set_position(angle=self.servo_angles['up'], duration=None if self.servo_always_active else self.servo_duration)
-            self.mmu.movequeues_dwell(max(self.servo_dwell, self.servo_duration, 0))
+            self.servo.set_position(angle=self.servo_angles['up'], duration=None if self.p.servo_always_active else self.p.servo_duration)
+            self.mmu.movequeues_dwell(max(self.p.servo_dwell, self.p.servo_duration, 0))
             if measure:
                 # Report on spring back in filament then revert counter
                 delta = self.mmu.get_encoder_distance() - initial_encoder_position
@@ -289,14 +307,14 @@ class LinearSelectorServo:
         high=max(self.servo_angles['down'], self.servo_angles['up'])
         mid = (low + high) / 2
         move = (high - low) / 4
-        duration=None if self.servo_always_active else self.servo_duration
+        duration=None if self.p.servo_always_active else self.p.servo_duration
 
         self.servo.set_position(angle=mid, duration=duration)
-        self.mmu.movequeues_dwell(max(self.servo_duration, 0.5), mmu_toolhead=False)
+        self.mmu.movequeues_dwell(max(self.p.servo_duration, 0.5), mmu_toolhead=False)
         self.servo.set_position(angle=(mid - move), duration=duration)
-        self.mmu.movequeues_dwell(max(self.servo_duration, 0.5), mmu_toolhead=False)
+        self.mmu.movequeues_dwell(max(self.p.servo_duration, 0.5), mmu_toolhead=False)
         self.servo.set_position(angle=(mid + move), duration=duration)
-        self.mmu.movequeues_dwell(max(self.servo_duration, 0.5), mmu_toolhead=False)
+        self.mmu.movequeues_dwell(max(self.p.servo_duration, 0.5), mmu_toolhead=False)
         self.mmu.movequeues_wait()
 
         if old_state == SERVO_DOWN_STATE:
@@ -305,26 +323,6 @@ class LinearSelectorServo:
             self.servo_move()
         else:
             self.servo_up()
-
-    def set_test_config(self, gcmd):
-        self.servo_duration = gcmd.get_float('SERVO_DURATION', self.servo_duration, minval=0.1)
-        self.servo_always_active = gcmd.get_int('SERVO_ALWAYS_ACTIVE', self.servo_always_active, minval=0, maxval=1)
-        self.servo_active_down = gcmd.get_int('SERVO_ACTIVE_DOWN', self.servo_active_down, minval=0, maxval=1)
-        self.servo_dwell = gcmd.get_float('SERVO_DWELL', self.servo_active_down, minval=0.1)
-        self.servo_buzz_gear_on_down = gcmd.get_int('SERVO_BUZZ_GEAR_ON_DOWN', self.servo_buzz_gear_on_down, minval=0, maxval=10)
-
-    def get_test_config(self):
-        msg = "\n\nSERVO:"
-        msg += "\nservo_duration = %.1f" % self.servo_duration
-        msg += "\nservo_always_active = %d" % self.servo_always_active
-        msg += "\nservo_active_down = %d" % self.servo_active_down
-        msg += "\nservo_dwell = %.1f" % self.servo_dwell
-        msg += "\nservo_buzz_gear_on_down = %d" % self.servo_buzz_gear_on_down
-
-        return msg
-
-    def check_test_config(self, param):
-        return vars(self).get(param) is None
 
     def get_mmu_status_config(self):
         msg = ". Servo in %s position" % ("RELEASE" if self.servo_state == SERVO_UP_STATE else \

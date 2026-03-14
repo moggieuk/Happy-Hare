@@ -17,16 +17,40 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 import logging, traceback
+from typing                 import Sequence
 
 # Klipper imports
-from ....homing        import HomingMove
+from ....homing             import HomingMove
 
 # Happy Hare imports
-from ...mmu_constants    import *
-from ...mmu_utils        import MmuError
-from ..mmu_calibrator    import CALIBRATED_SELECTOR
-from .mmu_base_selectors import PhysicalSelector
+from ...mmu_constants       import *
+from ...mmu_utils           import MmuError
+from ...mmu_base_parameters import TunableParametersBase, ParamSpec
+from ..mmu_calibrator       import CALIBRATED_SELECTOR
+from .mmu_base_selectors    import PhysicalSelector
 
+
+# -----------------------------------------------------------------------------------------------------------
+# Parameters for indexed selector
+# -----------------------------------------------------------------------------------------------------------
+
+class IndexedSelectorParameters(TunableParametersBase):
+
+    _SPECS: Sequence[ParamSpec] = (
+        ParamSpec('selector_move_speed',    'float',  200.0, section="SELECTOR", limits=dict(minval=1.0)),
+        ParamSpec('selector_homing_speed',  'float',  100.0, section="SELECTOR", limits=dict(minval=1.0)),
+        ParamSpec('selector_accel',         'float', 1200.0, section="SELECTOR", limits=dict(above=1.0)),
+        ParamSpec('selector_index_distance','float',    5.0, section="SELECTOR", limits=dict(minval=0.0)),
+
+        ParamSpec('cad_gate_width',         'float',     90, section="CAD",      limits=dict(above=0.0),  hidden=True),
+        ParamSpec('cad_max_rotations',      'int',        2, section="CAD",      limits=dict(minval=0),   hidden=True),
+    )
+
+
+
+# -----------------------------------------------------------------------------------------------------------
+# IndexedSelector implementation
+# -----------------------------------------------------------------------------------------------------------
 
 class IndexedSelector(PhysicalSelector):
     """
@@ -35,31 +59,14 @@ class IndexedSelector(PhysicalSelector):
     Uses a selector stepper for gate selection and an indexing sensor/endstop
     per gate to locate the target gate (e.g. BTT ViViD).
     """
+    PARAMS_CLS = IndexedSelectorParameters
 
     def __init__(self, config, mmu_unit, params):
         super().__init__(config, mmu_unit, params)
         self.is_homed = True
 
-        # Process config
-        self.selector_move_speed = config.getfloat('selector_move_speed', 100, minval=1.)
-        self.selector_homing_speed = config.getfloat('selector_homing_speed', self.selector_move_speed, minval=1.)
-        self.selector_index_distance = config.getfloat('selector_index_distance', 5, minval=0.)
-
-        # To simplfy config CAD related parameters are set based on vendor and version setting
-        self.cad_gate_width = 90. # Rotation distance set to make this equivalent to degrees
-        self.cad_max_rotations = 2
-
-        # But still allow all CAD parameters to be customized
-        self.cad_gate_width = config.getfloat('cad_gate_width', self.cad_gate_width, above=0.)
-        self.cad_max_rotations = config.getfloat('cad_max_rotations', self.cad_max_rotations, above=0.)
-
         self.unit_gate_selected = 0 # TODO could be set as part of startup homing.. # PAUL complete the wiring for this
 
-        # Selector stepper setup before MMU toolhead is instantiated
-        section = mmu_machine.SELECTOR_STEPPER_CONFIG
-        if config.has_section(section):
-            # Inject options into selector stepper config regardless or what user sets
-            config.fileconfig.set(section, 'homing_speed', self.selector_homing_speed)
 
     # Selector "Interface" methods ---------------------------------------------
 
@@ -76,12 +83,6 @@ class IndexedSelector(PhysicalSelector):
         self.selector_rail = self.mmu_toolhead.get_kinematics().rails[0]
         self.selector_stepper = self.selector_rail.steppers[0]
         self._set_position(0) # Reset pos
-
-# PAUL        # Adjust selector rail limits now we know the config
-# PAUL        self.selector_rail.homing_speed = self.selector_homing_speed
-# PAUL        self.selector_rail.second_homing_speed = self.selector_homing_speed / 2.
-# PAUL        self.selector_rail.homing_retract_speed = self.selector_homing_speed
-# PAUL        self._set_position(0) # Reset pos
 
 # PAUL I'm not sure why I need this - each selector should re-establish selected gate in handle_ready()
 #    def bootup(self):
@@ -150,20 +151,11 @@ class IndexedSelector(PhysicalSelector):
         msg = "\nSelector is NOT HOMED" if not self.is_homed else ""
         return msg
 
-    def set_test_config(self, gcmd):
-        self.selector_move_speed = gcmd.get_float('SELECTOR_MOVE_SPEED', self.selector_move_speed, minval=1.)
-        self.selector_homing_speed = gcmd.get_float('SELECTOR_HOMING_SPEED', self.selector_homing_speed, minval=1.)
-
-    def get_test_config(self):
-        msg = "\n\nSELECTOR:"
-        msg += "\nselector_move_speed = %.1f" % self.selector_move_speed
-        msg += "\nselector_homing_speed = %.1f" % self.selector_homing_speed
-        return msg
 
     # Internal Implementation --------------------------------------------------
 
     def _get_max_selector_movement(self):
-        max_movement = self.mmu_unit.num_gates * self.cad_gate_width * self.cad_max_rotations
+        max_movement = self.mmu_unit.num_gates * self.p.cad_gate_width * self.p.cad_max_rotations
         return max_movement
 
     def _home_selector(self):
@@ -195,11 +187,11 @@ class IndexedSelector(PhysicalSelector):
         rotation_dir = self._best_rotation_direction(self.mmu.gate_selected, gate)
         max_move = self._get_max_selector_movement() * rotation_dir
         self.mmu.movequeues_wait()
-        actual,homed = self._trace_selector_move("Indexing selector", max_move, speed=self.selector_move_speed, homing_move=1, endstop_name=self._get_gate_endstop(gate))
+        actual,homed = self._trace_selector_move("Indexing selector", max_move, speed=self.p.selector_move_speed, homing_move=1, endstop_name=self._get_gate_endstop(gate))
         if abs(actual) > 0 and homed:
             # If we actually moved to home make sure we are centered on index endstop
-            center_move = (self.selector_index_distance / 2) * rotation_dir
-            self._trace_selector_move("Centering selector", center_move, speed=self.selector_move_speed)
+            center_move = (self.p.selector_index_distance / 2) * rotation_dir
+            self._trace_selector_move("Centering selector", center_move, speed=self.p.selector_move_speed)
 
     # TODO automate the setup of the sequence through homing move on startup
     def _best_rotation_direction(self, start_gate, end_gate):
@@ -257,8 +249,8 @@ class IndexedSelector(PhysicalSelector):
                 return null_rtn
 
         # Set appropriate speeds and accel if not supplied
-        speed = speed or self.selector_homing_speed if homing_move != 0 else self.selector_move_speed
-        accel = accel or self.mmu_toolhead.get_selector_limits()[1]
+        speed = speed or self.p.selector_homing_speed if homing_move != 0 else self.p.selector_move_speed
+        accel = accel or self.p.selector_accel
 
         pos = self.mmu_toolhead.get_position()
         if homing_move != 0:

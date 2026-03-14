@@ -19,6 +19,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
+
 import logging
 from dataclasses    import dataclass, field
 from typing         import Any, Callable, Dict, Optional, Sequence, Union, List, Iterable, Tuple
@@ -197,7 +198,9 @@ class TunableParametersBase:
     # ----- Hooks -----
 
     def _post_load_fixups(self) -> None:
-        """Subclass hook for derived defaults / clamping / conversions."""
+        """
+        Subclass hook for derived defaults / clamping / conversions.
+        """
         return
 
 
@@ -318,16 +321,28 @@ class TunableParametersBase:
             yield spec, getattr(self, spec.name)
 
 
-    def format_params(self, *, include_hidden: bool = False, include_guarded_out: bool = False, include_not_in_configfile: bool = False, show_sections: bool = True) -> str:
+    def format_params(self, *, include_hidden: bool = False,
+                      include_guarded_out: bool = False,
+                      include_not_in_configfile: bool = False,
+                      show_sections: bool = True) -> str:
         """
         Pretty-print current parameters, optionally filtered.
+        Sections are sorted alphabetically.
+        Params within each section retain original _SPECS order.
         """
         lines: List[str] = []
         last_section: Optional[str] = None
 
-        for spec, v in self.iter_params(include_hidden=include_hidden,
-                                        include_guarded_out=include_guarded_out,
-                                        include_not_in_configfile=include_not_in_configfile):
+        params = list(self.iter_params(
+            include_hidden=include_hidden,
+            include_guarded_out=include_guarded_out,
+            include_not_in_configfile=include_not_in_configfile,
+        ))
+
+        # Stable sort: section order changes, intra-section spec order is preserved
+        params.sort(key=lambda item: item[0].section)
+
+        for spec, v in params:
             if show_sections and spec.section != last_section:
                 if lines:
                     lines.append("")

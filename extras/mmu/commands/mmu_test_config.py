@@ -28,7 +28,7 @@ class MmuTestConfigCommand(BaseCommand):
     HELP_BRIEF = "Runtime adjustment of MMU configuration for testing or in-print tweaking purposes"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
-        + "UNIT  = #(int) Optional if only one unit fitted to printer\n"
+        + "UNIT         = #(int)|_name_|ALL Specify unit by name, number or all-units (optional if single unit)\n"
         + "ALL   = [0|1]  Report all parameters even if not in user configfile (i.e system default values)\n"
         + "QUIET = [0|1]  Suppress non essential console messages\n"
         + "(no parameters to dump of current settings)\n"
@@ -48,10 +48,11 @@ class MmuTestConfigCommand(BaseCommand):
             help_brief=self.HELP_BRIEF,
             help_params=self.HELP_PARAMS,
             help_supplement=self.HELP_SUPPLEMENT,
-            category=CATEGORY_TESTING
+            category=CATEGORY_TESTING,
+            per_unit=True
         )
 
-    def _run(self, gcmd):
+    def _run(self, gcmd, mmu_unit):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
 
         raw_params = gcmd.get_command_parameters()
@@ -59,29 +60,35 @@ class MmuTestConfigCommand(BaseCommand):
 
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
         show_all = bool(gcmd.get_int('ALL', 0, minval=0, maxval=1))
-        unit_index = gcmd.get_int('UNIT', self.mmu.unit_selected, minval=0, maxval=self.mmu.mmu_machine.num_units)
-
-        unit = self.mmu.mmu_unit(unit_index)
-        machine_params  = self.mmu.p # MmuMachineParameters
-        unit_params     = unit.p     # MmuUnitParameters
+        machine_params  = self.mmu.p          # MmuMachineParameters
+        unit_params     = mmu_unit.p          # MmuUnitParameters
+        selector_params = mmu_unit.selector.p # *Selector*Parameters
 
         # Apply to both sets (non-strict so we can aggregate unknown + guarded across both)
         try:
             m_applied, m_guarded, m_unknown = machine_params.apply_gcmd(gcmd, strict=False)
             u_applied, u_guarded, u_unknown = unit_params.apply_gcmd(gcmd, strict=False)
+            s_applied, s_guarded, s_unknown = selector_params.apply_gcmd(gcmd, strict=False)
         except Exception as e:
             raise gcmd.error(str(e))
 
-        applied    = sorted(set(m_applied + u_applied))
-        guarded    = sorted(set(m_guarded + u_guarded))
-        unknown    = sorted(set(m_unknown + u_unknown))
+        applied = set(m_applied) | set(u_applied) | set(s_applied)
+        guarded = set(m_guarded) | set(u_guarded) | set(s_guarded)
+        unknown = set(m_unknown) | set(u_unknown) | set(s_unknown)
 
-        # Determine unknown params
-        known      = set(machine_params.get_known_param_names()) | set(unit_params.get_known_param_names())
-        unknown    = [n for n in unknown if n not in known]
+        known = (
+            set(machine_params.get_known_param_names())
+            | set(unit_params.get_known_param_names())
+            | set(selector_params.get_known_param_names())
+        )
 
-        # Determine set of legal params but that aren't available in current setup
-        guarded    = [n for n in guarded if n in known]
+        # There shouldn't be overlap in parameter names but be sure
+        unknown -= known
+        guarded &= known
+
+        applied = sorted(applied)
+        guarded = sorted(guarded)
+        unknown = sorted(unknown)
 
         # Fail if user attempted anything invalid
         if unknown:
@@ -99,8 +106,11 @@ class MmuTestConfigCommand(BaseCommand):
             msg.append("Shared MMU machine parameters ----------------")
             msg.append(machine_params.format_params(include_hidden=False, include_guarded_out=show_all, include_not_in_configfile=show_all))
 
-            msg.append("")
-            msg.append(f"\nMMU %s parameters ----------------" % unit.name)
+            msg.append(f"\nMMU %s parameters ----------------" % mmu_unit.name)
             msg.append(unit_params.format_params(include_hidden=False, include_guarded_out=show_all, include_not_in_configfile=show_all))
+
+            if selector_params.get_known_param_names():
+                msg.append(f"\nMMU %s selector parameters ----------------" % mmu_unit.name)
+                msg.append(selector_params.format_params(include_hidden=False, include_guarded_out=show_all, include_not_in_configfile=show_all))
 
             self.mmu.log_info("\n".join(msg))

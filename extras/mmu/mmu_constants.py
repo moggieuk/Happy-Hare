@@ -206,10 +206,11 @@ VARS_MMU_BOWDEN_HOME               = "mmu_bowden_home"                # Was enco
 
 # Per-unit selector
 VARS_MMU_SELECTOR_OFFSETS          = "mmu_selector_offsets"
-VARS_MMU_SELECTOR_BYPASS           = "mmu_selector_bypass"
-VARS_MMU_SELECTOR_GATE_POS         = "mmu_selector_gate_pos"
+VARS_MMU_SELECTOR_BYPASS_OFFSET    = "mmu_selector_bypass_offset"
+VARS_MMU_SELECTOR_GATE_POS         = "mmu_selector_gate_pos"          # Persisted gate position (for RotarySelector when alt-gate release)
 VARS_MMU_SELECTOR_ANGLES           = "mmu_selector_angles"
 VARS_MMU_SELECTOR_BYPASS_ANGLE     = "mmu_selector_bypass_angle"
+VARS_MMU_SELECTOR_RELEASE_ANGLE    = "mmu_selector_release_angle"
 VARS_MMU_SERVO_ANGLES              = "mmu_servo_angles"               # Used on linear selectors with servo for filament grip
 
 # Mainsail/Fluid visualization of extruder colors and other attributes

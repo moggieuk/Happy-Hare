@@ -29,10 +29,11 @@
 import random, logging
 
 # Happy Hare imports
-from ...mmu_constants import *
-from ...mmu_utils     import MmuError
-from ...commands      import register_command
-from ..mmu_calibrator import CALIBRATED_SELECTOR
+from ...mmu_constants       import *
+from ...mmu_utils           import MmuError
+from ...commands            import register_command
+from ...mmu_base_parameters import TunableParametersBase
+from ..mmu_calibrator       import CALIBRATED_SELECTOR
 
 
 class BaseSelector:
@@ -42,14 +43,16 @@ class BaseSelector:
     Provides the expected contract with the mmu_controller and basic
     plumbing used by selector implementations.
     """
+    PARAMS_CLS = TunableParametersBase # Empty parameters in case selector doesn't have parameters (like VirtualSelector)
 
-    def __init__(self, config, mmu_unit, params):
-        logging.info("PAUL: init() for BaseSelector")
+    def __init__(self, config, mmu_unit, unit_params):
+        logging.info("PAUL: === init() for BaseSelector: PARAMS_CLS=%s" % self.PARAMS_CLS)
         self.config = config
         self.mmu_unit = mmu_unit                # This physical MMU unit
         self.mmu_machine = mmu_unit.mmu_machine # Entire Logical combined MMU
-        self.p = params                         # mmu_unit_parameters
         self.printer = config.get_printer()
+
+        self.params = self.p = self.PARAMS_CLS(config, self)
 
         self.is_homed = False                   # Whether selector is home and knows current position
         self.requires_homing = True             # Whether selector requires homing
@@ -80,7 +83,7 @@ class BaseSelector:
         self.calibrator = self.mmu_unit.calibrator
 
     def handle_ready(self):
-        logging.info("PAUL: handle_ready: BaseSelector")
+        logging.info("PAUL: ================== handle_ready: BaseSelector")
         pass
 
     def handle_disconnect(self):
@@ -148,15 +151,6 @@ class BaseSelector:
 
     def get_mmu_status_config(self):
         return "Selector Type: %s" % self.__class__.__name__
-
-    def set_test_config(self, gcmd):
-        pass
-
-    def get_test_config(self):
-        return ""
-
-    def check_test_config(self, param):
-        return True
 
     def get_uncalibrated_gates(self, check_gates):
         """
