@@ -53,11 +53,12 @@ class MmuRecoverCommand(BaseCommand):
 
     def _run(self, gcmd):
         # BaseCommand already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if self.mmu.check_if_disabled(): return
+        if mmu.check_if_disabled(): return
 
-        tool = gcmd.get_int('TOOL', TOOL_GATE_UNKNOWN, minval=-2, maxval=self.mmu.num_gates - 1)
-        mod_gate = gcmd.get_int('GATE', TOOL_GATE_UNKNOWN, minval=-2, maxval=self.mmu.num_gates - 1)
+        tool = gcmd.get_int('TOOL', TOOL_GATE_UNKNOWN, minval=-2, maxval=mmu.num_gates - 1)
+        mod_gate = gcmd.get_int('GATE', TOOL_GATE_UNKNOWN, minval=-2, maxval=mmu.num_gates - 1)
 
         if gcmd.get_int('BYPASS', None, minval=0, maxval=1):
             mod_gate = TOOL_GATE_BYPASS
@@ -68,52 +69,52 @@ class MmuRecoverCommand(BaseCommand):
 
         try:
             if tool == TOOL_GATE_BYPASS:
-                self.mmu.selector().restore_gate(TOOL_GATE_BYPASS)
-                self.mmu._set_gate_selected(TOOL_GATE_BYPASS)
-                self.mmu._set_tool_selected(TOOL_GATE_BYPASS)
-                self.mmu._ensure_ttg_match()
+                mmu.selector().restore_gate(TOOL_GATE_BYPASS)
+                mmu._set_gate_selected(TOOL_GATE_BYPASS)
+                mmu._set_tool_selected(TOOL_GATE_BYPASS)
+                mmu._ensure_ttg_match()
 
             elif tool >= 0:  # If tool is specified then use and optionally override the gate
-                self.mmu._set_tool_selected(tool)
-                gate = self.mmu.ttg_map[tool]
+                mmu._set_tool_selected(tool)
+                gate = mmu.ttg_map[tool]
                 if mod_gate >= 0:
                     gate = mod_gate
                 if gate >= 0:
-                    self.mmu.selector().restore_gate(gate)
-                    self.mmu._set_gate_selected(gate)
-                    self.mmu.log_info("Remapping T%d to gate %d" % (tool, gate))
-                    self.mmu._remap_tool(tool, gate, loaded)
+                    mmu.selector().restore_gate(gate)
+                    mmu._set_gate_selected(gate)
+                    mmu.log_info("Remapping T%d to gate %d" % (tool, gate))
+                    mmu._remap_tool(tool, gate, loaded)
 
             elif mod_gate >= 0:  # If only gate specified then just reset and ensure tool is correct
-                self.mmu.selector().restore_gate(mod_gate)
-                self.mmu._set_gate_selected(mod_gate)
-                self.mmu._ensure_ttg_match()
+                mmu.selector().restore_gate(mod_gate)
+                mmu._set_gate_selected(mod_gate)
+                mmu._ensure_ttg_match()
 
-            elif tool == TOOL_GATE_UNKNOWN and self.mmu.tool_selected == TOOL_GATE_BYPASS and loaded == -1:
+            elif tool == TOOL_GATE_UNKNOWN and mmu.tool_selected == TOOL_GATE_BYPASS and loaded == -1:
                 # This is to be able to get out of "stuck in bypass" state
-                ts = self.mmu.sensor_manager.check_sensor(SENSOR_TOOLHEAD)
-                es = self.mmu.sensor_manager.check_sensor(SENSOR_EXTRUDER_ENTRY)
+                ts = mmu.sensor_manager.check_sensor(SENSOR_TOOLHEAD)
+                es = mmu.sensor_manager.check_sensor(SENSOR_EXTRUDER_ENTRY)
                 if ts or es:  # TODO use check_all_sensors() call when sensor_manager is fixed
-                    self.mmu._set_filament_pos_state(FILAMENT_POS_LOADED, silent=True)
+                    mmu._set_filament_pos_state(FILAMENT_POS_LOADED, silent=True)
                 else:
                     if es is None and ts is None:
-                        self.mmu.log_warning("Warning: Making assumption that bypass is unloaded because no toolhead sensors are present")
-                    self.mmu._set_filament_pos_state(FILAMENT_POS_UNLOADED, silent=True)
-                self.mmu._set_filament_direction(DIRECTION_UNKNOWN)
+                        mmu.log_warning("Warning: Making assumption that bypass is unloaded because no toolhead sensors are present")
+                    mmu._set_filament_pos_state(FILAMENT_POS_UNLOADED, silent=True)
+                mmu._set_filament_direction(DIRECTION_UNKNOWN)
                 return
 
             if loaded == 1:
-                self.mmu._set_filament_direction(DIRECTION_LOAD)
-                self.mmu._set_filament_pos_state(FILAMENT_POS_LOADED)
+                mmu._set_filament_direction(DIRECTION_LOAD)
+                mmu._set_filament_pos_state(FILAMENT_POS_LOADED)
             elif loaded == 0:
-                self.mmu._set_filament_direction(DIRECTION_UNLOAD)
-                self.mmu._set_filament_pos_state(FILAMENT_POS_UNLOADED)
+                mmu._set_filament_direction(DIRECTION_UNLOAD)
+                mmu._set_filament_pos_state(FILAMENT_POS_UNLOADED)
             else:
                 # Filament position not specified so auto recover
-                self.mmu.recover_filament_pos(strict=strict, message=True)
+                mmu.recover_filament_pos(strict=strict, message=True)
 
             # Reset sync state
-            self.mmu.reset_sync_gear_to_extruder(False)
+            mmu.reset_sync_gear_to_extruder(False)
 
         except MmuError as ee:
-            self.mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(str(ee))

@@ -46,10 +46,11 @@ class MmuPauseCommand(BaseCommand):
 
     def _run(self, gcmd):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if self.mmu.check_if_disabled(): return
+        if mmu.check_if_disabled(): return
 
         force_in_print = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1)) # Mimick in-print
         msg = gcmd.get('MSG', "MMU_PAUSE macro was directly called")
 
-        self.mmu.handle_mmu_error(msg, force_in_print)
+        mmu.handle_mmu_error(msg, force_in_print)

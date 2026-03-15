@@ -48,13 +48,14 @@ class MmuTestRunoutCommand(BaseCommand):
 
     def _run(self, gcmd):
         # BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if self.mmu.check_if_disabled(): return
+        if mmu.check_if_disabled(): return
 
         event_type = gcmd.get('TYPE', None)
 
         try:
-            with self.mmu.wrap_sync_gear_to_extruder():
-                self.mmu._runout(event_type=event_type, sensor="TEST")
+            with mmu.wrap_sync_gear_to_extruder():
+                mmu._runout(event_type=event_type, sensor="TEST")
         except MmuError as ee:
-            self.mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(str(ee))

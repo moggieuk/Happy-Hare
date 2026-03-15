@@ -45,10 +45,11 @@ class MmuUnlockCommand(BaseCommand):
 
     def _run(self, gcmd):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if self.mmu.check_if_disabled(): return
+        if mmu.check_if_disabled(): return
 
-        self.mmu._clear_mmu_error_dialog()
+        mmu._clear_mmu_error_dialog()
 
-        if self.mmu.is_mmu_paused_and_locked():
-            self.mmu._mmu_unlock()
+        if mmu.is_mmu_paused_and_locked():
+            mmu._mmu_unlock()

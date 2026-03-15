@@ -44,14 +44,15 @@ class MmuSelectBypassCommand(BaseCommand):
 
     def _run(self, gcmd):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if self.mmu.check_if_disabled(): return
-        if self.mmu.check_if_loaded(): return
-        if self.mmu.check_if_not_calibrated(CALIBRATED_SELECTOR): return
-        self.mmu._fix_started_state()
+        if mmu.check_if_disabled(): return
+        if mmu.check_if_loaded(): return
+        if mmu.check_if_not_calibrated(CALIBRATED_SELECTOR): return
+        mmu._fix_started_state()
 
         try:
-            with self.mmu.wrap_sync_gear_to_extruder():
-                self.mmu.select_bypass()
+            with mmu.wrap_sync_gear_to_extruder():
+                mmu.select_bypass()
         except MmuError as ee:
-            self.mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(str(ee))

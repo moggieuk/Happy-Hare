@@ -51,8 +51,9 @@ class MmuSetLedCommand(BaseCommand):
 
     def _run(self, gcmd):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        gate = gcmd.get_int('GATE', None, minval=0, maxval=self.mmu_machine.num_gates - 1)
+        gate = gcmd.get_int('GATE', None, minval=0, maxval=mmu.mmu_machine.num_gates - 1)
         exit_effect = gcmd.get('EXIT_EFFECT', None)
         entry_effect = gcmd.get('ENTRY_EFFECT', None)
         status_effect = gcmd.get('STATUS_EFFECT', None)
@@ -61,11 +62,11 @@ class MmuSetLedCommand(BaseCommand):
         fadetime = gcmd.get_float('FADETIME', 1, minval=0)
 
         # Led manager works with unit index so derive from gate number
-        mmu_unit = self.mmu.mmu_machine.get_mmu_unit_by_gate(gate)
-        led_manager = self.mmu.led_manager
+        mmu_unit = mmu.mmu_machine.get_mmu_unit_by_gate(gate)
+        led_manager = mmu.led_manager
 
         if not mmu_unit.has_leds():
-            self.mmu.log_error("No MMU LEDs configured on %d" % mmu_unit.name)
+            mmu.log_error("No MMU LEDs configured on %d" % mmu_unit.name)
             return
 
         led_manager._set_led(

@@ -51,29 +51,30 @@ class MmuHomeCommand(BaseCommand):
 
     def _run(self, gcmd, mmu_unit):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if self.mmu.check_if_disabled(): return
-        self.mmu._fix_started_state()
+        if mmu.check_if_disabled(): return
+        mmu._fix_started_state()
 
-        if self.mmu.check_if_not_calibrated(CALIBRATED_SELECTOR):
-            self.mmu.log_always("Not calibrated. Will home to endstop only!")
+        if mmu.check_if_not_calibrated(CALIBRATED_SELECTOR):
+            mmu.log_always("Not calibrated. Will home to endstop only!")
             tool = -1
             force_unload = 0
         else:
-            tool = gcmd.get_int('TOOL', self.mmu.tool_selected, minval=0, maxval=self.mmu.num_gates - 1)
+            tool = gcmd.get_int('TOOL', mmu.tool_selected, minval=0, maxval=mmu.num_gates - 1)
             force_unload = gcmd.get_int('FORCE_UNLOAD', None, minval=0, maxval=1)
 
         try:
-            with self.mmu.wrap_sync_gear_to_extruder():
-                self.mmu.home_unit(mmu_unit, force_unload=force_unload)
-                self.mmu.log_always("Homed")
+            with mmu.wrap_sync_gear_to_extruder():
+                mmu.home_unit(mmu_unit, force_unload=force_unload)
+                mmu.log_always("Homed")
 
                 # Always select chosen tool
                 if tool == TOOL_GATE_BYPASS:
-                    self.mmu.select_bypass()
+                    mmu.select_bypass()
                 elif tool >= 0:
-                    gate = self.mmu.ttg_map[tool]
-                    self.mmu.select_tool(tool)
+                    gate = mmu.ttg_map[tool]
+                    mmu.select_tool(tool)
 
         except MmuError as ee:
-            self.mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(str(ee))

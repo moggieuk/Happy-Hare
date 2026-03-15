@@ -46,10 +46,10 @@ class MmuSensorsCommand(BaseCommand):
 
     def _run(self, gcmd):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
+        sm = mmu.sensor_manager
 
-        if self.mmu.check_if_disabled(): return
-
-        sm = self.mmu.sensor_manager
+        if mmu.check_if_disabled(): return
 
         mmu_unit = self.get_unit(gcmd)
         detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
@@ -104,4 +104,4 @@ class MmuSensorsCommand(BaseCommand):
 
                 summary += "\n"
 
-        self.mmu.log_always(summary)
+        mmu.log_always(summary)

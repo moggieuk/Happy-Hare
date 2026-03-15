@@ -383,12 +383,12 @@ class MmuServoCommand(BaseCommand):
         optional SAVE to persist the current angle for a named position, and
         direct ANGLE=<n> movement when POS is omitted.
         """
+        mmu = mmu_unit.mmu
 
-        if self.mmu.check_if_disabled(): return
+        if mmu.check_if_disabled(): return
 
         if not hasattr(mmu_unit.selector, "servo"):
             raise gmcd.error("No servo fitted to selector on MMU %s" % mmu_unit.name)
-
         servo = mmu_unit.selector.servo
 
         reset = gcmd.get_int('RESET', 0)
@@ -397,7 +397,7 @@ class MmuServoCommand(BaseCommand):
 
         if reset:
             mmu_unit.mmu_machine.var_manager.delete(VARS_MMU_SERVO_ANGLES, namespace=mmu_unit.name, write=True)
-            self.mmu.log_info("Calibrated servo angles have be reset to configured defaults")
+            mmu.log_info("Calibrated servo angles have be reset to configured defaults")
         elif pos == "off":
             servo.servo_off() # For 'servo_always_active' case
         elif pos == "up":
@@ -411,21 +411,21 @@ class MmuServoCommand(BaseCommand):
             else:
                 servo.servo_move()
         elif pos == "down":
-            if self.mmu.check_if_bypass(): return
+            if mmu.check_if_bypass(): return
             if save:
                 servo._servo_save_pos(pos)
             else:
                 servo.servo_down()
         elif save:
-            self.mmu.log_error("Servo position not specified for save")
+            mmu.log_error("Servo position not specified for save")
         elif pos == "":
-            if self.mmu.check_if_bypass(): return
+            if mmu.check_if_bypass(): return
             angle = gcmd.get_int('ANGLE', None)
             if angle is not None:
-                self.mmu.log_debug("Setting servo to angle: %d" % angle)
+                mmu.log_debug("Setting servo to angle: %d" % angle)
                 servo._set_servo_angle(angle)
             else:
-                self.mmu.log_always("Current servo angle: %d, Positions: %s" % (servo.servo_angle, servo.servo_angles))
-                self.mmu.log_info("Use POS= or ANGLE= to move position")
+                mmu.log_always("Current servo angle: %d, Positions: %s" % (servo.servo_angle, servo.servo_angles))
+                mmu.log_info("Use POS= or ANGLE= to move position")
         else:
-            self.mmu.log_error("Unknown servo position '%s'" % pos)
+            mmu.log_error("Unknown servo position '%s'" % pos)

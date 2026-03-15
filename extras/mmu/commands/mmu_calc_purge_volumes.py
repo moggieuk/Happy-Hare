@@ -48,11 +48,12 @@ class MmuCalcPurgeVolumesCommand(BaseCommand):
 
     def _run(self, gcmd):
         # BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if self.mmu.check_if_disabled(): return
+        if mmu.check_if_disabled(): return
 
         try:
-            self.mmu._fix_started_state()
+            mmu._fix_started_state()
 
             min_purge = gcmd.get_int('MIN', 0, minval=0)
             max_purge = gcmd.get_int('MAX', 800, minval=1)
@@ -66,26 +67,26 @@ class MmuCalcPurgeVolumesCommand(BaseCommand):
             tool_rgb_colors = []
             if source == 'slicer':
                 # Pull colors from existing slicer map
-                for tool in range(self.mmu.num_gates):
-                    tool_info = self.mmu.slicer_tool_map['tools'].get(str(tool))
+                for tool in range(mmu.num_gates):
+                    tool_info = mmu.slicer_tool_map['tools'].get(str(tool))
                     if tool_info:
-                        tool_rgb_colors.append(self.mmu._color_to_rgb_hex(tool_info.get('color', '')))
+                        tool_rgb_colors.append(mmu._color_to_rgb_hex(tool_info.get('color', '')))
                     else:
-                        tool_rgb_colors.append(self.mmu._color_to_rgb_hex(''))
+                        tool_rgb_colors.append(mmu._color_to_rgb_hex(''))
             else:
                 # Logic to use tools mapped to gate colors with current ttg map
-                for tool in range(self.mmu.num_gates):
-                    gate = self.mmu.ttg_map[tool]
-                    tool_rgb_colors.append(self.mmu._color_to_rgb_hex(self.mmu.gate_color[gate]))
+                for tool in range(mmu.num_gates):
+                    gate = mmu.ttg_map[tool]
+                    tool_rgb_colors.append(mmu._color_to_rgb_hex(mmu.gate_color[gate]))
 
             try:
-                self.mmu.slicer_tool_map['purge_volumes'] = self.mmu._generate_purge_matrix(
+                mmu.slicer_tool_map['purge_volumes'] = mmu._generate_purge_matrix(
                     tool_rgb_colors, min_purge, max_purge, multiplier
                 )
-                self.mmu.log_always("Purge map updated. Use 'MMU_SLICER_TOOL_MAP PURGE_MAP=1' to view")
+                mmu.log_always("Purge map updated. Use 'MMU_SLICER_TOOL_MAP PURGE_MAP=1' to view")
             except Exception as e:
                 # Convert unexpected exceptions into MmuError so caller wrapper handles them consistently
                 raise MmuError("Error generating purge volues: %s" % str(e))
 
         except MmuError as ee:
-            self.mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(str(ee))

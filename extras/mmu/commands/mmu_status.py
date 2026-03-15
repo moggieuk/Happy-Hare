@@ -48,6 +48,7 @@ class MmuStatusCommand(BaseCommand):
 
     def _run(self, gcmd):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
         config = gcmd.get_int('SHOWCONFIG', 0, minval=0, maxval=1)
         detail = gcmd.get_int('DETAIL', 0, minval=0, maxval=1)
@@ -56,65 +57,64 @@ class MmuStatusCommand(BaseCommand):
         lines = []
 
         lines.append(
-            f"MMU: Happy Hare {self.mmu._fversion(self.mmu.mmu_machine.happy_hare_version)} "
-            f"controlling {self.mmu.mmu_machine.num_units} units:"
+            f"MMU: Happy Hare {mmu._fversion(mmu.mmu_machine.happy_hare_version)} "
+            f"controlling {mmu.mmu_machine.num_units} units:\n"
         )
 
         status_suffix = (
             " (DISABLED)"
-            if not self.mmu.is_enabled
+            if not mmu.is_enabled
             else " (PAUSED)"
-            if self.mmu.is_mmu_paused()
+            if mmu.is_mmu_paused()
             else ""
         )
         if status_suffix:
             lines.append(status_suffix)
 
-        for i in range(self.mmu.mmu_machine.num_units):
-            unit = self.mmu.mmu_machine.get_mmu_unit_by_index(i)
+        for i in range(mmu.mmu_machine.num_units):
+            unit = mmu.mmu_machine.get_mmu_unit_by_index(i)
 
             if unit.mmu_vendor != unit.display_name:
-                lines.append(
-                    f"\n{i}) {unit.display_name}, a {unit.mmu_vendor} "
-                    f"v{unit.mmu_version_string}"
-                )
+                lines.append(f"{UI_BULLET} {unit.display_name}, a {unit.mmu_vendor} v{unit.mmu_version_string}")
             else:
-                lines.append(f"\n+ {unit.mmu_vendor} v{unit.mmu_version_string}")
+                lines.append(f"{UI_BULLET} {unit.mmu_vendor} v{unit.mmu_version_string}")
 
             first, last = unit.gate_range()
-            lines.append(f" (gates {first}-{last})")
+            lines.append(f" (gates {first}-{last})\n")
 
-            lines.append(f"\n{UI_CASCADE} {self.mmu.selector().get_mmu_status_config()}")
+            lines.append(f"{UI_CASCADE} {mmu.selector().get_mmu_status_config()}")
 
-            if self.mmu.has_encoder():
-                lines.append(f". Encoder reads {self.mmu.get_encoder_distance():.1f}mm")
+            if mmu.has_encoder():
+                lines.append(f". Encoder reads {mmu.get_encoder_distance():.1f}mm")
 
-        lines.append(f"\nPrint state is {self.mmu.print_state.upper()}")
+            lines.append("\n")
+
+        lines.append(f"\nPrint state is {mmu.print_state.upper()}")
 
         lines.append(
-            f". Tool {self.mmu.selected_tool_string()} selected on gate "
-            f"{self.mmu.selected_gate_string()}{self.mmu.selected_unit_string()}"
+            f". Tool {mmu.selected_tool_string()} selected on gate "
+            f"{mmu.selected_gate_string()}{mmu.selected_unit_string()}"
         )
 
-        if self.mmu.saved_toolhead_operation:
+        if mmu.saved_toolhead_operation:
             lines.append(". Toolhead position saved")
 
         lines.append(
-            f"\nMMU gear stepper at {self.mmu.gear_run_current_percent}% current and is "
-            f"{'SYNCED' if self.mmu.mmu_toolhead().is_gear_synced_to_extruder() else 'not synced'} "
+            f"\nMMU gear stepper at {mmu.gear_run_current_percent}% current and is "
+            f"{'SYNCED' if mmu.mmu_toolhead().is_gear_synced_to_extruder() else 'not synced'} "
             f"to extruder"
         )
 
-        if self.mmu._standalone_sync:
+        if mmu._standalone_sync:
             lines.append(". Standalone sync mode is ENABLED")
 
-        if self.mmu.mmu_unit().sync_feedback.is_enabled():
+        if mmu.mmu_unit().sync_feedback.is_enabled():
             lines.append(
                 "\nSync feedback indicates filament in bowden is: "
-                f"{self.mmu.mmu_unit().sync_feedback.get_sync_feedback_string(detail=True).upper()}"
+                f"{mmu.mmu_unit().sync_feedback.get_sync_feedback_string(detail=True).upper()}"
             )
 
-            if not self.mmu.mmu_unit().sync_feedback.is_active():
+            if not mmu.mmu_unit().sync_feedback.is_active():
                 lines.append(" (not currently active)")
         else:
             lines.append("\nSync feedback is disabled")
@@ -122,33 +122,33 @@ class MmuStatusCommand(BaseCommand):
         if config:
             # Temp scalar pulled for _f_calc() use
             self.calibrated_bowden_length = (
-                self.mmu.mmu_unit().calibrator.get_bowden_length()
+                mmu.mmu_unit().calibrator.get_bowden_length()
             )
-            self.toolchange_retract = self.mmu.toolchange_retract
-            self.filament_remaining = self.mmu.filament_remaining
+            self.toolchange_retract = mmu.toolchange_retract
+            self.filament_remaining = mmu.filament_remaining
 
             lines.append("\n\nLOAD SEQUENCE:")
 
             # Gate loading -------------------------------------------------------
             lines.append(
                 "\n- Filament loads into gate by homing a maximum of "
-                f"{self._f_calc('gate_homing_max')} to {self.mmu._gate_homing_string()}"
+                f"{self._f_calc('gate_homing_max')} to {mmu._gate_homing_string()}"
             )
 
             # Bowden loading -----------------------------------------------------
-            if self.mmu.mmu_unit().require_bowden_move:
+            if mmu.mmu_unit().require_bowden_move:
 
                 correction = (
                     " CORRECTED"
-                    if self.mmu.mmu_unit().p.bowden_apply_correction
+                    if mmu.mmu_unit().p.bowden_apply_correction
                     else ""
                 )
 
                 if self.calibrated_bowden_length >= 0:
-                    if self.mmu._must_buffer_extruder_homing():
+                    if mmu._must_buffer_extruder_homing():
 
                         if (
-                            self.mmu.mmu_unit().p.extruder_homing_endstop
+                            mmu.mmu_unit().p.extruder_homing_endstop
                             == SENSOR_EXTRUDER_ENTRY
                         ):
                             move = self._f_calc(
@@ -179,18 +179,18 @@ class MmuStatusCommand(BaseCommand):
                 lines.append("\n- No fast bowden move is required")
 
             # Extruder homing ----------------------------------------------------
-            if self.mmu._must_home_to_extruder():
+            if mmu._must_home_to_extruder():
                 if (
-                    self.mmu.mmu_unit().p.extruder_homing_endstop
+                    mmu.mmu_unit().p.extruder_homing_endstop
                     == SENSOR_EXTRUDER_COLLISION
                 ):
                     lines.append(
                         f", then homes a maximum of {self._f_calc('extruder_homing_max')} "
                         f"to extruder using COLLISION detection "
-                        f"(at {self.mmu.mmu_unit().p.extruder_collision_homing_current}% current)"
+                        f"(at {mmu.mmu_unit().p.extruder_collision_homing_current}% current)"
                     )
                 elif (
-                    self.mmu.mmu_unit().p.extruder_homing_endstop
+                    mmu.mmu_unit().p.extruder_homing_endstop
                     == SENSOR_GEAR_TOUCH
                 ):
                     lines.append(
@@ -200,11 +200,11 @@ class MmuStatusCommand(BaseCommand):
                 else:
                     lines.append(
                         f", then homes a maximum of {self._f_calc('extruder_homing_max')} "
-                        f"to {self.mmu.extruder_homing_endstop.upper()} sensor"
+                        f"to {mmu.extruder_homing_endstop.upper()} sensor"
                     )
 
                 if (
-                    self.mmu.mmu_unit().p.extruder_homing_endstop
+                    mmu.mmu_unit().p.extruder_homing_endstop
                     == SENSOR_EXTRUDER_ENTRY
                 ):
                     lines.append(
@@ -213,9 +213,9 @@ class MmuStatusCommand(BaseCommand):
                     )
             else:
                 if (
-                    self.mmu.mmu_unit().p.extruder_homing_endstop
+                    mmu.mmu_unit().p.extruder_homing_endstop
                     == SENSOR_EXTRUDER_NONE
-                    and not self.mmu.sensor_manager.has_sensor(SENSOR_TOOLHEAD)
+                    and not mmu.sensor_manager.has_sensor(SENSOR_TOOLHEAD)
                 ):
                     lines.append(
                         ". WARNING: no extruder homing is performed - "
@@ -225,7 +225,7 @@ class MmuStatusCommand(BaseCommand):
                     lines.append(", no extruder homing is necessary")
 
             # Extruder loading ---------------------------------------------------
-            if self.mmu.sensor_manager.has_sensor(SENSOR_TOOLHEAD):
+            if mmu.sensor_manager.has_sensor(SENSOR_TOOLHEAD):
                 lines.append(
                     f"\n- Extruder (synced) loads by homing a maximum of {self._f_calc('toolhead_homing_max')} "
                     "to TOOLHEAD sensor before moving the last "
@@ -240,92 +240,92 @@ class MmuStatusCommand(BaseCommand):
                 )
 
             # Purging ------------------------------------------------------------
-            if self.mmu.p.force_purge_standalone:
-                if self.mmu.p.purge_macro:
+            if mmu.p.force_purge_standalone:
+                if mmu.p.purge_macro:
                     lines.append(
                         "\n- Purging is always managed by Happy Hare using "
-                        f"'{self.mmu.p.purge_macro}' macro with extruder purging current of "
-                        f"{self.mmu.p.extruder_purge_current}%"
+                        f"'{mmu.p.purge_macro}' macro with extruder purging current of "
+                        f"{mmu.p.extruder_purge_current}%"
                     )
                 else:
                     lines.append("\n- No purging is performed!")
             else:
-                if self.mmu.p.purge_macro:
+                if mmu.p.purge_macro:
                     lines.append(
                         "\n- Purging is managed by slicer when printing. "
                         "Otherwise by Happy Hare using "
-                        f"'{self.mmu.p.purge_macro}' macro with extruder purging current of "
-                        f"{self.mmu.p.extruder_purge_current}% when not printing"
+                        f"'{mmu.p.purge_macro}' macro with extruder purging current of "
+                        f"{mmu.p.extruder_purge_current}% when not printing"
                     )
                 else:
                     lines.append("\n- Purging is managed by slicer only when printing")
 
             # Tightening ---------------------------------------------------------
-            has_tension = self.mmu.sensor_manager.has_sensor(SENSOR_TENSION)
-            has_compression = self.mmu.sensor_manager.has_sensor(SENSOR_COMPRESSION)
-            has_proportional = self.mmu.sensor_manager.has_sensor(SENSOR_PROPORTIONAL)
+            has_tension = mmu.sensor_manager.has_sensor(SENSOR_TENSION)
+            has_compression = mmu.sensor_manager.has_sensor(SENSOR_COMPRESSION)
+            has_proportional = mmu.sensor_manager.has_sensor(SENSOR_PROPORTIONAL)
 
             if (
-                self.mmu.mmu_unit().p.toolhead_post_load_tighten
-                and not self.mmu.mmu_unit().p.sync_to_extruder
-                and self.mmu._can_use_encoder()
-                and self.mmu.mmu_unit().sync_feedback.p.flowguard_encoder_mode
+                mmu.mmu_unit().p.toolhead_post_load_tighten
+                and not mmu.mmu_unit().p.sync_to_extruder
+                and mmu._can_use_encoder()
+                and mmu.mmu_unit().sync_feedback.p.flowguard_encoder_mode
             ):
                 lines.append(
                     "\n- Filament in bowden is tightened by "
-                    f"{min(self.mmu.encoder().get_clog_detection_length() * self.mmu.mmu_unit().p.toolhead_post_load_tighten / 100, 15):.1f}mm "
-                    f"({self.mmu.mmu_unit().p.toolhead_post_load_tighten}% of clog detection length) at reduced gear "
+                    f"{min(mmu.encoder().get_clog_detection_length() * mmu.mmu_unit().p.toolhead_post_load_tighten / 100, 15):.1f}mm "
+                    f"({mmu.mmu_unit().p.toolhead_post_load_tighten}% of clog detection length) at reduced gear "
                     "current to prevent false clog detection"
                 )
 
             elif (
-                self.mmu.mmu_unit().p.toolhead_post_load_tension_adjust
+                mmu.mmu_unit().p.toolhead_post_load_tension_adjust
                 and (
-                    self.mmu.mmu_unit().p.sync_to_extruder
-                    or self.mmu.mmu_unit().p.sync_purge
+                    mmu.mmu_unit().p.sync_to_extruder
+                    or mmu.mmu_unit().p.sync_purge
                 )
                 and (has_tension or has_compression or has_proportional)
-                and self.mmu.mmu_unit().sync_feedback.is_enabled()
+                and mmu.mmu_unit().sync_feedback.is_enabled()
             ):
                 lines.append(
                     "\n- Filament in bowden will be adjusted a maximum of "
-                    f"{(self.mmu.mmu_unit().sync_feedback.p.sync_feedback_buffer_range or self.mmu.mmu_unit().sync_feedback.p.sync_feedback_buffer_maxrange):.1f}mm "
+                    f"{(mmu.mmu_unit().sync_feedback.p.sync_feedback_buffer_range or mmu.mmu_unit().sync_feedback.p.sync_feedback_buffer_maxrange):.1f}mm "
                     "to neutralize tension"
                 )
 
             lines.append("\n\nUNLOAD SEQUENCE:")
 
             # Tip forming --------------------------------------------------------
-            if self.mmu.p.force_form_tip_standalone:
-                if self.mmu.p.form_tip_macro:
+            if mmu.p.force_form_tip_standalone:
+                if mmu.p.form_tip_macro:
                     lines.append(
                         "\n- Tip is always formed by Happy Hare using "
-                        f"'{self.mmu.p.form_tip_macro}' macro after initial retract of "
+                        f"'{mmu.p.form_tip_macro}' macro after initial retract of "
                         f"{self._f_calc('toolchange_retract')} with extruder current of "
-                        f"{self.mmu.p.extruder_form_tip_current}%"
+                        f"{mmu.p.extruder_form_tip_current}%"
                     )
                 else:
                     lines.append("\n- No tip forming is performed!")
             else:
-                if self.mmu.p.form_tip_macro:
+                if mmu.p.form_tip_macro:
                     lines.append(
                         "\n- Tip is formed by slicer when printing. "
                         "Otherwise by Happy Hare using "
-                        f"'{self.mmu.p.form_tip_macro}' macro after initial retract of "
+                        f"'{mmu.p.form_tip_macro}' macro after initial retract of "
                         f"{self._f_calc('toolchange_retract')} with extruder current of "
-                        f"{self.mmu.p.extruder_form_tip_current}%"
+                        f"{mmu.p.extruder_form_tip_current}%"
                     )
                 else:
                     lines.append("\n- Tip is formed by slicer only when printing")
 
             # Extruder unloading -------------------------------------------------
-            if self.mmu.sensor_manager.has_sensor(SENSOR_EXTRUDER_ENTRY):
+            if mmu.sensor_manager.has_sensor(SENSOR_EXTRUDER_ENTRY):
                 lines.append(
                     "\n- Extruder (synced) unloads by reverse homing a maximum of "
                     f"{self._f_calc('toolhead_entry_to_extruder + toolhead_extruder_to_nozzle - toolhead_residual_filament - toolhead_ooze_reduction - toolchange_retract + toolhead_unload_safety_margin')} "
                     "to EXTRUDER sensor"
                 )
-            elif self.mmu.sensor_manager.has_sensor(SENSOR_TOOLHEAD):
+            elif mmu.sensor_manager.has_sensor(SENSOR_TOOLHEAD):
                 lines.append(
                     "\n- Extruder (optionally synced) unloads by reverse homing a maximum "
                     f"{self._f_calc('toolhead_sensor_to_nozzle - toolhead_residual_filament - toolhead_ooze_reduction - toolchange_retract + toolhead_unload_safety_margin')} "
@@ -344,12 +344,12 @@ class MmuStatusCommand(BaseCommand):
                 )
 
             # Bowden unloading ---------------------------------------------------
-            if self.mmu.mmu_unit().require_bowden_move:
+            if mmu.mmu_unit().require_bowden_move:
                 if self.calibrated_bowden_length >= 0:
                     if (
-                        self.mmu.has_encoder()
-                        and self.mmu.mmu_unit().p.bowden_pre_unload_test
-                        and not self.mmu.sensor_manager.has_sensor(SENSOR_EXTRUDER_ENTRY)
+                        mmu.has_encoder()
+                        and mmu.mmu_unit().p.bowden_pre_unload_test
+                        and not mmu.sensor_manager.has_sensor(SENSOR_EXTRUDER_ENTRY)
                     ):
                         lines.append(
                             "\n- Bowden is unloaded with a short "
@@ -373,7 +373,7 @@ class MmuStatusCommand(BaseCommand):
             # Gate parking -------------------------------------------------------
             lines.append(
                 "\n- Filament is stored by homing a maximum of "
-                f"{self._f_calc('gate_homing_max')} to {self.mmu._gate_homing_string()} "
+                f"{self._f_calc('gate_homing_max')} to {mmu._gate_homing_string()} "
                 f"and parking {self._f_calc('gate_parking_distance')} in the gate\n"
             )
 
@@ -382,21 +382,21 @@ class MmuStatusCommand(BaseCommand):
             if not config:
                 lines.append(", for configuration add 'SHOWCONFIG=1'")
 
-        lines.append(f"\n\n{self.mmu._mmu_visual_to_string()}")
-        lines.append(f"\n{self.mmu._state_to_string()}")
+        lines.append(f"\n\n{mmu._mmu_visual_to_string()}")
+        lines.append(f"\n{mmu._state_to_string()}")
 
         if detail:
-            lines.append(f"\n\n{self.mmu._ttg_map_to_string()}")
-            if self.mmu.endless_spool_enabled:
-                lines.append(f"\n\n{self.mmu._es_groups_to_string()}")
-            lines.append(f"\n\n{self.mmu._gate_map_to_string()}")
+            lines.append(f"\n\n{mmu._ttg_map_to_string()}")
+            if mmu.endless_spool_enabled:
+                lines.append(f"\n\n{mmu._es_groups_to_string()}")
+            lines.append(f"\n\n{mmu._gate_map_to_string()}")
 
         msg = "".join(lines)
 
-        self.mmu.log_always(msg, color=True)
+        mmu.log_always(msg, color=True)
 
         # Always warn if not fully calibrated or needs recovery
-        self.mmu.report_necessary_recovery(use_autotune=False)
+        mmu.report_necessary_recovery(use_autotune=False)
 
 
     def _f_calc(self, formula):
@@ -404,6 +404,7 @@ class MmuStatusCommand(BaseCommand):
         Display property based calculation with property name and value
         to make it easier for users to understand application
         """
+        mmu = self.mmu
         ns = {}
 
         def _merge_obj(o):
@@ -413,9 +414,9 @@ class MmuStatusCommand(BaseCommand):
                 ns[k.lower()] = v
 
         # Namespace priority (last wins)
-        _merge_obj(self)                  # Local
-        _merge_obj(self.mmu.mmu_unit().p) # Unit parameters
-        _merge_obj(self.mmu.p)            # Machine parameters
+        _merge_obj(self)             # Local
+        _merge_obj(mmu.mmu_unit().p) # Unit parameters
+        _merge_obj(mmu.p)            # Machine parameters
 
         # Rewrite percent syntax for evaluation
         # Replace:   foo%

@@ -45,12 +45,13 @@ class MmuTestGripCommand(BaseCommand):
 
     def _run(self, gcmd):
         # BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if self.mmu.check_if_disabled(): 
+        if mmu.check_if_disabled(): 
             return
-        if self.mmu.check_if_bypass(): 
+        if mmu.check_if_bypass(): 
             return
 
         # Drive filament slightly then disable gear motor to test grip behavior
-        self.mmu.selector().filament_drive()
-        self.mmu.motors_onoff(on=False, motor="gear")
+        mmu.selector().filament_drive()
+        mmu.motors_onoff(on=False, motor="gear")

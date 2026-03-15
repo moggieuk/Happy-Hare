@@ -51,8 +51,9 @@ class MmuEndlessSpoolCommand(BaseCommand):
 
     def _run(self, gcmd):
         # BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if self.mmu.check_if_disabled(): return
+        if mmu.check_if_disabled(): return
 
         enabled = gcmd.get_int('ENABLE', -1, minval=0, maxval=1)
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
@@ -60,33 +61,33 @@ class MmuEndlessSpoolCommand(BaseCommand):
         groups = gcmd.get('GROUPS', "!")
 
         if enabled >= 0:
-            self.mmu.endless_spool_enabled = enabled
-            self.mmu.var_manager.set(VARS_MMU_ENABLE_ENDLESS_SPOOL, self.mmu.endless_spool_enabled, write=True)
+            mmu.endless_spool_enabled = enabled
+            mmu.var_manager.set(VARS_MMU_ENABLE_ENDLESS_SPOOL, mmu.endless_spool_enabled, write=True)
             if enabled and not quiet:
-                self.mmu.log_always("EndlessSpool is enabled")
+                mmu.log_always("EndlessSpool is enabled")
 
-        if not self.mmu.endless_spool_enabled:
-            self.mmu.log_always("EndlessSpool is disabled")
+        if not mmu.endless_spool_enabled:
+            mmu.log_always("EndlessSpool is disabled")
             return
 
         if reset:
-            self.mmu._reset_endless_spool()
+            mmu._reset_endless_spool()
 
         elif groups != "!":
-            groups = gcmd.get('GROUPS', ",".join(map(str, self.mmu.endless_spool_groups))).split(",")
-            if len(groups) != self.mmu.num_gates:
-                self.mmu.log_always("The number of group values (%d) is not the same as number of gates (%d)" % (len(groups), self.mmu.num_gates))
+            groups = gcmd.get('GROUPS', ",".join(map(str, mmu.endless_spool_groups))).split(",")
+            if len(groups) != mmu.num_gates:
+                mmu.log_always("The number of group values (%d) is not the same as number of gates (%d)" % (len(groups), mmu.num_gates))
                 return
-            self.mmu.endless_spool_groups = []
+            mmu.endless_spool_groups = []
             for group in groups:
                 if group.isdigit():
-                    self.mmu.endless_spool_groups.append(int(group))
+                    mmu.endless_spool_groups.append(int(group))
                 else:
-                    self.mmu.endless_spool_groups.append(0)
-            self.mmu._persist_endless_spool()
+                    mmu.endless_spool_groups.append(0)
+            mmu._persist_endless_spool()
 
         else:
             quiet = False  # Display current map
 
         if not quiet:
-            self.mmu.log_info(self.mmu._es_groups_to_string())
+            mmu.log_info(mmu._es_groups_to_string())

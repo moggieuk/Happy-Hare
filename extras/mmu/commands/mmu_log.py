@@ -47,12 +47,13 @@ class MmuLogCommand(BaseCommand):
 
     def _run(self, gcmd):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
         msg = gcmd.get('MSG', "").replace("\\n", "\n").replace(" ", UI_SPACE)
 
         if gcmd.get_int('ERROR', 0, minval=0, maxval=1):
-            self.mmu.log_error(msg)
+            mmu.log_error(msg)
         elif gcmd.get_int('DEBUG', 0, minval=0, maxval=1):
-            self.mmu.log_debug(msg)
+            mmu.log_debug(msg)
         else:
-            self.mmu.log_info(msg)
+            mmu.log_info(msg)

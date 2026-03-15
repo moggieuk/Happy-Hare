@@ -55,34 +55,35 @@ class MmuSensorRemoveCommand(BaseCommand):
 
     def _run(self, gcmd):
         # BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if not self.mmu.is_enabled: return
-        self.mmu._fix_started_state()
+        if not mmu.is_enabled: return
+        mmu._fix_started_state()
 
-        eventtime = gcmd.get_float('EVENTTIME', self.mmu.reactor.monotonic())
+        eventtime = gcmd.get_float('EVENTTIME', mmu.reactor.monotonic())
         gate = gcmd.get_int('GATE', None)
         raw_sensor = gcmd.get('SENSOR', "")
-        sensor = self.mmu.sensor_manager.get_unitless_sensor_name(raw_sensor)
+        sensor = mmu.sensor_manager.get_unitless_sensor_name(raw_sensor)
 
         try:
-            with self.mmu.wrap_sync_gear_to_extruder():
+            with mmu.wrap_sync_gear_to_extruder():
 
                 if sensor.startswith(SENSOR_ENTRY_PREFIX) and gate is not None:
                     # Ignore mmu entry runout if endless_spool_eject_gate feature is active
                     # and we want filament to be consumed to clear gate
-                    if not (self.mmu.endless_spool_enabled and self.mmu.p.endless_spool_eject_gate > 0):
-                        self.mmu._set_gate_status(gate, GATE_EMPTY)
+                    if not (mmu.endless_spool_enabled and mmu.p.endless_spool_eject_gate > 0):
+                        mmu._set_gate_status(gate, GATE_EMPTY)
                     else:
-                        self.mmu.log_trace(
+                        mmu.log_trace(
                             "Ignoring filament removal detected by %s because endless_spool_eject_gate is active"
                             % raw_sensor
                         )
 
                 else:
-                    self.mmu.log_assertion(
+                    mmu.log_assertion(
                         "Unexpected/unhandled sensor remove event on %s. Ignored"
                         % raw_sensor
                     )
 
         except MmuError as ee:
-            self.mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(str(ee))

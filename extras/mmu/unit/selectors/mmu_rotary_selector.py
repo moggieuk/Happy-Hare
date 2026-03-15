@@ -479,39 +479,39 @@ class MmuCalibrateRotarySelectorCommand(BaseCommand):
         derives offsets from CAD parameters. Optionally extrapolates remaining
         gates unless SINGLE=1, and writes results to mmu_vars.cfg.
         """
+        mmu = mmu_unit.mmu
+        selector = mmu_unit.selector
 
-        if self.mmu.check_if_disabled(): return
-
-        sel = mmu_unit.selector
+        if mmu.check_if_disabled(): return
 
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         single = gcmd.get_int('SINGLE', 0, minval=0, maxval=1)
         quick = gcmd.get_int('QUICK', 0, minval=0, maxval=1)
-        gate = gcmd.get_int('GATE', 0, minval=0, maxval=self.mmu_unit.num_gates - 1) # PAUL need gate and lgate
+        gate = gcmd.get_int('GATE', 0, minval=0, maxval=mmu_unit.num_gates - 1) # PAUL need gate and lgate
 
         try:
-            self.mmu.calibrating = True
+            mmu.calibrating = True
             successful = False
 
-            if sel.has_endstop and not quick:
-                successful = sel._calibrate_selector(gate, extrapolate=not single, save=save)
+            if selector.has_endstop and not quick:
+                successful = selector._calibrate_selector(gate, extrapolate=not single, save=save)
             else:
-                self.mmu.log_always("%s - will calculate gate offsets from cad_gate0_offset and cad_gate_width" % ("Quick method" if quick else "No endstop configured"))
-                sel.selector_offsets = [round(sel.p.cad_gate0_pos + i * sel.p.cad_gate_width, 1) for i in range(mmu_unit.num_gates)]
-                mmu_unit.calibrator.var_manager.set(VARS_MMU_SELECTOR_OFFSETS, sel.selector_offsets, write=True, namespace=mmu_unit.name)
+                mmu.log_always("%s - will calculate gate offsets from cad_gate0_offset and cad_gate_width" % ("Quick method" if quick else "No endstop configured"))
+                selector.selector_offsets = [round(selector.p.cad_gate0_pos + i * selector.p.cad_gate_width, 1) for i in range(mmu_unit.num_gates)]
+                mmu_unit.calibrator.var_manager.set(VARS_MMU_SELECTOR_OFFSETS, selector.selector_offsets, write=True, namespace=mmu_unit.name)
                 successful = True
 
-            if not any(x == -1 for x in sel.selector_offsets):
+            if not any(x == -1 for x in selector.selector_offsets):
                 mmu_unit.calibrator.mark_calibrated(CALIBRATED_SELECTOR)
 
             # If not fully calibrated turn off the selector stepper to ease next step, else activate by homing
             if successful and mmu_unit.calibrator.check_calibrated(CALIBRATED_SELECTOR):
-                self.mmu.log_always("Selector calibration complete")
-                sel._select_gate(0)
+                mmu.log_always("Selector calibration complete")
+                selector._select_gate(0)
             else:
-                sel.disable_motors()
+                selector.disable_motors()
 
         except MmuError as ee:
-            self.mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(str(ee))
         finally:
-            self.mmu.calibrating = False
+            mmu.calibrating = False

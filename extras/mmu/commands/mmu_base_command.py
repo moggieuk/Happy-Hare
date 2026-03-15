@@ -56,10 +56,12 @@ class BaseCommand:
           - per_unit=True : handler(gcmd, mmu_unit)
         """
         def wrapped(gcmd):
-            self.mmu.log_to_file(gcmd.get_commandline())
+            mmu = self.mmu
+
+            mmu.log_to_file(gcmd.get_commandline())
 
             if gcmd.get_int('HELP', 0, minval=0, maxval=1):
-                self.mmu.log_always(self.format_help(help_params, help_supplement or "", per_unit), color=True)
+                mmu.log_always(self.format_help(help_params, help_supplement or "", per_unit), color=True)
                 return
 
             # We don't use klipper's register_mux_command() because it isn't flexible really enough
@@ -67,22 +69,22 @@ class BaseCommand:
             # Allow unit to be the name, index, or optional (implied) if only one unit configured
             if per_unit:
                 unit_param = gcmd.get("UNIT", None)
-                machine = self.mmu.mmu_machine
+                mmu_machine = mmu.mmu_machine
 
-                unit = self.get_unit(gcmd)
+                mmu_unit = self.get_unit(gcmd)
 
-                if unit is not None:
-                    return handler(gcmd, unit)
+                if mmu_unit is not None:
+                    return handler(gcmd, mmu_unit)
 
                 elif unit_param == ALL_UNITS:
                     # Repeat for all units
-                    for unit in machine.units:
-                        handler(gcmd, unit)
+                    for mmu_unit in mmu_machine.units:
+                        handler(gcmd, mmu_unit)
                     return
 
-                elif machine.num_units == 1:
+                elif mmu_machine.num_units == 1:
                     # Default to unit 0
-                    unit = machine.get_mmu_unit_by_index(0)
+                    mmu_unit = mmu_machine.get_mmu_mmu_unit_by_index(0)
                     return handler(gcmd, unit)
 
                 raise gcmd.error("UNIT parameter is required because you have more than one!")
@@ -118,22 +120,23 @@ class BaseCommand:
         Helper to process the UNIT parameter and return the selected unit.
         For commands that don't want to be "per-unit" but still accept UNIT parameter.
         """
+        mmu = self.mmu
+        mmu_machine = mmu.mmu_machine
         unit_param = gcmd.get("UNIT", None)
-        machine = self.mmu.mmu_machine
 
-        unit = None
+        mmu_unit = None
         if unit_param is not None:
             # Try lookup by name first
-            unit = machine.get_mmu_unit_by_name(unit_param)
+            mmu_unit = mmu_machine.get_mmu_unit_by_name(unit_param)
 
             # If not found, try as unit index
-            if unit is None:
+            if mmu_unit is None:
                 try:
                     unit_index = int(unit_param)
-                    unit = machine.get_mmu_unit_by_index(unit_index)
+                    mmu_unit = mmu_machine.get_mmu_unit_by_index(unit_index)
                 except (ValueError, TypeError):
                     pass
-        return unit
+        return mmu_unit
 
 
     def format_help(self, msg, supplement=None, per_unit=False, not_registered=False):

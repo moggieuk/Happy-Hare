@@ -53,11 +53,12 @@ class MmuChangeToolCommand(BaseCommand):
 
     def _run(self, gcmd):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if self.mmu.check_if_disabled(): return
-        if self.mmu.check_if_bypass(): return
-        if self.mmu.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[]): return # TODO Hard to tell what gates to check so don't check for now
-        self.mmu._fix_started_state()
+        if mmu.check_if_disabled(): return
+        if mmu.check_if_bypass(): return
+        if mmu.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[]): return # TODO Hard to tell what gates to check so don't check for now
+        mmu._fix_started_state()
 
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
         standalone = bool(gcmd.get_int('STANDALONE', 0, minval=0, maxval=1))
@@ -67,14 +68,14 @@ class MmuChangeToolCommand(BaseCommand):
 
         # Handle "next_pos" option for toolhead position restoration
         next_pos = None
-        sequence_vars_macro = self.mmu.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
+        sequence_vars_macro = mmu.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
         if sequence_vars_macro and sequence_vars_macro.variables.get('restore_xy_pos', 'last') == 'next':
             # Convert next position to absolute coordinates
             next_pos = gcmd.get('NEXT_POS', None)
             if next_pos:
                 try:
                     x, y = map(float, next_pos.split(','))
-                    gcode_status = self.mmu.gcode_move.get_status(self.mmu.reactor.monotonic())
+                    gcode_status = mmu.gcode_move.get_status(mmu.reactor.monotonic())
                     if not gcode_status['absolute_coordinates']:
                         gcode_pos = gcode_status['gcode_position']
                         x += gcode_pos[0]
@@ -82,58 +83,58 @@ class MmuChangeToolCommand(BaseCommand):
                     next_pos = [x, y]
                 except (ValueError, KeyError, TypeError) as ee:
                     # If something goes wrong it is better to ignore next pos completely
-                    self.mmu.log_error("Error parsing NEXT_POS: %s" % str(ee))
+                    mmu.log_error("Error parsing NEXT_POS: %s" % str(ee))
 
         # To support Tx commands linked directly (currently not used because of Mainsail visibility which requires macros)
         cmd = gcmd.get_command().strip()
         match = re.match(r'[Tt](\d{1,3})$', cmd)
         if match:
             tool = int(match.group(1))
-            if tool < 0 or tool > self.mmu.num_gates - 1:
+            if tool < 0 or tool > mmu.num_gates - 1:
                 raise gcmd.error("Invalid tool")
         else:
             # Special case for UI driven change tool where gate is chosen
             tool = None
-            gate = gcmd.get_int('GATE', None, minval=0, maxval=self.mmu.num_gates - 1)
+            gate = gcmd.get_int('GATE', None, minval=0, maxval=mmu.num_gates - 1)
             if gate is not None:
-                if gate == self.mmu.gate_selected:
-                    self.mmu.log_always("Gate %s is already loaded as %s" % (gate, self.mmu.selected_tool_string(tool)))
+                if gate == mmu.gate_selected:
+                    mmu.log_always("Gate %s is already loaded as %s" % (gate, mmu.selected_tool_string(tool)))
                     return
 
-                possible_tools = [tool for tool in range(self.mmu.num_gates) if self.mmu.ttg_map[tool] == gate]
+                possible_tools = [tool for tool in range(mmu.num_gates) if mmu.ttg_map[tool] == gate]
                 if not possible_tools:
-                    self.mmu.log_error("No tool associated with gate %s. Check tool-to-gate mapping with MMU_TTG_MAP" % gate)
+                    mmu.log_error("No tool associated with gate %s. Check tool-to-gate mapping with MMU_TTG_MAP" % gate)
                     return
 
-                if self.mmu.tool_selected in possible_tools:
-                    self.mmu._remap_tool(self.mmu.tool_selected, gate)
-                    tool = self.mmu.tool_selected
+                if mmu.tool_selected in possible_tools:
+                    mmu._remap_tool(mmu.tool_selected, gate)
+                    tool = mmu.tool_selected
                 else:
                     tool = possible_tools[0]
 
             if tool is None:
-                tool = gcmd.get_int('TOOL', minval=0, maxval=self.mmu.num_gates - 1)
+                tool = gcmd.get_int('TOOL', minval=0, maxval=mmu.num_gates - 1)
 
         try:
-            with self.mmu.wrap_sync_gear_to_extruder():
-                with self.mmu._wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during tool change
-                    with self.mmu.var_manager.wrap_suspend_write_variables(): # Reduce I/O activity to a minimum
+            with mmu.wrap_sync_gear_to_extruder():
+                with mmu._wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during tool change
+                    with mmu.var_manager.wrap_suspend_write_variables(): # Reduce I/O activity to a minimum
 # PAUL we can't assume here and anyway, we might be changing between units!
 # PAUL select_gate on selector need to check homing
-# PAUL                        self.mmu._auto_home(tool=tool)
-                        if self.mmu.has_encoder():
-                            self.mmu.encoder().note_clog_detection_length()
+# PAUL                        mmu._auto_home(tool=tool)
+                        if mmu.has_encoder():
+                            mmu.encoder().note_clog_detection_length()
 
                         do_form_tip = FORM_TIP_STANDALONE
                         if skip_tip:
                             do_form_tip = FORM_TIP_NONE
-                        elif self.mmu.is_printing() and not (standalone or self.mmu.p.force_form_tip_standalone):
+                        elif mmu.is_printing() and not (standalone or mmu.p.force_form_tip_standalone):
                             do_form_tip = FORM_TIP_SLICER
 
                         do_purge = PURGE_STANDALONE
                         if skip_purge:
                             do_purge = PURGE_NONE
-                        elif self.mmu.is_printing() and not (standalone or self.mmu.p.force_purge_standalone):
+                        elif mmu.is_printing() and not (standalone or mmu.p.force_purge_standalone):
                             do_purge = PURGE_SLICER
 
                         tip_msg = ("with slicer tip forming" if do_form_tip == FORM_TIP_SLICER else
@@ -142,25 +143,25 @@ class MmuChangeToolCommand(BaseCommand):
                         purge_msg = ("slicer purging" if do_purge == PURGE_SLICER else
                                      "standalone MMU purging" if do_purge == PURGE_STANDALONE else
                                      "without purging")
-                        self.mmu.log_debug("Tool change initiated %s and %s" % (tip_msg, purge_msg))
+                        mmu.log_debug("Tool change initiated %s and %s" % (tip_msg, purge_msg))
 
-                        current_tool_string = self.mmu.selected_tool_string()
-                        new_tool_string = self.mmu.selected_tool_string(tool)
+                        current_tool_string = mmu.selected_tool_string()
+                        new_tool_string = mmu.selected_tool_string(tool)
 
                         # Check if we are already loaded
                         if (
-                            tool == self.mmu.tool_selected and
-                            self.mmu.ttg_map[tool] == self.mmu.gate_selected and
-                            self.mmu.filament_pos == FILAMENT_POS_LOADED
+                            tool == mmu.tool_selected and
+                            mmu.ttg_map[tool] == mmu.gate_selected and
+                            mmu.filament_pos == FILAMENT_POS_LOADED
                         ):
-                            self.mmu.log_always("Tool %s is already loaded" % self.mmu.selected_tool_string(tool))
+                            mmu.log_always("Tool %s is already loaded" % mmu.selected_tool_string(tool))
                             return
 
                         # Load only case
-                        if self.mmu.filament_pos == FILAMENT_POS_UNLOADED:
+                        if mmu.filament_pos == FILAMENT_POS_UNLOADED:
                             msg = "Tool change requested: %s" % new_tool_string
                             m117_msg = "> %s" % new_tool_string
-                        elif self.mmu.tool_selected == tool:
+                        elif mmu.tool_selected == tool:
                             msg = "Reloading: %s" % new_tool_string
                             m117_msg = "> %s" % new_tool_string
                         else:
@@ -168,54 +169,54 @@ class MmuChangeToolCommand(BaseCommand):
                             msg = "Tool change requested, from %s to %s" % (current_tool_string, new_tool_string)
                             m117_msg = "%s > %s" % (current_tool_string, new_tool_string)
 
-                        self.mmu._note_toolchange(m117_msg)
-                        self.mmu.log_always(msg)
+                        mmu._note_toolchange(m117_msg)
+                        mmu.log_always(msg)
 
                         # Check if new tool is mapped to current gate
-                        if self.mmu.ttg_map[tool] == self.mmu.gate_selected and self.mmu.filament_pos == FILAMENT_POS_LOADED:
-                            self.mmu.select_tool(tool)
-                            self.mmu._note_toolchange(self.mmu.selected_tool_string(tool))
+                        if mmu.ttg_map[tool] == mmu.gate_selected and mmu.filament_pos == FILAMENT_POS_LOADED:
+                            mmu.select_tool(tool)
+                            mmu._note_toolchange(mmu.selected_tool_string(tool))
                             return
 
                         # Ok, now ready to park and perform the swap
-                        self.mmu._next_tool = tool # Valid only during the change process - cleared in _continue_after()
-                        self.mmu.last_statistics = {}
-                        self.mmu._save_toolhead_position_and_park('toolchange', next_pos=next_pos)
-                        self.mmu._set_next_position(next_pos) # This can also clear next_position
-                        self.mmu._track_time_start('total')
-                        self.mmu.printer.send_event("mmu:toolchange", self.mmu._last_tool, self.mmu._next_tool)
+                        mmu._next_tool = tool # Valid only during the change process - cleared in _continue_after()
+                        mmu.last_statistics = {}
+                        mmu._save_toolhead_position_and_park('toolchange', next_pos=next_pos)
+                        mmu._set_next_position(next_pos) # This can also clear next_position
+                        mmu._track_time_start('total')
+                        mmu.printer.send_event("mmu:toolchange", mmu._last_tool, mmu._next_tool)
 
                         # Remember the tool that was actually in use before any load attempts
-                        prev_tool = self.mmu.tool_selected
+                        prev_tool = mmu.tool_selected
 
-                        attempts = 2 if self.mmu.p.retry_tool_change_on_error and (self.mmu.is_printing() or standalone) else 1 # TODO Replace with inattention timer
+                        attempts = 2 if mmu.p.retry_tool_change_on_error and (mmu.is_printing() or standalone) else 1 # TODO Replace with inattention timer
                         try:
                             for i in range(attempts):
                                 try:
-                                    if self.mmu.filament_pos != FILAMENT_POS_UNLOADED:
-                                        self.mmu._unload_tool(form_tip=do_form_tip, prev_tool=prev_tool)
-                                    self.mmu._select_and_load_tool(tool, purge=do_purge)
+                                    if mmu.filament_pos != FILAMENT_POS_UNLOADED:
+                                        mmu._unload_tool(form_tip=do_form_tip, prev_tool=prev_tool)
+                                    mmu._select_and_load_tool(tool, purge=do_purge)
                                     break
                                 except MmuError as ee:
                                     if i == attempts - 1:
-                                        raise MmuError("%s.\nOccured when changing tool: %s" % (str(ee), self.mmu._last_toolchange))
-                                    self.mmu.log_error("%s.\nOccured when changing tool: %s. Retrying..." % (str(ee), self.mmu._last_toolchange))
+                                        raise MmuError("%s.\nOccured when changing tool: %s" % (str(ee), mmu._last_toolchange))
+                                    mmu.log_error("%s.\nOccured when changing tool: %s. Retrying..." % (str(ee), mmu._last_toolchange))
                                     # Try again but recover_filament_pos will ensure conservative treatment of unload
-                                    self.mmu.recover_filament_pos()
+                                    mmu.recover_filament_pos()
 
-                            self.mmu._track_swap_completed()
-                            if self.mmu.p.log_m117_messages:
-                                self.mmu.gcode.run_script_from_command("M117 T%s" % tool)
+                            mmu._track_swap_completed()
+                            if mmu.p.log_m117_messages:
+                                mmu.gcode.run_script_from_command("M117 T%s" % tool)
                         finally:
-                            self.mmu._track_time_end('total')
+                            mmu._track_time_end('total')
 
                     # Updates swap statistics
-                    self.mmu.num_toolchanges += 1
-                    self.mmu._dump_statistics(job=not quiet, gate=not quiet)
-                    self.mmu._persist_swap_statistics()
-                    self.mmu._persist_gate_statistics()
+                    mmu.num_toolchanges += 1
+                    mmu._dump_statistics(job=not quiet, gate=not quiet)
+                    mmu._persist_swap_statistics()
+                    mmu._persist_gate_statistics()
 
                     # Deliberately outside of _wrap_gear_synced_to_extruder() so there is no absolutely no delay after restoring position
-                    self.mmu._continue_after('toolchange', restore=restore)
+                    mmu._continue_after('toolchange', restore=restore)
         except MmuError as ee:
-            self.mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(str(ee))

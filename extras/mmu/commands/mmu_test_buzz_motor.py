@@ -48,35 +48,36 @@ class MmuTestBuzzMotorCommand(BaseCommand):
 
     def _run(self, gcmd):
         # BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if self.mmu.check_if_disabled(): return
-        if self.mmu.check_if_bypass(): return
+        if mmu.check_if_disabled(): return
+        if mmu.check_if_bypass(): return
 
         motor = gcmd.get('MOTOR', "gear")
 
-        with self.mmu.wrap_sync_gear_to_extruder():
+        with mmu.wrap_sync_gear_to_extruder():
 
             if motor == "gear":
-                found = self.mmu.buzz_gear_motor()
+                found = mmu.buzz_gear_motor()
                 if found is not None:
-                    self.mmu.log_info(
+                    mmu.log_info(
                         "Filament %s by gear motor buzz"
                         % ("detected" if found else "not detected")
                     )
 
             elif motor == "gears":
                 try:
-                    for gate in range(self.mmu.num_gates):
-                        self.mmu.mmu_toolhead().select_gear_stepper(gate)
-                        found = self.mmu.buzz_gear_motor()
+                    for gate in range(mmu.num_gates):
+                        mmu.mmu_toolhead().select_gear_stepper(gate)
+                        found = mmu.buzz_gear_motor()
                         if found is not None:
-                            self.mmu.log_info(
+                            mmu.log_info(
                                 "Filament %s in gate %d by gear motor buzz"
                                 % ("detected" if found else "not detected", gate)
                             )
                 finally:
                     # Restore original gear selection
-                    self.mmu.mmu_toolhead().select_gear_stepper(self.mmu.gate_selected)
+                    mmu.mmu_toolhead().select_gear_stepper(mmu.gate_selected)
 
-            elif not self.mmu.selector().buzz_motor(motor):
+            elif not mmu.selector().buzz_motor(motor):
                 raise gcmd.error("Motor '%s' not known" % motor)

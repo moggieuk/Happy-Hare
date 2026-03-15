@@ -47,43 +47,44 @@ class MmuLoadCommand(BaseCommand):
 
     def _run(self, gcmd):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if self.mmu.check_if_disabled(): return
-        if self.mmu.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[self.mmu.gate_selected]): return
-        self.mmu._fix_started_state()
+        if mmu.check_if_disabled(): return
+        if mmu.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[mmu.gate_selected]): return
+        mmu._fix_started_state()
 
-        in_bypass = self.mmu.gate_selected == TOOL_GATE_BYPASS
+        in_bypass = mmu.gate_selected == TOOL_GATE_BYPASS
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1) or in_bypass)
         skip_purge = bool(gcmd.get_int('SKIP_PURGE', 0, minval=0, maxval=1))
         restore = bool(gcmd.get_int('RESTORE', 1, minval=0, maxval=1))
         do_purge = PURGE_STANDALONE if not skip_purge else PURGE_NONE
 
         try:
-            with self.mmu.wrap_sync_gear_to_extruder():
-                with self.mmu._wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during filament load
-                    if self.mmu.filament_pos != FILAMENT_POS_UNLOADED:
-                        self.mmu.log_always("Filament already loaded")
+            with mmu.wrap_sync_gear_to_extruder():
+                with mmu._wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during filament load
+                    if mmu.filament_pos != FILAMENT_POS_UNLOADED:
+                        mmu.log_always("Filament already loaded")
                         return
 
-                    self.mmu._note_toolchange("> %s" % self.mmu.selected_tool_string())
+                    mmu._note_toolchange("> %s" % mmu.selected_tool_string())
 
                     if extruder_only:
-                        self.mmu.load_sequence(bowden_move=0., extruder_only=True, purge=do_purge)
+                        mmu.load_sequence(bowden_move=0., extruder_only=True, purge=do_purge)
 
                     else:
-                        self.mmu._next_tool = self.mmu.tool_selected # Valid only during the load process - cleared in _continue_after()
-                        self.mmu.last_statistics = {}
-                        self.mmu._save_toolhead_position_and_park('load')
-                        if self.mmu.tool_selected == TOOL_GATE_UNKNOWN:
-                            self.mmu.log_error("Selected gate is not mapped to any tool. Will load filament but be sure to use MMU_TTG_MAP to assign tool")
+                        mmu._next_tool = mmu.tool_selected # Valid only during the load process - cleared in _continue_after()
+                        mmu.last_statistics = {}
+                        mmu._save_toolhead_position_and_park('load')
+                        if mmu.tool_selected == TOOL_GATE_UNKNOWN:
+                            mmu.log_error("Selected gate is not mapped to any tool. Will load filament but be sure to use MMU_TTG_MAP to assign tool")
 
-                        self.mmu._select_and_load_tool(self.mmu.tool_selected, purge=do_purge)
-                        self.mmu._persist_gate_statistics()
-                        self.mmu._continue_after('load', restore=restore)
+                        mmu._select_and_load_tool(mmu.tool_selected, purge=do_purge)
+                        mmu._persist_gate_statistics()
+                        mmu._continue_after('load', restore=restore)
 
-                    self.mmu._persist_swap_statistics()
+                    mmu._persist_swap_statistics()
 
         except MmuError as ee:
-            self.mmu.handle_mmu_error("%s.\nOccured when loading tool: %s" % (str(ee), self.mmu._last_toolchange))
-            if self.mmu.tool_selected == TOOL_GATE_BYPASS:
-                self.mmu._set_filament_pos_state(FILAMENT_POS_UNKNOWN)
+            mmu.handle_mmu_error("%s.\nOccured when loading tool: %s" % (str(ee), mmu._last_toolchange))
+            if mmu.tool_selected == TOOL_GATE_BYPASS:
+                mmu._set_filament_pos_state(FILAMENT_POS_UNKNOWN)

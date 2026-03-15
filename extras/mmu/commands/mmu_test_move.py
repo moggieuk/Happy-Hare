@@ -55,19 +55,20 @@ class MmuTestMoveCommand(MoveMixin, BaseCommand):
 
     def _run(self, gcmd):
         # BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if self.mmu.check_if_disabled(): return
+        if mmu.check_if_disabled(): return
 
         debug = bool(gcmd.get_int('DEBUG', 0, minval=0, maxval=1))  # Hidden option
         allow_bypass = bool(gcmd.get_int('ALLOW_BYPASS', 0, minval=0, maxval=1))
 
-        with self.mmu.wrap_sync_gear_to_extruder():
-            with DebugStepperMovement(self.mmu, debug):
+        with mmu.wrap_sync_gear_to_extruder():
+            with DebugStepperMovement(mmu, debug):
                 actual, _, measured, _ = self._move_cmd(gcmd, "Test move", allow_bypass=allow_bypass) # From Mixin
 
-            self.mmu.log_always(
+            mmu.log_always(
                 "Moved %.1fmm%s" % (
                     actual,
-                    (" (measured %.1fmm)" % measured) if self.mmu._can_use_encoder() else ""
+                    (" (measured %.1fmm)" % measured) if mmu._can_use_encoder() else ""
                 )
             )

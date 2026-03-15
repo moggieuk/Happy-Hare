@@ -45,8 +45,9 @@ class MmuEncoderInsertCommand(BaseCommand):
 
     def _run(self, gcmd):
         # BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if not self.mmu.is_enabled:
+        if not mmu.is_enabled:
             return
 
         # TODO Possible future bypass preload feature - make gate act like bypass

@@ -57,38 +57,39 @@ class MmuSensorRunoutCommand(BaseCommand):
 
     def _run(self, gcmd):
         # BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if not self.mmu.is_enabled:
+        if not mmu.is_enabled:
             # Undo what runout sensor handling did
-            self.mmu.pause_resume.send_resume_command()
+            mmu.pause_resume.send_resume_command()
             return
 
-        self.mmu._fix_started_state()
+        mmu._fix_started_state()
 
-        eventtime = gcmd.get_float('EVENTTIME', self.mmu.reactor.monotonic())
+        eventtime = gcmd.get_float('EVENTTIME', mmu.reactor.monotonic())
         gate = gcmd.get_int('GATE', None)
         raw_sensor = gcmd.get('SENSOR', "")
-        sensor = self.mmu.sensor_manager.get_unitless_sensor_name(raw_sensor)
+        sensor = mmu.sensor_manager.get_unitless_sensor_name(raw_sensor)
         process_runout = False
 
         try:
-            with self.mmu.wrap_sync_gear_to_extruder():
+            with mmu.wrap_sync_gear_to_extruder():
 
-                if eventtime < self.mmu.runout_last_enable_time:
-                    self.mmu.log_assertion("Late sensor runout event on %s. Ignored" % raw_sensor)
+                if eventtime < mmu.runout_last_enable_time:
+                    mmu.log_assertion("Late sensor runout event on %s. Ignored" % raw_sensor)
 
-                elif sensor and self.mmu.sensor_manager.check_sensor(sensor):
-                    self.mmu.log_assertion("Runout handler suspects sensor malfunction on %s. Ignored" % raw_sensor)
+                elif sensor and mmu.sensor_manager.check_sensor(sensor):
+                    mmu.log_assertion("Runout handler suspects sensor malfunction on %s. Ignored" % raw_sensor)
 
                 else:
                     # Always update gate map from mmu entry sensor
-                    if sensor.startswith(SENSOR_ENTRY_PREFIX) and gate != self.mmu.gate_selected:
-                        self.mmu._set_gate_status(gate, GATE_EMPTY)
+                    if sensor.startswith(SENSOR_ENTRY_PREFIX) and gate != mmu.gate_selected:
+                        mmu._set_gate_status(gate, GATE_EMPTY)
 
                     # Real runout to process...
-                    if sensor.startswith(SENSOR_ENTRY_PREFIX) and gate == self.mmu.gate_selected:
-                        if self.mmu.endless_spool_enabled and self.mmu.p.endless_spool_eject_gate == gate:
-                            self.mmu.log_trace(
+                    if sensor.startswith(SENSOR_ENTRY_PREFIX) and gate == mmu.gate_selected:
+                        if mmu.endless_spool_enabled and mmu.p.endless_spool_eject_gate == gate:
+                            mmu.log_trace(
                                 "Ignoring filament runout detected by %s because endless_spool_eject_gate is active on that gate"
                                 % raw_sensor
                             )
@@ -98,24 +99,24 @@ class MmuSensorRunoutCommand(BaseCommand):
                     elif sensor == SENSOR_SHARED_EXIT and gate is None:
                         process_runout = True
 
-                    elif sensor.startswith(SENSOR_EXIT_PREFIX) and gate == self.mmu.gate_selected:
+                    elif sensor.startswith(SENSOR_EXIT_PREFIX) and gate == mmu.gate_selected:
                         process_runout = True
 
                     elif sensor.startswith(SENSOR_EXTRUDER_ENTRY):
                         raise MmuError("Filament runout occured at extruder. Manual intervention is required")
 
                     else:
-                        self.mmu.log_assertion(
+                        mmu.log_assertion(
                             "Unexpected/unhandled sensor runout event on %s. Ignored"
                             % raw_sensor
                         )
 
                 if process_runout:
                     # Will send_resume_command() or fail and pause
-                    self.mmu._runout(event_type="runout", sensor=sensor)
+                    mmu._runout(event_type="runout", sensor=sensor)
                 else:
                     # Undo what runout sensor handling did
-                    self.mmu.pause_resume.send_resume_command()
+                    mmu.pause_resume.send_resume_command()
 
         except MmuError as ee:
-            self.mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(str(ee))

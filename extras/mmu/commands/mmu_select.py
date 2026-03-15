@@ -48,32 +48,33 @@ class MmuSelectCommand(BaseCommand):
 
     def _run(self, gcmd):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if self.mmu.check_if_disabled(): return
-        if self.mmu.check_if_loaded(): return
-        gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu.num_gates - 1)
-        if self.mmu.check_if_not_calibrated(CALIBRATED_SELECTOR, check_gates=[gate] if gate >= 0 else None): return
-        self.mmu._fix_started_state()
+        if mmu.check_if_disabled(): return
+        if mmu.check_if_loaded(): return
+        gate = gcmd.get_int('GATE', -1, minval=0, maxval=mmu.num_gates - 1)
+        if mmu.check_if_not_calibrated(CALIBRATED_SELECTOR, check_gates=[gate] if gate >= 0 else None): return
+        mmu._fix_started_state()
 
         bypass = gcmd.get_int('BYPASS', -1, minval=0, maxval=1)
-        tool = gcmd.get_int('TOOL', -1, minval=0, maxval=self.mmu.num_gates - 1)
+        tool = gcmd.get_int('TOOL', -1, minval=0, maxval=mmu.num_gates - 1)
         if tool == -1 and gate == -1 and bypass == -1:
             raise gcmd.error("Error on 'MMU_SELECT': missing TOOL, GATE or BYPASS")
 
         try:
-            with self.mmu.wrap_sync_gear_to_extruder():
+            with mmu.wrap_sync_gear_to_extruder():
                 if bypass != -1:
-                    self.mmu.select_bypass()
+                    mmu.select_bypass()
 
                 elif tool != -1:
-                    self.mmu.select_tool(tool)
+                    mmu.select_tool(tool)
 
                 else:
-                    self.mmu.select_gate(gate)
-                    self.mmu._ensure_ttg_match()
+                    mmu.select_gate(gate)
+                    mmu._ensure_ttg_match()
 
-                msg = self.mmu._mmu_visual_to_string()
-                msg += "\n%s" % self.mmu._state_to_string()
-                self.mmu.log_info(msg, color=True)
+                msg = mmu._mmu_visual_to_string()
+                msg += "\n%s" % mmu._state_to_string()
+                mmu.log_info(msg, color=True)
         except MmuError as ee:
-            self.mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(str(ee))

@@ -54,7 +54,7 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('gcode_load_sequence',           'int',       0, section="PRINTER", hidden=True),
         ParamSpec('gcode_unload_sequence',         'int',       0, section="PRINTER", hidden=True),
         ParamSpec('force_form_tip_standalone',     'int',       0, section="PRINTER", limits=dict(minval=0, maxval=1)),
-        ParamSpec('slicer_tip_park_pos',           'float',   0.0, section="PRINTER", guard=lambda self: not self.force_form_tip_standalone, limits=dict(minval=0.0)),
+        ParamSpec('slicer_tip_park_pos',           'float',   0.0, section="PRINTER", limits=dict(minval=0.0), guard=lambda self: not self.force_form_tip_standalone),
         ParamSpec('force_purge_standalone',        'int',       0, section="PRINTER", limits=dict(minval=0, maxval=1)),
         ParamSpec('strict_filament_recovery',      'int',       0, section="PRINTER", limits=dict(minval=0, maxval=1)),
         ParamSpec('filament_recovery_on_pause',    'int',       1, section="PRINTER", limits=dict(minval=0, maxval=1)),
@@ -100,8 +100,8 @@ class MmuMachineParameters(TunableParametersBase):
 
         # Configuration for extruder dimensions
         ParamSpec('toolhead_extruder_to_nozzle',   'float',  0.0, section="TOOLHEAD/EXTRUDER", limits=dict(minval=5.0)),
-        ParamSpec('toolhead_sensor_to_nozzle',     'float',  0.0, section="TOOLHEAD/EXTRUDER", guard=_guard_has_sensor(SENSOR_TOOLHEAD), limits=dict(minval=1.0)),
-        ParamSpec('toolhead_entry_to_extruder',    'float',  0.0, section="TOOLHEAD/EXTRUDER", guard=_guard_has_sensor(SENSOR_EXTRUDER_ENTRY), limits=dict(minval=0.0)),
+        ParamSpec('toolhead_sensor_to_nozzle',     'float',  0.0, section="TOOLHEAD/EXTRUDER", limits=dict(minval=1.0), guard=_guard_has_sensor(SENSOR_TOOLHEAD)),
+        ParamSpec('toolhead_entry_to_extruder',    'float',  0.0, section="TOOLHEAD/EXTRUDER", limits=dict(minval=0.0), guard=_guard_has_sensor(SENSOR_EXTRUDER_ENTRY)),
         ParamSpec('toolhead_residual_filament',    'float',  0.0, section="TOOLHEAD/EXTRUDER", limits=dict(minval=0.0, maxval=50.0)),
         ParamSpec('toolhead_ooze_reduction',       'float',  0.0, section="TOOLHEAD/EXTRUDER", limits=dict(minval=-5.0, maxval=20.0)),
 
@@ -155,8 +155,8 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('drying_data',                   'str',   "{}", section="DRYING", hidden=True),
 
         # Currently hidden and testing options
-        ParamSpec('test_random_failures',          'int',      0, section="TESTING",        limits=dict(minval=0, maxval=1),  hidden=True),
-        ParamSpec('test_force_in_print',           'int',      0, section="TESTING",        limits=dict(minval=0, maxval=1),  hidden=True),
+        ParamSpec('test_random_failures',          'int',      0, section="TESTING", limits=dict(minval=0, maxval=1),  hidden=True),
+        ParamSpec('test_force_in_print',           'int',      0, section="TESTING", limits=dict(minval=0, maxval=1),  hidden=True),
 
         # Klipper tuning (aka hacks) -------
         ParamSpec('suppress_kalico_warning',       'int',      0, section="KLIPPER TUNING", limits=dict(minval=0, maxval=1),  hidden=True),

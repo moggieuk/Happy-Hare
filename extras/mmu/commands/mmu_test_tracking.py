@@ -50,38 +50,39 @@ class MmuTestTrackingCommand(BaseCommand):
 
     def _run(self, gcmd):
         # BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if self.mmu._check_has_encoder(): return
-        if self.mmu.check_if_disabled(): return
-        if self.mmu.check_if_bypass(): return
-#PAUL        if self.mmu.check_if_not_homed(): return
-        if self.mmu.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[self.mmu.gate_selected]): return
+        if mmu._check_has_encoder(): return
+        if mmu.check_if_disabled(): return
+        if mmu.check_if_bypass(): return
+#PAUL        if mmu.check_if_not_homed(): return
+        if mmu.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[mmu.gate_selected]): return
 
         direction = gcmd.get_int('DIRECTION', 1, minval=-1, maxval=1)
         step = gcmd.get_float('STEP', 1, minval=0.5, maxval=20)
-        sensitivity = gcmd.get_float('SENSITIVITY', self.mmu.encoder().get_resolution(), minval=0.1, maxval=10)
+        sensitivity = gcmd.get_float('SENSITIVITY', mmu.encoder().get_resolution(), minval=0.1, maxval=10)
 
         if direction == 0:
             return
 
         try:
-            with self.mmu.wrap_sync_gear_to_extruder():
+            with mmu.wrap_sync_gear_to_extruder():
 
-                if self.mmu.filament_pos not in [FILAMENT_POS_START_BOWDEN, FILAMENT_POS_IN_BOWDEN]:
+                if mmu.filament_pos not in [FILAMENT_POS_START_BOWDEN, FILAMENT_POS_IN_BOWDEN]:
                     # Ready MMU for test if not already setup
-                    self.mmu._unload_tool()
-                    self.mmu.load_sequence(
+                    mmu._unload_tool()
+                    mmu.load_sequence(
                         bowden_move=100. if direction == DIRECTION_LOAD else 200.,
                         skip_extruder=True
                     )
-                    self.mmu.selector().filament_drive()
+                    mmu.selector().filament_drive()
 
-                with self.mmu._require_encoder():
-                    self.mmu._initialize_filament_position()
+                with mmu._require_encoder():
+                    mmu._initialize_filament_position()
 
                     for i in range(1, int(100 / step)):
-                        self.mmu.trace_filament_move(None, direction * step, encoder_dwell=None)
-                        measured = self.mmu.get_encoder_distance()
+                        mmu.trace_filament_move(None, direction * step, encoder_dwell=None)
+                        measured = mmu.get_encoder_distance()
                         moved = i * step
                         drift = int(round((moved - measured) / sensitivity))
 
@@ -92,12 +93,12 @@ class MmuTestTrackingCommand(BaseCommand):
                         else:
                             drift_str = ""
 
-                        self.mmu.log_info(
+                        mmu.log_info(
                             "Gear/Encoder : %05.2f / %05.2f mm %s"
                             % (moved, measured, drift_str)
                         )
 
-                self.mmu._unload_tool()
+                mmu._unload_tool()
 
         except MmuError as ee:
-            self.mmu.handle_mmu_error("Tracking test failed: %s" % str(ee))
+            mmu.handle_mmu_error("Tracking test failed: %s" % str(ee))

@@ -45,16 +45,17 @@ class MmuEncoderRunoutCommand(BaseCommand):
 
     def _run(self, gcmd):
         # BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if not self.mmu.is_enabled:
+        if not mmu.is_enabled:
             # Undo what runout sensor handling did
-            self.mmu.pause_resume.send_resume_command()
+            mmu.pause_resume.send_resume_command()
             return
 
-        self.mmu._fix_started_state()
+        mmu._fix_started_state()
 
         try:
-            with self.mmu.wrap_sync_gear_to_extruder():
-                self.mmu._runout(sensor="Encoder")
+            with mmu.wrap_sync_gear_to_extruder():
+                mmu._runout(sensor="Encoder")
         except MmuError as ee:
-            self.mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(str(ee))

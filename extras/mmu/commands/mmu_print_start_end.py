@@ -46,10 +46,11 @@ class MmuPrintStartCommand(BaseCommand):
 
     def _run(self, gcmd):
         # BaseCommand already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if not self.mmu.is_in_print():
-            self.mmu._on_print_start()
-            self.mmu._clear_macro_state(reset=True)
+        if not mmu.is_in_print():
+            mmu._on_print_start()
+            mmu._clear_macro_state(reset=True)
 
 
 class MmuPrintEndCommand(BaseCommand):
@@ -77,14 +78,15 @@ class MmuPrintEndCommand(BaseCommand):
 
     def _run(self, gcmd):
         # BaseCommand already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
         idle_timeout = gcmd.get_int('IDLE_TIMEOUT', 0, minval=0, maxval=1)
         end_state = gcmd.get('STATE', "complete")
 
-        if not self.mmu.is_in_endstate():
+        if not mmu.is_in_endstate():
             if end_state in ["complete", "error", "cancelled", "ready", "standby"]:
                 if not idle_timeout and end_state in ["complete"]:
-                    self.mmu._save_toolhead_position_and_park("complete")
-                self.mmu._on_print_end(end_state)
+                    mmu._save_toolhead_position_and_park("complete")
+                mmu._on_print_end(end_state)
             else:
                 raise gcmd.error("Unknown endstate '%s'" % end_state)

@@ -45,42 +45,43 @@ class MmuPreloadCommand(BaseCommand):
 
     def _run(self, gcmd):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if self.mmu.check_if_disabled(): return
-        if self.mmu.check_if_printing(): return
+        if mmu.check_if_disabled(): return
+        if mmu.check_if_printing(): return
 
-        gate = gcmd.get_int('GATE', self.mmu.gate_selected, minval=0, maxval=self.mmu.num_gates - 1)
-        if self.mmu.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[gate]): return
+        gate = gcmd.get_int('GATE', mmu.gate_selected, minval=0, maxval=mmu.num_gates - 1)
+        if mmu.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[gate]): return
 
         can_crossload = (
-            (self.mmu.mmu_unit().can_crossload or self.mmu.mmu_unit().multigear)
-            and self.mmu.sensor_manager.has_gate_sensor(SENSOR_EXIT_PREFIX, gate)
+            (mmu.mmu_unit().can_crossload or mmu.mmu_unit().multigear)
+            and mmu.sensor_manager.has_gate_sensor(SENSOR_EXIT_PREFIX, gate)
         )
         if not can_crossload:
-            if self.mmu.check_if_bypass(): return
-            if self.mmu.check_if_loaded(): return
+            if mmu.check_if_bypass(): return
+            if mmu.check_if_loaded(): return
 
-        self.mmu.log_always("Preloading filament in %s..." % ("current gate" if gate == self.mmu.gate_selected else "gate %d" % gate))
+        mmu.log_always("Preloading filament in %s..." % ("current gate" if gate == mmu.gate_selected else "gate %d" % gate))
         try:
-            with self.mmu.wrap_sync_gear_to_extruder():
-                with self.mmu.wrap_suppress_visual_log():
-                    with self.mmu.wrap_action(ACTION_CHECKING):
+            with mmu.wrap_sync_gear_to_extruder():
+                with mmu.wrap_suppress_visual_log():
+                    with mmu.wrap_action(ACTION_CHECKING):
 
-                        current_gate = self.mmu.gate_selected
+                        current_gate = mmu.gate_selected
                         if gate != current_gate:
-                            self.mmu.select_gate(gate)
+                            mmu.select_gate(gate)
 
                         try:
-                            self.mmu._preload_gate()
+                            mmu._preload_gate()
 
                         finally:
-                            if self.mmu.gate_selected != current_gate:
+                            if mmu.gate_selected != current_gate:
                                 # If necessary or easy restore previous gate
-                                if self.mmu.is_in_print() or self.mmu.mmu_unit().multigear or self.mmu.filament_pos != FILAMENT_POS_UNLOADED:
-                                    self.mmu.select_gate(current_gate)
+                                if mmu.is_in_print() or mmu.mmu_unit().multigear or mmu.filament_pos != FILAMENT_POS_UNLOADED:
+                                    mmu.select_gate(current_gate)
                                 else:
                                     # Lazy movement means we have side effect of changed tool/gate
-                                    self.mmu._ensure_ttg_match()
-                                    self.mmu._initialize_encoder() # Encoder 0000
+                                    mmu._ensure_ttg_match()
+                                    mmu._initialize_encoder() # Encoder 0000
         except MmuError as ee:
-            self.mmu.handle_mmu_error("Filament preload for gate %d failed: %s" % (gate, str(ee)))
+            mmu.handle_mmu_error("Filament preload for gate %d failed: %s" % (gate, str(ee)))

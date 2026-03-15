@@ -46,26 +46,27 @@ class MmuResetCommand(BaseCommand):
 
     def _run(self, gcmd):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if self.mmu.check_if_disabled():
+        if mmu.check_if_disabled():
             return
 
         confirm = gcmd.get_int('CONFIRM', 0, minval=0, maxval=1)
         if confirm != 1:
-            self.mmu.log_always("You must re-run and add 'CONFIRM=1' to reset all state back to default")
+            mmu.log_always("You must re-run and add 'CONFIRM=1' to reset all state back to default")
             return
 
-        self.mmu.reinit()
-        self.mmu._reset_statistics()
-        self.mmu._reset_endless_spool()
-        self.mmu._reset_ttg_map()
-        self.mmu._reset_gate_map()
+        mmu.reinit()
+        mmu._reset_statistics()
+        mmu._reset_endless_spool()
+        mmu._reset_ttg_map()
+        mmu._reset_gate_map()
 
         # Persist key variables
-        self.mmu.var_manager.set(VARS_MMU_GATE_SELECTED, self.mmu.gate_selected)
-        self.mmu.var_manager.set(VARS_MMU_TOOL_SELECTED, self.mmu.tool_selected)
-        self.mmu.var_manager.set(VARS_MMU_FILAMENT_POS, self.mmu.filament_pos)
-        self.mmu.var_manager.write()
+        mmu.var_manager.set(VARS_MMU_GATE_SELECTED, mmu.gate_selected)
+        mmu.var_manager.set(VARS_MMU_TOOL_SELECTED, mmu.tool_selected)
+        mmu.var_manager.set(VARS_MMU_FILAMENT_POS, mmu.filament_pos)
+        mmu.var_manager.write()
 
-        self.mmu.log_always("MMU state reset")
-        self.mmu._schedule_mmu_bootup_tasks()
+        mmu.log_always("MMU state reset")
+        mmu._schedule_mmu_bootup_tasks()

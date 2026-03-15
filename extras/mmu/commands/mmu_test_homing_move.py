@@ -57,24 +57,25 @@ class MmuTestHomingMoveCommand(MoveMixin, BaseCommand):
 
     def _run(self, gcmd):
         # BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if self.mmu.check_if_disabled(): return
+        if mmu.check_if_disabled(): return
 
         allow_bypass = bool(gcmd.get_int('ALLOW_BYPASS', 0, minval=0, maxval=1))
 
-        with self.mmu.wrap_sync_gear_to_extruder():
+        with mmu.wrap_sync_gear_to_extruder():
             debug = bool(gcmd.get_int('DEBUG', 0, minval=0, maxval=1))  # Hidden option
-            with DebugStepperMovement(self.mmu, debug):
+            with DebugStepperMovement(mmu, debug):
                 actual, homed, measured, _ = self._homing_move_cmd(
                     gcmd,
                     "Test homing move",
                     allow_bypass=allow_bypass
                 )
 
-            self.mmu.log_always(
+            mmu.log_always(
                 "%s after %.1fmm%s" % (
                     ("Homed" if homed else "Did not home"),
                     actual,
-                    (" (measured %.1fmm)" % measured) if self.mmu._can_use_encoder() else ""
+                    (" (measured %.1fmm)" % measured) if mmu._can_use_encoder() else ""
                 )
             )

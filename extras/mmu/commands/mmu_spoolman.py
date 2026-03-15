@@ -56,9 +56,10 @@ class MmuSpoolmanCommand(BaseCommand):
 
     def _run(self, gcmd):
         # BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if self.mmu.check_if_disabled(): return
-        if self.mmu.check_if_spoolman_enabled(): return
+        if mmu.check_if_disabled(): return
+        if mmu.check_if_spoolman_enabled(): return
 
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
         sync = bool(gcmd.get_int('SYNC', 0, minval=0, maxval=1))
@@ -66,66 +67,66 @@ class MmuSpoolmanCommand(BaseCommand):
         refresh = bool(gcmd.get_int('REFRESH', 0, minval=0, maxval=1))
         fix = bool(gcmd.get_int('FIX', 0, minval=0, maxval=1))
         spool_id = gcmd.get_int('SPOOLID', None, minval=1)
-        gate = gcmd.get_int('GATE', None, minval=-1, maxval=self.mmu.num_gates - 1)
+        gate = gcmd.get_int('GATE', None, minval=-1, maxval=mmu.num_gates - 1)
         printer = gcmd.get('PRINTER', None)  # Option to see other printers
         spoolinfo = gcmd.get_int('SPOOLINFO', None, minval=-1)  # -1 or 0 is active spool
         run = False
 
         if refresh:
             # Rebuild cache in moonraker and sync local and remote
-            self.mmu._spoolman_refresh(fix, quiet=quiet)
+            mmu._spoolman_refresh(fix, quiet=quiet)
             if not sync:
-                self.mmu._spoolman_sync(quiet=quiet)
+                mmu._spoolman_sync(quiet=quiet)
             run = True
 
         if clear:
             # Clear the gate allocation in spoolman db
-            self.mmu._spoolman_clear_gate_map(
-                sync=self.mmu.p.spoolman_support == SPOOLMAN_PULL,
+            mmu._spoolman_clear_gate_map(
+                sync=mmu.p.spoolman_support == SPOOLMAN_PULL,
                 quiet=quiet
             )
             run = True
 
         if sync:
             # Sync local and remote gate maps
-            self.mmu._spoolman_sync(quiet=quiet)
+            mmu._spoolman_sync(quiet=quiet)
             run = True
 
         # Rest of the options are mutually exclusive
         if spoolinfo is not None:
             # Dump spool info for active spool or specified spool id
-            self.mmu._spoolman_display_spool_info(
+            mmu._spoolman_display_spool_info(
                 spoolinfo if spoolinfo > 0 else None
             )
 
         elif spool_id is not None or gate is not None:
             # Update a record in spoolman db
             if spool_id is not None and gate is not None:
-                self.mmu._spoolman_set_spool_gate(
+                mmu._spoolman_set_spool_gate(
                     spool_id,
                     gate,
-                    sync=self.mmu.p.spoolman_support == SPOOLMAN_PULL,
+                    sync=mmu.p.spoolman_support == SPOOLMAN_PULL,
                     quiet=quiet
                 )
             elif spool_id is None and gate is not None:
-                self.mmu._spoolman_unset_spool_gate(
+                mmu._spoolman_unset_spool_gate(
                     gate=gate,
-                    sync=self.mmu.p.spoolman_support == SPOOLMAN_PULL,
+                    sync=mmu.p.spoolman_support == SPOOLMAN_PULL,
                     quiet=quiet
                 )
             elif spool_id is not None and gate is None:
-                self.mmu._spoolman_unset_spool_gate(
+                mmu._spoolman_unset_spool_gate(
                     spool_id=spool_id,
-                    sync=self.mmu.p.spoolman_support == SPOOLMAN_PULL,
+                    sync=mmu.p.spoolman_support == SPOOLMAN_PULL,
                     quiet=quiet
                 )
 
         elif not run:
-            if self.mmu.p.spoolman_support in [SPOOLMAN_PULL, SPOOLMAN_PUSH]:
+            if mmu.p.spoolman_support in [SPOOLMAN_PULL, SPOOLMAN_PUSH]:
                 # Display gate association table from spoolman db
-                self.mmu._spoolman_display_spool_location(printer=printer)
+                mmu._spoolman_display_spool_location(printer=printer)
             else:
-                self.mmu.log_error(
+                mmu.log_error(
                     "Spoolman gate map not available. Spoolman mode is: %s"
-                    % self.mmu.p.spoolman_support
+                    % mmu.p.spoolman_support
                 )

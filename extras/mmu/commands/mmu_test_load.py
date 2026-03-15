@@ -49,26 +49,27 @@ class MmuTestLoadCommand(BaseCommand):
 
     def _run(self, gcmd):
         # BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if self.mmu.check_if_disabled(): return
-        if self.mmu.check_if_bypass(): return
-        if self.mmu.check_if_loaded(): return
-        if self.mmu.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[self.mmu.gate_selected]): return
+        if mmu.check_if_disabled(): return
+        if mmu.check_if_bypass(): return
+        if mmu.check_if_loaded(): return
+        if mmu.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[mmu.gate_selected]): return
 
         full = gcmd.get_int('FULL', 0, minval=0, maxval=1)
 
         try:
-            with self.mmu.wrap_sync_gear_to_extruder():
+            with mmu.wrap_sync_gear_to_extruder():
                 if full:
-                    self.mmu.load_sequence(skip_extruder=True)
+                    mmu.load_sequence(skip_extruder=True)
                 else:
                     length = gcmd.get_float(
                         'LENGTH',
                         100.,
                         minval=10.,
-                        maxval=self.mmu.mmu_unit().calibrator.get_bowden_length()
+                        maxval=mmu.mmu_unit().calibrator.get_bowden_length()
                     )
-                    self.mmu.load_sequence(bowden_move=length, skip_extruder=True)
+                    mmu.load_sequence(bowden_move=length, skip_extruder=True)
 
         except MmuError as ee:
-            self.mmu.handle_mmu_error("Load test failed: %s" % str(ee))
+            mmu.handle_mmu_error("Load test failed: %s" % str(ee))

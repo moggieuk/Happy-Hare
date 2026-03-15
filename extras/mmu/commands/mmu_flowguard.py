@@ -49,14 +49,13 @@ class MmuFlowGuardCommand(BaseCommand):
 
     def _run(self, gcmd, mmu_unit):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
+        sf = mmu_unit.sync_feedback # Get sync_feedback associated with unit
 
-        if self.mmu.check_if_disabled(): return
-
-        # Get sync_feedback associated with unit
-        sf = mmu_unit.sync_feedback
+        if mmu.check_if_disabled(): return
 
         if not sf.p.sync_feedback_enabled:
-            self.mmu.log_warning("Sync feedback is disabled or not configured. FlowGuard is unavailable")
+            mmu.log_warning("Sync feedback is disabled or not configured. FlowGuard is unavailable")
             return
 
         enable = gcmd.get_int('ENABLE', None, minval=0, maxval=1)
@@ -68,6 +67,6 @@ class MmuFlowGuardCommand(BaseCommand):
         # Just report status
         if sf.p.flowguard_enabled:
             active = " and currently active" if sf.flowguard_active else " (not currently active)"
-            self.mmu.log_always("FlowGuard monitoring feature is enabled%s" % active)
+            mmu.log_always("FlowGuard monitoring feature is enabled%s" % active)
         else:
-            self.mmu.log_always("FlowGuard monitoring feature is disabled")
+            mmu.log_always("FlowGuard monitoring feature is disabled")

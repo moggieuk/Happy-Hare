@@ -46,11 +46,13 @@ class MmuStepLoadGateCommand(BaseCommand):
         self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
 
     def _run(self, gcmd):
+        mmu = self.mmu
+
         try:
-            with self.mmu.wrap_sync_gear_to_extruder():
-                self.mmu._load_gate()
+            with mmu.wrap_sync_gear_to_extruder():
+                mmu._load_gate()
         except MmuError as ee:
-            self.mmu.handle_mmu_error("_MMU_STEP_LOAD_GATE: %s" % str(ee))
+            mmu.handle_mmu_error("_MMU_STEP_LOAD_GATE: %s" % str(ee))
 
 
 class MmuStepUnloadGateCommand(BaseCommand):
@@ -68,14 +70,16 @@ class MmuStepUnloadGateCommand(BaseCommand):
         self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
 
     def _run(self, gcmd):
+        mmu = self.mmu
+
         full = bool(gcmd.get_int('FULL', 0, minval=0, maxval=1))
         try:
-            with self.mmu.wrap_sync_gear_to_extruder():
-                self.mmu._unload_gate(
-                    homing_max=self.mmu.mmu_unit().calibrator.get_bowden_length() if full else None
+            with mmu.wrap_sync_gear_to_extruder():
+                mmu._unload_gate(
+                    homing_max=mmu.mmu_unit().calibrator.get_bowden_length() if full else None
                 )
         except MmuError as ee:
-            self.mmu.handle_mmu_error("_MMU_STEP_UNLOAD_GATE: %s" % str(ee))
+            mmu.handle_mmu_error("_MMU_STEP_UNLOAD_GATE: %s" % str(ee))
 
 
 class MmuStepLoadBowdenCommand(BaseCommand):
@@ -94,13 +98,15 @@ class MmuStepLoadBowdenCommand(BaseCommand):
         self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
 
     def _run(self, gcmd):
+        mmu = self.mmu
+
         length = gcmd.get_float('LENGTH', None, minval=0.)
         start_pos = gcmd.get_float('START_POS', 0.)
         try:
-            with self.mmu.wrap_sync_gear_to_extruder():
-                self.mmu._load_bowden(length, start_pos=start_pos)
+            with mmu.wrap_sync_gear_to_extruder():
+                mmu._load_bowden(length, start_pos=start_pos)
         except MmuError as ee:
-            self.mmu.handle_mmu_error("_MMU_STEP_LOAD_BOWDEN: %s" % str(ee))
+            mmu.handle_mmu_error("_MMU_STEP_LOAD_BOWDEN: %s" % str(ee))
 
 
 class MmuStepUnloadBowdenCommand(BaseCommand):
@@ -118,12 +124,14 @@ class MmuStepUnloadBowdenCommand(BaseCommand):
         self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
 
     def _run(self, gcmd):
-        length = gcmd.get_float('LENGTH', self.mmu._get_bowden_length(self.mmu.gate_selected))
+        mmu = self.mmu
+
+        length = gcmd.get_float('LENGTH', mmu._get_bowden_length(mmu.gate_selected))
         try:
-            with self.mmu.wrap_sync_gear_to_extruder():
-                self.mmu._unload_bowden(length)
+            with mmu.wrap_sync_gear_to_extruder():
+                mmu._unload_bowden(length)
         except MmuError as ee:
-            self.mmu.handle_mmu_error("_MMU_STEP_UNLOAD_BOWDEN: %s" % str(ee))
+            mmu.handle_mmu_error("_MMU_STEP_UNLOAD_BOWDEN: %s" % str(ee))
 
 
 class MmuStepHomeExtruderCommand(BaseCommand):
@@ -140,11 +148,13 @@ class MmuStepHomeExtruderCommand(BaseCommand):
         self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
 
     def _run(self, gcmd):
+        mmu = self.mmu
+
         try:
-            with self.mmu.wrap_sync_gear_to_extruder():
-                self.mmu._home_to_extruder(self.mmu.mmu_unit().p.extruder_homing_max)
+            with mmu.wrap_sync_gear_to_extruder():
+                mmu._home_to_extruder(mmu.mmu_unit().p.extruder_homing_max)
         except MmuError as ee:
-            self.mmu.handle_mmu_error("_MMU_STEP_HOME_EXTRUDER: %s" % str(ee))
+            mmu.handle_mmu_error("_MMU_STEP_HOME_EXTRUDER: %s" % str(ee))
 
 
 class MmuStepLoadToolheadCommand(BaseCommand):
@@ -162,12 +172,14 @@ class MmuStepLoadToolheadCommand(BaseCommand):
         self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
 
     def _run(self, gcmd):
+        mmu = self.mmu
+
         extruder_only = gcmd.get_int('EXTRUDER_ONLY', 0)
         try:
-            with self.mmu.wrap_sync_gear_to_extruder():
-                self.mmu._load_extruder(extruder_only)
+            with mmu.wrap_sync_gear_to_extruder():
+                mmu._load_extruder(extruder_only)
         except MmuError as ee:
-            self.mmu.handle_mmu_error("_MMU_STEP_LOAD_TOOLHEAD: %s" % str(ee))
+            mmu.handle_mmu_error("_MMU_STEP_LOAD_TOOLHEAD: %s" % str(ee))
 
 
 class MmuStepUnloadToolheadCommand(BaseCommand):
@@ -186,18 +198,20 @@ class MmuStepUnloadToolheadCommand(BaseCommand):
         self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
 
     def _run(self, gcmd):
+        mmu = self.mmu
+
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0))
-        park_pos = gcmd.get_float('PARK_POS', -self.mmu._get_filament_position())
+        park_pos = gcmd.get_float('PARK_POS', -mmu._get_filament_position())
         try:
-            with self.mmu.wrap_sync_gear_to_extruder():
+            with mmu.wrap_sync_gear_to_extruder():
                 park_pos = min(
-                    self.mmu.p.toolhead_extruder_to_nozzle,
+                    mmu.p.toolhead_extruder_to_nozzle,
                     max(0, park_pos)
                 )
-                self.mmu._set_filament_position(-park_pos)
-                self.mmu._unload_extruder(extruder_only=extruder_only)
+                mmu._set_filament_position(-park_pos)
+                mmu._unload_extruder(extruder_only=extruder_only)
         except MmuError as ee:
-            self.mmu.handle_mmu_error("_MMU_STEP_UNLOAD_TOOLHEAD: %s" % str(ee))
+            mmu.handle_mmu_error("_MMU_STEP_UNLOAD_TOOLHEAD: %s" % str(ee))
 
 
 class MmuStepHomingMoveCommand(MoveMixin, BaseCommand):
@@ -215,16 +229,18 @@ class MmuStepHomingMoveCommand(MoveMixin, BaseCommand):
         self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
 
     def _run(self, gcmd):
+        mmu = self.mmu
+
         allow_bypass = bool(gcmd.get_int('ALLOW_BYPASS', 0, minval=0, maxval=1))
         try:
-            with self.mmu.wrap_sync_gear_to_extruder():
+            with mmu.wrap_sync_gear_to_extruder():
                 self._homing_move_cmd(
                     gcmd,
                     "User defined step homing move",
                     allow_bypass=allow_bypass
                 )
         except MmuError as ee:
-            self.mmu.handle_mmu_error("_MMU_STEP_HOMING_MOVE: %s" % str(ee))
+            mmu.handle_mmu_error("_MMU_STEP_HOMING_MOVE: %s" % str(ee))
 
 
 class MmuStepMoveCommand(MoveMixin, BaseCommand):
@@ -242,16 +258,18 @@ class MmuStepMoveCommand(MoveMixin, BaseCommand):
         self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
 
     def _run(self, gcmd):
+        mmu = self.mmu
+
         allow_bypass = bool(gcmd.get_int('ALLOW_BYPASS', 0, minval=0, maxval=1))
         try:
-            with self.mmu.wrap_sync_gear_to_extruder():
+            with mmu.wrap_sync_gear_to_extruder():
                 self._move_cmd(
                     gcmd,
                     "User defined step move",
                     allow_bypass=allow_bypass
                 )
         except MmuError as ee:
-            self.mmu.handle_mmu_error("_MMU_STEP_MOVE: %s" % str(ee))
+            mmu.handle_mmu_error("_MMU_STEP_MOVE: %s" % str(ee))
 
 
 class MmuStepSetFilamentCommand(BaseCommand):
@@ -270,9 +288,11 @@ class MmuStepSetFilamentCommand(BaseCommand):
         self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
 
     def _run(self, gcmd):
+        mmu = self.mmu
+
         state = gcmd.get_int('STATE', minval=FILAMENT_POS_UNKNOWN, maxval=FILAMENT_POS_LOADED)
         silent = gcmd.get_int('SILENT', 0)
-        self.mmu._set_filament_pos_state(state, silent)
+        mmu._set_filament_pos_state(state, silent)
 
 
 class MmuStepSetActionCommand(BaseCommand):
@@ -291,16 +311,18 @@ class MmuStepSetActionCommand(BaseCommand):
         self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
 
     def _run(self, gcmd):
+        mmu = self.mmu
+
         if gcmd.get_int('RESTORE', 0):
-            if self.mmu._old_action is not None:
-                self.mmu._set_action(self.mmu._old_action)
-            self.mmu._old_action = None
+            if mmu._old_action is not None:
+                mmu._set_action(mmu._old_action)
+            mmu._old_action = None
         else:
             state = gcmd.get_int('STATE', minval=ACTION_IDLE, maxval=ACTION_PURGING)
-            if self.mmu._old_action is None:
-                self.mmu._old_action = self.mmu._set_action(state)
+            if mmu._old_action is None:
+                mmu._old_action = mmu._set_action(state)
             else:
-                self.mmu._set_action(state)
+                mmu._set_action(state)
 
 
 class MmuM400Command(BaseCommand):
@@ -315,4 +337,6 @@ class MmuM400Command(BaseCommand):
         self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
 
     def _run(self, gcmd):
-        self.mmu.mmu_toolhead().quiesce()
+        mmu = self.mmu
+
+        mmu.mmu_toolhead().quiesce()

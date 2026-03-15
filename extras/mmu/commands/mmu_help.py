@@ -63,6 +63,7 @@ class MmuHelpCommand(BaseCommand):
 
     def _run(self, gcmd):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
         def flag(name, default=0):
             return bool(gcmd.get_int(name, default, minval=0, maxval=1))
@@ -78,9 +79,9 @@ class MmuHelpCommand(BaseCommand):
             cmd = cmd.upper()
             registered = {rc["name"].upper() for rc in BaseCommand._registered_commands}
             if cmd in registered:
-                self.mmu.gcode.run_script_from_command("%s HELP=1" % cmd)
+                mmu.gcode.run_script_from_command("%s HELP=1" % cmd)
             else:
-                self.mmu.log_warning("Sorry, command %s doesn't exist or has no parameter help" % cmd)
+                mmu.log_warning("Sorry, command %s doesn't exist or has no parameter help" % cmd)
             return
 
         # Which categories exist + which flag controls showing them
@@ -139,7 +140,7 @@ class MmuHelpCommand(BaseCommand):
                     lines.append(self.format_help("%s : %s" % (c.get("name", ""), c.get("help_brief", "")), None, per_unit, not_registered))
 
         msg = "".join(lines)
-        self.mmu.log_always(msg, color=True)
+        mmu.log_always(msg, color=True)
 
 
     def non_registered_commands(self):
@@ -147,9 +148,10 @@ class MmuHelpCommand(BaseCommand):
         Return a list of klipper commands (not in BaseCommand._registered_commands).
         Unknown commands are categorized and returned as metadata dicts.
         """
+        mmu = self.mmu
 
         # All klipper gcode commands
-        k_cmds = list(self.mmu.gcode.ready_gcode_handlers.keys())
+        k_cmds = list(mmu.gcode.ready_gcode_handlers.keys())
 
         # Fast lookup of registered names
         registered = {rc["name"].upper() for rc in BaseCommand._registered_commands}
@@ -191,7 +193,7 @@ class MmuHelpCommand(BaseCommand):
             if name in registered:
                 continue
 
-            help_brief = self.mmu.gcode.gcode_help.get(cmd, "n/a")
+            help_brief = mmu.gcode.gcode_help.get(cmd, "n/a")
             category = categorize(cmd)
 
             if category is not None:

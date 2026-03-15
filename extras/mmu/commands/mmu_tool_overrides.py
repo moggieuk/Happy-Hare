@@ -48,30 +48,31 @@ class MmuToolOverridesCommand(BaseCommand):
 
     def _run(self, gcmd):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if self.mmu.check_if_disabled(): return
+        if mmu.check_if_disabled(): return
 
-        tool = gcmd.get_int('TOOL', -1, minval=0, maxval=self.mmu.num_gates)
+        tool = gcmd.get_int('TOOL', -1, minval=0, maxval=mmu.num_gates)
         speed = gcmd.get_int('M220', None, minval=0, maxval=200)
         extrusion = gcmd.get_int('M221', None, minval=0, maxval=200)
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
 
         if reset:
             # reset overrides (100% -> multiplier 1.0)
-            self.mmu._set_tool_override(tool, 100, 100)
+            mmu._set_tool_override(tool, 100, 100)
         elif tool >= 0:
             # set specific tool override (None means leave unchanged)
-            self.mmu._set_tool_override(tool, speed, extrusion)
+            mmu._set_tool_override(tool, speed, extrusion)
 
         msg_tool = "Tools: "
         msg_sped = "M220 : "
         msg_extr = "M221 : "
-        for i in range(self.mmu.num_gates):
+        for i in range(mmu.num_gates):
             range_end = 6 if i > 9 else 5
-            tool_speed = int(self.mmu.tool_speed_multipliers[i] * 100)
-            tool_extr = int(self.mmu.tool_extrusion_multipliers[i] * 100)
+            tool_speed = int(mmu.tool_speed_multipliers[i] * 100)
+            tool_extr = int(mmu.tool_extrusion_multipliers[i] * 100)
             msg_tool += ("| T%d  " % i)[:range_end]
             msg_sped += ("| %d  " % tool_speed)[:range_end]
             msg_extr += ("| %d  " % tool_extr)[:range_end]
         msg = "|\n".join([msg_tool, msg_sped, msg_extr]) + "|\n"
-        self.mmu.log_always(msg)
+        mmu.log_always(msg)

@@ -40,12 +40,15 @@ from .mmu_base_selectors    import PhysicalSelector
 
 class LinearSelectorParameters(TunableParametersBase):
 
+    def _guard_has_selector_touch(self):
+        return self._selector.mmu_unit.selector_touch
+
     _SPECS: Sequence[ParamSpec] = (
         ParamSpec('selector_move_speed',    'float',  200.0, section="SELECTOR", limits=dict(minval=1.0)),
         ParamSpec('selector_homing_speed',  'float',  100.0, section="SELECTOR", limits=dict(minval=1.0)),
-        ParamSpec('selector_touch_speed',   'float',   60.0, section="SELECTOR", limits=dict(minval=1.0)),  # PAUL addd guard
-        ParamSpec('selector_touch_enabled', 'int',        1, section="SELECTOR", limits=dict(minval=0, maxval=1)),  # PAUL addd guard
-        ParamSpec('selector_accel',         'float', 1200.0, section="SELECTOR", limits=dict(above=1.0)),
+        ParamSpec('selector_touch_speed',   'float',   60.0, section="SELECTOR", limits=dict(minval=1.0),         guard=_guard_has_selector_touch),
+        ParamSpec('selector_touch_enabled', 'int',        1, section="SELECTOR", limits=dict(minval=0, maxval=1), guard=_guard_has_selector_touch),
+        ParamSpec('selector_accel',         'float', 1000.0, section="SELECTOR", limits=dict(above=1.0)),
 
         ParamSpec('cad_gate0_pos',          'float', lambda self: self._cad_default('cad_gate0_pos'),          section="CAD", limits=dict(minval=0.0), hidden=True),
         ParamSpec('cad_gate_width',         'float', lambda self: self._cad_default('cad_gate_width'),         section="CAD", limits=dict(above=0.0),  hidden=True),
@@ -687,15 +690,17 @@ class MmuCalibrateSelectorCommand(BaseCommand):
         Supports manual gate/bypass calibration via travel-to-home measurement,
         or an automated routine to infer spacing/offsets across gates. Writes
         results to mmu_vars.cfg and marks selector calibrated when complete.
+
+        Note: BaseCommand wrapper already logs commandline + handles HELP=1.
         """
+        mmu = mmu_unit.mmu
+        selector = mmu_unit.selector
 
-        if self.mmu.check_if_disabled(): return
-
-        sel = mmu_unit.selector
+        if mmu.check_if_disabled(): return
 
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         single = gcmd.get_int('SINGLE', 0, minval=0, maxval=1)
-        gate = gcmd.get_int('GATE', None, minval=0, maxval=self.mmu.num_gates - 1)
+        gate = gcmd.get_int('GATE', None, minval=0, maxval=mmu.num_gates - 1)
         bypass = bool(gcmd.get_int('BYPASS', None, minval=0, maxval=1))
         ercf_v1_bypass_block = gcmd.get_int('BYPASS_BLOCK', -1, minval=1, maxval=3)
         if gate is None and bypass:
@@ -714,33 +719,33 @@ class MmuCalibrateSelectorCommand(BaseCommand):
            gate_str = "bypass"
         else:
            gate_str = "gate %d" % gate
-        self.mmu.log_always("Calibrating selector %s on %s for %s..." % (pos_str, mmu_unit.name, gate_str))
+        mmu.log_always("Calibrating selector %s on %s for %s..." % (pos_str, mmu_unit.name, gate_str))
 
-        self.mmu.log_always("PAUL: testing ... early return")
+        mmu.log_always("PAUL: testing ... early return")
         return # PAUL testing shortcut
 
         try:
-            with self.mmu.wrap_sync_gear_to_extruder():
-                self.mmu.calibrating = True
-#PAUL why?                self.mmu.reinit() # PAUL check on this
-                self.mmu_unit.calibrator.filament_hold_move()
+            with mmu.wrap_sync_gear_to_extruder():
+                mmu.calibrating = True
+#PAUL why?                mmu.reinit() # PAUL check on this
+                mmu_unit.calibrator.filament_hold_move()
                 successful = False
                 if gate is None:
-                    successful = sel._calibrate_selector_auto(save=save, v1_bypass_block=ercf_v1_bypass_block)
+                    successful = selector._calibrate_selector_auto(save=save, v1_bypass_block=ercf_v1_bypass_block)
                 else:
-                    successful = sel._calibrate_selector(gate, extrapolate=not single, save=save)
+                    successful = selector._calibrate_selector(gate, extrapolate=not single, save=save)
 
-                if not any(x == -1 for x in sel.selector_offsets):
-                    self.mmu_unit.calibrator.mark_calibrated(CALIBRATED_SELECTOR)
+                if not any(x == -1 for x in selector.selector_offsets):
+                    mmu_unit.calibrator.mark_calibrated(CALIBRATED_SELECTOR)
 
                 # If not fully calibrated turn off the selector stepper to ease next step, else activate by homing
-                if successful and self.mmu_unit.calibrator.check_calibrated(CALIBRATED_SELECTOR):
-                    self.mmu.log_always("Selector calibration complete")
-                    sel.select_tool(min_gate)
+                if successful and mmu_unit.calibrator.check_calibrated(CALIBRATED_SELECTOR):
+                    mmu.log_always("Selector calibration complete")
+                    selector.select_tool(min_gate)
                 else:
-                    sel.disable_motors()
+                    selector.disable_motors()
 
         except MmuError as ee:
-            self.mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(str(ee))
         finally:
-            self.mmu.calibrating = False
+            mmu.calibrating = False

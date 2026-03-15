@@ -46,21 +46,22 @@ class MmuUnloadCommand(BaseCommand):
 
     def _run(self, gcmd):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if self.mmu.check_if_disabled(): return
-        if self.mmu.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[self.mmu.gate_selected]): return
-        self.mmu._fix_started_state()
+        if mmu.check_if_disabled(): return
+        if mmu.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[mmu.gate_selected]): return
+        mmu._fix_started_state()
 
-        if self.mmu.filament_pos == FILAMENT_POS_UNLOADED:
-            self.mmu.log_always("Filament not loaded")
+        if mmu.filament_pos == FILAMENT_POS_UNLOADED:
+            mmu.log_always("Filament not loaded")
             return
 
         try:
-            with self.mmu.wrap_sync_gear_to_extruder():
-                with self.mmu._wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during filament unload
+            with mmu.wrap_sync_gear_to_extruder():
+                with mmu._wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during filament unload
                     self._handle_unload_eject(gcmd) # From mixin
 
-                    self.mmu._persist_swap_statistics()
+                    mmu._persist_swap_statistics()
 
         except MmuError as ee:
-            self.mmu.handle_mmu_error("%s.\nOccured when unloading tool" % str(ee))
+            mmu.handle_mmu_error("%s.\nOccured when unloading tool" % str(ee))

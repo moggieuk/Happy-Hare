@@ -47,14 +47,15 @@ class MmuSyncFeedbackCommand(BaseCommand):
 
     def _run(self, gcmd, unit):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if self.mmu.check_if_disabled():
+        if mmu.check_if_disabled():
             return
-        if self.mmu.check_if_bypass():
+        if mmu.check_if_bypass():
             return
 
         if not unit.has_sync_feedback():
-            self.mmu.log_warning("No sync-feedback sensors on unit!")
+            mmu.log_warning("No sync-feedback sensors on unit!")
             return
 
         # Get sync_feedback associated with unit
@@ -62,7 +63,7 @@ class MmuSyncFeedbackCommand(BaseCommand):
 
         has_tension, has_compression, has_proportional = sf.get_active_sensors()
         if not (has_proportional or has_tension or has_compression):
-            self.mmu.log_warning("No sync-feedback sensors are enabled!")
+            mmu.log_warning("No sync-feedback sensors are enabled!")
             return
 
         enable = gcmd.get_int("ENABLE", None, minval=0, maxval=1)
@@ -72,16 +73,16 @@ class MmuSyncFeedbackCommand(BaseCommand):
 
         if enable is not None:
             sf.p.sync_feedback_enabled = enable
-            self.mmu.log_always("Sync feedback feature is %s" % ("enabled" if enable else "disabled"))
+            mmu.log_always("Sync feedback feature is %s" % ("enabled" if enable else "disabled"))
 
         if reset is not None and sf.p.sync_feedback_enabled:
-            self.mmu.log_always("Sync feedback reset")
-            eventtime = self.mmu.reactor.monotonic()
+            mmu.log_always("Sync feedback reset")
+            eventtime = mmu.reactor.monotonic()
             sf._reset_controller(eventtime)
 
         if autotune is not None:
-            self.mmu.UNIT.p.autotune_rotation_distance = autotune
-            self.mmu.log_always(
+            mmu.UNIT.p.autotune_rotation_distance = autotune
+            mmu.log_always(
                 "Save Autotuned rotation distance feature is %s"
                 % ("enabled" if autotune else "disabled")
             )
@@ -89,19 +90,19 @@ class MmuSyncFeedbackCommand(BaseCommand):
         if adjust_tension:
             try:
                 # Cannot adjust sync feedback sensor if gears are not synced
-                with self.mmu.wrap_sync_gear_to_extruder():
+                with mmu.wrap_sync_gear_to_extruder():
                     # Avoid spurious runout during tiny corrective moves (unlikely)
-                    with self.mmu._wrap_suspend_filament_monitoring():
+                    with mmu._wrap_suspend_filament_monitoring():
                         actual, success = sf.adjust_filament_tension()
                         if success:
-                            self.mmu.log_info("Neutralized tension after moving %.2fmm" % actual)
+                            mmu.log_info("Neutralized tension after moving %.2fmm" % actual)
                         elif success is False:
-                            self.mmu.log_warning("Moved %.2fmm without neutralizing tension" % actual)
+                            mmu.log_warning("Moved %.2fmm without neutralizing tension" % actual)
                         else:
-                            self.mmu.log_warning("Operation not possible. Perhaps sensors are disabled?")
+                            mmu.log_warning("Operation not possible. Perhaps sensors are disabled?")
 
             except MmuError as ee:
-                self.mmu.log_error("Error in MMU_SYNC_FEEDBACK: %s" % str(ee))
+                mmu.log_error("Error in MMU_SYNC_FEEDBACK: %s" % str(ee))
 
         # Status report if no "action" parameters were supplied
         if enable is None and reset is None and autotune is None and not adjust_tension:
@@ -120,6 +121,6 @@ class MmuSyncFeedbackCommand(BaseCommand):
                 if has_proportional:
                     msg += " (Flowrate: %.1f%%)" % sf.flow_rate
 
-                self.mmu.log_always(msg)
+                mmu.log_always(msg)
             else:
-                self.mmu.log_always("Sync feedback feature is disabled")
+                mmu.log_always("Sync feedback feature is disabled")

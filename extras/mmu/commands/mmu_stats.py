@@ -55,8 +55,9 @@ class MmuStatsCommand(BaseCommand):
 
     def _run(self, gcmd):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if self.mmu.check_if_disabled(): return
+        if mmu.check_if_disabled(): return
         counter = gcmd.get('COUNTER', None)
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         total = bool(gcmd.get_int('TOTAL', 0, minval=0, maxval=1))
@@ -71,39 +72,39 @@ class MmuStatsCommand(BaseCommand):
             incr = gcmd.get_int('INCR', 0, minval=1)
             quiet = True
             if delete:
-                _ = self.mmu.counters.pop(counter, None)
+                _ = mmu.counters.pop(counter, None)
             elif reset:
-                if counter in self.mmu.counters:
-                    self.mmu.counters[counter]['count'] = 0
+                if counter in mmu.counters:
+                    mmu.counters[counter]['count'] = 0
             elif not limit == 0:
-                if counter not in self.mmu.counters:
-                    self.mmu.counters[counter] = {'count': 0}
-                warning = gcmd.get('WARNING', self.mmu.counters[counter].get('warning', ""))
-                pause = bool(gcmd.get_int('PAUSE', self.mmu.counters[counter].get('pause', 0), minval=0, maxval=1))
-                self.mmu.counters[counter].update({'limit': limit, 'warning': warning, 'pause': pause})
+                if counter not in mmu.counters:
+                    mmu.counters[counter] = {'count': 0}
+                warning = gcmd.get('WARNING', mmu.counters[counter].get('warning', ""))
+                pause = bool(gcmd.get_int('PAUSE', mmu.counters[counter].get('pause', 0), minval=0, maxval=1))
+                mmu.counters[counter].update({'limit': limit, 'warning': warning, 'pause': pause})
             elif incr:
-                if counter in self.mmu.counters:
-                    metric = self.mmu.counters[counter]
+                if counter in mmu.counters:
+                    metric = mmu.counters[counter]
                     metric['count'] += incr
                     if metric['limit'] >= 0 and metric['count'] > metric['limit']:
                         warn = "Warning: %s" % metric.get('warning', "")
                         msg = "Count %s (%d) above limit %d" % (counter, metric['count'], metric['limit'])
                         msg += "\nUse 'MMU_STATS COUNTER=%s RESET=1' to reset" % counter
                         if metric.get('pause', False):
-                            self.mmu.handle_mmu_error("%s\n%s" % (warn, msg))
+                            mmu.handle_mmu_error("%s\n%s" % (warn, msg))
                         else:
-                            self.mmu.log_error(warn)
-                            self.mmu.log_always(msg)
+                            mmu.log_error(warn)
+                            mmu.log_always(msg)
                 else:
-                    self.mmu.counters[counter] = {'count': 0, 'limit': -1, 'warning': ""}
-            self.mmu._persist_counters()
+                    mmu.counters[counter] = {'count': 0, 'limit': -1, 'warning': ""}
+            mmu._persist_counters()
         elif reset:
-            self.mmu._reset_statistics()
-            self.mmu._persist_swap_statistics()
-            self.mmu._persist_gate_statistics()
+            mmu._reset_statistics()
+            mmu._persist_swap_statistics()
+            mmu._persist_gate_statistics()
             if not quiet:
-                self.mmu._dump_statistics(force_log=True, total=True)
+                mmu._dump_statistics(force_log=True, total=True)
             return
 
         if not quiet:
-            self.mmu._dump_statistics(force_log=True, total=total or detail, job=True, gate=True, detail=detail, showcounts=showcounts)
+            mmu._dump_statistics(force_log=True, total=total or detail, job=True, gate=True, detail=detail, showcounts=showcounts)

@@ -45,9 +45,10 @@ class MmuMotorsOnCommand(BaseCommand):
 
     def _run(self, gcmd):
         # BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if self.mmu.check_if_disabled():
+        if mmu.check_if_disabled():
             return
 
-        self.mmu.motors_onoff(on=True)
-        self.mmu.reset_sync_gear_to_extruder(False)
+        mmu.motors_onoff(on=True)
+        mmu.reset_sync_gear_to_extruder(False)

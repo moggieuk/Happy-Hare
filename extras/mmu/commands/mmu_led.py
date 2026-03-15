@@ -56,16 +56,17 @@ class MmuLedCommand(BaseCommand):
 
     def _run(self, gcmd, mmu_unit):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
         refresh = bool(gcmd.get_int('REFRESH', 0, minval=0, maxval=1))
 
         if not mmu_unit.has_leds():
-            self.mmu.log_error("No MMU LEDs configured on %s" % unit.name)
+            mmu.log_error("No MMU LEDs configured on %s" % unit.name)
             return
 
         msg = ""
-        led_manager = self.mmu.led_manager
+        led_manager = mmu.led_manager
         leds = mmu_unit.leds
         unit = mmu_unit.unit_index
 
@@ -131,4 +132,4 @@ class MmuLedCommand(BaseCommand):
                 msg += "  Status effect: %s\n" % available(status_effect, leds.get_status()['status'])
                 msg += "  Logo effect: %s\n" % available(logo_effect, leds.get_status()['logo'])
 
-        self.mmu.log_always(msg)
+        mmu.log_always(msg)

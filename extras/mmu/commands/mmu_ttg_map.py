@@ -51,51 +51,52 @@ class MmuTtgMapCommand(BaseCommand):
 
     def _run(self, gcmd):
         # BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if self.mmu.check_if_disabled(): return
+        if mmu.check_if_disabled(): return
 
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
         ttg_map = gcmd.get('MAP', "!")
-        gate = gcmd.get_int('GATE', -1, minval=0, maxval=self.mmu.num_gates - 1)
-        tool = gcmd.get_int('TOOL', -1, minval=0, maxval=self.mmu.num_gates - 1)
+        gate = gcmd.get_int('GATE', -1, minval=0, maxval=mmu.num_gates - 1)
+        tool = gcmd.get_int('TOOL', -1, minval=0, maxval=mmu.num_gates - 1)
         available = gcmd.get_int('AVAILABLE', GATE_UNKNOWN, minval=GATE_EMPTY, maxval=GATE_AVAILABLE)
 
         try:
             if reset == 1:
-                self.mmu._reset_ttg_map()
+                mmu._reset_ttg_map()
 
             elif ttg_map != "!":
                 ttg_map = gcmd.get('MAP').split(",")
-                if len(ttg_map) != self.mmu.num_gates:
-                    self.mmu.log_always("The number of map values (%d) is not the same as number of gates (%d)" % (len(ttg_map), self.mmu.num_gates))
+                if len(ttg_map) != mmu.num_gates:
+                    mmu.log_always("The number of map values (%d) is not the same as number of gates (%d)" % (len(ttg_map), mmu.num_gates))
                     return
-                self.mmu.ttg_map = []
+                mmu.ttg_map = []
                 for gate_str in ttg_map:
                     if gate_str.isdigit():
-                        self.mmu.ttg_map.append(int(gate_str))
+                        mmu.ttg_map.append(int(gate_str))
                     else:
-                        self.mmu.ttg_map.append(0)
-                self.mmu._persist_ttg_map()
+                        mmu.ttg_map.append(0)
+                mmu._persist_ttg_map()
 
             elif gate != -1:
-                status = self.mmu.gate_status[gate]
+                status = mmu.gate_status[gate]
                 if not available == GATE_UNKNOWN or (available == GATE_UNKNOWN and status == GATE_EMPTY):
                     status = available
                 if tool == -1:
-                    self.mmu._set_gate_status(gate, status)
+                    mmu._set_gate_status(gate, status)
                 else:
-                    self.mmu._remap_tool(tool, gate, status)
+                    mmu._remap_tool(tool, gate, status)
 
             else:
                 quiet = False  # Display current TTG map
 
             if not quiet:
-                msg = self.mmu._ttg_map_to_string(show_groups=detail)
-                if not detail and self.mmu.endless_spool_enabled:
+                msg = mmu._ttg_map_to_string(show_groups=detail)
+                if not detail and mmu.endless_spool_enabled:
                     msg += "\nDETAIL=1 to see EndlessSpool map"
-                self.mmu.log_info(msg, color=True)
+                mmu.log_info(msg, color=True)
 
         except MmuError as ee:
-            self.mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(str(ee))

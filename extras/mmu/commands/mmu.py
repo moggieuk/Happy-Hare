@@ -45,9 +45,10 @@ class MmuCommand(BaseCommand):
 
     def _run(self, gcmd):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
         enable = gcmd.get_int('ENABLE', minval=0, maxval=1)
         if enable == 1:
-            self.mmu._enable_mmu()
+            mmu._enable_mmu()
         else:
-            self.mmu._disable_mmu()
+            mmu._disable_mmu()

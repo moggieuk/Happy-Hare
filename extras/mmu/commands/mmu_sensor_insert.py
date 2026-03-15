@@ -54,51 +54,52 @@ class MmuSensorInsertCommand(BaseCommand):
 
     def _run(self, gcmd):
         # BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        if not self.mmu.is_enabled: return
-        self.mmu._fix_started_state()
+        if not mmu.is_enabled: return
+        mmu._fix_started_state()
 
-        eventtime = gcmd.get_float('EVENTTIME', self.mmu.reactor.monotonic())
+        eventtime = gcmd.get_float('EVENTTIME', mmu.reactor.monotonic())
         gate = gcmd.get_int('GATE', None)
         raw_sensor = gcmd.get('SENSOR', "")
-        sensor = self.mmu.sensor_manager.get_unitless_sensor_name(raw_sensor)
+        sensor = mmu.sensor_manager.get_unitless_sensor_name(raw_sensor)
 
         try:
-            with self.mmu.wrap_sync_gear_to_extruder():
+            with mmu.wrap_sync_gear_to_extruder():
 
                 if sensor.startswith(SENSOR_ENTRY_PREFIX) and gate is not None:
-                    self.mmu._set_gate_status(gate, GATE_UNKNOWN)
-                    self.mmu._check_pending_spool_id(gate)  # Have spool_id ready?
-                    if not self.mmu.is_printing() and self.mmu.mmu_unit().p.gate_autoload:
-                        self.mmu.gcode.run_script_from_command("MMU_PRELOAD GATE=%d" % gate)
+                    mmu._set_gate_status(gate, GATE_UNKNOWN)
+                    mmu._check_pending_spool_id(gate)  # Have spool_id ready?
+                    if not mmu.is_printing() and mmu.mmu_unit().p.gate_autoload:
+                        mmu.gcode.run_script_from_command("MMU_PRELOAD GATE=%d" % gate)
 
                 elif sensor == SENSOR_EXTRUDER_ENTRY:
-                    if self.mmu.gate_selected != TOOL_GATE_BYPASS:
+                    if mmu.gate_selected != TOOL_GATE_BYPASS:
                         msg = "bypass not selected"
-                    elif self.mmu.is_printing():
+                    elif mmu.is_printing():
                         msg = "actively printing"  # Should not get here!
-                    elif self.mmu.filament_pos != FILAMENT_POS_UNLOADED:
+                    elif mmu.filament_pos != FILAMENT_POS_UNLOADED:
                         msg = "extruder cannot be verified as unloaded. Try running MMU_RECOVER to fix state"
-                    elif not self.mmu.p.bypass_autoload:
+                    elif not mmu.p.bypass_autoload:
                         msg = "bypass autoload is disabled"
                     else:
-                        self.mmu.log_debug("Autoloading extruder")
-                        with self.mmu._wrap_suspend_filament_monitoring():
-                            self.mmu._note_toolchange("> Bypass")
-                            self.mmu.load_sequence(
+                        mmu.log_debug("Autoloading extruder")
+                        with mmu._wrap_suspend_filament_monitoring():
+                            mmu._note_toolchange("> Bypass")
+                            mmu.load_sequence(
                                 bowden_move=0.,
                                 extruder_only=True,
                                 purge=PURGE_NONE
                             )
                         return
 
-                    self.mmu.log_debug("Ignoring extruder insertion because %s" % msg)
+                    mmu.log_debug("Ignoring extruder insertion because %s" % msg)
 
                 else:
-                    self.mmu.log_assertion(
+                    mmu.log_assertion(
                         "Unexpected/unhandled sensor insert event on %s. Ignored"
                         % raw_sensor
                     )
 
         except MmuError as ee:
-            self.mmu.handle_mmu_error(str(ee))
+            mmu.handle_mmu_error(str(ee))
