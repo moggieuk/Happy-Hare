@@ -35,21 +35,21 @@ class MmuCalibrationParameters(TunableParametersBase):
 
     def _on_calibrated_bowden_length(self, old, new):
         if new != old:
-            pass
+            self._mmu.mmu_unit().calibrator.update_bowden_length(new)
 
     def _calibrated_rotation_distance(self):
-        return self._mmu.mmu_unit().calibrator.get_rotation_distance()
+        return self._mmu.mmu_unit().calibrator.get_gear_rd()
 
     def _on_calibrated_rotation_distance(self, old, new):
         if new != old:
-            pass
+            self._mmu.mmu_unit().calibrator.update_gear_rd(new)
 
     def _calibrated_encoder_clog_length(self):
         return self._mmu.mmu_unit().calibrator.get_clog_detection_length()
 
     def _on_calibrated_encoder_clog_length(self, old, new):
         if new != old:
-            pass
+            self._mmu.mmu_unit().calibrator.update_clog_detection_length(new, push=True)
 
     _SPECS: Sequence[ParamSpec] = (
         ParamSpec('calibrated_bowden_length',       'float', _calibrated_bowden_length,       section="CALIBRATION", limits=dict(minval=0.0), on_change=_on_calibrated_bowden_length),
