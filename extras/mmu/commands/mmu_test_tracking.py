@@ -55,7 +55,7 @@ class MmuTestTrackingCommand(BaseCommand):
         if mmu._check_has_encoder(): return
         if mmu.check_if_disabled(): return
         if mmu.check_if_bypass(): return
-#PAUL        if mmu.check_if_not_homed(): return
+        if mmu.check_if_not_homed(): return
         if mmu.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[mmu.gate_selected]): return
 
         direction = gcmd.get_int('DIRECTION', 1, minval=-1, maxval=1)

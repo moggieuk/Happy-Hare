@@ -80,6 +80,21 @@ FILAMENT_POS_HOMED_TS = 8       # Homed at toolhead sensor
 FILAMENT_POS_IN_EXTRUDER = 9    # In extruder past toolhead sensor
 FILAMENT_POS_LOADED = 10        # Homed to nozzle
 
+FILAMENT_POS_NAME_MAP = {
+   -1: "UNKNOWN",
+    0: "UNLOADED AND PARKED",
+    1: "HOMED AT GATE",
+    2: "START OF BOWDEN",
+    3: "IN BOWDEN",
+    4: "END OF BOWDEN",
+    5: "HOMED AT EXTRUDER SENSOR",
+    6: "AT EXTRUDER GEAR",
+    7: "PAST EXTRUDER_GEAR",
+    8: "HOMED AT TOOLHEAD SENSOR",
+    9: "IN EXTRUDER",
+   10: "LOADED IN NOZZLE",
+}
+
 DIRECTION_LOAD = 1
 DIRECTION_UNKNOWN = 0
 DIRECTION_UNLOAD = -1
@@ -111,14 +126,14 @@ MACRO_EVENT_GATE_MAP_CHANGED = "gate_map_changed" # Params: GATE changed or GATE
 MACRO_EVENT_FILAMENT_GRIPPED = "filament_gripped" # Params: None
 
 # Standard sensor and endstop or pseudo endstop names
-SENSOR_ENCODER             = "encoder"        # Fake Gate endstop
-SENSOR_SHARED_EXIT                = "mmu_shared_exit"       # Gate
+SENSOR_ENCODER             = "encoder"            # Fake Gate endstop
+SENSOR_SHARED_EXIT         = "mmu_shared_exit"    # Gate
 SENSOR_EXIT_PREFIX         = "mmu_exit"
 
-SENSOR_EXTRUDER_NONE       = "none"           # Fake Extruder endstop aka don't attempt home
-SENSOR_EXTRUDER_COLLISION  = "collision"      # Fake Extruder endstop
-SENSOR_EXTRUDER_ENTRY      = "extruder"       # Extruder entry sensor
-SENSOR_GEAR_TOUCH          = "mmu_gear_touch" # Stallguard based detection
+SENSOR_EXTRUDER_NONE       = "none"               # Fake Extruder endstop aka don't attempt home
+SENSOR_EXTRUDER_COLLISION  = "collision"          # Fake Extruder endstop
+SENSOR_EXTRUDER_ENTRY      = "extruder"           # Extruder entry sensor
+SENSOR_GEAR_TOUCH          = "mmu_gear_touch"     # Stallguard based detection
 
 SENSOR_COMPRESSION         = "filament_compression"  # Filament sync-feedback compression detection
 SENSOR_TENSION             = "filament_tension"      # Filament sync-feedback tension detection
@@ -207,11 +222,11 @@ VARS_MMU_BOWDEN_HOME               = "mmu_bowden_home"                # Was enco
 # Per-unit selector
 VARS_MMU_SELECTOR_OFFSETS          = "mmu_selector_offsets"
 VARS_MMU_SELECTOR_BYPASS_OFFSET    = "mmu_selector_bypass_offset"
-VARS_MMU_SELECTOR_GATE_POS         = "mmu_selector_gate_pos"          # Persisted gate position (for RotarySelector when alt-gate release)
+VARS_MMU_SELECTOR_LAST_POS         = "mmu_selector_last_pos"          # Persisted gate position (can save the need to re-home on startup)
 VARS_MMU_SELECTOR_ANGLES           = "mmu_selector_angles"
 VARS_MMU_SELECTOR_BYPASS_ANGLE     = "mmu_selector_bypass_angle"
 VARS_MMU_SELECTOR_RELEASE_ANGLE    = "mmu_selector_release_angle"
-VARS_MMU_SERVO_ANGLES              = "mmu_servo_angles"               # Used on linear selectors with servo for filament grip
+VARS_MMU_SELECTOR_SERVO_ANGLES     = "mmu_selector_servo_angles"      # Used on linear selectors with servo for filament grip
 
 # Mainsail/Fluid visualization of extruder colors and other attributes
 T_MACRO_COLOR_ALLGATES = 'allgates' # Color from gate map (all tools). Will add spool_id if spoolman is enabled

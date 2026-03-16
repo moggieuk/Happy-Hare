@@ -56,16 +56,15 @@ class BaseSelector:
 
         self.is_homed = False                   # Whether selector is home and knows current position
         self.requires_homing = True             # Whether selector requires homing
-        self.local_gate_selected = None		# Local gate selected # PAUL complete me on all selectors!
 
         # Event handlers
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
-        self.printer.register_event_handler('klippy:disconnect', self.handle_disconnect)
         self.printer.register_event_handler('klippy:ready', self.handle_ready)
+        self.printer.register_event_handler('klippy:disconnect', self.handle_disconnect)
 
     # Prevent overriding of methods with physical gate number as parameter
     # It is important and all selector logic works with local gates
-    _final_methods = {"select_gate", "restore_gate"}
+    _final_methods = {"select_gate"}
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -102,21 +101,8 @@ class BaseSelector:
         """
         lgate = self._local_gate(gate)
         self._select_gate(lgate)
-        self.local_gate_selected = lgate
 
     def _select_gate(self, lgate):
-        pass
-
-    def restore_gate(self, gate): # PAUL maybe we can remove this and leverage select_gate() in the future?
-        """
-        Correct gate position of selector without checks. Used in state restoration
-        Don't override this method, instead override _restore_gate() after the local gate translation.
-        """
-        lgate = self._local_gate(gate)
-        self._restore_gate(lgate)
-        self.local_gate_selected = lgate
-
-    def _restore_gate(self, lgate):
         pass
 
     def filament_drive(self):
@@ -149,7 +135,7 @@ class BaseSelector:
         }
 
     def get_mmu_status_config(self):
-        return "Selector Type: %s" % self.__class__.__name__
+        return "Selector Type: %s." % self.__class__.__name__
 
     def get_uncalibrated_gates(self, check_gates):
         """
@@ -204,14 +190,47 @@ class PhysicalSelector(BaseSelector, object):
         super().handle_disconnect()
         logging.info("PAUL: =========== handle_disconnect: PhysicalSelector")
 
+    def home(self, force_unload = None):
+        """
+        Home the selector, optionally unloading filament first.
+
+        If bypass is active, homing is skipped. When requested (or required by
+        filament state), triggers an unload sequence before selector homing.
+        """
+        if not self.requires_homing: return
+        if self.mmu.check_if_bypass(): return  # PAUL needs to be bypass on THIS unit otherwise doesn't matter
+
+        with self.mmu.wrap_action(ACTION_HOMING):
+            self.mmu.log_info("Homing MMU %s..." % self.mmu_unit.name)
+
+            if force_unload is not None:
+                self.mmu.log_debug("(asked to %s)" % ("force unload" if force_unload else "not unload"))
+
+            if force_unload is True:
+                # Forced unload case for recovery
+                self.mmu.unload_sequence(check_state=True)
+
+            elif (
+                force_unload is None and
+                self.mmu_unit.manages_gate(self.mmu.gate_selected)
+                and self.mmu.filament_pos != FILAMENT_POS_UNLOADED
+            ):
+                # Automatic unload case
+                self.mmu.unload_sequence()
+
+            self._home_selector()
+
     def _select_gate(self, lgate):
         if lgate == TOOL_GATE_UNKNOWN: return
-        if not self.is_homed: # PAUL new clause
+        if self.requires_homing and not self.is_homed:
             raise MmuError("Selector is not homed on %s" % self.mmu_unit.name)
         super()._select_gate(lgate)
 
-    def _restore_gate(self, lgate):
-        super()._restore_gate(lgate)
+    def get_mmu_status_config(self):
+        msg =  super().get_mmu_status_config()
+        if self.requires_homing:
+            msg += " Selector is %s." % ("HOMED" if self.is_homed else "NOT HOMED")
+        return msg
 
 
 
@@ -246,10 +265,6 @@ class VirtualSelector(BaseSelector):
 
     def _select_gate(self, lgate):
         super()._select_gate(lgate)
-        self.mmu_unit.mmu_toolhead.select_gear_stepper(lgate)
-
-    def _restore_gate(self, lgate):
-        super()._restore_gate(lgate)
         self.mmu_unit.mmu_toolhead.select_gear_stepper(lgate)
 
 
@@ -306,7 +321,7 @@ class MmuSoaktestSelectorCommand(BaseCommand):
         and randomized homing. Errors from the MMU are handled and cause
         the soak test to abort cleanly.
         """
-        mmu = mmu_unit.mmu
+        mmu = self.mmu
 
         if mmu.check_if_disabled(): return
         if mmu_unit.manages_gate(mmu.gate_selected) and mmu.check_if_loaded(): return
@@ -316,7 +331,7 @@ class MmuSoaktestSelectorCommand(BaseCommand):
             return
 
         loops = gcmd.get_int('LOOP', 10)
-        servo = gcmd.get_int('SERVO', 0) # Legacy option
+        servo = gcmd.get_int('SERVO', 0) # Legacy option, replaced by generic "GRIP"
         grip = bool(gcmd.get_int('GRIP', servo))
         home = bool(gcmd.get_int('HOME', 0))
 
@@ -324,23 +339,24 @@ class MmuSoaktestSelectorCommand(BaseCommand):
         min_gate, max_gate = mmu_unit.gate_range()
         mmu.log_always("Soak testing selector on %s (gates %d-%d) for %s iterations..." % (mmu_unit.name, min_gate, max_gate, loops))
 
+        # We test fully by going through the MMU controller and not to the selector directly
         try:
             with mmu.wrap_sync_gear_to_extruder():
                 for l in range(loops):
-                    gate = random.randint(min_gate, max_gate - 1)
+                    gate = random.randint(min_gate, max_gate)
 
                     if random.randint(0, 10) == 0 and home:
-                        mmu_unit.selector.home()
+                        mmu.home_unit(mmu_unit)
                   
                     if random.randint(0, 10) == 0 and mmu_unit.has_bypass:
-                        mmu.log_always("Testing loop %d / %d. Selecting bypass" % (l + 1, loops))
-                        mmu_unit.selector.select_gate(TOOL_GATE_BYPASS)
+                        mmu.log_always("Testing loop %d / %d. Selecting bypass..." % (l + 1, loops))
+                        mmu.select_gate(TOOL_GATE_BYPASS)
                     else:
-                        mmu.log_always("Testing loop %d / %d. Selecting gate %d" % (l + 1, loops, gate))
-                        mmu_unit.selector.select_gate(gate)
+                        mmu.log_always("Testing loop %d / %d. Selecting gate %d..." % (l + 1, loops, gate))
+                        mmu.select_gate(gate)
 
                     if grip:
-                        mmu_unit.selector.filament_drive()
+                        mmu.selector().filament_drive()
         except MmuError as ee:
             mmu.handle_mmu_error("Soaktest abandoned because of error: %s" % str(ee))
 
@@ -353,6 +369,9 @@ class MmuSoaktestSelectorCommand(BaseCommand):
 # -----------------------------------------------------------------------------------------------------------
 
 class MmuGripCommand(BaseCommand):
+    """
+    Note that because this command operates on the current gate selected it is not a per-unit command
+    """
 
     CMD = "MMU_GRIP"
 
@@ -376,9 +395,10 @@ class MmuGripCommand(BaseCommand):
 
     def _run(self, gcmd):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        gate = self.mmu.gate_selected
-        mmu_unit = self.mmu.mmu_unit(gate)
+        gate = mmu.gate_selected
+        mmu_unit = mmu.mmu_unit(gate)
 
         if gate >= 0:
             mmu_unit.selector.filament_drive()
@@ -392,6 +412,9 @@ class MmuGripCommand(BaseCommand):
 # -----------------------------------------------------------------------------------------------------------
 
 class MmuReleaseCommand(BaseCommand):
+    """
+    Note that because this command operates on the current gate selected it is not a per-unit command
+    """
 
     CMD = "MMU_RELEASE"
 
@@ -413,14 +436,15 @@ class MmuReleaseCommand(BaseCommand):
             per_unit=False,
         )
 
-    def _run(self, gcmd, mmu_unit):
+    def _run(self, gcmd):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+        mmu = self.mmu
 
-        gate = self.mmu.gate_selected
-        mmu_unit = self.mmu.mmu_unit(gate)
+        gate = mmu.gate_selected
+        mmu_unit = mmu.mmu_unit(gate)
 
         if gate >= 0:
             if not mmu_unit.filament_always_gripped:
                 mmu_unit.selector.filament_release()
             else:
-                mmu.log_error("Selector configured to not allow filament release")
+                mmu.log_error("Selector doesn't allow or not configured to allow filament release")

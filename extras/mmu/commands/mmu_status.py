@@ -80,14 +80,18 @@ class MmuStatusCommand(BaseCommand):
                 lines.append(f"{UI_BULLET} {unit.mmu_vendor} v{unit.mmu_version_string}")
 
             first, last = unit.gate_range()
-            lines.append(f" (gates {first}-{last})\n")
+            lines.append(f" (gates {first}-{last}).")
+            lines.append(f" Connected to extruder: {unit.extruder_name}\n")
 
-            lines.append(f"{UI_CASCADE} {mmu.selector().get_mmu_status_config()}")
+            lines.append(f"{UI_CASCADE} {unit.selector.get_mmu_status_config()}\n")
 
-            if mmu.has_encoder():
-                lines.append(f". Encoder reads {mmu.get_encoder_distance():.1f}mm")
+            if unit.has_encoder():
+                lines.append(f"{UI_CASCADE} Encoder reads {mmu.get_encoder_distance():.1f}mm\n")
 
-            lines.append("\n")
+
+        # This is all now the currently active unit ---------
+
+        mmu_unit = mmu.mmu_unit()
 
         lines.append(f"\nPrint state is {mmu.print_state.upper()}")
 
@@ -108,21 +112,26 @@ class MmuStatusCommand(BaseCommand):
         if mmu._standalone_sync:
             lines.append(". Standalone sync mode is ENABLED")
 
-        if mmu.mmu_unit().sync_feedback.is_enabled():
+        if mmu_unit.sync_feedback.is_enabled():
             lines.append(
                 "\nSync feedback indicates filament in bowden is: "
-                f"{mmu.mmu_unit().sync_feedback.get_sync_feedback_string(detail=True).upper()}"
+                f"{mmu_unit.sync_feedback.get_sync_feedback_string(detail=True).upper()}"
             )
 
-            if not mmu.mmu_unit().sync_feedback.is_active():
+            if not mmu_unit.sync_feedback.is_active():
                 lines.append(" (not currently active)")
         else:
-            lines.append("\nSync feedback is disabled")
+            lines.append("\nSync feedback is disabled/unavailable")
+
+        if mmu.gate_selected >= 0:
+            fil_pos_str = FILAMENT_POS_NAME_MAP.get(mmu.filament_pos, "INVALID")
+            lines.append(f"\nFilament positon believed to be: {fil_pos_str}")
 
         if config:
+
             # Temp scalar pulled for _f_calc() use
             self.calibrated_bowden_length = (
-                mmu.mmu_unit().calibrator.get_bowden_length()
+                mmu_unit.calibrator.get_bowden_length()
             )
             self.toolchange_retract = mmu.toolchange_retract
             self.filament_remaining = mmu.filament_remaining
@@ -136,11 +145,11 @@ class MmuStatusCommand(BaseCommand):
             )
 
             # Bowden loading -----------------------------------------------------
-            if mmu.mmu_unit().require_bowden_move:
+            if mmu_unit.require_bowden_move:
 
                 correction = (
                     " CORRECTED"
-                    if mmu.mmu_unit().p.bowden_apply_correction
+                    if mmu_unit.p.bowden_apply_correction
                     else ""
                 )
 
@@ -148,7 +157,7 @@ class MmuStatusCommand(BaseCommand):
                     if mmu._must_buffer_extruder_homing():
 
                         if (
-                            mmu.mmu_unit().p.extruder_homing_endstop
+                            mmu_unit.p.extruder_homing_endstop
                             == SENSOR_EXTRUDER_ENTRY
                         ):
                             move = self._f_calc(
@@ -181,16 +190,16 @@ class MmuStatusCommand(BaseCommand):
             # Extruder homing ----------------------------------------------------
             if mmu._must_home_to_extruder():
                 if (
-                    mmu.mmu_unit().p.extruder_homing_endstop
+                    mmu_unit.p.extruder_homing_endstop
                     == SENSOR_EXTRUDER_COLLISION
                 ):
                     lines.append(
                         f", then homes a maximum of {self._f_calc('extruder_homing_max')} "
                         f"to extruder using COLLISION detection "
-                        f"(at {mmu.mmu_unit().p.extruder_collision_homing_current}% current)"
+                        f"(at {mmu_unit.p.extruder_collision_homing_current}% current)"
                     )
                 elif (
-                    mmu.mmu_unit().p.extruder_homing_endstop
+                    mmu_unit.p.extruder_homing_endstop
                     == SENSOR_GEAR_TOUCH
                 ):
                     lines.append(
@@ -204,7 +213,7 @@ class MmuStatusCommand(BaseCommand):
                     )
 
                 if (
-                    mmu.mmu_unit().p.extruder_homing_endstop
+                    mmu_unit.p.extruder_homing_endstop
                     == SENSOR_EXTRUDER_ENTRY
                 ):
                     lines.append(
@@ -213,7 +222,7 @@ class MmuStatusCommand(BaseCommand):
                     )
             else:
                 if (
-                    mmu.mmu_unit().p.extruder_homing_endstop
+                    mmu_unit.p.extruder_homing_endstop
                     == SENSOR_EXTRUDER_NONE
                     and not mmu.sensor_manager.has_sensor(SENSOR_TOOLHEAD)
                 ):
@@ -266,30 +275,30 @@ class MmuStatusCommand(BaseCommand):
             has_proportional = mmu.sensor_manager.has_sensor(SENSOR_PROPORTIONAL)
 
             if (
-                mmu.mmu_unit().p.toolhead_post_load_tighten
-                and not mmu.mmu_unit().p.sync_to_extruder
+                mmu_unit.p.toolhead_post_load_tighten
+                and not mmu_unit.p.sync_to_extruder
                 and mmu._can_use_encoder()
-                and mmu.mmu_unit().sync_feedback.p.flowguard_encoder_mode
+                and mmu_unit.sync_feedback.p.flowguard_encoder_mode
             ):
                 lines.append(
                     "\n- Filament in bowden is tightened by "
-                    f"{min(mmu.encoder().get_clog_detection_length() * mmu.mmu_unit().p.toolhead_post_load_tighten / 100, 15):.1f}mm "
-                    f"({mmu.mmu_unit().p.toolhead_post_load_tighten}% of clog detection length) at reduced gear "
-                    "current to prevent false clog detection"
+                    f"{min(mmu.encoder().get_clog_detection_length() * mmu_unit.p.toolhead_post_load_tighten / 100, 15):.1f}mm "
+                    f"({mmu_unit.p.toolhead_post_load_tighten}% of flowguard encoder detection length) at reduced gear "
+                    "current to prevent false flowguard detection"
                 )
 
             elif (
-                mmu.mmu_unit().p.toolhead_post_load_tension_adjust
+                mmu_unit.p.toolhead_post_load_tension_adjust
                 and (
-                    mmu.mmu_unit().p.sync_to_extruder
-                    or mmu.mmu_unit().p.sync_purge
+                    mmu_unit.p.sync_to_extruder
+                    or mmu_unit.p.sync_purge
                 )
                 and (has_tension or has_compression or has_proportional)
-                and mmu.mmu_unit().sync_feedback.is_enabled()
+                and mmu_unit.sync_feedback.is_enabled()
             ):
                 lines.append(
                     "\n- Filament in bowden will be adjusted a maximum of "
-                    f"{(mmu.mmu_unit().sync_feedback.p.sync_feedback_buffer_range or mmu.mmu_unit().sync_feedback.p.sync_feedback_buffer_maxrange):.1f}mm "
+                    f"{(mmu_unit.sync_feedback.p.sync_feedback_buffer_range or mmu_unit.sync_feedback.p.sync_feedback_buffer_maxrange):.1f}mm "
                     "to neutralize tension"
                 )
 
@@ -344,11 +353,11 @@ class MmuStatusCommand(BaseCommand):
                 )
 
             # Bowden unloading ---------------------------------------------------
-            if mmu.mmu_unit().require_bowden_move:
+            if mmu_unit.require_bowden_move:
                 if self.calibrated_bowden_length >= 0:
                     if (
                         mmu.has_encoder()
-                        and mmu.mmu_unit().p.bowden_pre_unload_test
+                        and mmu_unit.p.bowden_pre_unload_test
                         and not mmu.sensor_manager.has_sensor(SENSOR_EXTRUDER_ENTRY)
                     ):
                         lines.append(
@@ -374,13 +383,13 @@ class MmuStatusCommand(BaseCommand):
             lines.append(
                 "\n- Filament is stored by homing a maximum of "
                 f"{self._f_calc('gate_homing_max')} to {mmu._gate_homing_string()} "
-                f"and parking {self._f_calc('gate_parking_distance')} in the gate\n"
+                f"and parking {self._f_calc('gate_parking_distance')} in the gate"
             )
 
         if not detail:
             lines.append("\n\nFor details on TTG and EndlessSpool groups add 'DETAIL=1'")
             if not config:
-                lines.append(", for configuration add 'SHOWCONFIG=1'")
+                lines.append(", for configuration summary add 'SHOWCONFIG=1'")
 
         lines.append(f"\n\n{mmu._mmu_visual_to_string()}")
         lines.append(f"\n{mmu._state_to_string()}")
@@ -405,6 +414,7 @@ class MmuStatusCommand(BaseCommand):
         to make it easier for users to understand application
         """
         mmu = self.mmu
+        mmu_unit = mmu.mmu_unit()
         ns = {}
 
         def _merge_obj(o):
@@ -414,9 +424,9 @@ class MmuStatusCommand(BaseCommand):
                 ns[k.lower()] = v
 
         # Namespace priority (last wins)
-        _merge_obj(self)             # Local
-        _merge_obj(mmu.mmu_unit().p) # Unit parameters
-        _merge_obj(mmu.p)            # Machine parameters
+        _merge_obj(self)       # Local
+        _merge_obj(mmu_unit.p) # Unit parameters
+        _merge_obj(mmu.p)      # Machine parameters
 
         # Rewrite percent syntax for evaluation
         # Replace:   foo%
@@ -450,7 +460,7 @@ class MmuStatusCommand(BaseCommand):
         # Build display string
         terms = re.split(r'(\+|\-)', formula)
 
-        formatted_formula = "%.0fmm (" % result
+        formatted_formula = "%.0fmm {1}(" % result
 
         for term in terms:
             term = term.strip()
@@ -466,6 +476,5 @@ class MmuStatusCommand(BaseCommand):
             else:
                 formatted_formula += term
 
-        formatted_formula += ")"
+        formatted_formula += "){0}"
         return formatted_formula
-

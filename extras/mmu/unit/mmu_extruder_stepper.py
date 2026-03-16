@@ -44,7 +44,7 @@ class MmuExtruderStepper:
         self.p = params                         # mmu_unit_parameters
         self.printer = config.get_printer()
         self.name = config.get_name().split()[-1]
-        self.connected_units = [mmu_unit] # mmu_unit is just the first to load, not necessarily all
+        self.connected_units = [mmu_unit]       # mmu_unit is just the first to load, not necessarily all
 
         # Setup homing extruder
         self.mmu_extruder_stepper = None
@@ -58,6 +58,7 @@ class MmuExtruderStepper:
                 if config.fileconfig.has_option('extruder', i):
                     self.old_ext_options[i] = config.fileconfig.get('extruder', i)
                     config.fileconfig.remove_option('extruder', i)
+
 
     def handle_connect(self):
         # Find TMC for extruder for current control
@@ -74,6 +75,7 @@ class MmuExtruderStepper:
         # This monitors extruder movement. We create one per MMU unit to allow for each
         # unit to be connected to a different extruder.
         self.extruder_monitor = ExtruderMonitor(self.mmu)
+
 
     def add_unit(self, mmu_unit):
         self.connected_units.append(mmu_unit)

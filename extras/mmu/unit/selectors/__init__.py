@@ -32,8 +32,8 @@ for m in pkgutil.iter_modules(__path__):
     for name, obj in vars(mod).items():
         if (
             inspect.isclass(obj)
-            and obj.__module__ == mod.__name__      # Defined in this module
-            and issubclass(obj, BaseSelector)       # Must extend BaseSelector
-            and name not in EXCLUDED_CLASSES        # Filter list
+            and obj.__module__ == mod.__name__  # Defined in this module
+            and issubclass(obj, BaseSelector)   # Must extend BaseSelector
+            and name not in EXCLUDED_CLASSES    # Filter list
         ):
             SELECTOR_REGISTRY[name] = obj

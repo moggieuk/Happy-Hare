@@ -42,10 +42,11 @@ class MmuMotorsOffCommand(BaseCommand):
             help_brief=self.HELP_BRIEF,
             help_params=self.HELP_PARAMS,
             help_supplement=self.HELP_SUPPLEMENT,
-            category=CATEGORY_GENERAL
+            category=CATEGORY_GENERAL,
+            per_unit=True
         )
 
-    def _run(self, gcmd):
+    def _run(self, gcmd, mmu_unit):
         # BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
 
@@ -54,4 +55,4 @@ class MmuMotorsOffCommand(BaseCommand):
 
         # Explicitly drop sync state before powering down
         mmu.sync_gear_to_extruder(False, force_grip=True)
-        mmu.motors_onoff(on=False)
+        mmu_unit.motors_onoff(on=False)

@@ -54,6 +54,7 @@ class MmuSyncFeedback:
 
         # Event handlers
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
+        self.printer.register_event_handler('klippy:ready', self.handle_ready)
         self.printer.register_event_handler('klippy:disconnect', self.handle_disconnect)
 
         # Setup events for managing motor synchronization
@@ -79,6 +80,8 @@ class MmuSyncFeedback:
         logging.info("PAUL: handle_connect for MmuSyncFeedback")
         self.mmu = self.mmu_machine.mmu_controller # Shared MMU controller class
 
+
+    def handle_ready(self):
         self._init_controller()
 
 
@@ -159,7 +162,9 @@ class MmuSyncFeedback:
         # Figure out the correct detection length based on mode
         cdl = self.p.flowguard_encoder_max_motion
         if mode == ENCODER_RUNOUT_AUTOMATIC:
-            cdl = self.mmu_machine.var_manager.save_variables.allVariables.get(VARS_MMU_ENCODER_CLOG_LENGTH, cdl)
+            cal_cdl = self.mmu_unit.calibrator.get_clog_detection_length()
+            if cal_cdl is not None:
+               cdl = cal_cdl
 
         # Notify sensor of detection length
         self.mmu_unit.encoder.set_clog_detection_length(cdl)

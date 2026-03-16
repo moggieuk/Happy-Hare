@@ -75,13 +75,13 @@ SELECTOR_LINEAR_MULTI_GEAR = 'LinearMultiGearSelector' # Type-C with linear step
 class MmuUnit:
 
     def __init__(self, config, mmu_machine, unit_index, first_gate):
-        logging.info("PAUL: init() for MmuUnit")
         self.config = config
         self.mmu_machine = mmu_machine
         self.unit_index = unit_index
         self.first_gate = first_gate
         self.name = config.get_name().split()[-1]
         self.printer = config.get_printer()
+        logging.info("PAUL: ++++ init() for MmuUnit: %s" % self.name)
 
         self.num_gates = config.getint('num_gates')
         self.mmu_vendor = config.getchoice('vendor', {o: o for o in VENDORS}, VENDOR_OTHER)
@@ -300,6 +300,10 @@ class MmuUnit:
         self.p = MmuUnitParameters(c, self)
         logging.info("MMU: Read: [%s]" % c.get_name())
 
+        # Create calibrator to oversee autotune / calibration updates based on available telemetry
+        self.calibrator = MmuCalibrator(params, self, self.p)
+        logging.info("MMU: Created: calibrator for unit %s" % self.name)
+
         # Load mmu_sensors
         self.sensors = None
         section = 'mmu_sensors %s' % self.name
@@ -382,10 +386,6 @@ class MmuUnit:
         self.selector = selector_class(params, self, self.p)
         logging.info("MMU: Created %s selector" % self.selector_type)
 
-        # Create calibrator to oversee autotune / calibration updates based on available telemetry
-        self.calibrator = MmuCalibrator(params, self, self.p)
-        logging.info("MMU: Created: calibrator for unit %s" % self.name)
-
         # Create sync-feedback controller (created even if no buffer or encoder)
         self.sync_feedback = MmuSyncFeedback(params, self, self.p)
         logging.info("MMU: Created: sync-feedback / autotune controller for unit %s" % self.name)
@@ -395,13 +395,13 @@ class MmuUnit:
         logging.info("MMU: Created: heater and environment manager for unit %s" % self.name)
 
         self.subcomponents = [
+            self.calibrator,
             self.sensors,
             self.espooler,
             self.leds,
             self.encoder,
             self.buffer,
             self.selector,
-            self.calibrator,
             self.sync_feedback,
             self.environment_manager,
         ]
@@ -452,7 +452,7 @@ class MmuUnit:
 
 
     def handle_connect(self):
-        logging.info("PAUL: handle_connect: MmuUnit")
+        logging.info("PAUL: ==== handle_connect() for MmuUnit %s" % self.name)
         self.mmu = self.mmu_machine.mmu_controller # Master MMU controller
 
         # Find and record all gear steppers, controlling tmc chip (if available) and default current indexed by gate
@@ -581,11 +581,24 @@ class MmuUnit:
     def has_heater(self):
         return self.filament_heater or self.filament_heaters
 
-    def enable_motors(self):
-        self.selector.enable_motors()
+    def motors_onoff(self, on=False, motor="all"):
+        if motor in ["all", "gear", "gears"]:
+            stepper_enable = self.printer.lookup_object('stepper_enable')
+            steppers = self.mmu_gear_steppers if motor == "gears" else [self.mmu_gear_steppers[0]]
 
-    def disable_motors(self):
-        self.selector.disable_motors()
+            for stepper in steppers:
+                se = stepper_enable.lookup_enable(stepper.get_name())
+                if on:
+                    se.motor_enable(self.mmu_toolhead().get_last_move_time())
+                else:
+                    se.motor_disable(self.mmu_toolhead().get_last_move_time())
+
+        if motor in ["all", "selector"]:
+            if on:
+                self.selector.enable_motors()
+                self.selector.filament_hold_move() # Aka selector move position
+            else:
+                self.selector.disable_motors()
 
     def manages_gate(self, gate):
         if not isinstance(gate, int): return False

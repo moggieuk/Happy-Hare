@@ -79,6 +79,7 @@ class ServoSelector(PhysicalSelector):
     def __init__(self, config, mmu_unit, params):
         super().__init__(config, mmu_unit, params)
         self.is_homed = True # No homing necessary
+        self.requires_homing = False
 
         # Get hardware
         self.servo = self.mmu_unit.selector_servo
@@ -88,7 +89,7 @@ class ServoSelector(PhysicalSelector):
         # Initial defaults from config but will be overriden by calibrated values
         self.servo_bypass_angle = self.p.servo_bypass_angle
         self.servo_release_angle = self.p.servo_release_angle
-        self.servo_gate_angles = self.p.servo_gate_angle
+        self.servo_gate_angles = self.p.servo_gate_angles
 
         # Start servo in safe place
         self.servo_angle = self.p.servo_min_angle + (self.p.servo_max_angle - self.p.servo_min_angle) / 2
@@ -105,6 +106,10 @@ class ServoSelector(PhysicalSelector):
     # Selector "Interface" methods ---------------------------------------------
 
     def handle_connect(self):
+        super().handle_connect()
+    
+
+    def handle_ready(self):
         """
         Load calibrated selector angles and merge with configured defaults.
 
@@ -112,13 +117,16 @@ class ServoSelector(PhysicalSelector):
         applies any saved calibration angles and bypass angle from mmu_vars.cfg.
         Marks the selector calibrated when all gate angles are known.
         """
-        super().handle_connect()
-
-        self.mmu_machine.var_manager.upgrade(VARS_MMU_SELECTOR_ANGLES, self.mmu_unit.name) # v3 upgrade
-        self.mmu_machine.var_manager.upgrade(VARS_MMU_SELECTOR_BYPASS_ANGLE, self.mmu_unit.name) # v3 upgrade
+        super().handle_ready()
 
         # Load and merge calibrated selector angles (calibration set with MMU_CALIBRATE_SERVO_SELECTOR) ------------
-        self.servo_gate_angles = self._ensure_list_size(self.servo_gate_angles, self.mmu_unit.num_gates)
+
+        def ensure_list_size(lst, size, default_value=-1):
+            lst = lst[:size]
+            lst.extend([default_value] * (size - len(lst)))
+            return lst
+
+        self.servo_gate_angles = ensure_list_size(self.servo_gate_angles, self.mmu_unit.num_gates)
 
         cal_servo_gate_angles = self.mmu_machine.var_manager.get(VARS_MMU_SELECTOR_ANGLES, [], namespace=self.mmu_unit.name)
         if cal_servo_gate_angles:
@@ -144,11 +152,13 @@ class ServoSelector(PhysicalSelector):
             self.servo_release_angle = servo_release_angle
             self.mmu.log_debug("Loaded saved release angle: %s" % self.servo_release_angle)
 
+# PAUL not necessary !
+#        # Finally restore the last known local gate position
+#        last_pos = self.var_manager.get(VARS_MMU_SELECTOR_LAST_POS, None, namespace=self.mmu_unit.name)
+#        if last_pos is not None:
+#            self._restore_position(last_pos)
+#            self._set_servo_angle(last_pos)
 
-    def _ensure_list_size(self, lst, size, default_value=-1):
-        lst = lst[:size]
-        lst.extend([default_value] * (size - len(lst)))
-        return lst
 
     # Actual gate selection (servo movement) can be delayed until the filament_drive/release instruction
     # to prevent unecessary flutter. Conrolled by `filament_always_gripped` setting
@@ -158,24 +168,26 @@ class ServoSelector(PhysicalSelector):
                 if self.mmu_unit.filament_always_gripped:
                     self._grip(self.local_gate(gate))
 
-    def _restore_gate(self, lgate):
-        """
-        Restore selector servo state for the given gate after a restart/recovery.
-
-        Bypass gates move directly to the bypass angle. For normal gates, either
-        grip immediately (filament_always_gripped) or defer movement until a
-        drive/release/hold action.
-        """
-        if gate == TOOL_GATE_BYPASS:
-            self.servo_state = FILAMENT_RELEASE_STATE
-            self.mmu.log_trace("Setting servo to bypass angle: %.1f" % self.servo_bypass_angle)
-            self._set_servo_angle(self.servo_bypass_angle)
-        else:
-            if self.mmu_unit.filament_always_gripped:
-                self._grip(self.local_gate(gate))
-            else:
-                # Defer movement until filament_drive/release/hold call
-                self.servo_state = FILAMENT_UNKNOWN_STATE
+# PAUL
+#    def _restore_gate(self, lgate):
+#        """
+#        Restore selector servo state for the given gate after a restart/recovery.
+#
+#        Bypass gates move directly to the bypass angle. For normal gates, either
+#        grip immediately (filament_always_gripped) or defer movement until a
+#        drive/release/hold action.
+#        """
+## PAUL read comment above and figure out
+#        if gate == TOOL_GATE_BYPASS:
+#            self.servo_state = FILAMENT_RELEASE_STATE
+#            self.mmu.log_trace("Setting servo to bypass angle: %.1f" % self.servo_bypass_angle)
+#            self._set_servo_angle(self.servo_bypass_angle)
+#        else:
+#            if self.mmu_unit.filament_always_gripped:
+#                self._grip(self.local_gate(gate))
+#            else:
+#                # Defer movement until filament_drive/release/hold call
+#                self.servo_state = FILAMENT_UNKNOWN_STATE
 
     def filament_drive(self):
         self._grip(self.local_gate(self.mmu.gate_selected))
@@ -248,7 +260,7 @@ class ServoSelector(PhysicalSelector):
 
     def get_mmu_status_config(self):
         msg = super().get_mmu_status_config()
-        msg += ". Servo in %s position" % ("GRIP" if self.servo_state == FILAMENT_DRIVE_STATE else \
+        msg += " Servo in %s position." % ("GRIP" if self.servo_state == FILAMENT_DRIVE_STATE else \
                 "RELEASE" if self.servo_state == FILAMENT_RELEASE_STATE else "unknown")
         return msg
 

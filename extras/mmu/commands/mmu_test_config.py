@@ -14,12 +14,71 @@
 #
 
 import logging
+from typing                import Sequence
 
 # Happy Hare imports
-from ..mmu_constants   import *
-from ..mmu_utils       import MmuError
-from .mmu_base_command import *
+from ..mmu_constants       import *
+from ..mmu_utils           import MmuError
+from ..mmu_base_parameters import TunableParametersBase, ParamSpec, _REQUIRED
+from .mmu_base_command     import *
 
+
+# -----------------------------------------------------------------------------------------------------------
+# Parameters for special calibrated values (these are persisted in mmu_vars.cfg
+# This allows exposing them like other tuneable parameters
+# -----------------------------------------------------------------------------------------------------------
+
+class MmuCalibrationParameters(TunableParametersBase):
+
+    def _calibrated_bowden_length(self):
+        return self._mmu.mmu_unit().calibrator.get_bowden_length()
+
+    def _on_calibrated_bowden_length(self, old, new):
+        if new != old:
+            pass
+
+    def _calibrated_rotation_distance(self):
+        return self._mmu.mmu_unit().calibrator.get_rotation_distance()
+
+    def _on_calibrated_rotation_distance(self, old, new):
+        if new != old:
+            pass
+
+    def _calibrated_encoder_clog_length(self):
+        return self._mmu.mmu_unit().calibrator.get_clog_detection_length()
+
+    def _on_calibrated_encoder_clog_length(self, old, new):
+        if new != old:
+            pass
+
+    _SPECS: Sequence[ParamSpec] = (
+        ParamSpec('calibrated_bowden_length',       'float', _calibrated_bowden_length,       section="CALIBRATION", limits=dict(minval=0.0), on_change=_on_calibrated_bowden_length),
+        ParamSpec('calibrated_rotation_distance',   'float', _calibrated_rotation_distance,   section="CALIBRATION", limits=dict(minval=0.0), on_change=_on_calibrated_rotation_distance),
+        ParamSpec('calibrated_encoder_clog_length', 'float', _calibrated_encoder_clog_length, section="CALIBRATION", limits=dict(minval=0.0), on_change=_on_calibrated_encoder_clog_length),
+    )
+
+    def __init__(self, mmu):
+        self._mmu = mmu
+        super().__init__(None)
+
+
+    def _load_from_config(self):
+        self._not_in_configfile.clear()
+
+        for spec in self._SPECS:
+            default = self._resolve_default(spec)
+
+            if default is _REQUIRED:
+                raise ValueError(f"Required parameter '{spec.name}' missing (no config source available)")
+
+            setattr(self, spec.name, default)
+            self._not_in_configfile.add(spec.name)
+
+
+
+# -----------------------------------------------------------------------------------------------------------
+# MmuTestConfig Command
+# -----------------------------------------------------------------------------------------------------------
 
 class MmuTestConfigCommand(BaseCommand):
 
@@ -66,12 +125,17 @@ class MmuTestConfigCommand(BaseCommand):
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
         show_all = bool(gcmd.get_int('ALL', 0, minval=0, maxval=1))
 
-        machine_params  = mmu.p                   # MmuMachineParameters
+        machine_params  = mmu.p                     # MmuMachineParameters
         param_sets = [machine_params]
+
         if mmu_unit is not None:
-            unit_params     = mmu_unit.p          # MmuUnitParameters
-            selector_params = mmu_unit.selector.p # *Selector*Parameters
+            unit_params     = mmu_unit.p            # MmuUnitParameters
+            selector_params = mmu_unit.selector.p   # *Selector*Parameters
             param_sets.extend([unit_params, selector_params])
+
+        if mmu.gate_selected >= 0:
+            calibration_params = MmuCalibrationParameters(mmu)
+            param_sets.extend([calibration_params]) # Calibrated parameters
 
         applied = set()
         guarded = set()
@@ -123,4 +187,12 @@ class MmuTestConfigCommand(BaseCommand):
             else:
                 msg.append(f"\nNo MMU unit parameters because UNIT wasn't specified")
 
+            if mmu.gate_selected >= 0:
+                msg.append(f"\nCalibrated values for {mmu.mmu_unit().name} / gate {mmu.gate_selected} ----------------")
+                msg.append(calibration_params.format_params(include_hidden=False, include_guarded_out=show_all, include_not_in_configfile=True))
+
             mmu.log_info("\n".join(msg))
+
+
+
+

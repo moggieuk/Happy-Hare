@@ -172,9 +172,17 @@ class LinearSelector(PhysicalSelector):
         self.selector_rail.homing_retract_speed = self.p.selector_homing_speed
         self.selector_rail.homing_positive_dir = False
 
+
+    def handle_ready(self):
+        super().handle_ready()
+        logging.info("PAUL: =========== handle_ready: LinearSelector")
+
         # Load selector offsets (calibration set with MMU_CALIBRATE_SELECTOR) -------------------------------
-        self.var_manager.upgrade(VARS_MMU_SELECTOR_OFFSETS, self.mmu_unit.name) # v3 upgrade PAUL?
-        self.var_manager.upgrade(VARS_MMU_SELECTOR_BYPASS_OFFSET, self.mmu_unit.name) # v3 upgrade PAUL?
+
+        def ensure_list_size(self, lst, size, default_value=-1):
+            lst = lst[:size]
+            lst.extend([default_value] * (size - len(lst)))
+            return lst
 
         self.selector_offsets = self.var_manager.get(VARS_MMU_SELECTOR_OFFSETS, None, namespace=self.mmu_unit.name)
         if self.selector_offsets:
@@ -183,7 +191,7 @@ class LinearSelector(PhysicalSelector):
                 self.mmu.log_debug("Loaded saved selector offsets: %s" % self.selector_offsets)
             else:
                 self.mmu.log_error("Incorrect number of gates specified in %s. Adjusted length" % VARS_MMU_SELECTOR_OFFSETS)
-                self.selector_offsets = self._ensure_list_size(self.selector_offsets, self.mmu_unit.num_gates)
+                self.selector_offsets = ensure_list_size(self.selector_offsets, self.mmu_unit.num_gates)
 
             if not any(x == -1 for x in self.selector_offsets):
                 self.calibrator.mark_calibrated(CALIBRATED_SELECTOR)
@@ -205,46 +213,20 @@ class LinearSelector(PhysicalSelector):
         else:
             self.mmu.log_debug("Selector 'touch' movement and recovery possible")
 
-    def _ensure_list_size(self, lst, size, default_value=-1):
-        lst = lst[:size]
-        lst.extend([default_value] * (size - len(lst)))
-        return lst
+        # Finally restore the last known local gate position to avoid need to re-home
+        last_pos = self.var_manager.get(VARS_MMU_SELECTOR_LAST_POS, None, namespace=self.mmu_unit.name)
+        if last_pos is not None:
+            self._restore_position(last_pos)
+            self.is_homed = True
 
-    def handle_ready(self):
-        super().handle_ready()
-        logging.info("PAUL: =========== handle_ready: LinearSelector")
 
     def handle_disconnect(self):
         super().handle_disconnect()
         logging.info("PAUL: =========== handle_disconnect: LinearSelector")
 
-    def home(self, force_unload = None):
-        """
-        Home the selector, optionally unloading filament first.
-
-        If bypass is active, homing is skipped. When requested (or required by
-        filament state), triggers an unload sequence before selector homing.
-        """
-        if self.mmu.check_if_bypass(): return  # PAUL needs to be bypass on THIS unit otherwise doesn't matter
-
-        with self.mmu.wrap_action(ACTION_HOMING):
-            self.mmu.log_info("Homing MMU %s..." % self.mmu_unit.name)
-            if force_unload is not None:
-                self.mmu.log_debug("(asked to %s)" % ("force unload" if force_unload else "not unload"))
-            if force_unload is True:
-                # Forced unload case for recovery
-                self.mmu.unload_sequence(check_state=True)
-            elif force_unload is None and self.mmu.filament_pos != FILAMENT_POS_UNLOADED:
-                # Automatic unload case
-                self.mmu.unload_sequence()
-            self._home_selector()
 
     def _select_gate(self, lgate):
         super()._select_gate(lgate) # Important because LinearMultiGear*Selector inherits from this class
-
-        self.mmu.log_info("PAUL: _select_gate(lgate=%s) local_gate_selected=%s" % (lgate, self.local_gate_selected))
-        if lgate == self.local_gate_selected:
-            return
 
         with self.mmu.wrap_action(ACTION_SELECTING):
             self.filament_hold_move()
@@ -253,24 +235,22 @@ class LinearSelector(PhysicalSelector):
             elif lgate >= 0:
                 self._position(self.selector_offsets[lgate])
 
-    def _restore_gate(self, lgate):
-        super()._restore_gate(lgate) # Important because LinearMultiGear*Selector inherits from this class
-
-        if lgate == TOOL_GATE_BYPASS:
-            self.set_position(self.bypass_offset)
-        elif lgate >= 0:
-            self.set_position(self.selector_offsets[lgate])
 
     def enable_motors(self):
         stepper_enable = self.printer.lookup_object('stepper_enable')
         se = stepper_enable.lookup_enable(self.selector_stepper.get_name())
         se.motor_enable(self.mmu_unit.mmu_toolhead.get_last_move_time())
 
+
     def disable_motors(self):
         stepper_enable = self.printer.lookup_object('stepper_enable')
         se = stepper_enable.lookup_enable(self.selector_stepper.get_name())
         se.motor_disable(self.mmu_unit.mmu_toolhead.get_last_move_time())
+
+        # Assume that if disabling motor then the position will be modified
         self.is_homed = False
+        self.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, None, namespace=self.mmu_unit.name)
+
 
     def buzz_motor(self, motor):
         if motor == "selector":
@@ -282,8 +262,10 @@ class LinearSelector(PhysicalSelector):
             return False
         return True
 
+
     def has_bypass(self):
         return self.mmu_unit.has_bypass and self.bypass_offset >= 0
+
 
     def get_uncalibrated_gates(self, check_gates):
         return [
@@ -479,57 +461,72 @@ class LinearSelector(PhysicalSelector):
     def _home_selector(self):
         from ...mmu_unit import MmuHoming
 
-        self.mmu.unselect_gate()
         self.filament_hold_move()
         self.mmu.movequeues_wait()
         try:
             homing_state = MmuHoming(self.printer, self.mmu_unit.mmu_toolhead)
             homing_state.set_axes([0])
             self.mmu_unit.mmu_toolhead.get_kinematics().home(homing_state)
+
             self.is_homed = True
+            self.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, 0, namespace=self.mmu_unit.name)
+
         except Exception as e: # Homing failed
+            self.is_homed = False
+            self.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, None, namespace=self.mmu_unit.name)
             logging.error(traceback.format_exc())
             raise MmuError("Homing selector failed because of blockage or malfunction. Klipper reports: %s" % str(e))
 
     def _position(self, target):
-        if not self.use_touch_move():
-            self.move("Positioning selector", target)
-        else:
-            init_pos = self.mmu_unit.mmu_toolhead.get_position()[0]
-            halt_pos,homed = self.homing_move("Positioning selector with 'touch' move", target, homing_move=1, endstop_name=SENSOR_SELECTOR_TOUCH)
-            if homed: # Positioning move was not successful
-                with self.mmu.wrap_suppress_visual_log():
-                    travel = abs(init_pos - halt_pos)
-                    if travel < 4.0: # Filament stuck in the current gate (based on ERCF design)
-                        self.mmu.log_info("Selector is blocked by filament inside gate, will try to recover...")
-                        self.move("Realigning selector by a distance of: %.1fmm" % -travel, init_pos)
-                        self.mmu_unit.mmu_toolhead.flush_step_generation() # TTC mitigation when homing move + regular + get_last_move_time() in close succession
-
-                        # See if we can detect filament in gate area
-                        found = self.mmu.check_filament_in_gate()
-                        if not found:
-                            # Push filament into view of the gate endstop
-                            self.filament_drive()
-                            _,_,measured,_ = self.mmu.trace_filament_move("Locating filament", self.mmu.gate_parking_distance + self.mmu.gate_endstop_to_encoder + 10.)
-                            if self.mmu.has_encoder() and measured < self.mmu.encoder_min:
-                                raise MmuError("Unblocking selector failed bacause unable to move filament to clear")
-
-                        # Try a full unload sequence
-                        try:
-                            self.mmu.unload_sequence(check_state=True)
-                        except MmuError as ee:
-                            raise MmuError("Unblocking selector failed because: %s" % (str(ee)))
-
-                        # Check if selector can now reach proper target
-                        self._home_selector()
-                        halt_pos,homed = self.homing_move("Positioning selector with 'touch' move", target, homing_move=1, endstop_name=SENSOR_SELECTOR_TOUCH)
-                        if homed: # Positioning move was not successful
+        current_pos = self.mmu_unit.mmu_toolhead.get_position()[0]
+        try:
+            if not self.use_touch_move():
+                self.move("Positioning selector", target)
+            else:
+                init_pos = current_pos
+                halt_pos,homed = self.homing_move("Positioning selector with 'touch' move", target, homing_move=1, endstop_name=SENSOR_SELECTOR_TOUCH)
+                if homed: # Positioning move was not successful
+                    with self.mmu.wrap_suppress_visual_log():
+                        travel = abs(init_pos - halt_pos)
+                        if travel < 4.0: # Filament stuck in the current gate (based on ERCF design)
+                            self.mmu.log_info("Selector is blocked by filament inside gate, will try to recover...")
+                            self.move("Realigning selector by a distance of: %.1fmm" % -travel, init_pos)
+                            self.mmu_unit.mmu_toolhead.flush_step_generation() # TTC mitigation when homing move + regular + get_last_move_time() in close succession
+    
+                            # See if we can detect filament in gate area
+                            found = self.mmu.check_filament_in_gate()
+                            if not found:
+                                # Push filament into view of the gate endstop
+                                self.filament_drive()
+                                _,_,measured,_ = self.mmu.trace_filament_move("Locating filament", self.mmu.gate_parking_distance + self.mmu.gate_endstop_to_encoder + 10.)
+                                if self.mmu.has_encoder() and measured < self.mmu.encoder_min:
+                                    raise MmuError("Unblocking selector failed bacause unable to move filament to clear")
+    
+                            # Try a full unload sequence
+                            try:
+                                self.mmu.unload_sequence(check_state=True)
+                            except MmuError as ee:
+                                raise MmuError("Unblocking selector failed because: %s" % (str(ee)))
+    
+                            # Check if selector can now reach proper target
+                            self._home_selector()
+                            halt_pos,homed = self.homing_move("Positioning selector with 'touch' move", target, homing_move=1, endstop_name=SENSOR_SELECTOR_TOUCH)
+                            if homed: # Positioning move was not successful
+                                self.is_homed = False
+                                raise MmuError("Unblocking selector recovery failed. Path is probably internally blocked")
+    
+                        else: # Selector path is blocked, probably externally
                             self.is_homed = False
-                            raise MmuError("Unblocking selector recovery failed. Path is probably internally blocked")
+                            raise MmuError("Selector is externally blocked perhaps by filament in another gate")
 
-                    else: # Selector path is blocked, probably externally
-                        self.is_homed = False
-                        raise MmuError("Selector is externally blocked perhaps by filament in another gate")
+            # Move was successful
+            current_pos = target
+
+        finally:
+            # Persist position change
+            if not self.is_homed:
+                current_pos = None
+            self.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, current_pos, namespace=self.mmu_unit.name)
 
     def move(self, trace_str, new_pos, speed=None, accel=None, wait=False):
         return self._trace_selector_move(trace_str, new_pos, speed=speed, accel=accel, wait=wait)[0]
@@ -606,13 +603,11 @@ class LinearSelector(PhysicalSelector):
 
         return pos[0], homed
 
-    def set_position(self, position):
+    def _restore_position(self, position):
         pos = self.mmu_unit.mmu_toolhead.get_position()
         pos[0] = position
         self.mmu_unit.mmu_toolhead.set_position(pos, homing_axes=(0,))
         self.enable_motors()
-        self.is_homed = True
-        return position
 
     def measure_to_home(self):
         """
@@ -720,9 +715,6 @@ class MmuCalibrateSelectorCommand(BaseCommand):
         else:
            gate_str = "gate %d" % gate
         mmu.log_always("Calibrating selector %s on %s for %s..." % (pos_str, mmu_unit.name, gate_str))
-
-        mmu.log_always("PAUL: testing ... early return")
-        return # PAUL testing shortcut
 
         try:
             with mmu.wrap_sync_gear_to_extruder():

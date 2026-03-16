@@ -554,24 +554,29 @@ class MmuController:
                 errors.append("Incorrect number of gates specified with %s" % var)
         self._update_gate_color_rgb()
 
-        # Load selected tool and gate
-        tool_selected = self.var_manager.get(VARS_MMU_TOOL_SELECTED, self.tool_selected)
+        # Load selected gate and tool
         gate_selected = self.var_manager.get(VARS_MMU_GATE_SELECTED, self.gate_selected)
+        tool_selected = self.var_manager.get(VARS_MMU_TOOL_SELECTED, self.tool_selected)
         if (
             not (TOOL_GATE_BYPASS <= gate_selected <= self.num_gates) or
             gate_selected == TOOL_GATE_UNKNOWN
         ):
-            errors.append("Invalid gate specified with %s or %s" % (VARS_MMU_TOOL_SELECTED, VARS_MMU_GATE_SELECTED))
+            if gate_selected != TOOL_GATE_UNKNOWN:
+                errors.append("Invalid gate specified with %s or %s" % (VARS_MMU_TOOL_SELECTED, VARS_MMU_GATE_SELECTED))
             tool_selected = gate_selected = TOOL_GATE_UNKNOWN
 
-        # Don't allow unknown gate on type-B MMU's (could also be first time bootup)
+        # No need for unknown gate on type-B MMU's (could also be first time bootup)
         if self.mmu_unit().multigear and gate_selected == TOOL_GATE_UNKNOWN:
             gate_selected = self.mmu_unit().first_gate
 
-        self.selector(gate_selected).restore_gate(gate_selected)
+        selector = self.selector(gate_selected)
+        if gate_selected != TOOL_GATE_UNKNOWN and not selector.is_homed:
+            errors.append(f"Persisted gate/tool {gate_selected}/{tool_selected} dropped because selector isn't homed")
+            tool_selected = gate_selected = TOOL_GATE_UNKNOWN
+
         self._set_gate_selected(gate_selected) # Will send gate_selected event to set active sensor map
         self._set_tool_selected(tool_selected)
-        self._ensure_ttg_match() # Ensure tool/gate consistency
+        self._ensure_ttg_match()               # Ensure tool/gate consistency. Will change tool if necessary
 
         # Previous filament position
         self.filament_pos = self.var_manager.get(VARS_MMU_FILAMENT_POS, self.filament_pos)
@@ -609,7 +614,8 @@ class MmuController:
     cmd_MMU_BOOTUP_help = "Internal commands to complete bootup of MMU"
     def cmd_MMU_BOOTUP(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-#PAUL        self.selector().bootup() # PAUL TODO should be all units as handle_ready!
+
+        self.log_warning(f"PAUL ** : gate={self.gate_selected}, tool={self.tool_selected}, unit={self.unit_selected}, fil_pos={self.filament_pos}")
 
         try:
             # Splash...
@@ -646,17 +652,14 @@ class MmuController:
                         f"This may interfere with MMU functionality{pause_on_runout_msg}."
                     )
 
-            self._set_print_state("initialized")
-
             # Use per gate sensors to adjust gate map
             self.gate_status = self._validate_gate_status(self.gate_status)
 
             # Can we verify gate selected? If so fix now
-            gate_selected = self._validate_gate_selected()
-            if gate_selected is not None and gate_selected != self.gate_selected:
-                self.selector(gate_selected).restore_gate(gate_selected)
-                self._set_gate_selected(gate_selected)
-                self._ensure_ttg_match() # Ensure tool/gate consistency
+            validated_gate = self._validate_gate_selected()
+            self.log_warning("PAUL: validated gate=%s" % validated_gate)
+            if validated_gate is not None and validated_gate != self.gate_selected:
+                self.select_gate(validated_gate)
 
             # Sanity check filament pos based only on non-intrusive tests and recover if necessary
             if self.sensor_manager.check_all_sensors_after(
@@ -675,22 +678,45 @@ class MmuController:
             ):
                 self.recover_filament_pos(can_heat=False, message=True, silent=True)
 
-            # Apply user startup options-----------
-            if self.p.startup_reset_ttg_map:
-                self._reset_ttg_map()
 
+            # Apply user startup options -----------
+
+            # Autohoming...
             for u in self.mmu_machine.units:
-                if u.p.startup_home_selector:
+                if u.p.startup_home_selector or True: # PAUL testing
+                    unit_loaded = (
+                        self.gate_selected != TOOL_GATE_UNKNOWN and
+                        u.manages_gate(self.gate_selected) and
+                        self.filament_pos not in [FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN]
+                    )
+
+                    if unit_loaded:
+                        self.log_warning(f"Skipping autohome of {u.name} because it may have filament loaded")
+                        continue
+
                     try:
                         self.home_unit(u)
                     except Exception as e:
                         # This is recoverable so just report errors
                         self.log_error(str(e))
 
+            # TTG map...
+            if self.p.startup_reset_ttg_map:
+                self._reset_ttg_map()
+
+            # Status...
             if self.p.log_startup_status:
                 self.log_always(self._mmu_visual_to_string(), color=True)
                 self._display_visual_state()
             self.report_necessary_recovery()
+
+
+            # Final initialization -----------
+
+            self._set_print_state("initialized")
+
+            # Ensure tool/gate consistency
+            self._ensure_ttg_match()
 
             # Ensure espooler print assist is in correct state
             self._adjust_espooler_assist()
@@ -708,10 +734,13 @@ class MmuController:
             self.reset_sync_gear_to_extruder(False)
             self.mmu_toolhead().quiesce()
 
+            self.log_warning(f"PAUL ** : gate={self.gate_selected}, tool={self.tool_selected}, unit={self.unit_selected}, fil_pos={self.filament_pos}")
+
         except Exception as e:
             logging.error(traceback.format_exc())
-            self.log_error('Error booting up MMU: %s' % str(e))
+            self.log_assertion('Error booting up MMU: %s' % str(e))
 
+        # Restart hook
         self.mmu_macro_event(MACRO_EVENT_RESTART)
 
 
@@ -1268,13 +1297,13 @@ class MmuController:
         ):
             html_msg = (
                 html_msg
-                .replace("{0}", "</span>")
-                .replace("{1}", '<span style="color:#C0C0C0">')
-                .replace("{2}", '<span style="color:#FF69B4">')
-                .replace("{3}", '<span style="color:#90EE90">')
-                .replace("{4}", '<span style="color:#87CEEB">')
-                .replace("{5}", "<b>")
-                .replace("{6}", "</b>")
+                .replace("{0}", "</span>")                      # Color off
+                .replace("{1}", '<span style="color:#C0C0C0">') # Grey
+                .replace("{2}", '<span style="color:#FF69B4">') # Redish
+                .replace("{3}", '<span style="color:#90EE90">') # Greenish
+                .replace("{4}", '<span style="color:#87CEEB">') # Cyan
+                .replace("{5}", "<b>")                          # Bold on
+                .replace("{6}", "</b>")                         # Bold off
             )
 
         # 3) Replace dynamic {{RRGGBB}} and {{}} tokens if present
@@ -2179,7 +2208,7 @@ class MmuController:
                     (required & CALIBRATED_SELECTOR) and
                     not u.calibrator.check_calibrated(CALIBRATED_SELECTOR)
                 ):
-                    unit_check_gates = [gate for gate in check_gates if u.manages_gate(gate)]
+                    unit_check_gates = [g for g in check_gates if u.manages_gate(g)]
                     uncalibrated = u.selector.get_uncalibrated_gates(unit_check_gates)
                     if uncalibrated:
                         info = "\n- Use MMU_CALIBRATE_SELECTOR to calibrate selector for gates: %s" % ",".join(map(str, uncalibrated))
@@ -2193,10 +2222,10 @@ class MmuController:
                     (required & CALIBRATED_GEAR_0) and
                     not u.calibrator.check_calibrated(CALIBRATED_GEAR_0)
                 ):
-                    uncalibrated = u.calibrator.is_gear_rd_default(u.first_gate)
+                    uncalibrated = not u.calibrator.is_gear_rd_calibrated(u.first_gate)
                     if uncalibrated:
-                        info = "\n- Use MMU_CALIBRATE_GEAR (with first gate selected)"
-                        info += " to calibrate gear rotation_distance for first gate"
+                        info = "\n- Use MMU_CALIBRATE_GEAR (on first gate)"
+                        info += " to calibrate gear rotation_distance for first gate of unit"
                         if u.p.skip_cal_rotation_distance:
                             omsg += info
                         else:
@@ -2207,7 +2236,7 @@ class MmuController:
                     (required & CALIBRATED_ENCODER) and
                     not u.calibrator.check_calibrated(CALIBRATED_ENCODER)
                 ):
-                    info = "\n- Use MMU_CALIBRATE_ENCODER (with first gate selected)"
+                    info = "\n- Use MMU_CALIBRATE_ENCODER (with first gate of unit selected)"
                     if u.p.skip_cal_encoder:
                         omsg += info
                     else:
@@ -2222,7 +2251,7 @@ class MmuController:
                     uncalibrated = [
                         g
                         for g in range(u.first_gate + 1, u.first_gate + u.num_gates)
-                        if u.calibrator.is_gear_rd_default(g) and gate in check_gates
+                        if not u.calibrator.is_gear_rd_calibrated(g) and g in check_gates
                     ]
                     if uncalibrated:
                         if u.encoder:
@@ -2244,28 +2273,20 @@ class MmuController:
                     if u.variable_bowden_lengths:
                         uncalibrated = [
                             g
-                            for g in range(u.first_gate, u.first_gate + u.num_gates)
-                            if u.calibrator.is_bowden_length_default(g) and gate in check_gates
+                            for g in range(u.first_gate + 1, u.first_gate + u.num_gates)
+                            if not u.calibrator.is_bowden_length_calibrated(g) and g in check_gates
                         ]
-# PAUL old logic. Why the first_gate+1?
-#                        uncalibrated = [
-#                            u.first_gate + i
-#                            for i, value in enumerate(
-#                                self.bowden_lengths[u.first_gate:u.first_gate + u.num_gates]
-#                            )
-#                            if value == -1 and (u.first_gate + i) in check_gates
-#                        ]
                         if uncalibrated:
-                            info = "\n- Use MMU_CALIBRATE_BOWDEN (with gate selected)"
+                            info = "\n- Use MMU_CALIBRATE_BOWDEN (with appropriate gate selected)"
                             info += " to calibrate bowden length gates: %s" % ",".join(map(str, uncalibrated))
                             if u.p.autocal_bowden_length:
                                 omsg += info
                             else:
                                 rmsg += info
                     else:
-                        uncalibrated = u.calibrator.is_bowden_length_default(u.first_gate)
+                        uncalibrated = not u.calibrator.is_bowden_length_calibrated(u.first_gate)
                         if uncalibrated:
-                            info = "\n- Use MMU_CALIBRATE_BOWDEN (with first gate selected) to calibrate bowden length"
+                            info = "\n- Use MMU_CALIBRATE_BOWDEN (with first gate of unit selected) to calibrate bowden length"
                             if u.p.autocal_bowden_length:
                                 omsg += info
                             else:
@@ -2430,27 +2451,14 @@ class MmuController:
         self.log_always("MMU disabled")
 
     def motors_onoff(self, on=False, motor="all"):
-        stepper_enable = self.printer.lookup_object('stepper_enable')
-        steppers = self.gear_rail().steppers if motor == "gears" else [self.gear_rail().steppers[0]] if self.gear_rail().steppers else []
-        if on:
-            if motor in ["all", "gear", "gears"]:
-                for stepper in steppers:
-                    se = stepper_enable.lookup_enable(stepper.get_name())
-                    se.motor_enable(self.mmu_toolhead().get_last_move_time())
-            if motor in ["all", "selector"]:
-                self.mmu_machine.enable_motors()
-                self.selector().restore_gate()
-                self.selector().filament_hold_move() # Aka selector move position
-        else:
-            if motor in ["all", "gear", "gears"]:
+        if motor in ["all", "gear", "gears"]:
+            if on:
+                self.reset_sync_gear_to_extruder(False)
+            else:
                 self.mmu_toolhead().unsync()
-                for stepper in steppers:
-                    se = stepper_enable.lookup_enable(stepper.get_name())
-                    se.motor_disable(self.mmu_toolhead().get_last_move_time())
-            if motor in ["all", "selector"]:
-                self.selector().restore_gate(TOOL_GATE_UNKNOWN)
-                self.mmu_machine.disable_motors()
 
+        for mmu_unit in self.mmu_machine.units:
+            unit.motors_onoff(on, motor)
 
     def _random_failure(self):
         """
@@ -2748,7 +2756,7 @@ class MmuController:
                 # Record starting position for bowden progress tracking. Prefer encoder if available
                 self.bowden_start_pos = (self.get_encoder_distance(dwell=None) if self.has_encoder() else self._get_live_filament_position()) - start_pos
 
-                if self.gate_selected > 0 and self.mmu_unit().is_gear_rd_default():
+                if self.gate_selected > 0 and self.mmu_unit().is_gear_rd_calibrated():
                     self.log_warning("Warning: gate %d not calibrated! Using default rotation distance" % self.gate_selected)
 
                 # "Fast" load
@@ -4520,14 +4528,21 @@ class MmuController:
 
 
     def home_unit(self, mmu_unit, force_unload=None):
-        if mmu_unit.selector.requires_homing: # Make a no-op for class-B MMU's
+        if mmu_unit.selector.requires_homing: # Make a no-op for MMU's that don't require homing (like class-B designs)
             if mmu_unit.manages_gate(self.gate_selected):
+                self.log_warning("PAUL: manages_gate")
                 if not force_unload and self.filament_pos not in [FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN]:
                     raise MmuError("Cannot home %s because has filament loaded" % mmu_unit.name)
                 else:
-                    self._set_gate_selected(TOOL_GATE_UNKNOWN)
-                    mmu_unit.selector.home(force_unload)
+                    try:
+                        self._set_gate_selected(TOOL_GATE_UNKNOWN)
+                        mmu_unit.selector.home(force_unload)
+                        self.select_gate(self.gate_selected)
+                    except MmuError as ee:
+                        self._set_gate_selected(TOOL_GATE_UNKNOWN)
+                        raise ee
             else:
+                self.log_warning("PAUL: NOT manages_gate")
                 # Safe to just home selector
                 mmu_unit.selector.home()
 
@@ -4973,6 +4988,7 @@ class MmuController:
             sep = ("|" + divider) if not last_gate else "|"
             tool_strings = []
             select_strings = []
+            fil_swatch = UI_SEPARATOR
             for g in gate_indices:
                 msg_gates += "".join("|{:^3}".format(g) if g < 10 else "| {:2}".format(g))
 

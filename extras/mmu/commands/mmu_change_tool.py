@@ -119,9 +119,6 @@ class MmuChangeToolCommand(BaseCommand):
             with mmu.wrap_sync_gear_to_extruder():
                 with mmu._wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during tool change
                     with mmu.var_manager.wrap_suspend_write_variables(): # Reduce I/O activity to a minimum
-# PAUL we can't assume here and anyway, we might be changing between units!
-# PAUL select_gate on selector need to check homing
-# PAUL                        mmu._auto_home(tool=tool)
                         if mmu.has_encoder():
                             mmu.encoder().note_clog_detection_length()
 

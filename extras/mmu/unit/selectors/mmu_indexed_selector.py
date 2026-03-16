@@ -65,8 +65,6 @@ class IndexedSelector(PhysicalSelector):
         super().__init__(config, mmu_unit, params)
         self.is_homed = True
 
-        self.unit_gate_selected = 0 # TODO could be set as part of startup homing.. # PAUL complete the wiring for this
-
 
     # Selector "Interface" methods ---------------------------------------------
 
@@ -83,29 +81,6 @@ class IndexedSelector(PhysicalSelector):
         self.selector_stepper = self.selector_rail.steppers[0]
         self._set_position(0) # Reset pos
 
-# PAUL I'm not sure why I need this - each selector should re-establish selected gate in handle_ready()
-#    def bootup(self):
-#        self.select_gate(self.mmu.gate_selected)
-
-    def home(self, force_unload = None):
-        """
-        Home the selector by indexing to gate 0, optionally unloading first.
-
-        If bypass is active, homing is skipped. When requested (or required by
-        filament state), triggers an unload sequence before indexing.
-        """
-        if self.mmu.check_if_bypass(): return
-        with self.mmu.wrap_action(ACTION_HOMING):
-            self.mmu.log_info("Homing MMU %s..." % self.mmu_unit.name)
-            if force_unload is not None:
-                self.mmu.log_debug("(asked to %s)" % ("force unload" if force_unload else "not unload"))
-            if force_unload is True:
-                # Forced unload case for recovery
-                self.mmu.unload_sequence(check_state=True)
-            elif force_unload is None and self.mmu.filament_pos != FILAMENT_POS_UNLOADED:
-                # Automatic unload case
-                self.mmu.unload_sequence()
-            self._home_selector()
 
     def _select_gate(self, gate):
         """
@@ -146,10 +121,6 @@ class IndexedSelector(PhysicalSelector):
             return False
         return True
 
-    def get_mmu_status_config(self):
-        msg = "\nSelector is NOT HOMED" if not self.is_homed else ""
-        return msg
-
 
     # Internal Implementation --------------------------------------------------
 
@@ -164,7 +135,6 @@ class IndexedSelector(PhysicalSelector):
         Clears current gate selection, then performs a gate-find operation.
         Raises MmuError with Klipper context on failure.
         """
-        self.mmu.unselect_gate()
         self.mmu.movequeues_wait()
         try:
             self._find_gate(0)

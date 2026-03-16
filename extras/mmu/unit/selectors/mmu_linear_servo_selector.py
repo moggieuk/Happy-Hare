@@ -127,9 +127,7 @@ class LinearServoSelector(LinearSelector):
         return status
 
     def get_mmu_status_config(self):
-        msg = super().get_mmu_status_config()
-        msg += self.servo.get_mmu_status_config()
-        return msg
+        return super().get_mmu_status_config() + self.servo.get_mmu_status_config()
 
 
 
@@ -189,7 +187,7 @@ class LinearSelectorServo:
         """
         Initialize shared MMU references and load saved servo angle calibrations.
 
-        Merges any persisted VARS_MMU_SERVO_ANGLES values into the configured
+        Merges any persisted VARS_MMU_SELECTOR_SERVO_ANGLES values into the configured
         servo angle map.
         """
         logging.info("PAUL: =========== handle_connect: LinearSelectorServo")
@@ -198,8 +196,8 @@ class LinearSelectorServo:
 
         # Override defaults with saved/calibrated servo positions (set with MMU_SERVO)
         try:
-            self.var_manager.upgrade(VARS_MMU_SERVO_ANGLES, self.mmu_unit.name) # v3 upgrade
-            servo_angles = self.var_manager.get(VARS_MMU_SERVO_ANGLES, {}, namespace=self.mmu_unit.name)
+            self.var_manager.upgrade(VARS_MMU_SELECTOR_SERVO_ANGLES, self.mmu_unit.name) # v3 upgrade
+            servo_angles = self.var_manager.get(VARS_MMU_SELECTOR_SERVO_ANGLES, {}, namespace=self.mmu_unit.name)
             self.servo_angles.update(servo_angles)
         except Exception as e:
             raise self.config.error("Exception whilst parsing servo angles from 'mmu_vars.cfg': %s" % str(e))
@@ -212,7 +210,7 @@ class LinearSelectorServo:
     def _servo_save_pos(self, pos):
         if self.servo_angle != SERVO_UNKNOWN_STATE:
             self.servo_angles[pos] = self.servo_angle
-            self.var_manager.set(VARS_MMU_SERVO_ANGLES, self.servo_angles, write=True, namespace=self.mmu_unit.name)
+            self.var_manager.set(VARS_MMU_SELECTOR_SERVO_ANGLES, self.servo_angles, write=True, namespace=self.mmu_unit.name)
             self.mmu.log_info("Servo angle '%d' for position '%s' has been saved" % (self.servo_angle, pos))
         else:
             self.mmu.log_info("Servo angle unknown")
@@ -225,7 +223,7 @@ class LinearSelectorServo:
         ensure filament is seated, preserving encoder distance across the buzz.
         """
         if self.mmu._is_running_test: return # Save servo while testing
-        if self.selector.local_gate_selected == TOOL_GATE_BYPASS: return
+        if self.mmu.gate_selected == TOOL_GATE_BYPASS: return
         if self.servo_state == SERVO_DOWN_STATE: return
         self.mmu.log_trace("Setting servo to down (filament drive) position at angle: %d" % self.servo_angles['down'])
 
@@ -325,7 +323,7 @@ class LinearSelectorServo:
             self.servo_up()
 
     def get_mmu_status_config(self):
-        msg = ". Servo in %s position" % ("RELEASE" if self.servo_state == SERVO_UP_STATE else \
+        msg = " Servo in %s position." % ("RELEASE" if self.servo_state == SERVO_UP_STATE else \
                 "GRIP" if self.servo_state == SERVO_DOWN_STATE else "MOVE" if self.servo_state == SERVO_MOVE_STATE else "unknown")
         return msg
 
@@ -396,7 +394,7 @@ class MmuServoCommand(BaseCommand):
         pos = gcmd.get('POS', "").lower()
 
         if reset:
-            mmu_unit.mmu_machine.var_manager.delete(VARS_MMU_SERVO_ANGLES, namespace=mmu_unit.name, write=True)
+            mmu_unit.mmu_machine.var_manager.delete(VARS_MMU_SELECTOR_SERVO_ANGLES, namespace=mmu_unit.name, write=True)
             mmu.log_info("Calibrated servo angles have be reset to configured defaults")
         elif pos == "off":
             servo.servo_off() # For 'servo_always_active' case
