@@ -152,13 +152,6 @@ class ServoSelector(PhysicalSelector):
             self.servo_release_angle = servo_release_angle
             self.mmu.log_debug("Loaded saved release angle: %s" % self.servo_release_angle)
 
-# PAUL not necessary !
-#        # Finally restore the last known local gate position
-#        last_pos = self.var_manager.get(VARS_MMU_SELECTOR_LAST_POS, None, namespace=self.mmu_unit.name)
-#        if last_pos is not None:
-#            self._restore_position(last_pos)
-#            self._set_servo_angle(last_pos)
-
 
     # Actual gate selection (servo movement) can be delayed until the filament_drive/release instruction
     # to prevent unecessary flutter. Conrolled by `filament_always_gripped` setting
@@ -168,26 +161,6 @@ class ServoSelector(PhysicalSelector):
                 if self.mmu_unit.filament_always_gripped:
                     self._grip(self.local_gate(gate))
 
-# PAUL
-#    def _restore_gate(self, lgate):
-#        """
-#        Restore selector servo state for the given gate after a restart/recovery.
-#
-#        Bypass gates move directly to the bypass angle. For normal gates, either
-#        grip immediately (filament_always_gripped) or defer movement until a
-#        drive/release/hold action.
-#        """
-## PAUL read comment above and figure out
-#        if gate == TOOL_GATE_BYPASS:
-#            self.servo_state = FILAMENT_RELEASE_STATE
-#            self.mmu.log_trace("Setting servo to bypass angle: %.1f" % self.servo_bypass_angle)
-#            self._set_servo_angle(self.servo_bypass_angle)
-#        else:
-#            if self.mmu_unit.filament_always_gripped:
-#                self._grip(self.local_gate(gate))
-#            else:
-#                # Defer movement until filament_drive/release/hold call
-#                self.servo_state = FILAMENT_UNKNOWN_STATE
 
     def filament_drive(self):
         self._grip(self.local_gate(self.mmu.gate_selected))
@@ -249,7 +222,7 @@ class ServoSelector(PhysicalSelector):
         return True
 
     def has_bypass(self):
-        return self.mmu_unit.has_bypass and self.servo_bypass_angle >= 0
+        return self.servo_bypass_angle >= 0
 
     def get_status(self, eventtime):
         status = super().get_status(eventtime)

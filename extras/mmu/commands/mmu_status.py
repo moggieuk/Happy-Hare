@@ -75,9 +75,9 @@ class MmuStatusCommand(BaseCommand):
             unit = mmu.mmu_machine.get_mmu_unit_by_index(i)
 
             if unit.mmu_vendor != unit.display_name:
-                lines.append(f"{UI_BULLET} {unit.display_name}, a {unit.mmu_vendor} v{unit.mmu_version_string}")
+                lines.append(f"{UI_SOLID_CIRCLE} {unit.display_name}, a {unit.mmu_vendor} v{unit.mmu_version_string}")
             else:
-                lines.append(f"{UI_BULLET} {unit.mmu_vendor} v{unit.mmu_version_string}")
+                lines.append(f"{UI_SOLID_CIRCLE} {unit.mmu_vendor} v{unit.mmu_version_string}")
 
             first, last = unit.gate_range()
             lines.append(f" (gates {first}-{last}).")

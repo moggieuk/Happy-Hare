@@ -56,8 +56,10 @@ class MmuServo:
         gcode = self.printer.lookup_object('gcode')
         gcode.register_mux_command("SET_SERVO", "SERVO", servo_name, self.cmd_SET_SERVO, desc=self.cmd_SET_SERVO_help)
 
+
     def get_status(self, eventtime):
         return {'value': self.last_value}
+
 
     def _set_pwm(self, print_time, value, duration):
         if value == self.last_value:
@@ -83,18 +85,23 @@ class MmuServo:
             self.last_value = 0.
             self.last_value_time = pwm_end_time
 
-    # Return a print_time that is a safe place to change PWM signal
+
     def _get_synced_print_time(self, print_time):
+        """
+        Return a print_time that is a safe place to change PWM signal
+        """
         if self.last_value != 0.: # If servo already off time syncing is not necessary
             skew = (print_time - self.last_value_time) % SERVO_SIGNAL_PERIOD
             print_time -= skew # Align on previous SERVO_SIGNAL_PERIOD boundary
             print_time += self.pwm_period_safe_offset
         return print_time
 
+
     def _get_pwm_from_angle(self, angle):
         angle = max(0., min(self.max_angle, angle))
         width = self.min_width + angle * self.angle_to_width
         return width * self.width_to_value
+
 
     def _get_pwm_from_pulse_width(self, width):
         width = max(self.min_width, min(self.max_width, width)) if width else width
@@ -113,6 +120,7 @@ class MmuServo:
             value = self._get_pwm_from_pulse_width(width) if width is not None else self._get_pwm_from_angle(angle)
             pt = self.printer.lookup_object('toolhead').get_last_move_time()
             self._set_pwm(pt, value, duration)
+
 
 def load_config_prefix(config):
     return MmuServo(config)

@@ -137,7 +137,6 @@ class LinearSelector(PhysicalSelector):
     PARAMS_CLS = LinearSelectorParameters
 
     def __init__(self, config, mmu_unit, unit_params):
-        logging.info("PAUL: === init() for LinearSelector: PARAMS_CLS=%s" % self.PARAMS_CLS)
         super().__init__(config, mmu_unit, unit_params)
 
         # Register GCODE commands specific to this module
@@ -159,7 +158,6 @@ class LinearSelector(PhysicalSelector):
         selector "touch" movement is available.
         """
         super().handle_connect()
-        logging.info("PAUL: =========== handle_connect: LinearSelector")
 
         self.selector_rail = self.mmu_unit.mmu_toolhead.get_kinematics().rails[0]
         self.selector_stepper = self.selector_rail.steppers[0]
@@ -175,7 +173,6 @@ class LinearSelector(PhysicalSelector):
 
     def handle_ready(self):
         super().handle_ready()
-        logging.info("PAUL: =========== handle_ready: LinearSelector")
 
         # Load selector offsets (calibration set with MMU_CALIBRATE_SELECTOR) -------------------------------
 
@@ -222,7 +219,6 @@ class LinearSelector(PhysicalSelector):
 
     def handle_disconnect(self):
         super().handle_disconnect()
-        logging.info("PAUL: =========== handle_disconnect: LinearSelector")
 
 
     def _select_gate(self, lgate):
@@ -264,7 +260,7 @@ class LinearSelector(PhysicalSelector):
 
 
     def has_bypass(self):
-        return self.mmu_unit.has_bypass and self.bypass_offset >= 0
+        return self.bypass_offset >= 0
 
 
     def get_uncalibrated_gates(self, check_gates):
@@ -534,6 +530,7 @@ class LinearSelector(PhysicalSelector):
     def homing_move(self, trace_str, new_pos, speed=None, accel=None, homing_move=0, endstop_name=None):
         return self._trace_selector_move(trace_str, new_pos, speed=speed, accel=accel, homing_move=homing_move, endstop_name=endstop_name)
 
+
     # Internal raw wrapper around all selector moves except rail homing
     # Returns position after move, if homed (homing moves)
     def _trace_selector_move(self, trace_str, new_pos, speed=None, accel=None, homing_move=0, endstop_name=None, wait=False):
@@ -608,6 +605,7 @@ class LinearSelector(PhysicalSelector):
         pos[0] = position
         self.mmu_unit.mmu_toolhead.set_position(pos, homing_axes=(0,))
         self.enable_motors()
+
 
     def measure_to_home(self):
         """
@@ -719,7 +717,6 @@ class MmuCalibrateSelectorCommand(BaseCommand):
         try:
             with mmu.wrap_sync_gear_to_extruder():
                 mmu.calibrating = True
-#PAUL why?                mmu.reinit() # PAUL check on this
                 mmu_unit.calibrator.filament_hold_move()
                 successful = False
                 if gate is None:

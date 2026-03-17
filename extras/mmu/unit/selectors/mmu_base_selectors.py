@@ -46,7 +46,6 @@ class BaseSelector:
     PARAMS_CLS = TunableParametersBase # Empty parameters in case selector doesn't have parameters (like VirtualSelector)
 
     def __init__(self, config, mmu_unit, unit_params):
-        logging.info("PAUL: === init() for BaseSelector: PARAMS_CLS=%s" % self.PARAMS_CLS)
         self.config = config
         self.mmu_unit = mmu_unit                # This physical MMU unit
         self.mmu_machine = mmu_unit.mmu_machine # Entire Logical combined MMU
@@ -75,20 +74,14 @@ class BaseSelector:
             )
 
     def handle_connect(self):
-        logging.info("PAUL: =========== handle_connect: BaseSelector")
         self.mmu = self.mmu_machine.mmu_controller # Shared MMU controller class
         self.var_manager = self.mmu_machine.var_manager
         self.calibrator = self.mmu_unit.calibrator
 
     def handle_ready(self):
-        logging.info("PAUL: ================== handle_ready: BaseSelector")
         pass
 
     def handle_disconnect(self):
-        logging.info("PAUL: handle_disconnect: BaseSelector")
-        pass
-
-    def bootup(self): # PAUL why do we need this?
         pass
 
     def home(self, force_unload = None):
@@ -127,7 +120,10 @@ class BaseSelector:
         return False
 
     def has_bypass(self):
-        return self.mmu_unit.has_bypass # PAUL shouldn't this also be on selector? like selects bypass?
+        """
+        Whether the selector has a selectable bypass gate (not whether to show on unit)
+        """
+        return False
 
     def get_status(self, eventtime):
         return {
@@ -180,15 +176,13 @@ class PhysicalSelector(BaseSelector, object):
 
     def handle_connect(self):
         super().handle_connect()
-        logging.info("PAUL: =========== handle_connect: PhysicalSelector")
 
     def handle_ready(self):
         super().handle_ready()
-        logging.info("PAUL: =========== handle_ready: PhysicalSelector")
 
     def handle_disconnect(self):
         super().handle_disconnect()
-        logging.info("PAUL: =========== handle_disconnect: PhysicalSelector")
+
 
     def home(self, force_unload = None):
         """
@@ -198,7 +192,7 @@ class PhysicalSelector(BaseSelector, object):
         filament state), triggers an unload sequence before selector homing.
         """
         if not self.requires_homing: return
-        if self.mmu.check_if_bypass(): return  # PAUL needs to be bypass on THIS unit otherwise doesn't matter
+        if self.check_if_bypass(): return
 
         with self.mmu.wrap_action(ACTION_HOMING):
             self.mmu.log_info("Homing MMU %s..." % self.mmu_unit.name)
@@ -220,11 +214,27 @@ class PhysicalSelector(BaseSelector, object):
 
             self._home_selector()
 
+
     def _select_gate(self, lgate):
         if lgate == TOOL_GATE_UNKNOWN: return
         if self.requires_homing and not self.is_homed:
             raise MmuError("Selector is not homed on %s" % self.mmu_unit.name)
         super()._select_gate(lgate)
+
+
+    def check_if_bypass(self):
+        """
+        Similar to MMU controller check but localized to specific selector
+        """
+        return self.mmu_unit.manages_gate(self.mmu.gate_selected) and self.mmu.check_if_bypass()
+
+
+    def check_if_loaded(self):
+        """
+        Similar to MMU controller check but localized to specific selector
+        """
+        return self.mmu_unit.manages_gate(self.mmu.gate_selected) and self.mmu.check_if_loaded()
+
 
     def get_mmu_status_config(self):
         msg =  super().get_mmu_status_config()
@@ -252,16 +262,13 @@ class VirtualSelector(BaseSelector):
 
     def handle_connect(self):
         super().handle_connect()
-        logging.info("PAUL: =========== handle_connect: VirtualSelector")
         self.calibrator.mark_calibrated(CALIBRATED_SELECTOR)
 
     def handle_ready(self):
         super().handle_ready()
-        logging.info("PAUL: =========== handle_ready: VirtualSelector")
 
     def handle_disconnect(self):
         super().handle_disconnect()
-        logging.info("PAUL: =========== handle_disconnect: VirtualSelector")
 
     def _select_gate(self, lgate):
         super()._select_gate(lgate)
@@ -324,7 +331,7 @@ class MmuSoaktestSelectorCommand(BaseCommand):
         mmu = self.mmu
 
         if mmu.check_if_disabled(): return
-        if mmu_unit.manages_gate(mmu.gate_selected) and mmu.check_if_loaded(): return
+        if self.check_if_loaded(): return
 
         if not mmu_unit.calibrator.check_calibrated(CALIBRATED_SELECTOR):
             mmu.log_error("Operation not possible. Selector not yet calibrated")

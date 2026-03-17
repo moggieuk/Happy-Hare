@@ -59,7 +59,7 @@ class MmuEspoolerCommand(BaseCommand):
         mmu = self.mmu
 
         if mmu.check_if_disabled(): return
-        if mmu._check_has_espooler(): return
+        if mmu.check_has_espooler(): return
 
         operation = gcmd.get('OPERATION', None)
         burst = gcmd.get_int('BURST', 0, minval=0, maxval=1)

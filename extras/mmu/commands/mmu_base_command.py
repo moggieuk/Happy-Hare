@@ -13,7 +13,8 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 # Happy Hare imports
-from ..mmu_constants import UI_SPACE, UI_CASCADE, UI_SUPERSCRIPT_1, UI_SUPERSCRIPT_2
+from ..mmu_constants       import UI_SPACE, UI_CASCADE, UI_SUPERSCRIPT_1, UI_SUPERSCRIPT_2
+from ..unit.mmu_calibrator import MmuCalibrator
 
 CATEGORY_GENERAL   = "GENERAL"
 CATEGORY_TESTING   = "CALIBRATION/TESTING"
@@ -221,3 +222,82 @@ class BaseCommand:
         return main_block + (
             ("\n" + formatted_supplement + "\n") if formatted_supplement else "\n"
         )
+
+
+# Common "checker" methods used to guard commands -----------------------------------------------------------
+
+    def check_if_disabled(self):
+        if not self.mmu.is_enabled:
+            self.mmu.log_error("Operation not possible. MMU is disabled. Please use MMU ENABLE=1 to use")
+            return True
+        self.mmu._wakeup()
+        return False
+
+    def check_if_printing(self):
+        if self.mmu.is_printing():
+            self.mmu.log_error("Operation not possible. Printer is actively printing")
+            return True
+        return False
+
+    def check_if_bypass(self):
+        if self.mmu.tool_selected == TOOL_GATE_BYPASS and self.mmu.filament_pos not in [FILAMENT_POS_UNLOADED]:
+            self.mmu.log_error("Operation not possible. MMU is currently using bypass. Unload or select a different gate first")
+            return True
+        return False
+
+    def check_if_not_homed(self, gate=None):
+        if not self.mmu.selector().is_homed:
+            self.mmu.log_error("Operation not possible. MMU selector is not homed")
+            return True
+        return False
+
+    def check_if_loaded(self):
+        if self.mmu.filament_pos not in [FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN]:
+            self.mmu.log_error("Operation not possible. Filament is loaded")
+            return True
+        return False
+
+    def check_if_not_loaded(self):
+        if self.mmu.filament_pos != FILAMENT_POS_LOADED:
+            self.mmu.log_error("Operation not possible. Filament is not loaded")
+            return True
+        return False
+
+    def check_if_invalid_gate(self):
+        if self.mmu.gate_selected < 0:
+            self.mmu.log_error("Operation not possible. No MMU gate selected")
+            return True
+        return False
+
+    def check_if_always_gripped(self):
+        if self.mmu.mmu_unit().filament_always_gripped:
+            self.mmu.log_error("Operation not possible. MMU design doesn't allow for manual override of syncing state.\nSyncing will be enabled if filament is inside the extruder.\nUse `MMU_RECOVER` to correct filament position if necessary.")
+            return True
+        return False
+
+    def check_if_no_bowden_move(self):
+        if not self.mmu.mmu_unit().require_bowden_move:
+            self.mmu.log_error("Operation not possible. MMU design does not require bowden move/calibration")
+            return True
+        return False
+
+    def check_has_encoder(self):
+        if not self.mmu.has_encoder():
+            self.mmu.log_error("No encoder fitted to this MMU unit")
+            return True
+        return False
+
+    def check_has_espooler(self):
+        if any(self.mmu.mmu.has_espooler(gate) for gate in range(self.mmu.num_gates)):
+            return False
+        self.mmu.log_error("No espoolers fitted to this MMU unit")
+        return True
+
+    def check_if_spoolman_enabled(self):
+        if self.mmu.p.spoolman_support == SPOOLMAN_OFF:
+            self.mmu.log_error("Spoolman support is currently disabled")
+            return True
+        return False
+
+    def check_if_not_calibrated(self, required, silent=False, check_gates=None, use_autotune=True):
+        return MmuCalibrator.check_if_not_calibrated(self.mmu, required, silent=silent, check_gates=check_gates, use_autotune=use_autotune)

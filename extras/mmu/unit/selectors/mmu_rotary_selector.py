@@ -155,47 +155,6 @@ class RotarySelector(PhysicalSelector):
             self._restore_position(last_pos)
             self.is_homed = True
 
-#
-#        lgs = self.local_gate_selected
-#        gate_pos = self.var_manager.get(VARS_MMU_SELECTOR_GATE_POS, None, namespace=self.mmu_unit.name)
-# PAUL relationship between lgs and gate_pos? if same then 
-#        if gate_pos is not None:
-#            self.set_position(self.selector_offsets[gate_pos])
-#            if self.local_gate(gate) == gate_pos:
-#                self.grip_state = FILAMENT_DRIVE_STATE
-#            else:
-#                self.grip_state = FILAMENT_RELEASE_STATE
-#        else:
-#            self.grip_state = FILAMENT_UNKNOWN_STATE
-
-
-# PAUL
-#    def home(self, force_unload = None):
-#        """
-#        Home the selector, optionally unloading filament first.
-#
-#        If bypass is active, homing is skipped. When requested (or required by
-#        filament state), triggers an unload sequence before performing selector
-#        homing via endstop or hard-endstop fallback.
-#        """
-#        if self.mmu.check_if_bypass(): return
-#
-#        with self.mmu.wrap_action(ACTION_HOMING):
-#            self.mmu.log_info("Homing MMU %s..." % self.mmu_unit.name)
-#
-#            if force_unload is not None:
-#                self.mmu.log_debug("(asked to %s)" % ("force unload" if force_unload else "not unload"))
-#
-#            if force_unload is True:
-#                # Forced unload case for recovery
-#                self.mmu.unload_sequence(check_state=True)
-#
-#            elif force_unload is False and self.mmu.filament_pos != FILAMENT_POS_UNLOADED:
-#                # Automatic unload case
-#                self.mmu.unload_sequence()
-#
-#            self._home_selector()
-
 
     # Actual gate selection can be delayed (if not forcing grip) until the
     # filament_drive/release to reduce selector movement
@@ -207,27 +166,6 @@ class RotarySelector(PhysicalSelector):
                 if self.mmu_unit.filament_always_gripped:
                     self._grip(self.local_gate(gate))
 
-# PAUL
-#    def _restore_gate(self, lgate):
-#        """
-#        Restore selector position/grip state based on last saved gate position.
-#
-#        Uses VARS_MMU_SELECTOR_GATE_POS to set position from calibrated offsets,
-#        and infers grip vs release based on whether the restored gate matches the
-#        selected gate.
-#        """
-## PAUL figure me out...
-#        super()._restore_gate(lgate)
-#
-#        gate_pos = self.var_manager.get(VARS_MMU_SELECTOR_GATE_POS, None, namespace=self.mmu_unit.name)
-#        if gate_pos is not None:
-#            self.set_position(self.selector_offsets[gate_pos])
-#            if self.local_gate(gate) == gate_pos:
-#                self.grip_state = FILAMENT_DRIVE_STATE
-#            else:
-#                self.grip_state = FILAMENT_RELEASE_STATE
-#        else:
-#            self.grip_state = FILAMENT_UNKNOWN_STATE
 
     def filament_drive(self):
         self._grip(self.local_gate(self.mmu.gate_selected))
@@ -524,7 +462,7 @@ class MmuCalibrateRotarySelectorCommand(BaseCommand):
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         single = gcmd.get_int('SINGLE', 0, minval=0, maxval=1)
         quick = gcmd.get_int('QUICK', 0, minval=0, maxval=1)
-        gate = gcmd.get_int('GATE', 0, minval=0, maxval=mmu_unit.num_gates - 1) # PAUL need gate and lgate
+        gate = gcmd.get_int('GATE', 0, minval=0, maxval=mmu_unit.num_gates - 1) # PAUL need gate and lgate?
 
         try:
             mmu.calibrating = True

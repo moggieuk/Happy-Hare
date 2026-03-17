@@ -28,9 +28,108 @@ CLOG_GCODE   = "__MMU_SENSOR_CLOG"
 TANGLE_GCODE = "__MMU_SENSOR_TANGLE"
 
 
-# -------------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------------------
+# Factory class for setting up standard MMU sensors
+# -----------------------------------------------------------------------------------------------------------
+
+class MmuSensorFactory:
+
+    def __init__(self, printer):
+        self.printer = printer
+
+    def create_mmu_sensor(
+        self, config, name_prefix, gate, switch_pin, event_delay,
+        insert=False, remove=False, runout=False, clog=False, tangle=False,
+        insert_remove_in_print=False, button_handler=None,
+    ):
+        fs = None
+        if not self._is_empty_pin(switch_pin):
+            name = "%s_%d" % (name_prefix, gate) if gate is not None else name_prefix
+            sensor = name if gate is not None else "%s_sensor" % name
+            section = "filament_switch_sensor %s" % sensor
+            config.fileconfig.add_section(section)
+            config.fileconfig.set(section, "switch_pin", switch_pin)
+            config.fileconfig.set(section, "pause_on_runout", "False")
+            fs = self.printer.load_object(config, section)
+
+            # Replace with custom runout_helper because of state specific behavior
+            insert_gcode = ("%s SENSOR=%s%s" % (INSERT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if insert else None
+            remove_gcode = ("%s SENSOR=%s%s" % (REMOVE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if remove else None
+            runout_gcode = ("%s SENSOR=%s%s" % (RUNOUT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if runout else None
+            clog_gcode   = ("%s SENSOR=%s%s" % (CLOG_GCODE,   name, (" GATE=%d" % gate) if gate is not None else "")) if clog else None
+            tangle_gcode = ("%s SENSOR=%s%s" % (TANGLE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if tangle else None
+            ro_helper = MmuRunoutHelper(
+                self.printer,
+                sensor,
+                event_delay,
+                {
+                    "insert": insert_gcode,
+                    "remove": remove_gcode,
+                    "runout": runout_gcode,
+                    "clog":   clog_gcode,
+                    "tangle": tangle_gcode,
+                },
+                insert_remove_in_print,
+                button_handler,
+                switch_pin
+            )
+            fs.runout_helper = ro_helper
+            fs.get_status = ro_helper.get_status
+            logging.info("MMU: Created [filament_switch_sensor %s]" % sensor)
+        return fs
+
+
+    def _is_empty_pin(self, switch_pin):
+        if switch_pin == '': return True
+        ppins = self.printer.lookup_object('pins')
+        pin_params = ppins.parse_pin(switch_pin, can_invert=True, can_pullup=True)
+        pin_resolver = ppins.get_pin_resolver(pin_params['chip_name'])
+        real_pin = pin_resolver.aliases.get(pin_params['pin'], '_real_')
+        return real_pin == ''
+
+
+    def sync_tension_callback(self, eventtime, t_sensor_name, tension_state, runout_helper):
+        """
+        Button event handler for sync-feedback tension switch
+        """
+        c_sensor_name = t_sensor_name.replace(SENSOR_TENSION, SENSOR_COMPRESSION)
+        compression_sensor = self.printer.lookup_object("filament_switch_sensor %s" % c_sensor_name, None)
+        compression_enabled = compression_sensor.runout_helper.sensor_enabled if compression_sensor else False
+        compression_state = compression_sensor.runout_helper.filament_present if compression_enabled else False
+
+        if compression_enabled:
+            event_value = 0 if tension_state == compression_state else (-1 if tension_state else 1) # {-1,0,1}
+        else:
+            event_value = -tension_state # {0,-1}
+
+        # Send event now so it is processed as early as possible
+        self.printer.send_event("mmu:sync_feedback", eventtime, event_value)
+
+
+    def sync_compression_callback(self, eventtime, c_sensor_name, compression_state, runout_helper):
+        """
+        Button event handler for sync-feedback compression switch
+        """
+        t_sensor_name = c_sensor_name.replace(SENSOR_COMPRESSION, SENSOR_TENSION)
+        tension_sensor = self.printer.lookup_object("filament_switch_sensor %s" % t_sensor_name, None)
+        tension_enabled = tension_sensor.runout_helper.sensor_enabled if tension_sensor else False
+        tension_state = tension_sensor.runout_helper.filament_present if tension_enabled else False
+
+        if tension_enabled:
+            event_value = 0 if compression_state == tension_state else (1 if compression_state else -1) # {-1,0,1}
+        else:
+            event_value = compression_state # {1,0}
+
+        # Send event now so it is processed as early as possible
+        self.printer.send_event("mmu:sync_feedback", eventtime, event_value)
+
+
+
+# -----------------------------------------------------------------------------------------------------------
 # Enhanced "runout helper" that gives greater control of when filament sensor events are fired and
 # direct access to button events in addition to creating a "remove" / "runout" distinction
+# -----------------------------------------------------------------------------------------------------------
+
 class MmuRunoutHelper:
 
     def __init__(self, printer, name, event_delay, gcodes, insert_remove_in_print, button_handler, switch_pin):
@@ -197,9 +296,11 @@ class MmuRunoutHelper:
 
 
 
-# -------------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------------------
 # Analog Filament Tension Sensor used for proportional sync-feedback
 # Maps sensor range to [-1,1]
+# -----------------------------------------------------------------------------------------------------------
+
 class MmuProportionalSensor:
 
     def __init__(self, config, name):
@@ -338,13 +439,15 @@ class MmuProportionalSensor:
 
 
 
-# -------------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------------------
 # EXPERIMENTAL/HACK
 # Support ViViD analog buffer "endstops"
 # This class implments both the filament switch sensor and endstop. However:
 #  * it will not display in UI because no filament_switch_sensor exists in config
 #  * does not involve the mcu in the homing process so it can't be accurate
 #  * suffers from inherent averaging lag for analog inputs
+# -----------------------------------------------------------------------------------------------------------
+
 class MmuAdcSwitchSensor:
 
     def __init__(self, config, name_prefix, gate, switch_pin, event_delay,
@@ -436,10 +539,12 @@ class MmuAdcSwitchSensor:
 
 
 
-# -------------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------------------
 # EXPERIMENTAL
 # Standalone Hall Filament Sensor Endstop using Multi-Use Pins
 # Can coexists with standard Klipper hall_filament_width_sensor by sharing the ADC pins
+# -----------------------------------------------------------------------------------------------------------
+
 class MmuHallEndstop:
     def __init__(self, config, name, pin1, pin2, cal_dia1, raw_dia1, cal_dia2, raw_dia2,
                  hall_runout_dia=1.,
@@ -602,95 +707,28 @@ class MmuHallEndstop:
 
         return self._last_trigger_time
 
-
-
-class MmuSensorFactory:
-
-    def __init__(self, printer):
-        self.printer = printer
-
-    def create_mmu_sensor(
-        self, config, name_prefix, gate, switch_pin, event_delay,
-        insert=False, remove=False, runout=False, clog=False, tangle=False,
-        insert_remove_in_print=False, button_handler=None,
-    ):
-        fs = None
-        if not self._is_empty_pin(switch_pin):
-            name = "%s_%d" % (name_prefix, gate) if gate is not None else name_prefix
-            sensor = name if gate is not None else "%s_sensor" % name
-            section = "filament_switch_sensor %s" % sensor
-            config.fileconfig.add_section(section)
-            config.fileconfig.set(section, "switch_pin", switch_pin)
-            config.fileconfig.set(section, "pause_on_runout", "False")
-            fs = self.printer.load_object(config, section)
-
-            # Replace with custom runout_helper because of state specific behavior
-            insert_gcode = ("%s SENSOR=%s%s" % (INSERT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if insert else None
-            remove_gcode = ("%s SENSOR=%s%s" % (REMOVE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if remove else None
-            runout_gcode = ("%s SENSOR=%s%s" % (RUNOUT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if runout else None
-            clog_gcode   = ("%s SENSOR=%s%s" % (CLOG_GCODE,   name, (" GATE=%d" % gate) if gate is not None else "")) if clog else None
-            tangle_gcode = ("%s SENSOR=%s%s" % (TANGLE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if tangle else None
-            ro_helper = MmuRunoutHelper(
-                self.printer,
-                sensor,
-                event_delay,
-                {
-                    "insert": insert_gcode,
-                    "remove": remove_gcode,
-                    "runout": runout_gcode,
-                    "clog":   clog_gcode,
-                    "tangle": tangle_gcode,
-                },
-                insert_remove_in_print,
-                button_handler,
-                switch_pin
-            )
-            fs.runout_helper = ro_helper
-            fs.get_status = ro_helper.get_status
-            logging.info("MMU: Created [filament_switch_sensor %s]" % sensor)
-        return fs
-
-
-    def _is_empty_pin(self, switch_pin):
-        if switch_pin == '': return True
-        ppins = self.printer.lookup_object('pins')
-        pin_params = ppins.parse_pin(switch_pin, can_invert=True, can_pullup=True)
-        pin_resolver = ppins.get_pin_resolver(pin_params['chip_name'])
-        real_pin = pin_resolver.aliases.get(pin_params['pin'], '_real_')
-        return real_pin == ''
-
-
-    def sync_tension_callback(self, eventtime, t_sensor_name, tension_state, runout_helper):
-        """
-        Button event handler for sync-feedback tension switch
-        """
-        c_sensor_name = t_sensor_name.replace(SENSOR_TENSION, SENSOR_COMPRESSION)
-        compression_sensor = self.printer.lookup_object("filament_switch_sensor %s" % c_sensor_name, None)
-        compression_enabled = compression_sensor.runout_helper.sensor_enabled if compression_sensor else False
-        compression_state = compression_sensor.runout_helper.filament_present if compression_enabled else False
-
-        if compression_enabled:
-            event_value = 0 if tension_state == compression_state else (-1 if tension_state else 1) # {-1,0,1}
-        else:
-            event_value = -tension_state # {0,-1}
-
-        # Send event now so it is processed as early as possible
-        self.printer.send_event("mmu:sync_feedback", eventtime, event_value)
-
-
-    def sync_compression_callback(self, eventtime, c_sensor_name, compression_state, runout_helper):
-        """
-        Button event handler for sync-feedback compression switch
-        """
-        t_sensor_name = c_sensor_name.replace(SENSOR_COMPRESSION, SENSOR_TENSION)
-        tension_sensor = self.printer.lookup_object("filament_switch_sensor %s" % t_sensor_name, None)
-        tension_enabled = tension_sensor.runout_helper.sensor_enabled if tension_sensor else False
-        tension_state = tension_sensor.runout_helper.filament_present if tension_enabled else False
-
-        if tension_enabled:
-            event_value = 0 if compression_state == tension_state else (1 if compression_state else -1) # {-1,0,1}
-        else:
-            event_value = compression_state # {1,0}
-
-        # Send event now so it is processed as early as possible
-        self.printer.send_event("mmu:sync_feedback", eventtime, event_value)
+# TODO integrate this for alternative extruder entrance sensor...
+# TODO force options of 'extruder' or 'toolhead' only
+#        # For Qidi printers or any other that use a hall_filament_width_sensor as an endstop
+#        hall_sensor_endstop = config.get('hall_sensor_endstop', None)
+#        if hall_sensor_endstop is not None:
+#            if hall_sensor_endstop == 'extruder':
+#                target_name = SENSOR_EXTRUDER_ENTRY
+#            elif hall_sensor_endstop == 'toolhead':
+#                target_name = SENSOR_TOOLHEAD
+#            else:
+#                target_name = hall_sensor_endstop
+#
+#            self.hall_pin1 = config.get('hall_adc1')
+#            self.hall_pin2 = config.get('hall_adc2')
+#            self.hall_dia1 = config.getfloat('hall_cal_dia1', 1.5)
+#            self.hall_dia2 = config.getfloat('hall_cal_dia2', 2.0)
+#            self.hall_rawdia1 = config.getint('hall_raw_dia1', 9500)
+#            self.hall_rawdia2 = config.getint('hall_raw_dia2', 10500)
+#            self.hall_runout_dia = config.getfloat('hall_min_diameter', 1.0)
+#            # self.hall_runout_dia_max = config.getfloat('hall_max_diameter', 2.0) - Unused for trigger
+#
+#            s = MmuHallEndstop(config, target_name, self.hall_pin1, self.hall_pin2,
+#                               self.hall_dia1, self.hall_rawdia1, self.hall_dia2, self.hall_rawdia2,
+#                               hall_runout_dia=self.hall_runout_dia,
+#                               insert=True, runout=True)

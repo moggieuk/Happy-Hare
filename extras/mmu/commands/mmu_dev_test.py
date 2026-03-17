@@ -450,14 +450,29 @@ class MmuTestCommand(BaseCommand):
             if gcmd.get_int('DUMP_UNICODE', 0, minval=0, maxval=1):
                 have_run_test = True
                 mmu.log_info(
-                    "UI_SPACE=%s, UI_SEPARATOR=%s, UI_DASH=%s, UI_DEGREE=%s, UI_BLOCK=%s, UI_CASCADE=%s" %
-                    (UI_SPACE, UI_SEPARATOR, UI_DASH, UI_DEGREE, UI_BLOCK, UI_CASCADE)
+                    f"UI_SPACE={UI_SPACE}, UI_SEPARATOR={UI_SEPARATOR}, UI_DASH={UI_DASH}, "
+                    f"UI_DEGREE={UI_DEGREE}, UI_BLOCK={UI_BLOCK}, UI_CASCADE={UI_CASCADE}"
                 )
-                mmu.log_info("{}{}{}{}".format(UI_BOX_TL, UI_BOX_T, UI_BOX_H, UI_BOX_TR))
-                mmu.log_info("{}{}{}{}".format(UI_BOX_L,  UI_BOX_M, UI_BOX_H, UI_BOX_R))
-                mmu.log_info("{}{}{}{}".format(UI_BOX_V,  UI_BOX_V, UI_SPACE, UI_BOX_V))
-                mmu.log_info("{}{}{}{}".format(UI_BOX_BL, UI_BOX_B, UI_BOX_H, UI_BOX_BR))
-                mmu.log_info("UI_EMOTICONS=%s" % UI_EMOTICONS)
+                mmu.log_info(f"UI_SQUARE={UI_SQUARE}, UI_CUBE={UI_CUBE}")
+                mmu.log_info(
+                    f"UI_SUPERSCRIPT_1={UI_SUPERSCRIPT_1}, "
+                    f"UI_SUPERSCRIPT_2={UI_SUPERSCRIPT_2}, "
+                    f"UI_SUPERSCRIPT_3={UI_SUPERSCRIPT_3}"
+                )
+                mmu.log_info(
+                    f"UI_BULLET={UI_BULLET}, "
+                    f"UI_SOLID_CIRCLE={UI_SOLID_CIRCLE}, "
+                    f"UI_SOLID_SQUARE={UI_SOLID_SQUARE}, "
+                    f"UI_SOLID_TRIANGLE={UI_SOLID_TRIANGLE}, "
+                    f"UI_FISHEYE={UI_FISHEYE}"
+                )
+
+                mmu.log_info(f"{UI_BOX_TL}{UI_BOX_T}{UI_BOX_H}{UI_BOX_TR}")
+                mmu.log_info(f"{UI_BOX_L}{UI_BOX_M}{UI_BOX_H}{UI_BOX_R}")
+                mmu.log_info(f"{UI_BOX_V}{UI_BOX_V}{UI_SPACE}{UI_BOX_V}")
+                mmu.log_info(f"{UI_BOX_BL}{UI_BOX_B}{UI_BOX_H}{UI_BOX_BR}")
+
+                mmu.log_info(f"UI_EMOTICONS={UI_EMOTICONS}")
 
             if gcmd.get_int('RUN_SEQUENCE', 0, minval=0, maxval=1):
                 have_run_test = True

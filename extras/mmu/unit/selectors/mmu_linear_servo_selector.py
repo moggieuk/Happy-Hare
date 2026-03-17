@@ -409,7 +409,7 @@ class MmuServoCommand(BaseCommand):
             else:
                 servo.servo_move()
         elif pos == "down":
-            if mmu.check_if_bypass(): return
+            if self.check_if_bypass(): return
             if save:
                 servo._servo_save_pos(pos)
             else:
@@ -417,7 +417,7 @@ class MmuServoCommand(BaseCommand):
         elif save:
             mmu.log_error("Servo position not specified for save")
         elif pos == "":
-            if mmu.check_if_bypass(): return
+            if self.check_if_bypass(): return
             angle = gcmd.get_int('ANGLE', None)
             if angle is not None:
                 mmu.log_debug("Setting servo to angle: %d" % angle)

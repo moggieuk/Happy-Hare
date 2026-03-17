@@ -52,7 +52,7 @@ class MmuTestTrackingCommand(BaseCommand):
         # BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
 
-        if mmu._check_has_encoder(): return
+        if mmu.check_has_encoder(): return
         if mmu.check_if_disabled(): return
         if mmu.check_if_bypass(): return
         if mmu.check_if_not_homed(): return

@@ -48,8 +48,8 @@ class MmuEncoderCommand(BaseCommand):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
 
-        if mmu._check_has_encoder(): return
         if mmu.check_if_disabled(): return
+        if mmu.check_has_encoder(): return
         value = gcmd.get_float('VALUE', -1, minval=0.)
         enable = gcmd.get_int('ENABLE', -1, minval=0, maxval=1)
         if enable == 1:

@@ -19,7 +19,7 @@ import logging, time
 
 # Happy Hare imports
 from ..mmu_constants    import *
-from ..mmu_sensor_utils import MmuSensorFactory
+from ..mmu_sensor_utils import MmuSensorFactory, MmuProportionalSensor
 
 
 class MmuBuffer:
@@ -66,6 +66,7 @@ class MmuBuffer:
         self.proportional_sensor = None
         if analog_pin:
             self.proportional_sensor = MmuProportionalSensor(config, name=SENSOR_PROPORTIONAL)
+
 
     def add_unit(self, mmu_unit):
         self.connected_units.append(mmu_unit)

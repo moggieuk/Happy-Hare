@@ -57,7 +57,7 @@ class MmuChangeToolCommand(BaseCommand):
 
         if mmu.check_if_disabled(): return
         if mmu.check_if_bypass(): return
-        if mmu.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[]): return # TODO Hard to tell what gates to check so don't check for now
+        if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[]): return # TODO Hard to tell what gates to check so don't check for now
         mmu._fix_started_state()
 
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
