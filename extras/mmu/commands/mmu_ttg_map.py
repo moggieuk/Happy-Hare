@@ -53,7 +53,7 @@ class MmuTtgMapCommand(BaseCommand):
         # BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
 
-        if mmu.check_if_disabled(): return
+        if self.check_if_disabled(): return
 
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))

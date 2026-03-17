@@ -55,7 +55,7 @@ class MmuRecoverCommand(BaseCommand):
         # BaseCommand already logs commandline + handles HELP=1.
         mmu = self.mmu
 
-        if mmu.check_if_disabled(): return
+        if self.check_if_disabled(): return
 
         tool = gcmd.get_int('TOOL', TOOL_GATE_UNKNOWN, minval=-2, maxval=mmu.num_gates - 1)
         mod_gate = gcmd.get_int('GATE', TOOL_GATE_UNKNOWN, minval=-2, maxval=mmu.num_gates - 1)

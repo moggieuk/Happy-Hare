@@ -50,8 +50,8 @@ class MmuTestBuzzMotorCommand(BaseCommand):
         # BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
 
-        if mmu.check_if_disabled(): return
-        if mmu.check_if_bypass(): return
+        if self.check_if_disabled(): return
+        if self.check_if_bypass(): return
 
         motor = gcmd.get('MOTOR', "gear")
 

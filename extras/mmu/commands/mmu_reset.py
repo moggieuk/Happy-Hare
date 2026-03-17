@@ -48,7 +48,7 @@ class MmuResetCommand(BaseCommand):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
 
-        if mmu.check_if_disabled():
+        if self.check_if_disabled():
             return
 
         confirm = gcmd.get_int('CONFIRM', 0, minval=0, maxval=1)

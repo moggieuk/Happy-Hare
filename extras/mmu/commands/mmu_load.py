@@ -49,8 +49,8 @@ class MmuLoadCommand(BaseCommand):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
 
-        if mmu.check_if_disabled(): return
-        if mmu.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[mmu.gate_selected]): return
+        if self.check_if_disabled(): return
+        if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[mmu.gate_selected]): return
         mmu._fix_started_state()
 
         in_bypass = mmu.gate_selected == TOOL_GATE_BYPASS

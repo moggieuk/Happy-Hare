@@ -52,8 +52,8 @@ class MmuCheckGateCommand(BaseCommand):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
 
-        if mmu.check_if_disabled(): return
-        if mmu.check_if_bypass(): return
+        if self.check_if_disabled(): return
+        if self.check_if_bypass(): return
         mmu._fix_started_state()
 
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
@@ -63,7 +63,7 @@ class MmuCheckGateCommand(BaseCommand):
         tool = gcmd.get_int('TOOL', -1, minval=0, maxval=mmu.num_gates - 1)
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=mmu.num_gates - 1)
         all_gates = gcmd.get_int('ALL', 0, minval=0, maxval=1)
-        if mmu.check_if_not_calibrated(
+        if self.check_if_not_calibrated(
             CALIBRATED_ESSENTIAL,
             check_gates=None if gate == -1 else [gate],
         ):

@@ -49,9 +49,9 @@ class MmuSyncFeedbackCommand(BaseCommand):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
 
-        if mmu.check_if_disabled():
+        if self.check_if_disabled():
             return
-        if mmu.check_if_bypass():
+        if self.check_if_bypass():
             return
 
         if not unit.has_sync_feedback():

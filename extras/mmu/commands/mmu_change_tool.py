@@ -55,8 +55,8 @@ class MmuChangeToolCommand(BaseCommand):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
 
-        if mmu.check_if_disabled(): return
-        if mmu.check_if_bypass(): return
+        if self.check_if_disabled(): return
+        if self.check_if_bypass(): return
         if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[]): return # TODO Hard to tell what gates to check so don't check for now
         mmu._fix_started_state()
 

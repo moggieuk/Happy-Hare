@@ -49,14 +49,14 @@ class MmuSyncGearMotorCommand(BaseCommand):
         # BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
 
-        if mmu.check_if_disabled():
+        if self.check_if_disabled():
             return
 
-        if mmu.check_if_bypass(): return
+        if self.check_if_bypass(): return
 
         sync = gcmd.get_int('SYNC', 1, minval=0, maxval=1)
 
-        if not sync and mmu.check_if_always_gripped():
+        if not sync and self.check_if_always_gripped():
             return
 
         # Sticky standalone sync when not in print

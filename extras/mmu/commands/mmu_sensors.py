@@ -49,7 +49,7 @@ class MmuSensorsCommand(BaseCommand):
         mmu = self.mmu
         sm = mmu.sensor_manager
 
-        if mmu.check_if_disabled(): return
+        if self.check_if_disabled(): return
 
         mmu_unit = self.get_unit(gcmd)
         detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))

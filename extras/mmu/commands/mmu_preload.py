@@ -47,19 +47,19 @@ class MmuPreloadCommand(BaseCommand):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
 
-        if mmu.check_if_disabled(): return
-        if mmu.check_if_printing(): return
+        if self.check_if_disabled(): return
+        if self.check_if_printing(): return
 
         gate = gcmd.get_int('GATE', mmu.gate_selected, minval=0, maxval=mmu.num_gates - 1)
-        if mmu.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[gate]): return
+        if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[gate]): return
 
         can_crossload = (
             (mmu.mmu_unit().can_crossload or mmu.mmu_unit().multigear)
             and mmu.sensor_manager.has_gate_sensor(SENSOR_EXIT_PREFIX, gate)
         )
         if not can_crossload:
-            if mmu.check_if_bypass(): return
-            if mmu.check_if_loaded(): return
+            if self.check_if_bypass(): return
+            if self.check_if_loaded(): return
 
         mmu.log_always("Preloading filament in %s..." % ("current gate" if gate == mmu.gate_selected else "gate %d" % gate))
         try:

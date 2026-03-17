@@ -50,11 +50,11 @@ class MmuEjectCommand(BaseCommand):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
 
-        if mmu.check_if_disabled(): return
+        if self.check_if_disabled(): return
 
         gate = gcmd.get_int('GATE', mmu.gate_selected, minval=0, maxval=mmu.num_gates - 1)
         force = bool(gcmd.get_int('FORCE', 0, minval=0, maxval=1))
-        if mmu.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[gate]): return
+        if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[gate]): return
         mmu._fix_started_state()
 
         can_crossload = (
@@ -62,7 +62,7 @@ class MmuEjectCommand(BaseCommand):
             and mmu.sensor_manager.has_gate_sensor(SENSOR_EXIT_PREFIX, gate)
         )
         if not can_crossload and gate != mmu.gate_selected:
-            if mmu.check_if_loaded(): return
+            if self.check_if_loaded(): return
 
         # Determine if full eject_from_gate is necessary
         in_bypass = mmu.gate_selected == TOOL_GATE_BYPASS

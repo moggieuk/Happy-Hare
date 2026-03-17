@@ -53,10 +53,10 @@ class MmuHomeCommand(BaseCommand):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
 
-        if mmu.check_if_disabled(): return
+        if self.check_if_disabled(): return
         mmu._fix_started_state()
 
-        if mmu.check_if_not_calibrated(CALIBRATED_SELECTOR):
+        if self.check_if_not_calibrated(CALIBRATED_SELECTOR):
             mmu.log_always("Not calibrated. Will home to endstop only!")
             tool = -1
             force_unload = 0

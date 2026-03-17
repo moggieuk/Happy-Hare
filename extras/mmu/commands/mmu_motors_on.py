@@ -48,7 +48,7 @@ class MmuMotorsOnCommand(BaseCommand):
         # BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
 
-        if mmu.check_if_disabled():
+        if self.check_if_disabled():
             return
 
         mmu_unit.motors_onoff(on=True)

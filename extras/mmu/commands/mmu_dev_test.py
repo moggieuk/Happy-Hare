@@ -140,7 +140,7 @@ class MmuTestCommand(BaseCommand):
         mmu_machine = mmu.mmu_machine
 
         mmu.log_to_file(gcmd.get_commandline())
-        if mmu.check_if_disabled():
+        if self.check_if_disabled():
             return
 
         if gcmd.get_int('HELP', 0, minval=0, maxval=1):

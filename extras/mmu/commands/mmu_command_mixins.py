@@ -99,10 +99,10 @@ class MoveMixin:
         mmu = self.mmu
         sel = mmu.selector()
 
-        if mmu.check_if_disabled():
+        if self.check_if_disabled():
             return (0., False, 0., 0.)
 
-        if not allow_bypass and mmu.check_if_bypass():
+        if not allow_bypass and self.check_if_bypass():
             return (0., False, 0., 0.)
 
         move = gcmd.get_float('MOVE', 100.)
@@ -125,9 +125,9 @@ class MoveMixin:
         mmu = mmu
         sel = mmu.selector()
 
-        if mmu.check_if_disabled():
+        if self.check_if_disabled():
             return (0., False, 0., 0.)
-        if not allow_bypass and mmu.check_if_bypass():
+        if not allow_bypass and self.check_if_bypass():
             return (0., False, 0., 0.)
 
         endstop = gcmd.get('ENDSTOP', "default")

@@ -54,10 +54,10 @@ class MmuSoaktestLoadSequenceCommand(BaseCommand):
         # BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
 
-        if mmu.check_if_disabled(): return
-        if mmu.check_if_bypass(): return
-        if mmu.check_if_loaded(): return
-        if mmu.check_if_not_calibrated(CALIBRATED_ESSENTIAL): return
+        if self.check_if_disabled(): return
+        if self.check_if_bypass(): return
+        if self.check_if_loaded(): return
+        if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL): return
 
         loops = gcmd.get_int('LOOP', 2)
         rand = gcmd.get_int('RANDOM', 0)

@@ -52,7 +52,7 @@ class MmuFlowGuardCommand(BaseCommand):
         mmu = self.mmu
         sf = mmu_unit.sync_feedback # Get sync_feedback associated with unit
 
-        if mmu.check_if_disabled(): return
+        if self.check_if_disabled(): return
 
         if not sf.p.sync_feedback_enabled:
             mmu.log_warning("Sync feedback is disabled or not configured. FlowGuard is unavailable")

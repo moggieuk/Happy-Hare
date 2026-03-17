@@ -50,7 +50,7 @@ class MmuToolOverridesCommand(BaseCommand):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
 
-        if mmu.check_if_disabled(): return
+        if self.check_if_disabled(): return
 
         tool = gcmd.get_int('TOOL', -1, minval=0, maxval=mmu.num_gates)
         speed = gcmd.get_int('M220', None, minval=0, maxval=200)

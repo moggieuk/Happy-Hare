@@ -57,7 +57,7 @@ class MmuTestMoveCommand(MoveMixin, BaseCommand):
         # BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
 
-        if mmu.check_if_disabled(): return
+        if self.check_if_disabled(): return
 
         debug = bool(gcmd.get_int('DEBUG', 0, minval=0, maxval=1))  # Hidden option
         allow_bypass = bool(gcmd.get_int('ALLOW_BYPASS', 0, minval=0, maxval=1))

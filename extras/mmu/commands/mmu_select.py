@@ -50,10 +50,10 @@ class MmuSelectCommand(BaseCommand):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
 
-        if mmu.check_if_disabled(): return
-        if mmu.check_if_loaded(): return
+        if self.check_if_disabled(): return
+        if self.check_if_loaded(): return
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=mmu.num_gates - 1)
-        if mmu.check_if_not_calibrated(CALIBRATED_SELECTOR, check_gates=[gate] if gate >= 0 else None): return
+        if self.check_if_not_calibrated(CALIBRATED_SELECTOR, check_gates=[gate] if gate >= 0 else None): return
         mmu._fix_started_state()
 
         bypass = gcmd.get_int('BYPASS', -1, minval=0, maxval=1)

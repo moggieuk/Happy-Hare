@@ -51,7 +51,7 @@ class MmuTestPurgeCommand(BaseCommand):
         # BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
 
-        if mmu.check_if_disabled(): return
+        if self.check_if_disabled(): return
 
         last_tool = gcmd.get_int('LAST_TOOL', mmu._last_tool, minval=0, maxval=mmu.num_gates - 1)
         next_tool = gcmd.get_int('NEXT_TOOL', mmu.tool_selected, minval=0, maxval=mmu.num_gates - 1)

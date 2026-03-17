@@ -57,7 +57,7 @@ class MmuStatsCommand(BaseCommand):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
 
-        if mmu.check_if_disabled(): return
+        if self.check_if_disabled(): return
         counter = gcmd.get('COUNTER', None)
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         total = bool(gcmd.get_int('TOTAL', 0, minval=0, maxval=1))

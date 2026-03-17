@@ -51,10 +51,10 @@ class MmuTestLoadCommand(BaseCommand):
         # BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
 
-        if mmu.check_if_disabled(): return
-        if mmu.check_if_bypass(): return
-        if mmu.check_if_loaded(): return
-        if mmu.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[mmu.gate_selected]): return
+        if self.check_if_disabled(): return
+        if self.check_if_bypass(): return
+        if self.check_if_loaded(): return
+        if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[mmu.gate_selected]): return
 
         full = gcmd.get_int('FULL', 0, minval=0, maxval=1)
 

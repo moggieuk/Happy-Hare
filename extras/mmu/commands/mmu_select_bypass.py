@@ -46,9 +46,9 @@ class MmuSelectBypassCommand(BaseCommand):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
 
-        if mmu.check_if_disabled(): return
-        if mmu.check_if_loaded(): return
-        if mmu.check_if_not_calibrated(CALIBRATED_SELECTOR): return
+        if self.check_if_disabled(): return
+        if self.check_if_loaded(): return
+        if self.check_if_not_calibrated(CALIBRATED_SELECTOR): return
         mmu._fix_started_state()
 
         try:

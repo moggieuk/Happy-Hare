@@ -62,7 +62,7 @@ class MmuSlicerToolMapCommand(BaseCommand):
         # BaseCommand already logs commandline + handles HELP=1.
         mmu = self.mmu
 
-        if mmu.check_if_disabled(): return
+        if self.check_if_disabled(): return
         mmu._fix_started_state()
 
         detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
