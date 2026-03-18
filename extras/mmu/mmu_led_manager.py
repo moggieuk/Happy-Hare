@@ -36,16 +36,14 @@ class MmuLedManager:
         # Event handlers
         self.mmu.printer.register_event_handler("klippy:ready", self.handle_ready)
 
-#PAUL# PAUL MOGGIE move to commands but register with per_unit=False because already has unit handling
-#PAUL        # Register commands
-#PAUL        self.mmu.gcode.register_command('MMU_SET_LED', self.cmd_MMU_SET_LED, desc = self.cmd_MMU_SET_LED_help)
-#PAUL        self.mmu.gcode.register_command('MMU_LED', self.cmd_MMU_LED, desc = self.cmd_MMU_LED_help)
 
     def handle_ready(self):
         self.setup_led_timer()
 
+
     def setup_led_timer(self):
         self.led_timer = self.mmu.reactor.register_timer(self.led_timer_handler, self.mmu.reactor.NEVER)
+
 
     def led_timer_handler(self, eventtime):
         self.inside_timer = True
@@ -57,156 +55,12 @@ class MmuLedManager:
             self.inside_timer = False
         return self.mmu.reactor.NEVER
 
+
     def schedule_led_command(self, duration, unit):
         if not self.inside_timer:
             self.pending_update[unit] = True
             self.mmu.reactor.update_timer(self.led_timer, self.mmu.reactor.monotonic() + duration)
 
-# PAUL register this command as a single command.. and remove base class stuff
-#    cmd_MMU_SET_LED_help = "Directly control MMU leds"
-#    cmd_MMU_SET_LED_param_help = (
-#        "MMU_SET_LED: %s\n" % cmd_MMU_SET_LED_help
-#        + "UNIT          = #(int)\n" # PAUL doesn't need unit???
-#        + "GATE          = #(int)\n"
-#        + "EXIT_EFFECT   = [off|gate_status|filament_color|slicer_color|r,g,b|_effect_]\n"
-#        + "ENTRY_EFFECT  = [off|gate_status|filament_color|slicer_color|r,g,b|_effect_]\n"
-#        + "STATUS_EFFECT = [off|on|filament_color|slicer_color|r,g,b|_effect_]\n"
-#        + "LOGO_EFFECT   = [off|r,g,b|_effect_]\n"
-#        + "DURATION      = #.#(float) seconds\n"
-#        + "FADETIME      = #.#(float) seconds"
-#    )
-#    def cmd_MMU_SET_LED(self, gcmd):
-#        self.mmu.log_to_file(gcmd.get_commandline())
-#
-#        help = bool(gcmd.get_int('HELP', 0, minval=0, maxval=1))
-#        unit = gcmd.get_int('UNIT', 0, minval=0, maxval=self.mmu_machine.num_units - 1) # PAUL could look this up based on gate #
-#        gate = gcmd.get_int('GATE', None, minval=0, maxval=self.mmu_machine.num_gates - 1)
-#        exit_effect = gcmd.get('EXIT_EFFECT', None)
-#        entry_effect = gcmd.get('ENTRY_EFFECT', None)
-#        status_effect = gcmd.get('STATUS_EFFECT', None)
-#        logo_effect = gcmd.get('LOGO_EFFECT', None)
-#        duration = gcmd.get_float('DURATION', None, minval=0)
-#        fadetime = gcmd.get_float('FADETIME', 1, minval=0)
-#
-#        if self.mmu_machine.get_mmu_unit_by_index(unit).leds is None:
-#            self.mmu.log_error("No LEDs configured on MMU unit %d" % unit)
-#            return
-#
-#        if help:
-#            self.mmu.log_always(self.mmu.format_help(self.cmd_MMU_SET_LED_param_help), color=True)
-#            return
-#
-#        self._set_led(
-#            unit, gate,
-#            entry_effect=entry_effect,
-#            exit_effect=exit_effect,
-#            status_effect=status_effect,
-#            logo_effect=logo_effect,
-#            fadetime=fadetime,
-#            duration=duration
-#        )
-#
-## PAUL register this command as a mux command.. and remove base class stuff
-#    cmd_MMU_LED_help = "Manage mode of operation of optional MMU LED's"
-#    cmd_MMU_LED_param_help = (
-#        "MMU_LED: %s\n" % cmd_MMU_LED_help
-#        + "UNIT          = #(int) default all units\n"
-#        + "ENABLE        = [0|1]\n"
-#        + "ANIMATION     = [0|1]\n"
-#        + "EXIT_EFFECT   = [off|gate_status|filament_color|slicer_color|r,g,b|_effect_]\n"
-#        + "ENTRY_EFFECT  = [off|gate_status|filament_color|slicer_color|r,g,b|_effect_]\n"
-#        + "STATUS_EFFECT = [off|on|filament_color|slicer_color|r,g,b|_effect_]\n"
-#        + "LOGO_EFFECT   = [off|r,g,b|_effect_]\n"
-#        + "REFRESH       = [0|1]\n"
-#        + "QUIET         = [0|1]"
-#    )
-#    def cmd_MMU_LED(self, gcmd):
-#        self.mmu.log_to_file(gcmd.get_commandline())
-#        if self.mmu.check_if_disabled(): return
-#
-#        quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
-#        help = bool(gcmd.get_int('HELP', 0, minval=0, maxval=1))
-#        refresh = bool(gcmd.get_int('REFRESH', 0, minval=0, maxval=1))
-#        unit = gcmd.get_int('UNIT', None, minval=0, maxval=self.mmu_machine.num_units - 1)
-#
-#        mmu_units = [self.mmu_machine.get_mmu_unit_by_index(unit)] if unit is not None else self.mmu_machine.units # PAUL This loop can be done by command wrapper
-#        if all(mmu_unit.leds is None for mmu_unit in mmu_units):
-#            self.mmu.log_error("No LEDs configured on MMU")
-#            return
-#
-#        if help:
-#            self.mmu.log_always(self.mmu.format_help(self.cmd_MMU_LED_param_help), color=True)
-#            return
-#
-#        msg = ""
-#        for mmu_unit in mmu_units:
-#            leds = mmu_unit.leds
-#            unit = mmu_unit.unit_index
-#
-#            if leds:
-#                exit_effect = gcmd.get('EXIT_EFFECT', leds.exit_effect)
-#                entry_effect = gcmd.get('ENTRY_EFFECT', leds.entry_effect)
-#                status_effect = gcmd.get('STATUS_EFFECT', leds.status_effect)
-#                logo_effect = gcmd.get('LOGO_EFFECT', leds.logo_effect)
-#                enabled = bool(gcmd.get_int('ENABLE', leds.enabled, minval=0, maxval=1))
-#                animation = bool(gcmd.get_int('ANIMATION', leds.animation, minval=0, maxval=1))
-#
-#                if leds.enabled and not enabled or refresh:
-#                    # Enabled to disabled or refresh
-#                    self._set_led(
-#                        unit, None,
-#                        exit_effect='off',
-#                        entry_effect='off',
-#                        status_effect='off',
-#                        logo_effect='off'
-#                    )
-#                else:
-#                    if leds.animation and not animation:
-#                        # Turning animation off so clear existing effects
-#                        self._set_led(
-#                            unit, None,
-#                            exit_effect='off',
-#                            entry_effect='off',
-#                            status_effect='off',
-#                            logo_effect='off',
-#                            fadetime=0
-#                        )
-#
-#                if (leds.exit_effect != exit_effect or
-#                    leds.entry_effect != entry_effect or
-#                    leds.status_effect != status_effect or
-#                    leds.logo_effect != logo_effect or
-#                    leds.enabled != enabled or
-#                    leds.animation != animation or
-#                    refresh):
-#
-#                    leds.exit_effect = exit_effect
-#                    leds.entry_effect = entry_effect
-#                    leds.status_effect = status_effect
-#                    leds.logo_effect = logo_effect
-#                    leds.enabled = enabled
-#                    leds.animation = animation
-#
-#                    if enabled:
-#                        self._set_led(
-#                            unit, None,
-#                            exit_effect='default',
-#                            entry_effect='default',
-#                            status_effect='default',
-#                            logo_effect='default'
-#                        )
-#
-#                if not quiet:
-#                    available = lambda effect, enabled : ("'%s'" % str(effect)) if enabled else "unavailable"
-#                    msg += "\nUnit %s LEDs (%s)\n" % (unit, ("enabled" if enabled else "disabled"))
-#                    msg += "  Animation: %s\n" % ("enabled" if animation else "disabled")
-#                    msg += "  Exit effect: %s\n" % available(exit_effect, leds.get_status()['exit'])
-#                    msg += "  Entry effect: %s\n" % available(entry_effect, leds.get_status()['entry'])
-#                    msg += "  Status effect: %s\n" % available(status_effect, leds.get_status()['status'])
-#                    msg += "  Logo effect: %s\n" % available(logo_effect, leds.get_status()['logo'])
-#            else:
-#                msg += "No LEDs configured on MMU unit %d" % unit
-#        self.mmu.log_always(msg)
 
     # Called when an action has changed to update LEDs
     # (this could be changed to klipper event)
@@ -333,6 +187,7 @@ class MmuLedManager:
                         status_effect=self.effect_name(unit, 'checking')
                     )
 
+
     # Called when print state changes to update LEDs
     # (this could be changed to klipper event)
     def print_state_changed(self, state, old_state):
@@ -415,6 +270,7 @@ class MmuLedManager:
                     logo_effect='off'
                 )
 
+
     # Called when gate map is updated to update LEDs
     # (TODO this could be changed to klipper event)
     def gate_map_changed(self, gate):
@@ -440,11 +296,13 @@ class MmuLedManager:
                     status_effect=status_effect
                 )
 
+
     def effect_name(self, unit, operation):
         leds = self.mmu_machine.get_mmu_unit_by_index(unit).leds
         if leds:
             return leds.get_effect(operation)
         return ''
+
 
     # Make the necessary configuration changes to LED accross all mmu_units
     #

@@ -457,7 +457,7 @@ class MmuCalibrateRotarySelectorCommand(BaseCommand):
         mmu = mmu_unit.mmu
         selector = mmu_unit.selector
 
-        if mmu.check_if_disabled(): return
+        if self.check_if_disabled(): return
 
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         single = gcmd.get_int('SINGLE', 0, minval=0, maxval=1)

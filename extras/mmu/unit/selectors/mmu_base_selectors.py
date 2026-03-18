@@ -119,7 +119,7 @@ class BaseSelector:
     def buzz_motor(self, motor):
         return False
 
-    def has_bypass(self):
+    def has_unit_bypass(self):
         """
         Whether the selector has a selectable bypass gate (not whether to show on unit)
         """
@@ -127,7 +127,7 @@ class BaseSelector:
 
     def get_status(self, eventtime):
         return {
-            'has_bypass': self.has_bypass()
+            'has_bypass': self.has_unit_bypass()
         }
 
     def get_mmu_status_config(self):
@@ -192,7 +192,7 @@ class PhysicalSelector(BaseSelector, object):
         filament state), triggers an unload sequence before selector homing.
         """
         if not self.requires_homing: return
-        if self.check_if_bypass(): return
+        if self.check_if_unit_bypass(): return
 
         with self.mmu.wrap_action(ACTION_HOMING):
             self.mmu.log_info("Homing MMU %s..." % self.mmu_unit.name)
@@ -222,18 +222,28 @@ class PhysicalSelector(BaseSelector, object):
         super()._select_gate(lgate)
 
 
-    def check_if_bypass(self):
+    def check_if_unit_bypass(self):
         """
         Similar to MMU controller check but localized to specific selector
         """
-        return self.mmu_unit.manages_gate(self.mmu.gate_selected) and self.mmu.check_if_bypass()
+        if not self.mmu_unit.manages_gate(self.mmu.gate_selected):
+            return False
+        if self.mmu.tool_selected == TOOL_GATE_BYPASS and self.mmu.filament_pos not in [FILAMENT_POS_UNLOADED]:
+            self.mmu.log_error("Operation not possible. MMU is currently using bypass. Unload or select a different gate first")
+            return True
+        return False
 
 
-    def check_if_loaded(self):
+    def check_if_unit_loaded(self):
         """
         Similar to MMU controller check but localized to specific selector
         """
-        return self.mmu_unit.manages_gate(self.mmu.gate_selected) and self.mmu.check_if_loaded()
+        if not self.mmu_unit.manages_gate(self.mmu.gate_selected):
+            return False
+        if self.mmu.filament_pos not in [FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN]:
+            self.mmu.log_error("Operation not possible. Filament is loaded")
+            return True
+        return False
 
 
     def get_mmu_status_config(self):
@@ -330,8 +340,8 @@ class MmuSoaktestSelectorCommand(BaseCommand):
         """
         mmu = self.mmu
 
-        if mmu.check_if_disabled(): return
-        if self.check_if_loaded(): return
+        if self.check_if_disabled(): return
+        if mmu_unit.selector.check_if_unit_loaded(): return
 
         if not mmu_unit.calibrator.check_calibrated(CALIBRATED_SELECTOR):
             mmu.log_error("Operation not possible. Selector not yet calibrated")
@@ -355,7 +365,7 @@ class MmuSoaktestSelectorCommand(BaseCommand):
                     if random.randint(0, 10) == 0 and home:
                         mmu.home_unit(mmu_unit)
                   
-                    if random.randint(0, 10) == 0 and mmu_unit.has_bypass:
+                    if random.randint(0, 10) == 0 and self.has_unit_bypass:
                         mmu.log_always("Testing loop %d / %d. Selecting bypass..." % (l + 1, loops))
                         mmu.select_gate(TOOL_GATE_BYPASS)
                     else:

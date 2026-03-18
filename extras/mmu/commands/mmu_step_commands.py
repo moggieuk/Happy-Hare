@@ -75,9 +75,7 @@ class MmuStepUnloadGateCommand(BaseCommand):
         full = bool(gcmd.get_int('FULL', 0, minval=0, maxval=1))
         try:
             with mmu.wrap_sync_gear_to_extruder():
-                mmu._unload_gate(
-                    homing_max=mmu.mmu_unit().calibrator.get_bowden_length() if full else None
-                )
+                mmu._unload_gate(extra_homing=None if full else 0.)
         except MmuError as ee:
             mmu.handle_mmu_error("_MMU_STEP_UNLOAD_GATE: %s" % str(ee))
 

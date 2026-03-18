@@ -221,7 +221,7 @@ class ServoSelector(PhysicalSelector):
             return False
         return True
 
-    def has_bypass(self):
+    def has_unit_bypass(self):
         return self.servo_bypass_angle >= 0
 
     def get_status(self, eventtime):
@@ -354,7 +354,7 @@ class MmuCalibrateServoSelectorCommand(BaseCommand):
         mmu = mmu_unit.mmu
         selector = mmu_unit.selector
 
-        if mmu.check_if_disabled(): return
+        if self.check_if_disabled(): return
 
         show = gcmd.get_int('SHOW', 0, minval=0, maxval=1)
         angle = gcmd.get_int('ANGLE', None)
@@ -375,7 +375,7 @@ class MmuCalibrateServoSelectorCommand(BaseCommand):
                 msg += "\nRelease angle is fixed at: %s degrees" % selector.servo_release_angle
             else:
                 msg += "\nRelease angles configured to be between each gate angle"
-            if selector.has_bypass():
+            if selector.has_unit_bypass():
                 msg += "\nBypass angle: %s" % selector.servo_bypass_angle
             else:
                 msg += "\nBypass angle not configured"

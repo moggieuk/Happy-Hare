@@ -445,7 +445,7 @@ class MmuCalibrator:
                 if self.mmu.sensor_manager.check_sensor(self.mmu_unit.p.extruder_homing_endstop):
                     raise MmuError("The %s sensor triggered before homing. Check filament and sensor operation" % self.mmu_unit.p.extruder_homing_endstop)
 
-            actual, extra = self.mmu._home_to_extruder(extruder_homing_max)
+            actual, extra = self.mmu._home_to_extruder(extruder_homing_max) # PAUL check this
             measured = self.mmu.get_encoder_distance(dwell=True) + self.mmu._get_encoder_dead_space()
             calibrated_length = round(overshoot + actual + extra, 1)
 
@@ -639,16 +639,28 @@ class MmuCalibrator:
 
     # ------------------ Autotuning from telemetry data -------------------
 
-    def note_load_telemetry(self, bowden_move_ratio, homing_movement, deficit):
-        if homing_movement is not None:
-            homing_movement -= deficit
-        self._autotune(DIRECTION_LOAD, bowden_move_ratio, homing_movement)
+    def note_load_telemetry(self, bowden_length, bowden_move_ratio, bowden_travel):
+        self.mmu.log_error(f"note_load_telemetry(bowden_length={bowden_length}, bowden_move_ratio={bowden_move_ratio}, bowden_travel={bowden_travel})")
+        return
+
+# PAUL TODO...
+#        homing_delta = None
+#        if homing_movement is not None:
+#            homing_delta = homing_movement - expected_homing
+#PAUL            homing_movement -= deficit
+#        self._autotune(DIRECTION_LOAD, bowden_move_ratio, homing_delta) # PAUL check autotune
 
 
-    def note_unload_telemetry(self, bowden_move_ratio, homing_movement, deficit):
-        if homing_movement is not None:
-            homing_movement -= deficit
-        self._autotune(DIRECTION_UNLOAD, bowden_move_ratio, homing_movement)
+    def note_unload_telemetry(self, bowden_length, bowden_move_ratio, bowden_travel):
+        self.mmu.log_error(f"note_unload_telemetry(bowden_length={bowden_length}, bowden_move_ratio={bowden_move_ratio}, bowden_travel={bowden_travel})")
+        return
+
+# PAUL TODO...
+#        homing_delta = None
+#        if homing_movement is not None:
+#            homing_delta = homing_movement - expected_homing
+#PAUL            homing_movement -= deficit
+#        self._autotune(DIRECTION_UNLOAD, bowden_move_ratio, homing_delta) # PAUL check autotune
 
 
     # Use data from load or unload operation to auto-calibrate / auto-tune
@@ -998,9 +1010,9 @@ class MmuCalibrateGearCommand(BaseCommand):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
 
-        if mmu.check_if_disabled(): return
-        if mmu.check_if_bypass(): return
-        if mmu.check_if_invalid_gate(): return
+        if self.check_if_disabled(): return
+        if self.check_if_bypass(): return
+        if self.check_if_invalid_gate(): return
 
         mmu_unit = mmu.mmu_unit() # For gate selected
         calibrator = mmu_unit.calibrator
@@ -1078,9 +1090,9 @@ class MmuCalibrateGatesCommand(BaseCommand):
         mmu = self.mmu
         calibrator = mmu_unit.calibrator
 
-        if mmu.check_if_disabled(): return
-        if mmu.check_if_not_homed(): return
-        if mmu.check_if_bypass(): return
+        if self.check_if_disabled(): return
+        if self.check_if_not_homed(): return
+        if self.check_if_bypass(): return
 
         length = gcmd.get_float('LENGTH', 400., above=0.)
         repeats = gcmd.get_int('REPEATS', 3, minval=1, maxval=10)
@@ -1173,12 +1185,12 @@ class MmuCalibrateBowdenCommand(BaseCommand):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
 
-        if mmu.check_if_disabled(): return
-        if mmu.check_if_no_bowden_move(): return
-        if mmu.check_if_not_homed(): return
-        if mmu.check_if_bypass(): return
-        if mmu.check_if_loaded(): return
-        if mmu.check_if_invalid_gate(): return
+        if self.check_if_disabled(): return
+        if self.check_if_no_bowden_move(): return
+        if self.check_if_not_homed(): return
+        if self.check_if_bypass(): return
+        if self.check_if_loaded(): return
+        if self.check_if_invalid_gate(): return
 
         mmu_unit = mmu.mmu_unit() # For gate selected
         calibrator = mmu_unit.calibrator
@@ -1303,10 +1315,10 @@ class MmuCalibrateToolheadCommand(BaseCommand):
         mmu = self.mmu
         calibrator = mmu_unit.calibrator
 
-        if mmu.check_if_disabled(): return
-        if mmu.check_if_not_homed(): return
-        if mmu.check_if_bypass(): return
-        if mmu.check_if_loaded(): return
+        if self.check_if_disabled(): return
+        if self.check_if_not_homed(): return
+        if self.check_if_bypass(): return
+        if self.check_if_loaded(): return
         if self.check_if_not_calibrated(mmu,
             CALIBRATED_GEAR_0 | CALIBRATED_ENCODER | CALIBRATED_SELECTOR | CALIBRATED_BOWDENS,
             check_gates=[mmu.gate_selected]
@@ -1401,8 +1413,8 @@ class MmuCalibrateToolheadCommand(BaseCommand):
                         mmu.p.toolhead_entry_to_extruder = round(tete, 1)
 
                 # Unload and park filament
-                _ = mmu._unload_bowden()
-                _,_ = mmu._unload_gate()
+                mmu._unload_bowden()
+                mmu._unload_gate()
 
         except MmuError as ee:
             mmu.handle_mmu_error(str(ee))
@@ -1458,9 +1470,9 @@ class MmuCalibrateEncoderCommand(BaseCommand):
         mmu = self.mmu
         calibrator = mmu_unit.calibrator
 
-        if mmu.check_if_disabled(): return
-        if mmu._check_has_encoder(): return
-        if mmu.check_if_bypass(): return
+        if self.check_if_disabled(): return
+        if self.check_has_encoder(): return
+        if self.check_if_bypass(): return
         if self.check_if_not_calibrated(mmu, CALIBRATED_GEAR_0, check_gates=[mmu.gate_selected]): return
 
         length = gcmd.get_float('LENGTH', 400., above=0.)
@@ -1532,9 +1544,9 @@ class MmuCalibratePsensorCommand(BaseCommand):
         if not mmu_unit.sensor_manager.has_sensor(SENSOR_PROPORTIONAL):
             raise gcmd.error("Proportional (analog sync-feedback) sensor not found\n" + usage)
 
-        if mmu.check_if_disabled(): return
-        if mmu.check_if_bypass(): return
-        if mmu.check_if_not_loaded(): return
+        if self.check_if_disabled(): return
+        if self.check_if_bypass(): return
+        if self.check_if_not_loaded(): return
 
         SD_THRESHOLD = 0.02
         MAX_MOVE_MULTIPLIER = 1.8
@@ -1644,4 +1656,4 @@ class MmuCalibratePsensorCommand(BaseCommand):
             mmu.handle_mmu_error(str(ee))
         finally:
             mmu.calibrating = False
-        if mmu.check_if_disabled(): return
+        if self.check_if_disabled(): return

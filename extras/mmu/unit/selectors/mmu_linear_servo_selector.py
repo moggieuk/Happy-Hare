@@ -329,7 +329,7 @@ class LinearSelectorServo:
 
     def get_status(self, eventtime):
         return {
-            'servo': "Up" if self.servo_state == SERVO_UP_STATE else
+            'servo': "Up"   if self.servo_state == SERVO_UP_STATE else
                      "Down" if self.servo_state == SERVO_DOWN_STATE else
                      "Move" if self.servo_state == SERVO_MOVE_STATE else
                      "Unknown",
@@ -383,7 +383,7 @@ class MmuServoCommand(BaseCommand):
         """
         mmu = mmu_unit.mmu
 
-        if mmu.check_if_disabled(): return
+        if self.check_if_disabled(): return
 
         if not hasattr(mmu_unit.selector, "servo"):
             raise gmcd.error("No servo fitted to selector on MMU %s" % mmu_unit.name)
@@ -409,7 +409,7 @@ class MmuServoCommand(BaseCommand):
             else:
                 servo.servo_move()
         elif pos == "down":
-            if self.check_if_bypass(): return
+            if mmu_unit.selector.check_if_unit_bypass(): return
             if save:
                 servo._servo_save_pos(pos)
             else:
@@ -417,7 +417,7 @@ class MmuServoCommand(BaseCommand):
         elif save:
             mmu.log_error("Servo position not specified for save")
         elif pos == "":
-            if self.check_if_bypass(): return
+            if mmu_unit.selector.check_if_unit_bypass(): return
             angle = gcmd.get_int('ANGLE', None)
             if angle is not None:
                 mmu.log_debug("Setting servo to angle: %d" % angle)

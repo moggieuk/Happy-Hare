@@ -259,7 +259,7 @@ class LinearSelector(PhysicalSelector):
         return True
 
 
-    def has_bypass(self):
+    def has_unit_bypass(self):
         return self.bypass_offset >= 0
 
 
@@ -689,7 +689,7 @@ class MmuCalibrateSelectorCommand(BaseCommand):
         mmu = mmu_unit.mmu
         selector = mmu_unit.selector
 
-        if mmu.check_if_disabled(): return
+        if self.check_if_disabled(): return
 
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         single = gcmd.get_int('SINGLE', 0, minval=0, maxval=1)

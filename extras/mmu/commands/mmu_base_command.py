@@ -13,7 +13,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 # Happy Hare imports
-from ..mmu_constants       import UI_SPACE, UI_CASCADE, UI_SUPERSCRIPT_1, UI_SUPERSCRIPT_2
+from ..mmu_constants       import *
 from ..unit.mmu_calibrator import MmuCalibrator
 
 CATEGORY_GENERAL   = "GENERAL"
