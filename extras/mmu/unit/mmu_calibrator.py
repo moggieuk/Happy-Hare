@@ -401,7 +401,7 @@ class MmuCalibrator:
                 with self.mmu._require_encoder():
                     success = self.mmu._reverse_home_to_encoder(approx_bowden_length)
                     if success:
-                        actual,_,_ = success
+                        actual,_ = success
                         homed = True
 
             else: # Gate sensor... SENSOR_SHARED_EXIT is shared, but SENSOR_EXIT_PREFIX is specific
@@ -445,11 +445,13 @@ class MmuCalibrator:
                 if self.mmu.sensor_manager.check_sensor(self.mmu_unit.p.extruder_homing_endstop):
                     raise MmuError("The %s sensor triggered before homing. Check filament and sensor operation" % self.mmu_unit.p.extruder_homing_endstop)
 
-            actual, extra = self.mmu._home_to_extruder(extruder_homing_max) # PAUL check this
+#PAUL            actual, extra = self.mmu._home_to_extruder(extruder_homing_max) # PAUL check this
+            homing_distance = self.mmu._home_to_extruder(extruder_homing_max) # PAUL check this
             measured = self.mmu.get_encoder_distance(dwell=True) + self.mmu._get_encoder_dead_space()
-            calibrated_length = round(overshoot + actual + extra, 1)
+#PAUL            calibrated_length = round(overshoot + actual + extra, 1)
+            calibrated_length = round(overshoot + homing_distance, 1)
 
-            msg = "Filament homed to extruder after %.1fmm movement" % actual
+            msg = "Filament homed to extruder after %.1fmm movement" % homing_distance
             if self.mmu.has_encoder():
                 msg += "\n(encoder measured %.1fmm)" % (measured - self.mmu_unit.p.gate_parking_distance)
             self.mmu.log_always(msg)
@@ -481,7 +483,7 @@ class MmuCalibrator:
                 self.mmu._load_bowden(approximate_length, start_pos=overshoot) # Get close to extruder homing point
 
                 self.mmu.log_info("Finding extruder gear position (try #%d of %d)..." % (i+1, repeats))
-                _,_ = self.mmu._home_to_extruder(extruder_homing_max)
+                self.mmu._home_to_extruder(extruder_homing_max)
                 actual = self.mmu._get_filament_position() - self.mmu_unit.p.gate_parking_distance
                 measured = self.mmu.get_encoder_distance(dwell=True) + self.mmu._get_encoder_dead_space()
                 spring = self.mmu.selector.filament_release(measure=True) if self.mmu.has_encoder() else 0.
@@ -642,6 +644,7 @@ class MmuCalibrator:
     def note_load_telemetry(self, bowden_length, bowden_move_ratio, bowden_travel):
         self.mmu.log_error(f"note_load_telemetry(bowden_length={bowden_length}, bowden_move_ratio={bowden_move_ratio}, bowden_travel={bowden_travel})")
         return
+# PAUL IMPORTANT: bowden_move_ratio can now be None. 
 
 # PAUL TODO...
 #        homing_delta = None
@@ -654,6 +657,7 @@ class MmuCalibrator:
     def note_unload_telemetry(self, bowden_length, bowden_move_ratio, bowden_travel):
         self.mmu.log_error(f"note_unload_telemetry(bowden_length={bowden_length}, bowden_move_ratio={bowden_move_ratio}, bowden_travel={bowden_travel})")
         return
+ # PAUL ratio, homing_buffer
 
 # PAUL TODO...
 #        homing_delta = None
@@ -1356,8 +1360,8 @@ class MmuCalibrateToolheadCommand(BaseCommand):
                 mmu.calibrating = True
                 mmu._initialize_filament_position(dwell=True)
                 overshoot = mmu._load_gate(allow_retry=False)
-                _,_ = mmu._load_bowden(start_pos=overshoot)
-                _,_ = mmu._home_to_extruder(mmu_unit.p.extruder_homing_max)
+                mmu._load_bowden(start_pos=overshoot)
+                mmu._home_to_extruder(mmu_unit.p.extruder_homing_max)
 
                 if cut:
                     mmu.log_always("Measuring blade cutter postion (with filament fragment)...")

@@ -143,7 +143,7 @@ class MmuCheckGateCommand(BaseCommand):
                                             mmu.log_info("Gate %d - Filament detected. Marked available" % gate)
                                         mmu._set_gate_status(gate, max(mmu.gate_status[gate], GATE_AVAILABLE))
                                         try:
-                                            _,_ = mmu._unload_gate()
+                                            mmu._unload_gate()
                                         except MmuError as ee:
                                             raise MmuError("Failure during check gate %d %s:\n%s" % (gate, "(T%d)" % tool if tool >= 0 else "", str(ee)))
                                     except MmuError as ee:

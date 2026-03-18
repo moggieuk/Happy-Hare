@@ -38,9 +38,6 @@ class MmuFilamentWorkflow:
         """
         Preload filament at the selected gate using the least invasive strategy available.
 
-        Args:
-            None.
-
         Returns:
             None. Updates gate state in place or raises MmuError when preload fails.
         """
@@ -73,7 +70,7 @@ class MmuFilamentWorkflow:
                     self._load_gate(allow_retry=False)
                     self._check_pending_spool_id(self.gate_selected) # Have spool_id ready?
                     self.log_always("Parking...")
-                    _,_ = self._unload_gate()
+                    self._unload_gate()
                     self.log_always("Filament detected and parked in gate %d" % self.gate_selected)
                     return
                 except MmuError as ee:
@@ -207,7 +204,7 @@ class MmuFilamentWorkflow:
             extra_homing: Additional homing distance budget. None indicates recovery mode.
 
         Returns:
-            tuple[float, float]: Actual homing distance performed and expected homing distance.
+            Actual homing distance required to reach gate homing point (excludes parking movement)
         """
         u = self.mmu_unit()
 
@@ -217,22 +214,21 @@ class MmuFilamentWorkflow:
 
         # Figure out homing buffer
         recovery = False
-        if extra_homing is None:
+        if extra_homing is None: # Means recovery operation
             recovery = True
             expected_homing = u.calibrator.get_bowden_length()
         else:
             expected_homing = extra_homing
         homing_max = expected_homing + u.p.gate_homing_max
 
-        if recovery: # Means recovery operation
-
+        if recovery:
             # Safety step because this method is used as a defensive way to unload the entire bowden from unknown position
             # It handles the cases of filament still in extruder with no toolhead sensor or, if toolhead sensor is available,
             # the small window where filament is between extruder entrance and toolhead sensor
             length = self.p.toolhead_extruder_to_nozzle
             if self.sensor_manager.has_sensor(SENSOR_TOOLHEAD):
                 length -= self.p.toolhead_sensor_to_nozzle # Can safely reduce the base move distance because starting point in toolhead sensor
-            length += u.p.toolhead_unload_safety_margin # Add safety margin
+            length += u.p.toolhead_unload_safety_margin    # Add safety margin
 
             self.log_debug("Performing synced pre-unload bowden move of %.1fmm to ensure filament is not trapped in extruder" % length)
 
@@ -241,7 +237,13 @@ class MmuFilamentWorkflow:
 
             else:
                 endstop_name = self.sensor_manager.get_mapped_endstop_name(u.p.gate_homing_endstop)
-                actual, homed, _, _ = self.trace_filament_move("Bowden safety pre-unload move", -length, motor="gear+extruder", homing_move=-1, endstop_name=endstop_name)
+                homing_movement, homed, _, _ = self.trace_filament_move(
+                    "Bowden safety pre-unload move",
+                    -length,
+                    motor="gear+extruder",
+                    homing_move=-1,
+                    endstop_name=endstop_name,
+                )
 
                 # In case we ended up homing during the safety pre-unload, lets just do our parking and be done
                 # This can easily happen when your parking distance is configured to park the filament past the
@@ -249,9 +251,9 @@ class MmuFilamentWorkflow:
                 # "somewhere in the bowden tube"
                 if homed:
                     self._set_filament_pos_state(FILAMENT_POS_HOMED_GATE)
-                    self.trace_filament_move("Final parking", -u.p.gate_parking_distance) # PAUL TODO reverse sign
+                    self.trace_filament_move("Final parking", u.p.gate_parking_distance)
                     self._set_filament_pos_state(FILAMENT_POS_UNLOADED)
-                    return actual, expected_homing
+                    return homing_movement
 
         if u.p.gate_homing_endstop == SENSOR_ENCODER:
 
@@ -263,33 +265,38 @@ class MmuFilamentWorkflow:
 
                 success = self._reverse_home_to_encoder(homing_max)
                 if success:
-                    actual, park, _ = success
-                    _, _, measured, _ = self.trace_filament_move("Final parking", -park) # PAUL TODO reverse sign
+                    homing_movement, remaining_park = success
+                    _, _, measured, _ = self.trace_filament_move("Final parking", remaining_park)
 
                     # We don't expect any movement of the encoder unless it is free-spinning
                     if measured > self.encoder().movement_min(): # We expect 0, but relax the test a little (allow one pulse)
                         self.log_warning("Warning: Possible encoder malfunction (free-spinning) during final filament parking")
                     self._set_filament_pos_state(FILAMENT_POS_UNLOADED)
-                    return actual, expected_homing
+                    return homing_movement
 
                 msg = "did not clear the encoder after moving %.1fmm" % homing_max
 
         else:  # Using mmu_shared_exit or mmu_exit_N sensor
 
             endstop_name = self.sensor_manager.get_mapped_endstop_name(u.p.gate_homing_endstop)
-            actual, homed, _, _ = self.trace_filament_move("Reverse homing off %s sensor" % endstop_name, -homing_max, motor="gear", homing_move=-1, endstop_name=endstop_name)
+            homing_movement, homed, _, _ = self.trace_filament_move(
+                f"Reverse homing off {endstop_name} sensor",
+                -homing_max,
+                motor="gear",
+                homing_move=-1,
+                endstop_name=endstop_name,
+            )
             if homed:
                 self._set_filament_pos_state(FILAMENT_POS_HOMED_GATE)
-                self.trace_filament_move("Final parking", -u.p.gate_parking_distance) # PAUL TODO reverse sign
+                self.trace_filament_move("Final parking", u.p.gate_parking_distance)
                 self._set_filament_pos_state(FILAMENT_POS_UNLOADED)
-                return actual, expected_homing
+                return homing_movement
 
             msg = "did not home to sensor '%s' after moving %1.fmm" % (u.p.gate_homing_endstop, homing_max)
 
         raise MmuError("Failed to unload gate because %s" % msg)
 
 
-    # Shared with manual bowden calibration routine
     def _reverse_home_to_encoder(self, homing_max):
         """
         Step filament backward until it clears the encoder or the move budget is exhausted.
@@ -298,29 +305,28 @@ class MmuFilamentWorkflow:
             homing_max: Maximum distance available for the homing operation.
 
         Returns:
-            tuple[float, float, float] or None: Actual reverse travel, final parking distance, and cumulative encoder delta, or None if the encoder was not cleared.
+            tuple[float, float] or None: Actual homing movement, final remaining parking distance or None if the filament didn't clear the encoder
         """
         u = self.mmu_unit()
 
-        emss = u.p.encoder_move_step_size
-        max_steps = int(math.ceil(homing_max / emss))
-        delta = 0.
-        actual = 0.
+        step_size = u.p.encoder_move_step_size
+        max_steps = int(math.ceil(homing_max / step_size))
+        homing = 0.0
+
         for i in range(max_steps):
-            msg = "Unloading step #%d from encoder" % (i+1)
-            sactual, _, _, sdelta = self.trace_filament_move(msg, -emss)
-            delta += sdelta
-            actual -= sactual
-            # Large enough delta here means we are out of the encoder
-            if sdelta >= emss * 0.2: # 20 %
-                actual -= sdelta
-                park = u.p.gate_parking_distance - sdelta # will be between 8 and 20mm (for 23mm gate_parking_distance, 15mm step)
-                return actual, park, delta
-        self.log_debug("Filament did not clear encoder even after moving %.1fmm" % (emss * max_steps))
+            sactual, _, _, sdelta = self.trace_filament_move(f"Unloading step #{i + 1} from encoder", -step_size,)
+            homing -= sactual
+
+            # Large enough step delta here means we are out of the encoder
+            if sdelta >= step_size * 0.2:  # 20 %
+                homing -= sdelta # Reduce homing movement by the overshoot
+                remaining_park = -(u.p.gate_parking_distance - sdelta) # E.g. Should be between 8 and 20mm (for 23mm gate_parking_distance, 15mm step)
+                return homing, remaining_park
+
+        self.log_debug(f"Filament did not clear encoder even after moving {step_size * max_steps:.1f}mm")
         return None
 
 
-    # Shared gate functions to deduplicate logic
     def _validate_gate_config(self, direction):
         """
         Validate that the configured gate homing mechanism is supported and available.
@@ -346,20 +352,22 @@ class MmuFilamentWorkflow:
             raise MmuError("Unsupported gate endstop %s" % u.p.gate_homing_endstop)
 
 
-    # Fast load of filament in bowden, usually the full length but if 'full' is False a specific length can be specified
-    # Note that filament position will be measured from the gate "parking position" and so will be the gate_parking_distance
-    # plus any overshoot. The start of the bowden move is from the parking homing point.
-    # Returns ratio of measured movement to real movement IF it is "clean" and could be used for auto-calibration else 0
     def _load_bowden(self, length=None, start_pos=0.):
         """
         Perform the fast bowden load portion between the gate and the extruder area.
+        Usually the full length but if 'full' is False a specific length can be specified
+        Note that filament position will be measured from the gate "parking position" and so
+        will be the gate_parking_distance plus any overshoot.
+        The start of the bowden move is from the parking homing point.
 
         Args:
             length: Requested bowden travel distance. When omitted, the calibrated bowden length is used.
             start_pos: Distance already consumed before the bowden move begins, such as gate overshoot.
 
         Returns:
-            tuple[float, float]: Usable move-to-measurement ratio and any homing buffer reserved for later stages.
+            tuple[float, float]:
+              - Ratio of measured load movement to commanded movement, used for calibration and telemetry (None for invalid)
+              - The distance not yet moved and reserved for homing buffer in later stages.
         """
         u = self.mmu_unit()
 
@@ -377,21 +385,25 @@ class MmuFilamentWorkflow:
 
         try:
             # Do we need to reduce by buffer amount to ensure we don't overshoot homing sensor
-            homing_buffer = 0.
+            extruder_homing_buffer = 0.
             if full:
                 # We will need some buffer space if we are intending to home
-                if self._must_buffer_extruder_homing():
+                if (
+                    self._must_home_to_extruder() and
+                    u.p.extruder_homing_endstop != SENSOR_EXTRUDER_COLLISION
+                ):
                     # Calculate the anticipated homing distance to the extruder
                     # (how much to reduce the fast move portion)
-                    homing_buffer = bowden_length * ((100 - u.p.bowden_fast_load_portion) / 100)
+                    extruder_homing_buffer = bowden_length * ((100 - u.p.bowden_fast_load_portion) / 100)
 
                     # Further reduce to compensate for distance from extruder entry sensor to extruder gear
                     # because the bowden length is always recorded as distance to extruder gear
                     if u.p.extruder_homing_endstop == SENSOR_EXTRUDER_ENTRY:
-                        homing_buffer -= self.p.toolhead_entry_to_extruder
+                        extruder_homing_buffer -= self.p.toolhead_entry_to_extruder
 
-                length -= homing_buffer # Reduce fast move distance
+                length -= extruder_homing_buffer # Reduce fast move distance
 
+            ratio = None
             if length > 0:
                 self.log_debug("Loading bowden tube")
                 self._set_filament_direction(DIRECTION_LOAD)
@@ -415,7 +427,7 @@ class MmuFilamentWorkflow:
 
                 # Encoder based validation test
                 if self._can_use_encoder() and delta >= u.p.bowden_allowable_load_delta and not self.calibrating:
-                    ratio = 0. # Not considered valid for auto-calibration
+                    ratio = None # Not considered valid for auto-calibration
                     # Correction attempts to load the filament according to encoder reporting
                     if u.p.bowden_apply_correction:
                         for i in range(2):
@@ -425,32 +437,48 @@ class MmuFilamentWorkflow:
                                 delta = d
                                 self.log_debug("Correction load move was necessary, encoder now measures %.1fmm" % self.get_encoder_distance())
                             else:
-                                self.log_debug("Correction load complete, delta %.1fmm is less than 'bowden_allowable_unload_delta' (%.1fmm)" % (delta, u.p.bowden_allowable_load_delta))
+                                self.log_debug(
+                                    "Correction load complete, "
+                                    f"delta {delta:.1f}mm is less than "
+                                    f"'bowden_allowable_unload_delta' ({u.p.bowden_allowable_load_delta:.1f}mm)"
+                                )
                                 break
                         self._set_filament_pos_state(FILAMENT_POS_IN_BOWDEN)
                         if delta >= u.p.bowden_allowable_load_delta:
-                            self.log_warning("Warning: Excess slippage was detected in bowden tube load afer correction moves. Gear moved %.1fmm, Encoder measured %.1fmm. See mmu.log for more details"% (length, length - delta))
+                            self.log_warning(
+                                "Warning: Excess slippage was detected in bowden tube load after correction moves. "
+                                f"Gear moved {length:.1f}mm, Encoder measured {length - delta:.1f}mm. "
+                                "See mmu.log for more details"
+                            )
                     else:
-                        self.log_warning("Warning: Excess slippage was detected in bowden tube load but 'bowden_apply_correction' is disabled. Gear moved %.1fmm, Encoder measured %.1fmm. See mmu.log for more details" % (length, length - delta))
+                        self.log_warning(
+                            "Warning: Excess slippage was detected in bowden tube load but "
+                            "'bowden_apply_correction' is disabled. "
+                            f"Gear moved {length:.1f}mm, Encoder measured {length - delta:.1f}mm. "
+                            "See mmu.log for more details"
+                        )
 
                     if delta >= u.p.bowden_allowable_load_delta:
-                        self.log_debug("Possible causes of slippage:\nCalibration ref length too long (hitting extruder gear before homing)\nCalibration ratio for gate is not accurate\nMMU gears are not properly gripping filament\nEncoder reading is inaccurate\nFaulty servo")
+                        self.log_debug(
+                            "Possible causes of slippage:\n"
+                            "Calibration ref length too long (hitting extruder gear before homing)\n"
+                            "Calibration ratio for gate is not accurate\n"
+                            "MMU gears are not properly gripping filament\n"
+                            "Encoder reading is inaccurate\n"
+                            "Faulty servo"
+                        )
 
                 self._random_failure() # Testing
                 self.movequeues_wait()
-            else:
-                # No bowden movement required
-                ratio = 1.
 
             if full:
                 self._set_filament_pos_state(FILAMENT_POS_END_BOWDEN)
+
             elif self.filament_pos != FILAMENT_POS_IN_BOWDEN:
                 self._set_filament_pos_state(FILAMENT_POS_IN_BOWDEN)
-                ratio = 0.
+                ratio = None
 
-            # Return the ratio of move vs encoder measurement and the amount of buffer space (under load)
-            # This is used for auto-calibration and for determining how far left to extruder
-            return ratio, homing_buffer
+            return ratio, extruder_homing_buffer
 
         finally:
             self.bowden_start_pos = None
@@ -464,7 +492,9 @@ class MmuFilamentWorkflow:
             length: Requested bowden travel distance. When omitted, the calibrated bowden length is used.
 
         Returns:
-            float: Ratio of measured unload movement to commanded movement, used for calibration and telemetry.
+            tuple[float, float]:
+              - Ratio of measured unload movement to commanded movement, used for calibration and telemetry (None for invalid)
+              - The distance not yet moved and reserved for homing buffer in later stages.
         """
         u = self.mmu_unit()
 
@@ -480,6 +510,7 @@ class MmuFilamentWorkflow:
         length -= gate_homing_buffer
 
         try:
+            ratio = None
             if length > 0:
                 self.log_debug("Unloading bowden tube")
                 self._set_filament_direction(DIRECTION_UNLOAD)
@@ -524,70 +555,70 @@ class MmuFilamentWorkflow:
 
                 # Encoder based validation test
                 if self._can_use_encoder() and delta >= u.p.bowden_allowable_unload_delta and not self.calibrating:
-                    ratio = 0.
+                    ratio = None
                     # Only a warning because _unload_gate() will deal with it
                     self.log_warning("Warning: Excess slippage was detected in bowden tube unload. Gear moved %.1fmm, Encoder measured %.1fmm" % (length, length - delta))
 
                 self._random_failure() # Testing
                 self.movequeues_wait()
-            else:
-                # No bowden movement required
-                ratio = 1.
 
             if full:
                 self._set_filament_pos_state(FILAMENT_POS_START_BOWDEN)
+
             elif self.filament_pos != FILAMENT_POS_IN_BOWDEN:
                 self._set_filament_pos_state(FILAMENT_POS_IN_BOWDEN)
-                ratio = 0.
-            return ratio # For auto-calibration
+                ratio = None
+
+            return ratio, gate_homing_buffer
 
         finally:
             self.bowden_start_pos = None
 
 
-    def _home_to_extruder(self, homing_max):
+    def _home_to_extruder(self, extra_homing=0.):
         """
-        Home filament to the configured extruder-side reference point when required.
+        Home filament to the extruder gear
 
         Args:
-            homing_max: Maximum distance available for the homing operation.
+            extra_homing: Additional homing distance budget. None indicates recovery mode.
 
         Returns:
-            tuple[float or None, float]: Actual homing movement, if applicable, and any calibration adjustment that should be applied.
+            [float or None]
+              - Actual homing movement, if applicable required to reach the extruder gear else None
         """
         u = self.mmu_unit()
 
         self._set_filament_direction(DIRECTION_LOAD)
         self.selector().filament_drive()
-        measured = adjustment = 0.
+        measured = 0.
         homing_movement = None
+        homing_max = extra_homing + u.p.extruder_homing_max
 
         if u.p.extruder_homing_endstop == SENSOR_EXTRUDER_NONE:
+            # Shouldn't get here
             homed = True
 
         elif u.p.extruder_homing_endstop == SENSOR_EXTRUDER_COLLISION:
             if self.has_encoder():
-                actual, homed, measured, _ = self._home_to_extruder_collision_detection(homing_max)
-                homing_movement = actual
+                homing_movement, homed, measured, _ = self._home_to_extruder_collision_detection(homing_max)
             else:
                 raise MmuError("Cannot home to extruder using 'collision' method because encoder is not configured or disabled!")
 
         else:
             self.log_debug("Homing to extruder '%s' endstop, up to %.1fmm" % (u.p.extruder_homing_endstop, homing_max))
-            actual, homed, measured, _ = self.trace_filament_move("Homing filament to extruder endstop", homing_max, motor="gear", homing_move=1, endstop_name=u.p.extruder_homing_endstop)
+            homing_movement, homed, measured, _ = self.trace_filament_move("Homing filament to extruder endstop", homing_max, motor="gear", homing_move=1, endstop_name=u.p.extruder_homing_endstop)
             if homed:
-                self.log_debug("Extruder endstop '%s' reached after %.1fmm (measured %.1fmm)" % (u.p.extruder_homing_endstop, actual, measured))
+                self.log_debug("Extruder endstop '%s' reached after %.1fmm (measured %.1fmm)" % (u.p.extruder_homing_endstop, homing_movement, measured))
                 self._set_filament_pos_state(FILAMENT_POS_HOMED_ENTRY)
 
                 if u.p.extruder_homing_endstop == SENSOR_EXTRUDER_ENTRY:
                     # Close the fixed gap from the entry sensor to the extruder gear
-                    _, _, measured, _ = self.trace_filament_move("Aligning filament to extruder gear", self.p.toolhead_entry_to_extruder, motor="gear")
+                    actual, _, measured, _ = self.trace_filament_move("Aligning filament to extruder gear", self.p.toolhead_entry_to_extruder, motor="gear")
+                    homing_movement += actual
 
                 elif u.p.extruder_homing_endstop == SENSOR_COMPRESSION:
                     # Estimate the midpoint of buffer for accurate bowden length determination
-                    adjustment = -(u.sync_feedback.p.sync_feedback_buffer_range / 2.)
-
-            homing_movement = actual
+                    homing_movement -= (u.sync_feedback.p.sync_feedback_buffer_range / 2.)
 
         if not homed:
             self._set_filament_pos_state(FILAMENT_POS_END_BOWDEN)
@@ -598,19 +629,19 @@ class MmuFilamentWorkflow:
 
         self._set_filament_pos_state(FILAMENT_POS_HOMED_EXTRUDER)
 
-        return homing_movement, adjustment
+        return homing_movement
 
 
-    # Special extruder homing option for detecting the collision base on lack of encoder movement
     def _home_to_extruder_collision_detection(self, homing_max):
         """
-        Home to the extruder gear using encoder-based collision detection.
+        Home to the extruder gear using encoder-based collision detection based on lack of encoder movement
 
         Args:
             homing_max: Maximum distance available for the homing operation.
 
         Returns:
             tuple[float, bool, float, float]: Actual move, homing success flag, measured movement, and cumulative encoder delta.
+            Note that return Matches trace_filament_move() calls
         """
         u = self.mmu_unit()
 
@@ -935,7 +966,9 @@ class MmuFilamentWorkflow:
 
         if calibrated and bowden_move > bowden_length:
             bowden_move = bowden_length
-            self.log_warning("Warning: Restricting bowden unload length to calibrated value of %.1fmm" % bowden_length)
+            self.log_warning(
+                f"Warning: Restricting bowden load length to calibrated value of {bowden_length:.1f}mm"
+            )
 
         # Convenience flags
         full = (bowden_move == bowden_length)
@@ -945,11 +978,11 @@ class MmuFilamentWorkflow:
         self._initialize_filament_position(dwell=None) # Reset measurement to 0
 
         try:
-            must_home_extruder = False
+            must_home = False
             if not extruder_only:
                 current_action = self._set_action(ACTION_LOADING)
                 if full:
-                    must_home_extruder = self._must_home_to_extruder() or initial_calibration
+                    must_home = self._must_home_to_extruder() or initial_calibration
                 else:
                     skip_extruder = True
 
@@ -963,25 +996,37 @@ class MmuFilamentWorkflow:
             if not extruder_only:
                 self._display_visual_state()
 
-            homing_expected = 0.   # Amount of homing that would be expected (because bowden load is shortened)
-            bowden_move_ratio = 0. # Track mismatch in moved vs measured bowden distance
-            start_overshoot = 0.   # How far we overshoot the gate homing point (encoder based homing)
-            calibrated_bowden_length = None
+            start_overshoot = 0.     # How far we overshoot the gate homing point (encoder based homing)
             start_filament_pos = self.filament_pos
 
             # Note: Conditionals deliberately coded this way to match macro alternative
             if self.p.gcode_load_sequence and not initial_calibration:
                 self.log_debug("Calling external user defined loading sequence macro")
-                self.wrap_gcode_command("%s FILAMENT_POS=%d LENGTH=%.1f FULL=%d HOME_EXTRUDER=%d SKIP_EXTRUDER=%d EXTRUDER_ONLY=%d" % (self.p.load_sequence_macro, start_filament_pos, bowden_move, int(full), int(must_home_extruder), int(skip_extruder), int(extruder_only)), exception=True)
+                self.wrap_gcode_command(
+                    f"{self.p.load_sequence_macro} "
+                    f"FILAMENT_POS={start_filament_pos} "
+                    f"LENGTH={bowden_move:.1f} "
+                    f"FULL={int(full)} "
+                    f"HOME_EXTRUDER={int(must_home)} "
+                    f"SKIP_EXTRUDER={int(skip_extruder)} "
+                    f"EXTRUDER_ONLY={int(extruder_only)}",
+                    exception=True,
+                )
 
             elif extruder_only:
                 if start_filament_pos < FILAMENT_POS_EXTRUDER_ENTRY:
-                    _ = self._load_extruder(extruder_only=True)
+                    self._load_extruder(extruder_only=True)
                 else:
-                    raise MmuError("Cannot load extruder because filament already in extruder (state: %s). Unload first" % start_filament_pos)
+                    raise MmuError(
+                        f"Cannot load extruder because filament already in extruder "
+                        f"(state: {start_filament_pos}). Unload first"
+                    )
 
             elif start_filament_pos >= FILAMENT_POS_EXTRUDER_ENTRY:
-                raise MmuError("Cannot load because filament already in extruder (state: %s). Unload first" % start_filament_pos)
+                raise MmuError(
+                    f"Cannot load extruder because filament already in extruder "
+                    f"(state: {start_filament_pos}). Unload first"
+                )
 
             else:
                 if start_filament_pos <= FILAMENT_POS_UNLOADED:
@@ -989,20 +1034,34 @@ class MmuFilamentWorkflow:
 
                 if initial_calibration:
                     if u.p.extruder_homing_endstop in [SENSOR_EXTRUDER_NONE, SENSOR_EXTRUDER_COLLISION]:
-                        raise MmuError("Auto calibration is not possible with 'extruder_homing_endstop: %s'" % SENSOR_EXTRUDER_NONE)
+                        raise MmuError(
+                            f"Auto calibration is not possible with "
+                            f"'extruder_homing_endstop: {SENSOR_EXTRUDER_NONE}'"
+                        )
 
-                    self.log_warning("Auto calibrating bowden length on gate %d using %s as gate reference point" % (self.gate_selected, self._gate_homing_string()))
+                    self.log_warning(
+                        f"Auto calibrating bowden length on gate {self.gate_selected} "
+                        f"using {self._gate_homing_string()} as gate reference point"
+                    )
 
                     if self.sensor_manager.check_sensor(u.p.extruder_homing_endstop):
-                        raise MmuError("The %s sensor triggered before homing. Check filament and sensor operation" % u.p.extruder_homing_endstop)
+                        raise MmuError(
+                            f"The {u.p.extruder_homing_endstop} sensor triggered before homing. "
+                            "Check filament and sensor operation"
+                        )
 
                     # Slow homing move for the max permissible distance
                     homing_max = u.p.bowden_homing_max
-                    actual_homing, adjustment = self._home_to_extruder(homing_max)
-                    if actual_homing is None:
-                        raise MmuError("Failed to auto calibrate bowden because unable to home to extruder after moving %.1fmm\nIf you have a very long bowden you may need to increase 'bowden_homing_max'" % homing_max)
+                    homing_movement = self._home_to_extruder(homing_max)
+                    if homing_movement is None:
+                        raise MmuError(
+                            "Failed to auto calibrate bowden because unable to home to extruder "
+                            f"after moving {homing_max:.1f}mm\n"
+                            "If you have a very long bowden you may need to increase "
+                            "'bowden_homing_max'"
+                        )
 
-                    calibrated_bowden_length = start_overshoot + actual_homing + adjustment
+                    calibrated_bowden_length = start_overshoot + homing_movement
 
                     if not skip_extruder:
                         self._load_extruder()
@@ -1013,18 +1072,20 @@ class MmuFilamentWorkflow:
                 else:
 
                     # Normal non initial_calibration load ---------------------
-                    homing_buffer = 0.
-                    adjustment = 0.
-                    bowden_start = self._get_filament_position()
+                    bowden_travel = 0.
+                    extruder_homing_buffer = 0.
+                    bowden_move_ratio = None
 
                     if start_filament_pos < FILAMENT_POS_END_BOWDEN:
                         # Homing buffer is the shortfall in desired bowden move
-                        bowden_move_ratio, homing_buffer = self._load_bowden(bowden_move, start_pos=start_overshoot)
+                        bowden_move_ratio, extruder_homing_buffer = self._load_bowden(bowden_move, start_pos=start_overshoot)
+                        bowden_travel = bowden_move - extruder_homing_buffer
 
                     if start_filament_pos < FILAMENT_POS_HOMED_EXTRUDER:
-                        if must_home_extruder:
-                            actual_homing, adjustment = self._home_to_extruder(homing_buffer + u.p.extruder_homing_max)
-                            homing_buffer = 0. # Don't reuse
+                        if must_home:
+                            homing_movement = self._home_to_extruder(extruder_homing_buffer)
+                            bowden_travel += homing_movement
+                            extruder_homing_buffer = 0. # Don't reuse
 
                         elif self.sensor_manager.has_sensor(SENSOR_TOOLHEAD):
                             pass # _load_extruder() will consume the homing buffer in next step
@@ -1033,13 +1094,12 @@ class MmuFilamentWorkflow:
                             # We are not homing so will just complete the bowden move with a slower (after movement)
                             speed = u.p.gear_short_move_speed
                             accel = u.p.gear_short_move_accel
-                            _, _, _, delta = self.trace_filament_move("Slow move to extruder entrance", homing_buffer, motor="gear")
-                            homing_buffer = 0. # Don't reuse
-
-                    bowden_travel = self._get_filament_position() - bowden_start + adjustment
+                            _, _, _, delta = self.trace_filament_move("Slow move to extruder entrance", extruder_homing_buffer, motor="gear", speed=speed, accel=accel)
+                            bowden_travel += extruder_homing_buffer
+                            extruder_homing_buffer = 0. # Don't reuse
 
                     if not skip_extruder:
-                        bowden_extra = self._load_extruder(extra_homing=homing_buffer)
+                        bowden_extra = self._load_extruder(extra_homing=extruder_homing_buffer)
                         if bowden_extra is not None:
                             # This means we employed homing to the toolhead sensor so adjust effective bowden move
                             bowden_travel += bowden_extra
@@ -1104,9 +1164,6 @@ class MmuFilamentWorkflow:
         """
         Determine whether a dedicated extruder homing step is required before loading.
 
-        Args:
-            None.
-
         Returns:
             bool: True when a dedicated extruder homing move is required before final loading.
         """
@@ -1117,24 +1174,6 @@ class MmuFilamentWorkflow:
         toolhead_sensor_missing = not self.sensor_manager.has_sensor(SENSOR_TOOLHEAD)
 
         return has_extruder_endstop and (force_homing or toolhead_sensor_missing)
-
-
-    def _must_buffer_extruder_homing(self):
-        """
-        Determine whether fast bowden loading must reserve distance for extruder homing.
-
-        Args:
-            None.
-
-        Returns:
-            bool: True when fast bowden loading must leave room for a later homing move.
-        """
-        u = self.mmu_unit()
-
-        if not self._must_home_to_extruder():
-            return False
-
-        return u.p.extruder_homing_endstop != SENSOR_EXTRUDER_COLLISION
 
 
     def unload_sequence(self, bowden_move=None, check_state=False, form_tip=None, extruder_only=False):
@@ -1151,12 +1190,11 @@ class MmuFilamentWorkflow:
             None. Performs the unload workflow, updates state and telemetry, or raises MmuError on failure.
         """
         u = self.mmu_unit()
-
         self.movequeues_wait()
 
         bowden_length = u.calibrator.get_bowden_length() # -1 if not calibrated yet
         calibrated = (bowden_length >= 0)
-        if bowden_length < 0:
+        if not calibrated:
             bowden_length = u.p.bowden_homing_max # Special case - if not calibrated then apply the max possible bowden length
 
         # Default bowden move if not specified is full length
@@ -1165,10 +1203,9 @@ class MmuFilamentWorkflow:
 
         if calibrated and bowden_move > bowden_length:
             bowden_move = bowden_length
-            self.log_warning("Warning: Restricting bowden unload length to calibrated value of %.1fmm" % bowden_length)
-
-        # How much to reduce the fast move portion
-        gate_homing_buffer = bowden_move * ((100 - u.p.bowden_fast_unload_portion) / 100)
+            self.log_warning(
+                f"Warning: Restricting bowden unload length to calibrated value of {bowden_length:.1f}mm"
+            )
 
         # Convenience flags
         full = (bowden_move == bowden_length)
@@ -1236,9 +1273,6 @@ class MmuFilamentWorkflow:
                     self.wrap_gcode_command(self.p.post_form_tip_macro, exception=True, wait=True)
 
             # Note: Conditionals deliberately coded this way to match macro alternative
-            #PAUL homing_total = None    # Track how much homing is done for calibrated bowden length optimization
-            expected_homing = 0.   # Amount of homing that would be expected (because bowden load is shortened)
-            bowden_move_ratio = 0. # Track mismatch in moved vs measured bowden distance
             start_filament_pos = self.filament_pos
             unload_to_buffer = (start_filament_pos >= FILAMENT_POS_END_BOWDEN and not extruder_only)
 
@@ -1274,13 +1308,16 @@ class MmuFilamentWorkflow:
                     (start_filament_pos >= FILAMENT_POS_HOMED_GATE and not full)
                 ):
                     # Fast unload of bowden, then unload gate
-                    bowden_move_ratio = self._unload_bowden(bowden_move - gate_homing_buffer)
-                    actual_homing, expected_homing = self._unload_gate(gate_homing_buffer)
-                    # PAUL homing_total += actual_homing
+                    bowden_move_ratio, gate_homing_buffer = self._unload_bowden(bowden_move)
+                    homing_movement = self._unload_gate(gate_homing_buffer)
+                    bowden_travel = bowden_move - gate_homing_buffer + homing_movement
+
+                    # Notify autotune manager
+                    u.calibrator.note_unload_telemetry(bowden_move, bowden_move_ratio, bowden_travel)
 
                 elif start_filament_pos >= FILAMENT_POS_HOMED_GATE:
                     # We have to do slow unload because we don't know exactly where we are
-                    _,_ = self._unload_gate(bowden_move)
+                    self._unload_gate(bowden_move)
 
             # Set future "from buffer" flag (also used for faster loading speed)
             if unload_to_buffer and self.gate_status[self.gate_selected] != GATE_EMPTY:
@@ -1306,11 +1343,6 @@ class MmuFilamentWorkflow:
                 not_seen = u.p.gate_parking_distance + self._get_encoder_dead_space() + (u.p.toolhead_unload_safety_margin if not synced_extruder_unload else 0.)
                 msg += " {1}(adjusted encoder: %.1fmm){0}" % -(final_encoder_pos + not_seen)
             self.log_info(msg, color=True)
-
-            # Notify autotune manager
-            if full and not extruder_only and not self.p.gcode_unload_sequence:
-                # PAUL TODO u.calibrator.note_unload_telemetry(bowden_move_ratio, homing_total, expected_homing)
-                pass
 
             # POST_UNLOAD user defined macro
             if macros_and_track:
@@ -1484,12 +1516,6 @@ class MmuFilamentWorkflow:
     def purge_standalone(self):
         """
         Run the configured standalone purge macro, if one is available.
-
-        Args:
-            None.
-
-        Returns:
-            None. Runs the purge macro when configured and available.
         """
         u = self.mmu_unit()
 
@@ -1922,9 +1948,6 @@ class MmuFilamentWorkflow:
         """
         Check whether filament is present anywhere in the MMU path.
 
-        Args:
-            None.
-
         Returns:
             bool or None: True when filament is detected in the MMU path, False when not detected, or None when no test is possible.
         """
@@ -1942,9 +1965,6 @@ class MmuFilamentWorkflow:
     def check_filament_in_gate(self):
         """
         Check whether filament is present at the currently selected gate.
-
-        Args:
-            None.
 
         Returns:
             bool or None: True when filament is detected at the selected gate, False when not detected, or None when no test is possible.
@@ -1964,9 +1984,6 @@ class MmuFilamentWorkflow:
         """
         Check whether filament runout has been detected.
 
-        Args:
-            None.
-
         Returns:
             bool or None: True when runout is detected, False when filament appears present, or None when no test is possible.
         """
@@ -1983,12 +2000,8 @@ class MmuFilamentWorkflow:
 
 
     def check_filament_in_extruder(self):
-        # First double check extruder entry sensor if fitted
         """
         Check whether filament is still present in the extruder path.
-
-        Args:
-            None.
 
         Returns:
             bool or None: True when filament is believed to be in the extruder path, False when not present, or None when no test is possible.
@@ -2014,9 +2027,6 @@ class MmuFilamentWorkflow:
         distance from sensor to gears. Requires encoder
         Return None if test not possible
 
-        Args:
-            None.
-
         Returns:
             tuple[bool or None, float]: Detection result and encoder-measured movement from the probe retract.
         """
@@ -2039,9 +2049,6 @@ class MmuFilamentWorkflow:
     def buzz_gear_motor(self):
         """
         Buzz the gear motor briefly to infer filament presence from encoder movement.
-
-        Args:
-            None.
 
         Returns:
             bool or None: Encoder-based filament detection result, or None when the test is unavailable.
@@ -2180,9 +2187,6 @@ class MmuFilamentWorkflow:
     def wrap_sync_gear_to_extruder(self):
         """
         Preserve sync and grip state across a block that temporarily changes them.
-
-        Args:
-            None.
 
         Yields:
             self while nested operations may temporarily alter sync and grip state.
