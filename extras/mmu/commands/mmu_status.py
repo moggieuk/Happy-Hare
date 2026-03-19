@@ -79,7 +79,7 @@ class MmuStatusCommand(BaseCommand):
             else:
                 lines.append(f"{UI_SOLID_CIRCLE} {unit.mmu_vendor} v{unit.mmu_version_string}")
 
-            first, last = unit.gate_range()
+            first, last = unit.gate_bounds()
             lines.append(f" (gates {first}-{last}).")
             lines.append(f" Connected to extruder: {unit.extruder_name}\n")
 

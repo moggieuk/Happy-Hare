@@ -608,10 +608,10 @@ class MmuUnit:
             return True
         return (self.first_gate <= gate < self.first_gate + self.num_gates)
 
-    def gate_range(self):
+    def gate_bounds(self):
         return self.first_gate, self.first_gate + self.num_gates - 1
 
-    def gate_list(self):
+    def gate_range(self):
         return list(range(self.first_gate, self.first_gate + self.num_gates))
 
     def local_gate(self, gate, force_physical=False):

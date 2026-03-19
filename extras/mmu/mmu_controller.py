@@ -30,7 +30,6 @@ from .mmu_led_manager           import MmuLedManager
 from .mmu_filament_workflow     import MmuFilamentWorkflow
 from .commands                  import COMMAND_REGISTRY
 from .commands.mmu_base_command import *
-from .unit.mmu_calibrator       import MmuCalibrator # For check_if_not_calibrated()
 
 
 # Main klipper module

@@ -300,4 +300,5 @@ class BaseCommand:
         return False
 
     def check_if_not_calibrated(self, required, silent=False, check_gates=None, use_autotune=True):
-        return MmuCalibrator.check_if_not_calibrated(self.mmu, required, silent=silent, check_gates=check_gates, use_autotune=use_autotune)
+        calibrator = self.mmu.mmu_unit().calibrator
+        return calibrator.check_if_not_calibrated(required, silent=silent, check_gates=check_gates, use_autotune=use_autotune)

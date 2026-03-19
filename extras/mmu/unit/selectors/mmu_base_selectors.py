@@ -353,7 +353,7 @@ class MmuSoaktestSelectorCommand(BaseCommand):
         home = bool(gcmd.get_int('HOME', 0))
 
         # Test and report using logical system-wide gate numbering (by design user never sees local gate numbers)
-        min_gate, max_gate = mmu_unit.gate_range()
+        min_gate, max_gate = mmu_unit.gate_bounds()
         mmu.log_always("Soak testing selector on %s (gates %d-%d) for %s iterations..." % (mmu_unit.name, min_gate, max_gate, loops))
 
         # We test fully by going through the MMU controller and not to the selector directly

@@ -23,7 +23,6 @@ from ..homing             import HomingMove
 # Happy Hare imports
 from .mmu_constants       import *
 from .mmu_utils           import MmuError
-from .unit.mmu_calibrator import MmuCalibrator # For check_if_not_calibrated()
 
 
 class MmuFilamentWorkflow:
@@ -1862,7 +1861,9 @@ class MmuFilamentWorkflow:
         Returns:
             None. Logs recovery guidance based on current calibration and filament state.
         """
-        if not MmuCalibrator.check_if_not_calibrated(self, CALIBRATED_ALL, silent=None, use_autotune=use_autotune):
+        u = self.mmu_unit()
+
+        if not u.calibrator.check_if_not_calibrated(CALIBRATED_ALL, silent=None, use_autotune=use_autotune):
             if self.filament_pos != FILAMENT_POS_UNLOADED and TOOL_GATE_UNKNOWN in [self.gate_selected, self.tool_selected]:
                 self.log_error("Filament detected but tool/gate is unknown. Please use MMU_RECOVER GATE=xx to correct state")
             elif self.filament_pos not in [FILAMENT_POS_LOADED, FILAMENT_POS_UNLOADED]:

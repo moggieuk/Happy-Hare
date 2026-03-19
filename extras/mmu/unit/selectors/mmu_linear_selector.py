@@ -699,7 +699,7 @@ class MmuCalibrateSelectorCommand(BaseCommand):
         if gate is None and bypass:
             gate = TOOL_GATE_BYPASS
 
-        min_gate, max_gate = mmu_unit.gate_range()
+        min_gate, max_gate = mmu_unit.gate_bounds()
 
         if gate is not None and not mmu_unit.manages_gate(gate):
             raise gcmd.error("Gate %d is not managed by %s (range=%d-%d)" % (gate, mmu_unit.name, min_gate, max_gate))
