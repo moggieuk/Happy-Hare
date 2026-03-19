@@ -78,7 +78,6 @@ class LinearServoSelector(LinearSelector):
     PARAMS_CLS = LinearServoSelectorParameters
 
     def __init__(self, config, mmu_unit, params):
-        logging.info("PAUL: === init() for LinearServoSelector: PARAMS_CLS=%s" % self.PARAMS_CLS)
         super().__init__(config, mmu_unit, params)
 
         self.servo = LinearSelectorServo(config, mmu_unit, self)
@@ -88,16 +87,13 @@ class LinearServoSelector(LinearSelector):
 
     def handle_connect(self):
         super().handle_connect()
-        logging.info("PAUL: =========== handle_connect: LinearServoSelector")
         self.servo.handle_connect()
 
     def handle_ready(self):
         super().handle_ready()
-        logging.info("PAUL: =========== handle_ready: LinearServoSelector")
 
     def handle_disconnect(self):
         super().handle_disconnect()
-        logging.info("PAUL: =========== handle_disconnect: LinearServoSelector")
 
     def filament_drive(self, buzz_gear=True):
         return self.servo.servo_down(buzz_gear=buzz_gear)
@@ -190,7 +186,6 @@ class LinearSelectorServo:
         Merges any persisted VARS_MMU_SELECTOR_SERVO_ANGLES values into the configured
         servo angle map.
         """
-        logging.info("PAUL: =========== handle_connect: LinearSelectorServo")
         self.mmu = self.mmu_unit.mmu_machine.mmu_controller # Shared MMU controller class
         self.var_manager = self.mmu_machine.var_manager
 
