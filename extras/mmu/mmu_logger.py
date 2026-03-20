@@ -122,11 +122,14 @@ class MmuLogger:
     def log_to_file(self, msg, prefix='> '):
         self.log("%s%s" % (prefix, msg))
 
-    def log_assertion(self, msg, color=False):
+    def log_assertion(self, msg, exc_info=None, color=False):
         html_msg, msg = self._color_message(msg) if color else (msg, msg)
 
         # Capture stack trace (exclude this frame for cleaner output)
-        stack = "".join(traceback.format_stack()[:-1])
+        if exc_info is None:
+            stack = "".join(traceback.format_stack()[:-1]) # Exclude this frame
+        else:
+            stack = "".join(traceback.format_exception(*exc_info))
 
         self.log(msg)
         self.log("Stack trace:\n%s" % stack)

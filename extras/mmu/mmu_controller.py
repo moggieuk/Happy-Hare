@@ -14,7 +14,7 @@
 #
 
 #import gc, sys, ast, random, logging, time, contextlib, math, os.path, re, unicodedata, traceback
-import logging, ast, random, time, contextlib, math, re, unicodedata, traceback
+import logging, sys, ast, random, time, contextlib, math, re, unicodedata, traceback
 
 from itertools                  import repeat
 
@@ -723,8 +723,7 @@ class MmuController(MmuFilamentWorkflow):
             self.log_warning(f"PAUL ** : gate={self.gate_selected}, tool={self.tool_selected}, unit={self.unit_selected}, fil_pos={self.filament_pos}")
 
         except Exception as e:
-            logging.error(traceback.format_exc())
-            self.log_assertion('Error booting up MMU: %s' % str(e))
+            self.log_assertion(f"Error booting up MMU: {e}", exc_info=sys.exc_info())
 
         # Restart hook
         self.mmu_macro_event(MACRO_EVENT_RESTART)
@@ -1267,8 +1266,8 @@ class MmuController(MmuFilamentWorkflow):
     def log_to_file(self, msg, prefix='> '):
         self.logger.log_to_file(msg, prefix)
 
-    def log_assertion(self, msg, color=False):
-        self.logger.log_assertion(msg, color)
+    def log_assertion(self, msg, exc_info=None, color=False):
+        self.logger.log_assertion(msg, exc_info, color)
 
     def log_error(self, msg, color=False):
         self.logger.log_error(msg, color)

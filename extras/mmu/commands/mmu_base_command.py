@@ -137,6 +137,14 @@ class BaseCommand:
                     mmu_unit = mmu_machine.get_mmu_unit_by_index(unit_index)
                 except (ValueError, TypeError):
                     pass
+
+        elif mmu_machine.num_units == 1:
+            # Default to unit 0
+            mmu_unit = mmu_machine.get_mmu_mmu_unit_by_index(0)
+
+        if mmu_unit is None:
+            raise gcmd.error("UNIT parameter is required because you have more than one!")
+
         return mmu_unit
 
 
@@ -281,16 +289,17 @@ class BaseCommand:
             return True
         return False
 
-    def check_has_encoder(self):
-        if not self.mmu.has_encoder():
+    def check_if_no_encoder(self, mmu_unit=None):
+        mmu_unit = mmu_unit or self.mmu.mmu_unit()
+        if not mmu_unit.has_encoder():
             self.mmu.log_error("No encoder fitted to this MMU unit")
             return True
         return False
 
-    def check_has_espooler(self):
-        if any(self.mmu.mmu.has_espooler(gate) for gate in range(self.mmu.num_gates)):
+    def check_if_no_espoolers(self):
+        if any(self.mmu.has_espooler(gate) for gate in range(self.mmu.num_gates)):
             return False
-        self.mmu.log_error("No espoolers fitted to this MMU unit")
+        self.mmu.log_error("No espoolers fitted")
         return True
 
     def check_if_spoolman_enabled(self):

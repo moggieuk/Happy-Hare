@@ -261,6 +261,8 @@ CALIBRATED_GEAR_RDS  = 0b10000 # rotation_distance for other gates (optional)
 CALIBRATED_ESSENTIAL = 0b01111
 CALIBRATED_ALL       = 0b11111
 
+UNCALIBRATED = -1              # Magic constant for uncalibrated rotation distance / bowden
+
 # Encoder runout/clog detection modes
 ENCODER_RUNOUT_DISABLED = 0
 ENCODER_RUNOUT_STATIC = 1

@@ -3,7 +3,7 @@
 # Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
-# Implements MMU_SENSOR_CLOG command
+# Mixins (base class) for various commands
 #       
 #   
 # (\_/) 

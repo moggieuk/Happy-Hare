@@ -41,17 +41,21 @@ class MmuEncoderCommand(BaseCommand):
             help_brief=self.HELP_BRIEF,
             help_params=self.HELP_PARAMS,
             help_supplement=self.HELP_SUPPLEMENT,
-            category=CATEGORY_GENERAL
+            category=CATEGORY_GENERAL,
+            per_unit=True
         )
 
-    def _run(self, gcmd):
+    def _run(self, gcmd, mmu_unit):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
+        self.mmu_unit = mmu_unit
         mmu = self.mmu
 
         if self.check_if_disabled(): return
-        if mmu.check_has_encoder(): return
+        if self.check_if_no_encoder(mmu_unit): return
+
         value = gcmd.get_float('VALUE', -1, minval=0.)
         enable = gcmd.get_int('ENABLE', -1, minval=0, maxval=1)
+
         if enable == 1:
             mmu.mmu_unit().sync_feedback.set_encoder_mode() # Reset to default mode
         elif enable == 0:
@@ -59,4 +63,5 @@ class MmuEncoderCommand(BaseCommand):
         elif value >= 0.:
             mmu.set_encoder_distance(value)
             return
+
         mmu.log_info(mmu._get_encoder_summary(detail=True))

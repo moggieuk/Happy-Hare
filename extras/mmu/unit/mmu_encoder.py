@@ -30,7 +30,7 @@ CHECK_MOVEMENT_TIMEOUT = 0.250
 class MmuEncoder:
 
     def __init__(self, config, mmu_unit, params):
-        logging.info("PAUL: init() for MmuEncoder")
+        logging.info("PAUL: ++++++ init() for MmuEncoder")
         self.config = config
         self.mmu_unit = mmu_unit                # This physical MMU unit
         self.mmu_machine = mmu_unit.mmu_machine # Entire Logical combined MMU
@@ -105,26 +105,21 @@ class MmuEncoder:
 
 
     def _handle_ready(self):
-        logging.info("PAUL: handle_ready: MmuEncoder")
+        logging.info("PAUL: ==== handle_ready: MmuEncoder")
         # Read calibrated encoder resolution if available
         cal_res = self.mmu_machine.var_manager.get(VARS_MMU_ENCODER_RESOLUTION, None, namespace=self.name)
         if cal_res:
             self.set_resolution(cal_res)
-            self.log_debug("Loaded saved resolution for encoder %s: %.4f" % (self.name, cal_res))
+            self.mmu.log_debug("Loaded saved resolution for encoder %s: %.4f" % (self.name, cal_res))
 
             for unit in self.connected_units:
-                logging.info("PAUL: calling mark_calibrated for unit %s" % unit.name)
-                unit.calibrator.mark_calibrated(unit, CALIBRATED_ENCODER)
-                logging.info("PAUL: done")
+                unit.calibrator.mark_calibrated(CALIBRATED_ENCODER)
         else:
             self.mmu.log_warning("Warning: Encoder resolution for %s was not found in mmu_vars.cfg. Probably not calibrated" % self.name)
 
         # Ensure correct starting FlowGuard mode and detection length
         for unit in self.connected_units:
-            logging.info("PAUL: calling set_encoder_mode for unit %s" % unit.name)
             unit.sync_feedback.set_encoder_mode() # PAUL PROBLEM this will callback set_mode()
-            logging.info("PAUL: done")
-
 
         self.extruder = self.printer.lookup_object(self.mmu_unit.extruder_name)
         self.last_extruder_pos = 0.
