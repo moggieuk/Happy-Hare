@@ -168,7 +168,6 @@ class MmuMachineParameters(TunableParametersBase):
 
 
     def __init__(self, config, mmu_machine):
-        logging.info("PAUL: init() for MmuMachineParameters")
         self._mmu_machine = mmu_machine
         super().__init__(config)
 

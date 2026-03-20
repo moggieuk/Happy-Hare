@@ -26,82 +26,98 @@ class CalibrationMixin(BaseCommand):
 
     def _calibrate_bowden_length_manual(self, approx_bowden_length):
         """
-        Bowden calibration - Method 1
+        Bowden calibration - Method 1 (MANUAL=1)
         This method of bowden calibration is done in reverse and is a fallback. The user inserts filament to the
-        actual extruder and we measure the distance necessary to home to the defined gate homing position
+        actual extruder gear and we measure the distance necessary to home to the defined gate homing position
         """
         mmu = self.mmu
         mmu_unit = self.mmu_unit
+        selector = mmu_unit.selector
+        gate = mmu.gate_selected
 
         try:
-            mmu.log_always("Calibrating bowden length on gate %d (manual method) using %s as gate reference point" % (mmu.gate_selected, mmu._gate_homing_string()))
+            endstop = mmu_unit.p.gate_homing_endstop
+            endstop_str = mmu._gate_homing_string()
+            mmu.log_always(f"Calibrating bowden length on gate {gate} (manual method) using {endstop_str} as gate reference point")
             mmu._set_filament_direction(DIRECTION_UNLOAD)
-            mmu.selector.filament_drive()
-            mmu.log_always("Finding %s endstop position..." % mmu_unit.p.gate_homing_endstop)
+            selector.filament_drive()
+            mmu.log_always(f"Finding {endstop} endstop position...")
             homed = False
 
-            if mmu_unit.p.gate_homing_endstop == SENSOR_ENCODER:
+            if endstop == SENSOR_ENCODER:
                 with mmu._require_encoder():
                     success = mmu._reverse_home_to_encoder(approx_bowden_length)
                     if success:
-                        actual,_ = success
                         homed = True
+                        homing_movement, remaining_park = success
+                        self.trace_filament_move("Final parking", remaining_park)
 
-            else: # Gate sensor... SENSOR_SHARED_EXIT is shared, but SENSOR_EXIT_PREFIX is specific
-                actual, homed, measured, _ = mmu.trace_filament_move(
-                    "Reverse homing off gate sensor",
+            else: # Gate sensor
+                if not mmu.sensor_manager.check_sensor(endstop):
+                    raise MmuError(
+                        f"The {mmu_unit.p.gate_homing_endstop} sensor was not triggered at start of movement. "
+                        f"Check sensor operation and that the filament was manually loaded to the extruder gear "
+                        f"before starting the calibration"
+                    )
+
+                homing_movement, homed, measured, _ = mmu.trace_filament_move(
+                    f"Reverse homing off gate endstop {endstop}",
                     -approx_bowden_length,
                     motor="gear",
                     homing_move=-1,
-                    endstop_name=mmu_unit.p.gate_homing_endstop,
+                    endstop_name=endstop,
                 )
+                self.trace_filament_move("Final parking", u.p.gate_parking_distance)
 
             if not homed:
                 raise MmuError("Did not home to gate sensor after moving %.1fmm" % approx_bowden_length)
 
-            actual = abs(actual)
-            mmu.log_always("Filament homed back to gate after %.1fmm movement" % actual)
-            mmu._unload_gate()
-            return actual
+            homing_movement = abs(homing_movement)
+            mmu.log_always("Filament homed back to gate after %.1fmm movement" % homing_movement)
+            return homing_movement
 
         except MmuError as ee:
-            raise MmuError("Calibration of bowden length on gate %d failed. Aborting because:\n%s" % (mmu.gate_selected, str(ee)))
+            raise MmuError(
+                f"Calibration of bowden length on gate {gate} failed. "
+                f"Aborting because:\n{ee}"
+            )
 
 
     def _calibrate_bowden_length_sensor(self, extruder_homing_max):
         """
         Bowden calibration - Method 2
-        Automatic one-shot homing calibration from gate to endstop
-          bowden_length = actual_moved + toolhead_entry_to_extruder
+        Automatic one-shot homing calibration from gate to endstop.
+        Supports extruder (entry) sensor and sync-feedback compression sensor
         """
         mmu = self.mmu
         mmu_unit = self.mmu_unit
+        gate = mmu.gate_selected
 
         try:
             mmu.log_always(
-                "Calibrating bowden length for gate %d using %s as gate reference point and %s as extruder homing point" %
-                (
-                    mmu.gate_selected,
-                    mmu._gate_homing_string(),
-                    mmu_unit.p.extruder_homing_endstop
-                )
+                f"Calibrating bowden length for gate {mmu.gate_selected} "
+                f"using {mmu._gate_homing_string()} as gate reference point "
+                f"and {mmu_unit.p.extruder_homing_endstop} as extruder homing point"
             )
+
             mmu._initialize_filament_position(dwell=True)
             overshoot = mmu._load_gate(allow_retry=False)
 
             if mmu_unit.p.extruder_homing_endstop in [SENSOR_EXTRUDER_ENTRY, SENSOR_COMPRESSION]:
                 if mmu.sensor_manager.check_sensor(mmu_unit.p.extruder_homing_endstop):
-                    raise MmuError("The %s sensor triggered before homing. Check filament and sensor operation" % mmu_unit.p.extruder_homing_endstop)
+                    raise MmuError(
+                        f"The {mmu_unit.p.extruder_homing_endstop} sensor triggered before homing. "
+                        "Check filament and sensor operation"
+                    )
 
-#PAUL            actual, extra = mmu._home_to_extruder(extruder_homing_max) # PAUL check this
             homing_distance = mmu._home_to_extruder(extruder_homing_max)
-            measured = mmu.get_encoder_distance(dwell=True) + mmu._get_encoder_dead_space()
-#PAUL            calibrated_length = round(overshoot + actual + extra, 1)
+            measured = mmu.get_encoder_distance(dwell=True) + mmu.get_encoder_dead_space()
+
             calibrated_length = round(overshoot + homing_distance, 1)
 
-            msg = "Filament homed to extruder after %.1fmm movement" % homing_distance
+            msg = f"Filament homed to extruder after {homing_distance:.1f}mm movement"
             if mmu.has_encoder():
-                msg += "\n(encoder measured %.1fmm)" % (measured - mmu_unit.p.gate_parking_distance)
+                msg += f"\n(encoder measured {(measured - mmu_unit.p.gate_parking_distance):.1f}mm)"
             mmu.log_always(msg)
 
             mmu._unload_bowden(calibrated_length) # Fast move
@@ -109,12 +125,15 @@ class CalibrationMixin(BaseCommand):
             return calibrated_length
 
         except MmuError as ee:
-            raise MmuError("Calibration of bowden length on gate %d failed. Aborting because:\n%s" % (mmu.gate_selected, str(ee)))
+            raise MmuError(
+                f"Calibration of bowden length on gate {gate} failed. "
+                f"Aborting because:\n{ee}"
+            )
 
 
     def _calibrate_bowden_length_collision(self, approximate_length, extruder_homing_max, repeats):
         """
-        Bowden calibration - Method 3
+        Bowden calibration - Method 3 (ENCODER based)
         Automatic calibration from gate to extruder entry sensor or collision with extruder gear (requires encoder)
         Allows for repeats to average restult which is essential with encoder collision detection
         """
@@ -135,12 +154,14 @@ class CalibrationMixin(BaseCommand):
             for i in range(repeats):
                 mmu._initialize_filament_position(dwell=True)
                 overshoot = mmu._load_gate(allow_retry=False)
-                mmu._load_bowden(approximate_length, start_pos=overshoot) # Get close to extruder homing point
+
+                # Get close to extruder homing point based on user guidance
+                mmu._load_bowden(approximate_length, start_pos=overshoot)
 
                 mmu.log_info("Finding extruder gear position (try #%d of %d)..." % (i+1, repeats))
                 mmu._home_to_extruder(extruder_homing_max)
                 actual = mmu._get_filament_position() - mmu_unit.p.gate_parking_distance
-                measured = mmu.get_encoder_distance(dwell=True) + mmu._get_encoder_dead_space()
+                measured = mmu.get_encoder_distance(dwell=True) + mmu.get_encoder_dead_space()
                 spring = selector.filament_release(measure=True) if mmu.has_encoder() else 0.
                 reference = actual - spring
 
@@ -240,7 +261,7 @@ class CalibrationMixin(BaseCommand):
                 encoder.set_resolution(resolution)
                 mmu.var_manager.set(VARS_MMU_ENCODER_RESOLUTION, round(resolution, 4), namespace=encoder.name, write=True)
                 mmu.log_always("Encoder calibration has been saved")
-                self.calibration_status |= CALIBRATED_ENCODER
+                calibrator.calibration_status |= CALIBRATED_ENCODER
 
         except MmuError as ee:
             # Add some more context to the error and re-raise
@@ -265,7 +286,7 @@ class CalibrationMixin(BaseCommand):
             pos_values, neg_values = [], []
             mmu.select_gate(gate)
             mmu._load_gate(allow_retry=False)
-            mmu.log_always("%s local gate %d over %.1fmm..." % ("Calibrating" if (gate > 0 and save) else "Validating calibration of", lgate, length))
+            mmu.log_always("%s gate %d over %.1fmm..." % ("Calibrating" if (gate > 0 and save) else "Validating calibration of", gate, length))
 
             if lgate == 0:
                 mmu.log_always(
@@ -307,11 +328,8 @@ class CalibrationMixin(BaseCommand):
 
             mmu.log_always(
                 f"Calibration move of {repeats * 2} x {length:.1f}mm, "
-                f"average encoder measurement: {mean:.1f}mm - Ratio is {ratio:.4f}"
-            )
-
-            mmu.log_always(
-                f"Calculated local gate {lgate} rotation_distance: {new_rd:.4f} "
+                f"average encoder measurement: {mean:.1f}mm - Ratio is {ratio:.4f}\n"
+                f"Calculated gate {gate} rotation_distance: {new_rd:.4f} "
                 f"(currently: {calibrator.get_gear_rd(gate):.4f})"
             )
 
@@ -323,7 +341,10 @@ class CalibrationMixin(BaseCommand):
                         calibrator.set_gear_rd(new_rd)
                         calibrator.update_gear_rd(new_rd, console_msg=True)
                 else:
-                    mmu.log_always("Calibration ignored because it is not considered valid (>20% difference from local gate 0)")
+                    mmu.log_always(
+                        f"Calibration ignored because it is not considered valid "
+                        f"(>20% difference from reference gate {mmu_unit.first_gate})"
+                    )
 
             mmu._unload_gate()
             mmu._set_filament_pos_state(FILAMENT_POS_UNLOADED)

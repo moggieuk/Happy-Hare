@@ -417,7 +417,7 @@ class MmuFilamentWorkflow:
 
                 # "Fast" load
                 _, _, _, delta = self.trace_filament_move("Fast loading move through bowden", length, track=True, encoder_dwell=bool(u.p.autotune_encoder))
-                delta -= self._get_encoder_dead_space()
+                delta -= self.get_encoder_dead_space()
                 ratio = (length - delta) / length
 
                 # Encoder based validation test
@@ -549,7 +549,7 @@ class MmuFilamentWorkflow:
 
                 # "Fast" unload
                 _, _, _, delta = self.trace_filament_move("Fast unloading move through bowden", -length, track=True, encoder_dwell=bool(u.p.autotune_encoder))
-                delta -= self._get_encoder_dead_space()
+                delta -= self.get_encoder_dead_space()
                 ratio = (length - delta) / length
 
                 # Encoder based validation test
@@ -1111,7 +1111,7 @@ class MmuFilamentWorkflow:
             msg = "Load of %.1fmm filament successful" % self._get_filament_position()
             if self._can_use_encoder():
                 final_encoder_pos = self.get_encoder_distance(dwell=None)
-                not_seen = u.p.gate_parking_distance + self._get_encoder_dead_space()
+                not_seen = u.p.gate_parking_distance + self.get_encoder_dead_space()
                 msg += " {1}(adjusted encoder: %.1fmm){0}" % (final_encoder_pos + not_seen)
             self.log_info(msg, color=True)
 
@@ -1339,7 +1339,7 @@ class MmuFilamentWorkflow:
             msg = "Unload of %.1fmm filament successful" % self._get_filament_position()
             if self._can_use_encoder():
                 final_encoder_pos = self.get_encoder_distance(dwell=None)
-                not_seen = u.p.gate_parking_distance + self._get_encoder_dead_space() + (u.p.toolhead_unload_safety_margin if not synced_extruder_unload else 0.)
+                not_seen = u.p.gate_parking_distance + self.get_encoder_dead_space() + (u.p.toolhead_unload_safety_margin if not synced_extruder_unload else 0.)
                 msg += " {1}(adjusted encoder: %.1fmm){0}" % -(final_encoder_pos + not_seen)
             self.log_info(msg, color=True)
 
@@ -1663,13 +1663,13 @@ class MmuFilamentWorkflow:
                 if homing_move != 0:
                     trig_pos = [0., 0., 0., 0.]
                     hmove = HomingMove(self.printer, endstops, self.mmu_toolhead())
-                    init_ext_mcu_pos = self.mmu_toolhead().extruder_stepper_obj().stepper.get_mcu_position() # For non-homing extruder or if extruder not on gear rail
+                    init_ext_mcu_pos = u.extruder_stepper_obj().stepper.get_mcu_position() # For non-homing extruder or if extruder not on gear rail
                     init_pos = pos[1]
                     pos[1] += dist
                     for _ in range(self.p.canbus_comms_retries):  # HACK: We can repeat because homing move
                         got_comms_timeout = False # HACK: Logic to try to mask CANbus timeout issues
                         try:
-                            #initial_mcu_pos = self.mmu_toolhead().extruder_stepper_obj().stepper.get_mcu_position()
+                            #initial_mcu_pos = u.extruder_stepper_obj().stepper.get_mcu_position()
                             #init_pos = pos[1]
                             #pos[1] += dist
                             with self.wrap_accel(accel):
@@ -1692,7 +1692,7 @@ class MmuFilamentWorkflow:
                             homed = False
                         finally:
                             halt_pos = self.mmu_toolhead().get_position()
-                            ext_actual = (self.mmu_toolhead().extruder_stepper_obj().stepper.get_mcu_position() - init_ext_mcu_pos) * self.mmu_toolhead().extruder_stepper_obj().stepper.get_step_dist()
+                            ext_actual = (u.extruder_stepper_obj().stepper.get_mcu_position() - init_ext_mcu_pos) * u.extruder_stepper_obj().stepper.get_step_dist()
 
                             # Support setup where a non-homing extruder is being used
                             if motor == "extruder" and not u.homing_extruder:

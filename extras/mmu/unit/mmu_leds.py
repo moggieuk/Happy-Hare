@@ -210,7 +210,3 @@ class MmuLeds:
         if len(rgb) != 3:
             raise ValueError("%s is not a valid rgb tuple" % str(rgb_string))
         return rgb
-# PAUL
-#
-#def load_config_prefix(config):
-#    return MmuLeds(config)

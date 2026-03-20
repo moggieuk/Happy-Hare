@@ -31,7 +31,7 @@ from .mmu_calibration_mixins import CalibrationMixin
 #  This "registered command" will be instantiated later by the main mmu_controller module
 # -----------------------------------------------------------------------------------------------------------
 
-class MmuCalibrateGearCommand(CalibrationMixin): # PAUL QA'd
+class MmuCalibrateGearCommand(CalibrationMixin):
     """
     Gear rotation distance calibration command.
 
@@ -324,7 +324,7 @@ class MmuCalibrateBowdenCommand(CalibrationMixin):
         + "MANUAL        = [0|1] Use manual calibration method (default: 0)\n"
         + "COLLISION     = [0|1] Force collision method (requires encoder) (default: 0)\n"
         + "RESET         = [0|1] Clear saved bowden length (default: 0)\n"
-        + "HOMING_MAX    = #(mm) Extruder homing maximum (default: 150)\n" # PAUL is this still correct?
+        + "HOMING_MAX    = #(mm) Extruder homing maximum (default: 150)\n"
         + "BOWDEN_LENGTH = #(mm) Approx bowden length used for calibration\n"
     )
     HELP_SUPPLEMENT = (

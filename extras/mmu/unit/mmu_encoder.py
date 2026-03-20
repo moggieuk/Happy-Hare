@@ -30,7 +30,6 @@ CHECK_MOVEMENT_TIMEOUT = 0.250
 class MmuEncoder:
 
     def __init__(self, config, mmu_unit, params):
-        logging.info("PAUL: ++++++ init() for MmuEncoder")
         self.config = config
         self.mmu_unit = mmu_unit                # This physical MMU unit
         self.mmu_machine = mmu_unit.mmu_machine # Entire Logical combined MMU
@@ -95,7 +94,6 @@ class MmuEncoder:
 
 
     def _handle_connect(self):
-        logging.info("PAUL: ========= handle_connect: MmuEncoder")
         self.mmu = self.mmu_machine.mmu_controller
 
         # Validate that all mmu's sharing encoder use same extruder (necessary for runout/clog/tangle detection)
@@ -105,7 +103,6 @@ class MmuEncoder:
 
 
     def _handle_ready(self):
-        logging.info("PAUL: ==== handle_ready: MmuEncoder")
         # Read calibrated encoder resolution if available
         cal_res = self.mmu_machine.var_manager.get(VARS_MMU_ENCODER_RESOLUTION, None, namespace=self.name)
         if cal_res:
@@ -119,7 +116,7 @@ class MmuEncoder:
 
         # Ensure correct starting FlowGuard mode and detection length
         for unit in self.connected_units:
-            unit.sync_feedback.set_encoder_mode() # PAUL PROBLEM this will callback set_mode()
+            unit.sync_feedback.set_encoder_mode()
 
         self.extruder = self.printer.lookup_object(self.mmu_unit.extruder_name)
         self.last_extruder_pos = 0.

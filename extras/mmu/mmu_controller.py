@@ -788,7 +788,6 @@ class MmuController(MmuFilamentWorkflow):
 
     # Note: Returning new lists/dicts so that moonraker sees the change
     def get_status(self, eventtime):
-        return {} # PAUL TEST
         status = {
             'enabled': self.is_enabled,
             'num_gates': self.num_gates,
@@ -843,7 +842,7 @@ class MmuController(MmuFilamentWorkflow):
             'is_locked': self.is_mmu_paused(), # DEPRECATED (alias for is_paused)
             'is_in_print': self.is_in_print(), # DEPRECATED (use print_state)
             'endless_spool': self.endless_spool_enabled,           # DEPRECATED PAUL check UI need
-            'has_bypass': self.selector().has_bypass(), # TODO deprecate because this is a per unit selector bypass
+            'has_bypass': self.selector().has_unit_bypass(), # TODO deprecate because this is a per unit selector bypass
             'clog_detection': False,           # DEPRECATED PAUL check UI need
             'clog_detection_enabled': False,   # DEPRECATED PAUL check UI need
         }
@@ -1886,7 +1885,7 @@ class MmuController(MmuFilamentWorkflow):
         if self._encoder_dwell(dwell):
             self.encoder().reset_counts()
 
-    def _get_encoder_dead_space(self):
+    def get_encoder_dead_space(self):
         if self.has_encoder() and self.mmu_unit().p.gate_homing_endstop in [SENSOR_SHARED_EXIT, SENSOR_EXIT_PREFIX]:
             return self.mmu_unit().p.gate_endstop_to_encoder
         else:

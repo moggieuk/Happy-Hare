@@ -222,10 +222,10 @@ class MmuSensorManager:
         Take generic name and look for "<unit#>_genericName" and "genericName_<gate#>"
         """
         if endstop_name in [SENSOR_SHARED_EXIT, SENSOR_COMPRESSION, SENSOR_TENSION]:
-            return self.get_unit_sensor_name(endstop_name, mmu.unit_selected)
+            return self.get_unit_sensor_name(endstop_name, self.mmu.unit_selected)
 
         if endstop_name in [SENSOR_ENTRY_PREFIX, SENSOR_EXIT_PREFIX, SENSOR_GEAR_TOUCH]: # PAUL TODO verify SENSOR_GEAR_TOUCH operation for calibration
-            return self.get_gate_sensor_name(endstop_name, mmu.gate_selected)
+            return self.get_gate_sensor_name(endstop_name, self.mmu.gate_selected)
 
         return endstop_name
 

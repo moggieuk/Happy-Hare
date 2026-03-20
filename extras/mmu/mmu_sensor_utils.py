@@ -45,8 +45,8 @@ class MmuSensorFactory:
         fs = None
         if not self._is_empty_pin(switch_pin):
             name = "%s_%d" % (name_prefix, gate) if gate is not None else name_prefix
-            sensor = name if gate is not None else "%s_sensor" % name
-            section = "filament_switch_sensor %s" % sensor
+# PAUL why add _sensor?            sensor = name if gate is not None else "%s_sensor" % name
+            section = "filament_switch_sensor %s" % name
             config.fileconfig.add_section(section)
             config.fileconfig.set(section, "switch_pin", switch_pin)
             config.fileconfig.set(section, "pause_on_runout", "False")
@@ -60,7 +60,7 @@ class MmuSensorFactory:
             tangle_gcode = ("%s SENSOR=%s%s" % (TANGLE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if tangle else None
             ro_helper = MmuRunoutHelper(
                 self.printer,
-                sensor,
+                name,
                 event_delay,
                 {
                     "insert": insert_gcode,
@@ -75,7 +75,7 @@ class MmuSensorFactory:
             )
             fs.runout_helper = ro_helper
             fs.get_status = ro_helper.get_status
-            logging.info("MMU: Created [filament_switch_sensor %s]" % sensor)
+            logging.info("MMU: Created [filament_switch_sensor %s]" % name)
         return fs
 
 
