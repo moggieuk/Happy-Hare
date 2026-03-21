@@ -425,12 +425,12 @@ class MmuFilamentWorkflow:
                     raise MmuError("Failed to load bowden. Perhaps filament is stuck in gate. Gear moved %.1fmm, Encoder measured %.1fmm" % (length, length - delta))
 
                 # Encoder based validation test
-                if self._can_use_encoder() and delta >= u.p.bowden_allowable_load_delta and not self.calibrating:
+                if self._can_use_encoder() and delta >= u.p.bowden_allowable_encoder_delta and not self.calibrating:
                     ratio = None # Not considered valid for auto-calibration
                     # Correction attempts to load the filament according to encoder reporting
                     if u.p.bowden_apply_correction:
                         for i in range(2):
-                            if delta >= u.p.bowden_allowable_load_delta:
+                            if delta >= u.p.bowden_allowable_encoder_delta:
                                 msg = "Correction load move #%d into bowden" % (i+1)
                                 _,_,_,d = self.trace_filament_move(msg, delta, track=True)
                                 delta = d
@@ -439,11 +439,11 @@ class MmuFilamentWorkflow:
                                 self.log_debug(
                                     "Correction load complete, "
                                     f"delta {delta:.1f}mm is less than "
-                                    f"'bowden_allowable_unload_delta' ({u.p.bowden_allowable_load_delta:.1f}mm)"
+                                    f"'bowden_allowable_encoder_delta' ({u.p.bowden_allowable_encoder_delta:.1f}mm)"
                                 )
                                 break
                         self._set_filament_pos_state(FILAMENT_POS_IN_BOWDEN)
-                        if delta >= u.p.bowden_allowable_load_delta:
+                        if delta >= u.p.bowden_allowable_encoder_delta:
                             self.log_warning(
                                 "Warning: Excess slippage was detected in bowden tube load after correction moves. "
                                 f"Gear moved {length:.1f}mm, Encoder measured {length - delta:.1f}mm. "
@@ -457,7 +457,7 @@ class MmuFilamentWorkflow:
                             "See mmu.log for more details"
                         )
 
-                    if delta >= u.p.bowden_allowable_load_delta:
+                    if delta >= u.p.bowden_allowable_encoder_delta:
                         self.log_debug(
                             "Possible causes of slippage:\n"
                             "Calibration ref length too long (hitting extruder gear before homing)\n"
@@ -553,7 +553,7 @@ class MmuFilamentWorkflow:
                 ratio = (length - delta) / length
 
                 # Encoder based validation test
-                if self._can_use_encoder() and delta >= u.p.bowden_allowable_unload_delta and not self.calibrating:
+                if self._can_use_encoder() and delta >= u.p.bowden_allowable_encoder_delta and not self.calibrating:
                     ratio = None
                     # Only a warning because _unload_gate() will deal with it
                     self.log_warning("Warning: Excess slippage was detected in bowden tube unload. Gear moved %.1fmm, Encoder measured %.1fmm" % (length, length - delta))

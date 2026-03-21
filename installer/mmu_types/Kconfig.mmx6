@@ -45,7 +45,7 @@ if MMU_TYPE_MMX6_1_0
     default "0.1"
 
   config PARAM_GATE_PARKING_DISTANCE
-    default "25"
+    default "-25"
   config PARAM_GATE_HOMING_MAX
     default "1000"
 

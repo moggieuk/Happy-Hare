@@ -74,7 +74,7 @@ if MMU_TYPE_KMS_1_0
   config PARAM_GATE_PRELOAD_PARKING_DISTANCE
     default "-10"
   config PARAM_GATE_PARKING_DISTANCE
-    default "20"
+    default "-20"
   config PARAM_GATE_ENDSTOP_TO_ENCODER
     default "14"
   config PARAM_GATE_FINAL_EJECT_DISTANCE

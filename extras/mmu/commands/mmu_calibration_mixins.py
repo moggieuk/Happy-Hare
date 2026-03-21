@@ -24,7 +24,7 @@ class CalibrationMixin(BaseCommand):
     Base class for all calibration commands
     """
 
-    def _calibrate_bowden_length_manual(self, approx_bowden_length):
+    def _calibrate_bowden_length_manual(self, gate_homing_max):
         """
         Bowden calibration - Method 1 (MANUAL=1)
         This method of bowden calibration is done in reverse and is a fallback. The user inserts filament to the
@@ -46,11 +46,10 @@ class CalibrationMixin(BaseCommand):
 
             if endstop == SENSOR_ENCODER:
                 with mmu._require_encoder():
-                    success = mmu._reverse_home_to_encoder(approx_bowden_length)
+                    success = mmu._reverse_home_to_encoder(gate_homing_max)
                     if success:
                         homed = True
                         homing_movement, remaining_park = success
-                        self.trace_filament_move("Final parking", remaining_park)
 
             else: # Gate sensor
                 if not mmu.sensor_manager.check_sensor(endstop):
@@ -62,15 +61,18 @@ class CalibrationMixin(BaseCommand):
 
                 homing_movement, homed, measured, _ = mmu.trace_filament_move(
                     f"Reverse homing off gate endstop {endstop}",
-                    -approx_bowden_length,
+                    -gate_homing_max,
                     motor="gear",
                     homing_move=-1,
                     endstop_name=endstop,
                 )
-                self.trace_filament_move("Final parking", u.p.gate_parking_distance)
+                remaining_park = mmu_unit.p.gate_parking_distance
+
+            self.trace_filament_move("Final parking", remaining_park)
+            mmu._set_filament_pos_state(FILAMENT_POS_UNLOADED)
 
             if not homed:
-                raise MmuError("Did not home to gate sensor after moving %.1fmm" % approx_bowden_length)
+                raise MmuError("Did not home to gate sensor after moving %.1fmm" % gate_homing_max)
 
             homing_movement = abs(homing_movement)
             mmu.log_always("Filament homed back to gate after %.1fmm movement" % homing_movement)
@@ -135,7 +137,7 @@ class CalibrationMixin(BaseCommand):
         """
         Bowden calibration - Method 3 (ENCODER based)
         Automatic calibration from gate to extruder entry sensor or collision with extruder gear (requires encoder)
-        Allows for repeats to average restult which is essential with encoder collision detection
+        Allows for repeats to average result which is essential with encoder collision detection
         """
         mmu = self.mmu
         mmu_unit = self.mmu_unit
@@ -147,8 +149,12 @@ class CalibrationMixin(BaseCommand):
             # Can't allow "none" endstop during calibration so temporarily change it
             mmu_unit.p.extruder_homing_endstop = SENSOR_EXTRUDER_COLLISION
 
-            mmu.log_always("Calibrating bowden length on gate %d using %s as gate reference point and encoder collision detection" % (gate, mmu._gate_homing_string()))
-            reference_sum = spring_max = 0.
+            mmu.log_always(
+                f"Calibrating bowden length on gate {gate} using "
+                f"{mmu._gate_homing_string()} as gate reference point "
+                f"and encoder collision detection"
+            )
+            reference_sum = 0.
             successes = 0
 
             for i in range(repeats):
@@ -167,12 +173,15 @@ class CalibrationMixin(BaseCommand):
 
                 # When homing using collision, we expect the filament to spring back.
                 if spring != 0:
-                    msg = "Pass #%d: Filament homed to extruder after %.1fmm movement" % (i+1, actual)
+                    msg = (
+                        "-------------------------------------------------\n"
+                        f"Pass #{i + 1}: Filament homed to extruder after {actual:.1f}mm movement\n"
+                        "-------------------------------------------------\n"
+                    )
                     if mmu.has_encoder():
                         msg += "\n(encoder measured %.1fmm, filament sprung back %.1fmm)" % (measured - mmu_unit.p.gate_parking_distance, spring)
                     mmu.log_always(msg)
                     reference_sum += reference
-                    spring_max = max(spring, spring_max)
                     successes += 1
                 else:
                     # No spring means we haven't reliably homed
@@ -356,7 +365,7 @@ class CalibrationMixin(BaseCommand):
 
     def _probe_toolhead(self, cold_temp=70, probe_depth=100, sensor_homing=80):
         """
-        Helper for MMU_CALIBRATATE_TOOLHEAD that probes toolhead to measure three key dimensions:
+        Helper for MMU_CALIBRATE_TOOLHEAD that probes toolhead to measure three key dimensions:
 
           toolhead_extruder_to_nozzle
           toolhead_sensor_to_nozzle
@@ -507,7 +516,7 @@ class CalibrationMixin(BaseCommand):
             )
 
             if not fhomed:
-                raise MmuError("Failed to reverse home to toolhead sensor")
+                raise MmuError("Failed to reverse home to extruder entry sensor")
 
             # Measure relative to toolhead sensor
             actual, fhomed, _, _ = mmu.trace_filament_move(

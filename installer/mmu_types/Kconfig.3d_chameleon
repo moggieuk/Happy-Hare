@@ -55,7 +55,7 @@ if MMU_TYPE_3D_CHAMELEON_1_0
 
   # Distances
   config PARAM_GATE_PARKING_DISTANCE
-    default "250"
+    default "-250"
   config PARAM_GATE_HOMING_MAX
     default "500"
 

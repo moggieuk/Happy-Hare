@@ -19,6 +19,8 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 
+import logging, math
+
 # Happy Hare imports
 from ..mmu_constants         import *
 from ..mmu_utils             import MmuError
@@ -157,7 +159,10 @@ class MmuCalibrateEncoderCommand(CalibrationMixin):
         if self.check_if_disabled(): return
         if self.check_if_no_encoder(mmu_unit): return
         if self.check_if_bypass(): return
-        if self.check_if_not_calibrated(CALIBRATED_GEAR_0, check_gates=[gate]): return
+        if self.check_if_not_calibrated(
+            CALIBRATED_GEAR_RDS,
+            check_gates=[gate]
+        ): return
 
         length = gcmd.get_float('LENGTH', 400., above=0.)
         repeats = gcmd.get_int('REPEATS', 3, minval=1, maxval=10)
@@ -246,7 +251,7 @@ class MmuCalibrateGateCommand(CalibrationMixin):
         length = gcmd.get_float('LENGTH', 400., above=0.)
         repeats = gcmd.get_int('REPEATS', 3, minval=1, maxval=10)
         all_gates = gcmd.get_int('ALL', 0, minval=0, maxval=1)
-        gate = gcmd.get_int('GATE', None, minval=0, maxval=mmu.num_gates)
+        gate = gcmd.get_int('GATE', None, minval=0, maxval=mmu.num_gates - 1)
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
 
@@ -267,7 +272,7 @@ class MmuCalibrateGateCommand(CalibrationMixin):
         calibrator = mmu_unit.calibrator
 
         if self.check_if_not_calibrated(
-            CALIBRATED_GEAR_0 | CALIBRATED_ENCODER | CALIBRATED_SELECTOR,
+            CALIBRATED_ENCODER | CALIBRATED_SELECTOR,
             check_gates=gate_range
         ): return
 
@@ -307,7 +312,7 @@ class MmuCalibrateGateCommand(CalibrationMixin):
 
 class MmuCalibrateBowdenCommand(CalibrationMixin):
     """
-    Calibrated bowden length is always from chosen gate homing point to the entruder gears
+    Calibrated bowden length is always from chosen gate homing point to the extruder gears
     Start: With desired gate selected
     End: Filament will be unloaded
 
@@ -325,7 +330,7 @@ class MmuCalibrateBowdenCommand(CalibrationMixin):
         + "COLLISION     = [0|1] Force collision method (requires encoder) (default: 0)\n"
         + "RESET         = [0|1] Clear saved bowden length (default: 0)\n"
         + "HOMING_MAX    = #(mm) Extruder homing maximum (default: 150)\n"
-        + "BOWDEN_LENGTH = #(mm) Approx bowden length used for calibration\n"
+        + "BOWDEN_LENGTH = #(mm) Approx bowden length, normally >actual (but slightly <actual if using COLLISION)\n"
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
@@ -371,9 +376,15 @@ class MmuCalibrateBowdenCommand(CalibrationMixin):
             return
 
         if manual:
-            if self.check_if_not_calibrated(CALIBRATED_GEAR_0 | CALIBRATED_SELECTOR, check_gates=[gate]): return
+            if self.check_if_not_calibrated(
+                CALIBRATED_GEAR_0 | CALIBRATED_GEAR_RDS | CALIBRATED_SELECTOR,
+                check_gates=[gate]
+            ): return
         else:
-            if self.check_if_not_calibrated(CALIBRATED_GEAR_0 | CALIBRATED_ENCODER | CALIBRATED_SELECTOR, check_gates=[gate]): return
+            if self.check_if_not_calibrated(
+                CALIBRATED_GEAR_0 | CALIBRATED_GEAR_RDS | CALIBRATED_ENCODER | CALIBRATED_SELECTOR,
+                check_gates=[gate]
+            ): return
 
         can_use_sensor = (
             mmu_unit.p.extruder_homing_endstop in [
@@ -388,12 +399,17 @@ class MmuCalibrateBowdenCommand(CalibrationMixin):
         can_auto_calibrate = mmu_unit.has_encoder() or can_use_sensor
 
         if not can_auto_calibrate and not manual:
-            mmu.log_always("No encoder or extruder entry sensor available. Use manual calibration method:\nWith gate selected, manually load filament all the way to the extruder gear\nThen run 'MMU_CALIBRATE_BOWDEN MANUAL=1 BOWDEN_LENGTH=xxx'\nWhere BOWDEN_LENGTH is greater than your real length")
+            mmu.log_always(
+                "No encoder or extruder entry sensor available.\n"
+                "Use manual calibration method:\n"
+                "- With gate selected, manually load filament all the way to the extruder gear\n"
+                "- Then run 'MMU_CALIBRATE_BOWDEN MANUAL=1 BOWDEN_LENGTH=xxx' where BOWDEN_LENGTH is GREATER than your real length"
+            )
             return
 
         extruder_homing_max = gcmd.get_float('HOMING_MAX', 150, above=0.)
         approx_bowden_length = gcmd.get_float('BOWDEN_LENGTH', mmu_unit.p.bowden_homing_max if (manual or can_use_sensor) else None, above=0.)
-        if not approx_bowden_length:
+        if approx_bowden_length is None:
             raise gcmd.error("Must specify 'BOWDEN_LENGTH=x' where x is slightly LESS than your estimated bowden length to give room for homing")
 
         try:
@@ -492,8 +508,8 @@ class MmuCalibrateToolheadCommand(CalibrationMixin):
         if self.check_if_bypass(): return
         if self.check_if_loaded(): return
 
-        if self.check_if_not_calibrated(mmu,
-            CALIBRATED_GEAR_0 | CALIBRATED_ENCODER | CALIBRATED_SELECTOR | CALIBRATED_BOWDENS,
+        if self.check_if_not_calibrated(
+            CALIBRATED_GEAR_RDS| CALIBRATED_ENCODER | CALIBRATED_SELECTOR | CALIBRATED_BOWDENS,
             check_gates=[gate]
         ): return
 
@@ -507,7 +523,7 @@ class MmuCalibrateToolheadCommand(CalibrationMixin):
         line = "-----------------------------------------------\n"
 
         if not (clean or cut or dirty):
-            mmu.log_always(HELP_SUPPLEMENT)
+            mmu.log_always(self.HELP_SUPPLEMENT)
             return
 
         if cut:
@@ -527,8 +543,8 @@ class MmuCalibrateToolheadCommand(CalibrationMixin):
                 mmu._home_to_extruder(mmu_unit.p.extruder_homing_max)
 
                 if cut:
-                    mmu.log_always("Measuring blade cutter postion (with filament fragment)...")
-                    tetn, tstn, tete = calibrator._probe_toolhead()
+                    mmu.log_always("Measuring blade cutter position (with filament fragment)...")
+                    tetn, tstn, tete = self._probe_toolhead()
                     # Blade position is the difference between empty and extruder with full cut measurements for sensor to nozzle
                     vbp = mmu.p.toolhead_sensor_to_nozzle - tstn
                     msg = line
@@ -547,7 +563,7 @@ class MmuCalibrateToolheadCommand(CalibrationMixin):
 
                 elif clean:
                     mmu.log_always("Measuring clean toolhead dimensions after cold pull...")
-                    tetn, tstn, tete = calibrator._probe_toolhead()
+                    tetn, tstn, tete = self._probe_toolhead()
                     msg = line
                     msg += "Calibration Results (clean nozzle):\n"
                     msg += "> toolhead_extruder_to_nozzle: %.1f (currently: %.1f)\n" % (tetn, mmu.p.toolhead_extruder_to_nozzle)
@@ -565,7 +581,7 @@ class MmuCalibrateToolheadCommand(CalibrationMixin):
 
                 elif dirty:
                     mmu.log_always("Measuring dirty toolhead dimensions (with filament residue)...")
-                    tetn, tstn, tete = calibrator._probe_toolhead()
+                    tetn, tstn, tete = self._probe_toolhead()
                     # Ooze reduction is the difference between empty and dirty measurements for sensor to nozzle
                     tor = mmu.p.toolhead_sensor_to_nozzle - tstn
                     msg = line
@@ -604,7 +620,7 @@ class MmuCalibratePsensorCommand(CalibrationMixin):
 
     CMD = "MMU_CALIBRATE_PSENSOR"
 
-    HELP_BRIEF = "Calibrate analog proprotional sync-feedback sensor"
+    HELP_BRIEF = "Calibrate analog proportional sync-feedback sensor"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
         + "UNIT = #(int)|_name_ Specify unit by name, number (optional if single unit)\n"
@@ -634,6 +650,12 @@ class MmuCalibratePsensorCommand(CalibrationMixin):
         self.mmu_unit = mmu_unit
         mmu = self.mmu
 
+        usage = (
+            "Ensure your sensor is configured by setting sync_feedback_analog_pin in [mmu_sensors].\n"
+            "The other settings (sync_feedback_analog_max_compression, sync_feedback_analog_max_tension "
+            "and sync_feedback_analog_neutral_point) will be determined by this calibration."
+        )
+
         if not mmu_unit.sensor_manager.has_sensor(SENSOR_PROPORTIONAL):
             raise gcmd.error("Proportional (analog sync-feedback) sensor not found\n" + usage)
 
@@ -641,19 +663,12 @@ class MmuCalibratePsensorCommand(CalibrationMixin):
         if self.check_if_bypass(): return
         if self.check_if_not_loaded(): return
 
-        SD_THRESHOLD = 0.02
         MAX_MOVE_MULTIPLIER = 1.8
         STEP_SIZE = 2.0
         MOVE_SPEED = 8.0
 
         move = gcmd.get_float('MOVE', mmu_unit.p.sync_feedback_buffer_maxrange, minval=1, maxval=100)
         steps = math.ceil(move * MAX_MOVE_MULTIPLIER / STEP_SIZE)
-
-        usage = (
-            "Ensure your sensor is configured by setting sync_feedback_analog_pin in [mmu_sensors].\n"
-            "The other settings (sync_feedback_analog_max_compression, sync_feedback_analog_max_tension "
-            "and sync_feedback_analog_neutral_point) will be determined by this calibration."
-        )
 
         if not mmu_unit.sensor_manager.has_sensor(SENSOR_PROPORTIONAL):
             raise gcmd.error("Proportional (analog sync-feedback) sensor not found\n" + usage)

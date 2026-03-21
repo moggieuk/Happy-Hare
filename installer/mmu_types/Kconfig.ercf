@@ -176,8 +176,8 @@ if MMU_FAMILY_ERCF
 
     # Distances
     config PARAM_GATE_PARKING_DISTANCE
-      default "23"
-      default "13" if MOD_THUMPER_BLOCKS
+      default "-23"
+      default "-13" if MOD_THUMPER_BLOCKS
 
     # Modifications
     choice CHOICE_ENCODER_TYPE
@@ -217,8 +217,8 @@ if MMU_FAMILY_ERCF
 
     # Distances
     config PARAM_GATE_PARKING_DISTANCE
-      default "13"
-      default "11" if MOD_THUMPER_BLOCKS
+      default "-13"
+      default "-11" if MOD_THUMPER_BLOCKS
 
     choice CHOICE_ENCODER_TYPE
       default CHOICE_ENCODER_TYPE_BINKY
@@ -256,7 +256,7 @@ if MMU_FAMILY_ERCF
 
     # Distances
     config PARAM_GATE_PARKING_DISTANCE
-      default "16"
+      default "-16"
 
     choice CHOICE_ENCODER_TYPE
       default CHOICE_ENCODER_TYPE_BINKY_V2

@@ -63,6 +63,7 @@ class MmuUnitParameters(TunableParametersBase):
 
     def _on_gate_homing_endstop(self, old, new):
         if new != old:
+            self._mmu_unit.p.gate_homing_endstop = new # Must be done prior to adjustment call
             self._mmu_unit.calibrator.adjust_bowden_lengths_on_homing_change()
 
 
@@ -78,7 +79,7 @@ class MmuUnitParameters(TunableParametersBase):
         ParamSpec('gate_preload_homing_max',          'float', lambda self: self.gate_homing_max, section="GATE HOMING"),
         ParamSpec('gate_preload_parking_distance',    'float', -10.0, section="GATE HOMING"),
         ParamSpec('gate_preload_attempts',            'int',       1, section="GATE HOMING", limits=dict(minval=1, maxval=20)),
-        ParamSpec('gate_endstop_to_encoder',          'float',   0.0, section="GATE HOMING", limits=dict(minval=0.0), guard=_guard_encoder_offset),
+        ParamSpec('gate_endstop_to_encoder',          'float',   0.0, section="GATE HOMING", limits=dict(minval=0.0),           guard=_guard_encoder_offset),
         ParamSpec('gate_load_retries',                'int',       1, section="GATE HOMING", limits=dict(minval=1, maxval=5)),
         ParamSpec('gate_autoload',                    'int',       1, section="GATE HOMING", limits=dict(minval=0, maxval=1)),
         ParamSpec('gate_final_eject_distance',        'float',   0.0, section="GATE HOMING"),
@@ -87,10 +88,11 @@ class MmuUnitParameters(TunableParametersBase):
         ParamSpec('bowden_homing_max',                'float',2000.0, section="BOWDEN MOVE", limits=dict(minval=100.0)),
         ParamSpec('bowden_fast_unload_portion',       'float',  95.0, section="BOWDEN MOVE", limits=dict(minval=50, maxval=100)),
         ParamSpec('bowden_fast_load_portion',         'float',  95.0, section="BOWDEN MOVE", limits=dict(minval=50, maxval=100)),
-        ParamSpec('bowden_apply_correction',          'int',       0, section="BOWDEN MOVE", limits=dict(minval=0, maxval=1), guard=_guard_has_encoder),
-        ParamSpec('bowden_allowable_load_delta',      'float',  10.0, section="BOWDEN MOVE", limits=dict(minval=1.0), guard=_guard_has_encoder),
-        ParamSpec('bowden_pre_unload_test',           'int',       0, section="BOWDEN MOVE", limits=dict(minval=0, maxval=1), guard=_guard_has_encoder),
-        ParamSpec('bowden_pre_unload_error_tolerance','float', 100.0, section="BOWDEN MOVE", limits=dict(minval=0, maxval=100)),
+        ParamSpec('bowden_apply_correction',          'int',       0, section="BOWDEN MOVE", limits=dict(minval=0, maxval=1),   guard=_guard_has_encoder),
+        ParamSpec('bowden_allowable_encoder_delta',   'float',  20.0, section="BOWDEN MOVE", limits=dict(minval=1.0),           guard=_guard_has_encoder),
+        ParamSpec('bowden_pre_unload_test',           'int',       0, section="BOWDEN MOVE", limits=dict(minval=0, maxval=1),   guard=_guard_has_encoder),
+        ParamSpec('bowden_pre_unload_error_tolerance','int',     100, section="BOWDEN MOVE", limits=dict(minval=0, maxval=100), guard=_guard_has_encoder),
+        ParamSpec('bowden_move_error_tolerance',      'int',      60, section="BOWDEN_MOVE", limits=dict(minval=0, maxval=100), guard=_guard_has_encoder),
 
         # Extruder/Toolhead
         ParamSpec('extruder_force_homing',            'int',       0, section="EXTRUDER MOVE", limits=dict(minval=0, maxval=1)),
@@ -99,7 +101,7 @@ class MmuUnitParameters(TunableParametersBase):
         ParamSpec('extruder_collision_homing_step',   'int',       3, section="EXTRUDER MOVE", limits=dict(minval=2, maxval=5), guard=_guard_has_encoder),
         ParamSpec('toolhead_homing_max',              'float',  20.0, section="EXTRUDER MOVE", limits=dict(minval=0.0),         guard=_guard_has_sensor(SENSOR_TOOLHEAD)),
         ParamSpec('toolhead_unload_safety_margin',    'float',  10.0, section="EXTRUDER MOVE", limits=dict(minval=0.0)),
-        ParamSpec('toolhead_move_error_tolerance',    'float',  60.0, section="EXTRUDER MOVE", limits=dict(minval=0, maxval=100)),
+        ParamSpec('toolhead_move_error_tolerance',    'int',     100, section="EXTRUDER MOVE", limits=dict(minval=0, maxval=100)),
         ParamSpec('toolhead_entry_tension_test',      'int',       1, section="EXTRUDER MOVE", limits=dict(minval=0, maxval=1)),
         ParamSpec('toolhead_post_load_tighten',       'int',      60, section="EXTRUDER MOVE", limits=dict(minval=0, maxval=100)),
         ParamSpec('toolhead_post_load_tension_adjust','int',       1, section="EXTRUDER MOVE", limits=dict(minval=0, maxval=1)),

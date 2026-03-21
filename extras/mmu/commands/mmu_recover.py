@@ -116,5 +116,8 @@ class MmuRecoverCommand(BaseCommand):
             # Reset sync state
             mmu.reset_sync_gear_to_extruder(False)
 
+            # Report
+            mmu.log_info(f"{mmu._state_to_string()}", color=True)
+
         except MmuError as ee:
             mmu.handle_mmu_error(str(ee))

@@ -53,7 +53,6 @@ class MmuController(MmuFilamentWorkflow):
         self._next_gate = None
         self.toolchange_retract = 0.            # Set from mmu_macro_vars
         self.toolchange_purge_volume = 0.       # During toolchange, the calculated purge volume
-#PAUL        self.mmu_logger = None                  # Setup on connect
         self._standalone_sync = False           # Used to indicate synced extruder intention whilst out of print
         self._suppress_release_grip = False     # Used to suppress the relaxing of grip on recursive calls to prevent servo flutter
         self.bowden_start_pos = None            # If set then we can measure bowden progress
@@ -127,8 +126,9 @@ class MmuController(MmuFilamentWorkflow):
             except Exception:
                 raise self.config.error(f"Failed to register command class: {name}")
 
-        # Initializer tasks
-        self.gcode.register_command('__MMU_BOOTUP', self.cmd_MMU_BOOTUP, desc = self.cmd_MMU_BOOTUP_help) # Bootup tasks # PAUL move to commands??
+        # Bootup tasks
+        # Scheduled as regular gcode command to ensure everything is copecetic
+        self.gcode.register_command('__MMU_BOOTUP', self.cmd_MMU_BOOTUP, desc = self.cmd_MMU_BOOTUP_help)
 
 
         # Apply Klipper hacks -------------------------------------------------------------------------------
@@ -168,23 +168,6 @@ class MmuController(MmuFilamentWorkflow):
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
         self.printer.register_event_handler('klippy:disconnect', self.handle_disconnect)
         self.printer.register_event_handler('klippy:ready', self.handle_ready)
-
-
-# PAUL old
-#    def _setup_logging(self):
-#        """
-#        Setup background file based logging before logging any messages
-#        """
-#        if self.mmu_logger is None and self.p.log_file_level >= 0:
-#            logfile_path = self.printer.start_args['log_file']
-#            dirname = os.path.dirname(logfile_path)
-#            if dirname is None:
-#                mmu_log = '/tmp/mmu.log'
-#            else:
-#                mmu_log = dirname + '/mmu.log'
-#            logging.info("MMU: Log: %s" % mmu_log)
-#            self.mmu_logger = MmuLogger(mmu_log)
-#            self.mmu_logger.log("\n\n\nMMU Startup -----------------------------------------------\n")
 
 
     def handle_connect(self):
@@ -3174,7 +3157,7 @@ class MmuController(MmuFilamentWorkflow):
 
 
 # -----------------------------------------------------------------------------------------------------------
-# INTERNAL PRINT WORKFLOW WRAPPER COMMANDS
+# INTERNAL (HIDDEN) PRINT WORKFLOW WRAPPER COMMANDS
 # -----------------------------------------------------------------------------------------------------------
 
 class MmuWrapperCancelPrintCommand(BaseCommand):

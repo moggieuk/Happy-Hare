@@ -60,7 +60,7 @@ if MMU_FAMILY_QUATTRO_BOX
   config PARAM_GATE_PRELOAD_HOMING_MAX
     default "200"
   config PARAM_GATE_PARKING_DISTANCE
-    default "30"
+    default "-30"
   config PARAM_GATE_ENDSTOP_TO_ENCODER
     default "18"
   config PARAM_GATE_FINAL_EJECT_DISTANCE
