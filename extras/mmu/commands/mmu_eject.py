@@ -59,6 +59,7 @@ class MmuEjectCommand(UnloadEjectMixin, BaseCommand):
         gate = gcmd.get_int('GATE', mmu.gate_selected, minval=0, maxval=mmu.num_gates - 1)
         current_gate = mmu.gate_selected
         eject_unit = mmu.mmu_machine.get_mmu_unit_by_gate(gate)
+        filament_pos = mmu.filament_pos
         force = bool(gcmd.get_int('FORCE', 0, minval=0, maxval=1))
 
         if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[gate]): return
@@ -80,17 +81,17 @@ class MmuEjectCommand(UnloadEjectMixin, BaseCommand):
             not extruder_only
             and not (
                 in_bypass
-                and mmu.filament_pos != FILAMENT_POS_UNLOADED
+                and filament_pos != FILAMENT_POS_UNLOADED
                 and gate >= 0
             )
             and (
                 (can_crossload and gate != mmu.gate_selected)
-                or mmu.filament_pos == FILAMENT_POS_UNLOADED
+                or filament_pos == FILAMENT_POS_UNLOADED
                 or force
             )
         )
 
-        if not can_eject_from_gate and mmu.filament_pos == FILAMENT_POS_UNLOADED:
+        if not can_eject_from_gate and filament_pos == FILAMENT_POS_UNLOADED:
             mmu.log_always("Filament not loaded")
             return
 
@@ -99,7 +100,7 @@ class MmuEjectCommand(UnloadEjectMixin, BaseCommand):
                 with mmu._wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during unload
 
                     # Same as MMU_UNLOAD logic
-                    if gate == current_gate and mmu.filament_pos != FILAMENT_POS_UNLOADED:
+                    if gate == current_gate and filament_pos != FILAMENT_POS_UNLOADED:
                         self._handle_unload(gcmd)
 
                     if can_eject_from_gate:
@@ -112,10 +113,8 @@ class MmuEjectCommand(UnloadEjectMixin, BaseCommand):
 
                         finally:
                             if mmu.gate_selected != current_gate:
-                                mmu.select_gate(current_gate)
-
                                 # If necessary or easy restore previous gate
-                                if mmu.is_in_print() or mmu.mmu_unit().multigear or mmu.filament_pos != FILAMENT_POS_UNLOADED:
+                                if mmu.is_in_print() or mmu.mmu_unit().multigear or filament_pos != FILAMENT_POS_UNLOADED:
                                     mmu.select_gate(current_gate)
                                 else:
                                     # Lazy movement means we have side effect of changed tool/gate

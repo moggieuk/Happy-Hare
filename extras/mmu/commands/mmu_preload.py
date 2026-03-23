@@ -53,6 +53,7 @@ class MmuPreloadCommand(BaseCommand):
         gate = gcmd.get_int('GATE', mmu.gate_selected, minval=0, maxval=mmu.num_gates - 1)
         current_gate = mmu.gate_selected
         preload_unit = mmu.mmu_machine.get_mmu_unit_by_gate(gate)
+        filament_pos = mmu.filament_pos
 
         if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[gate]): return
 
@@ -60,9 +61,9 @@ class MmuPreloadCommand(BaseCommand):
             mmu.mmu_unit().can_crossload and
             (
                 mmu.sensor_manager.has_gate_sensor(SENSOR_EXIT_PREFIX, gate) or
-                mmu.filament_pos == FILAMENT_POS_UNLOADED or
+                filament_pos == FILAMENT_POS_UNLOADED or
                 (
-                    mmu.filament_pos != FILAMENT_POS_UNLOADED and
+                    filament_pos != FILAMENT_POS_UNLOADED and
                     not preload_unit.manages_gate(current_gate)
                 )
             )
@@ -85,10 +86,8 @@ class MmuPreloadCommand(BaseCommand):
 
                         finally:
                             if mmu.gate_selected != current_gate:
-                                mmu.select_gate(current_gate)
-
                                 # If necessary or easy restore previous gate
-                                if mmu.is_in_print() or mmu.mmu_unit().multigear or mmu.filament_pos != FILAMENT_POS_UNLOADED:
+                                if mmu.is_in_print() or mmu.mmu_unit().multigear or filament_pos != FILAMENT_POS_UNLOADED:
                                     mmu.select_gate(current_gate)
                                 else:
                                     # Lazy gate reselection means we have side effect of changed tool/gate
