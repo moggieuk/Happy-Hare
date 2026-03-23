@@ -1,0 +1,77 @@
+name: Feature request
+description: Suggest an idea or improvement
+title: "[Feature]: <short summary>"
+labels: ["enhancement", "needs-triage"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for contributing! Please complete all required fields.
+
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: One-sentence description of the request
+      placeholder: "Add a concise summary"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What problem are you trying to solve? Who is impacted and how often?
+      placeholder: "When __, I want __ so that __."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution / approach
+      description: Describe the idea. Include UX flow, API shape, or UI sketches if relevant.
+      placeholder: "Explain the solution and why it helps."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority / Impact
+      options:
+        - P0 – Critical
+        - P1 – High
+        - P2 – Medium
+        - P3 – Low
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area(s) of the product
+      description: Pick one or more
+      multiple: true
+      options:
+        - HappyHare (Klipper or Moonraker)
+        - Mainsail UI
+        - Fluidd UI
+        - KlipperScreen UI
+        - Documentation
+        - Other / Don't Know
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: Have you running the lastest Happy Hare release
+          required: true
+        - label: I searched existing issues
+          required: true
+        - label: I have asked on the Happy Hare Discord
+          required: false
+        - label: I’m willing to contribute a PR
+          required: false

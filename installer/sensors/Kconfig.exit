@@ -1,4 +1,4 @@
-config MMU_HAS_SENSOR_POST_GEAR
+config MMU_HAS_SENSOR_EXIT
   bool "Post-Gear sensors?"
   help
     Select if you have seperate per-gate filament sensors after the MMU

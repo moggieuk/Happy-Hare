@@ -1,0 +1,25 @@
+name: Close unresolved needs-info issues
+on:
+  workflow_dispatch:       # manual for now
+#  schedule:
+#    - cron: "30 1 * * *"  # daily UTC
+permissions:
+  issues: write
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v10
+        with:
+          # Only look at issues that are marked as needs-info
+          only-issue-labels: "needs-info"
+          # Treat "needs-info" as the stale label (no extra label)
+          stale-issue-label: "needs-info"
+          # Comment right away, then close in 7 days if still inactive
+          days-before-stale: 0
+          days-before-issue-close: 7
+          stale-issue-message: >
+            This issue needs more info. Please update the top comment with the requested details.
+          close-issue-message: >
+            Closing due to missing information. Please reopen after updating the details.
+

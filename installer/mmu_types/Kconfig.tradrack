@@ -5,10 +5,8 @@ config MMU_TYPE_TRADRACK_1_0
    It differed from ERCF in that it is easier to add additional gates/lanes
    but also uses the same BMG gear to drive all filaments. It has a shared
    gate sensor but a Binky based encoder is a popular option.
-  select LINEAR_SELECTOR
-  select MMU_HAS_SELECTOR_STEPPER
-  select MMU_HAS_SELECTOR_SERVO
-  select MMU_HAS_SENSOR_GATE
+  select LINEAR_SERVO_SELECTOR
+  select MMU_HAS_SENSOR_SHARED_EXIT
   select PARAM_VARIABLE_ROTATION_DISTANCES
   select UNSELECT_VARIABLE_BOWDEN_LENGTHS
   imply  PARAM_REQUIRE_BOWDEN_MOVE
@@ -80,8 +78,8 @@ if MMU_TYPE_TRADRACK_1_0
 
   # Distances
   config PARAM_GATE_PARKING_DISTANCE
-    default "48" if MOD_BINKY
-    default "17.5"
+    default "-48" if MOD_BINKY
+    default "-17.5"
   config PARAM_GATE_ENDSTOP_TO_ENCODER
     default "31" if MOD_BINKY
 

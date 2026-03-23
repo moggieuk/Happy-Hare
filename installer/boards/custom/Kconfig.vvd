@@ -3,15 +3,18 @@ config BOARD_TYPE_VVD_1_0
 
 if BOARD_TYPE_VVD_1_0
   config PARAM_BOARD_TYPE
-    default "VVD10"
+    default "BTT ViViD v1"
 
-  choice MCU_CONNECTION_TYPE
-    default CHOICE_MCU_CONNECTION_TYPE_SERIAL
+  choice CHOICE_MMU_CONNECTION_TYPE
+    default CHOICE_MMU_CONNECTION_TYPE_SERIAL
   endchoice
-  choice SERIAL_DEVICE
-    default $(serial_config,1,stm32)
+  choice CHOICE_MMU_SERIAL_CONNECTION
+    default $(mmu_serial_config,1,stm32)
   endchoice
-  choice BUFFER_SERIAL_DEVICE
+  choice CHOICE_BUFFER_CONNECTION_TYPE
+    default CHOICE_BUFFER_CONNECTION_TYPE_SERIAL
+  endchoice
+  choice CHOICE_BUFFER_SERIAL_CONNECTION
     default $(buffer_serial_config,1,stm32)
   endchoice
 
@@ -38,14 +41,14 @@ if BOARD_TYPE_VVD_1_0
   config PIN_GEAR_ENABLE
     default "!$(MCU_NAME):PB8" 
 
-  config PIN_PRE_GATE_0
-    default "!$(MCU_NAME):PA0" 
-  config PIN_PRE_GATE_1
-    default "!$(MCU_NAME):PA1" 
-  config PIN_PRE_GATE_2
-    default "!$(MCU_NAME):PA2" 
-  config PIN_PRE_GATE_3
-    default "!$(MCU_NAME):PA3" 
+  config PIN_ENTRY_0
+    default "$(MCU_NAME):PA0" 
+  config PIN_ENTRY_1
+    default "$(MCU_NAME):PA1" 
+  config PIN_ENTRY_2
+    default "$(MCU_NAME):PA2" 
+  config PIN_ENTRY_3
+    default "$(MCU_NAME):PA3" 
 
   config PIN_ESPOOLER_FWD_0
     default "$(MCU_NAME):PA8"
@@ -91,13 +94,14 @@ chain_count: 14\n\
 color_order: GRB\n\
 \n\
 [temperature_sensor $(UNIT_NAME)_env_left]\n\
-sensor_type: AHT10 # Actually a ACT30$(comma) set 'update_aht10_commands: 1' in mmu.cfg\n\
+sensor_type: AHT3X # Use an AHT10 and set 'update_aht10_commands: 1' in mmu_parameters.cfg if the AHT3X sensor_type isn't supported (older Klipper versions)\n\
 i2c_mcu: $(MCU_NAME)\n\
-i2c_bus: i2c1_PA9_PA10\n\
+i2c_software_scl_pin: PA9\n\
+i2c_software_sda_pin: PA10\n\
 aht10_report_time: 10\n\
 \n\
 [temperature_sensor $(UNIT_NAME)_env_right]\n\
-sensor_type: AHT10 # Actually a ACT30$(comma) set 'update_aht10_commands: 1' in mmu.cfg\n\
+sensor_type: AHT3X # Use an AHT10 and set 'update_aht10_commands: 1' in mmu_parameters.cfg if the AHT3X sensor_type isn't supported (older Klipper versions)\n\
 i2c_mcu: $(MCU_NAME)\n\
 i2c_software_scl_pin: PA7\n\
 i2c_software_sda_pin: PA6\n\
@@ -131,7 +135,7 @@ heater: $(UNIT_NAME)_heater\n\
 # Electronics cooling fan\n\
 [controller_fan $(UNIT_NAME)_mcu_fan]\n\
 pin: $(MCU_NAME):PA14\n\
-stepper: stepper mmu_selector_$(UNIT_NAME)$(comma) stepper mmu_gear_$(UNIT_NAME)\n\
+stepper: stepper $(UNIT_NAME)_selector_stepper$(comma) stepper $(UNIT_NAME)_gear_stepper\n\
 \n\
 [temperature_sensor ptc_ntc100k]\n\
 sensor_pin: $(MCU_NAME):PA4\n\

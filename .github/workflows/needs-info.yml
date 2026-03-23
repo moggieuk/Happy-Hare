@@ -1,0 +1,61 @@
+name: Needs info check
+on:
+  workflow_dispatch:       # manual for now
+#  issues:
+#    types: [opened, edited]
+
+jobs:
+  gate:
+    if: ${{ github.event.issue.user.type != 'Bot' }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const body = (issue.body || "");
+            const lc = body.toLowerCase();
+
+            // Simple heuristics: length + must-have sections/words
+            const required = ["summary", "steps to reproduce", "expected", "actual", "mmu-type", "hh-version", "klipper-version"];
+            const missing = required.filter(s => !lc.includes(s));
+
+            const insufficient = body.length < 100 || missing.length > 0;
+
+            // Helpers
+            const hasLabel = (name) =>
+              (issue.labels || []).some(l => (l.name || l) === name);
+
+            if (insufficient && !hasLabel("needs-info")) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: issue.number, labels: ["needs-info"]
+              });
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: issue.number,
+                body:
+`Thanks! We need a bit more detail${missing.length ? ` (missing: ${missing.join(", ")})` : ""}.
+
+Please edit the top comment to include:
+- Concise summary
+- Exact steps to reproduce
+- Expected vs. Actual
+- MMU Type (important)
+- Happy-Hare version
+- Klipper version
+
+Once updated, this label will be removed automatically.`
+              });
+            } else if (!insufficient && hasLabel("needs-info")) {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: issue.number, name: "needs-info"
+              });
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: issue.number,
+                body: "Thanks for the details! Removed `needs-info`."
+              });
+            }
+

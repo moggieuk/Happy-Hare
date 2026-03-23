@@ -1,0 +1,30 @@
+# Encoder parameter tokens which must be inside if MMU_HAS_HEATER clause
+# in cfg templates
+#
+# Responsible for setting:
+#   PARAM_HEATER_MAX_TEMP
+#   PARAM_FILAMENT_HEATER
+
+if MMU_HAS_HEATER
+  menu "Heater"
+    config PARAM_HEATER_MAX_TEMP
+      string "Maximum heater temperature"
+      default "65"
+      help
+        This set the absolute limit for heater operation and is designed
+        to protect the MMU construction. Individual filament temps are
+        defined in 'drying_data' in mmu.cfg
+
+    config PARAM_FILAMENT_HEATER
+      string "Enclosure heater"
+      default ""
+      help
+        Enter the fullname of heater used to heat the filament enclosure.
+
+        E.g. If you have a section like this: [heater_generic MMU_heater], then enter
+             without the square brackets:
+          "heater_generic MMU_heater"
+
+        Note: Designs with per-gate heaters (e.g. EMU) need manual configuration in mmu_hardware.cfg
+  endmenu
+endif

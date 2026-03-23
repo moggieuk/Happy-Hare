@@ -35,6 +35,7 @@ usage() {
     echo "${C_INFO}[config_file]${C_OFF} is optional, if not specified the default config filename (.config) will be used."
     echo "  -i for interactive install"
     echo "  -u or -d for uninstall"
+    echo "  -f to just restore klipper/moonraker symlinks (recover after hard klipper update)"
     echo "  -z skip github update check (nullifies -b <branch>)"
     echo "  -s to skip restart of services"
     echo "  -b to switch to specified feature branch (sticky)"
@@ -91,8 +92,12 @@ time_elapsed() {
     echo
 }
 
-while getopts "iudzsb:nk:c:m:a:tqv" arg; do
+while getopts "hfiudzsb:nk:c:m:a:tqv" arg; do
     case $arg in
+    f)
+        FIX_LINKS=y
+        F_SKIP_UPDATE=y
+        ;;
     i) F_MENUCONFIG=y ;;
     u | d) F_UNINSTALL=y ;;
     z) export F_SKIP_UPDATE="${F_SKIP_UPDATE:=y}" ;;
@@ -110,8 +115,9 @@ while getopts "iudzsb:nk:c:m:a:tqv" arg; do
     #     ;;
     a) export CONFIG_KLIPPER_SERVICE="${OPTARG}.service" ;;
     t) export TESTDIR=/tmp/mmu_test ;;
-    q) export Q= ;;   # Developer: Disable quite mode in Makefile
+    q) export Q= ;;   # Developer: Disable quiet mode in Makefile
     v) export V=-v ;; # Developer: Enable verbose mode in builder and debug in Makefile
+    h) usage ;;
     *) usage ;;
     esac
 done
@@ -125,7 +131,7 @@ elif [ ! "${F_SKIP_UPDATE}" ] && [ ! "${F_UNINSTALL}" ]; then
     F_SKIP_UPDATE=force exec "$0" "$@"
 else
     [ -t 1 ] && clear
-    echo "${C_NOTICE}Skipping self update${C_OFF}"
+    echo "${C_NOTICE}Skipping (git) self update${C_OFF}"
 fi
 
 shift $((OPTIND - 1))
@@ -166,6 +172,31 @@ if [ "${TESTDIR}" ]; then
     fi
 fi
 
+if [ -n "${CONFIG_KLIPPER_HOME+x}" ] && [ ! -d "${CONFIG_KLIPPER_HOME}" ]; then
+    echo "${C_ERROR}Klipper config directory not found: ${CONFIG_KLIPPER_HOME}${C_OFF}"
+    exit 1
+fi
+
+if [ -n "${CONFIG_KLIPPER_CONFIG_HOME+x}" ] && [ ! -d "${CONFIG_KLIPPER_CONFIG_HOME}" ]; then
+    echo "${C_ERROR}Klipper config directory not found: ${CONFIG_KLIPPER_CONFIG_HOME}${C_OFF}"
+    exit 1
+fi
+
+if [ -n "${CONFIG_MOONRAKER_HOME+x}" ] && [ ! -d "${CONFIG_MOONRAKER_HOME}" ]; then
+    echo "${C_ERROR}Moonraker home directory not found: ${CONFIG_MOONRAKER_HOME}${C_OFF}"
+    exit 1
+fi
+
+# Handle the quick fix of klipper/moonraker symlinks
+# (users delete them if they "hard" update klipper/moonraker)
+if [ "${FIX_LINKS}" ]; then
+    echo "${C_INFO}Restoring Happy Hare klipper extras and moonraker components links${C_OFF}"
+    time_elapsed make --no-print-directory -C "${SCRIPT_DIR}" fix_links
+    exit 0
+fi
+
+
+
 #####################
 ##### Uninstall #####
 #####################
@@ -204,19 +235,30 @@ fi
 # If re-running with -i give the choice of refreshing from Kconfig or retaining custom .cfg modifications
 if [ -r "${KCONFIG_CONFIG}" ] && [ -n "${F_MENUCONFIG:-}" ]; then
     echo "${C_WARNING}You are running an interactive install with existing menuconfig ('${KCONFIG_CONFIG}').${C_OFF}"
+    echo
     echo "${C_WARNING}Read carefully, you have two options:${C_OFF}"
     echo
     echo "- Refresh/restore .cfg from menuconfig ${C_WARNING}(select Y)${C_OFF}"
-    echo "  This will OVERWRITE changes you have made directly to your Happy Hare .cfg files that are ALSO set by"
-    echo "  menuconfig but is the best choice if you make core changes via this interactive installer (recommended)"
-    echo "- Retain ALL your .cfg changes ${C_WARNING}(select N)${C_OFF}"
-    echo "  This will never change any existing parameter value and thus is limited to only ADDING NEW or missing"
-    echo "  config sections/options. Parameter values in menuconfig may not reflect your actual .cfg config"
+    echo "  Recommended"
+    echo "  This will OVERWRITE changes made directly to your Happy Hare .cfg files that are ALSO set by menuconfig"
+    echo "  but is the BEST choice if you make core changes via this interactive installer. Note that changes to .cfg"
+    echo "  files that are not part of menuconfig will be retained."
     echo
-    echo "  (Note that in both cases a backup of your existing .cfg files will be made)"
+    echo "- Blindly retain ALL your .cfg changes ${C_WARNING}(select N)${C_OFF}"
+    echo "  This will NEVER CHANGE any existing parameter value and thus is limited to only ADDING NEW or missing"
+    echo "  config sections/options. Also parameter values in menuconfig may not reflect your actual .cfg config"
+    echo
+    echo "  (Note that in both cases a BACKUP of your existing .cfg files will be made)"
     echo
     if ! prompt_yn "Refresh/restore .cfg"; then
         export F_SKIP_RETAIN_OLD_CFG=y
+    fi
+
+    echo
+    if [ "${F_SKIP_RETAIN_OLD_CFG:-}" = "y" ]; then
+        echo "${C_INFO}Launching menuconfig...${C_OFF}"
+    else
+        echo "${C_INFO}Launching menuconfig (manual config changes will be retained)...${C_OFF}"
     fi
     echo
 fi

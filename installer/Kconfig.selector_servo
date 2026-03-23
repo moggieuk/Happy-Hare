@@ -14,7 +14,7 @@
 #   PARAM_SERVO_MOVE_ANGLE
 #   PARAM_SERVO_DOWN_ANGLE
 #   PARAM_SERVO_ACTIVE_DOWN
-#   PARAM_SELECTOR_GATE_ANGLES
+#   PARAM_SERVO_GATE_ANGLES
 
 if MMU_HAS_SELECTOR_SERVO
   menu "Selector servo"
@@ -51,11 +51,13 @@ if MMU_HAS_SELECTOR_SERVO
       string "Servo duration"
       default "0.4" if LINEAR_SELECTOR
       default "0.5" if SERVO_SELECTOR
+      default "0.4"
 
     config PARAM_SERVO_DWELL
       string "Servo dwell"
       default "0.5" if LINEAR_SELECTOR
       default "0.8" if SERVO_SELECTOR
+      default "0.5"
 
     config BOOL_SERVO_ALWAYS_ACTIVE
       bool "Servo always active?"
@@ -80,5 +82,20 @@ if MMU_HAS_SELECTOR_SERVO
       int
       default 1 if BOOL_SERVO_ACTIVE_DOWN
       default 0
+
+    config PARAM_SERVO_GATE_ANGLES
+      string "Initial servo gate angles"
+      depends on SERVO_SELECTOR || TESTING_SELECTOR
+      default "90, 90"                 if PARAM_NUM_GATES = 2
+      default "90, 90, 90"             if PARAM_NUM_GATES = 3
+      default "90, 90, 90, 90"         if PARAM_NUM_GATES = 4
+      default "90, 90, 90, 90, 90"     if PARAM_NUM_GATES = 5
+      default "90, 90, 90, 90, 90, 90" if PARAM_NUM_GATES = 6
+      default ""
+      help
+        Specify a list of angles representing the initial gate positions. This can avoid
+        calibration but typically calibrated values (saved in 'mmu_vars.cfg') would override
+        this setting.
+        You may leave it blank to force user calibration.
   endmenu
 endif

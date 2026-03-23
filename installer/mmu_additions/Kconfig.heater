@@ -1,0 +1,10 @@
+# Defines whether MMU has a filament enclosure heater
+#
+# Responsible for setting:
+#   MMU_HAS_HEATER
+
+config MMU_HAS_HEATER
+  help
+    Select if the MMU has a heater in the filament storate enclosure
+  prompt "Enclosure heater?"
+  forceshow

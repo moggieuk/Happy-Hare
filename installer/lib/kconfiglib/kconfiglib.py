@@ -859,6 +859,7 @@ class Kconfig(object):
         "_tokens",
         "_tokens_i",
         "_reuse_tokens",
+        "_line_queue", # Happy Hare added
     )
 
     #
@@ -2257,37 +2258,160 @@ class Kconfig(object):
         self._readline.__self__.close()  # __self__ fetches the 'file' object
         self._include_path, self._readline = self._filestack.pop()
 
+# Happy Hare replaced this original method
+#    def _next_line(self):
+#        # Fetches and tokenizes the next line from the current Kconfig file.
+#        # Returns False at EOF and True otherwise.
+#
+#        # We might already have tokens from parsing a line and discovering that
+#        # it's part of a different construct
+#        if self._reuse_tokens:
+#            self._reuse_tokens = False
+#            # self._tokens_i is known to be 1 here, because _parse_props()
+#            # leaves it like that when it can't recognize a line (or parses a
+#            # help text)
+#            return True
+#
+#        # readline() returns '' over and over at EOF, which we rely on for help
+#        # texts at the end of files (see _line_after_help())
+#        line = self._readline()
+#        if not line:
+#            return False
+#        self.linenr += 1
+#
+#        # Handle line joining
+#        while line.endswith("\\\n"):
+#            line = line[:-2] + self._readline()
+#            self.linenr += 1
+#
+#        self._tokens = self._tokenize(line)
+#        # Initialize to 1 instead of 0 to factor out code from _parse_block()
+#        # and _parse_props(). They immediately fetch self._tokens[0].
+#        self._tokens_i = 1
+#
+#        return True
+
+    # Happy Hare added vvv
+    #
+    # Replacement with support for injecting expanded lines via a simple macro:
+    #
+    #   @defaults template="neopixel:$(UNIT_NAME)_leds (1-%d)" ifsym=PARAM_NUM_GATES min=1 max=32@
+    #
+    # Expands into:
+    #   default "neopixel:$(UNIT_NAME)_leds (1-1)" if PARAM_NUM_GATES = 1
+    #   ...
+    #   default "neopixel:$(UNIT_NAME)_leds (1-32)" if PARAM_NUM_GATES = 32
     def _next_line(self):
-        # Fetches and tokenizes the next line from the current Kconfig file.
-        # Returns False at EOF and True otherwise.
+            # Fetches and tokenizes the next line from the current Kconfig file.
+            # Returns False at EOF and True otherwise.
+            #
+            # Supports:
+            #   @defaults template="..." ifsym=SYM min=1 max=32@
+            #
+            # Expands into:
+            #   default "..." if SYM = N
+            #   for N in [min..max]
 
-        # We might already have tokens from parsing a line and discovering that
-        # it's part of a different construct
-        if self._reuse_tokens:
-            self._reuse_tokens = False
-            # self._tokens_i is known to be 1 here, because _parse_props()
-            # leaves it like that when it can't recognize a line (or parses a
-            # help text)
+            if self._reuse_tokens:
+                self._reuse_tokens = False
+                return True
+
+            if not hasattr(self, "_line_queue"):
+                self._line_queue = []
+
+            def _to_int(s, name):
+                try:
+                    return int(s, 10)
+                except Exception:
+                    self._parse_error("invalid integer for '%s': %r (in @defaults)" % (name, s))
+
+            def _parse_defaults_macro(raw_line):
+                import shlex
+
+                stripped = raw_line.strip()
+                if not stripped:
+                    return None
+
+                if not (stripped.startswith("@defaults") and stripped.endswith("@")):
+                    return None
+
+                # Extract inner directive text
+                inner = stripped[len("@defaults"):].strip()
+                inner = inner[:-1].strip()  # remove trailing '@'
+
+                lex = shlex.shlex(inner, posix=True)
+                lex.whitespace_split = True
+
+                args = {}
+                for tok in list(lex):
+                    if "=" not in tok:
+                        self._line = raw_line
+                        self._parse_error("bad @defaults token (expected key=value): %r" % tok)
+                    k, v = tok.split("=", 1)
+                    args[k.strip()] = v.strip()
+
+                template = args.get("template")
+                ifsym = args.get("ifsym")
+                mn = args.get("min")
+                mx = args.get("max")
+
+                if template is None or ifsym is None or mn is None or mx is None:
+                    self._line = raw_line
+                    self._parse_error(
+                        "missing required @defaults args (need template=..., ifsym=..., min=..., max=...)"
+                    )
+
+                mn_i = _to_int(mn, "min")
+                mx_i = _to_int(mx, "max")
+
+                if mn_i > mx_i:
+                    self._line = raw_line
+                    self._parse_error("@defaults has min > max (%d > %d)" % (mn_i, mx_i))
+
+                out = []
+                for i in range(mn_i, mx_i + 1):
+                    try:
+                        rendered = template % i
+                    except Exception:
+                        self._line = raw_line
+                        self._parse_error(
+                            "template formatting failed for i=%d. "
+                            "Template must use printf-style formatting like %%d" % i
+                        )
+
+                    out.append('default "%s" if %s = %d\n' % (rendered, ifsym, i))
+
+                return out
+
+            # --- Fetch next line ---
+
+            if self._line_queue:
+                line = self._line_queue.pop(0)
+            else:
+                line = self._readline()
+                if not line:
+                    return False
+                self.linenr += 1
+
+                # Handle line joining
+                while line.endswith("\\\n"):
+                    line = line[:-2] + self._readline()
+                    self.linenr += 1
+
+            # Expand macro (if present)
+            expanded = _parse_defaults_macro(line)
+            if expanded:
+                # Inject generated lines
+                self._line_queue = expanded[1:] + self._line_queue
+                line = expanded[0]
+
+            # IMPORTANT: Set self._line for proper error reporting
+            self._line = line
+
+            self._tokens = self._tokenize(line)
+            self._tokens_i = 1
             return True
-
-        # readline() returns '' over and over at EOF, which we rely on for help
-        # texts at the end of files (see _line_after_help())
-        line = self._readline()
-        if not line:
-            return False
-        self.linenr += 1
-
-        # Handle line joining
-        while line.endswith("\\\n"):
-            line = line[:-2] + self._readline()
-            self.linenr += 1
-
-        self._tokens = self._tokenize(line)
-        # Initialize to 1 instead of 0 to factor out code from _parse_block()
-        # and _parse_props(). They immediately fetch self._tokens[0].
-        self._tokens_i = 1
-
-        return True
+# Happy Hare added ^^^
 
     def _line_after_help(self, line):
         # Tokenizes a line after a help text. This case is special in that the
@@ -4035,6 +4159,7 @@ class Kconfig(object):
         self.warnings.append(msg)
         if self.warn_to_stderr:
             sys.stderr.write(msg + "\n")
+
 
 
 class Symbol(object):

@@ -1,0 +1,342 @@
+# Happy Hare MMU Software
+#
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+# Implements composable MMU step commands:
+#   MMU_STEP_LOAD_GATE
+#   MMU_STEP_UNLOAD_GATE
+#   MMU_STEP_LOAD_BOWDEN
+#   MMU_STEP_UNLOAD_BOWDEN
+#   MMU_STEP_HOME_EXTRUDER
+#   MMU_STEP_LOAD_TOOLHEAD
+#   MMU_STEP_UNLOAD_TOOLHEAD
+#   MMU_STEP_HOMING_MOVE
+#   MMU_STEP_MOVE
+#   MMU_STEP_SET_FILAMENT
+#   MMU_STEP_SET_ACTION
+#   MMU_M400
+#
+#
+# (\_/)
+# ( *,*)
+# (")_(") Happy Hare Ready
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+#
+
+# Happy Hare imports
+from ..mmu_constants     import *
+from ..mmu_utils         import MmuError
+from .mmu_base_command   import *
+from .mmu_misc_mixins    import MoveMixin
+
+
+class MmuStepLoadGateCommand(BaseCommand):
+
+    CMD = "_MMU_STEP_LOAD_GATE"
+    HELP_BRIEF = "User composable loading step: Move filament from gate to start of bowden"
+    HELP_PARAMS = (
+        f"{CMD}: {HELP_BRIEF}\n"
+    )
+    HELP_SUPPLEMENT = ""
+
+    def __init__(self, mmu):
+        super().__init__(mmu)
+        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
+
+    def _run(self, gcmd):
+        mmu = self.mmu
+
+        try:
+            with mmu.wrap_sync_gear_to_extruder():
+                mmu._load_gate()
+        except MmuError as ee:
+            mmu.handle_mmu_error("_MMU_STEP_LOAD_GATE: %s" % str(ee))
+
+
+class MmuStepUnloadGateCommand(BaseCommand):
+
+    CMD = "_MMU_STEP_UNLOAD_GATE"
+    HELP_BRIEF = "User composable unloading step: Move filament from start of bowden and park in the gate"
+    HELP_PARAMS = (
+        f"{CMD}: {HELP_BRIEF}\n"
+        + "FULL   = [0|1]\n"
+    )
+    HELP_SUPPLEMENT = ""
+
+    def __init__(self, mmu):
+        super().__init__(mmu)
+        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
+
+    def _run(self, gcmd):
+        mmu = self.mmu
+
+        full = bool(gcmd.get_int('FULL', 0, minval=0, maxval=1))
+        try:
+            with mmu.wrap_sync_gear_to_extruder():
+                mmu._unload_gate(extra_homing=None if full else 0.)
+        except MmuError as ee:
+            mmu.handle_mmu_error("_MMU_STEP_UNLOAD_GATE: %s" % str(ee))
+
+
+class MmuStepLoadBowdenCommand(BaseCommand):
+
+    CMD = "_MMU_STEP_LOAD_BOWDEN"
+    HELP_BRIEF = "User composable loading step: Smart loading of bowden"
+    HELP_PARAMS = (
+        f"{CMD}: {HELP_BRIEF}\n"
+        + "LENGTH    = mm   Override the default calibrated bowden length)\n"
+        + "START_POS = mm   Postion of filament past the gate homing point at start of move\n"
+    )
+    HELP_SUPPLEMENT = ""
+
+    def __init__(self, mmu):
+        super().__init__(mmu)
+        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
+
+    def _run(self, gcmd):
+        mmu = self.mmu
+
+        length = gcmd.get_float('LENGTH', None, minval=0.)
+        start_pos = gcmd.get_float('START_POS', 0.)
+        try:
+            with mmu.wrap_sync_gear_to_extruder():
+                mmu._load_bowden(length, start_pos=start_pos)
+        except MmuError as ee:
+            mmu.handle_mmu_error("_MMU_STEP_LOAD_BOWDEN: %s" % str(ee))
+
+
+class MmuStepUnloadBowdenCommand(BaseCommand):
+
+    CMD = "_MMU_STEP_UNLOAD_BOWDEN"
+    HELP_BRIEF = "User composable unloading step: Smart unloading of bowden"
+    HELP_PARAMS = (
+        f"{CMD}: {HELP_BRIEF}\n"
+        + "LENGTH   = mm   Override the default calibrated bowden length)\n"
+    )
+    HELP_SUPPLEMENT = ""
+
+    def __init__(self, mmu):
+        super().__init__(mmu)
+        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
+
+    def _run(self, gcmd):
+        mmu = self.mmu
+
+        length = gcmd.get_float('LENGTH', mmu._get_bowden_length(mmu.gate_selected))
+        try:
+            with mmu.wrap_sync_gear_to_extruder():
+                mmu._unload_bowden(length)
+        except MmuError as ee:
+            mmu.handle_mmu_error("_MMU_STEP_UNLOAD_BOWDEN: %s" % str(ee))
+
+
+class MmuStepHomeExtruderCommand(BaseCommand):
+
+    CMD = "_MMU_STEP_HOME_EXTRUDER"
+    HELP_BRIEF = "User composable loading step: Home to extruder sensor or entrance through collision detection"
+    HELP_PARAMS = (
+        f"{CMD}: {HELP_BRIEF}\n"
+    )
+    HELP_SUPPLEMENT = ""
+
+    def __init__(self, mmu):
+        super().__init__(mmu)
+        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
+
+    def _run(self, gcmd):
+        mmu = self.mmu
+
+        try:
+            with mmu.wrap_sync_gear_to_extruder():
+                mmu._home_to_extruder(mmu.mmu_unit().p.extruder_homing_max)
+        except MmuError as ee:
+            mmu.handle_mmu_error("_MMU_STEP_HOME_EXTRUDER: %s" % str(ee))
+
+
+class MmuStepLoadToolheadCommand(BaseCommand):
+
+    CMD = "_MMU_STEP_LOAD_TOOLHEAD"
+    HELP_BRIEF = "User composable loading step: Toolhead loading"
+    HELP_PARAMS = (
+        f"{CMD}: {HELP_BRIEF}\n"
+        + "EXTRUDER_ONLY   = [0|1] Extruder only load (e.g. when in bypass)\n"
+    )
+    HELP_SUPPLEMENT = ""
+
+    def __init__(self, mmu):
+        super().__init__(mmu)
+        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
+
+    def _run(self, gcmd):
+        mmu = self.mmu
+
+        extruder_only = gcmd.get_int('EXTRUDER_ONLY', 0)
+        try:
+            with mmu.wrap_sync_gear_to_extruder():
+                mmu._load_extruder(extruder_only)
+        except MmuError as ee:
+            mmu.handle_mmu_error("_MMU_STEP_LOAD_TOOLHEAD: %s" % str(ee))
+
+
+class MmuStepUnloadToolheadCommand(BaseCommand):
+
+    CMD = "_MMU_STEP_UNLOAD_TOOLHEAD"
+    HELP_BRIEF = "User composable unloading step: Toolhead unloading"
+    HELP_PARAMS = (
+        f"{CMD}: {HELP_BRIEF}\n"
+        + "EXTRUDER_ONLY   = [0|1] Extruder only unload (e.g. when in bypass)\n"
+        + "PARK_POS        = mm    The starting position of the filament in extruder (after tip forming / retraction)\n"
+    )
+    HELP_SUPPLEMENT = ""
+
+    def __init__(self, mmu):
+        super().__init__(mmu)
+        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
+
+    def _run(self, gcmd):
+        mmu = self.mmu
+
+        extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0))
+        park_pos = gcmd.get_float('PARK_POS', -mmu._get_filament_position())
+        try:
+            with mmu.wrap_sync_gear_to_extruder():
+                park_pos = min(
+                    mmu.p.toolhead_extruder_to_nozzle,
+                    max(0, park_pos)
+                )
+                mmu._set_filament_position(-park_pos)
+                mmu._unload_extruder(extruder_only=extruder_only)
+        except MmuError as ee:
+            mmu.handle_mmu_error("_MMU_STEP_UNLOAD_TOOLHEAD: %s" % str(ee))
+
+
+class MmuStepHomingMoveCommand(MoveMixin, BaseCommand):
+
+    CMD = "_MMU_STEP_HOMING_MOVE"
+    HELP_BRIEF = "User composable loading step: Generic homing move"
+    HELP_PARAMS = (
+        f"{CMD}: {HELP_BRIEF}\n"
+        + "(see MMU_TEST_HOMING_MOVE HELP=1 for options)\n"
+    )
+    HELP_SUPPLEMENT = ""
+
+    def __init__(self, mmu):
+        super().__init__(mmu)
+        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
+
+    def _run(self, gcmd):
+        mmu = self.mmu
+
+        allow_bypass = bool(gcmd.get_int('ALLOW_BYPASS', 0, minval=0, maxval=1))
+        try:
+            with mmu.wrap_sync_gear_to_extruder():
+                self._homing_move_cmd(
+                    gcmd,
+                    "User defined step homing move",
+                    allow_bypass=allow_bypass
+                )
+        except MmuError as ee:
+            mmu.handle_mmu_error("_MMU_STEP_HOMING_MOVE: %s" % str(ee))
+
+
+class MmuStepMoveCommand(MoveMixin, BaseCommand):
+
+    CMD = "_MMU_STEP_MOVE"
+    HELP_BRIEF = "User composable loading step: Generic move"
+    HELP_PARAMS = (
+        f"{CMD}: {HELP_BRIEF}\n"
+        + "(see MMU_TEST_MOVE HELP=1 for options)\n"
+    )
+    HELP_SUPPLEMENT = ""
+
+    def __init__(self, mmu):
+        super().__init__(mmu)
+        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
+
+    def _run(self, gcmd):
+        mmu = self.mmu
+
+        allow_bypass = bool(gcmd.get_int('ALLOW_BYPASS', 0, minval=0, maxval=1))
+        try:
+            with mmu.wrap_sync_gear_to_extruder():
+                self._move_cmd(
+                    gcmd,
+                    "User defined step move",
+                    allow_bypass=allow_bypass
+                )
+        except MmuError as ee:
+            mmu.handle_mmu_error("_MMU_STEP_MOVE: %s" % str(ee))
+
+
+class MmuStepSetFilamentCommand(BaseCommand):
+
+    CMD = "_MMU_STEP_SET_FILAMENT"
+    HELP_BRIEF = "User composable loading step: Set filament position state"
+    HELP_PARAMS = (
+        f"{CMD}: {HELP_BRIEF}\n"
+        + "STATE   = _state_ Filament position state\n"
+        + "SILENT  = [0|1]   Set to suppress logging of new position\n"
+    )
+    HELP_SUPPLEMENT = ""
+
+    def __init__(self, mmu):
+        super().__init__(mmu)
+        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
+
+    def _run(self, gcmd):
+        mmu = self.mmu
+
+        state = gcmd.get_int('STATE', minval=FILAMENT_POS_UNKNOWN, maxval=FILAMENT_POS_LOADED)
+        silent = gcmd.get_int('SILENT', 0)
+        mmu._set_filament_pos_state(state, silent)
+
+
+class MmuStepSetActionCommand(BaseCommand):
+
+    CMD = "_MMU_STEP_SET_ACTION"
+    HELP_BRIEF = "User composable loading step: Set action state"
+    HELP_PARAMS = (
+        f"{CMD}: {HELP_BRIEF}\n"
+        + "RESTORE = [0|1]   Set to restore previous action state\n"
+        + "STATE   = _state_ Set action state and save previous for restore operation\n"
+    )
+    HELP_SUPPLEMENT = ""
+
+    def __init__(self, mmu):
+        super().__init__(mmu)
+        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
+
+    def _run(self, gcmd):
+        mmu = self.mmu
+
+        if gcmd.get_int('RESTORE', 0):
+            if mmu._old_action is not None:
+                mmu._set_action(mmu._old_action)
+            mmu._old_action = None
+        else:
+            state = gcmd.get_int('STATE', minval=ACTION_IDLE, maxval=ACTION_PURGING)
+            if mmu._old_action is None:
+                mmu._old_action = mmu._set_action(state)
+            else:
+                mmu._set_action(state)
+
+
+class MmuM400Command(BaseCommand):
+
+    CMD = "_MMU_M400"
+    HELP_BRIEF = "Wait on both move queues"
+    HELP_PARAMS = (
+        f"{CMD}: {HELP_BRIEF}\n"
+    )
+    HELP_SUPPLEMENT = ""
+
+    def __init__(self, mmu):
+        super().__init__(mmu)
+        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
+
+    def _run(self, gcmd):
+        mmu = self.mmu
+
+        mmu.mmu_toolhead().quiesce()

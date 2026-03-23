@@ -1,4 +1,4 @@
-config MMU_HAS_SENSOR_PRE_GATE
+config MMU_HAS_SENSOR_ENTRY
   bool "Pre-Gate sensors?"
   help
     Select if you have per-gate filament sensors at the entry to the

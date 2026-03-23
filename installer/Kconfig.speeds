@@ -12,7 +12,7 @@
 #   PARAM_GEAR_SHORT_MOVE_ACCEL
 #   PARAM_GEAR_SHORT_MOVE_THRESHOLD
 #
-# These must be in a "if MMU_HAS_SELECTOR" clause in cfg templates
+# These must be in a "if MMU_HAS_SELECTOR_STEPPER" clause in cfg templates
 #   PARAM_SELECTOR_MOVE_SPEED
 #   PARAM_SELECTOR_HOMING_SPEED
 #   PARAM_SELECTOR_TOUCH_SPEED
@@ -42,7 +42,7 @@ menu "Speeds"
   config PARAM_GEAR_FROM_SPOOL_SPEED
     string "Loading from spool speed"
     default "80"
-    depends on MMU_HAS_FILAMANT_BUFFER
+    depends on MMU_HAS_FILAMENT_BUFFER
     help
       Fast speed when loading filament from the spool and the filament is not yet buffered
       (first time load). This can be helpful in allowing a slower than normal speed to overcome
@@ -50,7 +50,7 @@ menu "Speeds"
 
   config PARAM_GEAR_FROM_SPOOL_ACCEL
     string "Loading from spool acceleration"
-    depends on MMU_HAS_FILAMANT_BUFFER
+    depends on MMU_HAS_FILAMENT_BUFFER
     default "100"
 
   config PARAM_GEAR_UNLOAD_SPEED
@@ -89,20 +89,18 @@ menu "Speeds"
   if !MULTI_UNIT || MULTI_UNIT_ENTRY_POINT
     comment "Extruder movement speeds (mm/s)"
 
-    if !PARAM_FILAMENT_ALWAYS_GRIPPED
-      config PARAM_EXTRUDER_LOAD_SPEED
-        string "Extruder load speed"
-        default "16"
-        help
-          Speed of load move inside extruder from homing position to meltzone
+    config PARAM_EXTRUDER_LOAD_SPEED
+      string "Extruder load speed"
+      default "16"
+      help
+        Speed of load move inside extruder from homing position to meltzone
 
-      config PARAM_EXTRUDER_UNLOAD_SPEED
-        string "Extruder unload speed"
-        default "16"
-        help
-          Speed of unload moves inside of extruder
-          (very initial move from meltzone is 50% of this)
-    endif
+    config PARAM_EXTRUDER_UNLOAD_SPEED
+      string "Extruder unload speed"
+      default "16"
+      help
+        Speed of unload moves inside of extruder
+        (very initial move from meltzone is 50% of this)
 
     config PARAM_EXTRUDER_SYNC_LOAD_SPEED
       string "Extruder sync load speed"
@@ -142,12 +140,12 @@ menu "Speeds"
 
       config PARAM_SELECTOR_HOMING_SPEED
         string "Speed of selector homing moves (mm/s)"
-        depends on !INDEXED_SELECTOR
+        depends on LINEAR_SELECTOR || LINEAR_SERVO_SELECTOR || LINEAR_MULTI_GEAR_SELECTOR || ROTARY_SELECTOR || TESTING_SELECTOR
         default "60"
 
       config PARAM_SELECTOR_TOUCH_SPEED
         string "Speed of touch selector movement (mm/s)"
-        depends on LINEAR_SELECTOR
+        depends on LINEAR_SELECTOR || LINEAR_SERVO_SELECTOR || LINEAR_MULTI_GEAR_SELECTOR || TESTING_SELECTOR
         default "80"
 
     endmenu

@@ -58,8 +58,8 @@ export OUT ?= $(OUTDIR)/out
 export IN  := $(OUT)/in
 
 # Default unit and mcu naming
-export UNIT_NAME ?= mmu0
-export MCU_NAME ?= mmu0
+export UNIT_NAME ?= unit0
+export MCU_NAME ?= unit0
 
 # Helper functions/constants
 comma := ,
@@ -80,9 +80,9 @@ MOONRAKER_HOME          := $(call unwrap,$(CONFIG_MOONRAKER_HOME))
 PRINTER_CONFIG_FILE     := $(call unwrap,$(CONFIG_PRINTER_CONFIG_FILE))
 MOONRAKER_CONFIG_FILE   := $(call unwrap,$(CONFIG_MOONRAKER_CONFIG_FILE))
 
-# unit_names: from CONFIG_MMU_UNITS in multi-unit, else default to mmu0
-#unit_names := $(if $(filter y,$(CONFIG_MULTI_UNIT)),$(strip $(subst ",,$(call convert_list,$(call strip_ws_around_commas,$(CONFIG_MMU_UNITS))))),mmu0)
-unit_names := $(if $(filter y,$(CONFIG_MULTI_UNIT)),$(call convert_list,$(subst ",,$(CONFIG_MMU_UNITS))),mmu0)
+# unit_names: from CONFIG_MMU_UNITS in multi-unit, else default to unit0
+#unit_names := $(if $(filter y,$(CONFIG_MULTI_UNIT)),$(strip $(subst ",,$(call convert_list,$(call strip_ws_around_commas,$(CONFIG_MMU_UNITS))))),unit0)
+unit_names := $(if $(filter y,$(CONFIG_MULTI_UNIT)),$(call convert_list,$(subst ",,$(CONFIG_MMU_UNITS))),unit0)
 
 # Use sudo if the klipper home is at a system location (not owned by user)
 SUDO := $(shell \
@@ -99,7 +99,7 @@ restart_klipper = 0
 .SECONDEXPANSION:
 .DEFAULT_GOAL := build
 .PRECIOUS: $(KCONFIG_CONFIG) $(KCONFIG_CONFIG)_%
-.PHONY: menuconfig install uninstall check_version diff test build clean variables python_deps
+.PHONY: menuconfig install uninstall check_version diff test build clean variables python_deps fix_links
 .SECONDARY: \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
@@ -111,8 +111,8 @@ restart_klipper = 0
 ##### File sets #####
 #####################
 
-hh_klipper_extras_files := $(wildcard extras/*.py extras/mmu/*.py)
-hh_old_klipper_modules  := mmu.py mmu_toolhead.py # These will get removed upon install
+hh_klipper_extras_files := $(wildcard extras/*.py extras/mmu/*.py extras/mmu/unit/*.py extras/mmu/unit/selectors/*.py extras/mmu/commands/*.py)
+hh_old_klipper_modules  := mmu_toolhead.py mmu/__init__.py # These will get removed upon install
 hh_moonraker_components := $(wildcard components/*.py)
 
 # All repo configs files less mmu_vars.cfg
@@ -121,8 +121,8 @@ repo_cfgs := \
 
 # Per-unit files: <unit>_{hardware,parameters}.cfg
 hh_unit_config_files := \
-	$(addprefix base/,$(addsuffix _hardware.cfg,$(unit_names))) \
-	$(addprefix base/,$(addsuffix _parameters.cfg,$(unit_names)))
+	$(addprefix base/mmu_hardware_,$(addsuffix .cfg,$(unit_names))) \
+	$(addprefix base/mmu_parameters_,$(addsuffix .cfg,$(unit_names)))
 
 # Final config set: all repo cfgs (minus the single-unit defaults) + per-unit files
 hh_config_files := \
@@ -234,13 +234,13 @@ KCONF_REQS = $(if $(filter y,$(CONFIG_MULTI_UNIT)), \
              $(KCONFIG_CONFIG)   $(OUT)/$(notdir $(KCONFIG_CONFIG)).pickle)
 
 # Shared target rules don't work on old make so separate for portability
-$(OUT)/mmu/base/%_hardware.cfg: \
+$(OUT)/mmu/base/mmu_hardware_%.cfg: \
   $(SRC)/config/base/mmu_hardware.cfg $(hh_configs_to_parse) $(KCONF_REQS)
 	$(Q)$(call link,$<,$@)
 	$(Q)$(PY) -m installer.build $(V) --build "$<" "$@" \
 		"$(if $(filter y,$(CONFIG_MULTI_UNIT)),$(KCONFIG_CONFIG)_$*,$(KCONFIG_CONFIG))" $(hh_configs_to_parse)
 
-$(OUT)/mmu/base/%_parameters.cfg: \
+$(OUT)/mmu/base/mmu_parameters_%.cfg: \
   $(SRC)/config/base/mmu_parameters.cfg $(hh_configs_to_parse) $(KCONF_REQS)
 	$(Q)$(call link,$<,$@)
 	$(Q)$(PY) -m installer.build $(V) --build "$<" "$@" \
@@ -271,7 +271,7 @@ $(KLIPPER_HOME)/klippy/extras $(MOONRAKER_HOME)/moonraker/components:
 	$(error The directory '$@' does not exist. Please check your config for the correct paths)
 
 # Install python files for klipper
-$(KLIPPER_HOME)/%: $(OUT)/klipper/% | $(KLIPPER_HOME)/klippy/extras
+$(KLIPPER_HOME)/%: $(OUT)/% | $(KLIPPER_HOME)/klippy/extras
 	$(Q)$(call install,$<,$@)
 	$(Q)$(eval restart_klipper = 1)
 
@@ -321,7 +321,7 @@ install: $(install_targets)
 	$(Q)rm -rf $(addprefix $(KLIPPER_HOME)/klippy/extras/,$(hh_old_klipper_modules))
 	$(Q)$(call restart_service,$(restart_moonraker),Moonraker,$(CONFIG_SERVICE_MOONRAKER))
 	$(Q)$(call restart_service,$(restart_klipper),Klipper,$(CONFIG_SERVICE_KLIPPER))
-	$(Q)$(PY) -m installer.build $(V) --print-happy-hare "Done! Happy Hare $(CONFIG_F_VERSION) is ready!"
+	$(Q)$(PY) -m installer.build $(V) --print-happy-hare "Done! Happy Hare $(CONFIG_F_VERSION)is ready!"
 
 uninstall: | python_deps
 	$(Q)$(if $(MOONRAKER_CONFIG_FILE), \
@@ -344,6 +344,12 @@ uninstall: | python_deps
 	$(Q)$(call restart_service,1,Moonraker,$(CONFIG_SERVICE_MOONRAKER))
 	$(Q)$(call restart_service,1,Klipper,$(CONFIG_SERVICE_KLIPPER))
 	$(Q)$(PY) -m installer.build $(V) --print-unhappy-hare "Done. Very unHappy Hare."
+
+fix_links:
+	$(Q)$(foreach f,$(hh_klipper_extras_files),$(call link,$(SRC)/$(f),$(KLIPPER_HOME)/klippy/$(f)))
+	$(Q)$(foreach f,$(hh_moonraker_components),$(call link,$(SRC)/$(f),$(MOONRAKER_HOME)/moonraker/$(f)))
+	$(Q)$(call restart_service,1,Moonraker,$(CONFIG_SERVICE_MOONRAKER))
+	$(Q)$(call restart_service,1,Klipper,$(CONFIG_SERVICE_KLIPPER))
 
 
 

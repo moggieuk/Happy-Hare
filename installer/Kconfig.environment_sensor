@@ -16,6 +16,8 @@ if MMU_HAS_ENVIRONMENT_SENSOR
         E.g. If you have a section like this: [temperature_sensor MMU_enclosure], then enter
              without the square brackets:
           "temperature_sensor MMU_enclosure"
+
+        Note: Designs with per-gate sensors (e.g. EMU) need manual configuration in mmu_hardware.cfg
   endmenu
 
 endif

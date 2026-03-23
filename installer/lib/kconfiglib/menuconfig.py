@@ -931,12 +931,10 @@ def _menuconfig(stdscr):
             # _set_style(_help_win, "show-help" if _show_help else "help")
             _resize_main()
 
-# PAUL temp enabled to be able to see name when debugging
-        elif c in ("c", "C"): # Happy Hare: Disable
+        elif True and c in ("c", "C"): # Happy Hare: Disable (but ENABLE when debugging)
             _show_name = not _show_name
 
-# PAUL temp enabled to be able to see name when debugging
-        elif c in ("a", "A"): # Happy Hare: Disable
+        elif True and c in ("a", "A"): # Happy Hare: Disable (but ENABLE when debugging)
             _toggle_show_all()
 
         elif c in ("q", "Q"):
