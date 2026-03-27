@@ -5796,6 +5796,23 @@ class Mmu:
 # GENERAL FILAMENT RECOVERY AND MOVE HELPERS #
 ##############################################
 
+    #Helper to find active extruder
+    def _get_active_extruder_name(self):
+        """Return the currently active extruder name (e.g. 'extruder' or 'extruder1').
+        Used for IDEX safety: only sync the gear motor when the MMU's configured
+        extruder is actually active. Fallback if lookup fails."""
+        try:
+            # Preferred: gcode_move knows the active extruder
+            gcode_move = self.printer.lookup_object('gcode_move')
+            if hasattr(gcode_move, 'extruder') and gcode_move.extruder:
+                return gcode_move.extruder.name
+
+            # Fallback via toolhead status
+            toolhead = self.printer.lookup_object('toolhead')
+            status = toolhead.get_status(self.reactor.monotonic())
+            return status.get('extruder')
+        except Exception:
+            return None
     # Report on need to recover and necessary calibration
     def report_necessary_recovery(self, use_autotune=True):
         if not self.check_if_not_calibrated(self.CALIBRATED_ALL, silent=None, use_autotune=use_autotune):
@@ -5988,8 +6005,16 @@ class Mmu:
 
         # In a non-print context we also honor the caller's explicit intention.
         wants_sync_out_of_print = always_gripped or standalone_sync_requested or sync_intention
+        
+        # Only allow syncing when the currently active extruder matches the MMU config.
+        # This fixes a bug where the gear motor followed extruder T0 moves while MMU was on extruder1 T1.
+        active_extruder = self._get_active_extruder_name()
+        if active_extruder and active_extruder != self.extruder_name:
+            self.log_debug(f"IDEX: Skipping gear sync - active extruder is '{active_extruder}', "
+                           f"MMU configured for '{self.extruder_name}'")
+            sync = False
 
-        if bypass_selected:
+        elif bypass_selected:
             sync = False
 
         elif in_print_context:
