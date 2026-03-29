@@ -199,15 +199,15 @@ class MmuServer:
         '''
         Return the extruder name the MMU is attached to (extruder or extruder1).
         '''
-        if self.mmu_extruder_name is None:
+        if getattr(self, 'mmu_extruder_name', None) is None:
             try:
                 mmu = await self.klippy_apis.query_objects({"mmu": None})
                 self.mmu_extruder_name = mmu.get("mmu", {}).get("extruder_name", "extruder")
             except Exception:
-                self.mmu_extruder_name = "extruder"  # safe fallback
+                self.mmu_extruder_name = "extruder"
         return self.mmu_extruder_name
 
-    def _remap_tool_for_idex(self, tool: int):
+    async def _remap_tool_for_idex(self, tool: int):
         '''
         Remap slicer tool number to MMU tool number when in IDEX mode.
         returns (mmu_tool_index, emit_physical_tx)
@@ -1052,11 +1052,10 @@ def parse_gcode_file(file_path):
 
                 match = tools_regex.match(line)
                 if match:
-                    tool = int(match.group("tool"))
                     # IDEX remapping
-                    remapped, _ = self._remap_tool_for_idex(tool)
+                    remapped, _ = await self._remap_tool_for_idex(int(match.group("tool")))
                     tools_used.add(remapped)
-                     total_toolchanges += 1
+                    total_toolchanges += 1
 
                 # !colors! processing
                 if not has_colors_placeholder and METADATA_COLORS in line:
@@ -1155,9 +1154,6 @@ def process_file(input_filename, output_filename, insert_nextpos, tools_used, to
     with open(input_filename, 'r') as infile, open(output_filename, 'w') as outfile:
         buffer = [] # Buffer lines between a "T" line and the next matching "G1" line
         tool = None # Store the tool number from a "T" line
-        mmu_extruder = None
-        if insert_nextpos and self._is_idex_mode():
-            mmu_extruder = await self._get_mmu_extruder_name()
         outfile.write(f'{HAPPY_HARE_FINGERPRINT}\n')
 
         for line in infile:
@@ -1182,10 +1178,10 @@ def process_file(input_filename, output_filename, insert_nextpos, tools_used, to
             t_match = t_pattern.match(line)
             if t_match:
                 tool = int(t_match.group(1))
-                remapped, emit_physical = self._remap_tool_for_idex(tool)
+                remapped, emit_original = await self._remap_tool_for_idex(tool)
 
                 if emit_physical:
-                    outfile.write(line)                    # write original Tx first
+                    outfile.write(line)                    # write physical Tx first
                     outfile.write(f"MMU_CHANGE_TOOL TOOL={remapped}\n")
                 else:
                     outfile.write(line)                    # untouched non-MMU tool
