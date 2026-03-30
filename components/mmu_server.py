@@ -55,8 +55,6 @@ class MmuServer:
         if config.has_section("spoolman"): # Avoid exception if spoolman not configured
             self.spoolman: SpoolManager = self.server.load_component(config, "spoolman", None)
         self.spoolman: SpoolManager = self.server.lookup_component("spoolman", None)
-        self.idex_preprocessor = config.getboolean("idex_preprocessor", False)
-        self.mmu_extruder_name = None
         self.klippy_apis: APIComp = self.server.lookup_component("klippy_apis")
         self.http_client: HttpClient = self.server.lookup_component("http_client")
         self.database: MoonrakerDatabase = self.server.lookup_component("database")
@@ -194,42 +192,6 @@ class MmuServer:
         logging.info(f"MMU backend present: {self.mmu_backend_present}")
         logging.info(f"MMU backend enabled: {self.mmu_enabled}")
         return True
-    
-    async def _get_mmu_extruder_name(self):
-        '''
-        Return the extruder name the MMU is attached to (extruder or extruder1).
-        '''
-        if self.mmu_extruder_name is None:
-            try:
-                mmu = await self.klippy_apis.query_objects({"mmu": None})
-                self.mmu_extruder_name = mmu.get("mmu", {}).get("extruder_name", "extruder")
-            except Exception:
-                self.mmu_extruder_name = "extruder"  # safe fallback
-        return self.mmu_extruder_name
-
-    def _remap_tool_for_idex(self, tool: int):
-        '''
-        Remap slicer tool number to MMU tool number when in IDEX mode.
-        returns (mmu_tool_index, emit_physical_tx)
-        this way, the physical Tx of the mmu is emmited, and the Tx index of the mmu is also adjusted for either head.
-        '''
-        if not self.idex_preprocessor:
-            return tool, False
-        # If MMU is on extruder1, shift all tools down by 1 (T1 becomes MMU T0, T2 becomes MMU T1, etc.)
-        # and leave T0 untouched
-        mmu_ex = await self._get_mmu_extruder_name()
-        if mmu_ex == "extruder":          # MMU on T0
-            if tool == 1:                 # T1 is the non-MMU head
-                return tool, False        # untouched
-            elif tool > 1:
-                return tool - 1, True     # MMU tool, emit physical Tx first
-            else:
-                return tool, True         # T0 is MMU tool
-        else:                             # MMU on T1 (extruder1)
-            if tool == 0:                 # T0 is the non-MMU head
-                return tool, False        # untouched
-            else:
-                return tool - 1, True     # MMU tool, emit physical Tx first
 
     def _mmu_backend_enabled(self):
         if not hasattr(self, 'mmu_backend_present'):
@@ -1052,11 +1014,9 @@ def parse_gcode_file(file_path):
 
                 match = tools_regex.match(line)
                 if match:
-                    tool = int(match.group("tool"))
-                    # IDEX remapping
-                    remapped, _ = self._remap_tool_for_idex(tool)
-                    tools_used.add(remapped)
-                     total_toolchanges += 1
+                    tool = match.group("tool")
+                    tools_used.add(int(tool))
+                    total_toolchanges += 1
 
                 # !colors! processing
                 if not has_colors_placeholder and METADATA_COLORS in line:
@@ -1155,9 +1115,6 @@ def process_file(input_filename, output_filename, insert_nextpos, tools_used, to
     with open(input_filename, 'r') as infile, open(output_filename, 'w') as outfile:
         buffer = [] # Buffer lines between a "T" line and the next matching "G1" line
         tool = None # Store the tool number from a "T" line
-        mmu_extruder = None
-        if insert_nextpos and self._is_idex_mode():
-            mmu_extruder = await self._get_mmu_extruder_name()
         outfile.write(f'{HAPPY_HARE_FINGERPRINT}\n')
 
         for line in infile:
@@ -1181,15 +1138,9 @@ def process_file(input_filename, output_filename, insert_nextpos, tools_used, to
 
             t_match = t_pattern.match(line)
             if t_match:
-                tool = int(t_match.group(1))
-                remapped, emit_physical = self._remap_tool_for_idex(tool)
-
-                if emit_physical:
-                    outfile.write(line)                    # write original Tx first
-                    outfile.write(f"MMU_CHANGE_TOOL TOOL={remapped}\n")
-                else:
-                    outfile.write(line)                    # untouched non-MMU tool
-                continue
+                tool = t_match.group(1)
+            else:
+                outfile.write(line)
 
         # If there is anything left in buffer it means there wasn't a final "G1" line
         if buffer:
