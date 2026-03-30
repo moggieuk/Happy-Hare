@@ -207,27 +207,27 @@ class MmuServer:
                 self.mmu_extruder_name = "extruder"
         return self.mmu_extruder_name
 
-    def _remap_tool_for_idex(self, tool: int):
+    @staticmethod
+    def _remap_tool_for_idex(tool: int, mmu_extruder: str):
         '''
         Remap slicer tool number to MMU tool number when in IDEX mode.
         returns (mmu_tool_index, emit_physical_tx)
         this way, the physical Tx of the mmu is emmited, and the Tx index of the mmu is also adjusted for either head.
         '''
-        if not self.idex_preprocessor:
-            return tool, False
         # If MMU is on extruder1, shift all tools down by 1 (T1 becomes MMU T0, T2 becomes MMU T1, etc.)
         # and leave T0 untouched
-        mmu_ex = self._get_mmu_extruder_name()
-        if mmu_ex == "extruder":          # MMU on T0
+        if mmu_extruder == "extruder":    # MMU on T0 (extruder)
             if tool == 1:                 # T1 is the non-MMU head
-                return tool, False        # untouched
+                return tool               # untouched
+            elif tool > 1:
+                return tool -1            # MMU tool indexed
             else:
-                return max(0, tool - 1 if tool > 1 else tool), True   # MMU tool → emit physical Tx first
+                return tool               # Tool is index 0
         else:                             # MMU on T1 (extruder1)
             if tool == 0:                 # T0 is the non-MMU head
-                return tool, False        # untouched
+                return tool               # untouched
             else:
-                return tool - 1, True     # MMU tool, emit physical Tx first
+                return tool - 1           # MMU tool indexed
 
     def _mmu_backend_enabled(self):
         if not hasattr(self, 'mmu_backend_present'):
@@ -975,7 +975,7 @@ def gcode_processed_already(file_path):
         line = in_file.readline()
         return mmu_regex.match(line)
 
-def parse_gcode_file(file_path):
+def parse_gcode_file(file_path, idex_preprocessor=False, mmu_extruder="extruder"):
     slicer_regex = re.compile(SLICER_REGEX, re.IGNORECASE)
     orca_version_regex = re.compile(ORCASLICER_VERSION_REGEX, re.IGNORECASE)
     has_tools_placeholder = has_total_toolchanges = has_colors_placeholder = has_temps_placeholder = has_materials_placeholder = has_purge_volumes_placeholder = filament_names_placeholder = False
@@ -1051,8 +1051,9 @@ def parse_gcode_file(file_path):
                 match = tools_regex.match(line)
                 if match:
                     tool = int(match.group("tool"))
-                    remapped, _ = self._remap_tool_for_idex(tool) #remap for IDEX
-                    tools_used.add(remapped)
+                    if idex_preprocessor:
+                        tool = MmuServer._remap_tool_for_idex(tool, mmu_extruder)
+                    tools_used.add(tool)
                     total_toolchanges += 1
 
                 # !colors! processing
@@ -1144,7 +1145,7 @@ def parse_gcode_file(file_path):
     return (has_tools_placeholder or has_total_toolchanges or has_colors_placeholder or has_temps_placeholder or has_materials_placeholder or has_purge_volumes_placeholder or filament_names_placeholder,
             sorted(tools_used), total_toolchanges, colors, temps, materials, purge_volumes, filament_names, slicer)
 
-def process_file(input_filename, output_filename, insert_nextpos, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names):
+def process_file(input_filename, output_filename, insert_nextpos, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names, idex_preprocessor=False, mmu_extruder="extruder"):
 
     t_pattern = re.compile(T_PATTERN)
     g1_pattern = re.compile(G1_PATTERN)
@@ -1176,14 +1177,13 @@ def process_file(input_filename, output_filename, insert_nextpos, tools_used, to
             t_match = t_pattern.match(line)
             if t_match:
                 tool = int(t_match.group(1))
-                remapped, emit_original = self._remap_tool_for_idex(tool)
-
-                if emit_original:
-                    outfile.write(line)                    # physical slicer Tx first
+                if idex_preprocessor:
+                    remapped = MmuServer._remap_tool_for_idex(tool, mmu_extruder)
+                    outfile.write(line)                    # IDEX physical Tx first
                     outfile.write(f"MMU_CHANGE_TOOL TOOL={remapped}\n")
                 else:
-                    outfile.write(line)                    # untouched non-MMU tool
-                continue
+                    outfile.write(line)                    # normal behavior
+                tool = remapped if idex_preprocessor else tool
 
         # If there is anything left in buffer it means there wasn't a final "G1" line
         if buffer:
@@ -1236,7 +1236,15 @@ def main(path, filename, insert_placeholders=False, insert_nextpos=False):
 
                 if insert_placeholders:
                     start = time.time()
-                    has_placeholder, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names, slicer = parse_gcode_file(file_path)
+                    idex_enabled = getattr(args, 'idex', False)
+                    mmu_ex = "extruder"
+                    if idex_enabled:
+                        try:
+                            mmu_status = self.klippy_apis.query_objects_sync({"mmu": None}) if hasattr(self, 'klippy_apis') else {}
+                            mmu_ex = mmu_status.get("mmu", {}).get("extruder_name", "extruder")
+                        except Exception:
+                            pass
+                    has_placeholder, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names, slicer = parse_gcode_file(file_path, idex_preprocessor=idex_enabled, mmu_extruder=mmu_ex)
                     metadata.logger.info("Reading placeholders took %.2fs. Detected gcode by slicer: %s" % (time.time() - start, slicer))
                 else:
                     tools_used = total_toolchanges = colors = temps = materials = purge_volumes = filament_names = slicer = None
@@ -1249,7 +1257,7 @@ def main(path, filename, insert_placeholders=False, insert_nextpos=False):
                         msg.append("Writing MMU placeholders")
                     if insert_nextpos:
                         msg.append("Inserting next position to tool changes")
-                    process_file(file_path, tmp_file, insert_nextpos, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names)
+                    process_file(file_path, tmp_file, insert_nextpos, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names, idex_preprocessor=idex_enabled, mmu_extruder=mmu_ex)
                     metadata.logger.info("mmu_server: %s took %.2fs" % (",".join(msg), time.time() - start))
 
                     # Move temporary file back in place
