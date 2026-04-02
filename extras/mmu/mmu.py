@@ -701,8 +701,12 @@ class Mmu:
     
     def _verify_duplicate_mcu(self):
         main_mcu = self.config.getsection('mcu') # Main MCU is guaranteed
+        main_mcu_serial = main_mcu.get('serial', '').strip() # Serial isn't guaranteed, since there's CANbus
+        
         mmu_mcu = self.config.getsection('mcu mmu') # MMU MCU is common, but not guaranteed
-        if mmu_mcu.get('serial').strip() == main_mcu.get('serial').strip():
+        mmu_mcu_serial = mmu_mcu.get('serial', '').strip()
+        
+        if mmu_mcu_serial and main_mcu_serial and main_mcu_serial == mmu_mcu_serial:
             # Duplicate MCU serials!
             # Klippy will give a possibly confusing error after a connection delay:
             # Resource temporarily unavailable
