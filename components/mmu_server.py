@@ -969,13 +969,18 @@ def _format_volume(v: float) -> str:
     return s.rstrip("0").rstrip(".")
 
 def gcode_processed_already(file_path):
-    """Expects first line of gcode to be the HAPPY_HARE_FINGERPRINT '; processed by HappyHare'"""
+    """Expects first FEW lines of gcode to be the HAPPY_HARE_FINGERPRINT '; processed by HappyHare'"""
 
     mmu_regex = re.compile(MMU_REGEX, re.IGNORECASE)
 
     with open(file_path, 'r') as in_file:
-        line = in_file.readline()
-        return mmu_regex.match(line)
+        for _ in range(10):
+            line = in_file.readline()
+            if not line: # End of file
+                break
+            if mmu_regex.match(line):
+                return True
+    return False
 
 def parse_gcode_file(file_path, idex_preprocessor=False, idex_toolmap_str=""):
     slicer_regex = re.compile(SLICER_REGEX, re.IGNORECASE)
@@ -1064,6 +1069,10 @@ def parse_gcode_file(file_path, idex_preprocessor=False, idex_toolmap_str=""):
                         if mmu_tool is not None:
                             tools_used.add(mmu_tool)
                             total_toolchanges += 1
+                        # If only one MMU tool is used, add a dummy to force 
+                        # the UI/RatOS into "Multi-Color" mode
+                        if len(tools_used) == 1 and mmu_tool is not None:
+                            tools_used.add(-1)
                     else:
                         # non-IDEX Happy-Hare discovery
                         tools_used.add(tool)
