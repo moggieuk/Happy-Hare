@@ -1162,28 +1162,40 @@ def process_file(input_filename, output_filename, insert_nextpos, tools_used, to
 
     t_pattern = re.compile(T_PATTERN)
     g1_pattern = re.compile(G1_PATTERN)
+    temp_pattern = re.compile(r'^(M10[49])(?!\s+.*T\d+)(?:\s+(.*))', re.IGNORECASE) # Pattern to find M104/M109 without a T
     toolmap_dict = parse_idex_toolmap(idex_toolmap_str)
 
     with open(input_filename, 'r') as infile, open(output_filename, 'w') as outfile:
         buffer = [] # Buffer lines between a "T" line and the next matching "G1" line
         tool = None # Store the tool number from a "T" line
         orig_tool = None # Keep track for comment
+        target_phys_head = 0 # Track the current physical head
         outfile.write(f'{HAPPY_HARE_FINGERPRINT}\n')
 
         for line in infile:
             line = add_placeholder(line, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names)
             
             if tool is not None:
-                # Buffer subsequent lines after a "T" line until next "G1" x,y move line is found
-                buffer.append(line)
+                line_clean = line.strip()
+                
+                # Check if there's a temperature command in this dead space
+                m_temp = temp_pattern.match(line_clean)
+                if m_temp and idex_preprocessor:
+                    cmd, params = m_temp.groups()
+                    # Inject the physical head we calculated for this tool change
+                    buffer.append(f"{cmd} T{target_phys_head} {params} ; injected physical Tx\n")
+                else:
+                    buffer.append(line) # Buffer subsequent lines after a "T" line until next "G1" x,y move line is found
+                
                 g1_match = g1_pattern.match(line)
                 if g1_match:
-                    # Now replace "T" line and write buffered lines, including the current "G1" line
-                    x, y = g1_match.groups()
-                    if insert_nextpos:
-                        outfile.write(f'MMU_CHANGE_TOOL TOOL={tool} NEXT_POS="{x},{y}" ; T{orig_tool}\n')
-                    else:
-                        outfile.write(f'MMU_CHANGE_TOOL TOOL={tool} ; T{orig_tool}\n')
+                    if tool != "STATIC": # ONLY write MMU_CHANGE_TOOL if it's an actual MMU tool
+                        # Now replace "T" line and write buffered lines, including the current "G1" line
+                        x, y = g1_match.groups()
+                        if insert_nextpos:
+                            outfile.write(f'MMU_CHANGE_TOOL TOOL={tool} NEXT_POS="{x},{y}" ; T{orig_tool}\n')
+                        else:
+                            outfile.write(f'MMU_CHANGE_TOOL TOOL={tool} ; T{orig_tool}\n')
                     
                     for buffered_line in buffer:
                         outfile.write(buffered_line)
@@ -1196,11 +1208,14 @@ def process_file(input_filename, output_filename, insert_nextpos, tools_used, to
                 orig_tool = int(t_match.group(1))
                 if idex_preprocessor:
                     phys_head, mmu_idx = remap_tool_for_idex(orig_tool, toolmap_dict)
+                    target_phys_head = phys_head # Store for M104 injection
                     # Write the physical head change immediately
                     outfile.write(f"T{phys_head} ; remapped from T{orig_tool}\n")
                     # If it has an MMU tool, buffer for NEXT_POS
                     if mmu_idx is not None:
-                        tool = mmu_idx 
+                        tool = mmu_idx
+                    else:
+                        tool = "STATIC" # Trigger buffer for non MMU head.
                 else:
                     tool = orig_tool # Normal behavior
                 continue            
