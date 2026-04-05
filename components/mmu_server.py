@@ -969,18 +969,84 @@ def _format_volume(v: float) -> str:
     return s.rstrip("0").rstrip(".")
 
 def gcode_processed_already(file_path):
-    """Expects first FEW lines of gcode to be the HAPPY_HARE_FINGERPRINT '; processed by HappyHare'"""
+    """Expects first FEW lines of gcode to find the HAPPY_HARE_FINGERPRINT '; processed by HappyHare'"""
 
     mmu_regex = re.compile(MMU_REGEX, re.IGNORECASE)
+    silent_tag = "Silent re-process by HappyHare"
 
-    with open(file_path, 'r') as in_file:
-        for _ in range(10):
-            line = in_file.readline()
-            if not line: # End of file
-                break
-            if mmu_regex.match(line):
-                return True
-    return False
+    try:
+        with open(file_path, 'r') as in_file:
+            for i, line in enumerate(in_file):
+                if i > 20: break 
+                
+                clean_line = line.strip()
+                
+                # Check for the Silent tag FIRST
+                if silent_tag in clean_line:
+                    return 3 # Fully finished
+                
+                # Check for the standard HH Fingerprint
+                if mmu_regex.search(clean_line):
+                    return 1 if i == 0 else 2 # 1 if top, 2 if shifted
+    except Exception:
+        pass
+    return 0
+
+def cleanup_mmu_idex_conflicts(file_path):
+    """
+    Clean up rapid moves from IDEX postprocessors like RatOS that conflict with MMU filament swaps.
+    This cleans up unwanted moves before filament switches on MMU heads.
+    """
+    # Track the last MMU tool used on T0 and T1
+    last_mmu_tool = {0: -1, 1: -1} 
+    current_phys_head = 0
+    temp_path = file_path + ".tmp"
+    mmu_regex = re.compile(MMU_REGEX, re.IGNORECASE)
+    
+    with open(file_path, 'r') as f_in:
+        lines = f_in.readlines()
+        
+    with open(temp_path, 'w') as f_out:
+        for i, line in enumerate(lines):
+            line_clean = line.strip()
+
+            # Track physical head
+            t_match = re.match(r'^T(\d+)(?!\s+X)', line_clean)
+            if t_match:
+                current_phys_head = int(t_match.group(1))
+            
+            # Handle IDEX postprocessor Rapid Move BEFORE writing the line
+            rapid_match = re.match(r'^(T\d+)\s+(X[\d\.]+\s+.*)', line_clean)
+            if rapid_match:
+                head_cmd, coords = rapid_match.groups()
+                target_head = int(head_cmd[1:])
+                # Peek at the NEXT line for the incoming MMU tool
+                if i + 1 < len(lines):
+                    next_mmu = re.search(r'MMU_CHANGE_TOOL TOOL=(\d+)', lines[i+1])
+                    if next_mmu:
+                        next_tool = int(next_mmu.group(1))
+                        # STRIP if the incoming tool is different from what's currently loaded
+                        if next_tool != last_mmu_tool[target_head]:
+                            f_out.write(f"{head_cmd} ; HH: Stripped RatOS move: {coords}\n")
+                            # Update the state immediately because this tool is about to be loaded
+                            last_mmu_tool[target_head] = next_tool
+                            continue
+                        else:
+                            # Keep the rapid move
+                            pass
+
+            # Standard Write
+            f_out.write(line)
+
+            # Inject Silent tag specifically UNDER the HH tag
+            if mmu_regex.match(line_clean):
+                f_out.write("; Silent re-process by HappyHare\n")
+            
+            mmu_match = re.search(r'MMU_CHANGE_TOOL TOOL=(\d+)', line_clean)
+            if mmu_match:
+                last_mmu_tool[current_phys_head] = int(mmu_match.group(1))
+            
+    os.replace(temp_path, file_path)
 
 def parse_gcode_file(file_path, idex_preprocessor=False, idex_toolmap_str=""):
     slicer_regex = re.compile(SLICER_REGEX, re.IGNORECASE)
@@ -1269,6 +1335,20 @@ def add_placeholder(line, tools_used, total_toolchanges, colors, temps, material
 
 def main(path, filename, insert_placeholders=False, insert_nextpos=False, idex_preprocessor=False, idex_toolmap_str=""):
     file_path = os.path.join(path, filename)
+    
+    # Check current status
+    status = gcode_processed_already(file_path)
+    
+    if status == 3 or status == 1:
+        # Already fully done, or processed by HH with no secondary interference
+        return
+
+    if status == 2:
+        # HH fingerprint found, but NOT on line 1. RatOS/Others have touched it.
+        metadata.logger.info(f"mmu_server: Secondary processor detected. Running silent cleanup for {filename}")
+        cleanup_mmu_idex_conflicts(file_path)
+        return
+    # Status 0: Proceed with original Happy Hare initial processing...
     if not os.path.isfile(file_path):
         metadata.logger.info(f"File Not Found: {file_path}")
         sys.exit(-1)
