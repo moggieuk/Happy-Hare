@@ -58,6 +58,9 @@ class MmuServer:
         self.klippy_apis: APIComp = self.server.lookup_component("klippy_apis")
         self.http_client: HttpClient = self.server.lookup_component("http_client")
         self.database: MoonrakerDatabase = self.server.lookup_component("database")
+        #IDEX config loading
+        self.idex_preprocessor = config.getboolean("idex_preprocessor", False)
+        self.idex_toolmap = config.get("idex_toolmap", "0:0, 1-4:1")
 
         # Full cache of spool_ids and location + key attributes (printer, gate, attr_dict))
         # Example: {2: ('BigRed', 0, {"material": "pla", "color": "ff56e0"}), 3: ('BigRed', 3, {"material": "abs"}), ...
@@ -849,6 +852,12 @@ class MmuServer:
     def setup_placeholder_processor(self, config):
         args = " -m" if config.getboolean("enable_file_preprocessor", True) else ""
         args += " -n" if config.getboolean("enable_toolchange_next_pos", True) else ""
+        # IDEX Additions
+        if self.idex_preprocessor:
+            args += " -i"
+            # Get the toolmap string
+            args += f' -tm "{self.idex_toolmap}"'
+            
         from .file_manager import file_manager
         file_manager.METADATA_SCRIPT = os.path.abspath(__file__) + args
 
@@ -924,6 +933,35 @@ def _parse_version_tuple(version_str: str, parts: int = 3):
         out.append(0)
     return tuple(out)
 
+def parse_idex_toolmap(toolmap_str):
+    """ Parses "0:0, 1-4:1" into {0:0, 1:1, 2:1, 3:1, 4:1} """
+    mapping = {}
+    if not toolmap_str: return mapping
+    try:
+        for part in toolmap_str.split(','):
+            if ':' not in part: continue
+            tools_part, head_part = part.split(':')
+            head = int(head_part.strip())
+            if '-' in tools_part:
+                start, end = map(int, tools_part.split('-'))
+                for t in range(start, end + 1): mapping[t] = head
+            else:
+                mapping[int(tools_part.strip())] = head
+    except Exception: return {}
+    return mapping
+
+def remap_tool_for_idex(tool: int, toolmap_dict: dict):
+    """ Returns (physical_head, mmu_tool_index) """
+    if not toolmap_dict or tool not in toolmap_dict:
+        return tool, None
+    phys_head = toolmap_dict[tool]
+    # Tools assigned to this head, sorted to determine MMU index
+    assigned = sorted([k for k, v in toolmap_dict.items() if v == phys_head])
+    # If head has only 1 tool assigned, it is "Static" (no MMU command)
+    if len(assigned) <= 1:
+        return phys_head, None
+    return phys_head, assigned.index(tool)
+
 def _format_volume(v: float) -> str:
     """Format a purge volume number without trailing .0, keeping up to 1 decimal place."""
     v = round(float(v), 1)
@@ -931,15 +969,86 @@ def _format_volume(v: float) -> str:
     return s.rstrip("0").rstrip(".")
 
 def gcode_processed_already(file_path):
-    """Expects first line of gcode to be the HAPPY_HARE_FINGERPRINT '; processed by HappyHare'"""
+    """Expects first FEW lines of gcode to find the HAPPY_HARE_FINGERPRINT '; processed by HappyHare'"""
 
     mmu_regex = re.compile(MMU_REGEX, re.IGNORECASE)
+    silent_tag = "Silent re-process by HappyHare"
 
-    with open(file_path, 'r') as in_file:
-        line = in_file.readline()
-        return mmu_regex.match(line)
+    try:
+        with open(file_path, 'r') as in_file:
+            for i, line in enumerate(in_file):
+                if i > 20: break 
+                
+                clean_line = line.strip()
+                
+                # Check for the Silent tag FIRST
+                if silent_tag in clean_line:
+                    return 3 # Fully finished
+                
+                # Check for the standard HH Fingerprint
+                if mmu_regex.search(clean_line):
+                    return 1 if i == 0 else 2 # 1 if top, 2 if shifted
+    except Exception:
+        pass
+    return 0
 
-def parse_gcode_file(file_path):
+def cleanup_mmu_idex_conflicts(file_path):
+    """
+    Clean up rapid moves from IDEX postprocessors like RatOS that conflict with MMU filament swaps.
+    This cleans up unwanted moves before filament switches on MMU heads.
+    """
+    # Track the last MMU tool used on T0 and T1
+    last_mmu_tool = {0: -1, 1: -1} 
+    current_phys_head = 0
+    temp_path = file_path + ".tmp"
+    mmu_regex = re.compile(MMU_REGEX, re.IGNORECASE)
+    
+    with open(file_path, 'r') as f_in:
+        lines = f_in.readlines()
+        
+    with open(temp_path, 'w') as f_out:
+        for i, line in enumerate(lines):
+            line_clean = line.strip()
+
+            # Track physical head
+            t_match = re.match(r'^T(\d+)(?!\s+X)', line_clean)
+            if t_match:
+                current_phys_head = int(t_match.group(1))
+            
+            # Handle IDEX postprocessor Rapid Move BEFORE writing the line
+            rapid_match = re.match(r'^(T\d+)\s+(X[\d\.]+\s+.*)', line_clean)
+            if rapid_match:
+                head_cmd, coords = rapid_match.groups()
+                target_head = int(head_cmd[1:])
+                # Peek at the NEXT line for the incoming MMU tool
+                if i + 1 < len(lines):
+                    next_mmu = re.search(r'MMU_CHANGE_TOOL TOOL=(\d+)', lines[i+1])
+                    if next_mmu:
+                        next_tool = int(next_mmu.group(1))
+                        # STRIP if the incoming tool is different from what's currently loaded
+                        if next_tool != last_mmu_tool[target_head]:
+                            f_out.write(f"{head_cmd} ; HH: Stripped RatOS move: {coords}\n")
+                            # Update the state immediately because this tool is about to be loaded
+                            last_mmu_tool[target_head] = next_tool
+                            continue
+                        else:
+                            # Keep the rapid move
+                            pass
+
+            # Standard Write
+            f_out.write(line)
+
+            # Inject Silent tag specifically UNDER the HH tag
+            if mmu_regex.match(line_clean):
+                f_out.write("; Silent re-process by HappyHare\n")
+            
+            mmu_match = re.search(r'MMU_CHANGE_TOOL TOOL=(\d+)', line_clean)
+            if mmu_match:
+                last_mmu_tool[current_phys_head] = int(mmu_match.group(1))
+            
+    os.replace(temp_path, file_path)
+
+def parse_gcode_file(file_path, idex_preprocessor=False, idex_toolmap_str=""):
     slicer_regex = re.compile(SLICER_REGEX, re.IGNORECASE)
     orca_version_regex = re.compile(ORCASLICER_VERSION_REGEX, re.IGNORECASE)
     has_tools_placeholder = has_total_toolchanges = has_colors_placeholder = has_temps_placeholder = has_materials_placeholder = has_purge_volumes_placeholder = filament_names_placeholder = False
@@ -949,6 +1058,7 @@ def parse_gcode_file(file_path):
 
     tools_used = set()
     total_toolchanges = 0
+    toolmap_dict = parse_idex_toolmap(idex_toolmap_str)
     colors = []
     temps = []
     materials = []
@@ -1014,9 +1124,25 @@ def parse_gcode_file(file_path):
 
                 match = tools_regex.match(line)
                 if match:
-                    tool = match.group("tool")
-                    tools_used.add(int(tool))
-                    total_toolchanges += 1
+                    tool = int(match.group("tool")) # Convert to int
+                    
+                    if idex_preprocessor:
+                        # Use helper to find physical head and MMU index
+                        phys_head, mmu_tool = remap_tool_for_idex(tool, toolmap_dict)
+                        
+                        # Only count this as an MMU tool/change if mmu_tool is not None
+                        # (This ignores the "static" head in tool usage stats)
+                        if mmu_tool is not None:
+                            tools_used.add(mmu_tool)
+                            total_toolchanges += 1
+                        # If only one MMU tool is used, add a dummy to force 
+                        # the UI/RatOS into "Multi-Color" mode
+                        if len(tools_used) == 1 and mmu_tool is not None:
+                            tools_used.add(-1)
+                    else:
+                        # non-IDEX Happy-Hare discovery
+                        tools_used.add(tool)
+                        total_toolchanges += 1
 
                 # !colors! processing
                 if not has_colors_placeholder and METADATA_COLORS in line:
@@ -1107,45 +1233,73 @@ def parse_gcode_file(file_path):
     return (has_tools_placeholder or has_total_toolchanges or has_colors_placeholder or has_temps_placeholder or has_materials_placeholder or has_purge_volumes_placeholder or filament_names_placeholder,
             sorted(tools_used), total_toolchanges, colors, temps, materials, purge_volumes, filament_names, slicer)
 
-def process_file(input_filename, output_filename, insert_nextpos, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names):
+def process_file(input_filename, output_filename, insert_nextpos, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names, idex_preprocessor=False, idex_toolmap_str=""):
 
     t_pattern = re.compile(T_PATTERN)
     g1_pattern = re.compile(G1_PATTERN)
+    temp_pattern = re.compile(r'^(M10[49])(?!\s+.*T\d+)(?:\s+(.*))', re.IGNORECASE) # Pattern to find M104/M109 without a T
+    toolmap_dict = parse_idex_toolmap(idex_toolmap_str)
 
     with open(input_filename, 'r') as infile, open(output_filename, 'w') as outfile:
         buffer = [] # Buffer lines between a "T" line and the next matching "G1" line
         tool = None # Store the tool number from a "T" line
+        orig_tool = None # Keep track for comment
+        target_phys_head = 0 # Track the current physical head
         outfile.write(f'{HAPPY_HARE_FINGERPRINT}\n')
 
         for line in infile:
             line = add_placeholder(line, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names)
+            
             if tool is not None:
-                # Buffer subsequent lines after a "T" line until next "G1" x,y move line is found
-                buffer.append(line)
+                line_clean = line.strip()
+                
+                # Check if there's a temperature command in this dead space
+                m_temp = temp_pattern.match(line_clean)
+                if m_temp and idex_preprocessor:
+                    cmd, params = m_temp.groups()
+                    # Inject the physical head we calculated for this tool change
+                    buffer.append(f"{cmd} T{target_phys_head} {params} ; injected physical Tx\n")
+                else:
+                    buffer.append(line) # Buffer subsequent lines after a "T" line until next "G1" x,y move line is found
+                
                 g1_match = g1_pattern.match(line)
                 if g1_match:
-                    # Now replace "T" line and write buffered lines, including the current "G1" line
-                    if insert_nextpos:
+                    if tool != "STATIC": # ONLY write MMU_CHANGE_TOOL if it's an actual MMU tool
+                        # Now replace "T" line and write buffered lines, including the current "G1" line
                         x, y = g1_match.groups()
-                        outfile.write(f'MMU_CHANGE_TOOL TOOL={tool} NEXT_POS="{x},{y}" ; T{tool}\n')
-                    else:
-                        outfile.write(f'MMU_CHANGE_TOOL TOOL={tool} ; T{tool}\n')
+                        if insert_nextpos:
+                            outfile.write(f'MMU_CHANGE_TOOL TOOL={tool} NEXT_POS="{x},{y}" ; T{orig_tool}\n')
+                        else:
+                            outfile.write(f'MMU_CHANGE_TOOL TOOL={tool} ; T{orig_tool}\n')
+                    
                     for buffered_line in buffer:
                         outfile.write(buffered_line)
                     buffer.clear()
                     tool = None
                 continue
-
+            
             t_match = t_pattern.match(line)
             if t_match:
-                tool = t_match.group(1)
-            else:
-                outfile.write(line)
+                orig_tool = int(t_match.group(1))
+                if idex_preprocessor:
+                    phys_head, mmu_idx = remap_tool_for_idex(orig_tool, toolmap_dict)
+                    target_phys_head = phys_head # Store for M104 injection
+                    # Write the physical head change immediately
+                    outfile.write(f"T{phys_head} ; remapped from T{orig_tool}\n")
+                    # If it has an MMU tool, buffer for NEXT_POS
+                    if mmu_idx is not None:
+                        tool = mmu_idx
+                    else:
+                        tool = "STATIC" # Trigger buffer for non MMU head.
+                else:
+                    tool = orig_tool # Normal behavior
+                continue            
+
+            outfile.write(line)
 
         # If there is anything left in buffer it means there wasn't a final "G1" line
         if buffer:
-            outfile.write(f"T{tool}\n")
-            outfile.write(f'MMU_CHANGE_TOOL TOOL={tool} ; T{tool}\n')
+            outfile.write(f'MMU_CHANGE_TOOL TOOL={tool} ; T{orig_tool}\n')
             for line in buffer:
                 outfile.write(line)
 
@@ -1179,8 +1333,22 @@ def add_placeholder(line, tools_used, total_toolchanges, colors, temps, material
             line = line + "_MMU_STEP_SET_ACTION RESTORE=1\n"
     return line
 
-def main(path, filename, insert_placeholders=False, insert_nextpos=False):
+def main(path, filename, insert_placeholders=False, insert_nextpos=False, idex_preprocessor=False, idex_toolmap_str=""):
     file_path = os.path.join(path, filename)
+    
+    # Check current status
+    status = gcode_processed_already(file_path)
+    
+    if status == 3 or status == 1:
+        # Already fully done, or processed by HH with no secondary interference
+        return
+
+    if status == 2:
+        # HH fingerprint found, but NOT on line 1. RatOS/Others have touched it.
+        metadata.logger.info(f"mmu_server: Secondary processor detected. Running silent cleanup for {filename}")
+        cleanup_mmu_idex_conflicts(file_path)
+        return
+    # Status 0: Proceed with original Happy Hare initial processing...
     if not os.path.isfile(file_path):
         metadata.logger.info(f"File Not Found: {file_path}")
         sys.exit(-1)
@@ -1193,7 +1361,7 @@ def main(path, filename, insert_placeholders=False, insert_nextpos=False):
 
                 if insert_placeholders:
                     start = time.time()
-                    has_placeholder, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names, slicer = parse_gcode_file(file_path)
+                    has_placeholder, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names, slicer = parse_gcode_file(file_path, idex_preprocessor=idex_preprocessor, idex_toolmap_str=idex_toolmap_str)
                     metadata.logger.info("Reading placeholders took %.2fs. Detected gcode by slicer: %s" % (time.time() - start, slicer))
                 else:
                     tools_used = total_toolchanges = colors = temps = materials = purge_volumes = filament_names = slicer = None
@@ -1206,7 +1374,7 @@ def main(path, filename, insert_placeholders=False, insert_nextpos=False):
                         msg.append("Writing MMU placeholders")
                     if insert_nextpos:
                         msg.append("Inserting next position to tool changes")
-                    process_file(file_path, tmp_file, insert_nextpos, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names)
+                    process_file(file_path, tmp_file, insert_nextpos, tools_used, total_toolchanges, colors, temps, materials, purge_volumes, filament_names, idex_preprocessor=idex_preprocessor, idex_toolmap_str=idex_toolmap_str)
                     metadata.logger.info("mmu_server: %s took %.2fs" % (",".join(msg), time.time() - start))
 
                     # Move temporary file back in place
@@ -1246,6 +1414,9 @@ if __name__ == "__main__":
     parser.add_argument("-o", "--check-objects", dest='check_objects', action='store_true', help="process gcode file for exclude object functionality")
     parser.add_argument("-m", "--placeholders", dest='placeholders', action='store_true', help="process happy hare mmu placeholders")
     parser.add_argument("-n", "--nextpos", dest='nextpos', action='store_true', help="add next position to tool change")
+    # IDEX flags
+    parser.add_argument("-i", "--idex", action="store_true")
+    parser.add_argument("-tm", "--toolmap", type=str, default="")
     args = parser.parse_args()
     config: Dict[str, Any] = {}
     if args.config is None:
@@ -1276,7 +1447,14 @@ if __name__ == "__main__":
     metadata.logger.info(f"Object Processing is {enabled_msg}")
 
     # Parsing for mmu placeholders and next pos insertion. We do this first so we can add additonal metadata
-    main(config["gcode_dir"], config["filename"], args.placeholders, args.nextpos)
+    main(config["gcode_dir"], config["filename"], args.placeholders, args.nextpos, args.idex, args.toolmap)
 
     # Original metadata parser
-    metadata.main(config)
+    # UPDATED: Pass individual strings instead of the 'config' dictionary
+    # metadata.main(path, filename, ufp=None, check_objects=False)
+    metadata.main(
+        config["gcode_dir"], 
+        config["filename"], 
+        ufp=config.get("ufp_path"), 
+        check_objects=config.get("check_objects", False)
+    )
