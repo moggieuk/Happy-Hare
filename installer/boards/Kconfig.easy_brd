@@ -38,6 +38,6 @@ if BOARD_TYPE_EASY_BRD
 
   config PIN_ENCODER
     default "^$(MCU_NAME):PA6" if MMU_HAS_ENCODER
-  config PIN_GATE_SENSOR
+  config PIN_SHARED_EXIT_SENSOR
     default "^$(MCU_NAME):PA6" if !MMU_HAS_ENCODER
 endif

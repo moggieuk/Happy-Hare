@@ -49,7 +49,8 @@ class CalibrationMixin:
                     success = mmu._reverse_home_to_encoder(gate_homing_max)
                     if success:
                         homed = True
-                        homing_movement, remaining_park = success
+                        homing_movement, homing_overshoot = success
+                        remaining_park = u.p.gate_parking_distance - homing_overshoot # homing_overshoot will always be -ve (retraction)
 
             else: # Gate sensor
                 if not mmu.sensor_manager.check_sensor(endstop):
@@ -147,7 +148,7 @@ class CalibrationMixin:
         orig_endstop = mmu_unit.p.extruder_homing_endstop
         try:
             # Can't allow "none" endstop during calibration so temporarily change it
-            mmu_unit.p.extruder_homing_endstop = SENSOR_EXTRUDER_COLLISION
+            mmu_unit.p.extruder_homing_endstop = SENSOR_EXTRUDER_ENCODER
 
             mmu.log_always(
                 f"Calibrating bowden length on gate {gate} using "
@@ -376,7 +377,7 @@ class CalibrationMixin:
         mmu = self.mmu
         mmu_unit = self.mmu_unit
         selector = mmu_unit.selector
-        extruder_name = mmu_unit.extruder_name
+        extruder_name = mmu_unit.extruder_name()
 
         # -------------------------------------------------------------------------
         # Ensure extruder is COLD

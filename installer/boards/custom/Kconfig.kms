@@ -54,22 +54,22 @@ if BOARD_TYPE_KMS_1_0
   config PIN_GEAR_ENABLE_3
     default "!$(MCU_NAME):PD2" 
 
-  config PIN_ENTRY_0
+  config PIN_ENTRY_SENSOR_0
     default "$(MCU_NAME):PA0" 
-  config PIN_ENTRY_1
+  config PIN_ENTRY_SENSOR_1
     default "$(MCU_NAME):PA1" 
-  config PIN_ENTRY_2
+  config PIN_ENTRY_SENSOR_2
     default "$(MCU_NAME):PA2" 
-  config PIN_ENTRY_3
+  config PIN_ENTRY_SENSOR_3
     default "$(MCU_NAME):PA3" 
 
-  config PIN_GEAR_SENSOR_0
+  config PIN_EXIT_SENSOR_0
     default "$(MCU_NAME):PA5"
-  config PIN_GEAR_SENSOR_1
+  config PIN_EXIT_SENSOR_1
     default "$(MCU_NAME):PA6"
-  config PIN_GEAR_SENSOR_2
+  config PIN_EXIT_SENSOR_2
     default "$(MCU_NAME):PA7"
-  config PIN_GEAR_SENSOR_3
+  config PIN_EXIT_SENSOR_3
     default "$(MCU_NAME):PC4"
   
   config PIN_ESPOOLER_FWD_0
@@ -93,7 +93,7 @@ if BOARD_TYPE_KMS_1_0
     default "$(MCU_NAME):PC5"
   config PIN_NEOPIXEL
     default "$(MCU_NAME):PC13" 
-  config PIN_GATE_SENSOR
+  config PIN_SHARED_EXIT_SENSOR
     default "$(MCU_NAME):PC0"
 
   if OPTION_KMS_BUFFER

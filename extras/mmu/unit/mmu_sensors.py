@@ -25,13 +25,13 @@
 import logging, time
 
 # Happy Hare imports
-from ..mmu_constants import *
+from ..mmu_constants    import *
+from ..mmu_sensor_utils import MmuSensorFactory
 
 
 class MmuSensors:
 
     def __init__(self, config, mmu_unit, params):
-        logging.info("PAUL: init() for MmuSensors")
         self.config = config
         self.mmu_unit = mmu_unit                # This physical MMU unit
         self.mmu_machine = mmu_unit.mmu_machine # Entire Logical combined MMU
@@ -40,9 +40,10 @@ class MmuSensors:
         self.name = config.get_name().split()[-1]
 
         event_delay = config.get('event_delay', 0.5)
-        sf = self.mmu_machine.sensor_factory
         first_gate = mmu_unit.first_gate
         num_gates = mmu_unit.num_gates
+
+        self.sensor_factory = sf = MmuSensorFactory(self.printer)
 
         # Setup "mmu_entry" sensors...
         self.entry_sensors = {}
@@ -62,10 +63,10 @@ class MmuSensors:
 
 
         # Setup single "mmu_shared_exit" sensor for unit...
-        switch_pin = config.get('gate_switch_pin', None)
-        self.gate_sensor = sf.create_mmu_sensor(
+        switch_pin = config.get('mmu_shared_exit_switch_pin', None)
+        self.shared_exit_sensor = sf.create_mmu_sensor(
             config,
-            "unit%d_%s" % (self.mmu_unit.unit_index, SENSOR_SHARED_EXIT),
+            f"{self.mmu_unit.name}:{SENSOR_SHARED_EXIT}",
             None,
             switch_pin,
             event_delay,
@@ -73,15 +74,15 @@ class MmuSensors:
         )
 
         # Setup "mmu_exit" sensors...
-        self.post_gear_sensors = {}
+        self.exit_sensors = {}
         for i, gate in enumerate(range(first_gate, first_gate + num_gates)):
             switch_pin = config.get('mmu_exit_switch_pin_%d' % i, None)
 
             if switch_pin:
-                a_range = config.getfloatlist('post_gear_analog_range_%d' % gate, None, count=2)
+                a_range = config.getfloatlist('mmu_exit_analog_range_%d' % gate, None, count=2)
                 if a_range is not None:
-                    a_pullup = config.getfloat('post_gear_analog_pullup_resister_%d' % gate, 4700.)
-                    self.post_gear_sensors[gate] = MmuAdcSwitchSensor(
+                    a_pullup = config.getfloat('mmu_exist_analog_pullup_resister_%d' % gate, 4700.)
+                    self.exit_sensors[gate] = MmuAdcSwitchSensor(
                         config,
                         SENSOR_EXIT_PREFIX,
                         gate,
@@ -91,7 +92,7 @@ class MmuSensors:
                         runout=True,
                         a_pullup=a_pullup)
                 else:
-                    self.post_gear_sensors[gate] = sf.create_mmu_sensor(
+                    self.exit_sensors[gate] = sf.create_mmu_sensor(
                         config,
                         SENSOR_EXIT_PREFIX,
                         gate,
@@ -100,30 +101,6 @@ class MmuSensors:
                         runout=True)
 
 # PAUL from v342 (reference)
-# --------
-#        # Setup "mmu_exit" sensors...
-#        for gate in range(23):
-#            switch_pin = config.get('mmu_exit_switch_pin_%d' % gate, None)
-#            if switch_pin:
-#                a_range = config.getfloatlist('post_gear_analog_range_%d' % gate, None, count=2)
-#                if a_range is not None:
-#                    a_pullup = config.getfloat('post_gear_analog_pullup_resister_%d' % gate, 4700.)
-#                    s = MmuAdcSwitchSensor(config, SENSOR_EXIT_PREFIX, gate, switch_pin, event_delay, a_range, runout=True, a_pullup=a_pullup)
-#                    self.sensors["%s_%d" % (SENSOR_EXIT_PREFIX, gate)] = s
-#                else:
-#                    self._create_mmu_sensor(config, SENSOR_EXIT_PREFIX, gate, switch_pin, event_delay, runout=True)
-# --------
-#
-#        # Setup single extruder (entrance) sensor...
-#        switch_pin = config.get('extruder_switch_pin', None)
-#        if switch_pin:
-#            self._create_mmu_sensor(config, SENSOR_EXTRUDER_ENTRY, None, switch_pin, event_delay, insert=True, runout=True)
-#
-#        # Setup single toolhead sensor...
-#        switch_pin = config.get('toolhead_switch_pin', None)
-#        if switch_pin:
-#            self._create_mmu_sensor(config, SENSOR_TOOLHEAD, None, switch_pin, event_delay)
-#
 # --------
 #
 #        # For Qidi printers or any other that use a hall_filament_width_sensor as an endstop
@@ -154,23 +131,4 @@ class MmuSensors:
 #            self.sensors[target_name] = s
 #
 # --------
-#
-#        # Setup motor syncing feedback sensors...
-#        switch_pins = list(config.getlist('sync_feedback_tension_pin', []))
-#        if switch_pins:
-#            if len(switch_pins) not in [1, num_units]:
-#                raise config.error("Invalid number of pins specified with sync_feedback_tension_pin. Expected 1 or %d but counted %d" % (num_units, len(switch_pins)))
-#            self._create_mmu_sensor(config, SENSOR_TENSION, None, switch_pins, 0, clog=True, tangle=True, button_handler=self.sync_tension_callback)
-#        switch_pins = list(config.getlist('sync_feedback_compression_pin', []))
-#        if switch_pins:
-#            if len(switch_pins) not in [1, num_units]:
-#                raise config.error("Invalid number of pins specified with sync_feedback_compression_pin. Expected 1 or %d but counted %d" % (num_units, len(switch_pins)))
-#            self._create_mmu_sensor(config, SENSOR_COMPRESSION, None, switch_pins, 0, clog=True, tangle=True, button_handler=self.sync_compression_callback)
-#
-#        # Setup analog (proportional) sync feedback
-#        # Uses single analog input; value scaled in [-1, 1]
-#        analog_pin = config.get('sync_feedback_analog_pin', None)
-#        if analog_pin:
-#            self.sensors[SENSOR_PROPORTIONAL] = MmuProportionalSensor(config, name=SENSOR_PROPORTIONAL)
-#
-# --------
+

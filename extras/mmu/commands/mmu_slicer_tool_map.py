@@ -63,7 +63,7 @@ class MmuSlicerToolMapCommand(BaseCommand):
         mmu = self.mmu
 
         if self.check_if_disabled(): return
-        mmu._fix_started_state()
+        mmu.fix_started_state()
 
         detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
         purge_map = bool(gcmd.get_int('PURGE_MAP', 0, minval=0, maxval=1))
@@ -84,7 +84,7 @@ class MmuSlicerToolMapCommand(BaseCommand):
 
         quiet = False
         if reset:
-            mmu._clear_slicer_tool_map()
+            mmu.gate_maps.clear_slicer_tool_map()
             quiet = True
         else:
             # Ensure webhooks see a change if we edit map in place
@@ -92,16 +92,16 @@ class MmuSlicerToolMapCommand(BaseCommand):
 
         # One-print option to suppress automatic automap
         if skip_automap is not None:
-            mmu._restore_automap_option(bool(skip_automap))
+            mmu.gate_maps.restore_automap_option(bool(skip_automap))
 
         if tool >= 0:
             mmu.slicer_tool_map['tools'][str(tool)] = {'color': color, 'material': material, 'temp': temp, 'name': name, 'in_use': used}
             if used:
                 mmu.slicer_tool_map['referenced_tools'] = sorted(set(mmu.slicer_tool_map['referenced_tools'] + [tool]))
                 if not mmu.slicer_tool_map.get('skip_automap', False) and automap_strategy and automap_strategy != AUTOMAP_NONE:
-                    mmu._automap_gate(tool, automap_strategy)
+                    mmu.gate_maps.automap_gate(tool, automap_strategy)
             if color:
-                mmu._update_slicer_color_rgb()
+                mmu.gate_maps.update_slicer_color_rgb()
             quiet = True
 
         if initial_tool is not None:

@@ -57,7 +57,7 @@ class MmuSensorInsertCommand(BaseCommand):
         mmu = self.mmu
 
         if not mmu.is_enabled: return
-        mmu._fix_started_state()
+        mmu.fix_started_state()
 
         eventtime = gcmd.get_float('EVENTTIME', mmu.reactor.monotonic())
         gate = gcmd.get_int('GATE', None)
@@ -68,7 +68,7 @@ class MmuSensorInsertCommand(BaseCommand):
             with mmu.wrap_sync_gear_to_extruder():
 
                 if sensor.startswith(SENSOR_ENTRY_PREFIX) and gate is not None:
-                    mmu._set_gate_status(gate, GATE_UNKNOWN)
+                    mmu.gate_maps.set_gate_status(gate, GATE_UNKNOWN)
                     mmu._check_pending_spool_id(gate)  # Have spool_id ready?
                     if not mmu.is_printing() and mmu.mmu_unit().p.gate_autoload:
                         mmu.gcode.run_script_from_command("MMU_PRELOAD GATE=%d" % gate)
@@ -84,7 +84,7 @@ class MmuSensorInsertCommand(BaseCommand):
                         msg = "bypass autoload is disabled"
                     else:
                         mmu.log_debug("Autoloading extruder")
-                        with mmu._wrap_suspend_filament_monitoring():
+                        with mmu.wrap_suspend_filament_monitoring():
                             mmu._note_toolchange("> Bypass")
                             mmu.load_sequence(
                                 bowden_move=0.,

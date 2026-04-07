@@ -57,22 +57,22 @@ if BOARD_TYPE_MMB_1_1
     config PIN_GEAR_DIAG_3
       default "$(MCU_NAME):PB8" 
 
-    config PIN_ENTRY_0
+    config PIN_ENTRY_SENSOR_0
       default "$(MCU_NAME):PB11" 
-    config PIN_ENTRY_1
+    config PIN_ENTRY_SENSOR_1
       default "$(MCU_NAME):PA3" 
-    config PIN_ENTRY_2
+    config PIN_ENTRY_SENSOR_2
       default "$(MCU_NAME):PB9" 
-    config PIN_ENTRY_3
+    config PIN_ENTRY_SENSOR_3
       default "$(MCU_NAME):PA8" 
 
-    config PIN_GEAR_SENSOR_0
+    config PIN_EXIT_SENSOR_0
       default "$(MCU_NAME):PC15"
-    config PIN_GEAR_SENSOR_1
+    config PIN_EXIT_SENSOR_1
       default "$(MCU_NAME):PC13"
-    config PIN_GEAR_SENSOR_2
+    config PIN_EXIT_SENSOR_2
       default "$(MCU_NAME):PC14"
-    config PIN_GEAR_SENSOR_3
+    config PIN_EXIT_SENSOR_3
       default "$(MCU_NAME):PC12"
     
     config PIN_ESPOOLER_RWD_0
@@ -101,21 +101,21 @@ if BOARD_TYPE_MMB_1_1
     config PIN_SELECTOR_SERVO
       default "$(MCU_NAME):PA0" 
 
-    config PIN_ENTRY_0
+    config PIN_ENTRY_SENSOR_0
       default "^$(MCU_NAME):PB9" 
-    config PIN_ENTRY_1
+    config PIN_ENTRY_SENSOR_1
       default "^$(MCU_NAME):PA8" 
-    config PIN_ENTRY_2
+    config PIN_ENTRY_SENSOR_2
       default "^$(MCU_NAME):PC15" 
-    config PIN_ENTRY_3
+    config PIN_ENTRY_SENSOR_3
       default "^$(MCU_NAME):PC13" 
-    config PIN_ENTRY_4
+    config PIN_ENTRY_SENSOR_4
       default "^$(MCU_NAME):PC14"
-    config PIN_ENTRY_5
+    config PIN_ENTRY_SENSOR_5
       default "^$(MCU_NAME):PB12"
-    config PIN_ENTRY_6
+    config PIN_ENTRY_SENSOR_6
       default "^$(MCU_NAME):PB11"
-    config PIN_ENTRY_7
+    config PIN_ENTRY_SENSOR_7
       default "^$(MCU_NAME):PB10"
   endif
 
@@ -123,6 +123,6 @@ if BOARD_TYPE_MMB_1_1
     default "^$(MCU_NAME):PA1" if MMU_HAS_ENCODER
   config PIN_NEOPIXEL
     default "$(MCU_NAME):PA2" 
-  config PIN_GATE_SENSOR
+  config PIN_SHARED_EXIT_SENSOR
     default "^$(MCU_NAME):PA3" if !MMU_HAS_ENCODER 
 endif

@@ -98,7 +98,7 @@ class MmuEncoder:
 
         # Validate that all mmu's sharing encoder use same extruder (necessary for runout/clog/tangle detection)
         for unit in self.connected_units:
-            if unit.extruder_name != self.mmu_unit.extruder_name:
+            if unit.extruder_name() != self.mmu_unit.extruder_name():
                 raise config.error("MMU unit %s shares encoder %s with %s but has a different extruder!" % (unit.name, self.name, self.mmu_unit.name))
 
 
@@ -118,7 +118,7 @@ class MmuEncoder:
         for unit in self.connected_units:
             unit.sync_feedback.set_encoder_mode()
 
-        self.extruder = self.printer.lookup_object(self.mmu_unit.extruder_name)
+        self.extruder = self.printer.lookup_object(self.mmu_unit.extruder_name())
         self.last_extruder_pos = 0.
         self.filament_runout_pos = self.min_headroom = self.detection_length
 

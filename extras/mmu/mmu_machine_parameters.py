@@ -23,9 +23,6 @@ class MmuMachineParameters(TunableParametersBase):
 
     # ---- Guards ----
 
-    def _guard_has_sensor_extruder_entry(self):
-        return self._mmu_machine.mmu.sensor_manager.has_sensor(SENSOR_EXTRUDER_ENTRY)
-
     def _guard_has_sensor(sensor):
         return lambda self: self._mmu_machine.mmu.sensor_manager.has_sensor(sensor)
 
@@ -38,7 +35,7 @@ class MmuMachineParameters(TunableParametersBase):
 
     def _on_t_macro_color(self, old, new):
         if new != old:
-            self.mmu._update_t_macros()
+            self.mmu.gate_maps.update_t_macros()
 
 
     # ---- Specs ----
@@ -98,13 +95,6 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('default_gate_speed_override',   'intlist', [], section="DEFAULT MAPS", hidden=True),
         ParamSpec('default_endless_spool_groups',  'intlist', [], section="DEFAULT MAPS", hidden=True),
 
-        # Configuration for extruder dimensions
-        ParamSpec('toolhead_extruder_to_nozzle',   'float',  0.0, section="TOOLHEAD/EXTRUDER", limits=dict(minval=5.0)),
-        ParamSpec('toolhead_sensor_to_nozzle',     'float',  0.0, section="TOOLHEAD/EXTRUDER", limits=dict(minval=1.0), guard=_guard_has_sensor(SENSOR_TOOLHEAD)),
-        ParamSpec('toolhead_entry_to_extruder',    'float',  0.0, section="TOOLHEAD/EXTRUDER", limits=dict(minval=0.0), guard=_guard_has_sensor(SENSOR_EXTRUDER_ENTRY)),
-        ParamSpec('toolhead_residual_filament',    'float',  0.0, section="TOOLHEAD/EXTRUDER", limits=dict(minval=0.0, maxval=50.0)),
-        ParamSpec('toolhead_ooze_reduction',       'float',  0.0, section="TOOLHEAD/EXTRUDER", limits=dict(minval=-5.0, maxval=20.0)),
-
         # TMC current control
         ParamSpec('extruder_form_tip_current',     'int',   100,  section="TOOLHEAD/EXTRUDER", limits=dict(minval=100, maxval=150)),
         ParamSpec('extruder_purge_current',        'int',   100,  section="TOOLHEAD/EXTRUDER", limits=dict(minval=100, maxval=150)),
@@ -130,7 +120,7 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('endless_spool_eject_gate',      'int',     -1, section="FEATURES", limits=dict(minval=-1)),
         ParamSpec('select_tool_macro',             'str',   None, section="FEATURES"),
         ParamSpec('select_tool_num_switches',      'int',      0, section="FEATURES", limits=dict(minval=0)),
-        ParamSpec('bypass_autoload',               'int',      1, section="FEATURES", guard=_guard_has_sensor_extruder_entry, limits=dict(minval=0, maxval=1)),
+        ParamSpec('bypass_autoload',               'int',      1, section="FEATURES", guard=_guard_has_sensor(SENSOR_EXTRUDER_ENTRY), limits=dict(minval=0, maxval=1)),
 
         # Logging
         ParamSpec('log_level',                     'int',      1, section="LOGGING", limits=dict(minval=0, maxval=4)),

@@ -31,7 +31,6 @@ from ..mmu_utils     import MmuError
 class MmuCalibrator:
 
     def __init__(self, config, mmu_unit, params):
-        logging.info("PAUL: ==== init() for MmuCalibrator")
         self.config = config
         self.mmu_unit = mmu_unit                # This physical MMU unit
         self.mmu_machine = mmu_unit.mmu_machine # Entire Logical combined MMU
@@ -46,13 +45,11 @@ class MmuCalibrator:
 
 
     def handle_connect(self):
-        logging.info("PAUL: ==== handle_connect: MmuCalibrator for %s" % self.mmu_unit.name)
         self.mmu = self.mmu_machine.mmu_controller      # Shared MMU controller class
         self.var_manager = self.mmu_machine.var_manager # Quick access to save variables manager
 
 
     def handle_ready(self):
-        logging.info("PAUL: ==== handle_ready: MmuCalibrator for %s" % self.mmu_unit.name)
 
         mmu = self.mmu
         u = self.mmu_unit

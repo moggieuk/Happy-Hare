@@ -58,9 +58,9 @@ class MmuResetCommand(BaseCommand):
 
         mmu.reinit()
         mmu._reset_statistics()
-        mmu._reset_endless_spool()
-        mmu._reset_ttg_map()
-        mmu._reset_gate_map()
+        mmu.gate_maps.reset_endless_spool()
+        mmu.gate_maps.reset_ttg_map()
+        mmu.gate_maps.reset_gate_map()
 
         # Persist key variables
         mmu.var_manager.set(VARS_MMU_GATE_SELECTED, mmu.gate_selected)

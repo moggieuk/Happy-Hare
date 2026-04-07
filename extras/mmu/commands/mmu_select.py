@@ -54,7 +54,7 @@ class MmuSelectCommand(BaseCommand):
         if self.check_if_loaded(): return
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=mmu.num_gates - 1)
         if self.check_if_not_calibrated(CALIBRATED_SELECTOR, check_gates=[gate] if gate >= 0 else None): return
-        mmu._fix_started_state()
+        mmu.fix_started_state()
 
         bypass = gcmd.get_int('BYPASS', -1, minval=0, maxval=1)
         tool = gcmd.get_int('TOOL', -1, minval=0, maxval=mmu.num_gates - 1)
@@ -71,7 +71,7 @@ class MmuSelectCommand(BaseCommand):
 
                 else:
                     mmu.select_gate(gate)
-                    mmu._ensure_ttg_match()
+                    mmu.gate_maps.ensure_ttg_match()
 
                 msg = mmu._mmu_visual_to_string()
                 msg += "\n%s" % mmu._state_to_string()

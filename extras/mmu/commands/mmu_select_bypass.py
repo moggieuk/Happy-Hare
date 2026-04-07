@@ -49,7 +49,7 @@ class MmuSelectBypassCommand(BaseCommand):
         if self.check_if_disabled(): return
         if self.check_if_loaded(): return
         if self.check_if_not_calibrated(CALIBRATED_SELECTOR): return
-        mmu._fix_started_state()
+        mmu.fix_started_state()
 
         try:
             with mmu.wrap_sync_gear_to_extruder():

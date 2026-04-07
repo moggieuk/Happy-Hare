@@ -54,7 +54,7 @@ class MmuLoadCommand(BaseCommand):
 
         if self.check_if_disabled(): return
         if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[mmu.gate_selected]): return
-        mmu._fix_started_state()
+        mmu.fix_started_state()
 
         in_bypass = mmu.gate_selected == TOOL_GATE_BYPASS
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1) or in_bypass)
@@ -64,7 +64,7 @@ class MmuLoadCommand(BaseCommand):
 
         try:
             with mmu.wrap_sync_gear_to_extruder():
-                with mmu._wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during filament load
+                with mmu.wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during filament load
                     if mmu.filament_pos != FILAMENT_POS_UNLOADED:
                         mmu.log_always("Filament already loaded")
                         return

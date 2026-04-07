@@ -481,7 +481,7 @@ class MmuTestCommand(BaseCommand):
                 have_run_test = True
                 error = gcmd.get_int('ERROR', 0, minval=0, maxval=1)
                 if gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1):
-                    mmu._set_print_state("printing")
+                    mmu.set_print_state("printing")
                 with mmu._wrap_track_time('total'):
                     with mmu._wrap_track_time('unload'):
                         with mmu._wrap_track_time('pre_unload'):
@@ -497,7 +497,7 @@ class MmuTestCommand(BaseCommand):
                             if error:
                                 mmu.wrap_gcode_command("MMU_PAUSE")
                 mmu.log_info("Statistics:%s" % mmu.last_statistics)
-                mmu._set_print_state("idle")
+                mmu.set_print_state("idle")
 
             if gcmd.get_int('RUN_CHANGE_SEQUENCE', 0, minval=0, maxval=1):
                 have_run_test = True
@@ -511,7 +511,7 @@ class MmuTestCommand(BaseCommand):
                     goto_pos = [11, 11]
                     mmu._set_next_position(goto_pos)
                 if gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1):
-                    mmu._set_print_state("printing")
+                    mmu.set_print_state("printing")
                 mmu._save_toolhead_position_and_park('toolchange', next_pos=goto_pos)
                 with mmu._wrap_track_time('total'):
                     try:
@@ -533,7 +533,7 @@ class MmuTestCommand(BaseCommand):
                     except MmuError as ee:
                         mmu.handle_mmu_error(str(ee))
                 mmu.log_info("Statistics:%s" % mmu.last_statistics)
-                mmu._set_print_state("idle")
+                mmu.set_print_state("idle")
 
             if gcmd.get_int('SYNC_G2E', 0, minval=0, maxval=1):
                 have_run_test = True

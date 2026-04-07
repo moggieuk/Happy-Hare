@@ -69,10 +69,10 @@ class MmuRecoverCommand(BaseCommand):
 
         try:
             if tool == TOOL_GATE_BYPASS:
-                mmu.selector().restore_gate(TOOL_GATE_BYPASS)
+                mmu.selector(TOOL_GATE_BYPASS).restore_gate(TOOL_GATE_BYPASS)
                 mmu._set_gate_selected(TOOL_GATE_BYPASS)
                 mmu._set_tool_selected(TOOL_GATE_BYPASS)
-                mmu._ensure_ttg_match()
+                mmu.gate_maps.ensure_ttg_match()
 
             elif tool >= 0:  # If tool is specified then use and optionally override the gate
                 mmu._set_tool_selected(tool)
@@ -80,15 +80,15 @@ class MmuRecoverCommand(BaseCommand):
                 if mod_gate >= 0:
                     gate = mod_gate
                 if gate >= 0:
-                    mmu.selector().restore_gate(gate)
+                    mmu.selector(gate).restore_gate(gate)
                     mmu._set_gate_selected(gate)
                     mmu.log_info("Remapping T%d to gate %d" % (tool, gate))
-                    mmu._remap_tool(tool, gate, loaded)
+                    mmu.gate_maps.remap_tool(tool, gate, loaded)
 
             elif mod_gate >= 0:  # If only gate specified then just reset and ensure tool is correct
-                mmu.selector().restore_gate(mod_gate)
+                mmu.selector(mod_gate).restore_gate(mod_gate)
                 mmu._set_gate_selected(mod_gate)
-                mmu._ensure_ttg_match()
+                mmu.gate_maps.ensure_ttg_match()
 
             elif tool == TOOL_GATE_UNKNOWN and mmu.tool_selected == TOOL_GATE_BYPASS and loaded == -1:
                 # This is to be able to get out of "stuck in bypass" state

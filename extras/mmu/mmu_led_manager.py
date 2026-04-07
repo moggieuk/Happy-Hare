@@ -32,6 +32,7 @@ class MmuLedManager:
         self.inside_timer = False
         self.pending_update = [False] * self.mmu_machine.num_units
         self.effect_state = {} # Current state used to minimise updates {unit: {segment: effect}}
+        self._initialized = False # Used to prevent very early calls before leds are fully initialized
 
         # Event handlers
         self.mmu.printer.register_event_handler("klippy:ready", self.handle_ready)
@@ -191,6 +192,7 @@ class MmuLedManager:
     # Called when print state changes to update LEDs
     # (this could be changed to klipper event)
     def print_state_changed(self, state, old_state):
+        self._initialized = True # First call is in MMU_BOOTUP
         gate = self.mmu.gate_selected
         if state in ['initialized', 'printing', 'ready', 'cancelled', 'standby']:
             units_to_update = range(self.mmu_machine.num_units)
@@ -272,12 +274,13 @@ class MmuLedManager:
 
 
     # Called when gate map is updated to update LEDs
-    # (TODO this could be changed to klipper event)
     def gate_map_changed(self, gate):
-        if gate is not None and gate < 0:
-            gate = None
+        if not self._initialized: return
+
+        gate = gate if (gate is None or gate >= 0) else None
+
         gate_effects = {'gate_status', 'filament_color', 'slicer_color'}
-        units = [self.mmu_machine.get_mmu_unit_by_gate(gate)] if gate is not None else self.mmu_machine.units
+        units = [self.mmu.mmu_unit(gate)] if gate is not None else self.mmu_machine.units
         for mmu_unit in units:
             leds = mmu_unit.leds
             if not leds:

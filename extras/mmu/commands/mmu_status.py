@@ -75,13 +75,13 @@ class MmuStatusCommand(BaseCommand):
             unit = mmu.mmu_machine.get_mmu_unit_by_index(i)
 
             if unit.mmu_vendor != unit.display_name:
-                lines.append(f"{UI_SOLID_CIRCLE} {unit.display_name}, a {unit.mmu_vendor} v{unit.mmu_version_string}")
+                lines.append(f"\n{UI_SOLID_CIRCLE} {unit.display_name}, a {unit.mmu_vendor} v{unit.mmu_version_string}")
             else:
-                lines.append(f"{UI_SOLID_CIRCLE} {unit.mmu_vendor} v{unit.mmu_version_string}")
+                lines.append(f"\n{UI_SOLID_CIRCLE} {unit.mmu_vendor} v{unit.mmu_version_string}")
 
             first, last = unit.gate_bounds()
             lines.append(f" (gates {first}-{last}).")
-            lines.append(f" Connected to extruder: {unit.extruder_name}\n")
+            lines.append(f" Connected to extruder: {unit.extruder_name()}\n")
 
             lines.append(f"{UI_CASCADE} {unit.selector.get_mmu_status_config()}\n")
 
@@ -93,7 +93,7 @@ class MmuStatusCommand(BaseCommand):
 
         mmu_unit = mmu.mmu_unit()
 
-        lines.append(f"\nPrint state is {mmu.print_state.upper()}")
+        lines.append(f"\nPrint state is {mmu.psm.print_state.upper()}")
 
         lines.append(
             f". Tool {mmu.selected_tool_string()} selected on gate "
@@ -130,55 +130,41 @@ class MmuStatusCommand(BaseCommand):
         if config:
 
             # Temp scalar pulled for _f_calc() use
-            self.calibrated_bowden_length = (
-                mmu_unit.calibrator.get_bowden_length()
-            )
+            self.calibrated_bowden_length = mmu_unit.calibrator.get_bowden_length()
+            self.encoder_clog_detection_length = mmu.encoder().get_clog_detection_length()
             self.toolchange_retract = mmu.toolchange_retract
-            self.filament_remaining = mmu.filament_remaining
+            self.filament_remaining = mmu_unit.extruder_wrapper.filament_remaining
 
             lines.append("\n\nLOAD SEQUENCE:")
 
             # Gate loading -------------------------------------------------------
+
             lines.append(
-                "\n- Filament loads into gate by homing a maximum of "
+                "\n- Filament loads into gate from parked position by homing a maximum of "
                 f"{self._f_calc('gate_homing_max')} to {mmu._gate_homing_string()}"
             )
 
             # Bowden loading -----------------------------------------------------
-            if mmu_unit.require_bowden_move:
 
+            if mmu_unit.require_bowden_move:
                 correction = (
                     " CORRECTED"
                     if mmu_unit.p.bowden_apply_correction
                     else ""
                 )
 
-                if self.calibrated_bowden_length >= 0:
-                    if mmu._must_buffer_extruder_homing():
+                if self.calibrated_bowden_length > 0:
+                    if mmu._must_home_to_extruder():
 
-                        if (
-                            mmu_unit.p.extruder_homing_endstop
-                            == SENSOR_EXTRUDER_ENTRY
-                        ):
-                            move = self._f_calc(
-                                "bowden_fast_load_portion% * "
-                                "calibrated_bowden_length - "
-                                "toolhead_entry_to_extruder"
-                            )
+                        if mmu_unit.p.extruder_homing_endstop == SENSOR_EXTRUDER_ENTRY:
+                            move = self._f_calc("calibrated_bowden_length - bowden_load_homing_buffer - toolhead_entry_to_extruder")
                         else:
-                            move = self._f_calc(
-                                "bowden_fast_load_proportion% * "
-                                "calibrated_bowden_length"
-                            )
+                            move = self._f_calc("calibrated_bowden_length - bowden_load_homing_buffer")
+                        lines.append(f"\n- Bowden is loaded with a fast{correction} {move} move ")
 
-                        lines.append(
-                            f"\n- Bowden is loaded with a fast{correction} {move} move"
-                        )
                     else:
-                        lines.append(
-                            f"\n- Bowden is loaded with a full fast{correction} "
-                            f"{self._f_calc('calibrated_bowden_length')} move"
-                        )
+                        lines.append(f"\n- Bowden is loaded with a full fast{correction} {self._f_calc('calibrated_bowden_length')} move")
+
                 else:
                     lines.append(
                         "\n- Bowden is not yet calibrated so will perform "
@@ -188,52 +174,39 @@ class MmuStatusCommand(BaseCommand):
                 lines.append("\n- No fast bowden move is required")
 
             # Extruder homing ----------------------------------------------------
+
             if mmu._must_home_to_extruder():
-                if (
-                    mmu_unit.p.extruder_homing_endstop
-                    == SENSOR_EXTRUDER_COLLISION
-                ):
+                if mmu_unit.p.extruder_homing_endstop == SENSOR_EXTRUDER_ENCODER:
                     lines.append(
-                        f", then homes a maximum of {self._f_calc('extruder_homing_max')} "
-                        f"to extruder using COLLISION detection "
+                        f"\n- Filament finds extruder entrance by homing a maximum of {self._f_calc('bowden_load_homing_buffer + extruder_homing_max')} "
+                        f"to extruder using ENCODER COLLISION detection "
                         f"(at {mmu_unit.p.extruder_collision_homing_current}% current)"
                     )
-                elif (
-                    mmu_unit.p.extruder_homing_endstop
-                    == SENSOR_GEAR_TOUCH
-                ):
+                elif mmu_unit.p.extruder_homing_endstop == SENSOR_GEAR_TOUCH:
                     lines.append(
-                        f", then homes a maxium of {self._f_calc('extruder_homing_max')} "
-                        "to extruder using 'touch' (stallguard) detection"
+                        f"\n- Filament finds extruder entrance by homing homes a maximum of {self._f_calc('bowden_load_homing_buffer + extruder_homing_max')} "
+                        f"to extruder using 'touch' (stallguard) detection "
+                        f"(at {mmu_unit.p.extruder_collision_homing_current}% current)"
                     )
                 else:
                     lines.append(
-                        f", then homes a maximum of {self._f_calc('extruder_homing_max')} "
-                        f"to {mmu.extruder_homing_endstop.upper()} sensor"
+                        f"\n- Filament finds extruder entrance by homing a maximum of {self._f_calc('bowden_load_homing_buffer + extruder_homing_max')} "
+                        f"to {mmu_unit.p.extruder_homing_endstop.upper()} sensor"
                     )
 
-                if (
-                    mmu_unit.p.extruder_homing_endstop
-                    == SENSOR_EXTRUDER_ENTRY
-                ):
-                    lines.append(
-                        f" and then moves {self._f_calc('toolhead_entry_to_extruder')} "
-                        "to extruder extrance"
-                    )
+                if mmu_unit.p.extruder_homing_endstop == SENSOR_EXTRUDER_ENTRY:
+                    lines.append(f" and then moving {self._f_calc('toolhead_entry_to_extruder')}")
+                elif mmu_unit.p.extruder_homing_endstop == SENSOR_COMPRESSION:
+                    lines.append(f" and then moving -{self._f_calc('sync_feedback_buffer_range / 2')} to center sync-feedback buffer")
             else:
-                if (
-                    mmu_unit.p.extruder_homing_endstop
-                    == SENSOR_EXTRUDER_NONE
-                    and not mmu.sensor_manager.has_sensor(SENSOR_TOOLHEAD)
-                ):
-                    lines.append(
-                        ". WARNING: no extruder homing is performed - "
-                        "extruder loading cannot be precise"
-                    )
+
+                if mmu.sensor_manager.has_sensor(SENSOR_TOOLHEAD):
+                    lines.append("\n- No extruder homing is necessary because will home to toolhead sensor")
                 else:
-                    lines.append(", no extruder homing is necessary")
+                    lines.append("\n- WARNING: no extruder homing is performed - extruder loading cannot be precise")
 
             # Extruder loading ---------------------------------------------------
+
             if mmu.sensor_manager.has_sensor(SENSOR_TOOLHEAD):
                 lines.append(
                     f"\n- Extruder (synced) loads by homing a maximum of {self._f_calc('toolhead_homing_max')} "
@@ -249,6 +222,7 @@ class MmuStatusCommand(BaseCommand):
                 )
 
             # Purging ------------------------------------------------------------
+
             if mmu.p.force_purge_standalone:
                 if mmu.p.purge_macro:
                     lines.append(
@@ -270,6 +244,7 @@ class MmuStatusCommand(BaseCommand):
                     lines.append("\n- Purging is managed by slicer only when printing")
 
             # Tightening ---------------------------------------------------------
+
             has_tension = mmu.sensor_manager.has_sensor(SENSOR_TENSION)
             has_compression = mmu.sensor_manager.has_sensor(SENSOR_COMPRESSION)
             has_proportional = mmu.sensor_manager.has_sensor(SENSOR_PROPORTIONAL)
@@ -277,13 +252,12 @@ class MmuStatusCommand(BaseCommand):
             if (
                 mmu_unit.p.toolhead_post_load_tighten
                 and not mmu_unit.p.sync_to_extruder
-                and mmu._can_use_encoder()
-                and mmu_unit.sync_feedback.p.flowguard_encoder_mode
+                and mmu.can_use_encoder()
+                and mmu_unit.p.flowguard_encoder_mode
             ):
                 lines.append(
                     "\n- Filament in bowden is tightened by "
-                    f"{min(mmu.encoder().get_clog_detection_length() * mmu_unit.p.toolhead_post_load_tighten / 100, 15):.1f}mm "
-                    f"({mmu_unit.p.toolhead_post_load_tighten}% of flowguard encoder detection length) at reduced gear "
+                    f"{self._f_calc('toolhead_post_load_tighten% * encoder_clog_detection_length')} at reduced gear "
                     "current to prevent false flowguard detection"
                 )
 
@@ -298,13 +272,14 @@ class MmuStatusCommand(BaseCommand):
             ):
                 lines.append(
                     "\n- Filament in bowden will be adjusted a maximum of "
-                    f"{(mmu_unit.sync_feedback.p.sync_feedback_buffer_range or mmu_unit.sync_feedback.p.sync_feedback_buffer_maxrange):.1f}mm "
+                    f"{(mmu_unit.p.sync_feedback_buffer_range or mmu_unit.p.sync_feedback_buffer_maxrange):.1f}mm "
                     "to neutralize tension"
                 )
 
             lines.append("\n\nUNLOAD SEQUENCE:")
 
             # Tip forming --------------------------------------------------------
+
             if mmu.p.force_form_tip_standalone:
                 if mmu.p.form_tip_macro:
                     lines.append(
@@ -328,6 +303,7 @@ class MmuStatusCommand(BaseCommand):
                     lines.append("\n- Tip is formed by slicer only when printing")
 
             # Extruder unloading -------------------------------------------------
+
             if mmu.sensor_manager.has_sensor(SENSOR_EXTRUDER_ENTRY):
                 lines.append(
                     "\n- Extruder (synced) unloads by reverse homing a maximum of "
@@ -353,6 +329,7 @@ class MmuStatusCommand(BaseCommand):
                 )
 
             # Bowden unloading ---------------------------------------------------
+
             if mmu_unit.require_bowden_move:
                 if self.calibrated_bowden_length >= 0:
                     if (
@@ -363,13 +340,13 @@ class MmuStatusCommand(BaseCommand):
                         lines.append(
                             "\n- Bowden is unloaded with a short "
                             f"{self._f_calc('encoder_move_step_size')} validation move before "
-                            f"{self._f_calc('bowden_fast_unload_portion% * calibrated_bowden_length - encoder_move_step_size')} "
+                            f"{self._f_calc('calibrated_bowden_length - bowden_unload_homing_buffer - encoder_move_step_size')} "
                             "fast move"
                         )
                     else:
                         lines.append(
                             "\n- Bowden is unloaded with a fast "
-                            f"{self._f_calc('bowden_fast_unload_portion% * calibrated_bowden_length')} move"
+                            f"{self._f_calc('calibrated_bowden_length - bowden_unload_homing_buffer')} move"
                         )
                 else:
                     lines.append(
@@ -379,11 +356,18 @@ class MmuStatusCommand(BaseCommand):
             else:
                 lines.append("\n- No fast bowden move is required")
 
-            # Gate parking -------------------------------------------------------
+            # Gate homing --------------------------------------------------------
+
+            using = "using" if mmu_unit.p.gate_homing_endstop == SENSOR_ENCODER else "to"
             lines.append(
-                "\n- Filament is stored by homing a maximum of "
-                f"{self._f_calc('gate_homing_max')} to {mmu._gate_homing_string()} "
-                f"and parking {self._f_calc('gate_parking_distance')} in the gate"
+                "\n- Filament finds gate by homing a maximum of "
+                f"{self._f_calc('bowden_unload_homing_buffer + gate_homing_max')} {using} {mmu._gate_homing_string()} "
+            )
+
+            # Gate parking -------------------------------------------------------
+
+            lines.append(
+                f"\n- Filament is parked by moving {self._f_calc('gate_parking_distance')} from the gate endstop"
             )
 
         if not detail:
@@ -395,10 +379,10 @@ class MmuStatusCommand(BaseCommand):
         lines.append(f"\n{mmu._state_to_string()}")
 
         if detail:
-            lines.append(f"\n\n{mmu._ttg_map_to_string()}")
+            lines.append(f"\n\n{mmu.gate_maps.ttg_map_to_string()}")
             if mmu.endless_spool_enabled:
-                lines.append(f"\n\n{mmu._es_groups_to_string()}")
-            lines.append(f"\n\n{mmu._gate_map_to_string()}")
+                lines.append(f"\n\n{mmu.gate_maps.es_groups_to_string()}")
+            lines.append(f"\n\n{mmu.gate_maps.gate_map_to_string()}")
 
         msg = "".join(lines)
 
@@ -410,71 +394,53 @@ class MmuStatusCommand(BaseCommand):
 
     def _f_calc(self, formula):
         """
-        Display property based calculation with property name and value
-        to make it easier for users to understand application
+        Display property-based calculation with property names and values
+        to make it easier for users to understand the calculation.
         """
         mmu = self.mmu
         mmu_unit = mmu.mmu_unit()
         ns = {}
 
         def _merge_obj(o):
-            items = vars(o).items()
-            for k, v in items:
+            for k, v in vars(o).items():
                 ns[k] = v
                 ns[k.lower()] = v
 
         # Namespace priority (last wins)
-        _merge_obj(self)       # Local
-        _merge_obj(mmu_unit.p) # Unit parameters
-        _merge_obj(mmu.p)      # Machine parameters
+        _merge_obj(self)                        # Local (special variables)
+        _merge_obj(mmu_unit.p)                  # Unit parameters
+        _merge_obj(mmu_unit.toolhead_wrapper.p) # Unit toolhead parameters
+        _merge_obj(mmu.p)                       # Machine parameters
 
-        # Rewrite percent syntax for evaluation
-        # Replace:   foo%
-        # With:      (foo/100.0)
-        percent_pat = re.compile(r'([A-Za-z_]\w*)%')
-
-        eval_formula = percent_pat.sub(r'(\1/100.0)', formula)
-
-        # Formatting helpers
+        # Replace percent syntax for evaluation:
+        #   foo%  ->  (foo/100.0)
+        eval_formula = re.sub(r'([A-Za-z_]\w*)%', r'(\1/100.0)', formula)
 
         def fmt_num(x):
-            return "%.1f" % float(x)
+            return f"{float(x):.1f}"
 
         def fmt_pct(x):
             x = float(x)
-            return "%.0f" % x if abs(x - round(x)) < 1e-9 else "%.1f" % x
+            return f"{int(round(x))}" if abs(x - round(x)) < 1e-9 else f"{x:.1f}"
 
-        def format_var(p):
-            return p + ':' + fmt_num(ns.get(p.lower(), 0.0))
-
-        def format_percent_term(term):
-            if term.endswith('%'):
-                name = term[:-1]
-                val = ns.get(name.lower(), 0.0)
-                return f"{name}:{fmt_pct(val)}%"
-            return None
-
-        # Evaluate
+        # Calculate numeric result
         result = eval(eval_formula, {"__builtins__": {}}, ns)
 
-        # Build display string
-        terms = re.split(r'(\+|\-)', formula)
+        is_single_var = re.fullmatch(r'[A-Za-z_]\w*', formula.strip())
 
-        formatted_formula = "%.0fmm {1}(" % result
+        # Annotate variables in the original formula, preserving operators
+        token_pat = re.compile(r'\b([A-Za-z_]\w*)(%)?')
 
-        for term in terms:
-            term = term.strip()
+        def annotate_token(match):
+            name = match.group(1)
+            is_percent = match.group(2) == '%'
+            val = ns.get(name.lower(), 0.0)
 
-            if term in ('+', '-'):
-                formatted_formula += " " + term + " "
-            elif len(terms) > 1:
-                pct_fmt = format_percent_term(term)
-                if pct_fmt:
-                    formatted_formula += pct_fmt
-                else:
-                    formatted_formula += format_var(term)
-            else:
-                formatted_formula += term
+            if is_percent:
+                return f"{name}:{fmt_pct(val)}%" if not is_single_var else f"{name}%"
 
-        formatted_formula += "){0}"
-        return formatted_formula
+            return f"{name}:{fmt_num(val)}" if not is_single_var else name
+
+        annotated_formula = token_pat.sub(annotate_token, formula)
+
+        return f"{{5}}{result:.1f}mm{{6}} {{1}}({annotated_formula}){{0}}"

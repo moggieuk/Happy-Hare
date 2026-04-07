@@ -21,19 +21,20 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
+
 import logging, importlib, math, os, time, re, traceback
+
 from dataclasses                        import dataclass, replace
 from itertools                          import chain
 
 
 # Klipper imports
 import stepper, chelper, toolhead
-from kinematics.extruder                import PrinterExtruder, DummyExtruder, ExtruderStepper
+from kinematics.extruder                import PrinterExtruder, DummyExtruder, ExtruderStepper # PAUL may not need ExtruderStepper if moved to MmuEx
 from ..homing                           import Homing, HomingMove
 
 # Happy Hare imports
 from .mmu_constants                     import *
-from .mmu_extruder_monitor              import ExtruderMonitor
 from .unit.mmu_encoder                  import MmuEncoder
 from .unit.mmu_buffer                   import MmuBuffer
 from .unit.mmu_espooler                 import MmuESpooler
@@ -41,6 +42,8 @@ from .unit.mmu_leds                     import MmuLeds
 from .unit.mmu_sensors                  import MmuSensors
 from .unit.mmu_unit_parameters          import MmuUnitParameters
 from .unit.mmu_calibrator               import MmuCalibrator
+from .unit.mmu_toolhead_wrapper         import MmuToolheadWrapper
+from .unit.mmu_extruder_wrapper         import MmuExtruderWrapper
 from .unit.mmu_sync_feedback            import MmuSyncFeedback
 from .unit.selectors                    import SELECTOR_REGISTRY
 from .unit.selectors.mmu_base_selectors import VirtualSelector
@@ -48,17 +51,9 @@ from .unit.mmu_environment_manager      import MmuEnvironmentManager
 
 
 # For toolhead synchronization
-EPS           = 1e-6       # ~1 microsecond safety
-SYNC_AIR_GAP  = 0.001      # Sync time air gap
+EPS = 1e-6                 # ~1 microsecond safety
+SYNC_AIR_GAP = 0.001       # Sync time air gap
 MOVE_HISTORY_EXPIRE = 30.0 # From motion_queuing.py
-
-# TMC chips to search for
-TMC_CHIPS = ["tmc2209", "tmc2130", "tmc2208", "tmc2660", "tmc5160", "tmc2240"]
-
-SHAREABLE_STEPPER_PARAMS = ['rotation_distance', 'gear_ratio', 'microsteps', 'full_steps_per_rotation']
-OTHER_STEPPER_PARAMS     = ['step_pin', 'dir_pin', 'enable_pin', 'endstop_pin', 'rotation_distance', 'pressure_advance', 'pressure_advance_smooth_time']
-
-SHAREABLE_TMC_PARAMS     = ['run_current', 'hold_current', 'interpolate', 'sense_resistor', 'stealthchop_threshold']
 
 # Default selector classes for known vendors
 SELECTOR_VIRTUAL           = 'VirtualSelector'         # Type-B design
@@ -95,25 +90,6 @@ class MmuUnit:
 
         self.display_name = config.get('display_name', UNIT_ALT_DISPLAY_NAMES.get(self.mmu_vendor, self.mmu_vendor))
 
-        # By default HH uses its modified homing extruder. Because this might have unknown consequences on certain
-        # set-ups it can be disabled. If disabled, homing moves will still work, but the delay in mcu to mcu comms
-        # can lead to several mm of error depending on speed. Also homing of just the extruder is not possible.
-        self.extruder_name = config.get('extruder_name', 'extruder')
-        self.homing_extruder = bool(config.getint('homing_extruder', 1, minval=0, maxval=1))
-
-        # Setup homing extruder
-        self._extruder_stepper = None
-        if self.homing_extruder and False: # PAUL
-            # Create MmuExtruderStepper for later insertion into PrinterExtruder on Toolhead (on klippy:connect)
-            self._extruder_stepper = MmuExtruderStepper(config.getsection(self.extruder_name), self)
-
-            # Nullify original extruder stepper definition so Klipper doesn't try to create it again. Restore in handle_connect()
-            self.old_ext_options = {}
-            for i in SHAREABLE_STEPPER_PARAMS + OTHER_STEPPER_PARAMS:
-                if config.fileconfig.has_option(self.extruder_name, i):
-                    self.old_ext_options[i] = config.fileconfig.get(self.extruder_name, i)
-                    config.fileconfig.remove_option(self.extruder_name, i)
-
 
         # Determine default MMU "design" based on vendor ----------------------------------------------
 
@@ -125,7 +101,7 @@ class MmuUnit:
             require_bowden_move: bool = True         # Does design require "bowden move" (i.e. non zero length bowden)
             filament_always_gripped: bool = False    # Is filament always gripped by MMU (overrides gear/extruder syncing assumptions)
             can_crossload: bool = True               # Does selector mechanism allow selection of gates when filament is loaded (implied for type-B designs)
-            has_bypass: bool = False                 # Does design has selectable filament bypass (only type-A and type-C). Only one per mmu_machine!
+            has_bypass: bool = False                 # Does design has selectable filament bypass (only type-A and type-C). Only one allowed per mmu_machine!
 
         DEF_PROFILE = MmuUnitProfile()
 
@@ -302,7 +278,35 @@ class MmuUnit:
 
         # Create calibrator to oversee autotune / calibration updates based on available telemetry
         self.calibrator = MmuCalibrator(params, self, self.p)
-        logging.info("MMU: Created: calibrator for unit %s" % self.name)
+        logging.info("MMU: Created: Calibrator for %s" % self.name)
+
+        # Create toolhead wrapper (may be shared so check for existence first)
+        # This encapsulates demensions and provides possibility of dissimilar toolheads on IDEX printer
+        toolhead_name = config.get('toolhead')
+        section = 'mmu_toolhead %s' % toolhead_name
+        self.toolhead_wrapper = self.printer.lookup_object(section, None)
+        if not self.toolhead_wrapper:
+            if config.has_section(section):
+                c = config.getsection(section)
+                self.toolhead_wrapper = MmuToolheadWrapper(c, self, self.p)
+                self.printer.add_object(c.get_name(), self.toolhead_wrapper)
+                logging.info("MMU: Created: [%s]" % c.get_name())
+            else:
+                raise config.error("MMU Printer toolhead section [%s] not found!" % section)
+        else:
+            self.toolhead_wrapper.add_unit(self)
+
+        # Create extruder wrapper (may be shared so check for existence first)
+        # This encapsulates extruder stepper control and filament remaining
+        extruder_name = config.get('extruder_name', 'extruder')
+        mmu_extruder_name = f"mmu_extruder {extruder_name}"
+        self.extruder_wrapper = self.printer.lookup_object(mmu_extruder_name, None)
+        if not self.extruder_wrapper:
+            self.extruder_wrapper = MmuExtruderWrapper(config, mmu_extruder_name, self)
+            self.printer.add_object(mmu_extruder_name, self.extruder_wrapper)
+            logging.info("MMU: Created: [%s]" % mmu_extruder_name)
+        else:
+            self.extruder_wrapper.add_unit(self)
 
         # Load mmu_sensors
         self.sensors = None
@@ -321,7 +325,7 @@ class MmuUnit:
         if config.has_section(section):
             c = config.getsection(section)
             self.espooler = MmuESpooler(c, self, self.p)
-            #self.printer.add_object(c.get_name(), self.espooler) # Note exposing because we don't want direct access # PAUL, sure?
+            #self.printer.add_object(c.get_name(), self.espooler) # Note exposing because we don't want direct access
             logging.info("MMU: Created: [%s]" % c.get_name())
         else:
             logging.info("MMU: - No mmu_espooler specified")
@@ -332,7 +336,7 @@ class MmuUnit:
         if config.has_section(section):
             c = config.getsection(section)
             self.leds = MmuLeds(c, self, self.p)
-            self.printer.add_object(c.get_name(), self.leds)
+            self.printer.add_object(c.get_name(), self.leds) # Must register
             logging.info("MMU: Created: [%s]" % c.get_name())
         else:
             logging.info("MMU: - No mmu_leds specified")
@@ -347,7 +351,7 @@ class MmuUnit:
                 if config.has_section(section):
                     c = config.getsection(section)
                     self.encoder = MmuEncoder(c, self, self.p)
-                    self.printer.add_object(c.get_name(), self.encoder)
+                    self.printer.add_object(c.get_name(), self.encoder) # Must register
                     logging.info("MMU: Created: [%s]" % c.get_name())
                 else:
                     raise config.error("Encoder section [%s] not found!" % section)
@@ -366,7 +370,7 @@ class MmuUnit:
                 if config.has_section(section):
                     c = config.getsection(section)
                     self.buffer = MmuBuffer(c, self, self.p)
-                    self.printer.add_object(c.get_name(), self.buffer)
+                    self.printer.add_object(c.get_name(), self.buffer) # Must register
                     logging.info("MMU: Created: [%s]" % c.get_name())
                 else:
                     raise config.error("Buffer section [%s] not found!" % section)
@@ -396,6 +400,7 @@ class MmuUnit:
 
         self.subcomponents = [
             self.calibrator,
+            self.toolhead_wrapper,
             self.sensors,
             self.espooler,
             self.leds,
@@ -416,13 +421,13 @@ class MmuUnit:
             return (
                 sensor
                 for sensor in chain(
-                    (self.sensors.post_gear_sensors or {}).values(),
                     (self.sensors.entry_sensors or {}).values(),
-                    [self.sensors.gate_sensor],
+                    (self.sensors.exit_sensors or {}).values(),
+                    [self.sensors.shared_exit_sensor],
                     [self.buffer.compression_sensor] if self.buffer else [],
                     [self.buffer.tension_sensor] if self.buffer else [],
-                    [self.mmu_machine.extruder_sensor],
-                    [self.mmu_machine.toolhead_sensor],
+                    [self.toolhead_wrapper.extruder_sensor],
+                    [self.toolhead_wrapper.toolhead_sensor],
                 )
                 if sensor is not None
             )
@@ -443,8 +448,8 @@ class MmuUnit:
 
             # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
             # otherwise the extruder can continue to move a small (speed dependent) distance
-            if self._extruder_stepper is not None and sensor_name in [SENSOR_TOOLHEAD, SENSOR_COMPRESSION, SENSOR_TENSION]:
-                mcu_endstop.add_stepper(self._extruder_stepper.stepper)
+            if self.extruder_wrapper.homing_extruder_stepper is not None and sensor_name in [SENSOR_TOOLHEAD, SENSOR_COMPRESSION, SENSOR_TENSION]:
+                mcu_endstop.add_stepper(self.extruder_wrapper.homing_extruder_stepper.stepper)
 
 
         # Event handlers
@@ -512,52 +517,6 @@ class MmuUnit:
         for i in self.mmu_gear_steppers: # PAUL
             logging.info("PAUL: gear=%s" % i.get_name())
 
-        # Setup extruder --------
-        self.printer_toolhead = self.printer.lookup_object('toolhead') # PAUL how does multiple extruders work?
-        printer_extruder = self.printer_toolhead.get_extruder()
-
-        if self.homing_extruder and self._extruder_stepper is not None:
-            # Restore original extruder options in case user macros reference them
-            for key, value in self.old_ext_options.items():
-                self.config.fileconfig.set(self.extruder_name, key, value)
-
-            # Now we can switch in homing MmuExtruderStepper
-            printer_extruder.extruder_stepper = self._extruder_stepper
-            self._extruder_stepper.stepper.set_trapq(printer_extruder.get_trapq())
-        else:     
-            self._extruder_stepper = printer_extruder.extruder_stepper
-            self.mmu.log_debug("Warning: Using original klipper extruder stepper. Extruder homing not possible")
-
-        # Find TMC for extruder for current control --------
-        self._extruder_tmc = self._extruder_current = None
-        for chip in TMC_CHIPS:
-            c = self.printer.lookup_object("%s %s" % (chip, self.extruder_name), None)
-            if c is not None:
-                self._extruder_tmc = c
-                self._extruder_current = c.get_status(0).get("run_current")
-                break
-
-        if self._extruder_tmc:
-            msg = (
-                "Unit %s: Found %s on extruder %s. "
-                "Current control enabled."
-            ) % (self.name, chip, self.extruder_name)
-
-            if self.homing_extruder:
-                msg += " Stallguard 'touch' extruder homing possible."
-
-            self.mmu.log_debug(msg)
-        else:
-            self.mmu.log_debug(
-                "Unit %s: TMC driver not found for extruder %s. "
-                "Cannot use current increase for tip forming move."
-                % (self.name, self.extruder_name)
-            )
-
-        # This monitors extruder movement. We create one per MMU unit to allow for each
-        # unit to be connected to a different extruder.
-        self.extruder_monitor = ExtruderMonitor(self.mmu)
-
 
     def reinit(self):
         for obj in self.subcomponents:
@@ -565,6 +524,7 @@ class MmuUnit:
                 method = getattr(obj, "reinit", None)
                 if callable(method):
                     method()
+
 
     def has_buffer(self):
         return self.buffer is not None
@@ -660,21 +620,24 @@ class MmuUnit:
         return self.mmu_gear_currents[lgate]
 
 
+    # Parallel accessors extruder stepper to match MMU gear stepper
     def extruder_name(self):
-        return self.extruder_name
+        return self.extruder_wrapper.extruder_name()
 
     def extruder_stepper_obj(self):
-        return self._extruder_stepper
+        return self.extruder_wrapper.extruder_stepper_obj()
 
     def extruder_tmc_obj(self):
-        return self._extruder_tmc
+        return self.extruder_wrapper.extruder_tmc_obj()
 
     def extruder_default_current(self):
-        return self._extruder_current
+        return self.extruder_wrapper.extruder_default_current()
 
 
-    # Raw eject and preload operations ----------------------------------------------------------------------
 # PAUL experimental vvvv
+# -----------------------------------------------------------------------------------------------------------
+# EXPERIMENTAL: RAW EJECT AND PRELOAD OPERATIONS
+# -----------------------------------------------------------------------------------------------------------
 
     def can_async_eject(self, gate):
         if self.mmu.is_printing():  # PAUL may be able to relax with mmu_extruder_stepper
@@ -706,26 +669,6 @@ class MmuUnit:
 
         return False
 
-# PAUL first try but unfortunately need exit sensor
-#    def can_preload(self, gate):
-#        has_exit_sensor = self.mmu.sensor_manager.has_gate_sensor(SENSOR_EXIT_PREFIX, gate):
-#
-#        if self.mmu.is_printing():  # PAUL may be able to relax with mmu_extruder_stepper
-#            return False
-#
-#        if not self.manages_gate(self.mmu.gate_selected):
-#            return True
-#
-#        # This must be the active unit...
-#        if self.can_crossload and has_exit_sensor:
-#            return True
-#
-#        # Now can only eject if gate_selected is unloaded
-#        if self.mmu.filament_pos == FILAMENT_POS_UNLOADED:
-#            return True
-#
-#        return False
-
 
     def preload(self, gate):
         """
@@ -741,7 +684,7 @@ class MmuUnit:
         if gate_sensor is not None:
             if gate_sensor:
                 mmu.log_always("Filament already preloaded")
-                mmu._set_gate_status(gate, GATE_AVAILABLE)
+                mmu.gate_maps.set_gate_status(gate, GATE_AVAILABLE)
                 return
             else:
                 # Minimal load to mmu exit sensor if fitted
@@ -751,7 +694,7 @@ class MmuUnit:
                 actual, homed = home_gear_motor(msg, self.p.gate_preload_homing_max, homing_move=1, endstop_name=endstop_name)
                 if homed:
                     self.move_gear_motor("Final parking", self.p.gate_preload_parking_distance)
-                    mmu._set_gate_status(gate, GATE_AVAILABLE)
+                    mmu.gate_maps.set_gate_status(gate, GATE_AVAILABLE)
                     mmu._check_pending_spool_id(gate) # Have spool_id ready?
                     mmu.log_always("Filament detected and loaded in gate %d" % gate)
                     return
@@ -774,10 +717,10 @@ class MmuUnit:
 # PAUL ^^^ this part of preload is problematic async
 
         if mmu.sensor_manager.check_gate_sensor(SENSOR_ENTRY_PREFIX, gate):
-            mmu._set_gate_status(gate, GATE_UNKNOWN)
+            mmu.gate_maps.set_gate_status(gate, GATE_UNKNOWN)
             mmu.log_warning("Filament detected by mmu entry %d sensor but did not complete preload" % gate)
         else:
-            mmu._set_gate_status(gate, GATE_EMPTY)
+            mmu.gate_maps.set_gate_status(gate, GATE_EMPTY)
             raise MmuError("Filament not detected")
 
 
@@ -816,21 +759,24 @@ class MmuUnit:
             else:
                 self._move_gear_motor(lgate, msg, -self.p.gate_final_eject_distance)
 
-        mmu._set_gate_status(gate, GATE_EMPTY)
+        mmu.gate_maps.set_gate_status(gate, GATE_EMPTY)
         mmu.log_always("The filament in gate %d can be removed" % gate)
-# PAUL experimental ^^^^
 
-
-    # Raw gear motor control --------------------------------------------------------------------------------
 
     def _move_gear_motor(self, lgate, msg, move):
         mmu.log_warning(f"PAUL: move_gear_motor(lgate={lgate}, msg={msg}, move={move}")
         # TODO future impl
 
+
     def _home_gear_motor(self, lgate, msg, move, homing_move, endstop_name):
         mmu.log_warning(f"PAUL: home_gear_motor(lgate={lgate}, msg={msg}, move={move}, homing_move={homing_move}, endstop_name={endstop_name})")
         # TODO future impl
+# PAUL experimental ^^^^
 
+
+# -----------------------------------------------------------------------------------------------------------
+# MMU UNIT STATUS
+# -----------------------------------------------------------------------------------------------------------
 
     def get_status(self, eventtime):
         unit_info = {
@@ -862,6 +808,18 @@ class MmuUnit:
         return unit_info
 
 
+
+
+
+
+
+
+
+# PAUL THIS WILL BE REPLACED
+
+# -----------------------------------------------------------------------------------------------------------
+# MMU TOOLHEAD
+# -----------------------------------------------------------------------------------------------------------
 
 # Main code to track events (and their timing) on the MMU Machine implemented as additional "toolhead"
 # (code pulled from toolhead.py)
@@ -1013,7 +971,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         gcode.register_command('_MMU_DUMP_TOOLHEAD', self.cmd_DUMP_RAILS, desc=self.cmd_DUMP_RAILS_help)
 
         # Bi-directional sync management of gear(s) and extruder(s)
-        self.mmu_toolhead = self # Make it easier to read code and distinquish printer_toolhead from mmu_toolhead
+        self.mmu_toolhead = self # Make it easier to read code and distinquish klipper_printer_toolhead from mmu_toolhead
         self.sync_mode = None
 
         # Event handlers
@@ -1021,7 +979,7 @@ class MmuToolHead(toolhead.ToolHead, object):
 
     def handle_connect(self):
         self.mmu = self.mmu_machine.mmu_controller # Master MMU controller for logging
-        self.printer_toolhead = self.printer.lookup_object('toolhead')
+        self.klipper_printer_toolhead = self.printer.lookup_object('toolhead')
 
 
     # Ensure the correct number of axes for convenience - MMU only has two
@@ -1058,7 +1016,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         if self.sync_mode not in [DRIVE_GEAR_ONLY, None]:
             self._resync_no_lock(None) # Unsync first
         else:
-            ths = [self.printer_toolhead, self.mmu_toolhead]
+            ths = [self.klipper_printer_toolhead, self.mmu_toolhead]
             t_cut = self._quiesce_align_get_tcut(ths, full=False)
 
         # Activate only the desired gear steppers
@@ -1111,7 +1069,7 @@ class MmuToolHead(toolhead.ToolHead, object):
 
     def quiesce(self, full_quiesce=True):
         with self._resync_lock:
-            ths = [self.printer_toolhead, self.mmu_toolhead]
+            ths = [self.klipper_printer_toolhead, self.mmu_toolhead]
             t_cut = self._quiesce_align_get_tcut(ths, full=full_quiesce, wait=full_quiesce)
 
     # Drain required toolheads, align to a common future time, materialize it,
@@ -1197,7 +1155,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             (new_sync_mode in mmu_control_states and self.sync_mode in user_control_states)
         )
 
-        ths = [self.printer_toolhead, self.mmu_toolhead]
+        ths = [self.klipper_printer_toolhead, self.mmu_toolhead]
         gear_rail = self.mmu_toolhead.get_kinematics().rails[1]
         t0 = self._quiesce_align_get_tcut(ths, full=full_quiesce, wait=full_quiesce) # Build cutover fence
 
@@ -1211,7 +1169,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             # Figure out who is CURRENTLY driving (old owner) and who will receive (new owner)
             if self.sync_mode in [DRIVE_EXTRUDER_SYNCED_TO_GEAR, DRIVE_EXTRUDER_ONLY_ON_GEAR]:
                 driving_toolhead   = self.mmu_toolhead        # OLD owner (mmu/gear)
-                following_toolhead = self.printer_toolhead    # NEW owner (printer/extruder)
+                following_toolhead = self.klipper_printer_toolhead    # NEW owner (printer/extruder)
                 following_steppers = [following_toolhead.get_extruder().extruder_stepper.stepper]
                 old_trapq = driving_toolhead.get_trapq()      # trapq we’re finalizing
                 new_trapq = self._prev_trapq                  # trapq saved during sync()
@@ -1221,7 +1179,7 @@ class MmuToolHead(toolhead.ToolHead, object):
                 gear_rail.steppers = gear_rail.steppers[:-len(following_steppers)]
 
             elif self.sync_mode == DRIVE_GEAR_SYNCED_TO_EXTRUDER:
-                driving_toolhead   = self.printer_toolhead    # OLD owner (printer/extruder)
+                driving_toolhead   = self.klipper_printer_toolhead    # OLD owner (printer/extruder)
                 following_toolhead = self.mmu_toolhead        # NEW owner (mmu/gear)
                 # All gear-rail steppers were following the extruder
                 following_steppers = following_toolhead.get_kinematics().rails[1].get_steppers()
@@ -1282,7 +1240,7 @@ class MmuToolHead(toolhead.ToolHead, object):
         # Figure out driver and follower based on sync mode
         if new_sync_mode in [DRIVE_EXTRUDER_SYNCED_TO_GEAR, DRIVE_EXTRUDER_ONLY_ON_GEAR]:
             driving_toolhead   = self.mmu_toolhead       # NEW owner (mmu/gear)
-            following_toolhead = self.printer_toolhead   # OLD owner (printer/extruder)
+            following_toolhead = self.klipper_printer_toolhead   # OLD owner (printer/extruder)
             following_steppers = [following_toolhead.get_extruder().extruder_stepper.stepper]
             self._prev_trapq = following_steppers[0].get_trapq() # Save the *old* trapq **before** any rebind/unregister
             driving_trapq = driving_toolhead.get_trapq()
@@ -1297,7 +1255,7 @@ class MmuToolHead(toolhead.ToolHead, object):
             gear_rail.steppers.extend(following_steppers)
 
         elif new_sync_mode == DRIVE_GEAR_SYNCED_TO_EXTRUDER:
-            driving_toolhead = self.printer_toolhead     # NEW owner (printer/extruder)
+            driving_toolhead = self.klipper_printer_toolhead     # NEW owner (printer/extruder)
             following_toolhead = self.mmu_toolhead       # OLD owner (mmu/gear)
             following_steppers = list(following_toolhead.get_kinematics().rails[1].get_steppers())
             self._prev_trapq = following_toolhead.get_trapq()
@@ -1364,9 +1322,9 @@ class MmuToolHead(toolhead.ToolHead, object):
         gcmd.respond_raw(msg)
 
     def _match_trapq(self, trapq):
-        p_th_trapq = self.printer_toolhead.get_trapq()
+        p_th_trapq = self.klipper_printer_toolhead.get_trapq()
         m_th_trapq = self.mmu_toolhead.get_trapq()
-        e_trapq = self.printer_toolhead.get_extruder().get_trapq()
+        e_trapq = self.klipper_printer_toolhead.get_extruder().get_trapq()
         ffi_main, ffi_lib = chelper.get_ffi()
         if trapq is p_th_trapq:
             return "Printer Toolhead"
@@ -1393,7 +1351,7 @@ class MmuToolHead(toolhead.ToolHead, object):
 
     def dump_rails(self, show_endstops=True):
         msg = "MMU TOOLHEAD: %s Last move time: %s\n" % (self.get_position(), self.mmu_toolhead.get_last_move_time())
-        extruder_name = self.printer_toolhead.get_extruder().get_name() # PAUL no! use this extruder name
+        extruder_name = self.klipper_printer_toolhead.get_extruder().get_name() # PAUL no! use this extruder name
         for axis, rail in enumerate(self.get_kinematics().rails):
             msg += "\n" if axis > 0 else ""
             header = "RAIL: %s (Steppers: %d, Default endstops: %d, Extra endstops: %d) %s" % (rail.rail_name, len(rail.steppers), len(rail.endstops), len(rail.extra_endstops), '-' * 100)
@@ -1440,8 +1398,8 @@ class MmuToolHead(toolhead.ToolHead, object):
                 if self.is_extruder_synced_to_gear():
                     msg += "SYNCHRONIZED: Extruder '%s' synced to gear rail\n" % extruder_name
 
-        e_stepper = self.printer_toolhead.get_extruder().extruder_stepper
-        msg +=  "\nPRINTER TOOLHEAD: %s Last move time: %s\n" % (self.printer_toolhead.get_position(), self.printer_toolhead.get_last_move_time())
+        e_stepper = self.klipper_printer_toolhead.get_extruder().extruder_stepper
+        msg +=  "\nPRINTER TOOLHEAD: %s Last move time: %s\n" % (self.klipper_printer_toolhead.get_position(), self.klipper_printer_toolhead.get_last_move_time())
         header = "Extruder Stepper: %s %s %s" % (extruder_name, "(MmuExtruderStepper)" if isinstance(e_stepper, MmuExtruderStepper) else "(Non Homing Default)", '-' * 100)
         msg += header[:100] + "\n"
         msg += "  - Stepper trapq: %s\n" % self._match_trapq(e_stepper.stepper.get_trapq())

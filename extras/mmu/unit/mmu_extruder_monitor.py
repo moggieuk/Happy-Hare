@@ -12,7 +12,8 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 
-from .mmu_utils import MmuError
+# Happy Hare imports
+from ..mmu_utils import MmuError
 
 
 class ExtruderMonitor:
@@ -119,7 +120,7 @@ class ExtruderMonitor:
 
         mcu = self.mmu.printer.lookup_object('mcu')
         est_print_time = mcu.estimated_print_time(eventtime)
-        pos = self.mmu.toolhead.get_extruder().find_past_position(est_print_time)
+        pos = self.mmu.toolhead.get_extruder().find_past_position(est_print_time) # PAUL: FIXME
 
         # Initialize last position on first successful read
         if self._last_pos is None:

@@ -25,19 +25,17 @@ from ... import output_pin
 # Happy Hare imports
 from ..mmu_constants import *
 
+
 MAX_SCHEDULE_TIME = 5.0
-
-# PAUL fix where UNIT appears .. indicates parameter on the mmu_unit
-
 
 class MmuESpooler:
 
     def __init__(self, config, mmu_unit, params):
-        logging.info("PAUL: init() for MmuESpooler")
         self.config = config
         self.mmu_unit = mmu_unit                # This physical MMU unit
         self.mmu_machine = mmu_unit.mmu_machine # Entire Logical combined MMU
         self.p = params                         # mmu_unit_parameters
+        self.mmu = None                         # MMU controller, set when initialized
         self.name = config.get_name().split()[-1]
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
@@ -153,16 +151,15 @@ class MmuESpooler:
 
 
     def _handle_connect(self):
-        logging.info("PAUL: handle_connect: MmuEspooler")
         self.mmu = self.mmu_machine.mmu_controller
 
+
     def _handle_ready(self):
-        logging.info("PAUL: handle_ready: MmuEspooler")
-        self.toolhead = self.printer.lookup_object('toolhead')
+        self.toolhead = self.printer.lookup_object('toolhead') # PAUL need to get correct toolhead! (how does IDEX work in klipper)?
 
         # Setup extruder monitor
         try:
-            self.extruder_monitor = self.ExtruderMonitor(self)
+            self.extruder_monitor = self.EspoolerExtruderMonitor(self) # PAUL use one on mmu_unit.toolhead_wrapper?
         except Exception as e:
             self.mmu.log_error(str(e))
             self.extruder_monitor = None
@@ -192,10 +189,12 @@ class MmuESpooler:
         """
         Callback from button sensor to initiate burst assist
         """
+        if self.mmu is None: return # Not initialized yet!
+
         self.mmu.log_trace("ESPOOLER: Trigger fired for gate %d, state=%s" % (gate, state))
         self.burst_trigger_state[gate] = state
-        if self.mmu and self.mmu.UNIT.espooler_assist_burst_trigger and self.burst_trigger_enabled.get(gate, False): # Don't handle if not ready or disabled
-            if self.mmu.UNIT.espooler_assist_burst_trigger and state:
+        if self.mmu_unit.p.espooler_assist_burst_trigger and self.burst_trigger_enabled.get(gate, False): # Don't handle if not ready or disabled
+            if self.mmu_unit.p.espooler_assist_burst_trigger and state:
                 self.back_to_back_burst_count[gate] += 1
                 self.advance(gate)
             else:
@@ -235,6 +234,7 @@ class MmuESpooler:
 
         self.burst(gate, ESPOOLER_ASSIST)
 
+
     def burst(self, gate, operation):
         """
         Direct call to rotate spool in a burst defined by operation (ESPOOLER_ASSIST or ESPOOLER_REWIND).
@@ -242,11 +242,11 @@ class MmuESpooler:
         (used in spool drying rotation, filament tightening and manual jogging)
         """
         if operation == ESPOOLER_ASSIST:
-            power = self.mmu.UNIT.espooler_assist_burst_power
-            duration = self.mmu.UNIT.espooler_assist_burst_duration
+            power = self.mmu_unit.p.espooler_assist_burst_power
+            duration = self.mmu_unit.p.espooler_assist_burst_duration
         elif operation == ESPOOLER_REWIND:
-            power = self.mmu.UNIT.espooler_rewind_burst_power
-            duration = self.mmu.UNIT.espooler_rewind_burst_duration
+            power = self.mmu_unit.p.espooler_rewind_burst_power
+            duration = self.mmu_unit.p.espooler_rewind_burst_duration
         else:
             return
    
@@ -302,7 +302,7 @@ class MmuESpooler:
         if gate == self.print_assist_gate:
             if self.burst_trigger_state.get(gate, 0):
                 # Still triggered
-                if self.back_to_back_burst_count[gate] < self.mmu.UNIT.espooler_assist_burst_trigger_max:
+                if self.back_to_back_burst_count[gate] < self.mmu_unit.p.espooler_assist_burst_trigger_max:
                     self.back_to_back_burst_count[gate] += 1
                     self.advance(gate)
                 else:
@@ -351,7 +351,7 @@ class MmuESpooler:
             self.operation[pg] = (ESPOOLER_OFF, 0)
 
             # Disable all triggers
-            if self.mmu.UNIT.espooler_assist_burst_trigger:
+            if self.mmu_unit.p.espooler_assist_burst_trigger:
                 self._set_burst_trigger_enable(pg, False)
             if self.extruder_monitor:
                 self.extruder_monitor.watch(False)
@@ -435,7 +435,7 @@ class MmuESpooler:
                     self.operation[g] = (operation, 0)
 
                     # Enable appropriate triggers
-                    if self.mmu.UNIT.espooler_assist_burst_trigger:
+                    if self.mmu_unit.p.espooler_assist_burst_trigger:
                         self._set_burst_trigger_enable(g, True)
                     elif self.extruder_monitor:
                         self.extruder_monitor.watch(True)
@@ -517,8 +517,11 @@ class MmuESpooler:
 
 
 
-    # Class to monitor extruder movement an generate espooler "advance" events
-    class ExtruderMonitor:
+# -----------------------------------------------------------------------------------------------------------
+# Class to monitor extruder movement an generate espooler "advance" events
+# -----------------------------------------------------------------------------------------------------------
+
+    class EspoolerExtruderMonitor: # PAUL possible to change to share commone monitor??
 
         CHECK_MOVEMENT_PERIOD = 1. # How often to check extruder movement
 
@@ -526,9 +529,9 @@ class MmuESpooler:
             self.espooler = espooler
             self.reactor = espooler.reactor
             self.estimated_print_time = espooler.printer.lookup_object('mcu').estimated_print_time
-            self.extruder = espooler.printer.lookup_object(espooler.mmu_unit.extruder_name, None)
+            self.extruder = espooler.printer.lookup_object(espooler.mmu_unit.extruder_name(), None)
             if not self.extruder:
-                raise espooler.config.error("Extruder named `%s` not found. Espooler extruder monitor disabled" % espooler.mmu_unit.extruder_name)
+                raise espooler.config.error("Extruder named `%s` not found. Espooler extruder monitor disabled" % espooler.mmu_unit.extruder_name())
 
             self.enabled = False
             self.last_extruder_pos = None
@@ -537,7 +540,7 @@ class MmuESpooler:
         def watch(self, enable):
             if not self.enabled and enable:
                 # Ensure first burst after initial extruder movement
-                self.last_extruder_pos = self._get_extruder_pos() - self.espooler.mmu.UNIT.espooler_assist_extruder_move_length + 1.
+                self.last_extruder_pos = self._get_extruder_pos() - self.espooler.mmu_unit.p.espooler_assist_extruder_move_length + 1.
                 self.enabled = True
                 self.reactor.update_timer(self._extruder_pos_update_timer, self.reactor.NOW) # Enabled
             elif not enable:
@@ -559,19 +562,19 @@ class MmuESpooler:
         def _extruder_pos_update_event(self, eventtime):
             extruder_pos = self._get_extruder_pos(eventtime)
             #self.espooler.mmu.log_trace("ESPOOLER: current_extruder_pos: %s (last: %s)" % (extruder_pos, self.last_extruder_pos))
-            if self.last_extruder_pos is not None and extruder_pos > self.last_extruder_pos + self.espooler.mmu.UNIT.espooler_assist_extruder_move_length:
+            if self.last_extruder_pos is not None and extruder_pos > self.last_extruder_pos + self.espooler.mmu_unit.p.espooler_assist_extruder_move_length:
                 self.espooler.advance() # Initiate burst
                 self.last_extruder_pos = extruder_pos
             return eventtime + self.CHECK_MOVEMENT_PERIOD
 
 
 
-######################################################################
+# -----------------------------------------------------------------------------------------------------------
 # G-Code request queuing helper
 # This is included to allow Kalico to work since it has not yet picked
 # up this klipper functionality 4/18/25
 # Copyright (C) 2017-2024  Kevin O'Connor <kevin@koconnor.net>
-######################################################################
+# -----------------------------------------------------------------------------------------------------------
 
 PIN_MIN_TIME = 0.100
 

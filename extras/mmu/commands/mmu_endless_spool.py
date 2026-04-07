@@ -71,7 +71,7 @@ class MmuEndlessSpoolCommand(BaseCommand):
             return
 
         if reset:
-            mmu._reset_endless_spool()
+            mmu.gate_maps.reset_endless_spool()
 
         elif groups != "!":
             groups = gcmd.get('GROUPS', ",".join(map(str, mmu.endless_spool_groups))).split(",")
@@ -84,10 +84,10 @@ class MmuEndlessSpoolCommand(BaseCommand):
                     mmu.endless_spool_groups.append(int(group))
                 else:
                     mmu.endless_spool_groups.append(0)
-            mmu._persist_endless_spool()
+            mmu.gate_maps.persist_endless_spool()
 
         else:
             quiet = False  # Display current map
 
         if not quiet:
-            mmu.log_info(mmu._es_groups_to_string())
+            mmu.log_info(mmu.gate_maps.es_groups_to_string())

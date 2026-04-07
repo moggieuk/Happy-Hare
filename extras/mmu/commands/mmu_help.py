@@ -29,7 +29,8 @@ class MmuHelpCommand(BaseCommand):
     HELP_BRIEF = "Display the complete set of MMU commands and function"
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
-        + "ALL       = [0|1] Show all user commands types\n"
+        + "PARAMS    = [0|1] Show parameter help and supplemental examples\n"
+        + "ALL       = [0|1] Show all user commands categories\n"
         + "GENERAL   = [0|1] Regular MMU commands (DEFAULT ON)\n"
         + "TESTING   = [0|1] Calibration and testing commands\n"
         + "STEPS     = [0|1] Advanced load/unload sequence and steps commands\n"
@@ -38,15 +39,13 @@ class MmuHelpCommand(BaseCommand):
         + "INTERNAL  = [0|1] Internal commands/macros (Caution!)\n" # Hidden from user unless explcitily asked for
         + "OTHER     = [0|1] Alias or not categorised\n"
         + "CMD       = _cmd_ Show help on command (same as _cmd_ HELP=1)\n"
-        + "PARAMS    = [0|1] Show parameter help\n"
-        + "EXAMPLES  = [0|1] Show supplemental examples\n"
-        + "(without parameters it will summarize all major commands)\n"
+        + "(without parameters it will summarize just major commands)\n"
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
         + "%s ALL=1                                   ...Summerize all user commands\n" % CMD
-        + "%s PARAMS=1                                ...Summerize basic commands showing parameters\n" % CMD
-        + "%s GENERAL=0 TESTING=1 PARAMS=1 EXAMPLES=1 ...Provide details help on all testing/calibration commands\n" % CMD
+        + "%s PARAMS=1                                ...Summerize basic commands showing parameters and examples\n" % CMD
+        + "%s GENERAL=0 TESTING=1 PARAMS=1            ...Provide details help on all testing/calibration commands\n" % CMD
         + "%s INTERNAL=1 PARAMS=1                     ...You are a developer? Caution!\n" % CMD
     )
 
@@ -70,7 +69,6 @@ class MmuHelpCommand(BaseCommand):
 
         show_all      = flag("ALL", 0)
         show_params   = flag("PARAMS", 0)
-        show_examples = flag("EXAMPLES", 0)
         internal      = gcmd.get_int("INTERNAL", 0)
         cmd           = gcmd.get("CMD", None)
 
@@ -105,12 +103,12 @@ class MmuHelpCommand(BaseCommand):
         # Build combined list of registered + non-registered commands
         combined = list(BaseCommand._registered_commands) + list(self.non_registered_commands())
 
-        # Group commands by category (robust to missing keys assumed not needed per your note)
+        # Group commands by category
         commands_by_category = defaultdict(list)
         for c in combined:
             commands_by_category[c["category"]].append(c)
 
-        lines = ["Happy Hare MMU commands (add HELP=1 for options to see more):\n"]
+        lines = ["Happy Hare MMU commands (add HELP=1 for options to see more commands and parameters):\n"]
         lines.append("{5}%s{6}Per-unit command, {5}%s{6}Defined by gcode macro\n" % (UI_SUPERSCRIPT_1, UI_SUPERSCRIPT_2))
 
         for category, enabled in categories:
@@ -129,13 +127,16 @@ class MmuHelpCommand(BaseCommand):
                 not_registered = bool(c.get("not_registered", False))
 
                 if show_params:
-                    supplement = c.get("help_supplement") if show_examples else None
-                    # help_params may be empty string; fallback to one-line brief if you prefer
+                    newline = True
+                    supplement = c.get("help_supplement")
+                    # help_params may be empty string; fallback to just one-line brief
                     help_params = c.get("help_params", "")
                     if not help_params:
                         help_params = "%s : %s" % (c.get("name", ""), c.get("help_brief", ""))
+                        newline = False
                     lines.append(self.format_help(help_params, supplement, per_unit, not_registered))
-                    lines.append("\n")
+                    if newline:
+                        lines.append("\n")
                 else:
                     lines.append(self.format_help("%s : %s" % (c.get("name", ""), c.get("help_brief", "")), None, per_unit, not_registered))
 

@@ -64,7 +64,7 @@ class MmuSensorRunoutCommand(BaseCommand):
             mmu.pause_resume.send_resume_command()
             return
 
-        mmu._fix_started_state()
+        mmu.fix_started_state()
 
         eventtime = gcmd.get_float('EVENTTIME', mmu.reactor.monotonic())
         gate = gcmd.get_int('GATE', None)
@@ -84,7 +84,7 @@ class MmuSensorRunoutCommand(BaseCommand):
                 else:
                     # Always update gate map from mmu entry sensor
                     if sensor.startswith(SENSOR_ENTRY_PREFIX) and gate != mmu.gate_selected:
-                        mmu._set_gate_status(gate, GATE_EMPTY)
+                        mmu.gate_maps.set_gate_status(gate, GATE_EMPTY)
 
                     # Real runout to process...
                     if sensor.startswith(SENSOR_ENTRY_PREFIX) and gate == mmu.gate_selected:

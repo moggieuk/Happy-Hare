@@ -42,50 +42,52 @@ class MmuSensorFactory:
         insert=False, remove=False, runout=False, clog=False, tangle=False,
         insert_remove_in_print=False, button_handler=None,
     ):
-        fs = None
-        if not self._is_empty_pin(switch_pin):
-            name = "%s_%d" % (name_prefix, gate) if gate is not None else name_prefix
-# PAUL why add _sensor?            sensor = name if gate is not None else "%s_sensor" % name
-            section = "filament_switch_sensor %s" % name
-            config.fileconfig.add_section(section)
-            config.fileconfig.set(section, "switch_pin", switch_pin)
-            config.fileconfig.set(section, "pause_on_runout", "False")
-            fs = self.printer.load_object(config, section)
+        if self._is_empty_pin(switch_pin):
+            return None
 
-            # Replace with custom runout_helper because of state specific behavior
-            insert_gcode = ("%s SENSOR=%s%s" % (INSERT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if insert else None
-            remove_gcode = ("%s SENSOR=%s%s" % (REMOVE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if remove else None
-            runout_gcode = ("%s SENSOR=%s%s" % (RUNOUT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if runout else None
-            clog_gcode   = ("%s SENSOR=%s%s" % (CLOG_GCODE,   name, (" GATE=%d" % gate) if gate is not None else "")) if clog else None
-            tangle_gcode = ("%s SENSOR=%s%s" % (TANGLE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if tangle else None
-            ro_helper = MmuRunoutHelper(
-                self.printer,
-                name,
-                event_delay,
-                {
-                    "insert": insert_gcode,
-                    "remove": remove_gcode,
-                    "runout": runout_gcode,
-                    "clog":   clog_gcode,
-                    "tangle": tangle_gcode,
-                },
-                insert_remove_in_print,
-                button_handler,
-                switch_pin
-            )
-            fs.runout_helper = ro_helper
-            fs.get_status = ro_helper.get_status
-            logging.info("MMU: Created [filament_switch_sensor %s]" % name)
+        name = "%s_%d" % (name_prefix, gate) if gate is not None else name_prefix
+        section = "filament_switch_sensor %s" % name
+        config.fileconfig.add_section(section)
+        config.fileconfig.set(section, "switch_pin", switch_pin)
+        config.fileconfig.set(section, "pause_on_runout", "False")
+        fs = self.printer.load_object(config, section)
+
+        # Replace with custom runout_helper because of state specific behavior
+        insert_gcode = ("%s SENSOR=%s%s" % (INSERT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if insert else None
+        remove_gcode = ("%s SENSOR=%s%s" % (REMOVE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if remove else None
+        runout_gcode = ("%s SENSOR=%s%s" % (RUNOUT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if runout else None
+        clog_gcode   = ("%s SENSOR=%s%s" % (CLOG_GCODE,   name, (" GATE=%d" % gate) if gate is not None else "")) if clog else None
+        tangle_gcode = ("%s SENSOR=%s%s" % (TANGLE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if tangle else None
+        ro_helper = MmuRunoutHelper(
+            self.printer,
+            name,
+            event_delay,
+            {
+                "insert": insert_gcode,
+                "remove": remove_gcode,
+                "runout": runout_gcode,
+                "clog":   clog_gcode,
+                "tangle": tangle_gcode,
+            },
+            insert_remove_in_print,
+            button_handler,
+            switch_pin
+        )
+        fs.runout_helper = ro_helper
+        fs.get_status = ro_helper.get_status
+        logging.info("MMU: Created [filament_switch_sensor %s]" % name)
         return fs
 
 
     def _is_empty_pin(self, switch_pin):
-        if switch_pin == '': return True
+        if switch_pin is None or switch_pin == '':
+            return True
+
         ppins = self.printer.lookup_object('pins')
         pin_params = ppins.parse_pin(switch_pin, can_invert=True, can_pullup=True)
         pin_resolver = ppins.get_pin_resolver(pin_params['chip_name'])
         real_pin = pin_resolver.aliases.get(pin_params['pin'], '_real_')
-        return real_pin == ''
+        return (real_pin == '')
 
 
     def sync_tension_callback(self, eventtime, t_sensor_name, tension_state, runout_helper):

@@ -53,25 +53,129 @@ from typing import Iterable, List, Sequence, Tuple
 DEFAULT_PATTERNS: List[Tuple[str, str]] = [
     # Example:
     # (r"(?<!_)mmu_gear(?!_)", "mmu_gear"),
+
+("\\.printer_toolhead", ".toolhead_wrapper"),
+
+#("mmu_machine\\.toolhead_sensor(?!_)", "PAUL"),
+#("mmu_machine\\.extruder_sensor", "PAUL"),
+
+#("mmu.p.toolhead_extruder_to_nozzle", "mmu_unit.printer_toolhead.p.toolhead_extruder_to_nozzle"),
+#("mmu.p.toolhead_sensor_to_nozzle", "mmu_unit.printer_toolhead.p.toolhead_sensor_to_nozzle"),
+#("mmu.p.toolhead_entry_to_extruder", "mmu_unit.printer_toolhead.p.toolhead_entry_to_extruder"),
+#("mmu.p.toolhead_residual_filament", "mmu_unit.printer_toolhead.p.toolhead_residual_filament"),
+#("mmu.p.toolhead_ooze_reduction", "mmu_unit.printer_toolhead.p.toolhead_ooze_reduction"),
+
+#("self.p.toolhead_extruder_to_nozzle", "self.u.printer_toolhead.p.toolhead_extruder_to_nozzle"),
+#("self.p.toolhead_sensor_to_nozzle", "self.u.printer_toolhead.p.toolhead_sensor_to_nozzle"),
+#("self.p.toolhead_entry_to_extruder", "self.u.printer_toolhead.p.toolhead_entry_to_extruder"),
+#("self.p.toolhead_residual_filament", "self.u.printer_toolhead.p.toolhead_residual_filament"),
+#("self.p.toolhead_ooze_reduction", "self.u.printer_toolhead.p.toolhead_ooze_reduction"),
+
+#    ("\\.gate_sensor", ".shared_exit_sensor"),
+#    ("\\.post_gear_sensors", ".exit_sensors"),
+#    ("wrap_suspendfilament", "wrap_suspend_filament"),
+#    ("SENSOR_EXTRUDER_COLLISION", "SENSOR_EXTRUDER_ENCODER"),
+#    ("_can_use_encoder", "can_use_encoder"),
+
+#    ("\\._get_next_endless_spool_gate", ".get_next_endless_spool_gate"),
+#    ("\\._validate_gate_status", ".validate_gate_status"),
+#    ("\\._validate_gate_selected", ".validate_gate_selected"),
+#    ("\\._remap_tool", ".remap_tool"),
+#    ("\\._ensure_ttg_match", ".ensure_ttg_match"),
+#    ("\\._persist_ttg_map", ".persist_ttg_map"),
+#    ("\\._reset_ttg_map", ".reset_ttg_map"),
+#    ("\\._persist_endless_spool", ".persist_endless_spool"),
+#    ("\\._reset_endless_spool", ".reset_endless_spool"),
+#    ("\\._set_gate_status", ".set_gate_status"),
+#    ("\\._persist_gate_status", ".persist_gate_status"),
+#    ("\\._renew_gate_map", "._renew_gate_map"),
+#    ("\\._persist_gate_map", ".persist_gate_map"),
+#    ("\\._reset_gate_map", ".reset_gate_map"),
+#    ("\\._automap_gate", ".automap_gate"),
+#    ("\\._update_t_macros", ".update_t_macros"),
+#    ("\\._update_gate_color_rgb", ".update_gate_color_rgb"),
+#    ("\\._update_slicer_color_rgb", ".update_slicer_color_rgb"),
+
+#    ("self._get_next_endless_spool_gate", "self.gate_maps.get_next_endless_spool_gate"),
+#    ("self._validate_gate_status", "self.gate_maps.validate_gate_status"),
+#    ("self._validate_gate_selected", "self.gate_maps.validate_gate_selected"),
+#    ("self._remap_tool", "self.gate_maps.remap_tool"),
+#    ("self._ensure_ttg_match", "self.gate_maps.ensure_ttg_match"),
+#    ("self._persist_ttg_map", "self.gate_maps.persist_ttg_map"),
+#    ("self._reset_ttg_map", "self.gate_maps.reset_ttg_map"),
+#    ("self._persist_endless_spool", "self.gate_maps.persist_endless_spool"),
+#    ("self._reset_endless_spool", "self.gate_maps.reset_endless_spool"),
+#    ("self._set_gate_status", "self.gate_maps.set_gate_status"),
+#    ("self._persist_gate_status", "self.gate_maps.persist_gate_status"),
+#    ("self._renew_gate_map", "self.gate_maps._renew_gate_map"),
+#    ("self._persist_gate_map", "self.gate_maps.persist_gate_map"),
+#    ("self._reset_gate_map", "self.gate_maps.reset_gate_map"),
+#    ("self.assign_spool_id", "self.gate_maps.assign_spool_id"),
+#    ("self._automap_gate", "self.gate_maps.automap_gate"),
+#    ("self._update_t_macros", "self.gate_maps.update_t_macros"),
+#    ("self._update_gate_color_rgb", "self.gate_maps.update_gate_color_rgb"),
+#    ("self._update_slicer_color_rgb", "self.gate_maps.update_slicer_color_rgb"),
+#
+#    ("self.mmu._get_next_endless_spool_gate", "self.mmu.gate_maps.get_next_endless_spool_gate"),
+#    ("self.mmu._validate_gate_status", "self.mmu.gate_maps.validate_gate_status"),
+#    ("self.mmu._validate_gate_selected", "self.mmu.gate_maps.validate_gate_selected"),
+#    ("self.mmu._remap_tool", "self.mmu.gate_maps.remap_tool"),
+#    ("self.mmu._ensure_ttg_match", "self.mmu.gate_maps.ensure_ttg_match"),
+#    ("self.mmu._persist_ttg_map", "self.mmu.gate_maps.persist_ttg_map"),
+#    ("self.mmu._reset_ttg_map", "self.mmu.gate_maps.reset_ttg_map"),
+#    ("self.mmu._persist_endless_spool", "self.mmu.gate_maps.persist_endless_spool"),
+#    ("self.mmu._reset_endless_spool", "self.mmu.gate_maps.reset_endless_spool"),
+#    ("self.mmu._set_gate_status", "self.mmu.gate_maps.set_gate_status"),
+#    ("self.mmu._persist_gate_status", "self.mmu.gate_maps.persist_gate_status"),
+#    ("self.mmu._renew_gate_map", "self.mmu.gate_maps._renew_gate_map"),
+#    ("self.mmu._persist_gate_map", "self.mmu.gate_maps.persist_gate_map"),
+#    ("self.mmu._reset_gate_map", "self.mmu.gate_maps.reset_gate_map"),
+#    ("self.mmu.assign_spool_id", "self.mmu.gate_maps.assign_spool_id"),
+#    ("self.mmu._automap_gate", "self.mmu.gate_maps.automap_gate"),
+#    ("self.mmu._update_t_macros", "self.mmu.gate_maps.update_t_macros"),
+#    ("self.mmu._update_gate_color_rgb", "self.mmu.gate_maps.update_gate_color_rgb"),
+#    ("self.mmu._update_slicer_color_rgb", "self.mmu.gate_maps.update_slicer_color_rgb"),
+#
+#    ("mmu._get_next_endless_spool_gate", "mmu.gate_maps.get_next_endless_spool_gate"),
+#    ("mmu._validate_gate_status", "mmu.gate_maps.validate_gate_status"),
+#    ("mmu._validate_gate_selected", "mmu.gate_maps.validate_gate_selected"),
+#    ("mmu._remap_tool", "mmu.gate_maps.remap_tool"),
+#    ("mmu._ensure_ttg_match", "mmu.gate_maps.ensure_ttg_match"),
+#    ("mmu._persist_ttg_map", "mmu.gate_maps.persist_ttg_map"),
+#    ("mmu._reset_ttg_map", "mmu.gate_maps.reset_ttg_map"),
+#    ("mmu._persist_endless_spool", "mmu.gate_maps.persist_endless_spool"),
+#    ("mmu._reset_endless_spool", "mmu.gate_maps.reset_endless_spool"),
+#    ("mmu._set_gate_status", "mmu.gate_maps.set_gate_status"),
+#    ("mmu._persist_gate_status", "mmu.gate_maps.persist_gate_status"),
+#    ("mmu._renew_gate_map", "mmu.gate_maps._renew_gate_map"),
+#    ("mmu._persist_gate_map", "mmu.gate_maps.persist_gate_map"),
+#    ("mmu._reset_gate_map", "mmu.gate_maps.reset_gate_map"),
+#    ("mmu.assign_spool_id", "mmu.gate_maps.assign_spool_id"),
+#    ("mmu._automap_gate", "mmu.gate_maps.automap_gate"),
+#    ("mmu._update_t_macros", "mmu.gate_maps.update_t_macros"),
+#    ("mmu._update_gate_color_rgb", "mmu.gate_maps.update_gate_color_rgb"),
+#    ("mmu._update_slicer_color_rgb", "mmu.gate_maps.update_slicer_color_rgb"),
+
+
 #    ("PARAM_MMU_VENDOR",  "PARAM_VENDOR"),
 #    ("PARAM_MMU_VERSION", "PARAM_VERSION"),
 
-    ("SENSOR_PRE_GATE_PREFIX", "SENSOR_ENTRY_PREFIX"),
-    ("SENSOR_GEAR_PREFIX", "SENSOR_EXIT_PREFIX"),
-    ("SENSOR_GATE", "SENSOR_SHARED_EXIT"),
-    ("mmu_pre_gate", "mmu_entry"),
-    ("pre_gate_switch_pin", "mmu_entry_switch_pin"),
-    ("post_gear_switch_pin", "mmu_exit_switch_pin"),
-    ("gear_switch_pin", "mmu_shared_exit_switch_pin"),
-    ("(?<!_)mmu_gear(?!_)", "mmu_exit"),
-    ("mmu_gate(?!_map)", "mmu_shared_exit"),
-    ("(?<!stepper_)mmu_gear(?!_(?:touch|rotation|steppers|names|tmcs|currents))", "mmu_exit"),
-#    ("(?<!stepper_)mmu_gear(?!_touch|_rotation)", "mmu_exit"),
-    ("pre_gate_sensors", "entry_sensors"),
-    ("gear sensor", "mmu exit sensor"),
-    ("pre-gate", "mmu entry"),
-    ("PRE_GATE", "ENTRY"),
-    ("POST_GEAR", "EXIT"),
+#    ("SENSOR_PRE_GATE_PREFIX", "SENSOR_ENTRY_PREFIX"),
+#    ("SENSOR_GEAR_PREFIX", "SENSOR_EXIT_PREFIX"),
+#    ("SENSOR_GATE", "SENSOR_SHARED_EXIT"),
+#    ("mmu_pre_gate", "mmu_entry"),
+#    ("pre_gate_switch_pin", "mmu_entry_switch_pin"),
+#    ("post_gear_switch_pin", "mmu_exit_switch_pin"),
+#    ("gear_switch_pin", "mmu_shared_exit_switch_pin"),
+#    ("(?<!_)mmu_gear(?!_)", "mmu_exit"),
+#    ("mmu_gate(?!_map)", "mmu_shared_exit"),
+#    ("(?<!stepper_)mmu_gear(?!_(?:touch|rotation|steppers|names|tmcs|currents))", "mmu_exit"),
+##    ("(?<!stepper_)mmu_gear(?!_touch|_rotation)", "mmu_exit"),
+#    ("pre_gate_sensors", "entry_sensors"),
+#    ("gear sensor", "mmu exit sensor"),
+#    ("pre-gate", "mmu entry"),
+#    ("PRE_GATE", "ENTRY"),
+#    ("POST_GEAR", "EXIT"),
 
 
 #    ("(?<!CALIBRATE_)GEAR(?!_(?:0|RDS|STEPPER)\b)", "EXIT"),
@@ -102,7 +206,8 @@ IGNORE_DIRS = {
     ".git", ".hg", ".svn", "__pycache__", ".venv", "venv", "node_modules",
     "build", "dist", ".mypy_cache", ".ruff_cache", ".pytest_cache", "utils"
 }
-# PAUL TARGET_EXTS = (".py", ".cfg", "Kconfig*")
+#TARGET_EXTS = (".py", ".cfg", "Kconfig*")
+#TARGET_EXTS = (".py")
 TARGETS = ("*.py", "*.cfg", "Kconfig*", "Makefile", "*.sh")
 
 
@@ -202,7 +307,7 @@ def iter_target_files(root: Path) -> Iterable[Path]:
             if name.endswith(".orig"):
                 continue
             if any(fnmatch.fnmatchcase(name, pat) for pat in TARGETS):
-# PAUL            if name.lower().endswith(TARGET_EXTS):
+#PAUL            if name.lower().endswith(TARGET_EXTS):
                 yield Path(dirpath) / name
 
 

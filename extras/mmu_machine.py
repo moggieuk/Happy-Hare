@@ -40,36 +40,6 @@ class MmuMachine:
         self.unit_names = list(config.getlist('units'))
         self.num_units = len(self.unit_names)
 
-        # Setup sensors common to all mmu_units
-        #
-        # extruder & toolhead sensor:
-        #   Wrapper around `filament_switch_sensor` disabling all functionality - just for visability
-        #   Named `extruder` & `toolhead`
-        event_delay = config.get('event_delay', 0.5)
-        self.sensor_factory = sf = MmuSensorFactory(self.printer)
-
-        # Setup single extruder (entrance) sensor...
-        switch_pin = config.get('extruder_switch_pin', None)
-        self.extruder_sensor = sf.create_mmu_sensor(
-            config,
-            SENSOR_EXTRUDER_ENTRY,
-            None,
-            switch_pin,
-            event_delay,
-            insert=True,
-            runout=True
-        )
-
-        # Setup single toolhead sensor...
-        switch_pin = config.get('toolhead_switch_pin', None)
-        self.toolhead_sensor = sf.create_mmu_sensor(
-            config,
-            SENSOR_TOOLHEAD,
-            None,
-            switch_pin,
-            event_delay
-        )
-
         self.num_gates = 0           # Total number gates on system
         self.units = []              # Unit by index
         self.unit_by_name = {}       # Unit lookup by name

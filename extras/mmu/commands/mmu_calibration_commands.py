@@ -415,7 +415,7 @@ class MmuCalibrateBowdenCommand(CalibrationMixin, BaseCommand):
 
         try:
             with mmu.wrap_sync_gear_to_extruder():
-                with mmu._wrap_suspend_filament_monitoring():
+                with mmu.wrap_suspend_filament_monitoring():
                     mmu.calibrating = True
                     if manual:
                         # Method 1: Manual (reverse homing to gate) method
@@ -548,14 +548,14 @@ class MmuCalibrateToolheadCommand(CalibrationMixin, BaseCommand):
                     mmu.log_always("Measuring blade cutter position (with filament fragment)...")
                     tetn, tstn, tete = self._probe_toolhead()
                     # Blade position is the difference between empty and extruder with full cut measurements for sensor to nozzle
-                    vbp = mmu.p.toolhead_sensor_to_nozzle - tstn
+                    vbp = mmu_unit.toolhead_wrapper.p.toolhead_sensor_to_nozzle - tstn
                     msg = line
-                    if abs(vbp - mmu.p.toolhead_residual_filament) < 5:
+                    if abs(vbp - mmu_unit.toolhead_wrapper.p.toolhead_residual_filament) < 5:
                         mmu.log_error("Measurements did not make sense. Looks like probing went past the blade pos!\nAre you holding the blade closed or have cut filament in the extruder?")
                     else:
                         msg += "Calibration Results (cut tip):\n"
                         msg += "> variable_blade_pos: %.1f (currently: %.1f)\n" % (vbp, gcode_vars.variables['blade_pos'])
-                        msg += "> variable_retract_length: %.1f-%.1f, recommend: %.1f (currently: %.1f)\n" % (mmu.p.toolhead_residual_filament + mmu.toolchange_retract, vbp, vbp - 5., gcode_vars.variables['retract_length'])
+                        msg += "> variable_retract_length: %.1f-%.1f, recommend: %.1f (currently: %.1f)\n" % (mmu_unit.toolhead_wrapper.p.toolhead_residual_filament + mmu.toolchange_retract, vbp, vbp - 5., gcode_vars.variables['retract_length'])
                         msg += line
                         mmu.log_always(msg)
                         if save:
@@ -568,36 +568,34 @@ class MmuCalibrateToolheadCommand(CalibrationMixin, BaseCommand):
                     tetn, tstn, tete = self._probe_toolhead()
                     msg = line
                     msg += "Calibration Results (clean nozzle):\n"
-                    msg += "> toolhead_extruder_to_nozzle: %.1f (currently: %.1f)\n" % (tetn, mmu.p.toolhead_extruder_to_nozzle)
-                    msg += "> toolhead_sensor_to_nozzle: %.1f (currently: %.1f)\n" % (tstn, mmu.p.toolhead_sensor_to_nozzle)
+                    msg += "> toolhead_extruder_to_nozzle: %.1f (currently: %.1f)\n" % (tetn, mmu_unit.toolhead_wrapper.p.toolhead_extruder_to_nozzle)
+                    msg += "> toolhead_sensor_to_nozzle: %.1f (currently: %.1f)\n" % (tstn, mmu_unit.toolhead_wrapper.p.toolhead_sensor_to_nozzle)
                     if sensor_manager.has_sensor(SENSOR_EXTRUDER_ENTRY):
-                        msg += "> toolhead_entry_to_extruder: %.1f (currently: %.1f)\n" % (tete, mmu.p.toolhead_entry_to_extruder)
+                        msg += "> toolhead_entry_to_extruder: %.1f (currently: %.1f)\n" % (tete, mmu_unit.toolhead_wrapper.p.toolhead_entry_to_extruder)
                     msg += line
                     mmu.log_always(msg)
                     if save:
-# PAUL these params are currently (incorrectly) in mmu.cfg
-                        mmu.log_always("New toolhead calibration active until restart. Update mmu_parameters_%s.cfg to persist settings" % mmu_unit.name)
-                        mmu.p.toolhead_extruder_to_nozzle = round(tetn, 1)
-                        mmu.p.toolhead_sensor_to_nozzle = round(tstn, 1)
-                        mmu.p.toolhead_entry_to_extruder = round(tete, 1)
+                        mmu.log_always("New toolhead calibration active until restart. Update mmu_hardware_%s.cfg to persist settings" % mmu_unit.name)
+                        mmu_unit.toolhead_wrapper.p.toolhead_extruder_to_nozzle = round(tetn, 1)
+                        mmu_unit.toolhead_wrapper.p.toolhead_sensor_to_nozzle = round(tstn, 1)
+                        mmu_unit.toolhead_wrapper.p.toolhead_entry_to_extruder = round(tete, 1)
 
                 elif dirty:
                     mmu.log_always("Measuring dirty toolhead dimensions (with filament residue)...")
                     tetn, tstn, tete = self._probe_toolhead()
                     # Ooze reduction is the difference between empty and dirty measurements for sensor to nozzle
-                    tor = mmu.p.toolhead_sensor_to_nozzle - tstn
+                    tor = mmu_unit.toolhead_wrapper.p.toolhead_sensor_to_nozzle - tstn
                     msg = line
                     msg += "Calibration Results (dirty nozzle):\n"
-                    msg += "> toolhead_residual_filament: %.1f (currently: %.1f)\n" % (tor, mmu.p.toolhead_residual_filament)
+                    msg += "> toolhead_residual_filament: %.1f (currently: %.1f)\n" % (tor, mmu_unit.toolhead_wrapper.p.toolhead_residual_filament)
                     if sensor_manager.has_sensor(SENSOR_EXTRUDER_ENTRY):
-                        msg += "> toolhead_entry_to_extruder: %.1f (currently: %.1f)\n" % (tete, mmu.p.toolhead_entry_to_extruder)
+                        msg += "> toolhead_entry_to_extruder: %.1f (currently: %.1f)\n" % (tete, mmu_unit.toolhead_wrapper.p.toolhead_entry_to_extruder)
                     msg += line
                     mmu.log_always(msg)
                     if save:
-# PAUL these params are currently (incorrectly) in mmu.cfg
-                        mmu.log_always("New calibrated ooze reduction active until restart. Update mmu_parameters_%s.cfg to persist" % mmu_unit.name)
-                        mmu.p.toolhead_residual_filament = round(tor, 1)
-                        mmu.p.toolhead_entry_to_extruder = round(tete, 1)
+                        mmu.log_always("New calibrated ooze reduction active until restart. Update mmu_hardware_%s.cfg to persist" % mmu_unit.name)
+                        mmu_unit.toolhead_wrapper.p.toolhead_residual_filament = round(tor, 1)
+                        mmu_unit.toolhead_wrapper.p.toolhead_entry_to_extruder = round(tete, 1)
 
                 # Unload and park filament
                 mmu._unload_bowden()

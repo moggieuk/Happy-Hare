@@ -76,6 +76,6 @@ class MmuTestHomingMoveCommand(MoveMixin, BaseCommand):
                 "%s after %.1fmm%s" % (
                     ("Homed" if homed else "Did not home"),
                     actual,
-                    (" (measured %.1fmm)" % measured) if mmu._can_use_encoder() else ""
+                    (" (measured %.1fmm)" % measured) if mmu.can_use_encoder() else ""
                 )
             )

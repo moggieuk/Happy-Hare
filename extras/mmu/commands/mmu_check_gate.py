@@ -54,7 +54,7 @@ class MmuCheckGateCommand(BaseCommand):
 
         if self.check_if_disabled(): return
         if self.check_if_bypass(): return
-        mmu._fix_started_state()
+        mmu.fix_started_state()
 
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
         # These three parameters are mutually exclusive so we only process one
@@ -71,8 +71,8 @@ class MmuCheckGateCommand(BaseCommand):
 
         try:
             with mmu.wrap_sync_gear_to_extruder():
-                with mmu._wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during gate check
-                    with mmu._wrap_suspendwrite_variables():  # Reduce I/O activity to a minimum
+                with mmu.wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during gate check
+                    with mmu.var_manager.wrap_suspend_write_variables(): # Reduce I/O activity to a minimum
                         with mmu.wrap_action(ACTION_CHECKING):
                             tool_selected = mmu.tool_selected
                             filament_pos = mmu.filament_pos
@@ -141,13 +141,16 @@ class MmuCheckGateCommand(BaseCommand):
                                             mmu.log_info("Tool T%d - Filament detected. Gate %d marked available" % (tool, gate))
                                         else:
                                             mmu.log_info("Gate %d - Filament detected. Marked available" % gate)
-                                        mmu._set_gate_status(gate, max(mmu.gate_status[gate], GATE_AVAILABLE))
+                                        mmu.gate_maps.set_gate_status(gate, max(mmu.gate_status[gate], GATE_AVAILABLE))
                                         try:
-                                            mmu._unload_gate()
+                                            # Encoder unload may need a little more homing distance
+                                            u = mmu.mmu_unit(gate)
+                                            extra_homing = u.p.gate_homing_max if u.p.gate_homing_endstop == SENSOR_ENCODER else 0
+                                            mmu._unload_gate(extra_homing)
                                         except MmuError as ee:
                                             raise MmuError("Failure during check gate %d %s:\n%s" % (gate, "(T%d)" % tool if tool >= 0 else "", str(ee)))
                                     except MmuError as ee:
-                                        mmu._set_gate_status(gate, GATE_EMPTY)
+                                        mmu.gate_maps.set_gate_status(gate, GATE_EMPTY)
                                         mmu._set_filament_pos_state(FILAMENT_POS_UNLOADED, silent=True)
                                         if tool >= 0:
                                             msg = "Tool T%d on gate %d marked EMPTY" % (tool, gate)
@@ -187,7 +190,7 @@ class MmuCheckGateCommand(BaseCommand):
                                 mmu.select_tool(tool_selected)
 
                             if not quiet:
-                                mmu.log_info(mmu._mmu_visual_to_string())
+                                mmu.log_info(mmu._mmu_visual_to_string(), color=True)
 
         except MmuError as ee:
             mmu.handle_mmu_error(str(ee))

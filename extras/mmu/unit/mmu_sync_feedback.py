@@ -39,7 +39,6 @@ SF_STATE_TENSION     = -1
 class MmuSyncFeedback:
     
     def __init__(self, config, mmu_unit, params):
-        logging.info("PAUL: init() for MmuSyncFeedback")
         self.config = config
         self.mmu_unit = mmu_unit                # This physical MMU unit
         self.mmu_machine = mmu_unit.mmu_machine # Entire Logical combined MMU
@@ -55,43 +54,27 @@ class MmuSyncFeedback:
         # Event handlers
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
         self.printer.register_event_handler('klippy:ready', self.handle_ready)
-        self.printer.register_event_handler('klippy:disconnect', self.handle_disconnect)
+
+        # Initial flowguard status
+        self.flowguard_status = {'trigger': '', 'reason': '', 'level': 0.0, 'max_clog': 0.0, 'max_tangle': 0.0, 'active': False, 'enabled': False}
+
+
+    def reinit(self):
+        pass
+
+
+    def handle_connect(self):
+        self.mmu = self.mmu_machine.mmu_controller # Shared MMU controller class
 
         # Setup events for managing motor synchronization
         self.printer.register_event_handler("mmu:synced", self._handle_mmu_synced)
         self.printer.register_event_handler("mmu:unsynced", self._handle_mmu_unsynced)
         self.printer.register_event_handler("mmu:sync_feedback", self._handle_sync_feedback)
 
-        # Initial flowguard status
-        self.flowguard_status = {'trigger': '', 'reason': '', 'level': 0.0, 'max_clog': 0.0, 'max_tangle': 0.0, 'active': False, 'enabled': False}
-
-
-    #
-    # Standard unit controller hooks...
-    #
-
-    def reinit(self):
-        pass
-# PAUL FIX ME
-#        self.mmu_unit.extruder_monitor.enable() # PAUL probably should be in unit class?  Remember monitor could be shared
-
-
-    def handle_connect(self):
-        logging.info("PAUL: handle_connect for MmuSyncFeedback")
-        self.mmu = self.mmu_machine.mmu_controller # Shared MMU controller class
-
 
     def handle_ready(self):
         self._init_controller()
 
-
-    def handle_disconnect(self):
-        pass
-        
-
-    #
-    # Sync feedback manager public access...
-    #
 
     def set_default_rd(self):
         """
@@ -102,7 +85,6 @@ class MmuSyncFeedback:
 
         rd = self.mmu_unit.calibrator.get_gear_rd(gate)
         self.mmu.log_debug("MmuSyncFeedback: Setting default rotation distance for gate %d to %.4f" % (gate, rd))
-        self.mmu.log_info("PAUL: calling calibrator %s" % self.mmu_unit.calibrator.mmu_unit.name)
         self.mmu_unit.calibrator.set_gear_rd(rd)
 
 
@@ -273,7 +255,7 @@ class MmuSyncFeedback:
         self._reset_controller(eventtime)
 
         # Turn on extruder movement events
-        self.mmu_unit.extruder_monitor.register_callback(self._handle_extruder_movement, self.p.sync_feedback_extrude_threshold)
+        self.mmu_unit.extruder_monitor().register_callback(self._handle_extruder_movement, self.p.sync_feedback_extrude_threshold)
 
 
     def _handle_mmu_unsynced(self, eventtime=None):
@@ -302,7 +284,7 @@ class MmuSyncFeedback:
         self.set_default_rd()
 
         # Optional but let's turn off extruder movement events
-        self.mmu_unit.extruder_monitor.remove_callback(self._handle_extruder_movement)
+        self.mmu_unit.extruder_monitor().remove_callback(self._handle_extruder_movement)
 
 
     def _handle_extruder_movement(self, eventtime, move):
@@ -335,7 +317,7 @@ class MmuSyncFeedback:
         else:
             self.mmu.log_info(msg)
 
-        move = self.mmu_unit.extruder_monitor.get_and_reset_accumulated(self._handle_extruder_movement)
+        move = self.mmu_unit.extruder_monitor().get_and_reset_accumulated(self._handle_extruder_movement)
         status = self.ctrl.update(eventtime, move, state)
         self._process_status(eventtime, status)
 

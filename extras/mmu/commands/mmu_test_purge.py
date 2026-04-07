@@ -63,7 +63,7 @@ class MmuTestPurgeCommand(BaseCommand):
 
         try:
             # Determine purge volume for test (mimick regular call to purge macro)
-            mmu.toolchange_purge_volume = mmu._calc_purge_volume(last_tool, next_tool)
+            mmu.toolchange_purge_volume, mmu._slicer_purge_volume = mmu._calc_purge_volume(last_tool, next_tool)
 
             _last_tool, _next_tool = mmu._last_tool, mmu._next_tool
             mmu._last_tool, mmu._next_tool = last_tool, next_tool  # Valid only during this test
@@ -82,5 +82,5 @@ class MmuTestPurgeCommand(BaseCommand):
             mmu.handle_mmu_error(str(ee))
 
         finally:
-            mmu.toolchange_purge_volume = 0.
+            mmu.toolchange_purge_volume = mmu._slicer_purge_volume = 0.
             mmu._last_tool, mmu._next_tool = _last_tool, _next_tool  # Restore real values

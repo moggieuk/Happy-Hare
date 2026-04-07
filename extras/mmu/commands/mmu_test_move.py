@@ -69,6 +69,6 @@ class MmuTestMoveCommand(MoveMixin, BaseCommand):
             mmu.log_always(
                 "Moved %.1fmm%s" % (
                     actual,
-                    (" (measured %.1fmm)" % measured) if mmu._can_use_encoder() else ""
+                    (" (measured %.1fmm)" % measured) if mmu.can_use_encoder() else ""
                 )
             )

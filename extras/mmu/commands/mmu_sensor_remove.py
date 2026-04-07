@@ -58,7 +58,7 @@ class MmuSensorRemoveCommand(BaseCommand):
         mmu = self.mmu
 
         if not mmu.is_enabled: return
-        mmu._fix_started_state()
+        mmu.fix_started_state()
 
         eventtime = gcmd.get_float('EVENTTIME', mmu.reactor.monotonic())
         gate = gcmd.get_int('GATE', None)
@@ -72,7 +72,7 @@ class MmuSensorRemoveCommand(BaseCommand):
                     # Ignore mmu entry runout if endless_spool_eject_gate feature is active
                     # and we want filament to be consumed to clear gate
                     if not (mmu.endless_spool_enabled and mmu.p.endless_spool_eject_gate > 0):
-                        mmu._set_gate_status(gate, GATE_EMPTY)
+                        mmu.gate_maps.set_gate_status(gate, GATE_EMPTY)
                     else:
                         mmu.log_trace(
                             "Ignoring filament removal detected by %s because endless_spool_eject_gate is active"

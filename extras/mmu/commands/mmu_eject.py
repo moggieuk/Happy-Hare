@@ -63,7 +63,7 @@ class MmuEjectCommand(UnloadEjectMixin, BaseCommand):
         force = bool(gcmd.get_int('FORCE', 0, minval=0, maxval=1))
 
         if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[gate]): return
-        mmu._fix_started_state()
+        mmu.fix_started_state()
 
         can_crossload = (
             mmu.mmu_unit().can_crossload or
@@ -97,7 +97,7 @@ class MmuEjectCommand(UnloadEjectMixin, BaseCommand):
 
         try:
             with mmu.wrap_sync_gear_to_extruder():
-                with mmu._wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during unload
+                with mmu.wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during unload
 
                     # Same as MMU_UNLOAD logic
                     if gate == current_gate and filament_pos != FILAMENT_POS_UNLOADED:
@@ -118,7 +118,7 @@ class MmuEjectCommand(UnloadEjectMixin, BaseCommand):
                                     mmu.select_gate(current_gate)
                                 else:
                                     # Lazy movement means we have side effect of changed tool/gate
-                                    mmu._ensure_ttg_match()
+                                    mmu.gate_maps.ensure_ttg_match()
                                     mmu._initialize_encoder() # Encoder 0000
 
         except MmuError as ee:

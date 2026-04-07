@@ -51,7 +51,11 @@ class BaseSelector:
         self.mmu_machine = mmu_unit.mmu_machine # Entire Logical combined MMU
         self.printer = config.get_printer()
 
-        self.params = self.p = self.PARAMS_CLS(config, self)
+        # Always create empty params class or one specific to selector type
+        if self.PARAMS_CLS is TunableParametersBase:
+            self.params = self.p = self.PARAMS_CLS(config)
+        elif issubclass(self.PARAMS_CLS, TunableParametersBase):
+            self.params = self.p = self.PARAMS_CLS(config, self)
 
         self.is_homed = False                   # Whether selector is home and knows current position
         self.requires_homing = True             # Whether selector requires homing

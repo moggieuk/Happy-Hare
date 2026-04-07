@@ -5,7 +5,7 @@
 # mcu board. E.g.
 #   PIN_GEAR_DIAG
 #   PIN_SELECTOR_STEP
-#   PIN_ENTRY_SENSOR
+#   PIN_ENTRY_SENSOR_SENSOR
 
 config PARAM_BOARD_TYPE
   string

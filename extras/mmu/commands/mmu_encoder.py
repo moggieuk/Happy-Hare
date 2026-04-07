@@ -45,6 +45,7 @@ class MmuEncoderCommand(BaseCommand):
             per_unit=True
         )
 
+
     def _run(self, gcmd, mmu_unit):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
         self.mmu_unit = mmu_unit
@@ -64,4 +65,27 @@ class MmuEncoderCommand(BaseCommand):
             mmu.set_encoder_distance(value)
             return
 
-        mmu.log_info(mmu._get_encoder_summary(detail=True))
+        mmu.log_info(self._get_encoder_summary(detail=True))
+
+
+    def _get_encoder_summary(self, detail=False):
+        status = self.mmu.encoder().get_status(0)
+            
+        lines = []
+        lines.append(f"Encoder position: {status['encoder_pos']:.1f}")
+            
+        if detail:
+            lines.append(f"- FlowGuard/Runout: {'Active' if status['enabled'] else 'Inactive'}")
+            
+            mode_map = {
+                2: "Automatic",
+                1: "On",
+                0: "Off",
+            }
+            clog = mode_map.get(status["detection_mode"], "Unknown")
+
+            lines.append(f"- FlowGuard mode: {clog} (Detection length: {status['detection_length']:.1f})")
+            lines.append(f"- Remaining headroom before trigger: {status['headroom']:.1f} (min: {status['min_headroom']:.1f})")
+            lines.append(f"- Flowrate: {status['flow_rate']} %")
+            
+        return "\n".join(lines)

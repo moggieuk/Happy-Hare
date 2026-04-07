@@ -52,7 +52,7 @@ class MmuEncoderRunoutCommand(BaseCommand):
             mmu.pause_resume.send_resume_command()
             return
 
-        mmu._fix_started_state()
+        mmu.fix_started_state()
 
         try:
             with mmu.wrap_sync_gear_to_extruder():

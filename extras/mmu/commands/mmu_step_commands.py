@@ -203,7 +203,7 @@ class MmuStepUnloadToolheadCommand(BaseCommand):
         try:
             with mmu.wrap_sync_gear_to_extruder():
                 park_pos = min(
-                    mmu.p.toolhead_extruder_to_nozzle,
+                    mmu.mmu_unit().toolhead_wrapper.p.toolhead_extruder_to_nozzle,
                     max(0, park_pos)
                 )
                 mmu._set_filament_position(-park_pos)

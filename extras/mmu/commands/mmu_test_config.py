@@ -114,10 +114,7 @@ class MmuTestConfigCommand(BaseCommand):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
 
-        mmu_unit = self.get_unit(gcmd) # None if not specified by user
-        unit_param = gcmd.get('UNIT', None)
-        if mmu_unit is None and unit_param is not None:
-            raise gcmd.error(f"Unit {unit_param} not found!")
+        mmu_unit = self.get_unit(gcmd, mode="optional") # None if not specified by user
 
         raw_params = gcmd.get_command_parameters()
         raw_keys_lc = {k.lower() for k in raw_params.keys()}
@@ -125,13 +122,14 @@ class MmuTestConfigCommand(BaseCommand):
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
         show_all = bool(gcmd.get_int('ALL', 0, minval=0, maxval=1))
 
-        machine_params  = mmu.p                     # MmuMachineParameters
+        machine_params  = mmu.p                           # MmuMachineParameters
         param_sets = [machine_params]
 
         if mmu_unit is not None:
-            unit_params     = mmu_unit.p            # MmuUnitParameters
-            selector_params = mmu_unit.selector.p   # *Selector*Parameters
-            param_sets.extend([unit_params, selector_params])
+            unit_params     = mmu_unit.p                  # MmuUnitParameters
+            selector_params = mmu_unit.selector.p         # *Selector*Parameters
+            toolhead_params = mmu_unit.toolhead_wrapper.p # MmuPrinterToolhead Parameters
+            param_sets.extend([unit_params, selector_params, toolhead_params])
 
         if mmu.gate_selected >= 0:
             calibration_params = MmuCalibrationParameters(mmu)
@@ -178,21 +176,24 @@ class MmuTestConfigCommand(BaseCommand):
             msg.append(machine_params.format_params(include_hidden=False, include_guarded_out=show_all, include_not_in_configfile=show_all))
 
             if mmu_unit:
-                msg.append(f"\nMMU %s parameters ----------------" % mmu_unit.name)
+                msg.append(f"\nMMU {mmu_unit.name} parameters ----------------")
                 msg.append(unit_params.format_params(include_hidden=False, include_guarded_out=show_all, include_not_in_configfile=show_all))
 
                 if selector_params.get_known_param_names():
-                    msg.append(f"\nMMU %s selector parameters ----------------" % mmu_unit.name)
                     msg.append(selector_params.format_params(include_hidden=False, include_guarded_out=show_all, include_not_in_configfile=show_all))
-            else:
-                msg.append(f"\nNo MMU unit parameters because UNIT wasn't specified")
 
-            if mmu.gate_selected >= 0:
-                msg.append(f"\nCalibrated values for {mmu.mmu_unit().name} / gate {mmu.gate_selected} ----------------")
-                msg.append(calibration_params.format_params(include_hidden=False, include_guarded_out=show_all, include_not_in_configfile=True))
+                if toolhead_params.get_known_param_names():
+                    toolhead_name = mmu_unit.toolhead_wrapper.name
+                    msg.append(f"\nMMU toolhead '{toolhead_name}' used by {mmu_unit.name} ----------------")
+                    msg.append(toolhead_params.format_params(include_hidden=False, include_guarded_out=show_all, include_not_in_configfile=show_all))
+
+                if mmu.gate_selected >= 0:
+                    msg.append(f"\nCalibrated values for {mmu.mmu_unit().name} / gate {mmu.gate_selected} ----------------")
+                    msg.append(calibration_params.format_params(include_hidden=False, include_guarded_out=show_all, include_not_in_configfile=True))
+                else:
+                    msg.append("\nNo calibrated values because gate is unknown")
+
+            else:
+                msg.append("\nNo MMU unit parameters because UNIT wasn't specified")
 
             mmu.log_info("\n".join(msg))
-
-
-
-

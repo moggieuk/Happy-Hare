@@ -92,7 +92,7 @@ class MmuSyncFeedbackCommand(BaseCommand):
                 # Cannot adjust sync feedback sensor if gears are not synced
                 with mmu.wrap_sync_gear_to_extruder():
                     # Avoid spurious runout during tiny corrective moves (unlikely)
-                    with mmu._wrap_suspend_filament_monitoring():
+                    with mmu.wrap_suspend_filament_monitoring():
                         actual, success = sf.adjust_filament_tension()
                         if success:
                             mmu.log_info("Neutralized tension after moving %.2fmm" % actual)

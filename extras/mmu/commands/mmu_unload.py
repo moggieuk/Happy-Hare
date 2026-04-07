@@ -54,7 +54,7 @@ class MmuUnloadCommand(UnloadEjectMixin, BaseCommand):
 
         if self.check_if_disabled(): return
         if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[mmu.gate_selected]): return
-        mmu._fix_started_state()
+        mmu.fix_started_state()
 
         if mmu.filament_pos == FILAMENT_POS_UNLOADED:
             mmu.log_always("Filament not loaded")
@@ -62,7 +62,7 @@ class MmuUnloadCommand(UnloadEjectMixin, BaseCommand):
 
         try:
             with mmu.wrap_sync_gear_to_extruder():
-                with mmu._wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during filament unload
+                with mmu.wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during filament unload
 
                     self._handle_unload(gcmd)
 

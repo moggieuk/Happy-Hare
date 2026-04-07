@@ -41,34 +41,34 @@ if BOARD_TYPE_TZB_1_0
 
   config PIN_ENCODER
     default "^$(MCU_NAME):PA2"
-  config PIN_GATE_SENSOR
+  config PIN_SHARED_EXIT_SENSOR
     default ""
   config PIN_NEOPIXEL
     default "$(MCU_NAME):PA5"
 
-  config PIN_ENTRY_0
+  config PIN_ENTRY_SENSOR_0
     default "^$(MCU_NAME):PB14"
-  config PIN_ENTRY_1
+  config PIN_ENTRY_SENSOR_1
     default "^$(MCU_NAME):PB13"
-  config PIN_ENTRY_2
+  config PIN_ENTRY_SENSOR_2
     default "^$(MCU_NAME):PB12"
-  config PIN_ENTRY_3
+  config PIN_ENTRY_SENSOR_3
     default "^$(MCU_NAME):PA7"
-  config PIN_ENTRY_4
+  config PIN_ENTRY_SENSOR_4
     default "^$(MCU_NAME):PA6"
-  config PIN_ENTRY_5
+  config PIN_ENTRY_SENSOR_5
     default "^$(MCU_NAME):PB2"
-  config PIN_ENTRY_6
+  config PIN_ENTRY_SENSOR_6
     default "^$(MCU_NAME):PA13"
-  config PIN_ENTRY_7
+  config PIN_ENTRY_SENSOR_7
     default "^$(MCU_NAME):PA10"
-  config PIN_ENTRY_8
+  config PIN_ENTRY_SENSOR_8
     default "^$(MCU_NAME):PC7"
-  config PIN_ENTRY_9
+  config PIN_ENTRY_SENSOR_9
     default "^$(MCU_NAME):PC6"
-  config PIN_ENTRY_10
+  config PIN_ENTRY_SENSOR_10
     default "^$(MCU_NAME):PA9"
-  config PIN_ENTRY_11
+  config PIN_ENTRY_SENSOR_11
     default "^$(MCU_NAME):PA8"
 
   config PIN_SYNC_FEEDBACK_TENSION

@@ -91,7 +91,7 @@ class MmuTestFormTipCommand(BaseCommand):
                 mmu.log_always("Removing 'variable_' prefix from '%s' - not necessary" % param)
                 param = param[9:]
             if param in gcode_vars.variables:
-                gcode_vars.variables[param] = mmu._fix_type(value)
+                gcode_vars.variables[param] = self._fix_type(value)
             elif param not in ["reset", "show", "run", "force_in_print"]:
                 mmu.log_error("Variable '%s' is not defined for '%s' macro" % (param, mmu.p.form_tip_macro))
 
@@ -114,3 +114,14 @@ class MmuTestFormTipCommand(BaseCommand):
 
         except MmuError as ee:
             mmu.handle_mmu_error(str(ee))
+
+
+    # Helper to infer type for setting gcode macro variables
+    def _fix_type(self, s):
+        try:
+            return float(s)
+        except ValueError:
+            try:
+                return int(s)
+            except ValueError:
+                return s

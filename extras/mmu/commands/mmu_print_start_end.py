@@ -49,7 +49,7 @@ class MmuPrintStartCommand(BaseCommand):
         mmu = self.mmu
 
         if not mmu.is_in_print():
-            mmu._on_print_start()
+            mmu.on_print_start()
             mmu._clear_macro_state(reset=True)
 
 
@@ -87,6 +87,6 @@ class MmuPrintEndCommand(BaseCommand):
             if end_state in ["complete", "error", "cancelled", "ready", "standby"]:
                 if not idle_timeout and end_state in ["complete"]:
                     mmu._save_toolhead_position_and_park("complete")
-                mmu._on_print_end(end_state)
+                mmu.on_print_end(end_state)
             else:
                 raise gcmd.error("Unknown endstate '%s'" % end_state)

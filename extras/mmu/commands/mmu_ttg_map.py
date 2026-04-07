@@ -65,7 +65,7 @@ class MmuTtgMapCommand(BaseCommand):
 
         try:
             if reset == 1:
-                mmu._reset_ttg_map()
+                mmu.gate_maps.reset_ttg_map()
 
             elif ttg_map != "!":
                 ttg_map = gcmd.get('MAP').split(",")
@@ -78,22 +78,22 @@ class MmuTtgMapCommand(BaseCommand):
                         mmu.ttg_map.append(int(gate_str))
                     else:
                         mmu.ttg_map.append(0)
-                mmu._persist_ttg_map()
+                mmu.gate_maps.persist_ttg_map()
 
             elif gate != -1:
                 status = mmu.gate_status[gate]
                 if not available == GATE_UNKNOWN or (available == GATE_UNKNOWN and status == GATE_EMPTY):
                     status = available
                 if tool == -1:
-                    mmu._set_gate_status(gate, status)
+                    mmu.gate_maps.set_gate_status(gate, status)
                 else:
-                    mmu._remap_tool(tool, gate, status)
+                    mmu.gate_maps.remap_tool(tool, gate, status)
 
             else:
                 quiet = False  # Display current TTG map
 
             if not quiet:
-                msg = mmu._ttg_map_to_string(show_groups=detail)
+                msg = mmu.gate_maps.ttg_map_to_string(show_groups=detail)
                 if not detail and mmu.endless_spool_enabled:
                     msg += "\nDETAIL=1 to see EndlessSpool map"
                 mmu.log_info(msg, color=True)

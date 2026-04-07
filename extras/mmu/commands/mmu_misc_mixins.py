@@ -47,7 +47,7 @@ class ClogTangleMixin:
             mmu.pause_resume.send_resume_command()
             return
 
-        mmu._fix_started_state()
+        mmu.fix_started_state()
 
         eventtime = gcmd.get_float('EVENTTIME', mmu.reactor.monotonic())
         sensor = gcmd.get('SENSOR', "")
@@ -69,11 +69,12 @@ class UnloadEjectMixin:
         """
         mmu = self.mmu
 
+        in_bypass = mmu.gate_selected == TOOL_GATE_BYPASS
+
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1)) or in_bypass
         skip_tip = bool(gcmd.get_int('SKIP_TIP', 0, minval=0, maxval=1))
         restore = bool(gcmd.get_int('RESTORE', 1, minval=0, maxval=1))
 
-        in_bypass = mmu.gate_selected == TOOL_GATE_BYPASS
         do_form_tip = FORM_TIP_STANDALONE if not skip_tip else FORM_TIP_NONE
 
         mmu._note_toolchange("< %s" % mmu.selected_tool_string())

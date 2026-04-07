@@ -17,7 +17,7 @@ import ast
 
 # Happy Hare imports
 from ..mmu_constants   import *
-from ..mmu_utils       import MmuError
+from ..mmu_utils       import MmuError, MmuColorUtils
 from .mmu_base_command import *
 
 
@@ -83,9 +83,7 @@ class MmuGateMapCommand(BaseCommand):
             return
 
         if reset:
-            mmu._reset_gate_map()
-        else:
-            mmu._renew_gate_map() # Ensure that webhooks sees changes
+            mmu.gate_maps.reset_gate_map()
 
         if next_spool_id:
             if mmu.p.spoolman_support != SPOOLMAN_PULL:
@@ -117,13 +115,13 @@ class MmuGateMapCommand(BaseCommand):
                             continue
 
                         # Update gate attributes if we have valid spool_id
-                        spool_id = mmu.safe_int(fil.get('spool_id', -1))
+                        spool_id = self._safe_int(fil.get('spool_id', -1))
                         mmu.gate_spool_id[gate_idx] = spool_id
                         mmu.gate_filament_name[gate_idx] = fil.get('name', '')
                         mmu.gate_material[gate_idx] = fil.get('material', '')
                         mmu.gate_color[gate_idx] = fil.get('color', '')
                         mmu.gate_temperature[gate_idx] = max(
-                            mmu.safe_int(fil.get('temp', mmu.p.default_extruder_temp)),
+                            self._safe_int(fil.get('temp', mmu.p.default_extruder_temp)),
                             mmu.p.default_extruder_temp
                         )
                         # gate_speed_override and gate_status can be set locally
@@ -135,23 +133,23 @@ class MmuGateMapCommand(BaseCommand):
                             mmu.log_assertion("Illegal gate number %d supplied in gate map update - ignored" % gate_idx)
                             continue
 
-                        spool_id = mmu.safe_int(fil.get('spool_id', -1))
+                        spool_id = self._safe_int(fil.get('spool_id', -1))
                         if (not from_spoolman or spool_id != -1):
                             # Update attributes but don't allow spoolman to accidently clear
                             mmu.gate_filament_name[gate_idx] = fil.get('name', '')
                             mmu.gate_material[gate_idx] = fil.get('material', '')
                             mmu.gate_color[gate_idx] = fil.get('color', '')
                             mmu.gate_temperature[gate_idx] = max(
-                                mmu.safe_int(fil.get('temp', mmu.p.default_extruder_temp)),
+                                self._safe_int(fil.get('temp', mmu.p.default_extruder_temp)),
                                 mmu.p.default_extruder_temp
                             )
-                            mmu.gate_speed_override[gate_idx] = mmu.safe_int(fil.get('speed_override', mmu.gate_speed_override[gate_idx]))
-                            mmu.gate_status[gate_idx] = mmu.safe_int(fil.get('status', mmu.gate_status[gate_idx])) # For UI manual fixing of availabilty
+                            mmu.gate_speed_override[gate_idx] = self._safe_int(fil.get('speed_override', mmu.gate_speed_override[gate_idx]))
+                            mmu.gate_status[gate_idx] = self._safe_int(fil.get('status', mmu.gate_status[gate_idx])) # For UI manual fixing of availabilty
 
                         # If spool_id has changed, clean up possible stale use of old one
                         if spool_id != mmu.gate_spool_id[gate_idx]:
                             mmu.log_debug("Spool_id changed for gate %d in MMU_GATE_MAP" % gate_idx)
-                            mod_gate_ids = mmu.assign_spool_id(gate_idx, spool_id)
+                            mod_gate_ids = mmu.gate_maps.assign_spool_id(gate_idx, spool_id)
                             for (g, sid) in mod_gate_ids:
                                 ids_dict[g] = sid
 
@@ -193,7 +191,7 @@ class MmuGateMapCommand(BaseCommand):
                     material = (material if material is not None else mmu.gate_material[gate_idx]).upper()
                     color = (color if color is not None else mmu.gate_color[gate_idx]).lower()
                     temperature = temperature or mmu.gate_temperature[gate_idx]
-                    color = mmu._validate_color(color)
+                    color = MmuColorUtils.validate_color(color)
                     if color is None:
                         raise gcmd.error("Color specification must be in form 'rrggbb' or 'rrggbbaa' hexadecimal value (no '#') or valid color name or empty string")
                     mmu.gate_filament_name[gate_idx] = name
@@ -205,7 +203,7 @@ class MmuGateMapCommand(BaseCommand):
 
                     if spool_id != mmu.gate_spool_id[gate_idx]:
                         mmu.log_debug("Spool_id changed for gate %d in MMU_GATE_MAP" % gate_idx)
-                        mod_gate_ids = mmu.assign_spool_id(gate_idx, spool_id)
+                        mod_gate_ids = mmu.gate_maps.assign_spool_id(gate_idx, spool_id)
                         for (g, sid) in mod_gate_ids:
                             ids_dict[g] = sid
 
@@ -220,10 +218,18 @@ class MmuGateMapCommand(BaseCommand):
             changed_gate_ids = list(ids_dict.items())
 
         # Ensure everything is synced
-        mmu._update_gate_color_rgb()
+        mmu.gate_maps.update_gate_color_rgb()
 
         # Caution, make sure that an update from spoolman does end up in infinite loop!
-        mmu._persist_gate_map(spoolman_sync=bool(changed_gate_ids) and not from_spoolman, gate_ids=changed_gate_ids) # This will also update LED status
+        mmu.gate_maps.persist_gate_map(spoolman_sync=bool(changed_gate_ids) and not from_spoolman, gate_ids=changed_gate_ids) # This will also update LED status
 
         if not quiet:
-            mmu.log_always(mmu._gate_map_to_string(), color=True)
+            mmu.log_always(mmu.gate_maps.gate_map_to_string(), color=True)
+
+
+    # Helper to ensure int when strings may be passed from UI
+    def _safe_int(self, i, default=0):
+        try:
+            return int(i)
+        except ValueError:
+            return default

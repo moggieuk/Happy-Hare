@@ -36,34 +36,34 @@ if BOARD_TYPE_MELLOW_EASY_BRD_CAN_2
   config PIN_SELECTOR_SERVO
     default "$(MCU_NAME):gpio21" 
 
-  config PIN_ENTRY_0
+  config PIN_ENTRY_SENSOR_0
     default "^$(MCU_NAME):gpio24"
-  config PIN_ENTRY_1
+  config PIN_ENTRY_SENSOR_1
     default "^$(MCU_NAME):gpio22"
-  config PIN_ENTRY_2
+  config PIN_ENTRY_SENSOR_2
     default "^$(MCU_NAME):gpio25"
-  config PIN_ENTRY_3
+  config PIN_ENTRY_SENSOR_3
     default "^$(MCU_NAME):gpio23"
-  config PIN_ENTRY_4
+  config PIN_ENTRY_SENSOR_4
     default "^$(MCU_NAME):gpio13"
-  config PIN_ENTRY_5
+  config PIN_ENTRY_SENSOR_5
     default "^$(MCU_NAME):gpio26"
-  config PIN_ENTRY_6
+  config PIN_ENTRY_SENSOR_6
     default "^$(MCU_NAME):gpio12"
-  config PIN_ENTRY_7
+  config PIN_ENTRY_SENSOR_7
     default "^$(MCU_NAME):gpio27"
-  config PIN_ENTRY_8
+  config PIN_ENTRY_SENSOR_8
     default "^$(MCU_NAME):gpio11"
-  config PIN_ENTRY_9
+  config PIN_ENTRY_SENSOR_9
     default "^$(MCU_NAME):gpio28"
-  config PIN_ENTRY_10
+  config PIN_ENTRY_SENSOR_10
     default "^$(MCU_NAME):gpio10"
-  config PIN_ENTRY_11
+  config PIN_ENTRY_SENSOR_11
     default "^$(MCU_NAME):gpio29"
 
   config PIN_ENCODER
     default "^$(MCU_NAME):gpio15" if MMU_HAS_ENCODER
-  config PIN_GATE_SENSOR
+  config PIN_SHARED_EXIT_SENSOR
     default "^$(MCU_NAME):gpio15" if !MMU_HAS_ENCODER
   config PIN_NEOPIXEL
     default "$(MCU_NAME):gpio14"

@@ -11,6 +11,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
+
 import logging
 from typing                import Any, Dict, Sequence
 
@@ -86,8 +87,8 @@ class MmuUnitParameters(TunableParametersBase):
 
         # Bowden
         ParamSpec('bowden_homing_max',                'float',2000.0, section="BOWDEN MOVE", limits=dict(minval=100.0)),
-        ParamSpec('bowden_fast_unload_portion',       'float',  95.0, section="BOWDEN MOVE", limits=dict(minval=50, maxval=100)),
-        ParamSpec('bowden_fast_load_portion',         'float',  95.0, section="BOWDEN MOVE", limits=dict(minval=50, maxval=100)),
+        ParamSpec('bowden_load_homing_buffer',        'float',   5.0, section="BOWDEN MOVE", limits=dict(minval=0, maxval=500)),
+        ParamSpec('bowden_unload_homing_buffer',      'float',  25.0, section="BOWDEN MOVE", limits=dict(minval=0, maxval=500)),
         ParamSpec('bowden_apply_correction',          'int',       0, section="BOWDEN MOVE", limits=dict(minval=0, maxval=1),   guard=_guard_has_encoder),
         ParamSpec('bowden_allowable_encoder_delta',   'float',  20.0, section="BOWDEN MOVE", limits=dict(minval=1.0),           guard=_guard_has_encoder),
         ParamSpec('bowden_pre_unload_test',           'int',       0, section="BOWDEN MOVE", limits=dict(minval=0, maxval=1),   guard=_guard_has_encoder),

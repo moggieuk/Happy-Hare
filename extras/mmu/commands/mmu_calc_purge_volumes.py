@@ -15,7 +15,7 @@
 
 # Happy Hare imports
 from ..mmu_constants   import *
-from ..mmu_utils       import MmuError
+from ..mmu_utils       import MmuError, PurgeVolCalculator, MmuColorUtils
 from .mmu_base_command import *
 
 
@@ -53,7 +53,7 @@ class MmuCalcPurgeVolumesCommand(BaseCommand):
         if self.check_if_disabled(): return
 
         try:
-            mmu._fix_started_state()
+            mmu.fix_started_state()
 
             min_purge = gcmd.get_int('MIN', 0, minval=0)
             max_purge = gcmd.get_int('MAX', 800, minval=1)
@@ -70,17 +70,17 @@ class MmuCalcPurgeVolumesCommand(BaseCommand):
                 for tool in range(mmu.num_gates):
                     tool_info = mmu.slicer_tool_map['tools'].get(str(tool))
                     if tool_info:
-                        tool_rgb_colors.append(mmu._color_to_rgb_hex(tool_info.get('color', '')))
+                        tool_rgb_colors.append(MmuColorUtils.color_to_rgb_hex(tool_info.get('color', '')))
                     else:
-                        tool_rgb_colors.append(mmu._color_to_rgb_hex(''))
+                        tool_rgb_colors.append(MmuColorUtils.color_to_rgb_hex(''))
             else:
                 # Logic to use tools mapped to gate colors with current ttg map
                 for tool in range(mmu.num_gates):
                     gate = mmu.ttg_map[tool]
-                    tool_rgb_colors.append(mmu._color_to_rgb_hex(mmu.gate_color[gate]))
+                    tool_rgb_colors.append(MmuColorUtils.color_to_rgb_hex(mmu.gate_color[gate]))
 
             try:
-                mmu.slicer_tool_map['purge_volumes'] = mmu._generate_purge_matrix(
+                mmu.slicer_tool_map['purge_volumes'] = self._generate_purge_matrix(
                     tool_rgb_colors, min_purge, max_purge, multiplier
                 )
                 mmu.log_always("Purge map updated. Use 'MMU_SLICER_TOOL_MAP PURGE_MAP=1' to view")
@@ -90,3 +90,19 @@ class MmuCalcPurgeVolumesCommand(BaseCommand):
 
         except MmuError as ee:
             mmu.handle_mmu_error(str(ee))
+
+
+    # Generate purge matrix based on filament colors
+    def _generate_purge_matrix(self, tool_colors, purge_min, purge_max, multiplier):
+        purge_vol_calc = PurgeVolCalculator(purge_min, purge_max, multiplier)
+
+        # Build purge volume map (x=to_tool, y=from_tool)
+        should_calc = lambda x,y: x < len(tool_colors) and y < len(tool_colors) and x != y
+        purge_volumes = [
+            [
+                purge_vol_calc.calc_purge_vol_by_hex(tool_colors[y], tool_colors[x]) if should_calc(x,y) else 0
+                for x in range(self.mmu.num_gates)
+            ]
+            for y in range(self.mmu.num_gates)
+        ]
+        return purge_volumes

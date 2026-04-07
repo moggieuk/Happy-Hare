@@ -72,26 +72,17 @@ class BaseCommand:
                 unit_param = gcmd.get("UNIT", None)
                 mmu_machine = mmu.mmu_machine
 
-                mmu_unit = self.get_unit(gcmd)
-
-                if mmu_unit is not None:
-                    return handler(gcmd, mmu_unit)
-
-                elif unit_param == ALL_UNITS:
+                if unit_param == ALL_UNITS:
                     # Repeat for all units
                     for mmu_unit in mmu_machine.units:
                         handler(gcmd, mmu_unit)
                     return
 
-                elif mmu_machine.num_units == 1:
-                    # Default to unit 0
-                    mmu_unit = mmu_machine.get_mmu_mmu_unit_by_index(0)
-                    return handler(gcmd, unit)
-
-                raise gcmd.error("UNIT parameter is required because you have more than one!")
+                mmu_unit = self.get_unit(gcmd, mode="required")
+                return handler(gcmd, mmu_unit)
 
             return handler(gcmd)
-      
+
 
         # Record metadata for this command for help subsystem
         metadata = {
@@ -116,36 +107,87 @@ class BaseCommand:
             BaseCommand._registered_commands.append(metadata)
 
 
-    def get_unit(self, gcmd):
+    def _lookup_mmu_unit(self, mmu_machine, unit_param):
         """
-        Helper to process the UNIT parameter and return the selected unit.
-        For commands that don't want to be "per-unit" but still accept UNIT parameter.
+        Resolve a UNIT parameter to an MMU unit.
+        Lookup order:
+          1. By unit name
+          2. By numeric unit index
+
+        Returns:
+            The resolved mmu_unit object, or None if not found / invalid.
         """
+        if unit_param is None:
+            return None
+
+        # Try lookup by name first.
+        mmu_unit = mmu_machine.get_mmu_unit_by_name(unit_param)
+        if mmu_unit is not None:
+            return mmu_unit
+
+        # If not found by name, try as numeric index.
+        try:
+            unit_index = int(unit_param)
+        except (ValueError, TypeError):
+            return None
+
+        return mmu_machine.get_mmu_unit_by_index(unit_index)
+
+
+    def get_unit(self, gcmd, mode="required"):
+        """Resolve the active MMU unit for a command.
+
+        Modes:
+          - "required":
+              UNIT must be provided, unless there is exactly one unit, in which
+              case unit 0 is selected automatically.
+          - "infer":
+              UNIT may be omitted. If omitted, use the only unit when there is
+              exactly one; otherwise infer from the selected gate if possible.
+              Raise an error if no unit can be determined.
+          - "optional":
+              UNIT may be omitted. If omitted, use the only unit when there is
+              exactly one; otherwise return None.
+
+        UNIT lookup order when provided:
+          1. By unit name
+          2. By unit index
+        """
+        valid_modes = {"required", "infer", "optional"}
+        if mode not in valid_modes:
+            raise ValueError(f"Invalid mode '{mode}' (expected one of: {', '.join(sorted(valid_modes))})")
+
         mmu = self.mmu
         mmu_machine = mmu.mmu_machine
         unit_param = gcmd.get("UNIT", None)
 
-        mmu_unit = None
+        # 1. Explicit UNIT parameter always takes priority.
+        mmu_unit = self._lookup_mmu_unit(mmu_machine, unit_param)
+        if mmu_unit is not None:
+            return mmu_unit
+
+        # If UNIT was explicitly provided but could not be resolved, fail clearly.
         if unit_param is not None:
-            # Try lookup by name first
-            mmu_unit = mmu_machine.get_mmu_unit_by_name(unit_param)
+            raise gcmd.error("Unknown UNIT '%s'" % unit_param)
 
-            # If not found, try as unit index
-            if mmu_unit is None:
-                try:
-                    unit_index = int(unit_param)
-                    mmu_unit = mmu_machine.get_mmu_unit_by_index(unit_index)
-                except (ValueError, TypeError):
-                    pass
+        # 2. No UNIT provided: default to the only unit when there is exactly one.
+        if mmu_machine.num_units == 1:
+            mmu_unit = mmu_machine.get_mmu_unit_by_index(0)
+            return mmu_unit
 
-        elif mmu_machine.num_units == 1:
-            # Default to unit 0
-            mmu_unit = mmu_machine.get_mmu_mmu_unit_by_index(0)
+        # 3. Infer from selected gate when requested.
+        if mode == "infer":
+            if mmu.gate_selected != TOOL_GATE_UNKNOWN:
+                mmu_unit = mmu.mmu_unit(mmu.gate_selected)
+                return mmu_unit
 
-        if mmu_unit is None:
-            raise gcmd.error("UNIT parameter is required because you have more than one!")
+            raise gcmd.error("UNIT parameter is required because the active unit cannot be inferred (selected gate is unknown).")
 
-        return mmu_unit
+        # 4. Required mode: caller must provide UNIT when multiple units exist.
+        if mode == "required":
+            raise gcmd.error("UNIT parameter is required because more than one MMU unit is configured.")
+
+        return None
 
 
     def format_help(self, msg, supplement=None, per_unit=False, not_registered=False):
@@ -232,13 +274,18 @@ class BaseCommand:
         )
 
 
-# Common "checker" methods used to guard commands -----------------------------------------------------------
+# -----------------------------------------------------------------------------------------------------------
+# Common "checker" methods used to guard commands
+# Return:
+#   True and Display error message if check fails
+#   False if check passes
+# -----------------------------------------------------------------------------------------------------------
 
     def check_if_disabled(self):
         if not self.mmu.is_enabled:
             self.mmu.log_error("Operation not possible. MMU is disabled. Please use MMU ENABLE=1 to use")
             return True
-        self.mmu._wakeup()
+        self.mmu.wakeup()
         return False
 
     def check_if_printing(self):
@@ -311,3 +358,9 @@ class BaseCommand:
     def check_if_not_calibrated(self, required, silent=False, check_gates=None, use_autotune=True):
         calibrator = self.mmu.mmu_unit().calibrator
         return calibrator.check_if_not_calibrated(required, silent=silent, check_gates=check_gates, use_autotune=use_autotune)
+
+    def check_if_not_printing(self):
+        if self.mmu.is_printing():
+            self.mmu.log_error("Operation not possible because currently printing")
+            return True
+        return False

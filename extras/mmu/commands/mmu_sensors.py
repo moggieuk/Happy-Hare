@@ -26,11 +26,13 @@ class MmuSensorsCommand(BaseCommand):
     HELP_BRIEF = "Query state of sensors fitted to mmu"
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
-        + "UNIT   = #(int)\n"
-        + "DETAIL = [0|1]\n"
+        + "UNIT   = #(int) Specify unit else unit with active gate will be assumed\n"
+        + "DETAIL = [0|1]  Set to see disabled sensors\n"
     )
     HELP_SUPPLEMENT = (
-        ""  # examples / supplement if desired
+        "Examples:\n"
+        + f"{CMD} DETAIL=1 ...report state of all sensors on all units (even disabled ones)\n"
+        + f"{CMD} UNIT=1   ...report state of active sensors on unit index 1\n"
     )
 
     def __init__(self, mmu):
@@ -51,56 +53,55 @@ class MmuSensorsCommand(BaseCommand):
 
         if self.check_if_disabled(): return
 
-        mmu_unit = self.get_unit(gcmd)
+        mmu_unit = self.get_unit(gcmd, mode="optional")
         detail = bool(gcmd.get_int('DETAIL', 0, minval=0, maxval=1))
 
         summary = ""
 
-        sensors = (
-            sm.get_active_sensors(all_sensors=True)
+        sensor_states = (
+            sm.get_sensor_states(all_sensors=True)
             if mmu_unit is None
-            else sm.get_unit_sensors(mmu_unit.unit_index)
+            else sm.get_sensor_states(unit=mmu_unit.unit_index)
         )
 
-        if all(v is None for v in sensors.values()) and not detail:
+        if all(v[0] is None for v in sensor_states.values()) and not detail:
             summary += "No active sensors. Use DETAIL=1 to see all"
+
         else:
-            for name in sorted(sensors):
-                state = sensors[name]
+            for name in sorted(sensor_states):
+                state, sensor = sensor_states[name]
+
                 if state is None and not detail:
-                    continue
+                    continue # Sensor disabled
 
-                sensor = (
-                    sm.all_sensors_map.get(name)
-                    if mmu_unit is None
-                    else sm.unit_sensors[mmu_unit.unit_index].get(name)
-                )
-                if sensor is None:
-                    # Defensive: should not happen, but avoid attribute errors
-                    summary += "%s: (sensor missing)\n" % name
-                    continue
-
-                if name in [SENSOR_PROPORTIONAL]:
+                if sm.get_unitless_sensor_name(name) in [SENSOR_PROPORTIONAL]:
                     # Special case analog sensor
                     st = sensor.get_status(0) or {}
                     value = st.get('value', 0.)
                     value_raw = st.get('value_raw', 0.)
 
-                    summary += "%s: %.2f" % (
-                        name,
-                        ("(%.2f, currently disabled)" % value) if state is None else value
-                    )
+                    if state is None:
+                        value_str = f"({value:.2f}, currently disabled)"
+                    else:
+                        value_str = f"{value:.2f}"
+
+                    summary += f"{name:<14} --> {value_str}"
+
                     if detail:
-                        summary += " (raw: %.2f)" % value_raw
+                        summary += f" (raw: {value_raw:.2f})"
 
                 else:
-                    trig = "%s" % ('TRIGGERED' if sensor.runout_helper.filament_present else 'Open')
-                    summary += "%s: %s" % (
-                        name,
-                        ("(%s, currently disabled)" % trig) if state is None else trig
-                    )
-                    if detail and sensor.runout_helper.runout_suspended is not None and state is not None:
-                        summary += "%s" % (", Runout enabled" if not sensor.runout_helper.runout_suspended else "")
+                    trig = "TRIGGERED" if sensor.runout_helper.filament_present else "Open"
+
+                    value_str = f"({trig}, currently disabled)" if state is None else trig
+                    summary += f"{name:<14} --> {value_str}"
+
+                    if (
+                        detail and
+                        state is not None and
+                        sensor.runout_helper.runout_suspended is False
+                    ):
+                        summary += ", Runout enabled"
 
                 summary += "\n"
 
