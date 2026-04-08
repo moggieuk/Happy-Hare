@@ -52,7 +52,7 @@ supplemental_params = [
 ]
 
 # Other legal params that aren't exposed.
-# This list prevents removal on upgrade/reinstall.
+# This list prevents removal on upgrade/reinstall if user chooses to use them
 hidden_params = [
     "serious",
     "suppress_kalico_warning",
@@ -543,6 +543,151 @@ def load_parsed_kconfig(kconfig):
         exit(1)
 
 
+# ----------------------------------------------------------------------------------------------
+# Dynamically generate optional Kconfig rules to augment options choices for:
+# mmu_toolhead, mmu_encoder, mmu_sync_feedback
+# TODO: This is currently incomplete and unused (never called)
+# ----------------------------------------------------------------------------------------------
+
+# Param tokens
+TOOLHEAD                  = "TOOLHEAD"
+ENCODER_NAME              = "ENCODER_NAME"
+SYNC_FEEDBACK_BUFFER_NAME = "SYNC_FEEDBACK_BUFFER_NAME"
+
+# Regex patterns grouped by token
+PARAM_REGEX = {
+    TOOLHEAD: {
+        "value": re.compile(r'^CONFIG_PARAM_TOOLHEAD="((?:[^"\\]|\\.)*)"(?:\s+#.*)?$'),
+        "shared": re.compile(r'^CONFIG_MMU_SHARED_TOOLHEAD=y(?:\s+#.*)?$'),
+    },
+    ENCODER_NAME: {
+        "value": re.compile(r'^CONFIG_PARAM_ENCODER_NAME="((?:[^"\\]|\\.)*)"(?:\s+#.*)?$'),
+        "shared": re.compile(r'^CONFIG_MMU_SHARED_ENCODER=y(?:\s+#.*)?$'),
+    },
+    SYNC_FEEDBACK_BUFFER_NAME: {
+        "value": re.compile(r'^CONFIG_PARAM_SYNC_FEEDBACK_BUFFER_NAME="((?:[^"\\]|\\.)*)"(?:\s+#.*)?$'),
+        "shared": re.compile(r'^CONFIG_MMU_SHARED_SYNC_FEEDBACK_BUFFER=y(?:\s+#.*)?$'),
+    },
+}
+GENERATED_KCONFIG_PATH = "/tmp/.Kconfig.generated"
+
+def gen_kconfig_options(configs):
+    parts = []
+
+    for token in [TOOLHEAD, ENCODER_NAME, SYNC_FEEDBACK_BUFFER_NAME]:
+        text = generate_choices(token)
+        if text:
+            parts.append(text)
+
+    # Join with a newline between sections (and ensure trailing newline)
+    output = "\n".join(parts)
+    if output and not output.endswith("\n"):
+        output += "\n"
+
+    with open(GENERATED_KCONFIG_PATH, "w", encoding="utf-8") as f:
+        f.write(output)
+
+def split_csv(raw):
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+def unescape_kconfig_string(s):
+    # Matches the escaping style used in .config string values
+    return re.sub(r'\\(.)', r'\1', s)
+
+def to_symbol(name):
+    sym = re.sub(r"[^A-Za-z0-9_]", "_", name.strip().upper())
+    sym = re.sub(r"_+", "_", sym).strip("_")
+    if not sym:
+        raise ValueError(f"Invalid param name: {name!r}")
+    if sym[0].isdigit():
+        sym = f"_{sym}"
+    return sym
+
+def parse_param_from_config(path, token):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        return [] # If exclude pattern exists anywhere in the file, ignore everything
+
+    value_regexp = PARAM_REGEX[token]["value"]
+    exclude_regexp = PARAM_REGEX[token]["shared"]
+
+    if exclude_regexp:
+        for line in lines:
+            if exclude_regexp.search(line):
+                return [] # Otherwise find the (single) match
+
+    for line in lines:
+        m = value_regexp.match(line.rstrip("\n"))
+        if not m:
+            continue
+
+        name = unescape_kconfig_string(m.group(1)).strip()
+        if name:
+            return [name]
+
+    return []
+
+def discover_names_from_configs(token):
+    """
+    Reads:
+      - base config (KCONFIG_CONFIG or .config)
+      - per-unit configs: KCONFIG_CONFIG_<unit>
+
+    using CONFIG_MMU_UNITS to know which unit config files to inspect.
+    """
+    base_config = os.environ.get("KCONFIG_CONFIG", ".config")
+    mmu_units = split_csv(os.environ.get("CONFIG_MMU_UNITS", ""))
+
+    seen = set()
+    result = []
+
+    def add_from_file(path):
+        for name in parse_param_from_config(path, token):
+            if name not in seen:
+                seen.add(name)
+                result.append(name)
+
+    add_from_file(base_config)
+
+    for unit_name in mmu_units:
+        cfg_path = f"{base_config}_{unit_name}"
+        add_from_file(cfg_path)
+
+    return result
+
+def generate_choices(token):
+    names = discover_names_from_configs(token)
+    if not names:
+        return ""
+
+    lines = []
+    lines.append(f'choice {token}_TYPE')
+
+    for name in names:
+        sym = to_symbol(name)
+
+        lines.append(f'  config CHOICE_{token}_TYPE_{sym}')
+        lines.append(f'    bool "{name}"')
+        lines.append('')
+        lines.append(f'  if CHOICE_{token}_TYPE_{sym}')
+        lines.append(f'    config PARAM_{token}_TYPE')
+        lines.append('      default "Shared"')
+        lines.append(f'    config MMU_SHARED_{token}')
+        lines.append('      default y')
+        lines.append(f'    config PARAM_{token}')
+        lines.append(f'      default "{name}"')
+        lines.append('  endif')
+
+    lines.append('endchoice')
+    lines.append('')
+
+    return "\n".join(lines)
+
+
+# ----------------------------------------------------------------------------------------------
+
 def main():
     logging.addLevelName(logging.DEBUG, os.getenv("C_DEBUG", ""))
     logging.addLevelName(logging.INFO, os.getenv("C_INFO", ""))
@@ -563,6 +708,7 @@ def main():
     parser.add_argument("--uninstall-includes", nargs=1)
     parser.add_argument("--restart-service", nargs=3)
     parser.add_argument("--pre-parse-kconfig", nargs=1)
+    parser.add_argument("--gen-kconfig-options", nargs=1)
     args = parser.parse_args()
 
     if args.verbose:
@@ -596,6 +742,9 @@ def main():
 
     if args.pre_parse_kconfig:
         pre_parse_kconfig(args.pre_parse_kconfig[0])
+
+    if args.gen_kconfig_options:
+        gen_kconfig_options(args.gen_kconfig_options[0:])
 
 
 if __name__ == "__main__":

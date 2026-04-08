@@ -9,13 +9,33 @@ MAKEFLAGS += --jobs 16            # Parallel build
 # By default KCONFIG_CONFIG is '.config', but it can be overridden by the user
 export KCONFIG_CONFIG ?= .config
 
+# TODO: Original very expensive recursive version
+# Enable output-sync if menuconfig will not be trigger. menuconfig.py will crash if output-sync is enabled on certain systems
+#ifeq ($(CHECK_OUTPUT_SYNC),)
+#  # Never probe for menuconfig or uninstall and only if KCONFIG exists
+#  ifeq ($(strip $(filter menuconfig uninstall variables gen_kconfig fix_links,$(MAKECMDGOALS))),)
+#    ifneq ($(wildcard $(KCONFIG_CONFIG)),)
+#      # Check whether $KCONFIG_CONFIG is outdated. if so menuconfig will be triggered and output-sync should stay disabled
+#      ifeq ($(shell $(MAKE) CHECK_OUTPUT_SYNC=y -q $(KCONFIG_CONFIG) >/dev/null 2>&1 && echo y),y)
+#        MAKEFLAGS += --output-sync=line
+#      endif
+#    endif
+#  endif
+#  -include $(KCONFIG_CONFIG) # Won't exist on first invocation
+#endif
+
+# TODO: I think this faster version is sufficient
 # Enable output-sync if menuconfig will not be trigger. menuconfig.py will crash if output-sync is enabled on certain systems
 ifeq ($(CHECK_OUTPUT_SYNC),)
-  # Never probe for menuconfig or uninstall and only if KCONFIG exists
-  ifeq ($(strip $(filter menuconfig uninstall,$(MAKECMDGOALS))),)
+  ifeq ($(strip $(filter menuconfig uninstall variables gen_kconfig fix_links,$(MAKECMDGOALS))),)
     ifneq ($(wildcard $(KCONFIG_CONFIG)),)
-      # Check whether $KCONFIG_CONFIG is outdated. if so menuconfig will be triggered and output-sync should stay disabled
-      ifeq ($(shell $(MAKE) CHECK_OUTPUT_SYNC=y -q $(KCONFIG_CONFIG) >/dev/null 2>&1 && echo y),y)
+      config_is_fresh := $(shell \
+        cfg="$(KCONFIG_CONFIG)"; \
+        for f in $(SRC)/installer/Kconfig* $(SRC)/installer/**/Kconfig*; do \
+          [ "$$f" -ot "$$cfg" ] || { echo n; exit; }; \
+        done; \
+        echo y )
+      ifeq ($(config_is_fresh),y)
         MAKEFLAGS += --output-sync=line
       endif
     endif
@@ -99,7 +119,7 @@ restart_klipper = 0
 .SECONDEXPANSION:
 .DEFAULT_GOAL := build
 .PRECIOUS: $(KCONFIG_CONFIG) $(KCONFIG_CONFIG)_%
-.PHONY: menuconfig install uninstall check_version diff test build clean variables python_deps fix_links
+.PHONY: menuconfig install uninstall check_version diff test build clean variables python_deps fix_links gen_kconfig
 .SECONDARY: \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
@@ -361,6 +381,10 @@ fix_links:
 check_version: $(hh_configs_to_parse) $(OUT)/$(notdir $(KCONFIG_CONFIG)).pickle | python_deps
 	$(Q)$(PY) -m installer.build $(V) --check-version "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)
 
+gen_kconfig:
+	@echo "$(C_NOTICE)kconfig=$(KCONFIG_CONFIG)$(C_OFF)"
+	$(Q)$(PY) -m installer.build $(V) --gen-kconfig-options "$(KCONFIG_CONFIG)"
+
 clean:
 	$(Q)rm -rf $(OUT)
 
@@ -423,7 +447,7 @@ $(KCONFIG_CONFIG): $(SRC)/installer/Kconfig* $(SRC)/installer/**/Kconfig*
 # If KCONFIG_CONFIG is outdated or doesn't exist run menuconfig first. If the user doesn't save the config,
 # we will update it with olddefconfig. touch in case .config does not get updated by olddefconfig.py
 # Only if install or menuconfig is not the target (else it will run twice)
-ifeq ($(filter menuconfig uninstall variables,$(MAKECMDGOALS)),)
+ifeq ($(filter menuconfig uninstall variables paul fix_links,$(MAKECMDGOALS)),)
 	$(Q)$(MAKE) MAKEFLAGS= menuconfig
 	$(Q)$(PY) -m olddefconfig $(SRC)/installer/Kconfig >/dev/null # Always update the .config file in case the user doesn't save it
 	$(Q)touch $(KCONFIG_CONFIG)

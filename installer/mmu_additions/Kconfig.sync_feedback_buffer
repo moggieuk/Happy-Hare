@@ -2,6 +2,7 @@
 #
 # Responsible for setting:
 #   MMU_HAS_SYNC_FEEDBACK_BUFFER
+#   MMU_SHARED_SYNC_FEEDBACK_BUFFER
 #   (MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION)
 #   (MMU_HAS_SENSOR_SYNC_FEEDBACK_TENSION)
 
@@ -14,10 +15,26 @@ config MMU_HAS_SYNC_FEEDBACK_BUFFER
     compression and/or tension.
 
 if MMU_HAS_SYNC_FEEDBACK_BUFFER
-  menu "Options"
-    help
-      Select sync-feedback buffer options
 
-    source "sensors/Kconfig.sync_feedback"
-  endmenu
+  config MMU_SHARED_SYNC_FEEDBACK_BUFFER
+    depends on MULTI_UNIT
+    bool "Shared"
+    default n
+
+  if MMU_SHARED_SYNC_FEEDBACK_BUFFER
+    config PARAM_SYNC_FEEDBACK_BUFFER_NAME
+      prompt "Sync feedback buffer name"
+      default "" # Encourage entering of name
+      help
+        PAUL TODO add help explaining sharing here
+  endif
+
+  if !MMU_SHARED_SYNC_FEEDBACK_BUFFER
+    menu "Options"
+      help
+        Select sync-feedback buffer options
+
+      source "sensors/Kconfig.sync_feedback"
+    endmenu
+  endif
 endif

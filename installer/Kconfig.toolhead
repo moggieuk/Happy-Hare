@@ -12,6 +12,10 @@ menu "Toolhead dimensions and calibration"
     Note: If you have a toolhead sensor you can automate the calculation of these parameters! Read about the
     'MMU_CALIBRATE_TOOLHEAD' command (see Happy Hare wiki)
 
+  config PARAM_TOOLHEAD
+    string
+    default "default"
+
   config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
     string "Extruder entrance to nozzle"
     help

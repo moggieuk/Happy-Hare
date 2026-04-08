@@ -130,6 +130,11 @@ config SHOW_MMU_ADDITIONS_WITH_TYPE
   bool
   default n
 
+# Optional auto generated config for shared components to
+# adds options for sharing previously defined components
+# (like mmu_toolhead, encoder, sync-feedback, ...)
+osource "/tmp/.Kconfig.generated"
+
 if MULTI_UNIT_ENTRY_POINT
   config MMU_UNITS
     prompt "MMU unit names"

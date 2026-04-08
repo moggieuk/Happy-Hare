@@ -2,6 +2,7 @@
 #
 # Responsible for setting:
 #   MMU_HAS_ENCODER
+#   MMU_SHARED_ENCODER
 #   PARAM_ENCODER_RESOLUTION
 
 config MMU_HAS_ENCODER
@@ -13,35 +14,53 @@ config MMU_HAS_ENCODER
   forceshow
 
 if MMU_HAS_ENCODER
-  choice CHOICE_ENCODER_TYPE
-    prompt "Type"
-    help
-      Select the base of the encoder design.
 
-    config CHOICE_ENCODER_TYPE_BINKY
-      bool "Binky v1 based"
+  config MMU_SHARED_ENCODER
+    depends on MULTI_UNIT
+    bool "Shared"
+    default n
+
+  if MMU_SHARED_ENCODER
+    config PARAM_ENCODER_NAME
+      prompt "Encoder name"
+      default "" # Encourage entering of name
       help
-        Select for Binky based encoders.
+        PAUL TODO add help explaining sharing here
+  endif
 
-    config CHOICE_ENCODER_TYPE_BINKY_V2
-      bool "Binky v2 (ERCF v3)"
+  if !MMU_SHARED_ENCODER
+
+    choice CHOICE_ENCODER_TYPE
+      prompt "Type"
       help
-        Select for Binky based encoders.
+        Select the base of the encoder design.
 
-    config CHOICE_ENCODER_TYPE_TCRT5000
-      bool "TCRT 5000 based"
-      help
-        Select for older TCRT5000 based encoders.
+      config CHOICE_ENCODER_TYPE_BINKY
+        bool "Binky v1 based"
+        help
+          Select for Binky based encoders.
 
-    config CHOICE_ENCODER_TYPE_OTHER
-      bool "Other"
-      help
-        Select for any other encoder and ensure you set the resolution correctly.
-  endchoice
+      config CHOICE_ENCODER_TYPE_BINKY_V2
+        bool "Binky v2 (ERCF v3)"
+        help
+          Select for Binky based encoders.
 
-  config PARAM_ENCODER_RESOLUTION
-    default "0.7059" if CHOICE_ENCODER_TYPE_TCRT5000
-    default "1.0"    if CHOICE_ENCODER_TYPE_BINKY
-    default "1.5"    if CHOICE_ENCODER_TYPE_BINKY_V2
-    default "1.0"    if CHOICE_ENCODER_TYPE_OTHER
+      config CHOICE_ENCODER_TYPE_TCRT5000
+        bool "TCRT 5000 based"
+        help
+          Select for older TCRT5000 based encoders.
+
+      config CHOICE_ENCODER_TYPE_OTHER
+        bool "Other"
+        help
+          Select for any other encoder and ensure you set the resolution correctly.
+    endchoice
+
+    config PARAM_ENCODER_RESOLUTION
+      default "0.7059" if CHOICE_ENCODER_TYPE_TCRT5000
+      default "1.0"    if CHOICE_ENCODER_TYPE_BINKY
+      default "1.5"    if CHOICE_ENCODER_TYPE_BINKY_V2
+      default "1.0"    if CHOICE_ENCODER_TYPE_OTHER
+
+    endif
 endif
