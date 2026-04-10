@@ -1147,7 +1147,9 @@ class MmuFilamentMovement:
 
                     # Notify calibration manager
                     if full and not skip_extruder:
-                        u.calibrator.note_load_telemetry(bowden_move, bowden_travel, bowden_move_ratio)
+#PAUL old direct approach                        u.calibrator.note_load_telemetry(bowden_move, bowden_travel, bowden_move_ratio)
+                        self.printer.send_event("mmu:autotune_bowden_length", self.gate_selected, DIRECTION_LOAD, bowden_move, bowden_travel)
+                        self.printer.send_event("mmu:autotune_encoder", self.gate_selected, bowden_move_ratio)
 
             self.movequeues_wait()
             msg = "Load of %.1fmm filament successful" % self.get_filament_position()
@@ -1352,7 +1354,9 @@ class MmuFilamentMovement:
 
                     # Notify autotune manager
                     if full:
-                        u.calibrator.note_unload_telemetry(bowden_move, bowden_travel, bowden_move_ratio)
+#PAUL                        u.calibrator.note_unload_telemetry(bowden_move, bowden_travel, bowden_move_ratio)
+                        self.printer.send_event("mmu:autotune_bowden_length", self.gate_selected, DIRECTION_UNLOAD, bowden_move, bowden_travel)
+                        self.printer.send_event("mmu:autotune_encoder", self.gate_selected, bowden_move_ratio)
                     self.log_warning(f"PAUL: filament_pos={self.get_filament_position():.1f}mm, encoder={self.get_encoder_distance(dwell=None):.1f}mm")
 
                 elif start_filament_pos >= FILAMENT_POS_HOMED_GATE:
@@ -1378,6 +1382,7 @@ class MmuFilamentMovement:
 
             self.movequeues_wait()
             msg = "Unload of %.1fmm filament successful" % self.get_filament_position()
+            self.log_warning(f"PAUL: filament_pos={self.get_filament_position():.1f}mm, encoder={self.get_encoder_distance(dwell=None):.1f}mm")
             if self.can_use_encoder():
                 final_encoder_pos = self.get_encoder_distance(dwell=None)
                 not_seen = -(u.p.gate_parking_distance) + self.get_encoder_dead_space() + (u.p.toolhead_unload_safety_margin if not synced_extruder_unload else 0.)

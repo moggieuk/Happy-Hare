@@ -39,17 +39,22 @@ class MmuCalibrator:
 
         self.calibration_status = 0b0
 
-        # Event handlers
-        self.printer.register_event_handler('klippy:connect', self.handle_connect)
-        self.printer.register_event_handler('klippy:ready',   self.handle_ready)
+        # Klipper event handlers
+        self.printer.register_event_handler('klippy:connect', self._handle_connect)
+        self.printer.register_event_handler('klippy:ready',   self._handle_ready)
+
+        # MMU event handlers
+        self.printer.register_event_handler('mcu:autotune_bowden_length',     self._handle_autotune_bowden_length)
+        self.printer.register_event_handler('mcu:autotune_rotation_distance', self._handle_autotune_rotation_distance)
+        self.printer.register_event_handler('mcu:autotune_encoder',           self._handle_autotune_encoder)
 
 
-    def handle_connect(self):
+    def _handle_connect(self):
         self.mmu = self.mmu_machine.mmu_controller      # Shared MMU controller class
         self.var_manager = self.mmu_machine.var_manager # Quick access to save variables manager
 
 
-    def handle_ready(self):
+    def _handle_ready(self):
 
         mmu = self.mmu
         u = self.mmu_unit
@@ -423,15 +428,71 @@ class MmuCalibrator:
 
 
     # -----------------------------------------------------------------------------------------------------------
-    # Autotuning from load/unload telemetry data
+    # Autotuning from telemetry data events
     # -----------------------------------------------------------------------------------------------------------
 
-    def note_load_telemetry(self, bowden_length, bowden_travel, encoder_move_ratio):
-        self._autotune(DIRECTION_LOAD, bowden_length, bowden_travel, encoder_move_ratio)
+# PAUL currently these new event handles just log
+    def _handle_autotune_bowden_length(self, gate, direction, bowden_length, bowden_travel, encoder_move_ratio):
+        if not self.mmu_unit.manages_gate(gate):
+            return
+
+        dir_str = "Loaded" if direction == DIRECTION_LOAD else "Unloaded"
+        bowden_move_delta = bowden_travel - bowden_length
+
+        msg = (
+            f"Current bowden length for gate {gate}: "
+            f"{bowden_length:.1f}mm, {dir_str}: {bowden_travel:.1f}mm "
+            f"(delta: {bowden_move_delta:+.1f}mm)"
+        )
+
+        if self.mmu_unit.p.autotune_bowden_length:
+            self.mmu.log_info(f"Autotune: {msg}")
+        else:
+            self.mmu.log_debug(f"Autotune (disabled): {msg}. Ignored")
 
 
-    def note_unload_telemetry(self, bowden_length, bowden_travel, encoder_move_ratio):
-        self._autotune(DIRECTION_UNLOAD, bowden_length, bowden_travel, encoder_move_ratio)
+    def _handle_autotune_rotation_distance(self, gate, rotation_distance):
+        if not self.mmu_unit.manages_gate(gate):
+            return
+
+        current_rd = self.get_gear_rd(gate)
+
+        msg = (
+            f"Current rotation_distance for gate {gate}: "
+            f"{current_rd:.1f}mm, Revised: {rotation_distance:.1f}mm"
+        )
+
+        if self.mmu_unit.p.autotune_rotation_distance:
+            self.mmu.log_info(f"Autotune: {msg}")
+        else:
+            self.mmu.log_debug(f"Autotune (disabled): {msg}. Ignored")
+
+
+    def _handle_autotune_encoder(self, gate, delta_ratio)
+        if not self.mmu_unit.manages_gate(gate):
+            return
+
+        current_resolution = self.mmu_unit.encoder.get_resolution()
+        sampled_resolution = current_resolution * delta_ratio
+
+        msg = (
+            f"Current encoder resolution: "
+            f"{current_resolution:.4f}, New sample: {revised_resolution:.4f} "
+            f"(delta ratio: {delta_ratio:.4f})"
+        )
+
+        if self.mmu_unit.p.autotune_encoder:
+            self.mmu.log_info(f"Autotune: {msg}")
+        else:
+            self.mmu.log_debug(f"Autotune (disabled): {msg}. Ignored")
+
+
+#    def note_load_telemetry(self, bowden_length, bowden_travel, encoder_move_ratio):
+#        self._autotune(DIRECTION_LOAD, bowden_length, bowden_travel, encoder_move_ratio)
+#
+#
+#    def note_unload_telemetry(self, bowden_length, bowden_travel, encoder_move_ratio):
+#        self._autotune(DIRECTION_UNLOAD, bowden_length, bowden_travel, encoder_move_ratio)
 
 
 #

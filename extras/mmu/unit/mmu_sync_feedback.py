@@ -277,8 +277,9 @@ class MmuSyncFeedback:
         self.active = False
 
         if self.new_autotuned_rd is not None:
-            self.mmu.log_info("MmuSyncFeedback: New Autotuned rotation distance (%.4f) for gate %d\n" % (self.new_autotuned_rd, self.mmu.gate_selected))
-            self.mmu_unit.calibrator.update_gear_rd(self.new_autotuned_rd)
+#PAUL            self.mmu.log_info("MmuSyncFeedback: New Autotuned rotation distance (%.4f) for gate %d\n" % (self.new_autotuned_rd, self.mmu.gate_selected))
+#PAUL            self.mmu_unit.calibrator.update_gear_rd(self.new_autotuned_rd) # PAUL TODO send as event
+            self.printer.send_event("mmu:autotune_rotation_distance", self.mmu.gate_selected, self.new_autotuned_rd)
 
         # Restore default (last tuned) rotation distance
         self.set_default_rd()
@@ -369,8 +370,10 @@ class MmuSyncFeedback:
         save = autotune.get('save', None)
         if rd is not None:
             msg = "MmuSyncFeedback: Autotune suggested new operational reference rd: %.4f\n%s" % (rd, note)
-            if save and self.mmu.UNIT.p.autotune_rotation_distance:
-                self.new_autotuned_rd = rd
+            self.new_autotuned_rd = rd
+#PUL
+#            if save and self.mmu.UNIT.p.autotune_rotation_distance: # PAUL change this logic to send event and let calibrator handle it
+#                self.new_autotuned_rd = rd
             self.mmu.log_debug(msg)
 
         # Always update instaneous gear stepper rotation_distance
@@ -517,7 +520,7 @@ class MmuSyncFeedback:
         self.mmu.log_debug("Monitoring extruder entrance transition for up to %.1fmm..." % max_move)
 
         motor = "gear" if use_gear_motor else "extruder"
-        speed = min(self.mmu.UNIT.p.gear_homing_speed, self.mmu.mmu.p.extruder_homing_speed) # Keep this tension adjustment slow
+        speed = min(self.mmu_unit.p.gear_homing_speed, self.mmu.p.extruder_homing_speed) # Keep this tension adjustment slow
 
         # Determine direction based on state and motor type
         # Note that if sync_feedback_buffer_range is 0, it implies
