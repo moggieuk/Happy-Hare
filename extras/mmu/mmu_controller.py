@@ -347,7 +347,7 @@ class MmuController(MmuFilamentMovement):
                 if self.sensor_manager.check_all_sensors_after(
                     FILAMENT_POS_END_BOWDEN, self.gate_selected
                 ):
-                    self._set_filament_pos_state(FILAMENT_POS_LOADED, silent=True)
+                    self.set_filament_pos_state(FILAMENT_POS_LOADED, silent=True)
 
                 elif (
                     (self.filament_pos == FILAMENT_POS_LOADED and
@@ -738,7 +738,7 @@ class MmuController(MmuFilamentMovement):
             if self.has_encoder() and self.mmu_unit().p.encoder_move_validation
             else ""
         )
-        counter = " {5}%.1fmm{6}%s" % (self._get_filament_position(), encoder_str)
+        counter = " {5}%.1fmm{6}%s" % (self.get_filament_position(), encoder_str)
 
         return "".join(
             (
@@ -1151,10 +1151,12 @@ class MmuController(MmuFilamentMovement):
         if self.p.log_statistics or force_log:
             if job or total:
                 msg += self._swap_statistics_to_string(total=total, detail=detail)
+
             if self.can_use_encoder() and gate:
                 m,d = self._gate_statistics_to_string()
                 msg += "\n\n" if msg != "" else ""
                 msg += m
+
                 if detail:
                     msg += "\n" if msg != "" else ""
                     msg += d
@@ -1588,7 +1590,7 @@ class MmuController(MmuFilamentMovement):
         if self.is_printing(force_in_print):
             self.sensor_manager.confirm_loaded() # Can throw MmuError
             self.is_handling_runout = False
-            self._initialize_encoder(dwell=None) # Encoder 0000
+            self.initialize_encoder(dwell=None) # Encoder 0000
 
             # Restablish desired syncing state and grip (servo) position
             self.reset_sync_gear_to_extruder(self.mmu_unit().p.sync_to_extruder, force_in_print=force_in_print)
@@ -1759,30 +1761,14 @@ class MmuController(MmuFilamentMovement):
             self.p.log_visual = log_visual
 
 
-    # For all encoder methods, 'dwell' means:
-    #   True  - gives klipper a little extra time to deliver all encoder pulses when absolute accuracy is required
-    #   False - wait for moves to complete and then read encoder
-    #   None  - just read encoder without delay (assumes prior movements have completed)
-    # Return 'False' if no encoder fitted
-    def _encoder_dwell(self, dwell):
-        if self.has_encoder():
-            if dwell:
-                self.movequeues_dwell(self.mmu_unit().p.encoder_dwell)
-                self.movequeues_wait()
-                return True
-            elif dwell is False and self.can_use_encoder():
-                self.movequeues_wait()
-                return True
-            elif dwell is None and self.can_use_encoder():
-                return True
-        return False
-
+# -----------------------------------------------------------------------------------------------------------
+# FILAMENT POSITION & (OPTIONAL) ENCODER ACCESS
+# -----------------------------------------------------------------------------------------------------------
 
     @contextlib.contextmanager
-    def _require_encoder(self):
+    def require_encoder(self):
         """
-        Context: Forces encoder to validate despite user config by overriding
-        'encoder_move_validation' setting. Will log coding error with assertion.
+        Context: Forces encoder to validate despite user config by overriding 'encoder_move_validation' setting.
         """
         params = self.mmu_unit().p
         prev = params.encoder_move_validation
@@ -1797,68 +1783,88 @@ class MmuController(MmuFilamentMovement):
             params.encoder_move_validation = prev
 
 
+    def _encoder_dwell(self, dwell=False):
+        """
+        For all encoder methods, 'dwell' means:
+          True  - gives klipper a little extra time to deliver all encoder pulses when absolute accuracy is required
+          False - wait for moves to complete and then read encoder
+          None  - just read encoder without delay (caller responsible for ensuring prior movements have completed)
+        """
+        if dwell is True:
+            self.movequeues_dwell(self.mmu_unit().p.encoder_dwell)
+            self.movequeues_wait()
+        elif dwell is False:
+            self.movequeues_wait()
+
+
+    def initialize_encoder(self, dwell=False):
+        if not self.has_encoder(): return
+
+        self._encoder_dwell(dwell)
+        self.encoder().reset_counts()
+
+
+    def get_encoder_counts(self, dwell=False):
+        if not self.has_encoder(): return 0.
+
+        self._encoder_dwell(dwell)
+        return self.encoder().get_counts()
+
+
     def get_encoder_distance(self, dwell=False):
-        if self._encoder_dwell(dwell):
-            return self.encoder().get_distance()
-        else:
-            return 0.
+        if not self.has_encoder(): return 0.
 
-
-    def _get_encoder_counts(self, dwell=False):
-        if self._encoder_dwell(dwell):
-            return self.encoder().get_counts()
-        else:
-            return 0
+        self._encoder_dwell(dwell)
+        return self.encoder().get_distance()
 
 
     def set_encoder_distance(self, distance, dwell=False):
-        if self._encoder_dwell(dwell):
-            self.encoder().set_distance(distance)
+        if not self.has_encoder(): return
+
+        self._encoder_dwell(dwell)
+        self.encoder().set_distance(distance)
 
 
-    def _initialize_encoder(self, dwell=False):
-        if self._encoder_dwell(dwell):
-            self.encoder().reset_counts()
+    def adjust_encoder_distance(self, adjustment):
+        """
+        Apply distance adjustment to encoder. No need to wait/dwell
+        """
+        if not self.has_encoder(): return
+
+        current = self.encoder().get_distance()
+        self.encoder().set_distance(current + adjustment)
 
 
-    def get_encoder_dead_space(self):
-        if self.has_encoder() and self.mmu_unit().p.gate_homing_endstop in [SENSOR_SHARED_EXIT, SENSOR_EXIT_PREFIX]:
-            return self.mmu_unit().p.gate_endstop_to_encoder
-        else:
-            return 0.
-
-
-    def _initialize_filament_position(self, dwell=False):
-        self._initialize_encoder(dwell=dwell)
-        self._set_filament_position()
-
-
-    def _get_filament_position(self):
-        return self.mmu_toolhead().get_position()[1]
+    def initialize_filament_position(self, dwell=False):
+        self.initialize_encoder(dwell=dwell)
+        self.set_filament_position()
 
 
     def _get_live_filament_position(self):
         """
-        Return the approximate live filament position
+        Return the approximate live filament position for dynamic feedback of position
         """
         gear_stepper = self.gear_rail().steppers[0]
         mcu_pos = gear_stepper.get_mcu_position()
         return mcu_pos * gear_stepper.get_step_dist()
 
 
-    def _set_filament_position(self, position = 0.):
+    def get_filament_position(self):
+        return self.mmu_toolhead().get_position()[1]
+
+
+    def set_filament_position(self, position = 0.):
         pos = self.mmu_toolhead().get_position()
         pos[1] = position
         self.mmu_toolhead().set_position(pos)
         return position
 
 
-    def _set_last_tool(self, tool):
-        self._last_tool = tool
-        self.var_manager.set(VARS_MMU_LAST_TOOL, tool, write=True)
+    def set_filament_direction(self, direction):
+        self.filament_direction = direction
 
 
-    def _set_filament_pos_state(self, state, silent=False):
+    def set_filament_pos_state(self, state, silent=False):
         if self.filament_pos != state:
             self.filament_pos = state
             if self.gate_selected != TOOL_GATE_BYPASS or state == FILAMENT_POS_UNLOADED or state == FILAMENT_POS_LOADED:
@@ -1871,7 +1877,17 @@ class MmuController(MmuFilamentMovement):
             elif self.var_manager.get(VARS_MMU_FILAMENT_POS, 0) != FILAMENT_POS_UNKNOWN:
                 self.var_manager.set(VARS_MMU_FILAMENT_POS, FILAMENT_POS_UNKNOWN, write=True)
 
+        # Good place to ensure espooler state
         self._adjust_espooler_assist()
+
+
+# -----------------------------------------------------------------------------------------------------------
+#
+# -----------------------------------------------------------------------------------------------------------
+
+    def _set_last_tool(self, tool):
+        self._last_tool = tool
+        self.var_manager.set(VARS_MMU_LAST_TOOL, tool, write=True)
 
 
     def _adjust_espooler_assist(self):
@@ -1887,10 +1903,6 @@ class MmuController(MmuFilamentMovement):
                 # Ensure in-print assist mode is removed
                 # (it could have been enabled manually with MMU_ESPOOLER)
                 self.espooler().reset_print_assist_mode()
-
-
-    def _set_filament_direction(self, direction):
-        self.filament_direction = direction
 
 
     def _gate_homing_string(self):
@@ -2165,7 +2177,7 @@ class MmuController(MmuFilamentMovement):
                     
         # Always add volume of residual filament (cut fragment and bit always left in the hotend)
         to_unit = self.mmu_unit(to_gate)
-        remaining = to_unit.extruder_wrapper.get_status['extruder_filament_remaining']
+        remaining = to_unit.extruder_wrapper.get_status(0)['extruder_filament_remaining']
         total = svolume + math.pi * ((fil_diameter / 2) ** 2) * remaining
 
         return total, svolume
@@ -2272,7 +2284,7 @@ class MmuController(MmuFilamentMovement):
         self.log_info("Selecting filament bypass...")
         self.select_gate(TOOL_GATE_BYPASS)
         self._set_tool_selected(TOOL_GATE_BYPASS)
-        self._set_filament_direction(DIRECTION_LOAD)
+        self.set_filament_direction(DIRECTION_LOAD)
         self.log_info("Bypass enabled")
 
 
@@ -2718,7 +2730,7 @@ class MmuWrapperResumeCommand(BaseCommand):
 
             # Decide if we are ready to resume and give user opportunity to fix state first
             if self.mmu.sensor_manager.check_sensor(SENSOR_TOOLHEAD) is True:
-                self.mmu._set_filament_pos_state(FILAMENT_POS_LOADED, silent=True)
+                self.mmu.set_filament_pos_state(FILAMENT_POS_LOADED, silent=True)
                 self.mmu.log_always("Automatically set filament state to LOADED based on toolhead sensor")
             if self.mmu.filament_pos not in [FILAMENT_POS_UNLOADED, FILAMENT_POS_LOADED]:
                 raise MmuError("Cannot resume because filament position not indicated as fully loaded (or unloaded). Ensure filament is loaded/unloaded and run:\n MMU_RECOVER LOADED=1 or MMU_RECOVER LOADED=0 or just MMU_RECOVER\nto reset state, then RESUME again")

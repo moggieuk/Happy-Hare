@@ -199,14 +199,14 @@ class MmuStepUnloadToolheadCommand(BaseCommand):
         mmu = self.mmu
 
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0))
-        park_pos = gcmd.get_float('PARK_POS', -mmu._get_filament_position())
+        park_pos = gcmd.get_float('PARK_POS', -mmu.get_filament_position())
         try:
             with mmu.wrap_sync_gear_to_extruder():
                 park_pos = min(
                     mmu.mmu_unit().toolhead_wrapper.p.toolhead_extruder_to_nozzle,
                     max(0, park_pos)
                 )
-                mmu._set_filament_position(-park_pos)
+                mmu.set_filament_position(-park_pos)
                 mmu._unload_extruder(extruder_only=extruder_only)
         except MmuError as ee:
             mmu.handle_mmu_error("_MMU_STEP_UNLOAD_TOOLHEAD: %s" % str(ee))
@@ -290,7 +290,7 @@ class MmuStepSetFilamentCommand(BaseCommand):
 
         state = gcmd.get_int('STATE', minval=FILAMENT_POS_UNKNOWN, maxval=FILAMENT_POS_LOADED)
         silent = gcmd.get_int('SILENT', 0)
-        mmu._set_filament_pos_state(state, silent)
+        mmu.set_filament_pos_state(state, silent)
 
 
 class MmuStepSetActionCommand(BaseCommand):

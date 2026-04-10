@@ -4,7 +4,7 @@
 #                          moggieuk@hotmail.com
 #
 # Goal: Manager to centralize mmu_sensor operations accross mmu_units and to swap in the
-#       appropriate set of "active" sensors
+#       appropriate set of "active" sensors as selected gate/unit changes (via events)
 #
 # (\_/)
 # ( *,*)

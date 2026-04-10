@@ -74,7 +74,6 @@ class MmuESpooler:
             self.enable_motor_pin = config.get('enable_motor_pin_%d' % gate, None)
             self.assist_trigger_pin = config.get('assist_trigger_pin_%d' % gate, None)
 
-            valid_gate = False # This is hack to support HHv3 (remove in HHv4)
             # Setup pins
             if self.respool_motor_pin and not self._is_empty_pin(self.respool_motor_pin):
                 if self.is_pwm:
@@ -83,7 +82,6 @@ class MmuESpooler:
                 else:
                     mcu_pin = ppins.setup_pin("digital_out", self.respool_motor_pin)
 
-                valid_gate = True
                 name = "respool_%d" % gate
                 mcu_pin.setup_max_duration(0.)
                 mcu_pin.setup_start_value(start_value, self.shutdown_value)
@@ -98,7 +96,6 @@ class MmuESpooler:
                 else:
                     mcu_pin = ppins.setup_pin("digital_out", self.assist_motor_pin)
 
-                valid_gate = True
                 name = "assist_%d" % gate
                 mcu_pin.setup_max_duration(0.)
                 mcu_pin.setup_start_value(start_value, self.shutdown_value)
@@ -109,7 +106,6 @@ class MmuESpooler:
             if self.enable_motor_pin and not self._is_empty_pin(self.enable_motor_pin):
                 mcu_pin = ppins.setup_pin("digital_out", self.enable_motor_pin)
 
-                valid_gate = True
                 name = "enable_%d" % gate
                 mcu_pin.setup_max_duration(0.)
                 mcu_pin.setup_start_value(self.last_value, self.shutdown_value)
@@ -122,14 +118,9 @@ class MmuESpooler:
                     lambda eventtime, state, gate=gate: self._handle_button_advance(eventtime, state, gate)
                 )
 
-            if valid_gate:
-                self.operation[gate] = (ESPOOLER_OFF, 0)
-                self.back_to_back_burst_count[gate] = 0
-                self.burst_trigger_state[gate] = 0
-            else:
-                # Hack to support on HH v3
-                self.num_gates = gate + 1
-                break
+            self.operation[gate] = (ESPOOLER_OFF, 0)
+            self.back_to_back_burst_count[gate] = 0
+            self.burst_trigger_state[gate] = 0
 
         # Setup minimum number of gcode request queues
         self.gcrqs = {}
@@ -173,7 +164,7 @@ class MmuESpooler:
 
 
     def _valid_gate(self, gate):
-        return gate is not None and self.first_gate <= gate < self.first_gate + self.num_gates
+        return gate is not None and self.mmu_unit.manages_gate(gate)
 
 
     def _is_empty_pin(self, pin):
@@ -260,6 +251,7 @@ class MmuESpooler:
         - While active for a gate, no other operations for that gate are allowed.
         - Stops via scheduled callback at end of duration or manual ESPOOLER_OFF.
         """
+        # Event may come from another unit so check gate is owned by this espooler
         if not self._valid_gate(gate):
             return
 

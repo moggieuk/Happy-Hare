@@ -426,123 +426,135 @@ class MmuCalibrator:
     # Autotuning from load/unload telemetry data
     # -----------------------------------------------------------------------------------------------------------
 
-    def note_load_telemetry(self, bowden_length, bowden_move_ratio, bowden_travel):
-        self.mmu.log_warning(f"PAUL: note_load_telemetry(bowden_length={bowden_length}, bowden_move_ratio={bowden_move_ratio}, bowden_travel={bowden_travel})")
+    def note_load_telemetry(self, bowden_length, bowden_travel, encoder_move_ratio):
+        self._autotune(DIRECTION_LOAD, bowden_length, bowden_travel, encoder_move_ratio)
+
+
+    def note_unload_telemetry(self, bowden_length, bowden_travel, encoder_move_ratio):
+        self._autotune(DIRECTION_UNLOAD, bowden_length, bowden_travel, encoder_move_ratio)
+
+
+#
+#    # Use data from load or unload operation to auto-calibrate / auto-tune
+#    #
+#    # PAUL REDO...
+#    # Data we can use:
+#    #  - ratio of large bowden move to that measured by encoder (None if it can't be relied on)
+#    #  - the amount of unexpected homing necessary to reach endstop. We want some homing
+#    #    movement but we can use excessive numbers for tuning (None indicates not available)
+#    #  - the direction of filament movement
+#    #
+#    # Things we could possibly tune from this infomation:
+#    #  - If gate 0, use the bowden move ratio to update encoder calibration ("encoder calibration"). Not reliable so not currently done!
+#    #  - If gate 0, use excess homing move to tune the calibrated bowden length ("bowden calibration")
+#    #    but only do this if bowden move ratio is reasonable. Can be done in both directions
+#    #  - If gate >0, use the bowden move ratio to set/tune the gear rotation_distance ("gate calibration")
+#    #    but only do this if homing movement data tells us we haven't overshot. Can be done in both directions
+#    #
+#    # Calibration replaces the previous value. Autotuning applies a moving average
+    def _autotune(self, direction, bowden_length, bowden_travel, encoder_move_ratio):
+        """
+        Use data from load or unload operation to auto-calibrate / auto-tune
+
+        If the actual bowden travel is:
+           > expected bowden length then we should consider shortening the calibrated length
+           < expected bowden length then we should consider increasing the calibrated length
+
+        Args:
+          direction - direction of travel (load/unload)
+          bowden_length      - current calibrated/expected lenght of bowden for current gate
+          bowden_travel      - actual filament movement including all homing moves
+          homing_movement    - additional homing movement outside of what was expected
+          encoder_move_ratio - optionally the ratio of encoder movement (if encoder is fitted)
+        """
+        dir_str = "Loaded" if direction == DIRECTION_LOAD else "Unloaded"
+        bowden_move_delta = bowden_travel - bowden_length
+
+        msg = (
+            f"Autotune: Current bowden length for gate {self.mmu.gate_selected}: "
+            f"{bowden_length:.1f}mm, {dir_str}: {bowden_travel:.1f}mm "
+            f"(delta: {bowden_move_delta:+.1f}mm)"
+        )
+
+        if encoder_move_ratio is not None:
+            encoder_measured = bowden_travel / encoder_move_ratio
+            msg += f". Encoder measured {encoder_measured:.1f}mm (ratio: {encoder_move_ratio:.4f})"
+
+        self.mmu.log_info(msg)
         return
-# PAUL IMPORTANT: bowden_move_ratio can now be None. 
 
-# PAUL TODO...
-#        homing_delta = None
+# PAUL TODO....
 #        if homing_movement is not None:
-#            homing_delta = homing_movement - expected_homing
-#PAUL            homing_movement -= deficit
-#        self._autotune(DIRECTION_LOAD, bowden_move_ratio, move_delta) # PAUL check autotune
-
-
-    def note_unload_telemetry(self, bowden_length, bowden_move_ratio, bowden_travel):
-        self.mmu.log_warning(f"PAUL: note_unload_telemetry(bowden_length={bowden_length}, bowden_move_ratio={bowden_move_ratio}, bowden_travel={bowden_travel})")
-        return
- # PAUL ratio, homing_buffer
-
-# PAUL TODO...
-#        homing_delta = None
-#        if homing_movement is not None:
-#            homing_delta = homing_movement - expected_homing
-#PAUL            homing_movement -= deficit
-#        self._autotune(DIRECTION_UNLOAD, bowden_move_ratio, homing_delta) # PAUL check autotune
-
-
-    # Use data from load or unload operation to auto-calibrate / auto-tune
-    #
-    # Data we can use:
-    #  - ratio of large bowden move to that measured by encoder (None if it can't be relied on)
-    #  - the amount of unexpected homing necessary to reach endstop. We want some homing
-    #    movement but we can use excessive numbers for tuning (None indicates not available)
-    #  - the direction of filament movement
-    #
-    # Things we could possibly tune from this infomation:
-    #  - If gate 0, use the bowden move ratio to update encoder calibration ("encoder calibration"). Not reliable so not currently done!
-    #  - If gate 0, use excess homing move to tune the calibrated bowden length ("bowden calibration")
-    #    but only do this if bowden move ratio is reasonable. Can be done in both directions
-    #  - If gate >0, use the bowden move ratio to set/tune the gear rotation_distance ("gate calibration")
-    #    but only do this if homing movement data tells us we haven't overshot. Can be done in both directions
-    #
-    # Calibration replaces the previous value. Autotuning applies a moving average
-    def _autotune(self, direction, bowden_move_ratio, homing_movement):
-        lgate = self.mmu_unit.local_gate(self.mmu.gate_selected)
-
-        msg = "Autotune: bowden move ratio: %.4f, Extra homing movement: %s" % (bowden_move_ratio, "n/a" if homing_movement is None else "%.1fmm" % homing_movement)
-        if homing_movement is not None:
-
-            # If sync-feedback is available it provides a better way to autotune rotation distance. This is retained for legacy cases
-            has_tension, has_compression, has_proportional = self.mmu.sync_feedback_manager.get_active_sensors()
-
-            # Encoder based automatic calibration of gate's gear rotation_distance
-            # TODO Currently only works with gate >0. Could work with gate 0 if variable_rotation_distance is True
-            # TODO and bowden is calibrated and we don't tune bowden below
-            if (
-                False and # TODO Temporarily disabled based on user's feedback until tested further
-                not any([has_tension, has_compression, has_proportional]) and
-                self.mmu_unit.p.autotune_rotation_distance and
-                self.mmu_unit.variable_rotation_distances and
-                self.mmu.gate_selected > 0 and
-                bowden_move_ratio is not None and
-                homing_movement > 0
-            ):
-                if direction in [DIRECTION_LOAD, DIRECTION_UNLOAD]:
-                    current_rd = self.mmu_unit.gear_stepper_obj(gate).get_rotation_distance()[0]
-                    new_rd = round(bowden_move_ratio * current_rd, 4)
-                    gate0_rd = self.rotation_distances[0] # PAUL NO needs mingate for unit
-
-                    # Allow max 10% variation from gate 0 for autotune
-                    if math.isclose(new_rd, gate0_rd, rel_tol=0.1):
-                        if not self.mmu.calibrating and self.rotation_distances[self.mmu.gate_selected] > 0: # PAUL NO
-                            # Tuning existing calibration
-                            new_rd = round((self.rotation_distances[self.mmu.gate_selected] * 5 + new_rd) / 6, 4) # Moving average
-                            msg += ". Autotuned rotation_distance: %.4f for gate %d" % (new_rd, self.mmu.gate_selected)
-                        if not math.isclose(current_rd, new_rd):
-                            _ = self.mmu.update_gear_rd(new_rd, self.mmu.gate_selected)
-                    else:
-                        msg += ". Calculated rotation_distance: %.4f for gate %d failed sanity check and has been ignored" % (new_rd, self.mmu.gate_selected)
-
-
-            # Automatic calibration of bowden length based on actual homing movement telemetry
-            # TODO Currently only works with gate 0. Could work with other gates if variable_bowden_lengths is True and rotation distance is calibrated
-            if (
-                self.mmu_unit.p.autotune_bowden_length and
-                self.mmu_unit.require_bowden_move and
-                self.mmu.gate_selected == 0 and
-                bowden_move_ratio is not None and
-                (
-                    0.9 < bowden_move_ratio < 1.1 or
-                    not self.mmu.has_encoder()
-                )
-            ):
-                if direction in [DIRECTION_LOAD, DIRECTION_UNLOAD]:
-                    bowden_length = self.get_bowden_length()
-                    # We expect homing_movement to be 0 if perfectly calibrated and perfect movement
-                    # Note that we only change calibrated bowden length if extra homing is >1% of bowden length
-                    error_tolerance = bowden_length * 0.01 # 1% of bowden length
-                    if abs(homing_movement) > error_tolerance:
-                        if homing_movement > 0:
-                            new_bl = bowden_length + error_tolerance
-                        else:
-                            new_bl = bowden_length - error_tolerance
-                    else:
-                        new_bl = bowden_length
-                    new_bl = round((bowden_length * 5 + new_bl) / 6, 1) # Still perform moving average to smooth changes
-                    if not math.isclose(bowden_length, new_bl):
-                        self.update_bowden_length(new_bl)
-                        msg += " Autotuned bowden length: %.1f" % new_bl
-
-            if self.mmu.gate_selected == 0 and homing_movement > 0 and bowden_move_ratio is not None:
-                # Bowden movement based warning of encoder calibration aka MMU_CALIBRATE_ENCODER
-                if not 0.95 < bowden_move_ratio < 1.05:
-                    msg += ". Encoder measurement on gate 0 was outside of desired calibration range. You may want to check function or recalibrate"
-        else:
-            msg += ". Tuning not possible"
-
-        self.mmu.log_debug(msg)
+#
+#            # If sync-feedback is available it provides a better way to autotune rotation distance. This is retained for legacy cases
+#            has_tension, has_compression, has_proportional = self.mmu.sync_feedback_manager.get_active_sensors()
+#
+#            # Encoder based automatic calibration of gate's gear rotation_distance
+#            # TODO Currently only works with gate >0. Could work with gate 0 if variable_rotation_distance is True
+#            # TODO and bowden is calibrated and we don't tune bowden below
+#            if (
+#                False and # TODO Temporarily disabled based on user's feedback until tested further
+#                not any([has_tension, has_compression, has_proportional]) and
+#                self.mmu_unit.p.autotune_rotation_distance and
+#                self.mmu_unit.variable_rotation_distances and
+#                self.mmu.gate_selected > 0 and
+#                bowden_move_ratio is not None and
+#                homing_movement > 0
+#            ):
+#                if direction in [DIRECTION_LOAD, DIRECTION_UNLOAD]:
+#                    current_rd = self.mmu_unit.gear_stepper_obj(gate).get_rotation_distance()[0]
+#                    new_rd = round(bowden_move_ratio * current_rd, 4)
+#                    gate0_rd = self.rotation_distances[0] # PAUL NO needs mingate for unit
+#
+#                    # Allow max 10% variation from gate 0 for autotune
+#                    if math.isclose(new_rd, gate0_rd, rel_tol=0.1):
+#                        if not self.mmu.calibrating and self.rotation_distances[self.mmu.gate_selected] > 0: # PAUL NO
+#                            # Tuning existing calibration
+#                            new_rd = round((self.rotation_distances[self.mmu.gate_selected] * 5 + new_rd) / 6, 4) # Moving average
+#                            msg += ". Autotuned rotation_distance: %.4f for gate %d" % (new_rd, self.mmu.gate_selected)
+#                        if not math.isclose(current_rd, new_rd):
+#                            _ = self.mmu.update_gear_rd(new_rd, self.mmu.gate_selected)
+#                    else:
+#                        msg += ". Calculated rotation_distance: %.4f for gate %d failed sanity check and has been ignored" % (new_rd, self.mmu.gate_selected)
+#
+#
+#            # Automatic calibration of bowden length based on actual homing movement telemetry
+#            # TODO Currently only works with gate 0. Could work with other gates if variable_bowden_lengths is True and rotation distance is calibrated
+#            if (
+#                self.mmu_unit.p.autotune_bowden_length and
+#                self.mmu_unit.require_bowden_move and
+#                self.mmu.gate_selected == 0 and
+#                bowden_move_ratio is not None and
+#                (
+#                    0.9 < bowden_move_ratio < 1.1 or
+#                    not self.mmu.has_encoder()
+#                )
+#            ):
+#                if direction in [DIRECTION_LOAD, DIRECTION_UNLOAD]:
+#                    bowden_length = self.get_bowden_length()
+#                    # We expect homing_movement to be 0 if perfectly calibrated and perfect movement
+#                    # Note that we only change calibrated bowden length if extra homing is >1% of bowden length
+#                    error_tolerance = bowden_length * 0.01 # 1% of bowden length
+#                    if abs(homing_movement) > error_tolerance:
+#                        if homing_movement > 0:
+#                            new_bl = bowden_length + error_tolerance
+#                        else:
+#                            new_bl = bowden_length - error_tolerance
+#                    else:
+#                        new_bl = bowden_length
+#                    new_bl = round((bowden_length * 5 + new_bl) / 6, 1) # Still perform moving average to smooth changes
+#                    if not math.isclose(bowden_length, new_bl):
+#                        self.update_bowden_length(new_bl)
+#                        msg += " Autotuned bowden length: %.1f" % new_bl
+#
+#            if self.mmu.gate_selected == 0 and homing_movement > 0 and bowden_move_ratio is not None:
+#                # Bowden movement based warning of encoder calibration aka MMU_CALIBRATE_ENCODER
+#                if not 0.95 < bowden_move_ratio < 1.05:
+#                    msg += ". Encoder measurement on gate 0 was outside of desired calibration range. You may want to check function or recalibrate"
+#        else:
+#            msg += ". Tuning not possible"
+#
+#        self.mmu.log_debug(msg)
 
 
     # -----------------------------------------------------------------------------------------------------------

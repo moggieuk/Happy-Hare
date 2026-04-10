@@ -110,7 +110,7 @@ class MmuTestFormTipCommand(BaseCommand):
                     mmu.reset_sync_gear_to_extruder(mmu.mmu_unit().p.sync_form_tip, force_in_print=force_in_print)
 
                     _, _, _ = mmu._do_form_tip(test=not mmu.is_in_print(force_in_print))
-                    mmu._set_filament_pos_state(FILAMENT_POS_UNLOADED)
+                    mmu.set_filament_pos_state(FILAMENT_POS_UNLOADED)
 
         except MmuError as ee:
             mmu.handle_mmu_error(str(ee))

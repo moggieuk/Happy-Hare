@@ -80,10 +80,10 @@ class UnloadEjectMixin:
         mmu._note_toolchange("< %s" % mmu.selected_tool_string())
 
         if extruder_only:
-            mmu._set_filament_pos_state(FILAMENT_POS_IN_EXTRUDER, silent=True) # Ensure tool tip is performed
+            mmu.set_filament_pos_state(FILAMENT_POS_IN_EXTRUDER, silent=True) # Ensure tool tip is performed
             mmu.unload_sequence(bowden_move=0., form_tip=do_form_tip, extruder_only=True)
             if in_bypass:
-                mmu._set_filament_pos_state(FILAMENT_POS_UNLOADED)
+                mmu.set_filament_pos_state(FILAMENT_POS_UNLOADED)
                 mmu.log_always("Please pull the filament out from the MMU")
         else:
             if mmu.filament_pos != FILAMENT_POS_UNLOADED:

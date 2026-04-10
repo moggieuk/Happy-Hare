@@ -43,7 +43,7 @@ from .unit.mmu_sensors                  import MmuSensors
 from .unit.mmu_unit_parameters          import MmuUnitParameters
 from .unit.mmu_calibrator               import MmuCalibrator
 from .unit.mmu_toolhead_wrapper         import MmuToolheadWrapper
-from .unit.mmu_extruder_wrapper         import MmuExtruderWrapper
+from .unit.mmu_extruder_wrapper         import MmuExtruderWrapper, MmuExtruderStepper
 from .unit.mmu_sync_feedback            import MmuSyncFeedback
 from .unit.selectors                    import SELECTOR_REGISTRY
 from .unit.selectors.mmu_base_selectors import VirtualSelector
@@ -300,10 +300,16 @@ class MmuUnit:
         # Create extruder wrapper (may be shared so check for existence first)
         # This encapsulates extruder stepper control and filament remaining
         extruder_name = config.get('extruder_name', 'extruder')
+
+        # By default HH uses its modified homing extruder. Because this might have unknown consequences on certain
+        # set-ups it can be disabled. If disabled, synced homing moves will still work, but the delay in mcu to mcu
+        # comms can lead to several mm of error depending on speed. Also homing of just the extruder is not possible.
+        homing_extruder = bool(config.getint('homing_extruder', 1, minval=0, maxval=1))
+
         mmu_extruder_name = f"mmu_extruder {extruder_name}"
         self.extruder_wrapper = self.printer.lookup_object(mmu_extruder_name, None)
         if not self.extruder_wrapper:
-            self.extruder_wrapper = MmuExtruderWrapper(config, mmu_extruder_name, self)
+            self.extruder_wrapper = MmuExtruderWrapper(config, mmu_extruder_name, self, homing_extruder)
             self.printer.add_object(mmu_extruder_name, self.extruder_wrapper)
             logging.info("MMU: Created: [%s]" % mmu_extruder_name)
         else:
@@ -443,14 +449,23 @@ class MmuUnit:
             share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
             ppins.allow_multi_use_pin(share_name)
 
+#            # PAUL new logic more like this... add_extra_endstop must be itempotent
+#            for s in self.mmu_gear_steppers:
+#                mcu_endstop = s.add_extra_endstop(sensor_pin, sensor_name)
+#
+#                # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
+#                # otherwise the extruder can continue to move a small (speed dependent) distance
+#                if self.extruder_wrapper.homing_extruder_stepper is not None and sensor_name in [SENSOR_TOOLHEAD, SENSOR_COMPRESSION, SENSOR_TENSION]:
+#                    mcu_endstop.add_stepper(self.extruder_wrapper.homing_extruder_stepper.stepper)
+
             # Ensure all steppers see endstop
             if sensor_name not in gear_rail.get_extra_endstop_names():
                 mcu_endstop = gear_rail.add_extra_endstop(sensor_pin, sensor_name)
 
-            # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
-            # otherwise the extruder can continue to move a small (speed dependent) distance
-            if self.extruder_wrapper.homing_extruder_stepper is not None and sensor_name in [SENSOR_TOOLHEAD, SENSOR_COMPRESSION, SENSOR_TENSION]:
-                mcu_endstop.add_stepper(self.extruder_wrapper.homing_extruder_stepper.stepper)
+                # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
+                # otherwise the extruder can continue to move a small (speed dependent) distance
+                if self.extruder_wrapper.homing_extruder_stepper is not None and sensor_name in [SENSOR_TOOLHEAD, SENSOR_COMPRESSION, SENSOR_TENSION]:
+                    mcu_endstop.add_stepper(self.extruder_wrapper.homing_extruder_stepper.stepper)
 
 
         # Event handlers
@@ -1702,36 +1717,6 @@ def MmuLookupMultiRail(config, need_position_minmax=True, default_position_endst
             break
         rail.add_stepper_from_config(config.getsection(section_name))
     return rail
-
-
-# Extend ExtruderStepper to allow for adding and managing endstops (useful only when part of gear rail, not operating as an Extruder)
-class MmuExtruderStepper(ExtruderStepper, object):
-    def __init__(self, config, gear_rail):
-        super(MmuExtruderStepper, self).__init__(config)
-
-        # Ensure corresponding TMC section is loaded so endstops can be added and to prevent error later when toolhead is created
-        for chip in TMC_CHIPS:
-            try:
-                _ = self.printer.load_object(config, '%s extruder' % chip)
-                break
-            except:
-                pass
-
-        # This allows for setup of stallguard as an option for nozzle homing
-        endstop_pin = config.get('endstop_pin', None)
-        if endstop_pin:
-            mcu_endstop = gear_rail.add_extra_endstop(endstop_pin, 'mmu_ext_touch', bind_rail_steppers=False)
-            mcu_endstop.add_stepper(self.stepper)
-
-    # Override to add QUIET option to control console logging
-    def cmd_SET_PRESSURE_ADVANCE(self, gcmd):
-        pressure_advance = gcmd.get_float('ADVANCE', self.pressure_advance, minval=0.)
-        smooth_time = gcmd.get_float('SMOOTH_TIME', self.pressure_advance_smooth_time, minval=0., maxval=.200)
-        self._set_pressure_advance(pressure_advance, smooth_time)
-        msg = "pressure_advance: %.6f\n" "pressure_advance_smooth_time: %.6f" % (pressure_advance, smooth_time)
-        self.printer.set_rollover_info(self.name, "%s: %s" % (self.name, msg))
-        if not gcmd.get_int('QUIET', 0, minval=0, maxval=1):
-            gcmd.respond_info(msg, log=False)
 
 
 class DummyRail:

@@ -95,20 +95,20 @@ class MmuRecoverCommand(BaseCommand):
                 ts = mmu.sensor_manager.check_sensor(SENSOR_TOOLHEAD)
                 es = mmu.sensor_manager.check_sensor(SENSOR_EXTRUDER_ENTRY)
                 if ts or es:  # TODO use check_all_sensors() call when sensor_manager is fixed
-                    mmu._set_filament_pos_state(FILAMENT_POS_LOADED, silent=True)
+                    mmu.set_filament_pos_state(FILAMENT_POS_LOADED, silent=True)
                 else:
                     if es is None and ts is None:
                         mmu.log_warning("Warning: Making assumption that bypass is unloaded because no toolhead sensors are present")
-                    mmu._set_filament_pos_state(FILAMENT_POS_UNLOADED, silent=True)
-                mmu._set_filament_direction(DIRECTION_UNKNOWN)
+                    mmu.set_filament_pos_state(FILAMENT_POS_UNLOADED, silent=True)
+                mmu.set_filament_direction(DIRECTION_UNKNOWN)
                 return
 
             if loaded == 1:
-                mmu._set_filament_direction(DIRECTION_LOAD)
-                mmu._set_filament_pos_state(FILAMENT_POS_LOADED, silent=True)
+                mmu.set_filament_direction(DIRECTION_LOAD)
+                mmu.set_filament_pos_state(FILAMENT_POS_LOADED, silent=True)
             elif loaded == 0:
-                mmu._set_filament_direction(DIRECTION_UNLOAD)
-                mmu._set_filament_pos_state(FILAMENT_POS_UNLOADED, silent=True)
+                mmu.set_filament_direction(DIRECTION_UNLOAD)
+                mmu.set_filament_pos_state(FILAMENT_POS_UNLOADED, silent=True)
             else:
                 # Filament position not specified so auto recover
                 mmu.recover_filament_pos(strict=strict, message=True, silent=True)

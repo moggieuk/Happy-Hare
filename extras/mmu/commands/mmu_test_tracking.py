@@ -78,8 +78,8 @@ class MmuTestTrackingCommand(BaseCommand):
                     )
                     mmu.selector().filament_drive()
 
-                with mmu._require_encoder():
-                    mmu._initialize_filament_position()
+                with mmu.require_encoder():
+                    mmu.initialize_filament_position()
 
                     for i in range(1, int(100 / step)):
                         mmu.move_filament(None, direction * step, encoder_dwell=None)

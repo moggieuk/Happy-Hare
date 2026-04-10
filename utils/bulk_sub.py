@@ -55,7 +55,9 @@ DEFAULT_PATTERNS: List[Tuple[str, str]] = [
     # (r"(?<!_)mmu_gear(?!_)", "mmu_gear"),
 
 
-("\\._trace_selector_move", "._move_selector"),
+("\\._require_encoder\\(", ".require_encoder("),
+
+#("\\._trace_selector_move", "._move_selector"),
 #("\\.trace_filament_move", ".move_filament"),
 #("\\.printer_toolhead", ".toolhead_wrapper"),
 

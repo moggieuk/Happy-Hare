@@ -82,46 +82,48 @@ class MmuTestCommand(BaseCommand):
     HELP_BRIEF = "Internal Happy Hare developer tests"
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
-        + "HELP=1 : Show this help\n"
-        + "SYNC_STATE=['compression'|'tension'|'both'|'neutral'|'loop'] : Set the sync state (or run looped test)\n"
-        + "    LOOP=<n> : (with SYNC_STATE=loop) number of iterations\n"
-        + "SYNC_EVENT=[-1.0 ... 1.0] : Generate sync feedback event\n"
-        + "DUMP_UNICODE=1 : Display special characters used in display\n"
-        + "RUN_SEQUENCE=1 : Run through the set of sequence macros tracking time\n"
+        + "HELP=1 Show this help\n"
+        + "SYNC_STATE=['compression'|'tension'|'both'|'neutral'|'loop'] Set the sync state (or run looped test)\n"
+        + "    LOOP={n} (with SYNC_STATE=loop) number of iterations\n"
+        + "SYNC_EVENT=[-1.0 ... 1.0] Generate sync feedback event\n"
+        + "DUMP_UNICODE=1 Display special characters used in display\n"
+        + "RUN_SEQUENCE=1 Run through the set of sequence macros tracking time\n"
         + "    ERROR=[0|1] FORCE_IN_PRINT=[0|1]\n"
-        + "RUN_CHANGE_SEQUENCE=1 : Run toolchange-style sequence\n"
+        + "RUN_CHANGE_SEQUENCE=1 Run toolchange-style sequence\n"
         + "    PAUSE=[0|1] NEXT_POS=['last'|'next'] FORCE_IN_PRINT=[0|1]\n"
-        + "GET_POS=1 : Fetch the current filament position state\n"
-        + "SET_POS=<pos_state> : Set the current filament position state\n"
-        + "SET_RD=<gear_rd> [GATE=] : Update the specified gate's rotation distance\n"
-        + "GET_POSITION=1 : Fetch the current filament position\n"
-        + "SET_POSITION=<pos> : Set the current filament position\n"
-        + "SYNC_LOAD_TEST=1 : Hammer stepper syncing and movement\n"
-        + "    LOOP=<n> ENDSTOP=<name> SELECT=[0|1] WAIT=[0|1]\n"
-        + "REALISTIC_SYNC_TEST=1 : Load test normal stepper syncing and movement\n"
-        + "    LOOP=<n> ENDSTOP=<name> SELECT=[0|1] SERVO=[0|1]\n"
-        + "QUIESCE_TEST=1 : Quick test of problematic sync changes\n"
-        + "SEL_MOVE=1 : Selector move\n"
-        + "    MOVE=<mm> SPEED=<mm/s> ACCEL=<mm/s^2> WAIT=[0|1] LOOP=<n>\n"
-        + "SEL_HOMING_MOVE=1 : Selector homing move\n"
-        + "    MOVE=<mm> SPEED=<mm/s> ACCEL=<mm/s^2> LOOP=<n> ENDSTOP=<name>\n"
-        + "SEL_LOAD_TEST=1 : Load test selector movements\n"
-        + "    LOOP=<n> HOME=[0|1]\n"
-        + "TTC_TEST=1 / TTC_TEST2=1 / TTC_TEST3=1 : Provoke TTC conditions\n"
-        + "    LOOP=<n> MIX=[0|1] DEBUG=[0|1] WAIT=[0|1]\n"
-        + "STEPCOMPRESS_TEST=1 : Provoke stepcompress error\n"
-        + "    LOOP=<n> MIX=[0|1] DEBUG=[0|1] WAIT=[0|1] SELECT=[0|1] MOTOR=<name> STOP_ON_ENDSTOP=[-1|0|1]\n"
-        + "AUTO_CALIBRATE=1 : Call auto-calibrate directly\n"
-        + "    GATE=<n> DIRECTION=[-1|0|1] RATIO=<f> HOMING=<mm>\n"
-        + "GATE_MOTOR=<n> : Select the specified gear motor on type-B designs\n"
-        + "SYNC_G2E=1 : Sync gear to extruder (user mode)\n"
-        + "SYNC_E2G=1 [EXTRUDER_ONLY=] : Sync extruder to gear\n"
-        + "UNSYNC=1 [DRIVE_GEAR_ONLY=] : Unsync\n"
-        + "CALC_PURGE=1 : Purge volume calculator quick tests\n"
-        + "RUNOUT=[0|1] : Enable/disable runout handling\n"
-        + "SENSOR=1 : Dump sensor path checks\n"
-        + "    POS=<n> GATE=<n> LOADING=[0|1] LOOP=[0|1]\n"
-        + "FILAMENT_POS=<n> : Set filament_pos state within sync wrapper\n"
+        + "GET_POS=1 Fetch the current filament position state\n"
+        + "SET_POS={pos_state} Set the current filament position state\n"
+        + "SET_RD={gear_rd} [GATE=] Update the specified gate's rotation distance\n"
+        + "GET_POSITION=1 Fetch the current filament position\n"
+        + "SET_POSITION={pos} Set the current filament position\n"
+        + "SYNC_LOAD_TEST=1 Hammer stepper syncing and movement\n"
+        + "    LOOP={n} ENDSTOP={name} SELECT=[0|1] WAIT=[0|1]\n"
+        + "REALISTIC_SYNC_TEST=1 Load test normal stepper syncing and movement\n"
+        + "    LOOP={n} ENDSTOP={name} SELECT=[0|1] SERVO=[0|1]\n"
+        + "QUIESCE_TEST=1 Quick test of problematic sync changes\n"
+        + "SEL_MOVE=1 Selector move\n"
+        + "    MOVE={mm} SPEED={mm/s} ACCEL={mm/s^2} WAIT=[0|1] LOOP={n}\n"
+        + "SEL_HOMING_MOVE=1 Selector homing move\n"
+        + "    MOVE={mm} SPEED={mm/s} ACCEL={mm/s^2} LOOP={n} ENDSTOP={name}\n"
+        + "SEL_LOAD_TEST=1 Load test selector movements\n"
+        + "    LOOP={n} HOME=[0|1]\n"
+        + "TTC_TEST=1 / TTC_TEST2=1 / TTC_TEST3=1 Provoke TTC conditions\n"
+        + "    LOOP={n} MIX=[0|1] DEBUG=[0|1] WAIT=[0|1]\n"
+        + "STEPCOMPRESS_TEST=1 Provoke stepcompress error\n"
+        + "    LOOP={n} MIX=[0|1] DEBUG=[0|1] WAIT=[0|1] SELECT=[0|1] MOTOR={name} STOP_ON_ENDSTOP=[-1|0|1]\n"
+        + "AUTO_CALIBRATE=1 Call auto-calibrate directly\n"
+        + "    GATE={n} DIRECTION=[-1|0|1] RATIO={f} HOMING={mm}\n"
+        + "GATE_MOTOR={n} Select the specified gear motor on type-B designs\n"
+        + "SYNC_G2E=1 Sync gear to extruder (user mode)\n"
+        + "SYNC_E2G=1 [EXTRUDER_ONLY=] Sync extruder to gear\n"
+        + "UNSYNC=1 [DRIVE_GEAR_ONLY=] Unsync\n"
+        + "CALC_PURGE=1 Purge volume calculator quick tests\n"
+        + "RUNOUT=[0|1] Enable/disable runout handling\n"
+        + "SENSOR=1 Dump sensor path checks\n"
+        + "    POS={n} GATE={n} LOADING=[0|1] LOOP=[0|1]\n"
+        + "FILAMENT_POS={n} Set filament_pos state within sync wrapper\n"
+        + "ADJUST_ENCODER={delta} Adjust the encoder distance reading by delta\n"
+        + "SET_ENCODER={dist} Set the encoder distance reading to distance\n"
     )
     HELP_SUPPLEMENT = (
         ""
@@ -552,7 +554,7 @@ class MmuTestCommand(BaseCommand):
             pos = gcmd.get_float('SET_POS', -1, minval=0, maxval=10)
             if pos >= 0:
                 have_run_test = True
-                mmu._set_filament_pos_state(pos)
+                mmu.set_filament_pos_state(pos)
 
             rd = gcmd.get_float('SET_RD', None, above=0)
             if rd is not None:
@@ -564,11 +566,11 @@ class MmuTestCommand(BaseCommand):
             position = gcmd.get_float('SET_POSITION', -1, minval=0)
             if position >= 0:
                 have_run_test = True
-                mmu._set_filament_position(position)
+                mmu.set_filament_position(position)
 
             if gcmd.get_int('GET_POSITION', 0, minval=0, maxval=1):
                 have_run_test = True
-                mmu.log_info("Filament position: %s" % mmu._get_filament_position())
+                mmu.log_info("Filament position: %s" % mmu.get_filament_position())
 
             action = gcmd.get_float('SET_ACTION', -1, minval=0)
             if action >= 0:
@@ -654,7 +656,7 @@ class MmuTestCommand(BaseCommand):
 
                         # Run a few randomized moves on the mmu toolhead to simulate load/unload logic (optional gate switch)
                         tracked = 0.
-                        initial_pos = mmu._get_filament_position()
+                        initial_pos = mmu.get_filament_position()
                         for j in range(6):
                             move_type = random.randint(0, 10)  # 11 to enable tracking test
                             move = random.randint(0, 100) - 50
@@ -691,7 +693,7 @@ class MmuTestCommand(BaseCommand):
                             tracked += actual
 
                         # Check MMU position is correct
-                        final_pos = mmu._get_filament_position()
+                        final_pos = mmu.get_filament_position()
                         expected = final_pos - initial_pos
                         if not math.isclose(expected, tracked):
                             raise MmuError(
@@ -735,7 +737,7 @@ class MmuTestCommand(BaseCommand):
                 select = gcmd.get_int('SELECT', 1, minval=0, maxval=1)
                 wait = gcmd.get_int('WAIT', None, minval=0, maxval=1)
                 mmu.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=mmu_test")
-                mmu._initialize_filament_position()
+                mmu.initialize_filament_position()
                 total = 0.
                 for i in range(loop):
                     move_type = random.randint(0, 10)  # 11 to enable tracking test
@@ -774,11 +776,11 @@ class MmuTestCommand(BaseCommand):
                         if random.randint(0, 1):
                             new_pos = random.uniform(0, 300)
                             log("Loop: %d - Set filament position" % i)
-                            mmu._set_filament_position(new_pos)
+                            mmu.set_filament_position(new_pos)
                             total = new_pos
                         else:
                             log("Loop: %d - Initialized filament position" % i)
-                            mmu._initialize_filament_position()
+                            mmu.initialize_filament_position()
                             total = 0.
                     elif move_type == 8:
                         log("Loop: %d - Save gcode state" % i)
@@ -797,8 +799,8 @@ class MmuTestCommand(BaseCommand):
                             "G2E" if mmu.mmu_toolhead.sync_mode == DRIVE_GEAR_SYNCED_TO_EXTRUDER else "Ext"
                         )
                         mmu.movequeues_wait()
-                        tracking = abs(mmu._get_filament_position() - total) < 0.1
-                        mmu.log_info(">>>>>> STATUS: sync: %s, pos=%.2f, total=%.2f" % (sync, mmu._get_filament_position(), total))
+                        tracking = abs(mmu.get_filament_position() - total) < 0.1
+                        mmu.log_info(">>>>>> STATUS: sync: %s, pos=%.2f, total=%.2f" % (sync, mmu.get_filament_position(), total))
                         if not tracking:
                             mmu.log_error(">>>>>> Position tracking error")
                             break
@@ -807,7 +809,7 @@ class MmuTestCommand(BaseCommand):
                     mmu.gcode.run_script_from_command("_MMU_DUMP_TOOLHEAD UNIT=%s" % unit_name)
                 mmu.log_info(
                     "Aggregate move distance: %.1fmm, Toolhead reports: %.1fmm" %
-                    (total, mmu._get_filament_position())
+                    (total, mmu.get_filament_position())
                 )
 
             if gcmd.get_int('SEL_MOVE', 0, minval=0, maxval=1):
@@ -1009,11 +1011,28 @@ class MmuTestCommand(BaseCommand):
                 mmu.log_always("check_any_sensors_in_path()=%s" % mmu.sensor_manager.check_any_sensors_in_path())
                 mmu.log_always("check_for_runout()=%s" % mmu.sensor_manager.check_for_runout())
 
+
             fil_pos = gcmd.get_int('FILAMENT_POS', -2, minval=-1, maxval=10)
             if fil_pos != -2:
                 have_run_test = True
                 with mmu.wrap_sync_gear_to_extruder():
-                    mmu._set_filament_pos_state(fil_pos)
+                    mmu.set_filament_pos_state(fil_pos)
+
+
+            adjust_encoder = gcmd.get_float('ADJUST_ENCODER', None)
+            if adjust_encoder is not None:
+                have_run_test = True
+                mmu.log_always(f"Encoder distance before: {mmu.get_encoder_distance(dwell=None):.1f}mm")
+                mmu.adjust_encoder_distance(adjust_encoder)
+                mmu.log_always(f"Encoder distance after: {mmu.get_encoder_distance(dwell=None):.1f}mm")
+
+
+            set_encoder = gcmd.get_float('SET_ENCODER', None)
+            if set_encoder is not None:
+                have_run_test = True
+                mmu.set_encoder_distance(set_encoder)
+                mmu.log_always(f"Encoder distance: {mmu.get_encoder_distance(dwell=None):.1f}mm")
+
 
             if not have_run_test:
                 mmu.log_warning("Not a valid test. Use HELP=1 for tests")

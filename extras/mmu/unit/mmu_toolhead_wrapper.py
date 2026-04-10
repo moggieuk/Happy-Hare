@@ -7,6 +7,9 @@
 #       or to allow of IDEX support where different mmu units connect to potentially different toolheads
 #       Also optional implementation of a modified extruder stepper that has homing ability
 #
+# Note: Currently only a single toolhead named "default" is supported by installer but this wrapper remains
+#       per-unit to provide future flexibility
+#
 #
 # (\_/)
 # ( *,*)

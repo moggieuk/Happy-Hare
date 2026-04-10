@@ -159,7 +159,7 @@ class MmuPrintStateMachine:
             self.mmu.is_handling_runout = False
             self.mmu.gate_maps.clear_slicer_tool_map()
             self.mmu._enable_filament_monitoring() # Enable filament monitoring while printing
-            self.mmu._initialize_encoder(dwell=None) # Encoder 0000
+            self.mmu.initialize_encoder(dwell=None) # Encoder 0000
             self.set_print_state("started", call_macro=False)
 
         if not pre_start_only and self.print_state not in ["printing"]:

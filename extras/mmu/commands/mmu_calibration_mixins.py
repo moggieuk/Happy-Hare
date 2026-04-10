@@ -39,13 +39,13 @@ class CalibrationMixin:
             endstop = mmu_unit.p.gate_homing_endstop
             endstop_str = mmu._gate_homing_string()
             mmu.log_always(f"Calibrating bowden length on gate {gate} (manual method) using {endstop_str} as gate reference point")
-            mmu._set_filament_direction(DIRECTION_UNLOAD)
+            mmu.set_filament_direction(DIRECTION_UNLOAD)
             selector.filament_drive()
             mmu.log_always(f"Finding {endstop} endstop position...")
             homed = False
 
             if endstop == SENSOR_ENCODER:
-                with mmu._require_encoder():
+                with mmu.require_encoder():
                     success = mmu._reverse_home_to_encoder(gate_homing_max)
                     if success:
                         homed = True
@@ -70,7 +70,7 @@ class CalibrationMixin:
                 remaining_park = mmu_unit.p.gate_parking_distance
 
             self.move_filament("Final parking", remaining_park)
-            mmu._set_filament_pos_state(FILAMENT_POS_UNLOADED)
+            mmu.set_filament_pos_state(FILAMENT_POS_UNLOADED)
 
             if not homed:
                 raise MmuError("Did not home to gate sensor after moving %.1fmm" % gate_homing_max)
@@ -103,7 +103,7 @@ class CalibrationMixin:
                 f"and {mmu_unit.p.extruder_homing_endstop} as extruder homing point"
             )
 
-            mmu._initialize_filament_position(dwell=True)
+            mmu.initialize_filament_position(dwell=True)
             overshoot = mmu._load_gate(allow_retry=False)
 
             if mmu_unit.p.extruder_homing_endstop in [SENSOR_EXTRUDER_ENTRY, SENSOR_COMPRESSION]:
@@ -159,7 +159,7 @@ class CalibrationMixin:
             successes = 0
 
             for i in range(repeats):
-                mmu._initialize_filament_position(dwell=True)
+                mmu.initialize_filament_position(dwell=True)
                 overshoot = mmu._load_gate(allow_retry=False)
 
                 # Get close to extruder homing point based on user guidance
@@ -167,7 +167,7 @@ class CalibrationMixin:
 
                 mmu.log_info("Finding extruder gear position (try #%d of %d)..." % (i+1, repeats))
                 mmu._home_to_extruder(extruder_homing_max)
-                actual = mmu._get_filament_position() - mmu_unit.p.gate_parking_distance
+                actual = mmu.get_filament_position() - mmu_unit.p.gate_parking_distance
                 measured = mmu.get_encoder_distance(dwell=True) + mmu.get_encoder_dead_space()
                 spring = selector.filament_release(measure=True) if mmu.has_encoder() else 0.
                 reference = actual - spring
@@ -188,7 +188,7 @@ class CalibrationMixin:
                     # No spring means we haven't reliably homed
                     mmu.log_always("Failed to detect a reliable home position on this attempt")
 
-                mmu._initialize_filament_position(True)
+                mmu.initialize_filament_position(dwell=True)
                 mmu._unload_bowden(reference)
                 mmu._unload_gate()
 
@@ -227,16 +227,16 @@ class CalibrationMixin:
                     mmu.log_always("Test run #%d, Speed=%.1f mm/s" % (x + 1, test_speed))
 
                 # Move forward
-                mmu._initialize_filament_position(dwell=True)
+                mmu.initialize_filament_position(dwell=True)
                 mmu.move_filament(None, length, speed=test_speed, accel=accel, wait=True)
-                pos_counts = mmu._get_encoder_counts(dwell=True)
+                pos_counts = mmu.get_encoder_counts(dwell=True)
                 pos_values.append(pos_counts)
                 mmu.log_always("%s+ counts: %d" % (UI_SPACE*2, pos_counts))
 
                 # Move backward
-                mmu._initialize_filament_position(dwell=True)
+                mmu.initialize_filament_position(dwell=True)
                 mmu.move_filament(None, -length, speed=test_speed, accel=accel, wait=True)
-                neg_counts = mmu._get_encoder_counts(dwell=True)
+                neg_counts = mmu.get_encoder_counts(dwell=True)
                 neg_values.append(neg_counts)
                 mmu.log_always("%s- counts: %d" % (UI_SPACE*2, neg_counts))
 
@@ -279,7 +279,7 @@ class CalibrationMixin:
 
         finally:
             if mean == 0:
-                mmu._set_filament_pos_state(FILAMENT_POS_UNKNOWN)
+                mmu.set_filament_pos_state(FILAMENT_POS_UNKNOWN)
 
 
     def _calibrate_gate(self, gate, length, repeats, save=True):
@@ -306,15 +306,15 @@ class CalibrationMixin:
                 )
 
             for _ in range(repeats):
-                mmu._initialize_filament_position(dwell=True)
+                mmu.initialize_filament_position(dwell=True)
                 _,_,measured,delta = mmu.move_filament("Calibration load movement", length, encoder_dwell=True)
                 pos_values.append(measured)
-                mmu.log_always("%s+ measured: %.1fmm (counts: %d)" % (UI_SPACE*2, (length - delta), mmu._get_encoder_counts(dwell=None)))
+                mmu.log_always("%s+ measured: %.1fmm (counts: %d)" % (UI_SPACE*2, (length - delta), mmu.get_encoder_counts(dwell=None)))
 
-                mmu._initialize_filament_position(dwell=True)
+                mmu.initialize_filament_position(dwell=True)
                 _,_,measured,delta = mmu.move_filament("Calibration unload movement", -length, encoder_dwell=True)
                 neg_values.append(measured)
-                mmu.log_always("%s- measured: %.1fmm (counts: %d)" % (UI_SPACE*2, (length - delta), mmu._get_encoder_counts(dwell=None)))
+                mmu.log_always("%s- measured: %.1fmm (counts: %d)" % (UI_SPACE*2, (length - delta), mmu.get_encoder_counts(dwell=None)))
 
             pos_stats = mmu._sample_stats(pos_values)
             neg_stats = mmu._sample_stats(neg_values)
@@ -357,7 +357,7 @@ class CalibrationMixin:
                     )
 
             mmu._unload_gate()
-            mmu._set_filament_pos_state(FILAMENT_POS_UNLOADED)
+            mmu.set_filament_pos_state(FILAMENT_POS_UNLOADED)
 
         except MmuError as ee:
             # Add some more context to the error and re-raise

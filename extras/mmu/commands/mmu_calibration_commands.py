@@ -177,7 +177,7 @@ class MmuCalibrateEncoderCommand(CalibrationMixin, BaseCommand):
             mmu.calibrating = True
 
             with mmu.wrap_sync_gear_to_extruder():
-                with mmu._require_encoder():
+                with mmu.require_encoder():
                     mmu_unit.selector.filament_drive()
                     _,_,measured,_ = mmu.move_filament("Checking for filament", advance)
 
@@ -289,7 +289,7 @@ class MmuCalibrateGateCommand(CalibrationMixin, BaseCommand):
                 mmu._unload_tool()
                 mmu.calibrating = True
 
-                with mmu._require_encoder():
+                with mmu.require_encoder():
                     if all_gates:
                         mmu.log_always("Start the complete calibration of ancillary gates...")
                     for g in gate_range:
@@ -539,7 +539,7 @@ class MmuCalibrateToolheadCommand(CalibrationMixin, BaseCommand):
         try:
             with mmu.wrap_sync_gear_to_extruder():
                 mmu.calibrating = True
-                mmu._initialize_filament_position(dwell=True)
+                mmu.initialize_filament_position(dwell=True)
                 overshoot = mmu._load_gate(allow_retry=False)
                 mmu._load_bowden(start_pos=overshoot)
                 mmu._home_to_extruder(mmu_unit.p.extruder_homing_max)

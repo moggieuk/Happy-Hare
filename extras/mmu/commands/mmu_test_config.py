@@ -94,7 +94,7 @@ class MmuTestConfigCommand(BaseCommand):
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
-        + f"{CMD} extruder_homing_max=150             ...set the extruder_homing_max parameter to 150\n"
+        + f"{CMD} extruder_homing_max=150 log_level=2 ...set the extruder_homing_max parameter to 150 and console logging to 2 (debug) level\n"
         + f"{CMD} toolhead_ooze_reduction=2.5 QUIET=1 ...silently set toolhead_ooze_reduction\n"
         + f"{CMD} UNIT=1 sync_to_extruder=1           ...turn on extruder syncing for mmu unit 1\n"
     )

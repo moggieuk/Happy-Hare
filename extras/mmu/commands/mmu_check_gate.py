@@ -151,7 +151,7 @@ class MmuCheckGateCommand(BaseCommand):
                                             raise MmuError("Failure during check gate %d %s:\n%s" % (gate, "(T%d)" % tool if tool >= 0 else "", str(ee)))
                                     except MmuError as ee:
                                         mmu.gate_maps.set_gate_status(gate, GATE_EMPTY)
-                                        mmu._set_filament_pos_state(FILAMENT_POS_UNLOADED, silent=True)
+                                        mmu.set_filament_pos_state(FILAMENT_POS_UNLOADED, silent=True)
                                         if tool >= 0:
                                             msg = "Tool T%d on gate %d marked EMPTY" % (tool, gate)
                                         else:
@@ -162,7 +162,7 @@ class MmuCheckGateCommand(BaseCommand):
                                         else:
                                             mmu.log_always(msg)
                                     finally:
-                                        mmu._initialize_encoder() # Encoder 0000
+                                        mmu.initialize_encoder() # Encoder 0000
 
                             # If not printing select original tool and load filament if necessary
                             # We don't do this when printing because this is expected to preceed loading initial tool

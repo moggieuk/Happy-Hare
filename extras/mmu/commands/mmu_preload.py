@@ -92,7 +92,7 @@ class MmuPreloadCommand(BaseCommand):
                                 else:
                                     # Lazy gate reselection means we have side effect of changed tool/gate
                                     mmu.gate_maps.ensure_ttg_match()
-                                    mmu._initialize_encoder() # Encoder 0000
+                                    mmu.initialize_encoder() # Encoder 0000
 
         except MmuError as ee:
             mmu.handle_mmu_error("Filament preload for gate %d failed: %s" % (gate, str(ee)))

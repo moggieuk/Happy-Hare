@@ -26,9 +26,10 @@ from .mmu_extruder_monitor import ExtruderMonitor
 
 class MmuExtruderWrapper():
 
-    def __init__(self, config, name, mmu_unit):
+    def __init__(self, config, name, mmu_unit, homing_extruder):
         self.config = config
         self.mmu_unit = mmu_unit                # This physical MMU unit
+        self.homing_extruder = homing_extruder
         self.mmu_machine = mmu_unit.mmu_machine # Entire Logical combined MMU
         self.name = name.split()[-1]
         self.printer = config.get_printer()
@@ -37,11 +38,6 @@ class MmuExtruderWrapper():
 
         self.filament_remaining = 0.            # The amount of filament remaining in extruder hotend
         self.filament_remaining_color = UNKNOWN_FILAMENT_COLOR # Color of remaining filament
-
-        # By default HH uses its modified homing extruder. Because this might have unknown consequences on certain
-        # set-ups it can be disabled. If disabled, synced homing moves will still work, but the delay in mcu to mcu
-        # comms can lead to several mm of error depending on speed. Also homing of just the extruder is not possible.
-        self.homing_extruder = bool(config.getint('homing_extruder', 1, minval=0, maxval=1))
 
         # Build homing extruder stepper if option enabled ---------------------------------------------------
 
@@ -53,9 +49,9 @@ class MmuExtruderWrapper():
             # Nullify original extruder stepper definition so Klipper doesn't try to create it again. Restore in handle_connect()
             self.old_ext_options = {}
             for i in SHAREABLE_STEPPER_PARAMS + OTHER_STEPPER_PARAMS:
-                if config.fileconfig.has_option('extruder', i):
-                    self.old_ext_options[i] = config.fileconfig.get('extruder', i)
-                    config.fileconfig.remove_option('extruder', i)
+                if config.fileconfig.has_option(self.extruder_name(), i):
+                    self.old_ext_options[i] = config.fileconfig.get(self.extruder_name(), i)
+                    config.fileconfig.remove_option(self.extruder_name(), i)
 
         # Register event handlers
         self.printer.register_event_handler('klippy:connect', self._handle_connect)
@@ -77,16 +73,12 @@ class MmuExtruderWrapper():
 
         # Setup extruder ------------------------------------------------------------------------------------
 
-        # PAUL: how will this work for multiple extruders?
-        # PAUL: Need better way to build [mmu_extruder_stepper], perhaps not by hacking existing extruder object!
-        # PAUL: Or perhaps looking up directly and not via printer_extruder?
-        self.klipper_printer_toolhead = self.printer.lookup_object('toolhead')
-        printer_extruder = self.klipper_printer_toolhead.get_extruder()
+        printer_extruder = self.printer.lookup_object(self.extruder_name())
 
         if self.homing_extruder and self.homing_extruder_stepper is not None:
             # Restore original extruder options in case user macros reference them
             for key, value in self.old_ext_options.items():
-                self.config.fileconfig.set(self.name, key, value)
+                self.config.fileconfig.set(self.extruder_name(), key, value)
 
             # Now we can switch in homing MmuExtruderStepper
             printer_extruder.extruder_stepper = self.homing_extruder_stepper
@@ -102,7 +94,7 @@ class MmuExtruderWrapper():
 
         self._extruder_tmc = self._extruder_current = None
         for chip in TMC_CHIPS:
-            c = self.printer.lookup_object("%s %s" % (chip, self.name), None)
+            c = self.printer.lookup_object("%s %s" % (chip, self.extruder_name()), None)
             if c is not None:
                 self._extruder_tmc = c
                 self._extruder_current = c.get_status(0).get("run_current")
@@ -112,7 +104,7 @@ class MmuExtruderWrapper():
             msg = (
                 "Unit %s: Found %s on extruder '%s'. "
                 "Current control enabled."
-            ) % (self.mmu_unit.name, chip, self.name)
+            ) % (self.mmu_unit.name, chip, self.extruder_name())
 
             if self.homing_extruder:
                 msg += " Stallguard 'touch' extruder homing possible."
@@ -122,7 +114,7 @@ class MmuExtruderWrapper():
             self.mmu.log_debug(
                 "Unit %s: TMC driver not found for extruder '%s'. "
                 "Cannot use current increase for tip forming move."
-                % (self.mmu_unit.name, self.name)
+                % (self.mmu_unit.name, self.extruder_name())
             )
 
 
@@ -186,6 +178,7 @@ class MmuExtruderStepper(ExtruderStepper, object):
         # This allows for setup of stallguard as an option for nozzle homing
         endstop_pin = config.get('endstop_pin', None)
         if endstop_pin:
+            # PAUL will need to iterate on all gear steppers
             gear_rail = unit.mmu_toolhead.get_kinematics().rails[1]
             mcu_endstop = gear_rail.add_extra_endstop(endstop_pin, 'mmu_ext_touch', bind_rail_steppers=False)
             mcu_endstop.add_stepper(self.stepper)
