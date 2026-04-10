@@ -56,7 +56,7 @@ class MmuToolheadWrapper():
 
     PARAMS_CLS = MmuToolheadParameters
 
-    def __init__(self, config, mmu_unit, params):
+    def __init__(self, config, mmu_unit):
         self.config = config
         self.mmu_unit = mmu_unit                # This physical MMU unit
         self.mmu_machine = mmu_unit.mmu_machine # Entire Logical combined MMU

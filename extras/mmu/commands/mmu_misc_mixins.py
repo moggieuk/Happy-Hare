@@ -129,7 +129,7 @@ class MoveMixin:
         else:
             selector.filament_drive()
         mmu.log_debug("Moving '%s' motor %.1fmm..." % (motor, move))
-        return mmu.trace_filament_move(trace_str, move, speed=speed, accel=accel, motor=motor, wait=wait)
+        return mmu.move_filament(trace_str, move, speed=speed, accel=accel, motor=motor, wait=wait)
 
 
     def _homing_move_cmd(self, gcmd, trace_str, allow_bypass=False):
@@ -169,4 +169,4 @@ class MoveMixin:
             selector.filament_drive()
 
         mmu.log_debug("Homing '%s' motor to '%s' endstop, up to %.1fmm..." % (motor, endstop, move))
-        return mmu.trace_filament_move(trace_str, move, speed=speed, accel=accel, motor=motor, homing_move=stop_on_endstop, endstop_name=endstop)
+        return mmu.move_filament(trace_str, move, speed=speed, accel=accel, motor=motor, homing_move=stop_on_endstop, endstop_name=endstop)

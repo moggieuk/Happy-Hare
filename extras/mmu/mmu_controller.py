@@ -126,7 +126,7 @@ class MmuController(MmuFilamentMovement):
 
 
         # Initialize state and statistics variables
-        self.reinit() # PAUL this could be too early to call -- cascades to all mmu_units and components
+        self.reinit()
         self._reset_statistics()
         self.counters = {}
 
@@ -2111,9 +2111,6 @@ class MmuController(MmuFilamentMovement):
     def _select_and_load_tool(self, tool, purge=None):
 
         try:
-#PAUL            # Determine purge volume for toolchange/load. Valid only during toolchange/load operation
-#PAUL            self.toolchange_purge_volume, self._slicer_purge_volume  = self._calc_purge_volume(self._last_tool, tool)
-
             self.log_debug('Loading tool %s...' % self.selected_tool_string(tool))
             from_gate = self.gate_selected
             self.select_tool(tool)
@@ -2237,11 +2234,6 @@ class MmuController(MmuFilamentMovement):
                 self.selector(gate).select_gate(gate)
                 self._set_gate_selected(gate) # Will send gate/unit changed events
 
-# PAUL I think this would be better in _set_gate_selected???
-#                # Update from/to leds after selection
-#                self.led_manager.gate_map_changed(_prev_gate)
-#                self.led_manager.gate_map_changed(gate)
-
         except MmuError as ee:
             self.unselect_gate()
             raise ee
@@ -2287,7 +2279,6 @@ class MmuController(MmuFilamentMovement):
     def _set_tool_selected(self, tool):
         self.log_info("PAUL: _set_tool_selected(%d)" % tool)
         if tool != self.tool_selected:
-            self.log_info("PAUL: Stack: %s" % traceback.format_exc())
             self.tool_selected = tool
             self.printer.send_event("mmu:tool_selected", self.tool_selected)
             self.var_manager.set(VARS_MMU_TOOL_SELECTED, self.tool_selected, write=True)
@@ -2295,7 +2286,6 @@ class MmuController(MmuFilamentMovement):
 
     def _set_gate_selected(self, gate):
         self.log_info("PAUL: _set_gate_selected(%d)" % gate)
-
         prev_gate = self.gate_selected
         self.gate_selected = gate
 
@@ -2307,11 +2297,9 @@ class MmuController(MmuFilamentMovement):
         self.printer.send_event("mmu:gate_selected", self.gate_selected)
         self.mmu_unit(gate).sync_feedback.set_default_rd()
 
-#PAUL NEW vvv
         # Update from/to leds after selection
-        self.led_manager.gate_map_changed(prev_gate) # PAUL NEW
-        self.led_manager.gate_map_changed(gate) # PAUL NEW
-#PAUL NEW ^^^
+        self.led_manager.gate_map_changed(prev_gate)
+        self.led_manager.gate_map_changed(gate)
 
         self.var_manager.set(VARS_MMU_GATE_SELECTED, self.gate_selected, write=True)
         self.active_filament = {

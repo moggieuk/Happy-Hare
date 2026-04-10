@@ -231,8 +231,8 @@ class LinearSelectorServo:
 
         if self.servo_angle != self.servo_angles['down'] and buzz_gear and self.p.servo_buzz_gear_on_down > 0:
             for _ in range(self.p.servo_buzz_gear_on_down):
-                self.mmu.trace_filament_move(None, 0.8, speed=25, accel=self.mmu_unit.p.gear_buzz_accel, encoder_dwell=None, speed_override=False)
-                self.mmu.trace_filament_move(None, -0.8, speed=25, accel=self.mmu_unit.p.gear_buzz_accel, encoder_dwell=None, speed_override=False)
+                self.mmu.move_filament(None, 0.8, speed=25, accel=self.mmu_unit.p.gear_buzz_accel, encoder_dwell=None, speed_override=False)
+                self.mmu.move_filament(None, -0.8, speed=25, accel=self.mmu_unit.p.gear_buzz_accel, encoder_dwell=None, speed_override=False)
             self.mmu.movequeues_dwell(max(self.p.servo_dwell, self.p.servo_duration, 0))
 
         self.servo_angle = self.servo_angles['down']

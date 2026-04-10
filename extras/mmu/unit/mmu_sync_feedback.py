@@ -557,7 +557,7 @@ class MmuSyncFeedback:
                 sensor = SENSOR_COMPRESSION
                 homing_dir = 1
 
-        actual,fhomed,_,_ = self.mmu.trace_filament_move(
+        actual,fhomed,_,_ = self.mmu.move_filament(
             msg,
             max_move * direction,
             speed=speed,
@@ -569,7 +569,7 @@ class MmuSyncFeedback:
         if fhomed and self.p.sync_feedback_buffer_range != 0:
             if use_gear_motor:
                 # Move just a little more to find perfect neutral spot between sensors
-                _,_,_,_ = self.mmu.trace_filament_move("Centering sync feedback buffer", (self.p.sync_feedback_buffer_range * direction) / 2.)
+                _,_,_,_ = self.mmu.move_filament("Centering sync feedback buffer", (self.p.sync_feedback_buffer_range * direction) / 2.)
         else:
             self.mmu.log_debug("Failed to reach neutral filament tension after moving %.1fmm" % max_move)
 
@@ -627,7 +627,7 @@ class MmuSyncFeedback:
             # within the centre range depending on how large the bowden tube slack is.
             initial_move_mm = -prop_state * per_side_budget_mm
             if abs(initial_move_mm) >= nudge_mm:
-                self.mmu.trace_filament_move(
+                self.mmu.move_filament(
                     "Proportional initial adjust - extruder load",
                     initial_move_mm, motor="gear", wait=True
                 )
@@ -682,7 +682,7 @@ class MmuSyncFeedback:
                 )
                 return moved_total_mm, False
 
-            self.mmu.trace_filament_move(
+            self.mmu.move_filament(
                 "Proportional adjust - extruder load",
                 nudge_move_mm, motor="gear", wait=True
             )

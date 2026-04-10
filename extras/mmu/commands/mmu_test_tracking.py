@@ -82,7 +82,7 @@ class MmuTestTrackingCommand(BaseCommand):
                     mmu._initialize_filament_position()
 
                     for i in range(1, int(100 / step)):
-                        mmu.trace_filament_move(None, direction * step, encoder_dwell=None)
+                        mmu.move_filament(None, direction * step, encoder_dwell=None)
                         measured = mmu.get_encoder_distance()
                         moved = i * step
                         drift = int(round((moved - measured) / sensitivity))

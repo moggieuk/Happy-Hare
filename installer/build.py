@@ -68,6 +68,10 @@ hidden_params = [
     "encoder_dwell",
     "encoder_move_step_size",
     "gear_buzz_accel",
+    "sync_feedback_analog_gamma",
+    "sync_feedback_analog_sample_time",
+    "sync_feedback_analog_sample_count"
+    "sync_feedback_analog_report_time",
 ]
 
 happy_hare = '\n(\\_/)\n( *,*)\n(")_(") {caption}\n'

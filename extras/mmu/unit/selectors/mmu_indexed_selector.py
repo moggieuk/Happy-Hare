@@ -156,11 +156,11 @@ class IndexedSelector(PhysicalSelector):
         rotation_dir = self._best_rotation_direction(self.mmu.gate_selected, gate)
         max_move = self._get_max_selector_movement() * rotation_dir
         self.mmu.movequeues_wait()
-        actual,homed = self._trace_selector_move("Indexing selector", max_move, speed=self.p.selector_move_speed, homing_move=1, endstop_name=self._get_gate_endstop(gate))
+        actual,homed = self._move_selector("Indexing selector", max_move, speed=self.p.selector_move_speed, homing_move=1, endstop_name=self._get_gate_endstop(gate))
         if abs(actual) > 0 and homed:
             # If we actually moved to home make sure we are centered on index endstop
             center_move = (self.p.selector_index_distance / 2) * rotation_dir
-            self._trace_selector_move("Centering selector", center_move, speed=self.p.selector_move_speed)
+            self._move_selector("Centering selector", center_move, speed=self.p.selector_move_speed)
 
     # TODO automate the setup of the sequence through homing move on startup
     def _best_rotation_direction(self, start_gate, end_gate):
@@ -196,7 +196,7 @@ class IndexedSelector(PhysicalSelector):
 
     # Internal raw wrapper around all selector moves
     # Returns position after move, and if homed (homing moves)
-    def _trace_selector_move(self, trace_str, dist, speed=None, accel=None, homing_move=0, endstop_name="default", wait=False):
+    def _move_selector(self, trace_str, dist, speed=None, accel=None, homing_move=0, endstop_name="default", wait=False):
         """
         Execute a selector move, optionally as a homing move to a named endstop.
 

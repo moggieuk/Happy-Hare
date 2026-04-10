@@ -682,7 +682,7 @@ class MmuTestCommand(BaseCommand):
                                 "> Internal mmu movement %d: move(%s, motor=%s, speed=%.2f, accel=%s, homing_move=%s, endstop_name=%s, encoder_dwell=%s, wait=%s)" %
                                 (j, move, motor, speed, accel, homing_move, endstop, encoder_dwell, wait)
                             )
-                            actual, _, _, _ = mmu.trace_filament_move(
+                            actual, _, _, _ = mmu.move_filament(
                                 "REALISTIC_SYNC_TEST", move,
                                 motor=motor, speed=speed, accel=accel,
                                 homing_move=homing_move, endstop_name=endstop,
@@ -894,7 +894,7 @@ class MmuTestCommand(BaseCommand):
                     w = random.randint(0, 1) if wait is None else wait
                     mmu.log_info("Loop: %d" % i)
                     motor = "gear+extruder" if random.randint(0, mix) else "extruder"
-                    mmu.trace_filament_move("test", 5, motor=motor, homing_move=stop_on_endstop, endstop_name="toolhead", wait=w)
+                    mmu.move_filament("test", 5, motor=motor, homing_move=stop_on_endstop, endstop_name="toolhead", wait=w)
                     if random.randint(0, 1):
                         mmu.gcode.run_script_from_command("M83")
                         mmu.gcode.run_script_from_command("G1 E5 F300")
@@ -944,7 +944,7 @@ class MmuTestCommand(BaseCommand):
                     if wait is None:
                         w = random.randint(0, 1)
                     with DebugStepperMovement(mmu, debug):
-                        mmu.trace_filament_move("test", 1, motor=motor, homing_move=stop_on_endstop, endstop_name="toolhead", wait=w)
+                        mmu.move_filament("test", 1, motor=motor, homing_move=stop_on_endstop, endstop_name="toolhead", wait=w)
 
             if gcmd.get_int('AUTO_CALIBRATE', 0, minval=0, maxval=1):
                 have_run_test = True

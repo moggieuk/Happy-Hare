@@ -179,13 +179,13 @@ class MmuCalibrateEncoderCommand(CalibrationMixin, BaseCommand):
             with mmu.wrap_sync_gear_to_extruder():
                 with mmu._require_encoder():
                     mmu_unit.selector.filament_drive()
-                    _,_,measured,_ = mmu.trace_filament_move("Checking for filament", advance)
+                    _,_,measured,_ = mmu.move_filament("Checking for filament", advance)
 
                     if measured < mmu_unit.encoder.encoder_min:
                         raise MmuError("Filament not detected in encoder. Ensure filament is available and try again")
 
                     self._calibrate_encoder(length, repeats, min_speed, max_speed, accel, save)
-                    _,_,_,_ = mmu.trace_filament_move("Parking filament", -advance)
+                    _,_,_,_ = mmu.move_filament("Parking filament", -advance)
 
         except MmuError as ee:
             mmu.handle_mmu_error(str(ee))
@@ -695,7 +695,7 @@ class MmuCalibratePsensorCommand(CalibrationMixin, BaseCommand):
         def _seek_limit(msg, steps, step_size, prev_val, ramp, log_label):
             mmu.log_always(msg)
             for i in range(steps):
-                _ = mmu.trace_filament_move(msg, step_size, motor="gear", speed=MOVE_SPEED, wait=True)
+                _ = mmu.move_filament(msg, step_size, motor="gear", speed=MOVE_SPEED, wait=True)
                 val = _avg_raw()
 
                 delta = val - prev_val
@@ -735,7 +735,7 @@ class MmuCalibratePsensorCommand(CalibrationMixin, BaseCommand):
                     # Back off compressed extreme
                     msg = "Backing off compressed limit"
                     mmu.log_always(msg)
-                    _ = mmu.trace_filament_move(msg, -(steps * STEP_SIZE / 2.0), motor="gear", speed=MOVE_SPEED, wait=True)
+                    _ = mmu.move_filament(msg, -(steps * STEP_SIZE / 2.0), motor="gear", speed=MOVE_SPEED, wait=True)
 
                     msg = "Finding tension limit stepping up to %.2fmm\n" % (steps * STEP_SIZE)
                     t_prev = _avg_raw()
@@ -745,7 +745,7 @@ class MmuCalibratePsensorCommand(CalibrationMixin, BaseCommand):
                     # Back off tension extreme
                     msg = "Backing off tension limit"
                     mmu.log_always(msg)
-                    _ = mmu.trace_filament_move(msg, (steps * STEP_SIZE / 2.0), motor="gear", speed=MOVE_SPEED, wait=True)
+                    _ = mmu.move_filament(msg, (steps * STEP_SIZE / 2.0), motor="gear", speed=MOVE_SPEED, wait=True)
 
             if (found_c_limit and found_t_limit):
                 msg =  "Calibration Results:\n"

@@ -64,7 +64,10 @@ class MmuBuffer:
         analog_pin = config.get('sync_feedback_analog_pin', None)
         self.proportional_sensor = None
         if analog_pin:
-            self.proportional_sensor = MmuProportionalSensor(config, name=SENSOR_PROPORTIONAL) # PAUL make sure this uses the buffer name, NOT unit!
+            self.proportional_sensor = MmuProportionalSensor(
+                config,
+                f"{self.name}:{SENSOR_PROPORTIONAL}"
+            )
 
 
     def add_unit(self, mmu_unit):

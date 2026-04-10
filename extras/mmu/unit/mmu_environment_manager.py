@@ -628,7 +628,7 @@ class MmuEnvironmentManager:
             prev_gate_selected = self.mmu.gate_selected
             for gate in gates:
                 self.mmu.select_gate(gate)
-                _,_,_,_ = self.mmu.trace_filament_move("Rotating spool for drying", -100, motor="gear", wait=True)
+                _,_,_,_ = self.mmu.move_filament("Rotating spool for drying", -100, motor="gear", wait=True)
             self.mmu.select_gate(prev_gate_selected)
 
 

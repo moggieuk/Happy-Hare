@@ -60,7 +60,7 @@ class CalibrationMixin:
                         f"before starting the calibration"
                     )
 
-                homing_movement, homed, measured, _ = mmu.trace_filament_move(
+                homing_movement, homed, measured, _ = mmu.move_filament(
                     f"Reverse homing off gate endstop {endstop}",
                     -gate_homing_max,
                     motor="gear",
@@ -69,7 +69,7 @@ class CalibrationMixin:
                 )
                 remaining_park = mmu_unit.p.gate_parking_distance
 
-            self.trace_filament_move("Final parking", remaining_park)
+            self.move_filament("Final parking", remaining_park)
             mmu._set_filament_pos_state(FILAMENT_POS_UNLOADED)
 
             if not homed:
@@ -228,14 +228,14 @@ class CalibrationMixin:
 
                 # Move forward
                 mmu._initialize_filament_position(dwell=True)
-                mmu.trace_filament_move(None, length, speed=test_speed, accel=accel, wait=True)
+                mmu.move_filament(None, length, speed=test_speed, accel=accel, wait=True)
                 pos_counts = mmu._get_encoder_counts(dwell=True)
                 pos_values.append(pos_counts)
                 mmu.log_always("%s+ counts: %d" % (UI_SPACE*2, pos_counts))
 
                 # Move backward
                 mmu._initialize_filament_position(dwell=True)
-                mmu.trace_filament_move(None, -length, speed=test_speed, accel=accel, wait=True)
+                mmu.move_filament(None, -length, speed=test_speed, accel=accel, wait=True)
                 neg_counts = mmu._get_encoder_counts(dwell=True)
                 neg_values.append(neg_counts)
                 mmu.log_always("%s- counts: %d" % (UI_SPACE*2, neg_counts))
@@ -307,12 +307,12 @@ class CalibrationMixin:
 
             for _ in range(repeats):
                 mmu._initialize_filament_position(dwell=True)
-                _,_,measured,delta = mmu.trace_filament_move("Calibration load movement", length, encoder_dwell=True)
+                _,_,measured,delta = mmu.move_filament("Calibration load movement", length, encoder_dwell=True)
                 pos_values.append(measured)
                 mmu.log_always("%s+ measured: %.1fmm (counts: %d)" % (UI_SPACE*2, (length - delta), mmu._get_encoder_counts(dwell=None)))
 
                 mmu._initialize_filament_position(dwell=True)
-                _,_,measured,delta = mmu.trace_filament_move("Calibration unload movement", -length, encoder_dwell=True)
+                _,_,measured,delta = mmu.move_filament("Calibration unload movement", -length, encoder_dwell=True)
                 neg_values.append(measured)
                 mmu.log_always("%s- measured: %.1fmm (counts: %d)" % (UI_SPACE*2, (length - delta), mmu._get_encoder_counts(dwell=None)))
 
@@ -409,7 +409,7 @@ class CalibrationMixin:
         # -------------------------------------------------------------------------
         selector.filament_drive()
 
-        actual, fhomed, _, _ = mmu.trace_filament_move(
+        actual, fhomed, _, _ = mmu.move_filament(
             "Homing to toolhead sensor",
             mmu_unit.p.toolhead_homing_max,
             motor="gear+extruder",
@@ -425,7 +425,7 @@ class CalibrationMixin:
 
         selector.filament_release()
 
-        actual, _, _, _ = mmu.trace_filament_move(
+        actual, _, _, _ = mmu.move_filament(
             "Forcing filament to nozzle",
             probe_depth,
             motor="extruder",
@@ -436,7 +436,7 @@ class CalibrationMixin:
         # -------------------------------------------------------------------------
         selector.filament_drive()
 
-        actual, fhomed, _, _ = mmu.trace_filament_move(
+        actual, fhomed, _, _ = mmu.move_filament(
             "Reverse homing off toolhead sensor",
             -probe_depth,
             motor="gear+extruder",
@@ -458,7 +458,7 @@ class CalibrationMixin:
         # -------------------------------------------------------------------------
         selector.filament_release()
 
-        actual, _, _, _ = mmu.trace_filament_move(
+        actual, _, _, _ = mmu.move_filament(
             "Moving to extruder entrance",
             -(probe_depth - toolhead_sensor_to_nozzle),
             motor="extruder",
@@ -469,7 +469,7 @@ class CalibrationMixin:
         # -------------------------------------------------------------------------
         selector.filament_drive()
 
-        actual, fhomed, _, _ = mmu.trace_filament_move(
+        actual, fhomed, _, _ = mmu.move_filament(
             "Homing to toolhead sensor",
             mmu_unit.p.toolhead_homing_max,
             motor="gear+extruder",
@@ -494,7 +494,7 @@ class CalibrationMixin:
 
         if mmu.sensor_manager.has_sensor(SENSOR_EXTRUDER_ENTRY):
             # Retract and home to extruder entry sensor
-            actual, fhomed, _, _ = mmu.trace_filament_move(
+            actual, fhomed, _, _ = mmu.move_filament(
                 "Reverse homing off extruder entry sensor",
                 -(sensor_homing + toolhead_extruder_to_nozzle - toolhead_sensor_to_nozzle),
                 motor="gear+extruder",
@@ -502,13 +502,13 @@ class CalibrationMixin:
                 endstop_name=SENSOR_EXTRUDER_ENTRY,
             )
 
-            actual, _, _, _ = mmu.trace_filament_move(
+            actual, _, _, _ = mmu.move_filament(
                 "Moving before extruder entry sensor",
                 -20,
                 motor="gear+extruder",
             )
 
-            actual, fhomed, _, _ = mmu.trace_filament_move(
+            actual, fhomed, _, _ = mmu.move_filament(
                 "Homing to extruder entry sensor",
                 40,
                 motor="gear+extruder",
@@ -520,7 +520,7 @@ class CalibrationMixin:
                 raise MmuError("Failed to reverse home to extruder entry sensor")
 
             # Measure relative to toolhead sensor
-            actual, fhomed, _, _ = mmu.trace_filament_move(
+            actual, fhomed, _, _ = mmu.move_filament(
                 "Homing to toolhead sensor",
                 sensor_homing,
                 motor="gear+extruder",
@@ -543,7 +543,7 @@ class CalibrationMixin:
         # -------------------------------------------------------------------------
         selector.filament_release()
 
-        actual, _, _, _ = mmu.trace_filament_move(
+        actual, _, _, _ = mmu.move_filament(
             "Moving to extruder entrance",
             -sensor_homing,
             motor="extruder",

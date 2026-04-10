@@ -238,7 +238,11 @@ class ServoSelector(PhysicalSelector):
         return msg
 
     def get_uncalibrated_gates(self, check_gates):
-        return [lgate + self.mmu_unit.first_gate for lgate, value in enumerate(self.servo_gate_angles) if value == -1 and lgate + self.mmu_unit.first_gate in check_gates]
+        return [
+            lgate + self.mmu_unit.first_gate
+            for lgate, value in enumerate(self.servo_gate_angles)
+            if value == -1 and lgate + self.mmu_unit.first_gate in check_gates
+        ]
 
 
     # Internal Implementation --------------------------------------------------
@@ -362,7 +366,7 @@ class MmuCalibrateServoSelectorCommand(BaseCommand):
         single = gcmd.get_int('SINGLE', 0, minval=0, maxval=1)
         spacing = gcmd.get_float('SPACING', 25., above=0, below=180) # TiPicoMMU is 25 degrees between gates
         release = gcmd.get_float('RELEASE', 0.,  minval=0, maxval=1)
-        gate = gcmd.get_int('GATE', -1, minval=0, maxval=mmu_unit.num_gates - 1) # PAUL No need gate and lgate
+        gate = gcmd.get_int('GATE', -1, minval=0, maxval=mmu_unit.num_gates - 1)
         if gate == -1 and gcmd.get_int('BYPASS', -1, minval=0, maxval=1) == 1:
             gate = TOOL_GATE_BYPASS
 

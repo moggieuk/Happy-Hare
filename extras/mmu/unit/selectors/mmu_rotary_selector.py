@@ -98,7 +98,7 @@ class RotarySelector(PhysicalSelector):
 
     def handle_connect(self):
         """
-        Bind selector rail/stepper, configure rail limits, and load calibration.
+        eind selector rail/stepper, configure rail limits, and load calibration.
 
         Determines whether an actual endstop is present, loads per-gate selector
         offsets from mmu_vars.cfg, and marks the selector calibrated when all
@@ -248,7 +248,11 @@ class RotarySelector(PhysicalSelector):
         return msg
 
     def get_uncalibrated_gates(self, check_gates):
-        return [lgate + self.mmu_unit.first_gate for lgate, value in enumerate(self.selector_offsets) if value == -1 and lgate + self.mmu_unit.first_gate in check_gates]
+        return [
+            lgate + self.mmu_unit.first_gate
+            for lgate, value in enumerate(self.selector_offsets)
+            if value == -1 and lgate + self.mmu_unit.first_gate in check_gates
+        ]
 
 
     # Internal Implementation --------------------------------------------------
@@ -347,11 +351,11 @@ class RotarySelector(PhysicalSelector):
         self.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, target, write=True, namespace=self.mmu_unit.name)
 
     def move(self, trace_str, new_pos, speed=None, accel=None, wait=False):
-        return self._trace_selector_move(trace_str, new_pos, speed=speed, accel=accel, wait=wait)
+        return self._move_selector(trace_str, new_pos, speed=speed, accel=accel, wait=wait)
 
     # Internal raw wrapper around all selector moves except rail homing
     # Returns position after move, if homed (homing moves)
-    def _trace_selector_move(self, trace_str, new_pos, speed=None, accel=None, wait=False):
+    def _move_selector(self, trace_str, new_pos, speed=None, accel=None, wait=False):
         """
         Execute a selector move with consistent tracing and motion settings.
 
@@ -462,7 +466,7 @@ class MmuCalibrateRotarySelectorCommand(BaseCommand):
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         single = gcmd.get_int('SINGLE', 0, minval=0, maxval=1)
         quick = gcmd.get_int('QUICK', 0, minval=0, maxval=1)
-        gate = gcmd.get_int('GATE', 0, minval=0, maxval=mmu_unit.num_gates - 1) # PAUL need gate and lgate?
+        gate = gcmd.get_int('GATE', 0, minval=0, maxval=mmu_unit.num_gates - 1)
 
         try:
             mmu.calibrating = True

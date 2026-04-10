@@ -503,7 +503,7 @@ class LinearSelector(PhysicalSelector):
                             if not found:
                                 # Push filament into view of the gate endstop
                                 self.filament_drive()
-                                _,_,measured,_ = self.mmu.trace_filament_move("Locating filament", self.mmu.gate_parking_distance + self.mmu.gate_endstop_to_encoder + 10.)
+                                _,_,measured,_ = self.mmu.move_filament("Locating filament", self.mmu.gate_parking_distance + self.mmu.gate_endstop_to_encoder + 10.)
                                 if self.mmu.has_encoder() and measured < self.mmu.encoder_min:
                                     raise MmuError("Unblocking selector failed bacause unable to move filament to clear")
     
@@ -534,15 +534,15 @@ class LinearSelector(PhysicalSelector):
             self.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, current_pos, namespace=self.mmu_unit.name)
 
     def move(self, trace_str, new_pos, speed=None, accel=None, wait=False):
-        return self._trace_selector_move(trace_str, new_pos, speed=speed, accel=accel, wait=wait)[0]
+        return self._move_selector(trace_str, new_pos, speed=speed, accel=accel, wait=wait)[0]
 
     def homing_move(self, trace_str, new_pos, speed=None, accel=None, homing_move=0, endstop_name=None):
-        return self._trace_selector_move(trace_str, new_pos, speed=speed, accel=accel, homing_move=homing_move, endstop_name=endstop_name)
+        return self._move_selector(trace_str, new_pos, speed=speed, accel=accel, homing_move=homing_move, endstop_name=endstop_name)
 
 
     # Internal raw wrapper around all selector moves except rail homing
     # Returns position after move, if homed (homing moves)
-    def _trace_selector_move(self, trace_str, new_pos, speed=None, accel=None, homing_move=0, endstop_name=None, wait=False):
+    def _move_selector(self, trace_str, new_pos, speed=None, accel=None, homing_move=0, endstop_name=None, wait=False):
         """
         Execute a selector move, optionally using a homing move to an endstop.
 

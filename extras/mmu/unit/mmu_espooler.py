@@ -155,7 +155,7 @@ class MmuESpooler:
 
 
     def _handle_ready(self):
-        self.toolhead = self.printer.lookup_object('toolhead') # PAUL need to get correct toolhead! (how does IDEX work in klipper)?
+        self.toolhead = self.printer.lookup_object('toolhead')
 
         # Setup extruder monitor
         try:
@@ -521,7 +521,7 @@ class MmuESpooler:
 # Class to monitor extruder movement an generate espooler "advance" events
 # -----------------------------------------------------------------------------------------------------------
 
-    class EspoolerExtruderMonitor: # PAUL possible to change to share commone monitor??
+    class EspoolerExtruderMonitor: # PAUL possible to change to share common monitor??
 
         CHECK_MOVEMENT_PERIOD = 1. # How often to check extruder movement
 

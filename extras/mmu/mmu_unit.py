@@ -280,15 +280,16 @@ class MmuUnit:
         self.calibrator = MmuCalibrator(params, self, self.p)
         logging.info("MMU: Created: Calibrator for %s" % self.name)
 
-        # Create toolhead wrapper (may be shared so check for existence first)
-        # This encapsulates demensions and provides possibility of dissimilar toolheads on IDEX printer
+        # Create toolhead wrapper (probably shared so check for existence first)
+        # This encapsulates demensions and provides possibility of dissimilar toolheads on IDEX printer,
+        # however, for now the toolhead is a shared "default" definition in mmu.cfg
         toolhead_name = config.get('toolhead')
         section = 'mmu_toolhead %s' % toolhead_name
         self.toolhead_wrapper = self.printer.lookup_object(section, None)
         if not self.toolhead_wrapper:
             if config.has_section(section):
                 c = config.getsection(section)
-                self.toolhead_wrapper = MmuToolheadWrapper(c, self, self.p)
+                self.toolhead_wrapper = MmuToolheadWrapper(c, self)
                 self.printer.add_object(c.get_name(), self.toolhead_wrapper)
                 logging.info("MMU: Created: [%s]" % c.get_name())
             else:

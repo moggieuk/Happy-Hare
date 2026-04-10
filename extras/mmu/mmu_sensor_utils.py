@@ -363,8 +363,8 @@ class MmuProportionalSensor:
                 self.adc.setup_adc_callback(self._report_time, self._adc_callback)
 
         # Attach runout_helper (no gcode actions; just enable/disable plumbing to remove UI nag)
-        clog_gcode   = ("%s SENSOR=%s" % (CLOG_GCODE,   name))
-        tangle_gcode = ("%s SENSOR=%s" % (TANGLE_GCODE, name))
+        clog_gcode   = ("%s SENSOR=%s" % (CLOG_GCODE,   self.name))
+        tangle_gcode = ("%s SENSOR=%s" % (TANGLE_GCODE, self.name))
         self.runout_helper = MmuRunoutHelper(
             self.printer,
             self.name,                  # Name exposed to QUERY_/SET_FILAMENT_SENSOR
@@ -379,8 +379,8 @@ class MmuProportionalSensor:
         )
 
         # Expose status
-        self.printer.add_object(name, self)
-        logging.info("MMU: Created Proportional sync-feedback sensor %s]" % name)
+        self.printer.add_object(self.name, self)
+        logging.info("MMU: Created Proportional sync-feedback sensor %s]" % self.name)
 
     def _map_reading(self, v_raw):
         n = self._neutral_point
