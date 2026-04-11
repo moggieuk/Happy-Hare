@@ -442,30 +442,38 @@ class MmuUnit:
         gear_rail = self.mmu_toolhead.get_kinematics().rails[1] # PAUL temp this block should iterate over all necessary mmu_extruder_steppers
         for sensor in iter_endstop_sensors():
             sensor_name = sensor.runout_helper.name
-            logging.info("PAUL: creating endstop for unit=%s, sensor.name=%s" % (self.name, sensor_name))
             sensor_pin = sensor.runout_helper.switch_pin
-            ppins = self.printer.lookup_object('pins')
-            pin_params = ppins.parse_pin(sensor_pin, True, True)
-            share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
-            ppins.allow_multi_use_pin(share_name)
 
-#            # PAUL new logic more like this... add_extra_endstop must be itempotent
-#            for s in self.mmu_gear_steppers:
-#                mcu_endstop = s.add_extra_endstop(sensor_pin, sensor_name)
-#
-#                # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
-#                # otherwise the extruder can continue to move a small (speed dependent) distance
-#                if self.extruder_wrapper.homing_extruder_stepper is not None and sensor_name in [SENSOR_TOOLHEAD, SENSOR_COMPRESSION, SENSOR_TENSION]:
-#                    mcu_endstop.add_stepper(self.extruder_wrapper.homing_extruder_stepper.stepper)
+            if sensor.__class__.__name__ in ["MmuAdcSwitchSensor", "MmuHallEndstop"]:
+                logging.info("PAUL: creating analog endstop for unit=%s, sensor.name=%s" % (self.name, sensor_name))
+                mcu_endstop = gear_rail.add_extra_endstop(sensor_pin, sensor_name, mcu_endstop=sensor)
+            else:
 
-            # Ensure all steppers see endstop
-            if sensor_name not in gear_rail.get_extra_endstop_names():
+                # Add sensor pin as an extra endstop for gear
+                logging.info("PAUL: creating endstop for unit=%s, sensor.name=%s" % (self.name, sensor_name))
+                ppins = self.printer.lookup_object('pins')
+                pin_params = ppins.parse_pin(sensor_pin, True, True)
+                share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
+                ppins.allow_multi_use_pin(share_name)
                 mcu_endstop = gear_rail.add_extra_endstop(sensor_pin, sensor_name)
 
-                # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
-                # otherwise the extruder can continue to move a small (speed dependent) distance
-                if self.extruder_wrapper.homing_extruder_stepper is not None and sensor_name in [SENSOR_TOOLHEAD, SENSOR_COMPRESSION, SENSOR_TENSION]:
-                    mcu_endstop.add_stepper(self.extruder_wrapper.homing_extruder_stepper.stepper)
+#                # PAUL new logic more like this... add_extra_endstop must be itempotent
+#                for s in self.mmu_gear_steppers:
+#                    mcu_endstop = s.add_extra_endstop(sensor_pin, sensor_name)
+#
+#                    # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
+#                    # otherwise the extruder can continue to move a small (speed dependent) distance
+#                    if self.extruder_wrapper.homing_extruder_stepper is not None and sensor_name in [SENSOR_TOOLHEAD, SENSOR_COMPRESSION, SENSOR_TENSION]:
+#                        mcu_endstop.add_stepper(self.extruder_wrapper.homing_extruder_stepper.stepper)
+
+#                # Ensure all steppers see endstop
+#                if sensor_name not in gear_rail.get_extra_endstop_names():
+#                    mcu_endstop = gear_rail.add_extra_endstop(sensor_pin, sensor_name)
+
+            # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
+            # otherwise the extruder can continue to move a small (speed dependent) distance
+            if self.extruder_wrapper.homing_extruder_stepper is not None and sensor_name in [SENSOR_TOOLHEAD, SENSOR_COMPRESSION, SENSOR_TENSION]:
+                mcu_endstop.add_stepper(self.extruder_wrapper.homing_extruder_stepper.stepper)
 
 
         # Event handlers
@@ -648,6 +656,9 @@ class MmuUnit:
 
     def extruder_default_current(self):
         return self.extruder_wrapper.extruder_default_current()
+
+    def extruder_monitor(self):
+        return self.extruder_wrapper.extruder_monitor
 
 
 # PAUL experimental vvvv
@@ -888,12 +899,14 @@ class MmuToolHead(toolhead.ToolHead, object):
         # For Creality Ender3v3 series (custom klipper)
         self.gap_auto_comp = None
 
-        # MMU velocity and acceleration control
-        mmu_config = config.getsection('mmu')
-        self.gear_max_velocity = mmu_config.getfloat('gear_max_velocity', 300, above=0.)
-        self.gear_max_accel = mmu_config.getfloat('gear_max_accel', 500, above=0.)
-        self.selector_max_velocity = mmu_config.getfloat('selector_max_velocity', 250, above=0.)
-        self.selector_max_accel = mmu_config.getfloat('selector_max_accel', 1500, above=0.)
+        # Never to be exceeded MMU velocity and acceleration control
+# PAUL no longer exposed
+#        mmu_config = config.getsection('mmu')
+        mmu_config = config
+        self.gear_max_velocity = mmu_config.getfloat('gear_max_velocity', 1000, above=0.)
+        self.gear_max_accel = mmu_config.getfloat('gear_max_accel', 4000, above=0.)
+        self.selector_max_velocity = mmu_config.getfloat('selector_max_velocity', 500, above=0.)
+        self.selector_max_accel = mmu_config.getfloat('selector_max_accel', 4000, above=0.)
 
         self.max_velocity = max(self.selector_max_velocity, self.gear_max_velocity)
         self.max_accel = max(self.selector_max_accel, self.gear_max_accel)

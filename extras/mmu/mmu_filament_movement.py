@@ -276,6 +276,7 @@ class MmuFilamentMovement:
                 success = self._reverse_home_to_encoder(homing_max)
                 if success:
                     homing_movement, homing_overshoot = success
+                    self.log_debug(f"Found encoder endstop after moving {homing_movement:.1f}mm with {homing_overshoot:1.f}mm overshoot")
                     parking_distance = u.p.gate_parking_distance - homing_overshoot # homing_overshoot will always be -ve (retraction)
                     _, _, measured, _ = self.move_filament("Final parking", parking_distance)
 

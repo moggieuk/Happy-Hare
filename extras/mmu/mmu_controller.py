@@ -1790,6 +1790,7 @@ class MmuController(MmuFilamentMovement):
           False - wait for moves to complete and then read encoder
           None  - just read encoder without delay (caller responsible for ensuring prior movements have completed)
         """
+        self.log_info(f"PAUL: _encoder_dwell({dwell})")
         if dwell is True:
             self.movequeues_dwell(self.mmu_unit().p.encoder_dwell)
             self.movequeues_wait()

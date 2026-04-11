@@ -240,7 +240,7 @@ class MmuSyncFeedback:
         if eventtime is None: eventtime = self.mmu.reactor.monotonic()
 
         msg = "MmuSyncFeedback: Synced MMU to extruder%s" % (" (sync feedback activated)" if self.p.sync_feedback_enabled else "")
-        if self.mmu.mmu_machine.filament_always_gripped:
+        if self.mmu_unit.filament_always_gripped:
             self.mmu.log_debug(msg)
         else:
             self.mmu.log_info(msg)
@@ -266,7 +266,7 @@ class MmuSyncFeedback:
         if eventtime is None: eventtime = self.mmu.reactor.monotonic()
 
         msg = "MmuSyncFeedback: Unsynced MMU from extruder%s" % (" (sync feedback deactivated)" if self.p.sync_feedback_enabled else "")
-        if self.mmu.mmu_machine.filament_always_gripped:
+        if self.mmu_unit.filament_always_gripped:
             self.mmu.log_debug(msg)
         else:
             self.mmu.log_info(msg)
@@ -311,7 +311,7 @@ class MmuSyncFeedback:
         if eventtime is None: eventtime = self.mmu.reactor.monotonic()
  
         msg = "MmuSyncFeedback: Sync state changed to %s" % (self.get_sync_feedback_string(state))
-        if self.mmu.mmu_machine.filament_always_gripped:
+        if self.mmu_unit.filament_always_gripped:
             self.mmu.log_debug(msg)
         else:
             self.mmu.log_info(msg)
@@ -591,7 +591,7 @@ class MmuSyncFeedback:
         timeout_s    = 10.0
 
         # Wait for move queues to clear
-        self.mmu.mmu_toolhead.quiesce()
+        self.mmu_unit.mmu_toolhead.quiesce()
 
         # sanity-check parameters before doing anything
         # neutral band needs to have a non zero and non trivial value. Enforce 5% (0.05)

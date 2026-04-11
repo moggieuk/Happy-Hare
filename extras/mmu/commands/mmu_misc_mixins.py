@@ -133,7 +133,7 @@ class MoveMixin:
 
 
     def _homing_move_cmd(self, gcmd, trace_str, allow_bypass=False):
-        mmu = mmu
+        mmu = self.mmu
         selector = mmu.selector()
 
         if self.check_if_disabled():
@@ -158,7 +158,7 @@ class MoveMixin:
         endstop = mmu.sensor_manager.get_mapped_endstop_name(endstop)
         valid_endstops = list(mmu.gear_rail().get_extra_endstop_names())
         if endstop not in valid_endstops:
-            raise gcmd.error("Endstop name '%s' is not valid for motor '%s'. Options are: %s" % (endstop, motor, ', '.join(valid_endstops)))
+            raise gcmd.error("Endstop name '%s' is not valid for motor '%s'\nOptions are: %s" % (endstop, motor, ', '.join(valid_endstops)))
 
         if mmu.gear_rail().is_endstop_virtual(endstop) and stop_on_endstop == -1:
             raise gcmd.error("Cannot reverse home on virtual (TMC stallguard) endstop '%s'" % endstop)

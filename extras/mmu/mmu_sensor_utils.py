@@ -442,7 +442,7 @@ class MmuProportionalSensor:
 
 
 # -----------------------------------------------------------------------------------------------------------
-# EXPERIMENTAL/HACK
+# EXPERIMENTAL
 # Support ViViD analog buffer "endstops"
 # This class implments both the filament switch sensor and endstop. However:
 #  * it will not display in UI because no filament_switch_sensor exists in config
@@ -548,6 +548,7 @@ class MmuAdcSwitchSensor:
 # -----------------------------------------------------------------------------------------------------------
 
 class MmuHallEndstop:
+
     def __init__(self, config, name, pin1, pin2, cal_dia1, raw_dia1, cal_dia2, raw_dia2,
                  hall_runout_dia=1.,
                  insert=False, remove=False, runout=False, clog=False, tangle=False):
@@ -632,6 +633,7 @@ class MmuHallEndstop:
         self.printer.add_object("mmu_hall_endstop %s" % name, self)
         logging.info("MMU: Created [mmu_hall_endstop %s]" % name)
 
+
     def _calc_diameter(self):
         # Duplicate of Klipper hall_filament_width_sensor logic
         try:
@@ -645,15 +647,18 @@ class MmuHallEndstop:
         except ZeroDivisionError:
             self.diameter = 1.75 # Default fallback
 
+
     def adc_callback(self, read_time, read_value):
         self.lastFilamentWidthReading = round(read_value * 10000)
         self._calc_diameter()
         self._check_trigger(read_time)
 
+
     def adc2_callback(self, read_time, read_value):
         self.lastFilamentWidthReading2 = round(read_value * 10000)
         self._calc_diameter()
         self._check_trigger(read_time)
+
 
     def _check_trigger(self, eventtime):
         is_present = self.diameter > self.hall_min_diameter
@@ -666,6 +671,7 @@ class MmuHallEndstop:
                     self._trigger_completion.complete(True)
                     self._trigger_completion = None
 
+
     def get_status(self, eventtime):
         status = self.runout_helper.get_status(eventtime)
         status.update({
@@ -674,19 +680,24 @@ class MmuHallEndstop:
         })
         return status
 
+
     # Required to implement a HH MMU endstop -------
 
     def query_endstop(self, print_time):
         return self.runout_helper.filament_present
 
+
     def setup_pin(self, pin_type, pin_name):
         return self
+
 
     def add_stepper(self, stepper):
         self._steppers.append(stepper)
 
+
     def get_steppers(self):
         return list(self._steppers)
+
 
     def home_start(self, print_time, sample_time, sample_count, rest_time, triggered):
         self._trigger_completion = self.reactor.completion()
@@ -700,6 +711,7 @@ class MmuHallEndstop:
 
         return self._trigger_completion
 
+
     def home_wait(self, home_end_time):
         self._homing = False
         self._trigger_completion = None
@@ -708,29 +720,3 @@ class MmuHallEndstop:
             raise self.printer.command_error("No trigger on %s after full movement" % self.name)
 
         return self._last_trigger_time
-
-# TODO integrate this for alternative extruder entrance sensor...
-# TODO force options of 'extruder' or 'toolhead' only
-#        # For Qidi printers or any other that use a hall_filament_width_sensor as an endstop
-#        hall_sensor_endstop = config.get('hall_sensor_endstop', None)
-#        if hall_sensor_endstop is not None:
-#            if hall_sensor_endstop == 'extruder':
-#                target_name = SENSOR_EXTRUDER_ENTRY
-#            elif hall_sensor_endstop == 'toolhead':
-#                target_name = SENSOR_TOOLHEAD
-#            else:
-#                target_name = hall_sensor_endstop
-#
-#            self.hall_pin1 = config.get('hall_adc1')
-#            self.hall_pin2 = config.get('hall_adc2')
-#            self.hall_dia1 = config.getfloat('hall_cal_dia1', 1.5)
-#            self.hall_dia2 = config.getfloat('hall_cal_dia2', 2.0)
-#            self.hall_rawdia1 = config.getint('hall_raw_dia1', 9500)
-#            self.hall_rawdia2 = config.getint('hall_raw_dia2', 10500)
-#            self.hall_runout_dia = config.getfloat('hall_min_diameter', 1.0)
-#            # self.hall_runout_dia_max = config.getfloat('hall_max_diameter', 2.0) - Unused for trigger
-#
-#            s = MmuHallEndstop(config, target_name, self.hall_pin1, self.hall_pin2,
-#                               self.hall_dia1, self.hall_rawdia1, self.hall_dia2, self.hall_rawdia2,
-#                               hall_runout_dia=self.hall_runout_dia,
-#                               insert=True, runout=True)

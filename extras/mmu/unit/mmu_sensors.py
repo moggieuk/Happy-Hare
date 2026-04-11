@@ -26,7 +26,7 @@ import logging, time
 
 # Happy Hare imports
 from ..mmu_constants    import *
-from ..mmu_sensor_utils import MmuSensorFactory
+from ..mmu_sensor_utils import MmuSensorFactory, MmuAdcSwitchSensor
 
 
 class MmuSensors:
@@ -99,36 +99,3 @@ class MmuSensors:
                         switch_pin,
                         event_delay,
                         runout=True)
-
-# PAUL from v342 (reference)
-# --------
-#
-#        # For Qidi printers or any other that use a hall_filament_width_sensor as an endstop
-#        hall_sensor_endstop = config.get('hall_sensor_endstop', None)
-#        if hall_sensor_endstop is not None:
-#            if hall_sensor_endstop == 'gate':
-#                target_name = SENSOR_SHARED_EXIT
-#            elif hall_sensor_endstop == 'extruder':
-#                target_name = SENSOR_EXTRUDER_ENTRY
-#            elif hall_sensor_endstop == 'toolhead':
-#                target_name = SENSOR_TOOLHEAD
-#            else:
-#                target_name = hall_sensor_endstop
-#
-#            self.hall_pin1 = config.get('hall_adc1')
-#            self.hall_pin2 = config.get('hall_adc2')
-#            self.hall_dia1 = config.getfloat('hall_cal_dia1', 1.5)
-#            self.hall_dia2 = config.getfloat('hall_cal_dia2', 2.0)
-#            self.hall_rawdia1 = config.getint('hall_raw_dia1', 9500)
-#            self.hall_rawdia2 = config.getint('hall_raw_dia2', 10500)
-#            self.hall_runout_dia = config.getfloat('hall_min_diameter', 1.0)
-#            # self.hall_runout_dia_max = config.getfloat('hall_max_diameter', 2.0) - Unused for trigger
-#
-#            s = MmuHallEndstop(config, target_name, self.hall_pin1, self.hall_pin2,
-#                               self.hall_dia1, self.hall_rawdia1, self.hall_dia2, self.hall_rawdia2,
-#                               hall_runout_dia=self.hall_runout_dia,
-#                               insert=True, runout=True)
-#            self.sensors[target_name] = s
-#
-# --------
-
