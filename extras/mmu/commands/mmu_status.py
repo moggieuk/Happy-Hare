@@ -155,11 +155,14 @@ class MmuStatusCommand(BaseCommand):
 
                 if self.calibrated_bowden_length > 0:
                     if mmu._must_home_to_extruder():
-
                         if mmu_unit.p.extruder_homing_endstop == SENSOR_EXTRUDER_ENTRY:
                             move = self._f_calc("calibrated_bowden_length - bowden_load_homing_buffer - toolhead_entry_to_extruder")
                         else:
                             move = self._f_calc("calibrated_bowden_length - bowden_load_homing_buffer")
+                        lines.append(f"\n- Bowden is loaded with a fast{correction} {move} move ")
+
+                    elif mmu.sensor_manager.has_sensor(SENSOR_TOOLHEAD):
+                        move = self._f_calc("calibrated_bowden_length - bowden_load_homing_buffer")
                         lines.append(f"\n- Bowden is loaded with a fast{correction} {move} move ")
 
                     else:
@@ -186,7 +189,7 @@ class MmuStatusCommand(BaseCommand):
                     lines.append(
                         f"\n- Filament finds extruder entrance by homing homes a maximum of {self._f_calc('bowden_load_homing_buffer + extruder_homing_max')} "
                         f"to extruder using 'touch' (stallguard) detection "
-                        f"(at {mmu_unit.p.extruder_collision_homing_current}% current)"
+                        f"(at ((5)){mmu_unit.p.extruder_collision_homing_current}%{{6}} current)"
                     )
                 else:
                     lines.append(
@@ -208,12 +211,18 @@ class MmuStatusCommand(BaseCommand):
             # Extruder loading ---------------------------------------------------
 
             if mmu.sensor_manager.has_sensor(SENSOR_TOOLHEAD):
+                if mmu._must_home_to_extruder():
+                    move = self._f_calc('toolhead_homing_max') # Already consumed bowden homing buffer
+                else:
+                    move = self._f_calc('bowden_load_homing_buffer + toolhead_homing_max')
+
                 lines.append(
-                    f"\n- Extruder (synced) loads by homing a maximum of {self._f_calc('toolhead_homing_max')} "
+                    f"\n- Extruder (synced) loads by homing a maximum of {self._f_calc('bowden_load_homing_buffer + toolhead_homing_max')} "
                     "to TOOLHEAD sensor before moving the last "
                     f"{self._f_calc('toolhead_sensor_to_nozzle - toolhead_residual_filament - toolhead_ooze_reduction - toolchange_retract - filament_remaining')} "
                     "to the nozzle"
                 )
+
             else:
                 lines.append(
                     "\n- Extruder (synced) loads by moving "
@@ -228,7 +237,7 @@ class MmuStatusCommand(BaseCommand):
                     lines.append(
                         "\n- Purging is always managed by Happy Hare using "
                         f"'{mmu.p.purge_macro}' macro with extruder purging current of "
-                        f"{mmu.p.extruder_purge_current}%"
+                        f"{{5}}{mmu.p.extruder_purge_current}%{{6}}"
                     )
                 else:
                     lines.append("\n- No purging is performed!")
@@ -238,7 +247,7 @@ class MmuStatusCommand(BaseCommand):
                         "\n- Purging is managed by slicer when printing. "
                         "Otherwise by Happy Hare using "
                         f"'{mmu.p.purge_macro}' macro with extruder purging current of "
-                        f"{mmu.p.extruder_purge_current}% when not printing"
+                        f"{{5}}{mmu.p.extruder_purge_current}%{{6}} when not printing"
                     )
                 else:
                     lines.append("\n- Purging is managed by slicer only when printing")
@@ -258,7 +267,7 @@ class MmuStatusCommand(BaseCommand):
                 lines.append(
                     "\n- Filament in bowden is tightened by "
                     f"{self._f_calc('toolhead_post_load_tighten% * encoder_clog_detection_length')} at reduced gear "
-                    "current to prevent false flowguard detection"
+                    "current to prevent false encoder flowguard detection"
                 )
 
             elif (
@@ -286,7 +295,7 @@ class MmuStatusCommand(BaseCommand):
                         "\n- Tip is always formed by Happy Hare using "
                         f"'{mmu.p.form_tip_macro}' macro after initial retract of "
                         f"{self._f_calc('toolchange_retract')} with extruder current of "
-                        f"{mmu.p.extruder_form_tip_current}%"
+                        f"{{5}}{mmu.p.extruder_form_tip_current}%{{6}}"
                     )
                 else:
                     lines.append("\n- No tip forming is performed!")
@@ -297,7 +306,7 @@ class MmuStatusCommand(BaseCommand):
                         "Otherwise by Happy Hare using "
                         f"'{mmu.p.form_tip_macro}' macro after initial retract of "
                         f"{self._f_calc('toolchange_retract')} with extruder current of "
-                        f"{mmu.p.extruder_form_tip_current}%"
+                        f"{{5}}{mmu.p.extruder_form_tip_current}%{{6}}"
                     )
                 else:
                     lines.append("\n- Tip is formed by slicer only when printing")
@@ -367,7 +376,7 @@ class MmuStatusCommand(BaseCommand):
             # Gate parking -------------------------------------------------------
 
             lines.append(
-                f"\n- Filament is parked by moving {self._f_calc('gate_parking_distance')} from the gate endstop"
+                f"\n- Filament is parked by moving {self._f_calc('gate_parking_distance')} from the gate endstop ({mmu._gate_homing_string()})"
             )
 
         if not detail:

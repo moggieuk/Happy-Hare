@@ -28,6 +28,11 @@ from ..mmu_constants import *
 from ..mmu_utils     import MmuError
 
 
+# Approximate moving average window lengths
+AUTOTUNE_ENCODER_WINDOW_LENGTH = 10 # for encoder resolution updates
+AUTOTUNE_RD_WINDOW_LENGTH = 10      # for gear rotation distance updates
+AUTOTUNE_BOWDEN_WINDOW_LENGTH = 10  # for bowden length updates
+
 class MmuCalibrator:
 
     def __init__(self, config, mmu_unit, params):
@@ -42,11 +47,6 @@ class MmuCalibrator:
         # Klipper event handlers
         self.printer.register_event_handler('klippy:connect', self._handle_connect)
         self.printer.register_event_handler('klippy:ready',   self._handle_ready)
-
-        # MMU event handlers
-        self.printer.register_event_handler('mcu:autotune_bowden_length',     self._handle_autotune_bowden_length)
-        self.printer.register_event_handler('mcu:autotune_rotation_distance', self._handle_autotune_rotation_distance)
-        self.printer.register_event_handler('mcu:autotune_encoder',           self._handle_autotune_encoder)
 
 
     def _handle_connect(self):
@@ -431,11 +431,85 @@ class MmuCalibrator:
     # Autotuning from telemetry data events
     # -----------------------------------------------------------------------------------------------------------
 
-# PAUL currently these new event handles just log
-    def _handle_autotune_bowden_length(self, gate, direction, bowden_length, bowden_travel, encoder_move_ratio):
-        if not self.mmu_unit.manages_gate(gate):
-            return
+    def note_encoder_telemetry(self, ratio):
+        """
+        Called to notify of encoder accuracy telemetry. If enabled uses an exponential
+        moving average (EMA) filter to smooth adjustment of encoder resolution
+        """
+        current_resolution = self.mmu_unit.encoder.get_resolution()
+        sampled_resolution = current_resolution * ratio
 
+        msg = (
+            f"Current encoder resolution: "
+            f"{current_resolution:.4f}, New sample: {sampled_resolution:.4f} "
+            f"(ratio: {ratio:.4f})"
+        )
+
+        if self.mmu_unit.p.autotune_encoder:
+            new_resolution = self._ema_update(self, current_resolution, sampled_resolution, AUTOTUNE_ENCODER_WINDOW_LENGTH)
+            self.mmu.log_info(f"Autotune: {msg} -> Updated: {new_resolution:.4f}")
+            self.mmu_unit.encoder.set_resolution(new_resolution)
+
+        else:
+            self.mmu.log_info(f"Autotune (disabled): {msg}. Ignored")
+
+
+    def note_rd_telemetry(self, gate, rd):
+        """
+        Called to notify of rotation distance telemetry. If enabled uses an exponential
+        moving average (EMA) filter to smooth adjustment of gear rotation distance
+        """
+        current_rd = self.get_gear_rd(gate)
+
+        msg = (
+            f"Current rotation_distance for gate {gate}: "
+            f"{current_rd:.1f}mm, Revised: {rd:.1f}mm"
+        )
+
+        if self.mmu_unit.p.autotune_rotation_distance:
+            self.mmu.log_info(f"Autotune: {msg}")
+            new_rd = self._ema_update(self, current_rd, rd, AUTOTUNE_RD_WINDOW_LENGTH)
+            self.mmu.log_info(f"Autotune: {msg} -> Updated: {new_rd:.1f}mm")
+            self.set_gear_rd(new_rd, gate=gate)
+
+        else:
+            self.mmu.log_info(f"Autotune (disabled): {msg}. Ignored")
+
+
+    def note_load_telemetry(self, gate, bowden_length, bowden_travel, encoder_move_ratio):
+        """
+        Called after full load sequence to notify of possible bowden length and encoder
+        calibration mismatch
+        """
+        self._autotune_bowden_length(gate, DIRECTION_LOAD, bowden_length, bowden_travel)
+        if encoder_move_ratio is not None:
+            self.note_encoder_telemetry(encoder_move_ratio)
+
+
+    def note_unload_telemetry(self, gate, bowden_length, bowden_travel, encoder_move_ratio):
+        """
+        Called after full unload sequence to notify of possible bowden length and encoder
+        calibration mismatch
+        """
+        self._autotune_bowden_length(gate, DIRECTION_UNLOAD, bowden_length, bowden_travel)
+        if encoder_move_ratio is not None:
+            self.note_encoder_telemetry(encoder_move_ratio)
+
+
+    def _autotune_bowden_length(self, gate, direction, bowden_length, bowden_travel):
+        """
+        Use data from load or unload operation to auto-calibrate / auto-tune
+
+        If the actual bowden travel is:
+           > expected bowden length then we should consider shortening the calibrated length
+           < expected bowden length then we should consider increasing the calibrated length
+
+        Args:
+          direction - direction of travel (load/unload)
+          bowden_length      - current calibrated/expected length of bowden for gate
+          bowden_travel      - actual filament movement including all homing moves
+          homing_movement    - additional homing movement outside of what was expected
+        """
         dir_str = "Loaded" if direction == DIRECTION_LOAD else "Unloaded"
         bowden_move_delta = bowden_travel - bowden_length
 
@@ -447,55 +521,12 @@ class MmuCalibrator:
 
         if self.mmu_unit.p.autotune_bowden_length:
             self.mmu.log_info(f"Autotune: {msg}")
+            # PAUL TODO....
+
         else:
-            self.mmu.log_debug(f"Autotune (disabled): {msg}. Ignored")
+            self.mmu.log_info(f"Autotune (disabled): {msg}. Ignored")
 
 
-    def _handle_autotune_rotation_distance(self, gate, rotation_distance):
-        if not self.mmu_unit.manages_gate(gate):
-            return
-
-        current_rd = self.get_gear_rd(gate)
-
-        msg = (
-            f"Current rotation_distance for gate {gate}: "
-            f"{current_rd:.1f}mm, Revised: {rotation_distance:.1f}mm"
-        )
-
-        if self.mmu_unit.p.autotune_rotation_distance:
-            self.mmu.log_info(f"Autotune: {msg}")
-        else:
-            self.mmu.log_debug(f"Autotune (disabled): {msg}. Ignored")
-
-
-    def _handle_autotune_encoder(self, gate, delta_ratio)
-        if not self.mmu_unit.manages_gate(gate):
-            return
-
-        current_resolution = self.mmu_unit.encoder.get_resolution()
-        sampled_resolution = current_resolution * delta_ratio
-
-        msg = (
-            f"Current encoder resolution: "
-            f"{current_resolution:.4f}, New sample: {revised_resolution:.4f} "
-            f"(delta ratio: {delta_ratio:.4f})"
-        )
-
-        if self.mmu_unit.p.autotune_encoder:
-            self.mmu.log_info(f"Autotune: {msg}")
-        else:
-            self.mmu.log_debug(f"Autotune (disabled): {msg}. Ignored")
-
-
-#    def note_load_telemetry(self, bowden_length, bowden_travel, encoder_move_ratio):
-#        self._autotune(DIRECTION_LOAD, bowden_length, bowden_travel, encoder_move_ratio)
-#
-#
-#    def note_unload_telemetry(self, bowden_length, bowden_travel, encoder_move_ratio):
-#        self._autotune(DIRECTION_UNLOAD, bowden_length, bowden_travel, encoder_move_ratio)
-
-
-#
 #    # Use data from load or unload operation to auto-calibrate / auto-tune
 #    #
 #    # PAUL REDO...
@@ -513,38 +544,6 @@ class MmuCalibrator:
 #    #    but only do this if homing movement data tells us we haven't overshot. Can be done in both directions
 #    #
 #    # Calibration replaces the previous value. Autotuning applies a moving average
-    def _autotune(self, direction, bowden_length, bowden_travel, encoder_move_ratio):
-        """
-        Use data from load or unload operation to auto-calibrate / auto-tune
-
-        If the actual bowden travel is:
-           > expected bowden length then we should consider shortening the calibrated length
-           < expected bowden length then we should consider increasing the calibrated length
-
-        Args:
-          direction - direction of travel (load/unload)
-          bowden_length      - current calibrated/expected lenght of bowden for current gate
-          bowden_travel      - actual filament movement including all homing moves
-          homing_movement    - additional homing movement outside of what was expected
-          encoder_move_ratio - optionally the ratio of encoder movement (if encoder is fitted)
-        """
-        dir_str = "Loaded" if direction == DIRECTION_LOAD else "Unloaded"
-        bowden_move_delta = bowden_travel - bowden_length
-
-        msg = (
-            f"Autotune: Current bowden length for gate {self.mmu.gate_selected}: "
-            f"{bowden_length:.1f}mm, {dir_str}: {bowden_travel:.1f}mm "
-            f"(delta: {bowden_move_delta:+.1f}mm)"
-        )
-
-        if encoder_move_ratio is not None:
-            encoder_measured = bowden_travel / encoder_move_ratio
-            msg += f". Encoder measured {encoder_measured:.1f}mm (ratio: {encoder_move_ratio:.4f})"
-
-        self.mmu.log_info(msg)
-        return
-
-# PAUL TODO....
 #        if homing_movement is not None:
 #
 #            # If sync-feedback is available it provides a better way to autotune rotation distance. This is retained for legacy cases
@@ -616,6 +615,25 @@ class MmuCalibrator:
 #            msg += ". Tuning not possible"
 #
 #        self.mmu.log_debug(msg)
+
+
+    def _ema_update(self, old_avg, new_val, window_length):
+        """
+        Compute one step of an Exponential Moving Average (EMA).
+
+        Parameters:
+            old_avg (float): previous EMA value
+            new_val (float): new incoming sample
+            window_length (int): desired equivalent window size (like SMA length)
+
+        Returns:
+            float: updated EMA value
+        """
+        if window_length <= 0:
+            raise ValueError("window_length must be > 0")
+
+        alpha = 2.0 / (window_length + 1.0)
+        return (1 - alpha) * old_avg + alpha * new_val
 
 
     # -----------------------------------------------------------------------------------------------------------

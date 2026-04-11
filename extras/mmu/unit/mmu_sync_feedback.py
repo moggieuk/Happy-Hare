@@ -277,9 +277,7 @@ class MmuSyncFeedback:
         self.active = False
 
         if self.new_autotuned_rd is not None:
-#PAUL            self.mmu.log_info("MmuSyncFeedback: New Autotuned rotation distance (%.4f) for gate %d\n" % (self.new_autotuned_rd, self.mmu.gate_selected))
-#PAUL            self.mmu_unit.calibrator.update_gear_rd(self.new_autotuned_rd) # PAUL TODO send as event
-            self.printer.send_event("mmu:autotune_rotation_distance", self.mmu.gate_selected, self.new_autotuned_rd)
+            self.mmu_unit.calibrator.note_rd_telemetry(self.mmu.gate_selected, self.new_autotuned_rd)
 
         # Restore default (last tuned) rotation distance
         self.set_default_rd()
@@ -371,9 +369,6 @@ class MmuSyncFeedback:
         if rd is not None:
             msg = "MmuSyncFeedback: Autotune suggested new operational reference rd: %.4f\n%s" % (rd, note)
             self.new_autotuned_rd = rd
-#PUL
-#            if save and self.mmu.UNIT.p.autotune_rotation_distance: # PAUL change this logic to send event and let calibrator handle it
-#                self.new_autotuned_rd = rd
             self.mmu.log_debug(msg)
 
         # Always update instaneous gear stepper rotation_distance

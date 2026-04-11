@@ -389,13 +389,14 @@ class MmuFilamentMovement:
 
         Args:
             length: Requested bowden travel distance. When omitted, the calibrated bowden length is used.
-            start_pos: Distance already consumed before the bowden move begins, such as gate overshoot.
+            start_pos: Distance already consumed before the bowden move begins, such as gate overshoot with encoder
 
         Returns:
             tuple[float, float]:
-              - Ratio of measured load movement to commanded movement, used for calibration and telemetry (None for invalid)
+              - Ratio of encoder measured load movement to commanded movement, used for calibration and telemetry (None for invalid or no encoder)
               - The distance not yet moved and reserved for homing buffer in later stages.
         """
+        self.log_warning(f"PAUL: _load_bowden(length={length}, start_pos={start_pos})")
         self.log_warning(f"PAUL: S_BOWDEN filament_pos={self.get_filament_position():.1f}mm, encoder={self.get_encoder_distance(dwell=None):.1f}mm")
         u = self.mmu_unit()
 
@@ -415,13 +416,13 @@ class MmuFilamentMovement:
             # Do we need to reduce by buffer amount to ensure we don't overshoot homing sensor
             extruder_homing_buffer = 0.
             if full:
-                # We will need some buffer space if we are intending to home
-                if self._must_home_to_extruder():
+                # We will need some buffer space if we are intending to home to extruder (or toolhead sensor)
+                if self._must_home_to_extruder() or self.sensor_manager.has_sensor(SENSOR_TOOLHEAD):
                     # Determine how much to reduce the fast move portion to leave room for homing
                     extruder_homing_buffer = u.p.bowden_load_homing_buffer
 
-                    # Further reduce to compensate for distance from extruder entry sensor to extruder gear
-                    # because the bowden length is always recorded as distance to extruder gear
+                    # If homing to extruder entry sensor, Further reduce to compensate for distance from sensor to extruder gear
+                    # (because the bowden length is always recorded as distance to extruder gear)
                     if u.p.extruder_homing_endstop == SENSOR_EXTRUDER_ENTRY:
                         extruder_homing_buffer -= u.toolhead_wrapper.p.toolhead_entry_to_extruder
 
@@ -503,6 +504,7 @@ class MmuFilamentMovement:
                 ratio = None
 
             self.log_warning(f"PAUL: E_BOWDEN filament_pos={self.get_filament_position():.1f}mm, encoder={self.get_encoder_distance(dwell=None):.1f}mm")
+            self.log_warning(f"PAUL: _load_bowden() => (ratio={ratio}, extruder_homing_buffer={extruder_homing_buffer})")
             return ratio, extruder_homing_buffer
 
         finally:
@@ -521,6 +523,7 @@ class MmuFilamentMovement:
               - Ratio of measured unload movement to commanded movement, used for calibration and telemetry (None for invalid)
               - The distance not yet moved and reserved for homing buffer in later stages.
         """
+        self.log_warning(f"PAUL: _unload_bowden(lenght={length})")
         self.log_warning(f"PAUL: S_BOWDEN filament_pos={self.get_filament_position():.1f}mm, encoder={self.get_encoder_distance(dwell=None):.1f}mm")
         u = self.mmu_unit()
 
@@ -596,6 +599,7 @@ class MmuFilamentMovement:
                 ratio = None
 
             self.log_warning(f"PAUL: E_BOWDEN filament_pos={self.get_filament_position():.1f}mm, encoder={self.get_encoder_distance(dwell=None):.1f}mm")
+            self.log_warning(f"PAUL: _load_bowden() => (ratio={ratio}, gate_homing_buffer={gate_homing_buffer})")
             return ratio, gate_homing_buffer
 
         finally:
@@ -613,6 +617,7 @@ class MmuFilamentMovement:
             [float or None]
               - Actual homing movement, if applicable required to reach the extruder gear else None
         """
+        self.log_warning(f"PAUL: _home_to_extruder(extra_homing={extra_homing})")
         u = self.mmu_unit()
 
         self.set_filament_direction(DIRECTION_LOAD)
@@ -656,6 +661,7 @@ class MmuFilamentMovement:
 
         self.set_filament_pos_state(FILAMENT_POS_HOMED_EXTRUDER)
 
+        self.log_warning(f"PAUL: _home_to_extruder() -> homing_movement={homing_movement}")
         return homing_movement
 
 
@@ -715,6 +721,7 @@ class MmuFilamentMovement:
         Returns:
             float or None: Additional bowden movement inferred from toolhead-sensor homing, or None when not applicable.
         """
+        self.log_warning(f"PAUL: _load_extruder(extruder_only={extruder_only}, extra_homing={extra_homing})")
         u = self.mmu_unit()
 
         with self.wrap_action(ACTION_LOADING_EXTRUDER):
@@ -742,14 +749,17 @@ class MmuFilamentMovement:
                 motor = "extruder"
 
             fhomed = False
+
             if has_toolhead:
-                # With toolhead sensor for accuracy we always first home to toolhead sensor past the extruder entrance
-                # The remaining load distance is relative to the toolhead sensor
+                # With toolhead sensor for best accuracy we always first home to toolhead sensor past the extruder entrance
+                # The remaining load distance is then relative to the toolhead sensor not extruder gears/entrance
                 if self.sensor_manager.check_sensor(SENSOR_TOOLHEAD):
                     raise MmuError("Possible toolhead sensor malfunction - filament detected before it entered extruder")
+
                 homing_max = extra_homing + u.p.toolhead_homing_max
                 self.log_debug("Homing up to %.1fmm to toolhead sensor%s" % (homing_max, (" (synced)" if synced else "")))
                 actual, fhomed, measured, _ = self.move_filament("Homing to toolhead sensor", homing_max, motor=motor, homing_move=1, endstop_name=SENSOR_TOOLHEAD)
+
                 if fhomed:
                     self.set_filament_pos_state(FILAMENT_POS_HOMED_TS)
                     # Bowden part of move is homing distance minus the distance between entrance and toolhead sensor
@@ -851,6 +861,8 @@ class MmuFilamentMovement:
             self.movequeues_wait()
             self.set_filament_pos_state(FILAMENT_POS_LOADED)
             self.log_debug("Filament should be loaded to nozzle")
+
+            self.log_warning(f"PAUL: _load_extruder() => bowden_extra={bowden_extra}")
             return bowden_extra # Will only have value if we have toolhead sensor
 
 
@@ -869,6 +881,7 @@ class MmuFilamentMovement:
         Returns:
             bool: True when the unload finished in a synced state; otherwise False.
         """
+        self.log_warning(f"PAUL: _unload_extruder(extruder_only={extruder_only}, validate={validate})")
         u = self.mmu_unit()
 
         with self.wrap_action(ACTION_UNLOADING_EXTRUDER):
@@ -967,6 +980,8 @@ class MmuFilamentMovement:
             self._random_failure() # Testing
             self.movequeues_wait()
             self.log_debug("Filament should be out of extruder")
+
+            self.log_warning(f"PAUL: _unload_extruder() => synced={synced}")
             return synced
 
 
@@ -1147,9 +1162,7 @@ class MmuFilamentMovement:
 
                     # Notify calibration manager
                     if full and not skip_extruder:
-#PAUL old direct approach                        u.calibrator.note_load_telemetry(bowden_move, bowden_travel, bowden_move_ratio)
-                        self.printer.send_event("mmu:autotune_bowden_length", self.gate_selected, DIRECTION_LOAD, bowden_move, bowden_travel)
-                        self.printer.send_event("mmu:autotune_encoder", self.gate_selected, bowden_move_ratio)
+                        u.calibrator.note_load_telemetry(self.gate_selected, bowden_move, bowden_travel, bowden_move_ratio)
 
             self.movequeues_wait()
             msg = "Load of %.1fmm filament successful" % self.get_filament_position()
@@ -1354,9 +1367,7 @@ class MmuFilamentMovement:
 
                     # Notify autotune manager
                     if full:
-#PAUL                        u.calibrator.note_unload_telemetry(bowden_move, bowden_travel, bowden_move_ratio)
-                        self.printer.send_event("mmu:autotune_bowden_length", self.gate_selected, DIRECTION_UNLOAD, bowden_move, bowden_travel)
-                        self.printer.send_event("mmu:autotune_encoder", self.gate_selected, bowden_move_ratio)
+                        u.calibrator.note_unload_telemetry(self.gate_selected, bowden_move, bowden_travel, bowden_move_ratio)
                     self.log_warning(f"PAUL: filament_pos={self.get_filament_position():.1f}mm, encoder={self.get_encoder_distance(dwell=None):.1f}mm")
 
                 elif start_filament_pos >= FILAMENT_POS_HOMED_GATE:
