@@ -177,7 +177,7 @@ class ServoSelector(PhysicalSelector):
         self.servo_state = FILAMENT_UNKNOWN_STATE
 
     # Common logic for servo manipulation
-    def _grip(self, gate, release=False):
+    def _grip(self, lgate, release=False):
         """
         Move the servo to grip or release filament for a gate.
 
@@ -185,18 +185,18 @@ class ServoSelector(PhysicalSelector):
         sets the gate grip angle or a computed/explicit release angle, updating
         the cached servo state accordingly.
         """
-        if gate == TOOL_GATE_BYPASS:
+        if lgate == TOOL_GATE_BYPASS:
             self.mmu.log_trace("Setting servo to bypass angle: %.1f" % self.servo_bypass_angle)
             self._set_servo_angle(self.servo_bypass_angle)
             self.servo_state = FILAMENT_UNKNOWN_STATE
-        elif gate >= 0:
+        elif lgate >= 0:
             if release:
                 release_angle = self._get_closest_released_angle()
                 self.mmu.log_trace("Setting servo to filament released position at angle: %.1f" % release_angle)
                 self._set_servo_angle(release_angle)
                 self.servo_state = FILAMENT_RELEASE_STATE
             else:
-                angle = self.servo_gate_angles[self.local_gate(gate)]
+                angle = self.servo_gate_angles[lgate]
                 self.mmu.log_trace("Setting servo to filament grip position at angle: %.1f" % angle)
                 self._set_servo_angle(angle)
                 self.servo_state = FILAMENT_DRIVE_STATE
@@ -367,8 +367,12 @@ class MmuCalibrateServoSelectorCommand(BaseCommand):
         spacing = gcmd.get_float('SPACING', 25., above=0, below=180) # TiPicoMMU is 25 degrees between gates
         release = gcmd.get_float('RELEASE', 0.,  minval=0, maxval=1)
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=mmu_unit.num_gates - 1)
+
         if gate == -1 and gcmd.get_int('BYPASS', -1, minval=0, maxval=1) == 1:
             gate = TOOL_GATE_BYPASS
+
+        if gate is not None and not mmu_unit.manages_gate(gate):
+            raise gcmd.error("Gate %d is not managed by %s (range=%d-%d)" % (gate, mmu_unit.name, min_gate, max_gate))
 
         if show:
             msg = ""
@@ -395,15 +399,18 @@ class MmuCalibrateServoSelectorCommand(BaseCommand):
                 selector.servo_release_angle = selector.servo_angle
                 mmu_unit.calibrator.var_manager.set(VARS_MMU_SELECTOR_RELEASE_ANGLE, selector.servo_release_angle, write=True, namespace=mmu_unit.name)
                 mmu.log_info("Servo angle '%d' for release position has been saved" % selector.servo_angle)
+
             elif gate == TOOL_GATE_BYPASS:
                 selector.servo_bypass_angle = selector.servo_angle
                 mmu_unit.calibrator.var_manager.set(VARS_MMU_SELECTOR_BYPASS_ANGLE, selector.servo_bypass_angle, write=True, namespace=mmu_unit.name)
                 mmu.log_info("Servo angle '%d' for bypass position has been saved" % selector.servo_angle)
+
             elif gate >= 0:
                 if single:
                     selector.servo_gate_angles[gate] = selector.servo_angle
                     mmu_unit.calibrator.var_manager.set(VARS_MMU_SELECTOR_ANGLES, selector.servo_gate_angles, write=True, namespace=mmu_unit.name)
                     mmu.log_info("Servo angle '%d' for gate %d has been saved" % (selector.servo_angle, gate))
+
                 else:
                     # If possible evenly distribute based on spacing
                     angles = selector._generate_gate_angles(selector.servo_angle, gate, spacing)
@@ -411,10 +418,12 @@ class MmuCalibrateServoSelectorCommand(BaseCommand):
                         selector.servo_gate_angles = angles
                         mmu_unit.calibrator.var_manager.set(VARS_MMU_SELECTOR_ANGLES, selector.servo_gate_angles, write=True, namespace=mmu_unit.name)
                         mmu.log_info("Selector gate angle positions %s has been saved" % selector.servo_gate_angles)
+
                     else:
                         mmu.log_error("Not possible to distribute angles with separation of %.1f degrees with gate %d at %.1f" % (spacing, gate, selector.servo_angle))
             else:
                 mmu.log_error("No gate specified")
+
         else:
             mmu.log_always("Current selector servo angle: %d, Selector gate angle positions: %s" % (selector.servo_angle, selector.servo_gate_angles))
 

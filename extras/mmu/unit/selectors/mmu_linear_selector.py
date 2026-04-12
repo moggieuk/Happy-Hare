@@ -706,6 +706,7 @@ class MmuCalibrateSelectorCommand(BaseCommand):
         gate = gcmd.get_int('GATE', None, minval=0, maxval=mmu.num_gates - 1)
         bypass = bool(gcmd.get_int('BYPASS', None, minval=0, maxval=1))
         ercf_v1_bypass_block = gcmd.get_int('BYPASS_BLOCK', -1, minval=1, maxval=3)
+
         if gate is None and bypass:
             gate = TOOL_GATE_BYPASS
 

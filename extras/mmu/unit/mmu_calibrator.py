@@ -21,7 +21,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import logging, math
+import logging
 
 # Happy Hare imports
 from ..mmu_constants import *
@@ -30,7 +30,6 @@ from ..mmu_utils     import MmuError
 
 # Approximate moving average window lengths
 AUTOTUNE_ENCODER_WINDOW_LENGTH = 10 # for encoder resolution updates
-AUTOTUNE_RD_WINDOW_LENGTH = 10      # for gear rotation distance updates
 AUTOTUNE_BOWDEN_WINDOW_LENGTH = 10  # for bowden length updates
 
 class MmuCalibrator:
@@ -272,6 +271,7 @@ class MmuCalibrator:
 
         if lgate >= 0:
             return self._bowden_lengths[lgate] >= 0
+
         return True
 
 
@@ -424,6 +424,7 @@ class MmuCalibrator:
 
         if lgate >= 0:
             return self.rotation_distances[lgate] >= 0
+
         return True
 
 
@@ -431,7 +432,7 @@ class MmuCalibrator:
     # Autotuning from telemetry data events
     # -----------------------------------------------------------------------------------------------------------
 
-    def note_encoder_telemetry(self, ratio):
+    def note_encoder_telemetry(self, gate, ratio):
         """
         Called to notify of encoder accuracy telemetry. If enabled uses an exponential
         moving average (EMA) filter to smooth adjustment of encoder resolution
@@ -446,7 +447,17 @@ class MmuCalibrator:
         )
 
         if self.mmu_unit.p.autotune_encoder:
-            new_resolution = self._ema_update(self, current_resolution, sampled_resolution, AUTOTUNE_ENCODER_WINDOW_LENGTH)
+            initial_resolution = self.mmu_unit.encoder.initial_resolution
+
+            if not self.is_gear_rd_calibrated(gate):
+                self.mmu_log_info(f"Autotune: {msg}.\nIgnored because rotation distance not yet calibrated for gate")
+                return
+
+            if abs(sampled_resolution - initial_resolution) > 0.2 * initial_resolution:
+                self.mmu_log_info(f"Autotune: {msg}.\nIgnored because not within 20% of h/w configured initial resolution and therefore likely erroneous")
+                return
+
+            new_resolution = self._ema_update(current_resolution, sampled_resolution, AUTOTUNE_ENCODER_WINDOW_LENGTH)
             self.mmu.log_info(f"Autotune: {msg} -> Updated: {new_resolution:.4f}")
             self.mmu_unit.encoder.set_resolution(new_resolution)
 
@@ -454,7 +465,7 @@ class MmuCalibrator:
             self.mmu.log_info(f"Autotune (disabled): {msg}. Ignored")
 
 
-    def note_rd_telemetry(self, gate, rd):
+    def note_rd_telemetry(self, gate, new_rd):
         """
         Called to notify of rotation distance telemetry. If enabled uses an exponential
         moving average (EMA) filter to smooth adjustment of gear rotation distance
@@ -463,14 +474,12 @@ class MmuCalibrator:
 
         msg = (
             f"Current rotation_distance for gate {gate}: "
-            f"{current_rd:.1f}mm, Revised: {rd:.1f}mm"
+            f"{current_rd:.1f}mm, Revised: {new_rd:.1f}mm"
         )
 
         if self.mmu_unit.p.autotune_rotation_distance:
-            self.mmu.log_info(f"Autotune: {msg}")
-            new_rd = self._ema_update(self, current_rd, rd, AUTOTUNE_RD_WINDOW_LENGTH)
-            self.mmu.log_info(f"Autotune: {msg} -> Updated: {new_rd:.1f}mm")
-            self.set_gear_rd(new_rd, gate=gate)
+            self.mmu.log_info(f"Autotune: {msg} -> Updated")
+            self.update_gear_rd(new_rd, gate=gate)
 
         else:
             self.mmu.log_info(f"Autotune (disabled): {msg}. Ignored")
@@ -483,7 +492,7 @@ class MmuCalibrator:
         """
         self._autotune_bowden_length(gate, DIRECTION_LOAD, bowden_length, bowden_travel)
         if encoder_move_ratio is not None:
-            self.note_encoder_telemetry(encoder_move_ratio)
+            self.note_encoder_telemetry(gate, encoder_move_ratio)
 
 
     def note_unload_telemetry(self, gate, bowden_length, bowden_travel, encoder_move_ratio):
@@ -493,7 +502,7 @@ class MmuCalibrator:
         """
         self._autotune_bowden_length(gate, DIRECTION_UNLOAD, bowden_length, bowden_travel)
         if encoder_move_ratio is not None:
-            self.note_encoder_telemetry(encoder_move_ratio)
+            self.note_encoder_telemetry(gate, encoder_move_ratio)
 
 
     def _autotune_bowden_length(self, gate, direction, bowden_length, bowden_travel):
@@ -508,7 +517,6 @@ class MmuCalibrator:
           direction - direction of travel (load/unload)
           bowden_length      - current calibrated/expected length of bowden for gate
           bowden_travel      - actual filament movement including all homing moves
-          homing_movement    - additional homing movement outside of what was expected
         """
         dir_str = "Loaded" if direction == DIRECTION_LOAD else "Unloaded"
         bowden_move_delta = bowden_travel - bowden_length
@@ -520,13 +528,43 @@ class MmuCalibrator:
         )
 
         if self.mmu_unit.p.autotune_bowden_length:
-            self.mmu.log_info(f"Autotune: {msg}")
-            # PAUL TODO....
+
+            if not self.is_gear_rd_calibrated(gate):
+                self.mmu_log_info(f"Autotune: {msg}.\nIgnored because rotation distance not yet calibrated for gate")
+                return
+
+            if abs(bowden_travel - bowden_length) > 0.2 * bowden_length:
+                self.mmu_log_info(f"Autotune: {msg}.\nIgnored because not within 20% of previous value and therefore likely erroneous")
+                return
+
+            new_bowden_length = self._ema_update(bowden_length, bowden_travel, AUTOTUNE_BOWDEN_WINDOW_LENGTH)
+            self.mmu.log_info(f"Autotune: {msg} -> Updated: {new_bowden_length:.1f}mm")
+            self.update_bowden_length(new_bowden_length, gate=gate, console_msg=False, reason="saved")
 
         else:
             self.mmu.log_info(f"Autotune (disabled): {msg}. Ignored")
 
 
+    def _ema_update(self, old_avg, new_val, window_length):
+        """
+        Compute one step of an Exponential Moving Average (EMA).
+
+        Parameters:
+            old_avg (float): previous EMA value
+            new_val (float): new incoming sample
+            window_length (int): desired equivalent window size (like SMA length)
+
+        Returns:
+            float: updated EMA value
+        """
+        if window_length <= 0:
+            raise ValueError("window_length must be > 0")
+
+        alpha = 2.0 / (window_length + 1.0)
+        return (1 - alpha) * old_avg + alpha * new_val
+
+
+# PAUL old logic for reference..
 #    # Use data from load or unload operation to auto-calibrate / auto-tune
 #    #
 #    # PAUL REDO...
@@ -617,23 +655,146 @@ class MmuCalibrator:
 #        self.mmu.log_debug(msg)
 
 
-    def _ema_update(self, old_avg, new_val, window_length):
-        """
-        Compute one step of an Exponential Moving Average (EMA).
+#    # -----------------------------------------------------------------------------------------------------------
+#    # Used by mmu controller, commands and various other unit components to validate and report on calibration
+#    # -----------------------------------------------------------------------------------------------------------
+#
+#    def check_if_not_calibrated(self, required, silent=False, check_gates=None, use_autotune=True):
+#        mmu = self.mmu
+#        calibrated = True
+#
+#        if check_gates is None:
+#            check_gates = list(range(mmu.num_gates))
+#
+#        # What mmu_units are involved with check_gates? (retaining logical order)
+#        mmu_units = list(dict.fromkeys(mmu.mmu_unit(g) for g in check_gates))
+#
+#        # Iterate over mmu_units with separate calibration message for each
+#        for u in mmu_units:
+#            if not u.calibrator.check_calibrated(required):
+#                rmsg = omsg = ""
+#
+#                # Selector ---------------------------------------------------
+#
+#                if (
+#                    (not use_autotune or not u.p.autocal_selector) and
+#                    (required & CALIBRATED_SELECTOR) and
+#                    not u.calibrator.check_calibrated(CALIBRATED_SELECTOR)
+#                ):
+#                    unit_check_gates = [g for g in check_gates if u.manages_gate(g)]
+#                    uncalibrated = u.selector.get_uncalibrated_gates(unit_check_gates)
+#                    if uncalibrated:
+#                        info = "\n- Use MMU_CALIBRATE_SELECTOR to calibrate selector for gates: %s" % ",".join(map(str, uncalibrated))
+#                        if u.p.autocal_selector:
+#                            omsg += info
+#                        else:
+#                            rmsg += info
+#
+#                # Rotation distance of first gate of unit --------------------
+#
+#                if (
+#                    (not use_autotune or not u.p.skip_cal_rotation_distance) and
+#                    (required & CALIBRATED_GEAR_0) and
+#                    not u.calibrator.check_calibrated(CALIBRATED_GEAR_0)
+#                ):
+#                    uncalibrated = not u.calibrator.is_gear_rd_calibrated(u.first_gate)
+#                    if uncalibrated:
+#                        info = "\n- Use MMU_CALIBRATE_GEAR (on first gate)"
+#                        info += " to calibrate gear rotation_distance for first gate of unit"
+#                        if u.p.skip_cal_rotation_distance:
+#                            omsg += info
+#                        else:
+#                            rmsg += info
+#
+#                # Encoder ----------------------------------------------------
+#
+#                if (
+#                    (not use_autotune or not u.p.skip_cal_encoder) and
+#                    (required & CALIBRATED_ENCODER) and
+#                    not u.calibrator.check_calibrated(CALIBRATED_ENCODER)
+#                ):
+#                    info = "\n- Use MMU_CALIBRATE_ENCODER (with first gate of unit selected)"
+#                    if u.p.skip_cal_encoder:
+#                        omsg += info
+#                    else:
+#                        rmsg += info
+#
+#                # Rotation distances of gates other than first gate ----------
+#
+#                require_gear_0 = (required & CALIBRATED_GEAR_0)
+#                if (
+#                    u.variable_rotation_distances and
+#                    (not use_autotune or not (u.p.skip_cal_rotation_distance or u.p.autotune_rotation_distance)) and
+#                    (required & CALIBRATED_GEAR_RDS) and
+#                    not u.calibrator.check_calibrated(CALIBRATED_GEAR_RDS)
+#                ):
+#                    uncalibrated = [
+#                        g
+#                        for g in range(u.first_gate, u.first_gate + u.num_gates)
+#                        if (
+#                            not u.calibrator.is_gear_rd_calibrated(g) and
+#                            g in check_gates and
+#                            not (g == u.first_gate and require_gear_0)
+#                        )
+#                    ]
+#                    if uncalibrated:
+#                        if u.encoder:
+#                            info = "\n- Use MMU_CALIBRATE_GEAR (with appropriate gate selected) or MMU_CALIBRATE_GATE GATE=xx"
+#                            info += " to calibrate gear rotation_distance on gate: %s" % ",".join(map(str, uncalibrated))
+#                        else:
+#                            info = "\n- Use MMU_CALIBRATE_GEAR (with appropriate gate selected)"
+#                            info += " to calibrate gear rotation_distance on gate: %s" % ",".join(map(str, uncalibrated))
+#                        if (u.p.skip_cal_rotation_distance or u.p.autotune_rotation_distance):
+#                            omsg += info
+#                        else:
+#                            rmsg += info
+#
+#                # Bowden length ----------------------------------------------
+#
+#                if (
+#                    (not use_autotune or not u.p.autocal_bowden_length) and
+#                    (required & CALIBRATED_BOWDENS) and
+#                    not u.calibrator.check_calibrated(CALIBRATED_BOWDENS)
+#                ):
+#                    if u.variable_bowden_lengths:
+#                        uncalibrated = [
+#                            g
+#                            for g in range(u.first_gate, u.first_gate + u.num_gates)
+#                            if not u.calibrator.is_bowden_length_calibrated(g) and g in check_gates
+#                        ]
+#                        if uncalibrated:
+#                            info = "\n- Use MMU_CALIBRATE_BOWDEN (with appropriate gate selected)"
+#                            info += " to calibrate bowden length gates: %s" % ",".join(map(str, uncalibrated))
+#                            if u.p.autocal_bowden_length:
+#                                omsg += info
+#                            else:
+#                                rmsg += info
+#                    else:
+#                        uncalibrated = not u.calibrator.is_bowden_length_calibrated(u.first_gate)
+#                        if uncalibrated:
+#                            info = "\n- Use MMU_CALIBRATE_BOWDEN (with first gate of unit selected) to calibrate bowden length"
+#                            if u.p.autocal_bowden_length:
+#                                omsg += info
+#                            else:
+#                                rmsg += info
+#
+#                # Report -----------------------------------------------------
+#
+#                if rmsg or omsg:
+#                    msg = "Warning: Calibration steps are not complete for MMU %s:" % u.name
+#                    if rmsg:
+#                        msg += "\nRequired:%s" % rmsg
+#                    if omsg:
+#                        msg += "\nOptional (handled by autocal/autotune):%s" % omsg
+#                    if not silent:
+#                        if silent is None:  # Bootup/status use case to avoid looking like error
+#                            mmu.log_always("{2}%s{0}" % msg, color=True)
+#                        else:
+#                            mmu.log_error(msg)
+#                    calibrated = False
+#
+#        return not calibrated
 
-        Parameters:
-            old_avg (float): previous EMA value
-            new_val (float): new incoming sample
-            window_length (int): desired equivalent window size (like SMA length)
-
-        Returns:
-            float: updated EMA value
-        """
-        if window_length <= 0:
-            raise ValueError("window_length must be > 0")
-
-        alpha = 2.0 / (window_length + 1.0)
-        return (1 - alpha) * old_avg + alpha * new_val
 
 
     # -----------------------------------------------------------------------------------------------------------
@@ -652,126 +813,107 @@ class MmuCalibrator:
 
         # Iterate over mmu_units with separate calibration message for each
         for u in mmu_units:
-            if not u.calibrator.check_calibrated(required):
-                rmsg = omsg = ""
+            if u.calibrator.check_calibrated(required):
+                continue # No need to check this unit
 
-                # Selector ---------------------------------------------------
+            rmsg = omsg = ""
 
-                if (
-                    (not use_autotune or not u.p.autocal_selector) and
-                    (required & CALIBRATED_SELECTOR) and
-                    not u.calibrator.check_calibrated(CALIBRATED_SELECTOR)
-                ):
-                    unit_check_gates = [g for g in check_gates if u.manages_gate(g)]
-                    uncalibrated = u.selector.get_uncalibrated_gates(unit_check_gates)
-                    if uncalibrated:
-                        info = "\n- Use MMU_CALIBRATE_SELECTOR to calibrate selector for gates: %s" % ",".join(map(str, uncalibrated))
-                        if u.p.autocal_selector:
-                            omsg += info
-                        else:
-                            rmsg += info
+            # Helper methods
+            def should_check(bit, skip=False):
+                return (
+                    (required & bit) and
+                    not u.calibrator.check_calibrated(bit) and
+                    (not use_autotune or not skip)
+                )
 
-                # Rotation distance of first gate of unit --------------------
+            def add_msg(info, optional):
+                nonlocal rmsg, omsg
+                if optional:
+                    omsg += info
+                else:
+                    rmsg += info
 
-                if (
-                    (not use_autotune or not u.p.skip_cal_rotation_distance) and
-                    (required & CALIBRATED_GEAR_0) and
-                    not u.calibrator.check_calibrated(CALIBRATED_GEAR_0)
-                ):
-                    uncalibrated = not u.calibrator.is_gear_rd_calibrated(u.first_gate)
-                    if uncalibrated:
-                        info = "\n- Use MMU_CALIBRATE_GEAR (on first gate)"
-                        info += " to calibrate gear rotation_distance for first gate of unit"
-                        if u.p.skip_cal_rotation_distance:
-                            omsg += info
-                        else:
-                            rmsg += info
+            # Selector ---------------------------------------------------
 
-                # Encoder ----------------------------------------------------
+            if should_check(CALIBRATED_SELECTOR):
+                unit_check_gates = [g for g in check_gates if u.manages_gate(g)]
+                uncalibrated = u.selector.get_uncalibrated_gates(unit_check_gates)
+                if uncalibrated:
+                    info = "\n- Use MMU_CALIBRATE_SELECTOR to calibrate selector for gates: %s" % ",".join(map(str, uncalibrated))
+                    add_msg(info, u.p.autocal_selector)
 
-                if (
-                    (not use_autotune or not u.p.skip_cal_encoder) and
-                    (required & CALIBRATED_ENCODER) and
-                    not u.calibrator.check_calibrated(CALIBRATED_ENCODER)
-                ):
-                    info = "\n- Use MMU_CALIBRATE_ENCODER (with first gate of unit selected)"
-                    if u.p.skip_cal_encoder:
-                        omsg += info
+            # Rotation distance of first gate of unit --------------------
+
+            if should_check(CALIBRATED_GEAR_0, u.p.skip_cal_rotation_distance):
+                uncalibrated = not u.calibrator.is_gear_rd_calibrated(u.first_gate)
+                if uncalibrated:
+                    info = "\n- Use MMU_CALIBRATE_GEAR (on first gate)"
+                    info += " to calibrate gear rotation_distance for first gate of unit"
+                    add_msg(info, u.p.skip_cal_rotation_distance)
+
+            # Encoder ----------------------------------------------------
+
+            if should_check(CALIBRATED_ENCODER, u.p.skip_cal_encoder):
+                info = "\n- Use MMU_CALIBRATE_ENCODER (with first gate of unit selected)"
+                add_msg(info, u.p.skip_cal_encoder)
+
+            # Rotation distances of gates other than first gate ----------
+
+            require_gear_0 = bool(required & CALIBRATED_GEAR_0)
+            if (
+                u.variable_rotation_distances and
+                should_check(CALIBRATED_GEAR_RDS, u.p.skip_cal_rotation_distance)
+            ):
+                uncalibrated = [
+                    g
+                    for g in range(u.first_gate, u.first_gate + u.num_gates)
+                    if (
+                        not u.calibrator.is_gear_rd_calibrated(g) and
+                        g in check_gates and
+                        not (g == u.first_gate and require_gear_0)
+                    )
+                ]
+                if uncalibrated:
+                    if u.encoder:
+                        info = "\n- Use MMU_CALIBRATE_GEAR (with appropriate gate selected) or MMU_CALIBRATE_GATE GATE=xx"
+                        info += " to calibrate gear rotation_distance on gate: %s" % ",".join(map(str, uncalibrated))
                     else:
-                        rmsg += info
+                        info = "\n- Use MMU_CALIBRATE_GEAR (with appropriate gate selected)"
+                        info += " to calibrate gear rotation_distance on gate: %s" % ",".join(map(str, uncalibrated))
+                    add_msg(info, u.p.autotune_rotation_distance)
 
-                # Rotation distances of gates other than first gate ----------
+            # Bowden length ----------------------------------------------
 
-                require_gear_0 = (required & CALIBRATED_GEAR_0)
-                if (
-                    u.variable_rotation_distances and
-                    (not use_autotune or not (u.p.skip_cal_rotation_distance or u.p.autotune_rotation_distance)) and
-                    (required & CALIBRATED_GEAR_RDS) and
-                    not u.calibrator.check_calibrated(CALIBRATED_GEAR_RDS)
-                ):
+            if should_check(CALIBRATED_BOWDENS):
+                if u.variable_bowden_lengths:
                     uncalibrated = [
                         g
                         for g in range(u.first_gate, u.first_gate + u.num_gates)
-                        if (
-                            not u.calibrator.is_gear_rd_calibrated(g) and
-                            g in check_gates and
-                            not (g == u.first_gate and require_gear_0)
-                        )
+                        if not u.calibrator.is_bowden_length_calibrated(g) and g in check_gates
                     ]
                     if uncalibrated:
-                        if u.encoder:
-                            info = "\n- Use MMU_CALIBRATE_GEAR (with appropriate gate selected) or MMU_CALIBRATE_GATE GATE=xx"
-                            info += " to calibrate gear rotation_distance on gate: %s" % ",".join(map(str, uncalibrated))
-                        else:
-                            info = "\n- Use MMU_CALIBRATE_GEAR (with appropriate gate selected)"
-                            info += " to calibrate gear rotation_distance on gate: %s" % ",".join(map(str, uncalibrated))
-                        if (u.p.skip_cal_rotation_distance or u.p.autotune_rotation_distance):
-                            omsg += info
-                        else:
-                            rmsg += info
+                        info = "\n- Use MMU_CALIBRATE_BOWDEN (with appropriate gate selected)"
+                        info += " to calibrate bowden length gates: %s" % ",".join(map(str, uncalibrated))
+                        add_msg(info, u.p.autocal_bowden_length)
+                else:
+                    uncalibrated = not u.calibrator.is_bowden_length_calibrated(u.first_gate)
+                    if uncalibrated:
+                        info = "\n- Use MMU_CALIBRATE_BOWDEN (with first gate of unit selected) to calibrate bowden length"
+                        add_msg(info, u.p.autocal_bowden_length)
 
-                # Bowden length ----------------------------------------------
+            # Report -----------------------------------------------------
 
-                if (
-                    (not use_autotune or not u.p.autocal_bowden_length) and
-                    (required & CALIBRATED_BOWDENS) and
-                    not u.calibrator.check_calibrated(CALIBRATED_BOWDENS)
-                ):
-                    if u.variable_bowden_lengths:
-                        uncalibrated = [
-                            g
-                            for g in range(u.first_gate, u.first_gate + u.num_gates)
-                            if not u.calibrator.is_bowden_length_calibrated(g) and g in check_gates
-                        ]
-                        if uncalibrated:
-                            info = "\n- Use MMU_CALIBRATE_BOWDEN (with appropriate gate selected)"
-                            info += " to calibrate bowden length gates: %s" % ",".join(map(str, uncalibrated))
-                            if u.p.autocal_bowden_length:
-                                omsg += info
-                            else:
-                                rmsg += info
+            if rmsg or omsg:
+                msg = "Warning: Calibration steps are not complete for MMU %s:" % u.name
+                if rmsg:
+                    msg += "\nRequired:%s" % rmsg
+                if omsg:
+                    msg += "\nOptional (handled by autocal/autotune):%s" % omsg
+                if not silent:
+                    if silent is None:  # Bootup/status use case to avoid looking like error
+                        mmu.log_always("{2}%s{0}" % msg, color=True)
                     else:
-                        uncalibrated = not u.calibrator.is_bowden_length_calibrated(u.first_gate)
-                        if uncalibrated:
-                            info = "\n- Use MMU_CALIBRATE_BOWDEN (with first gate of unit selected) to calibrate bowden length"
-                            if u.p.autocal_bowden_length:
-                                omsg += info
-                            else:
-                                rmsg += info
-
-                # Report -----------------------------------------------------
-
-                if rmsg or omsg:
-                    msg = "Warning: Calibration steps are not complete for MMU %s:" % u.name
-                    if rmsg:
-                        msg += "\nRequired:%s" % rmsg
-                    if omsg:
-                        msg += "\nOptional (handled by autocal/autotune):%s" % omsg
-                    if not silent:
-                        if silent is None:  # Bootup/status use case to avoid looking like error
-                            mmu.log_always("{2}%s{0}" % msg, color=True)
-                        else:
-                            mmu.log_error(msg)
-                    calibrated = False
+                        mmu.log_error(msg)
+                calibrated = False
 
         return not calibrated
