@@ -68,10 +68,23 @@ hidden_params = [
     "encoder_dwell",
     "encoder_move_step_size",
     "gear_buzz_accel",
+
+    # For proportional sync-feedback sensor
     "sync_feedback_analog_gamma",
     "sync_feedback_analog_sample_time",
     "sync_feedback_analog_sample_count"
     "sync_feedback_analog_report_time",
+
+    # From PR to convert Qidi hall-effect filament width sensor into extruder/toolhead sensor
+    "hall_sensor_endstop",
+    "hall_adc1",
+    "hall_adc2",
+    "hall_cal_dia1",
+    "hall_cal_dia2",
+    "hall_raw_dia1",
+    "hall_raw_dia2",
+    "hall_min_diameter",
+    "hall_max_diameter",
 ]
 
 happy_hare = '\n(\\_/)\n( *,*)\n(")_(") {caption}\n'
