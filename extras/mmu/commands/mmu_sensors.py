@@ -81,11 +81,11 @@ class MmuSensorsCommand(BaseCommand):
                     value_raw = st.get('value_raw', 0.)
 
                     if state is None:
-                        value_str = f"({value:.2f}, currently disabled)"
+                        value_str = f"{value:.2f} (disabled)"
                     else:
                         value_str = f"{value:.2f}"
 
-                    summary += f"{name:<14} --> {value_str}"
+                    summary += f"{name:<16} --> {value_str}"
 
                     if detail:
                         summary += f" (raw: {value_raw:.2f})"
@@ -93,8 +93,8 @@ class MmuSensorsCommand(BaseCommand):
                 else:
                     trig = "TRIGGERED" if sensor.runout_helper.filament_present else "Open"
 
-                    value_str = f"({trig}, currently disabled)" if state is None else trig
-                    summary += f"{name:<14} --> {value_str}"
+                    value_str = f"{trig} (disabled)" if state is None else trig
+                    summary += f"{name:<16} --> {value_str}"
 
                     if (
                         detail and

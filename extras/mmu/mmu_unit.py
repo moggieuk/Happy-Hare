@@ -433,12 +433,12 @@ class MmuUnit:
                     [self.sensors.shared_exit_sensor],
                     [self.buffer.compression_sensor] if self.buffer else [],
                     [self.buffer.tension_sensor] if self.buffer else [],
-                    [self.toolhead_wrapper.extruder_sensor],
-                    [self.toolhead_wrapper.toolhead_sensor],
+                    (self.toolhead_wrapper.sensors or {}).values(),
                 )
                 if sensor is not None
             )
 
+        # PAUL new no-toolhead logic will have to iterate over each gear stepper if separate
         gear_rail = self.mmu_toolhead.get_kinematics().rails[1] # PAUL temp this block should iterate over all necessary mmu_extruder_steppers
         for sensor in iter_endstop_sensors():
             sensor_name = sensor.runout_helper.name
@@ -447,8 +447,8 @@ class MmuUnit:
             if sensor.__class__.__name__ in ["MmuAdcSwitchSensor", "MmuHallEndstop"]:
                 logging.info("PAUL: creating analog endstop for unit=%s, sensor.name=%s" % (self.name, sensor_name))
                 mcu_endstop = gear_rail.add_extra_endstop(sensor_pin, sensor_name, mcu_endstop=sensor)
-            else:
 
+            else:
                 # Add sensor pin as an extra endstop for gear
                 logging.info("PAUL: creating endstop for unit=%s, sensor.name=%s" % (self.name, sensor_name))
                 ppins = self.printer.lookup_object('pins')
@@ -457,22 +457,11 @@ class MmuUnit:
                 ppins.allow_multi_use_pin(share_name)
                 mcu_endstop = gear_rail.add_extra_endstop(sensor_pin, sensor_name)
 
-#                # PAUL new logic more like this... add_extra_endstop must be itempotent
-#                for s in self.mmu_gear_steppers:
-#                    mcu_endstop = s.add_extra_endstop(sensor_pin, sensor_name)
-#
-#                    # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
-#                    # otherwise the extruder can continue to move a small (speed dependent) distance
-#                    if self.extruder_wrapper.homing_extruder_stepper is not None and sensor_name in [SENSOR_TOOLHEAD, SENSOR_COMPRESSION, SENSOR_TENSION]:
-#                        mcu_endstop.add_stepper(self.extruder_wrapper.homing_extruder_stepper.stepper)
-
-#                # Ensure all steppers see endstop
-#                if sensor_name not in gear_rail.get_extra_endstop_names():
-#                    mcu_endstop = gear_rail.add_extra_endstop(sensor_pin, sensor_name)
-
             # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
             # otherwise the extruder can continue to move a small (speed dependent) distance
-            if self.extruder_wrapper.homing_extruder_stepper is not None and sensor_name in [SENSOR_TOOLHEAD, SENSOR_COMPRESSION, SENSOR_TENSION]:
+            simple_sensor_name = sensor_name.split(":", 1)[-1] # Note: duplicate of namespace convention in MmuSensorManager
+            if self.extruder_wrapper.homing_extruder_stepper is not None and simple_sensor_name in [SENSOR_TOOLHEAD, SENSOR_COMPRESSION, SENSOR_TENSION]:
+                logging.info("PAUL: creating EXTRUDER endstop for unit=%s, sensor.name=%s" % (self.name, sensor_name))
                 mcu_endstop.add_stepper(self.extruder_wrapper.homing_extruder_stepper.stepper)
 
 
@@ -661,40 +650,46 @@ class MmuUnit:
         return self.extruder_wrapper.extruder_monitor
 
 
-# PAUL experimental vvvv
 # -----------------------------------------------------------------------------------------------------------
-# EXPERIMENTAL: RAW EJECT AND PRELOAD OPERATIONS
+# EXPERIMENTAL: RAW EJECT AND PRELOAD OPERATIONS ASYNC FROM REGULAR MMU MANAGEMENT
 # -----------------------------------------------------------------------------------------------------------
 
     def can_async_eject(self, gate):
+        """
+        Return True if can eject, else the reason why not
+        """
         if self.mmu.is_printing():  # PAUL may be able to relax with mmu_extruder_stepper
-            return False
+            return "because actively printing"
 
         if not self.manages_gate(self.mmu.gate_selected):
             return True
 
-        # This must be the active unit...
-        return self.can_crossload
+        if not self.can_crossload:
+            return "because MMU can't crossload"
+
+        return True
 
 
     def can_async_preload(self, gate):
+        """
+        Return True if can preload, else the reason why not
+        """
         if self.mmu.is_printing():  # PAUL may be able to relax with mmu_extruder_stepper
-            return False
+            return "because actively printing"
 
         if not self.mmu.sensor_manager.has_gate_sensor(SENSOR_EXIT_PREFIX, gate):
-            return False
+            return "because MMU doesn't have an exit sensor fot this gate"
 
         if not self.can_crossload:
-            return False
+            return "because MMU can't crossload"
 
         if not self.manages_gate(self.mmu.gate_selected):
             return True
 
-        # Now can only preload if gate_selected is unloaded
-        if self.mmu.filament_pos == FILAMENT_POS_UNLOADED:
-            return True
+        if self.mmu.filament_pos != FILAMENT_POS_UNLOADED:
+            return "because MMU is not unloaded"
 
-        return False
+        return True
 
 
     def preload(self, gate):
@@ -704,8 +699,9 @@ class MmuUnit:
         lgate = self.local_gate(gate, False)
         mmu = self.mmu
 
-        if not self.can_async_preload(gate):
-            raise MmuError("Not possible to preload filament right now") # PAUL improve message, get from can_preload()?
+        can_preload = self.can_async_preload(gate)
+        if can_preload is not True:
+            raise MmuError(f"Not possible to preload filament right now: {can_preload}")
 
         gate_sensor = mmu.sensor_manager.check_gate_sensor(SENSOR_EXIT_PREFIX, gate)
         if gate_sensor is not None:
@@ -725,7 +721,6 @@ class MmuUnit:
                     mmu._check_pending_spool_id(gate) # Have spool_id ready?
                     mmu.log_always("Filament detected and loaded in gate %d" % gate)
                     return
-# PAUL I could move all 
 # PAUL vvv this part of preload is problematic async
 #        else:
 #            # Full gate load if no mmu exit sensor
@@ -758,8 +753,9 @@ class MmuUnit:
         lgate = self.local_gate(gate, False)
         mmu = self.mmu
 
-        if not self.can_async_eject(gate):
-            raise MmuError("Not possible to eject filament right now") # PAUL improve message, get from can_eject()?
+        can_eject = self.can_async_eject(gate)
+        if can_eject is not True:
+            raise MmuError(f"Not possible to eject filament right now: {can_eject}")
 
         mmu.log_always("Ejecting...")
         if (
@@ -792,13 +788,12 @@ class MmuUnit:
 
     def _move_gear_motor(self, lgate, msg, move):
         mmu.log_warning(f"PAUL: move_gear_motor(lgate={lgate}, msg={msg}, move={move}")
-        # TODO future impl
+        # TODO future impl with no-toolhead logic
 
 
     def _home_gear_motor(self, lgate, msg, move, homing_move, endstop_name):
         mmu.log_warning(f"PAUL: home_gear_motor(lgate={lgate}, msg={msg}, move={move}, homing_move={homing_move}, endstop_name={endstop_name})")
-        # TODO future impl
-# PAUL experimental ^^^^
+        # TODO future impl with no-toolhead logic
 
 
 # -----------------------------------------------------------------------------------------------------------

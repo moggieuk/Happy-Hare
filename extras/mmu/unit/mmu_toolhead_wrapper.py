@@ -69,6 +69,7 @@ class MmuToolheadWrapper():
         self.p = self.PARAMS_CLS(config, self)  # mmu_toolhead has own params
 
         self.connected_units = [mmu_unit]       # mmu_unit is just the first to load, not necessarily all
+        self.sensors = {}
 
         # Setup 'extruder' & 'toolhead' sensors connected to this toolhead
         # Allows for visibility, enable/disable control & insert/runout on extruder sensor
@@ -77,7 +78,7 @@ class MmuToolheadWrapper():
 
         # Setup single extruder (entrance) sensor...
         switch_pin = config.get('extruder_switch_pin', None)
-        self.extruder_sensor = sf.create_mmu_sensor(
+        self.sensors[SENSOR_EXTRUDER_ENTRY] = sf.create_mmu_sensor(
             config,
             f"{self.name}:{SENSOR_EXTRUDER_ENTRY}",
             None,
@@ -89,7 +90,7 @@ class MmuToolheadWrapper():
 
         # Setup single toolhead sensor...
         switch_pin = config.get('toolhead_switch_pin', None)
-        self.toolhead_sensor = sf.create_mmu_sensor(
+        self.sensors[SENSOR_TOOLHEAD] = sf.create_mmu_sensor(
             config,
             f"{self.name}:{SENSOR_TOOLHEAD}",
             None,
@@ -122,12 +123,9 @@ class MmuToolheadWrapper():
                                hall_runout_dia=self.hall_runout_dia,
                                insert=True, runout=True)
 
-            if hall_sensor_endstop == 'extruder':
-                self.extruder_sensor = s
-            elif hall_sensor_endstop == 'toolhead':
-                self.toolhead_sensor = s
-            else:
-                self.extra_sensor = hall_sensor_endstop # PAUL not sure how to handle an arbitary sensor yet
+            # Likley overriding entry or toolhead sensor but can also define a brand new toolhead sensor
+            self.sensors[target_name] = s
+
 
         # Register event handlers
         self.printer.register_event_handler('klippy:connect', self._handle_connect)

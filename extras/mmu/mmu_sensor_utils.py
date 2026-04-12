@@ -448,6 +448,7 @@ class MmuProportionalSensor:
 #  * it will not display in UI because no filament_switch_sensor exists in config
 #  * does not involve the mcu in the homing process so it can't be accurate
 #  * suffers from inherent averaging lag for analog inputs
+# Currently only parsed as option for 'mmu_exit' sensors (where clog/tangle flags must be False)
 # -----------------------------------------------------------------------------------------------------------
 
 class MmuAdcSwitchSensor:

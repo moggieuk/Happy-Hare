@@ -61,15 +61,13 @@ class MmuSensorManager:
             ])
 
             unit_toolhead_sensors = collect_sensors([
-                (mmu_unit.toolhead_wrapper.extruder_sensor, SENSOR_EXTRUDER_ENTRY),
-                (mmu_unit.toolhead_wrapper.toolhead_sensor, SENSOR_TOOLHEAD),
+                (sensor, key)
+                for key, sensor in mmu_unit.toolhead_wrapper.sensors.items()
             ])
 
-            es = mmu_unit.toolhead_wrapper.extruder_sensor
-            ts = mmu_unit.toolhead_wrapper.toolhead_sensor
             prefixed_unit_toolhead_sensors = collect_sensors([
-                (es, es.runout_helper.name if es else ''),
-                (ts, ts.runout_helper.name if ts else ''),
+                (sensor, sensor.runout_helper.name if sensor else "")
+                for sensor in mmu_unit.toolhead_wrapper.sensors.values()
             ])
 
             self.all_sensors_map.update(prefixed_unit_sensors)
@@ -85,16 +83,17 @@ class MmuSensorManager:
                 ])
                 gate_sensors.update(unit_toolhead_sensors)
 
-# PAUL: don't think this is needed but check..
+                self.gate_sensors.append(gate_sensors)
+
+# PAUL: Is this still needed in v4? Not a good idea because it would complicate filament positon recovery
+# PAUL: ...better to allow for no bowden in filament move logic
 #                # Special case for "no bowden" (one unit) designs where mmu_shared_exit is an alias for extruder sensor
 #                if (
 #                    not mmu_unit.require_bowden_move and
-#                    common_sensors.get(SENSOR_EXTRUDER_ENTRY) and
+#                    gate_sensors.get(SENSOR_EXTRUDER_ENTRY) and
 #                    SENSOR_SHARED_EXIT not in gate_sensors
 #                ):
 #                    gate_sensors.update(connect_sensors([(mmu_unit.toolhead_wrapper.extruder_sensor, SENSOR_SHARED_EXIT)]))
-
-                self.gate_sensors.append(gate_sensors)
 
                 suffixed_gate_sensors = collect_sensors([
                     (mmu_unit.sensors.entry_sensors.get(gate), self.get_gate_sensor_name(SENSOR_ENTRY_PREFIX, gate)),
