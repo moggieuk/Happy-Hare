@@ -348,7 +348,7 @@ class CalibrationMixin:
                 tolerance_range = (gate0_rd - gate0_rd * 0.2, gate0_rd + gate0_rd * 0.2) # Allow 20% variation from gate 0
                 if tolerance_range[0] <= new_rd < tolerance_range[1]:
                     if save:
-                        calibrator.set_gear_rd(new_rd)
+                        calibrator.apply_gear_rd(new_rd)
                         calibrator.update_gear_rd(new_rd, console_msg=True)
                 else:
                     mmu.log_always(

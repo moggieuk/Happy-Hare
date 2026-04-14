@@ -170,6 +170,7 @@ class MmuCalibrator:
     def get_bowden_length(self, gate=None):
         """
         Returns the currently calibrated bowden length or the default for gate 0 if not calibrated
+        Note: gate is not the logical gate so important to convert to local per-unit lgate but report gate in messages
         """
         if gate is None:
             gate = self.mmu.gate_selected
@@ -182,7 +183,7 @@ class MmuCalibrator:
     def update_bowden_length(self, length, gate=None, console_msg=False, reason="saved"):
         """
         Update bowden calibration for current gate and clog_detection if not yet calibrated
-        Note: gate is the logical gate so important to convert to local per-unit lgate but report gate in messages
+        Note: gate is not the logical gate so important to convert to local per-unit lgate but report gate in messages
         """
         if gate is None:
             gate = self.mmu.gate_selected
@@ -236,7 +237,7 @@ class MmuCalibrator:
         """
         Adjust all bowden lengths if endstop is changed (e.g. from MMU_TEST_CONFIG or config change and reboot)
         Notes: - Calibrated bowden length is defined as distance from gate homing endstop to the extruder gear and
-                therefore isn't dependent on any extruder homing point
+                 therefore isn't dependent on any extruder homing point
                - Parameter 'gate_homing_endstop' must be updated prior to call
         """
         mmu = self.mmu
@@ -265,6 +266,9 @@ class MmuCalibrator:
 
 
     def is_bowden_length_calibrated(self, gate=None):
+        """
+        Return True if bowden_length is calibrated for gate (or current gate)
+        """
         if gate is None:
             gate = self.mmu.gate_selected
         lgate = self.mmu_unit.local_gate(gate)
@@ -309,8 +313,8 @@ class MmuCalibrator:
 
     def get_gear_rd(self, gate=None):
         """
-        Return current calibrated gear rotation_distance or sensible default
-        Note: gate is the logical gate so important to convert to local per-unit lgate but report gate in messages
+        Return current calibrated gear rotation_distance or sensible default if not yet calibrated
+        Note: gate is not the logical gate so important to convert to local per-unit lgate but report gate in messages
         """
         if gate is None:
             gate = self.mmu.gate_selected
@@ -325,9 +329,11 @@ class MmuCalibrator:
 
         return rd
 
-    # Return the default gear rotation_distance for gate
-    # Note: gate is the logical gate so important to convert to local per-unit lgate but report gate in messages
     def get_default_gear_rd(self, gate=None):
+        """
+        Return the default gear rotation_distance for gate (from initial h/w config)
+        Note: gate is not the logical gate so important to convert to local per-unit lgate but report gate in messages
+        """
         if gate is None:
             gate = self.mmu.gate_selected
         lgate = self.mmu_unit.local_gate(gate)
@@ -336,21 +342,44 @@ class MmuCalibrator:
         return self._default_rotation_distances[lgate]
 
 
-    # Set the active gear stepper rotation distance
-    # Note: gate is the logical gate so important to convert to local per-unit lgate but report gate in messages
-    def set_gear_rd(self, rd, gate=None):
+    def restore_gear_rd(self, gate=None):
+        """
+        Restore the gear stepper rotation distance to the last calibrated value
+        Note: gate is not the logical gate so important to convert to local per-unit lgate but report gate in messages
+        """
+        if gate is None:
+            gate = self.mmu.gate_selected
+        lgate = self.mmu_unit.local_gate(gate)
+
+        lgate = max(0, lgate)
+        rd = self.get_gear_rd(gate)
+        if (
+            rd > 0 and
+            rd != self.mmu_unit.gear_stepper_obj(gate).get_rotation_distance()[0]
+        ):
+            self.mmu.log_debug("Restoring stepper to default rotation distance for gate %d: %.4f" % (gate, rd))
+            self.mmu_unit.gear_stepper_obj(gate).set_rotation_distance(rd)
+
+
+    def apply_gear_rd(self, rd, gate=None):
+        """
+        Apply rd to the gear stepper rotation distance without saving
+        Note: gate is not the logical gate so important to convert to local per-unit lgate but report gate in messages
+        """
         if gate is None:
             gate = self.mmu.gate_selected
         lgate = self.mmu_unit.local_gate(gate)
 
         if rd and lgate >= 0:
-            self.mmu.log_trace("Setting gate %d gear motor rotation distance: %.4f" % (gate, rd))
+            self.mmu.log_trace("Set stepper for gate %d gear motor rotation distance: %.4f" % (gate, rd))
             self.mmu_unit.gear_stepper_obj(gate).set_rotation_distance(rd)
 
 
-    # Save rotation_distance for gate (and associated gates) adjusting any calibrated bowden length
-    # Note: gate is the logical gate so important to convert to local per-unit lgate but report gate in messages
     def update_gear_rd(self, rd, gate=None, console_msg=False):
+        """
+        Save rotation_distance for gate (and associated gates) adjusting any calibrated bowden length
+        Note: gate is not the logical gate so important to convert to local per-unit lgate but report gate in messages
+        """
         mmu = self.mmu
         mmu_unit = self.mmu_unit
 
@@ -418,6 +447,9 @@ class MmuCalibrator:
 
 
     def is_gear_rd_calibrated(self, gate=None):
+        """
+        Return True if gear_rd is calibrated for gate (or current gate)
+        """
         if gate is None:
             gate = self.mmu.gate_selected
         lgate = self.mmu_unit.local_gate(gate)

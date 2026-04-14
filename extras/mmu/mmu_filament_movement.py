@@ -1005,6 +1005,7 @@ class MmuFilamentMovement:
         """
         u = self.mmu_unit()
         self.movequeues_wait()
+        u.calibrator.restore_gear_rd()
 
         bowden_length = u.calibrator.get_bowden_length() # -1 if not calibrated yet
         calibrated = (bowden_length >= 0)
@@ -1237,6 +1238,7 @@ class MmuFilamentMovement:
         """
         u = self.mmu_unit()
         self.movequeues_wait()
+        u.calibrator.restore_gear_rd()
 
         bowden_length = u.calibrator.get_bowden_length() # -1 if not calibrated yet
         calibrated = (bowden_length >= 0)

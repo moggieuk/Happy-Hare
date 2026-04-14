@@ -29,6 +29,49 @@ TANGLE_GCODE = "__MMU_SENSOR_TANGLE"
 
 
 # -----------------------------------------------------------------------------------------------------------
+# Shared module level helper methods
+# -----------------------------------------------------------------------------------------------------------
+
+def setup_adc_compat(mcu_adc, report_time, sample_time, sample_count, callback):
+    if hasattr(mcu_adc, 'setup_adc_sample'):
+        try:
+            # New klipper (>= v0.13.0-557)
+            mcu_adc.setup_adc_sample(report_time, sample_time, sample_count)
+            mcu_adc.setup_adc_callback(callback)
+
+        except TypeError:
+            # Intermediate klipper versions with different signatures
+            mcu_adc.setup_adc_sample(sample_time, sample_count)
+            mcu_adc.setup_adc_callback(report_time, callback)
+
+    elif hasattr(mcu_adc, 'setup_minmax'):
+        # Kalico and older klipper
+        mcu_adc.setup_minmax(sample_time, sample_count)
+        mcu_adc.setup_adc_callback(report_time, callback)
+
+    else:
+        raise RuntimeError(
+            "Klipper version not compatible: mcu_adc missing "
+            "'setup_adc_sample' and 'setup_minmax'"
+        )
+
+def unpack_adc_callback(*args):
+    """
+    Old klipper: callback(read_time, read_value)
+    New klipper: callback(samples) where samples is a list of
+      (read_time, read_value)
+    """
+    if len(args) == 1:
+        samples = args[0]
+        return samples[-1]
+
+    if len(args) == 2:
+        return args
+
+    raise TypeError("ADC callback expected (read_time, read_value) or (samples), got %d args" % len(args))
+
+
+# -----------------------------------------------------------------------------------------------------------
 # Factory class for setting up standard MMU sensors
 # -----------------------------------------------------------------------------------------------------------
 
@@ -345,22 +388,15 @@ class MmuProportionalSensor:
 
         # Setup ADC
         ppins = self.printer.lookup_object('pins')
-        self.adc = ppins.setup_pin('adc', self._pin)
+        self.mcu_adc = ppins.setup_pin('adc', self._pin)
 
-        self.adc.setup_adc_callback(self._report_time, self._adc_callback)
-        if hasattr(self.adc, "setup_minmax"):
-            # Kalico and older klipper
-            self.adc.setup_minmax(self._sample_time, self._sample_count)
-            self.adc.setup_adc_callback(self._report_time, self._adc_callback)
-        else:
-            try:
-                # New klipper (>= v0.13.0-557)
-                self.adc.setup_adc_sample(self._report_time, self._sample_time, self._sample_count)
-                self.adc.setup_adc_callback(self._adc_callback)
-            except TypeError:
-                # A few versions of klipper had these signatures
-                self.adc.setup_adc_sample(self._sample_time, self._sample_count)
-                self.adc.setup_adc_callback(self._report_time, self._adc_callback)
+        setup_adc_compat(
+            self.mcu_adc,
+            self._report_time,
+            self._sample_time,
+            self._sample_count,
+            self._adc_callback,
+        )
 
         # Attach runout_helper (no gcode actions; just enable/disable plumbing to remove UI nag)
         clog_gcode   = ("%s SENSOR=%s" % (CLOG_GCODE,   self.name))
@@ -409,16 +445,7 @@ class MmuProportionalSensor:
 
 
     def _adc_callback(self, *args):
-        # Old klipper: _adc_callback(read_time, read_value)
-        # New klipper: _adc_callback(samples) where samples is a list of (read_time, read_value)
-        if len(args) == 1:
-            samples = args[0]
-            read_time, read_value = samples[-1]
-        elif len(args) == 2:
-            read_time, read_value = args
-        else:
-            raise TypeError("_adc_callback expected (read_time, read_value) or (samples), got %d args" % len(args))
-
+        read_time, read_value = unpack_adc_callback(*args)
         self.value_raw = float(read_value)
         self.value = self._map_reading(read_value) # Mapped & scaled value
 
@@ -588,27 +615,30 @@ class MmuHallEndstop:
         # Setup Hardware (Multi-Use)
         ppins = self.printer.lookup_object('pins')
 
-        _kalico = hasattr(self.adc, "setup_minmax") # Kalico and older klipper
         # ADC 1
         if self.pin1_name:
             ppins.allow_multi_use_pin(self.pin1_name)
             self.mcu_adc = ppins.setup_pin('adc', self.pin1_name)
-            if _kalico:
-                self.mcu_adc.setup_minmax(self.sample_time, self.sample_count)
-            else:
-                self.mcu_adc.setup_adc_sample(self.sample_time, self.sample_count)
-            self.mcu_adc.setup_adc_callback(self.report_time, self.adc_callback)
+            setup_adc_compat(
+                self.mcu_adc,
+                self.report_time,
+                self.sample_time,
+                self.sample_count,
+                self._adc_callback,
+            )
 
         # ADC 2 (Optional)
         self.mcu_adc2 = None
         if self.pin2_name:
             ppins.allow_multi_use_pin(self.pin2_name)
             self.mcu_adc2 = ppins.setup_pin('adc', self.pin2_name)
-            if _kalico:
-                self.mcu_adc2.setup_minmax(self.sample_time, self.sample_count)
-            else:
-                self.mcu_adc2.setup_adc_sample(self.sample_time, self.sample_count)
-            self.mcu_adc2.setup_adc_callback(self.report_time, self.adc2_callback)
+            setup_adc_compat(
+                self.mcu_adc2,
+                self.report_time,
+                self.sample_time,
+                self.sample_count,
+                self._adc2_callback,
+            )
 
         # Setup runout helper/virtual sensor for MMU integration
         event_delay = 0.5
@@ -649,13 +679,15 @@ class MmuHallEndstop:
             self.diameter = 1.75 # Default fallback
 
 
-    def adc_callback(self, read_time, read_value):
+    def _adc_callback(self, *args):
+        read_time, read_value = unpack_adc_callback(*args)
         self.lastFilamentWidthReading = round(read_value * 10000)
         self._calc_diameter()
         self._check_trigger(read_time)
 
 
-    def adc2_callback(self, read_time, read_value):
+    def _adc2_callback(self, *args):
+        read_time, read_value = unpack_adc_callback(*args)
         self.lastFilamentWidthReading2 = round(read_value * 10000)
         self._calc_diameter()
         self._check_trigger(read_time)

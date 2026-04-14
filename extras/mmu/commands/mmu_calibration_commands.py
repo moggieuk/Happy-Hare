@@ -87,7 +87,7 @@ class MmuCalibrateGearCommand(CalibrationMixin, BaseCommand):
         with mmu.wrap_sync_gear_to_extruder():
             if reset:
                 default_rd = calibrator.get_default_gear_rd(gate)
-                calibrator.set_gear_rd(default_rd)
+                calibrator.apply_gear_rd(default_rd)
                 calibrator.update_gear_rd(UNCALIBRATED, console_msg=True)
                 return
 
@@ -98,7 +98,7 @@ class MmuCalibrateGearCommand(CalibrationMixin, BaseCommand):
                     f"MMU gear stepper for gate {gate} 'rotation_distance' calculated to be {new_rd:.4f} (currently: {current_rd:.4f})"
                 )
                 if save:
-                    calibrator.set_gear_rd(new_rd)
+                    calibrator.apply_gear_rd(new_rd)
                     calibrator.update_gear_rd(new_rd, console_msg=True)
                 return
 
@@ -280,7 +280,7 @@ class MmuCalibrateGateCommand(CalibrationMixin, BaseCommand):
             for g in gate_range:
                 if g != mmu_unit.first_gate: # Don't allow reset of initial gate with this command
                     default_rd = calibrator.get_default_gear_rd(g)
-                    calibrator.set_gear_rd(default_rd, g)
+                    calibrator.apply_gear_rd(default_rd, g)
                     calibrator.update_gear_rd(UNCALIBRATED, g)
             return
 

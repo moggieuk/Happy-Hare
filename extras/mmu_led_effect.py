@@ -550,7 +550,7 @@ class _ledEffect:
                 self.mcu_adc.setup_adc_callback(ANALOG_REPORT_TIME, self.adcCallback)
             else:
                 raise RuntimeError(
-                    "Klipper version not compatible: mcu_adc missing 'setup_adc_sample' and 'setup_minmax'.")
+                    "Klipper version not compatible: mcu_adc missing 'setup_adc_sample' and 'setup_minmax'")
 
         if self.buttonPins:
             buttons = self.printer.load_object(config, "buttons")

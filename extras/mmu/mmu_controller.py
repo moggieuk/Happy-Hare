@@ -2313,7 +2313,7 @@ class MmuController(MmuFilamentMovement):
             self.printer.send_event("mmu:unit_selected", self.unit_selected)
 
         self.printer.send_event("mmu:gate_selected", self.gate_selected)
-        self.mmu_unit(gate).sync_feedback.set_default_rd()
+        self.mmu_unit(gate).calibrator.restore_gear_rd()
 
         # Update from/to leds after selection
         self.led_manager.gate_map_changed(prev_gate)
