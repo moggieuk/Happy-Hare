@@ -366,7 +366,12 @@ class MmuController(MmuFilamentMovement):
 
             # Autohoming...
             for u in self.mmu_machine.units:
-                if u.p.startup_home_selector:
+
+                if not u.calibrator.check_calibrated(CALIBRATED_SELECTOR):
+                    self.log_warning(f"Cannot autohome selector for {u.name} because selector is not yet calibrated")
+                    continue
+
+                if u.p.startup_home_selector: # PAUL and selector is calibrated!
                     unit_loaded = (
                         self.gate_selected != TOOL_GATE_UNKNOWN and
                         u.manages_gate(self.gate_selected) and

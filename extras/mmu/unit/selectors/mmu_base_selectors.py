@@ -102,6 +102,9 @@ class BaseSelector:
         Select physical gate position. Maybe a no-op if already selected.
         Don't override this method, instead override _select_gate() after the local gate translation.
         """
+        if not self.mmu_unit.calibrator.check_calibrated(CALIBRATED_SELECTOR):
+            raise MmuError(f"Selector is not clibrated on %s" % self.mmu_unit.name)
+
         lgate = self._local_gate(gate)
         self._select_gate(lgate)
 
@@ -257,7 +260,7 @@ class PhysicalSelector(BaseSelector, object):
     def _select_gate(self, lgate):
         if lgate == TOOL_GATE_UNKNOWN: return
         if self.requires_homing and not self.is_homed:
-            raise MmuError("Selector is not homed on %s" % self.mmu_unit.name)
+            raise MmuError(f"Selector is not homed on %s" % self.mmu_unit.name)
         super()._select_gate(lgate)
 
 

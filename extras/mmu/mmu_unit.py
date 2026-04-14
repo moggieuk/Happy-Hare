@@ -30,7 +30,7 @@ from itertools                          import chain
 
 # Klipper imports
 import stepper, chelper, toolhead
-from kinematics.extruder                import PrinterExtruder, DummyExtruder, ExtruderStepper # PAUL may not need ExtruderStepper if moved to MmuEx
+from kinematics.extruder                import PrinterExtruder, DummyExtruder
 from ..homing                           import Homing, HomingMove
 
 # Happy Hare imports

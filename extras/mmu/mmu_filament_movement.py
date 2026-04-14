@@ -1940,7 +1940,7 @@ class MmuFilamentMovement:
 
     def report_necessary_recovery(self, use_autotune=True):
         """
-        Report whether recovery or calibration is required before continuing.
+        Report whether recovery or calibration is required or manual recovery is necessary
 
         Args:
             use_autotune: Whether autotune-aware calibration status should be considered.
@@ -1951,8 +1951,10 @@ class MmuFilamentMovement:
         u = self.mmu_unit()
 
         if not u.calibrator.check_if_not_calibrated(CALIBRATED_ALL, silent=None, use_autotune=use_autotune):
+
             if self.filament_pos != FILAMENT_POS_UNLOADED and TOOL_GATE_UNKNOWN in [self.gate_selected, self.tool_selected]:
                 self.log_error("Filament detected but tool/gate is unknown. Please use MMU_RECOVER GATE=xx to correct state")
+
             elif self.filament_pos not in [FILAMENT_POS_LOADED, FILAMENT_POS_UNLOADED]:
                 self.log_error("Filament not detected as either unloaded or fully loaded. Please check and use MMU_RECOVER to correct state or fix before continuing")
 

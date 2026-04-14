@@ -105,7 +105,7 @@ if BOARD_TYPE_KMS_1_0
 
   config PARAM_MISC_HARDWARE
     default "$(ml,\
-[temperature_sensor $(UNIT_NAME)_enviroment]\n\
+[temperature_sensor $(UNIT_NAME)_environment]\n\
 sensor_type: HTU21D\n\
 i2c_mcu: $(MCU_NAME)\n\
 htu21d_report_time: 10\n\
@@ -115,7 +115,7 @@ i2c_software_sda_pin: $(MCU_NAME):PB11\n\
 [heater_fan $(UNIT_NAME)_fan_left]\n\
 pin: $(MCU_NAME):PC3\n\
 shutdown_speed: 0\n\
-heater: MMU_heater_kms\n\
+heater: $(UNIT_NAME)_heater\n\
 \n\
 [heater_fan $(UNIT_NAME)_fan_right]\n\
 pin: $(MCU_NAME):PC1\n\
@@ -133,7 +133,7 @@ control: watermark\n\
 min_temp: 0\n\
 max_temp: 70\n\
 \n\
-[verify_heater MMU_heater_kms]\n\
+[verify_heater $(UNIT_NAME)_heater]\n\
 max_error: 300\n\
 check_gain_time: 600\n\
 hysteresis: 10\n\
