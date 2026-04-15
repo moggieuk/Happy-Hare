@@ -315,6 +315,17 @@ class MmuUnit:
         else:
             self.extruder_wrapper.add_unit(self)
 
+        # Load selector (reads it's own config from mmu_unit_parameters)
+        selector_class = SELECTOR_REGISTRY.get(self.selector_type)
+        if selector_class is None:
+            raise self.config.error(
+                "Invalid Selector class %s for unit %s. Options are: %s"
+                % (self.selector_type, self.name, ",".join(SELECTOR_REGISTRY))
+            )
+
+        self.selector = selector_class(params, self, self.p)
+        logging.info("MMU: Created %s selector" % self.selector_type)
+
         # Load mmu_sensors
         self.sensors = None
         section = 'mmu_sensors %s' % self.name
@@ -386,17 +397,6 @@ class MmuUnit:
         else:
             logging.info("MMU: - No mmu_buffer specified")
 
-        # Load selector (reads it's own config from mmu_unit_parameters)
-        selector_class = SELECTOR_REGISTRY.get(self.selector_type)
-        if selector_class is None:
-            raise self.config.error(
-                "Invalid Selector class %s for unit %s. Options are: %s"
-                % (self.selector_type, self.name, ",".join(SELECTOR_REGISTRY))
-            )
-
-        self.selector = selector_class(params, self, self.p)
-        logging.info("MMU: Created %s selector" % self.selector_type)
-
         # Create sync-feedback controller (created even if no buffer or encoder)
         self.sync_feedback = MmuSyncFeedback(params, self, self.p)
         logging.info("MMU: Created: sync-feedback / autotune controller for unit %s" % self.name)
@@ -408,12 +408,12 @@ class MmuUnit:
         self.subcomponents = [
             self.calibrator,
             self.toolhead_wrapper,
+            self.selector,
             self.sensors,
             self.espooler,
             self.leds,
             self.encoder,
             self.buffer,
-            self.selector,
             self.sync_feedback,
             self.environment_manager,
         ]
@@ -1448,7 +1448,7 @@ class MmuKinematics:
 
         # Setup "axis" rails
         self.rails = []
-        if self.mmu_unit.selector_type in ['LinearSelector', 'LinearServoSelector', 'LinearMultiGearSelector', 'RotarySelector']:
+        if self.mmu_unit.selector_type in ['LinearSelector', 'LinearServoSelector', 'LinearMultiGearSelector', 'RotarySelector'] and self.mmu_unit.selector_stepper is not None: # PAUL
             self.rails.append(MmuLookupMultiRail(config.getsection(self.mmu_unit.selector_stepper), need_position_minmax=False, default_position_endstop=0.))
             self.rails[0].setup_itersolve('cartesian_stepper_alloc', b'x')
         elif self.mmu_unit.selector_type in ['IndexedSelector']:

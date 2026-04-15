@@ -127,8 +127,7 @@ class LinearSelectorParameters(TunableParametersBase):
 
 class LinearSelector(PhysicalSelector):
     """
-    Linear selector for type-A MMUs using a stepper-controlled rail[0] on the
-    MMU toolhead.
+    Linear selector for type-A MMUs using a stepper-controlled rail
 
     Provides endstop-based homing and calibrated per-gate offsets (plus optional
     bypass offset). Also supports optional selector "touch" movement for
@@ -138,6 +137,28 @@ class LinearSelector(PhysicalSelector):
 
     def __init__(self, config, mmu_unit, unit_params):
         super().__init__(config, mmu_unit, unit_params)
+
+        self.selector_stepper_name = mmu_unit.config.get('new_selector_stepper') # Name of selector stepper
+        section = f"mmu_stepper {self.selector_stepper_name}"
+
+        # Force stepper loading now (TMC first)
+        tmc_found = False
+        for chip in TMC_CHIPS: 
+            tmc_section = f"{chip} {section}"
+            if config.has_section(tmc_section):
+                _ = self.printer.load_object(config, tmc_section)
+                logging.info("MMU: Loaded: [%s]" % tmc_section)
+                tmc_found = True
+                break
+        if not tmc_found:
+            raise config.error("Selector stepper TMC configuration not found for %s on mmu_unit %s" % (self.selector_stepper, self.name))
+
+        self.selector_stepper = self.printer.load_object(config, section)
+#        self.stepper0 = self.selector_rail.get_steppers()[0] # PAUL ??
+        logging.info("MMU: Loaded: [%s]" % section)
+
+        # Does selector have "touch" (stallguard)?
+        self.selector_touch = (tmc_found and SENSOR_SELECTOR_TOUCH in self.selector_stepper.rail.get_extra_endstop_names())
 
         # Register GCODE commands specific to this module
         try:
@@ -159,16 +180,16 @@ class LinearSelector(PhysicalSelector):
         """
         super().handle_connect()
 
-        self.selector_rail = self.mmu_unit.mmu_toolhead.get_kinematics().rails[0]
-        self.selector_stepper = self.selector_rail.steppers[0]
-
-        # Adjust selector rail limits now we know the config
-        self.selector_rail.position_min = -1 # PAUL really don't want this
-        self.selector_rail.position_max = self._get_max_selector_movement() + 200 # PAUL added for testing only
-        self.selector_rail.homing_speed = self.p.selector_homing_speed
-        self.selector_rail.second_homing_speed = self.p.selector_homing_speed / 2.
-        self.selector_rail.homing_retract_speed = self.p.selector_homing_speed
-        self.selector_rail.homing_positive_dir = False
+#        self.selector_rail = self.mmu_unit.mmu_toolhead.get_kinematics().rails[0]
+#        self.selector_stepper = self.selector_rail.steppers[0]
+#
+#        # Adjust selector rail limits now we know the config
+#        self.selector_rail.position_min = -1 # PAUL really don't want this
+#        self.selector_rail.position_max = self._get_max_selector_movement() + 200 # PAUL added for testing only
+#        self.selector_rail.homing_speed = self.p.selector_homing_speed
+#        self.selector_rail.second_homing_speed = self.p.selector_homing_speed / 2.
+#        self.selector_rail.homing_retract_speed = self.p.selector_homing_speed
+#        self.selector_rail.homing_positive_dir = False
 
 
     def handle_ready(self):
@@ -213,6 +234,7 @@ class LinearSelector(PhysicalSelector):
         # Finally restore the last known local gate position to avoid need to re-home
         last_pos = self.var_manager.get(VARS_MMU_SELECTOR_LAST_POS, None, namespace=self.mmu_unit.name)
         if last_pos is not None:
+            self.mmu.log_warning("PAUL: _restore_position()")
             self._restore_position(last_pos)
             self.is_homed = True
 
@@ -242,15 +264,19 @@ class LinearSelector(PhysicalSelector):
 
 
     def enable_motors(self):
-        stepper_enable = self.printer.lookup_object('stepper_enable')
-        se = stepper_enable.lookup_enable(self.selector_stepper.get_name())
-        se.motor_enable(self.mmu_unit.mmu_toolhead.get_last_move_time())
+        self.selector_stepper.do_enable(True)
+# PAUL
+#        stepper_enable = self.printer.lookup_object('stepper_enable')
+#        se = stepper_enable.lookup_enable(self.selector_stepper.get_name())
+#        se.motor_enable(self.mmu_unit.mmu_toolhead.get_last_move_time())
 
 
     def disable_motors(self):
-        stepper_enable = self.printer.lookup_object('stepper_enable')
-        se = stepper_enable.lookup_enable(self.selector_stepper.get_name())
-        se.motor_disable(self.mmu_unit.mmu_toolhead.get_last_move_time())
+        self.selector_stepper.do_enable(False)
+# PAUL
+#        stepper_enable = self.printer.lookup_object('stepper_enable')
+#        se = stepper_enable.lookup_enable(self.selector_stepper.get_name())
+#        se.motor_disable(self.mmu_unit.mmu_toolhead.get_last_move_time())
 
         # Assume that if disabling motor then the position will be modified
         self.is_homed = False
@@ -259,7 +285,8 @@ class LinearSelector(PhysicalSelector):
 
     def buzz_motor(self, motor):
         if motor == "selector":
-            pos = self.mmu_unit.mmu_toolhead.get_position()[0]
+#PAUL            pos = self.mmu_unit.mmu_toolhead.get_position()[0]
+            pos = self.selector.get_commanded_pos()
             self.move(None, pos + 5, wait=False)
             self.move(None, pos - 5, wait=False)
             self.move(None, pos, wait=False)
@@ -464,14 +491,19 @@ class LinearSelector(PhysicalSelector):
         return True
 
     def _home_selector(self):
-        from ...mmu_unit import MmuHoming
+#PAUL        from ...mmu_unit import MmuHoming
+        from ....homing import Homing
 
         self.filament_hold_move()
         self.mmu.movequeues_wait()
         try:
-            homing_state = MmuHoming(self.printer, self.mmu_unit.mmu_toolhead)
+            homing_state = Homing(self.printer)
+            self.selector_stepper.set_gcode_axis() # PAUL use default params
             homing_state.set_axes([0])
-            self.mmu_unit.mmu_toolhead.get_kinematics().home(homing_state)
+#PAUL
+#            homing_state = MmuHoming(self.printer, self.mmu_unit.mmu_toolhead)
+#            homing_state.set_axes([0])
+#            self.mmu_unit.mmu_toolhead.get_kinematics().home(homing_state)
 
             self.is_homed = True
             self.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, 0, namespace=self.mmu_unit.name)
@@ -483,7 +515,8 @@ class LinearSelector(PhysicalSelector):
             raise MmuError("Homing selector failed because of blockage or malfunction. Klipper reports: %s" % str(e))
 
     def _position(self, target):
-        current_pos = self.mmu_unit.mmu_toolhead.get_position()[0]
+#PAUL        current_pos = self.mmu_unit.mmu_toolhead.get_position()[0]
+        current_pos = self.selector_stepper.commanded_pos
         try:
             if not self.use_touch_move():
                 self.move("Positioning selector", target)
@@ -496,7 +529,7 @@ class LinearSelector(PhysicalSelector):
                         if travel < 4.0: # Filament stuck in the current gate (based on ERCF design)
                             self.mmu.log_info("Selector is blocked by filament inside gate, will try to recover...")
                             self.move("Realigning selector by a distance of: %.1fmm" % -travel, init_pos)
-                            self.mmu_unit.mmu_toolhead.flush_step_generation() # TTC mitigation when homing move + regular + get_last_move_time() in close succession
+#PAUL                            self.mmu_unit.mmu_toolhead.flush_step_generation() # TTC mitigation when homing move + regular + get_last_move_time() in close succession
     
                             # See if we can detect filament in gate area
                             found = self.mmu.check_filament_in_gate()
@@ -550,6 +583,9 @@ class LinearSelector(PhysicalSelector):
         endstop set (default or extra) and uses HomingMove; for virtual endstops
         attempts to infer completion via trigger delta.
         """
+        self.mmu.log_error(f"PAUL: _move_selector({trace_str}, new_pos={new_pos}, speed={speed}, accel={accel}, homing_move={homing_move}, endstop_name={endstop_name}, wait={wait}")
+        return new_pos, False
+        
         if trace_str:
             self.mmu.log_trace(trace_str)
 
@@ -611,9 +647,12 @@ class LinearSelector(PhysicalSelector):
 
 
     def _restore_position(self, position):
-        pos = self.mmu_unit.mmu_toolhead.get_position()
-        pos[0] = position
-        self.mmu_unit.mmu_toolhead.set_position(pos, homing_axes=(0,))
+        self.mmu.log_warning("PAUL: _restore_position(position=%s)" % position)
+        self.selector_stepper.do_set_position(position)
+#PAUL
+#        pos = self.mmu_unit.mmu_toolhead.get_position()
+#        pos[0] = position
+#        self.mmu_unit.mmu_toolhead.set_position(pos, homing_axes=(0,))
         self.enable_motors()
 
 
@@ -640,8 +679,11 @@ class LinearSelector(PhysicalSelector):
         traveled = abs(mcu_position - init_mcu_pos) * self.selector_stepper.get_step_dist()
         return traveled, homed
 
+# PAUL
+#    def use_touch_move(self):
+#        return self.mmu_unit.selector_touch and SENSOR_SELECTOR_TOUCH in self.selector_rail.get_extra_endstop_names() and self.p.selector_touch_enabled
     def use_touch_move(self):
-        return self.mmu_unit.selector_touch and SENSOR_SELECTOR_TOUCH in self.selector_rail.get_extra_endstop_names() and self.p.selector_touch_enabled
+        return self.selector_touch and self.p.selector_touch_enabled
 
 
 
