@@ -183,6 +183,8 @@ class LinearSelector(PhysicalSelector):
 #        self.selector_rail = self.mmu_unit.mmu_toolhead.get_kinematics().rails[0]
 #        self.selector_stepper = self.selector_rail.steppers[0]
 #
+
+# PAUL still need to get these into the object -- params on object better!  then need to figure out test_config
 #        # Adjust selector rail limits now we know the config
 #        self.selector_rail.position_min = -1 # PAUL really don't want this
 #        self.selector_rail.position_max = self._get_max_selector_movement() + 200 # PAUL added for testing only
@@ -663,21 +665,31 @@ class LinearSelector(PhysicalSelector):
         Returns (traveled_mm, homed_ok). Travel is computed from MCU step
         position delta multiplied by step distance.
         """
-        from ...mmu_unit import MmuHoming
-
         self.mmu.movequeues_wait()
-        init_mcu_pos = self.selector_stepper.get_mcu_position()
+
+        traveled = 0.0
         homed = False
         try:
-            homing_state = MmuHoming(self.printer, self.mmu_unit.mmu_toolhead)
-            homing_state.set_axes([0])
-            self.mmu_unit.mmu_toolhead.get_kinematics().home(homing_state)
+            traveled = self.selector_stepper.do_home_rail()
             homed = True
-        except Exception:
-            pass # Home not found
-        mcu_position = self.selector_stepper.get_mcu_position()
-        traveled = abs(mcu_position - init_mcu_pos) * self.selector_stepper.get_step_dist()
-        return traveled, homed
+        except self.printer.command_error:
+            pass # Expected: endstop not triggered
+
+        return abs(traveled), homed
+
+# PAUL
+#        init_mcu_pos = self.selector_stepper.get_mcu_position()
+#        homed = False
+#        try:
+#            homing_state = MmuHoming(self.printer, self.mmu_unit.mmu_toolhead)
+#            homing_state.set_axes([0])
+#            self.mmu_unit.mmu_toolhead.get_kinematics().home(homing_state)
+#            homed = True
+#        except Exception:
+#            pass # Home not found
+#        mcu_position = self.selector_stepper.get_mcu_position()
+#        traveled = abs(mcu_position - init_mcu_pos) * self.selector_stepper.get_step_dist()
+#        return traveled, homed
 
 # PAUL
 #    def use_touch_move(self):

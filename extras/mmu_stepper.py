@@ -26,238 +26,6 @@ from .manual_stepper import ManualStepper
 
 
 # -----------------------------------------------------------------------------------------------------------
-# PAUL: TEMP COPIED FROM KLIPPER
-# -----------------------------------------------------------------------------------------------------------
-#from . import force_move
-#class ManualStepper:
-#    def __init__(self, config):
-#        self.printer = config.get_printer()
-#        self.name = config.get_name()
-#        if config.get('endstop_pin', None) is not None:
-#            self.can_home = True
-#            self.rail = stepper.LookupRail(
-#                config, need_position_minmax=False, default_position_endstop=0.)
-#            self.steppers = self.rail.get_steppers()
-#        else:
-#            self.can_home = False
-#            self.rail = stepper.PrinterStepper(config)
-#            self.steppers = [self.rail]
-#        self.velocity = config.getfloat('velocity', 5., above=0.)
-#        self.accel = self.homing_accel = config.getfloat('accel', 0., minval=0.)
-#        self.next_cmd_time = 0.
-#        self.commanded_pos = 0.
-#        self.pos_min = config.getfloat('position_min', None)
-#        self.pos_max = config.getfloat('position_max', None)
-#        # Setup iterative solver
-#        self.motion_queuing = self.printer.load_object(config, 'motion_queuing')
-#        self.trapq = self.motion_queuing.allocate_trapq()
-#        self.trapq_append = self.motion_queuing.lookup_trapq_append()
-#        self.rail.setup_itersolve('cartesian_stepper_alloc', b'x')
-#        self.rail.set_trapq(self.trapq)
-#        # Registered with toolhead as an axtra axis
-#        self.axis_gcode_id = None
-#        self.instant_corner_v = 0.
-#        self.gaxis_limit_velocity = self.gaxis_limit_accel = 0.
-#        # Register commands
-#        stepper_name = self.name.split()[1]
-#        gcode = self.printer.lookup_object('gcode')
-#        gcode.register_mux_command('MANUAL_STEPPER', "STEPPER",
-#                                   stepper_name, self.cmd_MANUAL_STEPPER,
-#                                   desc=self.cmd_MANUAL_STEPPER_help)
-#    def get_name(self):
-#        return self.name
-#    def sync_print_time(self):
-#        toolhead = self.printer.lookup_object('toolhead')
-#        print_time = toolhead.get_last_move_time()
-#        if self.next_cmd_time > print_time:
-#            toolhead.dwell(self.next_cmd_time - print_time)
-#        else:
-#            self.next_cmd_time = print_time
-#    def do_enable(self, enable):
-#        stepper_names = [s.get_name() for s in self.steppers]
-#        stepper_enable = self.printer.lookup_object('stepper_enable')
-#        stepper_enable.set_motors_enable(stepper_names, enable)
-#    def do_set_position(self, setpos):
-#        toolhead = self.printer.lookup_object('toolhead')
-#        toolhead.flush_step_generation()
-#        self.commanded_pos = setpos
-#        self.rail.set_position([self.commanded_pos, 0., 0.])
-#    def _submit_move(self, movetime, movepos, speed, accel):
-#        cp = self.commanded_pos
-#        dist = movepos - cp
-#        axis_r, accel_t, cruise_t, cruise_v = force_move.calc_move_time(
-#            dist, speed, accel)
-#        self.trapq_append(self.trapq, movetime,
-#                          accel_t, cruise_t, accel_t,
-#                          cp, 0., 0., axis_r, 0., 0.,
-#                          0., cruise_v, accel)
-#        self.commanded_pos = movepos
-#        return movetime + accel_t + cruise_t + accel_t
-#    def do_move(self, movepos, speed, accel, sync=True):
-#        self.sync_print_time()
-#        self.next_cmd_time = self._submit_move(self.next_cmd_time, movepos,
-#                                               speed, accel)
-#        self.motion_queuing.note_mcu_movequeue_activity(self.next_cmd_time)
-#        if sync:
-#            self.sync_print_time()
-#    def do_homing_move(self, movepos, speed, accel,
-#                       probe_pos, triggered, check_trigger):
-#        if not self.can_home:
-#            raise self.printer.command_error(
-#                "No endstop for this manual stepper")
-#        self.homing_accel = accel
-#        pos = [movepos, 0., 0., 0.]
-#        endstops = self.rail.get_endstops()
-#        phoming = self.printer.lookup_object('homing')
-#        phoming.manual_home(self, endstops, pos, speed,
-#                            probe_pos, triggered, check_trigger)
-#        self.sync_print_time()
-#    cmd_MANUAL_STEPPER_help = "Command a manually configured stepper"
-#    def cmd_MANUAL_STEPPER(self, gcmd):
-#        if gcmd.get('GCODE_AXIS', None) is not None:
-#            return self.command_with_gcode_axis(gcmd)
-#        if self.axis_gcode_id is not None:
-#            raise gcmd.error("Must unregister from gcode axis first")
-#        enable = gcmd.get_int('ENABLE', None)
-#        if enable is not None:
-#            self.do_enable(enable)
-#        setpos = gcmd.get_float('SET_POSITION', None)
-#        if setpos is not None:
-#            self.do_set_position(setpos)
-#        speed = gcmd.get_float('SPEED', self.velocity, above=0.)
-#        accel = gcmd.get_float('ACCEL', self.accel, minval=0.)
-#        homing_move = gcmd.get('STOP_ON_ENDSTOP', None)
-#        if homing_move is not None:
-#            old_map = {'-2': 'try_inverted_home', '-1': 'inverted_home',
-#                       '1': 'home', '2': 'try_home'}.get(homing_move)
-#            if old_map is not None:
-#                pconfig = self.printer.lookup_object('configfile')
-#                pconfig.deprecate_gcode("MANUAL_STEPPER", "STOP_ON_ENDSTOP",
-#                                        homing_move)
-#                homing_move = old_map
-#            is_try = homing_move.startswith('try_')
-#            homing_move = homing_move[is_try*4:]
-#            is_inverted = homing_move.startswith('inverted_')
-#            homing_move = homing_move[is_inverted*9:]
-#            if homing_move not in ["probe", "home"]:
-#                raise gcmd.error("Unknown STOP_ON_ENDSTOP request")
-#            is_probe = (homing_move == "probe")
-#            movepos = gcmd.get_float('MOVE')
-#            if ((self.pos_min is not None and movepos < self.pos_min)
-#                or (self.pos_max is not None and movepos > self.pos_max)):
-#                raise gcmd.error("Move out of range")
-#            self.do_homing_move(movepos, speed, accel,
-#                                is_probe, not is_inverted, not is_try)
-#        elif gcmd.get_float('MOVE', None) is not None:
-#            movepos = gcmd.get_float('MOVE')
-#            if ((self.pos_min is not None and movepos < self.pos_min)
-#                or (self.pos_max is not None and movepos > self.pos_max)):
-#                raise gcmd.error("Move out of range")
-#            sync = gcmd.get_int('SYNC', 1)
-#            self.do_move(movepos, speed, accel, sync)
-#        elif gcmd.get_int('SYNC', 0):
-#            self.sync_print_time()
-#    # Register as a gcode axis
-#    def command_with_gcode_axis(self, gcmd):
-#        gcode_move = self.printer.lookup_object("gcode_move")
-#        toolhead = self.printer.lookup_object('toolhead')
-#        gcode_axis = gcmd.get('GCODE_AXIS').upper()
-#        instant_corner_v = gcmd.get_float('INSTANTANEOUS_CORNER_VELOCITY', 1.,
-#                                          minval=0.)
-#        limit_velocity = gcmd.get_float('LIMIT_VELOCITY', 999999.9, above=0.)
-#        limit_accel = gcmd.get_float('LIMIT_ACCEL', 999999.9, above=0.)
-#        if self.axis_gcode_id is not None:
-#            if gcode_axis:
-#                raise gcmd.error("Must unregister axis first")
-#            # Unregister
-#            toolhead.remove_extra_axis(self)
-#            self.axis_gcode_id = None
-#            return
-#        if (len(gcode_axis) != 1 or not gcode_axis.isupper()
-#            or gcode_axis in "XYZEFN"):
-#            if not gcode_axis:
-#                # Request to unregister already unregistered axis
-#                return
-#            raise gcmd.error("Not a valid GCODE_AXIS")
-#        for ea in toolhead.get_extra_axes():
-#            if ea is not None and ea.get_axis_gcode_id() == gcode_axis:
-#                raise gcmd.error("Axis '%s' already registered" % (gcode_axis,))
-#        self.axis_gcode_id = gcode_axis
-#        self.instant_corner_v = instant_corner_v
-#        self.gaxis_limit_velocity = limit_velocity
-#        self.gaxis_limit_accel = limit_accel
-#        toolhead.add_extra_axis(self, self.commanded_pos)
-#    def process_move(self, print_time, move, ea_index):
-#        axis_r = move.axes_r[ea_index]
-#        start_pos = move.start_pos[ea_index]
-#        accel = move.accel * axis_r
-#        start_v = move.start_v * axis_r
-#        cruise_v = move.cruise_v * axis_r
-#        self.trapq_append(self.trapq, print_time,
-#                          move.accel_t, move.cruise_t, move.decel_t,
-#                          start_pos, 0., 0.,
-#                          1., 0., 0.,
-#                          start_v, cruise_v, accel)
-#        self.commanded_pos = move.end_pos[ea_index]
-#    def check_move(self, move, ea_index):
-#        # Check move is in bounds
-#        movepos = move.end_pos[ea_index]
-#        if ((self.pos_min is not None and movepos < self.pos_min)
-#            or (self.pos_max is not None and movepos > self.pos_max)):
-#            raise move.move_error()
-#        # Check if need to limit maximum velocity and acceleration
-#        axis_ratio = move.move_d / abs(move.axes_d[ea_index])
-#        limit_velocity = self.gaxis_limit_velocity * axis_ratio
-#        limit_accel = self.gaxis_limit_accel * axis_ratio
-#        if not move.is_kinematic_move and self.accel:
-#            limit_accel = min(limit_accel, self.accel * axis_ratio)
-#        move.limit_speed(limit_velocity, limit_accel)
-#    def calc_junction(self, prev_move, move, ea_index):
-#        diff_r = move.axes_r[ea_index] - prev_move.axes_r[ea_index]
-#        if diff_r:
-#            return (self.instant_corner_v / abs(diff_r))**2
-#        return move.max_cruise_v2
-#    def get_axis_gcode_id(self):
-#        return self.axis_gcode_id
-#    def get_trapq(self):
-#        return self.trapq
-#    # Toolhead wrappers to support homing
-#    def flush_step_generation(self):
-#        toolhead = self.printer.lookup_object('toolhead')
-#        toolhead.flush_step_generation()
-#    def get_position(self):
-#        return [self.commanded_pos, 0., 0., 0.]
-#    def set_position(self, newpos, homing_axes=""):
-#        self.do_set_position(newpos[0])
-#    def get_last_move_time(self):
-#        self.sync_print_time()
-#        return self.next_cmd_time
-#    def dwell(self, delay):
-#        self.next_cmd_time += max(0., delay)
-#    def drip_move(self, newpos, speed, drip_completion):
-#        # Submit move to trapq
-#        self.sync_print_time()
-#        start_time = self.next_cmd_time
-#        end_time = self._submit_move(start_time, newpos[0],
-#                                     speed, self.homing_accel)
-#        # Drip updates to motors
-#        self.motion_queuing.drip_update_time(start_time, end_time,
-#                                             drip_completion)
-#        # Clear trapq of any remaining parts of movement
-#        self.motion_queuing.wipe_trapq(self.trapq)
-#    def get_kinematics(self):
-#        return self
-#    def get_steppers(self):
-#        return self.steppers
-#    def calc_position(self, stepper_positions):
-#        return [stepper_positions[self.rail.get_name()], 0., 0.]
-# -----------------------------------------------------------------------------------------------------------
-# PAUL: TEMP COPIED FROM KLIPPER
-# -----------------------------------------------------------------------------------------------------------
-
-
-
-# -----------------------------------------------------------------------------------------------------------
 # MmuGenericRail is similar to GenericPrinterRail but supports multiple endstops, direction reversal, etc
 # -----------------------------------------------------------------------------------------------------------
 
@@ -319,11 +87,13 @@ class MmuGenericRail:
                 raise config.error(f"position_endstop in section '{config.get_name()}' must be between position_min and position_max")
 
         # Homing mechanics
-        self.homing_speed = config.getfloat('homing_speed', 5.0, above=0.)
+        self.homing_speed = config.getfloat('homing_speed', 10.0, above=0.)
         self.second_homing_speed = config.getfloat('second_homing_speed', self.homing_speed / 2., above=0.)
         self.homing_retract_speed = config.getfloat('homing_retract_speed', self.homing_speed, above=0.)
         self.homing_retract_dist = config.getfloat('homing_retract_dist', 5., minval=0.)
         self.homing_positive_dir = config.getboolean('homing_positive_dir', None)
+        self.homing_move_dist = config.getfloat('homing_move_dist', None, above=0.) # PAUL added
+        self.homing_accel = config.getfloat('homing_accel', 800., minval=0.) # PAUL added
 
         if self.default_mcu_endstop is not None:
             if self.homing_positive_dir is None:
@@ -371,14 +141,28 @@ class MmuGenericRail:
     def get_range(self):
         return self.position_min, self.position_max
 
-
     def get_homing_info(self):
-        homing_info = collections.namedtuple('homing_info', [
-            'speed', 'position_endstop', 'retract_speed', 'retract_dist',
-            'positive_dir', 'second_homing_speed'])(
-                self.homing_speed, self.position_endstop,
-                self.homing_retract_speed, self.homing_retract_dist,
-                self.homing_positive_dir, self.second_homing_speed)
+        HomingInfo = collections.namedtuple(
+            'homing_info',
+            [
+                'speed',
+                'position_endstop',
+                'retract_speed',
+                'retract_dist',
+                'positive_dir',
+                'second_homing_speed',
+                'move_dist', # PAUL added
+            ],
+        )
+        homing_info = HomingInfo(
+            self.homing_speed,
+            self.position_endstop,
+            self.homing_retract_speed,
+            self.homing_retract_dist,
+            self.homing_positive_dir,
+            self.second_homing_speed,
+            self.homing_move_dist, # PAUL added
+        )
         return homing_info
 
 
@@ -396,7 +180,6 @@ class MmuGenericRail:
 
         # Normalize pin name
         pin_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
-        logging.info(f"PAUL: pin_name={pin_name}")
 
         # Look for already-registered endstop
         endstop = self.endstop_map.get(pin_name, None)
@@ -470,10 +253,6 @@ class MmuGenericRail:
     def set_position(self, coord):
         for stepper_obj in self.steppers:
             stepper_obj.set_position(coord)
-
-
-    def move(self, newpos, speed):
-        self.do_move(newpos[0], speed, self.homing_accel, sync=True)
 
 
     # -------------------------------------------------------------------------
@@ -624,68 +403,61 @@ class MmuGenericRail:
             stepper_obj.set_dir_inverted(direction)
 
 
-    def home(self, mmu_stepper, movepos, speed=None, accel=None, probe_pos=False, triggered=True, check_trigger=True, endstop_name=None):
-
-        if speed is None:
-            speed = self.homing_speed
-        if accel is None:
-            accel = mmu_stepper.accel
-    
-        mmu_stepper.homing_accel = accel
-        pos = [movepos, 0., 0., 0.]
+    def home(self, mstepper, forcepos, movepos, endstop_name=None):
+        hi = self.get_homing_info()
         endstops = self.get_homing_endstops(endstop_name)
     
-        # First pass
-        hmove = HomingMove(mmu_stepper.printer, endstops)
-        hmove.homing_move(pos, speed, probe_pos, triggered, check_trigger)
+        # Convert to vector form
+        startpos = [forcepos, 0., 0., 0.]
+        homepos = [movepos, 0., 0., 0.]
     
-        # Optional retract + second pass
-        if self.homing_retract_dist:
-            homepos = movepos
-            startpos = mmu_stepper.get_position()[0]
-            move_d = homepos - startpos
+        # Force logical start position
+        mstepper.set_position(startpos)
+
+        init_mcu_pos = mstepper.get_steppers()[0].get_mcu_position()
+    
+        # First pass
+        hmove = HomingMove(mstepper.printer, endstops, mstepper)
+        trigpos = hmove.homing_move(homepos, hi.speed)
+    
+        # Second pass (retract + re-home)
+        if hi.retract_dist:
+            # IMPORTANT: use ORIGINAL homing vector (forcepos -> homepos)
+            move_d = movepos - forcepos
     
             if move_d:
-                retract_dist = min(abs(move_d), self.homing_retract_dist)
-                retractpos = homepos - math.copysign(retract_dist, move_d)
+                retract = min(abs(move_d), hi.retract_dist)
+                retractpos_x = movepos - math.copysign(retract, move_d)
+                retractpos = [retractpos_x, 0., 0., 0.]
     
-                # Retract away from the endstop
-                mmu_stepper.move([retractpos, 0., 0., 0.], self.homing_retract_speed)
+                mstepper.do_move(retractpos[0], hi.retract_speed, mstepper.homing_accel) # <toolhead>mstepper.move()
     
-                # Reset logical position so second pass starts clear of switch
-                mmu_stepper.set_position([retractpos, 0., 0., 0.])
+                second_start_x = retractpos_x - math.copysign(retract, move_d)
+                second_start = [second_start_x, 0., 0., 0.]
+                mstepper.set_position(second_start)
     
-                # Second pass
-                hmove = HomingMove(mmu_stepper.printer, endstops)
-                hmove.homing_move(pos, self.second_homing_speed,
-                                  probe_pos, triggered, check_trigger)
+                hmove = HomingMove(mstepper.printer, endstops, mstepper)
+                trigpos = hmove.homing_move(homepos, hi.second_homing_speed)
     
-                stuck = hmove.check_no_movement()
-                if stuck is not None:
-                    raise mmu_stepper.printer.command_error("Endstop %s still triggered after retract" % (stuck,))
+                if hmove.check_no_movement() is not None:
+                    raise mstepper.printer.command_error("Endstop still triggered after retract")
     
-        mmu_stepper.flush_step_generation()
-        mmu_stepper.set_position(pos)
-    
-        trigger_mcu_pos = {
-            sp.stepper_name: sp.trig_pos for sp in hmove.stepper_positions
-        }
-    
-        trigger_pos = None
-        for s in mmu_stepper.get_steppers():
-            sname = s.get_name()
-            if sname in trigger_mcu_pos:
-                trigger_pos = trigger_mcu_pos[sname]
+        # Finalize
+        trig_mcu_pos = None
+        stepper_name = mstepper.get_name()
+        for sp in hmove.stepper_positions:
+            if sp.stepper_name == stepper_name:
+                trig_mcu_pos = sp.trig_pos
                 break
-        if trigger_pos is None and trigger_mcu_pos:
-            trigger_pos = next(iter(trigger_mcu_pos.values()))
+        if trig_mcu_pos is None:
+            raise mstepper.printer.command_error(f"Unable to determine trigger position for stepper '{stepper_name}'")
+        final_mcu_pos = mstepper.get_steppers()[0].get_mcu_position()
+        travelled = (trig_mcu_pos - init_mcu_pos) * mstepper.get_steppers()[0].get_step_dist()
     
-        return {
-            "trig_pos": trigger_pos,
-            "trig_mcu_pos": trigger_mcu_pos,
-        }
-
-
+        # Return distance travelled to home (trigger point)
+        return travelled
+    
+    
 def MmuLookupRail(config, need_position_minmax=True, default_position_endstop=None, units_in_radians=False):
     rail = MmuGenericRail(config, need_position_minmax, default_position_endstop, units_in_radians)
     rail.add_stepper_from_config(config)
@@ -721,6 +493,7 @@ class MmuStepper(ManualStepper):
 
         has_default_endstop = config.get('endstop_pin', None) is not None
         has_extra_endstops = config.get('extra_endstops', None) is not None
+#PAUL        self.homing_move_dist = config.getfloat('homing_move_dist', None) # PAUL
 
         if has_default_endstop or has_extra_endstops:
             self.can_home = True
@@ -731,8 +504,8 @@ class MmuStepper(ManualStepper):
             self.rail = stepper.PrinterStepper(config)
             self.steppers = [self.rail]
 
-        self.velocity = config.getfloat('velocity', 5., above=0.)
-        self.accel = self.homing_accel = config.getfloat('accel', 0., minval=0.)
+        self.velocity = config.getfloat('velocity', 80., above=0.) # PAUL was 5
+        self.accel = self.homing_accel = config.getfloat('accel', 100., minval=0.) # PAUL was 0
         self.next_cmd_time = 0.
         self.commanded_pos = 0.
         self.pos_min = config.getfloat('position_min', None)
@@ -785,11 +558,34 @@ class MmuStepper(ManualStepper):
         }
 
 
-    def do_home_rail(self, movepos, speed, accel, probe_pos, triggered, check_trigger, endstop_name=None):
+    def do_home_rail(self, endstop_name=None):
         if not self.can_home:
             raise self.printer.command_error("No endstop for this MMU stepper")
 
-        result = self.rail.home(self, movepos, speed, accel, probe_pos, triggered, check_trigger, endstop_name=endstop_name)
+        position_min, position_max = self.rail.get_range()
+        hi = self.rail.get_homing_info()
+
+        homepos = hi.position_endstop
+        if hi.positive_dir:
+            forcepos = homepos - 1.5 * (homepos - position_min)
+        else:
+            forcepos = homepos + 1.5 * (position_max - homepos)
+
+        if forcepos == homepos:
+            if hi.move_dist is None or hi.move_dist <= 0.:
+                raise self.printer.command_error(
+                    "Cannot home mmu_stepper: forcepos equals homepos "
+                    f"(forcepos={forcepos}, homepos={homepos}). "
+                    "Check position_min, position_max, position_endstop "
+                    "or configure homing_move_dist."
+                )
+
+            if hi.positive_dir:
+                forcepos = homepos - hi.move_dist
+            else:
+                forcepos = homepos + hi.move_dist
+
+        result = self.rail.home(self, forcepos, homepos, endstop_name=endstop_name)
         self.sync_print_time()
         return result
 
@@ -816,17 +612,11 @@ class MmuStepper(ManualStepper):
         home_request = gcmd.get_int('HOME', 0)
         if home_request:
             endstop_name = gcmd.get('ENDSTOP', None)
-            movepos = gcmd.get_float('MOVE')
-    
-            logging.info(f"PAUL: movepos={movepos}, pos_min={self.pos_min}, pos_max={self.pos_max}")
-            if ((self.pos_min is not None and movepos < self.pos_min)
-                or (self.pos_max is not None and movepos > self.pos_max)):
-                raise gcmd.error("Move out of range")
     
             success = False
             home_result = None
             try:
-                home_result = self.do_home_rail(movepos, speed, accel, False, True, True, endstop_name=endstop_name)
+                home_result = self.do_home_rail(endstop_name)
                 success = True
             finally:
                 current_pos = self.commanded_pos
@@ -837,10 +627,8 @@ class MmuStepper(ManualStepper):
             )
             msg = (
                 f"PAUL: {self.name}: HOME {'ok' if success else 'failed'} "
-                f"endstop={used_endstop} target={movepos:.5f} pos={current_pos:.5f}"
+                f"endstop={endstop_name} current_pos={current_pos:.5f} home_result={home_result}"
             )
-            if success and isinstance(home_result, dict):
-                msg += f" result={home_result}"
             gcmd.respond_info(msg)
             return
 
@@ -937,7 +725,7 @@ class MmuStepper(ManualStepper):
 
         # Position
         pos = self.commanded_pos
-        gcmd.respond_info(f"{self.name}: commanded_pos={pos:.5f}")
+        gcmd.respond_info(f"{self.name}: commanded_pos={pos:.10f}")
 
         # Default endstop
         default_estop = rail.default_mcu_endstop
