@@ -73,6 +73,13 @@ class MmuSyncFeedbackManager:
         # Initial flowguard status
         self.flowguard_status = {'trigger': '', 'reason': '', 'level': 0.0, 'max_clog': 0.0, 'max_tangle': 0.0, 'active': False, 'enabled': bool(self.flowguard_enabled)}
 
+        # Tangle prevention - dynamic gear current boost when high tension detected (spool resistance)
+        self.tangle_prevention_enabled   = self.mmu.tangle_prevention_enabled
+        self.tangle_prevention_threshold = self.mmu.tangle_prevention_threshold
+        self.tangle_prevention_release   = self.mmu.tangle_prevention_release
+        self._tangle_prevention_boosted  = False  # True when gear current has been boosted to 100%
+        self._tangle_prevention_active   = False  # Gating flag: only True after load completes, cleared before unload
+
         # Register GCODE commands ---------------------------------------------------------------------------
 
         self.mmu.gcode.register_command('MMU_SYNC_FEEDBACK', self.cmd_MMU_SYNC_FEEDBACK, desc=self.cmd_MMU_SYNC_FEEDBACK_help)
@@ -112,6 +119,11 @@ class MmuSyncFeedbackManager:
                 self._config_flowguard_feature(flowguard_enabled)
             self.flowguard_max_relief = gcmd.get_float('FLOWGUARD_MAX_RELIEF', self.flowguard_max_relief, above=1.)
 
+            # Tangle prevention
+            self.tangle_prevention_enabled   = gcmd.get_int('TANGLE_PREVENTION_ENABLED', self.tangle_prevention_enabled, minval=0, maxval=1)
+            self.tangle_prevention_threshold = gcmd.get_float('TANGLE_PREVENTION_THRESHOLD', self.tangle_prevention_threshold, minval=0.3, maxval=1.)
+            self.tangle_prevention_release   = gcmd.get_float('TANGLE_PREVENTION_RELEASE', self.tangle_prevention_release, minval=0.2, maxval=0.9)
+
         if self.mmu.has_encoder():
             mode = gcmd.get_int('FLOWGUARD_ENCODER_MODE', self.flowguard_encoder_mode, minval=0, maxval=2)
             if mode != self.flowguard_encoder_mode:
@@ -131,6 +143,11 @@ class MmuSyncFeedbackManager:
             msg += "\nsync_feedback_extrude_threshold = %.1f" % self.sync_feedback_extrude_threshold
             msg += "\nsync_feedback_debug_log = %d" % self.sync_feedback_debug_log
     
+            msg += "\n\nTANGLE PREVENTION:"
+            msg += "\ntangle_prevention_enabled = %d" % self.tangle_prevention_enabled
+            msg += "\ntangle_prevention_threshold = %.2f" % self.tangle_prevention_threshold
+            msg += "\ntangle_prevention_release = %.2f" % self.tangle_prevention_release
+
             msg += "\n\nFLOWGUARD:"
             msg += "\nflowguard_enabled = %d" % self.flowguard_enabled
             msg += "\nflowguard_max_relief = %.1f" % self.flowguard_max_relief
@@ -388,6 +405,7 @@ class MmuSyncFeedbackManager:
                 msg += "- FlowGuard: %s" % ("Active" if self.flowguard_active else "Inactive")
                 if has_proportional:
                     msg += " (Flowrate: %.1f%%)" % self.flow_rate
+                msg += "\n- Tangle Prevention: %s" % ("Enabled (BOOSTED)" if self._tangle_prevention_boosted else "Enabled" if self.tangle_prevention_enabled else "Disabled")
 
                 self.mmu.log_always(msg)
 
@@ -404,6 +422,13 @@ class MmuSyncFeedbackManager:
             'sync_feedback_bias_modelled': self._get_sync_bias_modelled(),
             'sync_feedback_flow_rate': self.flow_rate,
             'flowguard': self.flowguard_status,
+            'tangle_prevention': {
+                'enabled': bool(self.tangle_prevention_enabled),
+                'active': self._tangle_prevention_active,
+                'boosted': self._tangle_prevention_boosted,
+                'threshold': self.tangle_prevention_threshold,
+                'release': self.tangle_prevention_release,
+            },
         }
 
 
@@ -473,6 +498,9 @@ class MmuSyncFeedbackManager:
 
         # Restore default (last tuned) rotation distance
         self.set_default_rd()
+
+        # Reset tangle prevention state and restore current if boosted
+        self._reset_tangle_prevention()
 
         # Optional but let's turn off extruder movement events
         self.extruder_monitor.remove_callback(self._handle_extruder_movement)
@@ -574,6 +602,83 @@ class MmuSyncFeedbackManager:
         if self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_PROPORTIONAL):
             # if rd_current > rd_true then flowrate must be reduced
             self.flow_rate = round(min(1.0, (rd_tuned / rd_current)) * 100., 2)
+
+        # Tangle prevention: boost gear current when high tension detected from spool resistance
+        self._check_tangle_prevention(eventtime)
+
+
+    def _check_tangle_prevention(self, eventtime):
+        """
+        Monitor proportional sensor tension level and dynamically boost gear stepper current
+        to help pull filament from the spool when approaching a tangle condition.
+
+        When tension exceeds the configurable threshold (default 80%), the gear current is
+        immediately boosted to 100%. When tension drops back below the release threshold
+        (default 70%), the current is restored to the user-configured sync_gear_current.
+
+        Uses hysteresis (separate trigger/release thresholds) to prevent rapid toggling.
+        This feature is specifically for tangle prevention, NOT clog detection.
+        High tension indicates the gear motor is struggling to pull filament from the spool,
+        so boosting current may help overcome spool resistance before a full tangle flowguard activation.
+        """
+        if not self.tangle_prevention_enabled:
+            return
+        if not self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_PROPORTIONAL):
+            return
+
+        # Only run when explicitly activated after a successful load completes
+        if not self._tangle_prevention_active:
+            return
+
+        # Get raw sensor state: tension is negative, so we work with abs(tension)
+        sensor_state = self._get_sensor_state()
+        tension_level = -sensor_state  # Convert to positive for tension (negative sensor = tension)
+
+        if not self._tangle_prevention_boosted:
+            # Check if tension has reached the boost threshold
+            if tension_level >= self.tangle_prevention_threshold:
+                self._tangle_prevention_boosted = True
+                self.mmu.log_info("Tangle Prevention: High tension detected (%.0f%%), boosting gear current to 100%%" % (tension_level * 100.))
+                # Schedule current change in its own greenlet so SET_TMC_CURRENT's
+                # toolhead.get_last_move_time() doesn't flush the lookahead inside the
+                # ExtruderMonitor timer callback (which would risk a move stall)
+                self.mmu.reactor.register_callback(
+                    lambda pt: self.mmu._adjust_gear_current(percent=100, reason="for tangle prevention"))
+        else:
+            # Check if tension has dropped below the release threshold
+            if tension_level <= self.tangle_prevention_release:
+                self._tangle_prevention_boosted = False
+                restore_percent = self.mmu.sync_gear_current
+                self.mmu.log_info("Tangle Prevention: Tension eased (%.0f%%), restoring gear current to %d%%" % (tension_level * 100., restore_percent))
+                self.mmu.reactor.register_callback(
+                    lambda pt, p=restore_percent: self.mmu._adjust_gear_current(percent=p, reason="tangle prevention release"))
+
+
+    def activate_tangle_prevention(self):
+        """Called after load_sequence completes successfully to arm tangle prevention monitoring"""
+        if self.tangle_prevention_enabled and self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_PROPORTIONAL):
+            self._tangle_prevention_active = True
+            self.mmu.log_debug("Tangle Prevention: Armed")
+
+    def deactivate_tangle_prevention(self):
+        """Called to disarm tangle prevention and restore gear current if boosted"""
+        if self._tangle_prevention_active:
+            self._tangle_prevention_active = False
+            self.mmu.log_debug("Tangle Prevention: Disarmed")
+        if self._tangle_prevention_boosted:
+            self._tangle_prevention_boosted = False
+            restore_percent = self.mmu.sync_gear_current
+            self.mmu.log_debug("Tangle Prevention: Restoring gear current to %d%%" % restore_percent)
+            self.mmu._adjust_gear_current(percent=restore_percent, reason="tangle prevention disarmed")
+
+    def _reset_tangle_prevention(self):
+        """Reset tangle prevention state and restore gear current if boosted"""
+        self._tangle_prevention_active = False
+        if self._tangle_prevention_boosted:
+            self._tangle_prevention_boosted = False
+            restore_percent = self.mmu.sync_gear_current
+            self.mmu.log_debug("Tangle Prevention: Resetting — restoring gear current to %d%%" % restore_percent)
+            self.mmu._adjust_gear_current(percent=restore_percent, reason="tangle prevention reset")
 
 
     def _reset_controller(self, eventtime, hard_reset=True):

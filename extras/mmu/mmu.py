@@ -417,6 +417,12 @@ class Mmu:
         self.extruder_purge_current = config.getint('extruder_purge_current', 100, minval=100, maxval=150)
         self.sync_gear_current = config.getint('sync_gear_current', 50, minval=10, maxval=100)
 
+        # Tangle prevention - gear current boost based on proportional sensor tension. Hidden config parameters, feature enabled by default
+        # Defaults to 50% tension meaning we are heading towards a tangle. Release at 30% tension to prevent "thrashing"
+        self.tangle_prevention_enabled = config.getint('tangle_prevention_enabled', 1, minval=0, maxval=1)
+        self.tangle_prevention_threshold = config.getfloat('tangle_prevention_threshold', 0.3, minval=0.2, maxval=0.9)
+        self.tangle_prevention_release = config.getfloat('tangle_prevention_release', 0.2, minval=0.15, maxval=0.8)
+
         # Filament move speeds and accelaration
         self.gear_from_buffer_speed = config.getfloat('gear_from_buffer_speed', 150., minval=10.)
         self.gear_from_buffer_accel = config.getfloat('gear_from_buffer_accel', 400, minval=10.)
@@ -3160,6 +3166,7 @@ class Mmu:
                 self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.default_idle_timeout) # Restore original idle_timeout
 
             self._standalone_sync = False # Safer to clear this on print end or idle_timeout to standby to avoid user confusion
+            self.sync_feedback_manager.deactivate_tangle_prevention()
             self._set_print_state(state)
 
             # Establish syncing state and grip (servo) position
@@ -5195,6 +5202,10 @@ class Mmu:
                     else:
                         self.wrap_gcode_command(self.post_load_macro, exception=True, wait=True)
 
+            # Arm tangle prevention now that load is fully complete (not for bypass or extruder-only loads)
+            if not extruder_only and self.gate_selected >= 0:
+                self.sync_feedback_manager.activate_tangle_prevention()
+
         except MmuError as ee:
             self._track_gate_statistics('load_failures', self.gate_selected)
             raise MmuError("Load sequence failed because:\n%s" % (str(ee)))
@@ -5209,6 +5220,9 @@ class Mmu:
                 self._track_time_end('load')
 
     def unload_sequence(self, bowden_move=None, check_state=False, form_tip=None, extruder_only=False):
+        # Disarm tangle prevention before any unload work begins
+        self.sync_feedback_manager.deactivate_tangle_prevention()
+
         self.movequeues_wait()
 
         bowden_length = self.calibration_manager.get_bowden_length() # -1 if not calibrated yet
