@@ -110,6 +110,8 @@ cd ~
 git clone https://github.com/moggieuk/Happy-Hare.git
 ```
 
+To remove Happy Hare again, run either `./uninstall.sh` or `./install.sh -d`.
+
 <br>
  
 ## ![#f03c15](https://github.com/moggieuk/Happy-Hare/wiki/resources/f03c15.png) ![#c5f015](https://github.com/moggieuk/Happy-Hare/wiki/resources/c5f015.png) ![#1589F0](https://github.com/moggieuk/Happy-Hare/wiki/resources/1589F0.png) Documentation

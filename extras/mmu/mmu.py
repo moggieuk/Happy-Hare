@@ -175,6 +175,8 @@ class Mmu:
     VARS_MMU_GATE_SELECTED            = "mmu_state_gate_selected"
     VARS_MMU_TOOL_SELECTED            = "mmu_state_tool_selected"
     VARS_MMU_LAST_TOOL                = "mmu_state_last_tool"
+    VARS_MMU_LAST_UNLOADED_TEMPERATURE = "mmu_state_last_unloaded_temperature"
+    VARS_MMU_LAST_LOADED_FILAMENT_SIGNATURE = "mmu_state_last_loaded_filament_signature"
     VARS_MMU_FILAMENT_POS             = "mmu_state_filament_pos"
     VARS_MMU_FILAMENT_REMAINING       = "mmu_state_filament_remaining"
     VARS_MMU_FILAMENT_REMAINING_COLOR = "mmu_state_filament_remaining_color"
@@ -262,6 +264,8 @@ class Mmu:
         self.w3c_colors = dict(self.W3C_COLORS)
         self.filament_remaining = 0.
         self._last_tool = self._next_tool = self.TOOL_GATE_UNKNOWN
+        self.last_unloaded_temperature = 0.
+        self.last_loaded_filament_signature = ""
         self._next_gate = None
         self.toolchange_retract = 0.          # Set from mmu_macro_vars
         self._can_write_variables = False
@@ -310,7 +314,14 @@ class Mmu:
         self.gcode_unload_sequence = config.getint('gcode_unload_sequence', 0)
         self.slicer_tip_park_pos = config.getfloat('slicer_tip_park_pos', 0., minval=0.)
         self.force_form_tip_standalone = config.getint('force_form_tip_standalone', 0, minval=0, maxval=1)
+        self.material_unload_temps = self._parse_material_temp_map(config.get('material_unload_temps', '{}'))
         self.force_purge_standalone = config.getint('force_purge_standalone', 0, minval=0, maxval=1)
+        self.purge_on_load = config.getint('purge_on_load', 0, minval=0, maxval=1)
+        self.purge_on_load_only_while_printing = config.getint('purge_on_load_only_while_printing', 1, minval=0, maxval=1)
+        self.purge_on_load_only_if_filament_changed = config.getint('purge_on_load_only_if_filament_changed', 0, minval=0, maxval=1)
+        self.purge_after_load_macro = config.get('purge_after_load_macro', '').replace("'", "")
+        self.purge_on_load_x = config.getfloat('purge_on_load_x', -999.)
+        self.purge_on_load_y = config.getfloat('purge_on_load_y', -999.)
         self.strict_filament_recovery = config.getint('strict_filament_recovery', 0, minval=0, maxval=1)
         self.filament_recovery_on_pause = config.getint('filament_recovery_on_pause', 1, minval=0, maxval=1)
         self.retry_tool_change_on_error = config.getint('retry_tool_change_on_error', 0, minval=0, maxval=1)
@@ -318,6 +329,8 @@ class Mmu:
         self.startup_home_if_unloaded = config.getint('startup_home_if_unloaded', 0, minval=0, maxval=1)
         self.startup_reset_ttg_map = config.getint('startup_reset_ttg_map', 0, minval=0, maxval=1)
         self.show_error_dialog = config.getint('show_error_dialog', 1, minval=0, maxval=1)
+        self.purge_transition_min_length = config.getfloat('purge_transition_min_length', 15., minval=0.)
+        self.purge_transition_speed = config.getfloat('purge_transition_speed', 2., minval=0.1)
 
         # Automatic calibration / tuning options
         self.autocal_selector = config.getint('autocal_selector', 0, minval=0, maxval=1) # Not exposed TODO placeholder for implementation
@@ -1189,6 +1202,8 @@ class Mmu:
         # Always load length of filament remaining in extruder (after cut) and last tool loaded
         self.filament_remaining = self.save_variables.allVariables.get(self.VARS_MMU_FILAMENT_REMAINING, self.filament_remaining)
         self._last_tool = self.save_variables.allVariables.get(self.VARS_MMU_LAST_TOOL, self._last_tool)
+        self.last_unloaded_temperature = self.save_variables.allVariables.get(self.VARS_MMU_LAST_UNLOADED_TEMPERATURE, self.last_unloaded_temperature)
+        self.last_loaded_filament_signature = self.save_variables.allVariables.get(self.VARS_MMU_LAST_LOADED_FILAMENT_SIGNATURE, self.last_loaded_filament_signature)
 
         # Load EndlessSpool config
         self.endless_spool_enabled = self.save_variables.allVariables.get(self.VARS_MMU_ENABLE_ENDLESS_SPOOL, self.endless_spool_enabled)
@@ -3543,6 +3558,24 @@ class Mmu:
         self._last_tool = tool
         self.save_variable(self.VARS_MMU_LAST_TOOL, tool, write=True)
 
+    def _set_last_unloaded_temperature(self, temperature):
+        self.last_unloaded_temperature = round(max(0., temperature), 1)
+        self.save_variable(self.VARS_MMU_LAST_UNLOADED_TEMPERATURE, self.last_unloaded_temperature, write=True)
+
+    def _get_gate_filament_signature(self, gate=None):
+        gate = self.gate_selected if gate is None else gate
+        if gate is None or gate < 0 or gate >= self.num_gates:
+            return ""
+        material = (self.gate_material[gate] or "").strip().upper()
+        color = (self.gate_color[gate] or "").strip().lower()
+        name = (self.gate_filament_name[gate] or "").strip().lower()
+        temperature = self.gate_temperature[gate] if self.gate_temperature[gate] > 0 else self.default_extruder_temp
+        return "%s|%s|%s|%s" % (material, color, name, int(temperature))
+
+    def _set_last_loaded_filament_signature(self, signature):
+        self.last_loaded_filament_signature = signature or ""
+        self.save_variable(self.VARS_MMU_LAST_LOADED_FILAMENT_SIGNATURE, self.last_loaded_filament_signature, write=True)
+
     def _set_filament_pos_state(self, state, silent=False):
         if self.filament_pos != state:
             self.filament_pos = state
@@ -3752,15 +3785,214 @@ class Mmu:
     def _gate_homing_string(self):
         return "ENCODER" if self.gate_homing_endstop == self.SENSOR_ENCODER else "%s sensor" % self.gate_homing_endstop
 
-    def _ensure_safe_extruder_temperature(self, source="auto", wait=False):
+    def _get_gate_temperature(self, gate=None):
+        gate = self.gate_selected if gate is None else gate
+        if gate is None or gate < 0 or gate >= self.num_gates:
+            return self.default_extruder_temp
+        temp = self.gate_temperature[gate]
+        return temp if temp > 0 else self.default_extruder_temp
+
+    def _normalize_material_key(self, material):
+        return re.sub(r'\s+', '', str(material or '')).upper()
+
+    def _parse_material_temp_map(self, material_temp_map):
+        if not material_temp_map:
+            return {}
+
+        if isinstance(material_temp_map, str):
+            try:
+                material_temp_map = ast.literal_eval(material_temp_map)
+            except Exception as e:
+                raise self.config.error("Option 'material_unload_temps' could not be parsed: %s" % str(e))
+
+        if not isinstance(material_temp_map, dict):
+            raise self.config.error("Option 'material_unload_temps' must be a Python dict, e.g. {'PLA': 210, 'PETG': 240}")
+
+        parsed = {}
+        for material, temp in material_temp_map.items():
+            key = self._normalize_material_key(material)
+            if not key:
+                continue
+            try:
+                parsed[key] = float(temp)
+            except (TypeError, ValueError):
+                raise self.config.error("Invalid unload temperature '%s' for material '%s' in 'material_unload_temps'" % (temp, material))
+        return parsed
+
+    def _get_material_unload_temp_map(self):
+        gcode_vars = self.printer.lookup_object("gcode_macro _MMU_FORM_TIP_VARS", None)
+        if gcode_vars is not None:
+            raw_value = gcode_vars.variables.get("material_unload_temps", None)
+            if raw_value not in (None, "", {}):
+                return self._parse_material_temp_map(raw_value)
+        return self.material_unload_temps
+
+    def _get_material_unload_temperature(self, gate=None):
+        gate = self.gate_selected if gate is None else gate
+        if gate < 0 or gate >= self.num_gates:
+            return None, None
+
+        material = self.gate_material[gate]
+        if not material:
+            return None, material
+
+        material_temp_map = self._get_material_unload_temp_map()
+        return material_temp_map.get(self._normalize_material_key(material)), material
+
+    def _prepare_manual_unload_temperature(self):
+        target_temp, material = self._get_material_unload_temperature()
+        if target_temp is None:
+            return
+
+        self.log_info("Preparing unload for material %s at %.1f%sC" % (material, target_temp, UI_DEGREE))
+        self._ensure_safe_extruder_temperature(source="material '%s' unload" % material, wait=True, target_temp=target_temp)
+
+    def _resolve_form_tip_toolchange_temperature(self):
+        gcode_vars = self.printer.lookup_object("gcode_macro %s_VARS" % self.form_tip_macro, None)
+        if gcode_vars is None:
+            return None
+
+        raw_value = gcode_vars.variables.get("toolchange_temp", 0)
+        if isinstance(raw_value, (int, float)):
+            return int(raw_value) if raw_value > 0 else None
+
+        setting = str(raw_value).strip()
+        if not setting:
+            return None
+
+        normalized = setting.lower()
+        if normalized in ("0", "off", "false", "none", "disabled"):
+            return None
+        if normalized == "auto":
+            target_temp, material = self._get_material_unload_temperature()
+            if target_temp is None:
+                return None
+            self.log_trace("Using material-specific tip-form temperature %.1f%sC for %s" % (target_temp, UI_DEGREE, material))
+            return int(target_temp)
+
+        try:
+            target_temp = int(float(setting))
+        except ValueError:
+            self.log_warning("Ignoring invalid toolchange_temp setting '%s' in '%s_VARS'" % (raw_value, self.form_tip_macro))
+            return None
+        return target_temp if target_temp > 0 else None
+
+    def _get_standalone_purge_preload_temperature(self):
+        return self.last_unloaded_temperature if self.last_unloaded_temperature > 0 else None
+
+    def _prepare_standalone_purge_temperatures(self):
+        preload_temp = self._get_standalone_purge_preload_temperature()
+        if preload_temp is None:
+            return None
+
+        self.log_info("Heating to previous filament gate temperature: %.1f%sC" % (preload_temp, UI_DEGREE))
+        self._ensure_safe_extruder_temperature(source="previous filament gate", wait=True, target_temp=preload_temp)
+        return preload_temp
+
+    def _has_purge_on_load_position(self):
+        return self.purge_on_load_x != -999. or self.purge_on_load_y != -999.
+
+    def _is_purge_on_load_active(self):
+        if not self.purge_on_load:
+            return False
+        if self.purge_on_load_only_while_printing and not self.is_printing():
+            return False
+        if self.purge_on_load_only_if_filament_changed:
+            current_signature = self._get_gate_filament_signature()
+            if current_signature and self.last_loaded_filament_signature:
+                return current_signature != self.last_loaded_filament_signature
+        return True
+
+    def _get_load_purge_mode(self, skip_purge=False, standalone=False):
+        if skip_purge:
+            return self.PURGE_NONE
+
+        if self.purge_on_load:
+            return self.PURGE_STANDALONE if self._is_purge_on_load_active() else self.PURGE_NONE
+
+        if self.is_printing() and not (standalone or self.force_purge_standalone):
+            return self.PURGE_SLICER
+        return self.PURGE_STANDALONE
+
+    def _move_to_purge_on_load_position(self):
+        if not self.is_printing() or not self.purge_on_load or not self._has_purge_on_load_position():
+            return
+        self.log_info("Moving to purge-on-load position (x:%s, y:%s)" % (
+            "current" if self.purge_on_load_x == -999. else round(self.purge_on_load_x, 1),
+            "current" if self.purge_on_load_y == -999. else round(self.purge_on_load_y, 1),
+        ))
+        self.wrap_gcode_command(
+            "%s FORCE_PARK=1 X=%.3f Y=%.3f" % (
+                self.park_macro,
+                self.purge_on_load_x,
+                self.purge_on_load_y,
+            ),
+            exception=True,
+            wait=True
+        )
+
+    def _purge_during_temperature_transition(self):
+        target_temp = self._get_gate_temperature()
+        extruder = self.printer.lookup_object(self.extruder_name)
+        klipper_minimum_temp = extruder.get_heater().min_extrude_temp
+        target_temp = max(target_temp, klipper_minimum_temp)
+
+        min_length = self.purge_transition_min_length
+        speed = self.purge_transition_speed
+        variance = self.extruder_temp_variance
+        total_purged = 0.
+        max_purge_length = max(min_length, 60.)
+
+        self.log_info("Transition purge to %.1f%sC at %.1fmm/s (minimum %.1fmm)" % (target_temp, UI_DEGREE, speed, min_length))
+        self.gcode.run_script_from_command("M104 S%.1f" % target_temp)
+        self.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=MMU_PURGE_TRANSITION_state")
+        self.gcode.run_script_from_command("M83")
+        self.gcode.run_script_from_command("G92 E0")
+        try:
+            while True:
+                current_temp = extruder.get_status(0)['temperature']
+                temp_ready = abs(current_temp - target_temp) <= variance
+                need_minimum = total_purged < min_length
+                if temp_ready and not need_minimum:
+                    break
+                if total_purged >= max_purge_length:
+                    self.log_warning("Warning: Transition purge reached safety limit of %.1fmm before target temperature stabilized. Waiting for final temperature..." % total_purged)
+                    break
+
+                purge_chunk = min(2., max_purge_length - total_purged)
+                if need_minimum and (min_length - total_purged) < purge_chunk:
+                    purge_chunk = min_length - total_purged
+                purge_chunk = max(purge_chunk, 0.5)
+
+                self.gcode.run_script_from_command("G1 E%.3f F%.1f" % (purge_chunk, speed * 60.))
+                self.toolhead.wait_moves()
+                total_purged += purge_chunk
+                self.toolhead.dwell(0.25)
+
+            self.gcode.run_script_from_command("G92 E0")
+        finally:
+            self.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=MMU_PURGE_TRANSITION_state")
+
+        self._ensure_safe_extruder_temperature(source="current filament purge", wait=True, target_temp=target_temp)
+        self.log_info("Transition purge extruded %.1fmm" % total_purged)
+
+    def _purge_after_load(self):
+        if not self.purge_after_load_macro:
+            return
+        self.log_info("Running purge-after-load macro '%s'" % self.purge_after_load_macro)
+        self.wrap_gcode_command(self.purge_after_load_macro, exception=True, wait=True)
+
+    def _ensure_safe_extruder_temperature(self, source="auto", wait=False, target_temp=None):
         extruder = self.printer.lookup_object(self.extruder_name)
         current_temp = extruder.get_status(0)['temperature']
         current_target_temp = extruder.heater.target_temp
         klipper_minimum_temp = extruder.get_heater().min_extrude_temp
         gate_temp = self.gate_temperature[self.gate_selected] if self.gate_selected >= 0 and self.gate_temperature[self.gate_selected] > 0 else self.default_extruder_temp
-        self.log_trace("_ensure_safe_extruder_temperature: current_temp=%s, paused_extruder_temp=%s, current_target_temp=%s, klipper_minimum_temp=%s, gate_temp=%s, default_extruder_temp=%s, source=%s" % (current_temp, self.paused_extruder_temp, current_target_temp, klipper_minimum_temp, gate_temp, self.default_extruder_temp, source))
+        self.log_trace("_ensure_safe_extruder_temperature: current_temp=%s, paused_extruder_temp=%s, current_target_temp=%s, klipper_minimum_temp=%s, gate_temp=%s, default_extruder_temp=%s, target_temp=%s, source=%s" % (current_temp, self.paused_extruder_temp, current_target_temp, klipper_minimum_temp, gate_temp, self.default_extruder_temp, target_temp, source))
 
-        if source == "pause":
+        if target_temp is not None:
+            new_target_temp = max(float(target_temp), klipper_minimum_temp)
+        elif source == "pause":
             new_target_temp = self.paused_extruder_temp if self.paused_extruder_temp is not None else current_temp # Pause temp should not be None
             if self.paused_extruder_temp < klipper_minimum_temp:
                 # Don't wait if just messing with cold printer
@@ -4821,14 +5053,14 @@ class Mmu:
 
     # Move filament from the extruder gears (entrance) to the nozzle
     # Returns any homing distance for automatic calibration logic
-    def _load_extruder(self, extruder_only=False):
+    def _load_extruder(self, extruder_only=False, target_temp=None):
         with self.wrap_action(self.ACTION_LOADING_EXTRUDER):
             self.log_debug("Loading filament into extruder")
             self._set_filament_direction(self.DIRECTION_LOAD)
 
             # Important to wait for filaments with wildy different print temps. In practice, the time taken
             # to perform a swap should be adequate to reach the target temp but better safe than sorry
-            self._ensure_safe_extruder_temperature(wait=True)
+            self._ensure_safe_extruder_temperature(wait=True, target_temp=target_temp)
             homing_movement = None
 
             has_tension = self.sensor_manager.has_sensor(self.SENSOR_TENSION)
@@ -5091,8 +5323,11 @@ class Mmu:
                     self.wrap_gcode_command(self.pre_load_macro, exception=True, wait=True)
 
             self.log_info("Loading %s..." % ("extruder" if extruder_only else "filament"))
+            preload_temp = None
             if not extruder_only:
                 self._display_visual_state()
+                if purge == self.PURGE_STANDALONE and not skip_extruder and self._is_purge_on_load_active():
+                    preload_temp = self._prepare_standalone_purge_temperatures()
 
             homing_movement = None # Track how much homing is done for calibrated bowden length optimization
             deficit = 0.           # Amount of homing that would be expected (because bowden load is shortened)
@@ -5144,7 +5379,7 @@ class Mmu:
                             homing_movement = (homing_movement or 0) + hm
 
                 if not skip_extruder:
-                    hm = self._load_extruder()
+                    hm = self._load_extruder(target_temp=preload_temp)
                     if hm is not None:
                         homing_movement = (homing_movement or 0) + hm
 
@@ -5155,6 +5390,7 @@ class Mmu:
                 not_seen = self.gate_parking_distance + self._get_encoder_dead_space()
                 msg += " {1}(adjusted encoder: %.1fmm){0}" % (final_encoder_pos + not_seen)
             self.log_info(msg, color=True)
+            self._set_last_loaded_filament_signature(self._get_gate_filament_signature())
 
             # Notify manager if calibrating/autotuning
             if calibrating:
@@ -5179,7 +5415,11 @@ class Mmu:
                     self.reset_sync_gear_to_extruder(not extruder_only and self.sync_purge)
 
                     with self.wrap_action(self.ACTION_PURGING):
-                        self.purge_standalone()
+                        if self._is_purge_on_load_active():
+                            self._purge_during_temperature_transition()
+                            self._purge_after_load()
+                        else:
+                            self.purge_standalone()
 
             # POST_LOAD user defined macro
             if macros_and_track:
@@ -5237,6 +5477,8 @@ class Mmu:
         if self.filament_pos == self.FILAMENT_POS_UNLOADED:
             self.log_debug("Filament already ejected")
             return
+
+        self._set_last_unloaded_temperature(self._get_gate_temperature())
 
         try:
             if not extruder_only:
@@ -5461,7 +5703,16 @@ class Mmu:
             with self._wrap_pressure_advance(0., "for tip forming"):
                 gcode_macro = self.printer.lookup_object("gcode_macro %s" % self.form_tip_macro, "_MMU_FORM_TIP")
                 self.log_info("Forming tip...")
-                self.wrap_gcode_command("%s %s" % (self.form_tip_macro, "FINAL_EJECT=1" if test else ""), exception=True, wait=True)
+                params = []
+                if test:
+                    params.append("FINAL_EJECT=1")
+                toolchange_temp = self._resolve_form_tip_toolchange_temperature()
+                if toolchange_temp is not None:
+                    params.append("TOOLCHANGE_TEMP=%d" % toolchange_temp)
+                cmd = self.form_tip_macro
+                if params:
+                    cmd += " " + " ".join(params)
+                self.wrap_gcode_command(cmd, exception=True, wait=True)
 
             final_mcu_pos = self.mmu_extruder_stepper.stepper.get_mcu_position()
             stepper_movement = (initial_mcu_pos - final_mcu_pos) * self.mmu_extruder_stepper.stepper.get_step_dist()
@@ -6839,11 +7090,7 @@ class Mmu:
                         elif self.is_printing() and not (standalone or self.force_form_tip_standalone):
                             do_form_tip = self.FORM_TIP_SLICER
 
-                        do_purge = self.PURGE_STANDALONE
-                        if skip_purge:
-                            do_purge = self.PURGE_NONE
-                        elif self.is_printing() and not (standalone or self.force_purge_standalone):
-                            do_purge = self.PURGE_SLICER
+                        do_purge = self._get_load_purge_mode(skip_purge=skip_purge, standalone=standalone)
 
                         tip_msg = ("with slicer tip forming" if do_form_tip == self.FORM_TIP_SLICER else
                                    "with standalone MMU tip forming" if do_form_tip == self.FORM_TIP_STANDALONE else
@@ -6890,6 +7137,7 @@ class Mmu:
                         self._next_tool = tool # Valid only during the change process - cleared in _continue_after()
                         self.last_statistics = {}
                         self._save_toolhead_position_and_park('toolchange', next_pos=next_pos)
+                        self._move_to_purge_on_load_position()
                         self._set_next_position(next_pos) # This can also clear next_position
                         self._track_time_start('total')
                         self.printer.send_event("mmu:toolchange", self._last_tool, self._next_tool)
@@ -6942,7 +7190,7 @@ class Mmu:
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1) or in_bypass)
         skip_purge = bool(gcmd.get_int('SKIP_PURGE', 0, minval=0, maxval=1))
         restore = bool(gcmd.get_int('RESTORE', 1, minval=0, maxval=1))
-        do_purge = self.PURGE_STANDALONE if not skip_purge else self.PURGE_NONE
+        do_purge = self._get_load_purge_mode(skip_purge=skip_purge)
 
         try:
             with self.wrap_sync_gear_to_extruder():
@@ -7064,6 +7312,9 @@ class Mmu:
         restore = bool(gcmd.get_int('RESTORE', 1, minval=0, maxval=1))
         do_form_tip = self.FORM_TIP_STANDALONE if not skip_tip else self.FORM_TIP_NONE
 
+        if self.filament_pos != self.FILAMENT_POS_UNLOADED:
+            self._prepare_manual_unload_temperature()
+
         self._note_toolchange("< %s" % self.selected_tool_string())
 
         if extruder_only:
@@ -7076,6 +7327,7 @@ class Mmu:
             if self.filament_pos != self.FILAMENT_POS_UNLOADED:
                 self.last_statistics = {}
                 self._save_toolhead_position_and_park('unload')
+                self._move_to_purge_on_load_position()
                 self._unload_tool(form_tip=do_form_tip)
                 self._persist_gate_statistics()
                 self._continue_after('unload', restore=restore)
@@ -7546,6 +7798,9 @@ class Mmu:
         self.slicer_tip_park_pos = gcmd.get_float('SLICER_TIP_PARK_POS', self.slicer_tip_park_pos, minval=0.)
         self.force_form_tip_standalone = gcmd.get_int('FORCE_FORM_TIP_STANDALONE', self.force_form_tip_standalone, minval=0, maxval=1)
         self.force_purge_standalone = gcmd.get_int('FORCE_PURGE_STANDALONE', self.force_purge_standalone, minval=0, maxval=1)
+        self.purge_on_load = gcmd.get_int('PURGE_ON_LOAD', self.purge_on_load, minval=0, maxval=1)
+        self.purge_on_load_only_while_printing = gcmd.get_int('PURGE_ON_LOAD_ONLY_WHILE_PRINTING', self.purge_on_load_only_while_printing, minval=0, maxval=1)
+        self.purge_on_load_only_if_filament_changed = gcmd.get_int('PURGE_ON_LOAD_ONLY_IF_FILAMENT_CHANGED', self.purge_on_load_only_if_filament_changed, minval=0, maxval=1)
         self.strict_filament_recovery = gcmd.get_int('STRICT_FILAMENT_RECOVERY', self.strict_filament_recovery, minval=0, maxval=1)
         self.filament_recovery_on_pause = gcmd.get_int('FILAMENT_RECOVERY_ON_PAUSE', self.filament_recovery_on_pause, minval=0, maxval=1)
         self.preload_attempts = gcmd.get_int('PRELOAD_ATTEMPTS', self.preload_attempts, minval=1, maxval=20)
@@ -7677,6 +7932,9 @@ class Mmu:
             msg += "\n\nPURGING:"
             msg += "\npurge_macro = %s" % self.purge_macro
             msg += "\nforce_purge_standalone = %d" % self.force_purge_standalone
+            msg += "\npurge_on_load = %d" % self.purge_on_load
+            msg += "\npurge_on_load_only_while_printing = %d" % self.purge_on_load_only_while_printing
+            msg += "\npurge_on_load_only_if_filament_changed = %d" % self.purge_on_load_only_if_filament_changed
 
             if self.has_espooler():
                 msg += "\n\nESPOOLER:"
