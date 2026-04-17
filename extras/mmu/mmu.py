@@ -176,6 +176,7 @@ class Mmu:
     VARS_MMU_TOOL_SELECTED            = "mmu_state_tool_selected"
     VARS_MMU_LAST_TOOL                = "mmu_state_last_tool"
     VARS_MMU_LAST_UNLOADED_TEMPERATURE = "mmu_state_last_unloaded_temperature"
+    VARS_MMU_LAST_LOADED_FILAMENT_SIGNATURE = "mmu_state_last_loaded_filament_signature"
     VARS_MMU_FILAMENT_POS             = "mmu_state_filament_pos"
     VARS_MMU_FILAMENT_REMAINING       = "mmu_state_filament_remaining"
     VARS_MMU_FILAMENT_REMAINING_COLOR = "mmu_state_filament_remaining_color"
@@ -264,6 +265,7 @@ class Mmu:
         self.filament_remaining = 0.
         self._last_tool = self._next_tool = self.TOOL_GATE_UNKNOWN
         self.last_unloaded_temperature = 0.
+        self.last_loaded_filament_signature = ""
         self._next_gate = None
         self.toolchange_retract = 0.          # Set from mmu_macro_vars
         self._can_write_variables = False
@@ -316,6 +318,7 @@ class Mmu:
         self.force_purge_standalone = config.getint('force_purge_standalone', 0, minval=0, maxval=1)
         self.purge_on_load = config.getint('purge_on_load', 0, minval=0, maxval=1)
         self.purge_on_load_only_while_printing = config.getint('purge_on_load_only_while_printing', 1, minval=0, maxval=1)
+        self.purge_on_load_only_if_filament_changed = config.getint('purge_on_load_only_if_filament_changed', 0, minval=0, maxval=1)
         self.purge_after_load_macro = config.get('purge_after_load_macro', '').replace("'", "")
         self.purge_on_load_x = config.getfloat('purge_on_load_x', -999.)
         self.purge_on_load_y = config.getfloat('purge_on_load_y', -999.)
@@ -1200,6 +1203,7 @@ class Mmu:
         self.filament_remaining = self.save_variables.allVariables.get(self.VARS_MMU_FILAMENT_REMAINING, self.filament_remaining)
         self._last_tool = self.save_variables.allVariables.get(self.VARS_MMU_LAST_TOOL, self._last_tool)
         self.last_unloaded_temperature = self.save_variables.allVariables.get(self.VARS_MMU_LAST_UNLOADED_TEMPERATURE, self.last_unloaded_temperature)
+        self.last_loaded_filament_signature = self.save_variables.allVariables.get(self.VARS_MMU_LAST_LOADED_FILAMENT_SIGNATURE, self.last_loaded_filament_signature)
 
         # Load EndlessSpool config
         self.endless_spool_enabled = self.save_variables.allVariables.get(self.VARS_MMU_ENABLE_ENDLESS_SPOOL, self.endless_spool_enabled)
@@ -3558,6 +3562,20 @@ class Mmu:
         self.last_unloaded_temperature = round(max(0., temperature), 1)
         self.save_variable(self.VARS_MMU_LAST_UNLOADED_TEMPERATURE, self.last_unloaded_temperature, write=True)
 
+    def _get_gate_filament_signature(self, gate=None):
+        gate = self.gate_selected if gate is None else gate
+        if gate is None or gate < 0 or gate >= self.num_gates:
+            return ""
+        material = (self.gate_material[gate] or "").strip().upper()
+        color = (self.gate_color[gate] or "").strip().lower()
+        name = (self.gate_filament_name[gate] or "").strip().lower()
+        temperature = self.gate_temperature[gate] if self.gate_temperature[gate] > 0 else self.default_extruder_temp
+        return "%s|%s|%s|%s" % (material, color, name, int(temperature))
+
+    def _set_last_loaded_filament_signature(self, signature):
+        self.last_loaded_filament_signature = signature or ""
+        self.save_variable(self.VARS_MMU_LAST_LOADED_FILAMENT_SIGNATURE, self.last_loaded_filament_signature, write=True)
+
     def _set_filament_pos_state(self, state, silent=False):
         if self.filament_pos != state:
             self.filament_pos = state
@@ -3875,7 +3893,15 @@ class Mmu:
         return self.purge_on_load_x != -999. or self.purge_on_load_y != -999.
 
     def _is_purge_on_load_active(self):
-        return bool(self.purge_on_load and (self.is_printing() or not self.purge_on_load_only_while_printing))
+        if not self.purge_on_load:
+            return False
+        if self.purge_on_load_only_while_printing and not self.is_printing():
+            return False
+        if self.purge_on_load_only_if_filament_changed:
+            current_signature = self._get_gate_filament_signature()
+            if current_signature and self.last_loaded_filament_signature:
+                return current_signature != self.last_loaded_filament_signature
+        return True
 
     def _get_load_purge_mode(self, skip_purge=False, standalone=False):
         if skip_purge:
@@ -5364,6 +5390,7 @@ class Mmu:
                 not_seen = self.gate_parking_distance + self._get_encoder_dead_space()
                 msg += " {1}(adjusted encoder: %.1fmm){0}" % (final_encoder_pos + not_seen)
             self.log_info(msg, color=True)
+            self._set_last_loaded_filament_signature(self._get_gate_filament_signature())
 
             # Notify manager if calibrating/autotuning
             if calibrating:
@@ -7773,6 +7800,7 @@ class Mmu:
         self.force_purge_standalone = gcmd.get_int('FORCE_PURGE_STANDALONE', self.force_purge_standalone, minval=0, maxval=1)
         self.purge_on_load = gcmd.get_int('PURGE_ON_LOAD', self.purge_on_load, minval=0, maxval=1)
         self.purge_on_load_only_while_printing = gcmd.get_int('PURGE_ON_LOAD_ONLY_WHILE_PRINTING', self.purge_on_load_only_while_printing, minval=0, maxval=1)
+        self.purge_on_load_only_if_filament_changed = gcmd.get_int('PURGE_ON_LOAD_ONLY_IF_FILAMENT_CHANGED', self.purge_on_load_only_if_filament_changed, minval=0, maxval=1)
         self.strict_filament_recovery = gcmd.get_int('STRICT_FILAMENT_RECOVERY', self.strict_filament_recovery, minval=0, maxval=1)
         self.filament_recovery_on_pause = gcmd.get_int('FILAMENT_RECOVERY_ON_PAUSE', self.filament_recovery_on_pause, minval=0, maxval=1)
         self.preload_attempts = gcmd.get_int('PRELOAD_ATTEMPTS', self.preload_attempts, minval=1, maxval=20)
@@ -7906,6 +7934,7 @@ class Mmu:
             msg += "\nforce_purge_standalone = %d" % self.force_purge_standalone
             msg += "\npurge_on_load = %d" % self.purge_on_load
             msg += "\npurge_on_load_only_while_printing = %d" % self.purge_on_load_only_while_printing
+            msg += "\npurge_on_load_only_if_filament_changed = %d" % self.purge_on_load_only_if_filament_changed
 
             if self.has_espooler():
                 msg += "\n\nESPOOLER:"

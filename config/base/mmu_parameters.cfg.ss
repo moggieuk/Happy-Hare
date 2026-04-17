@@ -362,6 +362,7 @@ force_purge_standalone: 0               # 0 = Slicer wipetower in print else sta
 purge_macro: _MMU_PURGE			# Name of macro to call to perform the standalone purging operation. E.g. BLOBIFIER, _MMU_PURGE
 purge_on_load: 0                        # 1 = automatically purge after load/toolchange, 0 = never auto purge on load
 purge_on_load_only_while_printing: 1    # 1 = purge_on_load only runs automatically in print, 0 = also allow it outside a print
+purge_on_load_only_if_filament_changed: 0  # 1 = purge_on_load only if material/color/name/temperature differs from the last loaded filament
 purge_after_load_macro:                 # Optional macro to run after purge_on_load completes
 extruder_purge_current: 100             # % of extruder current (100%-150%) to use when purging (100 to disable)
 purge_transition_min_length: 15         # During purge-on-load, extrude at least this much while transitioning from old to new filament temp
