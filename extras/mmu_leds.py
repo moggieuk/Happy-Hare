@@ -105,8 +105,8 @@ class MmuLeds:
                     used[led] = segment
 
         # Read default effects for each segment and other options
-        self.enabled = config.get('enabled', True)
-        self.animation = config.get('animation', True)
+        self.enabled = config.getboolean('enabled', True)
+        self.animation = config.getboolean('animation', True)
         self.exit_effect = config.get('exit_effect', 'gate_status')
         self.entry_effect = config.get('entry_effect', 'filament_color')
         self.status_effect = config.get('status_effect', 'filament_color')
