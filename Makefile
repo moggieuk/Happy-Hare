@@ -10,7 +10,7 @@ MAKEFLAGS += --jobs 16            # Parallel build
 export KCONFIG_CONFIG ?= .config
 
 # TODO: Original very expensive recursive version
-# Enable output-sync if menuconfig will not be trigger. menuconfig.py will crash if output-sync is enabled on certain systems
+# Enable output-sync if menuconfig will not trigger. menuconfig.py will crash if output-sync is enabled on certain systems
 #ifeq ($(CHECK_OUTPUT_SYNC),)
 #  # Never probe for menuconfig or uninstall and only if KCONFIG exists
 #  ifeq ($(strip $(filter menuconfig uninstall variables gen_kconfig fix_links,$(MAKECMDGOALS))),)
@@ -25,7 +25,7 @@ export KCONFIG_CONFIG ?= .config
 #endif
 
 # TODO: I think this faster version is sufficient
-# Enable output-sync if menuconfig will not be trigger. menuconfig.py will crash if output-sync is enabled on certain systems
+# Enable output-sync if menuconfig will not trigger. menuconfig.py will crash if output-sync is enabled on certain systems
 ifeq ($(CHECK_OUTPUT_SYNC),)
   ifeq ($(strip $(filter menuconfig uninstall variables gen_kconfig fix_links,$(MAKECMDGOALS))),)
     ifneq ($(wildcard $(KCONFIG_CONFIG)),)
