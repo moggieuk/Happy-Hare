@@ -7032,12 +7032,17 @@ class Mmu:
                 with self._wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during filament eject
 
                     current_gate = self.gate_selected
-                    if gate != current_gate:
-                        self.select_gate(gate)
 
                     try:
+                        # Unload BEFORE switching to the eject target gate so the unload sequence
+                        # (and its bowden sensor checks) references the gate the filament is
+                        # currently loaded from, not the eject destination. Pre-switching pointed
+                        # the sensor validation at an empty gate and, on a multigear MMU, drove
+                        # the wrong gate's gear stepper through the bowden unload.
                         self._mmu_unload_eject(gcmd)
                         if can_eject_from_gate:
+                            if gate != self.gate_selected:
+                                self.select_gate(gate)
                             self.log_always("Ejecting filament out of %s" % ("current gate" if gate == current_gate else "gate %d" % gate))
                             self._eject_from_gate()
 
