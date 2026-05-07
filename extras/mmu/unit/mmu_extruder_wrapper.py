@@ -160,7 +160,7 @@ class MmuExtruderWrapper():
 # (useful only when part of gear rail, not operating as an Extruder)
 # -----------------------------------------------------------------------------------------------------------
 
-class MmuExtruderStepper(ExtruderStepper, object):
+class MmuExtruderStepper(ExtruderStepper, object): # PAUL this would likely want to extend MmuStepper instead of ExtruderStepper
 
     def __init__(self, config, unit):
         super(MmuExtruderStepper, self).__init__(config)
