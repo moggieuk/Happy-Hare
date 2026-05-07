@@ -168,7 +168,7 @@ class MmuUnit:
 
         # MMU Kinematics --------------------------------------------------------------------
 
-        self.selector_stepper    = config.get('selector_stepper', None) # Name of selector stepper
+#        self.selector_stepper    = config.get('selector_stepper', None) # Name of selector stepper
         self.selector_servo      = config.get('selector_servo', None)   # Name of selector servo if fitted
         self.gear_stepper        = config.get('gear_stepper', None)     # Name of base gear stepper (allways present)
         self.extra_gear_steppers = config.getlist('extra_gear_steppers', [])
@@ -178,7 +178,6 @@ class MmuUnit:
         if self.name == "unit1": # PAUL TEMP HACK TO ALLOW SINGLE TYPE-A MMU to be split in two for testing sharing same MmuToolhead
             unit0 = self.mmu_machine.get_mmu_unit_by_name('unit0')
             self.mmu_toolhead = unit0.mmu_toolhead     # PAUL TEMP TESTING HACK
-            self.selector_touch = unit0.mmu_toolhead   # PAUL TEMP TESTING HACK
             self.selector_servo = unit0.selector_servo # PAUL TEMP TESTING HACK
         else:
             # Find the TMC controller for base gear stepper so we can fill in missing config for other matching steppers
@@ -232,28 +231,29 @@ class MmuUnit:
                                 logging.info("MMU: Loaded: [%s]" % alt_tmc_section)
                                 break
     
-            # Load selector stepper if applicable
-            if self.selector_stepper is not None:
-                found = False
-                for chip in TMC_CHIPS:
-                    tmc_section = '%s %s' % (chip, self.selector_stepper)
-                    if config.has_section(tmc_section):
-                        _ = self.printer.load_object(config, tmc_section)
-                        logging.info("MMU: Loaded: [%s]" % tmc_section)
-                        found = True
-                        break
-                if not found:
-                    raise config.error("Selector stepper TMC configuration not found for %s on mmu_unit %s" % (self.selector_stepper, self.name))
+#            # Load selector stepper if applicable
+#            if self.selector_stepper is not None:
+#                found = False
+#                for chip in TMC_CHIPS:
+#                    tmc_section = '%s %s' % (chip, self.selector_stepper)
+#                    if config.has_section(tmc_section):
+#                        _ = self.printer.load_object(config, tmc_section)
+#                        logging.info("MMU: Loaded: [%s]" % tmc_section)
+#                        found = True
+#                        break
+#                if not found:
+#                    raise config.error("Selector stepper TMC configuration not found for %s on mmu_unit %s" % (self.selector_stepper, self.name))
 
             # Now we have all the parts to create MmuToolHead
             self.mmu_toolhead = MmuToolHead(config, self)
             logging.info("MMU: Created: Toolhead for %s" % self.name)
 
-            # Does selector have "touch" (stallguard)?
-            self.selector_touch = False
-            rail = self.mmu_toolhead.get_kinematics().rails[0]
-            if not isinstance(rail, DummyRail):
-                self.selector_touch = "mmu_sel_touch" in rail.get_extra_endstop_names()
+# PAUL not required
+#            # Does selector have "touch" (stallguard)?
+#            self.selector_touch = False
+#            rail = self.mmu_toolhead.get_kinematics().rails[0]
+#            if not isinstance(rail, DummyRail):
+#                self.selector_touch = "mmu_sel_touch" in rail.get_extra_endstop_names()
 
             # Load selector servo if applicable
             self.selector_servo = None
@@ -1448,14 +1448,14 @@ class MmuKinematics:
 
         # Setup "axis" rails
         self.rails = []
-        if self.mmu_unit.selector_type in ['LinearSelector', 'LinearServoSelector', 'LinearMultiGearSelector', 'RotarySelector'] and self.mmu_unit.selector_stepper is not None: # PAUL
-            self.rails.append(MmuLookupMultiRail(config.getsection(self.mmu_unit.selector_stepper), need_position_minmax=False, default_position_endstop=0.))
-            self.rails[0].setup_itersolve('cartesian_stepper_alloc', b'x')
-        elif self.mmu_unit.selector_type in ['IndexedSelector']:
-            self.rails.append(MmuLookupMultiRail(config.getsection(self.mmu_unit.selector_stepper), need_position_minmax=False, default_position_endstop=0.))
-            self.rails[0].setup_itersolve('cartesian_stepper_alloc', b'x')
-        else:
-            self.rails.append(DummyRail())
+#        if self.mmu_unit.selector_type in ['LinearSelector', 'LinearServoSelector', 'LinearMultiGearSelector', 'RotarySelector'] and self.mmu_unit.selector_stepper is not None: # PAUL
+#            self.rails.append(MmuLookupMultiRail(config.getsection(self.mmu_unit.selector_stepper), need_position_minmax=False, default_position_endstop=0.))
+#            self.rails[0].setup_itersolve('cartesian_stepper_alloc', b'x')
+#        elif self.mmu_unit.selector_type in ['IndexedSelector']:
+#            self.rails.append(MmuLookupMultiRail(config.getsection(self.mmu_unit.selector_stepper), need_position_minmax=False, default_position_endstop=0.))
+#            self.rails[0].setup_itersolve('cartesian_stepper_alloc', b'x')
+#        else:
+        self.rails.append(DummyRail())
         self.rails.append(MmuLookupMultiRail(config.getsection(self.mmu_unit.gear_stepper), need_position_minmax=False, default_position_endstop=0.))
         self.rails[1].setup_itersolve('cartesian_stepper_alloc', b'y')
 

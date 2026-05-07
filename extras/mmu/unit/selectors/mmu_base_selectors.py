@@ -417,15 +417,15 @@ class MmuSoaktestSelectorCommand(BaseCommand):
                     if random.randint(0, 10) == 0 and home:
                         mmu.home_unit(mmu_unit)
                   
-                    if random.randint(0, 10) == 0 and self.has_unit_bypass:
+                    if random.randint(0, 10) == 0 and mmu_unit.selector.has_unit_bypass:
                         mmu.log_always("Testing loop %d / %d. Selecting bypass..." % (l + 1, loops))
-                        mmu.select_gate(TOOL_GATE_BYPASS)
+                        mmu_unit.selector._select_gate(TOOL_GATE_BYPASS) # Force local bypass gate
                     else:
                         mmu.log_always("Testing loop %d / %d. Selecting gate %d..." % (l + 1, loops, gate))
-                        mmu.select_gate(gate)
+                        mmu_unit.selector.select_gate(gate)
 
                     if grip:
-                        mmu.selector().filament_drive()
+                        mmu_unit.selector.filament_drive()
         except MmuError as ee:
             mmu.handle_mmu_error("Soaktest abandoned because of error: %s" % str(ee))
 

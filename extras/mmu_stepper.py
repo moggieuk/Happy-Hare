@@ -6,7 +6,8 @@
 # Goal: Implements [mmu_stepper] klipper object
 #
 # The MmuStepper is a hybrid stepper abstraction that combines Klipper’s
-# ExtruderStepper and ManualStepper behaviors into a single, flexible unit.
+# ExtruderStepper and ManualStepper behaviors into a single, flexible unit
+# adding additional homing capabilities.
 #
 # It allows a stepper (typically an MMU gear motor or extruder motor) to
 # dynamically switch between:
@@ -32,8 +33,8 @@
 #  - MmuGenericRail wraps that existing stepper when rail/endstop behavior is needed
 #  - manual mode and extruder mode both reuse that same underlying stepper
 #  - mode switching is done by changing the stepper kinematics and attached trapq
-#  - written with self-contained gcode commands but designed to be wrapped by
-#    higher level driver
+#  - written with self-contained gcode commands for standalone operation but
+#    designed to be wrapped by higher level driver logic
 #
 #
 # (\_/)
@@ -47,7 +48,7 @@ import logging, collections, math
 
 # Klipper imports
 from kinematics.extruder import ExtruderStepper, PrinterExtruder
-from .                   import stepper, force_move
+from .                   import force_move
 from .homing             import HomingMove
 from .manual_stepper     import ManualStepper
 
@@ -382,8 +383,7 @@ class MmuGenericRail:
                 retractpos_x = movepos - math.copysign(retract, move_d)
                 retractpos = [retractpos_x, 0., 0., 0.]
 
-                mstepper.do_move(
-                    retractpos[0], hi.retract_speed, mstepper.homing_accel)
+                mstepper.do_move(retractpos[0], hi.retract_speed, mstepper.homing_accel)
 
                 second_start_x = retractpos_x - math.copysign(retract, move_d)
                 second_start = [second_start_x, 0., 0., 0.]
@@ -393,8 +393,7 @@ class MmuGenericRail:
                 hmove.homing_move(homepos, hi.second_homing_speed)
 
                 if hmove.check_no_movement() is not None:
-                    raise mstepper.printer.command_error(
-                        "Endstop still triggered after retract")
+                    raise mstepper.printer.command_error("Endstop still triggered after retract")
 
         trig_mcu_pos = None
         stepper_name = mstepper.get_steppers()[0].get_name()
@@ -403,12 +402,9 @@ class MmuGenericRail:
                 trig_mcu_pos = sp.trig_pos
                 break
         if trig_mcu_pos is None:
-            raise mstepper.printer.command_error(
-                "Unable to determine trigger position for stepper '%s'"
-                % (stepper_name,))
+            raise mstepper.printer.command_error("Unable to determine trigger position for stepper '%s'" % (stepper_name,))
 
-        travelled = ((trig_mcu_pos - init_mcu_pos)
-                     * mstepper.get_steppers()[0].get_step_dist())
+        travelled = ((trig_mcu_pos - init_mcu_pos) * mstepper.get_steppers()[0].get_step_dist())
         return travelled
 
 
@@ -471,7 +467,8 @@ class MmuStepper(ManualStepper, ExtruderStepper):
 
         # Manual/MMU configuration
         self.velocity = config.getfloat('velocity', 5., above=0.)
-        self.accel = self.homing_accel = config.getfloat('accel', 0., minval=0.)
+        self.accel = config.getfloat('accel', 0., minval=0.)
+        self.homing_accel = config.getfloat('homing_accel', self.accel, minval=0.)
         self.next_cmd_time = 0.
         self.commanded_pos = 0.
         self.pos_min = config.getfloat('position_min', None)
@@ -731,8 +728,7 @@ class MmuStepper(ManualStepper, ExtruderStepper):
     def do_move(self, movepos, speed, accel, sync=True):
         self._require_standalone_manual_mode("MOVE")
         self.sync_print_time()
-        self.next_cmd_time = self._submit_move(self.next_cmd_time, movepos,
-                                               speed, accel)
+        self.next_cmd_time = self._submit_move(self.next_cmd_time, movepos, speed, accel)
         self.motion_queuing.note_mcu_movequeue_activity(self.next_cmd_time)
         if sync:
             self.sync_print_time()
@@ -748,6 +744,18 @@ class MmuStepper(ManualStepper, ExtruderStepper):
         self._require_standalone_manual_mode("STOP_ON_ENDSTOP/HOMING_MOVE")
         if not self.can_home:
             raise self.printer.command_error("No endstop for this MMU stepper")
+        logging.info(
+            "PAUL: ****************** "
+            f"do_homing_move("
+            f"movepos={movepos:.3f}, "
+            f"speed={speed:.3f}, "
+            f"accel={accel:.3f}, "
+            f"probe_pos={probe_pos}, "
+            f"triggered={triggered}, "
+            f"check_trigger={check_trigger}, "
+            f"endstop_name={endstop_name}"
+            f")"
+        ) # PAUL
 
         self.homing_accel = accel
         pos = [movepos, 0., 0., 0.]
@@ -758,8 +766,7 @@ class MmuStepper(ManualStepper, ExtruderStepper):
         endstops = self.rail.get_homing_endstops(endstop_name)
 
         phoming = self.printer.lookup_object('homing')
-        trigpos = phoming.manual_home(
-            self, endstops, pos, speed, probe_pos, triggered, check_trigger)
+        trigpos = phoming.manual_home(self, endstops, pos, speed, probe_pos, triggered, check_trigger)
         self.sync_print_time()
         haltpos = self.get_position()
 
@@ -797,8 +804,7 @@ class MmuStepper(ManualStepper, ExtruderStepper):
             else:
                 forcepos = homepos + hi.move_dist
 
-        result = self.rail.home(self, forcepos, homepos,
-                                endstop_name=endstop_name)
+        result = self.rail.home(self, forcepos, homepos, endstop_name=endstop_name)
         self.sync_print_time()
         return result
 
@@ -1045,7 +1051,7 @@ class MmuStepper(ManualStepper, ExtruderStepper):
                 if stop_cfg['endstop_name'] not in (None, "", "default")
                 else "default")
             msg = ("%s: homing %s endstop=%s target=%.5f pos=%.5f" % (self.full_name, "ok" if success else "failed", used_endstop, movepos, current_pos))
-            if success and isinstance(home_result, dict):
+            if success:
                 msg += " " + str(home_result)
             gcmd.respond_info(msg)
             return
