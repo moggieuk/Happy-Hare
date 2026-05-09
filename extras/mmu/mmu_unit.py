@@ -43,7 +43,7 @@ from .unit.mmu_sensors                  import MmuSensors
 from .unit.mmu_unit_parameters          import MmuUnitParameters
 from .unit.mmu_calibrator               import MmuCalibrator
 from .unit.mmu_toolhead_wrapper         import MmuToolheadWrapper
-from .unit.mmu_extruder_wrapper         import MmuExtruderWrapper, MmuExtruderStepper
+from .unit.mmu_extruder_wrapper         import MmuExtruderWrapper, MmuExtruderStepper # PAUL need MmuExtruderStepper?
 from .unit.mmu_sync_feedback            import MmuSyncFeedback
 from .unit.selectors                    import SELECTOR_REGISTRY
 from .unit.selectors.mmu_base_selectors import VirtualSelector

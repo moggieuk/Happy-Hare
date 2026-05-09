@@ -16,10 +16,8 @@
 
 import logging
 
-# Klipper imports
-from kinematics.extruder   import ExtruderStepper
-
 # Happy Hare imports
+from ...mmu_stepper        import MmuStepper
 from ..mmu_constants       import *
 from .mmu_extruder_monitor import ExtruderMonitor
 
@@ -160,10 +158,10 @@ class MmuExtruderWrapper():
 # (useful only when part of gear rail, not operating as an Extruder)
 # -----------------------------------------------------------------------------------------------------------
 
-class MmuExtruderStepper(ExtruderStepper, object): # PAUL this would likely want to extend MmuStepper instead of ExtruderStepper
+class MmuExtruderStepper(MmuStepper):
 
     def __init__(self, config, unit):
-        super(MmuExtruderStepper, self).__init__(config)
+        MmuStepper.__init__(self, config)
 
         # Ensure corresponding TMC section is loaded so endstops can be added and to prevent error later when toolhead is created
         for chip in TMC_CHIPS:
@@ -185,12 +183,19 @@ class MmuExtruderStepper(ExtruderStepper, object): # PAUL this would likely want
                 mcu_endstop = s.add_extra_endstop(endstop_pin, 'mmu_ext_touch', bind_rail_steppers=False) # PAUL bind_rail_steppers??
             mcu_endstop.add_stepper(self.stepper)
 
+
+    # ----------------------------------------------------------------------
+    # ExtruderStepper overrides
+    # ----------------------------------------------------------------------
+
     # Override to add QUIET option to control console logging
     def cmd_SET_PRESSURE_ADVANCE(self, gcmd):
         pressure_advance = gcmd.get_float('ADVANCE', self.pressure_advance, minval=0.)
         smooth_time = gcmd.get_float('SMOOTH_TIME', self.pressure_advance_smooth_time, minval=0., maxval=.200)
         self._set_pressure_advance(pressure_advance, smooth_time)
-        msg = "pressure_advance: %.6f\n" "pressure_advance_smooth_time: %.6f" % (pressure_advance, smooth_time)
+        msg = ("pressure_advance: %.6f\n"
+               "pressure_advance_smooth_time: %.6f"
+               % (pressure_advance, smooth_time))
         self.printer.set_rollover_info(self.name, "%s: %s" % (self.name, msg))
         if not gcmd.get_int('QUIET', 0, minval=0, maxval=1):
             gcmd.respond_info(msg, log=False)

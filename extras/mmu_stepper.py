@@ -6,7 +6,7 @@
 # Goal: Implements [mmu_stepper] klipper object
 #
 # The MmuStepper is a hybrid stepper abstraction that combines Klipper’s
-# ExtruderStepper and ManualStepper behaviors into a single, flexible unit
+# ExtruderStepper and ManualStepper behaviors into a single, flexible object
 # adding additional homing capabilities.
 #
 # It allows a stepper (typically an MMU gear motor or extruder motor) to
@@ -453,9 +453,14 @@ class MmuStepper(ManualStepper, ExtruderStepper):
         #   stock PA config/state
         #   stock extruder commands
         #
-        # It leaves the stepper configured for extruder kinematics initially.
+        # It leaves the stepper configured for extruder kinematics initially
         # ------------------------------------------------------------------
         ExtruderStepper.__init__(self, config)
+
+
+        # ------------------------------------------------------------------
+        # ManualStepper initialization
+        # ------------------------------------------------------------------
 
         # Create manual/cartesian kinematics
         self.sk_extruder = self.stepper.get_stepper_kinematics()
@@ -482,14 +487,12 @@ class MmuStepper(ManualStepper, ExtruderStepper):
         has_default_endstop = config.get('endstop_pin', None) is not None
         has_extra_endstops = config.get('extra_endstops', None) is not None
 
-        if has_default_endstop or has_extra_endstops:
-            self.can_home = True
+        if has_default_endstop is not None or has_extra_endstops is not None:
+            self.can_home = (has_default_endstop is not None)
             self.rail = MmuLookupRailFromStepper(self.stepper, config, need_position_minmax=False, default_position_endstop=0.)
         else:
             self.can_home = False
-            # Still need empty rail so endstops can be added (e.g. mmu gear steppers)
-            self.rail = MmuLookupRailFromStepper(self.stepper, config, need_position_minmax=False, default_position_endstop=0.) # PAUL
-#PAUL            self.rail = self.stepper
+            self.rail = self.stepper
 
         # Private manual-mode trapq
         self.motion_queuing = self.printer.load_object(config, 'motion_queuing')
@@ -541,9 +544,10 @@ class MmuStepper(ManualStepper, ExtruderStepper):
             raise self.printer.command_error("%s is not allowed while '%s' is synced to manual motion from '%s'" % (operation, self.full_name, self.manual_motion_queue))
 
 
-    def _require_extruder_mode(self, operation): # PAUL not currently used
+    def _require_extruder_mode(self, operation):
         if self.motion_mode != self.MODE_EXTRUDER:
             raise self.printer.command_error("%s is not allowed while '%s' is in manual mode" % (operation, self.full_name))
+
 
     def is_standalone_manual(self):
         return (self.motion_mode == self.MODE_MANUAL and self.manual_motion_queue is None)
@@ -708,11 +712,11 @@ class MmuStepper(ManualStepper, ExtruderStepper):
         return [self.stepper]
 
 
-    def get_mode_position(self): # PAUL added
+    def get_mode_position(self):
         if self.motion_mode == self.MODE_MANUAL:
             return self.commanded_pos
         else:
-            return -1 # PAUL return extruder position when synced..
+            return self.stepper.get_commanded_position()
 
 
     def do_set_position(self, setpos):
@@ -789,7 +793,7 @@ class MmuStepper(ManualStepper, ExtruderStepper):
     def do_home_rail(self, endstop_name=None):
         self._require_standalone_manual_mode("HOME")
         if not self.can_home:
-            raise self.printer.command_error("No endstop for this MMU stepper")
+            raise self.printer.command_error("No default endstop for this MMU stepper")
 
         position_min, position_max = self.rail.get_range()
         hi = self.rail.get_homing_info()
@@ -952,11 +956,8 @@ class MmuStepper(ManualStepper, ExtruderStepper):
     # ----------------------------------------------------------------------
 
     def get_status(self, eventtime):
-        status = ExtruderStepper.get_status(self, eventtime)
-        status.update({
-            'motion_mode': self.motion_mode,
-            'commanded_pos': self.commanded_pos,
-        })
+        status = ExtruderStepper.get_status(self, eventtime) # pressure_advance, smooth_time, motion_queue
+        status.update(self._snapshot_sync_state())
         return status
 
 
@@ -1094,6 +1095,7 @@ class MmuStepper(ManualStepper, ExtruderStepper):
                     return "TRIGGERED" if estop_obj.query_endstop(print_time) else "open"
             except Exception:
                 pass
+
             try:
                 if hasattr(estop_obj, "get_status"):
                     status = estop_obj.get_status(print_time)
@@ -1104,49 +1106,60 @@ class MmuStepper(ManualStepper, ExtruderStepper):
                             return str(status["state"])
             except Exception:
                 pass
+
             return "unknown"
 
-        gcmd.respond_info("%s: commanded_pos=%.10f" % (self.full_name, self.commanded_pos))
-        gcmd.respond_info(". Motion mode: %s" % (self.motion_mode,))
-        gcmd.respond_info(". Motion queue: %s" % (self.motion_queue if self.motion_queue is not None else "<manual>"))
-        gcmd.respond_info(". Pressure advance: %.6f" % (self.pressure_advance,))
-        gcmd.respond_info(". Smooth time: %.6f" % (self.pressure_advance_smooth_time,))
+        mcu_pos = self.stepper.get_mcu_position()
+        cmd_pos = self.stepper.get_commanded_position()
+
+        lines = [
+            f"Stepper: {self.full_name}: manual pos={self.commanded_pos:.4f}, commanded_pos={cmd_pos:.4f}, mcu_pos={mcu_pos:.1f}",
+            f"Motion mode: {self.motion_mode}"
+        ]
+        if self.motion_mode == self.MODE_EXTRUDER:
+            lines.extend([
+                f"Motion queue: {self.motion_queue}",
+                f"Pressure advance: {self.pressure_advance:.6f}",
+                f"Smooth time: {self.pressure_advance_smooth_time:.6f}"
+            ])
 
         # Endstops (if a rail)
         if isinstance(self.rail, MmuGenericRail):
             default_estop = self.rail.default_mcu_endstop
             if default_estop:
-                gcmd.respond_info(". Default endstop: present")
-                gcmd.respond_info(". Default endstops: %s" % (self.rail.get_endstops(),))
+                for (estop_obj, estop_name) in self.rail.get_endstops():
+                    estop_type = estop_obj.__class__.__name__
+                    estop_pin = estop_obj._pin
+                    estop_state = _format_endstop_state(estop_obj)
+                    lines.append(f"Default endstop: {estop_name} [{estop_type}, {estop_pin}] [state: {estop_state}]")
             else:
-                gcmd.respond_info(". Default endstop: NONE")
+                lines.append("Default endstop: NONE (cannot home)")
 
             names = self.rail.get_extra_endstop_names() if self.rail else []
             if not names:
-                gcmd.respond_info(". Extra endstops: NONE")
+                lines.append("Extra endstops: NONE")
             else:
-                gcmd.respond_info(". Extra endstops:")
+                lines.append("Extra endstops:")
                 for name in names:
                     is_virtual = self.rail.is_endstop_virtual(name)
                     estop = self.rail.get_extra_endstop(name)
                     estop_obj = estop[0][0] if estop else None
                     estop_type = estop_obj.__class__.__name__ if estop_obj else "unknown"
+                    estop_pin = estop_obj._pin if estop_obj else "unknown"
                     estop_state = _format_endstop_state(estop_obj) if estop_obj else "unknown"
                     is_alias = default_estop is not None and estop_obj is default_estop
-                    flag = " (default, virtual)" if is_alias and is_virtual else \
-                           " (default)" if is_alias else \
-                           " (virtual)" if is_virtual else ""
-                    gcmd.respond_info(".    - %s%s [%s] [state: %s]" % (name, flag, estop_type, estop_state))
+
+                    flag = (
+                        " (default, virtual)" if is_alias and is_virtual else
+                        " (default)" if is_alias else
+                        " (virtual)" if is_virtual else
+                        ""
+                    )
+                    lines.append(f"- {name}{flag} [{estop_type}, {estop_pin}] [state: {estop_state}]")
         else:
-            gcmd.respond_info(". No endstops!")
+            lines.append("No endstops!")
 
-        try:
-            mcu_pos = self.stepper.get_mcu_position()
-            cmd_pos = self.stepper.get_commanded_position()
-            gcmd.respond_info(". Stepper: %s cmd=%.5f mcu=%s" % (self.stepper.get_name(short=True), cmd_pos, mcu_pos))
-
-        except Exception as e:
-            gcmd.respond_info(". Stepper: (error: %s)" % (str(e),))
+        gcmd.respond_info("\n".join(lines))
 
 
     def cmd_MMU_STEPPER_SYNC_MANUAL_MOTION(self, gcmd):
