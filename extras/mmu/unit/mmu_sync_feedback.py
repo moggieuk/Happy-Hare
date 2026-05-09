@@ -578,8 +578,8 @@ class MmuSyncFeedback:
         settle_time  = 0.1
         timeout_s    = 10.0
 
-        # Wait for move queues to clear
-        self.mmu_unit.mmu_toolhead.quiesce()
+        # Wait for all moves to clear
+        self.mmu.movequeue_wait()
 
         # sanity-check parameters before doing anything
         # neutral band needs to have a non zero and non trivial value. Enforce 5% (0.05)

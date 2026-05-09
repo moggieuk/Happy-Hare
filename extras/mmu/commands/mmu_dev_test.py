@@ -116,7 +116,8 @@ class MmuTestCommand(BaseCommand):
         + "GATE_MOTOR={n} Select the specified gear motor on type-B designs\n"
         + "SYNC_G2E=1 Sync gear to extruder (user mode)\n"
         + "SYNC_E2G=1 [EXTRUDER_ONLY=] Sync extruder to gear\n"
-        + "UNSYNC=1 [DRIVE_GEAR_ONLY=] Unsync\n"
+#PAUL        + "UNSYNC=1 [DRIVE_GEAR_ONLY=] Unsync\n"
+        + "UNSYNC=1 Unsync\n"
         + "CALC_PURGE=1 Purge volume calculator quick tests\n"
         + "RUNOUT=[0|1] Enable/disable runout handling\n"
         + "SENSOR=1 Dump sensor path checks\n"
@@ -548,8 +549,9 @@ class MmuTestCommand(BaseCommand):
 
             if gcmd.get_int('UNSYNC', 0, minval=0, maxval=1):
                 have_run_test = True
-                gear_only = bool(gcmd.get_int('DRIVE_GEAR_ONLY', 0, minval=0, maxval=1))
-                mmu.mmu_toolhead.sync(DRIVE_GEAR_ONLY if gear_only else None)
+#PAUL                gear_only = bool(gcmd.get_int('DRIVE_GEAR_ONLY', 0, minval=0, maxval=1))
+#PAUL                mmu.mmu_toolhead.sync(DRIVE_GEAR_ONLY if gear_only else None)
+                mmu.mmu_toolhead.sync(DRIVE_UNSYNCED)
 
             pos = gcmd.get_float('SET_POS', -1, minval=0, maxval=10)
             if pos >= 0:
@@ -730,7 +732,7 @@ class MmuTestCommand(BaseCommand):
                     "toolhead sensor should be present or dummy ones created or use ENDSTOP=xxx\n"
                     "Extruder should be hot (able to extrude)\n"
                     "SELECT=0 turns off gate selection on type-B designs\n"
-                    "WAIT=[0|1] forces wait on movequeues condition after non-homing moves"
+                    "WAIT=[0|1] forces wait on movequeue condition after non-homing moves"
                 )
                 endstop = gcmd.get('ENDSTOP', 'toolhead')
                 loop = gcmd.get_int('LOOP', 10, minval=1, maxval=1000)
@@ -798,7 +800,7 @@ class MmuTestCommand(BaseCommand):
                             "E2G" if mmu.mmu_toolhead.sync_mode == DRIVE_EXTRUDER_SYNCED_TO_GEAR else
                             "G2E" if mmu.mmu_toolhead.sync_mode == DRIVE_GEAR_SYNCED_TO_EXTRUDER else "Ext"
                         )
-                        mmu.movequeues_wait()
+                        mmu.movequeue_wait()
                         tracking = abs(mmu.get_filament_position() - total) < 0.1
                         mmu.log_info(">>>>>> STATUS: sync: %s, pos=%.2f, total=%.2f" % (sync, mmu.get_filament_position(), total))
                         if not tracking:

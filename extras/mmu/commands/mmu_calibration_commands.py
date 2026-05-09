@@ -685,7 +685,7 @@ class MmuCalibratePsensorCommand(CalibrationMixin, BaseCommand):
             avg = sensor.get_status(0).get('value_raw', None)
 
             for _ in range(int(max(1, n-1))):
-                mmu.movequeues_dwell(dwell_s)
+                mmu.movequeue_dwell(dwell_s)
                 raw = sensor.get_status(0).get('value_raw', None)
                 if raw is None or not isinstance(raw, float):
                     return None

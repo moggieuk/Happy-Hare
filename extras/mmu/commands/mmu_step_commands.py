@@ -339,4 +339,5 @@ class MmuM400Command(BaseCommand):
     def _run(self, gcmd):
         mmu = self.mmu
 
-        mmu.mmu_toolhead().quiesce()
+        toolhead = self.printer.lookup_object('toolhead')
+        toolhead.wait_moves()

@@ -204,7 +204,7 @@ class RotarySelector(PhysicalSelector):
 
             # Ensure gate filament drive is in the correct direction
             self.mmu_unit.mmu_toolhead.get_kinematics().rails[1].set_direction(self.p.selector_gate_directions[lgate])
-            self.mmu.movequeues_wait()
+            self.mmu.movequeue_wait()
         else:
             self.grip_state = FILAMENT_UNKNOWN_STATE
 
@@ -321,7 +321,7 @@ class RotarySelector(PhysicalSelector):
         """
         from ...mmu_unit import MmuHoming
 
-        self.mmu.movequeues_wait()
+        self.mmu.movequeue_wait()
 
         try:
             if self.has_endstop:
@@ -366,7 +366,7 @@ class RotarySelector(PhysicalSelector):
         if trace_str:
             self.mmu.log_trace(trace_str)
 
-        self.mmu_unit.mmu_toolhead.quiesce()
+        self.mmu.movequeue_wait()
 
         # Set appropriate speeds and accel if not supplied
         speed = speed or self.p.selector_move_speed
@@ -379,7 +379,7 @@ class RotarySelector(PhysicalSelector):
         if self.mmu.log_enabled(LOG_STEPPER):
             self.mmu.log_stepper("SELECTOR MOVE: position=%.1f, speed=%.1f, accel=%.1f" % (new_pos, speed, accel))
         if wait:
-            self.mmu.movequeues_wait(toolhead=False, mmu_toolhead=True)
+            self.mmu.movequeue_wait()
         return pos[0]
 
     def _restore_position(self, position):
@@ -397,7 +397,7 @@ class RotarySelector(PhysicalSelector):
         """
         from ...mmu_unit import MmuHoming
 
-        self.mmu.movequeues_wait()
+        self.mmu.movequeue_wait()
         init_mcu_pos = self.selector_stepper.get_mcu_position()
         homed = False
         try:

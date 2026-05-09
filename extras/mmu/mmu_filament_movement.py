@@ -37,6 +37,10 @@ import math
 from ..homing             import HomingMove
 
 # Happy Hare imports
+from ..mmu_stepper        import (DRIVE_UNSYNCED,
+                                  DRIVE_EXTRUDER_SYNCED_TO_GEAR,
+                                  DRIVE_EXTRUDER_ONLY_ON_GEAR,
+                                  DRIVE_GEAR_SYNCED_TO_EXTRUDER)
 from .mmu_constants       import *
 from .mmu_utils           import MmuError
 
@@ -495,7 +499,7 @@ class MmuFilamentMovement:
                         )
 
                 self._random_failure() # Testing
-                self.movequeues_wait()
+                self.movequeue_wait()
 
             if full:
                 self.set_filament_pos_state(FILAMENT_POS_END_BOWDEN)
@@ -590,7 +594,7 @@ class MmuFilamentMovement:
                     self.log_warning("Warning: Excess slippage was detected in bowden tube unload. Gear moved %.1fmm, Encoder measured %.1fmm" % (length, length - delta))
 
                 self._random_failure() # Testing
-                self.movequeues_wait()
+                self.movequeue_wait()
 
             if full:
                 self.set_filament_pos_state(FILAMENT_POS_START_BOWDEN)
@@ -859,7 +863,7 @@ class MmuFilamentMovement:
                     self.adjust_encoder_distance(actual)
 
             self._random_failure() # Testing
-            self.movequeues_wait()
+            self.movequeue_wait()
             self.set_filament_pos_state(FILAMENT_POS_LOADED)
             self.log_debug("Filament should be loaded to nozzle")
 
@@ -979,7 +983,7 @@ class MmuFilamentMovement:
                 self.set_filament_pos_state(FILAMENT_POS_END_BOWDEN)
 
             self._random_failure() # Testing
-            self.movequeues_wait()
+            self.movequeue_wait()
             self.log_debug("Filament should be out of extruder")
 
             self.log_warning(f"PAUL: _unload_extruder() => synced={synced}")
@@ -1004,7 +1008,7 @@ class MmuFilamentMovement:
             None. Performs the load workflow, updates state and telemetry, or raises MmuError on failure.
         """
         u = self.mmu_unit()
-        self.movequeues_wait()
+        self.movequeue_wait()
         u.calibrator.restore_gear_rd()
 
         bowden_length = u.calibrator.get_bowden_length() # -1 if not calibrated yet
@@ -1166,7 +1170,7 @@ class MmuFilamentMovement:
                     if full and not skip_extruder:
                         u.calibrator.note_load_telemetry(self.gate_selected, bowden_move, bowden_travel, bowden_move_ratio)
 
-            self.movequeues_wait()
+            self.movequeue_wait()
             msg = "Load of %.1fmm filament successful" % self.get_filament_position()
             self.log_warning(f"PAUL: filament_pos={self.get_filament_position():.1f}mm, encoder={self.get_encoder_distance(dwell=None):.1f}mm")
             if self.can_use_encoder():
@@ -1237,7 +1241,7 @@ class MmuFilamentMovement:
             None. Performs the unload workflow, updates state and telemetry, or raises MmuError on failure.
         """
         u = self.mmu_unit()
-        self.movequeues_wait()
+        self.movequeue_wait()
         u.calibrator.restore_gear_rd()
 
         bowden_length = u.calibrator.get_bowden_length() # -1 if not calibrated yet
@@ -1394,7 +1398,7 @@ class MmuFilamentMovement:
              #        self.log_trace("Encoder moved %.1fmm when filament was released!" % movement)
              #        raise MmuError("Encoder sensed movement when the servo was released\nConcluding filament is stuck somewhere")
 
-            self.movequeues_wait()
+            self.movequeue_wait()
             msg = "Unload of %.1fmm filament successful" % self.get_filament_position()
             self.log_warning(f"PAUL: filament_pos={self.get_filament_position():.1f}mm, encoder={self.get_encoder_distance(dwell=None):.1f}mm")
             if self.can_use_encoder():
@@ -1447,7 +1451,7 @@ class MmuFilamentMovement:
         """
         u = self.mmu_unit()
 
-        self.movequeues_wait()
+        self.movequeue_wait()
 
         # Pre check to validate the presence of filament in the extruder and case where we don't need to form tip
         filament_initially_present = self.sensor_manager.check_sensor(SENSOR_TOOLHEAD)
@@ -1646,8 +1650,8 @@ class MmuFilamentMovement:
         if old is None or old is new:
             return
 
+        gear = self.gear()
         try:
-            gear = self.gear()
             old_name = old.get_name()
             gear.set_drive_sync_mode(DRIVE_UNSYNCED, old_name)
 
@@ -1660,10 +1664,9 @@ class MmuFilamentMovement:
         Map compatibility motor names to the new MmuStepper sync modes.
         """
         gear = gear or self.gear()
-        u = self.mmu_unit()
 
         if motor == "gear":
-            # Old DRIVE_GEAR_ONLY -> new DRIVE_UNSYNCED
+            # normal gear-only movement
             gear.set_drive_sync_mode(DRIVE_UNSYNCED, extruder_name)
             self._restore_gear_current()
 
@@ -1762,19 +1765,13 @@ class MmuFilamentMovement:
         Execute a relative move on the selected gear MmuStepper.
         Returns: actual, homed
         """
-        start_pos = gear.commanded_pos
+        start_pos = gear.get_mode_position()
         target_pos = start_pos + dist
 
         if homing_move != 0:
-            home_result = gear.do_homing_move(
-                target_pos, speed, accel,
-                probe_pos=True,
-                triggered=(homing_move > 0),
-                check_trigger=True,
-                endstop_name=endstop_name
-            )
+            home_result = gear.do_homing_move(target_pos, speed, accel, probe_pos=True, triggered=(homing_move > 0), check_trigger=True, endstop_name=endstop_name)
 
-            halt_pos = gear.commanded_pos
+            halt_pos = gear.get_mode_position()
             actual = halt_pos - start_pos
             homed = True
 
@@ -1803,12 +1800,13 @@ class MmuFilamentMovement:
         return dist, False
 
 
-    def _move_active_extruder(self, dist, speed):
+    def _move_active_extruder(self, dist, speed, accel):
         """
         Standard extruder-led move for motor='synced'.
         """
         ext_pos = self.toolhead.get_position()
         ext_pos[3] += dist
+# PAUL do we want to wrap on default toolhead?                    with self.wrap_accel(accel):
         self.toolhead.move(ext_pos, speed)
         return dist
 
@@ -1843,10 +1841,11 @@ class MmuFilamentMovement:
         Returns:
             tuple(actual, homed, measured, delta)
         """
-        u = self.mmu_unit()
         gear = self.gear()
-        extruder = self.extruder_stepper()
-        printer_extruder = self.printer_extruder()
+# PAUL not needed
+#        extruder = self.extruder_stepper() # PAUL MOGGIE extruder_stepper = self.toolhead.get_extruder().extruder_stepper.stepper
+#        printer_extruder = self.printer_extruder() # PAUL MOGGIE
+        extruder_name = self.mmu_unit().extruder_name()
 
         encoder_start = self.get_encoder_distance(dwell=encoder_dwell)
         homed = False
@@ -1873,9 +1872,9 @@ class MmuFilamentMovement:
             wait = wait or self._wait_for_espooler
 
             try:
-                self._set_active_sync_mode(motor, gear=gear, extruder_name=printer_extruder.get_name())
+                self._set_active_sync_mode(motor, gear=gear, extruder_name=extruder_name)
 
-                start_pos = gear.commanded_pos
+                start_pos = gear.get_mode_position()
 
                 # Gear-side move authority
                 if motor in ["gear", "gear+extruder", "extruder"]:
@@ -1887,10 +1886,7 @@ class MmuFilamentMovement:
                             self.log_stepper("%s MOVE: dist=%.1f, speed=%.1f, accel=%.1f, wait=%s" % (
                                 motor.upper(), dist, speed, accel, wait))
 
-                    actual, homed = self._move_active_gear_stepper(
-                        gear, dist, speed, accel,
-                        homing_move=homing_move,
-                        endstop_name=endstop_name)
+                    actual, homed = self._move_active_gear_stepper(gear, dist, speed, accel, homing_move=homing_move, endstop_name=endstop_name)
 
                     # PAUL check logic...
                     # Old special-case logic:
@@ -1911,34 +1907,21 @@ class MmuFilamentMovement:
                         return null_rtn
 
                     if self.log_enabled(LOG_STEPPER):
-                        self.log_stepper("%s MOVE: dist=%.1f, speed=%.1f, accel=%.1f, wait=%s" % (
-                            motor.upper(), dist, speed, accel, wait))
+                        self.log_stepper("%s MOVE: dist=%.1f, speed=%.1f, accel=%.1f, wait=%s" % (motor.upper(), dist, speed, accel, wait))
 
-                    with self.wrap_accel(accel):
-                        actual = self._move_active_extruder(dist, speed)
-
-    # PAUL unecessary
-    #            try:
-    #                gear.flush_step_generation()
-    #            except Exception:
-    #                pass
-    #            try:
-    #                extruder.flush_step_generation()
-    #            except Exception:
-    #                pass
-    #            try:
-    #                self.toolhead.flush_step_generation()
-    #            except Exception:
-    #                pass
+# PAUL
+#                    with self.wrap_accel(accel):
+#                        actual = self._move_active_extruder(dist, speed)
+                    actual = self._move_active_extruder(dist, speed, accel)
 
                 if wait:
-                    self.movequeues_wait() # PAUL change to klipper movequeue_wait()
+                    self.movequeue_wait()
 
             except self.printer.command_error as e:
                 self.log_error("Stepper move failed: %s" % str(e))
                 if homing_move != 0:
                     try:
-                        actual = gear.commanded_pos - start_pos
+                        actual = gear.get_mode_position() - start_pos
                     except Exception:
                         actual = 0.
                     homed = False
@@ -1958,7 +1941,7 @@ class MmuFilamentMovement:
                 trace_str += ". Stepper: '%s' moved %.1fmm, encoder measured %.1fmm (delta %.1fmm)"
                 trace_str = trace_str % (motor, dist, measured, delta)
 
-            trace_str += " --> Pos: @%.1f, (e: %.1fmm)" % (gear.commanded_pos, encoder_end)
+            trace_str += " --> Pos: @%.1f, (e: %.1fmm)" % (gear.get_mode_position(), encoder_end)
             self.log_trace(trace_str)
 
         if motor == "gear" and track and self.can_use_encoder():
@@ -2181,7 +2164,7 @@ class MmuFilamentMovement:
 #            self.mmu_toolhead().flush_step_generation() # TTC mitigation (TODO still required?)
 #            self.toolhead.flush_step_generation()     # TTC mitigation (TODO still required?)
 #            if wait:
-#                self.movequeues_wait()
+#                self.movequeue_wait()
 #
 #        encoder_end = self.get_encoder_distance(dwell=encoder_dwell)
 #        measured = encoder_end - encoder_start
@@ -2215,23 +2198,23 @@ class MmuFilamentMovement:
 #        return actual, homed, measured, delta
 
 
-    # Used to force accelaration override for homing moves
-    @contextlib.contextmanager
-    def wrap_accel(self, accel):
-        """
-        Temporarily override the acceleration limit used by the MMU toolhead.
-
-        Args:
-            accel: Requested acceleration. When omitted, a context-appropriate default is chosen.
-
-        Yields:
-            self while the temporary acceleration limit is active.
-        """
-        self.mmu_toolhead().get_kinematics().set_accel_limit(accel)
-        try:
-            yield self
-        finally:
-            self.mmu_toolhead().get_kinematics().set_accel_limit(None)
+#    # Used to force accelaration override for homing moves
+#    @contextlib.contextmanager
+#    def wrap_accel(self, accel):
+#        """
+#        Temporarily override the acceleration limit used by the MMU toolhead.
+#
+#        Args:
+#            accel: Requested acceleration. When omitted, a context-appropriate default is chosen.
+#
+#        Yields:
+#            self while the temporary acceleration limit is active.
+#        """
+#        self.mmu_toolhead().get_kinematics().set_accel_limit(accel)
+#        try:
+#            yield self
+#        finally:
+#            self.mmu_toolhead().get_kinematics().set_accel_limit(None)
 
 
     # Used to wrap certain unload moves and activate eSpooler. Ensures eSpooler is always stopped
@@ -2597,6 +2580,7 @@ class MmuFilamentMovement:
             None. Applies sync state, grip state, and current changes in place.
         """
         u = self.mmu_unit()
+        sync = bool(sync)
 
         # Default to current selection; some designs call this before gate selection is finalized.
         if gate is None:
@@ -2621,11 +2605,18 @@ class MmuFilamentMovement:
             if should_release:
                 self.selector().filament_release()
 
-        # Sync / unsync toolhead mode (avoid redundant calls).
-        desired_sync_mode = DRIVE_GEAR_SYNCED_TO_EXTRUDER if sync else None
-        if desired_sync_mode != self.mmu_toolhead().sync_mode:
-            self.movequeues_wait()  # Safety: likely unnecessary but ensures no queued moves conflict.
-            self.mmu_toolhead().sync(desired_sync_mode)
+# PAUL vv need to rework to use new mmu_stepper sync control
+#        # Sync / unsync toolhead mode (avoid redundant calls).
+#        desired_sync_mode = DRIVE_GEAR_SYNCED_TO_EXTRUDER if sync else None
+#        if desired_sync_mode != self.mmu_toolhead().sync_mode:
+#            self.movequeue_wait()  # Safety: likely unnecessary but ensures no queued moves conflict.
+#            self.mmu_toolhead().sync(desired_sync_mode)
+# PAUL new logic..
+        # Sync to / unsync from extruder
+        if self.gear().is_synced_to_extruder() and not sync:
+            self.gear().set_drive_sync_mode(DRIVE_UNSYNCED)
+        elif not self.gear().is_synced_to_extruder() and sync:
+            self.gear().set_drive_sync_mode(DRIVE_GEAR_SYNCED_TO_EXTRUDER)
 
         # Current control:
         # - While synced, optionally reduce current for the active gear stepper.
@@ -2653,9 +2644,7 @@ class MmuFilamentMovement:
             self while nested operations may temporarily alter sync and grip state.
         """
         # Capture current sync state so it can be restored on exit.
-        previous_sync = (
-            self.mmu_toolhead().sync_mode == DRIVE_GEAR_SYNCED_TO_EXTRUDER
-        )
+        previous_sync = self.gear().is_synced_to_extruder()
 
         # Suppress grip release only at the outermost level.
         outermost_wrapper = not self._suppress_release_grip

@@ -106,13 +106,8 @@ class MmuCalibrator:
         # Load gear rotation distance configuration (calibration set with MMU_CALIBRATE_GEAR/GATE)
         # -------------------------------------------------------------------------------------------------------
 
-        gear_steppers = u.mmu_toolhead.get_kinematics().rails[1].steppers
-
-        rds = (
-            [s.get_rotation_distance()[0] for s in gear_steppers[:u.num_gates]]
-            if len(gear_steppers) >= u.num_gates
-            else [gear_steppers[0].get_rotation_distance()[0]] * u.num_gates
-        )
+        gear_steppers = u.mmu_gear_steppers
+        rds = [s.stepper.get_rotation_distance()[0] for s in gear_steppers[:u.num_gates]]
         self._default_rotation_distances = rds
 
         rotation_distances = self.var_manager.get(VARS_MMU_GEAR_ROTATION_DISTANCES, None, namespace=u.name)
@@ -355,10 +350,10 @@ class MmuCalibrator:
         rd = self.get_gear_rd(gate)
         if (
             rd > 0 and
-            rd != self.mmu_unit.gear_stepper_obj(gate).get_rotation_distance()[0]
+            rd != self.mmu_unit.gear_stepper_obj(gate).stepper.get_rotation_distance()[0]
         ):
             self.mmu.log_debug("Restoring stepper to default rotation distance for gate %d: %.4f" % (gate, rd))
-            self.mmu_unit.gear_stepper_obj(gate).set_rotation_distance(rd)
+            self.mmu_unit.gear_stepper_obj(gate).stepper.set_rotation_distance(rd)
 
 
     def apply_gear_rd(self, rd, gate=None):
@@ -372,7 +367,7 @@ class MmuCalibrator:
 
         if rd and lgate >= 0:
             self.mmu.log_trace("Set stepper for gate %d gear motor rotation distance: %.4f" % (gate, rd))
-            self.mmu_unit.gear_stepper_obj(gate).set_rotation_distance(rd)
+            self.mmu_unit.gear_stepper_obj(gate).stepper.set_rotation_distance(rd)
 
 
     def update_gear_rd(self, rd, gate=None, console_msg=False):

@@ -177,10 +177,12 @@ class MmuExtruderStepper(ExtruderStepper, object): # PAUL this would likely want
 
         # This allows for setup of stallguard as an option for nozzle homing
         endstop_pin = config.get('endstop_pin', None)
+# PAUL I'm not sure this works with mmu toolhead change.  Need to test / think through
         if endstop_pin:
-            # PAUL will need to iterate on all gear steppers
-            gear_rail = unit.mmu_toolhead.get_kinematics().rails[1]
-            mcu_endstop = gear_rail.add_extra_endstop(endstop_pin, 'mmu_ext_touch', bind_rail_steppers=False)
+            # Iterate on all unique gear steppers
+            steppers = unit.mmu_gear_steppers if unit.multigear else unit.mmu_gear_steppers[:1]
+            for s in steppers:
+                mcu_endstop = s.add_extra_endstop(endstop_pin, 'mmu_ext_touch', bind_rail_steppers=False) # PAUL bind_rail_steppers??
             mcu_endstop.add_stepper(self.stepper)
 
     # Override to add QUIET option to control console logging

@@ -81,10 +81,20 @@ class ServoSelector(PhysicalSelector):
         self.is_homed = True # No homing necessary
         self.requires_homing = False
 
-        # Get hardware
-        self.servo = self.mmu_unit.selector_servo
-        if not self.servo:
-            raise self.config.error("Selector servo not found")
+        # Load selector servo hardware
+        servo_name = mmu_unit.config.get('selector_servo', self.mmu_unit.name)
+        section = 'mmu_servo %s' % servo_name
+        if config.has_section(section):
+            self.servo = self.printer.load_object(config, section)
+            logging.info("MMU: Loaded: [%s]" % section)
+        else:
+            raise config.error("Selector servo not found. Perhaps missing '[mmu_servo %s]' definition" % servo_name)
+
+        # Register GCODE commands specific to this module
+        try:
+            register_command(MmuServoCommand)
+        except KeyError:
+            pass # Already registered
 
         # Initial defaults from config but will be overriden by calibrated values
         self.servo_bypass_angle = self.p.servo_bypass_angle
@@ -255,10 +265,10 @@ class ServoSelector(PhysicalSelector):
         duration, then dwells for at least the configured dwell/duration.
         """
         if angle >= 0 and angle != self.servo_angle:
-            self.mmu.movequeues_wait()
+            self.mmu.movequeue_wait()
             self.servo.set_position(angle=angle, duration=None if self.p.servo_always_active else self.p.servo_duration)
             self.servo_angle = angle
-            self.mmu.movequeues_dwell(max(self.p.servo_dwell, self.p.servo_duration, 0))
+            self.mmu.movequeue_dwell(max(self.p.servo_dwell, self.p.servo_duration, 0))
 
     def _get_closest_released_angle(self):
         """

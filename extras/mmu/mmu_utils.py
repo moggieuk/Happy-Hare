@@ -185,7 +185,7 @@ class DebugStepperMovement:
         """
         Capture starting positions/steps if debugging is enabled.
         """
-        if self.debug:
+        if self.debug: # PAUL redo...
             self.g_steps0 = self.mmu.gear_rail.steppers[0].get_mcu_position()
             self.g_pos0 = self.mmu.gear_rail.steppers[0].get_commanded_position()
             self.e_steps0 = self.mmu.mmu_extruder_stepper.stepper.get_mcu_position()
@@ -199,7 +199,7 @@ class DebugStepperMovement:
         """
         if self.debug:
             self.mmu.log_always("Waiting for movement to complete...")
-            self.mmu.movequeues_wait()
+            self.mmu.movequeue_wait()
             g_steps1 = self.mmu.gear_rail.steppers[0].get_mcu_position()
             g_pos1 = self.mmu.gear_rail.steppers[0].get_commanded_position()
             e_steps1 = self.mmu.mmu_extruder_stepper.stepper.get_mcu_position()

@@ -68,7 +68,7 @@ class MmuTestBuzzMotorCommand(BaseCommand):
             elif motor == "gears":
                 try:
                     for gate in range(mmu.num_gates):
-                        mmu.mmu_toolhead().select_gear_stepper(gate)
+                        mmu.mmu_toolhead().select_gear_stepper(gate) # PAUL TODO
                         found = mmu.buzz_gear_motor()
                         if found is not None:
                             mmu.log_info(
@@ -77,7 +77,7 @@ class MmuTestBuzzMotorCommand(BaseCommand):
                             )
                 finally:
                     # Restore original gear selection
-                    mmu.mmu_toolhead().select_gear_stepper(mmu.gate_selected)
+                    mmu.mmu_toolhead().select_gear_stepper(mmu.gate_selected) # PAUL TODO
 
             elif not mmu.selector().buzz_motor(motor):
                 raise gcmd.error("Motor '%s' not known" % motor)

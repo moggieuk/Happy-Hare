@@ -135,7 +135,7 @@ class IndexedSelector(PhysicalSelector):
         Clears current gate selection, then performs a gate-find operation.
         Raises MmuError with Klipper context on failure.
         """
-        self.mmu.movequeues_wait()
+        self.mmu.movequeue_wait()
         try:
             self._find_gate(0)
             self.is_homed = True
@@ -155,7 +155,7 @@ class IndexedSelector(PhysicalSelector):
         """
         rotation_dir = self._best_rotation_direction(self.mmu.gate_selected, gate)
         max_move = self._get_max_selector_movement() * rotation_dir
-        self.mmu.movequeues_wait()
+        self.mmu.movequeue_wait()
         actual,homed = self._move_selector("Indexing selector", max_move, speed=self.p.selector_move_speed, homing_move=1, endstop_name=self._get_gate_endstop(gate))
         if abs(actual) > 0 and homed:
             # If we actually moved to home make sure we are centered on index endstop
@@ -208,7 +208,7 @@ class IndexedSelector(PhysicalSelector):
         homed = False
         actual = dist
 
-        self.mmu_unit.mmu_toolhead.quiesce()
+        self.mmu.movequeue_wait()
 
         if homing_move != 0:
             # Check for valid endstop
@@ -249,7 +249,7 @@ class IndexedSelector(PhysicalSelector):
         self.mmu_unit.mmu_toolhead.flush_step_generation() # TTC mitigation (TODO: still required?)
         self.mmu.toolhead.flush_step_generation() # TTC mitigation (TODO: still required?)
         if wait:
-            self.mmu.movequeues_wait(toolhead=False, mmu_toolhead=True)
+            self.mmu.movequeue_wait()
 
         if trace_str:
             if homing_move != 0:

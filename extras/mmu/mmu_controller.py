@@ -420,7 +420,7 @@ class MmuController(MmuFilamentMovement):
 
             # Reset sync state (intention is not to sync unless we have to)
             self.reset_sync_gear_to_extruder(False)
-            self.mmu_toolhead().quiesce()
+            self.movequeue_wait()
 
             # Status to console...
             if self.p.log_startup_status:
@@ -458,7 +458,7 @@ class MmuController(MmuFilamentMovement):
 
             self.gcode.run_script_from_command(command)
             if wait:
-                self.mmu_toolhead().quiesce()
+                self.movequeue_wait()
 
         except Exception as e:
             if exception is not None:
@@ -488,6 +488,11 @@ class MmuController(MmuFilamentMovement):
         if mmu_unit is None:
             mmu_unit = self.mmu_machine.get_mmu_unit_by_index(0)
         return mmu_unit
+
+
+    def gear(self, gate=None):
+        if gate is None: gate = self.gate_selected
+        return self.mmu_unit(gate).gear_stepper_obj(gate)
 
 
     def selector(self, gate=None):
@@ -529,14 +534,6 @@ class MmuController(MmuFilamentMovement):
             return "n/a"
 
 
-    def mmu_toolhead(self, gate=None): # PAUL ************* this will go away
-        return self.mmu_unit(gate).mmu_toolhead
-
-
-    def gear_rail(self, gate=None): # PAUL ************* this will go away
-        return self.mmu_toolhead(gate).get_kinematics().rails[1]
-
-
 
 # -----------------------------------------------------------------------------------------------------------
 # AGGREGATED PRINTER VARIABLES FOR "LOGICAL" MMU MACHINE
@@ -562,14 +559,14 @@ class MmuController(MmuFilamentMovement):
             'filament': "Loaded" if self.filament_pos == FILAMENT_POS_LOADED else
                         "Unloaded" if self.filament_pos == FILAMENT_POS_UNLOADED else
                         "Unknown",
-            'filament_position': self.mmu_toolhead().get_position()[1],
+            'filament_position': self.gear().get_mode_position(),
             'filament_pos': self.filament_pos, # State machine position
             'filament_direction': self.filament_direction,
             'pending_spool_id': self.pending_spool_id,
             'tool_extrusion_multipliers': self.tool_extrusion_multipliers,
             'tool_speed_multipliers': self.tool_speed_multipliers,
             'action': self._get_action_string(),
-            'sync_drive': self.mmu_toolhead().is_synced(),
+            'sync_drive': self.gear().is_synced_to_extruder(),
             'reason_for_pause': self.psm.reason_for_pause if self.is_mmu_paused() else "",
             'spoolman_support': self.p.spoolman_support,
             'bowden_progress': self._get_bowden_progress(), # Simple 0-100%. -1 if not performing bowden move
@@ -1622,7 +1619,7 @@ class MmuController(MmuFilamentMovement):
     def _save_toolhead_position_and_park(self, operation, next_pos=None):
         if operation not in ['complete', 'cancel'] and 'xyz' not in self.toolhead.get_status(self.reactor.monotonic())['homed_axes']:
             self.gcode.run_script_from_command(self.p.toolhead_homing_macro)
-            self.movequeues_wait()
+            self.movequeue_wait()
 
         eventtime = self.reactor.monotonic()
         homed = self.toolhead.get_status(eventtime)['homed_axes']
@@ -1797,10 +1794,10 @@ class MmuController(MmuFilamentMovement):
         """
         self.log_info(f"PAUL: _encoder_dwell({dwell})")
         if dwell is True:
-            self.movequeues_dwell(self.mmu_unit().p.encoder_dwell)
-            self.movequeues_wait()
+            self.movequeue_dwell(self.mmu_unit().p.encoder_dwell)
+            self.movequeue_wait()
         elif dwell is False:
-            self.movequeues_wait()
+            self.movequeue_wait()
 
 
     def initialize_encoder(self, dwell=False):
@@ -1850,20 +1847,17 @@ class MmuController(MmuFilamentMovement):
         """
         Return the approximate live filament position for dynamic feedback of position
         """
-        gear_stepper = self.gear_rail().steppers[0]
-        mcu_pos = gear_stepper.get_mcu_position()
-        return mcu_pos * gear_stepper.get_step_dist()
+        gear_mcu_stepper = self.gear(gate).stepper
+        mcu_pos = gear_mcu_stepper.get_mcu_position()
+        return mcu_pos * gear_mcu_stepper.get_step_dist()
 
 
     def get_filament_position(self):
-        return self.mmu_toolhead().get_position()[1]
+        return self.gear().get_mode_position()
 
 
     def set_filament_position(self, position = 0.):
-        pos = self.mmu_toolhead().get_position()
-        pos[1] = position
-        self.mmu_toolhead().set_position(pos)
-        return position
+        self.gear().do_set_position(position)
 
 
     def set_filament_direction(self, direction):
@@ -2062,7 +2056,8 @@ class MmuController(MmuFilamentMovement):
             if on:
                 self.reset_sync_gear_to_extruder(False)
             else:
-                self.mmu_toolhead().unsync()
+                pass # PAUL what to do?
+#PAUL                self.mmu_toolhead().unsync()
 
         for mmu_unit in self.mmu_machine.units:
             mmu_unit.motors_onoff(on, motor)
@@ -2658,25 +2653,14 @@ class MmuController(MmuFilamentMovement):
             raise MmuError("A %s has been detected on %s and requires manual intervention" % (type_str, sensor))
 
 
-# PAUL: these methods should go away ************* --------------------------------------
+    # Wait for all movement to stop
+    def movequeue_wait(self):
+        self.toolhead.wait_moves()
 
-    # Wait on desired move queues
-    # TODO: PAUL: perhaps better now to remove this method and
-    # TODO: always just call self.mmu_toolhead().quiesce()
-    def movequeues_wait(self, toolhead=True, mmu_toolhead=True):
-        #self.log_trace("movequeues_wait(toolhead=%s, mmu_toolhead=%s)" % (toolhead, mmu_toolhead))
-        if toolhead:
-            self.toolhead.wait_moves()
-        if mmu_toolhead:
-            self.mmu_toolhead().wait_moves()
 
-    # Dwell on desired move queues
-    def movequeues_dwell(self, dwell, toolhead=True, mmu_toolhead=True):
+    def movequeue_dwell(self, dwell):
         if dwell > 0.:
-            if toolhead:
-                self.toolhead.dwell(dwell)
-            if mmu_toolhead:
-                self.mmu_toolhead().dwell(dwell)
+            self.toolhead.dwell(dwell)
 
 
 # -----------------------------------------------------------------------------------------------------------

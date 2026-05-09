@@ -35,11 +35,11 @@ import logging, traceback
 from ....homing             import Homing, HomingMove
 
 # Happy Hare imports
+from ....mmu_stepper        import DRIVE_UNSYNCED
 from ...mmu_constants       import *
 from ...mmu_utils           import MmuError
 from ...commands            import register_command
 from ...mmu_base_parameters import ParamSpec
-from ...mmu_unit            import DRIVE_GEAR_ONLY
 from ..mmu_calibrator       import CALIBRATED_SELECTOR
 from .mmu_linear_selector   import LinearSelector, LinearSelectorParameters
 
@@ -162,10 +162,14 @@ class LinearSelectorServo:
             'move': self.p.servo_move_angle,
         }
 
-        # Get hardware
-        self.servo = self.mmu_unit.selector_servo
-        if not self.servo:
-            raise self.config.error("Selector servo not found")
+        # Load selector servo hardware
+        servo_name = mmu_unit.config.get('selector_servo', self.mmu_unit.name)
+        section = 'mmu_servo %s' % servo_name
+        if config.has_section(section):
+            self.servo = self.printer.load_object(config, section)
+            logging.info("MMU: Loaded: [%s]" % section)
+        else:
+            raise config.error("Selector servo not found. Perhaps missing '[mmu_servo %s]' definition" % servo_name)
 
         # Register GCODE commands specific to this module
         try:
@@ -222,10 +226,13 @@ class LinearSelectorServo:
         if self.servo_state == SERVO_DOWN_STATE: return
         self.mmu.log_trace("Setting servo to down (filament drive) position at angle: %d" % self.servo_angles['down'])
 
+# PAUL
+#        if buzz_gear and self.p.servo_buzz_gear_on_down > 0:
+#            self.mmu_unit.mmu_toolhead.sync(DRIVE_GEAR_ONLY) # Must be in correct sync mode before buzz to avoid delay
         if buzz_gear and self.p.servo_buzz_gear_on_down > 0:
-            self.mmu_unit.mmu_toolhead.sync(DRIVE_GEAR_ONLY) # Must be in correct sync mode before buzz to avoid delay
+            self.mmu.gear().set_drive_sync_mode(DRIVE_UNSYNCED) # Must be in correct sync mode before buzz to avoid delay
 
-        self.mmu.movequeues_wait() # Probably not necessary
+        self.mmu.movequeue_wait() # Probably not necessary
         initial_encoder_position = self.mmu.get_encoder_distance(dwell=None)
         self.servo.set_position(angle=self.servo_angles['down'], duration=None if self.p.servo_active_down or self.p.servo_always_active else self.p.servo_duration)
 
@@ -233,7 +240,7 @@ class LinearSelectorServo:
             for _ in range(self.p.servo_buzz_gear_on_down):
                 self.mmu.move_filament(None, 0.8, speed=25, accel=self.mmu_unit.p.gear_buzz_accel, encoder_dwell=None, speed_override=False)
                 self.mmu.move_filament(None, -0.8, speed=25, accel=self.mmu_unit.p.gear_buzz_accel, encoder_dwell=None, speed_override=False)
-            self.mmu.movequeues_dwell(max(self.p.servo_dwell, self.p.servo_duration, 0))
+            self.mmu.movequeue_dwell(max(self.p.servo_dwell, self.p.servo_duration, 0))
 
         self.servo_angle = self.servo_angles['down']
         self.servo_state = SERVO_DOWN_STATE
@@ -245,9 +252,9 @@ class LinearSelectorServo:
         if self.servo_state == SERVO_MOVE_STATE: return
         self.mmu.log_trace("Setting servo to move (filament hold) position at angle: %d" % self.servo_angles['move'])
         if self.servo_angle != self.servo_angles['move']:
-            self.mmu.movequeues_wait()
+            self.mmu.movequeue_wait()
             self.servo.set_position(angle=self.servo_angles['move'], duration=None if self.p.servo_always_active else self.p.servo_duration)
-            self.mmu.movequeues_dwell(max(self.p.servo_dwell, self.p.servo_duration, 0))
+            self.mmu.movequeue_dwell(max(self.p.servo_dwell, self.p.servo_duration, 0))
             self.servo_angle = self.servo_angles['move']
             self.servo_state = SERVO_MOVE_STATE
 
@@ -263,11 +270,11 @@ class LinearSelectorServo:
         self.mmu.log_trace("Setting servo to up (filament released) position at angle: %d" % self.servo_angles['up'])
         delta = 0.
         if self.servo_angle != self.servo_angles['up']:
-            self.mmu.movequeues_wait()
+            self.mmu.movequeue_wait()
             if measure:
                 initial_encoder_position = self.mmu.get_encoder_distance(dwell=None)
             self.servo.set_position(angle=self.servo_angles['up'], duration=None if self.p.servo_always_active else self.p.servo_duration)
-            self.mmu.movequeues_dwell(max(self.p.servo_dwell, self.p.servo_duration, 0))
+            self.mmu.movequeue_dwell(max(self.p.servo_dwell, self.p.servo_duration, 0))
             if measure:
                 # Report on spring back in filament then revert counter
                 delta = self.mmu.get_encoder_distance() - initial_encoder_position
@@ -294,7 +301,7 @@ class LinearSelectorServo:
         self.servo_move()
 
     def buzz_motor(self):
-        self.mmu.movequeues_wait()
+        self.mmu.movequeue_wait()
         old_state = self.servo_state
         low=min(self.servo_angles['down'], self.servo_angles['up'])
         high=max(self.servo_angles['down'], self.servo_angles['up'])
@@ -303,12 +310,12 @@ class LinearSelectorServo:
         duration=None if self.p.servo_always_active else self.p.servo_duration
 
         self.servo.set_position(angle=mid, duration=duration)
-        self.mmu.movequeues_dwell(max(self.p.servo_duration, 0.5), mmu_toolhead=False)
+        self.mmu.movequeue_dwell(max(self.p.servo_duration, 0.5))
         self.servo.set_position(angle=(mid - move), duration=duration)
-        self.mmu.movequeues_dwell(max(self.p.servo_duration, 0.5), mmu_toolhead=False)
+        self.mmu.movequeue_dwell(max(self.p.servo_duration, 0.5))
         self.servo.set_position(angle=(mid + move), duration=duration)
-        self.mmu.movequeues_dwell(max(self.p.servo_duration, 0.5), mmu_toolhead=False)
-        self.mmu.movequeues_wait()
+        self.mmu.movequeue_dwell(max(self.p.servo_duration, 0.5))
+        self.mmu.movequeue_wait()
 
         if old_state == SERVO_DOWN_STATE:
             self.servo_down(buzz_gear=False)
