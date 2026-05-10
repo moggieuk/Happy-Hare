@@ -1385,7 +1385,7 @@ class Mmu:
                 raise
 
     def mmu_macro_event(self, event_name, params=""):
-        if self.printer.lookup_object("gcode_macro %s" % self.mmu_event_macro, None) is not None:
+        if self.printer.lookup_object("gcode_macro %s" % self.mmu_event_macro.split()[0], None) is not None:
             self.wrap_gcode_command("%s EVENT=%s %s" % (self.mmu_event_macro, event_name, params))
 
     # Wait on desired move queues
@@ -3095,7 +3095,7 @@ class Mmu:
                         self.resume_to_state, self.saved_toolhead_operation, self.is_printer_paused(), idle_timeout))
             if call_macro:
                 self.led_manager.print_state_changed(print_state, self.print_state)
-                if self.printer.lookup_object("gcode_macro %s" % self.print_state_changed_macro, None) is not None:
+                if self.printer.lookup_object("gcode_macro %s" % self.print_state_changed_macro.split()[0], None) is not None:
                     self.wrap_gcode_command("%s STATE='%s' OLD_STATE='%s'" % (self.print_state_changed_macro, print_state, self.print_state))
             self.print_state = print_state
 
@@ -3853,7 +3853,7 @@ class Mmu:
         old_action = self.action
         self.action = action
         self.led_manager.action_changed(action, old_action)
-        if self.printer.lookup_object("gcode_macro %s" % self.action_changed_macro, None) is not None:
+        if self.printer.lookup_object("gcode_macro %s" % self.action_changed_macro.split()[0], None) is not None:
             self.wrap_gcode_command("%s ACTION='%s' OLD_ACTION='%s'" % (self.action_changed_macro, self._get_action_string(), self._get_action_string(old_action)))
         return old_action
 
@@ -5511,7 +5511,10 @@ class Mmu:
 
     def purge_standalone(self):
         if self.purge_macro:
-            gcode_macro = self.printer.lookup_object("gcode_macro %s" % self.purge_macro, None)
+            gcode_parts = self.purge_macro.split(None, 1)
+            gcode_macro_name = gcode_parts[0]
+            gcode_macro_params = gcode_parts[1] if len(gcode_parts) > 1 else ""
+            gcode_macro = self.printer.lookup_object("gcode_macro %s" % gcode_macro_name, None)
             if gcode_macro:
                 self.log_info("Purging...")
                 with self._wrap_extruder_current(self.extruder_purge_current, "for filament purge"):
@@ -5523,7 +5526,7 @@ class Mmu:
                     self.log_debug(msg)
                     self.wrap_gcode_command(self.purge_macro, exception=True, wait=True)
             else:
-                self.log_warning("Purge macro %s not found" % self.purge_macro)
+                self.log_warning("Purge macro %s (parameters: %s) not found" % (gcode_macro_name, gcode_macro_params))
 
 
 #################################
@@ -8078,7 +8081,7 @@ class Mmu:
         self._moonraker_push_lane_data(gate_ids)
 
         self.led_manager.gate_map_changed(None)
-        if self.printer.lookup_object("gcode_macro %s" % self.mmu_event_macro, None) is not None:
+        if self.printer.lookup_object("gcode_macro %s" % self.mmu_event_macro.split()[0], None) is not None:
             self.mmu_macro_event(self.MACRO_EVENT_GATE_MAP_CHANGED, "GATE=-1")
 
     def _reset_gate_map(self):
