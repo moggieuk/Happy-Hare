@@ -29,9 +29,9 @@ from itertools                          import chain
 
 
 # Klipper imports
-import stepper, chelper, toolhead
-from kinematics.extruder                import PrinterExtruder, DummyExtruder
-from ..homing                           import Homing, HomingMove
+# PAUL import stepper, chelper, toolhead
+# PAUL from kinematics.extruder                import PrinterExtruder, DummyExtruder
+# PAUL from ..homing                           import Homing, HomingMove
 
 # Happy Hare imports
 from .mmu_constants                     import *
@@ -43,7 +43,7 @@ from .unit.mmu_sensors                  import MmuSensors
 from .unit.mmu_unit_parameters          import MmuUnitParameters
 from .unit.mmu_calibrator               import MmuCalibrator
 from .unit.mmu_toolhead_wrapper         import MmuToolheadWrapper
-from .unit.mmu_extruder_wrapper         import MmuExtruderWrapper, MmuExtruderStepper # PAUL need MmuExtruderStepper?
+from .unit.mmu_extruder_wrapper         import MmuExtruderWrapper, MmuExtruderStepper
 from .unit.mmu_sync_feedback            import MmuSyncFeedback
 from .unit.selectors                    import SELECTOR_REGISTRY
 from .unit.selectors.mmu_base_selectors import VirtualSelector
@@ -166,8 +166,7 @@ class MmuUnit:
                     raise config.error("Object '%s' could not be loaded as a valid heater or environment sensor in [mmu_machine]\nError: %s" % (obj_name, str(e)))
 
 
-# MOGGIE
-        # MMU Extruders (aka gears)  --------------------------------------------------------
+        # MMU Gears -------------------------------------------------------------------------
 
         if self.multigear:
             self.mmu_gear_names = list(config.getlist('gear_steppers'))
@@ -196,7 +195,6 @@ class MmuUnit:
         if self.multigear:
             pass # PAUL lots to do here
 
-#PAUL        self.mmu_gears = []
         self.mmu_gear_steppers = []
         g = None
         for sname in self.mmu_gear_names:
@@ -281,6 +279,17 @@ class MmuUnit:
         self.calibrator = MmuCalibrator(params, self, self.p)
         logging.info("MMU: Created: Calibrator for %s" % self.name)
 
+        # Load selector (reads it's own config from mmu_unit_parameters)
+        selector_class = SELECTOR_REGISTRY.get(self.selector_type)
+        if selector_class is None:
+            raise self.config.error(
+                "Invalid Selector class %s for unit %s. Options are: %s"
+                % (self.selector_type, self.name, ",".join(SELECTOR_REGISTRY))
+            )
+
+        self.selector = selector_class(params, self, self.p)
+        logging.info("MMU: Created %s selector" % self.selector_type)
+
         # Create toolhead wrapper (probably shared so check for existence first)
         # This encapsulates demensions and provides possibility of dissimilar toolheads on IDEX printer,
         # however, for now the toolhead is a shared "default" definition in mmu.cfg
@@ -305,6 +314,7 @@ class MmuUnit:
         # By default HH uses its modified homing extruder. Because this might have unknown consequences on certain
         # set-ups it can be disabled. If disabled, synced homing moves will still work, but the delay in mcu to mcu
         # comms can lead to several mm of error depending on speed. Also homing of just the extruder is not possible.
+        # Note: should be created after gear steppers  PAUL
         homing_extruder = bool(config.getint('homing_extruder', 1, minval=0, maxval=1))
 
         mmu_extruder_name = f"mmu_extruder {extruder_name}"
@@ -315,17 +325,6 @@ class MmuUnit:
             logging.info("MMU: Created: [%s]" % mmu_extruder_name)
         else:
             self.extruder_wrapper.add_unit(self)
-
-        # Load selector (reads it's own config from mmu_unit_parameters)
-        selector_class = SELECTOR_REGISTRY.get(self.selector_type)
-        if selector_class is None:
-            raise self.config.error(
-                "Invalid Selector class %s for unit %s. Options are: %s"
-                % (self.selector_type, self.name, ",".join(SELECTOR_REGISTRY))
-            )
-
-        self.selector = selector_class(params, self, self.p)
-        logging.info("MMU: Created %s selector" % self.selector_type)
 
         # Load mmu_sensors
         self.sensors = None

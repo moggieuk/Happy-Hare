@@ -41,10 +41,23 @@ class MmuExtruderWrapper():
 
         self.homing_extruder_stepper = None
         if self.homing_extruder:
-            # Create MmuExtruderStepper for later insertion into PrinterExtruder on Toolhead (on klippy:connect)
-            self.homing_extruder_stepper = MmuExtruderStepper(config.getsection(self.name), self)
 
-            # Nullify original extruder stepper definition so Klipper doesn't try to create it again. Restore in handle_connect()
+            # Ensure corresponding TMC section is loaded so endstops can be added and to prevent error later when toolhead is created
+            for chip in TMC_CHIPS:
+                try:
+                    section = '%s extruder' % chip
+                    logging.info(f"PAUL: Looking for {section}")
+                    _ = self.printer.load_object(config, section)
+                    logging.info("MMU: Loaded: [%s]" % section)
+                    break
+                except:
+                    pass
+
+            # Create MmuExtruderStepper for later insertion into PrinterExtruder on Toolhead (on klippy:connect)
+            toolhead_section = config.getsection(self.name)
+            self.homing_extruder_stepper = MmuExtruderStepper(toolhead_section, mmu_unit)
+
+            # Nullify original extruder stepper definition so Klipper doesn't try to create it again. Restore config in handle_connect()
             self.old_ext_options = {}
             for i in SHAREABLE_STEPPER_PARAMS + OTHER_STEPPER_PARAMS:
                 if config.fileconfig.has_option(self.extruder_name(), i):
@@ -81,6 +94,7 @@ class MmuExtruderWrapper():
             # Now we can switch in homing MmuExtruderStepper
             printer_extruder.extruder_stepper = self.homing_extruder_stepper
             self.homing_extruder_stepper.stepper.set_trapq(printer_extruder.get_trapq())
+            self.mmu.log_debug(f"Extruder {self.extruder_name()} replaced with homing extruder")
 
         else:     
             self.mmu.log_debug("Warning: Using original klipper extruder stepper. Extruder homing not possible")
@@ -161,27 +175,17 @@ class MmuExtruderWrapper():
 class MmuExtruderStepper(MmuStepper):
 
     def __init__(self, config, unit):
-        MmuStepper.__init__(self, config)
+        MmuStepper.__init__(self, config, default_mode='extruder')
 
-        # Ensure corresponding TMC section is loaded so endstops can be added and to prevent error later when toolhead is created
-        for chip in TMC_CHIPS:
-            try:
-                section = '%s extruder' % chip
-                _ = self.printer.load_object(config, section)
-                logging.info("MMU: Loaded: %s" % section)
-                break
-            except:
-                pass
-
-        # This allows for setup of stallguard as an option for nozzle homing
-        endstop_pin = config.get('endstop_pin', None)
-# PAUL I'm not sure this works with mmu toolhead change.  Need to test / think through
-        if endstop_pin:
-            # Iterate on all unique gear steppers
-            steppers = unit.mmu_gear_steppers if unit.multigear else unit.mmu_gear_steppers[:1]
-            for s in steppers:
-                mcu_endstop = s.add_extra_endstop(endstop_pin, 'mmu_ext_touch', bind_rail_steppers=False) # PAUL bind_rail_steppers??
-            mcu_endstop.add_stepper(self.stepper)
+# PAUL not sure I need this because manual rail is setup in init() above for when extruder is in manual mode
+#        # This allows for setup of stallguard as an option for nozzle homing
+#        endstop_pin = config.get('endstop_pin', None)
+#        if endstop_pin:
+#            # Iterate on all unique gear steppers
+#            steppers = unit.mmu_gear_steppers if unit.multigear else unit.mmu_gear_steppers[:1]
+#            for s in steppers:
+#                mcu_endstop = s.rail.add_extra_endstop(endstop_pin, 'mmu_ext_touch', bind_rail_stepper=False) # PAUL bind_rail_steppers??
+#            mcu_endstop.add_stepper(s.stepper)
 
 
     # ----------------------------------------------------------------------

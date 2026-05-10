@@ -14,6 +14,11 @@
 import random, logging, math
 
 # Happy Hare imports
+from ...mmu_stepper     import (MmuStepper,
+                                DRIVE_UNSYNCED,
+                                DRIVE_EXTRUDER_SYNCED_TO_GEAR,
+                                DRIVE_EXTRUDER_ONLY_ON_GEAR,
+                                DRIVE_GEAR_SYNCED_TO_EXTRUDER)
 from ..mmu_constants    import *
 from ..mmu_utils        import MmuError, PurgeVolCalculator, DebugStepperMovement
 from ..unit.mmu_sensors import MmuSensors
@@ -83,48 +88,36 @@ class MmuTestCommand(BaseCommand):
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
         + "HELP=1 Show this help\n"
-        + "SYNC_STATE=['compression'|'tension'|'both'|'neutral'|'loop'] Set the sync state (or run looped test)\n"
-        + "    LOOP={n} (with SYNC_STATE=loop) number of iterations\n"
+        + "SYNC_STATE=['compression'|'tension'|'both'|'neutral'|'loop'] Set the sync state (or run looped test). Params: LOOP={n} (with SYNC_STATE=loop) number of iterations\n"
         + "SYNC_EVENT=[-1.0 ... 1.0] Generate sync feedback event\n"
         + "DUMP_UNICODE=1 Display special characters used in display\n"
-        + "RUN_SEQUENCE=1 Run through the set of sequence macros tracking time\n"
-        + "    ERROR=[0|1] FORCE_IN_PRINT=[0|1]\n"
-        + "RUN_CHANGE_SEQUENCE=1 Run toolchange-style sequence\n"
-        + "    PAUSE=[0|1] NEXT_POS=['last'|'next'] FORCE_IN_PRINT=[0|1]\n"
+        + "RUN_SEQUENCE=1 Run through the set of sequence macros tracking time. Params: ERROR=[0|1] FORCE_IN_PRINT=[0|1]\n"
+        + "RUN_CHANGE_SEQUENCE=1 Run toolchange-style sequence. Params: PAUSE=[0|1] NEXT_POS=['last'|'next'] FORCE_IN_PRINT=[0|1]\n"
         + "GET_POS=1 Fetch the current filament position state\n"
         + "SET_POS={pos_state} Set the current filament position state\n"
         + "SET_RD={gear_rd} [GATE=] Update the specified gate's rotation distance\n"
         + "GET_POSITION=1 Fetch the current filament position\n"
         + "SET_POSITION={pos} Set the current filament position\n"
-        + "SYNC_LOAD_TEST=1 Hammer stepper syncing and movement\n"
-        + "    LOOP={n} ENDSTOP={name} SELECT=[0|1] WAIT=[0|1]\n"
-        + "REALISTIC_SYNC_TEST=1 Load test normal stepper syncing and movement\n"
-        + "    LOOP={n} ENDSTOP={name} SELECT=[0|1] SERVO=[0|1]\n"
+        + "SYNC_LOAD_TEST=1 Hammer stepper syncing and movement. Params: LOOP={n} ENDSTOP={name} SELECT=[0|1] WAIT=[0|1]\n"
+        + "REALISTIC_SYNC_TEST=1 Load test normal stepper syncing and movement. Params: LOOP={n} ENDSTOP={name} SELECT=[0|1] SERVO=[0|1]\n"
         + "QUIESCE_TEST=1 Quick test of problematic sync changes\n"
-        + "SEL_MOVE=1 Selector move\n"
-        + "    MOVE={mm} SPEED={mm/s} ACCEL={mm/s^2} WAIT=[0|1] LOOP={n}\n"
-        + "SEL_HOMING_MOVE=1 Selector homing move\n"
-        + "    MOVE={mm} SPEED={mm/s} ACCEL={mm/s^2} LOOP={n} ENDSTOP={name}\n"
-        + "SEL_LOAD_TEST=1 Load test selector movements\n"
-        + "    LOOP={n} HOME=[0|1]\n"
-        + "TTC_TEST=1 / TTC_TEST2=1 / TTC_TEST3=1 Provoke TTC conditions\n"
-        + "    LOOP={n} MIX=[0|1] DEBUG=[0|1] WAIT=[0|1]\n"
-        + "STEPCOMPRESS_TEST=1 Provoke stepcompress error\n"
-        + "    LOOP={n} MIX=[0|1] DEBUG=[0|1] WAIT=[0|1] SELECT=[0|1] MOTOR={name} STOP_ON_ENDSTOP=[-1|0|1]\n"
-        + "AUTO_CALIBRATE=1 Call auto-calibrate directly\n"
-        + "    GATE={n} DIRECTION=[-1|0|1] RATIO={f} HOMING={mm}\n"
-        + "GATE_MOTOR={n} Select the specified gear motor on type-B designs\n"
+        + "SEL_MOVE=1 Selector move. Params: MOVE={mm} SPEED={mm/s} ACCEL={mm/s^2} WAIT=[0|1] LOOP={n}\n"
+        + "SEL_HOMING_MOVE=1 Selector homing move. Params: MOVE={mm} SPEED={mm/s} ACCEL={mm/s^2} LOOP={n} ENDSTOP={name}\n"
+        + "SEL_LOAD_TEST=1 Load test selector movements. Params: LOOP={n} HOME=[0|1]\n"
+        + "TTC_TEST=1 / TTC_TEST2=1 / TTC_TEST3=1 Provoke known TTC conditions. Params: LOOP={n} MIX=[0|1] DEBUG=[0|1] WAIT=[0|1]\n"
+        + "STEPCOMPRESS_TEST=1 Provoke stepcompress error. Params: LOOP={n} MIX=[0|1] DEBUG=[0|1] WAIT=[0|1] SELECT=[0|1] MOTOR={name} STOP_ON_ENDSTOP=[-1|0|1]\n"
+        + "AUTO_CALIBRATE=1 Call auto-calibrate directly. Params: GATE={n} DIRECTION=[-1|0|1] RATIO={f} HOMING={mm}\n"
         + "SYNC_G2E=1 Sync gear to extruder (user mode)\n"
-        + "SYNC_E2G=1 [EXTRUDER_ONLY=] Sync extruder to gear\n"
-#PAUL        + "UNSYNC=1 [DRIVE_GEAR_ONLY=] Unsync\n"
+        + "SYNC_E2G=1 Sync extruder to gear\n"
+        + "SYNC_EONLY=1 Put extruder on gear rail and detach gear stepper\n"
         + "UNSYNC=1 Unsync\n"
         + "CALC_PURGE=1 Purge volume calculator quick tests\n"
         + "RUNOUT=[0|1] Enable/disable runout handling\n"
-        + "SENSOR=1 Dump sensor path checks\n"
-        + "    POS={n} GATE={n} LOADING=[0|1] LOOP=[0|1]\n"
+        + "SENSOR=1 Dump sensor path checks. Params: POS={n} GATE={n} LOADING=[0|1] LOOP=[0|1]\n"
         + "FILAMENT_POS={n} Set filament_pos state within sync wrapper\n"
         + "ADJUST_ENCODER={delta} Adjust the encoder distance reading by delta\n"
         + "SET_ENCODER={dist} Set the encoder distance reading to distance\n"
+        + "DUMP_MCU_ENDSTOPS=1 Dump steppers registered on each MCU_endstop\n"
     )
     HELP_SUPPLEMENT = (
         ""
@@ -540,18 +533,19 @@ class MmuTestCommand(BaseCommand):
 
             if gcmd.get_int('SYNC_G2E', 0, minval=0, maxval=1):
                 have_run_test = True
-                mmu.mmu_toolhead.sync(DRIVE_GEAR_SYNCED_TO_EXTRUDER)
+                mmu.gear().set_drive_sync_mode(DRIVE_GEAR_SYNCED_TO_EXTRUDER, mmu.mmu_unit().extruder_name())
 
             if gcmd.get_int('SYNC_E2G', 0, minval=0, maxval=1):
                 have_run_test = True
-                extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1))
-                mmu.mmu_toolhead.sync(DRIVE_EXTRUDER_ONLY_ON_GEAR if extruder_only else DRIVE_EXTRUDER_SYNCED_TO_GEAR)
+                mmu.gear().set_drive_sync_mode(DRIVE_EXTRUDER_SYNCED_TO_GEAR, mmu.mmu_unit().extruder_name())
+
+            if gcmd.get_int('SYNC_EONLY', 0, minval=0, maxval=1):
+                have_run_test = True
+                mmu.gear().set_drive_sync_mode(DRIVE_EXTRUDER_ONLY_ON_GEAR, mmu.mmu_unit().extruder_name())
 
             if gcmd.get_int('UNSYNC', 0, minval=0, maxval=1):
                 have_run_test = True
-#PAUL                gear_only = bool(gcmd.get_int('DRIVE_GEAR_ONLY', 0, minval=0, maxval=1))
-#PAUL                mmu.mmu_toolhead.sync(DRIVE_GEAR_ONLY if gear_only else None)
-                mmu.mmu_toolhead.sync(DRIVE_UNSYNCED)
+                mmu.gear().set_drive_sync_mode(DRIVE_UNSYNCED, mmu.mmu_unit().extruder_name())
 
             pos = gcmd.get_float('SET_POS', -1, minval=0, maxval=10)
             if pos >= 0:
@@ -595,10 +589,10 @@ class MmuTestCommand(BaseCommand):
                             mmu.gcode.run_script_from_command(arg)
                         elif op == "sync":
                             mmu.log_info("Step %d: %s" % (i, arg))
-                            mmu.mmu_toolhead.sync(arg)
+                            mmu.gear().set_drive_sync_mode(arg, mmu.mmu_unit().extruder_name())
                         elif op == "unsync":
                             mmu.log_info("Step %d: unsync()" % i)
-                            mmu.mmu_toolhead.unsync()
+                            mmu.gear().set_drive_sync_mode(DRIVE_UNSYNCED, mmu.mmu_unit().extruder_name())
                         else:
                             mmu.log_warning("Step %d: unknown op %s" % (i, op))
 
@@ -706,7 +700,7 @@ class MmuTestCommand(BaseCommand):
                         # Run a few randomized moves on the printer toolhead to simulate user movement
                         # Sync state must either be unsynced or DRIVE_GEAR_SYNCED_TO_EXTRUDER
                         sync = None if random.randint(0, 1) else DRIVE_GEAR_SYNCED_TO_EXTRUDER
-                        mmu.mmu_toolhead.sync(sync)
+                        mmu.gear().set_drive_sync_mode(sync, mmu.mmu_unit().extruder_name())
                         log(">> Extruder movement (%s)..." % ("not synced" if sync is None else "synced to extruder"))
                         for j in range(5):
                             move = random.randint(-10, 10)
@@ -755,11 +749,11 @@ class MmuTestCommand(BaseCommand):
                             mmu.select_gate(gate)
                     if move_type in (0, 1):
                         log("Loop: %d - Synced extruder movement with G1 Ex: %.1fmm" % (i, move))
-                        mmu.mmu_toolhead.sync(DRIVE_GEAR_SYNCED_TO_EXTRUDER)
+                        mmu.gear().set_drive_sync_mode(DRIVE_GEAR_SYNCED_TO_EXTRUDER, mmu.mmu_unit().extruder_name())
                         mmu.gcode.run_script_from_command("G1 E%.2f F%d" % (move, speed * 60))
                     elif move_type == 2:
                         log("Loop: %d - Unsynced extruder movement with G1 Ex: %.1fmm" % (i, move))
-                        mmu.mmu_toolhead.unsync()
+                        mmu.gear().set_drive_sync_mode(DRIVE_UNSYNCED, mmu.mmu_unit().extruder_name())
                         mmu.gcode.run_script_from_command("G1 E%.2f F%d" % (move, speed * 60))
                     elif move_type == 3:
                         log("Loop: %d - Regular mmu move: %.1fmm, MOTOR=%s" % (i, move, motor))
@@ -796,9 +790,10 @@ class MmuTestCommand(BaseCommand):
                             "MMU_TEST_MOVE MOTOR=synced MOVE=%.2f SPEED=%d WAIT=%d" % (move, speed, w)
                         )
                     else:
-                        sync = "---" if mmu.mmu_toolhead.sync_mode is None else (
-                            "E2G" if mmu.mmu_toolhead.sync_mode == DRIVE_EXTRUDER_SYNCED_TO_GEAR else
-                            "G2E" if mmu.mmu_toolhead.sync_mode == DRIVE_GEAR_SYNCED_TO_EXTRUDER else "Ext"
+                        sync_mode = mmu.gear().self.drive_sync_mode
+                        sync = "---" if sync_mode == DRIVE_UNSYNCED else (
+                            "E2G" if sync_mode == DRIVE_EXTRUDER_SYNCED_TO_GEAR else
+                            "G2E" if sync_mode == DRIVE_GEAR_SYNCED_TO_EXTRUDER else "Ext"
                         )
                         mmu.movequeue_wait()
                         tracking = abs(mmu.get_filament_position() - total) < 0.1
@@ -822,7 +817,7 @@ class MmuTestCommand(BaseCommand):
                 wait = gcmd.get_int('WAIT', 1, minval=0, maxval=1)
                 loop = gcmd.get_int('LOOP', 1, minval=1)
                 for i in range(loop):
-                    pos = mmu.mmu_toolhead.get_position()[0]
+                    pos = mmu.selector().selector_stepper.commanded_pos
                     actual = mmu.selector.move("Test move", pos + move, speed=speed, accel=accel, wait=wait)
                     mmu.log_always("%d. Rail starting pos: %s, Selector moved to %.4fmm" % (i, pos, actual))
                     if actual != pos + move:
@@ -836,7 +831,7 @@ class MmuTestCommand(BaseCommand):
                 loop = gcmd.get_int('LOOP', 1, minval=1)
                 endstop = gcmd.get('ENDSTOP', SENSOR_SELECTOR_TOUCH if mmu.selector.use_touch_move() else SENSOR_SELECTOR_HOME)
                 for i in range(loop):
-                    pos = mmu.mmu_toolhead.get_position()[0]
+                    pos = mmu.selector().selector_stepper.commanded_pos
                     mmu.log_always("Rail starting pos: %s" % pos)
                     actual, homed = mmu.selector.homing_move("Test homing move", pos + move, speed=speed, accel=accel, homing_move=1, endstop_name=endstop)
                     mmu.log_always("%d. Rail starting pos: %s, Selector moved to %.4fmm homing to %s (%s)" % (i, pos, actual, endstop, "homed" if homed else "DID NOT HOME"))
@@ -854,7 +849,7 @@ class MmuTestCommand(BaseCommand):
                     speed = random.uniform(50, 200)
                     accel = random.randint(50, 2000)
                     w = random.randint(0, 1)
-                    pos = mmu.mmu_toolhead.get_position()[0]
+                    pos = mmu.selector().selector_stepper.commanded_pos
                     if move_type in (1, 2):
                         endstop = "mmu_sel_touch" if move_type == 2 else "mmu_sel_home"
                         actual, homed = mmu.selector.homing_move("Test homing move", move, speed=speed, accel=accel, homing_move=1, endstop_name=endstop)
@@ -885,7 +880,7 @@ class MmuTestCommand(BaseCommand):
                             "MMU_TEST_MOVE MOTOR=%s MOVE=5 DEBUG=%d WAIT=%d" % (motor, debug, w)
                         )
                     if random.randint(0, 1):
-                        mmu.mmu_toolhead.get_last_move_time()  # Try to provoke TTC
+                        mmu.toolhead.get_last_move_time()  # Try to provoke TTC
 
             if gcmd.get_int('TTC_TEST2', 0, minval=0, maxval=1):
                 have_run_test = True
@@ -924,7 +919,7 @@ class MmuTestCommand(BaseCommand):
                             "MMU_TEST_MOVE MOTOR=%s MOVE=5 DEBUG=%d WAIT=%d" % (motor, debug, w)
                         )
                     if random.randint(0, 1):
-                        mmu.mmu_toolhead.get_last_move_time()  # Try to provoke TTC
+                        mmu.toolhead.get_last_move_time()  # Try to provoke TTC
 
             if gcmd.get_int('STEPCOMPRESS_TEST', 0, minval=0, maxval=1):
                 have_run_test = True
@@ -958,11 +953,6 @@ class MmuTestCommand(BaseCommand):
                 homing_movement = gcmd.get_float('HOMING', None, minval=0, maxval=100)
                 mmu.gate_selected = gate
                 mmu._auto_calibrate(direction, ratio, homing_movement)
-
-            select_gate = gcmd.get_int('GATE_MOTOR', -99, minval=TOOL_GATE_BYPASS, maxval=mmu.num_gates)
-            if not select_gate == -99:
-                have_run_test = True
-                mmu.mmu_toolhead.select_gear_stepper(select_gate)
 
             if gcmd.get_int('CALC_PURGE', 0, minval=0, maxval=1):
                 have_run_test = True
@@ -1034,6 +1024,23 @@ class MmuTestCommand(BaseCommand):
                 have_run_test = True
                 mmu.set_encoder_distance(set_encoder)
                 mmu.log_always(f"Encoder distance: {mmu.get_encoder_distance(dwell=None):.1f}mm")
+
+
+            dump_mcus = gcmd.get_int('DUMP_MCU_ENDSTOPS', None)
+            if dump_mcus is not None:
+                have_run_test = True
+
+                def get_mcu_endstops_sorted():
+                    return sorted(
+                        MmuStepper.mcu_endstops,
+                        key=lambda es: (es.get_mcu().get_name(), es._pin)
+                    )
+
+                for es in get_mcu_endstops_sorted():
+                    mmu.log_always(
+                        f"MCU_endstop({es.get_mcu().get_name()},{es._pin},{id(es)}) "
+                        f"steppers={[s.get_name() for s in es.get_steppers()]}"
+                    )
 
 
             if not have_run_test:

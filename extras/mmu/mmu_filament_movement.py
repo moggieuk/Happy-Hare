@@ -1861,8 +1861,7 @@ class MmuFilamentMovement:
             if homing_move != 0:
                 endstop_name = self._validate_homing_endstop(gear, motor, endstop_name)
 
-            speed, accel = self._resolve_filament_move_speed(
-                dist, motor, homing_move, speed, accel, speed_override=speed_override)
+            speed, accel = self._resolve_filament_move_speed(dist, motor, homing_move, speed, accel, speed_override=speed_override)
 
         except Exception as e:
             self.log_error(str(e))

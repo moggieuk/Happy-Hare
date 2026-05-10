@@ -152,6 +152,10 @@ class MmuGenericRail:
             self.default_mcu_endstop.add_stepper(self.stepper)
             self.endstops.append((self.default_mcu_endstop, self.name))
 
+            # Save mcu_endstop for debugging
+            if self.default_mcu_endstop not in MmuStepper.mcu_endstops:
+                MmuStepper.mcu_endstops.append(self.default_mcu_endstop)
+
         # Parse and bind extra selectable endstops
         for endstop_name, endstop_target in self._parse_extra_endstops(config):
             self.add_extra_endstop(endstop_target, endstop_name)
@@ -201,6 +205,7 @@ class MmuGenericRail:
 
 
     def lookup_endstop(self, endstop_pin, name, register=True):
+        logging.info(f"PAUL: +++++++++ endstop_pin={endstop_pin}, name={name}, register={register}")
         ppins = self.printer.lookup_object('pins')
         pin_params = ppins.parse_pin(endstop_pin, True, True)
 
@@ -306,8 +311,13 @@ class MmuGenericRail:
 
         self.extra_endstops.append((mcu_endstop, name))
 
+        # Save mcu_endstop for debugging
+        if mcu_endstop not in MmuStepper.mcu_endstops:
+            MmuStepper.mcu_endstops.append(mcu_endstop)
+
         if bind_rail_stepper:
             try:
+                logging.info(f"PAUL: adding {self.stepper.get_name()} to {mcu_endstop}")
                 mcu_endstop.add_stepper(self.stepper)
             except Exception as e:
                 logging.info("MMU: Not possible to add stepper %s to endstop %s because: %s", self.stepper.get_name(), name, str(e))
@@ -427,6 +437,8 @@ def MmuLookupRailFromStepper(stepper_obj, config, need_position_minmax=True, def
 
 class MmuStepper(ManualStepper, ExtruderStepper):
 
+    mcu_endstops = [] # To aid debugging only
+
     MODE_MANUAL = "manual"
     MODE_EXTRUDER = "extruder"
 
@@ -441,7 +453,7 @@ class MmuStepper(ManualStepper, ExtruderStepper):
     cmd_MMU_STEPPER_SYNC_MANUAL_MOTION_help = "Set MMU stepper manual motion queue"
     cmd_MMU_STEPPER_SET_SYNC_MODE_help = "Set synchronized drive mode for this gear and extruder"
 
-    def __init__(self, config):
+    def __init__(self, config, default_mode=MODE_MANUAL):
         # ------------------------------------------------------------------
         # ExtruderStepper initialization
         # ------------------------------------------------------------------
@@ -510,11 +522,14 @@ class MmuStepper(ManualStepper, ExtruderStepper):
         self.gaxis_limit_velocity = self.gaxis_limit_accel = 0.
 
         # Set initial operating mode
-        self.default_mode = config.getchoice('default_mode', {'manual': self.MODE_MANUAL, 'extruder': self.MODE_EXTRUDER}, default=self.MODE_MANUAL)
+        self.default_mode = config.getchoice('default_mode', {'manual': self.MODE_MANUAL, 'extruder': self.MODE_EXTRUDER}, default=default_mode)
         if self.default_mode == self.MODE_MANUAL:
             self._activate_manual_mode(initial=True)
         else:
-            self._ensure_extruder_mode_detached(0.)
+            self.motion_mode = self.MODE_EXTRUDER
+# PAUL not possible to call this before toolhead exists!
+#PAUL            self._ensure_extruder_mode_detached(0.)
+
 
         # Sync state tracking
         self.drive_sync_mode = DRIVE_UNSYNCED
@@ -1113,7 +1128,7 @@ class MmuStepper(ManualStepper, ExtruderStepper):
         cmd_pos = self.stepper.get_commanded_position()
 
         lines = [
-            f"Stepper: {self.full_name}: manual pos={self.commanded_pos:.4f}, commanded_pos={cmd_pos:.4f}, mcu_pos={mcu_pos:.1f}",
+            f"Stepper: {self.full_name}: manual_pos={self.commanded_pos:.4f}, commanded_pos={cmd_pos:.4f}, mcu_pos={mcu_pos:.1f}",
             f"Motion mode: {self.motion_mode}"
         ]
         if self.motion_mode == self.MODE_EXTRUDER:
@@ -1122,6 +1137,10 @@ class MmuStepper(ManualStepper, ExtruderStepper):
                 f"Pressure advance: {self.pressure_advance:.6f}",
                 f"Smooth time: {self.pressure_advance_smooth_time:.6f}"
             ])
+        else:
+            lines.extend([
+                f"Manual motion queue: {self.manual_motion_queue}"
+            ])
 
         # Endstops (if a rail)
         if isinstance(self.rail, MmuGenericRail):
@@ -1129,22 +1148,29 @@ class MmuStepper(ManualStepper, ExtruderStepper):
             if default_estop:
                 for (estop_obj, estop_name) in self.rail.get_endstops():
                     estop_type = estop_obj.__class__.__name__
+                    if hasattr(estop_obj, "get_mcu"):
+                        estop_type += f"({estop_obj.get_mcu().get_name()})"
                     estop_pin = estop_obj._pin
                     estop_state = _format_endstop_state(estop_obj)
-                    lines.append(f"Default endstop: {estop_name} [{estop_type}, {estop_pin}] [state: {estop_state}]")
+                    lines.append(f"Default manual endstop: {estop_name} [{estop_type}, {estop_pin}] [state: {estop_state}]")
             else:
-                lines.append("Default endstop: NONE (cannot home)")
+                lines.append("Default manual endstop: NONE (cannot home rail)")
 
             names = self.rail.get_extra_endstop_names() if self.rail else []
             if not names:
-                lines.append("Extra endstops: NONE")
+                lines.append("Extra manual endstops: NONE")
             else:
-                lines.append("Extra endstops:")
+                lines.append("Extra manual endstops:")
                 for name in names:
                     is_virtual = self.rail.is_endstop_virtual(name)
                     estop = self.rail.get_extra_endstop(name)
                     estop_obj = estop[0][0] if estop else None
-                    estop_type = estop_obj.__class__.__name__ if estop_obj else "unknown"
+                    if estop_obj:
+                        estop_type = estop_obj.__class__.__name__
+                        if hasattr(estop_obj, "get_mcu"):
+                            estop_type += f"({estop_obj.get_mcu().get_name()})" # PAUL {id(estop_obj)}
+                    else:
+                        estop_type = "unknown"
                     estop_pin = estop_obj._pin if estop_obj else "unknown"
                     estop_state = _format_endstop_state(estop_obj) if estop_obj else "unknown"
                     is_alias = default_estop is not None and estop_obj is default_estop
