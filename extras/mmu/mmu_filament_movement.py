@@ -1634,6 +1634,7 @@ class MmuFilamentMovement:
             return
 
         try:
+            self.log_warning(f"PAUL: set_drive_sync_mode({DRIVE_UNSYNCED}, {extruder_name})")
             old_gear.set_drive_sync_mode(DRIVE_UNSYNCED, extruder_name)
 
         except Exception as e:
@@ -1653,58 +1654,11 @@ class MmuFilamentMovement:
         gear = self.gear()
         try:
             old_name = old.get_name()
+            self.log_warning(f"PAUL: set_drive_sync_mode({DRIVE_UNSYNCED}, {old_name})")
             gear.set_drive_sync_mode(DRIVE_UNSYNCED, old_name)
 
         except Exception as e:
             self.log_error("Failed to unsync gear '%s' after extruder change: %s" % (gear.full_name, str(e)))
-
-
-    def _set_active_sync_mode(self, motor, gear=None, extruder_name="extruder"):
-        """
-        Map compatibility motor names to the new MmuStepper sync modes.
-        """
-        gear = gear or self.gear()
-
-        if motor == "gear":
-            # normal gear-only movement
-            gear.set_drive_sync_mode(DRIVE_UNSYNCED, extruder_name)
-            self._restore_gear_current()
-
-        elif motor == "gear+extruder":
-            # gear leads, extruder follows manually
-            gear.set_drive_sync_mode(DRIVE_EXTRUDER_SYNCED_TO_GEAR, extruder_name)
-            self._restore_gear_current()
-
-        elif motor == "extruder":
-            # extruder-only-on-gear semantics
-            gear.set_drive_sync_mode(DRIVE_EXTRUDER_ONLY_ON_GEAR, extruder_name)
-            self._restore_gear_current()
-
-        elif motor == "synced":
-            # extruder leads, gear follows extruder
-            gear.set_drive_sync_mode(DRIVE_GEAR_SYNCED_TO_EXTRUDER, extruder_name)
-            self._adjust_gear_current(percent=u.p.sync_gear_current, reason="for extruder synced move")
-
-        else:
-            raise self.printer.command_error("Invalid motor specification '%s'" % (motor,))
-
-
-    def _validate_homing_endstop(self, gear, motor, endstop_name):
-        """
-        Validate endstop for homing-style moves.
-        """
-        if motor == "synced":
-            raise self.printer.command_error("Not possible to perform homing move while synced")
-
-        mapped = self.get_mapped_endstop_name(endstop_name) # PAUL should be on sensor manager
-
-        if not hasattr(gear, 'rail') or not hasattr(gear.rail, 'has_endstop'):
-            raise self.printer.command_error("No endstop support on gear '%s'" % (gear.full_name,))
-
-        if not gear.rail.has_endstop(mapped):
-            raise self.printer.command_error("Endstop '%s' not found" % (mapped,))
-
-        return mapped
 
 
     def _resolve_filament_move_speed(self, dist, motor, homing_move, speed, accel, speed_override=True):
@@ -1841,6 +1795,7 @@ class MmuFilamentMovement:
         Returns:
             tuple(actual, homed, measured, delta)
         """
+        u = self.mmu_unit()
         gear = self.gear()
 # PAUL not needed
 #        extruder = self.extruder_stepper() # PAUL MOGGIE extruder_stepper = self.toolhead.get_extruder().extruder_stepper.stepper
@@ -1859,8 +1814,18 @@ class MmuFilamentMovement:
 
         try:
             if homing_move != 0:
-                endstop_name = self._validate_homing_endstop(gear, motor, endstop_name)
 
+                # Check for valid endstop
+                if motor == "synced":
+                    self.log_assertion("Not possible to perform homing move while synced")
+                    return null_rtn
+
+                endstop_name = self.sensor_manager.get_mapped_endstop_name(endstop_name)
+                if not gear.rail.has_endstop(endstop_name):
+                    self.log_error(f"Endstop '{endstop_name}' not found")
+                    return null_rtn
+
+            # Determine speed
             speed, accel = self._resolve_filament_move_speed(dist, motor, homing_move, speed, accel, speed_override=speed_override)
 
         except Exception as e:
@@ -1871,7 +1836,32 @@ class MmuFilamentMovement:
             wait = wait or self._wait_for_espooler
 
             try:
-                self._set_active_sync_mode(motor, gear=gear, extruder_name=extruder_name)
+                if motor == "gear":
+                    # normal gear-only movement
+                    self.log_warning(f"PAUL: set_drive_sync_mode({DRIVE_UNSYNCED}, {extruder_name})")
+                    gear.set_drive_sync_mode(DRIVE_UNSYNCED, extruder_name)
+                    self._restore_gear_current()
+
+                elif motor == "gear+extruder":
+                    # gear leads, extruder follows manually
+                    self.log_warning(f"PAUL: set_drive_sync_mode({DRIVE_EXTRUDER_SYNCED_TO_GEAR}, {extruder_name})")
+                    gear.set_drive_sync_mode(DRIVE_EXTRUDER_SYNCED_TO_GEAR, extruder_name)
+                    self._restore_gear_current()
+
+                elif motor == "extruder":
+                    # extruder-only-on-gear semantics
+                    self.log_warning(f"PAUL: set_drive_sync_mode({DRIVE_EXTRUDER_ONLY_ON_GEAR}, {extruder_name})")
+                    gear.set_drive_sync_mode(DRIVE_EXTRUDER_ONLY_ON_GEAR, extruder_name)
+                    self._restore_gear_current()
+
+                elif motor == "synced":
+                    # extruder leads, gear follows extruder
+                    self.log_warning(f"PAUL: set_drive_sync_mode({DRIVE_GEAR_SYNCED_TO_EXTRUDER}, {extruder_name})")
+                    gear.set_drive_sync_mode(DRIVE_GEAR_SYNCED_TO_EXTRUDER, extruder_name)
+                    self._adjust_gear_current(percent=u.p.sync_gear_current, reason="for extruder synced move")
+
+                else:
+                    raise self.printer.command_error("Invalid motor specification '%s'" % (motor,))
 
                 start_pos = gear.get_mode_position()
 
@@ -2612,10 +2602,13 @@ class MmuFilamentMovement:
 #            self.mmu_toolhead().sync(desired_sync_mode)
 # PAUL new logic..
         # Sync to / unsync from extruder
+        extruder_name = self.mmu_unit().extruder_name()
         if self.gear().is_synced_to_extruder() and not sync:
-            self.gear().set_drive_sync_mode(DRIVE_UNSYNCED)
+            self.log_warning(f"PAUL: set_drive_sync_mode({DRIVE_UNSYNCED}, {extruder_name})")
+            self.gear().set_drive_sync_mode(DRIVE_UNSYNCED, extruder_name)
         elif not self.gear().is_synced_to_extruder() and sync:
-            self.gear().set_drive_sync_mode(DRIVE_GEAR_SYNCED_TO_EXTRUDER)
+            self.log_warning(f"PAUL: set_drive_sync_mode({DRIVE_GEAR_SYNCED_TO_EXTRUDER}, {extruder_name})")
+            self.gear().set_drive_sync_mode(DRIVE_GEAR_SYNCED_TO_EXTRUDER, extruder_name)
 
         # Current control:
         # - While synced, optionally reduce current for the active gear stepper.

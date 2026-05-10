@@ -278,8 +278,8 @@ class MmuGenericRail:
         return result
 
 
-# PAUL not sure of bind_rail_stepper use case anymore...
-    def add_extra_endstop(self, pin, name, register=True, bind_rail_stepper=True, mcu_endstop=None):
+# PAUL not sure of bind_stepper use case anymore...
+    def add_extra_endstop(self, pin, name, register=True, bind_stepper=True, mcu_endstop=None):
         if name == "default":
             raise self.config.error("Extra endstop may not use reserved name 'default'")
 
@@ -301,7 +301,7 @@ class MmuGenericRail:
         if mcu_endstop is None:
             if is_default_alias:
                 mcu_endstop = self.default_mcu_endstop
-                bind_rail_stepper = False
+                bind_stepper = False
             elif is_virtual:
                 ppins = self.printer.lookup_object('pins')
                 mcu_endstop = ppins.setup_pin('endstop', pin)
@@ -315,7 +315,7 @@ class MmuGenericRail:
         if mcu_endstop not in MmuStepper.mcu_endstops:
             MmuStepper.mcu_endstops.append(mcu_endstop)
 
-        if bind_rail_stepper:
+        if bind_stepper:
             try:
                 logging.info(f"PAUL: adding {self.stepper.get_name()} to {mcu_endstop}")
                 mcu_endstop.add_stepper(self.stepper)
@@ -533,6 +533,7 @@ class MmuStepper(ManualStepper, ExtruderStepper):
 
         # Sync state tracking
         self.drive_sync_mode = DRIVE_UNSYNCED
+        self.drive_sync_extruder_name = None
         self._saved_extruder_state = None
 
         # Register MMU/manual commands
@@ -866,6 +867,9 @@ class MmuStepper(ManualStepper, ExtruderStepper):
         Change the drive sync mode for this gear relative to the named PrinterExtruder.
         This method is intended to be called on MMU gear steppers, not the main extruder stepper itself.
         """
+        if mode == self.drive_sync_mode and extruder_name == self.drive_sync_extruder_name:
+            return
+
         logging.info(f"PAUL: set_drive_sync_mode({mode}, {extruder_name})")
         printer_extruder = self.printer.lookup_object(extruder_name, None)
         if printer_extruder is None or not isinstance(printer_extruder, PrinterExtruder):
@@ -873,8 +877,7 @@ class MmuStepper(ManualStepper, ExtruderStepper):
 
         extruder = printer_extruder.extruder_stepper
         if extruder is None or not isinstance(extruder, MmuStepper):
-            logging.info("PAUL: Extruder '%s' is not driven by an MmuStepper." % (extruder_name,))
-            #raise self.printer.command_error("Extruder '%s' is not driven by an MmuStepper." % (extruder_name,))
+            raise self.printer.command_error("Extruder '%s' is not driven by an MmuStepper." % (extruder_name,))
 
         toolhead = self.printer.lookup_object('toolhead')
         toolhead.flush_step_generation()
@@ -912,6 +915,7 @@ class MmuStepper(ManualStepper, ExtruderStepper):
                 self._saved_extruder_state = None
 
             self.drive_sync_mode = DRIVE_UNSYNCED
+            self.drive_sync_extruder_name = extruder_name
             return
 
         # --------------------------------------------------------------
@@ -926,6 +930,7 @@ class MmuStepper(ManualStepper, ExtruderStepper):
             extruder.sync_to_manual_stepper(self.full_name)
 
             self.drive_sync_mode = DRIVE_EXTRUDER_SYNCED_TO_GEAR
+            self.drive_sync_extruder_name = extruder_name
             return
 
         # --------------------------------------------------------------
@@ -940,6 +945,7 @@ class MmuStepper(ManualStepper, ExtruderStepper):
             extruder._ensure_standalone_manual(gear_pos)
 
             self.drive_sync_mode = DRIVE_EXTRUDER_ONLY_ON_GEAR
+            self.drive_sync_extruder_name = extruder_name
             return
 
         # --------------------------------------------------------------
@@ -961,6 +967,7 @@ class MmuStepper(ManualStepper, ExtruderStepper):
             self.sync_to_extruder(extruder_name)
 
             self.drive_sync_mode = DRIVE_GEAR_SYNCED_TO_EXTRUDER
+            self.drive_sync_extruder_name = extruder_name
             return
 
         raise self.printer.command_error("Unknown drive sync mode: %s" % (mode))
@@ -1148,11 +1155,11 @@ class MmuStepper(ManualStepper, ExtruderStepper):
             if default_estop:
                 for (estop_obj, estop_name) in self.rail.get_endstops():
                     estop_type = estop_obj.__class__.__name__
-                    if hasattr(estop_obj, "get_mcu"):
-                        estop_type += f"({estop_obj.get_mcu().get_name()})"
                     estop_pin = estop_obj._pin
+                    if hasattr(estop_obj, "get_mcu"):
+                        estop_type += f"({estop_obj.get_mcu().get_name()},{estop_pin},{id(estop_obj)})"
                     estop_state = _format_endstop_state(estop_obj)
-                    lines.append(f"Default manual endstop: {estop_name} [{estop_type}, {estop_pin}] [state: {estop_state}]")
+                    lines.append(f"Default manual endstop: {estop_name} {estop_type} [state: {estop_state}]")
             else:
                 lines.append("Default manual endstop: NONE (cannot home rail)")
 
@@ -1167,11 +1174,11 @@ class MmuStepper(ManualStepper, ExtruderStepper):
                     estop_obj = estop[0][0] if estop else None
                     if estop_obj:
                         estop_type = estop_obj.__class__.__name__
+                        estop_pin = estop_obj._pin if estop_obj else "unknown"
                         if hasattr(estop_obj, "get_mcu"):
-                            estop_type += f"({estop_obj.get_mcu().get_name()})" # PAUL {id(estop_obj)}
+                            estop_type += f"({estop_obj.get_mcu().get_name()},{estop_pin},{id(estop_obj)})"
                     else:
                         estop_type = "unknown"
-                    estop_pin = estop_obj._pin if estop_obj else "unknown"
                     estop_state = _format_endstop_state(estop_obj) if estop_obj else "unknown"
                     is_alias = default_estop is not None and estop_obj is default_estop
 
@@ -1181,7 +1188,7 @@ class MmuStepper(ManualStepper, ExtruderStepper):
                         " (virtual)" if is_virtual else
                         ""
                     )
-                    lines.append(f"- {name}{flag} [{estop_type}, {estop_pin}] [state: {estop_state}]")
+                    lines.append(f"- {name}{flag} {estop_type} [state: {estop_state}]")
         else:
             lines.append("No endstops!")
 

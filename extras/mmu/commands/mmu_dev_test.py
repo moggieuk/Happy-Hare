@@ -1037,10 +1037,8 @@ class MmuTestCommand(BaseCommand):
                     )
 
                 for es in get_mcu_endstops_sorted():
-                    mmu.log_always(
-                        f"MCU_endstop({es.get_mcu().get_name()},{es._pin},{id(es)}) "
-                        f"steppers={[s.get_name() for s in es.get_steppers()]}"
-                    )
+                    s = f"({es.get_mcu().get_name()},{es._pin},{id(es)})"
+                    mmu.log_always(f"{s:<30} Steppers: {', '.join(st.get_name(short=True).split()[-1] for st in es.get_steppers())}")
 
 
             if not have_run_test:
