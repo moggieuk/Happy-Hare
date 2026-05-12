@@ -149,13 +149,19 @@ SENSOR_ENTRY_PREFIX      = "mmu_entry"
 EXTRUDER_ENDSTOPS = [SENSOR_EXTRUDER_ENCODER, SENSOR_GEAR_TOUCH, SENSOR_EXTRUDER_ENTRY, SENSOR_EXTRUDER_NONE, SENSOR_COMPRESSION]
 GATE_ENDSTOPS     = [SENSOR_SHARED_EXIT, SENSOR_ENCODER, SENSOR_EXIT_PREFIX, SENSOR_EXTRUDER_ENTRY]
 
-# PAUL
-## Gear/Extruder synchronization modes (None = unsynced)
-#DRIVE_UNSYNCED                = None
-#DRIVE_EXTRUDER_SYNCED_TO_GEAR = 1 # Aka 'gear+extruder'
-#DRIVE_EXTRUDER_ONLY_ON_GEAR   = 2 # Aka 'extruder' (only)
-#DRIVE_GEAR_SYNCED_TO_EXTRUDER = 3 # Aka 'extruder+gear'
-## PAUL DRIVE_GEAR_ONLY               = 4 # Aka 'gear' (same state as unsync() but with protective wait)
+# Gear/Extruder synchronization modes
+DRIVE_UNSYNCED                = 0
+DRIVE_EXTRUDER_SYNCED_TO_GEAR = 1 # Aka 'gear+extruder'
+DRIVE_EXTRUDER_ONLY           = 2 # Aka 'extruder' (only)
+DRIVE_GEAR_SYNCED_TO_EXTRUDER = 3 # Aka 'extruder+gear'
+# PAUL DRIVE_GEAR_ONLY               = 4 # Aka 'gear' (same state as unsync() but with protective wait)
+
+DRIVE_MODE_NAMES = {
+    DRIVE_UNSYNCED: "gear",
+    DRIVE_EXTRUDER_SYNCED_TO_GEAR: "gear+extruder",
+    DRIVE_EXTRUDER_ONLY: "extruder",
+    DRIVE_GEAR_SYNCED_TO_EXTRUDER: "synced",
+}   
 
 # Statistics output types
 GATE_STATS_STRING     = "string"

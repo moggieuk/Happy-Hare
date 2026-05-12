@@ -35,7 +35,6 @@ import logging, traceback
 from ....homing             import Homing, HomingMove
 
 # Happy Hare imports
-from ....mmu_stepper        import DRIVE_UNSYNCED
 from ...mmu_constants       import *
 from ...mmu_utils           import MmuError
 from ...commands            import register_command
@@ -230,7 +229,7 @@ class LinearSelectorServo:
 #        if buzz_gear and self.p.servo_buzz_gear_on_down > 0:
 #            self.mmu_unit.mmu_toolhead.sync(DRIVE_GEAR_ONLY) # Must be in correct sync mode before buzz to avoid delay
         if buzz_gear and self.p.servo_buzz_gear_on_down > 0:
-            self.mmu.gear().set_drive_sync_mode(DRIVE_UNSYNCED) # Must be in correct sync mode before buzz to avoid delay
+            self.mmu.gear().sync_mode(DRIVE_UNSYNCED) # Must be in correct sync mode before buzz to avoid delay
 
         self.mmu.movequeue_wait() # Probably not necessary
         initial_encoder_position = self.mmu.get_encoder_distance(dwell=None)

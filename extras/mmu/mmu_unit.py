@@ -43,7 +43,8 @@ from .unit.mmu_sensors                  import MmuSensors
 from .unit.mmu_unit_parameters          import MmuUnitParameters
 from .unit.mmu_calibrator               import MmuCalibrator
 from .unit.mmu_toolhead_wrapper         import MmuToolheadWrapper
-from .unit.mmu_extruder_wrapper         import MmuExtruderWrapper, MmuExtruderStepper
+from .unit.mmu_extruder_wrapper         import MmuExtruderWrapper
+from .unit.mmu_drive                    import MmuDrive
 from .unit.mmu_sync_feedback            import MmuSyncFeedback
 from .unit.selectors                    import SELECTOR_REGISTRY
 from .unit.selectors.mmu_base_selectors import VirtualSelector
@@ -166,6 +167,27 @@ class MmuUnit:
                     raise config.error("Object '%s' could not be loaded as a valid heater or environment sensor in [mmu_machine]\nError: %s" % (obj_name, str(e)))
 
 
+        # MMU Extruder ----------------------------------------------------------------------
+
+        # Create extruder wrapper (may be shared so check for existence first)
+        # This encapsulates extruder stepper control and filament remaining
+        extruder_name = config.get('extruder_name', 'extruder')
+
+        # By default HH uses its modified homing extruder. Because this might have unknown consequences on certain
+        # set-ups it can be disabled. If disabled, synced homing moves will still work, but the delay in mcu to mcu
+        # comms can lead to several mm of error depending on speed. Also homing of just the extruder is not possible.
+        homing_extruder = bool(config.getint('homing_extruder', 1, minval=0, maxval=1)) # PAUL remove me
+
+        mmu_extruder_name = f"mmu_extruder {extruder_name}"
+        self.extruder_wrapper = self.printer.lookup_object(mmu_extruder_name, None)
+        if not self.extruder_wrapper:
+            self.extruder_wrapper = MmuExtruderWrapper(config, mmu_extruder_name, self, homing_extruder)
+            self.printer.add_object(mmu_extruder_name, self.extruder_wrapper)
+            logging.info("MMU: Created: [%s]" % mmu_extruder_name)
+        else:
+            self.extruder_wrapper.add_unit(self)
+
+
         # MMU Gears -------------------------------------------------------------------------
 
         if self.multigear:
@@ -198,9 +220,15 @@ class MmuUnit:
         self.mmu_gear_steppers = []
         g = None
         for sname in self.mmu_gear_names:
+            logging.info(f"PAUL: sname={sname}")
             if g is None or self.multigear:
                 section = f"mmu_stepper {sname}"
-                g = self.printer.load_object(config, section)
+                g = self.printer.lookup_object(section, None)
+                if g is None:
+#PAUL                g = self.printer.load_object(config, section)
+                    c = config.getsection(section)
+                    g = MmuDrive(c, self, self.extruder_wrapper.homing_extruder_stepper)
+                    self.printer.add_object(section, g)
                 logging.info(f"MMU: Loaded: [{section}]")
             self.mmu_gear_steppers.append(g) # Klipper mmu_stepper object (for movement control)
 
@@ -306,25 +334,6 @@ class MmuUnit:
                 raise config.error("MMU Printer toolhead section [%s] not found!" % section)
         else:
             self.toolhead_wrapper.add_unit(self)
-
-        # Create extruder wrapper (may be shared so check for existence first)
-        # This encapsulates extruder stepper control and filament remaining
-        extruder_name = config.get('extruder_name', 'extruder')
-
-        # By default HH uses its modified homing extruder. Because this might have unknown consequences on certain
-        # set-ups it can be disabled. If disabled, synced homing moves will still work, but the delay in mcu to mcu
-        # comms can lead to several mm of error depending on speed. Also homing of just the extruder is not possible.
-        # Note: should be created after gear steppers  PAUL
-        homing_extruder = bool(config.getint('homing_extruder', 1, minval=0, maxval=1))
-
-        mmu_extruder_name = f"mmu_extruder {extruder_name}"
-        self.extruder_wrapper = self.printer.lookup_object(mmu_extruder_name, None)
-        if not self.extruder_wrapper:
-            self.extruder_wrapper = MmuExtruderWrapper(config, mmu_extruder_name, self, homing_extruder)
-            self.printer.add_object(mmu_extruder_name, self.extruder_wrapper)
-            logging.info("MMU: Created: [%s]" % mmu_extruder_name)
-        else:
-            self.extruder_wrapper.add_unit(self)
 
         # Load mmu_sensors
         self.sensors = None

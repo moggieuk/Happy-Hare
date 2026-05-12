@@ -18,8 +18,6 @@
 #   - Operate as a standalone manual stepper with optional homing/endstops
 #   - Sync to another MmuStepper’s manual motion (shared trapq)
 #   - Sync to a PrinterExtruder (standard Klipper extruder semantics)
-#   - Support dynamic “drive modes” to hand off motion control between
-#     gear steppers and the extruder while preserving positional continuity
 #
 # The class is designed for MMU systems where multiple gear steppers and
 # an extruder must coordinate motion, hand off control, and remain in sync
@@ -52,12 +50,6 @@ from .                   import force_move
 from .homing             import HomingMove
 from .manual_stepper     import ManualStepper
 
-
-# Stepper/Extruder synchronization modes (None = unsynced)
-DRIVE_UNSYNCED                = 0
-DRIVE_EXTRUDER_SYNCED_TO_GEAR = 1 # Aka 'gear+extruder'
-DRIVE_EXTRUDER_ONLY_ON_GEAR   = 2 # Aka 'extruder' (only)
-DRIVE_GEAR_SYNCED_TO_EXTRUDER = 3 # Aka 'extruder+gear'
 
 # -----------------------------------------------------------------------------------------------------------
 # MmuGenericRail: single-stepper rail with multiple endstops, direction reversal, etc
@@ -236,6 +228,7 @@ class MmuGenericRail:
 
 
     def set_trapq(self, trapq):
+        logging.info(f"PAUL: >>>> my rail.set_trapq({id(trapq)})")
         self.stepper.set_trapq(trapq)
 
 
@@ -278,7 +271,6 @@ class MmuGenericRail:
         return result
 
 
-# PAUL not sure of bind_stepper use case anymore...
     def add_extra_endstop(self, pin, name, register=True, bind_stepper=True, mcu_endstop=None):
         if name == "default":
             raise self.config.error("Extra endstop may not use reserved name 'default'")
@@ -317,7 +309,7 @@ class MmuGenericRail:
 
         if bind_stepper:
             try:
-                logging.info(f"PAUL: adding {self.stepper.get_name()} to {mcu_endstop}")
+                logging.info(f"PAUL: >>>> adding {self.stepper.get_name()} to {mcu_endstop}")
                 mcu_endstop.add_stepper(self.stepper)
             except Exception as e:
                 logging.info("MMU: Not possible to add stepper %s to endstop %s because: %s", self.stepper.get_name(), name, str(e))
@@ -447,13 +439,13 @@ class MmuStepper(ManualStepper, ExtruderStepper):
         "Use ENDSTOP=<name> with STOP_ON_ENDSTOP to select an extra endstop. "
         "If ENDSTOP is omitted or 'default', the default rail endstop is used."
     )
-    cmd_MMU_STEPPER_STATUS_help = (
-        "Report MMU extruder position, endstop configuration, and motion mode"
-    )
+    cmd_MMU_STEPPER_STATUS_help = "Report MMU extruder position, endstop configuration, and motion mode"
     cmd_MMU_STEPPER_SYNC_MANUAL_MOTION_help = "Set MMU stepper manual motion queue"
-    cmd_MMU_STEPPER_SET_SYNC_MODE_help = "Set synchronized drive mode for this gear and extruder"
+    cmd_MMU_STEPPER_SET_MODE_help = "Set mode (manual/extruder) for this stepper"
+
 
     def __init__(self, config, default_mode=MODE_MANUAL):
+        logging.info(f"PAUL: mmu_stepper: {config.get_name()}")
         # ------------------------------------------------------------------
         # ExtruderStepper initialization
         # ------------------------------------------------------------------
@@ -496,11 +488,11 @@ class MmuStepper(ManualStepper, ExtruderStepper):
         self.steppers = [self.stepper]
 
         # Optional homing rail support
-        has_default_endstop = config.get('endstop_pin', None) is not None
-        has_extra_endstops = config.get('extra_endstops', None) is not None
+        self.has_default_endstop = config.get('endstop_pin', None) is not None
+        self.has_extra_endstops = config.get('extra_endstops', None) is not None
 
-        if has_default_endstop is not None or has_extra_endstops is not None:
-            self.can_home = (has_default_endstop is not None)
+        if self.has_default_endstop or self.has_extra_endstops:
+            self.can_home = self.has_default_endstop
             self.rail = MmuLookupRailFromStepper(self.stepper, config, need_position_minmax=False, default_position_endstop=0.)
         else:
             self.can_home = False
@@ -513,7 +505,6 @@ class MmuStepper(ManualStepper, ExtruderStepper):
         self.trapq = self.manual_trapq
 
         # Manual mode state
-        self.motion_mode = self.MODE_MANUAL
         self.manual_motion_queue = None
 
         # Registered with toolhead as an extra axis only in manual mode
@@ -522,19 +513,11 @@ class MmuStepper(ManualStepper, ExtruderStepper):
         self.gaxis_limit_velocity = self.gaxis_limit_accel = 0.
 
         # Set initial operating mode
-        self.default_mode = config.getchoice('default_mode', {'manual': self.MODE_MANUAL, 'extruder': self.MODE_EXTRUDER}, default=default_mode)
-        if self.default_mode == self.MODE_MANUAL:
+        default_mode = config.getchoice('default_mode', {'manual': self.MODE_MANUAL, 'extruder': self.MODE_EXTRUDER}, default=default_mode)
+        if default_mode == self.MODE_MANUAL:
             self._activate_manual_mode(initial=True)
         else:
-            self.motion_mode = self.MODE_EXTRUDER
-# PAUL not possible to call this before toolhead exists!
-#PAUL            self._ensure_extruder_mode_detached(0.)
-
-
-        # Sync state tracking
-        self.drive_sync_mode = DRIVE_UNSYNCED
-        self.drive_sync_extruder_name = None
-        self._saved_extruder_state = None
+            self._activate_extruder_mode_detached(initial=True)
 
         # Register MMU/manual commands
         stepper_name = self.full_name.split()[-1]
@@ -542,7 +525,11 @@ class MmuStepper(ManualStepper, ExtruderStepper):
         gcode.register_mux_command('MMU_STEPPER', 'STEPPER', stepper_name, self.cmd_MMU_STEPPER, desc=self.cmd_MMU_STEPPER_help)
         gcode.register_mux_command('MMU_STEPPER_STATUS', 'STEPPER', stepper_name, self.cmd_MMU_STEPPER_STATUS, desc=self.cmd_MMU_STEPPER_STATUS_help)
         gcode.register_mux_command("MMU_STEPPER_SYNC_MANUAL_MOTION", "STEPPER", stepper_name, self.cmd_MMU_STEPPER_SYNC_MANUAL_MOTION, desc=self.cmd_MMU_STEPPER_SYNC_MANUAL_MOTION_help)
-        gcode.register_mux_command("MMU_STEPPER_SET_SYNC_MODE", "STEPPER", stepper_name, self.cmd_MMU_STEPPER_SET_SYNC_MODE, desc=self.cmd_MMU_STEPPER_SET_SYNC_MODE_help)
+        gcode.register_mux_command("MMU_STEPPER_SET_MODE", "STEPPER", stepper_name, self.cmd_MMU_STEPPER_SET_MODE, desc=self.cmd_MMU_STEPPER_SET_MODE_help)
+
+    @property
+    def last_position(self):
+        return self.commanded_pos
 
 
     # ----------------------------------------------------------------------
@@ -565,6 +552,23 @@ class MmuStepper(ManualStepper, ExtruderStepper):
             raise self.printer.command_error("%s is not allowed while '%s' is in manual mode" % (operation, self.full_name))
 
 
+    def _require_standalone_extruder_mode(self, operation):
+        self._require_extruder_mode(operation)
+        if self.motion_queue is not None:
+            raise self.printer.command_error("%s is not allowed while '%s' is synced to extruder motion from '%s'" % (operation, self.full_name, self.motion_queue))
+
+
+    def _require_detached_for_mode_change(self, operation):
+        if self.motion_mode == self.MODE_EXTRUDER and self.motion_queue is not None:
+            raise self.printer.command_error(
+                "%s is not allowed while '%s' is synced to extruder motion from '%s'"
+                % (operation, self.full_name, self.motion_queue))
+        if self.motion_mode == self.MODE_MANUAL and self.manual_motion_queue is not None:
+            raise self.printer.command_error(
+                "%s is not allowed while '%s' is synced to manual motion from '%s'"
+                % (operation, self.full_name, self.manual_motion_queue))
+
+
     def is_standalone_manual(self):
         return (self.motion_mode == self.MODE_MANUAL and self.manual_motion_queue is None)
 
@@ -573,40 +577,74 @@ class MmuStepper(ManualStepper, ExtruderStepper):
     # Kinematics switching
     # ----------------------------------------------------------------------
 
-    def _activate_manual_mode(self, initial=False):
+    def activate_manual_mode(self, pos=0.):
+        self._require_detached_for_mode_change("Activate manual mode")
+        self._activate_manual_mode(pos=pos)
+
+
+    def activate_extruder_mode(self, pos=0.):
+        self._require_detached_for_mode_change("Activate extruder mode")
+        self._activate_extruder_mode_detached(pos=pos)
+
+
+    def _activate_manual_mode(self, pos=0., initial=False):
         if not initial:
             self.flush_step_generation()
 
-        # Preserve current logical position when switching away from extruder
-        try:
-            current_pos = self.stepper.get_commanded_position()
-        except Exception:
-            current_pos = self.commanded_pos
-
         # Detach current trapq
+        logging.info(f"PAUL: >>>> activate_manual_mode set_trapq(None)")
         self.stepper.set_trapq(None)
 
         # Restore manual/cartesian kinematics
         self.stepper.set_stepper_kinematics(self.sk_manual)
-        self.stepper.set_position([current_pos, 0., 0.])
+        self.stepper.set_position([pos, 0., 0.])
+        logging.info(f"PAUL: >>>> activate_manual_mode set_trapq({id(self.manual_trapq)})")
         self.stepper.set_trapq(self.manual_trapq)
 
-        self.commanded_pos = current_pos
+        self.commanded_pos = pos
         self.motion_mode = self.MODE_MANUAL
         self.motion_queue = None
         self.manual_motion_queue = None
         self.motion_queuing.check_step_generation_scan_windows()
 
 
-    def _activate_extruder_mode(self, extruder):
+    def _activate_extruder_mode_detached(self, pos=0., initial=False):
+        if not initial:
+            self.flush_step_generation()
+
+        # Detach current trapq first
+        logging.info(f"PAUL: >>>> activate_extruder_mode_detched set_trapq(None)")
+        self.stepper.set_trapq(None)
+
+        self.stepper.set_stepper_kinematics(self.sk_extruder)
+
+        printer_extruder = self.printer.lookup_object(self.name, None)
+        if printer_extruder:
+            logging.info(f"PAUL: >>>> is printer_extruder. Restoring position")
+            self.stepper.set_position([printer_extruder.last_position, 0., 0.])
+            self.stepper.set_trapq(printer_extruder.trapq)
+        else:
+            self.stepper.set_position([pos, 0., 0.])
+        logging.info(f"PAUL: >>>> activate_extruder_mode_detached set_trapq {id(self.trapq)})")
+
+        self.commanded_pos = pos
+        self.motion_mode = self.MODE_EXTRUDER
+        self.motion_queue = None
+        self.manual_motion_queue = None
+        self.motion_queuing.check_step_generation_scan_windows()
+
+
+    def _activate_extruder_motion_queue(self, extruder):
         self.flush_step_generation()
 
         # Detach current trapq first
+        logging.info(f"PAUL: >>>> activate_extruder_motion_queue set_trapq(None)")
         self.stepper.set_trapq(None)
 
         # Restore extruder kinematics allocated by stock ExtruderStepper
         self.stepper.set_stepper_kinematics(self.sk_extruder)
         self.stepper.set_position([extruder.last_position, 0., 0.])
+        logging.info(f"PAUL: >>>> setting stepper to trapq {id(extruder.trapq)})")
         self.stepper.set_trapq(extruder.get_trapq())
 
         self.commanded_pos = extruder.last_position
@@ -616,81 +654,68 @@ class MmuStepper(ManualStepper, ExtruderStepper):
         self.motion_queuing.check_step_generation_scan_windows()
 
 
-    def _ensure_standalone_manual(self, pos=None):
-        self._activate_manual_mode()
-        if pos is None:
-            pos = self.commanded_pos
-        self.do_set_position(pos)
-
-
-    def _ensure_extruder_mode_detached(self, pos=None):
-        self.flush_step_generation()
-        self.stepper.set_trapq(None)
-        self.stepper.set_stepper_kinematics(self.sk_extruder)
-        if pos is None:
-            pos = self.commanded_pos
-        self.stepper.set_position([pos, 0., 0.])
-        self.commanded_pos = pos
-        self.motion_mode = self.MODE_EXTRUDER
-        self.motion_queue = None
-        self.manual_motion_queue = None
-        self.motion_queuing.check_step_generation_scan_windows()
-
-
-    # ----------------------------------------------------------------------
-    # Sync-state snapshot/restore
-    # ----------------------------------------------------------------------
-
-    def _snapshot_sync_state(self):
-        return {
-            'motion_mode': self.motion_mode,
-            'motion_queue': self.motion_queue,
-            'manual_motion_queue': self.manual_motion_queue,
-            'commanded_pos': self.commanded_pos,
-        }
-
-
-    def _restore_sync_state(self, state):
-        if state is None:
-            self._ensure_standalone_manual()
-            return
-
-        motion_mode = state['motion_mode']
-        motion_queue = state['motion_queue']
-        manual_motion_queue = state.get('manual_motion_queue')
-        commanded_pos = state['commanded_pos']
-
-        if motion_mode == self.MODE_EXTRUDER:
-            if motion_queue:
-                self.sync_to_extruder(motion_queue)
-            else:
-                self._ensure_extruder_mode_detached(commanded_pos)
-        else:
-            if manual_motion_queue:
-                self.sync_to_manual_stepper(manual_motion_queue)
-            else:
-                self._ensure_standalone_manual(commanded_pos)
-
-
     # ----------------------------------------------------------------------
     # Sync targets
     # ----------------------------------------------------------------------
 
+# PAUL vvv added
+    def unsync_manual(self):
+        self._require_manual_mode("Unsync manual stepper")
+        pos = self.get_mode_position()
+        self._activate_manual_mode(pos=pos)
+
+
+    def unsync_extruder(self):
+        self._require_extruder_mode("Unsync extruder")
+        pos = self.get_mode_position()
+        self._activate_extruder_mode_detached(pos=pos)
+
+
+    def switch_to_manual_mode(self):
+        pos = self.get_mode_position()
+        if self.motion_mode == self.MODE_EXTRUDER:
+            if self.motion_queue is not None:
+                self.unsync_extruder()
+            self._activate_manual_mode(pos=pos)
+        elif self.manual_motion_queue is not None:
+            self.unsync_manual()
+
+
+    def switch_to_extruder_mode(self):
+        pos = self.get_mode_position()
+        if self.motion_mode == self.MODE_MANUAL:
+            if self.manual_motion_queue is not None:
+                self.unsync_manual()
+            self._activate_extruder_mode_detached(pos=pos)
+# PAUL ^^^
+
+
     def sync_to_extruder(self, extruder_name):
+        logging.info("PAUL: >>>> my sync_to_extruder")
+
         if not extruder_name:
-            self._activate_manual_mode()
+            self._require_extruder_mode('Sync to extruder')
+            self.unsync_extruder()
+# PAUL
+#            # Unsync and reset extruder mode
+#            self._activate_extruder_mode_detached(pos=0.)
             return
 
         extruder = self.printer.lookup_object(extruder_name, None)
-        if extruder is None or not isinstance(extruder, PrinterExtruder):
-            raise self.printer.command_error("'%s' is not a valid extruder." % (extruder_name,))
+        if extruder is None or not isinstance(extruder, (PrinterExtruder, MmuStepper)):
+            raise self.printer.command_error("'%s' is not a valid extruder" % (extruder_name,))
 
-        self._activate_extruder_mode(extruder)
+        self._require_standalone_extruder_mode('Sync to extruder')
+        self._activate_extruder_motion_queue(extruder)
 
 
     def sync_to_manual_stepper(self, stepper_name):
         if not stepper_name:
-            self._activate_manual_mode()
+            self._require_manual_mode('Sync to manual stepper')
+            self.unsync_manual()
+# PAUL
+#            # Unsync and reset manual mode
+#            self._activate_manual_mode(pos=0.)
             return
 
         source = self.printer.lookup_object(stepper_name, None)
@@ -698,19 +723,22 @@ class MmuStepper(ManualStepper, ExtruderStepper):
             raise self.printer.command_error("'%s' is not a valid MMU stepper." % (stepper_name,))
 
         if source is self:
-            self._activate_manual_mode()
+            # Unsync and reset manual mode
+            self._activate_manual_mode(pos=0.)
             return
 
         if not source.is_standalone_manual():
             raise self.printer.command_error("MMU stepper '%s' is not in standalone manual mode." % (stepper_name,))
 
+        self._require_standalone_manual_mode('Sync to manual stepper')
         self.flush_step_generation()
-
         source_pos = source.commanded_pos
 
+        logging.info(f"PAUL: >>>> activate_extruder_motion_queue set_trapq(None)")
         self.stepper.set_trapq(None)
         self.stepper.set_stepper_kinematics(self.sk_manual)
         self.stepper.set_position([source_pos, 0., 0.])
+        logging.info(f"PAUL: >>>> activate_extruder_motion_queue set_trapq({id(source.manual_trapq)})")
         self.stepper.set_trapq(source.manual_trapq)
 
         self.commanded_pos = source_pos
@@ -729,10 +757,16 @@ class MmuStepper(ManualStepper, ExtruderStepper):
 
 
     def get_mode_position(self):
+        """
+        Get simple position regardless of mode or synchronization state
+        """
         if self.motion_mode == self.MODE_MANUAL:
+            if self.manual_motion_queue is not None:
+                source = self.printer.lookup_object(self.manual_motion_queue, None)
+                if source is not None and isinstance(source, MmuStepper):
+                    return source.commanded_pos
             return self.commanded_pos
-        else:
-            return self.stepper.get_commanded_position()
+        return self.stepper.get_commanded_position()
 
 
     def do_set_position(self, setpos):
@@ -771,8 +805,6 @@ class MmuStepper(ManualStepper, ExtruderStepper):
 
     def do_homing_move(self, movepos, speed, accel, probe_pos, triggered, check_trigger, endstop_name=None):
         self._require_standalone_manual_mode("STOP_ON_ENDSTOP/HOMING_MOVE")
-        if not self.can_home:
-            raise self.printer.command_error("No endstop for this MMU stepper")
         logging.info(
             "PAUL: ****************** "
             f"do_homing_move("
@@ -784,7 +816,7 @@ class MmuStepper(ManualStepper, ExtruderStepper):
             f"check_trigger={check_trigger}, "
             f"endstop_name={endstop_name}"
             f")"
-        ) # PAUL
+        )
 
         self.homing_accel = accel
         pos = [movepos, 0., 0., 0.]
@@ -839,147 +871,16 @@ class MmuStepper(ManualStepper, ExtruderStepper):
 
 
     # ----------------------------------------------------------------------
-    # Synchronizion modes
-    # ----------------------------------------------------------------------
-
-    def is_synced_to_extruder(self):
-        return (self.drive_sync_mode == DRIVE_GEAR_SYNCED_TO_EXTRUDER)
-
-
-    def _handoff_extruder_position_back_to_gear(self, extruder, new_mode):
-        if self.drive_sync_mode == DRIVE_EXTRUDER_ONLY_ON_GEAR and new_mode != DRIVE_EXTRUDER_ONLY_ON_GEAR:
-            pos = extruder.commanded_pos
-            self._ensure_standalone_manual(pos)
-            return pos
-        return self.commanded_pos
-
-
-    def _extruder_is_independent(self, mode):
-        return mode in (DRIVE_UNSYNCED, DRIVE_GEAR_SYNCED_TO_EXTRUDER)
-
-
-    def _extruder_is_gear_controlled(self, mode):
-        return mode in (DRIVE_EXTRUDER_SYNCED_TO_GEAR, DRIVE_EXTRUDER_ONLY_ON_GEAR)
-
-
-    def set_drive_sync_mode(self, mode, extruder_name="extruder"):
-        """
-        Change the drive sync mode for this gear relative to the named PrinterExtruder.
-        This method is intended to be called on MMU gear steppers, not the main extruder stepper itself.
-        """
-        if mode == self.drive_sync_mode and extruder_name == self.drive_sync_extruder_name:
-            return
-
-        logging.info(f"PAUL: set_drive_sync_mode({mode}, {extruder_name})")
-        printer_extruder = self.printer.lookup_object(extruder_name, None)
-        if printer_extruder is None or not isinstance(printer_extruder, PrinterExtruder):
-            raise self.printer.command_error("'%s' is not a valid extruder." % (extruder_name))
-
-        extruder = printer_extruder.extruder_stepper
-        if extruder is None or not isinstance(extruder, MmuStepper):
-            raise self.printer.command_error("Extruder '%s' is not driven by an MmuStepper." % (extruder_name,))
-
-        toolhead = self.printer.lookup_object('toolhead')
-        toolhead.flush_step_generation()
-
-        # Save extruder state when leaving an independent/leading extruder mode
-        # and entering a gear-controlled mode
-        if (
-            self._extruder_is_independent(self.drive_sync_mode) and
-            self._extruder_is_gear_controlled(mode)
-        ):
-            self._saved_extruder_state = extruder._snapshot_sync_state()
-
-        # If leaving DRIVE_EXTRUDER_ONLY_ON_GEAR, transfer extruder position back to gear
-        gear_pos = self._handoff_extruder_position_back_to_gear(extruder, mode)
-
-        # Restore extruder state when leaving a gear-controlled mode and entering
-        # an independent/leading extruder mode
-        should_restore_extruder = (
-            self._extruder_is_gear_controlled(self.drive_sync_mode) and
-            self._extruder_is_independent(mode)
-        )
-
-        # --------------------------------------------------------------
-        # DRIVE_UNSYNCED
-        # --------------------------------------------------------------
-        if mode == DRIVE_UNSYNCED:
-
-            # Ensure gear is standalone manual at the current handoff/current position
-            if self.drive_sync_mode != DRIVE_EXTRUDER_ONLY_ON_GEAR:
-                self._ensure_standalone_manual(gear_pos)
-
-            # Return extruder to whatever state it had before we started syncing
-            if should_restore_extruder:
-                extruder._restore_sync_state(self._saved_extruder_state)
-                self._saved_extruder_state = None
-
-            self.drive_sync_mode = DRIVE_UNSYNCED
-            self.drive_sync_extruder_name = extruder_name
-            return
-
-        # --------------------------------------------------------------
-        # DRIVE_EXTRUDER_SYNCED_TO_GEAR (gear leading, extruder following)
-        # --------------------------------------------------------------
-        if mode == DRIVE_EXTRUDER_SYNCED_TO_GEAR:
-
-            # Gear becomes standalone manual source
-            self._ensure_standalone_manual(gear_pos)
-
-            # Extruder becomes manual follower of gear
-            extruder.sync_to_manual_stepper(self.full_name)
-
-            self.drive_sync_mode = DRIVE_EXTRUDER_SYNCED_TO_GEAR
-            self.drive_sync_extruder_name = extruder_name
-            return
-
-        # --------------------------------------------------------------
-        # DRIVE_EXTRUDER_ONLY_ON_GEAR
-        # --------------------------------------------------------------
-        if mode == DRIVE_EXTRUDER_ONLY_ON_GEAR:
-
-            # Gear remains standalone manual at its current position
-            self._ensure_standalone_manual(gear_pos)
-
-            # Extruder becomes standalone manual, aligned to gear
-            extruder._ensure_standalone_manual(gear_pos)
-
-            self.drive_sync_mode = DRIVE_EXTRUDER_ONLY_ON_GEAR
-            self.drive_sync_extruder_name = extruder_name
-            return
-
-        # --------------------------------------------------------------
-        # DRIVE_GEAR_SYNCED_TO_EXTRUDER (extruder leading, gear following)
-        # --------------------------------------------------------------
-        if mode == DRIVE_GEAR_SYNCED_TO_EXTRUDER:
-
-            # Return extruder to whatever state it had before we started syncing
-            if should_restore_extruder:
-                extruder._restore_sync_state(self._saved_extruder_state)
-                self._saved_extruder_state = None
-
-            # Extruder remains source. Do not alter its position.
-            # If it is not already in extruder-following semantics, make it so
-            if extruder.motion_mode != extruder.MODE_EXTRUDER:
-                extruder.sync_to_extruder(extruder_name)
-
-            # Gear becomes follower using standard Klipper semantics
-            self.sync_to_extruder(extruder_name)
-
-            self.drive_sync_mode = DRIVE_GEAR_SYNCED_TO_EXTRUDER
-            self.drive_sync_extruder_name = extruder_name
-            return
-
-        raise self.printer.command_error("Unknown drive sync mode: %s" % (mode))
-
-
-    # ----------------------------------------------------------------------
     # Status
     # ----------------------------------------------------------------------
 
     def get_status(self, eventtime):
         status = ExtruderStepper.get_status(self, eventtime) # pressure_advance, smooth_time, motion_queue
-        status.update(self._snapshot_sync_state())
+        status.update({
+            'motion_mode': self.motion_mode,
+            'manual_motion_queue': self.manual_motion_queue,
+            'commanded_pos': self.commanded_pos,
+        })
         return status
 
 
@@ -1135,7 +1036,7 @@ class MmuStepper(ManualStepper, ExtruderStepper):
         cmd_pos = self.stepper.get_commanded_position()
 
         lines = [
-            f"Stepper: {self.full_name}: manual_pos={self.commanded_pos:.4f}, commanded_pos={cmd_pos:.4f}, mcu_pos={mcu_pos:.1f}",
+            f"Stepper: {self.full_name}: manual_pos={self.get_mode_position():.4f}, commanded_pos={cmd_pos:.4f}, mcu_pos={mcu_pos:.1f}",
             f"Motion mode: {self.motion_mode}"
         ]
         if self.motion_mode == self.MODE_EXTRUDER:
@@ -1155,7 +1056,7 @@ class MmuStepper(ManualStepper, ExtruderStepper):
             if default_estop:
                 for (estop_obj, estop_name) in self.rail.get_endstops():
                     estop_type = estop_obj.__class__.__name__
-                    estop_pin = estop_obj._pin
+                    estop_pin = getattr(estop_obj, "_pin", "unknown")
                     if hasattr(estop_obj, "get_mcu"):
                         estop_type += f"({estop_obj.get_mcu().get_name()},{estop_pin},{id(estop_obj)})"
                     estop_state = _format_endstop_state(estop_obj)
@@ -1174,7 +1075,7 @@ class MmuStepper(ManualStepper, ExtruderStepper):
                     estop_obj = estop[0][0] if estop else None
                     if estop_obj:
                         estop_type = estop_obj.__class__.__name__
-                        estop_pin = estop_obj._pin if estop_obj else "unknown"
+                        estop_pin = getattr(estop_obj, "_pin", "unknown")
                         if hasattr(estop_obj, "get_mcu"):
                             estop_type += f"({estop_obj.get_mcu().get_name()},{estop_pin},{id(estop_obj)})"
                     else:
@@ -1190,7 +1091,7 @@ class MmuStepper(ManualStepper, ExtruderStepper):
                     )
                     lines.append(f"- {name}{flag} {estop_type} [state: {estop_state}]")
         else:
-            lines.append("No endstops!")
+            lines.append("No rail/endstops")
 
         gcmd.respond_info("\n".join(lines))
 
@@ -1200,14 +1101,22 @@ class MmuStepper(ManualStepper, ExtruderStepper):
         if source == "":
             source = None
         self.sync_to_manual_stepper(source)
-        gcmd.respond_info("MMU stepper '%s' now syncing manual motion with '%s'" % (self.full_name, source))
+        gcmd.respond_info(f"MMU stepper '{self.full_name}' now syncing manual motion with '{source}'")
 
 
-    def cmd_MMU_STEPPER_SET_SYNC_MODE(self, gcmd):
-        mode = gcmd.get_int('MODE')
-        extruder_name = gcmd.get('EXTRUDER', 'extruder')
-        self.set_drive_sync_mode(mode, extruder_name)
-        gcmd.respond_info("%s drive_sync_mode=%d extruder=%s" % (self.full_name, mode, extruder_name))
+    def cmd_MMU_STEPPER_SET_MODE(self, gcmd):
+        mode = gcmd.get('MODE')
+        pos = gcmd.get_float('POS', self.get_mode_position())
+
+        if mode == self.MODE_MANUAL:
+            self.activate_manual_mode(pos=pos)
+        elif mode == self.MODE_EXTRUDER:
+            self.activate_extruder_mode(pos=pos)
+        else:
+            raise gcmd.error(f"Unknown mode: {mode}. Choices are manual/extruder")
+
+    def is_synced_to_extruder(self): # PAUL TEMP
+        return False # PAUL TEMP
 
 
 # -----------------------------------------------------------------------------------------------------------

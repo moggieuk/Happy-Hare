@@ -169,7 +169,7 @@ class MmuExtruderWrapper():
 
 # -----------------------------------------------------------------------------------------------------------
 # EXTENDED EXTRUDER STEPPER THAT ALLOWS HOMING
-# (useful only when part of gear rail, not operating as an Extruder)
+# Useful only when in manual mode (not operating as an extruder)
 # -----------------------------------------------------------------------------------------------------------
 
 class MmuExtruderStepper(MmuStepper):

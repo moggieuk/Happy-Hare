@@ -785,7 +785,7 @@ class MmuController(MmuFilamentMovement):
         if self.bowden_start_pos is not None:
             bowden_length = self.mmu_unit().calibrator.get_bowden_length()
             if bowden_length > 0:
-                current = self.get_encoder_distance(dwell=None) if self.has_encoder() else self._get_live_filament_position()
+                current = self.get_encoder_distance(dwell=None) if self.has_encoder() else self._get_live_bowden_position()
                 progress = abs(current - self.bowden_start_pos) / bowden_length
                 if self.filament_direction == DIRECTION_UNLOAD:
                     progress = 1 - progress
@@ -1844,21 +1844,19 @@ class MmuController(MmuFilamentMovement):
         self.set_filament_position()
 
 
-    def _get_live_filament_position(self):
+    def _get_live_bowden_position(self):
         """
         Return the approximate live filament position for dynamic feedback of position
         """
-        gear_mcu_stepper = self.gear(gate).stepper
-        mcu_pos = gear_mcu_stepper.get_mcu_position()
-        return mcu_pos * gear_mcu_stepper.get_step_dist()
+        return self.gear().get_live_filament_position()
 
 
     def get_filament_position(self):
-        return self.gear().get_mode_position()
+        return self.gear().get_filament_position()
 
 
-    def set_filament_position(self, position = 0.):
-        self.gear().do_set_position(position)
+    def set_filament_position(self, pos= 0.):
+        self.gear().set_filament_position(pos)
 
 
     def set_filament_direction(self, direction):
@@ -2057,8 +2055,7 @@ class MmuController(MmuFilamentMovement):
             if on:
                 self.reset_sync_gear_to_extruder(False)
             else:
-                pass # PAUL what to do?
-#PAUL                self.mmu_toolhead().unsync()
+                self.gear().sync_mode(DRIVE_UNSYNCED)
 
         for mmu_unit in self.mmu_machine.units:
             mmu_unit.motors_onoff(on, motor)
