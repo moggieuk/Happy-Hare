@@ -186,18 +186,18 @@ class DebugStepperMovement:
         Capture starting positions/steps if debugging is enabled.
         """
         if self.debug:
-            e_stepper = self.mmu.mmu_unit().extruder_stepper_obj().stepper
-            g_stepper = self.mmu.gear().stepper
+            g_stepper = self.mmu.drive().mmu_gear_stepper
+            e_stepper = self.mmu.drive().mmu_extruder_stepper
 
-            self.g_steps0 = g_stepper.get_mcu_position()
-            self.g_pos0 = g_stepper.get_commanded_position()
-            self.g_manual_pos0 = self.mmu.gear().commanded_pos
-            self.g_mode_pos0 = self.mmu.gear().get_mode_position()
+            self.g_steps0 = g_stepper.stepper.get_mcu_position()
+            self.g_pos0 = g_stepper.stepper.get_commanded_position()
+            self.g_manual_pos0 = g_stepper.commanded_pos
+            self.g_mode_pos0 = g_stepper.get_mode_position()
 
-            self.e_steps0 = e_stepper.get_mcu_position()
-            self.e_pos0 = e_stepper.get_commanded_position()
-            self.e_manual_pos0 = self.mmu.mmu_unit().extruder_stepper_obj().commanded_pos
-            self.e_mode_pos0 = self.mmu.mmu_unit().extruder_stepper_obj().get_mode_position()
+            self.e_steps0 = e_stepper.stepper.get_mcu_position()
+            self.e_pos0 = e_stepper.stepper.get_commanded_position()
+            self.e_manual_pos0 = e_stepper.commanded_pos
+            self.e_mode_pos0 = e_stepper.get_mode_position()
 
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -208,22 +208,22 @@ class DebugStepperMovement:
             self.mmu.log_always("Waiting for movement to complete...")
             self.mmu.movequeue_wait()
 
-            e_stepper = self.mmu.mmu_unit().extruder_stepper_obj().stepper
-            g_stepper = self.mmu.gear().stepper
+            g_stepper = self.mmu.drive().mmu_gear_stepper
+            e_stepper = self.mmu.drive().mmu_extruder_stepper
 
-            g_steps1 = g_stepper.get_mcu_position()
-            g_pos1 = g_stepper.get_commanded_position()
-            g_manual_pos1 = self.mmu.gear().commanded_pos
-            g_mode_pos1 = self.mmu.gear().get_mode_position()
+            g_steps1 = g_stepper.stepper.get_mcu_position()
+            g_pos1 = g_stepper.stepper.get_commanded_position()
+            g_manual_pos1 = g_stepper.commanded_pos
+            g_mode_pos1 = g_stepper.get_mode_position()
 
-            e_steps1 = e_stepper.get_mcu_position()
-            e_pos1 = e_stepper.get_commanded_position()
-            e_manual_pos1 = self.mmu.mmu_unit().extruder_stepper_obj().commanded_pos
-            e_mode_pos1 = self.mmu.mmu_unit().extruder_stepper_obj().get_mode_position()
+            e_steps1 = e_stepper.stepper.get_mcu_position()
+            e_pos1 = e_stepper.stepper.get_commanded_position()
+            e_manual_pos1 = e_stepper.commanded_pos
+            e_mode_pos1 = e_stepper.get_mode_position()
 
             self.mmu.log_always(
                 f"Gear steps: {g_steps1 - self.g_steps0:d} = "
-                f"{(g_steps1 - self.g_steps0) * g_stepper.get_step_dist():.4f}mm, "
+                f"{(g_steps1 - self.g_steps0) * g_stepper.stepper.get_step_dist():.4f}mm, "
                 f"commanded movement: {g_pos1 - self.g_pos0:.4f}mm, "
                 f"manual move: {g_manual_pos1 - self.g_manual_pos0:.4f}mm, "
                 f"mode_pos: {g_mode_pos1 - self.g_mode_pos0:.4f}mm"
@@ -231,7 +231,7 @@ class DebugStepperMovement:
 
             self.mmu.log_always(
                 f"Extruder steps: {e_steps1 - self.e_steps0:d} = "
-                f"{(e_steps1 - self.e_steps0) * e_stepper.get_step_dist():.4f}mm, "
+                f"{(e_steps1 - self.e_steps0) * e_stepper.stepper.get_step_dist():.4f}mm, "
                 f"commanded movement: {e_pos1 - self.e_pos0:.4f}mm, "
                 f"manual move: {e_manual_pos1 - self.e_manual_pos0:.4f}mm, "
                 f"mode_pos: {e_mode_pos1 - self.e_mode_pos0:.4f}mm"

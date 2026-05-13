@@ -13,33 +13,41 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import logging
+import logging, time
+
+# Klipper imports
+import chelper
 
 # Happy Hare imports
-from ...mmu_stepper  import MmuStepper
 from ..mmu_constants import *
 
 
-class MmuDrive(MmuStepper):
+class MmuDrive():
 
-    def __init__(self, config, mmu_unit, mmu_extruder_stepper):
-        self.config = config
-        self._config_name = config.get_name()
+    def __init__(self, config, mmu_unit, mmu_gear_stepper, mmu_extruder_stepper):
+        self.printer = config.get_printer()
         self.mmu_unit = mmu_unit                         # This physical MMU unit
-        self.mmu_extruder_stepper = mmu_extruder_stepper # ExtruderStepper connected to this mmu drive (gear)
-
-        MmuStepper.__init__(self, config, default_mode='manual')
+        self.mmu_machine = mmu_unit.mmu_machine          # Entire Logical combined MMU
+        self.mmu_extruder_stepper = mmu_extruder_stepper # ExtruderStepper connected to this mmu drive
+        self.mmu_gear_stepper = mmu_gear_stepper
 
         # Initially setup as controlling the unsynced gear stepper
         self._sync_mode = DRIVE_UNSYNCED
-        self._driving_stepper = self
+        self._driving_stepper = self.mmu_gear_stepper
+
+        # Event handlers
+        self.printer.register_event_handler('klippy:connect', self.handle_connect)
+
+
+    def handle_connect(self):
+        self.mmu = self.mmu_machine.mmu_controller # Master MMU controller
 
 
     def sync_mode(self, mode):
         if mode == self._sync_mode:
             return False
 
-        logging.info(f"PAUL: sync_mode({mode})")
+        self.mmu.log_warning(f"PAUL: sync_mode({mode})")
 
         if mode not in DRIVE_MODE_NAMES:
             raise self.printer.command_error(f"Invalid MMU drive sync mode: {mode}")
@@ -50,26 +58,26 @@ class MmuDrive(MmuStepper):
         # DRIVE_UNSYNCED
         # --------------------------------------------------------------
         if mode == DRIVE_UNSYNCED:
-            self.switch_to_manual_mode()
-            self.do_set_position(current_pos)
+            self.mmu_gear_stepper.switch_to_manual_mode()
+            self.mmu_gear_stepper.do_set_position(current_pos)
             self.mmu_extruder_stepper.switch_to_extruder_mode()
-            self._driving_stepper = self
+            self._driving_stepper = self.mmu_gear_stepper
 
         # --------------------------------------------------------------
         # DRIVE_EXTRUDER_SYNCED_TO_GEAR (gear leading, extruder following)
         # --------------------------------------------------------------
         elif mode == DRIVE_EXTRUDER_SYNCED_TO_GEAR:
-            self.switch_to_manual_mode()
-            self.do_set_position(current_pos)
+            self.mmu_gear_stepper.switch_to_manual_mode()
+            self.mmu_gear_stepper.do_set_position(current_pos)
             self.mmu_extruder_stepper.switch_to_manual_mode()
-            self.mmu_extruder_stepper.sync_to_manual_stepper(self._config_name)
-            self._driving_stepper = self
+            self.mmu_extruder_stepper.sync_to_manual_stepper(self.mmu_gear_stepper.get_name())
+            self._driving_stepper = self.mmu_gear_stepper
 
         # --------------------------------------------------------------
         # DRIVE_EXTRUDER_ONLY
         # --------------------------------------------------------------
         elif mode == DRIVE_EXTRUDER_ONLY:
-            self.switch_to_manual_mode()
+            self.mmu_gear_stepper.switch_to_manual_mode()
             self.mmu_extruder_stepper.switch_to_manual_mode()
             self.mmu_extruder_stepper.do_set_position(current_pos)
             self._driving_stepper = self.mmu_extruder_stepper
@@ -79,8 +87,8 @@ class MmuDrive(MmuStepper):
         # --------------------------------------------------------------
         elif mode == DRIVE_GEAR_SYNCED_TO_EXTRUDER:
             self.mmu_extruder_stepper.switch_to_extruder_mode()
-            self.switch_to_extruder_mode()
-            self.sync_to_extruder(self.mmu_extruder_stepper.get_name())
+            self.mmu_gear_stepper.switch_to_extruder_mode()
+            self.mmu_gear_stepper.sync_to_extruder(self.mmu_extruder_stepper.get_name())
             self._driving_stepper = self.mmu_extruder_stepper
 
         self._sync_mode = mode
@@ -92,6 +100,7 @@ class MmuDrive(MmuStepper):
 
 
     def set_filament_position(self, pos):
+        self.mmu_unit.mmu.log_warning(f"PAUL: {self._driving_stepper.get_name()}.do_set_position({pos})")
         self._driving_stepper.do_set_position(pos)
 
 
@@ -106,6 +115,22 @@ class MmuDrive(MmuStepper):
         mcu_stepper = self._driving_stepper.stepper
         mcu_pos = mcu_stepper.get_mcu_position()
         return mcu_pos * mcu_stepper.get_step_dist()
+
+
+    def driving_stepper(self):
+        return self._driving_stepper
+
+
+    def has_endstop(self, endstop_name):
+        return self._driving_stepper.rail.has_endstop(endstop_name)
+
+
+    def get_extra_endstop_names(self):
+        return self._driving_stepper.rail.get_extra_endstop_names()
+
+
+    def is_endstop_virtual(self, endstop):
+        return self._driving_stepper.rail.is_endstop_virtual(endstop)
 
 
     # Replace get_status for succinct info pertinent to control of filament movement

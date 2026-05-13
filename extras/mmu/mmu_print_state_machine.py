@@ -123,7 +123,7 @@ class MmuPrintStateMachine:
 
             idle_timeout = self.mmu.printer.lookup_object("idle_timeout").idle_timeout
             self.mmu.log_debug("Job State: %s -> %s (MMU State: Encoder: %s, Synced: %s, Paused temp: %s, Resume to state: %s, Position saved for: %s, pause_resume: %s, Idle timeout: %.2fs)"
-                    % (self.print_state.upper(), print_state.upper(), self.mmu.get_encoder_state(), self.mmu.gear().is_synced_to_extruder(), self.paused_extruder_temp,
+                    % (self.print_state.upper(), print_state.upper(), self.mmu.get_encoder_state(), self.mmu.drive().is_synced_to_extruder(), self.paused_extruder_temp,
                         self.resume_to_state, self.mmu.saved_toolhead_operation, self.is_printer_paused(), idle_timeout))
 
             if call_macro:

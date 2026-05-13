@@ -66,16 +66,9 @@ class MmuTestHomingMoveCommand(MoveMixin, BaseCommand):
         with mmu.wrap_sync_gear_to_extruder():
             debug = bool(gcmd.get_int('DEBUG', 0, minval=0, maxval=1))  # Hidden option
             with DebugStepperMovement(mmu, debug):
-                actual, homed, measured, _ = self._homing_move_cmd(
-                    gcmd,
-                    "Test homing move",
-                    allow_bypass=allow_bypass
-                )
+                actual, homed, measured, _ = self._homing_move_cmd(gcmd, "Test homing move", allow_bypass=allow_bypass) # From Mixin
 
-            mmu.log_always(
-                "%s after %.1fmm%s" % (
-                    ("Homed" if homed else "Did not home"),
-                    actual,
-                    (" (measured %.1fmm)" % measured) if mmu.can_use_encoder() else ""
-                )
-            )
+            home_str = "Homed" if homed else "Did not home"
+            measured_str = f" (measured {measured:.1f}mm)" if mmu.can_use_encoder() else ""
+
+        mmu.log_always(f"Filament position: {mmu.get_filament_position():.2f}")

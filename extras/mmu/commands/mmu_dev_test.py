@@ -103,10 +103,7 @@ class MmuTestCommand(BaseCommand):
         + "TTC_TEST=1 / TTC_TEST2=1 / TTC_TEST3=1 Provoke known TTC conditions. Params: LOOP={n} MIX=[0|1] DEBUG=[0|1] WAIT=[0|1]\n"
         + "STEPCOMPRESS_TEST=1 Provoke stepcompress error. Params: LOOP={n} MIX=[0|1] DEBUG=[0|1] WAIT=[0|1] SELECT=[0|1] MOTOR={name} STOP_ON_ENDSTOP=[-1|0|1]\n"
         + "AUTO_CALIBRATE=1 Call auto-calibrate directly. Params: GATE={n} DIRECTION=[-1|0|1] RATIO={f} HOMING={mm}\n"
-        + "SYNC_G2E=1 Sync gear to extruder (user mode)\n"
-        + "SYNC_E2G=1 Sync extruder to gear\n"
-        + "SYNC_EONLY=1 Put extruder on gear rail and detach gear stepper\n"
-        + "UNSYNC=1 Unsync\n"
+        + "SYNC=[0|1|2|3|gear|gear+extruder|extruder|synced]\n"
         + "CALC_PURGE=1 Purge volume calculator quick tests\n"
         + "RUNOUT=[0|1] Enable/disable runout handling\n"
         + "SENSOR=1 Dump sensor path checks. Params: POS={n} GATE={n} LOADING=[0|1] LOOP=[0|1]\n"
@@ -132,6 +129,7 @@ class MmuTestCommand(BaseCommand):
 
     def _run(self, gcmd):
         mmu = self.mmu
+        mmu_unit = mmu.mmu_unit()
         mmu_machine = mmu.mmu_machine
 
         mmu.log_to_file(gcmd.get_commandline())
@@ -527,21 +525,21 @@ class MmuTestCommand(BaseCommand):
                 mmu.log_info("Statistics:%s" % mmu.last_statistics)
                 mmu.set_print_state("idle")
 
-            if gcmd.get_int('SYNC_G2E', 0, minval=0, maxval=1):
+            sync = gcmd.get('SYNC', None)
+            if sync is not None:
                 have_run_test = True
-                mmu.gear().sync_mode(DRIVE_GEAR_SYNCED_TO_EXTRUDER)
 
-            if gcmd.get_int('SYNC_E2G', 0, minval=0, maxval=1):
-                have_run_test = True
-                mmu.gear().sync_mode(DRIVE_EXTRUDER_SYNCED_TO_GEAR)
+                DRIVE_MODE_BY_NAME = {v.lower(): k for k, v in DRIVE_MODE_NAMES.items()}
+                try:
+                    mode = int(sync)
+                except (TypeError, ValueError):
+                    key = str(sync).lower()
+                    mode = DRIVE_MODE_BY_NAME.get(key)
+                    if mode is None:
+                        valid = ", ".join(DRIVE_MODE_BY_NAME.keys())
+                        raise gcmd.error(f"Invalid SYNC value: {sync}. Expected one of: {valid} or an integer.")
 
-            if gcmd.get_int('SYNC_EONLY', 0, minval=0, maxval=1):
-                have_run_test = True
-                mmu.gear().sync_mode(DRIVE_EXTRUDER_ONLY)
-
-            if gcmd.get_int('UNSYNC', 0, minval=0, maxval=1):
-                have_run_test = True
-                mmu.gear().sync_mode(DRIVE_UNSYNCED)
+                mmu.drive().sync_mode(mode)
 
             pos = gcmd.get_float('SET_POS', -1, minval=0, maxval=10)
             if pos >= 0:
@@ -585,10 +583,10 @@ class MmuTestCommand(BaseCommand):
                             mmu.gcode.run_script_from_command(arg)
                         elif op == "sync":
                             mmu.log_info("Step %d: %s" % (i, arg))
-                            mmu.gear().sync_mode(arg)
+                            mmu.drive().sync_mode(arg)
                         elif op == "unsync":
                             mmu.log_info("Step %d: unsync()" % i)
-                            mmu.gear().sync_mode(DRIVE_UNSYNCED)
+                            mmu.drive().sync_mode(DRIVE_UNSYNCED)
                         else:
                             mmu.log_warning("Step %d: unknown op %s" % (i, op))
 
@@ -696,7 +694,7 @@ class MmuTestCommand(BaseCommand):
                         # Run a few randomized moves on the printer toolhead to simulate user movement
                         # Sync state must either be unsynced or DRIVE_GEAR_SYNCED_TO_EXTRUDER
                         sync = None if random.randint(0, 1) else DRIVE_GEAR_SYNCED_TO_EXTRUDER
-                        mmu.gear().sync_mode(sync)
+                        mmu.drive().sync_mode(sync)
                         log(">> Extruder movement (%s)..." % ("not synced" if sync is None else "synced to extruder"))
                         for j in range(5):
                             move = random.randint(-10, 10)
@@ -731,8 +729,9 @@ class MmuTestCommand(BaseCommand):
                 mmu.gcode.run_script_from_command("SAVE_GCODE_STATE NAME=mmu_test")
                 mmu.initialize_filament_position()
                 total = 0.
+
                 for i in range(loop):
-                    move_type = random.randint(0, 10)  # 11 to enable tracking test
+                    move_type = random.randint(0, 10)
                     move = random.randint(0, 100) - 50
                     speed = random.uniform(50, 200)
                     accel = random.randint(50, 1000)
@@ -745,11 +744,11 @@ class MmuTestCommand(BaseCommand):
                             mmu.select_gate(gate)
                     if move_type in (0, 1):
                         log("Loop: %d - Synced extruder movement with G1 Ex: %.1fmm" % (i, move))
-                        mmu.gear().sync_mode(DRIVE_GEAR_SYNCED_TO_EXTRUDER)
+                        mmu.drive().sync_mode(DRIVE_GEAR_SYNCED_TO_EXTRUDER)
                         mmu.gcode.run_script_from_command("G1 E%.2f F%d" % (move, speed * 60))
                     elif move_type == 2:
                         log("Loop: %d - Unsynced extruder movement with G1 Ex: %.1fmm" % (i, move))
-                        mmu.gear().sync_mode(DRIVE_UNSYNCED)
+                        mmu.drive().sync_mode(DRIVE_UNSYNCED)
                         mmu.gcode.run_script_from_command("G1 E%.2f F%d" % (move, speed * 60))
                     elif move_type == 3:
                         log("Loop: %d - Regular mmu move: %.1fmm, MOTOR=%s" % (i, move, motor))
@@ -786,22 +785,23 @@ class MmuTestCommand(BaseCommand):
                             "MMU_TEST_MOVE MOTOR=synced MOVE=%.2f SPEED=%d WAIT=%d" % (move, speed, w)
                         )
                     else:
-                        sync_mode = mmu.gear().self.drive_sync_mode
+                        sync_mode = mmu.drive().get_status(0)['sync_mode']
                         sync = "---" if sync_mode == DRIVE_UNSYNCED else (
                             "E2G" if sync_mode == DRIVE_EXTRUDER_SYNCED_TO_GEAR else
                             "G2E" if sync_mode == DRIVE_GEAR_SYNCED_TO_EXTRUDER else "Ext"
                         )
                         mmu.movequeue_wait()
-                        tracking = abs(mmu.get_filament_position() - total) < 0.1
-                        mmu.log_info(">>>>>> STATUS: sync: %s, pos=%.2f, total=%.2f" % (sync, mmu.get_filament_position(), total))
+                        tracking = abs(mmu.drive().get_filament_position() - total) < 0.1
+                        mmu.log_info(">>>>>> STATUS: sync: %s, pos=%.2f, total=%.2f" % (sync, mmu.drive().get_filament_position(), total))
                         if not tracking:
                             mmu.log_error(">>>>>> Position tracking error")
                             break
 
-                for unit_name in mmu_machine.units_names:
-                    mmu.gcode.run_script_from_command("_MMU_DUMP_TOOLHEAD UNIT=%s" % unit_name)
+                # Dump status of current gear and extruder steppers
+                mmu.gcode.run_script_from_command(f"MMU_STEPPER_STATUS STEPPER={mmu_unit.extruder_stepper_obj().get_name()}")
+                mmu.gcode.run_script_from_command(f"MMU_STEPPER_STATUS STEPPER={mmu.drive().get_name()}")
                 mmu.log_info(
-                    "Aggregate move distance: %.1fmm, Toolhead reports: %.1fmm" %
+                    "Aggregate move distance: %.1fmm, MmuDrive reports: %.1fmm" %
                     (total, mmu.get_filament_position())
                 )
 

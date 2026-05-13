@@ -154,7 +154,6 @@ DRIVE_UNSYNCED                = 0
 DRIVE_EXTRUDER_SYNCED_TO_GEAR = 1 # Aka 'gear+extruder'
 DRIVE_EXTRUDER_ONLY           = 2 # Aka 'extruder' (only)
 DRIVE_GEAR_SYNCED_TO_EXTRUDER = 3 # Aka 'extruder+gear'
-# PAUL DRIVE_GEAR_ONLY               = 4 # Aka 'gear' (same state as unsync() but with protective wait)
 
 DRIVE_MODE_NAMES = {
     DRIVE_UNSYNCED: "gear",

@@ -490,9 +490,9 @@ class MmuController(MmuFilamentMovement):
         return mmu_unit
 
 
-    def gear(self, gate=None):
+    def drive(self, gate=None):
         if gate is None: gate = self.gate_selected
-        return self.mmu_unit(gate).gear_stepper_obj(gate)
+        return self.mmu_unit(gate).drive_obj(gate)
 
 
     def selector(self, gate=None):
@@ -559,14 +559,14 @@ class MmuController(MmuFilamentMovement):
             'filament': "Loaded" if self.filament_pos == FILAMENT_POS_LOADED else
                         "Unloaded" if self.filament_pos == FILAMENT_POS_UNLOADED else
                         "Unknown",
-            'filament_position': self.gear().get_mode_position(),
+            'filament_position': self.drive().get_filament_position(),
             'filament_pos': self.filament_pos, # State machine position
             'filament_direction': self.filament_direction,
             'pending_spool_id': self.pending_spool_id,
             'tool_extrusion_multipliers': self.tool_extrusion_multipliers,
             'tool_speed_multipliers': self.tool_speed_multipliers,
             'action': self._get_action_string(),
-            'sync_drive': self.gear().is_synced_to_extruder(),
+            'sync_drive': self.drive().is_synced_to_extruder(),
             'reason_for_pause': self.psm.reason_for_pause if self.is_mmu_paused() else "",
             'spoolman_support': self.p.spoolman_support,
             'bowden_progress': self._get_bowden_progress(), # Simple 0-100%. -1 if not performing bowden move
@@ -1792,12 +1792,13 @@ class MmuController(MmuFilamentMovement):
           False - wait for moves to complete and then read encoder
           None  - just read encoder without delay (caller responsible for ensuring prior movements have completed)
         """
+        return # PAUL TEST WITH NOT ENCODER / WAIT!
         if dwell is True:
-            self.log_info(f"PAUL: _encoder_dwell({dwell})")
+            self.log_info(f"PAUL: _encoder_dwell({dwell}) / dwell + wait")
             self.movequeue_dwell(self.mmu_unit().p.encoder_dwell)
             self.movequeue_wait()
         elif dwell is False:
-            self.log_info(f"PAUL: _encoder_dwell({dwell})")
+            self.log_info(f"PAUL: _encoder_dwell({dwell}) / wait()")
             self.movequeue_wait()
 
 
@@ -1848,15 +1849,15 @@ class MmuController(MmuFilamentMovement):
         """
         Return the approximate live filament position for dynamic feedback of position
         """
-        return self.gear().get_live_filament_position()
+        return self.drive().get_live_filament_position()
 
 
     def get_filament_position(self):
-        return self.gear().get_filament_position()
+        return self.drive().get_filament_position()
 
 
     def set_filament_position(self, pos= 0.):
-        self.gear().set_filament_position(pos)
+        self.drive().set_filament_position(pos)
 
 
     def set_filament_direction(self, direction):
@@ -2055,7 +2056,7 @@ class MmuController(MmuFilamentMovement):
             if on:
                 self.reset_sync_gear_to_extruder(False)
             else:
-                self.gear().sync_mode(DRIVE_UNSYNCED)
+                self.drive().sync_mode(DRIVE_UNSYNCED)
 
         for mmu_unit in self.mmu_machine.units:
             mmu_unit.motors_onoff(on, motor)

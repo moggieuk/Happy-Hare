@@ -51,11 +51,6 @@ from .unit.selectors.mmu_base_selectors import VirtualSelector
 from .unit.mmu_environment_manager      import MmuEnvironmentManager
 
 
-# For toolhead synchronization
-EPS = 1e-6                 # ~1 microsecond safety
-SYNC_AIR_GAP = 0.001       # Sync time air gap
-MOVE_HISTORY_EXPIRE = 30.0 # From motion_queuing.py
-
 # Default selector classes for known vendors
 SELECTOR_VIRTUAL           = 'VirtualSelector'         # Type-B design
 SELECTOR_LINEAR            = 'LinearSelector'          # Type-A with linear stepper
@@ -217,20 +212,19 @@ class MmuUnit:
         if self.multigear:
             pass # PAUL lots to do here
 
-        self.mmu_gear_steppers = []
-        g = None
-        for sname in self.mmu_gear_names:
+        self.drives = []
+        gear = None
+        for i, sname in enumerate(self.mmu_gear_names):
             logging.info(f"PAUL: sname={sname}")
-            if g is None or self.multigear:
+            if gear is None or self.multigear:
                 section = f"mmu_stepper {sname}"
-                g = self.printer.lookup_object(section, None)
-                if g is None:
-#PAUL                g = self.printer.load_object(config, section)
-                    c = config.getsection(section)
-                    g = MmuDrive(c, self, self.extruder_wrapper.homing_extruder_stepper)
-                    self.printer.add_object(section, g)
+                gear = self.printer.load_object(config, section)
                 logging.info(f"MMU: Loaded: [{section}]")
-            self.mmu_gear_steppers.append(g) # Klipper mmu_stepper object (for movement control)
+
+            drive = MmuDrive(config, self, gear, self.extruder_wrapper.homing_extruder_stepper)
+            logging.info("MMU: Created: MmuDrive for gate %d" % (self.first_gate + i))
+
+            self.drives.append(drive)
 
 
 #        # MMU Kinematics --------------------------------------------------------------------
@@ -449,7 +443,7 @@ class MmuUnit:
 
         # PAUL new no-toolhead logic will have to iterate over each gear stepper if separate
 #PUL        gear_rail = self.mmu_toolhead.get_kinematics().rails[1] # PAUL temp this block should iterate over all necessary mmu_extruder_steppers
-        gears = self.mmu_gear_steppers if self.multigear else self.mmu_gear_steppers[:1]
+        drives = self.drives if self.multigear else self.drives[:1]
 
         for sensor in iter_endstop_sensors():
             sensor_name = sensor.runout_helper.name
@@ -457,7 +451,8 @@ class MmuUnit:
 
             if sensor.__class__.__name__ in ["MmuAdcSwitchSensor", "MmuHallEndstop"]:
                 logging.info("MMu: Creating analog endstop on {self.name}, sensor={sensor_name}")
-                for g in gears:
+                for d in drives:
+                    g = d.mmu_gear_stepper
                     mcu_endstop = g.rail.add_extra_endstop(sensor_pin, sensor_name, mcu_endstop=sensor)
 
             else:
@@ -467,7 +462,8 @@ class MmuUnit:
                 pin_params = ppins.parse_pin(sensor_pin, True, True)
                 share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
                 ppins.allow_multi_use_pin(share_name)
-                for g in gears:
+                for d in drives:
+                    g = d.mmu_gear_stepper
                     mcu_endstop = g.rail.add_extra_endstop(sensor_pin, sensor_name)
 #PAUL orig                mcu_endstop = gear_rail.add_extra_endstop(sensor_pin, sensor_name)
 
@@ -490,11 +486,12 @@ class MmuUnit:
         # Find and record all gear steppers, controlling tmc chip (if available) and default current indexed by gate
         # PAUL this will change with new MmuStepper class
 #        self.mmu_gear_names = []
-#        self.mmu_gear_steppers = []
+#        self.drives = []
         self.mmu_gear_tmcs = [] # PAUL may be able to do this in init()
         self.mmu_gear_currents = []
 
-        for name, stepper in zip(self.mmu_gear_names, self.mmu_gear_steppers):
+        for name, drive in zip(self.mmu_gear_names, self.drives):
+            stepper = drive.mmu_gear_stepper
 
 #        if self.multigear:
 #            names = [self.gear_stepper] + self.extra_gear_steppers
@@ -569,8 +566,9 @@ class MmuUnit:
 
     def motors_onoff(self, on=False, motor="all"):
         if motor in ["all", "gear", "gears"]:
-            steppers = self.mmu_gear_steppers if motor == "gears" else [self.mmu_gear_steppers[0]]
-            for s in steppers:
+            drives = self.drives if motor == "gears" else [self.drives[0]]
+            for d in drives:
+                s = d.mmu_gear_stepper
                 s.do_enable(on)
 
         if motor in ["all", "selector"]:
@@ -627,9 +625,9 @@ class MmuUnit:
         lgate = self.local_gate(gate, True)
         return self.mmu_gear_names[lgate]
 
-    def gear_stepper_obj(self, gate):
+    def drive_obj(self, gate):
         lgate = self.local_gate(gate, True)
-        return self.mmu_gear_steppers[lgate]
+        return self.drives[lgate]
 
     def gear_tmc_obj(self, gate):
         lgate = self.local_gate(gate, True)
@@ -728,7 +726,7 @@ class MmuUnit:
                     mmu._check_pending_spool_id(gate) # Have spool_id ready?
                     mmu.log_always("Filament detected and loaded in gate %d" % gate)
                     return
-# PAUL vvv this part of preload is problematic async
+# TODO vvv this part of preload is problematic async
 #        else:
 #            # Full gate load if no mmu exit sensor
 #            for _ in range(u.p.gate_preload_attempts):
@@ -743,7 +741,7 @@ class MmuUnit:
 #                except MmuError as ee:
 #                    # Exception just means filament is not loaded yet, so continue
 #                    mmu.log_trace("Exception on preload: %s" % str(ee))
-# PAUL ^^^ this part of preload is problematic async
+# TODO ^^^ this part of preload is problematic async
 
         if mmu.sensor_manager.check_gate_sensor(SENSOR_ENTRY_PREFIX, gate):
             mmu.gate_maps.set_gate_status(gate, GATE_UNKNOWN)

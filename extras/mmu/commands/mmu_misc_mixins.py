@@ -156,11 +156,11 @@ class MoveMixin:
             raise gcmd.error("STOP_ON_ENDSTOP can only be 1 (extrude direction) or -1 (retract direction)")
 
         endstop = mmu.sensor_manager.get_mapped_endstop_name(endstop)
-        valid_endstops = list(mmu.gear().rail.get_extra_endstop_names())
+        valid_endstops = list(mmu.drive().get_extra_endstop_names())
         if endstop not in valid_endstops:
             raise gcmd.error("Endstop name '%s' is not valid for motor '%s'\nOptions are: %s" % (endstop, motor, ', '.join(valid_endstops)))
 
-        if mmu.gear().rail.is_endstop_virtual(endstop) and stop_on_endstop == -1:
+        if mmu.drive().is_endstop_virtual(endstop) and stop_on_endstop == -1:
             raise gcmd.error("Cannot reverse home on virtual (TMC stallguard) endstop '%s'" % endstop)
 
         if motor == "extruder":

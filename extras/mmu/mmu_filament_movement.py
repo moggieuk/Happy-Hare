@@ -1648,7 +1648,7 @@ class MmuFilamentMovement:
 #        if old is None or old is new:
 #            return
 #
-#        gear = self.gear()
+#        gear = self.drive()
 #        try:
 #            old_name = old.get_name()
 #            self.log_warning(f"PAUL: sync_mode({DRIVE_UNSYNCED}, {old_name})")
@@ -1793,10 +1793,7 @@ class MmuFilamentMovement:
             tuple(actual, homed, measured, delta)
         """
         u = self.mmu_unit()
-        gear = self.gear()
-# PAUL not needed
-#        extruder = self.extruder_stepper() # PAUL MOGGIE extruder_stepper = self.toolhead.get_extruder().extruder_stepper.stepper
-#        printer_extruder = self.printer_extruder() # PAUL MOGGIE
+        drive = self.drive()
         extruder_name = self.mmu_unit().extruder_name()
 
         encoder_start = self.get_encoder_distance(dwell=encoder_dwell)
@@ -1818,7 +1815,7 @@ class MmuFilamentMovement:
                     return null_rtn
 
                 endstop_name = self.sensor_manager.get_mapped_endstop_name(endstop_name)
-                if not gear.rail.has_endstop(endstop_name):
+                if not drive.has_endstop(endstop_name):
                     self.log_error(f"Endstop '{endstop_name}' not found")
                     return null_rtn
 
@@ -1835,32 +1832,28 @@ class MmuFilamentMovement:
             try:
                 if motor == "gear":
                     # normal gear-only movement
-                    self.log_warning(f"PAUL: sync_mode({DRIVE_UNSYNCED})")
-                    gear.sync_mode(DRIVE_UNSYNCED)
+                    drive.sync_mode(DRIVE_UNSYNCED)
                     self._restore_gear_current()
 
                 elif motor == "gear+extruder":
                     # gear leads, extruder follows manually
-                    self.log_warning(f"PAUL: sync_mode({DRIVE_EXTRUDER_SYNCED_TO_GEAR})")
-                    gear.sync_mode(DRIVE_EXTRUDER_SYNCED_TO_GEAR)
+                    drive.sync_mode(DRIVE_EXTRUDER_SYNCED_TO_GEAR)
                     self._restore_gear_current()
 
                 elif motor == "extruder":
                     # extruder-only-on-gear semantics
-                    self.log_warning(f"PAUL: sync_mode({DRIVE_EXTRUDER_ONLY})")
-                    gear.sync_mode(DRIVE_EXTRUDER_ONLY)
+                    drive.sync_mode(DRIVE_EXTRUDER_ONLY)
                     self._restore_gear_current()
 
                 elif motor == "synced":
                     # extruder leads, gear follows extruder
-                    self.log_warning(f"PAUL: sync_mode({DRIVE_GEAR_SYNCED_TO_EXTRUDER})")
-                    gear.sync_mode(DRIVE_GEAR_SYNCED_TO_EXTRUDER)
+                    drive.sync_mode(DRIVE_GEAR_SYNCED_TO_EXTRUDER)
                     self._adjust_gear_current(percent=u.p.sync_gear_current, reason="for extruder synced move")
 
                 else:
                     raise self.printer.command_error("Invalid motor specification '%s'" % (motor,))
 
-                start_pos = gear.get_mode_position()
+                start_pos = drive.get_filament_position()
 
                 # Gear-side move authority
                 if motor in ["gear", "gear+extruder", "extruder"]:
@@ -1872,7 +1865,7 @@ class MmuFilamentMovement:
                             self.log_stepper("%s MOVE: dist=%.1f, speed=%.1f, accel=%.1f, wait=%s" % (
                                 motor.upper(), dist, speed, accel, wait))
 
-                    actual, homed = self._move_active_gear_stepper(gear, dist, speed, accel, homing_move=homing_move, endstop_name=endstop_name)
+                    actual, homed = self._move_active_gear_stepper(drive.driving_stepper(), dist, speed, accel, homing_move=homing_move, endstop_name=endstop_name)
 
                     # PAUL check logic...
                     # Old special-case logic:
@@ -1907,7 +1900,7 @@ class MmuFilamentMovement:
                 self.log_error("Stepper move failed: %s" % str(e))
                 if homing_move != 0:
                     try:
-                        actual = gear.get_mode_position() - start_pos
+                        actual = drive.get_filament_position() - start_pos
                     except Exception:
                         actual = 0.
                     homed = False
@@ -1927,7 +1920,7 @@ class MmuFilamentMovement:
                 trace_str += ". Stepper: '%s' moved %.1fmm, encoder measured %.1fmm (delta %.1fmm)"
                 trace_str = trace_str % (motor, dist, measured, delta)
 
-            trace_str += " --> Pos: @%.1f, (e: %.1fmm)" % (gear.get_mode_position(), encoder_end)
+            trace_str += " --> Pos: @%.1f, (e: %.1fmm)" % (drive.get_filament_position(), encoder_end)
             self.log_trace(trace_str)
 
         if motor == "gear" and track and self.can_use_encoder():
@@ -2599,12 +2592,10 @@ class MmuFilamentMovement:
 #            self.mmu_toolhead().sync(desired_sync_mode)
 # PAUL new logic..
         # Sync to / unsync from extruder
-        if self.gear().is_synced_to_extruder() and not sync:
-            self.log_warning(f"PAUL: sync_mode({DRIVE_UNSYNCED})")
-            self.gear().sync_mode(DRIVE_UNSYNCED)
-        elif not self.gear().is_synced_to_extruder() and sync:
-            self.log_warning(f"PAUL: sync_mode({DRIVE_GEAR_SYNCED_TO_EXTRUDER})")
-            self.gear().sync_mode(DRIVE_GEAR_SYNCED_TO_EXTRUDER)
+        if self.drive().is_synced_to_extruder() and not sync:
+            self.drive().sync_mode(DRIVE_UNSYNCED)
+        elif not self.drive().is_synced_to_extruder() and sync:
+            self.drive().sync_mode(DRIVE_GEAR_SYNCED_TO_EXTRUDER)
 
         # Current control:
         # - While synced, optionally reduce current for the active gear stepper.
@@ -2632,7 +2623,7 @@ class MmuFilamentMovement:
             self while nested operations may temporarily alter sync and grip state.
         """
         # Capture current sync state so it can be restored on exit.
-        previous_sync = self.gear().is_synced_to_extruder()
+        previous_sync = self.drive().is_synced_to_extruder()
 
         # Suppress grip release only at the outermost level.
         outermost_wrapper = not self._suppress_release_grip
