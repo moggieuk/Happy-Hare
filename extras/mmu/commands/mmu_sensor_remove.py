@@ -63,7 +63,7 @@ class MmuSensorRemoveCommand(BaseCommand):
         eventtime = gcmd.get_float('EVENTTIME', mmu.reactor.monotonic())
         gate = gcmd.get_int('GATE', None)
         raw_sensor = gcmd.get('SENSOR', "")
-        sensor = mmu.sensor_manager.get_unitless_sensor_name(raw_sensor)
+        sensor = mmu.sensor_manager.get_unprefixed_sensor_name(raw_sensor)
 
         try:
             with mmu.wrap_sync_gear_to_extruder():

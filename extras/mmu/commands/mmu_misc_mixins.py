@@ -161,6 +161,7 @@ class MoveMixin:
             mmu.sensor_manager.get_generic_endstop_name(name)
             for name in drive_stepper.rail.get_all_endstop_names()
         })
+        valid_endstops.sort()
         if endstop not in valid_endstops:
             raise gcmd.error("Endstop name '%s' is not valid for motor '%s'\nOptions are: %s" % (endstop, motor, ', '.join(valid_endstops)))
 

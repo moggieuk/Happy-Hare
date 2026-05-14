@@ -56,7 +56,7 @@ class MmuSensorManager:
             ])
 
             prefixed_unit_sensors = collect_sensors([
-                (sensor, self.get_unit_sensor_name(sensor_type, name)) if sensor and name else (sensor, None)
+                (sensor, self.get_prefixed_sensor_name(sensor_type, name)) if sensor and name else (sensor, None)
                 for sensor, sensor_type, name in sensor_defs
             ])
 
@@ -259,16 +259,16 @@ class MmuSensorManager:
         return re.search(r'_\d+$', sname)
 
 
-    def get_unit_sensor_name(self, sname, unit_name):
+    def get_prefixed_sensor_name(self, sname, prefix):
         """
-        Returns generic sensor name with added "<unit_name>:" prefix
+        Returns generic sensor name with added "<prefix>:" prefix
         """
-        return f"{unit_name}:{sname}"
+        return f"{prefix}:{sname}"
 
 
-    def get_unitless_sensor_name(self, name):
+    def get_unprefixed_sensor_name(self, name):
         """
-        Returns sensor name stripped of unit prefix
+        Returns sensor name stripped of namespace prefix
         """
         return name.split(":", 1)[-1]
 
@@ -279,15 +279,15 @@ class MmuSensorManager:
         """
         # These have form: "<unitName>:genericName"
         if endstop_name in [SENSOR_SHARED_EXIT]:
-            return self.get_unit_sensor_name(endstop_name, self.mmu.mmu_unit().name)
+            return self.get_prefixed_sensor_name(endstop_name, self.mmu.mmu_unit().name)
 
         # These have form: "<bufferName>:genericName"
         if endstop_name in [SENSOR_COMPRESSION, SENSOR_TENSION]:
-            return self.get_unit_sensor_name(endstop_name, self.mmu.mmu_unit().buffer.name)
+            return self.get_prefixed_sensor_name(endstop_name, self.mmu.mmu_unit().buffer.name)
 
         # These have form: "<toolheadName>:genericName"
         if endstop_name in [SENSOR_EXTRUDER_ENTRY, SENSOR_TOOLHEAD]:
-            return self.get_unit_sensor_name(endstop_name, self.mmu.mmu_unit().toolhead_wrapper.name)
+            return self.get_prefixed_sensor_name(endstop_name, self.mmu.mmu_unit().toolhead_wrapper.name)
 
         # These have form: "genericName_<gate#>"
         if endstop_name in [SENSOR_ENTRY_PREFIX, SENSOR_EXIT_PREFIX, SENSOR_GEAR_TOUCH]:

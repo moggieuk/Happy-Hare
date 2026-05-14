@@ -74,7 +74,7 @@ class MmuSensorsCommand(BaseCommand):
                 if state is None and not detail:
                     continue # Sensor disabled
 
-                if sm.get_unitless_sensor_name(name) in [SENSOR_PROPORTIONAL]:
+                if sm.get_unprefixed_sensor_name(name) in [SENSOR_PROPORTIONAL]:
                     # Special case analog sensor
                     st = sensor.get_status(0) or {}
                     value = st.get('value', 0.)
