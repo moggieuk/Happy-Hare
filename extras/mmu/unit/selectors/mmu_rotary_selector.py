@@ -67,8 +67,7 @@ class RotarySelectorParameters(TunableParametersBase):
 
 class RotarySelector(PhysicalSelector):
     """
-    Rotary selector for type-A MMUs that uses stepper-controlled rail[0] on the
-    MMU toolhead (e.g. 3D Chameleon).
+    Rotary selector for type-A MMUs that uses stepper-controlled selection
 
     `filament_always_gripped` alters operation:
       0 (default) - Lazy gate selection; occurs when asked to grip filament
@@ -98,7 +97,8 @@ class RotarySelector(PhysicalSelector):
 
     def handle_connect(self):
         """
-        eind selector rail/stepper, configure rail limits, and load calibration.
+PAUL TODO
+        Bind selector rail/stepper, configure rail limits, and load calibration.
 
         Determines whether an actual endstop is present, loads per-gate selector
         offsets from mmu_vars.cfg, and marks the selector calibrated when all
@@ -203,7 +203,7 @@ class RotarySelector(PhysicalSelector):
                 self.grip_state = FILAMENT_DRIVE_STATE
 
             # Ensure gate filament drive is in the correct direction
-            self.mmu_unit.mmu_toolhead.get_kinematics().rails[1].set_direction(self.p.selector_gate_directions[lgate])
+            self.mmu_unit.drive_obj(gate).set_gear_direction(self.p.selector_gate_directions[lgate])
             self.mmu.movequeue_wait()
         else:
             self.grip_state = FILAMENT_UNKNOWN_STATE

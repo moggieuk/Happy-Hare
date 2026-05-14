@@ -145,7 +145,7 @@ class MoveMixin:
         move = gcmd.get_float('MOVE', 100.)
         speed = gcmd.get_float('SPEED', None)
         accel = gcmd.get_float('ACCEL', None) # Ignored for extruder led moves
-        motor = gcmd.get('MOTOR', "gear")
+        motor = gcmd.get('MOTOR', "gear").lower()
 
         if motor not in ["gear", "extruder", "gear+extruder"]:
             raise gcmd.error("Valid motor names are 'gear', 'extruder', 'gear+extruder'")
@@ -155,12 +155,16 @@ class MoveMixin:
         if abs(stop_on_endstop) != 1:
             raise gcmd.error("STOP_ON_ENDSTOP can only be 1 (extrude direction) or -1 (retract direction)")
 
-        endstop = mmu.sensor_manager.get_mapped_endstop_name(endstop)
-        valid_endstops = list(mmu.drive().get_extra_endstop_names())
+        endstop = mmu.sensor_manager.get_qualified_endstop_name(endstop)
+        drive_stepper = mmu.drive().mmu_extruder_stepper if motor == "extruder" else mmu.drive().mmu_gear_stepper
+        valid_endstops = list({
+            mmu.sensor_manager.get_generic_endstop_name(name)
+            for name in drive_stepper.rail.get_all_endstop_names()
+        })
         if endstop not in valid_endstops:
             raise gcmd.error("Endstop name '%s' is not valid for motor '%s'\nOptions are: %s" % (endstop, motor, ', '.join(valid_endstops)))
 
-        if mmu.drive().is_endstop_virtual(endstop) and stop_on_endstop == -1:
+        if drive_stepper.rail.is_endstop_virtual(endstop) and stop_on_endstop == -1:
             raise gcmd.error("Cannot reverse home on virtual (TMC stallguard) endstop '%s'" % endstop)
 
         if motor == "extruder":

@@ -24,10 +24,9 @@ from .mmu_extruder_monitor import ExtruderMonitor
 
 class MmuExtruderWrapper():
 
-    def __init__(self, config, name, mmu_unit, homing_extruder):
+    def __init__(self, config, name, mmu_unit):
         self.config = config
         self.mmu_unit = mmu_unit                # This physical MMU unit
-        self.homing_extruder = homing_extruder
         self.mmu_machine = mmu_unit.mmu_machine # Entire Logical combined MMU
         self.name = name.split()[-1]
         self.printer = config.get_printer()
@@ -40,29 +39,31 @@ class MmuExtruderWrapper():
         # Build homing extruder stepper if option enabled ---------------------------------------------------
 
         self.homing_extruder_stepper = None
-        if self.homing_extruder:
 
-            # Ensure corresponding TMC section is loaded so endstops can be added and to prevent error later when toolhead is created
-            for chip in TMC_CHIPS:
-                try:
-                    section = '%s extruder' % chip
-                    logging.info(f"PAUL: Looking for {section}")
-                    _ = self.printer.load_object(config, section)
-                    logging.info("MMU: Loaded: [%s]" % section)
-                    break
-                except:
-                    pass
+        # Ensure corresponding TMC section is loaded so endstops can be added and to prevent error later when toolhead is created
+        for chip in TMC_CHIPS:
+            try:
+                section = f"{chip} {self.name}"
+                logging.info(f"PAUL: looking for '[{section}]'")
+                _ = self.printer.load_object(config, section)
+                logging.info(f"MMU: Loaded: [{section}]")
+                break
+            except:
+                pass
 
-            # Create MmuExtruderStepper for later insertion into PrinterExtruder on Toolhead (on klippy:connect)
-            toolhead_section = config.getsection(self.name)
-            self.homing_extruder_stepper = MmuExtruderStepper(toolhead_section, mmu_unit)
+        # Create MmuExtruderStepper for later insertion into PrinterExtruder on Toolhead (on klippy:connect)
+        toolhead_section = config.getsection(self.name)
+        self.homing_extruder_stepper = MmuExtruderStepper(toolhead_section, mmu_unit)
 
-            # Nullify original extruder stepper definition so Klipper doesn't try to create it again. Restore config in handle_connect()
-            self.old_ext_options = {}
-            for i in SHAREABLE_STEPPER_PARAMS + OTHER_STEPPER_PARAMS:
-                if config.fileconfig.has_option(self.extruder_name(), i):
-                    self.old_ext_options[i] = config.fileconfig.get(self.extruder_name(), i)
-                    config.fileconfig.remove_option(self.extruder_name(), i)
+        # Nullify original extruder stepper definition so Klipper doesn't try to create it again. Restore config in handle_connect()
+        self.old_ext_options = {}
+        for i in SHAREABLE_STEPPER_PARAMS + OTHER_STEPPER_PARAMS:
+            if config.fileconfig.has_option(self.extruder_name(), i):
+                self.old_ext_options[i] = config.fileconfig.get(self.extruder_name(), i)
+                config.fileconfig.remove_option(self.extruder_name(), i)
+
+#PAUL        if self.homing_extruder_stepper is None:
+#PAUL            raise config.error("Happy Hare requires TMC controller for extruder")
 
         # Register event handlers
         self.printer.register_event_handler('klippy:connect', self._handle_connect)
@@ -86,18 +87,14 @@ class MmuExtruderWrapper():
 
         printer_extruder = self.printer.lookup_object(self.extruder_name())
 
-        if self.homing_extruder and self.homing_extruder_stepper is not None:
-            # Restore original extruder options in case user macros reference them
-            for key, value in self.old_ext_options.items():
-                self.config.fileconfig.set(self.extruder_name(), key, value)
+        # Restore original extruder options in case user macros reference them
+        for key, value in self.old_ext_options.items():
+            self.config.fileconfig.set(self.extruder_name(), key, value)
 
-            # Now we can switch in homing MmuExtruderStepper
-            printer_extruder.extruder_stepper = self.homing_extruder_stepper
-            self.homing_extruder_stepper.stepper.set_trapq(printer_extruder.get_trapq())
-            self.mmu.log_debug(f"Extruder {self.extruder_name()} replaced with homing extruder")
-
-        else:     
-            self.mmu.log_debug("Warning: Using original klipper extruder stepper. Extruder homing not possible")
+        # Now we can switch in homing MmuExtruderStepper
+        printer_extruder.extruder_stepper = self.homing_extruder_stepper
+        self.homing_extruder_stepper.stepper.set_trapq(printer_extruder.get_trapq())
+        self.mmu.log_debug(f"Extruder {self.extruder_name()} replaced with homing extruder")
 
         self._extruder_stepper = printer_extruder.extruder_stepper
 
@@ -118,7 +115,7 @@ class MmuExtruderWrapper():
                 "Current control enabled."
             ) % (self.mmu_unit.name, chip, self.extruder_name())
 
-            if self.homing_extruder:
+            if self.homing_extruder_stepper.rail.virtual_endstops:
                 msg += " Stallguard 'touch' extruder homing possible."
 
             self.mmu.log_debug(msg)
@@ -175,24 +172,14 @@ class MmuExtruderWrapper():
 class MmuExtruderStepper(MmuStepper):
 
     def __init__(self, config, unit):
-        MmuStepper.__init__(self, config, default_mode='extruder')
-
-# PAUL not sure I need this because manual rail is setup in init() above for when extruder is in manual mode
-#        # This allows for setup of stallguard as an option for nozzle homing
-#        endstop_pin = config.get('endstop_pin', None)
-#        if endstop_pin:
-#            # Iterate on all unique gear steppers
-#            steppers = unit.mmu_gear_steppers if unit.multigear else unit.mmu_gear_steppers[:1]
-#            for s in steppers:
-#                mcu_endstop = s.rail.add_extra_endstop(endstop_pin, 'mmu_ext_touch', bind_rail_stepper=False) # PAUL bind_rail_steppers??
-#            mcu_endstop.add_stepper(s.stepper)
+        MmuStepper.__init__(self, config, default_mode='extruder', force_rail=True)
 
 
     # ----------------------------------------------------------------------
     # ExtruderStepper overrides
     # ----------------------------------------------------------------------
 
-    # Override to add QUIET option to control console logging
+    # Override simply to add QUIET option to control console logging
     def cmd_SET_PRESSURE_ADVANCE(self, gcmd):
         pressure_advance = gcmd.get_float('ADVANCE', self.pressure_advance, minval=0.)
         smooth_time = gcmd.get_float('SMOOTH_TIME', self.pressure_advance_smooth_time, minval=0., maxval=.200)

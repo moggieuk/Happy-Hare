@@ -206,7 +206,7 @@ class DebugStepperMovement:
         """
         if self.debug:
             self.mmu.log_always("Waiting for movement to complete...")
-            self.mmu.movequeue_wait()
+            self.mmu.toolhead.wait_moves()
 
             g_stepper = self.mmu.drive().mmu_gear_stepper
             e_stepper = self.mmu.drive().mmu_extruder_stepper
@@ -224,16 +224,16 @@ class DebugStepperMovement:
             self.mmu.log_always(
                 f"Gear steps: {g_steps1 - self.g_steps0:d} = "
                 f"{(g_steps1 - self.g_steps0) * g_stepper.stepper.get_step_dist():.4f}mm, "
-                f"commanded movement: {g_pos1 - self.g_pos0:.4f}mm, "
-                f"manual move: {g_manual_pos1 - self.g_manual_pos0:.4f}mm, "
+                f"stepper.cmd_pos movement: {g_pos1 - self.g_pos0:.4f}mm, "
+                f"cmd_pos movement: {g_manual_pos1 - self.g_manual_pos0:.4f}mm, "
                 f"mode_pos: {g_mode_pos1 - self.g_mode_pos0:.4f}mm"
             )
 
             self.mmu.log_always(
                 f"Extruder steps: {e_steps1 - self.e_steps0:d} = "
                 f"{(e_steps1 - self.e_steps0) * e_stepper.stepper.get_step_dist():.4f}mm, "
-                f"commanded movement: {e_pos1 - self.e_pos0:.4f}mm, "
-                f"manual move: {e_manual_pos1 - self.e_manual_pos0:.4f}mm, "
+                f"stepper.cmd_pos movement: {e_pos1 - self.e_pos0:.4f}mm, "
+                f"cmd_pos movement: {e_manual_pos1 - self.e_manual_pos0:.4f}mm, "
                 f"mode_pos: {e_mode_pos1 - self.e_mode_pos0:.4f}mm"
             )
 

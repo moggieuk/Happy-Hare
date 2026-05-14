@@ -196,7 +196,6 @@ class MmuGenericRail:
 
 
     def lookup_endstop(self, endstop_pin, name, register=True):
-        logging.info(f"PAUL: +++++++++ endstop_pin={endstop_pin}, name={name}, register={register}")
         ppins = self.printer.lookup_object('pins')
         pin_params = ppins.parse_pin(endstop_pin, True, True)
 
@@ -227,21 +226,11 @@ class MmuGenericRail:
 
 
     def set_trapq(self, trapq):
-        logging.info(f"PAUL: >>>> my rail.set_trapq({id(trapq)})")
         self.stepper.set_trapq(trapq)
 
 
     def set_position(self, coord):
-        logging.info(f"PAUL: >>>> my rail.set_position({coord})")
         self.stepper.set_position(coord) # Resets mcu position on underlying MCU_Stepper
-
-
-    def set_dir_inverted(self, direction):
-        """
-        Changes direction of rail. Useful for some MMU designs like
-        3DChameleon or for saved direction calibration
-        """
-        self.stepper.set_dir_inverted(direction)
 
 
     # -------------------------------------------------------------------------
@@ -309,7 +298,6 @@ class MmuGenericRail:
 
         if bind_stepper:
             try:
-                logging.info(f"PAUL: >>>> adding {self.stepper.get_name()} to {mcu_endstop}")
                 mcu_endstop.add_stepper(self.stepper)
             except Exception as e:
                 logging.info("MMU: Not possible to add stepper %s to endstop %s because: %s", self.stepper.get_name(), name, str(e))
@@ -319,6 +307,11 @@ class MmuGenericRail:
             self.query_endstops.register_endstop(mcu_endstop, display_name)
 
         return mcu_endstop
+
+
+    def get_all_endstop_names(self):
+        all_names = ['default'] if self.default_mcu_endstop is not None else []
+        return all_names + self.get_extra_endstop_names()
 
 
     def get_extra_endstop_names(self):
@@ -444,8 +437,7 @@ class MmuStepper(ExtruderStepper):
     cmd_MMU_STEPPER_SET_MODE_help = "Set mode (manual/extruder) for this stepper"
 
 
-    def __init__(self, config, default_mode=MODE_MANUAL):
-        logging.info(f"PAUL: mmu_stepper: {config.get_name()}")
+    def __init__(self, config, default_mode=MODE_MANUAL, force_rail=False):
 
         # ------------------------------------------------------------------
         # ExtruderStepper initialization
@@ -483,7 +475,7 @@ class MmuStepper(ExtruderStepper):
         self.has_default_endstop = config.get('endstop_pin', None) is not None
         self.has_extra_endstops = config.get('extra_endstops', None) is not None
 
-        if self.has_default_endstop or self.has_extra_endstops:
+        if force_rail or self.has_default_endstop or self.has_extra_endstops:
             self.can_home = self.has_default_endstop
             self.rail = MmuLookupRailFromStepper(self.stepper, config, need_position_minmax=False, default_position_endstop=0.)
             self.steppers = self.rail.get_steppers()
@@ -608,7 +600,6 @@ class MmuStepper(ExtruderStepper):
         # Restore manual/cartesian kinematics
         self.stepper.set_stepper_kinematics(self.sk_manual)
         self.stepper.set_position([pos, 0., 0.])
-        logging.info(f"PAUL: >>>> activate_manual_mode set_trapq({id(self.manual_trapq)})")
         self.stepper.set_trapq(self.manual_trapq)
 
         self.commanded_pos = pos
@@ -631,12 +622,10 @@ class MmuStepper(ExtruderStepper):
 
         printer_extruder = self.printer.lookup_object(self.name, None)
         if isinstance(printer_extruder, PrinterExtruder):
-            logging.info(f"PAUL: >>>> is printer_extruder. Restoring position to last_position")
             self.stepper.set_position([printer_extruder.last_position, 0., 0.])
             self.stepper.set_trapq(printer_extruder.trapq)
         else:
             self.stepper.set_position([pos, 0., 0.])
-        logging.info(f"PAUL: >>>> activate_extruder_mode_detached set_trapq {id(self.trapq)})")
 
         self.commanded_pos = pos
         self.motion_mode = self.MODE_EXTRUDER
@@ -649,13 +638,11 @@ class MmuStepper(ExtruderStepper):
         self.flush_step_generation()
 
         # Detach current trapq first
-        logging.info(f"PAUL: >>>> activate_extruder_motion_queue set_trapq(None)")
         self.stepper.set_trapq(None)
 
         # Restore extruder kinematics allocated by stock ExtruderStepper
         self.stepper.set_stepper_kinematics(self.sk_extruder)
         self.stepper.set_position([extruder.last_position, 0., 0.])
-        logging.info(f"PAUL: >>>> setting stepper to trapq {id(extruder.trapq)})")
         self.stepper.set_trapq(extruder.get_trapq())
 
         self.commanded_pos = extruder.last_position
@@ -704,7 +691,6 @@ class MmuStepper(ExtruderStepper):
 
 
     def sync_to_extruder(self, extruder_name):
-        logging.info("PAUL: >>>> my sync_to_extruder")
 
         if not extruder_name:
             self._require_extruder_mode('Sync to extruder')
@@ -742,11 +728,9 @@ class MmuStepper(ExtruderStepper):
         self.flush_step_generation()
         source_pos = source.stepper.get_commanded_position()
 
-        logging.info(f"PAUL: >>>> activate_extruder_motion_queue set_trapq(None)")
         self.stepper.set_trapq(None)
         self.stepper.set_stepper_kinematics(self.sk_manual)
         self.stepper.set_position([source_pos, 0., 0.])
-        logging.info(f"PAUL: >>>> activate_extruder_motion_queue set_trapq({id(source.manual_trapq)})")
         self.stepper.set_trapq(source.manual_trapq)
 
         # Register with the source stepper for set_position() synchronization
@@ -791,8 +775,7 @@ class MmuStepper(ExtruderStepper):
 
 
     def do_set_position(self, setpos):
-        logging.info(f"PAUL: +++++++++ do_set_position({setpos})")
-#PAUL        self._require_standalone_manual_mode("SET_POSITION")
+        #self._require_standalone_manual_mode("SET_POSITION")
         if self.motion_mode == self.MODE_MANUAL and self.manual_motion_queue is None:
             # We are the driving manual stepper
             self.flush_step_generation()

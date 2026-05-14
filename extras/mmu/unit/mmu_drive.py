@@ -5,6 +5,7 @@
 #
 # Goal:
 # Wrapper around mmu_stepper to provides for different drive states of MMU gear and the printer extruder
+# (This is designed to abstract the mmu_stepper which should not really be accessed directly)
 #
 #
 # (\_/)
@@ -26,6 +27,7 @@ class MmuDrive():
 
     def __init__(self, config, mmu_unit, mmu_gear_stepper, mmu_extruder_stepper):
         self.printer = config.get_printer()
+        self.name = mmu_gear_stepper.get_name()
         self.mmu_unit = mmu_unit                         # This physical MMU unit
         self.mmu_machine = mmu_unit.mmu_machine          # Entire Logical combined MMU
         self.mmu_extruder_stepper = mmu_extruder_stepper # ExtruderStepper connected to this mmu drive
@@ -47,7 +49,7 @@ class MmuDrive():
         if mode == self._sync_mode:
             return False
 
-        self.mmu.log_warning(f"PAUL: sync_mode({mode})")
+        self.mmu.log_stepper(f"sync_mode({mode}) for {self.name}")
 
         if mode not in DRIVE_MODE_NAMES:
             raise self.printer.command_error(f"Invalid MMU drive sync mode: {mode}")
@@ -110,7 +112,8 @@ class MmuDrive():
 
     def get_live_filament_position(self):
         """
-        Return the approximate live filament position for dynamic feedback of position
+        Return the approximate live (non-based) filament position for dynamic feedback of position
+        This is a non-based measurement so only useful for relative movement tracking
         """
         mcu_stepper = self._driving_stepper.stepper
         mcu_pos = mcu_stepper.get_mcu_position()
@@ -131,6 +134,14 @@ class MmuDrive():
 
     def is_endstop_virtual(self, endstop):
         return self._driving_stepper.rail.is_endstop_virtual(endstop)
+
+
+    def set_gear_direction(self, direction):
+        """
+        Changes direction of rail. Useful for some MMU designs like
+        3DChameleon or for saved direction calibration
+        """
+        self.mmu_gear_stepper.stepper.set_dir_inverted(direction)
 
 
     # Replace get_status for succinct info pertinent to control of filament movement

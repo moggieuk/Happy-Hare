@@ -180,7 +180,7 @@ class MmuFilamentMovement:
 
         else:  # Gate sensor... SENSOR_SHARED_EXIT is shared, but SENSOR_EXIT_PREFIX is gate specific (can also be SENSOR_EXTRUDER_ENTRY for no bowden designs)
             for i in range(retries):
-                endstop_name = self.sensor_manager.get_mapped_endstop_name(u.p.gate_homing_endstop)
+                endstop_name = self.sensor_manager.get_qualified_endstop_name(u.p.gate_homing_endstop)
                 msg = ("Initial homing to %s sensor" % endstop_name) if i == 0 else ("Retry homing to gate sensor (retry #%d)" % i)
                 h_dir = -1 if u.p.gate_parking_distance < 0 and self.sensor_manager.check_sensor(endstop_name) else 1
                 actual, homed, measured, _ = self.move_filament(msg, h_dir * u.p.gate_homing_max, motor="gear", homing_move=h_dir, endstop_name=endstop_name)
@@ -246,7 +246,7 @@ class MmuFilamentMovement:
                 _,_,_,_ = self.move_filament("Bowden safety pre-unload move", -length, motor="gear+extruder")
 
             else:
-                endstop_name = self.sensor_manager.get_mapped_endstop_name(u.p.gate_homing_endstop)
+                endstop_name = self.sensor_manager.get_qualified_endstop_name(u.p.gate_homing_endstop)
                 homing_movement, homed, _, _ = self.move_filament(
                     "Bowden safety pre-unload move",
                     -length,
@@ -291,7 +291,7 @@ class MmuFilamentMovement:
         else:  # Using mmu_shared_exit or mmu_exit_N sensor
 
             # Precaution: reverse home off gate sensor
-            endstop_name = self.sensor_manager.get_mapped_endstop_name(u.p.gate_homing_endstop)
+            endstop_name = self.sensor_manager.get_qualified_endstop_name(u.p.gate_homing_endstop)
             homing_movement, homed, _, _ = self.move_filament(
                 f"Reverse homing off {endstop_name} sensor",
                 -homing_max,
@@ -1637,30 +1637,10 @@ class MmuFilamentMovement:
 #        except Exception as e:
 #            self.log_error("Failed to unsync previous gear '%s': %s" % (old_gear.full_name, str(e)))
 #
-#
-#    def on_selected_extruder_changed(self, old, new):
-#        """
-#        Called when the active PrinterExtruder changes.
-#
-#        If the selected extruder changes, detach the currently selected gear
-#        from the old extruder using the official drive-sync transition path.
-#        """
-#        if old is None or old is new:
-#            return
-#
-#        gear = self.drive()
-#        try:
-#            old_name = old.get_name()
-#            self.log_warning(f"PAUL: sync_mode({DRIVE_UNSYNCED}, {old_name})")
-#            gear.sync_mode(DRIVE_UNSYNCED, old_name)
-#
-#        except Exception as e:
-#            self.log_error("Failed to unsync gear '%s' after extruder change: %s" % (gear.full_name, str(e)))
-
 
     def _resolve_filament_move_speed(self, dist, motor, homing_move, speed, accel, speed_override=True):
         """
-        Direct port of previous speed selection logic.
+        Determine best speed and accelaration for move type
         """
         u = self.mmu_unit()
 
@@ -1711,55 +1691,35 @@ class MmuFilamentMovement:
         return speed, accel
 
 
-    def _move_active_gear_stepper(self, gear, dist, speed, accel, homing_move=0, endstop_name="default"):
+    def _move_mmu_stepper(self, stepper, dist, speed, accel, homing_move=0, endstop_name="default"):
         """
-        Execute a relative move on the selected gear MmuStepper.
+        Execute a relative move on the selected MmuStepper.
         Returns: actual, homed
         """
-        start_pos = gear.get_mode_position()
+        start_pos = stepper.get_mode_position()
         target_pos = start_pos + dist
 
         if homing_move != 0:
-            home_result = gear.do_homing_move(target_pos, speed, accel, probe_pos=True, triggered=(homing_move > 0), check_trigger=True, endstop_name=endstop_name)
+            home_result = stepper.do_homing_move(target_pos, speed, accel, probe_pos=True, triggered=(homing_move > 0), check_trigger=True, endstop_name=endstop_name)
 
-            halt_pos = gear.get_mode_position()
+            halt_pos = stepper.get_mode_position()
             actual = halt_pos - start_pos
             homed = True
 
-            # PAUL check
-            # Old code kept special virtual endstop logic:
-            #
-            # if self.gear_rail().is_endstop_virtual(endstop_name):
-            #     if abs(trig_pos[1] - dist) < 1.0:
-            #         homed = False
-            #
-            # New MmuStepper.do_homing_move() returns:
-            #   { "trig_pos": ..., "halt_pos": ..., "move_pos": ... }
-            # but exact virtual-endstop interpretation may still need tuning.
-            if isinstance(home_result, dict) and hasattr(gear, 'rail') and hasattr(gear.rail, 'is_endstop_virtual'):
-                try:
-                    if gear.rail.is_endstop_virtual(endstop_name):
-                        trig_rel = home_result["trig_pos"] - start_pos
-                        if abs(trig_rel - dist) < 1.0:
-                            homed = False
-                except Exception:
-                    pass
+            try:
+                if stepper.rail.is_endstop_virtual(endstop_name):
+                    trig_rel = home_result["trig_pos"] - start_pos
+                    # Stallguard doesn't do well at slow speed. Try to infer move completion
+                    if abs(trig_rel - dist) < 1.0:
+                        homed = False
+            except Exception:
+                pass
 
             return actual, homed
 
-        gear.do_move(target_pos, speed, accel, sync=False)
+        stepper.do_move(target_pos, speed, accel)
         return dist, False
 
-
-    def _move_active_extruder(self, dist, speed, accel):
-        """
-        Standard extruder-led move for motor='synced'.
-        """
-        ext_pos = self.toolhead.get_position()
-        ext_pos[3] += dist
-# PAUL do we want to wrap on default toolhead?                    with self.wrap_accel(accel):
-        self.toolhead.move(ext_pos, speed)
-        return dist
 
 
     # Convenience wrapper around all gear and extruder motor movement that retains sync state, tracks movement and creates trace log
@@ -1795,6 +1755,7 @@ class MmuFilamentMovement:
         u = self.mmu_unit()
         drive = self.drive()
         extruder_name = self.mmu_unit().extruder_name()
+        ext_pos = self.toolhead.get_position()
 
         encoder_start = self.get_encoder_distance(dwell=encoder_dwell)
         homed = False
@@ -1806,25 +1767,15 @@ class MmuFilamentMovement:
             self.log_assertion("Invalid motor specification '%s'" % motor)
             return null_rtn
 
-        try:
             if homing_move != 0:
-
                 # Check for valid endstop
-                if motor == "synced":
-                    self.log_assertion("Not possible to perform homing move while synced")
-                    return null_rtn
-
-                endstop_name = self.sensor_manager.get_mapped_endstop_name(endstop_name)
+                endstop_name = self.sensor_manager.get_qualified_endstop_name(endstop_name)
                 if not drive.has_endstop(endstop_name):
                     self.log_error(f"Endstop '{endstop_name}' not found")
                     return null_rtn
 
-            # Determine speed
-            speed, accel = self._resolve_filament_move_speed(dist, motor, homing_move, speed, accel, speed_override=speed_override)
-
-        except Exception as e:
-            self.log_error(str(e))
-            return null_rtn
+        # Determine speed
+        speed, accel = self._resolve_filament_move_speed(dist, motor, homing_move, speed, accel, speed_override=speed_override)
 
         with self._wrap_espooler(motor, dist, speed, accel, homing_move):
             wait = wait or self._wait_for_espooler
@@ -1855,31 +1806,24 @@ class MmuFilamentMovement:
 
                 start_pos = drive.get_filament_position()
 
-                # Gear-side move authority
+                # Manual stepper move authority
                 if motor in ["gear", "gear+extruder", "extruder"]:
-                    if self.log_enabled(LOG_STEPPER):
-                        if homing_move != 0:
-                            self.log_stepper("%s HOMING MOVE: max dist=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s, wait=%s" % (
-                                motor.upper(), dist, speed, accel, endstop_name, wait))
-                        else:
-                            self.log_stepper("%s MOVE: dist=%.1f, speed=%.1f, accel=%.1f, wait=%s" % (
-                                motor.upper(), dist, speed, accel, wait))
 
-                    actual, homed = self._move_active_gear_stepper(drive.driving_stepper(), dist, speed, accel, homing_move=homing_move, endstop_name=endstop_name)
+                    if homing_move != 0:
+                        # Check for valid endstop
+                        endstop_name = self.sensor_manager.get_qualified_endstop_name(endstop_name)
+                        if not drive.has_endstop(endstop_name):
+                            self.log_error(f"Endstop '{endstop_name}' not found")
+                            return null_rtn
 
-                    # PAUL check logic...
-                    # Old special-case logic:
-                    #
-                    # if motor == "extruder" and not u.extruder_wrapper.homing_extruder:
-                    #     halt_pos[1] += ext_actual
-                    #     self.mmu_toolhead().set_position(halt_pos)
-                    #
-                    # With the new MmuStepper design this may or may not still be necessary
-                    # depending on how you want "extruder only on gear rail" to define
-                    # positional authority. Leaving this comment so you can reintroduce
-                    # any correction if required.
+                    if homing_move != 0:
+                        self.log_stepper("%s HOMING MOVE: max dist=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s, wait=%s" % (motor.upper(), dist, speed, accel, endstop_name, wait))
+                    else:
+                        self.log_stepper("%s MOVE: dist=%.1f, speed=%.1f, accel=%.1f, wait=%s" % (motor.upper(), dist, speed, accel, wait))
 
-                # Extruder-side move authority
+                    actual, homed = self._move_mmu_stepper(drive.driving_stepper(), dist, speed, accel, homing_move=homing_move, endstop_name=endstop_name)
+
+                # Normal extruder-side move authority
                 elif motor == "synced":
                     if homing_move != 0:
                         self.log_error("Not possible to perform homing move while synced")
@@ -1888,10 +1832,9 @@ class MmuFilamentMovement:
                     if self.log_enabled(LOG_STEPPER):
                         self.log_stepper("%s MOVE: dist=%.1f, speed=%.1f, accel=%.1f, wait=%s" % (motor.upper(), dist, speed, accel, wait))
 
-# PAUL
-#                    with self.wrap_accel(accel):
-#                        actual = self._move_active_extruder(dist, speed)
-                    actual = self._move_active_extruder(dist, speed, accel)
+                    ext_pos[3] += dist
+                    self.toolhead.move(ext_pos, speed)
+                    actual = dist
 
                 if wait:
                     self.movequeue_wait()
@@ -1998,7 +1941,7 @@ class MmuFilamentMovement:
 #            if endstop_name is None:
 #                endstops = self.gear_rail().get_endstops()
 #            else:
-#                endstop_name = self.sensor_manager.get_mapped_endstop_name(endstop_name)
+#                endstop_name = self.sensor_manager.get_qualified_endstop_name(endstop_name)
 #                endstops = self.gear_rail().get_extra_endstop(endstop_name)
 #                if endstops is None:
 #                    self.log_error("Endstop '%s' not found" % endstop_name)
@@ -2306,7 +2249,7 @@ class MmuFilamentMovement:
 
         ts = self.sensor_manager.check_sensor(SENSOR_TOOLHEAD)
         es = self.sensor_manager.check_sensor(SENSOR_EXTRUDER_ENTRY)
-        gs = self.sensor_manager.check_sensor(self.sensor_manager.get_mapped_endstop_name(u.p.gate_homing_endstop))
+        gs = self.sensor_manager.check_sensor(self.sensor_manager.get_qualified_endstop_name(u.p.gate_homing_endstop))
 
         filament_detected = self.sensor_manager.check_any_sensors_in_path()
         looks_loaded = self.sensor_manager.check_all_sensors_in_path()

@@ -132,12 +132,7 @@ class MmuTestCommand(BaseCommand):
         mmu_unit = mmu.mmu_unit()
         mmu_machine = mmu.mmu_machine
 
-        mmu.log_to_file(gcmd.get_commandline())
         if self.check_if_disabled():
-            return
-
-        if gcmd.get_int('HELP', 0, minval=0, maxval=1):
-            mmu.log_always(mmu.format_help(self.cmd_MMU_TEST_param_help), color=True)
             return
 
         def log(msg):
@@ -737,7 +732,7 @@ class MmuTestCommand(BaseCommand):
                     accel = random.randint(50, 1000)
                     motor = random.choice(["gear", "gear+extruder", "extruder"])
                     w = random.randint(0, 1) if wait is None else wait
-                    if select and mmu_machine.multigear:
+                    if select and mmu_unit.multigear:
                         if random.randint(0, 1):
                             gate = random.randint(0, mmu.num_gates - 1)
                             log("Selecting gate: %d" % gate)
@@ -752,16 +747,11 @@ class MmuTestCommand(BaseCommand):
                         mmu.gcode.run_script_from_command("G1 E%.2f F%d" % (move, speed * 60))
                     elif move_type == 3:
                         log("Loop: %d - Regular mmu move: %.1fmm, MOTOR=%s" % (i, move, motor))
-                        mmu.gcode.run_script_from_command(
-                            "MMU_TEST_MOVE MOTOR=%s MOVE=%.2f SPEED=%d WAIT=%d" % (motor, move, speed, w)
-                        )
+                        mmu.gcode.run_script_from_command("MMU_TEST_MOVE MOTOR=%s MOVE=%.2f SPEED=%d WAIT=%d" % (motor, move, speed, w))
                         total += move
                     elif move_type in (4, 5, 6):
                         log("Loop: %d - HOMING MOVE: %.1fmm, MOTOR=%s" % (i, move, motor))
-                        mmu.gcode.run_script_from_command(
-                            "MMU_TEST_HOMING_MOVE MOTOR=%s MOVE=%.2f SPEED=%d ENDSTOP=%s STOP_ON_ENDSTOP=1" %
-                            (motor, move, speed, endstop)
-                        )
+                        mmu.gcode.run_script_from_command("MMU_TEST_HOMING_MOVE MOTOR=%s MOVE=%.2f SPEED=%d ENDSTOP=%s STOP_ON_ENDSTOP=1" % (motor, move, speed, endstop))
                         total += move
                     elif move_type == 7:
                         if random.randint(0, 1):
@@ -781,9 +771,7 @@ class MmuTestCommand(BaseCommand):
                         mmu.gcode.run_script_from_command("RESTORE_GCODE_STATE NAME=mmu_test")
                     elif move_type == 10:
                         log("Loop: %d - Synced extruder movement: %.1fmm" % (i, move))
-                        mmu.gcode.run_script_from_command(
-                            "MMU_TEST_MOVE MOTOR=synced MOVE=%.2f SPEED=%d WAIT=%d" % (move, speed, w)
-                        )
+                        mmu.gcode.run_script_from_command("MMU_TEST_MOVE MOTOR=synced MOVE=%.2f SPEED=%d WAIT=%d" % (move, speed, w))
                     else:
                         sync_mode = mmu.drive().get_status(0)['sync_mode']
                         sync = "---" if sync_mode == DRIVE_UNSYNCED else (
@@ -863,7 +851,7 @@ class MmuTestCommand(BaseCommand):
                 for i in range(loop):
                     mmu.log_info("Loop: %d" % i)
                     w = random.randint(0, 1) if wait is None else wait
-                    if mmu_machine.multigear:
+                    if mmu_unit.multigear:
                         mmu.select_gate(random.randint(0, mmu.num_gates - 1))
                     stop_on_endstop = random.choice([-1, 1])
                     motor = "gear+extruder" if random.randint(0, mix) else "extruder"
@@ -902,7 +890,7 @@ class MmuTestCommand(BaseCommand):
                 for i in range(loop):
                     mmu.log_info("Loop: %d" % i)
                     w = random.randint(0, 1) if wait is None else wait
-                    if mmu_machine.multigear:
+                    if mmu_unit.multigear:
                         mmu.select_gate(random.randint(0, mmu.num_gates - 1))
                     stop_on_endstop = random.choice([-1, 1])
                     motor = "gear"
@@ -928,7 +916,7 @@ class MmuTestCommand(BaseCommand):
                 for i in range(loop):
                     mmu.log_info("Loop: %d" % i)
                     w = random.randint(0, 1) if wait is None else wait
-                    if mmu_machine.multigear and select:
+                    if mmu_unit.multigear and select:
                         mmu.select_gate(random.randint(0, mmu.num_gates - 1))
                     mmu.gcode.run_script_from_command("M83")
                     mmu.gcode.run_script_from_command("G1 E1 F300")
