@@ -14,7 +14,7 @@
 import random, logging, math
 
 # Happy Hare imports
-from ...mmu_stepper     import MmuStepper
+from ...mmu_stepper     import MmuGenericRail
 from ..mmu_constants    import *
 from ..mmu_utils        import MmuError, PurgeVolCalculator, DebugStepperMovement
 from ..unit.mmu_sensors import MmuSensors
@@ -1016,13 +1016,26 @@ class MmuTestCommand(BaseCommand):
 
                 def get_mcu_endstops_sorted():
                     return sorted(
-                        MmuStepper.mcu_endstops,
+                        MmuGenericRail.mcu_endstop_tracking,
                         key=lambda es: (es.get_mcu().get_name(), es._pin)
                     )
 
-                for es in get_mcu_endstops_sorted():
-                    s = f"({es.get_mcu().get_name()},{es._pin},{id(es)})"
-                    mmu.log_always(f"{s:<30} Steppers: {', '.join(st.get_name(short=True).split()[-1] for st in es.get_steppers())}")
+                msg = ""
+                for es, names in sorted(
+                    MmuGenericRail.mcu_endstop_tracking.items(),
+                    key=lambda item: (
+                        item[0].get_mcu().get_name(),
+                        item[0]._pin
+                    )
+                ):
+                    for en in names:
+                        s = f"{en}({es.get_mcu().get_name()},{es._pin},{id(es)})"
+                        msg += (
+                            f"{s:<54} Steppers: "
+                            f"{', '.join(st.get_name(short=True).split()[-1] for st in es.get_steppers())}\n"
+                        )
+
+                mmu.log_always(msg)
 
 
             if not have_run_test:

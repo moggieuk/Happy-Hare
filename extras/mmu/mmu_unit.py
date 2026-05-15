@@ -30,6 +30,7 @@ from itertools                          import chain
 # Klipper imports
 
 # Happy Hare imports
+from ..mmu_stepper                      import MmuStepper
 from .mmu_constants                     import *
 from .unit.mmu_encoder                  import MmuEncoder
 from .unit.mmu_buffer                   import MmuBuffer
@@ -68,7 +69,6 @@ class MmuUnit:
         self.first_gate = first_gate
         self.name = config.get_name().split()[-1]
         self.printer = config.get_printer()
-        logging.info("PAUL: ++++ init() for MmuUnit: %s" % self.name)
 
         self.num_gates = config.getint('num_gates')
         self.mmu_vendor = config.getchoice('vendor', {o: o for o in VENDORS}, VENDOR_OTHER)
@@ -83,7 +83,9 @@ class MmuUnit:
         self.display_name = config.get('display_name', UNIT_ALT_DISPLAY_NAMES.get(self.mmu_vendor, self.mmu_vendor))
 
 
-        # Determine default MMU "design" based on vendor ----------------------------------------------
+        # ---------------------------------------------------------------------------------------------------
+        # Determine default MMU "design" based on vendor
+        # ---------------------------------------------------------------------------------------------------
 
         @dataclass(frozen=True)
         class MmuUnitProfile:
@@ -93,12 +95,12 @@ class MmuUnit:
             require_bowden_move: bool = True         # Does design require "bowden move" (i.e. non zero length bowden)
             filament_always_gripped: bool = False    # Is filament always gripped by MMU (overrides gear/extruder syncing assumptions)
             can_crossload: bool = True               # Does selector mechanism allow selection of gates when filament is loaded (implied for type-B designs)
-            has_bypass: bool = False                 # Does design has selectable filament bypass (only type-A and type-C). Only one allowed per mmu_machine!
+            show_bypass: bool = False                # Does design has selectable filament bypass (only type-A and type-C). Only one allowed per mmu_machine!
 
         DEF_PROFILE = MmuUnitProfile()
 
         VENDOR_PROFILES = {
-            VENDOR_ERCF:         replace(DEF_PROFILE, selector_type=SELECTOR_LINEAR_SERVO, can_crossload=False, has_bypass=True),
+            VENDOR_ERCF:         replace(DEF_PROFILE, selector_type=SELECTOR_LINEAR_SERVO, can_crossload=False, show_bypass=True),
             VENDOR_TRADRACK:     replace(DEF_PROFILE, selector_type=SELECTOR_LINEAR_SERVO, variable_rotation_distances=False, can_crossload=False),
             VENDOR_ANGRY_BEAVER: replace(DEF_PROFILE, require_bowden_move=False, filament_always_gripped=True),
             VENDOR_BOX_TURTLE:   replace(DEF_PROFILE, filament_always_gripped=True),
@@ -125,12 +127,14 @@ class MmuUnit:
         self.require_bowden_move =         bool(config.getint('require_bowden_move', profile.require_bowden_move))
         self.filament_always_gripped =     bool(config.getint('filament_always_gripped', profile.filament_always_gripped))
         self.can_crossload =               bool(config.getint('can_crossload', profile.can_crossload))
-        self.has_bypass =                  bool(config.getint('has_bypass', profile.has_bypass))
+        self.show_bypass =                 bool(config.getint('show_bypass', profile.show_bypass))
 
         self.multigear = isinstance(self.selector_type, VirtualSelector) # Covers all derivatives including type-c MMU's
 
 
-        # Optional heater and evironment sensors --------------------------------------------------
+        # ---------------------------------------------------------------------------------------------------
+        # Optional heater and evironment sensors
+        # ---------------------------------------------------------------------------------------------------
 
         self.environment_sensor = config.get('environment_sensor', '')
         self.filament_heater    = config.get('filament_heater', '')
@@ -158,7 +162,9 @@ class MmuUnit:
                     raise config.error("Object '%s' could not be loaded as a valid heater or environment sensor in [mmu_machine]\nError: %s" % (obj_name, str(e)))
 
 
-        # MMU Extruder ----------------------------------------------------------------------
+        # ---------------------------------------------------------------------------------------------------
+        # MMU Extruder
+        # ---------------------------------------------------------------------------------------------------
 
         # Create extruder wrapper (may be shared so check for existence first)
         # This encapsulates extruder stepper control and filament remaining
@@ -174,7 +180,9 @@ class MmuUnit:
             self.extruder_wrapper.add_unit(self)
 
 
-        # MMU Drive (Gears) -----------------------------------------------------------------
+        # ---------------------------------------------------------------------------------------------------
+        # MMU Drive (Gears)
+        # ---------------------------------------------------------------------------------------------------
 
         if self.multigear:
             self.mmu_gear_names = list(config.getlist('gear_steppers'))
@@ -201,14 +209,51 @@ class MmuUnit:
             raise config.error("Gear stepper TMC configuration not found for %s on mmu_unit %s" % (base_gear, self.name))
 
         if self.multigear:
-            pass # PAUL lots to do here
+            for i in range(1, self.num_gates):
+                section = self.extra_gear_steppers[i - 1]
+                if not config.has_section(section):
+                    raise config.error("Gear stepper configuration [%s] not found for mmu_unit %s" % (section, self.name))
+                    break
 
+                # Share base stepper config section with extra steppers
+                stepper_section = self.gear_steppers[i - 1]
+                for key in SHAREABLE_STEPPER_PARAMS:
+                    if not config.fileconfig.has_option(stepper_section, key) and config.fileconfig.has_option(self.gear_stepper, key):
+                        base_value = config.fileconfig.get(self.gear_stepper, key)
+                        if base_value:
+                            logging.info("MMU: Sharing gear stepper config %s=%s with [%s]" % (key, base_value, stepper_section))
+                            config.fileconfig.set(stepper_section, key, base_value)
+
+                # If tmc controller for this extra stepper matches the base we can fill in missing TMC config
+                tmc_section = '%s %s' % (base_gear_tmc_chip, stepper_section)
+                if config.has_section(tmc_section):
+                    for key in SHAREABLE_TMC_PARAMS:
+                        if config.fileconfig.has_option(base_tmc_section, key) and not config.fileconfig.has_option(tmc_section, key):
+                            base_value = config.fileconfig.get(base_tmc_section, key)
+                            if base_value:
+                                logging.info("MMU: Sharing gear tmc config %s=%s with [%s]" % (key, base_value, tmc_section))
+                                config.fileconfig.set(tmc_section, key, base_value)
+                    _ = self.printer.load_object(config, tmc_section) # Load extra gear stepper now
+                    logging.info("MMU: Loaded: [%s]" % tmc_section)
+                else:
+                    # Regardless of tmc chip type, find and try to load all extra gear steppers (may be complete config on different TMC)
+                    for chip in TMC_CHIPS:
+                        alt_tmc_section = '%s %s' % (chip, stepper_section)
+                        if config.has_section(alt_tmc_section):
+                            _ = self.printer.load_object(config, alt_tmc_section)
+                            logging.info("MMU: Loaded: [%s]" % alt_tmc_section)
+                            break
+
+        # Now load the mmu_steppers and create control wrappers
         self.drives = []
         drive = None
         for i, sname in enumerate(self.mmu_gear_names):
             if drive is None or self.multigear:
                 section = f"mmu_stepper {sname}"
-                gear = self.printer.load_object(config, section)
+                # Force load now to force_rail=True [aka gear = self.printer.load_object(config, section)]
+                c = config.getsection(section)
+                gear = MmuStepper(c, default_mode='manual', force_rail=True)
+                self.printer.add_object(c.get_name(), gear)
                 logging.info(f"MMU: Loaded: [{section}]")
                 drive = MmuDrive(config, self, gear, self.extruder_wrapper.homing_extruder_stepper)
 
@@ -216,70 +261,9 @@ class MmuUnit:
             self.drives.append(drive)
 
 
-#        # MMU Kinematics --------------------------------------------------------------------
-#
-#        self.gear_stepper        = config.get('gear_stepper', None)     # Name of base gear stepper (always present)
-#        self.extra_gear_steppers = config.getlist('extra_gear_steppers', [])
-#        if self.multigear and len(self.extra_gear_steppers) != self.num_gates - 1:
-#            raise config.error("extra_gear_steppers is not the correct length, expected %d elements" % self.num_gates - 1)
-#
-#        # Find the TMC controller for base gear stepper so we can fill in missing config for other matching steppers
-#        # and ensure all gear steppers can be loaded
-#        gear_tmc = None
-#        base_gear_tmc_chip = base_tmc_section = None
-#        for chip in TMC_CHIPS:
-#            base_tmc_section = '%s %s' % (chip, self.gear_stepper)
-#            if config.has_section(base_tmc_section):
-#                base_gear_tmc_chip = chip
-#                gear_tmc = self.printer.load_object(config, base_tmc_section) # Load base gear stepper now
-#                logging.info("MMU: Loaded: [%s]" % base_tmc_section)
-#                break
-#
-#        if gear_tmc is None:
-#            raise config.error("Gear stepper TMC configuration not found for %s on mmu_unit %s" % (self.gear_stepper, self.name))
-#
-#        if self.multigear:
-#            for i in range(1, self.num_gates):
-#                section = self.extra_gear_steppers[i - 1]
-#                if not config.has_section(section):
-#                    raise config.error("Gear stepper configuration [%s] not found for mmu_unit %s" % (section, self.name))
-#                    break
-#
-#                # Share base stepper config section with extra steppers
-#                stepper_section = self.gear_steppers[i - 1]
-#                for key in SHAREABLE_STEPPER_PARAMS:
-#                    if not config.fileconfig.has_option(stepper_section, key) and config.fileconfig.has_option(self.gear_stepper, key):
-#                        base_value = config.fileconfig.get(self.gear_stepper, key)
-#                        if base_value:
-#                            logging.info("MMU: Sharing gear stepper config %s=%s with [%s]" % (key, base_value, stepper_section))
-#                            config.fileconfig.set(stepper_section, key, base_value)
-#
-#                # If tmc controller for this extra stepper matches the base we can fill in missing TMC config
-#                tmc_section = '%s %s' % (base_gear_tmc_chip, stepper_section)
-#                if config.has_section(tmc_section):
-#                    for key in SHAREABLE_TMC_PARAMS:
-#                        if config.fileconfig.has_option(base_tmc_section, key) and not config.fileconfig.has_option(tmc_section, key):
-#                            base_value = config.fileconfig.get(base_tmc_section, key)
-#                            if base_value:
-#                                logging.info("MMU: Sharing gear tmc config %s=%s with [%s]" % (key, base_value, tmc_section))
-#                                config.fileconfig.set(tmc_section, key, base_value)
-#                    _ = self.printer.load_object(config, tmc_section) # Load extra gear stepper now
-#                    logging.info("MMU: Loaded: [%s]" % tmc_section)
-#                else:
-#                    # Regardless of tmc chip type, find and try to load all extra gear steppers (may be complete config on different TMC)
-#                    for chip in TMC_CHIPS:
-#                        alt_tmc_section = '%s %s' % (chip, stepper_section)
-#                        if config.has_section(alt_tmc_section):
-#                            _ = self.printer.load_object(config, alt_tmc_section)
-#                            logging.info("MMU: Loaded: [%s]" % alt_tmc_section)
-#                            break
-#
-#        # Now we have all the parts to create MmuToolHead
-#        self.mmu_toolhead = MmuToolHead(config, self)
-#        logging.info("MMU: Created: Toolhead for %s" % self.name)
-
-
-        # Load subcomponents --------------------------------------------------------------------------------
+        # ---------------------------------------------------------------------------------------------------
+        # Load subcomponents
+        # ---------------------------------------------------------------------------------------------------
 
         # Load parameters config for this unit
         params = c = config.getsection('mmu_unit_parameters %s' % self.name)
@@ -411,54 +395,90 @@ class MmuUnit:
         ]
 
 
-        # Setup necessary filament sensors as homing endstops -----------------------------------------------
+        # ---------------------------------------------------------------------------------------------------
+        # Setup endstops for gear and extruder steppers
+        # ---------------------------------------------------------------------------------------------------
 
-        def iter_endstop_sensors():
+        ANALOG_ENDSTOP_SENSOR_TYPES = {"MmuAdcSwitchSensor", "MmuHallEndstop"}
+        EXTRUDER_EXTRA_ENDSTOPS = [SENSOR_TOOLHEAD, SENSOR_COMPRESSION, SENSOR_TENSION]
+
+        def iter_endstop_sensors(per_gate=True):
             if self.sensors is None:
                 return ()
 
-            return (
-                sensor
-                for sensor in chain(
+            if per_gate:
+                sensor_groups = (
                     (self.sensors.entry_sensors or {}).values(),
                     (self.sensors.exit_sensors or {}).values(),
+                )
+            else:
+                sensor_groups = (
                     [self.sensors.shared_exit_sensor],
                     [self.buffer.compression_sensor] if self.buffer else [],
                     [self.buffer.tension_sensor] if self.buffer else [],
                     (self.toolhead_wrapper.sensors or {}).values(),
                 )
+
+            return (
+                sensor
+                for sensor in chain(*sensor_groups)
                 if sensor is not None
             )
 
-        drives = self.drives if self.multigear else self.drives[:1]
 
-        for sensor in iter_endstop_sensors():
+        def add_sensor_endstop(sensor, drives):
             sensor_name = sensor.runout_helper.name
             sensor_pin = sensor.runout_helper.switch_pin
 
-            if sensor.__class__.__name__ in ["MmuAdcSwitchSensor", "MmuHallEndstop"]:
-                logging.info("MMu: Creating analog endstop on {self.name}, sensor={sensor_name}")
-                for d in drives:
-                    g = d.mmu_gear_stepper
-                    mcu_endstop = g.rail.add_extra_endstop(sensor_pin, sensor_name, mcu_endstop=sensor)
+            is_analog_endstop = sensor.__class__.__name__ in ANALOG_ENDSTOP_SENSOR_TYPES
+            mcu_endstop = None
+            drive_names = ", ".join(drive.name for drive in drives)
+
+            if is_analog_endstop:
+                for drive in drives:
+                    gear = drive.mmu_gear_stepper
+                    mcu_endstop = gear.rail.add_extra_endstop(sensor_pin, sensor_name, mcu_endstop=sensor)
+
+                logging.info(f"MMU: Created analog endstop on stepper {drive_names} for {self.name} using {sensor_name}")
 
             else:
-                # Add sensor pin as an extra endstop for each gear stepper
-                logging.info(f"MMU: Creating gear endstop(s) on {self.name}, sensor={sensor_name}")
-                ppins = self.printer.lookup_object('pins')
                 pin_params = ppins.parse_pin(sensor_pin, True, True)
-                share_name = "%s:%s" % (pin_params['chip_name'], pin_params['pin'])
+                share_name = "%s:%s" % (pin_params["chip_name"], pin_params["pin"])
                 ppins.allow_multi_use_pin(share_name)
-                for d in drives:
-                    g = d.mmu_gear_stepper
-                    mcu_endstop = g.rail.add_extra_endstop(sensor_pin, sensor_name)
 
-            # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
-            # otherwise the extruder can continue to move a small (speed dependent) distance
-            simple_sensor_name = sensor_name.split(":", 1)[-1] # Note: duplicate of namespace convention in MmuSensorManager
-            if self.extruder_wrapper.homing_extruder_stepper is not None and simple_sensor_name in [SENSOR_TOOLHEAD, SENSOR_COMPRESSION, SENSOR_TENSION]:
-                logging.info(f"MMU: Creating extruder endstop for extruder {self.extruder_name()} on {self.name}, sensor={sensor_name}")
-                mcu_endstop.add_stepper(self.extruder_wrapper.homing_extruder_stepper.stepper)
+                for drive in drives:
+                    gear = drive.mmu_gear_stepper
+                    mcu_endstop = gear.rail.add_extra_endstop(sensor_pin, sensor_name)
+
+                logging.info(f"MMU: Created endstop on stepper {drive_names} for {self.name} using {sensor_name}")
+
+            return mcu_endstop
+
+
+        ext = self.extruder_wrapper.homing_extruder_stepper
+        ppins = self.printer.lookup_object("pins")
+
+        for sensor in iter_endstop_sensors(per_gate=True):
+            sensor_name = sensor.runout_helper.name
+            lgate = int(sensor_name.split("_")[-1])
+            drives = [self.drives[lgate]] if self.multigear else self.drives[:1]
+            add_sensor_endstop(sensor, drives)
+
+        for sensor in iter_endstop_sensors(per_gate=False):
+            sensor_name = sensor.runout_helper.name
+            drives = self.drives if self.multigear else self.drives[:1]
+
+            mcu_endstop = add_sensor_endstop(sensor, drives)
+
+            # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing.
+            # Otherwise the extruder can continue to move a small 2-3mm, speed-dependent, distance.
+            # These sensors are shared by the unit and not per-gear.
+            simple_sensor_name = sensor_name.split(":", 1)[-1]
+
+            if (mcu_endstop is not None and simple_sensor_name in EXTRUDER_EXTRA_ENDSTOPS):
+                ext.rail.add_extra_endstop("", sensor_name, register=False, mcu_endstop=mcu_endstop)
+
+                logging.info(f"MMU: Created endstop on stepper {self.extruder_name()} for {self.name} using {sensor_name}")
 
 
         # Event handlers
@@ -466,11 +486,10 @@ class MmuUnit:
 
 
     def handle_connect(self):
-        logging.info("PAUL: ==== handle_connect() for MmuUnit %s" % self.name)
         self.mmu = self.mmu_machine.mmu_controller # Master MMU controller
 
         # Find and record all gear steppers, controlling tmc chip (if available) and default current indexed by gate
-        self.mmu_gear_tmcs = [] # PAUL may be able to do this in init()
+        self.mmu_gear_tmcs = []
         self.mmu_gear_currents = []
 
         for name in self.mmu_gear_names:
@@ -523,6 +542,9 @@ class MmuUnit:
     def has_heater(self):
         return self.filament_heater or self.filament_heaters
 
+    def has_bypass(self):
+        return self.show_bypass or self.selector.has_bypass()
+
     def motors_onoff(self, on=False, motor="all"):
         if motor in ["all", "gear", "gears"]:
             drives = self.drives if motor == "gears" else [self.drives[0]]
@@ -541,7 +563,7 @@ class MmuUnit:
         if not isinstance(gate, int): return False
         if gate == TOOL_GATE_UNKNOWN:
             return True
-        if gate == TOOL_GATE_BYPASS and self.selector.has_bypass(): # PAUL check has_bypass logic
+        if gate == TOOL_GATE_BYPASS and self.selector.has_bypass():
             return True
         return (self.first_gate <= gate < self.first_gate + self.num_gates)
 
@@ -751,12 +773,12 @@ class MmuUnit:
 
 
     def _move_gear_motor(self, lgate, msg, move):
-        mmu.log_warning(f"PAUL: move_gear_motor(lgate={lgate}, msg={msg}, move={move}")
+        mmu.log_warning(f"TODO: move_gear_motor(lgate={lgate}, msg={msg}, move={move}")
         # TODO future impl with no-toolhead logic
 
 
     def _home_gear_motor(self, lgate, msg, move, homing_move, endstop_name):
-        mmu.log_warning(f"PAUL: home_gear_motor(lgate={lgate}, msg={msg}, move={move}, homing_move={homing_move}, endstop_name={endstop_name})")
+        mmu.log_warning(f"TODO: home_gear_motor(lgate={lgate}, msg={msg}, move={move}, homing_move={homing_move}, endstop_name={endstop_name})")
         # TODO future impl with no-toolhead logic
 
 
@@ -776,7 +798,7 @@ class MmuUnit:
             'variable_bowden_lengths': self.variable_bowden_lengths,
             'require_bowden_move': self.require_bowden_move,
             'filament_always_gripped': self.filament_always_gripped,
-            'has_bypass': self.has_bypass,
+            'has_bypass': self.has_bypass(),
             'can_crossload': self.can_crossload,
             'multi_gear': self.multigear,
         }

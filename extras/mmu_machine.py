@@ -63,7 +63,7 @@ class MmuMachine:
             self.unit_by_name[name] = unit
             self.unit_by_gate[self.num_gates:self.num_gates + unit.num_gates] = [unit] * unit.num_gates
             self.unit_status["unit_%d" % i] = unit.get_status(0)
-            if unit.has_bypass:
+            if unit.has_bypass():
                 if self.unit_with_bypass is not None:
                     raise config.error("Only one mmu_unit can have bypass gate. Configured on %s and %s" % (self.unit_with_bypass.name, unit.name))
                 self.unit_with_bypass = unit

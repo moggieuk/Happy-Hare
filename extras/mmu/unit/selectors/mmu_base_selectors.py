@@ -152,16 +152,16 @@ class BaseSelector:
         return False
 
 
-    def has_unit_bypass(self):
+    def has_bypass(self):
         """
-        Whether the selector has a selectable bypass gate (not whether to show on unit)
+        Whether the selector has a selectable bypass gate
         """
         return False
 
 
     def get_status(self, eventtime):
         return {
-            'has_bypass': self.has_unit_bypass()
+            'has_bypass': self.has_bypass()
         }
 
 
@@ -417,7 +417,7 @@ class MmuSoaktestSelectorCommand(BaseCommand):
                     if random.randint(0, 10) == 0 and home:
                         mmu.home_unit(mmu_unit)
                   
-                    if random.randint(0, 10) == 0 and mmu_unit.selector.has_unit_bypass:
+                    if random.randint(0, 10) == 0 and mmu_unit.selector.has_bypass():
                         mmu.log_always("Testing loop %d / %d. Selecting bypass..." % (l + 1, loops))
                         mmu_unit.selector._select_gate(TOOL_GATE_BYPASS) # Force local bypass gate
                     else:

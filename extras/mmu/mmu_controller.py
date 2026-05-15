@@ -578,7 +578,7 @@ class MmuController(MmuFilamentMovement):
             'is_paused': self.is_mmu_paused(), # DEPRECATED (better to use print_state)
             'is_locked': self.is_mmu_paused(), # DEPRECATED (alias for is_paused) Still referenced in Mainsail interface
             'is_in_print': self.is_in_print(), # DEPRECATED (use print_state) Still referenced in Mainsail interface
-            'has_bypass': self.selector().has_unit_bypass(), # Not really necessary anymore and shortcut to active unit "has_bypass" # PAUL TODO does this need to be forced to True now? (bypass always possible?)
+            'has_bypass': True,                # DEPRECATED because not necessary anymore, bypass selection always allowed, unit.has_bypass for display purposes
             'clog_detection': False,           # DEPRECATED
             'clog_detection_enabled': False,   # DEPRECATED
         }

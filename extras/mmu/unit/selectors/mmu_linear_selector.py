@@ -150,6 +150,16 @@ class LinearSelector(PhysicalSelector):
         if not tmc_found:
             raise config.error("Selector stepper TMC configuration not found for %s on mmu_unit %s" % (self.selector_stepper, self.name))
 
+        # PAUL
+        # Inject sensible config if not supplied by user
+#homing_speed: 80
+#homing_move_dist: 300
+#                        if config.fileconfig.has_option(base_tmc_section, key) and not config.fileconfig.has_option(tmc_section, key):
+#                            base_value = config.fileconfig.get(base_tmc_section, key)
+#                            if base_value:
+#                                logging.info("MMU: Sharing gear tmc config %s=%s with [%s]" % (key, base_value, tmc_section))
+#                                config.fileconfig.set(tmc_section, key, base_value)
+
         self.selector_stepper = self.printer.load_object(config, section)
         logging.info("MMU: Loaded: [%s]" % section)
 
@@ -184,6 +194,11 @@ class LinearSelector(PhysicalSelector):
 #        self.selector_stepper.rail.second_homing_speed = self.p.selector_homing_speed / 2.
 #        self.selector_stepper.rail.homing_retract_speed = self.p.selector_homing_speed
 #        self.selector_stepper.rail.homing_positive_dir = False
+
+# PAUL essential
+#        self.selector_stepper.rail.homing_speed = self.p.selector_homing_speed
+#        self.selector_stepper.rail.second_homing_speed = self.p.selector_homing_speed / 2.
+# homing_move_dist
 
 
     def handle_ready(self):
@@ -241,7 +256,7 @@ class LinearSelector(PhysicalSelector):
 
         with self.mmu.wrap_action(ACTION_SELECTING):
             self.filament_hold_move()
-            if lgate == TOOL_GATE_BYPASS and self.has_unit_bypass():
+            if lgate == TOOL_GATE_BYPASS and self.has_bypass():
                 self._select_position(self.bypass_offset)
             elif lgate >= 0:
                 self._select_position(self.selector_offsets[lgate])
@@ -250,7 +265,7 @@ class LinearSelector(PhysicalSelector):
     def _restore_gate(self, lgate):
         super()._restore_gate(lgate) # Important because LinearMultiGear*Selector inherits from this class
 
-        if lgate == TOOL_GATE_BYPASS and self.has_unit_bypass():
+        if lgate == TOOL_GATE_BYPASS and self.has_bypass():
             self._restore_position(self.bypass_offset)
         elif lgate >= 0:
             self._restore_position(self.selector_offsets[lgate])
@@ -279,7 +294,7 @@ class LinearSelector(PhysicalSelector):
         return True
 
 
-    def has_unit_bypass(self):
+    def has_bypass(self):
         return self.bypass_offset >= 0
 
 

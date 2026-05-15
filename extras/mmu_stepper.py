@@ -56,6 +56,8 @@ from .homing             import HomingMove
 
 class MmuGenericRail:
 
+    mcu_endstop_tracking = {} # To aid debugging only
+
     def __init__(self, stepper_obj, config, need_position_minmax=True, default_position_endstop=None, units_in_radians=False):
 
         self.printer = config.get_printer()
@@ -82,6 +84,9 @@ class MmuGenericRail:
 
         if self.endstop_pin is not None:
             self.default_mcu_endstop = self.lookup_endstop(self.endstop_pin, self.name, register=False)
+
+            # Save mcu_endstop for debugging
+            MmuGenericRail.record_mcu_endstop(self.default_mcu_endstop, self.name)
 
         # Primary endstop position
         if self.default_mcu_endstop is not None:
@@ -111,10 +116,11 @@ class MmuGenericRail:
                 raise config.error("position_endstop in section '%s' must be between position_min and position_max" % (self.name))
 
         # Homing mechanics
+        endstop_is_virtual = (self.endstop_pin is not None and 'virtual_endstop' in self.endstop_pin)
         self.homing_speed = config.getfloat('homing_speed', 10.0, above=0.)
         self.second_homing_speed = config.getfloat('second_homing_speed', self.homing_speed / 2., above=0.)
         self.homing_retract_speed = config.getfloat('homing_retract_speed', self.homing_speed, above=0.)
-        self.homing_retract_dist = config.getfloat('homing_retract_dist', 5., minval=0.)
+        self.homing_retract_dist = config.getfloat('homing_retract_dist', 0 if endstop_is_virtual else 5., minval=0.)
         self.homing_positive_dir = config.getboolean('homing_positive_dir', None)
         self.homing_move_dist = config.getfloat('homing_move_dist', None, above=0.)
 
@@ -143,10 +149,6 @@ class MmuGenericRail:
             self.default_mcu_endstop.add_stepper(self.stepper)
             self.endstops.append((self.default_mcu_endstop, self.name))
 
-            # Save mcu_endstop for debugging
-            if self.default_mcu_endstop not in MmuStepper.mcu_endstops:
-                MmuStepper.mcu_endstops.append(self.default_mcu_endstop)
-
         # Parse and bind extra selectable endstops
         for endstop_name, endstop_target in self._parse_extra_endstops(config):
             self.add_extra_endstop(endstop_target, endstop_name)
@@ -154,6 +156,24 @@ class MmuGenericRail:
         # Expose same helpers GenericPrinterRail-style callers may expect
         self.get_commanded_position = self.stepper.get_commanded_position
         self.calc_position_from_coord = self.stepper.calc_position_from_coord
+
+        # Event handlers
+        self.printer.register_event_handler('klippy:disconnect', self.handle_disconnect)
+
+
+    def handle_disconnect(self):
+        # Avoid stale debugging info
+        MmuGenericRail.mcu_endstop_tracking = {}
+
+
+    @staticmethod
+    def record_mcu_endstop(mcu_endstop, name):
+        # Record mcu_endstop for debugging
+        if mcu_endstop in MmuGenericRail.mcu_endstop_tracking:
+            logging.info(f"MMU: mcu_endstop already recorded for {name}")
+            MmuGenericRail.mcu_endstop_tracking[mcu_endstop].append(name)
+        else:
+            MmuGenericRail.mcu_endstop_tracking[mcu_endstop] = [name]
 
 
     # -------------------------------------------------------------------------
@@ -260,12 +280,12 @@ class MmuGenericRail:
         return result
 
 
-    def add_extra_endstop(self, pin, name, register=True, bind_stepper=True, mcu_endstop=None):
+    def add_extra_endstop(self, pin, name, register=True, bind_steppers=True, mcu_endstop=None):
         if name == "default":
             raise self.config.error("Extra endstop may not use reserved name 'default'")
 
         if self.has_endstop(name):
-            raise self.config.error("Extra endstop '%s' defined more than once" % (name,))
+            raise self.config.error("Extra endstop '%s' defined more than once" % (name))
 
         is_default_alias = (pin == "default")
         is_virtual = (not is_default_alias and 'virtual_endstop' in pin)
@@ -277,34 +297,29 @@ class MmuGenericRail:
             if name not in self.virtual_endstops:
                 self.virtual_endstops.append(name)
             else:
-                raise self.config.error("Extra virtual endstop '%s' defined more than once" % (name,))
+                raise self.config.error("Extra virtual endstop '%s' defined more than once" % (name))
 
         if mcu_endstop is None:
             if is_default_alias:
                 mcu_endstop = self.default_mcu_endstop
-                bind_stepper = False
+                bind_steppers = False
             elif is_virtual:
                 ppins = self.printer.lookup_object('pins')
                 mcu_endstop = ppins.setup_pin('endstop', pin)
             else:
-                display_name = "%s:%s" % (self.get_name(short=True), name)
-                mcu_endstop = self.lookup_endstop(pin, display_name, register=False)
+                mcu_endstop = self.lookup_endstop(pin, name, register=False)
+            MmuGenericRail.record_mcu_endstop(mcu_endstop, name)
 
         self.extra_endstops.append((mcu_endstop, name))
 
-        # Save mcu_endstop for debugging
-        if mcu_endstop not in MmuStepper.mcu_endstops:
-            MmuStepper.mcu_endstops.append(mcu_endstop)
-
-        if bind_stepper:
+        if bind_steppers:
             try:
                 mcu_endstop.add_stepper(self.stepper)
             except Exception as e:
                 logging.info("MMU: Not possible to add stepper %s to endstop %s because: %s", self.stepper.get_name(), name, str(e))
 
         if register:
-            display_name = "%s:%s" % (self.get_name(short=True), name)
-            self.query_endstops.register_endstop(mcu_endstop, display_name)
+            self.query_endstops.register_endstop(mcu_endstop, name)
 
         return mcu_endstop
 
@@ -421,8 +436,6 @@ def MmuLookupRailFromStepper(stepper_obj, config, need_position_minmax=True, def
 # -----------------------------------------------------------------------------------------------------------
 
 class MmuStepper(ExtruderStepper):
-
-    mcu_endstops = [] # To aid debugging only
 
     MODE_MANUAL = "manual"
     MODE_EXTRUDER = "extruder"
