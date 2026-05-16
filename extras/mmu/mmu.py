@@ -3148,10 +3148,19 @@ class Mmu:
     def _on_print_end(self, state="complete"):
         if not self.is_in_endstate():
             self.log_trace("_on_print_end(%s)" % state)
+            # If we're leaving a paused state directly into an end-state, the
+            # slicer's PRINT_END has almost certainly been bypassed by pause_resume
+            # and the user's TURN_OFF_HEATERS never ran. Don't silently disarm the
+            # safety timer and leave the hotend (and bed) hot — explicitly turn
+            # heaters off before we tear down state.
+            was_paused = self.is_mmu_paused()
             self.movequeues_wait()
             self._clear_saved_toolhead_position()
             self.resume_to_state = "ready"
             self.paused_extruder_temp = None
+            if was_paused and state in ("complete", "cancelled", "error"):
+                self.log_info("Turning off heaters (slicer PRINT_END was bypassed by MMU pause)")
+                self.gcode.run_script_from_command("TURN_OFF_HEATERS")
             self.reactor.update_timer(self.hotend_off_timer, self.reactor.NEVER) # Don't automatically turn off extruder heaters
             self._restore_automap_option()
             self._disable_filament_monitoring() # Disable filament monitoring
@@ -7095,6 +7104,17 @@ class Mmu:
         idle_timeout = gcmd.get_int('IDLE_TIMEOUT', 0, minval=0, maxval=1)
         end_state = gcmd.get('STATE', "complete")
         if not self.is_in_endstate():
+            # If an MMU error has paused us (typically MMU_UNLOAD failing inside
+            # the slicer's end-gcode), the slicer's PRINT_END has been skipped
+            # by pause_resume. Tearing down the safety net here would leave the
+            # heaters on with no further owner. Defer the end-state transition
+            # until the user recovers via MMU_UNLOCK / MMU_RECOVER / RESUME, at
+            # which point PRINT_END will run and the automatic print_stats ->
+            # complete transition will re-queue this command in a clean state.
+            if self.is_mmu_paused():
+                self.log_debug("MMU_PRINT_END(STATE=%s) ignored while in %s state; deferring end-state transition until print is resumed/cancelled"
+                               % (end_state, self.print_state))
+                return
             if end_state in ["complete", "error", "cancelled", "ready", "standby"]:
                 if not idle_timeout and end_state in ["complete"]:
                     self._save_toolhead_position_and_park("complete")
