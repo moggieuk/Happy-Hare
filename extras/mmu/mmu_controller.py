@@ -38,7 +38,6 @@ from .commands.mmu_base_command import *
 class MmuController(MmuFilamentMovement):
 
     def __init__(self, config, mmu_machine):
-        logging.info("PAUL: init() for MmuController")
         self.config = config
         self.mmu_machine = mmu_machine
         self.printer = config.get_printer()
@@ -137,7 +136,6 @@ class MmuController(MmuFilamentMovement):
 
 
     def handle_connect(self):
-        logging.info("PAUL: handle_connect: MmuController")
         self.toolhead = self.printer.lookup_object('toolhead')
         self.var_manager = self.mmu_machine.var_manager
 
@@ -167,7 +165,6 @@ class MmuController(MmuFilamentMovement):
 
 
     def handle_ready(self):
-        logging.info("PAUL: handle_ready: MmuController ========================================")
         # Pull retraction length from macro config
         sequence_vars_macro = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
         if sequence_vars_macro:
@@ -534,7 +531,6 @@ class MmuController(MmuFilamentMovement):
             return "n/a"
 
 
-
 # -----------------------------------------------------------------------------------------------------------
 # AGGREGATED PRINTER VARIABLES FOR "LOGICAL" MMU MACHINE
 # -----------------------------------------------------------------------------------------------------------
@@ -740,7 +736,7 @@ class MmuController(MmuFilamentMovement):
             if self.has_encoder() and self.mmu_unit().p.encoder_move_validation
             else ""
         )
-        counter = " {5}%.1fmm{6}%s" % (self.get_filament_position(), encoder_str)
+        counter = " {5}%.1fmm{6}%s" % (self.drive().get_filament_position(), encoder_str)
 
         return "".join(
             (
@@ -1792,7 +1788,6 @@ class MmuController(MmuFilamentMovement):
           False - wait for moves to complete and then read encoder
           None  - just read encoder without delay (caller responsible for ensuring prior movements have completed)
         """
-        return # PAUL TEST WITH NOT ENCODER / WAIT!
         if dwell is True:
             self.log_info(f"PAUL: _encoder_dwell({dwell}) / dwell + wait")
             self.movequeue_dwell(self.mmu_unit().p.encoder_dwell)
@@ -1842,7 +1837,7 @@ class MmuController(MmuFilamentMovement):
 
     def initialize_filament_position(self, dwell=False):
         self.initialize_encoder(dwell=dwell)
-        self.set_filament_position()
+        self.drive().set_filament_position(0.)
 
 
     def _get_live_bowden_position(self):
@@ -1850,14 +1845,6 @@ class MmuController(MmuFilamentMovement):
         Return the approximate live filament position for dynamic feedback of position
         """
         return self.drive().get_live_filament_position()
-
-
-    def get_filament_position(self):
-        return self.drive().get_filament_position()
-
-
-    def set_filament_position(self, pos= 0.):
-        self.drive().set_filament_position(pos)
 
 
     def set_filament_direction(self, direction):

@@ -551,11 +551,19 @@ class MmuTestCommand(BaseCommand):
             position = gcmd.get_float('SET_POSITION', -1, minval=0)
             if position >= 0:
                 have_run_test = True
-                mmu.set_filament_position(position)
+                mmu.drive().set_filament_position(position)
 
             if gcmd.get_int('GET_POSITION', 0, minval=0, maxval=1):
                 have_run_test = True
-                mmu.log_info("Filament position: %s" % mmu.get_filament_position())
+                mmu.log_info("Filament position: %s" % mmu.drive().get_filament_position())
+
+            if gcmd.get_int('GET_EXT_POSITION', 0, minval=0, maxval=1):
+                have_run_test = True
+                mcu = mmu.printer.lookup_object('mcu')
+                eventtime = mmu.reactor.monotonic()
+                est_print_time = mcu.estimated_print_time(eventtime)
+                pos = mmu.mmu_unit().extruder_stepper_obj().find_past_position(est_print_time)
+                mmu.log_info("Extruder position: %s" % pos)
 
             action = gcmd.get_float('SET_ACTION', -1, minval=0)
             if action >= 0:
@@ -641,7 +649,7 @@ class MmuTestCommand(BaseCommand):
 
                         # Run a few randomized moves on the mmu toolhead to simulate load/unload logic (optional gate switch)
                         tracked = 0.
-                        initial_pos = mmu.get_filament_position()
+                        initial_pos = mmu.drive().get_filament_position()
                         for j in range(6):
                             move_type = random.randint(0, 10)  # 11 to enable tracking test
                             move = random.randint(0, 100) - 50
@@ -678,7 +686,7 @@ class MmuTestCommand(BaseCommand):
                             tracked += actual
 
                         # Check MMU position is correct
-                        final_pos = mmu.get_filament_position()
+                        final_pos = mmu.drive().get_filament_position()
                         expected = final_pos - initial_pos
                         if not math.isclose(expected, tracked):
                             raise MmuError(
@@ -737,6 +745,7 @@ class MmuTestCommand(BaseCommand):
                             gate = random.randint(0, mmu.num_gates - 1)
                             log("Selecting gate: %d" % gate)
                             mmu.select_gate(gate)
+                            total = 0.
                     if move_type in (0, 1):
                         log("Loop: %d - Synced extruder movement with G1 Ex: %.1fmm" % (i, move))
                         mmu.drive().sync_mode(DRIVE_GEAR_SYNCED_TO_EXTRUDER)
@@ -757,7 +766,7 @@ class MmuTestCommand(BaseCommand):
                         if random.randint(0, 1):
                             new_pos = random.uniform(0, 300)
                             log("Loop: %d - Set filament position" % i)
-                            mmu.set_filament_position(new_pos)
+                            mmu.drive().set_filament_position(new_pos)
                             total = new_pos
                         else:
                             log("Loop: %d - Initialized filament position" % i)
@@ -788,10 +797,8 @@ class MmuTestCommand(BaseCommand):
                 # Dump status of current gear and extruder steppers
                 mmu.gcode.run_script_from_command(f"MMU_STEPPER_STATUS STEPPER={mmu_unit.extruder_stepper_obj().get_name()}")
                 mmu.gcode.run_script_from_command(f"MMU_STEPPER_STATUS STEPPER={mmu.drive().get_name()}")
-                mmu.log_info(
-                    "Aggregate move distance: %.1fmm, MmuDrive reports: %.1fmm" %
-                    (total, mmu.get_filament_position())
-                )
+                mmu.log_info("Aggregate move distance: %.1fmm, MmuDrive reports: %.1fmm" % (total, mmu.drive().get_filament_position()))
+                mmu.drive().sync_mode(DRIVE_UNSYNCED)
 
             if gcmd.get_int('SEL_MOVE', 0, minval=0, maxval=1):
                 have_run_test = True

@@ -65,7 +65,7 @@ class LinearSelectorParameters(TunableParametersBase):
         return self._get_cad_defaults()[name]
 
     def _get_cad_defaults(self):
-        # To simplfy config CAD related parameters defaults are set based on vendor and version setting
+        # Historically to simplfy config CAD related parameters defaults are set based on vendor and version setting
         #
         # The initial defaults are for ERCFv1.1 - the first MMU supported by Happy Hare
         #  cad_gate0_pos          - approximate distance from endstop to first gate
@@ -136,12 +136,12 @@ class LinearSelector(PhysicalSelector):
         super().__init__(config, mmu_unit, unit_params)
 
         self.selector_stepper_name = mmu_unit.config.get('selector_stepper') # Name of selector stepper
-        section = f"mmu_stepper {self.selector_stepper_name}"
+        stepper_section = f"mmu_stepper {self.selector_stepper_name}"
 
         # Force stepper loading now (TMC first)
         tmc_found = False
         for chip in TMC_CHIPS: 
-            tmc_section = f"{chip} {section}"
+            tmc_section = f"{chip} {stepper_section}"
             if config.has_section(tmc_section):
                 _ = self.printer.load_object(config, tmc_section)
                 logging.info("MMU: Loaded: [%s]" % tmc_section)
@@ -150,18 +150,22 @@ class LinearSelector(PhysicalSelector):
         if not tmc_found:
             raise config.error("Selector stepper TMC configuration not found for %s on mmu_unit %s" % (self.selector_stepper, self.name))
 
-        # PAUL
         # Inject sensible config if not supplied by user
-#homing_speed: 80
-#homing_move_dist: 300
-#                        if config.fileconfig.has_option(base_tmc_section, key) and not config.fileconfig.has_option(tmc_section, key):
-#                            base_value = config.fileconfig.get(base_tmc_section, key)
-#                            if base_value:
-#                                logging.info("MMU: Sharing gear tmc config %s=%s with [%s]" % (key, base_value, tmc_section))
-#                                config.fileconfig.set(tmc_section, key, base_value)
+        key = "homing_speed"
+        if not config.fileconfig.has_option(stepper_section, key):
+            config.fileconfig.set(stepper_section, key, self.p.selector_homing_speed)
 
-        self.selector_stepper = self.printer.load_object(config, section)
-        logging.info("MMU: Loaded: [%s]" % section)
+        key = "second_homing_speed"
+        if not config.fileconfig.has_option(stepper_section, key):
+            config.fileconfig.set(stepper_section, "second_homing_speed", self.p.selector_homing_speed / 2.)
+
+        # Force correct max movement based on cad dimensions
+        key = "homing_move_dist"
+        config.fileconfig.set(stepper_section, key, self._get_max_selector_movement())
+
+        # Now we can load the mmu_stepper object
+        self.selector_stepper = self.printer.load_object(config, stepper_section)
+        logging.info("MMU: Loaded: [%s]" % stepper_section)
 
         # Does selector have "touch" (stallguard)?
         self.selector_touch = (tmc_found and SENSOR_SELECTOR_TOUCH in self.selector_stepper.rail.get_extra_endstop_names())
@@ -176,32 +180,15 @@ class LinearSelector(PhysicalSelector):
     # Selector "Interface" methods ---------------------------------------------
 
     def handle_connect(self):
-        """
-        Bind selector rail/stepper, configure rail limits, and load calibration.
-
-        Loads per-gate selector offsets and bypass offset from mmu_vars.cfg (with
-        upgrade handling), ensures list sizing matches num_gates, and sets
-        calibrated status when all offsets are known. Also reports whether
-        selector "touch" movement is available.
-        """
         super().handle_connect()
-
-# PAUL still need to get these into the object -- params on object better!  then need to figure out test_config
-#        # Adjust selector rail limits now we know the config
-#        self.selector_stepper.rail.position_min = -1 # PAUL really don't want this
-#        self.selector_stepper.rail.position_max = self._get_max_selector_movement() + 200 # PAUL added for testing only
-#        self.selector_stepper.rail.homing_speed = self.p.selector_homing_speed
-#        self.selector_stepper.rail.second_homing_speed = self.p.selector_homing_speed / 2.
-#        self.selector_stepper.rail.homing_retract_speed = self.p.selector_homing_speed
-#        self.selector_stepper.rail.homing_positive_dir = False
-
-# PAUL essential
-#        self.selector_stepper.rail.homing_speed = self.p.selector_homing_speed
-#        self.selector_stepper.rail.second_homing_speed = self.p.selector_homing_speed / 2.
-# homing_move_dist
 
 
     def handle_ready(self):
+        """
+        Loads per-gate selector offsets and bypass offset from mmu_vars.cfg,
+        ensures list sizing matches num_gates, and sets calibrated status when
+        all offsets are known.
+        """
         super().handle_ready()
 
         # Load selector offsets (calibration set with MMU_CALIBRATE_SELECTOR) -------------------------------
@@ -330,6 +317,7 @@ class LinearSelector(PhysicalSelector):
         max_movement += self.p.cad_last_gate_offset if lgate in [TOOL_GATE_UNKNOWN] else 0.
         max_movement += self.p.cad_selector_tolerance
         return max_movement
+
 
     # Manual selector offset calibration
     def _calibrate_selector(self, gate, extrapolate=True, save=True):
@@ -547,7 +535,6 @@ class LinearSelector(PhysicalSelector):
         """
         Position gate to desired target position
         """
-        self.mmu.log_error(f"PAUL: _position({target})")
         current_pos = self.selector_stepper.commanded_pos
 
         try:
@@ -558,8 +545,6 @@ class LinearSelector(PhysicalSelector):
                 init_pos = current_pos
                 halt_pos,homed = self.homing_move("Positioning selector with 'touch' move", target, homing_move=1, endstop_name=SENSOR_SELECTOR_TOUCH)
                 if homed: # Positioning move was not successful
-                    self.mmu.log_info("PAUL: positioning move was not successful... TODO")
-
                     with self.mmu.wrap_suppress_visual_log():
                         travel = abs(init_pos - halt_pos)
                         if travel < 4.0: # Filament stuck in the current gate (e.g. on ERCF design)
@@ -613,7 +598,6 @@ class LinearSelector(PhysicalSelector):
         endstop set (default or extra) and uses HomingMove; for virtual endstops
         attempts to infer completion via trigger delta.
         """
-        self.mmu.log_error(f"PAUL: _move_selector({trace_str}, new_pos={new_pos}, speed={speed}, accel={accel}, homing_move={homing_move}, endstop_name={endstop_name}, wait={wait}")
         if trace_str:
             self.mmu.log_trace(trace_str)
 
@@ -643,7 +627,6 @@ class LinearSelector(PhysicalSelector):
                 if self.selector_stepper.rail.is_endstop_virtual(endstop_name):
                     # Try to infer move completion if using Stallguard
                     delta = abs(new_pos - home_result['trig_pos'])
-                    self.mmu.log_trace("PAUL: Virtual: delta= %.4fmm" % delta)
                     if delta < 1.0:
                         homed = False
                         self.mmu.log_trace("Truing selector %.4fmm to %.2fmm" % (delta, new_pos))
@@ -671,7 +654,6 @@ class LinearSelector(PhysicalSelector):
 
 
     def _restore_position(self, position):
-        self.mmu.log_warning("PAUL: _restore_position(position=%s)" % position)
         self.selector_stepper.do_set_position(position)
         self.enable_motors()
 

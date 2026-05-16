@@ -28,7 +28,8 @@ class ExtruderMonitor:
 
     CHECK_INTERVAL = 0.5 # How often to check extruder movement (seconds)
 
-    def __init__(self, mmu):
+    def __init__(self, extruder_wrapper, mmu):
+        self.extruder_wrapper = extruder_wrapper
         self.mmu = mmu
 
         self.enabled = True
@@ -120,7 +121,8 @@ class ExtruderMonitor:
 
         mcu = self.mmu.printer.lookup_object('mcu')
         est_print_time = mcu.estimated_print_time(eventtime)
-        pos = self.mmu.toolhead.get_extruder().find_past_position(est_print_time) # PAUL: FIXME
+        pos = self.extruder_wrapper.extruder_stepper_obj.find_past_position(est_print_time)
+#PAUL OLD        pos = self.mmu.toolhead.get_extruder().find_past_position(est_print_time) # PAUL: FIXME
 
         # Initialize last position on first successful read
         if self._last_pos is None:

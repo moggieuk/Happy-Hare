@@ -84,6 +84,41 @@ class RotarySelector(PhysicalSelector):
     def __init__(self, config, mmu_unit, params):
         super().__init__(config, mmu_unit, params)
 
+        self.selector_stepper_name = mmu_unit.config.get('selector_stepper') # Name of selector stepper
+        stepper_section = f"mmu_stepper {self.selector_stepper_name}"
+
+        # Force stepper loading now (TMC first)
+        tmc_found = False
+        for chip in TMC_CHIPS: 
+            tmc_section = f"{chip} {stepper_section}"
+            if config.has_section(tmc_section):
+                _ = self.printer.load_object(config, tmc_section)
+                logging.info("MMU: Loaded: [%s]" % tmc_section)
+                tmc_found = True
+                break
+        if not tmc_found:
+            raise config.error("Selector stepper TMC configuration not found for %s on mmu_unit %s" % (self.selector_stepper, self.name))
+
+        # Inject sensible config if not supplied by user
+        key = "homing_speed"
+        if not config.fileconfig.has_option(stepper_section, key):
+            config.fileconfig.set(stepper_section, key, self.p.selector_homing_speed)
+
+        key = "second_homing_speed"
+        if not config.fileconfig.has_option(stepper_section, key):
+            config.fileconfig.set(stepper_section, "second_homing_speed", self.p.selector_homing_speed / 2.)
+
+        # Force correct max movement based on cad dimensions
+        key = "homing_move_dist"
+        config.fileconfig.set(stepper_section, key, self._get_max_selector_movement())
+
+        # Now we can load the mmu_stepper object
+        self.selector_stepper = self.printer.load_object(config, stepper_section)
+        logging.info("MMU: Loaded: [%s]" % stepper_section)
+
+        # Have an endstop (most likely stallguard)?
+        self.has_endstop = bool(self.selector_stepper.rail.get_endstops())
+
         # Register GCODE commands specific to this module
         try:
             register_command(MmuCalibrateRotarySelectorCommand)
@@ -96,33 +131,15 @@ class RotarySelector(PhysicalSelector):
     # Selector "Interface" methods ---------------------------------------------
 
     def handle_connect(self):
-        """
-PAUL TODO
-        Bind selector rail/stepper, configure rail limits, and load calibration.
-
-        Determines whether an actual endstop is present, loads per-gate selector
-        offsets from mmu_vars.cfg, and marks the selector calibrated when all
-        offsets are known.
-        """
         super().handle_connect()
-
-        self.selector_rail = self.mmu_unit.mmu_toolhead.get_kinematics().rails[0]
-        self.selector_stepper = self.selector_rail.steppers[0]
-
-        # Adjust selector rail limits now we know the config
-        self.selector_rail.position_min = -1
-        self.selector_rail.position_max = self._get_max_selector_movement()
-        self.selector_rail.homing_speed = self.p.selector_homing_speed
-        self.selector_rail.second_homing_speed = self.p.selector_homing_speed / 2.
-        self.selector_rail.homing_retract_speed = self.p.selector_homing_speed
-        self.selector_rail.homing_positive_dir = False
-
-        # Have an endstop (most likely stallguard)?
-        endstops = self.selector_rail.get_endstops()
-        self.has_endstop = bool(endstops) and endstops[0][0].__class__.__name__ != "MockEndstop"
 
 
     def handle_ready(self):
+        """
+        Loads per-gate selector offsets and bypass offset from mmu_vars.cfg,
+        ensures list sizing matches num_gates, and sets calibrated status when
+        all offsets are known.
+        """
         super().handle_ready()
 
         # Load selector offsets (calibration set with MMU_CALIBRATE_SELECTOR) -------------------------------
@@ -208,32 +225,33 @@ PAUL TODO
         else:
             self.grip_state = FILAMENT_UNKNOWN_STATE
 
+
     def get_filament_grip_state(self):
         return self.grip_state
 
+
+    def enable_motors(self):
+        self.selector_stepper.do_enable(True)
+
+
     def disable_motors(self):
-        stepper_enable = self.printer.lookup_object('stepper_enable')
-        se = stepper_enable.lookup_enable(self.selector_stepper.get_name())
-        se.motor_disable(self.mmu_unit.mmu_toolhead.get_last_move_time())
+        self.selector_stepper.do_enable(False)
 
         # Assume that if disabling motor then the position will be modified
         self.is_homed = False
         self.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, None, namespace=self.mmu_unit.name)
 
-    def enable_motors(self):
-        stepper_enable = self.printer.lookup_object('stepper_enable')
-        se = stepper_enable.lookup_enable(self.selector_stepper.get_name())
-        se.motor_enable(self.mmu_unit.mmu_toolhead.get_last_move_time())
 
     def buzz_motor(self, motor):
         if motor == "selector":
-            pos = self.mmu_unit.mmu_toolhead.get_position()[0]
+            pos = self.selector_stepper.commanded_pos
             self.move(None, pos + 5, wait=False)
             self.move(None, pos - 5, wait=False)
             self.move(None, pos, wait=False)
         else:
             return False
         return True
+
 
     def get_status(self, eventtime):
         status = super().get_status(eventtime)
@@ -242,10 +260,12 @@ PAUL TODO
         })
         return status
 
+
     def get_mmu_status_config(self):
         msg = super().get_mmu_status_config()
         msg += "Filament is %s." % ("GRIPPED" if self.grip_state == FILAMENT_DRIVE_STATE else "RELEASED")
         return msg
+
 
     def get_uncalibrated_gates(self, check_gates):
         return [
@@ -311,6 +331,23 @@ PAUL TODO
                     self.mmu.log_always("Run MMU_CALIBRATE_SELECTOR again with GATE=%d to extrapolate all gate positions. Use SINGLE=1 to force calibration of only one gate" % (self.mmu_unit.num_gates - 1))
         return True
 
+#PAUL NEW .. example from linear_selector
+#    def _home_selector(self):
+#        """
+#        Home selector rail
+#        """
+#        self.mmu.movequeue_wait()
+#        self.filament_hold_move()
+#
+#        try:
+#            self.selector_stepper.do_home_rail()
+#            self.is_homed = True
+#            self.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, 0, namespace=self.mmu_unit.name)
+#
+#        except Exception as e:
+#            self.is_homed = False
+#            self.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, None, namespace=self.mmu_unit.name)
+#            raise MmuError(f"Homing selector failed because of blockage or malfunction. Klipper reports: {e}") from e
     def _home_selector(self):
         """
         Home the selector rail using the configured endstop or a hard endstop.
@@ -340,18 +377,22 @@ PAUL TODO
             logging.error(traceback.format_exc())
             raise MmuError("Homing selector failed because of blockage or malfunction. Klipper reports: %s" % str(e))
 
+
     def _home_hard_endstop(self):
         self.mmu.log_always("Forcing selector homing to hard endstop. Excuse the noise!\n(Configure stallguard endstop on selector stepper to avoid)")
         self._restore_position(self._get_max_selector_movement()) # Worst case position to allow full movement
         self.move("Forceably homing to hard endstop", new_pos=0, speed=self.p.selector_homing_speed)
         self._restore_position(0) # Reset pos
 
+
     def _position(self, target):
         self.move("Positioning selector", target)
         self.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, target, write=True, namespace=self.mmu_unit.name)
 
+
     def move(self, trace_str, new_pos, speed=None, accel=None, wait=False):
         return self._move_selector(trace_str, new_pos, speed=speed, accel=accel, wait=wait)
+
 
     # Internal raw wrapper around all selector moves except rail homing
     # Returns position after move, if homed (homing moves)
@@ -382,11 +423,13 @@ PAUL TODO
             self.mmu.movequeue_wait()
         return pos[0]
 
+
     def _restore_position(self, position):
         pos = self.mmu_unit.mmu_toolhead.get_position()
         pos[0] = position
         self.mmu_unit.mmu_toolhead.set_position(pos, homing_axes=(0,))
         self.enable_motors()
+
 
     def measure_to_home(self):
         """

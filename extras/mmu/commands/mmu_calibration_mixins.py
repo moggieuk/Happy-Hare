@@ -167,7 +167,7 @@ class CalibrationMixin:
 
                 mmu.log_info("Finding extruder gear position (try #%d of %d)..." % (i+1, repeats))
                 mmu._home_to_extruder(extruder_homing_max)
-                actual = mmu.get_filament_position() - mmu_unit.p.gate_parking_distance
+                actual = mmu.drive().get_filament_position() - mmu_unit.p.gate_parking_distance
                 measured = mmu.get_encoder_distance(dwell=True) + mmu.get_encoder_dead_space()
                 spring = selector.filament_release(measure=True) if mmu.has_encoder() else 0.
                 reference = actual - spring

@@ -56,18 +56,18 @@ class MmuDrive():
 
         current_pos = self._driving_stepper.get_mode_position()
 
-        # --------------------------------------------------------------
+        # ------------------------------------------------------------------
         # DRIVE_UNSYNCED
-        # --------------------------------------------------------------
+        # ------------------------------------------------------------------
         if mode == DRIVE_UNSYNCED:
             self.mmu_gear_stepper.switch_to_manual_mode()
             self.mmu_gear_stepper.do_set_position(current_pos)
             self.mmu_extruder_stepper.switch_to_extruder_mode()
             self._driving_stepper = self.mmu_gear_stepper
 
-        # --------------------------------------------------------------
+        # ------------------------------------------------------------------
         # DRIVE_EXTRUDER_SYNCED_TO_GEAR (gear leading, extruder following)
-        # --------------------------------------------------------------
+        # ------------------------------------------------------------------
         elif mode == DRIVE_EXTRUDER_SYNCED_TO_GEAR:
             self.mmu_gear_stepper.switch_to_manual_mode()
             self.mmu_gear_stepper.do_set_position(current_pos)
@@ -75,18 +75,18 @@ class MmuDrive():
             self.mmu_extruder_stepper.sync_to_manual_stepper(self.mmu_gear_stepper.get_name())
             self._driving_stepper = self.mmu_gear_stepper
 
-        # --------------------------------------------------------------
+        # ------------------------------------------------------------------
         # DRIVE_EXTRUDER_ONLY
-        # --------------------------------------------------------------
+        # ------------------------------------------------------------------
         elif mode == DRIVE_EXTRUDER_ONLY:
             self.mmu_gear_stepper.switch_to_manual_mode()
             self.mmu_extruder_stepper.switch_to_manual_mode()
             self.mmu_extruder_stepper.do_set_position(current_pos)
             self._driving_stepper = self.mmu_extruder_stepper
 
-        # --------------------------------------------------------------
+        # ------------------------------------------------------------------
         # DRIVE_GEAR_SYNCED_TO_EXTRUDER (extruder leading, gear following)
-        # --------------------------------------------------------------
+        # ------------------------------------------------------------------
         elif mode == DRIVE_GEAR_SYNCED_TO_EXTRUDER:
             self.mmu_extruder_stepper.switch_to_extruder_mode()
             self.mmu_gear_stepper.switch_to_extruder_mode()
@@ -97,12 +97,16 @@ class MmuDrive():
         return True
 
 
+    def get_name(self):
+        return self.name
+
+
     def is_synced_to_extruder(self):
         return (self._sync_mode == DRIVE_GEAR_SYNCED_TO_EXTRUDER)
 
 
     def set_filament_position(self, pos):
-        self.mmu_unit.mmu.log_warning(f"PAUL: {self._driving_stepper.get_name()}.do_set_position({pos})")
+        self.mmu.log_warning(f"PAUL: {self._driving_stepper.get_name()}.do_set_position({pos})")
         self._driving_stepper.do_set_position(pos)
 
 
@@ -144,6 +148,36 @@ class MmuDrive():
         self.mmu_gear_stepper.stepper.set_dir_inverted(direction)
 
 
+    def move(self, dist, speed, accel, homing_move=0, endstop_name="default"):
+        """
+        Execute a relative move on the driving MmuStepper
+        Returns: actual, homed
+        """
+        start_pos = self._driving_stepper.get_mode_position()
+        target_pos = start_pos + dist
+
+        if homing_move != 0:
+            home_result = self._driving_stepper.do_homing_move(target_pos, speed, accel, probe_pos=True, triggered=(homing_move > 0), check_trigger=True, endstop_name=endstop_name)
+
+            halt_pos = self._driving_stepper.get_mode_position()
+            actual = halt_pos - start_pos
+            homed = True
+
+            try:
+                if self._driving_stepper.rail.is_endstop_virtual(endstop_name):
+                    trig_rel = home_result["trig_pos"] - start_pos
+                    # Stallguard doesn't do well at slow speed. Try to infer move completion
+                    if abs(trig_rel - dist) < 1.0:
+                        homed = False
+            except Exception:
+                pass
+
+            return actual, homed
+
+        self._driving_stepper.do_move(target_pos, speed, accel)
+        return dist, False
+
+
     # Replace get_status for succinct info pertinent to control of filament movement
     def get_status(self, eventtime):
         return {
@@ -152,3 +186,5 @@ class MmuDrive():
             "drive_stepper": self._driving_stepper.full_name,
             "filament_position": self._driving_stepper.get_mode_position(),
         }
+
+

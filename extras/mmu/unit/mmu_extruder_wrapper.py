@@ -44,7 +44,6 @@ class MmuExtruderWrapper():
         for chip in TMC_CHIPS:
             try:
                 section = f"{chip} {self.name}"
-                logging.info(f"PAUL: looking for '[{section}]'")
                 _ = self.printer.load_object(config, section)
                 logging.info(f"MMU: Loaded: [{section}]")
                 break
@@ -61,9 +60,6 @@ class MmuExtruderWrapper():
             if config.fileconfig.has_option(self.extruder_name(), i):
                 self.old_ext_options[i] = config.fileconfig.get(self.extruder_name(), i)
                 config.fileconfig.remove_option(self.extruder_name(), i)
-
-#PAUL        if self.homing_extruder_stepper is None:
-#PAUL            raise config.error("Happy Hare requires TMC controller for extruder")
 
         # Register event handlers
         self.printer.register_event_handler('klippy:connect', self._handle_connect)
@@ -128,7 +124,7 @@ class MmuExtruderWrapper():
 
 
         # This monitors extruder movement for toolhead connected to this MMU unit
-        self.extruder_monitor = ExtruderMonitor(self.mmu)
+        self.extruder_monitor = ExtruderMonitor(self, self.mmu)
 
 
     def _handle_ready(self):
@@ -138,11 +134,14 @@ class MmuExtruderWrapper():
     def extruder_name(self):
         return self.name
 
+
     def extruder_stepper_obj(self):
         return self._extruder_stepper
 
+
     def extruder_tmc_obj(self):
         return self._extruder_tmc
+
 
     def extruder_default_current(self):
         return self._extruder_current

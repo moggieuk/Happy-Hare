@@ -85,7 +85,7 @@ class MmuSensorsCommand(BaseCommand):
                     else:
                         value_str = f"{value:.2f}"
 
-                    summary += f"{name:<16} --> {value_str}"
+                    summary += f"{name:<21} --> {value_str}"
 
                     if detail:
                         summary += f" (raw: {value_raw:.2f})"
@@ -94,7 +94,7 @@ class MmuSensorsCommand(BaseCommand):
                     trig = "TRIGGERED" if sensor.runout_helper.filament_present else "Open"
 
                     value_str = f"{trig} (disabled)" if state is None else trig
-                    summary += f"{name:<16} --> {value_str}"
+                    summary += f"{name:<21} --> {value_str}"
 
                     if (
                         detail and

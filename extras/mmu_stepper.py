@@ -116,11 +116,11 @@ class MmuGenericRail:
                 raise config.error("position_endstop in section '%s' must be between position_min and position_max" % (self.name))
 
         # Homing mechanics
-        endstop_is_virtual = (self.endstop_pin is not None and 'virtual_endstop' in self.endstop_pin)
+        self.endstop_is_virtual = (self.endstop_pin is not None and 'virtual_endstop' in self.endstop_pin)
         self.homing_speed = config.getfloat('homing_speed', 10.0, above=0.)
         self.second_homing_speed = config.getfloat('second_homing_speed', self.homing_speed / 2., above=0.)
         self.homing_retract_speed = config.getfloat('homing_retract_speed', self.homing_speed, above=0.)
-        self.homing_retract_dist = config.getfloat('homing_retract_dist', 0 if endstop_is_virtual else 5., minval=0.)
+        self.homing_retract_dist = config.getfloat('homing_retract_dist', 0 if self.endstop_is_virtual else 5., minval=0.)
         self.homing_positive_dir = config.getboolean('homing_positive_dir', None)
         self.homing_move_dist = config.getfloat('homing_move_dist', None, above=0.)
 

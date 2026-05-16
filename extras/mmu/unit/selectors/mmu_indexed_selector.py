@@ -63,23 +63,43 @@ class IndexedSelector(PhysicalSelector):
 
     def __init__(self, config, mmu_unit, params):
         super().__init__(config, mmu_unit, params)
-        self.is_homed = True
+
+        self.selector_stepper_name = mmu_unit.config.get('selector_stepper') # Name of selector stepper
+        stepper_section = f"mmu_stepper {self.selector_stepper_name}"
+
+        # Force stepper loading now (TMC first)
+        tmc_found = False
+        for chip in TMC_CHIPS: 
+            tmc_section = f"{chip} {stepper_section}"
+            if config.has_section(tmc_section):
+                _ = self.printer.load_object(config, tmc_section)
+                logging.info("MMU: Loaded: [%s]" % tmc_section)
+                tmc_found = True
+                break
+        if not tmc_found:
+            raise config.error("Selector stepper TMC configuration not found for %s on mmu_unit %s" % (self.selector_stepper, self.name))
+
+# PAUL don't think this is needed because we never home rail
+#        # Force correct max movement based on cad dimensions
+#        key = "homing_move_dist"
+#        config.fileconfig.set(stepper_section, key, self._get_max_selector_movement())
+
+        # Now we can load the mmu_stepper object
+        self.selector_stepper = self.printer.load_object(config, stepper_section)
+        logging.info("MMU: Loaded: [%s]" % stepper_section)
 
 
     # Selector "Interface" methods ---------------------------------------------
 
     def handle_connect(self):
-        """
-        Bind toolhead selector components and reset selector position.
-
-        Resolves the selector rail and stepper from the MMU toolhead kinematics
-        and resets position to 0.
-        """
         super().handle_connect()
 
-        self.selector_rail = self.mmu_unit.mmu_toolhead.get_kinematics().rails[0]
-        self.selector_stepper = self.selector_rail.steppers[0]
-        self._set_position(0) # Reset pos
+
+    def handle_ready(self):
+        super().handle_ready()
+
+        self.is_homed = True # Doesn't need homing
+        self._set_position(0) # Reset pos # PAUL need this now?
 
 
     def _select_gate(self, gate):
@@ -100,20 +120,18 @@ class IndexedSelector(PhysicalSelector):
                 with self.mmu.wrap_action(ACTION_SELECTING):
                     self._find_gate(gate)
 
-    def disable_motors(self):
-        stepper_enable = self.printer.lookup_object('stepper_enable')
-        se = stepper_enable.lookup_enable(self.selector_stepper.get_name())
-        se.motor_disable(self.mmu_unit.mmu_toolhead.get_last_move_time())
-        self.is_homed = False
 
     def enable_motors(self):
-        stepper_enable = self.printer.lookup_object('stepper_enable')
-        se = stepper_enable.lookup_enable(self.selector_stepper.get_name())
-        se.motor_enable(self.mmu_unit.mmu_toolhead.get_last_move_time())
+        self.selector_stepper.do_enable(True)
+
+
+    def disable_motors(self):
+        self.selector_stepper.do_enable(False)
+
 
     def buzz_motor(self, motor):
         if motor == "selector":
-            pos = self.mmu_unit.mmu_toolhead.get_position()[0]
+            pos = self.selector_stepper.commanded_pos
             self.move(None, pos + 5, wait=False)
             self.move(None, pos - 5, wait=False)
             self.move(None, pos, wait=False)
@@ -212,7 +230,7 @@ class IndexedSelector(PhysicalSelector):
 
         if homing_move != 0:
             # Check for valid endstop
-            endstops = self.selector_rail.get_endstops() if endstop_name is None else self.selector_rail.get_extra_endstop(endstop_name)
+            endstops = self.selector_stepper.rail.get_endstops() if endstop_name is None else self.selector_stepper.rail.get_extra_endstop(endstop_name)
             if endstops is None:
                 self.mmu.log_error("Endstop '%s' not found" % endstop_name)
                 return null_rtn
@@ -221,6 +239,7 @@ class IndexedSelector(PhysicalSelector):
         speed = speed or self.p.selector_homing_speed if homing_move != 0 else self.p.selector_move_speed
         accel = accel or self.p.selector_accel
 
+        # PAUL NEW: home_result = self.selector_stepper.do_homing_move(new_pos, speed, accel, probe_pos=True, triggered=(homing_move > 0), check_trigger=True, endstop_name=endstop_name)
         pos = self.mmu_unit.mmu_toolhead.get_position()
         if homing_move != 0:
             try:
@@ -240,16 +259,20 @@ class IndexedSelector(PhysicalSelector):
                 self.mmu.log_stepper("SELECTOR HOMING MOVE: max dist=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s, wait=%s >> %s" % (dist, speed, accel, endstop_name, wait, "%s halt_pos=%.1f (rail moved=%.1f), trig_pos=%.1f" % ("HOMED" if homed else "DID NOT HOMED",  halt_pos[0], actual, trig_pos[0])))
 
         else:
+            #PAUL NEW
+            #self.selector_stepper.do_move(new_pos, speed, accel)
+            #self.mmu.log_stepper(f"SELECTOR MOVE: position={new_pos:.1f}, speed={speed:.1f}, accel={accel:.1f}")
+
             with self.mmu.wrap_accel(accel):
                 pos[0] += dist
                 self.mmu_unit.mmu_toolhead.move(pos, speed)
             if self.mmu.log_enabled(LOG_STEPPER):
                 self.mmu.log_stepper("SELECTOR MOVE: position=%.1f, speed=%.1f, accel=%.1f" % (dist, speed, accel))
 
-        self.mmu_unit.mmu_toolhead.flush_step_generation() # TTC mitigation (TODO: still required?)
-        self.mmu.toolhead.flush_step_generation() # TTC mitigation (TODO: still required?)
-        if wait:
-            self.mmu.movequeue_wait()
+#        self.mmu_unit.mmu_toolhead.flush_step_generation() # TTC mitigation (TODO: still required?)
+#        self.mmu.toolhead.flush_step_generation() # TTC mitigation (TODO: still required?)
+            if wait:
+                self.mmu.movequeue_wait()
 
         if trace_str:
             if homing_move != 0:
@@ -264,6 +287,8 @@ class IndexedSelector(PhysicalSelector):
         return actual, homed
 
     def _set_position(self, position):
+        #PAUL NEW
+        #self.selector_stepper.do_set_position(position)
         pos = self.mmu_unit.mmu_toolhead.get_position()
         pos[0] = position
         self.mmu_unit.mmu_toolhead.set_position(pos)

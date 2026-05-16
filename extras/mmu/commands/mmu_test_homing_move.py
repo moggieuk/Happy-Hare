@@ -71,4 +71,4 @@ class MmuTestHomingMoveCommand(MoveMixin, BaseCommand):
             home_str = "Homed" if homed else "Did not home"
             measured_str = f" (measured {measured:.1f}mm)" if mmu.can_use_encoder() else ""
 
-        mmu.log_always(f"Filament position: {mmu.get_filament_position():.2f}")
+        mmu.log_always(f"Filament position: {mmu.drive().get_filament_position():.2f}")
