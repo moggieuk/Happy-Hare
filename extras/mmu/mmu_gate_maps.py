@@ -41,7 +41,6 @@ class MmuGateMaps:
         self.printer = mmu.printer
         self.p = mmu.p
         self.num_gates = mmu.num_gates
-        self._dirty = False
 
         # Endless spool groups
         self.endless_spool_enabled = self.p.endless_spool_enabled
@@ -130,7 +129,7 @@ class MmuGateMaps:
                 setattr(self, attr, value)
             else:
                 errors.append("Incorrect number of gates specified with %s" % var)
-        self.update_gate_color_rgb()
+        self.update_gate_color_rgb() # PAUL is this correct?
 
         # Load selected gate and tool
         gate_selected = var_manager.get(VARS_MMU_GATE_SELECTED, self.mmu.gate_selected)
@@ -218,8 +217,8 @@ class MmuGateMaps:
 
     # Use mmu entry (and gear) sensors to "correct" gate status
     # Return updated gate_status adjusted by sensor readings
-    def validate_gate_status(self, gate_status):
-        v_gate_status = list(gate_status) # Ensure that webhooks sees get_status() change
+    def validate_gate_status(self):
+        v_gate_status = list(self.gate_status) # Ensure that webhooks sees get_status() change
         for gate, status in enumerate(v_gate_status):
             gear_detected = self.mmu.sensor_manager.check_gate_sensor(SENSOR_EXIT_PREFIX, gate)
             if gear_detected is True:
@@ -230,7 +229,7 @@ class MmuGateMaps:
                     v_gate_status[gate] = GATE_UNKNOWN
                 elif pre_detected is False and status != GATE_EMPTY:
                     v_gate_status[gate] = GATE_EMPTY
-        return v_gate_status
+        self.gate_status = v_gate_status
 
 
     # Use post-mmu exit sensors to correct the selected gate.
@@ -299,7 +298,8 @@ class MmuGateMaps:
 
     def reset_gate_map(self):
         self.mmu.log_debug("Resetting gate map")
-        self.gate_status = self.validate_gate_status(self.p.default_gate_status)
+        self.gate_status = list(self.p.default_gate_status)
+        self.validate_gate_status()
         self.gate_filament_name = list(self.p.default_gate_filament_name)
         self.gate_material = list(self.p.default_gate_material)
         self.gate_color = list(self.p.default_gate_color)
@@ -641,10 +641,11 @@ class MmuGateMaps:
 
 # -----------------------------------------------------------------------------------------------------------
 
-    def _renew_gate_map(self):
+    def renew_gate_map(self):
         """
         Helper to ensure that webhooks sees get_status() change after gate map update.
         """
+        self.mmu.log_warning("PAUL: renew_gate_map")
         self.gate_status = list(self.gate_status)
         self.gate_filament_name = list(self.gate_filament_name)
         self.gate_material = list(self.gate_material)
@@ -655,11 +656,6 @@ class MmuGateMaps:
 
 
     def get_status(self, eventtime):
-        # This only creates new "gate map" lists when necessary for a little gain in effeciency
-        if self._dirty:
-            self._renew_gate_map()
-            self._dirty = False
-        
         return {
             'ttg_map': self.ttg_map,
 

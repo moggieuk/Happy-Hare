@@ -276,7 +276,7 @@ class MmuFilamentMovement:
                 success = self._reverse_home_to_encoder(homing_max)
                 if success:
                     homing_movement, homing_overshoot = success
-                    self.log_debug(f"Found encoder endstop after moving {homing_movement:.1f}mm with {homing_overshoot:1.f}mm overshoot")
+                    self.log_debug(f"Found encoder endstop after moving {homing_movement:.1f}mm with {homing_overshoot:.1f}mm overshoot")
                     parking_distance = u.p.gate_parking_distance - homing_overshoot # homing_overshoot will always be -ve (retraction)
                     _, _, measured, _ = self.move_filament("Final parking", parking_distance)
 
@@ -305,7 +305,7 @@ class MmuFilamentMovement:
                 self.set_filament_pos_state(FILAMENT_POS_UNLOADED)
                 return homing_movement
 
-            msg = "did not home to sensor '%s' after moving %1.fmm" % (u.p.gate_homing_endstop, homing_max)
+            msg = "did not home to sensor '{u.p.gate_homing_endstop}' after moving {homing_max:.1f}mm" % (u.p.gate_homing_endstop, homing_max)
 
         raise MmuError("Failed to unload gate because %s" % msg)
 

@@ -20,11 +20,10 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import logging, traceback
+import logging
 from typing                 import Sequence
 
 # Klipper imports
-from ....homing             import HomingMove
 
 # Happy Hare imports
 from ...mmu_constants       import *
@@ -52,7 +51,7 @@ class RotarySelectorParameters(TunableParametersBase):
 
         ParamSpec('cad_gate0_pos',           'float',   4.0,  section="CAD", limits=dict(minval=0.0), hidden=True),
         ParamSpec('cad_gate_width',          'float',   25.0, section="CAD", limits=dict(above=0.0),  hidden=True),
-        ParamSpec('cad_bypass_offset',       'float',   2.0,  section="CAD", limits=dict(minval=0.0), hidden=True),
+        ParamSpec('cad_bypass_offset',       'float',   2.0,  section="CAD", limits=dict(minval=0.0), hidden=True), # PAUL???
         ParamSpec('cad_selector_tolerance',  'float',   15.0, section="CAD", limits=dict(minval=0.0), hidden=True),
     )
 
@@ -97,7 +96,7 @@ class RotarySelector(PhysicalSelector):
                 tmc_found = True
                 break
         if not tmc_found:
-            raise config.error("Selector stepper TMC configuration not found for %s on mmu_unit %s" % (self.selector_stepper, self.name))
+            raise config.error("Selector stepper TMC configuration not found for %s on mmu_unit %s" % (self.selector_stepper_name, self.name))
 
         # Inject sensible config if not supplied by user
         key = "homing_speed"
@@ -178,10 +177,9 @@ class RotarySelector(PhysicalSelector):
     def _select_gate(self, lgate):
         super()._select_gate(lgate)
 
-        if gate != self.mmu.gate_selected:
-            with self.mmu.wrap_action(ACTION_SELECTING):
-                if self.mmu_unit.filament_always_gripped:
-                    self._grip(self.local_gate(gate))
+        with self.mmu.wrap_action(ACTION_SELECTING):
+            if self.mmu_unit.filament_always_gripped:
+                self._grip(lgate) # PAUL I think this should be gate!
 
 
     def filament_drive(self):
@@ -220,7 +218,7 @@ class RotarySelector(PhysicalSelector):
                 self.grip_state = FILAMENT_DRIVE_STATE
 
             # Ensure gate filament drive is in the correct direction
-            self.mmu_unit.drive_obj(gate).set_gear_direction(self.p.selector_gate_directions[lgate])
+            self.mmu_unit.drive_obj(lgate).set_gear_direction(self.p.selector_gate_directions[lgate])
             self.mmu.movequeue_wait()
         else:
             self.grip_state = FILAMENT_UNKNOWN_STATE
@@ -285,6 +283,12 @@ class RotarySelector(PhysicalSelector):
         max_movement += self.p.cad_selector_tolerance
         return max_movement
 
+
+    def _get_max_selector_movement(self):
+        max_movement = self.mmu.num_gates * self.p.cad_gate_width * self.p.cad_max_rotations
+        return max_movement
+
+
     # Manual selector offset calibration
     def _calibrate_selector(self, gate, extrapolate=True, save=True):
         """
@@ -331,51 +335,27 @@ class RotarySelector(PhysicalSelector):
                     self.mmu.log_always("Run MMU_CALIBRATE_SELECTOR again with GATE=%d to extrapolate all gate positions. Use SINGLE=1 to force calibration of only one gate" % (self.mmu_unit.num_gates - 1))
         return True
 
-#PAUL NEW .. example from linear_selector
-#    def _home_selector(self):
-#        """
-#        Home selector rail
-#        """
-#        self.mmu.movequeue_wait()
-#        self.filament_hold_move()
-#
-#        try:
-#            self.selector_stepper.do_home_rail()
-#            self.is_homed = True
-#            self.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, 0, namespace=self.mmu_unit.name)
-#
-#        except Exception as e:
-#            self.is_homed = False
-#            self.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, None, namespace=self.mmu_unit.name)
-#            raise MmuError(f"Homing selector failed because of blockage or malfunction. Klipper reports: {e}") from e
+
     def _home_selector(self):
         """
         Home the selector rail using the configured endstop or a hard endstop.
-
-        Uses Klipper kinematics homing when an endstop is present, otherwise
-        forces a hard-endstop home. Raises MmuError with Klipper context on
-        failure (blockage/malfunction).
         """
-        from ...mmu_unit import MmuHoming
-
         self.mmu.movequeue_wait()
+        self.filament_hold_move()
 
         try:
             if self.has_endstop:
-                homing_state = MmuHoming(self.printer, self.mmu_unit.mmu_toolhead)
-                homing_state.set_axes([0])
-                self.mmu_unit.mmu_toolhead.get_kinematics().home(homing_state)
+                self.selector_stepper.do_home_rail()
             else:
                 self._home_hard_endstop()
 
             self.is_homed = True
             self.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, 0, namespace=self.mmu_unit.name)
 
-        except Exception as e: # Homing failed
+        except Exception as e:
             self.is_homed = False
             self.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, None, namespace=self.mmu_unit.name)
-            logging.error(traceback.format_exc())
-            raise MmuError("Homing selector failed because of blockage or malfunction. Klipper reports: %s" % str(e))
+            raise MmuError(f"Homing selector failed because of blockage or malfunction. Klipper reports: {e}") from e
 
 
     def _home_hard_endstop(self):
@@ -395,7 +375,7 @@ class RotarySelector(PhysicalSelector):
 
 
     # Internal raw wrapper around all selector moves except rail homing
-    # Returns position after move, if homed (homing moves)
+    # Returns position after move
     def _move_selector(self, trace_str, new_pos, speed=None, accel=None, wait=False):
         """
         Execute a selector move with consistent tracing and motion settings.
@@ -413,21 +393,21 @@ class RotarySelector(PhysicalSelector):
         speed = speed or self.p.selector_move_speed
         accel = accel or self.p.selector_accel
 
-        pos = self.mmu_unit.mmu_toolhead.get_position()
-        with self.mmu.wrap_accel(accel):
-            pos[0] = new_pos
-            self.mmu_unit.mmu_toolhead.move(pos, speed)
-        if self.mmu.log_enabled(LOG_STEPPER):
-            self.mmu.log_stepper("SELECTOR MOVE: position=%.1f, speed=%.1f, accel=%.1f" % (new_pos, speed, accel))
+        pos = self.selector_stepper.commanded_pos
+        self.selector_stepper.do_move(new_pos, speed, accel)
+        self.mmu.log_stepper(
+            f"SELECTOR MOVE: requested position={new_pos:.1f}, "
+            f"speed={speed:.1f}, accel={accel:.1f}"
+        )
+
         if wait:
             self.mmu.movequeue_wait()
-        return pos[0]
+
+        return new_pos
 
 
     def _restore_position(self, position):
-        pos = self.mmu_unit.mmu_toolhead.get_position()
-        pos[0] = position
-        self.mmu_unit.mmu_toolhead.set_position(pos, homing_axes=(0,))
+        self.selector_stepper.do_set_position(position)
         self.enable_motors()
 
 
@@ -438,22 +418,19 @@ class RotarySelector(PhysicalSelector):
         Returns (traveled_mm, homed_ok). Travel is computed from MCU step
         position delta multiplied by step distance.
         """
-        from ...mmu_unit import MmuHoming
-
         self.mmu.movequeue_wait()
-        init_mcu_pos = self.selector_stepper.get_mcu_position()
-        homed = False
-        try:
-            homing_state = MmuHoming(self.printer, self.mmu_unit.mmu_toolhead)
-            homing_state.set_axes([0])
-            self.mmu_unit.mmu_toolhead.get_kinematics().home(homing_state)
-            homed = True
-        except Exception:
-            pass # Home not found
-        mcu_position = self.selector_stepper.get_mcu_position()
-        traveled = abs(mcu_position - init_mcu_pos) * self.selector_stepper.get_step_dist()
-        return traveled, homed
 
+        traveled = 0.0
+        homed = False
+
+        try:
+            traveled = self.selector_stepper.do_home_rail()
+            homed = True
+
+        except self.printer.command_error:
+            pass # Expected: endstop not triggered
+
+        return abs(traveled), homed
 
 
 # -----------------------------------------------------------------------------------------------------------

@@ -61,12 +61,12 @@ class MmuEndlessSpoolCommand(BaseCommand):
         groups = gcmd.get('GROUPS', "!")
 
         if enabled >= 0:
-            mmu.endless_spool_enabled = enabled
-            mmu.var_manager.set(VARS_MMU_ENABLE_ENDLESS_SPOOL, mmu.endless_spool_enabled, write=True)
+            mmu.gate_maps.endless_spool_enabled = enabled
+            mmu.var_manager.set(VARS_MMU_ENABLE_ENDLESS_SPOOL, mmu.gate_maps.endless_spool_enabled, write=True)
             if enabled and not quiet:
                 mmu.log_always("EndlessSpool is enabled")
 
-        if not mmu.endless_spool_enabled:
+        if not mmu.gate_maps.endless_spool_enabled:
             mmu.log_always("EndlessSpool is disabled")
             return
 
@@ -74,16 +74,16 @@ class MmuEndlessSpoolCommand(BaseCommand):
             mmu.gate_maps.reset_endless_spool()
 
         elif groups != "!":
-            groups = gcmd.get('GROUPS', ",".join(map(str, mmu.endless_spool_groups))).split(",")
+            groups = gcmd.get('GROUPS', ",".join(map(str, mmu.gate_maps.endless_spool_groups))).split(",")
             if len(groups) != mmu.num_gates:
                 mmu.log_always("The number of group values (%d) is not the same as number of gates (%d)" % (len(groups), mmu.num_gates))
                 return
-            mmu.endless_spool_groups = []
+            mmu.gate_maps.endless_spool_groups = []
             for group in groups:
                 if group.isdigit():
-                    mmu.endless_spool_groups.append(int(group))
+                    mmu.gate_maps.endless_spool_groups.append(int(group))
                 else:
-                    mmu.endless_spool_groups.append(0)
+                    mmu.gate_maps.endless_spool_groups.append(0)
             mmu.gate_maps.persist_endless_spool()
 
         else:

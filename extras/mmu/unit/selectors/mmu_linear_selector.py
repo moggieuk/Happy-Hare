@@ -19,7 +19,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import logging, traceback
+import logging
 from typing                 import Sequence
 
 # Happy Hare imports
@@ -135,6 +135,8 @@ class LinearSelector(PhysicalSelector):
     def __init__(self, config, mmu_unit, unit_params):
         super().__init__(config, mmu_unit, unit_params)
 
+        self.bypass_offset = -1 # Required for get_status() success during init()
+
         self.selector_stepper_name = mmu_unit.config.get('selector_stepper') # Name of selector stepper
         stepper_section = f"mmu_stepper {self.selector_stepper_name}"
 
@@ -148,7 +150,7 @@ class LinearSelector(PhysicalSelector):
                 tmc_found = True
                 break
         if not tmc_found:
-            raise config.error("Selector stepper TMC configuration not found for %s on mmu_unit %s" % (self.selector_stepper, self.name))
+            raise config.error("Selector stepper TMC configuration not found for %s on mmu_unit %s" % (self.selector_stepper_name, self.name))
 
         # Inject sensible config if not supplied by user
         key = "homing_speed"
@@ -193,7 +195,7 @@ class LinearSelector(PhysicalSelector):
 
         # Load selector offsets (calibration set with MMU_CALIBRATE_SELECTOR) -------------------------------
 
-        def ensure_list_size(self, lst, size, default_value=-1):
+        def ensure_list_size(lst, size, default_value=-1):
             lst = lst[:size]
             lst.extend([default_value] * (size - len(lst)))
             return lst
@@ -293,12 +295,46 @@ class LinearSelector(PhysicalSelector):
         ]
 
 
+    def move(self, trace_str, new_pos, speed=None, accel=None, wait=False):
+        return self._move_selector(trace_str, new_pos, speed=speed, accel=accel, wait=wait)
+
+
+    def homing_move(self, trace_str, new_pos, speed=None, accel=None, homing_move=0, endstop_name=None):
+        return self._move_selector(trace_str, new_pos, speed=speed, accel=accel, homing_move=homing_move, endstop_name=endstop_name)
+
+
+    def measure_to_home(self):
+        """
+        Home the selector axis and report travel distance.
+
+        Returns (traveled_mm, homed_ok). Travel is computed from MCU step
+        position delta multiplied by step distance.
+        """
+        self.mmu.movequeue_wait()
+
+        traveled = 0.0
+        homed = False
+
+        try:
+            traveled = self.selector_stepper.do_home_rail()
+            homed = True
+
+        except self.printer.command_error:
+            pass # Expected: endstop not triggered
+
+        return abs(traveled), homed
+
+
+    def use_touch_move(self):
+        return self.selector_touch and self.p.selector_touch_enabled
+
+
     # Internal Implementation --------------------------------------------------
 
     def _get_max_selector_movement(self, lgate=TOOL_GATE_UNKNOWN):
         """
-        Return the maximum permissbile selector movement to reach 
-        the specifed LOCAL gate from home position.
+        Return the maximum permissible selector movement to reach 
+        the specified LOCAL gate from home position.
         If no local gate is specified then return maximum permissible
         travel
         """
@@ -328,9 +364,10 @@ class LinearSelector(PhysicalSelector):
         saving, either extrapolates remaining gate offsets (when possible) or
         saves only the requested gate/bypass offset.
         """
+        lgate = self.mmu_unit.local_gate(gate)
         gate_str = lambda gate : ("gate %d" % gate) if gate >= 0 else "bypass"
 
-        max_movement = self._get_max_selector_movement(gate)
+        max_movement = self._get_max_selector_movement(lgate)
         self.mmu.log_always("Measuring the selector position for %s..." % gate_str(gate))
         traveled, found_home = self.measure_to_home()
 
@@ -347,11 +384,11 @@ class LinearSelector(PhysicalSelector):
             self.mmu.log_always("Selector move measured %.1fmm" % traveled)
 
         if save:
-            if gate >= 0:
-                self.selector_offsets[gate] = round(traveled, 1)
+            if lgate >= 0:
+                self.selector_offsets[lgate] = round(traveled, 1)
                 if (
-                    extrapolate and gate == self.mmu_unit.num_gates - 1  and self.selector_offsets[0] > 0 or
-                    extrapolate and gate == 0 and self.selector_offsets[-1] > 0
+                    extrapolate and lgate == self.mmu_unit.num_gates - 1  and self.selector_offsets[0] > 0 or
+                    extrapolate and lgate == 0 and self.selector_offsets[-1] > 0
                 ):
                     # Distribute selector spacing
                     spacing = (self.selector_offsets[-1] - self.selector_offsets[0]) / (self.mmu_unit.num_gates - 1)
@@ -369,7 +406,7 @@ class LinearSelector(PhysicalSelector):
             else:
                 self.mmu.log_always("Selector offset (%.1fmm) for %s has been saved" % (traveled, gate_str(gate)))
                 if gate == 0:
-                    self.mmu.log_always("Run MMU_CALIBRATE_SELECTOR again with GATE=%d to extrapolate all gate positions. Use SINGLE=1 to force calibration of only one gate" % (self.mmu_unit.num_gates - 1))
+                    self.mmu.log_always("Run MMU_CALIBRATE_SELECTOR again with GATE=%d to extrapolate all gate positions. Use SINGLE=1 to force calibration of only one gate at a time" % (self.mmu_unit.num_gates - 1))
         return True
 
 
@@ -403,7 +440,7 @@ class LinearSelector(PhysicalSelector):
         else:
             # This might not sound good!
             self.move("Ensure we are clear off the physical endstop", self.p.cad_gate0_pos)
-            self.move("Forceably detecting end of selector movement", max_movement, speed=self.selector_homing_speed)
+            self.move("Forceably detecting end of selector movement", max_movement, speed=self.p.selector_homing_speed)
             found_home = True
         if not found_home:
             msg = "Didn't detect the end of the selector"
@@ -465,7 +502,7 @@ class LinearSelector(PhysicalSelector):
             bypass_offset = bypass_pos
 
         if num_gates != self.mmu_unit.num_gates:
-            self.mmu.log_error("You configued your MMU for %d gates but I counted %d! Please update 'num_gates'" % (self.mmu_unit.num_gates, num_gates))
+            self.mmu.log_error("You configured your MMU for %d gates but I counted %d! Please update 'num_gates'" % (self.mmu_unit.num_gates, num_gates))
             return False
 
         self.mmu.log_always("Offsets: %s%s" % (selector_offsets, (" (bypass: %.1f)" % bypass_offset) if bypass_offset > 0 else " (no bypass fitted)"))
@@ -477,40 +514,6 @@ class LinearSelector(PhysicalSelector):
             self.var_manager.write()
             self.mmu.log_always("Selector calibration has been saved")
         return True
-
-
-    def move(self, trace_str, new_pos, speed=None, accel=None, wait=False):
-        return self._move_selector(trace_str, new_pos, speed=speed, accel=accel, wait=wait)
-
-
-    def homing_move(self, trace_str, new_pos, speed=None, accel=None, homing_move=0, endstop_name=None):
-        return self._move_selector(trace_str, new_pos, speed=speed, accel=accel, homing_move=homing_move, endstop_name=endstop_name)
-
-
-    def measure_to_home(self):
-        """
-        Home the selector axis and report travel distance.
-
-        Returns (traveled_mm, homed_ok). Travel is computed from MCU step
-        position delta multiplied by step distance.
-        """
-        self.mmu.movequeue_wait()
-
-        traveled = 0.0
-        homed = False
-
-        try:
-            traveled = self.selector_stepper.do_home_rail()
-            homed = True
-
-        except self.printer.command_error:
-            pass # Expected: endstop not triggered
-
-        return abs(traveled), homed
-
-
-    def use_touch_move(self):
-        return self.selector_touch and self.p.selector_touch_enabled
 
 
     def _home_selector(self):
@@ -548,7 +551,7 @@ class LinearSelector(PhysicalSelector):
                     with self.mmu.wrap_suppress_visual_log():
                         travel = abs(init_pos - halt_pos)
                         if travel < 4.0: # Filament stuck in the current gate (e.g. on ERCF design)
-                            self.mmu.log_info("Selector is blocked by filament inside gate, will try to recover...")
+                            self.mmu.log_warning("Selector is blocked by filament inside gate, will try to recover...")
                             self.move("Realigning selector by a distance of: %.1fmm" % -travel, init_pos)
     
                             # See if we can detect filament in gate area
@@ -558,7 +561,7 @@ class LinearSelector(PhysicalSelector):
                                 self.filament_drive()
                                 _,_,measured,_ = self.mmu.move_filament("Locating filament", self.mmu.gate_parking_distance + self.mmu.gate_endstop_to_encoder + 10.)
                                 if self.mmu.has_encoder() and measured < self.mmu.encoder_min:
-                                    raise MmuError("Unblocking selector failed bacause unable to move filament to clear")
+                                    raise MmuError("Unblocking selector failed because unable to move filament to clear")
     
                             # Try a full unload sequence
                             try:
@@ -605,24 +608,28 @@ class LinearSelector(PhysicalSelector):
 
         # Set appropriate speeds and accel if not supplied
         if homing_move != 0:
-            speed = speed or (self.p.selector_touch_speed if self.p.selector_touch_enabled or endstop_name == SENSOR_SELECTOR_TOUCH else self.selector_homing_speed)
+            speed = speed or (self.p.selector_touch_speed if self.p.selector_touch_enabled or endstop_name == SENSOR_SELECTOR_TOUCH else self.p.selector_homing_speed)
         else:
             speed = speed or self.p.selector_move_speed
         accel = accel or self.p.selector_accel
+
+        pos = self.selector_stepper.commanded_pos
 
         if homing_move != 0:
             # Check for valid endstop
             endstops = self.selector_stepper.rail.get_endstops() if endstop_name is None else self.selector_stepper.rail.get_extra_endstop(endstop_name)
             if endstops is None:
                 self.mmu.log_error("Endstop '%s' not found" % endstop_name)
-                return pos[0], homed
+                return self.selector_stepper.commanded_pos, False
 
-            home_result = None
-            success = False
+            home_result = {
+                'halt_pos': pos,
+                'trig_pos': pos,
+            }
             homed = True
+
             try:
                 home_result = self.selector_stepper.do_homing_move(new_pos, speed, accel, probe_pos=True, triggered=(homing_move > 0), check_trigger=True, endstop_name=endstop_name)
-                success = True
 
                 if self.selector_stepper.rail.is_endstop_virtual(endstop_name):
                     # Try to infer move completion if using Stallguard
@@ -635,6 +642,7 @@ class LinearSelector(PhysicalSelector):
             except self.printer.command_error:
                 homed = False
 
+            actual = home_result['halt_pos'] - pos
             result = f"HOMED actual halt_pos={home_result['halt_pos']:.2f}, trig_pos={home_result['trig_pos']:.2f}" if homed else "DID NOT HOME"
             self.mmu.log_stepper(
                 f"SELECTOR HOMING MOVE: requested position={new_pos:.1f}, "
@@ -645,7 +653,10 @@ class LinearSelector(PhysicalSelector):
         else:
             homed = False
             self.selector_stepper.do_move(new_pos, speed, accel)
-            self.mmu.log_stepper(f"SELECTOR MOVE: position={new_pos:.1f}, speed={speed:.1f}, accel={accel:.1f}")
+            self.mmu.log_stepper(
+                f"SELECTOR MOVE: requested position={new_pos:.1f}, "
+                f"speed={speed:.1f}, accel={accel:.1f}"
+            )
 
             if wait:
                 self.mmu.movequeue_wait()
@@ -671,7 +682,7 @@ class MmuCalibrateSelectorCommand(BaseCommand):
 
     CMD = "MMU_CALIBRATE_SELECTOR"
 
-    HELP_BRIEF = "Calibration of the selector positions or postion of specified gate"
+    HELP_BRIEF = "Calibration of the selector positions or position of specified gate"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
         + "UNIT         = #(int) Optional if only one unit fitted to printer\n"

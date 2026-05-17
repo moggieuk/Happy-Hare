@@ -78,6 +78,9 @@ class ServoSelector(PhysicalSelector):
 
     def __init__(self, config, mmu_unit, params):
         super().__init__(config, mmu_unit, params)
+
+        self.servo_bypass_angle = -1 # Required for get_status() success during init()
+
         self.is_homed = True # No homing necessary
         self.requires_homing = False
 
@@ -232,7 +235,7 @@ class ServoSelector(PhysicalSelector):
         return True
 
     def has_bypass(self):
-        return self.servo_bypass_angle >= 0
+        return (self.servo_bypass_angle >= 0)
 
     def get_status(self, eventtime):
         status = super().get_status(eventtime)

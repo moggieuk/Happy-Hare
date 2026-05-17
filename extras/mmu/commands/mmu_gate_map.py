@@ -82,6 +82,9 @@ class MmuGateMapCommand(BaseCommand):
             mmu.log_debug("Exception whilst parsing gate map in MMU_GATE_MAP: %s" % str(e))
             return
 
+        # Ensure webhooks always sees a change if we edit map
+        mmu.gate_maps.renew_gate_map()
+
         if reset:
             mmu.gate_maps.reset_gate_map()
 
@@ -213,7 +216,7 @@ class MmuGateMapCommand(BaseCommand):
                     mmu.gate_speed_override[gate_idx] = speed_override
                     if any(x is not None for x in [material, color, spool_id, name]):
                         mmu.log_error("Spoolman mode is '%s': Can only set gate status and speed override locally\nUse MMU_SPOOLMAN or update spoolman directly" % SPOOLMAN_PULL)
-                        return
+                        break
 
             changed_gate_ids = list(ids_dict.items())
 

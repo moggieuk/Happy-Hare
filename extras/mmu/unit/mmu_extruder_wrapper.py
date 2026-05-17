@@ -150,6 +150,8 @@ class MmuExtruderWrapper():
     def set_filament_remaining(self, length, color=UNKNOWN_FILAMENT_COLOR):
         self.filament_remaining = length
         self.filament_remaining_color = color
+        self.var_manager.set(VARS_MMU_FILAMENT_REMAINING, max(0, round(length, 1))) # TODO TEMP Duplicate non-namespaced for older Mainsail/Fluidd UI
+        self.var_manager.set(VARS_MMU_FILAMENT_REMAINING_COLOR, color)              # TODO TEMP Deplicate non-namespaced for older Mainsail/Fluidd UI
         self.var_manager.set(VARS_MMU_FILAMENT_REMAINING, max(0, round(length, 1)), self.name)
         self.var_manager.set(VARS_MMU_FILAMENT_REMAINING_COLOR, color, self.name, write=True)
 
@@ -157,8 +159,8 @@ class MmuExtruderWrapper():
     def get_status(self, eventtime):
         return {
             'extruder_filament_remaining': self.filament_remaining + self.mmu_unit.toolhead_wrapper.p.toolhead_residual_filament,
-            'filament_remaining': self.filament_remaining,
-            'filament_remaining_color': self.filament_remaining_color,
+            'filament_remaining': self.filament_remaining,             # TODO Use this printer variable in UI's
+            'filament_remaining_color': self.filament_remaining_color, # Use this printer variable in UI's
         }
 
 

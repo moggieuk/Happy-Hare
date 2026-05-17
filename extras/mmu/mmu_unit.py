@@ -543,7 +543,7 @@ class MmuUnit:
         return self.filament_heater or self.filament_heaters
 
     def has_bypass(self):
-        return self.show_bypass or self.selector.has_bypass()
+        return self.show_bypass
 
     def motors_onoff(self, on=False, motor="all"):
         if motor in ["all", "gear", "gears"]:
@@ -567,11 +567,14 @@ class MmuUnit:
             return True
         return (self.first_gate <= gate < self.first_gate + self.num_gates)
 
+
     def gate_bounds(self):
         return self.first_gate, self.first_gate + self.num_gates - 1
 
+
     def gate_range(self):
         return list(range(self.first_gate, self.first_gate + self.num_gates))
+
 
     def local_gate(self, gate, force_physical=False):
         """
@@ -798,7 +801,7 @@ class MmuUnit:
             'variable_bowden_lengths': self.variable_bowden_lengths,
             'require_bowden_move': self.require_bowden_move,
             'filament_always_gripped': self.filament_always_gripped,
-            'has_bypass': self.has_bypass(),
+            'has_bypass': self.show_bypass,
             'can_crossload': self.can_crossload,
             'multi_gear': self.multigear,
         }

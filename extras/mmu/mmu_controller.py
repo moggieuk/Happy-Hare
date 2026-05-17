@@ -331,7 +331,7 @@ class MmuController(MmuFilamentMovement):
                         self.log_info(msg)
 
             # Use per gate sensors to adjust gate map
-            self.gate_status = self.gate_maps.validate_gate_status(self.gate_status)
+            self.gate_maps.validate_gate_status()
 
             try:
                 # Can we verify gate selected? If so fix if necessary
@@ -1245,73 +1245,33 @@ class MmuController(MmuFilamentMovement):
     def gate_status(self):
         return self.gate_maps.gate_status
 
-    @gate_status.setter
-    def gate_status(self, value):
-        self.gate_maps.gate_status = value
-        self.gate_maps._dirty = True
-
     @property
     def gate_filament_name(self):
         return self.gate_maps.gate_filament_name
-
-    @gate_filament_name.setter
-    def gate_filament_name(self, value):
-        self.gate_maps.gate_filament_name = value
-        self.gate_maps._dirty = True
 
     @property
     def gate_material(self):
         return self.gate_maps.gate_material
 
-    @gate_material.setter
-    def gate_material(self, value):
-        self.gate_maps.gate_material = value
-        self.gate_maps._dirty = True
-
     @property
     def gate_color(self):
         return self.gate_maps.gate_color
-
-    @gate_color.setter
-    def gate_color(self, value):
-        self.gate_maps.gate_color = value
-        self.gate_maps._dirty = True
 
     @property
     def gate_temperature(self):
         return self.gate_maps.gate_temperature
 
-    @gate_temperature.setter
-    def gate_temperature(self, value):
-        self.gate_maps.gate_temperature = value
-        self.gate_maps._dirty = True
-
     @property
     def gate_spool_id(self):
         return self.gate_maps.gate_spool_id
-
-    @gate_spool_id.setter
-    def gate_spool_id(self, value):
-        self.gate_maps.gate_spool_id = value
-        self.gate_maps._dirty = True
 
     @property
     def gate_speed_override(self):
         return self.gate_maps.gate_speed_override
 
-    @gate_speed_override.setter
-    def gate_speed_override(self, value):
-        self.gate_maps.gate_speed_override = value
-        self.gate_maps._dirty = True
-
     @property
     def gate_color_rgb(self):
         return self.gate_maps.gate_color_rgb
-
-    @gate_color_rgb.setter
-    def gate_color_rgb(self, value):
-        self.gate_maps.gate_color_rgb = value
-        self.gate_maps._dirty = True
 
     @property
     def endless_spool_enabled(self):
@@ -1325,33 +1285,17 @@ class MmuController(MmuFilamentMovement):
     def endless_spool_groups(self):
         return self.gate_maps.endless_spool_groups
 
-    @endless_spool_groups.setter
-    def endless_spool_groups(self, value):
-        self.gate_maps.endless_spool_groups = value
-
     @property
     def slicer_color_rgb(self):
         return self.gate_maps.slicer_color_rgb
-
-    @slicer_color_rgb.setter
-    def slicer_color_rgb(self, value):
-        self.gate_maps.slicer_color_rgb = value
 
     @property
     def ttg_map(self):
         return self.gate_maps.ttg_map
 
-    @ttg_map.setter
-    def ttg_map(self, value):
-        self.gate_maps.ttg_map = value
-
     @property
     def slicer_tool_map(self):
         return self.gate_maps.slicer_tool_map
-
-    @slicer_tool_map.setter
-    def slicer_tool_map(self, value):
-        self.gate_maps.slicer_tool_map = value
 
 
 # -----------------------------------------------------------------------------------------------------------

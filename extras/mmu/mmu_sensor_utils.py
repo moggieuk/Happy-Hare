@@ -527,7 +527,7 @@ class MmuAdcSwitchSensor:
             self._trigger_completion.complete(True)
 
 
-    # Required to implement an endstop -------
+    # Required to implement an endstop ----------------------------------
 
     def query_endstop(self, print_time):
         return self.runout_helper.filament_present
@@ -714,7 +714,7 @@ class MmuHallEndstop:
         return status
 
 
-    # Required to implement a HH MMU endstop -------
+    # Required to implement an endstop -------------------------------------
 
     def query_endstop(self, print_time):
         return self.runout_helper.filament_present

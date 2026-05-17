@@ -82,35 +82,35 @@ class MmuSlicerToolMapCommand(BaseCommand):
         automap_strategy = gcmd.get('AUTOMAP', None)
         skip_automap = gcmd.get_int('SKIP_AUTOMAP', None, minval=0, maxval=1)
 
+        # Ensure webhooks always sees a change if we edit map
+        mmu.gate_maps.slicer_tool_map = dict(mmu.gate_maps.slicer_tool_map)
+
         quiet = False
         if reset:
             mmu.gate_maps.clear_slicer_tool_map()
             quiet = True
-        else:
-            # Ensure webhooks see a change if we edit map in place
-            mmu.slicer_tool_map = dict(mmu.slicer_tool_map)
 
         # One-print option to suppress automatic automap
         if skip_automap is not None:
             mmu.gate_maps.restore_automap_option(bool(skip_automap))
 
         if tool >= 0:
-            mmu.slicer_tool_map['tools'][str(tool)] = {'color': color, 'material': material, 'temp': temp, 'name': name, 'in_use': used}
+            mmu.gate_maps.slicer_tool_map['tools'][str(tool)] = {'color': color, 'material': material, 'temp': temp, 'name': name, 'in_use': used}
             if used:
-                mmu.slicer_tool_map['referenced_tools'] = sorted(set(mmu.slicer_tool_map['referenced_tools'] + [tool]))
-                if not mmu.slicer_tool_map.get('skip_automap', False) and automap_strategy and automap_strategy != AUTOMAP_NONE:
+                mmu.gate_maps.slicer_tool_map['referenced_tools'] = sorted(set(mmu.gate_maps.slicer_tool_map['referenced_tools'] + [tool]))
+                if not mmu.gate_maps.slicer_tool_map.get('skip_automap', False) and automap_strategy and automap_strategy != AUTOMAP_NONE:
                     mmu.gate_maps.automap_gate(tool, automap_strategy)
             if color:
                 mmu.gate_maps.update_slicer_color_rgb()
             quiet = True
 
         if initial_tool is not None:
-            mmu.slicer_tool_map['initial_tool'] = initial_tool
-            mmu.slicer_tool_map['referenced_tools'] = sorted(set(mmu.slicer_tool_map['referenced_tools'] + [initial_tool]))
+            mmu.gate_maps.slicer_tool_map['initial_tool'] = initial_tool
+            mmu.gate_maps.slicer_tool_map['referenced_tools'] = sorted(set(mmu.gate_maps.slicer_tool_map['referenced_tools'] + [initial_tool]))
             quiet = True
 
         if total_toolchanges is not None:
-            mmu.slicer_tool_map['total_toolchanges'] = total_toolchanges
+            mmu.gate_maps.slicer_tool_map['total_toolchanges'] = total_toolchanges
             quiet = True
 
         if purge_volumes != "":
@@ -134,7 +134,7 @@ class MmuSlicerToolMapCommand(BaseCommand):
 
                 should_calc = lambda x, y: x < num_slicer_tools and y < num_slicer_tools and x != y
                 # Build purge volume map (x=to_tool, y=from_tool)
-                mmu.slicer_tool_map['purge_volumes'] = [
+                mmu.gate_maps.slicer_tool_map['purge_volumes'] = [
                     [
                         calc(x, y) if should_calc(x, y) else 0
                         for y in range(mmu.num_gates)
@@ -146,25 +146,25 @@ class MmuSlicerToolMapCommand(BaseCommand):
             quiet = True
 
         if not quiet:
-            colors = sum(1 for t in mmu.slicer_tool_map['tools'] if mmu.slicer_tool_map['tools'][t]['in_use'])
-            have_purge_map = len(mmu.slicer_tool_map.get('purge_volumes', [])) > 0
+            colors = sum(1 for t in mmu.gate_maps.slicer_tool_map['tools'] if mmu.gate_maps.slicer_tool_map['tools'][t]['in_use'])
+            have_purge_map = len(mmu.gate_maps.slicer_tool_map.get('purge_volumes', [])) > 0
             msg = "No slicer tool map loaded"
-            if colors > 0 or mmu.slicer_tool_map.get('initial_tool') is not None:
+            if colors > 0 or mmu.gate_maps.slicer_tool_map.get('initial_tool') is not None:
                 msg = "--------- Slicer MMU Tool Summary ---------\n"
                 msg += "Single color print" if colors <= 1 else "%d color print" % colors
                 msg += " (Purge volume map loaded)\n" if colors > 1 and have_purge_map else "\n"
-                for t, params in mmu.slicer_tool_map['tools'].items():
+                for t, params in mmu.gate_maps.slicer_tool_map['tools'].items():
                     if params['in_use'] or detail:
                         msg += "T%d (gate %d, %s, %s, %d%sC)" % (int(t), mmu.ttg_map[int(t)], params['material'], params['color'], params['temp'], UI_DEGREE)
                         msg += " Not used\n" if detail and not params['in_use'] else "\n"
-                if mmu.slicer_tool_map.get('initial_tool') is not None:
-                    msg += "Initial Tool: T%d" % mmu.slicer_tool_map['initial_tool']
+                if mmu.gate_maps.slicer_tool_map.get('initial_tool') is not None:
+                    msg += "Initial Tool: T%d" % mmu.gate_maps.slicer_tool_map['initial_tool']
                     msg += " (will use bypass)\n" if colors <= 1 and mmu.tool_selected == TOOL_GATE_BYPASS else "\n"
                 msg += "-------------------------------------------"
             if detail or purge_map or sparse_purge_map:
                 if have_purge_map:
-                    rt = mmu.slicer_tool_map['referenced_tools']
-                    volumes = [row[:num_slicer_tools] for row in mmu.slicer_tool_map['purge_volumes'][:num_slicer_tools]]
+                    rt = mmu.gate_maps.slicer_tool_map['referenced_tools']
+                    volumes = [row[:num_slicer_tools] for row in mmu.gate_maps.slicer_tool_map['purge_volumes'][:num_slicer_tools]]
                     msg += "\nPurge Volume Map (mm^3):\n"
                     msg += "To ->" + UI_SEPARATOR.join("{}T{: <2}".format(UI_SPACE, i) for i in range(num_slicer_tools)) + "\n"
                     msg += '\n'.join([
