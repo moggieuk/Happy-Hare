@@ -78,7 +78,7 @@ class MmuToolheadWrapper():
 
         # Setup single extruder (entrance) sensor...
         switch_pin = config.get('extruder_switch_pin', None)
-        self.sensors[SENSOR_EXTRUDER_ENTRY] = sf.create_mmu_sensor(
+        sensor = sf.create_mmu_sensor(
             config,
             f"{self.name}:{SENSOR_EXTRUDER_ENTRY}",
             None,
@@ -87,16 +87,20 @@ class MmuToolheadWrapper():
             insert=True,
             runout=True
         )
+        if sensor is not None:
+            self.sensors[SENSOR_EXTRUDER_ENTRY] = sensor
 
         # Setup single toolhead sensor...
         switch_pin = config.get('toolhead_switch_pin', None)
-        self.sensors[SENSOR_TOOLHEAD] = sf.create_mmu_sensor(
+        sensor = sf.create_mmu_sensor(
             config,
             f"{self.name}:{SENSOR_TOOLHEAD}",
             None,
             switch_pin,
             event_delay
         )
+        if sensor is not None:
+            self.sensors[SENSOR_TOOLHEAD] = sensor
 
         # For Qidi printers or any other that use a hall_filament_width_sensor allow it to
         # act as either an extruder entry or toolhead sensor (or additional sensor)

@@ -123,6 +123,7 @@ class MmuSensorFactory:
 
 
     def _is_empty_pin(self, switch_pin):
+        logging.info("PAUL: switch_pin=%s" % switch_pin)
         if switch_pin is None or switch_pin == '':
             return True
 

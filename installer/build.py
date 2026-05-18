@@ -506,7 +506,10 @@ def check_version(kconfig, input_files):
     hhcfg = HHConfig(input_files)
     kcfg = load_parsed_kconfig(kconfig)
 
-    current_version = hhcfg.get("mmu", "happy_hare_version")
+    current_version = hhcfg.get("mmu_machine", "happy_hare_version")
+    if current_version is None:
+        current_version = hhcfg.get("mmu", "happy_hare_version") # old v3 config location
+
     if current_version is None:
         logging.log(LEVEL_NOTICE, "Fresh install detected")
         return

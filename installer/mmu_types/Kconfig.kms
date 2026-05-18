@@ -103,7 +103,7 @@ if MMU_TYPE_KMS_1_0
     default n
 
   config PARAM_ENVIRONMENT_SENSOR
-    default "temperature_sensor $(UNIT_NAME)_enviroment"
+    default "temperature_sensor $(UNIT_NAME)_environment"
 
   config PARAM_FILAMENT_HEATER
     default "heater_generic $(UNIT_NAME)_heater"

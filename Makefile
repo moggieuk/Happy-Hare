@@ -132,7 +132,7 @@ restart_klipper = 0
 #####################
 
 hh_klipper_extras_files := $(wildcard extras/*.py extras/mmu/*.py extras/mmu/unit/*.py extras/mmu/unit/selectors/*.py extras/mmu/commands/*.py)
-hh_old_klipper_modules  := mmu_toolhead.py mmu/__init__.py # These will get removed upon install
+hh_old_klipper_modules  := mmu_toolhead.py mmu_encoder.py mmu_led_effect.py mmu_espooler.py mmu_leds.py mmu_sensors.py mmu/__init__.py # These will get removed upon install
 hh_moonraker_components := $(wildcard components/*.py)
 
 # All repo configs files less mmu_vars.cfg
@@ -366,6 +366,7 @@ uninstall: | python_deps
 	$(Q)$(PY) -m installer.build $(V) --print-unhappy-hare "Done. Very unHappy Hare."
 
 fix_links:
+	$(Q)rm -rf $(addprefix $(KLIPPER_HOME)/klippy/extras/,$(hh_old_klipper_modules))
 	$(Q)$(foreach f,$(hh_klipper_extras_files),$(call link,$(SRC)/$(f),$(KLIPPER_HOME)/klippy/$(f)))
 	$(Q)$(foreach f,$(hh_moonraker_components),$(call link,$(SRC)/$(f),$(MOONRAKER_HOME)/moonraker/$(f)))
 	$(Q)$(call restart_service,1,Moonraker,$(CONFIG_SERVICE_MOONRAKER))

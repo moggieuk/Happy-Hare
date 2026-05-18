@@ -129,8 +129,6 @@ class MmuUnit:
         self.can_crossload =               bool(config.getint('can_crossload', profile.can_crossload))
         self.show_bypass =                 bool(config.getint('show_bypass', profile.show_bypass))
 
-        self.multigear = isinstance(self.selector_type, VirtualSelector) # Covers all derivatives including type-c MMU's
-
 
         # ---------------------------------------------------------------------------------------------------
         # Optional heater and evironment sensors
@@ -184,7 +182,9 @@ class MmuUnit:
         # MMU Drive (Gears)
         # ---------------------------------------------------------------------------------------------------
 
-        if self.multigear:
+        self.multigear = False
+        if config.get('gear_steppers'):
+            self.multigear = True
             self.mmu_gear_names = list(config.getlist('gear_steppers'))
             if len(self.mmu_gear_names) != self.num_gates:
                 raise config.error("gear_steppers is not the correct length, expected %d elements" % self.num_gates)
@@ -193,12 +193,12 @@ class MmuUnit:
 
         # Find the TMC controller for base gear stepper so we can fill in missing config for other matching steppers
         # and ensure all gear steppers can be loaded
-        base_gear = self.mmu_gear_names[0]
+        gear_name = self.mmu_gear_names[0]
         gear_tmc = None
         base_gear_tmc_chip = base_tmc_section = None
         for chip in TMC_CHIPS:
-            section = f"mmu_stepper {base_gear}"
-            base_tmc_section = '%s %s' % (chip, section)
+            base_stepper_section = f"mmu_stepper {gear_name}"
+            base_tmc_section = '%s %s' % (chip, base_stepper_section)
             if config.has_section(base_tmc_section):
                 base_gear_tmc_chip = chip
                 gear_tmc = self.printer.load_object(config, base_tmc_section) # Load base gear stepper now
@@ -206,26 +206,29 @@ class MmuUnit:
                 break
 
         if gear_tmc is None:
-            raise config.error("Gear stepper TMC configuration not found for %s on mmu_unit %s" % (base_gear, self.name))
+            raise config.error("Gear stepper TMC configuration not found for %s on mmu_unit %s" % (gear_name, self.name))
 
+        # If multiple gear steppers share all possible attributes (saves repeated configuration)
         if self.multigear:
             for i in range(1, self.num_gates):
-                section = self.extra_gear_steppers[i - 1]
-                if not config.has_section(section):
-                    raise config.error("Gear stepper configuration [%s] not found for mmu_unit %s" % (section, self.name))
+                gear_name = self.mmu_gear_names[i]
+
+                stepper_section = f"mmu_stepper {gear_name}"
+                tmc_section = '%s %s' % (base_gear_tmc_chip, stepper_section)
+
+                if not config.has_section(stepper_section):
+                    raise config.error(f"Gear stepper configuration [{stepper_section}] not found for mmu_unit {self.name}")
                     break
 
                 # Share base stepper config section with extra steppers
-                stepper_section = self.gear_steppers[i - 1]
                 for key in SHAREABLE_STEPPER_PARAMS:
-                    if not config.fileconfig.has_option(stepper_section, key) and config.fileconfig.has_option(self.gear_stepper, key):
-                        base_value = config.fileconfig.get(self.gear_stepper, key)
+                    if not config.fileconfig.has_option(stepper_section, key) and config.fileconfig.has_option(base_stepper_section, key):
+                        base_value = config.fileconfig.get(base_stepper_section, key)
                         if base_value:
                             logging.info("MMU: Sharing gear stepper config %s=%s with [%s]" % (key, base_value, stepper_section))
                             config.fileconfig.set(stepper_section, key, base_value)
 
                 # If tmc controller for this extra stepper matches the base we can fill in missing TMC config
-                tmc_section = '%s %s' % (base_gear_tmc_chip, stepper_section)
                 if config.has_section(tmc_section):
                     for key in SHAREABLE_TMC_PARAMS:
                         if config.fileconfig.has_option(base_tmc_section, key) and not config.fileconfig.has_option(tmc_section, key):
@@ -315,7 +318,8 @@ class MmuUnit:
 
         # Load optional mmu_espooler
         self.espooler = None
-        section = 'mmu_espooler %s' % self.name
+        espooler_name = config.get('espooler', None)
+        section = 'mmu_espooler %s' % espooler_name
         if config.has_section(section):
             c = config.getsection(section)
             self.espooler = MmuESpooler(c, self, self.p)

@@ -23,7 +23,7 @@ if BOARD_TYPE_KMS_1_0
   config PIN_GEAR_STEP
     default "$(MCU_NAME):PB5" 
   config PIN_GEAR_DIR
-    default "$(MCU_NAME):PB6" 
+    default "!$(MCU_NAME):PB6" 
   config PIN_GEAR_ENABLE
     default "!$(MCU_NAME):PB3" 
 
@@ -41,7 +41,7 @@ if BOARD_TYPE_KMS_1_0
   config PIN_GEAR_STEP_2
     default "$(MCU_NAME):PD4" 
   config PIN_GEAR_DIR_2
-    default "$(MCU_NAME):PD5" 
+    default "!$(MCU_NAME):PD5" 
   config PIN_GEAR_ENABLE_2
     default "!$(MCU_NAME):PD6" 
 
