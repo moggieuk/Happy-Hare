@@ -150,7 +150,7 @@ class MmuESpooler:
 
         # Setup extruder monitor
         try:
-            self.extruder_monitor = self.EspoolerExtruderMonitor(self) # PAUL use one on mmu_unit.toolhead_wrapper?
+            self.extruder_monitor = self.EspoolerExtruderMonitor(self) # TODO share the one on mmu_unit.toolhead_wrapper?
         except Exception as e:
             self.mmu.log_error(str(e))
             self.extruder_monitor = None
@@ -513,7 +513,7 @@ class MmuESpooler:
 # Class to monitor extruder movement an generate espooler "advance" events
 # -----------------------------------------------------------------------------------------------------------
 
-    class EspoolerExtruderMonitor: # PAUL possible to change to share common monitor??
+    class EspoolerExtruderMonitor: # TODO possible to change to share common monitor on mmu_unit.toolhead_wrapper?
 
         CHECK_MOVEMENT_PERIOD = 1. # How often to check extruder movement
 
@@ -522,6 +522,7 @@ class MmuESpooler:
             self.reactor = espooler.reactor
             self.estimated_print_time = espooler.printer.lookup_object('mcu').estimated_print_time
             self.extruder = espooler.printer.lookup_object(espooler.mmu_unit.extruder_name(), None)
+#PAUL fixme, use: mmu_unit.extruder_wrapper.extruder_stepper_obj().find_past_position(est_print_time)
             if not self.extruder:
                 raise espooler.config.error("Extruder named `%s` not found. Espooler extruder monitor disabled" % espooler.mmu_unit.extruder_name())
 

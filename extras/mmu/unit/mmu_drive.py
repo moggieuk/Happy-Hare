@@ -110,7 +110,6 @@ class MmuDrive():
 
 
     def set_filament_position(self, pos):
-#        self.mmu.log_warning(f"PAUL: {self._driving_stepper.get_name()}.do_set_position({pos})")
         self._driving_stepper.do_set_position(pos)
 
 
