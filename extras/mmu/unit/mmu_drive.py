@@ -97,6 +97,10 @@ class MmuDrive():
         return True
 
 
+    def get_sync_mode(self):
+        return self._sync_mode
+
+
     def get_name(self):
         return self.name
 
@@ -106,7 +110,7 @@ class MmuDrive():
 
 
     def set_filament_position(self, pos):
-        self.mmu.log_warning(f"PAUL: {self._driving_stepper.get_name()}.do_set_position({pos})")
+#        self.mmu.log_warning(f"PAUL: {self._driving_stepper.get_name()}.do_set_position({pos})")
         self._driving_stepper.do_set_position(pos)
 
 

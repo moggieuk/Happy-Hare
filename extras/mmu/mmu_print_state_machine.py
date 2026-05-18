@@ -107,7 +107,6 @@ class MmuPrintStateMachine:
 
 
     def print_event(self, command):
-        self.mmu.log_info(f"PAUL: command={command}")
         try:
             self.mmu.gcode.run_script(command)
 

@@ -102,7 +102,6 @@ class MmuEnvironmentManager:
 
 
     def _handle_connect(self):
-        logging.info("PAUL: handle_connect: MmuEnvironmentManager")
         self.mmu = self.mmu_machine.mmu_controller
 
 

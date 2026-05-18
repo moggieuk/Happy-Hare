@@ -73,7 +73,7 @@ class MmuSyncGearMotorCommand(BaseCommand):
 
         if sync and mmu.filament_pos < FILAMENT_POS_EXTRUDER_ENTRY:
             mmu.log_warning(
-                "Will temporarily sync, but filament position does not indicate in extruder!\n"
+                "Will temporarily sync, but state does not indicate filament in extruder!\n"
                 "Use 'MMU_RECOVER' to correct the filament position."
             )
 

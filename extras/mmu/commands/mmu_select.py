@@ -71,10 +71,8 @@ class MmuSelectCommand(BaseCommand):
 
                 else:
                     mmu.select_gate(gate)
-                    mmu.gate_maps.ensure_ttg_match()
 
-                msg = mmu._mmu_visual_to_string()
-                msg += "\n%s" % mmu._state_to_string()
-                mmu.log_info(msg, color=True)
+                # Ensure correct tool/gate mapping and display visual to user
+                mmu.refresh_tool_gate()
         except MmuError as ee:
             mmu.handle_mmu_error(str(ee))

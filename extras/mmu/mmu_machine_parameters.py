@@ -149,7 +149,7 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('test_force_in_print',           'int',      0, section="TESTING", limits=dict(minval=0, maxval=1),  hidden=True),
 
         # Klipper tuning (aka hacks) -------
-        ParamSpec('suppress_kalico_warning',       'int',      0, section="KLIPPER TUNING", limits=dict(minval=0, maxval=1),  hidden=True),
+        ParamSpec('suppress_klipper_warnings',     'int',      0, section="KLIPPER TUNING", limits=dict(minval=0, maxval=1),  hidden=True),
         ParamSpec('update_trsync',                 'int',      0, section="KLIPPER TUNING", limits=dict(minval=0, maxval=1),  hidden=True),
         ParamSpec('canbus_comms_retries',          'int',      3, section="KLIPPER TUNING", limits=dict(minval=1, maxval=10), hidden=True),
         ParamSpec('update_bit_max_time',           'int',      0, section="KLIPPER TUNING", limits=dict(minval=0, maxval=1),  hidden=True),

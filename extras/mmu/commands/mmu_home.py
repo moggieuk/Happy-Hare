@@ -66,10 +66,10 @@ class MmuHomeCommand(BaseCommand):
 
         try:
             with mmu.wrap_sync_gear_to_extruder():
-                mmu.home_unit(mmu_unit, force_unload=force_unload)
+                mmu.home_unit(mmu_unit, force_unload=force_unload, reselect=False)
                 mmu.log_always("Homed")
 
-                # Always select chosen tool
+                # Always select gate for chosen tool
                 if tool == TOOL_GATE_BYPASS:
                     mmu.select_bypass()
                 elif tool >= 0:

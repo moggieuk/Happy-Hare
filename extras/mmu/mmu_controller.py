@@ -215,6 +215,7 @@ class MmuController(MmuFilamentMovement):
         """
         Ensure clean state on initializtion and after MMU enable/disable operation
         """
+# PAUL TODO ensure all mmu_steppers are unsynced
         self.is_enabled = self.runout_enabled = True
         self.runout_last_enable_time = self.reactor.monotonic()
         self.is_handling_runout = self.calibrating = False
@@ -289,29 +290,16 @@ class MmuController(MmuFilamentMovement):
     def cmd_MMU_BOOTUP(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
 
-        self.log_warning(f"PAUL: BOOTUP_START : gate={self.gate_selected}, tool={self.tool_selected}, unit={self.unit_selected}, fil_pos={self.filament_pos}")
+#        self.log_warning(f"PAUL: BOOTUP_START : gate={self.gate_selected}, tool={self.tool_selected}, unit={self.unit_selected}, fil_pos={self.filament_pos}")
 
         try:
-            # Splash...
-            version = self._fversion(self.mmu_machine.happy_hare_version)
-            msg = (
-                "{1}(\\_/){0}\n"
-                "{1}( {0}*,*{1}){0}\n"
-                "{1}(\")_(\"){0} "
-                "{5}{2}H{0}{3}a{0}{4}p{0}{2}p{0}{3}y{0} "
-                "{4}H{0}{2}a{0}{3}r{0}{4}e{0} "
-                "{1}" + version + "{0} "
-                "{2}R{0}{3}e{0}{4}a{0}{2}d{0}{3}y{0}{1}...{0}{6}"
-            )
-            self.log_always(msg, color=True)
-
             # Kalico (especially "bleeding edge" users) need reminding of possible incompatibility
             if self.kalico:
                 msg = "Warning: You are running on Kalico (Danger-Klipper). Support is not guaranteed!"
-                if self.p.suppress_kalico_warning:
-                    self.log_trace(msg + " Message was suppressed.")
-                else:
+                if not self.p.suppress_klipper_warnings:
                     self.log_warning(msg)
+                else:
+                    self.log_debug(msg)
 
             # Look for filament_switch_sensors already configured to warn for possible conflicts
             for section in self.config.get_prefix_sections('filament_switch_sensor'):
@@ -325,10 +313,26 @@ class MmuController(MmuFilamentMovement):
                         f"Warning: filament_switch_sensor '{fsensor_name}' found in printer configuration.\n"
                         f"This may interfere with MMU functionality{pause_on_runout_msg}."
                     )
-                    if pause_on_runout:
-                        self.log_warning(msg)
+                    if not self.p.suppress_klipper_warnings:
+                        if pause_on_runout:
+                            self.log_warning(msg)
+                        else:
+                            self.log_info(msg)
                     else:
-                        self.log_info(msg)
+                       self.log_debug(msg)
+
+            # Splash...
+            version = self._fversion(self.mmu_machine.happy_hare_version)
+            msg = (
+                "{1}(\\_/){0}\n"
+                "{1}( {0}*,*{1}){0}\n"
+                "{1}(\")_(\"){0} "
+                "{5}{2}H{0}{3}a{0}{4}p{0}{2}p{0}{3}y{0} "
+                "{4}H{0}{2}a{0}{3}r{0}{4}e{0} "
+                "{1}" + version + "{0} "
+                "{2}R{0}{3}e{0}{4}a{0}{2}d{0}{3}y{0}{1}...{0}{6}"
+            )
+            self.log_always(msg, color=True)
 
             # Use per gate sensors to adjust gate map
             self.gate_maps.validate_gate_status()
@@ -365,7 +369,7 @@ class MmuController(MmuFilamentMovement):
             for u in self.mmu_machine.units:
 
                 if not u.calibrator.check_calibrated(CALIBRATED_SELECTOR):
-                    self.log_warning(f"Cannot autohome selector for {u.name} because selector is not yet calibrated")
+                    self.log_debug(f"Cannot autohome selector for {u.name} because selector is not yet calibrated")
                     continue
 
                 if u.p.startup_home_selector: # PAUL and selector is calibrated!
@@ -380,14 +384,14 @@ class MmuController(MmuFilamentMovement):
                         continue
 
                     try:
-                        self.home_unit(u) # Will reselect previous gate
+                        self.home_unit(u) # Will reselect previous gate if on this unit
 
                     except Exception as e:
                         # This is recoverable so just report errors
                         self.log_error(str(e))
 
             # Make sure the gate is really selected (allows selectors to initialize themselves)
-            if self.gate_selected != TOOL_GATE_UNKNOWN:
+            if self.gate_selected != TOOL_GATE_UNKNOWN and u.calibrator.check_calibrated(CALIBRATED_SELECTOR):
                 try:
                     self.log_info(f"Selecting last gate used ({self.gate_selected})...")
                     self.select_gate(self.gate_selected)
@@ -430,7 +434,7 @@ class MmuController(MmuFilamentMovement):
         except Exception as e:
             self.log_assertion(f"Error booting up MMU: {e}", exc_info=sys.exc_info())
 
-        self.log_warning(f"PAUL: BOOTUP_END : gate={self.gate_selected}, tool={self.tool_selected}, unit={self.unit_selected}, fil_pos={self.filament_pos}")
+#        self.log_warning(f"PAUL: BOOTUP_END : gate={self.gate_selected}, tool={self.tool_selected}, unit={self.unit_selected}, fil_pos={self.filament_pos}")
 
         # Restart hook
         self.mmu_macro_event(MACRO_EVENT_RESTART)
@@ -1733,11 +1737,11 @@ class MmuController(MmuFilamentMovement):
           None  - just read encoder without delay (caller responsible for ensuring prior movements have completed)
         """
         if dwell is True:
-            self.log_info(f"PAUL: _encoder_dwell({dwell}) / dwell + wait")
+#            self.log_info(f"PAUL: _encoder_dwell({dwell}) / dwell + wait")
             self.movequeue_dwell(self.mmu_unit().p.encoder_dwell)
             self.movequeue_wait()
         elif dwell is False:
-            self.log_info(f"PAUL: _encoder_dwell({dwell}) / wait()")
+#            self.log_info(f"PAUL: _encoder_dwell({dwell}) / wait()")
             self.movequeue_wait()
 
 
@@ -2005,6 +2009,16 @@ class MmuController(MmuFilamentMovement):
 # TOOL SELECTION FUNCTIONS
 # -----------------------------------------------------------------------------------------------------------
 
+    def refresh_tool_gate(self):
+        """
+        Ensure correct tool mapping to gate and visualize state
+        """
+        self.gate_maps.ensure_ttg_match()
+        msg = self._mmu_visual_to_string()
+        msg += "\n%s" % self._state_to_string()
+        self.log_info(msg, color=True)
+
+
     def _record_tool_override(self):
         tool = self.tool_selected
         if tool >= 0:
@@ -2144,7 +2158,16 @@ class MmuController(MmuFilamentMovement):
             self.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=%s VARIABLE=next_pos VALUE=False" % self.p.park_macro)
 
 
-    def home_unit(self, mmu_unit, force_unload=None):
+    def home_unit(self, mmu_unit, force_unload=None, reselect=True):
+        """
+        Home the specific mmu unit
+        Params:
+          force_unload - whether to unload current gate
+            None  - intelligently unload if necessary (default)
+            True  - always force an unload regardless of filament position state (safety)
+            False - never attempt filament unload, instead homing may fail
+          reselect - whether to reselect gate (default is True)
+        """
         if mmu_unit.selector.requires_homing: # Make a no-op for MMU's that don't require homing (like class-B designs)
             if mmu_unit.manages_gate(self.gate_selected):
                 if not force_unload and self.filament_pos not in [FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN]:
@@ -2154,10 +2177,11 @@ class MmuController(MmuFilamentMovement):
                         prev_gate = self.gate_selected
                         self._set_gate_selected(TOOL_GATE_UNKNOWN)
                         mmu_unit.selector.home(force_unload)
-                        if prev_gate != TOOL_GATE_UNKNOWN:
-                            self.select_gate(prev_gate)
-                        else:
-                            self.select_gate(mmu_unit.first_gate)
+                        if reselect:
+                            if prev_gate != TOOL_GATE_UNKNOWN:
+                                self.select_gate(prev_gate)
+                            else:
+                                self.select_gate(mmu_unit.first_gate)
                     except MmuError as ee:
                         self._set_gate_selected(TOOL_GATE_UNKNOWN)
                         raise ee
@@ -2220,7 +2244,7 @@ class MmuController(MmuFilamentMovement):
 
 
     def _set_tool_selected(self, tool):
-        self.log_info("PAUL: _set_tool_selected(%d)" % tool)
+#        self.log_info("PAUL: _set_tool_selected(%d)" % tool)
         if tool != self.tool_selected:
             self.tool_selected = tool
             self.printer.send_event("mmu:tool_selected", self.tool_selected)
@@ -2230,14 +2254,27 @@ class MmuController(MmuFilamentMovement):
     def _set_gate_selected(self, gate):
         self.log_info("PAUL: _set_gate_selected(%d)" % gate)
         prev_gate = self.gate_selected
+        prev_unit = self.unit_selected
+
+        if gate == prev_gate:
+            return
+
+        # IMPORTANT: ---------------------------------------------------------
+        # That this is the only block outside reinit() where gate_selected
+        # is mutated because gate_selected event must be called and sync
+        # state must be corrected
+        # PAUL prev_sync_mode = self.drive().get_sync_mode()
+        self.drive().sync_mode(DRIVE_UNSYNCED)
         self.gate_selected = gate
+        # PAUL self.drive().sync_mode(prev_sync_mode)
+        # --------------------------------------------------------------------
 
         new_unit_index = self.mmu_unit(gate).unit_index
         if new_unit_index != self.unit_selected:
             self.unit_selected = new_unit_index
-            self.printer.send_event("mmu:unit_selected", self.unit_selected)
+            self.printer.send_event("mmu:unit_selected", self.unit_selected, prev_unit)
 
-        self.printer.send_event("mmu:gate_selected", self.gate_selected)
+        self.printer.send_event("mmu:gate_selected", self.gate_selected, prev_gate)
         self.mmu_unit(gate).calibrator.restore_gear_rd()
 
         # Update from/to leds after selection

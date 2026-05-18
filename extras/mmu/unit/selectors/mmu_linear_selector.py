@@ -406,7 +406,7 @@ class LinearSelector(PhysicalSelector):
             else:
                 self.mmu.log_always("Selector offset (%.1fmm) for %s has been saved" % (traveled, gate_str(gate)))
                 if gate == 0:
-                    self.mmu.log_always("Run MMU_CALIBRATE_SELECTOR again with GATE=%d to extrapolate all gate positions. Use SINGLE=1 to force calibration of only one gate at a time" % (self.mmu_unit.num_gates - 1))
+                    self.mmu.log_always("Run MMU_CALIBRATE_SELECTOR again with GATE=%d EXTRAPOLATE=1 to extrapolate all gate positions or just GATE=x to calibrate one gate at a time" % (self.mmu_unit.num_gates - 1))
         return True
 
 
@@ -551,8 +551,9 @@ class LinearSelector(PhysicalSelector):
                     with self.mmu.wrap_suppress_visual_log():
                         travel = abs(init_pos - halt_pos)
                         if travel < 4.0: # Filament stuck in the current gate (e.g. on ERCF design)
-                            self.mmu.log_warning("Selector is blocked by filament inside gate, will try to recover...")
+                            self.mmu.log_warning("Selector touch operation detected filament blockage inside gate, will try to recover...")
                             self.move("Realigning selector by a distance of: %.1fmm" % -travel, init_pos)
+                            self.mmu.toolhead.flush_step_generation() # TTC mitigation when homing move + regular + get_last_move_time() in close succession
     
                             # See if we can detect filament in gate area
                             found = self.mmu.check_filament_in_gate()
@@ -578,7 +579,7 @@ class LinearSelector(PhysicalSelector):
     
                         else: # Selector path is blocked, probably externally
                             self.is_homed = False
-                            raise MmuError("Selector is externally blocked perhaps by filament in another gate")
+                            raise MmuError("Selector touch operation detected blockage perhaps by filament in another gate or too much friction")
 
             # Move was successful
             current_pos = target
@@ -641,6 +642,8 @@ class LinearSelector(PhysicalSelector):
 
             except self.printer.command_error:
                 homed = False
+            finally:
+                self.mmu.toolhead.flush_step_generation() # TTC mitigation when homing move + regular + get_last_move_time() in close succession
 
             actual = home_result['halt_pos'] - pos
             result = f"HOMED actual halt_pos={home_result['halt_pos']:.2f}, trig_pos={home_result['trig_pos']:.2f}" if homed else "DID NOT HOME"
@@ -687,16 +690,21 @@ class MmuCalibrateSelectorCommand(BaseCommand):
         "%s: %s\n" % (CMD, HELP_BRIEF)
         + "UNIT         = #(int) Optional if only one unit fitted to printer\n"
         + "GATE         = #(int) Optional, default all gates on unit\n"
-        + "SAVE         = [0|1] Whether to persist the calibration results\n"
+        + "AUTO         = [0|1] Force fully automatic calibration (have first gate selected)\n"
+        + "SAVE         = [0|1] Whether to persist the calibration results (default: 1)\n"
+        + "EXTRAPOLATE  = [0|1] Whether to try to extrapolate remaining gate positions\n"
+        + "RESET        = [0|11 To reset all calibration for MMU unit\n"
         + "BYPASS       = [0|1] Specify bypass gate instead of regular gate\n"
         + "BYPASS_BLOCK = [0|1] Special: If bypass block exists on ERCFv1.1 only\n"
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
-        + f"{CMD} GATE=8 SAVE=0   ...calibrate logical gate 8 position, display but don't save results\n"
-        + f"{CMD} UNIT=0 BYPASS=1 ...calibrate the bypass gate position on unit 1\n"
-        + f"{CMD}                 ...perform fully automatic calibration of all gates\n"
-        + f"{CMD} SAVE=0          ...perform automatic calibration and show results but don't save\n"
+        + f"{CMD} GATE=8 SAVE=0         ...calibrate logical gate 8 position, display but don't save results\n"
+        + f"{CMD} UNIT=1 BYPASS=1       ...calibrate the bypass gate position on unit 1\n"
+        + f"{CMD} AUTO=1                ...perform fully automatic calibration of all gates (first gate selected)\n"
+        + f"{CMD} SAVE=0                ...perform automatic calibration and show results but don't save\n"
+        + f"{CMD} GATE=8 EXTRAPOLATE=1  ...calibrate logical gate 8 position, extrapolate other gates if possible\n"
+        + f"{CMD} AUTO=1 BYPASS_BLOCK=2 ...auto calibrate old ERCFv1.1 with bypass block on second leg!\n"
     )
 
     def __init__(self, mmu):
@@ -726,9 +734,11 @@ class MmuCalibrateSelectorCommand(BaseCommand):
 
         if self.check_if_disabled(): return
 
-        save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
-        single = gcmd.get_int('SINGLE', 0, minval=0, maxval=1)
+        reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
+        save = bool(gcmd.get_int('SAVE', 1, minval=0, maxval=1))
+        extrapolate = bool(gcmd.get_int('EXTRAPOLATE', 0, minval=0, maxval=1))
         gate = gcmd.get_int('GATE', None, minval=0, maxval=mmu.num_gates - 1)
+        auto = bool(gcmd.get_int('AUTO', 0, minval=0, maxval=1))
         bypass = bool(gcmd.get_int('BYPASS', None, minval=0, maxval=1))
         ercf_v1_bypass_block = gcmd.get_int('BYPASS_BLOCK', -1, minval=1, maxval=3)
 
@@ -737,36 +747,53 @@ class MmuCalibrateSelectorCommand(BaseCommand):
 
         min_gate, max_gate = mmu_unit.gate_bounds()
 
+        if reset:
+            selector.selector_offsets = [-1] * mmu_unit.num_gates
+            selector.bypass_offset = -1
+            selector.var_manager.set(VARS_MMU_SELECTOR_OFFSETS, selector.selector_offsets, namespace=mmu_unit.name)
+            selector.var_manager.set(VARS_MMU_SELECTOR_BYPASS_OFFSET, selector.bypass_offset, namespace=mmu_unit.name, write=True)
+            gate_str = "gates %d-%d" % (min_gate, max_gate)
+            mmu.log_always("Reset selector calibration on %s for %s" % (mmu_unit.name, gate_str))
+            selector.calibrator.mark_not_calibrated(CALIBRATED_SELECTOR)
+            return
+
         if gate is not None and not mmu_unit.manages_gate(gate):
             raise gcmd.error("Gate %d is not managed by %s (range=%d-%d)" % (gate, mmu_unit.name, min_gate, max_gate))
 
         pos_str = "position"
-        if gate is None:
+        if auto and gate is None:
            gate_str = "gates %d-%d" % (min_gate, max_gate)
            pos_str = "positions"
+        elif auto or gate is None:
+            raise gcmd.error("One of AUTO | GATE | BYPASS should be specified")
         elif gate == TOOL_GATE_BYPASS:
            gate_str = "bypass"
         else:
            gate_str = "gate %d" % gate
+
         mmu.log_always("Calibrating selector %s on %s for %s..." % (pos_str, mmu_unit.name, gate_str))
 
         try:
             with mmu.wrap_sync_gear_to_extruder():
                 mmu.calibrating = True
-                mmu_unit.calibrator.filament_hold_move()
+                selector.filament_hold_move()
                 successful = False
                 if gate is None:
                     successful = selector._calibrate_selector_auto(save=save, v1_bypass_block=ercf_v1_bypass_block)
                 else:
-                    successful = selector._calibrate_selector(gate, extrapolate=not single, save=save)
+                    successful = selector._calibrate_selector(gate, extrapolate=extrapolate, save=save)
 
                 if not any(x == -1 for x in selector.selector_offsets):
-                    mmu_unit.calibrator.mark_calibrated(CALIBRATED_SELECTOR)
+                    selector.calibrator.mark_calibrated(CALIBRATED_SELECTOR)
 
                 # If not fully calibrated turn off the selector stepper to ease next step, else activate by homing
-                if successful and mmu_unit.calibrator.check_calibrated(CALIBRATED_SELECTOR):
+                if successful and selector.calibrator.check_calibrated(CALIBRATED_SELECTOR):
                     mmu.log_always("Selector calibration complete")
-                    selector.select_tool(min_gate)
+                    selector._home_selector()
+                    mmu.select_gate(min_gate)
+
+                    # Leave MMU is usable state with user visualization
+                    mmu.refresh_tool_gate()
                 else:
                     selector.disable_motors()
 

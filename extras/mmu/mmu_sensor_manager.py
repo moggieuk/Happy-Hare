@@ -169,7 +169,7 @@ class MmuSensorManager:
         self.mmu.log_debug("-------------------")
 
 
-    def _handle_gate_selected(self, gate):
+    def _handle_gate_selected(self, gate, prev_gate):
         """
         Handler for gate changed event
         Reset the relevent sensor list based on current gate handling bypass and unknown
@@ -179,7 +179,7 @@ class MmuSensorManager:
         self.mmu.log_info("PAUL: >>> active_sensosr_map=%s\n" % self.active_sensors_map.keys())
 
 
-    def _handle_unit_selected(self, unit):
+    def _handle_unit_selected(self, unit, prev_unit):
         """
         Handler for unit changed event
         Activate only sensors for current unit

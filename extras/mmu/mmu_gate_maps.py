@@ -645,7 +645,7 @@ class MmuGateMaps:
         """
         Helper to ensure that webhooks sees get_status() change after gate map update.
         """
-        self.mmu.log_warning("PAUL: renew_gate_map")
+#        self.mmu.log_warning("PAUL: renew_gate_map")
         self.gate_status = list(self.gate_status)
         self.gate_filament_name = list(self.gate_filament_name)
         self.gate_material = list(self.gate_material)
