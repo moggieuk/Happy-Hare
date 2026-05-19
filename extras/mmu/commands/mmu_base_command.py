@@ -134,7 +134,7 @@ class BaseCommand:
         return mmu_machine.get_mmu_unit_by_index(unit_index)
 
 
-    def get_unit(self, gcmd, mode="required"):
+    def get_unit(self, gcmd, mode="required", gate=None):
         """Resolve the active MMU unit for a command.
 
         Modes:
@@ -143,7 +143,7 @@ class BaseCommand:
               case unit 0 is selected automatically.
           - "infer":
               UNIT may be omitted. If omitted, use the only unit when there is
-              exactly one; otherwise infer from the selected gate if possible.
+              exactly one; otherwise infer from the gate if possible.
               Raise an error if no unit can be determined.
           - "optional":
               UNIT may be omitted. If omitted, use the only unit when there is
@@ -175,13 +175,14 @@ class BaseCommand:
             mmu_unit = mmu_machine.get_mmu_unit_by_index(0)
             return mmu_unit
 
-        # 3. Infer from selected gate when requested.
+        # 3. Infer from gate when requested.
         if mode == "infer":
-            if mmu.gate_selected != TOOL_GATE_UNKNOWN:
-                mmu_unit = mmu.mmu_unit(mmu.gate_selected)
+            gate = gate or mmu.gate_selected
+            if gate != TOOL_GATE_UNKNOWN:
+                mmu_unit = mmu.mmu_unit(gate)
                 return mmu_unit
 
-            raise gcmd.error("UNIT parameter is required because the active unit cannot be inferred (selected gate is unknown).")
+            raise gcmd.error("UNIT parameter is required because the active unit cannot be inferred (gate is unknown).")
 
         # 4. Required mode: caller must provide UNIT when multiple units exist.
         if mode == "required":

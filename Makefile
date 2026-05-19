@@ -132,7 +132,7 @@ restart_klipper = 0
 #####################
 
 hh_klipper_extras_files := $(wildcard extras/*.py extras/mmu/*.py extras/mmu/unit/*.py extras/mmu/unit/selectors/*.py extras/mmu/commands/*.py)
-hh_old_klipper_modules  := mmu_toolhead.py mmu_encoder.py mmu_led_effect.py mmu_espooler.py mmu_leds.py mmu_sensors.py mmu/__init__.py # These will get removed upon install
+hh_old_klipper_modules  := mmu_toolhead.py mmu_encoder.py mmu_espooler.py mmu_leds.py mmu_sensors.py mmu/__init__.py # These will get removed upon install
 hh_moonraker_components := $(wildcard components/*.py)
 
 # All repo configs files less mmu_vars.cfg

@@ -81,7 +81,7 @@ class MmuSyncFeedbackCommand(BaseCommand):
             sf._reset_controller(eventtime)
 
         if autotune is not None:
-            mmu.UNIT.p.autotune_rotation_distance = autotune
+            unit.p.autotune_rotation_distance = autotune
             mmu.log_always(
                 "Save Autotuned rotation distance feature is %s"
                 % ("enabled" if autotune else "disabled")

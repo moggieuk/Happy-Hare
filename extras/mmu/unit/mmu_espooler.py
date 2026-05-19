@@ -10,6 +10,10 @@
 # For simplicity of setup it is assumed that all pins are of the same type/config per mmu_unit.
 # Control is via direct control or klipper events.
 #
+# Note: This is implemented to work on logical gate indexes accross the mmu_machine and
+#       doesn't need to convert to unit local gate indexes. The caller should however
+#       ensure the correct espooler is called
+#
 #
 # (\_/)
 # ( *,*)
@@ -68,7 +72,7 @@ class MmuESpooler:
         self.shutdown_value = config.getfloat('shutdown_value', 0., minval=0., maxval=self.scale) / self.scale
         start_value = config.getfloat('value', 0., minval=0., maxval=self.scale) / self.scale
 
-        for gate in range(self.first_gate, self.first_gate + self.num_gates + 1):
+        for gate in range(self.first_gate, self.first_gate + self.num_gates):
             self.respool_motor_pin = config.get('respool_motor_pin_%d' % gate, None)
             self.assist_motor_pin = config.get('assist_motor_pin_%d' % gate, None)
             self.enable_motor_pin = config.get('enable_motor_pin_%d' % gate, None)
@@ -138,22 +142,10 @@ class MmuESpooler:
 
         # Register event handlers
         self.printer.register_event_handler('klippy:connect', self._handle_connect)
-        self.printer.register_event_handler('klippy:ready', self._handle_ready)
 
 
     def _handle_connect(self):
         self.mmu = self.mmu_machine.mmu_controller
-
-
-    def _handle_ready(self):
-        self.toolhead = self.printer.lookup_object('toolhead')
-
-        # Setup extruder monitor
-        try:
-            self.extruder_monitor = self.EspoolerExtruderMonitor(self) # TODO share the one on mmu_unit.toolhead_wrapper?
-        except Exception as e:
-            self.mmu.log_error(str(e))
-            self.extruder_monitor = None
 
 
     def _handle_mmu_disabled(self):
@@ -232,6 +224,9 @@ class MmuESpooler:
         The burst will automatically be terminated after configured rotate parameters
         (used in spool drying rotation, filament tightening and manual jogging)
         """
+        if not self._valid_gate(gate):
+            return
+
         if operation == ESPOOLER_ASSIST:
             power = self.mmu_unit.p.espooler_assist_burst_power
             duration = self.mmu_unit.p.espooler_assist_burst_duration
@@ -323,10 +318,25 @@ class MmuESpooler:
             self.printer.send_event("mmu:espooler_burst_done", gate)
 
 
+    def _handle_extruder_movement(self, eventtime, move):
+        """
+        Event call when extruder has moved more than threshold.
+        """
+        if not self.mmu.is_enabled: return
+
+        self.mmu.log_trace("MmuEspooler: Extruder movement event, move=%.1f" % move)
+
+        if move > 0: # Never accidentally advance on retract
+            self.advance() # Initiate burst
+
+
     def set_print_assist_mode(self, gate):
         """
         Efficient method to turn on in-print assist
         """
+        if not self._valid_gate(gate):
+            return
+
         if self.print_assist_gate != gate:
            self.set_operation(gate, 0, ESPOOLER_PRINT)
 
@@ -345,9 +355,8 @@ class MmuESpooler:
             # Disable all triggers
             if self.mmu_unit.p.espooler_assist_burst_trigger:
                 self._set_burst_trigger_enable(pg, False)
-            if self.extruder_monitor:
-                self.extruder_monitor.watch(False)
 
+            self.mmu_unit.extruder_monitor().remove_callback(self._handle_extruder_movement)
             self._dequeue_espooler_burst(pg)
 
 
@@ -362,6 +371,9 @@ class MmuESpooler:
           ESPOOLER_ASSIST = Set motor in forward (assist) direction
           ESPOOLER_PRINT  = Set stick "in-print assist" mode and clear former gate in that mode
         """
+        if not self._valid_gate(gate):
+            return
+
         # To aid debugging...
         if self.mmu.log_enabled(LOG_TRACE):
             self.mmu.log_trace("ESPOOLER: set_operation(gate=%s, value=%s, operation=%s)" % (gate, value, operation))
@@ -429,8 +441,8 @@ class MmuESpooler:
                     # Enable appropriate triggers
                     if self.mmu_unit.p.espooler_assist_burst_trigger:
                         self._set_burst_trigger_enable(g, True)
-                    elif self.extruder_monitor:
-                        self.extruder_monitor.watch(True)
+                    else:
+                        self.mmu_unit.extruder_monitor().register_callback(self._handle_extruder_movement, self.mmu_unit.p.espooler_assist_extruder_move_length)
 
                     self.mmu.log_debug("Espooler for gate %d set to %s (pwm: %.2f)" % (g, operation, value))
 
@@ -442,6 +454,9 @@ class MmuESpooler:
         """
         Return tuple of current operation and pwm value for gate
         """
+        if not self._valid_gate(gate):
+            return
+
         return self.operation.get(gate, (ESPOOLER_OFF, 0))
 
 
@@ -509,58 +524,7 @@ class MmuESpooler:
 
 
 
-# -----------------------------------------------------------------------------------------------------------
-# Class to monitor extruder movement an generate espooler "advance" events
-# -----------------------------------------------------------------------------------------------------------
-
-    class EspoolerExtruderMonitor: # TODO possible to change to share common monitor on mmu_unit.toolhead_wrapper?
-
-        CHECK_MOVEMENT_PERIOD = 1. # How often to check extruder movement
-
-        def __init__(self, espooler):
-            self.espooler = espooler
-            self.reactor = espooler.reactor
-            self.estimated_print_time = espooler.printer.lookup_object('mcu').estimated_print_time
-            self.extruder = espooler.printer.lookup_object(espooler.mmu_unit.extruder_name(), None)
-#PAUL fixme, use: mmu_unit.extruder_wrapper.extruder_stepper_obj().find_past_position(est_print_time)
-            if not self.extruder:
-                raise espooler.config.error("Extruder named `%s` not found. Espooler extruder monitor disabled" % espooler.mmu_unit.extruder_name())
-
-            self.enabled = False
-            self.last_extruder_pos = None
-            self._extruder_pos_update_timer = self.reactor.register_timer(self._extruder_pos_update_event)
-
-        def watch(self, enable):
-            if not self.enabled and enable:
-                # Ensure first burst after initial extruder movement
-                self.last_extruder_pos = self._get_extruder_pos() - self.espooler.mmu_unit.p.espooler_assist_extruder_move_length + 1.
-                self.enabled = True
-                self.reactor.update_timer(self._extruder_pos_update_timer, self.reactor.NOW) # Enabled
-            elif not enable:
-                self.last_extruder_pos = None
-                self.enabled = False
-                self.reactor.update_timer(self._extruder_pos_update_timer, self.reactor.NEVER) # Disabled
-
-        def _get_extruder_pos(self, eventtime=None):
-            if eventtime is None:
-                eventtime = self.reactor.monotonic()
-            print_time = self.estimated_print_time(eventtime)
-            if self.extruder:
-                pos = self.extruder.find_past_position(print_time)
-                return pos
-            else:
-                return 0.
-
-        # Called periodically to check extruder movement
-        def _extruder_pos_update_event(self, eventtime):
-            extruder_pos = self._get_extruder_pos(eventtime)
-            #self.espooler.mmu.log_trace("ESPOOLER: current_extruder_pos: %s (last: %s)" % (extruder_pos, self.last_extruder_pos))
-            if self.last_extruder_pos is not None and extruder_pos > self.last_extruder_pos + self.espooler.mmu_unit.p.espooler_assist_extruder_move_length:
-                self.espooler.advance() # Initiate burst
-                self.last_extruder_pos = extruder_pos
-            return eventtime + self.CHECK_MOVEMENT_PERIOD
-
-
+# PAUL TODO .. check if Kalico has this change yet?
 
 # -----------------------------------------------------------------------------------------------------------
 # G-Code request queuing helper
