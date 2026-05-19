@@ -148,9 +148,9 @@ class MmuGateMaps:
             errors.append(f"Persisted gate/tool {gate_selected}/{tool_selected} dropped because selector isn't homed")
             tool_selected = gate_selected = TOOL_GATE_UNKNOWN
 
-        self.mmu._set_gate_selected(gate_selected) # Will send gate_selected event to set active sensor map
+        self.mmu._set_gate_selected(gate_selected) # Will send gate_selected/unit_selected events to set active sensor map
         self.mmu._set_tool_selected(tool_selected)
-        self.ensure_ttg_match()                   # Ensure tool/gate consistency. Will change tool if necessary
+        self.ensure_ttg_match()                    # Ensure tool/gate consistency. Will change tool if necessary
 
         return errors
 
@@ -235,6 +235,7 @@ class MmuGateMaps:
     # Use post-mmu exit sensors to correct the selected gate.
     # Returns the unique detected gate index, or None if zero/multiple detected.
     def validate_gate_selected(self):
+        self.mmu.log_info(f"PAUL: validate_gate_selected()")
         gate = None
         for g in range(self.num_gates):
             if self.mmu.sensor_manager.check_all_sensors_before(FILAMENT_POS_START_BOWDEN, g, loading=True) is True:

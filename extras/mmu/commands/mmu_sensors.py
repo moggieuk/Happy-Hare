@@ -27,7 +27,7 @@ class MmuSensorsCommand(BaseCommand):
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
         + "UNIT   = #(int) Specify unit else unit with active gate will be assumed\n"
-        + "DETAIL = [0|1]  Set to see disabled sensors\n"
+        + "DETAIL = [0|1]  Set to also see disabled sensors\n"
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"

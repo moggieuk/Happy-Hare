@@ -54,15 +54,15 @@ class MmuSyncFeedbackCommand(BaseCommand):
         if self.check_if_bypass():
             return
 
-        if not unit.has_sync_feedback():
-            mmu.log_warning("No sync-feedback sensors on unit!")
+        if not unit.has_buffer():
+            mmu.log_warning("No sync-feedback buffer on unit!")
             return
 
         # Get sync_feedback associated with unit
         sf = unit.sync_feedback
 
         has_tension, has_compression, has_proportional = sf.get_active_sensors()
-        if not (has_proportional or has_tension or has_compression):
+        if not any((has_proportional, has_tension, has_compression)):
             mmu.log_warning("No sync-feedback sensors are enabled!")
             return
 

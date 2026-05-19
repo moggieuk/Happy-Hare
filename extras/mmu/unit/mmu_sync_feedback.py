@@ -53,7 +53,7 @@ class MmuSyncFeedback:
 
         # Event handlers
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
-        self.printer.register_event_handler('klippy:ready', self.handle_ready)
+        self.printer.register_event_handler('mmu:initialized', self.handle_mmu_initialized)
 
         # Initial flowguard status
         self.flowguard_status = {'trigger': '', 'reason': '', 'level': 0.0, 'max_clog': 0.0, 'max_tangle': 0.0, 'active': False, 'enabled': False}
@@ -72,7 +72,7 @@ class MmuSyncFeedback:
         self.printer.register_event_handler("mmu:sync_feedback", self._handle_sync_feedback)
 
 
-    def handle_ready(self):
+    def handle_mmu_initialized(self):
         self._init_controller()
 
 
@@ -186,10 +186,6 @@ class MmuSyncFeedback:
         has_compression  = sm.has_sensor(SENSOR_COMPRESSION)
         has_proportional = sm.has_sensor(SENSOR_PROPORTIONAL)
         return has_tension, has_compression, has_proportional
-
-
-    def has_sync_feedback(self):
-        return all(s is not None for s in self.get_active_sensors())
 
 
     def get_status(self, eventtime=None):

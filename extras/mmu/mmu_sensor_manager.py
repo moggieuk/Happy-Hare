@@ -78,8 +78,8 @@ class MmuSensorManager:
                     (mmu_unit.sensors.entry_sensors.get(gate), SENSOR_ENTRY_PREFIX),
                     (mmu_unit.sensors.exit_sensors.get(gate), SENSOR_EXIT_PREFIX),
                     (mmu_unit.sensors.shared_exit_sensor, SENSOR_SHARED_EXIT),
-                    (mmu_unit.buffer and mmu_unit.buffer.compression_sensor, SENSOR_COMPRESSION),
-                    (mmu_unit.buffer and mmu_unit.buffer.tension_sensor, SENSOR_TENSION),
+                    (sf_buffer and mmu_unit.buffer.compression_sensor, SENSOR_COMPRESSION),
+                    (sf_buffer and mmu_unit.buffer.tension_sensor, SENSOR_TENSION),
                 ])
                 gate_sensors.update(unit_toolhead_sensors)
 
@@ -176,7 +176,7 @@ class MmuSensorManager:
         """
         self.mmu.log_info("PAUL: EVENT: handle_gate_selected(%d)" % gate)
         self.active_sensors_map = self.gate_sensors[gate] if gate >= 0 else self.bypass_sensors_map
-        self.mmu.log_info("PAUL: >>> active_sensosr_map=%s\n" % self.active_sensors_map.keys())
+        self.mmu.log_info("PAUL: >>> active_sensors_map=%s\n" % self.active_sensors_map.keys())
 
 
     def _handle_unit_selected(self, unit, prev_unit):
@@ -214,7 +214,7 @@ class MmuSensorManager:
         """
         sensor_map = (
             self.all_sensors_map if all_sensors
-            else self.active_sensor_map if unit is None
+            else self.active_sensors_map if unit is None
             else self.unit_sensors[unit]
         )
 

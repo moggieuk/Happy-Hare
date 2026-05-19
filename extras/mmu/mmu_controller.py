@@ -46,10 +46,6 @@ class MmuController(MmuFilamentMovement):
         self.gcode_move = self.printer.load_object(config, 'gcode_move')
 
         self.num_gates = self.mmu_machine.num_gates
-        self.unit_selected = 0                  # Which MMU unit is active (has active gate) if more than one
-        self.gate_selected = self.tool_selected = TOOL_GATE_UNKNOWN
-        self._last_tool = self._next_tool       = TOOL_GATE_UNKNOWN
-        self._next_gate = None
         self.toolchange_retract = 0.            # Set from mmu_macro_vars
         self.toolchange_purge_volume = 0.       # During toolchange, the total calculated purge volume
         self._slicer_purge_volume = 0.          # During toolchange, the slicer contributed part of purge volume
@@ -135,6 +131,37 @@ class MmuController(MmuFilamentMovement):
         self.printer.register_event_handler('klippy:ready', self.handle_ready)
 
 
+    def reinit(self):
+        """
+        Ensure clean state on initialiaztion and after MMU enable/disable operation
+        """
+        self.is_enabled = self.runout_enabled = True
+        self.runout_last_enable_time = self.reactor.monotonic()
+        self.is_handling_runout = self.calibrating = False
+
+        self.unit_selected = None
+        self.tool_selected = self.gate_selected = TOOL_GATE_UNKNOWN
+        self._last_tool = self._next_tool       = TOOL_GATE_UNKNOWN
+        self._next_gate = None
+        self._last_toolchange = "Unknown"
+
+        self.active_filament = {}
+        self.filament_pos = FILAMENT_POS_UNKNOWN
+        self.filament_direction = DIRECTION_UNKNOWN
+        self.action = ACTION_IDLE
+        self._old_action = None
+        self._clear_saved_toolhead_position()
+        self._reset_job_statistics()
+        self.form_tip_vars = None   # Current defaults of gcode variables for tip forming macro
+        self.gate_maps.clear_slicer_tool_map()
+        self.pending_spool_id = -1  # For automatic assignment of spool_id if set perhaps by rfid reader
+        self.saved_toolhead_max_accel = None
+        self.num_toolchanges = 0
+
+        self.psm.reinit()
+        self.mmu_machine.reinit() # Will iterate over all mmu_units
+
+
     def handle_connect(self):
         self.toolhead = self.printer.lookup_object('toolhead')
         self.var_manager = self.mmu_machine.var_manager
@@ -203,52 +230,24 @@ class MmuController(MmuFilamentMovement):
                 wrapper_cls(self)
 
         except Exception as e:
-            self.log_error(
-                'Error trying to wrap PAUSE/RESUME/CLEAR_PAUSE/CANCEL_PRINT macros: %s' % e
-            )
+            self.log_error('Error trying to wrap PAUSE/RESUME/CLEAR_PAUSE/CANCEL_PRINT macros: %s' % e)
 
         # Schedule bootup tasks to run after klipper and hopefully spoolman have settled
         self._schedule_mmu_bootup_tasks(BOOT_DELAY)
 
-
-    def reinit(self):
-        """
-        Ensure clean state on initializtion and after MMU enable/disable operation
-        """
-# PAUL TODO ensure all mmu_steppers are unsynced
-        self.is_enabled = self.runout_enabled = True
-        self.runout_last_enable_time = self.reactor.monotonic()
-        self.is_handling_runout = self.calibrating = False
-        self.unit_selected = 0
-        self.tool_selected = self.gate_selected = TOOL_GATE_UNKNOWN
-        self._next_tool = TOOL_GATE_UNKNOWN
-        self._last_toolchange = "Unknown"
-        self.active_filament = {}
-        self.filament_pos = FILAMENT_POS_UNKNOWN
-        self.filament_direction = DIRECTION_UNKNOWN
-        self.action = ACTION_IDLE
-        self._old_action = None
-        self._clear_saved_toolhead_position()
-        self._reset_job_statistics()
-        self.form_tip_vars = None   # Current defaults of gcode variables for tip forming macro
-        self.gate_maps.clear_slicer_tool_map()
-        self.pending_spool_id = -1  # For automatic assignment of spool_id if set perhaps by rfid reader
-        self.saved_toolhead_max_accel = None
-        self.num_toolchanges = 0
-
-        self.psm.reinit()
-        self.mmu_machine.reinit() # Will iterate over all mmu_units
+        # Send event to allow modules to finalize configuration now everything is loaded
+        self.log_debug("MMU Initialization Complete -------------------------------\n")
+        self.printer.send_event("mmu:initialized")
 
 
     def _load_persisted_state(self):
         self.log_debug("Loading persisted MMU state")
-        errors = []
 
         # Load last tool
         self._last_tool = self.var_manager.get(VARS_MMU_LAST_TOOL, self._last_tool)
 
         # Load gate-map / TTG-map / EndlessSpool state
-        errors.extend(self.gate_maps.load_persisted_state())
+        errors = self.gate_maps.load_persisted_state()
 
         # Previous filament position
         self.filament_pos = self.var_manager.get(VARS_MMU_FILAMENT_POS, self.filament_pos)
@@ -289,8 +288,6 @@ class MmuController(MmuFilamentMovement):
     cmd_MMU_BOOTUP_help = "Internal commands to complete bootup of MMU"
     def cmd_MMU_BOOTUP(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
-
-#        self.log_warning(f"PAUL: BOOTUP_START : gate={self.gate_selected}, tool={self.tool_selected}, unit={self.unit_selected}, fil_pos={self.filament_pos}")
 
         try:
             # Kalico (especially "bleeding edge" users) need reminding of possible incompatibility
@@ -433,8 +430,6 @@ class MmuController(MmuFilamentMovement):
 
         except Exception as e:
             self.log_assertion(f"Error booting up MMU: {e}", exc_info=sys.exc_info())
-
-#        self.log_warning(f"PAUL: BOOTUP_END : gate={self.gate_selected}, tool={self.tool_selected}, unit={self.unit_selected}, fil_pos={self.filament_pos}")
 
         # Restart hook
         self.mmu_macro_event(MACRO_EVENT_RESTART)
@@ -588,6 +583,9 @@ class MmuController(MmuFilamentMovement):
 
         # Adds extruder status (like filament remaining)
         status.update(self.mmu_unit().extruder_wrapper.get_status(eventtime))
+
+        # Adds sync_feedback status
+        status.update(self.mmu_unit().sync_feedback.get_status(eventtime))
 
         # Add in active sensors
         status['sensors'] = self.sensor_manager.get_status(eventtime)
@@ -1737,11 +1735,9 @@ class MmuController(MmuFilamentMovement):
           None  - just read encoder without delay (caller responsible for ensuring prior movements have completed)
         """
         if dwell is True:
-#            self.log_info(f"PAUL: _encoder_dwell({dwell}) / dwell + wait")
             self.movequeue_dwell(self.mmu_unit().p.encoder_dwell)
             self.movequeue_wait()
         elif dwell is False:
-#            self.log_info(f"PAUL: _encoder_dwell({dwell}) / wait()")
             self.movequeue_wait()
 
 
@@ -1975,7 +1971,6 @@ class MmuController(MmuFilamentMovement):
 
     def _disable_mmu(self):
         if not self.is_enabled: return
-        self.reinit()
         self._disable_filament_monitoring()
         self.reactor.update_timer(self.hotend_off_timer, self.reactor.NEVER)
         self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.p.default_idle_timeout)
@@ -2244,7 +2239,6 @@ class MmuController(MmuFilamentMovement):
 
 
     def _set_tool_selected(self, tool):
-#        self.log_info("PAUL: _set_tool_selected(%d)" % tool)
         if tool != self.tool_selected:
             self.tool_selected = tool
             self.printer.send_event("mmu:tool_selected", self.tool_selected)
@@ -2252,7 +2246,7 @@ class MmuController(MmuFilamentMovement):
 
 
     def _set_gate_selected(self, gate):
-        self.log_info("PAUL: _set_gate_selected(%d)" % gate)
+        self.log_warning(f"PAUL: _set_gate_selected({gate})")
         prev_gate = self.gate_selected
         prev_unit = self.unit_selected
 
@@ -2263,10 +2257,9 @@ class MmuController(MmuFilamentMovement):
         # That this is the only block outside reinit() where gate_selected
         # is mutated because gate_selected event must be called and sync
         # state must be corrected
-        # PAUL prev_sync_mode = self.drive().get_sync_mode()
-        self.drive().sync_mode(DRIVE_UNSYNCED)
+        if prev_gate >= 0:
+            self.drive(prev_gate).sync_mode(DRIVE_UNSYNCED)
         self.gate_selected = gate
-        # PAUL self.drive().sync_mode(prev_sync_mode)
         # --------------------------------------------------------------------
 
         new_unit_index = self.mmu_unit(gate).unit_index

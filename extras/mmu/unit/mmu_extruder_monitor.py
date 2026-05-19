@@ -124,7 +124,6 @@ class ExtruderMonitor:
         mcu = self.mmu.printer.lookup_object('mcu')
         est_print_time = mcu.estimated_print_time(eventtime)
         pos = self.extruder_wrapper.extruder_stepper_obj().find_past_position(est_print_time)
-        logging.info("PAUL: ExtruderMonitor: pos=%s" % pos)
 
         # Initialize last position on first successful read
         if self._last_pos is None:
