@@ -29,15 +29,17 @@ choice BOARD_TYPE
       config PARAM_BOARD_TYPE
         default "Unknown"
     endif
+
   endif
 
-  # KMS has custom mcu
+  # KMS has fixed custom mcu
   if MMU_TYPE_KMS_1_0
     rsource "custom/Kconfig.kms"
   endif
 
-  # ViViD has custom mcu
+  # ViViD has fixed custom mcu
   if MMU_TYPE_VVD_1_0
     rsource "custom/Kconfig.vvd"
   endif
+
 endchoice

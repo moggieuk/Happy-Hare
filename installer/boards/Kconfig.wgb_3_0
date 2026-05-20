@@ -1,5 +1,7 @@
 config BOARD_TYPE_WGB_3_0
   bool "WGB v3.0 / designed for Box Turtle"
+  help
+    Custom designed originally for the Box Turtle
 
 if BOARD_TYPE_WGB_3_0
   config PARAM_BOARD_TYPE

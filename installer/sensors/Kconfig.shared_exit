@@ -1,5 +1,5 @@
 config MMU_HAS_SENSOR_SHARED_EXIT
-  bool "Gate sensor (aka hub sensor)"
+  bool "Shared exit sensor (aka hub sensor)"
   help
     Select if you have a sensor that is shared by all gates
     at the start of the bowden near the MMU. This is often called

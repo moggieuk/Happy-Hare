@@ -1,5 +1,7 @@
 config BOARD_TYPE_TZB_1_0
   bool "TZB v1.0 / designed for ERCF"
+  help
+    Custom designed originally for the ERCF
 
 if BOARD_TYPE_TZB_1_0
   config PARAM_BOARD_TYPE

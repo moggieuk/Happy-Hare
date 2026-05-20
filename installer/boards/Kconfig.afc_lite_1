@@ -1,5 +1,7 @@
 config BOARD_TYPE_AFC_LITE_1_0
-  bool "AFC Lite v1.0"
+  bool "AFC Lite v1.0 / designed for Box Turtle"
+  help
+    This board was custom designed for the Box Turtle v1
 
 if BOARD_TYPE_AFC_LITE_1_0
   config PARAM_BOARD_TYPE

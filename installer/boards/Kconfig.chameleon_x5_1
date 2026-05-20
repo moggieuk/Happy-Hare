@@ -1,0 +1,197 @@
+#
+# This is an mcu designed for the QuattroBox v2
+#
+
+config BOARD_TYPE_CHAMELEON_X5_1_0
+  bool "Chameleon X5 v1 / designed for Quatrobox v2"
+  help
+    This board was custom designed for the QuattroBox v2
+
+if BOARD_TYPE_CHAMELEON_X5_1_0
+  config PARAM_BOARD_TYPE
+    default "Chameleon X5 v1"
+
+  config HAS_ESPOOLER_ENABLE_PIN
+    default n
+
+  choice CHOICE_MMU_CONNECTION_TYPE
+    default CHOICE_MMU_CONNECTION_TYPE_SERIAL
+  endchoice
+  choice CHOICE_MMU_SERIAL_CONNECTION
+    default $(mmu_serial_config,1,stm32)
+  endchoice
+
+  config PIN_GEAR_UART 
+    default "$(MCU_NAME):PB2" 
+  config PIN_GEAR_STEP
+    default "$(MCU_NAME):PD10" 
+  config PIN_GEAR_DIR
+    default "$(MCU_NAME):PD11" 
+  config PIN_GEAR_ENABLE
+    default "!$(MCU_NAME):PD9" 
+  config PIN_GEAR_DIAG
+    default "$(MCU_NAME):PE15" 
+
+  config PIN_GEAR_UART_1 
+    default "$(MCU_NAME):PD13" 
+  config PIN_GEAR_STEP_1
+    default "$(MCU_NAME):PD14" 
+  config PIN_GEAR_DIR_1
+    default "$(MCU_NAME):PD15" 
+  config PIN_GEAR_ENABLE_1
+    default "!$(MCU_NAME):PA13" 
+  config PIN_GEAR_DIAG_1
+    default "$(MCU_NAME):PD12" 
+
+  config PIN_GEAR_UART_2 
+    default "$(MCU_NAME):PC14" 
+  config PIN_GEAR_STEP_2
+    default "$(MCU_NAME):PE6" 
+  config PIN_GEAR_DIR_2
+    default "!$(MCU_NAME):PE5" 
+  config PIN_GEAR_ENABLE_2
+    default "!$(MCU_NAME):PE4" 
+  config PIN_GEAR_DIAG_2
+    default "$(MCU_NAME):PC15" 
+
+  config PIN_GEAR_UART_3 
+    default "$(MCU_NAME):PA14" 
+  config PIN_GEAR_STEP_3
+    default "!$(MCU_NAME):PC13" 
+  config PIN_GEAR_DIR_3
+    default "$(MCU_NAME):PA15" 
+  config PIN_GEAR_ENABLE_3
+    default "!$(MCU_NAME):PC10" 
+  config PIN_GEAR_DIAG_3
+    default "$(MCU_NAME):PE3" 
+
+  config PIN_GEAR_UART_4 
+    default "$(MCU_NAME):PD2" 
+  config PIN_GEAR_STEP_4
+    default "$(MCU_NAME):PD3" 
+  config PIN_GEAR_DIR_4
+    default "$(MCU_NAME):PD4" 
+  config PIN_GEAR_ENABLE_4
+    default "!$(MCU_NAME):PC11" 
+  config PIN_GEAR_DIAG_4
+    default "$(MCU_NAME):PC2" 
+
+  config PIN_ENTRY_SENSOR_0
+    default "^$(MCU_NAME):PE11" 
+  config PIN_ENTRY_SENSOR_1
+    default "^$(MCU_NAME):PB1" 
+  config PIN_ENTRY_SENSOR_2
+    default "^$(MCU_NAME):PA0" 
+  config PIN_ENTRY_SENSOR_3
+    default "^$(MCU_NAME):PA4" 
+  config PIN_ENTRY_SENSOR_4
+    default "^$(MCU_NAME):PE8" 
+
+  config PIN_EXIT_SENSOR_0
+    default "^$(MCU_NAME):PE10" 
+  config PIN_EXIT_SENSOR_1
+    default "^$(MCU_NAME):PE7" 
+  config PIN_EXIT_SENSOR_2
+    default "^$(MCU_NAME):PA1" 
+  config PIN_EXIT_SENSOR_3
+    default "^$(MCU_NAME):PA3"
+  config PIN_EXIT_SENSOR_4
+    default "^$(MCU_NAME):PE9"  
+
+
+  config PIN_ENCODER
+    default "^$(MCU_NAME):PA5"
+  config PIN_NEOPIXEL
+    default "$(MCU_NAME):PA2" 
+  config PIN_SHARED_EXIT_SENSOR
+    default "^$(MCU_NAME):PA6"
+
+  if SYNC_FEEDBACK
+    config PIN_SYNC_FEEDBACK_TENSION
+      default "^$(MCU_NAME):PC5"
+    config PIN_SYNC_FEEDBACK_COMPRESSION
+      default "$(MCU_NAME):PA7" 
+  endif
+
+  if SYNC_FEEDBACK_ANALOG
+  config PIN_SYNC_FEEDBACK_ANALOG
+    default "^$(MCU_NAME):PC2"
+  endif
+
+  config PIN_EJECT_BUTTON_0
+    default "^$(MCU_NAME):PB14"
+  config PIN_EJECT_BUTTON_1
+    default "^$(MCU_NAME):PB12"
+  config PIN_EJECT_BUTTON_2
+    default "^$(MCU_NAME):PD8"
+  config PIN_EJECT_BUTTON_3
+    default "^$(MCU_NAME):PE14"
+  config PIN_EJECT_BUTTON_4
+    default "^$(MCU_NAME):PE12"
+
+  config PARAM_MISC_HARDWARE
+    default "$(ml,\
+[temperature_sensor $(UNIT_NAME)_Chamber]\n\
+sensor_type: BME280\n\
+i2c_address: 118\n\
+i2c_mcu: $(UNIT_NAME)\n\
+i2c_software_scl_pin: $(MCU_NAME):PA8\n\
+i2c_software_sda_pin: $(MCU_NAME):PC9\n\
+\n\
+[temperature_sensor $(UNIT_NAME)_Outside]\n\
+sensor_type: BME280\n\
+i2c_address: 119\n\
+i2c_mcu: $(UNIT_NAME)\n\
+i2c_software_scl_pin: $(MCU_NAME):PA8\n\
+i2c_software_sda_pin: $(MCU_NAME):PC9\n\
+\n\
+[controller_fan $(UNIT_NAME)_fan]\n\
+stepper: stepper_$(UNIT_NAME)_gear, stepper_$(UNIT_NAME)_gear_1, stepper_$(UNIT_NAME)_gear_2, stepper_$(UNIT_NAME)_gear_3\n\
+pin: $(MCU_NAME):PB4\n\
+max_power: 0.8\n\
+shutdown_speed: 0.0\n\
+fan_speed: 1.0\n\
+\n\
+[multi_pin heater_fans]\n\
+pins: $(MCU_NAME):PB8, $(MCU_NAME):PB9\n\
+\n\
+[temperature_sensor $(UNIT_NAME)_Heater_A]\n\
+sensor_type: Generic 3950\n\
+sensor_pin: $(MCU_NAME):PC0\n\
+\n\
+[temperature_sensor $(UNIT_NAME)_Heater_B]\n\
+sensor_type: Generic 3950\n\
+sensor_pin: $(MCU_NAME):PC1\n\
+\n\
+[heater_fan $(UNIT_NAME)_heater_fan]\n\
+pin: multi_pin:heater_fans\n\
+max_power: 1.0\n\
+heater: $(UNIT_NAME)_heater\n\
+heater_temp: 40\n\
+shutdown_speed: 0\n\
+\n\
+[heater_generic $(UNIT_NAME)_heater]\n\
+heater_pin: $(MCU_NAME):PC6\n\
+sensor_type: temperature_combined\n\
+sensor_list: temperature_sensor $(UNIT_NAME)_Heater_A, temperature_sensor $(UNIT_NAME)_Heater_B\n\
+combination_method: mean\n\
+maximum_deviation: 50\n\
+control: pid\n\
+pid_Kp: 51.604\n\
+pid_Ki: 1.121\n\
+pid_Kd: 593.934\n\
+min_temp: -100\n\
+max_temp: 110\n\
+\n\
+[mmu_servo exhaust]\n\
+pin: $(MCU_NAME):PB0\n\
+minimum_pulse_width: 0.001\n\
+maximum_pulse_width: 0.002\n\
+maximum_servo_angle: 180\n\
+\n\
+[fan_generic $(UNIT_NAME)_exhaust_fan]\n\
+pin: $(MCU_NAME):PB5\n\
+max_power: 1\n\
+)"
+
+endif

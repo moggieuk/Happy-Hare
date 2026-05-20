@@ -1,5 +1,5 @@
 config MMU_HAS_SENSOR_EXIT
-  bool "Post-Gear sensors?"
+  bool "Exit sensors?"
   help
     Select if you have seperate per-gate filament sensors after the MMU
     drive gear but before any combiner/splitter. Typically this is only

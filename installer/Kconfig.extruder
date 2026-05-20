@@ -1,0 +1,10 @@
+# Sets parameter tokens:
+#   PARAM_EXTRUDER_NAME
+
+config PARAM_EXTRUDER_NAME
+  string "Extruder name"
+  default "extruder"
+  help
+    Name of extruder attached to this MMU unit. Typically
+    this is 'extruder' but you can connect different
+    mmu units to different extuders

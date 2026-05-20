@@ -11,6 +11,8 @@ menu "Advanced/Raw Settings"
     change later by re-running "./install.sh -i" to run this editor (recommended)
     (or editing the generated klipper config files)
 
+  source "Kconfig.extruder"
+
   if !MULTI_UNIT_ENTRY_POINT
     source "Kconfig.num_gates"
     source "Kconfig.capabilities"
