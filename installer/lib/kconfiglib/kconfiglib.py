@@ -3479,13 +3479,13 @@ class Kconfig(object):
         if prompt.__class__ is not str:
             self._parse_error("expected prompt string")
 
-        if prompt != prompt.strip():
+        if prompt != prompt.lstrip(): # Happy Hare: changed to lstrip()
             self._warn(node.item.name_and_loc +
                        " has leading or trailing whitespace in its prompt")
 
             # This avoid issues for e.g. reStructuredText documentation, where
             # '*prompt *' is invalid
-            prompt = prompt.strip()
+            prompt = prompt.lstrip() # Happy Hare: changed to lstrip()
 
         node.prompt = (prompt, self._parse_cond())
 

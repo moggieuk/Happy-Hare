@@ -15,8 +15,8 @@
 
 menu "Calibration/Autotuning"
   config BOOL_AUTOCAL_BOWDEN_LENGTH
-    bool "Auto calibration bowden length"
-    default y
+    bool "Auto calibrate bowden length"
+    default y if MMU_HAS_SYNC_FEEDBACK_BUFFER && MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION
     help
       Automated bowden length calibration.
       The calibrated bowden length will be established on first load. It can also be set
@@ -34,7 +34,8 @@ menu "Calibration/Autotuning"
     help
       Automated bowden length tuning.
       Once calibrated this setting will tune the bowden distance over time.
-      Works best with toolhead sensor
+      Works best with extruder or toolhead sensor because this provides an
+      accurate homing point near the extruder
   config PARAM_AUTOTUNE_BOWDEN_LENGTH
     int
     default 1 if BOOL_AUTOTUNE_BOWDEN_LENGTH
@@ -42,7 +43,7 @@ menu "Calibration/Autotuning"
 
   config BOOL_SKIP_CAL_ROTATION_DISTANCE
     bool "Skip rotation distance calibration"
-    default n
+    default y
     help
       Skip rotation distance calibration (MMU_CALIBRATE_GEAR).
       This will rely on installed default value (although it can still be calibrated).
@@ -54,7 +55,10 @@ menu "Calibration/Autotuning"
 
   config BOOL_AUTOTUNE_ROTATION_DISTANCE
     bool "Autotune rotation distance"
-    default y if MMU_HAS_SYNC_FEEDBACK_BUFFER && MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION && MMU_HAS_SENSOR_SYNC_FEEDBACK_TENSION
+    default y if MMU_HAS_SYNC_FEEDBACK_BUFFER && \
+        ((MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION && \
+          MMU_HAS_SENSOR_SYNC_FEEDBACK_TENSION) || \
+         MMU_HAS_SENSOR_SYNC_FEEDBACK_PROPORTIONAL)
     help
       Automated gate calibration/tuning.
       Requires sync-feedback sensor (aka "buffer") with both compression and tension switches
@@ -66,7 +70,7 @@ menu "Calibration/Autotuning"
 
   config BOOL_SKIP_CAL_ENCODER
     bool "Skip encoder calibration"
-    default n
+    default y
     help
       Skip encoder calibration (MMU_CALIBRATE_ENCODER).
       Will rely on installed default value (although it can still be calibrated).

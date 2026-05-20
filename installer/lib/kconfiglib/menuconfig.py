@@ -236,7 +236,7 @@ from kconfiglib import Symbol, Choice, MENU, COMMENT, MenuNode, \
 _CHANGE_C_LC_CTYPE_TO_UTF8 = True
 
 # Happy Hare: Added control over initial value indentation
-_VALUE_INDENT = 6
+_VALUE_INDENT = 3
 
 # How many steps an implicit submenu will be indented. Implicit submenus are
 # created when an item depends on the symbol before it. Note that symbols
@@ -3151,7 +3151,14 @@ def _node_str(node):
     # Happy Hare: Orig: s = "{:{}}".format(_value_str(node), 3 + indent)
     v = _value_str(node)
     tcc = _token_char_count(v)
-    s = "{:>{}}".format(v, _VALUE_INDENT + indent + tcc) # Happy Hare: Revised to right-aligned formatting
+
+    # Happy Hare: display editable value nodes on the right of label -- it just looks better
+    s = ""
+    display_left = (node.item in (MENU, COMMENT) or node.item.orig_type not in (STRING, INT, HEX))
+    if display_left:
+        s += "{:>{}}".format(v, _VALUE_INDENT + indent + tcc) # Happy Hare: Revised to right-aligned formatting
+    else:
+        s += "{:>{}}".format("[[DIM]]>[[/DIM]]", _VALUE_INDENT + indent + 15)
 
     if _should_show_name(node):
         if isinstance(node.item, Symbol):
@@ -3188,6 +3195,10 @@ def _node_str(node):
 #               not (sym.choice and sym.choice.tri_value == 2):
 #
 #                s += " (NEW)"
+
+    # Happy Hare: display editable value nodes on the right of label -- it just looks better
+    if not display_left:
+        s += " {}".format(v)
 
     if isinstance(node.item, Choice) and node.item.tri_value == 2:
         # Print the prompt of the selected symbol after the choice for
@@ -3266,7 +3277,8 @@ def _value_str(node):
         if item._was_set: # Happy Hare: Added style formatting for non-defaults
             return "([[B]]{}[[/B]])".format(item.str_value)
         else:
-            return "({})".format(item.str_value)
+            return "([[B]]{}[[/B]])".format(item.str_value)
+            #return "({})".format(item.str_value)
 
     # BOOL or TRISTATE
 

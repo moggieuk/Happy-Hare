@@ -109,7 +109,7 @@ menu "Bowden move endstops"
     string 
     default "extruder"        if CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
     default "mmu_exit"        if CHOICE_GATE_HOMING_ENDSTOP_GEAR
-    default "mmu_shared_exit"        if CHOICE_GATE_HOMING_ENDSTOP_GATE
+    default "mmu_shared_exit" if CHOICE_GATE_HOMING_ENDSTOP_GATE
     default "encoder"         if CHOICE_GATE_HOMING_ENDSTOP_ENCODER
     default ""                if CHOICE_GATE_HOMING_ENDSTOP_NONE
 
