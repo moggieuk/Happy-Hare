@@ -56,9 +56,21 @@ class MmuEjectCommand(UnloadEjectMixin, BaseCommand):
 
         if self.check_if_disabled(): return
 
-        gate = gcmd.get_int('GATE', mmu.gate_selected, minval=0, maxval=mmu.num_gates - 1)
         current_gate = mmu.gate_selected
-        eject_unit = mmu.mmu_machine.get_mmu_unit_by_gate(gate)
+        mmu_unit = mmu.mmu_unit()
+
+        # Special hidden use case for eject buttons where logical gate is not known
+        lgate = gcmd.get_int('LGATE', None, minval=0, maxval=mmu_unit.num_gates - 1)
+        if lgate is not None:
+            eject_unit = self.get_unit(gcmd, mode="optional")
+            if eject_unit is None:
+                raise gcmd.error("UNIT parameter is required with LGATE")
+            gate = eject_unit.logical_gate(lgate)
+
+        else:
+            gate = gcmd.get_int('GATE', current_gate, minval=0, maxval=mmu.num_gates - 1)
+            eject_unit = mmu.mmu_unit(gate)
+
         filament_pos = mmu.filament_pos
         force = bool(gcmd.get_int('FORCE', 0, minval=0, maxval=1))
 
