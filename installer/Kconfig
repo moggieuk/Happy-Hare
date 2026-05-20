@@ -35,6 +35,7 @@
 #   MMU_HAS_SENSOR_SYNC_FEEDBACK_TENSION
 #   MMU_HAS_SENSOR_TOOLHEAD
 #   MMU_HAS_SYNC_FEEDBACK_BUFFER
+#   MMU_HAS_EJECT_BUTTONS
 
 
 # IMPORTANT keep version string up-to-date and constistent with git tag

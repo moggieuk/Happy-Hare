@@ -455,7 +455,6 @@ def install_includes(dest_file, kconfig):
     check_include(builder, "INSTALL_CLIENT_MACROS", "mmu/optional/client_macros.cfg")
     check_include(builder, "ADDON_EREC_CUTTER", "mmu/addons/mmu_erec_cutter.cfg")
     check_include(builder, "ADDON_BLOBIFIER", "mmu/addons/blobifier.cfg")
-    check_include(builder, "ADDON_EJECT_BUTTONS", "mmu/addons/mmu_eject_buttons.cfg")
 
     if not builder.has_section("include mmu/base/*.cfg"):
         logging.debug(" > Adding include [include mmu/base/*.cfg]")
