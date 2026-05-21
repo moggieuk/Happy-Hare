@@ -6,5 +6,5 @@
 config MMU_HAS_ENVIRONMENT_SENSOR
   help
     Select if the MMU has a humidity/temperature sensor in the filament storate enclosure
-  prompt "Environment sensor?"
+  prompt "Has environment sensor(s)?"
   forceshow

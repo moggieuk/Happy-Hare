@@ -177,133 +177,6 @@ menu "Pins"
 
 
 # -------------------------------------
-# Entry sensor
-# -------------------------------------
-
-  config PIN_ENTRY_SENSOR_0
-    string
-  config PIN_ENTRY_SENSOR_1
-    string
-  config PIN_ENTRY_SENSOR_2
-    string
-  config PIN_ENTRY_SENSOR_3
-    string
-  config PIN_ENTRY_SENSOR_4
-    string
-  config PIN_ENTRY_SENSOR_5
-    string
-  config PIN_ENTRY_SENSOR_6
-    string
-  config PIN_ENTRY_SENSOR_7
-    string
-  config PIN_ENTRY_SENSOR_8
-    string
-  config PIN_ENTRY_SENSOR_9
-    string
-  config PIN_ENTRY_SENSOR_10
-    string
-  config PIN_ENTRY_SENSOR_11
-    string
-
-  menu "Mmu entry sensor pins"
-    depends on MMU_HAS_SENSOR_ENTRY
-
-    config PIN_ENTRY_SENSOR_0
-      prompt "Entry sensor 0 pin "  if PARAM_NUM_GATES > 0
-    config PIN_ENTRY_SENSOR_1
-      prompt "Entry sensor 1 pin "  if PARAM_NUM_GATES > 1
-    config PIN_ENTRY_SENSOR_2
-      prompt "Entry sensor 2 pin "  if PARAM_NUM_GATES > 2
-    config PIN_ENTRY_SENSOR_3
-      prompt "Entry sensor 3 pin "  if PARAM_NUM_GATES > 3
-    config PIN_ENTRY_SENSOR_4
-      prompt "Entry sensor 4 pin "  if PARAM_NUM_GATES > 4
-    config PIN_ENTRY_SENSOR_5
-      prompt "Entry sensor 5 pin "  if PARAM_NUM_GATES > 5
-    config PIN_ENTRY_SENSOR_6
-      prompt "Entry sensor 6 pin "  if PARAM_NUM_GATES > 6
-    config PIN_ENTRY_SENSOR_7
-      prompt "Entry sensor 7 pin "  if PARAM_NUM_GATES > 7
-    config PIN_ENTRY_SENSOR_8
-      prompt "Entry sensor 8 pin "  if PARAM_NUM_GATES > 8
-    config PIN_ENTRY_SENSOR_9
-      prompt "Entry sensor 9 pin "  if PARAM_NUM_GATES > 9
-    config PIN_ENTRY_SENSOR_10
-      prompt "Entry sensor 10 pin" if PARAM_NUM_GATES > 10
-    config PIN_ENTRY_SENSOR_11
-      prompt "Entry sensor 11 pin" if PARAM_NUM_GATES > 11
-  endmenu
-
-
-# -------------------------------------
-# Exit sensor
-# -------------------------------------
-
-  config PIN_EXIT_SENSOR_0
-    string
-  config PIN_EXIT_SENSOR_1
-    string
-  config PIN_EXIT_SENSOR_2
-    string
-  config PIN_EXIT_SENSOR_3
-    string
-  config PIN_EXIT_SENSOR_4
-    string
-  config PIN_EXIT_SENSOR_5
-    string
-  config PIN_EXIT_SENSOR_6
-    string
-  config PIN_EXIT_SENSOR_7
-    string
-  config PIN_EXIT_SENSOR_8
-    string
-  config PIN_EXIT_SENSOR_9
-    string
-  config PIN_EXIT_SENSOR_10
-    string
-  config PIN_EXIT_SENSOR_11
-    string
-
-  menu "Mmu exit sensor pins"
-    depends on MMU_HAS_SENSOR_EXIT
-
-    config PIN_EXIT_SENSOR_0
-      prompt "Exit sensor 0 pin "  if PARAM_NUM_GATES > 0
-    config PIN_EXIT_SENSOR_1
-      prompt "Exit sensor 1 pin "  if PARAM_NUM_GATES > 1
-    config PIN_EXIT_SENSOR_2
-      prompt "Exit sensor 2 pin "  if PARAM_NUM_GATES > 2
-    config PIN_EXIT_SENSOR_3
-      prompt "Exit sensor 3 pin "  if PARAM_NUM_GATES > 3
-    config PIN_EXIT_SENSOR_4
-      prompt "Exit sensor 4 pin "  if PARAM_NUM_GATES > 4
-    config PIN_EXIT_SENSOR_5
-      prompt "Exit sensor 5 pin "  if PARAM_NUM_GATES > 5
-    config PIN_EXIT_SENSOR_6
-      prompt "Exit sensor 6 pin "  if PARAM_NUM_GATES > 6
-    config PIN_EXIT_SENSOR_7
-      prompt "Exit sensor 7 pin "  if PARAM_NUM_GATES > 7
-    config PIN_EXIT_SENSOR_8
-      prompt "Exit sensor 8 pin "  if PARAM_NUM_GATES > 8
-    config PIN_EXIT_SENSOR_9
-      prompt "Exit sensor 9 pin "  if PARAM_NUM_GATES > 9
-    config PIN_EXIT_SENSOR_10
-      prompt "Exit sensor 10 pin" if PARAM_NUM_GATES > 10
-    config PIN_EXIT_SENSOR_11
-      prompt "Exit sensor 11 pin" if PARAM_NUM_GATES > 11
-  endmenu
-
-
-# -------------------------------------
-# Shared Exit sensor
-# -------------------------------------
-
-  config PIN_SHARED_EXIT_SENSOR
-    string
-    prompt "MMU Shared exit sensor pin" if MMU_HAS_SENSOR_SHARED_EXIT
-
-
-# -------------------------------------
 # eSpooler
 # -------------------------------------
 
@@ -458,41 +331,189 @@ menu "Pins"
       prompt "Eject button 10 pin" if PARAM_NUM_GATES > 10
     config PIN_EJECT_BUTTON_11
       prompt "Eject button 11 pin" if PARAM_NUM_GATES > 11
-
   endmenu
+
+
+# -------------------------------------
+# Sync-Feedback Buffer
+# -------------------------------------
+
+  config PIN_SYNC_FEEDBACK_TENSION
+    string
+  config PIN_SYNC_FEEDBACK_COMPRESSION
+    string
+  config PIN_SYNC_FEEDBACK_ANALOG
+    string
+
+  menu "Sync-feedback Buffer"
+    depends on MMU_HAS_SYNC_FEEDBACK_BUFFER
+
+    config PIN_SYNC_FEEDBACK_TENSION
+      prompt "Sync feedback tension pin    " if MMU_HAS_SENSOR_SYNC_FEEDBACK_TENSION
+    config PIN_SYNC_FEEDBACK_COMPRESSION
+      prompt "Sync feedback compression pin" if MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION
+    config PIN_SYNC_FEEDBACK_ANALOG
+      prompt "Proportional (analog) pin    " if MMU_HAS_SENSOR_SYNC_FEEDBACK_PROPORTIONAL
+  endmenu
+
+
+
+# -------------------------------------
+# Entry sensor
+# -------------------------------------
+
+  config PIN_ENTRY_SENSOR_0
+    string
+  config PIN_ENTRY_SENSOR_1
+    string
+  config PIN_ENTRY_SENSOR_2
+    string
+  config PIN_ENTRY_SENSOR_3
+    string
+  config PIN_ENTRY_SENSOR_4
+    string
+  config PIN_ENTRY_SENSOR_5
+    string
+  config PIN_ENTRY_SENSOR_6
+    string
+  config PIN_ENTRY_SENSOR_7
+    string
+  config PIN_ENTRY_SENSOR_8
+    string
+  config PIN_ENTRY_SENSOR_9
+    string
+  config PIN_ENTRY_SENSOR_10
+    string
+  config PIN_ENTRY_SENSOR_11
+    string
+
+  menu "Mmu entry sensor pins"
+    depends on MMU_HAS_SENSOR_ENTRY
+
+    config PIN_ENTRY_SENSOR_0
+      prompt "Entry sensor 0 pin "  if PARAM_NUM_GATES > 0
+    config PIN_ENTRY_SENSOR_1
+      prompt "Entry sensor 1 pin "  if PARAM_NUM_GATES > 1
+    config PIN_ENTRY_SENSOR_2
+      prompt "Entry sensor 2 pin "  if PARAM_NUM_GATES > 2
+    config PIN_ENTRY_SENSOR_3
+      prompt "Entry sensor 3 pin "  if PARAM_NUM_GATES > 3
+    config PIN_ENTRY_SENSOR_4
+      prompt "Entry sensor 4 pin "  if PARAM_NUM_GATES > 4
+    config PIN_ENTRY_SENSOR_5
+      prompt "Entry sensor 5 pin "  if PARAM_NUM_GATES > 5
+    config PIN_ENTRY_SENSOR_6
+      prompt "Entry sensor 6 pin "  if PARAM_NUM_GATES > 6
+    config PIN_ENTRY_SENSOR_7
+      prompt "Entry sensor 7 pin "  if PARAM_NUM_GATES > 7
+    config PIN_ENTRY_SENSOR_8
+      prompt "Entry sensor 8 pin "  if PARAM_NUM_GATES > 8
+    config PIN_ENTRY_SENSOR_9
+      prompt "Entry sensor 9 pin "  if PARAM_NUM_GATES > 9
+    config PIN_ENTRY_SENSOR_10
+      prompt "Entry sensor 10 pin" if PARAM_NUM_GATES > 10
+    config PIN_ENTRY_SENSOR_11
+      prompt "Entry sensor 11 pin" if PARAM_NUM_GATES > 11
+  endmenu
+
+
+# -------------------------------------
+# Exit sensor
+# -------------------------------------
+
+  config PIN_EXIT_SENSOR_0
+    string
+  config PIN_EXIT_SENSOR_1
+    string
+  config PIN_EXIT_SENSOR_2
+    string
+  config PIN_EXIT_SENSOR_3
+    string
+  config PIN_EXIT_SENSOR_4
+    string
+  config PIN_EXIT_SENSOR_5
+    string
+  config PIN_EXIT_SENSOR_6
+    string
+  config PIN_EXIT_SENSOR_7
+    string
+  config PIN_EXIT_SENSOR_8
+    string
+  config PIN_EXIT_SENSOR_9
+    string
+  config PIN_EXIT_SENSOR_10
+    string
+  config PIN_EXIT_SENSOR_11
+    string
+
+  menu "Mmu exit sensor pins"
+    depends on MMU_HAS_SENSOR_EXIT
+
+    config PIN_EXIT_SENSOR_0
+      prompt "Exit sensor 0 pin "  if PARAM_NUM_GATES > 0
+    config PIN_EXIT_SENSOR_1
+      prompt "Exit sensor 1 pin "  if PARAM_NUM_GATES > 1
+    config PIN_EXIT_SENSOR_2
+      prompt "Exit sensor 2 pin "  if PARAM_NUM_GATES > 2
+    config PIN_EXIT_SENSOR_3
+      prompt "Exit sensor 3 pin "  if PARAM_NUM_GATES > 3
+    config PIN_EXIT_SENSOR_4
+      prompt "Exit sensor 4 pin "  if PARAM_NUM_GATES > 4
+    config PIN_EXIT_SENSOR_5
+      prompt "Exit sensor 5 pin "  if PARAM_NUM_GATES > 5
+    config PIN_EXIT_SENSOR_6
+      prompt "Exit sensor 6 pin "  if PARAM_NUM_GATES > 6
+    config PIN_EXIT_SENSOR_7
+      prompt "Exit sensor 7 pin "  if PARAM_NUM_GATES > 7
+    config PIN_EXIT_SENSOR_8
+      prompt "Exit sensor 8 pin "  if PARAM_NUM_GATES > 8
+    config PIN_EXIT_SENSOR_9
+      prompt "Exit sensor 9 pin "  if PARAM_NUM_GATES > 9
+    config PIN_EXIT_SENSOR_10
+      prompt "Exit sensor 10 pin" if PARAM_NUM_GATES > 10
+    config PIN_EXIT_SENSOR_11
+      prompt "Exit sensor 11 pin" if PARAM_NUM_GATES > 11
+  endmenu
+
+
+# -------------------------------------
+# Shared Exit sensor
+# -------------------------------------
+
+  config PIN_SHARED_EXIT_SENSOR
+    string
+    prompt "Shared exit sensor pin" if MMU_HAS_SENSOR_SHARED_EXIT
 
 
 # -------------------------------------
 # Misc pins
 # -------------------------------------
 
+  config PIN_TOOLHEAD_SENSOR
+    string
+    prompt "Toolhead sensor pin   " if MMU_HAS_SENSOR_TOOLHEAD
+
+
+  config PIN_EXTRUDER_SENSOR
+    string
+    prompt "Extruder sensor pin   " if MMU_HAS_SENSOR_EXTRUDER
+
+
   config PIN_ENCODER
     string
-    prompt "Encoder pin     " if MMU_HAS_ENCODER
+    prompt "Encoder pin           " if MMU_HAS_ENCODER
 
 
   config PIN_NEOPIXEL
     string
-    prompt "Neopixel pin    " if MMU_HAS_LEDS
-
-
-  config PIN_SYNC_FEEDBACK_TENSION
-    string
-    prompt "Sync feedback tension pin    " if MMU_HAS_SENSOR_SYNC_FEEDBACK_TENSION
-
-
-  config PIN_SYNC_FEEDBACK_COMPRESSION
-    string
-    prompt "Sync feedback compression pin" if MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION
-
-
-  config PIN_SYNC_FEEDBACK_ANALOG
-    string
-    prompt "Sync feedback proportional (analog) pin" if MMU_HAS_SENSOR_SYNC_FEEDBACK_PROPORTIONAL
+    prompt "Neopixel pin          " if MMU_HAS_LEDS
 
 
   config PIN_GANTRY_SERVO
-    string "Gantry servo pin"
+    string "Gantry servo pin      "
+    help
+      Optional. Used to deploy fold-down "bumper" for tip cutting
+      when using a toolhead mounted filament cutting blade
 
 
 # -------------------------------------

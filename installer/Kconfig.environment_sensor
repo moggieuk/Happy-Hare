@@ -1,13 +1,22 @@
-# Raw type and editing of environemnt sensor parameter
+# Environment sensors(s)
 #
 # Responsible for setting:
 #   PARAM_ENVIRONMENT_SENSOR (if MMU_HAS_ENVIRONMENT_SENSOR)
+#   PARAM_ENVIRONMENT_SENSORS (if MMU_HAS_ENVIRONMENT_SENSOR)
 
 if MMU_HAS_ENVIRONMENT_SENSOR
 
-  menu "Environment sensor"
+  menu "Environment sensor(s)"
+
+    config MMU_HAS_PER_GATE_ENV_SENSORS
+      bool "Per-gate environment ensors?"
+      default n
+      help
+        Most designs will only have a single environment sensor but some, like EMU have a per-gate sensor
+
     config PARAM_ENVIRONMENT_SENSOR
-      string "Environment sensor name"
+      string "Environment sensor name    "
+      depends on !MMU_HAS_PER_GATE_ENV_SENSORS
       default ""
       help
         Enter the fullname of environment sensor for MMU filament storage.
@@ -17,7 +26,18 @@ if MMU_HAS_ENVIRONMENT_SENSOR
              without the square brackets:
           "temperature_sensor MMU_enclosure"
 
-        Note: Designs with per-gate sensors (e.g. EMU) need manual configuration in mmu_hardware.cfg
+    config PARAM_ENVIRONMENT_SENSORS
+      string "List of environment sensors"
+      depends on MMU_HAS_PER_GATE_ENV_SENSORS
+      default ""
+      help
+        Enter a command separated list of fullnames for environement sensors fitted to
+        individual compartments of the enclosure.
+      
+        E.g. If you have a section like this: [temperature_sensor MMU_enclosure], then enter
+             without the square brackets:
+          "temperature_sensor MMU_enclosure, ..."
+      
   endmenu
 
 endif

@@ -22,7 +22,7 @@ menu "MMU/Extruder sync"
   if MMU_HAS_SYNC_FEEDBACK_BUFFER
 
     config PARAM_SYNC_FEEDBACK_BUFFER_NAME
-      string "Sync feedback buffer name"
+      string "Sync feedback buffer name        "
       default UNIT_NAME
 
     config BOOL_ENABLE_SYNC_FEEDBACK
@@ -39,7 +39,7 @@ menu "MMU/Extruder sync"
       default 0
 
     config PARAM_SYNC_FEEDBACK_BUFFER_RANGE
-      int "Sync feedback buffer (sensor) range"
+      int "Sync feedback buffer sensor range"
       default "10"
       help
         Travel in "buffer" between compression/tension or one sensor and end:
@@ -51,7 +51,7 @@ menu "MMU/Extruder sync"
         compression   tension        compression-only                      tension-only
 
     config PARAM_SYNC_FEEDBACK_BUFFER_MAXRANGE
-      int "Sync feedback buffer max range"
+      int "Sync feedback buffer max range   "
       default "12"
       help
         The maximum distance the sync-feedback buffer can move from hard limit to hard limit:
@@ -77,7 +77,7 @@ menu "MMU/Extruder sync"
     default 0
 
   config PARAM_SYNC_GEAR_CURRENT
-    int "Synchronized gear current   "
+    int "Synchronized gear current        "
     default 100
     help
       % of gear_stepper current (10%-100%) to use when syncing with extruder during print
@@ -95,7 +95,7 @@ menu "MMU/Extruder sync"
     default 0
 
   config PARAM_EXTRUDER_FORM_TIP_CURRENT
-    int "Extruder tip forming current"
+    int "Extruder tip forming current     "
     default 100
     help
       % of extruder current (100%-150%) to use when forming tip (100 to disable feature)
@@ -113,7 +113,7 @@ menu "MMU/Extruder sync"
     default 0
 
   config PARAM_EXTRUDER_PURGE_CURRENT
-    int "Extruder purging current    "
+    int "Extruder purging current         "
     default 100
     help
       % of extruder current (100%-150%) to use when purging (100 to disable feature)

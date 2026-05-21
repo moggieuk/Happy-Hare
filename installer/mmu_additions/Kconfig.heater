@@ -6,5 +6,5 @@
 config MMU_HAS_HEATER
   help
     Select if the MMU has a heater in the filament storate enclosure
-  prompt "Enclosure heater?"
+  prompt "Has enclosure heater(s)?"
   forceshow

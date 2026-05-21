@@ -1,17 +1,10 @@
-menu "Filament sensors"
-  help
-    Specify any additional filament sensors you have incorporated here.
-    This also allows for the installation of TMC stallguard based filament
-    detection and homing option.
-
-  # Force a logical order from mmu to extruder
-  source "sensors/Kconfig.entry"
-  source "sensors/Kconfig.exit"
-  source "sensors/Kconfig.shared_exit"
-  source "sensors/Kconfig.sync_feedback"
-  source "sensors/Kconfig.gear_touch"
-  if !MULTI_UNIT || MULTI_UNIT_ENTRY_POINT
-    source "sensors/Kconfig.extruder"
-    source "sensors/Kconfig.toolhead"
-  endif
-endmenu
+# Force a logical order from mmu to extruder
+source "sensors/Kconfig.entry"
+source "sensors/Kconfig.exit"
+source "sensors/Kconfig.shared_exit"
+source "sensors/Kconfig.sync_feedback"
+source "sensors/Kconfig.gear_touch"
+if !MULTI_UNIT || MULTI_UNIT_ENTRY_POINT
+  source "sensors/Kconfig.extruder"
+  source "sensors/Kconfig.toolhead"
+endif

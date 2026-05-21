@@ -16,7 +16,7 @@ config MMU_HAS_LEDS
 
 # Duplicated options with raw/advanced section
 if MMU_HAS_LEDS
-  menu "Led Options"
+  menu "Options"
     help
       Select default led options
 

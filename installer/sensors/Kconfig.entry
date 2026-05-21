@@ -1,6 +1,8 @@
 config MMU_HAS_SENSOR_ENTRY
-  bool "Entry sensors?"
+  bool "Has gate/lane entry sensors?"
   help
     Select if you have pre-gate filament sensors at the entry to the
     MMU. This aid early filament runout detection and allow for
     autoload features.
+
+    Configure pin in "Pins" section.

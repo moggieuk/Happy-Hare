@@ -11,7 +11,9 @@
 #   MMU_HAS_FILAMENT_BUFFER
 #   MMU_HAS_LEDS
 #   MMU_HAS_ENVIRONMENT_SENSOR
+#   MMU_HAS_PER_GATE_ENV_SENSOR
 #   MMU_HAS_HEATER
+#   MMU_HAS_PER_GATE_HEATER
 #   MMU_HAS_EJECT_BUTTONS
 #   MMU_HAS_BUFFER_MCU
 #
@@ -55,7 +57,13 @@ config MMU_HAS_LEDS
 config MMU_HAS_ENVIRONMENT_SENSOR
   bool
 
+config MMU_HAS_PER_GATE_ENV_SENSORS
+  bool
+
 config MMU_HAS_HEATER
+  bool
+
+config MMU_HAS_PER_GATE_HEATERS
   bool
 
 config MMU_HAS_EJECT_BUTTONS
@@ -76,10 +84,10 @@ config MMU_DISABLE_ESPOOLER_OPTION
 config MMU_DISABLE_FILAMENT_BUFFER_OPTION
   bool
 
-
 config PARAM_MISC_HARDWARE
   string
   default ""
+
 
 menu "Design attributes"
   source "Kconfig.selector_type" 

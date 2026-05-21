@@ -1,30 +1,104 @@
-# Encoder parameter tokens which must be inside if MMU_HAS_HEATER clause
-# in cfg templates
+# Heater(s)
 #
 # Responsible for setting:
-#   PARAM_HEATER_MAX_TEMP
 #   PARAM_FILAMENT_HEATER
+#   PARAM_FILAMENT_HEATERS (if MMU_HAS_PER_GATE_ENV_SENSORS)
+#   PARAM_HEATER_MAX_TEMP
+#   PARAM_HEATER_DEFAULT_DRY_TEMP
+#   PARAM_HEATER_DEFAULT_DRY_TIME
+#   PARAM_HEATER_DEFAULT_DRY_HUMIDITY
+#   PARAM_HEATER_VENT_MACRO
+#   PARAM_HEATER_VENT_INTERVAL
+#   PARAM_HEATER_ROTATE_INTERVAL (if MMU_HAS_ESPOOLER)
 
 if MMU_HAS_HEATER
-  menu "Heater"
+  menu "Heater(s)"
+
+    config MMU_HAS_PER_GATE_HEATERS
+      bool "Per-gate Heaters?"
+      default n
+      help
+        Most designs will only have a single heater but some, like EMU have a per-gate heater
+
+   config PARAM_FILAMENT_HEATERS
+     string "Enclosure heater          "
+     depends on !MMU_HAS_PER_GATE_HEATERS
+     default ""
+     help
+       Enter the fullname of heater used to heat the filament enclosure.
+
+       E.g. If you have a section like this: [heater_generic MMU_heater], then enter
+            without the square brackets:
+         "heater_generic MMU_heater"
+
+   if MMU_HAS_PER_GATE_HEATERS
+     config PARAM_FILAMENT_HEATER
+       string "List of enclosure heaters "
+       default ""
+       help
+         Enter a command separated list of fullnames for heaters used to heat individual compartments
+         of the enclosure.
+
+         E.g. If you have a section like this: [heater_generic MMU_heater], then enter
+              without the square brackets:
+           "heater_generic MMU_heater, ..."
+
+      config PARAM_MAX_CONCURRENT_HEATERS
+        int "Maximum concurrent heaters"
+        default 1
+        help
+          Limit the number of simultaneously active heaters (power/PSU protection)
+    endif
+
+
+# -------------------------------------
+# Heater controller parameters
+# -------------------------------------
+
     config PARAM_HEATER_MAX_TEMP
-      string "Maximum heater temperature"
+      int "Maximum heater temperature"
       default "65"
       help
         This set the absolute limit for heater operation and is designed
         to protect the MMU construction. Individual filament temps are
         defined in 'drying_data' in mmu.cfg
 
-    config PARAM_FILAMENT_HEATER
-      string "Enclosure heater"
-      default ""
+    config PARAM_HEATER_DEFAULT_DRY_TEMP
+      string "Default drying temperature"
+      default "45"
       help
-        Enter the fullname of heater used to heat the filament enclosure.
+        Default drying temperature if filament type is not matched in drying_data
 
-        E.g. If you have a section like this: [heater_generic MMU_heater], then enter
-             without the square brackets:
-          "heater_generic MMU_heater"
+    config PARAM_HEATER_DEFAULT_DRY_TIME
+      string "Default drying time       "
+      default "300"
+      help
+        Default drying cycle time in minutes
 
-        Note: Designs with per-gate heaters (e.g. EMU) need manual configuration in mmu_hardware.cfg
+    config PARAM_HEATER_DEFAULT_DRY_HUMIDITY
+      string "Default drying humidity   "
+      default "25"
+      help
+        Default humidity % goal. Drying will terminate if this value is reached
+
+    config PARAM_HEATER_VENT_MACRO
+      string "Vent macro                "
+      default "_MMU_VENT"
+      help
+        Name of macro to periodicaly call during drying cycle
+
+    config PARAM_HEATER_VENT_INTERVAL
+      string "Vent interval             "
+      default "0"
+      help
+        Interval in minutes to call heater_vent_macro during drying cycle, 0=disable venting
+
+    config PARAM_HEATER_ROTATE_INTERVAL
+      string "Rotate interval           "
+      default "5"
+      depends on MMU_HAS_ESPOOLER
+      help
+        Interval in minutes to rotate filament (requires eSpooler and filament end attached to spool)
+
   endmenu
 endif

@@ -1720,9 +1720,9 @@ def differs_from_default(node, sc, reset=True): # Happy Hare: Added method
             else:
                 m.set_value(uv)
 
-    # Restore selected choice symbol LAST
-    if saved_user_sel is not None:
-        saved_user_sel.set_value("y")
+        # Restore selected choice symbol LAST
+        if saved_user_sel is not None:
+            saved_user_sel.set_value("y")
 
     elif isinstance(sc, Symbol):
         ch = sc.choice
