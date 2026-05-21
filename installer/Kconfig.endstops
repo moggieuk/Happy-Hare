@@ -49,7 +49,7 @@ config PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_ENCODER
 config PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE
   def_bool n
 
-menu "Bowden move endstops"
+menu "Endstops (Bowden move)"
 
   choice CHOICE_GATE_HOMING_ENDSTOP 
     prompt "Gate homing endstop"
@@ -71,25 +71,21 @@ menu "Bowden move endstops"
     default CHOICE_GATE_HOMING_ENDSTOP_ENCODER  if MMU_HAS_ENCODER
     default CHOICE_GATE_HOMING_ENDSTOP_NONE
 
-    config CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
-      bool "Extruder entry sensor"
-      depends on MMU_HAS_SENSOR_EXTRUDER && !REQUIRE_BOWDEN_MOVE
-      help 
-        Use extruder entry sensor (Only for some type-B designs,
-        where multiple bowdens are combined near the toolhead).
-
     config CHOICE_GATE_HOMING_ENDSTOP_GEAR
-      bool "Individual mmu exit sensors"
+      bool "Individual lane exit sensors"
       depends on MMU_HAS_SENSOR_EXIT
       help
-        Use individual per-gate endstop sensor after drive gear (often implemented as
-        per-gate entry sensors on the filament combiner ("aka hub")
+        Use individual per-gate (mmu_exit) endstop sensor after drive gear.
+        Often also implemented as per-gate entry sensors on the filament combiner ("aka hub")
 
     config CHOICE_GATE_HOMING_ENDSTOP_GATE
-      bool "Shared Gate sensor"
+      bool "Shared exit sensor"
       depends on MMU_HAS_SENSOR_SHARED_EXIT
       help
         Use gate endstop which is shared by all MMU gates.
+        This is often implemented at the exit of the filament combiner ("aka hub") in type-B designs
+
+        Make sure that gate parking position is a retraction so filament doesn't block the bowden path
 
     config CHOICE_GATE_HOMING_ENDSTOP_ENCODER
       bool "Encoder movement"
@@ -97,11 +93,20 @@ menu "Bowden move endstops"
       help 
         Detect filament position using movement of the encoder.
 
+    config CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
+      bool "Extruder entry sensor"
+      depends on MMU_HAS_SENSOR_EXTRUDER && !REQUIRE_BOWDEN_MOVE
+      help 
+        Use extruder entry sensor (Only for some type-B designs,
+        where multiple bowdens are combined near the toolhead).
+
     config CHOICE_GATE_HOMING_ENDSTOP_NONE
       bool "No homing endstop available"
       help
         Ensure you have specified all filament sensors and encoders because
         current configuration has no way to home at the MMU gate.
+
+        However this isn't a issue if you calibrate and have a toolhead sensor
   endchoice
 
   # Create no-prompt param from choice

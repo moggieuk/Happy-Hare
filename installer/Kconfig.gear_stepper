@@ -9,7 +9,7 @@
 menu "Gear stepper"
 
   config PARAM_GEAR_GEAR_RATIO
-    string "Gear ratio"
+    string "Gear ratio            "
     default "1:1"
 
   config PARAM_GEAR_ROTATION_DISTANCE
@@ -17,11 +17,11 @@ menu "Gear stepper"
     default "22.7316868"
 
   config PARAM_GEAR_RUN_CURRENT
-    string "Gear run current"
+    string "Gear run current      "
     default "0.7"
 
   config PARAM_GEAR_HOLD_CURRENT
-    string "Gear hold current"
+    string "Gear hold current     "
     default "0.1"
 
 endmenu

@@ -19,11 +19,11 @@ if MMU_HAS_ENCODER
           Ensure this matches the resolution of your encoder. It represents
           filament movement (mm) for each sensor pulse. Note that this is
           only used as an initial value and it overridden by calibration.
-        string "Uncalibrated encoder resolution"
+        string "Uncalibrated encoder resolution "
         default "1.0"
 
       config PARAM_GATE_ENDSTOP_TO_ENCODER
-        string "Gate endstop to encoder distance (mm)"
+        string "Gate endstop to encoder distance"
         default "10"
     endif
   endmenu

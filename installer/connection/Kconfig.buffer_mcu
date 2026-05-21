@@ -35,7 +35,6 @@ if CHOICE_BUFFER_CONNECTION_TYPE_SERIAL
       MCU connection for sync-feedback buffer
       Select the serial device connected to the sync-feedback buffer  mcu
       or select "Other" and enter it manually.
-    depends on $(serial_exists,1) # Only show if there is at least one serial tty devices to select
 
     config $(buffer_serial_config,1)
       bool "$(serial_device,1)"
@@ -67,19 +66,21 @@ if CHOICE_BUFFER_CONNECTION_TYPE_SERIAL
     config $(buffer_serial_config,9)
       bool "$(serial_device,10)"
       depends on $(serial_exists,10)
+
     config CHOICE_BUFFER_SERIAL_DEVICE_OTHER
       bool "Other / manually entered"
+    if CHOICE_BUFFER_SERIAL_DEVICE_OTHER
+      config BUFFER_SERIAL_DEVICE_OTHER
+        string "Enter serial device path"
+        default "-enter-device-path-"
+        help
+          MCU connection for sync-feedback buffer
+          Specify the path of the serial device connected to the BUFFER's mcu.
+          It's best to use the /dev/serial/by-id/ path, as it's unique and
+          doesn't change when you plug in multiple serial devices.
+          Example: /dev/serial/by-id/usb-Klipper_MCU_12345678-if00
+    endif
   endchoice
-
-  config BUFFER_SERIAL_DEVICE_OTHER
-    string "Enter serial device path" if CHOICE_BUFFER_SERIAL_DEVICE_OTHER || !$(serial_exists,1)
-    default "-enter-device-path-"
-    help
-      MCU connection for sync-feedback buffer
-      Specify the path of the serial device connected to the BUFFER's mcu.
-      It's best to use the /dev/serial/by-id/ path, as it's unique and
-      doesn't change when you plug in multiple serial devices.
-      Example: /dev/serial/by-id/usb-Klipper_MCU_12345678-if00
 
   config PARAM_BUFFER_SERIAL_DEVICE
     string
@@ -107,7 +108,6 @@ if CHOICE_BUFFER_CONNECTION_TYPE_CANBUS
       MCU connection for BUFFER
       Select the CANbus uuid belonging to the BUFFER's mcu or select
       "Other" and enter it manually.
-    depends on $(canbus_uuid_count) >= 1 # Only show if there is at least one unused uuid to select
 
     config $(buffer_canbus_config,1)
       bool "$(canbus_uuid,1)"
@@ -139,20 +139,22 @@ if CHOICE_BUFFER_CONNECTION_TYPE_CANBUS
     config $(buffer_canbus_config,10)
       bool "$(canbus_uuid,10)"
       depends on $(canbus_uuid_count) >= 10
+
     config CHOICE_BUFFER_CANBUS_UUID_OTHER
       bool "Other / manually entered"
+    if CHOICE_BUFFER_CANBUS_UUID_OTHER
+      config BUFFER_CANBUS_UUID_OTHER
+        string "Enter CANbus UUID"
+        default "-enter-canbus-id-"
+        help
+          Specifiy the CANbus UUID that is used for connection to the sync-feedback buffer
+          It is a 6 byte ID represented in hex.
+          This can be found with:
+            ~/klipper/klippy-env/bin/python ~/klipper/klipper/scripts/canbus_query.py can0
+          Enter only the uuid portion (12 hex digits)
+            E.g. 127081e7e3c6
+    endif
   endchoice
-
-  config BUFFER_CANBUS_UUID_OTHER
-    string "Enter CANbus UUID" if CHOICE_BUFFER_CANBUS_UUID_OTHER || $(canbus_uuid_count) = 0
-    default "-enter-canbus-id-"
-    help
-      Specifiy the CANbus UUID that is used for connection to the sync-feedback buffer
-      It is a 6 byte ID represented in hex.
-      This can be found with:
-        ~/klipper/klippy-env/bin/python ~/klipper/klipper/scripts/canbus_query.py can0
-      Enter only the uuid portion (12 hex digits)
-        E.g. 127081e7e3c6
 
   config PARAM_BUFFER_CANBUS_UUID
     string

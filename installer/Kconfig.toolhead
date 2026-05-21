@@ -22,19 +22,19 @@ menu "Toolhead dimensions and calibration"
       Distance (mm) from extruder gears (entrance) to nozzle
 
   config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
-    string "Toolhead sensor to nozzle"
+    string "Toolhead sensor to nozzle  "
     help
       Distance (mm) from "toolhead" sensor to nozzle
     depends on MMU_HAS_SENSOR_TOOLHEAD
 
   config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
-    string "Extruer sensor to entry"
+    string "Extruer sensor to entry    "
     help
       Distance (mm) from extruder "entry" sensor to extruder gears
     depends on MMU_HAS_SENSOR_EXTRUDER
 
   config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
-    string "Residual filament"
+    string "Residual filament          "
     help
       This setting represents how much residual filament (mm) is left behind in the nozzle when filament is
       removed. it is thus used to reduce the extruder loading length and prevent excessive blobbing but also
@@ -43,7 +43,7 @@ menu "Toolhead dimensions and calibration"
 
 # This is for tuning. Don't expose
 #  config PARAM_TOOLHEAD_OOZE_REDUCTION
-#    string "Ooze reduction"
+#    string "Ooze reduction             "
 #    default "0"
 #    help
 #      This is for tuning to fix blobbing. It is expected that this value is NEAR ZERO as it represents a further

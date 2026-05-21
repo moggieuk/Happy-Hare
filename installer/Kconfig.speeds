@@ -30,17 +30,17 @@ menu "Speeds"
   comment "Bowden movement speeds (mm/s)"
 
   config PARAM_GEAR_FROM_FILAMENT_BUFFER_SPEED
-    string "Normal bowden load speed"
+    string "Normal bowden load speed         "
     default "150"
     help
       Speed for normal filament loading (or from filament buffer if fitted)
 
   config PARAM_GEAR_FROM_FILAMENT_BUFFER_ACCEL
-    string "Normal bowden load acceleration"
+    string "Normal bowden load acceleration  "
     default "400"
 
   config PARAM_GEAR_FROM_SPOOL_SPEED
-    string "Loading from spool speed"
+    string "Loading from spool speed         "
     default "80"
     depends on MMU_HAS_FILAMENT_BUFFER
     help
@@ -49,12 +49,12 @@ menu "Speeds"
       friction without the stepper loosing steps
 
   config PARAM_GEAR_FROM_SPOOL_ACCEL
-    string "Loading from spool acceleration"
+    string "Loading from spool acceleration  "
     depends on MMU_HAS_FILAMENT_BUFFER
     default "100"
 
   config PARAM_GEAR_UNLOAD_SPEED
-    string "Normal bowden unload speed"
+    string "Normal bowden unload speed       "
     default "80"
     help
       You can use a lower speed when unloading filament. This is useful if you have an eSpool
@@ -65,23 +65,23 @@ menu "Speeds"
     default "100"
 
   config PARAM_GEAR_HOMING_SPEED
-    string "Gear homing speed"
+    string "Gear homing speed                "
     default "50"
     help
       Speed of gear stepper only homing moves (e.g. homing to gate or extruder)
 
   config PARAM_GEAR_SHORT_MOVE_SPEED
-    string "Short movement speed"
+    string "Short movement speed             "
     default "80"
     help
       Speed when making short moves (e.g. incremental retracts with encoder)
 
   config PARAM_GEAR_SHORT_MOVE_ACCEL
-    string "Short movement acceleration"
+    string "Short movement acceleration      "
     default "400"
 
   config PARAM_GEAR_SHORT_MOVE_THRESHOLD
-    string "Short move threshold"
+    string "Short move threshold             "
     default "70"
     help
       Individual move distance below which is considered a short move
@@ -90,20 +90,20 @@ menu "Speeds"
     comment "Extruder movement speeds (mm/s)"
 
     config PARAM_EXTRUDER_LOAD_SPEED
-      string "Extruder load speed"
+      string "Extruder load speed       "
       default "16"
       help
         Speed of load move inside extruder from homing position to meltzone
 
     config PARAM_EXTRUDER_UNLOAD_SPEED
-      string "Extruder unload speed"
+      string "Extruder unload speed     "
       default "16"
       help
         Speed of unload moves inside of extruder
         (very initial move from meltzone is 50% of this)
 
     config PARAM_EXTRUDER_SYNC_LOAD_SPEED
-      string "Extruder sync load speed"
+      string "Extruder sync load speed  "
       default "18"
       help
         Speed of load move inside extruder from homing position to meltzone
@@ -117,13 +117,13 @@ menu "Speeds"
         (very initial move from meltzone is 50% of this)
 
     config PARAM_EXTRUDER_HOMING_SPEED
-      string "Extruder homing speed"
+      string "Extruder homing speed     "
       default "16"
       help
         Speed of extruder only homing moves (e.g. to toolhead sensor)
 
     config PARAM_EXTRUDER_ACCEL
-      string "Extruder acceleration"
+      string "Extruder acceleration     "
       default "1500"
       help
         The acceleration of the extruder stepper is limited to this value when performing MMU
@@ -139,12 +139,12 @@ menu "Speeds"
         default "200"
 
       config PARAM_SELECTOR_HOMING_SPEED
-        string "Speed of selector homing moves (mm/s)"
+        string "Speed of selector homing moves (mm/s)      "
         depends on LINEAR_SELECTOR || LINEAR_SERVO_SELECTOR || LINEAR_MULTI_GEAR_SELECTOR || ROTARY_SELECTOR || TESTING_SELECTOR
         default "60"
 
       config PARAM_SELECTOR_TOUCH_SPEED
-        string "Speed of touch selector movement (mm/s)"
+        string "Speed of touch selector movement (mm/s)    "
         depends on LINEAR_SELECTOR || LINEAR_SERVO_SELECTOR || LINEAR_MULTI_GEAR_SELECTOR || TESTING_SELECTOR
         default "80"
 

@@ -16,7 +16,7 @@ if MMU_HAS_SELECTOR_STEPPER
   menu "Selector stepper"
 
     config PARAM_SELECTOR_GEAR_RATIO
-      string "Selector gear ratio"
+      string "Selector gear ratio       "
       default "1:1"
 
     config PARAM_SELECTOR_ROTATION_DISTANCE
@@ -24,11 +24,11 @@ if MMU_HAS_SELECTOR_STEPPER
       default "40"
 
     config PARAM_SELECTOR_RUN_CURRENT
-      string "Selector run current"
+      string "Selector run current      "
       default "0.5"
 
     config PARAM_SELECTOR_HOLD_CURRENT
-      string "Selector hold current"
+      string "Selector hold current     "
       default "0.2"
 
     config PARAM_SELECTOR_ENDSTOP_NAME
@@ -37,7 +37,7 @@ if MMU_HAS_SELECTOR_STEPPER
 
     if ROTARY_SELECTOR || TESTING_SELECTOR
       config PARAM_SELECTOR_GATE_DIRECTIONS
-        string "Selector gate directions"
+        string "Selector gate directions  "
         default "1, 1, 0, 0"
         help
           An array with entry for each gate representing the direction of movement of the gear stepper
@@ -46,7 +46,7 @@ if MMU_HAS_SELECTOR_STEPPER
             1 = reverse direction
 
       config PARAM_SELECTOR_RELEASE_GATES
-        string "Selector release gates"
+        string "Selector release gates    "
         default "2, 3, 0, 1"
         help
           An array with entry for each gate representing which gate to select to release the filament in

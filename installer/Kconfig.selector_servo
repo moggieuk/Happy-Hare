@@ -19,42 +19,44 @@
 if MMU_HAS_SELECTOR_SERVO
   menu "Selector servo"
     config PARAM_SERVO_MAX_ANGLE
-      int "Servo maximum angle"
+      int "Servo maximum angle  "
       range 0 360
       default 180
 
     config PARAM_SERVO_MIN_PULSE_WIDTH
-      string "Servo minimum pulse width"
+      string "Servo min pulse width"
       default "0.001"
 
     config PARAM_SERVO_MAX_PULSE_WIDTH
-      string "Servo maximum pulse width"
+      string "Servo max pulse width"
       default "0.002"
 
     config PARAM_SERVO_UP_ANGLE
-      int "Servo up angle"
+      int "Servo up angle       "
       default 0
 
     config PARAM_SERVO_MOVE_ANGLE
-      int "Servo move angle"
+      int "Servo move angle     "
       default 0
 
     config PARAM_SERVO_DOWN_ANGLE
-      int "Servo down angle"
+      int "Servo down angle     "
       default 0
 
     config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
-      int "How often to buzz servo on down angle"
+      int "Buzz servo on down   "
       default 1
+      help
+        How often to buzz servo on down angle
 
     config PARAM_SERVO_DURATION
-      string "Servo duration"
+      string "Servo duration       "
       default "0.4" if LINEAR_SELECTOR
       default "0.5" if SERVO_SELECTOR
       default "0.4"
 
     config PARAM_SERVO_DWELL
-      string "Servo dwell"
+      string "Servo dwell          "
       default "0.5" if LINEAR_SELECTOR
       default "0.8" if SERVO_SELECTOR
       default "0.5"
@@ -84,7 +86,7 @@ if MMU_HAS_SELECTOR_SERVO
       default 0
 
     config PARAM_SERVO_GATE_ANGLES
-      string "Initial servo gate angles"
+      string "Servo gate angles    "
       depends on SERVO_SELECTOR || TESTING_SELECTOR
       default "90, 90"                 if PARAM_NUM_GATES = 2
       default "90, 90, 90"             if PARAM_NUM_GATES = 3

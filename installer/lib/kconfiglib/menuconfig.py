@@ -931,10 +931,10 @@ def _menuconfig(stdscr):
             # _set_style(_help_win, "show-help" if _show_help else "help")
             _resize_main()
 
-        elif True and c in ("c", "C"): # Happy Hare: Disable (but ENABLE when debugging) # PAUL
+        elif False and c in ("c", "C"): # Happy Hare: Disable (but ENABLE when debugging)
             _show_name = not _show_name
 
-        elif True and c in ("a", "A"): # Happy Hare: Disable (but ENABLE when debugging) # PAUL
+        elif False and c in ("a", "A"): # Happy Hare: Disable (but ENABLE when debugging)
             _toggle_show_all()
 
         elif c in ("q", "Q"):
@@ -1669,43 +1669,60 @@ def _value_repr(item): # Happy Hare: Added method
     return item.str_value     # strings/ints/hex already as text
     
 
+# Determine if default value by resetting any change and seeing if value changes
+# Then restores any changes
+# Returns (changed_flag, current_value, default_value_if_user_cleared)
 def differs_from_default(node, sc, reset=True): # Happy Hare: Added method
-    # Return (changed, current_value, default_value_if_user_cleared).
 
-    def _get_choice_sym(ch):
-        if ch.name:
-            s = ch.kconfig.syms.get(ch.name) # O(1) lookup
-            if s is not None and all(m is not s for m in ch.syms): # not a member sanity check
-                return s
-        return None
-
-    # Snapshot what we need to restore
     if isinstance(sc, Choice):
         cur = _value_repr(sc)
-        saved_user_sel = sc.user_selection
-        saved_members   = {m: m.user_value for m in sc.syms if m.user_value is not None}
-        saved_choice_sym = _get_choice_sym(sc)
-        saved_choice_uv  = saved_choice_sym.user_value if saved_choice_sym else None
 
-        # Clear user selection to see the default choice
+        # Snapshot state needed for restoration
+        saved_choice_uv = sc.user_value          # choice mode/user value
+        saved_user_sel  = sc.user_selection      # selected symbol
+
+        # Save explicit member user_values
+        saved_members = {
+            m: m.user_value
+            for m in sc.syms
+            if m.user_value is not None
+        }
+
+        # Clear user selection/value to reveal default choice
         sc.unset_value()
         default = _value_repr(sc)
 
-        # Restore
-        if saved_user_sel is not None:
-            saved_user_sel.set_value("y")
+        # ---- Restore original state ----
+
+        # Restore the choice's own mode first
+        if saved_choice_uv is not None:
+            if sc.type in (BOOL, TRISTATE):
+                sc.set_value(("n", "m", "y")[saved_choice_uv])
+            else:
+                sc.set_value(saved_choice_uv)
+
+        # Restore non-selected member values first.
+        # Never restore another choice member to 'y',
+        # because the last 'y' wins in a choice.
         for m, uv in saved_members.items():
-            # restore exact user_value
+
+            # Selected symbol restored separately below
+            if m is saved_user_sel:
+                continue
+
             if m.type in (BOOL, TRISTATE):
-                m.set_value(("n","m","y")[uv])
+
+                # Skip restoring alternate selected members
+                if uv == 2:   # y
+                    continue
+
+                m.set_value(("n", "m", "y")[uv])
             else:
                 m.set_value(uv)
-        if saved_choice_sym is not None and saved_choice_uv is not None:
-            # Controlling symbol's user_value (named choices)
-            if saved_choice_sym.type in (BOOL, TRISTATE):
-                saved_choice_sym.set_value(("n","m","y")[saved_choice_uv])
-            else:
-                saved_choice_sym.set_value(saved_choice_uv)
+
+    # Restore selected choice symbol LAST
+    if saved_user_sel is not None:
+        saved_user_sel.set_value("y")
 
     elif isinstance(sc, Symbol):
         ch = sc.choice
