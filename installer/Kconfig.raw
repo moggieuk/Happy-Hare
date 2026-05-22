@@ -3,7 +3,7 @@
 # (Once user edits values here they are sticky and
 # will override defaults)
 
-menu "Advanced/Raw Settings"
+menu "Raw Settings"
   help
     Advanced/Raw Settings
     Allows override of designer defaults. Only change these settings if
@@ -41,18 +41,10 @@ menu "Advanced/Raw Settings"
     source "Kconfig.encoder"
     source "Kconfig.heater"
     source "Kconfig.environment_sensor"
-
-    menu "Filament sensors"
-      help
-        Specify any additional filament sensors you have incorporated here.
-        This also allows for the installation of TMC stallguard based filament
-        detection and homing option.
-
-      source "Kconfig.sensors"
-    endmenu
-
+    source "sensors/Kconfig"
     source "Kconfig.endstops"
     source "Kconfig.gates"
+    source "Kconfig.sync_feedback_buffer"
     source "Kconfig.sync_control"
     source "Kconfig.calibration"
   endif

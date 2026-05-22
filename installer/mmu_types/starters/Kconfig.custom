@@ -12,7 +12,7 @@ if MMU_CUSTOM
   source "Kconfig.capabilities"
 
   if SHOW_MMU_ADDITIONS_WITH_TYPE
-    source "mmu_additions/Kconfig"
+    source "Kconfig.mmu_additions"
   endif
 
   ####################

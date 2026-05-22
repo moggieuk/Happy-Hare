@@ -1,0 +1,91 @@
+# Responsible for setting:
+#   MMU_HAS_EJECT_BUTTONS
+#   MMU_HAS_ENCODER
+#   MMU_HAS_ENVIRONMENT_SENSOR
+#   MMU_HAS_ESPOOLER
+#   MMU_HAS_FILAMENT_BUFFER
+#   MMU_HAS_HEATER
+#   MMU_HAS_LEDS
+#   MMU_HAS_SYNC_FEEDBACK_BUFFER
+#
+# These are all duplicates of the "Raw" section, but ensure the config sections
+# will exist if users forget to visit the "Raw" section.
+
+menu "MMU Additions/Modifications"
+  help
+    Enhancements to base design
+    If the base MMU design lacks a particular feature there are often
+    modifications available to enhance the design. Select those modifications
+    here so that Happy Hare will install the correct drivers and setup
+    the best possible starter configuration.
+
+
+  if !MMU_DISABLE_EJECT_BUTTONS_OPTION
+    config MMU_HAS_EJECT_BUTTONS
+      help
+        Some MMU designs have dedicated eject buttons. Select this
+        option to allow pin editing and inclusion in config template
+      prompt "Has Eject buttons?"
+      forceshow
+  endif
+
+  if !MMU_DISABLE_ENCODER_OPTION
+    config MMU_HAS_ENCODER
+      help
+        An encoder measures filament movement and can be used to validate
+        movement, detect clogs, monitor flow rate and detect filament
+        collision with the extruder in liue of a toolhead switch sensor.
+      prompt "Has Encoder?"
+      forceshow
+  endif
+
+  config MMU_HAS_ENVIRONMENT_SENSOR
+    help
+      Select if the MMU has a humidity/temperature sensor in the filament storate enclosure
+    prompt "Has environment sensor(s)?"
+    forceshow
+
+  config MMU_HAS_HEATER
+    help
+      Select if the MMU has a heater in the filament storate enclosure
+    prompt "Has enclosure heater(s)?"
+    forceshow
+
+  if !MMU_DISABLE_ESPOOLER_OPTION
+    config MMU_HAS_ESPOOLER
+      help
+        An eSpooler is primarily used to rewind filament to prevent
+        it tangling but can also be driven to assist loading and even
+        assist in print. Select if you have added a DC motor controlled
+        eSpooler.
+      prompt "Has eSpooler?"
+      forceshow
+  endif
+
+  if !MMU_DISABLE_FILAMENT_BUFFER_OPTION
+    config MMU_HAS_FILAMENT_BUFFER
+      bool "Has filament buffer to catch loose filament?"
+      forceshow
+      help
+        Does MMU have a buffer to catch the uncoiled filament on unload. Note
+        that a passive rewinder like Filamentalist is not a filament buffer
+        because it alleviates the need for one!
+  endif
+
+  config MMU_HAS_LEDS
+    help
+      Select if your MMU has LEDs. This will install the LED driver but
+      will still need to finialize configuration in the generated klipper
+      config files or you can edit parameters in "Raw" section.
+    prompt "Has Leds?"
+    forceshow
+
+  config MMU_HAS_SYNC_FEEDBACK_BUFFER
+    prompt "Has sync-feedback buffer?"
+    forceshow
+    help
+      A sync-feedback sensor (often referred to as a "buffer") is
+      a sensor connected in the bowden path that can detect filament
+      compression and/or tension.
+
+endmenu

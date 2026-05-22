@@ -1,4 +1,8 @@
 # Type setting and raw modification of toolhead dimensional parameters:
+#
+# Although a toolhead can be unique to each mmu unit this installer currently
+# assumes a single one is configured, named "default" in the mmu.cfg
+#
 #   PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
 #   PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
 #   PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
@@ -13,7 +17,6 @@ menu "Toolhead dimensions and calibration"
     'MMU_CALIBRATE_TOOLHEAD' command (see Happy Hare wiki)
 
   config PARAM_TOOLHEAD
-    string
     default "default"
 
   config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE

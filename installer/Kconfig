@@ -157,7 +157,7 @@ endif
 if !MULTI_UNIT_ENTRY_POINT
   source "mmu_types/Kconfig"        # Base MMU type menu
   if !SHOW_MMU_ADDITIONS_WITH_TYPE
-    source "mmu_additions/Kconfig"  # MMU Additions/Customization menu (if not inlined with mmu type)
+    source "Kconfig.mmu_additions"  # MMU Additions/Customization menu (if not inlined with mmu type)
   endif
   source "boards/Kconfig"           # MCU Selection menu
   source "Kconfig.pins"             # Raw pin editing

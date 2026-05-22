@@ -8,7 +8,6 @@
 #   PARAM_EXTRUDER_FORM_TIP_CURRENT
 #   PARAM_EXTRUDER_PURGE_CURRENT
 #
-#   PARAM_SYNC_FEEDBACK_BUFFER_NAME
 #   PARAM_SYNC_FEEDBACK_ENABLED
 #   PARAM_SYNC_FEEDBACK_BUFFER_RANGE
 #   PARAM_SYNC_FEEDBACK_BUFFER_MAXRANGE
@@ -20,10 +19,6 @@ menu "MMU/Extruder sync"
     overcome friction in the filament path.
 
   if MMU_HAS_SYNC_FEEDBACK_BUFFER
-
-    config PARAM_SYNC_FEEDBACK_BUFFER_NAME
-      string "Sync feedback buffer name        "
-      default UNIT_NAME
 
     config BOOL_ENABLE_SYNC_FEEDBACK
       bool "Enable sync feedback?"

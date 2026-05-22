@@ -121,7 +121,7 @@ if MMU_FAMILY_ERCF
   endif
 
   if SHOW_MMU_ADDITIONS_WITH_TYPE
-    source "mmu_additions/Kconfig"
+    source "Kconfig.mmu_additions"
   endif
 
   ####################

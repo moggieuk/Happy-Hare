@@ -9,7 +9,6 @@ MAKEFLAGS += --jobs 16            # Parallel build
 # By default KCONFIG_CONFIG is '.config', but it can be overridden by the user
 export KCONFIG_CONFIG ?= .config
 
-# TODO: Original very expensive recursive version
 # Enable output-sync if menuconfig will not trigger. menuconfig.py will crash if output-sync is enabled on certain systems
 ifeq ($(CHECK_OUTPUT_SYNC),)
   # Never probe for menuconfig or uninstall and only if KCONFIG exists
@@ -24,7 +23,7 @@ ifeq ($(CHECK_OUTPUT_SYNC),)
   -include $(KCONFIG_CONFIG) # Won't exist on first invocation
 endif
 
-# TODO: I think this faster version is sufficient
+# TODO PAUL: I think this faster version is sufficient
 # Enable output-sync if menuconfig will not trigger. menuconfig.py will crash if output-sync is enabled on certain systems
 #ifeq ($(CHECK_OUTPUT_SYNC),)
 #  ifeq ($(strip $(filter menuconfig uninstall variables gen_kconfig fix_links,$(MAKECMDGOALS))),)

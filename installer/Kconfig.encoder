@@ -2,29 +2,88 @@
 # in cfg templates
 #
 # Responsible for setting:
+#   MMU_HAS_ENCODER
+#   MMU_SHARED_ENCODER
 #   PARAM_ENCODER_NAME
 #   PARAM_ENCODER_RESOLUTION
 #   PARAM_GATE_ENDSTOP_TO_ENCODER
 
+config MMU_HAS_ENCODER
+  help
+    An encoder measures filament movement and can be used to validate
+    movement, detect clogs, monitor flow rate and detect filament
+    collision with the extruder in liue of a toolhead switch sensor.
+  prompt "Has Encoder?"
+  forceshow
+
+
 if MMU_HAS_ENCODER
-
   menu "Encoder"
-    config PARAM_ENCODER_NAME
-      string "Encoder name"
-      default UNIT_NAME
 
-    if !MMU_ENCODER_SHARED
+    config MMU_SHARED_ENCODER
+      depends on MULTI_UNIT
+      bool "Shared with existing unit?"
+      default n
+
+    if MMU_SHARED_ENCODER
+      config PARAM_ENCODER_NAME
+        prompt "Shared encoder name"
+        default "-specify name-"
+        help
+          Enter the name of shared encoder. A shared encoder must be see the filament from
+          each MMU and thus is not a common setup.
+
+          If this is the second mmu unit is it likely that the name of the existing encoder
+          is 'unit0' (default name)
+    endif
+
+    if !MMU_SHARED_ENCODER
+      config PARAM_ENCODER_NAME
+        string "Encoder name"
+        default UNIT_NAME
+
+      choice CHOICE_ENCODER_TYPE
+        prompt "Type"
+        help
+          Select the base of the encoder design.
+
+        config CHOICE_ENCODER_TYPE_BINKY
+          bool "Binky v1 / ERCF v2"
+          help
+            Select for Binky based encoders.
+
+        config CHOICE_ENCODER_TYPE_BINKY_V2
+          bool "Binky v2 / ERCF v3"
+          help
+            Select for Binky based encoders.
+
+        config CHOICE_ENCODER_TYPE_TCRT5000
+          bool "TCRT 5000 based / ERCF v1.1"
+          help
+            Select for older TCRT5000 based encoders.
+
+        config CHOICE_ENCODER_TYPE_OTHER
+          bool "Other"
+          help
+            Select for any other encoder and ensure you set the resolution correctly.
+      endchoice
+
       config PARAM_ENCODER_RESOLUTION
         help
           Ensure this matches the resolution of your encoder. It represents
           filament movement (mm) for each sensor pulse. Note that this is
           only used as an initial value and it overridden by calibration.
         string "Uncalibrated encoder resolution "
+        default "0.7059" if CHOICE_ENCODER_TYPE_TCRT5000
+        default "1.0"    if CHOICE_ENCODER_TYPE_BINKY
+        default "1.5"    if CHOICE_ENCODER_TYPE_BINKY_V2
+        default "1.0"    if CHOICE_ENCODER_TYPE_OTHER
         default "1.0"
 
       config PARAM_GATE_ENDSTOP_TO_ENCODER
         string "Gate endstop to encoder distance"
         default "10"
     endif
+
   endmenu
 endif

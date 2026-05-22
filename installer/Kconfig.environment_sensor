@@ -6,7 +6,7 @@
 
 if MMU_HAS_ENVIRONMENT_SENSOR
 
-  menu "Environment sensor(s)"
+  menu "Environment sensors"
 
     config MMU_HAS_PER_GATE_ENV_SENSORS
       bool "Per-gate environment ensors?"

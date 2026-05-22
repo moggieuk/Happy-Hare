@@ -19,7 +19,7 @@ config MMU_TYPE_BOX_TURTLE_1_0
 if MMU_TYPE_BOX_TURTLE_1_0
 
   if SHOW_MMU_ADDITIONS_WITH_TYPE
-    source "mmu_additions/Kconfig"
+    source "Kconfig.mmu_additions"
   endif
 
   choice CHOICE_TURTLE_NECK

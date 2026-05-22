@@ -8,4 +8,4 @@ config MMU_HAS_SENSOR_TOOLHEAD
 config PIN_TOOLHEAD_SENSOR
   prompt "Extruder sensor pin" if MMU_HAS_SENSOR_TOOLHEAD
   help
-    Can also be set under \"Pins\" section
+    Can also be set under "Pins" section

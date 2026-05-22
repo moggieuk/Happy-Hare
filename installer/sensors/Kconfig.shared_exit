@@ -1,8 +1,8 @@
 config MMU_HAS_SENSOR_SHARED_EXIT
-  bool "Has Shared exit sensor (aka hub sensor)"
+  bool "Has shared exit sensor (aka hub sensor)"
   help
     Select if you have a sensor that is shared by all gates
     at the start of the bowden near the MMU. This is often called
     a hub sensor for type-B designs.
 
-    Configure pin in \"Pins\" section.
+    Configure pin in "Pins" section.
