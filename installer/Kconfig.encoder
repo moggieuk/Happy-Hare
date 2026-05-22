@@ -18,7 +18,7 @@ config MMU_HAS_ENCODER
 
 
 if MMU_HAS_ENCODER
-  menu "Encoder"
+  menu "Encoder config"
 
     config MMU_SHARED_ENCODER
       depends on MULTI_UNIT
@@ -41,11 +41,14 @@ if MMU_HAS_ENCODER
       config PARAM_ENCODER_NAME
         string "Encoder name"
         default UNIT_NAME
+        help
+          The name of the klipper object for this encoder. Unless it is going to be shared
+          accross multiple MMU units it is recommended to use the unit name.
 
       choice CHOICE_ENCODER_TYPE
         prompt "Type"
         help
-          Select the base of the encoder design.
+          Select the base of the encoder design. This will set the default resolution.
 
         config CHOICE_ENCODER_TYPE_BINKY
           bool "Binky v1 / ERCF v2"

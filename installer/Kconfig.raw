@@ -5,7 +5,7 @@
 
 menu "Raw Settings"
   help
-    Advanced/Raw Settings
+    Raw Settings
     Allows override of designer defaults. Only change these settings if
     you know what you are doing (or have MMU customizations). You can always
     change later by re-running "./install.sh -i" to run this editor (recommended)
@@ -27,7 +27,7 @@ menu "Raw Settings"
     menu "Printer filament sensors"
       help
         Printer toolhead capabilities
-        Here you can configure printer toolhead options such as sensors
+        Here you can configure printer toolhead options such as fitted sensors
       source "sensors/Kconfig.extruder"
       source "sensors/Kconfig.toolhead"
     endmenu
@@ -35,20 +35,17 @@ menu "Raw Settings"
 
   if !MULTI_UNIT_ENTRY_POINT
     source "Kconfig.gear_stepper"
+    source "sensors/Kconfig"
     source "Kconfig.selector_stepper"
     source "Kconfig.selector_servo"
+    source "Kconfig.endstops"
+    source "Kconfig.gates"
+    source "Kconfig.sync_control"
+    source "Kconfig.calibration"
     source "Kconfig.leds"
     source "Kconfig.encoder"
     source "Kconfig.heater"
     source "Kconfig.environment_sensor"
-    source "sensors/Kconfig"
-    source "Kconfig.endstops"
-    source "Kconfig.gates"
     source "Kconfig.sync_feedback_buffer"
-    source "Kconfig.sync_control"
-    source "Kconfig.calibration"
-  endif
-  if !MULTI_UNIT || MULTI_UNIT_ENTRY_POINT
-    source "Kconfig.paths_services" # Advanced install options
   endif
 endmenu

@@ -643,7 +643,7 @@ class MmuCalibrator:
                 False if all checked units satisfy the required calibration.
         """
         mmu = self.mmu
-        calibrated = True
+        sufficiently_calibrated = True
 
         if check_gates is None:
             check_gates = list(range(mmu.num_gates))
@@ -747,13 +747,16 @@ class MmuCalibrator:
                 msg = "Warning: Calibration steps are not complete for MMU %s:" % u.name
                 if rmsg:
                     msg += "\nRequired:%s" % rmsg
+                    sufficiently_calibrated = False
                 if omsg:
                     msg += "\nOptional (handled by autocal/autotune):%s" % omsg
                 if not silent:
                     if silent is None: # Bootup/status use case to avoid looking like error
-                        mmu.log_always("{2}%s{0}" % msg, color=True)
+                        mmu.log_warning(msg)
                     else:
-                        mmu.log_error(msg)
-                calibrated = False
+                        if rmsg:
+                            mmu.log_error(msg)
+                        else:
+                            mmu.log_warning(msg)
 
-        return not calibrated
+        return not sufficiently_calibrated

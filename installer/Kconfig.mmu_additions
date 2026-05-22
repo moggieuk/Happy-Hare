@@ -8,8 +8,8 @@
 #   MMU_HAS_LEDS
 #   MMU_HAS_SYNC_FEEDBACK_BUFFER
 #
-# These are all duplicates of the "Raw" section, but ensure the config sections
-# will exist if users forget to visit the "Raw" section.
+# These are all duplicates of the "Raw Settings" section, but ensure the config sections
+# will exist if users forget to visit that section.
 
 menu "MMU Additions/Modifications"
   help
@@ -22,44 +22,52 @@ menu "MMU Additions/Modifications"
 
   if !MMU_DISABLE_EJECT_BUTTONS_OPTION
     config MMU_HAS_EJECT_BUTTONS
+      prompt "Has Eject buttons?"
+      forceshow
       help
         Some MMU designs have dedicated eject buttons. Select this
         option to allow pin editing and inclusion in config template
-      prompt "Has Eject buttons?"
-      forceshow
+
+        Be sure to check pins in the "Pins" section.
   endif
 
   if !MMU_DISABLE_ENCODER_OPTION
     config MMU_HAS_ENCODER
+      prompt "Has Encoder?"
+      forceshow
       help
         An encoder measures filament movement and can be used to validate
         movement, detect clogs, monitor flow rate and detect filament
         collision with the extruder in liue of a toolhead switch sensor.
-      prompt "Has Encoder?"
-      forceshow
+
+        Be sure to edit details in the "Raw Settings" section.
   endif
 
   config MMU_HAS_ENVIRONMENT_SENSOR
-    help
-      Select if the MMU has a humidity/temperature sensor in the filament storate enclosure
     prompt "Has environment sensor(s)?"
     forceshow
+    help
+      Select if the MMU has a humidity/temperature sensor in the filament storate enclosure
+
+      Be sure to edit details in the "Raw Settings" section.
 
   config MMU_HAS_HEATER
-    help
-      Select if the MMU has a heater in the filament storate enclosure
     prompt "Has enclosure heater(s)?"
     forceshow
+    help
+      Select if the MMU has a heater in the filament storate enclosure
+
+      Be sure to edit details in the "Raw Settings" section.
 
   if !MMU_DISABLE_ESPOOLER_OPTION
     config MMU_HAS_ESPOOLER
+      prompt "Has eSpooler?"
+      forceshow
       help
         An eSpooler is primarily used to rewind filament to prevent
         it tangling but can also be driven to assist loading and even
         assist in print. Select if you have added a DC motor controlled
         eSpooler.
-      prompt "Has eSpooler?"
-      forceshow
   endif
 
   if !MMU_DISABLE_FILAMENT_BUFFER_OPTION
@@ -73,12 +81,13 @@ menu "MMU Additions/Modifications"
   endif
 
   config MMU_HAS_LEDS
+    prompt "Has Leds?"
+    forceshow
     help
       Select if your MMU has LEDs. This will install the LED driver but
       will still need to finialize configuration in the generated klipper
-      config files or you can edit parameters in "Raw" section.
-    prompt "Has Leds?"
-    forceshow
+      config files or better still, you can edit parameters in the
+      "Raw Settings" section.
 
   config MMU_HAS_SYNC_FEEDBACK_BUFFER
     prompt "Has sync-feedback buffer?"
@@ -88,4 +97,6 @@ menu "MMU Additions/Modifications"
       a sensor connected in the bowden path that can detect filament
       compression and/or tension.
 
+      Be sure to edit details in the "Raw Settings" section and pins
+      in the "Pins" section.
 endmenu

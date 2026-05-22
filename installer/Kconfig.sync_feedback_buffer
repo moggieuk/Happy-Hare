@@ -19,7 +19,7 @@ config MMU_HAS_SYNC_FEEDBACK_BUFFER
 
 if MMU_HAS_SYNC_FEEDBACK_BUFFER
 
-  menu "Sync-feedback Buffer"
+  menu "Buffer config"
 
     config MMU_SHARED_SYNC_FEEDBACK_BUFFER
       depends on MULTI_UNIT

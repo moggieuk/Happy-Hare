@@ -19,7 +19,7 @@ config MMU_HAS_HEATER
 
 
 if MMU_HAS_HEATER
-  menu "Heaters"
+  menu "Heater config"
 
     config MMU_HAS_PER_GATE_HEATERS
       bool "Per-gate Heaters?"

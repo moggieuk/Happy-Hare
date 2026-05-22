@@ -169,3 +169,6 @@ if !MULTI_UNIT_ENTRY_POINT
   endif
   source "Kconfig.raw"              # Raw access to appropriate parameters
 endif
+if !MULTI_UNIT || MULTI_UNIT_ENTRY_POINT
+  source "Kconfig.paths_services" # Advanced install options
+endif

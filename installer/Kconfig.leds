@@ -27,7 +27,7 @@ config MMU_HAS_LEDS
 
 
 if MMU_HAS_LEDS
-  menu "Leds"
+  menu "Led config"
 
     config BOOL_ENABLE_LEDS
       bool "Enable LEDs?"
