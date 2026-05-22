@@ -30,9 +30,9 @@ if BOARD_TYPE_MELLOW_EASY_BRD_CAN_2
   config PIN_SELECTOR_ENABLE
     default "!$(MCU_NAME):gpio5" 
   config PIN_SELECTOR_DIAG
-    default "$(MCU_NAME):gpio20" if BOOL_ENABLE_SELECTOR_TOUCH 
+    default "$(MCU_NAME):gpio20" if BOOL_SELECTOR_TOUCH_ENABLED
   config PIN_SELECTOR_ENDSTOP
-    default "^$(MCU_NAME):gpio20" if !BOOL_ENABLE_SELECTOR_TOUCH
+    default "^$(MCU_NAME):gpio20" if !BOOL_SELECTOR_TOUCH_ENABLED
   config PIN_SELECTOR_SERVO
     default "$(MCU_NAME):gpio21" 
 

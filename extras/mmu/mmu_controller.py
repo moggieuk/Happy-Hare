@@ -271,6 +271,10 @@ class MmuController(MmuFilamentMovement):
             if gstats:
                 self.gate_statistics[gate].update(gstats)
 
+        # If unit_selected is still unknown (None), then pick the first
+        if self.unit_selected is None:
+            self._set_unit_selected(0)
+
 
     def _schedule_mmu_bootup_tasks(self, delay=0.):
         waketime = self.reactor.monotonic() + delay
@@ -481,8 +485,15 @@ class MmuController(MmuFilamentMovement):
     def mmu_unit(self, gate=None):
         if gate is None: gate = self.gate_selected
         mmu_unit = self.mmu_machine.get_mmu_unit_by_gate(gate)
+
+        if mmu_unit is None:
+            # Try last known unit
+            mmu_unit = self.mmu_machine.get_mmu_unit_by_index(self.unit_selected)
+
+        # Default to first unit
         if mmu_unit is None:
             mmu_unit = self.mmu_machine.get_mmu_unit_by_index(0)
+
         return mmu_unit
 
 
@@ -1944,6 +1955,7 @@ class MmuController(MmuFilamentMovement):
         if action == self.action: return action
         old_action = self.action
         self.action = action
+        self.log_warning(f"PAUL: _set_action({action}): unit_selected:{self.unit_selected}, gate_selected:{self.gate_selected}")
         self.led_manager.action_changed(action, old_action)
         if self.printer.lookup_object("gcode_macro %s" % self.p.action_changed_macro, None) is not None:
             self.wrap_gcode_command("%s ACTION='%s' OLD_ACTION='%s'" % (self.p.action_changed_macro, self._get_action_string(), self._get_action_string(old_action)))
@@ -2248,7 +2260,6 @@ class MmuController(MmuFilamentMovement):
     def _set_gate_selected(self, gate):
         self.log_warning(f"PAUL: _set_gate_selected({gate})")
         prev_gate = self.gate_selected
-        prev_unit = self.unit_selected
 
         if gate == prev_gate:
             return
@@ -2263,9 +2274,7 @@ class MmuController(MmuFilamentMovement):
         # --------------------------------------------------------------------
 
         new_unit_index = self.mmu_unit(gate).unit_index
-        if new_unit_index != self.unit_selected:
-            self.unit_selected = new_unit_index
-            self.printer.send_event("mmu:unit_selected", self.unit_selected, prev_unit)
+        self._set_unit_selected(new_unit_index)
 
         self.printer.send_event("mmu:gate_selected", self.gate_selected, prev_gate)
         self.mmu_unit(gate).calibrator.restore_gear_rd()
@@ -2283,6 +2292,16 @@ class MmuController(MmuFilamentMovement):
             'temperature': self.gate_temperature[gate],
         } if gate >= 0 else {}
 
+
+    def _set_unit_selected(self, unit_index):
+        self.log_warning(f"PAUL: _set_unit_selected({unit_index})")
+        prev_unit = self.unit_selected
+
+        if unit_index == prev_unit:
+            return
+
+        self.unit_selected = unit_index
+        self.printer.send_event("mmu:unit_selected", self.unit_selected, prev_unit)
 
 
 # -----------------------------------------------------------------------------------------------------------

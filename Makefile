@@ -11,37 +11,37 @@ export KCONFIG_CONFIG ?= .config
 
 # TODO: Original very expensive recursive version
 # Enable output-sync if menuconfig will not trigger. menuconfig.py will crash if output-sync is enabled on certain systems
-#ifeq ($(CHECK_OUTPUT_SYNC),)
-#  # Never probe for menuconfig or uninstall and only if KCONFIG exists
-#  ifeq ($(strip $(filter menuconfig uninstall variables gen_kconfig fix_links,$(MAKECMDGOALS))),)
-#    ifneq ($(wildcard $(KCONFIG_CONFIG)),)
-#      # Check whether $KCONFIG_CONFIG is outdated. if so menuconfig will be triggered and output-sync should stay disabled
-#      ifeq ($(shell $(MAKE) CHECK_OUTPUT_SYNC=y -q $(KCONFIG_CONFIG) >/dev/null 2>&1 && echo y),y)
-#        MAKEFLAGS += --output-sync=line
-#      endif
-#    endif
-#  endif
-#  -include $(KCONFIG_CONFIG) # Won't exist on first invocation
-#endif
-
-# TODO: I think this faster version is sufficient
-# Enable output-sync if menuconfig will not trigger. menuconfig.py will crash if output-sync is enabled on certain systems
 ifeq ($(CHECK_OUTPUT_SYNC),)
+  # Never probe for menuconfig or uninstall and only if KCONFIG exists
   ifeq ($(strip $(filter menuconfig uninstall variables gen_kconfig fix_links,$(MAKECMDGOALS))),)
     ifneq ($(wildcard $(KCONFIG_CONFIG)),)
-      config_is_fresh := $(shell \
-        cfg="$(KCONFIG_CONFIG)"; \
-        for f in $(SRC)/installer/Kconfig* $(SRC)/installer/**/Kconfig*; do \
-          [ "$$f" -ot "$$cfg" ] || { echo n; exit; }; \
-        done; \
-        echo y )
-      ifeq ($(config_is_fresh),y)
+      # Check whether $KCONFIG_CONFIG is outdated. if so menuconfig will be triggered and output-sync should stay disabled
+      ifeq ($(shell $(MAKE) CHECK_OUTPUT_SYNC=y -q $(KCONFIG_CONFIG) >/dev/null 2>&1 && echo y),y)
         MAKEFLAGS += --output-sync=line
       endif
     endif
   endif
   -include $(KCONFIG_CONFIG) # Won't exist on first invocation
 endif
+
+# TODO: I think this faster version is sufficient
+# Enable output-sync if menuconfig will not trigger. menuconfig.py will crash if output-sync is enabled on certain systems
+#ifeq ($(CHECK_OUTPUT_SYNC),)
+#  ifeq ($(strip $(filter menuconfig uninstall variables gen_kconfig fix_links,$(MAKECMDGOALS))),)
+#    ifneq ($(wildcard $(KCONFIG_CONFIG)),)
+#      config_is_fresh := $(shell \
+#        cfg="$(KCONFIG_CONFIG)"; \
+#        for f in $(SRC)/installer/Kconfig* $(SRC)/installer/**/Kconfig*; do \
+#          [ "$$f" -ot "$$cfg" ] || { echo n; exit; }; \
+#        done; \
+#        echo y )
+#      ifeq ($(config_is_fresh),y)
+#        MAKEFLAGS += --output-sync=line
+#      endif
+#    endif
+#  endif
+#  -include $(KCONFIG_CONFIG) # Won't exist on first invocation
+#endif
 
 # Prevent the user from running with sudo. This isn't perfect if something else than sudo is used.
 # Just checking for root isn't enough, as users on Creality K1 printers usually run as root (ugh)

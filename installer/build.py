@@ -38,7 +38,6 @@ supplemental_params = [
     "cad_bypass_block_width",
     "cad_bypass_block_delta",
     "cad_selector_tolerance",
-    "cad_gate_width",  # appears twice in original string
     "cad_max_rotations",
     "default_gate_material",
     "default_gate_color",
@@ -55,7 +54,6 @@ supplemental_params = [
 # This list prevents removal on upgrade/reinstall if user chooses to use them
 hidden_params = [
     "serious",
-    "suppress_kalico_warning",
     "test_random_failures",
     "test_force_in_print",
     "error_dialog_macro",
@@ -93,8 +91,12 @@ unhappy_hare = '\n(\\_/)\n( V,V)\n(")^(") {caption}\n'
 LEVEL_NOTICE = 25
 
 
-# Enhanced representation of Kconfig file
 class KConfig(kconfiglib.Kconfig):
+    """
+    Enhanced representation of Kconfig file
+    that provides a few convenience methods
+    """
+
     def __init__(self, config_file):
         super(KConfig, self).__init__("Kconfig")
         self.load_config(config_file, filter_defaults=False)
@@ -147,7 +149,25 @@ class KConfig(kconfiglib.Kconfig):
         return result
 
 
+# ---------------------------------------
+
+
 class HHConfig(ConfigBuilder):
+    """
+    Enhanced ConfigBuilder for Happy Hare configuration management.
+
+    Responsibilities:
+      1. Load and merge multiple Happy Hare .cfg files
+      2. Track where every option originally came from
+      3. Preserve user edits during upgrades/reinstalls
+      4. Detect deprecated/unused settings
+      5. Copy hidden/excluded config blocks safely
+
+    This allows configuration options to move between files
+    without breaking upgrades, while preserving user changes
+    and maintaining backward compatibility.
+    """
+
     def __init__(self, cfg_files):
         super(HHConfig, self).__init__()
         self.origins = {}
@@ -195,7 +215,7 @@ class HHConfig(ConfigBuilder):
     def update_builder(self, builder, ignore_params, origin=None):
         """
         Update the builder config selectively from the existing config HH data
-        ignore_params is a list of params that should not be updated. It is empty
+        ignore_params is a list of params that should NOT be updated. It is empty
         for the non-interactive upgrade case where all previous params are retained
         """
 
@@ -243,6 +263,9 @@ class HHConfig(ConfigBuilder):
             for (section, key), file in self.origins.items()
             if file == origin and (section, key) not in self.used_options
         ]
+
+
+# ---------------------------------------
 
 
 def add_supplemental_params(builder, hhcfg, section):
@@ -304,11 +327,22 @@ def build(cfg_file, dest_file, kconfig, input_files):
     build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_params)
 
 
+# Where this fits into the Makefile flow:
+# Live installed configs
+#     v
+# linked into OUT/in
+#     v
+# installer.build reads them (THIS STEP)
+#     v
+# new generated configs written to OUT/
+#     v
+# OUT files installed back to live locations
+#
 def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_params):
     dest_file_basename = dest_file[len(os.getenv("OUT")) + 1 :]
     logging.info("Building config file: %s" % dest_file_basename)
 
-    # 1.Generate an aggregated master HH Config for all HH input_files
+    # 1.Generate an aggregated master HHConfig for all HH input_files
     hhcfg = HHConfig(input_files)
 
     # 2.Run upgrade transform on aggregated master HH Config
@@ -323,14 +357,14 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
         upgrades = Upgrades()
         upgrades.upgrade(hhcfg, from_version, to_version)
 
-    # 3.Render cfg template expanding KConfig parameters
+    # 3.Render cfg template expanding KConfig parameters from read .config
     buffer = render_template(cfg_file_basename, kcfg, extra_params)
     logging.debug(
         "Rendered template '%s' using Kconfig '%s' with extra_params: %s"
         % (cfg_file_basename, kcfg.config_file, extra_params)
     )
 
-    # 4.Generate builder Config from rendered template
+    # 4.Generate builder Config from rendered cfg template
     builder = ConfigBuilder()
     builder.read_buf(buffer)
 
@@ -350,39 +384,50 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
     elif cfg_file_basename == "config/base/mmu.cfg":
         add_supplemental_params(builder, hhcfg, "mmu_parameters")
 
+    # 6. Determine how much of the HHConfig (existing .cfg's) do we re-apply
+    refresh_mode = os.getenv("F_CFG_UPGRADE_MODE", 'refresh').lower()
 
-    # How much of the existing .cfg do we apply?
-    # IMPORTANT: for this to work, the kconfig PARAM_xyx name must match the
-    #            klipper config token name 'xyz:'. There is no namespacing to
-    #            this so relies on all kconfig controlled parameters having
-    #            unique names .. so far so good
-    skip_retain_cfg = os.getenv("F_SKIP_RETAIN_OLD_CFG", "n").lower() == 'y'
-    if skip_retain_cfg:
-        # Then we ignore if supplied by kcfg
-        ignore_params = [
-            (k.lower()[6:] if k.lower().startswith("param_") else k.lower())
+    if refresh_mode == 'refresh':
+        # Default choice (always used when menuconfig UI is not run)
+        # Here we use the refreshed cfg templates as a starting point but
+        # replace every matching parameter with existing value.
+        # Unused options will be reported.
+        filtered_params = [] # Don't filter out any existing params in HHConfig
+
+    elif refresh_mode == 'merge':
+        # Experimental. Here we selectively ignore simple PARAM_ parameter settings
+        # so that the Kconfig value "wins" in these cases
+        filtered_params = [
+            k.lower()[6:]
             for k in kcfg.as_dict()
+            if k.lower().startswith("param_")
         ]
+        logging.debug("The following parameters are being filtered: %s" % ", ".join(filtered_params))
+
+    elif refresh_mode == 'replace':
+        pass
+
     else:
-        ignore_params = [] # Don't ignore any existing params
-        
-    # 6.Update the builder Config from the existing master HH Config to ensure required user edits are preserved
-    hhcfg.update_builder(builder, ignore_params, origin=os.path.basename(dest_file))
+        logging.error("Invalid F_CFG_UPGRADE_MODE '%s'" % refresh_mode)
+        exit(1)
 
-    # 7.Report on deprecated/unused options
-    first = True
-    origin = re.sub(r"^mmu[/\\]", "", dest_file_basename)
-    for section, option in hhcfg.unused_options_for(origin):
-        if first:
-            first = False
-            logging.warning("The following parameters in {} have been dropped:".format(dest_file_basename))
-        logging.warning("[{}] {}: {}".format(section, option, hhcfg.get(section, option)))
+    if refresh_mode != 'replace':
+        # 7.Update the builder Config from the existing master HHConfig to ensure user edits are preserved
+        hhcfg.update_builder(builder, filtered_params, origin=os.path.basename(dest_file))
 
-    # 8.Write builder Config to destination cfg file
+        # 8.Report on deprecated/unused options
+        first = True
+        origin = re.sub(r"^mmu[/\\]", "", dest_file_basename)
+        for section, option in hhcfg.unused_options_for(origin):
+            if first:
+                first = False
+                logging.warning("The following parameters in {} have been dropped:".format(dest_file_basename))
+            logging.warning("[{}] {}: {}".format(section, option, hhcfg.get(section, option)))
+
+    # 9.Write builder Config to destination cfg file
     if os.path.islink(dest_file):
         os.remove(dest_file)
 
-    # 9.Write out processed config file
     data = builder.write()
     with open(dest_file, "wb") as f:
         f.write(data.encode("utf-8"))

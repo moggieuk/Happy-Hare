@@ -115,3 +115,7 @@ config PARAM_SELECTOR_TYPE
   default "IndexedSelector"         if INDEXED_SELECTOR
   default "Testing"                 if TESTING_SELECTOR # For testing
   default "VirtualSelector"         # Safety
+
+config MULTIGEAR
+  bool
+  default y                         if VIRTUAL_SELECTOR || LINEAR_MUTLI_GEAR_SELECTOR

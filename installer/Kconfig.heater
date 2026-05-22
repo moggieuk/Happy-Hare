@@ -29,7 +29,7 @@ if MMU_HAS_HEATER
 
        E.g. If you have a section like this: [heater_generic MMU_heater], then enter
             without the square brackets:
-         "heater_generic MMU_heater"
+         'heater_generic MMU_heater'
 
    if MMU_HAS_PER_GATE_HEATERS
      config PARAM_FILAMENT_HEATER
@@ -41,7 +41,7 @@ if MMU_HAS_HEATER
 
          E.g. If you have a section like this: [heater_generic MMU_heater], then enter
               without the square brackets:
-           "heater_generic MMU_heater, ..."
+           'heater_generic MMU_heater, ...'
 
       config PARAM_MAX_CONCURRENT_HEATERS
         int "Maximum concurrent heaters"

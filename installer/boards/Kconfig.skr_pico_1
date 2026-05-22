@@ -24,7 +24,7 @@ if BOARD_TYPE_SKR_PICO_1
   config PIN_GEAR_DIAG
     default "$(MCU_NAME):gpio4" 
 
-  if VIRTUAL_SELECTOR
+  if MULTIGEAR
     config PIN_GEAR_STEP_1
       default "$(MCU_NAME):gpio6" 
     config PIN_GEAR_DIR_1
@@ -53,7 +53,7 @@ if BOARD_TYPE_SKR_PICO_1
       default "$(MCU_NAME):gpio16" 
   endif
 
-  if !VIRTUAL_SELECTOR
+  if !MULTIGEAR
     config PIN_SELECTOR_STEP
       default "$(MCU_NAME):gpio19" 
     config PIN_SELECTOR_DIR

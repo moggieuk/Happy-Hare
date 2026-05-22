@@ -661,6 +661,7 @@ class LinearSelector(PhysicalSelector):
                 f"speed={speed:.1f}, accel={accel:.1f}"
             )
 
+            self.mmu.toolhead.flush_step_generation() # TTC mitigation
             if wait:
                 self.mmu.movequeue_wait()
 

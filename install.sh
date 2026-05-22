@@ -77,6 +77,25 @@ prompt_yn() {
     done
 }
 
+prompt_n() {
+    max=$1
+    shift
+
+    while :; do
+        printf "%s (1-%s)? " "$*" "$max" >&2
+        read -r sel
+        case $sel in
+            ''|*[!0-9]*)
+                continue
+                ;;
+        esac
+        if [ "$sel" -ge 1 ] && [ "$sel" -le "$max" ]; then
+            printf "%s" "$sel"
+            return 0
+        fi
+    done
+}
+
 trim() {
     name=${1-}
     name=${name#"${name%%[![:space:]]*}"} # Remove leading whitespace
@@ -236,30 +255,35 @@ fi
 if [ -r "${KCONFIG_CONFIG}" ] && [ -n "${F_MENUCONFIG:-}" ]; then
     echo "${C_WARNING}You are running an interactive install with existing menuconfig ('${KCONFIG_CONFIG}').${C_OFF}"
     echo
-    echo "${C_WARNING}Read carefully, you have two options:${C_OFF}"
+    echo "${C_WARNING}Read carefully, you have three options:${C_OFF}"
     echo
-    echo "- Refresh/restore .cfg from menuconfig ${C_WARNING}(select Y)${C_OFF}"
-    echo "  Recommended"
-    echo "  This will OVERWRITE changes made directly to your Happy Hare .cfg files that are ALSO set by menuconfig"
-    echo "  but is the BEST choice if you make core changes via this interactive installer. Note that changes to .cfg"
-    echo "  files that are not part of menuconfig will be retained."
+    echo "${C_WARNING}1) Refresh (select 1)${C_OFF} (Default upgrade path)"
+    echo "   This will NEVER CHANGE any manually edited .cfg parameter value and thus is limited"
+    echo "   to only ADDING NEW or missing config sections/options. Note that parameter values shown"
+    echo "   in menuconfig may be stale and not reflect your actual .cfg config"
     echo
-    echo "- Blindly retain ALL your .cfg changes ${C_WARNING}(select N)${C_OFF}"
-    echo "  This will NEVER CHANGE any existing parameter value and thus is limited to only ADDING NEW or missing"
-    echo "  config sections/options. Also parameter values in menuconfig may not reflect your actual .cfg config"
+    echo "${C_WARNING}2) Replace (select 2)${C_OFF}"
+    echo "   This will OVERWRITE changes made directly to your .cfg files and create new default"
+    echo "   configuration based on choices made in menuconfig. It is useful if you get into"
+    echo "   trouble and want to reset your starting position. It is also great if you make ALL"
+    echo "   your configuration changes via menuconfig"
     echo
-    echo "  (Note that in both cases a BACKUP of your existing .cfg files will be made)"
+    echo "${C_WARNING}3) Merge (select 3)${C_OFF}"
+    echo "   This will MERGE simple parameter values set in menuconfig but will retain other changes"
+    echo "   made directly in your .cfg files. This is useful if you manage most parameters via menuconfig"
+    echo "   but don't want to, for example, overwrite your carefully tweaked hardware configuration"
     echo
-    if ! prompt_yn "Refresh/restore .cfg"; then
-        export F_SKIP_RETAIN_OLD_CFG=y
-    fi
+    echo "   (Note that in all cases a BACKUP of your existing .cfg files will be made for reference)"
+    echo
 
-    echo
-    if [ "${F_SKIP_RETAIN_OLD_CFG:-}" = "y" ]; then
-        echo "${C_INFO}Launching menuconfig...${C_OFF}"
-    else
-        echo "${C_INFO}Launching menuconfig (manual config changes will be retained)...${C_OFF}"
-    fi
+    sel=$(prompt_n 3 "Choose upgrade mode")
+    case "$sel" in
+        2) export F_CFG_UPGRADE_MODE=replace ;;
+        3) export F_CFG_UPGRADE_MODE=merge ;;
+        *) export F_CFG_UPGRADE_MODE=refresh ;;
+    esac
+
+    echo "${C_INFO}Launching menuconfig (${F_CFG_UPGRADE_MODE})...${C_OFF}"
     echo
 fi
 

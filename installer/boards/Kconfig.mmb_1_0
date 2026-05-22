@@ -23,7 +23,7 @@ if BOARD_TYPE_MMB_1_0
   config PIN_GEAR_DIAG
     default "$(MCU_NAME):PA3" 
 
-  if VIRTUAL_SELECTOR
+  if MULTIGEAR
     config PIN_GEAR_UART_1 
       default "$(MCU_NAME):PC7" 
     config PIN_GEAR_STEP_1
@@ -85,7 +85,7 @@ if BOARD_TYPE_MMB_1_0
       default "$(MCU_NAME):PB2"
   endif
 
-  if !VIRTUAL_SELECTOR
+  if !MULTIGEAR
     config PIN_SELECTOR_UART
       default "$(MCU_NAME):PC7" 
     config PIN_SELECTOR_STEP

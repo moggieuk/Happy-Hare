@@ -8,10 +8,41 @@
 #   for type-A boards is 12 (although currently max is 8)
 #   for type-B boards is 5 (Chameleon X5)
 
-menu "Pins"
+menu "Pins / TMC"
 
-  config HAS_ESPOOLER_ENABLE_PIN
-    def_bool n
+# -------------------------------------
+# Gear TMC chip
+# -------------------------------------
+
+  choice CHOICE_GEAR_TMC
+    prompt "Gear TMC chip"
+    default CHOICE_GEAR_TMC_2209
+    help
+      Select correct TMC chip type for gear stepper.
+      Can be changed by editing .cfg files directly.
+
+    config CHOICE_GEAR_TMC_2209
+      bool "TMC2209"
+    config CHOICE_GEAR_TMC_2130
+      bool "TMC2130"
+    config CHOICE_GEAR_TMC_2208
+      bool "TMC2208"
+    config CHOICE_GEAR_TMC_2660
+      bool "TMC2660"
+    config CHOICE_GEAR_TMC_5160
+      bool "TMC5160"
+    config CHOICE_GEAR_TMC_2240
+      bool "TMC2240"
+  endchoice
+
+  config PARAM_GEAR_TMC
+      string
+      default "tmc2209" if CHOICE_GEAR_TMC_2209
+      default "tmc2130" if CHOICE_GEAR_TMC_2130
+      default "tmc2208" if CHOICE_GEAR_TMC_2208
+      default "tmc2660" if CHOICE_GEAR_TMC_2660
+      default "tmc5160" if CHOICE_GEAR_TMC_5160
+      default "tmc2240" if CHOICE_GEAR_TMC_2240
 
 # -------------------------------------
 # Gear stepper
@@ -75,7 +106,7 @@ menu "Pins"
     config PIN_GEAR_DIAG_4
       string
 
-    if VIRTUAL_SELECTOR
+    if MULTIGEAR
 
       if PARAM_NUM_GATES > 1
         config PIN_GEAR_UART_1
@@ -153,6 +184,42 @@ menu "Pins"
   config PIN_SELECTOR_SERVO
     string
 
+
+# -------------------------------------
+# Selector TMC chip
+# -------------------------------------
+
+  choice CHOICE_SELECTOR_TMC
+    prompt "Selector TMC chip"
+    default CHOICE_SELECTOR_TMC_2209
+    depends on MMU_HAS_SELECTOR_STEPPER
+    help
+      Select correct TMC chip type for gear stepper.
+      Can be changed by editing .cfg files directly.
+
+    config CHOICE_SELECTOR_TMC_2209
+      bool "TMC2209"
+    config CHOICE_SELECTOR_TMC_2130
+      bool "TMC2130"
+    config CHOICE_SELECTOR_TMC_2208
+      bool "TMC2208"
+    config CHOICE_SELECTOR_TMC_2660
+      bool "TMC2660"
+    config CHOICE_SELECTOR_TMC_5160
+      bool "TMC5160"
+    config CHOICE_SELECTOR_TMC_2240
+      bool "TMC2240"
+  endchoice
+
+  config PARAM_SELECTOR_TMC
+      string
+      default "tmc2209" if CHOICE_SELECTOR_TMC_2209
+      default "tmc2130" if CHOICE_SELECTOR_TMC_2130
+      default "tmc2208" if CHOICE_SELECTOR_TMC_2208
+      default "tmc2660" if CHOICE_SELECTOR_TMC_2660
+      default "tmc5160" if CHOICE_SELECTOR_TMC_5160
+      default "tmc2240" if CHOICE_SELECTOR_TMC_2240
+
   menu "Selector pins"
     depends on MMU_HAS_SELECTOR_STEPPER || MMU_HAS_SELECTOR_SERVO
 
@@ -179,6 +246,9 @@ menu "Pins"
 # -------------------------------------
 # eSpooler
 # -------------------------------------
+
+  config HAS_ESPOOLER_ENABLE_PIN
+    def_bool n
 
   config PIN_ESPOOLER_EN_0
     string

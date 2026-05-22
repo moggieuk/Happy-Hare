@@ -96,7 +96,7 @@ class MmuMachine:
 
 
     def get_mmu_unit_by_index(self, index):
-        if index >= 0 and index < self.num_units:
+        if index is not None and 0 <= index < self.num_units:
             return self.units[index]
         return None
 

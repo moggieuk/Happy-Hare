@@ -183,7 +183,7 @@ class MmuUnit:
         # ---------------------------------------------------------------------------------------------------
 
         self.multigear = False
-        if config.get('gear_steppers'):
+        if config.get('gear_steppers', None):
             self.multigear = True
             self.mmu_gear_names = list(config.getlist('gear_steppers'))
             if len(self.mmu_gear_names) != self.num_gates:

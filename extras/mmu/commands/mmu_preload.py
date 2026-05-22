@@ -52,7 +52,7 @@ class MmuPreloadCommand(BaseCommand):
 
         gate = gcmd.get_int('GATE', mmu.gate_selected, minval=0, maxval=mmu.num_gates - 1)
         current_gate = mmu.gate_selected
-        preload_unit = mmu.mmu_machine.get_mmu_unit_by_gate(gate)
+        preload_unit = mmu.mmu_unit(gate)
         filament_pos = mmu.filament_pos
 
         if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[gate]): return

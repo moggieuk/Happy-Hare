@@ -62,7 +62,7 @@ class MmuSetLedCommand(BaseCommand):
         fadetime = gcmd.get_float('FADETIME', 1, minval=0)
 
         # Led manager works with unit index so derive from gate number
-        mmu_unit = mmu.mmu_machine.get_mmu_unit_by_gate(gate)
+        mmu_unit = mmu.mmu_unit(gate)
         led_manager = mmu.led_manager
 
         if not mmu_unit.has_leds():

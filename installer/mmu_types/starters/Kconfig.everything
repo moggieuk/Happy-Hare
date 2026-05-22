@@ -4,6 +4,7 @@ config MMU_CUSTOM_TYPE_EVERYTHING
     Select this custom starter config for testing or to create
     a fully populated set of klipper config files.
   select TESTING_SELECTOR
+  select MULTIGEAR
   select MMU_HAS_BUFFER_MCU
   select MMU_HAS_ENCODER
   select MMU_HAS_ENVIRONMENT_SENSOR

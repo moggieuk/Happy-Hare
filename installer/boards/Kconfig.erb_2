@@ -28,13 +28,13 @@ if BOARD_TYPE_ERB_2
   config PIN_SELECTOR_STEP
     default "$(MCU_NAME):gpio16" 
   config PIN_SELECTOR_DIR
-    default "$(MCU_NAME):gpio15" 
+    default "!$(MCU_NAME):gpio15" 
   config PIN_SELECTOR_ENABLE
     default "!$(MCU_NAME):gpio14" 
   config PIN_SELECTOR_DIAG
-    default "$(MCU_NAME):gpio19" if BOOL_ENABLE_SELECTOR_TOUCH 
+    default "$(MCU_NAME):gpio19"
   config PIN_SELECTOR_ENDSTOP
-    default "^$(MCU_NAME):gpio24" if !BOOL_ENABLE_SELECTOR_TOUCH
+    default "^$(MCU_NAME):gpio24"
   config PIN_SELECTOR_SERVO
     default "$(MCU_NAME):gpio23" 
 

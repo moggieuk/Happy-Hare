@@ -261,6 +261,7 @@ class PhysicalSelector(BaseSelector, object):
         if lgate == TOOL_GATE_UNKNOWN: return
         if self.requires_homing and not self.is_homed:
             raise MmuError(f"Selector is not homed on %s" % self.mmu_unit.name)
+# PAUL wrap action here?
         super()._select_gate(lgate)
 
 
@@ -334,8 +335,7 @@ class VirtualSelector(BaseSelector):
 
     def _select_gate(self, lgate):
         super()._select_gate(lgate)
-# PAUL so long as unsync occurs on previous stepper .. best handled with event, this is a no-op
-#        self.mmu_unit.mmu_toolhead.select_gear_stepper(lgate) # PAUL TODO or no-op now?
+
 
 
 

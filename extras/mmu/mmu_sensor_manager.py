@@ -463,7 +463,7 @@ class MmuSensorManager:
 
         if gate >= 0:
             # Note: For mmu exit sensor the position of POS_HOMED_GATE is only valid if is not usually triggered (i.e. parking retract)
-            u = self.mmu_machine.get_mmu_unit_by_gate(gate)
+            u = self.mmu.mmu_unit(gate)
 
             gear_homed_pos = None
             is_gear_homing_endstop = (u.p.gate_homing_endstop == SENSOR_EXIT_PREFIX)

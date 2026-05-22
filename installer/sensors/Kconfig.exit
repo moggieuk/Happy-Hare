@@ -5,4 +5,4 @@ config MMU_HAS_SENSOR_EXIT
     drive gear but before any combiner/splitter. Typically this is only
     fitted to type-B designs.
 
-    Configure pin in "Pins" section.
+    Configure pin in \"Pins\" section.
