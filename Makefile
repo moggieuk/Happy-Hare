@@ -23,25 +23,6 @@ ifeq ($(CHECK_OUTPUT_SYNC),)
   -include $(KCONFIG_CONFIG) # Won't exist on first invocation
 endif
 
-# TODO PAUL: I think this faster version is sufficient
-# Enable output-sync if menuconfig will not trigger. menuconfig.py will crash if output-sync is enabled on certain systems
-#ifeq ($(CHECK_OUTPUT_SYNC),)
-#  ifeq ($(strip $(filter menuconfig uninstall variables gen_kconfig fix_links,$(MAKECMDGOALS))),)
-#    ifneq ($(wildcard $(KCONFIG_CONFIG)),)
-#      config_is_fresh := $(shell \
-#        cfg="$(KCONFIG_CONFIG)"; \
-#        for f in $(SRC)/installer/Kconfig* $(SRC)/installer/**/Kconfig*; do \
-#          [ "$$f" -ot "$$cfg" ] || { echo n; exit; }; \
-#        done; \
-#        echo y )
-#      ifeq ($(config_is_fresh),y)
-#        MAKEFLAGS += --output-sync=line
-#      endif
-#    endif
-#  endif
-#  -include $(KCONFIG_CONFIG) # Won't exist on first invocation
-#endif
-
 # Prevent the user from running with sudo. This isn't perfect if something else than sudo is used.
 # Just checking for root isn't enough, as users on Creality K1 printers usually run as root (ugh)
 ifneq ($(SUDO_COMMAND),) 

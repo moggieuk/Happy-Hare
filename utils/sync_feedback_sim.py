@@ -49,7 +49,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 
-from mmu_sync_controller import SyncControllerConfig, SyncController
+from unit.mmu_sync_controller import SyncControllerConfig, SyncController
 #try:
 #    from mmu_sync_controller import SyncControllerConfig, SyncController
 #except Exception as e:
