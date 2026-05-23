@@ -42,7 +42,7 @@ menu "Calibration/Autotuning"
     default 0
 
   config BOOL_SKIP_CAL_ROTATION_DISTANCE
-    bool "Skip rotation distance calibration"
+    bool "Don't force rotation distance calibration"
     default y
     help
       Skip rotation distance calibration (MMU_CALIBRATE_GEAR).
@@ -69,7 +69,7 @@ menu "Calibration/Autotuning"
     default 0
 
   config BOOL_SKIP_CAL_ENCODER
-    bool "Skip encoder calibration"
+    bool "Don't force encoder calibration"
     default y
     help
       Skip encoder calibration (MMU_CALIBRATE_ENCODER).
