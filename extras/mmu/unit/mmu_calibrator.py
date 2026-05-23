@@ -659,11 +659,13 @@ class MmuCalibrator:
             rmsg = omsg = ""
 
             # Helper methods
-            def should_check(bit, skip=False):
+            def should_check(bit, skip=False, allow_tune=False):
+                #mmu.log_warning(f"PAUL: should_check: skip={skip}, allow_tune={allow_tune}, use_autotune={use_autotune}")
                 return (
                     (required & bit) and
                     not u.calibrator.check_calibrated(bit) and
-                    (not use_autotune or not skip)
+                    not skip and
+                    not (allow_tune and use_autotune)
                 )
 
             def add_msg(info, optional):
@@ -675,6 +677,7 @@ class MmuCalibrator:
 
             # Selector ---------------------------------------------------
 
+            #mmu.log_warning(f"PAUL: selector")
             if should_check(CALIBRATED_SELECTOR):
                 unit_check_gates = [g for g in check_gates if u.manages_gate(g)]
                 uncalibrated = u.selector.get_uncalibrated_gates(unit_check_gates)
@@ -684,7 +687,8 @@ class MmuCalibrator:
 
             # Rotation distance of first gate of unit --------------------
 
-            if should_check(CALIBRATED_GEAR_0, u.p.skip_cal_rotation_distance):
+            #mmu.log_warning(f"PAUL: gear0")
+            if should_check(CALIBRATED_GEAR_0, u.p.skip_cal_rotation_distance, u.p.autotune_rotation_distance):
                 uncalibrated = not u.calibrator.is_gear_rd_calibrated(u.first_gate)
                 if uncalibrated:
                     info = "\n- Use MMU_CALIBRATE_GEAR (on first gate)"
@@ -693,16 +697,18 @@ class MmuCalibrator:
 
             # Encoder ----------------------------------------------------
 
-            if should_check(CALIBRATED_ENCODER, u.p.skip_cal_encoder):
+            #mmu.log_warning(f"PAUL: encoder")
+            if should_check(CALIBRATED_ENCODER, u.p.skip_cal_encoder, u.p.autotune_encoder):
                 info = "\n- Use MMU_CALIBRATE_ENCODER (with first gate of unit selected)"
                 add_msg(info, u.p.skip_cal_encoder)
 
             # Rotation distances of gates other than first gate ----------
 
+            #mmu.log_warning(f"PAUL: other gears")
             require_gear_0 = bool(required & CALIBRATED_GEAR_0)
             if (
                 u.variable_rotation_distances and
-                should_check(CALIBRATED_GEAR_RDS, u.p.skip_cal_rotation_distance)
+                should_check(CALIBRATED_GEAR_RDS, u.p.skip_cal_rotation_distance, u.p.autotune_rotation_distance)
             ):
                 uncalibrated = [
                     g
@@ -724,7 +730,8 @@ class MmuCalibrator:
 
             # Bowden length ----------------------------------------------
 
-            if should_check(CALIBRATED_BOWDENS):
+            #mmu.log_warning(f"PAUL: bowden")
+            if should_check(CALIBRATED_BOWDENS, False, u.p.autotune_bowden_length):
                 if u.variable_bowden_lengths:
                     uncalibrated = [
                         g
