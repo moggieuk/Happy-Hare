@@ -320,12 +320,11 @@ $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu): $(addprefix $(OUT)/mmu/, $(hh_co
 $(install_targets): build | python_deps
 
 install: $(install_targets)
-	$(Q)rm -rf $(addprefix $(KLIPPER_HOME)/klippy/extras/,$(hh_old_klipper_modules))
 	$(Q)$(call restart_service,$(restart_moonraker),Moonraker,$(CONFIG_SERVICE_MOONRAKER))
 	$(Q)$(call restart_service,$(restart_klipper),Klipper,$(CONFIG_SERVICE_KLIPPER))
 	$(Q)$(PY) -m installer.build $(V) --print-happy-hare "Done! Happy Hare $(CONFIG_F_VERSION)is ready!"
 
-uninstall: | python_deps
+uninstall: clean | python_deps
 	$(Q)$(if $(MOONRAKER_CONFIG_FILE), \
 		$(call backup,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)))
 	$(Q)$(if $(PRINTER_CONFIG_FILE), \
@@ -347,6 +346,7 @@ uninstall: | python_deps
 	@# Restart services if needed
 	$(Q)$(call restart_service,1,Moonraker,$(CONFIG_SERVICE_MOONRAKER))
 	$(Q)$(call restart_service,1,Klipper,$(CONFIG_SERVICE_KLIPPER))
+	$(Q)rm -f $(KCONFIG_CONFIG)
 	$(Q)$(PY) -m installer.build $(V) --print-unhappy-hare "Done. Very unHappy Hare."
 
 fix_links:
