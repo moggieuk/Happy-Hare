@@ -329,6 +329,8 @@ uninstall: | python_deps
 	$(Q)$(if $(PRINTER_CONFIG_FILE), \
 		$(call backup,$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE)))
 	$(Q)$(call backup,$(KLIPPER_CONFIG_HOME)/mmu)
+	@# Be sure older v3 files are also removed
+	$(Q)rm -rf $(addprefix $(KLIPPER_HOME)/klippy/extras/,$(hh_old_klipper_modules))
 	@# Remove the installed files
 	$(Q)rm -f $(addprefix $(KLIPPER_HOME)/klippy/,$(hh_klipper_extras_files))
 	$(Q)rmdir --ignore-fail-on-non-empty $(addprefix $(KLIPPER_HOME)/klippy/, \
