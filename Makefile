@@ -112,7 +112,7 @@ restart_klipper = 0
 #####################
 
 hh_klipper_extras_files := $(wildcard extras/*.py extras/mmu/*.py extras/mmu/unit/*.py extras/mmu/unit/selectors/*.py extras/mmu/commands/*.py)
-hh_old_klipper_modules  := mmu_toolhead.py mmu_encoder.py mmu_espooler.py mmu_leds.py mmu_sensors.py mmu/__init__.py # These will get removed upon install
+hh_old_klipper_modules  := mmu_toolhead.py mmu_encoder.py mmu_espooler.py mmu_leds.py mmu_sensors.py mmu/* # These will get removed upon install/uninstall
 hh_moonraker_components := $(wildcard components/*.py)
 
 # All repo configs files less mmu_vars.cfg
@@ -188,6 +188,8 @@ backup = \
 restart_service = \
 	if [ "$(F_NO_SERVICE)" ]; then \
 	  echo "$(C_WARNING)Skipping restart of $(2) service$(C_OFF)"; \
+        elif [ -z "$(KCONFIG_CONFIG)" -o -z "$(2)" -o -z "$(3)"]; then \
+          echo "$(C_WARNING)Skipping restart of $(2): KCONFIG_CONFIG not set$(C_OFF)"; \
 	else \
 	  [ "$(1)" -eq 0 ] || $(PY) -m installer.build $(V) --restart-service "$(2)" $(3) "$(KCONFIG_CONFIG)"; \
 	fi
