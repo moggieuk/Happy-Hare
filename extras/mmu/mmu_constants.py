@@ -262,6 +262,7 @@ AUTOMAP_COLOR          = 'color'
 AUTOMAP_OPTIONS        = [AUTOMAP_NONE, AUTOMAP_FILAMENT_NAME, AUTOMAP_SPOOL_ID, AUTOMAP_MATERIAL, AUTOMAP_CLOSEST_COLOR, AUTOMAP_COLOR]
 
 # Calibration steps
+CALIBRATED_NONE      = 0b00000 # Used to skip calibration check
 CALIBRATED_GEAR_0    = 0b00001 # Specifically rotation_distance for gate 0
 CALIBRATED_ENCODER   = 0b00010
 CALIBRATED_SELECTOR  = 0b00100 # Defaults true with VirtualSelector

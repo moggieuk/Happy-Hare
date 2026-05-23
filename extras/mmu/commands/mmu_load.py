@@ -53,11 +53,14 @@ class MmuLoadCommand(BaseCommand):
         mmu = self.mmu
 
         if self.check_if_disabled(): return
-        if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[mmu.gate_selected]): return
+
+        in_bypass = (mmu.gate_selected == TOOL_GATE_BYPASS)
+        extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1) or in_bypass)
+        if not extruder_only:
+            if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[mmu.gate_selected]): return
+
         mmu.fix_started_state()
 
-        in_bypass = mmu.gate_selected == TOOL_GATE_BYPASS
-        extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1) or in_bypass)
         skip_purge = bool(gcmd.get_int('SKIP_PURGE', 0, minval=0, maxval=1))
         restore = bool(gcmd.get_int('RESTORE', 1, minval=0, maxval=1))
         do_purge = PURGE_STANDALONE if not skip_purge else PURGE_NONE

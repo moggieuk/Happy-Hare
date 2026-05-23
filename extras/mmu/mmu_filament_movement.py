@@ -2429,6 +2429,7 @@ class MmuFilamentMovement:
             bool: Final sync state that was applied.
         """
         u = self.mmu_unit()
+        self.log_stepper(f"PAUL: reset_sync_gear_to_extruder(sync_intention={sync_intention}, force_grip={force_grip}, force_in_print={force_in_print}, skip_extruder_check={skip_extruder_check})")
 
         bypass_selected = (self.gate_selected == TOOL_GATE_BYPASS)
         in_print_context = self.is_in_print(force_in_print)
@@ -2478,6 +2479,7 @@ class MmuFilamentMovement:
         """
         u = self.mmu_unit()
         sync = bool(sync)
+        self.log_stepper(f"PAUL: sync_gear_to_extruder(sync={sync}, gate={gate}, force_grip={force_grip})")
 
         # Default to current selection; some designs call this before gate selection is finalized.
         if gate is None:
@@ -2502,18 +2504,13 @@ class MmuFilamentMovement:
             if should_release:
                 self.selector().filament_release()
 
-# PAUL vv need to rework to use new mmu_stepper sync control
-#        # Sync / unsync toolhead mode (avoid redundant calls).
-#        desired_sync_mode = DRIVE_GEAR_SYNCED_TO_EXTRUDER if sync else None
-#        if desired_sync_mode != self.mmu_toolhead().sync_mode:
-#            self.movequeue_wait()  # Safety: likely unnecessary but ensures no queued moves conflict.
-#            self.mmu_toolhead().sync(desired_sync_mode)
-# PAUL new logic..
         # Sync to / unsync from extruder
         if self.drive().is_synced_to_extruder() and not sync:
             self.drive().sync_mode(DRIVE_UNSYNCED)
         elif not self.drive().is_synced_to_extruder() and sync:
             self.drive().sync_mode(DRIVE_GEAR_SYNCED_TO_EXTRUDER)
+        else:
+            self.drive().sync_mode(DRIVE_UNSYNCED)
 
         # Current control:
         # - While synced, optionally reduce current for the active gear stepper.
@@ -2542,6 +2539,7 @@ class MmuFilamentMovement:
         # Suppress grip release only at the outermost level.
         outermost_wrapper = not self._suppress_release_grip
         self._suppress_release_grip = True
+        self.log_stepper(f"PAUL: ENTRY: wrap_sync_gear_to_extruder(). previous_sync={previous_sync}")
 
         try:
             yield self
@@ -2552,6 +2550,7 @@ class MmuFilamentMovement:
 
             # Restore prior sync state. Logic inside reset_sync_gear_to_extruder
             # may consult the global suppression flag when reconciling grip.
+            self.log_stepper(f"PAUL: EXIT")
             self.reset_sync_gear_to_extruder(previous_sync)
 
 

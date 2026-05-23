@@ -1955,7 +1955,6 @@ class MmuController(MmuFilamentMovement):
         if action == self.action: return action
         old_action = self.action
         self.action = action
-        self.log_warning(f"PAUL: _set_action({action}): unit_selected:{self.unit_selected}, gate_selected:{self.gate_selected}")
         self.led_manager.action_changed(action, old_action)
         if self.printer.lookup_object("gcode_macro %s" % self.p.action_changed_macro, None) is not None:
             self.wrap_gcode_command("%s ACTION='%s' OLD_ACTION='%s'" % (self.p.action_changed_macro, self._get_action_string(), self._get_action_string(old_action)))
