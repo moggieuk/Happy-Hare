@@ -98,17 +98,17 @@ chain_count: 14\n\
 color_order: GRB\n\
 \n\
 [temperature_sensor $(UNIT_NAME)_env_left]\n\
-sensor_type: AHT3X # Use an AHT10 and set 'update_aht10_commands: 1' in mmu_parameters.cfg if the AHT3X sensor_type isn't supported (older Klipper versions)\n\
+sensor_type: AHT3X # Use an AHT10 and set 'update_aht10_commands: 1' in mmu_parameters.cfg if the AHT3X sensor_type is not supported on older Klipper version\n\
 i2c_mcu: $(MCU_NAME)\n\
-i2c_software_scl_pin: ${MCU_NAME}:PA9\n\
-i2c_software_sda_pin: ${MCU_NAME}:PA10\n\
+i2c_software_scl_pin: ${MCU_NAME):PA9\n\
+i2c_software_sda_pin: ${MCU_NAME):PA10\n\
 aht10_report_time: 10\n\
 \n\
 [temperature_sensor $(UNIT_NAME)_env_right]\n\
-sensor_type: AHT3X # Use an AHT10 and set 'update_aht10_commands: 1' in mmu_parameters.cfg if the AHT3X sensor_type isn't supported (older Klipper versions)\n\
+sensor_type: AHT3X # Use an AHT10 and set 'update_aht10_commands: 1' in mmu_parameters.cfg if the AHT3X sensor_type is not supported older Klipper version\n\
 i2c_mcu: $(MCU_NAME)\n\
-i2c_software_scl_pin: ${MCU_NAME}:PA7\n\
-i2c_software_sda_pin: ${MCU_NAME}:PA6\n\
+i2c_software_scl_pin: $(MCU_NAME):PA7\n\
+i2c_software_sda_pin: ${MCU_NAME):PA6\n\
 aht10_report_time: 10\n\
 \n\
 [heater_generic $(UNIT_NAME)_heater]\n\

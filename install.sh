@@ -306,6 +306,9 @@ if [ -n "${F_MENUCONFIG:-}" ]; then
         exit 1
     fi
 
+    # Make sure these environment variables are freshly set
+    unset CONFIG_MMU_HAS_SENSOR_TOOLHEAD
+    unset CONFIG_MMU_HAS_SENSOR_EXTRUDER
     #shellcheck source=.config
     . "${KCONFIG_CONFIG}"
 
@@ -323,7 +326,16 @@ if [ -n "${F_MENUCONFIG:-}" ]; then
         for name in ${CONFIG_MMU_UNITS:-}; do
             name=$(trim "$name")
             [ -n "$name" ] || continue
-            make --no-print-directory -C "$SCRIPT_DIR" KCONFIG_CONFIG="${KCONFIG_CONFIG}_${name}" F_MULTI_UNIT=y UNIT_INDEX="$i" UNIT_NAME="$name" MCU_NAME="$name" menuconfig
+            make --no-print-directory \
+                -C "$SCRIPT_DIR" \
+                KCONFIG_CONFIG="${KCONFIG_CONFIG}_${name}" \
+                F_MULTI_UNIT=y \
+                UNIT_INDEX="$i" \
+                UNIT_NAME="$name" \
+                MCU_NAME="$name" \
+                HAS_SENSOR_TOOLHEAD="$CONFIG_MMU_HAS_SENSOR_TOOLHEAD" \
+                HAS_SENSOR_EXTRUDER="$CONFIG_MMU_HAS_SENSOR_EXTRUDER" \
+                menuconfig
             i=$((i + 1))
         done
         set +f

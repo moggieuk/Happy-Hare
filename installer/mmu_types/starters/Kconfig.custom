@@ -4,7 +4,7 @@ config MMU_CUSTOM
     Ensure you choose the correct selector type.
     After selection by sure to add options under "MMU Additions".
     Then fine tune in Advanced/Raw Settings
-  bool "Custom MMU"
+  bool "Custom Design"
   
 if MMU_CUSTOM
 

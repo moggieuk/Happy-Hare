@@ -12,40 +12,25 @@ menu "Raw Settings"
     (or editing the generated klipper config files)
 
   source "Kconfig.extruder"
+  source "Kconfig.num_gates"
+  source "Kconfig.capabilities"
+  source "Kconfig.speeds"
 
-  if !MULTI_UNIT_ENTRY_POINT
-    source "Kconfig.num_gates"
-    source "Kconfig.capabilities"
-    source "Kconfig.speeds"
-  endif
-
-  if !MULTI_UNIT || MULTI_UNIT_ENTRY_POINT
+  if !MULTI_UNIT
     source "Kconfig.toolhead"
   endif
 
-  if MULTI_UNIT_ENTRY_POINT
-    menu "Printer filament sensors"
-      help
-        Printer toolhead capabilities
-        Here you can configure printer toolhead options such as fitted sensors
-      source "sensors/Kconfig.extruder"
-      source "sensors/Kconfig.toolhead"
-    endmenu
-  endif
-
-  if !MULTI_UNIT_ENTRY_POINT
-    source "Kconfig.gear_stepper"
-    source "sensors/Kconfig"
-    source "Kconfig.selector_stepper"
-    source "Kconfig.selector_servo"
-    source "Kconfig.endstops"
-    source "Kconfig.gates"
-    source "Kconfig.sync_control"
-    source "Kconfig.calibration"
-    source "Kconfig.leds"
-    source "Kconfig.encoder"
-    source "Kconfig.heater"
-    source "Kconfig.environment_sensor"
-    source "Kconfig.sync_feedback_buffer"
-  endif
+  source "Kconfig.gear_stepper"
+  source "Kconfig.selector_stepper"
+  source "Kconfig.selector_servo"
+  source "sensors/Kconfig"
+  source "Kconfig.endstops"
+  source "Kconfig.gates"
+  source "Kconfig.sync_control"
+  source "Kconfig.calibration"
+  source "Kconfig.leds"
+  source "Kconfig.encoder"
+  source "Kconfig.heater"
+  source "Kconfig.environment_sensor"
+  source "Kconfig.sync_feedback_buffer"
 endmenu

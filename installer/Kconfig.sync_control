@@ -26,7 +26,7 @@ menu "MMU/Extruder sync"
       help
         Sync feedback will be used to dynamically adjust the gear stepper speed to
         match the extruder.
-      depends on !PARAM_FILAMENT_ALWAYS_GRIPPED
+      depends on !BOOL_FILAMENT_ALWAYS_GRIPPED
 
     config PARAM_SYNC_FEEDBACK_ENABLED
       int
@@ -60,8 +60,8 @@ menu "MMU/Extruder sync"
   endif
 
   config BOOL_ENABLE_SYNC_TO_EXTRUDER
-    bool "Enable sync to extruder?" if !PARAM_FILAMENT_ALWAYS_GRIPPED
-    default y if PARAM_FILAMENT_ALWAYS_GRIPPED
+    bool "Enable sync to extruder?" if !BOOL_FILAMENT_ALWAYS_GRIPPED
+    default y if BOOL_FILAMENT_ALWAYS_GRIPPED
     help
       This controls whether the extruder and gear steppers are synchronized
       during printing operations.
@@ -78,7 +78,7 @@ menu "MMU/Extruder sync"
       % of gear_stepper current (10%-100%) to use when syncing with extruder during print
 
   config BOOL_ENABLE_SYNC_FORM_TIP
-    bool "Enable syncing while tip forming?" if !PARAM_FILAMENT_ALWAYS_GRIPPED
+    bool "Enable syncing while tip forming?" if !BOOL_FILAMENT_ALWAYS_GRIPPED
     default y if ENABLE_SYNC_TO_EXTRUDER
     help
       This controls whether the extruder and gear steppers are synchronized
@@ -96,7 +96,7 @@ menu "MMU/Extruder sync"
       % of extruder current (100%-150%) to use when forming tip (100 to disable feature)
 
   config BOOL_ENABLE_SYNC_PURGE
-    bool "Enable syncing while purging?" if !PARAM_FILAMENT_ALWAYS_GRIPPED
+    bool "Enable syncing while purging?" if !BOOL_FILAMENT_ALWAYS_GRIPPED
     default y if ENABLE_SYNC_TO_EXTRUDER
     help
       This controls whether the extruder and gear steppers are synchronized

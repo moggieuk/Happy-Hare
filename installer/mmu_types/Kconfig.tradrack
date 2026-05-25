@@ -1,5 +1,5 @@
 config MMU_TYPE_TRADRACK_1_0
-  bool "Tradrack v1.0"
+  bool "Tradrack"
  help
    Tradrack is a type-A MMU designed by the Annex Engineering team.
    It differed from ERCF in that it is easier to add additional gates/lanes
@@ -7,9 +7,9 @@ config MMU_TYPE_TRADRACK_1_0
    gate sensor but a Binky based encoder is a popular option.
   select LINEAR_SERVO_SELECTOR
   select MMU_HAS_SENSOR_SHARED_EXIT
-  select PARAM_VARIABLE_ROTATION_DISTANCES
+  select BOOL_VARIABLE_ROTATION_DISTANCES
   select UNSELECT_VARIABLE_BOWDEN_LENGTHS
-  imply  PARAM_REQUIRE_BOWDEN_MOVE
+  imply  BOOL_REQUIRE_BOWDEN_MOVE
   select UNSELECT_CAN_CROSSLOAD
 
 if MMU_TYPE_TRADRACK_1_0

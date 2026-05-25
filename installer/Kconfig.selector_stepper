@@ -8,12 +8,18 @@
 #   PARAM_SELECTOR_HOLD_CURRENT
 #   PARAM_SELECTOR_ENDSTOP_NAME
 #
+#   PARAM_SELECTOR_TOUCH_ENABLED
+#
 #   PARAM_SELECTOR_GATE_DIRECTIONS
 #   PARAM_SELECTOR_RELEASE_GATES
 
 
 if MMU_HAS_SELECTOR_STEPPER
   menu "Selector stepper"
+
+# -------------------------------------
+# Basic stepper settings
+# -------------------------------------
 
     config PARAM_SELECTOR_GEAR_RATIO
       string "Selector gear ratio       "
@@ -35,6 +41,34 @@ if MMU_HAS_SELECTOR_STEPPER
       string
       default "mmu_sel_home"
 
+
+# -------------------------------------
+# Selector touch Operation
+# -------------------------------------
+
+  config BOOL_SELECTOR_TOUCH_ENABLED
+    bool "Enable touch selector movement using TMC Stallguard?"
+    help
+      This allows for additional selector recovery steps but is difficult to tune.
+      Not recommended if you are new to MMU/Happy-Hare.
+      The MCU must have DIAG output for steppers. Possible to configure later
+    depends on MMU_HAS_SELECTOR_STEPPER && (LINEAR_SELECTOR || LINEAR_SERVO_SELECTOR)
+  config PARAM_SELECTOR_TOUCH_ENABLED
+    int
+    default 1 if BOOL_SELECTOR_TOUCH_ENABLED
+    default 0
+
+  if BOARD_TYPE_EASY_BRD
+    comment " !!! IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..] on the EASY-BRD. MAKE A NOTE NOW !!! "
+      depends on BOOL_SELECTOR_TOUCH_ENABLED
+    comment " !!! IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..] on the EASY-BRD. MAKE A NOTE NOW !!! "
+      depends on !BOOL_SELECTOR_TOUCH_ENABLED
+  endif
+
+
+# -------------------------------------
+# RotarySelector additions
+# -------------------------------------
     if ROTARY_SELECTOR || TESTING_SELECTOR
       config PARAM_SELECTOR_GATE_DIRECTIONS
         string "Selector gate directions  "

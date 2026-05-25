@@ -1,12 +1,12 @@
 config MMU_TYPE_MMX_1_0
-  bool "MMX 1.0"
+  bool "MMX  - Multi-Material Extruder"
   help
     MMX is a 4 gate type-A MMU initially based on Pico MMU. It
     uses a servo and cam mechanism to select filament gate.
   select SERVO_SELECTOR
   select MMU_HAS_LEDS
-  select PARAM_REQUIRE_BOWDEN_MOVE
-  select PARAM_FILAMENT_ALWAYS_GRIPPED
+  select BOOL_REQUIRE_BOWDEN_MOVE
+  select BOOL_FILAMENT_ALWAYS_GRIPPED
   
 
 if MMU_TYPE_MMX_1_0

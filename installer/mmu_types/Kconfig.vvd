@@ -6,9 +6,13 @@ config MMU_TYPE_VVD_1_0
   select MMU_HAS_ESPOOLER
   select MMU_HAS_ENVIRONMENT_SENSOR
   select MMU_HAS_HEATER
-  select PARAM_REQUIRE_BOWDEN_MOVE
+  select BOOL_REQUIRE_BOWDEN_MOVE
   select MMU_DISABLE_FILAMENT_BUFFER_OPTION
+  select UNSELECT_VARIABLE_BOWDEN_LENGTHS # Disable option
+  select UNSELECT_FILAMENT_ALWAYS_GRIPPED # Disable option
   imply OPTION_VVD_BUFFER
+  select MMU_CAN_CROSSLOAD
+
 
 if MMU_TYPE_VVD_1_0
   config OPTION_VVD_BUFFER
@@ -77,10 +81,10 @@ if MMU_TYPE_VVD_1_0
     default "neopixel:$(UNIT_NAME)_leds_1 (1-14)\\n             neopixel:$(UNIT_NAME)_leds_2 (1-14)"
 
   config PARAM_ENVIRONMENT_SENSOR
-    default "temperature_sensor $(UNIT_NAME)_env_left"
+    default "$(UNIT_NAME)_env_left"
 
   config PARAM_FILAMENT_HEATER
-    default "heater_generic $(UNIT_NAME)_heater"
+    default "$(UNIT_NAME)_heater"
   config PARAM_HEATER_MAX_TEMP
     default "75"
 
