@@ -5,11 +5,11 @@ if TOOLHEAD_TYPE_ANTHEAD_WWBMG_RAPIDO_2_HF
   config PARAM_TOOLHEAD_TYPE
     default "AntHead WWBMG Rapido 2 HF"
   config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
-    default "98.672"
+    default 98.672
   config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
-    default "83.860"
+    default 83.860
   config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
-    default "6.716"
+    default 6.716
   config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
-    default "5"
+    default 5
 endif

@@ -5,11 +5,11 @@ if TOOLHEAD_TYPE_STEALTHBURNER_G2E_REVO
   config PARAM_TOOLHEAD_TYPE
     default "Stealthburner G2E Revo"
   config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
-    default "99.18"
+    default 99.18
   config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
-    default "79.58"
+    default 79.58
   config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
-    default "13.29"
+    default 13.29
   config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
-    default "2"
+    default 2
 endif

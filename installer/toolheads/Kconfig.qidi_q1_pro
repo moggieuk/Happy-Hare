@@ -5,11 +5,11 @@ if TOOLHEAD_TYPE_QIDI_Q1_PRO
   config PARAM_TOOLHEAD_TYPE
     default "QIDI Q1 Pro"
   config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
-    default "75"
+    default 75
   config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
-    default "78"
+    default 78
   config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
-    default "24"
+    default 24
   config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
-    default "2"
+    default 2
 endif
