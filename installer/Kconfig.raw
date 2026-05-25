@@ -6,38 +6,28 @@
 menu "Raw Settings"
   help
     Raw Settings
-    Allows override of designer defaults. Only change these settings if
-    you know what you are doing (or have MMU customizations). You can always
-    change later by re-running "./install.sh -i" to run this editor (recommended)
-    (or editing the generated klipper config files)
-
-  source "Kconfig.extruder"
+    Allows override of designer defaults. Change these settings if you know
+    what you are doing (or have MMU customizations). You can always change later
+    by re-running "./install.sh -i" to run this editor (recommended) or by
+    editing the generated klipper config files directly
 
   if !MULTI_UNIT_ENTRY_POINT
+    source "Kconfig.extruder"
     source "Kconfig.num_gates"
     source "Kconfig.capabilities"
-    source "Kconfig.speeds"
   endif
 
-  if !MULTI_UNIT || MULTI_UNIT_ENTRY_POINT
+  source "Kconfig.speeds"
+
+  if !MULTI_UNIT
     source "Kconfig.toolhead"
-  endif
-
-  if MULTI_UNIT_ENTRY_POINT
-    menu "Printer filament sensors"
-      help
-        Printer toolhead capabilities
-        Here you can configure printer toolhead options such as fitted sensors
-      source "sensors/Kconfig.extruder"
-      source "sensors/Kconfig.toolhead"
-    endmenu
   endif
 
   if !MULTI_UNIT_ENTRY_POINT
     source "Kconfig.gear_stepper"
-    source "sensors/Kconfig"
     source "Kconfig.selector_stepper"
     source "Kconfig.selector_servo"
+    source "sensors/Kconfig"
     source "Kconfig.endstops"
     source "Kconfig.gates"
     source "Kconfig.sync_control"

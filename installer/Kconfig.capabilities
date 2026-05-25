@@ -11,9 +11,9 @@
 #   MMU_HAS_FILAMENT_BUFFER
 #   MMU_HAS_LEDS
 #   MMU_HAS_ENVIRONMENT_SENSOR
-#   MMU_HAS_PER_GATE_ENV_SENSOR
+#   MMU_HAS_PER_GATE_ENV_SENSORS
 #   MMU_HAS_HEATER
-#   MMU_HAS_PER_GATE_HEATER
+#   MMU_HAS_PER_GATE_HEATERS
 #   MMU_HAS_EJECT_BUTTONS
 #   MMU_HAS_BUFFER_MCU
 #
@@ -69,19 +69,8 @@ config MMU_HAS_PER_GATE_HEATERS
 config MMU_HAS_EJECT_BUTTONS
   bool
 
-
 # Some new designs have mcu integrated in sync-feedback buffer mcu
 config MMU_HAS_BUFFER_MCU
-  bool
-
-# Flags used to disable the visibility of particular options to reduce confusion
-config MMU_DISABLE_NUM_GATES_OPTION
-  bool
-
-config MMU_DISABLE_ESPOOLER_OPTION
-  bool
-
-config MMU_DISABLE_FILAMENT_BUFFER_OPTION
   bool
 
 config PARAM_MISC_HARDWARE
@@ -90,13 +79,14 @@ config PARAM_MISC_HARDWARE
 
 
 menu "Design attributes"
+
   source "Kconfig.selector_type" 
 
   source "Kconfig.bypass" 
 
   config UNSELECT_VARIABLE_BOWDEN_LENGTHS
     def_bool n
-  config PARAM_VARIABLE_BOWDEN_LENGTHS
+  config BOOL_VARIABLE_BOWDEN_LENGTHS
     bool "Variable bowden lengths?" 
     forceshow
     depends on !UNSELECT_VARIABLE_BOWDEN_LENGTHS
@@ -104,30 +94,42 @@ menu "Design attributes"
       Whether filament path from parked position in the gate to the extruder is different
       for each gate. Typically this is true of type-B designs but not true of type-A with
       Linear Selector and single bowden exit from the MMU.
+  config PARAM_VARIABLE_BOWDEN_LENGTHS
+    int
+    default 1 if BOOL_VARIABLE_BOWDEN_LENGTHS
+    default 0
 
   config UNSELECT_VARIABLE_ROTATION_DISTANCES
     def_bool n
-  config PARAM_VARIABLE_ROTATION_DISTANCES
+  config BOOL_VARIABLE_ROTATION_DISTANCES
     bool "Variable rotation distances?"
     forceshow
     depends on !UNSELECT_VARIABLE_ROTATION_DISTANCES
     help
       Whether the design has different drive gears (typically BMG gears). Even if from
       the same vendor the rotation distance can vary, hence this option.
+  config PARAM_VARIABLE_ROTATION_DISTANCES
+    int
+    default 1 if BOOL_VARIABLE_ROTATION_DISTANCES
+    default 0
 
   config UNSELECT_REQUIRE_BOWDEN_MOVE
     def_bool n
-  config PARAM_REQUIRE_BOWDEN_MOVE
+  config BOOL_REQUIRE_BOWDEN_MOVE
     bool "Require bowden move?"
     forceshow
     depends on !UNSELECT_REQUIRE_BOWDEN_MOVE
     help
       Whether the design requires a calibrated fast bowden move to reach the extruder.
       This is not necessary if there is a filament splitter/combiner near the toolhead.
+  config PARAM_REQUIRE_BOWDEN_MOVE
+    int
+    default 1 if BOOL_REQUIRE_BOWDEN_MOVE
+    default 0
 
   config UNSELECT_FILAMENT_ALWAYS_GRIPPED
     def_bool n
-  config PARAM_FILAMENT_ALWAYS_GRIPPED
+  config BOOL_FILAMENT_ALWAYS_GRIPPED
     bool "Filament always gripped?"
     forceshow
     depends on !UNSELECT_FILAMENT_ALWAYS_GRIPPED
@@ -135,10 +137,14 @@ menu "Design attributes"
       Whether the design is always gripping the filament. For most type-B designs this
       will be true, but type-A designs usually have a choice because of their filament
       release mechanism..
+  config PARAM_FILAMENT_ALWAYS_GRIPPED
+    int
+    default 1 if BOOL_FILAMENT_ALWAYS_GRIPPED
+    default 0
 
   config UNSELECT_CAN_CROSSLOAD
     def_bool n
-  config PARAM_CAN_CROSSLOAD
+  config BOOL_CAN_CROSSLOAD
     bool "Can crossload/unload?"
     forceshow
     depends on !UNSELECT_CAN_CROSSLOAD
@@ -147,4 +153,9 @@ menu "Design attributes"
       For type-B designs with mmu_exit sensor (or one on each entry to filament combiner)
       this is possible. It is not possible with most type-A designs with a single filament
       drive stepper.
+  config PARAM_CAN_CROSSLOAD
+    int
+    default 1 if BOOL_CAN_CROSSLOAD
+    default 0
+
 endmenu

@@ -1,14 +1,22 @@
 config MMU_TYPE_VVD_1_0
   bool "BTT ViViD"
   select INDEXED_SELECTOR
+
   select MMU_HAS_LEDS
   select MMU_HAS_SENSOR_ENTRY
-  select MMU_HAS_ESPOOLER
   select MMU_HAS_ENVIRONMENT_SENSOR
   select MMU_HAS_HEATER
-  select PARAM_REQUIRE_BOWDEN_MOVE
-  select MMU_DISABLE_FILAMENT_BUFFER_OPTION
-  imply OPTION_VVD_BUFFER
+  select UNSELECT_MMU_HAS_ESPOOLER        # Disable
+  select UNSELECT_MMU_HAS_FILAMENT_BUFFER # Disable
+
+  select BOOL_REQUIRE_BOWDEN_MOVE
+  select BOOL_CAN_CROSSLOAD
+  select UNSELECT_VARIABLE_BOWDEN_LENGTHS # Disable
+  select UNSELECT_FILAMENT_ALWAYS_GRIPPED # Disable
+
+  select DISABLE_NUM_GATES_OPTION         # Disable
+  imply OPTION_VVD_BUFFER                 # Suggest
+
 
 if MMU_TYPE_VVD_1_0
   config OPTION_VVD_BUFFER
@@ -77,10 +85,10 @@ if MMU_TYPE_VVD_1_0
     default "neopixel:$(UNIT_NAME)_leds_1 (1-14)\\n             neopixel:$(UNIT_NAME)_leds_2 (1-14)"
 
   config PARAM_ENVIRONMENT_SENSOR
-    default "temperature_sensor $(UNIT_NAME)_env_left"
+    default "$(UNIT_NAME)_env_left"
 
   config PARAM_FILAMENT_HEATER
-    default "heater_generic $(UNIT_NAME)_heater"
+    default "$(UNIT_NAME)_heater"
   config PARAM_HEATER_MAX_TEMP
     default "75"
 

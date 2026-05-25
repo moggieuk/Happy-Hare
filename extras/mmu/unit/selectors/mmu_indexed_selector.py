@@ -45,6 +45,10 @@ class IndexedSelectorParameters(TunableParametersBase):
         ParamSpec('cad_max_rotations',      'int',        2, section="CAD",      limits=dict(minval=0),   hidden=True),
     )
 
+    def __init__(self, config, selector):
+        self._selector = selector
+        super().__init__(config)
+
 
 
 # -----------------------------------------------------------------------------------------------------------

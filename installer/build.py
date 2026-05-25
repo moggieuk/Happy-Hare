@@ -610,6 +610,7 @@ def load_parsed_kconfig(kconfig):
 # ----------------------------------------------------------------------------------------------
 # Dynamically generate optional Kconfig rules to augment options choices for:
 # mmu_toolhead, mmu_encoder, mmu_sync_feedback
+# The idea is that these can be shared and this would allow selection from choice list
 # TODO: This is currently incomplete and unused (never called)
 # ----------------------------------------------------------------------------------------------
 

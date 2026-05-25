@@ -255,7 +255,7 @@ _SHOW_HELP_HEIGHT = 8
 _SCROLL_OFFSET = 5
 
 # Minimum width of dialogs that ask for text input
-_INPUT_DIALOG_MIN_WIDTH = 30
+_INPUT_DIALOG_MIN_WIDTH = 50
 
 # Number of arrows pointing up/down to draw when a window is scrolled
 _N_SCROLL_ARROWS = 14

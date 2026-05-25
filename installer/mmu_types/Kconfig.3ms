@@ -1,11 +1,11 @@
 config MMU_TYPE_3MS_1_0
-  bool "3MS v1.0"
+  bool "3MS  - Modular Multi Material System"
   help
     3MS is a popular simple and reliable type-B MMU design. It is an open
     framed minimalist design and easy to build with any number of gates.
   select VIRTUAL_SELECTOR
-  select PARAM_VARIABLE_ROTATION_DISTANCES
-  select PARAM_FILAMENT_ALWAYS_GRIPPED
+  select BOOL_VARIABLE_ROTATION_DISTANCES
+  select BOOL_FILAMENT_ALWAYS_GRIPPED
 
 if MMU_TYPE_3MS_1_0
 

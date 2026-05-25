@@ -4,12 +4,13 @@ config MMU_FAMILY_ERCF
     The Enraged Rabbit Carrot Feeder (ERCF) is the original DIY MMU design
     with a large community and many popular mods. It is available in two
     main versions, the original v1.1 and the upgraded v2.0.
-  imply LINEAR_SERVO_SELECTOR
+  imply  LINEAR_SERVO_SELECTOR
   select MMU_HAS_ENCODER
-  select PARAM_VARIABLE_ROTATION_DISTANCES
-  select UNSELECT_VARIABLE_BOWDEN_LENGTHS
-  imply  PARAM_REQUIRE_BOWDEN_MOVE
-  select UNSELECT_CAN_CROSSLOAD
+  select BOOL_VARIABLE_ROTATION_DISTANCES
+  select BOOL_REQUIRE_BOWDEN_MOVE
+  select UNSELECT_VARIABLE_BOWDEN_LENGTHS # Disable option
+  select UNSELECT_CAN_CROSSLOAD           # Disable option
+  imply  BOOL_FILAMENT_ALWAYS_GRIPPED     # Suggest option
 
 if MMU_FAMILY_ERCF
 
@@ -31,7 +32,7 @@ if MMU_FAMILY_ERCF
         ERCF v2.0 is a community upgraded version incorporating
         popular mods and filler with custom Binky based encoder.
       imply MMU_HAS_LEDS
-      imply PARAM_HAS_BYPASS
+      imply BOOL_HAS_BYPASS
       imply MMU_HAS_FILAMENT_BUFFER
       imply PREFERS_CHOICE_GATE_HOMING_ENDSTOP_ENCODER
 
@@ -42,7 +43,7 @@ if MMU_FAMILY_ERCF
         loading/unloading, improved Binky based encoder and many
         ease of use features with hinged gates.
       imply MMU_HAS_LEDS
-      imply PARAM_HAS_BYPASS
+      imply BOOL_HAS_BYPASS
       imply PREFERS_CHOICE_GATE_HOMING_ENDSTOP_ENCODER
   endchoice
 
@@ -109,8 +110,11 @@ if MMU_FAMILY_ERCF
       config MOD_JACK_RABBIT
         bool "Jack Rabbit Selector"
         imply LINEAR_SELECTOR
+        select BOOL_FILAMENT_ALWAYS_GRIPPED
         help
           Select if building with the Jack Rabbit modification WITHOUT servo
+          This will change the selector type and specify that the filament
+          is always gripped
 
       config MMU_HAS_FILAMENT_BUFFER
         bool "Has Cotton Tail filament buffer?"

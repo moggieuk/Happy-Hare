@@ -4,6 +4,24 @@ menu "Paths & Services"
     If you have a non-standard install of klipper or moonraker you can configure
     paths and service names here in addition to some other miscellaneous system options
 
+  config REPETIER
+    bool "Enable Repetier support?"
+    help
+      Enable ONLY if you need Repetier support otherwise leave disabled
+
+  config REPETIER_NAME
+    string "Repetier name"
+    depends on REPETIER
+
+  config OCTOPRINT
+    bool "Enable Octoprint support?"
+    help
+      Enable ONLY if you need to use Octoprint otherwise recommended to leave disabled
+
+  config PARAM_HAPPY_HARE_HOME
+    string "Happy Hare directory    "
+    default "$(SRC)"
+
   config KLIPPER_HOME
     string "Klipper directory       "
     default "$(CONFIG_KLIPPER_HOME)" if $(to_bool, [ -n "$(CONFIG_KLIPPER_HOME)" ])
@@ -44,10 +62,6 @@ menu "Paths & Services"
     default "/usr/data/printer_data/config/mmu/mmu_vars.cfg" if $(to_bool, [ -e "/usr/data/printer_data" ])
     default "~/printer_data/config/mmu/mmu_vars.cfg"
 
-  config PARAM_HAPPY_HARE_HOME
-    string "Happy Hare directory    "
-    default "$(SRC)"
-
   config SERVICE_KLIPPER
     string "Klipper service name    "
     depends on !REPETIER
@@ -61,14 +75,10 @@ menu "Paths & Services"
     default "moonraker.service" if INIT_SYSTEMD 
     default "moonraker_service"
 
-  config SERVICE_OCTOPRINT
-    string "Octoprint service name  "
-    depends on OCTOPRINT
-    default "octoprint.service"
-
   config INIT_SYSTEMD
     bool "Systemd"
     default $(to_bool, [ -d /etc/systemd/system ])
     help
       Set if host computer using /etc/systemd/system for service restart
+
 endmenu

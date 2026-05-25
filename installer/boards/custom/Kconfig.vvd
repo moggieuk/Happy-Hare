@@ -27,10 +27,14 @@ if BOARD_TYPE_VVD_1_0
   config PIN_SELECTOR_ENABLE
     default "!$(MCU_NAME):PB4" 
 
-  config PIN_SELECTOR_ENDSTOP
-    default "!$(MCU_NAME):PD0, !$(MCU_NAME):PA15, !$(MCU_NAME):PD1, !$(MCU_NAME):PC13"
-  config PARAM_SELECTOR_ENDSTOP_NAME
-    default "$(UNIT_NAME)_gate0, $(UNIT_NAME)_gate1, $(UNIT_NAME)_gate2, $(UNIT_NAME)_gate3"
+  config PIN_GATE_ENDSTOP_0
+    default "!$(MCU_NAME):PD0"
+  config PIN_GATE_ENDSTOP_1
+    default "!$(MCU_NAME):PA15"
+  config PIN_GATE_ENDSTOP_2
+    default "!$(MCU_NAME):PD1"
+  config PIN_GATE_ENDSTOP_3
+    default "!$(MCU_NAME):PC13"
 
   config PIN_GEAR_UART 
     default "$(MCU_NAME):PB7"
@@ -50,36 +54,24 @@ if BOARD_TYPE_VVD_1_0
   config PIN_ENTRY_SENSOR_3
     default "$(MCU_NAME):PA3" 
 
-  config PIN_ESPOOLER_FWD_0
-    default "$(MCU_NAME):PA8"
-  config PIN_ESPOOLER_RWD_0
-    default "$(MCU_NAME):PB15"
-  config PIN_ESPOOLER_FWD_1
-    default "$(MCU_NAME):PB13"
-  config PIN_ESPOOLER_RWD_1
-    default "$(MCU_NAME):PB14"
-  config PIN_ESPOOLER_FWD_2
-    default "$(MCU_NAME):PA9"
-  config PIN_ESPOOLER_RWD_2
-    default "$(MCU_NAME):PC6"
-  config PIN_ESPOOLER_FWD_3
-    default "$(MCU_NAME):PD8"
-  config PIN_ESPOOLER_RWD_3
-    default "$(MCU_NAME):PC7"
-
-  config PIN_ENCODER
-    default "$(MCU_NAME):PC5"
-  config PIN_NEOPIXEL
-    default "$(MCU_NAME):PC13" 
-  config PIN_SHARED_EXIT_SENSOR
-    default "$(MCU_NAME):PC0"
-
   if OPTION_VVD_BUFFER
+    config PIN_EXIT_SENSOR_0
+      default "$(MCU_NAME)_buffer:PA0" 
+    config PIN_EXIT_SENSOR_1
+      default "$(MCU_NAME)_buffer:PA1" 
+    config PIN_EXIT_SENSOR_2
+      default "$(MCU_NAME)_buffer:PA2" 
+    config PIN_EXIT_SENSOR_3
+      default "$(MCU_NAME)_buffer:PA3" 
+
     config PIN_SYNC_FEEDBACK_TENSION
       default "$(MCU_NAME)_buffer:PA4"
     config PIN_SYNC_FEEDBACK_COMPRESSION
       default "$(MCU_NAME)_buffer:PA5"
   endif
+
+  config CUSTOM_LED_SETUP
+    def_bool y
 
   config PARAM_MISC_HARDWARE
     default "$(ml,\
@@ -96,15 +88,15 @@ color_order: GRB\n\
 [temperature_sensor $(UNIT_NAME)_env_left]\n\
 sensor_type: AHT3X # Use an AHT10 and set 'update_aht10_commands: 1' in mmu_parameters.cfg if the AHT3X sensor_type isn't supported (older Klipper versions)\n\
 i2c_mcu: $(MCU_NAME)\n\
-i2c_software_scl_pin: PA9\n\
-i2c_software_sda_pin: PA10\n\
+i2c_software_scl_pin: ${MCU_NAME}:PA9\n\
+i2c_software_sda_pin: ${MCU_NAME}:PA10\n\
 aht10_report_time: 10\n\
 \n\
 [temperature_sensor $(UNIT_NAME)_env_right]\n\
 sensor_type: AHT3X # Use an AHT10 and set 'update_aht10_commands: 1' in mmu_parameters.cfg if the AHT3X sensor_type isn't supported (older Klipper versions)\n\
 i2c_mcu: $(MCU_NAME)\n\
-i2c_software_scl_pin: PA7\n\
-i2c_software_sda_pin: PA6\n\
+i2c_software_scl_pin: ${MCU_NAME}:PA7\n\
+i2c_software_sda_pin: ${MCU_NAME}:PA6\n\
 aht10_report_time: 10\n\
 \n\
 [heater_generic $(UNIT_NAME)_heater]\n\
@@ -135,7 +127,7 @@ heater: $(UNIT_NAME)_heater\n\
 # Electronics cooling fan\n\
 [controller_fan $(UNIT_NAME)_mcu_fan]\n\
 pin: $(MCU_NAME):PA14\n\
-stepper: stepper $(UNIT_NAME)_selector_stepper$(comma) stepper $(UNIT_NAME)_gear_stepper\n\
+stepper: mmu_stepper $(UNIT_NAME)_selector$(comma) mmu_stepper $(UNIT_NAME)_gear\n\
 \n\
 [temperature_sensor ptc_ntc100k]\n\
 sensor_pin: $(MCU_NAME):PA4\n\

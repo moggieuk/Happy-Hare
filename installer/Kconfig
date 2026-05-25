@@ -17,25 +17,30 @@
 #
 # Capability parmams:
 #   MMU_HAS_BUFFER_MCU
+#   MMU_HAS_EJECT_BUTTONS
 #   MMU_HAS_ENCODER
 #   MMU_HAS_ENVIRONMENT_SENSOR
 #   MMU_HAS_ESPOOLER
 #   MMU_HAS_FILAMENT_BUFFER
 #   MMU_HAS_HEATER
 #   MMU_HAS_LEDS
+#   MMU_HAS_PER_GATE_ENV_SENSORS
+#   MMU_HAS_PER_GATE_HEATERS
+#   MMU_HAS_SELECTOR
 #   MMU_HAS_SELECTOR_SERVO
 #   MMU_HAS_SELECTOR_STEPPER
-#   MMU_HAS_SENSOR_EXTRUDER
-#   MMU_HAS_SENSOR_SHARED_EXIT
-#   MMU_HAS_SENSOR_GEAR_TOUCH
-#   MMU_HAS_SENSOR_EXIT
 #   MMU_HAS_SENSOR_ENTRY
+#   MMU_HAS_SENSOR_EXIT
+#   MMU_HAS_SENSOR_GEAR_TOUCH
+#   MMU_HAS_SENSOR_SHARED_EXIT
 #   MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION
 #   MMU_HAS_SENSOR_SYNC_FEEDBACK_PROPORTIONAL
 #   MMU_HAS_SENSOR_SYNC_FEEDBACK_TENSION
-#   MMU_HAS_SENSOR_TOOLHEAD
 #   MMU_HAS_SYNC_FEEDBACK_BUFFER
-#   MMU_HAS_EJECT_BUTTONS
+#
+# These will only be in shared config on multi-unit because they are on printer and not per-unit
+#   MMU_HAS_SENSOR_EXTRUDER
+#   MMU_HAS_SENSOR_TOOLHEAD
 
 
 # IMPORTANT keep version string up-to-date and constistent with git tag
@@ -47,6 +52,10 @@ unit_suffix := $(shell, [ -n "$$UNIT_NAME" ] && echo "Unit: [[B]]$(UNIT_NAME)[[/
 title       := $(shell, [ "$F_MULTI_UNIT_ENTRY_POINT" = "y" ] && echo "$(hh_message) Configuration for [[B]]Multi Unit Setup[[/B]]" || echo "$(hh_message) Configuration - $(unit_suffix)")
 caption     := $(shell, [ "$F_MULTI_UNIT_ENTRY_POINT" = "y" ] && echo "$(hh_message) - [[B]]Shared Config[[/B]]" || echo "Configuration - $(unit_suffix)")
 caption_pad := $(shell, [ "$F_MULTI_UNIT_ENTRY_POINT" = "y" ] && echo "61" || echo "61")
+
+# Expose these capability params to each unit
+mmu_has_sensor_toolhead := $(shell, [ "$HAS_SENSOR_TOOLHEAD" = "y" ] && echo "y" || echo "n")
+mmu_has_sensor_extruder := $(shell, [ "$HAS_SENSOR_EXTRUDER" = "y" ] && echo "y" || echo "n")
 
 # Used to convert a shell command result to a y/n value
 to_bool = $(shell, $(1) && echo y || echo n)
@@ -118,6 +127,14 @@ if !MULTI_UNIT_ENTRY_POINT
     default $(shell, echo "${UNIT_INDEX-0}")
 endif
 
+# Important to let individual units know of important printer features
+if MULTI_UNIT && !MULTI_UNIT_ENTRY_POINT
+  config MMU_HAS_SENSOR_TOOLHEAD
+    default "$(mmu_has_sensor_toolhead)"
+  config MMU_HAS_SENSOR_EXTRUDER
+    default "$(mmu_has_sensor_extruder)"
+endif
+
 comment "$(pad,50,)"
 comment "$(pad,50,(\\_/))"
 comment "$(pad,50,( *,*))"
@@ -149,9 +166,27 @@ if MULTI_UNIT_ENTRY_POINT
 
   comment "Shared System Options"
   source "toolheads/Kconfig"        # Toolhead Selection menu
+  source "Kconfig.toolhead"
   source "addons/Kconfig"           # Addon Macro Features
-  source "Kconfig.options"          # Popular software options
-  source "Kconfig.raw"              # Raw access to appropriate parameters
+  source "Kconfig.options"          # Main software options
+  source "Kconfig.speeds"           # Access to extruder speeds
+
+  # Thesee are duplicated settings that are excluded from units when MULTI_UNIT
+  menu "Printer sensors / pins"
+    help
+      Printer toolhead capabilities
+      Here you can configure printer toolhead options such as fitted sensors
+    source "sensors/Kconfig.extruder"
+    source "sensors/Kconfig.toolhead"
+
+    config PIN_GANTRY_SERVO
+      string "Gantry servo pin"
+      help
+        Optional. Used to deploy fold-down "bumper" for tip cutting
+        when using a toolhead mounted filament cutting blade
+  endmenu
+
+  source "Kconfig.paths_services" # Advanced install options
 endif
 
 if !MULTI_UNIT_ENTRY_POINT
@@ -165,10 +200,10 @@ if !MULTI_UNIT_ENTRY_POINT
   if !MULTI_UNIT
     source "toolheads/Kconfig"      # Toolhead Selection menu
     source "addons/Kconfig"         # Addon Macro Features
-    source "Kconfig.options"        # Popular software options
   endif
+  source "Kconfig.options"          # Main software options
   source "Kconfig.raw"              # Raw access to appropriate parameters
-endif
-if !MULTI_UNIT || MULTI_UNIT_ENTRY_POINT
-  source "Kconfig.paths_services" # Advanced install options
+  if !MULTI_UNIT
+    source "Kconfig.paths_services" # Advanced install options
+  endif
 endif

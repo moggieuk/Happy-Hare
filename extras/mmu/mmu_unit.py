@@ -110,9 +110,11 @@ class MmuUnit:
             VENDOR_PICO_MMU:     replace(DEF_PROFILE, selector_type=SELECTOR_SERVO,  variable_rotation_distances=False),
             VENDOR_QUATTRO_BOX:  replace(DEF_PROFILE, filament_always_gripped=True),
             VENDOR_MMX:          replace(DEF_PROFILE, selector_type=SELECTOR_SERVO),
+            VENDOR_MMX6:         replace(DEF_PROFILE, selector_type=SELECTOR_ROTARY),
             VENDOR_VVD:          replace(DEF_PROFILE, selector_type=SELECTOR_INDEXED, filament_always_gripped=True),
             VENDOR_KMS:          replace(DEF_PROFILE, filament_always_gripped=True),
             VENDOR_EMU:          replace(DEF_PROFILE, variable_bowden_lengths=True, filament_always_gripped=True),
+            VENDOR_LOW_RIDER:    replace(DEF_PROFILE, selector_type=SELECTOR_ROTARY),
         }
 
         if self.mmu_vendor == VENDOR_PRUSA:
@@ -134,30 +136,58 @@ class MmuUnit:
         # Optional heater and evironment sensors
         # ---------------------------------------------------------------------------------------------------
 
+        # Helper to try common name prefixes to avoid long specification like:
+        # 'temperature_sensor MMU_enclosure' or 'heater_generic MMU_heater'
+        def resolve_object_name(config, obj_name, prefix, kind):
+            if not obj_name:
+                return ''
+
+            candidates = [obj_name] if obj_name.startswith(prefix) else [prefix + obj_name, obj_name]
+
+            errors = []
+            for candidate in candidates:
+                try:
+                    self.printer.load_object(config, candidate)
+                    return candidate
+                except Exception as e:
+                    errors.append("%s: %s" % (candidate, str(e)))
+
+            raise config.error(
+                "Object '%s' could not be loaded as a valid %s in [mmu_machine]\n"
+                "Tried:\n%s" % (obj_name, kind, "\n".join(errors))
+            )
+
         self.environment_sensor = config.get('environment_sensor', '')
         self.filament_heater    = config.get('filament_heater', '')
-
-        # Special handling for EMU MMU's that can have a heater and environment sensor per gate
         self.environment_sensors = list(config.getlist('environment_sensors', []))
-        if len(self.environment_sensors) not in [0, self.num_gates]:
-            raise config.error("'environment_sensors' must be empty or a comma separated list of 'num_gates' elements")
-        self.filament_heaters   = list(config.getlist('filament_heaters', []))
-        if len(self.filament_heaters) not in [0, self.num_gates]:
-            raise config.error("'filament_heaters' must be empty or a comma separated list of 'num_gates' elements")
+        self.filament_heaters = list(config.getlist('filament_heaters', []))
         self.max_concurrent_heaters = config.getint('max_concurrent_heaters', self.num_gates)
 
-        # Check mutually exclusive environment options
-        if (self.environment_sensor or self.filament_heater) and (self.environment_sensors or self.filament_heaters):
+        if len(self.environment_sensors) not in [0, self.num_gates]:
+            raise config.error("'environment_sensors' must be empty or a comma separated list of 'num_gates' elements")
+
+        if len(self.filament_heaters) not in [0, self.num_gates]:
+            raise config.error("'filament_heaters' must be empty or a comma separated list of 'num_gates' elements")
+
+        if (self.environment_sensor or self.filament_heater) and \
+                (self.environment_sensors or self.filament_heaters):
             raise config.error("Can't configure both single and per-gate MMU heaters/environment sensors")
 
-        # Check all heater and environment sensor objects are valid
-        for obj_name in self.filament_heaters + [self.filament_heater] + self.environment_sensors + [self.environment_sensor]:
-            if obj_name:
-                try:
-                    # If we can't load heater/sensor then it is misconfigured
-                    obj = self.printer.load_object(config, obj_name)
-                except Exception as e:
-                    raise config.error("Object '%s' could not be loaded as a valid heater or environment sensor in [mmu_machine]\nError: %s" % (obj_name, str(e)))
+        self.filament_heater = resolve_object_name(
+            config, self.filament_heater, "heater_generic ", "heater"
+        )
+        self.environment_sensor = resolve_object_name(
+            config, self.environment_sensor, "temperature_sensor ", "environment sensor"
+        )
+
+        self.filament_heaters = [
+            resolve_object_name(config, name, "heater_generic ", "heater")
+            for name in self.filament_heaters
+        ]
+        self.environment_sensors = [
+            resolve_object_name(config, name, "temperature_sensor ", "environment sensor")
+            for name in self.environment_sensors
+        ]
 
 
         # ---------------------------------------------------------------------------------------------------
@@ -480,9 +510,11 @@ class MmuUnit:
             simple_sensor_name = sensor_name.split(":", 1)[-1]
 
             if (mcu_endstop is not None and simple_sensor_name in EXTRUDER_EXTRA_ENDSTOPS):
-                ext.rail.add_extra_endstop("", sensor_name, register=False, mcu_endstop=mcu_endstop)
-
-                logging.info(f"MMU: Created endstop on stepper {self.extruder_name()} for {self.name} using {sensor_name}")
+                logging.info(f"PAUL: TRYING TO: Created endstop on stepper {self.extruder_name()} for {self.name} using {sensor_name}. simple_sensor_name={simple_sensor_name}")
+# PAUL TODO will this work with multiple gear steppers?
+#                ext.rail.add_extra_endstop("", sensor_name, register=False, mcu_endstop=mcu_endstop)
+#
+#                logging.info(f"MMU: Created endstop on stepper {self.extruder_name()} for {self.name} using {sensor_name}")
 
 
         # Event handlers

@@ -27,9 +27,11 @@ VENDOR_3D_CHAMELEON   = "3DChameleon"
 VENDOR_PICO_MMU       = "PicoMMU"
 VENDOR_QUATTRO_BOX    = "QuattroBox"
 VENDOR_MMX            = "MMX"
+VENDOR_MMX6           = "MMX6"
 VENDOR_VVD            = "VVD"
 VENDOR_KMS            = "KMS"
 VENDOR_EMU            = "EMU"
+VENDOR_LOW_RIDER      = "LowRider"
 VENDOR_OTHER          = "Other"
 
 UNIT_ALT_DISPLAY_NAMES = {
@@ -37,6 +39,7 @@ UNIT_ALT_DISPLAY_NAMES = {
     VENDOR_BOX_TURTLE:   "Box Turtle",
     VENDOR_NIGHT_OWL:    "Night Owl",
     VENDOR_VVD:          "BTT ViViD",
+    VENDOR_LOW_RIDER:    "Low Rider",
 }
 
 VENDORS = [
@@ -51,10 +54,12 @@ VENDORS = [
     VENDOR_PICO_MMU,
     VENDOR_QUATTRO_BOX,
     VENDOR_MMX,
+    VENDOR_MMX6,
     VENDOR_VVD,
     VENDOR_KMS,
     VENDOR_EMU,
-    VENDOR_OTHER
+    VENDOR_LOW_RIDER,
+    VENDOR_OTHER,
 ]
 
 BOOT_DELAY = 2.5 # Delay before running bootup tasks

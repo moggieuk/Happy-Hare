@@ -186,13 +186,13 @@ backup = \
 	fi
 
 restart_service = \
-	if [ "$(F_NO_SERVICE)" ]; then \
-	  echo "$(C_WARNING)Skipping restart of $(2) service$(C_OFF)"; \
+        if [ "$(F_NO_SERVICE)" ]; then \
+          echo "$(C_WARNING)Skipping restart of $(2) service$(C_OFF)"; \
         elif [ -z "$(KCONFIG_CONFIG)" -o -z "$(2)" -o -z "$(3)" ]; then \
           echo "$(C_WARNING)Skipping restart of $(2): KCONFIG_CONFIG not set$(C_OFF)"; \
-	else \
-	  [ "$(1)" -eq 0 ] || $(PY) -m installer.build $(V) --restart-service "$(2)" $(3) "$(KCONFIG_CONFIG)"; \
-	fi
+        else \
+          [ "$(1)" -eq 0 ] || $(PY) -m installer.build $(V) --restart-service "$(2)" $(3) "$(KCONFIG_CONFIG)"; \
+        fi
 
 
 

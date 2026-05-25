@@ -132,8 +132,8 @@ class LinearSelector(PhysicalSelector):
     """
     PARAMS_CLS = LinearSelectorParameters
 
-    def __init__(self, config, mmu_unit, unit_params):
-        super().__init__(config, mmu_unit, unit_params)
+    def __init__(self, config, mmu_unit, params):
+        super().__init__(config, mmu_unit, params)
 
         self.bypass_offset = -1 # Required for get_status() success during init()
 

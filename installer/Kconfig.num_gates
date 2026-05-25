@@ -4,7 +4,7 @@
 config PARAM_NUM_GATES
   int
 
-if !MMU_DISABLE_NUM_GATES_OPTION
+if !DISABLE_NUM_GATES_OPTION
 config PARAM_NUM_GATES
   prompt "Number of gates/lanes?"
   help
