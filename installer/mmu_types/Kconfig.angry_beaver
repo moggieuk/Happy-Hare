@@ -41,7 +41,7 @@ if MMU_TYPE_ANGRY_BEAVER_1_0
     default "0.1"
 
   config PARAM_GEAR_HOMING_SPEED
-    default "80"
+    default 80
     
   config PARAM_GATE_HOMING_MAX
     default "500"
