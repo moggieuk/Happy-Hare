@@ -1,6 +1,12 @@
 # Copyright (c) 2011-2019, Ulf Magnusson
 # SPDX-License-Identifier: ISC
 
+#
+# Customized for Happy Hare
+# Copyright (C) 2022-2026  moggieuk#6538 (discord)
+#                          moggieuk@hotmail.com
+#
+
 """
 Overview
 ========
@@ -548,6 +554,7 @@ import importlib
 import os
 import re
 import sys
+import math # Happy Hare: Added
 
 # Get rid of some attribute lookups. These are obvious in context.
 from glob import iglob
@@ -1511,7 +1518,14 @@ class Kconfig(object):
                 add('#define {}{} "{}"\n'
                     .format(self.config_prefix, sym.name, escape(val)))
 
-            else:  # sym.orig_type in _INT_HEX:
+            elif sym.orig_type is FLOAT: # Happy Hare: Added clause
+                if not val:
+                    val = "0.0"
+
+                add("#define {}{} {}\n"
+                    .format(self.config_prefix, sym.name, val))
+
+            else:  # sym.orig_type in _INT_HEX_FLOAT: # Happy Hare: Changed _INT_HEX > _INT_HEX_FLOAT
                 if sym.orig_type is HEX and \
                    not val.startswith(("0x", "0X")):
                     val = "0x" + val
@@ -1915,7 +1929,7 @@ class Kconfig(object):
                     # comment) in auto.conf
                     continue
 
-                name, val = match.groups()
+                name, val, _ = match.groups() # Happy Hare: added 3rd match group
                 if name in self.syms:
                     sym = self.syms[name]
 
@@ -3913,9 +3927,14 @@ class Kconfig(object):
 
             # 'not sym.nodes' implies a constant or undefined symbol, e.g. a plain
             # "123"
+#            if not sym.nodes:
+#                return _is_base_n(sym.name, _TYPE_TO_BASE[type_])
+#
+#            return sym.orig_type is type_
+            # Happy Hare: introduced FLOAT type
             if not sym.nodes:
-                return _is_base_n(sym.name, _TYPE_TO_BASE[type_])
-
+                return _is_float(sym.name) if type_ is FLOAT else \
+                       _is_base_n(sym.name, _TYPE_TO_BASE[type_])
             return sym.orig_type is type_
 
         for sym in self.unique_defined_syms:
@@ -3959,6 +3978,12 @@ class Kconfig(object):
                                        "default value for string symbol "
                                        + sym.name_and_loc)
 
+                    elif sym.orig_type is FLOAT: # Happy Hare: Added
+                        if not _is_float(default.str_value):
+                            self._warn("the float symbol {} has a non-float default {}"
+                                       .format(sym.name_and_loc,
+                                               default.name_and_loc))
+
                     elif not num_ok(default, sym.orig_type):  # INT/HEX
                         self._warn("the {0} symbol {1} has a non-{0} default {2}"
                                    .format(TYPE_TO_STR[sym.orig_type],
@@ -3976,7 +4001,7 @@ class Kconfig(object):
 
 
             if sym.ranges:
-                if sym.orig_type not in _INT_HEX:
+                if sym.orig_type not in _INT_HEX_FLOAT: # Happy Hare: Changed _INT_HEX > _INT_HEX_FLOAT
                     self._warn(
                         "the {} symbol {} has ranges, but is not int or hex"
                         .format(TYPE_TO_STR[sym.orig_type],
@@ -4595,6 +4620,16 @@ class Symbol(object):
                         self._write_to_conf = True
                         break
 
+        elif self.orig_type is FLOAT: # Happy Hare: Added
+            if vis and self.user_value is not None:
+                val = self.user_value
+            else:
+                for sym, cond in self.defaults:
+                    if expr_value(cond):
+                        val = sym.str_value
+                        self._write_to_conf = True
+                        break
+
         # env_var corresponds to SYMBOL_AUTO in the C implementation, and is
         # also set on the defconfig_list symbol there. Test for the
         # defconfig_list symbol explicitly instead here, to avoid a nonsensical
@@ -4722,7 +4757,7 @@ class Symbol(object):
                    "# {}{} is not set\n" \
                    .format(self.kconfig.config_prefix, self.name)
 
-        if self.orig_type in _INT_HEX:
+        if self.orig_type in _INT_HEX_FLOAT: # Happy Hare: Changed _INT_HEX > _INT_HEX_FLOAT
             return "{}{}={}\n" \
                    .format(self.kconfig.config_prefix, self.name, val)
 
@@ -4794,11 +4829,12 @@ class Symbol(object):
         # Check if the value is valid for our type
         if not (self.orig_type is BOOL     and value in (2, 0)     or
                 self.orig_type is TRISTATE and value in TRI_TO_STR or
-                value.__class__ is str and
-                (self.orig_type is STRING                        or
-                 self.orig_type is INT and _is_base_n(value, 10) or
-                 self.orig_type is HEX and _is_base_n(value, 16)
-                                       and int(value, 16) >= 0)):
+                value.__class__ is str   and
+                (self.orig_type is STRING                          or
+                 self.orig_type is FLOAT and _is_float(value)      or # Happy Hare: Added
+                 self.orig_type is INT   and _is_base_n(value, 10) or
+                 self.orig_type is HEX   and _is_base_n(value, 16)
+                                         and int(value, 16) >= 0)):
 
             # Display tristate values as n, m, y in the warning
             self.kconfig._warn(
@@ -6541,6 +6577,11 @@ def _is_base_n(s, n):
     except ValueError:
         return False
 
+def _is_float(s): # Happy Hare: Added
+    try:
+        return math.isfinite(float(s)) # Don't allow "nan", "inf" and "-inf"
+    except ValueError:
+        return False
 
 def _strcmp(s1, s2):
     # strcmp()-alike that returns -1, 0, or 1
@@ -6555,8 +6596,14 @@ def _sym_to_num(sym):
     # For BOOL and TRISTATE, n/m/y count as 0/1/2. This mirrors 9059a3493ef
     # ("kconfig: fix relational operators for bool and tristate symbols") in
     # the C implementation.
-    return sym.tri_value if sym.orig_type in _BOOL_TRISTATE else \
-           int(sym.str_value, _TYPE_TO_BASE[sym.orig_type])
+#    return sym.tri_value if sym.orig_type in _BOOL_TRISTATE else \
+#           int(sym.str_value, _TYPE_TO_BASE[sym.orig_type])
+    # Happy Hare: introduced float type
+    if sym.orig_type in _BOOL_TRISTATE:
+        return sym.tri_value
+    if sym.orig_type is FLOAT:
+        return float(sym.str_value)
+    return int(sym.str_value, _TYPE_TO_BASE[sym.orig_type])
 
 
 def _touch_dep_file(path, sym_name):
@@ -7044,6 +7091,7 @@ except AttributeError:
     _T_DEFCONFIG_LIST,
     _T_DEF_BOOL,
     _T_DEF_HEX,
+    _T_DEF_FLOAT, # Happy Hare: Added
     _T_DEF_INT,
     _T_DEF_STRING,
     _T_DEF_TRISTATE,
@@ -7054,6 +7102,7 @@ except AttributeError:
     _T_ENV,
     _T_EQUAL,
     _T_FORCESHOW, # Happy Hare: Added
+    _T_FLOAT,     # Happy Hare: Added
     _T_GREATER,
     _T_GREATER_EQUAL,
     _T_HELP,
@@ -7084,7 +7133,7 @@ except AttributeError:
     _T_TRISTATE,
     _T_UNEQUAL,
     _T_VISIBLE,
-) = range(1, 52) # Happy Hare: 51->52
+) = range(1, 54) # Happy Hare: 51->54
 
 # Keyword to token map, with the get() method assigned directly as a small
 # optimization
@@ -7098,6 +7147,7 @@ _get_keyword = {
     "config":         _T_CONFIG,
     "def_bool":       _T_DEF_BOOL,
     "def_hex":        _T_DEF_HEX,
+    "def_float":      _T_DEF_FLOAT, # Happy Hare: Added
     "def_int":        _T_DEF_INT,
     "def_string":     _T_DEF_STRING,
     "def_tristate":   _T_DEF_TRISTATE,
@@ -7109,6 +7159,7 @@ _get_keyword = {
     "endmenu":        _T_ENDMENU,
     "env":            _T_ENV,
     "forceshow":      _T_FORCESHOW, # Happy Hare: Added
+    "float":          _T_FLOAT,     # Happy Hare: Added
     "grsource":       _T_ORSOURCE,  # Backwards compatibility
     "gsource":        _T_OSOURCE,   # Backwards compatibility
     "help":           _T_HELP,
@@ -7169,6 +7220,7 @@ UNKNOWN  = 0
 BOOL     = _T_BOOL
 TRISTATE = _T_TRISTATE
 STRING   = _T_STRING
+FLOAT    = _T_FLOAT # Happy Hare: Added
 INT      = _T_INT
 HEX      = _T_HEX
 
@@ -7177,6 +7229,7 @@ TYPE_TO_STR = {
     BOOL:     "bool",
     TRISTATE: "tristate",
     STRING:   "string",
+    FLOAT:    "float",
     INT:      "int",
     HEX:      "hex",
 }
@@ -7186,6 +7239,7 @@ TYPE_TO_STR = {
 _TYPE_TO_BASE = {
     HEX:      16,
     INT:      10,
+    FLOAT:    0, # Happy Hare: Added
     STRING:   0,
     UNKNOWN:  0,
 }
@@ -7194,6 +7248,7 @@ _TYPE_TO_BASE = {
 _DEF_TOKEN_TO_TYPE = {
     _T_DEF_BOOL:     BOOL,
     _T_DEF_HEX:      HEX,
+    _T_DEF_FLOAT:    FLOAT, # Happy Hare: Added
     _T_DEF_INT:      INT,
     _T_DEF_STRING:   STRING,
     _T_DEF_TRISTATE: TRISTATE,
@@ -7212,6 +7267,7 @@ _STRING_LEX = frozenset({
     _T_COMMENT,
     _T_HEX,
     _T_INT,
+    _T_FLOAT, # Happy Hare: Added
     _T_MAINMENU,
     _T_MENU,
     _T_ORSOURCE,
@@ -7229,6 +7285,7 @@ _STRING_LEX = frozenset({
 _TYPE_TOKENS = frozenset({
     _T_BOOL,
     _T_TRISTATE,
+    _T_FLOAT, # Happy Hare: Added
     _T_INT,
     _T_HEX,
     _T_STRING,
@@ -7264,6 +7321,12 @@ _BOOL_TRISTATE_UNKNOWN = frozenset({
 })
 
 _INT_HEX = frozenset({
+    INT,
+    HEX,
+})
+
+_INT_HEX_FLOAT = frozenset({ # Happy Hare: Added
+    FLOAT,
     INT,
     HEX,
 })

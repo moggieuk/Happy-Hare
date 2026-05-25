@@ -215,8 +215,9 @@ import locale
 import re
 import textwrap
 
+# Happy Hare: Added FLOAT
 from kconfiglib import Symbol, Choice, MENU, COMMENT, MenuNode, \
-                       BOOL, TRISTATE, STRING, INT, HEX, \
+                       BOOL, TRISTATE, STRING, FLOAT, INT, HEX, \
                        AND, OR, \
                        expr_str, expr_value, split_expr, \
                        standard_sc_expr_str, \
@@ -255,7 +256,8 @@ _SHOW_HELP_HEIGHT = 8
 _SCROLL_OFFSET = 5
 
 # Minimum width of dialogs that ask for text input
-_INPUT_DIALOG_MIN_WIDTH = 50
+_INPUT_DIALOG_MIN_WIDTH = 60
+_INPUT_DIALOG_NUM_MIN_WIDTH = 30
 
 # Number of arrows pointing up/down to draw when a window is scrolled
 _N_SCROLL_ARROWS = 14
@@ -772,7 +774,7 @@ def _needs_save():
                 # Written bool/tristate symbol, new value
                 return True
         elif sym.str_value != sym.user_value and not sym._was_default:
-            # Written string/int/hex symbol, new value
+            # Written string/int/hex/float symbol, new value
             return True
 
     # No need to prompt for save
@@ -1770,18 +1772,19 @@ def _change_node(node):
     # sc = symbol/choice
     sc = node.item
 
-    if sc.orig_type in (INT, HEX, STRING):
+    if sc.orig_type in (INT, HEX, FLOAT, STRING): # Happy Hare: Added FLOAT
         s = sc.str_value
 
         while True:
             s = _input_dialog(
                 "{} ({})".format(node.prompt[0], TYPE_TO_STR[sc.orig_type]),
-                s, _range_info(sc))
+                s, _range_info(sc),
+                sc.orig_type) # Happy Hare: Added passing of orig_type
 
             if s is None:
                 break
 
-            if sc.orig_type in (INT, HEX):
+            if sc.orig_type in (INT, HEX, FLOAT): # Happy Hare: Added FLOAT
                 s = s.strip()
 
                 # 'make menuconfig' does this too. Hex values not starting with
@@ -1829,7 +1832,8 @@ def _changeable(node):
     if not (node.prompt and expr_value(node.prompt[1])):
         return False
 
-    return sc.orig_type in (STRING, INT, HEX) or len(sc.assignable) > 1 \
+    # Happy Hare: Added FLOAT
+    return sc.orig_type in (STRING, INT, HEX, FLOAT) or len(sc.assignable) > 1 \
         or _is_y_mode_choice_sym(sc)
 
 
@@ -1890,7 +1894,7 @@ def _update_menu():
     _menu_scroll = max(_sel_node_i - old_row, 0)
 
 
-def _input_dialog(title, initial_text, info_text=None):
+def _input_dialog(title, initial_text, info_text=None, sym_type=None): # Happy Hare: Added sym_type
     # Pops up a dialog that prompts the user for a string
     #
     # title:
@@ -1909,7 +1913,7 @@ def _input_dialog(title, initial_text, info_text=None):
     info_lines = info_text.split("\n") if info_text else []
 
     # Give the input dialog its initial size
-    _resize_input_dialog(win, title, info_lines)
+    _resize_input_dialog(win, title, info_lines, sym_type) # Happy Hare: Pass in sym_type
 
     _safe_curs_set(2)
 
@@ -1939,7 +1943,7 @@ def _input_dialog(title, initial_text, info_text=None):
         if c == curses.KEY_RESIZE:
             # Resize the main display too. The dialog floats above it.
             _resize_main()
-            _resize_input_dialog(win, title, info_lines)
+            _resize_input_dialog(win, title, info_lines, sym_type) # Happy Hare: Pass in sym_type
 
         elif c == "\n":
             _safe_curs_set(0)
@@ -1953,7 +1957,7 @@ def _input_dialog(title, initial_text, info_text=None):
             s, i, hscroll = _edit_text(c, s, i, hscroll, edit_width())
 
 
-def _resize_input_dialog(win, title, info_lines):
+def _resize_input_dialog(win, title, info_lines, sym_type=None):
     # Resizes the input dialog to a size appropriate for the terminal size
 
     screen_height, screen_width = _stdscr.getmaxyx()
@@ -1963,7 +1967,12 @@ def _resize_input_dialog(win, title, info_lines):
         win_height += len(info_lines) + 1
     win_height = min(win_height, screen_height)
 
-    win_width = max(_INPUT_DIALOG_MIN_WIDTH,
+    # Happy Hare: Added variable dialog width
+    def_min_width = _INPUT_DIALOG_MIN_WIDTH
+    if sym_type in (INT, HEX, FLOAT):
+        def_min_width = _INPUT_DIALOG_NUM_MIN_WIDTH
+
+    win_width = max(def_min_width,
                     len(title) + 4,
                     *(len(line) + 4 for line in info_lines))
     win_width = min(win_width, screen_width)
@@ -3166,12 +3175,13 @@ def _node_str(node):
 
     # This approach gives nice alignment for empty string symbols ("()  Foo")
     # Happy Hare: Orig: s = "{:{}}".format(_value_str(node), 3 + indent)
+    # Happy Hare: Added FLOAT type
     v = _value_str(node)
     tcc = _token_char_count(v)
 
     # Happy Hare: display editable value nodes on the right of label -- it just looks better
     s = ""
-    display_left = (node.item in (MENU, COMMENT) or node.item.orig_type not in (STRING, INT, HEX))
+    display_left = (node.item in (MENU, COMMENT) or node.item.orig_type not in (STRING, INT, HEX, FLOAT))
     if display_left:
         s += "{:>{}}".format(v, _VALUE_INDENT + indent + tcc) # Happy Hare: Revised to right-aligned formatting
     else:
@@ -3193,7 +3203,7 @@ def _node_str(node):
             if (
                 node.item not in (MENU, COMMENT) and
                 node.item.orig_type and
-                node.item.orig_type not in (STRING, INT, HEX) and
+                node.item.orig_type not in (STRING, INT, HEX, FLOAT) and
                 not _is_y_mode_choice_sym(node.item) and
                 len(node.item.assignable) <= 1 and
                 not isinstance(node.item, Choice)
@@ -3290,7 +3300,7 @@ def _value_str(node):
     if not item.orig_type:
         return ""
 
-    if item.orig_type in (STRING, INT, HEX):
+    if item.orig_type in (STRING, INT, HEX, FLOAT): # Happy Hare: Added FLOAT
         if item._was_set: # Happy Hare: Added style formatting for non-defaults
             return "([[B]]{}[[/B]])".format(item.str_value)
         else:
@@ -3328,8 +3338,39 @@ def _check_valid(sym, s):
     # Returns True if the string 's' is a well-formed value for 'sym'.
     # Otherwise, displays an error and returns False.
 
+    if sym.orig_type == FLOAT: # Happy Hare: Added FLOAT check
+        try:
+            float(s)
+        except ValueError:
+            _error("'{}' is a malformed float value"
+                   .format(s))
+            return False
+
+        for low_sym, high_sym, cond in sym.ranges:
+            if expr_value(cond):
+                low_s = low_sym.str_value
+                high_s = high_sym.str_value
+
+                try:
+                    low = float(low_s)
+                    high = float(high_s)
+                except ValueError:
+                    # Bad range definition; let kconfiglib warnings/sanity
+                    # checks handle this elsewhere.
+                    break
+
+                val = float(s)
+                if not low <= val <= high:
+                    _error("{} is outside the range {}-{}"
+                           .format(s, low_s, high_s))
+                    return False
+
+                break
+
+        return True
+
     if sym.orig_type not in (INT, HEX):
-        return True  # Anything goes for non-int/hex symbols
+        return True  # Anything goes for string symbols
 
     base = 10 if sym.orig_type == INT else 16
     try:
@@ -3358,7 +3399,7 @@ def _range_info(sym):
     # Returns a string with information about the valid range for the symbol
     # 'sym', or None if 'sym' doesn't have a range
 
-    if sym.orig_type in (INT, HEX):
+    if sym.orig_type in (INT, HEX, FLOAT): # Happy Hare: Added FLOAT
         for low, high, cond in sym.ranges:
             if expr_value(cond):
                 return "Range: {}-{}".format(low.str_value, high.str_value)
@@ -3371,18 +3412,34 @@ def _is_num(name):
     # when printing expressions. Things like 16 are actually symbol names, only
     # they get their name as their value when the symbol is undefined.
 
-    try:
-        int(name)
-    except ValueError:
-        if not name.startswith(("0x", "0X")):
-            return False
+#    try:
+#        int(name)
+#    except ValueError:
+#        if not name.startswith(("0x", "0X")):
+#            return False
+#
+#        try:
+#            int(name, 16)
+#        except ValueError:
+#            return False
+#
+#    return True
 
+    # Happy Hare: Rework
+    try:
+        float(name)
+        return True
+    except ValueError:
+        pass
+
+    if name.startswith(("0x", "0X")):
         try:
             int(name, 16)
+            return True
         except ValueError:
-            return False
+            pass
 
-    return True
+    return False
 
 
 def _getch_compat(win):

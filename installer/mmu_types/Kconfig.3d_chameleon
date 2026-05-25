@@ -51,7 +51,7 @@ if MMU_TYPE_3D_CHAMELEON_1_0
 
   # Speeds overrides
   config PARAM_GEAR_HOMING_SPEED
-    default "80"
+    default 80
 
   # Distances
   config PARAM_GATE_PARKING_DISTANCE
