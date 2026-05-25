@@ -78,6 +78,12 @@ if MULTI_UNIT_ENTRY_POINT || !MULTI_UNIT
       and is usually a setting in the slicer config.
       (It is necessary to help Happy Hare complete the extruder unloading process)
 
+  config PARAM_EXTRUDER_FORM_TIP_CURRENT
+    int "Extruder tip forming current"
+    default 100
+    help
+      % of extruder current (100%-150%) to use when forming tip (100 to disable feature)
+
 
 # -------------------------------------
 # Purging
@@ -126,6 +132,12 @@ if MULTI_UNIT_ENTRY_POINT || !MULTI_UNIT
     int
     default 1 if BOOL_FORCE_PURGE_STANDALONE
     default 0
+
+  config PARAM_EXTRUDER_PURGE_CURRENT
+    int "Extruder purging current    "
+    default 100
+    help
+      % of extruder current (100%-150%) to use when purging (100 to disable feature)
 
 endif
 

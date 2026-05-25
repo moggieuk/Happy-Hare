@@ -54,36 +54,24 @@ if BOARD_TYPE_VVD_1_0
   config PIN_ENTRY_SENSOR_3
     default "$(MCU_NAME):PA3" 
 
-  config PIN_ESPOOLER_FWD_0
-    default "$(MCU_NAME):PA8"
-  config PIN_ESPOOLER_RWD_0
-    default "$(MCU_NAME):PB15"
-  config PIN_ESPOOLER_FWD_1
-    default "$(MCU_NAME):PB13"
-  config PIN_ESPOOLER_RWD_1
-    default "$(MCU_NAME):PB14"
-  config PIN_ESPOOLER_FWD_2
-    default "$(MCU_NAME):PA9"
-  config PIN_ESPOOLER_RWD_2
-    default "$(MCU_NAME):PC6"
-  config PIN_ESPOOLER_FWD_3
-    default "$(MCU_NAME):PD8"
-  config PIN_ESPOOLER_RWD_3
-    default "$(MCU_NAME):PC7"
-
-  config PIN_ENCODER
-    default "$(MCU_NAME):PC5"
-  config PIN_NEOPIXEL
-    default "$(MCU_NAME):PC13" 
-  config PIN_SHARED_EXIT_SENSOR
-    default "$(MCU_NAME):PC0"
-
   if OPTION_VVD_BUFFER
+    config PIN_EXIT_SENSOR_0
+      default "$(MCU_NAME)_buffer:PA0" 
+    config PIN_EXIT_SENSOR_1
+      default "$(MCU_NAME)_buffer:PA1" 
+    config PIN_EXIT_SENSOR_2
+      default "$(MCU_NAME)_buffer:PA2" 
+    config PIN_EXIT_SENSOR_3
+      default "$(MCU_NAME)_buffer:PA3" 
+
     config PIN_SYNC_FEEDBACK_TENSION
       default "$(MCU_NAME)_buffer:PA4"
     config PIN_SYNC_FEEDBACK_COMPRESSION
       default "$(MCU_NAME)_buffer:PA5"
   endif
+
+  config CUSTOM_LED_SETUP
+    def_bool y
 
   config PARAM_MISC_HARDWARE
     default "$(ml,\
@@ -139,7 +127,7 @@ heater: $(UNIT_NAME)_heater\n\
 # Electronics cooling fan\n\
 [controller_fan $(UNIT_NAME)_mcu_fan]\n\
 pin: $(MCU_NAME):PA14\n\
-stepper: stepper $(UNIT_NAME)_selector_stepper$(comma) stepper $(UNIT_NAME)_gear_stepper\n\
+stepper: mmu_stepper $(UNIT_NAME)_selector$(comma) mmu_stepper $(UNIT_NAME)_gear\n\
 \n\
 [temperature_sensor ptc_ntc100k]\n\
 sensor_pin: $(MCU_NAME):PA4\n\

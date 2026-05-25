@@ -169,6 +169,7 @@ if MULTI_UNIT_ENTRY_POINT
   source "Kconfig.toolhead"
   source "addons/Kconfig"           # Addon Macro Features
   source "Kconfig.options"          # Main software options
+  source "Kconfig.speeds"           # Access to extruder speeds
 
   # Thesee are duplicated settings that are excluded from units when MULTI_UNIT
   menu "Printer sensors / pins"

@@ -6,11 +6,11 @@ config MMU_FAMILY_ERCF
     main versions, the original v1.1 and the upgraded v2.0.
   imply  LINEAR_SERVO_SELECTOR
   select MMU_HAS_ENCODER
-  select UNSELECT_VARIABLE_BOWDEN_LENGTHS # Disable option
   select BOOL_VARIABLE_ROTATION_DISTANCES
   select BOOL_REQUIRE_BOWDEN_MOVE
-  imply  BOOL_FILAMENT_ALWAYS_GRIPPED
-  select UNSELECT_CAN_CROSSLOAD # Disable option
+  select UNSELECT_VARIABLE_BOWDEN_LENGTHS # Disable option
+  select UNSELECT_CAN_CROSSLOAD           # Disable option
+  imply  BOOL_FILAMENT_ALWAYS_GRIPPED     # Suggest option
 
 if MMU_FAMILY_ERCF
 

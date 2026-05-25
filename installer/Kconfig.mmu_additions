@@ -20,68 +20,81 @@ menu "MMU Additions/Modifications"
     the best possible starter configuration.
 
 
-  if !MMU_DISABLE_EJECT_BUTTONS_OPTION
-    config MMU_HAS_EJECT_BUTTONS
-      prompt "Has Eject buttons?"
-      forceshow
-      help
-        Some MMU designs have dedicated eject buttons. Select this
-        option to allow pin editing and inclusion in config template
+  config UNSELECT_MMU_HAS_EJECT_BUTTONS
+    def_bool n
+  config MMU_HAS_EJECT_BUTTONS
+    prompt "Has Eject buttons?"
+    depends on !UNSELECT_MMU_HAS_EJECT_BUTTONS
+    forceshow
+    help
+      Some MMU designs have dedicated eject buttons. Select this
+      option to allow pin editing and inclusion in config template
 
-        Be sure to check pins in the "Pins" section.
-  endif
+      Be sure to check pins in the "Pins" section.
 
-  if !MMU_DISABLE_ENCODER_OPTION
-    config MMU_HAS_ENCODER
-      prompt "Has Encoder?"
-      forceshow
-      help
-        An encoder measures filament movement and can be used to validate
-        movement, detect clogs, monitor flow rate and detect filament
-        collision with the extruder in liue of a toolhead switch sensor.
+  config UNSELECT_MMU_HAS_ENCODER
+    def_bool n
+  config MMU_HAS_ENCODER
+    prompt "Has Encoder?"
+    depends on !UNSELECT_MMU_HAS_ENCODER
+    forceshow
+    help
+      An encoder measures filament movement and can be used to validate
+      movement, detect clogs, monitor flow rate and detect filament
+      collision with the extruder in liue of a toolhead switch sensor.
 
-        Be sure to edit details in the "Raw Settings" section.
-  endif
+      Be sure to edit details in the "Raw Settings" section.
 
+  config UNSELECT_MMU_HAS_ENVIRONMENT_SENSOR
+    def_bool n
   config MMU_HAS_ENVIRONMENT_SENSOR
     prompt "Has environment sensor(s)?"
+    depends on !UNSELECT_MMU_HAS_ENVIRONMENT_SENSOR
     forceshow
     help
       Select if the MMU has a humidity/temperature sensor in the filament storate enclosure
 
       Be sure to edit details in the "Raw Settings" section.
 
+  config UNSELECT_MMU_HAS_HEATER
+    def_bool n
   config MMU_HAS_HEATER
     prompt "Has enclosure heater(s)?"
+    depends on !UNSELECT_MMU_HAS_HEATER
     forceshow
     help
       Select if the MMU has a heater in the filament storate enclosure
 
       Be sure to edit details in the "Raw Settings" section.
 
-  if !MMU_DISABLE_ESPOOLER_OPTION
-    config MMU_HAS_ESPOOLER
-      prompt "Has eSpooler?"
-      forceshow
-      help
-        An eSpooler is primarily used to rewind filament to prevent
-        it tangling but can also be driven to assist loading and even
-        assist in print. Select if you have added a DC motor controlled
-        eSpooler.
-  endif
+  config UNSELECT_MMU_HAS_ESPOOLER
+    def_bool n
+  config MMU_HAS_ESPOOLER
+    prompt "Has eSpooler?"
+    depends on !UNSELECT_MMU_HAS_ESPOOLER
+    forceshow
+    help
+      An eSpooler is primarily used to rewind filament to prevent
+      it tangling but can also be driven to assist loading and even
+      assist in print. Select if you have added a DC motor controlled
+      eSpooler.
 
-  if !MMU_DISABLE_FILAMENT_BUFFER_OPTION
-    config MMU_HAS_FILAMENT_BUFFER
-      bool "Has filament buffer to catch loose filament?"
-      forceshow
-      help
-        Does MMU have a buffer to catch the uncoiled filament on unload. Note
-        that a passive rewinder like Filamentalist is not a filament buffer
-        because it alleviates the need for one!
-  endif
+  config UNSELECT_MMU_HAS_FILAMENT_BUFFER
+    def_bool n
+  config MMU_HAS_FILAMENT_BUFFER
+    bool "Has filament buffer to catch loose filament?"
+    depends on !UNSELECT_MMU_HAS_FILAMENT_BUFFER
+    forceshow
+    help
+      Does MMU have a buffer to catch the uncoiled filament on unload. Note
+      that a passive rewinder like Filamentalist is not a filament buffer
+      because it alleviates the need for one!
 
+  config UNSELECT_MMU_HAS_LEDS
+    def_bool n
   config MMU_HAS_LEDS
     prompt "Has Leds?"
+    depends on !UNSELECT_MMU_HAS_LEDS
     forceshow
     help
       Select if your MMU has LEDs. This will install the LED driver but
@@ -89,8 +102,11 @@ menu "MMU Additions/Modifications"
       config files or better still, you can edit parameters in the
       "Raw Settings" section.
 
+  config UNSELECT_MMU_HAS_SYNC_FEEDBACK_BUFFER
+    def_bool n
   config MMU_HAS_SYNC_FEEDBACK_BUFFER
     prompt "Has sync-feedback buffer?"
+    depends on !UNSELECT_MMU_HAS_SYNC_FEEDBACK_BUFFER
     forceshow
     help
       A sync-feedback sensor (often referred to as a "buffer") is

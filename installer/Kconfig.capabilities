@@ -73,22 +73,13 @@ config MMU_HAS_EJECT_BUTTONS
 config MMU_HAS_BUFFER_MCU
   bool
 
-# Flags used to disable the visibility of particular options to reduce confusion
-config MMU_DISABLE_NUM_GATES_OPTION
-  bool
-
-config MMU_DISABLE_ESPOOLER_OPTION
-  bool
-
-config MMU_DISABLE_FILAMENT_BUFFER_OPTION
-  bool
-
 config PARAM_MISC_HARDWARE
   string
   default ""
 
 
 menu "Design attributes"
+
   source "Kconfig.selector_type" 
 
   source "Kconfig.bypass" 

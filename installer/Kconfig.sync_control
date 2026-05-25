@@ -84,16 +84,11 @@ menu "MMU/Extruder sync"
       This controls whether the extruder and gear steppers are synchronized
       during tip forming operation.
 
+      Set extruder current in "Software options" section
   config PARAM_SYNC_FORM_TIP
     int
     default 1 if BOOL_ENABLE_FORM_TIP
     default 0
-
-  config PARAM_EXTRUDER_FORM_TIP_CURRENT
-    int "Extruder tip forming current     "
-    default 100
-    help
-      % of extruder current (100%-150%) to use when forming tip (100 to disable feature)
 
   config BOOL_ENABLE_SYNC_PURGE
     bool "Enable syncing while purging?" if !BOOL_FILAMENT_ALWAYS_GRIPPED
@@ -102,15 +97,10 @@ menu "MMU/Extruder sync"
       This controls whether the extruder and gear steppers are synchronized
       during purging operation.
 
+      Set extruder current in "Software options" section
   config PARAM_SYNC_PURGE
     int
     default 1 if BOOL_ENABLE_SYNC_PURGE
     default 0
-
-  config PARAM_EXTRUDER_PURGE_CURRENT
-    int "Extruder purging current         "
-    default 100
-    help
-      % of extruder current (100%-150%) to use when purging (100 to disable feature)
 
 endmenu

@@ -9,6 +9,7 @@ config MMU_TYPE_MMX6_1_0
   select BOOL_FILAMENT_ALWAYS_GRIPPED
   select BOOL_VARIABLE_ROTATION_DISTANCES
   select UNSELECT_CAN_CROSSLOAD
+  select DISABLE_NUM_GATES_OPTION
 
 ####################
 ##### Defaults #####
