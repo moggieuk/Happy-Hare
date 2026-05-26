@@ -696,7 +696,7 @@ class MmuCalibrateSelectorCommand(BaseCommand):
 
     CMD = "MMU_CALIBRATE_SELECTOR"
 
-    HELP_BRIEF = "Calibration of the selector positions or position of specified gate"
+    HELP_BRIEF = "Calibration of the linear selector positions or position for specified gate"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
         + "UNIT         = #(int) Optional if only one unit fitted to printer\n"
@@ -744,6 +744,9 @@ class MmuCalibrateSelectorCommand(BaseCommand):
         selector = mmu_unit.selector
 
         if self.check_if_disabled(): return
+        if not isinstance(selector, LinearSelector):
+            self.mmu.log_error("Operation not possible on this selector type (LinearSelector only)")
+            return
 
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         save = bool(gcmd.get_int('SAVE', 1, minval=0, maxval=1))

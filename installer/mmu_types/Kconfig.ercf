@@ -140,7 +140,7 @@ if MMU_FAMILY_ERCF
   config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
     default 3
   config PARAM_SERVO_DURATION
-    default "0.4"
+    default 0.4
 
   # Calibration and Autotuning overrides
   config BOOL_SKIP_CAL_ENCODER

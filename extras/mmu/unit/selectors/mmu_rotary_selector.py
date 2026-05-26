@@ -482,6 +482,9 @@ class MmuCalibrateRotarySelectorCommand(BaseCommand):
         selector = mmu_unit.selector
 
         if self.check_if_disabled(): return
+        if not isinstance(selector, RotarySelector):
+            self.mmu.log_error("Operation not possible on this selector type (RotarySelector only)")
+            return
 
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         single = gcmd.get_int('SINGLE', 0, minval=0, maxval=1)

@@ -372,6 +372,9 @@ class MmuCalibrateServoSelectorCommand(BaseCommand):
         selector = mmu_unit.selector
 
         if self.check_if_disabled(): return
+        if not isinstance(selector, ServoSelector):
+            self.mmu.log_error("Operation not possible on this selector type (ServoSelector only)")
+            return
 
         show = gcmd.get_int('SHOW', 0, minval=0, maxval=1)
         angle = gcmd.get_int('ANGLE', None)
