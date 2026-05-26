@@ -501,6 +501,10 @@ def install_includes(dest_file, kconfig):
     check_include(builder, "ADDON_EREC_CUTTER", "mmu/addons/mmu_erec_cutter.cfg")
     check_include(builder, "ADDON_BLOBIFIER", "mmu/addons/blobifier.cfg")
 
+    if not builder.has_section("include mmu/macros/*.cfg"):
+        logging.debug(" > Adding include [include mmu/macros/*.cfg]")
+        builder.add_section("include mmu/macros/*.cfg", at_top=True, extra_newline=False)
+
     if not builder.has_section("include mmu/base/*.cfg"):
         logging.debug(" > Adding include [include mmu/base/*.cfg]")
         builder.add_section("include mmu/base/*.cfg", at_top=True, extra_newline=False)
