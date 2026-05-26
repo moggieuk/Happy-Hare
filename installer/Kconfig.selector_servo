@@ -25,11 +25,11 @@ if MMU_HAS_SELECTOR_SERVO
 
     config PARAM_SERVO_MIN_PULSE_WIDTH
       float "Servo min pulse width"
-      default "0.001"
+      default 0.001
 
     config PARAM_SERVO_MAX_PULSE_WIDTH
       float "Servo max pulse width"
-      default "0.002"
+      default 0.002
 
     if LINEAR_SERVO_SELECTOR || TESTING_SELECTOR
         config PARAM_SERVO_UP_ANGLE
@@ -62,9 +62,9 @@ if MMU_HAS_SELECTOR_SERVO
 
     config PARAM_SERVO_DWELL
       float "Servo dwell          "
-      default "0.5" if LINEAR_SELECTOR
-      default "0.8" if SERVO_SELECTOR
-      default "0.5"
+      default 0.5 if LINEAR_SELECTOR
+      default 0.8 if SERVO_SELECTOR
+      default 0.5
       help
         How long to wait in seconds for the servo to move into position.
         This avoids subsequent operations from happening before
@@ -84,9 +84,9 @@ if MMU_HAS_SELECTOR_SERVO
 
     config PARAM_SERVO_DURATION
       float "Servo PWM duration   "
-      default "0.4" if LINEAR_SELECTOR
-      default "0.5" if SERVO_SELECTOR
-      default "0.4"
+      default 0.4 if LINEAR_SELECTOR
+      default 0.5 if SERVO_SELECTOR
+      default 0.4
       help
         Duration of servo PWM signal if not always active
 
