@@ -302,7 +302,7 @@ class BaseCommand:
         return False
 
     def check_if_not_homed(self, gate=None):
-        if not self.mmu.selector().is_homed:
+        if not self.mmu_unit().selector.is_homed:
             self.mmu.log_error("Operation not possible. MMU selector is not homed")
             return True
         return False
@@ -356,8 +356,9 @@ class BaseCommand:
             return True
         return False
 
-    def check_if_not_calibrated(self, required, silent=False, check_gates=None, use_autotune=True):
-        calibrator = self.mmu.mmu_unit().calibrator
+    def check_if_not_calibrated(self, required, silent=False, check_gates=None, use_autotune=True, mmu_unit=None):
+        mmu_unit = mmu_unit or self.mmu.mmu_unit()
+        calibrator = mmu_unit.calibrator
         return calibrator.check_if_not_calibrated(required, silent=silent, check_gates=check_gates, use_autotune=use_autotune)
 
     def check_if_not_printing(self):

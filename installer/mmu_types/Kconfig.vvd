@@ -72,6 +72,9 @@ if MMU_TYPE_VVD_1_0
   config PARAM_SELECTOR_HOLD_CURRENT
     default "0.3"
 
+  config PARAM_SELECTOR_MOVE_SPEED
+    default 200
+
   config PARAM_GATE_PARKING_DISTANCE
     default "10"
   config PARAM_GATE_HOMING_MAX

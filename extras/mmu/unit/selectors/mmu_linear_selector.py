@@ -599,8 +599,8 @@ class LinearSelector(PhysicalSelector):
         Execute a selector move, optionally using a homing move to an endstop.
 
         Returns (position, homed). For homing moves, selects the requested
-        endstop set (default or extra) and uses HomingMove; for virtual endstops
-        attempts to infer completion via trigger delta.
+        endstop set (default or extra). For virtual endstops we
+        attempt to infer completion via trigger delta.
         """
         if trace_str:
             self.mmu.log_trace(trace_str)
@@ -630,7 +630,15 @@ class LinearSelector(PhysicalSelector):
             homed = True
 
             try:
-                home_result = self.selector_stepper.do_homing_move(new_pos, speed, accel, probe_pos=True, triggered=(homing_move > 0), check_trigger=True, endstop_name=endstop_name)
+                home_result = self.selector_stepper.do_homing_move(
+                    new_pos,
+                    speed,
+                    accel,
+                    probe_pos=True,
+                    triggered=(homing_move > 0),
+                    check_trigger=True,
+                    endstop_name=endstop_name,
+                )
 
                 if self.selector_stepper.rail.is_endstop_virtual(endstop_name):
                     # Try to infer move completion if using Stallguard
@@ -650,15 +658,17 @@ class LinearSelector(PhysicalSelector):
             self.mmu.log_stepper(
                 f"SELECTOR HOMING MOVE: requested position={new_pos:.1f}, "
                 f"speed={speed:.1f}, accel={accel:.1f}, "
-                f"endstop_name={endstop_name} >> {result}"
+                f"endstop_name={endstop_name} >> {result} (actual_delta: {actual:.1f})"
             )
 
         else:
             homed = False
             self.selector_stepper.do_move(new_pos, speed, accel)
+
+            actual = self.selector_stepper.commanded_pos - pos
             self.mmu.log_stepper(
                 f"SELECTOR MOVE: requested position={new_pos:.1f}, "
-                f"speed={speed:.1f}, accel={accel:.1f}"
+                f"speed={speed:.1f}, accel={accel:.1f}, actual_delta={actual:.1f}"
             )
 
             self.mmu.toolhead.flush_step_generation() # TTC mitigation

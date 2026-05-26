@@ -56,8 +56,8 @@ class MmuHomeCommand(BaseCommand):
         if self.check_if_disabled(): return
         mmu.fix_started_state()
 
-        if self.check_if_not_calibrated(CALIBRATED_SELECTOR):
-            mmu.log_always("Not calibrated. Will home to endstop only!")
+        if self.check_if_not_calibrated(CALIBRATED_SELECTOR, mmu_unit=mmu_unit):
+            mmu.log_always("Not calibrated. Will attempt to home to endstop")
             tool = -1
             force_unload = 0
         else:
