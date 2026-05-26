@@ -346,16 +346,16 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
     hhcfg = HHConfig(input_files)
 
     # 2.Run upgrade transform on aggregated master HH Config
-    to_version = kcfg.get("HAPPY_HARE_VERSION")
-    if hhcfg.has_option("mmu", "happy_hare_version"):
-        from_version = hhcfg.get("mmu", "happy_hare_version")
-    else:
-        from_version = to_version
+    to_version = get_target_version()
+    from_version = get_current_version(hhcfg)
 
-    if from_version != to_version:
+    if major_minor(from_version) != major_minor(to_version):
         logging.debug("Upgrading {} from v{} to v{}".format(cfg_file_basename, from_version, to_version))
         upgrades = Upgrades()
-        upgrades.upgrade(hhcfg, from_version, to_version)
+        upgrades.upgrade(hhcfg, major_minor(from_version), major_minor(to_version))
+
+        # Important to update version in case .config is not changed
+        hhcfg.set("mmu_machine", "happy_hare_version", to_version)
 
     # 3.Render cfg template expanding KConfig parameters from read .config
     buffer = render_template(cfg_file_basename, kcfg, extra_params)
@@ -546,29 +546,55 @@ def restart_service(name, service, kconfig):
             logging.warning("Service '/etc/init.d/{}' not found! Restart manually or check your config".format(service))
 
 
+def major_minor(version_str):
+    """
+    Convert "<major>.<minor>.<point>" to (<major>, <minor>)
+    """
+    major, minor, *_ = version_str.strip('"').split(".")
+    return (int(major), int(minor))
+
+
+def get_current_version(hhcfg):
+    current_version = None
+    if hhcfg.has_section("mmu_machine"):
+        current_version = hhcfg.get("mmu_machine", "happy_hare_version")
+    elif hhcfg.has_section("mmu"):
+        current_version = hhcfg.get("mmu", "happy_hare_version") # old v3 config location
+
+    if current_version is None:
+        current_version = "4.0.0"
+    return current_version
+
+
+def get_target_version():
+    target_version = os.environ.get("HH_VERSION")
+    return target_version
+
+
+def get_config_version(kcfg):
+    version = kcfg.get("HAPPY_HARE_VERSION")
+    return version
+
+
 def check_version(kconfig, input_files):
     hhcfg = HHConfig(input_files)
     kcfg = load_parsed_kconfig(kconfig)
 
-    current_version = hhcfg.get("mmu_machine", "happy_hare_version")
-    if current_version is None:
-        current_version = hhcfg.get("mmu", "happy_hare_version") # old v3 config location
+    # Current version is pulled from current cfg files...
+    current_version = get_current_version(hhcfg)
+    logging.log(LEVEL_NOTICE, f"Current version: v{current_version}")
 
-    if current_version is None:
-        logging.log(LEVEL_NOTICE, "Fresh install detected")
-        return
-
-    logging.log(LEVEL_NOTICE, "Current version: " + current_version)
-    target_version = kcfg.get("HAPPY_HARE_VERSION")
+    # Target version is pulled from the environment (from mmu_constants.py)
+    target_version = get_target_version()
     if target_version is None:
-        logging.error("Target version is not defined in .config file")
+        logging.error("Target version HH_VERSION was not set")
         exit(1)
 
-    if current_version == target_version:
+    if major_minor(current_version) == major_minor(target_version):
         logging.log(LEVEL_NOTICE, "Up to date, no config upgrades required")
         return
 
-    if float(current_version) > float(target_version):
+    if major_minor(current_version) > major_minor(target_version):
         logging.warning(
             "Automatic 'downgrade' to earlier version is not guaranteed!\n"
             "If you encounter startup problems you may need to manually compare "
@@ -576,7 +602,7 @@ def check_version(kconfig, input_files):
         )
         return
 
-    logging.log(LEVEL_NOTICE, "Trying to upgrade to " + target_version)
+    logging.log(LEVEL_NOTICE, "Will try to upgrade to " + target_version)
 
 
 def pre_parse_kconfig(kconfig):

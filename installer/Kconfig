@@ -44,10 +44,9 @@
 
 
 # IMPORTANT keep version string up-to-date and constistent with git tag
-happy_hare_version := 4.0
+happy_hare_version := $HH_VERSION
 
-f_version   := $(shell, printf '%s0\n' "$(happy_hare_version)" | sed -E 's/^([0-9]+)\.([0-9])([0-9]).*/\1.\2.\3/')
-hh_message  := $(shell, echo "Happy Hare v$(f_version)")
+hh_message  := $(shell, echo "Happy Hare v$(happy_hare_version)")
 unit_suffix := $(shell, [ -n "$$UNIT_NAME" ] && echo "Unit: [[B]]$(UNIT_NAME)[[/B]]" || echo "")
 title       := $(shell, [ "$F_MULTI_UNIT_ENTRY_POINT" = "y" ] && echo "$(hh_message) Configuration for [[B]]Multi Unit Setup[[/B]]" || echo "$(hh_message) Configuration - $(unit_suffix)")
 caption     := $(shell, [ "$F_MULTI_UNIT_ENTRY_POINT" = "y" ] && echo "$(hh_message) - [[B]]Shared Config[[/B]]" || echo "Configuration - $(unit_suffix)")
@@ -94,10 +93,6 @@ mainmenu "$(title)"
 config HAPPY_HARE_VERSION
   string
   default "$(happy_hare_version)"
-
-config FORMATTED_VERSION
-  string
-  default "$(f_version)"
 
 config MULTI_UNIT
   bool
@@ -200,8 +195,8 @@ if !MULTI_UNIT_ENTRY_POINT
   if !MULTI_UNIT
     source "toolheads/Kconfig"      # Toolhead Selection menu
     source "addons/Kconfig"         # Addon Macro Features
+    source "Kconfig.options"        # Main software options
   endif
-  source "Kconfig.options"          # Main software options
   source "Kconfig.raw"              # Raw access to appropriate parameters
   if !MULTI_UNIT
     source "Kconfig.paths_services" # Advanced install options

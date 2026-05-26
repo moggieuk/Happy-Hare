@@ -1,0 +1,76 @@
+# This module is responsible for flowguard configuration
+#
+# Responsible for setting:
+#   PARAM_FLOWGUARD_ENABLED
+#   PARAM_FLOWGUARD_MAX_RELIEF
+#   PARAM_FLOWGUARD_ENCODER_MODE
+#   PARAM_FLOWGUARD_ENCODER_MAX_MOTION
+
+menu "FlowGuard (clog/tangle/runout detection)"
+depends on MMU_HAS_SYNC_FEEDBACK_BUFFER || MMU_HAS_ENCODER
+
+config BOOL_FLOWGUARD_ENABLED
+  bool "Enable sync-feedback base FlowGuard (sync speed correction, clog/tangle/runout)?"
+  default y
+  help
+    Flowguard is a feature that uses the sync-feedback buffer and/or encoder to detect
+    filament clogs, tangles and runoutout. If enabled the print will be paused to allow
+    you to correct the issue possibily saving your print but certainly saving your printer.
+config PARAM_FLOWGUARD_ENABLED
+  int
+  default 1 if BOOL_FLOWGUARD_ENABLED
+  default 0
+
+config PARAM_FLOWGUARD_MAX_RELIEF
+  float
+  default 40
+
+config PARAM_FLOWGUARD_MAX_RELIEF
+  prompt "Max relief movement"
+  depends on MMU_HAS_SYNC_FEEDBACK_BUFFER && BOOL_FLOWGUARD_ENABLED
+  help
+    The amount of relief movement (effective mm change in filament length between MMU and extruder) that
+    Happy Hare will wait until triggering a clog or runout. A smaller value is more sensitive to triggering. Since
+    the relief movement is hightly dependent on filament "spring" in the bowden tube, filament friction, and
+    'sync_feedback_buffer_range', it is generally good to start high and then decrease if a more sensitive trigger is desired.
+    Analog proportional (type P) sensors can generally have a much lower value. Increase if you have false triggers.
+
+
+if MMU_HAS_ENCODER
+  config BOOL_FLOWGUARD_ENCODER_MODE
+    bool "Enable encoder based FlowGuard (clog/tangle/runout detection)?"
+    help
+      Encoder runout/clog/tangle detection watches for movement over either a static or automatically adjusted distance - if
+      no encoder movement is seen when the extruder moves this distance runout/ clog/tangle event will be generated. Allowing
+      the distance to be adjusted automatically will generally allow for a quicker trigger but use a static length
+      (mode=1, set encoder_max_motion) if you get false triggers (see flowguard guide on wiki for more details).
+      Note that this feature cannot distinguish between clog or tangle.
+
+  config BOOL_FLOWGUARD_ENCODER_MODE_AUTO
+    bool "Enable automatic detection length?"
+    help
+      This constantly tunes the clog/tangle/runout detection length to help avoid false triggering
+    depends on BOOL_FLOWGUARD_ENCODER_MODE
+    default y
+
+  config PARAM_FLOWGUARD_ENCODER_MODE
+    int 
+    default 2 if BOOL_FLOWGUARD_ENCODER_MODE_AUTO
+    default 1 if BOOL_FLOWGUARD_ENCODER_MODE
+    default 0
+
+  config PARAM_FLOWGUARD_ENCODER_MAX_MOTION
+    float
+    default 20
+
+  config PARAM_FLOWGUARD_ENCODER_MAX_MOTION
+    prompt "Extruder max motion"
+    depends on BOOL_FLOWGUARD_ENCODER_MODE && !BOOL_FLOWGUARD_ENCODER_MODE_AUTO
+    help
+      The encoder_max_motion is the absolute max permitted extruder movement without the encoder seeing movement when using
+      non-automatic mode (mode=1). Smaller values are more sensitive but beware of going too small - slack and friction in the
+      bowden may cause gaps in encoder movement. Increase if you have false triggers.
+      Note that this value is overriden by any calibrated value stored in 'mmu_vars.cfg' if in automatic mode (mode=2).
+endif
+
+endmenu

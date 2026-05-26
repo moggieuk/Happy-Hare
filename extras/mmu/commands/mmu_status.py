@@ -57,7 +57,7 @@ class MmuStatusCommand(BaseCommand):
         lines = []
 
         lines.append(
-            f"MMU: Happy Hare {mmu._fversion(mmu.mmu_machine.happy_hare_version)} "
+            f"MMU: Happy Hare v{mmu.mmu_machine.happy_hare_version} "
             f"controlling {mmu.mmu_machine.num_units} units:\n"
         )
 

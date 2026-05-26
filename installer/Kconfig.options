@@ -6,8 +6,6 @@
 #   PARAM_FORCE_PURGE_STANDALONE
 #   PARAM_FORM_TIP_MACRO
 #   PARAM_PURGE_MACRO
-#   PARAM_FLOWGUARD_ENABLED
-#   PARAM_FLOWGUARD_ENCODER_MODE
 #   PARAM_SPOOLMAN_SUPPORT
 #   PARAM_ENDLESS_SPOOL_ENABLED
 
@@ -18,7 +16,6 @@ menu "Software Options"
     configuration can be achieved later by editing generated klipper
     config files.
 
-if MULTI_UNIT_ENTRY_POINT || !MULTI_UNIT
 
 # -------------------------------------
 # Tip Forming / Cutting
@@ -139,54 +136,6 @@ if MULTI_UNIT_ENTRY_POINT || !MULTI_UNIT
     help
       % of extruder current (100%-150%) to use when purging (100 to disable feature)
 
-endif
-
-if MULTI_UNIT && !MULTI_UNIT_ENTRY_POINT
-
-# -------------------------------------
-# Flowguard
-# -------------------------------------
-
-  menu "FlowGuard (clog/tangle/runout detection)"
-    depends on MMU_HAS_SYNC_FEEDBACK_BUFFER || MMU_HAS_ENCODER
-
-    config BOOL_FLOWGUARD_ENABLED
-      bool "Enable sync-feedback base FlowGuard (sync speed correction, clog/tangle/runout)?"
-      default y
-      depends on MMU_HAS_SYNC_FEEDBACK_BUFFER
-      help
-        Flowguard is a feature that uses the sync-feedback buffer and/or encoder to detect
-        filament clogs, tangles and runoutout. If enabled the print will be paused to allow
-        you to correct the issue possibily saving your print but certainly saving your printer.
-
-    config PARAM_FLOWGUARD_ENABLED
-      int
-      default 1 if BOOL_FLOWGUARD_ENABLED
-      default 0
-
-    config BOOL_FLOWGUARD_ENCODER_MODE
-      bool "Enable encoder based FlowGuard (clog/tangle/runout detection)?"
-      help
-        Clog detection uses the encoder to detect when filament is no longer moving and pauses print
-      depends on MMU_HAS_ENCODER
-
-    config BOOL_FLOWGUARD_ENCODER_MODE_AUTO
-      bool "Enable automatic detection length?"
-      help
-        This constantly tunes the clog/tangle/runout detection length to help avoid false triggering
-      depends on BOOL_FLOWGUARD_ENCODER_MODE
-      default y
-
-    config PARAM_FLOWGUARD_ENCODER_MODE
-      int 
-      default 2 if BOOL_FLOWGUARD_ENCODER_MODE_AUTO
-      default 1 if BOOL_FLOWGUARD_ENCODER_MODE
-      default 0
-  endmenu
-
-endif
-
-if MULTI_UNIT_ENTRY_POINT || !MULTI_UNIT
 
 # -------------------------------------
 # Endless Spool
@@ -260,7 +209,5 @@ if MULTI_UNIT_ENTRY_POINT || !MULTI_UNIT
       Includes the Happy Hare "client macros" with augmented pause/resume/cancel behavior.
       This is highly recommended and incorporates all functionality from popular alternatives
       like mainsail client macros but also works in conjunction with Happy Hare toolhead movement.
-
-endif
 
 endmenu

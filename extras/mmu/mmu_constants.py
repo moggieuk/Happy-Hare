@@ -13,7 +13,10 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 
-VERSION = 4.0 # When this is revved, Happy Hare will instruct users to re-run ./install.sh. Sync with install.sh!
+# This defines the current version.
+# IMPORTANT keep version string up-to-date and constistent with git tag
+# Config upgrades are performed when <major>,<minor> is changed
+VERSION = "4.0.0" # When <major.minor> is revved, Happy Hare will instruct users to re-run ./install.sh
 
 # Vendor MMU's supported
 VENDOR_ERCF           = "ERCF"
