@@ -50,7 +50,7 @@ class CalibrationMixin:
                     if success:
                         homed = True
                         homing_movement, homing_overshoot = success
-                        remaining_park = u.p.gate_parking_distance - homing_overshoot # homing_overshoot will always be -ve (retraction)
+                        remaining_park = mmu_unit.p.gate_parking_distance - homing_overshoot # homing_overshoot will always be -ve (retraction)
 
             else: # Gate sensor
                 if not mmu.sensor_manager.check_sensor(endstop):
@@ -69,7 +69,7 @@ class CalibrationMixin:
                 )
                 remaining_park = mmu_unit.p.gate_parking_distance
 
-            self.move_filament("Final parking", remaining_park)
+            mmu.move_filament("Final parking", remaining_park)
             mmu.set_filament_pos_state(FILAMENT_POS_UNLOADED)
 
             if not homed:

@@ -80,11 +80,10 @@ class MmuStatusCommand(BaseCommand):
                 lines.append(f"\n{UI_SOLID_CIRCLE} {unit.mmu_vendor} v{unit.mmu_version_string}")
 
             first, last = unit.gate_bounds()
-            lines.append(f" (gates {first}-{last}).")
-            lines.append(f" Connected to extruder: {unit.extruder_name()}\n")
-
+            active = " ACTIVE" if (mmu.mmu_machine.num_units > 1 and i == self.mmu.unit_selected) else ""
+            lines.append(f" (gates {first}-{last}){active}\n")
+            lines.append(f"{UI_CASCADE} Connected to extruder: {unit.extruder_name()}\n")
             lines.append(f"{UI_CASCADE} {unit.selector.get_mmu_status_config()}\n")
-
             if unit.has_encoder():
                 lines.append(f"{UI_CASCADE} Encoder reads {mmu.get_encoder_distance():.1f}mm\n")
 

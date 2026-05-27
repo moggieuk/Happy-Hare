@@ -17,7 +17,7 @@ if BOARD_TYPE_ERB_2
   config PIN_GEAR_STEP
     default "$(MCU_NAME):gpio10" 
   config PIN_GEAR_DIR
-    default "$(MCU_NAME):gpio9" 
+    default "!$(MCU_NAME):gpio9" 
   config PIN_GEAR_ENABLE
     default "!$(MCU_NAME):gpio8"
   config PIN_GEAR_DIAG
