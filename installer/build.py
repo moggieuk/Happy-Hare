@@ -354,10 +354,10 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
         upgrades = Upgrades()
         upgrades.upgrade(hhcfg, major_minor(from_version), major_minor(to_version))
 
-        # Important to update version in case .config is not changed
+        # Important to update version in case .mmu_config is not changed
         hhcfg.set("mmu_machine", "happy_hare_version", to_version)
 
-    # 3.Render cfg template expanding KConfig parameters from read .config
+    # 3.Render cfg template expanding KConfig parameters from read .mmu_config
     buffer = render_template(cfg_file_basename, kcfg, extra_params)
     logging.debug(
         "Rendered template '%s' using Kconfig '%s' with extra_params: %s"
@@ -686,7 +686,7 @@ def split_csv(raw):
     return [part.strip() for part in raw.split(",") if part.strip()]
 
 def unescape_kconfig_string(s):
-    # Matches the escaping style used in .config string values
+    # Matches the escaping style used in .mmu_config string values
     return re.sub(r'\\(.)', r'\1', s)
 
 def to_symbol(name):
@@ -727,12 +727,12 @@ def parse_param_from_config(path, token):
 def discover_names_from_configs(token):
     """
     Reads:
-      - base config (KCONFIG_CONFIG or .config)
+      - base config (KCONFIG_CONFIG or .mmu_config)
       - per-unit configs: KCONFIG_CONFIG_<unit>
 
     using CONFIG_MMU_UNITS to know which unit config files to inspect.
     """
-    base_config = os.environ.get("KCONFIG_CONFIG", ".config")
+    base_config = os.environ.get("KCONFIG_CONFIG", ".mmu_config")
     mmu_units = split_csv(os.environ.get("CONFIG_MMU_UNITS", ""))
 
     seen = set()

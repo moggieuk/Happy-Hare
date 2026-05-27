@@ -302,7 +302,7 @@ class BaseCommand:
         return False
 
     def check_if_not_homed(self, gate=None):
-        if not self.mmu_unit().selector.is_homed:
+        if not self.mmu.mmu_unit().selector.is_homed:
             self.mmu.log_error("Operation not possible. MMU selector is not homed")
             return True
         return False

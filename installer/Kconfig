@@ -6,7 +6,7 @@
 #   CHOICE_X, CHOICE_X_*   Named choice "X" or boolean selection config
 #   UNSELECT_*             Special boolean symbol used to implement forced "unselect"
 #
-# The above list is special is that default values will be stored in the .config but will not
+# The above list is special is that default values will be stored in the .mmu_config but will not
 # force setting on subsequent runs. They therefore remain as modifiable defaults until user explicitly
 # changes them. Also when they are changed from default values menuconfig will mark as
 # "(NOT DEFAULT)" and allow the "r" keystroke to reset back to default value

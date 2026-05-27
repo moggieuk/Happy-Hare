@@ -2,7 +2,9 @@ my_*.cfg
 out/
 out_*/
 *.config
-*.config.*
+*.config_*
+*.mmu_config
+*.mmu_config_*
 __pycache__/
 *.pyc
 .DS_Store
