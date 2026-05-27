@@ -35,7 +35,7 @@ usage() {
     echo "${SPACE} [-a <kiauh_alternate_klipper>] [config_file]" # [-r <repetier_server stub>]"
     echo "${C_OFF}"
     echo "${C_INFO}(no flags for safe re-install / upgrade)${C_OFF}"
-    echo "${C_INFO}[config_file]${C_OFF} is optional, if not specified the default config filename (.config) will be used."
+    echo "${C_INFO}[config_file]${C_OFF} is optional, if not specified the default config filename (.mmu_config) will be used."
     echo "  -i for interactive install"
     echo "  -u or -d for uninstall"
     echo "  -f to just restore klipper/moonraker symlinks (recover after hard klipper update)"
@@ -161,7 +161,7 @@ if [ "$1" ]; then
     KCONFIG_CONFIG="$1"
 fi
 
-export KCONFIG_CONFIG="${KCONFIG_CONFIG-.config}"
+export KCONFIG_CONFIG="${KCONFIG_CONFIG-.mmu_config}"
 export PATH="${SCRIPT_DIR}:${PATH}"
 
 if [ "${F_MENUCONFIG}" ] && [ "${F_UNINSTALL}" ]; then
@@ -174,10 +174,10 @@ if [ "${TESTDIR}" ]; then
     export CONFIG_KLIPPER_CONFIG_HOME="${TESTDIR}/printer_data/config"
     export CONFIG_MOONRAKER_HOME="${TESTDIR}/moonraker"
     export F_NO_SERVICE=y
-    export KCONFIG_CONFIG="${TESTDIR}/.config"
+    export KCONFIG_CONFIG="${TESTDIR}/.mmu_config"
     echo
     echo "${C_WARNING}Running in test mode to simulate without changing real configuration${C_OFF}"
-    echo "${C_WARNING}Forcing flags '-s -c ${CONFIG_KLIPPER_CONFIG_HOME} -k ${CONFIG_KLIPPER_HOME} -c ${CONFIG_MOONRAKER_HOME} ${TESTDIR}/.config' ${C_OFF}"
+    echo "${C_WARNING}Forcing flags '-s -c ${CONFIG_KLIPPER_CONFIG_HOME} -k ${CONFIG_KLIPPER_HOME} -m ${CONFIG_MOONRAKER_HOME} ${TESTDIR}/.mmu_config' ${C_OFF}"
     mkdir -p "${CONFIG_KLIPPER_HOME}/klippy/extras"
     mkdir -p "${CONFIG_KLIPPER_CONFIG_HOME}"
     mkdir -p "${CONFIG_MOONRAKER_HOME}/moonraker/components"
@@ -291,7 +291,7 @@ if [ -r "${KCONFIG_CONFIG}" ] && [ -n "${F_MENUCONFIG:-}" ]; then
 fi
 
 if [ -n "${F_MENUCONFIG:-}" ]; then
-    #shellcheck source=.config
+    #shellcheck source=.mmu_config
     [ -r "${KCONFIG_CONFIG}" ] && . "${KCONFIG_CONFIG}"
 
     if [ -n "${F_MULTI_UNIT:-}" ] || [ -n "${CONFIG_MULTI_UNIT:-}" ]; then
@@ -312,7 +312,7 @@ if [ -n "${F_MENUCONFIG:-}" ]; then
     # Make sure these environment variables are freshly set
     unset CONFIG_MMU_HAS_SENSOR_TOOLHEAD
     unset CONFIG_MMU_HAS_SENSOR_EXTRUDER
-    #shellcheck source=.config
+    #shellcheck source=.mmu_config
     . "${KCONFIG_CONFIG}"
 
     # Now we are sure of having multi-unit names, move the original combined config

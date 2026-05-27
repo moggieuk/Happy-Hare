@@ -6,8 +6,8 @@ UT ?= *                           # For unittests, e.g. make UT=test_build.py te
 
 MAKEFLAGS += --jobs 16            # Parallel build
 
-# By default KCONFIG_CONFIG is '.config', but it can be overridden by the user
-export KCONFIG_CONFIG ?= .config
+# By default KCONFIG_CONFIG is '.mmu_config', but it can be overridden by the user
+export KCONFIG_CONFIG ?= .mmu_config
 
 # Enable output-sync if menuconfig will not trigger. menuconfig.py will crash if output-sync is enabled on certain systems
 ifeq ($(CHECK_OUTPUT_SYNC),)
@@ -230,7 +230,7 @@ $(OUT)/mmu/%.cfg: $(SRC)/config/%.cfg $(hh_configs_to_parse)
 		$(PY) -m installer.build $(V) --build "$<" "$@" "$(KCONFIG_CONFIG)" $(hh_configs_to_parse), \
 	        $(info $(C_INFO)Skipping build of mmu/$*$(C_OFF)))
 
-## Conditional per-unit prerequisite ".config_<unit>" when multi-unit, else to ".config" (and pickles)
+## Conditional per-unit prerequisite ".mmu_config_<unit>" when multi-unit, else to ".mmu_config" (and pickles)
 KCONF_REQS = $(if $(filter y,$(CONFIG_MULTI_UNIT)), \
              $(KCONFIG_CONFIG)_% $(OUT)/$(notdir $(KCONFIG_CONFIG))_%.pickle, \
              $(KCONFIG_CONFIG)   $(OUT)/$(notdir $(KCONFIG_CONFIG)).pickle)
@@ -430,11 +430,11 @@ endif
 
 $(KCONFIG_CONFIG): $(SRC)/installer/Kconfig* $(SRC)/installer/**/Kconfig* 
 # If KCONFIG_CONFIG is outdated or doesn't exist run menuconfig first. If the user doesn't save the config,
-# we will update it with olddefconfig. touch in case .config does not get updated by olddefconfig.py
+# we will update it with olddefconfig. touch in case .mmu_config does not get updated by olddefconfig.py
 # Only if install or menuconfig is not the target (else it will run twice)
 ifeq ($(filter menuconfig uninstall variables paul fix_links,$(MAKECMDGOALS)),)
 	$(Q)$(MAKE) MAKEFLAGS= menuconfig
-	$(Q)$(PY) -m olddefconfig $(SRC)/installer/Kconfig >/dev/null # Always update the .config file in case the user doesn't save it
+	$(Q)$(PY) -m olddefconfig $(SRC)/installer/Kconfig >/dev/null # Always update the .mmu_config file in case the user doesn't save it
 	$(Q)touch $(KCONFIG_CONFIG)
 endif
 
