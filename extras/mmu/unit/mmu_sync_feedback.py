@@ -442,7 +442,7 @@ class MmuSyncFeedback:
         sm = self.mmu.sensor_manager
         has_proportional   = sm.has_sensor(SENSOR_PROPORTIONAL)
         if has_proportional:
-            sensor = sm.sensors.get(SENSOR_PROPORTIONAL)
+            sensor = sm.get_sensor_obj(SENSOR_PROPORTIONAL)
             return sensor.get_status(0).get('value', 0.)
 
         tension_active     = sm.check_sensor(SENSOR_TENSION)

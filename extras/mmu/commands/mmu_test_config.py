@@ -161,7 +161,8 @@ class MmuTestConfigCommand(BaseCommand):
 
         # Fail if user attempted anything invalid
         if unknown:
-            raise gcmd.error("Unknown parameter(s): %s" % ", ".join(unknown))
+            suffix = "\nPerhaps because you didn't specify a unit?" if mmu_unit is None else ""
+            raise gcmd.error("Unknown parameter(s): %s%s" % (", ".join(unknown), suffix))
         if guarded:
             raise gcmd.error("Parameter(s) not available for runtime change: %s" % ", ".join(guarded))
         # Report what changed

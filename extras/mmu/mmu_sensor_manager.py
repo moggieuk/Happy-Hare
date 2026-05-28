@@ -80,6 +80,7 @@ class MmuSensorManager:
                     (mmu_unit.sensors.shared_exit_sensor, SENSOR_SHARED_EXIT),
                     (sf_buffer and mmu_unit.buffer.compression_sensor, SENSOR_COMPRESSION),
                     (sf_buffer and mmu_unit.buffer.tension_sensor, SENSOR_TENSION),
+                    (sf_buffer and mmu_unit.buffer.proportional_sensor, SENSOR_PROPORTIONAL),
                 ])
                 gate_sensors.update(unit_toolhead_sensors)
 
@@ -230,10 +231,19 @@ class MmuSensorManager:
 
 
     def has_sensor(self, sname):
+        """
+        Returns True if sensor is currently in active set and enabled.
+        We use the runout_helper to determine is sensor has been disabled by the user
+        and if so, we want to act as if it isn't configured
+        """
         if sname in self.active_sensors_map:
             return self.active_sensors_map[sname].runout_helper.sensor_enabled
         else:
             return False
+
+
+    def get_sensor_obj(self, sname):
+        return self.active_sensors_map.get(sname)
 
 
     # Note this looks at sensors on non-active gate
