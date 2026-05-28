@@ -45,7 +45,7 @@ class MmuCalibrationParameters(TunableParametersBase):
             self._mmu.mmu_unit().calibrator.update_gear_rd(new)
 
     def _calibrated_encoder_clog_length(self):
-        return self._mmu.mmu_unit().calibrator.get_clog_detection_length()
+        return self._mmu.mmu_unit().calibrator.get_clog_detection_length() # None if not calibrated yet
 
     def _on_calibrated_encoder_clog_length(self, old, new):
         if new != old:

@@ -284,7 +284,7 @@ class MmuCalibrator:
 
 
     def calc_clog_detection_length(self, bowden_length):
-        cal_min = round((bowden_length * 2) / 100., 1) # 2% of bowden length seems to be good starting point
+        cal_min = round(bowden_length * 0.02, 1) # 2% of bowden length seems to be good starting point
         return max(cal_min, 8.)                        # Never less than 8mm
 
 

@@ -1236,7 +1236,7 @@ class MmuController(MmuFilamentMovement):
         if self.has_encoder():
             mode = self.mmu_unit().sync_feedback.p.flowguard_encoder_mode
             if mode == ENCODER_RUNOUT_AUTOMATIC:
-                cdl = self.encoder().get_clog_detection_length()
+                cdl = self.encoder().get_clog_detection_length() # Never None
                 self.mmu_unit().calibrator.update_clog_detection_length(round(cdl, 1))
 
         self.var_manager.write()

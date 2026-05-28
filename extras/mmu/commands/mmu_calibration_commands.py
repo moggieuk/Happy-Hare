@@ -446,7 +446,7 @@ class MmuCalibrateBowdenCommand(CalibrationMixin, BaseCommand):
                     if save:
                         calibrator.update_bowden_length(length, console_msg=True)
                         if cdl is not None:
-                            calibrator.update_clog_detection_length(length, push=True)
+                            calibrator.update_clog_detection_length(cdl, push=True)
 
         except MmuError as ee:
             mmu.handle_mmu_error(str(ee))

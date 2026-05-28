@@ -135,6 +135,14 @@ hh_configs_to_parse := \
 	$(subst $(KLIPPER_CONFIG_HOME),$(IN),$(wildcard $(KLIPPER_CONFIG_HOME)/mmu/base/*.cfg \
 		$(KLIPPER_CONFIG_HOME)/mmu/addons/*.cfg))
 
+# Set of config files (one if single unit, else n + 1)
+kconfig_files := $(KCONFIG_CONFIG) \
+	$(if $(filter y,$(CONFIG_MULTI_UNIT)), \
+		$(addprefix $(KCONFIG_CONFIG)_,$(unit_names)))
+
+kconfig_stage_files := \
+	$(addprefix $(OUT)/,$(notdir $(kconfig_files)))
+
 # Files/targets that need to be build
 build_targets := \
 	$(addprefix $(OUT)/mmu/, $(hh_config_files)) \
@@ -255,6 +263,9 @@ $(OUT)/klippy/extras/%.py: $(SRC)/extras/%.py
 $(OUT)/moonraker/components/%.py: $(SRC)/components/%.py
 	$(Q)$(call link,$<,$@)
 
+$(OUT)/%: %
+	$(Q)cp -p "$<" "$@"
+
 $(OUT):
 	$(Q)mkdir -p "$@"
 
@@ -319,7 +330,12 @@ $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu): $(addprefix $(OUT)/mmu/, $(hh_co
 
 $(install_targets): build | python_deps
 
-install: $(install_targets)
+install: $(install_targets) $(kconfig_stage_files)
+	@# Backup current kconfig files in the klipper config directory
+	$(Q)for f in $(kconfig_stage_files); do \
+		[ -f "$$f" ] && $(SUDO)cp -p "$$f" "$(KLIPPER_CONFIG_HOME)/mmu/$$(basename "$$f")"; \
+	done
+	@# We are done. Restart everything
 	$(Q)$(call restart_service,$(restart_moonraker),Moonraker,$(CONFIG_SERVICE_MOONRAKER))
 	$(Q)$(call restart_service,$(restart_klipper),Klipper,$(CONFIG_SERVICE_KLIPPER))
 	$(Q)$(PY) -m installer.build $(V) --print-happy-hare "Done! Happy Hare $(CONFIG_F_VERSION)is ready!"
@@ -409,6 +425,7 @@ variables:
 	@echo "$(C_NOTICE)hh_unit_config_files     =$(C_INFO) $(hh_unit_config_files)$(C_OFF)"
 	@echo "$(C_NOTICE)hh_config_files          =$(C_INFO) $(hh_config_files)$(C_OFF)"
 	@echo "$(C_NOTICE)hh_configs_to_parse      =$(C_INFO) $(hh_configs_to_parse)$(C_OFF)"
+	@echo "$(C_NOTICE)kconfig_files            =$(C_INFO) $(kconfig_files)$(C_OFF)"
 	@echo "$(C_NOTICE)build_targets     ..out/ =$(C_INFO) $(call strip_prefix,$(OUT)/,$(build_targets))$(C_OFF)"
 	@echo "$(C_NOTICE)processed_targets ..out/ =$(C_INFO) $(call strip_prefix,$(OUT)/,$(processed_targets))$(C_OFF)"
 	@echo "$(C_NOTICE)install_targets          =$(C_INFO) $(install_targets)$(C_OFF)"

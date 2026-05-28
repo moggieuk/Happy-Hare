@@ -349,4 +349,17 @@ fi
 ##### Install / Upgrade #####
 #############################
 
-time_elapsed make --no-print-directory -C "${SCRIPT_DIR}" install
+# Preserve multi-unit mode for non-interactive installs/upgrades
+if [ -r "${KCONFIG_CONFIG}" ] &&
+   grep -q '^CONFIG_MULTI_UNIT=y$' "${KCONFIG_CONFIG}"; then
+    export CONFIG_MULTI_UNIT=y
+fi
+
+time_elapsed sh -ec '
+    make --no-print-directory -C "'"${SCRIPT_DIR}"'" install
+
+    # Clean up the 'out' staging directory -- not necessary but cleaner for user
+    if [ -z "'"${TESTDIR}"'" ]; then
+        make --no-print-directory -C "'"${SCRIPT_DIR}"'" clean
+    fi
+'
