@@ -96,13 +96,6 @@ if BOARD_TYPE_KMS_1_0
   config PIN_SHARED_EXIT_SENSOR
     default "$(MCU_NAME):PC0"
 
-  if OPTION_KMS_BUFFER
-    config PIN_SYNC_FEEDBACK_TENSION
-      default "!$(MCU_NAME)_buffer:PA1"
-    config PIN_SYNC_FEEDBACK_COMPRESSION
-      default "!$(MCU_NAME)_buffer:PA0"
-  endif
-
   config PARAM_MISC_HARDWARE
     default "$(ml,\
 [temperature_sensor $(UNIT_NAME)_environment]\n\
@@ -139,5 +132,16 @@ check_gain_time: 600\n\
 hysteresis: 10\n\
 heating_gain: 1\n\
 )"
+
+# -------------------------------------
+# Buffer
+# -------------------------------------
+
+  if OPTION_KMS_BUFFER
+    config PIN_SYNC_FEEDBACK_TENSION
+      default "!$(MCU_NAME)_buffer:PA1"
+    config PIN_SYNC_FEEDBACK_COMPRESSION
+      default "!$(MCU_NAME)_buffer:PA0"
+  endif
 
 endif

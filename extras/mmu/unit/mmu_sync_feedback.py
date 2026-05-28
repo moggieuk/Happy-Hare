@@ -395,7 +395,7 @@ class MmuSyncFeedback:
         and debugging purposes so instantiate it here with current config
         Returns: the SyncController object
         """
-        rd_start = self.mmu_unit.calibrator.get_gear_rd()
+        rd_start = self.mmu_unit.calibrator.get_gear_rd(self.mmu_unit.first_gate) # Any RD is ok for startup
         cfg = SyncControllerConfig(
             log_sync = bool(self.p.sync_feedback_debug_log),
             buffer_range_mm = self.p.sync_feedback_buffer_range,

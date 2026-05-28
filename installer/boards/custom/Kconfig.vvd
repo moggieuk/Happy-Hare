@@ -19,13 +19,13 @@ if BOARD_TYPE_VVD_1_0
   endchoice
 
   config PIN_SELECTOR_UART
-    default "$(MCU_NAME):PB3" 
+    default "$(MCU_NAME):PB3"
   config PIN_SELECTOR_STEP
-    default "$(MCU_NAME):PD3" 
+    default "$(MCU_NAME):PD3"
   config PIN_SELECTOR_DIR
-    default "$(MCU_NAME):PD2" 
+    default "$(MCU_NAME):PD2"
   config PIN_SELECTOR_ENABLE
-    default "!$(MCU_NAME):PB4" 
+    default "!$(MCU_NAME):PB4"
 
   config PIN_GATE_ENDSTOP_0
     default "!$(MCU_NAME):PD0"
@@ -36,39 +36,23 @@ if BOARD_TYPE_VVD_1_0
   config PIN_GATE_ENDSTOP_3
     default "!$(MCU_NAME):PC13"
 
-  config PIN_GEAR_UART 
+  config PIN_GEAR_UART
     default "$(MCU_NAME):PB7"
   config PIN_GEAR_STEP
-    default "$(MCU_NAME):PB6" 
+    default "$(MCU_NAME):PB6"
   config PIN_GEAR_DIR
-    default "$(MCU_NAME):PB5" 
+    default "$(MCU_NAME):PB5"
   config PIN_GEAR_ENABLE
-    default "!$(MCU_NAME):PB8" 
+    default "!$(MCU_NAME):PB8"
 
   config PIN_ENTRY_SENSOR_0
-    default "$(MCU_NAME):PA0" 
+    default "$(MCU_NAME):PA0"
   config PIN_ENTRY_SENSOR_1
-    default "$(MCU_NAME):PA1" 
+    default "$(MCU_NAME):PA1"
   config PIN_ENTRY_SENSOR_2
-    default "$(MCU_NAME):PA2" 
+    default "$(MCU_NAME):PA2"
   config PIN_ENTRY_SENSOR_3
-    default "$(MCU_NAME):PA3" 
-
-  if OPTION_VVD_BUFFER
-    config PIN_EXIT_SENSOR_0
-      default "$(MCU_NAME)_buffer:PA0" 
-    config PIN_EXIT_SENSOR_1
-      default "$(MCU_NAME)_buffer:PA1" 
-    config PIN_EXIT_SENSOR_2
-      default "$(MCU_NAME)_buffer:PA2" 
-    config PIN_EXIT_SENSOR_3
-      default "$(MCU_NAME)_buffer:PA3" 
-
-    config PIN_SYNC_FEEDBACK_TENSION
-      default "$(MCU_NAME)_buffer:PA4"
-    config PIN_SYNC_FEEDBACK_COMPRESSION
-      default "$(MCU_NAME)_buffer:PA5"
-  endif
+    default "$(MCU_NAME):PA3"
 
   config CUSTOM_LED_SETUP
     def_bool y
@@ -134,5 +118,26 @@ sensor_pin: $(MCU_NAME):PA4\n\
 sensor_type: Generic 3950\n\
 pullup_resistor: 2200\n\
 )"
+
+
+# -------------------------------------
+# Buffer
+# -------------------------------------
+
+  if OPTION_VVD_BUFFER
+    config PIN_EXIT_SENSOR_0
+      default "$(MCU_NAME)_buffer:PA0"
+    config PIN_EXIT_SENSOR_1
+      default "$(MCU_NAME)_buffer:PA1"
+    config PIN_EXIT_SENSOR_2
+      default "$(MCU_NAME)_buffer:PA2"
+    config PIN_EXIT_SENSOR_3
+      default "$(MCU_NAME)_buffer:PA3"
+
+    config PIN_SYNC_FEEDBACK_TENSION
+      default "$(MCU_NAME)_buffer:PA4"
+    config PIN_SYNC_FEEDBACK_COMPRESSION
+      default "$(MCU_NAME)_buffer:PA5"
+  endif
 
 endif

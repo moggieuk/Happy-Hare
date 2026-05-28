@@ -284,8 +284,9 @@ class MmuGenericRail:
         if name == "default":
             raise self.config.error("Extra endstop may not use reserved name 'default'")
 
-        if self.has_endstop(name):
-            raise self.config.error("Extra endstop '%s' defined more than once" % (name))
+# PAUL temp disable. Added conditional add later..
+#        if self.has_endstop(name):
+#            raise self.config.error("Extra endstop '%s' defined more than once" % (name))
 
         is_default_alias = (pin == "default")
         is_virtual = (not is_default_alias and 'virtual_endstop' in pin)
@@ -310,7 +311,8 @@ class MmuGenericRail:
                 mcu_endstop = self.lookup_endstop(pin, name, register=False)
             MmuGenericRail.record_mcu_endstop(mcu_endstop, name)
 
-        self.extra_endstops.append((mcu_endstop, name))
+        if (mcu_endstop, name) not in self.extra_endstops:
+            self.extra_endstops.append((mcu_endstop, name))
 
         if bind_steppers:
             try:

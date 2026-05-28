@@ -511,10 +511,9 @@ class MmuUnit:
 
             if (mcu_endstop is not None and simple_sensor_name in EXTRUDER_EXTRA_ENDSTOPS):
                 logging.info(f"PAUL: TRYING TO: Created endstop on stepper {self.extruder_name()} for {self.name} using {sensor_name}. simple_sensor_name={simple_sensor_name}")
-# PAUL TODO will this work with multiple gear steppers?
-#                ext.rail.add_extra_endstop("", sensor_name, register=False, mcu_endstop=mcu_endstop)
-#
-#                logging.info(f"MMU: Created endstop on stepper {self.extruder_name()} for {self.name} using {sensor_name}")
+                ext.rail.add_extra_endstop("", sensor_name, register=False, mcu_endstop=mcu_endstop)
+
+                logging.info(f"MMU: Created endstop on stepper {self.extruder_name()} for {self.name} using {sensor_name}")
 
 
         # Event handlers
