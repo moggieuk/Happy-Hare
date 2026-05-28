@@ -14,14 +14,9 @@ menu "Raw Settings"
   if !MULTI_UNIT_ENTRY_POINT
     source "Kconfig.extruder"
     source "Kconfig.num_gates"
-    source "Kconfig.capabilities"
   endif
 
   source "Kconfig.speeds"
-
-  if !MULTI_UNIT
-    source "Kconfig.toolhead"
-  endif
 
   if !MULTI_UNIT_ENTRY_POINT
     source "Kconfig.gear_stepper"

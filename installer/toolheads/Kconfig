@@ -49,4 +49,5 @@ choice TOOLHEAD_TYPE
     config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
       default "2"
   endif
+
 endchoice

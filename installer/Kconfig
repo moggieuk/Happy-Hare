@@ -161,7 +161,7 @@ if MULTI_UNIT_ENTRY_POINT
 
   comment "Shared System Options"
   source "toolheads/Kconfig"        # Toolhead Selection menu
-  source "Kconfig.toolhead"
+  source "Kconfig.toolhead"       # Toolhead Sensors/Settings
   source "addons/Kconfig"           # Addon Macro Features
   source "Kconfig.options"          # Main software options
   source "Kconfig.speeds"           # Access to extruder speeds
@@ -169,10 +169,7 @@ if MULTI_UNIT_ENTRY_POINT
   # Thesee are duplicated settings that are excluded from units when MULTI_UNIT
   menu "Printer sensors / pins"
     help
-      Printer toolhead capabilities
-      Here you can configure printer toolhead options such as fitted sensors
-    source "sensors/Kconfig.extruder"
-    source "sensors/Kconfig.toolhead"
+      Here you can configure printer options such as additional gantry servo
 
     config PIN_GANTRY_SERVO
       string "Gantry servo pin"
@@ -194,6 +191,7 @@ if !MULTI_UNIT_ENTRY_POINT
   source "connection/Kconfig"       # MCU Connection
   if !MULTI_UNIT
     source "toolheads/Kconfig"      # Toolhead Selection menu
+    source "Kconfig.toolhead"       # Toolhead Sensors/Settings
     source "addons/Kconfig"         # Addon Macro Features
     source "Kconfig.options"        # Main software options
   endif

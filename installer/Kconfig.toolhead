@@ -1,4 +1,4 @@
-# Type setting and raw modification of toolhead dimensional parameters:
+# Type setting and raw modification of toolhead dimensional parameters and toolhead sensors:
 #
 # Although a toolhead can be unique to each mmu unit this installer currently
 # assumes a single one is configured, named "default" in the mmu.cfg
@@ -8,16 +8,51 @@
 #   PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
 #   PARAM_TOOLHEAD_RESIDUAL_FILAMENT
 
-menu "Toolhead dimensions and calibration"
+menu "Toolhead sensors/settings"
   help
-    These settings are based on the physical dimensions of your toolhead and some physical
-    properties like how much filament remains in the extruder after unload. They are used
-    to ensure exact toolhead filament loading without excessive oozing.
-    Note: If you have a toolhead sensor you can automate the calculation of these parameters! Read about the
-    'MMU_CALIBRATE_TOOLHEAD' command (see Happy Hare wiki)
+    Configure toolhead sensors and physical dimensions of your toolhead.
 
-  config PARAM_TOOLHEAD
-    default "default"
+    Also configure some properties like how much filament remains in the extruder after unload.
+    They are used to ensure exact toolhead filament loading without excessive oozing.
+    Note: If you have a toolhead sensor you can automate the calculation of these parameters!
+    Read about the 'MMU_CALIBRATE_TOOLHEAD' command (see Happy Hare wiki)
+
+# -------------------------------------
+# Toolhead sensors
+# -------------------------------------
+
+  config MMU_HAS_SENSOR_TOOLHEAD
+    bool "Has toolhead sensor?"
+    help
+      Select if you have a filament sensor inside of your toolhead after
+      the extruder drive. This is normally connected to a pin on your main
+      printer MCU so specify it here.
+
+  config PIN_TOOLHEAD_SENSOR
+    prompt "Extruder sensor pin"
+    depends on MMU_HAS_SENSOR_TOOLHEAD
+    help
+      Can also be set under "Pins" section
+
+  config MMU_HAS_SENSOR_EXTRUDER
+    bool "Has extruder (entry) sensor?"
+    help
+      Select if you have a filament sensor at or just prior to
+      the extruder entry. This is normally connected to a pin on your main
+      printer MCU so specify it here.
+  
+  config PIN_EXTRUDER_SENSOR
+    prompt "Extruder sensor pin"
+    depends on MMU_HAS_SENSOR_EXTRUDER
+    help
+      Can also be set under "Pins" section
+
+
+# -------------------------------------
+# Toolhead dimensions
+# -------------------------------------
+
+  comment "Toolhead dimensions"
 
   config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
     string "Extruder entrance to nozzle"
@@ -55,4 +90,5 @@ menu "Toolhead dimensions and calibration"
 #      If gaps and already at 0 then perhaps the 'toolhead_extruder_to_nozzle' or 'toolhead_residual_filament'
 #      settings are incorrect. Similarly a value >+5mm also suggests the four settings above are not correct.
 #      Recommend starting with 0
+
 endmenu
