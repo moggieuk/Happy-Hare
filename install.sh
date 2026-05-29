@@ -12,7 +12,7 @@
 set -e
 
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
-source ~/klippy-env/bin/activate
+. ~/klippy-env/bin/activate
 
 # Get current HH version from the mmu_constants.py file
 export HH_VERSION=$(sed -n 's/^VERSION = "\(.*\)".*/\1/p' "$SCRIPT_DIR/extras/mmu/mmu_constants.py")
