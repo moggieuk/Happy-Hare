@@ -55,40 +55,42 @@ class MmuEjectCommand(UnloadEjectMixin, BaseCommand):
         mmu = self.mmu
 
         if self.check_if_disabled(): return
+        if self.check_if_printing(): return
 
         current_gate = mmu.gate_selected
-        mmu_unit = mmu.mmu_unit()
+        active_unit = mmu.mmu_unit()
 
-        # Special hidden use case for eject buttons where logical gate is not known
-        lgate = gcmd.get_int('LGATE', None, minval=0, maxval=mmu_unit.num_gates - 1)
+        # Special hidden use case for eject buttons where only local gate is known
+        lgate = gcmd.get_int('LGATE', None)
         if lgate is not None:
             eject_unit = self.get_unit(gcmd, mode="optional")
             if eject_unit is None:
                 raise gcmd.error("UNIT parameter is required with LGATE")
-            gate = eject_unit.logical_gate(lgate)
+            lgate = gcmd.get_int('LGATE', 0, minval=0, maxval=eject_unit.num_gates - 1)
+            gate = eject_unit.logical_gate(lgate) # Convert to global logical gate index
 
         else:
             gate = gcmd.get_int('GATE', current_gate, minval=0, maxval=mmu.num_gates - 1)
             eject_unit = mmu.mmu_unit(gate)
 
-        filament_pos = mmu.filament_pos
-        force = bool(gcmd.get_int('FORCE', 0, minval=0, maxval=1))
-
-        if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[gate]): return
+        if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[gate], mmu_unit=eject_unit): return
         mmu.fix_started_state()
 
+        filament_pos = mmu.filament_pos
+        force = bool(gcmd.get_int('FORCE', 0, minval=0, maxval=1))
+        in_bypass = (mmu.gate_selected == TOOL_GATE_BYPASS)
+        extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0)) or in_bypass
+
         can_crossload = (
-            mmu.mmu_unit().can_crossload or
-            eject_unit != mmu.mmu_unit()
+            eject_unit is not active_unit or
+            active_unit.can_crossload
         )
 
         # Does being loaded prevent the eject?
-        if not can_crossload and gate != mmu.gate_selected:
+        if not can_crossload and gate != current_gate:
             if self.check_if_loaded(): return
 
         # Determine if we can fully eject_from_gate
-        in_bypass = (mmu.gate_selected == TOOL_GATE_BYPASS)
-        extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0)) or in_bypass
         can_eject_from_gate = (
             not extruder_only
             and not (
@@ -106,6 +108,9 @@ class MmuEjectCommand(UnloadEjectMixin, BaseCommand):
         if not can_eject_from_gate and filament_pos == FILAMENT_POS_UNLOADED:
             mmu.log_always("Filament not loaded")
             return
+
+#        mmu.log_error("PAUL: command would run") # PAUL
+#        return # PAUL
 
         try:
             with mmu.wrap_sync_gear_to_extruder():

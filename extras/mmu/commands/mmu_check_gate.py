@@ -63,11 +63,21 @@ class MmuCheckGateCommand(BaseCommand):
         tool = gcmd.get_int('TOOL', -1, minval=0, maxval=mmu.num_gates - 1)
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=mmu.num_gates - 1)
         all_gates = gcmd.get_int('ALL', 0, minval=0, maxval=1)
-        if self.check_if_not_calibrated(
-            CALIBRATED_ESSENTIAL,
-            check_gates=None if gate == -1 else [gate],
-        ):
-            return  # TODO: Incomplete/simplified gate selection
+
+        # Gross simplification of calibration check - all units must have essential
+        # calibration unless called for a specific gate
+        units = (
+            [mmu.mmu_unit(gate)]
+            if gate >= 0
+            else mmu.mmu_machine.units
+        )
+        for u in units:
+            if self.check_if_not_calibrated(
+                CALIBRATED_ESSENTIAL,
+                check_gates=[gate] if gate >= 0 else None,
+                mmu_unit=u,
+            ):
+                return
 
         try:
             with mmu.wrap_sync_gear_to_extruder():
@@ -78,7 +88,7 @@ class MmuCheckGateCommand(BaseCommand):
                             filament_pos = mmu.filament_pos
                             gates_tools = []
                             if gate >= 0:
-                                # Individual gate
+                                # Individual gate (priority)
                                 gates_tools.append([gate, -1])
                             elif tool >= 0:
                                 # Individual tool

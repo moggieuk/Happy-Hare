@@ -48,7 +48,7 @@ class MmuSelectBypassCommand(BaseCommand):
 
         if self.check_if_disabled(): return
         if self.check_if_loaded(): return
-        if self.check_if_not_calibrated(CALIBRATED_SELECTOR): return
+        if self.check_if_not_calibrated(CALIBRATED_SELECTOR, mmu_unit=mmu.mmu_machine.unit_with_bypass): return
         mmu.fix_started_state()
 
         try:

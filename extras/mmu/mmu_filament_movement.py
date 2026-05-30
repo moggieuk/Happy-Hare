@@ -127,7 +127,8 @@ class MmuFilamentMovement:
             else:
                 raise MmuError("Filament did not exit gate homing sensor: %s" % endstop_name)
 
-        if u.p.gate_final_eject_distance > 0:
+        final_move = abs(u.p.gate_final_eject_distance)
+        if final_move > 0:
             self.selector().filament_drive()
 
             msg = "Ejecting filament out of gate"
@@ -136,6 +137,8 @@ class MmuFilamentMovement:
                 self.move_filament(msg, -u.p.gate_final_eject_distance, motor="gear", homing_move=-1, endstop_name=SENSOR_ENTRY_PREFIX, wait=True)
             else:
                 self.move_filament(msg, -u.p.gate_final_eject_distance, wait=True)
+        else:
+            self.log_trace("No final eject, gate_final_eject_distance is 0")
 
         self.gate_maps.set_gate_status(gate, GATE_EMPTY)
         self.log_always("The filament in gate %d can be removed" % gate)
@@ -1868,14 +1871,13 @@ class MmuFilamentMovement:
                     self.movequeue_wait()
 
             except self.printer.command_error as e:
-                self.log_error("Stepper move failed: %s" % str(e))
                 if homing_move != 0:
+                    self.log_stepper("Did not complete homing move: %s" % str(e))
                     try:
                         actual = drive.get_filament_position() - start_pos
                     except Exception:
                         actual = 0.
                     homed = False
-                    # preserve old behavior of returning measured data rather than re-raising
                 else:
                     return null_rtn
 

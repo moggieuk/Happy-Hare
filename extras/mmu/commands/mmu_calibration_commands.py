@@ -274,7 +274,8 @@ class MmuCalibrateGateCommand(CalibrationMixin, BaseCommand):
 
         if self.check_if_not_calibrated(
             CALIBRATED_ENCODER | CALIBRATED_SELECTOR,
-            check_gates=gate_range
+            check_gates=gate_range,
+            mmu_unit=mmu_unit
         ): return
 
         if reset:

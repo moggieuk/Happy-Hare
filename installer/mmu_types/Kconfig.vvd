@@ -79,6 +79,8 @@ if MMU_TYPE_VVD_1_0
     default "10"
   config PARAM_GATE_HOMING_MAX
     default "500"
+  config PARAM_GATE_FINAL_EJECT_DISTANCE
+    default "300"
   
   config PARAM_CHAIN_COUNT
     default 28   
