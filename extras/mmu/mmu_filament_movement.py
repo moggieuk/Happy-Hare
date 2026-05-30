@@ -652,9 +652,9 @@ class MmuFilamentMovement:
                     actual, _, measured, _ = self.move_filament("Aligning filament to extruder gear", u.toolhead_wrapper.p.toolhead_entry_to_extruder, motor="gear")
                     homing_movement += actual
 
-                elif u.p.extruder_homing_endstop == SENSOR_COMPRESSION:
+                elif u.has_buffer() and u.p.extruder_homing_endstop == SENSOR_COMPRESSION:
                     # Estimate the midpoint of buffer for accurate bowden length determination
-                    homing_movement -= (u.sync_feedback.p.sync_feedback_buffer_range / 2.)
+                    homing_movement -= (u.buffer.buffer_range / 2.)
 
         if not homed:
             self.set_filament_pos_state(FILAMENT_POS_END_BOWDEN)

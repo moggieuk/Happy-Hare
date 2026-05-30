@@ -33,9 +33,9 @@
 #   MMU_HAS_SENSOR_EXIT
 #   MMU_HAS_SENSOR_GEAR_TOUCH
 #   MMU_HAS_SENSOR_SHARED_EXIT
-#   MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION
-#   MMU_HAS_SENSOR_SYNC_FEEDBACK_PROPORTIONAL
-#   MMU_HAS_SENSOR_SYNC_FEEDBACK_TENSION
+#   MMU_HAS_SENSOR_BUFFER_COMPRESSION
+#   MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
+#   MMU_HAS_SENSOR_BUFFER_TENSION
 #   MMU_HAS_SYNC_FEEDBACK_BUFFER
 #
 # These will only be in shared config on multi-unit because they are on printer and not per-unit
@@ -183,10 +183,10 @@ endif
 
 if !MULTI_UNIT_ENTRY_POINT
   source "mmu_types/Kconfig"        # Base MMU type menu
+  source "boards/Kconfig"           # MCU Selection menu
   if !SHOW_MMU_ADDITIONS_WITH_TYPE
     source "Kconfig.mmu_additions"  # MMU Additions/Customization menu (if not inlined with mmu type)
   endif
-  source "boards/Kconfig"           # MCU Selection menu
   source "Kconfig.pins"             # Raw pin editing
   source "connection/Kconfig"       # MCU Connection
   if !MULTI_UNIT

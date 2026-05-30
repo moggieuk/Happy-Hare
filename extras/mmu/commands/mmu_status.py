@@ -198,8 +198,8 @@ class MmuStatusCommand(BaseCommand):
 
                 if mmu_unit.p.extruder_homing_endstop == SENSOR_EXTRUDER_ENTRY:
                     lines.append(f" and then moving {self._f_calc('toolhead_entry_to_extruder')}")
-                elif mmu_unit.p.extruder_homing_endstop == SENSOR_COMPRESSION:
-                    lines.append(f" and then moving -{self._f_calc('sync_feedback_buffer_range / 2')} to center sync-feedback buffer")
+                elif mmu_unit.has_buffer() and mmu_unit.p.extruder_homing_endstop == SENSOR_COMPRESSION:
+                    lines.append(f" and then moving -{self._f_calc('buffer_range / 2')} to center sync-feedback buffer")
             else:
 
                 if mmu.sensor_manager.has_sensor(SENSOR_TOOLHEAD):
@@ -270,7 +270,8 @@ class MmuStatusCommand(BaseCommand):
                 )
 
             elif (
-                mmu_unit.p.toolhead_post_load_tension_adjust
+                mmu_unit.has_buffer()
+                and mmu_unit.p.toolhead_post_load_tension_adjust
                 and (
                     mmu_unit.p.sync_to_extruder
                     or mmu_unit.p.sync_purge
@@ -280,7 +281,7 @@ class MmuStatusCommand(BaseCommand):
             ):
                 lines.append(
                     "\n- Filament in bowden will be adjusted a maximum of "
-                    f"{(mmu_unit.p.sync_feedback_buffer_range or mmu_unit.p.sync_feedback_buffer_maxrange):.1f}mm "
+                    f"{(mmu_unit.buffer.buffer_range or mmu_unit.buffer.buffer_maxrange):.1f}mm "
                     "to neutralize tension"
                 )
 

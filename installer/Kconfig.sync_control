@@ -9,8 +9,8 @@
 #   PARAM_EXTRUDER_PURGE_CURRENT
 #
 #   PARAM_SYNC_FEEDBACK_ENABLED
-#   PARAM_SYNC_FEEDBACK_BUFFER_RANGE
-#   PARAM_SYNC_FEEDBACK_BUFFER_MAXRANGE
+#   PARAM_BUFFER_RANGE
+#   PARAM_BUFFER_MAXRANGE
 
 menu "MMU/Extruder sync"
   help
@@ -33,7 +33,7 @@ menu "MMU/Extruder sync"
       default 1 if BOOL_ENABLE_SYNC_FEEDBACK
       default 0
 
-    config PARAM_SYNC_FEEDBACK_BUFFER_RANGE
+    config PARAM_BUFFER_RANGE
       string "Sync feedback buffer sensor range"
       default "10"
       help
@@ -45,7 +45,7 @@ menu "MMU/Extruder sync"
              ^          ^                  ^                                     ^                       ^^
         compression   tension        compression-only                      tension-only
 
-    config PARAM_SYNC_FEEDBACK_BUFFER_MAXRANGE
+    config PARAM_BUFFER_MAXRANGE
       string "Sync feedback buffer max range   "
       default "12"
       help

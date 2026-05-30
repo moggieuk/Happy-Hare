@@ -429,22 +429,22 @@ menu "Pins / TMC"
 # Sync-Feedback Buffer
 # -------------------------------------
 
-  config PIN_SYNC_FEEDBACK_TENSION
+  config PIN_BUFFER_TENSION
     string
-  config PIN_SYNC_FEEDBACK_COMPRESSION
+  config PIN_BUFFER_COMPRESSION
     string
-  config PIN_SYNC_FEEDBACK_ANALOG
+  config PIN_BUFFER_ANALOG
     string
 
   menu "Sync-feedback Buffer"
     depends on MMU_HAS_SYNC_FEEDBACK_BUFFER && !MMU_SHARED_SYNC_FEEDBACK_BUFFER
 
-    config PIN_SYNC_FEEDBACK_TENSION
-      prompt "Sync feedback tension pin    " if MMU_HAS_SENSOR_SYNC_FEEDBACK_TENSION
-    config PIN_SYNC_FEEDBACK_COMPRESSION
-      prompt "Sync feedback compression pin" if MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION
-    config PIN_SYNC_FEEDBACK_ANALOG
-      prompt "Proportional (analog) pin    " if MMU_HAS_SENSOR_SYNC_FEEDBACK_PROPORTIONAL
+    config PIN_BUFFER_TENSION
+      prompt "Sync feedback tension pin    " if MMU_HAS_SENSOR_BUFFER_TENSION
+    config PIN_BUFFER_COMPRESSION
+      prompt "Sync feedback compression pin" if MMU_HAS_SENSOR_BUFFER_COMPRESSION
+    config PIN_BUFFER_ANALOG
+      prompt "Proportional (analog) pin    " if MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
   endmenu
 
 

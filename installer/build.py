@@ -390,9 +390,13 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
     if refresh_mode == 'refresh':
         # Default choice (always used when menuconfig UI is not run)
         # Here we use the refreshed cfg templates as a starting point but
-        # replace every matching parameter with existing value.
+        # then replace every matching parameter with existing value.
         # Unused options will be reported.
         filtered_params = [] # Don't filter out any existing params in HHConfig
+
+    elif refresh_mode == 'replace':
+        # Here we (re)create prestine cfg files based on kconfig settings
+        pass
 
     elif refresh_mode == 'merge':
         # Experimental. Here we selectively ignore simple PARAM_ parameter settings
@@ -403,9 +407,6 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
             if k.lower().startswith("param_")
         ]
         logging.debug("The following parameters are being filtered: %s" % ", ".join(filtered_params))
-
-    elif refresh_mode == 'replace':
-        pass
 
     else:
         logging.error("Invalid F_CFG_UPGRADE_MODE '%s'" % refresh_mode)

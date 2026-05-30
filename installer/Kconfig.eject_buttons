@@ -1,0 +1,17 @@
+# Responsible for setting:
+#   MMU_HAS_EJECT_BUTTONS
+
+config UNSELECT_MMU_HAS_EJECT_BUTTONS
+  def_bool n
+config MMU_HAS_EJECT_BUTTONS
+  prompt "Has eject buttons?"
+  depends on !UNSELECT_MMU_HAS_EJECT_BUTTONS
+  forceshow
+  default n
+  help
+    Some MMU designs have dedicated eject buttons. Select this
+    option to allow pin editing and inclusion in config template
+
+if MMU_HAS_EJECT_BUTTONS
+  comment 'Pins must be set under "Pins" section'
+endif

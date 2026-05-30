@@ -4,11 +4,15 @@
 #   PARAM_ENVIRONMENT_SENSOR (if MMU_HAS_ENVIRONMENT_SENSOR)
 #   PARAM_ENVIRONMENT_SENSORS (if MMU_HAS_ENVIRONMENT_SENSOR)
 
+config UNSELECT_MMU_HAS_ENVIRONMENT_SENSOR
+  def_bool n
 config MMU_HAS_ENVIRONMENT_SENSOR
+  prompt "Has environment sensor(s)?"
+  depends on !UNSELECT_MMU_HAS_ENVIRONMENT_SENSOR
+  forceshow
+  default n
   help
     Select if the MMU has a humidity/temperature sensor in the filament storate enclosure
-  prompt "Has environment sensor(s)?"
-  forceshow
 
 
 if MMU_HAS_ENVIRONMENT_SENSOR

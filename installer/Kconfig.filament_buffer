@@ -1,0 +1,14 @@
+# Responsible for setting:
+#   MMU_HAS_FILAMENT_BUFFER
+
+config UNSELECT_MMU_HAS_FILAMENT_BUFFER
+  def_bool n
+config MMU_HAS_FILAMENT_BUFFER
+  bool "Has filament buffer to catch loose filament?"
+  depends on !UNSELECT_MMU_HAS_FILAMENT_BUFFER
+  forceshow
+  default n
+  help
+    Does MMU have a buffer to catch the uncoiled filament on unload. Note
+    that a passive rewinder like Filamentalist is not a filament buffer
+    because it alleviates the need for one!

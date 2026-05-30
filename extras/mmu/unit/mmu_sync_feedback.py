@@ -398,8 +398,8 @@ class MmuSyncFeedback:
         rd_start = self.mmu_unit.calibrator.get_gear_rd(self.mmu_unit.first_gate) # Any RD is ok for startup
         cfg = SyncControllerConfig(
             log_sync = bool(self.p.sync_feedback_debug_log),
-            buffer_range_mm = self.p.sync_feedback_buffer_range,
-            buffer_max_range_mm = self.p.sync_feedback_buffer_maxrange,
+            buffer_range_mm = self.mmu_unit.buffer.buffer_range,
+            buffer_max_range_mm = self.mmu_unit.buffer.buffer_maxrange,
             sensor_type = self._get_sensor_type(),
             use_twolevel_for_type_p = self.p.sync_feedback_force_twolevel,
             rd_start = rd_start,
@@ -502,13 +502,13 @@ class MmuSyncFeedback:
         speed = min(self.mmu_unit.p.gear_homing_speed, self.mmu.p.extruder_homing_speed) # Keep this tension adjustment slow
 
         # Determine direction based on state and motor type
-        # Note that if sync_feedback_buffer_range is 0, it implies
+        # Note that if buffer_range is 0, it implies
         # special case where neutral point overlaps both sensors
         if state == SF_STATE_COMPRESSION:
             self.mmu.log_debug("Relaxing filament compression")
             direction = -1 if use_gear_motor else 1
 
-            if self.p.sync_feedback_buffer_range == 0:
+            if self.mmu_unit.buffer.buffer_range == 0:
                 msg = "Homing to tension sensor"
                 sensor = SENSOR_TENSION
                 homing_dir = 1
@@ -526,7 +526,7 @@ class MmuSyncFeedback:
             self.mmu.log_debug("Relaxing filament tension")
             direction = 1 if use_gear_motor else -1
 
-            if self.p.sync_feedback_buffer_range == 0:
+            if self.mmu_unit.buffer.buffer_range == 0:
                 msg = "Homing to compression sensor"
                 sensor = SENSOR_COMPRESSION
                 homing_dir = 1
@@ -548,10 +548,10 @@ class MmuSyncFeedback:
             endstop_name=sensor,
         )
 
-        if fhomed and self.p.sync_feedback_buffer_range != 0:
+        if fhomed and self.mmu_unit.buffer.buffer_range != 0:
             if use_gear_motor:
                 # Move just a little more to find perfect neutral spot between sensors
-                _,_,_,_ = self.mmu.move_filament("Centering sync feedback buffer", (self.p.sync_feedback_buffer_range * direction) / 2.)
+                _,_,_,_ = self.mmu.move_filament("Centering sync feedback buffer", (self.mmu_unit.buffer.buffer_range * direction) / 2.)
         else:
             self.mmu.log_debug("Failed to reach neutral filament tension after moving %.1fmm" % max_move)
 

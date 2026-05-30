@@ -29,46 +29,50 @@ TANGLE_GCODE = "__MMU_SENSOR_TANGLE"
 
 
 # -----------------------------------------------------------------------------------------------------------
-# Shared module level helper methods
+# Analog helper methods
 # -----------------------------------------------------------------------------------------------------------
 
-def setup_adc_compat(mcu_adc, report_time, sample_time, sample_count, callback):
-    if hasattr(mcu_adc, 'setup_adc_sample'):
-        try:
-            # New klipper (>= v0.13.0-557)
-            mcu_adc.setup_adc_sample(report_time, sample_time, sample_count)
-            mcu_adc.setup_adc_callback(callback)
+class MmuAdcHelper:
 
-        except TypeError:
-            # Intermediate klipper versions with different signatures
-            mcu_adc.setup_adc_sample(sample_time, sample_count)
+    @staticmethod
+    def setup_adc_compat(mcu_adc, report_time, sample_time, sample_count, callback):
+        if hasattr(mcu_adc, 'setup_adc_sample'):
+            try:
+                mcu_adc.setup_adc_sample(report_time, sample_time, sample_count)
+                mcu_adc.setup_adc_callback(callback)
+            except TypeError:
+                mcu_adc.setup_adc_sample(sample_time, sample_count)
+                mcu_adc.setup_adc_callback(report_time, callback)
+
+        elif hasattr(mcu_adc, 'setup_minmax'):
+            mcu_adc.setup_minmax(sample_time, sample_count)
             mcu_adc.setup_adc_callback(report_time, callback)
 
-    elif hasattr(mcu_adc, 'setup_minmax'):
-        # Kalico and older klipper
-        mcu_adc.setup_minmax(sample_time, sample_count)
-        mcu_adc.setup_adc_callback(report_time, callback)
+        else:
+            raise RuntimeError(
+                "Klipper version not compatible: mcu_adc missing "
+                "'setup_adc_sample' and 'setup_minmax'"
+            )
 
-    else:
-        raise RuntimeError(
-            "Klipper version not compatible: mcu_adc missing "
-            "'setup_adc_sample' and 'setup_minmax'"
+    @staticmethod
+    def unpack_adc_callback(*args):
+        """
+        Old klipper: callback(read_time, read_value)
+        New klipper: callback(samples) where samples is a list of
+          (read_time, read_value)
+        """
+        if len(args) == 1:
+            samples = args[0]
+            return samples[-1]
+
+        if len(args) == 2:
+            return args
+
+        raise TypeError(
+            "ADC callback expected (read_time, read_value) or (samples), got %d args"
+            % len(args)
         )
 
-def unpack_adc_callback(*args):
-    """
-    Old klipper: callback(read_time, read_value)
-    New klipper: callback(samples) where samples is a list of
-      (read_time, read_value)
-    """
-    if len(args) == 1:
-        samples = args[0]
-        return samples[-1]
-
-    if len(args) == 2:
-        return args
-
-    raise TypeError("ADC callback expected (read_time, read_value) or (samples), got %d args" % len(args))
 
 
 # -----------------------------------------------------------------------------------------------------------
@@ -343,133 +347,6 @@ class MmuRunoutHelper:
 
 
 # -----------------------------------------------------------------------------------------------------------
-# Analog Filament Tension Sensor used for proportional sync-feedback
-# Maps sensor range to [-1,1]
-# -----------------------------------------------------------------------------------------------------------
-
-class MmuProportionalSensor:
-
-    def __init__(self, config, name):
-        self.printer = config.get_printer()
-        self.reactor = self.printer.get_reactor()
-        self.name = name
-        self._last_extreme = None
-
-        # Config
-        self._pin           = config.get('sync_feedback_analog_pin')
-        max_tension         = config.getfloat('sync_feedback_analog_max_tension', 1)
-        max_compression     = config.getfloat('sync_feedback_analog_max_compression', 0)
-
-        # Determine the actual raw min/max sensor values
-        raw_min = min(max_tension, max_compression)
-        raw_max = max(max_tension, max_compression)
-        mid_point = (max_tension + max_compression) / 2.0
-
-        self._neutral_point = config.getfloat('sync_feedback_analog_neutral_point', mid_point, minval=raw_min, maxval=raw_max)
-
-        self._gamma         = config.getfloat('sync_feedback_analog_gamma', 1)           # Not exposed
-        self._sample_time   = config.getfloat('sync_feedback_analog_sample_time', 0.005) # Not exposed
-        self._sample_count  = config.getint('sync_feedback_analog_sample_count', 5)      # Not exposed
-        self._report_time   = config.getfloat('sync_feedback_analog_report_time', 0.100) # Not exposed
-
-        self._reversed = (max_compression < max_tension)
-        eps = 1e-12
-        if not self._reversed:
-            # Tension low, Compression high value
-            self._d_neg = max(self._neutral_point - max_tension, eps)
-            self._d_pos = max(max_compression - self._neutral_point, eps)
-        else:
-            # Compression low, Tension high value
-            self._d_pos = max(self._neutral_point - max_compression, eps)
-            self._d_neg = max(max_tension - self._neutral_point, eps)
-
-        # State
-        self.value_raw = 0.0 # Raw ADC value
-        self.value = 0.0     # In [-1.0, 1.0]
-
-        # Setup ADC
-        ppins = self.printer.lookup_object('pins')
-        self.mcu_adc = ppins.setup_pin('adc', self._pin)
-
-        setup_adc_compat(
-            self.mcu_adc,
-            self._report_time,
-            self._sample_time,
-            self._sample_count,
-            self._adc_callback,
-        )
-
-        # Attach runout_helper (no gcode actions; just enable/disable plumbing to remove UI nag)
-        clog_gcode   = ("%s SENSOR=%s" % (CLOG_GCODE,   self.name))
-        tangle_gcode = ("%s SENSOR=%s" % (TANGLE_GCODE, self.name))
-        self.runout_helper = MmuRunoutHelper(
-            self.printer,
-            self.name,                  # Name exposed to QUERY_/SET_FILAMENT_SENSOR
-            0,                          # Event_delay (not used here)
-            {
-                "clog":   clog_gcode,
-                "tangle": tangle_gcode,
-            },
-            insert_remove_in_print=False,
-            button_handler=None,       # No button handler for analog
-            switch_pin=self._pin
-        )
-
-        # Expose status
-        self.printer.add_object(self.name, self)
-        logging.info("MMU: Created Proportional sync-feedback sensor %s]" % self.name)
-
-    def _map_reading(self, v_raw):
-        n = self._neutral_point
-
-        v = float(v_raw)
-        # Map around neutral_point into [-1, 1]
-        if not self._reversed:
-            if v >= n:
-                y = (v - n) / self._d_pos
-            else:
-                y = -(n - v) / self._d_neg
-        else:
-            if v <= n:
-                y = (n - v) / self._d_pos
-            else:
-                y = -(v - n) / self._d_neg
-
-        # Optional shaping (gamma=1 => linear)
-        if self._gamma != 1.0:
-            y = (abs(y) ** self._gamma) * (1.0 if y >= 0 else -1.0)
-
-        # Clamp
-        if y < -1.0: y = -1.0
-        if y >  1.0: y =  1.0
-        return y
-
-
-    def _adc_callback(self, *args):
-        read_time, read_value = unpack_adc_callback(*args)
-        self.value_raw = float(read_value)
-        self.value = self._map_reading(read_value) # Mapped & scaled value
-
-        # Publish sync-feedback event immediately if extreme to match switch sensors
-        # TODO really extreme should be determined by is_extreme() in mmu_sync_feedback manager (with hysteresis), but object hasn't been created yet
-        # TODO so for now, use absolute extremes
-        if abs(self.value) >= 1.0:
-            extreme = 1 if self.value > 0 else -1
-            if extreme != self._last_extreme: # Avoid repeated events
-                self._last_extreme = extreme
-                self.printer.send_event("mmu:sync_feedback", read_time, self.value)
-
-
-    def get_status(self, eventtime):
-        return {
-            "enabled":          bool(self.runout_helper.sensor_enabled),
-            "value":            self.value,             # in [-1.0, 1.0] (mapped)
-            "value_raw":        self.value_raw,         # raw
-        }
-
-
-
-# -----------------------------------------------------------------------------------------------------------
 # EXPERIMENTAL
 # Support ViViD analog buffer "endstops"
 # This class implments both the filament switch sensor and endstop. However:
@@ -570,6 +447,7 @@ class MmuAdcSwitchSensor:
 
 
 
+# PAUL move to toolhead
 # -----------------------------------------------------------------------------------------------------------
 # EXPERIMENTAL
 # Standalone Hall Filament Sensor Endstop using Multi-Use Pins
@@ -620,7 +498,7 @@ class MmuHallEndstop:
         if self.pin1_name:
             ppins.allow_multi_use_pin(self.pin1_name)
             self.mcu_adc = ppins.setup_pin('adc', self.pin1_name)
-            setup_adc_compat(
+            MmuAdcHelper.setup_adc_compat(
                 self.mcu_adc,
                 self.report_time,
                 self.sample_time,
@@ -633,7 +511,7 @@ class MmuHallEndstop:
         if self.pin2_name:
             ppins.allow_multi_use_pin(self.pin2_name)
             self.mcu_adc2 = ppins.setup_pin('adc', self.pin2_name)
-            setup_adc_compat(
+            MmuAdcHelper.setup_adc_compat(
                 self.mcu_adc2,
                 self.report_time,
                 self.sample_time,
@@ -681,14 +559,14 @@ class MmuHallEndstop:
 
 
     def _adc_callback(self, *args):
-        read_time, read_value = unpack_adc_callback(*args)
+        read_time, read_value = MmuAdcHelper.unpack_adc_callback(*args)
         self.lastFilamentWidthReading = round(read_value * 10000)
         self._calc_diameter()
         self._check_trigger(read_time)
 
 
     def _adc2_callback(self, *args):
-        read_time, read_value = unpack_adc_callback(*args)
+        read_time, read_value = MmuAdcHelper.unpack_adc_callback(*args)
         self.lastFilamentWidthReading2 = round(read_value * 10000)
         self._calc_diameter()
         self._check_trigger(read_time)

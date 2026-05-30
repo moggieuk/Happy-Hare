@@ -138,9 +138,9 @@ heating_gain: 1\n\
 # -------------------------------------
 
   if OPTION_KMS_BUFFER
-    config PIN_SYNC_FEEDBACK_TENSION
+    config PIN_BUFFER_TENSION
       default "!$(MCU_NAME)_buffer:PA1"
-    config PIN_SYNC_FEEDBACK_COMPRESSION
+    config PIN_BUFFER_COMPRESSION
       default "!$(MCU_NAME)_buffer:PA0"
   endif
 

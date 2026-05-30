@@ -11,19 +11,18 @@
 #   PARAM_ENTRY_LEDS
 #   PARAM_STATUS_LEDS
 #   PARAM_LOGO_LEDS
-
-# Defines whether MMU is equipped with (passive) filament buffer
-# i.e. space for filament to uncoil to
 #
-# Responsible for setting:
+#   PIN_NEOPIXEL (duplicate with pins)
 
+config UNSELECT_MMU_HAS_LEDS
+  def_bool n
 config MMU_HAS_LEDS
-  help
-    Select if your MMU has LEDs. This will install the LED driver but
-    will still need to finialize configuration in the generated klipper
-    config files or you can edit parameters in "Advanced" section.
   prompt "Has Leds?"
+  depends on !UNSELECT_MMU_HAS_LEDS
   forceshow
+  default n
+  help
+    Select if your MMU has LEDs.
 
 
 if MMU_HAS_LEDS
@@ -74,6 +73,9 @@ if MMU_HAS_LEDS
     config PARAM_LOGO_LEDS
       string "Logo leds  "
       default ""
+
+    config PIN_NEOPIXEL
+      prompt "Led Neopixel pin  "
   endmenu
 endif
 

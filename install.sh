@@ -407,10 +407,16 @@ if [ -n "${F_MENUCONFIG:-}" ]; then
 
     [ -r "${KCONFIG_CONFIG}" ] && . "${KCONFIG_CONFIG}"
 
-    if [ -n "${F_MULTI_UNIT:-}" ] && [ -z "${CONFIG_MULTI_UNIT:-}" ]; then
+    if [ -r "${KCONFIG_CONFIG}" ] &&
+       [ -n "${F_MULTI_UNIT:-}" ] &&
+       [ -z "${CONFIG_MULTI_UNIT:-}" ]; then
         tmpconfig="$(mktemp -t tmpconfig.XXXXXX)"
         cp -- "${KCONFIG_CONFIG}" "${tmpconfig}"
     fi
+#    if [ -n "${F_MULTI_UNIT:-}" ] && [ -z "${CONFIG_MULTI_UNIT:-}" ]; then
+#        tmpconfig="$(mktemp -t tmpconfig.XXXXXX)"
+#        cp -- "${KCONFIG_CONFIG}" "${tmpconfig}"
+#    fi
 
     run_kconfig_top menuconfig n
 

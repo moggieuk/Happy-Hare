@@ -28,10 +28,16 @@ menu "Raw Settings"
     source "Kconfig.sync_control"
     source "Kconfig.flowguard"
     source "Kconfig.calibration"
-    source "Kconfig.leds"
-    source "Kconfig.encoder"
-    source "Kconfig.heater"
-    source "Kconfig.environment_sensor"
-    source "Kconfig.sync_feedback_buffer"
+
+#    comment "PAUL -- duplicated with addons"
+#
+#    source "Kconfig.eject_buttons"
+#    source "Kconfig.encoder"
+#    source "Kconfig.environment_sensor"
+#    source "Kconfig.heater"
+#    source "Kconfig.espooler"
+#    source "Kconfig.filament_buffer"
+#    source "Kconfig.leds"
+#    source "Kconfig.sync_feedback_buffer"
   endif
 endmenu

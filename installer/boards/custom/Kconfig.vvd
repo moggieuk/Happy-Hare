@@ -134,9 +134,9 @@ pullup_resistor: 2200\n\
     config PIN_EXIT_SENSOR_3
       default "$(MCU_NAME)_buffer:PA3"
 
-    config PIN_SYNC_FEEDBACK_TENSION
+    config PIN_BUFFER_TENSION
       default "$(MCU_NAME)_buffer:PA4"
-    config PIN_SYNC_FEEDBACK_COMPRESSION
+    config PIN_BUFFER_COMPRESSION
       default "$(MCU_NAME)_buffer:PA5"
   endif
 

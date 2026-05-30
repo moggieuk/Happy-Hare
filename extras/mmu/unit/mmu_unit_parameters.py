@@ -150,8 +150,6 @@ class MmuUnitParameters(TunableParametersBase):
 
         # Sync-feedback
         ParamSpec('sync_feedback_enabled',            'int',       0, section="SYNC FEEDBACK BUFFER", limits=dict(minval=0, maxval=1),    guard=_guard_has_buffer, fmt="%d"),
-        ParamSpec('sync_feedback_buffer_range',       'float',  10.0, section="SYNC FEEDBACK BUFFER", limits=dict(minval=0.0),            guard=_guard_has_buffer, fmt="%.1f"),
-        ParamSpec('sync_feedback_buffer_maxrange',    'float',  10.0, section="SYNC FEEDBACK BUFFER", limits=dict(minval=0.0),            guard=_guard_has_buffer, fmt="%.1f"),
         ParamSpec('sync_feedback_speed_multiplier',   'float',   5.0, section="SYNC FEEDBACK BUFFER", limits=dict(minval=1.0, maxval=50), guard=_guard_has_buffer, fmt="%.1f"),
         ParamSpec('sync_feedback_boost_multiplier',   'float',   5.0, section="SYNC FEEDBACK BUFFER", limits=dict(minval=1.0, maxval=50), guard=_guard_has_buffer, fmt="%.1f"),
         ParamSpec('sync_feedback_extrude_threshold',  'float',   5.0, section="SYNC FEEDBACK BUFFER", limits=dict(above=1.0),             guard=_guard_has_buffer, fmt="%.1f"),
