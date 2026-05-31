@@ -76,42 +76,39 @@ class MmuEjectCommand(UnloadEjectMixin, BaseCommand):
         if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[gate], mmu_unit=eject_unit): return
         mmu.fix_started_state()
 
-        filament_pos = mmu.filament_pos
         force = bool(gcmd.get_int('FORCE', 0, minval=0, maxval=1))
         in_bypass = (mmu.gate_selected == TOOL_GATE_BYPASS)
         extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0)) or in_bypass
 
-        can_crossload = (
-            eject_unit is not active_unit or
-            active_unit.can_crossload
+        filament_pos = mmu.filament_pos
+        is_unloaded = filament_pos == FILAMENT_POS_UNLOADED
+
+        can_continue = (
+            is_unloaded
+            or eject_unit is not active_unit
+            or active_unit.can_crossload
+            or gate == current_gate
         )
 
-        # Does being loaded prevent the eject?
-        if not can_crossload and gate != current_gate:
-            if self.check_if_loaded(): return
+        if not can_continue:
+            # If being loaded is preventing the eject give specific error
+            if gate != current_gate and self.check_if_loaded(): return
+            self.mmu.log_error("Operation not possible: Can't crossload on this mmu type")
+            return
 
-        # Determine if we can fully eject_from_gate
+        # Techincally possible, now determine if we can fully eject_from_gate
+        # rather than be an alias for UNLOAD
         can_eject_from_gate = (
             not extruder_only
-            and not (
-                in_bypass
-                and filament_pos != FILAMENT_POS_UNLOADED
-                and gate >= 0
-            )
-            and (
-                (can_crossload and gate != mmu.gate_selected)
-                or filament_pos == FILAMENT_POS_UNLOADED
-                or force
-            )
+            and gate >= 0
+            and (is_unloaded or force or gate != current_gate)
         )
 
         if not can_eject_from_gate and filament_pos == FILAMENT_POS_UNLOADED:
             mmu.log_always("Filament not loaded")
             return
 
-        mmu.log_error("PAUL: command would run") # PAUL
-        return # PAUL
-
+        mmu.log_always("Ejecting filament out of %s" % ("current gate" if gate == current_gate else "gate %d" % gate))
         try:
             with mmu.wrap_sync_gear_to_extruder():
                 with mmu.wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during unload
@@ -125,7 +122,6 @@ class MmuEjectCommand(UnloadEjectMixin, BaseCommand):
                             if gate != current_gate:
                                 mmu.select_gate(gate)
 
-                            mmu.log_always("Ejecting filament out of %s" % ("current gate" if gate == current_gate else "gate %d" % gate))
                             mmu._eject_from_gate()
 
                         finally:

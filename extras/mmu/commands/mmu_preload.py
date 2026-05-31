@@ -57,47 +57,50 @@ class MmuPreloadCommand(BaseCommand):
         lgate = gcmd.get_int('LGATE', None)
         if lgate is not None:
             preload_unit = self.get_unit(gcmd, mode="optional")
-            if eject_unit is None:
+            if preload_unit is None:
                 raise gcmd.error("UNIT parameter is required with LGATE")
-            lgate = gcmd.get_int('LGATE', 0, minval=0, maxval=eject_unit.num_gates - 1)
+            lgate = gcmd.get_int('LGATE', 0, minval=0, maxval=preload_unit.num_gates - 1)
             gate = preload_unit.logical_gate(lgate) # Convert to global logical gate index
 
         else:
             gate = gcmd.get_int('GATE', current_gate, minval=0, maxval=mmu.num_gates - 1)
             preload_unit = mmu.mmu_unit(gate)
 
-# PAUL
-#        gate = gcmd.get_int('GATE', mmu.gate_selected, minval=0, maxval=mmu.num_gates - 1)
-#        current_gate = mmu.gate_selected
-#        preload_unit = mmu.mmu_unit(gate)
-#        active_unit = mmu.mmu_unit()
-
         if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[gate], mmu_unit=preload_unit): return
 
         filament_pos = mmu.filament_pos
+        is_unloaded = filament_pos == FILAMENT_POS_UNLOADED
 
-        can_crossload = (
-            active_unit is not preload_unit or
-            (
-                active_unit.can_crossload and
-                (
-                    mmu.sensor_manager.has_gate_sensor(SENSOR_EXIT_PREFIX, gate) or
-                    filament_pos == FILAMENT_POS_UNLOADED or
-                    (
-                        filament_pos != FILAMENT_POS_UNLOADED and
-                        not preload_unit.manages_gate(current_gate)
-                    )
-                )
-            )
+        can_continue = (
+            is_unloaded
+            or preload_unit is not active_unit
+            or active_unit.can_crossload
         )
-        if not can_crossload:
-            if self.check_if_bypass(): return
+
+        if not can_continue:
+            # If being loaded is preventing the preload give specific error
             if self.check_if_loaded(): return
+            self.mmu.log_error("Operation not possible: Can't crossload on this mmu type")
+            return
+
+        # Trying to preload current gate and it's already loaded?
+        if gate == current_gate and self.check_if_loaded():
+            return
+
+        can_preload = (
+            filament_pos == FILAMENT_POS_UNLOADED
+            or mmu.sensor_manager.has_gate_sensor(SENSOR_EXIT_PREFIX, gate)
+            or (
+                   not is_unloaded
+                   and preload_unit is not active_unit
+               )
+            )
+
+        if not can_preload:
+            self.mmu.log_error("Operation not possible: Perhaps no exit sensors or filament still loaded")
+            return
 
         mmu.log_always("Preloading filament in %s..." % ("current gate" if gate == current_gate else "gate %d" % gate))
-
-        mmu.log_error("PAUL: command would run") # PAUL
-        return # PAUL
         try:
             with mmu.wrap_sync_gear_to_extruder():
                 with mmu.wrap_suppress_visual_log():
