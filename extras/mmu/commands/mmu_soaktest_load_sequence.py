@@ -23,7 +23,7 @@ from .mmu_base_command import *
 
 class MmuSoaktestLoadSequenceCommand(BaseCommand):
     """
-    Soak test tool load/unload sequence.
+    Soak test tool load/unload sequence accross specified units
     """
 
     CMD = "MMU_SOAKTEST_LOAD_SEQUENCE"
@@ -47,7 +47,7 @@ class MmuSoaktestLoadSequenceCommand(BaseCommand):
             help_brief=self.HELP_BRIEF,
             help_params=self.HELP_PARAMS,
             help_supplement=self.HELP_SUPPLEMENT,
-            category=CATEGORY_TESTING
+            category=CATEGORY_TESTING,
         )
 
     def _run(self, gcmd):

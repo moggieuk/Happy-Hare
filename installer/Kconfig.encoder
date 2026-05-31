@@ -7,14 +7,20 @@
 #   PARAM_ENCODER_NAME
 #   PARAM_ENCODER_RESOLUTION
 #   PARAM_GATE_ENDSTOP_TO_ENCODER
+#
+#   PIN_ENCODER (duplicate with pins)
 
+config UNSELECT_MMU_HAS_ENCODER
+  def_bool n
 config MMU_HAS_ENCODER
+  prompt "Has encoder?"
+  depends on !UNSELECT_MMU_HAS_ENCODER
+  forceshow
+  default n
   help
     An encoder measures filament movement and can be used to validate
     movement, detect clogs, monitor flow rate and detect filament
     collision with the extruder in liue of a toolhead switch sensor.
-  prompt "Has Encoder?"
-  forceshow
 
 
 if MMU_HAS_ENCODER
@@ -93,7 +99,10 @@ if MMU_HAS_ENCODER
           a shared_exit endstop we need to know how much of the movement is not
           seen by the encoder. If this is not set the encoder will always measure
           less that the actual movement.
-    endif
+
+      config PIN_ENCODER
+        prompt "Encoder pin"
+  endif
 
   endmenu
 endif

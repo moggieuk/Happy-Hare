@@ -45,8 +45,8 @@ class MmuEncoder:
         # For counter functionality...
         self.sample_time = config.getfloat('sample_time', 0.1, above=0.)
         self.poll_time = config.getfloat('poll_time', 0.001, above=0.)
-        self.initial_resolution = config.getfloat('encoder_resolution', 1., above=0.) # Expect to be calibrated by user in Happy Hare
-        self.set_resolution(self.initial_resolution)
+        self.encoder_resolution = config.getfloat('encoder_resolution', 1., above=0.) # Expect to be calibrated by user in Happy Hare
+        self.set_resolution(self.encoder_resolution)
         self._last_time = None
         self._counts = self._last_count = 0
         self._counter = pulse_counter.MCU_counter(self.printer, encoder_pin, self.sample_time, self.poll_time)

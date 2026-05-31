@@ -8,7 +8,6 @@ config MMU_TYPE_LOW_RIDER_1_0
   select MMU_HAS_LEDS
   select BOOL_FILAMENT_ALWAYS_GRIPPED
   select BOOL_VARIABLE_ROTATION_DISTANCES
-  select UNSELECT_CAN_CROSSLOAD
 
 ####################
 ##### Defaults #####
@@ -19,6 +18,8 @@ if MMU_TYPE_LOW_RIDER_1_0
   if SHOW_MMU_ADDITIONS_WITH_TYPE
     source "Kconfig.mmu_additions"
   endif
+
+  source "Kconfig.capabilities"
 
   config PARAM_VENDOR
     default "LowRider"

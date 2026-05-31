@@ -479,7 +479,7 @@ class MmuCalibrator:
         )
 
         if self.mmu_unit.p.autotune_encoder:
-            initial_resolution = self.mmu_unit.encoder.initial_resolution
+            initial_resolution = self.mmu_unit.encoder.encoder_resolution
 
             if not self.is_gear_rd_calibrated(gate):
                 self.mmu_log_info(f"Autotune: {msg}.\nIgnored because rotation distance not yet calibrated for gate")

@@ -1,17 +1,7 @@
-# Responsible for setting:
-#   MMU_HAS_EJECT_BUTTONS
-#   MMU_HAS_ENCODER
-#   MMU_HAS_ENVIRONMENT_SENSOR
-#   MMU_HAS_ESPOOLER
-#   MMU_HAS_FILAMENT_BUFFER
-#   MMU_HAS_HEATER
-#   MMU_HAS_LEDS
-#   MMU_HAS_SYNC_FEEDBACK_BUFFER
-#
-# These are all duplicates of the "Raw Settings" section, but ensure the config sections
-# will exist if users forget to visit that section.
+# This aggregates configuration for MMU additions
+# (this duplicates what is available in the "Raw" section)
 
-menu "MMU Additions/Modifications"
+menu "MMU Features/Additions"
   help
     Enhancements to base design
     If the base MMU design lacks a particular feature there are often
@@ -19,110 +9,12 @@ menu "MMU Additions/Modifications"
     here so that Happy Hare will install the correct drivers and setup
     the best possible starter configuration.
 
-  config UNSELECT_MMU_HAS_EJECT_BUTTONS
-    def_bool n
-  config MMU_HAS_EJECT_BUTTONS
-    prompt "Has eject buttons?"
-    depends on !UNSELECT_MMU_HAS_EJECT_BUTTONS
-    forceshow
-    default n
-    help
-      Some MMU designs have dedicated eject buttons. Select this
-      option to allow pin editing and inclusion in config template
-
-      Be sure to check pins in the "Pins" section.
-
-  config UNSELECT_MMU_HAS_ENCODER
-    def_bool n
-  config MMU_HAS_ENCODER
-    prompt "Has encoder?"
-    depends on !UNSELECT_MMU_HAS_ENCODER
-    forceshow
-    default n
-    help
-      An encoder measures filament movement and can be used to validate
-      movement, detect clogs, monitor flow rate and detect filament
-      collision with the extruder in liue of a toolhead switch sensor.
-
-      Be sure to edit details in the "Raw Settings" section.
-
-  config UNSELECT_MMU_HAS_ENVIRONMENT_SENSOR
-    def_bool n
-  config MMU_HAS_ENVIRONMENT_SENSOR
-    prompt "Has environment sensor(s)?"
-    depends on !UNSELECT_MMU_HAS_ENVIRONMENT_SENSOR
-    forceshow
-    default n
-    help
-      Select if the MMU has a humidity/temperature sensor in the filament storate enclosure
-
-      Be sure to edit details in the "Raw Settings" section.
-
-  config UNSELECT_MMU_HAS_HEATER
-    def_bool n
-  config MMU_HAS_HEATER
-    prompt "Has enclosure heater(s)?"
-    depends on !UNSELECT_MMU_HAS_HEATER
-    forceshow
-    default n
-    help
-      Select if the MMU has a heater in the filament storate enclosure
-
-      Be sure to edit details in the "Raw Settings" section.
-
-  config UNSELECT_MMU_HAS_ESPOOLER
-    def_bool n
-  config MMU_HAS_ESPOOLER
-    prompt "Has eSpooler?"
-    depends on !UNSELECT_MMU_HAS_ESPOOLER
-    forceshow
-    default n
-    help
-      An eSpooler is primarily used to rewind filament to prevent
-      it tangling but can also be driven to assist loading and even
-      assist in print. Select if you have added a DC motor controlled
-      eSpooler.
-
-  config UNSELECT_MMU_HAS_FILAMENT_BUFFER
-    def_bool n
-  config MMU_HAS_FILAMENT_BUFFER
-    bool "Has filament buffer to catch loose filament?"
-    depends on !UNSELECT_MMU_HAS_FILAMENT_BUFFER
-    forceshow
-    default n
-    help
-      Does MMU have a buffer to catch the uncoiled filament on unload. Note
-      that a passive rewinder like Filamentalist is not a filament buffer
-      because it alleviates the need for one!
-
-  config UNSELECT_MMU_HAS_LEDS
-    def_bool n
-  config MMU_HAS_LEDS
-    prompt "Has Leds?"
-    depends on !UNSELECT_MMU_HAS_LEDS
-    forceshow
-    default n
-    help
-      Select if your MMU has LEDs. This will install the LED driver but
-      will still need to finialize configuration in the generated klipper
-      config files or better still, you can edit parameters in the
-      "Raw Settings" section.
-
-  config UNSELECT_MMU_HAS_SYNC_FEEDBACK_BUFFER
-    def_bool n
-  config MMU_HAS_SYNC_FEEDBACK_BUFFER
-    prompt "Has sync-feedback buffer?"
-    depends on !UNSELECT_MMU_HAS_SYNC_FEEDBACK_BUFFER
-    forceshow
-    default n
-    help
-      A sync-feedback sensor (often referred to as a "buffer") is
-      a sensor connected in the bowden path that can detect filament
-      compression and/or tension.
-
-      Be sure to edit details in the "Raw Settings" section and pins
-      in the "Pins" section.
-
-  source "Kconfig.capabilities"
-
+  source "Kconfig.leds"
+  source "Kconfig.espooler"
+  source "Kconfig.sync_feedback_buffer"
+  source "Kconfig.environment_sensor"
+  source "Kconfig.heater"
+  source "Kconfig.eject_buttons"
+  source "Kconfig.encoder"
+  source "Kconfig.filament_buffer"
 endmenu

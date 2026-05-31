@@ -51,9 +51,8 @@ class MmuTestTrackingCommand(BaseCommand):
     def _run(self, gcmd):
         # BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
-        mmu_unit = mmu.mmu_unit()
 
-        if self.check_if_no_encoder(mmu_unit): return
+        if self.check_if_no_encoder(): return
         if self.check_if_disabled(): return
         if self.check_if_bypass(): return
         if self.check_if_not_homed(): return

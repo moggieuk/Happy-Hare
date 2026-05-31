@@ -169,6 +169,8 @@ class ServoSelector(PhysicalSelector):
     # Actual gate selection (servo movement) can be delayed until the filament_drive/release instruction
     # to prevent unecessary flutter. Conrolled by `filament_always_gripped` setting
     def _select_gate(self, lgate):
+        super()._select_gate(lgate)
+
         if gate != self.mmu.gate_selected:
             with self.mmu.wrap_action(ACTION_SELECTING):
                 if self.mmu_unit.filament_always_gripped:

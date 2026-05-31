@@ -127,7 +127,8 @@ class MmuFilamentMovement:
             else:
                 raise MmuError("Filament did not exit gate homing sensor: %s" % endstop_name)
 
-        if u.p.gate_final_eject_distance > 0:
+        final_move = abs(u.p.gate_final_eject_distance)
+        if final_move > 0:
             self.selector().filament_drive()
 
             msg = "Ejecting filament out of gate"
@@ -136,6 +137,8 @@ class MmuFilamentMovement:
                 self.move_filament(msg, -u.p.gate_final_eject_distance, motor="gear", homing_move=-1, endstop_name=SENSOR_ENTRY_PREFIX, wait=True)
             else:
                 self.move_filament(msg, -u.p.gate_final_eject_distance, wait=True)
+        else:
+            self.log_trace("No final eject, gate_final_eject_distance is 0")
 
         self.gate_maps.set_gate_status(gate, GATE_EMPTY)
         self.log_always("The filament in gate %d can be removed" % gate)
@@ -649,9 +652,9 @@ class MmuFilamentMovement:
                     actual, _, measured, _ = self.move_filament("Aligning filament to extruder gear", u.toolhead_wrapper.p.toolhead_entry_to_extruder, motor="gear")
                     homing_movement += actual
 
-                elif u.p.extruder_homing_endstop == SENSOR_COMPRESSION:
+                elif u.has_buffer() and u.p.extruder_homing_endstop == SENSOR_COMPRESSION:
                     # Estimate the midpoint of buffer for accurate bowden length determination
-                    homing_movement -= (u.sync_feedback.p.sync_feedback_buffer_range / 2.)
+                    homing_movement -= (u.buffer.buffer_range / 2.)
 
         if not homed:
             self.set_filament_pos_state(FILAMENT_POS_END_BOWDEN)
@@ -786,7 +789,7 @@ class MmuFilamentMovement:
                 and not has_toolhead
                 and self.sensor_manager.check_sensor(SENSOR_COMPRESSION)
             ):
-                max_range = u.sync_feedback.p.sync_feedback_buffer_maxrange * 2 # Arbitary but buffer_maxrange is not enough to overcome bowden slack
+                max_range = u.buffer.buffer_maxrange * 2 # Arbitary but buffer_maxrange is not enough to overcome bowden slack
                 if length > max_range:
                     self.log_debug("Monitoring extruder entrance transition for up to %.1fmm..." % max_range)
                     actual, success = u.sync_feedback.adjust_filament_tension(use_gear_motor=False, max_move=max_range)
@@ -1868,14 +1871,13 @@ class MmuFilamentMovement:
                     self.movequeue_wait()
 
             except self.printer.command_error as e:
-                self.log_error("Stepper move failed: %s" % str(e))
                 if homing_move != 0:
+                    self.log_stepper("Did not complete homing move: %s" % str(e))
                     try:
                         actual = drive.get_filament_position() - start_pos
                     except Exception:
                         actual = 0.
                     homed = False
-                    # preserve old behavior of returning measured data rather than re-raising
                 else:
                     return null_rtn
 

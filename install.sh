@@ -237,22 +237,26 @@ if [ "${F_UNINSTALL}" ]; then
     exit 0
 fi
 
-######################
-##### Menuconfig #####
-######################
 
-# Ensures there’s a valid top-level config, confirms whether it’s single- or multi-unit,
-# and—if multi-unit—runs menuconfig once per listed unit to create/update each unit’s own
-# config file, passing UNIT_* parameters to the Makefile/Kconfig for customization.
 
+################################
+##### Menuconfig / Refresh #####
+################################
+
+# Decide whether interactive configuration is required.
 if [ ! -e "${KCONFIG_CONFIG}" ] && [ -z "${F_MENUCONFIG:-}" ]; then
     echo "${C_INFO}No '${KCONFIG_CONFIG}' found, forcing interactive menu${C_OFF}"
     echo
     F_MENUCONFIG=y
 elif [ -r "${KCONFIG_CONFIG}" ] && [ -z "${F_MENUCONFIG:-}" ] && [ -n "${F_MULTI_UNIT:-}" ]; then
-    echo "${C_NOTICE}Current '${KCONFIG_CONFIG}' is not a multi-unit configuration, updating and forcing interactive menu${C_OFF}"
-    echo
-    F_MENUCONFIG=y
+    #shellcheck source=.mmu_config
+    . "${KCONFIG_CONFIG}"
+
+    if [ -z "${CONFIG_MULTI_UNIT:-}" ]; then
+        echo "${C_NOTICE}Current '${KCONFIG_CONFIG}' is not a multi-unit configuration, updating and forcing interactive menu${C_OFF}"
+        echo
+        F_MENUCONFIG=y
+    fi
 fi
 
 # If re-running with -i give the choice of refreshing from Kconfig or retaining custom .cfg modifications
@@ -277,7 +281,7 @@ if [ -r "${KCONFIG_CONFIG}" ] && [ -n "${F_MENUCONFIG:-}" ]; then
     echo "   made directly in your .cfg files. This is useful if you manage most parameters via menuconfig"
     echo "   but don't want to, for example, overwrite your carefully tweaked hardware configuration"
     echo
-    echo "   (Note that in all cases a BACKUP of your existing .cfg files will be made for reference)"
+    echo "(Note that in all cases a BACKUP of your existing .cfg files will be made for reference)"
     echo
 
     sel=$(prompt_n 3 "Choose upgrade mode")
@@ -291,75 +295,165 @@ if [ -r "${KCONFIG_CONFIG}" ] && [ -n "${F_MENUCONFIG:-}" ]; then
     echo
 fi
 
-if [ -n "${F_MENUCONFIG:-}" ]; then
-    #shellcheck source=.mmu_config
+
+# Helpers to run a Kconfig action (menuconfig or olddefconfig) across all relevant
+# relevant configuration files using the correct installation context.
+#
+# The traversal logic for top-level and per-unit configurations is centralized
+# here because multi-unit setups require additional context (UNIT_NAME,
+# UNIT_INDEX, MCU_NAME, sensor configuration, etc.) that Make alone does not
+# have. This ensures menuconfig and olddefconfig always operate on the same set
+# of configs with identical context.
+#
+# For olddefconfig, the Makefile's kconfig_needs_update target is used to detect
+# whether a config is stale by comparing its timestamp against the Kconfig
+# source files. Stale configs are automatically refreshed so that newly added
+# Kconfig options receive their default values.
+#
+# This is particularly important when running "./install.sh -i". If the user
+# enters menuconfig but exits without saving, the config timestamp remains
+# unchanged. A subsequent olddefconfig pass can therefore still detect that the
+# config is older than the Kconfig sources and update it with any new defaults.
+#
+# Expected behavior:
+#   - Interactive install (-i):
+#       * Run menuconfig for all applicable configs.
+#       * Run olddefconfig only on configs that are stale.
+#   - Non-interactive install/upgrade:
+#       * Skip menuconfig.
+#       * Run olddefconfig only on configs that are stale.
+#
+# This guarantees that new Kconfig defaults are always propagated to existing
+# installations while avoiding duplicate traversal logic and preserving the
+# correct context for multi-unit configurations.
+#
+run_kconfig_top() {
+    action=$1
+    only_if_stale=${2:-n}
+
+    unset CONFIG_MULTI_UNIT CONFIG_MMU_UNITS
     [ -r "${KCONFIG_CONFIG}" ] && . "${KCONFIG_CONFIG}"
 
     if [ -n "${F_MULTI_UNIT:-}" ] || [ -n "${CONFIG_MULTI_UNIT:-}" ]; then
-        if [ -r "${KCONFIG_CONFIG}" ] && [ -z "${CONFIG_MULTI_UNIT:-}" ] && [ -n "${F_MULTI_UNIT:-}" ]; then
-            tmpconfig="$(mktemp -t tmpconfig.XXXXXX)"
-            cp -- "${KCONFIG_CONFIG}" "${tmpconfig}"
-        fi
-        make --no-print-directory -C "${SCRIPT_DIR}" F_MULTI_UNIT_ENTRY_POINT=y F_MULTI_UNIT=y menuconfig
+        run_kconfig_one "${KCONFIG_CONFIG}" "${action}" "${only_if_stale}" \
+            F_MULTI_UNIT_ENTRY_POINT=y \
+            F_MULTI_UNIT=y
     else
-        make --no-print-directory -C "${SCRIPT_DIR}" menuconfig
+        run_kconfig_one "${KCONFIG_CONFIG}" "${action}" "${only_if_stale}"
     fi
+}
+
+run_kconfig_units() {
+    action=$1
+    only_if_stale=${2:-n}
+
+    [ -r "${KCONFIG_CONFIG}" ] || return 0
+
+    unset CONFIG_MULTI_UNIT CONFIG_MMU_UNITS
+    unset CONFIG_MMU_HAS_SENSOR_TOOLHEAD CONFIG_MMU_HAS_SENSOR_EXTRUDER
+    . "${KCONFIG_CONFIG}"
+
+    if [ -n "${CONFIG_MULTI_UNIT:-}" ]; then
+        i=0
+        IFS=,
+        set -f
+        for name in ${CONFIG_MMU_UNITS:-}; do
+            name=$(trim "$name")
+            [ -n "$name" ] || continue
+
+            run_kconfig_one "${KCONFIG_CONFIG}_${name}" "${action}" "${only_if_stale}" \
+                F_MULTI_UNIT=y \
+                UNIT_INDEX="$i" \
+                UNIT_NAME="$name" \
+                MCU_NAME="$name" \
+                HAS_SENSOR_TOOLHEAD="$CONFIG_MMU_HAS_SENSOR_TOOLHEAD" \
+                HAS_SENSOR_EXTRUDER="$CONFIG_MMU_HAS_SENSOR_EXTRUDER"
+
+            i=$((i + 1))
+        done
+        set +f
+    fi
+}
+
+run_kconfig_one() {
+    cfg=$1
+    action=$2
+    only_if_stale=$3
+    shift 3
+
+    if [ "${only_if_stale}" = "y" ]; then
+        needs=$(make --no-print-directory -C "${SCRIPT_DIR}" \
+            KCONFIG_CONFIG="${cfg}" \
+            "$@" \
+            kconfig_needs_update)
+
+        [ "${needs}" = "y" ] || return 0
+        echo "${C_INFO}Updating Kconfig defaults in '${cfg}'${C_OFF}"
+    fi
+
+    make --no-print-directory -C "${SCRIPT_DIR}" \
+        KCONFIG_CONFIG="${cfg}" \
+        "$@" \
+        "${action}"
+}
+
+
+
+################################
+##### Menuconfig / Refresh #####
+################################
+
+if [ -n "${F_MENUCONFIG:-}" ]; then
+    tmpconfig=
+
+    [ -r "${KCONFIG_CONFIG}" ] && . "${KCONFIG_CONFIG}"
+
+    if [ -r "${KCONFIG_CONFIG}" ] &&
+       [ -n "${F_MULTI_UNIT:-}" ] &&
+       [ -z "${CONFIG_MULTI_UNIT:-}" ]; then
+        tmpconfig="$(mktemp -t tmpconfig.XXXXXX)"
+        cp -- "${KCONFIG_CONFIG}" "${tmpconfig}"
+    fi
+#    if [ -n "${F_MULTI_UNIT:-}" ] && [ -z "${CONFIG_MULTI_UNIT:-}" ]; then
+#        tmpconfig="$(mktemp -t tmpconfig.XXXXXX)"
+#        cp -- "${KCONFIG_CONFIG}" "${tmpconfig}"
+#    fi
+
+    run_kconfig_top menuconfig n
 
     if [ ! -e "${KCONFIG_CONFIG}" ]; then
         echo "${C_ERROR}Config '${KCONFIG_CONFIG}' has not been saved, exiting.${C_OFF}"
         exit 1
     fi
 
-    # Make sure these environment variables are freshly set
-    unset CONFIG_MMU_HAS_SENSOR_TOOLHEAD
-    unset CONFIG_MMU_HAS_SENSOR_EXTRUDER
-    #shellcheck source=.mmu_config
-    . "${KCONFIG_CONFIG}"
-
-    # Now we are sure of having multi-unit names, move the original combined config
-    # to first unit config before running menuconfig on it
     if [ -n "${tmpconfig:-}" ]; then
+        unset CONFIG_MULTI_UNIT CONFIG_MMU_UNITS
+        . "${KCONFIG_CONFIG}"
+
         first_unit=$(trim "${CONFIG_MMU_UNITS%%,*}")
-        [ -n "${first_unit}" ] && mv "${tmpconfig}" "${KCONFIG_CONFIG}_${first_unit}"
+        if [ -n "${first_unit}" ]; then
+            mv "${tmpconfig}" "${KCONFIG_CONFIG}_${first_unit}"
+        else
+            rm -f "${tmpconfig}"
+        fi
     fi
 
-    if [ -n "${CONFIG_MULTI_UNIT:-}" ]; then
-        i=0
-        IFS=,
-        set -f # Avoid globbing
-        for name in ${CONFIG_MMU_UNITS:-}; do
-            name=$(trim "$name")
-            [ -n "$name" ] || continue
-            make --no-print-directory \
-                -C "$SCRIPT_DIR" \
-                KCONFIG_CONFIG="${KCONFIG_CONFIG}_${name}" \
-                F_MULTI_UNIT=y \
-                UNIT_INDEX="$i" \
-                UNIT_NAME="$name" \
-                MCU_NAME="$name" \
-                HAS_SENSOR_TOOLHEAD="$CONFIG_MMU_HAS_SENSOR_TOOLHEAD" \
-                HAS_SENSOR_EXTRUDER="$CONFIG_MMU_HAS_SENSOR_EXTRUDER" \
-                menuconfig
-            i=$((i + 1))
-        done
-        set +f
-    fi
+    run_kconfig_units menuconfig n
 fi
 
-#############################
-##### Install / Upgrade #####
-#############################
+# Always refresh stale configs after any optional menuconfig pass.
+run_kconfig_top olddefconfig y
+run_kconfig_units olddefconfig y
 
-# Preserve multi-unit mode for non-interactive installs/upgrades
-if [ -r "${KCONFIG_CONFIG}" ] &&
-   grep -q '^CONFIG_MULTI_UNIT=y$' "${KCONFIG_CONFIG}"; then
-    export CONFIG_MULTI_UNIT=y
-fi
+
+
+###########################
+##### Install/Upgrade #####
+###########################
 
 time_elapsed sh -ec '
     make --no-print-directory -C "'"${SCRIPT_DIR}"'" install
 
-    # Clean up the 'out' staging directory -- not necessary but cleaner for user
     if [ -z "'"${TESTDIR}"'" ]; then
         make --no-print-directory -C "'"${SCRIPT_DIR}"'" clean
     fi

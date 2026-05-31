@@ -524,8 +524,6 @@ class MmuESpooler:
 
 
 
-# PAUL TODO .. check if Kalico has this change yet?
-
 # -----------------------------------------------------------------------------------------------------------
 # G-Code request queuing helper
 # This is included to allow Kalico to work since it has not yet picked

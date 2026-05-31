@@ -7,7 +7,6 @@ config MMU_TYPE_3D_CHAMELEON_1_0
   imply  BOOL_REQUIRE_BOWDEN_MOVE
   select BOOL_VARIABLE_ROTATION_DISTANCES
   select UNSELECT_VARIABLE_BOWDEN_LENGTHS
-  select UNSELECT_CAN_CROSSLOAD
 
 ####################
 ##### Defaults #####
@@ -18,6 +17,8 @@ if MMU_TYPE_3D_CHAMELEON_1_0
   if SHOW_MMU_ADDITIONS_WITH_TYPE
     source "Kconfig.mmu_additions"
   endif
+
+  source "Kconfig.capabilities"
 
   # Identity
   config PARAM_VENDOR

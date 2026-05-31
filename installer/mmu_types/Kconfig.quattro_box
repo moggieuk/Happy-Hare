@@ -49,6 +49,8 @@ if MMU_FAMILY_QUATTRO_BOX
     source "Kconfig.mmu_additions"
   endif
 
+  source "Kconfig.capabilities"
+
   ####################
   ##### Defaults #####
   ####################

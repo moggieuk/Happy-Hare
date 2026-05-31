@@ -148,7 +148,7 @@ class MmuSyncFeedback:
         Returns distance of the correction move and whether operation was successful (or None if not performed)
         """
         has_tension, has_compression, has_proportional = self.get_active_sensors()
-        max_move = max_move or self.p.sync_feedback_buffer_maxrange
+        max_move = max_move or self.mmu_unit.buffer.buffer_maxrange
 
         if has_proportional:
             return self._adjust_filament_tension_proportional() # Doesn't yet support extruder stepper or max_move parameter
@@ -398,8 +398,8 @@ class MmuSyncFeedback:
         rd_start = self.mmu_unit.calibrator.get_gear_rd(self.mmu_unit.first_gate) # Any RD is ok for startup
         cfg = SyncControllerConfig(
             log_sync = bool(self.p.sync_feedback_debug_log),
-            buffer_range_mm = self.p.sync_feedback_buffer_range,
-            buffer_max_range_mm = self.p.sync_feedback_buffer_maxrange,
+            buffer_range_mm = self.mmu_unit.buffer.buffer_range,
+            buffer_max_range_mm = self.mmu_unit.buffer.buffer_maxrange,
             sensor_type = self._get_sensor_type(),
             use_twolevel_for_type_p = self.p.sync_feedback_force_twolevel,
             rd_start = rd_start,
@@ -495,20 +495,20 @@ class MmuSyncFeedback:
             self.mmu.log_debug("No active sync feedback sensors; cannot adjust filament tension")
             return actual, fhomed
 
-        max_move = max_move or self.p.sync_feedback_buffer_maxrange
+        max_move = max_move or self.mmu_unit.buffer.buffer_maxrange
         self.mmu.log_debug("Monitoring extruder entrance transition for up to %.1fmm..." % max_move)
 
         motor = "gear" if use_gear_motor else "extruder"
         speed = min(self.mmu_unit.p.gear_homing_speed, self.mmu.p.extruder_homing_speed) # Keep this tension adjustment slow
 
         # Determine direction based on state and motor type
-        # Note that if sync_feedback_buffer_range is 0, it implies
+        # Note that if buffer_range is 0, it implies
         # special case where neutral point overlaps both sensors
         if state == SF_STATE_COMPRESSION:
             self.mmu.log_debug("Relaxing filament compression")
             direction = -1 if use_gear_motor else 1
 
-            if self.p.sync_feedback_buffer_range == 0:
+            if self.mmu_unit.buffer.buffer_range == 0:
                 msg = "Homing to tension sensor"
                 sensor = SENSOR_TENSION
                 homing_dir = 1
@@ -526,7 +526,7 @@ class MmuSyncFeedback:
             self.mmu.log_debug("Relaxing filament tension")
             direction = 1 if use_gear_motor else -1
 
-            if self.p.sync_feedback_buffer_range == 0:
+            if self.mmu_unit.buffer.buffer_range == 0:
                 msg = "Homing to compression sensor"
                 sensor = SENSOR_COMPRESSION
                 homing_dir = 1
@@ -548,10 +548,10 @@ class MmuSyncFeedback:
             endstop_name=sensor,
         )
 
-        if fhomed and self.p.sync_feedback_buffer_range != 0:
+        if fhomed and self.mmu_unit.buffer.buffer_range != 0:
             if use_gear_motor:
                 # Move just a little more to find perfect neutral spot between sensors
-                _,_,_,_ = self.mmu.move_filament("Centering sync feedback buffer", (self.p.sync_feedback_buffer_range * direction) / 2.)
+                _,_,_,_ = self.mmu.move_filament("Centering sync feedback buffer", (self.mmu_unit.buffer.buffer_range * direction) / 2.)
         else:
             self.mmu.log_debug("Failed to reach neutral filament tension after moving %.1fmm" % max_move)
 
@@ -584,7 +584,7 @@ class MmuSyncFeedback:
             neutral_band = 0.05
 
         # maxrange is full end-to-end sensor span; use half as the per-side budget from neutral to either end
-        maxrange_span_mm = float(self.p.sync_feedback_buffer_maxrange)
+        maxrange_span_mm = float(self.mmu_unit.buffer.buffer_maxrange)
         if maxrange_span_mm <= 0.0:
             self.mmu.log_debug("Proportional adjust skipped: buffer maxrange <= 0")
             return 0., False

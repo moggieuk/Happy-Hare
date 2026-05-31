@@ -9,7 +9,6 @@ config MMU_FAMILY_ERCF
   select BOOL_VARIABLE_ROTATION_DISTANCES
   select BOOL_REQUIRE_BOWDEN_MOVE
   select UNSELECT_VARIABLE_BOWDEN_LENGTHS # Disable option
-  select UNSELECT_CAN_CROSSLOAD           # Disable option
   imply  BOOL_FILAMENT_ALWAYS_GRIPPED     # Suggest option
 
 if MMU_FAMILY_ERCF
@@ -127,6 +126,8 @@ if MMU_FAMILY_ERCF
   if SHOW_MMU_ADDITIONS_WITH_TYPE
     source "Kconfig.mmu_additions"
   endif
+
+  source "Kconfig.capabilities"
 
   ####################
   ##### Defaults #####
