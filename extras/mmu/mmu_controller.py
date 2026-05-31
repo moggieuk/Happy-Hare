@@ -2197,18 +2197,26 @@ class MmuController(MmuFilamentMovement):
 
     def select_gate(self, gate):
         #self.log_warning(f"PAUL: select_gate({gate}): gate_selected:{self.gate_selected}")
+        mmu_unit = self.mmu_unit(gate)
+        selector = mmu_unit.selector
         try:
             if gate == self.gate_selected:
-                self.selector().select_gate(gate) # Always give selector a chance to fix position
+                selector.select_gate(gate) # Always give selector a chance to fix position
             else:
+                # Autohome if necessary
+                if not selector.is_homed:
+                    self.log_info(f"MMU selector for gate {gate} not homed, will home before continuing")
+                    selector.home()
+
                 self._next_gate = gate # Valid only during the gate selection process
                 _prev_gate = self.gate_selected
-                self.selector(gate).select_gate(gate)
+                selector.select_gate(gate)
                 self._set_gate_selected(gate) # Will send gate/unit changed events
 
         except MmuError as ee:
             self.unselect_gate()
             raise ee
+
         finally:
             self._next_gate = None
 

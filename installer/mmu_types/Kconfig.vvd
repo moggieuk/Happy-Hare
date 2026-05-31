@@ -56,7 +56,7 @@ if MMU_TYPE_VVD_1_0
   config PARAM_GEAR_GEAR_RATIO
     default "1:1"
   config PARAM_GEAR_ROTATION_DISTANCE
-    default "7.8"
+    default "8.45"
   config PARAM_GEAR_RUN_CURRENT
     default "0.7"
   config PARAM_GEAR_HOLD_CURRENT
@@ -77,12 +77,12 @@ if MMU_TYPE_VVD_1_0
   config PARAM_SELECTOR_MOVE_SPEED
     default 200
 
-  config PARAM_GATE_PARKING_DISTANCE
-    default "10"
   config PARAM_GATE_HOMING_MAX
-    default "500"
+    default 800
+  config PARAM_GATE_PARKING_DISTANCE
+    default 10
   config PARAM_GATE_FINAL_EJECT_DISTANCE
-    default "300"
+    default 800
   
   config PARAM_CHAIN_COUNT
     default 28   

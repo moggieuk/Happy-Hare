@@ -82,17 +82,17 @@ if MMU_HAS_ENCODER
           Ensure this matches the resolution of your encoder. It represents
           filament movement (mm) for each sensor pulse. Note that this is
           only used as an initial value and it overridden by calibration.
-        string "Uncalibrated encoder resolution "
-        default "0.7059" if CHOICE_ENCODER_TYPE_TCRT5000
-        default "1.05"   if CHOICE_ENCODER_TYPE_BINKY
-        default "1.5"    if CHOICE_ENCODER_TYPE_BINKY_V2
-        default "1.0"    if CHOICE_ENCODER_TYPE_OTHER
-        default "1.0"
+        float "Uncalibrated encoder resolution "
+        default 0.7059 if CHOICE_ENCODER_TYPE_TCRT5000
+        default 1.05   if CHOICE_ENCODER_TYPE_BINKY
+        default 1.5    if CHOICE_ENCODER_TYPE_BINKY_V2
+        default 1.0    if CHOICE_ENCODER_TYPE_OTHER
+        default 1.0
 
       config PARAM_GATE_ENDSTOP_TO_ENCODER
-        string "Gate endstop to encoder distance"
-        default "10" if MMU_HAS_SENSOR_SHARED_EXIT || MMU_HAS_SENSOR_EXIT
-        default "0"
+        float "Gate endstop to encoder distance"
+        default 10 if MMU_HAS_SENSOR_SHARED_EXIT || MMU_HAS_SENSOR_EXIT
+        default 0
         help
           The distance from the gate endstop to when the encoder "sees" the filament.
           If the gate endstop is the encoder then this is ignored, however, if using

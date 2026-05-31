@@ -124,6 +124,7 @@ class MmuChangeToolCommand(BaseCommand):
             with mmu.wrap_sync_gear_to_extruder():
                 with mmu.wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during tool change
                     with mmu.var_manager.wrap_suspend_write_variables(): # Reduce I/O activity to a minimum
+
                         if mmu.has_encoder():
                             mmu.encoder().note_clog_detection_length()
 

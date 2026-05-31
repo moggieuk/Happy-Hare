@@ -9,7 +9,6 @@ config MMU_FAMILY_ERCF
   select BOOL_VARIABLE_ROTATION_DISTANCES
   select BOOL_REQUIRE_BOWDEN_MOVE
   select UNSELECT_VARIABLE_BOWDEN_LENGTHS # Disable option
-  imply  BOOL_FILAMENT_ALWAYS_GRIPPED     # Suggest option
 
 if MMU_FAMILY_ERCF
 
@@ -129,11 +128,10 @@ if MMU_FAMILY_ERCF
 
   source "Kconfig.capabilities"
 
-  ####################
-  ##### Defaults #####
-  ####################
+  #########################################
+  ##### Shared defaults on all models #####
+  #########################################
 
-  # Shared identity
   config PARAM_VENDOR
     default "ERCF"
 
@@ -142,6 +140,9 @@ if MMU_FAMILY_ERCF
     default 3
   config PARAM_SERVO_DURATION
     default 0.4
+
+  config PARAM_GATE_HOMING_MAX
+    default 100
 
   # Calibration and Autotuning overrides
   config BOOL_SKIP_CAL_ENCODER
@@ -186,8 +187,8 @@ if MMU_FAMILY_ERCF
 
     # Distances
     config PARAM_GATE_PARKING_DISTANCE
-      default "-23"
-      default "-13" if MOD_THUMPER_BLOCKS
+      default -23
+      default -13 if MOD_THUMPER_BLOCKS
 
     # Modifications
     choice CHOICE_ENCODER_TYPE
@@ -227,8 +228,8 @@ if MMU_FAMILY_ERCF
 
     # Distances
     config PARAM_GATE_PARKING_DISTANCE
-      default "-13"
-      default "-11" if MOD_THUMPER_BLOCKS
+      default -13
+      default -11 if MOD_THUMPER_BLOCKS
 
     choice CHOICE_ENCODER_TYPE
       default CHOICE_ENCODER_TYPE_BINKY
@@ -266,7 +267,7 @@ if MMU_FAMILY_ERCF
 
     # Distances
     config PARAM_GATE_PARKING_DISTANCE
-      default "-16"
+      default -16
 
     choice CHOICE_ENCODER_TYPE
       default CHOICE_ENCODER_TYPE_BINKY_V2

@@ -69,17 +69,17 @@ if MMU_TYPE_KMS_1_0
 
   # "Gates" config
   config PARAM_GATE_HOMING_MAX
-    default "300"
+    default 300
   config PARAM_GATE_PRELOAD_HOMING_MAX
-    default "300"
+    default 300
   config PARAM_GATE_PRELOAD_PARKING_DISTANCE
-    default "-10"
+    default -10
   config PARAM_GATE_PARKING_DISTANCE
-    default "-20"
-  config PARAM_GATE_ENDSTOP_TO_ENCODER
-    default "14"
+    default -20
   config PARAM_GATE_FINAL_EJECT_DISTANCE
-    default "300"
+    default 300
+  config PARAM_GATE_ENDSTOP_TO_ENCODER
+    default 14
 
   # "Motor sync" config
   config PARAM_BUFFER_RANGE

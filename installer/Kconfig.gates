@@ -10,9 +10,16 @@
 
 menu "Gate loading & parking"
 
+  config PARAM_GATE_HOMING_MAX
+    float "Maximum homing distance "
+    default 100
+    help
+      Maximum extra move distance (mm) to home (or actual move distance if
+      using "encoder" endstop)
+
   config PARAM_GATE_PARKING_DISTANCE
-    string "Gate parking distance   "
-    default "-23"
+    float "Gate parking distance   "
+    default -23
     help
       Parking position relative to homing endstop. Must be -ve (retraction)
       unless endstop is mmu_exit and filament can be left past the sensor
@@ -21,16 +28,17 @@ menu "Gate loading & parking"
       Negative values for movement in the retract direction (back off sensor)
       Positive values for movement in the extrude direction (past sensor)
 
-  config PARAM_GATE_HOMING_MAX
-    string "Maximum homing distance "
-    default "100"
+  config PARAM_GATE_PRELOAD_HOMING_MAX
+    float "Preload homing distance "
+    default PARAM_GATE_HOMING_MAX
     help
-      Maximum extra move distance (mm) to home (or actual move distance if
-      using "encoder" endstop)
+      Maximum homing distance (mm) to the mmu_exit endstop
+
+      Usually this is the same as gate homing distance
 
   config PARAM_GATE_PRELOAD_PARKING_DISTANCE
-    string "Preload parking distance"
-    default "0"
+    float "Preload parking distance"
+    default PARAM_GATE_PARKING_DISTANCE
     help
       Filament parking distance (mm) after homing to configured gate homing sensor
       or per-gate "mmu_exit" sensor if available.
@@ -38,15 +46,11 @@ menu "Gate loading & parking"
       Negative values for movement in the retract direction (back off sensor)
       Positive values for movement in the extrude direction (past sensor)
 
-  config PARAM_GATE_PRELOAD_HOMING_MAX
-    string "Preload homing distance "
-    default "100"
-    help
-      Maximum homing distance (mm) to the mmu_exit endstop
+      Usually this is the same as gate parking distance
 
   config PARAM_GATE_FINAL_EJECT_DISTANCE
-    string "Final eject distance    "
-    default "0"
+    float "Final eject distance    "
+    default 20
     help
       Additional distance to eject filament on MMU_EJECT to clear MMU's grip
 

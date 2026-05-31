@@ -61,13 +61,13 @@ if MMU_FAMILY_QUATTRO_BOX
     default 4
 
   config PARAM_GATE_HOMING_MAX
-    default "200"
+    default 200
   config PARAM_GATE_PRELOAD_HOMING_MAX
-    default "200"
+    default 200
   config PARAM_GATE_PARKING_DISTANCE
-    default "-30"
+    default -30
   config PARAM_GATE_FINAL_EJECT_DISTANCE
-    default "200"
+    default 200
 
 
   if MMU_TYPE_QUATTRO_BOX_1_0
@@ -82,8 +82,9 @@ if MMU_FAMILY_QUATTRO_BOX
       default "0.2"
     config PARAM_GEAR_HOMING_SPEED
       default 80
+
     config PARAM_GATE_ENDSTOP_TO_ENCODER
-      default "18"
+      default 18
 
     config PARAM_CHAIN_COUNT
       default 32
@@ -110,8 +111,9 @@ if MMU_FAMILY_QUATTRO_BOX
       default "0.2"
     config PARAM_GEAR_HOMING_SPEED
       default 80
+
     config PARAM_GATE_ENDSTOP_TO_ENCODER
-      default "18"
+      default 18
 
     config PARAM_CHAIN_COUNT
       default 36
@@ -143,8 +145,9 @@ if MMU_FAMILY_QUATTRO_BOX
       default "0.2"
     config PARAM_GEAR_HOMING_SPEED
       default 80
+
     config PARAM_GATE_ENDSTOP_TO_ENCODER
-      default "0"
+      default 0
 
     config PARAM_CHAIN_COUNT
       default 38
