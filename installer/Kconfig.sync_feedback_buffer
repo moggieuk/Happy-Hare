@@ -54,8 +54,9 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
         default UNIT_NAME
 
       config PARAM_BUFFER_RANGE
-        string "Sync feedback buffer sensor range"
-        default "10"
+        float "Sync feedback buffer sensor range"
+        range 0 30
+        default 10
         help
           Travel in "buffer" between compression/tension or one sensor and end:
 
@@ -66,8 +67,9 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
           compression   tension        compression-only                      tension-only
 
       config PARAM_BUFFER_MAXRANGE
-        string "Sync feedback buffer max range   "
-        default "12"
+        float "Sync feedback buffer max range   "
+        range 0 30
+        default 12
         help
           The maximum distance the sync-feedback buffer can move from hard limit to hard limit:
 
@@ -96,7 +98,7 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
 
       config PIN_BUFFER_COMPRESSION
         prompt "Sync feedback compression pin" if MMU_HAS_SENSOR_BUFFER_COMPRESSION
-
+        
       config UNSELECT_MMU_HAS_SENSOR_BUFFER_TENSION
           bool
       config MMU_HAS_SENSOR_BUFFER_TENSION
@@ -115,7 +117,7 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
 
       config PIN_BUFFER_TENSION
         prompt "Sync feedback tension pin    " if MMU_HAS_SENSOR_BUFFER_TENSION
-
+ 
       config MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
         bool "Sync-Feedback Analog proportional position sensor?"
         default n
