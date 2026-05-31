@@ -2,7 +2,7 @@
 #   MMU_HAS_ESPOOLER
 
 config UNSELECT_MMU_HAS_ESPOOLER
-  def_bool n
+  bool
 config MMU_HAS_ESPOOLER
   prompt "Has eSpooler?"
   depends on !UNSELECT_MMU_HAS_ESPOOLER

@@ -20,6 +20,8 @@ if MMU_TYPE_NIGHT_OWL_1_0
     source "Kconfig.mmu_additions"
   endif
 
+  source "Kconfig.capabilities"
+
   ####################
   ##### Defaults #####
   ####################

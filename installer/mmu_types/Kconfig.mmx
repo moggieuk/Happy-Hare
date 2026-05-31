@@ -17,6 +17,8 @@ if MMU_TYPE_MMX_1_0
     source "Kconfig.mmu_additions"
   endif
 
+  source "Kconfig.capabilities"
+
   ####################
   ##### Defaults #####
   ####################

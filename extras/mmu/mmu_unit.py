@@ -94,14 +94,13 @@ class MmuUnit:
             variable_bowden_lengths: bool = False    # Does each gate of the MMU have different bowden path
             require_bowden_move: bool = True         # Does design require "bowden move" (i.e. non zero length bowden)
             filament_always_gripped: bool = False    # Is filament always gripped by MMU (overrides gear/extruder syncing assumptions)
-            can_crossload: bool = True               # Does selector mechanism allow selection of gates when filament is loaded (implied for type-B designs)
             show_bypass: bool = False                # Does design has selectable filament bypass (only type-A and type-C). Only one allowed per mmu_machine!
 
         DEF_PROFILE = MmuUnitProfile()
 
         VENDOR_PROFILES = {
-            VENDOR_ERCF:         replace(DEF_PROFILE, selector_type=SELECTOR_LINEAR_SERVO, can_crossload=False, show_bypass=True),
-            VENDOR_TRADRACK:     replace(DEF_PROFILE, selector_type=SELECTOR_LINEAR_SERVO, variable_rotation_distances=False, can_crossload=False),
+            VENDOR_ERCF:         replace(DEF_PROFILE, selector_type=SELECTOR_LINEAR_SERVO, show_bypass=True),
+            VENDOR_TRADRACK:     replace(DEF_PROFILE, selector_type=SELECTOR_LINEAR_SERVO, variable_rotation_distances=False),
             VENDOR_ANGRY_BEAVER: replace(DEF_PROFILE, require_bowden_move=False, filament_always_gripped=True),
             VENDOR_BOX_TURTLE:   replace(DEF_PROFILE, filament_always_gripped=True),
             VENDOR_NIGHT_OWL:    replace(DEF_PROFILE, filament_always_gripped=True),
@@ -128,8 +127,10 @@ class MmuUnit:
         self.variable_bowden_lengths =     bool(config.getint('variable_bowden_lengths', profile.variable_bowden_lengths))
         self.require_bowden_move =         bool(config.getint('require_bowden_move', profile.require_bowden_move))
         self.filament_always_gripped =     bool(config.getint('filament_always_gripped', profile.filament_always_gripped))
-        self.can_crossload =               bool(config.getint('can_crossload', profile.can_crossload))
         self.show_bypass =                 bool(config.getint('show_bypass', profile.show_bypass))
+
+        # Can selector mechanism allow selection of other gates on unit when filament is loaded
+        self.can_crossload = self.selector_type in [SELECTOR_VIRTUAL, SELECTOR_SERVO, SELECTOR_INDEXED, SELECTOR_MACRO, SELECTOR_ROTARY]
 
 
         # ---------------------------------------------------------------------------------------------------

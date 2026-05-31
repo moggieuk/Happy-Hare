@@ -10,7 +10,6 @@ config MMU_TYPE_VVD_1_0
   select UNSELECT_MMU_HAS_FILAMENT_BUFFER # Disable
 
   select BOOL_REQUIRE_BOWDEN_MOVE
-  select BOOL_CAN_CROSSLOAD
   select UNSELECT_VARIABLE_BOWDEN_LENGTHS # Disable
   select UNSELECT_FILAMENT_ALWAYS_GRIPPED # Disable
 
@@ -33,9 +32,12 @@ if MMU_TYPE_VVD_1_0
 endif
 
 if MMU_TYPE_VVD_1_0
+
   if SHOW_MMU_ADDITIONS_WITH_TYPE
     source "Kconfig.mmu_additions"
   endif
+
+  source "Kconfig.capabilities"
 
   ####################
   ##### Defaults #####

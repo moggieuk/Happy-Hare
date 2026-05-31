@@ -109,8 +109,8 @@ class MmuEjectCommand(UnloadEjectMixin, BaseCommand):
             mmu.log_always("Filament not loaded")
             return
 
-#        mmu.log_error("PAUL: command would run") # PAUL
-#        return # PAUL
+        mmu.log_error("PAUL: command would run") # PAUL
+        return # PAUL
 
         try:
             with mmu.wrap_sync_gear_to_extruder():

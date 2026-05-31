@@ -622,7 +622,7 @@ class MmuCalibratePsensorCommand(CalibrationMixin, BaseCommand):
 
     This command automatically determines the compression limit, tension limit,
     and neutral point for the analog sync-feedback sensor configured with
-    sync_feedback_analog_pin in [mmu_buffer].
+    analog_pin in [mmu_buffer].
 
     During calibration, the MMU moves filament through the buffer while sampling
     the sensor ADC output to detect both compression and tension extremes. The
@@ -637,7 +637,7 @@ class MmuCalibratePsensorCommand(CalibrationMixin, BaseCommand):
     Parameters:
       MOVE=
         Movement range used while searching for sensor limits
-        Default: sync_feedback_buffer_maxrange
+        Default: buffer_maxrange
         Range: 1-100 mm
 
     MMU_CALIBRATE_PSENSOR
@@ -646,16 +646,16 @@ class MmuCalibratePsensorCommand(CalibrationMixin, BaseCommand):
       Use a larger movement range for larger sync-feedback buffers
 
     On success, the following settings are reported:
-      sync_feedback_analog_max_compression
-      sync_feedback_analog_max_tension
-      sync_feedback_analog_neutral_point
+      analog_max_compression
+      analog_max_tension
+      analog_neutral_point
     """
     CMD = "MMU_CALIBRATE_PSENSOR"
 
     HELP_BRIEF = "Calibrate analog proportional sync-feedback sensor"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
-        + "MOVE = #(mm) Movement range used to search limits (default: sync_feedback_buffer_maxrange, min: 1, max: 100)\n"
+        + "MOVE = #(mm) Movement range used to search limits (default: buffer_maxrange, min: 1, max: 100)\n"
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
@@ -689,9 +689,9 @@ class MmuCalibratePsensorCommand(CalibrationMixin, BaseCommand):
         sync_feedback_buffer = mmu_unit.buffer
 
         usage = (
-            f"Ensure your sensor is configured by setting sync_feedback_analog_pin in [mmu_buffer {sync_feedback_buffer.name}].\n"
-            "The other settings (sync_feedback_analog_max_compression, sync_feedback_analog_max_tension "
-            "and sync_feedback_analog_neutral_point) will be determined by this calibration."
+            f"Ensure your sensor is configured by setting analog_pin in [mmu_buffer {sync_feedback_buffer.name}]\n"
+            "The other settings (analog_max_compression, analog_max_tension "
+            "and analog_neutral_point) will be determined by this calibration."
         )
 
         if not sensor_manager.has_sensor(SENSOR_PROPORTIONAL):
@@ -705,7 +705,7 @@ class MmuCalibratePsensorCommand(CalibrationMixin, BaseCommand):
         STEP_SIZE = 2.0
         MOVE_SPEED = 8.0
 
-        move = gcmd.get_float('MOVE', mmu_unit.p.sync_feedback_buffer_maxrange, minval=1, maxval=100)
+        move = gcmd.get_float('MOVE', sync_feedback_buffer.buffer_maxrange, minval=1, maxval=100)
         steps = math.ceil(move * MAX_MOVE_MULTIPLIER / STEP_SIZE)
 
         def _avg_raw(n=10, dwell_s=0.1):
@@ -751,7 +751,7 @@ class MmuCalibratePsensorCommand(CalibrationMixin, BaseCommand):
 
         try:
             with mmu.wrap_sync_gear_to_extruder():
-                with mmu.wrap_gear_current(percent=mmu_unit.p.sync_gear_current, reason="while calibrating sync_feedback psensor"):
+                with mmu.wrap_gear_current(percent=mmu_unit.p.sync_gear_current, reason="while calibrating sync feedback buffer psensor"):
                     mmu_unit.selector.filament_drive()
                     mmu.calibrating = True
 
@@ -782,16 +782,16 @@ class MmuCalibratePsensorCommand(CalibrationMixin, BaseCommand):
             if (found_c_limit and found_t_limit):
                 msg =  "Calibration Results:\n"
                 msg += "As wired, recommended settings (in mmu_hardware_*.cfg) are:\n"
-                msg += "[mmu_buffer {sync_feedback_buffer.namej]\n"
-                msg += "sync_feedback_analog_max_compression: %.4f\n" % c_prev
-                msg += "sync_feedback_analog_max_tension:     %.4f\n" % t_prev
-                msg += "sync_feedback_analog_neutral_point:   %.4f\n" % ((c_prev + t_prev) / 2.0)
+                msg += f"[mmu_buffer {sync_feedback_buffer.name}]\n"
+                msg += "analog_max_compression: %.4f\n" % c_prev
+                msg += "analog_max_tension:     %.4f\n" % t_prev
+                msg += "analog_neutral_point:   %.4f\n" % ((c_prev + t_prev) / 2.0)
                 msg += "After updating, don't forget to restart klipper!"
                 mmu.log_always(msg)
             else:
                 msg = "Warning: calibration did not find both compression and tension "
                 msg += "limits (compression=%s, tension=%s)\n" % (found_c_limit, found_t_limit)
-                msg += "Perhaps sync_feedback_buffer_maxrange parameter is incorrect?\n"
+                msg += "Perhaps buffer_maxrange parameter is incorrect?\n"
                 msg += "Alternatively with bigger movement range by running with MOVE="
                 mmu.log_warning(msg)
 

@@ -789,7 +789,7 @@ class MmuFilamentMovement:
                 and not has_toolhead
                 and self.sensor_manager.check_sensor(SENSOR_COMPRESSION)
             ):
-                max_range = u.sync_feedback.p.sync_feedback_buffer_maxrange * 2 # Arbitary but buffer_maxrange is not enough to overcome bowden slack
+                max_range = u.buffer.buffer_maxrange * 2 # Arbitary but buffer_maxrange is not enough to overcome bowden slack
                 if length > max_range:
                     self.log_debug("Monitoring extruder entrance transition for up to %.1fmm..." % max_range)
                     actual, success = u.sync_feedback.adjust_filament_tension(use_gear_motor=False, max_move=max_range)

@@ -66,6 +66,7 @@ class MmuPreloadCommand(BaseCommand):
             gate = gcmd.get_int('GATE', current_gate, minval=0, maxval=mmu.num_gates - 1)
             preload_unit = mmu.mmu_unit(gate)
 
+# PAUL
 #        gate = gcmd.get_int('GATE', mmu.gate_selected, minval=0, maxval=mmu.num_gates - 1)
 #        current_gate = mmu.gate_selected
 #        preload_unit = mmu.mmu_unit(gate)
@@ -95,8 +96,8 @@ class MmuPreloadCommand(BaseCommand):
 
         mmu.log_always("Preloading filament in %s..." % ("current gate" if gate == current_gate else "gate %d" % gate))
 
-#        mmu.log_error("PAUL: command would run") # PAUL
-#        return # PAUL
+        mmu.log_error("PAUL: command would run") # PAUL
+        return # PAUL
         try:
             with mmu.wrap_sync_gear_to_extruder():
                 with mmu.wrap_suppress_visual_log():

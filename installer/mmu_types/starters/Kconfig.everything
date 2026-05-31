@@ -29,9 +29,19 @@ config MMU_CUSTOM_TYPE_EVERYTHING
   imply BOOL_VARIABLE_ROTATION_DISTANCES
   imply BOOL_VARIABLE_BOWDEN_LENGTHS
   imply BOOL_FILAMENT_ALWAYS_GRIPPED
-  imply BOOL_CAN_CROSSLOAD
 
 if MMU_CUSTOM_TYPE_EVERYTHING
+
+  if SHOW_MMU_ADDITIONS_WITH_TYPE
+    source "Kconfig.mmu_additions"
+  endif
+
+  source "Kconfig.capabilities"
+
+  ####################
+  ##### Defaults #####
+  ####################
+
   config PARAM_VENDOR
     default "Other"
   config PARAM_VERSION

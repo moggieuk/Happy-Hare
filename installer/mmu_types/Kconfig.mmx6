@@ -8,7 +8,6 @@ config MMU_TYPE_MMX6_1_0
   imply  BOOL_REQUIRE_BOWDEN_MOVE
   select BOOL_FILAMENT_ALWAYS_GRIPPED
   select BOOL_VARIABLE_ROTATION_DISTANCES
-  select UNSELECT_CAN_CROSSLOAD
   select DISABLE_NUM_GATES_OPTION
 
 ####################
@@ -21,6 +20,7 @@ if MMU_TYPE_MMX6_1_0
     source "Kconfig.mmu_additions"
   endif
 
+  source "Kconfig.capabilities"
 
   config PARAM_VENDOR
     default "MMX6"

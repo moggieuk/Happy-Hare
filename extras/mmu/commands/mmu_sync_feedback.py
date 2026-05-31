@@ -24,8 +24,8 @@ class MmuSyncFeedbackCommand(BaseCommand):
         f"{CMD}: {HELP_BRIEF}\n"
         + "UNIT           = #(int)|_name_|ALL Specify unit by name, number or all-units (optional if single unit)\n"
         + "ENABLE         = [1|0] enable/disable sync feedback control\n"
-        + "RESET          = [1|0] reset sync controller and return RD to last known good value\n"
-        + "ADJUST_TENSION = [1|0] apply correction to neutralize filament tension\n"
+        + "RESET          = 1 reset sync controller and return RD to last known good value\n"
+        + "ADJUST_TENSION = 1 apply correction to neutralize filament tension\n"
         + "AUTOTUNE       = [1|0] allow saving of autotuned rotation distance\n"
         + "(no parameters for status report)\n"
     )
@@ -88,6 +88,7 @@ class MmuSyncFeedbackCommand(BaseCommand):
             )
 
         if adjust_tension:
+            if self.check_if_not_loaded(): return
             try:
                 # Cannot adjust sync feedback sensor if gears are not synced
                 with mmu.wrap_sync_gear_to_extruder():
