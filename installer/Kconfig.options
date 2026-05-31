@@ -1,6 +1,9 @@
 # Defines parameter token types and defaults for popular software options
 #
 # Responsible for setting:
+#   PARAM_LOG_LEVEL
+#   PARAM_LOG_FILE_LEVEL
+#
 #   PARAM_FORCE_FORM_TIP_STANDALONE
 #   PARAM_SLICER_TIP_PARK_POS
 #   PARAM_FORCE_PURGE_STANDALONE
@@ -16,6 +19,70 @@ menu "Software Options"
     configuration can be achieved later by editing generated klipper
     config files.
 
+
+# -------------------------------------
+# Logging
+# -------------------------------------
+
+  menu "Logging"
+    choice CHOICE_LOG_LEVEL
+      prompt "Console log level"
+      default CHOICE_LOG_LEVEL_INFO
+      help
+        Select verbosity of console logging.
+        Essential is minimal; Developer is very verbose.
+        Recommend "Info"
+
+      config CHOICE_LOG_LEVEL_ESSENTIAL
+        bool "Essential"
+      config CHOICE_LOG_LEVEL_INFO
+        bool "Info"
+      config CHOICE_LOG_LEVEL_DEBUG
+        bool "Debug"
+      config CHOICE_LOG_LEVEL_TRACE
+        bool "Trace"
+      config CHOICE_LOG_LEVEL_STEPPER
+        bool "Developer"
+    endchoice
+
+    config PARAM_LOG_LEVEL
+      int
+      default 0 if CHOICE_LOG_LEVEL_ESSENTIAL
+      default 1 if CHOICE_LOG_LEVEL_INFO
+      default 2 if CHOICE_LOG_LEVEL_DEBUG
+      default 3 if CHOICE_LOG_LEVEL_TRACE
+      default 4 if CHOICE_LOG_LEVEL_STEPPER
+      default 1
+
+    choice CHOICE_LOG_FILE_LEVEL
+      prompt "Log file (mmu.log) level"
+      default CHOICE_LOG_FILE_LEVEL_DEBUG
+      help
+        Select verbosity of mmu.log logging.
+        Essential is minimal; Developer is very verbose.
+        Recommend "Debug"
+
+      config CHOICE_LOG_FILE_LEVEL_ESSENTIAL
+        bool "Essential"
+      config CHOICE_LOG_FILE_LEVEL_INFO
+        bool "Info"
+      config CHOICE_LOG_FILE_LEVEL_DEBUG
+        bool "Debug"
+      config CHOICE_LOG_FILE_LEVEL_TRACE
+        bool "Trace"
+      config CHOICE_LOG_FILE_LEVEL_STEPPER
+        bool "Developer"
+    endchoice
+
+    config PARAM_LOG_FILE_LEVEL
+      int
+      default 0 if CHOICE_LOG_FILE_LEVEL_ESSENTIAL
+      default 1 if CHOICE_LOG_FILE_LEVEL_INFO
+      default 2 if CHOICE_LOG_FILE_LEVEL_DEBUG
+      default 3 if CHOICE_LOG_FILE_LEVEL_TRACE
+      default 4 if CHOICE_LOG_FILE_LEVEL_STEPPER
+      default 2
+  endmenu
 
 # -------------------------------------
 # Tip Forming / Cutting
