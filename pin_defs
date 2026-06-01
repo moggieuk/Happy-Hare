@@ -191,7 +191,7 @@ PIN[ERB,gear_sensor_7_pin]="";                             PIN[ERBv2,gear_sensor
 PIN[ERB,gear_sensor_8_pin]="";                             PIN[ERBv2,gear_sensor_8_pin]="";
 PIN[ERB,gear_sensor_9_pin]="";                             PIN[ERBv2,gear_sensor_9_pin]="";
 PIN[ERB,gear_sensor_10_pin]="";                            PIN[ERBv2,gear_sensor_10_pin]="";
-PIN[ERB,gear_sensor_11_pin]="";                            PIN[ERBv2,gear_sensor_10_pin]="";
+PIN[ERB,gear_sensor_11_pin]="";                            PIN[ERBv2,gear_sensor_11_pin]="";
 #
 # Common Type-B MMU pin utilization
 #
