@@ -72,7 +72,7 @@ class MmuTtgMapCommand(BaseCommand):
                 if len(ttg_map) != mmu.num_gates:
                     mmu.log_always("The number of map values (%d) is not the same as number of gates (%d)" % (len(ttg_map), mmu.num_gates))
                     return
-                mmu.ttg_map = []
+                mmu.gate_maps.ttg_map = []
                 for gate_str in ttg_map:
                     if gate_str.isdigit():
                         mmu.ttg_map.append(int(gate_str))

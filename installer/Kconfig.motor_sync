@@ -59,7 +59,7 @@ menu "MMU/Extruder sync"
       Set extruder current in "Software options" section
   config PARAM_SYNC_FORM_TIP
     int
-    default 1 if BOOL_ENABLE_FORM_TIP
+    default 1 if BOOL_ENABLE_SYNC_FORM_TIP
     default 0
 
   config BOOL_ENABLE_SYNC_PURGE
