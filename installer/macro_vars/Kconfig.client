@@ -1,0 +1,48 @@
+menu "Client macros (_MMU_CLIENT)"
+  help
+    Happy Hare client macro configuration variables.
+
+    Supplemental customization and extension points for the recommended
+    PAUSE, RESUME, and CANCEL_PRINT macros.
+
+  config BOOL_CLIENT_RESET_TTG_ON_CANCEL
+    bool "Reset TTG map on cancel"
+    default n
+    help
+      Whether to reset TTG map if print is canceled.
+
+  config VAR_CLIENT_RESET_TTG_ON_CANCEL
+    string
+    default "True" if BOOL_CLIENT_RESET_TTG_ON_CANCEL
+    default "False"
+
+  config BOOL_CLIENT_UNLOAD_TOOL_ON_CANCEL
+    bool "Unload tool on cancel"
+    default n
+    help
+      Whether to unload the tool on cancel.
+
+  config VAR_CLIENT_UNLOAD_TOOL_ON_CANCEL
+    string
+    default "True" if BOOL_CLIENT_UNLOAD_TOOL_ON_CANCEL
+    default "False"
+
+  config VAR_CLIENT_USER_PAUSE_EXTENSION
+    string "Pause extension macro "
+    default ""
+    help
+      Executed after the Klipper base pause.
+
+  config VAR_CLIENT_USER_RESUME_EXTENSION
+    string "Resume extension macro"
+    default ""
+    help
+      Executed before the Klipper base resume.
+
+  config VAR_CLIENT_USER_CANCEL_EXTENSION
+    string "Cancel extension macro"
+    default ""
+    help
+      Executed before the Klipper base cancel_print.
+
+endmenu

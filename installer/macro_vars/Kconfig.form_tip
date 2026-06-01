@@ -1,0 +1,169 @@
+menu "Tip forming (_MMU_FORM_TIP)"
+  help
+    Happy Hare tip forming macro configuration variables.
+
+  comment "Step 1 - Ramming"
+
+  config VAR_FORM_TIP_RAMMING_VOLUME
+    float "Ramming volume             "
+    default 0
+    help
+      Ramming volume in mm^3.
+      Set to 0 to disable (for example if slicer performs ramming).
+
+  config VAR_FORM_TIP_RAMMING_VOLUME_STANDALONE
+    float "Ramming volume (standalone)"
+    default 0
+    help
+      Ramming volume in mm^3 when not printing.
+      Set to 0 to disable.
+
+  comment "Optional temperature change"
+
+  config VAR_FORM_TIP_TOOLCHANGE_TEMP
+    int "Toolchange temperature     "
+    default 0
+    help
+      Temperature to set during tip forming.
+      Set to 0 to disable temperature changes.
+
+  config BOOL_FORM_TIP_TOOLCHANGE_FAN_ASSIST
+    bool "Use fan assist for temperature changes"
+    default n
+    help
+      Use part cooling fan to speed up temperature changes.
+
+  config VAR_FORM_TIP_TOOLCHANGE_FAN_ASSIST
+    string
+    default "True" if BOOL_FORM_TIP_TOOLCHANGE_FAN_ASSIST
+    default "False"
+
+  config VAR_FORM_TIP_TOOLCHANGE_FAN_NAME
+    string "Toolchange fan name"
+    default ""
+    help
+      Fan name if not using the default [fan].
+      Example: fan_generic fan0
+
+  config VAR_FORM_TIP_TOOLCHANGE_FAN_SPEED
+    int "Toolchange % fan speed     "
+    default 50
+    help
+      Fan speed percentage when fan assist is enabled.
+
+  comment "Step 2 - Nozzle Separation"
+
+  config VAR_FORM_TIP_UNLOADING_SPEED_START
+    float "Initial unload speed       "
+    default 80
+    help
+      Initial fast separation speed in mm/s.
+
+  config VAR_FORM_TIP_UNLOADING_SPEED
+    float "Cooling zone unload speed  "
+    default 18
+    help
+      Slower movement speed to the cooling zone in mm/s.
+
+  comment "Step 3 - Cooling Moves"
+
+  config VAR_FORM_TIP_COOLING_TUBE_POSITION
+    float "Cooling tube position      "
+    default 35
+    help
+      Distance from nozzle tip to start of cooling tube.
+
+  config VAR_FORM_TIP_COOLING_TUBE_LENGTH
+    float "Cooling tube length"
+    default 10
+    help
+      Length of cooling tube movement.
+
+  config VAR_FORM_TIP_INITIAL_COOLING_SPEED
+    float "Initial cooling speed      "
+    default 10
+    help
+      Initial cooling movement speed in mm/s.
+
+  config VAR_FORM_TIP_FINAL_COOLING_SPEED
+    float "Final cooling speed        "
+    default 50
+    help
+      Final fast cooling movement speed in mm/s.
+
+  config VAR_FORM_TIP_COOLING_MOVES
+    int "Cooling moves              "
+    default 4
+    help
+      Number of back-and-forth cooling moves.
+
+  comment "Step 4 - Skinnydip"
+
+  config BOOL_FORM_TIP_USE_SKINNYDIP
+    bool "Enable skinnydip"
+    default n
+    help
+      Enable the skinnydip move.
+
+  config VAR_FORM_TIP_USE_SKINNYDIP
+    string
+    default "True" if BOOL_FORM_TIP_USE_SKINNYDIP
+    default "False"
+
+  config VAR_FORM_TIP_SKINNYDIP_DISTANCE
+    float "Skinnydip distance         "
+    default 30
+    help
+      Reinsertion distance into hotend after cooling.
+
+  config VAR_FORM_TIP_DIP_INSERTION_SPEED
+    float "Dip insertion speed        "
+    default 30
+    help
+      Insertion speed in mm/s.
+
+  config VAR_FORM_TIP_DIP_EXTRACTION_SPEED
+    float "Dip extraction speed       "
+    default 70
+    help
+      Extraction speed in mm/s.
+
+  config VAR_FORM_TIP_MELT_ZONE_PAUSE
+    int "Melt zone pause (ms)       "
+    default 0
+    help
+      Pause time in melt zone.
+
+  config VAR_FORM_TIP_COOLING_ZONE_PAUSE
+    int "Cooling zone pause (ms)    "
+    default 0
+    help
+      Pause time after extraction in cooling zone.
+
+  config BOOL_FORM_TIP_USE_FAST_SKINNYDIP
+    bool "Use fast skinnydip"
+    default n
+    help
+      Skip toolhead temperature change wait during skinnydip.
+
+  config VAR_FORM_TIP_USE_FAST_SKINNYDIP
+    string
+    default "True" if BOOL_FORM_TIP_USE_FAST_SKINNYDIP
+    default "False"
+
+  comment "Step 5 - Parking"
+
+  config VAR_FORM_TIP_PARKING_DISTANCE
+    float "Parking distance           "
+    default 0
+    help
+      Position to park filament after tip forming.
+      Set to 0 to leave filament where it ends up.
+
+  config VAR_FORM_TIP_EXTRUDER_EJECT_SPEED
+    float "Extruder eject speed       "
+    default 25
+    help
+      Speed used for parking distance and final eject testing.
+
+endmenu

@@ -17,13 +17,12 @@ menu "MMU/Extruder sync"
   if MMU_HAS_SYNC_FEEDBACK_BUFFER
     config BOOL_ENABLE_SYNC_FEEDBACK
       bool "Enable dynamic sync feedback?"
+      depends on !BOOL_FILAMENT_ALWAYS_GRIPPED
       default y
       help
         Sync feedback from the buffer will be used to dynamically adjust the
         gear stepper speed to exactly match the extruder. This prevents
         under extrusion artifacts caused by filament drag.
-        
-      depends on !BOOL_FILAMENT_ALWAYS_GRIPPED
 
     config PARAM_SYNC_FEEDBACK_ENABLED
       int
@@ -57,6 +56,7 @@ menu "MMU/Extruder sync"
       during tip forming operation.
 
       Set extruder current in "Software options" section
+
   config PARAM_SYNC_FORM_TIP
     int
     default 1 if BOOL_ENABLE_SYNC_FORM_TIP
@@ -70,6 +70,7 @@ menu "MMU/Extruder sync"
       during purging operation.
 
       Set extruder current in "Software options" section
+
   config PARAM_SYNC_PURGE
     int
     default 1 if BOOL_ENABLE_SYNC_PURGE

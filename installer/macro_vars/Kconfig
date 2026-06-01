@@ -1,0 +1,14 @@
+menu "Macro Variables"
+
+  rsource "Kconfig.software"
+  rsource "Kconfig.state"
+  rsource "Kconfig.sequence"
+  rsource "Kconfig.client"
+  rsource "Kconfig.cut_tip" # PAUL TODO make conditional on toolhead cutter
+  rsource "Kconfig.form_tip"
+  if MMU_HAS_BLOBIFIER
+    rsource "Kconfig.blobifier"
+  endif
+  rsource "Kconfig.purge"
+
+endmenu

@@ -1,0 +1,220 @@
+menu "Blobifier (_BLOBIFIER)"
+  help
+    Blobifier purging system configuration variables.
+
+  config VAR_BLOBIFIER_PURGE_SPD
+    float "Purge speed                    "
+    default 400
+    help
+      Speed in mm/min of the purge.
+
+  config VAR_BLOBIFIER_PURGE_TEMP_MIN
+    int "Minimum purge temperature      "
+    default 200
+    help
+      Minimum nozzle purge temperature.
+
+  config VAR_BLOBIFIER_TOOLHEAD_X
+    float "Toolhead X offset              "
+    default 70
+    help
+      Distance from nozzle to the left of your toolhead.
+
+  config VAR_BLOBIFIER_TOOLHEAD_Y
+    float "Toolhead Y offset              "
+    default 50
+    help
+      Distance from nozzle to the front of your toolhead.
+
+  config VAR_BLOBIFIER_FORCE_SAFE_DESCEND_HEIGHT_UNTIL
+    float "Force safe descend height until"
+    default 1.0
+
+  config VAR_BLOBIFIER_BRUSH_TOP
+    float "Brush top                      "
+    default 6
+    help
+      Z height of brush top. Set to None for gantry mounted brush without Z move.
+
+  config VAR_BLOBIFIER_CLEARANCE_Z
+    float "Clearance Z                    "
+    default 2
+
+  config VAR_BLOBIFIER_WIPE_QTY
+    int "Wipe quantity                  "
+    default 2
+
+  config VAR_BLOBIFIER_TRAVEL_SPD_XY
+    float "Travel speed XY                "
+    default 10000
+
+  config VAR_BLOBIFIER_TRAVEL_SPD_Z
+    float "Travel speed Z                 "
+    default 1000
+
+  config VAR_BLOBIFIER_WIPE_SPD_XY
+    float "Wipe speed XY                  "
+    default 10000
+
+  config VAR_BLOBIFIER_BRUSH_ACCEL
+    float "Brush acceleration             "
+    default 0
+
+  config VAR_BLOBIFIER_SKEW_CORRECTION
+    float "Skew correction                "
+    default 0.1
+
+  config VAR_BLOBIFIER_Y_OFFSET
+    float "Y offset                       "
+    default 0
+
+  config VAR_BLOBIFIER_BRUSH_START
+    float "Brush start                    "
+    default 67
+    help
+      Start location of the brush. Recommend:
+        34 For 250mm build
+        67 For 300mm build
+        84 for 350mm build
+
+  config VAR_BLOBIFIER_BRUSH_WIDTH
+    float "Brush width                    "
+    default 35
+    help
+      +               ←   brush_width   →
+                       _________________
+                      |                 |  ↑                Y position is acquired from your
+      brush_start (x) |                 | brush_depth       stepper_y position_max. Adjust
+                      |_________________|  ↓                your brush physically in Y so
+                              (y)                           that the nozzle scrubs within the
+                          brush_front                       brush.
+      _____PRINTER _________________________FRONT____
+
+  config VAR_BLOBIFIER_BRUSH_Y_OFFSET
+    float "Brush Y offset                 "
+    default 0
+
+  config VAR_BLOBIFIER_PURGE_X
+    float "Purge X                        "
+    default 10
+
+  config VAR_BLOBIFIER_TRAY_TOP
+    float "Tray top                       "
+    default 0.7
+
+  config VAR_BLOBIFIER_TRAY_ANGLE_OUT
+    int "Tray angle out                 "
+    default 0
+
+  config VAR_BLOBIFIER_TRAY_ANGLE_IN
+    int "Tray angle in                  "
+    default 180
+
+  comment "Blob Tuning"
+
+  config VAR_BLOBIFIER_DWELL_TIME
+    int "Dwell time                     "
+    default 200
+
+  config VAR_BLOBIFIER_PURGE_START
+    float "Purge start height             "
+    default 0.2
+
+  config VAR_BLOBIFIER_Z_RAISE
+    float "Z raise                        "
+    default 12
+
+  config VAR_BLOBIFIER_Z_RAISE_EXP
+    float "Z raise exponent               "
+    default 0.85
+
+  config VAR_BLOBIFIER_EJECT_HOP
+    float "Eject hop                      "
+    default 1.0
+
+  config VAR_BLOBIFIER_PRESSURE_RELEASE_TIME
+    int "Pressure release time          "
+    default 1000
+
+  config VAR_BLOBIFIER_RETRACT_BETWEEN_BLOBS
+    float "Retract between blobs          "
+    default 2
+
+  config VAR_BLOBIFIER_PART_COOLING_FAN
+    float "Part cooling fan speed         "
+    default 0.3
+    help
+      Fan speed to use during purging
+      (-1 is unchanged, 0 is off, 0.1-1.0 for fan speed)
+
+  config VAR_BLOBIFIER_PART_COOLING_FAN_BLOB_DEPOSIT
+    float "Part cooling fan speed during blob deposit"
+    default 1
+    help
+      Fan speed to use during blob depositing
+      (-1 is unchanged, 0 is off, 0.1-1.0 for fan speed)
+
+  config VAR_BLOBIFIER_FAN_NAME
+    string "Fan name                       "
+    default ""
+    help
+      Optional part fan name if using a fan other than [fan].
+
+  comment "Purge Length Tuning"
+
+  config VAR_BLOBIFIER_PURGE_LENGTH_MINIMUM
+    float "Minimum purge length           "
+    default 30
+
+  config VAR_BLOBIFIER_PURGE_LENGTH_MAXIMUM
+    float "Maximum purge length           "
+    default 150
+
+  config VAR_BLOBIFIER_PURGE_LENGTH
+    float "Default purge length           "
+    default 150
+
+  config VAR_BLOBIFIER_PURGE_LENGTH_MODIFIER
+    float "Purge length modifier          "
+    default 0.6
+
+  config VAR_BLOBIFIER_PURGE_LENGTH_ADDITION
+    float "Purge length addition          "
+    default 0
+
+  comment "Bucket"
+
+  config VAR_BLOBIFIER_MAX_BLOBS
+    int "Maximum blobs                  "
+    default 400
+
+  config BOOL_BLOBIFIER_ENABLE_SHAKER
+    bool "Enable bucket shaker"
+    default y
+
+  config VAR_BLOBIFIER_ENABLE_SHAKER
+    int
+    default 1 if BOOL_BLOBIFIER_ENABLE_SHAKER
+    default 0
+
+  config VAR_BLOBIFIER_SHAKER_POS_X
+    float "Shaker X position offset       "
+    default 0
+
+  config VAR_BLOBIFIER_BUCKET_SHAKES
+    int "Bucket shakes                  "
+    default 10
+
+  config VAR_BLOBIFIER_SHAKE_ACCEL
+    float "Shake acceleration             "
+    default 10000
+
+  config VAR_BLOBIFIER_BUCKET_SHAKE_FREQUENCY
+    float "Bucket shake frequency         "
+    default 0.95
+
+  config VAR_BLOBIFIER_SHAKER_ARM_Z
+    float "Shaker arm Z                   "
+    default 2
+
+endmenu

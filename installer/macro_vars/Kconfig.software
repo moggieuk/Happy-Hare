@@ -1,0 +1,140 @@
+menu "Print start/end (_MMU_SOFTWARE)"
+  help
+    Happy Hare optional configuration for print start/end checks.
+
+    These variables control the behavior of the MMU_START_SETUP,
+    MMU_START_LOAD_INITIAL_TOOL, and MMU_END macros.
+
+  comment "Print START behavior"
+
+  config VAR_SOFTWARE_USER_PRE_INITIALIZE_EXTENSION
+    string "Pre initialize extension macro"
+    default ""
+    help
+      Macro executed at start of MMU_START_SETUP.
+      Commonly G28 to home.
+
+  config BOOL_SOFTWARE_HOME_MMU
+    bool "Home MMU before print starts"
+    default n
+    help
+      Whether to home MMU before print starts.
+
+  config VAR_SOFTWARE_HOME_MMU
+    string
+    default "True" if BOOL_SOFTWARE_HOME_MMU
+    default "False"
+
+  config BOOL_SOFTWARE_CHECK_GATES
+    bool "Check gates"
+    default y
+    help
+      Whether to check filament is loaded in all gates used.
+
+  config VAR_SOFTWARE_CHECK_GATES
+    string
+    default "True" if BOOL_SOFTWARE_CHECK_GATES
+    default "False"
+
+  config BOOL_SOFTWARE_LOAD_INITIAL_TOOL
+    bool "Load initial tool"
+    default y
+    help
+      Whether to automatically load initial tool.
+
+  config VAR_SOFTWARE_LOAD_INITIAL_TOOL
+    string
+    default "True" if BOOL_SOFTWARE_LOAD_INITIAL_TOOL
+    default "False"
+
+  choice CHOICE_SOFTWARE_AUTOMAP_STRATEGY
+    prompt "Automap strategy"
+    default CHOICE_SOFTWARE_AUTOMAP_STRATEGY_NONE
+    help
+      Automapping strategy to apply slicer tool map to find matching
+      MMU gate. This will adjust the tool-to-gate map.
+
+  config CHOICE_SOFTWARE_AUTOMAP_STRATEGY_NONE
+    bool "none"
+    help
+      Don't automap; don't update tool-to-gate map.
+
+  config CHOICE_SOFTWARE_AUTOMAP_STRATEGY_FILAMENT_NAME
+    bool "filament_name"
+    help
+      Exactly match on case insensitive filament name.
+
+  config CHOICE_SOFTWARE_AUTOMAP_STRATEGY_MATERIAL
+    bool "material"
+    help
+      Exactly match on material.
+
+  config CHOICE_SOFTWARE_AUTOMAP_STRATEGY_COLOR
+    bool "color"
+    help
+      Exactly match on color with same material.
+
+  config CHOICE_SOFTWARE_AUTOMAP_STRATEGY_CLOSEST_COLOR
+    bool "closest_color"
+    help
+      Match to closest available filament color with same material.
+
+  config CHOICE_SOFTWARE_AUTOMAP_STRATEGY_SPOOL_ID
+    bool "spool_id"
+    help
+      Exactly match on spool_id. Future option.
+
+  endchoice
+
+  config VAR_SOFTWARE_AUTOMAP_STRATEGY
+    string
+    default "none" if CHOICE_SOFTWARE_AUTOMAP_STRATEGY_NONE
+    default "filament_name" if CHOICE_SOFTWARE_AUTOMAP_STRATEGY_FILAMENT_NAME
+    default "material" if CHOICE_SOFTWARE_AUTOMAP_STRATEGY_MATERIAL
+    default "color" if CHOICE_SOFTWARE_AUTOMAP_STRATEGY_COLOR
+    default "closest_color" if CHOICE_SOFTWARE_AUTOMAP_STRATEGY_CLOSEST_COLOR
+    default "spool_id" if CHOICE_SOFTWARE_AUTOMAP_STRATEGY_SPOOL_ID
+
+  comment "Print END behavior"
+
+  config VAR_SOFTWARE_USER_PRINT_END_EXTENSION
+    string "Print end extension macro     "
+    default ""
+    help
+      Macro executed at start of MMU_END.
+      Good place to move off print.
+
+  config BOOL_SOFTWARE_UNLOAD_TOOL
+    bool "Unload tool at end of print"
+    default y
+    help
+      Whether to unload the tool at the end of the print.
+
+  config VAR_SOFTWARE_UNLOAD_TOOL
+    string
+    default "True" if BOOL_SOFTWARE_UNLOAD_TOOL
+    default "False"
+
+  config BOOL_SOFTWARE_RESET_TTG
+    bool "Reset TTG map at end of print"
+    default n
+    help
+      Whether to reset TTG map at end of print.
+
+  config VAR_SOFTWARE_RESET_TTG
+    string
+    default "True" if BOOL_SOFTWARE_RESET_TTG
+    default "False"
+
+  config BOOL_SOFTWARE_DUMP_STATS
+    bool "Display print stats at end of print"
+    default y
+    help
+      Whether to display print stats at end of print.
+
+  config VAR_SOFTWARE_DUMP_STATS
+    string
+    default "True" if BOOL_SOFTWARE_DUMP_STATS
+    default "False"
+
+endmenu
