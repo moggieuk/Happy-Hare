@@ -1,0 +1,49 @@
+# Responsible for defining "PIN_*" parameters that are "per-printer"
+# rather than per-mmu in a multi unit setup.
+#
+# Responsible for setting:
+#   PIN_TOOLHEAD_SENSOR
+#   PIN_EXTRUDER_SENSOR
+#   PIN_GANTRY_BUMPER_SERVO
+
+
+if MULTI_UNIT_ENTRY_POINT || !MULTI_UNIT
+
+# -------------------------------------
+# Toolhead sensors
+# -------------------------------------
+
+  config PIN_TOOLHEAD_SENSOR
+    string
+    prompt "Toolhead sensor pin   " if MMU_HAS_SENSOR_TOOLHEAD
+
+  config PIN_EXTRUDER_SENSOR
+    string
+    prompt "Extruder sensor pin   " if MMU_HAS_SENSOR_EXTRUDER
+
+
+# -------------------------------------
+# Misc servos
+# -------------------------------------
+
+  config PIN_GANTRY_BUMPER_SERVO
+    string "Gantry servo pin      " if MMU_HAS_GANTRY_BUMPER_SERVO
+    help
+      Optional. Used to deploy fold-down "bumper" for tip cutting
+      when using a toolhead mounted filament cutting blade
+
+  config PIN_BLOBIFIER_SERVO
+    string "Blobifer servo pin    " if MMU_HAS_BLOBIFIER
+
+  config PIN_BLOBIFIER_BUCKET_SWITCH
+    string "Blobifer bucket switch" if MMU_HAS_BLOBIFIER
+
+
+# -------------------------------------
+# Option macro pins
+# -------------------------------------
+
+  config PIN_EREC_CUTTER_SERVO
+    string "EREC Cutter servo pin " if INSTALL_EREC_CUTTER
+
+endif

@@ -59,9 +59,9 @@ if MMU_TYPE_KMS_1_0
   config PARAM_GEAR_GEAR_RATIO
     default "50:17"
   config PARAM_GEAR_RUN_CURRENT
-    default "0.7"
+    default 0.7
   config PARAM_GEAR_HOLD_CURRENT
-    default "0.1"
+    default 0.1
 
   # "Leds" config
   config PARAM_COLOR_ORDER

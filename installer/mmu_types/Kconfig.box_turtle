@@ -60,9 +60,9 @@ if MMU_TYPE_BOX_TURTLE_1_0
   config PARAM_GEAR_GEAR_RATIO
     default "50:10"
   config PARAM_GEAR_RUN_CURRENT
-    default "0.7"
+    default 0.7
   config PARAM_GEAR_HOLD_CURRENT
-    default "0.1"
+    default 0.1
 
   config PARAM_GATE_HOMING_MAX
     default 300

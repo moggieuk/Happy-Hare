@@ -4,11 +4,6 @@
 #   PARAM_LOG_LEVEL
 #   PARAM_LOG_FILE_LEVEL
 #
-#   PARAM_FORCE_FORM_TIP_STANDALONE
-#   PARAM_SLICER_TIP_PARK_POS
-#   PARAM_FORCE_PURGE_STANDALONE
-#   PARAM_FORM_TIP_MACRO
-#   PARAM_PURGE_MACRO
 #   PARAM_SPOOLMAN_SUPPORT
 #   PARAM_ENDLESS_SPOOL_ENABLED
 
@@ -84,125 +79,6 @@ menu "Software Options"
       default 2
   endmenu
 
-# -------------------------------------
-# Tip Forming / Cutting
-# -------------------------------------
-
-  choice FORM_TIP_MACRO
-    prompt "Select tip forming/cutting macro"
-    default CHOICE_FORM_TIP_MACRO_FORM_TIP
-    help
-      Name of macro to call to perform the tip forming (or cutting) operation
-      E.g. _MMU_FORM_TIP, _MMU_CUT_TIP
-
-      "Other" and enter it manually for custom implementation.
-
-    config CHOICE_FORM_TIP_MACRO_FORM_TIP
-      bool "_MMU_FORM_TIP"
-    config CHOICE_FORM_TIP_MACRO_CUT_TIP
-      bool "_MMU_CUT_TIP"
-    config CHOICE_FORM_TIP_MACRO_OTHER
-      bool "Other / manually entered"
-  endchoice
-
-  config FORM_TIP_MACRO_OTHER
-    string "Tip forming/cutting  macro" if CHOICE_FORM_TIP_MACRO_OTHER
-    default "-your-macro-"
-    help
-      Name of macro to call to perform the tip forming or cutting operation.
-      Built in ones include: _MMU_FORM_TIP, _MMU_CUT_TIP
-
-      But you can specifiy your own here
-
-  config PARAM_FORM_TIP_MACRO
-    string
-    default "_MMU_FORM_TIP" if CHOICE_FORM_TIP_MACRO_FORM_TIP
-    default "_MMU_CUT_TIP" if CHOICE_FORM_TIP_MACRO_CUT_TIP
-    default FORM_TIP_MACRO_OTHER if CHOICE_FORM_TIP_MACRO_OTHER
-
-  config BOOL_FORCE_FORM_TIP_STANDALONE
-    bool "Happy Hare controlled in-print tip forming/cutting"
-    def_bool y
-    help
-      You can choose whether you want the slicer or Happy Hare (recommended) to control tip forming.
-      To use tip cutting ensure this selection is checked and be sure to turn off in your slicer
-  config PARAM_FORCE_FORM_TIP_STANDALONE
-    int
-    default 1 if BOOL_FORCE_FORM_TIP_STANDALONE
-    default 0
-
-  config PARAM_SLICER_TIP_PARK_POS
-    string
-    default "0"
-  config PARAM_SLICER_TIP_PARK_POS
-    prompt "Slicer tip park pos"
-    depends on !BOOL_FORCE_FORM_TIP_STANDALONE
-    help
-      This specifies the position of filament in extruder after slicer completes tip forming
-      and is usually a setting in the slicer config.
-      (It is necessary to help Happy Hare complete the extruder unloading process)
-
-  config PARAM_EXTRUDER_FORM_TIP_CURRENT
-    int "Extruder tip forming current"
-    default 100
-    help
-      % of extruder current (100%-150%) to use when forming tip (100 to disable feature)
-
-
-# -------------------------------------
-# Purging
-# -------------------------------------
-
-  choice PURGE_MACRO
-    prompt "Select purging macro"
-    default CHOICE_PURGE_MACRO_PURGE
-    help
-      Name of macro to call to perform the standalone purging operation.
-      E.g. BLOBIFIER, _MMU_PURGE
-
-      "Other" and enter it manually for custom implementation.
-
-    config CHOICE_PURGE_MACRO_PURGE
-      bool "_MMU_PURGE"
-    config CHOICE_PURGE_MACRO_BLOBIFIER
-      bool "BLOBIFIER"
-    config CHOICE_PURGE_MACRO_OTHER
-      bool "Other / manually entered"
-  endchoice
-
-  config PURGE_MACRO_OTHER
-    string "Purging macro" if CHOICE_PURGE_MACRO_OTHER
-    default "-your-macro-"
-    help
-      Name of macro to call to perform the standalone purging operation.
-      Built in ones include: BLOBIFIER, _MMU_PURGE
-
-      But you can specifiy your own here
-
-  config PARAM_PURGE_MACRO
-    string
-    default "_MMU_PURGE" if CHOICE_PURGE_MACRO_PURGE
-    default "BLOBIFIER" if CHOICE_PURGE_MACRO_BLOBIFIER
-    default PURGE_MACRO_OTHER if CHOICE_PURGE_MACRO_OTHER
-
-  config BOOL_FORCE_PURGE_STANDALONE
-    bool "Happy Hare controlled in-print purge"
-    def_bool y
-    help
-      You can choose whether you want the slicer or Happy Hare (recommended) to control filament purging.
-      To use intelligent volume purging or purge systems like Blobifier ensure this selection is checked
-      and be sure to turn off in your slicer
-  config PARAM_FORCE_PURGE_STANDALONE
-    int
-    default 1 if BOOL_FORCE_PURGE_STANDALONE
-    default 0
-
-  config PARAM_EXTRUDER_PURGE_CURRENT
-    int "Extruder purging current    "
-    default 100
-    help
-      % of extruder current (100%-150%) to use when purging (100 to disable feature)
-
 
 # -------------------------------------
 # Endless Spool
@@ -264,13 +140,13 @@ menu "Software Options"
 # -------------------------------------
 
   config INSTALL_12864_MENU
-    bool "Install Mini 12864 menu configuration?"
+    bool "Install Mini 12864 display menu?"
     help
       Installs MMU menu for Mini 12864 display.
       Select only if printer has a Mini 12864 character display
 
   config INSTALL_CLIENT_MACROS
-    bool "Install default client macros supplied with Happy Hare? (strongly recommended)"
+    bool "Install default client macros supplied with Happy Hare? (STRONGLY recommended)"
     default y
     help
       Includes the Happy Hare "client macros" with augmented pause/resume/cancel behavior.

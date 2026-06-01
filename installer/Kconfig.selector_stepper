@@ -26,16 +26,16 @@ if MMU_HAS_SELECTOR_STEPPER
       default "1:1"
 
     config PARAM_SELECTOR_ROTATION_DISTANCE
-      string "Selector rotation distance"
-      default "40"
+      float "Selector rotation distance"
+      default 40
 
     config PARAM_SELECTOR_RUN_CURRENT
-      string "Selector run current      "
-      default "0.5"
+      float "Selector run current      "
+      default 0.5
 
     config PARAM_SELECTOR_HOLD_CURRENT
-      string "Selector hold current     "
-      default "0.2"
+      float "Selector hold current     "
+      default 0.2
 
     config PARAM_SELECTOR_ENDSTOP_NAME
       string

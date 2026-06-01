@@ -161,24 +161,23 @@ if MULTI_UNIT_ENTRY_POINT
 
   comment "Shared System Options"
   source "toolheads/Kconfig"        # Toolhead Selection menu
-  source "Kconfig.toolhead"       # Toolhead Sensors/Settings
-  source "addons/Kconfig"           # Addon Macro Features
+  source "Kconfig.toolhead"         # Toolhead Sensors/Settings
   source "Kconfig.options"          # Main software options
+  source "Kconfig.tip_shaping"
+  source "Kconfig.purging"
   source "Kconfig.speeds"           # Access to extruder speeds
 
   # Thesee are duplicated settings that are excluded from units when MULTI_UNIT
-  menu "Printer sensors / pins"
+  menu "Pins"
     help
-      Here you can configure printer options such as additional gantry servo
+      Here you can configure per-printer pins such as toolhead sensors and
+      additional gantry servo for filament cutter
 
-    config PIN_GANTRY_SERVO
-      string "Gantry servo pin"
-      help
-        Optional. Used to deploy fold-down "bumper" for tip cutting
-        when using a toolhead mounted filament cutting blade
+    source "Kconfig.shared_pins"    # Pins on components shared accros units
   endmenu
 
-  source "Kconfig.paths_services" # Advanced install options
+  source "Kconfig.addon_macros"     # Addon Macro Features
+  source "Kconfig.paths_services"   # Advanced install options
 endif
 
 if !MULTI_UNIT_ENTRY_POINT
@@ -192,11 +191,13 @@ if !MULTI_UNIT_ENTRY_POINT
   if !MULTI_UNIT
     source "toolheads/Kconfig"      # Toolhead Selection menu
     source "Kconfig.toolhead"       # Toolhead Sensors/Settings
-    source "addons/Kconfig"         # Addon Macro Features
     source "Kconfig.options"        # Main software options
+    source "Kconfig.tip_shaping"
+    source "Kconfig.purging"
   endif
   source "Kconfig.raw"              # Raw access to appropriate parameters
   if !MULTI_UNIT
+    source "Kconfig.addon_macros"   # Addon Macro Features
     source "Kconfig.paths_services" # Advanced install options
   endif
 endif

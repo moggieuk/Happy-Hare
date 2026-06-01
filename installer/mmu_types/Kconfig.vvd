@@ -56,11 +56,11 @@ if MMU_TYPE_VVD_1_0
   config PARAM_GEAR_GEAR_RATIO
     default "1:1"
   config PARAM_GEAR_ROTATION_DISTANCE
-    default "8.45"
+    default 8.45
   config PARAM_GEAR_RUN_CURRENT
-    default "0.7"
+    default 0.7
   config PARAM_GEAR_HOLD_CURRENT
-    default "0.1"
+    default 0.1
 
   config PARAM_GEAR_HOMING_SPEED
     default 80
@@ -68,11 +68,11 @@ if MMU_TYPE_VVD_1_0
   config PARAM_SELECTOR_GEAR_RATIO
     default "25:10"
   config PARAM_SELECTOR_ROTATION_DISTANCE
-    default "360"
+    default 360
   config PARAM_SELECTOR_RUN_CURRENT
-    default "0.8"
+    default 0.8
   config PARAM_SELECTOR_HOLD_CURRENT
-    default "0.3"
+    default 0.3
 
   config PARAM_SELECTOR_MOVE_SPEED
     default 200
