@@ -431,8 +431,17 @@ class MmuController(MmuFilamentMovement):
         except Exception as e:
             self.log_assertion(f"Error booting up MMU: {e}", exc_info=sys.exc_info())
 
+        # Give macros a chance to initialize if they need to
+        self.init_macros()
+
         # Restart hook
         self.mmu_macro_event(MACRO_EVENT_RESTART)
+
+
+    # Blobifier requires initialization so do it when it is set as the purging macro
+    def init_macros(self):
+        if self.p.purge_macro.upper() == MACRO_BLOBIFIER:
+            self.wrap_gcode_command("BLOBIFIER_INIT", exception=None)
 
 
     # Wrap execution of gcode command to allow for control over:

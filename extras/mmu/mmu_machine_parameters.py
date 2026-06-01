@@ -31,11 +31,14 @@ class MmuMachineParameters(TunableParametersBase):
 
     def _on_spoolman_support(self, old, new):
         if new != old:
-            self.mmu._spoolman_sync()
+            self._mmu_machine.mmu._spoolman_sync()
 
     def _on_t_macro_color(self, old, new):
         if new != old:
-            self.mmu.gate_maps.update_t_macros()
+            self._mmu_machine.mmu.gate_maps.update_t_macros()
+
+    def _on_macro_change(self, old, new):
+        self._mmu_machine.mmu.init_macros()
 
 
     # ---- Specs ----
@@ -66,7 +69,7 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('print_state_changed_macro',     'str',   '_MMU_PRINT_STATE_CHANGED',section="MACROS", hidden=True),
         ParamSpec('mmu_event_macro',               'str',   '_MMU_EVENT',              section="MACROS", hidden=True),
         ParamSpec('form_tip_macro',                'str',   '_MMU_FORM_TIP',           section="MACROS"),
-        ParamSpec('purge_macro',                   'str',   '',                        section="MACROS"),
+        ParamSpec('purge_macro',                   'str',   '_MMU_PURGE',              section="MACROS", on_change=_on_macro_change),
         ParamSpec('pre_unload_macro',              'str',   '_MMU_PRE_UNLOAD',         section="MACROS"),
         ParamSpec('post_form_tip_macro',           'str',   '_MMU_POST_FORM_TIP',      section="MACROS"),
         ParamSpec('post_unload_macro',             'str',   '_MMU_POST_UNLOAD',        section="MACROS"),
@@ -112,8 +115,8 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('macro_toolhead_min_cruise_ratio','float', 0.0, section="TOOLHEAD/EXTRUDER", limits=dict(minval=0.0, below=1.0)),
 
         # Optional features
-        ParamSpec('spoolman_support',              'choice', SPOOLMAN_OFF,         section="FEATURES", choices={o: o for o in SPOOLMAN_OPTIONS}),
-        ParamSpec('t_macro_color',                 'choice', T_MACRO_COLOR_SLICER, section="FEATURES", choices={o: o for o in T_MACRO_COLOR_OPTIONS}),
+        ParamSpec('spoolman_support',              'choice', SPOOLMAN_OFF,         section="FEATURES", choices={o: o for o in SPOOLMAN_OPTIONS},      on_change=_on_spoolman_support),
+        ParamSpec('t_macro_color',                 'choice', T_MACRO_COLOR_SLICER, section="FEATURES", choices={o: o for o in T_MACRO_COLOR_OPTIONS}, on_change=_on_t_macro_color),
         ParamSpec('endless_spool_groups',          'intlist', [], section="FEATURES"),
         ParamSpec('endless_spool_enabled',         'int',      0, section="FEATURES", limits=dict(minval=0, maxval=1)),
         ParamSpec('endless_spool_on_load',         'int',      0, section="FEATURES", limits=dict(minval=0, maxval=1)),

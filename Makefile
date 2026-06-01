@@ -132,21 +132,16 @@ hh_config_files := \
 # Look for installed configs that would need be parsed by the build script
 # This allows for easy upgrades and option movement across files
 hh_configs_to_parse := \
-	$(subst $(KLIPPER_CONFIG_HOME),$(IN),$(wildcard $(KLIPPER_CONFIG_HOME)/mmu/base/*.cfg \
-		$(KLIPPER_CONFIG_HOME)/mmu/optional/*.cfg))
+	$(subst $(KLIPPER_CONFIG_HOME),$(IN),$(wildcard $(KLIPPER_CONFIG_HOME)/mmu/base/*.cfg))
 
 # Set of config files (one if single unit, else n + 1)
 kconfig_files := $(KCONFIG_CONFIG) \
 	$(if $(filter y,$(CONFIG_MULTI_UNIT)), \
 		$(addprefix $(KCONFIG_CONFIG)_,$(unit_names)))
 
-# Files/targets that need to be build
+# Files/targets that need to be built
 build_targets := \
-	$(addprefix $(OUT)/mmu/, $(hh_config_files)) \
-	$(addprefix $(OUT)/klippy/, $(hh_klipper_extras_files)) \
-	$(addprefix $(OUT)/moonraker/, $(hh_moonraker_components)) \
-        $(OUT)/$(MOONRAKER_CONFIG_FILE) \
-        $(OUT)/$(PRINTER_CONFIG_FILE)
+	$(addprefix $(OUT)/mmu/, $(hh_config_files))
 
 # Subset of files/targets which require token processing and/or are user editable
 processed_targets := \
@@ -467,9 +462,3 @@ kconfig_needs_update:
 olddefconfig:
 	$(Q)$(PY) -m olddefconfig $(SRC)/installer/Kconfig >/dev/null
 	$(Q)touch "$(KCONFIG_CONFIG)"
-
-# PAUL
-#$(KCONFIG_CONFIG): $(kconfig_sources)
-#ifeq ($(filter menuconfig uninstall variables fix_links olddefconfig kconfig_needs_update,$(MAKECMDGOALS)),)
-#	$(error $(KCONFIG_CONFIG) is missing or stale; run ./install.sh so it can refresh it with the correct context)
-#endif
