@@ -1,0 +1,42 @@
+# Defines parameter token types and defaults for macro addons
+#
+# Responsible for setting:
+#   INSTALL_EREC_CUTTER
+#     PIN_EREC_CUTTER_SERVO
+#   INSTALL_12864_MENU
+#   INSTALL_CLIENT_MACROS
+
+menu "Addon macros"
+  help
+    Macro support for addons
+    MMU functionality can be extended with popular addon macro options.
+    Select which to include here
+
+  config INSTALL_EREC_CUTTER
+    help
+      Enable for all servo based filament cutters on the MMU itself.
+      EREC was the first example of this but this macro can work
+      with other similar designs.
+    bool "Install EREC filament cutter support?"
+
+  if INSTALL_EREC_CUTTER
+    config PIN_EREC_CUTTER_SERVO
+      string "EREC filament cutter servo pin"
+      default ""
+  endif
+
+  config INSTALL_12864_MENU
+    bool "Install Mini 12864 display menu?"
+    help
+      Installs MMU menu for Mini 12864 display.
+      Select only if printer has a Mini 12864 character display
+
+  config INSTALL_CLIENT_MACROS
+    bool "Install default client macros supplied with Happy Hare? (STRONGLY recommended)"
+    default y
+    help
+      Includes the Happy Hare "client macros" with augmented pause/resume/cancel behavior.
+      This is highly recommended and incorporates all functionality from popular alternatives
+      like mainsail client macros but also works in conjunction with Happy Hare toolhead movement.
+
+endmenu

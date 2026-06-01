@@ -133,7 +133,7 @@ hh_config_files := \
 # This allows for easy upgrades and option movement across files
 hh_configs_to_parse := \
 	$(subst $(KLIPPER_CONFIG_HOME),$(IN),$(wildcard $(KLIPPER_CONFIG_HOME)/mmu/base/*.cfg \
-		$(KLIPPER_CONFIG_HOME)/mmu/addons/*.cfg))
+		$(KLIPPER_CONFIG_HOME)/mmu/optional/*.cfg))
 
 # Set of config files (one if single unit, else n + 1)
 kconfig_files := $(KCONFIG_CONFIG) \

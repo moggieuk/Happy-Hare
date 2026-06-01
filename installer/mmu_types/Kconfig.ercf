@@ -171,17 +171,17 @@ if MMU_FAMILY_ERCF
     config PARAM_GEAR_GEAR_RATIO
       default "80:20"
     config PARAM_GEAR_RUN_CURRENT
-      default "0.5"
+      default 0.5
     config PARAM_GEAR_HOLD_CURRENT
-      default "0.1"
+      default 0.1
 
     # Selector stepper
     config PARAM_SELECTOR_GEAR_RATIO
       default "1:1"
     config PARAM_SELECTOR_RUN_CURRENT
-      default "0.4"
+      default 0.4
     config PARAM_SELECTOR_HOLD_CURRENT
-      default "0.2"
+      default 0.2
 
     # Speeds
 
@@ -212,17 +212,17 @@ if MMU_FAMILY_ERCF
     config PARAM_GEAR_GEAR_RATIO
       default "80:20"
     config PARAM_GEAR_RUN_CURRENT
-      default "0.5"
+      default 0.5
     config PARAM_GEAR_HOLD_CURRENT
-      default "0.1"
+      default 0.1
 
     # Selector stepper
     config PARAM_SELECTOR_GEAR_RATIO
       default "1:1"
     config PARAM_SELECTOR_RUN_CURRENT
-      default "0.4"
+      default 0.4
     config PARAM_SELECTOR_HOLD_CURRENT
-      default "0.2"
+      default 0.2
 
     # Speed overrides
 
@@ -251,17 +251,17 @@ if MMU_FAMILY_ERCF
     config PARAM_GEAR_GEAR_RATIO
       default "1:1"
     config PARAM_GEAR_RUN_CURRENT
-      default "0.8"
+      default 0.8
     config PARAM_GEAR_HOLD_CURRENT
-      default "0.2"
+      default 0.2
 
     # Selector stepper
     config PARAM_SELECTOR_GEAR_RATIO
       default "1:1"
     config PARAM_SELECTOR_RUN_CURRENT
-      default "0.7"
+      default 0.7
     config PARAM_SELECTOR_HOLD_CURRENT
-      default "0.2"
+      default 0.2
 
     # Speeds
 

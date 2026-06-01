@@ -1,15 +1,15 @@
 config MMU_TYPE_TRADRACK_1_0
   bool "Tradrack"
- help
-   Tradrack is a type-A MMU designed by the Annex Engineering team.
-   It differed from ERCF in that it is easier to add additional gates/lanes
-   but also uses the same BMG gear to drive all filaments. It has a shared
-   gate sensor but a Binky based encoder is a popular option.
+  help
+    Tradrack is a type-A MMU designed by the Annex Engineering team.
+    It differed from ERCF in that it is easier to add additional gates/lanes
+    but also uses the same BMG gear to drive all filaments. It has a shared
+    gate sensor but a Binky based encoder is a popular option.
   select LINEAR_SERVO_SELECTOR
   select MMU_HAS_SENSOR_SHARED_EXIT
+  select BOOL_REQUIRE_BOWDEN_MOVE
   select UNSELECT_VARIABLE_BOWDEN_LENGTHS
   select UNSELECT_VARIABLE_ROTATION_DISTANCES
-  imply  BOOL_REQUIRE_BOWDEN_MOVE
 
 if MMU_TYPE_TRADRACK_1_0
   source "Kconfig.num_gates"
@@ -53,17 +53,17 @@ if MMU_TYPE_TRADRACK_1_0
   config PARAM_GEAR_GEAR_RATIO
     default "50:17"
   config PARAM_GEAR_RUN_CURRENT
-    default "1.27"
+    default 1.27
   config PARAM_GEAR_HOLD_CURRENT
-    default "0.2"
+    default 0.2
 
   # Selector stepper
   config PARAM_SELECTOR_GEAR_RATIO
     default "1:1"
   config PARAM_SELECTOR_RUN_CURRENT
-    default "0.63"
+    default 0.63
   config PARAM_SELECTOR_HOLD_CURRENT
-    default "0.2"
+    default 0.2
   config PARAM_SELECTOR_GATE_DIRECTIONS
     default "[1, 1, 0, 0]"
   config PARAM_SELECTOR_RELEASE_GATES
