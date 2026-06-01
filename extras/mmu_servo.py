@@ -108,7 +108,14 @@ class MmuServo:
         duration = max(duration, SERVO_SIGNAL_PERIOD) if duration else None
         if width is not None or angle is not None:
             value = self._get_pwm_from_pulse_width(width) if width is not None else self._get_pwm_from_angle(angle)
-            pt = self.printer.lookup_object('toolhead').get_last_move_time()
+            # On secondary MCUs (e.g. CAN toolboards), get_last_move_time() can be stale
+            # when the printer has been idle. Clamp to the target MCU's estimated
+            # print time so PWM updates are never scheduled in the past.
+            toolhead = self.printer.lookup_object('toolhead')
+            pt = toolhead.get_last_move_time()
+            mcu = self.mcu_servo.get_mcu()
+            reactor = self.printer.get_reactor()
+            pt = max(pt, mcu.estimated_print_time(reactor.monotonic()))
             self._set_pwm(pt, value, duration)
 
 def load_config_prefix(config):
