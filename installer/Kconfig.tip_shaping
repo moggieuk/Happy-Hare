@@ -34,19 +34,20 @@ menu "Tip Forming / Cutting"
       bool "Other / manually entered macro"
       help
         Specify a custom macro to call to perform tip forming / cutting
-  endchoice
 
-  config FORM_TIP_MACRO_OTHER
-    string "Tip forming/cutting  macro" if CHOICE_FORM_TIP_MACRO_OTHER
-    default "-enter-your-macro-"
-    help
-      Name of macro to call to perform the tip forming or cutting operation.
+    config FORM_TIP_MACRO_OTHER
+      string "Tip forming/cutting  macro" if CHOICE_FORM_TIP_MACRO_OTHER
+      default "-enter-your-macro-"
+      help
+        Name of macro to call to perform the tip forming or cutting operation.
+  endchoice
 
   config PARAM_FORM_TIP_MACRO
     string
     default "_MMU_FORM_TIP" if CHOICE_FORM_TIP_MACRO_FORM_TIP
     default "_MMU_CUT_TIP" if CHOICE_FORM_TIP_MACRO_CUT_TIP
     default FORM_TIP_MACRO_OTHER if CHOICE_FORM_TIP_MACRO_OTHER
+    default ""
 
 
 # -------------------------------------

@@ -87,19 +87,20 @@ menu "Purging"
       bool "Other / manually entered"
       help
         Specify a custom macro to call to perform purging
-  endchoice
 
-  config PURGE_MACRO_OTHER
-    string "Purging macro" if CHOICE_PURGE_MACRO_OTHER
-    default "-enter-your-macro-"
-    help
-      Name of macro to call to perform the standalone purging operation.
+    config PURGE_MACRO_OTHER
+      string "Purging macro" if CHOICE_PURGE_MACRO_OTHER
+      default "-enter-your-macro-"
+      help
+        Name of macro to call to perform the standalone purging operation.
+  endchoice
 
   config PARAM_PURGE_MACRO
     string
     default "_MMU_PURGE"      if CHOICE_PURGE_MACRO_PURGE
     default "BLOBIFIER"       if CHOICE_PURGE_MACRO_BLOBIFIER
     default PURGE_MACRO_OTHER if CHOICE_PURGE_MACRO_OTHER
+    default ""
 
 
 # -------------------------------------
