@@ -14,11 +14,15 @@ if ! [ -e "$log" ]; then
    exit 1
 fi
 
+if [ -f ~/klippy-env/bin/activate ]; then
+    . ~/klippy-env/bin/activate
+fi
+
 echo Processing ${log} Flowguard telemetry file
 
-source ~/klippy-env/bin/activate
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MMU_DIR="${SCRIPT_DIR}/../extras/mmu"
 export PYTHONPATH="${MMU_DIR}:${PYTHONPATH}"
 
 python "${SCRIPT_DIR}/sync_feedback_sim.py" --plot "$log"
+

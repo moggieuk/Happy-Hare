@@ -17,6 +17,8 @@ if MMU_TYPE_MMX_1_0
     source "Kconfig.mmu_additions"
   endif
 
+  source "Kconfig.capabilities"
+
   ####################
   ##### Defaults #####
   ####################
@@ -36,9 +38,9 @@ if MMU_TYPE_MMX_1_0
     default "0.1"
 
   config PARAM_GATE_PARKING_DISTANCE
-    default "-25"
+    default -25
   config PARAM_GATE_HOMING_MAX
-    default "1000"
+    default 1000
 
   config PARAM_SELECTOR_GATE_ANGLES
     default "60,0,180,120"

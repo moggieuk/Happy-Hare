@@ -346,18 +346,18 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
     hhcfg = HHConfig(input_files)
 
     # 2.Run upgrade transform on aggregated master HH Config
-    to_version = kcfg.get("HAPPY_HARE_VERSION")
-    if hhcfg.has_option("mmu", "happy_hare_version"):
-        from_version = hhcfg.get("mmu", "happy_hare_version")
-    else:
-        from_version = to_version
+    to_version = get_target_version()
+    from_version = get_current_version(hhcfg)
 
-    if from_version != to_version:
+    if major_minor(from_version) != major_minor(to_version):
         logging.debug("Upgrading {} from v{} to v{}".format(cfg_file_basename, from_version, to_version))
         upgrades = Upgrades()
-        upgrades.upgrade(hhcfg, from_version, to_version)
+        upgrades.upgrade(hhcfg, major_minor(from_version), major_minor(to_version))
 
-    # 3.Render cfg template expanding KConfig parameters from read .config
+        # Important to update version in case .mmu_config is not changed
+        hhcfg.set("mmu_machine", "happy_hare_version", to_version)
+
+    # 3.Render cfg template expanding KConfig parameters from read .mmu_config
     buffer = render_template(cfg_file_basename, kcfg, extra_params)
     logging.debug(
         "Rendered template '%s' using Kconfig '%s' with extra_params: %s"
@@ -390,9 +390,13 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
     if refresh_mode == 'refresh':
         # Default choice (always used when menuconfig UI is not run)
         # Here we use the refreshed cfg templates as a starting point but
-        # replace every matching parameter with existing value.
+        # then replace every matching parameter with existing value.
         # Unused options will be reported.
         filtered_params = [] # Don't filter out any existing params in HHConfig
+
+    elif refresh_mode == 'replace':
+        # Here we (re)create prestine cfg files based on kconfig settings
+        pass
 
     elif refresh_mode == 'merge':
         # Experimental. Here we selectively ignore simple PARAM_ parameter settings
@@ -403,9 +407,6 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
             if k.lower().startswith("param_")
         ]
         logging.debug("The following parameters are being filtered: %s" % ", ".join(filtered_params))
-
-    elif refresh_mode == 'replace':
-        pass
 
     else:
         logging.error("Invalid F_CFG_UPGRADE_MODE '%s'" % refresh_mode)
@@ -501,6 +502,10 @@ def install_includes(dest_file, kconfig):
     check_include(builder, "ADDON_EREC_CUTTER", "mmu/addons/mmu_erec_cutter.cfg")
     check_include(builder, "ADDON_BLOBIFIER", "mmu/addons/blobifier.cfg")
 
+    if not builder.has_section("include mmu/macros/*.cfg"):
+        logging.debug(" > Adding include [include mmu/macros/*.cfg]")
+        builder.add_section("include mmu/macros/*.cfg", at_top=True, extra_newline=False)
+
     if not builder.has_section("include mmu/base/*.cfg"):
         logging.debug(" > Adding include [include mmu/base/*.cfg]")
         builder.add_section("include mmu/base/*.cfg", at_top=True, extra_newline=False)
@@ -546,29 +551,55 @@ def restart_service(name, service, kconfig):
             logging.warning("Service '/etc/init.d/{}' not found! Restart manually or check your config".format(service))
 
 
+def major_minor(version_str):
+    """
+    Convert "<major>.<minor>.<point>" to (<major>, <minor>)
+    """
+    major, minor, *_ = version_str.strip('"').split(".")
+    return (int(major), int(minor))
+
+
+def get_current_version(hhcfg):
+    current_version = None
+    if hhcfg.has_section("mmu_machine"):
+        current_version = hhcfg.get("mmu_machine", "happy_hare_version")
+    elif hhcfg.has_section("mmu"):
+        current_version = hhcfg.get("mmu", "happy_hare_version") # old v3 config location
+
+    if current_version is None:
+        current_version = "4.0.0"
+    return current_version
+
+
+def get_target_version():
+    target_version = os.environ.get("HH_VERSION")
+    return target_version
+
+
+def get_config_version(kcfg):
+    version = kcfg.get("HAPPY_HARE_VERSION")
+    return version
+
+
 def check_version(kconfig, input_files):
     hhcfg = HHConfig(input_files)
     kcfg = load_parsed_kconfig(kconfig)
 
-    current_version = hhcfg.get("mmu_machine", "happy_hare_version")
-    if current_version is None:
-        current_version = hhcfg.get("mmu", "happy_hare_version") # old v3 config location
+    # Current version is pulled from current cfg files...
+    current_version = get_current_version(hhcfg)
+    logging.log(LEVEL_NOTICE, f"Current version: v{current_version}")
 
-    if current_version is None:
-        logging.log(LEVEL_NOTICE, "Fresh install detected")
-        return
-
-    logging.log(LEVEL_NOTICE, "Current version: " + current_version)
-    target_version = kcfg.get("HAPPY_HARE_VERSION")
+    # Target version is pulled from the environment (from mmu_constants.py)
+    target_version = get_target_version()
     if target_version is None:
-        logging.error("Target version is not defined in .config file")
+        logging.error("Target version HH_VERSION was not set")
         exit(1)
 
-    if current_version == target_version:
+    if major_minor(current_version) == major_minor(target_version):
         logging.log(LEVEL_NOTICE, "Up to date, no config upgrades required")
         return
 
-    if float(current_version) > float(target_version):
+    if major_minor(current_version) > major_minor(target_version):
         logging.warning(
             "Automatic 'downgrade' to earlier version is not guaranteed!\n"
             "If you encounter startup problems you may need to manually compare "
@@ -576,7 +607,7 @@ def check_version(kconfig, input_files):
         )
         return
 
-    logging.log(LEVEL_NOTICE, "Trying to upgrade to " + target_version)
+    logging.log(LEVEL_NOTICE, "Will try to upgrade to " + target_version)
 
 
 def pre_parse_kconfig(kconfig):
@@ -656,7 +687,7 @@ def split_csv(raw):
     return [part.strip() for part in raw.split(",") if part.strip()]
 
 def unescape_kconfig_string(s):
-    # Matches the escaping style used in .config string values
+    # Matches the escaping style used in .mmu_config string values
     return re.sub(r'\\(.)', r'\1', s)
 
 def to_symbol(name):
@@ -697,12 +728,12 @@ def parse_param_from_config(path, token):
 def discover_names_from_configs(token):
     """
     Reads:
-      - base config (KCONFIG_CONFIG or .config)
+      - base config (KCONFIG_CONFIG or .mmu_config)
       - per-unit configs: KCONFIG_CONFIG_<unit>
 
     using CONFIG_MMU_UNITS to know which unit config files to inspect.
     """
-    base_config = os.environ.get("KCONFIG_CONFIG", ".config")
+    base_config = os.environ.get("KCONFIG_CONFIG", ".mmu_config")
     mmu_units = split_csv(os.environ.get("CONFIG_MMU_UNITS", ""))
 
     seen = set()

@@ -54,8 +54,20 @@ DEFAULT_PATTERNS: List[Tuple[str, str]] = [
     # Example:
     # (r"(?<!_)mmu_gear(?!_)", "mmu_gear"),
 
+    ("MMU_HAS_SENSOR_SYNC_FEEDBACK_TENSION", "MMU_HAS_SENSOR_BUFFER_TENSION"),
+    ("MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION", "MMU_HAS_SENSOR_BUFFER_COMPRESSION"),
+    ("MMU_HAS_SENSOR_SYNC_FEEDBACK_PROPORTIONAL", "MMU_HAS_SENSOR_BUFFER_PROPORTIONAL"),
 
-("\\._require_encoder\\(", ".require_encoder("),
+#    ("BUFFER_BUFFER_RANGE", "BUFFER_RANGE"),
+#    ("BUFFER_BUFFER_MAXRANGE", "BUFFER_MAXRANGE"),
+
+#    ("SYNC_FEEDBACK_BUFFER_RANGE", "BUFFER_BUFFER_RANGE"),
+#    ("SYNC_FEEDBACK_BUFFER_MAXRANGE", "BUFFER_BUFFER_MAXRANGE"),
+#    ("PIN_SYNC_FEEDBACK_TENSION", "PIN_BUFFER_TENSION"),
+#    ("PIN_SYNC_FEEDBACK_COMPRESSION", "PIN_BUFFER_COMPRESSION"),
+#    ("PIN_SYNC_FEEDBACK_ANALOG", "PIN_BUFFER_ANALOG"),
+
+#("\\._require_encoder\\(", ".require_encoder("),
 
 #("\\._trace_selector_move", "._move_selector"),
 #("\\.trace_filament_move", ".move_filament"),

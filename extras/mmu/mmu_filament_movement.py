@@ -56,25 +56,34 @@ class MmuFilamentMovement:
         """
         u = self.mmu_unit()
 
-        gate_sensor = self.sensor_manager.check_gate_sensor(SENSOR_EXIT_PREFIX, self.gate_selected)
-        if gate_sensor is not None:
-            if gate_sensor:
+        gate_exit_sensor = self.sensor_manager.check_gate_sensor(SENSOR_EXIT_PREFIX, self.gate_selected)
+        if gate_exit_sensor is not None:
+            if gate_exit_sensor:
                 self.log_always("Filament already preloaded")
                 self.gate_maps.set_gate_status(self.gate_selected, GATE_AVAILABLE)
                 return
             else:
-                # Minimal load to mmu exit sensor if fitted
-                endstop_name = self.sensor_manager.get_gate_sensor_name(SENSOR_EXIT_PREFIX, self.gate_selected)
+                # Minimal load to mmu exit sensor
                 self.log_always("Preloading...")
+                endstop_name = self.sensor_manager.get_gate_sensor_name(SENSOR_EXIT_PREFIX, self.gate_selected)
                 msg = "Homing to %s sensor" % endstop_name
                 with self.wrap_suspend_filament_monitoring():
                     actual, homed, measured, _ = self.move_filament(msg, u.p.gate_preload_homing_max, motor="gear", homing_move=1, endstop_name=endstop_name)
                     if homed:
-                        self.move_filament("Final parking", u.p.gate_preload_parking_distance)
+                        self.move_filament("Parking", u.p.gate_preload_parking_distance)
                         self.gate_maps.set_gate_status(self.gate_selected, GATE_AVAILABLE)
                         self._check_pending_spool_id(self.gate_selected) # Have spool_id ready?
                         self.log_always("Filament detected and loaded in gate %d" % self.gate_selected)
                         return
+
+            if self.sensor_manager.check_gate_sensor(SENSOR_ENTRY_PREFIX, self.gate_selected):
+                self.gate_maps.set_gate_status(self.gate_selected, GATE_UNKNOWN)
+                self.log_warning(
+                    f"Filament detected by entry sensor on gate {self.gate_selected} but didn't reach "
+                    "the exit sensor. Perhaps increase 'gate_preload_homing_max'"
+                )
+                return
+
         else:
             # Full gate load if no mmu exit sensor
             for _ in range(u.p.gate_preload_attempts):
@@ -90,12 +99,13 @@ class MmuFilamentMovement:
                     # Exception just means filament is not loaded yet, so continue
                     self.log_trace("Exception on preload: %s" % str(ee))
 
-        if self.sensor_manager.check_gate_sensor(SENSOR_ENTRY_PREFIX, self.gate_selected):
-            self.gate_maps.set_gate_status(self.gate_selected, GATE_UNKNOWN)
-            self.log_warning("Filament detected by mmu entry %d sensor but did not complete preload" % self.gate_selected)
-        else:
-            self.gate_maps.set_gate_status(self.gate_selected, GATE_EMPTY)
-            raise MmuError("Filament not detected")
+            if self.sensor_manager.check_gate_sensor(SENSOR_ENTRY_PREFIX, self.gate_selected):
+                self.gate_maps.set_gate_status(self.gate_selected, GATE_UNKNOWN)
+                self.log_warning(f"Filament detected by entry sensor on gate {self.gate_selected} but was not able to complete preload")
+                return
+
+        self.gate_maps.set_gate_status(self.gate_selected, GATE_EMPTY)
+        raise MmuError("Filament not detected")
 
 
     def _eject_from_gate(self):
@@ -127,7 +137,8 @@ class MmuFilamentMovement:
             else:
                 raise MmuError("Filament did not exit gate homing sensor: %s" % endstop_name)
 
-        if u.p.gate_final_eject_distance > 0:
+        final_move = abs(u.p.gate_final_eject_distance)
+        if final_move > 0:
             self.selector().filament_drive()
 
             msg = "Ejecting filament out of gate"
@@ -136,6 +147,8 @@ class MmuFilamentMovement:
                 self.move_filament(msg, -u.p.gate_final_eject_distance, motor="gear", homing_move=-1, endstop_name=SENSOR_ENTRY_PREFIX, wait=True)
             else:
                 self.move_filament(msg, -u.p.gate_final_eject_distance, wait=True)
+        else:
+            self.log_trace("No final eject, gate_final_eject_distance is 0")
 
         self.gate_maps.set_gate_status(gate, GATE_EMPTY)
         self.log_always("The filament in gate %d can be removed" % gate)
@@ -649,9 +662,9 @@ class MmuFilamentMovement:
                     actual, _, measured, _ = self.move_filament("Aligning filament to extruder gear", u.toolhead_wrapper.p.toolhead_entry_to_extruder, motor="gear")
                     homing_movement += actual
 
-                elif u.p.extruder_homing_endstop == SENSOR_COMPRESSION:
+                elif u.has_buffer() and u.p.extruder_homing_endstop == SENSOR_COMPRESSION:
                     # Estimate the midpoint of buffer for accurate bowden length determination
-                    homing_movement -= (u.sync_feedback.p.sync_feedback_buffer_range / 2.)
+                    homing_movement -= (u.buffer.buffer_range / 2.)
 
         if not homed:
             self.set_filament_pos_state(FILAMENT_POS_END_BOWDEN)
@@ -786,7 +799,7 @@ class MmuFilamentMovement:
                 and not has_toolhead
                 and self.sensor_manager.check_sensor(SENSOR_COMPRESSION)
             ):
-                max_range = u.sync_feedback.p.sync_feedback_buffer_maxrange * 2 # Arbitary but buffer_maxrange is not enough to overcome bowden slack
+                max_range = u.buffer.buffer_maxrange * 2 # Arbitary but buffer_maxrange is not enough to overcome bowden slack
                 if length > max_range:
                     self.log_debug("Monitoring extruder entrance transition for up to %.1fmm..." % max_range)
                     actual, success = u.sync_feedback.adjust_filament_tension(use_gear_motor=False, max_move=max_range)
@@ -838,7 +851,8 @@ class MmuFilamentMovement:
                     # Tightening move to prevent erroneous encoder clog detection/runout if gear stepper is not synced with extruder
                     with self.wrap_gear_current(percent=50, reason="to tighten filament in bowden"):
                         # Filament will already be gripped so perform fixed MMU only retract
-                        pullback = min(self.encoder().get_clog_detection_length() * u.p.toolhead_post_load_tighten / 100, 15) # % of current clog detection length or 15mm min
+                        cdl = self.encoder().get_clog_detection_length()
+                        pullback = min(cdl * u.p.toolhead_post_load_tighten / 100, 15) # % of current clog detection length or 15mm min
                         _,_,measured,delta = self.move_filament("Tighening filament in bowden", -pullback, motor="gear", wait=True)
                         self.log_info("Filament tightened by %.1fmm to prevent false clog detection" % pullback)
                         self.adjust_encoder_distance(-pullback)
@@ -1867,14 +1881,13 @@ class MmuFilamentMovement:
                     self.movequeue_wait()
 
             except self.printer.command_error as e:
-                self.log_error("Stepper move failed: %s" % str(e))
                 if homing_move != 0:
+                    self.log_stepper("Did not complete homing move: %s" % str(e))
                     try:
                         actual = drive.get_filament_position() - start_pos
                     except Exception:
                         actual = 0.
                     homed = False
-                    # preserve old behavior of returning measured data rather than re-raising
                 else:
                     return null_rtn
 
@@ -2192,15 +2205,16 @@ class MmuFilamentMovement:
         Returns:
             None. Logs recovery guidance based on current calibration and filament state.
         """
-        u = self.mmu_unit()
+        # Iterate over mmu_units with separate calibration message for each
+        for u in self.mmu_machine.units:
+            u.calibrator.check_if_not_calibrated(CALIBRATED_ALL, silent=None, use_autotune=use_autotune)
 
-        if not u.calibrator.check_if_not_calibrated(CALIBRATED_ALL, silent=None, use_autotune=use_autotune):
+        # Report of filament position state
+        if self.filament_pos != FILAMENT_POS_UNLOADED and TOOL_GATE_UNKNOWN in [self.gate_selected, self.tool_selected]:
+            self.log_error("Filament detected but tool/gate is unknown. Please use MMU_RECOVER GATE=xx to correct state")
 
-            if self.filament_pos != FILAMENT_POS_UNLOADED and TOOL_GATE_UNKNOWN in [self.gate_selected, self.tool_selected]:
-                self.log_error("Filament detected but tool/gate is unknown. Please use MMU_RECOVER GATE=xx to correct state")
-
-            elif self.filament_pos not in [FILAMENT_POS_LOADED, FILAMENT_POS_UNLOADED]:
-                self.log_error("Filament not detected as either unloaded or fully loaded. Please check and use MMU_RECOVER to correct state or fix before continuing")
+        elif self.filament_pos not in [FILAMENT_POS_LOADED, FILAMENT_POS_UNLOADED]:
+           self.log_error("Filament not detected as either unloaded or fully loaded. Please check and use MMU_RECOVER to correct state or fix before continuing")
 
 
     def recover_filament_pos(self, strict=False, can_heat=True, message=False, silent=False):
@@ -2429,7 +2443,13 @@ class MmuFilamentMovement:
             bool: Final sync state that was applied.
         """
         u = self.mmu_unit()
-        self.log_stepper(f"PAUL: reset_sync_gear_to_extruder(sync_intention={sync_intention}, force_grip={force_grip}, force_in_print={force_in_print}, skip_extruder_check={skip_extruder_check})")
+        self.log_stepper(
+            f"reset_sync_gear_to_extruder("
+            f"sync_intention={sync_intention}, "
+            f"force_grip={force_grip}, "
+            f"force_in_print={force_in_print}, "
+            f"skip_extruder_check={skip_extruder_check})"
+        )
 
         bypass_selected = (self.gate_selected == TOOL_GATE_BYPASS)
         in_print_context = self.is_in_print(force_in_print)
@@ -2479,7 +2499,12 @@ class MmuFilamentMovement:
         """
         u = self.mmu_unit()
         sync = bool(sync)
-        self.log_stepper(f"PAUL: sync_gear_to_extruder(sync={sync}, gate={gate}, force_grip={force_grip})")
+        self.log_stepper(
+            "sync_gear_to_extruder("
+            f"sync={sync}, "
+            f"gate={gate}, "
+            f"force_grip={force_grip})"
+        )
 
         # Default to current selection; some designs call this before gate selection is finalized.
         if gate is None:
@@ -2539,7 +2564,6 @@ class MmuFilamentMovement:
         # Suppress grip release only at the outermost level.
         outermost_wrapper = not self._suppress_release_grip
         self._suppress_release_grip = True
-        self.log_stepper(f"PAUL: ENTRY: wrap_sync_gear_to_extruder(). previous_sync={previous_sync}")
 
         try:
             yield self
@@ -2550,7 +2574,6 @@ class MmuFilamentMovement:
 
             # Restore prior sync state. Logic inside reset_sync_gear_to_extruder
             # may consult the global suppression flag when reconciling grip.
-            self.log_stepper(f"PAUL: EXIT")
             self.reset_sync_gear_to_extruder(previous_sync)
 
 

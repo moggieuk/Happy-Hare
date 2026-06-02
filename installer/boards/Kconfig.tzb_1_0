@@ -73,11 +73,11 @@ if BOARD_TYPE_TZB_1_0
   config PIN_ENTRY_SENSOR_11
     default "^$(MCU_NAME):PA8"
 
-  config PIN_SYNC_FEEDBACK_TENSION
+  config PIN_BUFFER_TENSION
     default "^$(MCU_NAME):PB1"
-  config PIN_SYNC_FEEDBACK_COMPRESSION
+  config PIN_BUFFER_COMPRESSION
     default "^$(MCU_NAME):PB0"
-  config PIN_SYNC_FEEDBACK_ANALOG
+  config PIN_BUFFER_ANALOG
     default "$(MCU_NAME):PA3"
 
   config PIN_EREC_CUTTER_SERVO

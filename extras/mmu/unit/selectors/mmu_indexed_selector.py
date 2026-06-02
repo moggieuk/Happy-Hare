@@ -37,7 +37,6 @@ class IndexedSelectorParameters(TunableParametersBase):
 
     _SPECS: Sequence[ParamSpec] = (
         ParamSpec('selector_move_speed',    'float',  200.0, section="SELECTOR", limits=dict(minval=1.0)),
-        ParamSpec('selector_homing_speed',  'float',  100.0, section="SELECTOR", limits=dict(minval=1.0)),
         ParamSpec('selector_accel',         'float', 1200.0, section="SELECTOR", limits=dict(above=1.0)),
         ParamSpec('selector_index_distance','float',    5.0, section="SELECTOR", limits=dict(minval=0.0)),
 
@@ -82,14 +81,12 @@ class IndexedSelector(PhysicalSelector):
         if not tmc_found:
             raise config.error("Selector stepper TMC configuration not found for %s on mmu_unit %s" % (self.selector_stepper_name, self.name))
 
-# PAUL don't think this is needed because we never home rail
-#        # Force correct max movement based on cad dimensions
-#        key = "homing_move_dist"
-#        config.fileconfig.set(stepper_section, key, self._get_max_selector_movement())
-
         # Now we can load the mmu_stepper object
         self.selector_stepper = self.printer.load_object(config, stepper_section)
         logging.info("MMU: Loaded: [%s]" % stepper_section)
+
+        # Current local gate selected
+        self.lgate_selected = None
 
 
     # Selector "Interface" methods ---------------------------------------------
@@ -101,28 +98,10 @@ class IndexedSelector(PhysicalSelector):
     def handle_ready(self):
         super().handle_ready()
 
-        self.is_homed = True # Doesn't need homing
-        self._set_position(0) # Reset pos
-
-
-    def _select_gate(self, lgate):
-        """
-        Select a gate by moving until the corresponding index endstop triggers.
-
-        Verifies the configured extra endstop for the gate exists, then only
-        moves if the endstop is not already triggered.
-        """
-        super()._select_gate(lgate)
-
-        if lgate >= 0:
-            endstop = self.selector_stepper.rail.get_extra_endstop(self._get_gate_endstop(gate))
-            if not endstop:
-                raise MmuError("Extra endstop %s not defined on the selector stepper" % self._get_gate_endstop(gate))
-
-            mcu_endstop = endstop[0][0]
-            if not mcu_endstop.query_endstop(self.mmu.toolhead.get_last_move_time()):
-                with self.mmu.wrap_action(ACTION_SELECTING):
-                    self._find_gate(lgate)
+        # Design don't need homing or calibration
+        self.is_homed = True
+        self.calibrator.mark_calibrated(CALIBRATED_SELECTOR)
+        self._set_position(0)
 
 
     def enable_motors(self):
@@ -144,12 +123,23 @@ class IndexedSelector(PhysicalSelector):
         return True
 
 
-    def move(self, trace_str, new_pos, speed=None, accel=None, wait=False):
-        dist = new_pos - self.selector_stepper.commanded_pos
-        return self._move_selector_dist(trace_str, dist, speed=speed, accel=accel, wait=wait)
-
-
     # Internal Implementation --------------------------------------------------
+
+    def _select_gate(self, lgate):
+        """
+        Select a gate by moving until the corresponding index endstop triggers.
+
+        Verifies the configured extra endstop for the gate exists, then only
+        moves if the endstop is not already triggered.
+        """
+        super()._select_gate(lgate)
+
+        if lgate >= 0:
+            activated = self._query_endstop(self._get_gate_endstop_name(lgate))
+            if not activated:
+                with self.mmu.wrap_action(ACTION_SELECTING):
+                    self._find_gate(lgate)
+
 
     def _get_max_selector_movement(self):
         max_movement = self.mmu_unit.num_gates * self.p.cad_gate_width * self.p.cad_max_rotations
@@ -159,48 +149,58 @@ class IndexedSelector(PhysicalSelector):
     def _home_selector(self):
         """
         Home the selector by finding gate 0 via its index endstop.
-
-        Clears current gate selection, then performs a gate-find operation.
+        Ensures we are off the endstop and then performs a gate-find operation.
         """
         self.mmu.movequeue_wait()
 
-        try:
-            self._find_gate(0)
-        except Exception as e: # Homing failed
-            logging.error(traceback.format_exc())
-            raise MmuError("Homing selector failed because of blockage or malfunction. Klipper reports: %s" % str(e))
+        activated = self._query_endstop(self._get_gate_endstop_name(0))
+        if activated:
+            # Move half gate width to get off endstop
+            self._move_rel("Moving of endstop", -(self.p.cad_gate_width / 2))
+
+        self._find_gate(0)
+        self._set_position(0)
 
 
-    def _get_gate_endstop(self, gate):
-        return "%s_gate%d" % (self.mmu_unit.name, gate)
+    def _get_gate_endstop_name(self, lgate):
+        return "%s_gate%d" % (self.mmu_unit.name, lgate)
 
 
-    def _find_gate(self, gate): # PAUL gate or lgate?
+    def _query_endstop(self, name):
+        endstop = self.selector_stepper.rail.get_extra_endstop(name)
+        if not endstop:
+            raise MmuError(f"Extra endstop {name} not defined on the selector stepper")
+
+        mcu_endstop = endstop[0][0]
+        return mcu_endstop.query_endstop(self.mmu.toolhead.get_last_move_time())
+
+
+    def _find_gate(self, lgate):
         """
         Move in the best direction until the target gate's index endstop triggers.
 
         Performs a homing move toward the selected endstop and, if homed, centers
         on the index by moving half of selector_index_distance.
         """
-        rotation_dir = self._best_rotation_direction(self.mmu.gate_selected, gate)
+        rotation_dir = self._best_rotation_direction(self.lgate_selected, lgate)
         max_move = self._get_max_selector_movement() * rotation_dir
-        self.mmu.movequeue_wait()
-        actual,homed = self._move_selector_dist("Indexing selector", max_move, speed=self.p.selector_move_speed, homing_move=1, endstop_name=self._get_gate_endstop(gate))
-        if abs(actual) > 0 and homed:
+        delta,homed = self._homing_move_rel("Indexing selector", max_move, homing_move=1, endstop_name=self._get_gate_endstop_name(lgate))
+        if abs(delta) > 0 and homed:
             # If we actually moved to home make sure we are centered on index endstop
             center_move = (self.p.selector_index_distance / 2) * rotation_dir
-            self._move_selector_dist("Centering selector", center_move, speed=self.p.selector_move_speed)
+            self._move_rel("Centering selector", center_move)
+        self.lgate_selected = lgate
 
 
     # TODO automate the setup of the sequence through homing move on startup
-    def _best_rotation_direction(self, start_gate, end_gate):
+    def _best_rotation_direction(self, start_lgate, end_lgate):
         """
-        Choose rotation direction that reaches end_gate in the fewest steps.
+        Choose rotation direction that reaches end_lgate in the fewest steps.
 
         Uses a fixed forward gate sequence and compares forward vs reverse step
-        counts from start_gate to end_gate.
+        counts from start_lgate to end_lgate.
         """
-        if start_gate < 0:
+        if start_lgate is None:
             return 1 # Forward direction
 
         sequence = [0, 2, 1, 3] # Forward order of gates
@@ -208,30 +208,51 @@ class IndexedSelector(PhysicalSelector):
         forward_distance = reverse_distance = 0
 
         # Find distance in forward direction
-        start_idx = sequence.index(start_gate)
+        start_idx = sequence.index(start_lgate)
         for i in range(1, n):
-            if sequence[(start_idx + i) % n] == end_gate:
+            if sequence[(start_idx + i) % n] == end_lgate:
                 forward_distance = i
                 break
 
         # Find distance in reverse direction
         rev_seq = sequence[::-1]
-        start_idx = rev_seq.index(start_gate)
+        start_idx = rev_seq.index(start_lgate)
         for i in range(1, n):
-            if rev_seq[(start_idx + i) % n] == end_gate:
+            if rev_seq[(start_idx + i) % n] == end_lgate:
                 reverse_distance = i
                 break
 
         return 1 if forward_distance <= reverse_distance else -1
 
 
-    # Internal raw wrapper around all selector moves
-    # Returns distance moved, and if homed (homing moves)
-    def _move_selector_dist(self, trace_str, dist, speed=None, accel=None, homing_move=0, endstop_name="default", wait=False):
+    def _move_rel(self, trace_str, dist, speed=None, accel=None, wait=False):
         """
-        Execute a selector move, optionally as a homing move to a named endstop.
+        Relative selector movement.
+        Returns relative distance moved
+        """
+        start_pos = self.selector_stepper.commanded_pos
+        new_pos = start_pos + dist
+        actual,_ = self._move_selector(trace_str, new_pos, speed=speed, accel=accel, wait=wait)
+        return (actual - start_pos)
 
-        Returns (actual_dist, homed)
+
+    def _homing_move_rel(self, trace_str, dist, speed=None, accel=None, homing_move=0, endstop_name=None):
+        """
+        Relative selector homing movement.
+        Returns relative distance actually moved and homing state
+        """
+        start_pos = self.selector_stepper.commanded_pos
+        new_pos = start_pos + dist
+        actual,homed = self._move_selector(trace_str, new_pos, speed=speed, accel=accel, homing_move=homing_move, endstop_name=endstop_name)
+        return (actual - start_pos),homed
+
+
+    def _move_selector(self, trace_str, new_pos, speed=None, accel=None, homing_move=0, endstop_name=None, wait=False):
+        """
+        Execute a selector move, optionally using a homing move to an endstop.
+
+        Returns (position, homed). For homing moves, selects the requested
+        endstop set (default or extra).
         """
         if trace_str:
             self.mmu.log_trace(trace_str)
@@ -239,19 +260,17 @@ class IndexedSelector(PhysicalSelector):
         self.mmu.movequeue_wait()
 
         # Set appropriate speeds and accel if not supplied
-        if speed is None:
-            speed = self.p.selector_homing_speed if homing_move != 0 else self.p.selector_move_speed
+        speed = speed or self.p.selector_move_speed
         accel = accel or self.p.selector_accel
 
         pos = self.selector_stepper.commanded_pos
-        new_pos = pos + dist
 
         if homing_move != 0:
             # Check for valid endstop
             endstops = self.selector_stepper.rail.get_endstops() if endstop_name is None else self.selector_stepper.rail.get_extra_endstop(endstop_name)
             if endstops is None:
                 self.mmu.log_error("Endstop '%s' not found" % endstop_name)
-                return 0, False
+                return self.selector_stepper.commanded_pos, False
 
             home_result = {
                 'halt_pos': pos,
@@ -260,17 +279,26 @@ class IndexedSelector(PhysicalSelector):
             homed = True
 
             try:
-                home_result = self.selector_stepper.do_homing_move(new_pos, speed, accel, probe_pos=True, triggered=(homing_move > 0), check_trigger=True, endstop_name=endstop_name)
-
+                home_result = self.selector_stepper.do_homing_move(
+                    new_pos,
+                    speed,
+                    accel,
+                    probe_pos=True,
+                    triggered=(homing_move > 0),
+                    check_trigger=True,
+                    endstop_name=endstop_name,
+                )
             except self.printer.command_error:
                 homed = False
+            finally:
+                self.mmu.toolhead.flush_step_generation() # TTC mitigation when homing move + regular + get_last_move_time() in close succession
 
             actual = home_result['halt_pos'] - pos
             result = f"HOMED actual halt_pos={home_result['halt_pos']:.2f}, trig_pos={home_result['trig_pos']:.2f}" if homed else "DID NOT HOME"
             self.mmu.log_stepper(
                 f"SELECTOR HOMING MOVE: requested position={new_pos:.1f}, "
                 f"speed={speed:.1f}, accel={accel:.1f}, "
-                f"endstop_name={endstop_name} >> {result} (actual: {actual:.1f})"
+                f"endstop_name={endstop_name} >> {result} (actual_delta: {actual:.1f})"
             )
 
         else:
@@ -280,13 +308,14 @@ class IndexedSelector(PhysicalSelector):
             actual = self.selector_stepper.commanded_pos - pos
             self.mmu.log_stepper(
                 f"SELECTOR MOVE: requested position={new_pos:.1f}, "
-                f"speed={speed:.1f}, accel={accel:.1f}"
+                f"speed={speed:.1f}, accel={accel:.1f}, actual_delta={actual:.1f}"
             )
 
+            self.mmu.toolhead.flush_step_generation() # TTC mitigation
             if wait:
                 self.mmu.movequeue_wait()
 
-        return actual, homed
+        return self.selector_stepper.commanded_pos, homed
 
 
     def _set_position(self, position):

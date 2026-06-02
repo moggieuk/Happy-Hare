@@ -107,14 +107,14 @@ if BOARD_TYPE_CHAMELEON_X5_1_0
     default "^$(MCU_NAME):PA6"
 
   if SYNC_FEEDBACK
-    config PIN_SYNC_FEEDBACK_TENSION
+    config PIN_BUFFER_TENSION
       default "^$(MCU_NAME):PC5"
-    config PIN_SYNC_FEEDBACK_COMPRESSION
+    config PIN_BUFFER_COMPRESSION
       default "$(MCU_NAME):PA7" 
   endif
 
   if SYNC_FEEDBACK_ANALOG
-  config PIN_SYNC_FEEDBACK_ANALOG
+  config PIN_BUFFER_ANALOG
     default "^$(MCU_NAME):PC2"
   endif
 

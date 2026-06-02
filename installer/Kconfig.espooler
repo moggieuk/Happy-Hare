@@ -1,0 +1,21 @@
+# Responsible for setting:
+#   MMU_HAS_ESPOOLER
+
+config UNSELECT_MMU_HAS_ESPOOLER
+  bool
+config MMU_HAS_ESPOOLER
+  prompt "Has eSpooler?"
+  depends on !UNSELECT_MMU_HAS_ESPOOLER
+  forceshow
+  default n
+  help
+    An eSpooler is primarily used to rewind filament to prevent
+    it tangling but can also be driven to assist loading and even
+    assist in print. Select if you have added a DC motor controlled
+    eSpooler.
+
+if MMU_HAS_ESPOOLER
+  config UNSELECT_MMU_HAS_FILAMENT_BUFFER
+    default y
+  comment 'Pins must be set under "Pins" section'
+endif

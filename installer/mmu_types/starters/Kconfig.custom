@@ -9,11 +9,12 @@ config MMU_CUSTOM
 if MMU_CUSTOM
 
   source "Kconfig.num_gates"
-  source "Kconfig.capabilities"
 
   if SHOW_MMU_ADDITIONS_WITH_TYPE
     source "Kconfig.mmu_additions"
   endif
+
+  source "Kconfig.capabilities"
 
   ####################
   ##### Defaults #####

@@ -10,7 +10,6 @@ config MMU_TYPE_VVD_1_0
   select UNSELECT_MMU_HAS_FILAMENT_BUFFER # Disable
 
   select BOOL_REQUIRE_BOWDEN_MOVE
-  select BOOL_CAN_CROSSLOAD
   select UNSELECT_VARIABLE_BOWDEN_LENGTHS # Disable
   select UNSELECT_FILAMENT_ALWAYS_GRIPPED # Disable
 
@@ -28,14 +27,17 @@ if MMU_TYPE_VVD_1_0
     select MMU_HAS_BUFFER_MCU
     select MMU_HAS_SENSOR_EXIT
     select MMU_HAS_SYNC_FEEDBACK_BUFFER
-    select MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION
-    select MMU_HAS_SENSOR_SYNC_FEEDBACK_TENSION
+    select MMU_HAS_SENSOR_BUFFER_COMPRESSION
+    select MMU_HAS_SENSOR_BUFFER_TENSION
 endif
 
 if MMU_TYPE_VVD_1_0
+
   if SHOW_MMU_ADDITIONS_WITH_TYPE
     source "Kconfig.mmu_additions"
   endif
+
+  source "Kconfig.capabilities"
 
   ####################
   ##### Defaults #####
@@ -54,7 +56,7 @@ if MMU_TYPE_VVD_1_0
   config PARAM_GEAR_GEAR_RATIO
     default "1:1"
   config PARAM_GEAR_ROTATION_DISTANCE
-    default "7.8"
+    default "8.45"
   config PARAM_GEAR_RUN_CURRENT
     default "0.7"
   config PARAM_GEAR_HOLD_CURRENT
@@ -72,10 +74,15 @@ if MMU_TYPE_VVD_1_0
   config PARAM_SELECTOR_HOLD_CURRENT
     default "0.3"
 
-  config PARAM_GATE_PARKING_DISTANCE
-    default "10"
+  config PARAM_SELECTOR_MOVE_SPEED
+    default 200
+
   config PARAM_GATE_HOMING_MAX
-    default "500"
+    default 800
+  config PARAM_GATE_PARKING_DISTANCE
+    default 10
+  config PARAM_GATE_FINAL_EJECT_DISTANCE
+    default 800
   
   config PARAM_CHAIN_COUNT
     default 28   

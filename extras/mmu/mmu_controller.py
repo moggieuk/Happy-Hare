@@ -45,6 +45,8 @@ class MmuController(MmuFilamentMovement):
         self.gcode = self.printer.lookup_object('gcode')
         self.gcode_move = self.printer.load_object(config, 'gcode_move')
 
+        self._ready = False # Used to prevent early access to get_status() before everything is loaded
+
         self.num_gates = self.mmu_machine.num_gates
         self.toolchange_retract = 0.            # Set from mmu_macro_vars
         self.toolchange_purge_volume = 0.       # During toolchange, the total calculated purge volume
@@ -189,6 +191,7 @@ class MmuController(MmuFilamentMovement):
 
     def handle_disconnect(self):
         self.log_debug('Klipper disconnected!')
+        self._ready = False
 
 
     def handle_ready(self):
@@ -237,6 +240,7 @@ class MmuController(MmuFilamentMovement):
 
         # Send event to allow modules to finalize configuration now everything is loaded
         self.log_debug("MMU Initialization Complete -------------------------------\n")
+        self._ready = True
         self.printer.send_event("mmu:initialized")
 
 
@@ -281,14 +285,6 @@ class MmuController(MmuFilamentMovement):
         self.reactor.register_callback(lambda pt: self.psm.print_event("__MMU_BOOTUP"), waketime)
 
 
-    def _fversion(self, v):
-        return "v{major}.{minor}.{patch}".format(
-            major=int(v),
-            minor=str(v).split('.')[1][0] if '.' in str(v) and len(str(v).split('.')[1]) > 0 else '0',
-            patch=str(v).split('.')[1][1:] if '.' in str(v) and len(str(v).split('.')[1]) > 1 else '0'
-        )
-
-
     cmd_MMU_BOOTUP_help = "Internal commands to complete bootup of MMU"
     def cmd_MMU_BOOTUP(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
@@ -323,7 +319,7 @@ class MmuController(MmuFilamentMovement):
                        self.log_debug(msg)
 
             # Splash...
-            version = self._fversion(self.mmu_machine.happy_hare_version)
+            version = "v" + self.mmu_machine.happy_hare_version
             msg = (
                 "{1}(\\_/){0}\n"
                 "{1}( {0}*,*{1}){0}\n"
@@ -373,7 +369,7 @@ class MmuController(MmuFilamentMovement):
                     self.log_debug(f"Cannot autohome selector for {u.name} because selector is not yet calibrated")
                     continue
 
-                if u.p.startup_home_selector: # PAUL and selector is calibrated!
+                if u.p.startup_home_selector: # PAUL ADD and selector is calibrated!
                     unit_loaded = (
                         self.gate_selected != TOOL_GATE_UNKNOWN and
                         u.manages_gate(self.gate_selected) and
@@ -588,6 +584,9 @@ class MmuController(MmuFilamentMovement):
             'clog_detection': False,           # DEPRECATED
             'clog_detection_enabled': False,   # DEPRECATED
         }
+
+        if not self._ready:
+            return status
 
         # Adds status for gate map, ttg map, endless spool, etc
         status.update(self.gate_maps.get_status(eventtime))
@@ -1237,7 +1236,7 @@ class MmuController(MmuFilamentMovement):
         if self.has_encoder():
             mode = self.mmu_unit().sync_feedback.p.flowguard_encoder_mode
             if mode == ENCODER_RUNOUT_AUTOMATIC:
-                cdl = self.encoder().get_clog_detection_length()
+                cdl = self.encoder().get_clog_detection_length() # Never None
                 self.mmu_unit().calibrator.update_clog_detection_length(round(cdl, 1))
 
         self.var_manager.write()
@@ -2197,19 +2196,27 @@ class MmuController(MmuFilamentMovement):
 
 
     def select_gate(self, gate):
-        self.log_warning(f"PAUL: select_gate({gate}): gate_selected:{self.gate_selected}")
+        #self.log_warning(f"PAUL: select_gate({gate}): gate_selected:{self.gate_selected}")
+        mmu_unit = self.mmu_unit(gate)
+        selector = mmu_unit.selector
         try:
             if gate == self.gate_selected:
-                self.selector().select_gate(gate) # Always give selector a chance to fix position
+                selector.select_gate(gate) # Always give selector a chance to fix position
             else:
+                # Autohome if necessary
+                if not selector.is_homed:
+                    self.log_info(f"MMU selector for gate {gate} not homed, will home before continuing")
+                    selector.home()
+
                 self._next_gate = gate # Valid only during the gate selection process
                 _prev_gate = self.gate_selected
-                self.selector(gate).select_gate(gate)
+                selector.select_gate(gate)
                 self._set_gate_selected(gate) # Will send gate/unit changed events
 
         except MmuError as ee:
             self.unselect_gate()
             raise ee
+
         finally:
             self._next_gate = None
 
@@ -2257,7 +2264,7 @@ class MmuController(MmuFilamentMovement):
 
 
     def _set_gate_selected(self, gate):
-        self.log_warning(f"PAUL: _set_gate_selected({gate})")
+        #self.log_warning(f"PAUL: _set_gate_selected({gate})")
         prev_gate = self.gate_selected
 
         if gate == prev_gate:
@@ -2293,7 +2300,7 @@ class MmuController(MmuFilamentMovement):
 
 
     def _set_unit_selected(self, unit_index):
-        self.log_warning(f"PAUL: _set_unit_selected({unit_index})")
+        #self.log_warning(f"PAUL: _set_unit_selected({unit_index})")
         prev_unit = self.unit_selected
 
         if unit_index == prev_unit:

@@ -68,6 +68,15 @@ class MmuSensorsCommand(BaseCommand):
             summary += "No active sensors. Use DETAIL=1 to see all"
 
         else:
+            pad = 21
+            if self.mmu.mmu_machine.num_units > 1:
+                if mmu_unit is None:
+                    pad = 27
+                    unit_str = "all units"
+                else:
+                    unit_str = mmu_unit.name
+                summary += f"Sensors configured for {unit_str}:\n"
+
             for name in sorted(sensor_states):
                 state, sensor = sensor_states[name]
 
@@ -85,7 +94,7 @@ class MmuSensorsCommand(BaseCommand):
                     else:
                         value_str = f"{value:.2f}"
 
-                    summary += f"{name:<21} --> {value_str}"
+                    summary += f"{name:<{pad}} --> {value_str}"
 
                     if detail:
                         summary += f" (raw: {value_raw:.2f})"
@@ -94,7 +103,7 @@ class MmuSensorsCommand(BaseCommand):
                     trig = "TRIGGERED" if sensor.runout_helper.filament_present else "Open"
 
                     value_str = f"{trig} (disabled)" if state is None else trig
-                    summary += f"{name:<21} --> {value_str}"
+                    summary += f"{name:<{pad}} --> {value_str}"
 
                     if (
                         detail and

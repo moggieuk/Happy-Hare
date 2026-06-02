@@ -13,6 +13,8 @@ if MMU_TYPE_3MS_1_0
     source "Kconfig.mmu_additions"
   endif
 
+  source "Kconfig.capabilities"
+
   ####################
   ##### Defaults #####
   ####################
@@ -35,8 +37,8 @@ if MMU_TYPE_3MS_1_0
     default 80
 
   config PARAM_GATE_HOMING_MAX
-    default "500"
+    default 500
   config PARAM_GATE_PARKING_DISTANCE
-    default "-250"
+    default -250
 
 endif 

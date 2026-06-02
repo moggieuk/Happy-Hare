@@ -20,6 +20,8 @@ if MMU_TYPE_NIGHT_OWL_1_0
     source "Kconfig.mmu_additions"
   endif
 
+  source "Kconfig.capabilities"
+
   ####################
   ##### Defaults #####
   ####################
@@ -39,10 +41,10 @@ if MMU_TYPE_NIGHT_OWL_1_0
     default "0.1"
 
   config PARAM_GATE_PARKING_DISTANCE
-    default "0"
+    default 0
   config PARAM_GATE_HOMING_MAX
-    default "100"
+    default 100
   config PARAM_GATE_FINAL_EJECT_DISTANCE
-    default "100"
+    default 300
 
 endif 

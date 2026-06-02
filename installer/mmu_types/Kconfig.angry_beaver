@@ -19,6 +19,8 @@ if MMU_TYPE_ANGRY_BEAVER_1_0
     source "Kconfig.mmu_additions"
   endif
 
+  source "Kconfig.capabilities"
+
   ####################
   ##### Defaults #####
   ####################
@@ -44,8 +46,8 @@ if MMU_TYPE_ANGRY_BEAVER_1_0
     default 80
     
   config PARAM_GATE_HOMING_MAX
-    default "500"
+    default 500
   config PARAM_GATE_PARKING_DISTANCE
-    default "-50"
+    default -50
 
 endif 

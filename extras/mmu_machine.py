@@ -32,9 +32,18 @@ class MmuMachine:
         self.printer = config.get_printer()
         self.config = config
 
+        def major_minor(version_str):
+            """
+            Convert "<major>.<minor>.<point>" to tuple (<major>, <minor>)
+            """
+            major, minor, *_ = version_str.strip('"').split(".")
+            return (int(major), int(minor))
+
         # Instruct users to re-run ./install.sh if version number changes
-        self.happy_hare_version = config.getfloat('happy_hare_version', 2.2) # v2.2 was the last release before versioning
-        if self.happy_hare_version is not None and self.happy_hare_version < VERSION:
+        self.happy_hare_version = config.get('happy_hare_version', None)
+        if self.happy_hare_version is None:
+            raise self.config.error("Looks like Happy Hare is not installed correctly - cannot find `happy_hare_version` in klipper config")
+        elif major_minor(self.happy_hare_version) < major_minor(VERSION):
             raise self.config.error("Looks like you upgraded (v%s -> v%s)?\n%s" % (self.p.happy_hare_version, VERSION, UPGRADE_REMINDER))
 
         self.unit_names = list(config.getlist('units'))

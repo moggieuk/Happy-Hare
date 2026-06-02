@@ -30,8 +30,8 @@ if MMU_TYPE_KMS_1_0
     select MMU_HAS_BUFFER_MCU
     select MMU_HAS_SENSOR_EXIT
     select MMU_HAS_SYNC_FEEDBACK_BUFFER
-    select MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION
-    select MMU_HAS_SENSOR_SYNC_FEEDBACK_TENSION
+    select MMU_HAS_SENSOR_BUFFER_COMPRESSION
+    select MMU_HAS_SENSOR_BUFFER_TENSION
 endif
 
 if MMU_TYPE_KMS_1_0
@@ -39,6 +39,8 @@ if MMU_TYPE_KMS_1_0
   if SHOW_MMU_ADDITIONS_WITH_TYPE
     source "Kconfig.mmu_additions"
   endif
+
+  source "Kconfig.capabilities"
 
   ####################
   ##### Defaults #####
@@ -67,22 +69,22 @@ if MMU_TYPE_KMS_1_0
 
   # "Gates" config
   config PARAM_GATE_HOMING_MAX
-    default "300"
+    default 300
   config PARAM_GATE_PRELOAD_HOMING_MAX
-    default "300"
+    default 300
   config PARAM_GATE_PRELOAD_PARKING_DISTANCE
-    default "-10"
+    default -10
   config PARAM_GATE_PARKING_DISTANCE
-    default "-20"
-  config PARAM_GATE_ENDSTOP_TO_ENCODER
-    default "14"
+    default -20
   config PARAM_GATE_FINAL_EJECT_DISTANCE
-    default "300"
+    default 300
+  config PARAM_GATE_ENDSTOP_TO_ENCODER
+    default 14
 
   # "Motor sync" config
-  config PARAM_SYNC_FEEDBACK_BUFFER_RANGE
+  config PARAM_BUFFER_RANGE
     default "8"
-  config PARAM_SYNC_FEEDBACK_BUFFER_MAXRANGE
+  config PARAM_BUFFER_MAXRANGE
     default "12"
 
   config PARAM_ENVIRONMENT_SENSOR

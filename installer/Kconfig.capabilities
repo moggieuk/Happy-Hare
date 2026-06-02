@@ -31,51 +31,50 @@
 #   PARAM_VARIABLE_ROTATION_DISTANCES
 #   PARAM_REQUIRE_BOWDEN_MOVE
 #   PARAM_FILAMENT_ALWAYS_GRIPPED
-#   PARAM_CAN_CROSSLOAD
 
 config MMU_HAS_SELECTOR_STEPPER
-  bool
+  def_bool n
 
 config MMU_HAS_SELECTOR_SERVO
-  bool
+  def_bool n
 
 config MMU_HAS_ENCODER
-  bool
+  def_bool n
 
 config MMU_HAS_SYNC_FEEDBACK_BUFFER
-  bool
+  def_bool n
 
 config MMU_HAS_ESPOOLER
-  bool
+  def_bool n
 
 config MMU_HAS_FILAMENT_BUFFER
-  bool
+  def_bool n
 
 config MMU_HAS_LEDS
-  bool
+  def_bool n
 
 config MMU_HAS_ENVIRONMENT_SENSOR
-  bool
+  def_bool n
 
 config MMU_HAS_PER_GATE_ENV_SENSORS
-  bool
+  def_bool n
 
 config MMU_HAS_HEATER
-  bool
+  def_bool n
 
 config MMU_HAS_PER_GATE_HEATERS
-  bool
+  def_bool n
 
 config MMU_HAS_EJECT_BUTTONS
-  bool
+  def_bool n
 
 # Some new designs have mcu integrated in sync-feedback buffer mcu
 config MMU_HAS_BUFFER_MCU
-  bool
+  def_bool n
 
+# Some custom designs have some pre-packaged hwardware configuration
 config PARAM_MISC_HARDWARE
   string
-  default ""
 
 
 menu "Design attributes"
@@ -140,22 +139,6 @@ menu "Design attributes"
   config PARAM_FILAMENT_ALWAYS_GRIPPED
     int
     default 1 if BOOL_FILAMENT_ALWAYS_GRIPPED
-    default 0
-
-  config UNSELECT_CAN_CROSSLOAD
-    def_bool n
-  config BOOL_CAN_CROSSLOAD
-    bool "Can crossload/unload?"
-    forceshow
-    depends on !UNSELECT_CAN_CROSSLOAD
-    help
-      Whether the design supports the pre-loading or unloading of the non active gate.
-      For type-B designs with mmu_exit sensor (or one on each entry to filament combiner)
-      this is possible. It is not possible with most type-A designs with a single filament
-      drive stepper.
-  config PARAM_CAN_CROSSLOAD
-    int
-    default 1 if BOOL_CAN_CROSSLOAD
     default 0
 
 endmenu

@@ -24,42 +24,51 @@ if MMU_HAS_SELECTOR_SERVO
       default 180
 
     config PARAM_SERVO_MIN_PULSE_WIDTH
-      string "Servo min pulse width"
-      default "0.001"
+      float "Servo min pulse width"
+      default 0.001
 
     config PARAM_SERVO_MAX_PULSE_WIDTH
-      string "Servo max pulse width"
-      default "0.002"
+      float "Servo max pulse width"
+      default 0.002
 
-    config PARAM_SERVO_UP_ANGLE
-      int "Servo up angle       "
-      default 0
+    if LINEAR_SERVO_SELECTOR || TESTING_SELECTOR
+        config PARAM_SERVO_UP_ANGLE
+          int "Servo up angle       "
+          default 0
+          help
+            Position of the servo up (filament released) position.
 
-    config PARAM_SERVO_MOVE_ANGLE
-      int "Servo move angle     "
-      default 0
+        config PARAM_SERVO_MOVE_ANGLE
+          int "Servo move angle     "
+          default PARAM_SERVO_UP_ANGLE
+          help
+            Position of the servo for selector movement.
+            Often this is the same as the up setting but on some
+            designs like ERCF this position also passively
+            holds the filament.
 
-    config PARAM_SERVO_DOWN_ANGLE
-      int "Servo down angle     "
-      default 0
+        config PARAM_SERVO_DOWN_ANGLE
+          int "Servo down angle     "
+          default 0
+          help
+            Position of the servo down (filament gripped) position.
 
-    config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
-      int "Buzz servo on down   "
-      default 1
-      help
-        How often to buzz servo on down angle
-
-    config PARAM_SERVO_DURATION
-      string "Servo duration       "
-      default "0.4" if LINEAR_SELECTOR
-      default "0.5" if SERVO_SELECTOR
-      default "0.4"
+        config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
+          int "Buzz servo on down   "
+          default 1
+          help
+            How often to buzz servo on down angle
+    endif
 
     config PARAM_SERVO_DWELL
-      string "Servo dwell          "
-      default "0.5" if LINEAR_SELECTOR
-      default "0.8" if SERVO_SELECTOR
-      default "0.5"
+      float "Servo dwell          "
+      default 0.5 if LINEAR_SELECTOR
+      default 0.8 if SERVO_SELECTOR
+      default 0.5
+      help
+        How long to wait in seconds for the servo to move into position.
+        This avoids subsequent operations from happening before
+        movement is complete
 
     config BOOL_SERVO_ALWAYS_ACTIVE
       bool "Servo always active?"
@@ -73,31 +82,44 @@ if MMU_HAS_SELECTOR_SERVO
       default 1 if BOOL_SERVO_ALWAYS_ACTIVE
       default 0
 
-    config BOOL_SERVO_ACTIVE_DOWN
-      bool "Servo active down"
+    config PARAM_SERVO_DURATION
+      float "Servo PWM duration   "
+      default 0.4 if LINEAR_SELECTOR
+      default 0.5 if SERVO_SELECTOR
+      default 0.4
       help
-        This option will force the servo to stay active when in the down or gripped position. It can
-        be dangerous on some designs or miscalibrated MMU because it strains the servo and control electronics.
+        Duration of servo PWM signal if not always active
 
-        Recommend to disable unless you are sure you know you need it or your experience poor filament grip.
-    config PARAM_SERVO_ACTIVE_DOWN
-      int
-      default 1 if BOOL_SERVO_ACTIVE_DOWN
-      default 0
+    if LINEAR_SERVO_SELECTOR || TESTING_SELECTOR
+      config BOOL_SERVO_ACTIVE_DOWN
+        bool "Servo active down"
+        help
+          This option will force the servo to stay active just when in the down or gripped position.
+          It can be dangerous on some designs or miscalibrated MMU because it strains the servo
+          and control electronics.
 
-    config PARAM_SERVO_GATE_ANGLES
-      string "Servo gate angles    "
-      depends on SERVO_SELECTOR || TESTING_SELECTOR
-      default "90, 90"                 if PARAM_NUM_GATES = 2
-      default "90, 90, 90"             if PARAM_NUM_GATES = 3
-      default "90, 90, 90, 90"         if PARAM_NUM_GATES = 4
-      default "90, 90, 90, 90, 90"     if PARAM_NUM_GATES = 5
-      default "90, 90, 90, 90, 90, 90" if PARAM_NUM_GATES = 6
-      default ""
-      help
-        Specify a list of angles representing the initial gate positions. This can avoid
-        calibration but typically calibrated values (saved in 'mmu_vars.cfg') would override
-        this setting.
-        You may leave it blank to force user calibration.
+          Recommend to disable unless you are sure you know you need it or your experience poor filament grip.
+      config PARAM_SERVO_ACTIVE_DOWN
+        int
+        default 1 if BOOL_SERVO_ACTIVE_DOWN
+        default 0
+    endif
+
+    if SERVO_SELECTOR || TESTING_SELECTOR
+      config PARAM_SERVO_GATE_ANGLES
+        string "Servo gate angles    "
+        default "0, 180"                    if PARAM_NUM_GATES = 2
+        default "0, 120, 240"               if PARAM_NUM_GATES = 3
+        default "0, 90, 180, 270"           if PARAM_NUM_GATES = 4
+        default "0, 72, 144, 216, 288"      if PARAM_NUM_GATES = 5
+        default "0, 60, 120, 180, 240, 300" if PARAM_NUM_GATES = 6
+        default ""
+        help
+          CAUTION: default settings assume a 360 degree movement!
+          Specify a list of angles representing the initial gate positions. This can avoid
+          calibration but typically calibrated values (saved in 'mmu_vars.cfg') would override
+          this setting.
+          You may leave it blank to force user calibration.
+    endif
   endmenu
 endif

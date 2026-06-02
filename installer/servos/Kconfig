@@ -31,10 +31,10 @@ if MMU_HAS_SELECTOR_SERVO
 
   if SERVO_TYPE_OTHER
     config PARAM_SERVO_MIN_PULSE_WIDTH
-      default "0.001"
+      default 0.001
 
     config PARAM_SERVO_MAX_PULSE_WIDTH
-      default "0.002"
+      default 0.002
 
     config PARAM_SERVO_MAX_ANGLE
       default 180
@@ -43,7 +43,7 @@ if MMU_HAS_SELECTOR_SERVO
       default 0
 
     config PARAM_SERVO_MOVE_ANGLE
-      default 0
+      default PARAM_SERVO_UP_ANGLE
 
     config PARAM_SERVO_DOWN_ANGLE
       default 0

@@ -21,7 +21,7 @@ from .mmu_base_command import *
 
 class MmuTestLoadCommand(BaseCommand):
     """
-    For quick testing filament loading from gate to the extruder.
+    For quick testing filament loading from gate to the extruder
     """
 
     CMD = "MMU_TEST_LOAD"

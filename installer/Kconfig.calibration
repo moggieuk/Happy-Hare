@@ -16,7 +16,7 @@
 menu "Calibration/Autotuning"
   config BOOL_AUTOCAL_BOWDEN_LENGTH
     bool "Auto calibrate bowden length"
-    default y if MMU_HAS_SYNC_FEEDBACK_BUFFER && MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION
+    default y if MMU_HAS_SYNC_FEEDBACK_BUFFER && MMU_HAS_SENSOR_BUFFER_COMPRESSION
     help
       Automated bowden length calibration.
       The calibrated bowden length will be established on first load. It can also be set
@@ -56,9 +56,9 @@ menu "Calibration/Autotuning"
   config BOOL_AUTOTUNE_ROTATION_DISTANCE
     bool "Autotune rotation distance"
     default y if MMU_HAS_SYNC_FEEDBACK_BUFFER && \
-        ((MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION && \
-          MMU_HAS_SENSOR_SYNC_FEEDBACK_TENSION) || \
-         MMU_HAS_SENSOR_SYNC_FEEDBACK_PROPORTIONAL)
+        ((MMU_HAS_SENSOR_BUFFER_COMPRESSION && \
+          MMU_HAS_SENSOR_BUFFER_TENSION) || \
+         MMU_HAS_SENSOR_BUFFER_PROPORTIONAL)
     help
       Automated gate calibration/tuning.
       Requires sync-feedback sensor (aka "buffer") with both compression and tension switches

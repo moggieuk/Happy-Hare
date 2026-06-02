@@ -6,7 +6,7 @@
 #   CHOICE_X, CHOICE_X_*   Named choice "X" or boolean selection config
 #   UNSELECT_*             Special boolean symbol used to implement forced "unselect"
 #
-# The above list is special is that default values will be stored in the .config but will not
+# The above list is special is that default values will be stored in the .mmu_config but will not
 # force setting on subsequent runs. They therefore remain as modifiable defaults until user explicitly
 # changes them. Also when they are changed from default values menuconfig will mark as
 # "(NOT DEFAULT)" and allow the "r" keystroke to reset back to default value
@@ -33,9 +33,9 @@
 #   MMU_HAS_SENSOR_EXIT
 #   MMU_HAS_SENSOR_GEAR_TOUCH
 #   MMU_HAS_SENSOR_SHARED_EXIT
-#   MMU_HAS_SENSOR_SYNC_FEEDBACK_COMPRESSION
-#   MMU_HAS_SENSOR_SYNC_FEEDBACK_PROPORTIONAL
-#   MMU_HAS_SENSOR_SYNC_FEEDBACK_TENSION
+#   MMU_HAS_SENSOR_BUFFER_COMPRESSION
+#   MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
+#   MMU_HAS_SENSOR_BUFFER_TENSION
 #   MMU_HAS_SYNC_FEEDBACK_BUFFER
 #
 # These will only be in shared config on multi-unit because they are on printer and not per-unit
@@ -44,10 +44,9 @@
 
 
 # IMPORTANT keep version string up-to-date and constistent with git tag
-happy_hare_version := 4.0
+happy_hare_version := $HH_VERSION
 
-f_version   := $(shell, printf '%s0\n' "$(happy_hare_version)" | sed -E 's/^([0-9]+)\.([0-9])([0-9]).*/\1.\2.\3/')
-hh_message  := $(shell, echo "Happy Hare v$(f_version)")
+hh_message  := $(shell, echo "Happy Hare v$(happy_hare_version)")
 unit_suffix := $(shell, [ -n "$$UNIT_NAME" ] && echo "Unit: [[B]]$(UNIT_NAME)[[/B]]" || echo "")
 title       := $(shell, [ "$F_MULTI_UNIT_ENTRY_POINT" = "y" ] && echo "$(hh_message) Configuration for [[B]]Multi Unit Setup[[/B]]" || echo "$(hh_message) Configuration - $(unit_suffix)")
 caption     := $(shell, [ "$F_MULTI_UNIT_ENTRY_POINT" = "y" ] && echo "$(hh_message) - [[B]]Shared Config[[/B]]" || echo "Configuration - $(unit_suffix)")
@@ -94,10 +93,6 @@ mainmenu "$(title)"
 config HAPPY_HARE_VERSION
   string
   default "$(happy_hare_version)"
-
-config FORMATTED_VERSION
-  string
-  default "$(f_version)"
 
 config MULTI_UNIT
   bool
@@ -166,7 +161,7 @@ if MULTI_UNIT_ENTRY_POINT
 
   comment "Shared System Options"
   source "toolheads/Kconfig"        # Toolhead Selection menu
-  source "Kconfig.toolhead"
+  source "Kconfig.toolhead"       # Toolhead Sensors/Settings
   source "addons/Kconfig"           # Addon Macro Features
   source "Kconfig.options"          # Main software options
   source "Kconfig.speeds"           # Access to extruder speeds
@@ -174,10 +169,7 @@ if MULTI_UNIT_ENTRY_POINT
   # Thesee are duplicated settings that are excluded from units when MULTI_UNIT
   menu "Printer sensors / pins"
     help
-      Printer toolhead capabilities
-      Here you can configure printer toolhead options such as fitted sensors
-    source "sensors/Kconfig.extruder"
-    source "sensors/Kconfig.toolhead"
+      Here you can configure printer options such as additional gantry servo
 
     config PIN_GANTRY_SERVO
       string "Gantry servo pin"
@@ -191,17 +183,18 @@ endif
 
 if !MULTI_UNIT_ENTRY_POINT
   source "mmu_types/Kconfig"        # Base MMU type menu
+  source "boards/Kconfig"           # MCU Selection menu
   if !SHOW_MMU_ADDITIONS_WITH_TYPE
     source "Kconfig.mmu_additions"  # MMU Additions/Customization menu (if not inlined with mmu type)
   endif
-  source "boards/Kconfig"           # MCU Selection menu
   source "Kconfig.pins"             # Raw pin editing
   source "connection/Kconfig"       # MCU Connection
   if !MULTI_UNIT
     source "toolheads/Kconfig"      # Toolhead Selection menu
+    source "Kconfig.toolhead"       # Toolhead Sensors/Settings
     source "addons/Kconfig"         # Addon Macro Features
+    source "Kconfig.options"        # Main software options
   endif
-  source "Kconfig.options"          # Main software options
   source "Kconfig.raw"              # Raw access to appropriate parameters
   if !MULTI_UNIT
     source "Kconfig.paths_services" # Advanced install options

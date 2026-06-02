@@ -57,7 +57,12 @@ class MmuChangeToolCommand(BaseCommand):
 
         if self.check_if_disabled(): return
         if self.check_if_bypass(): return
-        if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[]): return # TODO Hard to tell what gates to check so don't check for now
+
+        # Ensure full calibration before we allow this command to run
+        for u in mmu.mmu_machine.units:
+            if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, mmu_unit=u):
+                return
+
         mmu.fix_started_state()
 
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
@@ -119,6 +124,7 @@ class MmuChangeToolCommand(BaseCommand):
             with mmu.wrap_sync_gear_to_extruder():
                 with mmu.wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during tool change
                     with mmu.var_manager.wrap_suspend_write_variables(): # Reduce I/O activity to a minimum
+
                         if mmu.has_encoder():
                             mmu.encoder().note_clog_detection_length()
 

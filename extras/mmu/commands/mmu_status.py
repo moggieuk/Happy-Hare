@@ -57,7 +57,7 @@ class MmuStatusCommand(BaseCommand):
         lines = []
 
         lines.append(
-            f"MMU: Happy Hare {mmu._fversion(mmu.mmu_machine.happy_hare_version)} "
+            f"MMU: Happy Hare v{mmu.mmu_machine.happy_hare_version} "
             f"controlling {mmu.mmu_machine.num_units} units:\n"
         )
 
@@ -80,11 +80,10 @@ class MmuStatusCommand(BaseCommand):
                 lines.append(f"\n{UI_SOLID_CIRCLE} {unit.mmu_vendor} v{unit.mmu_version_string}")
 
             first, last = unit.gate_bounds()
-            lines.append(f" (gates {first}-{last}).")
-            lines.append(f" Connected to extruder: {unit.extruder_name()}\n")
-
+            active = " ACTIVE" if (mmu.mmu_machine.num_units > 1 and i == self.mmu.unit_selected) else ""
+            lines.append(f" (gates {first}-{last}){active}\n")
+            lines.append(f"{UI_CASCADE} Connected to extruder: {unit.extruder_name()}\n")
             lines.append(f"{UI_CASCADE} {unit.selector.get_mmu_status_config()}\n")
-
             if unit.has_encoder():
                 lines.append(f"{UI_CASCADE} Encoder reads {mmu.get_encoder_distance():.1f}mm\n")
 
@@ -131,7 +130,7 @@ class MmuStatusCommand(BaseCommand):
 
             # Temp scalar pulled for _f_calc() use
             self.calibrated_bowden_length = mmu_unit.calibrator.get_bowden_length()
-            self.encoder_clog_detection_length = mmu.encoder().get_clog_detection_length()
+            self.encoder_clog_detection_length = mmu.encoder().get_clog_detection_length() # Never None
             self.toolchange_retract = mmu.toolchange_retract
             self.filament_remaining = mmu_unit.extruder_wrapper.filament_remaining
 
@@ -199,8 +198,8 @@ class MmuStatusCommand(BaseCommand):
 
                 if mmu_unit.p.extruder_homing_endstop == SENSOR_EXTRUDER_ENTRY:
                     lines.append(f" and then moving {self._f_calc('toolhead_entry_to_extruder')}")
-                elif mmu_unit.p.extruder_homing_endstop == SENSOR_COMPRESSION:
-                    lines.append(f" and then moving -{self._f_calc('sync_feedback_buffer_range / 2')} to center sync-feedback buffer")
+                elif mmu_unit.has_buffer() and mmu_unit.p.extruder_homing_endstop == SENSOR_COMPRESSION:
+                    lines.append(f" and then moving -{self._f_calc('buffer_range / 2')} to center sync-feedback buffer")
             else:
 
                 if mmu.sensor_manager.has_sensor(SENSOR_TOOLHEAD):
@@ -271,7 +270,8 @@ class MmuStatusCommand(BaseCommand):
                 )
 
             elif (
-                mmu_unit.p.toolhead_post_load_tension_adjust
+                mmu_unit.has_buffer()
+                and mmu_unit.p.toolhead_post_load_tension_adjust
                 and (
                     mmu_unit.p.sync_to_extruder
                     or mmu_unit.p.sync_purge
@@ -281,7 +281,7 @@ class MmuStatusCommand(BaseCommand):
             ):
                 lines.append(
                     "\n- Filament in bowden will be adjusted a maximum of "
-                    f"{(mmu_unit.p.sync_feedback_buffer_range or mmu_unit.p.sync_feedback_buffer_maxrange):.1f}mm "
+                    f"{(mmu_unit.buffer.buffer_range or mmu_unit.buffer.buffer_maxrange):.1f}mm "
                     "to neutralize tension"
                 )
 

@@ -36,17 +36,17 @@ menu "Speeds"
     comment "Bowden movement speeds (mm/s)"
 
     config PARAM_GEAR_FROM_FILAMENT_BUFFER_SPEED
-      float "Normal bowden load speed         "
+      float "Normal bowden load speed        "
       default 150
       help
         Speed for normal filament loading (or from filament buffer if fitted)
 
     config PARAM_GEAR_FROM_FILAMENT_BUFFER_ACCEL
-      float "Normal bowden load acceleration  "
+      float "Normal bowden load acceleration "
       default 400
 
     config PARAM_GEAR_FROM_SPOOL_SPEED
-      float "Loading from spool speed         "
+      float "Loading from spool speed        "
       default 80
       depends on MMU_HAS_FILAMENT_BUFFER
       help
@@ -55,39 +55,39 @@ menu "Speeds"
         friction without the stepper loosing steps
 
     config PARAM_GEAR_FROM_SPOOL_ACCEL
-      float "Loading from spool acceleration  "
+      float "Loading from spool acceleration "
       depends on MMU_HAS_FILAMENT_BUFFER
       default 100
 
     config PARAM_GEAR_UNLOAD_SPEED
-      float "Normal bowden unload speed       "
+      float "Normal bowden unload speed      "
       default 80
       help
         You can use a lower speed when unloading filament. This is useful if you have an eSpool
         rewinder system that limits speed
 
     config PARAM_GEAR_UNLOAD_ACCEL
-      float "Normal bowden unload acceleration"
+      float "Normal unload acceleration      "
       default 100
 
     config PARAM_GEAR_HOMING_SPEED
-      float "Gear homing speed                "
+      float "Gear homing speed               "
       default 50
       help
         Speed of gear stepper only homing moves (e.g. homing to gate or extruder)
 
     config PARAM_GEAR_SHORT_MOVE_SPEED
-      float "Short movement speed             "
+      float "Short movement speed            "
       default 80
       help
         Speed when making short moves (e.g. incremental retracts with encoder)
 
     config PARAM_GEAR_SHORT_MOVE_ACCEL
-      float "Short movement acceleration      "
+      float "Short movement acceleration     "
       default 400
 
     config PARAM_GEAR_SHORT_MOVE_THRESHOLD
-      float "Short move threshold             "
+      float "Short move threshold            "
       default 70
       help
         Individual move distance below which is considered a short move
@@ -100,48 +100,50 @@ menu "Speeds"
 # -------------------------------------
 
   if !MULTI_UNIT || MULTI_UNIT_ENTRY_POINT
+
     comment "Extruder movement speeds (mm/s)"
 
     config PARAM_EXTRUDER_LOAD_SPEED
-      float "Extruder load speed       "
+      float "Extruder load speed             "
       default 16
       help
         Speed of load move inside extruder from homing position to meltzone
 
     config PARAM_EXTRUDER_UNLOAD_SPEED
-      float "Extruder unload speed     "
+      float "Extruder unload speed           "
       default 16
       help
         Speed of unload moves inside of extruder
         (very initial move from meltzone is 50% of this)
 
     config PARAM_EXTRUDER_SYNC_LOAD_SPEED
-      float "Extruder sync load speed  "
+      float "Extruder sync load speed        "
       default 18
       help
         Speed of load move inside extruder from homing position to meltzone
         when synced with MMU gear stepper
 
     config PARAM_EXTRUDER_SYNC_UNLOAD_SPEED
-      float "Extruder sync unload speed"
+      float "Extruder sync unload speed      "
       default 18
       help
         Speed of unload moves inside of extruder when synced with MMU gear stepper
         (very initial move from meltzone is 50% of this)
 
     config PARAM_EXTRUDER_HOMING_SPEED
-      float "Extruder homing speed     "
+      float "Extruder homing speed           "
       default 16
       help
         Speed of extruder only homing moves (e.g. to toolhead sensor)
 
     config PARAM_EXTRUDER_ACCEL
-      float "Extruder acceleration     "
+      float "Extruder acceleration           "
       default 1500
       help
         The acceleration of the extruder stepper is limited to this value when performing MMU
         filament load/unload moves. This prevents too rapid a movement that could cause the
         extruder stepper to loose steps
+
   endif
 
 
@@ -150,23 +152,23 @@ menu "Speeds"
 # -------------------------------------
 
   if !MULTI_UNIT_ENTRY_POINT && MMU_HAS_SELECTOR_STEPPER
-    menu "Selector movement"
 
-      config PARAM_SELECTOR_MOVE_SPEED
-        float "Speed of non-touch selector movement (mm/s)"
-        default 200
+    comment "Selector movement speeds (mm/s)"
 
-      config PARAM_SELECTOR_HOMING_SPEED
-        float "Speed of selector homing moves (mm/s)      "
-        depends on LINEAR_SELECTOR || LINEAR_SERVO_SELECTOR || LINEAR_MULTI_GEAR_SELECTOR || ROTARY_SELECTOR || TESTING_SELECTOR
-        default 60
+    config PARAM_SELECTOR_MOVE_SPEED
+      float "Speed of selector movement      "
+      default 200
 
-      config PARAM_SELECTOR_TOUCH_SPEED
-        float "Speed of touch selector movement (mm/s)    "
-        depends on LINEAR_SELECTOR || LINEAR_SERVO_SELECTOR || LINEAR_MULTI_GEAR_SELECTOR || TESTING_SELECTOR
-        default 80
+    config PARAM_SELECTOR_HOMING_SPEED
+      float "Speed of selector homing moves  "
+      depends on LINEAR_SELECTOR || LINEAR_SERVO_SELECTOR || LINEAR_MULTI_GEAR_SELECTOR || ROTARY_SELECTOR || TESTING_SELECTOR
+      default 60
 
-    endmenu
+    config PARAM_SELECTOR_TOUCH_SPEED
+      float "Speed of touch selector movement"
+      depends on LINEAR_SELECTOR || LINEAR_SERVO_SELECTOR || LINEAR_MULTI_GEAR_SELECTOR || TESTING_SELECTOR
+      default 80
+
   endif 
 
 endmenu

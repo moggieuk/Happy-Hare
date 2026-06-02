@@ -6,8 +6,8 @@ UT ?= *                           # For unittests, e.g. make UT=test_build.py te
 
 MAKEFLAGS += --jobs 16            # Parallel build
 
-# By default KCONFIG_CONFIG is '.config', but it can be overridden by the user
-export KCONFIG_CONFIG ?= .config
+# By default KCONFIG_CONFIG is '.mmu_config', but it can be overridden by the user
+export KCONFIG_CONFIG ?= .mmu_config
 
 # Enable output-sync if menuconfig will not trigger. menuconfig.py will crash if output-sync is enabled on certain systems
 ifeq ($(CHECK_OUTPUT_SYNC),)
@@ -99,7 +99,7 @@ restart_klipper = 0
 .SECONDEXPANSION:
 .DEFAULT_GOAL := build
 .PRECIOUS: $(KCONFIG_CONFIG) $(KCONFIG_CONFIG)_%
-.PHONY: menuconfig install uninstall check_version diff test build clean variables python_deps fix_links gen_kconfig
+.PHONY: menuconfig install uninstall check_version diff test build clean variables python_deps fix_links gen_kconfig kconfig_needs_update olddefconfig
 .SECONDARY: \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
@@ -135,6 +135,11 @@ hh_configs_to_parse := \
 	$(subst $(KLIPPER_CONFIG_HOME),$(IN),$(wildcard $(KLIPPER_CONFIG_HOME)/mmu/base/*.cfg \
 		$(KLIPPER_CONFIG_HOME)/mmu/addons/*.cfg))
 
+# Set of config files (one if single unit, else n + 1)
+kconfig_files := $(KCONFIG_CONFIG) \
+	$(if $(filter y,$(CONFIG_MULTI_UNIT)), \
+		$(addprefix $(KCONFIG_CONFIG)_,$(unit_names)))
+
 # Files/targets that need to be build
 build_targets := \
 	$(addprefix $(OUT)/mmu/, $(hh_config_files)) \
@@ -156,6 +161,8 @@ install_targets := \
 	$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE) \
 	$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)
 
+kconfig_sources := \
+	$(wildcard $(SRC)/installer/Kconfig* $(SRC)/installer/**/Kconfig*)
 
 
 ############################
@@ -230,7 +237,7 @@ $(OUT)/mmu/%.cfg: $(SRC)/config/%.cfg $(hh_configs_to_parse)
 		$(PY) -m installer.build $(V) --build "$<" "$@" "$(KCONFIG_CONFIG)" $(hh_configs_to_parse), \
 	        $(info $(C_INFO)Skipping build of mmu/$*$(C_OFF)))
 
-## Conditional per-unit prerequisite ".config_<unit>" when multi-unit, else to ".config" (and pickles)
+## Conditional per-unit prerequisite ".mmu_config_<unit>" when multi-unit, else to ".mmu_config" (and pickles)
 KCONF_REQS = $(if $(filter y,$(CONFIG_MULTI_UNIT)), \
              $(KCONFIG_CONFIG)_% $(OUT)/$(notdir $(KCONFIG_CONFIG))_%.pickle, \
              $(KCONFIG_CONFIG)   $(OUT)/$(notdir $(KCONFIG_CONFIG)).pickle)
@@ -254,6 +261,9 @@ $(OUT)/klippy/extras/%.py: $(SRC)/extras/%.py
 
 $(OUT)/moonraker/components/%.py: $(SRC)/components/%.py
 	$(Q)$(call link,$<,$@)
+
+$(OUT)/%: %
+	$(Q)cp -p "$<" "$@"
 
 $(OUT):
 	$(Q)mkdir -p "$@"
@@ -316,10 +326,15 @@ $(call backup_name,$(KLIPPER_CONFIG_HOME)/%): $(OUT)/% | build
 $(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu): $(addprefix $(OUT)/mmu/, $(hh_config_files)) | build
 	$(Q)$(call backup,$(basename $@))
 
-
 $(install_targets): build | python_deps
 
 install: $(install_targets)
+	@# Backup current kconfig files in the klipper config directory
+	@echo "$(C_INFO)Copying kconfig files '$(notdir $(kconfig_files))' to $(KLIPPER_CONFIG_HOME)/mmu$(C_OFF)"
+	$(Q)for f in $(kconfig_files); do \
+		[ -f "$$f" ] && $(SUDO)cp -p "$$f" "$(KLIPPER_CONFIG_HOME)/mmu/$$(basename "$$f")"; \
+	done
+	@# We are done. Restart everything
 	$(Q)$(call restart_service,$(restart_moonraker),Moonraker,$(CONFIG_SERVICE_MOONRAKER))
 	$(Q)$(call restart_service,$(restart_klipper),Klipper,$(CONFIG_SERVICE_KLIPPER))
 	$(Q)$(PY) -m installer.build $(V) --print-happy-hare "Done! Happy Hare $(CONFIG_F_VERSION)is ready!"
@@ -401,20 +416,22 @@ test:
 
 variables:
 	@echo "========================="
-	@echo "$(C_NOTICE)hh_klipper_extras_files  =$(C_INFO) $(hh_klipper_extras_files)$(C_OFF)"
-	@echo "$(C_NOTICE)hh_old_klipper_modules   =$(C_INFO) $(hh_old_klipper_modules)$(C_OFF)"
-	@echo "$(C_NOTICE)hh_moonraker_components  =$(C_INFO) $(hh_moonraker_components)$(C_OFF)"
-	@echo "$(C_NOTICE)repo_cfgs                =$(C_INFO) $(repo_cfgs)$(C_OFF)"
-	@echo "$(C_NOTICE)unit_names               =$(C_INFO) $(unit_names)$(C_OFF)"
-	@echo "$(C_NOTICE)hh_unit_config_files     =$(C_INFO) $(hh_unit_config_files)$(C_OFF)"
-	@echo "$(C_NOTICE)hh_config_files          =$(C_INFO) $(hh_config_files)$(C_OFF)"
-	@echo "$(C_NOTICE)hh_configs_to_parse      =$(C_INFO) $(hh_configs_to_parse)$(C_OFF)"
-	@echo "$(C_NOTICE)build_targets     ..out/ =$(C_INFO) $(call strip_prefix,$(OUT)/,$(build_targets))$(C_OFF)"
-	@echo "$(C_NOTICE)processed_targets ..out/ =$(C_INFO) $(call strip_prefix,$(OUT)/,$(processed_targets))$(C_OFF)"
-	@echo "$(C_NOTICE)install_targets          =$(C_INFO) $(install_targets)$(C_OFF)"
-	@echo "$(C_NOTICE)OUT                      =$(C_INFO) $(OUT)$(C_OFF)"
-	@echo "$(C_NOTICE)IN                       =$(C_INFO) $(IN)$(C_OFF)"
-	@echo "$(C_NOTICE)KCONFIG_CONFIG           =$(C_INFO) $(KCONFIG_CONFIG)$(C_OFF)"
+	@echo "$(C_NOTICE)hh_klipper_extras_files        =$(C_INFO) $(hh_klipper_extras_files)$(C_OFF)"
+	@echo "$(C_NOTICE)hh_old_klipper_modules         =$(C_INFO) $(hh_old_klipper_modules)$(C_OFF)"
+	@echo "$(C_NOTICE)hh_moonraker_components        =$(C_INFO) $(hh_moonraker_components)$(C_OFF)"
+	@echo "$(C_NOTICE)repo_cfgs                      =$(C_INFO) $(repo_cfgs)$(C_OFF)"
+	@echo "$(C_NOTICE)unit_names                     =$(C_INFO) $(unit_names)$(C_OFF)"
+	@echo "$(C_NOTICE)hh_unit_config_files           =$(C_INFO) $(hh_unit_config_files)$(C_OFF)"
+	@echo "$(C_NOTICE)hh_config_files                =$(C_INFO) $(hh_config_files)$(C_OFF)"
+	@echo "$(C_NOTICE)hh_configs_to_parse            =$(C_INFO) $(hh_configs_to_parse)$(C_OFF)"
+	@echo "$(C_NOTICE)kconfig_files                  =$(C_INFO) $(kconfig_files)$(C_OFF)"
+	@echo "$(C_NOTICE)build_targets     ..out/       =$(C_INFO) $(call strip_prefix,$(OUT)/,$(build_targets))$(C_OFF)"
+	@echo "$(C_NOTICE)processed_targets ..out/       =$(C_INFO) $(call strip_prefix,$(OUT)/,$(processed_targets))$(C_OFF)"
+	@echo "$(C_NOTICE)kconfig_sources   ..installer/ =$(C_INFO) $(call strip_prefix,$(SRC)/installer/,$(kconfig_sources))$(C_OFF)"
+	@echo "$(C_NOTICE)install_targets                =$(C_INFO) $(install_targets)$(C_OFF)"
+	@echo "$(C_NOTICE)OUT                            =$(C_INFO) $(OUT)$(C_OFF)"
+	@echo "$(C_NOTICE)IN                             =$(C_INFO) $(IN)$(C_OFF)"
+	@echo "$(C_NOTICE)KCONFIG_CONFIG                 =$(C_INFO) $(KCONFIG_CONFIG)$(C_OFF)"
 	@echo "========================="
 
 
@@ -428,17 +445,31 @@ ifeq ($(F_MULTI_UNIT_ENTRY_POINT),y)
   MENUCONFIG_STYLE := aquatic
 endif
 
-$(KCONFIG_CONFIG): $(SRC)/installer/Kconfig* $(SRC)/installer/**/Kconfig* 
-# If KCONFIG_CONFIG is outdated or doesn't exist run menuconfig first. If the user doesn't save the config,
-# we will update it with olddefconfig. touch in case .config does not get updated by olddefconfig.py
-# Only if install or menuconfig is not the target (else it will run twice)
-ifeq ($(filter menuconfig uninstall variables paul fix_links,$(MAKECMDGOALS)),)
-	$(Q)$(MAKE) MAKEFLAGS= menuconfig
-	$(Q)$(PY) -m olddefconfig $(SRC)/installer/Kconfig >/dev/null # Always update the .config file in case the user doesn't save it
-	$(Q)touch $(KCONFIG_CONFIG)
-endif
-
 menuconfig: $(SRC)/installer/Kconfig
 	$(Q)MENUCONFIG_STYLE="$(MENUCONFIG_STYLE)" KLIPPER_HOME=$(KLIPPER_HOME) $(PY) -m menuconfig Kconfig
-	$(Q)touch $(KCONFIG_CONFIG) # Prevent install rule re-running if no change
 
+
+
+##################################
+##### Upgrade helper targets #####
+##################################
+
+kconfig_needs_update:
+	$(Q)if [ ! -f "$(KCONFIG_CONFIG)" ]; then \
+		echo y; \
+		exit 0; \
+	fi; \
+	for f in $(kconfig_sources); do \
+		[ "$$f" -nt "$(KCONFIG_CONFIG)" ] && { echo y; exit 0; }; \
+	done; \
+	echo n
+
+olddefconfig:
+	$(Q)$(PY) -m olddefconfig $(SRC)/installer/Kconfig >/dev/null
+	$(Q)touch "$(KCONFIG_CONFIG)"
+
+# PAUL
+#$(KCONFIG_CONFIG): $(kconfig_sources)
+#ifeq ($(filter menuconfig uninstall variables fix_links olddefconfig kconfig_needs_update,$(MAKECMDGOALS)),)
+#	$(error $(KCONFIG_CONFIG) is missing or stale; run ./install.sh so it can refresh it with the correct context)
+#endif

@@ -51,7 +51,6 @@ class RotarySelectorParameters(TunableParametersBase):
 
         ParamSpec('cad_gate0_pos',           'float',   4.0,  section="CAD", limits=dict(minval=0.0), hidden=True),
         ParamSpec('cad_gate_width',          'float',   25.0, section="CAD", limits=dict(above=0.0),  hidden=True),
-        ParamSpec('cad_bypass_offset',       'float',   2.0,  section="CAD", limits=dict(minval=0.0), hidden=True), # PAUL???
         ParamSpec('cad_selector_tolerance',  'float',   15.0, section="CAD", limits=dict(minval=0.0), hidden=True),
     )
 
@@ -179,7 +178,7 @@ class RotarySelector(PhysicalSelector):
 
         with self.mmu.wrap_action(ACTION_SELECTING):
             if self.mmu_unit.filament_always_gripped:
-                self._grip(lgate) # PAUL I think this should be gate!
+                self._grip(lgate)
 
 
     def filament_drive(self):
@@ -195,7 +194,7 @@ class RotarySelector(PhysicalSelector):
     # --------------------------------------------------------------------------
 
     # Note there is no separation of gate selection and grip/release with this type of selector
-    def _grip(self, gate, release=False):
+    def _grip(self, lgate, release=False):
         """
         Move to the grip or release position for a local gate.
 
@@ -203,7 +202,6 @@ class RotarySelector(PhysicalSelector):
         accurate gate/release position after a restart. Also sets filament drive
         direction based on configured gate directions.
         """
-        lgate = self.local_gate(gate)
         if lgate >= 0:
             if release:
                 release_pos = self.selector_offsets[self.selector_release_gates[lgate]]
@@ -482,6 +480,9 @@ class MmuCalibrateRotarySelectorCommand(BaseCommand):
         selector = mmu_unit.selector
 
         if self.check_if_disabled(): return
+        if not isinstance(selector, RotarySelector):
+            self.mmu.log_error("Operation not possible on this selector type (RotarySelector only)")
+            return
 
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         single = gcmd.get_int('SINGLE', 0, minval=0, maxval=1)

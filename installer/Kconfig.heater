@@ -11,11 +11,15 @@
 #   PARAM_HEATER_VENT_INTERVAL
 #   PARAM_HEATER_ROTATE_INTERVAL (if MMU_HAS_ESPOOLER)
 
+config UNSELECT_MMU_HAS_HEATER
+  def_bool n
 config MMU_HAS_HEATER
-  help
-    Select if the MMU has a heater in the filament storate enclosure
   prompt "Has enclosure heater(s)?"
+  depends on !UNSELECT_MMU_HAS_HEATER
   forceshow
+  default n
+  help
+      Select if the MMU has a heater in the filament storate enclosure
 
 
 if MMU_HAS_HEATER

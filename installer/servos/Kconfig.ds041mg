@@ -7,10 +7,10 @@ if PARAM_VENDOR = "ERCF"
 
   if SERVO_TYPE_GDW_DS041MG
     config PARAM_SERVO_MIN_PULSE_WIDTH
-      default "0.00050"
+      default 0.00050
 
     config PARAM_SERVO_MAX_PULSE_WIDTH
-      default "0.00250" 
+      default 0.00250 
 
     config PARAM_SERVO_MAX_ANGLE
       default 180

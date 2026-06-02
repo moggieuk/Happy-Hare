@@ -7,14 +7,20 @@
 #   PARAM_ENCODER_NAME
 #   PARAM_ENCODER_RESOLUTION
 #   PARAM_GATE_ENDSTOP_TO_ENCODER
+#
+#   PIN_ENCODER (duplicate with pins)
 
+config UNSELECT_MMU_HAS_ENCODER
+  def_bool n
 config MMU_HAS_ENCODER
+  prompt "Has encoder?"
+  depends on !UNSELECT_MMU_HAS_ENCODER
+  forceshow
+  default n
   help
     An encoder measures filament movement and can be used to validate
     movement, detect clogs, monitor flow rate and detect filament
     collision with the extruder in liue of a toolhead switch sensor.
-  prompt "Has Encoder?"
-  forceshow
 
 
 if MMU_HAS_ENCODER
@@ -76,24 +82,27 @@ if MMU_HAS_ENCODER
           Ensure this matches the resolution of your encoder. It represents
           filament movement (mm) for each sensor pulse. Note that this is
           only used as an initial value and it overridden by calibration.
-        string "Uncalibrated encoder resolution "
-        default "0.7059" if CHOICE_ENCODER_TYPE_TCRT5000
-        default "1.05"   if CHOICE_ENCODER_TYPE_BINKY
-        default "1.5"    if CHOICE_ENCODER_TYPE_BINKY_V2
-        default "1.0"    if CHOICE_ENCODER_TYPE_OTHER
-        default "1.0"
+        float "Uncalibrated encoder resolution "
+        default 0.7059 if CHOICE_ENCODER_TYPE_TCRT5000
+        default 1.05   if CHOICE_ENCODER_TYPE_BINKY
+        default 1.5    if CHOICE_ENCODER_TYPE_BINKY_V2
+        default 1.0    if CHOICE_ENCODER_TYPE_OTHER
+        default 1.0
 
       config PARAM_GATE_ENDSTOP_TO_ENCODER
-        string "Gate endstop to encoder distance"
-        default "10" if MMU_HAS_SENSOR_SHARED_EXIT || MMU_HAS_SENSOR_EXIT
-        default "0"
+        float "Gate endstop to encoder distance"
+        default 10 if MMU_HAS_SENSOR_SHARED_EXIT || MMU_HAS_SENSOR_EXIT
+        default 0
         help
           The distance from the gate endstop to when the encoder "sees" the filament.
           If the gate endstop is the encoder then this is ignored, however, if using
           a shared_exit endstop we need to know how much of the movement is not
           seen by the encoder. If this is not set the encoder will always measure
           less that the actual movement.
-    endif
+
+      config PIN_ENCODER
+        prompt "Encoder pin"
+  endif
 
   endmenu
 endif

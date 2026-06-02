@@ -45,7 +45,7 @@ class MmuCalibrationParameters(TunableParametersBase):
             self._mmu.mmu_unit().calibrator.update_gear_rd(new)
 
     def _calibrated_encoder_clog_length(self):
-        return self._mmu.mmu_unit().calibrator.get_clog_detection_length()
+        return self._mmu.mmu_unit().calibrator.get_clog_detection_length() # None if not calibrated yet
 
     def _on_calibrated_encoder_clog_length(self, old, new):
         if new != old:
@@ -161,7 +161,8 @@ class MmuTestConfigCommand(BaseCommand):
 
         # Fail if user attempted anything invalid
         if unknown:
-            raise gcmd.error("Unknown parameter(s): %s" % ", ".join(unknown))
+            suffix = "\nPerhaps because you didn't specify a unit?" if mmu_unit is None else ""
+            raise gcmd.error("Unknown parameter(s): %s%s" % (", ".join(unknown), suffix))
         if guarded:
             raise gcmd.error("Parameter(s) not available for runtime change: %s" % ", ".join(guarded))
         # Report what changed

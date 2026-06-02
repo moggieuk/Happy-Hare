@@ -14,14 +14,9 @@ menu "Raw Settings"
   if !MULTI_UNIT_ENTRY_POINT
     source "Kconfig.extruder"
     source "Kconfig.num_gates"
-    source "Kconfig.capabilities"
   endif
 
   source "Kconfig.speeds"
-
-  if !MULTI_UNIT
-    source "Kconfig.toolhead"
-  endif
 
   if !MULTI_UNIT_ENTRY_POINT
     source "Kconfig.gear_stepper"
@@ -30,12 +25,8 @@ menu "Raw Settings"
     source "sensors/Kconfig"
     source "Kconfig.endstops"
     source "Kconfig.gates"
-    source "Kconfig.sync_control"
+    source "Kconfig.motor_sync"
+    source "Kconfig.flowguard"
     source "Kconfig.calibration"
-    source "Kconfig.leds"
-    source "Kconfig.encoder"
-    source "Kconfig.heater"
-    source "Kconfig.environment_sensor"
-    source "Kconfig.sync_feedback_buffer"
   endif
 endmenu

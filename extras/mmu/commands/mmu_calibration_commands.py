@@ -274,7 +274,8 @@ class MmuCalibrateGateCommand(CalibrationMixin, BaseCommand):
 
         if self.check_if_not_calibrated(
             CALIBRATED_ENCODER | CALIBRATED_SELECTOR,
-            check_gates=gate_range
+            check_gates=gate_range,
+            mmu_unit=mmu_unit
         ): return
 
         if reset:
@@ -446,7 +447,7 @@ class MmuCalibrateBowdenCommand(CalibrationMixin, BaseCommand):
                     if save:
                         calibrator.update_bowden_length(length, console_msg=True)
                         if cdl is not None:
-                            calibrator.update_clog_detection_length(length, push=True)
+                            calibrator.update_clog_detection_length(cdl, push=True)
 
         except MmuError as ee:
             mmu.handle_mmu_error(str(ee))
@@ -617,16 +618,44 @@ class MmuCalibrateToolheadCommand(CalibrationMixin, BaseCommand):
 
 class MmuCalibratePsensorCommand(CalibrationMixin, BaseCommand):
     """
-    Start: Filament must be loaded in extruder
-    """
+    Calibrate the analog proportional sync-feedback sensor.
 
+    This command automatically determines the compression limit, tension limit,
+    and neutral point for the analog sync-feedback sensor configured with
+    analog_pin in [mmu_buffer].
+
+    During calibration, the MMU moves filament through the buffer while sampling
+    the sensor ADC output to detect both compression and tension extremes. The
+    recommended configuration values are printed at the end of calibration and
+    should be copied into the appropriate mmu_hardware_<unit>.cfg file.
+
+    Requirements:
+      Filament MUST ALREADY be loaded into the extruder
+      A proportional sync-feedback sensor must be configured in [mmu_buffer]
+      as assigned for use on this unit
+
+    Parameters:
+      MOVE=
+        Movement range used while searching for sensor limits
+        Default: buffer_maxrange
+        Range: 1-100 mm
+
+    MMU_CALIBRATE_PSENSOR
+      Perform calibration using the default movement range
+    MMU_CALIBRATE_PSENSOR MOVE=30
+      Use a larger movement range for larger sync-feedback buffers
+
+    On success, the following settings are reported:
+      analog_max_compression
+      analog_max_tension
+      analog_neutral_point
+    """
     CMD = "MMU_CALIBRATE_PSENSOR"
 
     HELP_BRIEF = "Calibrate analog proportional sync-feedback sensor"
     HELP_PARAMS = (
         "%s: %s\n" % (CMD, HELP_BRIEF)
-        + "UNIT = #(int)|_name_ Specify unit by name, number (optional if single unit)\n"
-        + "MOVE = #(mm) Movement range used to search limits (default: sync_feedback_buffer_maxrange, min: 1, max: 100)\n"
+        + "MOVE = #(mm) Movement range used to search limits (default: buffer_maxrange, min: 1, max: 100)\n"
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
@@ -643,52 +672,53 @@ class MmuCalibratePsensorCommand(CalibrationMixin, BaseCommand):
             help_brief=self.HELP_BRIEF,
             help_params=self.HELP_PARAMS,
             help_supplement=self.HELP_SUPPLEMENT,
-            category=CATEGORY_TESTING,
-            per_unit=True,
+            category=CATEGORY_TESTING
         )
 
-    def _run(self, gcmd, mmu_unit):
+    def _run(self, gcmd):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
-        self.mmu_unit = mmu_unit
         mmu = self.mmu
         sensor_manager = mmu.sensor_manager
 
-        usage = (
-            "Ensure your sensor is configured by setting sync_feedback_analog_pin in [mmu_sensors].\n"
-            "The other settings (sync_feedback_analog_max_compression, sync_feedback_analog_max_tension "
-            "and sync_feedback_analog_neutral_point) will be determined by this calibration."
-        )
-
-        if not sensor_manager.has_sensor(SENSOR_PROPORTIONAL):
-            raise gcmd.error("Proportional (analog sync-feedback) sensor not found\n" + usage)
-
+        if self.check_if_no_buffer(): return
         if self.check_if_disabled(): return
         if self.check_if_bypass(): return
         if self.check_if_not_loaded(): return
+
+        mmu_unit = self.mmu.mmu_unit()
+        sync_feedback_buffer = mmu_unit.buffer
+
+        usage = (
+            f"Ensure your sensor is configured by setting analog_pin in [mmu_buffer {sync_feedback_buffer.name}]\n"
+            "The other settings (analog_max_compression, analog_max_tension "
+            "and analog_neutral_point) will be determined by this calibration."
+        )
+
+        if not sensor_manager.has_sensor(SENSOR_PROPORTIONAL):
+            self.mmu.log_error("Proportional (analog sync-feedback) sensor not found or not active\n" + usage)
+            return
+
+        p_sensor = sensor_manager.get_sensor_obj(SENSOR_PROPORTIONAL)
+
 
         MAX_MOVE_MULTIPLIER = 1.8
         STEP_SIZE = 2.0
         MOVE_SPEED = 8.0
 
-        move = gcmd.get_float('MOVE', mmu_unit.p.sync_feedback_buffer_maxrange, minval=1, maxval=100)
+        move = gcmd.get_float('MOVE', sync_feedback_buffer.buffer_maxrange, minval=1, maxval=100)
         steps = math.ceil(move * MAX_MOVE_MULTIPLIER / STEP_SIZE)
-
-        if not sensor_manager.has_sensor(SENSOR_PROPORTIONAL):
-            raise gcmd.error("Proportional (analog sync-feedback) sensor not found\n" + usage)
 
         def _avg_raw(n=10, dwell_s=0.1):
             """
-            Sample sensor.get_status(0)['value_raw'] n times with dwell between reads
+            Sample p_sensor.get_status(0)['value_raw'] n times with dwell between reads
             and return moving average
             """
-            sensor = sensor_manager.all_sensors.get(SENSOR_PROPORTIONAL)
-
             k = 0.1 # 1st order,low pass filter coefficient, 0.1 for 10 samples
-            avg = sensor.get_status(0).get('value_raw', None)
+            avg = p_sensor.get_status(0).get('value_raw', None)
 
             for _ in range(int(max(1, n-1))):
                 mmu.movequeue_dwell(dwell_s)
-                raw = sensor.get_status(0).get('value_raw', None)
+                raw = p_sensor.get_status(0).get('value_raw', None)
                 if raw is None or not isinstance(raw, float):
                     return None
                 avg += k * (raw - avg) # 1st order low pass filter
@@ -721,13 +751,13 @@ class MmuCalibratePsensorCommand(CalibrationMixin, BaseCommand):
 
         try:
             with mmu.wrap_sync_gear_to_extruder():
-                with mmu.wrap_gear_current(percent=mmu_unit.p.sync_gear_current, reason="while calibrating sync_feedback psensor"):
+                with mmu.wrap_gear_current(percent=mmu_unit.p.sync_gear_current, reason="while calibrating sync feedback buffer psensor"):
                     mmu_unit.selector.filament_drive()
                     mmu.calibrating = True
 
                     raw0 = _avg_raw()
                     if raw0 is None:
-                        raise gcmd.error("Sensor malfunction. Could not read valid ADC output\nAre you sure you configured in [mmu_sensors]?")
+                        raise gcmd.error("Sensor malfunction. Could not read valid ADC output\nAre you sure you configured in [mmu_buffer]?")
 
                     msg = "Finding compression limit stepping up to %.2fmm\n" % (steps * STEP_SIZE)
                     c_prev = raw0
@@ -751,17 +781,17 @@ class MmuCalibratePsensorCommand(CalibrationMixin, BaseCommand):
 
             if (found_c_limit and found_t_limit):
                 msg =  "Calibration Results:\n"
-                msg += "As wired, recommended settings (in mmu_hardware_%s.cfg) are:\n" % mmu_unit.name
-                msg += "[mmu_sensors]\n"
-                msg += "sync_feedback_analog_max_compression: %.4f\n" % c_prev
-                msg += "sync_feedback_analog_max_tension:     %.4f\n" % t_prev
-                msg += "sync_feedback_analog_neutral_point:   %.4f\n" % ((c_prev + t_prev) / 2.0)
+                msg += "As wired, recommended settings (in mmu_hardware_*.cfg) are:\n"
+                msg += f"[mmu_buffer {sync_feedback_buffer.name}]\n"
+                msg += "analog_max_compression: %.4f\n" % c_prev
+                msg += "analog_max_tension:     %.4f\n" % t_prev
+                msg += "analog_neutral_point:   %.4f\n" % ((c_prev + t_prev) / 2.0)
                 msg += "After updating, don't forget to restart klipper!"
                 mmu.log_always(msg)
             else:
                 msg = "Warning: calibration did not find both compression and tension "
                 msg += "limits (compression=%s, tension=%s)\n" % (found_c_limit, found_t_limit)
-                msg += "Perhaps sync_feedback_buffer_maxrange parameter is incorrect?\n"
+                msg += "Perhaps buffer_maxrange parameter is incorrect?\n"
                 msg += "Alternatively with bigger movement range by running with MOVE="
                 mmu.log_warning(msg)
 

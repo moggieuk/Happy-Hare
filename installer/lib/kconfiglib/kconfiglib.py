@@ -3978,13 +3978,7 @@ class Kconfig(object):
                                        "default value for string symbol "
                                        + sym.name_and_loc)
 
-                    elif sym.orig_type is FLOAT: # Happy Hare: Added
-                        if not _is_float(default.str_value):
-                            self._warn("the float symbol {} has a non-float default {}"
-                                       .format(sym.name_and_loc,
-                                               default.name_and_loc))
-
-                    elif not num_ok(default, sym.orig_type):  # INT/HEX
+                    elif not num_ok(default, sym.orig_type):  # INT/HEX # Happy Hare: or FLOAT
                         self._warn("the {0} symbol {1} has a non-{0} default {2}"
                                    .format(TYPE_TO_STR[sym.orig_type],
                                            sym.name_and_loc,
