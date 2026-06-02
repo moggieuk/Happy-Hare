@@ -7,21 +7,21 @@ menu "Sequence macros (_MMU_SEQUENCE)"
 
   config VAR_SEQUENCE_ENABLE_PARK_PRINTING
     string "Park operations while printing   "
-    default "toolchange,runout,load,unload,complete,pause,cancel"
+    default "'toolchange,runout,load,unload,complete,pause,cancel'"
     help
       List of operations that should result in toolhead parking while in a print.
       Empty string disables parking.
 
   config VAR_SEQUENCE_ENABLE_PARK_STANDALONE
     string "Park operations when standalone  "
-    default "toolchange,load,unload,pause,cancel"
+    default "'toolchange,load,unload,pause,cancel'"
     help
       List of operations that should result in toolhead parking when not printing.
       Empty string disables parking.
 
   config VAR_SEQUENCE_ENABLE_PARK_DISABLED
     string "Park operations when MMU disabled"
-    default "pause,cancel"
+    default "'pause,cancel'"
     help
       List of operations that should result in toolhead parking when MMU is disabled.
       Only pause and cancel can occur in this mode.
@@ -35,21 +35,21 @@ menu "Sequence macros (_MMU_SEQUENCE)"
 
   config VAR_SEQUENCE_PARK_TOOLCHANGE
     string "Toolchange park position"
-    default "-999, -999, 1, 5, 2"
+    default "-999, -999, 1,  5, 2"
     help
       x,y,z-hop,z_hop_ramp,retract for toolchange, load, and unload operations.
       Use -999,-999 for no XY move. Use 0 for no Z-hop.
 
   config VAR_SEQUENCE_PARK_RUNOUT
     string "Runout park position    "
-    default "-999, -999, 1, 5, 2"
+    default "-999, -999, 1,  5, 2"
     help
       x,y,z-hop,z_hop_ramp,retract for runout operations.
       Use -999,-999 for no XY move. Use 0 for no Z-hop.
 
   config VAR_SEQUENCE_PARK_PAUSE
     string "Pause park position     "
-    default "50, 50, 5, 0, 2"
+    default "50,   50,   5,  0, 2"
     help
       x,y,z-hop,z_hop_ramp,retract for pause operations.
       This is also the park position when an MMU error occurs.
@@ -62,7 +62,7 @@ menu "Sequence macros (_MMU_SEQUENCE)"
 
   config VAR_SEQUENCE_PARK_COMPLETE
     string "Complete park position  "
-    default "50, 50, 10, 0, 5"
+    default "50,   50,   10, 0, 5"
     help
       x,y,z-hop,z_hop_ramp,retract for print complete operations.
 
@@ -120,9 +120,9 @@ menu "Sequence macros (_MMU_SEQUENCE)"
 
   config VAR_SEQUENCE_RESTORE_XY_POS
     string
-    default "last" if CHOICE_SEQUENCE_RESTORE_XY_POS_LAST
-    default "next" if CHOICE_SEQUENCE_RESTORE_XY_POS_NEXT
-    default "none" if CHOICE_SEQUENCE_RESTORE_XY_POS_NONE
+    default "'next" if CHOICE_SEQUENCE_RESTORE_XY_POS_NEXT
+    default "'none'" if CHOICE_SEQUENCE_RESTORE_XY_POS_NONE
+    default "'last'"
 
   config VAR_SEQUENCE_PARK_TRAVEL_SPEED
     float "Park travel speed       "

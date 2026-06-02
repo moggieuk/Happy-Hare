@@ -33,7 +33,7 @@ menu "Speeds"
 
   if !MULTI_UNIT_ENTRY_POINT
 
-    comment "Bowden movement speeds (mm/s)"
+    comment "_Bowden movement speeds (mm/s)"
 
     config PARAM_GEAR_FROM_FILAMENT_BUFFER_SPEED
       float "Normal bowden load speed        "
@@ -101,7 +101,7 @@ menu "Speeds"
 
   if !MULTI_UNIT || MULTI_UNIT_ENTRY_POINT
 
-    comment "Extruder movement speeds (mm/s)"
+    comment "_Extruder movement speeds (mm/s)"
 
     config PARAM_EXTRUDER_LOAD_SPEED
       float "Extruder load speed             "
@@ -153,7 +153,7 @@ menu "Speeds"
 
   if !MULTI_UNIT_ENTRY_POINT && MMU_HAS_SELECTOR_STEPPER
 
-    comment "Selector movement speeds (mm/s)"
+    comment "_Selector movement speeds (mm/s)"
 
     config PARAM_SELECTOR_MOVE_SPEED
       float "Speed of selector movement      "

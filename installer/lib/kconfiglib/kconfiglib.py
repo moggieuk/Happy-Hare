@@ -1699,7 +1699,7 @@ class Kconfig(object):
                 if (
                     isinstance(item, Symbol) and
                     not item._was_set and
-                    item.name.startswith(('PARAM_', 'PIN_', 'BOOL_', 'MMU_HAS_', 'CHOICE_', 'UNSELECT_'))
+                    item.name.startswith(('PARAM_', 'VAR_', 'PIN_', 'BOOL_', 'MMU_HAS_', 'CHOICE_', 'UNSELECT_'))
                 ) or (
                     isinstance(item, Choice) and
                     not item._was_set and
@@ -4756,6 +4756,8 @@ class Symbol(object):
                    .format(self.kconfig.config_prefix, self.name, val)
 
         # sym.orig_type is STRING
+        if self.name.startswith('VAR_'): # Happy Hare: VAR names used in macros cannot be empty strings
+            val = val.strip() or "''"
         return '{}{}="{}"\n' \
                .format(self.kconfig.config_prefix, self.name, escape(val))
 

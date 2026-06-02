@@ -5,7 +5,7 @@ menu "Print start/end (_MMU_SOFTWARE)"
     These variables control the behavior of the MMU_START_SETUP,
     MMU_START_LOAD_INITIAL_TOOL, and MMU_END macros.
 
-  comment "Print START behavior"
+  comment "_Print START behavior"
 
   config VAR_SOFTWARE_USER_PRE_INITIALIZE_EXTENSION
     string "Pre initialize extension macro"
@@ -88,14 +88,14 @@ menu "Print start/end (_MMU_SOFTWARE)"
 
   config VAR_SOFTWARE_AUTOMAP_STRATEGY
     string
-    default "none" if CHOICE_SOFTWARE_AUTOMAP_STRATEGY_NONE
-    default "filament_name" if CHOICE_SOFTWARE_AUTOMAP_STRATEGY_FILAMENT_NAME
-    default "material" if CHOICE_SOFTWARE_AUTOMAP_STRATEGY_MATERIAL
-    default "color" if CHOICE_SOFTWARE_AUTOMAP_STRATEGY_COLOR
-    default "closest_color" if CHOICE_SOFTWARE_AUTOMAP_STRATEGY_CLOSEST_COLOR
-    default "spool_id" if CHOICE_SOFTWARE_AUTOMAP_STRATEGY_SPOOL_ID
+    default "'none'" if CHOICE_SOFTWARE_AUTOMAP_STRATEGY_NONE
+    default "'filament_name'" if CHOICE_SOFTWARE_AUTOMAP_STRATEGY_FILAMENT_NAME
+    default "'material'" if CHOICE_SOFTWARE_AUTOMAP_STRATEGY_MATERIAL
+    default "'color'" if CHOICE_SOFTWARE_AUTOMAP_STRATEGY_COLOR
+    default "'closest_color'" if CHOICE_SOFTWARE_AUTOMAP_STRATEGY_CLOSEST_COLOR
+    default "'spool_id'" if CHOICE_SOFTWARE_AUTOMAP_STRATEGY_SPOOL_ID
 
-  comment "Print END behavior"
+  comment "_Print END behavior"
 
   config VAR_SOFTWARE_USER_PRINT_END_EXTENSION
     string "Print end extension macro     "

@@ -22,7 +22,7 @@ menu "State change hooks (_MMU_STATE)"
     help
       Executed after default logic with duplicate params
 
-  comment "Consumption counters"
+  comment "_Consumption counters"
 
   config VAR_STATE_SERVO_DOWN_LIMIT
     int "Servo down limit                   "

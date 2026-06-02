@@ -40,7 +40,7 @@ menu "Toolhead tip cutting (_MMU_CUT_TIP)"
 
   config VAR_CUT_TIP_CUT_AXIS_STEPPERS
     string "Cut axis steppers            "
-    default "stepper_x, stepper_y"
+    default "'stepper_x, stepper_y'"
     help
       Comma separated list of stepper names to increase current for cutting.
 
@@ -67,8 +67,8 @@ menu "Toolhead tip cutting (_MMU_CUT_TIP)"
 
   config VAR_CUT_TIP_CUTTING_AXIS
     string
-    default "x" if CHOICE_CUT_TIP_CUTTING_AXIS_X
-    default "y" if CHOICE_CUT_TIP_CUTTING_AXIS_Y
+    default "'y'" if CHOICE_CUT_TIP_CUTTING_AXIS_Y
+    default "'x'"
 
   config VAR_CUT_TIP_PIN_LOC_XY
     string "Pin location (X,Y)           "

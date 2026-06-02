@@ -1630,7 +1630,7 @@ def _reset_node(node): # Happy Hare: Added method
                 m._was_set = False
 
     # Case 2: the object is a Symbol
-    elif isinstance(sc, Symbol) and sc.name and sc.name.startswith(('PARAM_', 'PIN_', 'BOOL_', 'MMU_HAS_', 'CHOICE_', 'UNSELECT_')):
+    elif isinstance(sc, Symbol) and sc.name and sc.name.startswith(('PARAM_', 'VAR_', 'PIN_', 'BOOL_', 'MMU_HAS_', 'CHOICE_', 'UNSELECT_')):
         owning_choice = None
 
         # If member of a choice, clear parent and other siblings
@@ -3197,7 +3197,15 @@ def _node_str(node):
 
     if node.prompt:
         if node.item == COMMENT:
-            s += " *** {} ***".format(node.prompt[0])
+            if node.prompt[0].startswith('_'): # Happy Hare: Added special section header style for comments
+                min_width = 50
+                text = node.prompt[0][1:]
+                middle = f" {text} "
+                width = max(min_width, len(middle) + 8)  # at least 4 _ on each side
+                heading = middle.center(width, "_")
+                s += " {}".format(heading)
+            else:
+                s += " *** {} ***".format(node.prompt[0])
         else:
             s += " " + node.prompt[0]
             if (
@@ -3249,13 +3257,13 @@ def _node_str(node):
     # Happy Hare: Append "not default" message where the "r" reset keystroke is available
     # By limiting to known prefixes, we can still prevent reset of certain symbols/choices
     # To be able to be reset, symbols must have prompt and be named:
-    #   PARAM_, PIN_, BOOL_, or MMU_HAS_
+    #   PARAM_, VAR_, PIN_, BOOL_, or MMU_HAS_
     # To be able to be reset, choices must be named and the name start with CHOICE_
     if isinstance(node.item, Symbol):
         sym = node.item
         if (
             (sym.user_value is not None or sym._was_set) and
-            sym.name.startswith(('PARAM_', 'PIN_', 'BOOL_', 'MMU_HAS_')) and
+            sym.name.startswith(('PARAM_', 'VAR_', 'PIN_', 'BOOL_', 'MMU_HAS_')) and
             differs_from_default(node, sym)[0]
         ):
             s += " [[DIM]](NOT DEFAULT)[[/DIM]]"

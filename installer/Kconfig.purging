@@ -59,7 +59,7 @@ menu "Purging"
 # Standalone purge choice
 # -------------------------------------
 
-  comment "Essential purge configuration"
+  comment "_Essential purge configuration"
 
   choice CHOICE_PURGE_MACRO
     prompt "Select standalone purging option"

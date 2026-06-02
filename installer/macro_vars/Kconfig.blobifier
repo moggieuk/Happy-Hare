@@ -110,7 +110,7 @@ menu "Blobifier (_BLOBIFIER)"
     int "Tray angle in                  "
     default 180
 
-  comment "Blob Tuning"
+  comment "_Blob Tuning"
 
   config VAR_BLOBIFIER_DWELL_TIME
     int "Dwell time                     "
@@ -148,7 +148,7 @@ menu "Blobifier (_BLOBIFIER)"
       (-1 is unchanged, 0 is off, 0.1-1.0 for fan speed)
 
   config VAR_BLOBIFIER_PART_COOLING_FAN_BLOB_DEPOSIT
-    float "Part cooling fan speed during blob deposit"
+    float "Fan speed during blob deposit  "
     default 1
     help
       Fan speed to use during blob depositing
@@ -160,7 +160,7 @@ menu "Blobifier (_BLOBIFIER)"
     help
       Optional part fan name if using a fan other than [fan].
 
-  comment "Purge Length Tuning"
+  comment "_Purge Length Tuning"
 
   config VAR_BLOBIFIER_PURGE_LENGTH_MINIMUM
     float "Minimum purge length           "
@@ -182,7 +182,7 @@ menu "Blobifier (_BLOBIFIER)"
     float "Purge length addition          "
     default 0
 
-  comment "Bucket"
+  comment "_Bucket"
 
   config VAR_BLOBIFIER_MAX_BLOBS
     int "Maximum blobs                  "

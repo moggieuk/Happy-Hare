@@ -2,7 +2,7 @@ menu "Tip forming (_MMU_FORM_TIP)"
   help
     Happy Hare tip forming macro configuration variables.
 
-  comment "Step 1 - Ramming"
+  comment "_Step 1 - Ramming"
 
   config VAR_FORM_TIP_RAMMING_VOLUME
     float "Ramming volume             "
@@ -18,7 +18,7 @@ menu "Tip forming (_MMU_FORM_TIP)"
       Ramming volume in mm^3 when not printing.
       Set to 0 to disable.
 
-  comment "Optional temperature change"
+  comment "_Optional temperature change"
 
   config VAR_FORM_TIP_TOOLCHANGE_TEMP
     int "Toolchange temperature     "
@@ -51,7 +51,7 @@ menu "Tip forming (_MMU_FORM_TIP)"
     help
       Fan speed percentage when fan assist is enabled.
 
-  comment "Step 2 - Nozzle Separation"
+  comment "_Step 2 - Nozzle Separation"
 
   config VAR_FORM_TIP_UNLOADING_SPEED_START
     float "Initial unload speed       "
@@ -65,7 +65,7 @@ menu "Tip forming (_MMU_FORM_TIP)"
     help
       Slower movement speed to the cooling zone in mm/s.
 
-  comment "Step 3 - Cooling Moves"
+  comment "_Step 3 - Cooling Moves"
 
   config VAR_FORM_TIP_COOLING_TUBE_POSITION
     float "Cooling tube position      "
@@ -97,7 +97,7 @@ menu "Tip forming (_MMU_FORM_TIP)"
     help
       Number of back-and-forth cooling moves.
 
-  comment "Step 4 - Skinnydip"
+  comment "_Step 4 - Skinnydip"
 
   config BOOL_FORM_TIP_USE_SKINNYDIP
     bool "Enable skinnydip"
@@ -151,7 +151,7 @@ menu "Tip forming (_MMU_FORM_TIP)"
     default "True" if BOOL_FORM_TIP_USE_FAST_SKINNYDIP
     default "False"
 
-  comment "Step 5 - Parking"
+  comment "_Step 5 - Parking"
 
   config VAR_FORM_TIP_PARKING_DISTANCE
     float "Parking distance           "
