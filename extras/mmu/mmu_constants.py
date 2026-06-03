@@ -133,6 +133,12 @@ MACRO_EVENT_RESTART          = "restart"          # Params: None
 MACRO_EVENT_GATE_MAP_CHANGED = "gate_map_changed" # Params: GATE changed or GATE=-1 for all
 MACRO_EVENT_FILAMENT_GRIPPED = "filament_gripped" # Params: None
 
+# Tip forming and purging macro names
+MACRO_BLOBIFIER = "BLOBIFIER"
+MACRO_PURGE     = "_MMU_PURGE"
+MACRO_CUT_TIP   = "_MMU_CUT_TIP"
+MACRO_FORM_TIP  = "_MMU_FORM_TIP"
+
 # Standard sensor and endstop or pseudo endstop names
 SENSOR_ENCODER           = "encoder"               # Fake Gate endstop using encoder
 SENSOR_SHARED_EXIT       = "mmu_shared_exit"

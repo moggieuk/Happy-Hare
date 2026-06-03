@@ -31,9 +31,9 @@ if MMU_TYPE_LOW_RIDER_1_0
   config PARAM_GEAR_GEAR_RATIO
     default "80:20"
   config PARAM_GEAR_RUN_CURRENT
-    default "0.7"
+    default 0.7
   config PARAM_GEAR_HOLD_CURRENT
-    default "0.1"
+    default 0.1
 
   config PARAM_GATE_PARKING_DISTANCE
     default -25

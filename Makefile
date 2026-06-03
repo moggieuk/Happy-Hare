@@ -132,21 +132,16 @@ hh_config_files := \
 # Look for installed configs that would need be parsed by the build script
 # This allows for easy upgrades and option movement across files
 hh_configs_to_parse := \
-	$(subst $(KLIPPER_CONFIG_HOME),$(IN),$(wildcard $(KLIPPER_CONFIG_HOME)/mmu/base/*.cfg \
-		$(KLIPPER_CONFIG_HOME)/mmu/addons/*.cfg))
+	$(subst $(KLIPPER_CONFIG_HOME),$(IN),$(wildcard $(KLIPPER_CONFIG_HOME)/mmu/base/*.cfg))
 
 # Set of config files (one if single unit, else n + 1)
 kconfig_files := $(KCONFIG_CONFIG) \
 	$(if $(filter y,$(CONFIG_MULTI_UNIT)), \
 		$(addprefix $(KCONFIG_CONFIG)_,$(unit_names)))
 
-# Files/targets that need to be build
+# Files/targets that need to be built
 build_targets := \
-	$(addprefix $(OUT)/mmu/, $(hh_config_files)) \
-	$(addprefix $(OUT)/klippy/, $(hh_klipper_extras_files)) \
-	$(addprefix $(OUT)/moonraker/, $(hh_moonraker_components)) \
-        $(OUT)/$(MOONRAKER_CONFIG_FILE) \
-        $(OUT)/$(PRINTER_CONFIG_FILE)
+	$(addprefix $(OUT)/mmu/, $(hh_config_files))
 
 # Subset of files/targets which require token processing and/or are user editable
 processed_targets := \
@@ -207,6 +202,15 @@ restart_service = \
 ##### Build targets #####
 #########################
 
+KCONFIG_PREREQS := \
+	$(KCONFIG_CONFIG) \
+	$(OUT)/$(notdir $(KCONFIG_CONFIG)).pickle
+
+## Conditional per-unit prerequisite ".mmu_config_<unit>" when multi-unit, else to ".mmu_config" (and pickles)
+KCONF_REQS = $(if $(filter y,$(CONFIG_MULTI_UNIT)), \
+	$(KCONFIG_CONFIG)_% $(OUT)/$(notdir $(KCONFIG_CONFIG))_%.pickle, \
+	$(KCONFIG_PREREQS))
+
 # Link existing config files to the out/in directory to break circular dependency
 $(IN)/%:
 	$(Q)[ -f "$(KLIPPER_CONFIG_HOME)/$*" ] || { echo "$(C_ERROR)The file '$(KLIPPER_CONFIG_HOME)/$*' does not exist. Please check your config for the correct paths$(C_OFF)"; exit 1; }
@@ -215,7 +219,7 @@ $(IN)/%:
 
 ifneq ($(strip $(MOONRAKER_CONFIG_FILE)),)
 # Copy existing moonraker.conf to the out directory and update with moonraker_update.txt
-$(OUT)/$(MOONRAKER_CONFIG_FILE): $(IN)/$$(@F)
+$(OUT)/$(MOONRAKER_CONFIG_FILE): $(IN)/$$(@F) $(KCONFIG_PREREQS)
 	$(call debug,$(C_DEBUG)Copying $< to '$(notdir $(OUT))' directory$(C_OFF))
 	$(Q)$(call copy,$<,$@)
 	$(Q)$(PY) -m installer.build $(V) --install-moonraker "$(SRC)/installer/moonraker_update.txt" "$@" "$(KCONFIG_CONFIG)"
@@ -223,7 +227,7 @@ endif
 
 ifneq ($(strip $(PRINTER_CONFIG_FILE)),)
 # Copy existing printer.cfg to the out directory and update with includes
-$(OUT)/$(PRINTER_CONFIG_FILE): $(IN)/$$(@F)
+$(OUT)/$(PRINTER_CONFIG_FILE): $(IN)/$$(@F) $(KCONFIG_PREREQS)
 	$(call debug,$(C_DEBUG)Copying $< to '$(notdir $(OUT))' directory$(C_OFF))
 	$(Q)$(call copy,$<,$@)
 	$(Q)$(PY) -m installer.build $(V) --install-includes "$@" "$(KCONFIG_CONFIG)"
@@ -231,16 +235,11 @@ endif
 
 # We link all config files, those that need to be updated will be written over in the install script,
 # in case of a multi unit setup, the per-unit config targets are overridden below
-$(OUT)/mmu/%.cfg: $(SRC)/config/%.cfg $(hh_configs_to_parse)
+$(OUT)/mmu/%.cfg: $(SRC)/config/%.cfg $(hh_configs_to_parse) $(KCONFIG_PREREQS)
 	$(Q)$(call link,$<,$@)
 	$(Q)$(if $(filter $@,$(processed_targets)), \
 		$(PY) -m installer.build $(V) --build "$<" "$@" "$(KCONFIG_CONFIG)" $(hh_configs_to_parse), \
 	        $(info $(C_INFO)Skipping build of mmu/$*$(C_OFF)))
-
-## Conditional per-unit prerequisite ".mmu_config_<unit>" when multi-unit, else to ".mmu_config" (and pickles)
-KCONF_REQS = $(if $(filter y,$(CONFIG_MULTI_UNIT)), \
-             $(KCONFIG_CONFIG)_% $(OUT)/$(notdir $(KCONFIG_CONFIG))_%.pickle, \
-             $(KCONFIG_CONFIG)   $(OUT)/$(notdir $(KCONFIG_CONFIG)).pickle)
 
 # Shared target rules don't work on old make so separate for portability
 $(OUT)/mmu/base/mmu_hardware_%.cfg: \
@@ -268,7 +267,7 @@ $(OUT)/%: %
 $(OUT):
 	$(Q)mkdir -p "$@"
 
-$(build_targets): $(KCONFIG_CONFIG) $(OUT)/$(notdir $(KCONFIG_CONFIG)).pickle | $(OUT) check_version python_deps
+$(build_targets): $(KCONFIG_PREREQS) | $(OUT) check_version python_deps
 
 build: $(build_targets)
 
@@ -378,7 +377,7 @@ fix_links:
 ########################
 
 # Look for version number in current config files and report
-check_version: $(hh_configs_to_parse) $(OUT)/$(notdir $(KCONFIG_CONFIG)).pickle | python_deps
+check_version: $(hh_configs_to_parse) $(KCONFIG_PREREQS) | python_deps
 	$(Q)$(PY) -m installer.build $(V) --check-version "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)
 
 gen_kconfig:
@@ -467,9 +466,3 @@ kconfig_needs_update:
 olddefconfig:
 	$(Q)$(PY) -m olddefconfig $(SRC)/installer/Kconfig >/dev/null
 	$(Q)touch "$(KCONFIG_CONFIG)"
-
-# PAUL
-#$(KCONFIG_CONFIG): $(kconfig_sources)
-#ifeq ($(filter menuconfig uninstall variables fix_links olddefconfig kconfig_needs_update,$(MAKECMDGOALS)),)
-#	$(error $(KCONFIG_CONFIG) is missing or stale; run ./install.sh so it can refresh it with the correct context)
-#endif

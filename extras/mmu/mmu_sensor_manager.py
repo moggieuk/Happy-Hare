@@ -175,8 +175,8 @@ class MmuSensorManager:
         Handler for gate changed event
         Reset the relevent sensor list based on current gate handling bypass and unknown
         """
-        self.mmu.log_info("PAUL: EVENT: handle_gate_selected(%d)" % gate)
         self.active_sensors_map = self.gate_sensors[gate] if gate >= 0 else self.bypass_sensors_map
+        self.mmu.log_info("PAUL: EVENT: handle_gate_selected(%d)" % gate)
         self.mmu.log_info("PAUL: >>> active_sensors_map=%s\n" % self.active_sensors_map.keys())
 
 

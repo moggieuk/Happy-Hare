@@ -1,0 +1,187 @@
+menu "Toolhead tip cutting (_MMU_CUT_TIP)"
+  help
+    Happy Hare toolhead tip cutting macro configuration variables.
+
+  config BOOL_CUT_TIP_RESTORE_POSITION
+    bool "Restore toolhead position after cut"
+    default n
+    help
+      Return toolhead to initial position after cut is complete.
+      If using parking logic it is generally better to disable this.
+
+  config VAR_CUT_TIP_RESTORE_POSITION
+    string
+    default "True" if BOOL_CUT_TIP_RESTORE_POSITION
+    default "False"
+
+  config VAR_CUT_TIP_BLADE_POS
+    float "Blade position               "
+    default 37.5
+    help
+      Distance in mm from internal nozzle tip to cutting blade.
+
+  config VAR_CUT_TIP_RETRACT_LENGTH
+    float "Retract length               "
+    default 32.5
+    help
+      Distance to retract prior to making the cut.
+      Must be less than blade_pos.
+
+  config BOOL_CUT_TIP_SIMPLE_TIP_FORMING
+    bool "Enable simple tip forming"
+    default y
+    help
+      Perform simple tip forming after initial retraction.
+
+  config VAR_CUT_TIP_SIMPLE_TIP_FORMING
+    string
+    default "True" if BOOL_CUT_TIP_SIMPLE_TIP_FORMING
+    default "False"
+
+  config VAR_CUT_TIP_CUT_AXIS_STEPPERS
+    string "Cut axis steppers            "
+    default "'stepper_x, stepper_y'"
+    help
+      Comma separated list of stepper names to increase current for cutting.
+
+  config VAR_CUT_TIP_CUT_STEPPER_CURRENT
+    int "Cut stepper current (%)      "
+    default 100
+    help
+      Percentage of normal stepper current to use during cutting.
+      100 disables current modification.
+
+  choice CHOICE_CUT_TIP_CUTTING_AXIS
+    prompt "Cutting axis"
+    default CHOICE_CUT_TIP_CUTTING_AXIS_X
+    help
+      Determines cut direction and parking calculations.
+
+    config CHOICE_CUT_TIP_CUTTING_AXIS_X
+      bool "x"
+
+    config CHOICE_CUT_TIP_CUTTING_AXIS_Y
+      bool "y"
+
+  endchoice
+
+  config VAR_CUT_TIP_CUTTING_AXIS
+    string
+    default "'y'" if CHOICE_CUT_TIP_CUTTING_AXIS_Y
+    default "'x'"
+
+  config VAR_CUT_TIP_PIN_LOC_XY
+    string "Pin location (X,Y)           "
+    default "14, 250"
+    help
+      X,Y coordinates of depressor pin.
+
+  config VAR_CUT_TIP_PIN_PARK_DIST
+    float "Pin park distance            "
+    default 5.0
+    help
+      Distance from pin location used to determine starting position
+      and provide momentum before cutting.
+
+  config VAR_CUT_TIP_PIN_LOC_COMPRESSED_XY
+    string "Compressed pin location (X,Y)"
+    default "0.5, 250"
+    help
+      X,Y coordinates of fully depressed cutter location.
+
+  config VAR_CUT_TIP_RIP_LENGTH
+    float "Rip length                   "
+    default 1.0
+    help
+      Distance to retract after cut to aid lever decompression.
+
+  config VAR_CUT_TIP_RIP_SPEED
+    float "Rip speed                    "
+    default 3
+    help
+      Rip movement speed in mm/s.
+
+  config VAR_CUT_TIP_PUSHBACK_LENGTH
+    float "Pushback length              "
+    default 15.0
+    help
+      Pushback distance after cut to keep filament fragment in hotend.
+
+  config VAR_CUT_TIP_PUSHBACK_DWELL_TIME
+    int "Pushback dwell time (ms)     "
+    default 0
+    help
+      Dwell time after pushback.
+
+  config VAR_CUT_TIP_TRAVEL_SPEED
+    float "Travel speed                 "
+    default 150
+    help
+      Travel speed in mm/s.
+
+  config VAR_CUT_TIP_CUT_FAST_MOVE_SPEED
+    float "Fast cut move speed          "
+    default 32
+    help
+      Speed of initial momentum-generating cut move.
+
+  config VAR_CUT_TIP_CUT_SLOW_MOVE_SPEED
+    float "Slow cut move speed          "
+    default 8
+    help
+      Speed of actual cutting motion.
+
+  config VAR_CUT_TIP_EVACUATE_SPEED
+    float "Evacuate speed               "
+    default 150
+    help
+      Speed used after cut operation.
+
+  config VAR_CUT_TIP_CUT_DWELL_TIME
+    int "Cut dwell time (ms)          "
+    default 50
+    help
+      Time to dwell at cut point.
+
+  config VAR_CUT_TIP_CUT_FAST_MOVE_FRACTION
+    float "Fast move fraction           "
+    default 1.0
+    help
+      Fraction of cut move performed at fast speed.
+
+  config VAR_CUT_TIP_EXTRUDER_MOVE_SPEED
+    float "Extruder move speed          "
+    default 25
+    help
+      Speed for all extruder movements.
+
+  config VAR_CUT_TIP_SAFE_MARGIN_XY
+    string "Safe margin (X,Y)            "
+    default "30, 30"
+    help
+      Safety margin used when approaching the cutter pin.
+
+  config BOOL_CUT_TIP_GANTRY_SERVO_ENABLED
+    bool "Enable gantry servo"
+    default n
+    help
+      Enable optional gantry servo support.
+
+  config VAR_CUT_TIP_GANTRY_SERVO_ENABLED
+    string
+    default "True" if BOOL_CUT_TIP_GANTRY_SERVO_ENABLED
+    default "False"
+
+  config VAR_CUT_TIP_GANTRY_SERVO_DOWN_ANGLE
+    int "Gantry servo down angle      "
+    default 55
+    help
+      Servo angle when pin is deployed.
+
+  config VAR_CUT_TIP_GANTRY_SERVO_UP_ANGLE
+    int "Gantry servo up angle        "
+    default 180
+    help
+      Servo angle when pin is retracted.
+
+endmenu

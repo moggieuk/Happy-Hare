@@ -33,17 +33,17 @@ if MMU_TYPE_3D_CHAMELEON_1_0
   config PARAM_GEAR_GEAR_RATIO
     default "1:1"
   config PARAM_GEAR_RUN_CURRENT
-    default "0.7"
+    default 0.7
   config PARAM_GEAR_HOLD_CURRENT
-    default "0.1"
+    default 0.1
 
   # Selector stepper
   config PARAM_SELECTOR_GEAR_RATIO
     default "1:1"
   config PARAM_SELECTOR_RUN_CURRENT
-    default "0.63"
+    default 0.63
   config PARAM_SELECTOR_HOLD_CURRENT
-    default "0.2"
+    default 0.2
 
   config PARAM_SELECTOR_GATE_DIRECTIONS
     default "[1, 1, 0, 0]"

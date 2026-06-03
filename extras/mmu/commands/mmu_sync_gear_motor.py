@@ -77,8 +77,4 @@ class MmuSyncGearMotorCommand(BaseCommand):
                 "Use 'MMU_RECOVER' to correct the filament position."
             )
 
-        mmu.reset_sync_gear_to_extruder(
-            sync,
-            force_grip=True,
-            skip_extruder_check=True
-        )
+        mmu.reset_sync_gear_to_extruder(sync, force_grip=True, skip_extruder_check=True)

@@ -52,7 +52,6 @@ class MmuController(MmuFilamentMovement):
         self.toolchange_purge_volume = 0.       # During toolchange, the total calculated purge volume
         self._slicer_purge_volume = 0.          # During toolchange, the slicer contributed part of purge volume
         self._standalone_sync = False           # Used to indicate synced extruder intention whilst out of print
-        self._suppress_release_grip = False     # Used to suppress the relaxing of grip on recursive calls to prevent servo flutter
         self.bowden_start_pos = None            # If set then we can measure bowden progress
         self.has_blobifier = False              # Post load blobbling macro (like BLOBIFIER)
         self.has_mmu_cutter = False             # Post unload cutting macro (like EREC)
@@ -431,8 +430,17 @@ class MmuController(MmuFilamentMovement):
         except Exception as e:
             self.log_assertion(f"Error booting up MMU: {e}", exc_info=sys.exc_info())
 
+        # Give macros a chance to initialize if they need to
+        self.init_macros()
+
         # Restart hook
         self.mmu_macro_event(MACRO_EVENT_RESTART)
+
+
+    # Blobifier requires initialization so do it when it is set as the purging macro
+    def init_macros(self):
+        if self.p.purge_macro.upper() == MACRO_BLOBIFIER:
+            self.wrap_gcode_command("BLOBIFIER_INIT", exception=None)
 
 
     # Wrap execution of gcode command to allow for control over:
@@ -2092,7 +2100,7 @@ class MmuController(MmuFilamentMovement):
                     raise MmuError("Gate %d is empty (and EndlessSpool on load is disabled)\nLoad gate, remap tool to another gate or correct state with 'MMU_CHECK_GATE GATE=%d' or 'MMU_GATE_MAP GATE=%d AVAILABLE=1'" % (gate, gate, gate))
 
             # Determine purge volume for toolchange/load. Valid only during toolchange/load operation
-            self.toolchange_purge_volume, self._slicer_purge_volume  = self._calc_purge_volume(self._last_tool, tool, from_gate, self.gate_selected)
+            self.toolchange_purge_volume, self._slicer_purge_volume  = self._calc_purge_volume(self._last_tool, tool)
 
             self.load_sequence(purge=purge)
             self._restore_tool_override(self.tool_selected) # Restore M220 and M221 overrides
@@ -2101,7 +2109,7 @@ class MmuController(MmuFilamentMovement):
             self.toolchange_purge_volume = self._slicer_purge_volume = 0.
 
 
-    def _calc_purge_volume(self, from_tool, to_tool, from_gate, to_gate):
+    def _calc_purge_volume(self, from_tool, to_tool):
         """
         Helper to determine purge volume for toolchange.
         Uses new printer toolhead for residuals
@@ -2112,21 +2120,22 @@ class MmuController(MmuFilamentMovement):
           TODO FIXME: This is no longer correct if switching between toolheads because
                       color in previous toolhead is not the last slicer color
         """
+        if to_tool < 0:
+            return 0, 0
 
         fil_diameter = 1.75
         svolume = 0.
             
-        if to_tool >= 0:
-            slicer_purge_volumes = self.slicer_tool_map['purge_volumes']
-            if slicer_purge_volumes:
-                if from_tool >= 0: 
-                    svolume = slicer_purge_volumes[from_tool][to_tool]
-                else:   
-                    # Assume worse case because we don't know from_tool
-                    svolume = max(row[to_tool] for row in slicer_purge_volumes)
+        slicer_purge_volumes = self.slicer_tool_map['purge_volumes']
+        if slicer_purge_volumes:
+            if from_tool >= 0: 
+                svolume = slicer_purge_volumes[from_tool][to_tool]
+            else:   
+                # Assume worse case because we don't know from_tool
+                svolume = max(row[to_tool] for row in slicer_purge_volumes)
                     
         # Always add volume of residual filament (cut fragment and bit always left in the hotend)
-        to_unit = self.mmu_unit(to_gate)
+        to_unit = self.mmu_unit(gate=self.ttg_map[to_tool])
         remaining = to_unit.extruder_wrapper.get_status(0)['extruder_filament_remaining']
         total = svolume + math.pi * ((fil_diameter / 2) ** 2) * remaining
 

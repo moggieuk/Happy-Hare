@@ -52,7 +52,7 @@ menu "Toolhead sensors/settings"
 # Toolhead dimensions
 # -------------------------------------
 
-  comment "Toolhead dimensions"
+  comment "_Toolhead dimensions"
 
   config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
     string "Extruder entrance to nozzle"

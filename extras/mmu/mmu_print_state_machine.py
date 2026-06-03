@@ -177,7 +177,7 @@ class MmuPrintStateMachine:
 
             # Establish syncing state and grip (servo) position
             # (must call after print_state is set so we know we are printing)
-            self.mmu.reset_sync_gear_to_extruder(self.mmu.mmu_unit().p.sync_to_extruder)
+            self.mmu.reset_sync_gear_to_extruder()
 
             # Ensure espooler wasn't reset
             self.mmu._adjust_espooler_assist()
@@ -207,7 +207,7 @@ class MmuPrintStateMachine:
 
             # Establish syncing state and grip (servo) position
             # (must call after print_state is set)
-            self.mmu.reset_sync_gear_to_extruder(False) # Intention is not to sync unless we have to
+            self.mmu.reset_sync_gear_to_extruder()
 
         if state == "standby" and not self.is_in_standby():
             self.set_print_state(state)

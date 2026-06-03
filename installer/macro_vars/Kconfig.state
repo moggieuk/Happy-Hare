@@ -1,0 +1,45 @@
+menu "State change hooks (_MMU_STATE)"
+  help
+    You can extend functionality to all Happy Hare state change or event
+    macros by adding a command (or call to your gcode macro).
+    E.g for additional LED logic or consumption counters
+
+  config VAR_STATE_USER_ACTION_CHANGED_EXTENSION
+    string "Action changed extension macro     "
+    default ""
+    help
+      Executed after default logic with duplicate params
+
+  config VAR_STATE_USER_PRINT_STATE_CHANGED_EXTENSION
+    string "Print state changed extension macro"
+    default ""
+    help
+      Executed after default logic with duplicate params
+
+  config VAR_STATE_USER_MMU_EVENT_EXTENSION
+    string "MMU event extension macro          "
+    default ""
+    help
+      Executed after default logic with duplicate params
+
+  comment "_Consumption counters"
+
+  config VAR_STATE_SERVO_DOWN_LIMIT
+    int "Servo down limit                   "
+    default 5000
+    help
+      Maintenance warning limit for servo down counter.
+      Set to -1 for no limit / disable warning.
+
+      Applicable only if MMU has servo operated selector
+
+  config VAR_STATE_CUTTER_BLADE_LIMIT
+    int "Cutter blade limit                 "
+    default 3000
+    help
+      Maintenance warning limit for cutter blade counter.
+      Set to -1 for no limit / disable warning.
+
+      Applicable only if MMU has filament cutter
+
+endmenu

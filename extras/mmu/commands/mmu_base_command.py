@@ -72,7 +72,7 @@ class BaseCommand:
                 unit_param = gcmd.get("UNIT", None)
                 mmu_machine = mmu.mmu_machine
 
-                if unit_param == ALL_UNITS:
+                if unit_param is not None and unit_param.upper() == ALL_UNITS:
                     # Repeat for all units
                     for mmu_unit in mmu_machine.units:
                         handler(gcmd, mmu_unit)

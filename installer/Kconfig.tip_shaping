@@ -1,0 +1,102 @@
+# Defines parameter token types and defaults for tip forming/cutting
+#
+# Responsible for setting:
+#   PARAM_FORCE_FORM_TIP_STANDALONE
+#   PARAM_SLICER_TIP_PARK_POS
+#   PARAM_FORCE_PURGE_STANDALONE
+#   PARAM_FORM_TIP_MACRO
+#   MMU_HAS_GANTRY_BUMPER_SERVO (and PIN_GANTRY_BUMPER_SERVO)
+
+menu "Tip Forming / Cutting"
+  help
+    Tip Shaping
+
+  choice CHOICE_FORM_TIP_MACRO
+    prompt "Select standalone tip shaping option"
+    default CHOICE_FORM_TIP_MACRO_FORM_TIP
+    help
+      How to perform standalone tip shaping (forming or cutting)
+
+    config CHOICE_FORM_TIP_MACRO_FORM_TIP
+      bool "Tip shaping using filament movement"
+      help
+        Uses repeated retract/extrude operations to shape filament
+        tip into a torpedeo shape without strings.
+        Needs careful tuning.
+
+    config CHOICE_FORM_TIP_MACRO_CUT_TIP
+      bool "Tip cutting using toolhead cutter"
+      help
+        If toolhead contains a filament cutter with activation
+        via toolhea movement.
+
+    config CHOICE_FORM_TIP_MACRO_OTHER
+      bool "Other / manually entered macro"
+      help
+        Specify a custom macro to call to perform tip forming / cutting
+
+    config FORM_TIP_MACRO_OTHER
+      string "Tip forming/cutting  macro" if CHOICE_FORM_TIP_MACRO_OTHER
+      default "-enter-your-macro-"
+      help
+        Name of macro to call to perform the tip forming or cutting operation.
+  endchoice
+
+  config PARAM_FORM_TIP_MACRO
+    string
+    default "_MMU_FORM_TIP" if CHOICE_FORM_TIP_MACRO_FORM_TIP
+    default "_MMU_CUT_TIP" if CHOICE_FORM_TIP_MACRO_CUT_TIP
+    default FORM_TIP_MACRO_OTHER if CHOICE_FORM_TIP_MACRO_OTHER
+    default ""
+
+
+# -------------------------------------
+# Toolhead cutter configuration
+# -------------------------------------
+
+  if CHOICE_FORM_TIP_MACRO_CUT_TIP
+    config MMU_HAS_GANTRY_BUMPER_SERVO
+      bool "Have servo operated gantry bumper?"
+      default n
+  endif
+
+  config PIN_GANTRY_BUMPER_SERVO
+    prompt "Gantry servo pin" if MMU_HAS_GANTRY_BUMPER_SERVO
+    help
+      Optional. Used to deploy fold-down "bumper" for tip cutting
+      when using a toolhead mounted filament cutting blade
+
+
+# -------------------------------------
+# Other tip shaping options
+# -------------------------------------
+
+  config BOOL_FORCE_FORM_TIP_STANDALONE
+    bool "Happy Hare controlled in-print tip forming/cutting"
+    def_bool y
+    help
+      You can choose whether you want the slicer or Happy Hare (recommended) to control tip forming.
+      To use tip cutting ensure this selection is checked and be sure to turn off in your slicer
+  config PARAM_FORCE_FORM_TIP_STANDALONE
+    int
+    default 1 if BOOL_FORCE_FORM_TIP_STANDALONE
+    default 0
+
+  config PARAM_SLICER_TIP_PARK_POS
+    string
+    default "0"
+  config PARAM_SLICER_TIP_PARK_POS
+    prompt "Slicer tip park pos"
+    depends on !BOOL_FORCE_FORM_TIP_STANDALONE
+    help
+      This specifies the position of filament in extruder after slicer completes tip forming
+      and is usually a setting in the slicer config.
+      (It is necessary to help Happy Hare complete the extruder unloading process)
+
+  config PARAM_EXTRUDER_FORM_TIP_CURRENT
+    int "Extruder tip forming current"
+    default 100
+    help
+      % of extruder current (100%-150%) to use when forming tip (100 to disable feature)
+
+endmenu

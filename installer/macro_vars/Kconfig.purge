@@ -1,0 +1,16 @@
+menu "Purge (_MMU_PURGE)"
+  help
+    Happy Hare reference purging macro configuration variables.
+
+    Optional simple reference (bucket) purge configuration.
+
+  config VAR_PURGE_EXTRUDER_PURGE_SPEED
+    float "Extruder purge speed"
+    default 2
+    help
+      Speed in mm/s for purging.
+
+      Set as fast as possible without the extruder skipping steps.
+      Extruder current can also be increased in mmu_parameters.cfg.
+
+endmenu

@@ -1,4 +1,4 @@
-# Happy Hare MMU Software
+# aappy Hare MMU Software
 # Main module
 #
 # Copyright (C) 2022-2026  moggieuk#6538 (discord)
@@ -127,8 +127,6 @@ class MmuFilamentMovement:
             self.sensor_manager.has_gate_sensor(SENSOR_EXIT_PREFIX, gate) and
             self.sensor_manager.check_gate_sensor(SENSOR_EXIT_PREFIX, gate)
         ):
-            self.selector().filament_drive()
-
             endstop_name = self.sensor_manager.get_gate_sensor_name(SENSOR_EXIT_PREFIX, gate)
             msg = "Reverse homing off %s sensor" % endstop_name
             actual, homed, measured, _ = self.move_filament(msg, -u.p.gate_homing_max, motor="gear", homing_move=-1, endstop_name=endstop_name)
@@ -139,8 +137,6 @@ class MmuFilamentMovement:
 
         final_move = abs(u.p.gate_final_eject_distance)
         if final_move > 0:
-            self.selector().filament_drive()
-
             msg = "Ejecting filament out of gate"
             if self.sensor_manager.check_gate_sensor(SENSOR_ENTRY_PREFIX, gate) is not None:
                 # Use homing move so we don't "over eject"
@@ -171,7 +167,6 @@ class MmuFilamentMovement:
 
         self._validate_gate_config("load")
         self.set_filament_direction(DIRECTION_LOAD)
-        self.selector().filament_drive()
         retries = u.p.gate_load_retries if allow_retry else 1
 
         if u.p.gate_homing_endstop == SENSOR_ENCODER:
@@ -189,7 +184,6 @@ class MmuFilamentMovement:
                         self.log_debug("Error loading filament - filament motion was not detected by the encoder. %s" % ("Retrying..." if i < retries - 1 else ""))
                         if i < retries - 1:
                             self.selector().filament_release()
-                            self.selector().filament_drive()
 
         else:  # Gate sensor... SENSOR_SHARED_EXIT is shared, but SENSOR_EXIT_PREFIX is gate specific (can also be SENSOR_EXTRUDER_ENTRY for no bowden designs)
             for i in range(retries):
@@ -206,7 +200,6 @@ class MmuFilamentMovement:
                     self.log_debug("Error loading filament - filament did not reach gate homing sensor. %s" % ("Retrying..." if i < retries - 1 else ""))
                     if i < retries - 1:
                         self.selector().filament_release()
-                        self.selector().filament_drive()
 
         self.gate_maps.set_gate_status(self.gate_selected, GATE_EMPTY)
         self.set_filament_pos_state(FILAMENT_POS_UNLOADED)
@@ -233,7 +226,6 @@ class MmuFilamentMovement:
 
         self._validate_gate_config("unload")
         self.set_filament_direction(DIRECTION_UNLOAD)
-        self.selector().filament_drive()
 
         # Figure out homing buffer
         recovery = False
@@ -446,7 +438,7 @@ class MmuFilamentMovement:
             if length > 0:
                 self.log_debug("Loading bowden tube")
                 self.set_filament_direction(DIRECTION_LOAD)
-                self.selector().filament_drive()
+                self.selector().filament_drive() # Ensure encoder reading is not distrubed by initial filament gipping
                 self.set_filament_pos_state(FILAMENT_POS_START_BOWDEN)
 
                 # Record starting position for bowden progress tracking. Prefer encoder if available
@@ -557,7 +549,7 @@ class MmuFilamentMovement:
             if length > 0:
                 self.log_debug("Unloading bowden tube")
                 self.set_filament_direction(DIRECTION_UNLOAD)
-                self.selector().filament_drive()
+                self.selector().filament_drive() # Ensure encoder reading is not distrubed by initial filament gipping
 
                 # Optional pre-unload safety step
                 if (full and self.has_encoder() and u.p.bowden_pre_unload_test and
@@ -635,7 +627,6 @@ class MmuFilamentMovement:
         u = self.mmu_unit()
 
         self.set_filament_direction(DIRECTION_LOAD)
-        self.selector().filament_drive()
         measured = 0.
         homing_movement = None
         homing_max = extra_homing + u.p.extruder_homing_max
@@ -754,11 +745,9 @@ class MmuFilamentMovement:
 
             synced = not extruder_only
             if synced:
-                self.selector().filament_drive()
                 speed = self.p.extruder_sync_load_speed
                 motor = "gear+extruder"
             else:
-                self.selector().filament_release()
                 speed = self.p.extruder_load_speed
                 motor = "extruder"
 
@@ -907,11 +896,9 @@ class MmuFilamentMovement:
 
             synced = self.selector().get_filament_grip_state() == FILAMENT_DRIVE_STATE and not extruder_only
             if synced:
-                self.selector().filament_drive()
                 speed = self.p.extruder_sync_unload_speed
                 motor = "gear+extruder"
             else:
-                self.selector().filament_release()
                 speed = self.p.extruder_unload_speed
                 motor = "extruder"
 
@@ -919,7 +906,6 @@ class MmuFilamentMovement:
             if self.sensor_manager.has_sensor(SENSOR_EXTRUDER_ENTRY) and not extruder_only:
                 # BEST Strategy: Extruder exit movement leveraging extruder entry sensor. Must be synced
                 synced = True
-                self.selector().filament_drive()
                 speed = self.p.extruder_sync_unload_speed
                 motor = "gear+extruder"
 
@@ -1198,13 +1184,7 @@ class MmuFilamentMovement:
 
             elif purge == PURGE_STANDALONE and not skip_extruder:
                 with self._wrap_track_time('purge'):
-
-                    # Restore the expected sync state now before running this macro
-                    # (we also must force correction of filament grip for old blobifer/unsynced functionality)
-                    self.reset_sync_gear_to_extruder(not extruder_only and u.p.sync_purge, force_grip=True)
-
-                    with self.wrap_action(ACTION_PURGING):
-                        self.purge_standalone()
+                    self.purge_standalone()
 
             # POST_LOAD user defined macro
             if macros_and_track:
@@ -1481,8 +1461,8 @@ class MmuFilamentMovement:
             raise MmuError("Filament tip forming macro '%s' not found" % self.p.form_tip_macro)
 
         with self.wrap_action(ACTION_CUTTING_TIP if self.has_toolhead_cutter else ACTION_FORMING_TIP):
-            sync = self.reset_sync_gear_to_extruder(not extruder_only and u.p.sync_form_tip)
             self._ensure_safe_extruder_temperature(wait=True)
+            sync = self.reset_sync_gear_to_extruder(not extruder_only and u.p.sync_form_tip, force_grip=True)
 
             # Perform the tip forming move and establish park_pos
             initial_encoder_position = self.get_encoder_distance()
@@ -1598,62 +1578,50 @@ class MmuFilamentMovement:
         return park_pos, filament_remaining, reported
 
 
-    def purge_standalone(self):
+    def purge_standalone(self, extruder_only=False):
         """
         Run the configured standalone purge macro, if one is available.
         """
         u = self.mmu_unit()
 
-        if self.p.purge_macro:
-            gcode_macro = self.printer.lookup_object(f"gcode_macro {self.p.purge_macro}", None)
-            if gcode_macro:
-                self.log_info("Purging...")
-                with self._wrap_extruder_current(self.p.extruder_purge_current, "for filament purge"):
-                    # The macro to decide on the purge volume, but expect to be based on this.
-                    msg = (
-                        f"Suggested purge volume of {self.toolchange_purge_volume:.1f}mm{UI_CUBE} calculated from:\n"
-                        f"- toolhead_residual_filament: {u.toolhead_wrapper.p.toolhead_residual_filament:.1f}mm\n"
-                        f"- filament_remaining (previous cut fragment): {u.extruder_wrapper.filament_remaining:.1f}mm\n"
-                    )
-                    toolchange_volume_str = f"{self._slicer_purge_volume:.1f}mm{UI_CUBE}"
-                    msg += (
-                        f"- slicer purge volume for toolchange "
-                        f"{self.selected_tool_string(self._last_tool)} > "
-                        f"{self.selected_tool_string(self._next_tool)}: "
-                        f"{toolchange_volume_str}"
-                    )
-                    self.log_debug(msg)
-                    self.wrap_gcode_command(self.p.purge_macro, exception=True, wait=True)
-            else:
-                self.log_warning(f"Purge macro {self.p.purge_macro} not found")
+        if not self.p.purge_macro:
+            return
+
+        gcode_macro = self.printer.lookup_object(f"gcode_macro {self.p.purge_macro}", None)
+        if gcode_macro is None:
+            self.log_warning(f"Purge macro '{self.p.purge_macro}' not found")
+            return
+
+        with self.wrap_action(ACTION_PURGING):
+            self._ensure_safe_extruder_temperature(wait=True)
+            self.reset_sync_gear_to_extruder(not extruder_only and u.p.sync_purge, force_grip=True)
+
+            self.log_info("Purging...")
+
+            with self._wrap_extruder_current(self.p.extruder_purge_current, "for filament purge"):
+                # The macro to decide on the purge volume, but expect to be based on this.
+                msg = (
+                    f"Suggested purge volume of {self.toolchange_purge_volume:.1f}mm{UI_CUBE} calculated from:\n"
+                    f"- toolhead_residual_filament: {u.toolhead_wrapper.p.toolhead_residual_filament:.1f}mm\n"
+                    f"- filament_remaining (previous cut fragment): {u.extruder_wrapper.filament_remaining:.1f}mm\n"
+                )
+                toolchange_volume_str = f"{self._slicer_purge_volume:.1f}mm{UI_CUBE}"
+                msg += (
+                    f"- slicer purge volume for toolchange "
+                    f"{self.selected_tool_string(self._last_tool)} > "
+                    f"{self.selected_tool_string(self._next_tool)}: "
+                    f"{toolchange_volume_str}"
+                )
+                self.log_debug(msg)
+                macro = self.p.purge_macro
+                if extruder_only:
+                    macro += " EXTRUDER_ONLY=1"
+                self.wrap_gcode_command(macro, exception=True, wait=True)
 
 
 # -----------------------------------------------------------------------------------------------------------
 # FILAMENT MOVEMENT AND CONTROL
 # -----------------------------------------------------------------------------------------------------------
-
-# PAUL may want the gear changed callback to ensure unsynced...
-#    def on_selected_gear_changed(self, old_gear, new_gear, extruder_name="extruder"):
-#        """
-#        Called by existing controller when selected gear stepper changes.
-#
-#        Simplified ownership rule:
-#          - if old and new differ, force old gear back to unsynced/manual
-#          - do not attempt to track all stepper state globally
-#        """
-#        if old_gear is None or old_gear is new_gear:
-#            return
-#
-#        try:
-#            self.log_warning(f"PAUL: sync_mode({DRIVE_UNSYNCED}, {extruder_name})")
-#            old_gear.sync_mode(DRIVE_UNSYNCED, extruder_name)
-#
-#        except Exception as e:
-#            self.log_error("Failed to unsync previous gear '%s': %s" % (old_gear.full_name, str(e)))
-#
-
-
-
 
     def _resolve_filament_move_speed(self, dist, motor, homing_move, speed, accel, speed_override=True):
         """
@@ -1762,36 +1730,44 @@ class MmuFilamentMovement:
                 self.espooler().set_operation(self.gate_selected, 0, ESPOOLER_OFF)
 
 
-
-    # Convenience wrapper around all gear and extruder motor movement that retains sync state, tracks movement and creates trace log
-    # motor = "gear"             - gear motor(s) only on rail
-    #         "gear+extruder"    - gear and extruder included on rail
-    #         "extruder"         - extruder only on gear rail
-    #         "synced"           - gear synced with extruder as in print (homing move not possible)
-    #
-    # If homing move then endstop name can be specified.
-    #         "mmu_shared_exit"  - at the gate on MMU (when motor includes "gear")
-    #         "mmu_exit_N"       - post past the filament drive gear
-    #         "extruder"         - just before extruder entrance (motor includes "gear" or "extruder")
-    #         "toolhead"         - after extruder entrance (motor includes "gear" or "extruder")
-    #         "mmu_gear_touch"   - stallguard on gear (when motor includes "gear", only useful for motor="gear")
-    #         "mmu_ext_touch"    - stallguard on nozzle (when motor includes "extruder", only useful for motor="extruder")
-    #
-    # All move distances are interpreted as relative
-    # 'wait' will wait on appropriate move queue(s) after completion of move (forced to True if need encoder reading)
-    # 'measure' whether we need to wait and measure encoder for movement
-    # 'encoder_dwell' delay some additional time to ensure we have accurate encoder reading (if encoder fitted and required for measuring)
-    #
-    # All moves return: actual (relative), homed (0 if no encoder), measured, delta (0 if no encoder)
-    #
     def move_filament(self, trace_str, dist, speed=None, accel=None, motor="gear", homing_move=0,
                       endstop_name="default", track=False, wait=False, encoder_dwell=False,
-                      speed_override=True):
+                      speed_override=True, suppress_grip_change=False):
         """
-        Execute a traced filament move using selected gear/extruder MmuStepper objects.
+        Execute a traced filament move and report actual motion, homing result, and encoder data.
+
+        Convenience wrapper around all gear and extruder motor movement that retains sync state, tracks movement and creates trace log
+        motor = "gear"             - gear motor(s) only in manual mode
+                "gear+extruder"    - gear and extruder in manual mode
+                "extruder"         - extruder only in manual mode
+                "synced"           - gear synced with extruder in extruder mode (as in print, homing move not possible)
+
+        If homing move then endstop name can be specified.
+                "mmu_shared_exit"  - at the gate on MMU (when motor includes "gear")
+                "mmu_exit_N"       - post past the filament drive gear
+                "extruder"         - just before extruder entrance (motor includes "gear" or "extruder")
+                "toolhead"         - after extruder entrance (motor includes "gear" or "extruder")
+                "mmu_gear_touch"   - stallguard on gear (when motor includes "gear", only useful for motor="gear")
+                "mmu_ext_touch"    - stallguard on nozzle (when motor includes "extruder", only useful for motor="extruder")
+
+        All move distances are interpreted as relative
+
+        Args:
+            trace_str: Human-readable trace prefix to log after the move completes.
+            dist: Relative move distance in millimeters.
+            speed: Requested move speed. When omitted, a context-appropriate default is chosen.
+            accel: Requested acceleration. When omitted, a context-appropriate default is chosen.
+            motor: Motor mode to use for the move, such as gear, extruder, or synced movement.
+            homing_move: Non-zero to perform a homing move; the sign indicates the expected trigger direction.
+            endstop_name: Endstop to use for homing moves.
+            track: Whether the move should update per-gate tracking statistics.
+            wait: Whether to wait for motion queues to drain after the move.
+            encoder_dwell: Whether to add dwell time when sampling encoder position.
+            speed_override: Whether per-gate speed overrides should be applied.
+            suppress_grip_change: Prevents explicit calling to correct grip (buzz gear on down case)
 
         Returns:
-            tuple(actual, homed, measured, delta)
+            tuple[float, bool, float, float]: Actual movement, homing success flag, encoder-measured movement, and the difference between commanded and measured travel.
         """
         u = self.mmu_unit()
         drive = self.drive()
@@ -1824,21 +1800,29 @@ class MmuFilamentMovement:
             try:
                 if motor == "gear":
                     # normal gear-only movement
+                    if not suppress_grip_change:
+                        self.selector().filament_drive()
                     drive.sync_mode(DRIVE_UNSYNCED)
                     self._restore_gear_current()
 
                 elif motor == "gear+extruder":
                     # gear leads, extruder follows manually
+                    if not suppress_grip_change:
+                        self.selector().filament_drive()
                     drive.sync_mode(DRIVE_EXTRUDER_SYNCED_TO_GEAR)
                     self._restore_gear_current()
 
                 elif motor == "extruder":
                     # extruder-only-on-gear semantics
+                    if not suppress_grip_change:
+                        self.selector().filament_release()
                     drive.sync_mode(DRIVE_EXTRUDER_ONLY)
                     self._restore_gear_current()
 
                 elif motor == "synced":
                     # extruder leads, gear follows extruder
+                    if not suppress_grip_change:
+                        self.selector().filament_drive()
                     drive.sync_mode(DRIVE_GEAR_SYNCED_TO_EXTRUDER)
                     self._adjust_gear_current(percent=u.p.sync_gear_current, reason="for extruder synced move")
 
@@ -1923,262 +1907,6 @@ class MmuFilamentMovement:
                     self.gate_statistics[self.gate_selected]['quality'] = (cur_quality * 9 + quality) / 10
 
         return actual, homed, measured, delta
-
-
-# PAUL: Previous logic (as reference)
-#    # Convenience wrapper around all gear and extruder motor movement that retains sync state, tracks movement and creates trace log
-#    # motor = "gear"           - gear motor(s) only on rail
-#    #         "gear+extruder"  - gear and extruder included on rail
-#    #         "extruder"       - extruder only on gear rail
-#    #         "synced"         - gear synced with extruder as in print (homing move not possible)
-#    #
-#    # If homing move then endstop name can be specified.
-#    #         "mmu_shared_exit"       - at the gate on MMU (when motor includes "gear")
-#    #         "mmu_exit_N"     - post past the filament drive gear
-#    #         "extruder"       - just before extruder entrance (motor includes "gear" or "extruder")
-#    #         "toolhead"       - after extruder entrance (motor includes "gear" or "extruder")
-#    #         "mmu_gear_touch" - stallguard on gear (when motor includes "gear", only useful for motor="gear")
-#    #         "mmu_ext_touch"  - stallguard on nozzle (when motor includes "extruder", only useful for motor="extruder")
-#    #
-#    # All move distances are interpreted as relative
-#    # 'wait' will wait on appropriate move queue(s) after completion of move (forced to True if need encoder reading)
-#    # 'measure' whether we need to wait and measure encoder for movement
-#    # 'encoder_dwell' delay some additional time to ensure we have accurate encoder reading (if encoder fitted and required for measuring)
-#    #
-#    # All moves return: actual (relative), homed, measured, delta; mmu_toolhead().get_position[1] holds absolute position
-#    #
-#    def move_filament(self, trace_str, dist, speed=None, accel=None, motor="gear", homing_move=0, endstop_name="default", track=False, wait=False, encoder_dwell=False, speed_override=True):
-#        """
-#        Execute a traced filament move and report actual motion, homing result, and encoder data.
-#
-#        Args:
-#            trace_str: Human-readable trace prefix to log after the move completes.
-#            dist: Relative move distance in millimeters.
-#            speed: Requested move speed. When omitted, a context-appropriate default is chosen.
-#            accel: Requested acceleration. When omitted, a context-appropriate default is chosen.
-#            motor: Motor mode to use for the move, such as gear, extruder, or synced movement.
-#            homing_move: Non-zero to perform a homing move; the sign indicates the expected trigger direction.
-#            endstop_name: Endstop to use for homing moves.
-#            track: Whether the move should update per-gate tracking statistics.
-#            wait: Whether to wait for motion queues to drain after the move.
-#            encoder_dwell: Whether to add dwell time when sampling encoder position.
-#            speed_override: Whether per-gate speed overrides should be applied.
-#
-#        Returns:
-#            tuple[float, bool, float, float]: Actual movement, homing success flag, encoder-measured movement, and the difference between commanded and measured travel.
-#        """
-#        u = self.mmu_unit()
-#
-#        encoder_start = self.get_encoder_distance(dwell=encoder_dwell)
-#        pos = self.mmu_toolhead().get_position()
-#        ext_pos = self.toolhead.get_position()
-#        homed = False
-#        actual = dist
-#        delta = 0.
-#        null_rtn = (0., False, 0., 0.)
-#
-#        if homing_move != 0:
-#            # Check for valid endstop
-#            if endstop_name is None:
-#                endstops = self.gear_rail().get_endstops()
-#            else:
-#                endstop_name = self.sensor_manager.get_qualified_endstop_name(endstop_name)
-#                endstops = self.gear_rail().get_extra_endstop(endstop_name)
-#                if endstops is None:
-#                    self.log_error("Endstop '%s' not found" % endstop_name)
-#                    return null_rtn
-#
-#        # Set sensible speeds and accelaration if not supplied
-#        if motor in ["gear"]:
-#            if homing_move != 0:
-#                speed = speed or u.p.gear_homing_speed
-#                accel = accel or min(u.p.gear_from_filament_buffer_accel, u.p.gear_from_spool_accel)
-#            else:
-#                if abs(dist) > u.p.gear_short_move_threshold:
-#                    if dist < 0:
-#                        speed = speed or u.p.gear_unload_speed
-#                        accel = accel or u.p.gear_unload_accel
-#                    elif (not u.p.has_filament_buffer or (self.gate_selected >= 0 and self.gate_status[self.gate_selected] != GATE_AVAILABLE_FROM_BUFFER)):
-#                        speed = speed or u.p.gear_from_spool_speed
-#                        accel = accel or u.p.gear_from_spool_accel
-#                    else:
-#                        speed = speed or u.p.gear_from_filament_buffer_speed
-#                        accel = accel or u.p.gear_from_filament_buffer_accel
-#                else:
-#                    speed = speed or u.p.gear_short_move_speed
-#                    accel = accel or u.p.gear_short_move_accel
-#
-#        elif motor in ["gear+extruder", "synced"]:
-#            if homing_move != 0:
-#                speed = speed or min(u.p.gear_homing_speed, self.p.extruder_homing_speed)
-#                accel = accel or min(max(u.p.gear_from_filament_buffer_accel, u.p.gear_from_spool_accel), self.p.extruder_accel)
-#            else:
-#                speed = speed or (self.p.extruder_sync_load_speed if dist > 0 else self.p.extruder_sync_unload_speed)
-#                accel = accel or min(max(u.p.gear_from_filament_buffer_accel, u.p.gear_from_spool_accel), self.p.extruder_accel)
-#
-#        elif motor in ["extruder"]:
-#            if homing_move != 0:
-#                speed = speed or self.p.extruder_homing_speed
-#                accel = accel or self.p.extruder_accel
-#            else:
-#                speed = speed or (self.p.extruder_load_speed if dist > 0 else self.p.extruder_unload_speed)
-#                accel = accel or self.p.extruder_accel
-#
-#        else:
-#            self.log_assertion("Invalid motor specification '%s'" % motor)
-#            return null_rtn
-#
-#        # Apply per-gate speed override
-#        if self.gate_selected >= 0 and speed_override:
-#            adjust = self.gate_speed_override[self.gate_selected] / 100.
-#            speed *= adjust
-#            accel *= adjust
-#
-#        def _set_sync_mode(sync_mode):
-#            self.mmu_toolhead().sync(sync_mode)
-#            if sync_mode == DRIVE_GEAR_SYNCED_TO_EXTRUDER:
-#                self._adjust_gear_current(percent=u.p.sync_gear_current, reason="for extruder synced move")
-#            else:
-#                self._restore_gear_current() # 100%
-#
-#        with self._wrap_espooler(motor, dist, speed, accel, homing_move):
-#            wait = wait or self._wait_for_espooler # Allow eSpooler wrapper to force wait
-#
-#            # Gear rail is driving the filament
-#            start_pos = self.mmu_toolhead().get_position()[1]
-#            if motor in ["gear", "gear+extruder", "extruder"]:
-#                _set_sync_mode(DRIVE_EXTRUDER_SYNCED_TO_GEAR if motor == "gear+extruder" else DRIVE_EXTRUDER_ONLY if motor == "extruder" else DRIVE_GEAR_ONLY)
-#                if homing_move != 0:
-#                    trig_pos = [0., 0., 0., 0.]
-#                    hmove = HomingMove(self.printer, endstops, self.mmu_toolhead())
-#                    init_ext_mcu_pos = u.extruder_stepper_obj().stepper.get_mcu_position() # For non-homing extruder or if extruder not on gear rail
-#                    init_pos = pos[1]
-#                    pos[1] += dist
-#                    for _ in range(self.p.canbus_comms_retries):  # HACK: We can repeat because homing move
-#                        got_comms_timeout = False # HACK: Logic to try to mask CANbus timeout issues
-#                        try:
-#                            #initial_mcu_pos = u.extruder_stepper_obj().stepper.get_mcu_position()
-#                            #init_pos = pos[1]
-#                            #pos[1] += dist
-#                            with self.wrap_accel(accel):
-#                                trig_pos = hmove.homing_move(pos, speed, probe_pos=True, triggered=homing_move > 0, check_triggered=True)
-#                            homed = True
-#                            if self.gear_rail().is_endstop_virtual(endstop_name):
-#                                # Stallguard doesn't do well at slow speed. Try to infer move completion
-#                                if abs(trig_pos[1] - dist) < 1.0:
-#                                    homed = False
-#                        except self.printer.command_error as e:
-#                            # CANbus mcu's often seen to exhibit "Communication timeout" so surface errors to user
-#                            if abs(trig_pos[1] - dist) > 0. and "after full movement" not in str(e):
-#                                if 'communication timeout' in str(e).lower():
-#                                    got_comms_timeout = True
-#                                    speed *= 0.8 # Reduce speed by 20%
-#                                self.log_error("Did not complete homing move: %s" % str(e))
-#                            else:
-#                                if self.log_enabled(LOG_STEPPER):
-#                                    self.log_stepper("Did not home: %s" % str(e))
-#                            homed = False
-#                        finally:
-#                            halt_pos = self.mmu_toolhead().get_position()
-#                            ext_actual = (u.extruder_stepper_obj().stepper.get_mcu_position() - init_ext_mcu_pos) * u.extruder_stepper_obj().stepper.get_step_dist()
-#
-#                            # Support setup where a non-homing extruder is being used
-#                            if motor == "extruder" and not u.extruder_wrapper.homing_extruder:
-#                                # This isn't super accurate if extruder isn't (homing) MmuExtruder because doesn't have required endstop, thus this will
-#                                # overrun and even move slightly even if already homed. We can only correct the actual gear rail position.
-#                                halt_pos[1] += ext_actual
-#                                self.mmu_toolhead().set_position(halt_pos) # Correct the gear rail position
-#
-#                            actual = halt_pos[1] - init_pos
-#                            if self.log_enabled(LOG_STEPPER):
-#                                self.log_stepper("%s HOMING MOVE: max dist=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s, wait=%s >> %s" % (
-#                                        motor.upper(), dist, speed, accel, endstop_name, wait,
-#                                        (
-#                                            "%s halt_pos=%.1f (rail moved=%.1f, extruder moved=%.1f), "
-#                                            "start_pos=%.1f, trig_pos=%.1f"
-#                                            % (
-#                                                "HOMED" if homed else "DID NOT HOMED",
-#                                                halt_pos[1], actual, ext_actual, start_pos, trig_pos[1],
-#                                            )
-#                                        ),
-#                                    )
-#                                )
-#
-#                        if not got_comms_timeout:
-#                            break
-#                else:
-#                    if self.log_enabled(LOG_STEPPER):
-#                        self.log_stepper("%s MOVE: dist=%.1f, speed=%.1f, accel=%.1f, wait=%s" % (motor.upper(), dist, speed, accel, wait))
-#                    pos[1] += dist
-#                    with self.wrap_accel(accel):
-#                        self.mmu_toolhead().move(pos, speed)
-#
-#            # Extruder is driving, gear rail is following
-#            elif motor in ["synced"]:
-#                _set_sync_mode(DRIVE_GEAR_SYNCED_TO_EXTRUDER)
-#                if homing_move != 0:
-#                    self.log_error("Not possible to perform homing move while synced")
-#                else:
-#                    if self.log_enabled(LOG_STEPPER):
-#                        self.log_stepper("%s MOVE: dist=%.1f, speed=%.1f, accel=%.1f, wait=%s" % (motor.upper(), dist, speed, accel, wait))
-#                    ext_pos[3] += dist
-#                    self.toolhead.move(ext_pos, speed)
-#
-#            self.mmu_toolhead().flush_step_generation() # TTC mitigation (TODO still required?)
-#            self.toolhead.flush_step_generation()     # TTC mitigation (TODO still required?)
-#            if wait:
-#                self.movequeue_wait()
-#
-#        encoder_end = self.get_encoder_distance(dwell=encoder_dwell)
-#        measured = encoder_end - encoder_start
-#        delta = abs(actual) - measured # +ve means measured less than moved, -ve means measured more than moved
-#        if trace_str:
-#            if homing_move != 0:
-#                trace_str += ". Stepper: '%s' %s after moving %.1fmm (of max %.1fmm), encoder measured %.1fmm (delta %.1fmm)"
-#                trace_str = trace_str % (motor, ("homed" if homed else "did not home"), actual, dist, measured, delta)
-#            else:
-#                trace_str += ". Stepper: '%s' moved %.1fmm, encoder measured %.1fmm (delta %.1fmm)"
-#                trace_str = trace_str % (motor, dist, measured, delta)
-#            trace_str += " --> Pos: @%.1f, (e: %.1fmm)" % (self.mmu_toolhead().get_position()[1], encoder_end)
-#            self.log_trace(trace_str)
-#
-#        if self.can_use_encoder() and motor == "gear" and track:
-#            if dist > 0:
-#                self._track_gate_statistics('load_distance', self.gate_selected, dist)
-#                self._track_gate_statistics('load_delta', self.gate_selected, delta)
-#            else:
-#                self._track_gate_statistics('unload_distance', self.gate_selected, -dist)
-#                self._track_gate_statistics('unload_delta', self.gate_selected, delta)
-#            if dist != 0:
-#                quality = abs(1. - delta / dist)
-#                cur_quality = self.gate_statistics[self.gate_selected]['quality']
-#                if cur_quality < 0:
-#                    self.gate_statistics[self.gate_selected]['quality'] = quality
-#                else:
-#                    # Average down over 10 swaps
-#                    self.gate_statistics[self.gate_selected]['quality'] = (cur_quality * 9 + quality) / 10
-#
-#        return actual, homed, measured, delta
-#
-#    # Used to force accelaration override for homing moves
-#    @contextlib.contextmanager
-#    def wrap_accel(self, accel):
-#        """
-#        Temporarily override the acceleration limit used by the MMU toolhead.
-#
-#        Args:
-#            accel: Requested acceleration. When omitted, a context-appropriate default is chosen.
-#
-#        Yields:
-#            self while the temporary acceleration limit is active.
-#        """
-#        self.mmu_toolhead().get_kinematics().set_accel_limit(accel)
-#        try:
-#            yield self
-#        finally:
-#            self.mmu_toolhead().get_kinematics().set_accel_limit(None)
-
-
 
 
 # -----------------------------------------------------------------------------------------------------------
@@ -2309,7 +2037,7 @@ class MmuFilamentMovement:
         self.log_debug("Checking for filament in MMU...")
         detected = self.sensor_manager.check_any_sensors_in_path()
         if not detected and self.has_encoder():
-            self.selector().filament_drive()
+            self.selector().filament_drive() # Prevent accidental encoder movement by griping early
             detected = self.buzz_gear_motor()
             self.log_debug("Filament %s in encoder after buzzing gear motor" % ("detected" if detected else "not detected"))
         if detected is None:
@@ -2327,7 +2055,7 @@ class MmuFilamentMovement:
         self.log_debug("Checking for filament at gate...")
         detected = self.sensor_manager.check_any_sensors_before(FILAMENT_POS_HOMED_GATE, self.gate_selected)
         if not detected and self.has_encoder():
-            self.selector().filament_drive()
+            self.selector().filament_drive() # Prevent accidental encoder movement by griping early
             detected = self.buzz_gear_motor()
             self.log_debug("Filament %s in encoder after buzzing gear motor" % ("detected" if detected else "not detected"))
         if detected is None:
@@ -2345,7 +2073,7 @@ class MmuFilamentMovement:
         self.log_debug("Checking for runout...")
         runout = self.sensor_manager.check_for_runout()
         if runout is None and self.has_encoder():
-            self.selector().filament_drive()
+            self.selector().filament_drive() # Prevent accidental encoder movement by griping early
             detected = not self.buzz_gear_motor()
             self.log_debug("Filament %s in encoder after buzzing gear motor" % ("detected" if detected else "not detected"))
             runout = not detected
@@ -2393,7 +2121,7 @@ class MmuFilamentMovement:
             with self.require_encoder(): # Force quality measurement
                 self.log_info("Checking for possibility of filament still in extruder gears...")
                 self._ensure_safe_extruder_temperature(wait=False)
-                self.selector().filament_release()
+                self.selector().filament_release() # Prevent accidental encoder movement by releasing early
                 move = u.p.encoder_move_step_size
                 _, _, measured, _ = self.move_filament("Checking extruder", -move, speed=self.p.extruder_unload_speed, motor="extruder")
                 detected = measured > self.encoder().movement_min()
@@ -2429,105 +2157,24 @@ class MmuFilamentMovement:
 # MMU/Extruder Synchronization
 # -----------------------------------------------------------------------------------------------------------
 
-    def reset_sync_gear_to_extruder(self, sync_intention, force_grip=False, force_in_print=False, skip_extruder_check=False):
+    def _sync_gear_to_extruder(self, sync):
         """
-        Reconcile the desired gear-to-extruder sync state with current context and safety rules.
-
-        Args:
-            sync_intention: Requested sync intent from the caller for the current operation.
-            force_grip: Whether filament grip or release should be forced even when suppression is active.
-            force_in_print: Whether print-context checks should behave as though a print is active.
-            skip_extruder_check: Whether to bypass the normal check that filament is past the extruder entry point.
-
-        Returns:
-            bool: Final sync state that was applied.
-        """
-        u = self.mmu_unit()
-        self.log_stepper(
-            f"reset_sync_gear_to_extruder("
-            f"sync_intention={sync_intention}, "
-            f"force_grip={force_grip}, "
-            f"force_in_print={force_in_print}, "
-            f"skip_extruder_check={skip_extruder_check})"
-        )
-
-        bypass_selected = (self.gate_selected == TOOL_GATE_BYPASS)
-        in_print_context = self.is_in_print(force_in_print)
-        actively_printing = self.is_printing(force_in_print)
-
-        filament_past_entry = self.filament_pos >= FILAMENT_POS_EXTRUDER_ENTRY
-        extruder_check_ok = filament_past_entry or skip_extruder_check
-
-        always_gripped = u.filament_always_gripped
-        standalone_sync_requested = self._standalone_sync
-
-        # In a non-print context we also honor the caller's explicit intention.
-        wants_sync_out_of_print = always_gripped or standalone_sync_requested or sync_intention
-
-        if bypass_selected:
-            sync = False
-
-        elif in_print_context:
-            if actively_printing:
-                # During active printing, respect the print-time sync setting.
-                sync = bool(u.p.sync_to_extruder)
-            else:
-                # In print context but not actively printing (e.g., paused/warming),
-                # sync only if filament is present (or overridden) and sync is needed/requested
-                sync = extruder_check_ok and (always_gripped or standalone_sync_requested)
-
-        else:
-            # Not in a print: sync if filament is present (or overridden) and any
-            # condition requires/requests syncing.
-            sync = extruder_check_ok and wants_sync_out_of_print
-
-        self.sync_gear_to_extruder(sync, force_grip=force_grip)
-        return sync
-
-
-    def sync_gear_to_extruder(self, sync, gate=None, force_grip=False):
-        """
-        Apply or remove direct synchronization between the gear motor and the extruder.
+        Apply or remove direct synchronization between the gear motor and
+        extruder and adjust stepper currents.
 
         Args:
             sync: Whether to sync the gear motor to the extruder.
-            gate: Gate index to operate on. When omitted, the current selection is used.
-            force_grip: Whether filament grip or release should be forced even when suppression is active.
-
-        Returns:
-            None. Applies sync state, grip state, and current changes in place.
         """
+
         u = self.mmu_unit()
-        sync = bool(sync)
-        self.log_stepper(
-            "sync_gear_to_extruder("
-            f"sync={sync}, "
-            f"gate={gate}, "
-            f"force_grip={force_grip})"
-        )
+        self.log_stepper(f"_sync_gear_to_extruder(sync={sync})")
 
-        # Default to current selection; some designs call this before gate selection is finalized.
-        if gate is None:
-            gate = self.gate_selected
-
-        bypass_or_unknown_gate = gate < 0
+        # Protect cases where we should not sync (note type-B always has a homed selector).
+        bypass_or_unknown_gate = self.gate_selected < 0
         selector_ready = self.selector().is_homed
-
-        # Protect cases where we should not sync (type-B always has a homed selector).
         if bypass_or_unknown_gate or not selector_ready:
             sync = False
             self._standalone_sync = False
-
-        # Filament grip handling (do this before syncing to avoid "buzz" movement on type-A MMUs).
-        if sync:
-            self.selector().filament_drive()
-        else:
-            # There are situations where we want to be lazy to avoid servo "flutter":
-            #   - `_suppress_release_grip` is True unless we are the outermost caller.
-            #   - `force_grip` can override that suppression.
-            should_release = force_grip or not self._suppress_release_grip
-            if should_release:
-                self.selector().filament_release()
 
         # Sync to / unsync from extruder
         if self.drive().is_synced_to_extruder() and not sync:
@@ -2545,36 +2192,114 @@ class MmuFilamentMovement:
             if u.multigear and gate != self.gate_selected:
                 self._restore_gear_current()  # Restore previous gear stepper to 100%
 
-            self._adjust_gear_current(gate=gate, percent=u.p.sync_gear_current, reason="for extruder syncing")
+            self._adjust_gear_current(percent=u.p.sync_gear_current, reason="for extruder syncing")
         else:
             self._restore_gear_current()  # 100%
+
+
+    def reset_sync_gear_to_extruder(self, sync_intention=None, force_grip=False, skip_extruder_check=False, force_in_print=False):
+        """
+        Reconcile the desired gear-to-extruder sync state with current context and safety rules.
+
+        Args:
+            sync_intention: Requested sync intent from the caller for the current operation.
+            force_grip: Whether filament grip or release should be forced to change even when suppression is active.
+            skip_extruder_check: Whether to bypass the normal check that filament is past the extruder entry point.
+
+        Returns:
+            bool: Final sync state that was applied.
+        """
+        u = self.mmu_unit()
+
+        bypass_selected = (self.gate_selected == TOOL_GATE_BYPASS)
+        filament_in_extruder = (
+            (self.filament_pos >= FILAMENT_POS_EXTRUDER_ENTRY)
+            and not skip_extruder_check
+        )
+        out_of_print_sync = (
+            sync_intention
+            or (filament_in_extruder and u.filament_always_gripped)
+            or self._standalone_sync
+        )
+        sync = sync_intention
+
+        # Correct any obviously incorrect sync requests
+        if bypass_selected:
+            # Don't sync if in bypass
+            sync = False
+        elif not skip_extruder_check and not filament_in_extruder:
+            # Don't sync if filament is not in extruder
+            sync = False
+        elif filament_in_extruder and u.filament_always_gripped:
+            # Must sync by mmu design
+            sync = True
+
+        if sync is None:
+           if self.is_in_print(force_in_print):
+               if self.is_printing(force_in_print):
+                   # Actively printing
+                   if not skip_extruder_check and not filament_in_extruder:
+                       sync = False
+                   else:
+                       # Respect the print-time sync setting.
+                       sync = bool(u.p.sync_to_extruder)
+               else:
+                   # In print context but not actively printing (e.g., paused)
+                   sync = out_of_print_sync
+           else:
+               # Not in a print
+               sync = out_of_print_sync
+
+        self.log_stepper(
+            f"reset_sync_gear_to_extruder("
+            f"sync_intention={sync_intention}, "
+            f"force_grip={force_grip}, "
+            f"skip_extruder_check={skip_extruder_check}) "
+            f"--> sync={sync}"
+        )
+
+        # Filament grip handling (do this before syncing to avoid "buzz" movement on type-A MMUs).
+        if force_grip:
+            if sync:
+                self.selector().filament_drive()
+            else:
+                self.selector().filament_release()
+
+        self._sync_gear_to_extruder(sync)
+        return sync
 
 
     @contextlib.contextmanager
     def wrap_sync_gear_to_extruder(self):
         """
-        Preserve sync and grip state across a block that temporarily changes them.
+        Preserve sync state across a block. Grip restoration is only performed by
+        the outermost wrapper, because it is expensive.
 
         Yields:
             self while nested operations may temporarily alter sync and grip state.
         """
         # Capture current sync state so it can be restored on exit.
         previous_sync = self.drive().is_synced_to_extruder()
+        previous_grip = self.selector().get_filament_grip_state()
+        #self.log_warning(f"PAUL: wrapper saving previous_sync={previous_sync}, previous_grip={previous_grip}")
 
-        # Suppress grip release only at the outermost level.
-        outermost_wrapper = not self._suppress_release_grip
-        self._suppress_release_grip = True
+        if not hasattr(self, "_sync_gear_wrap_depth"):
+            self._sync_gear_wrap_depth = 0
+        self._sync_gear_wrap_depth += 1
 
         try:
             yield self
-        finally:
-            # Only the outermost wrapper clears suppression.
-            if outermost_wrapper:
-                self._suppress_release_grip = False
 
-            # Restore prior sync state. Logic inside reset_sync_gear_to_extruder
-            # may consult the global suppression flag when reconciling grip.
-            self.reset_sync_gear_to_extruder(previous_sync)
+        finally:
+            self._sync_gear_wrap_depth -= 1
+            outermost = self._sync_gear_wrap_depth == 0
+
+            # Restore prior sync state and grip if outermost wrapper
+            #self.log_warning(f"PAUL: setting previous_sync={previous_sync}")
+            self._sync_gear_to_extruder(previous_sync)
+            if outermost:
+                #self.log_warning(f"PAUL: setting previous_grip={previous_grip}")
+                self.selector().set_filament_grip(previous_grip)
 
 
 # -----------------------------------------------------------------------------------------------------------

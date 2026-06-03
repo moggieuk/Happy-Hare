@@ -149,6 +149,35 @@ class KConfig(kconfiglib.Kconfig):
         return result
 
 
+class ParsedKConfig:
+    """
+    Lightweight Kconfig with just essentials for pickling without getting to
+    silly recursion depths with dill.pickle(). Depth was >20000!
+    """
+    def __init__(self, config_file, values, choices):
+        self.config_file = config_file
+        self.values = values
+        self.choices = choices
+
+    def is_selected(self, choice, value):
+        if isinstance(value, list):
+            return any(self.is_selected(choice, v) for v in value)
+        return self.choices.get(choice) == value
+
+    def is_enabled(self, sym):
+        return bool(self.values.get(sym))
+
+    def getint(self, sym):
+        return int(self.values[sym])
+
+    def get(self, sym):
+        if sym not in self.values:
+            raise KeyError("Symbol '{}' not found in Kconfig".format(sym))
+        return self.values[sym]
+
+    def as_dict(self):
+        return dict(self.values)
+
 # ---------------------------------------
 
 
@@ -497,10 +526,10 @@ def install_includes(dest_file, kconfig):
                 logging.debug(" > Removing include [{}]".format(include))
                 builder.remove_section(include)
 
+    # Optional macros
     check_include(builder, "INSTALL_12864_MENU", "mmu/optional/mmu_menu.cfg")
     check_include(builder, "INSTALL_CLIENT_MACROS", "mmu/optional/client_macros.cfg")
-    check_include(builder, "ADDON_EREC_CUTTER", "mmu/addons/mmu_erec_cutter.cfg")
-    check_include(builder, "ADDON_BLOBIFIER", "mmu/addons/blobifier.cfg")
+    check_include(builder, "INSTALL_EREC_CUTTER", "mmu/optional/mmu_erec_cutter.cfg")
 
     if not builder.has_section("include mmu/macros/*.cfg"):
         logging.debug(" > Adding include [include mmu/macros/*.cfg]")
@@ -610,29 +639,87 @@ def check_version(kconfig, input_files):
     logging.log(LEVEL_NOTICE, "Will try to upgrade to " + target_version)
 
 
+# Pickling the Kconfig object was getting to silly recursion depths >20000
+# So changed to pickle a light weight version
+#def pre_parse_kconfig(kconfig):
+#    out = os.getenv("OUT")
+#    base = os.path.basename(kconfig)
+#    pickle_file = "%s/%s.pickle" % (out, base)
+#    logging.debug(" > Pickling kconfig file: %s -> %s" % (kconfig, pickle_file))
+#    kcfg = KConfig(kconfig)
+#    sys.setrecursionlimit(30000)  # Increase recursion limit for pickling kconfiglib structures
+#    with open(pickle_file, "wb") as f:
+#        dill.dump(kcfg, f, recurse=True)
+#
+#
+#def load_parsed_kconfig(kconfig):
+#    out = os.getenv("OUT")
+#    base = os.path.basename(kconfig)
+#    pickle_file = "%s/%s.pickle" % (out, base)
+#    logging.debug(" > Loading pickled kconfig file: %s" % pickle_file)
+#    try:
+#        with open(pickle_file, "rb") as f:
+#            return dill.load(f)
+#    except FileNotFoundError:
+#        # This shouldn't happen because we want make to decide on staleness
+#        logging.warning("Pre-parsed kconfig (%s) for '%s' not available... Parsing original" % (pickle_file, kconfig))
+#        return KConfig(kconfig)
+#    except Exception as e:
+#        logging.error("Error unpickling '%s' (%s)" % (pickle_file, e))
+#        exit(1)
+
+
 def pre_parse_kconfig(kconfig):
     out = os.getenv("OUT")
     base = os.path.basename(kconfig)
     pickle_file = "%s/%s.pickle" % (out, base)
+
     logging.debug(" > Pickling kconfig file: %s -> %s" % (kconfig, pickle_file))
-    kcfg = KConfig(kconfig)
-    sys.setrecursionlimit(20000)  # Increase recursion limit for pickling kconfiglib structures
-    with open(pickle_file, "wb") as f:
-        dill.dump(kcfg, f, recurse=True)
+
+    tmp_file = pickle_file + ".tmp"
+    try:
+        kcfg = KConfig(kconfig)
+        data = {
+            "config_file": kconfig,
+            "values": kcfg.as_dict(),
+            "choices": {
+                name: choice.selection.name
+                for name, choice in kcfg.named_choices.items()
+                if choice.selection
+            },
+        }
+        with open(tmp_file, "wb") as f:
+            dill.dump(data, f)
+
+        os.replace(tmp_file, pickle_file)
+
+    except Exception as e:
+        if os.path.exists(tmp_file):
+            os.unlink(tmp_file)
+        logging.error("Error pickling '%s' (%s)" % (pickle_file, e))
+        exit(1)
 
 
 def load_parsed_kconfig(kconfig):
     out = os.getenv("OUT")
     base = os.path.basename(kconfig)
     pickle_file = "%s/%s.pickle" % (out, base)
+
     logging.debug(" > Loading pickled kconfig file: %s" % pickle_file)
+
     try:
         with open(pickle_file, "rb") as f:
-            return dill.load(f)
+            data = dill.load(f)
+            return ParsedKConfig(
+                data["config_file"],
+                data["values"],
+                data.get("choices", {})
+            )
+
     except FileNotFoundError:
-        # This shouldn't happen because we want make to decide on staleness
-        logging.warning("Pre-parsed kconfig for '%s' not available... Parsing original" % kconfig)
+        logging.warning("Pre-parsed kconfig (%s) for '%s' not available... Parsing original" % (pickle_file, kconfig))
         return KConfig(kconfig)
+
     except Exception as e:
         logging.error("Error unpickling '%s' (%s)" % (pickle_file, e))
         exit(1)

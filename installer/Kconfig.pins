@@ -580,14 +580,6 @@ menu "Pins / TMC"
 # Misc pins
 # -------------------------------------
 
-  config PIN_TOOLHEAD_SENSOR
-    string
-    prompt "Toolhead sensor pin   " if MMU_HAS_SENSOR_TOOLHEAD && !MULTI_UNIT
-
-  config PIN_EXTRUDER_SENSOR
-    string
-    prompt "Extruder sensor pin   " if MMU_HAS_SENSOR_EXTRUDER && !MULTI_UNIT
-
   config PIN_ENCODER
     string
     prompt "Encoder pin           " if MMU_HAS_ENCODER && !MMU_SHARED_ENCODER
@@ -597,31 +589,10 @@ menu "Pins / TMC"
     prompt "Neopixel pin          " if MMU_HAS_LEDS
 
 
-  if !MULTI_UNIT
-    config PIN_GANTRY_SERVO
-      string "Gantry servo pin      "
-      help
-        Optional. Used to deploy fold-down "bumper" for tip cutting
-        when using a toolhead mounted filament cutting blade
-  endif
-
-
 # -------------------------------------
-# Addon pins (TODO: not yet integrated)
+# Per-printer pins
 # -------------------------------------
 
-  menu "Addons"
-    depends on ADDON_EREC_CUTTER || ADDON_BLOBIFIER
-
-    config PIN_EREC_CUTTER_SERVO
-      string "EREC Cutter servo pin " if ADDON_EREC_CUTTER
-
-    config PIN_BLOBIFIER_SERVO
-      string "Blobifer servo pin    " if ADDON_BLOBIFIER
-
-    config PIN_BLOBIFIER_BUCKET_SWITCH
-      string "Blobifer bucket switch" if ADDON_BLOBIFIER
-
-  endmenu
+  source "Kconfig.shared_pins"
 
 endmenu

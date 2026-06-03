@@ -13,15 +13,15 @@ menu "Gear stepper"
     default "1:1"
 
   config PARAM_GEAR_ROTATION_DISTANCE
-    string "Gear rotation distance"
-    default "22.7316868"
+    float "Gear rotation distance"
+    default 22.7316868
 
   config PARAM_GEAR_RUN_CURRENT
-    string "Gear run current      "
-    default "0.7"
+    float "Gear run current      "
+    default 0.7
 
   config PARAM_GEAR_HOLD_CURRENT
-    string "Gear hold current     "
-    default "0.1"
+    float "Gear hold current     "
+    default 0.1
 
 endmenu
