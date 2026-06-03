@@ -415,8 +415,8 @@ class MmuController(MmuFilamentMovement):
             # Sync lane data to Moonraker for slicer integration and cleanup old lanes
             self._moonraker_sync_lane_data()
 
-            # Reset sync state (intention is not to sync unless we have to)
-            self.reset_sync_gear_to_extruder(False)
+            # Reset sync state and grip
+            self.reset_sync_gear_to_extruder(force_grip=True)
             self.movequeue_wait()
 
             # Status to console...
@@ -1494,7 +1494,7 @@ class MmuController(MmuFilamentMovement):
             self.recover_filament_pos(message=True)
 
         # Intention is not to sync unless we have to but will be restored on resume/continue_printing
-        self.reset_sync_gear_to_extruder(False)
+        self.reset_sync_gear_to_extruder(force_grip=True)
 
         if send_event:
             self.printer.send_event("mmu:mmu_paused") # Notify MMU paused event
@@ -1545,6 +1545,7 @@ class MmuController(MmuFilamentMovement):
             self.psm.set_print_state(self.psm.resume_to_state)
             self.psm.resume_to_state = "ready"
             self.printer.send_event("mmu:mmu_resumed")
+
         elif self.is_mmu_paused():
             # If paused we can only continue on resume
             return
@@ -1555,7 +1556,7 @@ class MmuController(MmuFilamentMovement):
             self.initialize_encoder(dwell=None) # Encoder 0000
 
             # Restablish desired syncing state and grip (servo) position
-            self.reset_sync_gear_to_extruder(self.mmu_unit().p.sync_to_extruder, force_in_print=force_in_print)
+            self.reset_sync_gear_to_extruder(force_grip=True, force_in_print=force_in_print)
 
         # Good place to reset the _next_tool marker because after any user fix on toolchange error/pause
         self._next_tool = TOOL_GATE_UNKNOWN
@@ -2002,9 +2003,9 @@ class MmuController(MmuFilamentMovement):
     def motors_onoff(self, on=False, motor="all"):
         if motor in ["all", "gear", "gears"]:
             if on:
-                self.reset_sync_gear_to_extruder(False)
+                self.reset_sync_gear_to_extruder(force_grip=True)
             else:
-                self.drive().sync_mode(DRIVE_UNSYNCED)
+                self.reset_sync_gear_to_extruder(False, force_grip=True)
 
         for mmu_unit in self.mmu_machine.units:
             mmu_unit.motors_onoff(on, motor)

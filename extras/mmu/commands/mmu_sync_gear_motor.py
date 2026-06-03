@@ -54,7 +54,7 @@ class MmuSyncGearMotorCommand(BaseCommand):
 
         if self.check_if_bypass(): return
 
-        sync = gcmd.get_int('SYNC', 1, minval=0, maxval=1)
+        sync = bool(gcmd.get_int('SYNC', 1, minval=0, maxval=1))
 
         if not sync and self.check_if_always_gripped():
             return
