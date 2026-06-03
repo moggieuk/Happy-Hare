@@ -53,4 +53,4 @@ class MmuMotorsOnCommand(BaseCommand):
 
         mmu_unit.motors_onoff(on=True)
         # Re-establish sync state after powering up
-        mmu.reset_sync_gear_to_extruder(False)
+        mmu.reset_sync_gear_to_extruder(force_grip=True)

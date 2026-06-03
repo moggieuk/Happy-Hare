@@ -75,7 +75,7 @@ class MmuTestTrackingCommand(BaseCommand):
                         bowden_move=100. if direction == DIRECTION_LOAD else 200.,
                         skip_extruder=True
                     )
-                    mmu.selector().filament_drive()
+                    mmu.selector().filament_drive() # To ensure encoder is not disturbed on initial grip
 
                 with mmu.require_encoder():
                     mmu.initialize_filament_position()

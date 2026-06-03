@@ -178,9 +178,11 @@ class ServoSelector(PhysicalSelector):
 
 
     def filament_drive(self):
+# PAUL FIXME ..  called frequently
         self._grip(self.local_gate(self.mmu.gate_selected))
 
     def filament_release(self, measure=False):
+# PAUL FIXME ..  called frequently
         if not self.mmu_unit.filament_always_gripped:
             self._grip(self.local_gate(self.mmu.gate_selected), release=True)
         return 0. # Fake encoder movement

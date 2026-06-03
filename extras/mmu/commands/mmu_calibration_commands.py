@@ -179,7 +179,6 @@ class MmuCalibrateEncoderCommand(CalibrationMixin, BaseCommand):
 
             with mmu.wrap_sync_gear_to_extruder():
                 with mmu.require_encoder():
-                    mmu_unit.selector.filament_drive()
                     _,_,measured,_ = mmu.move_filament("Checking for filament", advance)
 
                     if measured < mmu_unit.encoder.encoder_min:
@@ -752,7 +751,6 @@ class MmuCalibratePsensorCommand(CalibrationMixin, BaseCommand):
         try:
             with mmu.wrap_sync_gear_to_extruder():
                 with mmu.wrap_gear_current(percent=mmu_unit.p.sync_gear_current, reason="while calibrating sync feedback buffer psensor"):
-                    mmu_unit.selector.filament_drive()
                     mmu.calibrating = True
 
                     raw0 = _avg_raw()

@@ -35,11 +35,15 @@ class MmuTestMoveCommand(MoveMixin, BaseCommand):
         + "SPEED        = mm/s   Optionally override the default speed\n"
         + "ACCEL        = mm/s^2 Optionally override the default accelarateion\n"
         + "MOTOR        = [gear|extruder|gear+extruder|synced] Select motor to operation on (default: gear)\n"
+        + "GRIP         = 1      To retain grip on filament after move for type-A testing\n"
         + "WAIT         = [0|1]  Wait for move to complete (make move synchronous)\n"
         + "DEBUG        = [0|1]  Turn on developer stepper movement debugging\n"
     )
     HELP_SUPPLEMENT = (
-        ""  # add examples here if desired
+        "Examples:\n"
+        + "%s SPEED=100                   ...Move filament default 100mm at 100mm/s speed\n" % CMD
+        + "%s MOVE=50 MOTOR=gear+extruder ...Move filament 50mm sync extruder synced to gear\n" % CMD
+        + "%s MOVE=100 GRIP=1             ...Move filament 100mm retaining filament grip (useful for MMU_CALIBRATE_GEAR on type-A)\n" % CMD
     )
 
     def __init__(self, mmu):
@@ -60,7 +64,12 @@ class MmuTestMoveCommand(MoveMixin, BaseCommand):
         if self.check_if_disabled(): return
 
         debug = bool(gcmd.get_int('DEBUG', 0, minval=0, maxval=1))  # Hidden option
+        grip = bool(gcmd.get_int('GRIP', 0, minval=0, maxval=1))
         allow_bypass = bool(gcmd.get_int('ALLOW_BYPASS', 0, minval=0, maxval=1))
+
+        # If retaining grip must establish before wrap_sync_gear_to_extruder()
+        if grip:
+            mmu.selector().filament_drive()
 
         with mmu.wrap_sync_gear_to_extruder():
             with DebugStepperMovement(mmu, debug):

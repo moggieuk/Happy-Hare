@@ -786,8 +786,6 @@ class MmuUnit:
             mmu.sensor_manager.has_gate_sensor(SENSOR_EXIT_PREFIX, gate) and
             mmu.sensor_manager.check_gate_sensor(SENSOR_EXIT_PREFIX, gate)
         ):
-            self.selector.filament_drive()
-
             endstop_name = mmu.sensor_manager.get_gate_sensor_name(SENSOR_EXIT_PREFIX, gate)
             msg = "Reverse homing off %s sensor" % endstop_name
             actual, homed = self._home_gear_motor(lgate, msg, -self.p.gate_homing_max, homing_move=-1, endstop_name=endstop_name)
@@ -797,8 +795,6 @@ class MmuUnit:
                 raise MmuError("Filament did not exit gate homing sensor: %s" % endstop_name)
 
         if self.p.gate_final_eject_distance > 0:
-            self.selector().filament_drive()
-
             msg = "Ejecting filament out of gate"
             if self.sensor_manager.check_gate_sensor(SENSOR_ENTRY_PREFIX, gate) is not None:
                 # Use homing move so we don't "over eject"

@@ -53,6 +53,6 @@ class MmuMotorsOffCommand(BaseCommand):
         if self.check_if_disabled():
             return
 
-        # Explicitly drop sync state before powering down
-        mmu.sync_gear_to_extruder(False, force_grip=True)
+        # Explicitly drop sync state and ensure we are released before powering down
+        mmu.reset_sync_gear_to_extruder(False, force_grip=True)
         mmu_unit.motors_onoff(on=False)
