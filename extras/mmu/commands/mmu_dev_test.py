@@ -1004,6 +1004,7 @@ class MmuTestCommand(BaseCommand):
             fil_pos = gcmd.get_int('FILAMENT_POS', -2, minval=-1, maxval=10)
             if fil_pos != -2:
                 have_run_test = True
+                mmu._is_running_test = False  # Else servo won't move
                 with mmu.wrap_sync_gear_to_extruder():
                     mmu.set_filament_pos_state(fil_pos)
 

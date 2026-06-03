@@ -2230,7 +2230,7 @@ class MmuFilamentMovement:
             or self._standalone_sync
         )
 
-        sync = bool(sync_intention)
+        sync = sync_intention
 
         # Override caller intent for states where sync is impossible or required.
         if bypass_selected:
@@ -2290,9 +2290,8 @@ class MmuFilamentMovement:
             self while nested operations may temporarily alter sync and grip state.
         """
         # Capture current sync state so it can be restored on exit.
-        previous_sync = self.drive().is_synced_to_extruder()
-        previous_grip = self.selector().get_filament_grip_state()
-        #self.log_warning(f"PAUL: wrapper saving previous_sync={previous_sync}, previous_grip={previous_grip}")
+        previous_sync = self.drive().is_synced_to_extruder()      # PAUL don't think we require now?
+        previous_grip = self.selector().get_filament_grip_state() # PAUL don't think we require now?
 
         if not hasattr(self, "_sync_gear_wrap_depth"):
             self._sync_gear_wrap_depth = 0
@@ -2304,13 +2303,7 @@ class MmuFilamentMovement:
         finally:
             self._sync_gear_wrap_depth -= 1
             outermost = self._sync_gear_wrap_depth == 0
-
-            # Restore prior sync state and grip if outermost wrapper
-            #self.log_warning(f"PAUL: setting previous_sync={previous_sync}")
-            self._sync_gear_to_extruder(previous_sync)
-            if outermost:
-                #self.log_warning(f"PAUL: setting previous_grip={previous_grip}")
-                self.selector().set_filament_grip(previous_grip)
+            self.reset_sync_gear_to_extruder(force_grip=outermost)
 
 
 # -----------------------------------------------------------------------------------------------------------
