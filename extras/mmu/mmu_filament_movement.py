@@ -1184,13 +1184,7 @@ class MmuFilamentMovement:
 
             elif purge == PURGE_STANDALONE and not skip_extruder:
                 with self._wrap_track_time('purge'):
-
-                    # Restore the expected sync state now before running this macro
-                    # (we also must force correction of filament grip for old blobifer/unsynced functionality)
-                    self.reset_sync_gear_to_extruder(not extruder_only and u.p.sync_purge, force_grip=True)
-
-                    with self.wrap_action(ACTION_PURGING):
-                        self.purge_standalone()
+                    self.purge_standalone()
 
             # POST_LOAD user defined macro
             if macros_and_track:
@@ -1467,8 +1461,8 @@ class MmuFilamentMovement:
             raise MmuError("Filament tip forming macro '%s' not found" % self.p.form_tip_macro)
 
         with self.wrap_action(ACTION_CUTTING_TIP if self.has_toolhead_cutter else ACTION_FORMING_TIP):
-            sync = self.reset_sync_gear_to_extruder(not extruder_only and u.p.sync_form_tip)
             self._ensure_safe_extruder_temperature(wait=True)
+            sync = self.reset_sync_gear_to_extruder(not extruder_only and u.p.sync_form_tip, force_grip=True)
 
             # Perform the tip forming move and establish park_pos
             initial_encoder_position = self.get_encoder_distance()
@@ -1584,34 +1578,45 @@ class MmuFilamentMovement:
         return park_pos, filament_remaining, reported
 
 
-    def purge_standalone(self):
+    def purge_standalone(self, extruder_only=False):
         """
         Run the configured standalone purge macro, if one is available.
         """
         u = self.mmu_unit()
 
-        if self.p.purge_macro:
-            gcode_macro = self.printer.lookup_object(f"gcode_macro {self.p.purge_macro}", None)
-            if gcode_macro:
-                self.log_info("Purging...")
-                with self._wrap_extruder_current(self.p.extruder_purge_current, "for filament purge"):
-                    # The macro to decide on the purge volume, but expect to be based on this.
-                    msg = (
-                        f"Suggested purge volume of {self.toolchange_purge_volume:.1f}mm{UI_CUBE} calculated from:\n"
-                        f"- toolhead_residual_filament: {u.toolhead_wrapper.p.toolhead_residual_filament:.1f}mm\n"
-                        f"- filament_remaining (previous cut fragment): {u.extruder_wrapper.filament_remaining:.1f}mm\n"
-                    )
-                    toolchange_volume_str = f"{self._slicer_purge_volume:.1f}mm{UI_CUBE}"
-                    msg += (
-                        f"- slicer purge volume for toolchange "
-                        f"{self.selected_tool_string(self._last_tool)} > "
-                        f"{self.selected_tool_string(self._next_tool)}: "
-                        f"{toolchange_volume_str}"
-                    )
-                    self.log_debug(msg)
-                    self.wrap_gcode_command(self.p.purge_macro, exception=True, wait=True)
-            else:
-                self.log_warning(f"Purge macro {self.p.purge_macro} not found")
+        if not self.p.purge_macro:
+            return
+
+        gcode_macro = self.printer.lookup_object(f"gcode_macro {self.p.purge_macro}", None)
+        if gcode_macro is None:
+            self.log_warning(f"Purge macro '{self.p.purge_macro}' not found")
+            return
+
+        with self.wrap_action(ACTION_PURGING):
+            self._ensure_safe_extruder_temperature(wait=True)
+            self.reset_sync_gear_to_extruder(not extruder_only and u.p.sync_purge, force_grip=True)
+
+            self.log_info("Purging...")
+
+            with self._wrap_extruder_current(self.p.extruder_purge_current, "for filament purge"):
+                # The macro to decide on the purge volume, but expect to be based on this.
+                msg = (
+                    f"Suggested purge volume of {self.toolchange_purge_volume:.1f}mm{UI_CUBE} calculated from:\n"
+                    f"- toolhead_residual_filament: {u.toolhead_wrapper.p.toolhead_residual_filament:.1f}mm\n"
+                    f"- filament_remaining (previous cut fragment): {u.extruder_wrapper.filament_remaining:.1f}mm\n"
+                )
+                toolchange_volume_str = f"{self._slicer_purge_volume:.1f}mm{UI_CUBE}"
+                msg += (
+                    f"- slicer purge volume for toolchange "
+                    f"{self.selected_tool_string(self._last_tool)} > "
+                    f"{self.selected_tool_string(self._next_tool)}: "
+                    f"{toolchange_volume_str}"
+                )
+                self.log_debug(msg)
+                macro = self.p.purge_macro
+                if extruder_only:
+                    macro += " EXTRUDER_ONLY=1"
+                self.wrap_gcode_command(macro, exception=True, wait=True)
 
 
 # -----------------------------------------------------------------------------------------------------------

@@ -29,9 +29,9 @@ class MmuTestPurgeCommand(BaseCommand):
     HELP_BRIEF = "Convenience macro for calling the standalone purging macro"
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
-        + "LAST_TOOL = t\n"
-        + "NEXT_TOOL = t\n"
-        + "EXTRUDER_ONLY = 1 To prevent syncing with MMU\n"
+        + "LAST_TOOL           = t\n"
+        + "NEXT_TOOL           = t\n"
+        + "EXTRUDER_ONLY       = 1 To prevent syncing with MMU\n"
     )
     HELP_SUPPLEMENT = (
         ""  # add examples here if desired
@@ -78,14 +78,7 @@ class MmuTestPurgeCommand(BaseCommand):
                 msg += "\nYou can also specify 'LAST_TOOL=.. NEXT_TOOL=..' to this command to override currently loaded tool"
                 mmu.log_info(msg)
 
-                mmu._ensure_safe_extruder_temperature(wait=True)
-
-                # Ensure sync state
-                mmu.reset_sync_gear_to_extruder(not extruder_only and u.p.sync_purge, force_grip=True)
-
-                mmu.log_info("Calling purge macro '%s'" % mmu.p.purge_macro)
-                with mmu.wrap_action(ACTION_PURGING):
-                    mmu.purge_standalone()
+                mmu.purge_standalone(extruder_only=extruder_only)
 
         except MmuError as ee:
             mmu.handle_mmu_error(str(ee))

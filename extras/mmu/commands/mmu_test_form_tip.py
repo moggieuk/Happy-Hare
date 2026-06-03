@@ -95,21 +95,21 @@ class MmuTestFormTipCommand(BaseCommand):
             elif param not in ["reset", "show", "run"]:
                 mmu.log_error("Variable '%s' is not defined for '%s' macro" % (param, mmu.p.form_tip_macro))
 
-        # Run the macro in test mode (final_eject is set)
+        # Actually run the macro in test mode (will final_eject) unless strangely run from a print job
         msg = "Running macro '%s' with the following variable settings:" % mmu.p.form_tip_macro
         for k, v in gcode_vars.variables.items():
             msg += "\nvariable_%s: %s" % (k, v)
         mmu.log_always(msg)
 
+        if not run:
+            return
+
         try:
             with mmu.wrap_sync_gear_to_extruder():
-                if run:
+                with mmu.wrap_action(ACTION_CUTTING_TIP if self.has_toolhead_cutter else ACTION_FORMING_TIP):
                     mmu._ensure_safe_extruder_temperature(wait=True)
-
-                    # Ensure sync state and mimick in print if requested
                     mmu.reset_sync_gear_to_extruder(not extruder_only and mmu.mmu_unit().p.sync_form_tip, force_grip=True)
-
-                    _, _, _ = mmu._do_form_tip(test=not mmu.is_in_print())
+                    _,_,_ = mmu._do_form_tip(test=not mmu.is_in_print())
                     mmu.set_filament_pos_state(FILAMENT_POS_UNLOADED)
 
         except MmuError as ee:
