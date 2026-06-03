@@ -41,13 +41,13 @@ choice TOOLHEAD_TYPE
     config PARAM_TOOLHEAD_TYPE
       default "Other/Unknown"
     config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
-      default "72"
+      default 72
     config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
-      default "62"
+      default 62
     config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
-      default "8"
+      default 8
     config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
-      default "2"
+      default 2
   endif
 
 endchoice
