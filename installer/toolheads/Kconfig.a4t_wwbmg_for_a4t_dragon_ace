@@ -5,11 +5,11 @@ if TOOLHEAD_TYPE_A4T_WWBMG_FOR_A4T_DRAGON_ACE
   config PARAM_TOOLHEAD_TYPE
     default "A4T WWBMG for A4T Dragon Ace"
   config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
-    default "88"
+    default 88
   config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
-    default "76.5"
+    default 76.5
   config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
-    default "9.5"
+    default 9.5
   config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
-    default "36.5"
+    default 36.5
 endif

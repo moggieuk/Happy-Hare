@@ -5,11 +5,11 @@ if TOOLHEAD_TYPE_ANTHEAD_WWG2_REVO_VORON
   config PARAM_TOOLHEAD_TYPE
     default "AntHead WWG2 Revo Voron"
   config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
-    default "91"
+    default 91
   config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
-    default "75"
+    default 75
   config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
-    default "13.6"
+    default 13.6
   config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
-    default "9"
+    default 9
 endif

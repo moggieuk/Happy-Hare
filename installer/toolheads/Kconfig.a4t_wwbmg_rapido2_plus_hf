@@ -5,11 +5,11 @@ if TOOLHEAD_TYPE_A4T_WWBMG_RAPIDO2_PLUS_HF
   config PARAM_TOOLHEAD_TYPE
     default "A4T WWBMG Rapido2 Plus HF"
   config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
-    default "88.5"
+    default 88.5
   config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
-    default "77"
+    default 77
   config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
-    default "9.7"
+    default 9.7
   config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
-    default "20.0"
+    default 20.0
 endif
