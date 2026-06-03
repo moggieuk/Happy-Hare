@@ -738,9 +738,7 @@ class MmuFilamentMovement:
             self._ensure_safe_extruder_temperature(wait=True)
             bowden_extra = None
 
-            has_tension = self.sensor_manager.has_sensor(SENSOR_TENSION)
-            has_compression = self.sensor_manager.has_sensor(SENSOR_COMPRESSION)
-            has_proportional = self.sensor_manager.has_sensor(SENSOR_PROPORTIONAL)
+            has_tension, has_compression, has_proportional = u.sync_feedback.get_active_sensors()
             has_toolhead = self.sensor_manager.has_sensor(SENSOR_TOOLHEAD)
 
             synced = not extruder_only
@@ -852,13 +850,7 @@ class MmuFilamentMovement:
                     and (has_tension or has_compression or has_proportional)
                     and u.sync_feedback.is_enabled()
                 ):
-                    # Try to put filament in neutral tension by centering between sensors
-                    # Two methods are available based on switch only sensors or proportional feedback
-                    actual, success = u.sync_feedback.adjust_filament_tension()
-                    if success:
-                        self.log_info("Filament tension in bowden successfully relaxed")
-                    else:
-                        self.log_warning("Unsuccessful in relaxing filament tension after adjusting %.1fmm" % actual)
+                    actual = self._adjust_filament_tension()
                     self.adjust_encoder_distance(actual)
 
             self._random_failure() # Testing
@@ -868,6 +860,22 @@ class MmuFilamentMovement:
 
 #            self.log_warning(f"PAUL: _load_extruder() => bowden_extra={bowden_extra}")
             return bowden_extra # Will only have value if we have toolhead sensor
+
+
+    def _adjust_filament_tension(self):
+        """
+        Helper to put filament in neutral tension using sync feedback.
+        Two methods are available based on switch only sensors or proportional feedback
+
+        Returns:
+            float: The correction distance moved
+        """
+        actual, success = self.mmu_unit().sync_feedback.adjust_filament_tension()
+        if success:
+            self.log_info("Filament tension in bowden successfully relaxed")
+        else:
+            self.log_warning("Unsuccessful in relaxing filament tension after adjusting %.1fmm" % actual)
+        return actual
 
 
     def _unload_extruder(self, extruder_only=False, validate=True):
@@ -2289,9 +2297,9 @@ class MmuFilamentMovement:
         Yields:
             self while nested operations may temporarily alter sync and grip state.
         """
-        # Capture current sync state so it can be restored on exit.
-        previous_sync = self.drive().is_synced_to_extruder()      # PAUL don't think we require now?
-        previous_grip = self.selector().get_filament_grip_state() # PAUL don't think we require now?
+        # Capture current sync state so it can be restored on exit
+#        previous_sync = self.drive().is_synced_to_extruder()      # PAUL don't think we require now?
+#        previous_grip = self.selector().get_filament_grip_state() # PAUL don't think we require now?
 
         if not hasattr(self, "_sync_gear_wrap_depth"):
             self._sync_gear_wrap_depth = 0

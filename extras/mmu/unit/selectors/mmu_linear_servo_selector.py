@@ -223,7 +223,7 @@ class LinearSelectorServo:
         if self.mmu._is_running_test: return # Save servo while testing
         if self.mmu.gate_selected == TOOL_GATE_BYPASS: return
         if self.servo_state == SERVO_DOWN_STATE: return
-        #self.mmu.log_warning("PAUL: SERVO DOWN")
+#        self.mmu.log_warning("PAUL: SERVO DOWN")
         self.mmu.log_trace("Setting servo to down (filament drive) position at angle: %d" % self.servo_angles['down'])
 
         if buzz_gear and self.p.servo_buzz_gear_on_down > 0:
@@ -248,7 +248,7 @@ class LinearSelectorServo:
     def servo_move(self): # Position servo for selector movement
         if self.mmu._is_running_test: return # Save servo while testing
         if self.servo_state == SERVO_MOVE_STATE: return
-        #self.mmu.log_warning("PAUL: SERVO MOVE")
+#        self.mmu.log_warning("PAUL: SERVO MOVE")
         self.mmu.log_trace("Setting servo to move (filament hold) position at angle: %d" % self.servo_angles['move'])
         if self.servo_angle != self.servo_angles['move']:
             self.mmu.movequeue_wait()
@@ -266,7 +266,7 @@ class LinearSelectorServo:
         """
         if self.mmu._is_running_test: return 0. # Save servo while testing
         if self.servo_state == SERVO_UP_STATE: return 0.
-        #self.mmu.log_warning("PAUL: SERVO UP")
+#        self.mmu.log_warning("PAUL: SERVO UP")
         self.mmu.log_trace("Setting servo to up (filament released) position at angle: %d" % self.servo_angles['up'])
         delta = 0.
         if self.servo_angle != self.servo_angles['up']:
@@ -355,8 +355,8 @@ class MmuServoCommand(BaseCommand):
     HELP_PARAMS = (
         "MMU_SERVO: %s\n" % HELP_BRIEF
         + "UNIT   = #(int) Optional, defaults to all units\n"
-        + "RESET  = [0|1]  Clear saved calibration\n"
-        + "SAVE   = [0|1]  Save current position against pos if calibrating\n"
+        + "RESET  = 1      Clear saved calibration\n"
+        + "SAVE   = 1      Save current position against pos if calibrating\n"
         + "POS    = [off|up|move|down]\n"
     )
     HELP_SUPPLEMENT = (
@@ -388,7 +388,7 @@ class MmuServoCommand(BaseCommand):
         if self.check_if_disabled(): return
 
         if not hasattr(mmu_unit.selector, "servo"):
-            raise gmcd.error("No servo fitted to selector on MMU %s" % mmu_unit.name)
+            raise gcmd.error("No servo fitted to selector on MMU %s" % mmu_unit.name)
         servo = mmu_unit.selector.servo
 
         reset = gcmd.get_int('RESET', 0)
@@ -398,26 +398,32 @@ class MmuServoCommand(BaseCommand):
         if reset:
             mmu_unit.mmu_machine.var_manager.delete(VARS_MMU_SELECTOR_SERVO_ANGLES, namespace=mmu_unit.name, write=True)
             mmu.log_info("Calibrated servo angles have be reset to configured defaults")
+
         elif pos == "off":
             servo.servo_off() # For 'servo_always_active' case
+
         elif pos == "up":
             if save:
                 servo._servo_save_pos(pos)
             else:
                 servo.servo_up()
+
         elif pos == "move":
             if save:
                 servo._servo_save_pos(pos)
             else:
                 servo.servo_move()
+
         elif pos == "down":
             if mmu_unit.selector.check_if_unit_bypass(): return
             if save:
                 servo._servo_save_pos(pos)
             else:
                 servo.servo_down()
+
         elif save:
             mmu.log_error("Servo position not specified for save")
+
         elif pos == "":
             if mmu_unit.selector.check_if_unit_bypass(): return
             angle = gcmd.get_int('ANGLE', None)
@@ -425,7 +431,12 @@ class MmuServoCommand(BaseCommand):
                 mmu.log_debug("Setting servo to angle: %d" % angle)
                 servo._set_servo_angle(angle)
             else:
-                mmu.log_always("Current servo angle: %d, Positions: %s" % (servo.servo_angle, servo.servo_angles))
+                status = servo.get_status(mmu.reactor.monotonic())
+                mmu.log_always(
+                    f"Servo position is {status['servo']} @ angle: {servo.servo_angle}\n"
+                    f"Positions: {servo.servo_angles}"
+                )
                 mmu.log_info("Use POS= or ANGLE= to move position")
+
         else:
             mmu.log_error("Unknown servo position '%s'" % pos)

@@ -92,9 +92,9 @@ class MmuSensorManager:
 #                if (
 #                    not mmu_unit.require_bowden_move and
 #                    gate_sensors.get(SENSOR_EXTRUDER_ENTRY) and
-#                    SENSOR_SHARED_EXIT not in gate_sensors
+#                    SENSOR_SHARED_EXIT not in self.gate_sensors
 #                ):
-#                    gate_sensors.update(connect_sensors([(mmu_unit.toolhead_wrapper.extruder_sensor, SENSOR_SHARED_EXIT)]))
+#                    self.gate_sensors.update(connect_sensors([(mmu_unit.toolhead_wrapper.extruder_sensor, SENSOR_SHARED_EXIT)]))
 
                 suffixed_gate_sensors = collect_sensors([
                     (mmu_unit.sensors.entry_sensors.get(gate), self.get_gate_sensor_name(SENSOR_ENTRY_PREFIX, gate)),
@@ -176,8 +176,8 @@ class MmuSensorManager:
         Reset the relevent sensor list based on current gate handling bypass and unknown
         """
         self.active_sensors_map = self.gate_sensors[gate] if gate >= 0 else self.bypass_sensors_map
-        self.mmu.log_info("PAUL: EVENT: handle_gate_selected(%d)" % gate)
-        self.mmu.log_info("PAUL: >>> active_sensors_map=%s\n" % self.active_sensors_map.keys())
+#        self.mmu.log_info("PAUL: EVENT: handle_gate_selected(%d)" % gate)
+#        self.mmu.log_info("PAUL: >>> active_sensors_map=%s\n" % self.active_sensors_map.keys())
 
 
     def _handle_unit_selected(self, unit, prev_unit):
@@ -185,7 +185,7 @@ class MmuSensorManager:
         Handler for unit changed event
         Activate only sensors for current unit
         """
-        self.mmu.log_info("PAUL: EVENT: handle_unit_selected(%d)" % unit)
+#        self.mmu.log_info("PAUL: EVENT: handle_unit_selected(%d)" % unit)
         # We do this in two steps to allow sensor sharing
 
         # First ensure any excluded unit sensor is completely deactivated
@@ -442,12 +442,12 @@ class MmuSensorManager:
 
 
     def enable_runout(self, gate):
-        logging.info("PAUL: enable_runout(gate=%d)" % gate)
+#        logging.info("PAUL: enable_runout(gate=%d)" % gate)
         self._set_sensor_runout(True, gate)
 
 
     def disable_runout(self, gate):
-        logging.info("PAUL: disable_runout(gate=%d)" % gate)
+#        logging.info("PAUL: disable_runout(gate=%d)" % gate)
         self._set_sensor_runout(False, gate)
 
 
