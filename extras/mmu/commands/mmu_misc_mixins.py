@@ -124,10 +124,6 @@ class MoveMixin:
         if motor not in ["gear", "extruder", "gear+extruder", "synced"]:
             raise gcmd.error("Valid motor names are 'gear', 'extruder', 'gear+extruder' or 'synced'")
 
-        if motor == "extruder":
-            selector.filament_release()
-        else:
-            selector.filament_drive()
         mmu.log_debug("Moving '%s' motor %.1fmm..." % (motor, move))
         return mmu.move_filament(trace_str, move, speed=speed, accel=accel, motor=motor, wait=wait)
 
@@ -168,11 +164,6 @@ class MoveMixin:
 
         if drive_stepper.rail.is_endstop_virtual(endstop) and stop_on_endstop == -1:
             raise gcmd.error("Cannot reverse home on virtual (TMC stallguard) endstop '%s'" % endstop)
-
-        if motor == "extruder":
-            selector.filament_release()
-        else:
-            selector.filament_drive()
 
         mmu.log_debug("Homing '%s' motor to '%s' endstop, up to %.1fmm..." % (motor, endstop, move))
         return mmu.move_filament(trace_str, move, speed=speed, accel=accel, motor=motor, homing_move=stop_on_endstop, endstop_name=endstop)

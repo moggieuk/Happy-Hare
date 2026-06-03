@@ -52,6 +52,6 @@ class MmuTestGripCommand(BaseCommand):
         if self.check_if_bypass(): 
             return
 
-        # Drive filament slightly then disable gear motor to test grip behavior
+        # Grip filament then disable gear motor to test grip behavior
         mmu.selector().filament_drive()
         mmu.motors_onoff(on=False, motor="gear")

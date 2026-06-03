@@ -40,7 +40,6 @@ class CalibrationMixin:
             endstop_str = mmu._gate_homing_string()
             mmu.log_always(f"Calibrating bowden length on gate {gate} (manual method) using {endstop_str} as gate reference point")
             mmu.set_filament_direction(DIRECTION_UNLOAD)
-            selector.filament_drive()
             mmu.log_always(f"Finding {endstop} endstop position...")
             homed = False
 
@@ -408,8 +407,6 @@ class CalibrationMixin:
         # -------------------------------------------------------------------------
         # Force filament to nozzle
         # -------------------------------------------------------------------------
-        selector.filament_drive()
-
         actual, fhomed, _, _ = mmu.move_filament(
             "Homing to toolhead sensor",
             mmu_unit.p.toolhead_homing_max,
@@ -424,8 +421,6 @@ class CalibrationMixin:
                 % mmu_unit.p.toolhead_homing_max
             )
 
-        selector.filament_release()
-
         actual, _, _, _ = mmu.move_filament(
             "Forcing filament to nozzle",
             probe_depth,
@@ -435,8 +430,6 @@ class CalibrationMixin:
         # -------------------------------------------------------------------------
         # Measure: toolhead_sensor_to_nozzle
         # -------------------------------------------------------------------------
-        selector.filament_drive()
-
         actual, fhomed, _, _ = mmu.move_filament(
             "Reverse homing off toolhead sensor",
             -probe_depth,
@@ -457,8 +450,6 @@ class CalibrationMixin:
         # -------------------------------------------------------------------------
         # Move back to extruder entrance
         # -------------------------------------------------------------------------
-        selector.filament_release()
-
         actual, _, _, _ = mmu.move_filament(
             "Moving to extruder entrance",
             -(probe_depth - toolhead_sensor_to_nozzle),
@@ -468,8 +459,6 @@ class CalibrationMixin:
         # -------------------------------------------------------------------------
         # Measure: toolhead_extruder_to_nozzle
         # -------------------------------------------------------------------------
-        selector.filament_drive()
-
         actual, fhomed, _, _ = mmu.move_filament(
             "Homing to toolhead sensor",
             mmu_unit.p.toolhead_homing_max,
@@ -542,8 +531,6 @@ class CalibrationMixin:
         # -------------------------------------------------------------------------
         # Unload and re-park filament
         # -------------------------------------------------------------------------
-        selector.filament_release()
-
         actual, _, _, _ = mmu.move_filament(
             "Moving to extruder entrance",
             -sensor_homing,

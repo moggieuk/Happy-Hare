@@ -29,10 +29,10 @@ class MmuTestFormTipCommand(BaseCommand):
     HELP_BRIEF = "Convenience macro for calling the standalone tip forming functionality (or cutter logic)"
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
-        + "RESET          = [0|1]\n"
-        + "SHOW           = [0|1]\n"
-        + "RUN            = [0|1]\n"
-        + "FORCE_IN_PRINT = [0|1]\n"
+        + "RESET         = 1     To reset macro parameters to defaults\n"
+        + "SHOW          = [0|1]\n"
+        + "RUN           = [0|1]\n"
+        + "EXTRUDER_ONLY = 1     To prevent syncing with MMU\n"
         + "(also accepts macro variable overrides; can use 'variable_' prefix or omit it)\n"
     )
     HELP_SUPPLEMENT = (
@@ -56,10 +56,10 @@ class MmuTestFormTipCommand(BaseCommand):
 
         if self.check_if_disabled(): return
 
+        extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         show = bool(gcmd.get_int('SHOW', 0, minval=0, maxval=1))
         run = bool(gcmd.get_int('RUN', 1, minval=0, maxval=1))
-        force_in_print = bool(gcmd.get_int('FORCE_IN_PRINT', 0, minval=0, maxval=1)) # Mimick in-print syncing and current
 
         gcode_macro = mmu.printer.lookup_object("gcode_macro %s" % mmu.p.form_tip_macro, None)
         if gcode_macro is None:
@@ -92,7 +92,7 @@ class MmuTestFormTipCommand(BaseCommand):
                 param = param[9:]
             if param in gcode_vars.variables:
                 gcode_vars.variables[param] = self._fix_type(value)
-            elif param not in ["reset", "show", "run", "force_in_print"]:
+            elif param not in ["reset", "show", "run"]:
                 mmu.log_error("Variable '%s' is not defined for '%s' macro" % (param, mmu.p.form_tip_macro))
 
         # Run the macro in test mode (final_eject is set)
@@ -107,9 +107,9 @@ class MmuTestFormTipCommand(BaseCommand):
                     mmu._ensure_safe_extruder_temperature(wait=True)
 
                     # Ensure sync state and mimick in print if requested
-                    mmu.reset_sync_gear_to_extruder(mmu.mmu_unit().p.sync_form_tip, force_in_print=force_in_print)
+                    mmu.reset_sync_gear_to_extruder(not extruder_only and mmu.mmu_unit().p.sync_form_tip, force_grip=True)
 
-                    _, _, _ = mmu._do_form_tip(test=not mmu.is_in_print(force_in_print))
+                    _, _, _ = mmu._do_form_tip(test=not mmu.is_in_print())
                     mmu.set_filament_pos_state(FILAMENT_POS_UNLOADED)
 
         except MmuError as ee:

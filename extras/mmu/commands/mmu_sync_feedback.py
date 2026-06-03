@@ -22,7 +22,7 @@ class MmuSyncFeedbackCommand(BaseCommand):
     HELP_BRIEF = "Controls sync feedback and applies filament tension adjustments"
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
-        + "UNIT           = #(int)|_name_|ALL Specify unit by name, number or all-units (optional if single unit)\n"
+        + "UNIT           = #(int)|_name_ Implied by gate else specify name or number\n"
         + "ENABLE         = [1|0] enable/disable sync feedback control\n"
         + "RESET          = 1 reset sync controller and return RD to last known good value\n"
         + "ADJUST_TENSION = 1 apply correction to neutralize filament tension\n"
@@ -42,12 +42,12 @@ class MmuSyncFeedbackCommand(BaseCommand):
             help_params=self.HELP_PARAMS,
             help_supplement=self.HELP_SUPPLEMENT,
             category=CATEGORY_GENERAL,
-            per_unit=True
         )
 
-    def _run(self, gcmd, unit):
+    def _run(self, gcmd):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
+        unit = self.get_unit(gcmd, mode="infer")
 
         if self.check_if_disabled():
             return

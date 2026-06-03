@@ -15,7 +15,6 @@
 #   MMU_STEP_MOVE
 #   MMU_STEP_SET_FILAMENT
 #   MMU_STEP_SET_ACTION
-#   MMU_M400
 #
 #
 # (\_/)
@@ -321,23 +320,3 @@ class MmuStepSetActionCommand(BaseCommand):
                 mmu._old_action = mmu._set_action(state)
             else:
                 mmu._set_action(state)
-
-
-class MmuM400Command(BaseCommand):
-
-    CMD = "_MMU_M400"
-    HELP_BRIEF = "Wait on both move queues"
-    HELP_PARAMS = (
-        f"{CMD}: {HELP_BRIEF}\n"
-    )
-    HELP_SUPPLEMENT = ""
-
-    def __init__(self, mmu):
-        super().__init__(mmu)
-        self.register(self.CMD, self._run, self.HELP_BRIEF, self.HELP_PARAMS, self.HELP_SUPPLEMENT, CATEGORY_STEPS)
-
-    def _run(self, gcmd):
-        mmu = self.mmu
-
-        toolhead = self.printer.lookup_object('toolhead')
-        toolhead.wait_moves()

@@ -129,7 +129,7 @@ class MmuGateMaps:
                 setattr(self, attr, value)
             else:
                 errors.append("Incorrect number of gates specified with %s" % var)
-        self.update_gate_color_rgb() # PAUL is this correct?
+        self.update_gate_color_rgb() # PAUL check this is correct?
 
         # Load selected gate and tool
         gate_selected = var_manager.get(VARS_MMU_GATE_SELECTED, self.mmu.gate_selected)
@@ -235,7 +235,6 @@ class MmuGateMaps:
     # Use post-mmu exit sensors to correct the selected gate.
     # Returns the unique detected gate index, or None if zero/multiple detected.
     def validate_gate_selected(self):
-        self.mmu.log_info(f"PAUL: validate_gate_selected()")
         gate = None
         for g in range(self.num_gates):
             if self.mmu.sensor_manager.check_all_sensors_before(FILAMENT_POS_START_BOWDEN, g, loading=True) is True:
@@ -646,7 +645,6 @@ class MmuGateMaps:
         """
         Helper to ensure that webhooks sees get_status() change after gate map update.
         """
-#        self.mmu.log_warning("PAUL: renew_gate_map")
         self.gate_status = list(self.gate_status)
         self.gate_filament_name = list(self.gate_filament_name)
         self.gate_material = list(self.gate_material)

@@ -1044,7 +1044,7 @@ class MmuTestCommand(BaseCommand):
                     for en in names:
                         s = f"{en}({es.get_mcu().get_name()},{es._pin},{id(es)})"
                         msg += (
-                            f"{s:<54} Steppers: "
+                            f"{s:<55} Steppers: "
                             f"{', '.join(st.get_name(short=True).split()[-1] for st in es.get_steppers())}\n"
                         )
 

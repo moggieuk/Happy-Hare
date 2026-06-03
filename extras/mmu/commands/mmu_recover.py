@@ -114,7 +114,7 @@ class MmuRecoverCommand(BaseCommand):
                 mmu.recover_filament_pos(strict=strict, message=True, silent=True)
 
             # Reset sync state
-            mmu.reset_sync_gear_to_extruder(False)
+            mmu.reset_sync_gear_to_extruder(force_grip=True)
 
             # Report
             mmu.log_info(f"{mmu._state_to_string()}", color=True)

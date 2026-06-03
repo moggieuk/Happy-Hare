@@ -31,6 +31,7 @@ class MmuTestPurgeCommand(BaseCommand):
         f"{CMD}: {HELP_BRIEF}\n"
         + "LAST_TOOL = t\n"
         + "NEXT_TOOL = t\n"
+        + "EXTRUDER_ONLY = 1 To prevent syncing with MMU\n"
     )
     HELP_SUPPLEMENT = (
         ""  # add examples here if desired
@@ -53,30 +54,38 @@ class MmuTestPurgeCommand(BaseCommand):
 
         if self.check_if_disabled(): return
 
+        extruder_only = bool(gcmd.get_int('EXTRUDER_ONLY', 0, minval=0, maxval=1))
         last_tool = gcmd.get_int('LAST_TOOL', mmu._last_tool, minval=0, maxval=mmu.num_gates - 1)
         next_tool = gcmd.get_int('NEXT_TOOL', mmu.tool_selected, minval=0, maxval=mmu.num_gates - 1)
-        if next_tool < 0: next_tool = 0
+        next_tool = max(0, next_tool)
+
 
         if not mmu.p.purge_macro:
             mmu.log_warning("Purge not possible because `purge_macro` is not defined")
             return
 
+        _last_tool, _next_tool = mmu._last_tool, mmu._next_tool
+        mmu._last_tool, mmu._next_tool = last_tool, next_tool  # Valid only during this test
         try:
-            # Determine purge volume for test (mimick regular call to purge macro)
-            mmu.toolchange_purge_volume, mmu._slicer_purge_volume = mmu._calc_purge_volume(last_tool, next_tool)
+            with mmu.wrap_sync_gear_to_extruder():
 
-            _last_tool, _next_tool = mmu._last_tool, mmu._next_tool
-            mmu._last_tool, mmu._next_tool = last_tool, next_tool  # Valid only during this test
+                # Determine purge volume for test (mimick regular call to purge macro)
+                mmu.toolchange_purge_volume, mmu._slicer_purge_volume = mmu._calc_purge_volume(last_tool, next_tool)
 
-            msg = "Note that the suggested purge volume is based on the current MMU_SLICER_TOOL_MAP"
-            msg += "\nIf this is not set you might find it useful to run 'MMU_CALC_PURGE_VOLUMES MULTIPLIER=..'"
-            msg += "\nto create a purge volume map from current filament colors. You can also specify"
-            msg += "'LAST_TOOL=.. NEXT_TOOL=..' to this command to override currently loaded tool"
-            mmu.log_info(msg)
+                msg = "Note that the suggested purge volume is based on the current MMU_SLICER_TOOL_MAP"
+                msg += "\nIf this is not set you might find it useful to run 'MMU_CALC_PURGE_VOLUMES MULTIPLIER=..'"
+                msg += "\nto create a purge volume map from current filament colors."
+                msg += "\nYou can also specify 'LAST_TOOL=.. NEXT_TOOL=..' to this command to override currently loaded tool"
+                mmu.log_info(msg)
 
-            mmu.log_info("Calling purge macro '%s'" % mmu.p.purge_macro)
-            with mmu.wrap_action(ACTION_PURGING):
-                mmu.purge_standalone()
+                mmu._ensure_safe_extruder_temperature(wait=True)
+
+                # Ensure sync state
+                mmu.reset_sync_gear_to_extruder(not extruder_only and u.p.sync_purge, force_grip=True)
+
+                mmu.log_info("Calling purge macro '%s'" % mmu.p.purge_macro)
+                with mmu.wrap_action(ACTION_PURGING):
+                    mmu.purge_standalone()
 
         except MmuError as ee:
             mmu.handle_mmu_error(str(ee))
