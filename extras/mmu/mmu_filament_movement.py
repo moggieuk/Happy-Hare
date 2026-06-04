@@ -1854,19 +1854,20 @@ class MmuFilamentMovement:
                 # Manual stepper move authority
                 if motor in ["gear", "gear+extruder", "extruder"]:
 
+                    qual_endstop_name = ""
                     if homing_move != 0:
                         # Check for valid endstop
-                        endstop_name = self.sensor_manager.get_qualified_endstop_name(endstop_name)
-                        if not drive.has_endstop(endstop_name):
+                        qual_endstop_name = self.sensor_manager.get_qualified_endstop_name(endstop_name)
+                        if not drive.has_endstop(qual_endstop_name):
                             self.log_error(f"Endstop '{endstop_name}' not found")
                             return null_rtn
 
-                    if homing_move != 0:
                         self.log_stepper("%s HOMING MOVE: max dist=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s, wait=%s" % (motor.upper(), dist, speed, accel, endstop_name, wait))
+
                     else:
                         self.log_stepper("%s MOVE: dist=%.1f, speed=%.1f, accel=%.1f, wait=%s" % (motor.upper(), dist, speed, accel, wait))
 
-                    actual, homed = drive.move(dist, speed, accel, homing_move=homing_move, endstop_name=endstop_name)
+                    actual, homed = drive.move(dist, speed, accel, homing_move=homing_move, endstop_name=qual_endstop_name)
 
                 # Normal extruder-side move authority
                 elif motor == "synced":
