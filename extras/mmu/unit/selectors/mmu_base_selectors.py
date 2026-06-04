@@ -437,7 +437,7 @@ class MmuSoaktestSelectorCommand(BaseCommand):
                         mmu_unit.selector.select_gate(gate)
 
                     if grip:
-                        mmu_unit.selector.filament_drive() # PAUL keep
+                        mmu_unit.selector.filament_drive()
         except MmuError as ee:
             mmu.handle_mmu_error("Soaktest abandoned because of error: %s" % str(ee))
 
@@ -482,7 +482,7 @@ class MmuGripCommand(BaseCommand):
         mmu_unit = mmu.mmu_unit(gate)
 
         if gate >= 0:
-            mmu_unit.selector.filament_drive() # PAUL keep
+            mmu_unit.selector.filament_drive()
 
 
 
@@ -526,6 +526,6 @@ class MmuReleaseCommand(BaseCommand):
 
         if gate >= 0:
             if not mmu_unit.filament_always_gripped:
-                mmu_unit.selector.filament_release() # PAUL keep
+                mmu_unit.selector.filament_release()
             else:
                 mmu.log_error("Selector doesn't allow or not configured to allow filament release")

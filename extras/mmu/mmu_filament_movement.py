@@ -1,4 +1,4 @@
-# aappy Hare MMU Software
+# Happy Hare MMU Software
 # Main module
 #
 # Copyright (C) 2022-2026  moggieuk#6538 (discord)
@@ -2294,78 +2294,6 @@ class MmuFilamentMovement:
                 self.selector().filament_release()
 
         # Adjust current drive sync state and stepper current
-        self._sync_gear_to_extruder(sync)
-        return sync
-
-
-    def reset_sync_gear_to_extruder(self, sync_intention=None, force_grip=False, skip_extruder_check=False, force_in_print=False):
-        """
-        Reconcile the desired gear-to-extruder sync state with current context and safety rules.
-
-        Args:
-            sync_intention: Requested sync intent from the caller for the current operation.
-            force_grip: Whether filament grip or release should be forced to change even when suppression is active.
-            skip_extruder_check: Whether to bypass the normal check that filament is past the extruder entry point.
-
-        Returns:
-            bool: Final sync state that was applied.
-        """
-        u = self.mmu_unit()
-
-        bypass_selected = (self.gate_selected == TOOL_GATE_BYPASS)
-        filament_in_extruder = (
-            (self.filament_pos >= FILAMENT_POS_EXTRUDER_ENTRY)
-            and not skip_extruder_check
-        )
-        out_of_print_sync = (
-            sync_intention
-            or (filament_in_extruder and u.filament_always_gripped)
-            or self._standalone_sync
-        )
-        sync = sync_intention
-
-        # Correct any obviously incorrect sync requests
-        if bypass_selected:
-            # Don't sync if in bypass
-            sync = False
-        elif not skip_extruder_check and not filament_in_extruder:
-            # Don't sync if filament is not in extruder
-            sync = False
-        elif filament_in_extruder and u.filament_always_gripped:
-            # Must sync by mmu design
-            sync = True
-
-        if sync is None:
-           if self.is_in_print(force_in_print):
-               if self.is_printing(force_in_print):
-                   # Actively printing
-                   if not skip_extruder_check and not filament_in_extruder:
-                       sync = False
-                   else:
-                       # Respect the print-time sync setting.
-                       sync = bool(u.p.sync_to_extruder)
-               else:
-                   # In print context but not actively printing (e.g., paused)
-                   sync = out_of_print_sync
-           else:
-               # Not in a print
-               sync = out_of_print_sync
-
-        self.log_stepper(
-            f"reset_sync_gear_to_extruder("
-            f"sync_intention={sync_intention}, "
-            f"force_grip={force_grip}, "
-            f"skip_extruder_check={skip_extruder_check}) "
-            f"--> sync={sync}"
-        )
-
-        # Filament grip handling (do this before syncing to avoid "buzz" movement on type-A MMUs).
-        if force_grip:
-            if sync:
-                self.selector().filament_drive()
-            else:
-                self.selector().filament_release()
-
         self._sync_gear_to_extruder(sync)
         return sync
 
