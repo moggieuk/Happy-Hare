@@ -529,7 +529,7 @@ class MmuUnit:
 
         for name in self.mmu_gear_names:
             for chip in TMC_CHIPS:
-                c = self.printer.lookup_object("%s %s" % (chip, name), None)
+                c = self.printer.lookup_object("%s mmu_stepper %s" % (chip, name), None)
                 if c is not None:
                     self.mmu_gear_tmcs.append(c)
                     self.mmu_gear_currents.append(c.get_status(0).get("run_current"))

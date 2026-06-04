@@ -1555,20 +1555,17 @@ class MmuController(MmuFilamentMovement):
             self.is_handling_runout = False
             self.initialize_encoder(dwell=None) # Encoder 0000
 
-            # Restablish desired syncing state and grip (servo) position
-            self.reset_sync_gear_to_extruder(force_grip=True, force_in_print=force_in_print)
+            # Restablish known syncing state so next tension test will work
+            synced = self.reset_sync_gear_to_extruder(force_grip=False, force_in_print=force_in_print)
 
-            # Try to put filament in neutral tension if desirable
-            u = self.mmu_unit()
-            has_tension, has_compression, has_proportional = u.sync_feedback.get_active_sensors()
-            if (
-                u.p.toolhead_post_load_tension_adjust and
-                self.drive().is_synced_to_extruder() and
-                self.filament_pos >= FILAMENT_POS_EXTRUDER_ENTRY and
-                (has_tension or has_compression or has_proportional) and
-                u.sync_feedback.is_enabled()
-            ):
-               self._adjust_filament_tension()
+            # Try to put filament in neutral tension if filament in extruder and
+            # currently synced. This will avoid false clog detection with encoder
+            # or neutral tension with sync-feedback input
+            if synced:
+                self._adjust_filament_tension()
+
+            # Restablish desired syncing state AND grip (servo) position
+            self.reset_sync_gear_to_extruder(force_grip=True, force_in_print=force_in_print)
 
         # Good place to reset the _next_tool marker because after any user fix on toolchange error/pause
         self._next_tool = TOOL_GATE_UNKNOWN

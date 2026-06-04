@@ -1,4 +1,4 @@
-# aappy Hare MMU Software
+# Happy Hare MMU Software
 # Main module
 #
 # Copyright (C) 2022-2026  moggieuk#6538 (discord)
@@ -174,7 +174,7 @@ class MmuFilamentMovement:
                 measured = 0.
                 for i in range(retries):
                     msg = "Initial load into encoder" if i == 0 else ("Retry load into encoder (retry #%d)" % i)
-                    _, _, m, _ = self.move_filament(msg, u.p.gate_homing_max)
+                    _,_,m,_ = self.move_filament(msg, u.p.gate_homing_max)
                     measured += m
                     if m > 6.0:
                         self.gate_maps.set_gate_status(self.gate_selected, max(self.gate_status[self.gate_selected], GATE_AVAILABLE)) # Don't reset if filament is buffered
@@ -248,11 +248,11 @@ class MmuFilamentMovement:
             self.log_debug("Performing synced pre-unload bowden move of %.1fmm to ensure filament is not trapped in extruder" % length)
 
             if u.p.gate_homing_endstop == SENSOR_ENCODER:
-                _,_,_,_ = self.move_filament("Bowden safety pre-unload move", -length, motor="gear+extruder")
+                self.move_filament("Bowden safety pre-unload move", -length, motor="gear+extruder")
 
             else:
                 endstop_name = self.sensor_manager.get_qualified_endstop_name(u.p.gate_homing_endstop)
-                homing_movement, homed, _, _ = self.move_filament(
+                homing_movement,homed,_,_ = self.move_filament(
                     "Bowden safety pre-unload move",
                     -length,
                     motor="gear+extruder",
@@ -283,7 +283,7 @@ class MmuFilamentMovement:
                     homing_movement, homing_overshoot = success
                     self.log_debug(f"Found encoder endstop after moving {homing_movement:.1f}mm with {homing_overshoot:.1f}mm overshoot")
                     parking_distance = u.p.gate_parking_distance - homing_overshoot # homing_overshoot will always be -ve (retraction)
-                    _, _, measured, _ = self.move_filament("Final parking", parking_distance)
+                    _,_,measured,_ = self.move_filament("Final parking", parking_distance)
 
                     # We don't expect any movement of the encoder unless it is free-spinning
                     if measured > self.encoder().movement_min(): # We expect 0, but relax the test a little (allow one pulse)
@@ -297,7 +297,7 @@ class MmuFilamentMovement:
 
             # Precaution: reverse home off gate sensor
             endstop_name = self.sensor_manager.get_qualified_endstop_name(u.p.gate_homing_endstop)
-            homing_movement, homed, _, _ = self.move_filament(
+            homing_movement, homed,_,_ = self.move_filament(
                 f"Reverse homing off {endstop_name} sensor",
                 -homing_max,
                 motor="gear",
@@ -310,7 +310,7 @@ class MmuFilamentMovement:
                 self.set_filament_pos_state(FILAMENT_POS_UNLOADED)
                 return homing_movement
 
-            msg = "did not home to sensor '{u.p.gate_homing_endstop}' after moving {homing_max:.1f}mm" % (u.p.gate_homing_endstop, homing_max)
+            msg = f"did not home to sensor '{u.p.gate_homing_endstop}' after moving {homing_max:.1f}mm"
 
         raise MmuError("Failed to unload gate because %s" % msg)
 
@@ -332,7 +332,7 @@ class MmuFilamentMovement:
         homing = 0.0
 
         for i in range(max_steps):
-            sactual, _, _, sdelta = self.move_filament(f"Unloading step #{i + 1} from encoder", -step_size,)
+            sactual,_,_,sdelta = self.move_filament(f"Unloading step #{i + 1} from encoder", -step_size,)
             homing -= sactual
 
             # Large enough step delta here means we are out of the encoder
@@ -438,7 +438,7 @@ class MmuFilamentMovement:
             if length > 0:
                 self.log_debug("Loading bowden tube")
                 self.set_filament_direction(DIRECTION_LOAD)
-                self.selector().filament_drive() # Ensure encoder reading is not distrubed by initial filament gipping
+                self.selector().filament_drive() # Ensure encoder reading is not disturbed by initial filament gripping
                 self.set_filament_pos_state(FILAMENT_POS_START_BOWDEN)
 
                 # Record starting position for bowden progress tracking. Prefer encoder if available
@@ -448,7 +448,7 @@ class MmuFilamentMovement:
                     self.log_warning("Warning: gate %d not calibrated! Using default rotation distance" % self.gate_selected)
 
                 # "Fast" load
-                _, _, _, delta = self.move_filament("Fast loading move through bowden", length, track=True, encoder_dwell=bool(u.p.autotune_encoder))
+                _,_,_,delta = self.move_filament("Fast loading move through bowden", length, track=True, encoder_dwell=bool(u.p.autotune_encoder))
                 delta -= self.get_encoder_dead_space()
                 ratio = (length - delta) / length
 
@@ -529,7 +529,7 @@ class MmuFilamentMovement:
               - Ratio of measured unload movement to commanded movement, used for calibration and telemetry (None for invalid)
               - The distance not yet moved and reserved for homing buffer in later stages.
         """
-#        self.log_warning(f"PAUL: _unload_bowden(lenght={length})")
+#        self.log_warning(f"PAUL: _unload_bowden(length={length})")
 #        self.log_warning(f"PAUL: S_BOWDEN filament_pos={self.drive().get_filament_position():.1f}mm, encoder={self.get_encoder_distance(dwell=None):.1f}mm")
         u = self.mmu_unit()
 
@@ -549,7 +549,7 @@ class MmuFilamentMovement:
             if length > 0:
                 self.log_debug("Unloading bowden tube")
                 self.set_filament_direction(DIRECTION_UNLOAD)
-                self.selector().filament_drive() # Ensure encoder reading is not distrubed by initial filament gipping
+                self.selector().filament_drive() # Ensure encoder reading is not disturbed by initial filament gripping
 
                 # Optional pre-unload safety step
                 if (full and self.has_encoder() and u.p.bowden_pre_unload_test and
@@ -559,7 +559,7 @@ class MmuFilamentMovement:
                     with self.require_encoder():
                         emss = u.p.encoder_move_step_size
                         self.log_debug("Performing bowden pre-unload test")
-                        _, _, _, delta = self.move_filament("Bowden pre-unload test", -emss)
+                        _,_,_,delta = self.move_filament("Bowden pre-unload test", -emss)
                         if delta > emss * (u.p.bowden_pre_unload_error_tolerance / 100.):
                             self.set_filament_pos_state(FILAMENT_POS_EXTRUDER_ENTRY)
                             raise MmuError("Bowden pre-unload test failed. Filament seems to be stuck in the extruder or filament not loaded\nOptionally use MMU_RECOVER to recover filament position")
@@ -584,7 +584,7 @@ class MmuFilamentMovement:
                     self.log_debug("Sensor state: %s" % sensor_msg)
 
                 # "Fast" unload
-                _, _, _, delta = self.move_filament("Fast unloading move through bowden", -length, track=True, encoder_dwell=bool(u.p.autotune_encoder))
+                _,_,_,delta = self.move_filament("Fast unloading move through bowden", -length, track=True, encoder_dwell=bool(u.p.autotune_encoder))
                 delta -= self.get_encoder_dead_space()
                 ratio = (length - delta) / length
 
@@ -617,7 +617,7 @@ class MmuFilamentMovement:
         Home filament to the extruder gear
 
         Args:
-            extra_homing: Additional homing distance budget. None indicates recovery mode.
+            extra_homing: Additional homing distance budget.
 
         Returns:
             [float or None]
@@ -721,7 +721,7 @@ class MmuFilamentMovement:
 
         Args:
             extruder_only: Whether only the extruder path should be moved without normal MMU synchronization.
-            extra_homing: Additional homing distance budget. None indicates recovery mode.
+            extra_homing: Additional homing distance budget.
 
         Returns:
             float or None: Additional bowden movement inferred from toolhead-sensor homing, or None when not applicable.
@@ -738,7 +738,6 @@ class MmuFilamentMovement:
             self._ensure_safe_extruder_temperature(wait=True)
             bowden_extra = None
 
-            has_tension, has_compression, has_proportional = u.sync_feedback.get_active_sensors()
             has_toolhead = self.sensor_manager.has_sensor(SENSOR_TOOLHEAD)
 
             synced = not extruder_only
@@ -822,36 +821,12 @@ class MmuFilamentMovement:
                     self.set_filament_pos_state(FILAMENT_POS_IN_EXTRUDER)
                     raise MmuError("Move to nozzle failed (encoder didn't sense sufficient movement). Extruder may not have picked up filament or filament did not find homing sensor")
 
-            # Make post load filament tension adjustments for reliability. If encoder is fitted, the "post_load_tighten"
-            # will aid reliability in subsequent clog detection (and takes prescedence), else "post_load_tention_adjust" will try
-            # to neutralize the filament tension. Don't run on bypass gate.
+            # Adjust filament tension
             if (
                 self.gate_selected != TOOL_GATE_BYPASS
                 and not extruder_only
             ):
-                if (
-                    u.p.toolhead_post_load_tighten
-                    and not u.p.sync_to_extruder
-                    and self.can_use_encoder()
-                    and u.sync_feedback.p.flowguard_encoder_mode
-                ):
-                    # Tightening move to prevent erroneous encoder clog detection/runout if gear stepper is not synced with extruder
-                    with self.wrap_gear_current(percent=50, reason="to tighten filament in bowden"):
-                        # Filament will already be gripped so perform fixed MMU only retract
-                        cdl = self.encoder().get_clog_detection_length()
-                        pullback = min(cdl * u.p.toolhead_post_load_tighten / 100, 15) # % of current clog detection length or 15mm min
-                        _,_,measured,delta = self.move_filament("Tighening filament in bowden", -pullback, motor="gear", wait=True)
-                        self.log_info("Filament tightened by %.1fmm to prevent false clog detection" % pullback)
-                        self.adjust_encoder_distance(-pullback)
-
-                elif (
-                    u.p.toolhead_post_load_tension_adjust
-                    and (u.p.sync_to_extruder or u.p.sync_purge)
-                    and (has_tension or has_compression or has_proportional)
-                    and u.sync_feedback.is_enabled()
-                ):
-                    actual = self._adjust_filament_tension()
-                    self.adjust_encoder_distance(actual)
+                self._adjust_filament_tension()
 
             self._random_failure() # Testing
             self.movequeue_wait()
@@ -864,18 +839,43 @@ class MmuFilamentMovement:
 
     def _adjust_filament_tension(self):
         """
-        Helper to put filament in neutral tension using sync feedback.
-        Two methods are available based on switch only sensors or proportional feedback
-
-        Returns:
-            float: The correction distance moved
+        Helper to make post load filament tension adjustments for reliability.
+        If encoder is fitted, the "post_load_tighten" will aid reliability in subsequent
+        clog detection (and takes precedence), else "post_load_tension_adjust" will try
+        to neutralize the filament tension. Doesn't run on bypass gate.
+        Notes: movement is removed from the encoder position
+               caller is responsible for sanity checking if filament is in extruder, etc
         """
-        actual, success = self.mmu_unit().sync_feedback.adjust_filament_tension()
-        if success:
-            self.log_info("Filament tension in bowden successfully relaxed")
-        else:
-            self.log_warning("Unsuccessful in relaxing filament tension after adjusting %.1fmm" % actual)
-        return actual
+        u = self.mmu_unit()
+        has_tension, has_compression, has_proportional = u.sync_feedback.get_active_sensors()
+
+        if (
+            u.p.toolhead_post_load_tighten
+            and not u.p.sync_to_extruder
+            and self.can_use_encoder()
+            and u.sync_feedback.p.flowguard_encoder_mode
+        ):
+            # Tightening move to prevent erroneous encoder clog detection/runout if gear stepper is not synced with extruder
+            with self.wrap_gear_current(percent=50, reason="to tighten filament in bowden"):
+                # Filament will already be gripped so perform fixed MMU only retract
+                cdl = self.encoder().get_clog_detection_length()
+                pullback = min(cdl * u.p.toolhead_post_load_tighten / 100, 15) # % of current clog detection length or 15mm min
+                self.move_filament("Tightening filament in bowden", -pullback, motor="gear", wait=True)
+                self.log_info("Filament tightened by %.1fmm to prevent false encoder clog detection" % pullback)
+                self.adjust_encoder_distance(-pullback)
+
+        elif (
+            u.p.toolhead_post_load_tension_adjust
+            and (u.p.sync_to_extruder or u.p.sync_purge)
+            and (has_tension or has_compression or has_proportional)
+            and u.sync_feedback.is_enabled()
+        ):
+            actual, success = u.sync_feedback.adjust_filament_tension()
+            if success:
+                self.log_info("Filament tension in bowden successfully relaxed")
+            else:
+                self.log_warning("Unsuccessful in relaxing filament tension after adjusting %.1fmm" % actual)
+            self.adjust_encoder_distance(actual)
 
 
     def _unload_extruder(self, extruder_only=False, validate=True):
@@ -926,7 +926,7 @@ class MmuFilamentMovement:
                 else:
                     hlength = u.toolhead_wrapper.p.toolhead_extruder_to_nozzle + u.toolhead_wrapper.p.toolhead_entry_to_extruder + u.p.toolhead_unload_safety_margin - u.toolhead_wrapper.p.toolhead_residual_filament - u.toolhead_wrapper.p.toolhead_ooze_reduction - self.toolchange_retract
                     self.log_debug("Reverse homing up to %.1fmm off extruder sensor (synced) to exit extruder" % hlength)
-                    _, fhomed, _, _ = self.move_filament("Reverse homing off extruder sensor", -hlength, motor=motor, homing_move=-1, endstop_name=SENSOR_EXTRUDER_ENTRY)
+                    _,fhomed,_,_ = self.move_filament("Reverse homing off extruder sensor", -hlength, motor=motor, homing_move=-1, endstop_name=SENSOR_EXTRUDER_ENTRY)
 
                 if not fhomed:
                     raise MmuError("Failed to reach extruder entry sensor after moving %.1fmm" % hlength)
@@ -950,7 +950,7 @@ class MmuFilamentMovement:
                     else:
                         hlength = u.toolhead_wrapper.p.toolhead_sensor_to_nozzle + u.p.toolhead_unload_safety_margin - u.toolhead_wrapper.p.toolhead_residual_filament - u.toolhead_wrapper.p.toolhead_ooze_reduction - self.toolchange_retract
                         self.log_debug("Reverse homing up to %.1fmm off toolhead sensor%s" % (hlength, (" (synced)" if synced else "")))
-                        _, fhomed, _, _ = self.move_filament("Reverse homing off toolhead sensor", -hlength, motor=motor, homing_move=-1, endstop_name=SENSOR_TOOLHEAD)
+                        _,fhomed,_,_ = self.move_filament("Reverse homing off toolhead sensor", -hlength, motor=motor, homing_move=-1, endstop_name=SENSOR_TOOLHEAD)
                     if not fhomed:
                         raise MmuError("Failed to reach toolhead sensor after moving %.1fmm" % hlength)
                     else:
@@ -1048,8 +1048,12 @@ class MmuFilamentMovement:
 
             if macros_and_track:
                 self._track_time_start('load')
+
                 # PRE_LOAD user defined macro
                 with self._wrap_track_time('pre_load'):
+                    if self.p.pre_load_macro:
+                        # Ensure expected sync/grip state before macro
+                        self.reset_sync_gear_to_extruder(False if extruder_only else None, force_grip=True)
                     self.wrap_gcode_command(self.p.pre_load_macro, exception=True, wait=True)
 
             self.log_info("Loading %s..." % ("extruder" if extruder_only else "filament"))
@@ -1159,7 +1163,7 @@ class MmuFilamentMovement:
                             # We are not homing so will just complete the bowden move with a slower (after movement)
                             speed = u.p.gear_short_move_speed
                             accel = u.p.gear_short_move_accel
-                            _, _, _, delta = self.move_filament("Slow move to extruder entrance", extruder_homing_buffer, motor="gear", speed=speed, accel=accel)
+                            self.move_filament("Slow move to extruder entrance", extruder_homing_buffer, motor="gear", speed=speed, accel=accel)
                             bowden_travel += extruder_homing_buffer
                             extruder_homing_buffer = 0. # Don't reuse
 
@@ -1194,18 +1198,18 @@ class MmuFilamentMovement:
                 with self._wrap_track_time('purge'):
                     self.purge_standalone()
 
-            # POST_LOAD user defined macro
             if macros_and_track:
+                # POST_LOAD user defined macro
                 with self._wrap_track_time('post_load'):
+                    if self.p.post_load_macro:
+                        # Ensure expected sync/grip state before macro
+                        self.reset_sync_gear_to_extruder(False if extruder_only else None, force_grip=True)
 
-                    # Restore the expected sync state now before running this macro
-                    self.reset_sync_gear_to_extruder(not extruder_only and u.p.sync_purge)
-
-                    if self.has_blobifier: # Legacy blobifer integration. purge_macro now preferred
-                        with self.wrap_action(ACTION_PURGING):
+                        if self.has_blobifier: # Legacy blobifer integration. purge_macro now preferred
+                            with self.wrap_action(ACTION_PURGING):
+                                self.wrap_gcode_command(self.p.post_load_macro, exception=True, wait=True)
+                        else:
                             self.wrap_gcode_command(self.p.post_load_macro, exception=True, wait=True)
-                    else:
-                        self.wrap_gcode_command(self.p.post_load_macro, exception=True, wait=True)
 
         except MmuError as ee:
             self._track_gate_statistics('load_failures', self.gate_selected)
@@ -1286,11 +1290,15 @@ class MmuFilamentMovement:
             # is deliberately not accounted in spoolman
             self._spoolman_activate_spool(0)
 
-            # Run PRE_UNLOAD user defined macro
             if macros_and_track:
                 self._track_time_start('unload')
+
+                # Run PRE_UNLOAD user defined macro
                 with self._wrap_track_time('pre_unload'):
-                    self.wrap_gcode_command(self.p.pre_unload_macro, exception=True, wait=True)
+                    if self.p.pre_unload_macro:
+                        # Ensure expected sync/grip state before macro
+                        self.reset_sync_gear_to_extruder(False if extruder_only else None, force_grip=True)
+                        self.wrap_gcode_command(self.p.pre_unload_macro, exception=True, wait=True)
 
             self.log_info("Unloading %s..." % ("extruder" if extruder_only else "filament"))
             if not extruder_only:
@@ -1310,6 +1318,7 @@ class MmuFilamentMovement:
                     self.log_debug("Tip forming performed by slicer, park_pos set to %.1fmm" % park_pos)
 
             elif do_form_tip == FORM_TIP_STANDALONE and (self.filament_pos >= FILAMENT_POS_IN_EXTRUDER or runout):
+
                 with self._wrap_track_time('form_tip'):
                     # Extruder only in runout case to give filament best chance to reach gear
                     detected = self.form_tip_standalone(extruder_only=(extruder_only or runout))
@@ -1323,7 +1332,10 @@ class MmuFilamentMovement:
                     ):
                         self.log_warning("Warning: Filament not seen near gate after tip forming move. Unload may not be possible")
 
-                    self.wrap_gcode_command(self.p.post_form_tip_macro, exception=True, wait=True)
+                    if self.p.post_form_tip_macro:
+                        # Restore the expected sync state now before running this macro
+                        self.reset_sync_gear_to_extruder(False if extruder_only else None, force_grip=True)
+                        self.wrap_gcode_command(self.p.post_form_tip_macro, exception=True, wait=True)
 
             # Note: Conditionals deliberately coded this way to match macro alternative
             start_filament_pos = self.filament_pos
@@ -1405,18 +1417,18 @@ class MmuFilamentMovement:
                 msg += " {1}(adjusted encoder: %.1fmm){0}" % (final_encoder_pos + not_seen)
             self.log_info(msg, color=True)
 
-            # POST_UNLOAD user defined macro
             if macros_and_track:
+                # POST_UNLOAD user defined macro
                 with self._wrap_track_time('post_unload'):
+                    if self.p.post_unload_macro:
+                        # Ensure expected sync/grip state before macro
+                        self.reset_sync_gear_to_extruder(False, force_grip=True)
 
-                    # Restore the expected sync state now before running this macro
-                    self.reset_sync_gear_to_extruder(not extruder_only and u.p.sync_to_extruder)
-
-                    if self.has_mmu_cutter:
-                        with self.wrap_action(ACTION_CUTTING_FILAMENT):
+                        if self.has_mmu_cutter:
+                            with self.wrap_action(ACTION_CUTTING_FILAMENT):
+                                self.wrap_gcode_command(self.p.post_unload_macro, exception=True, wait=True)
+                        else:
                             self.wrap_gcode_command(self.p.post_unload_macro, exception=True, wait=True)
-                    else:
-                        self.wrap_gcode_command(self.p.post_unload_macro, exception=True, wait=True)
 
         except MmuError as ee:
             self._track_gate_statistics('unload_failures', self.gate_selected)
@@ -1470,7 +1482,7 @@ class MmuFilamentMovement:
 
         with self.wrap_action(ACTION_CUTTING_TIP if self.has_toolhead_cutter else ACTION_FORMING_TIP):
             self._ensure_safe_extruder_temperature(wait=True)
-            sync = self.reset_sync_gear_to_extruder(not extruder_only and u.p.sync_form_tip, force_grip=True)
+            sync = self.reset_sync_gear_to_extruder(False if extruder_only else u.p.sync_form_tip, force_grip=True)
 
             # Perform the tip forming move and establish park_pos
             initial_encoder_position = self.get_encoder_distance()
@@ -1529,7 +1541,7 @@ class MmuFilamentMovement:
         """
         u = self.mmu_unit()
 
-        with self._wrap_extruder_current(self.p.extruder_form_tip_current, "for tip forming move"):
+        with self.wrap_extruder_current(self.p.extruder_form_tip_current, "for tip forming move"):
             extruder_stepper = self.toolhead.get_extruder().extruder_stepper.stepper
             initial_mcu_pos = extruder_stepper.get_mcu_position()
             initial_encoder_position = self.get_encoder_distance()
@@ -1602,11 +1614,11 @@ class MmuFilamentMovement:
 
         with self.wrap_action(ACTION_PURGING):
             self._ensure_safe_extruder_temperature(wait=True)
-            self.reset_sync_gear_to_extruder(not extruder_only and u.p.sync_purge, force_grip=True)
+            self.reset_sync_gear_to_extruder(False if extruder_only else u.p.sync_purge, force_grip=True)
 
             self.log_info("Purging...")
 
-            with self._wrap_extruder_current(self.p.extruder_purge_current, "for filament purge"):
+            with self.wrap_extruder_current(self.p.extruder_purge_current, "for filament purge"):
                 # The macro to decide on the purge volume, but expect to be based on this.
                 msg = (
                     f"Suggested purge volume of {self.toolchange_purge_volume:.1f}mm{UI_CUBE} calculated from:\n"
@@ -1633,7 +1645,7 @@ class MmuFilamentMovement:
 
     def _resolve_filament_move_speed(self, dist, motor, homing_move, speed, accel, speed_override=True):
         """
-        Determine best speed and accelaration for move type
+        Determine best speed and acceleration for move type
         """
         u = self.mmu_unit()
 
@@ -1792,13 +1804,6 @@ class MmuFilamentMovement:
             self.log_assertion("Invalid motor specification '%s'" % motor)
             return null_rtn
 
-            if homing_move != 0:
-                # Check for valid endstop
-                endstop_name = self.sensor_manager.get_qualified_endstop_name(endstop_name)
-                if not drive.has_endstop(endstop_name):
-                    self.log_error(f"Endstop '{endstop_name}' not found")
-                    return null_rtn
-
         # Determine speed
         speed, accel = self._resolve_filament_move_speed(dist, motor, homing_move, speed, accel, speed_override=speed_override)
 
@@ -1923,7 +1928,7 @@ class MmuFilamentMovement:
 
     def get_encoder_dead_space(self):
         """
-        If loading filament from the gate, return the "unseen" porition of the move
+        If loading filament from the gate, return the "unseen" portion of the move
         """
         if self.has_encoder() and self.mmu_unit().p.gate_homing_endstop in [SENSOR_SHARED_EXIT, SENSOR_EXIT_PREFIX]:
             return self.mmu_unit().p.gate_endstop_to_encoder
@@ -1959,7 +1964,7 @@ class MmuFilamentMovement:
     def recover_filament_pos(self, strict=False, can_heat=True, message=False, silent=False):
         """
         Infer the most conservative filament position from sensors and available checks (for unload purposes)
-        Also, ensures that the filament availabilty is updated if filament is found
+        Also, ensures that the filament availability is updated if filament is found
 
         Args:
             strict: Whether recovery should use stricter assumptions when inferring filament position.
@@ -2134,7 +2139,7 @@ class MmuFilamentMovement:
                 self._ensure_safe_extruder_temperature(wait=False)
                 self.selector().filament_release() # Prevent accidental encoder movement by releasing early
                 move = u.p.encoder_move_step_size
-                _, _, measured, _ = self.move_filament("Checking extruder", -move, speed=self.p.extruder_unload_speed, motor="extruder")
+                _,_,measured,_ = self.move_filament("Checking extruder", -move, speed=self.p.extruder_unload_speed, motor="extruder")
                 detected = measured > self.encoder().movement_min()
                 self.log_debug("Filament %s in extruder" % ("detected" if detected else "not detected"))
         return detected, measured
@@ -2195,12 +2200,8 @@ class MmuFilamentMovement:
 
         # Current control:
         # - While synced, optionally reduce current for the active gear stepper.
-        # - On multigear systems, restore current on the previously-used gear stepper if gate differs.
         # - When unsynced, restore current to 100%.
         if sync:
-            if u.multigear and gate != self.gate_selected:
-                self._restore_gear_current()  # Restore previous gear stepper to 100%
-
             self._adjust_gear_current(percent=u.p.sync_gear_current, reason="for extruder syncing")
         else:
             self._restore_gear_current()  # 100%
@@ -2215,7 +2216,7 @@ class MmuFilamentMovement:
                                  None=figure out based on context.
             force_grip:          Whether filament grip or release should be forced to change even when suppression is active.
             skip_extruder_check: Whether to bypass the normal check that filament is past the extruder entry point.
-                                 This is only currently used to support the MMU_SYNC_GEAR_MOTOR command
+                                 This is currently only used to support the MMU_SYNC_GEAR_MOTOR command
 
         Returns:
             bool: Final sync state that was applied.
@@ -2257,7 +2258,7 @@ class MmuFilamentMovement:
                        sync = False
                    else:
                        # Respect the mmu design or print-time sync setting.
-                       sync = u.p.sync_to_extruder or u.filament_always_gripped
+                       sync = bool(u.p.sync_to_extruder or u.filament_always_gripped)
                else:
                    # In print context but not actively printing (e.g., paused)
                    sync = out_of_print_sync
@@ -2276,14 +2277,15 @@ class MmuFilamentMovement:
             f"--> sync={sync}"
         )
 
-        # Filament grip handling. This is always lazy to spare unecessary movement.
-        # Any filament move with correct the grip if necessary
+        # Filament grip handling. This is always lazy to spare unnecessary movement.
+        # Do this before resetting sync state because servo down can undo (buzz movement)!
         if force_grip:
             if sync:
                 self.selector().filament_drive()
             else:
                 self.selector().filament_release()
 
+        # Adjust current drive sync state and stepper current
         self._sync_gear_to_extruder(sync)
         return sync
 
@@ -2292,7 +2294,7 @@ class MmuFilamentMovement:
     def wrap_sync_gear_to_extruder(self):
         """
         Preserve sync state across a block. Grip restoration is only performed by
-        the outermost wrapper, because it is expensive.
+        the outermost wrapper, because it is often noisey / expensive on type-A MMUs.
 
         Yields:
             self while nested operations may temporarily alter sync and grip state.
@@ -2344,9 +2346,9 @@ class MmuFilamentMovement:
         Apply a gear-stepper run-current percentage change when allowed.
 
         Args:
-            gate: Gate index to operate on. When omitted, the current selection is used.
+            gate:    Gate index to operate on. When omitted, the current selection is used.
             percent: Target current percentage relative to the configured default current.
-            reason: Reason text included in diagnostic logging.
+            reason:  Reason text included in diagnostic logging.
             restore: Whether the current-change log message should be phrased as a restore operation.
 
         Returns:
@@ -2377,7 +2379,7 @@ class MmuFilamentMovement:
         target_current = (u.gear_default_current(gate) * percent) / 100.0
         self._set_tmc_current(sname, target_current, msg)
         self.gear_run_current_percent = percent # Update global record of current %
-        return percent
+        return current_percent
 
 
     def _restore_gear_current(self, gate=None, percent=100):
@@ -2385,7 +2387,7 @@ class MmuFilamentMovement:
         Restore gear-stepper run current to a specified percentage.
 
         Args:
-            gate: Gate index to operate on. When omitted, the current selection is used.
+            gate:    Gate index to operate on. When omitted, the current selection is used.
             percent: Target current percentage relative to the configured default current.
 
         Returns:
@@ -2395,13 +2397,13 @@ class MmuFilamentMovement:
 
 
     @contextlib.contextmanager
-    def _wrap_extruder_current(self, percent=100, reason=""):
+    def wrap_extruder_current(self, percent=100, reason=""):
         """
         Temporarily adjust extruder run current for the duration of a block.
 
         Args:
             percent: Target current percentage relative to the configured default current.
-            reason: Reason text included in diagnostic logging.
+            reason:  Reason text included in diagnostic logging.
 
         Yields:
             self while the temporary extruder-current override is active.
@@ -2419,7 +2421,7 @@ class MmuFilamentMovement:
 
         Args:
             percent: Target current percentage relative to the configured default current.
-            reason: Reason text included in diagnostic logging.
+            reason:  Reason text included in diagnostic logging.
             restore: Whether the current-change log message should be phrased as a restore operation.
 
         Returns:
@@ -2444,7 +2446,7 @@ class MmuFilamentMovement:
         target_current = (u.extruder_default_current() * percent) / 100.0
         self._set_tmc_current(sname, target_current, msg)
         self.extruder_run_current_percent = percent # Update global record of current %
-        return percent
+        return current_percent
 
 
     def _restore_extruder_current(self, percent=100):
@@ -2465,9 +2467,9 @@ class MmuFilamentMovement:
         Send the low-level command that updates a stepper driver current.
 
         Args:
-            stepper: Stepper name to pass to the low-level current command.
+            stepper:     Stepper name to pass to the low-level current command.
             run_current: Absolute current value to apply to the driver.
-            msg: Format string used when logging the current change.
+            msg: Format  string used when logging the current change.
 
         Returns:
             None. Logs and dispatches the low-level current command.

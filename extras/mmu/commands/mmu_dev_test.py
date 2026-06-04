@@ -86,6 +86,7 @@ class MmuTestCommand(BaseCommand):
         + "HELP=1 Show this help\n"
         + "SYNC_STATE=['compression'|'tension'|'both'|'neutral'|'loop'] Set the sync state (or run looped test). Params: LOOP={n} (with SYNC_STATE=loop) number of iterations\n"
         + "SYNC_EVENT=[-1.0 ... 1.0] Generate sync feedback event\n"
+        + "WRAP_CURRENT=1 Test current wrapping and restore. Params; MOTOR=gear|extruder PERCENT=%\n"
         + "DUMP_UNICODE=1 Display special characters used in display\n"
         + "RUN_SEQUENCE=1 Run through the set of sequence macros tracking time. Params: ERROR=[0|1] FORCE_IN_PRINT=[0|1]\n"
         + "RUN_CHANGE_SEQUENCE=1 Run toolchange-style sequence. Params: PAUSE=[0|1] NEXT_POS=['last'|'next'] FORCE_IN_PRINT=[0|1]\n"
@@ -142,6 +143,22 @@ class MmuTestCommand(BaseCommand):
         try:
             mmu._is_running_test = True
             have_run_test = False
+
+            wrap_current = gcmd.get('WRAP_CURRENT', None)
+            if wrap_current is not None:
+                have_run_test = True
+                motor = gcmd.get('MOTOR', "gear")
+                percent = gcmd.get_int('PERCENT', 50)
+                if motor == "extruder":
+                    with mmu.wrap_extruder_current(percent=percent, reason="Development Test"):
+                        mmu.log_always("LAYER1")
+                        with mmu.wrap_extruder_current(percent=percent/2, reason="Development Test"):
+                            mmu.log_always("LAYER2")
+                else:
+                    with mmu.wrap_gear_current(percent=percent, reason="Development Test"):
+                        mmu.log_always("LAYER1")
+                        with mmu.wrap_gear_current(percent=percent/2, reason="Development Test"):
+                            mmu.log_always("LAYER2")
 
             sync_state = gcmd.get('SYNC_STATE', None)
             if sync_state is not None:
