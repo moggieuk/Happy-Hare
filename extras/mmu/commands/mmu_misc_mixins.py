@@ -158,11 +158,10 @@ class MoveMixin:
         })
         valid_endstops.sort()
         if endstop not in valid_endstops:
-            raise gcmd.error("Endstop name '%s' is not valid for motor '%s'\nOptions are: %s" % (endstop, motor, ', '.join(valid_endstops)))
+            raise gcmd.error("Endstop name '%s' is not valid for motor '%s'. Options are: %s" % (endstop, motor, ', '.join(valid_endstops)))
 
-        endstop = mmu.sensor_manager.get_qualified_endstop_name(endstop)
-
-        if drive_stepper.rail.is_endstop_virtual(endstop) and stop_on_endstop == -1:
+        qual_endstop = mmu.sensor_manager.get_qualified_endstop_name(endstop)
+        if drive_stepper.rail.is_endstop_virtual(qual_endstop) and stop_on_endstop == -1:
             raise gcmd.error("Cannot reverse home on virtual (TMC stallguard) endstop '%s'" % endstop)
 
         mmu.log_debug("Homing '%s' motor to '%s' endstop, up to %.1fmm..." % (motor, endstop, move))

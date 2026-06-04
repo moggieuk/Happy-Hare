@@ -5,11 +5,11 @@ if TOOLHEAD_TYPE_A4T_WWBMG_BAMBU_TZ3
   config PARAM_TOOLHEAD_TYPE
     default "A4T WWBMG Bambu TZ3"
   config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
-    default "79.3"
+    default 79.3
   config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
-    default "68"
+    default 68
   config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
-    default "9"
+    default 9
   config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
-    default "0"
+    default 0
 endif

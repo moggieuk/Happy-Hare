@@ -55,24 +55,24 @@ menu "Toolhead sensors/settings"
   comment "_Toolhead dimensions"
 
   config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
-    string "Extruder entrance to nozzle"
+    float "Extruder entrance to nozzle"
     help
       Distance (mm) from extruder gears (entrance) to nozzle
 
   config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
-    string "Toolhead sensor to nozzle  "
+    float "Toolhead sensor to nozzle  "
     help
       Distance (mm) from "toolhead" sensor to nozzle
     depends on MMU_HAS_SENSOR_TOOLHEAD
 
   config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
-    string "Extruer sensor to entry    "
+    float "Extruer sensor to entry    "
     help
       Distance (mm) from extruder "entry" sensor to extruder gears
     depends on MMU_HAS_SENSOR_EXTRUDER
 
   config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
-    string "Residual filament          "
+    float "Residual filament          "
     help
       This setting represents how much residual filament (mm) is left behind in the nozzle when filament is
       removed. it is thus used to reduce the extruder loading length and prevent excessive blobbing but also
@@ -81,8 +81,8 @@ menu "Toolhead sensors/settings"
 
 # This is for tuning. Don't expose
 #  config PARAM_TOOLHEAD_OOZE_REDUCTION
-#    string "Ooze reduction             "
-#    default "0"
+#    float "Ooze reduction             "
+#    default 0
 #    help
 #      This is for tuning to fix blobbing. It is expected that this value is NEAR ZERO as it represents a further
 #      reduction in extruder load length to fix blobbing. If using a wipetower and you experience blobs on it,

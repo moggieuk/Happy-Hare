@@ -141,6 +141,9 @@ class BaseSelector:
 
 
     def set_filament_grip(self, state):
+        """
+        Convenient way to restore previous grip state
+        """
         if state == FILAMENT_DRIVE_STATE:
             self.filament_drive()
         elif state == FILAMENT_RELEASE_STATE:

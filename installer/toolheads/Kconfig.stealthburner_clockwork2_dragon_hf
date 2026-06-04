@@ -5,11 +5,11 @@ if TOOLHEAD_TYPE_STEALTHBURNER_CLOCKWORK2_DRAGON_HF
   config PARAM_TOOLHEAD_TYPE
     default "Stealthburner Clockwork2 Dragon HF"
   config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
-    default "70.3"
+    default 70.3
   config PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
-    default "62.2"
+    default 62.2
   config PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
-    default "12.4"
+    default 12.4
   config PARAM_TOOLHEAD_RESIDUAL_FILAMENT
-    default "30.6"
+    default 30.6
 endif

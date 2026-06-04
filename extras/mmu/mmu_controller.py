@@ -368,7 +368,7 @@ class MmuController(MmuFilamentMovement):
                     self.log_debug(f"Cannot autohome selector for {u.name} because selector is not yet calibrated")
                     continue
 
-                if u.p.startup_home_selector: # PAUL ADD and selector is calibrated!
+                if u.p.startup_home_selector:
                     unit_loaded = (
                         self.gate_selected != TOOL_GATE_UNKNOWN and
                         u.manages_gate(self.gate_selected) and
@@ -415,8 +415,8 @@ class MmuController(MmuFilamentMovement):
             # Sync lane data to Moonraker for slicer integration and cleanup old lanes
             self._moonraker_sync_lane_data()
 
-            # Reset sync state (intention is not to sync unless we have to)
-            self.reset_sync_gear_to_extruder(False)
+            # Reset sync state and grip
+            self.reset_sync_gear_to_extruder(force_grip=True)
             self.movequeue_wait()
 
             # Status to console...
@@ -1494,7 +1494,7 @@ class MmuController(MmuFilamentMovement):
             self.recover_filament_pos(message=True)
 
         # Intention is not to sync unless we have to but will be restored on resume/continue_printing
-        self.reset_sync_gear_to_extruder(False)
+        self.reset_sync_gear_to_extruder(force_grip=True)
 
         if send_event:
             self.printer.send_event("mmu:mmu_paused") # Notify MMU paused event
@@ -1545,6 +1545,7 @@ class MmuController(MmuFilamentMovement):
             self.psm.set_print_state(self.psm.resume_to_state)
             self.psm.resume_to_state = "ready"
             self.printer.send_event("mmu:mmu_resumed")
+
         elif self.is_mmu_paused():
             # If paused we can only continue on resume
             return
@@ -1554,13 +1555,20 @@ class MmuController(MmuFilamentMovement):
             self.is_handling_runout = False
             self.initialize_encoder(dwell=None) # Encoder 0000
 
-            # Restablish desired syncing state and grip (servo) position
-            self.reset_sync_gear_to_extruder(self.mmu_unit().p.sync_to_extruder, force_in_print=force_in_print)
+            # Restablish known syncing state so next tension test will work
+            synced = self.reset_sync_gear_to_extruder(force_grip=False, force_in_print=force_in_print)
+
+            # Try to put filament in neutral tension if filament in extruder and
+            # currently synced. This will avoid false clog detection with encoder
+            # or neutral tension with sync-feedback input
+            if synced:
+                self._adjust_filament_tension()
+
+            # Restablish desired syncing state AND grip (servo) position
+            self.reset_sync_gear_to_extruder(force_grip=True, force_in_print=force_in_print)
 
         # Good place to reset the _next_tool marker because after any user fix on toolchange error/pause
         self._next_tool = TOOL_GATE_UNKNOWN
-
-        # PAUL TODO?  Perhaps neutralize filament tension here if filament LOADED and SYNCED? (or perhaps in the is_printing() block?)
 
         # Restore print position as final step so no delay
         self._restore_toolhead_position(operation, restore=restore)
@@ -1609,7 +1617,7 @@ class MmuController(MmuFilamentMovement):
                 # Make sure we record the current speed/extruder overrides
                 if self.tool_selected >= 0:
                     mmu_state = self.gcode_move.saved_states[TOOLHEAD_POSITION_STATE]
-                    self.tool_speed_multipliers[self.tool_selected] = mmu_state['speed_factor'] * 60. # PAUL why * 60? tool_speed_mult is %?
+                    self.tool_speed_multipliers[self.tool_selected] = mmu_state['speed_factor']
                     self.tool_extrusion_multipliers[self.tool_selected] = mmu_state['extrude_factor']
 
                 # This will save the print position in the macro and apply park
@@ -1632,7 +1640,7 @@ class MmuController(MmuFilamentMovement):
             # Inject speed/extruder overrides into gcode state restore data
             if self.tool_selected >= 0:
                 mmu_state = self.gcode_move.saved_states[TOOLHEAD_POSITION_STATE]
-                mmu_state['speed_factor'] = self.tool_speed_multipliers[self.tool_selected] / 60. # PAUL why / 60? tool_speed_mult is a %?
+                mmu_state['speed_factor'] = self.tool_speed_multipliers[self.tool_selected]
                 mmu_state['extrude_factor'] = self.tool_extrusion_multipliers[self.tool_selected]
 
             # If this is the final "restore toolhead position" call then allow macro to restore position, then sanity check
@@ -2002,9 +2010,9 @@ class MmuController(MmuFilamentMovement):
     def motors_onoff(self, on=False, motor="all"):
         if motor in ["all", "gear", "gears"]:
             if on:
-                self.reset_sync_gear_to_extruder(False)
+                self.reset_sync_gear_to_extruder(force_grip=True)
             else:
-                self.drive().sync_mode(DRIVE_UNSYNCED)
+                self.reset_sync_gear_to_extruder(False, force_grip=True)
 
         for mmu_unit in self.mmu_machine.units:
             mmu_unit.motors_onoff(on, motor)
@@ -2205,7 +2213,7 @@ class MmuController(MmuFilamentMovement):
 
 
     def select_gate(self, gate):
-        #self.log_warning(f"PAUL: select_gate({gate}): gate_selected:{self.gate_selected}")
+#        self.log_warning(f"PAUL: select_gate({gate}): gate_selected:{self.gate_selected}")
         mmu_unit = self.mmu_unit(gate)
         selector = mmu_unit.selector
         try:
@@ -2273,7 +2281,7 @@ class MmuController(MmuFilamentMovement):
 
 
     def _set_gate_selected(self, gate):
-        #self.log_warning(f"PAUL: _set_gate_selected({gate})")
+#        self.log_warning(f"PAUL: _set_gate_selected({gate})")
         prev_gate = self.gate_selected
 
         if gate == prev_gate:
@@ -2309,7 +2317,7 @@ class MmuController(MmuFilamentMovement):
 
 
     def _set_unit_selected(self, unit_index):
-        #self.log_warning(f"PAUL: _set_unit_selected({unit_index})")
+#        self.log_warning(f"PAUL: _set_unit_selected({unit_index})")
         prev_unit = self.unit_selected
 
         if unit_index == prev_unit:

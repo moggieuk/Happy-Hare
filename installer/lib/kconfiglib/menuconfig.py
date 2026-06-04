@@ -3198,11 +3198,12 @@ def _node_str(node):
     if node.prompt:
         if node.item == COMMENT:
             if node.prompt[0].startswith('_'): # Happy Hare: Added special section header style for comments
-                min_width = 50
+                max_width = 60
                 text = node.prompt[0][1:]
                 middle = f" {text} "
-                width = max(min_width, len(middle) + 8)  # at least 4 _ on each side
-                heading = middle.center(width, "_")
+                heading = "____" + middle
+                if len(heading) < max_width:
+                    heading += "_" * (max_width - len(heading))
                 s += " {}".format(heading)
             else:
                 s += " *** {} ***".format(node.prompt[0])
@@ -3378,6 +3379,9 @@ def _check_valid(sym, s):
         return True
 
     if sym.orig_type not in (INT, HEX):
+        if "\\" in s:
+            _error("Backquote character '\\' is not allowed in strings")
+            return False  # Happy Hare: Can easily message up klipper config
         return True  # Anything goes for string symbols
 
     base = 10 if sym.orig_type == INT else 16
