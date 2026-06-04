@@ -283,6 +283,8 @@ class MmuESpooler:
 
             gate_weight_dict = self.mmu.spoolman_gates_weight.get(gate)
 
+            self.mmu._spoolman_dump_spool_weight(gate)
+
             if gate_weight_dict is None:
                 self.mmu.log_debug('Spool weight not found for Gate %s.' % gate)
             else:
@@ -304,8 +306,6 @@ class MmuESpooler:
                         duration = math.floor((full_burst_time + self.mmu.espooler_assist_burst_spool_prop - (
                                 remaining_weight * self.mmu.espooler_assist_burst_spool_prop) / float(full_spool_weight)) * 100) / 100
                         self.mmu.log_info('Auto-calculating burst duration. Spool: %sg -> Duration: %ss' % (remaining_weight, duration))
-
-            self.mmu._spoolman_dump_spool_weight(gate)
 
 
         msg = "ESPOOLER: Got espooler rotate event for gate %d: value=%.2f duration=%.1f" % (gate, value, duration)
