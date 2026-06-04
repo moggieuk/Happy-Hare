@@ -924,7 +924,14 @@ class MmuFilamentMovement:
                         self.log_warning("Warning: Filament was not detected by extruder (entry) sensor at start of extruder unload\nWill attempt to continue...")
                         fhomed = True # Assumption
                 else:
-                    hlength = u.toolhead_wrapper.p.toolhead_extruder_to_nozzle + u.toolhead_wrapper.p.toolhead_entry_to_extruder + u.p.toolhead_unload_safety_margin - u.toolhead_wrapper.p.toolhead_residual_filament - u.toolhead_wrapper.p.toolhead_ooze_reduction - self.toolchange_retract
+                    hlength = (
+                        u.toolhead_wrapper.p.toolhead_extruder_to_nozzle
+                        + u.toolhead_wrapper.p.toolhead_entry_to_extruder
+                        + u.p.toolhead_unload_safety_margin
+                        - u.toolhead_wrapper.p.toolhead_residual_filament
+                        - u.toolhead_wrapper.p.toolhead_ooze_reduction
+                        - self.toolchange_retract
+                    )
                     self.log_debug("Reverse homing up to %.1fmm off extruder sensor (synced) to exit extruder" % hlength)
                     _,fhomed,_,_ = self.move_filament("Reverse homing off extruder sensor", -hlength, motor=motor, homing_move=-1, endstop_name=SENSOR_EXTRUDER_ENTRY)
 
