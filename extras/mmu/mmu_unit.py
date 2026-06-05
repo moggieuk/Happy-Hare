@@ -435,7 +435,7 @@ class MmuUnit:
         # ---------------------------------------------------------------------------------------------------
 
         ANALOG_ENDSTOP_SENSOR_TYPES = {"MmuAdcSwitchSensor", "MmuHallEndstop"}
-        EXTRUDER_EXTRA_ENDSTOPS = [SENSOR_TOOLHEAD, SENSOR_COMPRESSION, SENSOR_TENSION]
+        EXTRUDER_EXTRA_ENDSTOPS = {SENSOR_TOOLHEAD, SENSOR_COMPRESSION, SENSOR_TENSION}
 
         def iter_endstop_sensors(per_gate=True):
             if self.sensors is None:
@@ -460,61 +460,76 @@ class MmuUnit:
                 if sensor is not None
             )
 
-
-        def add_sensor_endstop(sensor, drives):
+        def add_sensor_endstop(sensor, steppers):
             sensor_name = sensor.runout_helper.name
             sensor_pin = sensor.runout_helper.switch_pin
 
             is_analog_endstop = sensor.__class__.__name__ in ANALOG_ENDSTOP_SENSOR_TYPES
             mcu_endstop = None
-            drive_names = ", ".join(drive.name for drive in drives)
+            stepper_names = ", ".join(s.name for s in steppers)
 
             if is_analog_endstop:
-                for drive in drives:
-                    gear = drive.mmu_gear_stepper
-                    mcu_endstop = gear.rail.add_extra_endstop(sensor_pin, sensor_name, mcu_endstop=sensor)
+                for s in steppers:
+                    mcu_endstop = s.rail.add_extra_endstop(sensor_pin, sensor_name, mcu_endstop=sensor)
 
-                logging.info(f"MMU: Created analog endstop on stepper {drive_names} for {self.name} using {sensor_name}")
+                e_type = "analog endstop"
 
             else:
                 pin_params = ppins.parse_pin(sensor_pin, True, True)
                 share_name = "%s:%s" % (pin_params["chip_name"], pin_params["pin"])
                 ppins.allow_multi_use_pin(share_name)
 
-                for drive in drives:
-                    gear = drive.mmu_gear_stepper
-                    mcu_endstop = gear.rail.add_extra_endstop(sensor_pin, sensor_name)
+                for s in steppers:
+                    mcu_endstop = s.rail.add_extra_endstop(sensor_pin, sensor_name)
 
-                logging.info(f"MMU: Created endstop on stepper {drive_names} for {self.name} using {sensor_name}")
+                e_type = "digital endstop"
 
+            logging.info(f"MMU: Created {e_type} on stepper {stepper_names} for {self.name} using {sensor_name}")
             return mcu_endstop
-
 
         ext = self.extruder_wrapper.homing_extruder_stepper
         ppins = self.printer.lookup_object("pins")
 
+        # First create all the per-gate endstops for the specific gear drives
         for sensor in iter_endstop_sensors(per_gate=True):
             sensor_name = sensor.runout_helper.name
             lgate = int(sensor_name.split("_")[-1])
             drives = [self.drives[lgate]] if self.multigear else self.drives[:1]
-            add_sensor_endstop(sensor, drives)
+            steppers = [drive.mmu_gear_stepper for drive in drives]
+            add_sensor_endstop(sensor, steppers)
 
+        # Now create the (unit) shared endstops reusing existing endstops on shared components
         for sensor in iter_endstop_sensors(per_gate=False):
             sensor_name = sensor.runout_helper.name
-            drives = self.drives if self.multigear else self.drives[:1]
-
-            mcu_endstop = add_sensor_endstop(sensor, drives)
-
-            # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing.
-            # Otherwise the extruder can continue to move a small 2-3mm, speed-dependent, distance.
-            # These sensors are shared by the unit and not per-gear.
             simple_sensor_name = sensor_name.split(":", 1)[-1]
 
-            if (mcu_endstop is not None and simple_sensor_name in EXTRUDER_EXTRA_ENDSTOPS):
-                #ext.rail.add_extra_endstop("", sensor_name, register=False, mcu_endstop=mcu_endstop)
-                ext.rail.bind_stepper(sensor_name, mcu_endstop)
-                logging.info(f"MMU: Created endstop on stepper {ext.rail.stepper.get_name()} for {self.name} using {sensor_name}")
+            drives = self.drives if self.multigear else self.drives[:1]
+            steppers = [drive.mmu_gear_stepper for drive in drives]
+            stepper_names = ", ".join(s.name for s in steppers)
 
+            # We create on the shared extruder first so existing mcu_endstop can be reused
+            # when multiple units shared the same toolhead and/or sync-feedback-buffer
+            if simple_sensor_name in EXTRUDER_EXTRA_ENDSTOPS:
+                es = ext.rail.get_extra_endstop(sensor_name)
+
+                if es is None:
+                    # Binding with the extruder ensures rapid stopping of extruder stepper
+                    # when endstop is hit on synced homing. Otherwise the extruder can continue
+                    # to move a small 2-3mm, speed-dependent, distance.
+                    mcu_endstop = add_sensor_endstop(sensor, [ext])
+                else:
+                    # Already exists
+                    mcu_endstop = es[0][0]
+
+                # Now just bind gear steppers to same endstop
+                for s in steppers:
+                    s.rail.add_extra_endstop("", sensor_name, register=False, mcu_endstop=mcu_endstop)
+
+                logging.info(f"MMU: Shared {sensor_name} endstop with stepper {stepper_names} for {self.name}")
+
+            else:
+                # Create just for the gear steppers
+                add_sensor_endstop(sensor, steppers)
 
         # Event handlers
         self.printer.register_event_handler('klippy:connect', self.handle_connect)

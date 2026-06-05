@@ -659,7 +659,7 @@ class MmuFilamentMovement:
 
         if not homed:
             self.set_filament_pos_state(FILAMENT_POS_END_BOWDEN)
-            raise MmuError("Failed to reach extruder '%s' endstop after moving %.1fmm" % (u.p.extruder_homing_endstop, homing_max))
+            raise MmuError("Failed to reach extruder '%s' endstop after moving %.1fmm" % (u.p.extruder_homing_endstop, homing_movement))
 
         if measured > (homing_max * 0.8):
             self.log_warning("Warning: 80%% of 'extruder_homing_max' was used homing. You may want to increase 'extruder_homing_max'")
@@ -770,7 +770,7 @@ class MmuFilamentMovement:
                     else:
                         # For bypass its best to assume we didn't enter the extruder at all
                         self.set_filament_pos_state(FILAMENT_POS_UNLOADED)
-                    raise MmuError("Failed to reach toolhead sensor after moving %.1fmm" % u.p.toolhead_homing_max)
+                    raise MmuError("Failed to reach toolhead sensor after moving %.1fmm" % actual)
 
             # Length may be reduced by previous unload in filament cutting use case. Ensure reduction is used only one time
             d = u.toolhead_wrapper.p.toolhead_sensor_to_nozzle if has_toolhead else u.toolhead_wrapper.p.toolhead_extruder_to_nozzle
@@ -933,10 +933,10 @@ class MmuFilamentMovement:
                         - self.toolchange_retract
                     )
                     self.log_debug("Reverse homing up to %.1fmm off extruder sensor (synced) to exit extruder" % hlength)
-                    _,fhomed,_,_ = self.move_filament("Reverse homing off extruder sensor", -hlength, motor=motor, homing_move=-1, endstop_name=SENSOR_EXTRUDER_ENTRY)
+                    actual,fhomed,_,_ = self.move_filament("Reverse homing off extruder sensor", -hlength, motor=motor, homing_move=-1, endstop_name=SENSOR_EXTRUDER_ENTRY)
 
                 if not fhomed:
-                    raise MmuError("Failed to reach extruder entry sensor after moving %.1fmm" % hlength)
+                    raise MmuError("Failed to reach extruder entry sensor after moving %.1fmm" % actual)
                 else:
                     validate = False
                     # We know exactly where end of filament is so true up
@@ -957,9 +957,9 @@ class MmuFilamentMovement:
                     else:
                         hlength = u.toolhead_wrapper.p.toolhead_sensor_to_nozzle + u.p.toolhead_unload_safety_margin - u.toolhead_wrapper.p.toolhead_residual_filament - u.toolhead_wrapper.p.toolhead_ooze_reduction - self.toolchange_retract
                         self.log_debug("Reverse homing up to %.1fmm off toolhead sensor%s" % (hlength, (" (synced)" if synced else "")))
-                        _,fhomed,_,_ = self.move_filament("Reverse homing off toolhead sensor", -hlength, motor=motor, homing_move=-1, endstop_name=SENSOR_TOOLHEAD)
+                        actual,fhomed,_,_ = self.move_filament("Reverse homing off toolhead sensor", -hlength, motor=motor, homing_move=-1, endstop_name=SENSOR_TOOLHEAD)
                     if not fhomed:
-                        raise MmuError("Failed to reach toolhead sensor after moving %.1fmm" % hlength)
+                        raise MmuError("Failed to reach toolhead sensor after moving %.1fmm" % actual)
                     else:
                         validate = False
                         # We know exactly where end of filament is so true up
@@ -1858,8 +1858,10 @@ class MmuFilamentMovement:
                     if homing_move != 0:
                         # Check for valid endstop
                         qual_endstop_name = self.sensor_manager.get_qualified_endstop_name(endstop_name)
+                        self.log_warning(f"PAUL: qual_endstop_name={qual_endstop_name} for '{endstop_name}' motor={motor}")
                         if not drive.has_endstop(qual_endstop_name):
                             self.log_error(f"Endstop '{endstop_name}' not found")
+                            self.log_warning(f"PAUL: returning...")
                             return null_rtn
 
                         self.log_stepper("%s HOMING MOVE: max dist=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s, wait=%s" % (motor.upper(), dist, speed, accel, endstop_name, wait))

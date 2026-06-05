@@ -48,6 +48,7 @@ class BaseCommand:
         help_supplement=None,
         category=CATEGORY_OTHER,
         per_unit=False,
+        log=True,
     ):
         """
         Register a gcode command with shared help behavior.
@@ -59,7 +60,8 @@ class BaseCommand:
         def wrapped(gcmd):
             mmu = self.mmu
 
-            mmu.log_to_file(gcmd.get_commandline())
+            if log:
+                mmu.log_to_file(gcmd.get_commandline())
 
             if gcmd.get_int('HELP', 0, minval=0, maxval=1):
                 mmu.log_always(self.format_help(help_params, help_supplement or "", per_unit), color=True)

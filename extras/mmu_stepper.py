@@ -303,18 +303,21 @@ class MmuGenericRail:
             if is_default_alias:
                 mcu_endstop = self.default_mcu_endstop
                 bind_steppers = False
+
             elif is_virtual:
                 ppins = self.printer.lookup_object('pins')
                 mcu_endstop = ppins.setup_pin('endstop', pin)
+
             else:
                 mcu_endstop = self.lookup_endstop(pin, name, register=False)
+
             MmuGenericRail.record_mcu_endstop(mcu_endstop, name)
 
         if (mcu_endstop, name) not in self.extra_endstops:
             self.extra_endstops.append((mcu_endstop, name))
 
         if bind_steppers:
-            self.bind_stepper(name, mcu_endstop)
+            self.bind_stepper(mcu_endstop, name)
 
         if register:
             self.query_endstops.register_endstop(mcu_endstop, name)
@@ -322,11 +325,14 @@ class MmuGenericRail:
         return mcu_endstop
 
 
-    def bind_stepper(self, name, mcu_endstop):
+    def bind_stepper(self, mcu_endstop, name):
         try:
             mcu_endstop.add_stepper(self.stepper)
         except Exception as e:
-            logging.info("MMU: Not possible to add stepper %s to endstop %s because: %s", self.stepper.get_name(), name, str(e))
+            logging.info(
+                f"MMU: Not possible to add stepper {self.stepper.get_name()} "
+                f"to endstop {name} because: {e}"
+            )
 
 
     def get_all_endstop_names(self):
