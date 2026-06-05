@@ -359,12 +359,15 @@ class MmuFilamentMovement:
         if u.p.gate_homing_endstop == SENSOR_ENCODER:
             if not self.has_encoder():
                 raise MmuError("Attempting to %s encoder but encoder is not configured on MMU!" % direction)
+
         elif u.p.gate_homing_endstop in GATE_ENDSTOPS:
-            sensor = u.p.gate_homing_endstop
-            if u.p.gate_homing_endstop == SENSOR_EXIT_PREFIX:
-                sensor += "_%d" % self.gate_selected
-            if not self.sensor_manager.has_sensor(sensor):
-                raise MmuError("Attempting to %s gate but sensor '%s' is not configured on MMU!" % (direction, sensor))
+            endstop = u.p.gate_homing_endstop
+
+            if endstop == SENSOR_EXIT_PREFIX:
+                endstop += "_%d" % self.gate_selected
+            if not self.sensor_manager.has_sensor(endstop):
+                raise MmuError("Attempting to %s gate but sensor '%s' is not configured or is disabled!" % (direction, endstop))
+
         else:
             raise MmuError("Unsupported gate endstop %s" % u.p.gate_homing_endstop)
 

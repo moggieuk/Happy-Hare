@@ -112,6 +112,7 @@ class MmuTestCommand(BaseCommand):
         + "ADJUST_ENCODER={delta} Adjust the encoder distance reading by delta\n"
         + "SET_ENCODER={dist} Set the encoder distance reading to distance\n"
         + "DUMP_MCU_ENDSTOPS=1 Dump steppers registered on each MCU_endstop\n"
+        + "DUMP_ACTIVE_SENSORS=1 Dump raw active sensors map\n"
     )
     HELP_SUPPLEMENT = (
         ""
@@ -558,8 +559,8 @@ class MmuTestCommand(BaseCommand):
                 have_run_test = True
                 mmu.set_filament_pos_state(pos)
 
-            pos = gcmd.get_float('GET_POS', 0, minval=0, maxval=10)
-            if pos >= 0:
+            gpos = gcmd.get_int('GET_POS', 0, minval=0, maxval=10)
+            if gpos:
                 have_run_test = True
                 fil_pos_str = FILAMENT_POS_NAME_MAP.get(mmu.filament_pos, "INVALID")
                 mmu.log_info("Filament pos state: %s (%s)" % (mmu.filament_pos, fil_pos_str))
@@ -1067,6 +1068,12 @@ class MmuTestCommand(BaseCommand):
                         )
 
                 mmu.log_always(msg)
+
+            dump_sensors = gcmd.get_int('DUMP_ACTIVE_SENSORS', None)
+            if dump_sensors is not None:
+                have_run_test = True
+
+                mmu.log_always(f"active_sensors={mmu.sensor_manager.get_status()}")
 
 
             if not have_run_test:
