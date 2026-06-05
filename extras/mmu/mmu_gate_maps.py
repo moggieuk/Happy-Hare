@@ -129,7 +129,7 @@ class MmuGateMaps:
                 setattr(self, attr, value)
             else:
                 errors.append("Incorrect number of gates specified with %s" % var)
-        self.update_gate_color_rgb() # PAUL check this is correct?
+        self.update_gate_color_rgb()
 
         # Load selected gate and tool
         gate_selected = var_manager.get(VARS_MMU_GATE_SELECTED, self.mmu.gate_selected)

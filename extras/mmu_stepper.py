@@ -1148,7 +1148,7 @@ class MmuStepper(ExtruderStepper):
 
 
     def cmd_MMU_STEPPER_STATUS(self, gcmd):
-        endstops = gcmd.get_int('ENDSTOPS', 1)
+        endstops = gcmd.get_int('ENDSTOPS', 1) # Default to show endstops
         toolhead = self.printer.lookup_object('toolhead')
         print_time = toolhead.get_last_move_time()
 

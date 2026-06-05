@@ -24,6 +24,7 @@ from typing                 import Sequence
 # Happy Hare imports
 from ...mmu_constants       import *
 from ...mmu_utils           import MmuError
+from ...commands            import register_command
 from ...mmu_base_parameters import TunableParametersBase, ParamSpec
 from ..mmu_calibrator       import CALIBRATED_SELECTOR
 from .mmu_base_selectors    import PhysicalSelector
@@ -38,7 +39,8 @@ class IndexedSelectorParameters(TunableParametersBase):
     _SPECS: Sequence[ParamSpec] = (
         ParamSpec('selector_move_speed',    'float',  200.0, section="SELECTOR", limits=dict(minval=1.0)),
         ParamSpec('selector_accel',         'float', 1200.0, section="SELECTOR", limits=dict(above=1.0)),
-        ParamSpec('selector_index_distance','float',    5.0, section="SELECTOR", limits=dict(minval=0.0)),
+        ParamSpec('selector_gate_order',    'intlist', [0, 2, 1, 3], section="SELECTOR",                  hidden=True),
+        ParamSpec('selector_endstop_width', 'float',    5.0, section="SELECTOR", limits=dict(minval=0.0), hidden=True),
 
         ParamSpec('cad_gate_width',         'float',     90, section="CAD",      limits=dict(above=0.0),  hidden=True),
         ParamSpec('cad_max_rotations',      'int',        2, section="CAD",      limits=dict(minval=0),   hidden=True),
@@ -88,6 +90,12 @@ class IndexedSelector(PhysicalSelector):
         # Current local gate selected
         self.lgate_selected = None
 
+        # Register GCODE commands specific to this module
+        try:
+            register_command(MmuCalibrateSelectorIndexesCommand)
+        except KeyError:
+            pass # Already registered
+
 
     # Selector "Interface" methods ---------------------------------------------
 
@@ -96,12 +104,44 @@ class IndexedSelector(PhysicalSelector):
 
 
     def handle_ready(self):
+        """
+        Loads calibrated selector gate order and endstop wdiths from mmu_vars.cfg,
+        """
         super().handle_ready()
 
-        # Design don't need homing or calibration
+        # Load selector indexes (calibration set with MMU_CALIBRATE_SELECTOR_INDEXES) -----------------------
+
+        self.gate_sequence = self.var_manager.get(VARS_MMU_SELECTOR_GATE_SEQUENCE, None, namespace=self.mmu_unit.name)
+        if self.gate_sequence:
+            if len(self.gate_sequence) == self.mmu_unit.num_gates:
+                self.mmu.log_debug("Loaded saved gate sequence: %s" % self.gate_sequence)
+            else:
+                self.mmu.log_error("Incorrect number of gates specified in %s. Using default sequence" % VARS_MMU_SELECTOR_OFFSETS)
+                self.gate_sequence = self.p.selector_gate_order
+        else:
+            self.gate_sequence = self.p.selector_gate_order
+        self.var_manager.set(VARS_MMU_SELECTOR_GATE_SEQUENCE, self.gate_sequence, namespace=self.mmu_unit.name)
+
+        default_endstop_widths = [self.p.selector_endstop_width] * self.mmu_unit.num_gates
+        self.endstop_widths = self.var_manager.get(VARS_MMU_SELECTOR_ENDSTOP_WIDTHS, None, namespace=self.mmu_unit.name)
+        if self.endstop_widths:
+            if len(self.endstop_widths) == self.mmu_unit.num_gates:
+                self.mmu.log_debug("Loaded saved gate endstop widths: %s" % self.endstop_widths)
+            else:
+                self.mmu.log_error("Incorrect number of gate endstop widhts specified in %s. Using default width" % VARS_MMU_SELECTOR_OFFSETS)
+                self.endstop_widths = default_endstop_widths
+        else:
+            self.endstop_widths = default_endstop_widths
+        self.var_manager.set(VARS_MMU_SELECTOR_ENDSTOP_WIDTHS, self.endstop_widths, namespace=self.mmu_unit.name)
+
+        # Design doesn't need homing or calibration
         self.is_homed = True
         self.calibrator.mark_calibrated(CALIBRATED_SELECTOR)
         self._set_position(0)
+
+
+    def handle_disconnect(self):
+        super().handle_disconnect()
 
 
     def enable_motors(self):
@@ -180,47 +220,40 @@ class IndexedSelector(PhysicalSelector):
         Move in the best direction until the target gate's index endstop triggers.
 
         Performs a homing move toward the selected endstop and, if homed, centers
-        on the index by moving half of selector_index_distance.
+        on the index by moving half of selector_endstop_width.
         """
         rotation_dir = self._best_rotation_direction(self.lgate_selected, lgate)
         max_move = self._get_max_selector_movement() * rotation_dir
-        delta,homed = self._homing_move_rel("Indexing selector", max_move, homing_move=1, endstop_name=self._get_gate_endstop_name(lgate))
+        delta, homed = self._homing_move_rel(
+            "Indexing selector",
+            max_move,
+            homing_move=1,
+            endstop_name=self._get_gate_endstop_name(lgate),
+        )
+
         if abs(delta) > 0 and homed:
             # If we actually moved to home make sure we are centered on index endstop
-            center_move = (self.p.selector_index_distance / 2) * rotation_dir
+            nudge = self.endstop_widths[lgate] / 2
+            center_move = nudge * rotation_dir
             self._move_rel("Centering selector", center_move)
+
         self.lgate_selected = lgate
 
 
-    # TODO automate the setup of the sequence through homing move on startup
     def _best_rotation_direction(self, start_lgate, end_lgate):
         """
-        Choose rotation direction that reaches end_lgate in the fewest steps.
-
-        Uses a fixed forward gate sequence and compares forward vs reverse step
-        counts from start_lgate to end_lgate.
+        Choose rotation direction that reaches end_lgate in the minimum movement
         """
         if start_lgate is None:
             return 1 # Forward direction
 
-        sequence = [0, 2, 1, 3] # Forward order of gates
-        n = len(sequence)
-        forward_distance = reverse_distance = 0
+        n = len(self.gate_sequence)
 
-        # Find distance in forward direction
-        start_idx = sequence.index(start_lgate)
-        for i in range(1, n):
-            if sequence[(start_idx + i) % n] == end_lgate:
-                forward_distance = i
-                break
+        start_idx = self.gate_sequence.index(start_lgate)
+        end_idx = self.gate_sequence.index(end_lgate)
 
-        # Find distance in reverse direction
-        rev_seq = sequence[::-1]
-        start_idx = rev_seq.index(start_lgate)
-        for i in range(1, n):
-            if rev_seq[(start_idx + i) % n] == end_lgate:
-                reverse_distance = i
-                break
+        forward_distance = (end_idx - start_idx) % n
+        reverse_distance = (start_idx - end_idx) % n
 
         return 1 if forward_distance <= reverse_distance else -1
 
@@ -270,7 +303,7 @@ class IndexedSelector(PhysicalSelector):
             endstops = self.selector_stepper.rail.get_endstops() if endstop_name is None else self.selector_stepper.rail.get_extra_endstop(endstop_name)
             if endstops is None:
                 self.mmu.log_error("Endstop '%s' not found" % endstop_name)
-                return self.selector_stepper.commanded_pos, False
+                return pos, False
 
             home_result = {
                 'halt_pos': pos,
@@ -318,6 +351,176 @@ class IndexedSelector(PhysicalSelector):
         return self.selector_stepper.commanded_pos, homed
 
 
+    def _detect_gate_sequence(self):
+        """
+        Detect forward gate sequence by probing each gate from selector position 0.
+
+        For each gate:
+          1. Move from pos 0 forward until that gate endstop triggers.
+          2. Continue forward with inverse homing to measure endstop width.
+          3. Return to pos 0.
+        """
+        gates = list(range(self.mmu_unit.num_gates))
+        max_move = self._get_max_selector_movement()
+
+        detected = []
+        widths = [self.p.selector_endstop_width] * self.mmu_unit.num_gates
+
+        # Make sure we are clear of any index prior to start
+        activated = any(
+            self._query_endstop(self._get_gate_endstop_name(gate))
+            for gate in range(self.mmu_unit.num_gates)
+        )
+        if activated:
+            # Move half gate width to get off endstop
+            self._move_rel("Moving of endstop", -(self.p.cad_gate_width / 2))
+
+        self._set_position(0)
+
+        for gate in gates:
+            endstop = self._get_gate_endstop_name(gate)
+
+            self.mmu.log_info(f"Locating gate {gate}...")
+            delta_to_gate, homed = self._homing_move_rel(
+                f"Detecting selector gate {gate}",
+                max_move,
+                homing_move=1,
+                endstop_name=endstop,
+            )
+
+            if not homed:
+                raise MmuError(f"Failed to detect selector gate {gate}")
+
+            width_delta, cleared = self._homing_move_rel(
+                f"Measuring selector gate {gate} endstop width",
+                max_move,
+                homing_move=-1,
+                endstop_name=endstop,
+            )
+
+            if not cleared:
+                raise MmuError(f"Failed to measure selector gate {gate} endstop width")
+
+            distance = abs(delta_to_gate)
+            width = round(abs(width_delta), 1)
+
+            detected.append((gate, distance))
+            widths[gate] = width
+
+            # Return to selector pos 0.
+            self._move_rel(f"Returning selector to zero after gate {gate}", -(delta_to_gate + width_delta))
+
+        detected.sort(key=lambda item: item[1])
+
+        self.gate_sequence = [gate for gate, distance in detected]
+        self.gate_endstop_widths = widths
+
+        return self.gate_sequence, self.gate_endstop_widths
+
+
     def _set_position(self, position):
         self.selector_stepper.do_set_position(position)
         self.enable_motors()
+
+
+
+# -----------------------------------------------------------------------------------------------------------
+# MMU_CALIBRATE_SELECTOR_INDEXES command
+#  This "registered command" will be conditionally registered, then instantiated later by the main
+#  mmu_controller module when commands are loaded
+# -----------------------------------------------------------------------------------------------------------
+
+from ...commands.mmu_base_command import *
+
+class MmuCalibrateSelectorIndexesCommand(BaseCommand):
+
+    CMD = "MMU_CALIBRATE_SELECTOR_INDEXES"
+
+    HELP_BRIEF = "Calibrate selector index gate sequence and endstop widths"
+    HELP_PARAMS = (
+        f"{CMD}: {HELP_BRIEF}\n"
+        + "UNIT  = #(int) Optional if only one unit fitted to printer\n"
+        + "SAVE  = [0|1] Whether to persist the calibration results (default: 1)\n"
+        + "RESET = [0|1] Reset selector index calibration\n"
+    )
+    HELP_SUPPLEMENT = (
+        "Examples:\n"
+        + f"{CMD}         ...detect selector index gate order and endstop widths\n"
+        + f"{CMD} SAVE=0  ...detect and report results but don't save\n"
+        + f"{CMD} UNIT=1  ...calibrate selector indexes on unit 1\n"
+        + f"{CMD} RESET=1 ...reset selector index calibration\n"
+    )
+
+    def __init__(self, mmu):
+        super().__init__(mmu)
+        self.register(
+            name=self.CMD,
+            handler=self._run,
+            help_brief=self.HELP_BRIEF,
+            help_params=self.HELP_PARAMS,
+            help_supplement=self.HELP_SUPPLEMENT,
+            category=CATEGORY_TESTING,
+            per_unit=True,
+        )
+
+    def _run(self, gcmd, mmu_unit):
+        """
+        Detect selector index gate order and endstop widths.
+
+        Rotates/probes the selector index endstops from a known position,
+        determines the forward gate sequence, measures each gate endstop width,
+        and optionally persists the results.
+        """
+        mmu = mmu_unit.mmu
+        selector = mmu_unit.selector
+
+        if self.check_if_disabled(): return
+        if not isinstance(selector, IndexedSelector):
+            self.mmu.log_error("Operation not possible on this selector type (IndexedSelector only)")
+            return
+
+        reset = bool(gcmd.get_int("RESET", 0, minval=0, maxval=1))
+        save = bool(gcmd.get_int("SAVE", 1, minval=0, maxval=1))
+
+        if reset:
+            selector.gate_sequence = []
+            selector.endstop_widths = {}
+
+            selector.var_manager.set(VARS_MMU_SELECTOR_GATE_SEQUENCE, selector.gate_sequence, namespace=mmu_unit.name)
+            selector.var_manager.set( VARS_MMU_SELECTOR_ENDSTOP_WIDTHS, selector.endstop_widths, namespace=mmu_unit.name, write=True)
+
+            mmu.log_always(f"Reset selector index calibration on {mmu_unit.name}")
+            return
+
+        mmu.log_always(f"Calibrating selector indexes on {mmu_unit.name}...")
+
+        try:
+            with mmu.wrap_sync_gear_to_extruder():
+                mmu.calibrating = True
+                selector.filament_hold_move()
+
+                gate_sequence, endstop_widths = selector._detect_gate_sequence()
+
+                sequence_str = ", ".join(
+                    f"{gate} (width={endstop_widths[gate]:.1f}mm)"
+                    for gate in gate_sequence
+                )
+                mmu.log_always(f"Detected gate sequence: {sequence_str}")
+
+                if save:
+                    selector.var_manager.set(VARS_MMU_SELECTOR_GATE_SEQUENCE, gate_sequence, namespace=mmu_unit.name)
+                    selector.var_manager.set(VARS_MMU_SELECTOR_ENDSTOP_WIDTHS, endstop_widths, namespace=mmu_unit.name, write=True)
+                    mmu.log_always("Selector index calibration saved")
+                else:
+                    mmu.log_always("Selector index calibration not saved")
+
+                selector._home_selector()
+
+                # Leave MMU is usable state with user visualization
+                mmu.refresh_tool_gate()
+
+        except MmuError as ee:
+            mmu.handle_mmu_error(str(ee))
+
+        finally:
+            mmu.calibrating = False

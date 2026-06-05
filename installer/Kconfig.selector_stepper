@@ -69,7 +69,11 @@ if MMU_HAS_SELECTOR_STEPPER
 # -------------------------------------
 # RotarySelector additions
 # -------------------------------------
+
     if ROTARY_SELECTOR || TESTING_SELECTOR
+
+      comment "_Rotary selector"
+
       config PARAM_SELECTOR_GATE_DIRECTIONS
         string "Selector gate directions  "
         default "1, 1, 0, 0"
@@ -86,6 +90,31 @@ if MMU_HAS_SELECTOR_STEPPER
           An array with entry for each gate representing which gate to select to release the filament in
           the designated gate. (Only works if 'filament_always_gripped: 0').
           E.g. "2, 3, 0, 1" to release gate 0, select gate 2, to release gate 1, select gate 3, etc.
+    endif
+
+
+# -------------------------------------
+# Index Selector additions
+# -------------------------------------
+
+    if INDEXED_SELECTOR || TESTING_SELECTOR
+
+      comment "_Indexed selector"
+
+      config PARAM_SELECTOR_GATE_ORDER
+        string "Selector gate order       "
+        default "0, 3, 1, 2"
+        help
+          Comma separated list representing the order of gates when selector is moving in a forward
+          direction. This allows for efficient gate selection. Can also be automatically calibrated
+          with the MMU_CALIBRATE_SELECTOR_INDEXES command
+
+      config PARAM_SELECTOR_ENDSTOP_WIDTH
+        float "Selector endstop width    "
+        default 10
+        help
+          Width of gate selection endstop. It allows for accurate centering on the gate.
+          Can also be automatically calibrated (per-gate) with the MMU_CALIBRATE_SELECTOR_INDEXES command
     endif
 
   endmenu

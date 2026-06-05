@@ -247,6 +247,8 @@ VARS_MMU_SELECTOR_ANGLES           = "mmu_selector_angles"
 VARS_MMU_SELECTOR_BYPASS_ANGLE     = "mmu_selector_bypass_angle"
 VARS_MMU_SELECTOR_RELEASE_ANGLE    = "mmu_selector_release_angle"
 VARS_MMU_SELECTOR_SERVO_ANGLES     = "mmu_selector_servo_angles"      # Used on linear selectors with servo for filament grip
+VARS_MMU_SELECTOR_GATE_SEQUENCE    = "mmu_selector_gate_sequence"     # Used by indexed selectors
+VARS_MMU_SELECTOR_ENDSTOP_WIDTHS   = "mmu_selector_endstop_widths"    # Used by indexed selectors
 
 # Mainsail/Fluid visualization of extruder colors and other attributes
 T_MACRO_COLOR_ALLGATES = 'allgates' # Color from gate map (all tools). Will add spool_id if spoolman is enabled

@@ -1911,21 +1911,26 @@ class MmuFilamentMovement:
             trace_str += " --> Pos: @%.1f, (e: %.1fmm)" % (drive.get_filament_position(), encoder_end)
             self.log_trace(trace_str)
 
-        if motor == "gear" and track and self.can_use_encoder():
+        if motor == "gear" and track:
             if dist > 0:
                 self._track_gate_statistics('load_distance', self.gate_selected, dist)
-                self._track_gate_statistics('load_delta', self.gate_selected, delta)
-            else:
+                if self.can_use_encoder():
+                    self._track_gate_statistics('load_delta', self.gate_selected, delta)
+            elif dist < 0:
                 self._track_gate_statistics('unload_distance', self.gate_selected, -dist)
-                self._track_gate_statistics('unload_delta', self.gate_selected, delta)
-            if dist != 0:
+                if self.can_use_encoder():
+                    self._track_gate_statistics('unload_delta', self.gate_selected, delta)
+
+            if self.can_use_encoder() and dist != 0:
                 quality = abs(1. - delta / dist)
                 cur_quality = self.gate_statistics[self.gate_selected]['quality']
                 if cur_quality < 0:
                     self.gate_statistics[self.gate_selected]['quality'] = quality
                 else:
-                    # Average (EMA) down over 10 swaps
-                    self.gate_statistics[self.gate_selected]['quality'] = (cur_quality * 9 + quality) / 10
+                    # Exponential moving average (alpha=0.1)
+                    self.gate_statistics[self.gate_selected]["quality"] += (
+                        quality - cur_quality
+                    ) * 0.1
 
         return actual, homed, measured, delta
 

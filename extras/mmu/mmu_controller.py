@@ -269,8 +269,10 @@ class MmuController(MmuFilamentMovement):
 
         self.statistics.update(swap_stats)
         for gate in range(self.num_gates):
+            mmu_unit = self.mmu_unit(gate)
+
             self.gate_statistics[gate] = dict(EMPTY_GATE_STATS_ENTRY)
-            gstats = self.var_manager.get("%s%d" % (VARS_MMU_GATE_STATISTICS_PREFIX, gate), None)
+            gstats = self.var_manager.get("%s%d" % (VARS_MMU_GATE_STATISTICS_PREFIX, mmu_unit.local_gate(gate)), None, namespace=mmu_unit.name)
             if gstats:
                 self.gate_statistics[gate].update(gstats)
 
@@ -1170,7 +1172,8 @@ class MmuController(MmuFilamentMovement):
             if job or total:
                 msg += self._swap_statistics_to_string(total=total, detail=detail)
 
-            if self.can_use_encoder() and gate:
+#PAUL            if self.can_use_encoder() and gate:
+            if gate:
                 m,d = self._gate_statistics_to_string()
                 msg += "\n\n" if msg != "" else ""
                 msg += m
@@ -1200,45 +1203,68 @@ class MmuController(MmuFilamentMovement):
         dbg = ""
         t = self.p.console_gate_stat
         for gate in range(self.num_gates):
+            gate_has_encoder = self.can_use_encoder(gate)
             #rounded = {k:round(v,1) if isinstance(v,float) else v for k,v in self.gate_statistics[gate].items()}
             rounded = self.gate_statistics[gate]
             load_slip_percent = (rounded['load_delta'] / rounded['load_distance']) * 100 if rounded['load_distance'] != 0. else 0.
             unload_slip_percent = (rounded['unload_delta'] / rounded['unload_distance']) * 100 if rounded['unload_distance'] != 0. else 0.
             quality = rounded['quality']
+
             # Give the gate a reliability grading based on "quality" which is based on slippage
-            if t == 'percentage':
-                status = '%s%%' % min(100, round(quality * 100, 1)) if quality >= 0 else "n/a"
-            elif quality < 0:
-                status = UI_EMOTICONS[0] if t == 'emoticon' else "n/a"
-            elif quality >= 0.985:
-                status = UI_EMOTICONS[1] if t == 'emoticon' else "Perfect"
-            elif quality >= 0.965:
-                status = UI_EMOTICONS[2] if t == 'emoticon' else "Great"
-            elif quality >= 0.95:
-                status = UI_EMOTICONS[3] if t == 'emoticon' else "Good"
-            elif quality >= 0.925:
-                status = UI_EMOTICONS[4] if t == 'emoticon' else "Marginal"
-            elif quality >= 0.90:
-                status = UI_EMOTICONS[5] if t == 'emoticon' else "Degraded"
-            elif quality >= 0.85:
-                status = UI_EMOTICONS[6] if t == 'emoticon' else "Poor"
+            if t == "percentage":
+                status = f"{min(100, round(quality * 100, 1))}%" if quality >= 0 else "n/a"
             else:
-                status = UI_EMOTICONS[7] if t == 'emoticon' else "Terrible"
-            msg += "%d:%s" % (gate, status)
-            msg += ", " if gate < (self.num_gates - 1) else ""
-            dbg += "\nGate %d: " % gate
-            dbg += "Load: (monitored: %.1fmm slippage: %.1f%%)" % (rounded['load_distance'], load_slip_percent)
-            dbg += "; Unload: (monitored: %.1fmm slippage: %.1f%%)" % (rounded['unload_distance'], unload_slip_percent)
-            dbg += "; Failures: (load: %d unload: %d pauses: %d)" % (rounded['load_failures'], rounded['unload_failures'], rounded['pauses'])
-            dbg += "; Quality: %.1f%%" % ((rounded['quality'] * 100.) if rounded['quality'] >= 0. else 0.)
+                ratings = [
+                    (0.985, UI_EMOTICONS[1], "Perfect"),
+                    (0.965, UI_EMOTICONS[2], "Great"),
+                    (0.950, UI_EMOTICONS[3], "Good"),
+                    (0.925, UI_EMOTICONS[4], "Marginal"),
+                    (0.900, UI_EMOTICONS[5], "Degraded"),
+                    (0.850, UI_EMOTICONS[6], "Poor"),
+                ]
+
+                if quality < 0:
+                    status = UI_EMOTICONS[0] if t == "emoticon" else "n/a"
+                else:
+                    status = UI_EMOTICONS[7] if t == "emoticon" else "Terrible"
+                    for threshold, emoticon, label in ratings:
+                        if quality >= threshold:
+                            status = emoticon if t == "emoticon" else label
+                            break
+
+            msg += f"{gate}:{status}"
+            if gate < self.num_gates - 1:
+                msg += ", "
+
+            # Raw metrics
+            quality_percent = rounded["quality"] * 100.0 if rounded["quality"] >= 0.0 else 0.0
+            dbg += f"\nGate {gate}: "
+
+            if gate_has_encoder:
+                dbg += (
+                    f"Load: {rounded['load_distance']:.1f}mm (slippage: {load_slip_percent:.1f}%)"
+                    f"; Unload: {rounded['unload_distance']:.1f}mm (slippage: {unload_slip_percent:.1f}%)"
+                )
+            else:
+                dbg += (
+                    f"Load: {rounded['load_distance']:.1f}mm"
+                    f"; Unload: {rounded['unload_distance']:.1f}mm"
+                )
+
+            dbg += (
+                f"; Failures: (load: {rounded['load_failures']} "
+                f"unload: {rounded['unload_failures']} "
+                f"pauses: {rounded['pauses']})"
+                f"; Quality: {quality_percent:.1f}%"
+            )
+
         return msg, dbg
 
 
     def _persist_gate_statistics(self):
         for gate in range(self.num_gates):
             mmu_unit = self.mmu_unit(gate)
-            adj_gate = gate - mmu_unit.first_gate
-            self.var_manager.set("%s%d" % (VARS_MMU_GATE_STATISTICS_PREFIX, adj_gate), self.gate_statistics[gate], namespace=mmu_unit.name)
+            self.var_manager.set("%s%d" % (VARS_MMU_GATE_STATISTICS_PREFIX, mmu_unit.local_gate(gate)), self.gate_statistics[gate], namespace=mmu_unit.name)
 
         # Also a good place to update the persisted calibrated clog length (for auto mode)
         if self.has_encoder():
