@@ -140,7 +140,7 @@ class MmuController(MmuFilamentMovement):
         self.runout_last_enable_time = self.reactor.monotonic()
         self.is_handling_runout = self.calibrating = False
 
-        self.unit_selected = None
+        self.unit_selected = None # Must not stay None, set when inital gate is set or in in _load_persisted_state()
         self.tool_selected = self.gate_selected = TOOL_GATE_UNKNOWN
         self._last_tool = self._next_tool       = TOOL_GATE_UNKNOWN
         self._next_gate = None

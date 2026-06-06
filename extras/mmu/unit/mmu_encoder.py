@@ -62,7 +62,7 @@ class MmuEncoder:
         # The extrusion interval where new detection_length is calculated (also done on toolchange)
         self.next_calibration_point = self.calibration_length = config.getfloat('calibration_length', 10000., minval=50.) # 10m
         # Detection length will be set by MMU calibration
-        self.detection_length = self.min_headroom = config.getfloat('detection_length', 10., above=2.) # PAUL TODO this is now in flowguard!
+        self.detection_length = self.min_headroom = config.getfloat('detection_length', 10., above=2.) # Note: this is now in flowguard!
         self.event_delay = config.getfloat('event_delay', 2., above=0.)
         self.pause_delay = config.getfloat('pause_delay', 0, above=0.)
         self.runout_gcode = '__MMU_ENCODER_RUNOUT'

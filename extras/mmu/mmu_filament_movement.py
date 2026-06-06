@@ -1861,10 +1861,8 @@ class MmuFilamentMovement:
                     if homing_move != 0:
                         # Check for valid endstop
                         qual_endstop_name = self.sensor_manager.get_qualified_endstop_name(endstop_name)
-                        self.log_warning(f"PAUL: qual_endstop_name={qual_endstop_name} for '{endstop_name}' motor={motor}")
                         if not drive.has_endstop(qual_endstop_name):
                             self.log_error(f"Endstop '{endstop_name}' not found")
-                            self.log_warning(f"PAUL: returning...")
                             return null_rtn
 
                         self.log_stepper("%s HOMING MOVE: max dist=%.1f, speed=%.1f, accel=%.1f, endstop_name=%s, wait=%s" % (motor.upper(), dist, speed, accel, endstop_name, wait))

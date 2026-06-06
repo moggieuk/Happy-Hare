@@ -86,8 +86,8 @@ class MmuSensorManager:
 
                 self.gate_sensors.append(gate_sensors)
 
-# PAUL: Is this still needed in v4? Not a good idea because it would complicate filament positon recovery
-# PAUL: ...better to allow for no bowden in filament move logic
+# PAUL TODO: Is this still needed in v4? Not a good idea because it would complicate filament positon recovery
+# PAUL TODO: ...better to allow for no bowden in filament move logic I think
 #                # Special case for "no bowden" (one unit) designs where mmu_shared_exit is an alias for extruder sensor
 #                if (
 #                    not mmu_unit.require_bowden_move and
@@ -175,9 +175,18 @@ class MmuSensorManager:
         Handler for gate changed event
         Reset the relevent sensor list based on current gate handling bypass and unknown
         """
-        self.active_sensors_map = self.gate_sensors[gate] if gate >= 0 else self.bypass_sensors_map
-#        self.mmu.log_info("PAUL: EVENT: handle_gate_selected(%d)" % gate)
-#        self.mmu.log_info("PAUL: >>> active_sensors_map=%s\n" % self.active_sensors_map.keys())
+        if gate == TOOL_GATE_UNKNOWN:
+            unit = self.mmu.unit_selected
+            if unit is None:
+                self.log_assertion(f"Unknown unit in _handle_gate_selected()")
+                unit = 0
+            self.active_sensors_map = self.unit_sensors[unit]
+
+        elif gate == TOOL_GATE_BYPASS:
+            self.active_sensors_map = self.bypass_sensors_map
+
+        else:
+            self.active_sensors_map = self.gate_sensors[gate]
 
 
     def _handle_unit_selected(self, unit, prev_unit):
@@ -185,7 +194,6 @@ class MmuSensorManager:
         Handler for unit changed event
         Activate only sensors for current unit
         """
-#        self.mmu.log_info("PAUL: EVENT: handle_unit_selected(%d)" % unit)
         # We do this in two steps to allow sensor sharing
 
         # First ensure any excluded unit sensor is completely deactivated
@@ -286,6 +294,7 @@ class MmuSensorManager:
     def get_qualified_endstop_name(self, endstop_name):
         """
         Convert simple endstop name into fully qualified sensor based on context
+        Harmless if name is already fully qualified
         """
         # These have form: "<unitName>:genericName"
         if endstop_name in [SENSOR_SHARED_EXIT]:
@@ -303,7 +312,7 @@ class MmuSensorManager:
         if endstop_name in [SENSOR_ENTRY_PREFIX, SENSOR_EXIT_PREFIX, SENSOR_GEAR_TOUCH]:
             return self.get_gate_sensor_name(endstop_name, self.mmu.gate_selected)
 
-        # Doesn't map
+        # Doesn't map or already a qualified name
         return endstop_name
 
 
@@ -442,12 +451,10 @@ class MmuSensorManager:
 
 
     def enable_runout(self, gate):
-#        logging.info("PAUL: enable_runout(gate=%d)" % gate)
         self._set_sensor_runout(True, gate)
 
 
     def disable_runout(self, gate):
-#        logging.info("PAUL: disable_runout(gate=%d)" % gate)
         self._set_sensor_runout(False, gate)
 
 
