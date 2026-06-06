@@ -101,6 +101,7 @@ menu "Speeds"
 
   if !MULTI_UNIT || MULTI_UNIT_ENTRY_POINT
 
+    comment "_"
     comment "_Extruder movement speeds (mm/s)"
 
     config PARAM_EXTRUDER_LOAD_SPEED
@@ -153,6 +154,7 @@ menu "Speeds"
 
   if !MULTI_UNIT_ENTRY_POINT && MMU_HAS_SELECTOR_STEPPER
 
+    comment "_"
     comment "_Selector movement speeds (mm/s)"
 
     config PARAM_SELECTOR_MOVE_SPEED

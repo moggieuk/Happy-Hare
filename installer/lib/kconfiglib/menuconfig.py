@@ -3197,14 +3197,16 @@ def _node_str(node):
 
     if node.prompt:
         if node.item == COMMENT:
-            if node.prompt[0].startswith('_'): # Happy Hare: Added special section header style for comments
+            if node.prompt[0] == '_': # Happy Hare
+                s = "    "
+            elif node.prompt[0].startswith('_'): # Happy Hare: Added special section header style for comments
                 max_width = 60
                 text = node.prompt[0][1:]
-                middle = f" {text} "
-                heading = "____" + middle
+                middle = f" {text.upper()} "
+                heading = "_______" + middle
                 if len(heading) < max_width:
                     heading += "_" * (max_width - len(heading))
-                s += " {}".format(heading)
+                s = "{}".format(heading)
             else:
                 s += " *** {} ***".format(node.prompt[0])
         else:

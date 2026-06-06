@@ -80,7 +80,7 @@ if BOARD_TYPE_TZB_1_0
   config PIN_BUFFER_ANALOG
     default "$(MCU_NAME):PA3"
 
-  config PIN_EREC_CUTTER_SERVO
+  config PIN_SERVO_CUTTER_SERVO
     default "$(MCU_NAME):PA3"
 
   config PARAM_MISC_HARDWARE

@@ -17,4 +17,5 @@ menu "MMU Features/Additions"
   source "Kconfig.eject_buttons"
   source "Kconfig.encoder"
   source "Kconfig.filament_buffer"
+  source "sensors/Kconfig"
 endmenu

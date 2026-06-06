@@ -78,6 +78,12 @@ config PARAM_MISC_HARDWARE
 
 
 menu "Design attributes"
+  help
+    ADVANCED: This allows tweaking of vendor defaults that control the
+    way the MMU behaves. It allows supporting some modifications or
+    specific setup.
+
+    It is unlikely that you want to change anything here so be careful.
 
   source "Kconfig.selector_type" 
 
@@ -107,6 +113,9 @@ menu "Design attributes"
     help
       Whether the design has different drive gears (typically BMG gears). Even if from
       the same vendor the rotation distance can vary, hence this option.
+      If this is selected you are able to tune the rotation distance of each gate/lane
+      independently which may useful especially with long bowden tubes where
+      lack of calibration can multiply.
   config PARAM_VARIABLE_ROTATION_DISTANCES
     int
     default 1 if BOOL_VARIABLE_ROTATION_DISTANCES
@@ -120,7 +129,8 @@ menu "Design attributes"
     depends on !UNSELECT_REQUIRE_BOWDEN_MOVE
     help
       Whether the design requires a calibrated fast bowden move to reach the extruder.
-      This is not necessary if there is a filament splitter/combiner near the toolhead.
+      This is not necessary if there is a filament splitter/combiner at the toolhead
+      and the extruder entry sensor is leveraged as the gate endstop.
   config PARAM_REQUIRE_BOWDEN_MOVE
     int
     default 1 if BOOL_REQUIRE_BOWDEN_MOVE

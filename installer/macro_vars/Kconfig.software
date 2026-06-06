@@ -95,6 +95,7 @@ menu "Print start/end (_MMU_SOFTWARE)"
     default "'closest_color'" if CHOICE_SOFTWARE_AUTOMAP_STRATEGY_CLOSEST_COLOR
     default "'spool_id'" if CHOICE_SOFTWARE_AUTOMAP_STRATEGY_SPOOL_ID
 
+  comment "_"
   comment "_Print END behavior"
 
   config VAR_SOFTWARE_USER_PRINT_END_EXTENSION

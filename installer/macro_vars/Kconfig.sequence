@@ -5,6 +5,8 @@ menu "Sequence macros (_MMU_SEQUENCE)"
     Controls parking movement, toolchange behavior, retraction,
     restore position logic, and sequence macro extension hooks.
 
+  comment "_Toolhead movement"
+
   config VAR_SEQUENCE_ENABLE_PARK_PRINTING
     string "Park operations while printing   "
     default "'toolchange,runout,load,unload,complete,pause,cancel'"
@@ -37,55 +39,76 @@ menu "Sequence macros (_MMU_SEQUENCE)"
     string "Toolchange park position"
     default "-999, -999, 1,  5, 2"
     help
-      x,y,z-hop,z_hop_ramp,retract for toolchange, load, and unload operations.
+      Parking movement and location for toolchange, load and unload operations.
+      x, y, z-hop, z_hop_ramp, retract
+
       Use -999,-999 for no XY move. Use 0 for no Z-hop.
 
   config VAR_SEQUENCE_PARK_RUNOUT
     string "Runout park position    "
     default "-999, -999, 1,  5, 2"
     help
-      x,y,z-hop,z_hop_ramp,retract for runout operations.
+      Parking movement and location for runout operation.
+      x, y, z-hop, z_hop_ramp, retract
+
+      Use -999,-999 for no XY move. Use 0 for no Z-hop.
+
+  config VAR_SEQUENCE_PARK_COMPLETE
+    string "Complete park position  "
+    default "50,   50,   10, 0, 5"
+    help
+      Parking movement and location for print complete operation.
+      x, y, z-hop, z_hop_ramp, retract
+
       Use -999,-999 for no XY move. Use 0 for no Z-hop.
 
   config VAR_SEQUENCE_PARK_PAUSE
     string "Pause park position     "
     default "50,   50,   5,  0, 2"
     help
-      x,y,z-hop,z_hop_ramp,retract for pause operations.
+      Parking movement and location for pause operation.
       This is also the park position when an MMU error occurs.
+      x, y, z-hop, z_hop_ramp, retract
+
+      Use -999,-999 for no XY move. Use 0 for no Z-hop.
 
   config VAR_SEQUENCE_PARK_CANCEL
     string "Cancel park position    "
     default "-999, -999, 10, 0, 5"
     help
-      x,y,z-hop,z_hop_ramp,retract for cancel operations.
+      Parking movement and location for print cancel operation.
+      x, y, z-hop, z_hop_ramp, retract
 
-  config VAR_SEQUENCE_PARK_COMPLETE
-    string "Complete park position  "
-    default "50,   50,   10, 0, 5"
-    help
-      x,y,z-hop,z_hop_ramp,retract for print complete operations.
+      Use -999,-999 for no XY move. Use 0 for no Z-hop.
+
+  comment "Fine tune"
 
   config VAR_SEQUENCE_PRE_UNLOAD_POSITION
     string "Pre-unload position     "
     default "-999, -999, 0"
     help
-      x,y,z-hop position before unloading starts.
-      Use -999,-999,0 for no movement.
+      Advanced. Fine tune toolhead position before unloading sequence starts.
+      x, y, z-hop
+
+      Use -999,-999 for no XY move. Use 0 for no Z-hop.
 
   config VAR_SEQUENCE_POST_FORM_TIP_POSITION
     string "Post-form-tip position  "
     default "-999, -999, 0"
     help
-      x,y,z-hop position after form/cut tip on unload.
-      Use -999,-999,0 for no movement.
+      Advanced. Fine tune toolhead position after form/cut tip is performed on unload
+      x, y, z-hop
+
+      Use -999,-999 for no XY move. Use 0 for no Z-hop.
 
   config VAR_SEQUENCE_PRE_LOAD_POSITION
     string "Pre-load position       "
     default "-999, -999, 0"
     help
-      x,y,z-hop position before loading starts.
-      Use -999,-999,0 for no movement.
+      Advanced. Fine tune toolhead position before loading sequence starts.
+      x, y, z-hop
+
+      Use -999,-999 for no XY move. Use 0 for no Z-hop.
 
   choice CHOICE_SEQUENCE_RESTORE_XY_POS
     prompt "Restore XY position after toolchange"
@@ -124,6 +147,9 @@ menu "Sequence macros (_MMU_SEQUENCE)"
     default "'none'" if CHOICE_SEQUENCE_RESTORE_XY_POS_NONE
     default "'last'"
 
+  comment "_"
+  comment "_Movement speeds"
+
   config VAR_SEQUENCE_PARK_TRAVEL_SPEED
     float "Park travel speed       "
     default 200
@@ -148,38 +174,8 @@ menu "Sequence macros (_MMU_SEQUENCE)"
     help
       Speed of the unretract move in mm/s.
 
-  config VAR_SEQUENCE_USER_PARK_MOVE_MACRO
-    string "User park move macro    "
-    default ""
-    help
-      Executed instead of the default G1 XY move to park position.
-      Macro is called with X, Y, and F parameters.
-      When restoring, it is also passed RESTORE=1.
-
-      This is useful when you want to control the movement path of the toolhead
-      rather than accept the direct line
-
-  config BOOL_SEQUENCE_AUTO_HOME
-    bool "Automatically home if necessary"
-    default y
-    help
-      Automatically home if necessary.
-
-  config VAR_SEQUENCE_AUTO_HOME
-    string
-    default "True" if BOOL_SEQUENCE_AUTO_HOME
-    default "False"
-
-  config BOOL_SEQUENCE_TIMELAPSE
-    bool "Take timelapse frame after load"
-    default n
-    help
-      Take frame snapshot after load.
-
-  config VAR_SEQUENCE_TIMELAPSE
-    string
-    default "True" if BOOL_SEQUENCE_TIMELAPSE
-    default "False"
+  comment "_"
+  comment "_User macro hooks"
 
   config VAR_SEQUENCE_USER_MMU_ERROR_EXTENSION
     string "MMU error extension macro    "
@@ -216,5 +212,41 @@ menu "Sequence macros (_MMU_SEQUENCE)"
     default ""
     help
       Executed after default logic but before restoring toolhead position.
+
+  comment "_"
+  comment "_Misc"
+
+  config BOOL_SEQUENCE_AUTO_HOME
+    bool "Automatically home if necessary"
+    default y
+    help
+      Automatically home if necessary.
+
+  config VAR_SEQUENCE_AUTO_HOME
+    string
+    default "True" if BOOL_SEQUENCE_AUTO_HOME
+    default "False"
+
+  config BOOL_SEQUENCE_TIMELAPSE
+    bool "Take timelapse frame after load"
+    default n
+    help
+      Take frame snapshot after load.
+
+  config VAR_SEQUENCE_TIMELAPSE
+    string
+    default "True" if BOOL_SEQUENCE_TIMELAPSE
+    default "False"
+
+  config VAR_SEQUENCE_USER_PARK_MOVE_MACRO
+    string "User park move macro         "
+    default ""
+    help
+      Advanced. User supplied macro that is executed instead of the default G1 XY
+      move to park position.  Macro is called with X, Y, and F parameters. When
+      restoring, it is also passed RESTORE=1.
+
+      This is useful when you want to control the movement path of the toolhead
+      to avoid an area rather than accept the direct line
 
 endmenu

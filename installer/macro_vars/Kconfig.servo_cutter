@@ -1,0 +1,65 @@
+menu "Servo cutter at MMU (_MMU_SERVO_CUTTER)"
+  help
+    Happy Hare servo filament cutting macro configuration variables.
+
+    This currently supports EREC and similar cutters that operate
+    at the MMU end of the bowden.
+
+  comment "_"
+  comment "_Servo movement"
+
+  config VAR_SERVO_CUTTER_SERVO_CLOSED_ANGLE
+    float "Servo closed angle        "
+    default 70
+    help
+      Servo angle for the closed position with the bowden
+      aligned to the MMU.
+
+  config VAR_SERVO_CUTTER_SERVO_OPEN_ANGLE
+    float "Servo open angle          "
+    default 10
+    help
+      Servo angle for the open position that moves the
+      bowden away from the MMU.
+
+  config VAR_SERVO_CUTTER_SERVO_DURATION
+    float "Servo pulse duration (s)  "
+    default 1.5
+    help
+      Duration in seconds of the PWM pulse train used
+      to activate the servo.
+
+  config VAR_SERVO_CUTTER_SERVO_IDLE_TIME
+    float "Servo settle time (s)     "
+    default 1.8
+    help
+      Time in seconds to allow the servo to reach its
+      target position before continuing.
+
+  comment "_"
+  comment "_Feed and cut behavior"
+
+  config VAR_SERVO_CUTTER_FEED_LENGTH
+    float "Feed length (mm)          "
+    default 48
+    help
+      Distance in millimeters from the gate parking position to the cutter blade.
+      This is important because the filament is first parked and then pushed back
+      this distance before the cutter blade is applied.  EREC cutter examples:
+      - ERCF v1.1: 58
+      - ERCF v2  : 48
+
+  config VAR_SERVO_CUTTER_CUT_LENGTH
+    float "Cut length (mm)           "
+    default 10
+    help
+      Amount of filament in millimeters to cut.
+
+  config VAR_SERVO_CUTTER_CUT_ATTEMPTS
+    int "Cut attempts               "
+    default 1
+    help
+      Number of times the cutter will attempt to cut
+      the filament before reporting failure.
+
+endmenu

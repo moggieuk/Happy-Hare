@@ -72,6 +72,7 @@ if MMU_HAS_SELECTOR_STEPPER
 
     if ROTARY_SELECTOR || TESTING_SELECTOR
 
+      comment "_"
       comment "_Rotary selector"
 
       config PARAM_SELECTOR_GATE_DIRECTIONS
@@ -99,6 +100,7 @@ if MMU_HAS_SELECTOR_STEPPER
 
     if INDEXED_SELECTOR || TESTING_SELECTOR
 
+      comment "_"
       comment "_Indexed selector"
 
       config PARAM_SELECTOR_GATE_ORDER

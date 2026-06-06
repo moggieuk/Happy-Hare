@@ -1,0 +1,27 @@
+#
+# Highlight common config warnings as comments
+#
+
+config SHOW_WARNINGS
+    bool
+    default y if !MULTI_UNIT_ENTRY_POINT && (W1 || W2)
+
+config W1
+    bool
+    default y if PARAM_GATE_HOMING_ENDSTOP = ""
+
+config W1
+    bool
+    depends on !INSTALL_CLIENT_MACROS
+
+if SHOW_WARNINGS
+  comment "_"
+  comment "_Config Warnings"
+
+  comment "No gate homing endstop (Raw Settings/Endstops)"
+    depends on W1
+
+  comment "You opted to not install client macros (Software Options)"
+    depends on W2
+
+endif

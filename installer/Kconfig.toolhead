@@ -18,8 +18,24 @@ menu "Toolhead sensors/settings"
     Read about the 'MMU_CALIBRATE_TOOLHEAD' command (see Happy Hare wiki)
 
 # -------------------------------------
+# Toolhead features
+# -------------------------------------
+
+  config MMU_HAS_TOOLHEAD_CUTTER
+    bool "Has toolhead cutter?"
+    help
+      Select if you have a filament cutter built into the toolhead that
+      uses toolhead motion for cutting action.
+
+      The cutting macro will automatically be added
+
+
+# -------------------------------------
 # Toolhead sensors
 # -------------------------------------
+
+  comment "_"
+  comment "_Toolhead sensors"
 
   config MMU_HAS_SENSOR_TOOLHEAD
     bool "Has toolhead sensor?"
@@ -47,11 +63,11 @@ menu "Toolhead sensors/settings"
     help
       Can also be set under "Pins" section
 
-
 # -------------------------------------
 # Toolhead dimensions
 # -------------------------------------
 
+  comment "_"
   comment "_Toolhead dimensions"
 
   config PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE

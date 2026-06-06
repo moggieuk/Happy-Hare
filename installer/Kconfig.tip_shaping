@@ -11,6 +11,33 @@ menu "Tip Forming / Cutting"
   help
     Tip Shaping
 
+# -------------------------------------
+# Servo cutter configuration
+# -------------------------------------
+
+  config MMU_HAS_SERVO_CUTTER
+    bool "Have servo cutter at MMU?"
+    help
+      Enable this if you have a servo based cutter at your MMU
+
+      NOTE: After enabling this be sure to edit Macro variables
+
+  if MMU_HAS_SERVO_CUTTER
+
+    config PIN_SERVO_CUTTER_SERVO
+      string "Cutting servo pin                  "
+      default ""
+
+  endif
+
+
+# -------------------------------------
+# Standalone tip forming choice
+# -------------------------------------
+
+  comment "_"
+  comment "_Essential tip forming configuration"
+
   choice CHOICE_FORM_TIP_MACRO
     prompt "Select standalone tip shaping option"
     default CHOICE_FORM_TIP_MACRO_FORM_TIP
@@ -26,9 +53,10 @@ menu "Tip Forming / Cutting"
 
     config CHOICE_FORM_TIP_MACRO_CUT_TIP
       bool "Tip cutting using toolhead cutter"
+      depends on MMU_HAS_TOOLHEAD_CUTTER
       help
         If toolhead contains a filament cutter with activation
-        via toolhea movement.
+        via toolhead movement.
 
     config CHOICE_FORM_TIP_MACRO_OTHER
       bool "Other / manually entered macro"

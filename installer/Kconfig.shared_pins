@@ -23,27 +23,29 @@ if MULTI_UNIT_ENTRY_POINT || !MULTI_UNIT
 
 
 # -------------------------------------
-# Misc servos
+# Misc servos, etc
 # -------------------------------------
 
-  config PIN_GANTRY_BUMPER_SERVO
-    string "Gantry servo pin      " if MMU_HAS_GANTRY_BUMPER_SERVO
-    help
-      Optional. Used to deploy fold-down "bumper" for tip cutting
-      when using a toolhead mounted filament cutting blade
+  if MMU_HAS_GANTRY_BUMPER_SERVO || MMU_HAS_BLOBIFIER || MMU_HAS_SERVO_CUTTER
 
-  config PIN_BLOBIFIER_SERVO
-    string "Blobifer servo pin    " if MMU_HAS_BLOBIFIER
+    comment "_"
+    comment "_Additional hardware"
 
-  config PIN_BLOBIFIER_BUCKET_SWITCH
-    string "Blobifer bucket switch" if MMU_HAS_BLOBIFIER
+    config PIN_GANTRY_BUMPER_SERVO
+      string "Gantry servo pin      " if MMU_HAS_GANTRY_BUMPER_SERVO
+      help
+        Optional. Used to deploy fold-down "bumper" for tip cutting
+        when using a toolhead mounted filament cutting blade
 
+    config PIN_BLOBIFIER_SERVO
+      string "Blobifer servo pin    " if MMU_HAS_BLOBIFIER
 
-# -------------------------------------
-# Option macro pins
-# -------------------------------------
+    config PIN_BLOBIFIER_BUCKET_SWITCH
+      string "Blobifer bucket switch" if MMU_HAS_BLOBIFIER
 
-  config PIN_EREC_CUTTER_SERVO
-    string "EREC Cutter servo pin " if INSTALL_EREC_CUTTER
+    config PIN_SERVO_CUTTER_SERVO
+      string "Cutting servo pin     " if MMU_HAS_SERVO_CUTTER
+
+  endif
 
 endif

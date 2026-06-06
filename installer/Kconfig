@@ -41,6 +41,7 @@
 # These will only be in shared config on multi-unit because they are on printer and not per-unit
 #   MMU_HAS_SENSOR_EXTRUDER
 #   MMU_HAS_SENSOR_TOOLHEAD
+#   MMU_HAS_TOOLHEAD_CUTTER
 
 
 # IMPORTANT keep version string up-to-date and constistent with git tag
@@ -55,6 +56,7 @@ caption_pad := $(shell, [ "$F_MULTI_UNIT_ENTRY_POINT" = "y" ] && echo "61" || ec
 # Expose these capability params to each unit
 mmu_has_sensor_toolhead := $(shell, [ "$HAS_SENSOR_TOOLHEAD" = "y" ] && echo "y" || echo "n")
 mmu_has_sensor_extruder := $(shell, [ "$HAS_SENSOR_EXTRUDER" = "y" ] && echo "y" || echo "n")
+mmu_has_toolhead_cutter := $(shell, [ "$HAS_TOOLHEAD_CUTTER" = "y" ] && echo "y" || echo "n")
 
 # Used to convert a shell command result to a y/n value
 to_bool = $(shell, $(1) && echo y || echo n)
@@ -128,6 +130,8 @@ if MULTI_UNIT && !MULTI_UNIT_ENTRY_POINT
     default "$(mmu_has_sensor_toolhead)"
   config MMU_HAS_SENSOR_EXTRUDER
     default "$(mmu_has_sensor_extruder)"
+  config MMU_HAS_TOOLHEAD_CUTTER
+    default "$(mmu_has_toolhead_cutter)"
 endif
 
 comment "$(pad,50,)"
@@ -135,6 +139,7 @@ comment "$(pad,50,(\\_/))"
 comment "$(pad,50,( *,*))"
 comment "$(pad,$(caption_pad),(\")_(\") $(caption))"
 comment "$(pad,50,)"
+comment "_"
 
 # UI rendering option:
 #  y to shows MMU additions menu inline with type
@@ -200,4 +205,6 @@ if !MULTI_UNIT_ENTRY_POINT
   if !MULTI_UNIT
     source "Kconfig.paths_services" # Advanced install options
   endif
+
+  source "Kconfig.warnings"
 endif

@@ -4,8 +4,9 @@ config PARAM_VENDOR
 config PARAM_VERSION
   string
 
-choice 
+choice
   prompt "MMU Type"
+  default MMU_CUSTOM
   help 
     MMU type and hardware
     MMU Type (plus options and popular mods)

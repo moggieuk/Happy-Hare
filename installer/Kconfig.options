@@ -7,8 +7,6 @@
 #   PARAM_SPOOLMAN_SUPPORT
 #   PARAM_ENDLESS_SPOOL_ENABLED
 #
-#   INSTALL_EREC_CUTTER
-#     PIN_EREC_CUTTER_SERVO
 #   INSTALL_12864_MENU
 #   INSTALL_CLIENT_MACROS
 
@@ -157,18 +155,5 @@ menu "Software Options"
       Includes the Happy Hare "client macros" with augmented pause/resume/cancel behavior.
       This is highly recommended and incorporates all functionality from popular alternatives
       like mainsail client macros but also works in conjunction with Happy Hare toolhead movement.
-
-  config INSTALL_EREC_CUTTER
-    help
-      Enable for all servo based filament cutters on the MMU itself.
-      EREC was the first example of this but this macro can work
-      with other similar designs.
-    bool "Install EREC filament cutter support?"
-
-  if INSTALL_EREC_CUTTER
-    config PIN_EREC_CUTTER_SERVO
-      string "EREC filament cutter servo pin"
-      default ""
-  endif
 
 endmenu

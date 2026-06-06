@@ -23,8 +23,8 @@ menu "Purging"
     help
       Enable this if you have a Blobifer purging system fitted.
 
-      NOTE: There is a lot of setup for Blobifier. After install you can edit
-      macros/blobifier.cfg directly
+      NOTE: There is a lot of setup for Blobifier. After enabling this
+      be sure to edit Macro variables
 
   if MMU_HAS_BLOBIFIER
     config PIN_BLOBIFIER_SERVO
@@ -59,6 +59,7 @@ menu "Purging"
 # Standalone purge choice
 # -------------------------------------
 
+  comment "_"
   comment "_Essential purge configuration"
 
   choice CHOICE_PURGE_MACRO
