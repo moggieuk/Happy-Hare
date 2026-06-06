@@ -115,7 +115,7 @@ class MmuCalibrator:
             rotation_distances = [UNCALIBRATED if x == 0 else x for x in rotation_distances] # Ensure -1 value for uncalibrated
             # Ensure list size
             if len(rotation_distances) == u.num_gates:
-                mmu.log_debug("Loaded saved gear rotation distances for unit %s: %s" % (u.name, rotation_distances))
+                mmu.log_debug("Loaded saved gear rotation distances for %s: %s" % (u.name, rotation_distances))
             else:
                 mmu.log_error("Incorrect number of gates specified in %s. Adjusted length" % self.var_manager.namespace(VARS_MMU_GEAR_ROTATION_DISTANCES, namespace=u.name))
                 rotation_distances = ensure_list_size(rotation_distances, u.num_gates)
@@ -129,7 +129,7 @@ class MmuCalibrator:
             if not any(x == UNCALIBRATED for x in rotation_distances):
                 self.mark_calibrated(CALIBRATED_GEAR_RDS)
         else:
-            mmu.log_warning("Warning: Gear rotation distances for unit %s not found in mmu_vars.cfg. Probably not calibrated yet" % u.name)
+            mmu.log_warning("Warning: Gear rotation distances for %s not found in mmu_vars.cfg. Probably not calibrated yet" % u.name)
             rotation_distances = [UNCALIBRATED] * u.num_gates
 
         self.var_manager.set(VARS_MMU_GEAR_ROTATION_DISTANCES, rotation_distances, namespace=u.name)

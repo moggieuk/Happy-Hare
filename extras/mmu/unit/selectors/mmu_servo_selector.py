@@ -178,20 +178,69 @@ class ServoSelector(PhysicalSelector):
 
 
     def filament_drive(self):
-# PAUL FIXME ..  called frequently
+        self.mmu.log_warning("PAUL: FILAMENT DRIVE")
         self._grip(self.local_gate(self.mmu.gate_selected))
 
+
     def filament_release(self, measure=False):
-# PAUL FIXME ..  called frequently
+        self.mmu.log_warning("PAUL: FILAMENT RELEASE")
         if not self.mmu_unit.filament_always_gripped:
             self._grip(self.local_gate(self.mmu.gate_selected), release=True)
         return 0. # Fake encoder movement
 
 
-    # --------------------------------------------------------------------------
+    def get_filament_grip_state(self):
+        return self.servo_state
+
+
+    def buzz_motor(self, motor):
+        if motor == "selector":
+            prev_servo_angle = self.servo_angle
+            low = max(min(self.servo_gate_angles), self.p.servo_min_angle)
+            high = min(max(self.servo_gate_angles), self.p.servo_max_angle)
+            mid = (low + high) / 2
+            move = (high - low) / 4
+            self._set_servo_angle(angle=mid)
+            self._set_servo_angle(angle=mid - move)
+            self._set_servo_angle(angle=mid + move)
+            self._set_servo_angle(angle=prev_servo_angle)
+        else:
+            return False
+        return True
+
+
+    def has_bypass(self):
+        return (self.servo_bypass_angle >= 0)
+
+
+    def get_status(self, eventtime):
+        status = super().get_status(eventtime)
+        status.update({
+            'grip': "Gripped" if self.servo_state == FILAMENT_DRIVE_STATE else "Released",
+        })
+        return status
+
+
+    def get_mmu_status_config(self):
+        msg = super().get_mmu_status_config()
+        msg += " Servo in %s position." % ("GRIP" if self.servo_state == FILAMENT_DRIVE_STATE else \
+                "RELEASE" if self.servo_state == FILAMENT_RELEASE_STATE else "unknown")
+        return msg
+
+
+    def get_uncalibrated_gates(self, check_gates):
+        return [
+            lgate + self.mmu_unit.first_gate
+            for lgate, value in enumerate(self.servo_gate_angles)
+            if value == -1 and lgate + self.mmu_unit.first_gate in check_gates
+        ]
+
+
+    # Internal Implementation --------------------------------------------------
 
     def _reinit(self):
         self.servo_state = FILAMENT_UNKNOWN_STATE
+
 
     # Common logic for servo manipulation
     def _grip(self, lgate, release=False):
@@ -202,6 +251,7 @@ class ServoSelector(PhysicalSelector):
         sets the gate grip angle or a computed/explicit release angle, updating
         the cached servo state accordingly.
         """
+        self.mmu.log_warning("PAUL: _GRIP(lgate={lgate}, release={release}")
         if lgate == TOOL_GATE_BYPASS:
             self.mmu.log_trace("Setting servo to bypass angle: %.1f" % self.servo_bypass_angle)
             self._set_servo_angle(self.servo_bypass_angle)
@@ -220,49 +270,6 @@ class ServoSelector(PhysicalSelector):
         else:
             self.servo_state = FILAMENT_UNKNOWN_STATE
 
-    def get_filament_grip_state(self):
-        return self.servo_state
-
-    def buzz_motor(self, motor):
-        if motor == "selector":
-            prev_servo_angle = self.servo_angle
-            low = max(min(self.servo_gate_angles), self.p.servo_min_angle)
-            high = min(max(self.servo_gate_angles), self.p.servo_max_angle)
-            mid = (low + high) / 2
-            move = (high - low) / 4
-            self._set_servo_angle(angle=mid)
-            self._set_servo_angle(angle=mid - move)
-            self._set_servo_angle(angle=mid + move)
-            self._set_servo_angle(angle=prev_servo_angle)
-        else:
-            return False
-        return True
-
-    def has_bypass(self):
-        return (self.servo_bypass_angle >= 0)
-
-    def get_status(self, eventtime):
-        status = super().get_status(eventtime)
-        status.update({
-            'grip': "Gripped" if self.servo_state == FILAMENT_DRIVE_STATE else "Released",
-        })
-        return status
-
-    def get_mmu_status_config(self):
-        msg = super().get_mmu_status_config()
-        msg += " Servo in %s position." % ("GRIP" if self.servo_state == FILAMENT_DRIVE_STATE else \
-                "RELEASE" if self.servo_state == FILAMENT_RELEASE_STATE else "unknown")
-        return msg
-
-    def get_uncalibrated_gates(self, check_gates):
-        return [
-            lgate + self.mmu_unit.first_gate
-            for lgate, value in enumerate(self.servo_gate_angles)
-            if value == -1 and lgate + self.mmu_unit.first_gate in check_gates
-        ]
-
-
-    # Internal Implementation --------------------------------------------------
 
     def _set_servo_angle(self, angle):
         """
@@ -276,6 +283,7 @@ class ServoSelector(PhysicalSelector):
             self.servo.set_position(angle=angle, duration=None if self.p.servo_always_active else self.p.servo_duration)
             self.servo_angle = angle
             self.mmu.movequeue_dwell(max(self.p.servo_dwell, self.p.servo_duration, 0))
+
 
     def _get_closest_released_angle(self):
         """
@@ -295,6 +303,7 @@ class ServoSelector(PhysicalSelector):
                 min_difference = difference
                 closest_angle = max(0, angle)
         return closest_angle
+
 
     def _generate_gate_angles(self, known_angle, known_gate, spacing):
         """

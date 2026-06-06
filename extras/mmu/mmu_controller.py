@@ -405,7 +405,7 @@ class MmuController(MmuFilamentMovement):
                 self.gate_maps.reset_ttg_map()
             self.gate_maps.ensure_ttg_match()
 
-            # Ensure espooler print assist is in correct state
+            # Ensure espooler print assist is in correct state if fitted
             self._adjust_espooler_assist()
 
             # Initially disable clog/runout detection
@@ -1584,8 +1584,8 @@ class MmuController(MmuFilamentMovement):
             # Restablish known syncing state so next tension test will work
             synced = self.reset_sync_gear_to_extruder(force_grip=False, force_in_print=force_in_print)
 
-            # Try to put filament in neutral tension if filament in extruder and
-            # currently synced. This will avoid false clog detection with encoder
+            # Adjust filament tension if filament in extruder and currently synced.
+            # This will avoid false clog detection with encoder (slight tension)
             # or neutral tension with sync-feedback input
             if synced:
                 self._adjust_filament_tension()
@@ -1599,7 +1599,7 @@ class MmuController(MmuFilamentMovement):
         # Restore print position as final step so no delay
         self._restore_toolhead_position(operation, restore=restore)
 
-        # Ensure espooler wasn't reset
+        # Ensure espooler print assist is in correct state if fitted
         self._adjust_espooler_assist()
 
         # Ready to continue printing...
@@ -1860,12 +1860,12 @@ class MmuController(MmuFilamentMovement):
             elif self.var_manager.get(VARS_MMU_FILAMENT_POS, 0) != FILAMENT_POS_UNKNOWN:
                 self.var_manager.set(VARS_MMU_FILAMENT_POS, FILAMENT_POS_UNKNOWN, write=True)
 
-        # Good place to ensure espooler state
+        # Good place to ensure espooler state if fitted
         self._adjust_espooler_assist()
 
 
 # -----------------------------------------------------------------------------------------------------------
-#
+# MISC HELPERS
 # -----------------------------------------------------------------------------------------------------------
 
     def _set_last_tool(self, tool):
