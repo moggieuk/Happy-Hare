@@ -28,11 +28,6 @@ class MmuGateMaps:
       - EndlessSpool grouping / enablement
       - cached gate_color_rgb and slicer_color_rgb maps
       - persistence / reset / validation logic for all of the above
-
-    Notes:
-      - This class intentionally collaborates with the owning controller (`self.mmu`)
-        for hardware access, sensors, printer objects, logging, macro execution and
-        Spoolman / Moonraker integration.
     """
 
     def __init__(self, mmu):
@@ -281,7 +276,7 @@ class MmuGateMaps:
 
     def reset_endless_spool(self):
         self.mmu.log_debug("Resetting Endless Spool mapping")
-        self.endless_spool_enabled = self.p.default_endless_spool_enabled
+        self.endless_spool_enabled = self.p.endless_spool_enabled
         self.endless_spool_groups = list(self.p.default_endless_spool_groups)
         self.persist_endless_spool()
 

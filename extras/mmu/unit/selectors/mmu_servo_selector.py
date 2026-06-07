@@ -164,9 +164,7 @@ class ServoSelector(PhysicalSelector):
             self.servo_release_angle = servo_release_angle
             self.mmu.log_debug("Loaded saved release angle: %s" % self.servo_release_angle)
 
-        cal = (var_manager.get(VARS_MMU_SELECTOR_ANGLES, None, namespace=self.mmu_unit.name) is not None)
-        if not any(x == -1 for x in self.servo_gate_angles) and cal:
-            calibrator.mark_calibrated(CALIBRATED_SELECTOR)
+        self._check_calibrated()
 
 
     # Actual gate selection (servo movement) can be delayed until the filament_drive/release instruction
@@ -183,7 +181,7 @@ class ServoSelector(PhysicalSelector):
         self.mmu.log_warning("PAUL: FILAMENT DRIVE")
         gate = self.mmu.gate_selected
         if self.mmu_unit.manages_gate(gate) and gate >= 0:
-            lgate = self.local_gate(gate)
+            lgate = self.mmu_unit.local_gate(gate)
             self._grip_release(lgate)
 
 
@@ -191,7 +189,7 @@ class ServoSelector(PhysicalSelector):
         self.mmu.log_warning("PAUL: FILAMENT RELEASE")
         gate = self.mmu.gate_selected
         if self.mmu_unit.manages_gate(gate) and gate >= 0:
-            lgate = self.local_gate(gate)
+            lgate = self.mmu_unit.local_gate(gate)
             if not self.mmu_unit.filament_always_gripped:
                 self._grip_release(lgate, release=True)
         return 0. # Fake encoder movement
@@ -259,7 +257,7 @@ class ServoSelector(PhysicalSelector):
         sets the gate grip angle or a computed/explicit release angle, updating
         the cached servo state accordingly.
         """
-        self.mmu.log_warning("PAUL: _GRIP(lgate={lgate}, release={release}")
+        self.mmu.log_warning(f"PAUL: _GRIP(lgate={lgate}, release={release}")
         if lgate == TOOL_GATE_BYPASS:
             angle = self.servo_bypass_angle
             state = FILAMENT_UNKNOWN_STATE
@@ -304,6 +302,7 @@ class ServoSelector(PhysicalSelector):
         duration, then dwells for at least the configured dwell/duration.
         """
         if angle >= 0 and angle != self.servo_angle:
+            self.mmu.log_warning(f"PAUL: _set_servo_angle({angle})")
             self.mmu.movequeue_wait()
             self.servo.set_position(angle=angle, duration=None if self.p.servo_always_active else self.p.servo_duration)
             self.servo_angle = angle
@@ -377,6 +376,12 @@ class ServoSelector(PhysicalSelector):
 
         return [int(round(a)) for a in angles]
 
+
+    def _check_calibrated(self):
+        if not any(x == -1 for x in self.servo_gate_angles):
+            self.mmu_unit.calibrator.mark_calibrated(CALIBRATED_SELECTOR)
+        else:
+            self.mmu_unit.calibrator.mark_not_calibrated(CALIBRATED_SELECTOR)
 
 
 # -----------------------------------------------------------------------------------------------------------
@@ -487,7 +492,6 @@ class MmuCalibrateServoSelectorCommand(BaseCommand):
             var_manager.delete(VARS_MMU_SELECTOR_ANGLES, namespace=mmu_unit.name, write=True)
 
             mmu.log_always(f"Reset servo selector calibration on {mmu_unit.name}")
-            calibrator.mark_not_calibrated(CALIBRATED_SELECTOR)
             show()
             return
 
@@ -548,7 +552,4 @@ class MmuCalibrateServoSelectorCommand(BaseCommand):
             msg += " (not saved)"
 
         mmu.log_always(msg)
-
-        cal = (var_manager.get(VARS_MMU_SELECTOR_ANGLES, None, namespace=mmu_unit.name) is not None)
-        if not any(x == -1 for x in selector.servo_gate_angles) and cal:
-            calibrator.mark_calibrated(CALIBRATED_SELECTOR)
+        selector._check_calibrated()

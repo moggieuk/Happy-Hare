@@ -49,45 +49,65 @@ class MmuEndlessSpoolCommand(BaseCommand):
             category=CATEGORY_GENERAL
         )
 
+
     def _run(self, gcmd):
         # BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
 
         if self.check_if_disabled(): return
 
-        enabled = gcmd.get_int('ENABLE', -1, minval=0, maxval=1)
+        enabled = gcmd.get_int('ENABLE', None, minval=0, maxval=1)
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
-        groups = gcmd.get('GROUPS', "!")
+        groups = gcmd.get('GROUPS', None)
 
-        if enabled >= 0:
-            mmu.gate_maps.endless_spool_enabled = enabled
-            mmu.var_manager.set(VARS_MMU_ENABLE_ENDLESS_SPOOL, mmu.gate_maps.endless_spool_enabled, write=True)
-            if enabled and not quiet:
-                mmu.log_always("EndlessSpool is enabled")
-
-        if not mmu.gate_maps.endless_spool_enabled:
-            mmu.log_always("EndlessSpool is disabled")
-            return
+        def show():
+            if mmu.gate_maps.endless_spool_enabled:
+                msg = f"EndlessSpool is enabled\n"
+                msg += mmu.gate_maps.es_groups_to_string()
+            else:
+                msg = f"EndlessSpool is disabled\n"
+            if not quiet:
+                mmu.log_info(msg)
 
         if reset:
             mmu.gate_maps.reset_endless_spool()
+            show()
+            return
 
-        elif groups != "!":
-            groups = gcmd.get('GROUPS', ",".join(map(str, mmu.gate_maps.endless_spool_groups))).split(",")
-            if len(groups) != mmu.num_gates:
-                mmu.log_always("The number of group values (%d) is not the same as number of gates (%d)" % (len(groups), mmu.num_gates))
+        if enabled is not None:
+            if mmu.gate_maps.endless_spool_enabled != enabled:
+                mmu.gate_maps.endless_spool_enabled = enabled
+                mmu.var_manager.set(VARS_MMU_ENABLE_ENDLESS_SPOOL, enabled, write=True)
+
+        if groups is not None:
+            raw_groups = [group.strip() for group in groups.split(",")]
+
+            if len(raw_groups) != mmu.num_gates:
+                mmu.log_error(
+                    f"The number of group values ({len(raw_groups)}) does not match "
+                    f"the number of gates ({mmu.num_gates})"
+                )
                 return
-            mmu.gate_maps.endless_spool_groups = []
-            for group in groups:
-                if group.isdigit():
-                    mmu.gate_maps.endless_spool_groups.append(int(group))
-                else:
-                    mmu.gate_maps.endless_spool_groups.append(0)
+
+            try:
+                parsed_groups = [int(group) for group in raw_groups]
+            except ValueError:
+                mmu.log_error(
+                    f"Invalid GROUPS value: {groups!r}. "
+                    "Expected comma-separated integers."
+                )
+                return
+
+            if any(group < 0 for group in parsed_groups):
+                mmu.log_error(
+                    f"Invalid GROUPS value: {groups!r}. "
+                    "Group values must be non-negative integers."
+                )
+                return
+
+            mmu.gate_maps.endless_spool_groups = parsed_groups
             mmu.gate_maps.persist_endless_spool()
 
-        else:
-            quiet = False  # Display current map
-
         if not quiet:
-            mmu.log_info(mmu.gate_maps.es_groups_to_string())
+            show()
