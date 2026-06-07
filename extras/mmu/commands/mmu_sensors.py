@@ -65,7 +65,7 @@ class MmuSensorsCommand(BaseCommand):
         )
 
         if all(v[0] is None for v in sensor_states.values()) and not detail:
-            summary += "No active sensors. Use DETAIL=1 to see all"
+            summary += "No active sensors. Use DETAIL=1 to see all including disabled"
 
         else:
             pad = 21
@@ -113,5 +113,8 @@ class MmuSensorsCommand(BaseCommand):
                         summary += ", Runout enabled"
 
                 summary += "\n"
+
+        if not summary:
+            summary = "No sensors found"
 
         mmu.log_always(summary)

@@ -4,7 +4,7 @@
 # Responsible for setting:
 #   PARAM_SERVO_MIN_PULSE_WIDTH
 #   PARAM_SERVO_MAX_PULSE_WIDTH
-#   PARAM_SERVO_MAX_ANGLE
+#   PARAM_SERVO_MAXIMUM_ANGLE
 #   PARAM_SERVO_ALWAYS_ACTIVE
 #   PARAM_SERVO_DURATION
 #   PARAM_SERVO_DWELL
@@ -18,14 +18,12 @@
 #   PARAM_SERVO_GATE_ANGLES
 #   PARAM_SERVO_RELEASE_ANGLE
 #   PARAM_SERVO_BYPASS_ANGLE
+#   PARAM_SERVO_MIN_ANGLE
+#   PARAM_SERVO_MAX_ANGLE
 
 if MMU_HAS_SELECTOR_SERVO
 
   menu "Selector servo"
-    config PARAM_SERVO_MAX_ANGLE
-      int "Servo maximum angle  "
-      range 0 360
-      default 180
 
     config PARAM_SERVO_MIN_PULSE_WIDTH
       float "Servo min pulse width"
@@ -34,6 +32,13 @@ if MMU_HAS_SELECTOR_SERVO
     config PARAM_SERVO_MAX_PULSE_WIDTH
       float "Servo max pulse width"
       default 0.002
+
+    config PARAM_SERVO_MAXIMUM_ANGLE
+      int "Servo h/w max angle  "
+      range 0 360
+      default 180
+      help
+        Klipper scales the PWM pulse width to never exceed this angle
 
     config PARAM_SERVO_DWELL
       float "Servo dwell          "
@@ -158,6 +163,21 @@ if MMU_HAS_SELECTOR_SERVO
           Optional servo position for bypass gate.
           Leave at '-1' if not supported.
           Can be overriden by calibrated value saved in 'mmu_vars.cfg'
+
+      config PARAM_SERVO_MIN_ANGLE
+        int "Servo selector min   "
+        range 0 360
+        default 0
+        help
+          Happy Hare will never move the server past this minimum configured angle
+
+      config PARAM_SERVO_MAX_ANGLE
+        int "Servo selector max   "
+        range 0 360
+        default 360
+        help
+          Happy Hare will never move the server past this mximum configured angle
+
 
     endif
 

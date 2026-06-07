@@ -66,14 +66,16 @@ class MmuSyncFeedback:
     def handle_connect(self):
         self.mmu = self.mmu_machine.mmu_controller # Shared MMU controller class
 
-        # Setup events for managing motor synchronization
-        self.printer.register_event_handler("mmu:synced", self._handle_mmu_synced)
-        self.printer.register_event_handler("mmu:unsynced", self._handle_mmu_unsynced)
-        self.printer.register_event_handler("mmu:sync_feedback", self._handle_sync_feedback)
+        if self.mmu_unit.has_buffer():
+            # Setup events for managing motor synchronization
+            self.printer.register_event_handler("mmu:synced", self._handle_mmu_synced)
+            self.printer.register_event_handler("mmu:unsynced", self._handle_mmu_unsynced)
+            self.printer.register_event_handler("mmu:sync_feedback", self._handle_sync_feedback)
 
 
     def handle_mmu_initialized(self):
-        self._init_controller()
+        if self.mmu_unit.has_buffer():
+            self._init_controller()
 
 
     def is_enabled(self):
@@ -190,14 +192,25 @@ class MmuSyncFeedback:
 
     def get_status(self, eventtime=None):
         self.flowguard_status['encoder_mode'] = self.p.flowguard_encoder_mode # Ok to mutate status
-        return {
-            'sync_feedback_state': self.get_sync_feedback_string(),
-            'sync_feedback_enabled': self.is_enabled(),
-            'sync_feedback_bias_raw': self._get_sync_bias_raw(),
-            'sync_feedback_bias_modelled': self._get_sync_bias_modelled(),
-            'sync_feedback_flow_rate': self.flow_rate,
-            'flowguard': self.flowguard_status,
-        }
+
+        # Buffer controlled sync feedback
+        if self.ctrl:
+            return {
+                'sync_feedback_state': self.get_sync_feedback_string(),
+                'sync_feedback_enabled': self.is_enabled(),
+                'sync_feedback_bias_raw': self._get_sync_bias_raw(),
+                'sync_feedback_bias_modelled': self._get_sync_bias_modelled(),
+                'sync_feedback_flow_rate': self.flow_rate,
+                'flowguard': self.flowguard_status,
+            }
+
+        if self.mmu_unit.has_encoder():
+            # Just flowguard. Perhaps just encoder present
+            return {
+                'flowguard': self.flowguard_status,
+            }
+
+        return {}
 
 
     #

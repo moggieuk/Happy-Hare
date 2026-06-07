@@ -15,7 +15,7 @@ config MMU_HAS_BLOBIFIER
 
 config PIN_BLOBIFIER_SERVO
   string
-  default "^"
+  default ""
 
 config PIN_BLOBIFIER_BUCKET_SWITCH
   string

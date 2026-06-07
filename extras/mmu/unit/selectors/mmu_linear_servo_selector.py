@@ -61,6 +61,9 @@ class LinearServoSelectorParameters(LinearSelectorParameters):
         ParamSpec('servo_buzz_gear_on_down',  'int',   3,   section="SERVO", limits=dict(minval=0, maxval=10)),
     )
 
+    def __init__(self, config, selector):
+        self._selector = selector
+        super().__init__(config)
 
 
 # -----------------------------------------------------------------------------------------------------------

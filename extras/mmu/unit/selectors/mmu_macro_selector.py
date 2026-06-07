@@ -34,6 +34,10 @@ class MacroSelectorParameters(TunableParametersBase):
         ParamSpec('select_tool_num_switches', 'int',  0,        section="SELECTOR", limits=dict(minval=1), hidden=True),
     )
 
+    def __init__(self, config, selector):
+        self._selector = selector
+        super().__init__(config)
+
 
 # -----------------------------------------------------------------------------------------------------------
 # MacroSelector implementation
