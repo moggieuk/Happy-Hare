@@ -109,6 +109,7 @@ menu "Pins / TMC"
     if MULTIGEAR
 
       if PARAM_NUM_GATES > 1
+        comment "_"
         config PIN_GEAR_UART_1
           prompt "Gear 1 UART pin  "
         config PIN_GEAR_STEP_1
@@ -122,6 +123,7 @@ menu "Pins / TMC"
       endif
 
       if PARAM_NUM_GATES > 2
+        comment "_"
         config PIN_GEAR_UART_2
           prompt "Gear 2 UART pin  "
         config PIN_GEAR_STEP_2
@@ -135,6 +137,7 @@ menu "Pins / TMC"
       endif
 
       if PARAM_NUM_GATES > 3
+        comment "_"
         config PIN_GEAR_UART_3
           prompt "Gear 3 UART pin  "
         config PIN_GEAR_STEP_3
@@ -148,6 +151,7 @@ menu "Pins / TMC"
       endif
 
       if PARAM_NUM_GATES > 4
+        comment "_"
         config PIN_GEAR_UART_4
           prompt "Gear 4 UART pin  "
         config PIN_GEAR_STEP_4
@@ -320,49 +324,61 @@ menu "Pins / TMC"
     depends on MMU_HAS_ESPOOLER
 
     config PIN_ESPOOLER_EN_0
-      prompt "eSpooler enable 0 pin " if PARAM_NUM_GATES > 0 && HAS_ESPOOLER_ENABLE_PIN
+      prompt "eSpooler enable 0 pin " if HAS_ESPOOLER_ENABLE_PIN
     config PIN_ESPOOLER_RWD_0
-      prompt "eSpooler rewind 0 pin " if PARAM_NUM_GATES > 0
+      prompt "eSpooler rewind 0 pin "
     config PIN_ESPOOLER_FWD_0
-      prompt "eSpooler forward 0 pin" if PARAM_NUM_GATES > 0
+      prompt "eSpooler forward 0 pin"
     config PIN_ESPOOLER_TRIG_0
-      prompt "eSpooler trigger 0 pin" if PARAM_NUM_GATES > 0
+      prompt "eSpooler trigger 0 pin"
 
-    config PIN_ESPOOLER_EN_1
-      prompt "eSpooler enable 1 pin " if PARAM_NUM_GATES > 1 && HAS_ESPOOLER_ENABLE_PIN
-    config PIN_ESPOOLER_RWD_1
-      prompt "eSpooler rewind 1 pin " if PARAM_NUM_GATES > 1
-    config PIN_ESPOOLER_FWD_1
-      prompt "eSpooler forward 1 pin" if PARAM_NUM_GATES > 1
-    config PIN_ESPOOLER_TRIG_1
-      prompt "eSpooler trigger 1 pin" if PARAM_NUM_GATES > 1
+    if PARAM_NUM_GATES > 1
+      comment "_"
+      config PIN_ESPOOLER_EN_1
+        prompt "eSpooler enable 1 pin " if HAS_ESPOOLER_ENABLE_PIN
+      config PIN_ESPOOLER_RWD_1
+        prompt "eSpooler rewind 1 pin "
+      config PIN_ESPOOLER_FWD_1
+        prompt "eSpooler forward 1 pin"
+      config PIN_ESPOOLER_TRIG_1
+        prompt "eSpooler trigger 1 pin"
+    endif
 
-    config PIN_ESPOOLER_EN_2
-      prompt "eSpooler enable 2 pin " if PARAM_NUM_GATES > 2 && HAS_ESPOOLER_ENABLE_PIN
-    config PIN_ESPOOLER_RWD_2
-      prompt "eSpooler rewind 2 pin " if PARAM_NUM_GATES > 2
-    config PIN_ESPOOLER_FWD_2
-      prompt "eSpooler forward 2 pin" if PARAM_NUM_GATES > 2
-    config PIN_ESPOOLER_TRIG_2
-      prompt "eSpooler trigger 2 pin" if PARAM_NUM_GATES > 2
+    if PARAM_NUM_GATES > 2
+      comment "_"
+      config PIN_ESPOOLER_EN_2
+        prompt "eSpooler enable 2 pin " if HAS_ESPOOLER_ENABLE_PIN
+      config PIN_ESPOOLER_RWD_2
+        prompt "eSpooler rewind 2 pin "
+      config PIN_ESPOOLER_FWD_2
+        prompt "eSpooler forward 2 pin"
+      config PIN_ESPOOLER_TRIG_2
+        prompt "eSpooler trigger 2 pin"
+    endif
 
-    config PIN_ESPOOLER_EN_3
-      prompt "eSpooler enable 3 pin " if PARAM_NUM_GATES > 3 && HAS_ESPOOLER_ENABLE_PIN
-    config PIN_ESPOOLER_RWD_3
-      prompt "eSpooler rewind 3 pin " if PARAM_NUM_GATES > 3
-    config PIN_ESPOOLER_FWD_3
-      prompt "eSpooler forward 3 pin" if PARAM_NUM_GATES > 3
-    config PIN_ESPOOLER_TRIG_3
-      prompt "eSpooler trigger 3 pin" if PARAM_NUM_GATES > 3
+    if PARAM_NUM_GATES > 3
+      comment "_"
+      config PIN_ESPOOLER_EN_3
+        prompt "eSpooler enable 3 pin " if HAS_ESPOOLER_ENABLE_PIN
+      config PIN_ESPOOLER_RWD_3
+        prompt "eSpooler rewind 3 pin "
+      config PIN_ESPOOLER_FWD_3
+        prompt "eSpooler forward 3 pin"
+      config PIN_ESPOOLER_TRIG_3
+        prompt "eSpooler trigger 3 pin"
+    endif
 
-    config PIN_ESPOOLER_EN_4
-      prompt "eSpooler enable 4 pin " if PARAM_NUM_GATES > 4 && HAS_ESPOOLER_ENABLE_PIN
-    config PIN_ESPOOLER_RWD_4
-      prompt "eSpooler rewind 4 pin " if PARAM_NUM_GATES > 4
-    config PIN_ESPOOLER_FWD_4
-      prompt "eSpooler forward 4 pin" if PARAM_NUM_GATES > 4
-    config PIN_ESPOOLER_TRIG_4
-      prompt "eSpooler trigger 4 pin" if PARAM_NUM_GATES > 4
+    if PARAM_NUM_GATES > 4
+      comment "_"
+      config PIN_ESPOOLER_EN_4
+        prompt "eSpooler enable 4 pin " if HAS_ESPOOLER_ENABLE_PIN
+      config PIN_ESPOOLER_RWD_4
+        prompt "eSpooler rewind 4 pin "
+      config PIN_ESPOOLER_FWD_4
+        prompt "eSpooler forward 4 pin"
+      config PIN_ESPOOLER_TRIG_4
+        prompt "eSpooler trigger 4 pin"
+    endif
   endmenu
 
 

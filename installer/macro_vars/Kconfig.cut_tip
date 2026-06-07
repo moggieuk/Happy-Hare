@@ -27,6 +27,9 @@ menu "Toolhead tip cutting (_MMU_CUT_TIP)"
       Distance to retract prior to making the cut.
       Must be less than blade_pos.
 
+      This should be tuned but 5mm less than 'blade_pos'
+      is a good starting point
+
   config BOOL_CUT_TIP_SIMPLE_TIP_FORMING
     bool "Enable simple tip forming"
     default y

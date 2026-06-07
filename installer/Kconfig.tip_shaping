@@ -1,11 +1,29 @@
 # Defines parameter token types and defaults for tip forming/cutting
 #
+# Responsible for defining/setting:
+#   MMU_HAS_GANTRY_BUMPER_SERVO (and PIN_GANTRY_BUMPER_SERVO)
+#   MMU_HAS_SERVO_CUTTER        (and PIN_SERVO_CUTTER_SERVO)
+#
 # Responsible for setting:
 #   PARAM_FORCE_FORM_TIP_STANDALONE
 #   PARAM_SLICER_TIP_PARK_POS
 #   PARAM_FORCE_PURGE_STANDALONE
 #   PARAM_FORM_TIP_MACRO
-#   MMU_HAS_GANTRY_BUMPER_SERVO (and PIN_GANTRY_BUMPER_SERVO)
+
+config MMU_HAS_GANTRY_BUMPER_SERVO
+  def_bool n
+
+config PIN_GANTRY_BUMPER_SERVO
+  string
+  default ""
+
+config MMU_HAS_SERVO_CUTTER
+  def_bool n
+
+config PIN_SERVO_CUTTER_SERVO
+  string
+  default ""
+
 
 menu "Tip Forming / Cutting"
   help
@@ -16,7 +34,7 @@ menu "Tip Forming / Cutting"
 # -------------------------------------
 
   config MMU_HAS_SERVO_CUTTER
-    bool "Have servo cutter at MMU?"
+    prompt "Have servo cutter at MMU?"
     help
       Enable this if you have a servo based cutter at your MMU
 
@@ -25,8 +43,7 @@ menu "Tip Forming / Cutting"
   if MMU_HAS_SERVO_CUTTER
 
     config PIN_SERVO_CUTTER_SERVO
-      string "Cutting servo pin                  "
-      default ""
+      prompt "Cutting servo pin                  "
 
   endif
 
@@ -39,7 +56,7 @@ menu "Tip Forming / Cutting"
   comment "_Essential tip forming configuration"
 
   choice CHOICE_FORM_TIP_MACRO
-    prompt "Select standalone tip shaping option"
+    bool "Select standalone tip shaping option"
     default CHOICE_FORM_TIP_MACRO_FORM_TIP
     help
       How to perform standalone tip shaping (forming or cutting)
@@ -83,16 +100,17 @@ menu "Tip Forming / Cutting"
 # -------------------------------------
 
   if CHOICE_FORM_TIP_MACRO_CUT_TIP
-    config MMU_HAS_GANTRY_BUMPER_SERVO
-      bool "Have servo operated gantry bumper?"
-      default n
-  endif
 
-  config PIN_GANTRY_BUMPER_SERVO
-    prompt "Gantry servo pin" if MMU_HAS_GANTRY_BUMPER_SERVO
-    help
-      Optional. Used to deploy fold-down "bumper" for tip cutting
-      when using a toolhead mounted filament cutting blade
+    config MMU_HAS_GANTRY_BUMPER_SERVO
+      prompt "Have servo operated gantry bumper?"
+      default n
+
+    config PIN_GANTRY_BUMPER_SERVO
+      prompt "Gantry servo pin" if MMU_HAS_GANTRY_BUMPER_SERVO
+      help
+        Optional. Used to deploy fold-down "bumper" for tip cutting
+        when using a toolhead mounted filament cutting blade
+  endif
 
 
 # -------------------------------------

@@ -5,8 +5,8 @@
 # If so, this preference is used instead
 #
 # Responsible for setting:
-#   PARAM_GATE_PRELOAD_ENDSTOP
 #   PARAM_GATE_HOMING_ENDSTOP
+#   PARAM_GATE_PRELOAD_ENDSTOP
 #   PARAM_EXTRUDER_HOMING_ENDSTOP
 
 # Gate homing preference flags (hidden)
@@ -14,20 +14,17 @@ config PREFERS_CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
   def_bool n
   depends on MMU_HAS_SENSOR_EXTRUDER && !REQUIRE_BOWDEN_MOVE
 
-config PREFERS_CHOICE_GATE_HOMING_ENDSTOP_GEAR
+config PREFERS_CHOICE_GATE_HOMING_ENDSTOP_EXIT
   def_bool n
   depends on MMU_HAS_SENSOR_EXIT
 
-config PREFERS_CHOICE_GATE_HOMING_ENDSTOP_GATE
+config PREFERS_CHOICE_GATE_HOMING_ENDSTOP_SHARED_EXIT
   def_bool n
   depends on MMU_HAS_SENSOR_SHARED_EXIT
 
 config PREFERS_CHOICE_GATE_HOMING_ENDSTOP_ENCODER
   def_bool n
   depends on MMU_HAS_ENCODER
-
-config PREFERS_CHOICE_GATE_HOMING_ENDSTOP_NONE
-  def_bool n
 
 # Extruder homing preference flags (hidden)
 config PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_EXTRUDER
@@ -49,7 +46,12 @@ config PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_ENCODER
 config PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE
   def_bool n
 
-menu "Endstops (Bowden move)"
+
+menu "Endstops for Bowden movement"
+
+# -------------------------------------
+# Gate Endstop
+# -------------------------------------
 
   choice CHOICE_GATE_HOMING_ENDSTOP 
     prompt "Gate homing endstop"
@@ -58,27 +60,33 @@ menu "Endstops (Bowden move)"
       This allows you to choose the best option for your design
 
     # mmu_type preferences (first true wins)
-    default CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER if PREFERS_CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
-    default CHOICE_GATE_HOMING_ENDSTOP_GEAR     if PREFERS_CHOICE_GATE_HOMING_ENDSTOP_GEAR
-    default CHOICE_GATE_HOMING_ENDSTOP_GATE     if PREFERS_CHOICE_GATE_HOMING_ENDSTOP_GATE
-    default CHOICE_GATE_HOMING_ENDSTOP_ENCODER  if PREFERS_CHOICE_GATE_HOMING_ENDSTOP_ENCODER
-    default CHOICE_GATE_HOMING_ENDSTOP_NONE     if PREFERS_CHOICE_GATE_HOMING_ENDSTOP_NONE
+    default CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER    if PREFERS_CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
+    default CHOICE_GATE_HOMING_ENDSTOP_EXIT        if PREFERS_CHOICE_GATE_HOMING_ENDSTOP_EXIT
+    default CHOICE_GATE_HOMING_ENDSTOP_SHARED_EXIT if PREFERS_CHOICE_GATE_HOMING_ENDSTOP_SHARED_EXIT
+    default CHOICE_GATE_HOMING_ENDSTOP_ENCODER     if PREFERS_CHOICE_GATE_HOMING_ENDSTOP_ENCODER
 
     # Heuristic fallbacks
-    default CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER if MMU_HAS_SENSOR_EXTRUDER && !REQUIRE_BOWDEN_MOVE
-    default CHOICE_GATE_HOMING_ENDSTOP_GEAR     if MMU_HAS_SENSOR_EXIT
-    default CHOICE_GATE_HOMING_ENDSTOP_GATE     if MMU_HAS_SENSOR_SHARED_EXIT
-    default CHOICE_GATE_HOMING_ENDSTOP_ENCODER  if MMU_HAS_ENCODER
+    default CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER    if MMU_HAS_SENSOR_EXTRUDER && !REQUIRE_BOWDEN_MOVE
+    default CHOICE_GATE_HOMING_ENDSTOP_EXIT        if MMU_HAS_SENSOR_EXIT
+    default CHOICE_GATE_HOMING_ENDSTOP_SHARED_EXIT if MMU_HAS_SENSOR_SHARED_EXIT
+    default CHOICE_GATE_HOMING_ENDSTOP_ENCODER     if MMU_HAS_ENCODER
     default CHOICE_GATE_HOMING_ENDSTOP_NONE
 
-    config CHOICE_GATE_HOMING_ENDSTOP_GEAR
+    config CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
+      bool "Individual lane exit sensors"
+      depends on MMU_HAS_SENSOR_EXTRUDER && !REQUIRE_BOWDEN_MOVE
+      help
+        Use individual per-gate (mmu_exit) endstop sensor after drive gear.
+        Often also implemented as per-gate entry sensors on the filament combiner ("aka hub")
+
+    config CHOICE_GATE_HOMING_ENDSTOP_EXIT
       bool "Individual lane exit sensors"
       depends on MMU_HAS_SENSOR_EXIT
       help
         Use individual per-gate (mmu_exit) endstop sensor after drive gear.
         Often also implemented as per-gate entry sensors on the filament combiner ("aka hub")
 
-    config CHOICE_GATE_HOMING_ENDSTOP_GATE
+    config CHOICE_GATE_HOMING_ENDSTOP_SHARED_EXIT
       bool "Shared exit sensor"
       depends on MMU_HAS_SENSOR_SHARED_EXIT
       help
@@ -102,23 +110,26 @@ menu "Endstops (Bowden move)"
 
     config CHOICE_GATE_HOMING_ENDSTOP_NONE
       bool "No homing endstop available"
+      depends on !(MMU_HAS_SENSOR_EXTRUDER && !REQUIRE_BOWDEN_MOVE) && !MMU_HAS_SENSOR_EXIT && !MMU_HAS_SENSOR_SHARED_EXIT && !MMU_HAS_ENCODER
       help
-        Ensure you have specified all filament sensors and encoders because
+        Ensure you have specified all filament sensors and encoder because
         current configuration has no way to home at the MMU gate.
 
-        However this isn't a issue if you calibrate and have a toolhead sensor
   endchoice
 
   # Create no-prompt param from choice
   config PARAM_GATE_HOMING_ENDSTOP
     string 
     default "extruder"        if CHOICE_GATE_HOMING_ENDSTOP_EXTRUDER
-    default "mmu_exit"        if CHOICE_GATE_HOMING_ENDSTOP_GEAR
-    default "mmu_shared_exit" if CHOICE_GATE_HOMING_ENDSTOP_GATE
+    default "mmu_exit"        if CHOICE_GATE_HOMING_ENDSTOP_EXIT
+    default "mmu_shared_exit" if CHOICE_GATE_HOMING_ENDSTOP_SHARED_EXIT
     default "encoder"         if CHOICE_GATE_HOMING_ENDSTOP_ENCODER
-    default ""                if CHOICE_GATE_HOMING_ENDSTOP_NONE
+    default ""                # This is actually a config error
 
-  # ------
+
+# -------------------------------------
+# Gate preload endstop
+# -------------------------------------
 
   choice CHOICE_GATE_PRELOAD_ENDSTOP 
     prompt "Gate preload endstop"
@@ -131,7 +142,7 @@ menu "Endstops (Bowden move)"
       help
         Use gate homing endstop (no individual mmu exit sensors are available)
 
-    config CHOICE_GATE_PRELOAD_ENDSTOP_GEAR
+    config CHOICE_GATE_PRELOAD_ENDSTOP_EXIT
       bool "Individual mmu exit sensors" if MMU_HAS_SENSOR_EXIT
       help
         Use individual per-gate exit sensor (often implemented as the per-gate hub entry sensor)
@@ -142,10 +153,13 @@ menu "Endstops (Bowden move)"
   # Create no-prompt param from choice
   config PARAM_GATE_PRELOAD_ENDSTOP
     string 
-    default "mmu_exit" if CHOICE_GATE_PRELOAD_ENDSTOP_GEAR
+    default "mmu_exit" if CHOICE_GATE_PRELOAD_ENDSTOP_EXIT
     default ""         # Defaults to gate homing endstop
 
-  # ------
+
+# -------------------------------------
+# Extruder preload endstop
+# -------------------------------------
 
   choice CHOICE_EXTRUDER_HOMING_ENDSTOP
     prompt "Extruder homing endstop" 
@@ -157,7 +171,7 @@ menu "Endstops (Bowden move)"
     # mmu_type preferences (first true wins)
     default CHOICE_EXTRUDER_HOMING_ENDSTOP_EXTRUDER    if PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_EXTRUDER
     default CHOICE_EXTRUDER_HOMING_ENDSTOP_COMPRESSION if PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_COMPRESSION
-#    default CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH       if PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH
+    default CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH       if PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH
     default CHOICE_EXTRUDER_HOMING_ENDSTOP_ENCODER     if PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_ENCODER
     default CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE        if PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE
 
@@ -200,6 +214,8 @@ menu "Endstops (Bowden move)"
       help
         Don't attempt to home. Only possibility if lacking all sensor options.
         Filament will be moved based on distance only
+
+        However this isn't a issue if you calibrate and have a toolhead sensor
   endchoice
 
   # Create no-prompt param from choice
@@ -209,6 +225,6 @@ menu "Endstops (Bowden move)"
     default "filament_compression" if CHOICE_EXTRUDER_HOMING_ENDSTOP_COMPRESSION
     default "mmu_gear_touch"       if CHOICE_EXTRUDER_HOMING_ENDSTOP_TOUCH
     default "encoder"              if CHOICE_EXTRUDER_HOMING_ENDSTOP_ENCODER
-    default "none"                 if CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE
+    default "none"
 
 endmenu

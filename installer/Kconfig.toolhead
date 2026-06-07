@@ -3,10 +3,32 @@
 # Although a toolhead can be unique to each mmu unit this installer currently
 # assumes a single one is configured, named "default" in the mmu.cfg
 #
+# Responsible for defining/setting:
+#   MMU_HAS_SENSOR_TOOLHEAD (and PIN_EXTRUDER_SENSOR)
+#   MMU_HAS_SENSOR_EXTRUDER (and PIN_EXTRUDER_SENSOR)
+#   MMU_HAS_TOOLHEAD_CUTTER
+#
+# Responsible for setting:
 #   PARAM_TOOLHEAD_EXTRUDER_TO_NOZZLE
 #   PARAM_TOOLHEAD_SENSOR_TO_NOZZLE
 #   PARAM_TOOLHEAD_ENTRY_TO_EXTRUDER
 #   PARAM_TOOLHEAD_RESIDUAL_FILAMENT
+
+config MMU_HAS_SENSOR_TOOLHEAD
+  def_bool n
+
+config PIN_TOOLHEAD_SENSOR
+  string
+
+config MMU_HAS_SENSOR_EXTRUDER
+  def_bool n
+
+config PIN_EXTRUDER_SENSOR
+  string
+
+config MMU_HAS_TOOLHEAD_CUTTER
+  def_bool n
+
 
 menu "Toolhead sensors/settings"
   help
@@ -22,7 +44,7 @@ menu "Toolhead sensors/settings"
 # -------------------------------------
 
   config MMU_HAS_TOOLHEAD_CUTTER
-    bool "Has toolhead cutter?"
+    prompt "Has toolhead cutter?"
     help
       Select if you have a filament cutter built into the toolhead that
       uses toolhead motion for cutting action.
@@ -38,7 +60,7 @@ menu "Toolhead sensors/settings"
   comment "_Toolhead sensors"
 
   config MMU_HAS_SENSOR_TOOLHEAD
-    bool "Has toolhead sensor?"
+    prompt "Has toolhead sensor?"
     help
       Select if you have a filament sensor inside of your toolhead after
       the extruder drive. This is normally connected to a pin on your main
@@ -51,7 +73,7 @@ menu "Toolhead sensors/settings"
       Can also be set under "Pins" section
 
   config MMU_HAS_SENSOR_EXTRUDER
-    bool "Has extruder (entry) sensor?"
+    prompt "Has extruder (entry) sensor?"
     help
       Select if you have a filament sensor at or just prior to
       the extruder entry. This is normally connected to a pin on your main

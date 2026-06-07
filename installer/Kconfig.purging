@@ -1,14 +1,26 @@
 # Defines parameter token types and defaults for purging
 #
+# Responsible for defining/setting:
+#   MMU_HAS_BLOBIFIER (and PIN_BLOBIFIER_SERVO, PIN_BLOBIFIER_BUCKET_SWITCH)
+#
 # Responsible for setting:
-#   MMU_HAS_BLOBIFIER
-#     PIN_BLOBIFIER_SERVO
-#     PIN_BLOBIFIER_BUCKET_SWITCH
-#     PARAM_BLOBIFIER_MINIMUM_PULSE_WIDTH
-#     PARAM_BLOBIFIER_MAXIMUM_PULSE_WIDTH
+#   PARAM_BLOBIFIER_MINIMUM_PULSE_WIDTH (if MMU_HAS_BLOBIFIER)
+#   PARAM_BLOBIFIER_MAXIMUM_PULSE_WIDTH (if MMU_HAS_BLOBIFIER)
 #   PARAM_PURGE_MACRO
 #   PARAM_FORCE_PURGE_STANDALONE
 #   PARAM_EXTRUDER_PURGE_CURRENT
+
+config MMU_HAS_BLOBIFIER
+  def_bool n
+
+config PIN_BLOBIFIER_SERVO
+  string
+  default "^"
+
+config PIN_BLOBIFIER_BUCKET_SWITCH
+  string
+  default "^"
+
 
 menu "Purging"
   help
@@ -19,7 +31,7 @@ menu "Purging"
 # -------------------------------------
 
   config MMU_HAS_BLOBIFIER
-    bool "Have Blobifier?"
+    prompt "Have Blobifier?"
     help
       Enable this if you have a Blobifer purging system fitted.
 
@@ -28,12 +40,10 @@ menu "Purging"
 
   if MMU_HAS_BLOBIFIER
     config PIN_BLOBIFIER_SERVO
-      string "Blobifier servo pin        "
-      default ""
+      prompt "Blobifier servo pin        "
 
     config PIN_BLOBIFIER_BUCKET_SWITCH
-      string "Blobifier bucket switch pin"
-      default "^"
+      prompt "Blobifier bucket switch pin"
       help
         The pullup ( ^ ) is important here
 

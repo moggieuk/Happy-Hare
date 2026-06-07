@@ -42,6 +42,9 @@
 #   MMU_HAS_SENSOR_EXTRUDER
 #   MMU_HAS_SENSOR_TOOLHEAD
 #   MMU_HAS_TOOLHEAD_CUTTER
+#   MMU_HAS_SERVO_CUTTER
+#   MMU_HAS_GANTRY_BUMPER_SERVO
+#   MMU_HAS_BLOBIFIER
 
 
 # IMPORTANT keep version string up-to-date and constistent with git tag
