@@ -14,9 +14,13 @@
 #   PARAM_SERVO_MOVE_ANGLE
 #   PARAM_SERVO_DOWN_ANGLE
 #   PARAM_SERVO_ACTIVE_DOWN
+#
 #   PARAM_SERVO_GATE_ANGLES
+#   PARAM_SERVO_RELEASE_ANGLE
+#   PARAM_SERVO_BYPASS_ANGLE
 
 if MMU_HAS_SELECTOR_SERVO
+
   menu "Selector servo"
     config PARAM_SERVO_MAX_ANGLE
       int "Servo maximum angle  "
@@ -30,35 +34,6 @@ if MMU_HAS_SELECTOR_SERVO
     config PARAM_SERVO_MAX_PULSE_WIDTH
       float "Servo max pulse width"
       default 0.002
-
-    if LINEAR_SERVO_SELECTOR || TESTING_SELECTOR
-        config PARAM_SERVO_UP_ANGLE
-          int "Servo up angle       "
-          default 0
-          help
-            Position of the servo up (filament released) position.
-
-        config PARAM_SERVO_MOVE_ANGLE
-          int "Servo move angle     "
-          default PARAM_SERVO_UP_ANGLE
-          help
-            Position of the servo for selector movement.
-            Often this is the same as the up setting but on some
-            designs like ERCF this position also passively
-            holds the filament.
-
-        config PARAM_SERVO_DOWN_ANGLE
-          int "Servo down angle     "
-          default 0
-          help
-            Position of the servo down (filament gripped) position.
-
-        config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
-          int "Buzz servo on down   "
-          default 1
-          help
-            How often to buzz servo on down angle
-    endif
 
     config PARAM_SERVO_DWELL
       float "Servo dwell          "
@@ -90,7 +65,16 @@ if MMU_HAS_SELECTOR_SERVO
       help
         Duration of servo PWM signal if not always active
 
+
+# -------------------------------------
+# LinearServoSelector
+# -------------------------------------
+
     if LINEAR_SERVO_SELECTOR || TESTING_SELECTOR
+
+      comment "_"
+      comment "_Filament grip control"
+
       config BOOL_SERVO_ACTIVE_DOWN
         bool "Servo active down"
         help
@@ -105,7 +89,45 @@ if MMU_HAS_SELECTOR_SERVO
         default 0
     endif
 
+    if LINEAR_SERVO_SELECTOR || TESTING_SELECTOR
+        config PARAM_SERVO_UP_ANGLE
+          int "Servo up angle       "
+          default 0
+          help
+            Position of the servo up (filament released) position.
+
+        config PARAM_SERVO_MOVE_ANGLE
+          int "Servo move angle     "
+          default PARAM_SERVO_UP_ANGLE
+          help
+            Position of the servo for selector movement.
+            Often this is the same as the up setting but on some
+            designs like ERCF this position also passively
+            holds the filament.
+
+        config PARAM_SERVO_DOWN_ANGLE
+          int "Servo down angle     "
+          default 0
+          help
+            Position of the servo down (filament gripped) position.
+
+        config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
+          int "Buzz servo on down   "
+          default 1
+          help
+            How often to buzz servo on down angle
+    endif
+
+
+# -------------------------------------
+# ServoSelector
+# -------------------------------------
+
     if SERVO_SELECTOR || TESTING_SELECTOR
+
+      comment "_"
+      comment "_Gate positions"
+
       config PARAM_SERVO_GATE_ANGLES
         string "Servo gate angles    "
         default "0, 180"                    if PARAM_NUM_GATES = 2
@@ -120,6 +142,24 @@ if MMU_HAS_SELECTOR_SERVO
           calibration but typically calibrated values (saved in 'mmu_vars.cfg') would override
           this setting.
           You may leave it blank to force user calibration.
+
+      config PARAM_SERVO_RELEASE_ANGLE
+        int "Servo release angle  "
+        default -1
+        help
+          Optional specific servo position to allow release of filament
+          Leave at '-1' for default bahavior of selecting angle half way between gates
+          Can be overriden by calibrated value saved in 'mmu_vars.cfg'
+
+      config PARAM_SERVO_BYPASS_ANGLE
+        int "Servo bypass angle   "
+        default -1
+        help
+          Optional servo position for bypass gate.
+          Leave at '-1' if not supported.
+          Can be overriden by calibrated value saved in 'mmu_vars.cfg'
+
     endif
+
   endmenu
 endif
