@@ -161,10 +161,11 @@ class MmuExtruderWrapper():
 
 
     def get_status(self, eventtime):
+        residual = getattr(self.mmu_unit.toolhead_wrapper.p, "toolhead_residual_filament", 0)
         return {
-            'extruder_filament_remaining': self.filament_remaining + self.mmu_unit.toolhead_wrapper.p.toolhead_residual_filament,
+            'extruder_filament_remaining': self.filament_remaining + residual,
             'filament_remaining': self.filament_remaining,             # TODO Use this printer variable in UI's
-            'filament_remaining_color': self.filament_remaining_color, # Use this printer variable in UI's
+            'filament_remaining_color': self.filament_remaining_color, # TODO Use this printer variable in UI's
         }
 
 
