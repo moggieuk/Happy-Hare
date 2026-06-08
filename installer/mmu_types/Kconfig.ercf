@@ -192,7 +192,7 @@ if MMU_FAMILY_ERCF
 
     # Modifications
     choice CHOICE_ENCODER_TYPE
-      default CHOICE_ENCODER_TYPE_BINKY    if MOD_BINKY
+      default CHOICE_ENCODER_TYPE_BINKY_8  if MOD_BINKY
       default CHOICE_ENCODER_TYPE_TCRT5000 if !MOD_BINKY
     endchoice
   endif
@@ -232,7 +232,7 @@ if MMU_FAMILY_ERCF
       default -11 if MOD_THUMPER_BLOCKS
 
     choice CHOICE_ENCODER_TYPE
-      default CHOICE_ENCODER_TYPE_BINKY
+      default CHOICE_ENCODER_TYPE_BINKY_8
     endchoice
   endif
 
@@ -270,7 +270,7 @@ if MMU_FAMILY_ERCF
       default -16
 
     choice CHOICE_ENCODER_TYPE
-      default CHOICE_ENCODER_TYPE_BINKY_V2
+      default CHOICE_ENCODER_TYPE_BINKY_12
     endchoice
   endif
 endif

@@ -53,25 +53,27 @@ if MMU_HAS_ENCODER
 
       choice CHOICE_ENCODER_TYPE
         prompt "Type"
+        default CHOICE_ENCODER_TYPE_BINKY_12
         help
           Select the base of the encoder design. This will set the default resolution.
 
-        config CHOICE_ENCODER_TYPE_BINKY
-          bool "Binky v1 / ERCF v2"
+        config CHOICE_ENCODER_TYPE_BINKY_8
+          bool "Binky 8 vane wheel"
           help
-            Select for Binky based encoders.
+            Select for Binky based encoders with an 8 vane encoder wheel.
 
-        config CHOICE_ENCODER_TYPE_BINKY_V2
-          bool "Binky v2 / ERCF v3"
+        config CHOICE_ENCODER_TYPE_BINKY_12
+          bool "Binky 12 vane wheel"
           help
-            Select for Binky based encoders.
+            Select for Binky based encoders with an 12 vane encoder wheel.
 
         config CHOICE_ENCODER_TYPE_TCRT5000
-          bool "TCRT 5000 based / ERCF v1.1"
+          bool "TCRT 5000 based"
           help
             Select for older TCRT5000 based encoders.
+            (this was the one fitted to ERCF v1.1)
 
-        config CHOICE_ENCODER_TYPE_OTHER
+        config HOICE_ENCODER_TYPE_OTHER
           bool "Other"
           help
             Select for any other encoder and ensure you set the resolution correctly.
@@ -84,8 +86,8 @@ if MMU_HAS_ENCODER
           only used as an initial value and it overridden by calibration.
         float "Uncalibrated encoder resolution "
         default 0.7059 if CHOICE_ENCODER_TYPE_TCRT5000
-        default 1.05   if CHOICE_ENCODER_TYPE_BINKY
-        default 1.5    if CHOICE_ENCODER_TYPE_BINKY_V2
+        default 1.05   if CHOICE_ENCODER_TYPE_BINKY_12
+        default 1.5    if CHOICE_ENCODER_TYPE_BINKY_8
         default 1.0    if CHOICE_ENCODER_TYPE_OTHER
         default 1.0
 

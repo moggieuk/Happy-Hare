@@ -85,6 +85,6 @@ if MMU_TYPE_TRADRACK_1_0
     default 31 if MOD_BINKY
 
   choice CHOICE_ENCODER_TYPE
-    default CHOICE_ENCODER_TYPE_BINKY if MOD_BINKY
+    default CHOICE_ENCODER_TYPE_BINKY_12 if MOD_BINKY
   endchoice
 endif
