@@ -111,7 +111,7 @@ class MmuStatusCommand(BaseCommand):
         if mmu._standalone_sync:
             lines.append(". Standalone sync mode is ENABLED")
 
-        if mmu_unit.sync_feedback.is_enabled():
+        if mmu_unit.has_buffer() and mmu_unit.sync_feedback.is_enabled():
             lines.append(
                 "\nSync feedback indicates filament in bowden is: "
                 f"{mmu_unit.sync_feedback.get_sync_feedback_string(detail=True).upper()}"

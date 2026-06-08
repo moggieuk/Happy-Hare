@@ -49,10 +49,8 @@ class MmuSyncFeedbackCommand(BaseCommand):
         mmu = self.mmu
         unit = self.get_unit(gcmd, mode="infer")
 
-        if self.check_if_disabled():
-            return
-        if self.check_if_bypass():
-            return
+        if self.check_if_disabled(): return
+        if self.check_if_bypass(): return
 
         if not unit.has_buffer():
             mmu.log_warning("No sync-feedback buffer on unit!")

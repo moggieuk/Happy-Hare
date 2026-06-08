@@ -136,16 +136,19 @@ class MmuController(MmuFilamentMovement):
         """
         Ensure clean state on initialiaztion and after MMU enable/disable operation
         """
-        self.is_enabled = self.runout_enabled = True
-        self.runout_last_enable_time = self.reactor.monotonic()
-        self.is_handling_runout = self.calibrating = False
+        self.is_enabled = True      # Whether Happy Hare is enabled or not
 
-        self.unit_selected = None # Must not stay None, set when inital gate is set or in in _load_persisted_state()
+        self.filament_monitoring_enabled = False
+        self.runout_last_enable_time = self.reactor.monotonic() # Used to help filter late runout callbacks
+        self.is_handling_runout = False # True whilst handling a runout
+
+        self.unit_selected = None       # Must not stay None, set when inital gate is set or in _load_persisted_state()
         self.tool_selected = self.gate_selected = TOOL_GATE_UNKNOWN
         self._last_tool = self._next_tool       = TOOL_GATE_UNKNOWN
         self._next_gate = None
         self._last_toolchange = "Unknown"
 
+        self.calibrating = False        # True when calibrating
         self.active_filament = {}
         self.filament_pos = FILAMENT_POS_UNKNOWN
         self.filament_direction = DIRECTION_UNKNOWN
@@ -153,9 +156,9 @@ class MmuController(MmuFilamentMovement):
         self._old_action = None
         self._clear_saved_toolhead_position()
         self._reset_job_statistics()
-        self.form_tip_vars = None   # Current defaults of gcode variables for tip forming macro
+        self.form_tip_vars = None       # Current defaults of gcode variables for tip forming macro
         self.gate_maps.clear_slicer_tool_map()
-        self.pending_spool_id = -1  # For automatic assignment of spool_id if set perhaps by rfid reader
+        self.pending_spool_id = -1      # For automatic assignment of spool_id if set perhaps by rfid reader
         self.saved_toolhead_max_accel = None
         self.num_toolchanges = 0
 
@@ -604,7 +607,7 @@ class MmuController(MmuFilamentMovement):
         # Adds extruder status (like filament remaining)
         status.update(self.mmu_unit().extruder_wrapper.get_status(eventtime))
 
-        # Adds sync_feedback status
+        # Adds sync_feedback status (this includes flowguard status)
         status.update(self.mmu_unit().sync_feedback.get_status(eventtime))
 
         # Add in active sensors
@@ -1172,7 +1175,6 @@ class MmuController(MmuFilamentMovement):
             if job or total:
                 msg += self._swap_statistics_to_string(total=total, detail=detail)
 
-#PAUL            if self.can_use_encoder() and gate:
             if gate:
                 m,d = self._gate_statistics_to_string()
                 msg += "\n\n" if msg != "" else ""
@@ -1715,11 +1717,10 @@ class MmuController(MmuFilamentMovement):
 
     def _disable_filament_monitoring(self):
         eventtime = self.reactor.monotonic()
-        enabled = self.runout_enabled
-        self.runout_enabled = False
-        self.log_trace("Disabled FlowGuard and runout detection")
-        if self.has_encoder() and self.encoder().is_enabled():
-            self.encoder().disable()
+        enabled = self.filament_monitoring_enabled
+        self.filament_monitoring_enabled = False
+
+        self.log_trace("Disabling FlowGuard and runout detection")
         self.sensor_manager.disable_runout(self.gate_selected)
         self.mmu_unit().sync_feedback.deactivate_flowguard(eventtime)
         return enabled
@@ -1727,13 +1728,12 @@ class MmuController(MmuFilamentMovement):
 
     def _enable_filament_monitoring(self):
         eventtime = self.reactor.monotonic()
-        self.runout_enabled = True
-        self.log_trace("Enabled FlowGuard and runout detection")
-        if self.has_encoder() and not self.encoder().is_enabled():
-            self.encoder().enable()
+        self.filament_monitoring_enabled = True
+
+        self.log_trace("Enabling FlowGuard and runout detection")
         self.sensor_manager.enable_runout(self.gate_selected)
-        self.mmu_unit().sync_feedback.activate_flowguard(eventtime)
         self.runout_last_enable_time = eventtime
+        self.mmu_unit().sync_feedback.activate_flowguard(eventtime)
 
 
     @contextlib.contextmanager

@@ -6,6 +6,8 @@
 #
 # Goal: Class to handle sync-feedback and adjustment of gear stepper rotation distance
 #       to keep MMU in sync with extruder as well as some filament tension routines.
+#       This will always exist even in the absense of a mmu_buffer - flowguard is
+#       available with just encoder.
 #
 # FlowGuard: It also implements protection for all modes/sensor types that will trigger
 #            on clog (at extruder) or tangle (at MMU) conditions.
@@ -93,6 +95,9 @@ class MmuSyncFeedback:
 
 
     def get_sync_feedback_string(self, state=None, detail=False):
+        if not self.mmu_unit.has_buffer():
+            return "unavailable"
+
         if state is None:
             state = self._get_sensor_state()
         if (self.mmu.is_enabled and self.p.sync_feedback_enabled and self.active) or detail:
@@ -105,6 +110,14 @@ class MmuSyncFeedback:
 
 
     def activate_flowguard(self, eventtime):
+        u = self.mmu_unit
+
+        # Enable encoder based "flowguard"
+        if u.has_encoder() and not u.encoder.is_enabled():
+            u.encoder.enable()
+
+        if not u.has_buffer(): return
+
         if self.p.flowguard_enabled and not self.flowguard_active:
             self.flowguard_active = True
             # This resets controller with last good autotuned RD, resets flowguard and resumes autotune
@@ -114,6 +127,14 @@ class MmuSyncFeedback:
 
 
     def deactivate_flowguard(self, eventtime):
+        u = self.mmu_unit
+
+        # Disable encoder based "flowguard"
+        if u.has_encoder() and u.encoder.is_enabled():
+            u.encoder.disable()
+
+        if not u.has_buffer(): return
+
         if self.p.flowguard_enabled and self.flowguard_active:
             self.flowguard_active = False
             self.ctrl.autotune.pause() # Very likley this is a period that we want to exclude from autotuning
@@ -149,6 +170,8 @@ class MmuSyncFeedback:
         extruder entry check using compression sensor 'max_move' is advisory maximum travel distance
         Returns distance of the correction move and whether operation was successful (or None if not performed)
         """
+        if not self.mmu_unit.has_buffer(): return 0.0, None
+
         has_tension, has_compression, has_proportional = self.get_active_sensors()
         max_move = max_move or self.mmu_unit.buffer.buffer_maxrange
 
@@ -166,6 +189,8 @@ class MmuSyncFeedback:
         """
         Called to wipe any sync debug files on print start
         """
+        if not self.mmu_unit.has_buffer(): return
+
         for gate in range(self.mmu.num_gates):
             log_path = self._telemetry_log_path(gate)
 
@@ -194,7 +219,7 @@ class MmuSyncFeedback:
         self.flowguard_status['encoder_mode'] = self.p.flowguard_encoder_mode # Ok to mutate status
 
         # Buffer controlled sync feedback
-        if self.ctrl:
+        if self.mmu_unit.has_buffer() and self.ctrl:
             return {
                 'sync_feedback_state': self.get_sync_feedback_string(),
                 'sync_feedback_enabled': self.is_enabled(),

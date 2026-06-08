@@ -786,7 +786,7 @@ class MmuFilamentMovement:
                 and u.p.toolhead_entry_tension_test
                 and synced
                 and not has_toolhead
-                and self.sensor_manager.check_sensor(SENSOR_COMPRESSION)
+                and self.sensor_manager.check_sensor(SENSOR_COMPRESSION) # None if no mmu_buffer
             ):
                 max_range = u.buffer.buffer_maxrange * 2 # Arbitary but buffer_maxrange is not enough to overcome bowden slack
                 if length > max_range:
@@ -850,7 +850,7 @@ class MmuFilamentMovement:
                caller is responsible for sanity checking if filament is in extruder, etc
         """
         u = self.mmu_unit()
-        has_tension, has_compression, has_proportional = u.sync_feedback.get_active_sensors()
+        has_tension, has_compression, has_proportional = u.sync_feedback.get_active_sensors() # All None if no mmu_buffer
 
         if (
             u.p.toolhead_post_load_tighten
