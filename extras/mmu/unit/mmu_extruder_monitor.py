@@ -50,7 +50,7 @@ class ExtruderMonitor:
         self.printer.register_event_handler('mmu:not_printing', self._handle_not_printing)
 
 
-    def _handle_printing(self, print_time):
+    def _handle_printing(self, print_time=None):
         """
         Enable monitoring and start the watchdog immediately.
         """
@@ -58,7 +58,7 @@ class ExtruderMonitor:
         self.active = True
 
 
-    def _handle_not_printing(self, print_time):
+    def _handle_not_printing(self, print_time=None):
         """
         Disable monitoring and stop the watchdog.
         """

@@ -113,12 +113,12 @@ class MmuEncoder:
         self._extruder_pos_update_timer = self.reactor.register_timer(self._extruder_pos_update_event)
 
 
-    def _handle_printing(self, print_time):
+    def _handle_printing(self, print_time=None):
         self.reactor.update_timer(self._extruder_pos_update_timer, self.reactor.NOW) # Enabled
         self.active = True
 
 
-    def _handle_not_printing(self, print_time):
+    def _handle_not_printing(self, print_time=None):
         self.reactor.update_timer(self._extruder_pos_update_timer, self.reactor.NEVER) # Disabled
         self.active = False
 
