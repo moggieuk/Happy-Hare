@@ -118,20 +118,28 @@ class MmuPrintStateMachine:
         """
         MMU job state machine: initialized | ready | started | printing | complete | cancelled | error | pause_locked | paused | standby | idle
         """
-        if print_state != self.print_state:
+        prev_print_state = self.print_state
+        if print_state == prev_print_state:
+            return
 
-            idle_timeout = self.mmu.printer.lookup_object("idle_timeout").idle_timeout
-            self.mmu.log_debug("Job State: %s -> %s (MMU State: Encoder: %s, Synced: %s, Paused temp: %s, Resume to state: %s, Position saved for: %s, pause_resume: %s, Idle timeout: %.2fs)"
-                    % (self.print_state.upper(), print_state.upper(), self.mmu.get_encoder_state(), self.mmu.drive().is_synced_to_extruder(), self.paused_extruder_temp,
-                        self.resume_to_state, self.mmu.saved_toolhead_operation, self.is_printer_paused(), idle_timeout))
+        idle_timeout = self.mmu.printer.lookup_object("idle_timeout").idle_timeout
+        self.mmu.log_debug("Job State: %s -> %s (MMU State: Synced: %s, Paused temp: %s, Resume to state: %s, Position saved for: %s, pause_resume: %s, Idle timeout: %.2fs)"
+                % (prev_print_state.upper(), print_state.upper(), self.mmu.drive().is_synced_to_extruder(), self.paused_extruder_temp,
+                    self.resume_to_state, self.mmu.saved_toolhead_operation, self.is_printer_paused(), idle_timeout))
 
-            if call_macro:
-                self.mmu.led_manager.print_state_changed(print_state, self.print_state)
+        if call_macro:
+            self.mmu.led_manager.print_state_changed(print_state, prev_print_state)
 
-                if self.mmu.printer.lookup_object("gcode_macro %s" % self.mmu.p.print_state_changed_macro, None) is not None:
-                    self.mmu.wrap_gcode_command("%s STATE='%s' OLD_STATE='%s'" % (self.mmu.p.print_state_changed_macro, print_state, self.print_state))
+            if self.mmu.printer.lookup_object("gcode_macro %s" % self.mmu.p.print_state_changed_macro, None) is not None:
+                self.mmu.wrap_gcode_command("%s STATE='%s' OLD_STATE='%s'" % (self.mmu.p.print_state_changed_macro, print_state, prev_print_state))
 
-            self.print_state = print_state
+        self.print_state = print_state
+
+        # Useful events for activation/deactivation (e.g. filament monitoring)
+        if print_state == 'printing':
+            self.printer.send_event("mmu:printing")
+        elif prev_print_state == 'printing':
+            self.printer.send_event("mmu:not_printing")
 
 
     def fix_started_state(self):

@@ -560,7 +560,7 @@ class LinearSelector(PhysicalSelector):
                             if not found:
                                 # Push filament into view of the gate endstop
                                 _,_,measured,_ = self.mmu.move_filament("Locating filament", self.mmu_unit.p.gate_parking_distance + self.mmu_unit.p.gate_endstop_to_encoder + 10.)
-                                if self.mmu_unit.has_encoder() and measured < self.mmu.encoder_min:
+                                if self.mmu_unit.has_encoder() and measured < self.mmu_unit.encoder.encoder_min():
                                     raise MmuError("Unblocking selector failed because unable to move filament to clear")
     
                             # Try a full unload sequence

@@ -58,13 +58,14 @@ class MmuUnitParameters(TunableParametersBase):
         if new != old:
             self._mmu_unit.sync_feedback.config_flowguard_feature(new)
 
-    def _on_encoder_mode(self, old, new):
+    def _on_encoder_change(self, old, new):
         if new != old:
-            self._mmu_unit.encoder.set_encoder_mode(new)
+            if self._mmu_unit.sync_feedback.flowguard_active:
+                # If we are currently active make sure config change gets to encoder immediately
+                self._mmu_unit.encoder.enable_flowguard(self._mmu_unit)
 
     def _on_gate_homing_endstop(self, old, new):
         if new != old:
-            self._mmu_unit.p.gate_homing_endstop = new # Must be done prior to adjustment call
             self._mmu_unit.calibrator.adjust_bowden_lengths_on_homing_change()
 
 
@@ -159,8 +160,8 @@ class MmuUnitParameters(TunableParametersBase):
         # FlowGuard
         ParamSpec('flowguard_enabled',                'int',       1, section="FLOWGUARD", limits=dict(minval=0, maxval=1), on_change=_on_flowguard_enabled, fmt="%d"),
         ParamSpec('flowguard_max_relief',             'float',   8.0, section="FLOWGUARD", limits=dict(above=1.0),          guard=_guard_has_buffer, fmt="%.1f"),
-        ParamSpec('flowguard_encoder_mode',           'int',       2, section="FLOWGUARD", limits=dict(minval=0, maxval=2), guard=_guard_has_encoder, on_change=_on_encoder_mode, fmt="%d"),
-        ParamSpec('flowguard_encoder_max_motion',     'float',  20.0, section="FLOWGUARD", limits=dict(above=0.0),          guard=_guard_has_encoder, fmt="%.1f"),
+        ParamSpec('flowguard_encoder_mode',           'int',       2, section="FLOWGUARD", limits=dict(minval=0, maxval=2), guard=_guard_has_encoder, on_change=_on_encoder_change, fmt="%d"),
+        ParamSpec('flowguard_encoder_max_motion',     'float',  20.0, section="FLOWGUARD", limits=dict(above=0.0),          guard=_guard_has_encoder, on_change=_on_encoder_change, fmt="%.1f"),
 
         # Heater
         ParamSpec('heater_max_temp',                  'float',  65.0, section="HEATER",    limits=dict(above=0.0),  guard=_guard_has_heater, fmt="%.1f"),

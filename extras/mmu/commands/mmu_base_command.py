@@ -342,14 +342,14 @@ class BaseCommand:
     def check_if_no_encoder(self, mmu_unit=None): # Can be shared
         mmu_unit = mmu_unit or self.mmu.mmu_unit()
         if not mmu_unit.has_encoder():
-            self.mmu.log_error("No encoder fitted to this MMU unit")
+            self.mmu.log_error(f"No encoder fitted to {mmu_unit.name}")
             return True
         return False
 
     def check_if_no_buffer(self, mmu_unit=None): # Can be shared
         mmu_unit = mmu_unit or self.mmu.mmu_unit()
         if not mmu_unit.has_buffer():
-            self.mmu.log_error("No sync-feedback buffer fitted to this MMU unit")
+            self.mmu.log_error(f"No sync-feedback buffer fitted to {mmu_unit.name}")
             return True
         return False
 

@@ -533,6 +533,7 @@ class MmuUnit:
 
         # Event handlers
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
+        self.printer.register_event_handler("mmu:unit_selected", self._handle_unit_selected)
 
 
     def handle_connect(self):
@@ -567,6 +568,21 @@ class MmuUnit:
                 "Unit %s: TMC driver not found for gear stepper (gates: %s), cannot use current reduction for collision detection or while synchronized printing"
                 % (self.name, ", ".join(map(str, gates_without_tmc)))
             )
+
+
+    def _handle_unit_selected(self, unit, prev_unit):
+        """
+        Handler for unit changed event
+        To avoid race conditions, only the selected unit takes action
+        """
+        if unit is not self: return
+
+        if prev_unit is not None:
+            # Tell previous unit to deactivate
+            prev_unit.extruder_monitor().disable()
+
+        # Activate this unit
+        self.extruder_monitor().enable()
 
 
     def reinit(self):

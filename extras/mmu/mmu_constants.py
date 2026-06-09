@@ -293,6 +293,7 @@ UNCALIBRATED = -1              # Magic constant for uncalibrated rotation distan
 ENCODER_RUNOUT_DISABLED = 0
 ENCODER_RUNOUT_STATIC = 1
 ENCODER_RUNOUT_AUTOMATIC = 2
+ENCODER_DETECTION_MODES = ['Off', 'Fixed detection length', 'Automatic detection length']
 
 # Drying states (mostly relevant for per-gate heaters)
 DRYING_STATE_NONE      = ''

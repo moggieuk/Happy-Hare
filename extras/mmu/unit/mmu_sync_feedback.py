@@ -49,7 +49,7 @@ class MmuSyncFeedback:
 
         self.estimated_state = float(SF_STATE_NEUTRAL)
         self.active = False           # Sync-feedback actively operating?
-        self.flowguard_active = False # FlowGuard armed?
+        self.flowguard_active = False # FlowGuard armed in sync-feedback controller or just using encoder
         self.ctrl = None
         self.flow_rate = 100.         # Estimated % flowrate (calc only for proportional sensors)
 
@@ -57,7 +57,7 @@ class MmuSyncFeedback:
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
         self.printer.register_event_handler('mmu:initialized', self.handle_mmu_initialized)
 
-        # Initial flowguard status
+        # Initial flowguard status (when using sync-feedback controller)
         self.flowguard_status = {'trigger': '', 'reason': '', 'level': 0.0, 'max_clog': 0.0, 'max_tangle': 0.0, 'active': False, 'enabled': False}
 
 
@@ -111,56 +111,44 @@ class MmuSyncFeedback:
 
     def activate_flowguard(self, eventtime):
         u = self.mmu_unit
+        msg = None
 
-        # Enable encoder based "flowguard"
-        if u.has_encoder() and not u.encoder.is_enabled():
-            u.encoder.enable()
-
-        if not u.has_buffer(): return
-
-        if self.p.flowguard_enabled and not self.flowguard_active:
+        if u.has_buffer() and self.p.flowguard_enabled and not self.flowguard_active:
             self.flowguard_active = True
-            # This resets controller with last good autotuned RD, resets flowguard and resumes autotune
+            # This resets controller with last good autotuned RD, resets Flowguard then resumes Autotune
             self._reset_controller(eventtime, hard_reset=False)
             self.ctrl.autotune.resume()
-            self.mmu.log_info("FlowGuard monitoring activated and autotune resumed")
+            msg = "FlowGuard monitoring activated and Autotune resumed"
+
+        # Enable encoder based Flowguard
+        if u.has_encoder() and not u.encoder.is_flowguard_enabled():
+            if not u.encoder.enable_flowguard(u):
+                return # Must in in off mode
+            self.flowguard_active = True
+            msg = msg or "FlowGuard monitoring with encoder activated"
+
+        if msg:
+            self.mmu.log_info(msg)
 
 
     def deactivate_flowguard(self, eventtime):
         u = self.mmu_unit
+        msg = None
 
-        # Disable encoder based "flowguard"
-        if u.has_encoder() and u.encoder.is_enabled():
-            u.encoder.disable()
-
-        if not u.has_buffer(): return
-
-        if self.p.flowguard_enabled and self.flowguard_active:
+        if u.has_buffer() and self.p.flowguard_enabled and self.flowguard_active:
             self.flowguard_active = False
-            self.ctrl.autotune.pause() # Very likley this is a period that we want to exclude from autotuning
-            self.mmu.log_info("FlowGuard monitoring deactivated and autotune paused")
+            self.ctrl.autotune.pause()
+            msg = "FlowGuard monitoring deactivated and Autotune paused"
 
+        # Enable encoder based "flowguard"
+        if u.has_encoder() and u.encoder.is_flowguard_enabled():
+            if not u.encoder.disable_flowguard():
+                return # Must in in off mode
+            self.flowguard_active = False
+            msg = msg or "FlowGuard monitoring with encoder deactivated"
 
-    # This is "FlowGuard" on the encoder so manage it here
-    def set_encoder_mode(self, mode=None):
-        """
-        Changing detection mode so ensure correct clog detection length
-        """
-        if not self.mmu_unit.has_encoder(): return
-
-        # Notify sensor of mode
-        if mode is None: mode = self.p.flowguard_encoder_mode # Configured default
-        self.mmu_unit.encoder.set_mode(mode)
-
-        # Figure out the correct detection length based on mode
-        cdl = self.p.flowguard_encoder_max_motion
-        if mode == ENCODER_RUNOUT_AUTOMATIC:
-            cal_cdl = self.mmu_unit.calibrator.get_clog_detection_length()
-            if cal_cdl is not None:
-               cdl = cal_cdl
-
-        # Notify sensor of detection length
-        self.mmu_unit.encoder.set_clog_detection_length(cdl)
+        if msg:
+            self.mmu.log_info(msg)
 
 
     def adjust_filament_tension(self, use_gear_motor=True, max_move=None):
@@ -216,10 +204,11 @@ class MmuSyncFeedback:
 
 
     def get_status(self, eventtime=None):
-        self.flowguard_status['encoder_mode'] = self.p.flowguard_encoder_mode # Ok to mutate status
 
         # Buffer controlled sync feedback
         if self.mmu_unit.has_buffer() and self.ctrl:
+            if self.mmu_unit.has_encoder():
+                self.flowguard_status['encoder_mode'] = self.p.flowguard_encoder_mode # Ok to mutate status
             return {
                 'sync_feedback_state': self.get_sync_feedback_string(),
                 'sync_feedback_enabled': self.is_enabled(),
@@ -229,10 +218,14 @@ class MmuSyncFeedback:
                 'flowguard': self.flowguard_status,
             }
 
+        # Encoder flowguard only
         if self.mmu_unit.has_encoder():
-            # Just flowguard. Perhaps just encoder present
             return {
-                'flowguard': self.flowguard_status,
+                'flowguard': {
+                    'active': self.flowguard_active,
+                    'enabled': self.p.flowguard_enabled,
+                    'encoder_mode': self.p.flowguard_encoder_mode,
+                }
             }
 
         return {}
@@ -448,6 +441,7 @@ class MmuSyncFeedback:
 
 
     def config_flowguard_feature(self, enable):
+        if not self.mmu_unit.has_buffer(): return
         if enable:
             self.mmu.log_info("FlowGuard monitoring feature %senabled" % ("already " if self.p.flowguard_enabled else ""))
             if not self.p.flowguard_enabled:

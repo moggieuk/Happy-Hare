@@ -56,6 +56,8 @@ class MmuEncoderRunoutCommand(BaseCommand):
 
         try:
             with mmu.wrap_sync_gear_to_extruder():
+                # Could be clog/tangle or runout
                 mmu._runout(sensor="Encoder")
+
         except MmuError as ee:
             mmu.handle_mmu_error(str(ee))

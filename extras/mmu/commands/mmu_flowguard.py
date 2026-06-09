@@ -54,8 +54,8 @@ class MmuFlowGuardCommand(BaseCommand):
 
         if self.check_if_disabled(): return
 
-        if not sf.p.sync_feedback_enabled:
-            mmu.log_warning("Sync feedback is disabled or not configured. FlowGuard is unavailable")
+        if not ((mmu_unit.has_buffer() and sf.p.sync_feedback_enabled) or mmu_unit.has_encoder()):
+            mmu.log_warning("FlowGuard requires sync feedback enabled on buffer or encoder to function")
             return
 
         enable = gcmd.get_int('ENABLE', None, minval=0, maxval=1)

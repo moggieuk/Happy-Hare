@@ -543,13 +543,6 @@ class MmuController(MmuFilamentMovement):
         return self.has_encoder(gate) and self.mmu_unit(gate).p.encoder_move_validation
 
 
-    def get_encoder_state(self, gate=None):
-        if self.has_encoder(gate):
-            return "%s" % "Enabled" if self.encoder(gate).is_enabled() else "Disabled"
-        else:
-            return "n/a"
-
-
 # -----------------------------------------------------------------------------------------------------------
 # AGGREGATED PRINTER VARIABLES FOR "LOGICAL" MMU MACHINE
 # -----------------------------------------------------------------------------------------------------------
@@ -2689,6 +2682,7 @@ class MmuController(MmuFilamentMovement):
     def movequeue_dwell(self, dwell):
         if dwell > 0.:
             self.toolhead.dwell(dwell)
+
 
 
 # -----------------------------------------------------------------------------------------------------------

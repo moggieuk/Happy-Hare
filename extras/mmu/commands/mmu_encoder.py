@@ -23,11 +23,13 @@ class MmuEncoderCommand(BaseCommand):
 
     CMD = "MMU_ENCODER"
 
-    HELP_BRIEF = "Display encoder position and stats or enable/disable runout detection logic in encoder"
+    HELP_BRIEF = "Display encoder position and stats or reset position"
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
-        + "ENABLE = [0|1]\n"
-        + "VALUE  = #(float)\n"
+        + "POS    = #(float) Sets the encoder as close as possible to specified position (subject to resolution)\n"
+        + "VALUE  = #(float) Alias for POS=\n"
+        + "QUIET  = 1 for less verbose output\n"
+        + "(no parameters for status)\n"
     )
     HELP_SUPPLEMENT = (
         ""  # add examples here if desired
@@ -53,39 +55,34 @@ class MmuEncoderCommand(BaseCommand):
 
         if self.check_if_disabled(): return
         if self.check_if_no_encoder(mmu_unit): return
+        encoder = self.mmu_unit.encoder
 
-        value = gcmd.get_float('VALUE', -1, minval=0.)
-        enable = gcmd.get_int('ENABLE', -1, minval=0, maxval=1)
-
-        if enable == 1:
-            mmu.mmu_unit().sync_feedback.set_encoder_mode() # Reset to default mode
-        elif enable == 0:
-            mmu.mmu_unit().sync_feedback.set_encoder_mode(ENCODER_RUNOUT_DISABLED)
-        elif value >= 0.:
-            mmu.set_encoder_distance(value)
-            return
-
-        mmu.log_info(self._get_encoder_summary(detail=True))
-
-
-    def _get_encoder_summary(self, detail=False):
-        status = self.mmu.encoder().get_status(0)
+        def show():
+            status = encoder.get_status(0)
             
-        lines = []
-        lines.append(f"Encoder position: {status['encoder_pos']:.1f}")
+            lines = []
+            lines.append(f"Encoder {encoder.name} position: {status['encoder_pos']:.1f}")
             
-        if detail:
-            lines.append(f"- FlowGuard/Runout: {'Active' if status['enabled'] else 'Inactive'}")
-            
-            mode_map = {
-                2: "Automatic",
-                1: "On",
-                0: "Off",
-            }
-            clog = mode_map.get(status["detection_mode"], "Unknown")
+            if not quiet:
+                mode = status["detection_mode"]
+                clog = ENCODER_DETECTION_MODES[mode] if 0 <= mode < len(ENCODER_DETECTION_MODES) else "Unknown"
+                flowguard = 'Off' if mode == 0 else 'Active' if status['enabled'] else 'Inactive'
 
-            lines.append(f"- FlowGuard mode: {clog} (Detection length: {status['detection_length']:.1f})")
-            lines.append(f"- Remaining headroom before trigger: {status['headroom']:.1f} (min: {status['min_headroom']:.1f})")
-            lines.append(f"- Flowrate: {status['flow_rate']} %")
+                lines.append(f"FlowGuard/Runout: {flowguard}")
+                lines.append(f"- Detection mode: {clog}")
+                lines.append(f"- Detection length: {status['detection_length']:.1f}mm")
+                lines.append(f"- Remaining headroom before trigger: {status['headroom']:.1f}mm (min: {status['min_headroom']:.1f}mm)")
+                lines.append(f"- Flowrate: {status['flow_rate']}%")
             
-        return "\n".join(lines)
+            mmu.log_info("\n".join(lines))
+
+        quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
+        pos = gcmd.get_float('POS', None, minval=0.)
+        if pos is None:
+            pos = gcmd.get_float('VALUE', None, minval=0.)
+
+        if pos is not None:
+            mmu.set_encoder_distance(pos)
+            quiet = True
+
+        show()

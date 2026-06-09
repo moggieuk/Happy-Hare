@@ -127,9 +127,7 @@ class ServoSelector(PhysicalSelector):
         applies any saved calibration angles and bypass angle from mmu_vars.cfg.
         Marks the selector calibrated when all gate angles are known.
         """
-        logging.info("PAUL: handle_ready 1")
         super().handle_ready()
-        logging.info("PAUL: handle_ready 2")
 
         # Load and merge calibrated selector angles (calibration set with MMU_CALIBRATE_SERVO_SELECTOR) ------------
 

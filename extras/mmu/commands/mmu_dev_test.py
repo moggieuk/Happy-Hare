@@ -86,6 +86,8 @@ class MmuTestCommand(BaseCommand):
         + "HELP=1 Show this help\n"
         + "SYNC_STATE=['compression'|'tension'|'both'|'neutral'|'loop'] Set the sync state (or run looped test). Params: LOOP={n} (with SYNC_STATE=loop) number of iterations\n"
         + "SYNC_EVENT=[-1.0 ... 1.0] Generate sync feedback event\n"
+        + "SEND_PRINTING_EVENT=[0|1] Send mmu:printing or mmu:not_printing event\n"
+        + "ACTIVATE_FLOWGUARD=[0|1] Call the flowguard activation/deactivation hooks\n"
         + "WRAP_CURRENT=1 Test current wrapping and restore. Params; MOTOR=gear|extruder PERCENT=%\n"
         + "DUMP_UNICODE=1 Display special characters used in display\n"
         + "RUN_SEQUENCE=1 Run through the set of sequence macros tracking time. Params: ERROR=[0|1] FORCE_IN_PRINT=[0|1]\n"
@@ -452,6 +454,21 @@ class MmuTestCommand(BaseCommand):
                 have_run_test = True
                 mmu.log_info("Sending 'mmu:sync_feedback %.2f' event" % feedback)
                 mmu.printer.send_event("mmu:sync_feedback", mmu.toolhead.get_last_move_time(), feedback)
+
+            printing_event = gcmd.get_int('SEND_PRINTING_EVENT', None, minval=0, maxval=1)
+            if printing_event is not None:
+                have_run_test = True
+                event_str = "mmu:printing" if printing_event else "mmu:not_printing"
+                mmu.log_info(f"Sending '{event_str}' event")
+                mmu.printer.send_event(event_str, mmu.toolhead.get_last_move_time())
+
+            activate_flowguard = gcmd.get_int('ACTIVATE_FLOWGUARD', None, minval=0, maxval=1)
+            if activate_flowguard is not None:
+                have_run_test = True
+                if activate_flowguard:
+                    mmu_unit.sync_feedback.activate_flowguard(mmu.toolhead.get_last_move_time())
+                else:
+                    mmu_unit.sync_feedback.deactivate_flowguard(mmu.toolhead.get_last_move_time())
 
             if gcmd.get_int('DUMP_UNICODE', 0, minval=0, maxval=1):
                 have_run_test = True

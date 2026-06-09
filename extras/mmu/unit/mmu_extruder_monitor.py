@@ -33,31 +33,44 @@ class ExtruderMonitor:
     def __init__(self, extruder_wrapper, mmu):
         self.extruder_wrapper = extruder_wrapper
         self.mmu = mmu
+        self.printer = extruder_wrapper.printer
 
-        self.enabled = True
+        self.active = False   # Active when in a print
         self._last_pos = None # Last absolute extruder position
+        self.enabled = False  # Callbacks disabled if not enabled (only enabled on active extruder)
 
         # Per-callback state:
         #   { callback: {"threshold": float, "accum": float} }
         self._callbacks = {}
 
         self._timer = self.mmu.reactor.register_timer(self._check_extruder_movement)
-        self.enable() # Start now
+
+        # Register event handlers
+        self.printer.register_event_handler('mmu:printing', self._handle_printing)
+        self.printer.register_event_handler('mmu:not_printing', self._handle_not_printing)
+
+
+    def _handle_printing(self, print_time):
+        """
+        Enable monitoring and start the watchdog immediately.
+        """
+        self.mmu.reactor.update_timer(self._timer, self.mmu.reactor.NOW)
+        self.active = True
+
+
+    def _handle_not_printing(self, print_time):
+        """
+        Disable monitoring and stop the watchdog.
+        """
+        self.mmu.reactor.update_timer(self._timer, self.mmu.reactor.NEVER)
+        self.active = False
 
 
     def enable(self):
-        """
-        Globally enable monitoring and start the watchdog immediately.
-        """
-        self.mmu.reactor.update_timer(self._timer, self.mmu.reactor.NOW)
         self.enabled = True
 
 
     def disable(self):
-        """
-        Globally disable monitoring and stop the watchdog.
-        """
-        self.mmu.reactor.update_timer(self._timer, self.mmu.reactor.NEVER)
         self.enabled = False
 
 
@@ -78,10 +91,6 @@ class ExtruderMonitor:
             raise ValueError("movement_threshold must be a positive float")
 
         self._callbacks[cb] = {"threshold": float(movement_threshold), "accum": 0.0}
-
-        # Ensure the timer is running if globally enabled
-        if self.enabled:
-            self.mmu.reactor.update_timer(self._timer, self.mmu.reactor.NOW)
 
 
     def remove_callback(self, cb):
@@ -112,13 +121,31 @@ class ExtruderMonitor:
         return distance
 
 
+    def get_movement_headroom(self, cb):
+        """
+        Return remaining extruder movement before the callback threshold is crossed.
+          Args:
+            cb: The same callback object passed to register_callback().
+          Returns:
+            float: Remaining movement in mm before this callback would fire.
+                   Always >= 0.0.
+          Raises:
+            KeyError: If the callback is not currently registered.
+        """
+        state = self._callbacks.get(cb)
+        if state is None:
+            raise KeyError("Callback is not registered with ExtruderMonitor")
+
+        return max(0.0, state["threshold"] - abs(state["accum"]))
+
+
     # Internal Implementation ----------------------------------------
 
     def _check_extruder_movement(self, eventtime):
         """
         Reactor timer entrypoint. Returns the next wakeup time.
         """
-        if not self.enabled or not self._callbacks:
+        if not self.enabled or not self.active or not self._callbacks:
             return eventtime + self.CHECK_INTERVAL
 
         mcu = self.mmu.printer.lookup_object('mcu')

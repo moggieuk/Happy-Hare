@@ -297,7 +297,7 @@ class TunableParametersBase:
             new_val = adapter.get_value(self, spec, current)
             if new_val != current:
                 setattr(self, spec.name, new_val)
-                # Call on_change handler after the actual parameter is updated
+                # Call on_change handler AFTER the actual parameter is updated
                 if spec.on_change is not None:
                     spec.on_change(self, current, new_val)
                 applied.append(name)

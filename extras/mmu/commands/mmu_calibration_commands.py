@@ -181,7 +181,7 @@ class MmuCalibrateEncoderCommand(CalibrationMixin, BaseCommand):
                 with mmu.require_encoder():
                     _,_,measured,_ = mmu.move_filament("Checking for filament", advance)
 
-                    if measured < mmu_unit.encoder.encoder_min:
+                    if measured < mmu_unit.encoder.encoder_min():
                         raise MmuError("Filament not detected in encoder. Ensure filament is available and try again")
 
                     self._calibrate_encoder(length, repeats, min_speed, max_speed, accel, save)
