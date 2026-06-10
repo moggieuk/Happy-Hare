@@ -136,10 +136,11 @@ class MmuPrintStateMachine:
         self.print_state = print_state
 
         # Useful events for activation/deactivation (e.g. filament monitoring)
+        eventtime = self.mmu.reactor.monotonic()
         if print_state == 'printing':
-            self.printer.send_event("mmu:printing")
+            self.printer.send_event("mmu:printing", eventtime)
         elif prev_print_state == 'printing':
-            self.printer.send_event("mmu:not_printing")
+            self.printer.send_event("mmu:not_printing", eventtime)
 
 
     def fix_started_state(self):
