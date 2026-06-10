@@ -285,10 +285,9 @@ class PurgeVolCalculator:
         hs_purge = 230.0 * hs_dist
 
         purge_volume = self.calc_triangle_3rd_edge(hs_purge, lumi_purge, 120.0)
-        purge_volume = max(purge_volume, 0.0)
-        purge_volume += self.min_purge_vol
-        purge_volume *= self.multiplier
-        purge_volume = min(int(purge_volume), self.max_purge_vol)
+        purge_volume = max(0.0, purge_volume * self.multiplier)
+        purge_volume = min(self.max_purge_vol, max(self.min_purge_vol, purge_volume))
+        purge_volume = int(round(purge_volume))
 
         return purge_volume
 
