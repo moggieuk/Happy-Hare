@@ -196,10 +196,6 @@ class MmuMachineParameters(TunableParametersBase):
         self.console_stat_columns         = list(self.console_stat_columns)
         self.console_stat_rows            = list(self.console_stat_rows)
 
-        # Derived default for macro_toolhead_max_accel
-        if self.macro_toolhead_max_accel == 0:
-            self.macro_toolhead_max_accel = self._config.getsection('printer').getsection('toolhead').getint('max_accel', 5000)
-
         # endless_spool_eject_gate maxval depends on gate count
         max_gate = self._mmu_machine.num_gates - 1
         if self.endless_spool_eject_gate < -1:
