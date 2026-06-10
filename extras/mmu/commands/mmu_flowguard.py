@@ -62,7 +62,6 @@ class MmuFlowGuardCommand(BaseCommand):
 
         if enable is not None:
             sf.config_flowguard_feature(enable)
-            return
 
         # Just report status
         if sf.p.flowguard_enabled:
