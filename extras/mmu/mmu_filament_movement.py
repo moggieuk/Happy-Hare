@@ -1897,7 +1897,7 @@ class MmuFilamentMovement:
                         actual = 0.
                     homed = False
                 else:
-                    return null_rtn
+                    raise
 
         encoder_end = self.get_encoder_distance(dwell=encoder_dwell)
         measured = encoder_end - encoder_start
