@@ -435,6 +435,11 @@ class MmuController(MmuFilamentMovement):
         except Exception as e:
             self.log_assertion(f"Error booting up MMU: {e}", exc_info=sys.exc_info())
 
+        # PAUL HACK
+        self.unit_selected = None # PAUL TEMP TEMP TEMP
+        self._set_unit_selected(0) # PAUL TEMP TEMP TEMP
+        # PAUL HACK
+
         # Give macros a chance to initialize if they need to
         self.init_macros()
 
@@ -2073,7 +2078,13 @@ class MmuController(MmuFilamentMovement):
             if self.tool_speed_multipliers[tool] != current_speed_factor or self.tool_extrusion_multipliers[tool] != current_extrude_factor:
                 self.tool_speed_multipliers[tool] = current_speed_factor
                 self.tool_extrusion_multipliers[tool] = current_extrude_factor
-                self.log_debug("Saved speed/extrusion multiplier for tool T%d as %d%% and %d%%" % (tool, current_speed_factor * 100, current_extrude_factor * 100))
+
+                speed_pct = round(speed_factor * 100)
+                extrude_pct = round(extrude_factor * 100)
+                self.log_debug(
+                    "Saved speed/extrusion multiplier for tool T%d as %d%% and %d%%"
+                    % (tool, speed_pct, extrude_pct)
+                )
 
 
     def _restore_tool_override(self, tool):
@@ -2082,10 +2093,17 @@ class MmuController(MmuFilamentMovement):
             current_extrude_factor = self.gcode_move.get_status(0)['extrude_factor']
             speed_factor = self.tool_speed_multipliers[tool]
             extrude_factor = self.tool_extrusion_multipliers[tool]
-            self.gcode.run_script_from_command("M220 S%d" % (speed_factor * 100))
-            self.gcode.run_script_from_command("M221 S%d" % (extrude_factor * 100))
+            speed_pct = round(speed_factor * 100)
+            extrude_pct = round(extrude_factor * 100)
+
+            self.gcode.run_script_from_command("M220 S%d" % speed_pct)
+            self.gcode.run_script_from_command("M221 S%d" % extrude_pct)
+
             if current_speed_factor != speed_factor or current_extrude_factor != extrude_factor:
-                self.log_debug("Restored speed/extrusion multiplier for tool T%d as %d%% and %d%%" % (tool, speed_factor * 100, extrude_factor * 100))
+                self.log_debug(
+                    "Restored speed/extrusion multiplier for tool T%d as %d%% and %d%%"
+                    % (tool, speed_pct, extrude_pct)
+                )
 
 
     def _set_tool_override(self, tool, speed_percent, extrude_percent):

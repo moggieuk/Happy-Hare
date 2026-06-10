@@ -69,8 +69,8 @@ class MmuToolOverridesCommand(BaseCommand):
         msg_extr = "M221 : "
         for i in range(mmu.num_gates):
             range_end = 6 if i > 9 else 5
-            tool_speed = int(mmu.tool_speed_multipliers[i] * 100)
-            tool_extr = int(mmu.tool_extrusion_multipliers[i] * 100)
+            tool_speed = round(mmu.tool_speed_multipliers[i] * 100)
+            tool_extr = round(mmu.tool_extrusion_multipliers[i] * 100)
             msg_tool += ("| T%d  " % i)[:range_end]
             msg_sped += ("| %d  " % tool_speed)[:range_end]
             msg_extr += ("| %d  " % tool_extr)[:range_end]
