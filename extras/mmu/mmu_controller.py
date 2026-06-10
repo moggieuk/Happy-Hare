@@ -1626,11 +1626,16 @@ class MmuController(MmuFilamentMovement):
                 # Save toolhead velocity limits and set user defined for macros
                 self.saved_toolhead_max_accel = self.toolhead.max_accel
                 self.saved_toolhead_min_cruise_ratio = self.toolhead.get_status(eventtime).get('minimum_cruise_ratio', None)
+
+                params = ""
                 if self.p.macro_toolhead_max_accel > 0:
-                    cmd = "SET_VELOCITY_LIMIT ACCEL=%.4f" % self.p.macro_toolhead_max_accel
+                    params += " ACCEL=%.4f" % self.p.macro_toolhead_max_accel
+
                 if self.saved_toolhead_min_cruise_ratio is not None:
-                    cmd += " MINIMUM_CRUISE_RATIO=%.4f" % self.p.macro_toolhead_min_cruise_ratio
-                self.gcode.run_script_from_command(cmd)
+                    params += " MINIMUM_CRUISE_RATIO=%.4f" % self.p.macro_toolhead_min_cruise_ratio
+
+                if params:
+                    self.gcode.run_script_from_command(f"SET_VELOCITY_LIMIT{params}")
 
                 # Record the intended X,Y resume position (this is also passed to the pause/resume restore position in pause is later called)
                 if next_pos:
