@@ -54,7 +54,6 @@ class ExtruderMonitor:
         """
         Enable monitoring and start the watchdog immediately.
         """
-        self.mmu.log_warning(f"PAUL: ExtruderMonitor._handle_printing()")
         self.mmu.reactor.update_timer(self._timer, self.mmu.reactor.NOW)
         self.active = True
 
@@ -63,18 +62,15 @@ class ExtruderMonitor:
         """
         Disable monitoring and stop the watchdog.
         """
-        self.mmu.log_warning(f"PAUL: ExtruderMonitor._handle_not_printing()")
         self.mmu.reactor.update_timer(self._timer, self.mmu.reactor.NEVER)
         self.active = False
 
 
     def enable(self):
-        self.mmu.log_warning(f"PAUL: ExtruderMonitor.enable()")
         self.enabled = True
 
 
     def disable(self):
-        self.mmu.log_warning(f"PAUL: ExtruderMonitor.disable()")
         self.enabled = False
 
 
@@ -89,7 +85,6 @@ class ExtruderMonitor:
             - Resets this callback's accumulator to 0 on registration.
             - If already registered, updates the threshold and resets accumulator.
         """
-        self.mmu.log_warning(f"PAUL: ExtruderMonitor.register_callback({cb},{movement_threshold})")
         if not callable(cb):
             raise TypeError("cb must be callable")
         if movement_threshold is None or movement_threshold <= 0:
@@ -102,7 +97,6 @@ class ExtruderMonitor:
         """
         Unregister a previously registered callback. Silently ignores unknown cbs.
         """
-        self.mmu.log_warning(f"PAUL: ExtruderMonitor.remove_callback({cb})")
         self._callbacks.pop(cb, None)
 
 
