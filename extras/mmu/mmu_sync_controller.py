@@ -835,6 +835,7 @@ class _FlowguardEngine(object):
         self._armed = False         # Disarmed until a state change while moving or verified near neutral
         self._arm_motion_mm = 0.0   # Motion since last (or initial) state sample
         self._arm_last_state = None
+        self._arm_pegged_mm = 0.0   # Motion accumulated while pegged at an extreme and still un-armed
 
     def update_flowguard(self, d_ext, sensor_reading):
         """
@@ -870,6 +871,16 @@ class _FlowguardEngine(object):
             near_neutral = cfg.sensor_type in ("P") and abs(sensor_reading) < cfg.autotune_stable_x_thresh
             if moved and (changed_state or near_neutral):
                 self._armed = True
+            elif state_now != 0:
+                # Pegged at an extreme since reset. A healthy buffer would be centred by the
+                # controller's relief snap within ~one relief budget of motion, so sustained
+                # motion with no state change is jam/tangle evidence, not startup noise.
+                # Force-arm and let the normal relief accumulators adjudicate
+                self._arm_pegged_mm += abs(d_ext)
+                if self._arm_pegged_mm >= cfg.flowguard_relief_mm:
+                    self._armed = True
+                else:
+                    return self.status()
             else:
                 return self.status()
         self._arm_last_state = state_now
