@@ -26,10 +26,11 @@ class MmuToolOverridesCommand(BaseCommand):
     HELP_BRIEF = "Displays, sets or clears tool speed and extrusion factors (M220 & M221)"
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
-        + "TOOL   = t   (optional, -1 for all)\n"
-        + "M220   = #(0-200) Speed multiplier percent (100 = unchanged)\n"
-        + "M221   = #(0-200) Extrusion multiplier percent (100 = unchanged)\n"
-        + "RESET  = [0|1]   Reset overrides to 100%% for specified tool (or all if TOOL omitted)\n"
+        + "TOOL   = t        Specifies tool. Defaults to all tools if not specified\n"
+        + "M220   = #(1-200) Speed multiplier percent (100 = unchanged)\n"
+        + "M221   = #(1-200) Extrusion multiplier percent (100 = unchanged)\n"
+        + "RESET  = [0|1]    Reset overrides to 100%% for tool (defaults to all tools if TOOL is not specified)\n"
+        + "(no parameters for status)\n"
     )
     HELP_SUPPLEMENT = (
         ""  # add examples here if desired
@@ -53,8 +54,8 @@ class MmuToolOverridesCommand(BaseCommand):
         if self.check_if_disabled(): return
 
         tool = gcmd.get_int('TOOL', -1, minval=0, maxval=mmu.num_gates)
-        speed = gcmd.get_int('M220', None, minval=0, maxval=200)
-        extrusion = gcmd.get_int('M221', None, minval=0, maxval=200)
+        speed = gcmd.get_int('M220', None, minval=1, maxval=200)
+        extrusion = gcmd.get_int('M221', None, minval=1, maxval=200)
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
 
         if reset:

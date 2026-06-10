@@ -251,6 +251,9 @@ class MmuSyncFeedback:
         """
         Event indicating that gear stepper is now synced with extruder
         """
+        # Ignore event if not for this unit
+        if not self.mmu_unit.manages_gate(self.mmu.gate_selected): return
+
         if not self.mmu.is_enabled: return
         if eventtime is None: eventtime = self.mmu.reactor.monotonic()
 
@@ -277,6 +280,9 @@ class MmuSyncFeedback:
         """
         Event indicating that gear stepper has been unsynced from extruder
         """
+        # Ignore event if not for this unit
+        if not self.mmu_unit.manages_gate(self.mmu.gate_selected): return
+
         if not (self.mmu.is_enabled and self.p.sync_feedback_enabled and self.active): return
         if eventtime is None: eventtime = self.mmu.reactor.monotonic()
 
@@ -322,6 +328,9 @@ class MmuSyncFeedback:
         'state' should be -1 (tension), 0 (neutral), 1 (compressed)
         or can be a proportional float value between -1.0 and 1.0
         """
+        # Ignore event if not for this unit
+        if not self.mmu_unit.manages_gate(self.mmu.gate_selected): return
+
         if not (self.mmu.is_enabled and self.p.sync_feedback_enabled and self.active): return
         if eventtime is None: eventtime = self.mmu.reactor.monotonic()
  

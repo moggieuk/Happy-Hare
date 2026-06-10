@@ -143,7 +143,7 @@ class MmuGateMaps:
             errors.append(f"Persisted gate/tool {gate_selected}/{tool_selected} dropped because selector isn't homed")
             tool_selected = gate_selected = TOOL_GATE_UNKNOWN
 
-        self.mmu._set_gate_selected(gate_selected) # Will send gate_selected/unit_selected events to set active sensor map
+        self.mmu._set_gate_selected(gate_selected) # Will send gate_selected/unit_selected events to set active sensor map and activate unit
         self.mmu._set_tool_selected(tool_selected)
         self.ensure_ttg_match()                    # Ensure tool/gate consistency. Will change tool if necessary
 

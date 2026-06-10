@@ -575,14 +575,15 @@ class MmuUnit:
         Handler for unit changed event
         To avoid race conditions, only the selected unit takes action
         """
-        self.mmu.log_warning(f"PAUL: _handle_unit_selected({unit_index}, {prev_unit_index})")
         if unit_index != self.unit_index: return
 
         if prev_unit_index is not None:
             # Tell previous unit to deactivate
+            self.mmu.log_debug(f"Unit {prev_unit_index} deactivated")
             self.mmu_machine.get_mmu_unit_by_index(prev_unit_index).extruder_monitor().disable()
 
         # Activate this unit
+        self.mmu.log_debug(f"Unit {unit_index} activated")
         self.extruder_monitor().enable()
 
 

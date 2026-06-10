@@ -264,13 +264,8 @@ class MmuController(MmuFilamentMovement):
         swap_stats = self.var_manager.get(VARS_MMU_SWAP_STATISTICS, {})
         counters = self.var_manager.get(VARS_MMU_COUNTERS, {})
         self.counters.update(counters)
-
-        # Auto upgrade old names
-        key_map = {"time_spent_loading": "load", "time_spent_unloading": "unload", "time_spent_paused": "pause"}
-        swap_stats = {key_map.get(key, key): swap_stats[key] for key in swap_stats}
-        swap_stats.pop('servo_retries', None) # DEPRECATED
-
         self.statistics.update(swap_stats)
+
         for gate in range(self.num_gates):
             mmu_unit = self.mmu_unit(gate)
 
@@ -279,7 +274,7 @@ class MmuController(MmuFilamentMovement):
             if gstats:
                 self.gate_statistics[gate].update(gstats)
 
-        # If unit_selected is still unknown (None), then pick the first
+        # Saftey: If unit_selected is still unknown (None), then pick the first
         if self.unit_selected is None:
             self._set_unit_selected(0)
 
@@ -434,11 +429,6 @@ class MmuController(MmuFilamentMovement):
 
         except Exception as e:
             self.log_assertion(f"Error booting up MMU: {e}", exc_info=sys.exc_info())
-
-        # PAUL HACK
-        self.unit_selected = None # PAUL TEMP TEMP TEMP
-        self._set_unit_selected(0) # PAUL TEMP TEMP TEMP
-        # PAUL HACK
 
         # Give macros a chance to initialize if they need to
         self.init_macros()
@@ -2075,34 +2065,39 @@ class MmuController(MmuFilamentMovement):
         if tool >= 0:
             current_speed_factor = self.gcode_move.get_status(0)['speed_factor']
             current_extrude_factor = self.gcode_move.get_status(0)['extrude_factor']
-            if self.tool_speed_multipliers[tool] != current_speed_factor or self.tool_extrusion_multipliers[tool] != current_extrude_factor:
+
+            if (
+                self.tool_speed_multipliers[tool] != current_speed_factor
+                or self.tool_extrusion_multipliers[tool] != current_extrude_factor
+            ):
                 self.tool_speed_multipliers[tool] = current_speed_factor
                 self.tool_extrusion_multipliers[tool] = current_extrude_factor
+                speed_percent = round(current_speed_factor * 100)
+                extruder_percent = round(current_extrude_factor * 100)
 
-                speed_pct = round(speed_factor * 100)
-                extrude_pct = round(extrude_factor * 100)
                 self.log_debug(
-                    "Saved speed/extrusion multiplier for tool T%d as %d%% and %d%%"
-                    % (tool, speed_pct, extrude_pct)
+                    "Saved speed/extrusion multiplier for tool T%d (%d%%/%d%%)"
+                    % (tool, speed_percent, extruder_percent)
                 )
 
 
     def _restore_tool_override(self, tool):
-        if tool == self.tool_selected:
+        if tool >= 0 and tool == self.tool_selected:
             current_speed_factor = self.gcode_move.get_status(0)['speed_factor']
             current_extrude_factor = self.gcode_move.get_status(0)['extrude_factor']
+
             speed_factor = self.tool_speed_multipliers[tool]
             extrude_factor = self.tool_extrusion_multipliers[tool]
-            speed_pct = round(speed_factor * 100)
-            extrude_pct = round(extrude_factor * 100)
+            speed_percent = round(speed_factor * 100)
+            extruder_percent = round(extrude_factor * 100)
 
-            self.gcode.run_script_from_command("M220 S%d" % speed_pct)
-            self.gcode.run_script_from_command("M221 S%d" % extrude_pct)
+            self.gcode.run_script_from_command("M220 S%d" % speed_percent)
+            self.gcode.run_script_from_command("M221 S%d" % extruder_percent)
 
             if current_speed_factor != speed_factor or current_extrude_factor != extrude_factor:
                 self.log_debug(
-                    "Restored speed/extrusion multiplier for tool T%d as %d%% and %d%%"
-                    % (tool, speed_pct, extrude_pct)
+                    "Restored speed/extrusion multiplier for tool T%d (%d%%/%d%%)"
+                    % (tool, speed_percent, extruder_percent)
                 )
 
 
@@ -2113,19 +2108,21 @@ class MmuController(MmuFilamentMovement):
                     self.tool_speed_multipliers[i] = speed_percent / 100
                 if extrude_percent is not None:
                     self.tool_extrusion_multipliers[i] = extrude_percent / 100
-                self._restore_tool_override(i)
+                self._restore_tool_override(i) # Update now if tool is selected
+
             if speed_percent is not None:
-                self.log_debug("Set speed multiplier for all tools as %d%%" % speed_percent)
+                self.log_debug("Set speed multiplier for all tools to %d%%" % speed_percent)
             if extrude_percent is not None:
-                self.log_debug("Set extrusion multiplier for all tools as %d%%" % extrude_percent)
+                self.log_debug("Set extrusion multiplier for all tools to %d%%" % extrude_percent)
+
         else:
             if speed_percent is not None:
                 self.tool_speed_multipliers[tool] = speed_percent / 100
-                self.log_debug("Set speed multiplier for tool T%d as %d%%" % (tool, speed_percent))
+                self.log_debug("Set speed multiplier for tool T%d to %d%%" % (tool, speed_percent))
             if extrude_percent is not None:
                 self.tool_extrusion_multipliers[tool] = extrude_percent / 100
-                self.log_debug("Set extrusion multiplier for tool T%d as %d%%" % (tool, extrude_percent))
-            self._restore_tool_override(tool)
+                self.log_debug("Set extrusion multiplier for tool T%d to %d%%" % (tool, extrude_percent))
+            self._restore_tool_override(tool) # Update now if tool is selected
 
 
     # Primary method to select and loads tool. Assumes we are unloaded
@@ -2324,11 +2321,10 @@ class MmuController(MmuFilamentMovement):
 
 
     def _set_gate_selected(self, gate):
-#        self.log_warning(f"PAUL: _set_gate_selected({gate})")
         prev_gate = self.gate_selected
-
         if gate == prev_gate:
             return
+#        self.log_warning(f"PAUL: _set_gate_selected({gate})")
 
         # IMPORTANT: ---------------------------------------------------------
         # That this is the only block outside reinit() where gate_selected
@@ -2360,9 +2356,7 @@ class MmuController(MmuFilamentMovement):
 
 
     def _set_unit_selected(self, unit_index):
-#        self.log_warning(f"PAUL: _set_unit_selected({unit_index})")
         prev_unit = self.unit_selected
-
         if unit_index == prev_unit:
             return
 

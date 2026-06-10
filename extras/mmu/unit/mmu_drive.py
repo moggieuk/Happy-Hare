@@ -46,7 +46,8 @@ class MmuDrive():
 
 
     def sync_mode(self, mode):
-        if mode == self._sync_mode:
+        prev_mode = self._sync_mode
+        if mode == prev_mode:
             return False
 
         if mode not in DRIVE_MODE_NAMES:
@@ -94,6 +95,13 @@ class MmuDrive():
             self._driving_stepper = self.mmu_extruder_stepper
 
         self._sync_mode = mode
+
+        # Send correct sync event
+        if mode == DRIVE_GEAR_SYNCED_TO_EXTRUDER:
+            self.printer.send_event("mmu:synced")
+        elif prev_mode == DRIVE_GEAR_SYNCED_TO_EXTRUDER:
+            self.printer.send_event("mmu:unsynced")
+
         return True
 
 
