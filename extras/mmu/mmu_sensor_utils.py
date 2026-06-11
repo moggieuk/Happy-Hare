@@ -421,7 +421,7 @@ class MmuVirtualSensor(MmuBaseSensor):
     def trigger_handler(self, eventtime, state):
         self.runout_helper.note_filament_present(eventtime, state)
 
-        if self._homing and is_present == self._triggered:
+        if self._homing and state == self._triggered:
             if self._trigger_completion is not None:
                 self._last_trigger_time = eventtime
                 self._trigger_completion.complete(True)
