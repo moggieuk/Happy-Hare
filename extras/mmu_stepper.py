@@ -287,8 +287,10 @@ class MmuGenericRail:
         if self.has_endstop(name):
             raise self.config.error("Extra endstop '%s' defined more than once" % (name))
 
+        # If pin is None, then expect mcu_endstop to be set. This is used for
+        # software implemented endstop like that of an analog sensor
         is_default_alias = (pin == "default")
-        is_virtual = (not is_default_alias and 'virtual_endstop' in pin)
+        is_virtual = (not is_default_alias and pin and 'virtual_endstop' in pin)
 
         if is_default_alias and self.default_mcu_endstop is None:
             raise self.config.error("extra_endstops entry '%s=default' requires endstop_pin to be configured in section '%s'" % (name, self.config.get_name()))

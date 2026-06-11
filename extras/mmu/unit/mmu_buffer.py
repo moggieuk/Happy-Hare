@@ -23,6 +23,8 @@ from ..mmu_sensor_utils import (
     MmuSensorFactory,
     MmuAdcHelper,
     MmuRunoutHelper,
+    MmuSwitchSensor,
+    MmuVirtualSensor,
     INSERT_GCODE,
     REMOVE_GCODE,
     RUNOUT_GCODE,
@@ -56,7 +58,7 @@ class MmuBuffer:
             f"{self.name}:{SENSOR_COMPRESSION}",
             None,
             switch_pin,
-            event_delay,
+            event_delay=event_delay,
             button_handler=sf.sync_compression_callback
         )
 
@@ -67,7 +69,7 @@ class MmuBuffer:
             f"{self.name}:{SENSOR_TENSION}",
             None,
             switch_pin,
-            event_delay,
+            event_delay=event_delay,
             button_handler=sf.sync_tension_callback
         )
 
@@ -78,8 +80,16 @@ class MmuBuffer:
         if analog_pin:
             self.proportional_sensor = MmuProportionalSensor(
                 config,
-                f"{self.name}:{SENSOR_PROPORTIONAL}"
+                f"{self.name}:{SENSOR_PROPORTIONAL}",
+                virtual_compression_sensor = f"{self.name}:{SENSOR_COMPRESSION}" if self.compression_sensor is None else None,
+                virtual_tension_sensor     = f"{self.name}:{SENSOR_TENSION}" if self.tension_sensor is None else None,
             )
+
+            if self.compression_sensor is None:
+                self.compression_sensor = self.proportional_sensor.compression_vsensor
+
+            if self.tension_sensor is None:
+                self.tension_sensor = self.proportional_sensor.tension_vsensor
 
 
     def add_unit(self, mmu_unit):
@@ -94,28 +104,33 @@ class MmuBuffer:
 
 class MmuProportionalSensor:
 
-    def __init__(self, config, name):
+    def __init__(self, config, name, virtual_compression_sensor = False, virtual_tension_sensor = False):
+
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.name = name
         self._last_extreme = None
 
+        # Virtual compression/tension sensors (if created)
+        self.compression_vsensor = None
+        self.tension_vsensor = None
+
         # Config
-        self._pin           = config.get('analog_pin')
-        max_tension         = config.getfloat('analog_max_tension', 1)
-        max_compression     = config.getfloat('analog_max_compression', 0)
+        self._pin       = config.get('analog_pin')
+        max_tension     = config.getfloat('analog_max_tension', 1)
+        max_compression = config.getfloat('analog_max_compression', 0)
 
         # Determine the actual raw min/max sensor values
         raw_min = min(max_tension, max_compression)
         raw_max = max(max_tension, max_compression)
         mid_point = (max_tension + max_compression) / 2.0
 
-        self._neutral_point = config.getfloat('analog_neutral_point', mid_point, minval=raw_min, maxval=raw_max)
-
-        self._gamma         = config.getfloat('analog_gamma', 1)           # Not exposed
-        self._sample_time   = config.getfloat('analog_sample_time', 0.005) # Not exposed
-        self._sample_count  = config.getint('analog_sample_count', 5)      # Not exposed
-        self._report_time   = config.getfloat('analog_report_time', 0.100) # Not exposed
+        self._neutral_point     = config.getfloat('analog_neutral_point', mid_point, minval=raw_min, maxval=raw_max)
+        self._vsensor_threshold = config.getfloat('analog_sensor_threshold', 0.75, minval=0.5, maxval=1.0)
+        self._gamma        = config.getfloat('analog_gamma', 1)
+        self._sample_time  = config.getfloat('analog_sample_time', 0.005) # Not exposed
+        self._sample_count = config.getint('analog_sample_count', 5)      # Not exposed
+        self._report_time  = config.getfloat('analog_report_time', 0.100) # Not exposed
 
         self._reversed = (max_compression < max_tension)
         eps = 1e-12
@@ -149,20 +164,26 @@ class MmuProportionalSensor:
         tangle_gcode = ("%s SENSOR=%s" % (TANGLE_GCODE, self.name))
         self.runout_helper = MmuRunoutHelper(
             self.printer,
-            self.name,                  # Name exposed to QUERY_/SET_FILAMENT_SENSOR
-            0,                          # Event_delay (not used here)
-            {
+            self.name,
+            gcodes={
                 "clog":   clog_gcode,
                 "tangle": tangle_gcode,
             },
-            insert_remove_in_print=False,
-            button_handler=None,       # No button handler for analog
-            switch_pin=self._pin
+            register=False,
         )
 
+        # Create virtual compression sensor?
+        if virtual_compression_sensor:
+            self.compression_vsensor = MmuVirtualSensor(config, virtual_compression_sensor, None)
+
+        # Create virtual tension sensor?
+        if virtual_tension_sensor:
+            self.tension_vsensor = MmuVirtualSensor(config, virtual_tension_sensor, None)
+       
         # Expose status
         self.printer.add_object(self.name, self)
         logging.info("MMU: Created Proportional sync-feedback sensor %s]" % self.name)
+
 
     def _map_reading(self, v_raw):
         n = self._neutral_point
@@ -194,7 +215,18 @@ class MmuProportionalSensor:
         read_time, read_value = MmuAdcHelper.unpack_adc_callback(*args)
         self.value_raw = float(read_value)
         self.value = self._map_reading(read_value) # Mapped & scaled value
+ 
+        # Service virtual sensors...
+        if self.compression_vsensor is not None:
+            self.compression_vsensor.runout_helper.note_filament_present(
+                self.value > self._vsensor_threshold
+            )
+        if self.tension_vsensor is not None:
+            self.tension_vsensor.runout_helper.note_filament_present(
+                self.value < self._vsensor_threshold
+            )
 
+# PAUL rationalize this with  new virtual endstops..
         # Publish sync-feedback event immediately if extreme to match switch sensors
         # TODO really extreme should be determined by is_extreme() in mmu_sync_feedback manager (with hysteresis), but object hasn't been created yet
         # TODO so for now, use absolute extremes

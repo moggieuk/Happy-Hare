@@ -76,34 +76,42 @@ class MmuToolheadWrapper():
         event_delay = config.get('event_delay', 0.5)
         self.sensor_factory = sf = MmuSensorFactory(self.printer)
 
-        # Setup single extruder (entrance) sensor...
+        # --------------------------------------------
+        # Setup single extruder (entrance) sensor
+        # --------------------------------------------
         switch_pin = config.get('extruder_switch_pin', None)
         sensor = sf.create_mmu_sensor(
             config,
             f"{self.name}:{SENSOR_EXTRUDER_ENTRY}",
             None,
             switch_pin,
-            event_delay,
+            event_delay=event_delay,
             insert=True,
             runout=True
         )
         if sensor is not None:
             self.sensors[SENSOR_EXTRUDER_ENTRY] = sensor
 
-        # Setup single toolhead sensor...
+        # --------------------------------------------
+        # Setup single toolhead sensor
+        # --------------------------------------------
         switch_pin = config.get('toolhead_switch_pin', None)
         sensor = sf.create_mmu_sensor(
             config,
             f"{self.name}:{SENSOR_TOOLHEAD}",
             None,
             switch_pin,
-            event_delay
+            event_delay=event_delay
         )
         if sensor is not None:
             self.sensors[SENSOR_TOOLHEAD] = sensor
 
-        # For Qidi printers or any other that use a hall_filament_width_sensor allow it to
-        # act as either an extruder entry or toolhead sensor (or additional sensor)
+        # --------------------------------------------
+        # For Qidi printers or any other that use a
+        # hall_filament_width_sensor allow it to act as
+        # either an extruder entry or toolhead sensor
+        # (or additional sensor)
+        # --------------------------------------------
         hall_sensor_endstop = config.get('hall_sensor_endstop', None)
         if hall_sensor_endstop is not None:
             if hall_sensor_endstop == 'extruder':
@@ -153,6 +161,7 @@ class MmuToolheadWrapper():
 # EXPERIMENTAL
 # Standalone Hall Filament Sensor Endstop using Multi-Use Pins
 # Can coexists with standard Klipper hall_filament_width_sensor by sharing the ADC pins
+# If configured this replaces the typical physical switches for extruder/toolhead sensors
 # -----------------------------------------------------------------------------------------------------------
 
 class MmuHallEndstop:
@@ -230,8 +239,8 @@ class MmuHallEndstop:
         self.runout_helper = MmuRunoutHelper(
             self.printer,
             name,
-            event_delay,
-            {
+            event_delay=event_delay,
+            gocodes={
                 "insert": insert_gcode,
                 "remove": remove_gcode,
                 "runout": runout_gcode

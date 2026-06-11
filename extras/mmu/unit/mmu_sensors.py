@@ -26,7 +26,7 @@ import logging, time
 
 # Happy Hare imports
 from ..mmu_constants    import *
-from ..mmu_sensor_utils import MmuSensorFactory, MmuAdcSwitchSensor
+from ..mmu_sensor_utils import MmuSensorFactory
 
 
 class MmuSensors:
@@ -54,7 +54,7 @@ class MmuSensors:
                 SENSOR_ENTRY_PREFIX,
                 gate,
                 switch_pin,
-                event_delay,
+                event_delay=event_delay,
                 insert=True,
                 remove=True,
                 runout=True,
@@ -69,7 +69,7 @@ class MmuSensors:
             f"{self.mmu_unit.name}:{SENSOR_SHARED_EXIT}",
             None,
             switch_pin,
-            event_delay,
+            event_delay=event_delay,
             runout=True
         )
 
@@ -78,24 +78,21 @@ class MmuSensors:
         for i, gate in enumerate(range(first_gate, first_gate + num_gates)):
             switch_pin = config.get('mmu_exit_switch_pin_%d' % i, None)
 
-            if switch_pin:
-                a_range = config.getfloatlist('mmu_exit_analog_range_%d' % gate, None, count=2)
-                if a_range is not None:
-                    a_pullup = config.getfloat('mmu_exist_analog_pullup_resister_%d' % gate, 4700.)
-                    self.exit_sensors[gate] = MmuAdcSwitchSensor(
-                        config,
-                        SENSOR_EXIT_PREFIX,
-                        gate,
-                        switch_pin,
-                        event_delay,
-                        a_range,
-                        runout=True,
-                        a_pullup=a_pullup)
-                else:
-                    self.exit_sensors[gate] = sf.create_mmu_sensor(
-                        config,
-                        SENSOR_EXIT_PREFIX,
-                        gate,
-                        switch_pin,
-                        event_delay,
-                        runout=True)
+# Currently disabled. Was to support early BTT ViViD analog (hall-effect) buffer
+#            a_range = config.getfloatlist('mmu_exit_analog_range_%d' % gate, None, count=2)
+#            if switch_pin and a_range is not None:
+#                a_pullup = config.getfloat('mmu_exist_analog_pullup_resister_%d' % gate, 4700.)
+#                self.exit_sensors[gate] = MmuAdcSwitchSensor(
+#                    config,
+#                    SENSOR_EXIT_PREFIX,
+#                    gate,
+#                    switch_pin,
+#                    event_delay,
+#                    a_range,
+#                    runout=True,
+#                    a_pullup=a_pullup)
+#                continue
+
+            self.exit_sensors[gate] = sf.create_mmu_sensor(config, SENSOR_EXIT_PREFIX, gate, switch_pin,
+                event_delay=event_delay,
+                runout=True)

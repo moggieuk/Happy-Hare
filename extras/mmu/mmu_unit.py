@@ -434,7 +434,6 @@ class MmuUnit:
         # Setup endstops for gear and extruder steppers
         # ---------------------------------------------------------------------------------------------------
 
-        ANALOG_ENDSTOP_SENSOR_TYPES = {"MmuAdcSwitchSensor", "MmuHallEndstop"}
         EXTRUDER_EXTRA_ENDSTOPS = {SENSOR_TOOLHEAD, SENSOR_COMPRESSION, SENSOR_TENSION}
 
         def iter_endstop_sensors(per_gate=True):
@@ -461,20 +460,11 @@ class MmuUnit:
             )
 
         def add_sensor_endstop(sensor, steppers):
-            sensor_name = sensor.runout_helper.name
-            sensor_pin = sensor.runout_helper.switch_pin
+            sensor_name = sensor.name
 
-            is_analog_endstop = sensor.__class__.__name__ in ANALOG_ENDSTOP_SENSOR_TYPES
             mcu_endstop = None
-            stepper_names = ", ".join(s.name for s in steppers)
-
-            if is_analog_endstop:
-                for s in steppers:
-                    mcu_endstop = s.rail.add_extra_endstop(sensor_pin, sensor_name, mcu_endstop=sensor)
-
-                e_type = "analog endstop"
-
-            else:
+            if sensor.__class__.__name__ == "MmuSwitchSensor":
+                sensor_pin = sensor.switch_pin
                 pin_params = ppins.parse_pin(sensor_pin, True, True)
                 share_name = "%s:%s" % (pin_params["chip_name"], pin_params["pin"])
                 ppins.allow_multi_use_pin(share_name)
@@ -484,6 +474,15 @@ class MmuUnit:
 
                 e_type = "digital endstop"
 
+            else:
+                # We assume a virtual sensor that implement "software" endstop interface
+                for s in steppers:
+                    # The sensor here must implement the necessary endstop homing methods!
+                    mcu_endstop = s.rail.add_extra_endstop(None, sensor_name, mcu_endstop=sensor)
+
+                e_type = "analog endstop"
+
+            stepper_names = ", ".join(s.name for s in steppers)
             logging.info(f"MMU: Created {e_type} on stepper {stepper_names} for {self.name} using {sensor_name}")
             return mcu_endstop
 
