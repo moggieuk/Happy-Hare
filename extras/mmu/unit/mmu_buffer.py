@@ -218,11 +218,13 @@ class MmuProportionalSensor:
  
         # Service virtual sensors...
         if self.compression_vsensor is not None:
-            self.compression_vsensor.runout_helper.note_filament_present(
+            self.compression_vsensor.trigger_handler(
+                read_time,
                 self.value > self._vsensor_threshold
             )
         if self.tension_vsensor is not None:
-            self.tension_vsensor.runout_helper.note_filament_present(
+            self.tension_vsensor.trigger_handler(
+                read_time,
                 self.value < self._vsensor_threshold
             )
 

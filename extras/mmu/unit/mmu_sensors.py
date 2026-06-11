@@ -26,7 +26,7 @@ import logging, time
 
 # Happy Hare imports
 from ..mmu_constants    import *
-from ..mmu_sensor_utils import MmuSensorFactory
+from ..mmu_sensor_utils import MmuSensorFactory, MmuVirtualSensor
 
 
 class MmuSensors:
@@ -78,21 +78,57 @@ class MmuSensors:
         for i, gate in enumerate(range(first_gate, first_gate + num_gates)):
             switch_pin = config.get('mmu_exit_switch_pin_%d' % i, None)
 
-# Currently disabled. Was to support early BTT ViViD analog (hall-effect) buffer
-#            a_range = config.getfloatlist('mmu_exit_analog_range_%d' % gate, None, count=2)
-#            if switch_pin and a_range is not None:
-#                a_pullup = config.getfloat('mmu_exist_analog_pullup_resister_%d' % gate, 4700.)
-#                self.exit_sensors[gate] = MmuAdcSwitchSensor(
-#                    config,
-#                    SENSOR_EXIT_PREFIX,
-#                    gate,
-#                    switch_pin,
-#                    event_delay,
-#                    a_range,
-#                    runout=True,
-#                    a_pullup=a_pullup)
-#                continue
+             # Support early BTT ViViD analog (hall-effect) buffer
+            a_range = config.getfloatlist('mmu_exit_analog_range_%d' % gate, None, count=2)
+            if switch_pin and a_range is not None:
+                a_pullup = config.getfloat('mmu_exist_analog_pullup_resister_%d' % gate, 4700.)
+                self.exit_sensors[gate] = MmuAdcSwitchSensor(
+                    config,
+                    SENSOR_EXIT_PREFIX,
+                    gate,
+                    switch_pin,
+                    event_delay,
+                    a_range,
+                    runout=True,
+                    a_pullup=a_pullup)
+                continue
 
             self.exit_sensors[gate] = sf.create_mmu_sensor(config, SENSOR_EXIT_PREFIX, gate, switch_pin,
                 event_delay=event_delay,
                 runout=True)
+
+
+
+# -----------------------------------------------------------------------------------------------------------
+# EXPERIMENTAL
+# Support ViViD analog buffer "endstops"
+# This class implments both the filament switch sensor and endstop. However:
+#  * it will not display in UI because no filament_switch_sensor exists in config
+#  * does not involve the mcu in the homing process so it can't be accurate
+#  * suffers from inherent averaging lag for analog inputs
+# Currently only parsed as option for 'mmu_exit' sensors (where clog/tangle flags must be False)
+# -----------------------------------------------------------------------------------------------------------
+
+class MmuAdcSwitchSensor(MmuVirtualSensor):
+
+    def __init__(self, config, name_prefix, gate, switch_pin, event_delay, a_range,
+        insert=False, remove=False, runout=False, clog=False, tangle=False,
+        insert_remove_in_print=False, button_handler=None,
+        a_pullup=4700.,
+        register=True,
+    ):
+        super().__init__(
+            config, name_prefix, gate, 
+            event_delay=event_delay,
+            insert=insert, remove=remove, runout=runout, clog=clog, tangle=tangle,
+            insert_remove_in_print=insert_remove_in_print,
+            button_handler=button_handler,
+            register=register,
+        )
+
+        self._pin = switch_pin
+        buttons = self.printer.load_object(config, 'buttons')
+        a_min, a_max = a_range
+        buttons.register_adc_button(switch_pin, a_min, a_max, a_pullup, self.trigger_handler)
+
+        logging.info("MMU: Created MmuAdcSwitchSensor(%s)" % self.name)

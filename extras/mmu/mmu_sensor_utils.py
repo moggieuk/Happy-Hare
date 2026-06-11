@@ -6,8 +6,11 @@
 # Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
-# RunoutHelper based on:
-# Generic Filament Sensor Module Copyright (C) 2019  Eric Callahan <arksine.code@gmail.com>
+# MmuSensor utils including:
+#   - ADC helper for klipper compatibility
+#   - Enhanced runout helper for sensors
+#   - Switch based sensor
+#   - Virtual sensor (that also support endstop homing)
 #
 # (\_/)
 # ( *,*)
@@ -72,7 +75,6 @@ class MmuAdcHelper:
             "ADC callback expected (read_time, read_value) or (samples), got %d args"
             % len(args)
         )
-
 
 
 
@@ -254,7 +256,6 @@ class MmuRunoutHelper:
 
 
 
-
 # -----------------------------------------------------------------------------------------------------------
 # Factory class for setting up standard MMU (switch) sensors
 # -----------------------------------------------------------------------------------------------------------
@@ -349,6 +350,7 @@ class MmuBaseSensor:
         runout_gcode = ("%s SENSOR=%s%s" % (RUNOUT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if runout else None
         clog_gcode   = ("%s SENSOR=%s%s" % (CLOG_GCODE,   name, (" GATE=%d" % gate) if gate is not None else "")) if clog else None
         tangle_gcode = ("%s SENSOR=%s%s" % (TANGLE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if tangle else None
+
         ro_helper = MmuRunoutHelper(
             self.printer,
             name,
@@ -382,7 +384,6 @@ class MmuBaseSensor:
 class MmuSwitchSensor(MmuBaseSensor):
 
     def __init__(self, config, name_prefix, gate, switch_pin, **kwargs):
-
         super().__init__(config, name_prefix, gate, **kwargs)
 
         self.switch_pin = switch_pin
@@ -400,23 +401,31 @@ class MmuSwitchSensor(MmuBaseSensor):
 
 # -----------------------------------------------------------------------------------------------------------
 # Set up a virtual sensor. This is typically supported by an analog pin where the wrapper
-# calls runout_helper.note_filament_present() rather than a button callback.
+# calls trigger_handler() similar to a button callback.
 # Also, this sensor object is used for "software" endstops so implements the endstop interface
 # -----------------------------------------------------------------------------------------------------------
 
 class MmuVirtualSensor(MmuBaseSensor):
 
     def __init__(self, config, name_prefix, gate, **kwargs):
-
-        super().__init__(
-            config=config,
-            name_prefix=name_prefix,
-            gate=gate,
-            **kwargs,
-        )
+        super().__init__(config, name_prefix, gate, **kwargs)
 
         # For "software" endstop support
         self._steppers = []
+        self._trigger_completion = None
+        self._last_trigger_time = None
+        self._homing = False
+        self._triggered = False
+
+
+    def trigger_handler(self, eventtime, state):
+        self.runout_helper.note_filament_present(eventtime, state)
+
+        if self._homing and is_present == self._triggered:
+            if self._trigger_completion is not None:
+                self._last_trigger_time = eventtime
+                self._trigger_completion.complete(True)
+                self._trigger_completion = None
 
 
     # Interface required to implement an endstop ----------------------------------
@@ -458,103 +467,3 @@ class MmuVirtualSensor(MmuBaseSensor):
             raise self.printer.command_error("No trigger on %s after full movement" % self.name)
 
         return self._last_trigger_time
-
-
-
-# -----------------------------------------------------------------------------------------------------------
-# EXPERIMENTAL
-# Support ViViD analog buffer "endstops"
-# This class implments both the filament switch sensor and endstop. However:
-#  * it will not display in UI because no filament_switch_sensor exists in config
-#  * does not involve the mcu in the homing process so it can't be accurate
-#  * suffers from inherent averaging lag for analog inputs
-# Currently only parsed as option for 'mmu_exit' sensors (where clog/tangle flags must be False)
-# -----------------------------------------------------------------------------------------------------------
-
-#class MmuAdcSwitchSensor:
-#
-#    def __init__(self, config, name_prefix, gate, switch_pin, event_delay,
-#                 a_range,
-#                 insert=False, remove=False, runout=False, clog=False, tangle=False,
-#                 insert_remove_in_print=False, button_handler=None,
-#                 a_pullup=4700.):
-#
-#        self.printer = config.get_printer()
-#        self.reactor = self.printer.get_reactor()
-#        self._pin = switch_pin
-#        self._steppers = []
-#        self._trigger_completion = None
-#        self._last_trigger_time = None
-#
-#        buttons = self.printer.load_object(config, 'buttons')
-#        a_min, a_max = a_range
-#        buttons.register_adc_button(switch_pin, a_min, a_max, a_pullup, self._button_handler)
-#        self.name = name = "%s_%d" % (name_prefix, gate)
-#        insert_gcode = ("%s SENSOR=%s%s" % (INSERT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if insert else None
-#        remove_gcode = ("%s SENSOR=%s%s" % (REMOVE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if remove else None
-#        runout_gcode = ("%s SENSOR=%s%s" % (RUNOUT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if runout else None
-#        clog_gcode   = ("%s SENSOR=%s%s" % (CLOG_GCODE,   name, (" GATE=%d" % gate) if gate is not None else "")) if clog else None
-#        tangle_gcode = ("%s SENSOR=%s%s" % (TANGLE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if tangle else None
-#        self.runout_helper = MmuRunoutHelper(
-#            self.printer,
-#            name,
-#            event_delay=event_delay,
-#            gcodes={
-#                "insert": insert_gcode,
-#                "remove": remove_gcode,
-#                "runout": runout_gcode,
-#                "clog":   clog_gcode,
-#                "tangle": tangle_gcode,
-#            },
-#            insert_remove_in_print=insert_remove_in_print,
-#            button_handler=button_handler,
-#        )
-#        self.get_status = self.runout_helper.get_status
-#
-#
-#    def _button_handler(self, eventtime, state):
-#        self.runout_helper.note_filament_present(eventtime, state)
-#        if self._trigger_completion is not None:
-#            self._last_trigger_time = eventtime
-#            self._trigger_completion.complete(True)
-#
-#
-#    # Required to implement an endstop ----------------------------------
-#
-#    def query_endstop(self, print_time):
-#        return self.runout_helper.filament_present
-#
-#
-#    def setup_pin(self, pin_type, pin_name):
-#        return self
-#
-#
-#    def add_stepper(self, stepper):
-#        self._steppers.append(stepper)
-#
-#
-#    def get_steppers(self):
-#        return list(self._steppers)
-#
-#
-#    def home_start(self, print_time, sample_time, sample_count, rest_time, triggered):
-#        self._trigger_completion = self.reactor.completion()
-#        self._last_trigger_time = None
-#        self._homing = True
-#        self._triggered = triggered
-#
-#        if self.runout_helper.filament_present == self._triggered:
-#            self._last_trigger_time = print_time
-#            self._trigger_completion.complete(True)
-#
-#        return self._trigger_completion
-#
-#
-#    def home_wait(self, home_end_time):
-#        self._homing = False
-#        self._trigger_completion = None
-#
-#        if self._last_trigger_time is None:
-#            raise self.printer.command_error("No trigger on %s after full movement" % self.name)
-#
-#        return self._last_trigger_time

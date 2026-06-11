@@ -23,7 +23,7 @@ from typing                import Sequence
 
 # Happy Hare imports
 from ..mmu_constants       import *
-from ..mmu_sensor_utils    import MmuSensorFactory
+from ..mmu_sensor_utils    import MmuSensorFactory, MmuVirtualSensor
 from ..mmu_base_parameters import TunableParametersBase, ParamSpec
 
 
@@ -164,14 +164,26 @@ class MmuToolheadWrapper():
 # If configured this replaces the typical physical switches for extruder/toolhead sensors
 # -----------------------------------------------------------------------------------------------------------
 
-class MmuHallEndstop:
+class MmuHallEndstop(MmuVirtualSensor):
 
-    def __init__(self, config, name, pin1, pin2, cal_dia1, raw_dia1, cal_dia2, raw_dia2,
-                 hall_runout_dia=1.,
-                 insert=False, remove=False, runout=False, clog=False, tangle=False):
+    def __init__(
+        self, config, name, pin1, pin2,
+        cal_dia1, raw_dia1, cal_dia2, raw_dia2,
+        hall_runout_dia=1.,
+        insert=False, remove=False, runout=False, clog=False, tangle=False,
+    ):
 
-        self.printer = config.get_printer()
-        self.name = name
+        super().__init__(config, name, None,
+            event_delay=0.5,
+            insert=insert,
+            remove=remove,
+            runout=runout,
+            clog=clog,
+            tangle=tangle,
+            insert_remove_in_print=False,
+            button_handler=None,
+            register=True,
+        )
 
         # Configurable sampling for fast endstop response
         # Defaults: 1ms sample, 8 samples = 8ms. Report every 10ms.
@@ -192,19 +204,12 @@ class MmuHallEndstop:
         self.lastFilamentWidthReading = 0
         self.lastFilamentWidthReading2 = 0
         self.diameter = 0
-        self.is_active = True # Always active for endstop purposes? or should be toggleable?
-
-        # Endstop state variables
-        self._steppers = []
-        self._trigger_completion = None
-        self._last_trigger_time = None
-        self._homing = False
-        self._triggered = False
 
         # Setup Hardware (Multi-Use)
         ppins = self.printer.lookup_object('pins')
 
         # ADC 1
+        self.mcu_adc = None
         if self.pin1_name:
             ppins.allow_multi_use_pin(self.pin1_name)
             self.mcu_adc = ppins.setup_pin('adc', self.pin1_name)
@@ -229,28 +234,6 @@ class MmuHallEndstop:
                 self._adc2_callback,
             )
 
-        # Setup runout helper/virtual sensor for MMU integration
-        event_delay = 0.5
-        insert_gcode = ("%s SENSOR=%s" % (INSERT_GCODE, name)) if insert else None
-        remove_gcode = ("%s SENSOR=%s" % (REMOVE_GCODE, name)) if remove else None
-        runout_gcode = ("%s SENSOR=%s" % (RUNOUT_GCODE, name)) if runout else None
-
-        # We pass "None" for switch_pin because we manage the pin state via ADC logic
-        self.runout_helper = MmuRunoutHelper(
-            self.printer,
-            name,
-            event_delay=event_delay,
-            gocodes={
-                "insert": insert_gcode,
-                "remove": remove_gcode,
-                "runout": runout_gcode
-            },
-            insert_remove_in_print=False,
-            button_handler=None,
-            switch_pin=None
-        )
-
-        self.printer.add_object("mmu_hall_endstop %s" % name, self)
         logging.info("MMU: Created [mmu_hall_endstop %s]" % name)
 
 
@@ -271,74 +254,25 @@ class MmuHallEndstop:
     def _adc_callback(self, *args):
         read_time, read_value = MmuAdcHelper.unpack_adc_callback(*args)
         self.lastFilamentWidthReading = round(read_value * 10000)
-        self._calc_diameter()
-        self._check_trigger(read_time)
+        self._update_from_adc(read_time)
 
 
     def _adc2_callback(self, *args):
         read_time, read_value = MmuAdcHelper.unpack_adc_callback(*args)
         self.lastFilamentWidthReading2 = round(read_value * 10000)
+        self._update_from_adc(read_time)
+
+
+    def _update_from_adc(self, eventtime):
         self._calc_diameter()
-        self._check_trigger(read_time)
-
-
-    def _check_trigger(self, eventtime):
         is_present = self.diameter > self.hall_min_diameter
-        self.runout_helper.note_filament_present(eventtime, is_present)
-
-        if self._homing:
-            if is_present == self._triggered:
-                if self._trigger_completion is not None:
-                    self._last_trigger_time = eventtime
-                    self._trigger_completion.complete(True)
-                    self._trigger_completion = None
+        self.note_filament_present(eventtime, is_present)
 
 
     def get_status(self, eventtime):
         status = self.runout_helper.get_status(eventtime)
         status.update({
             "Diameter": self.diameter,
-            "Raw": (self.lastFilamentWidthReading + self.lastFilamentWidthReading2)
+            "Raw": self.lastFilamentWidthReading + self.lastFilamentWidthReading2,
         })
         return status
-
-
-    # Required to implement an endstop -------------------------------------
-
-    def query_endstop(self, print_time):
-        return self.runout_helper.filament_present
-
-
-    def setup_pin(self, pin_type, pin_name):
-        return self
-
-
-    def add_stepper(self, stepper):
-        self._steppers.append(stepper)
-
-
-    def get_steppers(self):
-        return list(self._steppers)
-
-
-    def home_start(self, print_time, sample_time, sample_count, rest_time, triggered):
-        self._trigger_completion = self.reactor.completion()
-        self._last_trigger_time = None
-        self._homing = True
-        self._triggered = triggered
-
-        if self.runout_helper.filament_present == self._triggered:
-            self._last_trigger_time = print_time
-            self._trigger_completion.complete(True)
-
-        return self._trigger_completion
-
-
-    def home_wait(self, home_end_time):
-        self._homing = False
-        self._trigger_completion = None
-
-        if self._last_trigger_time is None:
-            raise self.printer.command_error("No trigger on %s after full movement" % self.name)
-
-        return self._last_trigger_time
