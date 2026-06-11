@@ -73,7 +73,7 @@ class IndexedSelector(PhysicalSelector):
 
         # Force stepper loading now (TMC first)
         tmc_found = False
-        for chip in TMC_CHIPS: 
+        for chip in TMC_CHIPS:
             tmc_section = f"{chip} {stepper_section}"
             if config.has_section(tmc_section):
                 _ = self.printer.load_object(config, tmc_section)

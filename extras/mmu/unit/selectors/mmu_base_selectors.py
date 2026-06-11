@@ -428,7 +428,7 @@ class MmuSoaktestSelectorCommand(BaseCommand):
 
                     if random.randint(0, 10) == 0 and home:
                         mmu.home_unit(mmu_unit)
-                  
+
                     if random.randint(0, 10) == 0 and mmu_unit.selector.has_bypass():
                         mmu.log_always("Testing loop %d / %d. Selecting bypass..." % (l + 1, loops))
                         mmu_unit.selector._select_gate(TOOL_GATE_BYPASS) # Force local bypass gate

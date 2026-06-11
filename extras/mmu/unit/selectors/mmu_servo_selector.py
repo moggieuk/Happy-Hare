@@ -117,7 +117,7 @@ class ServoSelector(PhysicalSelector):
 
     def handle_connect(self):
         super().handle_connect()
-    
+
 
     def handle_ready(self):
         """
