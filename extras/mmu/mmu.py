@@ -8957,6 +8957,16 @@ class Mmu:
                             else:
                                 raise MmuError("Current gate is invalid")
 
+                            # An already loaded gate is proven present - mark available and skip rather than unload to re-verify
+                            if filament_pos == self.FILAMENT_POS_LOADED and self.gate_selected >= 0 and any(g == self.gate_selected for g, _t in gates_tools):
+                                self._set_gate_status(self.gate_selected, max(self.gate_status[self.gate_selected], self.GATE_AVAILABLE))
+                                self.log_info("Gate %d already loaded - marked available, skipping check" % self.gate_selected)
+                                gates_tools = [[g, t] for g, t in gates_tools if g != self.gate_selected]
+                                if not gates_tools:
+                                    if not quiet:
+                                        self.log_info(self._mmu_visual_to_string())
+                                    return
+
                             # Force initial eject
                             if filament_pos != self.FILAMENT_POS_UNLOADED:
                                 self.log_info("Unloading current tool prior to checking gates")
