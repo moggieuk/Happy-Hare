@@ -142,7 +142,7 @@ class LinearSelector(PhysicalSelector):
 
         # Force stepper loading now (TMC first)
         tmc_found = False
-        for chip in TMC_CHIPS: 
+        for chip in TMC_CHIPS:
             tmc_section = f"{chip} {stepper_section}"
             if config.has_section(tmc_section):
                 _ = self.printer.load_object(config, tmc_section)
@@ -333,7 +333,7 @@ class LinearSelector(PhysicalSelector):
 
     def _get_max_selector_movement(self, lgate=TOOL_GATE_UNKNOWN):
         """
-        Return the maximum permissible selector movement to reach 
+        Return the maximum permissible selector movement to reach
         the specified LOCAL gate from home position.
         If no local gate is specified then return maximum permissible
         travel
@@ -554,7 +554,7 @@ class LinearSelector(PhysicalSelector):
                             self.mmu.log_warning("Selector touch operation detected filament blockage inside gate, will try to recover...")
                             self.move("Realigning selector by a distance of: %.1fmm" % -travel, init_pos)
                             self.mmu.toolhead.flush_step_generation() # TTC mitigation when homing move + regular + get_last_move_time() in close succession
-    
+
                             # See if we can detect filament in gate area
                             found = self.mmu.check_filament_in_gate()
                             if not found:
@@ -562,20 +562,20 @@ class LinearSelector(PhysicalSelector):
                                 _,_,measured,_ = self.mmu.move_filament("Locating filament", self.mmu_unit.p.gate_parking_distance + self.mmu_unit.p.gate_endstop_to_encoder + 10.)
                                 if self.mmu_unit.has_encoder() and measured < self.mmu_unit.encoder.encoder_min():
                                     raise MmuError("Unblocking selector failed because unable to move filament to clear")
-    
+
                             # Try a full unload sequence
                             try:
                                 self.mmu.unload_sequence(check_state=True)
                             except MmuError as ee:
                                 raise MmuError("Unblocking selector failed because: %s" % (str(ee)))
-    
+
                             # Check if selector can now reach proper target
                             self._home_selector()
                             halt_pos,homed = self.homing_move("Positioning selector with 'touch' move", target, homing_move=1, endstop_name=SENSOR_SELECTOR_TOUCH)
                             if homed: # Positioning move was not successful
                                 self.is_homed = False
                                 raise MmuError("Unblocking selector recovery failed. Path is probably internally blocked")
-    
+
                         else: # Selector path is blocked, probably externally
                             self.is_homed = False
                             raise MmuError("Selector touch operation detected blockage perhaps by filament in another gate or too much friction")

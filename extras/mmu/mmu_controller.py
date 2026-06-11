@@ -1639,7 +1639,7 @@ class MmuController(MmuFilamentMovement):
                 # Make sure we record the current speed/extruder overrides
                 if self.tool_selected >= 0:
                     mmu_state = self.gcode_move.saved_states[TOOLHEAD_POSITION_STATE]
-                    self.tool_speed_multipliers[self.tool_selected] = mmu_state['speed_factor']
+                    self.tool_speed_multipliers[self.tool_selected] = mmu_state['speed_factor'] * 60 # Caution, klipper's gcode_move state is not a muliplier here!
                     self.tool_extrusion_multipliers[self.tool_selected] = mmu_state['extrude_factor']
 
                 # This will save the print position in the macro and apply park
@@ -1662,7 +1662,7 @@ class MmuController(MmuFilamentMovement):
             # Inject speed/extruder overrides into gcode state restore data
             if self.tool_selected >= 0:
                 mmu_state = self.gcode_move.saved_states[TOOLHEAD_POSITION_STATE]
-                mmu_state['speed_factor'] = self.tool_speed_multipliers[self.tool_selected]
+                mmu_state['speed_factor'] = self.tool_speed_multipliers[self.tool_selected] / 60 # Caution, klipper's gcode_move state is not a muliplier here!
                 mmu_state['extrude_factor'] = self.tool_extrusion_multipliers[self.tool_selected]
 
             # If this is the final "restore toolhead position" call then allow macro to restore position, then sanity check

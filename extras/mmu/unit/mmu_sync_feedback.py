@@ -39,7 +39,7 @@ SF_STATE_TENSION     = -1
 
 
 class MmuSyncFeedback:
-    
+
     def __init__(self, config, mmu_unit, params):
         self.config = config
         self.mmu_unit = mmu_unit                # This physical MMU unit
@@ -333,7 +333,7 @@ class MmuSyncFeedback:
 
         if not (self.mmu.is_enabled and self.p.sync_feedback_enabled and self.active): return
         if eventtime is None: eventtime = self.mmu.reactor.monotonic()
- 
+
         msg = "MmuSyncFeedback: Sync state changed to %s" % (self.get_sync_feedback_string(state))
         if self.mmu_unit.filament_always_gripped:
             self.mmu.log_debug(msg)
@@ -607,7 +607,7 @@ class MmuSyncFeedback:
         """
 
         # nudge_mm:     per-move adjustment distance in mm (small feed or retract)
-        # neutral_band: absolute value of proportional sensor reading considered "neutral". 
+        # neutral_band: absolute value of proportional sensor reading considered "neutral".
         #               This can be loosely interpreted as a % over the max range of detection of the sensor.
         #               For example for a sensor with 14mm range, a 0.15 tolerance is approx 1.4mm either side of centre.
         # settle_time:  delay between moves to allow sensor feedback to update
@@ -684,7 +684,7 @@ class MmuSyncFeedback:
                     (nudge_mm, moved_initial_mm, moved_nudges_mm, moved_total_mm, steps, prop_state)
                 )
                 return moved_total_mm, False
-                
+
             if abs(prop_state) <= neutral_band:
                 # confirm neutral after a short wait
                 try:

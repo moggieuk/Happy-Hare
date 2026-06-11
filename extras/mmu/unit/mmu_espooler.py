@@ -235,7 +235,7 @@ class MmuESpooler:
             duration = self.mmu_unit.p.espooler_rewind_burst_duration
         else:
             return
-   
+
         self._handle_espooler_burst(gate, power / 100, duration, operation)
 
 
