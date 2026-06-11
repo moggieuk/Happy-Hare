@@ -133,7 +133,7 @@ class MmuToolheadWrapper():
             s = MmuHallEndstop(config, target_name, self.hall_pin1, self.hall_pin2,
                                self.hall_dia1, self.hall_rawdia1, self.hall_dia2, self.hall_rawdia2,
                                hall_runout_dia=self.hall_runout_dia,
-                               insert=True, runout=True)
+                               events=('insert', 'runout'))
 
             # Likley overriding entry or toolhead sensor but can also define a brand new toolhead sensor
             self.sensors[target_name] = s
@@ -170,16 +170,12 @@ class MmuHallEndstop(MmuVirtualSensor):
         self, config, name, pin1, pin2,
         cal_dia1, raw_dia1, cal_dia2, raw_dia2,
         hall_runout_dia=1.,
-        insert=False, remove=False, runout=False, clog=False, tangle=False,
+        events=(),
     ):
 
         super().__init__(config, name, None,
             event_delay=0.5,
-            insert=insert,
-            remove=remove,
-            runout=runout,
-            clog=clog,
-            tangle=tangle,
+            events=events,
             insert_remove_in_print=False,
             button_handler=None,
             register=True,

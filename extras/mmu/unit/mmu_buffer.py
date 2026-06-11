@@ -25,11 +25,7 @@ from ..mmu_sensor_utils import (
     MmuRunoutHelper,
     MmuSwitchSensor,
     MmuVirtualSensor,
-    INSERT_GCODE,
-    REMOVE_GCODE,
-    RUNOUT_GCODE,
-    CLOG_GCODE,
-    TANGLE_GCODE,
+    EVENT_GCODES
 )
 
 
@@ -159,15 +155,12 @@ class MmuProportionalSensor:
             self._adc_callback,
         )
 
-        # Attach runout_helper (no gcode actions; just enable/disable plumbing to remove UI nag)
-        clog_gcode   = ("%s SENSOR=%s" % (CLOG_GCODE,   self.name))
-        tangle_gcode = ("%s SENSOR=%s" % (TANGLE_GCODE, self.name))
         self.runout_helper = MmuRunoutHelper(
             self.printer,
             self.name,
             gcodes={
-                "clog":   clog_gcode,
-                "tangle": tangle_gcode,
+                event: "%s SENSOR=%s" % (EVENT_GCODES[event], self.name)
+                for event in ("clog", "tangle")
             },
             register=False,
         )

@@ -55,9 +55,7 @@ class MmuSensors:
                 gate,
                 switch_pin,
                 event_delay=event_delay,
-                insert=True,
-                remove=True,
-                runout=True,
+                events=('insert', 'remove', 'runout'),
                 insert_remove_in_print=True
             )
 
@@ -70,7 +68,7 @@ class MmuSensors:
             None,
             switch_pin,
             event_delay=event_delay,
-            runout=True
+            events=('runout')
         )
 
         # Setup "mmu_exit" sensors...
@@ -89,13 +87,15 @@ class MmuSensors:
                     switch_pin,
                     event_delay,
                     a_range,
-                    runout=True,
+                    events=('runout'),
                     a_pullup=a_pullup)
                 continue
 
-            self.exit_sensors[gate] = sf.create_mmu_sensor(config, SENSOR_EXIT_PREFIX, gate, switch_pin,
+            self.exit_sensors[gate] = sf.create_mmu_sensor(
+                config, SENSOR_EXIT_PREFIX, gate, switch_pin,
                 event_delay=event_delay,
-                runout=True)
+                events=('runout')
+            )
 
 
 
@@ -112,15 +112,16 @@ class MmuSensors:
 class MmuAdcSwitchSensor(MmuVirtualSensor):
 
     def __init__(self, config, name_prefix, gate, switch_pin, event_delay, a_range,
-        insert=False, remove=False, runout=False, clog=False, tangle=False,
+        events=(),
         insert_remove_in_print=False, button_handler=None,
         a_pullup=4700.,
         register=True,
     ):
+
         super().__init__(
-            config, name_prefix, gate, 
+            config, name_prefix, gate,
             event_delay=event_delay,
-            insert=insert, remove=remove, runout=runout, clog=clog, tangle=tangle,
+            events=events,
             insert_remove_in_print=insert_remove_in_print,
             button_handler=button_handler,
             register=register,

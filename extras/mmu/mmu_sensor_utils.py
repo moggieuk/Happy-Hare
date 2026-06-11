@@ -30,6 +30,14 @@ RUNOUT_GCODE = "__MMU_SENSOR_RUNOUT"
 CLOG_GCODE   = "__MMU_SENSOR_CLOG"
 TANGLE_GCODE = "__MMU_SENSOR_TANGLE"
 
+EVENT_GCODES = {
+    "insert": INSERT_GCODE,
+    "remove": REMOVE_GCODE,
+    "runout": RUNOUT_GCODE,
+    "clog":   CLOG_GCODE,
+    "tangle": TANGLE_GCODE,
+}
+
 
 # -----------------------------------------------------------------------------------------------------------
 # Adc helper class
@@ -88,10 +96,9 @@ class MmuRunoutHelper:
 
     def __init__(self, printer, name,
             event_delay=0,
-            gcodes={},
+            gcodes=None,
             insert_remove_in_print=False,
             button_handler=None,
-            switch_pin=None,
             register=True,
         ):
         """
@@ -336,36 +343,33 @@ class MmuBaseSensor:
     def __init__(
         self, config, name_prefix, gate,
         event_delay=0,
-        insert=False, remove=False, runout=False, clog=False, tangle=False,
-        insert_remove_in_print=False, button_handler=None,
+        events=(),
+        insert_remove_in_print=False,
+        button_handler=None,
         register=True,
     ):
         self.printer = config.get_printer()
-
         name = self.name = "%s_%d" % (name_prefix, gate) if gate is not None else name_prefix
 
-        # Use custom runout_helper because of state specific behavior
-        insert_gcode = ("%s SENSOR=%s%s" % (INSERT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if insert else None
-        remove_gcode = ("%s SENSOR=%s%s" % (REMOVE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if remove else None
-        runout_gcode = ("%s SENSOR=%s%s" % (RUNOUT_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if runout else None
-        clog_gcode   = ("%s SENSOR=%s%s" % (CLOG_GCODE,   name, (" GATE=%d" % gate) if gate is not None else "")) if clog else None
-        tangle_gcode = ("%s SENSOR=%s%s" % (TANGLE_GCODE, name, (" GATE=%d" % gate) if gate is not None else "")) if tangle else None
+        gate_arg = (" GATE=%d" % gate) if gate is not None else ""
+
+        events = set(events or ())
+        gcodes = {
+            event: "%s SENSOR=%s%s" % (macro, name, gate_arg)
+            for event, macro in EVENT_GCODES.items()
+            if event in events
+        }
 
         ro_helper = MmuRunoutHelper(
             self.printer,
             name,
             event_delay=event_delay,
-            gcodes={
-                "insert": insert_gcode,
-                "remove": remove_gcode,
-                "runout": runout_gcode,
-                "clog":   clog_gcode,
-                "tangle": tangle_gcode,
-            },
+            gcodes=gcodes,
             insert_remove_in_print=insert_remove_in_print,
             button_handler=button_handler,
             register=register,
         )
+
         self.runout_helper = ro_helper
         self.get_status = ro_helper.get_status
 
