@@ -377,9 +377,10 @@ class MmuSyncFeedback:
                 else: # "tangle"
                     sensor_key = SENSOR_TENSION
                 sm = self.mmu.sensor_manager
-                sensor = sm.sensors.get(sensor_key)
+                sensor = sm.get_sensor_obj(sensor_key)
 
-                sensor.runout_helper.note_clog_tangle(f_trigger)
+                if sensor is not None:
+                    sensor.runout_helper.note_clog_tangle(f_trigger)
                 self.deactivate_flowguard(eventtime)
             else:
                 self.mmu.log_debug("FlowGuard detected a %s, but handling is disabled.\nReason for trip: %s" % (f_trigger, f_reason))
