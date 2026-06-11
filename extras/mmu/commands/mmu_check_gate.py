@@ -126,6 +126,16 @@ class MmuCheckGateCommand(BaseCommand):
                             else:
                                 raise MmuError("Current gate is invalid")
 
+                            # An already loaded gate is proven present - mark available and skip rather than unload to re-verify
+                            if filament_pos == FILAMENT_POS_LOADED and mmu.gate_selected >= 0 and any(g == mmu.gate_selected for g, _t in gates_tools):
+                                mmu.gate_maps.set_gate_status(mmu.gate_selected, max(mmu.gate_status[mmu.gate_selected], GATE_AVAILABLE))
+                                mmu.log_info("Gate %d already loaded - marked available, skipping check" % mmu.gate_selected)
+                                gates_tools = [[g, t] for g, t in gates_tools if g != mmu.gate_selected]
+                                if not gates_tools:
+                                    if not quiet:
+                                        mmu.log_info(mmu._mmu_visual_to_string(), color=True)
+                                    return
+
                             # Force initial eject
                             if filament_pos != FILAMENT_POS_UNLOADED:
                                 mmu.log_info("Unloading current tool prior to checking gates")
