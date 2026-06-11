@@ -399,7 +399,7 @@ class MmuSyncFeedback:
         rd_current, rd_prev, rd_tuned = output['rd_current'], output['rd_prev'], output['rd_tuned']
         if rd_current != rd_prev:
             self.mmu.log_debug("MmuSyncFeedback: Altered rotation distance for gate %d from %.4f to %.4f" % (self.mmu.gate_selected, rd_prev, rd_current))
-            self.mmu_unit.calibrator.apply_gear_rd(rd)
+            self.mmu_unit.calibrator.apply_gear_rd(rd_current)
 
         # Proportional sensor (with autotune) allows for estimation of flow rate!
         if self.mmu.sensor_manager.has_sensor(SENSOR_PROPORTIONAL):
