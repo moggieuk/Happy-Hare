@@ -797,11 +797,11 @@ class MmuSyncFeedbackManager:
         if maxrange_span_mm <= 0.0:
             self.mmu.log_debug("Proportional adjust skipped: buffer maxrange <= 0")
             return 0., False
-        per_side_budget_mm = 0.5 * maxrange_span_mm
+        per_side_budget_mm = 0.65 * maxrange_span_mm
         nudge_mm = per_side_budget_mm * neutral_band
 
         # Cap total nudge iterations to stay within the overall sensor range
-        max_steps = int(math.ceil(maxrange_span_mm / nudge_mm))
+        max_steps = int(math.ceil(maxrange_span_mm * 1.5 / nudge_mm))
 
         moved_total_mm   = 0.0  # total net distance moved during this adjustment
         moved_nudges_mm  = 0.0  # sum of all nudge moves

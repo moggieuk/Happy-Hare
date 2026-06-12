@@ -112,6 +112,7 @@ class Mmu:
     SENSOR_EXTRUDER_NONE       = "none"           # Fake Extruder endstop aka don't attempt home
     SENSOR_EXTRUDER_COLLISION  = "collision"      # Fake Extruder endstop
     SENSOR_EXTRUDER_ENTRY      = "extruder"       # Extruder entry sensor
+    SENSOR_EXTRUDER_ENTRY_PROP = "proportional"   # Proportional sensor used to detect extruder entry
     SENSOR_GEAR_TOUCH          = "mmu_gear_touch" # Stallguard based detection
 
     SENSOR_COMPRESSION         = "filament_compression"  # Filament sync-feedback compression detection
@@ -125,7 +126,7 @@ class Mmu:
     SENSOR_SELECTOR_HOME       = "mmu_sel_home"   # For LinearSelector and LinearServoSelector
     SENSOR_PRE_GATE_PREFIX     = "mmu_pre_gate"
 
-    EXTRUDER_ENDSTOPS = [SENSOR_EXTRUDER_COLLISION, SENSOR_GEAR_TOUCH, SENSOR_EXTRUDER_ENTRY, SENSOR_EXTRUDER_NONE, SENSOR_COMPRESSION]
+    EXTRUDER_ENDSTOPS = [SENSOR_EXTRUDER_COLLISION, SENSOR_GEAR_TOUCH, SENSOR_EXTRUDER_ENTRY, SENSOR_EXTRUDER_ENTRY_PROP, SENSOR_EXTRUDER_NONE, SENSOR_COMPRESSION]
     GATE_ENDSTOPS     = [SENSOR_GATE, SENSOR_ENCODER, SENSOR_GEAR_PREFIX, SENSOR_EXTRUDER_ENTRY]
 
     # Statistics output types
@@ -428,6 +429,8 @@ class Mmu:
         self.gear_short_move_accel = config.getfloat('gear_short_move_accel', 400, minval=10.)
         self.gear_short_move_threshold = config.getfloat('gear_short_move_threshold', self.gate_homing_max, minval=1.)
         self.gear_homing_speed = config.getfloat('gear_homing_speed', 150, minval=1.)
+        self.proportional_homing_speed = config.getfloat('proportional_homing_speed', 15, minval=1., maxval=40.0) # Dedicated speed for proportional sensor extruder homing
+        self.proportional_extruder_threshold = config.getfloat('proportional_extruder_threshold', 0.9, minval=0.1, maxval=1.0) # Threshold for proportional sensor extruder entry detection
 
         self.extruder_load_speed = config.getfloat('extruder_load_speed', 15, minval=1.)
         self.extruder_unload_speed = config.getfloat('extruder_unload_speed', 15, minval=1.)
@@ -2607,6 +2610,7 @@ class Mmu:
         can_use_sensor = (
             self.extruder_homing_endstop in [
                 self.SENSOR_EXTRUDER_ENTRY,
+                self.SENSOR_EXTRUDER_ENTRY_PROP,
                 self.SENSOR_COMPRESSION,
                 self.SENSOR_GEAR_TOUCH
             ] and (
@@ -4678,6 +4682,13 @@ class Mmu:
         # Shorten move by gate buffer used to ensure we don't overshoot homing point
         length -= self.gate_unload_buffer
 
+        # When using virtual endstops (proportional or compression) without a physical extruder/toolhead
+        # sensor, the extruder unload adds toolhead_unload_safety_margin to the blind move which
+        # overshoots the bowden start. Compensate here to prevent the bowden unload from overshooting
+        if self.extruder_homing_endstop in [self.SENSOR_EXTRUDER_ENTRY_PROP, self.SENSOR_COMPRESSION]:
+            if not self.sensor_manager.has_sensor(self.SENSOR_EXTRUDER_ENTRY) and not self.sensor_manager.has_sensor(self.SENSOR_TOOLHEAD):
+                length -= self.toolhead_unload_safety_margin
+
         try:
             if length > 0:
                 self.log_debug("Unloading bowden tube")
@@ -4760,6 +4771,28 @@ class Mmu:
             else:
                 raise MmuError("Cannot home to extruder using 'collision' method because encoder is not configured or disabled!")
 
+        elif self.extruder_homing_endstop == self.SENSOR_EXTRUDER_ENTRY_PROP:
+            has_proportional = self.sensor_manager.has_sensor(self.SENSOR_PROPORTIONAL)
+            if not has_proportional:
+                raise MmuError("Cannot home to extruder using 'proportional' method because proportional sync feedback sensor is not configured!")
+
+            self.log_info("Proportional sensor extruder homing: Pausing for 2 seconds to allow bowden to settle")
+            try:
+                self.reactor.pause(self.reactor.monotonic() + 2.0)
+            except Exception:
+                time.sleep(2.0)
+
+            self.log_info("Homing to extruder '%s' virtual endstop, up to %.1fmm at %.1fmm/s" % (self.extruder_homing_endstop, max_length, self.proportional_homing_speed))
+            actual,homed,measured,_ = self.trace_filament_move("Homing filament to extruder via proportional sensor", max_length, speed=self.proportional_homing_speed, motor="gear", homing_move=1, endstop_name=self.SENSOR_EXTRUDER_ENTRY_PROP)
+            if homed:
+                self.log_info("Extruder proportional endstop reached after %.1fmm (measured %.1fmm, sensor %.3f)" % (actual, measured, float(self.sync_feedback_manager._get_sensor_state())))
+                self._set_filament_pos_state(self.FILAMENT_POS_HOMED_ENTRY)
+
+                # Reduce calibrated length by buffer range to prevent overshooting into the buffer on subsequent loads
+                extra = -self.sync_feedback_manager.sync_feedback_buffer_range
+
+            homing_movement = actual
+
         else:
             self.log_debug("Homing to extruder '%s' endstop, up to %.1fmm" % (self.extruder_homing_endstop, max_length))
             actual,homed,measured,_ = self.trace_filament_move("Homing filament to extruder endstop", max_length, motor="gear", homing_move=1, endstop_name=self.extruder_homing_endstop)
@@ -4818,6 +4851,70 @@ class Mmu:
 
         self._set_filament_position(self._get_filament_position() - step) # Ignore last step movement
         return step*i, homed, measured, delta
+
+    # Validate that the extruder has gripped the filament after homing using the proportional sensor.
+    # First performs a short synced move (gear+extruder) to feed filament into the extruder gears and
+    # establish grip, since the extruder cannot grab filament on its own with the gear stepper off.
+    # Then drives extruder motor only in incremental steps and checks the sensor drops below the trigger
+    # threshold, confirming the extruder is actively pulling filament through.
+    # Returns: total distance moved (mm) on success
+    # Raises: MmuError if the sensor never drops below threshold
+    def _validate_extruder_entry_proportional(self, max_steps=4):
+        prop_sensor = self.sensor_manager.sensors.get(self.SENSOR_PROPORTIONAL)
+        prop_threshold = self.proportional_extruder_threshold
+        buffer_range = self.sync_feedback_manager.sync_feedback_buffer_maxrange
+
+        # Phase 1: Short synced move to feed filament into extruder gears and establish grip
+        grip_distance = buffer_range * 0.50
+        initial_state = prop_sensor.get_status(0).get('value', 0.)
+        self.log_info("Proportional post-load validation: sensor=%.3f, synced feed of %.1fmm to establish extruder grip..." % (initial_state, grip_distance))
+        self.selector.filament_drive()
+        self.trace_filament_move("Synced feed to establish extruder grip", grip_distance, speed=self.extruder_sync_load_speed, motor="gear+extruder", wait=True)
+        moved = grip_distance
+
+        # Phase 2: Extruder-only steps to confirm grip by checking sensor drops below threshold
+        step_size = buffer_range / 2.
+        self.selector.filament_release()
+        self.log_info("Proportional post-load validation: driving extruder-only in %.1fmm steps (up to %d) to confirm grip..." % (step_size, max_steps))
+
+        for i in range(max_steps):
+            self.trace_filament_move("Proportional extruder entry validation step %d" % (i + 1), step_size, speed=self.extruder_load_speed, motor="extruder", wait=True)
+            moved += step_size
+            prop_state = prop_sensor.get_status(0).get('value', 0.)
+            if prop_state < prop_threshold:
+                self.log_info("Proportional post-load validation: sensor dropped to %.3f after %.1fmm (step %d) - extruder entry confirmed" % (prop_state, moved, i + 1))
+                return moved
+        else:
+            prop_state = prop_sensor.get_status(0).get('value', 0.)
+            self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY)
+            raise MmuError("Failed to load filament past the extruder entrance (proportional sensor reads %.3f after %.1fmm, expected below %.2f)" % (prop_state, moved, prop_threshold))
+
+    # Validate that the extruder has released the filament after unloading using the proportional sensor.
+    # Spins the extruder forward by a small amount and checks the sensor reading doesn't change. If the
+    # filament has cleared, the extruder gears spin freely and the sensor is unaffected. If the extruder
+    # still grips the filament (which will be in tension from the gear pulling back during unload), the
+    # forward spin relieves that tension causing a measurable shift toward compression.
+    def _validate_extruder_unload_proportional(self):
+        prop_sensor = self.sensor_manager.sensors.get(self.SENSOR_PROPORTIONAL)
+        buffer_range = self.sync_feedback_manager.sync_feedback_buffer_maxrange
+        probe_distance = buffer_range # Tweak experimentally - set to buffer range to have a good "signal"
+        settle_time = prop_sensor.report_time * 2 # Two full ADC cycles for a reliable reading
+
+        pre_spin = prop_sensor.get_status(0).get('value', 0.)
+        self.log_info("Proportional unload validation: sensor=%.3f, spinning extruder forward %.1fmm to verify filament released..." % (pre_spin, probe_distance))
+
+        self.trace_filament_move("Proportional unload validation: extruder forward spin", probe_distance, speed=self.extruder_load_speed, motor="extruder", wait=True)
+        self.movequeues_dwell(settle_time)
+        post_spin = prop_sensor.get_status(0).get('value', 0.)
+
+        shift = post_spin - pre_spin # Positive means sensor moved toward compression
+        self.log_info("Proportional unload validation: pre=%.3f, post=%.3f, shift=%.3f" % (pre_spin, post_spin, shift))
+
+        if shift > 0.1:
+            # Sensor shifted toward compression — extruder still has grip, filament not released
+            self.log_warning("Warning: Proportional unload validation failed - extruder may still be gripping filament (sensor shifted %.3f toward compression)\nWill attempt to continue..." % shift)
+        else:
+            self.log_info("Proportional unload validation: confirmed - extruder released filament")
 
     # Move filament from the extruder gears (entrance) to the nozzle
     # Returns any homing distance for automatic calibration logic
@@ -4887,6 +4984,34 @@ class Mmu:
                     else:
                         self._set_filament_pos_state(self.FILAMENT_POS_EXTRUDER_ENTRY) # But could also still be POS_IN_BOWDEN!
                         raise MmuError("Failed to load filament passed the extruder entrance (sync-feedback buffer didn't detect neutral tension)")
+
+            # Proportional sensor post-load validation: drive the extruder motor only to pull filament through then
+            # check the proportional sensor has dropped below the threshold, confirming extruder grip.
+            # Adaptive to available travel: always runs a synced grip-establishing feed, then fits as many
+            # extruder-only probe steps as the remaining load distance allows (up to a hard cap).
+            elif (
+                self.gate_selected != self.TOOL_GATE_BYPASS
+                and self.toolhead_entry_tension_test
+                and synced
+                and not has_toolhead
+                and has_proportional
+                and self.extruder_homing_endstop == self.SENSOR_EXTRUDER_ENTRY_PROP
+            ):
+                buffer_range  = self.sync_feedback_manager.sync_feedback_buffer_maxrange
+                grip_distance = buffer_range * 0.50   # synced feed to establish extruder grip
+                step_size     = buffer_range / 2.     # extruder-only probe step
+                min_range     = grip_distance + step_size   # minimum budget for a meaningful validation (grip + 1 probe)
+                max_cap       = 4                     # hard cap on probe steps to avoid wasted travel when budget is large
+
+                if length >= min_range:
+                    max_steps = min(max_cap, int((length - grip_distance) // step_size))
+                    self.log_debug("Proportional post-load validation: grip %.1fmm + up to %d x %.1fmm probe step(s) (budget %.1fmm of %.1fmm available)"
+                                   % (grip_distance, max_steps, step_size, grip_distance + max_steps * step_size, length))
+                    moved = self._validate_extruder_entry_proportional(max_steps=max_steps)
+                    length = max(length - moved, 0)
+                else:
+                    self.log_info("Proportional post-load validation: skipped - remaining load distance (%.1fmm) is less than minimum validation move (%.1fmm = %.1fmm grip + %.1fmm probe)"
+                                  % (length, min_range, grip_distance, step_size))
 
             self.log_debug("Loading last %.1fmm to the nozzle..." % length)
             _,_,measured,delta = self.trace_filament_move("Loading filament to nozzle", length, speed=speed, motor=motor, wait=True)
@@ -5046,6 +5171,20 @@ class Mmu:
                         self.log_warning("Warning: Encoder not sensing %s movement during final extruder retraction move\nConcluding filament either stuck in the extruder, tip forming erroneously completely ejected filament or filament was not fully loaded\nWill attempt to continue..." % msg)
 
                 self._set_filament_pos_state(self.FILAMENT_POS_END_BOWDEN)
+
+                # Proportional sensor unload validation: spin extruder forward and check sensor doesn't change.
+                # After unload, if the extruder still grips the filament the sensor will be in tension (gear pulled
+                # back against extruder grip). A forward extruder spin would relieve that tension causing the sensor
+                # to shift toward compression. If the filament has cleared, the extruder spins freely and the sensor
+                # reading is unchanged.
+                if (
+                    validate
+                    and self.sensor_manager.has_sensor(self.SENSOR_PROPORTIONAL)
+                    and self.extruder_homing_endstop == self.SENSOR_EXTRUDER_ENTRY_PROP
+                    and not extruder_only
+                    and self.gate_selected != self.TOOL_GATE_BYPASS
+                ):
+                    self._validate_extruder_unload_proportional()
 
             self._random_failure() # Testing
             self.movequeues_wait()
@@ -5818,6 +5957,15 @@ class Mmu:
         looks_loaded = self.sensor_manager.check_all_sensors_in_path()
         if not filament_detected:
             filament_detected = self.check_filament_in_mmu() # Include encoder detection method
+        if not filament_detected and self.sensor_manager.has_sensor(self.SENSOR_PROPORTIONAL):
+            # Proportional sensor is not in the standard sensor path list but can indicate filament
+            # presence. If the sensor is not in deep tension, filament is likely present and interacting
+            # with something (extruder entrance or grip)
+            prop_sensor = self.sensor_manager.sensors.get(self.SENSOR_PROPORTIONAL)
+            prop_value = prop_sensor.get_status(0).get('value', 0.)
+            if prop_value > -0.9:
+                filament_detected = True
+                self.log_info("Proportional sensor (%.3f) indicates filament present" % prop_value)
 
         # Definitely loaded
         if ts:
@@ -5825,7 +5973,16 @@ class Mmu:
 
         # Probably loaded: Unless strict we will continue to assume loaded in the absence of sensors to say otherwise
         elif not strict and self.filament_pos == self.FILAMENT_POS_LOADED and looks_loaded:
-            pass
+            # Without toolhead or physical extruder entry sensor, "looks_loaded" is based only on the
+            # gate sensor which cannot distinguish "in bowden" from "fully loaded". If proportional
+            # sensor is available and extruder can be heated, use it to verify extruder grip
+            if can_heat and ts is None and es is None and self.sensor_manager.has_sensor(self.SENSOR_PROPORTIONAL):
+                prop_result = self.check_filament_in_extruder_by_proportional()
+                if prop_result is True:
+                    self.log_info("Proportional sensor confirms extruder grip - filament loaded")
+                elif prop_result is False:
+                    self.log_info("Proportional sensor indicates no extruder grip - filament may not be fully loaded")
+                    self._set_filament_pos_state(self.FILAMENT_POS_IN_BOWDEN, silent=silent)
 
         # Somewhere in extruder
         elif filament_detected and can_heat and self.check_filament_in_extruder(): # Encoder based
@@ -5834,6 +5991,13 @@ class Mmu:
             # This case adds an additional encoder based test to see if filament is still being gripped by extruder
             # even though TS doesn't see it. It's a pedantic option so on turned on by strict flag
             self._set_filament_pos_state(self.FILAMENT_POS_IN_EXTRUDER, silent=silent) # Will start from tip forming
+
+        # Proportional sensor based extruder grip detection (centre + retract test)
+        # Gate on (filament_detected or gs) because filament_detected may be None when gate_selected
+        # is unknown (sensors in path can't be evaluated) but the gate sensor can still independently
+        # confirm filament presence. The two-phase test handles gear engagement internally.
+        elif (filament_detected or gs) and can_heat and self.sensor_manager.has_sensor(self.SENSOR_PROPORTIONAL) and self.check_filament_in_extruder_by_proportional():
+            self._set_filament_pos_state(self.FILAMENT_POS_LOADED, silent=silent)
 
         # At extruder entry
         elif es:
@@ -5874,7 +6038,10 @@ class Mmu:
             detected = self.buzz_gear_motor()
             self.log_debug("Filament %s in encoder after buzzing gear motor" % ("detected" if detected else "not detected"))
         if detected is None:
-            self.log_debug("No sensors configured!")
+            if self.sensor_manager.has_sensor(self.SENSOR_PROPORTIONAL):
+                self.log_debug("No switch sensors or encoder available, will defer to proportional sensor")
+            else:
+                self.log_debug("No sensors configured!")
         return detected
 
     # Check for filament at currently selected gate
@@ -5934,6 +6101,71 @@ class Mmu:
                 detected = measured > self.encoder_min
                 self.log_debug("Filament %s in extruder" % ("detected" if detected else "not detected"))
         return detected, measured
+
+    # Check if filament is gripped by the extruder using the proportional sync feedback sensor.
+    # Uses a two-phase approach:
+    #   Phase 1: Attempt to centre the sensor using adjust_filament_tension (gear-only moves).
+    #     - If centering fails and sensor remains in deep tension (>90%) → filament is free in bowden
+    #     - Any other outcome (centred or partially moved) → filament is near the extruder but we
+    #       cannot distinguish "at entry, not gripped" from "gripped and loaded" because both present
+    #       a rigid wall for the gear motor to work against → proceed to phase 2
+    #   Phase 2: Small extruder-only retract to check for sensor response.
+    #     - If sensor shifts toward compression → extruder has grip (retract pushes filament back
+    #       into bowden, compressing the buffer) → loaded
+    #     - If sensor unchanged → extruder has no grip → at entry but not gripped
+    # Requires hot extruder for phase 2 to avoid grinding cold filament.
+    # Returns True if extruder grip detected, False if not, None if test not possible
+    def check_filament_in_extruder_by_proportional(self):
+        if not self.sensor_manager.has_sensor(self.SENSOR_PROPORTIONAL):
+            return None
+
+        prop_sensor = self.sensor_manager.sensors.get(self.SENSOR_PROPORTIONAL)
+        buffer_range = self.sync_feedback_manager.sync_feedback_buffer_maxrange
+        settle_time = prop_sensor.report_time * 2 # Two full ADC cycles for a reliable reading
+
+        # Read baseline before any movement
+        baseline = prop_sensor.get_status(0).get('value', 0.)
+        self.log_info("Checking for filament in extruder using proportional sensor (baseline=%.3f)..." % baseline)
+
+        # Phase 1: Try to centre the sensor using gear-only tension adjustment.
+        # This can only definitively tell us if the filament is free in the bowden (deep tension
+        # after attempt). Centering success or partial movement means filament is near the extruder
+        # but could be either at the entry or gripped — both present a rigid anchor for the gear motor.
+        self.log_info("Proportional recovery phase 1: attempting to centre sensor...")
+        self.selector.filament_drive()
+        _, success = self.sync_feedback_manager.adjust_filament_tension(max_move=2*buffer_range)
+        post_adjust = prop_sensor.get_status(0).get('value', 0.)
+
+        if not success and post_adjust <= -0.9:
+            # Deep tension after adjustment attempt — nothing to compress against, filament is free
+            self.log_info("Proportional recovery: sensor still in deep tension (%.3f) after centering attempt - filament free in bowden" % post_adjust)
+            return False
+
+        # Phase 2: Extruder-only retract to distinguish "at entry" from "gripped"
+        # Retract distance proportional to current sensor reading to avoid oversized moves
+        self._ensure_safe_extruder_temperature(wait=True)
+
+        # When the extruder retracts with grip, filament is pushed back into the bowden
+        # compressing the buffer — the sensor shifts toward compression (more positive).
+        retract_distance = buffer_range
+        pre_retract = prop_sensor.get_status(0).get('value', 0.)
+
+        self.log_info("Proportional recovery phase 2: extruder-only retract test of %.1fmm (sensor=%.3f, buffer_range=%.1f)..." % (retract_distance, post_adjust, buffer_range))
+        self.trace_filament_move("Proportional recovery: extruder retract test", -retract_distance, speed=self.extruder_unload_speed, motor="extruder", wait=True)
+        self.movequeues_dwell(settle_time)
+        post_retract = prop_sensor.get_status(0).get('value', 0.)
+
+        shift = post_retract - pre_retract # Positive means sensor moved toward compression
+        detected = shift > 0.1 # Shift toward compression confirms extruder grip
+
+        self.log_info("Proportional recovery: retracted %.1fmm, pre=%.3f, post=%.3f, shift=%.3f - filament %s loaded"
+                      % (retract_distance, pre_retract, post_retract, shift, "confirmed" if detected else "not"))
+
+        # Return filament to original position if extruder had grip
+        if detected:
+            self.trace_filament_move("Proportional recovery: re-feed after retract test", retract_distance, speed=self.extruder_load_speed, motor="extruder", wait=True)
+
+        return detected
 
     def buzz_gear_motor(self):
         if self.has_encoder():
@@ -7443,6 +7675,13 @@ class Mmu:
         self.gear_short_move_accel = gcmd.get_float('GEAR_SHORT_MOVE_ACCEL', self.gear_short_move_accel, minval=10.)
         self.gear_short_move_threshold = gcmd.get_float('GEAR_SHORT_MOVE_THRESHOLD', self.gear_short_move_threshold, minval=0.)
         self.gear_homing_speed = gcmd.get_float('GEAR_HOMING_SPEED', self.gear_homing_speed, above=1.)
+        self.proportional_homing_speed = gcmd.get_float('PROPORTIONAL_HOMING_SPEED', self.proportional_homing_speed, above=1.)
+        prev_threshold = self.proportional_extruder_threshold
+        self.proportional_extruder_threshold = gcmd.get_float('PROPORTIONAL_EXTRUDER_THRESHOLD', self.proportional_extruder_threshold, minval=0.1, maxval=1.0)
+        if self.proportional_extruder_threshold != prev_threshold:
+            prop_endstop = self.sensor_manager.sensors.get(self.SENSOR_EXTRUDER_ENTRY_PROP, None)
+            if prop_endstop is not None:
+                prop_endstop._threshold = self.proportional_extruder_threshold
         self.extruder_homing_speed = gcmd.get_float('EXTRUDER_HOMING_SPEED', self.extruder_homing_speed, above=1.)
         self.extruder_load_speed = gcmd.get_float('EXTRUDER_LOAD_SPEED', self.extruder_load_speed, above=1.)
         self.extruder_unload_speed = gcmd.get_float('EXTRUDER_UNLOAD_SPEED', self.extruder_unload_speed, above=1.)
@@ -7615,6 +7854,8 @@ class Mmu:
             msg += "\ngear_short_move_accel = %.1f" % self.gear_short_move_accel
             msg += "\ngear_short_move_threshold = %.1f" % self.gear_short_move_threshold
             msg += "\ngear_homing_speed = %.1f" % self.gear_homing_speed
+            msg += "\nproportional_homing_speed = %.1f" % self.proportional_homing_speed
+            msg += "\nproportional_extruder_threshold = %.2f" % self.proportional_extruder_threshold
             msg += "\nextruder_homing_speed = %.1f" % self.extruder_homing_speed
             msg += "\nextruder_load_speed = %.1f" % self.extruder_load_speed
             msg += "\nextruder_unload_speed = %.1f" % self.extruder_unload_speed

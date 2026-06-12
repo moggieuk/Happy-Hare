@@ -257,6 +257,7 @@ class MmuProportionalSensor:
         # State
         self.value_raw = 0.0 # Raw ADC value
         self.value = 0.0     # In [-1.0, 1.0]
+        self._endstop_listeners = [] # Callbacks for virtual endstop(s)
 
         # Setup ADC
         ppins = self.printer.lookup_object('pins')
@@ -320,6 +321,10 @@ class MmuProportionalSensor:
         if y >  1.0: y =  1.0
         return y
 
+    def register_endstop_listener(self, callback):
+        """Register a callback to be notified on each ADC reading: callback(read_time, mapped_value)"""
+        self._endstop_listeners.append(callback)
+
     def _adc_callback(self, *args):
         # Old klipper: _adc_callback(read_time, read_value)
         # New klipper: _adc_callback(samples) where samples is a list of (read_time, read_value)
@@ -333,7 +338,11 @@ class MmuProportionalSensor:
 
         self.value_raw = float(read_value)
         self.value = self._map_reading(read_value) # Mapped & scaled value
-        
+
+        # Notify any registered endstop listeners (e.g. proportional_extruder_entry virtual endstop)
+        for listener in self._endstop_listeners:
+            listener(read_time, self.value)
+
         # Publish sync-feedback event immediately if extreme to match switch sensors
         # TODO really extreme should be determined by is_extreme() in mmu_sync_feedback manager (with hysteresis), but object hasn't been created yet
         # TODO so for now, use absolute extremes
@@ -343,11 +352,122 @@ class MmuProportionalSensor:
                 self._last_extreme = extreme
                 self.printer.send_event("mmu:sync_feedback", read_time, self.value)
 
+    @property
+    def report_time(self):
+        return self._report_time
+
     def get_status(self, eventtime):
         return {
             "enabled":          bool(self.runout_helper.sensor_enabled),
             "value":            self.value,             # in [-1.0, 1.0] (mapped)
             "value_raw":        self.value_raw,         # raw
+        }
+
+
+
+# -------------------------------------------------------------------------------------------------
+# Virtual endstop derived from the proportional sync-feedback sensor.
+# When the mapped sensor value crosses a configurable threshold (default 0.9 = heavy compression),
+# the endstop triggers, indicating that filament has reached the extruder entry. This allows
+# Klipper's native homing (via gear_rail.add_extra_endstop) to be used for
+# filament homing at the extruder.
+#
+class MmuProportionalExtruderEndstop:
+
+    def __init__(self, config, proportional_sensor, name, threshold=0.9):
+        self.printer = config.get_printer()
+        self.reactor = self.printer.get_reactor()
+        self.name = name
+        self._proportional_sensor = proportional_sensor
+        self._threshold = threshold
+
+        # Endstop state
+        self._steppers = []
+        self._trigger_completion = None
+        self._last_trigger_time = None
+        self._homing = False
+        self._triggered = True # Default: home until filament detected (compression >= threshold)
+
+        # Register as a listener on the proportional sensor's ADC callback chain
+        proportional_sensor.register_endstop_listener(self._on_value_update)
+
+        # Attach runout_helper for sensor_manager compatibility (presence detection, enable/disable)
+        self.runout_helper = MmuRunoutHelper(
+            self.printer,
+            name,
+            0,                          # event_delay (not used)
+            {},                         # No gcode actions
+            insert_remove_in_print=False,
+            button_handler=None,
+            switch_pin=proportional_sensor._pin  # Reference the underlying analog pin
+        )
+
+        # Expose status
+        self.printer.add_object(self.name, self)
+
+
+    def _on_value_update(self, read_time, mapped_value):
+        """
+        Called by MmuProportionalSensor on every ADC reading.
+        mapped_value is in [-1.0, 1.0] where positive = compression.
+        We treat compression >= threshold as "filament present at extruder entry".
+        """
+        is_triggered = mapped_value >= self._threshold
+        self.runout_helper.note_filament_present(read_time, is_triggered)
+
+        if self._homing and self._trigger_completion is not None:
+            if is_triggered == self._triggered:
+                self._last_trigger_time = read_time
+                self._trigger_completion.complete(True)
+
+
+    # Required endstop interface methods -------
+
+    def query_endstop(self, print_time):
+        return self.runout_helper.filament_present
+
+
+    def setup_pin(self, pin_type, pin_name):
+        return self
+
+
+    def add_stepper(self, stepper):
+        self._steppers.append(stepper)
+
+
+    def get_steppers(self):
+        return list(self._steppers)
+
+
+    def home_start(self, print_time, sample_time, sample_count, rest_time, triggered):
+        self._trigger_completion = self.reactor.completion()
+        self._last_trigger_time = None
+        self._homing = True
+        self._triggered = triggered
+
+        if self.runout_helper.filament_present == self._triggered:
+            self._last_trigger_time = print_time
+            self._trigger_completion.complete(True)
+
+        return self._trigger_completion
+
+
+    def home_wait(self, home_end_time):
+        self._homing = False
+        self._trigger_completion = None
+
+        if self._last_trigger_time is None:
+            raise self.printer.command_error("No trigger on %s after full movement" % self.name)
+
+        return self._last_trigger_time
+
+
+    def get_status(self, eventtime=None):
+        return {
+            "filament_detected": bool(self.runout_helper.filament_present),
+            "enabled": bool(self.runout_helper.sensor_enabled),
+            "threshold": self._threshold,
+            "sensor_value": self._proportional_sensor.value,
         }
 
 
@@ -706,7 +826,14 @@ class MmuSensors:
         # Uses single analog input; value scaled in [-1, 1]
         analog_pin = config.get('sync_feedback_analog_pin', None)
         if analog_pin:
-            self.sensors[Mmu.SENSOR_PROPORTIONAL] = MmuProportionalSensor(config, name=Mmu.SENSOR_PROPORTIONAL)
+            prop_sensor = MmuProportionalSensor(config, name=Mmu.SENSOR_PROPORTIONAL)
+            self.sensors[Mmu.SENSOR_PROPORTIONAL] = prop_sensor
+
+            # Create virtual endstop for extruder entry detection from proportional sensor
+            threshold = config.getfloat('proportional_extruder_threshold', 0.9, minval=0.1, maxval=1.0)
+            self.sensors[Mmu.SENSOR_EXTRUDER_ENTRY_PROP] = MmuProportionalExtruderEndstop(
+                config, prop_sensor, Mmu.SENSOR_EXTRUDER_ENTRY_PROP, threshold=threshold
+            )
 
 
     def _create_mmu_sensor(

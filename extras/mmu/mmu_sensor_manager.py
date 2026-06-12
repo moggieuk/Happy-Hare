@@ -44,6 +44,7 @@ class MmuSensorManager:
                 sensor_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_PROPORTIONAL, i))
         sensor_names.extend([
             self.mmu.SENSOR_EXTRUDER_ENTRY,
+            self.mmu.SENSOR_EXTRUDER_ENTRY_PROP,
             self.mmu.SENSOR_TOOLHEAD
         ])
         mmu_sensors = self.mmu.printer.lookup_object("mmu_sensors")
@@ -69,6 +70,7 @@ class MmuSensorManager:
                 self.endstop_names.append(self.get_unit_sensor_name(self.mmu.SENSOR_TENSION, i))
         self.endstop_names.extend([
             self.mmu.SENSOR_EXTRUDER_ENTRY,
+            self.mmu.SENSOR_EXTRUDER_ENTRY_PROP,
             self.mmu.SENSOR_TOOLHEAD
         ])
         # TODO Assumes one stepper but in theory could be on all
@@ -78,7 +80,7 @@ class MmuSensorManager:
         for name in self.endstop_names:
             sensor = self.all_sensors.get(name, None)
             if sensor is not None:
-                if sensor.__class__.__name__ in ["MmuAdcSwitchSensor", "MmuHallEndstop"]:
+                if sensor.__class__.__name__ in ["MmuAdcSwitchSensor", "MmuHallEndstop", "MmuProportionalExtruderEndstop"]:
                     sensor_pin = sensor.runout_helper.switch_pin
                     mcu_endstop = self.mmu.gear_rail.add_extra_endstop(sensor_pin, name, mcu_endstop=sensor)
                 else:
@@ -92,7 +94,7 @@ class MmuSensorManager:
 
                 # This ensures rapid stopping of extruder stepper when endstop is hit on synced homing
                 # otherwise the extruder can continue to move a small (speed dependent) distance
-                if self.mmu.homing_extruder and name in [self.mmu.SENSOR_TOOLHEAD, self.mmu.SENSOR_COMPRESSION, self.mmu.SENSOR_TENSION]:
+                if self.mmu.homing_extruder and name in [self.mmu.SENSOR_TOOLHEAD, self.mmu.SENSOR_COMPRESSION, self.mmu.SENSOR_TENSION, self.mmu.SENSOR_EXTRUDER_ENTRY_PROP]:
                     mcu_endstop.add_stepper(self.mmu.mmu_extruder_stepper.stepper)
             else:
                 logging.warning("MMU: Filament sensor %s is not defined in [mmu_sensors]" % name)

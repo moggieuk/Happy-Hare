@@ -267,6 +267,9 @@ class MmuCalibrationManager:
             if self.mmu.extruder_homing_endstop in [self.mmu.SENSOR_EXTRUDER_ENTRY, self.mmu.SENSOR_COMPRESSION]:
                 if self.mmu.sensor_manager.check_sensor(self.mmu.extruder_homing_endstop):
                     raise MmuError("The %s sensor triggered before homing. Check filament and sensor operation" % self.mmu.extruder_homing_endstop)
+            elif self.mmu.extruder_homing_endstop == self.mmu.SENSOR_EXTRUDER_ENTRY_PROP:
+                if self.mmu.sensor_manager.check_sensor(self.mmu.SENSOR_EXTRUDER_ENTRY_PROP):
+                    raise MmuError("The proportional sensor is already above the extruder threshold before homing. Check filament and sensor operation")
 
             actual, extra = self.mmu._home_to_extruder(extruder_homing_max)
             measured = self.mmu.get_encoder_distance(dwell=True) + self.mmu._get_encoder_dead_space()
