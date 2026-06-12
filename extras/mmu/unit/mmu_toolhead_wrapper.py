@@ -129,12 +129,12 @@ class MmuToolheadWrapper():
             self.hall_dia2 = config.getfloat('hall_cal_dia2', 2.0)
             self.hall_rawdia1 = config.getint('hall_raw_dia1', 9500)
             self.hall_rawdia2 = config.getint('hall_raw_dia2', 10500)
-            self.hall_runout_dia = config.getfloat('hall_min_diameter', 1.0)
-            # self.hall_runout_dia_max = config.getfloat('hall_max_diameter', 2.0) - Unused for trigger
+            self.hall_runout_dia_min = config.getfloat('hall_min_diameter', 1.0)
+            self.hall_runout_dia_max = config.getfloat('hall_max_diameter', 2.0) # Unused
 
             s = MmuHallEndstop(config, target_name, self.hall_pin1, self.hall_pin2,
                                self.hall_dia1, self.hall_rawdia1, self.hall_dia2, self.hall_rawdia2,
-                               hall_runout_dia=self.hall_runout_dia,
+                               hall_runout_dia=self.hall_runout_dia_min,
                                events=('insert', 'runout'),
                                register=register)
 

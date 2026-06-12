@@ -68,9 +68,10 @@ hidden_params = [
     "gear_buzz_accel",
 
     # For proportional sync-feedback sensor
-    "sync_feedback_analog_sample_time",
-    "sync_feedback_analog_sample_count",
-    "sync_feedback_analog_report_time",
+    "analog_sample_time",
+    "analog_sample_count",
+    "analog_report_time",
+    "analog_vsensor_hysteresis",
 
     # From PR to convert Qidi hall-effect filament width sensor into extruder/toolhead sensor
     "hall_sensor_endstop",

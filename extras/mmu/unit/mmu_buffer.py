@@ -178,6 +178,7 @@ class MmuProportionalSensor:
         self._sample_time  = config.getfloat('analog_sample_time', 0.005) # Not exposed
         self._sample_count = config.getint('analog_sample_count', 5)      # Not exposed
         self._report_time  = config.getfloat('analog_report_time', 0.100) # Not exposed
+        self._vsensor_hysteresis = config.getfloat('analog_vsensor_hysteresis', 0.04) # Not exposed (4%)
 
         self._reversed = (max_compression < max_tension)
         eps = 1e-12
@@ -193,6 +194,12 @@ class MmuProportionalSensor:
         # State
         self.value_raw = 0.0 # Raw ADC value
         self.value = 0.0     # In [-1.0, 1.0]
+
+        # Virtual sensor setup
+        h = abs(self._vsensor_threshold) * self._vsensor_hysteresis
+        self._vsensor_threshold_low = self._vsensor_threshold - h
+        self._vsensor_threshold_high = self._vsensor_threshold + h
+        self._vsensor_state = None
 
         # Setup ADC
         ppins = self.printer.lookup_object('pins')
@@ -231,8 +238,8 @@ class MmuProportionalSensor:
 
     def _map_reading(self, v_raw):
         n = self._neutral_point
-
         v = float(v_raw)
+
         # Map around neutral_point into [-1, 1]
         if not self._reversed:
             if v >= n:
@@ -259,22 +266,35 @@ class MmuProportionalSensor:
         read_time, read_value = MmuAdcHelper.unpack_adc_callback(*args)
         self.value_raw = float(read_value)
         self.value = self._map_reading(read_value) # Mapped & scaled value
- 
-        # Service virtual endstop sensors...
-        if self.compression_vsensor is not None:
-            self.compression_vsensor.trigger_handler(
-                read_time,
-                self.value > self._vsensor_threshold
-            )
-        if self.tension_vsensor is not None:
-            self.tension_vsensor.trigger_handler(
-                read_time,
-                self.value < self._vsensor_threshold
-            )
+
+        prev_state = self._vsensor_state
+
+        # Apply hysteresis before calling trigger and ititilize on first call
+        if self._vsensor_state is None:
+            if self.value > self._vsensor_threshold_high:
+                self._vsensor_state = 1
+            elif self.value < self._vsensor_threshold_low:
+                self._vsensor_state = -1
+            else:
+                self._vsensor_state = 0
+        elif self.value > self._vsensor_threshold_high:
+            self._vsensor_state = 1
+        elif self.value < self._vsensor_threshold_low:
+            self._vsensor_state = -1
+        elif self._vsensor_threshold_low <= self.value <= self._vsensor_threshold_high:
+            self._vsensor_state = 0
+
+        # Service virtual endstop sensors only if hysteresis state changes...
+        if self._vsensor_state != prev_state:
+            if self.compression_vsensor is not None:
+                self.compression_vsensor.trigger_handler(read_time, self._vsensor_state > 0)
+            if self.tension_vsensor is not None:
+                self.tension_vsensor.trigger_handler(read_time, self._vsensor_state < 0)
 
         # Publish sync-feedback event immediately if extreme to match switch sensors
         # TODO perhaps this should use 'analog_sensor_threshold' to signify extreme or
         # TODO determined by is_extreme() in mmu_sync_feedback manager (with hysteresis)
+        # TODO ...or do we even need this?
         if abs(self.value) >= 1.0:
             extreme = 1 if self.value > 0 else -1
             if extreme != self._last_extreme: # Avoid repeated events
