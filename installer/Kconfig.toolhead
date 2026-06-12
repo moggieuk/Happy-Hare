@@ -67,7 +67,7 @@ menu "Toolhead sensors/settings"
       printer MCU so specify it here.
 
   config PIN_TOOLHEAD_SENSOR
-    prompt "Extruder sensor pin"
+    prompt "Toolhead sensor pin      "
     depends on MMU_HAS_SENSOR_TOOLHEAD
     help
       Can also be set under "Pins" section
@@ -80,10 +80,22 @@ menu "Toolhead sensors/settings"
       printer MCU so specify it here.
   
   config PIN_EXTRUDER_SENSOR
-    prompt "Extruder sensor pin"
+    prompt "Extruder sensor pin      "
     depends on MMU_HAS_SENSOR_EXTRUDER
     help
       Can also be set under "Pins" section
+
+  config BOOL_REGISTER_TOOLHEAD_SENSORS
+    bool "Register toolhead sensors"
+    default y
+    help
+      Whether to register the sensors for visibility in klipper UI's
+      and with QUERY_SENSOR command. There is no harm in doing this but
+      it can be disabled to reduce clutter.
+  config PARAM_REGISTER_TOOLHEAD_SENSORS
+    int
+    default 1 if BOOL_REGISTER_TOOLHEAD_SENSORS
+    default 0
 
 # -------------------------------------
 # Toolhead dimensions

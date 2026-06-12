@@ -2268,7 +2268,6 @@ class MmuController(MmuFilamentMovement):
 
 
     def select_gate(self, gate):
-#        self.log_warning(f"PAUL: select_gate({gate}): gate_selected:{self.gate_selected}")
         mmu_unit = self.mmu_unit(gate)
         selector = mmu_unit.selector
         try:
@@ -2339,7 +2338,6 @@ class MmuController(MmuFilamentMovement):
         prev_gate = self.gate_selected
         if gate == prev_gate:
             return
-#        self.log_warning(f"PAUL: _set_gate_selected({gate})")
 
         # IMPORTANT: ---------------------------------------------------------
         # That this is the only block outside reinit() where gate_selected

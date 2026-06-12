@@ -26,7 +26,7 @@ import logging, time
 
 # Happy Hare imports
 from ..mmu_constants    import *
-from ..mmu_sensor_utils import MmuSensorFactory, MmuVirtualSensor
+from ..mmu_sensor_utils import MmuSensorFactory, MmuVirtualEndstopSensor
 
 
 class MmuSensors:
@@ -39,6 +39,7 @@ class MmuSensors:
         self.printer = config.get_printer()
         self.name = config.get_name().split()[-1]
 
+        register = bool(config.getint('register_mmu_sensors', 1, minval=0, maxval=1))
         event_delay = config.get('event_delay', 0.5)
         first_gate = mmu_unit.first_gate
         num_gates = mmu_unit.num_gates
@@ -56,7 +57,8 @@ class MmuSensors:
                 switch_pin,
                 event_delay=event_delay,
                 events=('insert', 'remove', 'runout'),
-                insert_remove_in_print=True
+                insert_remove_in_print=True,
+                register=register
             )
 
 
@@ -68,7 +70,8 @@ class MmuSensors:
             None,
             switch_pin,
             event_delay=event_delay,
-            events=('runout')
+            events=('runout'),
+            register=register
         )
 
         # Setup "mmu_exit" sensors...
@@ -88,13 +91,16 @@ class MmuSensors:
                     event_delay,
                     a_range,
                     events=('runout'),
-                    a_pullup=a_pullup)
+                    a_pullup=a_pullup,
+                    register=register
+                )
                 continue
 
             self.exit_sensors[gate] = sf.create_mmu_sensor(
                 config, SENSOR_EXIT_PREFIX, gate, switch_pin,
                 event_delay=event_delay,
-                events=('runout')
+                events=('runout'),
+                register=register
             )
 
 
@@ -109,7 +115,7 @@ class MmuSensors:
 # Currently only parsed as option for 'mmu_exit' sensors (where clog/tangle flags must be False)
 # -----------------------------------------------------------------------------------------------------------
 
-class MmuAdcSwitchSensor(MmuVirtualSensor):
+class MmuAdcSwitchSensor(MmuVirtualEndstopSensor):
 
     def __init__(self, config, name_prefix, gate, switch_pin, event_delay, a_range,
         events=(),

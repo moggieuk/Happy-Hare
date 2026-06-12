@@ -24,7 +24,7 @@ from ..mmu_sensor_utils import (
     MmuAdcHelper,
     MmuRunoutHelper,
     MmuSwitchSensor,
-    MmuVirtualSensor,
+    MmuVirtualEndstopSensor,
     EVENT_GCODES
 )
 
@@ -41,6 +41,7 @@ class MmuBuffer:
 
         self.connected_units = [mmu_unit]       # mmu_unit is just the first to load, not necessarily all
 
+        register = bool(config.getint('register_buffer_sensors', 1, minval=0, maxval=1))
         event_delay = config.get('event_delay', 0)
         sf = MmuSensorFactory(self.printer)
 
@@ -55,7 +56,8 @@ class MmuBuffer:
             None,
             switch_pin,
             event_delay=event_delay,
-            button_handler=sf.sync_compression_callback
+            button_handler=self.sync_compression_callback,
+            register=register
         )
 
         # Setup motor syncing feedback tension sensor for unit...
@@ -66,7 +68,8 @@ class MmuBuffer:
             None,
             switch_pin,
             event_delay=event_delay,
-            button_handler=sf.sync_tension_callback
+            button_handler=self.sync_tension_callback,
+            register=register
         )
 
         # Setup analog (proportional) sync feedback
@@ -79,6 +82,7 @@ class MmuBuffer:
                 f"{self.name}:{SENSOR_PROPORTIONAL}",
                 virtual_compression_sensor = f"{self.name}:{SENSOR_COMPRESSION}" if self.compression_sensor is None else None,
                 virtual_tension_sensor     = f"{self.name}:{SENSOR_TENSION}" if self.tension_sensor is None else None,
+                register=register
             )
 
             if self.compression_sensor is None:
@@ -87,9 +91,52 @@ class MmuBuffer:
             if self.tension_sensor is None:
                 self.tension_sensor = self.proportional_sensor.tension_vsensor
 
+        # Klipper event handlers
+        self.printer.register_event_handler('klippy:connect', self.handle_connect)
+
+
+    def handle_connect(self):
+        self.mmu = self.mmu_machine.mmu_controller      # Shared MMU controller class
+
 
     def add_unit(self, mmu_unit):
         self.connected_units.append(mmu_unit)
+
+
+    def sync_tension_callback(self, eventtime, t_sensor_name, tension_state, runout_helper):
+        """
+        Button event handler for sync-feedback tension switch
+        """
+        c_sensor_name = t_sensor_name.replace(SENSOR_TENSION, SENSOR_COMPRESSION)
+        compression_sensor = self.mmu.sensor_manager.get_sensor_obj(c_sensor_name)
+        compression_enabled = compression_sensor.runout_helper.sensor_enabled if compression_sensor else False
+        compression_state = compression_sensor.runout_helper.filament_present if compression_enabled else False
+
+        if compression_enabled:
+            event_value = 0 if tension_state == compression_state else (-1 if tension_state else 1) # {-1,0,1}
+        else:
+            event_value = -tension_state # {0,-1}
+
+        # Send event now so it is processed as early as possible
+        self.printer.send_event("mmu:sync_feedback", eventtime, event_value)
+
+
+    def sync_compression_callback(self, eventtime, c_sensor_name, compression_state, runout_helper):
+        """
+        Button event handler for sync-feedback compression switch
+        """
+        t_sensor_name = c_sensor_name.replace(SENSOR_COMPRESSION, SENSOR_TENSION)
+        tension_sensor = self.mmu.sensor_manager.get_sensor_obj(t_sensor_name)
+        tension_enabled = tension_sensor.runout_helper.sensor_enabled if tension_sensor else False
+        tension_state = tension_sensor.runout_helper.filament_present if tension_enabled else False
+
+        if tension_enabled:
+            event_value = 0 if compression_state == tension_state else (1 if compression_state else -1) # {-1,0,1}
+        else:
+            event_value = compression_state # {1,0}
+
+        # Send event now so it is processed as early as possible
+        self.printer.send_event("mmu:sync_feedback", eventtime, event_value)
 
 
 
@@ -100,7 +147,11 @@ class MmuBuffer:
 
 class MmuProportionalSensor:
 
-    def __init__(self, config, name, virtual_compression_sensor = False, virtual_tension_sensor = False):
+    def __init__(self, config, name,
+        virtual_compression_sensor = False,
+        virtual_tension_sensor = False,
+        register=True
+    ):
 
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
@@ -167,11 +218,11 @@ class MmuProportionalSensor:
 
         # Create virtual compression sensor?
         if virtual_compression_sensor:
-            self.compression_vsensor = MmuVirtualSensor(config, virtual_compression_sensor, None)
+            self.compression_vsensor = MmuVirtualEndstopSensor(config, virtual_compression_sensor, None, register=register)
 
         # Create virtual tension sensor?
         if virtual_tension_sensor:
-            self.tension_vsensor = MmuVirtualSensor(config, virtual_tension_sensor, None)
+            self.tension_vsensor = MmuVirtualEndstopSensor(config, virtual_tension_sensor, None, register=register)
        
         # Expose status
         self.printer.add_object(self.name, self)
@@ -209,7 +260,7 @@ class MmuProportionalSensor:
         self.value_raw = float(read_value)
         self.value = self._map_reading(read_value) # Mapped & scaled value
  
-        # Service virtual sensors...
+        # Service virtual endstop sensors...
         if self.compression_vsensor is not None:
             self.compression_vsensor.trigger_handler(
                 read_time,
@@ -221,10 +272,9 @@ class MmuProportionalSensor:
                 self.value < self._vsensor_threshold
             )
 
-# PAUL rationalize this with  new virtual endstops..
         # Publish sync-feedback event immediately if extreme to match switch sensors
-        # TODO really extreme should be determined by is_extreme() in mmu_sync_feedback manager (with hysteresis), but object hasn't been created yet
-        # TODO so for now, use absolute extremes
+        # TODO perhaps this should use 'analog_sensor_threshold' to signify extreme or
+        # TODO determined by is_extreme() in mmu_sync_feedback manager (with hysteresis)
         if abs(self.value) >= 1.0:
             extreme = 1 if self.value > 0 else -1
             if extreme != self._last_extreme: # Avoid repeated events

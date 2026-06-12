@@ -27,6 +27,8 @@ menu "Raw Settings"
     source "Kconfig.gates"
     source "Kconfig.motor_sync"
     source "Kconfig.flowguard"
+    source "Kconfig.encoder_config"
+    source "Kconfig.buffer_config"
     source "Kconfig.calibration"
   endif
 endmenu

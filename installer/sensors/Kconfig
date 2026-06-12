@@ -10,4 +10,16 @@ menu "Filament sensors"
   rsource "Kconfig.exit"
   rsource "Kconfig.shared_exit"
   rsource "Kconfig.gear_touch"
+
+  config BOOL_REGISTER_MMU_SENSORS
+    bool "Register mmu sensors"
+    default y 
+    help
+      Whether to register the sensors for visibility in klipper UI's
+      and with QUERY_SENSOR command. There is no harm in doing this but
+      it can be disabled to reduce clutter.
+  config PARAM_REGISTER_MMU_SENSORS
+    int
+    default 1 if BOOL_REGISTER_MMU_SENSORS
+    default 0
 endmenu

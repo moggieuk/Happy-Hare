@@ -196,12 +196,11 @@ class MmuRunoutHelper:
 
     def _process_state_change(self, eventtime, is_filament_present):
         # Determine "printing" status
-        now = self.reactor.monotonic()
         print_stats = self.printer.lookup_object("print_stats", None)
         if print_stats is not None:
-            is_printing = print_stats.get_status(now)["state"] == "printing"
+            is_printing = print_stats.get_status(eventtime)["state"] == "printing"
         else:
-            is_printing = self.printer.lookup_object("idle_timeout").get_status(now)["state"] == "Printing"
+            is_printing = self.printer.lookup_object("idle_timeout").get_status(eventtime)["state"] == "Printing"
 
         insert_gcode = self.gcodes.get("insert")
         remove_gcode = self.gcodes.get("remove")
@@ -297,48 +296,12 @@ class MmuSensorFactory:
         return (real_pin == '')
 
 
-    def sync_tension_callback(self, eventtime, t_sensor_name, tension_state, runout_helper):
-        """
-        Button event handler for sync-feedback tension switch
-        """
-        c_sensor_name = t_sensor_name.replace(SENSOR_TENSION, SENSOR_COMPRESSION)
-        compression_sensor = self.printer.lookup_object("filament_switch_sensor %s" % c_sensor_name, None)
-        compression_enabled = compression_sensor.runout_helper.sensor_enabled if compression_sensor else False
-        compression_state = compression_sensor.runout_helper.filament_present if compression_enabled else False
-
-        if compression_enabled:
-            event_value = 0 if tension_state == compression_state else (-1 if tension_state else 1) # {-1,0,1}
-        else:
-            event_value = -tension_state # {0,-1}
-
-        # Send event now so it is processed as early as possible
-        self.printer.send_event("mmu:sync_feedback", eventtime, event_value)
-
-
-    def sync_compression_callback(self, eventtime, c_sensor_name, compression_state, runout_helper):
-        """
-        Button event handler for sync-feedback compression switch
-        """
-        t_sensor_name = c_sensor_name.replace(SENSOR_COMPRESSION, SENSOR_TENSION)
-        tension_sensor = self.printer.lookup_object("filament_switch_sensor %s" % t_sensor_name, None)
-        tension_enabled = tension_sensor.runout_helper.sensor_enabled if tension_sensor else False
-        tension_state = tension_sensor.runout_helper.filament_present if tension_enabled else False
-
-        if tension_enabled:
-            event_value = 0 if compression_state == tension_state else (1 if compression_state else -1) # {-1,0,1}
-        else:
-            event_value = compression_state # {1,0}
-
-        # Send event now so it is processed as early as possible
-        self.printer.send_event("mmu:sync_feedback", eventtime, event_value)
-
-
 
 # -----------------------------------------------------------------------------------------------------------
 # Set up a MMU sensor. Generally these are enhanced filament_switch_sensors but can also be virtual
 # -----------------------------------------------------------------------------------------------------------
 
-class MmuBaseSensor:
+class MmuSensor:
 
     def __init__(
         self, config, name_prefix, gate,
@@ -385,7 +348,7 @@ class MmuBaseSensor:
 # Set up a regular switch based MMU sensor
 # -----------------------------------------------------------------------------------------------------------
 
-class MmuSwitchSensor(MmuBaseSensor):
+class MmuSwitchSensor(MmuSensor):
 
     def __init__(self, config, name_prefix, gate, switch_pin, **kwargs):
         super().__init__(config, name_prefix, gate, **kwargs)
@@ -409,7 +372,7 @@ class MmuSwitchSensor(MmuBaseSensor):
 # Also, this sensor object is used for "software" endstops so implements the endstop interface
 # -----------------------------------------------------------------------------------------------------------
 
-class MmuVirtualSensor(MmuBaseSensor):
+class MmuVirtualEndstopSensor(MmuSensor):
 
     def __init__(self, config, name_prefix, gate, **kwargs):
         super().__init__(config, name_prefix, gate, **kwargs)

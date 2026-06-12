@@ -66,6 +66,6 @@ class MmuFlowGuardCommand(BaseCommand):
         # Just report status
         if sf.p.flowguard_enabled:
             active = " and currently active" if sf.flowguard_active else " (not currently active)"
-            mmu.log_always("FlowGuard monitoring feature is enabled%s" % active)
+            mmu.log_always(f"FlowGuard monitoring feature is enabled{active} on unit {mmu_unit.name}")
         else:
-            mmu.log_always("FlowGuard monitoring feature is disabled")
+            mmu.log_always(f"FlowGuard monitoring feature is disabled on unit {mmu_unit.name}")

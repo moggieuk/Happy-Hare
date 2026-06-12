@@ -23,7 +23,7 @@ from typing                import Sequence
 
 # Happy Hare imports
 from ..mmu_constants       import *
-from ..mmu_sensor_utils    import MmuSensorFactory, MmuVirtualSensor
+from ..mmu_sensor_utils    import MmuSensorFactory, MmuVirtualEndstopSensor
 from ..mmu_base_parameters import TunableParametersBase, ParamSpec
 
 
@@ -73,6 +73,7 @@ class MmuToolheadWrapper():
 
         # Setup 'extruder' & 'toolhead' sensors connected to this toolhead
         # Allows for visibility, enable/disable control & insert/runout on extruder sensor
+        register = bool(config.getint('register_toolhead_sensors', 1, minval=0, maxval=1))
         event_delay = config.get('event_delay', 0.5)
         self.sensor_factory = sf = MmuSensorFactory(self.printer)
 
@@ -86,8 +87,8 @@ class MmuToolheadWrapper():
             None,
             switch_pin,
             event_delay=event_delay,
-            insert=True,
-            runout=True
+            events=('insert', 'runout'),
+            register=register
         )
         if sensor is not None:
             self.sensors[SENSOR_EXTRUDER_ENTRY] = sensor
@@ -101,7 +102,8 @@ class MmuToolheadWrapper():
             f"{self.name}:{SENSOR_TOOLHEAD}",
             None,
             switch_pin,
-            event_delay=event_delay
+            event_delay=event_delay,
+            register=register
         )
         if sensor is not None:
             self.sensors[SENSOR_TOOLHEAD] = sensor
@@ -133,7 +135,8 @@ class MmuToolheadWrapper():
             s = MmuHallEndstop(config, target_name, self.hall_pin1, self.hall_pin2,
                                self.hall_dia1, self.hall_rawdia1, self.hall_dia2, self.hall_rawdia2,
                                hall_runout_dia=self.hall_runout_dia,
-                               events=('insert', 'runout'))
+                               events=('insert', 'runout'),
+                               register=register)
 
             # Likley overriding entry or toolhead sensor but can also define a brand new toolhead sensor
             self.sensors[target_name] = s
@@ -164,13 +167,14 @@ class MmuToolheadWrapper():
 # If configured this replaces the typical physical switches for extruder/toolhead sensors
 # -----------------------------------------------------------------------------------------------------------
 
-class MmuHallEndstop(MmuVirtualSensor):
+class MmuHallEndstop(MmuVirtualEndstopSensor):
 
     def __init__(
         self, config, name, pin1, pin2,
         cal_dia1, raw_dia1, cal_dia2, raw_dia2,
         hall_runout_dia=1.,
         events=(),
+        register=True
     ):
 
         super().__init__(config, name, None,
@@ -178,7 +182,7 @@ class MmuHallEndstop(MmuVirtualSensor):
             events=events,
             insert_remove_in_print=False,
             button_handler=None,
-            register=True,
+            register=register,
         )
 
         # Configurable sampling for fast endstop response

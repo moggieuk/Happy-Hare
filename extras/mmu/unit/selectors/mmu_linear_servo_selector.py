@@ -226,7 +226,6 @@ class LinearSelectorServo:
         if self.mmu._is_running_test: return # Save servo while testing
         if self.mmu.gate_selected == TOOL_GATE_BYPASS: return
         if self.servo_state == SERVO_DOWN_STATE: return
-#        self.mmu.log_warning("PAUL: SERVO DOWN")
         self.mmu.log_trace("Setting servo to down (filament drive) position at angle: %d" % self.servo_angles['down'])
 
         if buzz_gear and self.p.servo_buzz_gear_on_down > 0:
@@ -251,7 +250,6 @@ class LinearSelectorServo:
     def servo_move(self): # Position servo for selector movement
         if self.mmu._is_running_test: return # Save servo while testing
         if self.servo_state == SERVO_MOVE_STATE: return
-#        self.mmu.log_warning("PAUL: SERVO MOVE")
         self.mmu.log_trace("Setting servo to move (filament hold) position at angle: %d" % self.servo_angles['move'])
         if self.servo_angle != self.servo_angles['move']:
             self.mmu.movequeue_wait()
@@ -269,7 +267,6 @@ class LinearSelectorServo:
         """
         if self.mmu._is_running_test: return 0. # Save servo while testing
         if self.servo_state == SERVO_UP_STATE: return 0.
-#        self.mmu.log_warning("PAUL: SERVO UP")
         self.mmu.log_trace("Setting servo to up (filament released) position at angle: %d" % self.servo_angles['up'])
         delta = 0.
         if self.servo_angle != self.servo_angles['up']:

@@ -95,15 +95,17 @@ class MmuSensorsCommand(BaseCommand):
                         value_str = f"{value:.2f}"
 
                     summary += f"{name:<{pad}} --> {value_str}"
-
-                    if detail:
-                        summary += f" (raw: {value_raw:.2f})"
+                    summary += f" (raw: {value_raw:.2f})"
 
                 else:
                     trig = "TRIGGERED" if sensor.runout_helper.filament_present else "Open"
 
                     value_str = f"{trig} (disabled)" if state is None else trig
                     summary += f"{name:<{pad}} --> {value_str}"
+
+                    if sensor.__class__.__name__ == "MmuVirtualEndstopSensor":
+                        summary += f" (virtual)"
+
 
                     if (
                         detail and
