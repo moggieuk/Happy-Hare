@@ -3410,6 +3410,27 @@ class Mmu:
         self.sensor_manager.enable_runout(self.gate_selected)
         self.sync_feedback_manager.activate_flowguard(eventtime)
         self.runout_last_enable_time = eventtime
+        self._check_sensors_after_monitoring_resume()
+
+    def _check_sensors_after_monitoring_resume(self):
+        # A genuine filament removal while monitoring was suspended (toolchange, purge,
+        # tension adjust...) is classified by MmuRunoutHelper as a benign "remove" (or simply
+        # discarded for sensors without remove handling) and is never re-evaluated once
+        # monitoring resumes. Reconcile here: if actively printing with filament loaded, the
+        # active gate's pre-gate and gear sensors must read filament present. If one reads
+        # empty, fire the standard runout path (sends pause, then defers __MMU_SENSOR_RUNOUT
+        # via the reactor so it runs after the current operation completes)
+        if not self.is_printing() or self.filament_pos != self.FILAMENT_POS_LOADED or self.gate_selected < 0:
+            return
+        for prefix in [self.SENSOR_PRE_GATE_PREFIX, self.SENSOR_GEAR_PREFIX]:
+            name = self.sensor_manager.get_gate_sensor_name(prefix, self.gate_selected)
+            if self.sensor_manager.check_sensor(name) is False:
+                sensor = self.sensor_manager.sensors.get(name)
+                if sensor:
+                    self.log_warning("Sensor %s reads empty after filament monitoring resumed. "
+                                     "Probable runout occurred while monitoring was suspended. Triggering runout handling" % name)
+                    sensor.runout_helper.note_clog_tangle("runout")
+                    return
 
     @contextlib.contextmanager
     def _wrap_suspend_filament_monitoring(self):

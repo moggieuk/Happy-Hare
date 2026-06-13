@@ -448,6 +448,15 @@ class MmuSyncFeedbackManager:
         # Turn on extruder movement events
         self.extruder_monitor.register_callback(self._handle_extruder_movement, self.sync_feedback_extrude_threshold)
 
+        # Re-arm tangle prevention if filament is loaded. An in-print unsync/resync cycle
+        # (e.g. MMU_SYNC_FEEDBACK ADJUST_TENSION) resets it via _handle_mmu_unsynced and,
+        # without this, only the end of load_sequence could ever arm it again
+        if (self.tangle_prevention_enabled and not self._tangle_prevention_active
+                and self.mmu.filament_pos == self.mmu.FILAMENT_POS_LOADED
+                and self.mmu.sensor_manager.has_sensor(self.mmu.SENSOR_PROPORTIONAL)):
+            self._tangle_prevention_active = True
+            self.mmu.log_debug("Tangle Prevention: Re-armed on resync")
+
 
     def _handle_mmu_unsynced(self, eventtime=None):
         """
