@@ -39,7 +39,7 @@ if MULTI_UNIT_ENTRY_POINT || !MULTI_UNIT
         when using a toolhead mounted filament cutting blade
 
     config PIN_BLOBIFIER_SERVO
-      prompt "Blobifer servo pin    " if MMU_HAS_BLOBIFIER
+      prompt "Blobifer servo pin    " if MMU_HAS_BLOBIFIER && CHOICE_BLOBIFIER_TYPE_SERVO
 
     config PIN_BLOBIFIER_BUCKET_SWITCH
       prompt "Blobifer bucket switch" if MMU_HAS_BLOBIFIER

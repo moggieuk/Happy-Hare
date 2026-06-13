@@ -21,6 +21,26 @@ config PIN_BLOBIFIER_BUCKET_SWITCH
   string
   default "^"
 
+# Stepper-driven Blobifier tray (only used when CHOICE_BLOBIFIER_TYPE_STEPPER)
+config PIN_BLOBIFIER_STEPPER_STEP
+  string
+  default ""
+config PIN_BLOBIFIER_STEPPER_DIR
+  string
+  default ""
+config PIN_BLOBIFIER_STEPPER_ENABLE
+  string
+  default ""
+config PIN_BLOBIFIER_STEPPER_ENDSTOP
+  string
+  default ""
+config PIN_BLOBIFIER_STEPPER_UART
+  string
+  default ""
+config PARAM_BLOBIFIER_STEPPER_RUN_CURRENT
+  string
+  default "0.6"
+
 
 menu "Purging"
   help
@@ -39,29 +59,62 @@ menu "Purging"
       be sure to edit Macro variables
 
   if MMU_HAS_BLOBIFIER
-    config PIN_BLOBIFIER_SERVO
-      prompt "Blobifier servo pin        "
-
     config PIN_BLOBIFIER_BUCKET_SWITCH
       prompt "Blobifier bucket switch pin"
       help
         The pullup ( ^ ) is important here
 
-    config PARAM_BLOBIFIER_MINIMUM_PULSE_WIDTH
-      float "Servo min pulse width      "
-      default 0.00053
+    choice CHOICE_BLOBIFIER_TYPE
+      prompt "Blobifier tray actuator    "
+      default CHOICE_BLOBIFIER_TYPE_SERVO
       help
-        Adjust until a 'BLOBIFIER_SERVO POS=out' extends the tray fully without a buzzing sound
+        How the Blobifier tray is actuated: a servo (default) or a manual_stepper.
 
-        The default value is likely to be close so don't worry about this for now
+      config CHOICE_BLOBIFIER_TYPE_SERVO
+        bool "Servo"
+      config CHOICE_BLOBIFIER_TYPE_STEPPER
+        bool "Stepper (manual_stepper)"
+    endchoice
 
-    config PARAM_BLOBIFIER_MAXIMUM_PULSE_WIDTH
-      float "Servo max pulse width      "
-      default 0.0023
-      help
-        Adjust until a 'BLOBIFIER_SERVO POS=in' retracts the tray fully without a buzzing sound
+    if CHOICE_BLOBIFIER_TYPE_SERVO
+      config PIN_BLOBIFIER_SERVO
+        prompt "Blobifier servo pin        "
 
-        The default value is likely to be close so don't worry about this for now
+      config PARAM_BLOBIFIER_MINIMUM_PULSE_WIDTH
+        float "Servo min pulse width      "
+        default 0.00053
+        help
+          Adjust until a 'BLOBIFIER_SERVO POS=out' extends the tray fully without a buzzing sound
+
+          The default value is likely to be close so don't worry about this for now
+
+      config PARAM_BLOBIFIER_MAXIMUM_PULSE_WIDTH
+        float "Servo max pulse width      "
+        default 0.0023
+        help
+          Adjust until a 'BLOBIFIER_SERVO POS=in' retracts the tray fully without a buzzing sound
+
+          The default value is likely to be close so don't worry about this for now
+    endif
+
+    if CHOICE_BLOBIFIER_TYPE_STEPPER
+      comment "_Stepper-driven tray (TMC2209/UART generated; edit cfg for TMC2240/5160 SPI)"
+      config PIN_BLOBIFIER_STEPPER_STEP
+        prompt "Stepper step pin           "
+      config PIN_BLOBIFIER_STEPPER_DIR
+        prompt "Stepper dir pin            "
+      config PIN_BLOBIFIER_STEPPER_ENABLE
+        prompt "Stepper enable pin         "
+      config PIN_BLOBIFIER_STEPPER_ENDSTOP
+        prompt "Stepper endstop pin        "
+        help
+          The pullup/invert ( ^! ) is typically required here
+      config PIN_BLOBIFIER_STEPPER_UART
+        prompt "Stepper TMC UART pin       "
+      config PARAM_BLOBIFIER_STEPPER_RUN_CURRENT
+        string "Stepper run current        "
+        default "0.6"
+    endif
   endif
 
 
