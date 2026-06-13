@@ -609,6 +609,28 @@ class MmuToolHead(toolhead.ToolHead, object):
             else:
                 self._reconfigure_rail_no_lock(None)
 
+    # Electrically disable individual or all gear stepper drivers on type-B MMUs.
+    # Callers are responsible for guarding with multigear + filament_always_gripped.
+    # Klipper auto-enables steppers on the next queued move so no explicit re-enable
+    # is needed. all_gear_rail_steppers only contains MMU gear rail steppers (rails[1]),
+    # never printer axis or extruder steppers.
+
+    def disable_lane_stepper(self, gate):
+        if gate < 0:
+            return
+        stepper_name = GEAR_STEPPER_CONFIG if gate == 0 else "%s_%d" % (GEAR_STEPPER_CONFIG, gate)
+        se = self.printer.lookup_object('stepper_enable').lookup_enable(stepper_name)
+        se.motor_disable(self.get_last_move_time())
+        self.mmu.log_trace("Type-B lane stepper '%s' disabled" % stepper_name)
+
+    def disable_all_lane_steppers(self):
+        stepper_enable = self.printer.lookup_object('stepper_enable')
+        last_move_time = self.get_last_move_time()
+        for s in self.all_gear_rail_steppers:
+            se = stepper_enable.lookup_enable(s.get_name())
+            se.motor_disable(last_move_time)
+        self.mmu.log_trace("All type-B lane steppers disabled")
+
     def _reconfigure_rail_no_lock(self, selected):
         m_th = self.mmu_toolhead
         gear_rail = m_th.get_kinematics().rails[1]
