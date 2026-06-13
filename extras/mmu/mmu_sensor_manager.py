@@ -242,8 +242,11 @@ class MmuSensorManager:
         """
         Returns True if sensor is currently in active set and enabled.
         We use the runout_helper to determine is sensor has been disabled by the user
-        and if so, we want to act as if it isn't configured
+        and if so, we want to act as if it isn't configured.
+        Accepts a generic or fully-qualified/gate-suffixed name (active_sensors_map is keyed
+        by generic names for the active gate, so we normalize first).
         """
+        sname = self.get_generic_endstop_name(sname)
         if sname in self.active_sensors_map:
             return self.active_sensors_map[sname].runout_helper.sensor_enabled
         else:
@@ -251,7 +254,7 @@ class MmuSensorManager:
 
 
     def get_sensor_obj(self, sname):
-        return self.active_sensors_map.get(sname)
+        return self.active_sensors_map.get(self.get_generic_endstop_name(sname))
 
 
     # Note this looks at sensors on non-active gate
@@ -352,8 +355,10 @@ class MmuSensorManager:
     def check_sensor(self, name):
         """
         Return sensor state or None if unavailable/disabled.
+        Accepts a generic or fully-qualified/gate-suffixed name (active_sensors_map is keyed
+        by generic names for the active gate, so we normalize first).
         """
-        sensor = self.active_sensors_map.get(name, None)
+        sensor = self.active_sensors_map.get(self.get_generic_endstop_name(name), None)
         if sensor is not None and sensor.runout_helper.sensor_enabled:
             return bool(sensor.runout_helper.filament_present)
         return None
