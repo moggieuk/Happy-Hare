@@ -445,9 +445,29 @@ class MmuSyncFeedback:
             use_twolevel_for_type_p = self.p.sync_feedback_force_twolevel,
             rd_start = rd_start,
             flowguard_relief_mm = self.p.flowguard_max_relief,
+            flowguard_extreme_threshold = self.p.flowguard_extreme_threshold,
         )
         self.ctrl = SyncController(cfg)
         return self.ctrl
+
+
+    def apply_flowguard_tuning(self):
+        """
+        Push live FlowGuard tuning to a running controller so MMU_TEST_CONFIG
+        changes take effect immediately without a controller reset.
+        """
+        if not self.mmu_unit.has_buffer() or self.ctrl is None: return
+        self.ctrl.cfg.flowguard_relief_mm = self.p.flowguard_max_relief
+        self.ctrl.cfg.flowguard_extreme_threshold = self.p.flowguard_extreme_threshold
+
+
+    def apply_extrude_threshold(self):
+        """
+        Re-register the extruder movement callback so a changed
+        sync_feedback_extrude_threshold takes effect immediately while active.
+        """
+        if not self.mmu_unit.has_buffer() or not self.active: return
+        self.mmu_unit.extruder_monitor().register_callback(self._handle_extruder_movement, self.p.sync_feedback_extrude_threshold)
 
 
     def config_flowguard_feature(self, enable):
