@@ -1012,6 +1012,14 @@ class SyncController(object):
         self._last_time_s = None
         self._log_ready = False
 
+        # Cached jsonl log state (used only when cfg.log_sync is True).
+        # We keep the file handle open across ticks and flush periodically to
+        # avoid per-tick open()+close() I/O on the reactor thread, which was
+        # observed to contribute to host stalls / Timer-too-close during print.
+        self._log_fh = None
+        self._log_write_counter = 0
+        self._log_flush_every = 20
+
         self.K = 2.0 / cfg.buffer_range_mm   # mm => normalized delta in x
         self.state = EKFState()
         self.state.c = max(cfg.c_min, min(cfg.c_max, c0))
@@ -1058,7 +1066,9 @@ class SyncController(object):
         cfg = self.cfg
         self._set_twolevel_active()
 
-        self._log_ready = False
+        # Release any previously-cached jsonl handle before we possibly switch
+        # log paths (or stop logging entirely if cfg.log_sync was just toggled off).
+        self.close_log()
         self._current_log_file = log_file or cfg.log_file
 
         # Rotation distance & baseline (always rebase)
@@ -1662,7 +1672,9 @@ class SyncController(object):
     def _init_log(self, log_file=None):
         """
         (Re)create the log file and write a single header entry.
-        Clears any existing file.
+        Opens a cached handle that subsequent _append_log_entry() calls reuse,
+        so we pay the open()/close() cost once per controller reset instead of
+        once per tick.
         """
         header = {
             "header": {
@@ -1674,19 +1686,69 @@ class SyncController(object):
             }
         }
 
-        with io.open(self._current_log_file, "a", encoding="utf-8") as f:
-            json.dump(header, f, ensure_ascii=False)
-            f.write("\n")
-        self._log_ready = True
+        # Close any previously-cached handle before (re)opening. _init_log is
+        # called from reset(), which may change _current_log_file when the
+        # selected gate changes, so we must not leak an fd to the old path.
+        self.close_log()
+
+        try:
+            # Line-buffering ('buffering=1' in text mode) lets Python flush on
+            # each newline; we combine that with an explicit periodic flush in
+            # _append_log_entry() so OS-level fsync pressure is bounded.
+            self._log_fh = io.open(self._current_log_file, "a", encoding="utf-8", buffering=8192)
+            json.dump(header, self._log_fh, ensure_ascii=False)
+            self._log_fh.write("\n")
+            self._log_fh.flush()
+            self._log_write_counter = 0
+            self._log_ready = True
+        except Exception:
+            # Don't let a bad log path disable the controller. Just disable logging.
+            if self._log_fh is not None:
+                try:
+                    self._log_fh.close()
+                except Exception:
+                    pass
+            self._log_fh = None
+            self._log_ready = False
 
 
     def _append_log_entry(self, record):
         """
-        Append a single JSON object to the log as one line.
+        Append a single JSON object to the log as one line, reusing the cached
+        handle. Flushes to disk only every self._log_flush_every ticks to keep
+        the reactor thread off slow I/O paths during print.
         """
-        if not self._log_ready:
+        if not self._log_ready or self._log_fh is None:
             return
 
-        with io.open(self._current_log_file, "a", encoding="utf-8") as f:
-            json.dump(record, f, ensure_ascii=False)
-            f.write("\n")
+        try:
+            json.dump(record, self._log_fh, ensure_ascii=False)
+            self._log_fh.write("\n")
+            self._log_write_counter += 1
+            if self._log_write_counter >= self._log_flush_every:
+                self._log_fh.flush()
+                self._log_write_counter = 0
+        except Exception:
+            # If the fs goes away mid-print (SD unmount, full disk, etc.) we
+            # disable logging rather than crash the controller.
+            self.close_log()
+
+
+    def close_log(self):
+        """
+        Flush and close the cached log file handle, if any. Safe to call
+        repeatedly. Call from controller reset (when the log path may change)
+        and from sync-feedback manager handle_disconnect.
+        """
+        self._log_ready = False
+        if self._log_fh is not None:
+            try:
+                self._log_fh.flush()
+            except Exception:
+                pass
+            try:
+                self._log_fh.close()
+            except Exception:
+                pass
+            self._log_fh = None
+        self._log_write_counter = 0
