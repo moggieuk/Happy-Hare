@@ -82,3 +82,7 @@ class MmuTestBuzzMotorCommand(BaseCommand):
 
             elif not mmu.selector().buzz_motor(motor):
                 raise gcmd.error("Motor '%s' not known" % motor)
+
+        # Type-B: disable idle gear stepper after buzz test
+        if motor in ("gear", "gears"):
+            mmu.disable_idle_gear_stepper()

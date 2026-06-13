@@ -110,6 +110,8 @@ class MmuPreloadCommand(BaseCommand):
 
                         try:
                             mmu._preload_gate()
+                            # Type-B: disable idle gear stepper after preload
+                            mmu.disable_idle_gear_stepper(gate)
 
                         finally:
                             if mmu.gate_selected != current_gate:

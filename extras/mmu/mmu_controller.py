@@ -406,6 +406,9 @@ class MmuController(MmuFilamentMovement):
             # Ensure espooler print assist is in correct state if fitted
             self._adjust_espooler_assist()
 
+            # Type-B: disable all idle lane gear steppers after bootup
+            self.disable_all_idle_gear_steppers()
+
             # Initially disable clog/runout detection
             self._disable_filament_monitoring()
 
@@ -1854,6 +1857,10 @@ class MmuController(MmuFilamentMovement):
             elif self.var_manager.get(VARS_MMU_FILAMENT_POS, 0) != FILAMENT_POS_UNKNOWN:
                 self.var_manager.set(VARS_MMU_FILAMENT_POS, FILAMENT_POS_UNKNOWN, write=True)
 
+            # Type-B: lane is now parked so disable its idle gear stepper
+            if state == FILAMENT_POS_UNLOADED:
+                self.disable_idle_gear_stepper()
+
         # Good place to ensure espooler state if fitted
         self._adjust_espooler_assist()
 
@@ -2036,6 +2043,42 @@ class MmuController(MmuFilamentMovement):
 
         for mmu_unit in self.mmu_machine.units:
             mmu_unit.motors_onoff(on, motor)
+
+
+    # On type-B MMUs the filament is permanently gripped by the gear so an idle lane
+    # doesn't need its driver energised. Disabling saves power/heat and Klipper
+    # re-enables on the next move
+
+    def disable_idle_gear_stepper(self, gate=None):
+        # No-op unless gate is a type-B lane. Leave a gear synced to extruder (printing) energised
+        if gate is None:
+            gate = self.gate_selected
+        if gate < 0:
+            return
+
+        mmu_unit = self.mmu_unit(gate)
+        if not (mmu_unit.multigear and mmu_unit.filament_always_gripped):
+            return
+
+        drive = mmu_unit.drive_obj(gate)
+        if drive.is_synced_to_extruder():
+            return
+
+        drive.mmu_gear_stepper.do_enable(False)
+        self.log_stepper("Type-B idle gear stepper for gate %d disabled" % gate)
+
+
+    def disable_all_idle_gear_steppers(self):
+        disabled_any = False
+        for mmu_unit in self.mmu_machine.units:
+            if not (mmu_unit.multigear and mmu_unit.filament_always_gripped):
+                continue
+            for drive in mmu_unit.drives:
+                if not drive.is_synced_to_extruder():
+                    drive.mmu_gear_stepper.do_enable(False)
+                    disabled_any = True
+        if disabled_any:
+            self.log_stepper("All type-B idle gear steppers de-energised")
 
 
     def _random_failure(self):
@@ -2345,6 +2388,7 @@ class MmuController(MmuFilamentMovement):
         # state must be corrected
         if prev_gate >= 0:
             self.drive(prev_gate).sync_mode(DRIVE_UNSYNCED)
+            self.disable_idle_gear_stepper(prev_gate) # Type-B: disable lane we are leaving
         self.gate_selected = gate
         # --------------------------------------------------------------------
 
