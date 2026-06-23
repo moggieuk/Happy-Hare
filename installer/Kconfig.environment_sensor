@@ -104,7 +104,7 @@ if MMU_HAS_ENVIRONMENT_SENSOR
         int "Report time (secs)"
         depends on CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X_b || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X_b || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT3X_b
         default 60
-        range 5 300
+        range 10 300
         help
           Frequency to poll the sensor (default 60 seconds)
 
@@ -188,7 +188,7 @@ if MMU_HAS_ENVIRONMENT_SENSOR
               int "Gate $(i) report time (secs)"
               depends on CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X_$(i) || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X_$(i) || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT3X_$(i)
               default 60
-              range 5 300
+              range 10 300
               help
                 Frequency to poll the sensor (default 60 seconds)
 
