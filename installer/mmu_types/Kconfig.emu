@@ -132,8 +132,8 @@ if MMU_TYPE_EMU_1_0
   config PARAM_GATE_FINAL_EJECT_DISTANCE
     default 100
 
-  config PARAM_ENVIRONMENT_SENSORS
-    generated_default "$(UNIT_NAME)_env{iter}" "" PARAM_NUM_GATES
+  #config PARAM_ENVIRONMENT_SENSORS
+  #  generated_default "$(UNIT_NAME)_env{iter}" "" PARAM_NUM_GATES
 
   config PARAM_FILAMENT_HEATERS 
     generated_default "$(UNIT_NAME)_heater{iter}" "" PARAM_NUM_GATES
