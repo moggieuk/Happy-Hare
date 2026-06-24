@@ -318,8 +318,8 @@ class MmuSyncFeedback:
             return {
                 'sync_feedback_state': self.get_sync_feedback_string(),
                 'sync_feedback_enabled': self.is_enabled(),
-                'sync_feedback_bias_raw': self._get_sync_bias_raw(),
-                'sync_feedback_bias_modelled': self._get_sync_bias_modelled(),
+                'sync_feedback_bias_raw': round(self._get_sync_bias_raw(), 2),
+                'sync_feedback_bias_modelled': round(self._get_sync_bias_modelled(), 2),
                 'sync_feedback_flow_rate': self.flow_rate,
                 'flowguard': self.flowguard_status,
                 'tangle_prevention': {

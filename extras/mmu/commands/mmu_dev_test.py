@@ -111,6 +111,7 @@ class MmuTestCommand(BaseCommand):
         + "RUNOUT=[0|1] Enable/disable runout handling\n"
         + "SENSOR=1 Dump sensor path checks. Params: POS={n} GATE={n} LOADING=[0|1] LOOP=[0|1]\n"
         + "FILAMENT_POS={n} Set filament_pos state within sync wrapper\n"
+        + "FILAMENT_DIR=[-1|0|1] Set filament_direction to unload|still|load\n"
         + "ADJUST_ENCODER={delta} Adjust the encoder distance reading by delta\n"
         + "SET_ENCODER={dist} Set the encoder distance reading to distance\n"
         + "DUMP_MCU_ENDSTOPS=1 Dump steppers registered on each MCU_endstop\n"
@@ -1070,6 +1071,12 @@ class MmuTestCommand(BaseCommand):
                 mmu._is_running_test = False  # Else servo won't move
                 with mmu.wrap_sync_gear_to_extruder():
                     mmu.set_filament_pos_state(fil_pos)
+
+
+            fil_dir = gcmd.get_int('FILAMENT_DIR', None, minval=-1, maxval=1)
+            if fil_dir is not None:
+                have_run_test = True
+                mmu.set_filament_direction(fil_dir)
 
 
             adjust_encoder = gcmd.get_float('ADJUST_ENCODER', None)

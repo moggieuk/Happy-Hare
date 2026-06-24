@@ -541,6 +541,7 @@ class MmuController(MmuFilamentMovement):
         return self.has_encoder(gate) and self.mmu_unit(gate).p.encoder_move_validation
 
 
+
 # -----------------------------------------------------------------------------------------------------------
 # AGGREGATED PRINTER VARIABLES FOR "LOGICAL" MMU MACHINE
 # -----------------------------------------------------------------------------------------------------------
@@ -634,143 +635,346 @@ class MmuController(MmuFilamentMovement):
     # Fun visual display of current filament position
     def _display_visual_state(self):
         if self.p.log_visual and not self.calibrating:
-            visual_str = self._state_to_string()
+            visual_str = self.get_filament_position_string(color=True)
             self.log_always(visual_str, color=True)
 
 
-    def _state_to_string(self, direction=None):
-        arrow = "<" if self.filament_direction == DIRECTION_UNLOAD else ">"
-        space = "."
-        home = "|"
+#PAUL older logic
+#    def _state_to_string(self, direction=None):
+#        arrow = "<" if self.filament_direction == DIRECTION_UNLOAD else ">"
+#        space = "."
+#        home = "|"
+#
+#        gs = "(g)"
+#        es = "(e)"
+#        ts = "(t)"
+#
+#        def past(pos):
+#            return arrow if self.filament_pos >= pos else space
+#
+#        def homed(pos, sensor):
+#            if self.filament_pos > pos:
+#                return " ", arrow, sensor
+#            if self.filament_pos == pos:
+#                return home, space, sensor
+#            return " ", space, sensor
+#
+#        def trig(name, sensor):
+#            if self.sensor_manager.check_sensor(sensor):
+#                return re.sub(r"[a-zA-Z]", "*", name)
+#            return name
+#
+#        gate_endstop = self.mmu_unit().p.gate_homing_endstop
+#        require_bowden = self.mmu_unit().require_bowden_move
+#
+#        t_str = (
+#            f"[T{self.tool_selected}] "
+#            if self.tool_selected >= 0
+#            else "BYPASS "
+#            if self.tool_selected == TOOL_GATE_BYPASS
+#            else "[T?] "
+#        )
+#
+#        g_str = f"{past(FILAMENT_POS_UNLOADED)}"
+#
+#        lg_str = (
+#            "{0}{0}".format(past(FILAMENT_POS_HOMED_GATE))
+#            if not require_bowden
+#            else ""
+#        )
+#
+#        gs_str = (
+#            "{0}{2} {1}{1}".format(
+#                *homed(FILAMENT_POS_HOMED_GATE, trig(gs, gate_endstop))
+#            )
+#            if gate_endstop in [
+#                SENSOR_SHARED_EXIT,
+#                SENSOR_EXIT_PREFIX,
+#                SENSOR_EXTRUDER_ENTRY,
+#            ]
+#            else ""
+#        )
+#
+#        en_pos = (
+#            FILAMENT_POS_IN_BOWDEN
+#            if gate_endstop in [
+#                SENSOR_SHARED_EXIT,
+#                SENSOR_EXIT_PREFIX,
+#                SENSOR_EXTRUDER_ENTRY,
+#            ]
+#            else FILAMENT_POS_START_BOWDEN
+#        )
+#        en_str = f" En {past(en_pos)}" if self.has_encoder() else ""
+#
+#        bowden1 = (
+#            "{0}{0}{0}{0}".format(past(FILAMENT_POS_IN_BOWDEN))
+#            if require_bowden
+#            else ""
+#        )
+#        bowden2 = (
+#            "{0}{0}{0}{0}".format(past(FILAMENT_POS_END_BOWDEN))
+#            if require_bowden
+#            else ""
+#        )
+#
+#        es_str = (
+#            "{0}{2} {1}{1}".format(
+#                *homed(FILAMENT_POS_HOMED_ENTRY, trig(es, SENSOR_EXTRUDER_ENTRY))
+#            )
+#            if self.sensor_manager.has_sensor(SENSOR_EXTRUDER_ENTRY) and require_bowden
+#            else ""
+#        )
+#
+#        ex_str = "{0}[{2} {1}{1}".format(
+#            *homed(FILAMENT_POS_HOMED_EXTRUDER, "Ex")
+#        )
+#
+#        ts_str = (
+#            "{0}{2} {1}".format(
+#                *homed(FILAMENT_POS_HOMED_TS, trig(ts, SENSOR_TOOLHEAD))
+#            )
+#            if self.sensor_manager.has_sensor(SENSOR_TOOLHEAD)
+#            else ""
+#        )
+#
+#        nz_str = f"{past(FILAMENT_POS_LOADED)} Nz]"
+#
+#        summary = (
+#            " {5}{4}LOADED{0}{6}"
+#            if self.filament_pos == FILAMENT_POS_LOADED
+#            else " {5}{4}UNLOADED{0}{6}"
+#            if self.filament_pos == FILAMENT_POS_UNLOADED
+#            else " {5}{2}UNKNOWN{0}{6}"
+#            if self.filament_pos == FILAMENT_POS_UNKNOWN
+#            else ""
+#        )
+#
+#        encoder_str = (
+#            " {1}(e:%.1fmm){0}" % self.get_encoder_distance(dwell=None)
+#            if self.has_encoder() and self.mmu_unit().p.encoder_move_validation
+#            else ""
+#        )
+#        counter = " {5}%.1fmm{6}%s" % (self.drive().get_filament_position(), encoder_str)
+#
+#        return "".join(
+#            (
+#                t_str,
+#                g_str,
+#                lg_str,
+#                gs_str,
+#                en_str,
+#                bowden1,
+#                bowden2,
+#                es_str,
+#                ex_str,
+#                ts_str,
+#                nz_str,
+#                summary,
+#                counter,
+#            )
+#        )
 
-        gs = "(g)"
-        es = "(e)"
-        ts = "(t)"
 
-        def past(pos):
-            return arrow if self.filament_pos >= pos else space
+    # Fun visual display of current filament position. This closely
+    # matches the display in KlipperScreen
+    def get_filament_position_string(self, color=False, bold=False):
+        tool = self.tool_selected
+        gate = self.gate_selected
+        pos = self.filament_pos
+        direction = self.filament_direction
+        gate_color = MmuColorUtils.color_to_rgb_hex(self.gate_color[gate], "FFFFFF")
+        gate_homing_endstop = self.mmu_unit().p.gate_homing_endstop
 
-        def homed(pos, sensor):
-            if self.filament_pos > pos:
-                return " ", arrow, sensor
-            if self.filament_pos == pos:
-                return home, space, sensor
-            return " ", space, sensor
+        space = UI_DOTTED_LINE
+        gate_mark = UI_GATE_MARK
+        empty_sensor = UI_SENSOR_EMPTY
+        trig_sensor = UI_SENSOR_TRIGGERED
 
-        def trig(name, sensor):
-            if self.sensor_manager.check_sensor(sensor):
-                return re.sub(r"[a-zA-Z]", "*", name)
-            return name
-
-        gate_endstop = self.mmu_unit().p.gate_homing_endstop
-        require_bowden = self.mmu_unit().require_bowden_move
-
-        t_str = (
-            f"[T{self.tool_selected}] "
-            if self.tool_selected >= 0
-            else "BYPASS "
-            if self.tool_selected == TOOL_GATE_BYPASS
-            else "[T?] "
-        )
-
-        g_str = f"{past(FILAMENT_POS_UNLOADED)}"
-
-        lg_str = (
-            "{0}{0}".format(past(FILAMENT_POS_HOMED_GATE))
-            if not require_bowden
-            else ""
-        )
-
-        gs_str = (
-            "{0}{2} {1}{1}".format(
-                *homed(FILAMENT_POS_HOMED_GATE, trig(gs, gate_endstop))
+        if bold:
+            home, line, arrow = (
+                UI_HOME_BOLD,
+                UI_LINE_BOLD,
+                UI_HOME_BOLD,
             )
-            if gate_endstop in [
-                SENSOR_SHARED_EXIT,
-                SENSOR_EXIT_PREFIX,
-                SENSOR_EXTRUDER_ENTRY,
-            ]
-            else ""
-        )
-
-        en_pos = (
-            FILAMENT_POS_IN_BOWDEN
-            if gate_endstop in [
-                SENSOR_SHARED_EXIT,
-                SENSOR_EXIT_PREFIX,
-                SENSOR_EXTRUDER_ENTRY,
-            ]
-            else FILAMENT_POS_START_BOWDEN
-        )
-        en_str = f" En {past(en_pos)}" if self.has_encoder() else ""
-
-        bowden1 = (
-            "{0}{0}{0}{0}".format(past(FILAMENT_POS_IN_BOWDEN))
-            if require_bowden
-            else ""
-        )
-        bowden2 = (
-            "{0}{0}{0}{0}".format(past(FILAMENT_POS_END_BOWDEN))
-            if require_bowden
-            else ""
-        )
-
-        es_str = (
-            "{0}{2} {1}{1}".format(
-                *homed(FILAMENT_POS_HOMED_ENTRY, trig(es, SENSOR_EXTRUDER_ENTRY))
+        else:
+            home, line, arrow = (
+                UI_HOME_LIGHT,
+                UI_LINE_LIGHT,
+                UI_ARROW_FILLED_RIGHT,
             )
-            if self.sensor_manager.has_sensor(SENSOR_EXTRUDER_ENTRY) and require_bowden
-            else ""
+
+        # Helper methods -------
+
+        def past(target_pos):
+            return arrow if pos >= target_pos else space
+
+        def sensor_label(sensor, label=""):
+            marker = trig_sensor if self.sensor_manager.check_sensor(sensor) else empty_sensor
+            return marker + label
+
+        def homed_segment(target_pos, label):
+            if pos > target_pos:
+                return arrow + label + arrow
+            if pos == target_pos:
+                return home + label + space
+            return space + label + space
+
+        def pad(target_pos, length):
+            if pos > target_pos:
+                return arrow * length
+            if pos == target_pos:
+                left = length - length // 2
+                right = length // 2
+                return arrow * left + space * right
+            return space * length
+
+        def optional_sensor(sensor, target_pos, width=3):
+            if self.sensor_manager.has_sensor(sensor):
+                return homed_segment(target_pos, sensor_label(sensor))
+            return pad(target_pos, width)
+
+        def nozzle_segment():
+            if pos >= FILAMENT_POS_LOADED:
+                return arrow + home + "Nz" + arrow * 2
+            return space + gate_mark + "Nz"
+
+        def buffer_segment():
+            t_sensor = self.sensor_manager.check_sensor(SENSOR_TENSION)
+            c_sensor = self.sensor_manager.check_sensor(SENSOR_COMPRESSION)
+            sf_status = self.mmu_unit().sync_feedback.get_status(0)
+            sf_state = sf_status['sync_feedback_state']
+            sf_value = sf_status['sync_feedback_bias_modelled']
+
+            sf_char = "?"
+            if sf_state == "disabled":
+                sf_char = "x"
+            if sf_state == "inactive":
+                sf_char = " "
+            if sf_state == "compressed":
+                sf_char = "C"
+            if sf_state == "tension":
+                return "T"
+            if sf_state == "neutral":
+                if self.has_sensor(SENSOR_PROPORTIONAL) and sf_value is not None:
+                    return f"[{f'{value:.1f}'.center(5)}]"
+                sf_char = "N"
+
+            if c_sensor:
+                return f"[ {UI_ARROW_HOLLOW_RIGHT}{sf_char}{UI_ARROW_HOLLOW_LEFT} ]"
+            elif t_sensor:
+                return f" [{UI_ARROW_HOLLOW_LEFT}{sf_char}{UI_ARROW_HOLLOW_RIGHT}] "
+            return f" [ {sf_char} ] "
+
+        def _color_filament(text, *chars):
+            if not self.gate_color[gate]:
+                return text
+
+            chars = set(chars)
+            result = []
+            in_markup = False
+            rgb_hex = MmuColorUtils.color_to_rgb_hex(self.gate_color[gate], "FFFFFF")
+            rgb_start = '{{%s}}' % rgb_hex
+            rgb_end   = '{{}}'
+
+            for ch in text:
+                should_markup = ch in chars
+
+                if should_markup and not in_markup:
+                    result.append(rgb_start)
+                    in_markup = True
+                elif not should_markup and in_markup:
+                    result.append(rgb_end)
+                    in_markup = False
+
+                result.append(ch)
+
+            if in_markup:
+                result.append(rgb_end)
+            return "".join(result)
+
+        # Impl -------
+
+        if tool >= 0:
+            tool_text = f"[T{tool}] "
+        elif tool == self.TOOL_GATE_BYPASS:
+            tool_text = "[BYPASS] "
+        else:
+            tool_text = "[T?] "
+
+        bowden_length = max(1, 16 - len(tool_text))
+        bowden_half = bowden_length // 2
+
+        encoder_ref_pos = (
+            FILAMENT_POS_START_BOWDEN
+            if gate_homing_endstop == SENSOR_ENCODER
+            else FILAMENT_POS_IN_BOWDEN
         )
 
-        ex_str = "{0}[{2} {1}{1}".format(
-            *homed(FILAMENT_POS_HOMED_EXTRUDER, "Ex")
-        )
+        parts = [
+            tool_text,
+            past(FILAMENT_POS_UNLOADED) * 2,
 
-        ts_str = (
-            "{0}{2} {1}".format(
-                *homed(FILAMENT_POS_HOMED_TS, trig(ts, SENSOR_TOOLHEAD))
-            )
-            if self.sensor_manager.has_sensor(SENSOR_TOOLHEAD)
-            else ""
-        )
+            optional_sensor(gate_homing_endstop, FILAMENT_POS_HOMED_GATE),
 
-        nz_str = f"{past(FILAMENT_POS_LOADED)} Nz]"
+            (
+                "En" + past(encoder_ref_pos) * 2
+                if self.has_encoder()
+                else pad(encoder_ref_pos, 4)
+            ),
 
-        summary = (
-            " {5}{4}LOADED{0}{6}"
-            if self.filament_pos == FILAMENT_POS_LOADED
-            else " {5}{4}UNLOADED{0}{6}"
-            if self.filament_pos == FILAMENT_POS_UNLOADED
-            else " {5}{2}UNKNOWN{0}{6}"
-            if self.filament_pos == FILAMENT_POS_UNKNOWN
-            else ""
-        )
+            past(FILAMENT_POS_IN_BOWDEN) * bowden_half,
+
+            (
+                buffer_segment()
+                if self.mmu_unit().has_buffer()
+                else pad(FILAMENT_POS_IN_BOWDEN, 7)
+            ),
+
+            past(FILAMENT_POS_END_BOWDEN) * bowden_half,
+
+            optional_sensor(SENSOR_EXTRUDER_ENTRY, FILAMENT_POS_HOMED_ENTRY),
+
+            homed_segment(FILAMENT_POS_HOMED_EXTRUDER, "Ex"),
+            past(FILAMENT_POS_EXTRUDER_ENTRY),
+
+            optional_sensor(SENSOR_TOOLHEAD, FILAMENT_POS_HOMED_TS),
+
+            past(FILAMENT_POS_IN_EXTRUDER),
+            nozzle_segment(),
+        ]
+
+        if pos == FILAMENT_POS_LOADED:
+            parts.append(" {5}{4}LOADED{0}{6}")
+        elif pos == FILAMENT_POS_UNLOADED:
+            parts.append(" {5}{4}UNLOADED{0}{6}")
+        elif pos == FILAMENT_POS_UNKNOWN:
+            parts.append(" {5}{4}UNKNOWN{0}{6}")
+        elif direction == DIRECTION_LOAD:
+            parts.append(" {5}{4}" + UI_ARROW_HOLLOW_RIGHT * 3 + "{0}{6}")
+        elif direction == DIRECTION_UNLOAD:
+            parts.append(" {5}{4}" + UI_ARROW_HOLLOW_LEFT * 3 + "{0}{6}")
 
         encoder_str = (
             " {1}(e:%.1fmm){0}" % self.get_encoder_distance(dwell=None)
             if self.has_encoder() and self.mmu_unit().p.encoder_move_validation
             else ""
         )
-        counter = " {5}%.1fmm{6}%s" % (self.drive().get_filament_position(), encoder_str)
+        parts.append(" {5}%.1fmm{6}%s" % (self.drive().get_filament_position(), encoder_str))
 
-        return "".join(
-            (
-                t_str,
-                g_str,
-                lg_str,
-                gs_str,
-                en_str,
-                bowden1,
-                bowden2,
-                es_str,
-                ex_str,
-                ts_str,
-                nz_str,
-                summary,
-                counter,
-            )
-        )
+        visual = "".join(parts)
+
+        last_home = visual.rfind(home)
+        last_arrow = visual.rfind(arrow)
+
+        visual = visual.replace(arrow, line)
+
+        if last_arrow != -1 and (last_home == -1 or not bold):
+            visual = visual[:last_arrow] + arrow + visual[last_arrow + 1:]
+
+        if color and gate >= 0:
+            visual = _color_filament(visual, line)
+
+        return visual
 
 
     def _get_action_string(self, action=None):
@@ -2131,7 +2335,7 @@ class MmuController(MmuFilamentMovement):
         """
         self.gate_maps.ensure_ttg_match()
         msg = self._mmu_visual_to_string()
-        msg += "\n%s" % self._state_to_string()
+        msg += "\n%s" % self.get_filament_position_string(color=True)
         self.log_info(msg, color=True)
 
 

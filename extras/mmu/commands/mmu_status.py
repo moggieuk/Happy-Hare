@@ -385,7 +385,7 @@ class MmuStatusCommand(BaseCommand):
                 lines.append(", for configuration summary add 'SHOWCONFIG=1'")
 
         lines.append(f"\n\n{mmu._mmu_visual_to_string()}")
-        lines.append(f"\n{mmu._state_to_string()}")
+        lines.append(f"\n{mmu.get_filament_position_string(color=True)}")
 
         if detail:
             lines.append(f"\n\n{mmu.gate_maps.ttg_map_to_string()}")

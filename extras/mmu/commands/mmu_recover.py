@@ -117,7 +117,7 @@ class MmuRecoverCommand(BaseCommand):
             mmu.reset_sync_gear_to_extruder(force_grip=True)
 
             # Report
-            mmu.log_info(f"{mmu._state_to_string()}", color=True)
+            mmu.log_info(f"{mmu.get_filament_position_string(color=True)}", color=True)
 
         except MmuError as ee:
             mmu.handle_mmu_error(str(ee))

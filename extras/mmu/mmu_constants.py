@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Happy Hare MMU Software
 #
 # Shared constants and classes for each access and class loading
@@ -316,10 +317,44 @@ OTHER_STEPPER_PARAMS     = ['step_pin', 'dir_pin', 'enable_pin', 'endstop_pin', 
 
 # Use (common) unicode for improved formatting and klipper layout
 UI_SPACE, UI_SEPARATOR, UI_DASH, UI_DEGREE, UI_BLOCK, UI_CASCADE = '\u00A0', '\u00A0', '\u2014', '\u00B0', '\u2588', '\u2514'
+
 UI_BOX_TL, UI_BOX_BL, UI_BOX_TR, UI_BOX_BR = '\u250C', '\u2514', '\u2510', '\u2518'
 UI_BOX_L,  UI_BOX_R,  UI_BOX_T,  UI_BOX_B  = '\u251C', '\u2524', '\u252C', '\u2534'
 UI_BOX_M,  UI_BOX_H,  UI_BOX_V             = '\u253C', '\u2500', '\u2502'
-UI_EMOTICONS = [UI_DASH, '\U0001F60E', '\U0001F603', '\U0001F60A', '\U0001F610', '\U0001F61F', '\U0001F622', '\U0001F631']
+
+UI_EMOTICONS = [
+    UI_DASH,
+    '\U0001F60E',
+    '\U0001F603',
+    '\U0001F60A',
+    '\U0001F610',
+    '\U0001F61F',
+    '\U0001F622',
+    '\U0001F631'
+]
+
 UI_SQUARE, UI_CUBE = '\u00B2', '\u00B3'
 UI_SUPERSCRIPT_1, UI_SUPERSCRIPT_2, UI_SUPERSCRIPT_3 = '\u00B9', '\u00B2', '\u00B3'
-UI_BULLET, UI_SOLID_CIRCLE, UI_SOLID_SQUARE, UI_SOLID_TRIANGLE, UI_FISHEYE = '\u2022', '\u25CF', '\u25A0', '\u25BC', '\u25C9'
+
+UI_BULLET, UI_SOLID_CIRCLE, UI_SOLID_SQUARE, UI_SOLID_TRIANGLE, UI_FISHEYE = (
+    '\u2022', '\u25CF', '\u25A0', '\u25BC', '\u25C9'
+)
+
+# MMU / filament visualization
+
+UI_DOTTED_LINE        = '\u2508'  # ┈
+UI_GATE_MARK          = '\u2524'  # ┤
+
+UI_SENSOR_EMPTY       = '\u25EF'  # ◯
+UI_SENSOR_TRIGGERED   = '\u25C9'  # ◉
+
+UI_HOME_LIGHT         = '\u252B'  # ┫
+UI_LINE_LIGHT         = '\u2501'  # ━
+UI_LINE_LIGHT_DOUBLE  = '\u2550'  # ═
+UI_HOME_BOLD          = '\u258C'  # ▌
+UI_LINE_BOLD          = '\u2588'  # █
+
+UI_ARROW_FILLED_LEFT  = '\u25C0'  # ◀
+UI_ARROW_FILLED_RIGHT = '\u25B6'  # ▶
+UI_ARROW_HOLLOW_LEFT  = '\u25C1'  # ◁
+UI_ARROW_HOLLOW_RIGHT = '\u25B7'  # ▷
