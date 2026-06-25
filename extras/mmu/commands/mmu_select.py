@@ -29,6 +29,7 @@ class MmuSelectCommand(BaseCommand):
         + "TOOL   = #(int) Logical tool index (0..num_gates-1)\n"
         + "GATE   = #(int) Physical gate index (0..num_gates-1)\n"
         + "BYPASS = [0|1]\n"
+        + "QUIET  = [0|1]\n"
         + "(must specify TOOL, GATE, or BYPASS)\n"
     )
     HELP_SUPPLEMENT = (
@@ -56,6 +57,7 @@ class MmuSelectCommand(BaseCommand):
         if self.check_if_not_calibrated(CALIBRATED_SELECTOR, check_gates=[gate] if gate >= 0 else None): return
         mmu.fix_started_state()
 
+        quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
         bypass = gcmd.get_int('BYPASS', -1, minval=0, maxval=1)
         tool = gcmd.get_int('TOOL', -1, minval=0, maxval=mmu.num_gates - 1)
         if tool == -1 and gate == -1 and bypass == -1:
@@ -73,6 +75,6 @@ class MmuSelectCommand(BaseCommand):
                     mmu.select_gate(gate)
 
                 # Ensure correct tool/gate mapping and display visual to user
-                mmu.refresh_tool_gate()
+                mmu.refresh_tool_gate(quiet=quiet)
         except MmuError as ee:
             mmu.handle_mmu_error(str(ee))
