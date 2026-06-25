@@ -855,7 +855,8 @@ class MmuUnit:
 
     def get_status(self, eventtime):
         unit_info = {
-            'name': self.display_name,
+            'name': self.name,
+            'display_name': self.display_name,
             'vendor': self.mmu_vendor,
             'version': self.mmu_version_string,
             'num_gates': self.num_gates,

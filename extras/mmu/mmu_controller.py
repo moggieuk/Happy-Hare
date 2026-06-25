@@ -625,6 +625,10 @@ class MmuController(MmuFilamentMovement):
         # Merge environment status and fill in units without heater
         status["drying_state"] = merge_unit_status_list(eventtime, attr="environment_manager", key="drying_state", fill_value=DRYING_STATE_NONE)
 
+        # Development/testing hook
+        if hasattr(self, "developer_status_update"):
+            status.update(self.developer_status_update)
+
         return status
 
 

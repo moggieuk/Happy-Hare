@@ -11,7 +11,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import random, logging, math
+import random, logging, math, ast
 
 # Happy Hare imports
 from ...mmu_stepper     import MmuGenericRail
@@ -116,6 +116,7 @@ class MmuTestCommand(BaseCommand):
         + "SET_ENCODER={dist} Set the encoder distance reading to distance\n"
         + "DUMP_MCU_ENDSTOPS=1 Dump steppers registered on each MCU_endstop\n"
         + "DUMP_ACTIVE_SENSORS=1 Dump raw active sensors map\n"
+        + "UPDATE_STATUS={dict} Force override (update) of mmu get_status() with supplied dict. 'OFF' to remove\n"
     )
     HELP_SUPPLEMENT = (
         ""
@@ -1127,6 +1128,23 @@ class MmuTestCommand(BaseCommand):
 
                 mmu.log_always(f"active_sensors={mmu.sensor_manager.get_status()}")
 
+            # -----------
+
+            update_status = gcmd.get('UPDATE_STATUS', None)
+            if update_status is not None:
+                have_run_test = True
+                if update_status.upper().startswith("OFF"):
+                    if hasattr(mmu, "developer_status_update"):
+                        delattr(mmu, "developer_status_update")
+                else:
+                    try:
+                        status = ast.literal_eval(update_status)
+                        mmu.developer_status_update = status
+                    except Exception as e:
+                        mmu.log_error(f"Could not parse status string: {str(e)}")
+                return
+
+            # -----------
 
             if not have_run_test:
                 mmu.log_warning("Not a valid test. Use HELP=1 for tests")
