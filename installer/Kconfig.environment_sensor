@@ -104,12 +104,13 @@ if MMU_HAS_ENVIRONMENT_SENSOR
         int "Report time (secs)"
         depends on CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X_b || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X_b || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT3X_b
         default 60
-        range 10 300
+        range 0 300
         help
           Frequency to poll the sensor (default 60 seconds)
 
           NOTE: This option requires a patched aht1x driver for Klipper
-          to support the aht10_report_time parameter
+          to support the aht10_report_time parameter.
+          Recommend setting this to >= 60sec or 0 to disable.
 
       config PARAM_ENVIRONMENT_SENSOR_I2C_ADDRESS
         int "i2c address       "
@@ -188,12 +189,13 @@ if MMU_HAS_ENVIRONMENT_SENSOR
               int "Gate $(i) report time (secs)"
               depends on CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT1X_$(i) || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT2X_$(i) || CHOICE_ENVIRONMENT_SENSOR_TYPE_AHT3X_$(i)
               default 60
-              range 10 300
+              range 0 300
               help
                 Frequency to poll the sensor (default 60 seconds)
 
                 NOTE: This option requires a patched aht1x driver for Klipper
-                to support the aht10_report_time parameter
+                to support the aht10_report_time parameter. 
+                Recommend setting this to >= 60sec or 0 to disable.
 
             choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_TYPE_$(i)
               prompt "Gate $(i) i2c bus type      "
