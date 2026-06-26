@@ -44,7 +44,24 @@ Happy Hare is under active development, with a meticulous focus on the quality o
 - **Additional MMU Support:** _Striving for inclusivity—support for Prusa MMU and others is in progress_
 - **v4 Rework:** _This release will allow for even more modularity and in particular support for dissimilar MMU/AFC's on the same printer!  Yes, mix your old ERCF and BoxTurtle on the same machine or even direct to different toolheads in a IDEX design!_
 
-Some users have inquired about making donations to support this project (and to keep my coffee or G&T supply steady!). While this project is a labor of love and not financially motivated, it is a substantial undertaking—comprising 18,000 lines of Python code, 10,000 lines of documentation, 160 illustrations and 6,000 lines of macros/configuration. If you’ve found value in Happy Hare and wish to contribute, donations can be made via PayPal https://www.paypal.me/moggieuk. Any support will be spent improving your experience with your favorite MMU/AFC. Thank you!
+Some users have inquired about making donations to support this project (and to keep my coffee or G&T supply steady!). While this project is a labor of love and not financially motivated, it is a monster undertaking comprising:
+```
+Happy Hare:
+ >45,000 lines of code
+  20,000 lines of installer logic
+   6,500 lines of macros/cfg
+Wiki Doc:
+  12,500 lines documention
+    ~200 images/illustrations
+KlipperScreen integration:
+   4,000 lines of code
+      74 custom SVG images
+Mainsail integration:
+  ~6,000 lines of code
+Fluuid integration:
+  ~6,000 lines of code
+```
+If you’ve found value in Happy Hare and wish to contribute, donations can be made via PayPal https://www.paypal.me/moggieuk. Any support will be spent improving your experience with your favorite MMU/AFC. Thank you!
 <p align="center"><a href="https://www.paypal.me/moggieuk"><img src="https://github.com/moggieuk/Happy-Hare/wiki/resources/donate.svg" width="30%"></a></p>
 
 <br>
