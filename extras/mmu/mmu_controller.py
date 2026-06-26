@@ -859,7 +859,7 @@ class MmuController(MmuFilamentMovement):
             if sf_state == "tension":
                 return "T"
             if sf_state == "neutral":
-                if self.has_sensor(SENSOR_PROPORTIONAL) and sf_value is not None:
+                if self.sensor_manager.has_sensor(SENSOR_PROPORTIONAL) and sf_value is not None:
                     return f"[{f'{value:.1f}'.center(5)}]"
                 sf_char = "N"
 
