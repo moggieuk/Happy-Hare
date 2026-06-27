@@ -13,7 +13,7 @@
 #   VAR_FAN_POLLING_TIME
 #   VAR_FAN_CONTROL_ENABLED
 #   VAR_FAN_FORCED_MODE (choice: AUTO, OFF, ON)
-#   VAR_FAN_FORCED (mapped value: -1, 0, 1)
+#   VAR_FAN_FORCED (mapped value: 0, 1, 2)
 #   VAR_FAN_SENSORS (comma-separated temperature_sensor names)
 #   VAR_FAN_FANS (comma-separated fan_generic names)
 #
@@ -130,9 +130,9 @@ if MMU_HAS_FANS
 
     config VAR_FAN_FORCED
       string
-      default "-1" if VAR_FAN_FORCED_MODE_AUTO
       default "0" if VAR_FAN_FORCED_MODE_OFF
       default "1" if VAR_FAN_FORCED_MODE_ON
+      default "2" if VAR_FAN_FORCED_MODE_AUTO
 
   endmenu
 
