@@ -110,6 +110,7 @@ if MMU_TYPE_EMU_1_0
 
     config PARAM_EXIT_LEDS
       generated_default "neopixel:$(UNIT_NAME)_gate{iter}_leds (1,2,3,4)" "" "; " PARAM_NUM_GATES
+
   endif
 
   if BOARD_TYPE_EBB_1_0
@@ -118,6 +119,7 @@ if MMU_TYPE_EMU_1_0
 
     config PARAM_EXIT_LEDS
       generated_default "neopixel:$(UNIT_NAME)_gate{iter}_leds (1,2,3,4)" "" "; " PARAM_NUM_GATES
+    
   endif
 
   # "Gates" config
@@ -131,9 +133,6 @@ if MMU_TYPE_EMU_1_0
     default -1
   config PARAM_GATE_FINAL_EJECT_DISTANCE
     default 100
-
-  #config PARAM_ENVIRONMENT_SENSORS
-  #  generated_default "$(UNIT_NAME)_env{iter}" "" PARAM_NUM_GATES
 
   config PARAM_FILAMENT_HEATERS 
     generated_default "$(UNIT_NAME)_heater{iter}" "" PARAM_NUM_GATES

@@ -1,11 +1,21 @@
 # Responsible for defining/setting cooling fan configuration:
 #   MMU_HAS_FANS
 #
-# Fan parameter tokens which must be inside if MMU_HAS_FANS clause in cfg templates:
+# Fan parameter tokens
 #   PARAM_FAN_MAX_POWER
 #   PARAM_FAN_KICK_START_TIME
 #   PIN_FAN   (single MCU)
 #   PIN_FAN_X (per-gate MCU)
+#
+# Fan control variable tokens 
+#   VAR_FAN_ON_TEMP
+#   VAR_FAN_OFF_TEMP
+#   VAR_FAN_POLLING_TIME
+#   VAR_FAN_CONTROL_ENABLED
+#   VAR_FAN_FORCED_MODE (choice: AUTO, OFF, ON)
+#   VAR_FAN_FORCED (mapped value: -1, 0, 1)
+#   VAR_FAN_SENSORS (comma-separated temperature_sensor names)
+#   VAR_FAN_FANS (comma-separated fan_generic names)
 #
 # Can be disabled and forced off with:
 #   select UNSELECT_MMU_HAS_FANS
@@ -46,8 +56,9 @@ if MMU_HAS_FANS
         Time in seconds to run fan at full power before resetting to target speed.
 
     if !MMU_HAS_PER_GATE_MCU
-      config PIN_FAN
-        prompt "Fan pin            "
+      config PARAM_PIN_FAN
+        string "Fan pin            "
+        default ""
         help
           Pin for cooling fan.
           Leave blank if you don't have a fan installed.
@@ -64,6 +75,64 @@ if MMU_HAS_FANS
             Leave blank if this gate does not have a fan installed.
       @endrepeat@
     endmenu
+
+  endmenu
+
+  menu "Fan controls"
+
+    config VAR_FAN_ON_TEMP
+      float "Fan on temperature            "
+      default 49.0
+      range 20.0 80.0
+      help
+        Temperature threshold (°C) to turn fans on.
+
+    config VAR_FAN_OFF_TEMP
+      float "Fan off temperature           "
+      default 47.0
+      range 20.0 80.0
+      help
+        Temperature threshold (°C) to turn fans off.
+
+    config VAR_FAN_POLLING_TIME
+      float "Fan polling time              "
+      default 5.0
+      range 1.0 30.0
+      help
+        Time in seconds between temperature sensor polling intervals.
+
+    config VAR_FAN_CONTROL_ENABLED
+      bool "Enable fan temperature control"
+      default y
+      help
+        Enable automatic fan control based on temperature sensors.
+
+    choice VAR_FAN_FORCED_MODE
+      prompt "Fan forced state              "
+      default VAR_FAN_FORCED_MODE_AUTO
+
+      config VAR_FAN_FORCED_MODE_AUTO
+        bool "AUTO"
+        help
+          Automatic fan control based on temperature sensors.
+
+      config VAR_FAN_FORCED_MODE_OFF
+        bool "All OFF"
+        help
+          Force all fans off globally.
+
+      config VAR_FAN_FORCED_MODE_ON
+        bool "All ON"
+        help
+          Force all fans on globally.
+
+    endchoice
+
+    config VAR_FAN_FORCED
+      string
+      default "-1" if VAR_FAN_FORCED_MODE_AUTO
+      default "0" if VAR_FAN_FORCED_MODE_OFF
+      default "1" if VAR_FAN_FORCED_MODE_ON
 
   endmenu
 
