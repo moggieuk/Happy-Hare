@@ -1449,8 +1449,8 @@ class MmuFilamentMovement:
         self.move_filament(
             "Proportional unload validation: extruder forward spin",
             probe_distance,
-            speed=self.p.extruder_load_speed,
-            motor="extruder",
+            speed=u.p.virtual_sensor_homing_speed,
+            motor="gear",
             wait=True,
         )
         self.movequeue_dwell(0.2) # Let ADC sensor catch up
