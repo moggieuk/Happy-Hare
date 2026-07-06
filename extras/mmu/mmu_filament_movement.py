@@ -1145,9 +1145,15 @@ class MmuFilamentMovement:
             wait=True,
         )
 
-        moved = grip_distance
+        self.movequeue_dwell(0.2) # Let ADC sensor catch up
+        self.movequeue_wait()
 
-        # Phase 2: extruder-only probes until compression releases
+        prop     = self.sensor_manager.get_sensor_obj(SENSOR_PROPORTIONAL)
+        baseline = prop.get_status(0).get('value', 0.)
+        moved    = grip_distance
+
+        # Phase 2: extruder-only probes. A gripping extruder draws filament from
+        # the buffer (gear static) shifting the sensor toward tension
         for i in range(max_steps):
             self.move_filament(
                 f"Proportional extruder entry validation step {i + 1}",
@@ -1161,14 +1167,11 @@ class MmuFilamentMovement:
             self.movequeue_dwell(0.2) # Let ADC sensor catch up
             self.movequeue_wait()
 
-# IGIANNAKAS
-# PAUL: seems like this should simply be a test of tension relax and not rely on compression sensor
-# PAUL: because what if compression is not triggered at the start of the operation?
-# PAUL: seems like it would be more reliable this way
-            if not self.sensor_manager.check_sensor(SENSOR_COMPRESSION):
+            shift = prop.get_status(0).get('value', 0.) - baseline # Negative => toward tension
+            if shift < -PROPORTIONAL_GRIP_SHIFT_MARGIN:
                 self.log_info(
-                    f"Proportional post-load validation: compression "
-                    f"released after {moved:.1f}mm (step {i + 1}) - "
+                    f"Proportional post-load validation: buffer moved toward "
+                    f"tension ({shift:.3f}) after {moved:.1f}mm (step {i + 1}) - "
                     f"extruder grip confirmed"
                 )
                 return moved
@@ -1177,8 +1180,7 @@ class MmuFilamentMovement:
 
         raise MmuError(
             f"Failed to load filament past the extruder entrance "
-            f"(proportional sensor still compressed after "
-            f"{moved:.1f}mm)"
+            f"(proportional buffer did not relax after {moved:.1f}mm)"
         )
 
 
@@ -1364,9 +1366,25 @@ class MmuFilamentMovement:
                 # If synced this may move toolhead_unload_safety_margin into the bowden
                 # If unsynced filament should be exactly at extruder gear (reference point)
                 # -------------------------------------------------------------------------------
+                # Proportional validation needs a released tip pulled clear enough to rest in
+                # tension, so extend the safety margin to at least a buffer range when it validates
+                safety_margin = u.p.toolhead_unload_safety_margin
+                if (
+                    validate and not extruder_only
+                    and self.gate_selected != TOOL_GATE_BYPASS
+                    and self.sensor_manager.has_sensor(SENSOR_PROPORTIONAL)
+                ):
+                    if safety_margin < u.buffer.buffer_maxrange:
+                        self.log_info(
+                            f"Unload safety margin ({safety_margin:.1f}mm) is less than buffer "
+                            f"range ({u.buffer.buffer_maxrange:.1f}mm); extending for proportional "
+                            f"unload validation"
+                        )
+                    safety_margin = max(safety_margin, u.buffer.buffer_maxrange)
+
                 length = (
                     max(0, u.toolhead_wrapper.p.toolhead_extruder_to_nozzle + self.drive().get_filament_position())
-                    + u.p.toolhead_unload_safety_margin
+                    + safety_margin
                 )
                 self.log_debug(
                     f"Unloading last {length:.1f}mm to exit the extruder"
@@ -1385,7 +1403,7 @@ class MmuFilamentMovement:
                     self.set_filament_pos_state(FILAMENT_POS_HOMED_EXTRUDER)
                     self.drive().set_filament_position(-(u.toolhead_wrapper.p.toolhead_extruder_to_nozzle))
                 else:
-                    overshoot += u.p.toolhead_unload_safety_margin
+                    overshoot += safety_margin
 
                 # -------------------------------------------------------------------------------
                 # If possible validate we are free of the extruder
@@ -1427,62 +1445,77 @@ class MmuFilamentMovement:
             return synced, overshoot
 
 
-# PAUL
-# IGIANNAKAS: this seems to be problematic ... the extruder could pick up the filament again!
-# IGIANNAKAS: if probe distance > unload safety then it probably will and springiness in the filament
-# IGIANNAKAS: could cause it to catch.
-# IGIANNAKAS: why not just move extruder in retract direction, if proportional indicates further compression,
-# IGIANNAKAS: then the filament is still trapped. If no change (or more tension) filament is confirmed out
-# IGIANNAKAS: That said, why not change unload_extruder() so that the 'toolhead_unload_safety_margin'
-# IGIANNAKAS: move is done JUST with extruder stepper... that guarantee's removal and doesn't complicate with
-# IGIANNAKAS: overshoot into bowden?!
     def _validate_extruder_unload_proportional(self):
         """
-        Use proportional sync-feedback buffer to validate filament is out of the extruder
-        Verify the extruder released filament: spin it forward and confirm the proportional sensor doesn't
-        shift toward compression (a shift means the extruder is still gripping).
+        Validate the extruder released filament using only the proportional sensor.
+        Keyed off the sensor's resting state after the synced unload:
+          Stage 1 (passive): compression at rest => MMU gear didn't retract (unload fault)
+          Stage 2 (probe): stepped extruder-only retract. Shift toward compression => extruder
+            still gripping (stop early); no shift over the budget => filament free in bowden.
+            Retract direction avoids re-feeding toward the nozzle, and stepping lets us stop on
+            the first grip response rather than over-driving the sensor into its rail.
+        A fully grinding extruder (can't bite) reads as free (needs encoder/switch to catch).
 
         Return:
-          bool Validation success
+          bool True if filament confirmed free, False on detected fault
         """
-        return True # Temp until logic confirmed
         u = self.mmu_unit()
-
         prop = self.sensor_manager.get_sensor_obj(SENSOR_PROPORTIONAL)
-        probe_distance = u.buffer.buffer_maxrange
 
-        pre_spin = prop.get_status(0).get('value', 0.)
-        self.log_info(
-            f"Proportional unload validation: sensor={pre_spin:.3f}, "
-            f"spinning extruder forward {probe_distance:.1f}mm "
-            f"to verify filament released..."
-        )
-
-        self.move_filament(
-            "Proportional unload validation: extruder forward spin",
-            probe_distance,
-            speed=self.p.extruder_load_speed,
-            motor="extruder",
-            wait=True,
-        )
         self.movequeue_dwell(0.2) # Let ADC sensor catch up
         self.movequeue_wait()
-        post_spin = prop.get_status(0).get('value', 0.)
+        resting = prop.get_status(0).get('value', 0.)
 
-        shift = post_spin - pre_spin # Positive => toward compression
-        self.log_info(
-            f"Proportional unload validation: "
-            f"pre={pre_spin:.3f}, post={post_spin:.3f}, shift={shift:.3f}"
-        )
-
-        if shift > 0.1:
+        # Stage 1: compression at rest => MMU gear failed to follow, filament compressed in bowden
+        if resting >= PROPORTIONAL_COMPRESSION_FAULT:
             self.log_warning(
-                f"Warning: Proportional unload validation - extruder may still "
-                f"be gripping filament (sensor shifted {shift:.3f} toward "
-                f"compression)\n"
+                f"Warning: Proportional unload validation - sensor compressed at rest "
+                f"({resting:.3f}), MMU gear may not have retracted filament\n"
                 f"Will attempt to continue..."
             )
             return False
+
+        # Stage 2: extruder-only retract in steps until the sensor shifts toward compression
+        # (extruder still gripping) or the budget is exhausted (filament free). The budget
+        # over-moves the headroom to the compression fault (0.5 * buffer_maxrange mm per unit
+        # value) by the slack factor since bowden slack absorbs part of the move; stepping lets
+        # us stop on the first grip response rather than over-driving the sensor into its rail
+        budget = (
+            (PROPORTIONAL_COMPRESSION_FAULT - resting)
+            * 0.5 * u.buffer.buffer_maxrange
+            * PROPORTIONAL_BOWDEN_SLACK_FACTOR
+        )
+        step_size = u.buffer.buffer_maxrange / 2.
+        max_steps = min(4, max(1, int(math.ceil(budget / step_size))))
+
+        self.log_debug(
+            f"Proportional unload validation: sensor={resting:.3f}, up to {max_steps} x "
+            f"{step_size:.1f}mm extruder-only retract probe(s) to verify filament released"
+        )
+
+        moved = 0.
+        for i in range(max_steps):
+            self.move_filament(
+                f"Proportional unload validation step {i + 1}",
+                -step_size,
+                speed=self.p.extruder_unload_speed,
+                motor="extruder",
+                wait=True,
+            )
+
+            moved += step_size
+
+            self.movequeue_dwell(0.2) # Let ADC sensor catch up
+            self.movequeue_wait()
+
+            shift = prop.get_status(0).get('value', 0.) - resting # Positive => toward compression
+            if shift > PROPORTIONAL_GRIP_SHIFT_MARGIN:
+                self.log_warning(
+                    f"Warning: Proportional unload validation - extruder may still be gripping "
+                    f"filament (sensor shifted {shift:.3f} toward compression after {moved:.1f}mm)\n"
+                    f"Will attempt to continue..."
+                )
+                return False
 
         self.log_info("Proportional unload validation: confirmed - extruder released filament")
         return True
