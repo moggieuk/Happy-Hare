@@ -411,6 +411,21 @@ class MmuUnit:
         else:
             logging.info("MMU: - No mmu_buffer specified")
 
+        # A proportional-backed compression endstop can only detect extruder collision if the
+        # buffer spring rest state leaves headroom toward compression (physical switch is exempt)
+        if (
+            self.buffer
+            and self.p.extruder_homing_endstop == SENSOR_COMPRESSION
+            and self.buffer.proportional_sensor is not None
+            and self.buffer.compression_sensor is self.buffer.proportional_sensor.compression_vsensor
+            and not self.buffer.supports_validation()
+        ):
+            raise config.error(
+                "'extruder_homing_endstop: %s' is not possible with 'buffer_spring_state: %s' because the "
+                "proportional sensor cannot detect extruder collision. Requires 'tension' or 'neutral' spring "
+                "state, or an alternative extruder homing endstop" % (SENSOR_COMPRESSION, self.buffer.buffer_spring_state)
+            )
+
         # Create sync-feedback controller (created even if no buffer or encoder)
         self.sync_feedback = MmuSyncFeedback(params, self, self.p)
         logging.info("MMU: Created: sync-feedback / autotune controller for unit %s" % self.name)

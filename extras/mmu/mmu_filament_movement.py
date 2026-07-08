@@ -1027,8 +1027,16 @@ class MmuFilamentMovement:
             ):
                 if self.sensor_manager.has_sensor(SENSOR_PROPORTIONAL):
                     # Sensorless + proportional sensor: distinct grip-establish + extruder pull validation
-                    overshoot = self._validate_extruder_load_proportional(length)
-                    length -= overshoot
+                    # Probe assumes compression endstop homing left the sensor at the compression rail
+                    # and a spring rest state with probe headroom (tension/neutral)
+                    if u.buffer.supports_validation() and u.p.extruder_homing_endstop == SENSOR_COMPRESSION:
+                        overshoot = self._validate_extruder_load_proportional(length)
+                        length -= overshoot
+                    else:
+                        self.log_debug(
+                            "Proportional post-load validation skipped: requires 'buffer_spring_state: "
+                            "tension|neutral' and 'extruder_homing_endstop: %s'" % SENSOR_COMPRESSION
+                        )
 
                 elif self.sensor_manager.check_sensor(SENSOR_COMPRESSION): # None if no mmu_buffer
                     # If we have a compression sensor indicating compression we can
@@ -1110,6 +1118,8 @@ class MmuFilamentMovement:
         """
         Post-load extruder grip check using only the proportional sensor: feed synced to establish grip then
         drive the extruder alone until the compression sensor releases.
+        Caller gated: requires tension/neutral spring rest and compression endstop homing so the
+        probe starts with the sensor at the compression rail (see MmuBuffer.supports_validation)
         Returns:
           distance consumed (0 if skipped)
         """
@@ -1366,13 +1376,15 @@ class MmuFilamentMovement:
                 # If synced this may move toolhead_unload_safety_margin into the bowden
                 # If unsynced filament should be exactly at extruder gear (reference point)
                 # -------------------------------------------------------------------------------
-                # Proportional validation needs a released tip pulled clear enough to rest in
-                # tension, so extend the safety margin to at least a buffer range when it validates
+                # Proportional validation needs a released tip pulled clear enough for the buffer
+                # to reach its spring rest state, so extend the safety margin to at least a buffer
+                # range when it validates
                 safety_margin = u.p.toolhead_unload_safety_margin
                 if (
                     validate and not extruder_only
                     and self.gate_selected != TOOL_GATE_BYPASS
                     and self.sensor_manager.has_sensor(SENSOR_PROPORTIONAL)
+                    and u.buffer.supports_validation()
                 ):
                     if safety_margin < u.buffer.buffer_maxrange:
                         self.log_info(
@@ -1410,7 +1422,7 @@ class MmuFilamentMovement:
                 # -------------------------------------------------------------------------------
                 if validate and not extruder_only and self.gate_selected != TOOL_GATE_BYPASS:
 
-                    if self.sensor_manager.has_sensor(SENSOR_PROPORTIONAL):
+                    if self.sensor_manager.has_sensor(SENSOR_PROPORTIONAL) and u.buffer.supports_validation():
                         # Use proportional sync-feedback buffer movement to validate success
                         self._validate_extruder_unload_proportional()
 
@@ -1455,6 +1467,8 @@ class MmuFilamentMovement:
             Retract direction avoids re-feeding toward the nozzle, and stepping lets us stop on
             the first grip response rather than over-driving the sensor into its rail.
         A fully grinding extruder (can't bite) reads as free (needs encoder/switch to catch).
+        Caller gated: requires tension/neutral spring rest (see MmuBuffer.supports_validation);
+        stage thresholds/budget are keyed off the measured resting value so both rest states work.
 
         Return:
           bool True if filament confirmed free, False on detected fault
@@ -2642,7 +2656,7 @@ class MmuFilamentMovement:
         # Probably loaded: Unless strict we will continue to assume loaded in the absence of sensors to say otherwise
         elif not strict and self.filament_pos == FILAMENT_POS_LOADED and looks_loaded:
             # Gate sensor alone can't tell "in bowden" from "loaded"; use proportional grip check
-            if can_heat and ts is None and es is None and self.sensor_manager.has_sensor(SENSOR_PROPORTIONAL):
+            if can_heat and ts is None and es is None and self.sensor_manager.has_sensor(SENSOR_PROPORTIONAL) and u.buffer.supports_validation():
                 prop_result = self._check_filament_in_extruder_proportional()
                 if prop_result is True:
                     self.log_info("Proportional sensor confirms extruder grip - filament loaded")
@@ -2711,10 +2725,18 @@ class MmuFilamentMovement:
         detected = self.sensor_manager.check_any_sensors_in_path()
 
         # Check resting postion of sprung sync-feedback buffer for positive identification of filament
-        if not detected and u.has_buffer():
+        # (tension/neutral rest states only, consistent with the validation capability tier)
+        if not detected and u.has_buffer() and u.buffer.buffer_spring_state in ('tension', 'neutral'):
             resting_state = u.buffer.buffer_spring_state_num
-            state = u.sync_feedback._get_sensor_state(use_virtual_threshold=True) # Get discrete state
-            if resting_state is not None and state != resting_state:
+            if self.sensor_manager.has_sensor(SENSOR_PROPORTIONAL):
+                # Raw value against spring rest is more sensitive than the discrete vsensor
+                # thresholds (esp. for neutral springs where rest is mid-travel)
+                value = self.sensor_manager.get_sensor_obj(SENSOR_PROPORTIONAL).get_status(0).get('value', float(resting_state))
+                off_rest = abs(value - resting_state) > PROPORTIONAL_GRIP_SHIFT_MARGIN
+            else:
+                state = u.sync_feedback._get_sensor_state(use_virtual_threshold=True) # Get discrete state
+                off_rest = state != resting_state
+            if off_rest:
                 detected = True
                 self.log_debug("Buffer is not in resting position thus filament must be present")
 
@@ -2786,7 +2808,7 @@ class MmuFilamentMovement:
         if ts is True:
             return True
 
-        if self.sensor_manager.has_sensor(SENSOR_PROPORTIONAL):
+        if self.sensor_manager.has_sensor(SENSOR_PROPORTIONAL) and self.mmu_unit().buffer.supports_validation():
             return self._check_filament_in_extruder_proportional()
 
         # Finally resort to movement test with encoder
@@ -2798,6 +2820,7 @@ class MmuFilamentMovement:
         """
         Detect extruder grip using only the proportional sensor: centre the buffer with the gear (still deep
         tension => free in bowden), then extruder-retract (shift toward compression => gripped).
+        Caller gated: requires tension/neutral spring rest (see MmuBuffer.supports_validation)
         Returns True/False, or None if not possible.
         """
         u = self.mmu_unit()
@@ -2809,9 +2832,12 @@ class MmuFilamentMovement:
         self.log_info(f"Checking for filament in extruder using proportional sensor (baseline={baseline:.3f})...")
 
         # Phase 1: gear-only centering. Still deep tension => nothing to compress against => free in bowden
+        # Early exit only valid for tension-rest spring where rest is a preloaded extreme. A neutral
+        # rest coincides with the centering target (free and gripped both read ~0) so discrimination
+        # falls to the phase 2 probe
         _, success = u.sync_feedback.adjust_filament_tension()
         post_adjust = prop.get_status(0).get('value', 0.)
-        if not success and post_adjust <= -0.9:
+        if u.buffer.buffer_spring_state == 'tension' and not success and post_adjust <= -0.9:
             self.log_info(
                 f"Proportional recovery: sensor still in deep tension ({post_adjust:.3f}) "
                 "- filament free in bowden"
