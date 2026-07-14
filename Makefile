@@ -393,7 +393,7 @@ python_deps:
 
 $(OUT)/$(notdir $(KCONFIG_CONFIG)).pickle: $(KCONFIG_CONFIG) | python_deps $(OUT)
 	$(Q)echo "$(C_INFO)Pre-parsing Kconfig $(notdir $(KCONFIG_CONFIG))$(C_OFF)"
-	$(Q)$(PY) -m installer.build $(V) --pre-parse-kconfig "$(KCONFIG_CONFIG)"
+	$(Q)$(if $(filter y,$(CONFIG_MULTI_UNIT)),F_MULTI_UNIT=y F_MULTI_UNIT_ENTRY_POINT=y) $(PY) -m installer.build $(V) --pre-parse-kconfig "$(KCONFIG_CONFIG)"
 
 $(OUT)/$(notdir $(KCONFIG_CONFIG))_%.pickle: $(KCONFIG_CONFIG)_% | python_deps $(OUT)
 	$(Q)echo "$(C_INFO)Pre-parsing Kconfig $(notdir $(KCONFIG_CONFIG)_$*)$(C_OFF)"
