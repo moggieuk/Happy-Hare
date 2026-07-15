@@ -96,3 +96,84 @@ than the subsystem's own file. All output lands in `mmu.log` (owned and rotated 
   `mmu_rfid_reader` / `MmuRfid` / `MMU_RFID` identifiers.
 - Runtime import validation still requires a Klipper rig (the package pulls in `bus`,
   the reactor, and config objects that `py_compile` does not exercise).
+
+---
+
+## Copy-ready PR description
+
+### Summary
+
+This PR reorganizes the NFC/RFID subsystem under `extras/mmu/unit/nfc` so its
+structure matches Happy Hare's MMU unit ownership model. It also fixes native
+Klipper loading for `[mmu_nfc_reader]`, separates the NFC G-code commands into
+focused command classes, consolidates NFC output into the standard `mmu.log`,
+and adds a hardware-independent pytest regression suite.
+
+The reorganization keeps reader hardware, tag parsing, Spoolman integration,
+gate state, shared-reader behavior, and scan-jog logic together behind the MMU
+unit while leaving only the thin loader required by Klipper at the top level.
+
+### Changes
+
+#### Package and loading
+
+- Moved the NFC manager modules and reader implementation into
+  `extras/mmu/unit/nfc`, removing the redundant `mmu_nfc_` filename prefixes.
+- Added `extras/mmu_nfc_reader.py` as a thin Klipper entry point that re-exports
+  `load_config` and `load_config_prefix` from the unit-owned reader module.
+  This allows `[mmu_nfc_reader]` sections to load through Klipper's normal
+  extension discovery without moving the implementation back to the top level.
+- Renamed the remaining internal `mmu_rfid_reader` object and command
+  identifiers to `mmu_nfc_reader`, matching the configuration section users
+  already configure and fixing the previous defaults lookup mismatch.
+
+#### Commands and runtime ownership
+
+- Split the NFC G-code surface into focused `BaseCommand` implementations for
+  `NFC`, `NFC_SHARED`, `NFC_STATUS`, `NFC_HELP`, `NFC_DOCTOR`, `NFC_REGISTER`,
+  and `NFC_LED_TEST`.
+- Added a shared `NfcMixin` for lane, shared-reader, and Spoolman resolution so
+  command routing is consistent without duplicating lookup logic.
+- Kept reader state, tag state, polling, scan-jog behavior, and shared preload
+  coordination in the NFC unit rather than in the command layer.
+
+#### Logging and protocol handling
+
+- Replaced the dedicated NFC file logger with an MMU-backed adapter. NFC output
+  is now prefixed consistently and written through Happy Hare's existing
+  logging infrastructure to `mmu.log`.
+- Unified logging across the manager, hardware drivers, tag parser, and
+  Spoolman clients while retaining the familiar `logger.debug/info/warning/
+  error/exception` interface.
+
+#### Regression tests
+
+- Added pytest coverage for gate-state transitions, macro dispatch, reader
+  resolution, scan motion calculations, Spoolman lookup and caching, NDEF and
+  tag parsing, protocol helpers, logging behavior, and package imports.
+- Stubbed Klipper, Moonraker/Spoolman, and hardware boundaries so the NFC unit
+  suite runs without external services, a Klipper checkout, or physical NFC
+  readers.
+- Added `make test_nfc`; the normal `make test` target now runs the same NFC
+  regression suite. `make test_all` remains available for environments with
+  the full repository development dependencies.
+
+### Migration note
+
+The obsolete top-level `[nfc_gate]` configuration loader has been removed.
+Legacy configurations containing literal `[nfc_gate ...]` sections must migrate
+to `[mmu_nfc_reader ...]` sections. This does not remove the runtime
+`nfc_gate shared` object, so existing macro references such as
+`printer['nfc_gate shared']` continue to work.
+
+### Validation
+
+- 35 NFC pytest tests passed, including 16 subtests.
+- NFC modules and tests compile successfully.
+- `git diff --check` passes.
+
+Run the NFC regression suite with:
+
+```sh
+make test
+```

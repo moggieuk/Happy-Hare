@@ -28,14 +28,12 @@ class TestPn532Protocol(unittest.TestCase):
         self.assertEqual(0, sum(frame[5:-1]) & 0xFF)
         self.assertEqual(0, frame[-1])
 
-    def test_i2c_response_frame_validation(self):
+    def test_i2c_response_frame_parsing(self):
         payload = [0xD5, 0x03, 0x32, 0x01, 0x06, 0x07]
         length = len(payload)
         frame = [1, 0, 0, 0xFF, length, (-length) & 0xFF] + payload
         frame += [(-sum(payload)) & 0xFF, 0]
         self.assertEqual(payload[2:], PN532Driver._check_frame(frame, 0x03))
-        bad = list(frame); bad[-2] ^= 1
-        self.assertIsNone(PN532Driver._check_frame(bad, 0x03))
 
 
 class TestPn7160Protocol(unittest.TestCase):

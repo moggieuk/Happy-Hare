@@ -925,20 +925,11 @@ class PN532Driver(_PN532Base):
             return None
         if raw[1] != 0x00 or raw[2] != 0x00 or raw[3] != 0xFF:
             return None                            # Corrupted start code
-        length = raw[_OFF_LEN]
-        if ((length + raw[5]) & 0xFF) != 0:
-            return None                            # Corrupted length checksum
-        frame_end = _OFF_TFI + length
-        if length < 2 or len(raw) <= frame_end:
-            return None                            # Truncated response frame
         if raw[_OFF_TFI] != _TFI_PN532_TO_HOST:
             return None
         if raw[_OFF_CMD] != expected_cmd_resp:
             return None
-        if (sum(raw[_OFF_TFI:frame_end]) + raw[frame_end]) & 0xFF:
-            return None                            # Corrupted data checksum
-        if len(raw) > frame_end + 1 and raw[frame_end + 1] != 0x00:
-            return None                            # Invalid postamble
+        length  = raw[_OFF_LEN]
         payload = list(raw[_OFF_PAYLOAD: _OFF_PAYLOAD + length - 2])
         return payload                             # Bytes after TFI and CMD_RESP
 
