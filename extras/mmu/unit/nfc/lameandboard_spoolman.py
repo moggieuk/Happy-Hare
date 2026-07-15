@@ -22,7 +22,13 @@ from urllib import error as url_error
 from urllib import parse as url_parse
 from urllib import request
 
-LOG = logging.getLogger("rfid.spoolman_client")
+# Route through the shared MMU-backed NFC logger so this module's output goes to
+# mmu.log with the rest of the NFC subsystem. Falls back to a standalone logger
+# if used outside the Happy Hare package.
+try:
+    from .log import logger as LOG
+except ImportError:
+    LOG = logging.getLogger("rfid.spoolman_client")
 
 # ---------------------------------------------------------------------------
 # SpoolmanDB fetch caches — populated at most once per process.

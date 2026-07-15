@@ -1,4 +1,4 @@
-# klippy/extras/mmu/mmu_nfc_klipper_interface.py
+# klippy/extras/mmu/unit/nfc/klipper_interface.py
 #
 # EMU NFC Gate Reader — reactor-thread GCode macro dispatcher
 # Copyright (C) 2026  WoodWorker
@@ -17,9 +17,9 @@
 
 import re
 
-from .mmu_nfc_gate_state import (DIRECT_METADATA_SPOOL,
+from .gate_state import (DIRECT_METADATA_SPOOL,
                          EVENT_CHANGED, EVENT_UID_ONLY, EVENT_REMOVED)
-from .mmu_nfc_log import logger
+from .log import logger
 
 
 class KlipperInterface:

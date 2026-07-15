@@ -7,7 +7,7 @@
 
 def resolve_gate_reader(printer, mmu, gate_number, gate_name,
                         configured_gates):
-    """Return (MmuRfidReader, MmuUnit, object_name) for one global MMU gate."""
+    """Return (MmuNfcReader, MmuUnit, object_name) for one global MMU gate."""
     if mmu is None:
         raise printer.config_error(
             "nfc_gate [%s]: Happy Hare 'mmu' object is not available"

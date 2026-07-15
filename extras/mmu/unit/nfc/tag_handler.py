@@ -1,4 +1,4 @@
-# klippy/extras/mmu/mmu_nfc_tag_handler.py
+# klippy/extras/mmu/unit/nfc/tag_handler.py
 #
 # EMU NFC Gate Reader — tag reading and spool resolution pipeline
 # Copyright (C) 2026  WoodWorker
@@ -14,8 +14,8 @@
 
 import inspect
 
-from .mmu_nfc_gate_state import CurrentTag, DIRECT_METADATA_SPOOL
-from .mmu_nfc_log import logger
+from .gate_state import CurrentTag, DIRECT_METADATA_SPOOL
+from .log import logger
 
 LED_AUTO_CREATING = 'mmu_RFID_creating'
 LED_UNRESOLVED    = 'mmu_RFID_unresolved'
@@ -405,7 +405,7 @@ def parse_current_tag(gate, tag):
                 gate._name, gate._gate, uid_hex)
         return
     try:
-        from .mmu_nfc_tag_parser import parse_tag
+        from .tag_parser import parse_tag
         raw = (bytes(tag.raw_tag_data)
                if isinstance(tag.raw_tag_data, (bytes, bytearray))
                else tag.raw_tag_data)
@@ -575,7 +575,7 @@ def resolve_auth_keys(gate, tag):
     Returns (keys, None) on success, (None, reason_str) on failure.
     """
     try:
-        from .mmu_nfc_tag_parser import _bambu_derive_keys
+        from .tag_parser import _bambu_derive_keys
         uid_bytes = bytes((tag.target_info or {}).get('uid_bytes') or [])
         if len(uid_bytes) < 4:
             return None, ('uid_bytes too short for Bambu key derivation '
@@ -601,7 +601,7 @@ def resolve_creality_key_b(gate, tag):
     default key both fail on genuine Creality tags, so this is tried last.
     """
     try:
-        from .mmu_nfc_tag_parser import _creality_derive_key_b
+        from .tag_parser import _creality_derive_key_b
         uid_bytes = bytes((tag.target_info or {}).get('uid_bytes') or [])
         if len(uid_bytes) not in (4, 7):
             return None, ('uid_bytes wrong length for Creality key '
@@ -1017,7 +1017,7 @@ def resolve_spool(gate, uid_hex):
     if gate._spoolman_auto_create and material:
         if base_url:
             try:
-                from .mmu_nfc_lameandboard_spoolman import (
+                from .lameandboard_spoolman import (
                     SpoolmanClient as LBSpoolmanClient)
                 if _accepts_kwarg(LBSpoolmanClient, 'trace'):
                     lb = LBSpoolmanClient(

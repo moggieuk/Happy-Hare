@@ -1,7 +1,7 @@
-# klippy/extras/mmu/mmu_nfc_log.py
+# klippy/extras/mmu/unit/nfc/log.py
 #
-# EMU NFC Gate Reader — dedicated logger
-# Version 1.0.0  |  2026-04-14
+# NFC Gate Reader — logging bridge to the standard MMU logger
+# Version 1.0.0
 # Copyright (C) 2026  WoodWorker
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
@@ -11,449 +11,230 @@
 # (at your option) any later version.
 #
 # ─────────────────────────────────────────────────────────────────────────────
-# Dedicated logger for all NFC gate modules.
+# NFC logging is routed through the standard Happy Hare MMU logging layer
+# (the `mmu` object's log_debug/log_info/log_warning/log_error). All NFC output
+# therefore lands in mmu.log — owned and rotated by MmuLogger — and on the
+# Klipper console, exactly like every other MMU component. There is no separate
+# nfc_reader.log and no second rotating file handler.
 #
-# All MMU NFC output goes to nfc_reader.log (same directory as
-# klippy.log).  WARNING and ERROR records automatically also appear in
-# klippy.log via _KlippyForwardHandler.  INFO and DEBUG stay in nfc_reader.log
-# only.  Optional UI console output is configured by NFC_manager after reading
-# printer.cfg.
+# The log file location is not rediscovered here: MmuLogger derives mmu.log from
+# printer.start_args['log_file'] and owns the handler; this module simply
+# discovers the active `mmu` object and forwards records to it. Every message is
+# prefixed "NFC" so it is identifiable in the shared log.
 #
-# Debug levels (set via debug = N in printer.cfg):
-#   0  none           — nothing logged anywhere
-#   1  errors         — ERROR  → nfc_reader.log + klippy.log
-#   2  warnings       — WARNING+ → nfc_reader.log + klippy.log  (default)
-#   3  integration    — Spoolman / Happy Hare events → nfc_reader.log only
-#   4  trace          — full poll + driver detail → nfc_reader.log only
-#
-# Usage (from any module in this package):
-#   from .mmu_nfc_log import logger
+# The module-level `logger` is an adapter with the usual .debug/.info/.warning/
+# .error/.exception surface, so existing call sites are unchanged.
 
-import datetime
 import logging
-import os
 import re
+import traceback
 
-_LOGGER_NAME = 'nfc_gate'
-_LOG_FILENAME = 'nfc_reader.log'
-_CONSOLE_HANDLER_NAME = 'nfc_gate_console'
-_LEVELS = {
-    'off': logging.CRITICAL + 1,
-    '0': logging.CRITICAL + 1,  # 0 = no logging
-    'error': logging.ERROR,
-    '1': logging.ERROR,          # 1 = errors only
-    'warning': logging.WARNING,
-    'warn': logging.WARNING,
-    '2': logging.WARNING,        # 2 = warnings and errors
-    'info': logging.INFO,
-    '3': logging.INFO,           # 3 = info, warnings, and errors
-    'debug': logging.DEBUG,
-    '4': logging.DEBUG,          # 4 = everything (verbose)
-}
 
-_console_gcode = None
-_console_reactor = None
+# ─────────────────────────────────────────────────────────────────────────────
+# MMU discovery + logging adapter
+# ─────────────────────────────────────────────────────────────────────────────
+
+_NFC_PREFIX = 'NFC'
+_printer = None
+_mmu = None
+
+# NFC-specific log levels — independent of Happy Hare's global log_level /
+# log_file_level so the reader/tag can be debugged without turning on all MMU
+# debug output. Set from the reader/gate config via configure():
+#   _file_level      ← 'debug'             (what NFC writes to mmu.log)
+#   _console_enabled ← 'console_output'    (whether NFC echoes to the console)
+#   _console_level   ← 'console_log_level' (console verbosity cap)
+# Levels: 0=off, 1=error, 2=warning, 3=info, 4=debug.
+_file_level = 2
 _console_enabled = False
-_console_level = logging.WARNING
+_console_level = 2
+
+_LEVELS = {
+    'off': 0, 'none': 0, '0': 0,
+    'error': 1, '1': 1,
+    'warn': 2, 'warning': 2, '2': 2,
+    'info': 3, '3': 3,
+    'debug': 4, 'trace': 4, '4': 4,
+}
+# Severity rank per level name (lower rank = more severe = shown at lower levels).
+_SEVERITY = {'error': 1, 'exception': 1, 'warning': 2, 'info': 3, 'debug': 4}
 
 
-def _normalise_level(level, default=logging.WARNING):
-    if isinstance(level, int):
-        return {
-            0: logging.CRITICAL + 1,  # 0 = no logging
-            1: logging.ERROR,          # 1 = errors only
-            2: logging.WARNING,        # 2 = warnings and errors
-            3: logging.INFO,           # 3 = info, warnings, and errors
-            4: logging.DEBUG,          # 4 = everything (verbose)
-        }.get(level, default)
-    return _LEVELS.get(str(level).strip().lower(), default)
+def _normalise_level(value, default):
+    if value is None or isinstance(value, bool):
+        return default
+    if isinstance(value, int):
+        return max(0, min(value, 4))
+    return _LEVELS.get(str(value).strip().lower(), default)
 
 
-def _format_record_message(record):
+def bind_printer(printer):
+    """Remember the printer so the active `mmu` object can be discovered."""
+    global _printer
+    if printer is not None:
+        _printer = printer
+    _resolve_mmu()
+
+
+def _resolve_mmu():
+    """Discover the MMU controller whose MmuLogger owns mmu.log (lazy)."""
+    global _mmu
+    if _mmu is None and _printer is not None:
+        _mmu = _printer.lookup_object('mmu', None)
+    return _mmu
+
+
+def _format(msg, args):
+    if not args:
+        return str(msg)
     try:
-        return record.getMessage()
+        return str(msg) % args
     except Exception:
-        return str(record.msg)
+        return str(msg)
 
 
-def _quote_respond_value(value):
-    value = str(value).replace('\\', '\\\\').replace('"', '\\"')
-    return value.replace('\n', '\\n')
-
-
-def color_console_tags(text):
-    """Wrap console bracket tags with HTML color spans for the Klipper UI."""
+def _prefixed(text):
     text = str(text)
-    text = re.sub(r'\bNFC(?=\[)', '<span style="color:#4FC3F7">NFC</span>', text)
-    text = re.sub(r'^NFC ', '<span style="color:#4FC3F7">NFC</span> ', text)
-    text = text.replace('[WARN]',   '<span style="color:#FFFF00">[WARN]</span>')
-    text = text.replace('[OK]',     '<span style="color:#90EE90">[OK]</span>')
-    text = text.replace('[ERROR]',  '<span style="color:#FF6060">[ERROR]</span>')
-    text = text.replace('[SCAN]',   '<span style="color:#FFA040">[SCAN]</span>')
-    text = text.replace('[MOVE]',   '<span style="color:#FFA040">[MOVE]</span>')
-    text = text.replace('[REWIND]', '<span style="color:#90EE90">[REWIND]</span>')
-    return text
+    if text.lstrip().upper().startswith(_NFC_PREFIX):
+        return text
+    return '%s %s' % (_NFC_PREFIX, text)
 
 
-def _nfc_console_message(message, level_marker=None):
-    message = str(message)
-    if level_marker and message.startswith(level_marker):
-        return color_console_tags(message)
-    match = re.match(r'^\[([^\]]+)\]:\s*(.*)$', message)
-    if match:
-        message = "NFC[%s]: %s" % (match.group(1), match.group(2))
-    if level_marker:
-        message = "%s %s" % (level_marker, message)
-    return color_console_tags(message)
+class _MmuLogAdapter:
+    """Route NFC log calls to mmu.log and the Klipper console.
 
+    Messages are gated on the NFC-specific levels (_file_level / _console_*),
+    then written straight to the MMU log file (mmu.log_to_file) and console
+    (mmu.gcode.respond_info) — deliberately NOT through mmu.log_debug/info/...,
+    which would re-gate on Happy Hare's global levels. This keeps NFC output in
+    the shared mmu.log while letting its verbosity be controlled independently.
 
-def _warn_console_message(message):
-    return _nfc_console_message(message, "[WARN]")
+    Console policy mirrors Happy Hare: errors always show; warning/info show when
+    console_output is on and within console_log_level; debug never hits console.
+    Before the `mmu` object exists (early config load) file records fall back to
+    the shared 'mmu' Python logger, which MmuLogger wires to mmu.log.
 
-
-def _error_console_message(message):
-    return _nfc_console_message(message, "[ERROR]")
-
-
-def _respond_prefixed(message, levelno):
-    if levelno >= logging.ERROR:
-        rendered = _error_console_message(message)
-    elif levelno >= logging.WARNING:
-        rendered = _warn_console_message(message)
-    else:
-        rendered = _nfc_console_message(message)
-    if hasattr(_console_gcode, 'respond_info'):
-        _console_gcode.respond_info(rendered)
-        return
-    if levelno >= logging.ERROR:
-        if hasattr(_console_gcode, 'respond'):
-            _console_gcode.respond(rendered)
-        elif hasattr(_console_gcode, 'respond_raw'):
-            _console_gcode.respond_raw(rendered)
-
-
-def _respond_to_console(record):
+    Accepts and ignores logging kwargs (e.g. extra=) for call-site compatibility.
     """
-    Send selected NFC log messages to the Klipper console.
 
-    Info/warning output is controlled by console_output + console_log_level.
-    Errors are always sent once a gcode object is configured, matching the
-    troubleshooting behavior we want during hardware bring-up.
-    """
-    global _console_gcode, _console_reactor
-    if getattr(record, 'nfc_no_console', False):
-        return
-    if _console_gcode is None:
-        return
-    if record.levelno < logging.INFO:
-        return
-    if record.levelno < logging.ERROR:
-        if not _console_enabled or record.levelno < _console_level:
+    def _emit(self, level, msg, args, exc=False):
+        rank = _SEVERITY[level]
+        show_file = 0 < rank <= _file_level
+        if rank <= 1:            # error / exception
+            show_console = True
+        elif rank >= 4:          # debug
+            show_console = False
+        else:                    # warning / info
+            show_console = _console_enabled and rank <= _console_level
+        if not (show_file or show_console):
             return
 
-    msg = _format_record_message(record)
+        text = _prefixed(_format(msg, args))
+        if exc:
+            text = '%s\n%s' % (text, traceback.format_exc())
 
-    def _send(_eventtime=None, message=msg, levelno=record.levelno):
-        try:
-            _respond_prefixed(message, levelno)
-        except Exception:
-            # Never allow UI notification failure to recurse through logging.
-            pass
-
-    if _console_reactor is not None:
-        try:
-            _console_reactor.register_callback(_send)
+        mmu = _resolve_mmu()
+        if mmu is None:
+            # Pre-init fallback: shared 'mmu' logger -> mmu.log (or klippy.log).
+            if show_file:
+                getattr(logging.getLogger('mmu'),
+                        'error' if exc else level)(text)
             return
-        except Exception:
-            pass
-    _send()
 
-
-class _GCodeConsoleHandler(logging.Handler):
-    name = _CONSOLE_HANDLER_NAME
-
-    def emit(self, record):
-        _respond_to_console(record)
-
-
-_ARCHIVE_RE = re.compile(r'nfc_reader\.log\.(\d{4}-\d{2}-\d{2})$')
-_MAX_ARCHIVES = 7
-_MAX_ARCHIVE_DAYS = 7
-
-
-def _get_log_date(path):
-    """Return the date of the first log entry in *path*, or None.
-
-    Reads the first non-empty line and parses the leading YYYY-MM-DD stamp
-    written by our formatter.  Using the log content (rather than filesystem
-    mtime/ctime) is reliable on Linux where ctime is not a creation timestamp.
-    Returns None if the file is empty, unreadable, or has an unexpected format.
-    """
-    try:
-        with open(path, 'rb') as f:
-            for _ in range(10):          # skip any leading blank lines
-                raw = f.readline()
-                if not raw:
-                    return None          # EOF — empty file
-                line = raw.decode('utf-8', errors='replace').strip()
-                if line:
-                    # format: "YYYY-MM-DD HH:MM:SS LEVEL    message"
-                    return datetime.date.fromisoformat(line[:10])
-    except Exception:
-        pass
-    return None
-
-
-def _prune_old_archives(log_dir):
-    """Delete archives beyond _MAX_ARCHIVES or older than _MAX_ARCHIVE_DAYS.
-
-    Scans *log_dir* for files matching nfc_reader.log.YYYY-MM-DD, sorts them
-    newest-first, and removes any that are either past position _MAX_ARCHIVES
-    in that list or whose date is more than _MAX_ARCHIVE_DAYS days ago.
-    """
-    cutoff = datetime.date.today() - datetime.timedelta(days=_MAX_ARCHIVE_DAYS)
-    archives = []
-    try:
-        for name in os.listdir(log_dir):
-            m = _ARCHIVE_RE.match(name)
-            if m:
-                try:
-                    d = datetime.date.fromisoformat(m.group(1))
-                    archives.append((d, os.path.join(log_dir, name)))
-                except ValueError:
-                    pass
-    except OSError:
-        return
-
-    archives.sort(key=lambda x: x[0], reverse=True)   # newest first
-
-    for i, (d, path) in enumerate(archives):
-        if i >= _MAX_ARCHIVES or d < cutoff:
+        if show_file:
+            mmu.log_to_file(text)
+        if show_console:
             try:
-                os.remove(path)
-            except OSError:
+                mmu.gcode.respond_info(color_console_tags(text))
+            except Exception:
                 pass
 
+    def debug(self, msg, *args, **kwargs):
+        self._emit('debug', msg, args)
 
-def _find_klipper_log_dir():
+    def info(self, msg, *args, **kwargs):
+        self._emit('info', msg, args)
+
+    def warning(self, msg, *args, **kwargs):
+        self._emit('warning', msg, args)
+
+    def error(self, msg, *args, **kwargs):
+        self._emit('error', msg, args)
+
+    def exception(self, msg, *args, **kwargs):
+        self._emit('exception', msg, args, exc=True)
+
+
+# Module-level singleton — imported by every nfc gate module.
+logger = _MmuLogAdapter()
+
+
+def configure(printer=None, console_output=None, console_log_level=None,
+              file_level=None):
+    """Bind the MMU object and set the NFC-specific log levels.
+
+    NFC output is written to mmu.log and the Klipper console, but gated on these
+    NFC levels rather than Happy Hare's global log_level / log_file_level, so a
+    reader/tag can be debugged without enabling all MMU debug output.
+      printer           discovers the active `mmu` object
+      file_level        ← reader/gate 'debug'   (0..4, what reaches mmu.log)
+      console_output    ← 'console_output'      (console echo on/off)
+      console_log_level ← 'console_log_level'   (console verbosity cap)
     """
-    Return the directory that klippy.log lives in by inspecting the root
-    logger's FileHandler(s).  Falls back to ~/printer_data/logs if none found.
-    """
-    for handler in logging.getLogger().handlers:
-        if isinstance(handler, logging.FileHandler):
-            return os.path.dirname(os.path.abspath(handler.baseFilename))
-    return os.path.expanduser('~/printer_data/logs')
-
-
-_LOG_FORMATTER = logging.Formatter(
-    '%(asctime)s.%(msecs)03d %(levelname)-8s %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S')
-
-
-class _DateRotatingFileHandler(logging.FileHandler):
-    """FileHandler that rotates nfc_reader.log at the first write after midnight.
-
-    On every emit() the current date is compared against the date of the first
-    log entry.  When the day has advanced the open file is closed, renamed to
-    nfc_reader.log.YYYY-MM-DD (using the date from its first entry), old
-    archives are pruned, and a fresh file is opened.
-
-    Rotation happens on day advance only — not on restart.  If Klipper runs
-    continuously across midnight the first write after midnight triggers the
-    rename.  If Klipper restarts on the same day the existing file is reused.
-    """
-
-    def __init__(self, path):
-        # Perform a startup rotation if the file already contains stale entries
-        # (Klipper restarted the same day we already have a previous-day file).
-        self._do_rotate_if_stale(path)
-        # Prune at every startup so archives don't accumulate when Klipper
-        # restarts before midnight (which skips the midnight-crossing _rotate
-        # path that was the only previous prune trigger).
-        _prune_old_archives(os.path.dirname(os.path.abspath(path)))
-        super(_DateRotatingFileHandler, self).__init__(path, mode='a',
-                                                       encoding='utf-8',
-                                                       delay=False)
-        self._log_path = path
-        self._current_day = datetime.date.today()
-
-    # ── public ────────────────────────────────────────────────────────────────
-
-    def emit(self, record):
-        today = datetime.date.today()
-        if today != self._current_day:
-            self._rotate(self._current_day)
-            self._current_day = today
-        super(_DateRotatingFileHandler, self).emit(record)
-
-    # ── internal ──────────────────────────────────────────────────────────────
-
-    @staticmethod
-    def _do_rotate_if_stale(log_path):
-        """Rename *log_path* at startup if its first entry is from a prior day."""
-        if not os.path.exists(log_path):
-            return
-        log_date = _get_log_date(log_path)
-        if log_date is None or log_date >= datetime.date.today():
-            return
-        archive = '{}.{}'.format(log_path, log_date.isoformat())
-        try:
-            os.rename(log_path, archive)
-        except OSError:
-            pass  # Cannot rotate — keep writing to the existing file
-
-    def _rotate(self, rotate_date):
-        """Close the current stream, rename the file, prune archives, reopen."""
-        try:
-            self.stream.flush()
-            self.stream.close()
-        except Exception:
-            pass
-        self.stream = None
-
-        archive = '{}.{}'.format(self._log_path, rotate_date.isoformat())
-        try:
-            os.rename(self._log_path, archive)
-        except OSError:
-            pass  # Cannot rename — new writes will append to the existing file
-
-        _prune_old_archives(os.path.dirname(self._log_path) or '.')
-
-        try:
-            self.stream = self._open()
-        except Exception:
-            pass
-
-
-class _KlippyForwardHandler(logging.Handler):
-    """Forward WARNING and ERROR records to klippy.log (the root logger).
-
-    Attached to the nfc_gate logger so that any logger.warning() or
-    logger.error() call anywhere in the MMU NFC package automatically
-    appears in klippy.log without requiring explicit log_both() calls.
-    INFO and DEBUG records stay in nfc_reader.log only.
-    """
-
-    def emit(self, record):
-        if record.levelno < logging.WARNING:
-            return
-        try:
-            logging.getLogger().handle(record)
-        except Exception:
-            self.handleError(record)
-
-
-def _build_logger():
-    logger = logging.getLogger(_LOGGER_NAME)
-    if logger.handlers:
-        return logger  # Already configured (e.g. reloaded config)
-
-    log_path = os.path.join(_find_klipper_log_dir(), _LOG_FILENAME)
-
-    fh = _DateRotatingFileHandler(log_path)
-    fh.setFormatter(_LOG_FORMATTER)
-
-    logger.addHandler(fh)
-    logger.addHandler(_KlippyForwardHandler())
-    logger.setLevel(logging.DEBUG)
-    logger.propagate = False
-
-    return logger
-
-
-def configure(path='', printer=None, console_output=None, console_log_level=None):
-    """
-    Redirect the NFC logger to *path*.
-
-    Called from NFCGate.__init__ after reading log_file from config.
-    Replaces the existing FileHandler so the configured path takes effect
-    even though the logger was created at import time.
-    Expands ~ automatically.  If *path* is a bare filename (no directory
-    component), it is placed in the same directory as klippy.log.
-    """
-    if path:
-        expanded = os.path.expanduser(path)
-        if not os.path.dirname(expanded):
-            expanded = os.path.join(_find_klipper_log_dir(), expanded)
-        _lg = logging.getLogger(_LOGGER_NAME)
-        for h in _lg.handlers[:]:
-            if isinstance(h, logging.FileHandler):
-                _lg.removeHandler(h)
-                h.close()
-        _lg.propagate = False
-        fh = _DateRotatingFileHandler(expanded)
-        fh.setFormatter(_LOG_FORMATTER)
-        _lg.addHandler(fh)
-
-    if (printer is not None or console_output is not None or
-            console_log_level is not None):
-        configure_console(printer, console_output, console_log_level)
+    global _file_level, _console_enabled, _console_level
+    bind_printer(printer)
+    if file_level is not None:
+        _file_level = _normalise_level(file_level, _file_level)
+    if console_output is not None:
+        _console_enabled = bool(console_output)
+    if console_log_level is not None:
+        _console_level = _normalise_level(console_log_level, _console_level)
 
 
 def configure_console(printer=None, enabled=None, level=None):
-    """
-    Configure optional Fluidd/Mainsail console output.
-
-    Errors are always sent to the console once *printer* is available.  Info
-    and warning records are sent only when *enabled* is true and the record
-    level is at or above *level*.
-    """
-    global _console_gcode, _console_reactor, _console_enabled, _console_level
-
-    if printer is not None:
-        try:
-            _console_gcode = printer.lookup_object('gcode')
-        except Exception:
-            _console_gcode = None
-        try:
-            _console_reactor = printer.get_reactor()
-        except Exception:
-            _console_reactor = None
-    if enabled is not None:
-        _console_enabled = bool(enabled)
-    if level is not None:
-        _console_level = _normalise_level(level, _console_level)
-
-    _lg = logging.getLogger(_LOGGER_NAME)
-    for h in _lg.handlers:
-        if isinstance(h, _GCodeConsoleHandler):
-            return
-    _lg.addHandler(_GCodeConsoleHandler())
-
-
-# Thin wrappers kept for call-site compatibility.
-# WARNING and ERROR automatically reach klippy.log via _KlippyForwardHandler.
-# INFO stays in nfc_reader.log only unless a call site uses info_both().
-
-def log_both(level, msg, *args, **kwargs):
-    getattr(logger, level)(msg, *args, **kwargs)
-
-
-def info(msg, *args, **kwargs):
-    logger.info(msg, *args, **kwargs)
-
-
-def warning(msg, *args, **kwargs):
-    logger.warning(msg, *args, **kwargs)
-
-
-def error(msg, *args, **kwargs):
-    logger.error(msg, *args, **kwargs)
-
-
-# Module-level singleton — imported by every nfc_gate* module.
-logger = _build_logger()
+    """Set just the NFC console output preferences (and bind the printer)."""
+    configure(printer=printer, console_output=enabled, console_log_level=level)
 
 
 def info_both(msg, *args):
-    """Log an INFO event to nfc_reader.log and klippy.log."""
+    """Compatibility alias for an INFO record."""
     logger.info(msg, *args)
-    try:
-        if args:
-            msg = msg % args
-        record = logger.makeRecord(_LOGGER_NAME, logging.INFO, __file__, 0,
-                                   msg, (), None)
-        logging.getLogger().handle(record)
-    except Exception:
-        pass
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Console color tags — precompiled NFC bracket-tag substitutions
+#
+# NFC console messages use bracket tags ([WARN], [OK], NFC[...], ...), not Happy
+# Hare's {0}..{6}/{{RRGGBB}} markers, so only these are handled. Coloring honors
+# the MMU's console_show_colored_text preference when the mmu object is available.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# NFC bracket tags, compiled once.
+_NFC_TAG_SUBS = (
+    (re.compile(r'\bNFC(?=\[)'), '<span style="color:#4FC3F7">NFC</span>'),
+    (re.compile(r'^NFC '),       '<span style="color:#4FC3F7">NFC</span> '),
+    (re.compile(r'\[WARN\]'),    '<span style="color:#FFFF00">[WARN]</span>'),
+    (re.compile(r'\[OK\]'),      '<span style="color:#90EE90">[OK]</span>'),
+    (re.compile(r'\[ERROR\]'),   '<span style="color:#FF6060">[ERROR]</span>'),
+    (re.compile(r'\[SCAN\]'),    '<span style="color:#FFA040">[SCAN]</span>'),
+    (re.compile(r'\[MOVE\]'),    '<span style="color:#FFA040">[MOVE]</span>'),
+    (re.compile(r'\[REWIND\]'),  '<span style="color:#90EE90">[REWIND]</span>'),
+)
+
+
+def color_console_tags(text):
+    """Wrap NFC bracket tags in HTML color spans for the Klipper UI.
+
+    Applies the precompiled NFC tag patterns. When the MMU has colored console
+    text disabled, the tags are left as plain text.
+    """
+    text = str(text)
+
+    mmu = _resolve_mmu()
+    if mmu is not None and not getattr(mmu.p, 'console_show_colored_text', True):
+        return text
+
+    for pattern, repl in _NFC_TAG_SUBS:
+        text = pattern.sub(repl, text)
+
+    return text

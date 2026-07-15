@@ -329,7 +329,7 @@ class MmuUnit:
 
         # Create NFC state managers after unit parameters and physical reader
         # references are available. This is the native replacement for
-        # constructing runtime objects from optional [nfc_gate ...] sections.
+        # constructing runtime objects from optional [mmu_nfc_reader ...] sections.
         self.nfc = MmuNfc(params, self, self.p)
 
         # Create calibrator to oversee autotune / calibration updates based on available telemetry

@@ -5,9 +5,9 @@
 
 import logging
 
-from .. import mmu_nfc_manager as manager
-from ..mmu_nfc_manager import NFCGate
-from ..mmu_nfc_shared_reader import MmuSharedNfcReader
+from .nfc import manager as manager
+from .nfc.manager import NFCGate
+from .nfc.shared_reader import MmuSharedNfcReader
 
 
 _current_printer = None

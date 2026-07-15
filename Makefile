@@ -2,7 +2,7 @@ SHELL := /usr/bin/env sh
 PY    := python
 Q  ?= @                           # For quiet make builds, override with make Q= for verbose output
 V  ?=                             # For verbose output (mostly from python builder), set to -v to enable
-UT ?= *                           # For unittests, e.g. make UT=test_build.py test
+UT ?= *                           # For pytest filtering, e.g. make UT=test_build test
 
 MAKEFLAGS += --jobs 16            # Parallel build
 
@@ -99,7 +99,7 @@ restart_klipper = 0
 .SECONDEXPANSION:
 .DEFAULT_GOAL := build
 .PRECIOUS: $(KCONFIG_CONFIG) $(KCONFIG_CONFIG)_%
-.PHONY: menuconfig install uninstall check_version diff test build clean variables python_deps fix_links gen_kconfig kconfig_needs_update olddefconfig verify_pickle
+.PHONY: menuconfig install uninstall check_version diff test test_nfc test_all build clean variables python_deps fix_links gen_kconfig kconfig_needs_update olddefconfig verify_pickle
 .SECONDARY: \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
@@ -416,8 +416,17 @@ diff: | build
 	$(Q)$(call diff,$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE),$(patsubst $(SRC)/%,%,$(OUT)/$(PRINTER_CONFIG_FILE)))
 	$(Q)$(call diff,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE),$(patsubst $(SRC)/%,%,$(OUT)/$(MOONRAKER_CONFIG_FILE)))
 
-test: 
-	$(Q)$(PY) -m unittest discover $(V) -p '$(UT)'
+test: test_nfc
+
+# NFC unit checks are intentionally isolated from Klipper/Moonraker.  Their
+# runtime interfaces are supplied by doubles in test/nfc.
+test_nfc:
+	$(Q)$(PY) -m pytest test/nfc $(V) $(if $(filter-out *,$(UT)),-k '$(UT)',)
+
+# Optional repository-wide checks for development environments that also have
+# the installer and Moonraker dependencies available.
+test_all:
+	$(Q)$(PY) -m pytest test $(V) $(if $(filter-out *,$(UT)),-k '$(UT)',)
 
 variables:
 	@echo "========================="

@@ -1,4 +1,4 @@
-# klippy/extras/mmu/mmu_nfc_shared_reader.py
+# klippy/extras/mmu/unit/nfc/shared_reader.py
 #
 # NFC Gate Reader — shared-reader (single in-body reader) manager
 # SPDX-License-Identifier: GPL-3.0-or-later
@@ -25,10 +25,10 @@
 # a MmuSharedNfcReader instance -- they were previously defined directly on
 # NFCGate, gated by "if self._shared:" checks at each call site.
 
-from .mmu_nfc_log import logger
+from .log import logger
 
 try:
-    from .mmu_nfc_log import color_console_tags
+    from .log import color_console_tags
 except ImportError:
     def color_console_tags(text):
         text = str(text)
@@ -37,16 +37,16 @@ except ImportError:
         text = text.replace('[ERROR]', '<span style="color:#FF6060">[ERROR]</span>')
         return text
 
-from .unit.nfc import rc522_driver
-from . import mmu_nfc_shared_preload as shared_preload
+from . import rc522_driver
+from . import shared_preload as shared_preload
 EVENT_AUTO_CREATE = 'auto_create'
 EVENT_SPOOL_READY = 'spool_ready'
 EVENT_TAG_READ = 'tag_read'
 EVENT_UNRESOLVED = 'unresolved'
-from .mmu_nfc_gate_state import (
+from .gate_state import (
     EVENT_CHANGED, EVENT_REMOVED, EVENT_UID_ONLY, DIRECT_METADATA_SPOOL)
-from .mmu_constants import TOOL_GATE_BYPASS
-from .mmu_nfc_manager import (
+from ...mmu_constants import TOOL_GATE_BYPASS
+from .manager import (
     NFCGate, _raw_klipper_config, _shared_preload_hook_message)
 
 

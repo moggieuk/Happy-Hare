@@ -121,7 +121,13 @@ import hashlib
 import struct
 from typing import Optional
 
-_log = logging.getLogger("rfid.tag_parser")
+# Route through the shared MMU-backed NFC logger so parse output goes to mmu.log
+# with the rest of the NFC subsystem. Falls back to a standalone logger if used
+# outside the Happy Hare package.
+try:
+    from .log import logger as _log
+except ImportError:
+    _log = logging.getLogger("rfid.tag_parser")
 
 
 def _make_trace(trace):

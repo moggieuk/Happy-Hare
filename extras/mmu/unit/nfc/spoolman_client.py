@@ -1,4 +1,4 @@
-# klippy/extras/mmu/mmu_nfc_spoolman_client.py
+# klippy/extras/mmu/unit/nfc/spoolman_client.py
 #
 # EMU NFC Gate Reader — Spoolman API client
 # Version 1.0.0  |  2026-04-14
@@ -76,7 +76,7 @@ import logging
 import time
 
 try:
-    from .mmu_nfc_log import logger
+    from .log import logger
 except ImportError:
     logger = logging.getLogger('spoolman_client')
 

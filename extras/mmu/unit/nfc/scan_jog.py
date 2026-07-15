@@ -1,13 +1,13 @@
-# klippy/extras/mmu/mmu_nfc_scan_jog.py
+# klippy/extras/mmu/unit/nfc/scan_jog.py
 #
 # Scan-and-jog mode helpers for NFCGate.
 
-from .mmu_nfc_gate_state import (
+from .gate_state import (
     DIRECT_METADATA_SPOOL, EVENT_CHANGED, EVENT_UID_ONLY, CurrentTag)
-from .mmu_nfc_log import info_both, logger
+from .log import info_both, logger
 
 try:
-    from .mmu_nfc_log import color_console_tags
+    from .log import color_console_tags
 except ImportError:
     def color_console_tags(text):
         text = str(text)

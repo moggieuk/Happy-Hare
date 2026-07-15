@@ -1,4 +1,4 @@
-# klippy/extras/mmu/mmu_nfc_manager.py
+# klippy/extras/mmu/unit/nfc/manager.py
 #
 # EMU NFC Gate Reader — gate manager
 # Version 1.0.0  |  2026-04-14
@@ -67,34 +67,21 @@ import ast
 import os
 import re
 
-from .unit.nfc import pn532_driver, rc522_driver
-from .unit.nfc import reader_factory
-from . import mmu_nfc_reader_resolver as mmu_reader
-from . import mmu_nfc_scan_jog as scan_jog
-from . import mmu_nfc_tag_handler as tag_handler
-from .mmu_nfc_gate_state import (GateState,
+from . import pn532_driver, rc522_driver
+from . import reader_factory
+from . import reader_resolver as mmu_reader
+from . import scan_jog as scan_jog
+from . import tag_handler as tag_handler
+from .gate_state import (GateState,
                                EVENT_CHANGED, EVENT_UID_ONLY, EVENT_REMOVED,
                                DIRECT_METADATA_SPOOL)
-from .mmu_nfc_klipper_interface import KlipperInterface
-from .mmu_nfc_log import configure, logger
-from .mmu_constants import (
+from .klipper_interface import KlipperInterface
+from .log import configure, logger, color_console_tags
+from ...mmu_constants import (
     GATE_EMPTY, GATE_AVAILABLE, GATE_AVAILABLE_FROM_BUFFER,
     FILAMENT_POS_UNLOADED, ACTION_IDLE, ACTION_CHECKING,
 )
-
-try:
-    from .mmu_nfc_log import color_console_tags
-except ImportError:
-    def color_console_tags(text):
-        text = str(text)
-        text = text.replace('[WARN]', '<span style="color:#FFFF00">[WARN]</span>')
-        text = text.replace('[OK]', '<span style="color:#90EE90">[OK]</span>')
-        text = text.replace('[ERROR]', '<span style="color:#FF6060">[ERROR]</span>')
-        text = text.replace('[SCAN]', '<span style="color:#FFA040">[SCAN]</span>')
-        text = text.replace('[MOVE]', '<span style="color:#FFA040">[MOVE]</span>')
-        text = text.replace('[REWIND]', '<span style="color:#90EE90">[REWIND]</span>')
-        return text
-from .mmu_nfc_spoolman_client import SpoolmanClient
+from .spoolman_client import SpoolmanClient
 
 LANE_LED_TEST_DURATION = 2.0
 LANE_LED_TEST_GAP = 0.15
@@ -860,11 +847,11 @@ class NFCGateDefaults:
                 "spoolman_auto_create=True requires Spoolman to be enabled")
 
         self._printer = config.get_printer()
-        log_file = config.get('log_file', '')
         try:
-            configure(log_file, printer=self._printer,
+            configure(printer=self._printer,
                       console_output=self.console_output,
-                      console_log_level=self.console_log_level)
+                      console_log_level=self.console_log_level,
+                      file_level=self.debug)
         except Exception as e:
             import logging
             logging.getLogger().warning(
@@ -1009,10 +996,10 @@ class NFCGate:
         self._console_output = console_output
         self._console_log_level = console_log_level
         if d is None:
-            log_file = config.get('log_file', '')
-            configure(log_file, printer=self.printer,
+            configure(printer=self.printer,
                       console_output=console_output,
-                      console_log_level=console_log_level)
+                      console_log_level=console_log_level,
+                      file_level=self._debug)
 
         if d is not None:
             # Share the single SpoolmanClient created by NFCGateDefaults.
@@ -1910,9 +1897,10 @@ class NFCGate:
                 if _spoolman_url_enabled(p.spoolman_url) else None)
         self._spoolman = unit._nfc_spoolman
 
-        configure(p.log_file, printer=self.printer,
+        configure(printer=self.printer,
                   console_output=p.console_output,
-                  console_log_level=p.console_log_level)
+                  console_log_level=p.console_log_level,
+                  file_level=p.debug)
 
     def _apply_macro_presentation_vars(self):
         """Apply NFC presentation settings from _MMU_NFC_VARS."""

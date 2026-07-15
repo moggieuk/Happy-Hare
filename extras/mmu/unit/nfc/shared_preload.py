@@ -1,4 +1,4 @@
-# klippy/extras/mmu/mmu_nfc_shared_preload.py
+# klippy/extras/mmu/unit/nfc/shared_preload.py
 #
 # Shared reader preload coordination.
 #
@@ -6,10 +6,10 @@
 # hardware polling and tag-resolution responsibilities.  Per-lane assignments
 # take precedence over shared-reader staging.
 
-from .mmu_nfc_log import logger
+from .log import logger
 
 try:
-    from .mmu_nfc_log import color_console_tags
+    from .log import color_console_tags
 except ImportError:
     def color_console_tags(text):
         text = str(text)
