@@ -22,9 +22,15 @@ class MmuNfcDoctorCommand(BaseCommand):
     CMD = "NFC_DOCTOR"
 
     HELP_BRIEF = "Check NFC reader setup and configuration"
-    HELP_PARAMS = f"{CMD}: {HELP_BRIEF}"
+    HELP_PARAMS = (
+        f"{CMD}: {HELP_BRIEF}\n"
+        + "GATE     = <#>         Lane to target (with ENDSTOP=ADD)\n"
+        + "ENDSTOP  = ADD          Add missing [mmu_nfc_endstop laneN] config for GATE\n"
+    )
     HELP_SUPPLEMENT = (
-        "Checks NFC config, readers, Spoolman, and Happy Hare hooks."
+        "Checks NFC config, readers, Spoolman, and Happy Hare hooks.\n"
+        "Example:\n"
+        "NFC_DOCTOR GATE=0 ENDSTOP=ADD ...Add the virtual endstop config for lane 0"
     )
 
     def __init__(self, mmu):
@@ -40,5 +46,7 @@ class MmuNfcDoctorCommand(BaseCommand):
         )
 
     def _run(self, gcmd):
+        if nfc_manager._handle_doctor_action(self.printer, gcmd):
+            return
         gcmd.respond_info(nfc_manager.color_console_tags(
             '\n'.join(nfc_manager._doctor_lines(self.printer))))

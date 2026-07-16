@@ -501,6 +501,166 @@ def _raw_klipper_config(printer):
         return {}
 
 
+# gate._name is always "lane%d" % gate._gate (see MmuNfc._init__ in
+# ../mmu_nfc.py), which is also the printer-object name each NFCGate is
+# registered under ("nfc_gate laneN"). It is NOT necessarily the name of the
+# backing [mmu_nfc_reader <name>] config section -- that comes from the MMU
+# unit's 'nfc_readers' list and defaults to the same "laneN" string, but a
+# user can point it at a differently-named reader. We anchor on gate._name
+# since that covers the default/common case and matches the object the
+# endstop borrows hardware from; a custom reader name just falls back to
+# appending at end of file (handled below).
+
+def _nfc_endstop_section(gate):
+    return "mmu_nfc_endstop %s" % gate._name
+
+
+def _nfc_endstop_name(gate):
+    return "nfc_%s" % gate._name
+
+
+def _nfc_reader_config_section(gate):
+    return "mmu_nfc_reader %s" % gate._name
+
+
+def _has_nfc_endstop(printer, gate, raw_config=None):
+    section = _nfc_endstop_section(gate)
+    if raw_config is None:
+        raw_config = _raw_klipper_config(printer)
+    if section in raw_config:
+        return True
+    return printer.lookup_object(section, None) is not None
+
+
+def _nfc_endstop_block(gate):
+    name = gate._name
+    return (
+        "[mmu_nfc_endstop {name}]\n"
+        "nfc_gate:                {name}\n"
+        "endstop_name:            nfc_{name}\n"
+        "poll_interval:           0.05\n"
+        "register_sensor:         True\n"
+    ).format(name=name)
+
+
+def _mmu_hardware_cfg_path():
+    # Rendered destination of config/base/mmu_hardware.cfg (see
+    # installer/build.py's "include mmu/base/*.cfg"). This file is
+    # regenerated on version upgrades (with a backup taken beforehand), same
+    # as any other live mmu_hardware.cfg edit a user makes post-install.
+    return os.path.expanduser('~/printer_data/config/mmu/base/mmu_hardware.cfg')
+
+
+def _insert_nfc_endstop_after_lane(text, gate):
+    name = gate._name
+    reader_header_re = re.compile(
+        r'^\[%s\]\s*$' % re.escape(_nfc_reader_config_section(gate)))
+    any_section_re = re.compile(r'^\[[^\]]+\]\s*(?:[#;].*)?$')
+    if re.search(r'^\[mmu_nfc_endstop %s\]\s*$' % re.escape(name), text, re.M):
+        return text, False, "present"
+
+    lines = text.splitlines(keepends=True)
+    reader_start = None
+    for idx, line in enumerate(lines):
+        if reader_header_re.match(line.strip()):
+            reader_start = idx
+            break
+
+    block = "\n" + _nfc_endstop_block(gate)
+    if reader_start is None:
+        if text and not text.endswith('\n'):
+            text += '\n'
+        return text + block, True, "appended"
+
+    insert_at = len(lines)
+    for idx in range(reader_start + 1, len(lines)):
+        stripped = lines[idx].strip()
+        if stripped == '' or any_section_re.match(stripped):
+            insert_at = idx
+            break
+    lines[insert_at:insert_at] = [block]
+    return ''.join(lines), True, "inserted"
+
+
+def _nfc_endstop_status_text(printer, gate):
+    return ("Loaded" if printer.lookup_object(_nfc_endstop_section(gate), None) is not None
+            else "Unloaded")
+
+
+def _find_gate_by_number(gate_number):
+    for gate in _lane_instances:
+        if (not getattr(gate, '_shared', False)
+                and int(getattr(gate, '_gate', -1)) == int(gate_number)):
+            return gate
+    return None
+
+
+def _cmd_doctor_endstop_add(printer, gcmd):
+    gate_number = gcmd.get_int('GATE', None, minval=0)
+    if gate_number is None:
+        _respond_register_error(
+            gcmd, "[ERROR] NFC: NFC_DOCTOR ENDSTOP=ADD requires GATE=<#>")
+        return
+    gate = _find_gate_by_number(gate_number)
+    if gate is None:
+        _respond_register_error(
+            gcmd, "[ERROR] NFC: No NFC reader is configured for gate %d" %
+            gate_number)
+        return
+
+    raw_config = _raw_klipper_config(printer)
+    if _has_nfc_endstop(printer, gate, raw_config):
+        gcmd.respond_info(color_console_tags(
+            "[OK] NFC_DOCTOR: [%s] already exists for ENDSTOP=%s"
+            % (_nfc_endstop_section(gate), _nfc_endstop_name(gate))))
+        return
+
+    path = _mmu_hardware_cfg_path()
+    try:
+        if os.path.exists(path):
+            with open(path, 'r') as f:
+                text = f.read()
+        else:
+            text = ""
+        new_text, changed, mode = _insert_nfc_endstop_after_lane(text, gate)
+        if not changed:
+            gcmd.respond_info(color_console_tags(
+                "[OK] NFC_DOCTOR: [%s] already exists in %s. "
+                "Restart Klipper to load it."
+                % (_nfc_endstop_section(gate), path)))
+            return
+        parent = os.path.dirname(path)
+        if parent and not os.path.isdir(parent):
+            os.makedirs(parent)
+        with open(path, 'w') as f:
+            f.write(new_text)
+    except Exception as e:
+        logger.exception("NFC_DOCTOR ENDSTOP=ADD failed")
+        _respond_register_error(
+            gcmd, "[ERROR] NFC: Failed to add [%s] to %s: %s"
+            % (_nfc_endstop_section(gate), path, e))
+        return
+
+    gcmd.respond_info(color_console_tags(
+        "[OK] NFC_DOCTOR: %s [%s] in %s for ENDSTOP=%s. "
+        "Restart Klipper to load the new virtual endstop."
+        % ("inserted" if mode == "inserted" else "appended",
+           _nfc_endstop_section(gate), path, _nfc_endstop_name(gate))))
+
+
+def _handle_doctor_action(printer, gcmd):
+    endstop_action = str(gcmd.get('ENDSTOP', '') or '').strip().lower()
+    if endstop_action:
+        if endstop_action == 'add':
+            _cmd_doctor_endstop_add(printer, gcmd)
+            return True
+        _respond_register_error(
+            gcmd, "[ERROR] NFC: Unknown NFC_DOCTOR ENDSTOP action '%s'" %
+            endstop_action)
+        return True
+    return False
+
+
 def _detect_happy_hare_version(printer):
     """Return the Happy Hare software version string, or None if unavailable."""
     try:
@@ -611,8 +771,27 @@ def _doctor_lines(printer):
                          (gate._gate, gate._name, gate._reader_type))
         else:
             state = "failed" if gate._failed else "ready/pending init"
-            lines.append("    Gate %d [%s/%s]: enabled, %s" %
-                         (gate._gate, gate._name, gate._reader_type, state))
+            lines.append("    Gate %d [%s/%s]: enabled, %s, virtual_endstop: %s" %
+                         (gate._gate, gate._name, gate._reader_type, state,
+                          _nfc_endstop_status_text(printer, gate)))
+
+    missing_endstops = []
+    for gate in sorted(enabled_lanes, key=lambda g: g._gate):
+        if not _has_nfc_endstop(printer, gate, raw_config):
+            missing_endstops.append(gate)
+    if missing_endstops:
+        lines.append("  [ERROR] NFC virtual endstops: %d missing" %
+                     len(missing_endstops))
+        for gate in missing_endstops:
+            lines.append(
+                "    [ERROR] Gate %d [%s]: missing [%s] for ENDSTOP=%s; "
+                "run NFC_DOCTOR GATE=%d ENDSTOP=ADD"
+                % (gate._gate, gate._name, _nfc_endstop_section(gate),
+                   _nfc_endstop_name(gate), gate._gate))
+    elif enabled_lanes:
+        lines.append("  [OK] NFC virtual endstops: configured for every enabled lane reader")
+    else:
+        lines.append("  [OK] NFC virtual endstops: no enabled lane readers")
 
     if enabled_shared:
         shared = enabled_shared[0]
@@ -680,6 +859,7 @@ def _nfc_help(gcmd=None):
         "NFC_HELP : Display the complete set of NFC commands and functions",
         "NFC_STATUS : Show every configured NFC reader",
         "NFC_DOCTOR : Check NFC config, readers, Spoolman, and Happy Hare hooks",
+        "NFC_DOCTOR GATE=<#> ENDSTOP=ADD : Add missing NFC virtual endstop config for one lane",
         "NFC_REGISTER UID=TAG_UID SPOOL_ID=SPOOL_ID : Assign a UID to an existing Spoolman spool",
         "NFC_LED_TEST ALL=1 CYCLES=2 : Test configured lane tag-read LED effect on every enabled lane",
         "NFC GATE=<#> HELP=1 : Show commands for one per-lane reader",
