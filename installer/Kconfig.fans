@@ -7,7 +7,7 @@
 #   PIN_FAN   (single MCU)
 #   PIN_FAN_X (per-gate MCU)
 #
-# Fan control variable tokens 
+# Fan control variable (marco_var) tokens 
 #   VAR_FAN_ON_TEMP
 #   VAR_FAN_OFF_TEMP
 #   VAR_FAN_POLLING_TIME
@@ -61,7 +61,7 @@ if MMU_HAS_FANS
         Time in seconds to run fan at full power before resetting to target speed.
 
     if !MMU_HAS_PER_GATE_MCU
-      config PARAM_PIN_FAN
+      config PIN_FAN
         string "Fan pin            "
         default ""
         help
@@ -71,7 +71,7 @@ if MMU_HAS_FANS
     endif
 
     menu "Fan pins" 
-      depends on MMU_HAS_LEDS && MMU_HAS_PER_GATE_MCU
+      depends on MMU_HAS_PER_GATE_MCU
 
       @repeat var=i min=0 max=11@
         config PIN_FAN_$(i)

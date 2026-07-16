@@ -842,7 +842,7 @@ class ConfigBuilder(object):
             document_body.append(WhitespaceNode("\n"))
             self.document.body[0:0] = document_body
         else:
-            # if not at_top and include, insert after last include
+            # if not at_top and include, insert on next line
             inserted = False
             if section_name.startswith("include "):
                 last_idx = None
@@ -852,6 +852,20 @@ class ConfigBuilder(object):
 
                 if last_idx is not None:
                     insert_at = last_idx + 1
+
+                    if insert_at < len(self.document.body):
+                        node = self.document.body[insert_at]
+                        if isinstance(node, CommentNode):
+                            insert_at += 1
+                            if (
+                                insert_at < len(self.document.body)
+                                and isinstance(self.document.body[insert_at], WhitespaceNode)
+                                and re.search(r"\r\n|\n|\r", self.document.body[insert_at].value)
+                            ):
+                                insert_at += 1
+                        elif isinstance(node, WhitespaceNode) and re.search(r"\r\n|\n|\r", node.value):
+                            insert_at += 1
+
                     self.document.body[insert_at:insert_at] = document_body + [WhitespaceNode("\n\n")]
                     inserted = True
 

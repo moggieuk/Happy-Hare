@@ -35,6 +35,8 @@ if MMU_HAS_EJECT_BUTTONS
     @repeat var=i min=0 max=11@
       config PIN_EJECT_BUTTON_$(i)
         prompt "Eject button $(i) pin " if PARAM_NUM_GATES > $(i)
+        help
+          Leave blank if the gate doesn't have an eject button installed.
     @endrepeat@
 
   endmenu
