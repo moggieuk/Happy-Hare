@@ -754,20 +754,5 @@ class MmuSharedNfcReader(NFCGate):
                 "using %.0fs default", self._name, default)
         return default
 
-    def get_status(self, _eventtime=None):
-        status = super().get_status(_eventtime)
-        if not status.get('enabled', True):
-            return status
-        status['pending_spool_id'] = (
-            self._shared_pending_spool
-            if self._shared_pending_spool is not None else -1)
-        status['pending_auto_created'] = bool(
-            getattr(self, '_shared_pending_auto_created', False))
-        status['preload_spool_id'] = (
-            self._shared_preload_spool
-            if getattr(self, '_shared_preload_spool', None) is not None else -1)
-        status['preload_auto_created'] = bool(
-            getattr(self, '_shared_preload_auto_created', False))
-        status['has_per_lane_readers'] = bool(
-            getattr(self, '_has_per_lane_readers', False))
-        return status
+    # get_status() is inherited from NFCGate -- it already reports the
+    # pending/preload fields for shared gates (self._shared is True here).

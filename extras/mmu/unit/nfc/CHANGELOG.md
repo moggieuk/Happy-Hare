@@ -2,6 +2,130 @@
 
 Changes to the Happy Hare NFC/RFID reader subsystem on the `rfid` branch.
 
+## Moonraker-routed Spoolman, and stripping NFC's own gate-map cache (2026-07-16)
+
+Two connected pieces of work: (1) Spoolman connectivity now goes exclusively
+through Moonraker's proxy instead of dialing Spoolman directly, gated on Happy
+Hare's own `spoolman_support`; (2) began removing every place NFC kept a
+second, locally-cached opinion of a gate's spool/UID/poll state that had to be
+reconciled against Happy Hare's gate map, since the gate is meant to be a
+utility that pushes reads into the gate map, not a second source of truth for
+it. See `NEXT_STEPS.md` for what's left of (2).
+
+### Spoolman via Moonraker
+
+- **`MoonrakerSpoolmanTransport`** (`spoolman_client.py`, new): synchronous
+  transport that POSTs to Moonraker's `/server/spoolman/proxy`
+  (`use_v2_response=True`) instead of opening a connection to Spoolman
+  directly. Normalises `/api/v1/...` paths to Moonraker's expected `/v1/...`
+  and raises a real `urllib.error.HTTPError` (with `._body_text` set) on a
+  Spoolman-side failure, so every existing `except HTTPError` call site needed
+  no changes. Verified live against a running Moonraker instance: the success
+  and Spoolman-error response shapes match exactly
+  (`{"result": {"response": ..., "error": ...}}`, HTTP 200 even on a Spoolman
+  404/400); a genuinely malformed proxy request gets a different,
+  non-`result`-wrapped Moonraker-level error at a real non-200 status — noted
+  as a known edge in `NEXT_STEPS.md`.
+- **`SpoolmanClient`** (`spoolman_client.py`) rewritten to build one
+  `MoonrakerSpoolmanTransport` and route `_fetch_spools`/`_fetch_spool_detail`/
+  `_patch_spool` through it. Dropped the now-meaningless `base_url` constructor
+  argument and the URL-discovery machinery it used to need
+  (`_discover_base_url_from_moonraker`, `_resolve_base_url`).
+- **`spooltag_decode.py` → `spoolman_catalog.py`**, class `SpoolmanClient` →
+  `SpoolmanCatalogClient`. The old name/class collided with
+  `spoolman_client.SpoolmanClient`, forcing an `as LBSpoolmanClient` alias at
+  the one call site (`tag_handler.py`) — gone now that the name doesn't
+  collide. `_req()` now delegates to the shared transport instead of building
+  its own curl-equivalent/urlopen call, shrinking from ~70 lines to a thin
+  wrapper. The one file/class rename before this (`lameandboard_spoolman.py`)
+  also had a leftover console string, "auto-create via lameandboard client",
+  fixed to "auto-create via Spoolman client".
+- **`spoolman_enable` removed.** It was a second, independent on/off switch
+  that never referenced Happy Hare's own `spoolman_support` ([mmu] section) —
+  you could enable NFC lookups while `spoolman_support: off`, or vice versa.
+  Spoolman is now enabled for NFC purely by `spoolman_support != off`, read via
+  `NFCGate._resolve_spoolman()`, called from `_handle_connect()` (`mmu` isn't
+  guaranteed loaded at raw config-parse time, so resolution is deferred to
+  `klippy:connect`, same pattern as the existing `_get_mmu()` helper).
+  `installer/Kconfig.nfc_reader`, `config/base/mmu_parameters.cfg`, and
+  `extras/mmu/unit/mmu_unit_parameters.py` updated to match — the "IP address /
+  Auto / Disabled" `CHOICE_NFC_SPOOLMAN_URL` menu is gone along with it, since
+  a direct-dial address is no longer a supported connection mode.
+- **`DEFAULT_MOONRAKER_URL`** (`spoolman_client.py`) is now the single
+  definition of `http://127.0.0.1:7125`, replacing three duplicated literals
+  across `manager.py`.
+
+### NFC's own cache and background polling
+
+- **Consolidated duplicated NDEF TLV parsing.** `tag_handler.py` had its own
+  hand-rolled `_find_ndef_tlv`/`_decode_ndef_text_records`, nearly identical to
+  `tag_parser.py`'s versions, existing only to support a mid-scan debug
+  preview that tolerates a truncated read. `tag_parser._find_ndef_tlv` gained
+  an opt-in `return_details=True` mode (dict + partial-tolerant, matching
+  tag_handler's old behaviour exactly); tag_handler's copies are now thin
+  wrappers delegating to it.
+- **`_hh_seed_spool_id` / `_hh_seed_available` / `_seed_cache_from_hh()` /
+  `_hh_sync()` / `HH_SYNC=1` / `NFC_HH_SYNC_CACHE` removed entirely** —
+  a startup/manual re-seed mechanism that read Happy Hare's gate map through a
+  gcode-macro round-trip (`printer.mmu.gate_spool_id` in Jinja) to avoid
+  redispatching a spool Happy Hare already knew about. Redundant with the
+  gate reading Happy Hare's live gate map directly (`_read_hh_status()`/
+  `_gate_snapshot()`), which it already does elsewhere. Also removed the
+  `_NFC_HH_SYNC_ONE` reference from help text — it had no implementation
+  anywhere in the codebase; a stale doc reference, not a real command.
+  (Note: this was removed once, incorrectly flagged as dead/unregistered —
+  `extras/mmu/commands/mmu_nfc.py`'s `HH_SYNC` branch was live — restored,
+  then removed correctly for real once that was confirmed.)
+- **Per-lane background poll loop removed.** Traced the full `_poll_timer`/
+  `_poll_timer_event`/`_poll()` call graph across `manager.py`, `scan_jog.py`,
+  `shared_reader.py`, `shared_preload.py`, and `mmu_nfc_shared.py` to separate
+  genuinely per-lane-only logic from logic shared with the shared reader
+  (`_poll()` itself is used by both — shared reader's own operation runs
+  through it). Confirmed `scan_jog.py` has zero references to `self._shared`
+  anywhere and `shared_reader.py` explicitly does not use it, so its poll-timer
+  interactions are per-lane-only by construction. Removed: the per-lane "poll
+  suppression while Happy Hare has an opinion" block in `_poll_timer_event`
+  (gated on `_scan_enabled`, always `False` for shared), `_delayed_init`'s
+  per-lane auto-start-at-boot, the per-lane branch of `_set_reading` (now
+  shared-only), `scan_jog.py`'s `resume_poll_after_rewind()` and the
+  poll-timer re-arm in `abort_scan_on_error()`, and `READ=1`/`READ=0` from the
+  per-lane `NFC` command (`extras/mmu/commands/mmu_nfc.py`) — `NFC_SHARED
+  READ=1/0` (a separate command class in `mmu_nfc_shared.py`) is untouched.
+  Per-lane tag detection is now purely event-driven: Happy Hare's post-preload
+  hook (`_NFC_SCAN_JOG_PRELOAD`) triggers scan-jog, which reads and dispatches
+  directly — nothing was riding on the background loop for that path.
+  Config knobs `poll_interval`/`startup_polling`/`startup_poll_delay`/
+  `absent_threshold` were **not** removed — the shared reader still uses all
+  four — but are now silently inert if set on a per-lane gate/override; no
+  warning is emitted (see `NEXT_STEPS.md`).
+- **`NFC_STATUS` simplified to reader health only.** `status_line()` (confirmed
+  the only real call path — shared has its own separate `shared_status_line()`
+  — the `if self._shared` branch inside the old `status_line()` was dead)
+  went from ~60 lines of Happy-Hare gate-map sync-mismatch comparison down to
+  three states: disabled / failed / OK. The now-unused `_status_html_words()`
+  helper (colored "available"/"empty"/"assigned" in the old output) was
+  removed. `get_status()` (the Klipper status API, `printer['nfc_gate laneN']`)
+  simplified the same way for per-lane gates. Investigated one real risk
+  before finishing: `_NFC_SHARED_PRELOAD` (`config/macros/mmu_nfc.cfg`) reads
+  `printer['nfc_gate shared'].pending_spool_id` — traced this to
+  `MmuSharedNfcReader(NFCGate)` (`extras/mmu/unit/mmu_nfc.py`), whose
+  `get_status()` override called `super().get_status()` then unconditionally
+  set the real `pending_spool_id`/etc. values, so nothing was actually broken —
+  but consolidated the duplicate logic into the base `get_status()`
+  (shared-gated) and removed the now-redundant override in `shared_reader.py`,
+  rather than leave two copies of the same field-population logic to drift.
+
+### Verification
+
+- Full `test/nfc/` suite (35 tests) green after every step above.
+- Live-verified the Moonraker proxy request/response shapes against a running
+  printer (not just source-read), including the Spoolman-error and
+  Moonraker-level-error cases.
+- Directly exercised `NFCGate.get_status()`/`_resolve_spoolman()` with mocked
+  gate objects (no existing test coverage for either) to confirm per-lane vs.
+  shared behavior before/after the changes, beyond what the pytest suite
+  already covers.
+
 ## NFC file/package reorganization (2026-07-15)
 
 Re-homed the standalone NFC subsystem to match Klipper's loading model and Happy

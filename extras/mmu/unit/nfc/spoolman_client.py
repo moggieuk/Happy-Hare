@@ -40,21 +40,22 @@
 #
 # Configuration
 # ─────────────
-# The client may be given an explicit Spoolman URL:
+# This client never dials the Spoolman server directly.  Every request is
+# proxied through Moonraker's POST /server/spoolman/proxy endpoint, so the
+# only connection parameter that matters is Moonraker's own address:
 #
-#   spoolman_url: http://127.0.0.1:7912
-#
-# Or it may discover the URL from Moonraker's [spoolman] section:
-#
-#   spoolman_url: auto
 #   moonraker_url: http://127.0.0.1:7125
+#
+# Whether to build this client at all is gated entirely on Happy Hare's own
+# spoolman_support ([mmu] section, any value other than "off") -- see
+# NFCGate._resolve_spoolman() in manager.py -- not a setting owned here.
 #
 # NFC-specific mapping settings such as spoolman_rfid_key remain owned by the
 # NFC config, not Moonraker.
 #
 # API endpoint
 # ────────────
-# GET {spoolman_url}/api/v1/spool
+# GET /api/v1/spool  (proxied via Moonraker as path "/v1/spool")
 #
 # Returns a JSON array of all spool objects.  Each object has an "extra"
 # dict (may be null or absent for spools created before the field was
@@ -71,6 +72,7 @@
 # (default 300 s = 5 min).  Polls that see the same tag within the TTL do
 # not make a network request.  Set cache_ttl=0 to disable caching.
 
+import io
 import json
 import logging
 import time
@@ -83,20 +85,113 @@ except ImportError:
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+# Klipper has no way to discover Moonraker's HTTP address on its own -- the
+# link to Moonraker is a Unix domain socket, unrelated to Moonraker's HTTP
+# port, and that port lives only in moonraker.conf, which Klipper never
+# reads. This default is correct for every standard co-located
+# Klipper/Moonraker install (Fluidd, Mainsail, KIAUH, ...); override via the
+# moonraker_url config option only for a non-default Moonraker address.
+DEFAULT_MOONRAKER_URL = 'http://127.0.0.1:7125'
+
+
+class MoonrakerSpoolmanTransport:
+    """
+    Synchronous low-level transport for the Spoolman REST API, proxied
+    through Moonraker's POST /server/spoolman/proxy endpoint instead of
+    dialing the Spoolman server directly.  Every NFC Spoolman client shares
+    one of these so there is exactly one code path that talks to Moonraker.
+
+    Moonraker requires 'path' rooted at '/v1/...' (no '/api' prefix) and the
+    query string supplied separately from path.  request() accepts the
+    '/api/v1/...' paths already used throughout this package -- with or
+    without an embedded '?query' -- and normalises them before proxying, so
+    callers do not need to change how they build paths.
+    """
+
+    def __init__(self, moonraker_url=DEFAULT_MOONRAKER_URL, timeout=5.0, debug=1):
+        self._moonraker_url = (moonraker_url or DEFAULT_MOONRAKER_URL).rstrip('/')
+        self._timeout = timeout
+        self._debug = debug
+
+    def request(self, method, path, body=None):
+        """
+        Issue one Spoolman REST call via Moonraker's proxy and return the
+        parsed JSON response (dict / list / None).
+
+        Raises urllib.error.HTTPError on a Spoolman-side failure, with .code
+        set to Spoolman's real HTTP status and ._body_text set to the error
+        body -- matching what direct urlopen()/HTTPError handling already
+        expects throughout this package, so callers need no changes.
+        Connectivity failures to Moonraker itself (unreachable, timeout, ...)
+        raise the same exceptions a direct urlopen() would.
+        """
+        spoolman_path = path[4:] if path.startswith('/api/') else path
+        if '?' in spoolman_path:
+            spoolman_path, query = spoolman_path.split('?', 1)
+        else:
+            query = None
+
+        envelope = {'request_method': method, 'path': spoolman_path,
+                    'use_v2_response': True}
+        if query is not None:
+            envelope['query'] = query
+        if body is not None:
+            envelope['body'] = body
+
+        proxy_url = '{}/server/spoolman/proxy'.format(self._moonraker_url)
+        data = json.dumps(envelope).encode('utf-8')
+        req = Request(proxy_url, data=data,
+                      headers={'Content-Type': 'application/json'},
+                      method='POST')
+
+        if self._debug >= 3:
+            logger.info("spoolman: -> %s %s%s (via moonraker)",
+                        method, spoolman_path, "?%s" % query if query else "")
+
+        t0 = time.monotonic()
+        with urlopen(req, timeout=self._timeout) as resp:
+            raw = resp.read()
+        elapsed_ms = (time.monotonic() - t0) * 1000
+
+        outer = json.loads(raw.decode('utf-8')) if raw else {}
+        result = outer.get('result', outer) if isinstance(outer, dict) else outer
+        error = result.get('error') if isinstance(result, dict) else None
+        if error:
+            code = int(error.get('status_code') or 502)
+            message = str(error.get('message') or 'Spoolman proxy error')
+            logger.warning("spoolman: <- HTTP %s %s %s (%.0fms): %s",
+                           code, method, spoolman_path, elapsed_ms, message)
+            http_err = HTTPError(proxy_url, code, message, None,
+                                 io.BytesIO(message.encode('utf-8')))
+            http_err._body_text = message
+            raise http_err
+
+        if self._debug >= 3:
+            logger.info("spoolman: <- OK %s %s (%.0fms)",
+                        method, spoolman_path, elapsed_ms)
+
+        response = result.get('response') if isinstance(result, dict) else result
+        if isinstance(response, str):
+            if not response:
+                return None
+            try:
+                return json.loads(response)
+            except (TypeError, ValueError):
+                return response
+        return response
+
 
 class SpoolmanClient:
     """
-    Queries the Spoolman REST API to resolve a tag UID to a spool ID.
+    Queries the Spoolman REST API (via Moonraker's proxy) to resolve a tag
+    UID to a spool ID.
 
     Parameters
     ----------
-    base_url : str
-        Root URL of the Spoolman instance, e.g. "http://192.168.1.50:7912",
-        or "auto" to discover it from Moonraker's [spoolman] section.
-        Trailing slash is stripped automatically.
     moonraker_url : str
-        Root URL of the Moonraker instance to query when base_url is "auto".
-        Default: "http://127.0.0.1:7125".
+        Root URL of the Moonraker instance that proxies requests to
+        Spoolman.  Default: DEFAULT_MOONRAKER_URL ("http://127.0.0.1:7125"),
+        correct for the standard co-located Klipper/Moonraker install.
     rfid_key : str
         Name of the extra field that holds the tag UID on each spool record.
         Default: "rfid".  Must match the field name you created in the
@@ -110,17 +205,15 @@ class SpoolmanClient:
         0 = silent, 1 = warnings only, 2 = full trace.
     """
 
-    def __init__(self, base_url, rfid_key='rfid',
-                 timeout=5.0, cache_ttl=300.0, debug=1,
-                 moonraker_url='http://127.0.0.1:7125'):
-        self._base_url_config = (base_url or '').strip()
-        self._base_url = (None if self._base_url_config.lower() == 'auto'
-                          else self._normalise_url(self._base_url_config))
-        self._moonraker_url = (moonraker_url or 'http://127.0.0.1:7125').rstrip('/')
+    def __init__(self, rfid_key='rfid', timeout=5.0, cache_ttl=300.0, debug=1,
+                 moonraker_url=DEFAULT_MOONRAKER_URL):
+        self._moonraker_url = (moonraker_url or DEFAULT_MOONRAKER_URL).rstrip('/')
         self._rfid_key = rfid_key
         self._timeout = timeout
         self._cache_ttl = cache_ttl
         self._debug = debug
+        self._transport = MoonrakerSpoolmanTransport(
+            moonraker_url=self._moonraker_url, timeout=timeout, debug=debug)
 
         # UID → (spool_record, expiry_monotonic)
         self._cache = {}
@@ -152,64 +245,13 @@ class SpoolmanClient:
 
     # ─────────────────────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _normalise_url(url):
-        if not url:
-            return ''
-        url = str(url).strip().rstrip('/')
-        if url.startswith('http://') or url.startswith('https://'):
-            return url
-        return 'http://' + url
-
-    def _discover_base_url_from_moonraker(self):
-        """
-        Return Moonraker's configured Spoolman server URL, or None.
-
-        Moonraker exposes its config through /server/config.  In current
-        Moonraker installs, the [spoolman] section normally appears at:
-            result.config.spoolman.server
-        The fallback keys are intentionally conservative to tolerate older or
-        renamed fields without treating arbitrary values as URLs.
-        """
-        url = '{}/server/config'.format(self._moonraker_url)
-        if self._debug >= 3:
-            logger.info("spoolman: discovering URL from Moonraker %s", url)
-        try:
-            with urlopen(url, timeout=self._timeout) as resp:
-                data = json.loads(resp.read().decode('utf-8'))
-        except Exception as e:
-            logger.warning("spoolman: Moonraker discovery failed (%s): %s", url, e)
-            return None
-
-        config = data.get('result', {}).get('config', {})
-        section = config.get('spoolman') or config.get('spoolman_proxy') or {}
-        for key in ('server', 'url', 'spoolman_url'):
-            value = section.get(key)
-            if value:
-                discovered = self._normalise_url(value)
-                logger.info("spoolman: Moonraker discovery found %s=%s",
-                            key, discovered)
-                return discovered
-
-        logger.warning("spoolman: Moonraker config has no [spoolman] server/url")
-        return None
-
-    def _resolve_base_url(self):
-        if self._base_url:
-            return self._base_url
-        if self._base_url_config.lower() == 'auto':
-            self._base_url = self._discover_base_url_from_moonraker()
-            if self._base_url:
-                return self._base_url
-        return None
-
     def _fetch_spools(self, uid_hex):
         """Return the full Spoolman spool list, or None on request failure.
 
         Implements a circuit breaker: after _CB_THRESHOLD consecutive failures
         the client stops attempting requests for _CB_BACKOFF seconds.  This
-        prevents a dead or slow Spoolman from blocking the Klipper reactor
-        thread on every poll cycle.
+        prevents a dead or slow Spoolman/Moonraker from blocking the Klipper
+        reactor thread on every poll cycle.
         """
         now = time.monotonic()
         if self._cb_failures >= self._CB_THRESHOLD:
@@ -222,17 +264,11 @@ class SpoolmanClient:
             # Backoff period elapsed — allow one probe through
             logger.info("spoolman: circuit probing after backoff")
 
-        base_url = self._resolve_base_url()
-        if not base_url:
-            logger.warning("spoolman: no Spoolman URL configured or discovered")
-            return None
-        url = '{}/api/v1/spool'.format(base_url)
         if self._debug >= 3:
-            logger.info("spoolman: GET %s (looking for uid=%s, key=%s)",
-                        url, uid_hex, self._rfid_key)
+            logger.info("spoolman: GET /api/v1/spool (looking for uid=%s, key=%s)",
+                        uid_hex, self._rfid_key)
         try:
-            with urlopen(url, timeout=self._timeout) as resp:
-                spools = json.loads(resp.read().decode('utf-8'))
+            spools = self._transport.request('GET', '/api/v1/spool')
         except Exception as e:
             self._cb_failures += 1
             self._cb_backoff_until = time.monotonic() + self._CB_BACKOFF
@@ -242,12 +278,12 @@ class SpoolmanClient:
                     "backing off for %.0fs (%s)",
                     self._cb_failures, self._CB_BACKOFF, e)
             else:
-                logger.warning("spoolman: request failed (%s): %s", url, e)
+                logger.warning("spoolman: request failed: %s", e)
             return None
 
         if not isinstance(spools, list):
-            logger.warning("spoolman: unexpected response type %s from %s",
-                            type(spools).__name__, url)
+            logger.warning("spoolman: unexpected response type %s from GET /api/v1/spool",
+                            type(spools).__name__)
             return None
 
         # Success — reset circuit breaker
@@ -278,48 +314,34 @@ class SpoolmanClient:
 
     def _fetch_spool_detail(self, spool_id):
         """Return the full single-spool record, or None on request failure."""
-        base_url = self._resolve_base_url()
-        if not base_url:
-            logger.warning("spoolman: no Spoolman URL configured or discovered")
-            return None
-        url = '{}/api/v1/spool/{}'.format(base_url, spool_id)
+        path = '/api/v1/spool/{}'.format(spool_id)
         if self._debug >= 3:
-            logger.info("spoolman: GET %s", url)
+            logger.info("spoolman: GET %s", path)
         try:
-            with urlopen(url, timeout=self._timeout) as resp:
-                spool = json.loads(resp.read().decode('utf-8'))
+            spool = self._transport.request('GET', path)
         except Exception as e:
-            logger.warning("spoolman: detail request failed (%s): %s", url, e)
+            logger.warning("spoolman: detail request failed (spool_id=%s): %s", spool_id, e)
             return None
 
         if not isinstance(spool, dict):
-            logger.warning("spoolman: unexpected detail response type %s from %s",
-                            type(spool).__name__, url)
+            logger.warning("spoolman: unexpected detail response type %s for spool_id=%s",
+                            type(spool).__name__, spool_id)
             return None
         return spool
 
     def _patch_spool(self, spool_id, payload, plural=False):
-        """PATCH a Spoolman spool record, returning True on success."""
-        base_url = self._resolve_base_url()
-        if not base_url:
-            logger.warning("spoolman: no Spoolman URL configured or discovered")
-            return False
+        """PATCH a Spoolman spool record, returning True on success.
+
+        Raises the underlying exception (typically HTTPError, via
+        MoonrakerSpoolmanTransport) on failure so set_spool_uid can inspect
+        the status code and decide whether to retry against the plural
+        endpoint.
+        """
         endpoint = 'spools' if plural else 'spool'
-        url = '{}/api/v1/{}/{}'.format(base_url, endpoint, spool_id)
-        body = json.dumps(payload).encode('utf-8')
-        req = Request(
-            url,
-            data=body,
-            headers={'Content-Type': 'application/json'},
-            method='PATCH')
+        path = '/api/v1/{}/{}'.format(endpoint, spool_id)
         if self._debug >= 3:
-            logger.info("spoolman: PATCH %s payload=%s", url, payload)
-        # Spoolman has applied the PATCH once urlopen returns a response.  Do
-        # not read the response body here: this command runs on Klipper's
-        # reactor thread, and waiting for a slow/kept-open body can make the
-        # whole host appear locked up after the RFID field has already changed.
-        with urlopen(req, timeout=self._timeout):
-            pass
+            logger.info("spoolman: PATCH %s payload=%s", path, payload)
+        self._transport.request('PATCH', path, body=payload)
         return True
 
     def set_spool_uid(self, spool_id, uid_hex):

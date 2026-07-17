@@ -192,8 +192,10 @@ class MmuUnitParameters(TunableParametersBase):
         ParamSpec('heater_rotate_interval',           'float',   5.0, section="HEATER",    limits=dict(minval=1.0), guard=_guard_has_heater, fmt="%.1f"),
 
         # NFC reader
-        ParamSpec('spoolman_url',                     'str',      '', section="NFC READER"),
-        ParamSpec('spoolman_rfid_key',                'str', 'rfid_tag', section="NFC READER"),
+        # Spoolman lookups are gated on Happy Hare's own spoolman_support
+        # ([mmu] section) -- there is no separate NFC-level enable switch.
+        ParamSpec('moonraker_url',                      'str', 'http://127.0.0.1:7125', section="NFC READER"),
+        ParamSpec('spoolman_rfid_key',                   'str', 'rfid_tag', section="NFC READER"),
         ParamSpec('spoolman_timeout',               'float',     5.0, section="NFC READER", limits=dict(minval=0.5, maxval=30.0)),
         ParamSpec('spoolman_cache_ttl',             'float',   300.0, section="NFC READER", limits=dict(minval=0.0, maxval=3600.0)),
         ParamSpec('tag_parsing',                      'bool',   False, section="NFC READER"),

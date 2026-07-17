@@ -38,93 +38,30 @@ def _lane_led_effect(gate, effect_name):
 # ── NTAG / NDEF helpers ───────────────────────────────────────────────────────
 
 def _find_ndef_tlv(data):
-    if data is None:
-        return None
-    raw = bytes(data)
-    i = 0
-    while i < len(raw):
-        t = raw[i]
-        if t == 0x00:
-            i += 1
-            continue
-        if t == 0xFE:
-            return None
-        if i + 1 >= len(raw):
-            return None
-        length = raw[i + 1]
-        if length == 0xFF:
-            if i + 3 >= len(raw):
-                return None
-            length = (raw[i + 2] << 8) | raw[i + 3]
-            value_start = i + 4
-        else:
-            value_start = i + 2
-        value_end = value_start + length
-        if t == 0x03:
-            if value_end > len(raw):
-                return {
-                    'complete': False,
-                    'ndef_len': length,
-                    'tlv_len': value_end,
-                    'payload': raw[value_start:],
-                }
-            return {
-                'complete': True,
-                'ndef_len': length,
-                'tlv_len': value_end,
-                'payload': raw[value_start:value_end],
-            }
-        if value_end > len(raw):
-            return None
-        i = value_end
-    return None
+    """Locate the NDEF TLV, tolerating a truncated/in-progress read.
+
+    Thin wrapper around tag_parser's shared TLV walker (return_details=True)
+    -- see that function's docstring for the returned dict shape. Kept as a
+    local name since every call site here already expects the dict shape.
+    """
+    from .tag_parser import _find_ndef_tlv as _shared_find_ndef_tlv
+    return _shared_find_ndef_tlv(data, return_details=True)
 
 
 def _decode_ndef_text_records(ndef):
-    records = []
-    idx = 0
-    while idx < len(ndef):
-        header = ndef[idx]
-        idx += 1
-        sr = bool(header & 0x10)
-        il = bool(header & 0x08)
-        tnf = header & 0x07
-        if idx >= len(ndef):
-            break
-        type_len = ndef[idx]
-        idx += 1
-        if sr:
-            if idx >= len(ndef):
-                break
-            payload_len = ndef[idx]
-            idx += 1
-        else:
-            if idx + 4 > len(ndef):
-                break
-            payload_len = int.from_bytes(ndef[idx:idx + 4], 'big')
-            idx += 4
-        id_len = 0
-        if il:
-            if idx >= len(ndef):
-                break
-            id_len = ndef[idx]
-            idx += 1
-        rec_type = ndef[idx:idx + type_len]
-        idx += type_len + id_len
-        payload = ndef[idx:idx + payload_len]
-        idx += payload_len
-        if tnf == 0x01 and rec_type == b'T' and payload:
-            status = payload[0]
-            lang_len = status & 0x3F
-            encoding = 'utf-16' if status & 0x80 else 'utf-8'
-            text_payload = payload[1 + lang_len:]
-            try:
-                records.append(text_payload.decode(encoding, errors='replace'))
-            except Exception:
-                records.append(text_payload.decode('utf-8', errors='replace'))
-        if header & 0x40:  # ME
-            break
-    return records
+    """Extract NDEF Well-Known Text record strings, for debug preview only.
+
+    Thin wrapper around tag_parser's shared NDEF record walker/text decoder
+    instead of a second hand-rolled record parser.
+    """
+    from .tag_parser import _parse_ndef_records, _decode_well_known_text
+    texts = []
+    for rec in _parse_ndef_records(ndef):
+        if rec['tnf'] == 0x01 and rec['type'] == b'T':
+            text = _decode_well_known_text(rec['payload'])
+            if text is not None:
+                texts.append(text)
+    return texts
 
 
 def _single_line_preview(text, limit=300):
@@ -997,43 +934,34 @@ def resolve_spool(gate, uid_hex):
                 gate._name, gate._gate, uid_hex)
         return None
 
-    try:
-        base_url = gate._spoolman._resolve_base_url()
-    except Exception as e:
-        base_url = None
-        logger.warning(
-            "[%s]: gate %d — uid=%s  Spoolman URL resolution failed: %s",
-            gate._name, gate._gate, uid_hex, e)
-    if not base_url and (material or color):
+    spoolman_available = gate._spoolman is not None
+    if not spoolman_available and (material or color):
         if tag is not None:
             tag.resolution = {'path': 'metadata_direct'}
         if gate._debug >= 3:
             logger.info(
-                "[%s]: gate %d — uid=%s  Spoolman disabled "
-                "or undiscovered; using tag metadata material=%s color=%s",
+                "[%s]: gate %d — uid=%s  Spoolman disabled; "
+                "using tag metadata material=%s color=%s",
                 gate._name, gate._gate, uid_hex, material, color)
         return DIRECT_METADATA_SPOOL
 
     if gate._spoolman_auto_create and material:
-        if base_url:
+        if spoolman_available:
             try:
-                from .lameandboard_spoolman import (
-                    SpoolmanClient as LBSpoolmanClient)
-                if _accepts_kwarg(LBSpoolmanClient, 'trace'):
-                    lb = LBSpoolmanClient(
-                        base_url=base_url,
-                        timeout=gate._spoolman._timeout,
+                from .spoolman_catalog import SpoolmanCatalogClient
+                if _accepts_kwarg(SpoolmanCatalogClient, 'trace'):
+                    catalog = SpoolmanCatalogClient(
+                        gate._spoolman._transport,
                         trace=_trace_for_gate(
                             gate,
                             "[%s]: gate %d — uid=%s  " %
                             (gate._name, gate._gate, uid_hex)))
                 else:
-                    lb = LBSpoolmanClient(base_url=base_url,
-                                          timeout=gate._spoolman._timeout)
+                    catalog = SpoolmanCatalogClient(gate._spoolman._transport)
                 if gate._debug >= 3:
                     logger.info(
                         "[%s]: gate %d — uid=%s  "
-                        "auto-create via lameandboard client "
+                        "auto-create via Spoolman client "
                         "(uid_hex=None; patching %s next) metadata=%s",
                         gate._name, gate._gate, uid_hex,
                         gate._spoolman._rfid_key, _summarize_meta(meta))
@@ -1045,7 +973,7 @@ def resolve_spool(gate, uid_hex):
                 else:
                     _lane_led_effect(gate,
                         getattr(gate, '_lane_auto_create_effect', LED_AUTO_CREATING))
-                new_spool_id = lb.auto_create_spool(meta, uid_hex=None)
+                new_spool_id = catalog.auto_create_spool(meta, uid_hex=None)
                 if new_spool_id is not None:
                     new_spool_id = int(new_spool_id)
                     if gate._debug >= 3:

@@ -8,10 +8,11 @@ from extras.mmu.unit.nfc import log
 class TestPackageImports(unittest.TestCase):
     def test_reorganized_modules_import(self):
         modules = (
-            'gate_state', 'klipper_interface', 'lameandboard_spoolman', 'log',
+            'gate_state', 'klipper_interface', 'log',
             'manager', 'pn532_driver', 'pn7160_driver', 'rc522_driver',
             'reader', 'reader_resolver', 'scan_jog', 'shared_preload',
-            'shared_reader', 'spoolman_client', 'tag_handler', 'tag_parser',
+            'shared_reader', 'spoolman_catalog', 'spoolman_client',
+            'tag_handler', 'tag_parser',
         )
         for name in modules:
             with self.subTest(module=name):

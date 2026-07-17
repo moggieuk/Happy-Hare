@@ -79,7 +79,7 @@ class TestScanMath(unittest.TestCase):
 
 class TestSpoolmanClient(unittest.TestCase):
     def setUp(self):
-        self.client = SpoolmanClient('http://spoolman/', cache_ttl=30)
+        self.client = SpoolmanClient(cache_ttl=30)
 
     def test_normalization_and_record_matching(self):
         self.assertEqual('AABBCC', self.client._normalise_uid('aa:bb-cc'))

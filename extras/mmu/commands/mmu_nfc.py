@@ -38,8 +38,6 @@ class MmuNfcCommand(NfcMixin, BaseCommand):
         + "POLL        = 1       Run one full read/resolve cycle\n"
         + "APPLY       = 1       Send cached spool to Happy Hare now\n"
         + "CLEAR_CACHE = 1       Clear cached spool/UID, no Happy Hare dispatch\n"
-        + "HH_SYNC     = 1       Seed lane cache from Happy Hare gate map (with SPOOL_ID=<n>)\n"
-        + "READ        = [0|1]   Stop (0) or start (1) timer polling\n"
     )
     HELP_SUPPLEMENT = (
         "Run 'NFC GATE=<#>' with no action to show gate-specific help.\n"
@@ -63,11 +61,7 @@ class MmuNfcCommand(NfcMixin, BaseCommand):
         gate = self._lane(gcmd) # From NfcMixin
         if gate._cmd_low_level_debug(gcmd):
             return
-        read_value = gcmd.get('READ', None)
-        if read_value is not None:
-            gate._set_reading(
-                gcmd, gcmd.get_int('READ', minval=0, maxval=1) == 1)
-        elif nfc_manager._flag_param(gcmd, 'STATUS'):
+        if nfc_manager._flag_param(gcmd, 'STATUS'):
             gcmd.respond_info(gate.status_line())
         elif gcmd.get_int('INIT', 0):
             gate._manual_init(gcmd)
@@ -88,7 +82,5 @@ class MmuNfcCommand(NfcMixin, BaseCommand):
                 'NFC[%s]: one poll complete; %s' % (gate._name, status)))
         elif gcmd.get_int('APPLY', 0):
             gate._apply_current_spool(gcmd)
-        elif gcmd.get_int('HH_SYNC', 0):
-            gate._hh_sync(gcmd)
         else:
             gate._cmd_help(gcmd)

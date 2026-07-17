@@ -757,16 +757,6 @@ def select_gate_quiet(gate, gate_num):
     gate.printer.lookup_object('mmu').select_gate(gate_num)
 
 
-def resume_poll_after_rewind(gate):
-    """Restart regular polling after the queued rewind move can finish."""
-    delay = gate._poll_interval
-    if gate._scan_mm_total > 0.0:
-        delay += chunk_interval(gate, gate._scan_mm_total)
-    gate.reactor.update_timer(
-        gate._poll_timer,
-        gate.reactor.monotonic() + delay)
-
-
 def start(gate, max_mm=None):
     if max_mm is not None:
         gate._scan_max_mm = float(max_mm)
@@ -812,8 +802,6 @@ def start(gate, max_mm=None):
     gate._scan_left_neighbor_shifted = False
     gate._scan_left_neighbor_identity = None
     gate._scan_left_neighbor_attempts = 0
-    gate._hh_seed_spool_id = None
-    gate._hh_seed_available = False
     gate._scan_found_event = None
     gate._scan_previous_uid = gate._state.current_uid
     gate._scan_previous_spool = gate._state.current_spool
@@ -924,11 +912,6 @@ def abort_scan_on_error(gate):
     gate._scan_left_neighbor_shifted = False
     gate._scan_left_neighbor_identity = None
     gate._scan_left_neighbor_attempts = 0
-    # Deliberately not resume_poll_after_rewind(): that computes a delay via
-    # chunk_interval()/get_speed(), which touches mmu again right after mmu
-    # just failed. A fixed delay avoids re-triggering the same failure here.
-    gate.reactor.update_timer(
-        gate._poll_timer, gate.reactor.monotonic() + gate._poll_interval)
     _led_release(gate)
     gate.__class__._active_scan_gate = None
     _drain_scan_queue(gate)
@@ -2001,13 +1984,12 @@ def finish(gate):
     gate._scan_left_neighbor_shifted = False
     gate._scan_left_neighbor_identity = None
     gate._scan_left_neighbor_attempts = 0
-    gate._resume_poll_after_rewind()
     _led_release(gate)
     # Only release the "one gate scans at a time" guard once every last bit of
-    # cleanup above (HH dispatch, poll resume, LED release) is actually done.
-    # Clearing it earlier let a second `jog_scan` command be accepted while
-    # this session's own tail was still running, racing both sessions'
-    # Happy Hare interactions against each other.
+    # cleanup above (HH dispatch, LED release) is actually done. Clearing it
+    # earlier let a second `jog_scan` command be accepted while this
+    # session's own tail was still running, racing both sessions' Happy
+    # Hare interactions against each other.
     gate.__class__._active_scan_gate = None
     _drain_scan_queue(gate)
 
@@ -2053,7 +2035,6 @@ def rewind_and_exit(gate):
     gate._scan_left_neighbor_shifted = False
     gate._scan_left_neighbor_identity = None
     gate._scan_left_neighbor_attempts = 0
-    gate._resume_poll_after_rewind()
     _led_release(gate)
     # See finish(): release the scan guard only after all cleanup is done.
     gate.__class__._active_scan_gate = None

@@ -33,7 +33,7 @@
 #     as above with _<gate_index> extension
 #
 # Runtime parameters (for mmu_parameters.cfg):
-#   PARAM_NFC_SPOOLMAN_URL, PARAM_NFC_SPOOLMAN_RFID_KEY
+#   PARAM_NFC_MOONRAKER_URL, PARAM_NFC_SPOOLMAN_RFID_KEY
 #   PARAM_NFC_SPOOLMAN_TIMEOUT, PARAM_NFC_SPOOLMAN_CACHE_TTL
 #   PARAM_NFC_TAG_PARSING, PARAM_NFC_BAMBU_READS
 #   PARAM_NFC_SPOOLMAN_AUTO_CREATE, PARAM_NFC_TAG_MAX_PAGES
@@ -457,44 +457,17 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
       endmenu
 
       menu "Spoolman"
-      choice CHOICE_NFC_SPOOLMAN_URL
-        prompt "Connection mode    "
-        default CHOICE_NFC_SPOOLMAN_URL_AUTO
+      comment "Gated entirely by spoolman_support in [mmu] (any value other"
+      comment "than 'off') -- there is no separate NFC-level on/off switch."
+
+      config PARAM_NFC_MOONRAKER_URL
+        string "Moonraker URL      "
+        default "http://127.0.0.1:7125"
         help
-          Select how NFC connects to Spoolman.
+          Address of the Moonraker instance that proxies requests to
+          Spoolman. The default is correct for the standard co-located
+          Klipper/Moonraker install and rarely needs changing.
 
-        config CHOICE_NFC_SPOOLMAN_URL_AUTO
-          bool "Auto"
-          help
-            Discover Spoolman through Moonraker.
-
-        config CHOICE_NFC_SPOOLMAN_URL_DISABLED
-          bool "Disabled"
-          help
-            Disable Spoolman NFC lookups.
-
-        config CHOICE_NFC_SPOOLMAN_URL_ADDRESS
-          bool "IP address"
-          help
-            Connect directly to the specified Spoolman server.
-      endchoice
-
-      if CHOICE_NFC_SPOOLMAN_URL_ADDRESS
-        config PARAM_NFC_SPOOLMAN_ADDRESS
-          string "Spoolman IP address"
-          default "http://192.168.1.50:7912"
-          help
-            Enter the direct Spoolman server address. Include the URL scheme
-            and port, for example: http://192.168.1.50:7912
-      endif
-
-      config PARAM_NFC_SPOOLMAN_URL
-        string
-        default "auto" if CHOICE_NFC_SPOOLMAN_URL_AUTO
-        default "disabled" if CHOICE_NFC_SPOOLMAN_URL_DISABLED
-        default PARAM_NFC_SPOOLMAN_ADDRESS if CHOICE_NFC_SPOOLMAN_URL_ADDRESS
-
-      if !CHOICE_NFC_SPOOLMAN_URL_DISABLED
       config PARAM_NFC_SPOOLMAN_RFID_KEY
         string "Spoolman RFID key  "
         default "rfid_tag"
@@ -514,7 +487,6 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
         range 0 3600
         help
           Seconds to cache successful UID to spool lookups. Zero disables it.
-      endif
       endmenu
 
       menuconfig PARAM_NFC_TAG_PARSING

@@ -79,9 +79,9 @@ from .klipper_interface import KlipperInterface
 from .log import configure, logger, color_console_tags
 from ...mmu_constants import (
     GATE_EMPTY, GATE_AVAILABLE, GATE_AVAILABLE_FROM_BUFFER,
-    FILAMENT_POS_UNLOADED, ACTION_IDLE, ACTION_CHECKING,
+    FILAMENT_POS_UNLOADED, ACTION_IDLE, ACTION_CHECKING, SPOOLMAN_OFF,
 )
-from .spoolman_client import SpoolmanClient
+from .spoolman_client import SpoolmanClient, DEFAULT_MOONRAKER_URL
 
 LANE_LED_TEST_DURATION = 2.0
 LANE_LED_TEST_GAP = 0.15
@@ -223,11 +223,6 @@ def _full_snapshot(mmu, eventtime=None):
         filament_pos=mmu.filament_pos,
         gate_statuses=list(mmu.gate_maps.gate_status),
         gate_spool_ids=list(mmu.gate_maps.gate_spool_id))
-
-
-def _spoolman_url_enabled(url):
-    value = str(url or '').strip().lower()
-    return value not in ('', 'disabled', 'disable', 'false', 'off', 'none', 'no')
 
 
 def _get_console_config(config, default_enabled=False, default_level='warning'):
@@ -447,16 +442,6 @@ def nfc_gate_for_gate_number(gate_number):
                 and getattr(candidate, '_enabled', True)):
             return candidate
     return None
-
-
-def _status_html_words(text):
-    text = re.sub(r'\bavailable\b',
-                  '<span style="color:#90EE90">available</span>', text)
-    text = re.sub(r'\bempty\b',
-                  '<span style="color:#87CEEB">empty</span>', text)
-    text = re.sub(r'\bassigned\b',
-                  '<span style="color:#FFFF00">assigned</span>', text)
-    return text
 
 
 def _reader_label(reader_type):
@@ -701,7 +686,7 @@ def _lane_status_lines(printer):
     lane MCUs registered in Klipper (mirrors how Happy Hare reads [board_pins lane]).
 
     For each lane MCU (e.g. lane0…lane4):
-      - If an NFCGate is configured for that MCU → show its spool/UID state.
+      - If an NFCGate is configured for that MCU → show its reader health.
       - If no NFCGate is configured         → note that no reader is set up.
     Falls back to listing _lane_instances directly when no lane MCUs are found.
     """
@@ -814,9 +799,7 @@ def _doctor_lines(printer):
     if spoolman is not None:
         lines.append("  [OK] Spoolman: enabled")
     else:
-        url = getattr(defaults, 'spoolman_url', '')
-        lines.append("  [WARN] Spoolman: disabled or unavailable"
-                     if not url else "  [OK] Spoolman: disabled by config")
+        lines.append("  [OK] Spoolman: disabled by config")
 
     if enabled_shared:
         macro = raw_config.get('gcode_macro _MMU_SEQUENCE_VARS', {})
@@ -871,9 +854,6 @@ def _nfc_help(gcmd=None):
         "NFC GATE=<#> POLL=1 : Run one full read/resolve cycle",
         "NFC GATE=<#> APPLY=1 : Send cached spool to Happy Hare now",
         "NFC GATE=<#> CLEAR_CACHE=1 : Clear cached spool/UID, no Happy Hare dispatch",
-        "NFC GATE=<#> HH_SYNC=1 SPOOL_ID=<n> : Seed lane cache from Happy Hare gate map",
-        "NFC GATE=<#> READ=1 : Start timer polling",
-        "NFC GATE=<#> READ=0 : Stop timer polling",
     ]
     if lane_gates:
         lines.append("Configured lane gates : %s" %
@@ -916,8 +896,6 @@ def _nfc_help(gcmd=None):
             "_NFC_SPOOL_CHANGED : Per-lane spool assignment callback",
             "_NFC_TAG_NO_SPOOL : Per-lane UID-only callback",
             "_NFC_SPOOL_REMOVED : Per-lane spool removal callback",
-            "_NFC_HH_SYNC_ONE : Re-seed one lane cache from Happy Hare",
-            "NFC_HH_SYNC_CACHE : Re-seed all lane caches from Happy Hare",
             "_NFC_SHARED_PRELOAD : Happy Hare pre-load hook for shared reader",
         ])
 
@@ -947,9 +925,8 @@ def _nfc_help(gcmd=None):
 class NFCGateDefaults:
     def __init__(self, config):
         self.reader_type        = reader_factory.reader_type_from_config(config)
-        self.spoolman_url       = config.get('spoolman_url', '')
         self.moonraker_url      = config.get('moonraker_url',
-                                             'http://127.0.0.1:7125')
+                                             DEFAULT_MOONRAKER_URL)
         self.spoolman_rfid_key  = config.get('spoolman_rfid_key', 'rfid_tag')
         self.spoolman_timeout   = config.getfloat('spoolman_timeout', 5.0,
                                                    minval=0.5, maxval=30.0)
@@ -1021,10 +998,9 @@ class NFCGateDefaults:
         if self.spoolman_auto_create and not self.tag_parsing:
             _add_diagnostic_warning(
                 "spoolman_auto_create=True has no effect while tag_parsing=False")
-        if (self.spoolman_auto_create
-                and not _spoolman_url_enabled(self.spoolman_url)):
-            _add_diagnostic_warning(
-                "spoolman_auto_create=True requires Spoolman to be enabled")
+        # Whether Spoolman is actually reachable depends on Happy Hare's own
+        # spoolman_support ([mmu] section), which isn't known until 'mmu' is
+        # resolved at klippy:connect -- see NFCGate._resolve_spoolman().
 
         self._printer = config.get_printer()
         try:
@@ -1038,24 +1014,13 @@ class NFCGateDefaults:
                 "nfc_gate: could not configure NFC logging %r: %s",
                 log_file, e)
 
-        if _spoolman_url_enabled(self.spoolman_url):
-            self._spoolman = SpoolmanClient(
-                self.spoolman_url,
-                rfid_key=self.spoolman_rfid_key,
-                timeout=self.spoolman_timeout,
-                cache_ttl=self.spoolman_cache_ttl,
-                debug=self.debug,
-                moonraker_url=self.moonraker_url)
-            logger.info("nfc_gate: Spoolman enabled — url=%s rfid_key=%s",
-                        self.spoolman_url, self.spoolman_rfid_key)
-        else:
-            self._spoolman = None
-            if self.spoolman_url:
-                logger.info("nfc_gate: Spoolman disabled by config")
-            else:
-                logger.warning(
-                    "nfc_gate: spoolman_url not set — set spoolman_url in "
-                    "[nfc_gate]. Use 'auto' to read Moonraker.")
+        # Spoolman is gated purely on Happy Hare's own spoolman_support
+        # ([mmu] section) -- there is no separate NFC-level on/off switch.
+        # 'mmu' is not guaranteed to be loaded yet at this point (config
+        # section order is not guaranteed), so resolution is deferred to
+        # NFCGate._resolve_spoolman(), called from klippy:connect.
+        self._spoolman = None
+        self._spoolman_resolved = False
 
 class NFCGate:
     _active_scan_gate = None  # class-level scan lock; shared across all instances
@@ -1181,38 +1146,21 @@ class NFCGate:
                       console_log_level=console_log_level,
                       file_level=self._debug)
 
-        if d is not None:
-            # Share the single SpoolmanClient created by NFCGateDefaults.
-            self._spoolman = d._spoolman
-        else:
-            # No base [nfc_gate] section — create a per-lane client as fallback.
-            spoolman_url      = config.get('spoolman_url', '')
-            moonraker_url     = config.get('moonraker_url', 'http://127.0.0.1:7125')
-            spoolman_rfid_key = config.get('spoolman_rfid_key', 'rfid_tag')
-            spoolman_timeout  = config.getfloat('spoolman_timeout', 5.0,
-                                                 minval=0.5, maxval=30.0)
-            spoolman_cache_ttl = config.getfloat('spoolman_cache_ttl', 300.0,
-                                                  minval=0., maxval=3600.)
-            if _spoolman_url_enabled(spoolman_url):
-                self._spoolman = SpoolmanClient(
-                    spoolman_url,
-                    rfid_key=spoolman_rfid_key,
-                    timeout=spoolman_timeout,
-                    cache_ttl=spoolman_cache_ttl,
-                    debug=self._debug,
-                    moonraker_url=moonraker_url)
-                logger.info("[%s]: Spoolman enabled — url=%s rfid_key=%s",
-                            self._name, spoolman_url, spoolman_rfid_key)
-            else:
-                self._spoolman = None
-                if spoolman_url:
-                    logger.info("[%s]: Spoolman disabled by config",
-                                self._name)
-                else:
-                    logger.warning(
-                        "[%s]: spoolman_url not set — set spoolman_url in "
-                        "[nfc_gate] or [nfc_gate %s]. Use 'auto' to read Moonraker.",
-                        self._name, self._name)
+        # Spoolman is gated purely on Happy Hare's own spoolman_support
+        # ([mmu] section); 'mmu' is not guaranteed loaded yet here, so
+        # resolution is deferred to _resolve_spoolman(), called from
+        # _handle_connect(). d is not None: shares NFCGateDefaults' client
+        # (built once, cached on d). d is None: no base [nfc_gate] section --
+        # builds and caches a per-lane fallback client on self instead.
+        self._spoolman = None
+        if d is None:
+            self._moonraker_url     = config.get('moonraker_url', DEFAULT_MOONRAKER_URL)
+            self._spoolman_rfid_key = config.get('spoolman_rfid_key', 'rfid_tag')
+            self._spoolman_timeout  = config.getfloat('spoolman_timeout', 5.0,
+                                                        minval=0.5, maxval=30.0)
+            self._spoolman_cache_ttl = config.getfloat('spoolman_cache_ttl', 300.0,
+                                                         minval=0., maxval=3600.)
+            self._spoolman_resolved = False
 
         # Per-lane hardware is owned by the MmuUnit built from
         # mmu_hardware.cfg.  Defer resolving its nfc_reader/nfc_readers entry
@@ -1231,8 +1179,6 @@ class NFCGate:
         self._state      = GateState(self._gate, self._absent_threshold)
         self._suppress_next_dispatch_uid   = None
         self._suppress_next_dispatch_spool = None  # paired with uid — suppress only when both match
-        self._hh_seed_spool_id   = None  # set on startup from Happy Hare gate map; cleared after first match
-        self._hh_seed_available  = False  # True only when Happy Hare had the gate marked available at seed time
         self._hh_confirmed_spool = None  # last spool Happy Hare acknowledged; enables _check_hh_cleared
         self._hh_load_paused     = False  # True while Happy Hare owns this gate assignment
         self._failed     = False
@@ -1475,9 +1421,6 @@ class NFCGate:
             "  NFC GATE=%d POLL=1    - run one full NFC_Manager poll for this gate" % self._gate,
             "  NFC GATE=%d APPLY=1   - send cached spool to Happy Hare now" % self._gate,
             "  NFC GATE=%d CLEAR_CACHE=1 - clear cached spool lookup, no Happy Hare dispatch" % self._gate,
-            "  NFC GATE=%d HH_SYNC=1 SPOOL_ID=<n> - seed lane cache from Happy Hare gate map (called by NFC_HH_SYNC_CACHE macro)" % self._gate,
-            "  NFC GATE=%d READ=1    - start timer polling" % self._gate,
-            "  NFC GATE=%d READ=0    - stop timer polling" % self._gate,
         ]
         if self._low_level_debug and self._reader_type == 'pn532':
             lines.extend(pn532_driver.low_level_debug_help_lines(
@@ -1623,71 +1566,60 @@ class NFCGate:
 
 
     def _set_reading(self, gcmd, enabled):
+        """Start/stop shared-reader polling. Per-lane readers have no
+        background poll loop -- tag detection is driven entirely by Happy
+        Hare's post-preload hook triggering scan-jog, so READ=1/READ=0 is
+        only meaningful for the shared reader (NFC_SHARED, see mmu_nfc_shared.py).
+        """
         if enabled:
             if self._failed:
-                if self._shared:
-                    logger.error(
-                        "[%s]: shared READ=1 refused — "
-                        "reader failed; run INIT=1 first",
-                        self._name)
-                else:
-                    logger.error(
-                        "[%s]: gate %d READ=1 refused — "
-                        "reader failed; run INIT=1 first",
-                        self._name, self._gate)
+                logger.error(
+                    "[%s]: shared READ=1 refused — "
+                    "reader failed; run INIT=1 first",
+                    self._name)
                 gcmd.respond_info(color_console_tags(
                     "[WARN] NFC[%s]: reader failed; run INIT=1 first"
                     % self._name))
                 return
-            if self._shared:
-                if self._is_printing():
-                    logger.warning(
-                        "[%s]: shared READ=1 refused — printing",
-                        self._name)
-                    gcmd.respond_info(
-                        "[WARN] NFC[%s]: shared polling not started while printing"
-                        % self._name)
-                    return
-                if self._shared_pending_spool is not None:
-                    logger.warning(
-                        "[%s]: shared READ=1 refused — "
-                        "spool %s already pending",
-                        self._name, self._shared_pending_spool)
-                    gcmd.respond_info(
-                        "[WARN] NFC[%s]: spool %s is already pending; use "
-                        "NFC_SHARED REPLACE=1 to discard it and scan another, "
-                        "or NFC_SHARED CANCEL=1 to cancel"
-                        % (self._name, self._shared_pending_spool))
-                    return
-                self._shared_missed_resolutions = 0
-                self._shared_last_error = None
-                self._shared_read_deadline = (
-                    self.reactor.monotonic() + self._shared_read_timeout)
-                logger.info(
-                    "[%s]: shared READ=1 — polling started "
-                    "with %.0fs read timeout",
-                    self._name, self._shared_read_timeout)
+            if self._is_printing():
+                logger.warning(
+                    "[%s]: shared READ=1 refused — printing",
+                    self._name)
+                gcmd.respond_info(
+                    "[WARN] NFC[%s]: shared polling not started while printing"
+                    % self._name)
+                return
+            if self._shared_pending_spool is not None:
+                logger.warning(
+                    "[%s]: shared READ=1 refused — "
+                    "spool %s already pending",
+                    self._name, self._shared_pending_spool)
+                gcmd.respond_info(
+                    "[WARN] NFC[%s]: spool %s is already pending; use "
+                    "NFC_SHARED REPLACE=1 to discard it and scan another, "
+                    "or NFC_SHARED CANCEL=1 to cancel"
+                    % (self._name, self._shared_pending_spool))
+                return
+            self._shared_missed_resolutions = 0
+            self._shared_last_error = None
+            self._shared_read_deadline = (
+                self.reactor.monotonic() + self._shared_read_timeout)
+            logger.info(
+                "[%s]: shared READ=1 — polling started "
+                "with %.0fs read timeout",
+                self._name, self._shared_read_timeout)
             self._polling = True
             self.reactor.update_timer(self._poll_timer, self.reactor.NOW)
-            if not self._shared:
-                logger.info(
-                    "[%s]: gate %d READ=1 — polling started",
-                    self._name, self._gate)
             gcmd.respond_info(color_console_tags(
                 "NFC[%s]: polling started" % self._name))
         else:
-            if self._shared:
-                self._shared_read_deadline = 0.0
-                logger.info(
-                    "[%s]: shared READ=0 — polling stopped; "
-                    "pending spool=%s kept",
-                    self._name, self._shared_pending_spool)
-                if self._shared_pending_spool is None:
-                    self._shared_restore_hh_leds()
-            else:
-                logger.info(
-                    "[%s]: gate %d READ=0 — polling stopped",
-                    self._name, self._gate)
+            self._shared_read_deadline = 0.0
+            logger.info(
+                "[%s]: shared READ=0 — polling stopped; "
+                "pending spool=%s kept",
+                self._name, self._shared_pending_spool)
+            if self._shared_pending_spool is None:
+                self._shared_restore_hh_leds()
             self._polling = False
             self.reactor.update_timer(self._poll_timer, self.reactor.NEVER)
             gcmd.respond_info(color_console_tags(
@@ -1808,99 +1740,6 @@ class NFCGate:
             eventtime = self.reactor.monotonic()
         return _gate_snapshot(self._get_mmu(), target_gate, eventtime)
 
-    def _seed_cache_from_hh(self, eventtime):
-        """Read Happy Hare's gate map and pre-seed this lane's spool cache.
-
-        Called once from _delayed_init() after the NFC Reader initialises
-        successfully.  Prevents a spurious _NFC_SPOOL_CHANGED dispatch on the
-        very first poll after a Klipper restart — Happy Hare already knows
-        which spool is in this gate, so we should not re-tell it.
-
-        The seed is one-shot: it is consumed (cleared) on the first
-        EVENT_CHANGED poll result, regardless of whether the spool matches.
-        Mismatches still dispatch normally.
-        """
-        try:
-            hh = self._read_hh_status(eventtime)
-            if not hh.present:
-                logger.info(
-                    "[%s]: gate %d — Happy Hare MMU object not found; "
-                    "skipping startup cache seed", self._name, self._gate)
-                return
-            if self._gate >= hh.gate_count:
-                logger.info(
-                    "[%s]: gate %d — gate index exceeds Happy Hare map length "
-                    "(%d gates); skipping seed", self._name, self._gate,
-                    hh.gate_count)
-                return
-
-            if hh.assigned:
-                self._hh_seed_spool_id  = hh.spool
-                self._hh_seed_available = hh.available
-
-                if hh.available and self._spoolman is not None:
-                    # Gate is physically loaded — pre-populate NFC cache from
-                    # Spoolman so status is correct before the first physical scan.
-                    uid = self._spoolman.get_uid_for_spool(hh.spool)
-                    if uid:
-                        self._state.current_uid   = uid
-                        self._state.current_spool = hh.spool
-                        self._hh_confirmed_spool  = hh.spool
-                        logger.info(
-                            "[%s]: gate %d — startup: seeded from "
-                            "Happy Hare+Spoolman spool_id=%d uid=%s",
-                            self._name, self._gate, hh.spool, uid)
-                    else:
-                        logger.info(
-                            "[%s]: gate %d — Happy Hare seed: spool_id=%d "
-                            "available (no UID in Spoolman — will verify on "
-                            "first poll)",
-                            self._name, self._gate, hh.spool)
-                else:
-                    logger.info(
-                        "[%s]: gate %d — Happy Hare seed: spool_id=%d  "
-                        "gate_status=%s  (will verify on first physical scan)",
-                        self._name, self._gate, hh.spool, hh.status)
-            else:
-                logger.info(
-                    "[%s]: gate %d — Happy Hare reports gate %s "
-                    "(spool_id=%s); no seed applied",
-                    self._name, self._gate,
-                    "found/no spool" if hh.available else "empty/unknown",
-                    hh.spool)
-
-        except Exception:
-            logger.exception(
-                "[%s]: gate %d — error reading Happy Hare gate map for "
-                "startup cache seed (non-fatal, polling continues)",
-                self._name, self._gate)
-
-    def _hh_sync(self, gcmd):
-        """Receive a spool_id from NFC_HH_SYNC_CACHE and set the lane seed.
-
-        Called by NFC GATE=<#> HH_SYNC=1 SPOOL_ID=<n>.
-        The macro reads Happy Hare template vars (which GCode macros can access) and
-        passes the resolved spool_id here so Python can update the seed without
-        needing to walk the Happy Hare object itself.
-        """
-        spool_id = gcmd.get_int('SPOOL_ID', -1)
-        if spool_id > 0:
-            self._hh_seed_spool_id = spool_id
-            logger.info(
-                "[%s]: gate %d — HH_SYNC: seed set to spool_id=%d",
-                self._name, self._gate, spool_id)
-            gcmd.respond_info(
-                "NFC[%s]: Happy Hare seed → spool_id=%d  "
-                "(next poll matching this spool will not re-dispatch to Happy Hare)"
-                % (self._name, spool_id))
-        else:
-            self._hh_seed_spool_id = None
-            logger.info(
-                "[%s]: gate %d — HH_SYNC: gate empty/unknown, "
-                "seed cleared", self._name, self._gate)
-            gcmd.respond_info(
-                "NFC[%s]: Happy Hare reports gate empty — seed cleared" % self._name)
-
     def _validate_startup_config(self):
         if not getattr(self, '_enabled', True):
             return
@@ -1939,6 +1778,7 @@ class NFCGate:
                               or machine.unit_with_bypass
                               or (machine.units[0] if machine.units else None))
         self._apply_mmu_nfc_parameters()
+        self._resolve_spoolman()
         self._apply_macro_presentation_vars()
         self._validate_startup_config()
         if self._shared:
@@ -2062,25 +1902,86 @@ class NFCGate:
             self._shared_missed_limit = p.shared_missed_limit
             self._shared_force_spool_id = p.force_spool_id
 
-        signature = (p.spoolman_url, p.spoolman_rfid_key,
-                     p.spoolman_timeout, p.spoolman_cache_ttl, p.debug)
-        if getattr(unit, '_nfc_spoolman_signature', None) != signature:
-            unit._nfc_spoolman_signature = signature
-            unit._nfc_spoolman = (
-                SpoolmanClient(
-                    p.spoolman_url,
-                    rfid_key=p.spoolman_rfid_key,
-                    timeout=p.spoolman_timeout,
-                    cache_ttl=p.spoolman_cache_ttl,
-                    debug=p.debug,
-                    moonraker_url='http://127.0.0.1:7125')
-                if _spoolman_url_enabled(p.spoolman_url) else None)
-        self._spoolman = unit._nfc_spoolman
-
         configure(printer=self.printer,
                   console_output=p.console_output,
                   console_log_level=p.console_log_level,
                   file_level=p.debug)
+
+
+    def _resolve_spoolman(self):
+        """Resolve self._spoolman, gated purely on Happy Hare's own
+        spoolman_support ([mmu] section) -- there is no separate NFC-level
+        enable switch. Called from _handle_connect(), once 'mmu' has been
+        resolved, so mmu.p.spoolman_support is available to read.
+        """
+        mmu_p = getattr(self.mmu, 'p', None)
+        spoolman_enabled = getattr(mmu_p, 'spoolman_support', SPOOLMAN_OFF) != SPOOLMAN_OFF
+
+        if getattr(self, '_spoolman_auto_create', False) and not spoolman_enabled:
+            _add_diagnostic_warning(
+                "spoolman_auto_create=True requires spoolman_support to be "
+                "something other than 'off' in [mmu]")
+
+        unit = getattr(self, '_mmu_unit', None)
+        p = getattr(unit, 'p', None)
+        if p is not None:
+            # Native/unit-integrated path: one client per MmuUnit, shared by
+            # every gate on that unit and rebuilt only when its inputs change.
+            signature = (spoolman_enabled, p.spoolman_rfid_key, p.moonraker_url,
+                         p.spoolman_timeout, p.spoolman_cache_ttl, p.debug)
+            if getattr(unit, '_nfc_spoolman_signature', None) != signature:
+                unit._nfc_spoolman_signature = signature
+                unit._nfc_spoolman = (
+                    SpoolmanClient(
+                        rfid_key=p.spoolman_rfid_key,
+                        timeout=p.spoolman_timeout,
+                        cache_ttl=p.spoolman_cache_ttl,
+                        debug=p.debug,
+                        moonraker_url=p.moonraker_url)
+                    if spoolman_enabled else None)
+            self._spoolman = unit._nfc_spoolman
+            return
+
+        # Standalone [nfc_gate] path. d (NFCGateDefaults) shares a single
+        # client across every lane -- built once, cached on d, first lane to
+        # connect wins. No base section (d is None) builds and caches a
+        # per-lane fallback client directly on self instead -- same as
+        # before, just resolved later, at connect time.
+        d = self._defaults
+        if d is not None:
+            if not d._spoolman_resolved:
+                if spoolman_enabled:
+                    d._spoolman = SpoolmanClient(
+                        rfid_key=d.spoolman_rfid_key,
+                        timeout=d.spoolman_timeout,
+                        cache_ttl=d.spoolman_cache_ttl,
+                        debug=d.debug,
+                        moonraker_url=d.moonraker_url)
+                    logger.info("nfc_gate: Spoolman enabled — via Moonraker %s rfid_key=%s",
+                                d.moonraker_url, d.spoolman_rfid_key)
+                else:
+                    d._spoolman = None
+                    logger.info("nfc_gate: Spoolman disabled (spoolman_support=off)")
+                d._spoolman_resolved = True
+            self._spoolman = d._spoolman
+            return
+
+        if self._spoolman_resolved:
+            return
+        if spoolman_enabled:
+            self._spoolman = SpoolmanClient(
+                rfid_key=self._spoolman_rfid_key,
+                timeout=self._spoolman_timeout,
+                cache_ttl=self._spoolman_cache_ttl,
+                debug=self._debug,
+                moonraker_url=self._moonraker_url)
+            logger.info("[%s]: Spoolman enabled — via Moonraker %s rfid_key=%s",
+                        self._name, self._moonraker_url, self._spoolman_rfid_key)
+        else:
+            self._spoolman = None
+            logger.info("[%s]: Spoolman disabled (spoolman_support=off)",
+                        self._name)
+        self._spoolman_resolved = True
 
     def _apply_macro_presentation_vars(self):
         """Apply NFC presentation settings from _MMU_NFC_VARS."""
@@ -2179,8 +2080,6 @@ class NFCGate:
             self.reactor.update_timer(self._poll_timer, self.reactor.NEVER)
         try:
             self._startup_check_unknown_gate(eventtime)
-            seed_time = self.reactor.monotonic()
-            self._seed_cache_from_hh(seed_time)
         finally:
             if was_polling and not self._failed:
                 self.reactor.update_timer(
@@ -2221,12 +2120,7 @@ class NFCGate:
             self._failed = True
             logger.error("[%s]: init error: %s", self._name, e)
 
-        # Seed lane cache from Happy Hare's current gate map so the first poll
-        # after restart does not re-dispatch a spool Happy Hare already knows about.
-        # Shared reader has no Happy Hare gate assignment to seed.
         if not self._failed and not self._shared:
-            seed_time = self.reactor.monotonic()
-            self._seed_cache_from_hh(seed_time)
             if self._spoolman is None:
                 delay = (STARTUP_UNKNOWN_GATE_CHECK_DELAY
                          + (self._gate
@@ -2253,34 +2147,35 @@ class NFCGate:
                     "Run %s after fixing."
                     % (self._name, _reader_wiring_hint(self._reader_type),
                        init_cmd)))
-            else:
-                if self._shared:
-                    seed_note = ""
-                    read_cmd = "NFC_SHARED READ=1"
-                else:
-                    seed_note = ("  Happy Hare seed: spool_id=%d" % self._hh_seed_spool_id
-                                 if self._hh_seed_spool_id is not None
-                                 else "  Happy Hare reports gate empty")
-                    read_cmd = "NFC GATE=%d READ=1" % self._gate
+            elif self._shared:
+                read_cmd = "NFC_SHARED READ=1"
                 if self._debug >= 3:
                     logger.info(
-                        "[%s]: ready.%s  %s",
+                        "[%s]: ready.  %s",
                         self._name,
-                        seed_note,
                         ("Startup polling is enabled; first poll in %.1fs."
                          % self._startup_poll_delay)
                         if self._startup_polling == 1
                         else ("Run %s to start polling." % read_cmd))
                 self._gcode.respond_info(scan_jog._color_tags(
-                    "[OK] NFC[%s]: ready.%s  %s"
+                    "[OK] NFC[%s]: ready.  %s"
                     % (self._name,
-                       seed_note,
                        "Startup polling is enabled; first poll in %.1fs."
                        % self._startup_poll_delay
                        if self._startup_polling == 1
                        else "Run %s to start polling." % read_cmd)))
+            else:
+                if self._debug >= 3:
+                    logger.info(
+                        "[%s]: ready. Tag detection is triggered by Happy "
+                        "Hare's post-preload hook (scan-jog); no background "
+                        "polling.", self._name)
+                self._gcode.respond_info(scan_jog._color_tags(
+                    "[OK] NFC[%s]: ready. Tag detection is triggered by "
+                    "Happy Hare's post-preload hook (scan-jog); no "
+                    "background polling." % self._name))
 
-        if not self._failed and self._startup_polling == 1:
+        if not self._failed and self._shared and self._startup_polling == 1:
             self._polling = True
             first_poll = self.reactor.monotonic() + self._startup_poll_delay
             self.reactor.update_timer(self._poll_timer, first_poll)
@@ -2417,60 +2312,6 @@ class NFCGate:
                 if self._shared_pending_spool is None:
                     self._shared_restore_hh_leds()
                 return self.reactor.NEVER
-
-        # Poll suppression while Happy Hare already has an opinion about this
-        # gate (loaded+matched, or assigned). Reads Happy Hare's gate_status
-        # on every tick — Python dict only, no I2C. Scan-jog is no longer
-        # triggered from here: Happy Hare's post-preload hook
-        # (_NFC_SCAN_JOG_PRELOAD / _NFC_SHARED_PRELOAD) calls
-        # NFC GATE=<n> JOG_SCAN=1 SOURCE=AUTO directly instead.
-        if self._scan_enabled:
-            hh = self._read_hh_status(eventtime)
-            if hh.present and self._gate < hh.gate_count:
-                curr = hh.status
-                if self._debug >= 4:
-                    logger.debug(
-                        "[%s]: gate %d — Happy Hare poll: "
-                        "curr=%s action=%s printing=%s load_paused=%s",
-                        self._name, self._gate,
-                        curr, hh.action_label(),
-                        self._is_printing(),
-                        self._hh_load_paused)
-                if (curr >= 1 and self._state.current_spool is not None
-                        and self._state.current_spool is not DIRECT_METADATA_SPOOL):
-                    if not self._hh_load_paused:
-                        self._hh_load_paused = True
-                        logger.info(
-                            "[%s]: gate %d — Happy Hare reports filament "
-                            "present; NFC already has spool=%s — "
-                            "suspending poll",
-                            self._name, self._gate,
-                            self._state.current_spool)
-                    self._state.miss_count = 0
-                    return self.reactor.monotonic() + self._poll_interval
-                if curr <= 0:
-                    nfc_spool = self._state.current_spool
-                    if hh.assigned and nfc_spool == hh.spool:
-                        if not self._hh_load_paused:
-                            self._hh_load_paused = True
-                            logger.info(
-                                "[%s]: gate %d — Happy Hare has assigned "
-                                "spool=%d; suspending NFC poll",
-                                self._name, self._gate, hh.spool)
-                        self._state.miss_count = 0
-                        return self.reactor.monotonic() + self._poll_interval
-                    if self._hh_load_paused:
-                        self._hh_load_paused      = False
-                        self._state.current_uid   = None
-                        self._state.current_spool = None
-                        self._state.miss_count    = 0
-                        self._hh_confirmed_spool  = None
-                        logger.info(
-                            "[%s]: gate %d — gate ejected; "
-                            "resuming poll and clearing NFC cache",
-                            self._name, self._gate)
-                        return self.reactor.monotonic() + 1.0
-                    return self.reactor.monotonic() + self._poll_interval
 
         if self._debug >= 4:
             logger.debug("[%s]: poll cycle start — "
@@ -2676,13 +2517,6 @@ class NFCGate:
             self._shared_handle_event(event_type, uid, spool)
             return
 
-        suppress = (self._hh_seed_spool_id is not None
-                    and event_type == EVENT_CHANGED
-                    and spool == self._hh_seed_spool_id
-                    and self._hh_seed_available)
-        self._hh_seed_spool_id  = None  # one-shot, always clear
-        self._hh_seed_available = False
-
         if self._is_printing():
             if self._debug >= 3:
                 logger.info(
@@ -2702,14 +2536,7 @@ class NFCGate:
                     "dispatch deferred until rewind complete",
                     self._name, gate, event_type)
         else:
-            if suppress:
-                if self._debug >= 3:
-                    logger.info(
-                        "[%s]: gate %d — startup seed match "
-                        "spool=%s; skipping Happy Hare dispatch",
-                        self._name, gate, spool)
-            else:
-                self._poll_klipper_dispatch(event_type, gate, uid, spool)
+            self._poll_klipper_dispatch(event_type, gate, uid, spool)
 
     def _poll_klipper_dispatch(self, event_type, gate, uid, spool,
                                scan_finish=False):
@@ -2863,9 +2690,6 @@ class NFCGate:
     def _scan_next_event_time(self, mm):
         return scan_jog.next_event_time(self, mm)
 
-    def _resume_poll_after_rewind(self):
-        return scan_jog.resume_poll_after_rewind(self)
-
     def _scan_step_event(self, eventtime):
         return scan_jog.step_event(self, eventtime)
 
@@ -2888,73 +2712,17 @@ class NFCGate:
         return nfc_gate_for_gate_number(gate_number)
 
     def status_line(self):
-        label = ("shared" if self._shared
-                 else "Gate %d" % self._gate)
-        label = "%s (%s)" % (label, self._reader_type)
+        """Report reader health only. The gate holds no spool/UID cache of
+        its own -- it is a utility that pushes tag reads to Happy Hare's
+        gate map, not a second source of truth to reconcile against it.
+        """
+        label = "Gate %d (%s)" % (self._gate, self._reader_type)
         if not getattr(self, '_enabled', True):
             return "  %s  [%s]:  disabled by config" % (label, self._name)
         if self._failed:
             return ("  %s  [%s]:  READER FAILED (check wiring, address 0x24)"
                     % (label, self._name))
-        if self._hh_load_paused:
-            poll_state = "polling suspended"
-        elif self._polling:
-            poll_state = "polling"
-        else:
-            poll_state = "not polling"
-        hh = self._read_hh_status()
-        if hh.present and hh.available and not self._scan_mode:
-            poll_state = "polling suspended"
-        hh_label = hh.label()
-        sync_note = ''
-        nfc_spool = self._state.current_spool
-        hh_empty = (hh.present and not hh.available
-                    and not (hh.active_gate == self._gate
-                             and hh.filament_pos > 0))
-        if (hh.present and hh.assigned and nfc_spool is not None
-                and nfc_spool is not DIRECT_METADATA_SPOOL
-                and hh.spool != nfc_spool):
-            sync_note = "  [SYNC MISMATCH: NFC spool %s, Happy Hare spool %s]" % (
-                nfc_spool, hh.spool)
-        elif (hh.present and hh.assigned and nfc_spool is None):
-            hh_label = hh_label + ", NFC cache empty"
-        elif (hh.present and not hh.assigned and nfc_spool is not None
-                and nfc_spool is not DIRECT_METADATA_SPOOL):
-            if hh.available:
-                sync_note = "  [NFC has spool %s; Happy Hare found/no spool]" % nfc_spool
-            else:
-                sync_note = "  [NFC has spool %s; Happy Hare empty]" % nfc_spool
-        if hh_empty:
-            return _status_html_words(
-                "  %s:  empty   [%s]%s  [%s]"
-                % (label, poll_state, sync_note, hh_label))
-        if self._state.current_spool is DIRECT_METADATA_SPOOL:
-            tag = self._state.current_tag
-            meta = tag.meta if tag is not None else {}
-            material = (meta or {}).get('material', '')
-            color = (meta or {}).get('color_hex', '')
-            return _status_html_words(
-                "  %s:  tag %s  metadata material=%s color=%s   [%s]%s  [%s]"
-                % (label, self._state.current_uid,
-                   material, color, poll_state, sync_note, hh_label))
-        if self._state.current_spool is not None:
-            return _status_html_words(
-                "  %s:  spool %-2d  UID %s   [%s]%s   [%s]"
-                % (label,
-                   self._state.current_spool, self._state.current_uid,
-                   poll_state, sync_note, hh_label))
-        if self._state.current_uid is not None:
-            return _status_html_words(
-                "  %s:  tag %s  (UID not in Spoolman)   [%s]%s  [%s]"
-                % (label, self._state.current_uid, poll_state,
-                   sync_note, hh_label))
-        if hh.present and hh.available:
-            return _status_html_words(
-                "  %s:  occupied   [%s]%s  [%s]"
-                % (label, poll_state, sync_note, hh_label))
-        return _status_html_words(
-            "  %s:  empty   [%s]%s  [%s]"
-            % (label, poll_state, sync_note, hh_label))
+        return "  %s  [%s]:  OK" % (label, self._name)
 
     # ── Shared reader ────────────────────────────────────────────────────────
 
@@ -2971,44 +2739,29 @@ class NFCGate:
 
 
     def get_status(self, _eventtime=None):
-        if not getattr(self, '_enabled', True):
-            return {
-                'gate':                self._gate,
-                'enabled':             False,
-                'reader_type':         self._reader_type,
-                'tag_present':         False,
-                'spool_id':            -1,
-                'uid':                 '',
-                'failed':              False,
-                'resolution':          'disabled',
-                'pending_spool_id':    -1,
-                'pending_auto_created': False,
-                'preload_spool_id':    -1,
-                'preload_auto_created': False,
-                'has_per_lane_readers': False,
-            }
-        tag = self._state.current_tag
-        is_meta_direct = self._state.current_spool is DIRECT_METADATA_SPOOL
-        tag_present = self._state.current_uid is not None
-        resolution = ''
-        if is_meta_direct:
-            resolution = 'metadata_direct'
-        elif tag is not None and isinstance(tag.resolution, dict):
-            resolution = tag.resolution.get('path', '')
-        return {
-            'gate':                self._gate,
-            'enabled':             True,
-            'reader_type':         self._reader_type,
-            'tag_present':         tag_present,
-            'spool_id':            (-1 if is_meta_direct
-                                    else self._state.current_spool
-                                    if self._state.current_spool is not None else -1),
-            'uid':                 self._state.current_uid or '',
-            'failed':              self._failed,
-            'resolution':          resolution,
-            'pending_spool_id':    -1,
-            'pending_auto_created': False,
-            'preload_spool_id':    -1,
-            'preload_auto_created': False,
-            'has_per_lane_readers': False,
+        """Reader health for per-lane gates -- see status_line(). The shared
+        reader additionally reports its pending/preload spool state, which
+        _NFC_SHARED_PRELOAD (config/macros/mmu_nfc.cfg) reads via
+        printer['nfc_gate shared'] to commit a staged spool after a load;
+        per-lane gates have no such state to report.
+        """
+        status = {
+            'gate':        self._gate,
+            'enabled':     getattr(self, '_enabled', True),
+            'reader_type': self._reader_type,
+            'failed':      self._failed,
         }
+        if self._shared:
+            status['pending_spool_id'] = (
+                self._shared_pending_spool
+                if self._shared_pending_spool is not None else -1)
+            status['pending_auto_created'] = bool(
+                getattr(self, '_shared_pending_auto_created', False))
+            status['preload_spool_id'] = (
+                self._shared_preload_spool
+                if getattr(self, '_shared_preload_spool', None) is not None else -1)
+            status['preload_auto_created'] = bool(
+                getattr(self, '_shared_preload_auto_created', False))
+            status['has_per_lane_readers'] = bool(
+                getattr(self, '_has_per_lane_readers', False))
+        return status

@@ -16,7 +16,6 @@
 import json
 import logging
 import re
-import time
 from typing import Optional
 from urllib import error as url_error
 from urllib import parse as url_parse
@@ -203,17 +202,20 @@ def _fetch_spoolmandb_bambu() -> list:
         return []
 
 
-class SpoolmanClient:
-    def __init__(self, base_url, api_key=None, timeout=5.0, trace=None):
-        self.base_url = base_url.rstrip("/")
-        self.timeout = timeout
+class SpoolmanCatalogClient:
+    """Finds-or-creates Spoolman vendor/filament/spool catalog records from
+    parsed tag metadata (see auto_create_spool()). Distinct from
+    spoolman_client.SpoolmanClient, which only looks up an existing spool by
+    UID -- this class writes new catalog records when no match exists.
+    """
+
+    def __init__(self, transport, trace=None):
+        # transport is a MoonrakerSpoolmanTransport (see spoolman_client.py) --
+        # shared with the lookup/cache client so every Spoolman call this
+        # add-on makes, lookup or auto-create, is proxied through the same
+        # Moonraker connection rather than dialing Spoolman directly.
+        self._transport = transport
         self.trace = trace
-        self.headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        }
-        if api_key:
-            self.headers["Authorization"] = f"Bearer {api_key}"
 
     def _trace(self, level, msg, *args):
         if self.trace is None:
@@ -230,72 +232,25 @@ class SpoolmanClient:
         self._trace("debug", msg, *args)
 
     def _req(self, method, path, body=None):
-        url = f"{self.base_url}{path}"
+        # Transport-level request/response logging (curl-equivalent, timing,
+        # response preview) lives once in MoonrakerSpoolmanTransport; this
+        # wrapper only adds the auto_create_spool trace hook used by callers
+        # of this class.
         body_str = json.dumps(body) if body is not None else ""
-        data = body_str.encode("utf-8") if body_str else None
-
-        # Build a curl command equivalent for easy copy-paste diagnosis.
-        # Authorization header value is redacted so tokens never appear in logs.
-        curl_parts = [f"curl -s -X {method} '{url}'"]
-        for k, v in self.headers.items():
-            if k.lower() == "authorization":
-                curl_parts.append(f"-H '{k}: ***'")
-            else:
-                curl_parts.append(f"-H '{k}: {v}'")
-        if body_str:
-            # Escape single-quotes in the body so the shell command is valid.
-            safe_body = body_str.replace("'", "'\\''")
-            curl_parts.append(f"-d '{safe_body}'")
-        curl_cmd = " ".join(curl_parts)
-
-        _log_fn = LOG.info if method in ("POST", "PUT", "PATCH") else LOG.debug
-        _log_fn("spoolman: → %s %s%s", method, url,
-                f"  body={body_str[:800]}{'...' if len(body_str) > 800 else ''}"
-                if body_str else "")
-        LOG.debug("spoolman:   %s", curl_cmd)
         self._trace_debug("auto_create_spool: Spoolman request %s %s%s",
-                         method, url,
+                         method, path,
                          " body=%s" % body_str[:800] if body_str else "")
-
-        req = request.Request(url, data=data, headers=self.headers, method=method)
-        t0 = time.monotonic()
         try:
-            with request.urlopen(req, timeout=self.timeout) as resp:
-                raw = resp.read()
-                elapsed_ms = (time.monotonic() - t0) * 1000
-                resp_str = raw.decode("utf-8", errors="replace") if raw else ""
-                LOG.debug(
-                    "spoolman: ← HTTP %s %s (%.0fms)%s",
-                    resp.status,
-                    resp.reason,
-                    elapsed_ms,
-                    f"  resp={resp_str[:400]}{'...' if len(resp_str) > 400 else ''}"
-                    if resp_str else "",
-                )
-                self._trace_debug(
-                    "auto_create_spool: Spoolman response HTTP %s %s %.0fms%s",
-                    resp.status, resp.reason, elapsed_ms,
-                    " resp=%s" % resp_str[:400] if resp_str else "")
-                if not raw:
-                    return None
-                return json.loads(resp_str)
+            result = self._transport.request(method, path, body=body)
         except url_error.HTTPError as exc:
-            elapsed_ms = (time.monotonic() - t0) * 1000
-            err_body = ""
-            try:
-                err_body = exc.read().decode("utf-8", errors="replace")
-            except Exception:
-                pass
-            LOG.info(
-                "spoolman: ← HTTP %s %s (%.0fms)%s",
+            self._trace_debug(
+                "auto_create_spool: Spoolman response HTTP %s%s",
                 exc.code,
-                exc.reason,
-                elapsed_ms,
-                f"  error={err_body[:400]}{'...' if len(err_body) > 400 else ''}"
-                if err_body else "",
-            )
-            exc._body_text = err_body  # type: ignore[attr-defined]
+                " error=%s" % getattr(exc, "_body_text", "")[:400]
+                if getattr(exc, "_body_text", "") else "")
             raise
+        self._trace_debug("auto_create_spool: Spoolman response OK")
+        return result
 
     # --- UID extra-field helpers (rfid_uid_1 … rfid_uid_N numbered model) ---
 

@@ -175,9 +175,22 @@ _TNF_ABSOLUTE_URI = 0x03
 _TNF_EXTERNAL = 0x04
 
 
-def _find_ndef_tlv(data: bytes) -> Optional[bytes]:
+def _find_ndef_tlv(data: Optional[bytes], return_details: bool = False):
     """Return the raw bytes of the first NDEF message TLV (0x03) payload,
-    or None if none is found."""
+    or None if none is found.
+
+    With return_details=True, returns a dict describing the TLV instead of
+    bare payload bytes -- {'complete': bool, 'ndef_len': int, 'tlv_len': int,
+    'payload': bytes} -- and tolerates a truncated/in-progress read by
+    returning the partial payload captured so far with complete=False rather
+    than None. Used by tag_handler.py for mid-scan debug preview logging,
+    where the read may not have captured the full tag yet; the normal
+    parse_tag() path (return_details=False, the default) keeps requiring a
+    complete TLV and returns plain bytes, unchanged from before.
+    """
+    if data is None:
+        return None
+    data = bytes(data)
     i = 0
     while i < len(data):
         t = data[i]
@@ -197,10 +210,26 @@ def _find_ndef_tlv(data: bytes) -> Optional[bytes]:
         else:
             vstart = i + 2
         vend = vstart + l
+        if t == 0x03:
+            if vend > len(data):
+                if not return_details:
+                    return None
+                return {
+                    'complete': False,
+                    'ndef_len': l,
+                    'tlv_len': vend,
+                    'payload': data[vstart:],
+                }
+            if not return_details:
+                return data[vstart:vend]
+            return {
+                'complete': True,
+                'ndef_len': l,
+                'tlv_len': vend,
+                'payload': data[vstart:vend],
+            }
         if vend > len(data):
             return None
-        if t == 0x03:
-            return data[vstart:vend]
         i = vend
     return None
 

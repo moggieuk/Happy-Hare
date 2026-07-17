@@ -1,6 +1,6 @@
 # Happy Hare MMU Software
 #
-# Implements the NFC_STATUS command (report spool state for all NFC gates).
+# Implements the NFC_STATUS command (report reader health for all NFC gates).
 #
 # (\_/)
 # ( *,*)
@@ -16,12 +16,12 @@ from ..unit.nfc import manager as nfc_manager
 
 class MmuNfcStatusCommand(BaseCommand):
     """
-    Report spool state for all configured NFC gates.
+    Report reader health for all configured NFC gates.
     """
 
     CMD = "NFC_STATUS"
 
-    HELP_BRIEF = "Report spool state for all configured NFC gates"
+    HELP_BRIEF = "Report reader health for all configured NFC gates"
     HELP_PARAMS = f"{CMD}: {HELP_BRIEF}"
     HELP_SUPPLEMENT = ""
 
