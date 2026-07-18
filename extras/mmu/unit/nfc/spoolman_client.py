@@ -187,9 +187,12 @@ class MoonrakerSpoolmanTransport:
         Raises urllib.error.HTTPError on a Spoolman-side failure, with .code
         set to Spoolman's real HTTP status and ._body_text set to the error
         body -- matching what direct urlopen()/HTTPError handling already
-        expects throughout this package, so callers need no changes.
-        Connectivity failures to Moonraker itself (unreachable, timeout, ...)
-        raise the same exceptions a direct urlopen() would.
+        expects throughout this package, so callers need no changes. A
+        Moonraker-level rejection of the proxy request itself (not a
+        Spoolman-side error) also gets ._body_text set, from the raw
+        response body. Connectivity failures to Moonraker itself
+        (unreachable, timeout, ...) raise the same exceptions a direct
+        urlopen() would.
         """
         spoolman_path = path[4:] if path.startswith('/api/') else path
         if '?' in spoolman_path:
@@ -215,8 +218,20 @@ class MoonrakerSpoolmanTransport:
                         method, spoolman_path, "?%s" % query if query else "")
 
         t0 = time.monotonic()
-        with urlopen(req, timeout=self._timeout) as resp:
-            raw = resp.read()
+        try:
+            with urlopen(req, timeout=self._timeout) as resp:
+                raw = resp.read()
+        except HTTPError as e:
+            # A non-200 here is Moonraker itself rejecting the proxy request
+            # (e.g. a malformed envelope) rather than a Spoolman-side error,
+            # which is reported via the 200-wrapped 'error' branch below
+            # instead. e.read() is only safe once, so capture it now.
+            if not hasattr(e, '_body_text'):
+                try:
+                    e._body_text = e.read().decode('utf-8', errors='replace')
+                except Exception:
+                    e._body_text = ''
+            raise
         elapsed_ms = (time.monotonic() - t0) * 1000
 
         outer = json.loads(raw.decode('utf-8')) if raw else {}

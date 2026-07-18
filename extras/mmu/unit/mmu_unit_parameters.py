@@ -208,7 +208,6 @@ class MmuUnitParameters(TunableParametersBase):
         ParamSpec('absent_threshold',                  'int',       3, section="NFC READER", limits=dict(minval=1, maxval=255)),
         ParamSpec('transceive_delay',                'float',    0.25, section="NFC READER", limits=dict(minval=0.05, maxval=2.0)),
         ParamSpec('crc_delay',                       'float',    0.05, section="NFC READER", limits=dict(minval=0.005, maxval=1.0)),
-        ParamSpec('log_file',                          'str', 'nfc_reader.log', section="NFC READER"),
         ParamSpec('debug',                              'int',       2, section="NFC READER", limits=dict(minval=0, maxval=4)),
         ParamSpec('console_output',                   'bool',   False, section="NFC READER"),
         ParamSpec('console_log_level',                 'int',       2, section="NFC READER", limits=dict(minval=1, maxval=4)),

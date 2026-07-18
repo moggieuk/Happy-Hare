@@ -569,7 +569,6 @@ class MmuSharedNfcReader(NFCGate):
         if self._shared_pending_spool is not None:
             return "insert filament before timeout, or run NFC_SHARED REPLACE=1"
         if self._shared_last_error:
-            last_action = self._shared_last_action or ''
             if "expired" in self._shared_last_error:
                 return "tap the tag again"
             if "not in Spoolman" in self._shared_last_error:

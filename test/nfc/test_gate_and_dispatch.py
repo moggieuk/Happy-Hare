@@ -51,50 +51,69 @@ class TestGateState(unittest.TestCase):
 class TestKlipperInterface(unittest.TestCase):
     def setUp(self):
         self.gcode = MagicMock()
+        self.mmu = MagicMock()
+        self.mmu.action = None
         self.reactor = FakeReactor()
         self.subject = KlipperInterface(
-            FakePrinter({'gcode': self.gcode}), self.reactor,
+            FakePrinter({'gcode': self.gcode, 'mmu': self.mmu}), self.reactor,
             name='lane_0', spoolman_enabled=False)
 
     def dispatch(self, *args, **kwargs):
         self.subject.dispatch(*args, **kwargs)
         self.assertEqual(1, len(self.reactor.callbacks))
         self.reactor.run_callbacks()
-        return self.gcode.run_script.call_args.args[0]
+        return [c.args[0] for c in self.gcode.run_script_from_command.call_args_list]
 
-    def test_resolved_change_is_scheduled_with_flags(self):
-        script = self.dispatch(EVENT_CHANGED, 3, 'AABB', 17,
-                               auto_created=True, scan_finish=True)
-        self.assertEqual(
-            '_NFC_SPOOL_CHANGED GATE=3 READER=lane_0 SPOOL_ID=17 UID=AABB '
-            'AUTO_CREATED=1 SCAN_FINISH=1', script)
+    def test_resolved_change_writes_gate_map_directly(self):
+        scripts = self.dispatch(EVENT_CHANGED, 3, 'AABB', 17, auto_created=True)
+        self.assertIn('MMU_GATE_MAP GATE=3 SPOOLID=17 AVAILABLE=1 QUIET=1', scripts)
+        self.assertIn('MMU_SPOOLMAN REFRESH=1 QUIET=1', scripts)
+        self.assertIn('MMU_SPOOLMAN SYNC=1 QUIET=1', scripts)
+        self.gcode.respond_info.assert_called_once()
+        self.assertIn('spool 17 detected',
+                      self.gcode.respond_info.call_args.args[0])
 
-    def test_metadata_change_sanitizes_macro_values(self):
-        script = self.dispatch(EVENT_CHANGED, 1, 'AA', None, meta={
+    def test_metadata_change_sanitizes_gate_map_values(self):
+        scripts = self.dispatch(EVENT_CHANGED, 1, 'AA', None, meta={
             'brand': 'Bambu Lab', 'material': 'PLA / Basic',
             'color_hex': '#ff00aa', 'min_temp': 190.9, 'max_temp': 220,
             'diameter_mm': 1.75, 'weight_g': 1000.5,
         })
-        self.assertIn('NAME=Bambu_PLA__Basic', script)
-        self.assertIn('MATERIAL=PLA__Basic', script)
-        self.assertIn('COLOR=#ff00aa', script)
-        self.assertIn('MIN_TEMP=190 TEMP=220 DIAMETER=1.75 WEIGHT=1000', script)
+        gate_map_script = next(s for s in scripts if s.startswith('MMU_GATE_MAP'))
+        self.assertIn('NAME=Bambu_PLA__Basic', gate_map_script)
+        self.assertIn('MATERIAL=PLA__Basic', gate_map_script)
+        self.assertIn('COLOR=#ff00aa', gate_map_script)
+        self.assertIn('TEMP=220', gate_map_script)
+        self.assertIn('MMU_SPOOLMAN SYNC=1 QUIET=1', scripts)
 
-    def test_uid_only_and_removed_macros(self):
-        script = self.dispatch(EVENT_UID_ONLY, 0, 'CAFE', None,
-                               scan_finish=True)
-        self.assertIn('SPOOLMAN_DISABLED=1 SCAN_FINISH=1', script)
-        self.reactor.callbacks.clear()
-        self.assertEqual('_NFC_SPOOL_REMOVED GATE=0 READER=lane_0',
-                         self.dispatch(EVENT_REMOVED, 0, None, 9))
+    def test_uid_only_writes_unknown_gate_map(self):
+        scripts = self.dispatch(EVENT_UID_ONLY, 0, 'CAFE', None)
+        self.assertIn(
+            'MMU_GATE_MAP GATE=0 SPOOLID=-1 NAME=Unknown MATERIAL=Unknown '
+            'COLOR=FFFFFF55 TEMP=0 AVAILABLE=1 QUIET=1', scripts)
+        self.assertIn('no rich metadata or spool assignment',
+                      self.gcode.respond_info.call_args.args[0])
+
+    def test_removed_clears_gate_map(self):
+        scripts = self.dispatch(EVENT_REMOVED, 0, None, 9)
+        self.assertIn('MMU_GATE_MAP GATE=0 SPOOLID=-1 AVAILABLE=0 QUIET=1', scripts)
+        self.assertIn('MMU_SPOOLMAN SYNC=1 QUIET=1', scripts)
+        self.assertIn('spool removed', self.gcode.respond_info.call_args.args[0])
+
+    def test_removed_during_busy_action_is_ignored(self):
+        from extras.mmu.mmu_constants import ACTION_UNLOADING
+        self.mmu.action = ACTION_UNLOADING
+        scripts = self.dispatch(EVENT_REMOVED, 0, None, 9)
+        self.assertEqual([], scripts)
+        self.assertIn('ignoring removal', self.gcode.respond_info.call_args.args[0])
 
     def test_unknown_event_and_gcode_failure_do_not_escape(self):
         with patch('extras.mmu.unit.nfc.klipper_interface.logger'):
-            self.subject._run_gcode('bad-event', 0, None, None)
-        self.gcode.run_script.assert_not_called()
-        self.gcode.run_script.side_effect = RuntimeError('boom')
+            self.subject._update_gate_map('bad-event', 0, None, None)
+        self.gcode.run_script_from_command.assert_not_called()
+        self.gcode.run_script_from_command.side_effect = RuntimeError('boom')
         with patch('extras.mmu.unit.nfc.klipper_interface.logger'):
-            self.subject._run_gcode(EVENT_REMOVED, 0, None, 2)
+            self.subject._update_gate_map(EVENT_REMOVED, 0, None, 2)
 
 
 if __name__ == '__main__':

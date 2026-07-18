@@ -4,7 +4,7 @@
 
 from .gate_state import (
     DIRECT_METADATA_SPOOL, EVENT_CHANGED, EVENT_UID_ONLY, CurrentTag)
-from .log import info_both, logger
+from .log import logger
 
 try:
     from .log import color_console_tags
@@ -674,10 +674,13 @@ def clear_hh_gate_cache(gate):
                 "[%s]: gate %d scan mode — clearing Happy Hare gate cache "
                 "before scan-jog",
                 gate._name, gate._gate)
-        run_hh_script(gate, "_NFC_GATE_CLEAR_CACHE GATE=%d" % gate._gate)
+        run_hh_script(gate,
+            "MMU_SPOOLMAN GATE=%d QUIET=1\n"
+            "MMU_GATE_MAP GATE=%d SPOOLID=-1 AVAILABLE=1 QUIET=1"
+            % (gate._gate, gate._gate))
     except Exception as e:
         logger.warning(
-            "[%s]: gate %d scan mode — _NFC_GATE_CLEAR_CACHE failed: %s",
+            "[%s]: gate %d scan mode — clearing Happy Hare gate cache failed: %s",
             gate._name, gate._gate, e)
 
 
@@ -701,10 +704,15 @@ def clear_unresolved_scan(gate):
     if gcode is None:
         return
     try:
-        gcode.run_script("_NFC_SCAN_UNRESOLVED GATE=%d" % gate._gate)
+        gcode.respond_info(color_console_tags(
+            "NFC[%s]: scan-jog found no resolvable spool for gate %d; "
+            "clearing stale Happy Hare metadata." % (gate._name, gate._gate)))
+        gcode.run_script_from_command(
+            "MMU_GATE_MAP GATE=%d SPOOLID=-1 NAME=Unknown MATERIAL=Unknown "
+            "COLOR=FFFFFF55 TEMP=0 AVAILABLE=1 QUIET=1" % gate._gate)
     except Exception as e:
         logger.warning(
-            "[%s]: gate %d scan mode — _NFC_SCAN_UNRESOLVED failed: %s",
+            "[%s]: gate %d scan mode — clearing unresolved scan metadata failed: %s",
             gate._name, gate._gate, e)
 
 
@@ -815,7 +823,6 @@ def start(gate, max_mm=None):
             gate._scan_previous_spool_identity or "None")
     gate._state.current_uid   = None  # force changed event on first read
     gate._state.current_spool = None
-    gate._hh_load_paused = False
     gate._scan_gate_selected = False  # deferred to first jog (must run from timer, not GCode handler)
     gate._scan_hh_prep_pending = True
     gate._scan_led_reassert_effect = None
@@ -1948,13 +1955,10 @@ def finish(gate):
             meta = None
         gate._scan_found_event = None
         if event_type == 'changed' and meta is not None and spool is None:
-            gate._klipper.dispatch(event_type, g, uid, spool, meta=meta,
-                                   scan_finish=True)
+            gate._klipper.dispatch(event_type, g, uid, spool, meta=meta)
         else:
-            gate._poll_klipper_dispatch(event_type, g, uid, spool,
-                                        scan_finish=True)
+            gate._poll_klipper_dispatch(event_type, g, uid, spool)
         if event_type == 'changed' and spool is not None:
-            gate._hh_load_paused = True
             gate._state.miss_count = 0
         if event_type == 'changed' and spool is not None:
             msg = "[OK] NFC[%s]: spool %s assigned" % (gate._name.capitalize(), spool)
@@ -2013,11 +2017,6 @@ def rewind_and_exit(gate):
     if previous_spool is not None:
         gate._state.current_uid = previous_uid
         gate._state.current_spool = previous_spool
-        hh = gate._read_hh_status()
-        gate._hh_load_paused = bool(
-            hh.present and hh.available and hh.spool == previous_spool)
-    else:
-        gate._hh_load_paused = False
     gate._scan_previous_uid = None
     gate._scan_previous_spool = None
     gate._scan_previous_spool_identity = None
@@ -2234,7 +2233,6 @@ def _rewind_complete_message(gate):
 def run_rewind(gate):
     if gate._scan_mm_total <= 0.0:
         return
-    gcode = gate.printer.lookup_object('gcode')
     _, _, fast_rewind = _rewind_parts(gate)
     if fast_rewind > 0.0:
         run_mmu_move(gate, -fast_rewind)

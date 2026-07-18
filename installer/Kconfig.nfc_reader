@@ -40,7 +40,7 @@
 #   PARAM_NFC_STARTUP_POLLING, PARAM_NFC_STARTUP_POLL_DELAY
 #   PARAM_NFC_POLL_INTERVAL, PARAM_NFC_ABSENT_THRESHOLD
 #   PARAM_NFC_TRANSCEIVE_DELAY, PARAM_NFC_CRC_DELAY
-#   PARAM_NFC_LOG_FILE, PARAM_NFC_DEBUG
+#   PARAM_NFC_DEBUG
 #   PARAM_NFC_CONSOLE_OUTPUT, PARAM_NFC_CONSOLE_LOG_LEVEL
 #   PARAM_NFC_SCAN_ENABLED, PARAM_NFC_SCAN_JOG_MM, PARAM_NFC_SCAN_JOG_MAX
 #   PARAM_NFC_SCAN_REWIND_BUFFER_MM, PARAM_NFC_SCAN_DECODE_RETRY_MM
@@ -578,13 +578,6 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
         help
           Seconds to wait after releasing a PN532 target before issuing the
           next command.
-
-      config PARAM_NFC_LOG_FILE
-        string "NFC log file      "
-        default "nfc_reader.log"
-        help
-          NFC-specific log filename. Relative names are created in Klipper's
-          log directory.
 
       choice CHOICE_NFC_DEBUG_LEVEL
         prompt "NFC debug level   "

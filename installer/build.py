@@ -11,7 +11,6 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 
-import sys
 import argparse
 import re
 import os
@@ -771,14 +770,9 @@ def get_target_version():
     return target_version
 
 
-def get_config_version(kcfg):
-    version = kcfg.get("HAPPY_HARE_VERSION")
-    return version
-
-
 def check_version(kconfig, input_files):
     hhcfg = HHConfig(input_files)
-    kcfg = load_parsed_kconfig(kconfig)
+    load_parsed_kconfig(kconfig)  # validates the kconfig is parseable/unpicklable
 
     # Current version is pulled from current cfg files...
     current_version = get_current_version(hhcfg)

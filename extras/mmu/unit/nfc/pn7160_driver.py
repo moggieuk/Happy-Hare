@@ -1005,7 +1005,6 @@ class PN7160Handler:
             raise PN7160Error("RF_DISCOVER_NTF too short: %s" % _hex(frame))
         rf_disc_id = payload[0]
         protocol = payload[1]
-        mode_tech = payload[2]
         ntf_type = payload[-1]
         if ntf_type == 0x02:
             return []

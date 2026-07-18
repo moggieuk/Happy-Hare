@@ -2,6 +2,196 @@
 
 Changes to the Happy Hare NFC/RFID reader subsystem on the `rfid` branch.
 
+## Self-managed poll pause; no more querying Happy Hare to poll (2026-07-17)
+
+`_poll_hh_pause_check()` (`manager.py`) no longer calls `_read_hh_status()`.
+Previously it queried Happy Hare's gate map fresh on every poll to decide
+whether to skip reading the tag. Replaced with a plain `self._poll_enabled`
+flag that NFC manages itself:
+
+- `_poll_klipper_dispatch()` sets it `False` immediately after dispatching a
+  `CHANGED`/`UID_ONLY` event — NFC already knows firsthand it just told
+  Happy Hare this gate is available, no need to query back and confirm its
+  own report.
+- Set back `True` on a `REMOVED` event, or by `_handle_hh_unload()`
+  (`NFC GATE=<n> UNLOADED=1`, the existing post-unload push) — unload is the
+  one direction that has to stay push-driven, since nothing else tells NFC
+  Happy Hare unloaded a gate while its polling for it is off.
+- `_hh_gate_matches_current_spool()` deleted — its only job was re-deriving
+  the same answer via another `_read_hh_status()` call.
+- Added `NFC GATE=<n> POLL_ENABLE=1`/`POLL_DISABLE=1` as a manual debugging
+  override on top of the automatic management.
+
+Originally planned as a new Happy-Hare-side push (`post_load` hook calling
+`NFC GATE=<n> POLL_DISABLE=1`), symmetric with the existing unload push.
+Dropped that plan after finding `variable_user_post_load_extension` is
+already a claimed extension slot — it's what `mmu_controller.py`'s legacy
+Blobifier detection reads (`self.has_blobifier`), and the macro's own comment
+names it as the intended purging-macro hookpoint. The self-managed approach
+needs no new hook and has no collision risk.
+
+## Auto-wire post-preload/post-unload hooks at install time (2026-07-17)
+
+Previously the NFC preload/unload hooks (`_NFC_SCAN_JOG_PRELOAD`,
+`_NFC_SHARED_PRELOAD`, `_NFC_GATE_UNLOADED`) worked correctly once wired, but
+wiring them required a user to hand-edit `mmu_macro_vars.cfg` themselves —
+`variable_user_post_preload_extension`/`variable_user_post_unload_extension`
+had no Kconfig default pointing at them. An addon that needs a manual
+post-install config edit to activate doesn't behave like an installed addon
+(c.f. Blobifier, which Happy Hare at least string-detects); this closes that
+gap for NFC.
+
+- **`installer/macro_vars/Kconfig.sequence`**: `VAR_SEQUENCE_USER_POST_PRELOAD_EXTENSION`
+  and `VAR_SEQUENCE_USER_POST_UNLOAD_EXTENSION` now default based on which NFC
+  topology is selected (`MMU_HAS_PER_GATE_NFC_READERS`/`MMU_HAS_SHARED_NFC_READER`,
+  both from `Kconfig.nfc_reader`) — per-lane-only gets `_NFC_SCAN_JOG_PRELOAD`,
+  shared-only gets `_NFC_SHARED_PRELOAD`, hybrid gets the new `_NFC_POST_PRELOAD`
+  (calls both), and post-unload gets `_NFC_GATE_UNLOADED` whenever per-lane
+  readers exist. No NFC configured keeps the prior empty default. Verified via
+  `kconfiglib` directly (the project's own patched copy in `installer/lib/kconfiglib`,
+  not the pip package — that one doesn't understand this project's
+  `array_editor` extension and fails to parse `installer/Kconfig`) that all
+  three topology selections resolve to the correct quoted macro name, and via
+  a standalone `jinja2.Environment` with the project's `[[ ]]` delimiters that
+  the rendered `mmu_macro_vars.cfg` line is a valid Python string literal.
+- **`_NFC_POST_PRELOAD`** (`config/macros/mmu_nfc.cfg`, new): calls
+  `_NFC_SHARED_PRELOAD` then `_NFC_SCAN_JOG_PRELOAD` unconditionally. Only
+  ever wired in for hybrid topology, where both are expected to exist, so
+  no runtime detection needed for the common case. Documented caveat: a
+  hybrid setup with only *some* gates carrying their own per-lane reader
+  (`PARAM_NFC_READER_GATE_$(i)` enabled per-gate) will still hit
+  `_NFC_SCAN_JOG_PRELOAD`'s existing hard error via `NfcMixin._lane()` for a
+  gate without one — same as it would if wired manually today. No generic
+  non-raising "does this gate have a reader" query exists yet to fix that
+  properly; flagged rather than worked around.
+- Kconfig string defaults that resolve to a macro *name* need the quote
+  characters baked into the Kconfig value itself (e.g.
+  `default "'_NFC_GATE_UNLOADED'"`, not `default "_NFC_GATE_UNLOADED"`) —
+  the `[[X]]` template substitution in `mmu_macro_vars.cfg` is plain Jinja
+  interpolation with no auto-quoting, confirmed against the existing
+  `VAR_SEQUENCE_ENABLE_PARK_PRINTING` convention.
+
+## Gate-map writes go direct; NEXT_STEPS.md items 1-7 closed (2026-07-17)
+
+Closes out the `NEXT_STEPS.md` list from the same day's earlier entry. Full
+reasoning for each item lives there; this is the shipped-code summary.
+
+- **`_NFC_SPOOL_CHANGED` / `_NFC_SPOOL_REMOVED` / `_NFC_TAG_NO_SPOOL` /
+  `_NFC_GATE_CLEAR_CACHE` / `_NFC_SCAN_UNRESOLVED` retired.** Deleted from
+  `config/macros/mmu_nfc.cfg`. `KlipperInterface._update_gate_map()`
+  (`klipper_interface.py`, replacing `_run_gcode()`) and `scan_jog.py`'s
+  `clear_hh_gate_cache()`/`clear_unresolved_scan()` now call Happy Hare's own
+  `MMU_GATE_MAP`/`MMU_SPOOLMAN` commands directly
+  (`gcode.run_script_from_command(...)`) instead of through a layer of
+  NFC-specific macros that only formatted a console message and forwarded
+  fixed params. Reuses Happy Hare's real command rather than poking
+  `mmu.gate_maps` bare, since `MMU_GATE_MAP` owns real logic (color
+  validation, `spoolman_support=pull`-mode branching, `persist_gate_map()`'s
+  LED/webhook side effects) not worth duplicating in NFC's package.
+- **Two dead params discovered and dropped while porting the macros
+  faithfully**: `SYNC=1`/`APPLY=1` on `MMU_GATE_MAP` were never read by it —
+  the macros' second `... APPLY=1` calls were no-op re-writes; and
+  `SCAN_FINISH=1`, threaded from `scan_jog.py` through
+  `KlipperInterface.dispatch()`, was documented "accepted for compatibility"
+  and never read by any macro body. Both removed end to end.
+- **`_poll_hh_pause_check()` shared-reader guard.** Was running unconditionally
+  for the shared reader despite being a structural no-op there —
+  `_gate_snapshot()`'s sentinel-gate handling means `hh.available`/
+  `hh.spool == nfc_spool` can never be true for it. Added
+  `if self._scan_mode or self._shared: return False`. Also corrected the
+  premise that this logic was dead for per-lane — it's reachable via manual
+  `NFC GATE=<#> POLL=1`, which calls `_poll()` directly.
+- **Diagnostic warning for inert per-lane knobs.** `poll_interval`,
+  `startup_polling`, `startup_poll_delay` only affect a gate whose
+  `_poll_timer` is auto-armed by a background timer (shared reader only).
+  `NFCGate.__init__` now warns via `_add_diagnostic_warning()` if any is
+  explicitly present in a per-lane gate's own config section
+  (`config.fileconfig.has_option(...)`, so inherited defaults don't
+  false-positive). `absent_threshold` was also on the original inert list but
+  isn't actually inert — `GateState.process_read()`'s miss-count debounce
+  reads it regardless of shared/per-lane — so it's excluded from the warning.
+- **`POLL=1` reports skips accurately.** `_poll()` already returned `None`
+  when `_poll_hh_pause_check()` short-circuited the read vs. `True`/`False`
+  for an actual attempt; `mmu_nfc.py`'s handler wasn't using that distinction
+  and always said "one poll complete" even when nothing was read. Now says
+  "one poll skipped; Happy Hare already shows this gate loaded" instead.
+- **Moonraker proxy edge case fixed.** `MoonrakerSpoolmanTransport.request()`
+  now sets `._body_text` on a Moonraker-level proxy rejection too (previously
+  only the 200-wrapped Spoolman-side error branch got it).
+
+## Removed cached opinions of Happy Hare's state from the gate (2026-07-17)
+
+Continuation of the "gate holds no cache of its own" work from 2026-07-16 (see
+`NEXT_STEPS.md` item 0 for the full writeup). Target: any Happy Hare status
+the gate needs should be queried directly (`_read_hh_status()`), never stored
+across polls.
+
+- **`_hh_confirmed_spool` and `_check_hh_cleared()` removed** (`manager.py`).
+  This pair existed to detect Happy Hare's gate map being cleared externally
+  and reset the lane's local cache accordingly, guarded so it wouldn't
+  self-trigger on the normal async delay between NFC dispatching a spool and
+  Happy Hare's macro processing it. Removed rather than reimplemented
+  statelessly — an unconditional version reintroduces the exact dispatch-loop
+  race the guard existed to prevent. Known consequence: a lane no longer
+  self-heals if Happy Hare's gate map is cleared out-of-band while the tag
+  stays physically present (see `NEXT_STEPS.md` item 0/2).
+- **`_hh_load_paused` removed** (`manager.py` and `scan_jog.py`, same
+  attribute written from both files). `_poll_hh_pause_check()` is now
+  stateless — it queries `_read_hh_status()`/`_hh_gate_matches_current_spool()`
+  fresh every call and returns pause/resume from that alone, with nothing
+  persisted between polls. The three call sites in `scan_jog.py` that wrote
+  this attribute (scan start, post-dispatch, `rewind_and_exit()`) had it
+  removed; `rewind_and_exit()`'s independent re-derivation of the same
+  "does Happy Hare already show this spool loaded" check (via its own
+  `_read_hh_status()` call) went with it.
+- **`_suppress_next_dispatch_uid` / `_suppress_next_dispatch_spool` removed**
+  (`manager.py`). Turned out to be write-only — set in `_clear_spool_cache()`
+  but never read anywhere in the package — so this was pure dead-code removal,
+  not a behavior change.
+
+## Installer/parameter cleanup: dead `log_file` option, dead code (2026-07-17)
+
+Audit of the NFC installer chain (`installer/Kconfig.nfc_reader` →
+`config/base/mmu_parameters.cfg` → `ParamSpec` list in
+`extras/mmu/unit/mmu_unit_parameters.py`) plus a pyflakes pass over the NFC
+package, prompted by a check on whether the installer and its config
+variables had actually been cleaned up after prior refactors.
+
+- **`PARAM_NFC_LOG_FILE` / `log_file` removed.** The "Logging approach" work
+  below (2026-01) already retired the standalone `nfc_reader.log` file in
+  favour of routing everything through the shared `mmu.log`, but the Kconfig
+  prompt ("NFC log file"), its line in `mmu_parameters.cfg`, and its
+  `ParamSpec` in `mmu_unit_parameters.py` were never removed — the installer
+  kept asking users to name a log file that nothing wrote to. Removed from all
+  three places. The independent NFC verbosity levels (3=state, 4=trace) are
+  unaffected — that detail still lands in `mmu.log`, gated separately from
+  Happy Hare's own `debug`/`log_level`, just without a second file.
+- **`manager.py` `NameError` fixed.** The `except` around NFC logging setup
+  referenced a bare `log_file` name that was never defined in that scope — a
+  leftover from before the file-logging removal. Would have raised
+  `NameError` (masking the real exception) if `configure()` ever failed.
+- **Dead code removed from the NFC package**, found via pyflakes:
+  `resolve_moonraker_url` (unused import, `manager.py`),
+  `DIRECT_METADATA_SPOOL` (unused import, `klipper_interface.py`),
+  `info_both` (unused import, `scan_jog.py`), a copy-pasted
+  `gcode = gate.printer.lookup_object('gcode')` in `run_rewind()`
+  (`scan_jog.py`) that was never used — `run_hh_script()`, called right after,
+  does its own lookup — `mode_tech = payload[2]` in
+  `pn7160_driver.py`'s `select_discovered_endpoint()`, and
+  `last_action = self._shared_last_action or ''` in `shared_reader.py`'s
+  `_shared_next_action()`, both extracted but never consulted. Renamed an
+  unused unpacked byte in `tag_parser.py`'s Bambu color parsing (`a2` →
+  `_a2`) to match the file's existing underscore convention for
+  intentionally-discarded values.
+- **Two related installer-script bugs** (not NFC-specific, but found during
+  the same audit): `installer/parser.py`'s `HHConfig.sections()` computed its
+  return value twice via an identical, redundant call before returning the
+  second one; `installer/build.py`'s `check_version()` loaded a `Kconfig` via
+  `load_parsed_kconfig()` and discarded the result — kept as a bare call since
+  the function has a real side effect (`exit(1)` on a corrupt pickle) that
+  acts as an implicit validation gate, but the unused binding and the
+  never-called `get_config_version()` helper were removed.
+
 ## Moonraker-routed Spoolman, and stripping NFC's own gate-map cache (2026-07-16)
 
 Two connected pieces of work: (1) Spoolman connectivity now goes exclusively

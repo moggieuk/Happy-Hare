@@ -197,9 +197,13 @@ menu "Sequence macros (_MMU_SEQUENCE)"
 
   config VAR_SEQUENCE_USER_POST_UNLOAD_EXTENSION
     string "Post-unload extension macro  "
+    default "'_NFC_GATE_UNLOADED'" if MMU_HAS_PER_GATE_NFC_READERS
     default ""
     help
-      Executed after default logic.
+      Executed after default logic. Auto-wired to '_NFC_GATE_UNLOADED' when
+      per-lane NFC readers are configured -- it resets that gate's NFC read
+      state so the next tag read after this unload is treated as new. See
+      config/macros/mmu_nfc.cfg. Overriding this value disables that reset.
 
   config VAR_SEQUENCE_USER_PRE_LOAD_EXTENSION
     string "Pre-load extension macro     "
@@ -215,9 +219,18 @@ menu "Sequence macros (_MMU_SEQUENCE)"
 
   config VAR_SEQUENCE_USER_POST_PRELOAD_EXTENSION
     string "Post-preload extension macro "
+    default "'_NFC_POST_PRELOAD'" if MMU_HAS_PER_GATE_NFC_READERS && MMU_HAS_SHARED_NFC_READER
+    default "'_NFC_SCAN_JOG_PRELOAD'" if MMU_HAS_PER_GATE_NFC_READERS
+    default "'_NFC_SHARED_PRELOAD'" if MMU_HAS_SHARED_NFC_READER
     default ""
     help
-      Executed after successful filament preload
+      Executed after successful filament preload. Auto-wired to the NFC
+      reader's preload hook when NFC is configured: '_NFC_SCAN_JOG_PRELOAD'
+      (per-lane scan-jog), '_NFC_SHARED_PRELOAD' (shared reader), or
+      '_NFC_POST_PRELOAD' (calls both, hybrid topology). See
+      config/macros/mmu_nfc.cfg. Overriding this value disables that hook --
+      call the relevant macro yourself from your override if you still want
+      it to run.
 
   comment "_"
   comment "_Misc"

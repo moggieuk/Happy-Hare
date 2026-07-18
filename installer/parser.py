@@ -809,7 +809,6 @@ class ConfigBuilder(object):
             raise KeyError("Section [{}] not found".format(section_name))
 
     def sections(self, scope="all"):
-        sections = [x.name for x in self._for_section(None, collect, [], scope=scope)]
         return [x.name for x in self._for_section(None, collect, [], scope=scope)]
 
     def has_section(self, section_name):

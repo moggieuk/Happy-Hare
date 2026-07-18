@@ -863,7 +863,7 @@ def _parse_bambu_blocks(blocks: dict) -> Optional[dict]:
         fmt_id = struct.unpack_from("<H", b16, 0)[0]
         if fmt_id == 0x0002:
             # bytes 4-7: ABGR — index 0=A, 1=B, 2=G, 3=R
-            a2, b2, g2, r2 = b16[4], b16[5], b16[6], b16[7]
+            _a2, b2, g2, r2 = b16[4], b16[5], b16[6], b16[7]
             second_color_hex = "%02X%02X%02X" % (r2, g2, b2)
 
     info: dict = {
