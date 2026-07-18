@@ -197,13 +197,15 @@ menu "Sequence macros (_MMU_SEQUENCE)"
 
   config VAR_SEQUENCE_USER_POST_UNLOAD_EXTENSION
     string "Post-unload extension macro  "
-    default "'_NFC_GATE_UNLOADED'" if MMU_HAS_PER_GATE_NFC_READERS
     default ""
     help
-      Executed after default logic. Auto-wired to '_NFC_GATE_UNLOADED' when
-      per-lane NFC readers are configured -- it resets that gate's NFC read
-      state so the next tag read after this unload is treated as new. See
-      config/macros/mmu_nfc.cfg. Overriding this value disables that reset.
+      Executed after default logic. Not auto-wired for NFC -- this slot is
+      also used by other integrations (e.g. MMU-cutter's EREC_CUTTER_ACTION,
+      detected by mmu_controller.py's has_mmu_cutter check), so silently
+      claiming it here could override a macro you already have configured.
+      If you use per-lane NFC readers, wire '_NFC_GATE_UNLOADED'
+      (config/macros/mmu_nfc.cfg) in yourself -- call it alongside anything
+      else you already have here if this variable is non-empty.
 
   config VAR_SEQUENCE_USER_PRE_LOAD_EXTENSION
     string "Pre-load extension macro     "

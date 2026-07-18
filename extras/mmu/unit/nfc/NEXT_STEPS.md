@@ -14,40 +14,82 @@ Happy Hare's own sequence calls into, not something requiring a manual
 post-install config edit to activate, and not something that has to poll
 Happy Hare to infer what it should be doing.
 
-### A. Done: auto-wire post-preload/post-unload hooks at install time
+### A. Done, then partially reverted: auto-wire post-preload/post-unload hooks at install time
 
-See the 2026-07-17 `CHANGELOG.md` entry for the full writeup.
-`installer/macro_vars/Kconfig.sequence` now defaults
-`variable_user_post_preload_extension`/`variable_user_post_unload_extension`
-based on NFC topology instead of leaving them empty for the user to fill in
-by hand. Adds `_NFC_POST_PRELOAD` (`config/macros/mmu_nfc.cfg`) for hybrid
-topology, calling both `_NFC_SHARED_PRELOAD` and `_NFC_SCAN_JOG_PRELOAD`
-unconditionally — safe because it's only ever wired in when both genuinely
-exist.
+See the 2026-07-17 `CHANGELOG.md` entries for the full writeup, including the
+part that got reverted 2026-07-18.
 
-**Known gap, not fixed:** hybrid topology with *partial* per-lane coverage
-(some gates have their own reader, some rely on the shared reader only) will
-still hit a hard error from `NfcMixin._lane()` when `_NFC_SCAN_JOG_PRELOAD`
-resolves to a gate without one. Fixing this properly needs a non-raising
-"does this gate have a configured reader" query exposed to gcode (there
-isn't one today — `nfc_gate_for_gate_number()` is Python-only, and no
-per-lane `NFCGate` is registered under a Jinja-addressable printer-object
-name the way the shared one is). Out of scope for the install-time wiring
-itself.
+**Preload side stays auto-wired.** `installer/macro_vars/Kconfig.sequence`
+defaults `variable_user_post_preload_extension` based on NFC topology
+instead of leaving it empty for the user to fill in by hand — per-lane-only
+gets `_NFC_SCAN_JOG_PRELOAD`, shared-only gets `_NFC_SHARED_PRELOAD`, hybrid
+gets the new `_NFC_POST_PRELOAD` (calls both, unconditionally — safe because
+it's only ever wired in when both genuinely exist). No known collision on
+this slot.
 
-**Second known collision, found after shipping, not fixed:** `mmu_controller.py`
-also detects an MMU-based filament cutter (`self.has_mmu_cutter`) by the same
-`'cut' in user_post_unload_extension` string-sniff `has_blobifier` uses —
-i.e. `variable_user_post_unload_extension` is *also* a claimed slot for
-cutter macros like `EREC_CUTTER_ACTION`. A user enabling both NFC and an
-MMU-cutter's post-unload macro for the first time in the same install will
-silently get whichever one this auto-wire or theirs sets last, not both —
-same class of problem as the hybrid-preload gap above, just discovered on
-the unload side afterward. Existing configs that already have this variable
-set explicitly are unaffected (Kconfig defaults don't override an explicit
-prior value). Not fixed here; would need the same kind of combining-macro
-treatment `_NFC_POST_PRELOAD` gives the preload side, generalized to cover
-whatever else might be sharing that slot.
+**Fixed 2026-07-18 — was correctly called out as an unacceptable regression,
+not just a caveat.** Auto-wiring turned "partial per-lane coverage in hybrid
+topology hits a hard error" from a rare manual-misconfiguration edge case
+into something that would fire automatically on every preload for any gate
+without its own reader. The earlier claim that no non-raising existence
+check was available was wrong — `nfc_gate_for_gate_number()` is Python-only,
+but native per-lane `NFCGate` instances *are* registered under a predictable,
+Jinja-addressable name: `mmu_unit.printer.add_object('nfc_gate lane%d' %
+gate, lane)` (`extras/mmu/unit/mmu_nfc.py:49`), exactly parallel to the
+shared reader's `nfc_gate shared`. Missed it because I'd only looked in
+`manager.py`, not the native integration glue in `mmu_nfc.py`.
+
+`_NFC_SCAN_JOG_PRELOAD` and `_NFC_GATE_UNLOADED` (`config/macros/mmu_nfc.cfg`)
+now both check `printer['nfc_gate lane' ~ gate] is defined` before calling
+into `NFC` for that gate, and skip quietly (an info message, not an error)
+when it isn't. `printer[...] is defined` for an optional object is the
+established idiom for this in the codebase already — `mmu_form_tip.cfg`,
+`blobifier.cfg`, `mmu_cut_tip.cfg` all do the same thing. `_NFC_POST_PRELOAD`
+needed no changes itself; it's automatically safe now since it just calls
+`_NFC_SCAN_JOG_PRELOAD`.
+
+**Unload side reverted (2026-07-18) — never auto-wire this slot.**
+`variable_user_post_unload_extension` is also the slot `mmu_controller.py`'s
+`has_mmu_cutter` detection reads (`'cut' in user_post_unload_extension`,
+same pattern as `has_blobifier`) — i.e. it's already claimed by MMU-cutter
+integrations like `EREC_CUTTER_ACTION` in real installs, not just a
+theoretical collision. Auto-wiring `_NFC_GATE_UNLOADED` into it by default
+would silently override a macro a cutter user already had configured.
+`VAR_SEQUENCE_USER_POST_UNLOAD_EXTENSION` is back to a plain `default ""`
+for every topology. `_NFC_GATE_UNLOADED` (`config/macros/mmu_nfc.cfg`) still
+exists and still works — it now just requires the user to wire it in by hand
+(`variable_user_post_unload_extension: '_NFC_GATE_UNLOADED'`), same as
+before this phase started, calling it alongside any existing macro if that
+slot is already in use.
+
+**Consequence for item C below, resolved 2026-07-18 — turns out NFC mostly
+doesn't need to know unload happened at all.** Traced whether the
+`_handle_hh_unload()`/`_NFC_GATE_UNLOADED` push is actually load-bearing now
+that it can't be relied on to be wired. It isn't, for the common case:
+`_poll_hh_pause_check()` checks `self._scan_mode` *before* `_poll_enabled`
+(`manager.py`), so while a scan-jog is running `_poll_enabled`'s value is
+irrelevant — it's bypassed entirely. And `scan_jog.start()`, which fires at
+the top of every scan-jog run (already auto-wired via the preload hook, see
+above), already force-resets `GateState.current_uid`/`current_spool`
+directly before searching. So for any gate using scan-jog, every load
+attempt self-heals regardless of whether the prior unload was ever signalled.
+Added one line — `start()` now also resets `gate._poll_enabled = True` —
+closing the one gap that existed without it: an unload with no push wired,
+followed by a scan-jog that finds nothing (empty gate), used to leave
+`_poll_enabled` stuck `False` from the previous load, so a manual `POLL=1`
+on that now-empty gate would wrongly report "already reported, skipping."
+
+**Net effect: `_NFC_GATE_UNLOADED` only matters for per-lane gates that
+don't use scan-jog at all** (pure manual `POLL=1`/`APPLY=1` workflow, no
+automatic detection of any kind). For those, nothing else ever resets
+`_poll_enabled`/`GateState`, so the unload push (manually wired, combined
+with any existing cutter macro) is still the only way to avoid getting stuck
+after the first manual assignment. That's a narrow, already-manual-workflow
+audience — not worth building a general combining-macro mechanism for. The
+"how do I add this to my existing cutter macro" question resolves to: for
+scan-jog users, don't bother wiring it at all; for the rare non-scan-jog
+case, wire it in by hand alongside whatever else is already there, per the
+`config/macros/mmu_nfc.cfg` header comment.
 
 ### B. Not started: give Happy Hare's core a first-class "NFC exists" flag
 

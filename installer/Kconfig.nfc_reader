@@ -655,11 +655,15 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
 
       menuconfig PARAM_NFC_SCAN_ENABLED
         bool "Automatic scan-jog?"
+        default y if MMU_HAS_PER_GATE_NFC_READERS
         default n
         help
           Automatically detect eligible preload events and run the configured
           scan-jog motion. Enable this entry to configure scan and motion
-          parameters.
+          parameters. On by default whenever per-lane readers are configured
+          -- it's the supported way to detect a spool-mounted tag. Without
+          it, per-lane readers have no reliable automatic detection (see
+          POLL=1 in the NFC command help for the debug-only alternative).
 
       if PARAM_NFC_SCAN_ENABLED
 

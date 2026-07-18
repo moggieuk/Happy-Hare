@@ -823,6 +823,7 @@ def start(gate, max_mm=None):
             gate._scan_previous_spool_identity or "None")
     gate._state.current_uid   = None  # force changed event on first read
     gate._state.current_spool = None
+    gate._poll_enabled = True  # self-heal in case the prior unload never told us (no _NFC_GATE_UNLOADED wired)
     gate._scan_gate_selected = False  # deferred to first jog (must run from timer, not GCode handler)
     gate._scan_hh_prep_pending = True
     gate._scan_led_reassert_effect = None

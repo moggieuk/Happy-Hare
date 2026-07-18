@@ -35,12 +35,16 @@ class MmuNfcCommand(NfcMixin, BaseCommand):
         + "JOG_SCAN    = 1       Start scan-jog to find tag on a loaded spool\n"
         + "LED_TEST    = 1       Test configured lane tag-read LED effect\n"
         + "CYCLES      = <n>     LED test cycles (used with LED_TEST=1)\n"
-        + "POLL        = 1       Run one full read/resolve cycle\n"
-        + "APPLY       = 1       Send cached spool to Happy Hare now\n"
         + "CLEAR_CACHE = 1       Clear cached spool/UID, no Happy Hare dispatch\n"
         + "UNLOADED    = 1       Reset local read state (called by Happy Hare's post-unload hook)\n"
+        + "\n"
+        + "Debug (stationary read without scan-jog motion; not a reliable way to\n"
+        + "detect a spool-mounted tag at an arbitrary rotation -- use for testing\n"
+        + "a reader, not normal operation):\n"
+        + "POLL         = 1      Run one stationary read/resolve cycle, no motion\n"
+        + "APPLY        = 1      Send cached spool to Happy Hare now\n"
         + "POLL_DISABLE = 1      Manually pause polling (normally automatic on dispatch)\n"
-        + "POLL_ENABLE = 1       Manually resume polling (normally automatic on unload/removal)\n"
+        + "POLL_ENABLE  = 1      Manually resume polling (normally automatic on unload/removal)\n"
     )
     HELP_SUPPLEMENT = (
         "Run 'NFC GATE=<#>' with no action to show gate-specific help.\n"
@@ -78,6 +82,7 @@ class MmuNfcCommand(NfcMixin, BaseCommand):
             gate._clear_spool_cache(gcmd)
         elif gcmd.get_int('UNLOADED', 0):
             gate._handle_hh_unload(gcmd)
+        # -- Debug: manual polling without scan-jog motion, see HELP_PARAMS --
         elif gcmd.get_int('POLL_DISABLE', 0):
             gate._set_poll_enabled(gcmd, False)
         elif gcmd.get_int('POLL_ENABLE', 0):
