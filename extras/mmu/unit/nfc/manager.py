@@ -81,7 +81,7 @@ from ...mmu_constants import (
     GATE_EMPTY, GATE_AVAILABLE, GATE_AVAILABLE_FROM_BUFFER,
     FILAMENT_POS_UNLOADED, ACTION_IDLE, ACTION_CHECKING, SPOOLMAN_OFF,
 )
-from .spoolman_client import SpoolmanClient, DEFAULT_MOONRAKER_URL
+from .spoolman_client import SpoolmanClient, DEFAULT_MOONRAKER_URL, resolve_moonraker_url
 
 LANE_LED_TEST_DURATION = 2.0
 LANE_LED_TEST_GAP = 0.15

@@ -72,9 +72,11 @@
 # (default 300 s = 5 min).  Polls that see the same tag within the TTL do
 # not make a network request.  Set cache_ttl=0 to disable caching.
 
+import configparser
 import io
 import json
 import logging
+import os
 import time
 
 try:
@@ -85,13 +87,77 @@ except ImportError:
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-# Klipper has no way to discover Moonraker's HTTP address on its own -- the
-# link to Moonraker is a Unix domain socket, unrelated to Moonraker's HTTP
-# port, and that port lives only in moonraker.conf, which Klipper never
-# reads. This default is correct for every standard co-located
-# Klipper/Moonraker install (Fluidd, Mainsail, KIAUH, ...); override via the
-# moonraker_url config option only for a non-default Moonraker address.
+# Klipper's link to Moonraker is a Unix domain socket, unrelated to
+# Moonraker's HTTP port -- Klipper is never told that port at connect time.
+# This default is correct for every standard co-located Klipper/Moonraker
+# install (Fluidd, Mainsail, KIAUH, ...) and is used whenever discovery
+# (below) doesn't find anything, or the user hasn't overridden moonraker_url
+# explicitly.
 DEFAULT_MOONRAKER_URL = 'http://127.0.0.1:7125'
+
+# Result of the one-shot moonraker.conf discovery attempt: None until first
+# tried, then the discovered URL or False (attempted, found nothing) so
+# repeated calls (one per configured gate) don't re-read/re-parse the file.
+_MOONRAKER_CONF_DISCOVERY = None
+
+
+def discover_moonraker_url(printer, debug=1):
+    """Best-effort discovery of Moonraker's real address, entirely local and
+    synchronous -- no Moonraker-side component, no network call, no push
+    mechanism. Returns the discovered "http://host:port" string, or None if
+    discovery wasn't possible (caller should fall back to the configured/
+    default moonraker_url).
+
+    Klipper always knows its own config file path (printer.start_args
+    ['config_file'] -- the same mechanism MmuLogger uses to derive mmu.log's
+    location). moonraker.conf sits next to it in the same directory in every
+    standard install (the printer_data/config/ layout used by Mainsail/
+    Fluidd/KIAUH) -- Klipper never reads Moonraker's config for anything
+    else, but this one convention is reliable enough to read the [server]
+    host/port from directly, synchronously, once.
+    """
+    global _MOONRAKER_CONF_DISCOVERY
+    if _MOONRAKER_CONF_DISCOVERY is not None:
+        return _MOONRAKER_CONF_DISCOVERY or None
+    try:
+        config_file = printer.start_args.get('config_file')
+        if not config_file:
+            raise ValueError("printer.start_args has no config_file")
+        moonraker_conf = os.path.join(
+            os.path.dirname(config_file), 'moonraker.conf')
+        if not os.path.isfile(moonraker_conf):
+            raise FileNotFoundError(moonraker_conf)
+        parser = configparser.ConfigParser()
+        parser.read(moonraker_conf)
+        host = parser.get('server', 'host', fallback='0.0.0.0').strip()
+        port = parser.getint('server', 'port', fallback=7125)
+        if not host or host == '0.0.0.0':
+            host = '127.0.0.1'
+        url = 'http://{}:{}'.format(host, port)
+        _MOONRAKER_CONF_DISCOVERY = url
+        logger.info("spoolman: discovered Moonraker at %s from %s",
+                    url, moonraker_conf)
+        return url
+    except Exception as e:
+        _MOONRAKER_CONF_DISCOVERY = False
+        if debug >= 3:
+            logger.info(
+                "spoolman: could not discover Moonraker from moonraker.conf "
+                "(%s); using configured/default moonraker_url", e)
+        return None
+
+
+def resolve_moonraker_url(printer, configured_url, debug=1):
+    """Return the Moonraker URL to actually connect to.
+
+    An explicit moonraker_url in config (anything other than the schema
+    default) is always respected. Otherwise, try discover_moonraker_url()
+    and fall back to the default if that finds nothing.
+    """
+    if configured_url and configured_url != DEFAULT_MOONRAKER_URL:
+        return configured_url
+    return (discover_moonraker_url(printer, debug=debug)
+            or configured_url or DEFAULT_MOONRAKER_URL)
 
 
 class MoonrakerSpoolmanTransport:
