@@ -160,6 +160,7 @@ SENSOR_EXTRUDER_TOUCH    = "mmu_ext_touch"
 SENSOR_SELECTOR_TOUCH    = "mmu_sel_touch"  # For LinearSelector and LinearServoSelector
 SENSOR_SELECTOR_HOME     = "mmu_sel_home"   # For LinearSelector and LinearServoSelector
 SENSOR_ENTRY_PREFIX      = "mmu_entry"
+SENSOR_NFC_PREFIX        = "mmu_nfc"        # Per-gate NFC/RFID reader used as a "tag detected" homing endstop
 
 EXTRUDER_ENDSTOPS = [SENSOR_EXTRUDER_ENCODER, SENSOR_GEAR_TOUCH, SENSOR_EXTRUDER_ENTRY, SENSOR_EXTRUDER_NONE, SENSOR_COMPRESSION]
 GATE_ENDSTOPS     = [SENSOR_SHARED_EXIT, SENSOR_ENCODER, SENSOR_EXIT_PREFIX, SENSOR_EXTRUDER_ENTRY]

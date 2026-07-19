@@ -324,7 +324,7 @@ class MmuSensorManager:
             return self.get_prefixed_sensor_name(endstop_name, self.mmu.mmu_unit().toolhead_wrapper.name)
 
         # These have form: "genericName_<gate#>"
-        if endstop_name in [SENSOR_ENTRY_PREFIX, SENSOR_EXIT_PREFIX, SENSOR_GEAR_TOUCH]:
+        if endstop_name in [SENSOR_ENTRY_PREFIX, SENSOR_EXIT_PREFIX, SENSOR_GEAR_TOUCH, SENSOR_NFC_PREFIX]:
             return self.get_gate_sensor_name(endstop_name, self.mmu.gate_selected)
 
         # Doesn't map or already a qualified name

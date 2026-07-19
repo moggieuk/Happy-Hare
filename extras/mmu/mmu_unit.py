@@ -476,6 +476,8 @@ class MmuUnit:
                 sensor_groups = (
                     (self.sensors.entry_sensors or {}).values(),
                     (self.sensors.exit_sensors or {}).values(),
+                    # Per-gate NFC readers as "tag detected" homing endstops
+                    (self.nfc_manager.gate_endstops or {}).values() if self.nfc_manager else (),
                 )
             else:
                 sensor_groups = (
@@ -528,10 +530,12 @@ class MmuUnit:
         ext = self.extruder_wrapper.homing_extruder_stepper
         ppins = self.printer.lookup_object("pins")
 
-        # First create all the per-gate endstops for the specific gear drives
+        # First create all the per-gate endstops for the specific gear drives.
+        # Per-gate sensor names carry the GLOBAL gate number; self.drives is
+        # local-indexed, so convert back with first_gate (correct for 2nd+ units).
         for sensor in iter_endstop_sensors(per_gate=True):
             sensor_name = sensor.runout_helper.name
-            lgate = int(sensor_name.split("_")[-1])
+            lgate = int(sensor_name.split("_")[-1]) - self.first_gate
             drives = [self.drives[lgate]] if self.multigear else self.drives[:1]
             steppers = [drive.mmu_gear_stepper for drive in drives]
             add_sensor_endstop(sensor, steppers)

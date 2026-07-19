@@ -36,10 +36,16 @@ import logging
 from ..mmu_constants     import *
 from ..mmu_utils         import MmuError
 from .nfc.mmu_nfc_reader import MmuNfcReader
+from .nfc.mmu_nfc_endstop import MmuNfcEndstop
 
 NFC_CHECK_INTERVAL = 2.0   # How often to poll the shared NFC reader (seconds)
 NFC_READ_TIMEOUT   = 0.1   # Per-poll reader read timeout (seconds) - keep small; runs on reactor thread
 NFC_TAG_HOLD_TIME  = 5.0   # Cooldown after acting on a tag before reading again (seconds)
+
+# Homing-poll cadence (NFC-as-endstop). Kept tight for low overshoot, but each
+# read uses a small timeout so the reactor keeps feeding the drip-homing move.
+NFC_HOMING_POLL_INTERVAL = 0.010   # Seconds between homing polls (reactor timer)
+NFC_HOMING_POLL_TIMEOUT  = 0.020   # Max seconds per homing read (caps transceive delay)
 
 
 class MmuNfcManager:
@@ -60,7 +66,14 @@ class MmuNfcManager:
         # at config time so a missing/invalid section surfaces early.
         self.shared_reader = None               # Shared reader object, or None
         self.gate_readers = []                  # Per-local-gate reader objects (or None per slot)
+        self.gate_endstops = {}                 # global_gate -> MmuNfcEndstop (for "tag detected" homing)
         self._setup_readers()
+
+        # Homing poll (NFC-as-endstop): a single reactor timer drives whichever
+        # gate is currently homing. Only one homing move runs at a time, so one
+        # timer + one 'active endstop' is sufficient.
+        self._homing_poll_timer = self.reactor.register_timer(self._homing_poll)
+        self._homing_endstop = None
 
         # Per-reader control flags:
         #   enabled - top-level on/off. If disabled a reader is never read (poll,
@@ -107,6 +120,16 @@ class MmuNfcManager:
         """
         self.shared_reader = self._lookup_or_create_reader(self.mmu_unit.nfc_reader)
         self.gate_readers = [self._lookup_or_create_reader(name) for name in self.mmu_unit.nfc_readers]
+
+        # One "tag detected" homing endstop per gate that has a reader. Named by
+        # GLOBAL gate ("mmu_nfc_<gate>") to match the per-gate sensor convention;
+        # mmu_unit binds each to its gate's gear rail (see iter_endstop_sensors).
+        self.gate_endstops = {}
+        for lg, reader in enumerate(self.gate_readers):
+            if reader is not None:
+                global_gate = self.mmu_unit.first_gate + lg
+                self.gate_endstops[global_gate] = MmuNfcEndstop(
+                    self.config, global_gate, reader, self, register=False)
 
 
     def _lookup_or_create_reader(self, reader_name):
@@ -532,3 +555,58 @@ class MmuNfcManager:
             self.mmu._nfc_tag_read(uid, gate=gate, metadata=metadata)
         except Exception as e:
             self.mmu.log_error("NFC: error initiating tag lookup for UID=%s: %s" % (uid, str(e)))
+
+
+    #
+    # Homing poll (NFC-as-endstop) ----------------------------------------------
+    #
+    # Driven by MmuNfcEndstop.home_start/home_wait. While a gate homes filament to
+    # its reader, we tightly poll that reader; a UID read completes the endstop's
+    # homing completion (via trigger_handler), which stops the drip-homing move.
+    #
+
+    def get_gate_endstop(self, gate):
+        """
+        Return the MmuNfcEndstop for a global gate, or None.
+        """
+        return self.gate_endstops.get(gate)
+
+
+    def start_homing_poll(self, endstop):
+        """
+        Begin tightly polling 'endstop's reader for a tag. Clears the sticky
+        UID first so only a live detection triggers. Called from home_start.
+        """
+        self._homing_endstop = endstop
+        try:
+            endstop.reader.clear_uid()
+        except Exception as e:
+            self.mmu.log_error("NFC: homing clear failed: %s" % str(e))
+        self.reactor.update_timer(self._homing_poll_timer, self.reactor.NOW)
+
+
+    def stop_homing_poll(self):
+        """
+        Stop the homing poll. Called from home_wait (and idempotent).
+        """
+        self.reactor.update_timer(self._homing_poll_timer, self.reactor.NEVER)
+        self._homing_endstop = None
+
+
+    def _homing_poll(self, eventtime):
+        endstop = self._homing_endstop
+        if endstop is None:
+            return self.reactor.NEVER
+        try:
+            uid = endstop.reader.homing_poll_read(timeout=NFC_HOMING_POLL_TIMEOUT)
+        except Exception as e:
+            self.mmu.log_error("NFC: homing poll read error: %s" % str(e))
+            uid = None
+        if uid:
+            # Tag detected - complete the endstop. Pass the raw reactor eventtime;
+            # the endstop's _endstop_trigger_time() converts it to MCU print_time
+            # for the homing position calc, while note_filament_present keeps the
+            # reactor time it needs. Then stop polling (home_wait also stops us).
+            endstop.trigger_handler(eventtime, True)
+            return self.reactor.NEVER
+        return eventtime + NFC_HOMING_POLL_INTERVAL

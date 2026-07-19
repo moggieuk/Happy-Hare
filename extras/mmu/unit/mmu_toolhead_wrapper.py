@@ -263,10 +263,12 @@ class MmuHallEndstop(MmuVirtualEndstopSensor):
         self._update_from_adc(read_time)
 
 
-    def _update_from_adc(self, eventtime):
+    def _update_from_adc(self, read_time):
+        # 'read_time' is the MCU sample time (print_time), supplied by Klipper's
+        # setup_adc_callback - not a host reactor eventtime.
         self._calc_diameter()
         is_present = self.diameter > self.hall_min_diameter
-        self.note_filament_present(eventtime, is_present)
+        self.note_filament_present(read_time, is_present)
 
 
     def get_status(self, eventtime):

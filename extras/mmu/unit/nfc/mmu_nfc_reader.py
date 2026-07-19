@@ -265,6 +265,31 @@ class MmuNfcReader:
         return uid
 
 
+    # ---- Homing poll (NFC-as-endstop) -------------------------------------
+    #
+    # Used only while a gate is homing filament to its NFC reader. The reader's
+    # last UID is "sticky", so it's cleared first, then polled tightly with a
+    # small timeout (which caps the per-read transceive delay) so each poll stays
+    # short enough not to disturb the drip-homing move.
+
+    def clear_uid(self):
+        """Forget the sticky last-read UID and release any held target, so the
+        next read reflects a fresh, live detection."""
+        self.last_uid = None
+        self.present = False
+        try:
+            self.release(reason="nfc_homing_clear")
+        except Exception:
+            pass
+
+
+    def homing_poll_read(self, timeout=0.020):
+        """One fast UID-only poll for the homing loop. Returns the UID hex or None.
+        'timeout' caps the driver transceive wait (min(timeout, transceive_delay))
+        so a poll stays short; keep it well under the ~50ms drip-segment budget."""
+        return self.read_uid(timeout=timeout)
+
+
     # ---- Deep read (UID + parsed tag metadata) ----------------------------
     #
     # A "deep read" reads the tag's full memory (NDEF pages / MIFARE sectors)

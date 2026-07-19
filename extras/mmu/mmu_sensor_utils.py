@@ -392,15 +392,38 @@ class MmuVirtualEndstopSensor(MmuSensor):
 
 
     def trigger_handler(self, eventtime, state):
-        # Update sensor functionality
+        # Update sensor functionality. note_filament_present needs the raw reactor
+        # eventtime (its runout-event gating compares against reactor.monotonic()).
         self.runout_helper.note_filament_present(eventtime, state)
 
-        # Process endstop if homing
+        # Process endstop if homing. The recorded trigger time is returned by
+        # home_wait() and fed to stepper.get_past_mcu_position(), which needs MCU
+        # print_time - so it goes through _endstop_trigger_time() (see below).
         if self._homing and state == self._triggered:
             if self._trigger_completion is not None:
-                self._last_trigger_time = eventtime
+                self._last_trigger_time = self._endstop_trigger_time(eventtime)
                 self._trigger_completion.complete(True)
                 self._trigger_completion = None
+
+
+    def _endstop_trigger_time(self, eventtime):
+        """Time recorded for a homing trigger (home_wait -> get_past_mcu_position
+        needs MCU print_time). Default identity: sources whose callback already
+        delivers print_time (ADC/counter callbacks) use it as-is. Host-timed
+        sources (host reactor callbacks/timers) override to convert."""
+        return eventtime
+
+
+    def estimated_print_time(self, eventtime):
+        """Convert a host reactor 'eventtime' to MCU print_time on the homed
+        stepper's MCU. Falls back to eventtime when no stepper is bound yet."""
+        steppers = self.get_steppers()
+        if steppers:
+            try:
+                return steppers[0].get_mcu().estimated_print_time(eventtime)
+            except Exception:
+                pass
+        return eventtime
 
 
     # Interface required to implement an endstop ----------------------------------

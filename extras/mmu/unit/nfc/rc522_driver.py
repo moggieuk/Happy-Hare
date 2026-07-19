@@ -28,11 +28,25 @@
 #   Stage 2  ANTICOLL / SELECT cascade — returns UID bytes and SAK.
 #   Stage 3  Type-2 READ — optional NTAG page reads for rich metadata.
 #
-# Threading notes:
-#   All methods are designed to be called from a dedicated background thread
-#   (not the Klipper reactor thread).  spi_send() and spi_transfer() route
-#   commands to the MCU over CAN; the background thread blocks on each
-#   response while the reactor continues processing other events normally.
+## Threading notes: # PAUL: I dont think this is possible ..
+##   All methods are designed to be called from a dedicated background thread
+##   (not the Klipper reactor thread).  spi_send() and spi_transfer() route
+##   commands to the MCU over CAN; the background thread blocks on each
+##   response while the reactor continues processing other events normally.
+#
+# Reactor / threading notes: (PAUL)
+#   All methods run on the Klipper reactor thread - they are NOT safe to call
+#   from a background OS thread.  spi_send()/spi_transfer() issue MCU_SPI
+#   transactions to the microcontroller, and spi_transfer() waits for the MCU
+#   response via a reactor completion.  That wait is greenlet-based
+#   (greenlet.getcurrent() + reactor.pause()), so it is bound to the reactor
+#   thread and would fail if driven from another thread.
+#   To avoid stalling the reactor during a tag wait, the read paths instead
+#   yield cooperatively through the injected sleep_fn (reactor.pause): while a
+#   read waits, the reactor keeps servicing its other work (timers, moves - e.g.
+#   a drip-homing move), then resumes the read.  This cooperative yielding is
+#   Klipper's substitute for the background-thread model this driver was
+#   originally ported from.
 
 
 import time
