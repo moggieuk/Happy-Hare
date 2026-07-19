@@ -480,9 +480,11 @@ class MmuNfcManager:
         if not self._polling or self.mmu is None or self.shared_reader is None:
             return self.reactor.NEVER
 
-        # Respect the reader's enabled (hard off) and active (soft guard) flags.
-        # Keep ticking so a later re-enable/re-activate resumes automatically.
-        if not self.shared_enabled or not self.shared_active:
+        # Respect the reader's enabled (hard off) and active (soft guard) flags,
+        # and stand down while a homing poll is armed so we can't contend with it
+        # on a reader object shared between the shared and gate roles. Keep ticking
+        # so a later re-enable/re-activate/home-finish resumes automatically.
+        if not self.shared_enabled or not self.shared_active or self._homing_endstop is not None:
             return eventtime + NFC_CHECK_INTERVAL
 
         now = self.reactor.monotonic()
@@ -576,7 +578,18 @@ class MmuNfcManager:
         """
         Begin tightly polling 'endstop's reader for a tag. Clears the sticky
         UID first so only a live detection triggers. Called from home_start.
+
+        Homing is deliberate so it overrides the 'active' guard, but a *disabled*
+        reader can't be read - refuse clearly rather than let the move run its
+        full length and fail later with an opaque "no trigger". While the poll is
+        armed the shared-reader poll is suppressed (see _poll_shared_reader) so it
+        can't contend on a reader object shared between the shared and gate roles.
         """
+        if not self.is_enabled(gate=endstop.gate):
+            self.mmu.log_error(
+                "NFC: gate %d reader is disabled - cannot home to tag "
+                "(re-enable with MMU_NFC ... ENABLE=1)" % endstop.gate)
+            return # Don't arm; the move will run full and home_wait reports no trigger
         self._homing_endstop = endstop
         try:
             endstop.reader.clear_uid()

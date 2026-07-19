@@ -406,17 +406,38 @@ class MmuVirtualEndstopSensor(MmuSensor):
                 self._trigger_completion = None
 
 
+    # Trigger-time clock reference, by endstop source
+    # -----------------------------------------------
+    # home_wait() returns _last_trigger_time, which Klipper feeds to
+    # stepper.get_past_mcu_position() to compute the stopped/trigger position - so
+    # it MUST be MCU print_time. Trigger callbacks arrive on different clocks
+    # depending on the source, so each records its time via _endstop_trigger_time()
+    # (default identity; host-timed sources override to convert):
+    #
+    #   endstop / trigger source     incoming clock          -> _last_trigger_time
+    #   ---------------------------  ----------------------  ----------------------
+    #   encoder (MCU counter cb)     print_time              identity -> print_time
+    #   compression/tension (ADC cb) print_time (read_time)  identity -> print_time
+    #   MmuHallEndstop (ADC cb)      print_time (read_time)  identity -> print_time
+    #   MmuAdcSwitchSensor           reactor eventtime       convert  -> print_time
+    #   MmuNfcEndstop (host poll)    reactor eventtime       convert  -> print_time
+    #
+    # note_filament_present() (above) always gets the RAW incoming eventtime, never
+    # the converted value - its runout-event gating compares against
+    # reactor.monotonic(), so it needs the reactor clock, not print_time.
     def _endstop_trigger_time(self, eventtime):
-        """Time recorded for a homing trigger (home_wait -> get_past_mcu_position
-        needs MCU print_time). Default identity: sources whose callback already
-        delivers print_time (ADC/counter callbacks) use it as-is. Host-timed
-        sources (host reactor callbacks/timers) override to convert."""
+        """
+        Time recorded for a homing trigger. Default identity; host-timed
+        sources override to convert reactor eventtime -> MCU print_time.
+        """
         return eventtime
 
 
     def estimated_print_time(self, eventtime):
-        """Convert a host reactor 'eventtime' to MCU print_time on the homed
-        stepper's MCU. Falls back to eventtime when no stepper is bound yet."""
+        """
+        Convert a host reactor 'eventtime' to MCU print_time on the homed
+        stepper's MCU. Falls back to eventtime when no stepper is bound yet.
+        """
         steppers = self.get_steppers()
         if steppers:
             try:
