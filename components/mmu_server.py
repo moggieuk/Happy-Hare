@@ -1005,7 +1005,7 @@ class MmuServer:
 
         # 3+4. Filament (find existing or create from tag + SpoolmanDB data)
         filament_id = await self._find_or_create_filament(
-            metadata, brand, color_hex, density, diameter, weight, vendor_id, vendor_name, bambu_match)
+            metadata, color_hex, density, diameter, weight, vendor_id, vendor_name, bambu_match)
         if filament_id is None:
             return None
 
@@ -1108,7 +1108,7 @@ class MmuServer:
         return None
 
 
-    async def _find_or_create_filament(self, metadata, brand, color_hex, density,
+    async def _find_or_create_filament(self, metadata, color_hex, density,
                                        diameter, weight, vendor_id, vendor_name, bambu_match) -> int | None:
         '''
         Find an existing filament (by Bambu external_id, then material + vendor
@@ -1145,12 +1145,11 @@ class MmuServer:
             return int(items[0]["id"])
 
         # --- Create: tag data first, filling gaps from SpoolmanDB (Bambu) ---
+        # Vendor is stored separately (vendor_id), so keep it OUT of the filament
+        # name - this keeps a spool-resolved gate's name consistent with the
+        # metadata-only gate-map path (which also stores vendor separately).
         db_name = str(bambu_match.get("name") or "").strip() if bambu_match else ""
-        if db_name:
-            name = f"{vendor_name} {db_name}" if vendor_name else db_name
-        else:
-            label = str(metadata.get("material_detail") or material).strip().replace("_", " ")
-            name = f"{brand} {label}".strip() if brand else label
+        name = db_name or str(metadata.get("material_detail") or material).strip().replace("_", " ")
 
         body = {
             "name": name,
@@ -1506,6 +1505,7 @@ class MmuServer:
             mmu = mmu_state.get('mmu', {})
 
             gate_material = mmu.get('gate_material', [])
+            gate_vendor = mmu.get('gate_vendor', [])
             gate_color = mmu.get('gate_color', [])
             gate_temperature = mmu.get('gate_temperature', [])
             gate_status = mmu.get('gate_status', [])
@@ -1545,7 +1545,7 @@ class MmuServer:
                     spool_attrs = self.spool_location.get(spool_id, ('', -1, {}))[2] if spool_id in self.spool_location else {}
                     # Populated gate format
                     lane_data = {
-                        "vendor_name": spool_attrs.get('vendor', None) or None,
+                        "vendor_name": (gate_vendor[gate] if gate < len(gate_vendor) else None) or spool_attrs.get('vendor', None) or None,
                         "name": (gate_filament_name[gate] if gate < len(gate_filament_name) else None) or spool_attrs.get('name', None) or None,
                         "color": gate_color[gate] if gate < len(gate_color) else None,
                         "td": None, # we don't currently capture transmision distance and isn't standard in spoolman

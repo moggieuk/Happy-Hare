@@ -89,7 +89,7 @@ class MmuFilamentMovement:
                     if homed:
                         self.move_filament("Parking", u.p.gate_preload_parking_distance)
                         self.gate_maps.set_gate_status(gate, GATE_AVAILABLE)
-                        self._check_pending_spool_id(gate) # Have spool_id ready?
+                        self._check_pending_filament(gate) # Have spool_id ready?
                         self.log_always("Filament detected and loaded in gate %d" % gate)
                         run_post_preload_macro()
                         return
@@ -108,7 +108,7 @@ class MmuFilamentMovement:
                 self.log_always("Loading...")
                 try:
                     self._load_gate(allow_retry=False)
-                    self._check_pending_spool_id(gate) # Have spool_id ready?
+                    self._check_pending_filament(gate) # Have spool_id ready?
                     self.log_always("Parking...")
                     self._unload_gate()
                     self.log_always("Filament detected and parked in gate %d" % gate)

@@ -816,7 +816,7 @@ class MmuUnit:
                 if homed:
                     self._move_gear_motor("Final parking", self.p.gate_preload_parking_distance)
                     mmu.gate_maps.set_gate_status(gate, GATE_AVAILABLE)
-                    mmu._check_pending_spool_id(gate) # Have spool_id ready?
+                    mmu._check_pending_filament(gate) # Have spool_id ready?
                     mmu.log_always("Filament detected and loaded in gate %d" % gate)
                     return
 # TODO vvv this part of preload is problematic async
@@ -826,7 +826,7 @@ class MmuUnit:
 #                mmu.log_always("Loading...")
 #                try:
 #                    mmu._load_gate(allow_retry=False)
-#                    mmu._check_pending_spool_id(gate) # Have spool_id ready?
+#                    mmu._check_pending_filament(gate) # Have spool_id ready?
 #                    mmu.log_always("Parking...")
 #                    mmu._unload_gate()
 #                    mmu.log_always("Filament detected and parked in gate %d" % mmu.gate_selected)

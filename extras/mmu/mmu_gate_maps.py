@@ -51,6 +51,7 @@ class MmuGateMaps:
             (VARS_MMU_GATE_STATUS,         'gate_status', GATE_UNKNOWN),
             (VARS_MMU_GATE_FILAMENT_NAME,  'gate_filament_name', ""),
             (VARS_MMU_GATE_MATERIAL,       'gate_material', ""),
+            (VARS_MMU_GATE_VENDOR,         'gate_vendor', ""),
             (VARS_MMU_GATE_COLOR,          'gate_color', ""),
             (VARS_MMU_GATE_TEMPERATURE,    'gate_temperature', int(self.p.default_extruder_temp)),
             (VARS_MMU_GATE_SPOOL_ID,       'gate_spool_id', -1),
@@ -169,6 +170,7 @@ class MmuGateMaps:
         self.mmu.var_manager.set(VARS_MMU_GATE_STATUS, self.gate_status)
         self.mmu.var_manager.set(VARS_MMU_GATE_FILAMENT_NAME, self.gate_filament_name)
         self.mmu.var_manager.set(VARS_MMU_GATE_MATERIAL, self.gate_material)
+        self.mmu.var_manager.set(VARS_MMU_GATE_VENDOR, self.gate_vendor)
         self.mmu.var_manager.set(VARS_MMU_GATE_COLOR, self.gate_color)
         self.mmu.var_manager.set(VARS_MMU_GATE_TEMPERATURE, self.gate_temperature)
         self.mmu.var_manager.set(VARS_MMU_GATE_SPOOL_ID, self.gate_spool_id)
@@ -298,6 +300,7 @@ class MmuGateMaps:
         self.validate_gate_status()
         self.gate_filament_name = list(self.p.default_gate_filament_name)
         self.gate_material = list(self.p.default_gate_material)
+        self.gate_vendor = list(self.p.default_gate_vendor)
         self.gate_color = list(self.p.default_gate_color)
         self.gate_temperature = list(self.p.default_gate_temperature)
         if self.p.spoolman_support in [SPOOLMAN_OFF, SPOOLMAN_PULL]:
@@ -319,6 +322,34 @@ class MmuGateMaps:
                 self.gate_spool_id[i] = -1
                 mod_gate_ids.append((i, -1))
         return mod_gate_ids
+
+
+    def set_gate_filament_from_tag(self, gate, name=None, material=None, vendor=None,
+                                   color=None, temperature=None, rfid=None):
+        """
+        Set per-gate filament attributes from a scanned NFC/RFID tag (local only;
+        does NOT touch spool_id - a resolved Spoolman spool remains the source of
+        truth). Attributes passed as None are left unchanged. Validates/normalises
+        color, persists, and refreshes derived state (RGB/LEDs/t-macros).
+        """
+        if not (0 <= gate < self.num_gates):
+            return
+        if name is not None:
+            self.gate_filament_name[gate] = name
+        if material is not None:
+            self.gate_material[gate] = str(material).upper()
+        if vendor is not None:
+            self.gate_vendor[gate] = vendor
+        if color is not None:
+            validated = MmuColorUtils.validate_color(str(color).lower())
+            if validated is not None:
+                self.gate_color[gate] = validated
+        if temperature is not None:
+            self.gate_temperature[gate] = temperature
+        if rfid is not None:
+            self.gate_spool_rfid[gate] = rfid
+        self.update_gate_color_rgb()
+        self.persist_gate_map(spoolman_sync=False) # Local-only; nothing to push to Spoolman
 
 
 # -----------------------------------------------------------------------------------------------------------
@@ -473,6 +504,8 @@ class MmuGateMaps:
         for g in range(self.num_gates):
             available = available_status[self.gate_status[g]]
             name = self.gate_filament_name[g] or "Unknown"
+            if self.gate_vendor[g]:
+                name = "%s %s" % (self.gate_vendor[g], name)
             material = self.gate_material[g] or "Unknown"
             color = MmuColorUtils.format_color(self.gate_color[g] or "n/a")
             temperature = self.gate_temperature[g] or "n/a"
@@ -655,6 +688,7 @@ class MmuGateMaps:
         self.gate_status = list(self.gate_status)
         self.gate_filament_name = list(self.gate_filament_name)
         self.gate_material = list(self.gate_material)
+        self.gate_vendor = list(self.gate_vendor)
         self.gate_color = list(self.gate_color)
         self.gate_temperature = list(self.gate_temperature)
         self.gate_spool_id = list(self.gate_spool_id)
@@ -673,6 +707,7 @@ class MmuGateMaps:
             'gate_status': self.gate_status,
             'gate_filament_name': self.gate_filament_name,
             'gate_material': self.gate_material,
+            'gate_vendor': self.gate_vendor,
             'gate_color': self.gate_color,
             'gate_temperature': self.gate_temperature,
             'gate_spool_id': self.gate_spool_id,

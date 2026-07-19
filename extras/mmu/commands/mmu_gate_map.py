@@ -35,6 +35,7 @@ class MmuGateMapCommand(BaseCommand):
         + "NEXT_SPOOLID = id Specify the spoolman id of the next filament loaded - automatically assigned\n"
         + "NAME         = # Filament name\n"
         + "MATERIAL     = # Material type\n"
+        + "VENDOR       = # Filament vendor/brand name\n"
         + "COLOR        = # Filament color as w3c name or RRGGBB or RRGGBBaa (without #)\n"
         + "SPOOLID      = # Optionally the spoolman ID for the filament (don't need to specify other attributes)\n"
         + "TEMP         = # Default temperature of filament\n"
@@ -131,6 +132,7 @@ class MmuGateMapCommand(BaseCommand):
                         mmu.gate_spool_id[gate_idx] = spool_id
                         mmu.gate_filament_name[gate_idx] = fil.get('name', '')
                         mmu.gate_material[gate_idx] = fil.get('material', '')
+                        mmu.gate_vendor[gate_idx] = fil.get('vendor', '')
                         mmu.gate_color[gate_idx] = fil.get('color', '')
                         mmu.gate_temperature[gate_idx] = max(
                             self._safe_int(fil.get('temp', mmu.p.default_extruder_temp)),
@@ -152,6 +154,7 @@ class MmuGateMapCommand(BaseCommand):
                             # Update attributes but don't allow spoolman to accidently clear
                             mmu.gate_filament_name[gate_idx] = fil.get('name', '')
                             mmu.gate_material[gate_idx] = fil.get('material', '')
+                            mmu.gate_vendor[gate_idx] = fil.get('vendor', '')
                             mmu.gate_color[gate_idx] = fil.get('color', '')
                             mmu.gate_temperature[gate_idx] = max(
                                 self._safe_int(fil.get('temp', mmu.p.default_extruder_temp)),
@@ -197,6 +200,7 @@ class MmuGateMapCommand(BaseCommand):
                 available = gcmd.get_int('AVAILABLE', mmu.gate_status[gate_idx], minval=-1, maxval=2)
                 name = gcmd.get('NAME', None)
                 material = gcmd.get('MATERIAL', None)
+                vendor = gcmd.get('VENDOR', None)
                 color = gcmd.get('COLOR', None)
                 spool_id = gcmd.get_int('SPOOLID', None, minval=-1)
                 temperature = gcmd.get_int('TEMP', int(mmu.p.default_extruder_temp))
@@ -212,6 +216,7 @@ class MmuGateMapCommand(BaseCommand):
                     spool_id = spool_id or mmu.gate_spool_id[gate_idx]
                     name = name if name is not None else mmu.gate_filament_name[gate_idx]
                     material = (material if material is not None else mmu.gate_material[gate_idx]).upper()
+                    vendor = vendor if vendor is not None else mmu.gate_vendor[gate_idx]
                     color = (color if color is not None else mmu.gate_color[gate_idx]).lower()
                     temperature = temperature or mmu.gate_temperature[gate_idx]
                     color = MmuColorUtils.validate_color(color)
@@ -219,6 +224,7 @@ class MmuGateMapCommand(BaseCommand):
                         raise gcmd.error("Color specification must be in form 'rrggbb' or 'rrggbbaa' hexadecimal value (no '#') or valid color name or empty string")
                     mmu.gate_filament_name[gate_idx] = name
                     mmu.gate_material[gate_idx] = material
+                    mmu.gate_vendor[gate_idx] = vendor
                     mmu.gate_color[gate_idx] = color
                     mmu.gate_temperature[gate_idx] = temperature
                     mmu.gate_speed_override[gate_idx] = speed_override
@@ -234,7 +240,7 @@ class MmuGateMapCommand(BaseCommand):
                     # Remote (spoolman) gate map, don't update local attributes that are set by spoolman
                     mmu.gate_status[gate_idx] = available
                     mmu.gate_speed_override[gate_idx] = speed_override
-                    if any(x is not None for x in [material, color, spool_id, name]):
+                    if any(x is not None for x in [material, vendor, color, spool_id, name]):
                         mmu.log_error("Spoolman mode is '%s': Can only set gate status and speed override locally\nUse MMU_SPOOLMAN or update spoolman directly" % SPOOLMAN_PULL)
                         break
 

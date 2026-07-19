@@ -163,6 +163,7 @@ class MmuController(MmuFilamentMovement):
         self.form_tip_vars = None       # Current defaults of gcode variables for tip forming macro
         self.gate_maps.clear_slicer_tool_map()
         self.pending_spool_id = -1      # For automatic assignment of spool_id if set perhaps by rfid reader
+        self.pending_metadata = None    # (uid, metadata) staged from a shared NFC deep read, applied to the next gate
         self.nfc_lookup_pending = False # A shared NFC reader UID lookup is in flight (guards further shared reads)
         self.saved_toolhead_max_accel = None
         self.num_toolchanges = 0
@@ -215,7 +216,7 @@ class MmuController(MmuFilamentMovement):
         self.psm.register_event_handlers()
 
         self._setup_hotend_off_timer()
-        self._setup_pending_spool_id_timer()
+        self._setup_pending_timer()
         self.nfc_lookup_timeout_timer = self.reactor.register_timer(self._nfc_lookup_timeout_handler, self.reactor.NEVER)
         self._clear_saved_toolhead_position()
 
@@ -1485,6 +1486,10 @@ class MmuController(MmuFilamentMovement):
         return self.gate_maps.gate_material
 
     @property
+    def gate_vendor(self):
+        return self.gate_maps.gate_vendor
+
+    @property
     def gate_color(self):
         return self.gate_maps.gate_color
 
@@ -1649,14 +1654,20 @@ class MmuController(MmuFilamentMovement):
         """
         if next_spool_id > 0:
             self.pending_spool_id = next_spool_id
-            self.reactor.update_timer(self.pending_spool_id_timer, self.reactor.monotonic() + self.p.pending_spool_id_timeout)
+            self.pending_metadata = None # A resolved spool is authoritative; it supersedes any staged tag metadata
+            self.reactor.update_timer(self.pending_timer, self.reactor.monotonic() + self.p.pending_spool_id_timeout)
             self.log_info(f"Spool ID: Assignment of {next_spool_id} will timeout in {self.p.pending_spool_id_timeout} seconds")
         else:
-            # Disable timer to prevent reuse
             if self.pending_spool_id > 0:
                 self.log_info("Spool ID: Automatic assignment of id cancelled")
             self.pending_spool_id = -1
-            self.reactor.update_timer(self.pending_spool_id_timer, self.reactor.NEVER)
+            # Keep any staged tag metadata pending (with a fresh timeout window) so a
+            # deep read still populates the gate on an unknown-tag result; otherwise
+            # disable the timer to prevent reuse.
+            if self.pending_metadata is not None:
+                self.reactor.update_timer(self.pending_timer, self.reactor.monotonic() + self.p.pending_spool_id_timeout)
+            else:
+                self.reactor.update_timer(self.pending_timer, self.reactor.NEVER)
 
 
     def nfc_lookup_resolved(self, reread=False):
@@ -1694,17 +1705,31 @@ class MmuController(MmuFilamentMovement):
         return self.reactor.NEVER
 
 
-    def _setup_pending_spool_id_timer(self):
-        self.pending_spool_id_timer = self.reactor.register_timer(self._pending_spool_id_handler, self.reactor.NEVER)
+    def _setup_pending_timer(self):
+        self.pending_timer = self.reactor.register_timer(self._pending_timer_handler, self.reactor.NEVER)
 
 
-    def _pending_spool_id_handler(self, eventtime):
+    def _pending_timer_handler(self, eventtime):
         self.log_info("Spool ID: Automatic assignment of id timed out")
-        self.pending_spool_id = -1
+        self._clear_pending()
         return self.reactor.NEVER
 
 
-    def _check_pending_spool_id(self, gate):
+    def _clear_pending(self):
+        """Clear any pending spool_id and staged tag metadata together, and
+        disable the timeout timer. Keeps the two in lockstep from a single place."""
+        self.pending_spool_id = -1
+        self.pending_metadata = None
+        self.reactor.update_timer(self.pending_timer, self.reactor.NEVER)
+
+
+    def _check_pending_filament(self, gate):
+        """Apply a pending shared-NFC result to 'gate' during a load/preload.
+
+        A resolved Spoolman spool_id takes precedence (Spoolman is the source of
+        truth); otherwise, if a deep read staged tag metadata, apply that to the
+        gate map directly. Either way the pending state is cleared afterwards.
+        """
         if self.pending_spool_id > 0 and self.p.spoolman_support != SPOOLMAN_PULL:
             self.log_info("Spool ID: %s automatically assigned to gate %d" % (self.pending_spool_id, gate))
             mod_gate_ids = self.gate_maps.assign_spool_id(gate, self.pending_spool_id)
@@ -1715,9 +1740,11 @@ class MmuController(MmuFilamentMovement):
             elif self.p.spoolman_support == SPOOLMAN_READONLY:
                 self._spoolman_update_filaments(mod_gate_ids)
 
-        # Disable timer to prevent reuse
-        self.pending_spool_id = -1
-        self.reactor.update_timer(self.pending_spool_id_timer, self.reactor.NEVER)
+        elif self.pending_metadata is not None:
+            uid, metadata = self.pending_metadata
+            self._apply_metadata_to_gate(gate, uid, metadata)
+
+        self._clear_pending()
 
 
     def handle_mmu_error(self, reason, force_in_print=False):
@@ -2679,6 +2706,7 @@ class MmuController(MmuFilamentMovement):
         self.active_filament = {
             'filament_name': self.gate_filament_name[gate],
             'material': self.gate_material[gate],
+            'vendor': self.gate_vendor[gate],
             'color': self.gate_color[gate],
             'spool_id': self.gate_spool_id[gate],
             'temperature': self.gate_temperature[gate],
@@ -2953,15 +2981,104 @@ class MmuController(MmuFilamentMovement):
             self.log_error("Error while displaying spool location map: %s\n%s" % (str(e), SPOOLMAN_CONFIG_ERROR))
 
 
+    def _nfc_tag_read(self, uid, gate=None, metadata=None):
+        """
+        Entry point for a tag read from a unit's NFC manager. Two independent
+        concerns:
+          1. If a deep read produced metadata, populate the local gate map from
+             it - immediately for a known (per-gate) reader, or staged as pending
+             for a shared reader (applied to whichever gate the next load/preload
+             targets). This happens even when Spoolman is disabled.
+          2. If Spoolman is active, resolve the UID to a spool (optionally
+             auto-creating). A resolved spool is authoritative and overrides the
+             metadata-derived attributes.
+        """
+        if self.nfc_deep_read_enabled() and metadata:
+            if gate is None:
+                self._stage_pending_metadata(uid, metadata)
+            else:
+                self._apply_metadata_to_gate(gate, uid, metadata)
+        if self.p.spoolman_support != SPOOLMAN_OFF:
+            self._spoolman_get_spool_by_uid(uid, gate=gate, metadata=metadata)
+
+
+    def _stage_pending_metadata(self, uid, metadata):
+        """
+        Stage deep-read tag metadata from a shared reader to be applied to the
+        gate that the next load/preload targets (mirrors pending_spool_id). A
+        resolved Spoolman spool takes precedence in _check_pending_filament.
+        """
+        self.pending_metadata = (uid, metadata)
+        self.reactor.update_timer(self.pending_timer,
+                                  self.reactor.monotonic() + self.p.pending_spool_id_timeout)
+        self.log_debug("NFC: staged tag metadata for uid %s pending gate assignment" % uid)
+
+
+    def _apply_metadata_to_gate(self, gate, uid, metadata):
+        """
+        Populate the local gate map for 'gate' from parsed NFC tag metadata. Does
+        not assign a spool_id; if a Spoolman spool later resolves for this tag it
+        takes precedence and overwrites these attributes.
+        """
+        if self.p.spoolman_support == SPOOLMAN_PULL:
+            return # Remote gate map owns filament attributes
+        if not (isinstance(metadata, dict) and metadata.get('material')):
+            return
+        name, material, vendor, color, temperature = self._filament_from_metadata(metadata)
+        self.gate_maps.set_gate_filament_from_tag(
+            gate, name=name, material=material, vendor=vendor,
+            color=color, temperature=temperature, rfid=uid)
+        self.log_info("NFC: gate %d filament set from tag: %s %s %s @ %dC" % (
+            gate, vendor, material, name, temperature))
+
+
+    def _filament_from_metadata(self, metadata):
+        """
+        Map parsed tag metadata to (name, material, vendor, color, temperature).
+        Nozzle temperature is the median of the tag's min/max range (matching the
+        Spoolman filament default), falling back to a single bound or the printer
+        default.
+        """
+        def _mi(v):
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                return None
+        material = str(metadata.get('material') or '').strip()
+        vendor   = str(metadata.get('brand') or '').strip()
+        color    = str(metadata.get('color_hex') or '').strip().lstrip('#')
+        detail   = str(metadata.get('material_detail') or '').strip().replace('_', ' ')
+        name     = detail or material
+        min_t, max_t = _mi(metadata.get('min_temp')), _mi(metadata.get('max_temp'))
+        if min_t is not None and max_t is not None:
+            temperature = int(round((min_t + max_t) / 2.0))
+        elif max_t is not None:
+            temperature = max_t
+        elif min_t is not None:
+            temperature = min_t
+        else:
+            temperature = int(self.p.default_extruder_temp)
+        return name, material, vendor, color, temperature
+
+
+    def nfc_deep_read_enabled(self):
+        """
+        True when the NFC reader should perform a deep read (read and parse the
+        full tag contents, not just the UID). Master switch for all metadata
+        behaviour: parsing tag data, populating the local gate map from it, and
+        (with the flags below) auto-creating a Spoolman spool.
+        """
+        return bool(self.p.nfc_deep_read)
+
     def nfc_auto_create_enabled(self):
         """
         True when scanning an unknown NFC/RFID tag should auto-create a Spoolman
-        spool from parsed tag data. Auto-create is a write, so it requires a
-        writable Spoolman mode (not OFF/READONLY) on top of the opt-in flag.
-        Gates both the Klipper-side deep read/parse and the Moonraker-side create,
-        so with spoolman_nfc_auto_create=0 the tag is never parsed or sent.
+        spool from parsed tag data. Requires all of: a deep read (to have the
+        metadata), the opt-in flag, and a writable Spoolman mode (auto-create is
+        a write, so OFF/READONLY are excluded).
         """
-        return (bool(self.p.spoolman_nfc_auto_create)
+        return (self.nfc_deep_read_enabled()
+                and bool(self.p.spoolman_nfc_auto_create)
                 and self.p.spoolman_support not in (SPOOLMAN_OFF, SPOOLMAN_READONLY))
 
 

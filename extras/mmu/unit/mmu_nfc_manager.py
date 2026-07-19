@@ -509,25 +509,26 @@ class MmuNfcManager:
 
     def _want_metadata(self):
         """
-        True when reads should be deep (i.e. parse tag contents for Spoolman
-        auto-create). Gated entirely by the controller's auto-create policy so
-        that with spoolman_nfc_auto_create=0 the tag is never parsed and no
-        metadata is produced or forwarded to Spoolman.
+        True when reads should be deep (parse the full tag contents). Gated by
+        nfc_deep_read so that with nfc_deep_read=0 the tag is never parsed - only
+        the UID is read - and no metadata is produced, applied, or sent. When on,
+        metadata populates the local gate map (and, if further enabled, drives
+        Spoolman auto-create) independently of whether Spoolman is configured.
         """
-        return self.mmu is not None and self.mmu.nfc_auto_create_enabled()
+        return self.mmu is not None and self.mmu.nfc_deep_read_enabled()
 
 
     def _dispatch_lookup(self, uid, gate=None, metadata=None):
         """
-        Fire-and-forget Spoolman lookup via the controller. The result (or a
-        recoverable failure) returns asynchronously as an MMU_GATE_MAP command
-        from Moonraker; nothing is awaited here.
+        Hand a tag read to the controller (fire-and-forget). The controller
+        applies deep-read 'metadata' to the local gate map and, if Spoolman is
+        active, initiates the async UID->spool resolution (whose result returns
+        later as an MMU_GATE_MAP command from Moonraker). Nothing is awaited here.
 
-        'metadata' is the parsed tag payload from a deep read (dict), forwarded
-        so Moonraker can auto-create a spool for an unknown tag when enabled. It
-        is None for this UID-only reader; a deep-read reader passes the dict.
+        'metadata' is the parsed tag payload from a deep read (dict), or None for
+        a UID-only read.
         """
         try:
-            self.mmu._spoolman_get_spool_by_uid(uid, gate=gate, metadata=metadata)
+            self.mmu._nfc_tag_read(uid, gate=gate, metadata=metadata)
         except Exception as e:
-            self.mmu.log_error("NFC: error initiating Spoolman lookup for UID=%s: %s" % (uid, str(e)))
+            self.mmu.log_error("NFC: error initiating tag lookup for UID=%s: %s" % (uid, str(e)))

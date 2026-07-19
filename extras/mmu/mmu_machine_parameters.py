@@ -93,6 +93,7 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('default_gate_status',           'intlist', [], section="DEFAULT MAPS", hidden=True),
         ParamSpec('default_gate_filament_name',    'list',    [], section="DEFAULT MAPS", hidden=True),
         ParamSpec('default_gate_material',         'list',    [], section="DEFAULT MAPS", hidden=True),
+        ParamSpec('default_gate_vendor',           'list',    [], section="DEFAULT MAPS", hidden=True),
         ParamSpec('default_gate_color',            'list',    [], section="DEFAULT MAPS", hidden=True),
         ParamSpec('default_gate_temperature',      'intlist', [], section="DEFAULT MAPS", hidden=True),
         ParamSpec('default_gate_spool_id',         'intlist', [], section="DEFAULT MAPS", hidden=True),
@@ -118,7 +119,10 @@ class MmuMachineParameters(TunableParametersBase):
 
         # Optional features
         ParamSpec('spoolman_support',              'choice', SPOOLMAN_OFF, section="FEATURES", choices={o: o for o in SPOOLMAN_OPTIONS}, on_change=_on_spoolman_support),
-        ParamSpec('spoolman_nfc_auto_create',      'int',      0, section="FEATURES", limits=dict(minval=0, maxval=1)),
+
+        # NFC / RFID tag reading
+        ParamSpec('nfc_deep_read',                 'int',      0, section="NFC", limits=dict(minval=0, maxval=1)),
+        ParamSpec('spoolman_nfc_auto_create',      'int',      0, section="NFC", limits=dict(minval=0, maxval=1)),
         ParamSpec('t_macro_color',                 'choice', T_MACRO_COLOR_SLICER, section="FEATURES", choices={o: o for o in T_MACRO_COLOR_OPTIONS}, on_change=_on_t_macro_color),
         ParamSpec('endless_spool_groups',          'intlist', [], section="FEATURES"),
         ParamSpec('endless_spool_enabled',         'int',      0, section="FEATURES", limits=dict(minval=0, maxval=1)),
@@ -190,6 +194,7 @@ class MmuMachineParameters(TunableParametersBase):
         self.default_gate_status          = list(self.default_gate_status)
         self.default_gate_filament_name   = list(self.default_gate_filament_name)
         self.default_gate_material        = list(self.default_gate_material)
+        self.default_gate_vendor          = list(self.default_gate_vendor)
         self.default_gate_color           = list(self.default_gate_color)
         self.default_gate_temperature     = list(self.default_gate_temperature)
         self.default_gate_spool_id        = list(self.default_gate_spool_id)
