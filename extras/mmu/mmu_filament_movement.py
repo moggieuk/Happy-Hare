@@ -34,12 +34,13 @@ import logging
 import math
 
 # Klipper imports
+import mcu
 from ..homing             import HomingMove
 
 # Happy Hare imports
 from .mmu_constants       import *
 from .mmu_utils           import MmuError
-from .mmu_sensor_utils    import MmuVirtualEndstopSensor
+from .mmu_sensor_utils    import MmuVirtualEndstopSensor, MmuCompoundEndstop
 
 
 class MmuFilamentMovement:
@@ -66,65 +67,257 @@ class MmuFilamentMovement:
                     self.reset_sync_gear_to_extruder(False, force_grip=True)
                     self.wrap_gcode_command(self.p.post_preload_macro, exception=True, wait=True)
 
-        # If we have an individual gate exit sensor, use it
-        gate_exit_sensor = self.sensor_manager.check_gate_sensor(SENSOR_EXIT_PREFIX, gate)
-        if gate_exit_sensor is not None:
-            if gate_exit_sensor:
-                self.log_always("Filament already preloaded")
-                self.gate_maps.set_gate_status(gate, GATE_AVAILABLE)
-                return
-            else:
-                # Minimal load to mmu exit sensor
-                self.log_always("Preloading...")
-                endstop_name = self.sensor_manager.get_gate_sensor_name(SENSOR_EXIT_PREFIX, gate)
-                msg = "Homing to %s sensor" % endstop_name
-                with self.wrap_suspend_filament_monitoring():
-                    actual, homed, measured, _ = self.move_filament(
-                        msg,
-                        u.p.gate_preload_homing_max,
-                        motor="gear",
-                        homing_move=1,
-                        endstop_name=endstop_name,
-                    )
-                    if homed:
-                        self.move_filament("Parking", u.p.gate_preload_parking_distance)
-                        self.gate_maps.set_gate_status(gate, GATE_AVAILABLE)
-                        self._check_pending_filament(gate) # Have spool_id ready?
-                        self.log_always("Filament detected and loaded in gate %d" % gate)
-                        run_post_preload_macro()
-                        return
+        # TODO(nfc-preload): re-add the per-gate mmu_exit fast path (already-preloaded
+        # early-return + entry-sensor-hit-but-not-exit -> GATE_UNKNOWN warning) before
+        # shipping. It was removed to build the core NFC-compound logic against the
+        # configured gate_homing_endstop; those non-homing behaviours still matter for
+        # every user with per-gate exit sensors.
 
-            if self.sensor_manager.check_gate_sensor(SENSOR_ENTRY_PREFIX, gate):
-                self.gate_maps.set_gate_status(gate, GATE_UNKNOWN)
-                self.log_warning(
-                    f"Filament detected by entry sensor on gate {gate} but didn't reach "
-                    "the exit sensor. Perhaps increase 'gate_preload_homing_max'"
-                )
-                return
+        # Home the filament to the gate. When the selected gate has an NFC reader we
+        # home to the gate endstop and the reader at the same time (a compound endstop)
+        # so the spool's tag is read as it's loaded - no separate MMU_NFC_SCAN needed.
+        # This is only possible when the gate endstop is a real switch; encoder-based
+        # homing (motion detection, not an endstop move) can't be compounded.
+        # Preload uses gate_preload_endstop, which defaults to gate_homing_endstop
+        # (see MmuUnitParameters._post_load_fixups) but may be overridden.
+        gate_es_generic = u.p.gate_preload_endstop
+        nfc_mgr = u.nfc_manager
+        nfc_viable = (
+            gate_es_generic != SENSOR_ENCODER
+            and nfc_mgr is not None
+            and nfc_mgr.has_gate_nfc_reader(gate)
+            and nfc_mgr.is_enabled(gate=gate)
+        )
 
-        else:
-            # Full gate load if no mmu exit sensor
-            for _ in range(u.p.gate_preload_attempts):
-                self.log_always("Loading...")
-                try:
-                    self._load_gate(allow_retry=False)
-                    self._check_pending_filament(gate) # Have spool_id ready?
-                    self.log_always("Parking...")
-                    self._unload_gate()
-                    self.log_always("Filament detected and parked in gate %d" % gate)
-                    run_post_preload_macro()
-                    return
-                except MmuError as ee:
-                    # Exception just means filament is not loaded yet, so continue
-                    self.log_trace("Exception on preload: %s" % str(ee))
-
-            if self.sensor_manager.check_gate_sensor(SENSOR_ENTRY_PREFIX, gate):
-                self.gate_maps.set_gate_status(gate, GATE_UNKNOWN)
-                self.log_warning(f"Filament detected by entry sensor on gate {gate} but was not able to complete preload")
+        if nfc_viable:
+            gate_es_name = self.sensor_manager.get_qualified_endstop_name(gate_es_generic)
+            nfc_es_name = self.sensor_manager.get_gate_sensor_name(SENSOR_NFC_PREFIX, gate)
+            if self._preload_gate_with_nfc(gate, gate_es_name, nfc_es_name, nfc_mgr):
+                run_post_preload_macro()
                 return
+            # Fall through to the full-load fallback if the compound couldn't be built
+
+        # Full gate load fallback (no reader, encoder homing, or compound unavailable)
+        for _ in range(u.p.gate_preload_attempts):
+            self.log_always("Loading...")
+            try:
+                self._load_gate(allow_retry=False)
+                self._check_pending_filament(gate) # Have spool_id ready?
+                self.log_always("Parking...")
+                self._unload_gate()
+                self.log_always("Filament detected and parked in gate %d" % gate)
+                run_post_preload_macro()
+                return
+            except MmuError as ee:
+                # Exception just means filament is not loaded yet, so continue
+                self.log_trace("Exception on preload: %s" % str(ee))
+
+        if self.sensor_manager.check_gate_sensor(SENSOR_ENTRY_PREFIX, gate):
+            self.gate_maps.set_gate_status(gate, GATE_UNKNOWN)
+            self.log_warning(f"Filament detected by entry sensor on gate {gate} but was not able to complete preload")
+            return
 
         self.gate_maps.set_gate_status(gate, GATE_EMPTY)
         raise MmuError("Filament not detected")
+
+
+    def _preload_gate_with_nfc(self, gate, gate_es_name, nfc_es_name, nfc_mgr):
+        """
+        Preload by homing to the gate endstop and the gate's NFC reader together
+        (a first-wins compound endstop) so the spool's tag is read as it loads.
+
+        Forward (extrude) only. On a gate-first trigger we chase the tag forward
+        within the +ve nfc_read_window then re-home back to the gate switch; on an
+        NFC-first trigger we continue to the gate switch. Either way we finish
+        parked at the gate reference (gate_preload_parking_distance).
+
+        Returns:
+            True  - preload completed (filament seated at gate; tag read if present)
+            False - compound couldn't be built; caller should use the normal load path
+        Raises:
+            MmuError - filament was not detected within gate_preload_homing_max
+        """
+        u = self.mmu_unit()
+
+        rail = self.drive().mmu_gear_stepper.rail
+        gate_obj = rail.get_extra_endstop(gate_es_name)  # (endstop, name) or None
+        nfc_obj = rail.get_extra_endstop(nfc_es_name)
+        if gate_obj is None or nfc_obj is None:
+            self.log_debug("Preload NFC: missing endstop (gate=%s, nfc=%s) - using normal load"
+                           % (gate_es_name if gate_obj is None else "ok",
+                              nfc_es_name if nfc_obj is None else "ok"))
+            return False
+
+        # The compound needs the gate endstop to be a real MCU switch (the NFC reader is
+        # the host-polled virtual). If the gate endstop is itself virtual (e.g. an ADC-
+        # backed mmu_exit), compounding would host-poll two virtuals in one drip move,
+        # doubling the reactor-stall risk - so fall back to the normal load path instead.
+        if not isinstance(gate_obj[0], mcu.MCU_endstop):
+            self.log_debug("Preload NFC: gate endstop '%s' is not a real MCU switch - "
+                           "using normal load (NFC tag not read during preload)" % gate_es_name)
+            return False
+
+        pos = max(0.0, u.p.nfc_read_window[1]) if len(u.p.nfc_read_window) == 2 else 0.0
+        tag_read = False
+
+        compound_name = "preload_compound"
+        compound = MmuCompoundEndstop(self.printer, name=compound_name, endstops=[gate_obj, nfc_obj])
+        rail.add_compound_endstop(compound_name, compound)
+        try:
+            with self.wrap_suspend_filament_monitoring():
+                self.log_always("Preloading (reading NFC tag)...")
+
+                # Phase 1: home to whichever of {gate switch, tag} arrives first
+                _, homed, _, _ = self.move_filament(
+                    "Preload homing to gate/NFC", u.p.gate_preload_homing_max,
+                    motor="gear", homing_move=1, endstop_name=compound_name)
+                if not homed:
+                    self.gate_maps.set_gate_status(gate, GATE_EMPTY)
+                    raise MmuError("Filament not detected")
+
+                triggered = compound.get_triggered_endstop_name()
+
+                if triggered == nfc_es_name:
+                    # NFC first: tag reached the reader at/before the gate reference.
+                    tag_read = bool(nfc_mgr.read_gate(gate)) # Deep read if enabled; to gate map
+                    # Continue to the gate reference so we park like a normal preload
+                    _, homed2, _, _ = self.move_filament(
+                        "Preload continue to gate", u.p.gate_preload_homing_max,
+                        motor="gear", homing_move=1, endstop_name=gate_es_name)
+                    if not homed2:
+                        self.log_warning(
+                            "Preload gate %d: tag read but gate endstop not reached - "
+                            "parking from current position" % gate)
+                else:
+                    # Gate first: at the gate reference. Chase the tag forward within
+                    # the +ve window, then re-home back to the gate switch.
+                    if pos > 0:
+                        chase, homed2, _, _ = self.move_filament(
+                            "Preload NFC scan", pos,
+                            motor="gear", homing_move=1, endstop_name=nfc_es_name)
+                        if homed2:
+                            tag_read = bool(nfc_mgr.read_gate(gate))
+                            # Virtual-NFC stop overshoots more than the MCU gate switch;
+                            # re-home backward to re-establish the park reference precisely.
+                            # Budget off the distance we actually chased forward (pos is
+                            # not bounded by gate_preload_homing_max), plus a margin so the
+                            # switch is reliably re-crossed; the homing move stops on trigger.
+                            retract_max = abs(chase) + u.p.gate_preload_homing_max
+                            _, homed_back, _, _ = self.move_filament(
+                                "Preload re-home to gate", -retract_max,
+                                motor="gear", homing_move=-1, endstop_name=gate_es_name)
+                            if not homed_back:
+                                self.log_warning(
+                                    "Preload gate %d: could not re-home to gate switch after "
+                                    "NFC scan - parking from current position" % gate)
+
+                # Park + finalize (preload parking semantics, distinct from _load_gate)
+                self.move_filament("Parking", u.p.gate_preload_parking_distance)
+                self.gate_maps.set_gate_status(gate, GATE_AVAILABLE)
+                self._check_pending_filament(gate) # Have spool_id ready?
+                self.log_always("Filament detected and loaded in gate %d%s"
+                                % (gate, " (tag read)" if tag_read else ""))
+        finally:
+            rail.remove_compound_endstop(compound_name)
+
+        return True
+
+
+    def _jog_scan(self):
+        """
+        Read the CURRENTLY SELECTED gate's NFC/RFID tag by jogging the filament
+        within the unit's configured window until the tag reaches the gate's NFC
+        reader (a homing move against the reader-as-endstop), then re-parking the
+        filament back in the gate. Works on gate_selected like _preload_gate; the
+        caller (MMU_NFC_SCAN) owns gate selection and restoration.
+
+        The travel window is 'nfc_read_window' (neg, pos) mm from this unit's
+        parameters (per-unit because it is MMU geometry). The larger-magnitude
+        direction is swept first (most likely to hit the tag); a 0 side is skipped.
+
+        Returns:
+            bool: True if the tag was found (and read), else False.
+
+        Every other NFC reader is set inactive for the duration; the prior active
+        state is restored afterwards even on error.
+        """
+        u = self.mmu_unit()
+        gate = self.gate_selected
+
+        window = u.p.nfc_read_window
+        if len(window) != 2 or window[0] > 0 or window[1] < 0:
+            raise MmuError("nfc_read_window must be (neg, pos) with neg <= 0 <= pos, got %s" % (window,))
+        neg, pos = window[0], window[1]
+        if neg == 0 and pos == 0:
+            self.log_info("NFC scan: nfc_read_window is not configured for this unit - nothing to scan")
+            return False
+
+        nfc_manager = u.nfc_manager
+        if nfc_manager is None or not nfc_manager.has_gate_nfc_reader(gate):
+            raise MmuError("Gate %d has no NFC reader to scan" % gate)
+        if not nfc_manager.is_enabled(gate=gate):
+            raise MmuError("Gate %d NFC reader is disabled (re-enable with MMU_NFC ... ENABLE=1)" % gate)
+
+        endstop_name = self.sensor_manager.get_gate_sensor_name(SENSOR_NFC_PREFIX, gate)
+
+        # Save every unit's NFC active flags so only the target gate is active while scanning
+        active_snaps = [
+            (mgr, mgr.snapshot_active())
+            for unit in self.mmu_machine.units
+            for mgr in [getattr(unit, 'nfc_manager', None)] if mgr is not None
+        ]
+
+        found = False
+        try:
+            for mgr, _ in active_snaps:
+                mgr.deactivate_all()
+            nfc_manager.set_active(True, gate=gate)
+
+            # Fast path: the spool's tag may already be sitting on the reader (the
+            # filament happens to be parked such that its tag lands there). Clear
+            # the sticky UID / release any held target for a fresh live read; if a
+            # tag is present there's no need to jog the filament at all.
+            nfc_manager.clear_gate_reader(gate)
+            if nfc_manager.read_gate(gate):
+                found = True
+                self.log_debug("NFC scan gate %d: tag already at reader - no jog needed" % gate)
+
+            if not found:
+                order = [pos, neg] if pos >= abs(neg) else [neg, pos]
+                with self.wrap_suspend_filament_monitoring():
+                    for dist in order:
+                        if not dist:
+                            continue
+                        forward = dist > 0
+                        self.log_debug("NFC scan gate %d: homing %s %.0fmm to reader"
+                                       % (gate, "forward" if forward else "back", abs(dist)))
+                        actual, homed, _, _ = self.move_filament(
+                            "NFC scan", dist, motor="gear",
+                            homing_move=(1 if forward else -1), endstop_name=endstop_name)
+
+                        if homed:
+                            # Tag is at the reader now - read it (deep if enabled) and
+                            # apply to the gate map BEFORE we move it away.
+                            found = True
+                            nfc_manager.read_gate(gate)
+
+                        # Re-park in the gate with robust homing, budgeting the jog dist.
+                        if forward:
+                            self._unload_gate(extra_homing=abs(actual))
+                        else:
+                            self._load_gate(allow_retry=False)
+
+                        if found:
+                            break
+        finally:
+            for mgr, snap in active_snaps:
+                mgr.restore_active(snap)
+
+        if found:
+            self.log_info("NFC scan: tag read for gate %d" % gate)
+        else:
+            self.log_info("NFC scan: no tag found for gate %d within window %s" % (gate, window))
+        return found
 
 
     def _load_gate(self, allow_retry=True):

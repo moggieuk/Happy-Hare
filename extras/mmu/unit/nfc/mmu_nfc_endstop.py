@@ -54,8 +54,15 @@ class MmuNfcEndstop(MmuVirtualEndstopSensor):
         # Reset detection state so a previous read can't pre-trigger this home,
         # then start the manager's tight poll of this gate's reader.
         self.runout_helper.note_filament_present(print_time, False)
+
         self._poll_controller.start_homing_poll(self)
-        return super().home_start(print_time, sample_time, sample_count, rest_time, triggered)
+
+        # A tag detection is ALWAYS the trigger, independent of move direction. The
+        # caller derives 'triggered' from the move sign (True forward / False for a
+        # backward/unload move) - switch-endstop semantics that don't apply to an
+        # NFC reader - so pin it True. The move direction still comes from the
+        # distance sign; only the state we trigger on is fixed.
+        return super().home_start(print_time, sample_time, sample_count, rest_time, True)
 
 
     def home_wait(self, home_end_time):

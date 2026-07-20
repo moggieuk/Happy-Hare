@@ -754,144 +754,145 @@ class MmuUnit:
 
 # -----------------------------------------------------------------------------------------------------------
 # EXPERIMENTAL: RAW EJECT AND PRELOAD OPERATIONS ASYNC FROM REGULAR MMU MANAGEMENT
+#               IT IS NOT CURRENTLY USED (see mmu_filament_movement.py for current logic)
 # -----------------------------------------------------------------------------------------------------------
-
-    def can_async_eject(self, gate):
-        """
-        Return True if can eject, else the reason why not
-        """
-        if self.mmu.is_printing():  # TODO may be able to relax with new mmu_stepper
-            return "because actively printing"
-
-        if not self.manages_gate(self.mmu.gate_selected):
-            return True
-
-        if not self.can_crossload:
-            return "because MMU can't crossload"
-
-        return True
-
-
-    def can_async_preload(self, gate):
-        """
-        Return True if can preload, else the reason why not
-        """
-        if self.mmu.is_printing():  # TODO may be able to relax with new mmu_stepper
-            return "because actively printing"
-
-        if not self.mmu.sensor_manager.has_gate_sensor(SENSOR_EXIT_PREFIX, gate):
-            return "because MMU doesn't have an exit sensor fot this gate"
-
-        if not self.can_crossload:
-            return "because MMU can't crossload"
-
-        if not self.manages_gate(self.mmu.gate_selected):
-            return True
-
-        if self.mmu.filament_pos != FILAMENT_POS_UNLOADED:
-            return "because MMU is not unloaded"
-
-        return True
-
-
-    def preload(self, gate):
-        """
-        Preload filament into a gate
-        """
-        lgate = self.local_gate(gate, False)
-        mmu = self.mmu
-
-        can_preload = self.can_async_preload(gate)
-        if can_preload is not True:
-            raise MmuError(f"Not possible to preload filament right now: {can_preload}")
-
-        gate_sensor = mmu.sensor_manager.check_gate_sensor(SENSOR_EXIT_PREFIX, gate)
-        if gate_sensor is not None:
-            if gate_sensor:
-                mmu.log_always("Filament already preloaded")
-                mmu.gate_maps.set_gate_status(gate, GATE_AVAILABLE)
-                return
-            else:
-                # Minimal load to mmu exit sensor if fitted
-                endstop_name = mmu.sensor_manager.get_gate_sensor_name(SENSOR_EXIT_PREFIX, gate)
-                mmu.log_always("Preloading...")
-                msg = "Homing to %s sensor" % endstop_name
-                actual, homed = home_gear_motor(msg, self.p.gate_preload_homing_max, homing_move=1, endstop_name=endstop_name)
-                if homed:
-                    self._move_gear_motor("Final parking", self.p.gate_preload_parking_distance)
-                    mmu.gate_maps.set_gate_status(gate, GATE_AVAILABLE)
-                    mmu._check_pending_filament(gate) # Have spool_id ready?
-                    mmu.log_always("Filament detected and loaded in gate %d" % gate)
-                    return
-# TODO vvv this part of preload is problematic async
-#        else:
-#            # Full gate load if no mmu exit sensor
-#            for _ in range(u.p.gate_preload_attempts):
-#                mmu.log_always("Loading...")
-#                try:
-#                    mmu._load_gate(allow_retry=False)
+#
+#    def can_async_eject(self, gate):
+#        """
+#        Return True if can eject, else the reason why not
+#        """
+#        if self.mmu.is_printing():  # TODO may be able to relax with new mmu_stepper
+#            return "because actively printing"
+#
+#        if not self.manages_gate(self.mmu.gate_selected):
+#            return True
+#
+#        if not self.can_crossload:
+#            return "because MMU can't crossload"
+#
+#        return True
+#
+#
+#    def can_async_preload(self, gate):
+#        """
+#        Return True if can preload, else the reason why not
+#        """
+#        if self.mmu.is_printing():  # TODO may be able to relax with new mmu_stepper
+#            return "because actively printing"
+#
+#        if not self.mmu.sensor_manager.has_gate_sensor(SENSOR_EXIT_PREFIX, gate):
+#            return "because MMU doesn't have an exit sensor fot this gate"
+#
+#        if not self.can_crossload:
+#            return "because MMU can't crossload"
+#
+#        if not self.manages_gate(self.mmu.gate_selected):
+#            return True
+#
+#        if self.mmu.filament_pos != FILAMENT_POS_UNLOADED:
+#            return "because MMU is not unloaded"
+#
+#        return True
+#
+#
+#    def preload(self, gate):
+#        """
+#        Preload filament into a gate
+#        """
+#        lgate = self.local_gate(gate, False)
+#        mmu = self.mmu
+#
+#        can_preload = self.can_async_preload(gate)
+#        if can_preload is not True:
+#            raise MmuError(f"Not possible to preload filament right now: {can_preload}")
+#
+#        gate_sensor = mmu.sensor_manager.check_gate_sensor(SENSOR_EXIT_PREFIX, gate)
+#        if gate_sensor is not None:
+#            if gate_sensor:
+#                mmu.log_always("Filament already preloaded")
+#                mmu.gate_maps.set_gate_status(gate, GATE_AVAILABLE)
+#                return
+#            else:
+#                # Minimal load to mmu exit sensor if fitted
+#                endstop_name = mmu.sensor_manager.get_gate_sensor_name(SENSOR_EXIT_PREFIX, gate)
+#                mmu.log_always("Preloading...")
+#                msg = "Homing to %s sensor" % endstop_name
+#                actual, homed = home_gear_motor(msg, self.p.gate_preload_homing_max, homing_move=1, endstop_name=endstop_name)
+#                if homed:
+#                    self._move_gear_motor("Final parking", self.p.gate_preload_parking_distance)
+#                    mmu.gate_maps.set_gate_status(gate, GATE_AVAILABLE)
 #                    mmu._check_pending_filament(gate) # Have spool_id ready?
-#                    mmu.log_always("Parking...")
-#                    mmu._unload_gate()
-#                    mmu.log_always("Filament detected and parked in gate %d" % mmu.gate_selected)
+#                    mmu.log_always("Filament detected and loaded in gate %d" % gate)
 #                    return
-#                except MmuError as ee:
-#                    # Exception just means filament is not loaded yet, so continue
-#                    mmu.log_trace("Exception on preload: %s" % str(ee))
-# TODO ^^^ this part of preload is problematic async
-
-        if mmu.sensor_manager.check_gate_sensor(SENSOR_ENTRY_PREFIX, gate):
-            mmu.gate_maps.set_gate_status(gate, GATE_UNKNOWN)
-            mmu.log_warning("Filament detected by mmu entry %d sensor but did not complete preload" % gate)
-        else:
-            mmu.gate_maps.set_gate_status(gate, GATE_EMPTY)
-            raise MmuError("Filament not detected")
-
-
-    def eject(self, gate):
-        """
-        Fully eject filament from a gate so it can be removed safely
-        """
-        lgate = self.local_gate(gate, False)
-        mmu = self.mmu
-
-        can_eject = self.can_async_eject(gate)
-        if can_eject is not True:
-            raise MmuError(f"Not possible to eject filament right now: {can_eject}")
-
-        mmu.log_always("Ejecting...")
-        if (
-            mmu.sensor_manager.has_gate_sensor(SENSOR_EXIT_PREFIX, gate) and
-            mmu.sensor_manager.check_gate_sensor(SENSOR_EXIT_PREFIX, gate)
-        ):
-            endstop_name = mmu.sensor_manager.get_gate_sensor_name(SENSOR_EXIT_PREFIX, gate)
-            msg = "Reverse homing off %s sensor" % endstop_name
-            actual, homed = self._home_gear_motor(lgate, msg, -self.p.gate_homing_max, homing_move=-1, endstop_name=endstop_name)
-            if homed:
-                self.log_debug("Endstop %s reached after %.1fmm" % (endstop_name, actual))
-            else:
-                raise MmuError("Filament did not exit gate homing sensor: %s" % endstop_name)
-
-        if self.p.gate_final_eject_distance > 0:
-            msg = "Ejecting filament out of gate"
-            if self.sensor_manager.check_gate_sensor(SENSOR_ENTRY_PREFIX, gate) is not None:
-                # Use homing move so we don't "over eject"
-                self._home_gear_motor(lgate, msg, -self.p.gate_final_eject_distance, homing_move=-1, endstop_name=SENSOR_ENTRY_PREFIX)
-            else:
-                self._move_gear_motor(lgate, msg, -self.p.gate_final_eject_distance)
-
-        mmu.gate_maps.set_gate_status(gate, GATE_EMPTY)
-        mmu.log_always("The filament in gate %d can be removed" % gate)
-
-
-    def _move_gear_motor(self, lgate, msg, move):
-        mmu.log_warning(f"TODO: move_gear_motor(lgate={lgate}, msg={msg}, move={move}")
-        # TODO future impl with no-toolhead logic
-
-
-    def _home_gear_motor(self, lgate, msg, move, homing_move, endstop_name):
-        mmu.log_warning(f"TODO: home_gear_motor(lgate={lgate}, msg={msg}, move={move}, homing_move={homing_move}, endstop_name={endstop_name})")
-        # TODO future impl with no-toolhead logic
+## TODO vvv this part of preload is problematic async
+##        else:
+##            # Full gate load if no mmu exit sensor
+##            for _ in range(u.p.gate_preload_attempts):
+##                mmu.log_always("Loading...")
+##                try:
+##                    mmu._load_gate(allow_retry=False)
+##                    mmu._check_pending_filament(gate) # Have spool_id ready?
+##                    mmu.log_always("Parking...")
+##                    mmu._unload_gate()
+##                    mmu.log_always("Filament detected and parked in gate %d" % mmu.gate_selected)
+##                    return
+##                except MmuError as ee:
+##                    # Exception just means filament is not loaded yet, so continue
+##                    mmu.log_trace("Exception on preload: %s" % str(ee))
+## TODO ^^^ this part of preload is problematic async
+#
+#        if mmu.sensor_manager.check_gate_sensor(SENSOR_ENTRY_PREFIX, gate):
+#            mmu.gate_maps.set_gate_status(gate, GATE_UNKNOWN)
+#            mmu.log_warning("Filament detected by mmu entry %d sensor but did not complete preload" % gate)
+#        else:
+#            mmu.gate_maps.set_gate_status(gate, GATE_EMPTY)
+#            raise MmuError("Filament not detected")
+#
+#
+#    def eject(self, gate):
+#        """
+#        Fully eject filament from a gate so it can be removed safely
+#        """
+#        lgate = self.local_gate(gate, False)
+#        mmu = self.mmu
+#
+#        can_eject = self.can_async_eject(gate)
+#        if can_eject is not True:
+#            raise MmuError(f"Not possible to eject filament right now: {can_eject}")
+#
+#        mmu.log_always("Ejecting...")
+#        if (
+#            mmu.sensor_manager.has_gate_sensor(SENSOR_EXIT_PREFIX, gate) and
+#            mmu.sensor_manager.check_gate_sensor(SENSOR_EXIT_PREFIX, gate)
+#        ):
+#            endstop_name = mmu.sensor_manager.get_gate_sensor_name(SENSOR_EXIT_PREFIX, gate)
+#            msg = "Reverse homing off %s sensor" % endstop_name
+#            actual, homed = self._home_gear_motor(lgate, msg, -self.p.gate_homing_max, homing_move=-1, endstop_name=endstop_name)
+#            if homed:
+#                self.log_debug("Endstop %s reached after %.1fmm" % (endstop_name, actual))
+#            else:
+#                raise MmuError("Filament did not exit gate homing sensor: %s" % endstop_name)
+#
+#        if self.p.gate_final_eject_distance > 0:
+#            msg = "Ejecting filament out of gate"
+#            if self.sensor_manager.check_gate_sensor(SENSOR_ENTRY_PREFIX, gate) is not None:
+#                # Use homing move so we don't "over eject"
+#                self._home_gear_motor(lgate, msg, -self.p.gate_final_eject_distance, homing_move=-1, endstop_name=SENSOR_ENTRY_PREFIX)
+#            else:
+#                self._move_gear_motor(lgate, msg, -self.p.gate_final_eject_distance)
+#
+#        mmu.gate_maps.set_gate_status(gate, GATE_EMPTY)
+#        mmu.log_always("The filament in gate %d can be removed" % gate)
+#
+#
+#    def _move_gear_motor(self, lgate, msg, move):
+#        mmu.log_warning(f"TODO: move_gear_motor(lgate={lgate}, msg={msg}, move={move}")
+#        # TODO future impl with no-toolhead logic
+#
+#
+#    def _home_gear_motor(self, lgate, msg, move, homing_move, endstop_name):
+#        mmu.log_warning(f"TODO: home_gear_motor(lgate={lgate}, msg={msg}, move={move}, homing_move={homing_move}, endstop_name={endstop_name})")
+#        # TODO future impl with no-toolhead logic
 
 
 # -----------------------------------------------------------------------------------------------------------

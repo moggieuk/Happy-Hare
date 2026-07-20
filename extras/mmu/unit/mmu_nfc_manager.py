@@ -38,7 +38,7 @@ from ..mmu_utils         import MmuError
 from .nfc.mmu_nfc_reader import MmuNfcReader
 from .nfc.mmu_nfc_endstop import MmuNfcEndstop
 
-NFC_CHECK_INTERVAL = 2.0   # How often to poll the shared NFC reader (seconds)
+NFC_CHECK_INTERVAL = 1.0   # How often to poll the shared NFC reader (seconds)
 NFC_READ_TIMEOUT   = 0.1   # Per-poll reader read timeout (seconds) - keep small; runs on reactor thread
 NFC_TAG_HOLD_TIME  = 5.0   # Cooldown after acting on a tag before reading again (seconds)
 
@@ -196,6 +196,21 @@ class MmuNfcManager:
         return uid
 
 
+    def clear_gate_reader(self, gate):
+        """
+        Drop the sticky last-read UID and release any held target on the per-gate
+        reader so the next read reflects a fresh, live detection rather than a
+        stale selection from a previous operation. Safe if no reader is configured.
+        """
+        reader = self._reader_for(gate=gate)
+        if reader is None:
+            return
+        try:
+            reader.clear_uid()
+        except Exception as e:
+            self.mmu.log_error("NFC: clear error on reader '%s': %s" % (getattr(reader, 'name', '?'), str(e)))
+
+
     #
     # Per-reader enable/active control and manual operations (used by MMU_NFC) ---
     #
@@ -246,6 +261,24 @@ class MmuNfcManager:
             lg = self._local_index(gate)
             if lg is not None:
                 self.gate_active[lg] = value
+
+
+    def snapshot_active(self):
+        """Capture the current active flags (shared + per-gate) as an opaque token
+        for save/restore around an exclusive operation (e.g. an NFC jog-scan)."""
+        return (self.shared_active, list(self.gate_active))
+
+
+    def restore_active(self, snapshot):
+        """Restore active flags previously captured by snapshot_active()."""
+        self.shared_active = snapshot[0]
+        self.gate_active = list(snapshot[1])
+
+
+    def deactivate_all(self):
+        """Set the shared reader and every per-gate reader inactive (soft guard)."""
+        self.shared_active = False
+        self.gate_active = [False] * len(self.gate_active)
 
 
     def init_reader(self, shared=False, gate=None):
