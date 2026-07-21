@@ -29,7 +29,9 @@ class MmuCommand(BaseCommand):
         + "ENABLE = [0|1]\n"
     )
     HELP_SUPPLEMENT = (
-        ""  # add examples here if desired
+        "Examples:\n"
+        + f"{CMD} ENABLE=1 ...Enable Happy Hare and reset MMU state\n"
+        + f"{CMD} ENABLE=0 ...Disable Happy Hare (motors released, no MMU operations possible)\n"
     )
 
     def __init__(self, mmu):

@@ -30,7 +30,10 @@ class MmuPauseCommand(BaseCommand):
         + "FORCE_IN_PRINT = [0|1]\n"
     )
     HELP_SUPPLEMENT = (
-        ""  # add examples here if desired
+        "Examples:\n"
+        + f'{CMD}                          ...Pause the MMU and enter the error/recovery state\n'
+        + f'{CMD} MSG="Filament tangle"    ...Pause with a custom reason shown to the user\n'
+        + f'{CMD} FORCE_IN_PRINT=1         ...Pause using in-print behaviour even when not detected as printing\n'
     )
 
     def __init__(self, mmu):

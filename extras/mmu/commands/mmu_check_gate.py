@@ -34,7 +34,11 @@ class MmuCheckGateCommand(BaseCommand):
         + "ALL    = [0|1]\n"
     )
     HELP_SUPPLEMENT = (
-        ""  # add examples here if desired
+        "Examples:\n"
+        + f"{CMD}             ...Check the current gate\n"
+        + f"{CMD} ALL=1       ...Check every gate and update availability\n"
+        + f"{CMD} GATES=0,2,4 ...Check gates 0, 2 and 4\n"
+        + f"{CMD} TOOL=1      ...Check the gate mapped to tool 1\n"
     )
 
     def __init__(self, mmu):

@@ -30,7 +30,10 @@ class MmuTestGripCommand(BaseCommand):
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
     )
-    HELP_SUPPLEMENT = ""  # Simple test command
+    HELP_SUPPLEMENT = (
+        "Examples:\n"
+        + f"{CMD} ...Exercise the filament grip/servo for the current tool to verify operation\n"
+    )
 
     def __init__(self, mmu):
         super().__init__(mmu)

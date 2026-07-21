@@ -31,7 +31,10 @@ class MmuLogCommand(BaseCommand):
         + "DEBUG = [0|1]\n"
     )
     HELP_SUPPLEMENT = (
-        ""  # add examples here if desired
+        "Examples:\n"
+        + f'{CMD} MSG="Loading complete"         ...Write an informational message to console and mmu.log\n'
+        + f'{CMD} MSG="Gate 3 is empty" ERROR=1  ...Write an error message\n'
+        + f'{CMD} MSG="entering load sequence" DEBUG=1 ...Write a debug-level message (only shown when debugging enabled)\n'
     )
 
     def __init__(self, mmu):

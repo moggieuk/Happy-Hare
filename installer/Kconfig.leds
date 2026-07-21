@@ -103,8 +103,8 @@ if MMU_HAS_LEDS
 
       config PARAM_EXIT_LEDS
         prompt "Exit leds       "
-        generated_default "neopixel:$(UNIT_NAME)_gate{iter}_leds (1-%d)" "PARAM_NUM_GATES" "; " 0 PARAM_NUM_GATES if MMU_HAS_PER_GATE_MCU
-        generated_default "neopixel:$(UNIT_NAME)_leds (1-%d)" "PARAM_NUM_GATES"
+        generated_default "neopixel:_$(UNIT_NAME)_gate{iter}_leds (1-%d)" "PARAM_NUM_GATES" "; " 0 PARAM_NUM_GATES if MMU_HAS_PER_GATE_MCU
+        generated_default "neopixel:_$(UNIT_NAME)_leds (1-%d)" "PARAM_NUM_GATES"
 
       config PARAM_ENTRY_LEDS
         prompt "Entry leds      "

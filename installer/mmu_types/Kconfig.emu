@@ -126,19 +126,19 @@ if MMU_TYPE_EMU_1_0
   
   if BOARD_TYPE_SLB_1_0
     config PARAM_ENTRY_LEDS
-      generated_default "neopixel:$(UNIT_NAME)_gate{iter}_box (1)" "" "; " PARAM_NUM_GATES
+      generated_default "neopixel:_$(UNIT_NAME)_gate{iter}_box (1)" "" "; " PARAM_NUM_GATES
 
     config PARAM_EXIT_LEDS
-      generated_default "neopixel:$(UNIT_NAME)_gate{iter}_leds (1,2,3,4)" "" "; " PARAM_NUM_GATES
+      generated_default "neopixel:_$(UNIT_NAME)_gate{iter}_leds (1,2,3,4)" "" "; " PARAM_NUM_GATES
 
   endif
 
   if BOARD_TYPE_EBB_1_0
     config PARAM_ENTRY_LEDS
-      generated_default "neopixel:$(UNIT_NAME)_gate{iter}_leds (5)" "" "; " PARAM_NUM_GATES
+      generated_default "neopixel:_$(UNIT_NAME)_gate{iter}_leds (5)" "" "; " PARAM_NUM_GATES
 
     config PARAM_EXIT_LEDS
-      generated_default "neopixel:$(UNIT_NAME)_gate{iter}_leds (1,2,3,4)" "" "; " PARAM_NUM_GATES
+      generated_default "neopixel:_$(UNIT_NAME)_gate{iter}_leds (1,2,3,4)" "" "; " PARAM_NUM_GATES
     
   endif
 

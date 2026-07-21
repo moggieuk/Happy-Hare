@@ -705,14 +705,15 @@ class MmuFilamentMovement:
         """
         u = self.mmu_unit()
         self.log_trace_entry(f"_load_bowden(length={length}, start_pos={start_pos})")
-
-        full = (length is None)
+       
         bowden_length = u.calibrator.get_bowden_length()
         if length is None:
             length = bowden_length
 
         if bowden_length > 0 and not self.calibrating:
             length = min(length, bowden_length) # Cannot exceed calibrated distance
+
+        full = length == bowden_length
 
         # Compensate for distance already moved for gate homing endstop (e.g. overshoot after encoder based gate homing)
         length -= start_pos

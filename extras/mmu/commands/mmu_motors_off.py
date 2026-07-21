@@ -32,7 +32,10 @@ class MmuMotorsOffCommand(BaseCommand):
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
     )
-    HELP_SUPPLEMENT = ""
+    HELP_SUPPLEMENT = (
+        "Examples:\n"
+        + f"{CMD} ...Turn off all MMU motors and servos so the mechanism can be moved by hand\n"
+    )
 
     def __init__(self, mmu):
         super().__init__(mmu)

@@ -29,7 +29,8 @@ class MmuUnlockCommand(BaseCommand):
         + "(no parameters)\n"
     )
     HELP_SUPPLEMENT = (
-        ""  # add examples here if desired
+        "Examples:\n"
+        + f"{CMD} ...Wake the MMU after an error/pause to restore heater temperatures and timeouts prior to resume\n"
     )
 
     def __init__(self, mmu):

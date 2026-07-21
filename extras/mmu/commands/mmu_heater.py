@@ -50,14 +50,14 @@ class MmuHeaterCommand(BaseCommand):
         "Examples:\n"
         + f"{CMD} TEMP=50                             ...Set heater temperature or adjusts if in drying cycle\n"
         + f"{CMD} DRY=1                               ...Dry with intelligent temperature/time recommended from 'drying_data'\n"
-        + f"{CMD} DRY=1 TEMP=50 TIMER=240 HUMIDITY=12 ...Initiate drying cycle at 50{UI_DEGREE}C for 240 minutes wirh 12% hummidity goal\n"
+        + f"{CMD} DRY=1 TEMP=50 TIMER=240 HUMIDITY=12 ...Initiate drying cycle at 50{UI_DEGREE}C for 240 minutes with 12% humidity goal\n"
         + f"{CMD} STOP=1                              ...Stop current drying cycle\n"
         + f"{CMD} DRY=1 ROTATE=1 GATES=1,3            ...Start drying cycle on gates 1 & 3 periodically rotating them (requires espooler)\n"
         + f"{CMD} DRYING_DATA=1                       ...List the current drying data database\n"
-        + f"{CMD} MMU_HEATER DRY=1 VENT_INTERVAL=10   ...Initiate drying cycle calling vent macro every 10 minutes\n"
+        + f"{CMD} DRY=1 VENT_INTERVAL=10              ...Initiate drying cycle calling vent macro every 10 minutes\n"
         + f"With per-gate heaters:\n"
-        + f"{CMD} MMU_HEATER DRY=1 GATES=0,2,3        ...Drying cycle on gates 0,2 & 3 (subject to max simultaneous heaters)\n"
-        + f"{CMD} MMU_HEATER TEMP=45 GATES=0,1        ...Turn heaters on for gates 0 & 1\n"
+        + f"{CMD} DRY=1 GATES=0,2,3                   ...Drying cycle on gates 0,2 & 3 (subject to max simultaneous heaters)\n"
+        + f"{CMD} TEMP=45 GATES=0,1                   ...Turn heaters on for gates 0 & 1\n"
     )
 
     def __init__(self, mmu):

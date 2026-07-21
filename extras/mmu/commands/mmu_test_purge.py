@@ -34,7 +34,10 @@ class MmuTestPurgeCommand(BaseCommand):
         + "EXTRUDER_ONLY       = 1 To prevent syncing with MMU\n"
     )
     HELP_SUPPLEMENT = (
-        ""  # add examples here if desired
+        "Examples:\n"
+        + f"{CMD}                          ...Run the standalone purge macro for the current tool\n"
+        + f"{CMD} LAST_TOOL=0 NEXT_TOOL=2  ...Purge using the volume calculated for a change from tool 0 to tool 2\n"
+        + f"{CMD} EXTRUDER_ONLY=1          ...Purge without syncing the MMU gear motor\n"
     )
 
     def __init__(self, mmu):

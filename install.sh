@@ -226,9 +226,15 @@ if [ -n "${CONFIG_KLIPPER_HOME+x}" ] && [ ! -d "${CONFIG_KLIPPER_HOME}" ]; then
 fi
 
 # Check if Kalico is installed (klippy/__init__.py contains APP_NAME = "Kalico")
-if [ -f "${CONFIG_KLIPPER_HOME}/klippy/__init__.py" ]; then
+if [ -d "${CONFIG_KLIPPER_HOME}" ]; then
+  kalico="${CONFIG_KLIPPER_HOME}/klippy/__init__.py"
+else
+  kalico="${HOME}/klipper/klippy/__init__.py"
+fi
+
+if [ -f ${kalico} ]; then
     if grep -q '^APP_NAME[[:space:]]*=[[:space:]]*"Kalico"' \
-        "${CONFIG_KLIPPER_HOME}/klippy/__init__.py" 2>/dev/null; then
+        "${kalico}" 2>/dev/null; then
         echo "${C_ERROR}ERROR: Kalico detected. Happy-Hare is not currently compatible with Kalico until Klipper motion-subsystem enhancements have been ported to Kalico.${C_OFF}" >&2
         exit 1
     fi

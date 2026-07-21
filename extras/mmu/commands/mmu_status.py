@@ -31,7 +31,10 @@ class MmuStatusCommand(BaseCommand):
         + "DETAIL     = [0|1]\n"
     )
     HELP_SUPPLEMENT = (
-        ""  # add examples here if desired
+        "Examples:\n"
+        + f"{CMD}              ...Show current MMU state (gates, tool, filament position)\n"
+        + f"{CMD} DETAIL=1     ...Show verbose status including per-gate detail\n"
+        + f"{CMD} SHOWCONFIG=1 ...Also display the key configuration values in use\n"
     )
 
     def __init__(self, mmu):

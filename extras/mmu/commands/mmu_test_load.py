@@ -33,7 +33,10 @@ class MmuTestLoadCommand(BaseCommand):
         + "LENGTH = #(float) Bowden move length (when FULL=0)\n"
     )
     HELP_SUPPLEMENT = (
-        ""  # add examples here if desired
+        "Examples:\n"
+        + f"{CMD}           ...Test load a short default distance from the gate\n"
+        + f"{CMD} LENGTH=50 ...Test load 50mm of bowden movement from the gate\n"
+        + f"{CMD} FULL=1    ...Test a full load from gate to the extruder\n"
     )
 
     def __init__(self, mmu):

@@ -34,7 +34,10 @@ class MmuTestTrackingCommand(BaseCommand):
         + "SENSITIVITY = #(float) Override the default/calibrated encoder resolution\n"
     )
     HELP_SUPPLEMENT = (
-        ""  # add examples here if desired
+        "Examples:\n"
+        + f"{CMD}                    ...Run the gear-feed vs encoder tracking test\n"
+        + f"{CMD} STEP=2             ...Sample the encoder every 2mm of filament movement\n"
+        + f"{CMD} DIRECTION=-1 STEP=1 ...Test tracking in the retract direction with 1mm steps\n"
     )
 
     def __init__(self, mmu):

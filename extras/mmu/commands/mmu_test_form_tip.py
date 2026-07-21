@@ -36,7 +36,11 @@ class MmuTestFormTipCommand(BaseCommand):
         + "(also accepts macro variable overrides; can use 'variable_' prefix or omit it)\n"
     )
     HELP_SUPPLEMENT = (
-        ""  # add examples here if desired
+        "Examples:\n"
+        + f"{CMD}               ...Run the standalone tip forming sequence for tuning\n"
+        + f"{CMD} SHOW=1        ...Display the current tip forming macro parameters\n"
+        + f"{CMD} EXTRUDER_ONLY=1 ...Form a tip without syncing the MMU gear motor\n"
+        + f"{CMD} RESET=1       ...Reset the tip forming macro parameters to their defaults\n"
     )
 
     def __init__(self, mmu):
