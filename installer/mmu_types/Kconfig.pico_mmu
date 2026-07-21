@@ -46,7 +46,7 @@ if MMU_TYPE_PICO_MMU_1_0
   config PARAM_GATE_HOMING_MAX
     default 100
   config PARAM_GATE_PARKING_DISTANCE
-    default 25
+    default -25
 
   comment "_"
 

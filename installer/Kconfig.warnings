@@ -42,7 +42,7 @@ config W4
     def_bool y if PARAM_GATE_HOMING_ENDSTOP = ""
 
 config W5
-    def_bool n # Spare
+    def_bool y if !CHOICE_GATE_HOMING_ENDSTOP_EXIT && (PARAM_GATE_PARKING_DISTANCE > 0 || (!CHOICE_GATE_PRELOAD_ENDSTOP_EXIT && PARAM_GATE_PRELOAD_PARKING_DISTANCE > 0))
 
 config W6
     def_bool y if MMU_HAS_LEDS && PIN_NEOPIXEL = "" && !MMU_HAS_PER_GATE_MCU && !CUSTOM_LED_SETUP
@@ -91,7 +91,7 @@ if SHOW_PER_UNIT_WARNINGS || SHOW_SHARED_WARNINGS
     comment "Unknown MCU board selected. You will need to configure all pins"     if W2
     comment "Toolhead type is 'other'. Are you sure yours is not listed?"         if W3
     comment "No gate homing endstop configured"                                   if W4
-    comment "-unused-"                                                            if W5
+    comment "Parking must be a retraction (<=0) unless gate endstop is mmu_exit"     if W5
     comment "Leds are enabled but no MCU pin defined"                             if W6
     comment "Fans are enabled but no MCU pin defined"                             if W7
     comment "Encoder is enabled but no MCU pin defined"                           if W8

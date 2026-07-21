@@ -101,22 +101,44 @@ class MmuUnitParameters(TunableParametersBase):
                 % (abs(neg), self.gate_homing_max)
             )
 
+    # Parking distance sign convention: -ve = retraction (toward the gate/gears), +ve =
+    # extrusion (forward, past the sensor). Parking forward past the sensor is only safe
+    # on the per-gate mmu_exit sensor; the shared mmu_shared_exit, encoder and
+    # extruder_entry endstops must park with a retraction.
+
+    def _validate_gate_parking_distance(self, value):
+        if value > 0 and self.gate_homing_endstop != SENSOR_EXIT_PREFIX:
+            raise ValueError(
+                "gate_parking_distance must be a retraction (<= 0) unless gate_homing_endstop "
+                "is '%s' (got %.1f with endstop '%s')"
+                % (SENSOR_EXIT_PREFIX, value, self.gate_homing_endstop))
+
+    def _validate_gate_preload_parking_distance(self, value):
+        endstop = self.gate_preload_endstop or self.gate_homing_endstop # '' inherits gate_homing_endstop
+        if value > 0 and endstop != SENSOR_EXIT_PREFIX:
+            raise ValueError(
+                "gate_preload_parking_distance must be a retraction (<= 0) unless the preload "
+                "endstop is '%s' (got %.1f with endstop '%s')"
+                % (SENSOR_EXIT_PREFIX, value, endstop))
+
 
     # ---- Specs ----
 
     _SPECS: Sequence[ParamSpec] = (
-        # Gate
+        # Gate loading
         ParamSpec('gate_homing_endstop',              'choice', SENSOR_ENCODER, section="GATE HOMING", choices={o: o for o in GATE_ENDSTOPS}, on_change=_on_gate_homing_endstop),
         ParamSpec('gate_homing_max',                  'float', 100.0, section="GATE HOMING", limits=dict(minval=10)),
-        ParamSpec('gate_parking_distance',            'float',  23.0, section="GATE HOMING"),
+        ParamSpec('gate_parking_distance',            'float', -10.0, section="GATE HOMING", validator=_validate_gate_parking_distance),
+        ParamSpec('gate_load_attempts',               'int',       1, section="GATE HOMING", limits=dict(minval=1, maxval=20)),
 
+        # Gate preloading
         ParamSpec('gate_preload_endstop',             'choice',   '', section="GATE HOMING", choices={o: o for o in (GATE_ENDSTOPS + [''])}),
         ParamSpec('gate_preload_homing_max',          'float', lambda self: self.gate_homing_max, section="GATE HOMING"),
-        ParamSpec('gate_preload_parking_distance',    'float', -10.0, section="GATE HOMING"),
+        ParamSpec('gate_preload_parking_distance',    'float', -10.0, section="GATE HOMING", validator=_validate_gate_preload_parking_distance),
         ParamSpec('gate_preload_attempts',            'int',       1, section="GATE HOMING", limits=dict(minval=1, maxval=20)),
-        ParamSpec('gate_endstop_to_encoder',          'float',   0.0, section="GATE HOMING", limits=dict(minval=0.0),           guard=_guard_encoder_offset),
-        ParamSpec('gate_load_retries',                'int',       1, section="GATE HOMING", limits=dict(minval=1, maxval=5)),
         ParamSpec('gate_autoload',                    'int',       1, section="GATE HOMING", limits=dict(minval=0, maxval=1)),
+
+        ParamSpec('gate_endstop_to_encoder',          'float',   0.0, section="GATE HOMING", limits=dict(minval=0.0),           guard=_guard_encoder_offset),
         ParamSpec('gate_final_eject_distance',        'float',   0.0, section="GATE HOMING"),
 
         # NFC/RFID. Filament travel window (mm) relative to the gate that MMU_NFC_SCAN may
