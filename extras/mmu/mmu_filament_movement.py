@@ -324,7 +324,7 @@ class MmuFilamentMovement:
         """
         One NFC-augmented gate-home attempt against the compound [gate switch, NFC reader].
         Forward-only. On a gate-first trigger, chase the tag forward within the +ve
-        nfc_read_window then re-home back to the gate switch; on an NFC-first trigger,
+        gate_nfc_jog_scan_window then re-home back to the gate switch; on an NFC-first trigger,
         continue to the gate switch. Reads the tag (deep if enabled) when found and applies
         it to the gate map. Leaves filament homed at the gate switch (does not park).
 
@@ -332,7 +332,7 @@ class MmuFilamentMovement:
             (homed, tag_read)
         """
         u = self.mmu_unit()
-        pos = max(0.0, u.p.nfc_read_window[1]) if len(u.p.nfc_read_window) == 2 else 0.0
+        pos = max(0.0, u.p.gate_nfc_jog_scan_window[1]) if len(u.p.gate_nfc_jog_scan_window) == 2 else 0.0
         tag_read = False
 
         # Phase 1: home to whichever of {gate switch, tag} arrives first
@@ -420,7 +420,7 @@ class MmuFilamentMovement:
         filament back in the gate. Works on gate_selected like _preload_gate; the
         caller (MMU_NFC_SCAN) owns gate selection and restoration.
 
-        The travel window is 'nfc_read_window' (neg, pos) mm from this unit's
+        The travel window is 'gate_nfc_jog_scan_window' (neg, pos) mm from this unit's
         parameters (per-unit because it is MMU geometry). The larger-magnitude
         direction is swept first (most likely to hit the tag); a 0 side is skipped.
 
@@ -432,13 +432,14 @@ class MmuFilamentMovement:
         """
         u = self.mmu_unit()
         gate = self.gate_selected
+        pre_scan_status = self.gate_status[gate] # Restored if a re-park fails (filament is still present)
 
-        window = u.p.nfc_read_window
+        window = u.p.gate_nfc_jog_scan_window
         if len(window) != 2 or window[0] > 0 or window[1] < 0:
-            raise MmuError("nfc_read_window must be (neg, pos) with neg <= 0 <= pos, got %s" % (window,))
+            raise MmuError("gate_nfc_jog_scan_window must be (neg, pos) with neg <= 0 <= pos, got %s" % (window,))
         neg, pos = window[0], window[1]
         if neg == 0 and pos == 0:
-            self.log_info("NFC scan: nfc_read_window is not configured for this unit - nothing to scan")
+            self.log_info("NFC scan: gate_nfc_jog_scan_window is not configured for this unit - nothing to scan")
             return False
 
         nfc_manager = u.nfc_manager
@@ -492,16 +493,24 @@ class MmuFilamentMovement:
 
                         # Re-park in the gate with robust homing, budgeting the jog dist.
                         # Both directions must end PARKED (gate_parking_distance), restoring
-                        # the filament to where the scan found it.
-                        if forward:
-                            # Filament is forward of the gate: reverse-home + park
-                            self._unload_gate(extra_homing=abs(actual))
-                        else:
-                            # Filament is behind the gate: home forward back to the gate,
-                            # then reverse-home + park (reuses the proven parking, incl.
-                            # encoder overshoot handling)
-                            self._load_gate(allow_retry=False)
-                            self._unload_gate()
+                        # the filament to where the scan found it. A re-park failure must not
+                        # leak a load/unload error (this is a scan) nor mislabel the gate:
+                        # _load_gate marks it EMPTY on failure, but the tag/filament is present.
+                        # Restore the pre-scan status and surface the failure in scan terms.
+                        try:
+                            if forward:
+                                # Filament is forward of the gate: reverse-home + park
+                                self._unload_gate(extra_homing=abs(actual))
+                            else:
+                                # Filament is behind the gate: home forward back to the gate,
+                                # then reverse-home + park (reuses the proven parking, incl.
+                                # encoder overshoot handling)
+                                self._load_gate(allow_retry=False)
+                                self._unload_gate()
+                        except MmuError as ee:
+                            self.gate_maps.set_gate_status(gate, pre_scan_status)
+                            self.log_debug("NFC scan gate %d: re-park failed, underlying error: %s" % (gate, str(ee)))
+                            raise MmuError("could not re-park filament in gate %d after scanning - check for a jam" % gate)
 
                         if found:
                             break

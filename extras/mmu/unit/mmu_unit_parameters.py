@@ -84,20 +84,20 @@ class MmuUnitParameters(TunableParametersBase):
 
     # ---- Validators ----
 
-    def _validate_nfc_read_window(self, value):
+    def _validate_gate_nfc_jog_scan_window(self, value):
         # Empty (or absent) disables MMU_NFC_SCAN
         if not value:
             return
         if len(value) != 2:
-            raise ValueError("nfc_read_window must be two values (neg, pos), e.g. 0,480")
+            raise ValueError("gate_nfc_jog_scan_window must be two values (neg, pos), e.g. 0,480")
         neg, pos = value[0], value[1]
         if neg > 0 or pos < 0:
-            raise ValueError("nfc_read_window must be (neg, pos) with neg <= 0 <= pos")
+            raise ValueError("gate_nfc_jog_scan_window must be (neg, pos) with neg <= 0 <= pos")
         # The backward jog re-parks via _load_gate(), which homes back to the gate within
         # gate_homing_max, so the backward reach cannot exceed that budget
         if abs(neg) > self.gate_homing_max:
             raise ValueError(
-                "nfc_read_window backward reach (%.1fmm) cannot exceed gate_homing_max (%.1fmm)"
+                "gate_nfc_jog_scan_window backward reach (%.1fmm) cannot exceed gate_homing_max (%.1fmm)"
                 % (abs(neg), self.gate_homing_max)
             )
 
@@ -137,15 +137,11 @@ class MmuUnitParameters(TunableParametersBase):
         ParamSpec('gate_preload_parking_distance',    'float', -10.0, section="GATE HOMING", validator=_validate_gate_preload_parking_distance),
         ParamSpec('gate_preload_attempts',            'int',       1, section="GATE HOMING", limits=dict(minval=1, maxval=20)),
         ParamSpec('gate_autoload',                    'int',       1, section="GATE HOMING", limits=dict(minval=0, maxval=1)),
+        ParamSpec('gate_nfc_jog_scan_window',         'floatlist', [0.0, 0.0], section="NFC", validator=_validate_gate_nfc_jog_scan_window),
 
         ParamSpec('gate_endstop_to_encoder',          'float',   0.0, section="GATE HOMING", limits=dict(minval=0.0),           guard=_guard_encoder_offset),
         ParamSpec('gate_final_eject_distance',        'float',   0.0, section="GATE HOMING"),
 
-        # NFC/RFID. Filament travel window (mm) relative to the gate that MMU_NFC_SCAN may
-        # jog to bring a spool's tag to the gate's reader. (neg, pos) with neg <= 0 <= pos,
-        # e.g. 0,480 = up to 480mm forward of the gate; -100,200 = 100mm back to 200mm forward.
-        # Per-unit because it depends on each MMU's physical geometry. Empty/0,0 disables scan.
-        ParamSpec('nfc_read_window',                  'floatlist', [0.0, 0.0], section="NFC", validator=_validate_nfc_read_window),
 
         # Bowden
         ParamSpec('bowden_homing_max',                'float',2000.0, section="BOWDEN MOVE", limits=dict(minval=100.0)),
