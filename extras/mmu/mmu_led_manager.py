@@ -25,6 +25,10 @@ from .unit.mmu_leds import MmuLeds
 
 
 class MmuLedManager:
+
+    # Functional effects _set_led renders directly (no [mmu_led_effect] / RGB fallback needed)
+    FUNCTIONAL_EFFECTS = ('off', 'on', 'gate_status', 'filament_color', 'slicer_color')
+
     def __init__(self, mmu):
         self.mmu = mmu
         self.mmu_machine = mmu.mmu_machine
@@ -32,6 +36,7 @@ class MmuLedManager:
         self.inside_timer = False
         self.pending_update = [False] * self.mmu_machine.num_units
         self.effect_state = {} # Current state used to minimise updates {unit: {segment: effect}}
+        self.transient_prior = {} # Snapshot of pre-override effect for restore='prior' {(unit, segment, gate): effect}
         self._initialized = False # Used to prevent very early calls before leds are fully initialized
 
         # Event handlers
@@ -305,6 +310,92 @@ class MmuLedManager:
         if leds:
             return leds.get_effect(operation)
         return ''
+
+
+    # Generic, feature-agnostic transient LED override -----------------------------
+    #
+    # These let a feature (e.g. NFC scanning) briefly drive a segment through the
+    # normal LED pipeline without the LED module knowing anything about the feature.
+    # The caller owns what the effect is and when to apply/restore it.
+
+    def set_transient_effect(self, mmu_unit, effect, segment='exit',
+                             gate=None, duration=None, fadetime=0):
+        """
+        Apply a caller-owned effect to one segment via the normal LED pipeline.
+
+        'effect' is a resolved value understood by _set_led: a named
+        [mmu_led_effect], an "r,g,b" colour, or a functional effect
+        (off/on/gate_status/filament_color/slicer_color). Segment availability,
+        gate ownership, animation-vs-static handling and (with 'duration') timed
+        restoration to default are all handled by _set_led.
+
+        Pass duration=None for a persistent override (end it with
+        restore_transient_effect); pass a duration for a self-restoring flash.
+        A persistent override snapshots the segment's current effect so it can be
+        put back by restore_transient_effect(restore='prior'); the snapshot is
+        first-wins per (unit, segment, gate) so stacking overrides (e.g. a forward
+        then a backward scan chase) keep the true pre-override baseline.
+
+        Returns True if dispatched, else False (no/disabled leds, bad segment, or a
+        named effect with no static RGB fallback while animation is off).
+        """
+        if mmu_unit is None or not effect:
+            return False
+        segment = (segment or 'exit').strip().lower()
+        if segment not in MmuLeds.SEGMENTS:
+            return False
+        leds = mmu_unit.leds
+        if leds is None or not leds.enabled:
+            return False
+        # In static (non-animation) mode a bare named effect needs an RGB fallback to
+        # render; RGB literals and functional effects are always renderable by _set_led,
+        # so only reject an unmapped *named* effect.
+        is_rgb = isinstance(effect, tuple) or (isinstance(effect, str) and ',' in effect)
+        if (not leds.animation and not is_rgb
+                and effect not in self.FUNCTIONAL_EFFECTS
+                and effect not in leds.get_effect_names()):
+            logging.warning("MMU: LED effect '%s' has no static RGB mapping for unit %s"
+                            % (effect, mmu_unit.name))
+            return False
+        # First-wins snapshot of what was showing so restore='prior' can put it back.
+        # effect_state records the resolved per-segment effect; a duration flash resets
+        # the whole unit to default via the timer instead, so only snapshot for a
+        # persistent (duration=None) override.
+        if duration is None:
+            key = (mmu_unit.unit_index, segment, gate if (gate is not None and gate >= 0) else None)
+            if key not in self.transient_prior:
+                self.transient_prior[key] = self.effect_state.get(mmu_unit.unit_index, {}).get(segment, 'default')
+        self._set_led(mmu_unit.unit_index, gate, duration=duration, fadetime=fadetime,
+                      **{'%s_effect' % segment: effect})
+        return True
+
+
+    def restore_transient_effect(self, mmu_unit, segment='exit', gate=None, fadetime=0, restore='prior'):
+        """
+        End a persistent (duration=None) transient override on a segment/gate.
+        Duration-based flashes restore themselves (whole-unit reset to default via the
+        led timer) and need no explicit restore.
+
+        restore='prior' (default) puts back the effect that was showing before the
+        override (snapshotted at set_transient_effect time); it falls back to 'default'
+        when there is no snapshot. restore='default' forces the configured MMU default
+        regardless of what was there.
+
+        For the current NFC callers 'prior' and 'default' coincide (scans run under
+        ACTION_CHECKING, whose baseline is 'default'), but 'prior' keeps this primitive
+        safe for any caller that overrides while a non-default effect is active.
+        """
+        if mmu_unit is None:
+            return False
+        segment = (segment or 'exit').strip().lower()
+        if segment not in MmuLeds.SEGMENTS:
+            return False
+        key = (mmu_unit.unit_index, segment, gate if (gate is not None and gate >= 0) else None)
+        prior = self.transient_prior.pop(key, None)
+        target = prior if (restore == 'prior' and prior is not None) else 'default'
+        self._set_led(mmu_unit.unit_index, gate, fadetime=fadetime,
+                      **{'%s_effect' % segment: target})
+        return True
 
 
     # Make the necessary configuration changes to LED accross all mmu_units
