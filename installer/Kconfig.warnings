@@ -25,7 +25,7 @@ config SW3
 config SHOW_PER_UNIT_WARNINGS
   bool
   depends on !MULTI_UNIT_ENTRY_POINT
-  @repeat var=i min=1 max=15@
+  @repeat var=i min=1 max=16@
     default y if W$(i)
   @endrepeat@
 
@@ -74,6 +74,9 @@ config W14
 config W15
     def_bool y if MMU_HAS_SYNC_FEEDBACK_BUFFER && !MMU_SHARED_SYNC_FEEDBACK_BUFFER && !(MMU_HAS_SENSOR_BUFFER_TENSION || MMU_HAS_SENSOR_BUFFER_COMPRESSION || MMU_HAS_SENSOR_BUFFER_PROPORTIONAL)
 
+config W16
+    def_bool y if MMU_HAS_SYNC_FEEDBACK_BUFFER && !MMU_SHARED_SYNC_FEEDBACK_BUFFER && (MMU_HAS_SENSOR_BUFFER_TENSION || MMU_HAS_SENSOR_BUFFER_COMPRESSION) && MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
+
 
 
 if SHOW_PER_UNIT_WARNINGS || SHOW_SHARED_WARNINGS
@@ -81,7 +84,7 @@ if SHOW_PER_UNIT_WARNINGS || SHOW_SHARED_WARNINGS
   comment "_Config Warnings / Errors"
 
   if SHOW_SHARED_WARNINGS
-    comment "Caution. You opted to not install client macros [Software Options]"  if SW1
+    comment "Caution: You opted to not install client macros [Software Options]"  if SW1
     comment "Toolhead sensor is enabled but no MCU pin defined"                   if SW2
     comment "Extruder sensor is enabled but no MCU pin defined"                   if SW3
   endif
@@ -102,5 +105,6 @@ if SHOW_PER_UNIT_WARNINGS || SHOW_SHARED_WARNINGS
     comment "MMU heater is enabled but heater name(s) not defined"                if W13
     comment "MMU environment sensor is enabled but sensor name(s) not defined"    if W14
     comment "Sync-feedback buffer configured but it had no sensors defined"       if W15
+    comment "Warning: Sync-feedback buffer configured with both analog and digital inputs" if W16
   endif
 endif

@@ -2150,7 +2150,7 @@ class MmuFilamentMovement:
                     # Fast unload of bowden, then unload gate
                     bowden_move_ratio, gate_homing_buffer = self._unload_bowden(bowden_move, ext_unload_overshoot)
                     homing_movement = self._unload_gate(gate_homing_buffer)
-                    bowden_travel = bowden_move - gate_homing_buffer + homing_movement
+                    bowden_travel = bowden_move - gate_homing_buffer - homing_movement
 
                     # Notify autotune manager
                     if full:
