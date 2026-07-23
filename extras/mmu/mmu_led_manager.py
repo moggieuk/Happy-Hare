@@ -4,9 +4,21 @@
 # Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
-# Goal: Manager class to centralize mmu_led operations accross all mmu_units
+# Goal: Manager class to centralize mmu_led operations across all mmu_units
+# 
+# One per-machine manager reacts to action / print-state / gate-map changes and drives each
+# unit's LED segments (exit, entry, status, logo). All rendering funnels through _set_led(),
+# which resolves an "effect" — a named [mmu_led_effect] animation, an "r,g,b" color, or a
+# functional effect (off/on/gate_status/filament_color/slicer_color) — and, in static mode,
+# falls back to a plain RGB. A timed effect (duration=) auto-returns that unit to its default
+# via a per-unit timer (per-unit so a flash on one unit never disturbs another).
+# 
+# On top of that baseline, set_transient_effect()/restore_transient_effect() provide a
+# feature-agnostic "overlay then put back" API: a caller (e.g. NFC scanning) can temporarily
+# override one segment and later restore what was showing (restore='prior', snapshotted at
+# set time). This keeps feature-specific LED policy in the caller, not in this module.
 #
-# Implements commands:
+# Supports commands:
 #   MMU_SET_LED
 #   MMU_LED
 #
@@ -17,6 +29,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
+import functools
 import logging
 
 # Happy Hare imports
@@ -33,8 +46,10 @@ class MmuLedManager:
         self.mmu = mmu
         self.mmu_machine = mmu.mmu_machine
 
-        self.inside_timer = False
-        self.pending_update = [False] * self.mmu_machine.num_units
+        num_units = self.mmu_machine.num_units
+        self.inside_timer = [False] * num_units    # Per-unit re-entrancy guard for its led timer
+        self.pending_update = [False] * num_units
+        self.led_timers = [None] * num_units       # Per-unit "return to default" timers (registered at ready)
         self.effect_state = {} # Current state used to minimise updates {unit: {segment: effect}}
         self.transient_prior = {} # Snapshot of pre-override effect for restore='prior' {(unit, segment, gate): effect}
         self._initialized = False # Used to prevent very early calls before leds are fully initialized
@@ -48,24 +63,37 @@ class MmuLedManager:
 
 
     def setup_led_timer(self):
-        self.led_timer = self.mmu.reactor.register_timer(self.led_timer_handler, self.mmu.reactor.NEVER)
+        # A separate timer per unit so a timed effect on one unit cannot reset or cut short
+        # the LEDs on another - each unit owns its own "return to default" schedule.
+        for unit in range(self.mmu_machine.num_units):
+            self.led_timers[unit] = self.mmu.reactor.register_timer(
+                functools.partial(self.led_timer_handler, unit), self.mmu.reactor.NEVER)
 
 
-    def led_timer_handler(self, eventtime):
-        self.inside_timer = True
+    def led_timer_handler(self, unit, eventtime):
+        self.inside_timer[unit] = True
         try:
-            for unit in range(self.mmu_machine.num_units):
-                self.pending_update[unit] = False
-                self._set_led(unit, None, exit_effect='default', entry_effect='default', status_effect='default', logo_effect='default')
+            self.pending_update[unit] = False
+            self._set_led(unit, None, exit_effect='default', entry_effect='default', status_effect='default', logo_effect='default')
+            # This reset returns this unit's segments to their default, so its persistent-
+            # override snapshots are now moot - drop them to avoid a stale restore='prior'
+            # later resurrecting a baseline over whatever is showing.
+            self._clear_transient_prior(unit)
         finally:
-            self.inside_timer = False
+            self.inside_timer[unit] = False
         return self.mmu.reactor.NEVER
 
 
+    def _clear_transient_prior(self, unit):
+        # Drop persistent-override snapshots for a single unit (keys are (unit, segment, gate))
+        for key in [k for k in self.transient_prior if k[0] == unit]:
+            del self.transient_prior[key]
+
+
     def schedule_led_command(self, duration, unit):
-        if not self.inside_timer:
+        if not self.inside_timer[unit]:
             self.pending_update[unit] = True
-            self.mmu.reactor.update_timer(self.led_timer, self.mmu.reactor.monotonic() + duration)
+            self.mmu.reactor.update_timer(self.led_timers[unit], self.mmu.reactor.monotonic() + duration)
 
 
     # Called when an action has changed to update LEDs
@@ -312,12 +340,6 @@ class MmuLedManager:
         return ''
 
 
-    # Generic, feature-agnostic transient LED override -----------------------------
-    #
-    # These let a feature (e.g. NFC scanning) briefly drive a segment through the
-    # normal LED pipeline without the LED module knowing anything about the feature.
-    # The caller owns what the effect is and when to apply/restore it.
-
     def set_transient_effect(self, mmu_unit, effect, segment='exit',
                              gate=None, duration=None, fadetime=0):
         """
@@ -347,6 +369,7 @@ class MmuLedManager:
         leds = mmu_unit.leds
         if leds is None or not leds.enabled:
             return False
+
         # In static (non-animation) mode a bare named effect needs an RGB fallback to
         # render; RGB literals and functional effects are always renderable by _set_led,
         # so only reject an unmapped *named* effect.
@@ -354,9 +377,9 @@ class MmuLedManager:
         if (not leds.animation and not is_rgb
                 and effect not in self.FUNCTIONAL_EFFECTS
                 and effect not in leds.get_effect_names()):
-            logging.warning("MMU: LED effect '%s' has no static RGB mapping for unit %s"
-                            % (effect, mmu_unit.name))
+            logging.warning("MMU: LED effect '%s' has no static RGB mapping for unit %s" % (effect, mmu_unit.name))
             return False
+
         # First-wins snapshot of what was showing so restore='prior' can put it back.
         # effect_state records the resolved per-segment effect; a duration flash resets
         # the whole unit to default via the timer instead, so only snapshot for a
@@ -377,13 +400,13 @@ class MmuLedManager:
         led timer) and need no explicit restore.
 
         restore='prior' (default) puts back the effect that was showing before the
-        override (snapshotted at set_transient_effect time); it falls back to 'default'
-        when there is no snapshot. restore='default' forces the configured MMU default
-        regardless of what was there.
+        override (snapshotted at set_transient_effect time). If there is no snapshot -
+        because nothing was overridden, or the override was already superseded/cleared
+        (e.g. the led timer reset the unit) - it is a NO-OP and leaves the display
+        untouched, so it never stomps a newer effect. restore='default' unconditionally
+        forces the configured MMU default (explicit reset escape hatch).
 
-        For the current NFC callers 'prior' and 'default' coincide (scans run under
-        ACTION_CHECKING, whose baseline is 'default'), but 'prior' keeps this primitive
-        safe for any caller that overrides while a non-default effect is active.
+        Returns True if it repainted, else False (no matching override to restore).
         """
         if mmu_unit is None:
             return False
@@ -392,7 +415,12 @@ class MmuLedManager:
             return False
         key = (mmu_unit.unit_index, segment, gate if (gate is not None and gate >= 0) else None)
         prior = self.transient_prior.pop(key, None)
-        target = prior if (restore == 'prior' and prior is not None) else 'default'
+        if restore == 'prior':
+            if prior is None:
+                return False # No live override of ours - don't touch the current display
+            target = prior
+        else:
+            target = 'default'
         self._set_led(mmu_unit.unit_index, gate, fadetime=fadetime,
                       **{'%s_effect' % segment: target})
         return True
