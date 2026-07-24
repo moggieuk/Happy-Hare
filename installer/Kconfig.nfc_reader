@@ -6,6 +6,10 @@
 # MMU_HAS_SHARED_NFC_READER
 # MMU_HAS_PER_GATE_NFC_READERS
 #
+# PARAM_NFC_DEEP_READ
+# PARAM_NFC_GATE_JOG_SCAN_WINDOW
+# PARAM_NFC_LED_SEGMENT
+#
 # Shared:
 #   PARAM_NFC_READER
 #
@@ -309,6 +313,48 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
       endif # per gate
 
     endif # not shared
+
+  endmenu
+
+
+  # -------------------------------------
+  # NFC/RFID related params
+  # -------------------------------------
+
+  menu "NFC/RFID params"
+    config BOOL_NFC_DEEP_READ
+      bool "RFID deep metadata read"
+      default y
+      help
+        If you have NFC readers configured you can have Happy Hare read the filament data stored on
+        supported spool tags (Bambu, Creality, OpenSpool, OpenTag, etc). A "deep read" parses the full tag (material, color,
+        vendor, temperatures) instead of just the UID, and uses it to populate the local gate map when a tag is presented.
+        Optionally, if a scanned tag's UID isn't yet known to Spoolman, a new spool can be created automatically from the tag.
+
+    config PARAM_NFC_DEEP_READ
+      int
+      default 1 if BOOL_NFC_DEEP_READ
+      default 0
+_
+    config PARAM_NFC_GATE_JOG_SCAN_WINDOW
+      string "NFC reader jog scan window"
+      default "-50, 50"
+      array_editor "," 2
+      help
+        When the filament is parked in the gate this represents the maximum filament move in the retract and extrude
+        direction that is safely possible when searching for the RFID tag. To be sure to allow for complete spool
+        rotation this range should be at least 480mm if possible.
+        E.g. "-100, 400" means can retract -100mm and extruder 400mm.  "0, 0" will disable jog scan operation
+
+# PAUL convert to option list
+    config PARAM_NFC_LED_SEGMENT
+      string "NFC reader led feedback segment"
+      default ""
+      help
+        NFC reader LED feedback: which segment the shared-reader lookup effects render on.
+        '' = auto ('status' for a shared/bypass reader, 'exit' for a per-gate reader). The
+        effects themselves are mapped per operation in [mmu_leds] (effect_nfc_*), matching
+        the convention used for loading/gate_status/etc., so the LED module stays agnostic.
 
   endmenu
 endif

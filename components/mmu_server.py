@@ -901,6 +901,7 @@ class MmuServer:
                     return False
                 spool_id = self.uid_to_spool_id.get(uid_norm)
 
+            created = False
             if spool_id is None and save and metadata and metadata.get("material"):
                 # Tag isn't registered but carried usable filament metadata and
                 # auto-create is enabled: build the vendor/filament/spool now and
@@ -916,6 +917,7 @@ class MmuServer:
                     self.uid_miss_cache.pop(uid_norm, None)
                     await self._log_n_send(f"NFC: created Spoolman spool {new_id} for new tag {uid_norm}", silent=silent)
                     spool_id = new_id
+                    created = True
 
             if spool_id is None:
                 # Remember the miss for a while and prune any expired entries
@@ -937,10 +939,12 @@ class MmuServer:
 
             # Hand the resolved spool back to Happy Hare (which releases the guard).
             if self._mmu_backend_enabled():
+                # CREATED=1 lets Happy Hare log that this tag minted a new spool record
+                created_flag = ' CREATED=1' if created else ''
                 if gate is None:
-                    cmd = f"MMU_GATE_MAP NEXT_SPOOLID={spool_id} QUIET=1"
+                    cmd = f"MMU_GATE_MAP NEXT_SPOOLID={spool_id}{created_flag} QUIET=1"
                 else:
-                    cmd = f"MMU_GATE_MAP GATE={gate} SPOOLID={spool_id} QUIET=1"
+                    cmd = f"MMU_GATE_MAP GATE={gate} SPOOLID={spool_id}{created_flag} QUIET=1"
                 try:
                     await self.klippy_apis.run_gcode(cmd)
                 except Exception as e:

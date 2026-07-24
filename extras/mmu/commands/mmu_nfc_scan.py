@@ -29,7 +29,7 @@ class MmuNfcScanCommand(BaseCommand):
         + "GATE = #(int) Gate to scan (default: current gate)\n"
     )
     HELP_SUPPLEMENT = (
-        "Jogs the filament within the unit's 'gate_nfc_jog_scan_window' until the spool's\n"
+        "Jogs the filament within the unit's 'nfc_gate_jog_scan_window' until the spool's\n"
         "RFID tag reaches the gate's reader, reads it, then re-parks the filament.\n"
         "Examples:\n"
         + f"{CMD}        ...Scan the RFID/NFC tag on the current gate\n"

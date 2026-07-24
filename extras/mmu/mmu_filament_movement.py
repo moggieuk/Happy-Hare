@@ -56,7 +56,7 @@ class MmuFilamentMovement:
 # GATE LOADING LOGIC
 # -----------------------------------------------------------------------------------------------------------
 
-    def _preload_gate(self):
+    def _preload_gate(self, pending=None):
         """
         Preload filament at the selected gate: home into the gate - reading the spool's
         NFC tag at the same time when a per-gate reader is present - then park at the
@@ -66,6 +66,10 @@ class MmuFilamentMovement:
         core with the gate_preload_* parameter set and NFC reading enabled, then parks via
         _unload_gate() (the same proven reverse-home + overshoot-adjusted park), just
         parameterized to gate_preload_parking_distance.
+
+        'pending' is the (spool_id, tag) the MMU_PRELOAD command grabbed up front (before its
+        selector move could cancel it); it is applied to the gate on success and discarded on
+        failure. None when preload wasn't initiated with a pending shared-NFC result.
 
         Returns:
             None. Updates gate state in place or raises MmuError when preload fails.
@@ -85,6 +89,10 @@ class MmuFilamentMovement:
         if self.sensor_manager.check_gate_sensor(SENSOR_EXIT_PREFIX, gate):
             self.log_always("Filament already preloaded")
             self.gate_maps.set_gate_status(gate, GATE_AVAILABLE)
+            # Still apply a grabbed spool_id: the caller scanned a tag and preloaded this
+            # gate, so assign it even though filament was already seated (the grab already
+            # cleared the global pending, so it would otherwise be lost here).
+            self._check_pending_filament(gate, pending=pending)
             return
 
         # Preload uses the gate_preload_* parameter set. gate_preload_endstop defaults to
@@ -108,16 +116,24 @@ class MmuFilamentMovement:
                                "triggered (filament from another gate still loaded?)"
                                % (gate, shared_name))
 
+        # A pending shared-NFC spool_id takes precedence over this gate's own reader: consume
+        # the pending and do a normal preload (skip the per-gate NFC read) rather than have
+        # both try to assign the gate. Without a pending, use the per-gate reader if present.
+        have_pending = pending is not None and (pending[0] > 0 or pending[1] is not None)
+        want_nfc = not have_pending
+
         self.log_always("Preloading...")
         try:
             with self.wrap_suspend_filament_monitoring():
                 # Home into the gate (reading the tag at the same time when possible)
-                _, tag_read = self._home_to_gate(profile, want_nfc=True)
+                _, tag_read = self._home_to_gate(profile, want_nfc=want_nfc)
                 # Park with the proven reverse-home + overshoot-adjusted logic, using the
                 # preload parking distance and the same endstop preload homed to
                 self._unload_gate(parking_distance=u.p.gate_preload_parking_distance,
                                   endstop=u.p.gate_preload_endstop)
         except MmuError:
+            # Preload failed (after any retries): the grabbed 'pending' is simply discarded
+            # (the global pending was already cleared when it was grabbed).
             # _home_to_gate marks the gate EMPTY on failure. If the entry sensor still
             # sees filament it reached the MMU but not the gate - flag UNKNOWN, don't raise.
             if self.sensor_manager.check_gate_sensor(SENSOR_ENTRY_PREFIX, gate):
@@ -127,7 +143,7 @@ class MmuFilamentMovement:
             raise
 
         self.gate_maps.set_gate_status(gate, GATE_AVAILABLE)
-        self._check_pending_filament(gate) # Have spool_id ready?
+        self._check_pending_filament(gate, pending=pending) # Apply the grabbed spool_id if any
         self.log_always("Filament detected and loaded in gate %d%s" % (gate, " (tag read)" if tag_read else ""))
         run_post_preload_macro()
 
@@ -324,7 +340,7 @@ class MmuFilamentMovement:
         """
         One NFC-augmented gate-home attempt against the compound [gate switch, NFC reader].
         Forward-only. On a gate-first trigger, chase the tag forward within the +ve
-        gate_nfc_jog_scan_window then re-home back to the gate switch; on an NFC-first trigger,
+        nfc_gate_jog_scan_window then re-home back to the gate switch; on an NFC-first trigger,
         continue to the gate switch. Reads the tag (deep if enabled) when found and applies
         it to the gate map. Leaves filament homed at the gate switch (does not park).
 
@@ -332,7 +348,7 @@ class MmuFilamentMovement:
             (homed, tag_read)
         """
         u = self.mmu_unit()
-        pos = max(0.0, u.p.gate_nfc_jog_scan_window[1]) if len(u.p.gate_nfc_jog_scan_window) == 2 else 0.0
+        pos = max(0.0, u.p.nfc_gate_jog_scan_window[1]) if len(u.p.nfc_gate_jog_scan_window) == 2 else 0.0
         tag_read = False
 
         # Phase 1: home to whichever of {gate switch, tag} arrives first
@@ -420,7 +436,7 @@ class MmuFilamentMovement:
         filament back in the gate. Works on gate_selected like _preload_gate; the
         caller (MMU_NFC_SCAN) owns gate selection and restoration.
 
-        The travel window is 'gate_nfc_jog_scan_window' (neg, pos) mm from this unit's
+        The travel window is 'nfc_gate_jog_scan_window' (neg, pos) mm from this unit's
         parameters (per-unit because it is MMU geometry). The larger-magnitude
         direction is swept first (most likely to hit the tag); a 0 side is skipped.
 
@@ -434,12 +450,12 @@ class MmuFilamentMovement:
         gate = self.gate_selected
         pre_scan_status = self.gate_status[gate] # Restored if a re-park fails (filament is still present)
 
-        window = u.p.gate_nfc_jog_scan_window
+        window = u.p.nfc_gate_jog_scan_window
         if len(window) != 2 or window[0] > 0 or window[1] < 0:
-            raise MmuError("gate_nfc_jog_scan_window must be (neg, pos) with neg <= 0 <= pos, got %s" % (window,))
+            raise MmuError("nfc_gate_jog_scan_window must be (neg, pos) with neg <= 0 <= pos, got %s" % (window,))
         neg, pos = window[0], window[1]
         if neg == 0 and pos == 0:
-            self.log_info("NFC scan: gate_nfc_jog_scan_window is not configured for this unit - nothing to scan")
+            self.log_info("NFC scan: nfc_gate_jog_scan_window is not configured for this unit - nothing to scan")
             return False
 
         nfc_manager = u.nfc_manager

@@ -49,6 +49,7 @@ class MmuLedManager:
         num_units = self.mmu_machine.num_units
         self.inside_timer = [False] * num_units    # Per-unit re-entrancy guard for its led timer
         self.pending_update = [False] * num_units
+        self.deferred = [None] * num_units         # Per-unit last _set_led request blocked by a timed effect, replayed when it ends
         self.led_timers = [None] * num_units       # Per-unit "return to default" timers (registered at ready)
         self.effect_state = {} # Current state used to minimise updates {unit: {segment: effect}}
         self.transient_prior = {} # Snapshot of pre-override effect for restore='prior' {(unit, segment, gate): effect}
@@ -72,6 +73,7 @@ class MmuLedManager:
 
     def led_timer_handler(self, unit, eventtime):
         self.inside_timer[unit] = True
+        next_wake = self.mmu.reactor.NEVER
         try:
             self.pending_update[unit] = False
             self._set_led(unit, None, exit_effect='default', entry_effect='default', status_effect='default', logo_effect='default')
@@ -79,9 +81,21 @@ class MmuLedManager:
             # override snapshots are now moot - drop them to avoid a stale restore='prior'
             # later resurrecting a baseline over whatever is showing.
             self._clear_transient_prior(unit)
+
+            # Replay the last update that arrived while the timed effect was held (over the
+            # reset, so its segments win and the rest stay at default). If that update itself
+            # carried a duration, re-arm this timer via the return value (schedule_led_command
+            # is a no-op while inside_timer, and update_timer here would be clobbered by the
+            # returned waketime anyway).
+            deferred, self.deferred[unit] = self.deferred[unit], None
+            if deferred is not None:
+                self._set_led(unit, deferred['gate'], fadetime=deferred['fadetime'], **deferred['effects'])
+                if deferred['duration'] is not None:
+                    self.pending_update[unit] = True
+                    next_wake = self.mmu.reactor.monotonic() + deferred['duration']
         finally:
             self.inside_timer[unit] = False
-        return self.mmu.reactor.NEVER
+        return next_wake
 
 
     def _clear_transient_prior(self, unit):
@@ -204,7 +218,7 @@ class MmuLedManager:
 
             # idle -> select -> idle
             elif action == ACTION_SELECTING:
-                if old_action not in [ACTION_CHECKING]:
+                if old_action not in [ACTION_CHECKING, ACTION_PRELOAD]:
                     self._set_led(
                         unit, None,
                         exit_effect='default',
@@ -212,8 +226,9 @@ class MmuLedManager:
                         fadetime=0
                     )
 
-            # idle -> check -> select* -> check* -> select* -> check* -> idle
-            elif action == ACTION_CHECKING:
+            # idle -> check/preload -> select* -> check* -> select* -> check* -> idle
+            # (preload reuses the 'checking' effect; give it a dedicated effect_preload if wanted)
+            elif action in [ACTION_CHECKING, ACTION_PRELOAD]:
                 if old_action == ACTION_IDLE:
                     self._set_led(
                         unit, None,
@@ -340,6 +355,13 @@ class MmuLedManager:
         return ''
 
 
+    @staticmethod
+    def _transient_key(mmu_unit, segment, gate):
+        # Snapshot key for transient_prior; a specific gate normalises to its index, whole
+        # segment (None or negative) to None. 'segment' is expected already normalised.
+        return (mmu_unit.unit_index, segment, gate if (gate is not None and gate >= 0) else None)
+
+
     def set_transient_effect(self, mmu_unit, effect, segment='exit',
                              gate=None, duration=None, fadetime=0):
         """
@@ -385,7 +407,7 @@ class MmuLedManager:
         # the whole unit to default via the timer instead, so only snapshot for a
         # persistent (duration=None) override.
         if duration is None:
-            key = (mmu_unit.unit_index, segment, gate if (gate is not None and gate >= 0) else None)
+            key = self._transient_key(mmu_unit, segment, gate)
             if key not in self.transient_prior:
                 self.transient_prior[key] = self.effect_state.get(mmu_unit.unit_index, {}).get(segment, 'default')
         self._set_led(mmu_unit.unit_index, gate, duration=duration, fadetime=fadetime,
@@ -413,7 +435,7 @@ class MmuLedManager:
         segment = (segment or 'exit').strip().lower()
         if segment not in MmuLeds.SEGMENTS:
             return False
-        key = (mmu_unit.unit_index, segment, gate if (gate is not None and gate >= 0) else None)
+        key = self._transient_key(mmu_unit, segment, gate)
         prior = self.transient_prior.pop(key, None)
         if restore == 'prior':
             if prior is None:
@@ -424,6 +446,20 @@ class MmuLedManager:
         self._set_led(mmu_unit.unit_index, gate, fadetime=fadetime,
                       **{'%s_effect' % segment: target})
         return True
+
+
+    def discard_transient_effect(self, mmu_unit, segment='exit', gate=None):
+        """
+        Drop the restore snapshot for a segment/gate WITHOUT repainting. Use when another
+        owner has already taken over the segment (an action/print-state effect, or a
+        self-restoring duration flash), so a later restore='prior' can't resurrect a
+        now-stale baseline and no redundant repaint is issued.
+        """
+        if mmu_unit is None:
+            return
+        segment = (segment or 'exit').strip().lower()
+        key = self._transient_key(mmu_unit, segment, gate)
+        self.transient_prior.pop(key, None)
 
 
     # Make the necessary configuration changes to LED accross all mmu_units
@@ -555,8 +591,21 @@ class MmuLedManager:
             if gate is not None and gate < 0:
                 return
 
-            # Don't allow changes to shortcut animations - important changes will be seen when update timer fires
+            # A timed effect is currently held on this unit. Don't paint over it now; instead
+            # remember this request (last one wins) and replay it when the timed effect's timer
+            # fires - honoring "important changes will be seen when the update timer fires".
             if self.pending_update[unit]:
+                self.deferred[unit] = {
+                    'gate': gate,
+                    'fadetime': fadetime,
+                    'duration': duration,
+                    'effects': {
+                        'exit_effect': exit_effect,
+                        'entry_effect': entry_effect,
+                        'status_effect': status_effect,
+                        'logo_effect': logo_effect,
+                    },
+                }
                 return
 
             # Schedule a return to defaults after duration

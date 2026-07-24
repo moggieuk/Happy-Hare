@@ -84,20 +84,20 @@ class MmuUnitParameters(TunableParametersBase):
 
     # ---- Validators ----
 
-    def _validate_gate_nfc_jog_scan_window(self, value):
+    def _validate_nfc_gate_jog_scan_window(self, value):
         # Empty (or absent) disables MMU_NFC_SCAN
         if not value:
             return
         if len(value) != 2:
-            raise ValueError("gate_nfc_jog_scan_window must be two values (neg, pos), e.g. 0,480")
+            raise ValueError("nfc_gate_jog_scan_window must be two values (neg, pos), e.g. 0,480")
         neg, pos = value[0], value[1]
         if neg > 0 or pos < 0:
-            raise ValueError("gate_nfc_jog_scan_window must be (neg, pos) with neg <= 0 <= pos")
+            raise ValueError("nfc_gate_jog_scan_window must be (neg, pos) with neg <= 0 <= pos")
         # The backward jog re-parks via _load_gate(), which homes back to the gate within
         # gate_homing_max, so the backward reach cannot exceed that budget
         if abs(neg) > self.gate_homing_max:
             raise ValueError(
-                "gate_nfc_jog_scan_window backward reach (%.1fmm) cannot exceed gate_homing_max (%.1fmm)"
+                "nfc_gate_jog_scan_window backward reach (%.1fmm) cannot exceed gate_homing_max (%.1fmm)"
                 % (abs(neg), self.gate_homing_max)
             )
 
@@ -137,11 +137,14 @@ class MmuUnitParameters(TunableParametersBase):
         ParamSpec('gate_preload_parking_distance',    'float', -10.0, section="GATE HOMING", validator=_validate_gate_preload_parking_distance),
         ParamSpec('gate_preload_attempts',            'int',       1, section="GATE HOMING", limits=dict(minval=1, maxval=20)),
         ParamSpec('gate_autoload',                    'int',       1, section="GATE HOMING", limits=dict(minval=0, maxval=1)),
-        ParamSpec('gate_nfc_jog_scan_window',         'floatlist', [0.0, 0.0], section="NFC", validator=_validate_gate_nfc_jog_scan_window),
 
         ParamSpec('gate_endstop_to_encoder',          'float',   0.0, section="GATE HOMING", limits=dict(minval=0.0),           guard=_guard_encoder_offset),
         ParamSpec('gate_final_eject_distance',        'float',   0.0, section="GATE HOMING"),
 
+        # NFC / RFID reading
+        ParamSpec('nfc_gate_jog_scan_window',         'floatlist', [0.0, 0.0], section="NFC", validator=_validate_nfc_gate_jog_scan_window),
+        ParamSpec('nfc_deep_read',                    'int',    0,    section="NFC", limits=dict(minval=0, maxval=1)),
+        ParamSpec('nfc_led_segment',                  'str',      '', section="NFC"),
 
         # Bowden
         ParamSpec('bowden_homing_max',                'float',2000.0, section="BOWDEN MOVE", limits=dict(minval=100.0)),

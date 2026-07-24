@@ -7,7 +7,6 @@
 #   PARAM_GATE_PRELOAD_PARKING_DISTANCE
 #   PARAM_GATE_PRELOAD_HOMING_MAX
 #   PARAM_GATE_FINAL_EJECT_DISTANCE
-#   PARAM_GATE_NFC_JOG_SCAN_WINDOW
 
 menu "Gate loading & parking"
 
@@ -48,17 +47,6 @@ menu "Gate loading & parking"
       Positive values for movement in the extrude direction (past sensor)
 
       Usually this is the same as gate parking distance
-
-  config PARAM_GATE_NFC_JOG_SCAN_WINDOW
-    string "NFC jog-scan window     "
-    depends on MMU_HAS_NFC_READER || CUSTOM_NFC_READER_SETUP
-    default "0, 0"
-    help
-      Filament travel window (mm) relative to the gate that MMU_NFC_SCAN may jog to
-      bring a spool's RFID tag to the gate's reader. Format "<back>, <forward>" with
-      back <= 0 <= forward, e.g. "0, 480" = up to 480mm forward of the gate.
-
-      "0, 0" (default) disables jog-scanning.
 
   config PARAM_GATE_FINAL_EJECT_DISTANCE
     float "Final eject distance    "

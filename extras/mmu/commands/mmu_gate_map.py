@@ -79,6 +79,7 @@ class MmuGateMapCommand(BaseCommand):
         from_spoolman = bool(gcmd.get_int('FROM_SPOOLMAN', 0, minval=0, maxval=1)) # Hidden option for bulk filament update from spoolman
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=mmu.num_gates - 1)
         next_spool_id = gcmd.get_int('NEXT_SPOOLID', None, minval=-2)
+        created = bool(gcmd.get_int('CREATED', 0, minval=0, maxval=1)) # Set by Moonraker when the UID minted a new spool
 
         gate_map = None
         try:
@@ -101,9 +102,12 @@ class MmuGateMapCommand(BaseCommand):
             #   -2  definitive "unknown tag" - release guard but don't re-read
             if next_spool_id < 0:
                 mmu.set_pending_spool_id(-1) # Cancel any stale pending assignment
+                mmu._nfc_led_on_fail()       # Shared-reader lookup failed -> failure flash
                 reread = (next_spool_id == -1)
             elif mmu.p.spoolman_support != SPOOLMAN_PULL:
                 mmu.set_pending_spool_id(next_spool_id)
+                if created:
+                    mmu.log_always("Spool ID: created new Spoolman spool %d for scanned tag" % next_spool_id)
                 reread = False
             else:
                 mmu.log_error("Cannot use use NEXT_SPOOLID feature with spoolman_support: pull. Use 'push' or 'readonly' modes")
@@ -235,6 +239,11 @@ class MmuGateMapCommand(BaseCommand):
                         mod_gate_ids = mmu.gate_maps.assign_spool_id(gate_idx, spool_id)
                         for (g, sid) in mod_gate_ids:
                             ids_dict[g] = sid
+
+                    # A per-gate NFC scan that auto-created a Spoolman spool (no LED for
+                    # per-gate; console log gives the equivalent feedback)
+                    if created and spool_id and spool_id > 0:
+                        mmu.log_always("Spool ID: created new Spoolman spool %d for scanned tag (gate %d)" % (spool_id, gate_idx))
 
                 else:
                     # Remote (spoolman) gate map, don't update local attributes that are set by spoolman

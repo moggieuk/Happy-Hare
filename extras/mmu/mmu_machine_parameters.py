@@ -120,8 +120,7 @@ class MmuMachineParameters(TunableParametersBase):
         # Optional features
         ParamSpec('spoolman_support',              'choice', SPOOLMAN_OFF, section="FEATURES", choices={o: o for o in SPOOLMAN_OPTIONS}, on_change=_on_spoolman_support),
 
-        # NFC / RFID tag reading
-        ParamSpec('nfc_deep_read',                 'int',      0, section="NFC", limits=dict(minval=0, maxval=1)),
+        # NFC / RFID tag reading (nfc_deep_read is per-unit - see mmu_unit_parameters)
         ParamSpec('spoolman_nfc_auto_create',      'int',      0, section="NFC", limits=dict(minval=0, maxval=1)),
         ParamSpec('t_macro_color',                 'choice', T_MACRO_COLOR_SLICER, section="FEATURES", choices={o: o for o in T_MACRO_COLOR_OPTIONS}, on_change=_on_t_macro_color),
         ParamSpec('endless_spool_groups',          'intlist', [], section="FEATURES"),

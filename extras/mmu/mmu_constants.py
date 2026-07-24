@@ -129,6 +129,7 @@ ACTION_SELECTING = 9
 ACTION_CUTTING_TIP = 10         # Cutting at toolhead e.g.  _MMU_CUT_TIP macro
 ACTION_CUTTING_FILAMENT = 11    # Cutting at MMU e.g. EREC cutting macro
 ACTION_PURGING = 12             # Non slicer purging e.g. when running blobifier
+ACTION_PRELOAD = 13             # Preloading filament into a gate (own action so it can consume a pending spool_id)
 
 MACRO_EVENT_RESTART          = "restart"          # Params: None
 MACRO_EVENT_GATE_MAP_CHANGED = "gate_map_changed" # Params: GATE changed or GATE=-1 for all

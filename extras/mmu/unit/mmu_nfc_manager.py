@@ -573,7 +573,7 @@ class MmuNfcManager:
         metadata populates the local gate map (and, if further enabled, drives
         Spoolman auto-create) independently of whether Spoolman is configured.
         """
-        return self.mmu is not None and self.mmu.nfc_deep_read_enabled()
+        return self.mmu is not None and self.mmu.nfc_deep_read_enabled(self.mmu_unit)
 
 
     def _dispatch_lookup(self, uid, gate=None, metadata=None):
@@ -587,7 +587,7 @@ class MmuNfcManager:
         a UID-only read.
         """
         try:
-            self.mmu._nfc_tag_read(uid, gate=gate, metadata=metadata)
+            self.mmu._nfc_tag_read(uid, gate=gate, metadata=metadata, unit=self.mmu_unit)
         except Exception as e:
             self.mmu.log_error("NFC: error initiating tag lookup for UID=%s: %s" % (uid, str(e)))
 

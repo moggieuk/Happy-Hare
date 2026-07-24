@@ -37,6 +37,10 @@ from .commands.mmu_base_command import *
 # slow comms failure signals '-1' before this fires. Normal outcomes resolve sooner.
 NFC_LOOKUP_TIMEOUT = 30.0
 
+# Shared-reader NFC LED feedback tuning
+NFC_LED_WARN_WINDOW = 5.0  # Switch to the "pending expiring" effect this many seconds before timeout
+NFC_LED_FAIL_FLASH  = 3.0  # Duration of the "lookup failed" flash before returning to default
+
 
 # Main klipper module
 class MmuController(MmuFilamentMovement):
@@ -165,6 +169,8 @@ class MmuController(MmuFilamentMovement):
         self.pending_spool_id = -1      # For automatic assignment of spool_id if set perhaps by rfid reader
         self.pending_metadata = None    # (uid, metadata) staged from a shared NFC deep read, applied to the next gate
         self.nfc_lookup_pending = False # A shared NFC reader UID lookup is in flight (guards further shared reads)
+        self._nfc_led_unit = None       # mmu_unit whose shared reader is driving the current NFC LED feedback
+        self._nfc_led_phase = None      # NFC LED feedback phase: None | 'reading' | 'pending' | 'expiring'
         self.saved_toolhead_max_accel = None
         self.num_toolchanges = 0
 
@@ -218,6 +224,7 @@ class MmuController(MmuFilamentMovement):
         self._setup_hotend_off_timer()
         self._setup_pending_timer()
         self.nfc_lookup_timeout_timer = self.reactor.register_timer(self._nfc_lookup_timeout_handler, self.reactor.NEVER)
+        self._nfc_led_timer = self.reactor.register_timer(self._nfc_led_timer_handler, self.reactor.NEVER)
         self._clear_saved_toolhead_position()
 
         # This is a bit naughty to register commands here but I need to make sure we are the outermost wrapper
@@ -959,6 +966,7 @@ class MmuController(MmuFilamentMovement):
                 "Selecting" if action == ACTION_SELECTING else
                 "Cutting Filament" if action == ACTION_CUTTING_FILAMENT else
                 "Purging" if action == ACTION_PURGING else
+                "Preload" if action == ACTION_PRELOAD else
                 "Unknown") # Error case - should not happen
 
 
@@ -1576,6 +1584,7 @@ class MmuController(MmuFilamentMovement):
         self.psm.set_print_state(print_state, call_macro=call_macro)
 
     def on_print_start(self, pre_start_only=False):
+        self._clear_pending() # A pending shared-NFC spool_id must not fire once a print begins
         self.psm.on_print_start(pre_start_only=pre_start_only)
 
     def fix_started_state(self):
@@ -1657,6 +1666,7 @@ class MmuController(MmuFilamentMovement):
             self.pending_metadata = None # A resolved spool is authoritative; it supersedes any staged tag metadata
             self.reactor.update_timer(self.pending_timer, self.reactor.monotonic() + self.p.pending_spool_id_timeout)
             self.log_info(f"Spool ID: Assignment of {next_spool_id} will timeout in {self.p.pending_spool_id_timeout} seconds")
+            self._nfc_led_on_pending() # Resolved -> "pending ready" LED (+ scheduled "expiring" swap)
         else:
             if self.pending_spool_id > 0:
                 self.log_info("Spool ID: Automatic assignment of id cancelled")
@@ -1721,18 +1731,132 @@ class MmuController(MmuFilamentMovement):
         self.pending_spool_id = -1
         self.pending_metadata = None
         self.reactor.update_timer(self.pending_timer, self.reactor.NEVER)
+        self._nfc_led_clear() # End any shared-reader NFC LED feedback in lockstep
 
 
-    def _check_pending_filament(self, gate):
-        """Apply a pending shared-NFC result to 'gate' during a load/preload.
+    def _grab_pending(self):
+        """Atomically capture and clear the pending spool_id/metadata so a long operation
+        (preload) owns the result locally - immune to the timeout, the LED countdown, and the
+        generic cancellation done in _set_action for non-preload movement. Apply the returned
+        value later with _check_pending_filament(gate, pending=...). Returns (spool_id, tag)."""
+        grabbed = (self.pending_spool_id, self.pending_metadata)
+        self._clear_pending()
+        return grabbed
 
-        A resolved Spoolman spool_id takes precedence (Spoolman is the source of
-        truth); otherwise, if a deep read staged tag metadata, apply that to the
-        gate map directly. Either way the pending state is cleared afterwards.
+
+    # --- Shared-reader NFC LED feedback -------------------------------------------------
+    # Feature policy lives here (the LED manager stays feature-agnostic). A shared NFC read
+    # drives a persistent "looking up" effect on the reader's unit; the async Spoolman
+    # resolution supersedes it with a "pending ready" effect (which later swaps to an
+    # "expiring" effect ~5s before the pending spool_id times out), a "failed" flash, or a
+    # safety timeout. Feedback targets a single unit at a time (_nfc_led_unit); a new read
+    # ends any prior feedback first (_nfc_led_on_read), so even with two shared readers in a
+    # multi-unit machine the display hands off cleanly rather than orphaning the earlier one.
+
+    NFC_LED_OPERATIONS = ('nfc_read', 'nfc_deep_read', 'nfc_pending', 'nfc_pending_expiring', 'nfc_fail')
+
+    def _nfc_led_enabled(self, unit):
+        # Engaged when the unit maps at least one nfc_* effect (effect_nfc_* in [mmu_leds])
+        return any(self.led_manager.effect_name(unit.unit_index, op) for op in self.NFC_LED_OPERATIONS)
+
+    def _nfc_led_segment(self, unit):
+        # Auto: shared/bypass reader -> 'status' (per-gate -> 'exit', wired later). Param overrides.
+        return unit.p.nfc_led_segment or 'status'
+
+    def _nfc_led_show(self, operation, duration=None):
+        """Drive the current NFC-LED unit's configured segment with the effect mapped to
+        'operation' (effect_<operation> in [mmu_leds]). Returns True if an effect was
+        actually dispatched, False without a unit, a mapped effect, or a renderable one."""
+        unit = self._nfc_led_unit
+        if unit is None:
+            return False
+        effect = self.led_manager.effect_name(unit.unit_index, operation)
+        if not effect:
+            return False
+        return bool(self.led_manager.set_transient_effect(
+            unit, effect, segment=self._nfc_led_segment(unit), gate=None, duration=duration))
+
+    def _nfc_led_clear(self, restore=True):
+        """End NFC feedback: cancel the feedback timer, forget the unit, and either restore
+        the segment to what it was showing (restore=True) or just drop the snapshot without
+        repainting (restore=False, when a duration flash or another owner already holds the
+        segment). Either way the restore snapshot is dropped so it can't go stale."""
+        unit = self._nfc_led_unit
+        self.reactor.update_timer(self._nfc_led_timer, self.reactor.NEVER)
+        self._nfc_led_phase = None
+        self._nfc_led_unit = None
+        if unit is not None:
+            seg = self._nfc_led_segment(unit)
+            if restore:
+                self.led_manager.restore_transient_effect(unit, segment=seg, gate=None)
+            else:
+                self.led_manager.discard_transient_effect(unit, segment=seg, gate=None)
+
+    def _nfc_led_on_read(self, unit, deep):
+        """Shared-reader tag read: show a persistent 'looking up' effect until the async
+        resolution supersedes it, with a safety timeout in case nothing async follows
+        (Spoolman off, or a lost NEXT_SPOOLID). Any prior feedback is ended first so a new
+        scan starts clean - and so a second shared reader (multi-unit) hands off cleanly
+        rather than orphaning the previous unit's effect."""
+        self._nfc_led_clear()
+        self._nfc_led_unit = unit
+        self._nfc_led_phase = 'reading'
+        self._nfc_led_show('nfc_deep_read' if deep else 'nfc_read')
+        self.reactor.update_timer(self._nfc_led_timer, self.reactor.monotonic() + NFC_LOOKUP_TIMEOUT)
+
+    def _nfc_led_on_pending(self):
+        """Lookup resolved: show the persistent 'pending ready' effect and schedule the swap
+        to the 'expiring' effect ~NFC_LED_WARN_WINDOW seconds before the pending timeout."""
+        if self._nfc_led_unit is None:
+            return # No shared read is driving feedback (e.g. a manual NEXT_SPOOLID assignment)
+        self._nfc_led_phase = 'pending'
+        self._nfc_led_show('nfc_pending')
+        # Schedule the swap to the "expiring" effect NFC_LED_WARN_WINDOW seconds before the
+        # timeout. With a non-positive timeout the pending is cleared immediately (by the
+        # pending_timer), so there is no window - cancel the timer and skip the swap.
+        timeout = self.p.pending_spool_id_timeout
+        if timeout > 0:
+            warn = min(NFC_LED_WARN_WINDOW, timeout / 2.0)
+            self.reactor.update_timer(self._nfc_led_timer, self.reactor.monotonic() + (timeout - warn))
+        else:
+            self.reactor.update_timer(self._nfc_led_timer, self.reactor.NEVER)
+
+    def _nfc_led_on_fail(self):
+        """Lookup failed (-1/-2): brief failure flash, then let the flash self-restore."""
+        if self._nfc_led_unit is None:
+            return
+        shown = self._nfc_led_show('nfc_fail', duration=NFC_LED_FAIL_FLASH)
+        # If the flash dispatched it self-restores to default (restore=False). If nfc_fail is
+        # unmapped/unrenderable, restore=True instead clears the lingering "reading" effect.
+        self._nfc_led_clear(restore=not shown)
+
+    def _nfc_led_timer_handler(self, eventtime):
+        if self._nfc_led_phase == 'reading':
+            self._nfc_led_clear() # Safety: no async resolution arrived - drop the looking-up effect
+        elif self._nfc_led_phase == 'pending':
+            self._nfc_led_phase = 'expiring'
+            if self._nfc_led_unit is not None:
+                self._nfc_led_show('nfc_pending_expiring')
+        return self.reactor.NEVER
+
+
+    def _check_pending_filament(self, gate, pending=None):
+        """Apply a pending shared-NFC result to 'gate'.
+
+        By default consumes the live pending state - used by the entry-sensor insert path,
+        which runs before any movement action. Preload passes a (spool_id, tag) tuple it
+        grabbed earlier (_grab_pending) so the value survives its own selector/homing moves
+        and the generic cancellation in _set_action.
+
+        A resolved Spoolman spool_id takes precedence (Spoolman is the source of truth);
+        otherwise, if a deep read staged tag metadata, apply that to the gate map directly.
+        Either way the (live) pending state is cleared afterwards.
         """
-        if self.pending_spool_id > 0 and self.p.spoolman_support != SPOOLMAN_PULL:
-            self.log_info("Spool ID: %s automatically assigned to gate %d" % (self.pending_spool_id, gate))
-            mod_gate_ids = self.gate_maps.assign_spool_id(gate, self.pending_spool_id)
+        spool_id, tag = (self.pending_spool_id, self.pending_metadata) if pending is None else pending
+
+        if spool_id > 0 and self.p.spoolman_support != SPOOLMAN_PULL:
+            self.log_info("Spool ID: %s automatically assigned to gate %d" % (spool_id, gate))
+            mod_gate_ids = self.gate_maps.assign_spool_id(gate, spool_id)
 
             # Request sync and update of filament attributes from Spoolman
             if self.p.spoolman_support == SPOOLMAN_PUSH:
@@ -1740,8 +1864,8 @@ class MmuController(MmuFilamentMovement):
             elif self.p.spoolman_support == SPOOLMAN_READONLY:
                 self._spoolman_update_filaments(mod_gate_ids)
 
-        elif self.pending_metadata is not None:
-            uid, metadata = self.pending_metadata
+        elif tag is not None:
+            uid, metadata = tag
             self._apply_metadata_to_gate(gate, uid, metadata)
 
         self._clear_pending()
@@ -1835,6 +1959,9 @@ class MmuController(MmuFilamentMovement):
     def _continue_after(self, operation, force_in_print=False, restore=True):
         self.log_debug("Continuing from %s state after %s" % (self.psm.print_state, operation))
         if self.is_mmu_paused() and operation == 'resume':
+            # Cancel any pending shared-NFC spool_id: resuming (e.g. after pausing to load a
+            # spool) may not fire a movement action, so it wouldn't be caught by _set_action.
+            self._clear_pending()
             self.psm.reason_for_pause = None
             self._ensure_safe_extruder_temperature("pause", wait=True)
             self.psm.paused_extruder_temp = None
@@ -2294,6 +2421,12 @@ class MmuController(MmuFilamentMovement):
         if action == self.action: return action
         old_action = self.action
         self.action = action
+        # Any real movement operation other than the preload that consumes it invalidates a
+        # pending shared-NFC spool_id. Do it BEFORE action_changed so the pending LED (and its
+        # countdown) is torn down before this action paints its own effect - no stomp. Preload
+        # grabs the pending up front (_grab_pending) so ACTION_PRELOAD is exempt here.
+        if action not in (ACTION_IDLE, ACTION_PRELOAD):
+            self._clear_pending()
         self.led_manager.action_changed(action, old_action)
         self.call_macro_if_defined(
             self.p.action_changed_macro,
@@ -2323,6 +2456,7 @@ class MmuController(MmuFilamentMovement):
 
     def _disable_mmu(self):
         if not self.is_enabled: return
+        self._clear_pending() # Drop any pending shared-NFC spool_id/metadata on disable
         self._disable_filament_monitoring()
         self.reactor.update_timer(self.hotend_off_timer, self.reactor.NEVER)
         self.gcode.run_script_from_command("SET_IDLE_TIMEOUT TIMEOUT=%d" % self.p.default_idle_timeout)
@@ -2981,7 +3115,7 @@ class MmuController(MmuFilamentMovement):
             self.log_error("Error while displaying spool location map: %s\n%s" % (str(e), SPOOLMAN_CONFIG_ERROR))
 
 
-    def _nfc_tag_read(self, uid, gate=None, metadata=None):
+    def _nfc_tag_read(self, uid, gate=None, metadata=None, unit=None):
         """
         Entry point for a tag read from a unit's NFC manager. Two independent
         concerns:
@@ -2992,14 +3126,26 @@ class MmuController(MmuFilamentMovement):
           2. If Spoolman is active, resolve the UID to a spool (optionally
              auto-creating). A resolved spool is authoritative and overrides the
              metadata-derived attributes.
+
+        'unit' is the mmu_unit whose reader produced the read (used for shared-reader
+        LED feedback; per-gate LED feedback is not yet wired).
         """
-        if self.nfc_deep_read_enabled() and metadata:
+        # Resolve the reader's unit (nfc_deep_read is per-unit). Callers always pass it; fall
+        # back to the gate's unit for a per-gate read that didn't.
+        if unit is None and gate is not None:
+            unit = self.mmu_unit(gate)
+
+        # Shared-reader (gate is None) LED feedback: a persistent "looking up" effect that
+        # the async resolution (or a safety timeout) supersedes. Per-gate reads skip this.
+        if gate is None and unit is not None and self._nfc_led_enabled(unit):
+            self._nfc_led_on_read(unit, deep=bool(metadata))
+        if self.nfc_deep_read_enabled(unit) and metadata:
             if gate is None:
                 self._stage_pending_metadata(uid, metadata)
             else:
                 self._apply_metadata_to_gate(gate, uid, metadata)
         if self.p.spoolman_support != SPOOLMAN_OFF:
-            self._spoolman_get_spool_by_uid(uid, gate=gate, metadata=metadata)
+            self._spoolman_get_spool_by_uid(uid, gate=gate, metadata=metadata, unit=unit)
 
 
     def _stage_pending_metadata(self, uid, metadata):
@@ -3061,28 +3207,28 @@ class MmuController(MmuFilamentMovement):
         return name, material, vendor, color, temperature
 
 
-    def nfc_deep_read_enabled(self):
+    def nfc_deep_read_enabled(self, unit):
         """
-        True when the NFC reader should perform a deep read (read and parse the
-        full tag contents, not just the UID). Master switch for all metadata
-        behaviour: parsing tag data, populating the local gate map from it, and
-        (with the flags below) auto-creating a Spoolman spool.
+        True when 'unit's NFC reader should perform a deep read (read and parse the
+        full tag contents, not just the UID). Per-unit master switch for all metadata
+        behaviour on that unit: parsing tag data, populating the local gate map from it,
+        and (with the flags below) auto-creating a Spoolman spool. False for a None unit.
         """
-        return bool(self.p.nfc_deep_read)
+        return unit is not None and bool(unit.p.nfc_deep_read)
 
-    def nfc_auto_create_enabled(self):
+    def nfc_auto_create_enabled(self, unit):
         """
-        True when scanning an unknown NFC/RFID tag should auto-create a Spoolman
-        spool from parsed tag data. Requires all of: a deep read (to have the
-        metadata), the opt-in flag, and a writable Spoolman mode (auto-create is
-        a write, so OFF/READONLY are excluded).
+        True when scanning an unknown NFC/RFID tag on 'unit' should auto-create a Spoolman
+        spool from parsed tag data. Requires all of: a deep read on that unit (to have the
+        metadata), the machine-level opt-in flag, and a writable Spoolman mode (auto-create
+        is a write, so OFF/READONLY are excluded).
         """
-        return (self.nfc_deep_read_enabled()
+        return (self.nfc_deep_read_enabled(unit)
                 and bool(self.p.spoolman_nfc_auto_create)
                 and self.p.spoolman_support not in (SPOOLMAN_OFF, SPOOLMAN_READONLY))
 
 
-    def _spoolman_get_spool_by_uid(self, uid, gate=None, metadata=None, quiet=True):
+    def _spoolman_get_spool_by_uid(self, uid, gate=None, metadata=None, quiet=True, unit=None):
         """
         Resolve a scanned NFC/RFID tag UID to a spool via Spoolman.
 
@@ -3104,9 +3250,13 @@ class MmuController(MmuFilamentMovement):
             metadata: Optional parsed tag payload (dict) from a deep tag read;
                 required for auto-create, ignored otherwise. None for UID-only readers.
             quiet: If True, suppress non-critical output.
+            unit: The mmu_unit whose reader produced the read (gates the per-unit
+                nfc_deep_read that auto-create depends on). Defaults to the gate's unit.
         """
         if self.p.spoolman_support == SPOOLMAN_OFF: return
-        save = self.nfc_auto_create_enabled()
+        if unit is None and gate is not None:
+            unit = self.mmu_unit(gate)
+        save = self.nfc_auto_create_enabled(unit)
         self.log_debug("Requesting spool lookup for tag uid %s (gate %s, save %s) from spoolman" % (uid, gate, save))
         try:
             webhooks = self.printer.lookup_object('webhooks')
