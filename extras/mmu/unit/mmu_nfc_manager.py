@@ -381,6 +381,8 @@ class MmuNfcManager:
         Delayed event fired once after MMU bootup. Initialize every reader we
         control and arm shared-reader polling.
         """
+        num_readers = (1 if self.shared_reader is not None else 0) + sum(1 for r in self.gate_readers if r is not None)
+        self.mmu.log_debug("NFC: bootup on %s - initializing %d reader(s)" % (self.mmu_unit.name, num_readers))
         self._init_all_readers()
         self._start_polling()
 
