@@ -117,7 +117,7 @@ class MmuTestCommand(BaseCommand):
         + "DUMP_MCU_ENDSTOPS=1 Dump steppers registered on each MCU_endstop\n"
         + "DUMP_ACTIVE_SENSORS=1 Dump raw active sensors map\n"
         + "UPDATE_STATUS={dict} Force override (update) of mmu get_status() with supplied dict. 'OFF' to remove\n"
-        + "NFC_READ=1 Simulate an NFC tag read (no reader hardware). Params: UID={hex} DEEP=[0|1] GATE={n}(per-gate, else shared) UNIT={n} MATERIAL= BRAND= COLOR= DETAIL= MIN_TEMP= MAX_TEMP=\n"
+        + "NFC_READ=1 Simulate an NFC tag read. Params: UID={hex} DEEP=[0|1] GATE={n}(per-gate, else shared) UNIT={n} MATERIAL= BRAND= COLOR= DETAIL= MIN_TEMP= MAX_TEMP=\n"
     )
     HELP_SUPPLEMENT = (
         ""
