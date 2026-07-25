@@ -1050,7 +1050,7 @@ class MmuFilamentMovement:
                     # detect failure in the critical extruder entrance transition by
                     # performing the initial load with just the extruder motor and checking
                     # that the sensor un-triggers before continuing
-                    max_range = u.buffer.buffer_maxrange * 2 # Arbitary but buffer_maxrange is not enough to overcome bowden slack
+                    max_range = u.buffer.buffer_maxrange * 2 # Arbitrary but buffer_maxrange is not enough to overcome bowden slack
                     if length > max_range:
                         self.log_debug("Monitoring extruder entrance transition for up to %.1fmm..." % max_range)
                         actual, success = u.sync_feedback.adjust_filament_tension(use_gear_motor=False, max_move=max_range)
@@ -1727,11 +1727,14 @@ class MmuFilamentMovement:
                 # match orca/prusa/super slicer enforced retractions after post_load when printing
                 if self.is_printing() and self.num_toolchanges >= 1:
                     if self.slicer_fw_retraction:
-                        self.log_debug("Un-retracting to match slicer firmware retraction (G10)")
+                        self.log_debug("Retracting to match slicer firmware retraction (G10)")
                         self.gcode.run_script_from_command("G10")
                     elif self.slicer_retraction > 0:
-                        self.log_debug("Un-retracting to match slicer retraction -%.2fmm" % self.slicer_retraction)
-                        self.gcode.run_script_from_command("G1 E-%.2f F1800" % self.slicer_retraction)
+                        # Get unretract speed from _MMU_SEQUENCE_VARS macro, default to 30 mm/s (F1800)
+                        sequence_vars = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
+                        retract_speed = sequence_vars.variables.get('retract_speed', 30) if sequence_vars else 30
+                        self.log_debug("Retracting to match slicer retraction -%.2fmm" % self.slicer_retraction)
+                        self.gcode.run_script_from_command("G1 E-%.2f F%d" % (self.slicer_retraction, retract_speed * 60))
                     self.slicer_retraction = -1
                     self.slicer_fw_retraction = False
 
