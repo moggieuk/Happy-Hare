@@ -1730,7 +1730,6 @@ class MmuFilamentMovement:
                         self.log_debug("Retracting to match slicer firmware retraction (G10)")
                         self.gcode.run_script_from_command("G10")
                     elif self.slicer_retraction > 0:
-                        # Get unretract speed from _MMU_SEQUENCE_VARS macro, default to 30 mm/s (F1800)
                         sequence_vars = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
                         retract_speed = sequence_vars.variables.get('retract_speed', 30) if sequence_vars else 30
                         self.log_debug("Retracting to match slicer retraction -%.2fmm" % self.slicer_retraction)
