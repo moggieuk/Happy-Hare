@@ -72,7 +72,7 @@ class MmuChangeToolCommand(BaseCommand):
 
         mmu.fix_started_state()
 
-        # reset slicer purge distance
+        # reset stored slicer purge length
         if gcmd.get_int('RESET_SLICER_PURGE', 0, minval=0, maxval=1):
             mmu.slicer_purge_length = -1
             return
