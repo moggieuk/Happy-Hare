@@ -1724,6 +1724,17 @@ class MmuFilamentMovement:
                         else:
                             self.wrap_gcode_command(self.p.post_load_macro, exception=True, wait=True)
 
+                # match orca/prusa/super slicer enforced retractions after post_load when printing
+                if self.is_printing() and self.num_toolchanges >= 1:
+                    if self.slicer_fw_retraction:
+                        self.log_debug("Un-retracting to match slicer firmware retraction (G10)")
+                        self.gcode.run_script_from_command("G10")
+                    elif self.slicer_retraction > 0:
+                        self.log_debug("Un-retracting to match slicer retraction -%.2fmm" % self.slicer_retraction)
+                        self.gcode.run_script_from_command("G1 E-%.2f F1800" % self.slicer_retraction)
+                    self.slicer_retraction = -1
+                    self.slicer_fw_retraction = False
+
         except MmuError as ee:
             self._track_gate_statistics('load_failures', self.gate_selected)
             raise MmuError("Load sequence failed because:\n%s" % (str(ee)))
