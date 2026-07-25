@@ -127,8 +127,6 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('endless_spool_enabled',         'int',      0, section="FEATURES", limits=dict(minval=0, maxval=1)),
         ParamSpec('endless_spool_on_load',         'int',      0, section="FEATURES", limits=dict(minval=0, maxval=1)),
         ParamSpec('endless_spool_eject_gate',      'int',     -1, section="FEATURES", limits=dict(minval=-1)),
-        ParamSpec('select_tool_macro',             'str',   None, section="FEATURES"),
-        ParamSpec('select_tool_num_switches',      'int',      0, section="FEATURES", limits=dict(minval=0)),
         ParamSpec('bypass_autoload',               'int',      1, section="FEATURES", guard=_guard_has_sensor(SENSOR_EXTRUDER_ENTRY), limits=dict(minval=0, maxval=1)),
 
         # Logging
