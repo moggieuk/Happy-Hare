@@ -118,9 +118,9 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('macro_toolhead_min_cruise_ratio','float', 0.0, section="TOOLHEAD/EXTRUDER", limits=dict(minval=0.0, below=1.0)),
 
         # Optional features
-        ParamSpec('spoolman_support',              'choice', SPOOLMAN_OFF, section="FEATURES", choices={o: o for o in SPOOLMAN_OPTIONS}, on_change=_on_spoolman_support),
-        ParamSpec('spoolman_nfc_auto_create',      'int',      0, section="NFC", limits=dict(minval=0, maxval=1)),
-        ParamSpec('spoolman_led_segment',          'choice', 'gate_status', section="NFC", choices={o: o for o in ('gate_status', 'status', 'both')}),
+        ParamSpec('spoolman_support',              'choice', SPOOLMAN_OFF,  section="FEATURES", choices={o: o for o in SPOOLMAN_OPTIONS}, on_change=_on_spoolman_support),
+        ParamSpec('spoolman_nfc_auto_create',      'int',      0,           section="FEATURES", limits=dict(minval=0, maxval=1)),
+        ParamSpec('spoolman_led_segment',          'choice', 'gate_status', section="FEATURES", choices={o: o for o in ('gate_status', 'status', 'both')}),
 
         ParamSpec('t_macro_color',                 'choice', T_MACRO_COLOR_SLICER, section="FEATURES", choices={o: o for o in T_MACRO_COLOR_OPTIONS}, on_change=_on_t_macro_color),
         ParamSpec('endless_spool_groups',          'intlist', [], section="FEATURES"),
