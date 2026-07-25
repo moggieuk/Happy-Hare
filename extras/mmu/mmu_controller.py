@@ -42,7 +42,7 @@ NFC_LED_READ_FLASH  = 1.5  # Duration of the "tag read" flash
 NFC_LED_FAIL_FLASH  = 3.0  # Duration of the "lookup failed" flash before returning to default
 
 # Base spoolman pending-spool_id LED overlay: swap to the "expiring" effect this many
-# seconds before pending_spool_id_timeout voids the assignment
+# seconds before spoolman_pending_id_timeout voids the assignment
 PENDING_LED_WARN_WINDOW = 5.0
 
 
@@ -1672,8 +1672,8 @@ class MmuController(MmuFilamentMovement):
         if next_spool_id > 0:
             self.pending_spool_id = next_spool_id
             self.pending_metadata = None # A resolved spool is authoritative; it supersedes any staged tag metadata
-            self.reactor.update_timer(self.pending_timer, self.reactor.monotonic() + self.p.pending_spool_id_timeout)
-            self.log_info(f"Spool ID: Assignment of {next_spool_id} will timeout in {self.p.pending_spool_id_timeout} seconds")
+            self.reactor.update_timer(self.pending_timer, self.reactor.monotonic() + self.p.spoolman_pending_id_timeout)
+            self.log_info(f"Spool ID: Assignment of {next_spool_id} will timeout in {self.p.spoolman_pending_id_timeout} seconds")
             self._pending_led_start()  # Base spoolman pending overlay (also fires for a manual NEXT_SPOOLID)
         else:
             if self.pending_spool_id > 0:
@@ -1684,7 +1684,7 @@ class MmuController(MmuFilamentMovement):
             # deep read still populates the gate on an unknown-tag result; otherwise
             # disable the timer to prevent reuse.
             if self.pending_metadata is not None:
-                self.reactor.update_timer(self.pending_timer, self.reactor.monotonic() + self.p.pending_spool_id_timeout)
+                self.reactor.update_timer(self.pending_timer, self.reactor.monotonic() + self.p.spoolman_pending_id_timeout)
             else:
                 self.reactor.update_timer(self.pending_timer, self.reactor.NEVER)
 
@@ -1798,7 +1798,7 @@ class MmuController(MmuFilamentMovement):
             self.led_manager.pending_changed()
         # Schedule the swap to 'expiring'. A non-positive timeout clears immediately (via
         # pending_timer), so there is no window - skip the swap.
-        timeout = self.p.pending_spool_id_timeout
+        timeout = self.p.spoolman_pending_id_timeout
         if timeout > 0:
             warn = min(PENDING_LED_WARN_WINDOW, timeout / 2.0)
             self.reactor.update_timer(self._pending_warn_timer, self.reactor.monotonic() + (timeout - warn))
@@ -2989,12 +2989,17 @@ class MmuController(MmuFilamentMovement):
             pruned_gate_ids = [(g, sid) for g, sid in gate_ids if sid >= 0]
 
         if pruned_gate_ids:
-            self.log_debug("Requesting the following gate/spool_id pairs from Spoolman: %s" % pruned_gate_ids)
+            # A caller-supplied gate set is a targeted (re)assignment - fetch those spools live
+            # so out-of-band Spoolman edits are reflected. A full sync (gate_ids is None) uses
+            # the Moonraker cache to avoid a per-spool fan-out.
+            refresh = gate_ids is not None
+            self.log_debug("Requesting gate/spool_id pairs from Spoolman: %s (refresh=%s)" % (pruned_gate_ids, refresh))
             try:
                 webhooks = self.printer.lookup_object('webhooks')
                 webhooks.call_remote_method("spoolman_get_filaments",
                                             gate_ids=pruned_gate_ids,
-                                            silent=quiet)
+                                            silent=quiet,
+                                            refresh=refresh)
             except Exception as e:
                 self.log_error("Error while fetching filament attributes from spoolman: %s\n%s" % (str(e), SPOOLMAN_CONFIG_ERROR))
 
@@ -3183,7 +3188,7 @@ class MmuController(MmuFilamentMovement):
         """
         self.pending_metadata = (uid, metadata)
         self.reactor.update_timer(self.pending_timer,
-                                  self.reactor.monotonic() + self.p.pending_spool_id_timeout)
+                                  self.reactor.monotonic() + self.p.spoolman_pending_id_timeout)
         self.log_debug("NFC: staged tag metadata for uid %s pending gate assignment" % uid)
 
 
