@@ -27,17 +27,18 @@ class MmuChangeToolCommand(BaseCommand):
     HELP_BRIEF = "Perform a tool swap (called from Tx command)"
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
-        + "QUIET                = [0|1]\n"
-        + "STANDALONE           = [0|1]\n"
-        + "RESTORE              = [0|1]\n"
-        + "SKIP_TIP             = [0|1]\n"
-        + "SKIP_PURGE           = [0|1]\n"
-        + "SLICER_PURGE         = #(mm)            (optional; slicer purge distance)\n"
-        + "SLICER_RETRACTION    = #(mm)            (optional; slicer retraction distance)\n"
-        + "SLICER_FW_RETRACTION = true|false|0|1   (optional; whether slicer enables firmware retraction)\n"
-        + "NEXT_POS             = X,Y              (optional; only used when restore_xy_pos is 'next')\n"
-        + "TOOL                 = #(int)\n"
-        + "GATE                 = #(int)\n"
+        + "QUIET                 = [0|1]\n"
+        + "STANDALONE            = [0|1]\n"
+        + "RESTORE               = [0|1]\n"
+        + "SKIP_TIP              = [0|1]\n"
+        + "SKIP_PURGE            = [0|1]\n"
+        + "RESET_SLICER_PURGE    = [0|1]            (clear stored slicer purge length and exit)\n"
+        + "SLICER_PURGE          = #(mm)            (optional; slicer purge length)\n"
+        + "SLICER_RETRACTION     = #(mm)            (optional; slicer retraction length)\n"
+        + "SLICER_FW_RETRACTION  = true|false|0|1   (optional; whether slicer enables firmware retraction. Ignored if not enabled in printer)\n"
+        + "NEXT_POS              = X,Y              (optional; only used when restore_xy_pos is 'next')\n"
+        + "TOOL                  = #(int)\n"
+        + "GATE                  = #(int)\n"
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
@@ -71,6 +72,11 @@ class MmuChangeToolCommand(BaseCommand):
 
         mmu.fix_started_state()
 
+        # reset slicer purge distance
+        if gcmd.get_int('RESET_SLICER_PURGE', 0, minval=0, maxval=1):
+            mmu.slicer_purge_length = -1
+            return
+
         quiet = gcmd.get_int('QUIET', 0, minval=0, maxval=1)
         standalone = bool(gcmd.get_int('STANDALONE', 0, minval=0, maxval=1))
         restore = bool(gcmd.get_int('RESTORE', 1, minval=0, maxval=1))
@@ -87,7 +93,7 @@ class MmuChangeToolCommand(BaseCommand):
             slicer_fw_retraction = False
         else:
             slicer_fw_retraction = False
-            mmu.log_error("Error - incorrect slicer FW retraction setting ignored")
+            mmu.log_error("Invalid slicer FW retraction setting ignored")
      
         # validate retraction settings - if FW & printer supports it, disable slicer retraction, else disable FW
         if slicer_fw_retraction:
@@ -234,7 +240,7 @@ class MmuChangeToolCommand(BaseCommand):
                                     break
                                 except MmuError as ee:
                                     if i == attempts - 1:
-                                        raise MmuError("%s.\nOccured when changing tool: %s" % (str(ee), mmu._last_toolchange))
+                                        raise MmuError("%s.\nOccurred when changing tool: %s" % (str(ee), mmu._last_toolchange))
                                     mmu.log_error("%s.\nOccured when changing tool: %s. Retrying..." % (str(ee), mmu._last_toolchange))
                                     # Try again but recover_filament_pos will ensure conservative treatment of unload
                                     mmu.recover_filament_pos()
