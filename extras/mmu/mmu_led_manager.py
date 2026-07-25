@@ -222,13 +222,14 @@ class MmuLedManager:
                     )
 
             # idle -> check/preload -> select* -> check* -> select* -> check* -> idle
-            # (preload reuses the 'checking' effect; give it a dedicated effect_preload if wanted)
+            # (preload has its own effect_preloading; checking uses effect_checking)
             elif action in [ACTION_CHECKING, ACTION_PRELOAD]:
                 if old_action == ACTION_IDLE:
+                    operation = 'preloading' if action == ACTION_PRELOAD else 'checking'
                     self._set_led(
                         unit, None,
                         exit_effect='default',
-                        status_effect=self.effect_name(unit, 'checking')
+                        status_effect=self.effect_name(unit, operation)
                     )
 
 
@@ -249,7 +250,7 @@ class MmuLedManager:
                     exit_effect=self.effect_name(unit, 'initialized'),
                     entry_effect=self.effect_name(unit, 'initialized'),
                     status_effect=self.effect_name(unit, 'initialized'),
-                    duration=8
+                    duration=self.effect_duration(unit, 'initialized', 8)
                 )
 
             elif state == "printing":
@@ -287,7 +288,7 @@ class MmuLedManager:
                     unit, None,
                     exit_effect=self.effect_name(unit, 'complete'),
                     status_effect='default',
-                    duration=10
+                    duration=self.effect_duration(unit, 'complete', 10)
                 )
 
             elif state == "error":
@@ -295,7 +296,7 @@ class MmuLedManager:
                     unit, None,
                     exit_effect=self.effect_name(unit, 'error'),
                     status_effect='default',
-                    duration=10
+                    duration=self.effect_duration(unit, 'error', 10)
                 )
 
             elif state == "cancelled":
@@ -348,6 +349,19 @@ class MmuLedManager:
         if leds:
             return leds.get_effect(operation)
         return ''
+
+
+    def effect_duration(self, unit, operation, default=None):
+        """
+        Return the config-specified default duration (3rd field of effect_<operation> in [mmu_leds]) for
+        'operation', or 'default' when the config omits it
+        """
+        leds = self.mmu_machine.get_mmu_unit_by_index(unit).leds
+        if leds:
+            duration = leds.get_duration(operation)
+            if duration is not None:
+                return duration
+        return default
 
 
     def _pending_overlay_effect(self, mmu_unit, segment):

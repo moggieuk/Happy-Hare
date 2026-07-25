@@ -1032,7 +1032,7 @@ class ConfigBuilder(object):
                         vln.body.append(ValueEntryNode(value))
 
                 # Hack to remove other parts of a multi-lined value. E.g.
-                #   [mmu_led_effect mmu_strobe]
+                #   [mmu_led_effect mmu_red_strobe]
                 #   layers:       strobe    1 1.5 add (1,1,1)
                 #                 breathing 2 0   difference (0.95,0,0) # animate
                 #                 static    0 0   top (1,0,0)

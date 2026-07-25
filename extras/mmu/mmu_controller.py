@@ -1859,16 +1859,19 @@ class MmuController(MmuFilamentMovement):
         seg = unit.p.nfc_led_segment
         return seg if (seg and seg != 'auto') else 'status'
 
-    def _nfc_led_flash(self, operation, duration):
+    def _nfc_led_flash(self, operation, duration=None, default=None):
         """Flash the effect mapped to 'operation' (effect_<operation> in [mmu_leds]) on the
-        initiating unit's segment for 'duration' seconds (self-clearing). No-op without a unit
-        or a mapped effect."""
+        initiating unit's segment (self-clearing). An explicit 'duration' overrides; otherwise
+        the config default (3rd field of effect_<operation>) is used, falling back to 'default'.
+        No-op without a unit or a mapped effect."""
         unit = self._nfc_led_unit
         if unit is None:
             return
         effect = self.led_manager.effect_name(unit.unit_index, operation)
         if not effect:
             return
+        if duration is None:
+            duration = self.led_manager.effect_duration(unit.unit_index, operation, default)
         self.led_manager.set_transient_effect(unit, effect, segment=self._nfc_led_segment(unit),
                                               gate=None, duration=duration)
 
@@ -1877,14 +1880,15 @@ class MmuController(MmuFilamentMovement):
         if the async lookup resolves the base pending overlay takes over; if it fails the fail
         flash fires; if nothing follows (e.g. Spoolman off) the flash simply self-clears."""
         self._nfc_led_unit = unit
-        self._nfc_led_flash('nfc_deep_read' if deep else 'nfc_read', NFC_LED_READ_FLASH)
+        operation = 'nfc_deep_read' if deep else 'nfc_read'
+        self._nfc_led_flash(operation, default=NFC_LED_READ_FLASH)
 
     def _nfc_led_on_fail(self):
         """Failed shared lookup (-1/-2 while a lookup is in flight): brief flash on the unit that
         initiated the read. A manual NEXT_SPOOLID cancel (no lookup in flight) is ignored."""
         if not self.nfc_lookup_pending:
             return
-        self._nfc_led_flash('nfc_fail', NFC_LED_FAIL_FLASH)
+        self._nfc_led_flash('nfc_fail', default=NFC_LED_FAIL_FLASH)
 
 
 # -----------------------------------------------------------------------------------------------------------

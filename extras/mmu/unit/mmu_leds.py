@@ -128,6 +128,7 @@ class MmuLeds:
         # Read operation to effect mappings
         self.effects = {}
         self.effect_rgb = {}
+        self.effect_duration = {}
         effect_keys = [
             'effect_loading',
             'effect_loading_extruder',
@@ -136,6 +137,7 @@ class MmuLeds:
             'effect_heating',
             'effect_selecting',
             'effect_checking',
+            'effect_preloading',
             'effect_initialized',
             'effect_error',
             'effect_complete',
@@ -153,12 +155,15 @@ class MmuLeds:
             'effect_nfc_fail',      # Transient effect
         ]
         for key in effect_keys:
-            parts = [part.strip() for part in config.get(key, '').split(",", 1)]
-            effect = parts[0]
-            rgb_string = parts[1] if len(parts) == 2 else config.get('empty_light', '(0,0,0)')
             operation = key[len('effect_'):]
+            try:
+                effect, rgb_string, duration = MmuLeds.parse_effect_spec(
+                    config.get(key, ''), config.get('empty_light', '(0,0,0)'))
+                self.effect_rgb[effect] = MmuLeds.string_to_rgb(rgb_string)
+            except ValueError as e:
+                raise ValueError("Invalid value for '%s' in [mmu_leds]: %s" % (key, e))
             self.effects[operation] = effect
-            self.effect_rgb[effect] = MmuLeds.string_to_rgb(rgb_string)
+            self.effect_duration[operation] = duration
         self.effect_rgb[''] = (0,0,0)
 
     def parse_chain(self, chain):
@@ -190,6 +195,10 @@ class MmuLeds:
     def get_effect(self, operation):
         return self.effects.get(operation, '')
 
+    def get_duration(self, operation):
+        # Optional per-operation default duration (3rd config field), or None if not specified
+        return self.effect_duration.get(operation)
+
     def get_rgb_for_effect(self, effect):
         return self.effect_rgb.get(effect)
 
@@ -208,6 +217,28 @@ class MmuLeds:
             'num_gates': self.num_gates,
         })
         return status
+
+    @staticmethod
+    def parse_effect_spec(raw, empty_rgb='(0,0,0)'):
+        # Parse an "effect_<op>" config value of the form "<effect>, (r,g,b)[, <duration>]".
+        # Returns (effect_name, rgb_string, duration_or_None). The rgb tuple and the optional
+        # trailing duration (seconds) are split on the closing paren so the commas inside
+        # (r,g,b) don't confuse a naive split. A bare effect name (no rgb) falls back to
+        # empty_rgb; a missing/empty value yields ('', empty_rgb, None).
+        raw = (raw or '').strip()
+        effect, _, rest = raw.partition(',')
+        effect = effect.strip()
+        rest = rest.strip()
+        duration = None
+        if ')' in rest:
+            close = rest.index(')')
+            rgb_string = rest[:close + 1]
+            tail = rest[close + 1:].strip().lstrip(',').strip()
+            if tail:
+                duration = float(tail)
+        else:
+            rgb_string = rest if rest else empty_rgb
+        return effect, rgb_string, duration
 
     @staticmethod
     def string_to_rgb(rgb_string):
