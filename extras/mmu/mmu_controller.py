@@ -1859,7 +1859,7 @@ class MmuController(MmuFilamentMovement):
         seg = unit.p.nfc_led_segment
         return seg if (seg and seg != 'auto') else 'status'
 
-    def _nfc_led_flash(self, operation, duration=None, default=None):
+    def _nfc_led_flash(self, operation, duration=None, default=None, defer=False):
         """Flash the effect mapped to 'operation' (effect_<operation> in [mmu_leds]) on the
         initiating unit's segment (self-clearing). An explicit 'duration' overrides; otherwise
         the config default (3rd field of effect_<operation>) is used, falling back to 'default'.
@@ -1873,7 +1873,7 @@ class MmuController(MmuFilamentMovement):
         if duration is None:
             duration = self.led_manager.effect_duration(unit.unit_index, operation, default)
         self.led_manager.set_transient_effect(unit, effect, segment=self._nfc_led_segment(unit),
-                                              gate=None, duration=duration)
+                                              gate=None, duration=duration, defer=defer)
 
     def _nfc_led_on_read(self, unit, deep):
         """Shared-reader tag read: a brief acknowledging flash on the reader's unit. Transitory -
@@ -1888,7 +1888,7 @@ class MmuController(MmuFilamentMovement):
         initiated the read. A manual NEXT_SPOOLID cancel (no lookup in flight) is ignored."""
         if not self.nfc_lookup_pending:
             return
-        self._nfc_led_flash('nfc_fail', default=NFC_LED_FAIL_FLASH)
+        self._nfc_led_flash('nfc_fail', default=NFC_LED_FAIL_FLASH, defer=True) # Queue behind the read flash so it isn't cut short
 
 
 # -----------------------------------------------------------------------------------------------------------

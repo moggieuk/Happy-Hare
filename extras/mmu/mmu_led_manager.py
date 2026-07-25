@@ -58,6 +58,7 @@ class MmuLedManager:
         self.effect_state = {} # Current state used to minimise updates {unit: {segment: effect}}
         self.transient_flash = {}  # Active transient flash per (unit, segment): {'prior', 'flash', 'gate'}
         self.transient_timers = {} # Lazily registered restore timer per (unit, segment)
+        self.transient_pending = {} # Optional queued flash per (unit, segment), promoted when the active flash ends
         self._initialized = False # Used to prevent very early calls before leds are fully initialized
 
         # Event handlers
@@ -400,7 +401,7 @@ class MmuLedManager:
             self._set_led(unit, None, exit_effect='default', entry_effect='default', status_effect='default')
 
 
-    def set_transient_effect(self, mmu_unit, effect, segment='exit', gate=None, duration=None, fadetime=0):
+    def set_transient_effect(self, mmu_unit, effect, segment='exit', gate=None, duration=None, fadetime=0, defer=False):
         """
         Apply a caller-owned effect to one segment via the normal LED pipeline - used for
         short-lived feature indicators (e.g. the NFC read/fail flashes) without this module
@@ -416,6 +417,9 @@ class MmuLedManager:
         still what's showing (anything painted over it in the meantime wins and the restore
         self-cancels). Other segments are never touched and updates are never blocked.
         Back-to-back flashes on the same segment keep the original pre-flash snapshot.
+        With defer=True a flash requested while another is still running on the segment is
+        queued and painted when that one ends (last queued wins) rather than cutting it short
+        - e.g. so a fast NFC fail result doesn't stomp the read-acknowledge flash.
         With duration=None the effect simply persists until the next repaint of that
         segment (no restore bookkeeping).
 
@@ -444,8 +448,11 @@ class MmuLedManager:
             return False
 
         unit = mmu_unit.unit_index
+        key = (unit, segment)
         if duration is None:
-            # Persistent: paint and walk away (ends at the next repaint of the segment)
+            # Persistent: paint and walk away (ends at the next repaint of the segment). A
+            # fresh paint abandons any flash queued behind a now-superseded sequence.
+            self.transient_pending.pop(key, None)
             self._set_led(unit, gate, fadetime=fadetime, **{'%s_effect' % segment: effect})
             return True
 
@@ -455,8 +462,16 @@ class MmuLedManager:
         if self.pending_update[unit]:
             return False
 
-        key = (unit, segment)
         entry = self.transient_flash.get(key)
+        if entry is not None and defer:
+            # A flash is still running on this segment; queue this one to paint when it ends
+            # (last queued wins) instead of cutting the running flash short.
+            self.transient_pending[key] = {'effect': effect, 'gate': gate, 'duration': duration, 'fadetime': fadetime}
+            return True
+
+        # Immediate paint. A fresh (non-deferred) flash abandons any queued deferral - it
+        # belongs to a superseded sequence.
+        self.transient_pending.pop(key, None)
         if entry is None:
             # Snapshot what the segment is showing BEFORE the flash paints (first-wins so
             # chained flashes, e.g. read -> fail, restore the true pre-flash baseline)
@@ -480,10 +495,20 @@ class MmuLedManager:
         """End a segment-scoped transient flash: restore the pre-flash effect, but only if
         the flash is still what the segment is showing. If anything painted over it (action
         transition, pending overlay, state change - none of which are blocked by a flash),
-        the newer effect wins and the restore self-cancels."""
-        entry = self.transient_flash.pop((unit, segment), None)
-        if entry is not None and self.effect_state.get(unit, {}).get(segment) == entry['flash']:
-            self._set_led(unit, entry['gate'], fadetime=0, **{'%s_effect' % segment: entry['prior']})
+        the newer effect wins and the restore self-cancels (and any queued flash is dropped).
+        If a flash was queued behind this one (defer=True) and this flash is still showing,
+        promote it: paint it over this flash and re-arm for its duration, keeping the ORIGINAL
+        pre-flash baseline so the chain (e.g. read -> fail -> baseline) restores correctly."""
+        key = (unit, segment)
+        entry = self.transient_flash.pop(key, None)
+        pending = self.transient_pending.pop(key, None)
+        if entry is None or self.effect_state.get(unit, {}).get(segment) != entry['flash']:
+            return self.mmu.reactor.NEVER # Something newer won - self-cancel
+        if pending is not None:
+            self._set_led(unit, pending['gate'], fadetime=pending['fadetime'], **{'%s_effect' % segment: pending['effect']})
+            self.transient_flash[key] = {'prior': entry['prior'], 'flash': pending['effect'], 'gate': pending['gate']}
+            return self.mmu.reactor.monotonic() + pending['duration'] # Re-arm for the promoted flash
+        self._set_led(unit, entry['gate'], fadetime=0, **{'%s_effect' % segment: entry['prior']})
         return self.mmu.reactor.NEVER
 
 
