@@ -789,7 +789,7 @@ class MmuFilamentMovement:
         if bowden_length > 0 and not self.calibrating:
             length = min(length, bowden_length) # Cannot exceed calibrated distance
 
-        full = length == bowden_length
+        full = (length == bowden_length or length is None)
 
         # Compensate for distance already moved for gate homing endstop (e.g. overshoot after encoder based gate homing)
         length -= start_pos

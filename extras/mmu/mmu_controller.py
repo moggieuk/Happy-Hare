@@ -624,7 +624,7 @@ class MmuController(MmuFilamentMovement):
         status = {
             'enabled': self.is_enabled,
             'num_gates': self.num_gates,
-            'is_homed': self.selector().is_homed, # Always true on type-B MMU's
+            'is_homed': all(unit.selector.is_homed for unit in self.mmu_machine.units),
             'print_state': self.psm.print_state,
             'unit': self.unit_selected,
             'tool': self.tool_selected,
