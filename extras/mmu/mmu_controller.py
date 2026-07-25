@@ -1866,9 +1866,11 @@ class MmuController(MmuFilamentMovement):
         No-op without a unit or a mapped effect."""
         unit = self._nfc_led_unit
         if unit is None:
+            self.log_debug("NFC: '%s' flash skipped - no initiating unit recorded" % operation)
             return
         effect = self.led_manager.effect_name(unit.unit_index, operation)
         if not effect:
+            self.log_debug("NFC: '%s' flash skipped - no effect mapped in [mmu_leds]" % operation)
             return
         if duration is None:
             duration = self.led_manager.effect_duration(unit.unit_index, operation, default)
@@ -1887,6 +1889,7 @@ class MmuController(MmuFilamentMovement):
         """Failed shared lookup (-1/-2 while a lookup is in flight): brief flash on the unit that
         initiated the read. A manual NEXT_SPOOLID cancel (no lookup in flight) is ignored."""
         if not self.nfc_lookup_pending:
+            self.log_debug("NFC: fail flash skipped - no lookup in flight (late/duplicate result or manual cancel)")
             return
         self._nfc_led_flash('nfc_fail', default=NFC_LED_FAIL_FLASH, defer=True) # Queue behind the read flash so it isn't cut short
 

@@ -17,7 +17,7 @@ import logging, re
 # Happy Hare imports
 from .mmu_constants    import *
 from .mmu_utils        import MmuError
-from .mmu_sensor_utils import MmuRunoutHelper
+from .mmu_sensor_utils import MmuRunoutHelper, MmuVirtualEndstopSensor
 
 
 class MmuSensorManager:
@@ -148,7 +148,8 @@ class MmuSensorManager:
             def label(self, obj):
                 obj_id = id(obj)
                 if obj_id not in self._map:
-                    self._map[obj_id] = self._to_label(self._next)
+                    suffix = "(v)" if isinstance(obj, MmuVirtualEndstopSensor) else ""
+                    self._map[obj_id] = self._to_label(self._next) + suffix
                     self._next += 1
                 return self._map[obj_id]
 
