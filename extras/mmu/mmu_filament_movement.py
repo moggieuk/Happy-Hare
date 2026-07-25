@@ -1726,14 +1726,23 @@ class MmuFilamentMovement:
 
                 # match orca/prusa/super slicer enforced retractions after post_load when printing
                 if self.is_printing() and self.num_toolchanges >= 1:
+                    retract_len    = 0
+                    retract_speed  = 30
+                    
                     if self.slicer_fw_retraction:
-                        self.log_debug("Retracting to match slicer firmware retraction (G10)")
-                        self.gcode.run_script_from_command("G10")
+                        fw_retract = self.printer.lookup_object('firmware_retraction', None)
+                        if fw_retract:
+                            retract_len    = fw_retract.retract_length
+                            retract_speed  = fw_retract.retract_speed
                     elif self.slicer_retraction > 0:
-                        sequence_vars = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
-                        retract_speed = sequence_vars.variables.get('retract_speed', 30) if sequence_vars else 30
-                        self.log_debug("Retracting to match slicer retraction -%.2fmm" % self.slicer_retraction)
-                        self.gcode.run_script_from_command("G1 E-%.2f F%d" % (self.slicer_retraction, retract_speed * 60))
+                        sequence_vars  = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
+                        retract_len    = self.slicer_retraction
+                        retract_speed  = sequence_vars.variables.get('retract_speed', 30) if sequence_vars else 30
+                    
+                    if retract_len > 0:
+                        self.log_debug("Un-retracting %.2fmm to match slicer retraction" % retract_len)
+                        self.gcode.run_script_from_command("G1 E%.2f F%d" % (retract_len, int(retract_speed * 60)))
+                    
                     self.slicer_retraction = -1
                     self.slicer_fw_retraction = False
 
