@@ -101,7 +101,9 @@ class MmuChangeToolCommand(BaseCommand):
             if fw_retraction_obj:
                 slicer_retraction = -1
             else:
-                slicer_fw_retraction = False 
+                mmu.log_warning("gcode uses firmware retraction but its not enabled in printer") 
+                slicer_fw_retraction = False
+  
 
         # Handle "next_pos" option for toolhead position restoration
         next_pos = None
