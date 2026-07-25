@@ -47,7 +47,6 @@ class MmuMachineParameters(TunableParametersBase):
         # Printer interaction config
         ParamSpec('timeout_pause',                 'int',   72000, section="PRINTER", limits=dict(minval=120)),
         ParamSpec('default_idle_timeout',          'int',      -1, section="PRINTER", limits=dict(minval=120)),
-        ParamSpec('pending_spool_id_timeout',      'int',      20, section="PRINTER", limits=dict(minval=-1), hidden=True),
         ParamSpec('disable_heater',                'int',     600, section="PRINTER", limits=dict(minval=60)),
         ParamSpec('default_extruder_temp',         'float', 200.0, section="PRINTER", limits=dict(minval=0.0)),
         ParamSpec('extruder_temp_variance',        'float',   2.0, section="PRINTER", limits=dict(minval=1.0)),
@@ -119,7 +118,8 @@ class MmuMachineParameters(TunableParametersBase):
 
         # Optional features
         ParamSpec('spoolman_support',              'choice', SPOOLMAN_OFF,  section="FEATURES", choices={o: o for o in SPOOLMAN_OPTIONS}, on_change=_on_spoolman_support),
-        ParamSpec('spoolman_nfc_auto_create',      'int',      0,           section="FEATURES", limits=dict(minval=0, maxval=1)),
+        ParamSpec('spoolman_pending_id_timeout',   'int',    20,            section="FEATURES", limits=dict(minval=5, maxval=120)),
+        ParamSpec('spoolman_nfc_auto_create',      'int',    0,             section="FEATURES", limits=dict(minval=0, maxval=1)),
         ParamSpec('spoolman_led_segment',          'choice', 'gate_status', section="FEATURES", choices={o: o for o in ('gate_status', 'status', 'both')}),
 
         ParamSpec('t_macro_color',                 'choice', T_MACRO_COLOR_SLICER, section="FEATURES", choices={o: o for o in T_MACRO_COLOR_OPTIONS}, on_change=_on_t_macro_color),

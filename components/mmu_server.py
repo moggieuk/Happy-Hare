@@ -559,14 +559,26 @@ class MmuServer:
         return True
 
 
-    async def _send_gate_map_update(self, gate_ids, replace=False, silent=False) -> bool:
+    async def _send_gate_map_update(self, gate_ids, replace=False, silent=False, refresh=False) -> bool:
         '''
         Retrieve filament attributes for list of (gate, spool_id) tuples
         Pass back to Happy Hare.
 
+        With refresh=True each assigned spool is re-fetched live from Spoolman and its
+        cache entry refreshed first (via _cache_insert_spool, so other lookups see the
+        fresh values too), letting an assignment reflect out-of-band Spoolman edits.
+        The bulk pull/push/full-sync paths leave it False and use the cache to avoid a
+        per-spool fan-out. Must be called holding cache_lock.
+
         If no mmu backend has been detected, ignore the request
         '''
         if self._mmu_backend_enabled():
+            if refresh:
+                for _gate, spool_id in gate_ids:
+                    if spool_id is not None and spool_id >= 0:
+                        spool_info = await self._fetch_spool_info(spool_id)
+                        if spool_info:
+                            self._cache_insert_spool(spool_info) # A failed/404 fetch keeps the existing cached value
             gate_dict = {
                 gate: (
                     {'spool_id': -1} if spool_id < 0 else
@@ -594,13 +606,16 @@ class MmuServer:
             return await self._build_spool_location_cache(fix=fix, silent=silent)
 
 
-    async def get_filaments(self, gate_ids, silent=False) -> bool:
+    async def get_filaments(self, gate_ids, silent=False, refresh=False) -> bool:
         '''
         Retrieve filament attributes for list of (gate, spool_id) tuples
-        Pass back to Happy Hare. Does not require extended Spoolman db
+        Pass back to Happy Hare. Does not require extended Spoolman db.
+
+        refresh=True (a targeted assignment) re-fetches each spool live so out-of-band
+        Spoolman edits are reflected; the full readonly sync leaves it False (cache).
         '''
         async with self.cache_lock:
-            return await self._send_gate_map_update(gate_ids, silent=silent)
+            return await self._send_gate_map_update(gate_ids, silent=silent, refresh=refresh)
 
 
     async def push_gate_map(self, gate_ids=None, silent=False) -> bool:
