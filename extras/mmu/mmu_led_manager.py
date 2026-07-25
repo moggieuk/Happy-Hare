@@ -394,11 +394,23 @@ class MmuLedManager:
         Re-render each unit's overlay-carrying segments when the pending spool_id phase
         changes (set/expiring/cleared). A full default refresh picks up pending_phase in the
         render branches; the overlay reverts automatically once the phase returns to None.
+        A segment owned by an active transient flash (e.g. an NFC read strobe) is NOT
+        repainted - a background baseline change must not cut a flash short. Instead the
+        flash's restore target is retargeted to 'default' so the new baseline (overlay on
+        or off) lands when the flash (or its queued successor) ends.
         """
         if not self._initialized:
             return
         for unit in range(self.mmu_machine.num_units):
-            self._set_led(unit, None, exit_effect='default', entry_effect='default', status_effect='default')
+            effects = {}
+            for segment in ('exit', 'entry', 'status'):
+                key = (unit, segment)
+                if key in self.transient_flash:
+                    self.transient_flash[key]['prior'] = 'default'
+                else:
+                    effects['%s_effect' % segment] = 'default'
+            if effects:
+                self._set_led(unit, None, **effects)
 
 
     def set_transient_effect(self, mmu_unit, effect, segment='exit', gate=None, duration=None, fadetime=0, defer=False):
@@ -814,8 +826,10 @@ class MmuLedManager:
             elif effect != "": # Named effect
                 set_gate_effect(effect, unit, segment, None, fadetime=fadetime, raw=False)
 
-            self.effect_state.setdefault(unit, {})[segment] = effect
-    
+            if effect: # Only record state when something was actually painted (a partial
+                       # update that omits this segment must not clobber its recorded state)
+                self.effect_state.setdefault(unit, {})[segment] = effect
+
             #
             # Logo
             #
@@ -836,7 +850,8 @@ class MmuLedManager:
             elif effect != "": # Named effect
                 set_gate_effect(effect, unit, segment, None, fadetime=fadetime, raw=False)
 
-            self.effect_state.setdefault(unit, {})[segment] = effect
+            if effect: # Only record state when something was actually painted
+                self.effect_state.setdefault(unit, {})[segment] = effect
 
         except Exception as e:
             # Don't let a misconfiguration ruin a print!
