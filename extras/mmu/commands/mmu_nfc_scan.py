@@ -60,6 +60,15 @@ class MmuNfcScanCommand(BaseCommand):
         gate = gcmd.get_int('GATE', current_gate, minval=0, maxval=mmu.num_gates - 1)
         scan_unit = mmu.mmu_unit(gate)
 
+        # Fail fast before announcing/selecting: the gate must actually have a reader
+        nfc_manager = scan_unit.nfc_manager
+        if nfc_manager is None or not nfc_manager.has_gate_nfc_reader(gate):
+            mmu.log_error("Operation not possible: No NFC reader configured for gate %d" % gate)
+            return
+        if not nfc_manager.is_enabled(gate=gate):
+            mmu.log_error("Operation not possible: NFC reader for gate %d is disabled (re-enable with MMU_NFC GATE=%d ENABLE=1)" % (gate, gate))
+            return
+
         if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[gate], mmu_unit=scan_unit): return
 
         filament_pos = mmu.filament_pos

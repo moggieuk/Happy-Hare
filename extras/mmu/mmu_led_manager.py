@@ -223,7 +223,6 @@ class MmuLedManager:
                     )
 
             # idle -> check/preload -> select* -> check* -> select* -> check* -> idle
-            # (preload has its own effect_preloading; checking uses effect_checking)
             elif action in [ACTION_CHECKING, ACTION_PRELOAD]:
                 if old_action == ACTION_IDLE:
                     operation = 'preloading' if action == ACTION_PRELOAD else 'checking'
@@ -701,9 +700,20 @@ class MmuLedManager:
                         # Base spoolman pending overlay (if active) supersedes per-gate availability
                         if pending_overlay:
                             return pending_overlay
+
                         # Selected gate, with filament past extruder entry: force 'gate_selected'
                         if g == self.mmu.gate_selected and self.mmu.filament_pos > FILAMENT_POS_EXTRUDER_ENTRY:
                             return self.effect_name(unit, 'gate_selected')
+
+                        # Gate actively being checked/preloaded: show the operation effect on its
+                        # gate LEDs. Baked into the render (not painted by action_changed) because
+                        # the target gate is selected AFTER the action starts - the IDLE->action
+                        # repaint lights the current gate and select_gate's gate_map_changed
+                        # repaints move it to each newly selected gate automatically.
+                        if g == self.mmu.gate_selected and self.mmu.action in (ACTION_CHECKING, ACTION_PRELOAD):
+                            op_effect = self.effect_name(unit, 'preloading' if self.mmu.action == ACTION_PRELOAD else 'checking')
+                            if op_effect:
+                                return op_effect
 
                         suffix = '_sel' if g == self.mmu.gate_selected else ''
                         status = self.mmu.gate_status[g]
