@@ -14,6 +14,7 @@
 #   PARAM_ENTRY_LEDS
 #   PARAM_STATUS_LEDS
 #   PARAM_LOGO_LEDS
+#   PARAM_FRAME_RATE
 #
 # Can be disabled and forced off with:
 #   select UNSELECT_MMU_HAS_LEDS
@@ -64,6 +65,14 @@ if MMU_HAS_LEDS
       string
       default "True" if BOOL_ENABLE_LEDS_ANIMATION
       default "False"
+
+    config PARAM_FRAME_RATE
+      int "Frame rate      "
+      range 6 32
+      default 24
+      help
+        Sets the led effect frame rate. By default this is 24, but can be reduced to 15
+        to slightly reduce the CPU load. Slower than that my make some effects look messy
 
     config PARAM_EXIT_LEDS
       string

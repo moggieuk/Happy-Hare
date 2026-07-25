@@ -101,8 +101,14 @@ class MmuGateMapCommand(BaseCommand):
             #   -1  recoverable failure (e.g. Spoolman comms) - allow immediate re-read
             #   -2  definitive "unknown tag" - release guard but don't re-read
             if next_spool_id < 0:
+                failed_lookup = mmu.nfc_lookup_pending # Genuine in-flight lookup vs a manual NEXT_SPOOLID<0 cancel
                 mmu.set_pending_spool_id(-1) # Cancel any stale pending assignment
                 mmu._nfc_led_on_fail()       # Shared-reader lookup failed -> failure flash
+                if failed_lookup:            # Surface to console too (LED alone is easy to miss), matching per-gate
+                    if next_spool_id == -2:
+                        mmu.log_error("NFC: scanned tag is not registered against any spool in Spoolman")
+                    else:
+                        mmu.log_error("NFC: could not reach Spoolman to resolve scanned tag - will re-read")
                 reread = (next_spool_id == -1)
             elif mmu.p.spoolman_support != SPOOLMAN_PULL:
                 mmu.set_pending_spool_id(next_spool_id)

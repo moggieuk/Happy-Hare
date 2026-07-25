@@ -886,6 +886,11 @@ class MmuServer:
                 miss_expiry = self.uid_miss_cache.get(uid_norm)
                 if miss_expiry is not None and now < miss_expiry:
                     logging.debug(f"NFC: tag {uid_norm} still in miss cache, skipping Spoolman lookup")
+                    # The cache only spares the Spoolman fetch - a shared-reader lookup must
+                    # still get its terminal NEXT_SPOOLID=-2, else Klipper's in-flight guard
+                    # orphans until the 30s timeout (a re-scan of the same unknown tag stalls).
+                    if gate is None:
+                        await self._send_next_spoolid(-2)
                     return False
 
                 # A freshly-registered tag may not be in the cache yet - refresh once
