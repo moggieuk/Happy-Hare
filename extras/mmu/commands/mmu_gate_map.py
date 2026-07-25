@@ -32,7 +32,7 @@ class MmuGateMapCommand(BaseCommand):
         + "RESET        = 1 To reset filament attributes to configured defaults\n"
         + "GATES        = g,g,g comma separated list of gates (don't mix with GATE)\n"
         + "GATE         = g Specify a single gate (don't mix with GATES)\n"
-        + "NEXT_SPOOLID = id Specify the spoolman id of the next filament loaded - automatically assigned\n"
+        + "NEXT_SPOOLID = id Specify the spoolman id of the next filament loaded - automatically assigned (0 to cancel)\n"
         + "NAME         = # Filament name\n"
         + "MATERIAL     = # Material type\n"
         + "VENDOR       = # Filament vendor/brand name\n"
@@ -95,16 +95,19 @@ class MmuGateMapCommand(BaseCommand):
         if reset:
             mmu.gate_maps.reset_gate_map()
 
-        if next_spool_id:
-            # Completion of an in-flight shared NFC lookup (or a manual assignment).
+        if next_spool_id is not None:
+            # Completion of an in-flight shared NFC lookup (or a manual assignment/cancel).
             #   >0  success - assign as the pending spool
+            #    0  manual user cancellation (spool ids are 1-based)
             #   -1  recoverable failure (e.g. Spoolman comms) - allow immediate re-read
             #   -2  definitive "unknown tag" - release guard but don't re-read
-            if next_spool_id < 0:
-                failed_lookup = mmu.nfc_lookup_pending # Genuine in-flight lookup vs a manual NEXT_SPOOLID<0 cancel
+            if next_spool_id <= 0:
+                # 0 (or a negative with no lookup in flight) is a deliberate cancel, not a failure
+                failed_lookup = mmu.nfc_lookup_pending and next_spool_id < 0
                 mmu.set_pending_spool_id(-1) # Cancel any stale pending assignment
-                mmu._nfc_led_on_fail()       # Shared-reader lookup failed -> failure flash
-                if failed_lookup:            # Surface to console too (LED alone is easy to miss), matching per-gate
+                if failed_lookup:
+                    mmu._nfc_led_on_fail()   # Shared-reader lookup failed -> failure flash
+                    # Surface to console too (LED alone is easy to miss), matching per-gate
                     if next_spool_id == -2:
                         mmu.log_error("NFC: scanned tag is not registered against any spool in Spoolman")
                     else:
@@ -116,7 +119,7 @@ class MmuGateMapCommand(BaseCommand):
                     mmu.log_always("Spool ID: created new Spoolman spool %d for scanned tag" % next_spool_id)
                 reread = False
             else:
-                mmu.log_error("Cannot use use NEXT_SPOOLID feature with spoolman_support: pull. Use 'push' or 'readonly' modes")
+                mmu.log_error("Cannot use NEXT_SPOOLID feature with spoolman_support: pull. Use 'push' or 'readonly' modes")
                 reread = False
             mmu.nfc_lookup_resolved(reread=reread)
             return

@@ -460,7 +460,7 @@ class MmuLedManager:
         # complete/error) holds the unit - a deferred flash would replay at its end with
         # nothing scheduled to clear it, and a cosmetic indicator isn't worth extending
         if self.pending_update[unit]:
-            self.mmu.log_debug("LED: transient '%s' flash dropped - unit %d held by a timed state effect" % (effect, unit))
+            self.mmu.log_trace("LED: transient '%s' flash dropped - unit %d held by a timed state effect" % (effect, unit))
             return False
 
         entry = self.transient_flash.get(key)
@@ -468,7 +468,7 @@ class MmuLedManager:
             # A flash is still running on this segment; queue this one to paint when it ends
             # (last queued wins) instead of cutting the running flash short.
             self.transient_pending[key] = {'effect': effect, 'gate': gate, 'duration': duration, 'fadetime': fadetime}
-            self.mmu.log_debug("LED: transient '%s' flash queued behind active '%s' on unit %d/%s" % (effect, entry['flash'], unit, segment))
+            self.mmu.log_trace("LED: transient '%s' flash queued behind active '%s' on unit %d/%s" % (effect, entry['flash'], unit, segment))
             return True
 
         # Immediate paint. A fresh (non-deferred) flash abandons any queued deferral - it
@@ -505,16 +505,16 @@ class MmuLedManager:
         entry = self.transient_flash.pop(key, None)
         pending = self.transient_pending.pop(key, None)
         if entry is None or self.effect_state.get(unit, {}).get(segment) != entry['flash']:
-            self.mmu.log_debug("LED: transient flash end on unit %d/%s self-cancelled (overpainted: showing '%s')%s" % (
+            self.mmu.log_trace("LED: transient flash end on unit %d/%s self-cancelled (overpainted: showing '%s')%s" % (
                 unit, segment, self.effect_state.get(unit, {}).get(segment),
                 (" - dropping queued '%s'" % pending['effect']) if pending else ""))
             return self.mmu.reactor.NEVER # Something newer won - self-cancel
         if pending is not None:
-            self.mmu.log_debug("LED: promoting queued '%s' flash on unit %d/%s for %.1fs" % (pending['effect'], unit, segment, pending['duration']))
+            self.mmu.log_trace("LED: promoting queued '%s' flash on unit %d/%s for %.1fs" % (pending['effect'], unit, segment, pending['duration']))
             self._set_led(unit, pending['gate'], fadetime=pending['fadetime'], **{'%s_effect' % segment: pending['effect']})
             self.transient_flash[key] = {'prior': entry['prior'], 'flash': pending['effect'], 'gate': pending['gate']}
             return self.mmu.reactor.monotonic() + pending['duration'] # Re-arm for the promoted flash
-        self.mmu.log_debug("LED: transient flash end on unit %d/%s - restoring '%s'" % (unit, segment, entry['prior']))
+        self.mmu.log_trace("LED: transient flash end on unit %d/%s - restoring '%s'" % (unit, segment, entry['prior']))
         self._set_led(unit, entry['gate'], fadetime=0, **{'%s_effect' % segment: entry['prior']})
         return self.mmu.reactor.NEVER
 
