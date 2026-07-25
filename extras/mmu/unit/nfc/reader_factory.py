@@ -9,10 +9,7 @@
 # helpers (ntag_read_user_memory, mifare_authenticate, etc.). They know
 # nothing about lanes, Spoolman, or Happy Hare.
 
-try:
-    from .. import bus as bus_module
-except ImportError:
-    import bus as bus_module
+from .... import bus as bus_module
 
 from .pn532_driver import PN532Driver
 from .pn7160_driver import PN7160Driver
