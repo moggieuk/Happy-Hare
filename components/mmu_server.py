@@ -85,7 +85,7 @@ MMU_GATE_FIELD   = 'mmu_gate_map'
 MMU_RFID_FIELD   = 'rfid'          # NFC/RFID tag UID registered against a spool
 MIN_SM_VER       = (0, 18, 1)
 
-NFC_UID_MISS_TTL = 30.0            # Seconds to remember a UID that isn't in Spoolman (avoids re-querying on every scan)
+NFC_UID_MISS_TTL = 10.0            # Seconds to remember a UID that isn't in Spoolman (avoids re-querying on every scan)
 
 # ─── RFID spool auto-create: SpoolmanDB reference data + offline fallbacks ─────
 # Reference filament data fetched (once per process) from SpoolmanDB, the
