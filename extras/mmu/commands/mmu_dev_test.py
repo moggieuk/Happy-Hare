@@ -117,6 +117,7 @@ class MmuTestCommand(BaseCommand):
         + "DUMP_MCU_ENDSTOPS=1 Dump steppers registered on each MCU_endstop\n"
         + "DUMP_ACTIVE_SENSORS=1 Dump raw active sensors map\n"
         + "UPDATE_STATUS={dict} Force override (update) of mmu get_status() with supplied dict. 'OFF' to remove\n"
+        + "NFC_READ=1 Simulate an NFC tag read (no reader hardware). Params: UID={hex} DEEP=[0|1] GATE={n}(per-gate, else shared) UNIT={n} MATERIAL= BRAND= COLOR= DETAIL= MIN_TEMP= MAX_TEMP=\n"
     )
     HELP_SUPPLEMENT = (
         ""
@@ -1142,6 +1143,48 @@ class MmuTestCommand(BaseCommand):
                         mmu.developer_status_update = status
                     except Exception as e:
                         mmu.log_error(f"Could not parse status string: {str(e)}")
+                return
+
+            nfc_read = gcmd.get_int('NFC_READ', None, minval=0, maxval=1)
+            if nfc_read is not None:
+                have_run_test = True
+                # Simulate an NFC tag read with NO reader hardware attached. We inject at the
+                # exact point the real reader hands off - the manager's _dispatch_lookup - so
+                # every reader-level guard (has_gate_nfc_reader / is_enabled / is_active /
+                # _reader_for / _read_reader / _want_metadata) is bypassed by construction.
+                # The downstream *feature* gates (per-unit nfc_deep_read, spoolman_support)
+                # are still honoured; we log when one will suppress part of the injection.
+                uid = gcmd.get('UID', '04A1B2C3D4E5').strip()
+                deep = bool(gcmd.get_int('DEEP', 0, minval=0, maxval=1))
+                gate = gcmd.get_int('GATE', -1, minval=-1, maxval=mmu.num_gates - 1)
+
+                if gate >= 0: # Per-gate reader on this gate's unit
+                    target_unit = mmu.mmu_unit(gate)
+                    kind, tag_gate = "per-gate (gate %d)" % gate, gate
+                else:         # Shared reader on the chosen (default: selected) unit
+                    unit_index = gcmd.get_int('UNIT', mmu.unit_selected or 0, minval=0, maxval=mmu_machine.num_units - 1)
+                    target_unit = mmu_machine.get_mmu_unit_by_index(unit_index)
+                    kind, tag_gate = "shared (unit %d)" % unit_index, None
+
+                metadata = None
+                if deep: # Prepackaged tag metadata (override any field via params)
+                    metadata = {
+                        'material':        gcmd.get('MATERIAL', 'PLA'),
+                        'brand':           gcmd.get('BRAND', 'TestVendor'),
+                        'color_hex':       gcmd.get('COLOR', 'FF0000').lstrip('#'),
+                        'material_detail': gcmd.get('DETAIL', 'PLA Basic'),
+                        'min_temp':        gcmd.get_int('MIN_TEMP', 190),
+                        'max_temp':        gcmd.get_int('MAX_TEMP', 220),
+                    }
+                    if not mmu.nfc_deep_read_enabled(target_unit):
+                        log("NFC_READ: DEEP metadata supplied but nfc_deep_read is disabled on this unit "
+                            "- metadata will NOT be applied and auto-create is off (the UID lookup still runs)")
+                if mmu.p.spoolman_support == SPOOLMAN_OFF:
+                    log("NFC_READ: spoolman_support is off - no UID->spool lookup dispatched "
+                        "(only local deep-read metadata, if enabled, is applied)")
+
+                log("NFC_READ: injecting %s tag UID=%s%s" % (kind, uid, " (deep)" if deep else ""))
+                target_unit.nfc_manager._dispatch_lookup(uid, gate=tag_gate, metadata=metadata)
                 return
 
             # -----------

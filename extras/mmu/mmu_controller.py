@@ -1518,6 +1518,10 @@ class MmuController(MmuFilamentMovement):
         return self.gate_maps.gate_speed_override
 
     @property
+    def gate_spool_rfid(self):
+        return self.gate_maps.gate_spool_rfid
+
+    @property
     def gate_color_rgb(self):
         return self.gate_maps.gate_color_rgb
 
