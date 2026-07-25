@@ -1724,24 +1724,25 @@ class MmuFilamentMovement:
                         else:
                             self.wrap_gcode_command(self.p.post_load_macro, exception=True, wait=True)
 
-                # match orca/prusa/super slicer enforced retractions after post_load when printing
+                # match orca/prusa/super slicer unhandled retractions after post_load when printing
                 if self.is_printing() and self.num_toolchanges >= 1:
-                    retract_len    = 0
-                    retract_speed  = 30
+                    retract_len = 0
+                    speed       = 30
                     
                     if self.slicer_fw_retraction:
                         fw_retract = self.printer.lookup_object('firmware_retraction', None)
                         if fw_retract:
-                            retract_len    = fw_retract.retract_length
-                            retract_speed  = fw_retract.retract_speed
+                            retract_len = fw_retract.retract_length
+                            speed       = fw_retract.retract_speed
                     elif self.slicer_retraction > 0:
-                        sequence_vars  = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
-                        retract_len    = self.slicer_retraction
-                        retract_speed  = sequence_vars.variables.get('retract_speed', 30) if sequence_vars else 30
+                        sequence_vars = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
+                        retract_len   = self.slicer_retraction
+                        speed         = sequence_vars.variables.get('retract_speed', 30) if sequence_vars else 30
                     
                     if retract_len > 0:
-                        self.log_debug("Un-retracting %.2fmm to match slicer retraction" % retract_len)
-                        self.gcode.run_script_from_command("G1 E%.2f F%d" % (retract_len, int(retract_speed * 60)))
+                        self.log_debug("Retracting %.2fmm to match unhandled slicer retraction" % -retract_len)
+                        motor = "gear+extruder" if self.selector().get_filament_grip_state() == FILAMENT_DRIVE_STATE and not extruder_only else "extruder"
+                        self.move_filament("Unhandled slicer retraction", -retract_len, motor=motor, speed=speed * 60, accel=self.p.extruder_accel)
                     
                     self.slicer_retraction = -1
                     self.slicer_fw_retraction = False

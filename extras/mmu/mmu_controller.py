@@ -615,8 +615,6 @@ class MmuController(MmuFilamentMovement):
             'last_tool': self._last_tool,
             'next_tool': self._next_tool,
             'slicer_purge_length': self.slicer_purge_length,
-            'slicer_retraction': self.slicer_retraction,   
-            'slicer_fw_retraction': self.slicer_fw_retraction,
             'toolchange_purge_volume': self.toolchange_purge_volume,
             'last_toolchange': self._last_toolchange,
             'operation': self.saved_toolhead_operation,
