@@ -11,12 +11,16 @@
 # which resolves an "effect" — a named [mmu_led_effect] animation, an "r,g,b" color, or a
 # functional effect (off/on/gate_status/filament_color/slicer_color) — and, in static mode,
 # falls back to a plain RGB. A timed effect (duration=) auto-returns that unit to its default
-# via a per-unit timer (per-unit so a flash on one unit never disturbs another).
-# 
-# On top of that baseline, set_transient_effect()/restore_transient_effect() provide a
-# feature-agnostic "overlay then put back" API: a caller (e.g. NFC scanning) can temporarily
-# override one segment and later restore what was showing (restore='prior', snapshotted at
-# set time). This keeps feature-specific LED policy in the caller, not in this module.
+# via a per-unit timer (per-unit so a flash on one unit never disturbs another); an update
+# arriving while a timed effect holds the unit is deferred (last one wins) and replayed when
+# the timer fires. Two overlays are baked into the render: the selected-gate emphasis and the
+# base spoolman "pending spool_id" phase (see _pending_overlay_effect / pending_changed).
+#
+# set_transient_effect() additionally lets a feature (e.g. the NFC reader indicators) flash a
+# caller-owned effect on ONE segment through the same pipeline: the segment's prior effect is
+# snapshotted and restored when the flash expires - unless something newer painted over the
+# flash, in which case the restore self-cancels (newest wins). Flashes never block or reset
+# other segments. This keeps feature-specific LED policy in the caller, not in this module.
 #
 # Supports commands:
 #   MMU_SET_LED
@@ -52,7 +56,8 @@ class MmuLedManager:
         self.deferred = [None] * num_units         # Per-unit last _set_led request blocked by a timed effect, replayed when it ends
         self.led_timers = [None] * num_units       # Per-unit "return to default" timers (registered at ready)
         self.effect_state = {} # Current state used to minimise updates {unit: {segment: effect}}
-        self.transient_prior = {} # Snapshot of pre-override effect for restore='prior' {(unit, segment, gate): effect}
+        self.transient_flash = {}  # Active transient flash per (unit, segment): {'prior', 'flash', 'gate'}
+        self.transient_timers = {} # Lazily registered restore timer per (unit, segment)
         self._initialized = False # Used to prevent very early calls before leds are fully initialized
 
         # Event handlers
@@ -77,10 +82,6 @@ class MmuLedManager:
         try:
             self.pending_update[unit] = False
             self._set_led(unit, None, exit_effect='default', entry_effect='default', status_effect='default', logo_effect='default')
-            # This reset returns this unit's segments to their default, so its persistent-
-            # override snapshots are now moot - drop them to avoid a stale restore='prior'
-            # later resurrecting a baseline over whatever is showing.
-            self._clear_transient_prior(unit)
 
             # Replay the last update that arrived while the timed effect was held (over the
             # reset, so its segments win and the rest stay at default). If that update itself
@@ -96,12 +97,6 @@ class MmuLedManager:
         finally:
             self.inside_timer[unit] = False
         return next_wake
-
-
-    def _clear_transient_prior(self, unit):
-        # Drop persistent-override snapshots for a single unit (keys are (unit, segment, gate))
-        for key in [k for k in self.transient_prior if k[0] == unit]:
-            del self.transient_prior[key]
 
 
     def schedule_led_command(self, duration, unit):
@@ -355,33 +350,65 @@ class MmuLedManager:
         return ''
 
 
-    @staticmethod
-    def _transient_key(mmu_unit, segment, gate):
-        # Snapshot key for transient_prior; a specific gate normalises to its index, whole
-        # segment (None or negative) to None. 'segment' is expected already normalised.
-        return (mmu_unit.unit_index, segment, gate if (gate is not None and gate >= 0) else None)
-
-
-    def set_transient_effect(self, mmu_unit, effect, segment='exit',
-                             gate=None, duration=None, fadetime=0):
+    def _pending_overlay_effect(self, mmu_unit, segment):
         """
-        Apply a caller-owned effect to one segment via the normal LED pipeline.
+        Base spoolman pending-spool_id overlay for 'segment', or None. Baked into the
+        render (not a transient), so any pending spool_id - from an NFC lookup OR a manual
+        MMU_GATE_MAP NEXT_SPOOLID - shows on the segments chosen by the machine param
+        spoolman_led_segment (gate_status | status | both). Returns '' -> None so it's opt-in
+        (map effect_pending_spoolid[_expiring] to enable it).
+        """
+        phase = self.mmu.pending_phase
+        if not phase:
+            return None
+        mode = self.mmu.p.spoolman_led_segment
+        if segment in ('exit', 'entry'):
+            if mode not in ('gate_status', 'both'):
+                return None
+        elif segment == 'status':
+            if mode not in ('status', 'both'):
+                return None
+        else:
+            return None
+        op = 'pending_spoolid_expiring' if phase == 'expiring' else 'pending_spoolid'
+        return self.effect_name(mmu_unit.unit_index, op) or None
 
-        'effect' is a resolved value understood by _set_led: a named
-        [mmu_led_effect], an "r,g,b" colour, or a functional effect
-        (off/on/gate_status/filament_color/slicer_color). Segment availability,
-        gate ownership, animation-vs-static handling and (with 'duration') timed
-        restoration to default are all handled by _set_led.
 
-        Pass duration=None for a persistent override (end it with
-        restore_transient_effect); pass a duration for a self-restoring flash.
-        A persistent override snapshots the segment's current effect so it can be
-        put back by restore_transient_effect(restore='prior'); the snapshot is
-        first-wins per (unit, segment, gate) so stacking overrides (e.g. a forward
-        then a backward scan chase) keep the true pre-override baseline.
+    def pending_changed(self):
+        """
+        Re-render each unit's overlay-carrying segments when the pending spool_id phase
+        changes (set/expiring/cleared). A full default refresh picks up pending_phase in the
+        render branches; the overlay reverts automatically once the phase returns to None.
+        """
+        if not self._initialized:
+            return
+        for unit in range(self.mmu_machine.num_units):
+            self._set_led(unit, None, exit_effect='default', entry_effect='default', status_effect='default')
 
-        Returns True if dispatched, else False (no/disabled leds, bad segment, or a
-        named effect with no static RGB fallback while animation is off).
+
+    def set_transient_effect(self, mmu_unit, effect, segment='exit', gate=None, duration=None, fadetime=0):
+        """
+        Apply a caller-owned effect to one segment via the normal LED pipeline - used for
+        short-lived feature indicators (e.g. the NFC read/fail flashes) without this module
+        knowing anything about the feature.
+
+        'effect' is a resolved value understood by _set_led: a named [mmu_led_effect], an
+        "r,g,b" colour, or a functional effect (off/on/gate_status/filament_color/
+        slicer_color). Segment availability, gate ownership and animation-vs-static handling
+        are all handled by _set_led.
+
+        With a 'duration' this is a segment-scoped flash: what the segment was showing is
+        snapshotted first and restored when the duration expires - but ONLY if the flash is
+        still what's showing (anything painted over it in the meantime wins and the restore
+        self-cancels). Other segments are never touched and updates are never blocked.
+        Back-to-back flashes on the same segment keep the original pre-flash snapshot.
+        With duration=None the effect simply persists until the next repaint of that
+        segment (no restore bookkeeping).
+
+        Returns True if dispatched, else False (no/disabled leds, bad segment, a named
+        effect with no static RGB fallback while animation is off, or a flash requested
+        while a unit-wide timed state effect holds the unit - a cosmetic flash is dropped
+        rather than deferred, which would leave it with no way to clear).
         """
         if mmu_unit is None or not effect:
             return False
@@ -402,64 +429,48 @@ class MmuLedManager:
             logging.warning("MMU: LED effect '%s' has no static RGB mapping for unit %s" % (effect, mmu_unit.name))
             return False
 
-        # First-wins snapshot of what was showing so restore='prior' can put it back.
-        # effect_state records the resolved per-segment effect; a duration flash resets
-        # the whole unit to default via the timer instead, so only snapshot for a
-        # persistent (duration=None) override.
+        unit = mmu_unit.unit_index
         if duration is None:
-            key = self._transient_key(mmu_unit, segment, gate)
-            if key not in self.transient_prior:
-                self.transient_prior[key] = self.effect_state.get(mmu_unit.unit_index, {}).get(segment, 'default')
-        self._set_led(mmu_unit.unit_index, gate, duration=duration, fadetime=fadetime,
-                      **{'%s_effect' % segment: effect})
-        return True
+            # Persistent: paint and walk away (ends at the next repaint of the segment)
+            self._set_led(unit, gate, fadetime=fadetime, **{'%s_effect' % segment: effect})
+            return True
 
-
-    def restore_transient_effect(self, mmu_unit, segment='exit', gate=None, fadetime=0, restore='prior'):
-        """
-        End a persistent (duration=None) transient override on a segment/gate.
-        Duration-based flashes restore themselves (whole-unit reset to default via the
-        led timer) and need no explicit restore.
-
-        restore='prior' (default) puts back the effect that was showing before the
-        override (snapshotted at set_transient_effect time). If there is no snapshot -
-        because nothing was overridden, or the override was already superseded/cleared
-        (e.g. the led timer reset the unit) - it is a NO-OP and leaves the display
-        untouched, so it never stomps a newer effect. restore='default' unconditionally
-        forces the configured MMU default (explicit reset escape hatch).
-
-        Returns True if it repainted, else False (no matching override to restore).
-        """
-        if mmu_unit is None:
+        # Flash: drop (don't defer) while a unit-wide timed state effect (initialized/
+        # complete/error) holds the unit - a deferred flash would replay at its end with
+        # nothing scheduled to clear it, and a cosmetic indicator isn't worth extending
+        if self.pending_update[unit]:
             return False
-        segment = (segment or 'exit').strip().lower()
-        if segment not in MmuLeds.SEGMENTS:
-            return False
-        key = self._transient_key(mmu_unit, segment, gate)
-        prior = self.transient_prior.pop(key, None)
-        if restore == 'prior':
-            if prior is None:
-                return False # No live override of ours - don't touch the current display
-            target = prior
+
+        key = (unit, segment)
+        entry = self.transient_flash.get(key)
+        if entry is None:
+            # Snapshot what the segment is showing BEFORE the flash paints (first-wins so
+            # chained flashes, e.g. read -> fail, restore the true pre-flash baseline)
+            prior = self.effect_state.get(unit, {}).get(segment, 'default')
         else:
-            target = 'default'
-        self._set_led(mmu_unit.unit_index, gate, fadetime=fadetime,
-                      **{'%s_effect' % segment: target})
+            prior = entry['prior']
+
+        # Paint through the normal pipeline WITHOUT a _set_led duration: no unit-wide
+        # reset, no pending_update lock - other segments and later updates stay live
+        self._set_led(unit, gate, fadetime=fadetime, **{'%s_effect' % segment: effect})
+
+        self.transient_flash[key] = {'prior': prior, 'flash': effect, 'gate': gate}
+        if key not in self.transient_timers:
+            self.transient_timers[key] = self.mmu.reactor.register_timer(
+                functools.partial(self._transient_flash_handler, unit, segment), self.mmu.reactor.NEVER)
+        self.mmu.reactor.update_timer(self.transient_timers[key], self.mmu.reactor.monotonic() + duration)
         return True
 
 
-    def discard_transient_effect(self, mmu_unit, segment='exit', gate=None):
-        """
-        Drop the restore snapshot for a segment/gate WITHOUT repainting. Use when another
-        owner has already taken over the segment (an action/print-state effect, or a
-        self-restoring duration flash), so a later restore='prior' can't resurrect a
-        now-stale baseline and no redundant repaint is issued.
-        """
-        if mmu_unit is None:
-            return
-        segment = (segment or 'exit').strip().lower()
-        key = self._transient_key(mmu_unit, segment, gate)
-        self.transient_prior.pop(key, None)
+    def _transient_flash_handler(self, unit, segment, eventtime):
+        """End a segment-scoped transient flash: restore the pre-flash effect, but only if
+        the flash is still what the segment is showing. If anything painted over it (action
+        transition, pending overlay, state change - none of which are blocked by a flash),
+        the newer effect wins and the restore self-cancels."""
+        entry = self.transient_flash.pop((unit, segment), None)
+        if entry is not None and self.effect_state.get(unit, {}).get(segment) == entry['flash']:
+            self._set_led(unit, entry['gate'], fadetime=0, **{'%s_effect' % segment: entry['prior']})
+        return self.mmu.reactor.NEVER
 
 
     # Make the necessary configuration changes to LED accross all mmu_units
@@ -627,7 +638,11 @@ class MmuLedManager:
                     stop_effect_and_set_gate_rgb((0,0,0), unit, segment, gate, fadetime=fadetime)
 
                 elif effect == "gate_status":  # Filament availability (gate_map)
-                    def _effect_for_gate(g):
+                    pending_overlay = self._pending_overlay_effect(mmu_unit, segment)
+                    def _effect_for_gate(g, pending_overlay=pending_overlay):
+                        # Base spoolman pending overlay (if active) supersedes per-gate availability
+                        if pending_overlay:
+                            return pending_overlay
                         # Selected gate, with filament past extruder entry: force 'gate_selected'
                         if g == self.mmu.gate_selected and self.mmu.filament_pos > FILAMENT_POS_EXTRUDER_ENTRY:
                             return self.effect_name(unit, 'gate_selected')
@@ -708,9 +723,17 @@ class MmuLedManager:
             #
             segment = "status"
             effect = get_effective_effect(mmu_unit, segment, effects[segment])
+            # Base spoolman pending overlay supersedes the configured status effect (only when
+            # the status segment is available, i.e. effect resolved to non-empty)
+            pending_overlay = self._pending_overlay_effect(mmu_unit, segment) if effect else None
 
             #if not effect or self.effect_state.get(unit, {}).get(segment) == effect:
-            if not effect:
+            if pending_overlay:
+                # Note: effect_state still records the underlying configured effect (like the
+                # exit branch does for gate_status) - the overlay is transient render state
+                set_gate_effect(pending_overlay, unit, segment, None, fadetime=fadetime)
+
+            elif not effect:
                 pass
 
             elif effect == "off":

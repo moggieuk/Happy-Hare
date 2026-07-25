@@ -335,7 +335,7 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
       int
       default 1 if BOOL_NFC_DEEP_READ
       default 0
-_
+
     config PARAM_NFC_GATE_JOG_SCAN_WINDOW
       string "NFC reader jog scan window"
       default "-50, 50"
@@ -346,15 +346,36 @@ _
         rotation this range should be at least 480mm if possible.
         E.g. "-100, 400" means can retract -100mm and extruder 400mm.  "0, 0" will disable jog scan operation
 
-# PAUL convert to option list
-    config PARAM_NFC_LED_SEGMENT
-      string "NFC reader led feedback segment"
-      default ""
+    choice CHOICE_NFC_LED_SEGMENT
+      prompt "NFC reader led feedback segment"
       help
-        NFC reader LED feedback: which segment the shared-reader lookup effects render on.
-        '' = auto ('status' for a shared/bypass reader, 'exit' for a per-gate reader). The
-        effects themselves are mapped per operation in [mmu_leds] (effect_nfc_*), matching
-        the convention used for loading/gate_status/etc., so the LED module stays agnostic.
+        NFC reader transient LED feedback: which segment the shared-reader effects render on.
+        auto = 'status' for a shared/bypass reader, 'exit' for a per-gate reader)
+      default CHOICE_NFC_LED_SEGMENT_AUTO
+
+      config CHOICE_NFC_LED_SEGMENT_AUTO
+        bool "Auto"
+        help
+          Auto: 'status' for a shared/bypass reader, 'exit' for a per-gate reader
+
+      config CHOICE_NFC_LED_SEGMENT_STATUS
+        bool "Status"
+
+      config CHOICE_NFC_LED_SEGMENT_EXIT
+        bool "Exit"
+
+      config CHOICE_NFC_LED_SEGMENT_ENTRY
+        bool "Entry"
+
+    endchoice
+
+    # Create no-prompt param from choice
+    config PARAM_NFC_LED_SEGMENT
+      string
+      default "auto"   if CHOICE_NFC_LED_SEGMENT_AUTO
+      default "status" if CHOICE_NFC_LED_SEGMENT_STATUS
+      default "exit"   if CHOICE_NFC_LED_SEGMENT_EXIT
+      default "entry"  if CHOICE_NFC_LED_SEGMENT_ENTRY
 
   endmenu
 endif

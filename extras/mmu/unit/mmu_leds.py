@@ -146,11 +146,11 @@ class MmuLeds:
             'effect_gate_available_sel',
             'effect_gate_unknown_sel',
             'effect_gate_empty_sel',
-            'effect_nfc_read',
-            'effect_nfc_deep_read',
-            'effect_nfc_pending',
-            'effect_nfc_pending_expiring',
-            'effect_nfc_fail'
+            'effect_pending_spoolid',
+            'effect_pending_spoolid_expiring',
+            'effect_nfc_read',      # Transient effect
+            'effect_nfc_deep_read', # Transient effect
+            'effect_nfc_fail',      # Transient effect
         ]
         for key in effect_keys:
             parts = [part.strip() for part in config.get(key, '').split(",", 1)]

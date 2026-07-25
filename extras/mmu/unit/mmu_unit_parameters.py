@@ -144,7 +144,7 @@ class MmuUnitParameters(TunableParametersBase):
         # NFC / RFID reading
         ParamSpec('nfc_gate_jog_scan_window',         'floatlist', [0.0, 0.0], section="NFC", validator=_validate_nfc_gate_jog_scan_window),
         ParamSpec('nfc_deep_read',                    'int',    0,    section="NFC", limits=dict(minval=0, maxval=1)),
-        ParamSpec('nfc_led_segment',                  'str',      '', section="NFC"),
+        ParamSpec('nfc_led_segment',                  'str',  'auto', section="NFC"),
 
         # Bowden
         ParamSpec('bowden_homing_max',                'float',2000.0, section="BOWDEN MOVE", limits=dict(minval=100.0)),
