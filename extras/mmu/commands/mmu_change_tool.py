@@ -101,7 +101,7 @@ class MmuChangeToolCommand(BaseCommand):
             if fw_retraction_obj:
                 slicer_retraction = -1
             else:
-                mmu.log_warning("gcode uses firmware retraction but its not enabled in printer") 
+                mmu.log_warning("Print gcode uses firmware retraction but its not enabled in the printer") 
                 slicer_fw_retraction = False
   
 
@@ -156,7 +156,7 @@ class MmuChangeToolCommand(BaseCommand):
 
         try:
             with mmu.wrap_sync_gear_to_extruder():
-                with mmu.wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during tool change
+                with mmu.wrap_suspend_filament_monitoring(): # Don't want runout accidentally triggering during tool change
                     with mmu.var_manager.wrap_suspend_write_variables(): # Reduce I/O activity to a minimum
 
                         # set slicer parameters as mmu attributes for macros
