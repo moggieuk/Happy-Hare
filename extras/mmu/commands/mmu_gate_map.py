@@ -81,6 +81,7 @@ class MmuGateMapCommand(BaseCommand):
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=mmu.num_gates - 1)
         bypass = bool(gcmd.get_int('BYPASS', 0, minval=0, maxval=1)) # Target 'active_filament' for the bypass (no gate-map row)
         next_spool_id = gcmd.get_int('NEXT_SPOOLID', None, minval=-2)
+        lookup = gcmd.get_int('LOOKUP', None, minval=-2, maxval=-1)  # Hidden: failed per-gate lookup result from Moonraker
         created = bool(gcmd.get_int('CREATED', 0, minval=0, maxval=1)) # Set by Moonraker when the UID minted a new spool
 
         gate_map = None
@@ -124,6 +125,20 @@ class MmuGateMapCommand(BaseCommand):
                 mmu.log_error("Cannot use NEXT_SPOOLID feature with spoolman_support: pull. Use 'push' or 'readonly' modes")
                 reread = False
             mmu.nfc_lookup_resolved(reread=reread)
+            return
+
+        if lookup is not None:
+            # Failed PER-GATE NFC lookup result from Moonraker. The gate map is untouched;
+            # LED fail flash (queued behind the gate's read flash) + console error, matching
+            # the shared-reader failure feedback.
+            #   -1  recoverable failure (e.g. Spoolman comms)
+            #   -2  definitive "unknown tag"
+            if gate >= 0:
+                mmu._nfc_led_on_gate_fail(gate)
+                if lookup == -2:
+                    mmu.log_error("NFC: scanned tag on gate %d is not registered against any spool in Spoolman" % gate)
+                else:
+                    mmu.log_error("NFC: could not reach Spoolman to resolve scanned tag on gate %d" % gate)
             return
 
         if bypass:

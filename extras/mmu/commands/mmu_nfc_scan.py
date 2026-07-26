@@ -32,8 +32,8 @@ class MmuNfcScanCommand(BaseCommand):
         "Jogs the filament within the unit's 'nfc_gate_jog_scan_window' until the spool's\n"
         "RFID tag reaches the gate's reader, reads it, then re-parks the filament.\n"
         "Examples:\n"
-        + f"{CMD}        ...Scan the RFID/NFC tag on the current gate\n"
-        + f"{CMD} GATE=2 ...Scan the RFID/NFC tag on gate 2\n"
+        + f"{CMD}        ...Jog and scan the RFID/NFC tag on the current gate\n"
+        + f"{CMD} GATE=2 ...Jog and scan the RFID/NFC tag on gate 2\n"
     )
 
     def __init__(self, mmu):
