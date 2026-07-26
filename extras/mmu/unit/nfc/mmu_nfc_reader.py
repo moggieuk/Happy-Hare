@@ -129,7 +129,7 @@ class MmuNfcReader:
         self.gcode = self.printer.lookup_object('gcode')
         self.name = config.get_name().split()[-1]
         self.mmu_unit = mmu_unit
-        self._defaults = self.printer.load_object('mmu_nfc_reader', None)
+        self._defaults = self.printer.lookup_object('mmu_nfc_reader', None)
 
         # Logical gate number, or the mmu_unit name for a shared reader. Not known
         # until the manager calls init(gate); used only as a driver logging label.
