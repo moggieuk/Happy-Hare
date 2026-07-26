@@ -17,10 +17,11 @@
 # base spoolman "pending spool_id" phase (see _pending_overlay_effect / pending_changed).
 #
 # set_transient_effect() additionally lets a feature (e.g. the NFC reader indicators) flash a
-# caller-owned effect on ONE segment through the same pipeline: the segment's prior effect is
-# snapshotted and restored when the flash expires - unless something newer painted over the
-# flash, in which case the restore self-cancels (newest wins). Flashes never block or reset
-# other segments. This keeps feature-specific LED policy in the caller, not in this module.
+# caller-owned effect on ONE segment (optionally one gate) through the same pipeline: the
+# segment's prior effect is snapshotted and restored when the flash expires - unless something
+# newer painted over the flash, in which case the restore self-cancels (newest wins; for a
+# gate-scoped flash a baseline repaint of ANOTHER gate doesn't count as newer). Flashes never
+# block or reset other segments. This keeps feature-specific LED policy in the caller.
 #
 # Supports commands:
 #   MMU_SET_LED
@@ -515,9 +516,17 @@ class MmuLedManager:
         key = (unit, segment)
         entry = self.transient_flash.pop(key, None)
         pending = self.transient_pending.pop(key, None)
-        if entry is None or self.effect_state.get(unit, {}).get(segment) != entry['flash']:
+        state = self.effect_state.get(unit, {}).get(segment)
+        # A GATE-scoped flash paints one gate but effect_state records per segment: another
+        # gate repainting with the same baseline (e.g. its gate_status refreshed) changes the
+        # record while our gate still shows the flash. In that case (state == the flash's own
+        # restore baseline) proceed normally - restoring/promoting one gate is always safe.
+        # Anything else painted over the segment (action/state effect) wins: self-cancel.
+        survived = entry is not None and (
+            state == entry['flash'] or (entry['gate'] is not None and state == entry['prior']))
+        if not survived:
             self.mmu.log_trace("LED: transient flash end on unit %d/%s self-cancelled (overpainted: showing '%s')%s" % (
-                unit, segment, self.effect_state.get(unit, {}).get(segment),
+                unit, segment, state,
                 (" - dropping queued '%s'" % pending['effect']) if pending else ""))
             return self.mmu.reactor.NEVER # Something newer won - self-cancel
         if pending is not None:

@@ -884,7 +884,23 @@ class MmuServer:
             logging.error(f"NFC: failed to send NEXT_SPOOLID={value}: {str(e)}")
 
 
-    async def get_spool_by_uid(self, uid=None, gate=None, metadata=None, save=False, silent=False) -> bool:
+    async def _send_gate_lookup_result(self, gate, value):
+        '''
+        Report the terminal outcome of a failed PER-GATE lookup back to Happy Hare
+        (LED failure feedback + console error; the gate map is never touched):
+          -1  recoverable failure (e.g. Spoolman comms)
+          -2  definitive unknown tag
+        Success needs no counterpart - it is delivered as 'GATE=<g> SPOOLID=<id>'.
+        '''
+        if not self._mmu_backend_enabled():
+            return
+        try:
+            await self.klippy_apis.run_gcode(f"MMU_GATE_MAP GATE={gate} LOOKUP={value} QUIET=1")
+        except Exception as e:
+            logging.error(f"NFC: failed to send GATE={gate} LOOKUP={value}: {str(e)}")
+
+
+    async def get_spool_by_uid(self, uid=None, gate=None, metadata=None, save=False, silent=False, report_only=False) -> bool:
         '''
         Resolve a scanned NFC/RFID tag UID to a spool_id and hand it back to
         Happy Hare.
@@ -900,6 +916,12 @@ class MmuServer:
         (see mmu_nfc_manager): the reader reads only the tag UID and calls this
         remote method, which looks the UID up in Spoolman and, on success, runs
         an MMU_GATE_MAP command back on Klipper.
+
+        With report_only=True (manual MMU_NFC REGISTER on a shared reader) the
+        lookup/auto-create runs as normal (updating the caches) but NO gcode
+        callback is sent - no pending spool_id, no gate map change, no guard
+        interplay - the outcome is only reported to the console. The negative
+        (miss) cache is also bypassed so an explicit request gets a live answer.
 
         The callback flavour depends on 'gate':
           - gate is None -> 'MMU_GATE_MAP NEXT_SPOOLID=<spool_id>' (a shared
@@ -924,13 +946,15 @@ class MmuServer:
                 # rapid re-scans of an unregistered tag don't hammer Spoolman
                 now = time.monotonic()
                 miss_expiry = self.uid_miss_cache.get(uid_norm)
-                if miss_expiry is not None and now < miss_expiry:
+                if miss_expiry is not None and now < miss_expiry and not report_only:
                     logging.debug(f"NFC: tag {uid_norm} still in miss cache, skipping Spoolman lookup")
                     # The cache only spares the Spoolman fetch - a shared-reader lookup must
                     # still get its terminal NEXT_SPOOLID=-2, else Klipper's in-flight guard
                     # orphans until the 30s timeout (a re-scan of the same unknown tag stalls).
                     if gate is None:
                         await self._send_next_spoolid(-2)
+                    else:
+                        await self._send_gate_lookup_result(gate, -2)
                     return False
 
                 # A freshly-registered tag may not be in the cache yet - refresh once
@@ -941,8 +965,10 @@ class MmuServer:
                     # Recoverable failure. For a shared-reader lookup signal
                     # NEXT_SPOOLID=-1 so Klipper releases the in-flight guard and
                     # allows the tag to be re-read (a retry may succeed).
-                    if gate is None:
+                    if gate is None and not report_only:
                         await self._send_next_spoolid(-1)
+                    elif gate is not None:
+                        await self._send_gate_lookup_result(gate, -1)
                     return False
                 spool_id = self.uid_to_spool_id.get(uid_norm)
 
@@ -973,14 +999,23 @@ class MmuServer:
                 # Definitive miss. For a shared-reader lookup signal NEXT_SPOOLID=-2
                 # so Klipper releases the guard WITHOUT re-reading (a re-scan of the
                 # same unregistered tag won't help and would just loop).
-                if gate is None:
+                if gate is None and not report_only:
                     await self._send_next_spoolid(-2)
+                elif gate is not None:
+                    await self._send_gate_lookup_result(gate, -2)
                 return False
 
             # Positive result - drop any stale negative-cache entry for this tag
             self.uid_miss_cache.pop(uid_norm, None)
 
             logging.info(f"NFC: tag {uid_norm} resolved to spool_id {spool_id}" + (f" for gate {gate}" if gate is not None else ""))
+
+            if report_only:
+                # Manual registration: report the outcome, send no callback (the
+                # 'created spool' message above already covered the create case)
+                if not created:
+                    await self._log_n_send(f"NFC: tag {uid_norm} is registered to Spoolman spool {spool_id}", silent=silent)
+                return True
 
             # Hand the resolved spool back to Happy Hare (which releases the guard).
             if self._mmu_backend_enabled():

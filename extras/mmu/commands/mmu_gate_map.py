@@ -81,6 +81,7 @@ class MmuGateMapCommand(BaseCommand):
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=mmu.num_gates - 1)
         bypass = bool(gcmd.get_int('BYPASS', 0, minval=0, maxval=1)) # Target 'active_filament' for the bypass (no gate-map row)
         next_spool_id = gcmd.get_int('NEXT_SPOOLID', None, minval=-2)
+        lookup = gcmd.get_int('LOOKUP', None, minval=-2, maxval=-1)  # Hidden: failed per-gate lookup result from Moonraker
         created = bool(gcmd.get_int('CREATED', 0, minval=0, maxval=1)) # Set by Moonraker when the UID minted a new spool
 
         gate_map = None
@@ -90,9 +91,6 @@ class MmuGateMapCommand(BaseCommand):
             mmu.log_error("Recieved unparsable gate map update. See log for more details")
             mmu.log_debug("Exception whilst parsing gate map in MMU_GATE_MAP: %s" % str(e))
             return
-
-        # Ensure webhooks always sees a change if we edit map
-        mmu.gate_maps.renew_gate_map()
 
         if reset:
             mmu.gate_maps.reset_gate_map()
@@ -126,6 +124,20 @@ class MmuGateMapCommand(BaseCommand):
             mmu.nfc_lookup_resolved(reread=reread)
             return
 
+        if lookup is not None:
+            # Failed PER-GATE NFC lookup result from Moonraker. The gate map is untouched;
+            # LED fail flash (queued behind the gate's read flash) + console error, matching
+            # the shared-reader failure feedback.
+            #   -1  recoverable failure (e.g. Spoolman comms)
+            #   -2  definitive "unknown tag"
+            if gate >= 0:
+                mmu._nfc_led_on_gate_fail(gate)
+                if lookup == -2:
+                    mmu.log_error("NFC: scanned tag on gate %d is not registered against any spool in Spoolman" % gate)
+                else:
+                    mmu.log_error("NFC: could not reach Spoolman to resolve scanned tag on gate %d" % gate)
+            return
+
         if bypass:
             # Filament attributes for the bypass "gate" -> active_filament only (there is no
             # gate-map row). Normally sent by Moonraker (async, after a bypass spool
@@ -149,6 +161,10 @@ class MmuGateMapCommand(BaseCommand):
             if not quiet:
                 mmu.log_always("Bypass filament attributes updated")
             return
+
+        # Ensure webhooks always sees a change if we edit the map (the callback-style
+        # blocks above don't touch the gate map, so they skip this churn)
+        mmu.gate_maps.renew_gate_map()
 
         changed_gate_ids = []
 
@@ -275,8 +291,8 @@ class MmuGateMapCommand(BaseCommand):
                         for (g, sid) in mod_gate_ids:
                             ids_dict[g] = sid
 
-                    # A per-gate NFC scan that auto-created a Spoolman spool (no LED for
-                    # per-gate; console log gives the equivalent feedback)
+                    # A per-gate NFC scan that auto-created a Spoolman spool (console log
+                    # complements the gate's LED feedback)
                     if created and spool_id and spool_id > 0:
                         mmu.log_always("Spool ID: created new Spoolman spool %d for scanned tag (gate %d)" % (spool_id, gate_idx))
 

@@ -284,35 +284,43 @@ class MmuNfcManager:
     def init_reader(self, shared=False, gate=None):
         """
         (Re)initialize a single addressed reader. Returns alive bool, or None
-        if no such reader is configured.
+        if no such reader is configured. A re-init is a fresh start, so when the
+        shared reader is (re)inited the shared-poll read dedupe is dropped too
+        (a still-presented tag can re-trigger a lookup).
         """
         reader = self._reader_for(shared=shared, gate=gate)
         if reader is None:
             return None
         self._init_reader(reader, self._label_for(shared=shared, gate=gate))
+        if reader is self.shared_reader:
+            self.allow_reread()
         return reader.alive
 
 
     def init_all(self):
         """
-        (Re)initialize every reader this unit controls.
+        (Re)initialize every reader this unit controls (fresh start: the
+        shared-poll read dedupe is dropped too).
         """
         self._init_all_readers()
+        self.allow_reread()
 
 
-    def read_reader(self, shared=False, gate=None):
+    def read_reader(self, shared=False, gate=None, deep=False):
         """
-        Manual one-shot read of an addressed reader, returning the UID or None.
+        Manual one-shot read of an addressed reader, returning (uid, metadata).
 
         Intended for the MMU_NFC command. Overrides the 'active' guard (an explicit
         request is not an accidental read); callers should honor 'enabled' first.
-        Does not dispatch a Spoolman lookup - it just reports the tag.
+        Does not dispatch a Spoolman lookup - it just reports the tag. With deep=True
+        a structured read parses and returns the tag metadata (explicit request, so
+        the per-unit nfc_deep_read gate for automatic reads does not apply); metadata
+        is None for UID-only reads or unparseable/unsupported tags.
         """
         reader = self._reader_for(shared=shared, gate=gate)
         if reader is None:
-            return None
-        uid, _metadata = self._read_reader(reader)
-        return uid
+            return None, None
+        return self._read_reader(reader, deep=deep)
 
 
     def release_reader(self, shared=False, gate=None):
