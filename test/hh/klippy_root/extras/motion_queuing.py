@@ -32,6 +32,9 @@ class PrinterMotionQueuing:
         self.trapqs = []
         self.scan_window_checks = 0
         self.movequeue_activity = []
+        # Set by the harness (test/hh/bootstrap.py) to observe plain filament moves.
+        # callable(trapq, signed_distance_mm)
+        self.move_observer = None
 
     def allocate_trapq(self):
         tq = Trapq(len(self.trapqs))
@@ -53,6 +56,22 @@ class PrinterMotionQueuing:
                 'axes_r': (axes_r_x, axes_r_y, axes_r_z),
                 'start_v': start_v, 'cruise_v': cruise_v, 'accel': accel,
             })
+            # THE hook for plain (non-homing) filament moves - notably the final park
+            # in _unload_gate, which homing never sees. MmuStepper._submit_move
+            # (extras/mmu_stepper.py:853-861) is the sole producer of these, and the
+            # signed distance is exactly recoverable from the trapezoid:
+            #
+            #   force_move.calc_move_time gives dist = speed * (accel_t + cruise_t)
+            #   with cruise_v == speed, so signed dist = axes_r_x * cruise_v *
+            #   (accel_t + cruise_t) - exact for both the accel and zero-accel branches.
+            #
+            # Homing moves do NOT appear here (they go through HomingMove, which only
+            # calls set_position), so there is no double counting. The retract inside
+            # MmuGenericRail.home DOES appear, and should.
+            if self.move_observer is not None:
+                distance = axes_r_x * cruise_v * (accel_t + cruise_t)
+                if distance:
+                    self.move_observer(trapq, distance)
         return trapq_append
 
     def check_step_generation_scan_windows(self):

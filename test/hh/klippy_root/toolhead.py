@@ -52,6 +52,13 @@ class ToolHead:
         self.dwells = []
         self.flushes = 0
         self.waits = 0
+        # Mirrors real Klipper's ToolHead.__init__ default-module preload
+        # (klippy/toolhead.py:292). `homing` in particular is looked up rather than
+        # loaded by HH (extras/mmu_stepper.py:883), so it has to exist by now. The
+        # ones the harness does not fake are loaded with a None default and skipped.
+        for module_name in ('gcode_move', 'homing', 'idle_timeout', 'statistics',
+                            'manual_probe', 'tuning_tower', 'garbage_collection'):
+            self.printer.load_object(config, module_name, None)
 
     # -- print time --------------------------------------------------------
     def _print_time(self):
@@ -159,6 +166,3 @@ class ToolHead:
 def add_printer_objects(config):
     printer = config.get_printer()
     printer.add_object('toolhead', ToolHead(config))
-    # Klipper loads these alongside the toolhead
-    for m in ('gcode_move',):
-        printer.load_object(config, m, None)

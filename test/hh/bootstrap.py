@@ -8,7 +8,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
-import os, shutil, logging, tempfile
+import os, shutil, logging, tempfile, contextlib
 
 from . import cfg as cfg_mod
 from . import profiles as profiles_mod
@@ -61,6 +61,11 @@ max_temp: 300
 uart_pin: mcu:PA6
 run_current: 0.5
 """
+
+
+@contextlib.contextmanager
+def _nullcontext():
+    yield
 
 
 class Session:
@@ -267,7 +272,114 @@ class Session:
                 # A sensor with no button registration (e.g. an ADC-backed one) is
                 # driven through its own pin object instead - not an error here.
                 logging.debug('no button for sensor %s', name)
+        self._spring_at_rest = at_rest
         return self
+
+    # -- filament path model -----------------------------------------------
+    def filament(self, layout=None):
+        """
+        The 1-D filament path model for this machine, created on first use and
+        published as printer.harness_filament so the fake HomingMove can find it.
+
+        Sensors it does not own are left alone: the buffer spring sensors are held at
+        their configured resting state by apply_initial_sensor_states, and a filament
+        model that also drove them would fight it.
+        """
+        existing = getattr(self.printer, 'harness_filament', None)
+        if existing is not None and layout is None:
+            return existing
+
+        from .filament import FilamentPath
+        model = FilamentPath(self.mmu.num_gates, layout=layout)
+        owned = [name for name in self.sensors()
+                 if name.split(':')[-1] not in getattr(self, '_spring_at_rest', set())
+                 and model.position(name) is not None]
+        model.bind(owned, self._set_sensor_state)
+        self.printer.harness_filament = model
+        mq = self.printer.lookup_object('motion_queuing', None)
+        if mq is not None:
+            mq.move_observer = self._on_manual_move
+        return model
+
+    def _on_manual_move(self, trapq, distance):
+        """
+        Advance the filament model for a plain (non-homing) gear move.
+
+        Filtered to the SELECTED gate's gear stepper trapq on purpose: a
+        motor="gear+extruder" move appends to both the gear and the extruder trapq for
+        one physical filament movement, and counting both would double the distance.
+        """
+        model = getattr(self.printer, 'harness_filament', None)
+        if model is None:
+            return
+        gate = self.mmu.gate_selected
+        if gate is None or gate < 0:
+            return
+        stepper = self._gear_stepper(gate)
+        if stepper is None or getattr(stepper, 'manual_trapq', None) is not trapq:
+            return
+        model.advance(gate, distance, 'move')
+
+    def _gear_stepper(self, gate):
+        """
+        The MmuStepper driving this gate. A multigear machine has one per gate
+        (mmu_gear_names == ['unit0_gear', 'unit0_gear_1', ...]); a single-gear machine
+        shares index 0 across all gates.
+        """
+        unit = self.mmu.mmu_unit(gate)
+        names = getattr(unit, 'mmu_gear_names', None)
+        if not names:
+            return None
+        index = gate - unit.first_gate if unit.multigear else 0
+        if not 0 <= index < len(names):
+            index = 0
+        return self.printer.lookup_object('mmu_stepper %s' % names[index], None)
+
+    def _set_sensor_state(self, name, state):
+        handle = self.sensor(name)
+        if handle.present != state:
+            handle.set(state)
+
+    @contextlib.contextmanager
+    def quiet_sensors(self):
+        """
+        Apply sensor state WITHOUT HH acting on it, for scenario setup.
+
+        Needed because a filament state change is a real event: putting filament at a
+        gate trips the entry switch, which HH treats as an insert and responds to by
+        preloading that gate. Correct behaviour, but not what you want while arranging
+        a starting position.
+
+        Suppression uses min_event_systime = reactor.NEVER, which is exactly what
+        MmuRunoutHelper itself does while a callback is in flight
+        (extras/mmu/mmu_sensor_utils.py:218,224,229) - so this is HH's own mechanism,
+        not a backdoor.
+
+        To TEST insert handling, place filament outside this block.
+        """
+        helpers = [sensor.runout_helper for sensor in self.sensors().values()]
+        saved = [h.min_event_systime for h in helpers]
+        for helper in helpers:
+            helper.min_event_systime = self.reactor.NEVER
+        try:
+            yield self
+        finally:
+            for helper, previous in zip(helpers, saved):
+                helper.min_event_systime = previous
+
+    def place_filament(self, gate, position=None, quiet=True):
+        """
+        Put a gate's filament somewhere. Defaults to the gate park position and to
+        quiet placement; pass quiet=False to let HH react as if a user inserted it.
+        """
+        model = self.filament()
+        with (self.quiet_sensors() if quiet else _nullcontext()):
+            if position is None:
+                model.park(gate)
+            else:
+                model.place(gate, position)
+        self.reactor.advance(0.)
+        return model
 
     def ready(self):
         """Step 7 (klippy:ready)."""
