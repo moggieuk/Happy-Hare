@@ -37,9 +37,10 @@ from .commands.mmu_base_command import *
 # slow comms failure signals '-1' before this fires. Normal outcomes resolve sooner.
 NFC_LOOKUP_TIMEOUT = 30.0
 
-# NFC reader LED indicator tuning
-NFC_LED_READ_FLASH  = 1.5  # Duration of the "tag read" flash
-NFC_LED_FAIL_FLASH  = 3.0  # Duration of the "lookup failed" flash before returning to default
+# NFC reader LED indicator fallback durations - used only when the effect_nfc_* mapping in
+# [mmu_leds] omits its optional 3rd (duration) field; the config value is authoritative
+NFC_LED_READ_FLASH  = 1.5  # "tag read" flash
+NFC_LED_FAIL_FLASH  = 3.0  # "lookup failed" flash before returning to default
 
 # Base spoolman pending-spool_id LED overlay: swap to the "expiring" effect this many
 # seconds before spoolman_pending_id_timeout voids the assignment
@@ -1943,7 +1944,7 @@ class MmuController(MmuFilamentMovement):
         gate's LEDs, queued behind the read flash so the chain plays out like the shared
         reader's. No in-flight guard needed - only Moonraker sends per-gate results."""
         unit = self.mmu_unit(gate)
-        if unit is None or not self._nfc_led_enabled(unit):
+        if unit is None:
             return
         self._nfc_led_flash('nfc_fail', default=NFC_LED_FAIL_FLASH, defer=True, unit=unit, gate=gate)
 
@@ -3219,8 +3220,8 @@ class MmuController(MmuFilamentMovement):
              auto-creating). A resolved spool is authoritative and overrides the
              metadata-derived attributes.
 
-        'unit' is the mmu_unit whose reader produced the read (used for shared-reader
-        LED feedback; per-gate LED feedback is not yet wired).
+        'unit' is the mmu_unit whose reader produced the read (targets the read/fail
+        LED flashes - whole segment for shared, the gate's own LEDs for per-gate).
         """
         # Resolve the reader's unit (nfc_deep_read is per-unit). Callers always pass it; fall
         # back to the gate's unit for a per-gate read that didn't.
@@ -3370,7 +3371,9 @@ class MmuController(MmuFilamentMovement):
         resolve the UID in Spoolman - auto-creating a spool from tag metadata when
         spoolman_nfc_auto_create is enabled and the mode is writable - and report the
         outcome to the console. Unlike a normal shared read, NO callback follows:
-        no pending spool_id, no gate map change, no lookup guard.
+        no pending spool_id, no gate map change, no lookup guard. Note: deliberately
+        does not require the per-unit nfc_deep_read gate that nfc_auto_create_enabled()
+        applies to automatic reads - REGISTER always performs an explicit deep read.
         """
         if self.p.spoolman_support == SPOOLMAN_OFF:
             self.log_error("Cannot register tag: spoolman_support is off")

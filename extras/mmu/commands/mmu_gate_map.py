@@ -92,9 +92,6 @@ class MmuGateMapCommand(BaseCommand):
             mmu.log_debug("Exception whilst parsing gate map in MMU_GATE_MAP: %s" % str(e))
             return
 
-        # Ensure webhooks always sees a change if we edit map
-        mmu.gate_maps.renew_gate_map()
-
         if reset:
             mmu.gate_maps.reset_gate_map()
 
@@ -164,6 +161,10 @@ class MmuGateMapCommand(BaseCommand):
             if not quiet:
                 mmu.log_always("Bypass filament attributes updated")
             return
+
+        # Ensure webhooks always sees a change if we edit the map (the callback-style
+        # blocks above don't touch the gate map, so they skip this churn)
+        mmu.gate_maps.renew_gate_map()
 
         changed_gate_ids = []
 
@@ -290,8 +291,8 @@ class MmuGateMapCommand(BaseCommand):
                         for (g, sid) in mod_gate_ids:
                             ids_dict[g] = sid
 
-                    # A per-gate NFC scan that auto-created a Spoolman spool (no LED for
-                    # per-gate; console log gives the equivalent feedback)
+                    # A per-gate NFC scan that auto-created a Spoolman spool (console log
+                    # complements the gate's LED feedback)
                     if created and spool_id and spool_id > 0:
                         mmu.log_always("Spool ID: created new Spoolman spool %d for scanned tag (gate %d)" % (spool_id, gate_idx))
 

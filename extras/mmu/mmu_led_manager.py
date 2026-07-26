@@ -17,10 +17,11 @@
 # base spoolman "pending spool_id" phase (see _pending_overlay_effect / pending_changed).
 #
 # set_transient_effect() additionally lets a feature (e.g. the NFC reader indicators) flash a
-# caller-owned effect on ONE segment through the same pipeline: the segment's prior effect is
-# snapshotted and restored when the flash expires - unless something newer painted over the
-# flash, in which case the restore self-cancels (newest wins). Flashes never block or reset
-# other segments. This keeps feature-specific LED policy in the caller, not in this module.
+# caller-owned effect on ONE segment (optionally one gate) through the same pipeline: the
+# segment's prior effect is snapshotted and restored when the flash expires - unless something
+# newer painted over the flash, in which case the restore self-cancels (newest wins; for a
+# gate-scoped flash a baseline repaint of ANOTHER gate doesn't count as newer). Flashes never
+# block or reset other segments. This keeps feature-specific LED policy in the caller.
 #
 # Supports commands:
 #   MMU_SET_LED
