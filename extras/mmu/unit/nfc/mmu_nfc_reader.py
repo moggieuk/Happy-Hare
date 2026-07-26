@@ -223,6 +223,10 @@ class MmuNfcReader:
         if gate is not None:
             self.gate = gate
             self.reader._gate = gate # Driver uses this only as a logging label
+        # A (re)init starts from a clean slate - no stale sticky read state
+        self.last_uid = None
+        self.last_target_info = None
+        self.present = False
         self.reader.init()
         self.alive = bool(self.reader.is_alive())
         return self.alive
@@ -276,6 +280,7 @@ class MmuNfcReader:
         """Forget the sticky last-read UID and release any held target, so the
         next read reflects a fresh, live detection."""
         self.last_uid = None
+        self.last_target_info = None
         self.present = False
         try:
             self.release(reason="nfc_homing_clear")

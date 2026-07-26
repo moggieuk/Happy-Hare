@@ -1733,6 +1733,13 @@ class MmuController(MmuFilamentMovement):
     def _pending_timer_handler(self, eventtime):
         self.log_info("Spool ID: Automatic assignment of id timed out")
         self._clear_pending()
+        # The tag may still be presented on the shared reader: drop the read dedupe so it
+        # can re-trigger a fresh lookup (re-establishing the pending) without having to be
+        # removed and re-presented. Deliberately NOT done when a pending is consumed - the
+        # just-loaded spool's tag must not immediately create a new pending.
+        for unit in self.mmu_machine.units:
+            if unit.nfc_manager is not None:
+                unit.nfc_manager.allow_reread()
         return self.reactor.NEVER
 
 
