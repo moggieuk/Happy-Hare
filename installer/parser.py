@@ -41,8 +41,7 @@ CONFIG_SPEC = [
     ("comment", re.compile(r"^[ \t]*[#;].*")),
     ("whitespace", re.compile(r"^\s+")),
     # ("section", re.compile(r"^\[.+\]")),
-    ("section", re.compile(r"^\[[^\]\r\n]+\](?=[ \t]*(?:\r?\n|$))")),
-    ("word", re.compile(r"^\w[\w%]*")),
+    ("section", re.compile(r"^\[.+\](?=[ \t]*(?:[#;][^\r\n]*)?(?:\r?\n|$))")),  ("word", re.compile(r"^\w[\w%]*")),
     ("assign_op", re.compile(r"^[:=]")),
     ("placeholder", re.compile(r"^\{(?:PIN_|PARAM_)[^%}]+\}")),
     ("template", re.compile(r"^\{\%[\s\S]*?\%\}")),
@@ -613,7 +612,7 @@ class Parser(object):
 
             # Escape hatch, so that a [section] token doesn't fall into the generic
             # else and get swallowed into the gcode value
-            elif as_is and peek.type == "section":
+            elif as_is and peek.type == "section" and peek.col == 1 :
                 break
  
             elif not as_is and peek.type == "placeholder":
