@@ -284,20 +284,26 @@ class MmuNfcManager:
     def init_reader(self, shared=False, gate=None):
         """
         (Re)initialize a single addressed reader. Returns alive bool, or None
-        if no such reader is configured.
+        if no such reader is configured. A re-init is a fresh start, so when the
+        shared reader is (re)inited the shared-poll read dedupe is dropped too
+        (a still-presented tag can re-trigger a lookup).
         """
         reader = self._reader_for(shared=shared, gate=gate)
         if reader is None:
             return None
         self._init_reader(reader, self._label_for(shared=shared, gate=gate))
+        if reader is self.shared_reader:
+            self.allow_reread()
         return reader.alive
 
 
     def init_all(self):
         """
-        (Re)initialize every reader this unit controls.
+        (Re)initialize every reader this unit controls (fresh start: the
+        shared-poll read dedupe is dropped too).
         """
         self._init_all_readers()
+        self.allow_reread()
 
 
     def read_reader(self, shared=False, gate=None, deep=False):
