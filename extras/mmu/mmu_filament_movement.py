@@ -607,7 +607,10 @@ class MmuFilamentMovement:
         else:
             self.log_trace("No final eject, gate_final_eject_distance is 0")
 
-        self.gate_maps.set_gate_status(gate, GATE_EMPTY)
+        # Spool is physically gone: clear the gate's full filament attributes (back to
+        # configured defaults), not just availability. Also unassigns the gate in the
+        # spoolman db ('push' mode)
+        self.gate_maps.reset_gate(gate)
         self.log_always(f"The filament in gate {gate} can be removed")
 
 

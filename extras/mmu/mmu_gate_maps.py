@@ -313,6 +313,30 @@ class MmuGateMaps:
         self.persist_gate_map(spoolman_sync=True)
 
 
+    def reset_gate(self, gate, status=GATE_EMPTY):
+        """
+        Per-gate analog of reset_gate_map, used when filament is ejected: restore the
+        gate's filament attributes (name/material/vendor/color/temperature/speed) to
+        their configured defaults, but force availability to 'status' (the caller
+        knows ground truth - the spool is gone) and always clear the spool identity
+        (spool_id, rfid) regardless of defaults, since the physical spool has been
+        removed. Persists and syncs to spoolman ('push' mode unassigns the gate in
+        the spoolman db; 'readonly' has nothing to sync for a cleared spool_id).
+        """
+        if not (0 <= gate < self.num_gates):
+            return
+        self.mmu.log_debug("Clearing gate map for gate %d" % gate)
+        self.renew_gate_map() # Ensure webhooks sees get_status() change
+        for _, attr, default in self._gate_map_vars:
+            default_attr = getattr(self.p, "default_" + attr)
+            getattr(self, attr)[gate] = default_attr[gate] if default_attr else default
+        self.gate_status[gate] = status
+        self.gate_spool_id[gate] = -1
+        self.gate_spool_rfid[gate] = ""
+        self.update_gate_color_rgb()
+        self.persist_gate_map(spoolman_sync=True, gate_ids=[(gate, -1)])
+
+
     # Assign spool id to gate and clear from other gates returning list of changes
     def assign_spool_id(self, gate, spool_id):
         self.gate_spool_id[gate] = spool_id
