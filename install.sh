@@ -66,6 +66,7 @@ usage() {
     echo "  -a <name> to specify alternative klipper-service-name when installed with Kiauh"
     echo "  -t activate test mode to create test config files in /tmp"
     echo "  -e Enables multi MCU support (for EMU design)"
+    echo "  -o Override compatibility checks (e.g. Kalico detection)"
     echo "  (-q verbose make --no-print-directory)"
     echo "  (-v verbose builder)"
     echo
@@ -139,7 +140,7 @@ for arg in "$@"; do
     esac
 done
 
-while getopts "ehfiudzsb:nk:c:m:a:tqv" arg; do
+while getopts "ehfiudzsb:nk:c:m:a:toqv" arg; do
     case $arg in
     f)
         FIX_LINKS=y
@@ -162,6 +163,7 @@ while getopts "ehfiudzsb:nk:c:m:a:tqv" arg; do
     #     ;;
     a) export CONFIG_KLIPPER_SERVICE="${OPTARG}.service" ;;
     t) export TESTDIR=/tmp/mmu_test ;;
+    o) export F_OVERRIDE_CHECKS=y ;;
     q) export Q= ;;   # Developer: Disable quiet mode in Makefile
     v) export V=-v ;; # Developer: Enable verbose mode in builder and debug in Makefile
     e) export F_PER_GATE_MCU=y ;; # Allows multiple MCU selection but menuconfig startup time is increased
@@ -225,7 +227,7 @@ if [ -n "${CONFIG_KLIPPER_HOME+x}" ] && [ ! -d "${CONFIG_KLIPPER_HOME}" ]; then
     exit 1
 fi
 
-# Check if Kalico is installed (klippy/__init__.py contains APP_NAME = "Kalico")
+# Compatibility checks: Check Kalico is installed (klippy/__init__.py contains APP_NAME = "Kalico")
 if [ -d "${CONFIG_KLIPPER_HOME}" ]; then
   kalico="${CONFIG_KLIPPER_HOME}/klippy/__init__.py"
 else
@@ -235,8 +237,12 @@ fi
 if [ -f ${kalico} ]; then
     if grep -q '^APP_NAME[[:space:]]*=[[:space:]]*"Kalico"' \
         "${kalico}" 2>/dev/null; then
-        echo "${C_ERROR}ERROR: Kalico detected. Happy-Hare is not currently compatible with Kalico until Klipper motion-subsystem enhancements have been ported to Kalico.${C_OFF}" >&2
-        exit 1
+        if [ "${F_OVERRIDE_CHECKS}" = "y" ]; then
+            echo "${C_WARNING}WARNING: Kalico detected. Happy-Hare is not currently compatible with Kalico until Klipper motion-subsystem enhancements have been ported. Proceeding at your own risk.${C_OFF}" >&2
+        else
+            echo "${C_ERROR}ERROR: Kalico detected. Happy-Hare is not currently compatible with Kalico until Klipper motion-subsystem enhancements have been ported.${C_OFF}" >&2
+            exit 1
+        fi
     fi
 fi
 
