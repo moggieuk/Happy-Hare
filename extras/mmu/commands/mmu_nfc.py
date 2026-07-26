@@ -39,9 +39,7 @@ class MmuNfcCommand(BaseCommand):
         + "ENABLE   = [0|1] Top-level on/off for the reader (re-inits when enabled)\n"
         + "READ     = [0|1] Read the addressed reader once and report the UID\n"
         + "DEEP     = [0|1] With READ=1, also parse and report the tag metadata (ignores nfc_deep_read setting)\n"
-        + "REGISTER = [0|1] Read tag (implies READ=1 DEEP=1) and resolve it in Spoolman. Shared reader: report-only\n"
-        + "           (may auto-create a spool per spoolman_nfc_auto_create; no pending/gate map change).\n"
-        + "           Per-gate reader: behaves like an automatic scan (gate map updates on resolution)\n"
+        + "REGISTER = [0|1] Read tag (implies READ=1 DEEP=1) and resolve it in Spoolman (may auto-create). Shared reader: report-only, Per-gate: updates gate map\n"
         + "INIT     = [0|1] (Re)initialize the addressed reader\n"
         + "RELEASE  = [0|1] Release the current target on the addressed reader\n"
         + "INIT_ALL = [0|1] (Re)initialize every reader on every unit\n"
@@ -58,8 +56,8 @@ class MmuNfcCommand(BaseCommand):
         + f"{CMD} SHARED=1 REGISTER=1    ...Read tag and resolve/register it in Spoolman (report only, no assignment)\n"
         + f"{CMD} GATE=2 REGISTER=1      ...Read tag on gate 2 and apply to the gate map (as if auto-scanned)\n"
         + f"{CMD} GATE=2 INIT=1          ...(Re)initialize the reader on gate 2\n"
-        + f"{CMD} GATES=0,1,2,3 ENABLE=0 ...Disable all per-gate readers\n"
-        + f"{CMD} INIT_ALL=1             ...Re-initialize every reader quickly\n"
+        + f"{CMD} GATES=0,1,2,3 ENABLE=0 ...Disable selected per-gate readers\n"
+        + f"{CMD} INIT_ALL=1             ...Re-initialize every reader on all units\n"
     )
 
     def __init__(self, mmu):
