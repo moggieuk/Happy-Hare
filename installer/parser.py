@@ -44,7 +44,8 @@ CONFIG_SPEC = [
     ("word", re.compile(r"^\w[\w%]*")),
     ("assign_op", re.compile(r"^[:=]")),
     ("placeholder", re.compile(r"^\{(?:PIN_|PARAM_)[^%}]+\}")),
-    ("template", re.compile(r"^\{\%[^\n]*\%\}")),
+    ("template", re.compile(r"^\{\%[\s\S]*?\%\}")),
+    # ("template", re.compile(r"^\{\%[^\n]*\%\}")),
     ("template", re.compile(r"^\{\#[^\n]*\#\}")),
     ("template", re.compile(r"^\{\{[^\n]*\}\}")),
     ("unknown", re.compile(r"^\S")),
@@ -1217,4 +1218,3 @@ if __name__ == "__main__":
             print("Wrote round-tripped file to: {}".format(out_path))
 
     _main()
-
