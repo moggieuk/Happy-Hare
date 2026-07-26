@@ -1733,20 +1733,20 @@ class MmuFilamentMovement:
                         fw_retract = self.printer.lookup_object('firmware_retraction', None)
                         if fw_retract:
                             retract_len = fw_retract.retract_length
-                            speed       = fw_retract.retract_speed
+                            if fw_retract.retract_speed > 0:
+                                speed = fw_retract.retract_speed 
                     elif self.slicer_retraction > 0:
                         sequence_vars = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
                         retract_len   = self.slicer_retraction
-                        speed         = sequence_vars.variables.get('retract_speed', 30) if sequence_vars else 30
+                        speed         = sequence_vars.variables.get('retract_speed', speed) if sequence_vars else speed
                     
                     if retract_len > 0:
                         self.log_debug("Retracting %.2fmm to match unhandled slicer retraction" % -retract_len)
-                        motor = "gear+extruder" if self.selector().get_filament_grip_state() == FILAMENT_DRIVE_STATE and not extruder_only else "extruder"
-                        self.move_filament("Unhandled slicer retraction", -retract_len, motor=motor, speed=speed * 60, accel=self.p.extruder_accel)
+                        self.reset_sync_gear_to_extruder(False if extruder_only else None, force_grip=True)
+                        self.gcode.run_script_from_command("G1 E-%.2f F%d " % (retract_len, speed * 60))
                     
-                    self.slicer_retraction = -1
+                    self.slicer_retraction    = -1
                     self.slicer_fw_retraction = False
-
         except MmuError as ee:
             self._track_gate_statistics('load_failures', self.gate_selected)
             raise MmuError("Load sequence failed because:\n%s" % (str(ee)))
