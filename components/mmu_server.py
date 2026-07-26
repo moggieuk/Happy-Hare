@@ -579,6 +579,31 @@ class MmuServer:
                         spool_info = await self._fetch_spool_info(spool_id)
                         if spool_info:
                             self._cache_insert_spool(spool_info) # A failed/404 fetch keeps the existing cached value
+
+            # A negative gate addresses the bypass: it has no gate-map row on the Klipper side
+            # so its attributes are delivered via the singular 'BYPASS=1' form (-> active_filament)
+            bypass_ids = [(g, sid) for g, sid in gate_ids if g is not None and g < 0]
+            gate_ids = [(g, sid) for g, sid in gate_ids if g is None or g >= 0]
+            for _g, spool_id in bypass_ids:
+                loc = self.spool_location.get(spool_id)
+                if not loc:
+                    logging.error(f"Spool id {spool_id} requested for bypass but not found in spoolman")
+                    continue
+                fa = loc[2]
+                q = lambda s: str(s).replace('"', '')
+                cmd = (f"MMU_GATE_MAP BYPASS=1 SPOOLID={spool_id} NAME=\"{q(fa['name'])}\" "
+                       f"MATERIAL=\"{q(fa['material'])}\" VENDOR=\"{q(fa['vendor'])}\" COLOR=\"{q(fa['color'])}\"")
+                if fa['temp']:
+                    cmd += f" TEMP={fa['temp']}"
+                cmd += " QUIET=1"
+                try:
+                    await self.klippy_apis.run_gcode(cmd)
+                except Exception as e:
+                    await self._log_n_send(f"Exception running MMU_GATE_MAP BYPASS gcode: {str(e)}", error=True, silent=silent)
+                    return False
+            if not gate_ids:
+                return True
+
             gate_dict = {
                 gate: (
                     {'spool_id': -1} if spool_id < 0 else

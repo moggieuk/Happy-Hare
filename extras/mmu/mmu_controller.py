@@ -1835,6 +1835,36 @@ class MmuController(MmuFilamentMovement):
         return grabbed
 
 
+    def _check_pending_bypass(self):
+        """
+        Bypass analog of _check_pending_filament, called on a successful bypass
+        (extruder_only) load. The bypass has no gate-map row, so a resolved pending
+        spool_id is activated in Spoolman directly and 'active_filament' seeded; the
+        filament attributes arrive asynchronously via 'MMU_GATE_MAP BYPASS=1 ...'
+        (requested here through the same Moonraker fetch used for real gates).
+        Without a spool_id, staged deep-read tag metadata populates active_filament
+        locally (works with spoolman off). Consumes/clears the pending state.
+        """
+        spool_id, tag = self._grab_pending()
+        if spool_id > 0 and self.p.spoolman_support != SPOOLMAN_PULL:
+            self.log_info("Spool ID: %s activated for bypass load" % spool_id)
+            self._spoolman_activate_spool(spool_id)
+            self.active_filament = {'spool_id': spool_id} # Attributes filled by async BYPASS=1 callback
+            self._spoolman_update_filaments([(TOOL_GATE_BYPASS, spool_id)])
+        elif tag is not None:
+            uid, metadata = tag
+            name, material, vendor, color, temperature = self._filament_from_metadata(metadata)
+            self.log_info("NFC: bypass filament attributes set from tag metadata (uid %s)" % uid)
+            self.active_filament = {
+                'filament_name': name,
+                'material': material,
+                'vendor': vendor,
+                'color': color,
+                'spool_id': -1,
+                'temperature': temperature,
+            }
+
+
 # -----------------------------------------------------------------------------------------------------------
 # NFC reader LED indicators (optional feature; transient flashes)
 #
@@ -2448,12 +2478,18 @@ class MmuController(MmuFilamentMovement):
         if action == self.action: return action
         old_action = self.action
         self.action = action
-        # Any real movement operation other than the preload that consumes it invalidates a
-        # pending shared-NFC spool_id. Do it BEFORE action_changed so the pending LED (and its
-        # countdown) is torn down before this action paints its own effect - no stomp. Preload
-        # grabs the pending up front (_grab_pending) so ACTION_PRELOAD is exempt here.
-        if action not in (ACTION_IDLE, ACTION_PRELOAD):
+
+        # Any real FILAMENT movement operation other than the preload that consumes it
+        # invalidates a pending shared-NFC spool_id. Do it BEFORE action_changed so the pending
+        # LED (and its countdown) is torn down before this action paints its own effect - no
+        # stomp. Preload grabs the pending up front (_grab_pending) so ACTION_PRELOAD is exempt.
+        # Selector moves (SELECTING, and the HOMING an unhomed selector performs first) and
+        # HEATING (a cold-extruder wait inside a bypass load, which consumes the pending at
+        # its success tail) don't touch filament, so the natural "scan tag -> select
+        # gate/bypass -> load" flow survives them.
+        if action not in (ACTION_IDLE, ACTION_PRELOAD, ACTION_SELECTING, ACTION_HOMING, ACTION_HEATING):
             self._clear_pending()
+
         self.led_manager.action_changed(action, old_action)
         self.call_macro_if_defined(
             self.p.action_changed_macro,
