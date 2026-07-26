@@ -2478,12 +2478,18 @@ class MmuController(MmuFilamentMovement):
         if action == self.action: return action
         old_action = self.action
         self.action = action
-        # Any real movement operation other than the preload that consumes it invalidates a
-        # pending shared-NFC spool_id. Do it BEFORE action_changed so the pending LED (and its
-        # countdown) is torn down before this action paints its own effect - no stomp. Preload
-        # grabs the pending up front (_grab_pending) so ACTION_PRELOAD is exempt here.
-        if action not in (ACTION_IDLE, ACTION_PRELOAD):
+
+        # Any real FILAMENT movement operation other than the preload that consumes it
+        # invalidates a pending shared-NFC spool_id. Do it BEFORE action_changed so the pending
+        # LED (and its countdown) is torn down before this action paints its own effect - no
+        # stomp. Preload grabs the pending up front (_grab_pending) so ACTION_PRELOAD is exempt.
+        # Selector moves (SELECTING, and the HOMING an unhomed selector performs first) and
+        # HEATING (a cold-extruder wait inside a bypass load, which consumes the pending at
+        # its success tail) don't touch filament, so the natural "scan tag -> select
+        # gate/bypass -> load" flow survives them.
+        if action not in (ACTION_IDLE, ACTION_PRELOAD, ACTION_SELECTING, ACTION_HOMING, ACTION_HEATING):
             self._clear_pending()
+
         self.led_manager.action_changed(action, old_action)
         self.call_macro_if_defined(
             self.p.action_changed_macro,

@@ -103,8 +103,8 @@ class MmuPreloadCommand(BaseCommand):
             return
 
         mmu.log_always("Preloading filament in %s..." % ("current gate" if gate == current_gate else "gate %d" % gate))
-        # Grab any pending shared-NFC spool_id NOW, before the selector move below (which
-        # sets a movement action that would otherwise cancel it); applied on preload success.
+        # Grab any pending shared-NFC spool_id NOW so the preload owns it locally - immune
+        # to the assignment timeout during the moves below; applied on preload success.
         pending = mmu._grab_pending()
         try:
             with mmu.wrap_sync_gear_to_extruder():
