@@ -3346,6 +3346,30 @@ class MmuController(MmuFilamentMovement):
             self.log_error("Error while looking up spool by tag uid: %s\n%s" % (str(e), SPOOLMAN_CONFIG_ERROR))
 
 
+    def _spoolman_register_tag(self, uid, metadata=None):
+        """
+        Manual (MMU_NFC REGISTER on a shared reader) report-only tag registration:
+        resolve the UID in Spoolman - auto-creating a spool from tag metadata when
+        spoolman_nfc_auto_create is enabled and the mode is writable - and report the
+        outcome to the console. Unlike a normal shared read, NO callback follows:
+        no pending spool_id, no gate map change, no lookup guard.
+        """
+        if self.p.spoolman_support == SPOOLMAN_OFF:
+            self.log_error("Cannot register tag: spoolman_support is off")
+            return
+        save = (bool(self.p.spoolman_nfc_auto_create)
+                and self.p.spoolman_support not in (SPOOLMAN_OFF, SPOOLMAN_READONLY)
+                and metadata is not None)
+        self.log_debug("Registering tag uid %s with spoolman (report only, save %s)" % (uid, save))
+        try:
+            webhooks = self.printer.lookup_object('webhooks')
+            webhooks.call_remote_method("spoolman_get_spool_by_uid",
+                                        uid=uid, gate=None, metadata=metadata, save=save,
+                                        silent=False, report_only=True)
+        except Exception as e:
+            self.log_error("Error while registering tag uid: %s\n%s" % (str(e), SPOOLMAN_CONFIG_ERROR))
+
+
     def _spoolman_set_spool_uid(self, spool_id, uid, quiet=True):
         """
         Register (write) an NFC/RFID tag UID onto a spool record in Spoolman

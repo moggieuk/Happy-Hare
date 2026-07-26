@@ -34,9 +34,14 @@ class MmuNfcCommand(BaseCommand):
         "%s: %s\n" % (CMD, HELP_BRIEF)
         + "SHARED   = [0|1] Target the unit's shared reader\n"
         + "GATE     = #(int) Target the reader for this gate (implies the unit)\n"
+        + "GATES    = g,g,g Target multiple gates' readers (don't mix with GATE/SHARED)\n"
         + "UNIT     = #(int)/name Only needed to disambiguate multiple units with shared readers\n"
         + "ENABLE   = [0|1] Top-level on/off for the reader (re-inits when enabled)\n"
         + "READ     = [0|1] Read the addressed reader once and report the UID\n"
+        + "DEEP     = [0|1] With READ=1, also parse and report the tag metadata (ignores nfc_deep_read setting)\n"
+        + "REGISTER = [0|1] Read tag (implies READ=1 DEEP=1) and resolve it in Spoolman. Shared reader: report-only\n"
+        + "           (may auto-create a spool per spoolman_nfc_auto_create; no pending/gate map change).\n"
+        + "           Per-gate reader: behaves like an automatic scan (gate map updates on resolution)\n"
         + "INIT     = [0|1] (Re)initialize the addressed reader\n"
         + "RELEASE  = [0|1] Release the current target on the addressed reader\n"
         + "INIT_ALL = [0|1] (Re)initialize every reader on every unit\n"
@@ -45,12 +50,16 @@ class MmuNfcCommand(BaseCommand):
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
-        + f"{CMD}                       ...Report status of all readers (which have a cached tag)\n"
-        + f"{CMD} DETAILS=1             ...As above but show the actual cached UIDs\n"
-        + f"{CMD} SHARED=1 ENABLE=0     ...Disable the shared reader\n"
-        + f"{CMD} GATE=3 READ=1         ...Read the reader on gate 3 and report the result\n"
-        + f"{CMD} GATE=2 INIT=1         ...(Re)initialize the reader on gate 2\n"
-        + f"{CMD} INIT_ALL=1            ...Re-initialize every reader quickly\n"
+        + f"{CMD}                        ...Report status of all readers (which have a cached tag)\n"
+        + f"{CMD} DETAILS=1              ...As above but show the actual cached UIDs\n"
+        + f"{CMD} SHARED=1 ENABLE=0      ...Disable the shared reader\n"
+        + f"{CMD} GATE=3 READ=1          ...Read the reader on gate 3 and report the result\n"
+        + f"{CMD} SHARED=1 READ=1 DEEP=1 ...Read the shared reader and report the parsed tag metadata\n"
+        + f"{CMD} SHARED=1 REGISTER=1    ...Read tag and resolve/register it in Spoolman (report only, no assignment)\n"
+        + f"{CMD} GATE=2 REGISTER=1      ...Read tag on gate 2 and apply to the gate map (as if auto-scanned)\n"
+        + f"{CMD} GATE=2 INIT=1          ...(Re)initialize the reader on gate 2\n"
+        + f"{CMD} GATES=0,1,2,3 ENABLE=0 ...Disable all per-gate readers\n"
+        + f"{CMD} INIT_ALL=1             ...Re-initialize every reader quickly\n"
     )
 
     def __init__(self, mmu):
@@ -73,10 +82,16 @@ class MmuNfcCommand(BaseCommand):
         init_all = gcmd.get_int('INIT_ALL', 0, minval=0, maxval=1)
         shared   = bool(gcmd.get_int('SHARED', 0, minval=0, maxval=1))
         gate     = gcmd.get_int('GATE', None, minval=0, maxval=mmu.num_gates - 1)
+        gates    = gcmd.get('GATES', None)
         enable   = gcmd.get_int('ENABLE', None, minval=0, maxval=1)
         read     = gcmd.get_int('READ', 0, minval=0, maxval=1)
+        deep     = bool(gcmd.get_int('DEEP', 0, minval=0, maxval=1))
+        register = bool(gcmd.get_int('REGISTER', 0, minval=0, maxval=1))
         init     = gcmd.get_int('INIT', 0, minval=0, maxval=1)
         release  = gcmd.get_int('RELEASE', 0, minval=0, maxval=1)
+        if register: # Registration needs the tag read and its metadata (for auto-create)
+            read = 1
+            deep = True
 
         units = mmu.mmu_machine.units
 
@@ -88,12 +103,35 @@ class MmuNfcCommand(BaseCommand):
             return
 
         # No reader addressed -> status report across all units
-        if not shared and gate is None:
+        if not shared and gate is None and gates is None:
             self._report_all(units, details)
             return
 
-        if shared and gate is not None:
-            raise gcmd.error("Specify only one of SHARED=1 or GATE=<n>")
+        if sum([shared, gate is not None, gates is not None]) > 1:
+            raise gcmd.error("Specify only one of SHARED=1, GATE=<n> or GATES=<n,n,...>")
+
+        if gates is not None:
+            # Multi-gate form: apply the requested action(s) to each listed gate's reader
+            # (each gate resolves its own owning unit)
+            try:
+                gatelist = [int(g) for g in gates.split(',')]
+            except ValueError:
+                raise gcmd.error("Invalid GATES parameter: %s" % gates)
+            bad = [g for g in gatelist if not (0 <= g < mmu.num_gates)]
+            if bad:
+                raise gcmd.error("Invalid gate(s) in GATES: %s" % ",".join(map(str, bad)))
+            skipped = []
+            for g in gatelist:
+                mmu_unit = mmu.mmu_unit(g)
+                mgr = mmu_unit.nfc_manager
+                if mgr is None or not mgr.has_reader(gate=g):
+                    skipped.append(g)
+                    continue
+                if not self._do_actions(mmu, mmu_unit, mgr, False, g, enable, init, release, read, deep, register):
+                    self._report_one(mmu_unit, mgr, shared=False, gate=g, details=details)
+            if skipped:
+                mmu.log_always("NFC: no reader on gate(s) %s - skipped" % ",".join(map(str, skipped)))
+            return
 
         # Resolve the unit and its nfc_manager for the addressed reader
         mmu_unit = self._unit_for_gate(gcmd, gate) if gate is not None else self._unit_for_shared(gcmd)
@@ -103,6 +141,16 @@ class MmuNfcCommand(BaseCommand):
         if not mgr.has_reader(shared=shared, gate=gate):
             raise gcmd.error("%s: no NFC %s configured" % (mmu_unit.name, label))
 
+        # A bare selector (e.g. MMU_NFC GATE=3) just reports that reader's status
+        if not self._do_actions(mmu, mmu_unit, mgr, shared, gate, enable, init, release, read, deep, register):
+            self._report_one(mmu_unit, mgr, shared=shared, gate=gate, details=details)
+
+    def _do_actions(self, mmu, mmu_unit, mgr, shared, gate, enable, init, release, read, deep=False, register=False):
+        """
+        Apply the requested action(s) to one addressed reader. Returns True if any
+        action was performed (False -> caller falls back to a status report).
+        """
+        label = "shared reader" if shared else ("gate %d" % gate)
         did_action = False
 
         if enable is not None:
@@ -126,16 +174,31 @@ class MmuNfcCommand(BaseCommand):
             if not mgr.is_enabled(shared=shared, gate=gate):
                 mmu.log_always("NFC: %s %s is disabled - use ENABLE=1 first" % (mmu_unit.name, label))
             else:
-                uid = mgr.read_reader(shared=shared, gate=gate)
+                uid, metadata = mgr.read_reader(shared=shared, gate=gate, deep=deep)
                 if uid:
-                    mmu.log_always("NFC: %s %s read UID=%s" % (mmu_unit.name, label, uid))
+                    msg = "NFC: %s %s read UID=%s" % (mmu_unit.name, label, uid)
+                    if deep:
+                        if metadata:
+                            msg += "\nParsed tag metadata:"
+                            for k, v in metadata.items():
+                                msg += "\n  %s: %s" % (k, v)
+                        else:
+                            msg += "\n(no parseable tag metadata - blank or unsupported tag format?)"
+                    mmu.log_always(msg)
+                    if register:
+                        if shared:
+                            # Report-only Spoolman resolve/auto-create: no pending, no gate map
+                            mmu._spoolman_register_tag(uid, metadata)
+                        else:
+                            # Per-gate: full normal tag-read semantics - gate map updates
+                            # (spool_id on async resolution; metadata per nfc_deep_read)
+                            mmu.log_always("NFC: dispatching tag for gate %d - gate map will update on resolution" % gate)
+                            mmu._nfc_tag_read(uid, gate=gate, metadata=metadata, unit=mmu_unit)
                 else:
                     mmu.log_always("NFC: %s %s - no tag detected" % (mmu_unit.name, label))
             did_action = True
 
-        # A bare selector (e.g. MMU_NFC GATE=3) just reports that reader's status
-        if not did_action:
-            self._report_one(mmu_unit, mgr, shared=shared, gate=gate, details=details)
+        return did_action
 
     #
     # Unit resolution -----------------------------------------------------------
