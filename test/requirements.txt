@@ -1,0 +1,20 @@
+# Test-harness dependencies. Deliberately separate from installer/requirements.txt,
+# which is what end users install - none of these are needed to run Happy Hare.
+#
+#   ./venv/bin/pip install -r test/requirements.txt
+#   make PY=./venv/bin/python test
+#
+# kconfiglib is NOT listed: it is vendored at installer/lib/kconfiglib and the test
+# target puts it on PYTHONPATH (mirroring Makefile:49).
+
+# Klipper's own reactor is greenlet-based, and so is the harness's. Required, not
+# optional: MmuCompoundEndstop.home_start registers a reactor callback per child
+# endstop, each blocking on completion.wait() (extras/mmu/mmu_sensor_utils.py:565-590).
+# A single-threaded fake reactor deadlocks there, and a re-entrant pump would change
+# ordering in exactly the code path the NFC compound endstop lives in.
+greenlet
+
+# Already in installer/requirements.txt, repeated so this file stands alone. Used to
+# render the real shipped config templates rather than hand-written fixtures.
+jinja2
+dill
