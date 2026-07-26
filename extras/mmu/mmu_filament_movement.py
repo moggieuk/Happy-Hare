@@ -1969,8 +1969,12 @@ class MmuFilamentMovement:
                 msg += " {1}(adjusted encoder: %.1fmm){0}" % (final_encoder_pos + not_seen)
             self.log_info(msg, color=True)
 
-            # Activate loaded spool in Spoolman
-            self._spoolman_activate_spool(self.gate_spool_id[self.gate_selected])
+            # Activate loaded spool in Spoolman. The bypass has no gate-map row (and would
+            # negative-index gate_spool_id) - it consumes any pending shared-NFC result instead
+            if self.gate_selected == TOOL_GATE_BYPASS:
+                self._check_pending_bypass()
+            elif self.gate_selected >= 0:
+                self._spoolman_activate_spool(self.gate_spool_id[self.gate_selected])
 
             # Deal with purging
             if purge == PURGE_SLICER and not skip_extruder:
@@ -2200,6 +2204,11 @@ class MmuFilamentMovement:
                 not_seen = -(u.p.gate_parking_distance) + self.get_encoder_dead_space() + (u.p.toolhead_unload_safety_margin if not synced_extruder_unload else 0.)
                 msg += " {1}(adjusted encoder: %.1fmm){0}" % (final_encoder_pos + not_seen)
             self.log_info(msg, color=True)
+
+            # Bypass active_filament is set at load (pending spool_id / tag metadata), so clear
+            # it once unloaded (real gates derive it from gate selection instead)
+            if self.gate_selected == TOOL_GATE_BYPASS:
+                self.active_filament = {}
 
             if macros_and_track:
                 # Run POST_UNLOAD sequence macro

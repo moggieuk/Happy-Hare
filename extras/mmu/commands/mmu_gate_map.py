@@ -32,6 +32,7 @@ class MmuGateMapCommand(BaseCommand):
         + "RESET        = 1 To reset filament attributes to configured defaults\n"
         + "GATES        = g,g,g comma separated list of gates (don't mix with GATE)\n"
         + "GATE         = g Specify a single gate (don't mix with GATES)\n"
+        + "BYPASS       = 1 Set filament attributes for the bypass\n"
         + "NEXT_SPOOLID = id Specify the spoolman id of the next filament loaded - automatically assigned (0 to cancel)\n"
         + "NAME         = # Filament name\n"
         + "MATERIAL     = # Material type\n"
@@ -78,6 +79,7 @@ class MmuGateMapCommand(BaseCommand):
         replace = bool(gcmd.get_int('REPLACE', 0, minval=0, maxval=1)) # Hidden option for bulk filament update from spoolman
         from_spoolman = bool(gcmd.get_int('FROM_SPOOLMAN', 0, minval=0, maxval=1)) # Hidden option for bulk filament update from spoolman
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=mmu.num_gates - 1)
+        bypass = bool(gcmd.get_int('BYPASS', 0, minval=0, maxval=1)) # Target 'active_filament' for the bypass (no gate-map row)
         next_spool_id = gcmd.get_int('NEXT_SPOOLID', None, minval=-2)
         created = bool(gcmd.get_int('CREATED', 0, minval=0, maxval=1)) # Set by Moonraker when the UID minted a new spool
 
@@ -122,6 +124,30 @@ class MmuGateMapCommand(BaseCommand):
                 mmu.log_error("Cannot use NEXT_SPOOLID feature with spoolman_support: pull. Use 'push' or 'readonly' modes")
                 reread = False
             mmu.nfc_lookup_resolved(reread=reread)
+            return
+
+        if bypass:
+            # Filament attributes for the bypass "gate" -> active_filament only (there is no
+            # gate-map row). Normally sent by Moonraker (async, after a bypass spool
+            # activation requested attributes) but can also be set manually
+            if mmu.gate_selected != TOOL_GATE_BYPASS:
+                mmu.log_debug("Ignoring bypass filament attribute update - bypass no longer selected")
+                return
+            color = gcmd.get('COLOR', '').lower()
+            validated_color = MmuColorUtils.validate_color(color)
+            if validated_color is None:
+                mmu.log_debug("Invalid COLOR '%s' in bypass filament update - ignored" % color)
+                validated_color = ''
+            mmu.active_filament = {
+                'filament_name': gcmd.get('NAME', ''),
+                'material': gcmd.get('MATERIAL', '').upper(),
+                'vendor': gcmd.get('VENDOR', ''),
+                'color': validated_color,
+                'spool_id': gcmd.get_int('SPOOLID', -1),
+                'temperature': max(gcmd.get_int('TEMP', int(mmu.p.default_extruder_temp)), int(mmu.p.default_extruder_temp)),
+            }
+            if not quiet:
+                mmu.log_always("Bypass filament attributes updated")
             return
 
         changed_gate_ids = []
