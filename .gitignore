@@ -7,3 +7,4 @@ out_*/
 __pycache__/
 *.pyc
 .DS_Store
+.claude

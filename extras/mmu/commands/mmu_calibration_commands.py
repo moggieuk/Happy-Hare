@@ -485,6 +485,11 @@ class MmuCalibrateToolheadCommand(CalibrationMixin, BaseCommand):
     (SAVE=0 to run without persisting results)
     Note: On Type-B MMUs you might experience noise/grinding as movement limits are explored
           (select bypass or reduce gear stepper current if a problem)
+    Examples:
+    MMU_CALIBRATE_TOOLHEAD CLEAN=1        ...Step 1: measure clean nozzle dimensions (after cold pull)
+    MMU_CALIBRATE_TOOLHEAD DIRTY=1        ...Step 2: measure residual filament with a dirty nozzle
+    MMU_CALIBRATE_TOOLHEAD CUT=1          ...Step 3: measure blade position (hold the cutter closed)
+    MMU_CALIBRATE_TOOLHEAD CLEAN=1 SAVE=0 ...Measure but don't persist the result to config
     """
 
     def __init__(self, mmu):

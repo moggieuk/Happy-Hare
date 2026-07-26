@@ -39,7 +39,12 @@ class MmuStatsCommand(BaseCommand):
         + "PAUSE      = [0|1] (with COUNTER)\n"
     )
     HELP_SUPPLEMENT = (
-        ""  # add examples here if desired
+        "Examples:\n"
+        + f"{CMD}                          ...Show swap/job statistics summary\n"
+        + f"{CMD} DETAIL=1                 ...Show detailed statistics including per-gate breakdown\n"
+        + f"{CMD} RESET=1                  ...Reset all statistics and counters\n"
+        + f"{CMD} COUNTER=blade INCR=1     ...Increment a user-defined counter named 'blade'\n"
+        + f"{CMD} COUNTER=blade LIMIT=3000 WARNING=\"Replace cutter blade\" ...Configure a maintenance counter with limit and warning\n"
     )
 
     def __init__(self, mmu):

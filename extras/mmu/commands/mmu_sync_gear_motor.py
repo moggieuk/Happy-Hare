@@ -32,7 +32,12 @@ class MmuSyncGearMotorCommand(BaseCommand):
         + "SYNC = [0|1] Specify whether to force extruder/mmu syncing out of a print\n"
         + "(no parameters will default SYNC=1)"
     )
-    HELP_SUPPLEMENT = ""
+    HELP_SUPPLEMENT = (
+        "Examples:\n"
+        + f"{CMD}        ...Sync the gear motor to the extruder (SYNC defaults to 1)\n"
+        + f"{CMD} SYNC=1 ...Force the gear motor synced to the extruder\n"
+        + f"{CMD} SYNC=0 ...Unsync the gear motor from the extruder\n"
+    )
 
     def __init__(self, mmu):
         super().__init__(mmu)

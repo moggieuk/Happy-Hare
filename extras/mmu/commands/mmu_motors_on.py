@@ -30,7 +30,10 @@ class MmuMotorsOnCommand(BaseCommand):
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
     )
-    HELP_SUPPLEMENT = ""
+    HELP_SUPPLEMENT = (
+        "Examples:\n"
+        + f"{CMD} ...Re-energize all MMU motors and servos\n"
+    )
 
     def __init__(self, mmu):
         super().__init__(mmu)

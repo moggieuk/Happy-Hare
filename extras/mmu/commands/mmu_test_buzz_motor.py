@@ -32,7 +32,10 @@ class MmuTestBuzzMotorCommand(BaseCommand):
         + "MOTOR = [gear|gears|<selector_motor_name>]\n"
     )
     HELP_SUPPLEMENT = (
-        ""  # add examples here if desired
+        "Examples:\n"
+        + f"{CMD}                ...Buzz the gear motor (default) to confirm wiring/direction\n"
+        + f"{CMD} MOTOR=gears    ...Buzz the gear motor at every gate in turn\n"
+        + f"{CMD} MOTOR=selector ...Buzz the selector motor (exact name depends on MMU type)\n"
     )
 
     def __init__(self, mmu):

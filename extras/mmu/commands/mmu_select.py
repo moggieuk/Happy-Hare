@@ -33,7 +33,10 @@ class MmuSelectCommand(BaseCommand):
         + "(must specify TOOL, GATE, or BYPASS)\n"
     )
     HELP_SUPPLEMENT = (
-        ""  # add examples here if desired
+        "Examples:\n"
+        + f"{CMD} TOOL=2   ...Select tool 2 (moves selector to the mapped gate but does not load)\n"
+        + f"{CMD} GATE=0   ...Select physical gate 0 directly\n"
+        + f"{CMD} BYPASS=1 ...Select the bypass (for direct-to-extruder loading)\n"
     )
 
     def __init__(self, mmu):

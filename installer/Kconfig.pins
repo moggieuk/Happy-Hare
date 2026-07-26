@@ -352,7 +352,7 @@ menu "Pins / TMC"
     depends on MMU_HAS_LEDS && MMU_HAS_PER_GATE_MCU
 
     @repeat var=i min=0 max=11@
-      config PIN_NEOPIXEL_$(i)
+      config PIN_FAN_$(i)
         string
         prompt "Cooling fan gate $(i) pin" if PARAM_NUM_GATES > $(i)
     @endrepeat@

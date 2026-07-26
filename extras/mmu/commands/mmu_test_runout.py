@@ -32,7 +32,9 @@ class MmuTestRunoutCommand(BaseCommand):
         + "TYPE = _event_type_ (optional, e.g. runout or clog)\n"
     )
     HELP_SUPPLEMENT = (
-        ""  # add examples here if desired
+        "Examples:\n"
+        + f"{CMD}            ...Simulate a filament runout to test detection/EndlessSpool handling\n"
+        + f"{CMD} TYPE=clog  ...Simulate a clog event instead of a runout\n"
     )
 
     def __init__(self, mmu):

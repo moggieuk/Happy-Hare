@@ -33,7 +33,11 @@ class MmuToolOverridesCommand(BaseCommand):
         + "(no parameters for status)\n"
     )
     HELP_SUPPLEMENT = (
-        ""  # add examples here if desired
+        "Examples:\n"
+        + f"{CMD}                        ...Show current per-tool speed/extrusion overrides\n"
+        + f"{CMD} TOOL=2 M220=95 M221=98 ...Set tool 2 to 95% speed and 98% extrusion\n"
+        + f"{CMD} RESET=1                ...Reset overrides to 100% for all tools\n"
+        + f"{CMD} TOOL=2 RESET=1         ...Reset overrides to 100% for tool 2 only\n"
     )
 
     def __init__(self, mmu):

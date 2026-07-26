@@ -29,7 +29,9 @@ class MmuPreloadCommand(BaseCommand):
         + "GATE = #(int)\n"
     )
     HELP_SUPPLEMENT = (
-        ""  # add examples here if desired
+        "Examples:\n"
+        + f"{CMD}        ...Preload filament into the current gate\n"
+        + f"{CMD} GATE=3 ...Preload filament into gate 3\n"
     )
 
     def __init__(self, mmu):

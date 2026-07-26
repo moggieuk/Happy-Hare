@@ -42,7 +42,10 @@ class MmuTestHomingMoveCommand(MoveMixin, BaseCommand):
         + "DEBUG        = [0|1]  Turn on developer stepper movement debugging\n"
     )
     HELP_SUPPLEMENT = (
-        ""  # add examples here if desired
+        "Examples:\n"
+        + f"{CMD} MOVE=50 ENDSTOP=extruder STOP_ON_ENDSTOP=1 ...Home up to 50mm in the extrude direction onto the extruder entry sensor\n"
+        + f"{CMD} MOVE=100 MOTOR=gear ENDSTOP=encoder STOP_ON_ENDSTOP=1 ...Home the gear motor up to 100mm using the encoder as endstop\n"
+        + f"{CMD} MOVE=-100 ENDSTOP=toolhead STOP_ON_ENDSTOP=-1 ...Home up to 100mm in the retract direction off the toolhead sensor\n"
     )
 
     def __init__(self, mmu):

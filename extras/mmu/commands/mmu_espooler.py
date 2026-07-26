@@ -41,7 +41,12 @@ class MmuEspoolerCommand(BaseCommand):
         + "(no parameters for status report)"
     )
     HELP_SUPPLEMENT = (
-        ""  # add additional examples here if/when desired
+        "Examples:\n"
+        + f"{CMD}                         ...Report espooler status\n"
+        + f"{CMD} GATE=2 TIGHTEN=1        ...Tighten filament on the spool at gate 2\n"
+        + f"{CMD} GATE=2 BURST=1 POWER=50 ...Jog espooler on gate 2 in the current operation direction at 50% power\n"
+        + f"{CMD} GATE=2 OPERATION=rewind ...Set gate 2 espooler to rewind (in-print) mode\n"
+        + f"{CMD} ALLOFF=1                ...Turn all espoolers off\n"
     )
 
     def __init__(self, mmu):

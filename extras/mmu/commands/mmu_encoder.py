@@ -32,7 +32,10 @@ class MmuEncoderCommand(BaseCommand):
         + "(no parameters for status)\n"
     )
     HELP_SUPPLEMENT = (
-        ""  # add examples here if desired
+        "Examples:\n"
+        + f"{CMD}         ...Report current encoder position and status\n"
+        + f"{CMD} POS=0   ...Reset the encoder position counter to (approximately) zero\n"
+        + f"{CMD} POS=100 ...Set the encoder as close as possible to position 100mm\n"
     )
 
     def __init__(self, mmu):

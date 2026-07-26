@@ -29,11 +29,13 @@ class MmuHomeCommand(BaseCommand):
         + "UNIT         = #(int)|_name_|ALL Specify unit by name, number or all-units (optional if single unit)\n"
         + "TOOL         = #(int) Optionally select tool number after homing\n"
         + "FORCE_UNLOAD = [0|1]  Force unloaded of filament\n"
+        + "SKIP_HOMED   = [0|1]  Skip homing of units that are already homed\n"
         + "(no parameters: home selector on single unit setup and select T0)\n"
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
         + f"{CMD} UNIT=ALL              ...Home all mmu units with selector kinimatics\n"
+        + f"{CMD} UNIT=ALL SKIP_HOMED=1 ...Home only units that are not already homed\n"
         + f"{CMD} UNIT=1 FORCE_UNLOAD=1 ...Home unit 1 unloading filament if necessary\n"
     )
 
@@ -53,7 +55,7 @@ class MmuHomeCommand(BaseCommand):
         # Note: BaseCommand wrapper already logs commandline + handles HELP=1.
         mmu = self.mmu
 
-        if self.check_if_disabled(): return
+        if self.check_if_disabled(): return True # Truthy return aborts UNIT=ALL iteration
         mmu.fix_started_state()
 
         if self.check_if_not_calibrated(CALIBRATED_SELECTOR, mmu_unit=mmu_unit):
@@ -63,18 +65,30 @@ class MmuHomeCommand(BaseCommand):
         else:
             tool = gcmd.get_int('TOOL', mmu.tool_selected, minval=0, maxval=mmu.num_gates - 1)
             force_unload = gcmd.get_int('FORCE_UNLOAD', None, minval=0, maxval=1)
+        skip_homed = gcmd.get_int('SKIP_HOMED', 0, minval=0, maxval=1)
+
+        # With UNIT=ALL this handler is called once per unit. Defer the tool selection
+        # until the last unit to avoid ping-ponging between homing and gate selection
+        # (selecting a tool on a not-yet-homed unit would auto-home it prematurely)
+        unit_param = gcmd.get('UNIT', None)
+        all_units = unit_param is not None and unit_param.upper() == ALL_UNITS
+        select_tool = not all_units or mmu_unit is mmu.mmu_machine.units[-1]
 
         try:
             with mmu.wrap_sync_gear_to_extruder():
-                mmu.home_unit(mmu_unit, force_unload=force_unload, reselect=False)
-                mmu.log_always("Homed")
+                if skip_homed and mmu_unit.selector.is_homed:
+                    mmu.log_always("Skipped homing %s (not necessary / already homed)" % mmu_unit.name if all_units else "Skipped homing (not necessary / already homed)")
+                else:
+                    mmu.home_unit(mmu_unit, force_unload=force_unload, reselect=False)
+                    mmu.log_always("Homed %s" % mmu_unit.name if all_units else "Homed")
 
-                # Always select gate for chosen tool
-                if tool == TOOL_GATE_BYPASS:
-                    mmu.select_bypass()
-                elif tool >= 0:
-                    gate = mmu.ttg_map[tool]
-                    mmu.select_tool(tool)
+                # Always select gate for chosen tool (just once, at the end, if UNIT=ALL)
+                if select_tool:
+                    if tool == TOOL_GATE_BYPASS:
+                        mmu.select_bypass()
+                    elif tool >= 0:
+                        mmu.select_tool(tool)
 
         except MmuError as ee:
             mmu.handle_mmu_error(str(ee))
+            return True # Abort UNIT=ALL iteration over any remaining units

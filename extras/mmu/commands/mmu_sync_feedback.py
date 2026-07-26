@@ -30,7 +30,11 @@ class MmuSyncFeedbackCommand(BaseCommand):
         + "(no parameters for status report)\n"
     )
     HELP_SUPPLEMENT = (
-        ""  # add examples here if desired
+        "Examples:\n"
+        + f"{CMD}                  ...Report sync feedback controller status\n"
+        + f"{CMD} ENABLE=1         ...Enable sync feedback control on the active unit\n"
+        + f"{CMD} ENABLE=0         ...Disable sync feedback control\n"
+        + f"{CMD} RESET=1          ...Reset the controller and restore last known good rotation distance\n"
     )
 
     def __init__(self, mmu):

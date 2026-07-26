@@ -32,7 +32,10 @@ class MmuFlowGuardCommand(BaseCommand):
         + "(no parameters for status report)\n"
     )
     HELP_SUPPLEMENT = (
-        ""  # add examples here if desired
+        "Examples:\n"
+        + f"{CMD}          ...Report FlowGuard clog/tangle detection status\n"
+        + f"{CMD} ENABLE=1 ...Enable FlowGuard detection on the active unit\n"
+        + f"{CMD} ENABLE=0 UNIT=ALL ...Disable FlowGuard detection on all units\n"
     )
 
     def __init__(self, mmu):

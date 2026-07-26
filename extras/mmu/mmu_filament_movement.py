@@ -512,14 +512,15 @@ class MmuFilamentMovement:
         """
         u = self.mmu_unit()
         self.log_trace_entry(f"_load_bowden(length={length}, start_pos={start_pos})")
-
-        full = (length is None)
+       
         bowden_length = u.calibrator.get_bowden_length()
         if length is None:
             length = bowden_length
 
         if bowden_length > 0 and not self.calibrating:
             length = min(length, bowden_length) # Cannot exceed calibrated distance
+
+        full = (length == bowden_length or length is None)
 
         # Compensate for distance already moved for gate homing endstop (e.g. overshoot after encoder based gate homing)
         length -= start_pos
@@ -1896,7 +1897,7 @@ class MmuFilamentMovement:
                     # Fast unload of bowden, then unload gate
                     bowden_move_ratio, gate_homing_buffer = self._unload_bowden(bowden_move, ext_unload_overshoot)
                     homing_movement = self._unload_gate(gate_homing_buffer)
-                    bowden_travel = bowden_move - gate_homing_buffer + homing_movement
+                    bowden_travel = bowden_move - gate_homing_buffer - homing_movement
 
                     # Notify autotune manager
                     if full:
@@ -2413,56 +2414,59 @@ class MmuFilamentMovement:
             self.log_assertion("Invalid motor specification '%s'" % motor)
             return null_rtn
 
-        with self._wrap_espooler(motor, dist, speed, accel, homing_move):
-            wait = wait or self._wait_for_espooler
+        try:
+            # --- Configure motors (no filament motion yet, so espooler not needed) ---
+            if motor == "gear":
+                # normal gear-only movement
+                if not suppress_grip_change:
+                    self.selector().filament_drive()
+                drive.sync_mode(DRIVE_UNSYNCED)
+                self._restore_gear_current()
 
-            try:
-                if motor == "gear":
-                    # normal gear-only movement
-                    if not suppress_grip_change:
-                        self.selector().filament_drive()
-                    drive.sync_mode(DRIVE_UNSYNCED)
-                    self._restore_gear_current()
+            elif motor == "gear+extruder":
+                # gear leads, extruder follows manually
+                if not suppress_grip_change:
+                    self.selector().filament_drive()
+                drive.sync_mode(DRIVE_EXTRUDER_SYNCED_TO_GEAR)
+                self._restore_gear_current()
 
-                elif motor == "gear+extruder":
-                    # gear leads, extruder follows manually
-                    if not suppress_grip_change:
-                        self.selector().filament_drive()
-                    drive.sync_mode(DRIVE_EXTRUDER_SYNCED_TO_GEAR)
-                    self._restore_gear_current()
+            elif motor == "extruder":
+                # extruder-only-on-gear semantics
+                if not suppress_grip_change:
+                    self.selector().filament_release()
+                drive.sync_mode(DRIVE_EXTRUDER_ONLY)
+                self._restore_gear_current()
 
-                elif motor == "extruder":
-                    # extruder-only-on-gear semantics
-                    if not suppress_grip_change:
-                        self.selector().filament_release()
-                    drive.sync_mode(DRIVE_EXTRUDER_ONLY)
-                    self._restore_gear_current()
+            elif motor == "synced":
+                # extruder leads, gear follows extruder
+                if not suppress_grip_change:
+                    self.selector().filament_drive()
+                drive.sync_mode(DRIVE_GEAR_SYNCED_TO_EXTRUDER)
+                self._adjust_gear_current(percent=u.p.sync_gear_current, reason="for extruder synced move")
 
-                elif motor == "synced":
-                    # extruder leads, gear follows extruder
-                    if not suppress_grip_change:
-                        self.selector().filament_drive()
-                    drive.sync_mode(DRIVE_GEAR_SYNCED_TO_EXTRUDER)
-                    self._adjust_gear_current(percent=u.p.sync_gear_current, reason="for extruder synced move")
+            else:
+                raise self.printer.command_error("Invalid motor specification '%s'" % (motor))
 
-                else:
-                    raise self.printer.command_error("Invalid motor specification '%s'" % (motor))
+            # Resolve endstop (needed by speed resolution logic)
+            qual_endstop_name = ""
+            is_v_endstop = False
 
-                # Check endstop and determine speed
-                qual_endstop_name = ""
-                is_v_endstop = False
+            if homing_move != 0:
+                qual_endstop_name = self.sensor_manager.get_qualified_endstop_name(endstop_name)
+                # Check that endstop is valid
+                if not drive.has_endstop(qual_endstop_name):
+                    self.log_error(f"Endstop '{endstop_name}' not found")
+                    return null_rtn
 
-                if homing_move != 0:
-                    qual_endstop_name = self.sensor_manager.get_qualified_endstop_name(endstop_name)
-                    # Check that endstop is valid
-                    if not drive.has_endstop(qual_endstop_name):
-                        self.log_error(f"Endstop '{endstop_name}' not found")
-                        return null_rtn
+                endstop = drive.get_endstop(qual_endstop_name)
+                is_v_endstop = isinstance(endstop, MmuVirtualEndstopSensor)
 
-                    endstop = drive.get_endstop(qual_endstop_name)
-                    is_v_endstop = isinstance(endstop, MmuVirtualEndstopSensor)
+            # Resolve speed/accel
+            speed, accel = self._resolve_filament_move_speed(dist, motor, homing_move, speed, accel, virtual_endstop=is_v_endstop, speed_override=speed_override)
 
-                speed, accel = self._resolve_filament_move_speed(dist, motor, homing_move, speed, accel, virtual_endstop=is_v_endstop, speed_override=speed_override)
+            # Espooler only needs to be live for the actual filament move ---
+            with self._wrap_espooler(motor, dist, speed, accel, homing_move):
+                wait = wait or self._wait_for_espooler
 
                 start_pos = drive.get_filament_position()
 
@@ -2506,16 +2510,16 @@ class MmuFilamentMovement:
                 if wait:
                     self.movequeue_wait()
 
-            except self.printer.command_error as e:
-                if homing_move != 0:
-                    self.log_stepper("Did not complete homing move: %s" % str(e))
-                    try:
-                        actual = drive.get_filament_position() - start_pos
-                    except Exception:
-                        actual = 0.
-                    homed = False
-                else:
-                    raise
+        except self.printer.command_error as e:
+            if homing_move != 0:
+                self.log_stepper("Did not complete homing move: %s" % str(e))
+                try:
+                    actual = drive.get_filament_position() - start_pos
+                except Exception:
+                    actual = 0.
+                homed = False
+            else:
+                raise
 
         encoder_end = self.get_encoder_distance(dwell=encoder_dwell)
         measured = encoder_end - encoder_start

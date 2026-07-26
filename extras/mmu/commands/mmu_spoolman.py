@@ -40,7 +40,11 @@ class MmuSpoolmanCommand(BaseCommand):
         + "SPOOLINFO = [0|-1|spool_id]\n"
     )
     HELP_SUPPLEMENT = (
-        ""  # add examples here if desired
+        "Examples:\n"
+        + f"{CMD}                     ...Show the current spoolman gate/spool assignments\n"
+        + f"{CMD} REFRESH=1           ...Refresh the local gate map from the spoolman database\n"
+        + f"{CMD} GATE=0 SPOOLID=45   ...Assign spoolman spool id 45 to gate 0\n"
+        + f"{CMD} SPOOLINFO=45        ...Display spoolman details for spool id 45\n"
     )
 
     def __init__(self, mmu):

@@ -38,7 +38,10 @@ class MmuStepLoadGateCommand(BaseCommand):
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
     )
-    HELP_SUPPLEMENT = ""
+    HELP_SUPPLEMENT = (
+        "Examples:\n"
+        + f"{CMD} ...Load filament from the gate to the start of the bowden (used in custom load sequences)\n"
+    )
 
     def __init__(self, mmu):
         super().__init__(mmu)
@@ -62,7 +65,11 @@ class MmuStepUnloadGateCommand(BaseCommand):
         f"{CMD}: {HELP_BRIEF}\n"
         + "FULL   = [0|1]\n"
     )
-    HELP_SUPPLEMENT = ""
+    HELP_SUPPLEMENT = (
+        "Examples:\n"
+        + f"{CMD}        ...Unload filament from the bowden and park in the gate (fast, minimal homing)\n"
+        + f"{CMD} FULL=1 ...Unload with full homing distance (use when starting position is uncertain)\n"
+    )
 
     def __init__(self, mmu):
         super().__init__(mmu)
@@ -88,7 +95,11 @@ class MmuStepLoadBowdenCommand(BaseCommand):
         + "LENGTH    = mm   Override the default calibrated bowden length)\n"
         + "START_POS = mm   Postion of filament past the gate homing point at start of move\n"
     )
-    HELP_SUPPLEMENT = ""
+    HELP_SUPPLEMENT = (
+        "Examples:\n"
+        + f"{CMD}            ...Load the bowden using the calibrated length\n"
+        + f"{CMD} LENGTH=650 ...Load 650mm of bowden instead of the calibrated length\n"
+    )
 
     def __init__(self, mmu):
         super().__init__(mmu)
@@ -114,7 +125,11 @@ class MmuStepUnloadBowdenCommand(BaseCommand):
         f"{CMD}: {HELP_BRIEF}\n"
         + "LENGTH   = mm   Override the default calibrated bowden length)\n"
     )
-    HELP_SUPPLEMENT = ""
+    HELP_SUPPLEMENT = (
+        "Examples:\n"
+        + f"{CMD}            ...Unload the bowden using the calibrated length\n"
+        + f"{CMD} LENGTH=650 ...Unload 650mm of bowden instead of the calibrated length\n"
+    )
 
     def __init__(self, mmu):
         super().__init__(mmu)
@@ -138,7 +153,10 @@ class MmuStepHomeExtruderCommand(BaseCommand):
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
     )
-    HELP_SUPPLEMENT = ""
+    HELP_SUPPLEMENT = (
+        "Examples:\n"
+        + f"{CMD} ...Home filament to the extruder entrance (sensor or collision detection)\n"
+    )
 
     def __init__(self, mmu):
         super().__init__(mmu)
@@ -162,7 +180,11 @@ class MmuStepLoadToolheadCommand(BaseCommand):
         f"{CMD}: {HELP_BRIEF}\n"
         + "EXTRUDER_ONLY   = [0|1] Extruder only load (e.g. when in bypass)\n"
     )
-    HELP_SUPPLEMENT = ""
+    HELP_SUPPLEMENT = (
+        "Examples:\n"
+        + f"{CMD}                 ...Load filament from the extruder entrance into the nozzle\n"
+        + f"{CMD} EXTRUDER_ONLY=1 ...Load the extruder only (e.g. when using bypass)\n"
+    )
 
     def __init__(self, mmu):
         super().__init__(mmu)
@@ -188,7 +210,12 @@ class MmuStepUnloadToolheadCommand(BaseCommand):
         + "EXTRUDER_ONLY   = [0|1] Extruder only unload (e.g. when in bypass)\n"
         + "PARK_POS        = mm    The starting position of the filament in extruder (after tip forming / retraction)\n"
     )
-    HELP_SUPPLEMENT = ""
+    HELP_SUPPLEMENT = (
+        "Examples:\n"
+        + f"{CMD}                 ...Unload filament from the nozzle back to the extruder entrance\n"
+        + f"{CMD} PARK_POS=35     ...Unload assuming the tip is parked 35mm inside the extruder\n"
+        + f"{CMD} EXTRUDER_ONLY=1 ...Unload the extruder only (e.g. when using bypass)\n"
+    )
 
     def __init__(self, mmu):
         super().__init__(mmu)
@@ -219,7 +246,11 @@ class MmuStepHomingMoveCommand(MoveMixin, BaseCommand):
         f"{CMD}: {HELP_BRIEF}\n"
         + "(see MMU_TEST_HOMING_MOVE HELP=1 for options)\n"
     )
-    HELP_SUPPLEMENT = ""
+    HELP_SUPPLEMENT = (
+        "Examples:\n"
+        + f"{CMD} MOVE=50 ENDSTOP=extruder STOP_ON_ENDSTOP=1 ...Home up to 50mm onto the extruder entry sensor\n"
+        + f"{CMD} MOVE=100 MOTOR=gear ENDSTOP=encoder STOP_ON_ENDSTOP=1 ...Home the gear motor up to 100mm using the encoder\n"
+    )
 
     def __init__(self, mmu):
         super().__init__(mmu)
@@ -248,7 +279,11 @@ class MmuStepMoveCommand(MoveMixin, BaseCommand):
         f"{CMD}: {HELP_BRIEF}\n"
         + "(see MMU_TEST_MOVE HELP=1 for options)\n"
     )
-    HELP_SUPPLEMENT = ""
+    HELP_SUPPLEMENT = (
+        "Examples:\n"
+        + f"{CMD} MOVE=50                    ...Move filament 50mm on the gear motor\n"
+        + f"{CMD} MOVE=100 MOTOR=gear+extruder ...Move filament 100mm with the gear synced to the extruder\n"
+    )
 
     def __init__(self, mmu):
         super().__init__(mmu)
@@ -278,7 +313,11 @@ class MmuStepSetFilamentCommand(BaseCommand):
         + "STATE   = _state_ Filament position state\n"
         + "SILENT  = [0|1]   Set to suppress logging of new position\n"
     )
-    HELP_SUPPLEMENT = ""
+    HELP_SUPPLEMENT = (
+        "Examples:\n"
+        + f"{CMD} STATE=0          ...Mark filament as fully unloaded\n"
+        + f"{CMD} STATE=10 SILENT=1 ...Mark filament as loaded without logging (values are FILAMENT_POS_* constants)\n"
+    )
 
     def __init__(self, mmu):
         super().__init__(mmu)
@@ -301,7 +340,11 @@ class MmuStepSetActionCommand(BaseCommand):
         + "RESTORE = [0|1]   Set to restore previous action state\n"
         + "STATE   = _state_ Set action state and save previous for restore operation\n"
     )
-    HELP_SUPPLEMENT = ""
+    HELP_SUPPLEMENT = (
+        "Examples:\n"
+        + f"{CMD} STATE=1   ...Set the action state (e.g. 1 = Loading; values are ACTION_* constants) saving the previous\n"
+        + f"{CMD} RESTORE=1 ...Restore the previously saved action state\n"
+    )
 
     def __init__(self, mmu):
         super().__init__(mmu)

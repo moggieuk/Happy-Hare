@@ -897,6 +897,7 @@ class MmuUnit:
             'num_gates': self.num_gates,
             'first_gate': self.first_gate,
             'selector_type': self.selector_type,
+            'is_homed': self.selector.is_homed,
             'variable_rotation_distances': self.variable_rotation_distances,
             'variable_bowden_lengths': self.variable_bowden_lengths,
             'require_bowden_move': self.require_bowden_move,

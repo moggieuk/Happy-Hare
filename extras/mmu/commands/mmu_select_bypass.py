@@ -28,7 +28,8 @@ class MmuSelectBypassCommand(BaseCommand):
         f"{CMD}: {HELP_BRIEF}\n"
     )
     HELP_SUPPLEMENT = (
-        ""  # add examples here if desired
+        "Examples:\n"
+        + f"{CMD} ...Select the bypass so filament can be loaded straight into the extruder\n"
     )
 
     def __init__(self, mmu):

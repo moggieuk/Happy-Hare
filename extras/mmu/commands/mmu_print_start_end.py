@@ -31,7 +31,11 @@ class MmuPrintStartCommand(BaseCommand):
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
     )
-    HELP_SUPPLEMENT = "Call the start of your print in gcode start block"
+    HELP_SUPPLEMENT = (
+        "Call at the start of your print in the slicer's gcode start block\n"
+        "Examples:\n"
+        + f"{CMD} ...Initialize MMU state ready for a print\n"
+    )
 
     def __init__(self, mmu):
         super().__init__(mmu)
@@ -63,7 +67,12 @@ class MmuPrintEndCommand(BaseCommand):
         + "IDLE_TIMEOUT = [0|1] Internally set if called by klipper idle_timeout\n"
         + "STATE        = [complete|error|cancelled|ready|standby] End state, defaults to complete\n"
     )
-    HELP_SUPPLEMENT = "Call without parmeters at the end of your print in gcode end block"
+    HELP_SUPPLEMENT = (
+        "Call without parameters at the end of your print in the slicer's gcode end block\n"
+        "Examples:\n"
+        + f"{CMD}               ...Clean up MMU state after a normal (complete) print\n"
+        + f"{CMD} STATE=cancelled ...Clean up after a cancelled print\n"
+    )
 
     def __init__(self, mmu):
         super().__init__(mmu)

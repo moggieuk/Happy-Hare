@@ -37,7 +37,10 @@ class MmuChangeToolCommand(BaseCommand):
         + "GATE       = #(int)\n"
     )
     HELP_SUPPLEMENT = (
-        ""  # add examples here if desired
+        "Examples:\n"
+        + f"{CMD} TOOL=2              ...Change to tool 2 (equivalent to running T2)\n"
+        + f"{CMD} TOOL=0 STANDALONE=1 ...Change to tool 0 forcing standalone tip forming/purging (not slicer)\n"
+        + f"{CMD} GATE=3              ...Change to whichever tool is mapped to gate 3 (UI driven)\n"
     )
 
     def __init__(self, mmu):

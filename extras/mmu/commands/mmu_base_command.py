@@ -57,6 +57,10 @@ class BaseCommand:
         handler signature:
           - per_unit=False: handler(gcmd)
           - per_unit=True : handler(gcmd, mmu_unit)
+
+        With UNIT=ALL a per_unit handler is invoked once per unit. Returning a truthy
+        value from the handler aborts the iteration over the remaining units (used to
+        stop multi-unit operations after an error has been handled)
         """
         def wrapped(gcmd):
             mmu = self.mmu
@@ -76,9 +80,11 @@ class BaseCommand:
                 mmu_machine = mmu.mmu_machine
 
                 if unit_param is not None and unit_param.upper() == ALL_UNITS:
-                    # Repeat for all units
+                    # Repeat for all units. Handler can abort iteration over remaining
+                    # units by returning a truthy value (e.g. after handling an error)
                     for mmu_unit in mmu_machine.units:
-                        handler(gcmd, mmu_unit)
+                        if handler(gcmd, mmu_unit):
+                            break
                     return
 
                 mmu_unit = self.get_unit(gcmd, mode="required")
