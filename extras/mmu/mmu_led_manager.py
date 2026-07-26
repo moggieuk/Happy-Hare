@@ -515,9 +515,17 @@ class MmuLedManager:
         key = (unit, segment)
         entry = self.transient_flash.pop(key, None)
         pending = self.transient_pending.pop(key, None)
-        if entry is None or self.effect_state.get(unit, {}).get(segment) != entry['flash']:
+        state = self.effect_state.get(unit, {}).get(segment)
+        # A GATE-scoped flash paints one gate but effect_state records per segment: another
+        # gate repainting with the same baseline (e.g. its gate_status refreshed) changes the
+        # record while our gate still shows the flash. In that case (state == the flash's own
+        # restore baseline) proceed normally - restoring/promoting one gate is always safe.
+        # Anything else painted over the segment (action/state effect) wins: self-cancel.
+        survived = entry is not None and (
+            state == entry['flash'] or (entry['gate'] is not None and state == entry['prior']))
+        if not survived:
             self.mmu.log_trace("LED: transient flash end on unit %d/%s self-cancelled (overpainted: showing '%s')%s" % (
-                unit, segment, self.effect_state.get(unit, {}).get(segment),
+                unit, segment, state,
                 (" - dropping queued '%s'" % pending['effect']) if pending else ""))
             return self.mmu.reactor.NEVER # Something newer won - self-cancel
         if pending is not None:

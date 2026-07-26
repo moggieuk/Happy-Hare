@@ -884,6 +884,22 @@ class MmuServer:
             logging.error(f"NFC: failed to send NEXT_SPOOLID={value}: {str(e)}")
 
 
+    async def _send_gate_lookup_result(self, gate, value):
+        '''
+        Report the terminal outcome of a failed PER-GATE lookup back to Happy Hare
+        (LED failure feedback + console error; the gate map is never touched):
+          -1  recoverable failure (e.g. Spoolman comms)
+          -2  definitive unknown tag
+        Success needs no counterpart - it is delivered as 'GATE=<g> SPOOLID=<id>'.
+        '''
+        if not self._mmu_backend_enabled():
+            return
+        try:
+            await self.klippy_apis.run_gcode(f"MMU_GATE_MAP GATE={gate} LOOKUP={value} QUIET=1")
+        except Exception as e:
+            logging.error(f"NFC: failed to send GATE={gate} LOOKUP={value}: {str(e)}")
+
+
     async def get_spool_by_uid(self, uid=None, gate=None, metadata=None, save=False, silent=False, report_only=False) -> bool:
         '''
         Resolve a scanned NFC/RFID tag UID to a spool_id and hand it back to
@@ -937,6 +953,8 @@ class MmuServer:
                     # orphans until the 30s timeout (a re-scan of the same unknown tag stalls).
                     if gate is None:
                         await self._send_next_spoolid(-2)
+                    else:
+                        await self._send_gate_lookup_result(gate, -2)
                     return False
 
                 # A freshly-registered tag may not be in the cache yet - refresh once
@@ -949,6 +967,8 @@ class MmuServer:
                     # allows the tag to be re-read (a retry may succeed).
                     if gate is None and not report_only:
                         await self._send_next_spoolid(-1)
+                    elif gate is not None:
+                        await self._send_gate_lookup_result(gate, -1)
                     return False
                 spool_id = self.uid_to_spool_id.get(uid_norm)
 
@@ -981,6 +1001,8 @@ class MmuServer:
                 # same unregistered tag won't help and would just loop).
                 if gate is None and not report_only:
                     await self._send_next_spoolid(-2)
+                elif gate is not None:
+                    await self._send_gate_lookup_result(gate, -2)
                 return False
 
             # Positive result - drop any stale negative-cache entry for this tag

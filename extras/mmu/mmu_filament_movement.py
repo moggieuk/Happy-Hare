@@ -323,11 +323,11 @@ class MmuFilamentMovement:
         gate_obj = rail.get_extra_endstop(gate_es_name)  # (endstop, name) or None
         nfc_obj = rail.get_extra_endstop(nfc_es_name)
         if gate_obj is None or nfc_obj is None:
-            self.log_debug("Preload NFC: missing endstop (gate=%s, nfc=%s) - plain load"
+            self.log_debug("NFC: Preload missing endstop (gate=%s, nfc=%s) - plain load"
                            % (gate_es_name, nfc_es_name))
             return None, None, None
         if not isinstance(gate_obj[0], mcu.MCU_endstop):
-            self.log_debug("Preload NFC: gate endstop '%s' is not a real MCU switch - "
+            self.log_debug("NFC: Preload gate endstop '%s' is not a real MCU switch - "
                            "plain load (tag not read during preload)" % gate_es_name)
             return None, None, None
 
@@ -372,7 +372,7 @@ class MmuFilamentMovement:
             # Gate first: chase the tag forward within the +ve window, then re-home to gate
             if pos > 0:
                 chase, homed2, _, _ = self.move_filament(
-                    "Preload NFC scan", pos,
+                    "NFC: Preload scan", pos,
                     motor="gear", homing_move=1, endstop_name=nfc_es_name)
                 if homed2:
                     tag_read = bool(nfc_mgr.read_gate(gate))
@@ -455,7 +455,7 @@ class MmuFilamentMovement:
             raise MmuError("nfc_gate_jog_scan_window must be (neg, pos) with neg <= 0 <= pos, got %s" % (window,))
         neg, pos = window[0], window[1]
         if neg == 0 and pos == 0:
-            self.log_info("NFC scan: nfc_gate_jog_scan_window is not configured for this unit - nothing to scan")
+            self.log_info("NFC: nfc_gate_jog_scan_window is not configured for this unit - nothing to scan")
             return False
 
         nfc_manager = u.nfc_manager
@@ -486,7 +486,7 @@ class MmuFilamentMovement:
             nfc_manager.clear_gate_reader(gate)
             if nfc_manager.read_gate(gate):
                 found = True
-                self.log_debug("NFC scan gate %d: tag already at reader - no jog needed" % gate)
+                self.log_debug("NFC: gate %d: tag already at reader - no jog needed" % gate)
 
             if not found:
                 order = [pos, neg] if pos >= abs(neg) else [neg, pos]
@@ -495,10 +495,10 @@ class MmuFilamentMovement:
                         if not dist:
                             continue
                         forward = dist > 0
-                        self.log_debug("NFC scan gate %d: homing %s %.0fmm to reader"
+                        self.log_debug("NFC: gate %d: homing %s %.0fmm to reader"
                                        % (gate, "forward" if forward else "back", abs(dist)))
                         actual, homed, _, _ = self.move_filament(
-                            "NFC scan", dist, motor="gear",
+                            "NFC: scan", dist, motor="gear",
                             homing_move=(1 if forward else -1), endstop_name=endstop_name)
 
                         if homed:
@@ -525,7 +525,7 @@ class MmuFilamentMovement:
                                 self._unload_gate()
                         except MmuError as ee:
                             self.gate_maps.set_gate_status(gate, pre_scan_status)
-                            self.log_debug("NFC scan gate %d: re-park failed, underlying error: %s" % (gate, str(ee)))
+                            self.log_debug("NFC: gate %d: re-park failed, underlying error: %s" % (gate, str(ee)))
                             raise MmuError("could not re-park filament in gate %d after scanning - check for a jam" % gate)
 
                         if found:
@@ -535,9 +535,9 @@ class MmuFilamentMovement:
                 mgr.restore_active(snap)
 
         if found:
-            self.log_info("NFC scan: tag read for gate %d" % gate)
+            self.log_info("NFC: tag read for gate %d" % gate)
         else:
-            self.log_info("NFC scan: no tag found for gate %d within window %s" % (gate, window))
+            self.log_info("NFC: no tag found for gate %d within window %s" % (gate, window))
         return found
 
 

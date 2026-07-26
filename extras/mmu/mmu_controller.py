@@ -1891,17 +1891,23 @@ class MmuController(MmuFilamentMovement):
         # Engaged when the unit maps at least one nfc_* indicator effect (effect_nfc_* in [mmu_leds])
         return any(self.led_manager.effect_name(unit.unit_index, op) for op in self.NFC_LED_OPERATIONS)
 
-    def _nfc_led_segment(self, unit):
-        # 'auto' (or empty) -> 'status' for a shared/bypass reader ('exit' per-gate, wired later).
+    def _nfc_led_segment(self, unit, gate=None):
+        # 'auto' (or empty) -> 'status' for a shared/bypass reader, the gate's own 'exit'
+        # LEDs for a per-gate reader. An explicit configured value applies to both.
         seg = unit.p.nfc_led_segment
-        return seg if (seg and seg != 'auto') else 'status'
+        if seg and seg != 'auto':
+            return seg
+        return 'exit' if gate is not None else 'status'
 
-    def _nfc_led_flash(self, operation, duration=None, default=None, defer=False):
+    def _nfc_led_flash(self, operation, duration=None, default=None, defer=False, unit=None, gate=None):
         """Flash the effect mapped to 'operation' (effect_<operation> in [mmu_leds]) on the
-        initiating unit's segment (self-clearing). An explicit 'duration' overrides; otherwise
-        the config default (3rd field of effect_<operation>) is used, falling back to 'default'.
-        No-op without a unit or a mapped effect."""
-        unit = self._nfc_led_unit
+        initiating unit's segment (self-clearing). With 'gate' the flash is scoped to that
+        gate's LEDs (per-gate reader); without it, the whole segment of the last shared-read
+        unit. An explicit 'duration' overrides; otherwise the config default (3rd field of
+        effect_<operation>) is used, falling back to 'default'. No-op without a unit or a
+        mapped effect."""
+        if unit is None:
+            unit = self._nfc_led_unit
         if unit is None:
             self.log_debug("NFC: '%s' flash skipped - no initiating unit recorded" % operation)
             return
@@ -1911,16 +1917,18 @@ class MmuController(MmuFilamentMovement):
             return
         if duration is None:
             duration = self.led_manager.effect_duration(unit.unit_index, operation, default)
-        self.led_manager.set_transient_effect(unit, effect, segment=self._nfc_led_segment(unit),
-                                              gate=None, duration=duration, defer=defer)
+        self.led_manager.set_transient_effect(unit, effect, segment=self._nfc_led_segment(unit, gate=gate),
+                                              gate=gate, duration=duration, defer=defer)
 
-    def _nfc_led_on_read(self, unit, deep):
-        """Shared-reader tag read: a brief acknowledging flash on the reader's unit. Transitory -
-        if the async lookup resolves the base pending overlay takes over; if it fails the fail
-        flash fires; if nothing follows (e.g. Spoolman off) the flash simply self-clears."""
-        self._nfc_led_unit = unit
+    def _nfc_led_on_read(self, unit, deep, gate=None):
+        """Tag read acknowledgment: a brief flash - whole segment for the shared reader, the
+        gate's own LEDs for a per-gate reader. Transitory - if the async lookup resolves the
+        result takes over (pending overlay / gate map render); if it fails the fail flash
+        fires; if nothing follows (e.g. Spoolman off) the flash simply self-clears."""
+        if gate is None:
+            self._nfc_led_unit = unit # Targets the later shared fail flash
         operation = 'nfc_deep_read' if deep else 'nfc_read'
-        self._nfc_led_flash(operation, default=NFC_LED_READ_FLASH)
+        self._nfc_led_flash(operation, default=NFC_LED_READ_FLASH, unit=unit, gate=gate)
 
     def _nfc_led_on_fail(self):
         """Failed shared lookup (-1/-2 while a lookup is in flight): brief flash on the unit that
@@ -1929,6 +1937,15 @@ class MmuController(MmuFilamentMovement):
             self.log_debug("NFC: fail flash skipped - no lookup in flight (late/duplicate result or manual cancel)")
             return
         self._nfc_led_flash('nfc_fail', default=NFC_LED_FAIL_FLASH, defer=True) # Queue behind the read flash so it isn't cut short
+
+    def _nfc_led_on_gate_fail(self, gate):
+        """Failed per-gate lookup (LOOKUP=-1/-2 from Moonraker): brief fail flash on that
+        gate's LEDs, queued behind the read flash so the chain plays out like the shared
+        reader's. No in-flight guard needed - only Moonraker sends per-gate results."""
+        unit = self.mmu_unit(gate)
+        if unit is None or not self._nfc_led_enabled(unit):
+            return
+        self._nfc_led_flash('nfc_fail', default=NFC_LED_FAIL_FLASH, defer=True, unit=unit, gate=gate)
 
 
 # -----------------------------------------------------------------------------------------------------------
@@ -3210,10 +3227,11 @@ class MmuController(MmuFilamentMovement):
         if unit is None and gate is not None:
             unit = self.mmu_unit(gate)
 
-        # Shared-reader (gate is None) LED feedback: a brief "tag read" flash. If the async
-        # lookup resolves, the base pending overlay takes over. Per-gate reads skip this.
-        if gate is None and unit is not None and self._nfc_led_enabled(unit):
-            self._nfc_led_on_read(unit, deep=bool(metadata))
+        # LED feedback: a brief "tag read" flash - whole segment for a shared read, the
+        # gate's own LEDs for a per-gate read. If the async lookup resolves, the result
+        # takes over (pending overlay / gate map render); a failure queues the fail flash.
+        if unit is not None and self._nfc_led_enabled(unit):
+            self._nfc_led_on_read(unit, deep=bool(metadata), gate=gate)
         if self.nfc_deep_read_enabled(unit) and metadata:
             if gate is None:
                 self._stage_pending_metadata(uid, metadata)
