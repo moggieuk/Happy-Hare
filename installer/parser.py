@@ -827,7 +827,9 @@ class ConfigBuilder(object):
         if self.has_section(section_name):
             return
 
-        section_body = []
+        # Newline after "[section]" header lives inside the section body,
+        # matching how parse_section() stores it for parsed files
+        section_body = [WhitespaceNode("\n")]
         document_body = []
 
         if comment:
@@ -839,7 +841,6 @@ class ConfigBuilder(object):
         document_body.append(SectionNode(section_name, section_body))
 
         if at_top:
-            document_body.append(WhitespaceNode("\n"))
             self.document.body[0:0] = document_body
         else:
             # if not at_top and include, insert on next line
@@ -866,7 +867,7 @@ class ConfigBuilder(object):
                         elif isinstance(node, WhitespaceNode) and re.search(r"\r\n|\n|\r", node.value):
                             insert_at += 1
 
-                    self.document.body[insert_at:insert_at] = document_body + [WhitespaceNode("\n\n")]
+                    self.document.body[insert_at:insert_at] = document_body + [WhitespaceNode("\n")]
                     inserted = True
 
             # append to end if not inserted
