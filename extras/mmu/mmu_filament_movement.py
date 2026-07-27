@@ -371,8 +371,11 @@ class MmuFilamentMovement:
         else:
             # Gate first: chase the tag forward within the +ve window, then re-home to gate
             if pos > 0:
+                # Home at gear_homing_speed: the reader is a virtual (host-polled)
+                # endstop so it would otherwise default to the much slower
+                # virtual_sensor_homing_speed intended for ADC-backed sensors
                 chase, homed2, _, _ = self.move_filament(
-                    "NFC: Preload scan", pos,
+                    "NFC: Preload scan", pos, speed=u.p.gear_homing_speed,
                     motor="gear", homing_move=1, endstop_name=nfc_es_name)
                 if homed2:
                     tag_read = bool(nfc_mgr.read_gate(gate))
