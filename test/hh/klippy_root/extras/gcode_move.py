@@ -1,5 +1,13 @@
 # Fake Klipper extras/gcode_move.py. HH reads get_status() (extras/mmu_stepper.py:928)
 # and issues SAVE/RESTORE_GCODE_STATE around its sequences.
+#
+# saved_states entries MUST be Klipper's state DICT, not just a position. Happy Hare reads
+# and mutates the contents directly:
+#     saved_states[TOOLHEAD_POSITION_STATE]['last_position'][:2] = next_pos
+#     mmu_state['speed_factor'] * 60   /   mmu_state['extrude_factor']
+# (extras/mmu/mmu_controller.py:2129-2136). Storing a bare list here made MMU_LOAD crash
+# with "list indices must be integers or slices, not str". Shape ported verbatim from
+# klippy/extras/gcode_move.py:226-234.
 
 
 class GCodeMove:
@@ -20,10 +28,30 @@ class GCodeMove:
             gcode.register_command(cmd, getattr(self, 'cmd_' + cmd))
 
     def cmd_SAVE_GCODE_STATE(self, gcmd):
-        self.saved_states[gcmd.get('NAME', 'default')] = list(self.last_position)
+        self.saved_states[gcmd.get('NAME', 'default')] = {
+            'absolute_coord': self.absolute_coord,
+            'absolute_extrude': self.absolute_extrude,
+            'base_position': list(self.base_position),
+            'last_position': list(self.last_position),
+            'homing_position': list(self.homing_position),
+            'speed': self.speed,
+            'speed_factor': self.speed_factor,
+            'extrude_factor': self.extrude_factor,
+        }
 
     def cmd_RESTORE_GCODE_STATE(self, gcmd):
-        self.saved_states.pop(gcmd.get('NAME', 'default'), None)
+        name = gcmd.get('NAME', 'default')
+        state = self.saved_states.get(name)
+        if state is None:
+            raise gcmd.error('Unknown g-code state: %s' % (name,))
+        self.absolute_coord = state['absolute_coord']
+        self.absolute_extrude = state['absolute_extrude']
+        self.base_position = list(state['base_position'])
+        self.last_position = list(state['last_position'])
+        self.homing_position = list(state['homing_position'])
+        self.speed = state['speed']
+        self.speed_factor = state['speed_factor']
+        self.extrude_factor = state['extrude_factor']
 
     def cmd_SET_GCODE_OFFSET(self, gcmd):
         pass

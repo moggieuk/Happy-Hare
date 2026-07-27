@@ -46,6 +46,16 @@ BASE_TEMPLATES = (
     'config/base/mmu_parameters.cfg',
 )
 
+# config/macros/*.cfg are COPIED VERBATIM by the installer, not rendered - Makefile:148
+# filters mmu/macros/%.cfg out of the rendered set. They must therefore be read raw:
+# pushing them through render_template fails, because they are Klipper Jinja ({% %} / { })
+# and a nested list literal like [[a, b]|min, c]|max collides with the installer's own
+# [[ ]] variable delimiter (config/macros/mmu_sequence.cfg:155).
+#
+# They matter because Happy Hare refuses to run sequences whose macros are missing - an
+# unload fails with "Filament tip forming macro '_MMU_FORM_TIP' not found" without them.
+MACRO_GLOB = 'config/macros/*.cfg'
+
 # Values that only matter for path interpolation in the templates. Pointed at
 # harmless placeholders; the harness overrides the ones that matter (e.g.
 # [save_variables] filename) after rendering.
@@ -205,7 +215,17 @@ def sections(text):
     return re.findall(r'^\[([^\]]+)\]', text, re.M)
 
 
-def assemble(rendered, printer_stub=''):
+def macro_files():
+    """The shipped macro files, verbatim. Sorted, as Klipper's include glob would be."""
+    import glob
+    out = {}
+    for path in sorted(glob.glob(os.path.join(REPO_ROOT, MACRO_GLOB))):
+        with open(path, encoding='utf-8') as f:
+            out[os.path.relpath(path, REPO_ROOT)] = f.read()
+    return out
+
+
+def assemble(rendered, printer_stub='', macros=True):
     """
     Build the single RawConfigParser Klipper would see, reading the parts in
     include order.
@@ -225,4 +245,7 @@ def assemble(rendered, printer_stub=''):
     for tmpl in BASE_TEMPLATES:
         if tmpl in rendered:
             fileconfig.read_string(rendered[tmpl], source=tmpl)
+    if macros:
+        for name, text in macro_files().items():
+            fileconfig.read_string(text, source=name)
     return fileconfig

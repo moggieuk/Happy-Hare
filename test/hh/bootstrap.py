@@ -424,6 +424,31 @@ class Session:
             for helper, previous in zip(helpers, saved):
                 helper.min_event_systime = previous
 
+    def heat_extruder(self, temp=None):
+        """
+        Bring the extruder to temperature so a load does not have to auto-heat.
+
+        Without this, HH emits "Alert: Automatically heating extruder to ..." - and it
+        does so through log_error (extras/mmu/mmu_controller.py:2456), so it lands in the
+        error sentinel and makes `errors == []` fail. Rather than reclassify HH's own
+        severity (which would risk hiding real errors), do what a real print does and heat
+        first. Defaults to the selected gate's configured temperature.
+        """
+        extruder = self.printer.lookup_object('extruder', None)
+        if extruder is None:
+            return self
+        if temp is None:
+            gate = self.mmu.gate_selected
+            temps = getattr(self.mmu, 'gate_temperature', None)
+            temp = 0
+            if temps and gate is not None and 0 <= gate < len(temps):
+                temp = temps[gate] or 0
+            temp = temp or 220
+        extruder.heater.set_temp(temp)
+        extruder.heater.smoothed_temp = temp
+        extruder.heater.can_extrude = True
+        return self
+
     def place_filament(self, gate, position=None, quiet=True):
         """
         Put a gate's filament somewhere. Defaults to the gate park position and to

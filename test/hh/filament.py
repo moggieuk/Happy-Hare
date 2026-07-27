@@ -48,6 +48,15 @@ DEFAULT_LAYOUT = {
     'mmu_shared_exit': 10.0,
     'extruder_entry': 700.0,
     'toolhead': 740.0,
+    # The buffer's COMPRESSION sensor is what a load homes to when
+    # extruder_homing_endstop is filament_compression (BoxTurtle's default): the MMU
+    # pushes filament until it meets the stationary extruder gears and the buffer
+    # compresses. Modelling it at the extruder entry is what lets a full load complete.
+    #
+    # Its partner filament_tension is deliberately NOT here. Tension is about the spring
+    # being pulled taut by the extruder, not about how far the tip has travelled, so it
+    # stays owned by the resting-state logic in bootstrap.apply_initial_sensor_states.
+    'filament_compression': 700.0,
 }
 
 # Where a filament tip sits in each notional state
