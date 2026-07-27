@@ -3,7 +3,7 @@
 # Responsible for setting:
 #
 # MMU_HAS_NFC_READER
-# MMU_HAS_SHARED_NFC_READER
+# MMU_HAS_COMMON_NFC_READER
 # MMU_HAS_PER_GATE_NFC_READERS
 #
 # PARAM_NFC_DEEP_READ
@@ -57,262 +57,252 @@ if !UNSELECT_MMU_HAS_NFC_READER
 endif
 
 
-# -----------------
+# ------------------------------------
 # NFC reader config
-# -----------------
+# ------------------------------------
 
 if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
+
   menu "NFC reader config"
-    config MMU_HAS_SHARED_NFC_READER
-      depends on MULTI_UNIT
-      bool "Shared with existing unit?"
-      default n
-
-    if MMU_HAS_SHARED_NFC_READER
-      config PARAM_NFC_READER
-        prompt "Shared NFC name   "
-        default "-specify name-"
-        help
-          Enter the name of the shared NFC reder.
-    endif
-
 
     # ------------------------------------
     # Single NFC: all settings on one page
     # ------------------------------------
 
-    if !MMU_HAS_SHARED_NFC_READER
+    config MMU_HAS_COMMON_NFC_READER
+      bool "Has common NFC reader?"
+      default n
+      help
+        Does MMU have a common NFC reader that can be used for all gates and bypass.
 
-      config MMU_HAS_PER_GATE_NFC_READERS
-        bool "Per-gate NFC readers?"
-        default n
+    if MMU_HAS_COMMON_NFC_READER
+
+      config PARAM_NFC_READER
+        string "NFC reader name   "
+        default "$(UNIT_NAME)_nfc"
         help
-          Most designs will only have a single NFC reader that allows presenting
-          filament prior to preload. However, some designs have a reader built
-          in per gate.
+          The name of the klipper object for this NFC reader. Unless it is going to be shared
+          accross multiple MMU units it is recommended to use the default.
 
-      if !MMU_HAS_PER_GATE_NFC_READERS
+      choice CHOICE_NFC_READER_TYPE
+        prompt "Reader type       "
+        default CHOICE_NFC_READER_TYPE_RC522
+        help
+          Select the type of NFC reader being used.
 
-        config PARAM_NFC_READER
-          string "NFC reader name   "
-          default "$(UNIT_NAME)_nfc"
+        config CHOICE_NFC_READER_TYPE_RC522
+          bool "RC522 / SPI"
           help
-            The name of the klipper object for this NFC reader. Unless it is going to be shared
-            accross multiple MMU units it is recommended to use the default.
+            RC522 NFC reader using SPI.
 
-        choice CHOICE_NFC_READER_TYPE
-          prompt "Reader type       "
-          default CHOICE_NFC_READER_TYPE_RC522
+        config CHOICE_NFC_READER_TYPE_PN532
+          bool "PN532 / I2C"
           help
-            Select the type of NFC reader being used.
+            PN532 NFC reader using I2C, usually at address 0x24.
 
-          config CHOICE_NFC_READER_TYPE_RC522
-            bool "RC522 / SPI"
-            help
-              RC522 NFC reader using SPI.
+        config CHOICE_NFC_READER_TYPE_PN7160
+          bool "PN7160 / I2C"
+          help
+            PN7160 NFC reader using I2C, address range 0x28-0x2B.
+      endchoice
 
-          config CHOICE_NFC_READER_TYPE_PN532
-            bool "PN532 / I2C"
-            help
-              PN532 NFC reader using I2C, usually at address 0x24.
+      config PARAM_NFC_READER_TYPE
+        string
+        default "rc522"  if CHOICE_NFC_READER_TYPE_RC522
+        default "pn532"  if CHOICE_NFC_READER_TYPE_PN532
+        default "pn7160" if CHOICE_NFC_READER_TYPE_PN7160
 
-          config CHOICE_NFC_READER_TYPE_PN7160
-            bool "PN7160 / I2C"
-            help
-              PN7160 NFC reader using I2C, address range 0x28-0x2B.
-        endchoice
+      if CHOICE_NFC_READER_TYPE_RC522
+        config PARAM_NFC_READER_CS_PIN
+          string "CS pin            "
+          default "$(MCU_NAME):pin"
+          help
+            Chip-select pin for the RC522 reader, e.g. "mcu:PA4"
 
-        config PARAM_NFC_READER_TYPE
-          string
-          default "rc522"  if CHOICE_NFC_READER_TYPE_RC522
-          default "pn532"  if CHOICE_NFC_READER_TYPE_PN532
-          default "pn7160" if CHOICE_NFC_READER_TYPE_PN7160
+        config PARAM_NFC_READER_SPI_BUS
+          string "SPI bus name      "
+          default ""
+          help
+            Optional hardware SPI bus name, e.g. "spi1".
+            Leave blank to use software SPI.
 
-        if CHOICE_NFC_READER_TYPE_RC522
-          config PARAM_NFC_READER_CS_PIN
-            string "CS pin            "
-            default "$(MCU_NAME):pin"
-            help
-              Chip-select pin for the RC522 reader, e.g. "mcu:PA4"
-
-          config PARAM_NFC_READER_SPI_BUS
-            string "SPI bus name      "
-            default ""
-            help
-              Optional hardware SPI bus name, e.g. "spi1".
-              Leave blank to use software SPI.
-
-          config PARAM_NFC_READER_SPI_SPEED
-            int "SPI speed (Hz)    "
-            default 1000000
-            range 10 10000000
-            help
-              SPI speed for the RC522 reader, in Hz.
-        endif
-
-        if CHOICE_NFC_READER_TYPE_PN532 || CHOICE_NFC_READER_TYPE_PN7160
-          config PARAM_NFC_READER_I2C_ADDRESS
-              int "I2C address       "
-              default 36 if CHOICE_NFC_READER_TYPE_PN532
-              default 40 if CHOICE_NFC_READER_TYPE_PN7160
-              range 36 36 if CHOICE_NFC_READER_TYPE_PN532
-              range 36 43 if CHOICE_NFC_READER_TYPE_PN7160
-              help
-                I2C address of the NFC reader.
-                PN532 uses 36 (0x24)
-                PN7160 supports 40-43 (0x28-0x2B)
-
-          config PARAM_NFC_READER_I2C_BUS
-            string "I2C bus name      "
-            default ""
-            help
-              Optional I2C bus name. Leave blank to use Klipper's default I2C bus.
-
-          config PARAM_NFC_READER_I2C_SPEED
-            int "I2C speed (Hz)    "
-            default 100000
-            range 1 1000000
-            help
-              I2C speed for the NFC reader, in Hz.
-        endif
-
-        if CHOICE_NFC_READER_TYPE_PN7160
-          config PARAM_NFC_READER_VEN_PIN
-            string "VEN pin           "
-            default ""
-            help
-              Optional VEN pin for the PN7160 reader.
-              Don't forget to prefix with mcu name. E.g. mmu:PG13
-
-          config PARAM_NFC_READER_IRQ_PIN
-            string "IRQ pin           "
-            default ""
-            help
-              Optional IRQ pin for the PN7160 reader.
-              Don't forget to prefix with mcu name. E.g. mmu:PG13
-        endif
+        config PARAM_NFC_READER_SPI_SPEED
+          int "SPI speed (Hz)    "
+          default 1000000
+          range 10 10000000
+          help
+            SPI speed for the RC522 reader, in Hz.
       endif
 
+      if CHOICE_NFC_READER_TYPE_PN532 || CHOICE_NFC_READER_TYPE_PN7160
+        config PARAM_NFC_READER_I2C_ADDRESS
+            int "I2C address       "
+            default 36 if CHOICE_NFC_READER_TYPE_PN532
+            default 40 if CHOICE_NFC_READER_TYPE_PN7160
+            range 36 36 if CHOICE_NFC_READER_TYPE_PN532
+            range 36 43 if CHOICE_NFC_READER_TYPE_PN7160
+            help
+              I2C address of the NFC reader.
+              PN532 uses 36 (0x24)
+              PN7160 supports 40-43 (0x28-0x2B)
 
-      # --------------------------------------
-      # Per-gate NFC: one menu per gate grouping
-      # all of that gate's settings
-      # --------------------------------------
+        config PARAM_NFC_READER_I2C_BUS
+          string "I2C bus name      "
+          default ""
+          help
+            Optional I2C bus name. Leave blank to use Klipper's default I2C bus.
 
-      if MMU_HAS_PER_GATE_NFC_READERS
-        @repeat var=i min=0 max=11@
-          if PARAM_NUM_GATES > $(i)
+        config PARAM_NFC_READER_I2C_SPEED
+          int "I2C speed (Hz)    "
+          default 100000
+          range 1 1000000
+          help
+            I2C speed for the NFC reader, in Hz.
+      endif
+
+      if CHOICE_NFC_READER_TYPE_PN7160
+        config PARAM_NFC_READER_VEN_PIN
+          string "VEN pin           "
+          default ""
+          help
+            Optional VEN pin for the PN7160 reader.
+            Don't forget to prefix with mcu name. E.g. mmu:PG13
+
+        config PARAM_NFC_READER_IRQ_PIN
+          string "IRQ pin           "
+          default ""
+          help
+            Optional IRQ pin for the PN7160 reader.
+            Don't forget to prefix with mcu name. E.g. mmu:PG13
+      endif
+    endif
+
+
+    # --------------------------------------
+    # Per-gate NFC: one menu per gate grouping
+    # all of that gate's settings
+    # --------------------------------------
+
+    config MMU_HAS_PER_GATE_NFC_READERS
+      bool "Per-gate NFC readers?"
+      default n
+      help
+        Most designs will only have a single NFC reader that allows presenting
+        filament prior to preload. However, some designs have a reader built
+        in per gate.
+
+    if MMU_HAS_PER_GATE_NFC_READERS
+      @repeat var=i min=0 max=11@
+        if PARAM_NUM_GATES > $(i)
+
+          config PARAM_NFC_READER_$(i)
+            string
+
+          menuconfig PARAM_NFC_READER_GATE_$(i)
+            bool "Gate $(i) NFC reader"
+            default y
+            help
+              Select to enable for gate
+
+           if PARAM_NFC_READER_GATE_$(i)
 
             config PARAM_NFC_READER_$(i)
-              string
-
-            menuconfig PARAM_NFC_READER_GATE_$(i)
-              bool "Gate $(i) NFC reader"
-              default y
+              string "Gate $(i) reader name       "
+              default "$(UNIT_NAME)_nfc$(i)"
               help
-                Select to enable for gate
+                Name of the NFC reader for this gate in the printer config.
+                E.g., "unit0_nfc0".
 
-             if PARAM_NFC_READER_GATE_$(i)
+            choice CHOICE_NFC_READER_TYPE_$(i)
+              prompt "Gate $(i) reader type       "
+              default CHOICE_NFC_READER_TYPE_RC522_$(i)
+              help
+                Select the type of NFC reader being used for this gate.
 
-              config PARAM_NFC_READER_$(i)
-                string "Gate $(i) reader name       "
-                default "$(UNIT_NAME)_nfc$(i)"
+              config CHOICE_NFC_READER_TYPE_RC522_$(i)
+                bool "RC522 / SPI"
+
+              config CHOICE_NFC_READER_TYPE_PN532_$(i)
+                bool "PN532 / I2C"
+
+              config CHOICE_NFC_READER_TYPE_PN7160_$(i)
+                bool "PN7160 / I2C"
+            endchoice
+
+            config PARAM_NFC_READER_TYPE_$(i)
+              string
+              default "rc522"  if CHOICE_NFC_READER_TYPE_RC522_$(i)
+              default "pn532"  if CHOICE_NFC_READER_TYPE_PN532_$(i)
+              default "pn7160" if CHOICE_NFC_READER_TYPE_PN7160_$(i)
+
+            if CHOICE_NFC_READER_TYPE_RC522_$(i)
+              config PARAM_NFC_READER_CS_PIN_$(i)
+                string "Gate $(i) CS pin            "
+                default "$(MCU_NAME):pin"
                 help
-                  Name of the NFC reader for this gate in the printer config.
-                  E.g., "unit0_nfc0".
+                  Chip-select pin for this gate's RC522 reader.
 
-              choice CHOICE_NFC_READER_TYPE_$(i)
-                prompt "Gate $(i) reader type       "
-                default CHOICE_NFC_READER_TYPE_RC522_$(i)
+              config PARAM_NFC_READER_SPI_BUS_$(i)
+                string "Gate $(i) SPI bus name      "
+                default ""
                 help
-                  Select the type of NFC reader being used for this gate.
+                  Optional hardware SPI bus name, e.g. "spi1".
+                  Leave blank to use software SPI.
 
-                config CHOICE_NFC_READER_TYPE_RC522_$(i)
-                  bool "RC522 / SPI"
+              config PARAM_NFC_READER_SPI_SPEED_$(i)
+                int "Gate $(i) SPI speed (Hz)    "
+                default 1000000
+                range 1 10000000
+                help
+                  SPI speed for this gate's RC522 reader, in Hz.
+            endif
 
-                config CHOICE_NFC_READER_TYPE_PN532_$(i)
-                  bool "PN532 / I2C"
+            if CHOICE_NFC_READER_TYPE_PN532_$(i) || CHOICE_NFC_READER_TYPE_PN7160_$(i)
+              config PARAM_NFC_READER_I2C_ADDRESS_$(i)
+                int "I2C address              "
+                default 36 if CHOICE_NFC_READER_TYPE_PN532_$(i)
+                default 40 if CHOICE_NFC_READER_TYPE_PN7160_$(i)
+                range 36 36 if CHOICE_NFC_READER_TYPE_PN532_$(i)
+                range 36 43 if CHOICE_NFC_READER_TYPE_PN7160_$(i)
+                help
+                  I2C address of the NFC reader.
+                  PN532 uses 36 (0x24)
+                  PN7160 supports 40-43 (0x28-0x2B)
 
-                config CHOICE_NFC_READER_TYPE_PN7160_$(i)
-                  bool "PN7160 / I2C"
-              endchoice
+              config PARAM_NFC_READER_I2C_BUS_$(i)
+                string "Gate $(i) I2C bus name      "
+                default ""
+                help
+                  Optional I2C bus name. Leave blank to use Klipper's default I2C bus.
 
-              config PARAM_NFC_READER_TYPE_$(i)
-                string
-                default "rc522"  if CHOICE_NFC_READER_TYPE_RC522_$(i)
-                default "pn532"  if CHOICE_NFC_READER_TYPE_PN532_$(i)
-                default "pn7160" if CHOICE_NFC_READER_TYPE_PN7160_$(i)
+              config PARAM_NFC_READER_I2C_SPEED_$(i)
+                int "Gate $(i) I2C speed (Hz)    "
+                default 100000
+                range 10 1000000
+                help
+                  I2C speed for this gate's NFC reader, in Hz.
+            endif
 
-              if CHOICE_NFC_READER_TYPE_RC522_$(i)
-                config PARAM_NFC_READER_CS_PIN_$(i)
-                  string "Gate $(i) CS pin            "
-                  default "$(MCU_NAME):pin"
-                  help
-                    Chip-select pin for this gate's RC522 reader.
+            if CHOICE_NFC_READER_TYPE_PN7160_$(i)
+              config PARAM_NFC_READER_VEN_PIN_$(i)
+                string "Gate $(i) VEN pin           "
+                default ""
+                help
+                  Optional VEN pin for this gate's PN7160 reader.
+                  Don't forget to prefix with mcu name. E.g. mmu:PG13
 
-                config PARAM_NFC_READER_SPI_BUS_$(i)
-                  string "Gate $(i) SPI bus name      "
-                  default ""
-                  help
-                    Optional hardware SPI bus name, e.g. "spi1".
-                    Leave blank to use software SPI.
-
-                config PARAM_NFC_READER_SPI_SPEED_$(i)
-                  int "Gate $(i) SPI speed (Hz)    "
-                  default 1000000
-                  range 1 10000000
-                  help
-                    SPI speed for this gate's RC522 reader, in Hz.
-              endif
-
-              if CHOICE_NFC_READER_TYPE_PN532_$(i) || CHOICE_NFC_READER_TYPE_PN7160_$(i)
-                config PARAM_NFC_READER_I2C_ADDRESS_$(i)
-                  int "I2C address              "
-                  default 36 if CHOICE_NFC_READER_TYPE_PN532_$(i)
-                  default 40 if CHOICE_NFC_READER_TYPE_PN7160_$(i)
-                  range 36 36 if CHOICE_NFC_READER_TYPE_PN532_$(i)
-                  range 36 43 if CHOICE_NFC_READER_TYPE_PN7160_$(i)
-                  help
-                    I2C address of the NFC reader.
-                    PN532 uses 36 (0x24)
-                    PN7160 supports 40-43 (0x28-0x2B)
-
-                config PARAM_NFC_READER_I2C_BUS_$(i)
-                  string "Gate $(i) I2C bus name      "
-                  default ""
-                  help
-                    Optional I2C bus name. Leave blank to use Klipper's default I2C bus.
-
-                config PARAM_NFC_READER_I2C_SPEED_$(i)
-                  int "Gate $(i) I2C speed (Hz)    "
-                  default 100000
-                  range 10 1000000
-                  help
-                    I2C speed for this gate's NFC reader, in Hz.
-              endif
-
-              if CHOICE_NFC_READER_TYPE_PN7160_$(i)
-                config PARAM_NFC_READER_VEN_PIN_$(i)
-                  string "Gate $(i) VEN pin           "
-                  default ""
-                  help
-                    Optional VEN pin for this gate's PN7160 reader.
-                    Don't forget to prefix with mcu name. E.g. mmu:PG13
-
-                config PARAM_NFC_READER_IRQ_PIN_$(i)
-                  string "Gate $(i) IRQ pin           "
-                  default ""
-                  help
-                    Optional IRQ pin for this gate's PN7160 reader.
-                    Don't forget to prefix with mcu name. E.g. mmu:PG13
-              endif
+              config PARAM_NFC_READER_IRQ_PIN_$(i)
+                string "Gate $(i) IRQ pin           "
+                default ""
+                help
+                  Optional IRQ pin for this gate's PN7160 reader.
+                  Don't forget to prefix with mcu name. E.g. mmu:PG13
             endif
           endif
-        @endrepeat@
+        endif
+      @endrepeat@
 
-      endif # per gate
-
-    endif # not shared
+    endif # per gate
 
   endmenu
 
