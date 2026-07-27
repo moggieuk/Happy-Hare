@@ -6,5 +6,6 @@ out_*/
 *.mmu_config_*
 __pycache__/
 *.pyc
+venv/
 .DS_Store
 .claude

@@ -1,8 +1,8 @@
 # Test-harness dependencies. Deliberately separate from installer/requirements.txt,
 # which is what end users install - none of these are needed to run Happy Hare.
 #
-#   ./venv/bin/pip install -r test/requirements.txt
-#   make test
+# You do not install these by hand: `make test` creates ./venv and installs this file
+# into it on demand. Editing this file makes the next `make test` reinstall.
 #
 # kconfiglib is NOT listed: it is vendored at installer/lib/kconfiglib and the test
 # target puts it on PYTHONPATH (mirroring Makefile:49).

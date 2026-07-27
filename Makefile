@@ -1,25 +1,18 @@
 SHELL := /usr/bin/env sh
 PY    := python
-Q  ?= @                           # For quiet make builds, override with make Q= for verbose output
-V  ?=                             # For verbose output (mostly from python builder), set to -v to enable
-UT ?= *                           # For unittests, e.g. make UT=test_build.py test
 
-# The test harness needs libraries a bare `python` usually lacks (greenlet, jinja2), so
-# `make test` prefers the repo virtualenv when one exists. It is NOT in git - create it:
-#   python3 -m venv venv && ./venv/bin/pip install -r test/requirements.txt
-# Falls back to $(PY) when there is no venv. Deliberately separate from PY so it cannot
-# redirect the build and install targets, which must keep using the system interpreter.
-ifeq ($(origin PY),command line)
-  # An explicit `make PY=... test` still wins. No inline comment on the assignment:
-  # everything up to the '#' becomes part of the value, which is what once left
-  # UT ?= * padded with spaces so `-p '*   '` matched nothing and `make test` ran zero
-  # tests while reporting success.
-  TEST_PY ?= $(PY)
-else
-  TEST_PY ?= $(if $(wildcard $(SRC)/venv/bin/python),$(SRC)/venv/bin/python,$(PY))
-endif
+# Keep these comments on their own line: an inline one pads the value with the spaces
+# leading up to the '#', which silently breaks anything matching on the value
 
-MAKEFLAGS += --jobs 16            # Parallel build
+# For quiet make builds, override with make Q= for verbose output
+Q  ?= @
+# For verbose output (mostly from python builder), set to -v to enable
+V  ?=
+# For unittests, e.g. make UT=test_build.py test
+UT ?= *
+
+# Parallel build
+MAKEFLAGS += --jobs 16
 
 # By default KCONFIG_CONFIG is '.mmu_config', but it can be overridden by the user
 export KCONFIG_CONFIG ?= .mmu_config
@@ -57,11 +50,26 @@ endif
 # Couple verbose debug output to python debugging flag
 debug = $(if $(findstring -v,$(V)),$(info $(1)))
 
-
 export SRC ?= $(CURDIR)
 # export $srctree for menuconfig and kconfiglib
 export srctree := $(SRC)/installer
 export PYTHONPATH:=$(SRC)/installer/lib/kconfiglib:$(PYTHONPATH)
+
+# Test virtualenv, created on demand by `make test`. See test/README.md
+VENV       ?= $(SRC)/venv
+VENV_PY    := $(VENV)/bin/python
+VENV_STAMP := $(VENV)/.hh-test-requirements
+
+# Interpreter used to create the venv, falling back where plain `python` isn't a name
+BOOTSTRAP_PY := $(if $(shell command -v $(PY) 2>/dev/null),$(PY),python3)
+
+# NO_VENV=1 or an explicit PY= runs the tests against the system interpreter instead.
+# test_prereqs keys off TEST_PY so opting out never builds a venv it then ignores
+ifdef NO_VENV
+  TEST_PY ?= $(BOOTSTRAP_PY)
+endif
+TEST_PY      ?= $(if $(findstring command line,$(origin PY)),$(PY),$(VENV_PY))
+test_prereqs := $(if $(filter $(VENV_PY),$(TEST_PY)),$(VENV_STAMP))
 
 ifneq ($(TESTDIR),)
   OUTDIR := $(TESTDIR)
@@ -114,7 +122,7 @@ restart_klipper = 0
 .SECONDEXPANSION:
 .DEFAULT_GOAL := build
 .PRECIOUS: $(KCONFIG_CONFIG) $(KCONFIG_CONFIG)_%
-.PHONY: menuconfig install uninstall check_version diff test build clean variables python_deps fix_links gen_kconfig kconfig_needs_update olddefconfig verify_pickle
+.PHONY: menuconfig install uninstall check_version diff test venv clean_venv build clean variables python_deps fix_links gen_kconfig kconfig_needs_update olddefconfig verify_pickle
 .SECONDARY: \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
@@ -402,6 +410,12 @@ gen_kconfig:
 clean:
 	$(Q)rm -rf $(OUT)
 
+# Deliberately not part of `clean`, which runs far too often to pay for a venv rebuild
+clean_venv:
+	$(Q)[ -f "$(VENV_PY)" ] || { echo "$(C_WARNING)No test virtualenv at '$(VENV)'$(C_OFF)"; exit 0; }; \
+		echo "$(C_INFO)Removing test virtualenv '$(patsubst $(SRC)/%,%,$(VENV))'$(C_OFF)"; \
+		rm -rf "$(VENV)"
+
 python_deps:
 	$(Q)echo "$(C_INFO)Checking for python dependencies$(C_OFF)"
 	$(Q)pip -qq install -r $(SRC)/installer/requirements.txt
@@ -425,7 +439,28 @@ diff: | build
 	$(Q)$(call diff,$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE),$(patsubst $(SRC)/%,%,$(OUT)/$(PRINTER_CONFIG_FILE)))
 	$(Q)$(call diff,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE),$(patsubst $(SRC)/%,%,$(OUT)/$(MOONRAKER_CONFIG_FILE)))
 
-test:
+# Guarded by the interpreter it produces, so this runs once. A failed venv is left in
+# place: `-m venv` is idempotent so the retry is clean, and VENV may be a user directory
+$(VENV_PY):
+	$(Q)echo "$(C_INFO)Creating test virtualenv in '$(patsubst $(SRC)/%,%,$(VENV))'$(C_OFF)"
+	$(Q)$(BOOTSTRAP_PY) -m venv "$(VENV)" || { \
+		echo "$(C_ERROR)Could not create a virtualenv with '$(BOOTSTRAP_PY) -m venv'$(C_OFF)"; \
+		echo "$(C_ERROR)On Debian/Ubuntu install it with: sudo apt install python3-venv$(C_OFF)"; \
+		echo "$(C_ERROR)Or skip the venv and use the system interpreter: make NO_VENV=1 test$(C_OFF)"; \
+		exit 1; \
+	}
+
+# Stamp lives inside the venv, so a deleted venv or an edited requirements.txt reinstalls
+$(VENV_STAMP): $(SRC)/test/requirements.txt | $(VENV_PY)
+	$(Q)echo "$(C_INFO)Installing test dependencies from $(patsubst $(SRC)/%,%,$<)$(C_OFF)"
+	$(Q)$(VENV_PY) -m pip install --quiet --disable-pip-version-check -r "$<"
+	$(Q)touch "$@"
+
+# Explicit target for anyone who wants the venv without running the tests
+venv: $(VENV_STAMP)
+	$(Q)echo "$(C_NOTICE)Test virtualenv ready: $(patsubst $(SRC)/%,%,$(VENV_PY))$(C_OFF)"
+
+test: $(test_prereqs)
 	$(Q)PYTHONPATH="$(SRC)/installer/lib/kconfiglib:$(PYTHONPATH)" \
 		$(TEST_PY) -m unittest discover $(V) -p '$(strip $(UT))'
 
@@ -452,8 +487,7 @@ variables:
 
 # Verify that every explicit CONFIG_* assignment in each raw Kconfig value file survived
 # correctly into its pickle. Catches silent value-dropping or mis-typing bugs in KConfig.as_dict()
-# (see installer/lib/kconfiglib/test_kconfig_pickle_consistency.py for why this
-# check exists and how it works).
+# (see installer/lib/kconfiglib/test_kconfig_pickle_consistency.py for why this check exists and how it works).
 kconfig_pickles := $(addprefix $(OUT)/,$(addsuffix .pickle,$(notdir $(kconfig_files))))
 verify_pickle: $(kconfig_pickles) | python_deps
 	$(Q)status=0; \

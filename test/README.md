@@ -19,30 +19,57 @@ Python. Python-specific things are explained as they come up.
 
 ## 1. Running the tests
 
-The tests need two libraries Happy Hare itself doesn't (`greenlet`, `jinja2`), so they run
-in a **virtualenv** — a private Python install that lives in the repo directory but is
-*not* part of the git repo. You create it yourself, once, and it is yours alone:
-
-```bash
-python3 -m venv venv && ./venv/bin/pip install -r test/requirements.txt
-```
-
-That makes a `venv/` directory at the repo root. Git ignores it (Python's `venv` module
-writes an ignore rule into it), so it will never show up in `git status` or a commit.
-Delete it and re-run the line above any time you want a clean one.
-
-Then, from the repo root:
+From the repo root:
 
 ```bash
 make test
 ```
 
-`make test` finds `venv/` on its own. If you haven't made one it falls back to plain
-`python`, which will fail with `ModuleNotFoundError: No module named 'greenlet'` — that
-error means "run the setup line above", not "the tests are broken". To test against a
-different interpreter deliberately, say so: `make PY=/usr/bin/python3 test`.
+That is the whole setup. On a fresh clone the first run takes a few extra seconds to build
+itself an environment, then goes straight into the tests.
 
-That runs everything — currently **333 tests in about two minutes**. Expect to see:
+<details>
+<summary>What that first run is doing, and how to steer it</summary>
+
+The tests need two libraries Happy Hare itself doesn't (`greenlet`, `jinja2`), so they run
+in a **virtualenv** — a private Python install that lives in the repo directory but is
+*not* part of the git repo, and is never installed onto a printer. `make test` creates it
+at `venv/` and installs `test/requirements.txt` into it if it isn't already there.
+
+Git ignores `venv/` (Python's `venv` module writes an ignore rule into it), so it will
+never show up in `git status` or a commit.
+
+It is only built once. Later runs reuse it and go straight to the tests; editing
+`test/requirements.txt` reinstalls automatically. Some knobs:
+
+```bash
+make venv                       # build the venv, don't run anything
+make clean_venv                 # throw it away (`make clean` deliberately does not)
+make VENV=/somewhere/else test  # put the venv somewhere other than ./venv
+make NO_VENV=1 test             # don't use a venv at all (see below)
+make PY=/usr/bin/python3 test   # ditto, against a named interpreter
+```
+
+If venv creation fails, the error says what to do — on Debian/Ubuntu it is usually
+`sudo apt install python3-venv`.
+
+`NO_VENV=1` runs the tests against whatever `python` is already on your PATH, and expects
+you to have `greenlet` and `jinja2` installed there yourself. **You almost certainly don't
+want it.** It exists for the two cases where a venv is the wrong tool: CI, which already
+runs in a throwaway environment with the dependencies installed, and a machine where
+`python -m venv` doesn't work at all and can't be made to.
+
+In particular, it is *not* the way to test against a different Python version — that still
+needs the dependencies installed for that interpreter, which is exactly what a venv is for.
+Point the venv at the other interpreter instead:
+
+```bash
+make BOOTSTRAP_PY=python3.9 VENV=venv39 test
+```
+
+</details>
+
+`make test` runs everything — currently **333 tests in about two minutes**. Expect to see:
 
 ```
 OK (skipped=1, expected failures=5)
