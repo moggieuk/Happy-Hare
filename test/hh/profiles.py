@@ -100,6 +100,12 @@ NFC_SPOOLMAN_SHARED = NFC_SINGLE.derive(
     },
     description='Unit-level NFC + Spoolman push + auto-create + deep read')
 
+# NOTE on ADC coverage: there is deliberately no profile here that binds an ADC pin.
+# Real machine profiles take their pins from an MCU board selection, and switching on a
+# proportional buffer sensor outside its intended starter leaves dependent params
+# (analog_max_tension, analog_sensor_threshold) blank, producing a section HH cannot
+# parse. MmuAdcHelper's compat shim is therefore covered directly by
+# test_mmu_adc_compat.py rather than through a synthesised machine.
 PROFILES = {p.name: p for p in (BOXTURTLE, NFC_SINGLE, NFC_PER_GATE,
                                 NFC_SPOOLMAN, NFC_SPOOLMAN_SHARED)}
 
