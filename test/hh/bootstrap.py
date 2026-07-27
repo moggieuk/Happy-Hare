@@ -356,7 +356,44 @@ class Session:
         mq = self.printer.lookup_object('motion_queuing', None)
         if mq is not None:
             mq.move_observer = self._on_manual_move
+        if self._encoders():
+            model.observers.append(self._on_encoder_travel)
         return model
+
+    def _encoders(self):
+        """(MmuEncoder, MCU_counter) for every encoder on this machine."""
+        counters = getattr(self.printer, 'harness_counters', {})
+        out = []
+        for name, obj in self.printer.objects.items():
+            if not name.startswith('mmu_encoder '):
+                continue
+            counter = counters.get(getattr(obj, 'encoder_pin', None))
+            if counter is None and len(counters) == 1:
+                counter, = counters.values()
+            if counter is not None:
+                out.append((obj, counter))
+        return out
+
+    def _on_encoder_travel(self, gate, delta, start_tip, start_tail):
+        """
+        Turn filament travel past the encoder into real pulses.
+
+        Delivered through MCU_counter's callback rather than by setting _counts, so
+        Happy Hare's own _counter_callback runs: it is what accumulates the distance,
+        maintains the no-movement window and drives the derived encoder sensor's
+        trigger_handler. Poking _counts would leave that sensor permanently clear.
+        """
+        model = getattr(self.printer, 'harness_filament', None)
+        position = model.layout.get('mmu_encoder') if model else None
+        if position is None:
+            return
+        # A shared encoder sits downstream of the selector, so it only ever sees the
+        # gate currently selected. Happy Hare has no per-gate encoders.
+        if gate != self.mmu.gate_selected:
+            return
+        travel = model.travel_over(position, start_tip, start_tail, delta)
+        for encoder, counter in self._encoders():
+            counter.pulse(int(round(travel / encoder.resolution)))
 
     def _on_manual_move(self, trapq, distance):
         """

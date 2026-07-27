@@ -51,6 +51,12 @@ DEFAULT_LAYOUT = {
     'mmu_exit': 0.0,            # BoxTurtle's gate_homing_endstop
     'mmu_nfc': -80.0,           # per-gate reader, reachable from park within the jog window
     'mmu_shared_exit': 10.0,
+    # The encoder wheel, just past the gate - where ERCF-style machines put it. It is
+    # NOT a switch: nothing in sensor_names() ever resolves to it (Happy Hare registers
+    # the encoder's derived sensor as 'encoder', which position() deliberately does not
+    # match), so the model never drives it. It is here purely as the point whose
+    # COVERAGE decides whether a move turns the encoder wheel - see travel_over().
+    'mmu_encoder': 20.0,
     'extruder_entry': 700.0,
     'toolhead': 740.0,
     # The buffer's COMPRESSION sensor is what a load homes to when
@@ -106,6 +112,10 @@ class FilamentPath:
         self.tag_window = tag_window
         self._set_sensor = set_sensor
         self.history = []               # [(gate, delta, reason)] for debugging
+        # Called as obs(gate, delta, start_tip, start_tail) after every move. Used by
+        # the Session to turn filament travel into encoder pulses; a switch cannot
+        # express that, because an encoder reports MOTION rather than presence.
+        self.observers = []
 
     # -- setup -------------------------------------------------------------
     def place(self, gate, position, sync=True):
@@ -259,16 +269,40 @@ class FilamentPath:
             return travel
         return None
 
+    def travel_over(self, position, start_tip, start_tail, delta):
+        """
+        How much of a `delta` move happens while filament COVERS `position`.
+
+        This is what an encoder measures: the wheel only turns while filament is
+        under it, so a move that starts short of the encoder contributes only the
+        part after the filament arrives. Modelling it as "moved at all" instead
+        would make Happy Hare's `measured > 6.0mm` motion test pass for a gate with
+        no filament in it, which is exactly the check under test.
+
+        Direction-blind, like the real hardware: a pulse counter has no quadrature,
+        so a retraction produces positive counts too and get_distance() only ever
+        grows. Returns a non-negative distance.
+        """
+        # Filament covers `position` at travel u (signed, along the move) whenever
+        # start_tail + u <= position <= start_tip + u, i.e. u in [lo, hi].
+        lo = position - start_tip
+        hi = position - start_tail          # +inf while a spool is attached
+        overlap = min(hi, max(0.0, delta)) - max(lo, min(0.0, delta))
+        return max(0.0, overlap)
+
     def advance(self, gate, delta, reason=''):
         """Move a gate's filament and push any resulting sensor changes into HH."""
         if not delta:
             return self.tip[gate]
+        start_tip, start_tail = self.tip[gate], self.tail[gate]
         self.tip[gate] += delta
         self.tail[gate] += delta        # filament moves as one piece
         self.history.append((gate, delta, reason))
         logging.debug('filament: gate %d %+.2f -> %.2f (%s)',
                       gate, delta, self.tip[gate], reason)
         self.sync(gate)
+        for observe in self.observers:
+            observe(gate, delta, start_tip, start_tail)
         return self.tip[gate]
 
     # -- pushing state into Happy Hare -------------------------------------

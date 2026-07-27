@@ -121,17 +121,34 @@ EMU = Profile(
     syms={'MMU_TYPE_EMU_1_0': True},
     description='EMU 1.0 - 5 gates, proportional (analog) buffer sensor')
 
+# BoxTurtle plus an encoder, homing to it instead of to the gate switch. None of the
+# three shipped machine profiles ships an encoder, and _home_to_gate's encoder branch
+# (extras/mmu/mmu_filament_movement.py:206-231) is a completely different algorithm from
+# the endstop branch: it does not home at all, it makes a fixed-length move and asks
+# whether the filament MOVED. Nothing else covers it.
+#
+# Unlike the proportional-buffer attempt described below, adding an encoder is safe:
+# [mmu_encoder] has a real default for every dependent parameter (resolution 0.979,
+# desired_headroom, the sample counts), so the section renders complete. That is the
+# test for whether hand-enabling a feature is legitimate - render it and read the
+# section, do not assume.
+ENCODER = BOXTURTLE.derive(
+    'encoder',
+    syms={
+        'MMU_HAS_ENCODER': True,
+        'PIN_ENCODER': 'unit0:PA6',
+        'CHOICE_GATE_HOMING_ENDSTOP_ENCODER': True,
+    },
+    description='BoxTurtle + encoder, gate_homing_endstop=encoder')
+
 # NOTE on ADC coverage: no profile here SYNTHESISES an ADC pin. The `emu` profile above
-# brings a proportional sensor of its own, which is the honest way to get one; hand-enabling
-# a proportional buffer on a machine that has none leaves dependent params
-# (analog_max_tension, analog_sensor_threshold) blank and produces a section HH cannot
-# parse. An earlier attempt at exactly that was reverted.
-# Real machine profiles take their pins from an MCU board selection, and switching on a
+# brings a proportional sensor of its own, which is the honest way to get one. Real
+# machine profiles take their pins from an MCU board selection, and switching on a
 # proportional buffer sensor outside its intended starter leaves dependent params
 # (analog_max_tension, analog_sensor_threshold) blank, producing a section HH cannot
-# parse. MmuAdcHelper's compat shim is therefore covered directly by
-# test_mmu_adc_compat.py rather than through a synthesised machine.
-PROFILES = {p.name: p for p in (BOXTURTLE, TRADRACK, EMU, NFC_SINGLE,
+# parse. An earlier attempt at exactly that was reverted; MmuAdcHelper's compat shim is
+# covered directly by test_mmu_adc_compat.py instead.
+PROFILES = {p.name: p for p in (BOXTURTLE, TRADRACK, EMU, ENCODER, NFC_SINGLE,
                                 NFC_PER_GATE, NFC_SPOOLMAN, NFC_SPOOLMAN_SHARED)}
 
 
