@@ -60,6 +60,121 @@ def prime_reader(reader, cycles=DEFAULT_CYCLES):
     return True
 
 
+class VirtualNfcChip:
+    """
+    A reader chip standing in for RC522Driver / PN532Driver / PN7160Driver, driven by
+    the filament path model.
+
+    Faked at the DRIVER boundary rather than the bus, because a real UID read is a full
+    ISO14443 exchange (REQA, anticollision, select, ...) and scripting that faithfully is
+    chip simulation, not filament simulation. The bus-level fixtures above still exercise
+    the real RC522 init path; this replaces the chip for tests about what happens once a
+    tag is found.
+
+    Interface MmuNfcReader actually depends on (verified against
+    extras/mmu/unit/nfc/mmu_nfc_reader.py): init, is_alive, read_tag, read_target,
+    _release_current_target, plus the _gate label that init(gate) writes.
+
+    Targets report protocol='uid_only', so _classify_target returns 'uid_only' and
+    read_tag_data yields (uid, None) - a UID read with no metadata. That is deliberate:
+    metadata already has full end-to-end coverage through _MMU_TEST NFC_READ=1, which
+    injects at _dispatch_lookup, and returning real parseable NDEF bytes here would mean
+    building tag images - properly the job of direct tag_parser tests.
+    """
+
+    def __init__(self, model=None, gate=None, label=None):
+        self._gate = gate if gate is not None else label
+        self.model = model
+        self.presented = None       # explicit override, for shared/common readers
+        self.reads = 0              # assertion surface
+        self.releases = 0
+        self.inits = 0
+        self._held = None
+
+    # -- driver interface ---------------------------------------------------
+    def init(self):
+        self.inits += 1
+        self._held = None
+        return True
+
+    def is_alive(self):
+        return True
+
+    def read_tag(self, timeout=0.5):
+        """UID-only read. Auto-releases, like the real PN532/PN7160 path."""
+        self.reads += 1
+        tag = self._visible_tag()
+        self._held = None
+        return tag.uid if tag is not None else None
+
+    def read_target(self, timeout=0.5):
+        self.reads += 1
+        tag = self._visible_tag()
+        if tag is None:
+            self._held = None
+            return None
+        self._held = tag
+        return {'uid': tag.uid, 'protocol': 'uid_only',
+                'protocol_name': 'uid_only', 'sak': 0x00,
+                'uid_length': len(tag.uid) // 2}
+
+    def _release_current_target(self, reason=None):
+        self.releases += 1
+        self._held = None
+        return True
+
+    # -- test-facing --------------------------------------------------------
+    def present(self, uid, metadata=None):
+        """Hold a tag on this reader regardless of filament position."""
+        from .filament import Tag
+        self.presented = Tag(uid, metadata)
+        return self
+
+    def clear(self):
+        self.presented = None
+        return self
+
+    def _visible_tag(self):
+        if self.presented is not None:
+            return self.presented
+        # A per-gate reader sees its own gate's filament; a common reader has an
+        # integer-less label, so it only ever reports an explicitly presented tag.
+        if self.model is not None and isinstance(self._gate, int):
+            return self.model.tag_detected(self._gate)
+        return None
+
+    def __repr__(self):
+        return 'VirtualNfcChip(gate=%r, tag=%r)' % (
+            self._gate, self._visible_tag())
+
+
+def virtualise(printer, model=None):
+    """
+    Swap every reader's chip driver for a VirtualNfcChip. Must run BEFORE
+    klippy:connect, since that is when MmuNfcReader.init() first talks to the chip.
+
+    Returns {reader_name: VirtualNfcChip}.
+    """
+    machine = printer.lookup_object('mmu_machine', None)
+    chips = {}
+    if machine is None:
+        return chips
+    for unit in machine.units:
+        manager = getattr(unit, 'nfc_manager', None)
+        if manager is None:
+            continue
+        readers = [(gate, r) for gate, r in enumerate(
+            getattr(manager, 'gate_readers', ()) or ()) if r is not None]
+        shared = getattr(manager, 'shared_reader', None)
+        if shared is not None:
+            readers.append((None, shared))
+        for gate, reader in readers:
+            chip = VirtualNfcChip(model=model, gate=gate, label=reader.name)
+            reader.reader = chip
+            chips[reader.name] = chip
+    return chips
+
+
 def prime_all(printer, cycles=DEFAULT_CYCLES):
     """Prime every configured reader on every unit. Returns the number primed."""
     machine = printer.lookup_object('mmu_machine', None)

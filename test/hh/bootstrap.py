@@ -79,7 +79,7 @@ class Session:
     """
 
     def __init__(self, profile='boxturtle', adc_api='new', adc_payload='samples',
-                 strict_gcode=False, printer_stub=PRINTER_STUB):
+                 strict_gcode=False, printer_stub=PRINTER_STUB, virtual_nfc=False):
         self.klippy = install()
         self.profile = (profile if isinstance(profile, profiles_mod.Profile)
                         else profiles_mod.get(profile))
@@ -87,6 +87,11 @@ class Session:
         self.adc_payload = adc_payload
         self.strict_gcode = strict_gcode
         self.printer_stub = printer_stub
+        # Swap reader chips for model-driven virtual ones instead of scripting the real
+        # RC522 init. Needed for anything that asks a reader for a UID (MMU_NFC READ,
+        # MMU_NFC_SCAN, the preload NFC compound).
+        self.virtual_nfc = virtual_nfc
+        self.nfc_chips = {}
         self.tmpdir = tempfile.mkdtemp(prefix='hh-session-')
         self.printer = None
         self.reactor = None
@@ -184,12 +189,31 @@ class Session:
             if section not in printer.objects:
                 printer.load_object(self.config, section, None)
 
-        # Script the NFC reader buses NOW. Readers are constructed during the section
-        # loop above but initialised at klippy:connect ("rc522 did not respond at
-        # connect time"), and a failed init is not retried - so priming any later
-        # leaves every reader dead for the rest of the session.
-        self.prime_nfc_readers()
+        # Both of these MUST happen before klippy:connect: readers are constructed
+        # during the section loop above but initialised at connect ("rc522 did not
+        # respond at connect time"), and a failed init is never retried - so doing
+        # either later leaves every reader dead for the whole session.
+        if self.virtual_nfc:
+            self.virtualise_nfc_readers()
+        else:
+            self.prime_nfc_readers()
         return self
+
+    def virtualise_nfc_readers(self):
+        """Replace each reader's chip driver with a model-driven VirtualNfcChip."""
+        from . import nfc_fixtures
+        self.nfc_chips = nfc_fixtures.virtualise(self.printer, self.filament())
+        return self.nfc_chips
+
+    def chip(self, name_or_gate):
+        """A virtual chip by reader name, or by gate index for a per-gate reader."""
+        if name_or_gate in self.nfc_chips:
+            return self.nfc_chips[name_or_gate]
+        for chip in self.nfc_chips.values():
+            if chip._gate == name_or_gate:
+                return chip
+        raise KeyError('no virtual NFC chip for %r; have: %s'
+                       % (name_or_gate, ', '.join(sorted(self.nfc_chips))))
 
     def _mmu_vars_copy(self):
         """
