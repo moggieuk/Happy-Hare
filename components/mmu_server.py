@@ -82,7 +82,7 @@ if TYPE_CHECKING:
 
 MMU_NAME_FIELD   = 'printer_name'
 MMU_GATE_FIELD   = 'mmu_gate_map'
-MMU_RFID_FIELD   = 'rfid'          # NFC/RFID tag UID registered against a spool
+MMU_RFID_FIELD   = 'rfid_tag'      # NFC/RFID tag UID registered against a spool
 MIN_SM_VER       = (0, 18, 1)
 
 NFC_UID_MISS_TTL = 10.0            # Seconds to remember a UID that isn't in Spoolman (avoids re-querying on every scan)
