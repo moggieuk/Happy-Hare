@@ -572,7 +572,12 @@ class MmuNfcManager:
         except Exception as e:
             self.mmu.log_error("NFC: read error on reader '%s': %s" % (getattr(reader, 'name', '?'), str(e)))
             return None, None
-        return (str(uid) if uid else None), metadata
+        uid = str(uid) if uid else None
+        self.mmu.log_debug(
+            "NFC: reader '%s' read UID=%s deep=%s metadata_keys=%s" % (
+                getattr(reader, 'name', '?'), uid, deep,
+                sorted(metadata.keys()) if isinstance(metadata, dict) else []))
+        return uid, metadata
 
 
     def _want_metadata(self):
@@ -597,6 +602,9 @@ class MmuNfcManager:
         a UID-only read.
         """
         try:
+            self.mmu.log_debug(
+                "NFC: dispatching UID=%s from reader unit=%s gate=%s to Spoolman lookup" %
+                (uid, self.mmu_unit.name, gate))
             self.mmu._nfc_tag_read(uid, gate=gate, metadata=metadata, unit=self.mmu_unit)
         except Exception as e:
             self.mmu.log_error("NFC: error initiating tag lookup for UID=%s: %s" % (uid, str(e)))

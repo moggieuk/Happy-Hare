@@ -940,6 +940,12 @@ class MmuServer:
 
             uid_norm = self._normalise_uid(uid)
             spool_id = self.uid_to_spool_id.get(uid_norm)
+            logging.debug(
+                "NFC lookup: received uid_raw=%r uid=%s gate=%s save=%s report_only=%s "
+                "cache=%s metadata_keys=%s" % (
+                    uid, uid_norm, gate, save, report_only,
+                    "hit" if spool_id is not None else "miss",
+                    sorted(metadata.keys()) if isinstance(metadata, dict) else []))
 
             if spool_id is None:
                 # Skip the fetch if we recently confirmed this tag is unknown, so
@@ -960,6 +966,7 @@ class MmuServer:
                 # A freshly-registered tag may not be in the cache yet - refresh once
                 # and retry. Distinguish a genuine miss from a Spoolman outage: a
                 # failed rebuild preserves the existing cache, so don't cache a miss.
+                logging.debug("NFC lookup: uid=%s cache miss; refreshing Spoolman UID cache" % uid_norm)
                 if not await self._build_spool_location_cache(silent=True):
                     await self._log_n_send(f"NFC: couldn't reach Spoolman to resolve tag {uid_norm} (check moonraker.log)", error=True, silent=silent)
                     # Recoverable failure. For a shared-reader lookup signal
@@ -971,6 +978,9 @@ class MmuServer:
                         await self._send_gate_lookup_result(gate, -1)
                     return False
                 spool_id = self.uid_to_spool_id.get(uid_norm)
+                logging.debug(
+                    "NFC lookup: uid=%s cache refresh result=%s" %
+                    (uid_norm, spool_id if spool_id is not None else "not found"))
 
             created = False
             if spool_id is None and save and metadata and metadata.get("material"):
@@ -1026,6 +1036,7 @@ class MmuServer:
                 else:
                     cmd = f"MMU_GATE_MAP GATE={gate} SPOOLID={spool_id}{created_flag} QUIET=1"
                 try:
+                    logging.debug(f"NFC lookup: callback to Klipper: {cmd}")
                     await self.klippy_apis.run_gcode(cmd)
                 except Exception as e:
                     await self._log_n_send(f"NFC: exception running '{cmd}': {str(e)}", error=True, silent=silent)
