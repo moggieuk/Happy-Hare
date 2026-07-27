@@ -3351,7 +3351,12 @@ class MmuController(MmuFilamentMovement):
         if unit is None and gate is not None:
             unit = self.mmu_unit(gate)
         save = self.nfc_auto_create_enabled(unit)
-        self.log_debug("Requesting spool lookup for tag uid %s (gate %s, save %s) from spoolman" % (uid, gate, save))
+        # Log the metadata actually being sent: auto-create needs a 'material' key, so a
+        # deep read that yielded nothing silently disables it and the request looks normal
+        self.log_debug(
+            "NFC->Spoolman: requesting spool lookup for tag uid %s (gate %s, save %s, metadata %s) from spoolman" % (
+                uid, gate, save,
+                sorted(metadata.keys()) if isinstance(metadata, dict) else None))
         try:
             webhooks = self.printer.lookup_object('webhooks')
             webhooks.call_remote_method("spoolman_get_spool_by_uid",
