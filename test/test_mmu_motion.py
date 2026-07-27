@@ -17,12 +17,14 @@
 # clear - which is what Happy Hare requires (its preload failure tail marks a gate
 # GATE_UNKNOWN when the entry switch is still covered afterwards).
 #
-# SCOPE. Homing moves are fully modelled. Plain (non-homing) moves are observed via
-# trapq_append and the distance is exact, but the resulting ABSOLUTE end position after
-# a full load/preload does not yet reconcile - _load_gate turns out to park as well, so
-# the sequences compose differently than assumed. The tests below therefore assert
-# homing distances, sensor transitions and HH's own reported state, and deliberately do
-# not assert final absolute positions. Closing that gap is the next increment.
+# REALISTIC STARTING POSITIONS MATTER. A gate can only be preloaded from a state where
+# the filament is ALREADY past the entry switch, because that is what a user pushing
+# filament in produces (and the push is what fires the insert that triggers preload).
+# Starting behind the entry switch and then preloading manufactures an entry-switch edge
+# DURING the operation, which fires a nested insert-driven preload - the insert handler
+# guards only on `not is_printing()` (extras/mmu/commands/mmu_sensor_insert.py:70-75),
+# not on being mid-operation. That nesting is an artefact of an impossible start state,
+# not something to test.
 #
 #   ./venv/bin/python -m unittest test.test_mmu_motion
 #
@@ -33,6 +35,9 @@ import unittest
 
 from test.hh import session
 from test.hh.filament import TIP_PARKED, TIP_PRESENTED
+
+# Past the entry switch (-50): the only state a preload can realistically start from
+TIP_AT_GATE = -40.0
 
 logging.getLogger().setLevel(logging.CRITICAL)
 
@@ -119,26 +124,25 @@ class TestQuietPlacement(MotionTestCase):
         self.assertFalse(self.hh.sensor('mmu_entry_0').present)
         self.assertEqual(self.fil.history, [])
 
-    def test_loud_placement_past_the_entry_switch_makes_hh_move(self):
+    def test_loud_placement_past_the_entry_switch_preloads_the_gate(self):
         """
-        Covering the entry switch IS an insert event, and HH answers it by preloading -
+        Covering the entry switch IS an insert event, and HH answers it by running
+        MMU_PRELOAD for that gate (extras/mmu/commands/mmu_sensor_insert.py:70-75) -
         which is why scenario setup defaults to quiet.
 
-        Asserts only that HH moved the filament to the gate. The insert route goes
-        through mmu_unit.preload(), the SEPARATE async preload path that session 2
-        recorded as still un-unified with _preload_gate ("two preload paths remain",
-        FUTURE/nfc_session2_handoff.md open item 4). In the harness it homes to the gate
-        but does not park, leaving the gate GATE_UNKNOWN because the entry switch is
-        still covered. Whether that is correct is a question about that path, not about
-        this model - the explicit MMU_PRELOAD command parks properly (see TestPreload).
+        There is ONE preload implementation, _preload_gate; the insert route reaches it
+        through the ordinary MMU_PRELOAD command. It homes to the gate and parks, so the
+        entry switch it started from ends up CLEAR again.
         """
-        self.hh.place_filament(0, position=-40.0, quiet=False)
+        self.hh.place_filament(0, position=TIP_AT_GATE, quiet=False)
         self.hh.settle()
-        self.assertTrue(self.hh.sensor('mmu_entry_0').present)
-        self.assertTrue(self.fil.history,
-                        'HH should have reacted to filament covering the entry switch')
         homed = [r for _g, _d, r in self.fil.history if 'mmu_exit_0' in r]
         self.assertTrue(homed, 'expected a homing move to the gate sensor')
+        self.assertAlmostEqual(self.fil.tip[0], TIP_PARKED, places=2)
+        self.assertEqual(self.hh.mmu.gate_status[0], GATE_AVAILABLE)
+        self.assertFalse(self.hh.sensor('mmu_entry_0').present,
+                         'preload parks behind the entry switch, clearing it')
+        self.assertEqual(self.hh.errors, [])
 
 
 class TestLoadGate(MotionTestCase):
@@ -153,12 +157,14 @@ class TestLoadGate(MotionTestCase):
         BoxTurtle's gate_homing_endstop is mmu_exit at 0, so _load_gate drives forward
         from the park position until that switch trips - exactly 100mm.
 
-        Asserts the HOMING behaviour and HH's resulting state, not the final absolute
-        position: see the module docstring on what plain-move accounting still owes.
+        It also PARKS on the way out (a gate_parking_distance retraction), so the
+        filament ends back where it started with the gate sensor confirmed. That makes
+        _unload_gate not its inverse - _unload_gate unloads from the bowden.
         """
         overshoot = self.hh.mmu._load_gate()
         self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_HOMED_GATE)
         self.assertEqual(overshoot, 0.0)
+        self.assertAlmostEqual(self.fil.tip[0], TIP_PARKED, places=2)
         self.assertEqual(self.hh.errors, [])
 
     def test_the_gate_sensor_was_tripped_on_the_way(self):
@@ -233,22 +239,35 @@ class TestParkedState(MotionTestCase):
 class TestPreload(MotionTestCase):
     """MMU_PRELOAD as a user would run it - the full command, not an internal."""
 
-    def test_preload_from_presented_succeeds(self):
-        self.hh.place_filament(1, position=TIP_PRESENTED)
+    def test_preload_ends_parked_at_the_configured_distance(self):
+        self.hh.place_filament(1, position=TIP_AT_GATE)
         self.hh.run_gcode('MMU_PRELOAD GATE=1')
         self.assertEqual(self.hh.mmu.gate_status[1], GATE_AVAILABLE)
         self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_UNLOADED)
-        self.assertFalse(self.hh.sensor('mmu_exit_1').present,
-                         'preload must finish parked behind the gate switch')
+        self.assertAlmostEqual(self.fil.tip[1], TIP_PARKED, places=2)
+        self.assertFalse(self.hh.sensor('mmu_exit_1').present)
+        self.assertFalse(self.hh.sensor('mmu_entry_1').present)
         self.assertEqual(self.hh.errors, [])
 
-    def test_preload_passes_the_gate_sensor_on_the_way(self):
+    def test_insert_driven_preload_ends_parked(self):
+        """
+        The realistic route: a user pushes filament past the entry switch, which fires
+        an insert, which runs MMU_PRELOAD (mmu_sensor_insert.py:74). End state must be
+        identical to the explicit command.
+        """
+        self.hh.place_filament(2, position=TIP_AT_GATE, quiet=False)
+        self.hh.settle()
+        self.assertAlmostEqual(self.fil.tip[2], TIP_PARKED, places=2)
+        self.assertEqual(self.hh.mmu.gate_status[2], GATE_AVAILABLE)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_preload_passes_the_gate_sensor_on_the_way(self):  # noqa: D401
         """
         Preload homes forward to the gate endstop and then retracts to park, so the
         exit switch must have been tripped mid-sequence even though it reads clear at
         the end. Confirms the sequence rather than just the endpoint.
         """
-        self.hh.place_filament(1, position=TIP_PRESENTED)
+        self.hh.place_filament(1, position=TIP_AT_GATE)
         self.hh.run_gcode('MMU_PRELOAD GATE=1')
         reached = [d for gate, d, reason in self.fil.history
                    if gate == 1 and 'mmu_exit_1' in reason]
@@ -262,7 +281,7 @@ class TestPreload(MotionTestCase):
 
     def test_preload_leaves_other_gates_alone(self):
         self.hh.place_filament(0)
-        self.hh.place_filament(1, position=TIP_PRESENTED)
+        self.hh.place_filament(1, position=TIP_AT_GATE)
         self.hh.run_gcode('MMU_PRELOAD GATE=1')
         self.assertAlmostEqual(self.fil.tip[0], TIP_PARKED, places=3)
 

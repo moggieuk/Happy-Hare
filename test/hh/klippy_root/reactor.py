@@ -135,6 +135,7 @@ class VirtualReactor:
         self._all_greenlets = []
         self._process = False
         self.iterations = 0
+        self._pending_error = None
 
     # -- clock -------------------------------------------------------------
     def monotonic(self):
@@ -228,21 +229,38 @@ class VirtualReactor:
         self._g_dispatch.switch(self.NEVER)
         self._g_dispatch = g_old
 
+    def in_dispatch(self):
+        """
+        True while a reactor callback is executing. Callers that would otherwise pump
+        the reactor must check this: advance() is not reentrant, and calling it from
+        inside a callback is a bug.
+        """
+        return self._g_dispatch is not None
+
     def _dispatch_loop(self):
         self._g_dispatch = greenlet.getcurrent()
         wall_deadline = _wall.monotonic() + MAX_WALL_SECONDS
-        while self._process:
-            if self._next_timer > self._target:
-                break                       # nothing more due within this advance()
-            self.iterations += 1
-            if self.iterations > MAX_ITERATIONS:
-                raise AssertionError(self._watchdog_msg('iteration cap'))
-            if _wall.monotonic() > wall_deadline:
-                raise AssertionError(self._watchdog_msg('wall-clock budget'))
-            eventtime = max(self._now, min(self._next_timer, self._target))
-            self._now = eventtime
-            self._check_timers(eventtime)
-        self._g_dispatch = None
+        try:
+            while self._process:
+                if self._next_timer > self._target:
+                    break                   # nothing more due within this advance()
+                self.iterations += 1
+                if self.iterations > MAX_ITERATIONS:
+                    raise AssertionError(self._watchdog_msg('iteration cap'))
+                if _wall.monotonic() > wall_deadline:
+                    raise AssertionError(self._watchdog_msg('wall-clock budget'))
+                eventtime = max(self._now, min(self._next_timer, self._target))
+                self._now = eventtime
+                self._check_timers(eventtime)
+        except BaseException as e:
+            # NEVER let a callback exception vanish. greenlet delivers an exception to
+            # the greenlet's PARENT, and with dispatch handed between greenlets that
+            # can mean it is reported to stderr and dropped - which is exactly how a
+            # harness bug once masqueraded as Happy Hare quietly declining to finish an
+            # operation. Stash it and re-raise from advance().
+            self._pending_error = e
+        finally:
+            self._g_dispatch = None
 
     def _watchdog_msg(self, why):
         pending = [(getattr(t.callback, '__qualname__', repr(t.callback)), t.waketime)
@@ -264,6 +282,7 @@ class VirtualReactor:
         self._target = self._now + dt
         self._process = True
         self.iterations = 0
+        self._pending_error = None
         try:
             g = ReactorGreenlet(run=self._dispatch_loop)
             self._all_greenlets.append(g)
@@ -271,6 +290,9 @@ class VirtualReactor:
         finally:
             self._process = False
             self._g_dispatch = None
+        if self._pending_error is not None:
+            error, self._pending_error = self._pending_error, None
+            raise error
         self._now = self._target
         return self._now
 

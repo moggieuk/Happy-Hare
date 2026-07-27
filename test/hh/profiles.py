@@ -49,16 +49,20 @@ BOXTURTLE = Profile(
     syms={'MMU_TYPE_BOX_TURTLE_1_0': True},
     description='BoxTurtle 1.0 - Type B, VirtualSelector, 4 gates, multigear')
 
-# BoxTurtle + one NFC reader on the unit (RC522 over SPI).
+# BoxTurtle + one COMMON NFC reader serving all gates and the bypass (RC522 over SPI).
 #
-# Terminology trap: Kconfig's MMU_HAS_SHARED_NFC_READER means "shared across MMU
-# UNITS" and `depends on MULTI_UNIT`, so a single-unit machine cannot select it. The
-# single-reader branch is what a one-unit machine with one reader uses, and HH still
-# treats that reader as the unit's shared (non-per-gate) reader.
+# MMU_HAS_COMMON_NFC_READER is what gates both the [mmu_nfc_reader NAME] section AND
+# the `nfc_reader:` key on [mmu_unit]. Both it and MMU_HAS_PER_GATE_NFC_READERS default
+# to n, so MMU_HAS_NFC_READER alone renders NO reader - a reader is opt-in.
+#
+# History worth keeping: this used to be gated on MMU_HAS_SHARED_NFC_READER, which meant
+# "shared across MMU UNITS" and carried `depends on MULTI_UNIT`, making it unreachable on
+# a one-unit machine. The section rendered but `nfc_reader:` did not, so the reader was
+# orphaned and NFC silently did nothing. The harness caught that; it is now fixed.
 NFC_SINGLE = BOXTURTLE.derive(
     'nfc_single',
-    syms={'MMU_HAS_NFC_READER': True},
-    description='BoxTurtle + one unit-level NFC reader (RC522/SPI)')
+    syms={'MMU_HAS_NFC_READER': True, 'MMU_HAS_COMMON_NFC_READER': True},
+    description='BoxTurtle + one common NFC reader (RC522/SPI)')
 
 # One reader per gate. This is the profile that exercises the per-gate read/LED path
 # and MmuNfcEndstop, and the one that surfaces the mmu_nfc_reader.py:132 crash.

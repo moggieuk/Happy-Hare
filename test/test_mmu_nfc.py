@@ -124,56 +124,62 @@ class TestNfcEndstopWiring(unittest.TestCase):
         self.assertEqual(mgr.gate_endstops[0].name, 'mmu_nfc_0')
 
 
-class TestSingleReaderWiring(unittest.TestCase):
+class TestCommonReaderWiring(unittest.TestCase):
     """
-    A CONFIG-TEMPLATE BUG, captured so it flips green when fixed.
+    REGRESSION GUARD for a config-template bug the harness found and that is now fixed.
 
-    config/base/mmu_hardware.cfg:188-193 emits the [mmu_unit] `nfc_reader:` key only
-    under `[% if MMU_HAS_SHARED_NFC_READER %]`. But that Kconfig symbol means "shared
-    across MMU UNITS" and carries `depends on MULTI_UNIT`
-    (installer/Kconfig.nfc_reader:66-70), and MULTI_UNIT is a promptless bool driven
-    by the $(F_MULTI_UNIT) env var (installer/Kconfig:145-147). So on a SINGLE-UNIT
-    machine it can never be selected.
+    The [mmu_unit] `nfc_reader:` key used to be gated on MMU_HAS_SHARED_NFC_READER,
+    which meant "shared across MMU UNITS" and carried `depends on MULTI_UNIT` - so on a
+    single-unit machine it was unreachable. The [mmu_nfc_reader NAME] section rendered
+    anyway, leaving the reader ORPHANED: MmuNfcManager never instantiated it and NFC
+    silently did nothing, with no error and no warning.
 
-    Result: a single-unit machine with one NFC reader renders a valid
-    [mmu_nfc_reader unit0_nfc] section, but [mmu_unit unit0] gets neither
-    `nfc_reader:` nor `nfc_readers:`. The reader is orphaned - MmuNfcManager never
-    instantiates it and NFC silently does nothing. No error, no warning.
+    That was the primary use case, per the Kconfig's own help text: a single reader you
+    present filament to before preload.
 
-    That is the primary use case per the Kconfig's own help text: "Most designs will
-    only have a single NFC reader that allows presenting filament prior to preload."
-
-    The guard should key off "not per-gate" rather than "shared across units".
+    The fix replaced it with MMU_HAS_COMMON_NFC_READER ("common NFC reader that can be
+    used for all gates and bypass"), with no MULTI_UNIT dependency, gating BOTH the
+    section and the unit key. These tests assert the reader is now genuinely wired up
+    end to end, which is the part that was broken.
     """
 
     def test_reader_section_is_rendered(self):
         parser = cfg.assemble(cfg.render(profiles.get('nfc_single')))
         self.assertIn('mmu_nfc_reader unit0_nfc', parser.sections())
 
-    @unittest.expectedFailure
-    def test_single_reader_is_attached_to_the_unit(self):
+    def test_reader_is_attached_to_the_unit(self):
         parser = cfg.assemble(cfg.render(profiles.get('nfc_single')))
         unit = dict(parser.items('mmu_unit unit0'))
-        self.assertIn('nfc_reader', unit,
-                      'mmu_hardware.cfg:188-193 gates nfc_reader: on '
-                      'MMU_HAS_SHARED_NFC_READER, which depends on MULTI_UNIT and is '
-                      'therefore unreachable on a single-unit machine')
+        self.assertEqual(unit.get('nfc_reader'), 'unit0_nfc',
+                         'the common reader must be referenced by [mmu_unit], or it is '
+                         'configured but never instantiated')
+        self.assertNotIn('nfc_readers', unit,
+                         'a common reader must not also declare per-gate readers')
 
-    def test_orphaned_reader_is_silently_ignored(self):
+    def test_a_reader_is_opt_in(self):
         """
-        Confirms the consequence: config loads fine, no error, and no reader exists.
-        This is what makes the bug hard to notice.
+        MMU_HAS_NFC_READER alone renders NO reader: both COMMON and PER_GATE default to
+        n. Worth pinning so a profile cannot silently end up reader-less.
+        """
+        bare = profiles.BOXTURTLE.derive('nfc_bare', syms={'MMU_HAS_NFC_READER': True})
+        parser = cfg.assemble(cfg.render(bare))
+        self.assertFalse([s for s in parser.sections() if s.startswith('mmu_nfc_reader')])
+
+    def test_common_reader_is_actually_instantiated(self):
+        """
+        The end-to-end proof: config load must produce a live reader object on the unit.
+        This is exactly what the orphaning bug prevented.
         """
         hh = session('nfc_single')
         try:
             hh.boot()
             self.assertEqual(hh.errors, [])
             mgr = hh.printer.lookup_object('mmu_machine').units[0].nfc_manager
-            self.assertIsNone(mgr.shared_reader,
-                              'if this now holds a reader, the template was fixed - '
-                              'flip test_single_reader_is_attached_to_the_unit to a '
-                              'normal test and delete this one')
-            self.assertTrue(all(r is None for r in mgr.gate_readers))
+            self.assertIsNotNone(mgr.shared_reader,
+                                 'the common reader was configured but not created')
+            self.assertEqual(mgr.shared_reader.reader_type, 'rc522')
+            self.assertTrue(all(r is None for r in mgr.gate_readers),
+                            'a common reader must not populate per-gate slots')
         finally:
             hh.close()
 

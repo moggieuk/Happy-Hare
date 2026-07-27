@@ -378,7 +378,8 @@ class Session:
                 model.park(gate)
             else:
                 model.place(gate, position)
-        self.reactor.advance(0.)
+        if not self.reactor.in_dispatch():
+            self.reactor.advance(0.)
         return model
 
     def ready(self):
@@ -479,7 +480,13 @@ class _SensorHandle:
     def set(self, state=True, settle=True):
         buttons = self._session.printer.lookup_object('buttons')
         buttons.press(self.sensor.switch_pin, state)
-        if settle:
+        # Only pump when we are NOT already inside a reactor callback. The filament
+        # model syncs sensors from within homing moves, which themselves run inside a
+        # callback when an operation was started by a sensor event - pumping there
+        # trips advance()'s non-reentrancy assertion and kills the operation
+        # mid-flight. Nothing needs pumping in that case: we are already being
+        # dispatched.
+        if settle and not self._session.reactor.in_dispatch():
             self._session.reactor.advance(0.)
         return self
 
