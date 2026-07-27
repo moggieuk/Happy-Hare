@@ -9,6 +9,9 @@ Klipper installed, and no hardware.
 sessions and, per their own handoff notes, had *never been executed* — only checked for
 syntax. Running it for the first time found seven real bugs. That is what this is for.
 
+It has since grown well past NFC. Tool changes, gate homing (both kinds), endless spool and
+runout now run here too — see the coverage map in §2 for what is and isn't covered.
+
 **Who this is for:** you're comfortable with Happy Hare and Klipper concepts but new to
 Python. Python-specific things are explained as they come up.
 
@@ -29,10 +32,10 @@ Then, from the repo root:
 make PY=./venv/bin/python test
 ```
 
-That runs everything — currently **259 tests in about 50 seconds**. Expect to see:
+That runs everything — currently **333 tests in about two minutes**. Expect to see:
 
 ```
-OK (skipped=1, expected failures=3)
+OK (skipped=1, expected failures=5)
 ```
 
 `skipped` and `expected failures` are normal and explained in §6. Anything else — `FAILED
@@ -69,26 +72,59 @@ pattern, but the dotted form above is usually easier.
 test/
   test_mmu_*.py     the tests themselves — this is what you read and write
   hh/               the harness: the fake Klipper and fake Moonraker
-  hh/klippy_root/   39 stand-in modules that pretend to be Klipper's own code
+  hh/klippy_root/   41 stand-in modules that pretend to be Klipper's own code
   installer/        legacy installer tests, currently skipped (see §6)
 ```
 
-The test files, and what each is about:
+The test files, grouped by what they're about:
 
 | File | Tests | Covers |
 |---|---:|---|
+| **Foundation** | | |
 | `test_mmu_import.py` | 10 | Happy Hare imports at all outside Klipper; repo-wide syntax check |
 | `test_mmu_config.py` | 8 | the real shipped `config/` templates render correctly |
 | `test_mmu_reactor.py` | 17 | the fake reactor itself (see §3) |
 | `test_mmu_bootup.py` | 31 | config load → `klippy:connect` → `klippy:ready` → `mmu:bootup` |
+| `test_mmu_profiles.py` | 19 | the same checks across BoxTurtle, Tradrack and EMU |
+| `test_mmu_adc_compat.py` | 14 | the Klipper-version ADC compatibility shim |
+| **Filament handling** | | |
+| `test_mmu_motion.py` | 24 | loading, parking, preloading filament |
+| `test_mmu_toolchange.py` | 20 | `MMU_CHANGE_TOOL`, load and unload end to end |
+| `test_mmu_encoder.py` | 18 | gate homing by encoder motion instead of by switch |
+| `test_mmu_endless_spool.py` | 17 | runout detection, clog-vs-runout, gate remapping |
+| **NFC and Spoolman** | | |
 | `test_mmu_nfc.py` | 12 | NFC readers are configured and instantiated |
+| `test_mmu_nfc_scan.py` | 17 | `MMU_NFC_SCAN`, the preload NFC compound endstop |
+| `test_mmu_tag_parser.py` | 34 | RFID tag decoding (pure logic, no fakes at all) |
 | `test_mmu_moonraker.py` | 42 | the Moonraker half: Spoolman lookups, auto-create |
 | `test_mmu_roundtrip.py` | 27 | Klipper and Moonraker talking to each other |
-| `test_mmu_motion.py` | 24 | loading, parking, preloading filament |
-| `test_mmu_nfc_scan.py` | 17 | `MMU_NFC_SCAN`, the preload NFC compound endstop |
+| **Presentation** | | |
 | `test_mmu_leds.py` | 22 | LED effects, flashes, the pending overlay |
-| `test_mmu_tag_parser.py` | 34 | RFID tag decoding (pure logic, no fakes at all) |
-| `test_mmu_adc_compat.py` | 14 | the Klipper-version ADC compatibility shim |
+
+### Coverage map
+
+Green is not the same as covered. Roughly where things stand:
+
+| Area | State | Notes |
+|---|---|---|
+| Config rendering and load | **solid** | real templates, three machine profiles |
+| Bootup sequence | **solid** | including the error sentinel that stops bootup faking success |
+| Tag decoding, Spoolman round trip | **solid** | including auto-create and the miss cache |
+| Load / unload / tool change | **good** | the happy path and its common failures |
+| Gate homing — switch and encoder | **good** | both branches of `_home_to_gate` |
+| Preload and insert handling | **good** | |
+| Endless spool and runout | **good** | including the clog-vs-runout decision |
+| LEDs | **good** | effects and overlays; not the neopixel protocol |
+| Sync feedback / buffer sensors | **partial** | EMU's analog sensor boots; the tension logic has a known bug |
+| Physical selector homing | **thin** | Tradrack boots, but `home_unit` is barely exercised |
+| Calibration, espooler, FlowGuard | **none** | |
+| Multi-unit machines | **none** | needs per-unit Kconfig the harness bypasses |
+| Klipper motion and timing | **none** | out of scope by design — see §9 |
+
+Blunter version: of Happy Hare's **69 user-facing `MMU_*` commands, tests drive 14**. Those
+14 are the ones a print depends on, and the internal `_MMU_*` sequence macros run
+underneath them — but most administrative and calibration commands have never been called
+here. A green suite says the operational core works, not that the command set does.
 
 ---
 
@@ -99,7 +135,7 @@ You mostly won't touch these, but knowing the shape helps when something behaves
 **The fake `klippy` tree.** Happy Hare installs by symlinking `extras/**.py` into
 `<klipper>/klippy/extras/`, and its imports only resolve in that shape. So the harness
 builds that exact layout in a temp directory — Happy Hare's real files symlinked
-alongside 39 stand-in modules (`mcu.py`, `toolhead.py`, `pins.py`, and so on). Happy Hare
+alongside 41 stand-in modules (`mcu.py`, `toolhead.py`, `pins.py`, and so on). Happy Hare
 cannot tell the difference.
 
 **The reactor and virtual time.** Klipper's "reactor" is its scheduler: it runs timers and
@@ -113,15 +149,24 @@ This matters because Happy Hare is full of long timers — a 20-second pending-s
 timeout, a 5-second warning window, a 2.5-second boot delay. Real waiting would make the
 suite unusable. `advance()` runs every timer that falls due, in order.
 
-**The filament model.** One number per gate: where the filament tip is, in millimetres,
-measured so that `0` is the gate's sensor. Sensors are placed along that line, and a
-switch reads "triggered" when the tip has reached or passed it. When Happy Hare commands
-a move, the harness works out which sensor trips first and how far the filament actually
-gets. Default layout:
+**The filament model.** Two numbers per gate: where the filament's leading edge (the *tip*)
+is and where its trailing end (the *tail*) is, in millimetres, measured so that `0` is the
+gate's sensor. Filament occupies everything between them, so a switch reads "triggered"
+when it sits inside that span. When Happy Hare commands a move, the harness works out which
+sensor trips first and how far the filament actually gets. Default layout:
 
 ```
-spool ... park(-100) ... entry(-50) ... gate/exit(0) ... extruder(+700)
+spool ... park(-100) ... entry(-50) ... gate/exit(0) ... encoder(+20) ... extruder(+700)
 ```
+
+The tail is normally infinitely far back — a spool is attached, so anything behind the tip
+is filament. `fil.exhaust(gate)` gives it a real end, which is what a runout physically
+*is*. Without that, every simulated runout looks like a clog to Happy Hare because the gate
+sensor never releases.
+
+The encoder is not a switch: it reports *motion*, so what matters is how much of a move
+happened while filament covered the wheel. That is `fil.travel_over()`, and the harness
+turns it into real pulses so Happy Hare's own counter callback does the accumulating.
 
 **The fake Moonraker** provides a working in-memory Spoolman — not a mock. When Happy Hare
 auto-creates a spool, a spool really is created, and the next scan of that tag really
@@ -171,6 +216,9 @@ hh.place_filament(0, position=-40.0)       # somewhere specific
 hh.sensor('mmu_entry_0').set(True)
 hh.sensor('mmu_entry_0').present           # what Happy Hare currently believes
 
+# run the spool out (see §5.6) — the filament keeps its tip, but loses its tail
+hh.filament().exhaust(0)
+
 # move time forward
 hh.reactor.advance(5.0)
 
@@ -186,9 +234,19 @@ templates** from them, so a broken template shows up as a test failure.
 | Profile | What it gives you |
 |---|---|
 | `boxturtle` | 4 gates, no NFC — the default for most tests |
+| `tradrack` | a physical (servo) selector rather than a virtual one |
+| `emu` | 5 gates and the only shipped profile with an analog buffer sensor |
+| `encoder` | BoxTurtle plus an encoder, homing to it instead of to the gate switch |
 | `nfc_single` | one common NFC reader |
 | `nfc_per_gate` | one reader per gate |
 | `nfc_spoolman` | per-gate NFC + Spoolman enabled + auto-create |
+
+The first three are shipped machine types. `encoder` is derived — BoxTurtle with menuconfig
+options flipped. That is only safe when the resulting config renders *complete*: enabling a
+feature outside the starter that ships it can leave dependent parameters blank, producing a
+machine that boots but behaves like nothing real. Render it and read the section before
+trusting it; an earlier attempt to bolt a proportional buffer onto BoxTurtle had to be
+reverted for exactly this reason.
 
 For NFC reads, add `virtual_nfc=True` so readers return tags from the filament model:
 
@@ -214,7 +272,7 @@ involved. `RoundTrip` pumps messages between the two sides until everything sett
 
 ---
 
-## 5. Five things that will bite you
+## 5. Six things that will bite you
 
 These are all real behaviours, learned by getting them wrong.
 
@@ -241,12 +299,17 @@ marks a gate `GATE_UNKNOWN` if preload finishes with it still covered. Also: a p
 only realistically start with filament *already past* the entry switch, because that's
 what a user's push produces.
 
+**6. A runout needs `fil.exhaust(gate)`, not just an empty gate.** Moving filament away
+isn't a runout — the spool is still attached, so the gate sensor stays covered and Happy
+Hare correctly calls it a clog. `exhaust()` gives the filament a real trailing end. Getting
+this wrong makes Happy Hare look broken when it is being right about an impossible machine.
+
 ---
 
 ## 6. Skips and expected failures
 
 ```
-OK (skipped=1, expected failures=3)
+OK (skipped=1, expected failures=5)
 ```
 
 **`expected failures`** are known bugs, written as tests of what *should* happen and
@@ -260,6 +323,7 @@ Currently:
 | Where | Bug |
 |---|---|
 | `test_mmu_nfc_scan.py` ×2 | `MMU_NFC_SCAN` retracts the filament ~100 mm every scan |
+| `test_mmu_profiles.py` ×2 | the proportional buffer reports TENSION almost always — its low threshold is computed positive when the config help says it should be about −0.9 |
 | `test_mmu_tag_parser.py` | a blank tag is reported as a Bambu Lab tag |
 
 **`skipped`** is `test/installer/test_build.py` — legacy installer tests that can't run
@@ -292,7 +356,7 @@ print(hh.filament().history)
 # [(0, 100.0, 'homing -> mmu_exit_0'), (0, -100.0, 'move')]
 #  gate, millimetres, why
 print(hh.filament().describe(0))
-# gate 0 tip=-100.0 mmu_entry_0=0 mmu_exit_0=0
+# gate 0 tip=-100.0 mmu_entry_0=0 mmu_exit_0=0 mmu_shared_exit=0 filament_compression=0
 ```
 
 **Check what got sent where:**
@@ -332,7 +396,8 @@ caused confusing failures.
 
 ## 9. What this does *not* cover
 
-Worth knowing so you don't over-trust a green run:
+Worth knowing so you don't over-trust a green run. The coverage map in §2 has the
+per-area picture; these are the structural limits behind it.
 
 - **No real motion.** No acceleration, step generation or timing. The harness tests
   Happy Hare's *sequencing*, not Klipper's motion planner. Timing bugs, "timer too close",
@@ -342,6 +407,13 @@ Worth knowing so you don't over-trust a green run:
 - **Proprietary tag formats are untested.** Bambu, Creality, QIDI and Anycubic parsing
   needs captured dumps from real spools — synthesising them would only prove the test
   agrees with itself.
+- **One unit only.** Genuine multi-unit machines need per-unit Kconfig loading that the
+  config layer deliberately bypasses, so nothing about unit selection is covered.
+- **Calibration is untouched.** Every profile uses shipped defaults; no calibration
+  command has ever been run here.
+- **Macros load but mostly don't run.** The shipped `config/macros/*.cfg` are read
+  verbatim so sequences can find them, but a test that asserts on macro *behaviour* would
+  be testing Klipper's Jinja, not Happy Hare.
 - **The fakes could be wrong.** They're written against real Klipper's behaviour, but
   where they diverge, a test can pass while the real thing fails.
 
