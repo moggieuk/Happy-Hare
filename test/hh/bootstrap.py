@@ -280,24 +280,57 @@ class Session:
         from extras.mmu.mmu_constants import SENSOR_TENSION, SENSOR_COMPRESSION
         resting = {'tension': SENSOR_TENSION, 'compression': SENSOR_COMPRESSION}
         at_rest = set()
+        spring_states = []
         for unit in self.mmu.mmu_machine.units:
             buffer = getattr(unit, 'buffer', None)
             if buffer is None:
                 continue
-            sensor_name = resting.get(getattr(buffer, 'buffer_spring_state', 'none'))
+            spring = getattr(buffer, 'buffer_spring_state', 'none')
+            spring_states.append(spring)
+            sensor_name = resting.get(spring)
             if sensor_name is not None:
                 at_rest.add(sensor_name)
 
+        # A PROPORTIONAL (analog) buffer derives its compression/tension sensors from the
+        # ADC reading, so the resting state must be expressed as a RAW VALUE and left to
+        # derive. Forcing the virtual sensors directly instead leaves them stuck: the
+        # proportional sensor only re-evaluates them on a threshold crossing, so a
+        # subsequently-fed neutral reading does not clear a hand-set tension flag - which
+        # showed up as EMU reading "tension" at a normalised value of 0.0.
+        derived = set()
+        for name, sensor in self.sensors().items():
+            handle = _SensorHandle(self, name, sensor)
+            if handle.kind != 'proportional':
+                continue
+            spring = spring_states[0] if spring_states else 'none'
+            handle.feed(self._resting_raw(handle, spring), settle=False)
+            # Exclude the analog sensor ITSELF as well as the two it derives: the loop
+            # below would otherwise call set(False) on it, which for a proportional sensor
+            # means feeding neutral - overwriting the resting value just fed.
+            derived |= {SENSOR_TENSION, SENSOR_COMPRESSION, name.split(':')[-1]}
+
         for name, sensor in self.sensors().items():
             bare = name.split(':')[-1]
+            if bare in derived:
+                continue        # derived from the analog reading above
             try:
                 _SensorHandle(self, name, sensor).set(bare in at_rest)
             except AssertionError:
-                # A sensor with no button registration (e.g. an ADC-backed one) is
-                # driven through its own pin object instead - not an error here.
-                logging.debug('no button for sensor %s', name)
+                logging.debug('cannot drive sensor %s directly', name)
+        self.reactor.advance(0.)
         self._spring_at_rest = at_rest
         return self
+
+    @staticmethod
+    def _resting_raw(handle, spring_state):
+        """Raw ADC reading for a proportional buffer's configured resting spring state."""
+        sensor = handle.sensor
+        neutral = handle.neutral_value()
+        if spring_state == 'tension':
+            return neutral - getattr(sensor, '_d_neg', 0.5)
+        if spring_state == 'compression':
+            return neutral + getattr(sensor, '_d_pos', 0.5)
+        return neutral
 
     # -- filament path model -----------------------------------------------
     def filament(self, layout=None):
@@ -501,9 +534,43 @@ class _SensorHandle:
     def present(self):
         return self.sensor.runout_helper.filament_present
 
+    @property
+    def kind(self):
+        """
+        'switch'       - a real switch pin, driven through the buttons callback
+        'proportional' - ADC backed (MmuProportionalSensor); driven by feeding a value
+        'virtual'      - derived/virtual endstop sensor; driven via trigger_handler
+
+        Not every sensor in all_sensors_map is a switch. A proportional buffer sensor and
+        the virtual compression/tension sensors derived from it have no switch_pin at all,
+        which is why assuming one broke the EMU profile outright.
+        """
+        if hasattr(self.sensor, 'switch_pin'):
+            return 'switch'
+        if hasattr(self.sensor, 'mcu_adc'):
+            return 'proportional'
+        if hasattr(self.sensor, 'trigger_handler'):
+            return 'virtual'
+        return 'unknown'
+
     def set(self, state=True, settle=True):
-        buttons = self._session.printer.lookup_object('buttons')
-        buttons.press(self.sensor.switch_pin, state)
+        kind = self.kind
+        if kind == 'switch':
+            # Through the real button callback, so MmuRunoutHelper's event_delay /
+            # min_event_systime gating and insert/runout dispatch all run.
+            buttons = self._session.printer.lookup_object('buttons')
+            buttons.press(self.sensor.switch_pin, state)
+        elif kind == 'proportional':
+            # No switch to press: drive the ADC to a value past the trigger threshold.
+            self.feed(self._extreme_value() if state else self.neutral_value(),
+                      settle=False)
+        elif kind == 'virtual':
+            eventtime = self._session.reactor.monotonic()
+            self.sensor.trigger_handler(eventtime, bool(state))
+        else:
+            raise AssertionError(
+                'do not know how to drive sensor %r (%s): no switch_pin, mcu_adc or '
+                'trigger_handler' % (self.name, type(self.sensor).__name__))
         # Only pump when we are NOT already inside a reactor callback. The filament
         # model syncs sensors from within homing moves, which themselves run inside a
         # callback when an operation was started by a sensor event - pumping there
@@ -513,6 +580,33 @@ class _SensorHandle:
         if settle and not self._session.reactor.in_dispatch():
             self._session.reactor.advance(0.)
         return self
+
+    # -- proportional (ADC) sensors ----------------------------------------
+    def neutral_value(self):
+        """The raw ADC reading meaning "no force" - normalises to 0.0."""
+        return getattr(self.sensor, '_neutral_point', 0.5)
+
+    def _extreme_value(self):
+        """A raw reading comfortably past the virtual-sensor trigger threshold."""
+        sensor = self.sensor
+        neutral = self.neutral_value()
+        threshold = getattr(sensor, 'analog_sensor_threshold', 0.9)
+        span = getattr(sensor, '_d_pos', 0.5)
+        return neutral + span * min(1.0, threshold + 0.05)
+
+    def feed(self, raw_value, settle=True):
+        """Deliver a raw ADC reading to a proportional sensor."""
+        if self.kind != 'proportional':
+            raise AssertionError('%r is not an ADC-backed sensor' % (self.name,))
+        self.sensor.mcu_adc.feed(raw_value)
+        if settle and not self._session.reactor.in_dispatch():
+            self._session.reactor.advance(0.)
+        return self
+
+    @property
+    def value(self):
+        """Normalised [-1.0, 1.0] reading, for proportional sensors."""
+        return getattr(self.sensor, 'value', None)
 
     def clear(self, settle=True):
         return self.set(False, settle=settle)

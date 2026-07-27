@@ -100,14 +100,39 @@ NFC_SPOOLMAN_SHARED = NFC_SINGLE.derive(
     },
     description='Unit-level NFC + Spoolman push + auto-create + deep read')
 
-# NOTE on ADC coverage: there is deliberately no profile here that binds an ADC pin.
+# Tradrack: a second real machine, and importantly a PHYSICAL selector
+# (LinearServoSelector) rather than BoxTurtle's VirtualSelector - so the tests are not all
+# shaped around one selector type.
+TRADRACK = Profile(
+    'tradrack',
+    syms={'MMU_TYPE_TRADRACK_1_0': True},
+    description='Tradrack 1.0 - physical LinearServoSelector')
+
+# EMU: 5 gates, and the only shipped profile that brings a PROPORTIONAL (analog) buffer
+# sensor with it. That makes it the profile that exercises MmuAdcHelper's ADC compat shim
+# for real, and the virtual compression/tension sensors derived from an analog reading
+# rather than from switches.
+#
+# NOTE this is 5 gates on ONE unit. Genuine multi-unit needs F_MULTI_UNIT plus per-unit
+# Kconfig loading (installer/build.py:481-491), which cfg.py deliberately bypasses - so
+# multi-unit remains uncovered.
+EMU = Profile(
+    'emu',
+    syms={'MMU_TYPE_EMU_1_0': True},
+    description='EMU 1.0 - 5 gates, proportional (analog) buffer sensor')
+
+# NOTE on ADC coverage: no profile here SYNTHESISES an ADC pin. The `emu` profile above
+# brings a proportional sensor of its own, which is the honest way to get one; hand-enabling
+# a proportional buffer on a machine that has none leaves dependent params
+# (analog_max_tension, analog_sensor_threshold) blank and produces a section HH cannot
+# parse. An earlier attempt at exactly that was reverted.
 # Real machine profiles take their pins from an MCU board selection, and switching on a
 # proportional buffer sensor outside its intended starter leaves dependent params
 # (analog_max_tension, analog_sensor_threshold) blank, producing a section HH cannot
 # parse. MmuAdcHelper's compat shim is therefore covered directly by
 # test_mmu_adc_compat.py rather than through a synthesised machine.
-PROFILES = {p.name: p for p in (BOXTURTLE, NFC_SINGLE, NFC_PER_GATE,
-                                NFC_SPOOLMAN, NFC_SPOOLMAN_SHARED)}
+PROFILES = {p.name: p for p in (BOXTURTLE, TRADRACK, EMU, NFC_SINGLE,
+                                NFC_PER_GATE, NFC_SPOOLMAN, NFC_SPOOLMAN_SHARED)}
 
 
 def get(name):
