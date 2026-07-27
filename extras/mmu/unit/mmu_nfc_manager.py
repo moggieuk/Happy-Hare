@@ -45,13 +45,8 @@ NFC_INIT_DELAY     = 2.0   # Let other I2C devices settle before reader initiali
 
 # Homing-poll cadence (NFC-as-endstop). Kept tight for low overshoot, but each
 # read uses a small timeout so the reactor keeps feeding the drip-homing move.
-#######################
-#   CDW -- 07/27/2026 -- increasing the poll interval and timeout to reduce the chance of a klipper crash
-########################
 NFC_HOMING_POLL_INTERVAL = 0.050   # Seconds between homing polls (reactor timer)
 NFC_HOMING_POLL_TIMEOUT  = 0.25   # Max seconds per homing read (caps transceive delay)
-# NFC_HOMING_POLL_INTERVAL = 0.010      old values   CDW -- 07/27/2026
-# NFC_HOMING_POLL_TIMEOUT  = 0.020
 
 
 class MmuNfcManager:

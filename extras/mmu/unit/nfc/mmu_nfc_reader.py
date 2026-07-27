@@ -283,14 +283,6 @@ class MmuNfcReader:
         self.last_uid = None
         self.last_target_info = None
         self.present = False
-##############################
-#   CDW - 07/27/2026 -- commenting out the release, it may be causing the klipper crash
-#                       during the automated preload 
-###############################
-        # try:
-        #     self.release(reason="nfc_homing_clear")
-        # except Exception:
-        #     pass
 
 
     def homing_poll_read(self, timeout=0.020):
