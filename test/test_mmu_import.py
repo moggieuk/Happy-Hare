@@ -26,17 +26,14 @@ from test.hh import install
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# SyntaxWarnings that exist upstream and are not fixed here. Each becomes a hard
-# SyntaxError in a future Python, so these are real forward-compatibility bugs, not
-# style nits.
+# SyntaxWarnings that exist upstream and are not fixed here. Add (relpath, lineno)
+# entries only alongside a self-healing companion test, so the exclusion cannot outlive
+# the problem.
 #
-#   mmu_controller.py:1080,1095 - f"|\{ext_swatch}/|" and the bypass equivalent.
-#     `\{` is an invalid escape; the intent is a literal backslash in the selector
-#     display, so the fix is `\\{`, which produces byte-identical output (verified).
-KNOWN_SYNTAX_WARNINGS = {
-    ('extras/mmu/mmu_controller.py', 1080),
-    ('extras/mmu/mmu_controller.py', 1095),
-}
+# Empty because the one entry it held - mmu_controller.py:1080,1095, where f"|\{...}"
+# used an invalid `\{` escape that becomes a hard SyntaxError in a future Python - has
+# been fixed upstream (`\\{`, byte-identical output).
+KNOWN_SYNTAX_WARNINGS = set()
 
 SCAN_PATTERNS = ('extras/**/*.py', 'components/*.py', 'installer/*.py')
 
@@ -159,14 +156,14 @@ class TestHappyHareImports(unittest.TestCase):
         self.assertEqual(problems, [],
                          '\n'.join([''] + ['%s:%s %s' % p for p in problems]))
 
-    @unittest.expectedFailure
-    def test_known_syntax_warnings_are_fixed(self):
+    def test_no_known_syntax_warnings_are_outstanding(self):
         """
-        Tracks the warnings listed in KNOWN_SYNTAX_WARNINGS.
-
-        Self-healing: unittest reports an unexpected success as a FAILURE and exits
-        non-zero, so once these are fixed upstream the suite goes red and prompts
-        deleting this test along with the KNOWN_SYNTAX_WARNINGS entries.
+        Companion to the scan above. While KNOWN_SYNTAX_WARNINGS holds entries this
+        should carry @unittest.expectedFailure, which makes the exclusion self-healing:
+        unittest reports an unexpected success as a FAILURE and exits non-zero, so the
+        suite goes red the moment the underlying problem is fixed and prompts removing
+        both the entry and the decorator. That is exactly how the last entry got
+        cleaned up.
         """
         outstanding = [p for p in scan_syntax_warnings()
                        if (p[0], p[1]) in KNOWN_SYNTAX_WARNINGS]
