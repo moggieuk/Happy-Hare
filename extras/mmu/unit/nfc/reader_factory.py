@@ -12,10 +12,11 @@
 from .... import bus as bus_module
 
 from .pn532_driver import PN532Driver
+from .pn5180_driver import PN5180Driver
 from .pn7160_driver import PN7160Driver
 from .rc522_driver import RC522Driver
 
-SUPPORTED_READER_TYPES = ('pn532', 'pn7160', 'rc522')
+SUPPORTED_READER_TYPES = ('pn532', 'pn5180', 'pn7160', 'rc522')
 DEFAULT_READER_TYPE = 'pn532'
 DEFAULT_I2C_ADDRESS = {
     'pn532': 0x24,
@@ -26,6 +27,7 @@ DEFAULT_I2C_SPEED = {
     'pn7160': 100000,
 }
 DEFAULT_SPI_SPEED = {
+    'pn5180': 1000000,
     'rc522': 1000000,
 }
 PN7160_I2C_ADDRESSES = (0x28, 0x29, 0x2A, 0x2B)
@@ -93,6 +95,14 @@ def create_reader(config, defaults, reader_type, gate, debug,
         return RC522Driver(
             spi, gate, transceive_delay=rc522_delay, debug=debug,
             sleep_fn=sleep_fn)
+
+    if reader_type == 'pn5180':
+        # PN5180 paces itself with BUSY rather than a fixed delay, so the
+        # shared transceive_delay/crc_delay timings do not apply; the driver
+        # reads its own pn5180_* tuning and its reset/busy pins from config.
+        spi = bus_module.MCU_SPI_from_config(
+            config, 0, default_speed=default_spi_speed(reader_type))
+        return PN5180Driver(config, spi, gate, debug=debug, sleep_fn=sleep_fn)
 
     default_addr = (defaults.i2c_address if defaults is not None
                     else default_i2c_address(reader_type))

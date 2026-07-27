@@ -6,7 +6,7 @@
 #
 # Extracted from a larger NFC gate-management extension. This module keeps
 # only the hardware layer: it builds the configured reader chip driver
-# (PN532 / PN7160 / RC522) from config and exposes read_tag/read_target as
+# (PN532 / PN5180 / PN7160 / RC522) from config and exposes read_tag/read_target as
 # both a Python API (for other extras) and GCode commands (for macros).
 # It deliberately does not do lane state machines, Spoolman lookups, LED
 # effects, or scan-jog motion — those live in your macros if you want them.
@@ -20,12 +20,18 @@
 #   debug: 2                        # 0=silent .. 4=trace, logged to klippy.log
 #
 # [mmu_nfc_reader gate0]            # one reader instance; name = "gate0"
-#   reader_type: rc522              # pn532 | pn7160 | rc522 (overrides default)
-#   cs_pin: mcu:PA4                 # rc522 only (SPI chip-select)
-#   #spi_bus:                       # optional, rc522 only
-#   #spi_speed: 1000000             # optional, rc522 only
+#   reader_type: rc522              # pn532 | pn5180 | pn7160 | rc522 (overrides default)
+#   cs_pin: mcu:PA4                 # rc522/pn5180 only (SPI chip-select)
+#   #spi_bus:                       # optional, rc522/pn5180 only
+#   #spi_speed: 1000000             # optional, rc522/pn5180 only
 #
 # [mmu_nfc_reader gate1]
+#   reader_type: pn5180
+#   cs_pin: mcu:PA5
+#   busy_pin: mcu:PB0               # pn5180 only, required (BUSY, active high)
+#   reset_pin: mcu:PB1              # pn5180 only, required (RST, active low)
+#
+# [mmu_nfc_reader gate2]
 #   reader_type: pn532
 #   i2c_address: 0x24               # pn532/pn7160 only
 #   #i2c_bus:
