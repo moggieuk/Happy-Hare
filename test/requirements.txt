@@ -2,7 +2,7 @@
 # which is what end users install - none of these are needed to run Happy Hare.
 #
 #   ./venv/bin/pip install -r test/requirements.txt
-#   make PY=./venv/bin/python test
+#   make test
 #
 # kconfiglib is NOT listed: it is vendored at installer/lib/kconfiglib and the test
 # target puts it on PYTHONPATH (mirroring Makefile:49).

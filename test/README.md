@@ -19,18 +19,28 @@ Python. Python-specific things are explained as they come up.
 
 ## 1. Running the tests
 
-Everything needs the repo's virtualenv (a private Python install with the extra libraries
-the tests need). One-time setup:
+The tests need two libraries Happy Hare itself doesn't (`greenlet`, `jinja2`), so they run
+in a **virtualenv** — a private Python install that lives in the repo directory but is
+*not* part of the git repo. You create it yourself, once, and it is yours alone:
 
 ```bash
-./venv/bin/pip install -r test/requirements.txt
+python3 -m venv venv && ./venv/bin/pip install -r test/requirements.txt
 ```
+
+That makes a `venv/` directory at the repo root. Git ignores it (Python's `venv` module
+writes an ignore rule into it), so it will never show up in `git status` or a commit.
+Delete it and re-run the line above any time you want a clean one.
 
 Then, from the repo root:
 
 ```bash
-make PY=./venv/bin/python test
+make test
 ```
+
+`make test` finds `venv/` on its own. If you haven't made one it falls back to plain
+`python`, which will fail with `ModuleNotFoundError: No module named 'greenlet'` — that
+error means "run the setup line above", not "the tests are broken". To test against a
+different interpreter deliberately, say so: `make PY=/usr/bin/python3 test`.
 
 That runs everything — currently **333 tests in about two minutes**. Expect to see:
 
@@ -61,8 +71,8 @@ becomes `test.test_mmu_leds`:
 ./venv/bin/python -m unittest -v test.test_mmu_motion
 ```
 
-There is also `make PY=./venv/bin/python UT='test_mmu_nfc*.py' test` to run a filename
-pattern, but the dotted form above is usually easier.
+There is also `make UT='test_mmu_nfc*.py' test` to run a filename pattern, but the dotted
+form above is usually easier.
 
 ---
 
@@ -380,7 +390,7 @@ A reasonable loop:
 
 1. Run the file closest to your change first — it's seconds, not a minute.
 2. Change the code.
-3. Re-run that file, then `make PY=./venv/bin/python test` before committing.
+3. Re-run that file, then `make test` before committing.
 4. Add a test for what you changed. If you fixed a bug, the test should fail before your
    fix and pass after — check that, or you don't know it's testing anything.
 

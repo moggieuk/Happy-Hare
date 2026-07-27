@@ -4,6 +4,21 @@ Q  ?= @                           # For quiet make builds, override with make Q=
 V  ?=                             # For verbose output (mostly from python builder), set to -v to enable
 UT ?= *                           # For unittests, e.g. make UT=test_build.py test
 
+# The test harness needs libraries a bare `python` usually lacks (greenlet, jinja2), so
+# `make test` prefers the repo virtualenv when one exists. It is NOT in git - create it:
+#   python3 -m venv venv && ./venv/bin/pip install -r test/requirements.txt
+# Falls back to $(PY) when there is no venv. Deliberately separate from PY so it cannot
+# redirect the build and install targets, which must keep using the system interpreter.
+ifeq ($(origin PY),command line)
+  # An explicit `make PY=... test` still wins. No inline comment on the assignment:
+  # everything up to the '#' becomes part of the value, which is what once left
+  # UT ?= * padded with spaces so `-p '*   '` matched nothing and `make test` ran zero
+  # tests while reporting success.
+  TEST_PY ?= $(PY)
+else
+  TEST_PY ?= $(if $(wildcard $(SRC)/venv/bin/python),$(SRC)/venv/bin/python,$(PY))
+endif
+
 MAKEFLAGS += --jobs 16            # Parallel build
 
 # By default KCONFIG_CONFIG is '.mmu_config', but it can be overridden by the user
@@ -412,7 +427,7 @@ diff: | build
 
 test:
 	$(Q)PYTHONPATH="$(SRC)/installer/lib/kconfiglib:$(PYTHONPATH)" \
-		$(PY) -m unittest discover $(V) -p '$(strip $(UT))'
+		$(TEST_PY) -m unittest discover $(V) -p '$(strip $(UT))'
 
 variables:
 	@echo "========================="
