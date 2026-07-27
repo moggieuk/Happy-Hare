@@ -497,8 +497,11 @@ class MmuFilamentMovement:
                         forward = dist > 0
                         self.log_debug("NFC: gate %d: homing %s %.0fmm to reader"
                                        % (gate, "forward" if forward else "back", abs(dist)))
+                        # Home at gear_homing_speed: the reader is a virtual (host-polled)
+                        # endstop so it would otherwise default to the much slower
+                        # virtual_sensor_homing_speed intended for ADC-backed sensors
                         actual, homed, _, _ = self.move_filament(
-                            "NFC: scan", dist, motor="gear",
+                            "NFC: scan", dist, speed=u.p.gear_homing_speed, motor="gear",
                             homing_move=(1 if forward else -1), endstop_name=endstop_name)
 
                         if homed:
