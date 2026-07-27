@@ -172,7 +172,8 @@ class MmuNfcReader:
         else:
             _instances.append(self)
 
-        self.printer.register_event_handler('klippy:connect', self._handle_connect)
+        # Reader initialization is owned by MmuNfcManager at MMU bootup.
+        # self.printer.register_event_handler('klippy:connect', self._handle_connect)
 
         self._register_commands()
 
