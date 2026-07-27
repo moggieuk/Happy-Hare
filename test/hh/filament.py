@@ -15,10 +15,15 @@
 #
 #   Parked at -100 the entry switch is CLEAR; pushing filament past -50 is an insert.
 #
-# SENSOR SEMANTICS. Filament occupies everything behind its tip, so a switch at
-# position P reads triggered exactly when tip >= P. That single rule gives correct
-# behaviour for both directions: loading trips sensors in ascending order, unloading
-# clears them in descending order.
+# SENSOR SEMANTICS. Filament occupies the span [tail, tip], so a switch at position P
+# reads triggered exactly when tail <= P <= tip. Loading trips sensors in ascending order,
+# unloading clears them in descending order.
+#
+# The TAIL is normally -infinity: filament runs back to an attached spool, so anything
+# behind the tip is filament. exhaust() gives a gate a finite tail, which is what a
+# RUNOUT physically is - the end of the filament passes the gate and the sensors behind
+# the tip go clear while the tip is still downstream. Without a tail every runout looks
+# like a clog to Happy Hare, because the gate sensor never releases.
 #
 # AXIS vs PATH. A homing move is expressed on the gear axis, and HH resets that axis
 # to `forcepos` at the start of every homing move (extras/mmu_stepper.py:424), so axis
@@ -95,6 +100,8 @@ class FilamentPath:
         if layout:
             self.layout.update(layout)
         self.tip = [TIP_ABSENT] * num_gates
+        # -inf: filament runs back to an attached spool. exhaust() makes it finite.
+        self.tail = [float('-inf')] * num_gates
         self.tags = {}                  # gate -> Tag
         self.tag_window = tag_window
         self._set_sensor = set_sensor
@@ -104,6 +111,30 @@ class FilamentPath:
     def place(self, gate, position, sync=True):
         """Put a gate's filament tip at an absolute path position."""
         self.tip[gate] = float(position)
+        if sync:
+            self.sync(gate)
+        return self
+
+    def exhaust(self, gate, at=None, sync=True):
+        """
+        The spool has run out: give this gate's filament a finite tail so the sensors
+        behind the tip go clear.
+
+        Defaults to just past the gate sensor, which is the moment Happy Hare can tell a
+        runout from a clog - the gate sensor releases while filament is still gripped
+        downstream. Without this, _runout() sees filament still present and reports
+        "a clog/tangle has been detected and requires manual intervention".
+        """
+        if at is None:
+            at = self.layout.get('mmu_exit', 0.0) + 1.0
+        self.tail[gate] = float(at)
+        if sync:
+            self.sync(gate)
+        return self
+
+    def refill(self, gate, sync=True):
+        """Undo exhaust(): filament runs back to a spool again."""
+        self.tail[gate] = float('-inf')
         if sync:
             self.sync(gate)
         return self
@@ -151,9 +182,10 @@ class FilamentPath:
         if target_gate is None:
             target_gate = gate
         if target_gate is None:
-            # A shared sensor sees whichever gate's filament is furthest forward
-            return any(t >= position for t in self.tip)
-        return self.tip[target_gate] >= position
+            # A shared sensor sees any gate whose filament spans it
+            return any(self.tail[g] <= position <= self.tip[g]
+                       for g in range(self.num_gates))
+        return self.tail[target_gate] <= position <= self.tip[target_gate]
 
     def tag_detected(self, gate):
         reader_pos = self.layout.get('mmu_nfc')
@@ -193,7 +225,7 @@ class FilamentPath:
             if owner is not None and owner != gate:
                 continue    # another gate's sensor cannot see this filament
             start = self.tip[gate]
-            currently = start >= position
+            currently = self.tail[gate] <= position <= start
             if currently == bool(sought):
                 travel = 0.0                    # already there: completes at once
             elif sought:
@@ -232,6 +264,7 @@ class FilamentPath:
         if not delta:
             return self.tip[gate]
         self.tip[gate] += delta
+        self.tail[gate] += delta        # filament moves as one piece
         self.history.append((gate, delta, reason))
         logging.debug('filament: gate %d %+.2f -> %.2f (%s)',
                       gate, delta, self.tip[gate], reason)
