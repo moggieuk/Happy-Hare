@@ -139,9 +139,11 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
         config PARAM_NFC_READER_SPI_SPEED
           int "SPI speed (Hz)    "
           default 1000000
+          range 10 7000000 if CHOICE_NFC_READER_TYPE_PN5180
           range 10 10000000
           help
             SPI speed for the reader, in Hz.
+            RC522 accepts up to 10MHz, PN5180 up to 7MHz.
       endif
 
       if CHOICE_NFC_READER_TYPE_PN5180
@@ -284,9 +286,11 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
               config PARAM_NFC_READER_SPI_SPEED_$(i)
                 int "Gate $(i) SPI speed (Hz)    "
                 default 1000000
+                range 1 7000000 if CHOICE_NFC_READER_TYPE_PN5180_$(i)
                 range 1 10000000
                 help
                   SPI speed for this gate's reader, in Hz.
+                  RC522 accepts up to 10MHz, PN5180 up to 7MHz.
             endif
 
             if CHOICE_NFC_READER_TYPE_PN5180_$(i)
