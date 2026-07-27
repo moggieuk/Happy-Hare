@@ -41,6 +41,7 @@ from .nfc.mmu_nfc_endstop import MmuNfcEndstop
 NFC_CHECK_INTERVAL = 1.0   # How often to poll the shared NFC reader (seconds)
 NFC_READ_TIMEOUT   = 0.1   # Per-poll reader read timeout (seconds) - keep small; runs on reactor thread
 NFC_TAG_HOLD_TIME  = 5.0   # Cooldown after acting on a tag before reading again (seconds)
+NFC_INIT_DELAY     = 2.0   # Let other I2C devices settle before reader initialization
 
 # Homing-poll cadence (NFC-as-endstop). Kept tight for low overshoot, but each
 # read uses a small timeout so the reactor keeps feeding the drip-homing move.
@@ -89,6 +90,7 @@ class MmuNfcManager:
 
         # Shared-reader polling / debounce state
         self._poll_timer = self.reactor.register_timer(self._poll_shared_reader)
+        self._bootup_init_timer = self.reactor.register_timer(self._delayed_bootup_init)
         self._polling = False
         self.reinit()
 
@@ -386,13 +388,21 @@ class MmuNfcManager:
 
     def _handle_mmu_bootup(self):
         """
-        Delayed event fired once after MMU bootup. Initialize every reader we
-        control and arm shared-reader polling.
+        MMU bootup event. Schedule initialization after the I2C bus settles.
         """
         num_readers = (1 if self.shared_reader is not None else 0) + sum(1 for r in self.gate_readers if r is not None)
-        self.mmu.log_debug("NFC: bootup on %s - initializing %d reader(s)" % (self.mmu_unit.name, num_readers))
+        self.mmu.log_debug("NFC: bootup on %s - scheduling %d reader(s) in %.1fs" %
+                           (self.mmu_unit.name, num_readers, NFC_INIT_DELAY))
+        self.reactor.update_timer(self._bootup_init_timer,
+                                  self.reactor.monotonic() + NFC_INIT_DELAY)
+
+
+    def _delayed_bootup_init(self, eventtime):
+        """One-shot, non-blocking NFC initialization scheduled after bootup."""
+        self.mmu.log_debug("NFC: initializing readers on %s after bootup delay" % self.mmu_unit.name)
         self._init_all_readers()
         self._start_polling()
+        return self.reactor.NEVER
 
 
     def _handle_printing(self, print_time):
