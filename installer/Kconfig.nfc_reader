@@ -17,9 +17,12 @@
 #   PARAM_NFC_READER
 #   PARAM_NFC_READER_TYPE
 #
-#   PARAM_NFC_READER_CS_PIN      (if rc522 type)
-#   PARAM_NFC_READER_SPI_BUS     (if rc522 type)
-#   PARAM_NFC_READER_SPI_SPEED   (if rc522 type)
+#   PARAM_NFC_READER_CS_PIN      (if rc522/pn5180 type)
+#   PARAM_NFC_READER_SPI_BUS     (if rc522/pn5180 type)
+#   PARAM_NFC_READER_SPI_SPEED   (if rc522/pn5180 type)
+#
+#   PARAM_NFC_READER_BUSY_PIN    (if pn5180 type)
+#   PARAM_NFC_READER_RESET_PIN   (if pn5180 type)
 #
 #   PARAM_NFC_READER_I2C_ADDRESS (if pn532/pn7160 type)
 #   PARAM_NFC_READER_I2C_BUS     (if pn532/pn7160 type)
@@ -34,6 +37,7 @@
 #
 # SUPPORTED SENSOR TYPES
 #   - rc522  (spi)
+#   - pn5180 (spi, also needs BUSY and RST pins)
 #   - pn532  (i2c, i2c_address=0x24)
 #   - pn7160 (i2c, i2c_address=0x28-0x2B)
 #
@@ -95,6 +99,11 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
           help
             RC522 NFC reader using SPI.
 
+        config CHOICE_NFC_READER_TYPE_PN5180
+          bool "PN5180 / SPI"
+          help
+            PN5180 NFC reader using SPI. Also requires BUSY and RST pins.
+
         config CHOICE_NFC_READER_TYPE_PN532
           bool "PN532 / I2C"
           help
@@ -109,15 +118,16 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
       config PARAM_NFC_READER_TYPE
         string
         default "rc522"  if CHOICE_NFC_READER_TYPE_RC522
+        default "pn5180" if CHOICE_NFC_READER_TYPE_PN5180
         default "pn532"  if CHOICE_NFC_READER_TYPE_PN532
         default "pn7160" if CHOICE_NFC_READER_TYPE_PN7160
 
-      if CHOICE_NFC_READER_TYPE_RC522
+      if CHOICE_NFC_READER_TYPE_RC522 || CHOICE_NFC_READER_TYPE_PN5180
         config PARAM_NFC_READER_CS_PIN
           string "CS pin            "
           default "$(MCU_NAME):pin"
           help
-            Chip-select pin for the RC522 reader, e.g. "mcu:PA4"
+            Chip-select pin for the SPI reader, e.g. "mcu:PA4"
 
         config PARAM_NFC_READER_SPI_BUS
           string "SPI bus name      "
@@ -131,7 +141,25 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
           default 1000000
           range 10 10000000
           help
-            SPI speed for the RC522 reader, in Hz.
+            SPI speed for the reader, in Hz.
+      endif
+
+      if CHOICE_NFC_READER_TYPE_PN5180
+        config PARAM_NFC_READER_BUSY_PIN
+          string "BUSY pin          "
+          default "$(MCU_NAME):pin"
+          help
+            BUSY pin for the PN5180 reader (active high). Required: it is how the
+            driver knows each command has completed.
+            Don't forget to prefix with mcu name. E.g. mmu:PG13
+
+        config PARAM_NFC_READER_RESET_PIN
+          string "RST pin           "
+          default "$(MCU_NAME):pin"
+          help
+            RST pin for the PN5180 reader (active low). Required: it is the only
+            way to recover the chip if it stops responding.
+            Don't forget to prefix with mcu name. E.g. mmu:PG13
       endif
 
       if CHOICE_NFC_READER_TYPE_PN532 || CHOICE_NFC_READER_TYPE_PN7160
@@ -222,6 +250,9 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
               config CHOICE_NFC_READER_TYPE_RC522_$(i)
                 bool "RC522 / SPI"
 
+              config CHOICE_NFC_READER_TYPE_PN5180_$(i)
+                bool "PN5180 / SPI"
+
               config CHOICE_NFC_READER_TYPE_PN532_$(i)
                 bool "PN532 / I2C"
 
@@ -232,15 +263,16 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
             config PARAM_NFC_READER_TYPE_$(i)
               string
               default "rc522"  if CHOICE_NFC_READER_TYPE_RC522_$(i)
+              default "pn5180" if CHOICE_NFC_READER_TYPE_PN5180_$(i)
               default "pn532"  if CHOICE_NFC_READER_TYPE_PN532_$(i)
               default "pn7160" if CHOICE_NFC_READER_TYPE_PN7160_$(i)
 
-            if CHOICE_NFC_READER_TYPE_RC522_$(i)
+            if CHOICE_NFC_READER_TYPE_RC522_$(i) || CHOICE_NFC_READER_TYPE_PN5180_$(i)
               config PARAM_NFC_READER_CS_PIN_$(i)
                 string "Gate $(i) CS pin            "
                 default "$(MCU_NAME):pin"
                 help
-                  Chip-select pin for this gate's RC522 reader.
+                  Chip-select pin for this gate's SPI reader.
 
               config PARAM_NFC_READER_SPI_BUS_$(i)
                 string "Gate $(i) SPI bus name      "
@@ -254,7 +286,25 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
                 default 1000000
                 range 1 10000000
                 help
-                  SPI speed for this gate's RC522 reader, in Hz.
+                  SPI speed for this gate's reader, in Hz.
+            endif
+
+            if CHOICE_NFC_READER_TYPE_PN5180_$(i)
+              config PARAM_NFC_READER_BUSY_PIN_$(i)
+                string "Gate $(i) BUSY pin          "
+                default "$(MCU_NAME):pin"
+                help
+                  BUSY pin for this gate's PN5180 reader (active high). Required: it is
+                  how the driver knows each command has completed.
+                  Don't forget to prefix with mcu name. E.g. mmu:PG13
+
+              config PARAM_NFC_READER_RESET_PIN_$(i)
+                string "Gate $(i) RST pin           "
+                default "$(MCU_NAME):pin"
+                help
+                  RST pin for this gate's PN5180 reader (active low). Required: it is the
+                  only way to recover the chip if it stops responding.
+                  Don't forget to prefix with mcu name. E.g. mmu:PG13
             endif
 
             if CHOICE_NFC_READER_TYPE_PN532_$(i) || CHOICE_NFC_READER_TYPE_PN7160_$(i)

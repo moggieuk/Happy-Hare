@@ -71,6 +71,32 @@ NFC_PER_GATE = BOXTURTLE.derive(
     syms={'MMU_HAS_NFC_READER': True, 'MMU_HAS_PER_GATE_NFC_READERS': True},
     description='BoxTurtle + per-gate NFC readers')
 
+# PN5180 is the second SPI reader type, and the only one needing pins beyond the SPI
+# bus: BUSY (how the driver paces every command) and RST (its only recovery route).
+# Both are required by the driver, so the template must emit them or config load dies
+# with "Option 'busy_pin' ... must be specified".
+NFC_PN5180 = BOXTURTLE.derive(
+    'nfc_pn5180',
+    syms={'MMU_HAS_NFC_READER': True, 'MMU_HAS_COMMON_NFC_READER': True,
+          'CHOICE_NFC_READER_TYPE_PN5180': True,
+          'PARAM_NFC_READER_CS_PIN': 'unit0:PA4',
+          'PARAM_NFC_READER_BUSY_PIN': 'unit0:PB0',
+          'PARAM_NFC_READER_RESET_PIN': 'unit0:PB1'},
+    description='BoxTurtle + one common NFC reader (PN5180/SPI)')
+
+# Deliberately MIXED: gate 0 is PN5180, gates 1-3 stay RC522. The per-gate params are
+# rendered from lists built by symbol-name suffix (installer/build.py:252-268), so a
+# type chosen for one gate only is the case where an off-by-one or a missing list entry
+# shows up - a uniform-PN5180 profile would not catch it.
+NFC_PN5180_PER_GATE = BOXTURTLE.derive(
+    'nfc_pn5180_per_gate',
+    syms={'MMU_HAS_NFC_READER': True, 'MMU_HAS_PER_GATE_NFC_READERS': True,
+          'CHOICE_NFC_READER_TYPE_PN5180_0': True,
+          'PARAM_NFC_READER_CS_PIN_0': 'unit0:PA4',
+          'PARAM_NFC_READER_BUSY_PIN_0': 'unit0:PB0',
+          'PARAM_NFC_READER_RESET_PIN_0': 'unit0:PB1'},
+    description='BoxTurtle + per-gate readers, gate 0 PN5180 and the rest RC522')
+
 # The round-trip profile: per-gate NFC + Spoolman in a WRITABLE mode + auto-create
 # + deep read. All four are needed or the interesting paths gate themselves off:
 #   spoolman_support defaults to 'off' (mmu_machine_parameters.py), and MMU_GATE_MAP
@@ -149,7 +175,8 @@ ENCODER = BOXTURTLE.derive(
 # parse. An earlier attempt at exactly that was reverted; MmuAdcHelper's compat shim is
 # covered directly by test_mmu_adc_compat.py instead.
 PROFILES = {p.name: p for p in (BOXTURTLE, TRADRACK, EMU, ENCODER, NFC_SINGLE,
-                                NFC_PER_GATE, NFC_SPOOLMAN, NFC_SPOOLMAN_SHARED)}
+                                NFC_PER_GATE, NFC_PN5180, NFC_PN5180_PER_GATE,
+                                NFC_SPOOLMAN, NFC_SPOOLMAN_SHARED)}
 
 
 def get(name):
