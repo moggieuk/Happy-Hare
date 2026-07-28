@@ -577,10 +577,32 @@ class RC522Driver:
                          self._gate, reason)
         self._clear_current_card()
 
-    def _ensure_selected_target(self, timeout=0.500):
-        if self.current_target_info is not None:
-            return self.current_target_info
-        return self.read_target(timeout=timeout)
+    def _ensure_selected_target(self, timeout=0.500, expect_uid_bytes=None):
+        """Guarantee a selected target for the command sequence that follows.
+
+        Every structured read releases its target in a finally block, so a
+        second read on the same tag starts with none and must re-select. A
+        failed MIFARE authentication also drops the tag out of its session, so
+        re-selection is required by the protocol, not just by that release.
+
+        'expect_uid_bytes' rejects a re-selection that picked up a *different*
+        tag, so blocks can never be attributed to the wrong spool (parity with
+        PN532Driver._ensure_active_target). Returns None on failure - callers
+        here test for None rather than catching, unlike the PN532/PN7160 pair.
+        """
+        target_info = self.current_target_info
+        if target_info is None:
+            target_info = self.read_target(timeout=timeout)
+        if target_info is None:
+            return None
+        if expect_uid_bytes and list(target_info.get('uid_bytes') or []) != list(expect_uid_bytes):
+            logger.warning(
+                "RC522: gate %s re-selected a different tag (%s), expected %s - aborting read",
+                self._gate, target_info.get('uid'),
+                ''.join('%02X' % b for b in expect_uid_bytes))
+            self._release_current_target(reason="reselect_uid_changed")
+            return None
+        return target_info
 
     def ntag_read_page(self, page, timeout=0.100):
         """Read four NTAG/Type-2 pages (16 bytes) starting at *page*."""
@@ -817,7 +839,8 @@ class RC522Driver:
         read_failed_blocks = []
         stop_on_failure = False
         try:
-            if self._ensure_selected_target(timeout=0.500) is None:
+            if self._ensure_selected_target(timeout=0.500,
+                                            expect_uid_bytes=uid_bytes) is None:
                 return {
                     "uid_bytes": bytes(uid_bytes or []),
                     "blocks": blocks,

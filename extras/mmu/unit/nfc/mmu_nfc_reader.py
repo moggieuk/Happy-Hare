@@ -172,7 +172,8 @@ class MmuNfcReader:
         else:
             _instances.append(self)
 
-        self.printer.register_event_handler('klippy:connect', self._handle_connect)
+        # Reader initialization is owned by MmuNfcManager at MMU bootup.
+        # self.printer.register_event_handler('klippy:connect', self._handle_connect)
 
         self._register_commands()
 
@@ -282,10 +283,6 @@ class MmuNfcReader:
         self.last_uid = None
         self.last_target_info = None
         self.present = False
-        try:
-            self.release(reason="nfc_homing_clear")
-        except Exception:
-            pass
 
 
     def homing_poll_read(self, timeout=0.020):
@@ -336,13 +333,47 @@ class MmuNfcReader:
         return uid, metadata
 
 
+    def _parse_trace(self, uid_hex):
+        """Bridge tag_parser's internal trace() diagnostics into klippy.log.
+
+        parse_tag() reports every format it tries and why each one was rejected
+        (including the Creality AES steps: key derivation, sector-1 block
+        presence, decrypt result) through an optional trace callback. Without it
+        a failed parse is completely silent. Conclusions ('info') are always
+        logged; the verbose per-step detail ('debug', which includes tag hex
+        dumps) needs debug: 3 on the reader.
+        """
+        verbose = self.debug >= 3
+
+        def _trace(level, msg, *args):
+            if level != 'info' and not verbose:
+                return
+            try:
+                text = msg % args if args else msg
+            except Exception:
+                text = "%s %r" % (msg, args)
+            logging.info("mmu_nfc_reader %s: uid=%s parse: %s", self.name, uid_hex, text)
+
+        return _trace
+
+
     def _read_tag_metadata(self, target_info):
         """Capture raw tag memory per tag type and parse it, returning a metadata
         dict or None. Structured reads release the target themselves (driver
         finally blocks); an unsupported target is released here.
+
+        Every failure path logs its own distinct reason - a deep read that yields
+        no metadata is otherwise indistinguishable from one that never ran.
         """
         from . import tag_parser as parser
+        uid_hex = target_info.get('uid')
         strategy = _classify_target(target_info)
+        logging.info(
+            "mmu_nfc_reader %s: deep read uid=%s strategy=%s SAK=0x%02X ATQA=0x%04X uid_len=%d",
+            self.name, uid_hex, strategy,
+            int(target_info.get('sak', 0) or 0),
+            int(target_info.get('atqa', target_info.get('sens_res', 0)) or 0),
+            int(target_info.get('uid_length', 0)))
         if strategy == 'ntag_type2':
             raw = self._capture_ntag()
         elif strategy == 'iso15693_type5':
@@ -350,13 +381,33 @@ class MmuNfcReader:
         elif strategy == 'mifare_classic':
             raw = self._capture_mifare(target_info)
         else:
+            logging.info("mmu_nfc_reader %s: uid=%s deep read skipped - unsupported target type",
+                         self.name, uid_hex)
             self.release(reason="deep_read_unsupported")
             return None
         if not raw:
+            logging.info("mmu_nfc_reader %s: uid=%s %s capture returned no data - no metadata",
+                         self.name, uid_hex, strategy)
             return None
-        info = parser.parse_tag(raw, uid_hex=target_info.get('uid'))
-        if info is None or parser.is_parse_error(info):
+        if isinstance(raw, dict):
+            logging.info("mmu_nfc_reader %s: uid=%s captured %d authenticated block(s): %s",
+                         self.name, uid_hex, len(raw.get('blocks') or {}),
+                         sorted((raw.get('blocks') or {}).keys()))
+        else:
+            logging.info("mmu_nfc_reader %s: uid=%s captured %d raw byte(s)",
+                         self.name, uid_hex, len(raw))
+        info = parser.parse_tag(raw, uid_hex=uid_hex, trace=self._parse_trace(uid_hex))
+        if info is None:
+            logging.info("mmu_nfc_reader %s: uid=%s parse_tag matched no known tag format",
+                         self.name, uid_hex)
             return None
+        if parser.is_parse_error(info):
+            logging.info("mmu_nfc_reader %s: uid=%s parse_tag reported an error: %s",
+                         self.name, uid_hex, info.get('error'))
+            return None
+        logging.info("mmu_nfc_reader %s: uid=%s parsed tag_format=%s material=%s brand=%s color=%s",
+                     self.name, uid_hex, info.get('tag_format'), info.get('material'),
+                     info.get('brand'), info.get('color_hex'))
         return info
 
 
@@ -383,41 +434,72 @@ class MmuNfcReader:
              identifies a Bambu tag)
           2. Factory default Key A, sectors 0-4 (e.g. QIDI Box)
           3. Creality - UID-derived Key B, sector 1 only
-        Each attempt re-selects the tag via the driver. Bambu/Creality key
-        derivation needs pycryptodome; if it is missing those attempts are
+        Every read releases its target on completion, so a later attempt would
+        find none; the drivers re-select themselves via _ensure_active_target()
+        (and reject a re-selection that picked up a different tag). 
+        Bambu/Creality key derivation needs pycryptodome; if it is missing those attempts are
         skipped. Returns the block dict for the first usable read, or None.
+        Propagates the driver error if the tag leaves the field mid-sequence.
         """
         from . import tag_parser as parser
         uid_bytes = bytes(target_info.get('uid_bytes') or [])
+        uid_hex = target_info.get('uid')
         if len(uid_bytes) < 4:
+            logging.info("mmu_nfc_reader %s: uid=%s MIFARE read skipped - UID too short (%d bytes)",
+                         self.name, uid_hex, len(uid_bytes))
             return None
+
+        def _log_attempt(attempt, blocks, usable):
+            # auth_failed_sectors on every requested sector is the signature of a
+            # wrong key OR of no selected target (the PN532 primitives refuse to
+            # run without one) - the block count distinguishes them.
+            logging.info(
+                "mmu_nfc_reader %s: uid=%s MIFARE attempt '%s': usable=%s blocks=%d "
+                "auth_failed_sectors=%s read_failed_blocks=%s",
+                self.name, uid_hex, attempt, usable,
+                len((blocks or {}).get('blocks') or {}),
+                (blocks or {}).get('auth_failed_sectors') or [],
+                (blocks or {}).get('read_failed_blocks') or [])
 
         try:
             bambu_keys = parser._bambu_derive_keys(uid_bytes)
-        except Exception:
+        except Exception as e:
+            # Almost always a missing pycryptodome; previously discarded silently
+            logging.info("mmu_nfc_reader %s: uid=%s Bambu key derivation unavailable - "
+                         "skipping attempt 'bambu': %s", self.name, uid_hex, e)
             bambu_keys = None
         if bambu_keys is not None:
             blocks = self.reader.mifare_read_authenticated_blocks(
                 bambu_keys, sectors=[0, 1, 2, 3, 4], uid_bytes=uid_bytes)
-            if _mifare_usable(blocks, [0, 1, 2, 3, 4], allow_partial=True):
+            usable = _mifare_usable(blocks, [0, 1, 2, 3, 4], allow_partial=True)
+            _log_attempt('bambu', blocks, usable)
+            if usable:
                 return blocks
 
         blocks = self.reader.mifare_read_authenticated_blocks(
             [b'\xff\xff\xff\xff\xff\xff'] * 16, sectors=[0, 1, 2, 3, 4], uid_bytes=uid_bytes)
-        if _mifare_usable(blocks, [0, 1, 2, 3, 4], allow_partial=False):
+        usable = _mifare_usable(blocks, [0, 1, 2, 3, 4], allow_partial=False)
+        _log_attempt('default_key', blocks, usable)
+        if usable:
             return blocks
 
         try:
             creality_key = parser._creality_derive_key_b(uid_bytes)
-        except Exception:
+        except Exception as e:
+            logging.info("mmu_nfc_reader %s: uid=%s Creality Key B derivation unavailable - "
+                         "skipping attempt 'creality': %s", self.name, uid_hex, e)
             creality_key = None
         if creality_key is not None:
             sector_keys = [None] * 16
             sector_keys[1] = creality_key
             blocks = self.reader.mifare_read_authenticated_blocks(
                 sector_keys, sectors=[1], uid_bytes=uid_bytes, use_key_b=True)
-            if _mifare_usable(blocks, [1], allow_partial=False):
+            usable = _mifare_usable(blocks, [1], allow_partial=False)
+            _log_attempt('creality', blocks, usable)
+            if usable:
                 return blocks
+        logging.info("mmu_nfc_reader %s: uid=%s all MIFARE key attempts failed - no metadata",
+                     self.name, uid_hex)
         return None
 
 

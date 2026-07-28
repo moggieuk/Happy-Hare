@@ -22,6 +22,7 @@
 #   PARAM_NFC_READER_SPI_SPEED   (if rc522 type)
 #
 #   PARAM_NFC_READER_I2C_ADDRESS (if pn532/pn7160 type)
+#   PARAM_NFC_READER_I2C_MCU     (if pn532/pn7160 type)
 #   PARAM_NFC_READER_I2C_BUS     (if pn532/pn7160 type)
 #   PARAM_NFC_READER_I2C_SPEED   (if pn532/pn7160 type)
 #
@@ -266,6 +267,14 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
               endif
 
               if CHOICE_NFC_READER_TYPE_PN532_$(i) || CHOICE_NFC_READER_TYPE_PN7160_$(i)
+                config PARAM_NFC_READER_I2C_MCU_$(i)
+                  string "Gate $(i) I2C MCU           "
+                  default "$(MCU_NAME)_gate$(i)" if MMU_HAS_PER_GATE_MCU
+                  default "$(MCU_NAME)"
+                  help
+                    MCU that owns this gate's I2C bus. Defaults to the gate MCU
+                    on per-gate-MCU designs, otherwise to the MMU MCU.
+
                 config PARAM_NFC_READER_I2C_ADDRESS_$(i)
                   int "I2C address              "
                   default 36 if CHOICE_NFC_READER_TYPE_PN532_$(i)

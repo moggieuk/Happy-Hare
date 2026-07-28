@@ -41,11 +41,12 @@ from .nfc.mmu_nfc_endstop import MmuNfcEndstop
 NFC_CHECK_INTERVAL = 1.0   # How often to poll the shared NFC reader (seconds)
 NFC_READ_TIMEOUT   = 0.1   # Per-poll reader read timeout (seconds) - keep small; runs on reactor thread
 NFC_TAG_HOLD_TIME  = 5.0   # Cooldown after acting on a tag before reading again (seconds)
+NFC_INIT_DELAY     = 2.0   # Let other I2C devices settle before reader initialization
 
 # Homing-poll cadence (NFC-as-endstop). Kept tight for low overshoot, but each
 # read uses a small timeout so the reactor keeps feeding the drip-homing move.
-NFC_HOMING_POLL_INTERVAL = 0.010   # Seconds between homing polls (reactor timer)
-NFC_HOMING_POLL_TIMEOUT  = 0.020   # Max seconds per homing read (caps transceive delay)
+NFC_HOMING_POLL_INTERVAL = 0.050   # Seconds between homing polls (reactor timer)
+NFC_HOMING_POLL_TIMEOUT  = 0.25   # Max seconds per homing read (caps transceive delay)
 
 
 class MmuNfcManager:
@@ -89,6 +90,7 @@ class MmuNfcManager:
 
         # Shared-reader polling / debounce state
         self._poll_timer = self.reactor.register_timer(self._poll_shared_reader)
+        self._bootup_init_timer = self.reactor.register_timer(self._delayed_bootup_init)
         self._polling = False
         self.reinit()
 
@@ -386,13 +388,21 @@ class MmuNfcManager:
 
     def _handle_mmu_bootup(self):
         """
-        Delayed event fired once after MMU bootup. Initialize every reader we
-        control and arm shared-reader polling.
+        MMU bootup event. Schedule initialization after the I2C bus settles.
         """
         num_readers = (1 if self.shared_reader is not None else 0) + sum(1 for r in self.gate_readers if r is not None)
-        self.mmu.log_debug("NFC: bootup on %s - initializing %d reader(s)" % (self.mmu_unit.name, num_readers))
+        self.mmu.log_debug("NFC: bootup on %s - scheduling %d reader(s) in %.1fs" %
+                           (self.mmu_unit.name, num_readers, NFC_INIT_DELAY))
+        self.reactor.update_timer(self._bootup_init_timer,
+                                  self.reactor.monotonic() + NFC_INIT_DELAY)
+
+
+    def _delayed_bootup_init(self, eventtime):
+        """One-shot, non-blocking NFC initialization scheduled after bootup."""
+        self.mmu.log_debug("NFC: initializing readers on %s after bootup delay" % self.mmu_unit.name)
         self._init_all_readers()
         self._start_polling()
+        return self.reactor.NEVER
 
 
     def _handle_printing(self, print_time):
@@ -572,7 +582,12 @@ class MmuNfcManager:
         except Exception as e:
             self.mmu.log_error("NFC: read error on reader '%s': %s" % (getattr(reader, 'name', '?'), str(e)))
             return None, None
-        return (str(uid) if uid else None), metadata
+        uid = str(uid) if uid else None
+        self.mmu.log_debug(
+            "NFC: reader '%s' read UID=%s deep=%s metadata_keys=%s" % (
+                getattr(reader, 'name', '?'), uid, deep,
+                sorted(metadata.keys()) if isinstance(metadata, dict) else []))
+        return uid, metadata
 
 
     def _want_metadata(self):
@@ -597,6 +612,9 @@ class MmuNfcManager:
         a UID-only read.
         """
         try:
+            self.mmu.log_debug(
+                "NFC: dispatching UID=%s from reader unit=%s gate=%s to Spoolman lookup" %
+                (uid, self.mmu_unit.name, gate))
             self.mmu._nfc_tag_read(uid, gate=gate, metadata=metadata, unit=self.mmu_unit)
         except Exception as e:
             self.mmu.log_error("NFC: error initiating tag lookup for UID=%s: %s" % (uid, str(e)))

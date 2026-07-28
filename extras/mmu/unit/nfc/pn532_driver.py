@@ -276,6 +276,36 @@ class _PN532Base:
         self.current_uid_hex = ''
         self.current_target_info = None
 
+    def _ensure_active_target(self, timeout=None, expect_uid_bytes=None):
+        """Guarantee a selected target for the command sequence that follows.
+
+        Mirrors PN7160Driver._ensure_active_target(): return the cached target if
+        one is still selected, otherwise re-select it, raising if the tag has
+        gone.  Needed because every structured read releases its target in a
+        finally block, so a second read on the same tag starts with none - and
+        the MIFARE primitives refuse to transmit without one
+        (mifare_authenticate() returns False immediately when current_target is
+        None).  The caller would then see every sector "auth failed" without a
+        single command having reached the tag.  A failed MIFARE authentication
+        also drops the tag out of its session, so re-selection is required by the
+        protocol, not just by the release above.
+
+        'expect_uid_bytes' rejects a re-selection that picked up a *different*
+        tag, so blocks can never be attributed to the wrong spool.
+        """
+        if self.current_target is not None:
+            return self.current_target_info
+        target_info = self.read_target(timeout=timeout)
+        if target_info is None:
+            raise RuntimeError("no active PN532 target")
+        if expect_uid_bytes and list(target_info.get('uid_bytes') or []) != list(expect_uid_bytes):
+            actual = target_info.get('uid')
+            self._release_current_target(reason="reselect_uid_changed")
+            raise RuntimeError(
+                "PN532 re-selected a different tag (%s), expected %s"
+                % (actual, _hex(list(expect_uid_bytes))))
+        return target_info
+
     def _set_current_card(self, target_info):
         """Cache the currently selected target information."""
         self.current_target_info = dict(target_info)
@@ -654,12 +684,17 @@ class _PN532Base:
         reported as auth_failed_sectors/read_failed_blocks so callers can
         distinguish a clean partial decode from an incomplete rich read.
 
+        The target must be active for the whole auth/read sequence because MIFARE
+        Classic authentication state is tied to the current RF session, so this
+        re-selects first if a previous read already released it.
+
         Releases the target in a finally block (same pattern as ntag_read_user_memory).
         """
         blocks = {}
         auth_failed_sectors = []
         read_failed_blocks = []
         try:
+            self._ensure_active_target(expect_uid_bytes=uid_bytes)
             for sector in sectors:
                 trailer = sector * 4 + 3
                 key = sector_keys[sector] if sector < len(sector_keys) else None
