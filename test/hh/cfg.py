@@ -153,7 +153,14 @@ def render(profile):
     Memoised per profile: parsing the ~1500-symbol Kconfig takes several seconds
     and dominates harness runtime otherwise. Callers must not mutate the result;
     assemble() builds a fresh parser from it each time.
+
+    An InstallDirProfile has nothing to render - the installer already did it - so the
+    files are read verbatim instead. That is the point: it exercises the real installer
+    output, including any hand edits made afterwards.
     """
+    if getattr(profile, 'install_dir', False):
+        return load_install_dir(profile)
+
     key = (profile.name, tuple(sorted(profile.syms.items())),
            tuple(sorted(profile.extra_params.items())))
     if key in _render_cache:
@@ -193,6 +200,17 @@ def render(profile):
 _MALFORMED_PIN = re.compile(r'^\s*[A-Za-z_][A-Za-z_0-9]*\s*:\s*\^?~?!?:')
 
 
+def _is_rendered(name):
+    """
+    macros/ and optional/ are COPIED VERBATIM by the installer, never rendered (see the
+    MACRO_GLOB comment above), and they legitimately contain the same [[ ]] token the
+    installer uses as its own delimiter - a nested Klipper list literal like
+    [[a, b]|min, c]|max (config/macros/mmu_sequence.cfg:155). Only rendered files can be
+    asserted token-free.
+    """
+    return '/macros/' not in name and '/optional/' not in name
+
+
 def assert_sane(rendered):
     """Catch the silent-misrender failure modes. Raises AssertionError."""
     problems = []
@@ -201,7 +219,7 @@ def assert_sane(rendered):
             if _MALFORMED_PIN.match(line):
                 problems.append('%s:%d has a chip-less pin (missing env var?): %r'
                                 % (tmpl, lineno, line.strip()))
-        if '[[' in text or '[%' in text:
+        if _is_rendered(tmpl) and ('[[' in text or '[%' in text):
             for lineno, line in enumerate(text.splitlines(), 1):
                 if '[[' in line or '[%' in line:
                     problems.append('%s:%d left an unrendered template token: %r'
@@ -225,6 +243,98 @@ def macro_files():
     return out
 
 
+class InstallDirProfile:
+    """
+    Stands in for a Profile when the config comes from a real install rather than from
+    Kconfig symbols. Same duck type: .name, .syms, .extra_params - but render() short
+    circuits on .install_dir and reads files instead.
+    """
+
+    install_dir = True
+
+    def __init__(self, path):
+        self.path = os.path.abspath(os.path.expanduser(path))
+        self.name = self.path
+        self.syms = {}
+        self.extra_params = {}
+        self.description = 'installed config at %s' % self.path
+
+    def __repr__(self):
+        return 'InstallDirProfile(%r)' % (self.path,)
+
+
+def _includes_from_printer_cfg(path):
+    """
+    The `[include mmu/...]` globs from a real printer.cfg, in file order.
+
+    Authoritative rather than guessed: installer/build.py:698-709 writes
+    `include mmu/base/*.cfg` above `include mmu/macros/*.cfg`, and reading them back also
+    picks up anything else the user added (e.g. mmu/optional/*.cfg).
+    """
+    out = []
+    with open(path, encoding='utf-8') as f:
+        for line in f:
+            m = re.match(r'^\s*\[include\s+(mmu/[^\]]+?)\s*\]', line)
+            if m:
+                out.append(m.group(1))
+    return out
+
+
+def load_install_dir(profile):
+    """
+    Read an installed Happy Hare config into the same ordered {name: text} shape render()
+    returns, so everything downstream is unchanged.
+
+    `profile.path` may be either the printer_data/config directory (which has printer.cfg
+    and an mmu/ subdirectory) or the mmu/ directory itself.
+    """
+    import glob
+
+    root = profile.path
+    if not os.path.isdir(root):
+        raise AssertionError('no such install directory: %s' % root)
+
+    printer_cfg = os.path.join(root, 'printer.cfg')
+    patterns = None
+    if os.path.isfile(printer_cfg):
+        patterns = _includes_from_printer_cfg(printer_cfg)
+    if not patterns:
+        # Pointed straight at mmu/, or a printer.cfg with no HH includes (an uninstalled
+        # or partially installed tree). Mirror what the installer would have written.
+        base = root if os.path.basename(root) == 'mmu' else os.path.join(root, 'mmu')
+        if not os.path.isdir(base):
+            raise AssertionError(
+                "%s has neither an [include mmu/...] in printer.cfg nor an mmu/ "
+                "directory - is this a Happy Hare install? Run './install.sh -z -t' to "
+                "make one in /tmp/mmu_test." % root)
+        root = os.path.dirname(base)    # so 'mmu/...' resolves relative to root
+        patterns = ['mmu/base/*.cfg', 'mmu/macros/*.cfg']
+
+    out = {}
+    for pattern in patterns:
+        # Sorted, because Klipper's include glob is sorted and the order is load-bearing:
+        # [mmu_machine] in mmu.cfg must be parsed before the steppers in mmu_hardware*.cfg
+        # (see the BASE_TEMPLATES comment above).
+        for path in sorted(glob.glob(os.path.join(root, pattern))):
+            name = os.path.relpath(path, root)
+            if os.path.basename(path) == 'mmu_vars.cfg':
+                # Not included by printer.cfg (it is reached via [save_variables]) and the
+                # harness substitutes its own writable copy after assembly.
+                continue
+            with open(path, encoding='utf-8') as f:
+                out[name] = f.read()
+
+    if not out:
+        raise AssertionError('no config files found under %s for %s'
+                             % (root, ', '.join(patterns)))
+    first = next(iter(out))
+    if not first.endswith('mmu.cfg'):
+        raise AssertionError(
+            'expected mmu.cfg to load first (it carries [mmu_machine], which must be '
+            'parsed before the steppers) but got %r. Include order is wrong.' % first)
+    return out
+
+
 def assemble(rendered, printer_stub='', macros=True):
     """
     Build the single RawConfigParser Klipper would see, reading the parts in
@@ -242,10 +352,15 @@ def assemble(rendered, printer_stub='', macros=True):
     fileconfig.optionxform = str
     if printer_stub:
         fileconfig.read_string(printer_stub, source='printer_stub.cfg')
-    for tmpl in BASE_TEMPLATES:
-        if tmpl in rendered:
-            fileconfig.read_string(rendered[tmpl], source=tmpl)
-    if macros:
+    # Insertion order IS include order. render() builds its dict by iterating
+    # BASE_TEMPLATES so this is identical for a profile, and it generalises to the
+    # arbitrary file set load_install_dir() produces.
+    for name, text in rendered.items():
+        fileconfig.read_string(text, source=name)
+    if macros and not any(n.startswith('config/macros/') or '/macros/' in n
+                          for n in rendered):
+        # An install directory carries its own macros (possibly hand-edited); only fall
+        # back to the repo's when the caller did not supply any.
         for name, text in macro_files().items():
             fileconfig.read_string(text, source=name)
     return fileconfig

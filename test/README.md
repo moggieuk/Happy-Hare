@@ -103,11 +103,157 @@ form above is usually easier.
 
 ---
 
+## 1a. The interactive console
+
+Everything the tests drive, driven by hand instead — Mainsail's console pane, against the
+simulation:
+
+```bash
+make console
+```
+
+```
+mmu[T0 g0]> MMU_CHANGE_TOOL TOOL=1
+Tool change requested: T1
+...
+------------------------------------------------------------------------
+T1   gate 1    LOADED IN NOZZLE           868.0mm  Idle
+  print=initialized  SYNCED  t=+2.51s
+  mmu_entry_1=1  mmu_exit_1=1  filament_compression=1  filament_tension=1  ...
+            nfc pre ent exit/gate shex enc comp/extr nozl
+   gate 0    ..  ..  ..     ..     ..   ..     ..     ..     -100.0
+  *gate 1    ##  ##  ##     ##     ##   ##     ##     ##     +768.0
+------------------------------------------------------------------------
+```
+
+Anything not starting with `/` is sent to the MMU as G-code. `/help` lists the
+meta-commands, `MMU_HELP` lists Happy Hare's, and every HH command takes `HELP=1`.
+
+The status section is separated from the log window by a **heavy rule**; `/clear` wipes the
+log and leaves the status alone. Useful meta-commands beyond `/help`:
+
+| Command | Does |
+|---|---|
+| `/advance N` | move the virtual clock N seconds (nothing is time-driven without it) |
+| `/vars [mmu\|machine]` | `get_status()` of the `mmu` object, the `mmu_machine` object, or both |
+| `/clear` | clear the log window, keep the status section |
+| `/sensor NAME on\|off\|enable\|disable` | `on/off` drives the switch through its real button callback; `enable/disable` flips `sensor_enabled` so Happy Hare treats it as **not fitted** |
+| `/place`, `/preload`, `/exhaust` | set the scene: filament at a gate, preloaded, or run out |
+| `/log [N]`, `/trace 0-4` | the log file, and how much detail goes into it |
+
+### Multi-unit
+
+Multi-unit configs work. Point `--profile` at a multi-unit install and the harness builds
+every unit, with gates numbered contiguously across them (`unit0` 0-3, `unit1` 4-7). Sensors
+are qualified per unit (`unit0:mmu_shared_exit`), so the header keeps the prefix and `/sensor`
+needs the qualified name — a bare name that matches more than one unit is rejected rather
+than silently resolved. The filament view groups gates under their unit, and the LED view
+shows every unit rather than only the selected one.
+
+**The clock is virtual and frozen while you type.** Nothing happens at the prompt: no timer
+fires, no LED animation ticks, no pending-spool timeout expires. That is what makes the
+prompt safe, and it is why `/advance N` exists — without it you never see anything
+time-driven. `/advance 12` clears the 8-second boot LED rainbow; the pending spool_id
+timeout is 20 seconds.
+
+Useful flags — `make console ARGS='...'`:
+
+```bash
+--profile encoder              # or tradrack, emu, nfc_single, nfc_spoolman, ...
+--profile /path/to/config      # your own installed config - see below
+--header machine,sensors,filament,gates,leds     # or 'off'
+--inline-header                # reprint above each prompt instead of pinning it
+--color 256|truecolor|16|auto  # colour depth (see below)
+--log-dir /tmp                 # where mmu.log goes; --no-log to discard it
+--trace 4                      # full Happy Hare narration
+--no-preload                   # leave every gate empty
+--script FILE                  # run non-interactively (this is how it is tested)
+```
+
+Startup shows Happy Hare's **real bootup output** — the welcome banner, the unit summary and
+the calibration warnings — because `cmd_MMU_BOOTUP` runs here exactly as it does on a
+printer.
+
+### The log
+
+Happy Hare writes its own `mmu.log`, and the console keeps it at **`/tmp/mmu.log`**, replaced
+fresh on every run. It is live, so the useful thing is to watch it in a second window:
+
+```bash
+tail -f /tmp/mmu.log
+```
+
+`/log [N]` prints the path and the last N lines without leaving the prompt. `--log-dir DIR`
+moves it, `--no-log` leaves it in the session temp dir to be discarded on exit. Raise the
+detail with `/trace 4` (Happy Hare's own `log_level`).
+
+The harness on its own still writes the log into a temp directory it deletes on `close()`,
+which is right for tests; `session(..., log_dir=...)` is what keeps it. Note that
+`MmuLogger` binds to the process-global `logging.getLogger('mmu')`, so the **first** session
+to boot in a process fixes the log path for all of them — one session per process, which is
+how the console runs.
+
+### If a warning shows up on a pink background
+
+Run `make console ARGS='--color 16'`. Happy Hare's console messages carry HTML colours which
+the console translates to ANSI, and 24-bit `ESC[38;2;R;G;Bm` is **not** safely ignored by a
+terminal that lacks truecolor — the channels get read as separate SGR codes. HH's warning
+colour is `#FF69B4`, whose green channel is `0x69` = 105, and SGR 105 means *bright magenta
+background*. So the warning arrives on a pink background.
+
+`--color` defaults to `auto`, which only uses truecolor when `$COLORTERM` says `truecolor`
+or `24bit` and otherwise emits 256-colour (`38;5;N`). `--color 16` is the belt-and-braces
+option: it emits nothing but plain `30-37`/`90-97`, which no terminal can misread.
+
+The header is **pinned to the top of the terminal** while output scrolls beneath it, and it
+is redrawn after every command and every `/advance`. There is nothing to poll and no
+refresh thread — since the clock is frozen at the prompt, state cannot change while you
+are typing. `/header GROUPS` switches groups live; `/header off` hides it. On a pipe or
+with `--inline-header` it falls back to reprinting above each prompt.
+
+### Running against your own installed config
+
+`--profile` takes a path as well as a profile name, so the console can run the config the
+installer actually produced — hand edits included:
+
+```bash
+./install.sh -z -t                                       # writes /tmp/mmu_test
+make console ARGS='--profile /tmp/mmu_test/printer_data/config'
+```
+
+Point it at the `printer_data/config` directory (its `printer.cfg` gives the authoritative
+`[include mmu/...]` set and order) or straight at the `mmu/` directory. `mmu_vars.cfg` is
+skipped and `[save_variables]` is redirected into a scratch copy, so the console never
+writes to your install.
+
+Pick your real hardware in `menuconfig` when the installer offers it. A default config
+generated non-interactively (`make KCONFIG_CONFIG=... olddefconfig`) does *not* boot: it
+leaves the gate-0 gear pins empty and fails with `Invalid pin description ''`.
+
+### Three things that will look like bugs
+
+1. **Macro bodies do not run.** The fake `gcode_macro` records a call and never renders the
+   body, so `T1`, the print start/end and the park/cut/purge sequences produce **silence**.
+   Use `MMU_CHANGE_TOOL TOOL=1`. The console notices a bare `T<n>` and says so.
+2. **Only `boxturtle`, `encoder` and the `nfc_*` profiles can move filament.** `tradrack`
+   and `emu` load config fine but physical-selector homing raises `NotImplementedError`.
+3. **Pause is sticky.** After a failed operation the MMU sits paused and later commands
+   refuse. The prompt shows `PAUSED`; recover with `MMU_UNLOCK` / `MMU_RECOVER`.
+
+One known limitation: commands are dispatched at top level, exactly as the tests do, so a
+`ReactorCompletion.wait()` returns immediately instead of waiting. Dispatching inside the
+reactor fixes that in theory but breaks `MMU_PRELOAD` in practice (every gate ends up
+`EMPTY`), so the proven path wins — see the comment on `_dispatch()` in
+[console.py](console.py) for the measurements.
+
+---
+
 ## 2. What is where
 
 ```
 test/
   test_mmu_*.py     the tests themselves — this is what you read and write
+  console.py        the interactive console (§1a)
   hh/               the harness: the fake Klipper and fake Moonraker
   hh/klippy_root/   41 stand-in modules that pretend to be Klipper's own code
   installer/        legacy installer tests, currently skipped (see §6)

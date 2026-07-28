@@ -9,6 +9,8 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
+import os
+
 
 class Profile:
     """
@@ -180,8 +182,22 @@ PROFILES = {p.name: p for p in (BOXTURTLE, TRADRACK, EMU, ENCODER, NFC_SINGLE,
 
 
 def get(name):
+    """
+    A registered profile name, or a path to an installed config directory.
+
+    The path form lets the harness run against what './install.sh -z -t' actually
+    produced (in /tmp/mmu_test/printer_data/config) rather than against templates the
+    harness rendered itself - hand edits included. See cfg.InstallDirProfile.
+    """
     try:
         return PROFILES[name]
     except KeyError:
-        raise KeyError("unknown profile %r; known: %s"
-                       % (name, ', '.join(sorted(PROFILES))))
+        pass
+    if os.sep in name or name.startswith('~') or os.path.isdir(name):
+        from .cfg import InstallDirProfile
+        profile = InstallDirProfile(name)
+        if not os.path.isdir(profile.path):
+            raise KeyError("no such install directory: %s" % profile.path)
+        return profile
+    raise KeyError("unknown profile %r; known: %s (or a path to an installed "
+                   "config directory)" % (name, ', '.join(sorted(PROFILES))))
