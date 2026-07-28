@@ -1077,7 +1077,7 @@ class MmuController(MmuFilamentMovement):
                         ext_swatch = UI_SEPARATOR
                     else:
                         ext_swatch = self._get_filament_char(g, show_swatch=True, symbol=UI_SOLID_TRIANGLE)
-                    select_strings.append(f"|\{ext_swatch}/|")
+                    select_strings.append(f"|\\{ext_swatch}/|")
                 else:
                     select_strings.append(selct_char * 4)
 
@@ -1092,7 +1092,7 @@ class MmuController(MmuFilamentMovement):
         if self.gate_selected == TOOL_GATE_BYPASS and not bypass_shown:
             msg_tools += f" {UI_SEPARATOR} |ByP|"
             msg_avail += f" {UI_SEPARATOR} | {bypass_fil_swatch} |"
-            msg_selct += f" {UI_SEPARATOR} {UI_SEPARATOR}\{bypass_ext_swatch}/{UI_SEPARATOR}"
+            msg_selct += f" {UI_SEPARATOR} {UI_SEPARATOR}\\{bypass_ext_swatch}/{UI_SEPARATOR}"
 
         lines = [msg_units] if len(self.mmu_machine.units) > 1 else []
         lines.extend([msg_gates, msg_tools, msg_avail, msg_selct])
