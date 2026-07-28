@@ -79,7 +79,8 @@ class Session:
     """
 
     def __init__(self, profile='boxturtle', adc_api='new', adc_payload='samples',
-                 strict_gcode=False, printer_stub=PRINTER_STUB, virtual_nfc=False):
+                 strict_gcode=False, printer_stub=PRINTER_STUB, virtual_nfc=False,
+                 log_dir=None):
         self.klippy = install()
         self.profile = (profile if isinstance(profile, profiles_mod.Profile)
                         else profiles_mod.get(profile))
@@ -93,6 +94,10 @@ class Session:
         self.virtual_nfc = virtual_nfc
         self.nfc_chips = {}
         self.tmpdir = tempfile.mkdtemp(prefix='hh-session-')
+        # Where MmuLogger's mmu.log lands. Defaults to the session tmpdir, which is deleted
+        # by close() - right for tests, useless for anything that wants to read the log
+        # afterwards. test/console.py passes a real directory to keep it.
+        self.log_dir = log_dir
         self.printer = None
         self.reactor = None
         self.config = None
@@ -134,8 +139,11 @@ class Session:
         # (extras/mmu/mmu_logger.py:39-53) and MmuSyncFeedback writes
         # sync_<gate>.jsonl beside it (mmu_sync_feedback.py:366). Left empty, both
         # fall back to /tmp and collide across parallel runs.
+        log_root = self.log_dir or self.tmpdir
+        if self.log_dir:
+            os.makedirs(self.log_dir, exist_ok=True)
         start_args = {
-            'log_file': os.path.join(self.tmpdir, 'klippy.log'),
+            'log_file': os.path.join(log_root, 'klippy.log'),
             'config_file': os.path.join(self.tmpdir, 'printer.cfg'),
             'software_version': 'v0.13.0-harness',
             'apiserver': None,
@@ -532,6 +540,15 @@ class Session:
     def settle(self, dt=0.):
         self.reactor.advance(dt)
         return self
+
+    @property
+    def mmu_log(self):
+        """
+        Where MmuLogger is writing. Derived the same way MmuLogger derives it - dirname of
+        start_args['log_file'] + '/mmu.log' (extras/mmu/mmu_logger.py:39-44) - so this
+        follows log_dir automatically. Deleted with the tmpdir unless log_dir was given.
+        """
+        return os.path.join(self.log_dir or self.tmpdir, 'mmu.log')
 
     # -- assertion surfaces -------------------------------------------------
     @property

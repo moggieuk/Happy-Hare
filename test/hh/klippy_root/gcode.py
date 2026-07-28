@@ -126,7 +126,14 @@ class GCodeDispatch:
     def __init__(self, printer, strict=False):
         self.printer = printer
         self.strict = strict
-        self.base_commands = {}
+        # Klipper keeps TWO handler dicts: ready_gcode_handlers is everything, and
+        # base_gcode_handlers only the when_not_ready subset that works before klippy:ready.
+        # MMU_HELP enumerates ready_gcode_handlers to find the non-Happy-Hare commands
+        # (extras/mmu/commands/mmu_help.py:155), so the names have to exist. base_commands
+        # is the SAME dict under the harness's own name, not a copy.
+        self.ready_gcode_handlers = {}
+        self.base_gcode_handlers = {}
+        self.base_commands = self.ready_gcode_handlers
         self.mux_commands = {}
         self.gcode_help = {}
         # -- assertion surfaces ------------------------------------------
@@ -135,18 +142,25 @@ class GCodeDispatch:
         self.raw = []           # everything respond_raw emitted
         self.executed = []      # every commandline dispatched, in order
         self.unhandled = []     # commandlines with no registered handler
+        # respond_info and respond_raw land in separate lists above, so their relative
+        # ORDER is lost - fine for assertions, useless for anything replaying the
+        # console. Handlers registered here see both, interleaved, as they happen.
+        self._output_handlers = []
 
     # -- registration -------------------------------------------------------
     def register_command(self, cmd, func, when_not_ready=False, desc=None):
         if func is None:
             # Return and REMOVE the old handler - the PAUSE/RESUME wrap idiom
             old = self.base_commands.pop(cmd, None)
+            self.base_gcode_handlers.pop(cmd, None)
             self.gcode_help.pop(cmd, None)
             return old
         if cmd in self.base_commands:
             raise self.printer.config_error(
                 "gcode command %s already registered" % (cmd,))
         self.base_commands[cmd] = func
+        if when_not_ready:
+            self.base_gcode_handlers[cmd] = func
         if desc is not None:
             self.gcode_help[cmd] = desc
         return None
@@ -168,13 +182,27 @@ class GCodeDispatch:
         return dict(self.gcode_help)
 
     def register_output_handler(self, cb):
-        pass
+        """
+        Klipper's own hook - GCodeIO registers one to write to connected clients. Kept
+        faithful so test/console.py can stream output in order without monkeypatching
+        respond_info/respond_raw. Handler signature: cb(msg).
+        """
+        self._output_handlers.append(cb)
 
     # -- output -------------------------------------------------------------
+    def _fanout(self, msg):
+        # A handler must never be able to break the machine it is observing.
+        for cb in self._output_handlers:
+            try:
+                cb(msg)
+            except Exception:
+                logging.exception('gcode output handler failed')
+
     def respond_info(self, msg, log=True):
         self.console.append(msg)
         if log:
             logging.debug('gcode respond_info: %s', msg)
+        self._fanout(msg)
 
     def respond_raw(self, msg):
         self.raw.append(msg)
@@ -182,6 +210,7 @@ class GCodeDispatch:
             # THE sentinel - see module docstring
             self.errors.append(msg)
             logging.warning('gcode error: %s', msg)
+        self._fanout(msg)
 
     def respond_error(self, msg):
         self.respond_raw('!! ' + msg)

@@ -20,7 +20,9 @@ export KCONFIG_CONFIG ?= .mmu_config
 # Enable output-sync if menuconfig will not trigger. menuconfig.py will crash if output-sync is enabled on certain systems
 ifeq ($(CHECK_OUTPUT_SYNC),)
   # Never probe for menuconfig or uninstall and only if KCONFIG exists
-  ifeq ($(strip $(filter menuconfig uninstall variables gen_kconfig fix_links,$(MAKECMDGOALS))),)
+  # 'console' must stay in this list: --output-sync buffers a recipe's output until it
+  # finishes, which for an interactive prompt means no prompt at all
+  ifeq ($(strip $(filter menuconfig uninstall variables gen_kconfig fix_links console,$(MAKECMDGOALS))),)
     ifneq ($(wildcard $(KCONFIG_CONFIG)),)
       # Check whether $KCONFIG_CONFIG is outdated. if so menuconfig will be triggered and output-sync should stay disabled
       ifeq ($(shell $(MAKE) CHECK_OUTPUT_SYNC=y -q $(KCONFIG_CONFIG) >/dev/null 2>&1 && echo y),y)
@@ -122,7 +124,7 @@ restart_klipper = 0
 .SECONDEXPANSION:
 .DEFAULT_GOAL := build
 .PRECIOUS: $(KCONFIG_CONFIG) $(KCONFIG_CONFIG)_%
-.PHONY: menuconfig install uninstall check_version diff test venv clean_venv build clean variables python_deps fix_links gen_kconfig kconfig_needs_update olddefconfig verify_pickle
+.PHONY: menuconfig install uninstall check_version diff test console venv clean_venv build clean variables python_deps fix_links gen_kconfig kconfig_needs_update olddefconfig verify_pickle
 .SECONDARY: \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
@@ -463,6 +465,13 @@ venv: $(VENV_STAMP)
 test: $(test_prereqs)
 	$(Q)PYTHONPATH="$(SRC)/installer/lib/kconfiglib:$(PYTHONPATH)" \
 		$(TEST_PY) -m unittest discover $(V) -p '$(strip $(UT))'
+
+# Interactive MMU console on the test harness. Pass flags through ARGS, e.g.
+#   make console ARGS='--profile /tmp/mmu_test/printer_data/config'
+#   make console ARGS='--profile encoder --header machine,sensors,filament,leds'
+console: $(test_prereqs)
+	$(Q)PYTHONPATH="$(SRC)/installer/lib/kconfiglib:$(PYTHONPATH)" \
+		$(TEST_PY) -m test.console $(ARGS)
 
 variables:
 	@echo "========================="
