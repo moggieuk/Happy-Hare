@@ -178,8 +178,9 @@ class MmuNfcReader:
         else:
             _instances.append(self)
 
-        # Reader initialization is owned by MmuNfcManager at MMU bootup.
-        # self.printer.register_event_handler('klippy:connect', self._handle_connect)
+        # No klippy:connect handler: reader initialization is owned by MmuNfcManager,
+        # which schedules it a short delay after MMU bootup so other I2C devices have
+        # settled first (see MmuNfcManager._delayed_bootup_init).
 
         self._register_commands()
 
@@ -202,18 +203,6 @@ class MmuNfcReader:
 
     def _reactor_sleep(self, seconds):
         self.reactor.pause(self.reactor.monotonic() + seconds)
-
-
-    def _handle_connect(self):
-        try:
-            self.init()
-        except Exception:
-            self.alive = False
-            logging.exception("mmu_nfc_reader %s: init failed", self.name)
-        if self.alive:
-            logging.info("mmu_nfc_reader %s: %s OK", self.name, self.reader_type)
-        else:
-            logging.warning("mmu_nfc_reader %s: %s did not respond at connect time", self.name, self.reader_type)
 
 
     # ---- Public Python API (no gcmd required) -----------------------------
