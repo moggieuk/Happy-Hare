@@ -90,7 +90,7 @@ class MmuNfcManager:
 
         # Shared-reader polling / debounce state
         self._poll_timer = self.reactor.register_timer(self._poll_shared_reader)
-        self._bootup_init_timer = self.reactor.register_timer(self._delayed_bootup_init)
+#        self._bootup_init_timer = self.reactor.register_timer(self._delayed_bootup_init)
         self._polling = False
         self.reinit()
 
@@ -388,21 +388,21 @@ class MmuNfcManager:
 
     def _handle_mmu_bootup(self):
         """
-        MMU bootup event. Schedule initialization after the I2C bus settles.
+        Delayed event fired once after MMU bootup. Initialize every reader we
+        control and arm shared-reader polling.
         """
         num_readers = (1 if self.shared_reader is not None else 0) + sum(1 for r in self.gate_readers if r is not None)
-        self.mmu.log_debug("NFC: bootup on %s - scheduling %d reader(s) in %.1fs" %
-                           (self.mmu_unit.name, num_readers, NFC_INIT_DELAY))
-        self.reactor.update_timer(self._bootup_init_timer,
-                                  self.reactor.monotonic() + NFC_INIT_DELAY)
-
-
-    def _delayed_bootup_init(self, eventtime):
-        """One-shot, non-blocking NFC initialization scheduled after bootup."""
-        self.mmu.log_debug("NFC: initializing readers on %s after bootup delay" % self.mmu_unit.name)
+        self.mmu.log_debug("NFC: bootup on %s - initializing %d reader(s)" % (self.mmu_unit.name, num_readers))
         self._init_all_readers()
         self._start_polling()
-        return self.reactor.NEVER
+
+
+#    def _delayed_bootup_init(self, eventtime):
+#        """One-shot, non-blocking NFC initialization scheduled after bootup."""
+#        self.mmu.log_debug("NFC: initializing readers on %s after bootup delay" % self.mmu_unit.name)
+#        self._init_all_readers()
+#        self._start_polling()
+#        return self.reactor.NEVER
 
 
     def _handle_printing(self, print_time):
