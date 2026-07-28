@@ -83,19 +83,6 @@ class MmuGateMapCommand(BaseCommand):
         next_spool_id = gcmd.get_int('NEXT_SPOOLID', None, minval=-2)
         lookup = gcmd.get_int('LOOKUP', None, minval=-2, maxval=-1)  # Hidden: failed per-gate lookup result from Moonraker
         created = bool(gcmd.get_int('CREATED', 0, minval=0, maxval=1)) # Set by Moonraker when the UID minted a new spool
-        # Read without minval - purely for the trace below, so it must not tighten
-        # validation ahead of the paths that consume SPOOLID (bypass / single gate)
-        spool_id_arg = gcmd.get_int('SPOOLID', None)
-
-        # Trace the inbound half of the Spoolman round trip. These arrive asynchronously
-        # as plain gcode with no reference to the tag UID that triggered them, so without
-        # this a lookup result can't be correlated with its request in the log.
-        if from_spoolman or next_spool_id is not None or lookup is not None or spool_id_arg is not None:
-            mmu.log_debug(
-                "Spoolman->NFC: gate map callback GATE=%s SPOOLID=%s NEXT_SPOOLID=%s LOOKUP=%s "
-                "CREATED=%s FROM_SPOOLMAN=%s MAP=%s" % (
-                    gate if gate >= 0 else None, spool_id_arg, next_spool_id, lookup,
-                    created, from_spoolman, gmapstr if gmapstr != "{}" else None))
 
         gate_map = None
         try:

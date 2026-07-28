@@ -579,14 +579,6 @@ class MmuServer:
                         spool_info = await self._fetch_spool_info(spool_id)
                         if spool_info:
                             self._cache_insert_spool(spool_info) # A failed/404 fetch keeps the existing cached value
-                        else:
-                            # The fetch failed (404 or comms) but the stale cache entry is
-                            # kept and used below, so a deleted spool is pushed back to the
-                            # gate map as if it were still valid
-                            logging.info(
-                                "Gate map refresh: spool %s could not be fetched from Spoolman; "
-                                "falling back to cached values (cached=%s)"
-                                % (spool_id, self.spool_location.get(spool_id) is not None))
 
             # A negative gate addresses the bypass: it has no gate-map row on the Klipper side
             # so its attributes are delivered via the singular 'BYPASS=1' form (-> active_filament)
@@ -948,14 +940,11 @@ class MmuServer:
 
             uid_norm = self._normalise_uid(uid)
             spool_id = self.uid_to_spool_id.get(uid_norm)
-            # info, not debug: this is the only record of how a tag resolved. A 'hit'
-            # is answered straight from uid_to_spool_id with no revalidation, so a spool
-            # deleted in Spoolman keeps resolving here until the cache is rebuilt.
-            logging.info(
+            logging.debug(
                 "NFC lookup: received uid_raw=%r uid=%s gate=%s save=%s report_only=%s "
-                "cache=%s spool_id=%s metadata_keys=%s" % (
+                "cache=%s metadata_keys=%s" % (
                     uid, uid_norm, gate, save, report_only,
-                    "hit" if spool_id is not None else "miss", spool_id,
+                    "hit" if spool_id is not None else "miss",
                     sorted(metadata.keys()) if isinstance(metadata, dict) else []))
 
             if spool_id is None:
