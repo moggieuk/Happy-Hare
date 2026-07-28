@@ -150,8 +150,10 @@ class VirtualNfcChip:
 
 def virtualise(printer, model=None):
     """
-    Swap every reader's chip driver for a VirtualNfcChip. Must run BEFORE
-    klippy:connect, since that is when MmuNfcReader.init() first talks to the chip.
+    Swap every reader's chip driver for a VirtualNfcChip. Must run BEFORE the readers
+    are initialised, which is when MmuNfcReader.init() first talks to the chip - these
+    days that is MmuNfcManager's delayed post-bootup init, not klippy:connect (see
+    Session._settle_nfc_init), so anywhere before boot() is early enough.
 
     Returns {reader_name: VirtualNfcChip}.
     """

@@ -8,8 +8,8 @@
 # Wire-format details that matter (getting these wrong makes HH silently see no data):
 #   - `extra` values are JSON-ENCODED STRINGS, not raw values. HH does
 #     json.loads(extra.get('printer_name', '""')) at mmu_server.py:437 and tolerates a
-#     bare string for 'rfid' (_get_uid_from_extra, :388-401). `mmu_gate` is read with
-#     int() so it is stored as a plain numeric string.
+#     bare string for the RFID field (_get_uid_from_extra, :388-401). `mmu_gate` is read
+#     with int() so it is stored as a plain numeric string.
 #   - a spool embeds its filament, which embeds its vendor:
 #     spool['filament']['vendor']['name'] (_get_filament_attr, :404-415).
 #   - UIDs are normalised uppercase with ':', '-' and ' ' stripped (_normalise_uid,
@@ -26,7 +26,7 @@ import urllib.parse
 # rename cannot silently make the store invisible to HH.
 FIELD_PRINTER = 'printer_name'
 FIELD_GATE = 'mmu_gate_map'
-FIELD_RFID = 'rfid'
+FIELD_RFID = 'rfid_tag'
 
 SPOOLMAN_VERSION = '0.18.1'      # >= MIN_SM_VER (0,18,1) at mmu_server.py:86
 

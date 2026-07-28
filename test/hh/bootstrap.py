@@ -197,10 +197,12 @@ class Session:
             if section not in printer.objects:
                 printer.load_object(self.config, section, None)
 
-        # Both of these MUST happen before klippy:connect: readers are constructed
-        # during the section loop above but initialised at connect ("rc522 did not
-        # respond at connect time"), and a failed init is never retried - so doing
-        # either later leaves every reader dead for the whole session.
+        # Both of these MUST happen before the readers are initialised: they are
+        # constructed during the section loop above, but the chip is only talked to at
+        # init, and a failed init is never retried - so doing either later leaves every
+        # reader dead for the whole session. Init used to be at klippy:connect; it is now
+        # MmuNfcManager's delayed post-bootup pass (Session._settle_nfc_init), so this is
+        # comfortably early rather than only-just early.
         if self.virtual_nfc:
             self.virtualise_nfc_readers()
         else:
@@ -517,7 +519,8 @@ class Session:
     def boot(self, extra=0.01):
         """
         Full sequence to a live MMU: connect -> ready -> pump the reactor past
-        BOOT_DELAY so the scheduled bootup callback runs __MMU_BOOTUP.
+        BOOT_DELAY so the scheduled bootup callback runs __MMU_BOOTUP, then past the
+        NFC reader init delay that bootup schedules.
         """
         if not self._booted:
             if self.config is None:
@@ -525,7 +528,35 @@ class Session:
             self.connect()
             self.ready()
             self.reactor.advance(BOOT_DELAY + extra)
+            self._settle_nfc_init(extra)
             self._booted = True
+        return self
+
+    def _settle_nfc_init(self, extra=0.01):
+        """
+        Pump the reactor past MmuNfcManager's post-bootup reader init.
+
+        NFC readers used to initialise on klippy:connect. That handler is now disabled
+        (mmu_nfc_reader.py) and MmuNfcManager._handle_mmu_bootup instead schedules
+        _delayed_bootup_init NFC_INIT_DELAY seconds later, to let other I2C devices
+        settle. Simulated time does not pass on its own, so without this every reader
+        stays uninitialised (alive False, chip.init never called) and _start_polling
+        never arms - which silently changes what the NFC tests are testing.
+
+        NFC_INIT_DELAY is read from the production module rather than copied, so the
+        harness cannot drift out of step with it again. Advance only just past it: the
+        same callback arms shared-reader polling (NFC_CHECK_INTERVAL), and overshooting
+        would fire poll cycles tests do not expect.
+        """
+        try:
+            from extras.mmu.unit.mmu_nfc_manager import NFC_INIT_DELAY
+        except Exception:
+            return self
+        machine = self.printer.lookup_object('mmu_machine', None)
+        if machine is None:
+            return self
+        if any(getattr(u, 'nfc_manager', None) is not None for u in machine.units):
+            self.reactor.advance(NFC_INIT_DELAY + extra)
         return self
 
     def prime_nfc_readers(self, cycles=None):
