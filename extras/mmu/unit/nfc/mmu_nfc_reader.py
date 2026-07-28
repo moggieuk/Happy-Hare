@@ -436,8 +436,8 @@ class MmuNfcReader:
           3. Creality - UID-derived Key B, sector 1 only
         Every read releases its target on completion, so a later attempt would
         find none; the drivers re-select themselves via _ensure_active_target()
-        (and reject a re-selection that picked up a different tag). Bambu/Creality
-        key derivation needs pycryptodome; if it is missing those attempts are
+        (and reject a re-selection that picked up a different tag). 
+        Bambu/Creality key derivation needs pycryptodome; if it is missing those attempts are
         skipped. Returns the block dict for the first usable read, or None.
         Propagates the driver error if the tag leaves the field mid-sequence.
         """
