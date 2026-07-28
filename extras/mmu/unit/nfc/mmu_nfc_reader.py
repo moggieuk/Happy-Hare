@@ -428,13 +428,43 @@ class MmuNfcReader:
         return _type5_parser_memory(read_type5(tag=target_info))
 
 
+    def _retarget(self, uid_hex, reason):
+        """Re-select the tag between authenticated MIFARE read attempts.
+
+        mifare_read_authenticated_blocks() releases the target in a finally
+        block, and the PN532 primitives refuse to run without one
+        (mifare_authenticate() returns False immediately when current_target is
+        None, so no RF traffic happens at all). This is a reimplemnetation of the behavior
+        of the V3 PN532 driver interaciton.   
+
+        Returns True only if the *same* tag is back in the field
+        """
+        try:
+            target_info = self.reader.read_target()
+        except Exception as e:
+            logging.info("mmu_nfc_reader %s: uid=%s retarget (%s) failed: %s",
+                         self.name, uid_hex, reason, e)
+            return False
+        if target_info is None:
+            logging.info("mmu_nfc_reader %s: uid=%s retarget (%s): tag no longer in field",
+                         self.name, uid_hex, reason)
+            return False
+        if target_info.get('uid') != uid_hex:
+            logging.info("mmu_nfc_reader %s: uid=%s retarget (%s): different tag %s present - aborting",
+                         self.name, uid_hex, reason, target_info.get('uid'))
+            self.release(reason="retarget_uid_changed")
+            return False
+        return True
+
+
     def _capture_mifare(self, target_info):
         """Authenticated MIFARE Classic read, trying keys in order:
           1. Bambu    - HKDF-derived Key A, sectors 0-4 (partial auth still
              identifies a Bambu tag)
           2. Factory default Key A, sectors 0-4 (e.g. QIDI Box)
           3. Creality - UID-derived Key B, sector 1 only
-        Each attempt re-selects the tag via the driver. Bambu/Creality key
+        Each attempt after the first re-selects the tag via _retarget(), because
+        every read releases the target on completion. Bambu/Creality key
         derivation needs pycryptodome; if it is missing those attempts are
         skipped. Returns the block dict for the first usable read, or None.
         """
@@ -458,6 +488,11 @@ class MmuNfcReader:
                 (blocks or {}).get('auth_failed_sectors') or [],
                 (blocks or {}).get('read_failed_blocks') or [])
 
+        # True once an attempt has run and therefore consumed (released) the target.
+        # The first attempt to run inherits the live target from read_tag_data()'s
+        # read_target(), so it must not re-select; every later one must.
+        attempted = False
+
         try:
             bambu_keys = parser._bambu_derive_keys(uid_bytes)
         except Exception as e:
@@ -468,13 +503,17 @@ class MmuNfcReader:
         if bambu_keys is not None:
             blocks = self.reader.mifare_read_authenticated_blocks(
                 bambu_keys, sectors=[0, 1, 2, 3, 4], uid_bytes=uid_bytes)
+            attempted = True
             usable = _mifare_usable(blocks, [0, 1, 2, 3, 4], allow_partial=True)
             _log_attempt('bambu', blocks, usable)
             if usable:
                 return blocks
 
+        if attempted and not self._retarget(uid_hex, "default_key"):
+            return None
         blocks = self.reader.mifare_read_authenticated_blocks(
             [b'\xff\xff\xff\xff\xff\xff'] * 16, sectors=[0, 1, 2, 3, 4], uid_bytes=uid_bytes)
+        attempted = True
         usable = _mifare_usable(blocks, [0, 1, 2, 3, 4], allow_partial=False)
         _log_attempt('default_key', blocks, usable)
         if usable:
@@ -487,6 +526,8 @@ class MmuNfcReader:
                          "skipping attempt 'creality': %s", self.name, uid_hex, e)
             creality_key = None
         if creality_key is not None:
+            if attempted and not self._retarget(uid_hex, "creality_key_b"):
+                return None
             sector_keys = [None] * 16
             sector_keys[1] = creality_key
             blocks = self.reader.mifare_read_authenticated_blocks(
