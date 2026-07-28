@@ -3394,7 +3394,12 @@ class MmuController(MmuFilamentMovement):
     def _spoolman_set_spool_uid(self, spool_id, uid, quiet=True):
         """
         Register (write) an NFC/RFID tag UID onto a spool record in Spoolman
-        so future scans of that tag resolve to this spool_id.
+        so future scans of that tag resolve to this spool_id. Called by
+        'MMU_SPOOLMAN SPOOLID=.. RFID=..'.
+
+        This is the opposite direction to _spoolman_register_tag / MMU_NFC REGISTER=1,
+        which takes a UID and finds (or auto-creates) a spool for it. Here the spool
+        already exists and the tag is bound onto it - the case auto-create cannot serve.
 
         Args:
             spool_id: Spool ID to associate the tag with.

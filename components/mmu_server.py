@@ -1472,11 +1472,6 @@ class MmuServer:
         '''
         Register (write) an NFC/RFID tag UID onto a spool record in Spoolman,
         so future scans of that tag resolve to this spool_id.
-
-        NOTE: This is provided for tag-registration workflows but is not yet
-        wired to a Klipper-side command in the private_rfid branch - there is
-        currently no caller. It is registered as a remote method so a future
-        'register this tag to this spool' gcode can use it.
         '''
         if not await self._check_init_spoolman(): return False
         async with self.cache_lock:

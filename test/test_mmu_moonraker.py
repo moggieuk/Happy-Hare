@@ -466,14 +466,44 @@ class TestGateAssignment(MoonrakerTestCase):
                             sync=False, silent=True)
         self.assertEqual(self.hh.db.spool_gate(1), -1)
 
-    def test_set_spool_uid_registers_a_tag(self):
-        """
-        Registered but, per its own docstring, not yet wired to any Klipper command
-        on this branch - so this is the only exercise it gets.
-        """
+
+class TestSetSpoolUid(MoonrakerTestCase):
+    """
+    Binding a tag onto an EXISTING spool - the opposite direction to get_spool_by_uid,
+    which takes a UID and finds or auto-creates a spool. Reached from Klipper as
+    'MMU_SPOOLMAN SPOOLID=.. RFID=..'.
+    """
+
+    SPOOLS = (dict(uid=KNOWN_UID, material='PLA'),
+              dict(material='ABS', vendor='Polymaker'))
+
+    def test_registers_a_tag_on_a_spool_with_none(self):
+        self.assertEqual(self.hh.db.spool_uid(2), '', 'precondition: spool 2 has no tag')
         self.hh.call_remote('spoolman_set_spool_uid', spool_id=2, uid='11:22:33:44',
                             silent=True)
-        self.assertEqual(self.hh.db.spool_uid(2), '11223344')
+        self.assertEqual(self.hh.db.spool_uid(2), '11223344', 'separators must be stripped')
+
+    def test_the_tag_then_resolves_to_that_spool(self):
+        """The round trip is the point - a write nobody can look up is useless."""
+        self.hh.call_remote('spoolman_set_spool_uid', spool_id=2, uid='11223344',
+                            silent=True)
+        self.assertEqual(self.hh.db.find_spool_by_uid('11223344'), 2)
+
+    def test_missing_spool_id_is_refused(self):
+        result = self.hh.call_remote('spoolman_set_spool_uid', spool_id=None,
+                                     uid='11223344', silent=True)
+        self.assertFalse(result)
+
+    def test_missing_uid_is_refused(self):
+        result = self.hh.call_remote('spoolman_set_spool_uid', spool_id=2, uid=None,
+                                     silent=True)
+        self.assertFalse(result)
+        self.assertEqual(self.hh.db.spool_uid(2), '')
+
+    def test_unknown_spool_is_refused(self):
+        result = self.hh.call_remote('spoolman_set_spool_uid', spool_id=999,
+                                     uid='11223344', silent=True)
+        self.assertFalse(result)
 
 
 if __name__ == '__main__':
