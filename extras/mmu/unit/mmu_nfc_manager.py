@@ -397,14 +397,6 @@ class MmuNfcManager:
         self._start_polling()
 
 
-#    def _delayed_bootup_init(self, eventtime):
-#        """One-shot, non-blocking NFC initialization scheduled after bootup."""
-#        self.mmu.log_debug("NFC: initializing readers on %s after bootup delay" % self.mmu_unit.name)
-#        self._init_all_readers()
-#        self._start_polling()
-#        return self.reactor.NEVER
-
-
     def _handle_printing(self, print_time):
         """
         Deactivate all readers while actively printing so no NFC transaction runs
