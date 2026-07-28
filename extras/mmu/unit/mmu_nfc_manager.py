@@ -43,10 +43,17 @@ NFC_READ_TIMEOUT   = 0.1   # Per-poll reader read timeout (seconds) - keep small
 NFC_TAG_HOLD_TIME  = 5.0   # Cooldown after acting on a tag before reading again (seconds)
 NFC_INIT_DELAY     = 2.0   # Let other I2C devices settle before reader initialization
 
-# Homing-poll cadence (NFC-as-endstop). Kept tight for low overshoot, but each
-# read uses a small timeout so the reactor keeps feeding the drip-homing move.
-NFC_HOMING_POLL_INTERVAL = 0.050   # Seconds between homing polls (reactor timer)
-NFC_HOMING_POLL_TIMEOUT  = 0.25   # Max seconds per homing read (caps transceive delay)
+# Homing-poll cadence (NFC-as-endstop). Each tick is a non-blocking presence
+# probe (see MmuNfcReader's "Homing presence probe" section), so detection
+# latency is bounded by the interval rather than by a blocking read. That is
+# what buys homing accuracy: at a gear_homing_speed of ~100mm/s, 0.020s is
+# ~2mm of overshoot where the old 0.25s blocking read was tens of mm.
+#
+# A reader whose driver lacks the probe contract runs the blocking shim, where
+# a tick still costs a bounded read_target(). Polling that at the tight interval
+# would be worse than not tightening at all, so it keeps the slower cadence.
+NFC_HOMING_POLL_INTERVAL      = 0.020   # Seconds between probe ticks (non-blocking driver)
+NFC_HOMING_POLL_INTERVAL_SHIM = 0.050   # Seconds between probe ticks (blocking shim)
 
 
 class MmuNfcManager:
@@ -75,6 +82,11 @@ class MmuNfcManager:
         # timer + one 'active endstop' is sufficient.
         self._homing_poll_timer = self.reactor.register_timer(self._homing_poll)
         self._homing_endstop = None
+        # Reader with a probe scan possibly still in flight. Set when a poll is
+        # armed and cleared by _drain_probe(), so it outlives _homing_endstop (which
+        # is dropped the instant a tag is detected) and covers the window in which
+        # the chip must not be disturbed.
+        self._probe_reader = None
 
         # Per-reader control flags:
         #   enabled - top-level on/off. If disabled a reader is never read (poll,
@@ -109,6 +121,11 @@ class MmuNfcManager:
         # State reset on (re)initialization. Called by mmu_unit.reinit().
         self._last_uid = None   # UID currently "held" (deduped)
         self._hold_until = 0.0  # Monotonic time until which reads are ignored (cooldown)
+        # Safety net: a probe reference that somehow outlived its drain would keep the
+        # shared-reader poll suppressed indefinitely (see _movement_active). reinit only
+        # runs on MMU enable/init, never mid-operation, so nothing legitimately pending
+        # is discarded here - and the readers get re-inited on that path anyway.
+        self._probe_reader = None
 
 
     def _handle_connect(self):
@@ -184,6 +201,11 @@ class MmuNfcManager:
         initiate a Spoolman lookup targeting that gate. Returns the raw UID read
         (or None). This is an *automatic* path so it honors both the enabled and
         active flags. Safe to call with no per-gate reader configured.
+
+        Never deep reads while a homing probe is armed: a deep read takes long
+        enough to wreck homing accuracy and risk a Klipper "Timer too close", so
+        it belongs at a stationary point. Callers homing to a tag should use
+        read_gate_after_home() instead.
         """
         if not self.has_gate_nfc_reader(gate):
             return None
@@ -192,9 +214,59 @@ class MmuNfcManager:
         reader = self._reader_for(gate=gate)
         if reader is None:
             return None
-        uid, metadata = self._read_reader(reader, deep=self._want_metadata())
+        deep = self._want_metadata()
+        if deep and self._homing_endstop is not None:
+            # A bug rather than a configuration choice - say so and degrade to
+            # UID-only rather than stalling the reactor mid-move.
+            self.mmu.log_error(
+                "NFC: refusing a deep read on gate %s while homing to a tag - "
+                "reading UID only (deep reads must run after the move)" % gate)
+            deep = False
+        uid, metadata = self._read_reader(reader, deep=deep)
         if uid:
             self._dispatch_lookup(uid, gate=gate, metadata=metadata)
+        return uid
+
+
+    def read_gate_after_home(self, gate):
+        """
+        Read gate 'gate's tag once a homing move has finished, with the machine
+        stationary. Returns the UID read (or None).
+
+        This is the counterpart to the homing probe: the probe reports presence
+        only, so this is where the UID - and the tag metadata, when nfc_deep_read
+        is on - is actually obtained. Deliberately named for "after a move" rather
+        than "deep", because with nfc_deep_read off the gate map still needs the
+        UID; depth stays read_gate()'s decision.
+
+        Deliberately does NOT reposition the filament. The tag travels on through
+        the deceleration ramp after the probe triggers, so it may no longer be
+        coupled to the antenna - if the read comes back empty we log it and move
+        on rather than jogging to chase it.
+
+        Note on ordering: _homing_poll() disarms itself the instant it detects a tag
+        (and home_wait -> stop_homing_poll is a backstop), so _homing_endstop is clear
+        by the time this runs and read_gate()'s deep-read guard above does not fire.
+        That is intended - do not replicate that guard here or the post-move deep read
+        is silently disabled.
+        """
+        if not self.has_gate_nfc_reader(gate):
+            return None
+        # Drain the move queue before touching the reader. move_filament() already
+        # flushes step generation and do_homing_move() syncs print time, but the
+        # queue drain there is conditional on 'wait', so don't assume it.
+        try:
+            self.mmu.movequeue_wait() # TTC mitigation: read only once motion has stopped
+        except Exception as e:
+            self.mmu.log_error("NFC: gate %s wait-for-stationary failed: %s" % (gate, str(e)))
+        # Now stationary, so it's safe to drain a probe scan still in flight and
+        # hand the chip over clean for a normal read. No-op if home_wait already did.
+        self._drain_probe()
+        uid = self.read_gate(gate)
+        if not uid:
+            self.mmu.log_debug(
+                "NFC: gate %s tag not readable after homing - the tag likely moved "
+                "past the reader during deceleration" % gate)
         return uid
 
 
@@ -533,11 +605,11 @@ class MmuNfcManager:
         if not self._polling or self.mmu is None or self.shared_reader is None:
             return self.reactor.NEVER
 
-        # Respect the reader's enabled (hard off) and active (soft guard) flags,
-        # and stand down while a homing poll is armed so we can't contend with it
-        # on a reader object shared between the shared and gate roles. Keep ticking
-        # so a later re-enable/re-activate/home-finish resumes automatically.
-        if not self.shared_enabled or not self.shared_active or self._homing_endstop is not None:
+        # Respect the reader's enabled (hard off) and active (soft guard) flags, and
+        # stand down while any filament movement is underway (see _movement_active).
+        # Keep ticking so a later re-enable/re-activate/move-finish resumes us
+        # automatically.
+        if not self.shared_enabled or not self.shared_active or self._movement_active():
             return eventtime + NFC_CHECK_INTERVAL
 
         now = self.reactor.monotonic()
@@ -561,6 +633,39 @@ class MmuNfcManager:
             self._last_uid = None
 
         return eventtime + NFC_CHECK_INTERVAL
+
+
+    def _movement_active(self):
+        """
+        True when the shared-reader poll must stand down because the machine is
+        moving. A poll is a live NFC transaction on the reactor thread and a deep
+        one can run for seconds, which starves a drip-homing move and invites a
+        Klipper "Timer too close".
+
+        Two conditions, either of which suppresses:
+
+          1. A homing probe is armed or undrained on ANY unit - not just this
+             manager's. A reader object can serve both the shared and per-gate
+             roles, and even when it doesn't the readers usually share a bus, so
+             checking only our own state leaves a second unit's home unguarded.
+             Keyed on _probe_reader rather than _homing_endstop because it spans
+             the wider window: from arming right through to the drain, including
+             the deceleration ramp after a detection disarms the poll.
+          2. The MMU is mid-operation (action != ACTION_IDLE), which covers every
+             non-NFC homing move too - gate switch, extruder, bowden load. The
+             mmu:printing handler only clears the active flag during a print, and
+             preload/load-gate outside a print is exactly where this bit.
+
+        The whole poll is skipped, not merely downgraded to UID-only: a UID-only
+        read would still dispatch a lookup and set _last_uid/_hold_until, and the
+        dedupe would then block the proper deep re-read for NFC_TAG_HOLD_TIME
+        because the UID matches.
+        """
+        for unit in self.mmu_machine.units:
+            mgr = getattr(unit, 'nfc_manager', None)
+            if mgr is not None and mgr._probe_reader is not None:
+                return True
+        return getattr(self.mmu, 'action', ACTION_IDLE) != ACTION_IDLE
 
 
     def _read_reader(self, reader, deep=False):
@@ -624,8 +729,14 @@ class MmuNfcManager:
     # Homing poll (NFC-as-endstop) ----------------------------------------------
     #
     # Driven by MmuNfcEndstop.home_start/home_wait. While a gate homes filament to
-    # its reader, we tightly poll that reader; a UID read completes the endstop's
-    # homing completion (via trigger_handler), which stops the drip-homing move.
+    # its reader we tick a non-blocking presence probe on that reader; a detection
+    # completes the endstop's homing completion (via trigger_handler), which stops
+    # the drip-homing move.
+    #
+    # The probe reports presence only - no UID, no tag contents. The endstop just
+    # needs a boolean, and reading the tag here is what made homing inaccurate and
+    # risked TTC. The UID (and metadata, if nfc_deep_read is on) is read once
+    # afterwards by read_gate_after_home(), with the machine stationary.
     #
 
     def get_gate_endstop(self, gate):
@@ -635,10 +746,25 @@ class MmuNfcManager:
         return self.gate_endstops.get(gate)
 
 
+    def _homing_poll_interval(self, reader):
+        """
+        Probe tick spacing for 'reader': tight for a driver implementing the
+        non-blocking probe contract, slower for one falling back to the blocking
+        shim (where a tick still costs a bounded read_target()).
+        """
+        try:
+            if reader.has_probe_support():
+                return NFC_HOMING_POLL_INTERVAL
+        except Exception:
+            pass
+        return NFC_HOMING_POLL_INTERVAL_SHIM
+
+
     def start_homing_poll(self, endstop):
         """
-        Begin tightly polling 'endstop's reader for a tag. Clears the sticky
-        UID first so only a live detection triggers. Called from home_start.
+        Begin ticking a presence probe on 'endstop's reader. Clears the sticky
+        UID first so nothing stale can be mistaken for this home's detection,
+        then kicks off the first scan. Called from home_start.
 
         Homing is deliberate so it overrides the 'active' guard, but a *disabled*
         reader can't be read - refuse clearly rather than let the move run its
@@ -652,35 +778,98 @@ class MmuNfcManager:
                 "(re-enable with MMU_NFC ... ENABLE=1)" % endstop.gate)
             return # Don't arm; the move will run full and home_wait reports no trigger
         self._homing_endstop = endstop
+        self._probe_reader = endstop.reader
         try:
             endstop.reader.clear_uid()
+            endstop.reader.probe_start()
         except Exception as e:
-            self.mmu.log_error("NFC: homing clear failed: %s" % str(e))
+            self.mmu.log_error("NFC: homing probe start failed: %s" % str(e))
         self.reactor.update_timer(self._homing_poll_timer, self.reactor.NOW)
 
 
     def stop_homing_poll(self):
         """
-        Stop the homing poll. Called from home_wait (and idempotent).
+        Stop ticking the homing probe and drain it. Called from home_wait, and
+        idempotent - _homing_poll also disarms on a detection, and the drain is
+        separately idempotent via _drain_probe().
+        """
+        self._disarm_homing_poll()
+        self._drain_probe()
+
+
+    def _disarm_homing_poll(self):
+        """
+        Stop the probe timer and clear the 'armed' state, WITHOUT draining the
+        chip (which can block - see _drain_probe). Idempotent.
         """
         self.reactor.update_timer(self._homing_poll_timer, self.reactor.NEVER)
         self._homing_endstop = None
 
 
+    def _drain_probe(self):
+        """
+        Abort/drain a probe scan left in flight, leaving the chip clean for a
+        normal read. Idempotent, and safe to call from either stop_homing_poll()
+        or read_gate_after_home() - whichever gets there first.
+
+        Deliberately separate from _disarm_homing_poll() because this can block:
+        on some chips probe_stop() issues a real RF release (PN532's InRelease has
+        a 200ms timeout of its own, ignoring the caller's). It must therefore only
+        run once the machine is stationary,
+        never at the moment of detection while the move is still decelerating.
+        """
+        reader, self._probe_reader = self._probe_reader, None
+        if reader is None:
+            return # Nothing in flight
+        try:
+            reader.probe_stop()
+        except Exception as e:
+            self.mmu.log_error("NFC: homing probe stop failed: %s" % str(e))
+
+
     def _homing_poll(self, eventtime):
+        """
+        One probe tick. probe_poll() reports True (tag present), False (that scan
+        finished with nothing there) or None (still scanning - ask again). Nothing
+        is ever abandoned mid-scan, which is what keeps the reader in sync across
+        a long run of misses.
+        """
         endstop = self._homing_endstop
         if endstop is None:
             return self.reactor.NEVER
+        reader = endstop.reader
         try:
-            uid = endstop.reader.homing_poll_read(timeout=NFC_HOMING_POLL_TIMEOUT)
+            found = reader.probe_poll()
         except Exception as e:
-            self.mmu.log_error("NFC: homing poll read error: %s" % str(e))
-            uid = None
-        if uid:
+            self.mmu.log_error("NFC: homing probe error: %s" % str(e))
+            found = False
+
+        if found:
             # Tag detected - complete the endstop. Pass the raw reactor eventtime;
             # the endstop's _endstop_trigger_time() converts it to MCU print_time
             # for the homing position calc, while note_filament_present keeps the
-            # reactor time it needs. Then stop polling (home_wait also stops us).
+            # reactor time it needs.
+            #
+            # Disarm before triggering so nothing downstream of the completion can
+            # observe a probe that is still armed - notably read_gate()'s deep-read
+            # guard, which must not fire for the legitimate post-move read.
+            #
+            # Do NOT drain the chip here: on some chips probe_stop() issues a real
+            # RF release (PN532's InRelease can block up to 200ms) and at this instant
+            # the drip move is still decelerating, which is exactly the
+            # reactor-hogging we're removing. A scan left in flight meanwhile is
+            # harmless; _drain_probe() clears it at the next stationary point
+            # (stop_homing_poll from home_wait, or read_gate_after_home).
+            self._disarm_homing_poll()
             endstop.trigger_handler(eventtime, True)
             return self.reactor.NEVER
-        return eventtime + NFC_HOMING_POLL_INTERVAL
+
+        if found is False:
+            # That scan completed empty - start the next one. (None means the
+            # scan is still in flight, so leave it alone and re-check.)
+            try:
+                reader.probe_start()
+            except Exception as e:
+                self.mmu.log_error("NFC: homing probe restart failed: %s" % str(e))
+
+        return eventtime + self._homing_poll_interval(reader)

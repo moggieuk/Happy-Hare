@@ -76,11 +76,71 @@ def _expand(endstops):
     return flat
 
 
+def _home_wait_all(endstops, print_time):
+    """
+    Close out every armed endstop, as real Klipper's HomingMove.homing_move does
+    (it calls mcu_endstop.home_wait(move_end_print_time) on each endstop after the
+    drip move, on both the hit and the miss path).
+
+    HH's host-polled endstops rely on this: MmuVirtualEndstopSensor.home_wait
+    clears the homing completion, and MmuNfcEndstop.home_wait stops the manager's
+    presence probe. Skipping it left probe state armed after the move, which the
+    real firmware path never does.
+
+    Errors are swallowed: on the miss path home_wait raises "No trigger ..." by
+    design, and the caller has its own command_error to raise. We only need the
+    side effects.
+    """
+    for endstop, _name in endstops:
+        home_wait = getattr(endstop, 'home_wait', None)
+        if home_wait is None:
+            continue
+        try:
+            home_wait(print_time)
+        except Exception:
+            pass
+
+
+_NFC_POLL_TICK_LIMIT = 64
+
+
+def _fire_nfc(endstop, eventtime):
+    """
+    Trip an NFC endstop the way the real thing does: by letting MmuNfcManager's poll
+    discover the tag, rather than reaching in and completing the endstop ourselves.
+
+    This matters because the poll loop IS the mechanism under test. A homing move ticks
+    a non-blocking presence probe, and probe_poll() may answer None several times before
+    a scan completes (see MmuNfcReader's probe contract) - behaviour that only exists if
+    something actually ticks it. Calling trigger_handler() directly would bypass the
+    probe entirely and any test about it would be vacuous.
+
+    The model has already been advanced to the trip point by the time we get here, so
+    the tag is in the read window and the poll should find it within a few ticks. The
+    tick budget only guards against looping forever on a genuine bug.
+
+    Returns True if the poll tripped the endstop.
+    """
+    manager = getattr(endstop, '_poll_controller', None)
+    if manager is None or getattr(manager, '_homing_endstop', None) is not endstop:
+        return False        # Never armed (e.g. a disabled reader) - nothing to drive
+    for _ in range(_NFC_POLL_TICK_LIMIT):
+        manager._homing_poll(eventtime)
+        if manager._homing_endstop is None:
+            return True     # Detected: the poll disarmed itself
+    raise AssertionError(
+        'NFC presence probe never tripped %s after %d ticks, though the model says the '
+        'tag is at the reader' % (endstop.name, _NFC_POLL_TICK_LIMIT))
+
+
 def _fire(endstop, print_time, eventtime):
     """Trigger an endstop through whichever entry point its class provides."""
     if isinstance(endstop, mcu_mod.MCU_endstop):
         endstop.trigger(print_time)
         return True
+    if type(endstop).__name__ == 'MmuNfcEndstop':
+        if _fire_nfc(endstop, eventtime):
+            return True
     handler = getattr(endstop, 'trigger_handler', None)
     if handler is not None:
         # Virtual sensors (MmuVirtualEndstopSensor and subclasses, incl. MmuNfcEndstop)
@@ -141,6 +201,7 @@ class HomingMove:
                               'homing MISS [%s]' % ','.join(n for _e, n in leaves))
             toolhead.set_position([target_axis, 0., 0., 0.])
             toolhead.flush_step_generation()
+            _home_wait_all(self.endstops, print_time)
             names = ', '.join(name for _es, name in leaves)
             raise printer.command_error(
                 'No trigger on %s after full movement' % (names or 'endstop',))
@@ -156,6 +217,7 @@ class HomingMove:
         logging.debug('homing: %s tripped after %.3fmm (axis %.3f -> %.3f)',
                       name, travel, start_axis, halt_axis)
 
+        _home_wait_all(self.endstops, print_time)
         for sp in self.stepper_positions:
             sp.note_home_end(print_time)
         return movepos

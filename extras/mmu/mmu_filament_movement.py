@@ -359,8 +359,9 @@ class MmuFilamentMovement:
             return False, False
 
         if compound.get_triggered_endstop_name() == nfc_es_name:
-            # NFC first: tag reached the reader at/before the gate reference
-            tag_read = bool(nfc_mgr.read_gate(gate)) # Deep read if enabled; applies to gate map
+            # NFC first: tag reached the reader at/before the gate reference.
+            # Read once the move has fully stopped (deep if enabled); applies to gate map
+            tag_read = bool(nfc_mgr.read_gate_after_home(gate))
             # Continue to the gate reference so parking behaves like a normal load
             _, homed2, _, _ = self.move_filament(
                 "Preload continue to gate", homing_max,
@@ -378,7 +379,7 @@ class MmuFilamentMovement:
                     "NFC: Preload scan", pos, speed=u.p.gear_homing_speed,
                     motor="gear", homing_move=1, endstop_name=nfc_es_name)
                 if homed2:
-                    tag_read = bool(nfc_mgr.read_gate(gate))
+                    tag_read = bool(nfc_mgr.read_gate_after_home(gate))
                     # Virtual-NFC stop overshoots more than the MCU gate switch; re-home
                     # backward to re-establish the gate reference. Budget off the distance
                     # actually chased (pos isn't bounded by homing_max) plus a margin so
@@ -508,10 +509,13 @@ class MmuFilamentMovement:
                             homing_move=(1 if forward else -1), endstop_name=endstop_name)
 
                         if homed:
-                            # Tag is at the reader now - read it (deep if enabled) and
-                            # apply to the gate map BEFORE we move it away.
+                            # The probe detected the tag at the reader. Read it (deep if
+                            # enabled) and apply to the gate map BEFORE we move it away -
+                            # once the move has fully stopped, since the tag travels on
+                            # through the deceleration ramp and may be at the edge of
+                            # antenna range by now.
                             found = True
-                            nfc_manager.read_gate(gate)
+                            nfc_manager.read_gate_after_home(gate)
 
                         # Re-park in the gate with robust homing, budgeting the jog dist.
                         # Both directions must end PARKED (gate_parking_distance), restoring

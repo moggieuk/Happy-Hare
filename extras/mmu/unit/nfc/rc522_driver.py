@@ -87,6 +87,11 @@ _PCD_RESETPHASE = 0x0F
 
 # PICC (tag) commands
 _PICC_REQIDL    = 0x26   # Request idle — wake tags in the RF field
+# WUPA. Only IDLE tags answer REQA (ISO14443-3); a tag that answered a previous
+# REQA is in READY and stays silent. WUPA is answered from IDLE, READY *and*
+# HALT, which is what a repeated presence probe needs — see probe_poll(). Do not
+# swap _request_a() over to this: the select cascade wants REQA semantics.
+_PICC_WUPA      = 0x52
 _PICC_ANTICOLL_CL1 = 0x93
 _PICC_ANTICOLL_CL2 = 0x95
 _PICC_ANTICOLL_CL3 = 0x97
@@ -160,6 +165,7 @@ class RC522Driver:
         self._debug            = debug
         self._sleep            = sleep_fn if sleep_fn is not None else time.sleep
         self._clear_current_card()
+        self._probe_reset_state()   # Non-blocking presence probe (homing) state
 
     def _clear_current_card(self):
         self.current_target = None
@@ -350,6 +356,129 @@ class RC522Driver:
                           ' '.join('0x%02X' % b for b in back_data))
 
         return MI_OK, back_data, bit_len
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Non-blocking presence probe (homing)
+    # ─────────────────────────────────────────────────────────────────────────
+    #
+    # _transceive() above is one atomic blocking exchange: it starts the send,
+    # sleeps transceive_delay for the tag, then reads the result. That sleep is a
+    # reactor pause, and during a drip-homing move we cannot afford it. The probe
+    # is the same exchange split at that sleep, so the caller can start a send on
+    # one reactor tick and collect the answer on a later one.
+    #
+    # The probe is a single WUPA — no anticollision, no SELECT. It answers "is a
+    # tag here?", which is all the homing endstop needs; the UID is read once
+    # afterwards with the machine stationary.
+
+    _PROBE_WATCHDOG = 0.100   # Seconds before a stuck exchange is abandoned
+
+    def _probe_reset_state(self):
+        self._probe_in_flight = False
+        self._probe_deadline = 0.0
+
+    def probe_start(self):
+        """Start one WUPA exchange. Returns True if the send is underway."""
+        try:
+            # Prologue of _transceive(): enable IRQ sources, clear pending flags,
+            # flush the FIFO, then load WUPA with 7-bit framing and start sending.
+            self._write(_ComIEnReg,    self._read(_ComIEnReg) | 0x80)
+            self._write(_ComIrqReg,    self._read(_ComIrqReg) & 0x7F)
+            self._write(_FIFOLevelReg, self._read(_FIFOLevelReg) | 0x80)
+            self._write(_CommandReg,   _PCD_IDLE)
+            self._write(_BitFramingReg, 0x07)   # 7-bit frame, as _request_a does
+            self._write(_FIFODataReg,  _PICC_WUPA)
+            self._write(_CommandReg,   _PCD_TRANSCEIVE)
+            self._write(_BitFramingReg, self._read(_BitFramingReg) | 0x80)  # StartSend
+            self._probe_in_flight = True
+            self._probe_deadline = time.time() + self._PROBE_WATCHDOG
+            return True
+        except Exception as e:
+            if self._debug >= 3:
+                logger.info("RC522: gate %s probe_start failed: %s", self._gate, e)
+            self._probe_reset_state()
+            return False
+
+    def probe_poll(self):
+        """Collect the WUPA result without blocking.
+
+        Returns True (tag answered), False (exchange finished, nothing there) or
+        None (still in flight - call again on the next tick).
+        """
+        if not self._probe_in_flight:
+            return False
+        try:
+            irq = self._read(_ComIrqReg)
+            # RxIRq (0x20) / IdleIRq (0x10) mean the exchange completed; TimerIRq
+            # (0x01) means the RC522's internal timer expired with no answer. None
+            # of them set yet means the send is still in progress.
+            if not (irq & 0x31):
+                if time.time() > self._probe_deadline:
+                    # Should not happen - the internal timer fires in ~0.5ms. Treat
+                    # a wedged exchange as "no tag" and let the caller restart.
+                    if self._debug >= 3:
+                        logger.info("RC522: gate %s probe watchdog fired "
+                                    "(IRQ=0x%02X)", self._gate, irq)
+                    self._probe_finish()
+                    return False
+                return None
+
+            self._probe_finish()
+            if (irq & 0x01) and not (irq & 0x30):
+                return False    # Timer expired, no tag response
+            if self._read(_ErrorReg) & 0x1B:
+                return False    # Collision/CRC/overflow/parity - not a clean detect
+            # A valid ATQA is 2 bytes. Anything less isn't a tag answering.
+            return self._read(_FIFOLevelReg) >= 2
+        except Exception as e:
+            if self._debug >= 3:
+                logger.info("RC522: gate %s probe_poll failed: %s", self._gate, e)
+            self._probe_reset_state()
+            return False
+
+    def _probe_finish(self):
+        """Clear StartSend and drop the in-flight marker."""
+        try:
+            self._write(_BitFramingReg, self._read(_BitFramingReg) & 0x7F)
+        except Exception:
+            pass
+        self._probe_reset_state()
+
+    def probe_stop(self):
+        """Abandon any exchange in flight and hand the tag back in IDLE.
+
+        The IDLE part matters. Our probe wakes tags with WUPA, so a detected tag is
+        left in READY - and the read_target() that follows starts with _request_a(),
+        i.e. REQA, which READY tags do not answer. Without this the post-move read
+        would fail every time on a tag the probe had just found.
+
+        HALT is not the answer either (tags in HALT ignore REQA too). Instead drop
+        the RF field briefly: unpowered PICCs reset, so they come back up in IDLE
+        and answer REQA normally. Only needed once, on the handoff - within a homing
+        run WUPA keeps working from READY.
+        """
+        if self._probe_in_flight:
+            self._probe_finish()
+        try:
+            self._write(_CommandReg, _PCD_IDLE)
+            # Field down, then back up. Restore the TX bits unconditionally -
+            # is_alive() reports the reader dead if they are left clear.
+            tx = self._read(_TxControlReg)
+            self._write(_TxControlReg, tx & ~0x03)
+            self._sleep(0.002)            # Let PICCs fully power down
+            self._write(_TxControlReg, tx | 0x03)
+            self._sleep(0.002)            # Let them power back up into IDLE
+        except Exception as e:
+            if self._debug >= 3:
+                logger.info("RC522: gate %s probe_stop field reset failed: %s",
+                            self._gate, e)
+            # Best effort to leave the antenna on regardless
+            try:
+                self._write(_TxControlReg, self._read(_TxControlReg) | 0x03)
+            except Exception:
+                pass
+            return False
+        return True
 
     # ─────────────────────────────────────────────────────────────────────────
     # ISO14443A target select and Type-2 reads

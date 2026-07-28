@@ -991,6 +991,17 @@ class PN7160Handler:
                         return tag, select_frame, frames
         return None
 
+    def is_tag_present_ntf(self, frame):
+        """True if 'frame' means a tag is in the RF field.
+
+        Either notification qualifies: RF_DISCOVER_NTF (a tag was found, awaiting
+        selection) or RF_INTF_ACTIVATED_NTF (discovery auto-activated a lone tag).
+        For a presence check that is the whole answer - no selection needed, which is
+        what lets the homing probe avoid select_discovered_endpoint()'s blocking
+        NCI command. See PN7160Driver.probe_poll().
+        """
+        return self._is_activation_ntf(frame) or self._is_discover_ntf(frame)
+
     def _is_activation_ntf(self, frame):
         return (_message_type(frame) == NCI_MT_NTF
                 and _gid(frame) == NCI_GID_RF and _oid(frame) == 0x05)
@@ -1094,6 +1105,9 @@ class PN7160Driver:
         self._needs_full_setup = True
         self._discovery_active = False
         self._clear_current_card()
+        # Non-blocking presence probe (homing) state
+        self._probe_active = False
+        self._probe_deadline = 0.0
 
         # Advanced PN7160 tuning options are intentionally hidden from the
         # default config templates.  Users can still override them in a specific
@@ -1172,6 +1186,112 @@ class PN7160Driver:
             self._handler.connect_nci(reset=False, keep_config=True)
         self._alive = True
         self._needs_full_setup = False
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Non-blocking presence probe (homing)
+    # ─────────────────────────────────────────────────────────────────────────
+    #
+    # read_target() blocks in wait_for_activation(), which loops on wait_frame()
+    # with reactor pauses until a tag activates or the timeout expires. A
+    # drip-homing move can't afford that, so the probe drives the same NCI
+    # sequence one frame at a time: start_discovery() once, then each reactor tick
+    # collects at most one pending frame and asks whether it means a tag is there.
+    #
+    # This needs a way to ask "is a frame waiting?" without waiting, and only the
+    # IRQ line gives that (PN7160Handler._irq_callback keeps irq_state current, so
+    # reading it is free). In polled mode the sole way to find out is to attempt a
+    # read, which is exactly the blocking behaviour we're avoiding - so
+    # probe_supported() declines and MmuNfcReader falls back to its blocking shim.
+    #
+    # The probe reports PRESENCE and stops there - it never selects or activates the
+    # tag. That is not just a simplification: activation goes through
+    # select_discovered_endpoint(), which issues an NCI command with a 1 second
+    # timeout, and blocking that long mid-move is precisely what this change exists
+    # to remove. read_target() does the full discover-and-activate afterwards, once
+    # the machine is stationary.
+
+    _PROBE_WATCHDOG = 2.0   # Seconds before a stalled discovery is restarted
+
+    def probe_supported(self):
+        """Non-blocking probing needs the IRQ line; polled mode can't do it."""
+        return bool(getattr(self._handler, 'irq_enabled', False))
+
+    def probe_start(self):
+        """Bring up RF discovery and begin listening for an activation frame."""
+        try:
+            self._setup_for_read()
+            self._handler.start_discovery()
+            self._discovery_active = True
+            self._probe_deadline = self._handler.reactor.monotonic() + self._PROBE_WATCHDOG
+            self._probe_active = True
+            return True
+        except Exception as e:
+            logger.warning("PN7160 probe_start gate %s failed: %s", self._gate, e)
+            self._probe_active = False
+            self._alive = False
+            self._handler.initialized = False
+            self._needs_full_setup = True
+            return False
+
+    def probe_poll(self):
+        """Collect at most one pending NCI frame.
+
+        Returns True (a tag is in the field), False (discovery failed or stalled - the
+        caller should restart) or None (nothing pending yet).
+
+        On a tick with no IRQ pending this does no bus I/O and no waiting at all. On
+        the tick that does read a frame, read_frame_once() ends with
+        _wait_for_irq_release(), bounded at 50ms - acceptable because that is the
+        detection tick, after which the move is stopping anyway.
+        """
+        if not self._probe_active:
+            return False
+        try:
+            if not self._handler.irq_state:
+                if self._handler.reactor.monotonic() > self._probe_deadline:
+                    # Discovery has produced nothing at all - tear down so the
+                    # caller's restart gets a clean NFCC rather than a wedged one.
+                    self._probe_stop_discovery()
+                    return False
+                return None
+
+            frame = self._handler.read_frame_once()
+            if self._handler.is_tag_present_ntf(frame):
+                # Presence is all we need. Do NOT go on to select/activate here -
+                # that path blocks on an NCI command; read_target() does it later.
+                self._probe_active = False
+                return True
+            return None     # Some other notification - keep listening
+        except PN7160NoTag:
+            self._probe_stop_discovery()
+            return False
+        except Exception as e:
+            logger.warning("PN7160 probe_poll gate %s failed: %s", self._gate, e)
+            self._probe_active = False
+            self._alive = False
+            self._handler.initialized = False
+            self._needs_full_setup = True
+            self._clear_current_card()
+            return False
+
+    def _probe_stop_discovery(self):
+        self._probe_active = False
+        self._stop_discovery(reason="probe")
+
+    def probe_stop(self):
+        """Tear down discovery and drop any activated target.
+
+        stop_discovery() already honours the 25ms RF_DEACTIVATE guard the NXP
+        firmware notes require before the next RF_DISCOVER, so the following
+        read_target() starts cleanly.
+        """
+        self._probe_active = False
+        try:
+            self._release_current_target(reason="probe_stop")
+        except Exception as e:
+            logger.warning("PN7160 probe_stop gate %s failed: %s", self._gate, e)
+            return False
+        return True
 
     def read_tag(self, timeout=None):
         target_info = self.read_target(timeout=timeout)

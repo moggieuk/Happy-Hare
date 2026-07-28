@@ -23,6 +23,11 @@ import logging
 import unittest
 
 from test.hh import session
+from test.hh.bootstrap import install
+
+install()   # Put the fake klippy root on sys.path before importing MMU modules
+
+from extras.mmu.unit import mmu_nfc_manager
 
 logging.getLogger().setLevel(logging.CRITICAL)
 
@@ -192,6 +197,225 @@ class TestPreloadNfcCompound(NfcScanTestCase):
         trips = [r for _g, _d, r in self.fil.history if 'mmu_exit_0' in r]
         self.assertTrue(trips, 'with no tag the gate switch must be what stops the move')
         self.assertEqual(self.hh.mmu.gate_status[0], GATE_AVAILABLE)
+
+
+class NfcProbeTestCase(NfcScanTestCase):
+    """Base for the presence-probe tests: deep reads on, probe path selectable."""
+
+    PROBE_SUPPORT = False
+
+    def setUp(self):
+        super().setUp()
+        # nfc_deep_read is the setting that used to make homing slow: it turned the
+        # homing poll's read into a full metadata read. Every test below runs with it
+        # ON, because that is the configuration the split has to make safe.
+        self.hh.mmu.mmu_unit(0).p.nfc_deep_read = 1
+        for chip in self.hh.nfc_chips.values():
+            chip.probe_support = self.PROBE_SUPPORT
+
+    def scan_gate_0(self, tag=TAG, position=None):
+        self.fil.attach_tag(0, tag)
+        self.hh.place_filament(0, position=position) if position is not None \
+            else self.hh.place_filament(0)
+        self.hh.mmu.select_gate(0)
+        self.hh.run_gcode('MMU_NFC_SCAN GATE=0')
+
+
+class TestHomingUsesPresenceProbeOnly(NfcProbeTestCase):
+    """
+    The core invariant: a homing move must never read the tag.
+
+    A deep read is slow enough to wreck homing accuracy and risk a Klipper "Timer too
+    close", so homing gets a presence probe and the tag is read once afterwards, with
+    the machine stationary.
+    """
+
+    PROBE_SUPPORT = True
+
+    def test_homing_probes_and_does_not_read(self):
+        chip = self.hh.chip(0)
+        self.scan_gate_0()
+
+        self.assertGreater(chip.probe_starts, 0, 'homing never started a presence probe')
+        self.assertGreater(chip.probe_polls, 0, 'homing never ticked the probe')
+        # The invariant that matters: reads either side of the probe window are fine
+        # (_jog_scan pre-reads, read_gate_after_home reads once stopped) but never inside.
+        self.assertEqual(chip.reads_during_probe(), 0,
+                         'the tag was read while the homing probe was running: %r'
+                         % (chip.events,))
+
+    def test_the_tag_is_still_read_after_the_move(self):
+        """The probe reports presence only, so the read has to happen somewhere."""
+        chip = self.hh.chip(0)
+        self.scan_gate_0()
+        self.assertIn('probe_stop', chip.events)
+        after = chip.events[chip.events.index('probe_stop'):]
+        self.assertIn('read', after,
+                      'nothing read the tag after the move - the gate map would never '
+                      'learn the UID')
+
+    def test_probe_is_stopped_after_a_hit(self):
+        chip = self.hh.chip(0)
+        self.scan_gate_0()
+        self.assertGreater(chip.probe_stops, 0,
+                           'a detected probe was never drained - a held target would '
+                           'leak into the next operation')
+
+    def test_probe_is_stopped_after_a_miss(self):
+        """No tag anywhere: the probe still has to be torn down."""
+        chip = self.hh.chip(0)
+        self.hh.place_filament(0)
+        self.hh.mmu.select_gate(0)
+        self.hh.run_gcode('MMU_NFC_SCAN GATE=0')
+        self.assertGreater(chip.probe_starts, 0)
+        self.assertGreater(chip.probe_stops, 0, 'a missed probe was never drained')
+
+    def test_scan_still_finds_the_tag_with_deep_read_on(self):
+        self.scan_gate_0()
+        self.assertIn('tag read', ' '.join(self.hh.console).lower())
+        self.assertEqual(self.hh.errors, [])
+
+    def test_probe_may_straddle_several_ticks(self):
+        """
+        The point of the non-blocking contract: a scan that isn't finished yet answers
+        None and is picked up by a later tick, rather than being abandoned and restarted.
+        """
+        chip = self.hh.chip(0)
+        chip.probe_latency_ticks = 3
+        self.scan_gate_0()
+        self.assertIn('tag read', ' '.join(self.hh.console).lower(),
+                      'a probe spanning several ticks failed to detect the tag')
+        self.assertGreater(chip.probe_polls, chip.probe_starts,
+                           'a straddling scan must be polled more often than it is started')
+        self.assertEqual(self.hh.errors, [])
+
+    def test_a_probe_never_reports_a_uid_without_a_read(self):
+        """
+        get_status() publishes 'present' and 'uid' together, so a probe must not set
+        either - only a real read may. present=True with uid=None is a pair no consumer
+        has ever seen.
+        """
+        reader = self.hh.mmu.mmu_unit(0).nfc_manager.gate_readers[0]
+        self.fil.attach_tag(0, TAG)
+        self.hh.place_filament(0, position=self.fil.layout['mmu_nfc'])
+        reader.clear_uid()
+        self.assertTrue(reader.probe_start())
+        self.assertTrue(reader.probe_poll(), 'probe should see the tag here')
+        self.assertIsNone(reader.last_uid, 'a probe must not set last_uid')
+        self.assertFalse(reader.present, 'a probe must not set present')
+        reader.probe_stop()
+
+    def test_repeated_probes_keep_seeing_a_stationary_tag(self):
+        """
+        Regression guard for the RC522 REQA/READY trap: only IDLE tags answer REQA, so a
+        probe built on it detects a tag once and then goes silent. Every tick against a
+        tag that is still sitting there must report present.
+        """
+        reader = self.hh.mmu.mmu_unit(0).nfc_manager.gate_readers[0]
+        self.fil.attach_tag(0, TAG)
+        self.hh.place_filament(0, position=self.fil.layout['mmu_nfc'])
+        for tick in range(5):
+            reader.probe_start()
+            self.assertTrue(reader.probe_poll(),
+                            'probe tick %d stopped seeing a stationary tag' % tick)
+        reader.probe_stop()
+
+    def test_tight_poll_interval_is_used(self):
+        manager = self.hh.mmu.mmu_unit(0).nfc_manager
+        reader = manager.gate_readers[0]
+        self.assertTrue(reader.has_probe_support())
+        self.assertEqual(manager._homing_poll_interval(reader),
+                         mmu_nfc_manager.NFC_HOMING_POLL_INTERVAL)
+
+
+class TestHomingProbeShimFallback(NfcProbeTestCase):
+    """
+    A driver without the probe contract must still home. MmuNfcReader falls back to one
+    bounded read_target() per tick, and the manager slows the cadence to match.
+    """
+
+    PROBE_SUPPORT = False
+
+    def test_shim_still_finds_the_tag(self):
+        self.scan_gate_0()
+        self.assertIn('tag read', ' '.join(self.hh.console).lower())
+        self.assertEqual(self.hh.errors, [])
+
+    def test_shim_reader_reports_no_probe_support(self):
+        reader = self.hh.mmu.mmu_unit(0).nfc_manager.gate_readers[0]
+        self.assertFalse(reader.has_probe_support(),
+                         'probe_supported() must be honoured, so a declining driver '
+                         'takes the shim')
+
+    def test_shim_uses_the_slower_poll_interval(self):
+        manager = self.hh.mmu.mmu_unit(0).nfc_manager
+        reader = manager.gate_readers[0]
+        self.assertEqual(manager._homing_poll_interval(reader),
+                         mmu_nfc_manager.NFC_HOMING_POLL_INTERVAL_SHIM)
+        self.assertGreater(mmu_nfc_manager.NFC_HOMING_POLL_INTERVAL_SHIM,
+                           mmu_nfc_manager.NFC_HOMING_POLL_INTERVAL,
+                           'the shim cadence must be the slower of the two - a blocking '
+                           'tick at the tight interval is worse than not tightening')
+
+
+class TestDeepReadIsKeptOutOfMoves(NfcProbeTestCase):
+    """The guards that make "no tag read while moving" structural, not incidental."""
+
+    PROBE_SUPPORT = True
+
+    def test_read_gate_refuses_a_deep_read_while_a_probe_is_armed(self):
+        manager = self.hh.mmu.mmu_unit(0).nfc_manager
+        endstop = manager.get_gate_endstop(0)
+        self.fil.attach_tag(0, TAG)
+        self.hh.place_filament(0, position=self.fil.layout['mmu_nfc'])
+
+        manager.start_homing_poll(endstop)
+        self.assertIsNotNone(manager._homing_endstop, 'poll should be armed')
+        chip = self.hh.chip(0)
+        chip.reads = 0
+        manager.read_gate(0)
+        manager.stop_homing_poll()
+
+        self.assertTrue(any('refusing a deep read' in e for e in self.hh.errors),
+                        'read_gate() must refuse to deep read while a probe is armed')
+
+    def test_post_move_read_is_allowed(self):
+        """
+        The mirror image: read_gate_after_home() runs once the probe is disarmed, so the
+        guard must NOT fire for it or the deep read is silently disabled.
+        """
+        self.scan_gate_0()
+        self.assertFalse(any('refusing a deep read' in e for e in self.hh.errors),
+                         'the guard fired on the legitimate post-move read')
+        self.assertEqual(self.hh.errors, [])
+
+    def test_shared_poll_stands_down_while_a_probe_is_armed(self):
+        manager = self.hh.mmu.mmu_unit(0).nfc_manager
+        endstop = manager.get_gate_endstop(0)
+        self.assertFalse(manager._movement_active(),
+                         'nothing is moving yet')
+        manager.start_homing_poll(endstop)
+        self.assertTrue(manager._movement_active(),
+                        'an armed probe must suppress the shared-reader poll')
+        manager.stop_homing_poll()
+        self.assertFalse(manager._movement_active(),
+                         'suppression must lift once the probe is drained')
+
+    def test_suppression_spans_the_deceleration_ramp(self):
+        """
+        A detection disarms the poll immediately (so the deep-read guard clears) but the
+        chip may still have a scan in flight through the deceleration ramp, so
+        suppression has to outlive _homing_endstop.
+        """
+        manager = self.hh.mmu.mmu_unit(0).nfc_manager
+        endstop = manager.get_gate_endstop(0)
+        manager.start_homing_poll(endstop)
+        manager._disarm_homing_poll()
+        self.assertIsNone(manager._homing_endstop)
+        self.assertTrue(manager._movement_active(),
+                        'an undrained probe must keep the shared poll suppressed')
+        manager._drain_probe()
+        self.assertFalse(manager._movement_active())
 
 
 class TestReparkDrift(NfcScanTestCase):

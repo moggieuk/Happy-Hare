@@ -63,6 +63,11 @@ from . import pn532_driver
 
 _instances = []
 
+# Bounded read_target() wait used by the blocking probe shim (seconds), for
+# drivers that don't implement the non-blocking probe contract. Sized to one
+# shim-rate homing poll tick - see the "Homing presence probe" section below.
+PROBE_SHIM_TIMEOUT = 0.050
+
 
 # ── Deep-read helpers (tag-type classification + memory shaping) ───────────────
 
@@ -265,12 +270,32 @@ class MmuNfcReader:
         return uid
 
 
-    # ---- Homing poll (NFC-as-endstop) -------------------------------------
+    # ---- Homing presence probe (NFC-as-endstop) ---------------------------
     #
-    # Used only while a gate is homing filament to its NFC reader. The reader's
-    # last UID is "sticky", so it's cleared first, then polled tightly with a
-    # small timeout (which caps the per-read transceive delay) so each poll stays
-    # short enough not to disturb the drip-homing move.
+    # Used only while a gate is homing filament to its NFC reader. A drip-homing
+    # move needs the reactor back promptly, so the probe asks "is a tag here?"
+    # and nothing more - it does NOT read the UID. The endstop only needs a
+    # boolean to complete its homing completion, and the gate map gets its UID
+    # from the stationary post-move read (MmuNfcManager.read_gate_after_home).
+    #
+    # Why a probe rather than a UID read, in reactor terms: a read cannot return
+    # until it has an answer, and "nothing there" is the most expensive answer a
+    # reader gives - which is the answer every poll gets until the very last one.
+    # On PN532 there is no "nothing there" at all: InListPassiveTarget retries
+    # activation forever (MxRtyPassiveActivation defaults 0xFF), so the read sat
+    # yielding every 5ms until its own 250ms timeout expired, ~50 pause/resume
+    # cycles per poll, and then abandoned a command still running on the chip -
+    # whose late reply the next command's ACK wait then read as garbage. A probe
+    # tick is one bus transaction and a real return, so "not yet" costs nothing
+    # and nothing is ever abandoned.
+    #
+    # Drivers implementing the non-blocking contract (probe_start / probe_poll /
+    # probe_stop) are driven directly, one bus transaction per tick. Any driver
+    # that doesn't falls back to the shim here: one bounded read_target() per
+    # tick. The shim still blocks, so it is no better than the old path on a miss
+    # - the manager just polls it at a slower interval (see
+    # MmuNfcManager._homing_poll_interval) rather than making things worse by
+    # ticking a blocking read faster.
 
     def clear_uid(self):
         """Forget the sticky last-read UID and release any held target, so the
@@ -280,11 +305,79 @@ class MmuNfcReader:
         self.present = False
 
 
-    def homing_poll_read(self, timeout=0.020):
-        """One fast UID-only poll for the homing loop. Returns the UID hex or None.
-        'timeout' caps the driver transceive wait (min(timeout, transceive_delay))
-        so a poll stays short; keep it well under the ~50ms drip-segment budget."""
-        return self.read_uid(timeout=timeout)
+    def has_probe_support(self):
+        """True if the driver implements the full non-blocking probe contract.
+
+        A driver may also expose probe_supported() to answer per *configuration*
+        rather than per class - PN7160 can only probe without blocking when its IRQ
+        line is wired, so it declines when running in polled mode.
+        """
+        if not all(callable(getattr(self.reader, name, None))
+                   for name in ('probe_start', 'probe_poll', 'probe_stop')):
+            return False
+        supported = getattr(self.reader, 'probe_supported', None)
+        if callable(supported):
+            try:
+                return bool(supported())
+            except Exception:
+                return False
+        return True
+
+
+    def probe_start(self):
+        """Kick off one presence scan.
+
+        A no-op for the shim, which does all its work in probe_poll(). Returns
+        True if a scan is now underway (or the shim will run one next tick).
+        """
+        if not self.has_probe_support():
+            return True
+        try:
+            return bool(self.reader.probe_start())
+        except Exception as e:
+            logging.warning("mmu_nfc_reader %s: probe_start failed: %s", self.name, e)
+            return False
+
+
+    def probe_poll(self):
+        """Non-blocking presence check driven by the manager's homing poll.
+
+        Returns True (tag present), False (scan finished, nothing there) or None
+        (still scanning - ask again next tick).
+
+        Deliberately updates NO reader state. A probe is not a read, so last_uid
+        and last_target_info stay as they were and 'present' is left alone:
+        get_status() publishes 'present' and 'uid' as a pair, and reporting
+        present=True with uid=None is a combination no consumer has seen. Sensor
+        state moves only via the endstop's trigger_handler().
+        """
+        if self.has_probe_support():
+            try:
+                return self.reader.probe_poll()
+            except Exception as e:
+                logging.warning("mmu_nfc_reader %s: probe_poll failed: %s", self.name, e)
+                return False
+        # Shim: one bounded blocking scan per tick. Never returns None - a
+        # blocking read always has an answer. No release here; probe_stop()
+        # owns that.
+        read_target = getattr(self.reader, 'read_target', None)
+        if read_target is None:
+            return bool(self.reader.read_tag(timeout=PROBE_SHIM_TIMEOUT))
+        return read_target(timeout=PROBE_SHIM_TIMEOUT) is not None
+
+
+    def probe_stop(self):
+        """Abort/drain any scan in flight, leaving the chip clean for a normal
+        read_target(). Idempotent - both _homing_poll and home_wait call it."""
+        if self.has_probe_support():
+            try:
+                self.reader.probe_stop()
+            except Exception as e:
+                logging.warning("mmu_nfc_reader %s: probe_stop failed: %s", self.name, e)
+            return
+        # Shim: read_target() selects a target on a hit, so release it here so
+        # nothing is held into the next operation.
+        self.release(reason="probe_stop")
 
 
     # ---- Deep read (UID + parsed tag metadata) ----------------------------

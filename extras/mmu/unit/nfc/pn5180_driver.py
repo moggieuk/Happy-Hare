@@ -754,6 +754,28 @@ class PN5180Driver:
         finally:
             self._core.rf_timeout = original_timeout
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # Non-blocking presence probe (homing) - deliberately NOT implemented
+    # ─────────────────────────────────────────────────────────────────────────
+    #
+    # PN532/RC522/PN7160 expose probe_start/probe_poll/probe_stop so a homing move
+    # can tick a presence check without blocking the reactor. This driver does not,
+    # so MmuNfcReader falls back to its blocking shim: one bounded read_target()
+    # per (slower) tick, with no per-tick release.
+    #
+    # Why not here: _read_target_once() walks a tuple of protocols ('ntag',
+    # 'iso15693'), each a complete RF activation sequence gated on busy_pin
+    # transitions via _wait_busy_low(). Splitting that into a resumable state
+    # machine means restructuring both protocol paths and the busy handshake - a
+    # much larger change than the PN532/RC522 splits, and one that can't be
+    # validated without the hardware in hand.
+    #
+    # The shim is a reasonable stand-in here: rf_timeout already defaults to 0.050,
+    # so a tick is bounded at roughly that, and dropping the per-tick release
+    # removes the bulk of the old cost. If this reader is used for tag homing and
+    # accuracy matters, implementing the contract here is the remaining work -
+    # _busy_asserted() is already a non-blocking readiness predicate to build on.
+
     def read_tag(self, timeout=None):
         target = self.read_target(timeout=timeout)
         if target is None:

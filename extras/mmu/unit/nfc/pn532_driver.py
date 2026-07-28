@@ -211,6 +211,153 @@ class _PN532Base:
         self._low_level_debug = low_level_debug
         self._sleep          = sleep_fn if sleep_fn is not None else time.sleep
         self._clear_current_card()
+        self._probe_reset_state()   # Non-blocking presence probe (homing) state
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Non-blocking presence probe (homing)
+    # ─────────────────────────────────────────────────────────────────────────
+    #
+    # _transceive() is one atomic blocking exchange: send, wait for the ACK, then
+    # wait for the response, yielding the reactor every 5ms throughout. During a
+    # drip-homing move we can't afford to sit in it - and worse, giving it a short
+    # timeout used to ABANDON an InListPassiveTarget still running on the chip, so
+    # its late response was then read as garbage by the next command's ACK wait.
+    #
+    # The probe is that same exchange as an explicit state machine, one bus
+    # transaction per reactor tick:
+    #
+    #   probe_start()          send InListPassiveTarget          stage -> 'ack'
+    #   probe_poll() ... None  status not ready yet              stage unchanged
+    #   probe_poll() ... None  ACK collected                     stage -> 'response'
+    #   probe_poll() ... True  target found  (or False: none)    stage -> None
+    #
+    # Nothing is ever abandoned mid-flight, which is what keeps the chip in sync
+    # across a long run of misses. Note that on PN532 a scan legitimately stays in
+    # flight indefinitely while no tag is present (MxRtyPassiveActivation defaults
+    # to 0xFF, so InListPassiveTarget retries forever). That suits this model
+    # perfectly - the in-flight scan IS the detector, so it answers as soon as a
+    # tag arrives and detection latency is one tick, not one scan. The watchdog is
+    # therefore deliberately generous: it exists to recover a wedged chip, not to
+    # cut short a healthy scan.
+    #
+    # Subclasses supply the transport primitives: _probe_status_ready(),
+    # _probe_fetch_ack(), _probe_fetch_response() and _probe_send_abort().
+
+    _PROBE_WATCHDOG = 2.0   # Seconds before a wedged exchange is abandoned
+
+    def _probe_reset_state(self):
+        self._probe_stage = None     # None | 'ack' | 'response'
+        self._probe_deadline = 0.0
+
+    def probe_start(self):
+        """Start one InListPassiveTarget scan. Returns True if the send went out."""
+        try:
+            self._send([_CMD_INLISTPASSIVETARGET, 0x01, _BRTY_ISO14443A_106KBPS])
+        except Exception as e:
+            if self._debug >= 3:
+                logger.info("probe_start: gate %s (%s) send failed: %s",
+                            self._gate, self._transport_name, e)
+            self._probe_reset_state()
+            return False
+        self._probe_stage = 'ack'
+        self._probe_deadline = time.time() + self._PROBE_WATCHDOG
+        return True
+
+    def probe_poll(self):
+        """Advance the probe by one bus transaction.
+
+        Returns True (target found), False (scan finished with nothing there, or
+        it failed) or None (still in flight - call again on the next tick).
+        """
+        if self._probe_stage is None:
+            return False
+        try:
+            if not self._probe_status_ready():
+                if time.time() > self._probe_deadline:
+                    if self._debug >= 3:
+                        logger.info("probe_poll: gate %s (%s) watchdog fired in "
+                                    "stage '%s'", self._gate,
+                                    self._transport_name, self._probe_stage)
+                    self._probe_abort()
+                    return False
+                return None
+
+            if self._probe_stage == 'ack':
+                if not self._probe_fetch_ack():
+                    if self._debug >= 3:
+                        logger.info("probe_poll: gate %s (%s) bad ACK",
+                                    self._gate, self._transport_name)
+                    self._probe_abort()
+                    return False
+                # ACK only confirms the command was accepted; the scan result
+                # arrives in a separate frame, so keep waiting.
+                self._probe_stage = 'response'
+                return None
+
+            payload = self._probe_fetch_response(0x4B, _MAX_RESPONSE_BYTES)
+            self._probe_stage = None
+            target_info = _parse_inlist_payload(payload)
+            if target_info is None:
+                self._clear_current_card()
+                return False
+            self._set_current_card(target_info)
+            if self._debug >= 3:
+                logger.info("probe_poll: gate %s (%s) tag present uid=%s",
+                            self._gate, self._transport_name,
+                            target_info.get('uid'))
+            return True
+        except Exception as e:
+            if self._debug >= 3:
+                logger.info("probe_poll: gate %s (%s) failed: %s",
+                            self._gate, self._transport_name, e)
+            self._probe_reset_state()
+            return False
+
+    def _probe_abort(self):
+        """Cancel a command still in flight and discard any late response.
+
+        Writing an ACK frame back to the PN532 aborts the running command - the
+        documented way out of an InListPassiveTarget that would otherwise retry
+        activation forever.
+        """
+        self._probe_stage = None
+        try:
+            self._probe_send_abort()
+        except Exception as e:
+            if self._debug >= 4:
+                logger.debug("_probe_abort: gate %s (%s) abort write failed: %s",
+                             self._gate, self._transport_name, e)
+            return
+        # Drain a response that may already have been queued before the abort
+        # landed, so it can't be mistaken for the next command's ACK. Bounded and
+        # best-effort - a few short yields, not a full blocking wait.
+        for _ in range(4):
+            try:
+                if self._probe_status_ready():
+                    self._probe_fetch_response(0x4B, _MAX_RESPONSE_BYTES)
+                    break
+            except Exception:
+                break
+            self._sleep(0.005)
+
+    def probe_stop(self):
+        """Abandon any scan in flight and leave the chip clean for read_target().
+
+        InListPassiveTarget leaves a detected target selected, so release it here.
+        This is the InRelease read_tag() paid on any poll that actually found a tag -
+        bounded at 200ms by _release_current_target's own timeout, which ignores the
+        caller's. Doing it once, at a stationary point, is the whole point of the split.
+        """
+        if self._probe_stage is not None:
+            self._probe_abort()
+        try:
+            self._release_current_target(reason="probe_stop")
+        except Exception as e:
+            if self._debug >= 4:
+                logger.debug("probe_stop: gate %s (%s) release failed: %s",
+                             self._gate, self._transport_name, e)
+            return False
+        return True
 
     # ─────────────────────────────────────────────────────────────────────────
     # Frame construction (transport-agnostic)
@@ -981,6 +1128,33 @@ class PN532Driver(_PN532Base):
                           ' '.join('%02X' % b for b in frame))
         self._i2c.i2c_write(frame)
 
+    # -- Non-blocking probe primitives (see _PN532Base) ----------------------
+    #
+    # The single-transaction halves of _read_ack()/_recv(): those poll the status
+    # byte in a loop with sleeps, these do exactly one bus operation each so the
+    # probe state machine can be driven from a reactor timer.
+
+    def _probe_status_ready(self):
+        """True if the PN532 has a frame waiting (one 1-byte status read)."""
+        raw = bytearray(self._i2c.i2c_read([], 1)['response'])
+        return (raw[0] if raw else 0xFF) == 0x01
+
+    def _probe_fetch_ack(self):
+        """Read and validate the ACK frame. Only call when status is ready."""
+        raw = bytearray(self._i2c.i2c_read([], 7)['response'])
+        # The I2C read includes the leading status byte, so a good ACK is
+        # 0x01 followed by the 6 ACK bytes.
+        return len(raw) >= 7 and raw[0] == 0x01 and list(raw[1:]) == PN532_ACK
+
+    def _probe_fetch_response(self, expected_cmd_resp, read_len):
+        """Read and parse a response frame. Only call when status is ready."""
+        raw = bytearray(self._i2c.i2c_read([], read_len)['response'])
+        return self._check_frame(raw, expected_cmd_resp)
+
+    def _probe_send_abort(self):
+        """Write a bare ACK frame to cancel the command in flight."""
+        self._i2c.i2c_write(list(PN532_ACK))
+
     def _read_ack(self, timeout=1.0, poll_interval=0.005):
         """
         Wait for and validate the PN532 ACK frame after a command write.
@@ -1283,6 +1457,34 @@ class PN532SPIDriver(_PN532Base):
                           self._gate, cmd_and_params[0],
                           ' '.join('%02X' % b for b in frame))
         self._spi.spi_send(wire)
+
+    # -- Non-blocking probe primitives (see _PN532Base) ----------------------
+    #
+    # The single-transaction halves of _read_ack()/_recv(). Unlike the I2C
+    # transport, an SPI data read carries no leading status byte - the status is a
+    # separate 0x02 transaction - so the ACK compares against the 6 bytes directly.
+
+    def _probe_status_ready(self):
+        """True if the PN532 has a frame waiting (one status transaction)."""
+        resp = self._spi.spi_transfer(_rev_list([_SPI_DIR_READ_STATUS, 0x00]))
+        return _rev8(bytearray(resp['response'])[1]) == 0x01
+
+    def _probe_fetch_ack(self):
+        """Read and validate the ACK frame. Only call when status is ready."""
+        params = self._spi.spi_transfer(_rev_list([_SPI_DIR_READ_DATA] + [0x00] * 6))
+        raw = bytearray(_rev8(b) for b in bytearray(params['response'])[1:])
+        return list(raw) == PN532_ACK
+
+    def _probe_fetch_response(self, expected_cmd_resp, read_len):
+        """Read and parse a response frame. Only call when status is ready."""
+        params = self._spi.spi_transfer(
+            _rev_list([_SPI_DIR_READ_DATA] + [0x00] * read_len))
+        raw = bytearray(_rev8(b) for b in bytearray(params['response'])[1:])
+        return self._check_frame(raw, expected_cmd_resp)
+
+    def _probe_send_abort(self):
+        """Write a bare ACK frame to cancel the command in flight."""
+        self._spi.spi_send(_rev_list([_SPI_DIR_WRITE] + list(PN532_ACK)))
 
     def _read_ack(self, timeout=1.0, poll_interval=0.005):
         """Wait for and validate the PN532 ACK frame after a SPI command write."""
