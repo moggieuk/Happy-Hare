@@ -17,6 +17,7 @@
 #   i2c_bus: i2c1                   # shared I2C bus name, if using I2C chips
 #   i2c_address: 0x24               # shared I2C address default
 #   reader_type: pn532              # default chip type for instances below
+#   #interface: i2c                 # default transport for instances below
 #   debug: 2                        # 0=silent .. 4=trace, logged to klippy.log
 #   #transceive_delay: 0.250        # pn532/pn7160 tag-wait (min 0.050)
 #   #crc_delay: 0.050               # pn532 InRelease wait
@@ -37,6 +38,7 @@
 #
 # [mmu_nfc_reader gate2]
 #   reader_type: pn532
+#   #interface: i2c                 # i2c | spi | uart - see below. Default per chip
 #   i2c_address: 0x24               # pn532/pn7160 only
 #   #i2c_mcu: mcu                   # which MCU owns the bus (default 'mcu')
 #   #i2c_bus:
@@ -44,6 +46,47 @@
 #   #ven_pin: mcu:PG13              # pn7160 only, optional hardware enable/reset
 #   #irq_pin: mcu:PG14              # pn7160 only, optional - REQUIRED for tag homing,
 #                                   # since the non-blocking presence probe needs it
+#
+# Transport selection - 'interface'
+# ─────────────────────────────────
+# Each chip defaults to the transport it has always used here, so leaving this out
+# changes nothing. What is implemented:
+#
+#   pn532   i2c (default) | uart | spi     spi is UNTESTED - warns at startup
+#   pn7160  i2c
+#   pn5180  spi
+#   rc522   spi
+#
+# Several of these chips speak other interfaces in silicon; this option only selects
+# among the DRIVERS that exist, and says so if you pick one that does not.
+#
+# PN532 over HSU/UART - pn532 + interface: uart
+# ─────────────────────────────────────────────
+# HSU is the PN532's UART mode, reached over a USB-serial adapter on the host:
+#
+# [mmu_nfc_reader gate0]
+#   reader_type: pn532
+#   interface: uart
+#   serial: /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
+#   #baud: 115200                   # chip powers up here; faster needs a command
+#                                   # this driver does not send
+#
+# Set the breakout board's mode pads to HSU: SEL0=0, SEL1=1 (sometimes labeled
+# A0/A1). Wire adapter TX->PN532 RX, RX->TX, plus GND and 3V3/5V per your board.
+#
+# Notes:
+#   - This is the ONE transport that does not go through the MCU. The klippy process
+#     opens the serial port itself, so the reader plugs into the host (Pi), not into
+#     an MMU/toolhead board. Everything else here is driven over I2C/SPI by an MCU.
+#   - Use the /dev/serial/by-id/ path. /dev/ttyUSB0 is not stable across reboots or
+#     replugs, and swapping with another adapter is a confusing failure.
+#   - One reader per port, exclusively - two readers on one tty would interleave
+#     frames on a single stream. So UART suits ONE shared reader, or a small number
+#     of gates with an adapter each; software I2C (below) is the answer for a
+#     reader-per-gate build.
+#   - A missing or unplugged adapter does not stop klippy from starting: the port
+#     opens during reader init, and the reader is simply reported not alive. Replug
+#     and run MMU_RFID_INIT to recover.
 #
 # Software (bit-banged) I2C - pn532/pn7160
 # ────────────────────────────────────────
@@ -162,6 +205,7 @@ class MmuNfcReaderDefaults:
 
     def __init__(self, config):
         self.reader_type = config.get('reader_type', None)
+        self.interface = config.get('interface', None)
         self.i2c_bus = config.get('i2c_bus', None)
         self.i2c_address = config.getint('i2c_address', 0x24, minval=0, maxval=127)
         self.debug = config.getint('debug', 2, minval=0, maxval=4)
@@ -189,6 +233,12 @@ class MmuNfcReader:
         default_reader_type = (self._defaults.reader_type if self._defaults and self._defaults.reader_type
                                else reader_factory.DEFAULT_READER_TYPE)
         self.reader_type = reader_factory.reader_type_from_config(config, default=default_reader_type)
+        # Which host<->chip transport this reader uses. Defaults per chip, so configs
+        # that never mention 'interface' keep the transport they already had.
+        default_interface = (self._defaults.interface if self._defaults and self._defaults.interface
+                             else None)
+        self.interface = reader_factory.interface_from_config(config, self.reader_type,
+                                                              default=default_interface)
 
         self.debug = config.getint('debug', self._defaults.debug if self._defaults else 2, minval=0, maxval=4)
         transceive_delay = config.getfloat('transceive_delay',
@@ -207,7 +257,8 @@ class MmuNfcReader:
         # init(gate). Seed with the reader name until then.
         self.reader = reader_factory.create_reader(config, self._defaults, self.reader_type, self.name, self.debug,
                                                    low_level_debug=low_level_debug, sleep_fn=self._reactor_sleep,
-                                                   transceive_delay=transceive_delay, crc_delay=crc_delay)
+                                                   transceive_delay=transceive_delay, crc_delay=crc_delay,
+                                                   interface=self.interface)
 
         self.alive = False
         self.last_uid = None
@@ -705,6 +756,7 @@ class MmuNfcReader:
     def get_status(self, eventtime=None):
         return {
             'reader_type': self.reader_type,
+            'interface': self.interface,
             'alive': self.alive,
             'present': self.present,
             'last_uid': self.last_uid,

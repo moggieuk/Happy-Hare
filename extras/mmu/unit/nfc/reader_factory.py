@@ -11,13 +11,27 @@
 
 from .... import bus as bus_module
 
-from .pn532_driver import PN532Driver
+from .log import warning as log_warning
+from .pn532_driver import PN532Driver, PN532SPIDriver
+from .pn532_uart_driver import PN532UARTDriver, DEFAULT_BAUD
 from .pn5180_driver import PN5180Driver
 from .pn7160_driver import PN7160Driver
 from .rc522_driver import RC522Driver
 
 SUPPORTED_READER_TYPES = ('pn532', 'pn5180', 'pn7160', 'rc522')
 DEFAULT_READER_TYPE = 'pn532'
+
+# Which host<->chip transports each reader has a DRIVER for, first entry being the
+# default. This is not a list of what the silicon can do: a PN7160 speaks SPI and
+# UART too, and an RC522 speaks UART and I2C. It is a list of what is implemented
+# here, which is why the rejection message says "not implemented" rather than
+# "not supported" - see interface_from_config().
+SUPPORTED_INTERFACES = {
+    'pn532':  ('i2c', 'spi', 'uart'),
+    'pn5180': ('spi',),
+    'pn7160': ('i2c',),
+    'rc522':  ('spi',),
+}
 DEFAULT_I2C_ADDRESS = {
     'pn532': 0x24,
     'pn7160': 0x28,
@@ -27,6 +41,7 @@ DEFAULT_I2C_SPEED = {
     'pn7160': 100000,
 }
 DEFAULT_SPI_SPEED = {
+    'pn532': 1000000,
     'pn5180': 1000000,
     'rc522': 1000000,
 }
@@ -85,6 +100,38 @@ def reader_type_from_config(config, default=DEFAULT_READER_TYPE):
             % (reader_type, config.get_name(),
                ', '.join(SUPPORTED_READER_TYPES)))
     return reader_type
+
+
+def default_interface(reader_type):
+    return SUPPORTED_INTERFACES.get(reader_type, ('i2c',))[0]
+
+
+def interface_from_config(config, reader_type, default=None):
+    """
+    Resolve the 'interface' option for one reader section: i2c | spi | uart.
+
+    Defaults per chip (see SUPPORTED_INTERFACES), so existing configs that never
+    mention 'interface' keep exactly the transport they have today.
+    """
+    if default is None or str(default).strip() == '':
+        default = default_interface(reader_type)
+    interface = str(config.get('interface', default)).strip().lower()
+    allowed = SUPPORTED_INTERFACES.get(reader_type, ())
+    if interface in allowed:
+        return interface
+    section = config.get_name().split()[-1]
+    if interface in ('i2c', 'spi', 'uart'):
+        # A real transport, just not one we have a driver for on this chip. Say so
+        # in those terms: several of these chips DO support the interface in
+        # silicon, so "not supported" would send people hunting for a wiring fault.
+        raise config.error(
+            "[mmu_nfc_reader %s]: interface '%s' is recognized, but its %s driver is "
+            "not integrated yet. Supported for %s: %s"
+            % (section, interface, reader_type.upper(), reader_type,
+               ', '.join(allowed) or 'none'))
+    raise config.error(
+        "[mmu_nfc_reader %s]: invalid interface '%s'; supported values for %s: %s"
+        % (section, interface, reader_type, ', '.join(allowed) or 'none'))
 
 
 def default_i2c_address(reader_type):
@@ -193,9 +240,95 @@ def _validate_software_i2c(config, reader_type, i2c_address, i2c_mcu):
     return True
 
 
+def _serial_ports(config):
+    """
+    Serial-port registry for this printer: port path -> reader section name.
+
+    Same rationale and same storage strategy as _software_i2c_buses() above: two
+    readers handed one tty would interleave frames on a single stream with no error
+    at all, showing up as intermittent read failures rather than a config error.
+    Stored on the printer so a restart cannot carry stale entries forward.
+    """
+    printer = config.get_printer()
+    registry = getattr(printer, '_mmu_nfc_serial_ports', None)
+    if registry is None:
+        registry = {}
+        printer._mmu_nfc_serial_ports = registry
+    return registry
+
+
+def _validate_serial_port(config, port):
+    """Vet a UART reader's serial device path. Returns the stripped path."""
+    section = config.get_name().split()[-1]
+    port = str(port or '').strip()
+    if not port:
+        raise config.error(
+            "[mmu_nfc_reader %s]: 'serial' must name the reader's serial device "
+            "when interface: uart, e.g. "
+            "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0" % section)
+    if not port.startswith('/'):
+        # Catches menuconfig's "-enter-device-path-" placeholder left unedited, and
+        # ordinary typos. Worth checking here rather than letting the open fail: this
+        # raises at config load naming the section, whereas the open happens a couple
+        # of seconds after MMU bootup and only marks the reader not-alive.
+        raise config.error(
+            "[mmu_nfc_reader %s]: 'serial' must be an absolute device path, got '%s'. "
+            "List the available adapters with: ls /dev/serial/by-id/"
+            % (section, port))
+
+    registry = _serial_ports(config)
+    owner = registry.get(port)
+    if owner is not None:
+        raise config.error(
+            "[mmu_nfc_reader %s]: serial port '%s' is already used by reader '%s'. "
+            "A UART reader owns its port exclusively - two readers sharing one tty "
+            "interleave frames on a single stream. Give this reader its own adapter, "
+            "or use I2C if you need several readers on one bus."
+            % (section, port, owner))
+    registry[port] = section
+
+    if not port.startswith('/dev/serial/by-id/'):
+        # Not fatal - /dev/ttyUSB0 works until something else claims it first.
+        log_warning(
+            "[mmu_nfc_reader %s]: serial port '%s' is not a /dev/serial/by-id/ path. "
+            "Device numbering is not stable across reboots or replugs; prefer the "
+            "by-id path so the reader cannot swap with another USB serial device.",
+            section, port)
+    return port
+
+
 def create_reader(config, defaults, reader_type, gate, debug,
                   low_level_debug=False, sleep_fn=None,
-                  transceive_delay=0.250, crc_delay=0.050):
+                  transceive_delay=0.250, crc_delay=0.050, interface=None):
+    if interface is None:
+        interface = default_interface(reader_type)
+
+    if interface == 'uart':
+        # Host serial port, NOT an MCU-mediated bus - branch out before any of the
+        # I2C/SPI plumbing below, none of which applies.
+        port = _validate_serial_port(config, config.get('serial', None))
+        baud = config.getint('baud', DEFAULT_BAUD, minval=9600, maxval=1288000)
+        return PN532UARTDriver(
+            port, gate, baud=baud,
+            transceive_delay=transceive_delay, crc_delay=crc_delay, debug=debug,
+            low_level_debug=low_level_debug, sleep_fn=sleep_fn)
+
+    if reader_type == 'pn532' and interface == 'spi':
+        # The driver is complete but has never run against hardware. Two details
+        # in particular want a scope on them before this is trusted: the ACK check
+        # compares 6 raw bytes with no status prefix, and every spi_transfer
+        # response is indexed [1:] to drop the direction-byte echo.
+        log_warning(
+            "[mmu_nfc_reader %s]: PN532 over SPI is UNTESTED against real hardware. "
+            "It is wired up so it can be bench-verified, not because it is known to "
+            "work. Use interface: i2c (or uart) for a supported setup.",
+            config.get_name().split()[-1])
+        spi = bus_module.MCU_SPI_from_config(
+            config, 0, default_speed=default_spi_speed(reader_type))
+        return PN532SPIDriver(
+            spi, gate, transceive_delay, crc_delay, debug,
+            low_level_debug=low_level_debug, sleep_fn=sleep_fn)
+
     if reader_type == 'rc522':
         spi = bus_module.MCU_SPI_from_config(
             config, 0, default_speed=default_spi_speed(reader_type))

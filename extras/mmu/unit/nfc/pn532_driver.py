@@ -89,11 +89,17 @@
 #
 # EBB42 v1.x I2C1 pins: SCL = PB6, SDA = PB7.
 #
-# Threading notes
-# ───────────────
-# All methods are called from the background polling thread.  i2c_write() and
-# i2c_read() block that thread waiting for CAN round-trips; the Klipper
-# reactor thread continues normally.
+# Concurrency notes
+# ─────────────────
+# There is NO background thread.  Every method here runs on the Klipper reactor,
+# driven by MmuNfcManager's timers, and cooperates by yielding: self._sleep is
+# injected as reactor.pause (see mmu_nfc_reader._reactor_sleep), so a poll loop
+# lets the reactor run but the CALLER stays blocked until the exchange finishes.
+#
+# That matters most for a transport that could block on its own: read as slowly
+# as you like between yields, but never sit in a blocking read.  It is also why
+# the presence probe below is a state machine rather than a short-timeout
+# _transceive() — see "Non-blocking presence probe" in _PN532Base.
 
 import time
 import traceback
@@ -203,13 +209,19 @@ def _parse_inlist_payload(payload):
 class _PN532Base:
 
     def __init__(self, gate, transceive_delay, crc_delay, debug, low_level_debug,
-                 sleep_fn=None):
+                 sleep_fn=None, time_fn=None):
         self._gate           = gate
         self._scan_delay     = transceive_delay   # InListPassiveTarget wait
         self._release_delay  = crc_delay          # InRelease wait
         self._debug          = debug
         self._low_level_debug = low_level_debug
         self._sleep          = sleep_fn if sleep_fn is not None else time.sleep
+        # Deadline clock, injectable purely for testing. _transceive() clamps its ACK
+        # timeout to at least 50ms, so a test cannot ask for a shorter wait - without
+        # this, every negative-path test burns that 50ms of real time in a busy spin.
+        # A fake clock whose sleep() advances the now() it reports makes those tests
+        # free and their poll counts assertable.
+        self._now            = time_fn if time_fn is not None else time.time
         self._clear_current_card()
         self._probe_reset_state()   # Non-blocking presence probe (homing) state
 
@@ -260,7 +272,7 @@ class _PN532Base:
             self._probe_reset_state()
             return False
         self._probe_stage = 'ack'
-        self._probe_deadline = time.time() + self._PROBE_WATCHDOG
+        self._probe_deadline = self._now() + self._PROBE_WATCHDOG
         return True
 
     def probe_poll(self):
@@ -273,7 +285,7 @@ class _PN532Base:
             return False
         try:
             if not self._probe_status_ready():
-                if time.time() > self._probe_deadline:
+                if self._now() > self._probe_deadline:
                     if self._debug >= 3:
                         logger.info("probe_poll: gate %s (%s) watchdog fired in "
                                     "stage '%s'", self._gate,
@@ -358,6 +370,27 @@ class _PN532Base:
                              self._gate, self._transport_name, e)
             return False
         return True
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Transport hooks with a usable default
+    # ─────────────────────────────────────────────────────────────────────────
+
+    def _transport_wake_preamble(self):
+        """Bring the chip's interface out of power-down. Override per transport.
+
+        A no-op on I2C and SPI: the host supplies the clock and addresses/selects
+        the chip, so it is listening whenever we talk to it. HSU/UART has no such
+        signalling - after power-up or a low-VBAT idle the PN532's UART receiver
+        needs a dummy 0x55 burst to resynchronise before it will see a command
+        frame at all.
+
+        Called from _wake_pn532() only, which is enough: is_alive() reaches
+        get_firmware_version() without a wake, but its sole caller is
+        MmuNfcReader.init(), immediately after reader.init() - and the manager
+        reads the cached .alive attribute rather than re-probing. Don't move this
+        call site without re-checking that.
+        """
+        return
 
     # ─────────────────────────────────────────────────────────────────────────
     # Frame construction (transport-agnostic)
@@ -884,9 +917,10 @@ class _PN532Base:
         """
         Wake the PN532 from power-save mode using GetFirmwareVersion.
 
-        Uses a single i2c_write + i2c_read per attempt to avoid Klipper MCU
-        command re-entrancy (two sequential i2c_read calls in one attempt
-        caused recursive send → _do_send loops in mcu.py).
+        Each attempt is _transport_wake_preamble() then ONE GetFirmwareVersion
+        exchange. Deliberately one exchange per attempt: on I2C two sequential
+        i2c_read calls in a single attempt caused recursive send → _do_send loops
+        in Klipper's mcu.py.
 
         First attempt waits 150 ms after TX (cold-start settling).
         Subsequent attempts wait 75 ms.  A 50 ms gap separates each attempt.
@@ -900,6 +934,9 @@ class _PN532Base:
                     "sending GetFirmwareVersion",
                     self._gate, self._transport_name, attempt + 1, attempts)
             try:
+                # Inside the loop, not once before it: a retry means the previous
+                # burst did not take. Costs one no-op call per attempt on I2C/SPI.
+                self._transport_wake_preamble()
                 version = self.get_firmware_version()
                 if version is not None:
                     log_info(
@@ -1073,11 +1110,12 @@ class PN532Driver(_PN532Base):
                  crc_delay=0.050,
                  debug=1,
                  low_level_debug=False,
-                 sleep_fn=None):
+                 sleep_fn=None,
+                 time_fn=None):
         self._i2c = i2c
         self._transport_name = 'PN532'
         super().__init__(gate, transceive_delay, crc_delay, debug, low_level_debug,
-                         sleep_fn=sleep_fn)
+                         sleep_fn=sleep_fn, time_fn=time_fn)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Frame parsing — I2C frames include a leading STATUS byte
@@ -1163,8 +1201,8 @@ class PN532Driver(_PN532Base):
         successful read is:
           [0x01, 0x00, 0x00, 0xFF, 0x00, 0xFF, 0x00]
         """
-        deadline = time.time() + timeout
-        while time.time() < deadline:
+        deadline = self._now() + timeout
+        while self._now() < deadline:
             try:
                 ready_result = self._i2c.i2c_read([], 1)
                 ready_raw = bytearray(ready_result['response'])
@@ -1220,8 +1258,8 @@ class PN532Driver(_PN532Base):
         poll_interval : float
             Seconds to wait between poll attempts.
         """
-        deadline = time.time() + timeout
-        while time.time() < deadline:
+        deadline = self._now() + timeout
+        while self._now() < deadline:
             try:
                 result = self._i2c.i2c_read([], 1)
                 raw1 = bytearray(result['response'])
@@ -1347,11 +1385,40 @@ class PN532Driver(_PN532Base):
 #
 # Public interface is identical to PN532Driver (I2C).
 
-# SPI frame byte offsets (no STATUS prefix, unlike I2C)
+# Byte offsets for a frame that starts at the preamble, with no STATUS prefix.
+# Shared by SPI and HSU/UART; only I2C prepends a status byte (see _OFF_* above).
 _SPI_OFF_LEN     = 3
 _SPI_OFF_TFI     = 5
 _SPI_OFF_CMD     = 6
 _SPI_OFF_PAYLOAD = 7
+
+
+def check_preambled_frame(raw, expected_cmd_resp):
+    """
+    Validate a PN532 frame that begins at the preamble and return the payload.
+
+    Shared by the SPI and HSU/UART transports, whose frames both start directly
+    with [0x00, 0x00, 0xFF, LEN, LCS, TFI, CMD, payload..., DCS, 0x00] - unlike
+    I2C, which prefixes a STATUS byte (see PN532Driver._check_frame).
+
+    Returns the payload bytes after TFI and CMD_RESP, or None on any error.
+
+    Note this deliberately checks neither LCS nor DCS. On SPI the host chooses the
+    read length so a short/garbled frame simply fails the checks below. On UART
+    that would NOT be safe on its own - _HSUFrameReader verifies both checksums
+    before handing a frame over, and this function relies on it. Two-party
+    invariant: don't call this with unverified UART bytes.
+    """
+    if len(raw) < _SPI_OFF_PAYLOAD:
+        return None
+    if raw[0] != 0x00 or raw[1] != 0x00 or raw[2] != 0xFF:
+        return None
+    if raw[_SPI_OFF_TFI] != _TFI_PN532_TO_HOST:
+        return None
+    if raw[_SPI_OFF_CMD] != expected_cmd_resp:
+        return None
+    length  = raw[_SPI_OFF_LEN]
+    return list(raw[_SPI_OFF_PAYLOAD: _SPI_OFF_PAYLOAD + length - 2])
 
 # PN532 SPI direction bytes (before bit reversal)
 _SPI_DIR_WRITE        = 0x01
@@ -1400,35 +1467,21 @@ class PN532SPIDriver(_PN532Base):
                  crc_delay=0.050,
                  debug=1,
                  low_level_debug=False,
-                 sleep_fn=None):
+                 sleep_fn=None,
+                 time_fn=None):
         self._spi = spi
         self._transport_name = 'PN532 SPI'
         super().__init__(gate, transceive_delay, crc_delay, debug, low_level_debug,
-                         sleep_fn=sleep_fn)
+                         sleep_fn=sleep_fn, time_fn=time_fn)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Frame parsing — SPI frames have no STATUS prefix
     # ─────────────────────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _check_frame(raw, expected_cmd_resp):
-        """
-        Validate a raw SPI read buffer and return the payload bytes.
-
-        SPI frames have no STATUS prefix byte — the frame starts with the
-        preamble [0x00, 0x00, 0xFF, ...] at offset 0.
-        """
-        if len(raw) < _SPI_OFF_PAYLOAD:
-            return None
-        if raw[0] != 0x00 or raw[1] != 0x00 or raw[2] != 0xFF:
-            return None
-        if raw[_SPI_OFF_TFI] != _TFI_PN532_TO_HOST:
-            return None
-        if raw[_SPI_OFF_CMD] != expected_cmd_resp:
-            return None
-        length  = raw[_SPI_OFF_LEN]
-        payload = list(raw[_SPI_OFF_PAYLOAD: _SPI_OFF_PAYLOAD + length - 2])
-        return payload
+    # SPI frames have no STATUS prefix byte — the frame starts with the preamble
+    # [0x00, 0x00, 0xFF, ...] at offset 0, exactly like HSU/UART, so the parser is
+    # shared. See check_preambled_frame() above.
+    _check_frame = staticmethod(check_preambled_frame)
 
     # ─────────────────────────────────────────────────────────────────────────
     # SPI transport
@@ -1488,8 +1541,8 @@ class PN532SPIDriver(_PN532Base):
 
     def _read_ack(self, timeout=1.0, poll_interval=0.005):
         """Wait for and validate the PN532 ACK frame after a SPI command write."""
-        deadline = time.time() + timeout
-        while time.time() < deadline:
+        deadline = self._now() + timeout
+        while self._now() < deadline:
             try:
                 resp = self._spi.spi_transfer(_rev_list([_SPI_DIR_READ_STATUS, 0x00]))
                 status = _rev8(bytearray(resp['response'])[1])
@@ -1544,8 +1597,8 @@ class PN532SPIDriver(_PN532Base):
         poll_interval : float
             Seconds between poll attempts.
         """
-        deadline = time.time() + timeout
-        while time.time() < deadline:
+        deadline = self._now() + timeout
+        while self._now() < deadline:
             try:
                 # Send direction byte 0x02, read 1 status byte back
                 resp   = self._spi.spi_transfer(_rev_list([_SPI_DIR_READ_STATUS, 0x00]))
