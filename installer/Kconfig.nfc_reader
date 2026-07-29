@@ -142,6 +142,12 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
             "PN532 / I2C" above and choose software I2C, which gives each reader its
             own bit-banged bus with no extra hardware.
 
+#       config CHOICE_NFC_READER_TYPE_PN532_SPI
+#         bool "PN532 / SPI"
+#         help
+#           PN532 NFC reader using SPI. Set the breakout board's mode pads to
+#           SEL0=0, SEL1=0.
+
         config CHOICE_NFC_READER_TYPE_PN7160
           bool "PN7160 / I2C"
           help
@@ -154,12 +160,13 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
         default "pn5180" if CHOICE_NFC_READER_TYPE_PN5180
         default "pn532"  if CHOICE_NFC_READER_TYPE_PN532
         default "pn532"  if CHOICE_NFC_READER_TYPE_PN532_UART
+#       default "pn532"  if CHOICE_NFC_READER_TYPE_PN532_SPI
         default "pn7160" if CHOICE_NFC_READER_TYPE_PN7160
 
       config PARAM_NFC_READER_INTERFACE
         string
         default "uart" if CHOICE_NFC_READER_TYPE_PN532_UART
-        default "spi"  if CHOICE_NFC_READER_TYPE_RC522 || CHOICE_NFC_READER_TYPE_PN5180 # || CHOICE_NFC_READER_TYPE_PN532
+        default "spi"  if CHOICE_NFC_READER_TYPE_RC522 || CHOICE_NFC_READER_TYPE_PN5180 # || CHOICE_NFC_READER_TYPE_PN532_SPI
         default "i2c"
 
       if CHOICE_NFC_READER_TYPE_PN532_UART
@@ -210,7 +217,7 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
             raising it needs a SetSerialBaudRate command the driver does not send.
       endif
 
-      if CHOICE_NFC_READER_TYPE_RC522 || CHOICE_NFC_READER_TYPE_PN5180
+      if CHOICE_NFC_READER_TYPE_RC522 || CHOICE_NFC_READER_TYPE_PN5180 # || CHOICE_NFC_READER_TYPE_PN532_SPI
         config PARAM_NFC_READER_CS_PIN
           string "CS pin            "
           default "$(MCU_NAME):pin"
