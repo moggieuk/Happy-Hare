@@ -573,7 +573,12 @@ class MmuNfcManager:
         try:
             alive = reader.init(gate)
             if alive:
-                self.mmu.log_debug("NFC: reader '%s' initialized (gate=%s)" % (name, gate))
+                # 'gate' is a logging label, not always a gate: _init_all_readers passes
+                # the unit name for the shared reader, which has no gate. Report it as
+                # what it is rather than as "gate=unit0".
+                where = ("gate %s" % gate if isinstance(gate, int)
+                         else "shared on %s" % gate)
+                self.mmu.log_debug("NFC: reader '%s' initialized (%s)" % (name, where))
             else:
                 self.mmu.log_warning("NFC: reader '%s' did not respond during init" % name)
         except Exception as e:
