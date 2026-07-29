@@ -69,20 +69,82 @@ make BOOTSTRAP_PY=python3.9 VENV=venv39 test
 
 </details>
 
-`make test` runs everything — currently **333 tests in about two minutes**. Expect to see:
+`make test` offers everything — currently **563 tests, about fourteen minutes** on a warm
+laptop. Expect to see:
 
 ```
-OK (skipped=1, expected failures=5)
+OK (skipped=1, expected failures=3)
 ```
 
 `skipped` and `expected failures` are normal and explained in §6. Anything else — `FAILED
 (failures=…)` or `(errors=…)` — is a genuine problem.
 
+Fourteen minutes is too long to sit through on every change, which is why `make test` opens a
+file picker first rather than starting straight away.
+
 ### Running less than everything
 
-While working, you usually want one file or one test. `-m unittest` means "run Python's
-built-in test runner"; the argument is a **dotted module path**, so `test/test_mmu_leds.py`
-becomes `test.test_mmu_leds`:
+`make test` opens a picker first. Everything starts ticked, so pressing Enter runs the whole
+suite exactly as it always did — but untick the expensive files and you get a focused run:
+
+```
+Happy Hare tests - 563 tests in 22 files                    times from last run
+
+   1 [x] installer.test_build           1      0.0s
+   2 [x] test_mmu_adc_compat           14      0.0s
+   3 [x] test_mmu_bootup               31       36s
+   …
+   6 [x] test_mmu_console              63      152s
+   …
+  13 [x] test_mmu_nfc                  17      187s
+   …
+  22 [x] test_mmu_toolchange           20      5.4s
+
+  selected: 22 files - 563 tests - ~14m27s last time
+
+  [Enter] run    1 3 5-8 toggle    a all    n none    v invert
+  +TEXT / -TEXT tick by name    p previous selection    s sort by time    q quit
+>
+```
+
+The right-hand column is how long each file took **on your machine, last run**, and it is the
+column to look at when deciding what to drop, because the cost is wildly uneven. From a real
+full run: `test_mmu_nfc` took 187 s for 17 tests and `test_mmu_console` 152 s for 63, while
+six files — including `test_mmu_tag_parser`'s 34 tests — came in under a tenth of a second
+between them. Six of the twenty-two files account for over four fifths of the run. The times
+fill in after your first run, `s` sorts by them, and the footer estimates what the current
+selection will cost.
+
+Two things to know about the numbers. They cover each file's **class fixtures** as well as its
+tests, which is where nearly all the time actually is — `setUpClass` building a printer, not
+the assertions. And part of that cost is shared and cached across a run (`test/hh/cfg.py`
+caches template rendering, `test/hh/root.py` builds the fake Klipper overlay once), so a file
+run on its own can cost far more than the same file inside a full run — `test_mmu_config` is
+0.1 s in a full run and 35 s alone. Treat the column as a guide to relative cost within a run,
+not an absolute per-file price.
+
+Typing `n` then `+nfc` then Enter runs just the NFC files. `p` recalls the last selection you
+narrowed to — a full run doesn't overwrite it, so you can alternate between a focused loop
+and a full check without retyping. `q` quits without running anything, and exits non-zero on
+purpose so `make test && git commit` can't sail past it — you will see make print
+`*** [test] Error 1` after a quit, which is expected.
+
+The picker is skipped, and everything runs, whenever it can't work or you didn't ask for it:
+
+```bash
+make ALL=1 test                 # no picker, run everything
+make LAST=1 test                # no picker, re-run the last selection
+make UT='test_mmu_nfc*.py' test # no picker, filename pattern (as before)
+make test | tee log             # no picker — not a terminal, so it just runs
+make test ARGS='-k homing'      # extra unittest flags, picker still opens
+```
+
+A file that fails to import also skips the picker: it can't be listed, so the run goes ahead
+and fails loudly rather than quietly leaving it out.
+
+The picker only deals in whole files. For one class or one test, go straight to the runner —
+`-m unittest` means "run Python's built-in test runner", and the argument is a **dotted module
+path**, so `test/test_mmu_leds.py` becomes `test.test_mmu_leds`:
 
 ```bash
 # one file
@@ -98,8 +160,8 @@ becomes `test.test_mmu_leds`:
 ./venv/bin/python -m unittest -v test.test_mmu_motion
 ```
 
-There is also `make UT='test_mmu_nfc*.py' test` to run a filename pattern, but the dotted
-form above is usually easier.
+Your selection and the timings live in `.mmu_test_state` at the repo root. It's gitignored,
+and deleting it just means the picker opens with no times to show.
 
 ---
 
@@ -253,6 +315,7 @@ reactor fixes that in theory but breaks `MMU_PRELOAD` in practice (every gate en
 ```
 test/
   test_mmu_*.py     the tests themselves — this is what you read and write
+  select.py         the file picker `make test` opens (§1)
   console.py        the interactive console (§1a)
   hh/               the harness: the fake Klipper and fake Moonraker
   hh/klippy_root/   41 stand-in modules that pretend to be Klipper's own code
@@ -266,7 +329,7 @@ The test files, grouped by what they're about:
 | **Foundation** | | |
 | `test_mmu_import.py` | 10 | Happy Hare imports at all outside Klipper; repo-wide syntax check |
 | `test_mmu_config.py` | 8 | the real shipped `config/` templates render correctly |
-| `test_mmu_reactor.py` | 17 | the fake reactor itself (see §3) |
+| `test_mmu_reactor.py` | 21 | the fake reactor itself (see §3) |
 | `test_mmu_bootup.py` | 31 | config load → `klippy:connect` → `klippy:ready` → `mmu:bootup` |
 | `test_mmu_profiles.py` | 19 | the same checks across BoxTurtle, Tradrack and EMU |
 | `test_mmu_adc_compat.py` | 14 | the Klipper-version ADC compatibility shim |
@@ -276,16 +339,21 @@ The test files, grouped by what they're about:
 | `test_mmu_encoder.py` | 18 | gate homing by encoder motion instead of by switch |
 | `test_mmu_endless_spool.py` | 17 | runout detection, clog-vs-runout, gate remapping |
 | **NFC and Spoolman** | | |
-| `test_mmu_nfc.py` | 12 | NFC readers are configured and instantiated |
+| `test_mmu_nfc.py` | 17 | NFC readers are configured and instantiated |
 | `test_mmu_nfc_scan.py` | 34 | `MMU_NFC_SCAN`, the preload NFC compound endstop, the homing presence probe |
 | `test_mmu_nfc_i2c.py` | 20 | software (bit-banged) i2c for PN532/PN7160, bus-collision validation |
 | `test_mmu_nfc_probe.py` | 16 | the non-blocking presence probe, driver-level (real RC522 over a scripted bus) |
+| `test_mmu_nfc_uart.py` | 77 | PN532 over HSU/UART: the byte-stream framer, the probe invariants, the `interface` option |
 | `test_mmu_compound_endstop.py` | 16 | which child stopped a first-wins compound home (pure logic) |
 | `test_mmu_tag_parser.py` | 34 | RFID tag decoding (pure logic, no fakes at all) |
-| `test_mmu_moonraker.py` | 42 | the Moonraker half: Spoolman lookups, auto-create |
-| `test_mmu_roundtrip.py` | 27 | Klipper and Moonraker talking to each other |
+| `test_mmu_moonraker.py` | 46 | the Moonraker half: Spoolman lookups, auto-create |
+| `test_mmu_roundtrip.py` | 35 | Klipper and Moonraker talking to each other |
 | **Presentation** | | |
 | `test_mmu_leds.py` | 22 | LED effects, flashes, the pending overlay |
+| `test_mmu_console.py` | 63 | the interactive console of §1a — rendering, command dispatch |
+
+Counts as the picker reports them; `installer/test_build.py` adds the one skipped test that
+makes up the 563 total.
 
 ### Coverage map
 
@@ -425,7 +493,14 @@ templates** from them, so a broken template shows up as a test failure.
 | `encoder` | BoxTurtle plus an encoder, homing to it instead of to the gate switch |
 | `nfc_single` | one common NFC reader |
 | `nfc_per_gate` | one reader per gate |
+| `nfc_pn532_uart` | one common PN532 over HSU/UART — the only host-serial reader |
 | `nfc_spoolman` | per-gate NFC + Spoolman enabled + auto-create |
+
+There are more `nfc_*` profiles than these — one per reader type and transport
+(`nfc_pn5180`, `nfc_pn532`, `nfc_pn532_sw_i2c`, `nfc_pn532_uart_per_gate`, ...). They
+exist because each renders a *different* set of config keys, which is where template
+bugs hide. `test/hh/profiles.py` is the list, with a comment on each explaining what it
+catches.
 
 The first three are shipped machine types. `encoder` is derived — BoxTurtle with menuconfig
 options flipped. That is only safe when the resulting config renders *complete*: enabling a
@@ -495,7 +570,7 @@ this wrong makes Happy Hare look broken when it is being right about an impossib
 ## 6. Skips and expected failures
 
 ```
-OK (skipped=1, expected failures=5)
+OK (skipped=1, expected failures=3)
 ```
 
 **`expected failures`** are known bugs, written as tests of what *should* happen and
@@ -563,9 +638,10 @@ hanging forever.
 
 A reasonable loop:
 
-1. Run the file closest to your change first — it's seconds, not a minute.
+1. Run the file closest to your change first — it's seconds, not a minute. `make test`, `n`,
+   `+`the file's name, Enter; after that `make LAST=1 test` repeats it with no picker.
 2. Change the code.
-3. Re-run that file, then `make test` before committing.
+3. Re-run that file, then `make test` + Enter (everything) before committing.
 4. Add a test for what you changed. If you fixed a bug, the test should fail before your
    fix and pass after — check that, or you don't know it's testing anything.
 

@@ -9,6 +9,8 @@ Q  ?= @
 # For verbose output (mostly from python builder), set to -v to enable
 V  ?=
 # For unittests, e.g. make UT=test_build.py test
+# A UT pattern skips the interactive picker, as do ALL=1 (run everything) and LAST=1
+# (re-run the last selection). See test/README.md section 1
 UT ?= *
 
 # Parallel build
@@ -20,9 +22,10 @@ export KCONFIG_CONFIG ?= .mmu_config
 # Enable output-sync if menuconfig will not trigger. menuconfig.py will crash if output-sync is enabled on certain systems
 ifeq ($(CHECK_OUTPUT_SYNC),)
   # Never probe for menuconfig or uninstall and only if KCONFIG exists
-  # 'console' must stay in this list: --output-sync buffers a recipe's output until it
-  # finishes, which for an interactive prompt means no prompt at all
-  ifeq ($(strip $(filter menuconfig uninstall variables gen_kconfig fix_links console,$(MAKECMDGOALS))),)
+  # 'console' and 'test' must stay in this list: --output-sync buffers a recipe's output
+  # until it finishes, which for an interactive prompt means no prompt at all. 'test' opens
+  # the file picker in test/select.py
+  ifeq ($(strip $(filter menuconfig uninstall variables gen_kconfig fix_links console test,$(MAKECMDGOALS))),)
     ifneq ($(wildcard $(KCONFIG_CONFIG)),)
       # Check whether $KCONFIG_CONFIG is outdated. if so menuconfig will be triggered and output-sync should stay disabled
       ifeq ($(shell $(MAKE) CHECK_OUTPUT_SYNC=y -q $(KCONFIG_CONFIG) >/dev/null 2>&1 && echo y),y)
@@ -462,9 +465,14 @@ $(VENV_STAMP): $(SRC)/test/requirements.txt | $(VENV_PY)
 venv: $(VENV_STAMP)
 	$(Q)echo "$(C_NOTICE)Test virtualenv ready: $(patsubst $(SRC)/%,%,$(VENV_PY))$(C_OFF)"
 
+# Opens the interactive file picker, everything pre-ticked, so Enter runs the whole suite as
+# before. Skipped for UT/ALL/LAST or when stdin isn't a tty - test/select.py decides. Extra
+# unittest flags go through ARGS, e.g. make test ARGS='-k homing'
 test: $(test_prereqs)
 	$(Q)PYTHONPATH="$(SRC)/installer/lib/kconfiglib:$(PYTHONPATH)" \
-		$(TEST_PY) -m unittest discover $(V) -p '$(strip $(UT))'
+		$(TEST_PY) -m test.select $(V) \
+			$(if $(filter-out *,$(UT)),--pattern '$(strip $(UT))') \
+			$(if $(ALL),--all) $(if $(LAST),--last) $(ARGS)
 
 # Interactive MMU console on the test harness. Pass flags through ARGS, e.g.
 #   make console ARGS='--profile /tmp/mmu_test/printer_data/config'

@@ -4,6 +4,7 @@ out_*/
 *.mmu_config
 *.mmu_config.old
 *.mmu_config_*
+.mmu_test_state
 __pycache__/
 *.pyc
 venv/
