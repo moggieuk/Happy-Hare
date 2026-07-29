@@ -18,12 +18,16 @@
 #   i2c_address: 0x24               # shared I2C address default
 #   reader_type: pn532              # default chip type for instances below
 #   debug: 2                        # 0=silent .. 4=trace, logged to klippy.log
+#   #transceive_delay: 0.250        # pn532/pn7160 tag-wait (min 0.050)
+#   #crc_delay: 0.050               # pn532 InRelease wait
+#   #tag_max_pages: 16              # NTAG/Type-5 pages read during a deep read (4..135)
 #
 # [mmu_nfc_reader gate0]            # one reader instance; name = "gate0"
 #   reader_type: rc522              # pn532 | pn5180 | pn7160 | rc522 (overrides default)
 #   cs_pin: mcu:PA4                 # rc522/pn5180 only (SPI chip-select)
-#   #spi_bus:                       # optional, rc522/pn5180 only
+#   #spi_bus:                       # optional, rc522/pn5180 - omit for the MCU default bus
 #   #spi_speed: 1000000             # optional, rc522/pn5180 only
+#   #rc522_transceive_delay: 0.035  # rc522 only, per-transceive tag wait
 #
 # [mmu_nfc_reader gate1]
 #   reader_type: pn5180
@@ -34,8 +38,44 @@
 # [mmu_nfc_reader gate2]
 #   reader_type: pn532
 #   i2c_address: 0x24               # pn532/pn7160 only
+#   #i2c_mcu: mcu                   # which MCU owns the bus (default 'mcu')
 #   #i2c_bus:
-#   #i2c_speed: 100000
+#   #i2c_speed: 100000              # Klipper rejects anything below 100000
+#   #ven_pin: mcu:PG13              # pn7160 only, optional hardware enable/reset
+#   #irq_pin: mcu:PG14              # pn7160 only, optional - REQUIRED for tag homing,
+#                                   # since the non-blocking presence probe needs it
+#
+# Software (bit-banged) I2C - pn532/pn7160
+# ────────────────────────────────────────
+# Klipper can drive I2C on any two GPIO pins instead of a hardware bus. Use it when
+# you need MORE THAN ONE reader of the same type: a PN532 is fixed at address 0x24,
+# so two of them cannot share a bus. Give each its own pin pair and each becomes its
+# own private bus, so the address no longer collides:
+#
+# [mmu_nfc_reader gate0]
+#   reader_type: pn532
+#   i2c_address: 0x24
+#   i2c_software_scl_pin: mmu:PB8   # instead of i2c_bus
+#   i2c_software_sda_pin: mmu:PB9
+#
+# [mmu_nfc_reader gate1]
+#   reader_type: pn532
+#   i2c_address: 0x24               # same address, different bus - fine
+#   i2c_software_scl_pin: mmu:PC4
+#   i2c_software_sda_pin: mmu:PC5
+#
+# Notes:
+#   - Specify EITHER i2c_bus OR the two software pins. Klipper checks the software
+#     pins first, so an i2c_bus alongside them is silently ignored.
+#   - Both pins are required, must differ, and must be on i2c_mcu. reader_factory
+#     checks all of this because Klipper does not - it accepts a blank pin, and it
+#     lets two readers share a pin pair without complaint.
+#   - Slower than hardware I2C, and it supports neither clock stretching nor bus
+#     timeouts: a wedged bus returns bad data rather than raising. Each software bus
+#     needs its own pull-up resistors on SCL and SDA.
+#   - Software SPI works too, for rc522/pn5180 - Klipper accepts
+#     spi_software_sclk_pin / spi_software_mosi_pin / spi_software_miso_pin on these
+#     sections already. There is no menuconfig option for it; hand-edit if wanted.
 #
 # GCode commands (per instance, NAME optional if only one instance exists)
 # ─────────────────────────────────────────────────────────────────────────

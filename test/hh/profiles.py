@@ -99,6 +99,35 @@ NFC_PN5180_PER_GATE = BOXTURTLE.derive(
           'PARAM_NFC_READER_RESET_PIN_0': 'unit0:PB1'},
     description='BoxTurtle + per-gate readers, gate 0 PN5180 and the rest RC522')
 
+# PN532 is the first I2C reader type to get a profile at all - before this the whole
+# MCU_I2C_from_config path was unrendered and untested. Common reader, hardware bus.
+NFC_PN532 = BOXTURTLE.derive(
+    'nfc_pn532',
+    syms={'MMU_HAS_NFC_READER': True, 'MMU_HAS_COMMON_NFC_READER': True,
+          'CHOICE_NFC_READER_TYPE_PN532': True,
+          'PARAM_NFC_READER_I2C_BUS': 'i2c1'},
+    description='BoxTurtle + one common NFC reader (PN532/hardware i2c)')
+
+# THE POINT OF SOFTWARE I2C. Every PN532 is hardwired to address 0x24 (36), so they
+# cannot share a bus. Two gates, two DISTINCT pin pairs, both at 36 - which is only a
+# valid config because each pin pair is its own bit-banged bus.
+#
+# Two gates rather than one on purpose: installer/build.py:252-259 un-groups an indexed
+# symbol back to a scalar when only ONE exists under a prefix, so a single-gate profile
+# would not render through the (PARAM_..._|d)[i] list form the template uses.
+NFC_PN532_SW_I2C = BOXTURTLE.derive(
+    'nfc_pn532_sw_i2c',
+    syms={'MMU_HAS_NFC_READER': True, 'MMU_HAS_PER_GATE_NFC_READERS': True,
+          'CHOICE_NFC_READER_TYPE_PN532_0': True,
+          'CHOICE_NFC_READER_I2C_SOFTWARE_0': True,
+          'PARAM_NFC_READER_SCL_PIN_0': 'unit0:PB8',
+          'PARAM_NFC_READER_SDA_PIN_0': 'unit0:PB9',
+          'CHOICE_NFC_READER_TYPE_PN532_1': True,
+          'CHOICE_NFC_READER_I2C_SOFTWARE_1': True,
+          'PARAM_NFC_READER_SCL_PIN_1': 'unit0:PC4',
+          'PARAM_NFC_READER_SDA_PIN_1': 'unit0:PC5'},
+    description='Two per-gate PN532 readers, each on its own software i2c bus')
+
 # The round-trip profile: per-gate NFC + Spoolman in a WRITABLE mode + auto-create
 # + deep read. All four are needed or the interesting paths gate themselves off:
 #   spoolman_support defaults to 'off' (mmu_machine_parameters.py), and MMU_GATE_MAP
@@ -178,6 +207,7 @@ ENCODER = BOXTURTLE.derive(
 # covered directly by test_mmu_adc_compat.py instead.
 PROFILES = {p.name: p for p in (BOXTURTLE, TRADRACK, EMU, ENCODER, NFC_SINGLE,
                                 NFC_PER_GATE, NFC_PN5180, NFC_PN5180_PER_GATE,
+                                NFC_PN532, NFC_PN532_SW_I2C,
                                 NFC_SPOOLMAN, NFC_SPOOLMAN_SHARED)}
 
 

@@ -24,10 +24,14 @@
 #   PARAM_NFC_READER_BUSY_PIN    (if pn5180 type)
 #   PARAM_NFC_READER_RESET_PIN   (if pn5180 type)
 #
-#   PARAM_NFC_READER_I2C_ADDRESS (if pn532/pn7160 type)
-#   PARAM_NFC_READER_I2C_MCU     (if pn532/pn7160 type)
-#   PARAM_NFC_READER_I2C_BUS     (if pn532/pn7160 type)
-#   PARAM_NFC_READER_I2C_SPEED   (if pn532/pn7160 type)
+#   PARAM_NFC_READER_I2C_MCU     (if i2c type)
+#   PARAM_NFC_READER_I2C_ADDRESS (if i2c type)
+#   PARAM_NFC_READER_I2C_SPEED   (if i2c type)
+#
+#   CHOICE_NFC_READER_I2C_HARDWARE / _I2C_SOFTWARE  (if i2c type)
+#   PARAM_NFC_READER_I2C_BUS     (if i2c type + hardware i2c)
+#   PARAM_NFC_READER_SCL_PIN     (if i2c type + software i2c)
+#   PARAM_NFC_READER_SDA_PIN     (if i2c type + software i2c)
 #
 #   PARAM_NFC_READER_VEN_PIN     (if pn7160 type)
 #   PARAM_NFC_READER_IRQ_PIN     (if pn7160 type)
@@ -135,7 +139,10 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
           default ""
           help
             Optional hardware SPI bus name, e.g. "spi1".
-            Leave blank to use software SPI.
+            Leave blank to use the MCU's DEFAULT hardware SPI bus.
+            (This does not select software SPI. For that, hand-add
+            spi_software_sclk_pin/_mosi_pin/_miso_pin to the
+            [mmu_nfc_reader] section - Klipper accepts them already.)
 
         config PARAM_NFC_READER_SPI_SPEED
           int "SPI speed (Hz)    "
@@ -166,6 +173,12 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
       endif
 
       if CHOICE_NFC_READER_TYPE_PN532 || CHOICE_NFC_READER_TYPE_PN7160
+        config PARAM_NFC_READER_I2C_MCU
+          string "I2C MCU Name      "
+          default "$(MCU_NAME)"
+          help
+            MCU that owns this gate's I2C bus.
+
         config PARAM_NFC_READER_I2C_ADDRESS
             int "I2C address       "
             default 36 if CHOICE_NFC_READER_TYPE_PN532
@@ -177,18 +190,79 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
               PN532 uses 36 (0x24)
               PN7160 supports 40-43 (0x28-0x2B)
 
-        config PARAM_NFC_READER_I2C_BUS
-          string "I2C bus name      "
-          default ""
+        choice CHOICE_NFC_READER_I2C_BUS_TYPE
+          prompt "I2C bus type      "
+          default CHOICE_NFC_READER_I2C_HARDWARE
           help
-            Optional I2C bus name. Leave blank to use Klipper's default I2C bus.
+            Hardware I2C uses the MCU's built-in I2C peripheral - faster, and the
+            right default. Software I2C ("bit banging") lets Klipper drive ANY two
+            GPIO pins as an I2C bus instead.
+
+            Software I2C is worth it for one specific reason: a PN532 has a FIXED
+            address of 0x24, so only one can live on a hardware bus. Giving each
+            reader its own two-pin software bus removes the conflict, which is what
+            makes a PN532-per-gate build practical.
+
+          config CHOICE_NFC_READER_I2C_HARDWARE
+            bool "Hardware i2c"
+            help
+              Use one of the MCU's hardware I2C buses (recommended).
+
+          config CHOICE_NFC_READER_I2C_SOFTWARE
+            bool "Software i2c (bit-banged, any two pins)"
+            help
+              Bit-bang I2C on two ordinary GPIO pins. Slower than hardware, and it
+              supports neither clock stretching nor bus timeouts - a wedged bus
+              returns bad data rather than an error. Each software bus needs its
+              own pull-up resistors on both lines.
+        endchoice
+
+        # Mirror the choice into a string the template can test, exactly as
+        # PARAM_NFC_READER_TYPE mirrors the reader-type choice. Needed because
+        # bare CHOICE_* bools are NOT grouped into per-gate lists by
+        # installer/build.py as_dict(), so the per-gate template cannot index
+        # them - and testing "is the bus name blank?" instead would wrongly read
+        # a hardware bus with no explicit name as a software bus.
+        config PARAM_NFC_READER_I2C_BUS_TYPE
+          string
+          default "software" if CHOICE_NFC_READER_I2C_SOFTWARE
+          default "hardware"
+
+        if CHOICE_NFC_READER_I2C_HARDWARE
+          config PARAM_NFC_READER_I2C_BUS
+            string "I2C bus name      "
+            default ""
+            help
+              Optional I2C bus name. Leave blank to use Klipper's default I2C bus.
+        endif
+
+        if CHOICE_NFC_READER_I2C_SOFTWARE
+          config PARAM_NFC_READER_SCL_PIN
+            string "Software SCL pin  "
+            default ""
+            help
+              Software I2C clock pin. Required.
+              Don't forget to prefix with mcu name. E.g. mmu:PB8
+              The mcu prefix MUST match the I2C MCU Name above - Klipper does not
+              check this for I2C and a mismatch fails obscurely at startup.
+
+          config PARAM_NFC_READER_SDA_PIN
+            string "Software SDA pin  "
+            default ""
+            help
+              Software I2C data pin. Required.
+              Don't forget to prefix with mcu name. E.g. mmu:PB9
+        endif
 
         config PARAM_NFC_READER_I2C_SPEED
           int "I2C speed (Hz)    "
           default 100000
-          range 1 1000000
+          range 100000 1000000
           help
-            I2C speed for the NFC reader, in Hz.
+            I2C speed for the NFC reader, in Hz. Klipper rejects anything below
+            100000, so that is the floor here.
+            For software I2C this sets the bit-bang half-period - except on AVR,
+            which ignores it entirely and runs as fast as its GPIO calls allow.
       endif
 
       if CHOICE_NFC_READER_TYPE_PN7160
@@ -282,7 +356,10 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
                 default ""
                 help
                   Optional hardware SPI bus name, e.g. "spi1".
-                  Leave blank to use software SPI.
+                  Leave blank to use the MCU's DEFAULT hardware SPI bus.
+                  (This does not select software SPI. For that, hand-add
+                  spi_software_sclk_pin/_mosi_pin/_miso_pin to the
+                  [mmu_nfc_reader] section - Klipper accepts them already.)
 
               config PARAM_NFC_READER_SPI_SPEED_$(i)
                 int "Gate $(i) SPI speed (Hz)    "
@@ -313,32 +390,6 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
             endif
 
             if CHOICE_NFC_READER_TYPE_PN532_$(i) || CHOICE_NFC_READER_TYPE_PN7160_$(i)
-              config PARAM_NFC_READER_I2C_ADDRESS_$(i)
-                int "I2C address              "
-                default 36 if CHOICE_NFC_READER_TYPE_PN532_$(i)
-                default 40 if CHOICE_NFC_READER_TYPE_PN7160_$(i)
-                range 36 36 if CHOICE_NFC_READER_TYPE_PN532_$(i)
-                range 36 43 if CHOICE_NFC_READER_TYPE_PN7160_$(i)
-                help
-                  I2C address of the NFC reader.
-                  PN532 uses 36 (0x24)
-                  PN7160 supports 40-43 (0x28-0x2B)
-
-              config PARAM_NFC_READER_I2C_BUS_$(i)
-                string "Gate $(i) I2C bus name      "
-                default ""
-                help
-                  Optional I2C bus name. Leave blank to use Klipper's default I2C bus.
-
-              config PARAM_NFC_READER_I2C_SPEED_$(i)
-                int "Gate $(i) I2C speed (Hz)    "
-                default 100000
-                range 10 1000000
-                help
-                  I2C speed for this gate's NFC reader, in Hz.
-            endif
-
-            if CHOICE_NFC_READER_TYPE_PN532_$(i) || CHOICE_NFC_READER_TYPE_PN7160_$(i)
               config PARAM_NFC_READER_I2C_MCU_$(i)
                 string "Gate $(i) I2C MCU           "
                 default "$(MCU_NAME)_gate$(i)" if MMU_HAS_PER_GATE_MCU
@@ -358,18 +409,66 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
                   PN532 uses 36 (0x24)
                   PN7160 supports 40-43 (0x28-0x2B)
 
-              config PARAM_NFC_READER_I2C_BUS_$(i)
-                string "Gate $(i) I2C bus name      "
-                default ""
+              choice CHOICE_NFC_READER_I2C_BUS_TYPE_$(i)
+                prompt "Gate $(i) I2C bus type      "
+                default CHOICE_NFC_READER_I2C_HARDWARE_$(i)
                 help
-                  Optional I2C bus name. Leave blank to use Klipper's default I2C bus.
+                  Hardware I2C uses the MCU's built-in peripheral. Software I2C
+                  bit-bangs any two GPIO pins instead.
+
+                  For per-gate PN532 readers this is the important setting: every
+                  PN532 is fixed at address 0x24, so they cannot share a hardware
+                  bus. Give each gate its own software bus (its own pin pair) and
+                  the address stops mattering.
+
+                config CHOICE_NFC_READER_I2C_HARDWARE_$(i)
+                  bool "Hardware i2c"
+
+                config CHOICE_NFC_READER_I2C_SOFTWARE_$(i)
+                  bool "Software i2c (bit-banged, any two pins)"
+              endchoice
+
+              # Mirrored into a string so the template can index it per gate -
+              # see the note on the common PARAM_NFC_READER_I2C_BUS_TYPE above.
+              config PARAM_NFC_READER_I2C_BUS_TYPE_$(i)
+                string
+                default "software" if CHOICE_NFC_READER_I2C_SOFTWARE_$(i)
+                default "hardware"
+
+              if CHOICE_NFC_READER_I2C_HARDWARE_$(i)
+                config PARAM_NFC_READER_I2C_BUS_$(i)
+                  string "Gate $(i) I2C bus name      "
+                  default ""
+                  help
+                    Optional I2C bus name. Leave blank to use Klipper's default I2C bus.
+              endif
+
+              if CHOICE_NFC_READER_I2C_SOFTWARE_$(i)
+                config PARAM_NFC_READER_SCL_PIN_$(i)
+                  string "Gate $(i) software SCL pin  "
+                  default ""
+                  help
+                    Software I2C clock pin for this gate. Required.
+                    Don't forget to prefix with mcu name. E.g. mmu:PB8
+                    Must be a DIFFERENT pin pair from every other gate that uses the
+                    same I2C address, or the readers end up sharing one bus and
+                    colliding. The mcu prefix must match this gate's I2C MCU.
+
+                config PARAM_NFC_READER_SDA_PIN_$(i)
+                  string "Gate $(i) software SDA pin  "
+                  default ""
+                  help
+                    Software I2C data pin for this gate. Required.
+                    Don't forget to prefix with mcu name. E.g. mmu:PB9
+              endif
 
               config PARAM_NFC_READER_I2C_SPEED_$(i)
                 int "Gate $(i) I2C speed (Hz)    "
                 default 100000
-                range 10 1000000
+                range 100000 1000000
                 help
-                  I2C speed for this gate's NFC reader, in Hz.
+                  I2C speed for this gate's NFC reader, in Hz. Klipper rejects
+                  anything below 100000, so that is the floor here.
             endif
 
             if CHOICE_NFC_READER_TYPE_PN7160_$(i)

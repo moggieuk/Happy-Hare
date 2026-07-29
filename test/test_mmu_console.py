@@ -745,10 +745,18 @@ class TestConsoleScript(unittest.TestCase):
             ['--no-preload', '--no-log', '--plain', '--header', 'sensors']))
         self.addCleanup(console.close)
         console.boot()
+        # /sensor echoes the new state on stdout (console.py _meta_sensor), so the
+        # meta() calls must be captured - a bare one leaks '  mmu_entry_1 disabled'
+        # into the test runner's output. header_lines() returns rather than prints,
+        # so the assertions stay outside the capture and keep their diagnostics.
+        def quiet_meta(cmd):
+            with contextlib.redirect_stdout(io.StringIO()):
+                console.meta(cmd)
+
         self.assertIn('mmu_entry_1=0', '\n'.join(console.header_lines()))
-        console.meta('/sensor mmu_entry_1 disable')
+        quiet_meta('/sensor mmu_entry_1 disable')
         self.assertIn('mmu_entry_1=-', '\n'.join(console.header_lines()))
-        console.meta('/sensor mmu_entry_1 enable')
+        quiet_meta('/sensor mmu_entry_1 enable')
         self.assertIn('mmu_entry_1=0', '\n'.join(console.header_lines()))
 
     def test_sensor_rejects_a_bad_action(self):
