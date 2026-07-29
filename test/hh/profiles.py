@@ -128,6 +128,36 @@ NFC_PN532_SW_I2C = BOXTURTLE.derive(
           'PARAM_NFC_READER_SDA_PIN_1': 'unit0:PC5'},
     description='Two per-gate PN532 readers, each on its own software i2c bus')
 
+# PN532 over HSU/UART - the only reader that is NOT MCU-mediated. klippy opens a host
+# serial port itself, so the rendered section has no pins at all: just serial + baud.
+#
+# The template used to dispatch SPI-vs-I2C on reader_type ("is it rc522/pn5180?"), which
+# stopped working the moment pn532 gained a second transport - a UART reader would have
+# rendered a full I2C block. Dispatch is on PARAM_NFC_READER_INTERFACE now, and this
+# profile is what pins that: it is a pn532 that must NOT emit i2c_address.
+NFC_PN532_UART = BOXTURTLE.derive(
+    'nfc_pn532_uart',
+    syms={'MMU_HAS_NFC_READER': True, 'MMU_HAS_COMMON_NFC_READER': True,
+          'CHOICE_NFC_READER_TYPE_PN532_UART': True,
+          'CHOICE_NFC_SERIAL_DEVICE_OTHER': True,
+          'NFC_SERIAL_DEVICE_OTHER':
+              '/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0'},
+    description='BoxTurtle + one common NFC reader (PN532/HSU UART)')
+
+# MIXED per-gate, for the same reason NFC_PN5180_PER_GATE is mixed: gate 0 on UART and
+# the rest on RC522 is where a missing per-gate list entry shows up. A uniform-UART
+# profile would not catch an interface list that silently fell back to a scalar.
+#
+# Two UART gates would need two USB adapters in reality; one is enough to prove the
+# rendering, and the port-uniqueness check has its own unit test.
+NFC_PN532_UART_PER_GATE = BOXTURTLE.derive(
+    'nfc_pn532_uart_per_gate',
+    syms={'MMU_HAS_NFC_READER': True, 'MMU_HAS_PER_GATE_NFC_READERS': True,
+          'CHOICE_NFC_READER_TYPE_PN532_UART_0': True,
+          'PARAM_NFC_READER_SERIAL_0':
+              '/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0'},
+    description='BoxTurtle + per-gate readers, gate 0 PN532/UART and the rest RC522')
+
 # The round-trip profile: per-gate NFC + Spoolman in a WRITABLE mode + auto-create
 # + deep read. All four are needed or the interesting paths gate themselves off:
 #   spoolman_support defaults to 'off' (mmu_machine_parameters.py), and MMU_GATE_MAP
@@ -208,6 +238,7 @@ ENCODER = BOXTURTLE.derive(
 PROFILES = {p.name: p for p in (BOXTURTLE, TRADRACK, EMU, ENCODER, NFC_SINGLE,
                                 NFC_PER_GATE, NFC_PN5180, NFC_PN5180_PER_GATE,
                                 NFC_PN532, NFC_PN532_SW_I2C,
+                                NFC_PN532_UART, NFC_PN532_UART_PER_GATE,
                                 NFC_SPOOLMAN, NFC_SPOOLMAN_SHARED)}
 
 

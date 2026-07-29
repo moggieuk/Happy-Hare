@@ -110,6 +110,13 @@ count   = $(shell, set -- $(1); echo $#)
 # Used to dynamically get the serial device paths
 all_serial_devices  := $(shell, ls /dev/serial/by-id/* 2>/dev/null || true)
 serial_device        = $(shell, printf '%s\n' $(all_serial_devices) | grep 'Klipper_$(2)' | sed -n '$(1)p')
+
+# UNFILTERED device list, for host-attached peripherals that are not Klipper boards.
+# An NFC reader in HSU/UART mode hangs off a generic CH340/CP2102/FTDI adapter, so the
+# Klipper_-filtered serial_device above never matches one.
+any_serial_device    = $(shell, printf '%s\n' $(all_serial_devices) | sed -n '$(1)p')
+any_serial_exists    = $(to_bool, [ -n '$(any_serial_device,$(1))' ])
+nfc_serial_config    = $(shell, basename '$(any_serial_device,$(1))' | sed 's/-/_/g' | awk 'BEGIN{out="CHOICE_NFC_SERIAL_DEVICE_NONE"} NF && $$0!="." {out="CHOICE_NFC_SERIAL_DEVICE_" toupper($$0)} END{print out}')
 serial_exists        = $(to_bool, [ -n '$(serial_device,$(1),$(2))' ])
 mmu_serial_config    = $(shell, basename '$(serial_device,$(1),$(2))' | sed 's/-/_/g' | awk 'BEGIN{out="CHOICE_MMU_SERIAL_DEVICE_NONE" } NF && $$0!="." {out="CHOICE_MMU_SERIAL_DEVICE_" toupper($$0)} END{print out}')
 mmu_serial_config_pg = $(shell, basename '$(serial_device,$(2),$(3))' | sed 's/-/_/g' | awk -v gate=$(1) 'BEGIN{out="CHOICE_MMU_SERIAL_DEVICE_NONE_GATE_" gate } NF && $$0!="." {out="CHOICE_MMU_SERIAL_DEVICE_" toupper($$0) "_GATE_" gate} END{print out}')

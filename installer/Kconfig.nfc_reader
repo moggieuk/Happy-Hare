@@ -16,35 +16,46 @@
 # Single:
 #   PARAM_NFC_READER
 #   PARAM_NFC_READER_TYPE
+#   PARAM_NFC_READER_INTERFACE   (i2c | spi | uart - what the template dispatches on)
 #
-#   PARAM_NFC_READER_CS_PIN      (if rc522/pn5180 type)
-#   PARAM_NFC_READER_SPI_BUS     (if rc522/pn5180 type)
-#   PARAM_NFC_READER_SPI_SPEED   (if rc522/pn5180 type)
+#   PARAM_NFC_READER_CS_PIN      (if spi interface)
+#   PARAM_NFC_READER_SPI_BUS     (if spi interface)
+#   PARAM_NFC_READER_SPI_SPEED   (if spi interface)
 #
 #   PARAM_NFC_READER_BUSY_PIN    (if pn5180 type)
 #   PARAM_NFC_READER_RESET_PIN   (if pn5180 type)
 #
-#   PARAM_NFC_READER_I2C_MCU     (if i2c type)
-#   PARAM_NFC_READER_I2C_ADDRESS (if i2c type)
-#   PARAM_NFC_READER_I2C_SPEED   (if i2c type)
+#   PARAM_NFC_READER_I2C_MCU     (if i2c interface)
+#   PARAM_NFC_READER_I2C_ADDRESS (if i2c interface)
+#   PARAM_NFC_READER_I2C_SPEED   (if i2c interface)
 #
-#   CHOICE_NFC_READER_I2C_HARDWARE / _I2C_SOFTWARE  (if i2c type)
-#   PARAM_NFC_READER_I2C_BUS     (if i2c type + hardware i2c)
-#   PARAM_NFC_READER_SCL_PIN     (if i2c type + software i2c)
-#   PARAM_NFC_READER_SDA_PIN     (if i2c type + software i2c)
+#   CHOICE_NFC_READER_I2C_HARDWARE / _I2C_SOFTWARE  (if i2c interface)
+#   PARAM_NFC_READER_I2C_BUS     (if i2c interface + hardware i2c)
+#   PARAM_NFC_READER_SCL_PIN     (if i2c interface + software i2c)
+#   PARAM_NFC_READER_SDA_PIN     (if i2c interface + software i2c)
+#
+#   CHOICE_NFC_SERIAL_DEVICE_*   (if uart interface - device picker)
+#   PARAM_NFC_READER_SERIAL      (if uart interface)
+#   PARAM_NFC_READER_BAUD        (if uart interface)
 #
 #   PARAM_NFC_READER_VEN_PIN     (if pn7160 type)
 #   PARAM_NFC_READER_IRQ_PIN     (if pn7160 type)
 #
 # Per-gate:
 #   PARAM_NFC_READER_X
-#     as above with _<gate_index> extension
+#     as above with _<gate_index> extension, EXCEPT the serial device picker -
+#     per-gate UART takes a plain path string. See the note at that config.
 #
-# SUPPORTED SENSOR TYPES
+# SUPPORTED READER TYPES
 #   - rc522  (spi)
 #   - pn5180 (spi, also needs BUSY and RST pins)
-#   - pn532  (i2c, i2c_address=0x24)
+#   - pn532  (i2c at 0x24, or uart/HSU on a host USB serial adapter)
 #   - pn7160 (i2c, i2c_address=0x28-0x2B)
+#
+# Chip and transport are separate settings in the rendered config, but menuconfig
+# offers them as one flat list of chip/transport pairs because that is how the
+# hardware is actually chosen. PN532-over-SPI is deliberately NOT offered: the
+# driver exists but has never run against hardware, so it is hand-edit only.
 #
 # Can be disabled and forced off with:
 #   select UNSELECT_MMU_HAS_NFC_READER
@@ -114,6 +125,23 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
           help
             PN532 NFC reader using I2C, usually at address 0x24.
 
+        config CHOICE_NFC_READER_TYPE_PN532_UART
+          bool "PN532 / UART (HSU)"
+          help
+            PN532 NFC reader in HSU (High Speed UART) mode, on a USB serial adapter.
+
+            This is the ONE reader that does not connect to an MCU. It plugs into the
+            HOST (the Pi), and klippy opens the serial port itself - so there are no
+            pins to assign, just a device path.
+
+            Set the breakout board's mode pads for HSU: SEL0=0, SEL1=1 (sometimes
+            labeled A0/A1). Wire adapter TX to PN532 RX, RX to TX, plus GND and power.
+
+            One reader per adapter, exclusively: two readers on one port would
+            interleave frames on a single stream. For several readers pick
+            "PN532 / I2C" above and choose software I2C, which gives each reader its
+            own bit-banged bus with no extra hardware.
+
         config CHOICE_NFC_READER_TYPE_PN7160
           bool "PN7160 / I2C"
           help
@@ -125,7 +153,62 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
         default "rc522"  if CHOICE_NFC_READER_TYPE_RC522
         default "pn5180" if CHOICE_NFC_READER_TYPE_PN5180
         default "pn532"  if CHOICE_NFC_READER_TYPE_PN532
+        default "pn532"  if CHOICE_NFC_READER_TYPE_PN532_UART
         default "pn7160" if CHOICE_NFC_READER_TYPE_PN7160
+
+      config PARAM_NFC_READER_INTERFACE
+        string
+        default "uart" if CHOICE_NFC_READER_TYPE_PN532_UART
+        default "spi"  if CHOICE_NFC_READER_TYPE_RC522 || CHOICE_NFC_READER_TYPE_PN5180 # || CHOICE_NFC_READER_TYPE_PN532
+        default "i2c"
+
+      if CHOICE_NFC_READER_TYPE_PN532_UART
+        choice CHOICE_NFC_SERIAL_DEVICE
+          prompt "Serial device     "
+          help
+            Select the USB serial adapter the PN532 is connected to, or choose
+            "Other" and type the path.
+
+            The list is every device under /dev/serial/by-id/, unfiltered - unlike the
+            MCU pickers, which only show Klipper boards. If it is empty, the adapter is
+            not plugged in.
+
+          @repeat var=i min=1 max=10@
+          config $(nfc_serial_config,$(i))
+            bool "$(any_serial_device,$(i))"
+            depends on $(any_serial_exists,$(i))
+          @endrepeat@
+
+          config CHOICE_NFC_SERIAL_DEVICE_OTHER
+            bool "Other / manually entered"
+          if CHOICE_NFC_SERIAL_DEVICE_OTHER
+            config NFC_SERIAL_DEVICE_OTHER
+              string "Enter serial device path"
+              default "-enter-device-path-"
+              help
+                Path of the serial adapter the PN532 is wired to.
+                Use the /dev/serial/by-id/ form: it is stable, whereas /dev/ttyUSB0
+                changes when devices are replugged or enumerate in a different order,
+                and swapping with another adapter is a confusing failure to diagnose.
+                Example: /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
+          endif
+        endchoice
+
+        config PARAM_NFC_READER_SERIAL
+          string
+          @repeat var=i min=1 max=10@
+          default "$(any_serial_device,$(i))" if $(nfc_serial_config,$(i))
+          @endrepeat@
+          default NFC_SERIAL_DEVICE_OTHER if CHOICE_NFC_SERIAL_DEVICE_OTHER
+
+        config PARAM_NFC_READER_BAUD
+          int "Baud rate         "
+          default 115200
+          range 9600 1288000
+          help
+            Serial speed. Leave at 115200: that is what the PN532 powers up at, and
+            raising it needs a SetSerialBaudRate command the driver does not send.
+      endif
 
       if CHOICE_NFC_READER_TYPE_RC522 || CHOICE_NFC_READER_TYPE_PN5180
         config PARAM_NFC_READER_CS_PIN
@@ -217,12 +300,6 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
               own pull-up resistors on both lines.
         endchoice
 
-        # Mirror the choice into a string the template can test, exactly as
-        # PARAM_NFC_READER_TYPE mirrors the reader-type choice. Needed because
-        # bare CHOICE_* bools are NOT grouped into per-gate lists by
-        # installer/build.py as_dict(), so the per-gate template cannot index
-        # them - and testing "is the bus name blank?" instead would wrongly read
-        # a hardware bus with no explicit name as a software bus.
         config PARAM_NFC_READER_I2C_BUS_TYPE
           string
           default "software" if CHOICE_NFC_READER_I2C_SOFTWARE
@@ -333,6 +410,19 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
               config CHOICE_NFC_READER_TYPE_PN532_$(i)
                 bool "PN532 / I2C"
 
+              config CHOICE_NFC_READER_TYPE_PN532_UART_$(i)
+                bool "PN532 / UART (HSU)"
+                help
+                  PN532 in HSU mode on a USB serial adapter plugged into the HOST,
+                  not into an MCU. Needs its OWN adapter - a port cannot be shared
+                  with another reader.
+
+                  For a reader on every gate this means one USB adapter per gate.
+                  Software I2C is usually the better answer there: it gives each
+                  reader its own bit-banged bus off the MMU MCU with no extra
+                  hardware. Pick UART per gate only if you actually have the
+                  adapters.
+
               config CHOICE_NFC_READER_TYPE_PN7160_$(i)
                 bool "PN7160 / I2C"
             endchoice
@@ -342,7 +432,39 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
               default "rc522"  if CHOICE_NFC_READER_TYPE_RC522_$(i)
               default "pn5180" if CHOICE_NFC_READER_TYPE_PN5180_$(i)
               default "pn532"  if CHOICE_NFC_READER_TYPE_PN532_$(i)
+              default "pn532"  if CHOICE_NFC_READER_TYPE_PN532_UART_$(i)
               default "pn7160" if CHOICE_NFC_READER_TYPE_PN7160_$(i)
+
+            config PARAM_NFC_READER_INTERFACE_$(i)
+              string
+              default "uart" if CHOICE_NFC_READER_TYPE_PN532_UART_$(i)
+              default "spi"  if CHOICE_NFC_READER_TYPE_RC522_$(i) || CHOICE_NFC_READER_TYPE_PN5180_$(i) # || CHOICE_NFC_READER_TYPE_PN532_$(i)
+              default "i2c"
+
+            if CHOICE_NFC_READER_TYPE_PN532_UART_$(i)
+              # A plain string rather than the device picker the common reader gets.
+              # A picker here would mean a nested @repeat generating up to 10 device
+              # symbols for each of 12 gates, and it would not actually help: several
+              # identical adapters produce by-id names differing only by an opaque
+              # suffix, so which physical reader is which has to be found by trial
+              # anyway. Run `ls /dev/serial/by-id/` and paste.
+              config PARAM_NFC_READER_SERIAL_$(i)
+                string "Gate $(i) serial device     "
+                default "-enter-device-path-"
+                help
+                  Path of the USB serial adapter for THIS gate's reader. Every gate
+                  needs a different one; reusing a port is rejected at startup.
+                  List them with: ls /dev/serial/by-id/
+                  Use the by-id form - /dev/ttyUSB0 is not stable across replugs.
+
+              config PARAM_NFC_READER_BAUD_$(i)
+                int "Gate $(i) baud rate         "
+                default 115200
+                range 9600 1288000
+                help
+                  Serial speed. Leave at 115200: that is what the PN532 powers up at,
+                  and raising it needs a command the driver does not send.
+            endif
 
             if CHOICE_NFC_READER_TYPE_RC522_$(i) || CHOICE_NFC_READER_TYPE_PN5180_$(i)
               config PARAM_NFC_READER_CS_PIN_$(i)
