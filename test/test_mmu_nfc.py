@@ -248,16 +248,23 @@ class TestPn5180Wiring(unittest.TestCase):
         End to end: Kconfig -> template -> Klipper section -> reader_factory -> driver.
 
         alive is deliberately NOT asserted. Only RC522 has a scripted bus fixture
-        (test/hh/nfc_fixtures.py), so the PN5180's init at connect runs out of
-        scripted responses and the reader reports not-alive. Construction is the
+        (test/hh/nfc_fixtures.py), so the PN5180's init runs out of scripted
+        responses and the reader reports not-alive. Construction is the
         part this test is about: it is what proves the factory routed 'pn5180' to
         the SPI branch and that both required pins reached the driver.
+
+        That dry init is now actually REACHED, so the manager logs one error for it.
+        The error used to be absent only because the init pass never got that far -
+        see Session._settle_nfc_init. Assert the shape of that one expected error
+        rather than an empty list, so an unrelated boot error still fails here.
         """
         hh = session('nfc_pn5180')
         try:
             hh.boot()
             from extras.mmu.unit.nfc.pn5180_driver import PN5180Driver
-            self.assertEqual(hh.errors, [])
+            self.assertEqual(len(hh.errors), 1, hh.errors)
+            self.assertIn('ran out of scripted responses', hh.errors[0])
+            self.assertIn("initializing reader 'unit0_nfc'", hh.errors[0])
             reader = hh.printer.lookup_object('mmu_machine').units[0].nfc_manager.shared_reader
             self.assertIsNotNone(reader, 'the PN5180 reader was configured but not created')
             self.assertEqual(reader.reader_type, 'pn5180')

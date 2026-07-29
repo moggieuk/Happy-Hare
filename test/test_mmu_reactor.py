@@ -245,6 +245,82 @@ class TestVirtualReactor(unittest.TestCase):
         with self.assertRaises(AssertionError):
             self.reactor.run_until(lambda: False, timeout=0.2, step=0.05)
 
+    # -- parked callbacks --------------------------------------------------
+    #
+    # advance() has an EDGE that real Klipper's reactor does not: it stops once the
+    # next timer falls past its target. A callback that pauses across that edge is
+    # abandoned half-run and advance() returns as if all was well. This bit the NFC
+    # reader init pass - every SPI reader booted dead because the first driver sleep
+    # outran the pump window (see Session._settle_nfc_init) - so the detection and
+    # the drain that fix it are pinned here.
+
+    def _sleeper(self, log, naps, nap=0.05):
+        """A callback that pauses `naps` times, logging how far it got."""
+        def napping_callback(eventtime):
+            for i in range(naps):
+                self.reactor.pause(self.reactor.monotonic() + nap)
+                log.append(i)
+            return self.reactor.NEVER
+        return napping_callback
+
+    def test_callback_pausing_past_the_target_is_left_parked(self):
+        """The hazard itself: advance() returns having run only part of a callback."""
+        log = []
+        self.reactor.register_callback(self._sleeper(log, naps=3))
+        self.reactor.advance(0.01)      # far less than 3 x 0.05 of sleeping
+        self.assertEqual(log, [], 'the callback should not have finished a nap yet')
+        self.assertEqual(len(self.reactor.suspended_callbacks()), 1,
+                         'a half-run callback must be visible as parked')
+
+    def test_drain_suspended_finishes_a_parked_callback(self):
+        log = []
+        self.reactor.register_callback(self._sleeper(log, naps=3))
+        self.reactor.advance(0.01)
+        spent = self.reactor.drain_suspended()
+        self.assertEqual(log, [0, 1, 2], 'every nap should have been waited out')
+        self.assertEqual(self.reactor.suspended_callbacks(), [])
+        self.assertGreater(spent, 0.)
+
+    def test_drain_suspended_reports_a_callback_it_cannot_finish(self):
+        """Budget exhaustion must name the parked work, not spin or pass quietly."""
+        log = []
+        self.reactor.register_callback(self._sleeper(log, naps=100))
+        self.reactor.advance(0.01)
+        with self.assertRaises(AssertionError) as ctx:
+            self.reactor.drain_suspended(budget=0.2)
+        self.assertIn('still parked', str(ctx.exception))
+        self.assertIn('Pending timers', str(ctx.exception))
+
+    def test_drain_suspended_scoped_to_one_callback_ignores_a_pausing_poller(self):
+        """
+        Why `inside` exists. A repeating timer that pauses inside its own callback -
+        the shared NFC reader poll does exactly this - is parked again as fast as it
+        clears, so an unfiltered drain never observes "nothing parked" and just burns
+        its budget. Naming the callback actually being waited for fixes that.
+
+        The poller here naps longer than the drain's step so it is reliably mid-pause
+        at every step boundary; a nap shorter than the step would clear inside a single
+        advance() and the trap would not reproduce.
+        """
+        log = []
+
+        def poller(eventtime):
+            self.reactor.pause(self.reactor.monotonic() + 0.5)
+            return eventtime + 0.01     # re-arms for ever
+
+        self.reactor.register_timer(poller, self.reactor.monotonic())
+        self.reactor.register_callback(self._sleeper(log, naps=3))
+        self.reactor.advance(0.01)
+
+        # Scoped to the sleeper, the drain terminates even with the poller parked.
+        self.reactor.drain_suspended(inside='napping_callback', budget=1.)
+        self.assertEqual(log, [0, 1, 2])
+        self.assertTrue(self.reactor.suspended_callbacks(),
+                        'the poller should still be parked - that is the point')
+        # Unfiltered, the ever-re-parking poller keeps it from ever settling.
+        with self.assertRaises(AssertionError):
+            self.reactor.drain_suspended(budget=0.3)
+
 
 if __name__ == '__main__':
     unittest.main()

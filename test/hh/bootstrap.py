@@ -547,9 +547,30 @@ class Session:
         harness cannot drift out of step with it again. Advance only just past it: the
         same callback arms shared-reader polling (NFC_CHECK_INTERVAL), and overshooting
         would fire poll cycles tests do not expect.
+
+        THEN DRAIN, because firing the callback is not the same as finishing it.
+        _init_all_readers runs every reader's init INLINE, and a chip init sleeps
+        mid-sequence - RC522's is a soft reset plus _sleep(0.050) (rc522_driver.py:215).
+        A driver sleep is reactor.pause(), which parks the callback on a resume timer;
+        if that timer lands past advance()'s target the callback is abandoned half-run.
+        The advance above leaves only ~`extra` of headroom, so the very first RC522
+        would get one register write and then silently stop - taking every LATER reader
+        with it, since they had not been reached yet. That is why SPI readers used to
+        boot alive=False while a UART reader (no init sleep) came up fine, and why
+        _start_polling never armed on shared-reader profiles.
+
+        Draining in small steps keeps the overshoot to what the sleeps actually needed
+        (~50ms per SPI reader) rather than a blind jump. It stays under
+        NFC_CHECK_INTERVAL (1.0s) up to ~16 readers on one unit; past that a spurious
+        shared poll cycle would fire and this needs revisiting.
+
+        The drain is scoped to _delayed_bootup_init because the tail of that same
+        callback arms the shared-reader poll, and a poll pauses too - draining on "is
+        anything parked" would then chase a 1 Hz timer forever.
         """
         try:
-            from extras.mmu.unit.mmu_nfc_manager import NFC_INIT_DELAY
+            from extras.mmu.unit.mmu_nfc_manager import (NFC_INIT_DELAY,
+                                                         MmuNfcManager)
         except Exception:
             return self
         machine = self.printer.lookup_object('mmu_machine', None)
@@ -557,6 +578,12 @@ class Session:
             return self
         if any(getattr(u, 'nfc_manager', None) is not None for u in machine.units):
             self.reactor.advance(NFC_INIT_DELAY + extra)
+            # Name taken from the method itself, for the same anti-drift reason as
+            # NFC_INIT_DELAY: renaming it upstream then fails loudly here rather than
+            # turning the drain into a no-op that looks like a priming bug. budget
+            # holds the overshoot under NFC_CHECK_INTERVAL - see above.
+            self.reactor.drain_suspended(
+                inside=MmuNfcManager._delayed_bootup_init.__name__, budget=1.)
         return self
 
     def prime_nfc_readers(self, cycles=None):

@@ -237,6 +237,84 @@ class VirtualReactor:
         """
         return self._g_dispatch is not None
 
+    @staticmethod
+    def _parked_inside(g, name):
+        """True if greenlet `g` is parked with `name` somewhere on its call stack."""
+        frame = g.gr_frame
+        while frame is not None:
+            if frame.f_code.co_name == name:
+                return True
+            frame = frame.f_back
+        return False
+
+    def suspended_callbacks(self, inside=None):
+        """
+        Timers that exist only to resume a callback parked in pause(), i.e. callbacks
+        that are half-run right now. `inside` narrows the list to those parked with
+        that function name on the stack.
+
+        THE HAZARD THIS EXPOSES. advance(dt) stops at `_next_timer > _target`, so a
+        callback that pauses for longer than the remaining window is simply left
+        parked - advance() returns normally, having run only PART of it, and nothing
+        anywhere says so. Real Klipper never has this problem because its reactor
+        keeps running; here the pump has an edge, and pausing across it silently
+        truncates the callback. That is not hypothetical: it is why every SPI NFC
+        reader used to boot dead (see Session._settle_nfc_init).
+
+        pause() parks a greenlet by registering `g.switch` as the resume timer
+        (:220), and _end_greenlet unregisters it once the callback finally returns
+        (:227). So a live bound-method-of-a-greenlet timer means "still parked".
+        Ordinary self-re-arming timers are bound to plain functions and never match.
+        """
+        found = []
+        for t in self._timers:
+            if t.waketime >= self.NEVER:
+                continue
+            g = getattr(t.callback, '__self__', None)
+            if not isinstance(g, greenlet.greenlet):
+                continue
+            if inside is not None and not self._parked_inside(g, inside):
+                continue
+            found.append(t)
+        return found
+
+    def drain_suspended(self, inside=None, budget=2., step=0.05):
+        """
+        Advance in small steps until nothing is parked mid-pause, and return the
+        virtual time spent. Raises if `budget` runs out.
+
+        Use this after pumping to a point where a callback is EXPECTED to have run to
+        completion but sleeps its way through several pauses - the reader-init pass is
+        the motivating case. Stepping rather than advancing `budget` in one go keeps
+        the overshoot to only what the parked callbacks actually needed, which matters
+        because overshoot on a live reactor means extra poll cycles.
+
+        PASS `inside` WHENEVER A REPEATING TIMER MIGHT ALSO PAUSE, or this will not
+        terminate. Draining unfiltered means "wait for the reactor to hold no parked
+        callback at all", and a 1 Hz poll whose own callback pauses (the shared NFC
+        reader does exactly this once init arms it) keeps re-parking, so the condition
+        is never observed true and the budget always blows. Naming the callback being
+        waited for makes the loop watch only that one.
+
+        NOT a general "settle" either way: a callback blocked on completion.wait() is
+        also parked, and one waiting on an event that only a later test action triggers
+        (a homing completion, say) would never clear. Reach for this only where the
+        pause being waited out is a driver sleep.
+        """
+        spent = 0.
+        while self.suspended_callbacks(inside):
+            if spent >= budget:
+                raise AssertionError(
+                    'drain_suspended(inside=%r): %d callback(s) still parked after '
+                    '%.2fs of virtual time. Pending timers: %r'
+                    % (inside, len(self.suspended_callbacks(inside)), spent,
+                       [(getattr(t.callback, '__qualname__', repr(t.callback)),
+                         t.waketime) for t in self._timers
+                        if t.waketime < self.NEVER]))
+            self.advance(step)
+            spent += step
+        return spent
+
     def _dispatch_loop(self):
         self._g_dispatch = greenlet.getcurrent()
         wall_deadline = _wall.monotonic() + MAX_WALL_SECONDS
