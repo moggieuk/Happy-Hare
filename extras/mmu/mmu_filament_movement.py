@@ -148,7 +148,7 @@ class MmuFilamentMovement:
         run_post_preload_macro()
 
 
-    def _load_gate(self, allow_retry=True):
+    def _load_gate(self, allow_retry=True, extra_homing=0.0):
         """
         Load filament into gate. This is considered the starting position for the rest of the filament loading
         process. Note that this may overshoot the home position for the "encoder" technique but subsequent
@@ -160,6 +160,9 @@ class MmuFilamentMovement:
 
         Args:
             allow_retry: Whether retry attempts are allowed when the first load attempt fails.
+            extra_homing: Added to the gate_homing_max budget, for callers that start further
+                back than a normal load - e.g. MMU_NFC_SCAN re-homing to the gate after
+                jogging behind it. Mirrors _unload_gate's extra_homing.
 
         Returns:
             float: Overshoot past the gate homing point that later stages should account for.
@@ -167,7 +170,7 @@ class MmuFilamentMovement:
         u = self.mmu_unit()
         profile = GateHomeProfile(
             endstop=u.p.gate_homing_endstop,
-            homing_max=u.p.gate_homing_max,
+            homing_max=u.p.gate_homing_max + extra_homing,
             parking_distance=u.p.gate_parking_distance,
             attempts=(u.p.gate_load_attempts if allow_retry else 1),
         )
@@ -302,10 +305,13 @@ class MmuFilamentMovement:
         raise MmuError(msg)
 
 
-    def _build_gate_nfc_compound(self, gate, gate_es_name):
+    def _build_gate_nfc_compound(self, gate, gate_es_name, name="preload_compound"):
         """
         Build and register a first-wins compound endstop [gate switch, NFC reader] on the
         gear rail for an NFC-augmented gate home.
+
+        'name' is the rail registration name. Preload and MMU_NFC_SCAN each register their
+        own so they can never collide on the rail.
 
         Returns (compound, nfc_es_name, nfc_mgr), or (None, None, None) if not viable:
         no reader, reader disabled, missing endstop object, or the gate endstop is not a
@@ -323,15 +329,15 @@ class MmuFilamentMovement:
         gate_obj = rail.get_extra_endstop(gate_es_name)  # (endstop, name) or None
         nfc_obj = rail.get_extra_endstop(nfc_es_name)
         if gate_obj is None or nfc_obj is None:
-            self.log_debug("NFC: Preload missing endstop (gate=%s, nfc=%s) - plain load"
-                           % (gate_es_name, nfc_es_name))
+            self.log_debug("NFC: missing endstop (gate=%s, nfc=%s) - plain homing, "
+                           "tag can't be read during the move" % (gate_es_name, nfc_es_name))
             return None, None, None
         if not isinstance(gate_obj[0], mcu.MCU_endstop):
-            self.log_debug("NFC: Preload gate endstop '%s' is not a real MCU switch - "
-                           "plain load (tag not read during preload)" % gate_es_name)
+            self.log_debug("NFC: gate endstop '%s' is not a real MCU switch - plain homing, "
+                           "tag can't be read during the move" % gate_es_name)
             return None, None, None
 
-        compound = MmuCompoundEndstop(self.printer, name="preload_compound", endstops=[gate_obj, nfc_obj])
+        compound = MmuCompoundEndstop(self.printer, name=name, endstops=[gate_obj, nfc_obj])
         rail.add_compound_endstop(compound.name, compound)
         return compound, nfc_es_name, nfc_mgr
 
@@ -434,15 +440,26 @@ class MmuFilamentMovement:
 
     def _jog_scan(self):
         """
-        Read the CURRENTLY SELECTED gate's NFC/RFID tag by jogging the filament
-        within the unit's configured window until the tag reaches the gate's NFC
-        reader (a homing move against the reader-as-endstop), then re-parking the
-        filament back in the gate. Works on gate_selected like _preload_gate; the
-        caller (MMU_NFC_SCAN) owns gate selection and restoration.
+        Read the CURRENTLY SELECTED gate's NFC/RFID tag by jogging the filament within the
+        unit's configured window until the tag reaches the gate's NFC reader (a homing move
+        against the reader-as-endstop), then re-parking the filament back in the gate. Works
+        on gate_selected like _preload_gate; the caller (MMU_NFC_SCAN) owns gate selection
+        and restoration.
 
-        The travel window is 'nfc_gate_jog_scan_window' (neg, pos) mm from this unit's
-        parameters (per-unit because it is MMU geometry). The larger-magnitude
-        direction is swept first (most likely to hit the tag); a 0 side is skipped.
+        Shape of the operation:
+
+            1. Pre-read at the parked position - no motion at all if the tag is already
+               on the reader.
+            2. Home to the gate to establish a DATUM, compounded with the reader so this
+               defensive move can itself find the tag.
+            3. Sweep the window: 'nfc_gate_jog_scan_window' (neg, pos) mm are targets
+               measured from the GATE, and the larger-magnitude side goes first since a hit
+               short-circuits the rest. The second sweep is compounded with the gate switch,
+               which it has to cross anyway.
+            4. ONE re-park, off a real gate datum.
+
+        Step 4 being once, and off a datum, is what stops the scan walking the filament
+        backward by gate_parking_distance on every invocation.
 
         Returns:
             bool: True if the tag was found (and read), else False.
@@ -493,53 +510,35 @@ class MmuFilamentMovement:
                 self.log_debug("NFC: gate %d: tag already at reader - no jog needed" % gate)
 
             if not found:
-                order = [pos, neg] if pos >= abs(neg) else [neg, pos]
-                with self.wrap_suspend_filament_monitoring():
-                    for dist in order:
-                        if not dist:
-                            continue
-                        forward = dist > 0
-                        self.log_debug("NFC: gate %d: homing %s %.0fmm to reader"
-                                       % (gate, "forward" if forward else "back", abs(dist)))
-                        # Home at gear_homing_speed: the reader is a virtual (host-polled)
-                        # endstop so it would otherwise default to the much slower
-                        # virtual_sensor_homing_speed intended for ADC-backed sensors
-                        actual, homed, _, _ = self.move_filament(
-                            "NFC: scan", dist, speed=u.p.gear_homing_speed, motor="gear",
-                            homing_move=(1 if forward else -1), endstop_name=endstop_name)
+                gate_es_name = self.sensor_manager.get_qualified_endstop_name(u.p.gate_homing_endstop)
+                # A compound needs a real MCU gate switch (see _build_gate_nfc_compound).
+                # Without one we fall back to plain single-endstop legs; coverage is the
+                # same, it just takes an extra move and can't catch the tag on a datum leg.
+                compound, _nfc_es, _mgr = self._build_gate_nfc_compound(
+                    gate, gate_es_name, name="nfc_scan_compound")
+                try:
+                    # Insert events too, not just runout: the datum leg homes THROUGH the
+                    # gate and so crosses the entry sensor, which with gate_autoload set
+                    # would kick off an MMU_PRELOAD inside this scan.
+                    with self.wrap_suspend_filament_monitoring(), self.wrap_suspend_insert_events():
+                        found, off = self._scan_sweeps(
+                            gate, neg, pos, endstop_name, gate_es_name, compound, nfc_manager)
 
-                        if homed:
-                            # The probe detected the tag at the reader. Read it (deep if
-                            # enabled) and apply to the gate map BEFORE we move it away -
-                            # once the move has fully stopped, since the tag travels on
-                            # through the deceleration ramp and may be at the edge of
-                            # antenna range by now.
-                            found = True
-                            nfc_manager.read_gate_after_home(gate)
-
-                        # Re-park in the gate with robust homing, budgeting the jog dist.
-                        # Both directions must end PARKED (gate_parking_distance), restoring
-                        # the filament to where the scan found it. A re-park failure must not
-                        # leak a load/unload error (this is a scan) nor mislabel the gate:
-                        # _load_gate marks it EMPTY on failure, but the tag/filament is present.
-                        # Restore the pre-scan status and surface the failure in scan terms.
+                        # ONE re-park, now that all sweeping is done. Must end PARKED
+                        # (gate_parking_distance) off a real gate datum - that is what stops
+                        # the scan walking the filament backward every time. A re-park failure
+                        # must not leak a load/unload error (this is a scan) nor mislabel the
+                        # gate: _load_gate marks it EMPTY on failure though the filament is
+                        # present, so restore the pre-scan status and report in scan terms.
                         try:
-                            if forward:
-                                # Filament is forward of the gate: reverse-home + park
-                                self._unload_gate(extra_homing=abs(actual))
-                            else:
-                                # Filament is behind the gate: home forward back to the gate,
-                                # then reverse-home + park (reuses the proven parking, incl.
-                                # encoder overshoot handling)
-                                self._load_gate(allow_retry=False)
-                                self._unload_gate()
+                            self._park_after_scan(off, gate_es_name)
                         except MmuError as ee:
                             self.gate_maps.set_gate_status(gate, pre_scan_status)
                             self.log_debug("NFC: gate %d: re-park failed, underlying error: %s" % (gate, str(ee)))
                             raise MmuError("could not re-park filament in gate %d after scanning - check for a jam" % gate)
-
-                        if found:
-                            break
+                finally:
+                    if compound is not None:
+                        self.drive().mmu_gear_stepper.rail.remove_compound_endstop(compound.name)
         finally:
             for mgr, snap in active_snaps:
                 mgr.restore_active(snap)
@@ -549,6 +548,187 @@ class MmuFilamentMovement:
         else:
             self.log_info("NFC: no tag found for gate %d within window %s" % (gate, window))
         return found
+
+
+    def _scan_leg(self, label, dist, compound, nfc_es_name, fallback_es_name, fallback_trigger):
+        """
+        One homing leg of a scan, against a first-wins [gate switch, NFC reader] compound
+        when one is available, else against 'fallback_es_name' alone.
+
+        The fallback differs by leg and must be passed explicitly: a datum leg without a
+        compound has to home to the GATE, while a sweep without one homes to the READER.
+        Defaulting either way silently homes to the wrong endstop.
+
+        Home at gear_homing_speed: the reader is a virtual (host-polled) endstop, so it
+        would otherwise fall back to the much slower virtual_sensor_homing_speed meant
+        for ADC-backed sensors.
+
+        Returns (trigger, actual) where trigger is:
+            'nfc'  - the reader detected a tag
+            'gate' - the gate switch reached its sought state
+            None   - no trigger, the leg ran its full length
+
+        MmuCompoundEndstop.home_wait resolves the winner from its children's return
+        values before any caller can look, so a successful compound home always names a
+        definite child.
+        """
+        endstop_name = compound.name if compound is not None else fallback_es_name
+        actual, homed, _, _ = self.move_filament(
+            label, dist, speed=self.mmu_unit().p.gear_homing_speed, motor="gear",
+            homing_move=(1 if dist > 0 else -1), endstop_name=endstop_name)
+        if not homed:
+            return None, actual
+        if compound is None:
+            return fallback_trigger, actual
+        return ('nfc' if compound.get_triggered_endstop_name() == nfc_es_name else 'gate'), actual
+
+
+    def _scan_datum_leg(self, gate, nfc_es_name, gate_es_name, compound, nfc_manager):
+        """
+        Home to the gate to establish a datum before sweeping, so the scan window is
+        measured from the gate rather than from wherever the filament happened to be
+        left. Returns (found, off) with off the offset from the gate datum.
+
+        Compounded with the NFC reader on purpose: this leg MOVES the filament, and on a
+        machine that parks behind the gate sensor the reader often sits between park and
+        the gate - a plain gate home would carry the tag straight past the reader
+        undetected. Compounding turns the defensive move into a detection opportunity.
+
+        Direction comes from the gate sensor state, the same predicate _home_to_gate uses
+        to choose its own: covered means a reverse home can find the release point,
+        otherwise home forward until it closes.
+        """
+        u = self.mmu_unit()
+        covered = self.sensor_manager.check_sensor(gate_es_name)
+        if covered is None:
+            # Encoder gate homing, or the sensor is disabled: no switch state to read and
+            # no compound either. Use the proven primitives to reach the datum.
+            self._load_gate(allow_retry=False)
+            return False, 0.0
+
+        budget = u.p.gate_homing_max
+        dist = -budget if covered else budget
+        self.log_debug("NFC: gate %d: homing %s to gate datum%s"
+                       % (gate, "back" if covered else "forward",
+                          " (compound with reader)" if compound is not None else ""))
+        trigger, actual = self._scan_leg("NFC: datum", dist, compound,
+                                         nfc_es_name, gate_es_name, 'gate')
+
+        if trigger is None:
+            raise MmuError("Could not home to the gate to start the NFC scan for gate %d "
+                           "- is the filament loaded in the gate?" % gate)
+
+        found = False
+        if trigger == 'nfc':
+            # The reader stopped us short of the gate. Read the tag here, then finish the
+            # home - every path out of this leg must leave the filament ON the datum,
+            # which is what the rest of the scan rests on.
+            found = bool(nfc_manager.read_gate_after_home(gate))
+            remaining = dist - actual
+            if remaining:
+                _, homed, _, _ = self.move_filament(
+                    "NFC: datum continue", remaining, speed=u.p.gear_homing_speed,
+                    motor="gear", homing_move=(1 if remaining > 0 else -1),
+                    endstop_name=gate_es_name)
+                if not homed:
+                    raise MmuError("Could not reach the gate to establish a datum for the "
+                                   "NFC scan of gate %d - check for a jam" % gate)
+        return found, 0.0
+
+
+    def _scan_sweeps(self, gate, neg, pos, nfc_es_name, gate_es_name, compound, nfc_manager):
+        """
+        Establish the gate datum, then sweep the configured window looking for the tag.
+        Returns (found, off) with off the final offset from the gate datum.
+
+        Window values are gate-relative TARGETS, so once the datum is established they are
+        the move distances directly - no parking-distance arithmetic. The larger-magnitude
+        side is swept first, since a hit short-circuits the rest.
+        """
+        u = self.mmu_unit()
+        found, off = self._scan_datum_leg(gate, nfc_es_name, gate_es_name, compound, nfc_manager)
+        if found:
+            return True, off
+
+        order = [pos, neg] if pos >= abs(neg) else [neg, pos]
+        for i, target in enumerate(order):
+            # The FIRST sweep starts at the datum, so a compound would trip its gate child
+            # immediately as the switch changes state. The SECOND sweep has to cross the
+            # gate coming back, so compounding it is free: a gate trip re-establishes the
+            # datum, and an NFC trip is the tag. When the other window side is 0 this
+            # degenerates to a compound return-to-gate, which is a free extra look at the
+            # reader on a leg that has to happen anyway.
+            second = (i > 0)
+            if not target and not second:
+                continue
+            leg_compound = compound if second else None
+            move = target - off
+            if not move:
+                continue
+            self.log_debug("NFC: gate %d: sweeping %.0fmm to gate%+.0f" % (gate, move, target))
+            trigger, actual = self._scan_leg("NFC: scan", move, leg_compound,
+                                            nfc_es_name, nfc_es_name, 'nfc')
+
+            if trigger == 'nfc':
+                # The probe detected the tag. Read it (deep if enabled) and apply to the
+                # gate map BEFORE moving it away - once fully stopped, since the tag travels
+                # on through the deceleration ramp and may be at the edge of antenna range.
+                off += actual
+                if nfc_manager.read_gate_after_home(gate):
+                    return True, off
+                # Reader stopped us but the tag is no longer readable. Carry on from here
+                # rather than claiming a find.
+                self.log_debug("NFC: gate %d: reader stopped the sweep but no tag was "
+                               "readable" % gate)
+                continue
+
+            if trigger == 'gate':
+                # Datum re-established - snap to it rather than trusting accumulated travel
+                off = 0.0
+                remaining = target
+                if not remaining:
+                    return False, off   # This leg's target WAS the gate - already parked-ready
+                self.log_debug("NFC: gate %d: re-datumed on gate switch, %.0fmm of window left"
+                               % (gate, remaining))
+                trigger, actual = self._scan_leg("NFC: scan continue", remaining, None,
+                                                 nfc_es_name, nfc_es_name, 'nfc')
+                if trigger == 'nfc':
+                    off += actual
+                    if nfc_manager.read_gate_after_home(gate):
+                        return True, off
+                    continue
+                off = target
+                continue
+
+            # No trigger: the leg ran its full length, so we are exactly at the target.
+            # Do NOT use 'actual' here - move_filament recomputes it in its command_error
+            # handler with a silent 0.0 fallback, and a wrong 'off' would both mis-target
+            # the next sweep and under-budget the final re-home.
+            off = target
+        return False, off
+
+
+    def _park_after_scan(self, off, gate_es_name):
+        """
+        Return the filament to its parked position after a scan, from a real gate datum.
+
+        Always finishes through _unload_gate() so the park is measured from the switch
+        RELEASE point every time. Approaching the datum from the other direction would
+        land the park a switch-hysteresis off (the test model has no hysteresis, so this
+        is only visible on hardware), and _unload_gate also carries the encoder-overshoot
+        handling.
+
+        extra_homing=abs(off) budgets gate_homing_max + the distance we actually strayed,
+        so a sweep that ended far from the gate can still reach it.
+        """
+        covered = self.sensor_manager.check_sensor(gate_es_name)
+        if covered is None:
+            covered = off > 0   # Encoder gate homing: no switch to consult
+        if covered:
+            self._unload_gate(extra_homing=abs(off))
+        else:
+            self._load_gate(allow_retry=False, extra_homing=abs(off))
+            self._unload_gate()
 
 
 # -----------------------------------------------------------------------------------------------------------

@@ -2234,6 +2234,24 @@ class MmuController(MmuFilamentMovement):
                 self._enable_filament_monitoring()
 
 
+    @contextlib.contextmanager
+    def wrap_suspend_insert_events(self):
+        """
+        Suspend the sensors' insert/remove events for an operation that deliberately
+        pushes filament across them.
+
+        Separate from wrap_suspend_filament_monitoring, which only disables the runout
+        branch. Without this, an MMU-commanded move over an entry sensor raises an insert
+        event, and with gate_autoload set that starts an MMU_PRELOAD in the middle of the
+        operation that caused it.
+        """
+        self.sensor_manager.suspend_sensor_events(True)
+        try:
+            yield self
+        finally:
+            self.sensor_manager.suspend_sensor_events(False)
+
+
     # To suppress visual filament position
     @contextlib.contextmanager
     def wrap_suppress_visual_log(self):

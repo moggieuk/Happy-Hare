@@ -488,6 +488,19 @@ class MmuSensorManager:
             sensor.runout_helper.enable_runout(enable and gate >= 0)
 
 
+    def suspend_sensor_events(self, suspend):
+        """
+        Suspend (or restore) insert/remove/runout gcode events on every active sensor.
+
+        Needed because an MMU-commanded move can legitimately push filament across an entry
+        sensor - MMU_NFC_SCAN homes through the gate to establish a datum - and an insert
+        event there starts an MMU_PRELOAD inside the operation that caused it.
+        disable_runout() does not cover it: that only gates the runout branch.
+        """
+        for name, sensor in self.active_sensors_map.items():
+            sensor.runout_helper.suspend_events(suspend)
+
+
     def _get_sensors(self, pos, gate, position_condition):
         """
         Common helper that defines sensors and relationship to filament_pos state for easy filament tracing.

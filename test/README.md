@@ -277,7 +277,10 @@ The test files, grouped by what they're about:
 | `test_mmu_endless_spool.py` | 17 | runout detection, clog-vs-runout, gate remapping |
 | **NFC and Spoolman** | | |
 | `test_mmu_nfc.py` | 12 | NFC readers are configured and instantiated |
-| `test_mmu_nfc_scan.py` | 17 | `MMU_NFC_SCAN`, the preload NFC compound endstop |
+| `test_mmu_nfc_scan.py` | 34 | `MMU_NFC_SCAN`, the preload NFC compound endstop, the homing presence probe |
+| `test_mmu_nfc_i2c.py` | 20 | software (bit-banged) i2c for PN532/PN7160, bus-collision validation |
+| `test_mmu_nfc_probe.py` | 16 | the non-blocking presence probe, driver-level (real RC522 over a scripted bus) |
+| `test_mmu_compound_endstop.py` | 16 | which child stopped a first-wins compound home (pure logic) |
 | `test_mmu_tag_parser.py` | 34 | RFID tag decoding (pure logic, no fakes at all) |
 | `test_mmu_moonraker.py` | 42 | the Moonraker half: Spoolman lookups, auto-create |
 | `test_mmu_roundtrip.py` | 27 | Klipper and Moonraker talking to each other |
@@ -505,7 +508,6 @@ Currently:
 
 | Where | Bug |
 |---|---|
-| `test_mmu_nfc_scan.py` ×2 | `MMU_NFC_SCAN` retracts the filament ~100 mm every scan |
 | `test_mmu_profiles.py` ×2 | the proportional buffer reports TENSION almost always — its low threshold is computed positive when the config help says it should be about −0.9 |
 | `test_mmu_tag_parser.py` | a blank tag is reported as a Bambu Lab tag |
 

@@ -213,6 +213,9 @@ class MmuNfcReader:
         self.last_uid = None
         self.last_target_info = None
         self.present = False
+        # Why the last deep read produced no metadata, or None if it did not fail.
+        # Distinguishes "parse/auth failed" from "tag carries no rich data".
+        self.last_deep_error = None
 
         # Register for NAME-based GCode dispatch, replacing any stale same-named
         # instance (e.g. after a restart)
@@ -435,7 +438,14 @@ class MmuNfcReader:
         color_hex, brand, weight_g, temps, tag_format, ...) from
         tag_parser, or None if the tag carries no recognised rich data
         or the driver can't do structured reads. Updates last_uid/present.
+
+        The UID is banked (and returned) BEFORE any metadata work, so a deep read
+        that fails costs the metadata and never the UID - the UID is the datum the
+        gate map and Spoolman lookup actually need. 'metadata is None' alone can't
+        tell a failure from a tag that simply carries no rich data, so the reason is
+        recorded in last_deep_error for the manager to report.
         """
+        self.last_deep_error = None
         read_target = getattr(self.reader, 'read_target', None)
         if read_target is None:
             # Driver has no target concept - can't do a structured read
@@ -457,6 +467,7 @@ class MmuNfcReader:
         try:
             metadata = self._read_tag_metadata(target_info)
         except Exception as e:
+            self.last_deep_error = str(e) or e.__class__.__name__
             logging.warning("mmu_nfc_reader %s: deep tag read failed: %s", self.name, e)
         return uid, metadata
 

@@ -245,6 +245,29 @@ class MmuRunoutHelper:
         self.button_handler_suspended = not restore
 
 
+    def suspend_events(self, suspend):
+        """
+        Suppress insert/remove/runout gcode events without disabling the sensor.
+
+        For an operation that deliberately drives filament across a sensor - MMU_NFC_SCAN
+        homes through the gate to establish a datum, crossing the entry sensor - where an
+        insert event would start an MMU_PRELOAD inside the operation that caused it.
+
+        Works the min_event_systime gate, which is exactly what _process_state_change
+        already uses to stop an event re-entering while its handler runs. Deliberately NOT
+        sensor_enabled: that would also make check_sensor() report the sensor as absent,
+        and callers still need to query it (the scan reads the gate switch to pick its
+        homing direction). Note button_handler_suspended is no help here either - that
+        gates the sync-feedback callback, not these gcode events.
+        """
+        if suspend:
+            self._events_suspended_from = self.min_event_systime
+            self.min_event_systime = self.reactor.NEVER
+        else:
+            self.min_event_systime = getattr(
+                self, '_events_suspended_from', self.reactor.monotonic())
+
+
     def get_status(self, eventtime=None):
         return {
             "filament_detected": bool(self.filament_present),
@@ -529,7 +552,8 @@ class MmuCompoundEndstop:
         self._triggered_endstop = None
         self._last_trigger_time = None
         self._homing = False
-        self._pending = 0 # Number of children not yet resolved
+        self._pending = 0  # Number of children not yet resolved
+        self._resolved = False # Has any child already resolved our completion?
 
 
     def get_triggered_endstop_name(self):
@@ -570,6 +594,7 @@ class MmuCompoundEndstop:
         self._last_trigger_time = None
         self._homing = True
 
+        self._resolved = False
         self._pending = len(self.endstops)
         for es in self.endstops:
             child_completion = es.home_start(
@@ -584,46 +609,100 @@ class MmuCompoundEndstop:
 
 
     def _wait_for_child_endstop(self, endstop, child_completion):
-        try:
-            child_completion.wait()
-            triggered = True
-        except Exception:
-            triggered = False
+        """
+        Forward the first child resolution to our own completion so the homing move
+        stops. That is this callback's ONLY job - it deliberately does not decide which
+        child won; home_wait() does that from the children's return values.
+
+        Why the completion can't identify the winner: its VALUE means opposite things
+        depending on the child. Klipper's MCU_endstop resolves via
+        async_complete(tc, is_failure), so a real hit completes with False and a comms
+        timeout with True, and TriggerDispatch.wait_end() also completes True at
+        end-of-move - i.e. for a MISS. MmuVirtualEndstopSensor is the other way round:
+        it completes True on a genuine trigger. So `bool(child_completion.wait())` is
+        exactly inverted for one of the two, whichever way you write it. (And note
+        ReactorCompletion.wait() RETURNS the value - it never raises - so there is no
+        exception to catch here either.)
+        """
+        child_completion.wait()
 
         if not self._homing:
-            return
+            return # home_wait() already ran; nothing left to resolve
 
         self._pending -= 1
-        if triggered and self._triggered_endstop is None:
-            self._triggered_endstop = endstop
+        if not self._resolved:
+            self._resolved = True
             self._trigger_completion.complete(True)
-        elif self._pending == 0 and self._triggered_endstop is None:
-            # Every child failed/timed out without triggering — resolve so home_wait()'s
-            # existing "no trigger" error path can fire instead of hanging forever
+        elif self._pending == 0:
+            # Every child resolved without anyone stopping the move - complete so
+            # home_wait()'s "no trigger" path can fire instead of hanging forever
             self._trigger_completion.complete(False)
+
+
+    @staticmethod
+    def _child_triggered(trigger_time, error):
+        """
+        Did a child actually stop the move, judged from its home_wait() result?
+
+        Uniform across every child type we support:
+          - Klipper MCU_endstop:      hit -> print_time,  no trigger -> exactly 0.,
+                                      comms timeout -> raises
+          - MmuVirtualEndstopSensor:  hit -> _last_trigger_time,  no trigger -> raises
+          - the test harness's MCU_endstop: hit -> print_time, no trigger -> raises
+
+        Deliberately `!= 0.` and NOT Klipper's own `> 0.` (extras/homing.py). Print times
+        are not necessarily positive: the test harness offsets them by HOST_OFFSET=1234.5
+        against a reactor starting at 1000.0, so a perfectly good harness trigger time is
+        around -234.5. A `> 0.` test would call every one of those a miss. Only Klipper's
+        documented 0. sentinel means "did not trigger".
+
+        Residual ambiguity: a genuine hit at exactly print_time 0. reads as a miss. That
+        is the same corner Klipper itself tolerates (and it rejects all negatives too).
+        """
+        return error is None and trigger_time is not None and trigger_time != 0.
 
 
     def home_wait(self, home_end_time):
         self._homing = False
         self._trigger_completion = None
 
-        trigger_time = None
-        trigger_error = None
-
+        # Close out EVERY child exactly once, in insertion order, and keep each result.
+        # Children are not re-callable: Klipper's MCU_endstop.home_wait disarms through
+        # _dispatch.stop(), and MmuNfcEndstop.home_wait stops the manager's presence poll.
+        results = []
         for es in self.endstops:
             try:
-                es_trigger_time = es.home_wait(home_end_time)
+                results.append((es, es.home_wait(home_end_time), None))
             except Exception as e:
-                trigger_error = e
-                continue
+                results.append((es, None, e))
 
-            if es is self._triggered_endstop:
-                trigger_time = es_trigger_time
-
-        if self._triggered_endstop is None:
-            if trigger_error is not None:
-                raise trigger_error
+        # Winner = the earliest trigger time among the children that actually triggered.
+        # min() over the enumerate index breaks ties by insertion order, which for the NFC
+        # compound is [gate switch, reader] - and gate-first is the safe direction, since
+        # callers read a gate win as "we are on the datum".
+        #
+        # A child that was ALREADY in its sought state when armed completes immediately and
+        # reports the arm-time print_time, which is earlier than any later real trip, so it
+        # wins. That is correct rather than an off-by-one: a pre-triggered endstop is
+        # exactly why the move could not go anywhere, and the halt is at 0mm.
+        candidates = [(t, i, es) for i, (es, t, err) in enumerate(results)
+                      if self._child_triggered(t, err)]
+        if not candidates:
+            # Nobody triggered, so surface the most informative failure we have.
+            #
+            # Prefer an exception from a real MCU child: MCU_endstop signals a plain
+            # no-trigger by RETURNING 0., so if it raised at all it is a genuine fault
+            # ("Communication timeout during homing"). A virtual child, by contrast, raises
+            # as its ordinary no-trigger signal, so its error must not be allowed to mask
+            # a hardware fault - which is exactly what re-raising the last error did.
+            errors = [(es, err) for es, _t, err in results if err is not None]
+            mcu_errors = [err for es, err in errors if isinstance(es, mcu.MCU_endstop)]
+            if mcu_errors:
+                raise mcu_errors[0]
+            if errors:
+                # A virtual child's own message names the endstop, which beats ours
+                raise errors[0][1]
             raise self._printer.command_error("No trigger on %s after full movement" % self.name)
 
-        self._last_trigger_time = trigger_time or home_end_time
+        self._last_trigger_time, _idx, self._triggered_endstop = min(candidates)
         return self._last_trigger_time

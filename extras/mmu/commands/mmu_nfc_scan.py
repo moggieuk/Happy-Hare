@@ -69,6 +69,15 @@ class MmuNfcScanCommand(BaseCommand):
             mmu.log_error("Operation not possible: NFC reader for gate %d is disabled (re-enable with MMU_NFC GATE=%d ENABLE=1)" % (gate, gate))
             return
 
+        # The scan jogs the filament about and homes it back to the gate, so there has to
+        # BE filament in the gate. Without this the datum home just runs its full length
+        # and fails with a homing error that says nothing about the real cause.
+        if mmu.gate_status[gate] == GATE_EMPTY:
+            mmu.log_error("Operation not possible: gate %d is empty - preload it first "
+                          "(MMU_PRELOAD GATE=%d). If that is wrong, mark it available with "
+                          "'MMU_GATE_MAP GATE=%d AVAILABLE=1'" % (gate, gate, gate))
+            return
+
         if self.check_if_not_calibrated(CALIBRATED_ESSENTIAL, check_gates=[gate], mmu_unit=scan_unit): return
 
         filament_pos = mmu.filament_pos

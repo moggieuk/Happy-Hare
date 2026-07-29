@@ -93,8 +93,16 @@ class MmuUnitParameters(TunableParametersBase):
         neg, pos = value[0], value[1]
         if neg > 0 or pos < 0:
             raise ValueError("nfc_gate_jog_scan_window must be (neg, pos) with neg <= 0 <= pos")
-        # The backward jog re-parks via _load_gate(), which homes back to the gate within
-        # gate_homing_max, so the backward reach cannot exceed that budget
+        # Both values are TARGETS measured from the gate homing point, not from the parked
+        # position: _jog_scan homes to the gate for a datum first, then sweeps to gate+neg
+        # and gate+pos.
+        #
+        # The return leg no longer constrains this - _load_gate() takes an extra_homing
+        # budget now, so it scales with however far the sweep strayed. What is still worth
+        # rejecting is a backward reach beyond the machine's own gate homing budget, which
+        # means pulling filament further back than gate homing was ever configured to
+        # recover. (The positive side is deliberately left unchecked so no configuration
+        # that loads today stops loading; see the note in the plan.)
         if abs(neg) > self.gate_homing_max:
             raise ValueError(
                 "nfc_gate_jog_scan_window backward reach (%.1fmm) cannot exceed gate_homing_max (%.1fmm)"

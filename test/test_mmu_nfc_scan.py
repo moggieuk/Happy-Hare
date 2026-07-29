@@ -51,6 +51,23 @@ class NfcScanTestCase(unittest.TestCase):
         """Path position at which a tag first becomes readable approaching forward."""
         return self.fil.layout['mmu_nfc'] - self.fil.tag_window
 
+    def preload(self, gate=0, position=None):
+        """
+        Place a gate's filament AND mark the gate available.
+
+        MMU_NFC_SCAN refuses a gate the map calls EMPTY, because the scan jogs filament
+        about and homes it back - there has to be filament there. place_filament() is
+        deliberately physical-only (it does not touch HH's gate map), and the harness boots
+        every gate EMPTY, so a scan test has to say the gate is preloaded. Which is also
+        what a real machine looks like: _preload_gate sets GATE_AVAILABLE on success.
+        """
+        if position is None:
+            self.hh.place_filament(gate)
+        else:
+            self.hh.place_filament(gate, position=position)
+        self.hh.mmu.gate_maps.set_gate_status(gate, GATE_AVAILABLE)
+        return self.fil
+
 
 class TestVirtualReader(NfcScanTestCase):
     """The chip must answer from the model, or nothing below means anything."""
@@ -93,7 +110,7 @@ class TestJogScanFindsTag(NfcScanTestCase):
 
     def test_forward_jog_finds_the_tag_at_the_window_edge(self):
         self.fil.attach_tag(0, TAG)
-        self.hh.place_filament(0)                       # parked at -100
+        self.preload(0)                                 # parked at -100
         start = self.fil.tip[0]
         self.hh.mmu.select_gate(0)
         self.hh.run_gcode('MMU_NFC_SCAN GATE=0')
@@ -114,7 +131,7 @@ class TestJogScanFindsTag(NfcScanTestCase):
         # Window longer backwards so the sweep goes that way first, and a tag position
         # the backward sweep will carry into the read window.
         self.hh.mmu.mmu_unit(0).p.nfc_gate_jog_scan_window = [-80.0, 20.0]
-        self.hh.place_filament(0, position=-60.0)
+        self.preload(0, position=-60.0)
         self.hh.mmu.select_gate(0)
         self.hh.run_gcode('MMU_NFC_SCAN GATE=0')
 
@@ -125,7 +142,7 @@ class TestJogScanFindsTag(NfcScanTestCase):
         self.assertEqual(self.hh.errors, [])
 
     def test_scan_with_no_tag_reports_nothing_found(self):
-        self.hh.place_filament(0)
+        self.preload(0)
         self.hh.mmu.select_gate(0)
         self.hh.run_gcode('MMU_NFC_SCAN GATE=0')
         self.assertNotIn('tag read', ' '.join(self.hh.console).lower())
@@ -136,7 +153,7 @@ class TestJogScanFindsTag(NfcScanTestCase):
         resolved with zero motion.
         """
         self.fil.attach_tag(0, TAG)
-        self.hh.place_filament(0, position=self.fil.layout['mmu_nfc'])
+        self.preload(0, position=self.fil.layout['mmu_nfc'])
         self.hh.mmu.select_gate(0)
         self.fil.history.clear()
         self.hh.run_gcode('MMU_NFC_SCAN GATE=0')
@@ -215,8 +232,7 @@ class NfcProbeTestCase(NfcScanTestCase):
 
     def scan_gate_0(self, tag=TAG, position=None):
         self.fil.attach_tag(0, tag)
-        self.hh.place_filament(0, position=position) if position is not None \
-            else self.hh.place_filament(0)
+        self.preload(0, position=position)
         self.hh.mmu.select_gate(0)
         self.hh.run_gcode('MMU_NFC_SCAN GATE=0')
 
@@ -264,7 +280,7 @@ class TestHomingUsesPresenceProbeOnly(NfcProbeTestCase):
     def test_probe_is_stopped_after_a_miss(self):
         """No tag anywhere: the probe still has to be torn down."""
         chip = self.hh.chip(0)
-        self.hh.place_filament(0)
+        self.preload(0)
         self.hh.mmu.select_gate(0)
         self.hh.run_gcode('MMU_NFC_SCAN GATE=0')
         self.assertGreater(chip.probe_starts, 0)
@@ -420,70 +436,103 @@ class TestDeepReadIsKeptOutOfMoves(NfcProbeTestCase):
 
 class TestReparkDrift(NfcScanTestCase):
     """
-    A REAL DEFECT, found by running the scan for the first time.
+    A FIXED DEFECT - these are the regression guards.
 
-    _unload_gate applies gate_parking_distance from wherever its reverse-home ended. That
-    reverse-home is supposed to establish a datum at the gate endstop - but when the
-    filament is BEHIND that endstop the home completes having moved 0mm (the switch is
-    already released), so the park is applied from an arbitrary position and the filament
-    ends up a further ~gate_parking_distance back than it started.
+    The scan used to walk the filament backward by roughly gate_parking_distance on every
+    invocation. _unload_gate applies park_dist from wherever its reverse home ended, and
+    that reverse home is 'home until the switch RELEASES' - so with the filament already
+    behind the switch it completed in 0mm, reported success, and the park was applied from
+    an arbitrary position. On BoxTurtle (park_dist -100, window +/-50) that was -95mm per
+    scan; repeat it and the filament left the gate entirely.
 
-    Happy Hare's own trace agrees with the model:
-        Reverse homing off mmu_exit_0 ... homed after moving 0.0mm (of max -305.0mm)
-        Final parking. Stepper: 'gear' moved -100.0mm ... --> Pos: @-95.0
-    i.e. 95mm behind where the scan began, for a 5mm jog.
-
-    So each MMU_NFC_SCAN walks the filament backwards by roughly the parking distance.
-    Repeat it and the filament leaves the gate entirely.
-
-    The precondition for the forward path to be sound is that the jog can actually reach
-    the gate datum, i.e. nfc_gate_jog_scan_window[1] >= abs(gate_parking_distance).
-    BoxTurtle ships window +/-50 with gate_parking_distance -100, so it never can. Nothing
-    validates this today - _validate_nfc_gate_jog_scan_window only checks
-    abs(neg) <= gate_homing_max.
+    _jog_scan now homes to the gate for a DATUM before sweeping and re-parks exactly once,
+    off that datum, so the park is always measured from the same reference. The two tests
+    below were @unittest.expectedFailure while the bug stood.
     """
 
-    def test_forward_scan_over_retracts(self):
-        """Documents the CURRENT behaviour so a fix is visible as a change here."""
+    def test_forward_scan_returns_to_the_park_position(self):
+        """A scan inspects the tag and puts the filament back where it found it."""
         self.fil.attach_tag(0, TAG)
-        self.hh.place_filament(0)
+        self.preload(0)
         start = self.fil.tip[0]
         self.hh.mmu.select_gate(0)
         self.hh.run_gcode('MMU_NFC_SCAN GATE=0')
-        drift = self.fil.tip[0] - start
-        parking = self.hh.mmu.mmu_unit(0).p.gate_parking_distance
-        self.assertLess(drift, 0.0, 'expected a net retraction')
-        self.assertAlmostEqual(drift, parking + (self.window_edge() - start), places=2)
-
-    @unittest.expectedFailure
-    def test_forward_scan_should_return_to_the_park_position(self):
-        """
-        What SHOULD happen: a scan inspects the tag and puts the filament back. Flips
-        green when the re-park is fixed; delete this and fold the assertion into
-        test_forward_scan_over_retracts then.
-        """
-        self.fil.attach_tag(0, TAG)
-        self.hh.place_filament(0)
-        start = self.fil.tip[0]
-        self.hh.mmu.select_gate(0)
-        self.hh.run_gcode('MMU_NFC_SCAN GATE=0')
+        self.assertIn('tag read', ' '.join(self.hh.console).lower(),
+                      'precondition: the scan should have found the tag')
         self.assertAlmostEqual(self.fil.tip[0], start, places=1)
+        self.assertEqual(self.hh.errors, [])
 
-    @unittest.expectedFailure
-    def test_repeated_scans_should_not_walk_the_filament_out(self):
+    def test_repeated_scans_do_not_walk_the_filament_out(self):
         """Three scans should leave the filament where it started, not ~300mm back."""
         self.fil.attach_tag(0, TAG)
-        self.hh.place_filament(0)
+        self.preload(0)
         start = self.fil.tip[0]
         self.hh.mmu.select_gate(0)
         for _ in range(3):
             self.hh.run_gcode('MMU_NFC_SCAN GATE=0')
         self.assertAlmostEqual(self.fil.tip[0], start, places=1)
 
+    def test_an_empty_gate_is_refused_before_anything_moves(self):
+        """
+        The scan jogs filament and homes it back, so there has to be filament there.
+        Without this guard the datum home just runs its full length and fails with a
+        homing error that says nothing about the real cause.
+        """
+        self.hh.place_filament(0)                       # physically there...
+        self.hh.mmu.gate_maps.set_gate_status(0, 0)     # ...but the map says EMPTY
+        self.fil.history.clear()
+        self.hh.mmu.select_gate(0)
+        self.hh.run_gcode('MMU_NFC_SCAN GATE=0')
+        self.assertEqual(self.fil.history, [], 'an empty gate must not move the filament')
+        self.assertTrue(any('is empty' in e for e in self.hh.errors),
+                        'expected an explicit "gate is empty" error, got %r' % (self.hh.errors,))
+
+    def scan_move_count(self, autoload):
+        """Run one scan on a fresh session and return how many moves it made."""
+        hh = session(self.PROFILE, virtual_nfc=True)
+        try:
+            hh.boot()
+            fil = hh.filament()
+            hh.mmu.mmu_unit(0).p.gate_autoload = autoload
+            fil.attach_tag(0, TAG)
+            hh.place_filament(0)
+            hh.mmu.gate_maps.set_gate_status(0, GATE_AVAILABLE)
+            hh.mmu.select_gate(0)
+            fil.history.clear()
+            hh.run_gcode('MMU_NFC_SCAN GATE=0')
+            return len(fil.history), fil.tip[0], hh.errors
+        finally:
+            hh.close()
+
+    def test_autoload_does_not_change_the_scan(self):
+        """
+        The datum leg homes THROUGH the gate, so it crosses the entry sensor. With
+        gate_autoload set that raises an insert event and starts an MMU_PRELOAD inside the
+        scan - a whole nested operation. wrap_suspend_insert_events covers it;
+        wrap_suspend_filament_monitoring alone does not, because runout and insert are
+        separate paths in MmuRunoutHelper.
+
+        Compared against autoload off rather than a hard-coded move count, so this states
+        the actual invariant - autoload must not affect a scan - and cannot drift as the
+        leg sequence is tuned. Note the nested preload is NOT visible in history reasons
+        (those are only 'homing -> <endstop>' / 'move'), so the move count is the signal.
+        """
+        off_moves, off_tip, off_errors = self.scan_move_count(0)
+        on_moves, on_tip, on_errors = self.scan_move_count(1)
+        self.assertEqual(off_errors, [])
+        self.assertEqual(on_errors, [])
+        self.assertEqual(on_moves, off_moves,
+                         'gate_autoload changed the scan: %d moves with it on vs %d with it '
+                         'off - an insert event started a nested preload'
+                         % (on_moves, off_moves))
+        self.assertAlmostEqual(on_tip, off_tip, places=1)
+
     def test_the_reverse_home_finds_the_switch_already_released(self):
         """
-        Pins the mechanism rather than the symptom: with the filament behind the gate
-        switch the datum-establishing reverse home cannot move.
+        Pins the MECHANISM that made the drift possible, one level below the symptom: a
+        reverse home cannot establish a datum when the filament is already behind the
+        switch. Still true - it is why _jog_scan now homes FORWARD to the gate first
+        rather than trusting _unload_gate to find the datum on its own.
         """
         self.hh.place_filament(0)
         self.assertFalse(self.hh.sensor('mmu_exit_0').present)

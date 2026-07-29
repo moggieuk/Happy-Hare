@@ -677,6 +677,10 @@ class MmuNfcManager:
         when Spoolman auto-create is enabled) performs a structured read and
         returns the parsed tag metadata dict alongside the UID. Both paths
         auto-release the target, so no separate release step is required.
+
+        A deep read that fails still yields the UID (read_tag_data banks it first),
+        which is the datum that matters - so it is reported as a warning and the read
+        continues rather than being treated as a failure.
         """
         try:
             if deep:
@@ -688,6 +692,15 @@ class MmuNfcManager:
             self.mmu.log_error("NFC: read error on reader '%s': %s" % (getattr(reader, 'name', '?'), str(e)))
             return None, None
         uid = str(uid) if uid else None
+        # Tell the user when a deep read failed on a tag we DID identify. Without this
+        # it is only a klippy.log line, so a tag whose metadata never parses looks
+        # indistinguishable from a plain UID-only tag. last_deep_error is what makes
+        # that distinction - metadata=None alone does not.
+        deep_error = getattr(reader, 'last_deep_error', None) if deep else None
+        if uid and deep_error:
+            self.mmu.log_warning(
+                "NFC: deep read failed on reader '%s' (%s) - tag UID %s was still read, "
+                "continuing without tag metadata" % (getattr(reader, 'name', '?'), deep_error, uid))
         self.mmu.log_debug(
             "NFC: reader '%s' read UID=%s deep=%s metadata_keys=%s" % (
                 getattr(reader, 'name', '?'), uid, deep,
