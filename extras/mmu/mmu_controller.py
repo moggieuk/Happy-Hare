@@ -158,7 +158,7 @@ class MmuController(MmuFilamentMovement):
         self.form_tip_vars = None       # Current defaults of gcode variables for tip forming macro
         self.gate_maps.clear_slicer_tool_map()
         self.pending_spool_id = -1    # For automatic assignment of spool_id if set perhaps by rfid reader
-        self.slicer_purge_length = -1 # slicer purge distance set by MMU_CHANGE_TOOL
+        self.slicer_purge = -1 # slicer purge volume set by MMU_CHANGE_TOOL
         self.slicer_retraction = -1   # slicer retraction distance set by MMU_CHANGE_TOOL
         self.slicer_fw_retraction = 0 # slicer firmware retraction set by MMU_CHANGE_TOOL
         self.saved_toolhead_max_accel = None
@@ -614,7 +614,7 @@ class MmuController(MmuFilamentMovement):
             'num_toolchanges': self.num_toolchanges,
             'last_tool': self._last_tool,
             'next_tool': self._next_tool,
-            'slicer_purge_length': self.slicer_purge_length,
+            'slicer_purge': self.slicer_purge,
             'toolchange_purge_volume': self.toolchange_purge_volume,
             'last_toolchange': self._last_toolchange,
             'operation': self.saved_toolhead_operation,
