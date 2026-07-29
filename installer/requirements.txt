@@ -1,2 +1,4 @@
 jinja2
 dill
+pycryptodome
+cbor2
