@@ -77,9 +77,7 @@ _TModeReg       = 0x2A
 _TPrescalerReg  = 0x2B
 _TReloadRegH    = 0x2C
 _TReloadRegL    = 0x2D
-# Read-only chip ID. 0x91/0x92 for a genuine MFRC522 v1.0/v2.0; clones report other
-# values. Read only for diagnostics - see the antenna-enable failure in init().
-_VersionReg     = 0x37
+_VersionReg     = 0x37   # Read-only chip ID: 0x91/0x92 = genuine MFRC522
 
 # RC522 PCD (reader chip) commands
 _PCD_IDLE       = 0x00
@@ -207,11 +205,7 @@ class RC522Driver:
     # Initialisation
     # ─────────────────────────────────────────────────────────────────────────
 
-    # Retry budget for init(), matching PN532's _wake_pn532(attempts=3). The whole
-    # reset-and-configure sequence is retried, not individual registers: the failure
-    # this guards against leaves the chip in an unknown state, and a soft reset is the
-    # only way back to a known one.
-    _INIT_ATTEMPTS = 3
+    _INIT_ATTEMPTS = 3          # As PN532's _wake_pn532; a soft reset per attempt
     _INIT_RETRY_DELAY = 0.050
 
     def init(self):
@@ -219,14 +213,9 @@ class RC522Driver:
         Soft-reset the RC522 and configure it for 13.56 MHz ISO14443A operation.
         Must be called once after klippy:connect, before the first read_tag().
 
-        Retried, because a single attempt made this driver the odd one out: PN532
-        retries its wake three times and so rides out a transaction that does not
-        take, while RC522 reported failure on the spot.
-
-        A success after attempt 1 is logged WITH the attempt number. That is
-        deliberate - "OK on attempt 2/3" is the signature of a first transaction that
-        does not stick, which is worth knowing about rather than silently papering
-        over. A retry that always succeeds first time costs one comparison.
+        Retried like PN532's wake, so a transaction that does not take is not fatal.
+        A success after attempt 1 says so in the log: that is the signature of an
+        unreliable first transaction and is worth seeing, not hiding.
         """
         last_error = None
         tx_final = None
@@ -236,42 +225,26 @@ class RC522Driver:
                 last_error = None
             except Exception as e:
                 last_error = e
-                if self._debug >= 4:
-                    trace("RC522: gate %s init attempt %d/%d raised: %s\n%s",
-                          self._gate, attempt, self._INIT_ATTEMPTS, e,
-                          traceback.format_exc())
-                if attempt < self._INIT_ATTEMPTS:
-                    self._sleep(self._INIT_RETRY_DELAY)
-                continue
-
-            if tx_final & 0x03:
-                if attempt == 1:
-                    logger.info("RC522: gate %s init OK (TxControl=0x%02X, %s)",
-                                self._gate, tx_final, self._bus_description())
-                else:
-                    logger.info(
-                        "RC522: gate %s init OK on attempt %d/%d (TxControl=0x%02X, "
-                        "%s) - the earlier attempt(s) did not take, which usually "
-                        "means the first transaction on this bus is unreliable",
-                        self._gate, attempt, self._INIT_ATTEMPTS, tx_final,
-                        self._bus_description())
-                return
-
+                trace("RC522: gate %s init attempt %d raised: %s\n%s",
+                      self._gate, attempt, e, traceback.format_exc())
+            else:
+                if tx_final & 0x03:
+                    suffix = '' if attempt == 1 else ' on attempt %d' % attempt
+                    logger.info("RC522: gate %s init OK%s (TxControl=0x%02X, %s)",
+                                self._gate, suffix, tx_final, self._bus_description())
+                    return
+                trace("RC522: gate %s init attempt %d left TxControl=0x%02X",
+                      self._gate, attempt, tx_final)
             if attempt < self._INIT_ATTEMPTS:
-                if self._debug >= 4:
-                    trace("RC522: gate %s init attempt %d/%d left TxControl=0x%02X, "
-                          "retrying", self._gate, attempt, self._INIT_ATTEMPTS,
-                          tx_final)
                 self._sleep(self._INIT_RETRY_DELAY)
 
-        # Out of attempts. Raising on a transport error and merely reporting on a
-        # stuck antenna is the pre-existing contract and is kept: the manager turns a
-        # raise into an error, whereas a chip that answers but will not power its
-        # antenna is a diagnosable condition that is_alive() reports as not-alive.
+        # Pre-existing contract: a transport error raises (the manager logs it), a
+        # chip that answers but will not power its antenna only reports, and
+        # is_alive() then says not-alive.
         if last_error is not None:
             logger.warning(
                 "RC522: gate %s init failed after %d attempts — check SPI wiring, "
-                "cs_pin, spi_bus/software SPI pins, power, and ground: %s",
+                "cs_pin, spi_bus, power and ground: %s",
                 self._gate, self._INIT_ATTEMPTS, last_error)
             raise last_error
         self._report_antenna_failure(tx_final)
@@ -301,145 +274,58 @@ class RC522Driver:
         return self._read(_TxControlReg)
 
     def _bus_description(self):
-        """
-        Which MCU, bus and speed this reader actually ended up on.
+        """mcu/bus/speed actually in use, so two readers can be compared from the log.
 
-        Reported on both the success and failure paths so two readers can be compared
-        straight from the log. That matters because the same physical reader can work
-        in one config and not another: a section that omits spi_bus lands on the MCU's
-        DEFAULT bus, so CS toggles on the right pin while SCK/MOSI/MISO belong to a
-        different peripheral - which looks exactly like an unplugged MISO wire.
-
-        Defensive because MCU_SPI is Klipper's: real ones expose mcu/bus/speed and
-        hide the software pins inside config_fmt, and the harness fake differs. A
-        diagnostic must never be the thing that raises.
+        Defensive: MCU_SPI is Klipper's and the harness fake differs - a diagnostic
+        must not be the thing that raises.
         """
         spi = self._spi
-        parts = []
-        mcu = getattr(spi, 'mcu', None)
-        name = getattr(mcu, 'get_name', None)
-        if callable(name):
-            try:
-                parts.append('mcu=%s' % name())
-            except Exception:
-                pass
-        bus = getattr(spi, 'bus', None)
+        mcu = getattr(getattr(spi, 'mcu', None), 'get_name', lambda: '?')()
         software = (getattr(spi, 'sw_pins', None) is not None
                     or 'software' in str(getattr(spi, 'config_fmt', '')))
-        if software:
-            parts.append('bus=software')
-        else:
-            parts.append('bus=%s' % (bus if bus else 'MCU default'))
-        speed = getattr(spi, 'speed', None)
-        if speed:
-            parts.append('speed=%s' % speed)
-        return ', '.join(parts) or 'bus details unavailable'
+        bus = 'software' if software else (getattr(spi, 'bus', None) or 'default')
+        return 'mcu=%s bus=%s speed=%s' % (mcu, bus, getattr(spi, 'speed', '?'))
 
     @staticmethod
-    def _read_address(reg):
-        """The address byte _read() clocks out on MOSI to request `reg`."""
-        return ((reg << 1) & 0x7E) | 0x80
+    def _echoes_mosi(reg, value):
+        """True if `value` holds only bits from the address byte sent to read `reg`.
 
-    def _echoes_mosi(self, reg, value):
+        Fingerprint of an undriven MISO: a floating input picks up MOSI switching
+        beside it, so it can never show a bit the address lacked. Zero is excluded -
+        that means "nothing", reported separately.
         """
-        True if `value` contains only bits that were in the address byte we just sent.
-
-        This is the fingerprint of a MISO line nobody is driving. The MCU samples a
-        floating input while MOSI is switching right next to it, so what comes back is
-        a decayed copy of our own address byte - always a SUBSET of its bits, never a
-        bit that was not sent. A real register answer is uncorrelated with the address
-        and fails this on the first register that has a bit the address lacks.
-
-        Zero is excluded: it is a subset of everything and means "nothing at all",
-        which is a different fault reported separately.
-        """
-        return value != 0 and (value & ~self._read_address(reg) & 0xFF) == 0
+        addr = ((reg << 1) & 0x7E) | 0x80
+        return value != 0 and (value & ~addr & 0xFF) == 0
 
     def _report_antenna_failure(self, tx_final):
-        """
-        Say WHICH failure this is when the antenna TX bits refuse to stick.
+        """Name the fault behind antenna bits that will not set.
 
-        "TxControl=0x80" alone is ambiguous, and 0x80 is exactly the register's
-        power-on reset value, so it is also the value you get from a chip that is not
-        listening. Two extra reads separate the cases:
-
-          VersionReg   0x91/0x92 = genuine MFRC522 answering. 0x00/0xFF = SPI is not
-                       working at all (MISO, cs_pin, spi_bus, power).
-          TModeReg     we wrote 0x8D during init; its reset value is 0x00. If it
-                       reads back 0x8D our writes ARE landing, so the chip is
-                       resetting itself specifically when the antenna is enabled -
-                       which is a supply problem, since the TX drivers are what makes
-                       the module draw current. If it reads 0x00, no write ever
-                       landed: MOSI, or the chip held in reset by RST/NRSTPD.
+        TxControl=0x80 alone is ambiguous - it is also the power-on value, so it is
+        what a chip that never listened reports too. VersionReg (read-only ID) and
+        TModeReg (init writes 0x8D over a 0x00 reset value) separate the cases.
         """
-        # Read the ID several times FIRST. A read-only register that returns a
-        # different answer each time proves the link is corrupting data, and that has
-        # to be ruled out before any single value can be interpreted - a corrupted
-        # read looks exactly like a wrong register value.
-        versions = [self._read(_VersionReg) for _ in range(5)]
-        version = versions[0]
-        stable = len(set(versions)) == 1
+        version = self._read(_VersionReg)
         tmode = self._read(_TModeReg)
-
-        # Checked before everything else: if MISO is undriven, every value below is a
-        # ghost of our own MOSI traffic and interpreting any of them is meaningless.
-        # Two registers with different addresses have to agree, so a single value that
-        # happens to be a subset by luck cannot trigger this.
-        echoes = [self._echoes_mosi(reg, val)
-                  for reg, val in ((_VersionReg, version), (_TModeReg, tmode))]
-
-        if stable and all(echoes):
-            cause = ("NOTHING IS DRIVING MISO on the bus this reader is using. Every "
-                     "value read back contains only bits that were in the address "
-                     "byte we sent (VersionReg: sent 0x%02X got 0x%02X; TModeReg: "
-                     "sent 0x%02X got 0x%02X) - that is a floating input picking up "
-                     "MOSI switching beside it, since a real answer would contain a "
-                     "bit the address did not. Most likely this section is on the "
-                     "WRONG BUS: compare the bus details above with a reader that "
-                     "works, because omitting spi_bus silently uses the MCU's default "
-                     "bus while cs_pin still toggles correctly. Otherwise check the "
-                     "MISO wire itself, and that nothing else holds the line"
-                     % (self._read_address(_VersionReg), version,
-                        self._read_address(_TModeReg), tmode))
-        elif not stable:
-            cause = ("SPI is CORRUPTING DATA - VersionReg is read-only yet returned "
-                     "%s across 5 reads. Nothing else here can be trusted until that "
-                     "is fixed: lower spi_speed (try 100000), shorten the leads, "
-                     "check the ground return, and confirm 3.3V logic levels"
-                     % ', '.join('0x%02X' % v for v in versions))
+        if (self._echoes_mosi(_VersionReg, version)
+                and self._echoes_mosi(_TModeReg, tmode)):
+            cause = ("nothing drives MISO - both reads only echo the address byte "
+                     "sent. Check cs_pin is this reader's, and spi_bus")
         elif version in (0x00, 0xFF):
-            cause = ("SPI is not returning chip data at all - check MISO, cs_pin, "
-                     "spi_bus/software SPI pins, 3.3V power and ground")
+            cause = "no chip data at all - check MISO, cs_pin, spi_bus, power, ground"
         elif version not in (0x91, 0x92):
-            cause = ("VersionReg=0x%02X is not an MFRC522 ID (expected 0x91 or 0x92) "
-                     "and TModeReg=0x%02X is neither the 0x8D we wrote nor its 0x00 "
-                     "reset value - the values are stable but wrong, so bits are "
-                     "being mangled in transit rather than lost. Lower spi_speed "
-                     "(try 100000), shorten the leads and check the ground return. "
-                     "If a slow bus reads 0x91/0x92 it was signal integrity; if it "
-                     "still reads 0x%02X the device on this cs_pin is not an MFRC522"
-                     % (version, tmode, version))
+            cause = ("VersionReg is not an MFRC522 (expect 0x91/0x92) - wrong device "
+                     "on this cs_pin, or bits mangled in transit; try spi_speed 100000")
         elif tmode == 0x8D:
-            cause = ("writes ARE landing (TModeReg read back), so the chip is "
-                     "resetting when the antenna powers up - almost always a 3.3V "
-                     "supply that cannot source the TX current. Try a stiffer 3.3V "
-                     "feed, shorter/thicker leads, or powering the module separately")
+            cause = ("writes land, so the chip resets as the antenna powers up - "
+                     "usually a 3.3V supply that cannot source the TX current")
         elif tmode == 0x00:
-            cause = ("no register write is landing (TModeReg is still its 0x00 reset "
-                     "value), so the chip is receiving nothing or is held in reset - "
-                     "check MOSI and that RST/NRSTPD is high, not floating or "
-                     "grounded")
+            cause = "no write lands - check MOSI, and that RST/NRSTPD is high"
         else:
-            cause = ("the chip ID is right but TModeReg=0x%02X is neither the 0x8D we "
-                     "wrote nor its 0x00 reset value, so writes are arriving corrupted "
-                     "- lower spi_speed (try 100000) and check lead length and "
-                     "grounding" % tmode)
-
+            cause = "writes arriving corrupted - try spi_speed 100000"
         logger.warning(
-            "RC522: gate %s antenna TX bits will not set (TxControl=0x%02X, "
-            "VersionReg=0x%02X, TModeReg=0x%02X; %s): %s",
+            "RC522: gate %s antenna TX bits will not set (TxControl=0x%02X "
+            "VersionReg=0x%02X TModeReg=0x%02X %s): %s",
             self._gate, tx_final, version, tmode, self._bus_description(), cause)
-
 
     def is_alive(self):
         """Return True if the reader is responding (antenna TX bits are set)."""
