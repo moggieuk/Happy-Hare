@@ -266,29 +266,53 @@ class RC522Driver:
                        the module draw current. If it reads 0x00, no write ever
                        landed: MOSI, or the chip held in reset by RST/NRSTPD.
         """
-        version = self._read(_VersionReg)
+        # Read the ID several times FIRST. A read-only register that returns a
+        # different answer each time proves the link is corrupting data, and that has
+        # to be ruled out before any single value can be interpreted - a corrupted
+        # read looks exactly like a wrong register value.
+        versions = [self._read(_VersionReg) for _ in range(5)]
+        version = versions[0]
+        stable = len(set(versions)) == 1
         tmode = self._read(_TModeReg)
-        if version in (0x00, 0xFF):
+
+        if not stable:
+            cause = ("SPI is CORRUPTING DATA - VersionReg is read-only yet returned "
+                     "%s across 5 reads. Nothing else here can be trusted until that "
+                     "is fixed: lower spi_speed (try 100000), shorten the leads, "
+                     "check the ground return, and confirm 3.3V logic levels"
+                     % ', '.join('0x%02X' % v for v in versions))
+        elif version in (0x00, 0xFF):
             cause = ("SPI is not returning chip data at all - check MISO, cs_pin, "
                      "spi_bus/software SPI pins, 3.3V power and ground")
+        elif version not in (0x91, 0x92):
+            cause = ("VersionReg=0x%02X is not an MFRC522 ID (expected 0x91 or 0x92) "
+                     "and TModeReg=0x%02X is neither the 0x8D we wrote nor its 0x00 "
+                     "reset value - the values are stable but wrong, so bits are "
+                     "being mangled in transit rather than lost. Lower spi_speed "
+                     "(try 100000), shorten the leads and check the ground return. "
+                     "If a slow bus reads 0x91/0x92 it was signal integrity; if it "
+                     "still reads 0x%02X the device on this cs_pin is not an MFRC522"
+                     % (version, tmode, version))
         elif tmode == 0x8D:
             cause = ("writes ARE landing (TModeReg read back), so the chip is "
                      "resetting when the antenna powers up - almost always a 3.3V "
                      "supply that cannot source the TX current. Try a stiffer 3.3V "
                      "feed, shorter/thicker leads, or powering the module separately")
+        elif tmode == 0x00:
+            cause = ("no register write is landing (TModeReg is still its 0x00 reset "
+                     "value), so the chip is receiving nothing or is held in reset - "
+                     "check MOSI and that RST/NRSTPD is high, not floating or "
+                     "grounded")
         else:
-            cause = ("no register write is landing (TModeReg should read 0x8D), so "
-                     "the chip is receiving nothing or is held in reset - check MOSI "
-                     "and that RST/NRSTPD is high, not floating or grounded")
+            cause = ("the chip ID is right but TModeReg=0x%02X is neither the 0x8D we "
+                     "wrote nor its 0x00 reset value, so writes are arriving corrupted "
+                     "- lower spi_speed (try 100000) and check lead length and "
+                     "grounding" % tmode)
+
         logger.warning(
             "RC522: gate %s antenna TX bits will not set (TxControl=0x%02X, "
             "VersionReg=0x%02X, TModeReg=0x%02X): %s",
             self._gate, tx_final, version, tmode, cause)
-        if version not in (0x91, 0x92) and version not in (0x00, 0xFF):
-            logger.warning(
-                "RC522: gate %s VersionReg=0x%02X is not a genuine MFRC522 "
-                "(expected 0x91 or 0x92) - clone boards vary and some need a "
-                "lower spi_speed", self._gate, version)
 
 
     def is_alive(self):
