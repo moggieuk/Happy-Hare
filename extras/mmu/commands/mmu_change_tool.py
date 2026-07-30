@@ -83,7 +83,7 @@ class MmuChangeToolCommand(BaseCommand):
         mmu.slicer_retraction    = gcmd.get_float('SLICER_RETRACTION', -1)
         mmu.slicer_fw_retraction = gcmd.get('SLICER_FW_RETRACTION', '0').lower().strip()
 
-        if slicer_fw_retraction in ('true', '1'):
+        if mmu.slicer_fw_retraction in ('true', '1'):
             mmu.slicer_fw_retraction = True
         elif mmu.slicer_fw_retraction in ('false', '0'):
             mmu.slicer_fw_retraction = False
@@ -236,7 +236,7 @@ class MmuChangeToolCommand(BaseCommand):
                                 slicer_retract_speed = sequence_vars.variables.get('slicer_retract_speed', slicer_retract_speed) if sequence_vars else slicer_retract_speed
 
                             # Add unhandled slicer retract distance to _MMU_PARK retracted_length to compensate and log message
-                             if slicer_retract_len > 0 and park_macro:
+                            if slicer_retract_len > 0 and park_macro:
                                 retracted_length = float(park_macro.variables.get('retracted_length', 0) or 0)
                                 mmu.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=retracted_length VALUE=%s" % (retracted_length + slicer_retract_len))
                                 mmu.log_info("Compensating and adjusting distances for unhandled slicer %.2fmm retraction" % -slicer_retract_len)
