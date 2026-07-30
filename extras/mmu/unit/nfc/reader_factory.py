@@ -96,8 +96,8 @@ def reader_type_from_config(config, default=DEFAULT_READER_TYPE):
     reader_type = str(config.get('reader_type', default)).strip().lower()
     if reader_type not in SUPPORTED_READER_TYPES:
         raise config.error(
-            "Invalid reader_type '%s' in [%s]; supported values: %s"
-            % (reader_type, config.get_name(),
+            "[mmu_nfc_reader %s]: invalid reader_type '%s'; supported values: %s"
+            % (config.get_name().split()[-1], reader_type,
                ', '.join(SUPPORTED_READER_TYPES)))
     return reader_type
 
@@ -150,7 +150,7 @@ def validate_reader_i2c_address(config, reader_type, address):
     if reader_type == 'pn7160' and address not in PN7160_I2C_ADDRESSES:
         allowed = ', '.join("%d" % addr for addr in PN7160_I2C_ADDRESSES)
         raise config.error(
-            "nfc_gate [%s]: PN7160 i2c_address must be one of %s "
+            "[mmu_nfc_reader %s]: PN7160 i2c_address must be one of %s "
             "(0x28-0x2B); got %d"
             % (config.get_name().split()[-1], allowed, address))
 
@@ -372,6 +372,6 @@ def create_reader(config, defaults, reader_type, gate, debug,
         return PN7160Driver(config, i2c, gate, debug=debug, sleep_fn=sleep_fn)
 
     raise config.error(
-        "nfc_gate [%s]: reader_type '%s' is recognized, but its driver is "
+        "[mmu_nfc_reader %s]: reader_type '%s' is recognized, but its driver is "
         "not integrated yet"
         % (config.get_name().split()[-1], reader_type))

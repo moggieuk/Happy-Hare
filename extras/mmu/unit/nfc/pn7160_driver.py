@@ -209,9 +209,8 @@ class PN7160Handler:
                 self.irq_enabled = True
                 logger.info("PN7160 IRQ pin '%s' registered", irq_pin)
             except Exception as e:
-                logger.exception(
-                    "PN7160 IRQ registration failed; falling back to delays")
-                logger.error("PN7160 IRQ registration error details: %s", e)
+                logger.error(
+                    "PN7160 IRQ registration failed (%s); falling back to delays", e)
 
         self._debug(
             "handler ready: addr=0x%02X irq=%s ven=%s no_irq=%s"
@@ -1111,7 +1110,7 @@ class PN7160Driver:
 
         # Advanced PN7160 tuning options are intentionally hidden from the
         # default config templates.  Users can still override them in a specific
-        # [nfc_gate laneN] section during hardware bring-up.
+        # [mmu_nfc_reader <name>] section during hardware bring-up.
         raw_log = config.getboolean('raw_log', False)
         pn7160_debug = config.getboolean('pn7160_debug', False)
         handler_debug = debug >= 4 or pn7160_debug

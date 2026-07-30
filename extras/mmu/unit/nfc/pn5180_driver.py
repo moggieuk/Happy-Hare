@@ -634,13 +634,13 @@ class PN5180Driver:
 
     def _reset_after_rf_fault(self, error):
         logger.warning(
-            'PN5180: gate %d transport/RF fault (%s); forcing reset',
+            'PN5180: gate %s transport/RF fault (%s); forcing reset',
             self._gate, error)
         self._clear_current_card()
         try:
             self._core.initialize()
         except Exception as reset_error:
-            logger.warning('PN5180: gate %d RF reset failed: %s',
+            logger.warning('PN5180: gate %s RF reset failed: %s',
                            self._gate, reset_error)
         return None
 
@@ -652,7 +652,7 @@ class PN5180Driver:
             return
         except Exception as error:
             if self._debug >= 4:
-                trace('PN5180: gate %d release failed (%s): %s',
+                trace('PN5180: gate %s release failed (%s): %s',
                              self._gate, reason, error)
         self._clear_current_card()
 
@@ -733,7 +733,7 @@ class PN5180Driver:
                 return self._reset_after_rf_fault(error)
             except Exception as error:
                 if self._debug >= 3:
-                    logger.warning('PN5180: gate %d target read failed: %s',
+                    logger.warning('PN5180: gate %s target read failed: %s',
                                    self._gate, error)
                 self._clear_current_card()
 
@@ -747,7 +747,7 @@ class PN5180Driver:
                 return self._read_target_once()
             except Exception as recovery_error:
                 logger.warning(
-                    'PN5180: gate %d recovery read failed: %s',
+                    'PN5180: gate %s recovery read failed: %s',
                     self._gate, recovery_error)
                 self._clear_current_card()
                 return None
@@ -824,7 +824,7 @@ class PN5180Driver:
                     auth_failed_sectors.append(sector)
                     if self._debug >= 3:
                         logger.info(
-                            'PN5180: gate %d MIFARE sector %d auth failed',
+                            'PN5180: gate %s MIFARE sector %d auth failed',
                             self._gate, sector)
                     continue
                 for block_offset in range(3):
@@ -836,7 +836,7 @@ class PN5180Driver:
                         read_failed_blocks.append(block_addr)
                         if self._debug >= 3:
                             logger.info(
-                                'PN5180: gate %d MIFARE block %d read failed',
+                                'PN5180: gate %s MIFARE block %d read failed',
                                 self._gate, block_addr)
             result = {'uid_bytes': bytes(uid), 'blocks': blocks}
             if auth_failed_sectors:

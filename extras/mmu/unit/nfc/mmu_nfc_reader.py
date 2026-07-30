@@ -241,7 +241,7 @@ class MmuNfcReader:
 
         self.debug = config.getint('debug', self._defaults.debug if self._defaults else 2, minval=0, maxval=4)
         if self.debug >= 4:
-            # Opens the expensive trace()/tag_trace() paths on the shared mmu.rfid_* channels.
+            # Opens the expensive trace()/tag_trace() paths on the shared mmu_rfid.* channels.
             reader_log.enable_trace()
         transceive_delay = config.getfloat('transceive_delay',
                                            self._defaults.transceive_delay if self._defaults else 0.250,
