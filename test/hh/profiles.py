@@ -139,8 +139,7 @@ NFC_PN532_UART = BOXTURTLE.derive(
     'nfc_pn532_uart',
     syms={'MMU_HAS_NFC_READER': True, 'MMU_HAS_COMMON_NFC_READER': True,
           'CHOICE_NFC_READER_TYPE_PN532_UART': True,
-          'CHOICE_NFC_SERIAL_DEVICE_OTHER': True,
-          'NFC_SERIAL_DEVICE_OTHER':
+          'PARAM_NFC_READER_SERIAL':
               '/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0'},
     description='BoxTurtle + one common NFC reader (PN532/HSU UART)')
 

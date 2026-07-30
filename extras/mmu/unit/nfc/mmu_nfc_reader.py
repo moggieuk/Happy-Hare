@@ -44,8 +44,11 @@
 #   #i2c_bus:
 #   #i2c_speed: 100000              # Klipper rejects anything below 100000
 #   #ven_pin: mcu:PG13              # pn7160 only, optional hardware enable/reset
-#   #irq_pin: mcu:PG14              # pn7160 only, optional - REQUIRED for tag homing,
-#                                   # since the non-blocking presence probe needs it
+#   #irq_pin: mcu:PG14              # pn7160 only, optional - recommended for tag homing.
+#                                   # Wired, the presence probe asks the IRQ line and costs
+#                                   # no bus traffic at all; without it the probe reads on
+#                                   # spec once per tick, which works but needs a Klipper
+#                                   # new enough to report an I2C NACK
 #
 # Transport selection - 'interface'
 # ─────────────────────────────────
@@ -408,8 +411,10 @@ class MmuNfcReader:
         """True if the driver implements the full non-blocking probe contract.
 
         A driver may also expose probe_supported() to answer per *configuration*
-        rather than per class - PN7160 can only probe without blocking when its IRQ
-        line is wired, so it declines when running in polled mode.
+        rather than per class - PN7160 probes via its IRQ line when one is wired and
+        via a speculative read otherwise, so its answer depends on wiring, on config,
+        and on whether the MCU firmware can report an I2C NACK rather than shutting
+        down on one.
         """
         if not all(callable(getattr(self.reader, name, None))
                    for name in ('probe_start', 'probe_poll', 'probe_stop')):

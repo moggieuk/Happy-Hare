@@ -164,7 +164,7 @@ class PN7160Handler:
                  ven_pre_high_time=0.010,
                  ven_low_time=0.010, ven_post_high_time=0.100,
                  init_retries=3, init_retry_delay=0.500,
-                 no_irq_read_delay=0.100,
+                 no_irq_read_delay=0.100, no_irq_poll_interval=0.008,
                  ntag_data_delay=0.005,
                  ntag_read_retries=2,
                  ntag_retry_delay=0.025):
@@ -189,6 +189,7 @@ class PN7160Handler:
         self.init_retries = init_retries
         self.init_retry_delay = init_retry_delay
         self.no_irq_read_delay = no_irq_read_delay
+        self.no_irq_poll_interval = no_irq_poll_interval
         self.ntag_data_delay = ntag_data_delay
         self.ntag_read_retries = ntag_read_retries
         self.ntag_retry_delay = ntag_retry_delay
@@ -219,17 +220,36 @@ class PN7160Handler:
             "handler ready: addr=0x%02X irq=%s ven=%s no_irq=%s"
             " response_delay=%.3f nci_poll_interval=%.3f"
             " read_timeout=%.3f no_irq_read_delay=%.3f"
+            " no_irq_poll_interval=%.3f fast_poll=%s"
             " ntag_data_delay=%.3f ntag_read_retries=%d"
             " ntag_retry_delay=%.3f",
             self.i2c_address, self.irq_enabled, self.ven is not None,
                self.no_irq_mode, self.response_delay, self.nci_poll_interval,
                self.read_timeout, self.no_irq_read_delay,
+               self.no_irq_poll_interval, self.no_irq_fast_poll,
                self.ntag_data_delay, self.ntag_read_retries,
                self.ntag_retry_delay)
 
     @property
     def no_irq_mode(self):
         return not self.irq_enabled
+
+    @property
+    def i2c_status_supported(self):
+        """True if the MCU can REPORT an I2C NACK instead of dying on one.
+
+        Klipper's 'i2c_transfer' command returns i2c_bus_status, which
+        _i2c_transfer_safe turns into PN7160I2CStatusError. Without that command,
+        command_i2c_read() in Klipper's src/i2ccmds.c calls i2c_shutdown_on_err(),
+        so reading an empty NFCC is not an error report - it is "MCU shutdown: I2C
+        START NACK", mid-print.
+
+        Everything that reads ON SPEC (the polled presence probe, and the tightened
+        polled wait_frame poll) must gate on this. Note that Klipper's own
+        bus.MCU_I2C.i2c_transfer() wrapper invoke_shutdown()s on a NACK too, which
+        is why _i2c_transfer_safe calls the raw command and reads the status itself.
+        """
+        return getattr(self.i2c, "i2c_transfer_cmd", None) is not None
 
     # Lazy %-args like every other log call here: the format string is only
     # interpolated if the line is actually emitted. Note self.debug is a BOOLEAN
@@ -297,7 +317,7 @@ class PN7160Handler:
         self.initialized = False
 
     def _i2c_write_safe(self, data, label=None):
-        if getattr(self.i2c, "i2c_transfer_cmd", None) is None:
+        if not self.i2c_status_supported:
             try:
                 self.i2c.i2c_write(data, retry=False)
             except TypeError:
@@ -311,7 +331,21 @@ class PN7160Handler:
             raise PN7160I2CStatusError(status, response, label=label)
 
     def _i2c_transfer_safe(self, write, read_len, label=None):
-        if getattr(self.i2c, "i2c_transfer_cmd", None) is None:
+        if not self.i2c_status_supported:
+            # No status to inspect on this firmware, so this branch can never raise
+            # PN7160I2CStatusError - which is exactly what i2c_status_supported
+            # gates on: nothing may read on spec here.
+            #
+            # And note what is deliberately NOT done: 'retry' is not a kwarg of
+            # bus.MCU_I2C.i2c_read() on released Klipper (<= v0.13.0), so this line
+            # raises TypeError there, wait_frame()'s bare except swallows it, and
+            # the reader reports not-alive without a single byte reaching the bus.
+            # Guarding the TypeError the way _i2c_write_safe above does would turn
+            # every polled read into a real read against firmware that SHUTS THE
+            # MCU DOWN on a NACK - and the PN7160 is not guaranteed to answer
+            # within no_irq_read_delay on a cold connect_nci. That trades a
+            # dead-reader message for a dead printer, so it stays as it is until
+            # polled mode itself is refused on such firmware.
             params = self.i2c.i2c_read(write, read_len, retry=False)
             return "SUCCESS", list(bytearray(params.get("response", [])))
         params = self.i2c.i2c_transfer_cmd.send(
@@ -348,6 +382,55 @@ class PN7160Handler:
         self._wait_for_irq_release(read_start)
         return frame
 
+    def read_frame_if_pending(self):
+        """One non-blocking attempt to collect a pending NCI frame; None if silent.
+
+        In polled mode the speculative read IS the "is a frame pending?" test - the
+        PN7160 NACKs a read when it has nothing to say, the same fact
+        _wait_for_activation_no_irq relies on. Costs one 3-byte I2C transfer on a
+        silent tick and never pauses the reactor. Only safe where that NACK is
+        reportable - see i2c_status_supported, and PN7160Driver.probe_supported()
+        which gates on it.
+
+        Deliberately NOT built on _read_exact() for the header: that raises
+        PN7160Error("short I2C read") on a truncated response, and a NACK can also
+        arrive as SUCCESS-with-no-bytes. Both of those mean "nothing pending" - the
+        answer on EVERY tick until the tag arrives - so both must answer None here
+        rather than being escalated into a discovery restart. A failed PAYLOAD read
+        is different and does raise: the header is already consumed, so the frame
+        stream is genuinely torn. See PN7160Driver.probe_poll().
+        """
+        read_start = self.reactor.monotonic()
+        try:
+            _status, header = self._i2c_transfer_safe([], 3, label="nci_header")
+        except PN7160I2CStatusError:
+            return None                     # NACK: the NFCC has nothing to say
+        if len(header) != 3 or not self._plausible_nci_header(header):
+            return None                     # Short or garbage: also nothing to say
+        payload_len = header[2]
+        payload = (self._read_exact(payload_len, label="nci_payload")
+                   if payload_len else [])
+        frame = header + payload
+        self._debug("probe read %s", _frame_summary(frame))
+        self._log_frame("<<", frame)
+        self._wait_for_irq_release(read_start)   # No-op when irq_enabled is False
+        return frame
+
+    @staticmethod
+    def _plausible_nci_header(header):
+        """Reject only what cannot be a host-bound NCI frame header.
+
+        A NACKed read hands back a zero-filled buffer on some MCUs, and 00 00 00 is
+        otherwise indistinguishable from a real frame. Kept deliberately loose:
+        GID/OID filtering is is_tag_present_ntf()'s job, and a frame wrongly
+        rejected here is a MISSED DETECTION - much worse than one wasted read.
+        """
+        if not any(header):
+            return False                    # All-zero: NACK residue, not a frame
+        if _message_type(header) not in (NCI_MT_DATA, NCI_MT_RSP, NCI_MT_NTF):
+            return False
+        return header[2] <= NCI_MAX_FRAME - 3
+
     def read_optional_frame(self, timeout=0.050):
         if self.irq_enabled:
             start_time = self.reactor.monotonic()
@@ -355,6 +438,25 @@ class PN7160Handler:
                 return None
             return self.read_frame_once()
         return self.read_frame_once()
+
+    @property
+    def no_irq_fast_poll(self):
+        """True if polled reads may retry at no_irq_poll_interval instead of
+        settling for the full no_irq_read_delay before each attempt.
+
+        Reading before the NFCC has answered costs a NACK, so this is only allowed
+        where a NACK is reportable (i2c_status_supported). It matters because the
+        100ms settle is what made a polled NCI command cost >=120ms, and
+        PN7160Driver.probe_start() - which runs inside MmuNfcEndstop.home_start(),
+        i.e. after the homing print_time is computed and before the drip move -
+        pays for three of them.
+        """
+        return (self.no_irq_mode and self.i2c_status_supported
+                and self.no_irq_poll_interval > 0.0)
+
+    def _no_irq_attempt_delay(self):
+        return (self.no_irq_poll_interval if self.no_irq_fast_poll
+                else self.no_irq_read_delay)
 
     def wait_frame(self, timeout=None, poll_interval=None, irq_after=None,
                    accept_current_irq=True, label=None):
@@ -374,7 +476,7 @@ class PN7160Handler:
                         accept_current=accept_current_irq):
                     continue
             else:
-                delay = min(self.no_irq_read_delay,
+                delay = min(self._no_irq_attempt_delay(),
                             max(0.0, end_time - self.reactor.monotonic()))
                 if delay > 0.0:
                     self._pause(delay)
@@ -384,7 +486,11 @@ class PN7160Handler:
             except Exception as e:
                 last_error = e
                 self._debug("wait frame attempt %d failed: %s", attempts, e)
-                self._pause(poll_interval)
+                if not self.no_irq_fast_poll:
+                    self._pause(poll_interval)
+                # Fast polled mode: the delay at the top of the loop already spaces
+                # the retries, and pausing poll_interval on top of it (20ms from
+                # command()) would undo most of the tightening.
         raise PN7160Error("timeout waiting for NCI frame%s: %s"
                           % ("" if label is None else " " + label,
                              last_error))
@@ -1105,10 +1211,18 @@ class PN7160Driver:
         # Non-blocking presence probe (homing) state
         self._probe_active = False
         self._probe_deadline = 0.0
+        self._probe_errors = 0
 
         # Advanced PN7160 tuning options are intentionally hidden from the
         # default config templates.  Users can still override them in a specific
         # [mmu_nfc_reader <name>] section during hardware bring-up.
+        #
+        # probe_polled is an OFF switch for the polled (no irq_pin) presence probe,
+        # nothing more - it cannot turn the probe on where a NACK would shut the MCU
+        # down, and it is irrelevant when irq_pin is wired (see probe_supported()).
+        # Default on: where the firmware can report a NACK, one speculative read per
+        # 20ms tick is cheaper than the blocking shim it replaces.
+        self._probe_polled = config.getboolean('probe_polled', True)
         raw_log = config.getboolean('raw_log', False)
         pn7160_debug = config.getboolean('pn7160_debug', False)
         handler_debug = debug >= 4 or pn7160_debug
@@ -1135,6 +1249,13 @@ class PN7160Driver:
                 'init_retry_delay', 0.500, minval=0.0),
             no_irq_read_delay=config.getfloat(
                 'no_irq_read_delay', 0.100, minval=0.0),
+            # Polled retry spacing where an I2C NACK is reportable (see
+            # PN7160Handler.no_irq_fast_poll). Tested on hardware I2C. Raise it on a
+            # bit-banged software bus, where every read costs the MCU real work: at
+            # 8ms a command that ends up timing out attempts ~125 reads instead of the
+            # ~8 the 100ms settle gave. Set 0 to fall back to no_irq_read_delay.
+            no_irq_poll_interval=config.getfloat(
+                'no_irq_poll_interval', 0.008, minval=0.0),
             ntag_data_delay=config.getfloat(
                 'ntag_data_delay', 0.005, minval=0.0),
             ntag_read_retries=config.getint(
@@ -1158,11 +1279,11 @@ class PN7160Driver:
         # connect_nci raises once its retries are exhausted, so this only runs on success
         self._setup_for_read(full=True)
         self._alive = True
-        # Probe capability is decided by wiring, not config: without irq_pin this
-        # reader falls back to the blocking shim and tag homing is less accurate
+        # Report WHY, not just whether. The two ways to lose the probe need completely
+        # different responses from the user - "you turned it off with probe_polled" and
+        # "your Klipper can't report an I2C NACK, so wire irq_pin or update"
         logger.info("[%s pn7160] init OK (tag homing probe %s)", self._name,
-                    "available" if self.probe_supported()
-                    else "unavailable - no irq_pin")
+                    self._probe_mode_text())
         # Klipper calls init() during startup as a health check.  Keep the next
         # real read conservative: it should still run full setup before
         # starting RF discovery.
@@ -1200,11 +1321,25 @@ class PN7160Driver:
     # sequence one frame at a time: start_discovery() once, then each reactor tick
     # collects at most one pending frame and asks whether it means a tag is there.
     #
-    # This needs a way to ask "is a frame waiting?" without waiting, and only the
-    # IRQ line gives that (PN7160Handler._irq_callback keeps irq_state current, so
-    # reading it is free). In polled mode the sole way to find out is to attempt a
-    # read, which is exactly the blocking behaviour we're avoiding - so
-    # probe_supported() declines and MmuNfcReader falls back to its blocking shim.
+    # This needs a way to ask "is a frame waiting?" without waiting, and there are
+    # two. With irq_pin wired, PN7160Handler._irq_callback keeps irq_state current,
+    # so asking costs no bus traffic at all. Without it, the speculative read IS the
+    # question: the PN7160 NACKs a read when it has nothing to say, and
+    # _i2c_transfer_safe surfaces that as a clean PN7160I2CStatusError rather than
+    # the MCU shutdown Klipper's own bus.MCU_I2C.i2c_transfer() would cause. That is
+    # one 3-byte transfer per tick with no reactor pause - the same order as
+    # rc522_driver.probe_poll()'s 1-3 SPI reads, and far cheaper than the blocking
+    # read_target() shim it replaces. It is only available where the firmware reports
+    # the NACK, which is what PN7160Handler.i2c_status_supported gates.
+    #
+    # IRQ is still preferred where it exists, and probe_supported() short-circuits to
+    # it: a free question beats a cheap one.
+    #
+    # The two modes differ in one place - the watchdog. With IRQ, prolonged silence
+    # means discovery has stalled and is worth a teardown/restart. In polled mode
+    # silence is simply the answer on every tick until the tag arrives, and a restart
+    # means paying probe_start()'s blocking NCI setup mid-move, so polled mode has no
+    # silence watchdog and recovers via the consecutive-frame-error count instead.
     #
     # The probe reports PRESENCE and stops there - it never selects or activates the
     # tag. That is not just a simplification: activation goes through
@@ -1213,20 +1348,49 @@ class PN7160Driver:
     # to remove. read_target() does the full discover-and-activate afterwards, once
     # the machine is stationary.
 
-    _PROBE_WATCHDOG = 2.0   # Seconds before a stalled discovery is restarted
+    _PROBE_WATCHDOG = 2.0        # Stalled-discovery restart, seconds (IRQ mode only)
+    _PROBE_MAX_FRAME_ERRORS = 3  # Consecutive torn frames before a resync
 
     def probe_supported(self):
-        """Non-blocking probing needs the IRQ line; polled mode can't do it."""
-        return bool(getattr(self._handler, 'irq_enabled', False))
+        """True if this reader can answer "tag present?" without blocking.
+
+        Attribute reads only - MmuNfcManager._homing_poll_interval() calls this once
+        per tick, so it must never touch the bus.
+        """
+        if getattr(self._handler, 'irq_enabled', False):
+            return True
+        return bool(self._probe_polled and self._handler.i2c_status_supported)
+
+    def _probe_mode_text(self):
+        """Why probing is (un)available, for the init() log line."""
+        if getattr(self._handler, 'irq_enabled', False):
+            return "available (irq_pin)"
+        if not self._probe_polled:
+            return "unavailable - disabled by probe_polled: False"
+        if not self._handler.i2c_status_supported:
+            return ("unavailable - this Klipper cannot report an I2C NACK, so a "
+                    "polled probe would risk an MCU shutdown; wire irq_pin or update")
+        return "available (polled - speculative read)"
 
     def probe_start(self):
-        """Bring up RF discovery and begin listening for an activation frame."""
+        """Bring up RF discovery and begin listening for an activation frame.
+
+        Called from MmuNfcEndstop.home_start(), i.e. before the drip move launches,
+        so the NCI setup here is on the homing critical path. In polled mode that is
+        why PN7160Handler.no_irq_fast_poll exists - without it each of the three
+        commands below would settle for no_irq_read_delay before its first read.
+        """
         try:
+            setup_start = self._handler.reactor.monotonic()
             self._setup_for_read()
             self._handler.start_discovery()
             self._discovery_active = True
             self._probe_deadline = self._handler.reactor.monotonic() + self._PROBE_WATCHDOG
+            self._probe_errors = 0
             self._probe_active = True
+            if self._debug >= 3:
+                logger.info("[%s pn7160] probe_start took %.3fs", self._name,
+                            self._handler.reactor.monotonic() - setup_start)
             return True
         except Exception as e:
             # warning, and ungated, unlike rc522's equivalent: this path also marks
@@ -1245,24 +1409,44 @@ class PN7160Driver:
         Returns True (a tag is in the field), False (discovery failed or stalled - the
         caller should restart) or None (nothing pending yet).
 
-        On a tick with no IRQ pending this does no bus I/O and no waiting at all. On
+        With irq_pin, a tick with no IRQ pending does no bus I/O and no waiting at
+        all; in polled mode it costs one 3-byte I2C transfer and still no pause. On
         the tick that does read a frame, read_frame_once() ends with
         _wait_for_irq_release(), bounded at 50ms - acceptable because that is the
-        detection tick, after which the move is stopping anyway.
+        detection tick, after which the move is stopping anyway (and it is a no-op in
+        polled mode).
         """
         if not self._probe_active:
             return False
+        handler = self._handler
         try:
-            if not self._handler.irq_state:
-                if self._handler.reactor.monotonic() > self._probe_deadline:
-                    # Discovery has produced nothing at all - tear down so the
-                    # caller's restart gets a clean NFCC rather than a wedged one.
+            if handler.irq_enabled and not handler.irq_state:
+                # Nothing pending, and asking cost nothing. The watchdog applies HERE
+                # ONLY: silence with an IRQ line means discovery has stalled, so tear
+                # down and let the caller restart on a clean NFCC. In polled mode
+                # silence is the normal answer and a 2s restart storm mid-move would
+                # be worse than the shim this replaces.
+                if handler.reactor.monotonic() > self._probe_deadline:
                     self._probe_stop_discovery()
                     return False
                 return None
 
-            frame = self._handler.read_frame_once()
-            if self._handler.is_tag_present_ntf(frame):
+            frame = handler.read_frame_if_pending()
+            if frame is None:
+                if handler.irq_enabled:
+                    # Different meaning entirely with an IRQ line: it said a frame was
+                    # waiting and the read found none. And irq_state stays high, so the
+                    # watchdog branch above never runs again - without counting this,
+                    # a reader NACKing every read would answer None for the whole move
+                    # and report no trigger with nothing in the log.
+                    return self._probe_frame_error(
+                        "IRQ asserted but no frame could be read")
+                # Polled mode: the NFCC has nothing to report. This is the answer on
+                # every tick until the tag arrives, so it must not escalate to
+                # anything - no teardown, no restart, no not-alive.
+                return None
+            self._probe_errors = 0
+            if handler.is_tag_present_ntf(frame):
                 # Presence is all we need. Do NOT go on to select/activate here -
                 # that path blocks on an NCI command; read_target() does it later.
                 self._probe_active = False
@@ -1271,6 +1455,10 @@ class PN7160Driver:
         except PN7160NoTag:
             self._probe_stop_discovery()
             return False
+        except PN7160Error as e:
+            # A torn frame: the header was consumed but its payload was not, so the
+            # stream is out of step.
+            return self._probe_frame_error(e)
         except Exception as e:
             logger.warning("[%s pn7160] probe_poll failed: %s", self._name, e)
             self._probe_active = False
@@ -1279,6 +1467,26 @@ class PN7160Driver:
             self._needs_full_setup = True
             self._clear_current_card()
             return False
+
+    def _probe_frame_error(self, detail):
+        """Count a frame the chip promised but did not deliver.
+
+        Transport noise, not a dead reader, so tolerate a few and answer None; past
+        _PROBE_MAX_FRAME_ERRORS answer False, which tears discovery down so the
+        caller's restart resyncs on a chip connect_nci() has reset. Either way the
+        reader stays alive - this is deliberately NOT the not-alive escalation.
+        """
+        self._probe_errors += 1
+        if self._probe_errors < self._PROBE_MAX_FRAME_ERRORS:
+            if self._debug >= 3:
+                logger.info("[%s pn7160] probe frame error %d: %s",
+                            self._name, self._probe_errors, detail)
+            return None
+        logger.warning("[%s pn7160] probe: %d consecutive frame errors, "
+                       "restarting discovery: %s",
+                       self._name, self._probe_errors, detail)
+        self._probe_stop_discovery()
+        return False
 
     def _probe_stop_discovery(self):
         self._probe_active = False

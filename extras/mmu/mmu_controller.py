@@ -884,7 +884,7 @@ class MmuController(MmuFilamentMovement):
             (
                 "En" + past(encoder_ref_pos) * 2
                 if self.has_encoder()
-                else pad(encoder_ref_pos, 4)
+                else past(encoder_ref_pos) * 4
             ),
 
             past(FILAMENT_POS_IN_BOWDEN) * bowden_half,

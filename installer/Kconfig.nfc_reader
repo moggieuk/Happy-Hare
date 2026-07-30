@@ -34,8 +34,7 @@
 #   PARAM_NFC_READER_SCL_PIN     (if i2c interface + software i2c)
 #   PARAM_NFC_READER_SDA_PIN     (if i2c interface + software i2c)
 #
-#   CHOICE_NFC_SERIAL_DEVICE_*   (if uart interface - device picker)
-#   PARAM_NFC_READER_SERIAL      (if uart interface)
+#   PARAM_NFC_READER_SERIAL      (if uart interface - a plain path string)
 #   PARAM_NFC_READER_BAUD        (if uart interface)
 #
 #   PARAM_NFC_READER_VEN_PIN     (if pn7160 type)
@@ -43,8 +42,7 @@
 #
 # Per-gate:
 #   PARAM_NFC_READER_X
-#     as above with _<gate_index> extension, EXCEPT the serial device picker -
-#     per-gate UART takes a plain path string. See the note at that config.
+#     as above with _<gate_index> extension
 #
 # SUPPORTED READER TYPES
 #   - rc522  (spi)
