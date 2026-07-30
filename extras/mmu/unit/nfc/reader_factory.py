@@ -11,7 +11,7 @@
 
 from .... import bus as bus_module
 
-from .log import warning as log_warning
+from .log import logger
 from .pn532_driver import PN532Driver, PN532SPIDriver
 from .pn532_uart_driver import PN532UARTDriver, DEFAULT_BAUD
 from .pn5180_driver import PN5180Driver
@@ -289,7 +289,7 @@ def _validate_serial_port(config, port):
 
     if not port.startswith('/dev/serial/by-id/'):
         # Not fatal - /dev/ttyUSB0 works until something else claims it first.
-        log_warning(
+        logger.warning(
             "[mmu_nfc_reader %s]: serial port '%s' is not a /dev/serial/by-id/ path. "
             "Device numbering is not stable across reboots or replugs; prefer the "
             "by-id path so the reader cannot swap with another USB serial device.",
@@ -322,7 +322,7 @@ def create_reader(config, defaults, reader_type, debug,
         # in particular want a scope on them before this is trusted: the ACK check
         # compares 6 raw bytes with no status prefix, and every spi_transfer
         # response is indexed [1:] to drop the direction-byte echo.
-        log_warning(
+        logger.warning(
             "[mmu_nfc_reader %s]: PN532 over SPI is UNTESTED against real hardware. "
             "It is wired up so it can be bench-verified, not because it is known to "
             "work. Use interface: i2c (or uart) for a supported setup.",

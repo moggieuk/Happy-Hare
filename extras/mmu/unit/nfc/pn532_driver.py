@@ -104,8 +104,7 @@
 import time
 import traceback
 
-from .log import (logger, trace, info as log_info,
-                  warning as log_warning, error as log_error)
+from .log import logger, trace
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PN532 frame constants
@@ -693,7 +692,7 @@ class _PN532Base:
                 if target_info is None:
                     return None
             if expected_uid and target_info['uid_bytes'] != expected_uid:
-                log_warning("[%s %s] robust_page_read: different "
+                logger.warning("[%s %s] robust_page_read: different "
                             "tag detected during page %d retry",
                             self._name, self._transport_name, page)
                 self._release_current_target(reason="uid_changed")
@@ -944,7 +943,7 @@ class _PN532Base:
                 self._transport_wake_preamble()
                 version = self.get_firmware_version()
                 if version is not None:
-                    log_info(
+                    logger.info(
                         "[%s %s] _wake_pn532: OK on attempt %d — "
                         "IC=0x%02X Ver=%d.%d",
                         self._name, self._transport_name, attempt + 1,
@@ -962,13 +961,13 @@ class _PN532Base:
                         self._name, self._transport_name, attempt + 1,
                         e, traceback.format_exc())
                 else:
-                    log_info(
+                    logger.info(
                         "[%s %s] _wake_pn532: attempt %d failed: %s\n%s",
                         self._name, self._transport_name, attempt + 1,
                         e, traceback.format_exc())
             self._sleep(0.050)
 
-        log_warning("[%s %s] _wake_pn532: failed after %d attempts — "
+        logger.warning("[%s %s] _wake_pn532: failed after %d attempts — "
                     "check wiring",
                     self._name, self._transport_name, attempts)
         return False
@@ -989,7 +988,7 @@ class _PN532Base:
         etc.) without any driver-initiated traffic interfering.
         """
         if self._low_level_debug:
-            log_info("[%s %s] init: low_level_debug enabled — "
+            logger.info("[%s %s] init: low_level_debug enabled — "
                      "skipping wake and SAMConfiguration",
                      self._name, self._transport_name)
             return
@@ -1011,7 +1010,7 @@ class _PN532Base:
         # SAMConfiguration: Normal mode(0x01), timeout=0x00, IRQ=0x00.
         # See sam_config() for why the defaults differ from HH_code.
         if not self.sam_config():
-            log_warning("[%s %s] init: SAMConfiguration "
+            logger.warning("[%s %s] init: SAMConfiguration "
                         "no response — reader may be unstable",
                         self._name, self._transport_name)
         elif self._debug >= 4:
@@ -1214,7 +1213,7 @@ class PN532Driver(_PN532Base):
                 ready_raw = bytearray(ready_result['response'])
                 status = ready_raw[0] if ready_raw else 0xFF
             except Exception as e:
-                log_error("[%s pn532/i2c] _read_ack: ready read failed: %s\n%s",
+                logger.error("[%s pn532/i2c] _read_ack: ready read failed: %s\n%s",
                           self._name, e, traceback.format_exc())
                 return False
 
@@ -1236,7 +1235,7 @@ class PN532Driver(_PN532Base):
                                      ok)
                     return ok
                 except Exception as e:
-                    log_error("[%s pn532/i2c] _read_ack: ACK read failed: %s\n%s",
+                    logger.error("[%s pn532/i2c] _read_ack: ACK read failed: %s\n%s",
                               self._name, e, traceback.format_exc())
                     return False
 
@@ -1271,7 +1270,7 @@ class PN532Driver(_PN532Base):
                 raw1 = bytearray(result['response'])
                 pn_status = raw1[0] if raw1 else 0xFF
             except Exception as e:
-                log_error("[%s pn532/i2c] _recv: poll failed: %s\n%s",
+                logger.error("[%s pn532/i2c] _recv: poll failed: %s\n%s",
                           self._name, e, traceback.format_exc())
                 return None
 
@@ -1305,7 +1304,7 @@ class PN532Driver(_PN532Base):
                                 ' '.join('%02X' % b for b in raw) if raw else '(empty)')
                     return payload
                 except Exception as e:
-                    log_error("[%s pn532/i2c] _recv: DATA read failed: %s\n%s",
+                    logger.error("[%s pn532/i2c] _recv: DATA read failed: %s\n%s",
                               self._name, e, traceback.format_exc())
                     return None
 
@@ -1554,7 +1553,7 @@ class PN532SPIDriver(_PN532Base):
                 resp = self._spi.spi_transfer(_rev_list([_SPI_DIR_READ_STATUS, 0x00]))
                 status = _rev8(bytearray(resp['response'])[1])
             except Exception as e:
-                log_error("[%s pn532/spi] _read_ack: status read failed: %s\n%s",
+                logger.error("[%s pn532/spi] _read_ack: status read failed: %s\n%s",
                           self._name, e, traceback.format_exc())
                 return False
 
@@ -1576,7 +1575,7 @@ class PN532SPIDriver(_PN532Base):
                                      ok)
                     return ok
                 except Exception as e:
-                    log_error("[%s pn532/spi] _read_ack: ACK read failed: %s\n%s",
+                    logger.error("[%s pn532/spi] _read_ack: ACK read failed: %s\n%s",
                               self._name, e, traceback.format_exc())
                     return False
 
@@ -1611,7 +1610,7 @@ class PN532SPIDriver(_PN532Base):
                 resp   = self._spi.spi_transfer(_rev_list([_SPI_DIR_READ_STATUS, 0x00]))
                 status = _rev8(bytearray(resp['response'])[1])
             except Exception as e:
-                log_error("[%s pn532/spi] _recv: poll failed: %s\n%s",
+                logger.error("[%s pn532/spi] _recv: poll failed: %s\n%s",
                           self._name, e, traceback.format_exc())
                 return None
 
@@ -1642,7 +1641,7 @@ class PN532SPIDriver(_PN532Base):
                                 ' '.join('%02X' % b for b in raw) if raw else '(empty)')
                     return payload
                 except Exception as e:
-                    log_error("[%s pn532/spi] _recv: DATA read failed: %s\n%s",
+                    logger.error("[%s pn532/spi] _recv: DATA read failed: %s\n%s",
                               self._name, e, traceback.format_exc())
                     return None
 

@@ -52,8 +52,7 @@
 #     dependency (it IS in Klipper's own klippy-requirements.txt, so a real
 #     install has it) and it is absent from the test venv.
 
-from .log import (logger, trace, info as log_info,
-                  warning as log_warning, error as log_error)
+from .log import logger, trace
 from .pn532_driver import (
     _PN532Base,
     _MAX_RESPONSE_BYTES,
@@ -352,7 +351,7 @@ class PN532UARTDriver(_PN532Base):
                 "[%s pn532/uart] cannot open %s at %d baud: %s"
                 % (self._name, self._port, self._baud, e))
 
-        log_info("[%s %s] _open: opened %s at %d baud",
+        logger.info("[%s %s] _open: opened %s at %d baud",
                  self._name, self._transport_name, self._port, self._baud)
         # Opening a USB-CDC port asserts DTR/RTS, which resets some breakout
         # boards and can leave junk in the buffer. Start from a clean stream.
@@ -436,7 +435,7 @@ class PN532UARTDriver(_PN532Base):
         """
         self._faulted = True
         self._fault_reason = str(exc)
-        log_error("[%s %s] _on_io_error: %s failed on %s: %s - closing the port. "
+        logger.error("[%s %s] _on_io_error: %s failed on %s: %s - closing the port. "
                   "Reconnect and run MMU_RFID_INIT to reopen.",
                   self._name, self._transport_name, operation, self._port, exc)
         self.close()
@@ -505,7 +504,7 @@ class PN532UARTDriver(_PN532Base):
             try:
                 self._framer.pump()
             except Exception as e:
-                log_error("[%s %s] _await(%s): read failed: %s",
+                logger.error("[%s %s] _await(%s): read failed: %s",
                           self._name, self._transport_name, what, e)
                 return None
             while skipped <= self._MAX_SKIPPED_FRAMES:
@@ -537,7 +536,7 @@ class PN532UARTDriver(_PN532Base):
             if kind == FRAME_NACK:
                 # A definite answer: the chip rejected the frame. Return False so
                 # the wait ends here instead of burning the whole timeout.
-                log_warning("[%s %s] _read_ack: chip sent NACK",
+                logger.warning("[%s %s] _read_ack: chip sent NACK",
                             self._name, self._transport_name)
                 return False
             return None     # An info frame: left over from an earlier exchange
