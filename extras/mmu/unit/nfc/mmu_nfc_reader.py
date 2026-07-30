@@ -226,7 +226,8 @@ class MmuNfcReader:
         self._defaults = self.printer.lookup_object('mmu_nfc_reader', None)
 
         # Logical gate number, or the mmu_unit name for a shared reader. Not known
-        # until the manager calls init(gate); used only as a driver logging label.
+        # until the manager calls init(gate). This is the only record of which gate
+        # this reader serves - the driver's own log lines carry self.name instead.
         self.gate = None
 
         default_reader_type = (self._defaults.reader_type if self._defaults and self._defaults.reader_type
@@ -255,9 +256,9 @@ class MmuNfcReader:
         low_level_debug = pn532_driver.get_low_level_debug(config,
                                                            self._defaults.low_level_debug if self._defaults else False)
 
-        # The driver takes a 'gate' label; the manager supplies the real value via
-        # init(gate). Seed with the reader name until then.
-        self.reader = reader_factory.create_reader(config, self._defaults, self.reader_type, self.name, self.debug,
+        # The driver labels its own log lines with this section's name, which it
+        # derives from config itself - nothing to pass in or patch later.
+        self.reader = reader_factory.create_reader(config, self._defaults, self.reader_type, self.debug,
                                                    low_level_debug=low_level_debug, sleep_fn=self._reactor_sleep,
                                                    transceive_delay=transceive_delay, crc_delay=crc_delay,
                                                    interface=self.interface)
@@ -312,14 +313,16 @@ class MmuNfcReader:
         """(Re)initialize the reader chip.
 
         The manager passes 'gate' - the logical gate number for a per-gate
-        reader, or the mmu_unit name for a shared reader - which becomes the
-        driver's logging label. Updates and returns self.alive. Raises on
-        hardware/driver error; callers that just want a best-effort init
-        (e.g. GCode handlers) should catch exceptions themselves.
+        reader, or the mmu_unit name for a shared reader. Updates and returns
+        self.alive. Raises on hardware/driver error; callers that just want a
+        best-effort init (e.g. GCode handlers) should catch exceptions themselves.
         """
         if gate is not None:
             self.gate = gate
-            self.reader._gate = gate # Driver uses this only as a logging label
+            # Driver log lines carry the reader name, not the gate, so record the
+            # binding once here - otherwise klippy.log alone cannot tell you which
+            # gate a reader named 'left' or 'right' actually serves.
+            reader_log.info("[mmu_nfc_reader %s] init: gate=%s", self.name, gate)
         # A (re)init starts from a clean slate - no stale sticky read state
         self.last_uid = None
         self.last_target_info = None

@@ -202,16 +202,20 @@ def _parse_inlist_payload(payload):
 # Subclass contract
 # ─────────────────
 # Before calling super().__init__(), each subclass must set:
-#   self._transport_name  — short label used in log messages ('PN532' / 'PN532 SPI')
+#   self._transport_name  — short label used in log messages ('pn532/i2c',
+#                           'pn532/spi', 'pn532/uart')
+#
+# super().__init__() takes the reader's config section name as its first argument
+# and stores it as self._name — the identity every log line in this family carries.
 #
 # After super().__init__(), the subclass transport handle is already stored
 # (self._i2c or self._spi) so any transport method can use it immediately.
 
 class _PN532Base:
 
-    def __init__(self, gate, transceive_delay, crc_delay, debug, low_level_debug,
+    def __init__(self, name, transceive_delay, crc_delay, debug, low_level_debug,
                  sleep_fn=None, time_fn=None):
-        self._gate           = gate
+        self._name           = name
         self._scan_delay     = transceive_delay   # InListPassiveTarget wait
         self._release_delay  = crc_delay          # InRelease wait
         self._debug          = debug
@@ -269,7 +273,7 @@ class _PN532Base:
         except Exception as e:
             if self._debug >= 3:
                 logger.info("probe_start: gate %s (%s) send failed: %s",
-                            self._gate, self._transport_name, e)
+                            self._name, self._transport_name, e)
             self._probe_reset_state()
             return False
         self._probe_stage = 'ack'
@@ -289,7 +293,7 @@ class _PN532Base:
                 if self._now() > self._probe_deadline:
                     if self._debug >= 3:
                         logger.info("probe_poll: gate %s (%s) watchdog fired in "
-                                    "stage '%s'", self._gate,
+                                    "stage '%s'", self._name,
                                     self._transport_name, self._probe_stage)
                     self._probe_abort()
                     return False
@@ -299,7 +303,7 @@ class _PN532Base:
                 if not self._probe_fetch_ack():
                     if self._debug >= 3:
                         logger.info("probe_poll: gate %s (%s) bad ACK",
-                                    self._gate, self._transport_name)
+                                    self._name, self._transport_name)
                     self._probe_abort()
                     return False
                 # ACK only confirms the command was accepted; the scan result
@@ -316,13 +320,13 @@ class _PN532Base:
             self._set_current_card(target_info)
             if self._debug >= 3:
                 logger.info("probe_poll: gate %s (%s) tag present uid=%s",
-                            self._gate, self._transport_name,
+                            self._name, self._transport_name,
                             target_info.get('uid'))
             return True
         except Exception as e:
             if self._debug >= 3:
                 logger.info("probe_poll: gate %s (%s) failed: %s",
-                            self._gate, self._transport_name, e)
+                            self._name, self._transport_name, e)
             self._probe_reset_state()
             return False
 
@@ -339,7 +343,7 @@ class _PN532Base:
         except Exception as e:
             if self._debug >= 4:
                 trace("_probe_abort: gate %s (%s) abort write failed: %s",
-                             self._gate, self._transport_name, e)
+                             self._name, self._transport_name, e)
             return
         # Drain a response that may already have been queued before the abort
         # landed, so it can't be mistaken for the next command's ACK. Bounded and
@@ -368,7 +372,7 @@ class _PN532Base:
         except Exception as e:
             if self._debug >= 4:
                 trace("probe_stop: gate %s (%s) release failed: %s",
-                             self._gate, self._transport_name, e)
+                             self._name, self._transport_name, e)
             return False
         return True
 
@@ -426,7 +430,7 @@ class _PN532Base:
         if not self._read_ack(timeout=min(max(timeout, 0.050), 1.000)):
             if self._debug >= 3:
                 logger.info("_transceive: gate %s (%s) no valid ACK for "
-                            "cmd=0x%02X", self._gate, self._transport_name,
+                            "cmd=0x%02X", self._name, self._transport_name,
                             cmd_and_params[0])
             return None
         return self._recv(expected_cmd_resp, read_len=read_len, timeout=timeout)
@@ -497,7 +501,7 @@ class _PN532Base:
             trace(
                 "_set_current_card: gate %s (%s) Tg=%s UID=%s "
                 "SENS_RES=0x%04X SAK=0x%02X",
-                self._gate, self._transport_name,
+                self._name, self._transport_name,
                 self.current_target, self.current_uid_hex,
                 target_info.get('sens_res', 0),
                 target_info.get('sak', 0))
@@ -515,7 +519,7 @@ class _PN532Base:
             if self._debug >= 4:
                 trace(
                     "_release_current_target: gate %s (%s) Tg=0x%02X "
-                    "reason=%s", self._gate, self._transport_name,
+                    "reason=%s", self._name, self._transport_name,
                     release_tg, reason)
             payload = self._transceive([_CMD_INRELEASE, release_tg], 0x53,
                                        read_len=12,
@@ -524,17 +528,17 @@ class _PN532Base:
                 if payload is None:
                     trace("_release_current_target: gate %s (%s) "
                                  "no response (non-fatal)",
-                                 self._gate, self._transport_name)
+                                 self._name, self._transport_name)
                 else:
                     status = payload[0] if payload else 0xFF
                     trace("_release_current_target: gate %s (%s) "
                                  "status=0x%02X",
-                                 self._gate, self._transport_name, status)
+                                 self._name, self._transport_name, status)
             return payload is not None
         except Exception as e:
             if self._debug >= 4:
                 trace("_release_current_target: gate %s (%s) "
-                             "error: %s\n%s", self._gate, self._transport_name,
+                             "error: %s\n%s", self._name, self._transport_name,
                              e, traceback.format_exc())
             return False
         finally:
@@ -595,7 +599,7 @@ class _PN532Base:
             timeout = self._scan_delay + 0.100
         if self._debug >= 4:
             trace("read_target: gate %s (%s) scanning (timeout=%.3fs)",
-                         self._gate, self._transport_name, timeout)
+                         self._name, self._transport_name, timeout)
 
         payload = self._transceive([_CMD_INLISTPASSIVETARGET, 0x01,
                                     _BRTY_ISO14443A_106KBPS],
@@ -606,7 +610,7 @@ class _PN532Base:
             self._clear_current_card()
             if self._debug >= 4:
                 trace("read_target: gate %s (%s) no tag",
-                             self._gate, self._transport_name)
+                             self._name, self._transport_name)
             return None
 
         self._set_current_card(target_info)
@@ -614,7 +618,7 @@ class _PN532Base:
             trace(
                 "read_target: gate %s (%s) Tg=%d SENS_RES=0x%04X "
                 "SAK=0x%02X UIDLen=%d UID=%s",
-                self._gate, self._transport_name,
+                self._name, self._transport_name,
                 target_info['target'], target_info['sens_res'],
                 target_info['sak'], target_info['uid_length'],
                 target_info['uid'])
@@ -653,7 +657,7 @@ class _PN532Base:
             if self._debug >= 4 and payload:
                 trace("ntag_read_page: gate %s (%s) page=%d "
                              "status=0x%02X",
-                             self._gate, self._transport_name,
+                             self._name, self._transport_name,
                              page, payload[0])
             return None
         data = list(payload[1:17])
@@ -691,7 +695,7 @@ class _PN532Base:
             if expected_uid and target_info['uid_bytes'] != expected_uid:
                 log_warning("robust_page_read: gate %s (%s) different "
                             "tag detected during page %d retry",
-                            self._gate, self._transport_name, page)
+                            self._name, self._transport_name, page)
                 self._release_current_target(reason="uid_changed")
                 return None
 
@@ -785,7 +789,7 @@ class _PN532Base:
                                 "ntag_read_ndef_user_memory: gate %s (%s) "
                                 "NDEF length=%d requires %d bytes; capped at "
                                 "%d bytes by max_ndef_pages",
-                                self._gate, self._transport_name, ndef_len,
+                                self._name, self._transport_name, ndef_len,
                                 target_bytes, max_ndef_bytes)
                         target_bytes = max_ndef_bytes
                 elif len(user_data) >= 16:
@@ -803,7 +807,7 @@ class _PN532Base:
                 trace(
                     "ntag_read_ndef_user_memory: gate %s (%s) "
                     "NDEF length=%d read=%d bytes",
-                    self._gate, self._transport_name, ndef_len, len(result))
+                    self._name, self._transport_name, ndef_len, len(result))
             return result
         finally:
             self._release_current_target(reason="ndef_user_memory_complete")
@@ -827,7 +831,7 @@ class _PN532Base:
                 logger.info(
                     "mifare_authenticate: gate %s (%s) block=%d key_%s "
                     "status=0x%02X",
-                    self._gate, self._transport_name, block_addr,
+                    self._name, self._transport_name, block_addr,
                     'B' if use_key_b else 'A', payload[0])
             return False
         return True
@@ -887,7 +891,7 @@ class _PN532Base:
                         logger.info(
                             "mifare_read_authenticated_blocks: gate %s (%s) "
                             "sector %d auth failed — skipping",
-                            self._gate, self._transport_name, sector)
+                            self._name, self._transport_name, sector)
                     continue
                 for blk_offset in range(3):
                     block_addr = sector * 4 + blk_offset
@@ -900,7 +904,7 @@ class _PN532Base:
                             logger.info(
                                 "mifare_read_authenticated_blocks: gate %s (%s) "
                                 "block %d read failed",
-                                self._gate, self._transport_name, block_addr)
+                                self._name, self._transport_name, block_addr)
             result = {"uid_bytes": bytes(uid_bytes or []), "blocks": blocks}
             if auth_failed_sectors:
                 result["auth_failed_sectors"] = auth_failed_sectors
@@ -933,7 +937,7 @@ class _PN532Base:
                 trace(
                     "_wake_pn532: gate %s (%s) attempt %d/%d — "
                     "sending GetFirmwareVersion",
-                    self._gate, self._transport_name, attempt + 1, attempts)
+                    self._name, self._transport_name, attempt + 1, attempts)
             try:
                 # Inside the loop, not once before it: a retry means the previous
                 # burst did not take. Costs one no-op call per attempt on I2C/SPI.
@@ -943,30 +947,30 @@ class _PN532Base:
                     log_info(
                         "_wake_pn532: gate %s (%s) OK on attempt %d — "
                         "IC=0x%02X Ver=%d.%d",
-                        self._gate, self._transport_name, attempt + 1,
+                        self._name, self._transport_name, attempt + 1,
                         version['ic'], version['version'], version['revision'])
                     return True
                 if self._debug >= 4:
                     trace(
                         "_wake_pn532: gate %s (%s) attempt %d — "
                         "no valid response",
-                        self._gate, self._transport_name, attempt + 1)
+                        self._name, self._transport_name, attempt + 1)
             except Exception as e:
                 if attempt == 0:
                     trace(
                         "_wake_pn532: gate %s (%s) attempt %d failed: %s\n%s",
-                        self._gate, self._transport_name, attempt + 1,
+                        self._name, self._transport_name, attempt + 1,
                         e, traceback.format_exc())
                 else:
                     log_info(
                         "_wake_pn532: gate %s (%s) attempt %d failed: %s\n%s",
-                        self._gate, self._transport_name, attempt + 1,
+                        self._name, self._transport_name, attempt + 1,
                         e, traceback.format_exc())
             self._sleep(0.050)
 
         log_warning("_wake_pn532: gate %s (%s) failed after %d attempts — "
                     "check wiring",
-                    self._gate, self._transport_name, attempts)
+                    self._name, self._transport_name, attempts)
         return False
 
     def init(self):
@@ -987,32 +991,32 @@ class _PN532Base:
         if self._low_level_debug:
             log_info("init: gate %s (%s) low_level_debug enabled — "
                      "skipping wake and SAMConfiguration",
-                     self._gate, self._transport_name)
+                     self._name, self._transport_name)
             return
 
         if self._debug >= 4:
             trace("init: gate %s (%s) starting wake sequence",
-                         self._gate, self._transport_name)
+                         self._name, self._transport_name)
 
         if not self._wake_pn532():
             raise RuntimeError(
                 "PN532 gate %s (%s) did not respond — check wiring"
-                % (self._gate, self._transport_name))
+                % (self._name, self._transport_name))
 
         if self._debug >= 4:
             trace("init: gate %s (%s) sending SAMConfiguration "
                          "(Normal mode, timeout=0, no IRQ)",
-                         self._gate, self._transport_name)
+                         self._name, self._transport_name)
 
         # SAMConfiguration: Normal mode(0x01), timeout=0x00, IRQ=0x00.
         # See sam_config() for why the defaults differ from HH_code.
         if not self.sam_config():
             log_warning("init: gate %s (%s) SAMConfiguration "
                         "no response — reader may be unstable",
-                        self._gate, self._transport_name)
+                        self._name, self._transport_name)
         elif self._debug >= 4:
             trace("init: gate %s (%s) SAMConfiguration OK",
-                         self._gate, self._transport_name)
+                         self._name, self._transport_name)
 
     def is_alive(self):
         """
@@ -1026,7 +1030,7 @@ class _PN532Base:
             return self.get_firmware_version() is not None
         except Exception as e:
             trace("is_alive: gate %s (%s) error: %s\n%s",
-                         self._gate, self._transport_name,
+                         self._name, self._transport_name,
                          e, traceback.format_exc())
             return False
 
@@ -1062,14 +1066,14 @@ class _PN532Base:
 
             if self._debug >= 3:
                 trace("read_tag: gate %s (%s) uid=%s",
-                             self._gate, self._transport_name, uid_hex)
+                             self._name, self._transport_name, uid_hex)
 
             return uid_hex
         except Exception as e:
             if self._debug >= 3:
                 logger.info("read_tag: gate %s (%s) error "
                             "(tag removed mid-scan?): %s\n%s",
-                            self._gate, self._transport_name,
+                            self._name, self._transport_name,
                             e, traceback.format_exc())
             return None
 
@@ -1093,8 +1097,9 @@ class PN532Driver(_PN532Base):
         A Klipper MCU_I2C object configured for this reader's I2C address.
         Must be fully initialised (klippy:connect completed) before calling
         init() or read_tag().
-    gate : int
-        Gate number (0-based), used for logging.
+    name : str
+        The reader's config section name ([mmu_nfc_reader <name>]), used only
+        as a logging label.
     transceive_delay : float
         Seconds to wait after InListPassiveTarget before reading the result.
         The PN532 scans until a tag is found or its internal timer expires.
@@ -1106,7 +1111,7 @@ class PN532Driver(_PN532Base):
         0 = silent, 1 = major events, 2 = full trace.
     """
 
-    def __init__(self, i2c, gate,
+    def __init__(self, i2c, name,
                  transceive_delay=0.250,
                  crc_delay=0.050,
                  debug=1,
@@ -1115,7 +1120,7 @@ class PN532Driver(_PN532Base):
                  time_fn=None):
         self._i2c = i2c
         self._transport_name = 'PN532'
-        super().__init__(gate, transceive_delay, crc_delay, debug, low_level_debug,
+        super().__init__(name, transceive_delay, crc_delay, debug, low_level_debug,
                          sleep_fn=sleep_fn, time_fn=time_fn)
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -1163,7 +1168,7 @@ class PN532Driver(_PN532Base):
         frame = self._build_frame(cmd_and_params)
         if self._debug >= 4:
             trace("_send: gate %s (PN532) TX  cmd=0x%02X  frame=%s",
-                          self._gate, cmd_and_params[0],
+                          self._name, cmd_and_params[0],
                           ' '.join('%02X' % b for b in frame))
         self._i2c.i2c_write(frame)
 
@@ -1210,12 +1215,12 @@ class PN532Driver(_PN532Base):
                 status = ready_raw[0] if ready_raw else 0xFF
             except Exception as e:
                 log_error("_read_ack: gate %s (PN532) ready read failed: %s\n%s",
-                          self._gate, e, traceback.format_exc())
+                          self._name, e, traceback.format_exc())
                 return False
 
             if self._debug >= 4:
                 trace("_read_ack: gate %s (PN532) ready=%s",
-                             self._gate,
+                             self._name,
                              ' '.join('%02X' % b for b in ready_raw))
 
             if status == 0x01:
@@ -1226,20 +1231,20 @@ class PN532Driver(_PN532Base):
                     ok = len(raw) >= 7 and raw[0] == 0x01 and ack == PN532_ACK
                     if self._debug >= 4 or not ok:
                         trace("_read_ack: gate %s (PN532) raw=%s ok=%s",
-                                     self._gate,
+                                     self._name,
                                      ' '.join('%02X' % b for b in raw),
                                      ok)
                     return ok
                 except Exception as e:
                     log_error("_read_ack: gate %s (PN532) ACK read failed: %s\n%s",
-                              self._gate, e, traceback.format_exc())
+                              self._name, e, traceback.format_exc())
                     return False
 
             self._sleep(poll_interval)
 
         if self._debug >= 4:
             trace("_read_ack: gate %s (PN532) timeout after %.3fs",
-                         self._gate, timeout)
+                         self._name, timeout)
         return False
 
     def _recv(self, expected_cmd_resp, read_len=_MAX_RESPONSE_BYTES,
@@ -1267,12 +1272,12 @@ class PN532Driver(_PN532Base):
                 pn_status = raw1[0] if raw1 else 0xFF
             except Exception as e:
                 log_error("_recv: gate %s (PN532) poll failed: %s\n%s",
-                          self._gate, e, traceback.format_exc())
+                          self._name, e, traceback.format_exc())
                 return None
 
             if self._debug >= 4:
                 trace("_recv: gate %s (PN532) poll result=%s pn_status=0x%02X",
-                             self._gate,
+                             self._name,
                              ' '.join('%02X' % b for b in raw1),
                              pn_status)
 
@@ -1287,28 +1292,28 @@ class PN532Driver(_PN532Base):
                             trace(
                                 "_recv: gate %s (PN532) DATA: expect=0x%02X "
                                 "pn_status=0x%02X raw=%s",
-                                self._gate, expected_cmd_resp, status_byte,
+                                self._name, expected_cmd_resp, status_byte,
                                 ' '.join('%02X' % b for b in raw))
                             trace("_recv: gate %s (PN532) payload: %s",
-                                         self._gate,
+                                         self._name,
                                          ' '.join('%02X' % b for b in payload))
                         else:
                             trace(
                                 "_recv: gate %s (PN532) DATA ERROR: expect=0x%02X "
                                 "pn_status=0x%02X raw=%s",
-                                self._gate, expected_cmd_resp, status_byte,
+                                self._name, expected_cmd_resp, status_byte,
                                 ' '.join('%02X' % b for b in raw) if raw else '(empty)')
                     return payload
                 except Exception as e:
                     log_error("_recv: gate %s (PN532) DATA read failed: %s\n%s",
-                              self._gate, e, traceback.format_exc())
+                              self._name, e, traceback.format_exc())
                     return None
 
             self._sleep(poll_interval)
 
         if self._debug >= 4:
             trace("_recv: gate %s (PN532) timeout after %.3fs waiting for ready",
-                         self._gate, timeout)
+                         self._name, timeout)
         return None
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -1453,8 +1458,9 @@ class PN532SPIDriver(_PN532Base):
         A Klipper MCU_SPI object configured for this reader's CS pin.
         Must be fully initialised (klippy:connect completed) before calling
         init() or read_tag().
-    gate : int
-        Gate number (0-based), used for logging.
+    name : str
+        The reader's config section name ([mmu_nfc_reader <name>]), used only
+        as a logging label.
     transceive_delay : float
         Scan timeout passed to InListPassiveTarget poll loop.
     crc_delay : float
@@ -1463,7 +1469,7 @@ class PN532SPIDriver(_PN532Base):
         0 = silent, 1 = major events, 2 = full trace.
     """
 
-    def __init__(self, spi, gate,
+    def __init__(self, spi, name,
                  transceive_delay=0.250,
                  crc_delay=0.050,
                  debug=1,
@@ -1472,7 +1478,7 @@ class PN532SPIDriver(_PN532Base):
                  time_fn=None):
         self._spi = spi
         self._transport_name = 'PN532 SPI'
-        super().__init__(gate, transceive_delay, crc_delay, debug, low_level_debug,
+        super().__init__(name, transceive_delay, crc_delay, debug, low_level_debug,
                          sleep_fn=sleep_fn, time_fn=time_fn)
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -1508,7 +1514,7 @@ class PN532SPIDriver(_PN532Base):
         wire  = _rev_list([_SPI_DIR_WRITE] + frame)
         if self._debug >= 4:
             trace("_send: gate %s (PN532 SPI) TX  cmd=0x%02X  frame=%s",
-                          self._gate, cmd_and_params[0],
+                          self._name, cmd_and_params[0],
                           ' '.join('%02X' % b for b in frame))
         self._spi.spi_send(wire)
 
@@ -1549,12 +1555,12 @@ class PN532SPIDriver(_PN532Base):
                 status = _rev8(bytearray(resp['response'])[1])
             except Exception as e:
                 log_error("_read_ack: gate %s (PN532 SPI) status read failed: %s\n%s",
-                          self._gate, e, traceback.format_exc())
+                          self._name, e, traceback.format_exc())
                 return False
 
             if self._debug >= 4:
                 trace("_read_ack: gate %s (PN532 SPI) status=0x%02X",
-                             self._gate, status)
+                             self._name, status)
 
             if status == 0x01:
                 try:
@@ -1565,20 +1571,20 @@ class PN532SPIDriver(_PN532Base):
                     ok = ack == PN532_ACK
                     if self._debug >= 4 or not ok:
                         trace("_read_ack: gate %s (PN532 SPI) raw=%s ok=%s",
-                                     self._gate,
+                                     self._name,
                                      ' '.join('%02X' % b for b in raw),
                                      ok)
                     return ok
                 except Exception as e:
                     log_error("_read_ack: gate %s (PN532 SPI) ACK read failed: %s\n%s",
-                              self._gate, e, traceback.format_exc())
+                              self._name, e, traceback.format_exc())
                     return False
 
             self._sleep(poll_interval)
 
         if self._debug >= 4:
             trace("_read_ack: gate %s (PN532 SPI) timeout after %.3fs",
-                         self._gate, timeout)
+                         self._name, timeout)
         return False
 
     def _recv(self, expected_cmd_resp, read_len=_MAX_RESPONSE_BYTES,
@@ -1606,12 +1612,12 @@ class PN532SPIDriver(_PN532Base):
                 status = _rev8(bytearray(resp['response'])[1])
             except Exception as e:
                 log_error("_recv: gate %s (PN532 SPI) poll failed: %s\n%s",
-                          self._gate, e, traceback.format_exc())
+                          self._name, e, traceback.format_exc())
                 return None
 
             if self._debug >= 4:
                 trace("_recv: gate %s (PN532 SPI) poll status=0x%02X",
-                             self._gate, status)
+                             self._name, status)
 
             if status == 0x01:
                 try:
@@ -1624,27 +1630,27 @@ class PN532SPIDriver(_PN532Base):
                         if payload is not None:
                             trace(
                                 "_recv: gate %s (PN532 SPI) DATA: expect=0x%02X raw=%s",
-                                self._gate, expected_cmd_resp,
+                                self._name, expected_cmd_resp,
                                 ' '.join('%02X' % b for b in raw))
                             trace("_recv: gate %s (PN532 SPI) payload: %s",
-                                         self._gate,
+                                         self._name,
                                          ' '.join('%02X' % b for b in payload))
                         else:
                             trace(
                                 "_recv: gate %s (PN532 SPI) DATA ERROR: expect=0x%02X raw=%s",
-                                self._gate, expected_cmd_resp,
+                                self._name, expected_cmd_resp,
                                 ' '.join('%02X' % b for b in raw) if raw else '(empty)')
                     return payload
                 except Exception as e:
                     log_error("_recv: gate %s (PN532 SPI) DATA read failed: %s\n%s",
-                              self._gate, e, traceback.format_exc())
+                              self._name, e, traceback.format_exc())
                     return None
 
             self._sleep(poll_interval)
 
         if self._debug >= 4:
             trace("_recv: gate %s (PN532 SPI) timeout after %.3fs",
-                         self._gate, timeout)
+                         self._name, timeout)
         return None
 
     # ─────────────────────────────────────────────────────────────────────────

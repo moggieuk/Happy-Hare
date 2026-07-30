@@ -82,7 +82,7 @@ class FakeSpi:
 
 def driver(registers=None):
     spi = FakeSpi(registers)
-    return RC522Driver(spi, gate=0, debug=0, sleep_fn=lambda _s: None), spi
+    return RC522Driver(spi, name="gate0", debug=0, sleep_fn=lambda _s: None), spi
 
 
 class TestProbeUsesWupa(unittest.TestCase):
@@ -128,7 +128,7 @@ class TestProbeIsNonBlocking(unittest.TestCase):
             raise AssertionError('probe path slept - that stalls the drip-homing move')
 
         spi = FakeSpi({COM_IRQ: 0x30, ERROR_REG: 0x00, FIFO_LEVEL: 0x02})
-        drv = RC522Driver(spi, gate=0, debug=0, sleep_fn=boom)
+        drv = RC522Driver(spi, name="gate0", debug=0, sleep_fn=boom)
         drv.probe_start()
         self.assertTrue(drv.probe_poll())
 
@@ -217,7 +217,7 @@ class TestProbeStopRestoresTheAntenna(unittest.TestCase):
                     raise RuntimeError('SPI glitch')
 
         spi = FlakySpi()
-        drv = RC522Driver(spi, gate=0, debug=0, sleep_fn=lambda _s: None)
+        drv = RC522Driver(spi, name="gate0", debug=0, sleep_fn=lambda _s: None)
         drv.probe_start()
         self.assertFalse(drv.probe_stop(), 'a failed reset should report failure')
         self.assertTrue(spi.writes_to(TX_CONTROL)[-1] & 0x03,

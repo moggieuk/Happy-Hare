@@ -109,7 +109,7 @@ def driver(chunks=(), chip=None, **kwargs):
     port.feed(*chunks)
     if chip is not None:
         port.on_write = chip.on_write
-    drv = PN532UARTDriver('/dev/fake-nfc', gate=0, debug=0,
+    drv = PN532UARTDriver('/dev/fake-nfc', name="gate0", debug=0,
                           serial_factory=lambda p, b: port,
                           sleep_fn=clock.sleep, time_fn=clock.now, **kwargs)
     return drv, port, clock
@@ -569,7 +569,7 @@ class TestPortLifecycle(unittest.TestCase):
             opened.append(port)
             return fake_serial.Serial(port, baud, timeout=0)
 
-        PN532UARTDriver('/dev/nope', gate=0, debug=0, serial_factory=factory)
+        PN532UARTDriver('/dev/nope', name="gate0", debug=0, serial_factory=factory)
         self.assertEqual(opened, [], 'the port must not open until init()')
 
     def test_open_failure_names_the_port_not_the_wiring(self):
@@ -581,7 +581,7 @@ class TestPortLifecycle(unittest.TestCase):
         """
         def boom(port, baud):
             raise fake_serial.SerialException('no such device')
-        drv = PN532UARTDriver('/dev/nope', gate=0, debug=0,
+        drv = PN532UARTDriver('/dev/nope', name="gate0", debug=0,
                               sleep_fn=lambda _s: None,
                               serial_factory=boom)
         with self.assertRaises(RuntimeError) as caught:
@@ -637,7 +637,7 @@ class TestPortLifecycle(unittest.TestCase):
             ports.append(new)
             return new
 
-        drv = PN532UARTDriver('/dev/fake-nfc', gate=0, debug=0,
+        drv = PN532UARTDriver('/dev/fake-nfc', name="gate0", debug=0,
                               sleep_fn=clock.sleep, time_fn=clock.now,
                               serial_factory=factory)
         drv.init()
@@ -676,7 +676,7 @@ class TestPortLifecycle(unittest.TestCase):
             ports.append(new)
             return new
 
-        drv = PN532UARTDriver('/dev/fake-nfc', gate=0, debug=0,
+        drv = PN532UARTDriver('/dev/fake-nfc', name="gate0", debug=0,
                               sleep_fn=clock.sleep, time_fn=clock.now,
                               serial_factory=factory)
         drv.init()
@@ -798,7 +798,7 @@ class TestCreateReaderUart(unittest.TestCase):
         options.setdefault('serial', self.BY_ID)
         config = FakeConfig(printer=self.printer, **options)
         return self.factory.create_reader(
-            config, None, 'pn532', gate=0, debug=0, interface='uart')
+            config, None, 'pn532', debug=0, interface='uart')
 
     def test_builds_a_uart_driver_with_the_configured_port(self):
         driver_obj = self.build()
@@ -813,7 +813,7 @@ class TestCreateReaderUart(unittest.TestCase):
     def test_missing_serial_is_a_config_error(self):
         config = FakeConfig(printer=self.printer)
         with self.assertRaises(FakeConfigError) as caught:
-            self.factory.create_reader(config, None, 'pn532', gate=0, debug=0,
+            self.factory.create_reader(config, None, 'pn532', debug=0,
                                        interface='uart')
         self.assertIn('serial', str(caught.exception))
 
@@ -838,7 +838,7 @@ class TestCreateReaderUart(unittest.TestCase):
         second = FakeConfig(name='mmu_nfc_reader gate1', printer=self.printer,
                             serial=self.BY_ID)
         with self.assertRaises(FakeConfigError) as caught:
-            self.factory.create_reader(second, None, 'pn532', gate=1, debug=0,
+            self.factory.create_reader(second, None, 'pn532', debug=0,
                                        interface='uart')
         self.assertIn('gate0', str(caught.exception),
                       'the error should name the reader already holding the port')
@@ -885,7 +885,7 @@ class TestCreateReaderUart(unittest.TestCase):
             config = FakeConfig(printer=self.printer)
             with self.assertLogs(READER_CHANNEL, level='WARNING') as logged:
                 with self.assertRaises(RuntimeError):
-                    self.factory.create_reader(config, None, 'pn532', gate=0,
+                    self.factory.create_reader(config, None, 'pn532',
                                                debug=0, interface='spi')
         finally:
             self.factory.bus_module.MCU_SPI_from_config = original
@@ -914,14 +914,14 @@ class TestFakeSerialRegistry(unittest.TestCase):
 
     def test_preset_chunks_reach_a_lazily_opened_port(self):
         fake_serial.preset('/dev/preset-nfc', [PN532_UART_ACK])
-        drv = PN532UARTDriver('/dev/preset-nfc', gate=0, debug=0,
+        drv = PN532UARTDriver('/dev/preset-nfc', name="gate0", debug=0,
                               sleep_fn=lambda _s: None)
         self.assertTrue(drv._probe_status_ready(),
                         'chunks queued before the open must survive it')
 
     def test_fail_open_models_a_missing_adapter(self):
         fake_serial.fail_open('/dev/gone-nfc')
-        drv = PN532UARTDriver('/dev/gone-nfc', gate=0, debug=0,
+        drv = PN532UARTDriver('/dev/gone-nfc', name="gate0", debug=0,
                               sleep_fn=lambda _s: None)
         with self.assertRaises(RuntimeError):
             drv.init()
@@ -933,7 +933,7 @@ class TestFakeSerialRegistry(unittest.TestCase):
             pass
 
         reader = StubReader()
-        reader.reader = PN532UARTDriver('/dev/primed-nfc', gate=0, debug=0,
+        reader.reader = PN532UARTDriver('/dev/primed-nfc', name="gate0", debug=0,
                                         sleep_fn=lambda _s: None)
         self.assertTrue(prime_uart_reader(reader, [PN532_UART_ACK]))
         self.assertTrue(reader.reader._probe_status_ready())

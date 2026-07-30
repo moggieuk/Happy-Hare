@@ -146,8 +146,9 @@ class RC522Driver:
         A Klipper MCU_SPI object configured for this reader's CS pin.
         Must be fully initialised (klippy:connect completed) before calling
         init() or read_tag().
-    gate : int
-        Gate number (0-based), used only for logging.
+    name : str
+        The reader's config section name ([mmu_nfc_reader <name>]), used only
+        as a logging label.
     transceive_delay : float
         Seconds to wait after triggering TRANSCEIVE before reading the result.
         The RC522 internal timer fires at ~0.5 ms when no tag is present;
@@ -157,12 +158,12 @@ class RC522Driver:
         0 = silent, 1 = major events, 2 = full trace.
     """
 
-    def __init__(self, spi, gate,
+    def __init__(self, spi, name,
                  transceive_delay=0.035,
                  debug=0,
                  sleep_fn=None):
         self._spi              = spi
-        self._gate             = gate
+        self._name             = name
         self._transceive_delay = transceive_delay
         self._debug            = debug
         self._sleep            = sleep_fn if sleep_fn is not None else time.sleep
@@ -189,7 +190,7 @@ class RC522Driver:
         """Write one byte to an RC522 register (no response expected)."""
         if self._debug >= 4:
             trace("RC522: gate %s  W %-15s (0x%02X) = 0x%02X",
-                          self._gate, _REG_NAMES.get(reg, '?'), reg, val & 0xFF)
+                          self._name, _REG_NAMES.get(reg, '?'), reg, val & 0xFF)
         self._spi.spi_send([(reg << 1) & 0x7E, val & 0xFF])
 
     def _read(self, reg):
@@ -198,7 +199,7 @@ class RC522Driver:
         val = resp['response'][1]
         if self._debug >= 4:
             trace("RC522: gate %s  R %-15s (0x%02X) -> 0x%02X",
-                          self._gate, _REG_NAMES.get(reg, '?'), reg, val)
+                          self._name, _REG_NAMES.get(reg, '?'), reg, val)
         return val
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -226,15 +227,15 @@ class RC522Driver:
             except Exception as e:
                 last_error = e
                 trace("RC522: gate %s init attempt %d raised: %s\n%s",
-                      self._gate, attempt, e, traceback.format_exc())
+                      self._name, attempt, e, traceback.format_exc())
             else:
                 if tx_final & 0x03:
                     suffix = '' if attempt == 1 else ' on attempt %d' % attempt
                     logger.info("RC522: gate %s init OK%s (TxControl=0x%02X, %s)",
-                                self._gate, suffix, tx_final, self._bus_description())
+                                self._name, suffix, tx_final, self._bus_description())
                     return
                 trace("RC522: gate %s init attempt %d left TxControl=0x%02X",
-                      self._gate, attempt, tx_final)
+                      self._name, attempt, tx_final)
             if attempt < self._INIT_ATTEMPTS:
                 self._sleep(self._INIT_RETRY_DELAY)
 
@@ -245,19 +246,19 @@ class RC522Driver:
             logger.warning(
                 "RC522: gate %s init failed after %d attempts — check SPI wiring, "
                 "cs_pin, spi_bus, power and ground: %s",
-                self._gate, self._INIT_ATTEMPTS, last_error)
+                self._name, self._INIT_ATTEMPTS, last_error)
             raise last_error
         self._report_antenna_failure(tx_final)
 
     def _init_once(self):
         """One reset-and-configure pass. Returns TxControlReg as read back."""
         if self._debug >= 4:
-            trace("RC522: gate %s init — soft-resetting", self._gate)
+            trace("RC522: gate %s init — soft-resetting", self._name)
         self._write(_CommandReg,    _PCD_RESETPHASE)
         self._sleep(0.050)           # Datasheet: max reset time 37.74 ms; 50 ms is safe
         if self._debug >= 4:
             trace("RC522: gate %s init — reset done, configuring timer "
-                         "and modulation", self._gate)
+                         "and modulation", self._name)
         self._write(_TModeReg,      0x8D)
         self._write(_TPrescalerReg, 0x3E)
         self._write(_TReloadRegH,   0x00)
@@ -269,7 +270,7 @@ class RC522Driver:
         if not (tx & 0x03):
             if self._debug >= 4:
                 trace("RC522: gate %s init — enabling antenna TX pins "
-                             "(TxControl was 0x%02X)", self._gate, tx)
+                             "(TxControl was 0x%02X)", self._name, tx)
             self._write(_TxControlReg, tx | 0x03)
         return self._read(_TxControlReg)
 
@@ -325,7 +326,7 @@ class RC522Driver:
         logger.warning(
             "RC522: gate %s antenna TX bits will not set (TxControl=0x%02X "
             "VersionReg=0x%02X TModeReg=0x%02X %s): %s",
-            self._gate, tx_final, version, tmode, self._bus_description(), cause)
+            self._name, tx_final, version, tmode, self._bus_description(), cause)
 
     def is_alive(self):
         """Return True if the reader is responding (antenna TX bits are set)."""
@@ -335,18 +336,18 @@ class RC522Driver:
             if not alive:
                 logger.warning(
                     "RC522: gate %s not responding — antenna TX bits are off "
-                    "(TxControl=0x%02X)", self._gate, tx)
+                    "(TxControl=0x%02X)", self._name, tx)
             elif self._debug >= 4:
                 trace("RC522: gate %s alive (TxControl=0x%02X)",
-                             self._gate, tx)
+                             self._name, tx)
             return alive
         except Exception as e:
             logger.warning(
                 "RC522: gate %s health check failed — SPI reader did not "
-                "respond: %s", self._gate, e)
+                "respond: %s", self._name, e)
             if self._debug >= 4:
                 trace("RC522: gate %s is_alive traceback:\n%s",
-                             self._gate, traceback.format_exc())
+                             self._name, traceback.format_exc())
             return False
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -363,7 +364,7 @@ class RC522Driver:
         """
         if self._debug >= 4:
             trace("RC522: gate %s  _transceive send=[%s]",
-                          self._gate,
+                          self._name,
                           ' '.join('0x%02X' % b for b in send_data))
 
         # Enable all interrupt sources; clear pending flags; flush FIFO
@@ -385,7 +386,7 @@ class RC522Driver:
         if self._debug >= 4:
             trace("RC522: gate %s  _transceive — transmission started, "
                           "waiting %.0f ms for response",
-                          self._gate, delay * 1000)
+                          self._name, delay * 1000)
 
         # Wait for tag response (or internal timer timeout at ~0.5 ms)
         self._sleep(delay)
@@ -397,14 +398,14 @@ class RC522Driver:
         if self._debug >= 4:
             trace("RC522: gate %s  _transceive IRQ=0x%02X "
                           "(TimerIRq=%d RxIRq=%d IdleIRq=%d)",
-                          self._gate, irq,
+                          self._name, irq,
                           (irq >> 0) & 1, (irq >> 5) & 1, (irq >> 4) & 1)
 
         # TimerIRq (bit 0) set with no RxIRq (bit 5) or IdleIRq (bit 4) → no tag
         if (irq & 0x01) and not (irq & 0x30):
             if self._debug >= 4:
                 trace("RC522: gate %s  _transceive -> MI_ERR (timer "
-                              "expired, no tag response)", self._gate)
+                              "expired, no tag response)", self._name)
             return MI_ERR, [], 0
 
         # Protocol error (collision, CRC error, buffer overflow, parity error)
@@ -414,7 +415,7 @@ class RC522Driver:
                 trace("RC522: gate %s  _transceive -> MI_ERR "
                               "(ErrorReg=0x%02X: collision=%d CRC=%d overflow=%d "
                               "parity=%d)",
-                              self._gate, err,
+                              self._name, err,
                               (err >> 3) & 1, (err >> 2) & 1,
                               (err >> 4) & 1, (err >> 1) & 1)
             return MI_ERR, [], 0
@@ -424,7 +425,7 @@ class RC522Driver:
         if fifo_len == 0:
             if self._debug >= 4:
                 trace("RC522: gate %s  _transceive -> MI_ERR "
-                              "(FIFO empty after IRQ)", self._gate)
+                              "(FIFO empty after IRQ)", self._name)
             return MI_ERR, [], 0
 
         last_bits = self._read(_ControlReg) & 0x07
@@ -437,7 +438,7 @@ class RC522Driver:
         if self._debug >= 4:
             trace("RC522: gate %s  _transceive -> MI_OK "
                           "fifo=%d bits=%d data=[%s]",
-                          self._gate, fifo_len, bit_len,
+                          self._name, fifo_len, bit_len,
                           ' '.join('0x%02X' % b for b in back_data))
 
         return MI_OK, back_data, bit_len
@@ -480,7 +481,7 @@ class RC522Driver:
             return True
         except Exception as e:
             if self._debug >= 3:
-                logger.info("RC522: gate %s probe_start failed: %s", self._gate, e)
+                logger.info("RC522: gate %s probe_start failed: %s", self._name, e)
             self._probe_reset_state()
             return False
 
@@ -503,7 +504,7 @@ class RC522Driver:
                     # a wedged exchange as "no tag" and let the caller restart.
                     if self._debug >= 3:
                         logger.info("RC522: gate %s probe watchdog fired "
-                                    "(IRQ=0x%02X)", self._gate, irq)
+                                    "(IRQ=0x%02X)", self._name, irq)
                     self._probe_finish()
                     return False
                 return None
@@ -517,7 +518,7 @@ class RC522Driver:
             return self._read(_FIFOLevelReg) >= 2
         except Exception as e:
             if self._debug >= 3:
-                logger.info("RC522: gate %s probe_poll failed: %s", self._gate, e)
+                logger.info("RC522: gate %s probe_poll failed: %s", self._name, e)
             self._probe_reset_state()
             return False
 
@@ -556,7 +557,7 @@ class RC522Driver:
         except Exception as e:
             if self._debug >= 3:
                 logger.info("RC522: gate %s probe_stop field reset failed: %s",
-                            self._gate, e)
+                            self._name, e)
             # Best effort to leave the antenna on regardless
             try:
                 self._write(_TxControlReg, self._read(_TxControlReg) | 0x03)
@@ -682,18 +683,18 @@ class RC522Driver:
                     logger.warning(
                         "RC522: gate %s ANTICOLL failed after REQA "
                         "(status=%s data_len=%d)",
-                        self._gate, 'OK' if status == MI_OK else 'ERR',
+                        self._name, 'OK' if status == MI_OK else 'ERR',
                         len(data))
                     if self._debug >= 4:
                         trace(
                             "RC522: gate %s ANTICOLL response bits=%d data=[%s]",
-                            self._gate, bits,
+                            self._name, bits,
                             ' '.join('0x%02X' % b for b in data))
                     return None
                 logger.warning(
                     "RC522: gate %s cascade ANTICOLL failed after partial "
                     "uid=%s; falling back to UID-only",
-                    self._gate, ''.join('%02X' % b for b in uid_bytes))
+                    self._name, ''.join('%02X' % b for b in uid_bytes))
                 return self._uid_only_target(uid_bytes, atqa, atqa_bytes)
 
             last_serial = list(serial)
@@ -707,7 +708,7 @@ class RC522Driver:
                 logger.warning(
                     "RC522: gate %s SELECT failed for cascade 0x%02X "
                     "uid=%s; falling back to UID-only",
-                    self._gate, cascade_cmd,
+                    self._name, cascade_cmd,
                     ''.join('%02X' % b for b in uid_bytes))
                 return self._uid_only_target(uid_bytes, atqa, atqa_bytes)
             last_sak = sak
@@ -718,7 +719,7 @@ class RC522Driver:
             logger.warning(
                 "RC522: gate %s cascade bit still set after CL3 uid=%s; "
                 "falling back to UID-only",
-                self._gate, ''.join('%02X' % b for b in uid_bytes))
+                self._name, ''.join('%02X' % b for b in uid_bytes))
             target = self._uid_only_target(uid_bytes, atqa, atqa_bytes)
             target['sak'] = last_sak
             target['last_cascade_serial'] = last_serial
@@ -748,7 +749,7 @@ class RC522Driver:
                 trace(
                     "RC522: gate %s read_target — uid=%s protocol=%s "
                     "SAK=%s ATQA=0x%04X",
-                    self._gate, target_info.get('uid'),
+                    self._name, target_info.get('uid'),
                     target_info.get('protocol'), target_info.get('sak'),
                     target_info.get('atqa', 0))
             elif self._debug >= 3 and target_info is not None:
@@ -756,17 +757,17 @@ class RC522Driver:
                 sak_text = "N/A" if sak is None else "0x%02X" % (sak & 0xFF)
                 logger.info(
                     "RC522: gate %s target uid=%s protocol=%s SAK=%s ATQA=0x%04X",
-                    self._gate, target_info.get('uid'),
+                    self._name, target_info.get('uid'),
                     target_info.get('protocol'), sak_text,
                     target_info.get('atqa', 0))
             return target_info
         except Exception as e:
             logger.warning(
                 "RC522: gate %s target read failed — check SPI wiring and reader "
-                "state: %s", self._gate, e)
+                "state: %s", self._name, e)
             if self._debug >= 4:
                 trace("RC522: gate %s read_target traceback:\n%s",
-                             self._gate, traceback.format_exc())
+                             self._name, traceback.format_exc())
             self._clear_current_card()
             return None
 
@@ -780,7 +781,7 @@ class RC522Driver:
         except Exception as e:
             if self._debug >= 3:
                 logger.info("RC522: gate %s read_tag error: %s\n%s",
-                            self._gate, e, traceback.format_exc())
+                            self._name, e, traceback.format_exc())
             self._clear_current_card()
             return None
 
@@ -788,7 +789,7 @@ class RC522Driver:
         """Clear cached target state."""
         if self._debug >= 4:
             trace("RC522: gate %s release target reason=%s",
-                         self._gate, reason)
+                         self._name, reason)
         self._clear_current_card()
 
     def _ensure_selected_target(self, timeout=0.500, expect_uid_bytes=None):
@@ -812,7 +813,7 @@ class RC522Driver:
         if expect_uid_bytes and list(target_info.get('uid_bytes') or []) != list(expect_uid_bytes):
             logger.warning(
                 "RC522: gate %s re-selected a different tag (%s), expected %s - aborting read",
-                self._gate, target_info.get('uid'),
+                self._name, target_info.get('uid'),
                 ''.join('%02X' % b for b in expect_uid_bytes))
             self._release_current_target(reason="reselect_uid_changed")
             return None
@@ -831,7 +832,7 @@ class RC522Driver:
                 trace(
                     "RC522: gate %s NTAG page %d read failed "
                     "(status=%s bits=%d data=[%s])",
-                    self._gate, page, 'OK' if status == MI_OK else 'ERR',
+                    self._name, page, 'OK' if status == MI_OK else 'ERR',
                     bits, ' '.join('0x%02X' % b for b in data))
             return None
         return list(data[:16])
@@ -858,7 +859,7 @@ class RC522Driver:
             if expected_uid and target_info.get('uid_bytes') != expected_uid:
                 logger.warning(
                     "RC522: gate %s different tag detected during page %d retry",
-                    self._gate, page)
+                    self._name, page)
                 self._release_current_target(reason="uid_changed")
                 return None
         self._release_current_target(reason="page_%d_max_retries" % page)
@@ -883,7 +884,7 @@ class RC522Driver:
                         trace(
                             "RC522: gate %s NTAG terminator found at "
                             "page %d offset %d",
-                            self._gate, current_page, page_data.index(0xFE))
+                            self._name, current_page, page_data.index(0xFE))
                     break
                 current_page += 4
                 self._sleep(0.005)
@@ -943,7 +944,7 @@ class RC522Driver:
                             logger.info(
                                 "RC522: gate %s NTAG NDEF length=%d requires "
                                 "%d bytes; capped at %d bytes",
-                                self._gate, ndef_len, target_bytes,
+                                self._name, ndef_len, target_bytes,
                                 max_ndef_bytes)
                         target_bytes = max_ndef_bytes
                 elif len(user_data) >= 16:
@@ -957,7 +958,7 @@ class RC522Driver:
             if self._debug >= 4 and ndef_len is not None:
                 trace(
                     "RC522: gate %s NTAG NDEF length=%d read=%d bytes",
-                    self._gate, ndef_len, len(result))
+                    self._name, ndef_len, len(result))
             return result
         finally:
             self._release_current_target(reason="ndef_user_memory_complete")
@@ -986,7 +987,7 @@ class RC522Driver:
         if len(uid) < 4:
             logger.warning(
                 "RC522: gate %s MIFARE auth — uid too short (%d bytes)",
-                self._gate, len(uid))
+                self._name, len(uid))
             return False
         self._write(_FIFOLevelReg, self._read(_FIFOLevelReg) | 0x80)
         self._write(_CommandReg, _PCD_IDLE)
@@ -1001,7 +1002,7 @@ class RC522Driver:
                 if self._debug >= 4:
                     trace(
                         "RC522: gate %s MIFARE auth block=%d key_%s OK",
-                        self._gate, block_addr, 'B' if use_key_b else 'A')
+                        self._name, block_addr, 'B' if use_key_b else 'A')
                 return True
             if self._read(_ComIrqReg) & 0x01:
                 break
@@ -1009,7 +1010,7 @@ class RC522Driver:
         if self._debug >= 3:
             logger.info(
                 "RC522: gate %s MIFARE auth block=%d key_%s failed",
-                self._gate, block_addr, 'B' if use_key_b else 'A')
+                self._name, block_addr, 'B' if use_key_b else 'A')
         self._stop_crypto1()
         return False
 
@@ -1028,7 +1029,7 @@ class RC522Driver:
                 trace(
                     "RC522: gate %s MIFARE block %d read failed "
                     "(status=%s bits=%d len=%d)",
-                    self._gate, block_addr, 'OK' if status == MI_OK else 'ERR',
+                    self._name, block_addr, 'OK' if status == MI_OK else 'ERR',
                     bits, len(data))
             return None
         return bytes(data[:16])
@@ -1073,7 +1074,7 @@ class RC522Driver:
                     if self._debug >= 3:
                         logger.info(
                             "RC522: gate %s MIFARE sector %d auth failed — "
-                            "stopping", self._gate, sector)
+                            "stopping", self._name, sector)
                     stop_on_failure = True
                     break
                 for blk_offset in range(3):
@@ -1086,7 +1087,7 @@ class RC522Driver:
                         if self._debug >= 3:
                             logger.info(
                                 "RC522: gate %s MIFARE block %d read failed "
-                                "— stopping", self._gate, block_addr)
+                                "— stopping", self._name, block_addr)
                         stop_on_failure = True
                         break
             result = {"uid_bytes": bytes(uid_bytes or []), "blocks": blocks}

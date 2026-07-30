@@ -1096,8 +1096,8 @@ class PN7160Driver:
     authenticated sector reads, should be added as explicit methods later.
     """
 
-    def __init__(self, config, i2c, gate, debug=2, sleep_fn=None):
-        self._gate = gate
+    def __init__(self, config, i2c, name, debug=2, sleep_fn=None):
+        self._name = name
         self._debug = debug
         self._transport_name = 'PN7160'
         self._alive = False
@@ -1162,7 +1162,7 @@ class PN7160Driver:
         self._alive = True
         # Probe capability is decided by wiring, not config: without irq_pin this
         # reader falls back to the blocking shim and tag homing is less accurate
-        logger.info("PN7160: gate %s init OK (tag homing probe %s)", self._gate,
+        logger.info("PN7160: gate %s init OK (tag homing probe %s)", self._name,
                     "available" if self.probe_supported()
                     else "unavailable - no irq_pin")
         # Klipper calls init() during startup as a health check.  Keep the next
@@ -1231,7 +1231,7 @@ class PN7160Driver:
             self._probe_active = True
             return True
         except Exception as e:
-            logger.warning("PN7160 probe_start gate %s failed: %s", self._gate, e)
+            logger.warning("PN7160 probe_start gate %s failed: %s", self._name, e)
             self._probe_active = False
             self._alive = False
             self._handler.initialized = False
@@ -1271,7 +1271,7 @@ class PN7160Driver:
             self._probe_stop_discovery()
             return False
         except Exception as e:
-            logger.warning("PN7160 probe_poll gate %s failed: %s", self._gate, e)
+            logger.warning("PN7160 probe_poll gate %s failed: %s", self._name, e)
             self._probe_active = False
             self._alive = False
             self._handler.initialized = False
@@ -1294,7 +1294,7 @@ class PN7160Driver:
         try:
             self._release_current_target(reason="probe_stop")
         except Exception as e:
-            logger.warning("PN7160 probe_stop gate %s failed: %s", self._gate, e)
+            logger.warning("PN7160 probe_stop gate %s failed: %s", self._name, e)
             return False
         return True
 
@@ -1325,7 +1325,7 @@ class PN7160Driver:
             self._needs_full_setup = True
             self._clear_current_card()
             logger.warning("PN7160 read_target gate %s failed: %s",
-                           self._gate, e)
+                           self._name, e)
             return None
         finally:
             if self.current_target_info is None:

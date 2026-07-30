@@ -297,9 +297,13 @@ def _validate_serial_port(config, port):
     return port
 
 
-def create_reader(config, defaults, reader_type, gate, debug,
+def create_reader(config, defaults, reader_type, debug,
                   low_level_debug=False, sleep_fn=None,
                   transceive_delay=0.250, crc_delay=0.050, interface=None):
+    # Every driver logs under this name. Derived here rather than passed in so a
+    # driver's log label can never drift from MmuNfcReader.name, which is what the
+    # GCode responses and the manager's messages use.
+    name = config.get_name().split()[-1]
     if interface is None:
         interface = default_interface(reader_type)
 
@@ -309,7 +313,7 @@ def create_reader(config, defaults, reader_type, gate, debug,
         port = _validate_serial_port(config, config.get('serial', None))
         baud = config.getint('baud', DEFAULT_BAUD, minval=9600, maxval=1288000)
         return PN532UARTDriver(
-            port, gate, baud=baud,
+            port, name, baud=baud,
             transceive_delay=transceive_delay, crc_delay=crc_delay, debug=debug,
             low_level_debug=low_level_debug, sleep_fn=sleep_fn)
 
@@ -322,11 +326,11 @@ def create_reader(config, defaults, reader_type, gate, debug,
             "[mmu_nfc_reader %s]: PN532 over SPI is UNTESTED against real hardware. "
             "It is wired up so it can be bench-verified, not because it is known to "
             "work. Use interface: i2c (or uart) for a supported setup.",
-            config.get_name().split()[-1])
+            name)
         spi = bus_module.MCU_SPI_from_config(
             config, 0, default_speed=default_spi_speed(reader_type))
         return PN532SPIDriver(
-            spi, gate, transceive_delay, crc_delay, debug,
+            spi, name, transceive_delay, crc_delay, debug,
             low_level_debug=low_level_debug, sleep_fn=sleep_fn)
 
     if reader_type == 'rc522':
@@ -335,7 +339,7 @@ def create_reader(config, defaults, reader_type, gate, debug,
         rc522_delay = config.getfloat(
             'rc522_transceive_delay', 0.035, minval=0.001, maxval=1.0)
         return RC522Driver(
-            spi, gate, transceive_delay=rc522_delay, debug=debug,
+            spi, name, transceive_delay=rc522_delay, debug=debug,
             sleep_fn=sleep_fn)
 
     if reader_type == 'pn5180':
@@ -344,7 +348,7 @@ def create_reader(config, defaults, reader_type, gate, debug,
         # reads its own pn5180_* tuning and its reset/busy pins from config.
         spi = bus_module.MCU_SPI_from_config(
             config, 0, default_speed=default_spi_speed(reader_type))
-        return PN5180Driver(config, spi, gate, debug=debug, sleep_fn=sleep_fn)
+        return PN5180Driver(config, spi, name, debug=debug, sleep_fn=sleep_fn)
 
     default_addr = (defaults.i2c_address if defaults is not None
                     else default_i2c_address(reader_type))
@@ -364,12 +368,12 @@ def create_reader(config, defaults, reader_type, gate, debug,
 
     if reader_type == 'pn532':
         return PN532Driver(
-            i2c, gate, transceive_delay, crc_delay, debug,
+            i2c, name, transceive_delay, crc_delay, debug,
             low_level_debug=low_level_debug,
             sleep_fn=sleep_fn)
 
     if reader_type == 'pn7160':
-        return PN7160Driver(config, i2c, gate, debug=debug, sleep_fn=sleep_fn)
+        return PN7160Driver(config, i2c, name, debug=debug, sleep_fn=sleep_fn)
 
     raise config.error(
         "[mmu_nfc_reader %s]: reader_type '%s' is recognized, but its driver is "

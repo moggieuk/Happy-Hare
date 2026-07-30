@@ -264,8 +264,9 @@ class VirtualNfcChip:
 
     Interface MmuNfcReader actually depends on (verified against
     extras/mmu/unit/nfc/mmu_nfc_reader.py): init, is_alive, read_tag, read_target,
-    _release_current_target, plus the _gate label that init(gate) writes. Optionally
-    also the non-blocking presence-probe contract - see probe_support below.
+    _release_current_target. Optionally also the non-blocking presence-probe contract
+    - see probe_support below. Note the chip's own _gate is set by virtualise() and is
+    functional (it selects the tag to show); MmuNfcReader no longer writes to it.
 
     Targets report protocol='uid_only', so _classify_target returns 'uid_only' and
     read_tag_data yields (uid, None) - a UID read with no metadata. That is deliberate:
@@ -450,7 +451,12 @@ def virtualise(printer, model=None, probe_support=False):
         manager = getattr(unit, 'nfc_manager', None)
         if manager is None:
             continue
-        readers = [(gate, r) for gate, r in enumerate(
+        # enumerate() gives the gate's index WITHIN the unit; _visible_tag() indexes a
+        # printer-global FilamentPath, so offset it. MmuNfcReader.init() used to patch
+        # the chip's label with the global gate and paper over the difference; it no
+        # longer does, and every NFC profile today is single-unit (first_gate == 0), so
+        # this was latent rather than live.
+        readers = [(unit.first_gate + lgate, r) for lgate, r in enumerate(
             getattr(manager, 'gate_readers', ()) or ()) if r is not None]
         shared = getattr(manager, 'shared_reader', None)
         if shared is not None:
