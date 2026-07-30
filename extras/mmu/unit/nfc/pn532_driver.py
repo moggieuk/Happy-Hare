@@ -104,7 +104,8 @@
 import time
 import traceback
 
-from .log import logger, info as log_info, warning as log_warning, error as log_error
+from .log import (logger, trace, info as log_info,
+                  warning as log_warning, error as log_error)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PN532 frame constants
@@ -337,7 +338,7 @@ class _PN532Base:
             self._probe_send_abort()
         except Exception as e:
             if self._debug >= 4:
-                logger.debug("_probe_abort: gate %s (%s) abort write failed: %s",
+                trace("_probe_abort: gate %s (%s) abort write failed: %s",
                              self._gate, self._transport_name, e)
             return
         # Drain a response that may already have been queued before the abort
@@ -366,7 +367,7 @@ class _PN532Base:
             self._release_current_target(reason="probe_stop")
         except Exception as e:
             if self._debug >= 4:
-                logger.debug("probe_stop: gate %s (%s) release failed: %s",
+                trace("probe_stop: gate %s (%s) release failed: %s",
                              self._gate, self._transport_name, e)
             return False
         return True
@@ -493,7 +494,7 @@ class _PN532Base:
         self.current_uid = list(target_info.get('uid_bytes') or [])
         self.current_uid_hex = target_info.get('uid', _hex(self.current_uid))
         if self._debug >= 4:
-            logger.debug(
+            trace(
                 "_set_current_card: gate %s (%s) Tg=%s UID=%s "
                 "SENS_RES=0x%04X SAK=0x%02X",
                 self._gate, self._transport_name,
@@ -512,7 +513,7 @@ class _PN532Base:
         release_tg = target if target is not None else 0x00
         try:
             if self._debug >= 4:
-                logger.debug(
+                trace(
                     "_release_current_target: gate %s (%s) Tg=0x%02X "
                     "reason=%s", self._gate, self._transport_name,
                     release_tg, reason)
@@ -521,18 +522,18 @@ class _PN532Base:
                                        timeout=max(self._release_delay, 0.200))
             if self._debug >= 4:
                 if payload is None:
-                    logger.debug("_release_current_target: gate %s (%s) "
+                    trace("_release_current_target: gate %s (%s) "
                                  "no response (non-fatal)",
                                  self._gate, self._transport_name)
                 else:
                     status = payload[0] if payload else 0xFF
-                    logger.debug("_release_current_target: gate %s (%s) "
+                    trace("_release_current_target: gate %s (%s) "
                                  "status=0x%02X",
                                  self._gate, self._transport_name, status)
             return payload is not None
         except Exception as e:
             if self._debug >= 4:
-                logger.debug("_release_current_target: gate %s (%s) "
+                trace("_release_current_target: gate %s (%s) "
                              "error: %s\n%s", self._gate, self._transport_name,
                              e, traceback.format_exc())
             return False
@@ -593,7 +594,7 @@ class _PN532Base:
         if timeout is None:
             timeout = self._scan_delay + 0.100
         if self._debug >= 4:
-            logger.debug("read_target: gate %s (%s) scanning (timeout=%.3fs)",
+            trace("read_target: gate %s (%s) scanning (timeout=%.3fs)",
                          self._gate, self._transport_name, timeout)
 
         payload = self._transceive([_CMD_INLISTPASSIVETARGET, 0x01,
@@ -604,13 +605,13 @@ class _PN532Base:
         if target_info is None:
             self._clear_current_card()
             if self._debug >= 4:
-                logger.debug("read_target: gate %s (%s) no tag",
+                trace("read_target: gate %s (%s) no tag",
                              self._gate, self._transport_name)
             return None
 
         self._set_current_card(target_info)
         if self._debug >= 4:
-            logger.debug(
+            trace(
                 "read_target: gate %s (%s) Tg=%d SENS_RES=0x%04X "
                 "SAK=0x%02X UIDLen=%d UID=%s",
                 self._gate, self._transport_name,
@@ -650,7 +651,7 @@ class _PN532Base:
                                    timeout=1.000)
         if not payload or payload[0] != 0x00:
             if self._debug >= 4 and payload:
-                logger.debug("ntag_read_page: gate %s (%s) page=%d "
+                trace("ntag_read_page: gate %s (%s) page=%d "
                              "status=0x%02X",
                              self._gate, self._transport_name,
                              page, payload[0])
@@ -799,7 +800,7 @@ class _PN532Base:
 
             result = user_data[:min(len(user_data), target_bytes)]
             if self._debug >= 4 and ndef_len is not None:
-                logger.debug(
+                trace(
                     "ntag_read_ndef_user_memory: gate %s (%s) "
                     "NDEF length=%d read=%d bytes",
                     self._gate, self._transport_name, ndef_len, len(result))
@@ -929,7 +930,7 @@ class _PN532Base:
         """
         for attempt in range(attempts):
             if self._debug >= 4:
-                logger.debug(
+                trace(
                     "_wake_pn532: gate %s (%s) attempt %d/%d — "
                     "sending GetFirmwareVersion",
                     self._gate, self._transport_name, attempt + 1, attempts)
@@ -946,13 +947,13 @@ class _PN532Base:
                         version['ic'], version['version'], version['revision'])
                     return True
                 if self._debug >= 4:
-                    logger.debug(
+                    trace(
                         "_wake_pn532: gate %s (%s) attempt %d — "
                         "no valid response",
                         self._gate, self._transport_name, attempt + 1)
             except Exception as e:
                 if attempt == 0:
-                    logger.debug(
+                    trace(
                         "_wake_pn532: gate %s (%s) attempt %d failed: %s\n%s",
                         self._gate, self._transport_name, attempt + 1,
                         e, traceback.format_exc())
@@ -990,7 +991,7 @@ class _PN532Base:
             return
 
         if self._debug >= 4:
-            logger.debug("init: gate %s (%s) starting wake sequence",
+            trace("init: gate %s (%s) starting wake sequence",
                          self._gate, self._transport_name)
 
         if not self._wake_pn532():
@@ -999,7 +1000,7 @@ class _PN532Base:
                 % (self._gate, self._transport_name))
 
         if self._debug >= 4:
-            logger.debug("init: gate %s (%s) sending SAMConfiguration "
+            trace("init: gate %s (%s) sending SAMConfiguration "
                          "(Normal mode, timeout=0, no IRQ)",
                          self._gate, self._transport_name)
 
@@ -1010,7 +1011,7 @@ class _PN532Base:
                         "no response — reader may be unstable",
                         self._gate, self._transport_name)
         elif self._debug >= 4:
-            logger.debug("init: gate %s (%s) SAMConfiguration OK",
+            trace("init: gate %s (%s) SAMConfiguration OK",
                          self._gate, self._transport_name)
 
     def is_alive(self):
@@ -1024,7 +1025,7 @@ class _PN532Base:
         try:
             return self.get_firmware_version() is not None
         except Exception as e:
-            logger.debug("is_alive: gate %s (%s) error: %s\n%s",
+            trace("is_alive: gate %s (%s) error: %s\n%s",
                          self._gate, self._transport_name,
                          e, traceback.format_exc())
             return False
@@ -1060,7 +1061,7 @@ class _PN532Base:
             self._release_current_target(reason="read_tag_complete")
 
             if self._debug >= 3:
-                logger.debug("read_tag: gate %s (%s) uid=%s",
+                trace("read_tag: gate %s (%s) uid=%s",
                              self._gate, self._transport_name, uid_hex)
 
             return uid_hex
@@ -1161,7 +1162,7 @@ class PN532Driver(_PN532Base):
         """Write a command frame to the PN532."""
         frame = self._build_frame(cmd_and_params)
         if self._debug >= 4:
-            logger.debug("_send: gate %s (PN532) TX  cmd=0x%02X  frame=%s",
+            trace("_send: gate %s (PN532) TX  cmd=0x%02X  frame=%s",
                           self._gate, cmd_and_params[0],
                           ' '.join('%02X' % b for b in frame))
         self._i2c.i2c_write(frame)
@@ -1213,7 +1214,7 @@ class PN532Driver(_PN532Base):
                 return False
 
             if self._debug >= 4:
-                logger.debug("_read_ack: gate %s (PN532) ready=%s",
+                trace("_read_ack: gate %s (PN532) ready=%s",
                              self._gate,
                              ' '.join('%02X' % b for b in ready_raw))
 
@@ -1224,7 +1225,7 @@ class PN532Driver(_PN532Base):
                     ack = list(raw[1:])
                     ok = len(raw) >= 7 and raw[0] == 0x01 and ack == PN532_ACK
                     if self._debug >= 4 or not ok:
-                        logger.debug("_read_ack: gate %s (PN532) raw=%s ok=%s",
+                        trace("_read_ack: gate %s (PN532) raw=%s ok=%s",
                                      self._gate,
                                      ' '.join('%02X' % b for b in raw),
                                      ok)
@@ -1237,7 +1238,7 @@ class PN532Driver(_PN532Base):
             self._sleep(poll_interval)
 
         if self._debug >= 4:
-            logger.debug("_read_ack: gate %s (PN532) timeout after %.3fs",
+            trace("_read_ack: gate %s (PN532) timeout after %.3fs",
                          self._gate, timeout)
         return False
 
@@ -1270,7 +1271,7 @@ class PN532Driver(_PN532Base):
                 return None
 
             if self._debug >= 4:
-                logger.debug("_recv: gate %s (PN532) poll result=%s pn_status=0x%02X",
+                trace("_recv: gate %s (PN532) poll result=%s pn_status=0x%02X",
                              self._gate,
                              ' '.join('%02X' % b for b in raw1),
                              pn_status)
@@ -1283,16 +1284,16 @@ class PN532Driver(_PN532Base):
                     if self._debug >= 4:
                         status_byte = raw[0] if raw else 0xFF
                         if payload is not None:
-                            logger.debug(
+                            trace(
                                 "_recv: gate %s (PN532) DATA: expect=0x%02X "
                                 "pn_status=0x%02X raw=%s",
                                 self._gate, expected_cmd_resp, status_byte,
                                 ' '.join('%02X' % b for b in raw))
-                            logger.debug("_recv: gate %s (PN532) payload: %s",
+                            trace("_recv: gate %s (PN532) payload: %s",
                                          self._gate,
                                          ' '.join('%02X' % b for b in payload))
                         else:
-                            logger.debug(
+                            trace(
                                 "_recv: gate %s (PN532) DATA ERROR: expect=0x%02X "
                                 "pn_status=0x%02X raw=%s",
                                 self._gate, expected_cmd_resp, status_byte,
@@ -1306,7 +1307,7 @@ class PN532Driver(_PN532Base):
             self._sleep(poll_interval)
 
         if self._debug >= 4:
-            logger.debug("_recv: gate %s (PN532) timeout after %.3fs waiting for ready",
+            trace("_recv: gate %s (PN532) timeout after %.3fs waiting for ready",
                          self._gate, timeout)
         return None
 
@@ -1506,7 +1507,7 @@ class PN532SPIDriver(_PN532Base):
         frame = self._build_frame(cmd_and_params)
         wire  = _rev_list([_SPI_DIR_WRITE] + frame)
         if self._debug >= 4:
-            logger.debug("_send: gate %s (PN532 SPI) TX  cmd=0x%02X  frame=%s",
+            trace("_send: gate %s (PN532 SPI) TX  cmd=0x%02X  frame=%s",
                           self._gate, cmd_and_params[0],
                           ' '.join('%02X' % b for b in frame))
         self._spi.spi_send(wire)
@@ -1552,7 +1553,7 @@ class PN532SPIDriver(_PN532Base):
                 return False
 
             if self._debug >= 4:
-                logger.debug("_read_ack: gate %s (PN532 SPI) status=0x%02X",
+                trace("_read_ack: gate %s (PN532 SPI) status=0x%02X",
                              self._gate, status)
 
             if status == 0x01:
@@ -1563,7 +1564,7 @@ class PN532SPIDriver(_PN532Base):
                     ack = list(raw)
                     ok = ack == PN532_ACK
                     if self._debug >= 4 or not ok:
-                        logger.debug("_read_ack: gate %s (PN532 SPI) raw=%s ok=%s",
+                        trace("_read_ack: gate %s (PN532 SPI) raw=%s ok=%s",
                                      self._gate,
                                      ' '.join('%02X' % b for b in raw),
                                      ok)
@@ -1576,7 +1577,7 @@ class PN532SPIDriver(_PN532Base):
             self._sleep(poll_interval)
 
         if self._debug >= 4:
-            logger.debug("_read_ack: gate %s (PN532 SPI) timeout after %.3fs",
+            trace("_read_ack: gate %s (PN532 SPI) timeout after %.3fs",
                          self._gate, timeout)
         return False
 
@@ -1609,7 +1610,7 @@ class PN532SPIDriver(_PN532Base):
                 return None
 
             if self._debug >= 4:
-                logger.debug("_recv: gate %s (PN532 SPI) poll status=0x%02X",
+                trace("_recv: gate %s (PN532 SPI) poll status=0x%02X",
                              self._gate, status)
 
             if status == 0x01:
@@ -1621,15 +1622,15 @@ class PN532SPIDriver(_PN532Base):
                     payload = self._check_frame(raw, expected_cmd_resp)
                     if self._debug >= 4:
                         if payload is not None:
-                            logger.debug(
+                            trace(
                                 "_recv: gate %s (PN532 SPI) DATA: expect=0x%02X raw=%s",
                                 self._gate, expected_cmd_resp,
                                 ' '.join('%02X' % b for b in raw))
-                            logger.debug("_recv: gate %s (PN532 SPI) payload: %s",
+                            trace("_recv: gate %s (PN532 SPI) payload: %s",
                                          self._gate,
                                          ' '.join('%02X' % b for b in payload))
                         else:
-                            logger.debug(
+                            trace(
                                 "_recv: gate %s (PN532 SPI) DATA ERROR: expect=0x%02X raw=%s",
                                 self._gate, expected_cmd_resp,
                                 ' '.join('%02X' % b for b in raw) if raw else '(empty)')
@@ -1642,7 +1643,7 @@ class PN532SPIDriver(_PN532Base):
             self._sleep(poll_interval)
 
         if self._debug >= 4:
-            logger.debug("_recv: gate %s (PN532 SPI) timeout after %.3fs",
+            trace("_recv: gate %s (PN532 SPI) timeout after %.3fs",
                          self._gate, timeout)
         return None
 

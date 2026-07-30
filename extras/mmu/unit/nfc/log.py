@@ -1,19 +1,61 @@
 # klippy/extras/mmu/unit/nfc/log.py
 #
-# Minimal logging shim for the extracted reader drivers.
+# The one logging surface for the NFC/RFID layer. Every driver, mmu_nfc_reader and
+# tag_parser go through here, so channel names and levels are decided in one place.
 #
-# The original package this was extracted from had a 460-line custom logger
-# (log rotation, a separate nfc_reader.log file, optional console echo via
-# gcode responses, etc.). None of that is needed for a standalone reader
-# module — driver output just needs to reach klippy.log like any other
-# Klipper extra. All three drivers only ever use the plain logging.Logger
-# call surface (logger.debug/info/warning/error/exception), plus pn532_driver
-# additionally imports the three module-level convenience functions below, so
-# that's all this shim provides.
+# Channels
+# ────────
+#   mmu_rfid.reader      readers and their chip drivers
+#   mmu_rfid.tag_parser  tag decoding
+#
+# Klipper runs the root logger at INFO (queuelogger.setup_bg_logging), so all 
+# logger calls are info or above.
+#
+# Which to call
+# ─────────────
+#   trace()    per-transaction detail; needs debug: 4. Frame hex, poll results, state
+#              transitions - the things you want when a reader will not talk.
+#   info()     events worth keeping unconditionally: a port opened, a chip woke.
+#   warning()  something is wrong but the reader carries on.
+#   error()    the operation failed.
+#
+# Note the MANAGER (mmu_nfc_manager) deliberately does NOT use this module. It logs
+# through self.mmu.log_* so its messages reach mmu.log with the rest of the MMU's
+# narrative; this module is for the hardware layer, which belongs in klippy.log.
 
 import logging
 
-logger = logging.getLogger('mmu_rfid_reader')
+READER_CHANNEL     = 'mmu_rfid.reader'
+TAG_PARSER_CHANNEL = 'mmu_rfid.tag_parser'
+
+logger     = logging.getLogger(READER_CHANNEL)
+tag_logger = logging.getLogger(TAG_PARSER_CHANNEL)
+
+_trace = False
+
+
+def enable_trace():
+    """
+    Turn on trace() output. Called when any reader is configured debug: 4.
+
+    One-way on purpose. Readers share these channels, so a reader left at debug: 0
+    must not switch off tracing that another reader asked for. A restart clears it,
+    which is the only reset that matters.
+    """
+    global _trace
+    _trace = True
+
+
+def trace_enabled():
+    return _trace
+
+
+def trace(msg, *args, **kwargs):
+    """
+    Per-transaction detail, at INFO. Silent unless a reader set debug: 4.
+    """
+    if _trace:
+        logger.info(msg, *args, **kwargs)
 
 
 def info(msg, *args, **kwargs):
@@ -26,3 +68,28 @@ def warning(msg, *args, **kwargs):
 
 def error(msg, *args, **kwargs):
     logger.error(msg, *args, **kwargs)
+
+
+# -- tag_parser channel -------------------------------------------------------
+
+def tag_trace(msg, *args, **kwargs):
+    """
+    The gate matters more here than in the drivers: these calls are not guarded by a
+    per-instance debug level, and several sit inside per-block loops. Promoted to
+    unconditional INFO they would log a dozen-plus lines every time a tag failed one
+    vendor's format on the way to matching another.
+    """
+    if _trace:
+        tag_logger.info(msg, *args, **kwargs)
+
+
+def tag_info(msg, *args, **kwargs):
+    tag_logger.info(msg, *args, **kwargs)
+
+
+def tag_warning(msg, *args, **kwargs):
+    tag_logger.warning(msg, *args, **kwargs)
+
+
+def tag_error(msg, *args, **kwargs):
+    tag_logger.error(msg, *args, **kwargs)

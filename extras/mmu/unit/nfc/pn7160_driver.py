@@ -8,7 +8,7 @@
 # owns NCI and raw tag commands; tag_handler owns retry windows, payload parsing,
 # Spoolman lookups, and Happy Hare side effects.
 
-from .log import logger
+from .log import logger, trace
 
 
 PN7160_I2C_ADDRESS = 0x28
@@ -1337,7 +1337,7 @@ class PN7160Driver:
             self._handler.stop_discovery()
         except Exception as e:
             if self._debug >= 4:
-                logger.debug("PN7160 stop discovery failed (%s): %s",
+                trace("PN7160 stop discovery failed (%s): %s",
                              reason, e)
         finally:
             self._discovery_active = False

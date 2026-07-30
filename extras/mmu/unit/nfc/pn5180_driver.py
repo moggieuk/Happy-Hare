@@ -25,7 +25,7 @@
 #   cooperatively through the injected sleep_fn (reactor.pause) so the reactor
 #   keeps servicing timers and moves while a read is in progress.
 
-from .log import logger
+from .log import logger, trace
 
 
 SYSTEM_CONFIG = 0x00
@@ -652,7 +652,7 @@ class PN5180Driver:
             return
         except Exception as error:
             if self._debug >= 4:
-                logger.debug('PN5180: gate %d release failed (%s): %s',
+                trace('PN5180: gate %d release failed (%s): %s',
                              self._gate, reason, error)
         self._clear_current_card()
 

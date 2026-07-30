@@ -52,7 +52,8 @@
 #     dependency (it IS in Klipper's own klippy-requirements.txt, so a real
 #     install has it) and it is absent from the test venv.
 
-from .log import logger, info as log_info, warning as log_warning, error as log_error
+from .log import (logger, trace, info as log_info,
+                  warning as log_warning, error as log_error)
 from .pn532_driver import (
     _PN532Base,
     _MAX_RESPONSE_BYTES,
@@ -308,7 +309,7 @@ class PN532UARTDriver(_PN532Base):
 
     def _framer_log(self, fmt, *args):
         if self._debug >= 4:
-            logger.debug("framer: gate %s (%s) " + fmt,
+            trace("framer: gate %s (%s) " + fmt,
                          *((self._gate, self._transport_name) + args))
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -403,7 +404,7 @@ class PN532UARTDriver(_PN532Base):
             port.close()
         except Exception as e:
             if self._debug >= 4:
-                logger.debug("close: gate %s (%s) close failed: %s",
+                trace("close: gate %s (%s) close failed: %s",
                              self._gate, self._transport_name, e)
 
     def _flush_input(self):
@@ -415,7 +416,7 @@ class PN532UARTDriver(_PN532Base):
             self._serial.reset_input_buffer()
         except Exception as e:
             if self._debug >= 4:
-                logger.debug("_flush_input: gate %s (%s) failed: %s",
+                trace("_flush_input: gate %s (%s) failed: %s",
                              self._gate, self._transport_name, e)
 
     def _on_io_error(self, operation, exc):
@@ -470,7 +471,7 @@ class PN532UARTDriver(_PN532Base):
         """Write a command frame to the PN532."""
         frame = bytes(self._build_frame(cmd_and_params))
         if self._debug >= 4:
-            logger.debug("_send: gate %s (%s) TX  cmd=0x%02X  frame=%s",
+            trace("_send: gate %s (%s) TX  cmd=0x%02X  frame=%s",
                          self._gate, self._transport_name, cmd_and_params[0],
                          _hex(frame, ' '))
         # A new command starts a new exchange, so anything still buffered belongs
@@ -520,7 +521,7 @@ class PN532UARTDriver(_PN532Base):
                                 got[0], _hex(got[1], ' '))
             if self._now() >= deadline:
                 if self._debug >= 4:
-                    logger.debug("_await(%s): gate %s (%s) timeout after %.3fs "
+                    trace("_await(%s): gate %s (%s) timeout after %.3fs "
                                  "(buffered=%s)", what, self._gate,
                                  self._transport_name, timeout,
                                  _hex(self._framer.buffered(), ' ') or '(empty)')
@@ -633,7 +634,7 @@ class PN532UARTDriver(_PN532Base):
             self._probe_send_abort()
         except Exception as e:
             if self._debug >= 4:
-                logger.debug("_probe_abort: gate %s (%s) abort write failed: %s",
+                trace("_probe_abort: gate %s (%s) abort write failed: %s",
                              self._gate, self._transport_name, e)
             # Fall through and still drain: the stale bytes are the real hazard.
 
@@ -649,7 +650,7 @@ class PN532UARTDriver(_PN532Base):
                 # that would flush mid-transit, which is the very ordering hazard
                 # the comment below warns about.
                 if self._debug >= 4:
-                    logger.debug("_probe_abort: gate %s (%s) drain read failed: %s",
+                    trace("_probe_abort: gate %s (%s) drain read failed: %s",
                                  self._gate, self._transport_name, e)
                 self._framer.reset()
                 return
@@ -672,7 +673,7 @@ class PN532UARTDriver(_PN532Base):
         """Send the HSU 0x55 resync burst before a GetFirmwareVersion attempt."""
         self._open()
         if self._debug >= 4:
-            logger.debug("_transport_wake_preamble: gate %s (%s) TX %s",
+            trace("_transport_wake_preamble: gate %s (%s) TX %s",
                          self._gate, self._transport_name,
                          _hex(self._WAKE_PREAMBLE, ' '))
         self._write(self._WAKE_PREAMBLE)

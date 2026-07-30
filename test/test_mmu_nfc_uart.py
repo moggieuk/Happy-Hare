@@ -35,6 +35,7 @@ install()
 
 import serial as fake_serial
 
+from extras.mmu.unit.nfc.log import READER_CHANNEL
 from extras.mmu.unit.nfc.pn532_driver import (
     PN532Driver, PN532SPIDriver, PN532_ACK, check_preambled_frame)
 from extras.mmu.unit.nfc.pn532_uart_driver import (
@@ -79,7 +80,7 @@ def _raise_io(*_args, **_kwargs):
     raise OSError(6, 'Device not configured')
 
 
-def capture_warnings(logger_name='mmu_rfid_reader'):
+def capture_warnings(logger_name=READER_CHANNEL):
     """
     Collect WARNING+ records from a logger. Used instead of assertNoLogs, which
     needs Python 3.10 - Klipper hosts run whatever the distro ships.
@@ -848,7 +849,7 @@ class TestCreateReaderUart(unittest.TestCase):
 
     def test_unstable_device_path_is_allowed_but_warned(self):
         """/dev/ttyUSB0 works until something else claims it first - warn, not fail."""
-        with self.assertLogs('mmu_rfid_reader', level='WARNING') as logged:
+        with self.assertLogs(READER_CHANNEL, level='WARNING') as logged:
             driver_obj = self.build(serial='/dev/ttyUSB0')
         self.assertEqual(driver_obj._port, '/dev/ttyUSB0')
         self.assertTrue(any('by-id' in line for line in logged.output),
@@ -882,7 +883,7 @@ class TestCreateReaderUart(unittest.TestCase):
         self.factory.bus_module.MCU_SPI_from_config = refuse
         try:
             config = FakeConfig(printer=self.printer)
-            with self.assertLogs('mmu_rfid_reader', level='WARNING') as logged:
+            with self.assertLogs(READER_CHANNEL, level='WARNING') as logged:
                 with self.assertRaises(RuntimeError):
                     self.factory.create_reader(config, None, 'pn532', gate=0,
                                                debug=0, interface='spi')
