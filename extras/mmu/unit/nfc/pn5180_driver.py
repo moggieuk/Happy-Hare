@@ -20,10 +20,18 @@
 # the other drivers rely on, and RST is the only way back from a wedged chip.
 #
 # Reactor / threading notes:
-#   As with the other drivers, all methods run on the Klipper reactor thread
-#   and are NOT safe to call from a background OS thread. Waits yield
-#   cooperatively through the injected sleep_fn (reactor.pause) so the reactor
-#   keeps servicing timers and moves while a read is in progress.
+#   As with the other drivers, all methods run on the Klipper reactor thread and
+#   are NOT safe to call from a background OS thread.  spi_transfer() waits for
+#   the MCU response on a reactor completion, and _busy_asserted() queries BUSY
+#   through the MCU the same way; both waits are greenlet-based (reactor.pause)
+#   and so bound to the reactor thread.
+#   No method waits for a tag to arrive - read_target() is single-shot and the
+#   repeated polling lives in the manager's reactor timer.  The waits here are
+#   bounded BUSY/IRQ polls (rf_poll_interval ticks, capped by busy_timeout /
+#   rf_timeout) plus short fixed delays, all yielded through _sleep() so the
+#   reactor keeps servicing timers and moves while a read is in progress.
+#   Unlike the RC522 driver, sleep_fn defaults to reactor.pause here, so an
+#   instance built without one is still reactor-friendly.
 
 from .log import logger, trace
 

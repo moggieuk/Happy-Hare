@@ -54,6 +54,34 @@ if BOARD_TYPE_VVD_1_0
   config PIN_ENTRY_SENSOR_3
     default "$(MCU_NAME):PA3"
 
+  # NFC/RFID readers (RC522 over SPI). Only gates 0 and 2 have a reader header, so
+  # gates 1 and 3 are off by default.
+  #
+  # All readers share SPI2 remapped to PB2/PB11/PB10. That is the only G0B1 SPI
+  # mapping whose pins are free on this board: spi1 (PA6/PA7/PA5) collides with the
+  # AHT3X environment sensors and spi1a (PB4/PB5/PB3) with the gear and selector
+  # drivers. Each reader still needs its own cs_pin.
+  #
+  # These only decide what you get once NFC is enabled - the ViViD does not ship
+  # with readers fitted, so MMU_HAS_NFC_READER is deliberately left off.
+  config MMU_HAS_PER_GATE_NFC_READERS
+    default y
+
+  config PARAM_NFC_READER_GATE_1
+    default n
+  config PARAM_NFC_READER_GATE_3
+    default n
+
+  config PARAM_NFC_READER_CS_PIN_0
+    default "$(MCU_NAME):PB14"
+  config PARAM_NFC_READER_SPI_BUS_0
+    default "spi2_PB2_PB11_PB10"
+
+  config PARAM_NFC_READER_CS_PIN_2
+    default "$(MCU_NAME):PA8"
+  config PARAM_NFC_READER_SPI_BUS_2
+    default "spi2_PB2_PB11_PB10"
+
   config PARAM_MISC_HARDWARE
     default "$(ml,\
 [neopixel $(UNIT_NAME)_leds_1]\n\

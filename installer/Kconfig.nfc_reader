@@ -126,20 +126,12 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
             PN532 NFC reader using I2C, usually at address 0x24.
 
         config CHOICE_NFC_READER_TYPE_PN532_UART
-          bool "PN532 / UART (HSU)"
+          bool "PN532 / UART"
           help
             PN532 NFC reader in HSU (High Speed UART) mode, on a USB serial adapter.
 
-            This is the ONE reader that does not connect to an MCU. It plugs into the
-            HOST (the Pi), and klippy opens the serial port itself - so there are no
-            pins to assign, just a device path.
-
-            Set the breakout board's mode pads for HSU: SEL0=0, SEL1=1 (sometimes
-            labeled A0/A1). Wire adapter TX to PN532 RX, RX to TX, plus GND and power.
-
-            One reader per adapter, exclusively: two readers on one port would
-            interleave frames on a single stream. For several readers pick
-            "PN532 / I2C" above and choose software I2C, which gives each reader its
+            One reader per adapter. For more than one reader use "PN532 / I2C"
+            and choose software I2C, which gives each reader its
             own bit-banged bus with no extra hardware.
 
 #       config CHOICE_NFC_READER_TYPE_PN532_SPI
@@ -170,43 +162,15 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
         default "i2c"
 
       if CHOICE_NFC_READER_TYPE_PN532_UART
-        choice CHOICE_NFC_SERIAL_DEVICE
-          prompt "Serial device     "
-          help
-            Select the USB serial adapter the PN532 is connected to, or choose
-            "Other" and type the path.
-
-            The list is every device under /dev/serial/by-id/, unfiltered - unlike the
-            MCU pickers, which only show Klipper boards. If it is empty, the adapter is
-            not plugged in.
-
-          @repeat var=i min=1 max=10@
-          config $(nfc_serial_config,$(i))
-            bool "$(any_serial_device,$(i))"
-            depends on $(any_serial_exists,$(i))
-          @endrepeat@
-
-          config CHOICE_NFC_SERIAL_DEVICE_OTHER
-            bool "Other / manually entered"
-          if CHOICE_NFC_SERIAL_DEVICE_OTHER
-            config NFC_SERIAL_DEVICE_OTHER
-              string "Enter serial device path"
-              default "-enter-device-path-"
-              help
-                Path of the serial adapter the PN532 is wired to.
-                Use the /dev/serial/by-id/ form: it is stable, whereas /dev/ttyUSB0
-                changes when devices are replugged or enumerate in a different order,
-                and swapping with another adapter is a confusing failure to diagnose.
-                Example: /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
-          endif
-        endchoice
-
         config PARAM_NFC_READER_SERIAL
-          string
-          @repeat var=i min=1 max=10@
-          default "$(any_serial_device,$(i))" if $(nfc_serial_config,$(i))
-          @endrepeat@
-          default NFC_SERIAL_DEVICE_OTHER if CHOICE_NFC_SERIAL_DEVICE_OTHER
+          string "Serial device path"
+          default "-enter-device-path-"
+          help
+            Path of the serial adapter the PN532 is wired to.
+            Use the /dev/serial/by-id/ form: it is stable, whereas /dev/ttyUSB0
+            changes when devices are replugged or enumerate in a different order,
+            and swapping with another adapter is a confusing failure to diagnose.
+            Example: /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
 
         config PARAM_NFC_READER_BAUD
           int "Baud rate         "
@@ -230,9 +194,7 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
           help
             Optional hardware SPI bus name, e.g. "spi1".
             Leave blank to use the MCU's DEFAULT hardware SPI bus.
-            (This does not select software SPI. For that, hand-add
-            spi_software_sclk_pin/_mosi_pin/_miso_pin to the
-            [mmu_nfc_reader] section - Klipper accepts them already.)
+            (This does not select software SPI)
 
         config PARAM_NFC_READER_SPI_SPEED
           int "SPI speed (Hz)    "
@@ -249,16 +211,16 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
           string "BUSY pin          "
           default "$(MCU_NAME):pin"
           help
-            BUSY pin for the PN5180 reader (active high). Required: it is how the
-            driver knows each command has completed.
+            BUSY pin for the PN5180 reader (active high).
+            Required: it is how the driver knows each command has completed.
             Don't forget to prefix with mcu name. E.g. mmu:PG13
 
         config PARAM_NFC_READER_RESET_PIN
           string "RST pin           "
           default "$(MCU_NAME):pin"
           help
-            RST pin for the PN5180 reader (active low). Required: it is the only
-            way to recover the chip if it stops responding.
+            RST pin for the PN5180 reader (active low).
+            Required: it is the only way to recover the chip if it stops responding.
             Don't forget to prefix with mcu name. E.g. mmu:PG13
       endif
 
@@ -284,14 +246,9 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
           prompt "I2C bus type      "
           default CHOICE_NFC_READER_I2C_HARDWARE
           help
-            Hardware I2C uses the MCU's built-in I2C peripheral - faster, and the
-            right default. Software I2C ("bit banging") lets Klipper drive ANY two
-            GPIO pins as an I2C bus instead.
-
-            Software I2C is worth it for one specific reason: a PN532 has a FIXED
-            address of 0x24, so only one can live on a hardware bus. Giving each
-            reader its own two-pin software bus removes the conflict, which is what
-            makes a PN532-per-gate build practical.
+            Hardware I2C uses the MCU's built-in I2C peripheral and is faster.
+            Software I2C ("bit banging") lets Klipper drive ANY two GPIO pins as an I2C bus
+            thus allowing more than one PN532 which use a fixed 0x24 address.
 
           config CHOICE_NFC_READER_I2C_HARDWARE
             bool "Hardware i2c"
@@ -299,7 +256,7 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
               Use one of the MCU's hardware I2C buses (recommended).
 
           config CHOICE_NFC_READER_I2C_SOFTWARE
-            bool "Software i2c (bit-banged, any two pins)"
+            bool "Software i2c"
             help
               Bit-bang I2C on two ordinary GPIO pins. Slower than hardware, and it
               supports neither clock stretching nor bus timeouts - a wedged bus
@@ -345,8 +302,7 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
           help
             I2C speed for the NFC reader, in Hz. Klipper rejects anything below
             100000, so that is the floor here.
-            For software I2C this sets the bit-bang half-period - except on AVR,
-            which ignores it entirely and runs as fast as its GPIO calls allow.
+            For software I2C this sets the bit-bang half-period.
       endif
 
       if CHOICE_NFC_READER_TYPE_PN7160
@@ -418,7 +374,7 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
                 bool "PN532 / I2C"
 
               config CHOICE_NFC_READER_TYPE_PN532_UART_$(i)
-                bool "PN532 / UART (HSU)"
+                bool "PN532 / UART"
                 help
                   PN532 in HSU mode on a USB serial adapter plugged into the HOST,
                   not into an MCU. Needs its OWN adapter - a port cannot be shared
@@ -449,12 +405,6 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
               default "i2c"
 
             if CHOICE_NFC_READER_TYPE_PN532_UART_$(i)
-              # A plain string rather than the device picker the common reader gets.
-              # A picker here would mean a nested @repeat generating up to 10 device
-              # symbols for each of 12 gates, and it would not actually help: several
-              # identical adapters produce by-id names differing only by an opaque
-              # suffix, so which physical reader is which has to be found by trial
-              # anyway. Run `ls /dev/serial/by-id/` and paste.
               config PARAM_NFC_READER_SERIAL_$(i)
                 string "Gate $(i) serial device     "
                 default "-enter-device-path-"
@@ -542,8 +492,8 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
                 prompt "Gate $(i) I2C bus type      "
                 default CHOICE_NFC_READER_I2C_HARDWARE_$(i)
                 help
-                  Hardware I2C uses the MCU's built-in peripheral. Software I2C
-                  bit-bangs any two GPIO pins instead.
+                  Hardware I2C uses the MCU's built-in I2C peripheral and is faster.
+                  Software I2C ("bit banging") lets Klipper drive ANY two GPIO pins as an I2C bus.
 
                   For per-gate PN532 readers this is the important setting: every
                   PN532 is fixed at address 0x24, so they cannot share a hardware
@@ -554,11 +504,9 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
                   bool "Hardware i2c"
 
                 config CHOICE_NFC_READER_I2C_SOFTWARE_$(i)
-                  bool "Software i2c (bit-banged, any two pins)"
+                  bool "Software i2c"
               endchoice
 
-              # Mirrored into a string so the template can index it per gate -
-              # see the note on the common PARAM_NFC_READER_I2C_BUS_TYPE above.
               config PARAM_NFC_READER_I2C_BUS_TYPE_$(i)
                 string
                 default "software" if CHOICE_NFC_READER_I2C_SOFTWARE_$(i)
@@ -633,10 +581,11 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
       bool "RFID deep metadata read"
       default y
       help
-        If you have NFC readers configured you can have Happy Hare read the filament data stored on
-        supported spool tags (Bambu, Creality, OpenSpool, OpenTag, etc). A "deep read" parses the full tag (material, color,
-        vendor, temperatures) instead of just the UID, and uses it to populate the local gate map when a tag is presented.
-        Optionally, if a scanned tag's UID isn't yet known to Spoolman, a new spool can be created automatically from the tag.
+        Read the filament data stored on supported spool tags (Bambu, Creality, OpenSpool, OpenTag, etc).
+        A "deep read" parses the full tag (material, color, vendor, temperatures) instead of just the UID,
+        and uses it to populate the local gate map when a tag is presented.
+        Optionally, if a scanned tag's UID isn't yet known to Spoolman, a new spool can be created automatically
+        from the tag.
 
     config PARAM_NFC_DEEP_READ
       int
@@ -651,7 +600,7 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
         When the filament is parked in the gate this represents the maximum filament move in the retract and extrude
         direction that is safely possible when searching for the RFID tag. To be sure to allow for complete spool
         rotation this range should be at least 480mm if possible.
-        E.g. "-100, 400" means can retract -100mm and extruder 400mm.  "0, 0" will disable jog scan operation
+        E.g. "-100, 400" means can retract -100mm and extruder 400mm. "0, 0" will disable jog scan operation
 
     choice CHOICE_NFC_LED_SEGMENT
       prompt "NFC reader led feedback segment"

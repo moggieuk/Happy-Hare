@@ -28,25 +28,21 @@
 #   Stage 2  ANTICOLL / SELECT cascade — returns UID bytes and SAK.
 #   Stage 3  Type-2 READ — optional NTAG page reads for rich metadata.
 #
-## Threading notes: # PAUL: I dont think this is possible ..
-##   All methods are designed to be called from a dedicated background thread
-##   (not the Klipper reactor thread).  spi_send() and spi_transfer() route
-##   commands to the MCU over CAN; the background thread blocks on each
-##   response while the reactor continues processing other events normally.
-#
-# Reactor / threading notes: (PAUL)
-#   All methods run on the Klipper reactor thread - they are NOT safe to call
-#   from a background OS thread.  spi_send()/spi_transfer() issue MCU_SPI
-#   transactions to the microcontroller, and spi_transfer() waits for the MCU
-#   response via a reactor completion.  That wait is greenlet-based
-#   (greenlet.getcurrent() + reactor.pause()), so it is bound to the reactor
-#   thread and would fail if driven from another thread.
-#   To avoid stalling the reactor during a tag wait, the read paths instead
-#   yield cooperatively through the injected sleep_fn (reactor.pause): while a
-#   read waits, the reactor keeps servicing its other work (timers, moves - e.g.
-#   a drip-homing move), then resumes the read.  This cooperative yielding is
-#   Klipper's substitute for the background-thread model this driver was
-#   originally ported from.
+# Reactor / threading notes:
+#   All methods run on the Klipper reactor thread and are NOT safe to call from
+#   a background OS thread.  spi_send() is fire-and-forget, but spi_transfer()
+#   waits for the MCU response on a reactor completion, and that wait is
+#   greenlet-based (greenlet.getcurrent() + reactor.pause()) - from another
+#   thread it would switch a greenlet owned by the reactor thread, and raise.
+#   No method here waits for a tag to arrive, so nothing holds the reactor for
+#   long: read_tag()/read_target() are single-shot, probe_poll() returns None to
+#   be re-checked next tick, and the repeated polling lives in the manager's
+#   reactor timer.  The driver's own waits are short bounded hardware delays
+#   (1-50 ms: reset, transceive_delay, field power cycle), yielded through the
+#   injected sleep_fn so the reactor keeps servicing timers and moves - e.g. the
+#   next segment of a drip-homing move.  sleep_fn defaults to time.sleep(),
+#   which *does* block the reactor: reactor-thread callers must pass
+#   reactor.pause (MmuNfcReader injects self._reactor_sleep).
 
 
 import time
