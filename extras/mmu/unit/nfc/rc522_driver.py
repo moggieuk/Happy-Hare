@@ -249,6 +249,26 @@ class RC522Driver:
                              self._gate, traceback.format_exc())
             raise
 
+    @staticmethod
+    def _read_address(reg):
+        """The address byte _read() clocks out on MOSI to request `reg`."""
+        return ((reg << 1) & 0x7E) | 0x80
+
+    def _echoes_mosi(self, reg, value):
+        """
+        True if `value` contains only bits that were in the address byte we just sent.
+
+        This is the fingerprint of a MISO line nobody is driving. The MCU samples a
+        floating input while MOSI is switching right next to it, so what comes back is
+        a decayed copy of our own address byte - always a SUBSET of its bits, never a
+        bit that was not sent. A real register answer is uncorrelated with the address
+        and fails this on the first register that has a bit the address lacks.
+
+        Zero is excluded: it is a subset of everything and means "nothing at all",
+        which is a different fault reported separately.
+        """
+        return value != 0 and (value & ~self._read_address(reg) & 0xFF) == 0
+
     def _report_antenna_failure(self, tx_final):
         """
         Say WHICH failure this is when the antenna TX bits refuse to stick.
@@ -275,7 +295,25 @@ class RC522Driver:
         stable = len(set(versions)) == 1
         tmode = self._read(_TModeReg)
 
-        if not stable:
+        # Checked before everything else: if MISO is undriven, every value below is a
+        # ghost of our own MOSI traffic and interpreting any of them is meaningless.
+        # Two registers with different addresses have to agree, so a single value that
+        # happens to be a subset by luck cannot trigger this.
+        echoes = [self._echoes_mosi(reg, val)
+                  for reg, val in ((_VersionReg, version), (_TModeReg, tmode))]
+
+        if stable and all(echoes):
+            cause = ("MISO IS NOT BEING DRIVEN. Every value read back contains only "
+                     "bits that were in the address byte we sent (VersionReg: sent "
+                     "0x%02X got 0x%02X; TModeReg: sent 0x%02X got 0x%02X), which is "
+                     "what a floating input picks up from MOSI switching beside it - "
+                     "a real answer would contain a bit the address did not. The "
+                     "reader is not connected to the MCU's MISO: check that wire, "
+                     "that it goes to the MISO of the bus named by spi_bus (not "
+                     "another bus), and that nothing else is holding the line"
+                     % (self._read_address(_VersionReg), version,
+                        self._read_address(_TModeReg), tmode))
+        elif not stable:
             cause = ("SPI is CORRUPTING DATA - VersionReg is read-only yet returned "
                      "%s across 5 reads. Nothing else here can be trusted until that "
                      "is fixed: lower spi_speed (try 100000), shorten the leads, "
