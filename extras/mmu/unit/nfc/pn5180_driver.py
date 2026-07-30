@@ -618,11 +618,14 @@ class PN5180Driver:
         self.current_uid = None
 
     def init(self):
+        # initialize() raises (check_communication rejects a suspicious EEPROM read,
+        # and 'initialized' is only set after setup_type_a_rf), so reaching the log
+        # below means init genuinely succeeded. Unconditional, to match the other
+        # drivers - a reader coming up should say so at the default debug level.
         self._core.initialize()
-        if self._debug >= 3:
-            firmware = self._core.firmware or []
-            logger.info('PN5180: gate %d init OK firmware=%s', self._gate,
-                        '.'.join(str(value) for value in reversed(firmware)))
+        firmware = self._core.firmware or []
+        logger.info('PN5180: gate %s init OK firmware=%s', self._gate,
+                    '.'.join(str(value) for value in reversed(firmware)) or 'unknown')
 
     def is_alive(self):
         return self._core.initialized and self._core.is_alive()

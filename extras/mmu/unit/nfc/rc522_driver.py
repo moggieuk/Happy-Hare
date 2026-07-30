@@ -77,6 +77,9 @@ _TModeReg       = 0x2A
 _TPrescalerReg  = 0x2B
 _TReloadRegH    = 0x2C
 _TReloadRegL    = 0x2D
+# Read-only chip ID. 0x91/0x92 for a genuine MFRC522 v1.0/v2.0; clones report other
+# values. Read only for diagnostics - see the antenna-enable failure in init().
+_VersionReg     = 0x37
 
 # RC522 PCD (reader chip) commands
 _PCD_IDLE       = 0x00
@@ -126,6 +129,7 @@ _REG_NAMES = {
     _TPrescalerReg: 'TPrescalerReg',
     _TReloadRegH:   'TReloadRegH',
     _TReloadRegL:   'TReloadRegL',
+    _VersionReg:    'VersionReg',
 }
 _REG_BY_NAME = dict((v.lower(), k) for k, v in _REG_NAMES.items())
 _REG_BY_NAME.update(dict((v.lower().replace('reg', ''), k)
@@ -230,8 +234,11 @@ class RC522Driver:
                                  "(TxControl was 0x%02X)", self._gate, tx)
                 self._write(_TxControlReg, tx | 0x03)
             tx_final = self._read(_TxControlReg)
-            logger.info("RC522: gate %s init OK (TxControl=0x%02X)",
-                        self._gate, tx_final)
+            if tx_final & 0x03:
+                logger.info("RC522: gate %s init OK (TxControl=0x%02X)",
+                            self._gate, tx_final)
+            else:
+                self._report_antenna_failure(tx_final)
         except Exception as e:
             logger.warning(
                 "RC522: gate %s init failed — check SPI wiring, cs_pin, "
@@ -241,6 +248,48 @@ class RC522Driver:
                 trace("RC522: gate %s init traceback:\n%s",
                              self._gate, traceback.format_exc())
             raise
+
+    def _report_antenna_failure(self, tx_final):
+        """
+        Say WHICH failure this is when the antenna TX bits refuse to stick.
+
+        "TxControl=0x80" alone is ambiguous, and 0x80 is exactly the register's
+        power-on reset value, so it is also the value you get from a chip that is not
+        listening. Two extra reads separate the cases:
+
+          VersionReg   0x91/0x92 = genuine MFRC522 answering. 0x00/0xFF = SPI is not
+                       working at all (MISO, cs_pin, spi_bus, power).
+          TModeReg     we wrote 0x8D during init; its reset value is 0x00. If it
+                       reads back 0x8D our writes ARE landing, so the chip is
+                       resetting itself specifically when the antenna is enabled -
+                       which is a supply problem, since the TX drivers are what makes
+                       the module draw current. If it reads 0x00, no write ever
+                       landed: MOSI, or the chip held in reset by RST/NRSTPD.
+        """
+        version = self._read(_VersionReg)
+        tmode = self._read(_TModeReg)
+        if version in (0x00, 0xFF):
+            cause = ("SPI is not returning chip data at all - check MISO, cs_pin, "
+                     "spi_bus/software SPI pins, 3.3V power and ground")
+        elif tmode == 0x8D:
+            cause = ("writes ARE landing (TModeReg read back), so the chip is "
+                     "resetting when the antenna powers up - almost always a 3.3V "
+                     "supply that cannot source the TX current. Try a stiffer 3.3V "
+                     "feed, shorter/thicker leads, or powering the module separately")
+        else:
+            cause = ("no register write is landing (TModeReg should read 0x8D), so "
+                     "the chip is receiving nothing or is held in reset - check MOSI "
+                     "and that RST/NRSTPD is high, not floating or grounded")
+        logger.warning(
+            "RC522: gate %s antenna TX bits will not set (TxControl=0x%02X, "
+            "VersionReg=0x%02X, TModeReg=0x%02X): %s",
+            self._gate, tx_final, version, tmode, cause)
+        if version not in (0x91, 0x92) and version not in (0x00, 0xFF):
+            logger.warning(
+                "RC522: gate %s VersionReg=0x%02X is not a genuine MFRC522 "
+                "(expected 0x91 or 0x92) - clone boards vary and some need a "
+                "lower spi_speed", self._gate, version)
+
 
     def is_alive(self):
         """Return True if the reader is responding (antenna TX bits are set)."""

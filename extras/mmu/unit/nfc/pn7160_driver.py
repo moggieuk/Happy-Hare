@@ -1158,8 +1158,17 @@ class PN7160Driver:
         self.current_uid_hex = target_info.get('uid', _hex(self.current_uid, ''))
 
     def init(self):
+        # connect_nci raises PN7160Error once its retries are exhausted, so anything
+        # below here only runs on genuine success.
         self._setup_for_read(full=True)
         self._alive = True
+        # Say so unconditionally, like the other drivers. Reporting the probe
+        # capability here too because it is decided by wiring, not config: without
+        # irq_pin this reader falls back to MmuNfcReader's blocking shim and tag
+        # homing is markedly less accurate - worth seeing at boot, not on request.
+        logger.info("PN7160: gate %s init OK (tag homing probe %s)", self._gate,
+                    "available" if self.probe_supported()
+                    else "unavailable - no irq_pin")
         # Klipper calls init() during startup as a health check.  Keep the next
         # real read conservative: it should still run full setup before
         # starting RF discovery.

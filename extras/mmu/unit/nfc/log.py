@@ -8,8 +8,11 @@
 #   mmu_rfid.reader      readers and their chip drivers
 #   mmu_rfid.tag_parser  tag decoding
 #
-# Klipper runs the root logger at INFO (queuelogger.setup_bg_logging), so all 
+# Klipper runs the root logger at INFO (queuelogger.setup_bg_logging), so all
 # logger calls are info or above.
+#
+# Every line is prefixed with its channel name - see _ChannelPrefix for why that is
+# done here rather than with a formatter.
 #
 # Which to call
 # ─────────────
@@ -30,6 +33,32 @@ TAG_PARSER_CHANNEL = 'mmu_rfid.tag_parser'
 
 logger     = logging.getLogger(READER_CHANNEL)
 tag_logger = logging.getLogger(TAG_PARSER_CHANNEL)
+
+
+class _ChannelPrefix(logging.Filter):
+    """
+    Stamp the channel name onto every record logged on it.
+
+    Needed because klipper owns the handler and strips the formatter
+
+    Rewrites record.msg (the format string) and leaves record.args alone, so %-style
+    formatting still happens at handler time. Guarded so a record cannot be prefixed
+    twice if it is ever passed through more than once.
+    """
+
+    def __init__(self, channel):
+        logging.Filter.__init__(self)
+        self._prefix = '%s: ' % channel
+
+    def filter(self, record):
+        if not getattr(record, '_mmu_rfid_prefixed', False):
+            record.msg = self._prefix + str(record.msg)
+            record._mmu_rfid_prefixed = True
+        return True
+
+
+logger.addFilter(_ChannelPrefix(READER_CHANNEL))
+tag_logger.addFilter(_ChannelPrefix(TAG_PARSER_CHANNEL))
 
 _trace = False
 
