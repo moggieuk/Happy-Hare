@@ -297,7 +297,7 @@ class PN532UARTDriver(_PN532Base):
         # every 20ms for the rest of the print - see _on_io_error().
         self._faulted        = False
         self._fault_reason   = ''
-        self._transport_name = 'PN532 UART'
+        self._transport_name = 'pn532/uart'
         self._framer = _HSUFrameReader(self._read_nonblocking,
                                        log_fn=self._framer_log)
         super().__init__(name, transceive_delay, crc_delay, debug, low_level_debug,
@@ -310,7 +310,7 @@ class PN532UARTDriver(_PN532Base):
 
     def _framer_log(self, fmt, *args):
         if self._debug >= 4:
-            trace("framer: gate %s (%s) " + fmt,
+            trace("[%s %s] framer: " + fmt,
                          *((self._name, self._transport_name) + args))
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -335,7 +335,7 @@ class PN532UARTDriver(_PN532Base):
             # 20ms, and an unplugged adapter would otherwise mean an open() syscall
             # and a log line per tick for the rest of the print.
             raise RuntimeError(
-                "PN532 UART gate %s: %s went away (%s). Reconnect it and run "
+                "[%s pn532/uart] %s went away (%s). Reconnect it and run "
                 "MMU_RFID_INIT to reopen."
                 % (self._name, self._port, self._fault_reason))
 
@@ -349,10 +349,10 @@ class PN532UARTDriver(_PN532Base):
         except Exception as e:
             self._serial = None
             raise RuntimeError(
-                "PN532 UART gate %s: cannot open %s at %d baud: %s"
+                "[%s pn532/uart] cannot open %s at %d baud: %s"
                 % (self._name, self._port, self._baud, e))
 
-        log_info("_open: gate %s (%s) opened %s at %d baud",
+        log_info("[%s %s] _open: opened %s at %d baud",
                  self._name, self._transport_name, self._port, self._baud)
         # Opening a USB-CDC port asserts DTR/RTS, which resets some breakout
         # boards and can leave junk in the buffer. Start from a clean stream.
@@ -405,7 +405,7 @@ class PN532UARTDriver(_PN532Base):
             port.close()
         except Exception as e:
             if self._debug >= 4:
-                trace("close: gate %s (%s) close failed: %s",
+                trace("[%s %s] close: close failed: %s",
                              self._name, self._transport_name, e)
 
     def _flush_input(self):
@@ -417,7 +417,7 @@ class PN532UARTDriver(_PN532Base):
             self._serial.reset_input_buffer()
         except Exception as e:
             if self._debug >= 4:
-                trace("_flush_input: gate %s (%s) failed: %s",
+                trace("[%s %s] _flush_input: failed: %s",
                              self._name, self._transport_name, e)
 
     def _on_io_error(self, operation, exc):
@@ -436,12 +436,12 @@ class PN532UARTDriver(_PN532Base):
         """
         self._faulted = True
         self._fault_reason = str(exc)
-        log_error("gate %s (%s): %s failed on %s: %s - closing the port. "
+        log_error("[%s %s] _on_io_error: %s failed on %s: %s - closing the port. "
                   "Reconnect and run MMU_RFID_INIT to reopen.",
                   self._name, self._transport_name, operation, self._port, exc)
         self.close()
         raise RuntimeError(
-            "PN532 UART gate %s: %s failed on %s: %s"
+            "[%s pn532/uart] %s failed on %s: %s"
             % (self._name, operation, self._port, exc))
 
     def _read_nonblocking(self, max_bytes=256):
@@ -472,7 +472,7 @@ class PN532UARTDriver(_PN532Base):
         """Write a command frame to the PN532."""
         frame = bytes(self._build_frame(cmd_and_params))
         if self._debug >= 4:
-            trace("_send: gate %s (%s) TX  cmd=0x%02X  frame=%s",
+            trace("[%s %s] _send: TX  cmd=0x%02X  frame=%s",
                          self._name, self._transport_name, cmd_and_params[0],
                          _hex(frame, ' '))
         # A new command starts a new exchange, so anything still buffered belongs
@@ -505,8 +505,8 @@ class PN532UARTDriver(_PN532Base):
             try:
                 self._framer.pump()
             except Exception as e:
-                log_error("_await(%s): gate %s (%s) read failed: %s",
-                          what, self._name, self._transport_name, e)
+                log_error("[%s %s] _await(%s): read failed: %s",
+                          self._name, self._transport_name, what, e)
                 return None
             while skipped <= self._MAX_SKIPPED_FRAMES:
                 got = self._framer.next_frame()
@@ -517,14 +517,14 @@ class PN532UARTDriver(_PN532Base):
                     return result
                 skipped += 1
                 if self._debug >= 3:
-                    logger.info("_await(%s): gate %s (%s) discarded a %s frame: %s",
-                                what, self._name, self._transport_name,
+                    logger.info("[%s %s] _await(%s): discarded a %s frame: %s",
+                                self._name, self._transport_name, what,
                                 got[0], _hex(got[1], ' '))
             if self._now() >= deadline:
                 if self._debug >= 4:
-                    trace("_await(%s): gate %s (%s) timeout after %.3fs "
-                                 "(buffered=%s)", what, self._name,
-                                 self._transport_name, timeout,
+                    trace("[%s %s] _await(%s): timeout after %.3fs "
+                                 "(buffered=%s)", self._name,
+                                 self._transport_name, what, timeout,
                                  _hex(self._framer.buffered(), ' ') or '(empty)')
                 return None
             self._sleep(poll_interval)
@@ -537,7 +537,7 @@ class PN532UARTDriver(_PN532Base):
             if kind == FRAME_NACK:
                 # A definite answer: the chip rejected the frame. Return False so
                 # the wait ends here instead of burning the whole timeout.
-                log_warning("_read_ack: gate %s (%s) chip sent NACK",
+                log_warning("[%s %s] _read_ack: chip sent NACK",
                             self._name, self._transport_name)
                 return False
             return None     # An info frame: left over from an earlier exchange
@@ -560,7 +560,7 @@ class PN532UARTDriver(_PN532Base):
             if payload is None and self._debug >= 3:
                 # A PN532 application error frame (TFI 0x7F) lands here too, and
                 # is diagnostically very different from silence - log the bytes.
-                logger.info("_recv: gate %s (%s) frame did not match "
+                logger.info("[%s %s] _recv: frame did not match "
                             "expect=0x%02X raw=%s", self._name,
                             self._transport_name, expected_cmd_resp,
                             _hex(frame, ' '))
@@ -635,7 +635,7 @@ class PN532UARTDriver(_PN532Base):
             self._probe_send_abort()
         except Exception as e:
             if self._debug >= 4:
-                trace("_probe_abort: gate %s (%s) abort write failed: %s",
+                trace("[%s %s] _probe_abort: abort write failed: %s",
                              self._name, self._transport_name, e)
             # Fall through and still drain: the stale bytes are the real hazard.
 
@@ -651,7 +651,7 @@ class PN532UARTDriver(_PN532Base):
                 # that would flush mid-transit, which is the very ordering hazard
                 # the comment below warns about.
                 if self._debug >= 4:
-                    trace("_probe_abort: gate %s (%s) drain read failed: %s",
+                    trace("[%s %s] _probe_abort: drain read failed: %s",
                                  self._name, self._transport_name, e)
                 self._framer.reset()
                 return
@@ -674,7 +674,7 @@ class PN532UARTDriver(_PN532Base):
         """Send the HSU 0x55 resync burst before a GetFirmwareVersion attempt."""
         self._open()
         if self._debug >= 4:
-            trace("_transport_wake_preamble: gate %s (%s) TX %s",
+            trace("[%s %s] _transport_wake_preamble: TX %s",
                          self._name, self._transport_name,
                          _hex(self._WAKE_PREAMBLE, ' '))
         self._write(self._WAKE_PREAMBLE)
