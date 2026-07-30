@@ -277,7 +277,7 @@ class PN7160Handler:
 
     def _log_frame(self, direction, frame):
         if self.raw_log:
-            logger.info("[%s pn7160] %s %s", self._name, direction, _hex(frame))
+            logger.info("[%s pn7160] raw %s %s", self._name, direction, _hex(frame))
 
     def hardware_reset(self):
         if self.ven is None:
@@ -1232,7 +1232,7 @@ class PN7160Driver:
             # warning, and ungated, unlike rc522's equivalent: this path also marks
             # the reader not-alive and forces a full re-init, so the user needs to
             # see it. Do not "normalise" it down to a debug-gated info.
-            logger.warning("[%s pn7160] probe_start: failed: %s", self._name, e)
+            logger.warning("[%s pn7160] probe_start failed: %s", self._name, e)
             self._probe_active = False
             self._alive = False
             self._handler.initialized = False
@@ -1272,7 +1272,7 @@ class PN7160Driver:
             self._probe_stop_discovery()
             return False
         except Exception as e:
-            logger.warning("[%s pn7160] probe_poll: failed: %s", self._name, e)
+            logger.warning("[%s pn7160] probe_poll failed: %s", self._name, e)
             self._probe_active = False
             self._alive = False
             self._handler.initialized = False
@@ -1295,7 +1295,7 @@ class PN7160Driver:
         try:
             self._release_current_target(reason="probe_stop")
         except Exception as e:
-            logger.warning("[%s pn7160] probe_stop: failed: %s", self._name, e)
+            logger.warning("[%s pn7160] probe_stop failed: %s", self._name, e)
             return False
         return True
 
@@ -1325,7 +1325,7 @@ class PN7160Driver:
             self._handler.initialized = False
             self._needs_full_setup = True
             self._clear_current_card()
-            logger.warning("[%s pn7160] read_target: failed: %s",
+            logger.warning("[%s pn7160] read_target failed: %s",
                            self._name, e)
             return None
         finally:
