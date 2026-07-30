@@ -207,47 +207,133 @@ class RC522Driver:
     # Initialisation
     # ─────────────────────────────────────────────────────────────────────────
 
+    # Retry budget for init(), matching PN532's _wake_pn532(attempts=3). The whole
+    # reset-and-configure sequence is retried, not individual registers: the failure
+    # this guards against leaves the chip in an unknown state, and a soft reset is the
+    # only way back to a known one.
+    _INIT_ATTEMPTS = 3
+    _INIT_RETRY_DELAY = 0.050
+
     def init(self):
         """
         Soft-reset the RC522 and configure it for 13.56 MHz ISO14443A operation.
         Must be called once after klippy:connect, before the first read_tag().
+
+        Retried, because a single attempt made this driver the odd one out: PN532
+        retries its wake three times and so rides out a transaction that does not
+        take, while RC522 reported failure on the spot.
+
+        A success after attempt 1 is logged WITH the attempt number. That is
+        deliberate - "OK on attempt 2/3" is the signature of a first transaction that
+        does not stick, which is worth knowing about rather than silently papering
+        over. A retry that always succeeds first time costs one comparison.
         """
-        try:
-            if self._debug >= 4:
-                trace("RC522: gate %s init — soft-resetting", self._gate)
-            self._write(_CommandReg,    _PCD_RESETPHASE)
-            self._sleep(0.050)           # Datasheet: max reset time 37.74 ms; 50 ms is safe
-            if self._debug >= 4:
-                trace("RC522: gate %s init — reset done, configuring timer "
-                             "and modulation", self._gate)
-            self._write(_TModeReg,      0x8D)
-            self._write(_TPrescalerReg, 0x3E)
-            self._write(_TReloadRegH,   0x00)
-            self._write(_TReloadRegL,   0x1E)
-            self._write(_TxASKReg,      0x40)
-            self._write(_ModeReg,       0x3D)
-            # Enable antenna TX pins (bits 0-1 of TxControlReg)
-            tx = self._read(_TxControlReg)
-            if not (tx & 0x03):
+        last_error = None
+        tx_final = None
+        for attempt in range(1, self._INIT_ATTEMPTS + 1):
+            try:
+                tx_final = self._init_once()
+                last_error = None
+            except Exception as e:
+                last_error = e
                 if self._debug >= 4:
-                    trace("RC522: gate %s init — enabling antenna TX pins "
-                                 "(TxControl was 0x%02X)", self._gate, tx)
-                self._write(_TxControlReg, tx | 0x03)
-            tx_final = self._read(_TxControlReg)
+                    trace("RC522: gate %s init attempt %d/%d raised: %s\n%s",
+                          self._gate, attempt, self._INIT_ATTEMPTS, e,
+                          traceback.format_exc())
+                if attempt < self._INIT_ATTEMPTS:
+                    self._sleep(self._INIT_RETRY_DELAY)
+                continue
+
             if tx_final & 0x03:
-                logger.info("RC522: gate %s init OK (TxControl=0x%02X)",
-                            self._gate, tx_final)
-            else:
-                self._report_antenna_failure(tx_final)
-        except Exception as e:
+                if attempt == 1:
+                    logger.info("RC522: gate %s init OK (TxControl=0x%02X, %s)",
+                                self._gate, tx_final, self._bus_description())
+                else:
+                    logger.info(
+                        "RC522: gate %s init OK on attempt %d/%d (TxControl=0x%02X, "
+                        "%s) - the earlier attempt(s) did not take, which usually "
+                        "means the first transaction on this bus is unreliable",
+                        self._gate, attempt, self._INIT_ATTEMPTS, tx_final,
+                        self._bus_description())
+                return
+
+            if attempt < self._INIT_ATTEMPTS:
+                if self._debug >= 4:
+                    trace("RC522: gate %s init attempt %d/%d left TxControl=0x%02X, "
+                          "retrying", self._gate, attempt, self._INIT_ATTEMPTS,
+                          tx_final)
+                self._sleep(self._INIT_RETRY_DELAY)
+
+        # Out of attempts. Raising on a transport error and merely reporting on a
+        # stuck antenna is the pre-existing contract and is kept: the manager turns a
+        # raise into an error, whereas a chip that answers but will not power its
+        # antenna is a diagnosable condition that is_alive() reports as not-alive.
+        if last_error is not None:
             logger.warning(
-                "RC522: gate %s init failed — check SPI wiring, cs_pin, "
-                "spi_bus/software SPI pins, power, and ground: %s",
-                self._gate, e)
+                "RC522: gate %s init failed after %d attempts — check SPI wiring, "
+                "cs_pin, spi_bus/software SPI pins, power, and ground: %s",
+                self._gate, self._INIT_ATTEMPTS, last_error)
+            raise last_error
+        self._report_antenna_failure(tx_final)
+
+    def _init_once(self):
+        """One reset-and-configure pass. Returns TxControlReg as read back."""
+        if self._debug >= 4:
+            trace("RC522: gate %s init — soft-resetting", self._gate)
+        self._write(_CommandReg,    _PCD_RESETPHASE)
+        self._sleep(0.050)           # Datasheet: max reset time 37.74 ms; 50 ms is safe
+        if self._debug >= 4:
+            trace("RC522: gate %s init — reset done, configuring timer "
+                         "and modulation", self._gate)
+        self._write(_TModeReg,      0x8D)
+        self._write(_TPrescalerReg, 0x3E)
+        self._write(_TReloadRegH,   0x00)
+        self._write(_TReloadRegL,   0x1E)
+        self._write(_TxASKReg,      0x40)
+        self._write(_ModeReg,       0x3D)
+        # Enable antenna TX pins (bits 0-1 of TxControlReg)
+        tx = self._read(_TxControlReg)
+        if not (tx & 0x03):
             if self._debug >= 4:
-                trace("RC522: gate %s init traceback:\n%s",
-                             self._gate, traceback.format_exc())
-            raise
+                trace("RC522: gate %s init — enabling antenna TX pins "
+                             "(TxControl was 0x%02X)", self._gate, tx)
+            self._write(_TxControlReg, tx | 0x03)
+        return self._read(_TxControlReg)
+
+    def _bus_description(self):
+        """
+        Which MCU, bus and speed this reader actually ended up on.
+
+        Reported on both the success and failure paths so two readers can be compared
+        straight from the log. That matters because the same physical reader can work
+        in one config and not another: a section that omits spi_bus lands on the MCU's
+        DEFAULT bus, so CS toggles on the right pin while SCK/MOSI/MISO belong to a
+        different peripheral - which looks exactly like an unplugged MISO wire.
+
+        Defensive because MCU_SPI is Klipper's: real ones expose mcu/bus/speed and
+        hide the software pins inside config_fmt, and the harness fake differs. A
+        diagnostic must never be the thing that raises.
+        """
+        spi = self._spi
+        parts = []
+        mcu = getattr(spi, 'mcu', None)
+        name = getattr(mcu, 'get_name', None)
+        if callable(name):
+            try:
+                parts.append('mcu=%s' % name())
+            except Exception:
+                pass
+        bus = getattr(spi, 'bus', None)
+        software = (getattr(spi, 'sw_pins', None) is not None
+                    or 'software' in str(getattr(spi, 'config_fmt', '')))
+        if software:
+            parts.append('bus=software')
+        else:
+            parts.append('bus=%s' % (bus if bus else 'MCU default'))
+        speed = getattr(spi, 'speed', None)
+        if speed:
+            parts.append('speed=%s' % speed)
+        return ', '.join(parts) or 'bus details unavailable'
 
     @staticmethod
     def _read_address(reg):
@@ -303,14 +389,16 @@ class RC522Driver:
                   for reg, val in ((_VersionReg, version), (_TModeReg, tmode))]
 
         if stable and all(echoes):
-            cause = ("MISO IS NOT BEING DRIVEN. Every value read back contains only "
-                     "bits that were in the address byte we sent (VersionReg: sent "
-                     "0x%02X got 0x%02X; TModeReg: sent 0x%02X got 0x%02X), which is "
-                     "what a floating input picks up from MOSI switching beside it - "
-                     "a real answer would contain a bit the address did not. The "
-                     "reader is not connected to the MCU's MISO: check that wire, "
-                     "that it goes to the MISO of the bus named by spi_bus (not "
-                     "another bus), and that nothing else is holding the line"
+            cause = ("NOTHING IS DRIVING MISO on the bus this reader is using. Every "
+                     "value read back contains only bits that were in the address "
+                     "byte we sent (VersionReg: sent 0x%02X got 0x%02X; TModeReg: "
+                     "sent 0x%02X got 0x%02X) - that is a floating input picking up "
+                     "MOSI switching beside it, since a real answer would contain a "
+                     "bit the address did not. Most likely this section is on the "
+                     "WRONG BUS: compare the bus details above with a reader that "
+                     "works, because omitting spi_bus silently uses the MCU's default "
+                     "bus while cs_pin still toggles correctly. Otherwise check the "
+                     "MISO wire itself, and that nothing else holds the line"
                      % (self._read_address(_VersionReg), version,
                         self._read_address(_TModeReg), tmode))
         elif not stable:
@@ -349,8 +437,8 @@ class RC522Driver:
 
         logger.warning(
             "RC522: gate %s antenna TX bits will not set (TxControl=0x%02X, "
-            "VersionReg=0x%02X, TModeReg=0x%02X): %s",
-            self._gate, tx_final, version, tmode, cause)
+            "VersionReg=0x%02X, TModeReg=0x%02X; %s): %s",
+            self._gate, tx_final, version, tmode, self._bus_description(), cause)
 
 
     def is_alive(self):
