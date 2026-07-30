@@ -623,7 +623,7 @@ class MmuNfcManager:
         if now < self._hold_until:
             return eventtime + NFC_CHECK_INTERVAL
 
-        uid, metadata = self._read_reader(self.shared_reader, deep=self._want_metadata())
+        uid, metadata = self._read_reader(self.shared_reader, deep=self._want_metadata(), log=False)
 
         if uid:
             # Only act on a newly presented tag; a tag left on the reader keeps
@@ -673,7 +673,7 @@ class MmuNfcManager:
         return getattr(self.mmu, 'action', ACTION_IDLE) != ACTION_IDLE
 
 
-    def _read_reader(self, reader, deep=False):
+    def _read_reader(self, reader, deep=False, log=True):
         """
         Read a tag from 'reader', returning (uid, metadata).
 
@@ -706,10 +706,11 @@ class MmuNfcManager:
             self.mmu.log_warning(
                 "NFC: deep read failed on reader '%s' (%s) - tag UID %s was still read, "
                 "continuing without tag metadata" % (getattr(reader, 'name', '?'), deep_error, uid))
-        self.mmu.log_debug(
-            "NFC: reader '%s' read UID=%s deep=%s metadata_keys=%s" % (
-                getattr(reader, 'name', '?'), uid, deep,
-                sorted(metadata.keys()) if isinstance(metadata, dict) else []))
+        if log:
+            self.mmu.log_debug(
+                "NFC: reader '%s' read UID=%s deep=%s metadata_keys=%s" % (
+                    getattr(reader, 'name', '?'), uid, deep,
+                    sorted(metadata.keys()) if isinstance(metadata, dict) else []))
         return uid, metadata
 
 
