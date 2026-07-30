@@ -279,7 +279,7 @@ fi
 
 if [ "${F_UNINSTALL}" ]; then
     echo "\n${C_WARNING}This will uninstall Happy Hare and cleanup prior config${C_OFF}"
-    if prompt_yn "Are you sure you want to continue?"; then
+    if prompt_yn "Are you sure you want to continue"; then
         echo
         exit 0
     fi

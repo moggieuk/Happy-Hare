@@ -48,8 +48,8 @@ class MmuSensors:
 
         # Setup "mmu_entry" sensors...
         self.entry_sensors = {}
-        for i, gate in enumerate(range(first_gate, first_gate + num_gates)):
-            switch_pin = config.get('mmu_entry_switch_pin_%d' % i, None)
+        for lgate, gate in enumerate(range(first_gate, first_gate + num_gates)):
+            switch_pin = config.get('mmu_entry_switch_pin_%d' % lgate, None)
             self.entry_sensors[gate] = sf.create_mmu_sensor(
                 config,
                 SENSOR_ENTRY_PREFIX,
@@ -70,19 +70,19 @@ class MmuSensors:
             None,
             switch_pin,
             event_delay=event_delay,
-            events=('runout'),
+            events=('runout',),
             register=register
         )
 
         # Setup "mmu_exit" sensors...
         self.exit_sensors = {}
-        for i, gate in enumerate(range(first_gate, first_gate + num_gates)):
-            switch_pin = config.get('mmu_exit_switch_pin_%d' % i, None)
+        for lgate, gate in enumerate(range(first_gate, first_gate + num_gates)):
+            switch_pin = config.get('mmu_exit_switch_pin_%d' % lgate, None)
 
              # Support early BTT ViViD analog (hall-effect) buffer
-            a_range = config.getfloatlist('mmu_exit_analog_range_%d' % gate, None, count=2)
+            a_range = config.getfloatlist('mmu_exit_analog_range_%d' % lgate, None, count=2)
             if switch_pin and a_range is not None:
-                a_pullup = config.getfloat('mmu_exist_analog_pullup_resister_%d' % gate, 4700.)
+                a_pullup = config.getfloat('mmu_exit_analog_pullup_resister_%d' % lgate, 4700.)
                 self.exit_sensors[gate] = MmuAdcSwitchSensor(
                     config,
                     SENSOR_EXIT_PREFIX,
@@ -90,7 +90,7 @@ class MmuSensors:
                     switch_pin,
                     event_delay,
                     a_range,
-                    events=('runout'),
+                    events=('runout',),
                     a_pullup=a_pullup,
                     register=register
                 )
@@ -99,7 +99,7 @@ class MmuSensors:
             self.exit_sensors[gate] = sf.create_mmu_sensor(
                 config, SENSOR_EXIT_PREFIX, gate, switch_pin,
                 event_delay=event_delay,
-                events=('runout'),
+                events=('runout',),
                 register=register
             )
 
