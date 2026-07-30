@@ -899,8 +899,8 @@ FLUSH_MULTIPLIER_REGEX = r"^;\s*flush_multiplier\s*=\s*(.*)$" #flush multiplier 
 FILAMENT_NAMES_REGEX = r"^;\s*(filament_settings_id)\s*=\s*(.*)$"
 METADATA_FILAMENT_NAMES = "!filament_names!"
 
-# Detection for next pos processing
-T_PATTERN  = r'^T(\d+)\s*(?:;.*)?$'
+# Detection for next pos processing and slicer parameters
+T_PATTERN  = r'^T(\d+)((?:\s+(?:SLICER_PURGE|SLICER_RETRACTION|SLICER_FW_RETRACTION)=[^\s;]+)*)\s*(?:;.*)?$'
 G1_PATTERN = r'^G[01](?=.*\sX(-?[\d.]+))(?=.*\sY(-?[\d.]+)).*$'
 
 def _parse_version_tuple(version_str: str, parts: int = 3):
@@ -1115,6 +1115,7 @@ def process_file(input_filename, output_filename, insert_nextpos, tools_used, to
     with open(input_filename, 'r') as infile, open(output_filename, 'w') as outfile:
         buffer = [] # Buffer lines between a "T" line and the next matching "G1" line
         tool = None # Store the tool number from a "T" line
+        slicer_params = '' # Store slicer parameters from the "T" line
         outfile.write(f'{HAPPY_HARE_FINGERPRINT}\n')
 
         for line in infile:
@@ -1127,25 +1128,27 @@ def process_file(input_filename, output_filename, insert_nextpos, tools_used, to
                     # Now replace "T" line and write buffered lines, including the current "G1" line
                     if insert_nextpos:
                         x, y = g1_match.groups()
-                        outfile.write(f'MMU_CHANGE_TOOL TOOL={tool} NEXT_POS="{x},{y}" ; T{tool}\n')
+                        outfile.write(f'MMU_CHANGE_TOOL TOOL={tool}{slicer_params} NEXT_POS="{x},{y}" ; T{tool}\n')
                     else:
-                        outfile.write(f'MMU_CHANGE_TOOL TOOL={tool} ; T{tool}\n')
+                        outfile.write(f'MMU_CHANGE_TOOL TOOL={tool}{slicer_params} ; T{tool}\n')
                     for buffered_line in buffer:
                         outfile.write(buffered_line)
                     buffer.clear()
                     tool = None
+                    slicer_params = ''
                 continue
 
             t_match = t_pattern.match(line)
             if t_match:
                 tool = t_match.group(1)
+                slicer_params = t_match.group(2) if t_match.lastindex >= 2 else ''
             else:
                 outfile.write(line)
 
         # If there is anything left in buffer it means there wasn't a final "G1" line
         if buffer:
             outfile.write(f"T{tool}\n")
-            outfile.write(f'MMU_CHANGE_TOOL TOOL={tool} ; T{tool}\n')
+            outfile.write(f'MMU_CHANGE_TOOL TOOL={tool}{slicer_params} ; T{tool}\n')
             for line in buffer:
                 outfile.write(line)
 
