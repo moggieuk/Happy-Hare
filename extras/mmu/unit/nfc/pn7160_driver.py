@@ -158,7 +158,7 @@ class PN7160Handler:
     target_info dictionaries.
     """
 
-    def __init__(self, config, i2c, ven_pin=None, irq_pin=None,
+    def __init__(self, config, i2c, name, ven_pin=None, irq_pin=None,
                  response_delay=0.020, nci_poll_interval=0.250,
                  read_timeout=0.500, raw_log=False, debug=False,
                  ven_pre_high_time=0.010,
@@ -171,6 +171,9 @@ class PN7160Handler:
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
         self.i2c = i2c
+        # Same logging label the driver uses, so a handler line can be attributed
+        # to a reader on a machine with more than one.
+        self._name = name
         self.ven = None
         self.irq_enabled = False
         self.irq_state = None
@@ -190,7 +193,6 @@ class PN7160Handler:
         self.ntag_read_retries = ntag_read_retries
         self.ntag_retry_delay = ntag_retry_delay
         self.initialized = False
-        self.core_info_lines = []
         try:
             self.i2c_address = i2c.get_i2c_address()
         except Exception:
@@ -207,34 +209,38 @@ class PN7160Handler:
                 buttons = self.printer.load_object(config, "buttons")
                 buttons.register_buttons([irq_pin], self._irq_callback)
                 self.irq_enabled = True
-                logger.info("PN7160 IRQ pin '%s' registered", irq_pin)
+                logger.info("[%s pn7160] IRQ pin '%s' registered", self._name, irq_pin)
             except Exception as e:
                 logger.error(
-                    "PN7160 IRQ registration failed (%s); falling back to delays", e)
+                    "[%s pn7160] IRQ registration failed (%s); falling back to delays",
+                    self._name, e)
 
         self._debug(
             "handler ready: addr=0x%02X irq=%s ven=%s no_irq=%s"
             " response_delay=%.3f nci_poll_interval=%.3f"
             " read_timeout=%.3f no_irq_read_delay=%.3f"
             " ntag_data_delay=%.3f ntag_read_retries=%d"
-            " ntag_retry_delay=%.3f"
-            % (self.i2c_address, self.irq_enabled, self.ven is not None,
+            " ntag_retry_delay=%.3f",
+            self.i2c_address, self.irq_enabled, self.ven is not None,
                self.no_irq_mode, self.response_delay, self.nci_poll_interval,
                self.read_timeout, self.no_irq_read_delay,
                self.ntag_data_delay, self.ntag_read_retries,
-               self.ntag_retry_delay))
+               self.ntag_retry_delay)
 
     @property
     def no_irq_mode(self):
         return not self.irq_enabled
 
-    def _debug(self, msg):
+    # Lazy %-args like every other log call here: the format string is only
+    # interpolated if the line is actually emitted. Note self.debug is a BOOLEAN
+    # (debug >= 4 or pn7160_debug) and is NOT the trace() latch - routing these
+    # through trace() would silently break pn7160_debug at debug < 4.
+    def _debug(self, msg, *args):
         if self.debug:
-            logger.info("PN7160 debug: %s", msg)
+            logger.info("[%s pn7160] debug: " + msg, self._name, *args)
 
-    def _core_info(self, msg):
-        self.core_info_lines.append("PN7160 info: " + msg)
-        logger.info("PN7160 info: %s", msg)
+    def _core_info(self, msg, *args):
+        logger.info("[%s pn7160] info: " + msg, self._name, *args)
 
     def _pause(self, seconds):
         self.reactor.pause(self.reactor.monotonic() + seconds)
@@ -244,7 +250,7 @@ class PN7160Handler:
         self.irq_state = state
         if state == 1 and (prev_state == 0 or prev_state is None):
             self.irq_event_time = eventtime
-            self._debug("IRQ rising edge at %.6f" % eventtime)
+            self._debug("IRQ rising edge at %.6f", eventtime)
 
     def _wait_for_irq(self, start_time, timeout, accept_current=True):
         if not self.irq_enabled:
@@ -271,7 +277,7 @@ class PN7160Handler:
 
     def _log_frame(self, direction, frame):
         if self.raw_log:
-            logger.info("PN7160 %s %s", direction, _hex(frame))
+            logger.info("[%s pn7160] %s %s", self._name, direction, _hex(frame))
 
     def hardware_reset(self):
         if self.ven is None:
@@ -317,8 +323,7 @@ class PN7160Handler:
         return status, response
 
     def write_frame(self, frame, label=None):
-        self._debug("write %s len=%d data=%s"
-                    % (label or "NCI", len(frame), _hex(frame)))
+        self._debug("write %s len=%d data=%s", label or "NCI", len(frame), _hex(frame))
         self._log_frame(">>", frame)
         self._i2c_write_safe(frame, label=label)
 
@@ -338,7 +343,7 @@ class PN7160Handler:
             raise PN7160Error("NCI payload too large: %d" % payload_len)
         payload = self._read_exact(payload_len, label="nci_payload") if payload_len else []
         frame = header + payload
-        self._debug("read %s" % _frame_summary(frame))
+        self._debug("read %s", _frame_summary(frame))
         self._log_frame("<<", frame)
         self._wait_for_irq_release(read_start)
         return frame
@@ -378,8 +383,7 @@ class PN7160Handler:
                 return self.read_frame_once()
             except Exception as e:
                 last_error = e
-                self._debug("wait frame attempt %d failed: %s"
-                            % (attempts, e))
+                self._debug("wait frame attempt %d failed: %s", attempts, e)
                 self._pause(poll_interval)
         raise PN7160Error("timeout waiting for NCI frame%s: %s"
                           % ("" if label is None else " " + label,
@@ -446,7 +450,7 @@ class PN7160Handler:
                         label=label)
             except Exception as e:
                 last_error = e
-                self._debug("data wait read failed: %s" % e)
+                self._debug("data wait read failed: %s", e)
                 continue
             if _message_type(frame) == NCI_MT_DATA:
                 return frame
@@ -454,16 +458,14 @@ class PN7160Handler:
                     and _message_type(frame) == NCI_MT_NTF
                     and _gid(frame) == NCI_GID_CORE
                     and _oid(frame) == NCI_CORE_CONN_CREDITS_OID):
-                self._debug("data credit notification: %s" % _hex(frame))
+                self._debug("data credit notification: %s", _hex(frame))
                 continue
-            self._debug("data wait ignored frame: %s"
-                        % _frame_summary(frame))
+            self._debug("data wait ignored frame: %s", _frame_summary(frame))
         raise PN7160Error("timeout waiting for data frame: %s" % last_error)
 
     def transceive_data(self, payload, timeout=0.100, label="DATA"):
         frame = [0x00, 0x00, len(payload)] + list(payload)
-        self._debug("data transceive %s payload=%s"
-                    % (label, _hex(payload)))
+        self._debug("data transceive %s payload=%s", label, _hex(payload))
         self.write_frame(frame, label=label)
         return self.wait_data_frame(timeout=timeout, label=label)
 
@@ -476,7 +478,7 @@ class PN7160Handler:
             raise PN7160Error("short NTAG page response page=%d data=%s"
                               % (page, _hex(payload)))
         data = list(payload[:16])
-        self._debug("NTAG page %d data=%s" % (page, _hex(data)))
+        self._debug("NTAG page %d data=%s", page, _hex(data))
         return data, rx
 
     def ntag_read_page(self, page, timeout=0.100):
@@ -487,8 +489,8 @@ class PN7160Handler:
                 return self.ntag_read_page_once(page, timeout=timeout)
             except Exception as e:
                 last_error = e
-                self._debug("NTAG page %d attempt %d/%d failed: %s"
-                            % (page, attempt, attempts, e))
+                self._debug("NTAG page %d attempt %d/%d failed: %s",
+                            page, attempt, attempts, e)
                 if attempt < attempts and self.ntag_retry_delay > 0.0:
                     self._pause(self.ntag_retry_delay)
         raise PN7160Error("NTAG page %d failed after %d attempts: %s"
@@ -524,8 +526,8 @@ class PN7160Handler:
             rx = self.transceive_data(payload, timeout=timeout, label=label)
         except Exception as e:
             self._debug(
-                "MIFARE auth block=%d sector=%d key_%s failed: %s"
-                % (block_addr, sector, 'B' if use_key_b else 'A', e))
+                "MIFARE auth block=%d sector=%d key_%s failed: %s",
+                block_addr, sector, 'B' if use_key_b else 'A', e)
             return False
 
         rsp = rx[3:]
@@ -533,13 +535,12 @@ class PN7160Handler:
                 and rsp[0] == MIFARE_EXT_AUTH
                 and rsp[1] == NCI_STATUS_OK):
             self._debug(
-                "MIFARE auth block=%d sector=%d key_%s ok rsp=%s"
-                % (block_addr, sector, 'B' if use_key_b else 'A',
-                   _hex(rsp)))
+                "MIFARE auth block=%d sector=%d key_%s ok rsp=%s",
+                block_addr, sector, 'B' if use_key_b else 'A', _hex(rsp))
             return True
         self._debug(
-            "MIFARE auth block=%d sector=%d key_%s rejected rsp=%s"
-            % (block_addr, sector, 'B' if use_key_b else 'A', _hex(rsp)))
+            "MIFARE auth block=%d sector=%d key_%s rejected rsp=%s",
+            block_addr, sector, 'B' if use_key_b else 'A', _hex(rsp))
         return False
 
     def mifare_read_block(self, block_addr, timeout=0.500):
@@ -556,7 +557,7 @@ class PN7160Handler:
                 "bad MIFARE block response block=%d data=%s"
                 % (block_addr, _hex(payload)))
         data = bytes(payload[1:17])
-        self._debug("MIFARE block %d data=%s" % (block_addr, _hex(data)))
+        self._debug("MIFARE block %d data=%s", block_addr, _hex(data))
         return data
 
     def _mifare_sector_from_block(self, block_addr):
@@ -607,8 +608,7 @@ class PN7160Handler:
                         block_addr, timeout=timeout)
                 except Exception as e:
                     read_failed_blocks.append(block_addr)
-                    self._debug("MIFARE block %d read failed: %s"
-                                % (block_addr, e))
+                    self._debug("MIFARE block %d read failed: %s", block_addr, e)
                     stop_after_failure = True
                     break
         result = {"uid_bytes": bytes(uid_bytes or []), "blocks": blocks}
@@ -631,8 +631,8 @@ class PN7160Handler:
             else:
                 data.extend(block[:remaining_pages * 4])
             if 0xFE in block:
-                self._debug("NTAG terminator found at page %d offset %d"
-                            % (current_page, block.index(0xFE)))
+                self._debug("NTAG terminator found at page %d offset %d",
+                            current_page, block.index(0xFE))
                 break
             current_page += 4
             if current_page <= end_page and self.ntag_data_delay > 0.0:
@@ -685,8 +685,7 @@ class PN7160Handler:
                 target_bytes, ndef_len = extent
                 if target_bytes > max_ndef_bytes:
                     self._debug(
-                        "NTAG NDEF length %d capped to %d bytes"
-                        % (ndef_len, max_ndef_bytes))
+                        "NTAG NDEF length %d capped to %d bytes", ndef_len, max_ndef_bytes)
                     target_bytes = max_ndef_bytes
             elif len(data) >= 16:
                 target_bytes = fallback_bytes
@@ -768,9 +767,9 @@ class PN7160Handler:
                     tag, start_block, block_count, timeout=timeout)
             except Exception as e:
                 last_error = e
-                self._debug("ISO15693 blocks %d-%d attempt %d/%d failed: %s"
-                            % (start_block, start_block + block_count - 1,
-                               attempt, attempts, e))
+                self._debug("ISO15693 blocks %d-%d attempt %d/%d failed: %s",
+                            start_block, start_block + block_count - 1,
+                            attempt, attempts, e)
                 if attempt < attempts and self.ntag_retry_delay > 0.0:
                     self._pause(self.ntag_retry_delay)
         raise PN7160Error("ISO15693 blocks %d-%d failed after %d attempts: %s"
@@ -872,7 +871,7 @@ class PN7160Handler:
             except Exception as e:
                 last_error = e
                 self.initialized = False
-                self._debug("connect attempt %d failed: %s" % (attempt, e))
+                self._debug("connect attempt %d failed: %s", attempt, e)
                 if attempt < self.init_retries:
                     self._pause(self.init_retry_delay)
         raise PN7160Error("connect_nci failed: %s" % last_error)
@@ -902,13 +901,12 @@ class PN7160Handler:
             if len(frame) < 4 or _gid(frame) != NCI_GID_CORE:
                 continue
             if _message_type(frame) == NCI_MT_RSP and _oid(frame) == 0x00:
-                self._core_info("CORE_RESET_RSP status=0x%02X raw=%s"
-                                % (frame[3], _hex(frame)))
+                self._core_info("CORE_RESET_RSP status=0x%02X raw=%s",
+                                frame[3], _hex(frame))
             elif _message_type(frame) == NCI_MT_NTF and _oid(frame) == 0x00:
-                self._core_info("CORE_RESET_NTF raw=%s" % _hex(frame))
+                self._core_info("CORE_RESET_NTF raw=%s", _hex(frame))
             elif _message_type(frame) == NCI_MT_RSP and _oid(frame) == 0x01:
-                self._core_info("CORE_INIT_RSP status=0x%02X raw=%s"
-                                % (frame[3], _hex(frame)))
+                self._core_info("CORE_INIT_RSP status=0x%02X raw=%s", frame[3], _hex(frame))
 
     def configure_discovery_map(self):
         rsp, extra = self.command(
@@ -936,7 +934,7 @@ class PN7160Handler:
             self._pause(PN7160_RF_DEACTIVATE_GUARD_TIME)
             return [rsp] + extra
         except Exception as e:
-            self._debug("stop discovery skipped/failed: %s" % e)
+            self._debug("stop discovery skipped/failed: %s", e)
             return []
 
     def wait_for_activation(self, timeout=None):
@@ -1115,7 +1113,7 @@ class PN7160Driver:
         pn7160_debug = config.getboolean('pn7160_debug', False)
         handler_debug = debug >= 4 or pn7160_debug
         self._handler = PN7160Handler(
-            config, i2c,
+            config, i2c, name,
             ven_pin=config.get('ven_pin', None),
             irq_pin=config.get('irq_pin', None),
             response_delay=config.getfloat(
