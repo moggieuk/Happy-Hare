@@ -732,8 +732,11 @@ class PN5180Driver:
                 return self._reset_after_rf_fault(error)
             except Exception as error:
                 if self._debug >= 3:
-                    logger.warning('[%s pn5180] target read failed: %s',
-                                   self._name, error)
+                    # info, not warning: this falls through to the recovery read
+                    # below, which warns for itself if it cannot recover. A warning
+                    # that only appears at debug 3 is neither a warning nor a trace.
+                    logger.info('[%s pn5180] target read failed: %s',
+                                self._name, error)
                 self._clear_current_card()
 
             # A no-tag response is normal and never reaches this path. For an

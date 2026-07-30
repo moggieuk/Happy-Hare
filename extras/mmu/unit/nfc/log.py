@@ -22,6 +22,27 @@
 #   warning()  something is wrong but the reader carries on.
 #   error()    the operation failed.
 #
+# Every driver line carries "[<name> <chip>] " - the reader's [mmu_nfc_reader <name>]
+# section name, which is stable for the life of the printer. The channel name above is
+# stamped on separately by _ChannelPrefix, so do not repeat it in a format string.
+#
+# Two gating traps - both of these look redundant and are not
+# ──────────────────────────────────────────────────────────
+# 1. Drivers wrap trace() calls in `if self._debug >= 4:` even though trace() checks a
+#    flag itself. Not redundant: enable_trace() below is a MODULE-GLOBAL one-way latch
+#    that ANY reader at debug: 4 opens for every reader. The per-instance guard is what
+#    keeps a reader at debug: 0 quiet while another is being traced. Keep both.
+# 2. `if self._debug >= 3: logger.info(...)` sites are NOT trace() sites waiting to be
+#    converted. debug: 3 must show them, and trace() needs 4 - and needs it from some
+#    reader on the machine. Converting one loses the message entirely at debug: 3.
+#    Same for PN7160Handler._debug(), whose flag is `debug >= 4 or pn7160_debug`:
+#    routing it through trace() would silently break pn7160_debug on its own.
+#
+# Consequence worth knowing when picking a level: a failure logged at warning is
+# ungated and reaches every user, so reserve it for something they can act on. A
+# failure the driver recovers from on the next line belongs at info behind a guard -
+# a warning that only appears at debug: 3 is neither a warning nor a trace.
+#
 # Note the MANAGER (mmu_nfc_manager) deliberately does NOT use this module. It logs
 # through self.mmu.log_* so its messages reach mmu.log with the rest of the MMU's
 # narrative; this module is for the hardware layer, which belongs in klippy.log.
@@ -103,10 +124,11 @@ def error(msg, *args, **kwargs):
 
 def tag_trace(msg, *args, **kwargs):
     """
-    The gate matters more here than in the drivers: these calls are not guarded by a
-    per-instance debug level, and several sit inside per-block loops. Promoted to
-    unconditional INFO they would log a dozen-plus lines every time a tag failed one
-    vendor's format on the way to matching another.
+    The trace latch matters more here than in the drivers: these calls have no
+    per-instance debug level to guard them (tag_parser has no reader to ask), and
+    several sit inside per-block loops. Promoted to unconditional INFO they would log
+    a dozen-plus lines every time a tag failed one vendor's format on the way to
+    matching another.
     """
     if _trace:
         tag_logger.info(msg, *args, **kwargs)

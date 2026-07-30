@@ -1229,6 +1229,9 @@ class PN7160Driver:
             self._probe_active = True
             return True
         except Exception as e:
+            # warning, and ungated, unlike rc522's equivalent: this path also marks
+            # the reader not-alive and forces a full re-init, so the user needs to
+            # see it. Do not "normalise" it down to a debug-gated info.
             logger.warning("[%s pn7160] probe_start: failed: %s", self._name, e)
             self._probe_active = False
             self._alive = False
