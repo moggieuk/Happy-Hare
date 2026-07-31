@@ -16,12 +16,24 @@
 #  2. Env vars must be set BEFORE Kconfig() is constructed: kconfiglib expands
 #     $(VAR) at parse time. Notably, omitting MCU_NAME renders pins as ':PD5'
 #     instead of 'unit0:PD5' - silently wrong config, not an error. assert_sane()
-#     checks for exactly that.
-#  3. extra_params must supply PARAM_TOTAL_NUM_GATES / UNIT_NAME / MCU_NAME,
-#     mirroring installer/build.py:481-491.
+#     checks for exactly that. _env() owns this, per parse, with restore - see the
+#     multi-unit note below for why it cannot be set once and left.
+#  3. extra_params must supply PARAM_TOTAL_NUM_GATES, mirroring
+#     installer/build.py:481-491 - the SUM across units on a multi-unit machine.
+#     UNIT_NAME/MCU_NAME are deliberately NOT injected: they are Kconfig symbols
+#     resolved from the env, and injecting them would mask an env that never
+#     reached the parse.
 #  4. render_template calls exit(1) on a Jinja UndefinedError (build.py:468-470),
 #     so a template bug would otherwise make the test process vanish. We catch
 #     SystemExit and re-raise as a normal failure.
+#
+# MULTI-UNIT. A one-unit profile is one parse; a multi-unit profile is one entry-point parse
+# for the shared files plus one parse PER UNIT for mmu_hardware/mmu_parameters, mirroring
+# install.sh:385-432. The env does not merely carry different values between those parses, it
+# changes the Kconfig's SHAPE: MULTI_UNIT / MULTI_UNIT_ENTRY_POINT / UNIT_NAME / MCU_NAME /
+# UNIT_INDEX are all env-driven (Kconfig:146-186) and whole symbol sets appear and disappear
+# behind `if MULTI_UNIT_ENTRY_POINT`. That is why a multi-unit profile cannot be expressed as
+# one larger syms dict, and why the env is per-parse rather than module state.
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
@@ -39,12 +51,28 @@ KCONFIGLIB = os.path.join(INSTALLER, 'lib', 'kconfiglib')
 # section loop reached the stepper first it would be built WITHOUT a rail and HH's
 # later add_object would collide. Production only works because of this sort order,
 # so test_mmu_config.py asserts it explicitly.
-BASE_TEMPLATES = (
+# Rendered ONCE, from the shared (entry-point) Kconfig. On a multi-unit machine these stay
+# single files: mmu.cfg is just `units: [[MMU_UNITS]]`, and the Makefile builds both through
+# the generic $(OUT)/mmu/%.cfg rule off the base .mmu_config (Makefile:266-271).
+SHARED_TEMPLATES = (
     'config/base/mmu.cfg',
-    'config/base/mmu_hardware.cfg',
     'config/base/mmu_macro_vars.cfg',
+)
+
+# Rendered ONCE PER UNIT, each from that unit's own Kconfig. The installer replaces the two
+# single-unit files with per-unit ones (Makefile:151-158) built from $(KCONFIG_CONFIG)_<unit>
+# (Makefile:273-284), so the installed names are mmu_hardware_<unit>.cfg /
+# mmu_parameters_<unit>.cfg. mmu_hardware.cfg alone has 36 UNIT_NAME references.
+PER_UNIT_TEMPLATES = (
+    'config/base/mmu_hardware.cfg',
     'config/base/mmu_parameters.cfg',
 )
+
+# Sorted, because that IS the include order (see above) - and because on a multi-unit render
+# the per-unit names have to interleave correctly: mmu.cfg, mmu_hardware_unit0.cfg,
+# mmu_hardware_unit1.cfg, mmu_macro_vars.cfg, mmu_parameters_unit*.cfg. Every path shares
+# the config/base/ prefix, so sorting full paths and sorting basenames agree.
+BASE_TEMPLATES = tuple(sorted(SHARED_TEMPLATES + PER_UNIT_TEMPLATES))
 
 # config/macros/*.cfg are COPIED VERBATIM by the installer, not rendered - Makefile:148
 # filters mmu/macros/%.cfg out of the rendered set. They must therefore be read raw:
@@ -74,7 +102,8 @@ def hh_version():
     return m.group(1)
 
 
-_ENV = {
+# Invariant across every parse: paths and the version. Nothing unit-shaped belongs here.
+_BASE_ENV = {
     'srctree': INSTALLER,
     'SRC': REPO_ROOT,
     'HH_VERSION': hh_version(),
@@ -83,12 +112,58 @@ _ENV = {
     'CONFIG_KLIPPER_CONFIG_HOME': '/nonexistent/printer_data/config',
     'CONFIG_MOONRAKER_HOME': '/nonexistent/moonraker',
     'CONFIG_SERVICE_KLIPPER': 'klipper.service',
-    'UNIT_NAME': 'unit0',
-    'MCU_NAME': 'unit0',
-    'F_MULTI_UNIT': '',
-    'F_MULTI_UNIT_ENTRY_POINT': '',
     'F_PER_GATE_MCU': '',
 }
+
+# What install.sh passes when there is no MULTI_UNIT (install.sh:397-398 takes the else
+# branch and adds nothing, so these are the ambient values a one-unit machine sees).
+#
+# UNIT_INDEX is given as a real '0' rather than left unset: Kconfig:175 reads it as
+# $(shell, echo "${UNIT_INDEX-0}"), and ${VAR-default} substitutes only when the variable is
+# UNSET - an empty string would survive and render an empty int.
+_SINGLE_UNIT_ENV = {
+    'UNIT_NAME': 'unit0',
+    'MCU_NAME': 'unit0',
+    'UNIT_INDEX': '0',
+    'F_MULTI_UNIT': '',
+    'F_MULTI_UNIT_ENTRY_POINT': '',
+}
+
+
+@contextlib.contextmanager
+def _env(overrides):
+    """
+    Install the env for ONE Kconfig parse, then put it back.
+
+    Two halves, both load-bearing (this is gotcha 2 with teeth):
+
+    ASSIGNMENT, not setdefault. kconfiglib expands $(VAR) at PARSE time, into every board
+    pin default - so a multi-unit render needs a genuinely different UNIT_NAME/MCU_NAME for
+    each of its parses. `setdefault` silently kept the first parse's values, which is why
+    two units could not previously coexist in one session.
+
+    RESTORE, not leak. The suite renders many profiles in one process. A leaked
+    MCU_NAME=unit1 would re-render later single-unit profiles against unit1's MCU, or drop
+    the chip entirely and give ':PD5' pins - wrong output, not an error. assert_sane()
+    catches the chip-less form; nothing catches the wrong-chip form, so the restore is the
+    only guard. test_mmu_config asserts a boxturtle render is unchanged by an intervening
+    multi-unit one.
+
+    Only kconfiglib reads these, and only while constructing Kconfig - render_template works
+    off the already-resolved as_dict(), so the env need not be live during rendering.
+    """
+    env = dict(_BASE_ENV)
+    env.update(overrides)
+    saved = {key: os.environ.get(key) for key in env}
+    os.environ.update({key: str(value) for key, value in env.items()})
+    try:
+        yield
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 @contextlib.contextmanager
@@ -106,12 +181,13 @@ def _prepare_imports():
     for p in (KCONFIGLIB, REPO_ROOT):
         if p not in sys.path:
             sys.path.insert(0, p)
-    # Gotcha 2: env must be in place before Kconfig() parses.
-    for k, v in _ENV.items():
-        os.environ.setdefault(k, v)
 
 
-def _kconfig(profile):
+def _kconfig(label, syms):
+    """
+    One Kconfig parse with `syms` applied. The CALLER owns the env - wrap this in _env(),
+    because kconfiglib expands $(VAR) while Kconfig() is being constructed here.
+    """
     _prepare_imports()
     import kconfiglib
     import installer.build as build
@@ -125,14 +201,14 @@ def _kconfig(profile):
 
         def __init__(self):
             kconfiglib.Kconfig.__init__(self, 'Kconfig')
-            self.config_file = '<harness:%s>' % (profile.name,)
+            self.config_file = '<harness:%s>' % (label,)
 
     with _chdir(INSTALLER):
         kc = _HarnessKConfig()
-        for name, value in profile.syms.items():
+        for name, value in syms.items():
             if name not in kc.syms:
                 raise KeyError("profile %r sets unknown Kconfig symbol %r"
-                               % (profile.name, name))
+                               % (label, name))
             sym = kc.syms[name]
             if isinstance(value, bool):
                 # BOOL/TRISTATE user values are int tri-states: 2 == y, 0 == n
@@ -140,6 +216,44 @@ def _kconfig(profile):
             else:
                 sym.set_value(str(value))
     return kc
+
+
+def _flag(kc, name):
+    """
+    A Kconfig bool as the 'y'/'' shape install.sh:424-426 hands down to each unit. Guarded
+    on existence because the symbol lives behind an `if` in some configurations.
+    """
+    return 'y' if (name in kc.syms and kc.is_enabled(name)) else ''
+
+
+def _render_templates(templates, kc, extra, name_of=None):
+    """
+    Render `templates` with `kc`, keyed by the INSTALLED name. `name_of` maps a template
+    path to that name (per-unit files gain a _<unit> suffix); identity by default.
+    """
+    import installer.build as build
+
+    out = {}
+    with _chdir(REPO_ROOT):
+        for tmpl in templates:
+            try:
+                out[name_of(tmpl) if name_of else tmpl] = build.render_template(
+                    tmpl, kc, extra)
+            except SystemExit as e:
+                # Gotcha 4: render_template exits the process on a Jinja
+                # UndefinedError. Turn it into a normal failure.
+                raise AssertionError(
+                    "render_template(%r) called exit(%s) - almost certainly a Jinja "
+                    "UndefinedError from a template referencing a param this profile "
+                    "does not define. Re-run with logging at ERROR to see which."
+                    % (tmpl, e.code))
+    return out
+
+
+def _per_unit_name(tmpl, unit_name):
+    """config/base/mmu_hardware.cfg -> config/base/mmu_hardware_unit1.cfg (Makefile:151-158)"""
+    root, ext = os.path.splitext(tmpl)
+    return '%s_%s%s' % (root, unit_name, ext)
 
 
 _render_cache = {}
@@ -161,38 +275,94 @@ def render(profile):
     if getattr(profile, 'install_dir', False):
         return load_install_dir(profile)
 
-    key = (profile.name, tuple(sorted(profile.syms.items())),
-           tuple(sorted(profile.extra_params.items())))
+    units = tuple(getattr(profile, 'units', None) or ())
+    # Per-unit syms and env are load-bearing, so they belong in the key. Without them two
+    # multi-unit profiles differing only in a unit's config would collide, and - worse - the
+    # unchanged-boxturtle leak test would pass by returning a cached render.
+    key = (profile.name,
+           tuple(sorted(profile.syms.items())),
+           tuple(sorted(profile.extra_params.items())),
+           tuple((u.name, u.mcu_name, u.index, tuple(sorted(u.syms.items())))
+                 for u in units))
     if key in _render_cache:
         return _render_cache[key]
 
     _prepare_imports()          # must precede `import installer.build` (needs kconfiglib)
-    import installer.build as build
 
-    kc = _kconfig(profile)
-    num_gates = kc.getint('PARAM_NUM_GATES')
-    extra = {
-        'PARAM_TOTAL_NUM_GATES': num_gates,
-        'UNIT_NAME': _ENV['UNIT_NAME'],
-        'MCU_NAME': _ENV['MCU_NAME'],
-    }
-    extra.update(profile.extra_params)
-
-    out = {}
-    with _chdir(REPO_ROOT):
-        for tmpl in BASE_TEMPLATES:
-            try:
-                out[tmpl] = build.render_template(tmpl, kc, extra)
-            except SystemExit as e:
-                # Gotcha 4: render_template exits the process on a Jinja
-                # UndefinedError. Turn it into a normal failure.
-                raise AssertionError(
-                    "render_template(%r) called exit(%s) - almost certainly a Jinja "
-                    "UndefinedError from a template referencing a param this profile "
-                    "does not define. Re-run with logging at ERROR to see which."
-                    % (tmpl, e.code))
+    out = _render_multi_unit(profile, units) if units else _render_single_unit(profile)
     _render_cache[key] = out
     return out
+
+
+def _render_single_unit(profile):
+    with _env(_SINGLE_UNIT_ENV):
+        kc = _kconfig(profile.name, profile.syms)
+
+    # Note we do NOT inject UNIT_NAME/MCU_NAME as jinja params. Production does not
+    # (build.py:478-494 sets only PARAM_TOTAL_NUM_GATES) and they are already Kconfig
+    # symbols here, resolved from the env above. Injecting them would paper over an env that
+    # never reached the parse - exactly the bug _env() exists to prevent.
+    extra = {'PARAM_TOTAL_NUM_GATES': kc.getint('PARAM_NUM_GATES')}
+    extra.update(profile.extra_params)
+    return _render_templates(BASE_TEMPLATES, kc, extra)
+
+
+def _render_multi_unit(profile, units):
+    """
+    Three parses, mirroring install.sh run_kconfig_top (:385-399) + run_kconfig_units
+    (:401-432): one entry-point parse for the shared files, then one per unit.
+
+    The env is not merely different per parse, it changes the Kconfig's SHAPE - whole symbol
+    sets appear and disappear behind `if MULTI_UNIT_ENTRY_POINT` (Kconfig:158-186), which is
+    why this cannot be one flatter syms dict.
+    """
+    names = [u.name for u in units]
+
+    # Entry point. UNIT_NAME is set to the joined list because Kconfig:159-162 defaults
+    # MMU_UNITS from it; a profile that sets MMU_UNITS explicitly (as it should) just
+    # overrides that with the same value.
+    with _env(dict(_SINGLE_UNIT_ENV,
+                   F_MULTI_UNIT='y',
+                   F_MULTI_UNIT_ENTRY_POINT='y',
+                   UNIT_NAME=','.join(names),
+                   MCU_NAME=','.join(names))):
+        entry_kc = _kconfig(profile.name, profile.syms)
+
+    # Printer-level capabilities the units need to know about, read back off the entry parse
+    # exactly as install.sh:418-427 reads them back out of the top-level config file.
+    handed_down = {
+        'HAS_SENSOR_TOOLHEAD': _flag(entry_kc, 'MMU_HAS_SENSOR_TOOLHEAD'),
+        'HAS_SENSOR_EXTRUDER': _flag(entry_kc, 'MMU_HAS_SENSOR_EXTRUDER'),
+        'HAS_SENSOR_TOOLHEAD_CUTTER': _flag(entry_kc, 'MMU_HAS_TOOLHEAD_CUTTER'),
+    }
+
+    unit_kcs = []
+    for unit in units:
+        with _env(dict(_SINGLE_UNIT_ENV, **dict(
+                handed_down,
+                F_MULTI_UNIT='y',
+                F_MULTI_UNIT_ENTRY_POINT='',
+                UNIT_NAME=unit.name,
+                MCU_NAME=unit.mcu_name,
+                UNIT_INDEX=str(unit.index)))):
+            unit_kcs.append(
+                (unit, _kconfig('%s:%s' % (profile.name, unit.name), unit.syms)))
+
+    # The SUM across units, not this unit's count - build.py:481-492. It drives the Tx macro
+    # wrappers, which are printer-wide.
+    extra = {'PARAM_TOTAL_NUM_GATES': sum(kc.getint('PARAM_NUM_GATES')
+                                          for _u, kc in unit_kcs)}
+    extra.update(profile.extra_params)
+
+    rendered = _render_templates(SHARED_TEMPLATES, entry_kc, extra)
+    for unit, kc in unit_kcs:
+        rendered.update(_render_templates(
+            PER_UNIT_TEMPLATES, kc, extra,
+            name_of=lambda tmpl, n=unit.name: _per_unit_name(tmpl, n)))
+
+    # Rebuild in installed-name order: assemble() treats insertion order AS include order,
+    # and Klipper's glob is sorted. Do not rely on the order the loops above happen to give.
+    return {name: rendered[name] for name in sorted(rendered)}
 
 
 # A pin value that renders as ':PD5' means an env var (usually MCU_NAME) was missing

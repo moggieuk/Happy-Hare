@@ -114,16 +114,31 @@ class ConfigWrapper:
 
     def getlists(self, option, default=sentinel, seps=(',',), count=None,
                  parser=str, note_valid=True):
+        # BLANK ELEMENTS ARE PRESERVED, exactly as Klipper's configfile.py does. This used
+        # to filter them out, which quietly broke every SPARSE per-gate list - the way
+        # Happy Hare spells "this gate has no device". The ViViD board fits NFC readers on
+        # gates 0 and 2 only (installer/boards/custom/Kconfig.vvd:57-58), so
+        # mmu_hardware.cfg renders 'nfc_readers: unit1_nfc0, , unit1_nfc2,'. Filtered, that
+        # arrives as 2 entries and mmu_unit.py:208-209 rejects it with "'nfc_readers' must
+        # be empty or a comma separated list of 'num_gates' elements"; preserved, it is 4
+        # and loads - which is what the real printer does. Same applies to
+        # environment_sensors (:171) and filament_heaters (:174).
+        #
+        # An all-whitespace value still yields [] rather than [''], and only the NESTED
+        # level drops empties - both matching Klipper.
         def lparser(value, pos):
+            if len(value.strip()) == 0:
+                parts = []
+            else:
+                parts = [p.strip() for p in value.split(seps[pos])]
             if pos:
                 # nested separators
-                sub = [lparser(p, pos - 1) for p in value.split(seps[-pos])]
-                return tuple(sub)
-            parts = [parser(p.strip()) for p in value.split(seps[0]) if p.strip() != '']
-            if count is not None and len(parts) != count:
+                return tuple([lparser(p, pos - 1) for p in parts if p])
+            res = [parser(p) for p in parts]
+            if count is not None and len(res) != count:
                 raise error("Option '%s' in section '%s' must have %d elements"
                             % (option, self.section, count))
-            return tuple(parts)
+            return tuple(res)
 
         def fcparser(section, option):
             return lparser(self.fileconfig.get(section, option), len(seps) - 1)

@@ -12,6 +12,7 @@ import os, shutil, logging, tempfile, contextlib
 
 from . import cfg as cfg_mod
 from . import profiles as profiles_mod
+from . import selector as selector_mod
 from .root import install
 
 # extras/mmu/mmu_constants.py:69 - bootup is scheduled this far out
@@ -60,6 +61,23 @@ max_temp: 300
 [tmc2209 extruder]
 uart_pin: mcu:PA6
 run_current: 0.5
+
+# A cabinet-wide LED chain living in the USER's printer.cfg rather than in any Happy Hare
+# template. cfg.assemble() only ever sees HH's own files plus this stub, so a profile whose
+# exit_leds/status_leds point at an external chain (ERCF on ERB, for instance:
+# 'neopixel:cabinet_leds (1-9)') has nothing to resolve against.
+#
+# It fails LATE and confusingly without this: configfile.py:148-151 hands back a wrapper
+# for a missing section and neopixel.py:20 defaults chain_count to 1, so load_object
+# SUCCEEDS with a 1-LED chain and the error surfaces later as
+# "MMU LED (with index 2) on segment exit isn't available" (mmu/unit/mmu_leds.py:107-110).
+#
+# 12 is the smallest count that covers the shipped (1-9) exit range plus a (11) status LED.
+# Note mmu_leds.py:102-103 additionally requires num_leds % num_gates == 0, so a profile
+# using this chain must have a gate count that divides its exit range.
+[neopixel cabinet_leds]
+pin: mcu:PA10
+chain_count: 12
 """
 
 
@@ -361,6 +379,10 @@ class Session:
         owned = [name for name in self.sensors()
                  if name.split(':')[-1] not in getattr(self, '_spring_at_rest', set())
                  and model.position(name) is not None]
+        # Which gates each unit owns, so a unit-qualified sensor is not answered from another
+        # unit's filament - see FilamentPath.gates_visible_to.
+        model.units = {u.name: (u.first_gate, u.num_gates)
+                       for u in self.mmu.mmu_machine.units}
         model.bind(owned, self._set_sensor_state)
         self.printer.harness_filament = model
         mq = self.printer.lookup_object('motion_queuing', None)
@@ -369,6 +391,149 @@ class Session:
         if self._encoders():
             model.observers.append(self._on_encoder_travel)
         return model
+
+    def install_macro_effects(self):
+        """
+        Give the shipped macros whose MOTION Happy Hare measures a real effect.
+
+        Macro bodies do not run in the harness (see klippy_root/extras/gcode_macro.py), which
+        is fine for choreography - a recorded call is all a park or a purge needs to be
+        asserted. Tip forming is different: HH brackets the macro with encoder and extruder-step
+        readings and refuses the unload if nothing moved
+        (mmu_filament_movement.py:2477-2497, :2559-2568):
+
+            "No encoder movement: Concluding filament is stuck in extruder"
+
+        So on a machine WITH AN ENCODER a no-op tip form reads as a jam and MMU_UNLOAD always
+        fails. BoxTurtle never showed this because can_use_encoder() is False there.
+        """
+        effects = getattr(self.printer, 'harness_macro_effects', None)
+        if effects is None:
+            effects = self.printer.harness_macro_effects = {}
+        effects.setdefault('_MMU_FORM_TIP', self._effect_form_tip)
+        return effects
+
+    def _effect_form_tip(self, macro, gcmd):
+        """
+        Retract the extruder as the shipped _MMU_FORM_TIP would, and move the filament with it.
+
+        DISTANCE is cooling_tube_position + cooling_tube_length, which the shipped config itself
+        describes as "the top of the heater" (config/base/mmu_macro_vars.cfg:476) - i.e. how far
+        back the tip ends up. Both are real values read from the machine's own config, so this
+        tracks the machine rather than being a number chosen here. It approximates the shipped
+        macro's NET retraction; it does not reimplement its ramming/cooling/skinnydip sequence.
+
+        The variables live on _MMU_FORM_TIP_VARS, not on _MMU_FORM_TIP itself, with a fallback
+        to the calling macro so a machine that keeps them elsewhere still works.
+
+        WHAT MATTERS IS CONSISTENCY, not matching any particular printer. HH derives park_pos
+        from the extruder movement it observes (park_pos = stepper_movement +
+        residual_filament + toolchange_retract), exactly as it would on real hardware - so as
+        long as the extruder and the filament model move by the SAME amount, HH's conclusion is
+        self-consistent with the machine the harness is presenting.
+
+        Both halves are done explicitly rather than through a trapq append, because the model's
+        move observer is filtered to the gear stepper and tip forming is an extruder move; see
+        the CANDIDATE IMPROVEMENT note on _on_manual_move.
+        """
+        vars_macro = self.printer.lookup_object('gcode_macro %s_VARS' % macro.alias, None)
+        variables = dict(getattr(macro, 'variables', {}) or {})
+        variables.update(getattr(vars_macro, 'variables', {}) or {})
+        distance = (float(variables.get('cooling_tube_position', 0.0) or 0.0)
+                    + float(variables.get('cooling_tube_length', 0.0) or 0.0))
+        if distance <= 0:
+            logging.debug('harness: no tip-forming distance for %s; leaving it a no-op',
+                          macro.alias)
+            return
+
+        toolhead = self.printer.lookup_object('toolhead', None)
+        extruder = toolhead.get_extruder() if toolhead is not None else None
+        stepper = getattr(getattr(extruder, 'extruder_stepper', None), 'stepper', None)
+        if stepper is not None:
+            # Retract: HH reads (initial - final) * step_dist, so final must be LOWER
+            stepper.set_position([stepper.get_commanded_position() - distance, 0., 0., 0.])
+
+        model = getattr(self.printer, 'harness_filament', None)
+        gate = self.mmu.gate_selected
+        if model is not None and gate is not None and gate >= 0:
+            model.advance(gate, -distance, 'tip forming')
+
+    def calibrate(self):
+        """
+        Seed the calibration a PHYSICAL-selector machine needs before it can select a gate and
+        load. Returns {unit name: {what was seeded}}.
+
+        NOT called from boot(), deliberately: uncalibrated is a real state HH has to cope with,
+        tradrack's existing tests assert exactly that, and quietly calibrating everything would
+        erase the distinction. Physical-selector tests and the console call this explicitly.
+
+        Two steps, both only where the machine actually requires them:
+
+        SELECTOR OFFSETS, from HH's own published quick-method formula (see
+        SelectorAxis.nominal_gate_offsets), so no geometry is invented here. Skipped for a
+        self-calibrating selector - IndexedSelector marks itself at handle_ready.
+
+        BOWDEN LENGTH, but only for a unit with require_bowden_move (Type-A designs with a
+        shared gear); a BoxTurtle-style unit is marked calibrated automatically
+        (mmu_calibrator.py:91-93), which is why no existing test needed this. The length comes
+        from the HARNESS'S OWN filament geometry rather than from config: the model places the
+        gate at 0 and the extruder entry at layout['extruder_entry'], so that distance IS the
+        bowden length here, and seeding anything else would leave HH's idea of the machine
+        disagreeing with the machine.
+
+        Why seeding rather than running HH's MMU_CALIBRATE_SELECTOR AUTO=1, which would be the
+        better answer: see the KNOWN LIMIT note at the top of selector.py. Bowden seeding goes
+        through HH's public update_bowden_length(), which persists and marks calibrated itself.
+        """
+        from extras.mmu.mmu_constants import (CALIBRATED_ENCODER, CALIBRATED_SELECTOR,
+                                              VARS_MMU_SELECTOR_OFFSETS)
+
+        model = self.filament()
+        applied = {}
+        for axis in (getattr(self.printer, 'harness_selectors', None) or ()):
+            unit = axis.unit
+            done = {}
+
+            offsets = axis.nominal_gate_offsets()
+            if hasattr(axis.selector, 'selector_offsets') and offsets:
+                axis.selector.selector_offsets = list(offsets)
+                axis.selector.var_manager.set(VARS_MMU_SELECTOR_OFFSETS, list(offsets),
+                                              namespace=unit.name)
+                axis.selector.calibrator.mark_calibrated(CALIBRATED_SELECTOR)
+                done['selector_offsets'] = list(offsets)
+
+            if getattr(unit, 'require_bowden_move', False):
+                length = model.layout['extruder_entry'] - model.layout.get('mmu_exit', 0.0)
+                unit.calibrator.update_bowden_length(length, gate=unit.first_gate,
+                                                     reason='seeded by the test harness')
+                done['bowden_length'] = length
+
+            # GEAR ROTATION DISTANCE: seeded with the value the harness is ALREADY using.
+            # MmuCalibrator caches the config-derived distances at handle_ready
+            # (mmu_calibrator.py:110-111, straight off stepper.get_rotation_distance()), and
+            # every gear move in the harness is generated from them - so calibrating would just
+            # re-measure the number we started from. Writing it back through HH's own setter
+            # keeps the persisted vars honest and silences "gate N not calibrated! Using default
+            # rotation distance" on every load. Setting rd to its current value leaves the
+            # bowden adjustment inside update_gear_rd a no-op, so ordering after the bowden
+            # seeding above is safe.
+            defaults = getattr(unit.calibrator, '_default_rotation_distances', None)
+            if defaults:
+                unit.calibrator.update_gear_rd(defaults[0], gate=unit.first_gate)
+                done['gear_rotation_distance'] = defaults[0]
+
+            # ENCODER: marked, not measured. MMU_CALIBRATE_ENCODER exists to discover the real
+            # resolution of real hardware; here the encoder pulses are GENERATED from
+            # mmu_encoder.resolution (bootstrap._on_encoder_travel divides travel by it), so
+            # the configured value is true by construction and measuring it would only confirm
+            # arithmetic. Nothing to seed, just a status bit.
+            if unit.has_encoder():
+                unit.calibrator.mark_calibrated(CALIBRATED_ENCODER)
+                done['encoder'] = 'marked (resolution is config-true in the harness)'
+
+            if done:
+                applied[unit.name] = done
+        return applied
 
     def _encoders(self):
         """(MmuEncoder, MCU_counter) for every encoder on this machine."""
@@ -407,11 +572,29 @@ class Session:
 
     def _on_manual_move(self, trapq, distance):
         """
-        Advance the filament model for a plain (non-homing) gear move.
+        Advance the filament model for a plain (non-homing) move.
 
-        Filtered to the SELECTED gate's gear stepper trapq on purpose: a
-        motor="gear+extruder" move appends to both the gear and the extruder trapq for
-        one physical filament movement, and counting both would double the distance.
+        Filtered to the trapq of whichever stepper is currently DRIVING the filament - HH's own
+        notion (MmuDrive.driving_stepper), and exactly one stepper drives in each of the four
+        sync modes (mmu_constants.py:169-172):
+
+            gear / gear+extruder  -> the gear stepper drives
+            extruder / synced     -> the extruder stepper drives
+
+        A gear+extruder move appends to BOTH trapqs for ONE physical movement, so something has
+        to pick just one; keying off the DRIVER counts it exactly once without having to reason
+        about append order, and without dropping the two modes where the gear is not the driver.
+
+        This used to watch the gear stepper unconditionally, which silently discarded every
+        motor="extruder" and motor="synced" move - the model just did not follow the filament.
+        Invisible on a machine with no encoder; on one with an encoder it means no pulses are
+        generated and HH concludes the filament is stuck. test_mmu_motion's
+        TestEveryDriveModeMovesFilament pins all four modes to the exact distance, so a
+        regression to either the dropped-move or the double-counted kind fails loudly.
+
+        Plain SELECTOR moves need nothing here: the carriage is the stepper's own commanded
+        position (see SelectorAxis.carriage) and no filament travels with it. A selector is
+        never the driving stepper, so they fall out for free.
         """
         model = getattr(self.printer, 'harness_filament', None)
         if model is None:
@@ -419,10 +602,26 @@ class Session:
         gate = self.mmu.gate_selected
         if gate is None or gate < 0:
             return
-        stepper = self._gear_stepper(gate)
+        stepper = self._driving_stepper(gate)
         if stepper is None or getattr(stepper, 'manual_trapq', None) is not trapq:
             return
         model.advance(gate, distance, 'move')
+
+    def _driving_stepper(self, gate):
+        """
+        The MmuStepper currently moving this gate's filament, through HH's own public accessors
+        (mmu.drive(gate) -> MmuDrive.driving_stepper()).
+
+        Falls back to the gear stepper if either is missing, so the harness degrades to its
+        older behaviour against a checkout that predates them rather than advancing nothing.
+        """
+        drive = self.mmu.drive(gate) if hasattr(self.mmu, 'drive') else None
+        driving = getattr(drive, 'driving_stepper', None)
+        if callable(driving):
+            stepper = driving()
+            if stepper is not None:
+                return stepper
+        return self._gear_stepper(gate)
 
     def _gear_stepper(self, gate):
         """
@@ -527,6 +726,14 @@ class Session:
                 self.build()
             self.connect()
             self.ready()
+            # Selector endstop geometry. Published here rather than from filament(), which is
+            # LAZY - nothing builds the filament model until a test asks for it, and a
+            # selector homing move can happen before that (MMU_HOME needs no filament). It is
+            # also a genuinely separate axis, so hanging it off the filament model would be
+            # the wrong dependency even if the timing worked. Empty list on a VirtualSelector
+            # machine, so nothing changes for profiles that have no selector.
+            self.printer.harness_selectors = selector_mod.axes_for(self.printer)
+            self.install_macro_effects()
             self.reactor.advance(BOOT_DELAY + extra)
             self._settle_nfc_init(extra)
             self._booted = True

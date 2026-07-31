@@ -171,7 +171,12 @@ class PrinterPins:
 
     def setup_pin(self, pin_type, pin_desc):
         can_invert = pin_type in ('stepper', 'endstop', 'digital_out', 'pwm')
-        can_pullup = pin_type in ('endstop', 'adc')
+        # 'counter' belongs here: real Klipper's MCU_counter looks its pin up with an
+        # explicit can_pullup=True (klippy/extras/pulse_counter.py), and boards do ship a
+        # pulled-up encoder pin - ERB v1's is '^$(MCU_NAME):gpio22'
+        # (installer/boards/Kconfig.erb_1:66-67). Without it, every ERCF-family profile
+        # dies at config load with "Can not pullup/pulldown pin".
+        can_pullup = pin_type in ('endstop', 'adc', 'counter')
         pin_params = self.parse_pin(pin_desc, can_invert, can_pullup)
         pin_params['desc'] = pin_desc.strip()
         pin_params['type'] = pin_type

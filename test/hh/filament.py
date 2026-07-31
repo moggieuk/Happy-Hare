@@ -58,6 +58,18 @@ DEFAULT_LAYOUT = {
     # COVERAGE decides whether a move turns the encoder wheel - see travel_over().
     'mmu_encoder': 20.0,
     'extruder_entry': 700.0,
+    # Happy Hare registers the extruder-entry switch as plain 'extruder' (it arrives as
+    # 'default:extruder'), so WITHOUT this alias position() returns None for it, bind() leaves
+    # it out, and the sensor is never driven by the model - it just reads empty forever. That
+    # reads to HH as a contradiction the moment the toolhead sensor trips:
+    #
+    #   "Toolhead or extruder sensor failure. Extruder sensor reports no filament but
+    #    toolhead sensor is still triggered."
+    #
+    # Same point on the path as extruder_entry, which is why this is an alias rather than a
+    # second position - the same idiom as mmu_gate/mmu_exit above. Invisible until a profile
+    # set MMU_HAS_SENSOR_EXTRUDER; none did before ercf_vvd.
+    'extruder': 700.0,
     'toolhead': 740.0,
     # The buffer's COMPRESSION sensor is what a load homes to when
     # extruder_homing_endstop is filament_compression (BoxTurtle's default): the MMU
@@ -108,6 +120,9 @@ class FilamentPath:
         self.tip = [TIP_ABSENT] * num_gates
         # -inf: filament runs back to an attached spool. exhaust() makes it finite.
         self.tail = [float('-inf')] * num_gates
+        # {unit name: (first_gate, num_gates)}, filled in by the Session. Empty means
+        # single-unit, in which case gates_visible_to() falls back to every gate as before.
+        self.units = {}
         self.tags = {}                  # gate -> Tag
         self.tag_window = tag_window
         self._set_sensor = set_sensor
@@ -183,6 +198,32 @@ class FilamentPath:
             return int(tail[1])
         return None
 
+    def gates_visible_to(self, name):
+        """
+        Which gates a sensor can possibly see.
+
+        Three cases, narrowest first:
+
+        1. A per-gate name (mmu_exit_7) sees that gate alone.
+        2. A UNIT-QUALIFIED name (unit0:mmu_shared_exit) sees only that unit's gates. Without
+           this a unit-scoped sensor fell through to "every gate on the machine", so on a
+           multi-unit printer unit0's shared-exit switch read TRIGGERED whenever unit1 had
+           filament loaded - while every one of unit0's own gates was empty. Harmless on a
+           one-unit machine, which is why it went unnoticed; `units` is populated by the
+           Session and empty for a single-unit session, so behaviour there is unchanged.
+        3. Anything else (default:toolhead, and the extruder/compression sensors) is genuinely
+           printer-wide and sees every gate.
+        """
+        gate = self.gate_of(name)
+        if gate is not None:
+            return (gate,)
+        unit = name.split(':')[0] if ':' in name else None
+        span = self.units.get(unit)
+        if span is not None:
+            first, count = span
+            return range(first, first + count)
+        return range(self.num_gates)
+
     def triggered(self, name, gate=None):
         """Would this sensor read triggered right now?"""
         position = self.position(name)
@@ -192,9 +233,9 @@ class FilamentPath:
         if target_gate is None:
             target_gate = gate
         if target_gate is None:
-            # A shared sensor sees any gate whose filament spans it
+            # A shared sensor sees any gate IT CAN SEE whose filament spans it
             return any(self.tail[g] <= position <= self.tip[g]
-                       for g in range(self.num_gates))
+                       for g in self.gates_visible_to(name))
         return self.tail[target_gate] <= position <= self.tip[target_gate]
 
     def tag_detected(self, gate):

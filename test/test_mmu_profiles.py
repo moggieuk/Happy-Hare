@@ -5,17 +5,30 @@
 # [% if %] guard or a missing template section shows up here rather than on a user's
 # printer.
 #
-# There are 19 shipped machine types. Three boot in the harness today:
+# There are 19 shipped machine types. Five boot in the harness today:
 #
 #   boxturtle  4 gates,  VirtualSelector       - Type B, the default everywhere else
 #   tradrack  10 gates,  LinearServoSelector   - a PHYSICAL selector, so the suite is not
 #                                                shaped around one selector type
 #   emu        5 gates,  VirtualSelector       - the only shipped profile with a
 #                                                PROPORTIONAL (analog) buffer sensor
+#   ercf 1.1   9 gates,  LinearServoSelector   - unit0 of ercf_vvd; encoder gate homing
+#   vvd 1.0    4 gates,  IndexedSelector       - unit1 of ercf_vvd; a third selector class
 #
-# The other 16 need harness work, all mechanical rather than deep - see the coverage map
-# in test/README.md. In short: 13 need the machine x board pin selection, 2 need a
-# heater_generic fake, 1 needs an unselected choice param.
+# The last two arrive together as `ercf_vvd`, the only MULTI-UNIT profile (13 gates across
+# two units). Getting them in closed all three of the buckets this comment used to list as
+# blockers, because a real user's config supplied exactly what was missing:
+#
+#   "13 need the machine x board pin selection" - a board choice is all that was needed;
+#       ercf_vvd carries BOARD_TYPE_ERB_1 and BOARD_TYPE_VVD_1_0.
+#   "2 need a heater_generic fake" - added (klippy_root/extras/heater_generic.py); ViViD
+#       was one of the two, KMS is the other and should now boot as well.
+#   "1 needs an unselected choice param" - the MMU serial device, whose symbol NAME comes
+#       from `ls /dev/serial/by-id/*` (Kconfig:112-116) and so does not exist on a host with
+#       no MMU attached. The answer is to omit it: the choice falls back to ..._OTHER and
+#       the harness fakes every [mcu] anyway.
+#
+# The remaining machines should mostly be a board selection away; nobody has tried.
 #
 #   ./venv/bin/python -m unittest test.test_mmu_profiles
 #
@@ -28,12 +41,20 @@ from test.hh import session
 
 logging.getLogger().setLevel(logging.CRITICAL)
 
-# profile -> (gates, selector class name)
+# profile -> (gates, selector class name of the FIRST unit)
 BOOTABLE = {
     'boxturtle': (4, 'VirtualSelector'),
     'tradrack': (10, 'LinearServoSelector'),
     'emu': (5, 'VirtualSelector'),
+    # The only multi-unit entry. 13 is a CROSS-UNIT SUM (unit0 9 + unit1 4), not one unit's
+    # count, and the selector named here is unit0's - unit1 is an IndexedSelector and gets
+    # its own assertions in TestMultiUnitMachine below.
+    'ercf_vvd': (13, 'LinearServoSelector'),
 }
+
+# Selector classes reached only through a non-first unit, so the BOOTABLE table above cannot
+# name them. Keep in step with TestSelectorCoverage.
+EXERCISED_BY_LATER_UNITS = {'IndexedSelector'}
 
 
 class TestEveryBootableProfile(unittest.TestCase):
@@ -72,6 +93,10 @@ class TestEveryBootableProfile(unittest.TestCase):
     def test_emu(self):
         self._check('emu')
 
+    def test_ercf_vvd(self):
+        """Two units, two selector classes, 13 gates - see TestMultiUnitMachine."""
+        self._check('ercf_vvd')
+
     def test_each_profile_reaches_a_determinate_filament_state(self):
         """
         A powered-on machine with no filament must know it is unloaded. Anything else and
@@ -89,13 +114,113 @@ class TestEveryBootableProfile(unittest.TestCase):
         for name, (gates, _selector) in BOOTABLE.items():
             with self.subTest(profile=name):
                 parser = cfg.assemble(cfg.render(profiles.get(name)))
-                unit = dict(parser.items('mmu_unit unit0'))
-                self.assertEqual(int(unit['num_gates']), gates)
+                # SUMMED over units, so the multi-unit entry is checked against the same
+                # total HH reports as num_gates rather than against unit0 alone.
+                rendered = sum(int(dict(parser.items(section))['num_gates'])
+                               for section in parser.sections()
+                               if section.startswith('mmu_unit '))
+                self.assertEqual(rendered, gates)
+
+
+class TestMultiUnitMachine(unittest.TestCase):
+    """
+    `ercf_vvd` is the only profile with two units, so everything here is unreachable
+    elsewhere: contiguous gate numbering ACROSS units, per-unit selector classes and homing
+    strategies, and a sparse per-gate device list.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.hh = session('ercf_vvd')
+        cls.hh.boot()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.hh.close()
+
+    def test_boots_clean(self):
+        self.assertTrue(self.hh.fired('mmu:bootup'))
+        self.assertEqual(self.hh.errors, [])
+
+    def test_gates_are_numbered_contiguously_across_units(self):
+        """
+        unit1 owns gates 9-12, not 0-3. Every per-gate lookup in HH goes through
+        mmu_unit(gate) + local_gate(gate), so an off-by-one here would silently address the
+        wrong unit's hardware.
+        """
+        units = self.hh.mmu.mmu_machine.units
+        self.assertEqual([(u.name, u.first_gate, u.num_gates) for u in units],
+                         [('unit0', 0, 9), ('unit1', 9, 4)])
+        self.assertEqual(self.hh.mmu.num_gates, 13)
+        for gate, expected in ((0, 'unit0'), (8, 'unit0'), (9, 'unit1'), (12, 'unit1')):
+            self.assertEqual(self.hh.mmu.mmu_unit(gate).name, expected,
+                             'gate %d resolved to the wrong unit' % gate)
+
+    def test_each_unit_keeps_its_own_selector_and_homing_strategy(self):
+        """
+        The units disagree on both, which is the point: a printer-wide assumption about
+        either would pass on every other profile and fail here.
+        """
+        by_name = {u.name: u for u in self.hh.mmu.mmu_machine.units}
+        self.assertEqual(type(by_name['unit0'].selector).__name__, 'LinearServoSelector')
+        self.assertEqual(type(by_name['unit1'].selector).__name__, 'IndexedSelector')
+        self.assertEqual(by_name['unit0'].p.gate_homing_endstop, 'encoder')
+        self.assertEqual(by_name['unit1'].p.gate_homing_endstop, 'mmu_exit')
+
+    def test_indexed_selector_self_calibrates_and_self_homes(self):
+        """
+        IndexedSelector marks itself homed and calibrated at handle_ready
+        (mmu_indexed_selector.py:137-140) - "design doesn't need homing or calibration".
+        Its LinearServoSelector neighbour does NOT, so this asserts the two coexist.
+        """
+        by_name = {u.name: u for u in self.hh.mmu.mmu_machine.units}
+        self.assertTrue(by_name['unit1'].selector.is_homed)
+        self.assertFalse(by_name['unit0'].selector.is_homed,
+                         'unit0 is uncalibrated in the harness, so it must NOT claim homed')
+
+    def test_sparse_per_gate_nfc_readers_survive_config_load(self):
+        """
+        THE regression test for blank-preserving getlist. The ViViD fits readers on gates 0
+        and 2 only (boards/custom/Kconfig.vvd:57-58), so nfc_readers renders as
+        'unit1_nfc0, , unit1_nfc2,'. Drop the blanks and it arrives as 2 entries where
+        mmu_unit.py:208-209 demands 0 or num_gates, and the whole machine fails to load.
+        """
+        from test.hh import cfg, profiles
+        parser = cfg.assemble(cfg.render(profiles.get('ercf_vvd')))
+        raw = dict(parser.items('mmu_unit unit1'))['nfc_readers']
+        self.assertEqual([p.strip() for p in raw.split(',')],
+                         ['unit1_nfc0', '', 'unit1_nfc2', ''])
+
+        unit1 = {u.name: u for u in self.hh.mmu.mmu_machine.units}['unit1']
+        self.assertEqual(len(unit1.nfc_readers), 4)
+        self.assertEqual([bool(r) for r in unit1.nfc_readers],
+                         [True, False, True, False])
+        # ...and the common reader coexists with them
+        self.assertEqual(unit1.nfc_reader, 'unit1_nfc')
+
+    def test_filament_heater_resolves(self):
+        """
+        ViViD selects MMU_HAS_HEATER, so [mmu_machine] carries filament_heater and
+        mmu_unit.py:145-162 resolves it with the SENTINEL default - a missing
+        heater_generic fake is a hard config error, not a skipped section.
+        """
+        unit1 = {u.name: u for u in self.hh.mmu.mmu_machine.units}['unit1']
+        self.assertEqual(unit1.filament_heater, 'heater_generic unit1_heater')
+        heater = self.hh.printer.lookup_object(unit1.filament_heater)
+        self.assertIn('temperature', heater.get_status(0))
+
+    def test_encoder_resolution_follows_the_binky_12_wheel(self):
+        """
+        Pinned in the profile rather than derived: ERCF 1.1 + MOD_BINKY now defaults to
+        Binky-8 (1.469), but this machine has a Binky-12 (0.979).
+        """
+        encoder = self.hh.printer.lookup_object('mmu_encoder unit0')
+        self.assertAlmostEqual(encoder.resolution, 0.979, places=4)
 
 
 class TestSelectorCoverage(unittest.TestCase):
     """
-    9 selector classes exist; 2 are reachable through a bootable profile. Recorded as a
+    9 selector classes exist; 3 are reachable through a bootable profile. Recorded as a
     test so the gap is visible in the suite rather than only in a document.
     """
 
@@ -104,10 +229,13 @@ class TestSelectorCoverage(unittest.TestCase):
         self.assertGreaterEqual(len(SELECTOR_REGISTRY), 8)
 
     def test_which_selectors_are_actually_exercised(self):
-        exercised = {selector for _gates, selector in BOOTABLE.values()}
-        self.assertEqual(exercised, {'VirtualSelector', 'LinearServoSelector'},
-                         'update this and the README coverage map when a profile adds '
-                         'another selector type')
+        exercised = ({selector for _gates, selector in BOOTABLE.values()}
+                     | EXERCISED_BY_LATER_UNITS)
+        self.assertEqual(
+            exercised,
+            {'VirtualSelector', 'LinearServoSelector', 'IndexedSelector'},
+            'update this and the README coverage map when a profile adds another selector '
+            'type')
 
 
 class TestProportionalBufferSensor(unittest.TestCase):

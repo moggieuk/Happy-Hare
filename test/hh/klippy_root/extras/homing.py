@@ -170,6 +170,12 @@ class HomingMove:
         reactor = printer.get_reactor()
         model = getattr(printer, 'harness_filament', None)
 
+        # A SELECTOR homing move, or a filament one? MmuGenericRail.home() passes the
+        # MmuStepper it is homing as our 'toolhead', so the selector axes published by the
+        # Session can be matched on identity. Non-None means this move is on the selector
+        # carriage and has nothing to do with any gate's filament.
+        axis = self._selector_axis()
+
         start_pos = toolhead.get_position()
         start_axis = start_pos[0]
         target_axis = movepos[0]
@@ -190,13 +196,20 @@ class HomingMove:
             for stepper in endstop.get_steppers()
         ]
 
-        winner, travel = self._resolve(model, leaves, delta, triggered)
+        if axis is not None:
+            winner, travel = self._resolve_selector(axis, leaves, start_axis, delta)
+        else:
+            winner, travel = self._resolve(model, leaves, delta, triggered)
 
         if winner is None:
             # Full movement with no trigger. Move the model the whole way, leave the
             # axis at the target, then fail the way real Klipper does so HH's own
             # retry/error paths run.
-            if model is not None:
+            #
+            # A selector move advances no filament: the carriage is a different axis, and
+            # feeding its displacement into the gate model would push a gate's filament by
+            # the selector's travel. Only the axis position matters here.
+            if model is not None and axis is None:
                 model.advance(self._gate(), delta,
                               'homing MISS [%s]' % ','.join(n for _e, n in leaves))
             toolhead.set_position([target_axis, 0., 0., 0.])
@@ -208,7 +221,7 @@ class HomingMove:
 
         endstop, name = winner
         signed = travel if delta > 0 else -travel
-        if model is not None:
+        if model is not None and axis is None:      # selector moves carry no filament
             model.advance(self._gate(), signed, 'homing -> %s' % name)
         halt_axis = start_axis + signed
         toolhead.set_position([halt_axis, 0., 0., 0.])
@@ -252,6 +265,39 @@ class HomingMove:
             if distance is not None:
                 candidates.append((distance, endstop, name))
 
+        if not candidates:
+            return None, None
+        candidates.sort(key=lambda c: c[0])
+        distance, endstop, name = candidates[0]
+        return (endstop, name), distance
+
+    def _selector_axis(self):
+        """
+        The SelectorAxis whose stepper we are homing, or None for a filament-path move.
+
+        Matched on identity against printer.harness_selectors (published by the Session,
+        empty for a VirtualSelector machine) so a BoxTurtle session behaves exactly as it did
+        before selector support existed.
+        """
+        for candidate in (getattr(self.printer, 'harness_selectors', None) or ()):
+            if candidate.stepper is self.toolhead:
+                return candidate
+        return None
+
+    def _resolve_selector(self, axis, leaves, start, delta):
+        """
+        Pick the selector endstop that trips first.
+
+        Independent of gate_selected on purpose - unlike the filament path. Selecting a gate
+        is precisely what sets gate_selected, so the selector must be drivable before any
+        gate is chosen; keying off it (as _resolve does) is what made every physical-selector
+        homing move bail out with "No trigger".
+        """
+        candidates = []
+        for endstop, name in leaves:
+            distance = axis.trip_distance(name, start, delta)
+            if distance is not None:
+                candidates.append((distance, endstop, name))
         if not candidates:
             return None, None
         candidates.sort(key=lambda c: c[0])

@@ -69,17 +69,17 @@ make BOOTSTRAP_PY=python3.9 VENV=venv39 test
 
 </details>
 
-`make test` offers everything — currently **563 tests, about fourteen minutes** on a warm
+`make test` offers everything — currently **620 tests, about six minutes** on a warm
 laptop. Expect to see:
 
 ```
-OK (skipped=1, expected failures=3)
+OK (skipped=1, expected failures=4)
 ```
 
 `skipped` and `expected failures` are normal and explained in §6. Anything else — `FAILED
 (failures=…)` or `(errors=…)` — is a genuine problem.
 
-Fourteen minutes is too long to sit through on every change, which is why `make test` opens a
+Six minutes is still too long to sit through on every change, which is why `make test` opens a
 file picker first rather than starting straight away.
 
 ### Running less than everything
@@ -88,19 +88,19 @@ file picker first rather than starting straight away.
 suite exactly as it always did — but untick the expensive files and you get a focused run:
 
 ```
-Happy Hare tests - 563 tests in 22 files                    times from last run
+Happy Hare tests - 620 tests in 23 files                    times from last run
 
    1 [x] installer.test_build           1      0.0s
    2 [x] test_mmu_adc_compat           14      0.0s
    3 [x] test_mmu_bootup               31       36s
    …
-   6 [x] test_mmu_console              63      152s
+   6 [x] test_mmu_console              66      134s
    …
   13 [x] test_mmu_nfc                  17      187s
    …
   22 [x] test_mmu_toolchange           20      5.4s
 
-  selected: 22 files - 563 tests - ~14m27s last time
+  selected: 23 files - 620 tests - ~6m00s last time
 
   [Enter] run    1 3 5-8 toggle    a all    n none    v invert
   +TEXT / -TEXT tick by name    p previous selection    s sort by time    q quit
@@ -111,7 +111,7 @@ The right-hand column is how long each file took **on your machine, last run**, 
 column to look at when deciding what to drop, because the cost is wildly uneven. From a real
 full run: `test_mmu_nfc` took 187 s for 17 tests and `test_mmu_console` 152 s for 63, while
 six files — including `test_mmu_tag_parser`'s 34 tests — came in under a tenth of a second
-between them. Six of the twenty-two files account for over four fifths of the run. The times
+between them. A handful of the twenty-three files account for most of the run. The times
 fill in after your first run, `s` sorts by them, and the footer estimates what the current
 selection will cost.
 
@@ -205,8 +205,11 @@ log and leaves the status alone. Useful meta-commands beyond `/help`:
 
 ### Multi-unit
 
-Multi-unit configs work. Point `--profile` at a multi-unit install and the harness builds
-every unit, with gates numbered contiguously across them (`unit0` 0-3, `unit1` 4-7). Sensors
+Multi-unit configs work, and `ercf_vvd` — **the console default** — is one: a real two-unit
+machine, ERCF 1.1sb (9 gates, `LinearServoSelector`, encoder) plus ViViD 1.0 (4 gates,
+`IndexedSelector`), 13 gates in total. You can also point `--profile` at a multi-unit install
+directory. Either way the harness builds every unit, with gates numbered contiguously across
+them (here `unit0` 0-8, `unit1` 9-12). Sensors
 are qualified per unit (`unit0:mmu_shared_exit`), so the header keeps the prefix and `/sensor`
 needs the qualified name — a bare name that matches more than one unit is rejected rather
 than silently resolved. The filament view groups gates under their unit, and the LED view
@@ -221,7 +224,8 @@ timeout is 20 seconds.
 Useful flags — `make console ARGS='...'`:
 
 ```bash
---profile encoder              # or tradrack, emu, nfc_single, nfc_spoolman, ...
+--profile boxturtle            # or tradrack, emu, encoder, nfc_single, nfc_spoolman, ...
+                               # (default is ercf_vvd, a real 2-unit machine)
 --profile /path/to/config      # your own installed config - see below
 --header machine,sensors,filament,gates,leds     # or 'off'
 --inline-header                # reprint above each prompt instead of pinning it
@@ -297,8 +301,11 @@ leaves the gate-0 gear pins empty and fails with `Invalid pin description ''`.
 1. **Macro bodies do not run.** The fake `gcode_macro` records a call and never renders the
    body, so `T1`, the print start/end and the park/cut/purge sequences produce **silence**.
    Use `MMU_CHANGE_TOOL TOOL=1`. The console notices a bare `T<n>` and says so.
-2. **Only `boxturtle`, `encoder` and the `nfc_*` profiles can move filament.** `tradrack`
-   and `emu` load config fine but physical-selector homing raises `NotImplementedError`.
+2. **A physical selector must be calibrated and homed before it can select a gate.** The
+   console does that for you at startup (`_prepare_selectors`); in a test, call
+   `hh.calibrate()` then `MMU_HOME UNIT=<n>`. Skip it and every selection fails with
+   *"Selector is not clibrated"* (sic). Calibration is **seeded**, not measured — see §
+   "Physical selectors" below for why, and what that does not cover.
 3. **Pause is sticky.** After a failed operation the MMU sits paused and later commands
    refuse. The prompt shows `PAUSED`; recover with `MMU_UNLOCK` / `MMU_RECOVER`.
 
@@ -370,9 +377,10 @@ Green is not the same as covered. Roughly where things stand:
 | Endless spool and runout | **good** | including the clog-vs-runout decision |
 | LEDs | **good** | effects and overlays; not the neopixel protocol |
 | Sync feedback / buffer sensors | **partial** | EMU's analog sensor boots; the tension logic has a known bug |
-| Physical selector homing | **thin** | Tradrack boots, but `home_unit` is barely exercised |
-| Calibration, espooler, FlowGuard | **none** | |
-| Multi-unit machines | **none** | needs per-unit Kconfig the harness bypasses |
+| Physical selector homing and selection | **good** | both selector families home, select and move filament — `test_mmu_selector.py` |
+| Calibration | **thin** | seeded, not exercised: `MMU_CALIBRATE_*` is never run (see "Physical selectors") |
+| Espooler, FlowGuard | **none** | |
+| Multi-unit machines | **good** | `ercf_vvd` renders, boots and loads on both units |
 | Klipper motion and timing | **none** | out of scope by design — see §9 |
 
 Blunter version: of Happy Hare's **69 user-facing `MMU_*` commands, tests drive 14**. Those
@@ -487,8 +495,9 @@ templates** from them, so a broken template shows up as a test failure.
 
 | Profile | What it gives you |
 |---|---|
+| `ercf_vvd` | **the console default.** The only multi-unit profile, and a transcription of a real machine: ERCF 1.1sb (9 gates, `LinearServoSelector`, encoder) + ViViD 1.0 (4 gates, `IndexedSelector`), 13 gates. Also the only one with a sparse per-gate device list, an external LED chain and a filament heater |
 | `boxturtle` | 4 gates, no NFC — the default for most tests |
-| `tradrack` | a physical (servo) selector rather than a virtual one |
+| `tradrack` | a physical (servo) selector, single unit, no encoder — the simplest physical-selector case |
 | `emu` | 5 gates and the only shipped profile with an analog buffer sensor |
 | `encoder` | BoxTurtle plus an encoder, homing to it instead of to the gate switch |
 | `nfc_single` | one common NFC reader |
@@ -502,7 +511,35 @@ exist because each renders a *different* set of config keys, which is where temp
 bugs hide. `test/hh/profiles.py` is the list, with a comment on each explaining what it
 catches.
 
-The first three are shipped machine types. `encoder` is derived — BoxTurtle with menuconfig
+### Physical selectors, and what "calibrated" means here
+
+`test/hh/selector.py` models where a unit's selector endstops sit — a **separate axis** from
+the filament path, which is one scalar per gate and has no carriage. Two geometries, because
+the shipped families disagree: the `LinearSelector` family (ERCF, Tradrack) has one home
+switch and reaches gates by plain moves to calibrated offsets, while `IndexedSelector` (ViViD)
+has no home switch at all and one index switch per gate, visited in `selector_gate_order`.
+
+**Calibration is seeded, not measured.** `Session.calibrate()` writes selector offsets, bowden
+length and gear rotation distance through HH's own setters, using HH's own published formulas
+and the harness's own filament geometry — so no numbers are invented and no HH logic is
+duplicated. It is not called from `boot()`, because uncalibrated is a real state HH has to cope
+with and tests assert it.
+
+What that does **not** cover: `MMU_CALIBRATE_SELECTOR AUTO=1` and friends never run. They
+measure travel through the mcu step counter, which needs the mcu position to survive the
+`set_position(forcepos)` that precedes every homing move. Real Klipper gets that from step
+generation; the fake has none — `set_position` *is* how it effects motion — so making it
+preserve the mcu position makes travel measure 0 and homing die with *"Endstop still triggered
+after retract"*. The reasoning is recorded at the top of `test/hh/selector.py`.
+
+**Tip forming is the one macro with an effect.** Bodies do not run (see §"Three things that
+will look like bugs"), but HH measures how far the extruder moved during `_MMU_FORM_TIP` and
+refuses the unload if the answer is zero — so on a machine with an encoder a no-op tip form
+reads as a jam. `printer.harness_macro_effects` maps a macro alias to a callable; the one
+registered effect retracts the extruder and moves the filament model together, by a distance
+read from the machine's own `_MMU_FORM_TIP_VARS`.
+
+The first four profiles above are shipped machine types. `encoder` is derived — BoxTurtle with menuconfig
 options flipped. That is only safe when the resulting config renders *complete*: enabling a
 feature outside the starter that ships it can leave dependent parameters blank, producing a
 machine that boots but behaves like nothing real. Render it and read the section before
@@ -570,7 +607,7 @@ this wrong makes Happy Hare look broken when it is being right about an impossib
 ## 6. Skips and expected failures
 
 ```
-OK (skipped=1, expected failures=3)
+OK (skipped=1, expected failures=4)
 ```
 
 **`expected failures`** are known bugs, written as tests of what *should* happen and
@@ -585,6 +622,7 @@ Currently:
 |---|---|
 | `test_mmu_profiles.py` ×2 | the proportional buffer reports TENSION almost always — its low threshold is computed positive when the config help says it should be about −0.9 |
 | `test_mmu_tag_parser.py` | a blank tag is reported as a Bambu Lab tag |
+| `test_mmu_motion.py` | a `synced` (print-time) move does not advance the filament model — unlike the other three drive modes it never reaches `MmuStepper._submit_move`, so `motion_queuing`'s trapq hook never fires. A HARNESS gap rather than a Happy Hare bug, which is the one entry here that will not be fixed by changing `extras/` |
 
 **`skipped`** is `test/installer/test_build.py` — legacy installer tests that can't run
 (the functions they call no longer exist). Its header explains what restoring it needs.

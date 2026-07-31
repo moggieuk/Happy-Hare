@@ -3,9 +3,12 @@
 # extras/mmu/unit/mmu_encoder.py:17 imports it; :53-54 builds
 # MCU_counter(printer, pin, sample_time, poll_time) and setup_callback(cb).
 #
-# Real Klipper's MCU_counter internally does pins.setup_pin('counter', pin), so we
-# do too - that keeps the pin-binding registry honest (a test can assert the
-# encoder pin really was bound as a counter).
+# Real Klipper's MCU_counter resolves its pin with ppins.lookup_pin(pin, can_pullup=True)
+# and keeps the chip itself. We go through setup_pin('counter', pin) instead, which keeps
+# the pin-binding registry honest (a test can assert the encoder pin really was bound as a
+# counter) and gives us an object with get_mcu(). The tradeoff is that pullup permission
+# comes from pins.setup_pin's pin_type table rather than an explicit argument, so
+# 'counter' has to appear in its can_pullup set - see the note at pins.py:174.
 #
 # Callback shape matches Klipper: cb(read_time, count, count_time).
 #

@@ -276,9 +276,29 @@ class Console:
         # error list and makes a clean session look dirty (bootstrap.py:464).
         self.hh.heat_extruder(a.temp)
 
+        # A PHYSICAL selector needs calibrating and homing before it can select a gate, and an
+        # uncalibrated one refuses with "Selector is not clibrated". No-op on a VirtualSelector
+        # machine, so this costs the older profiles nothing.
+        self._prepare_selectors()
+
         if not a.no_preload:
             self._preload_all()
         return self
+
+    def _prepare_selectors(self):
+        """
+        Seed selector/bowden calibration and home each physical selector.
+
+        boot() deliberately leaves a machine uncalibrated - that is a real state HH has to cope
+        with, and tests assert it - so the console asks for it explicitly. MMU_HOME must name
+        its unit on a multi-unit machine.
+        """
+        if not getattr(self.hh.printer, 'harness_selectors', None):
+            return
+        self.hh.calibrate()
+        for index, unit in enumerate(self.hh.mmu.mmu_machine.units):
+            if getattr(unit.selector, 'selector_stepper', None) is not None:
+                self._dispatch('MMU_HOME UNIT=%d' % index)
 
     def _preload_all(self):
         """Gates start empty (TIP_ABSENT), so a bare MMU_LOAD on a fresh session fails."""
@@ -1013,9 +1033,10 @@ def parse_args(argv=None):
     p = argparse.ArgumentParser(
         prog='make console',
         description='Interactive MMU console on the Happy Hare test harness.')
-    p.add_argument('--profile', default='boxturtle',
-                   help='harness profile name (boxturtle, encoder, tradrack, emu, '
-                        'nfc_single, nfc_per_gate, nfc_spoolman, ...)')
+    p.add_argument('--profile', default='ercf_vvd',
+                   help='harness profile name. Default ercf_vvd is a real 2-unit machine '
+                        '(ERCF 1.1sb + ViViD 1.0, 13 gates). Others: boxturtle, tradrack, '
+                        'emu, encoder, nfc_single, nfc_per_gate, nfc_spoolman, ...')
     p.add_argument('--temp', type=float, default=DEFAULT_TEMP,
                    help='extruder temperature to set at startup (default %(default)s)')
     p.add_argument('--no-preload', action='store_true',

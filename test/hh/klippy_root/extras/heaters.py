@@ -58,7 +58,23 @@ class PrinterHeaters:
         self.available_heaters.append(config.get_name())
         if gcode_id:
             self.gcode_id_to_sensor[gcode_id] = heater
+        # Registered per heater, keyed on HEATER=, exactly as real Klipper's
+        # Heater.__init__ does. Without it MmuEnvironmentManager's
+        # SET_HEATER_TEMPERATURE (mmu_environment_manager.py:800) would fall through to
+        # gcode.py's ignore-unknown path and the target would silently never change - a
+        # heater test that passes while testing nothing.
+        self.printer.lookup_object('gcode').register_mux_command(
+            'SET_HEATER_TEMPERATURE', 'HEATER', name,
+            self._cmd_SET_HEATER_TEMPERATURE,
+            desc='Sets a heater temperature')
         return heater
+
+    def _cmd_SET_HEATER_TEMPERATURE(self, gcmd):
+        heater = self.heaters[gcmd.get('HEATER')]
+        self.set_temperature(heater, gcmd.get_float('TARGET', 0.))
+
+    def set_temperature(self, heater, temp, wait=False):
+        heater.set_temp(temp)
 
     def lookup_heater(self, heater_name):
         if heater_name not in self.heaters:

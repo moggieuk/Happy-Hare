@@ -102,6 +102,66 @@ class TestModelItself(MotionTestCase):
                           'a 50mm move cannot reach a sensor 100mm away')
 
 
+class TestEveryDriveModeMovesFilament(MotionTestCase):
+    """
+    Happy Hare drives filament in four sync modes (mmu_constants.py:169-172), and a plain move
+    in ANY of them physically moves filament - so the model has to follow in all four.
+
+    Two of them used to move nothing. _on_manual_move watched the GEAR stepper's trapq, but in
+    'extruder' and 'synced' modes the gear is not what moves; the whole move was dropped and
+    the filament silently stayed put. The consequence was not subtle once a machine had an
+    encoder: no model movement means no encoder pulses, and HH concludes the filament is stuck.
+
+    The gear filter was there for a real reason - a gear+extruder move appends to BOTH trapqs
+    for ONE physical movement - so this asserts the exact distance, not just "moved", which is
+    what would catch a regression to double counting.
+    """
+
+    MOVE = 20.0
+
+    def setUp(self):
+        super().setUp()
+        self.hh.place_filament(0, position=TIP_AT_GATE)
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+        self.assertEqual(self.hh.errors, [], 'preload was not clean')
+        self.hh.heat_extruder(220)
+        self.hh.mmu.select_gate(0)
+
+    def _moved(self, motor):
+        before = self.fil.tip[0]
+        self.hh.run_gcode('MMU_TEST_MOVE MOVE=%.1f MOTOR=%s' % (self.MOVE, motor))
+        self.assertEqual(self.hh.errors, [], 'MOTOR=%s errored' % motor)
+        return self.fil.tip[0] - before
+
+    def test_gear(self):
+        self.assertAlmostEqual(self._moved('gear'), self.MOVE, places=3)
+
+    def test_gear_plus_extruder(self):
+        """Both trapqs see this one move; the model must advance ONCE."""
+        self.assertAlmostEqual(self._moved('gear+extruder'), self.MOVE, places=3)
+
+    def test_extruder_only(self):
+        self.assertAlmostEqual(self._moved('extruder'), self.MOVE, places=3)
+
+    @unittest.expectedFailure
+    def test_gear_synced_to_extruder(self):
+        """
+        KNOWN GAP, and a different one from the three above - not fixable at this hook.
+
+        In 'synced' mode (DRIVE_GEAR_SYNCED_TO_EXTRUDER, the print-time mode where the gear
+        follows the extruder) the move never reaches MmuStepper._submit_move at all: it goes
+        through the toolhead's own extruder motion, so motion_queuing's trapq_append - the only
+        thing _on_manual_move can observe - is never called. Verified by spying on the observer:
+        for MOTOR=synced it sees nothing whatsoever, where MOTOR=extruder sees one append.
+
+        Closing it means observing toolhead extruder moves, which is a bigger change than the
+        driving-stepper accounting this class otherwise pins. Kept as an expected failure rather
+        than deleted so the gap is visible in the suite instead of only in a comment; it flips
+        green on its own once toolhead motion is observed.
+        """
+        self.assertAlmostEqual(self._moved('synced'), self.MOVE, places=3)
+
+
 class TestQuietPlacement(MotionTestCase):
     """
     Placing filament is a real event, and the harness has to be explicit about it:

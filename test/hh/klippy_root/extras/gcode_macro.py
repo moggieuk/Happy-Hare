@@ -15,6 +15,9 @@
 # Macro bodies are registered as recorded no-ops at this tier - running ~2000 lines
 # of shipped Jinja macro is a later milestone, and HH reaches bootup without it.
 #
+# A macro whose MOTION Happy Hare measures is the exception: see cmd() and
+# printer.harness_macro_effects.
+#
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 import jinja2
@@ -112,8 +115,20 @@ class GCodeMacro:
         self.gcode.register_command(self.alias, self.cmd, desc=self.description)
 
     def cmd(self, gcmd):
-        # Recorded no-op: see module docstring.
+        # Recorded, then OPTIONALLY given an effect. Bodies still do not run (see the module
+        # docstring), but a handful of shipped macros are load-bearing for the physics rather
+        # than merely for choreography: HH measures how far the extruder moved during
+        # _MMU_FORM_TIP and refuses the unload if the answer is zero
+        # (mmu_filament_movement.py:2477-2497, :2559-2568). A recorded no-op therefore reads to
+        # HH as "the filament is stuck".
+        #
+        # Effects are supplied by the harness through printer.harness_macro_effects, keyed by
+        # alias - the same printer.harness_* convention as harness_filament, so this tree still
+        # imports nothing from test.hh.
         self.calls.append(gcmd.get_commandline())
+        effect = (getattr(self.printer, 'harness_macro_effects', None) or {}).get(self.alias)
+        if effect is not None:
+            effect(self, gcmd)
 
     def get_status(self, eventtime=None):
         return dict(self.variables)

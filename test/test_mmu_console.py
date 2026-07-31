@@ -60,32 +60,28 @@ def make_multi_unit_tree(root, units=('unit0', 'unit1')):
     """
     A genuine multi-unit install tree, laid out as a real multi-unit install leaves one:
     one mmu_hardware_<unit>.cfg and one mmu_parameters_<unit>.cfg per unit (Makefile
-    hh_unit_config_files), and [mmu_machine] units listing them all.
+    hh_unit_config_files), with mmu.cfg and mmu_macro_vars.cfg shared.
 
-    Each unit's sections are rendered by overriding UNIT_NAME/MCU_NAME, which is what the
-    installer does per unit. Nothing here is hand-written config.
+    Rendered through cfg.render()'s MULTI-UNIT path, which produces exactly those filenames
+    and needs no post-processing - so the tree really is what the installer would write.
+
+    This used to fake it by deriving boxturtle per unit with
+    extra_params={'UNIT_NAME': unit, 'MCU_NAME': unit} and patching mmu.cfg's `units:` line
+    with a regex. That produced sections named 'unit1' whose PINS still said 'unit0:', because
+    extra_params are jinja params applied long after kconfiglib expanded $(MCU_NAME) at parse
+    time. It did not matter for what these tests assert, but it was a misleading fixture to
+    leave lying around now that a real path exists.
     """
-    import re
     base = os.path.join(root, 'mmu', 'base')
     os.makedirs(base)
     os.makedirs(os.path.join(root, 'mmu', 'macros'))
-    bt = profiles.get('boxturtle')
-    for unit in units:
-        profile = bt if unit == 'unit0' else bt.derive(
-            'boxturtle_%s' % unit, extra_params={'UNIT_NAME': unit, 'MCU_NAME': unit})
-        rendered = cfg_mod.render(profile)
-        for stem in ('mmu_hardware', 'mmu_parameters'):
-            with open(os.path.join(base, '%s_%s.cfg' % (stem, unit)), 'w',
-                      encoding='utf-8') as fh:
-                fh.write(rendered['config/base/%s.cfg' % stem])
-        if unit == units[0]:
-            # [mmu_machine] has to list every unit; the rest of mmu.cfg is shared.
-            mmu_cfg = re.sub(r'^units(\s*):.*$', r'units\1: %s' % ', '.join(units),
-                             rendered['config/base/mmu.cfg'], flags=re.M)
-            with open(os.path.join(base, 'mmu.cfg'), 'w', encoding='utf-8') as fh:
-                fh.write(mmu_cfg)
-            with open(os.path.join(base, 'mmu_macro_vars.cfg'), 'w', encoding='utf-8') as fh:
-                fh.write(rendered['config/base/mmu_macro_vars.cfg'])
+
+    rendered = cfg_mod.render(profiles.clone_across_units(
+        'boxturtle_x%d' % len(units), profiles.get('boxturtle'), units))
+    for name, text in rendered.items():
+        with open(os.path.join(base, os.path.basename(name)), 'w', encoding='utf-8') as fh:
+            fh.write(text)
+
     for name, text in cfg_mod.macro_files().items():
         with open(os.path.join(root, 'mmu', 'macros', os.path.basename(name)), 'w',
                   encoding='utf-8') as fh:
@@ -121,6 +117,22 @@ class TestMultiUnit(unittest.TestCase):
                          'gates must be contiguous across units')
         self.assertEqual(hh.mmu.num_gates, 8)
         self.assertEqual(hh.errors, [], 'multi-unit bootup was not clean')
+
+    def test_each_units_pins_name_its_own_mcu(self):
+        """
+        Guards the FIXTURE, not the console. The tree used to be built by injecting
+        UNIT_NAME/MCU_NAME as jinja params, which renamed the sections but left every pin
+        pointing at unit0's board - a config wired to the wrong hardware that still loaded and
+        booted. Nothing here noticed, so assert it directly.
+        """
+        import re
+        base = os.path.join(self.root, 'mmu', 'base')
+        for unit in ('unit0', 'unit1'):
+            with open(os.path.join(base, 'mmu_hardware_%s.cfg' % unit),
+                      encoding='utf-8') as fh:
+                chips = {m.group(1) for m in re.finditer(r'[:!^~]?(unit\d+):', fh.read())}
+            self.assertEqual(chips, {unit},
+                             '%s hardware references chips %s' % (unit, sorted(chips)))
 
     def test_sensors_are_qualified_per_unit(self):
         hh = session(self.root)
@@ -624,7 +636,18 @@ class TestPinnedHeader(unittest.TestCase):
 
 
 class TestConsoleScript(unittest.TestCase):
-    """End to end through main(), the same path the prompt uses."""
+    """
+    End to end through main(), the same path the prompt uses.
+
+    PINNED TO BOXTURTLE on purpose. These tests are about console MECHANICS - header groups,
+    /sensor, /log - and they name specific sensors (mmu_entry_0) and issue unit-less commands
+    (MMU_HOME). Both are properties of the machine, not of the console, so following whatever
+    --profile happens to be the default made them fail the moment the default became a
+    multi-unit ERCF+ViViD: it has no per-gate entry sensors on unit0, and MMU_HOME there
+    requires a UNIT. The default profile gets its own coverage below instead.
+    """
+
+    PROFILE = 'boxturtle'
 
     def _run(self, lines, extra_args=()):
         fd, path = tempfile.mkstemp(suffix='.txt')
@@ -633,8 +656,19 @@ class TestConsoleScript(unittest.TestCase):
         self.addCleanup(os.unlink, path)
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
-            rc = console_mod.main(['--plain', '--script', path] + list(extra_args))
+            # --profile first so a caller can still override it in extra_args (argparse keeps
+            # the last occurrence)
+            rc = console_mod.main(['--profile', self.PROFILE, '--plain', '--script', path]
+                                  + list(extra_args))
         return rc, buf.getvalue()
+
+    def _make_console(self, argv):
+        """A booted Console on THIS class's profile, closed on teardown."""
+        console = console_mod.Console(
+            console_mod.parse_args(['--profile', self.PROFILE] + list(argv)))
+        self.addCleanup(console.close)
+        console.boot()
+        return console
 
     def test_a_clean_session_runs_every_command_and_exits_zero(self):
         rc, out = self._run(['MMU_STATUS', 'MMU_HOME', 'MMU_CHANGE_TOOL TOOL=1',
@@ -741,10 +775,7 @@ class TestConsoleScript(unittest.TestCase):
 
     def test_a_disabled_sensor_reads_as_the_third_state(self):
         """Disabled is None, distinct from clear - the header must show it differently."""
-        console = console_mod.Console(console_mod.parse_args(
-            ['--no-preload', '--no-log', '--plain', '--header', 'sensors']))
-        self.addCleanup(console.close)
-        console.boot()
+        console = self._make_console(['--no-preload', '--no-log', '--plain', '--header', 'sensors'])
         # /sensor echoes the new state on stdout (console.py _meta_sensor), so the
         # meta() calls must be captured - a bare one leaks '  mmu_entry_1 disabled'
         # into the test runner's output. header_lines() returns rather than prints,
@@ -764,10 +795,7 @@ class TestConsoleScript(unittest.TestCase):
         self.assertIn('unknown action', out)
 
     def test_clear_empties_the_log_history(self):
-        console = console_mod.Console(console_mod.parse_args(
-            ['--no-preload', '--no-log', '--plain', '--header', 'off']))
-        self.addCleanup(console.close)
-        console.boot()
+        console = self._make_console(['--no-preload', '--no-log', '--plain', '--header', 'off'])
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             console.run_command('MMU_STATUS')
@@ -777,10 +805,7 @@ class TestConsoleScript(unittest.TestCase):
 
     def test_the_status_section_ends_in_a_heavy_rule(self):
         """The boundary between state and output has to be visually distinct from the top."""
-        console = console_mod.Console(console_mod.parse_args(
-            ['--no-preload', '--no-log', '--header', 'machine']))
-        self.addCleanup(console.close)
-        console.boot()
+        console = self._make_console(['--no-preload', '--no-log', '--header', 'machine'])
         block = console.header_block()
         self.assertIn('━', block[-1], 'no heavy rule closing the status section')
         self.assertNotIn('━', console.rule(), 'the light rule should not be heavy')
@@ -802,6 +827,45 @@ class TestConsoleScript(unittest.TestCase):
         rc, out = self._run(['MMU_STATUS'], ['--profile', root, '--header', 'off'])
         self.assertEqual(rc, 0, out[-2000:])
         self.assertIn('Happy Hare', out)
+
+
+class TestTheDefaultProfile(unittest.TestCase):
+    """
+    Whatever `make console` boots with NO arguments, which is the way almost everyone runs it.
+
+    Deliberately does not name the profile: the point is that the DEFAULT works, so this keeps
+    holding if the default changes again. TestConsoleScript pins boxturtle precisely so that
+    this class is the only one asserting on the default.
+    """
+
+    def setUp(self):
+        # No --profile: take whatever the default is
+        self.console = console_mod.Console(
+            console_mod.parse_args(['--plain', '--no-log', '--header', 'off']))
+        self.addCleanup(self.console.close)
+        self.console.boot()
+
+    def test_it_boots_cleanly(self):
+        self.assertTrue(self.console.hh.fired('mmu:bootup'))
+        self.assertEqual(self.console.hh.errors, [])
+
+    def test_it_moves_filament_on_the_last_gate(self):
+        """
+        The LAST gate, so a multi-unit default is exercised on its final unit - the case that
+        needs contiguous gate numbering, per-unit selector homing and per-unit calibration all
+        to be right at once. On a single-unit default it is simply the last gate.
+
+        A load and unload rather than a bare boot, because "the default boots" was never the
+        weak claim; "the default can do the thing the console exists for" was. boot() has
+        already preloaded every gate and prepared the selectors.
+        """
+        hh = self.console.hh
+        last = hh.mmu.num_gates - 1
+        hh.errors.clear()
+        for command in ('MMU_SELECT GATE=%d' % last, 'MMU_LOAD', 'MMU_UNLOAD'):
+            self.console._dispatch(command)
+            self.assertEqual(hh.errors, [], 'failed on %r' % command)
+        self.assertEqual(hh.mmu.filament_pos, 0, 'did not end up unloaded')
 
 
 if __name__ == '__main__':

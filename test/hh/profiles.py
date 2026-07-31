@@ -12,40 +12,101 @@
 import os
 
 
+class UnitProfile:
+    """
+    One unit of a multi-unit machine: its own Kconfig symbols, plus the identity env
+    install.sh:401-432 hands each unit (UNIT_NAME / MCU_NAME / UNIT_INDEX).
+
+    A unit gets a SEPARATE Kconfig parse, not a slice of a shared one - see the MULTI-UNIT
+    note in cfg.py for why that is forced rather than chosen.
+
+    index must match the unit's position in Profile.units: it becomes UNIT_INDEX, which
+    Kconfig.name:6 uses to build the default display name ('BoxTurtle-0', 'VVD-1', ...).
+    mcu_name defaults to name, as it does in install.sh:421-422.
+    """
+
+    def __init__(self, name, syms=None, index=0, mcu_name=None):
+        self.name = name
+        self.syms = dict(syms or {})
+        self.index = index
+        self.mcu_name = mcu_name or name
+
+    def derive(self, name=None, syms=None, index=None, mcu_name=None):
+        merged = dict(self.syms)
+        merged.update(syms or {})
+        return UnitProfile(name or self.name, merged,
+                           self.index if index is None else index,
+                           mcu_name or self.mcu_name)
+
+    def __repr__(self):
+        return 'UnitProfile(%r)' % (self.name,)
+
+
 class Profile:
     """
     syms:         Kconfig symbol -> value. True/False for bool/tristate, str/int
                   otherwise. Applied in order, so a later entry can refine an
-                  earlier one.
+                  earlier one. On a MULTI-UNIT profile these are the shared
+                  (entry-point) symbols only; per-unit ones live in `units`.
     extra_params: jinja render params applied AFTER the Kconfig dict, for the
                   handful the installer computes rather than stores
-                  (PARAM_TOTAL_NUM_GATES / UNIT_NAME / MCU_NAME are filled in
-                  automatically by cfg.render()).
+                  (PARAM_TOTAL_NUM_GATES is filled in automatically by
+                  cfg.render(), as the cross-unit sum where that applies).
+    units:        list of UnitProfile, or None/empty for a single-unit machine.
+                  Supplying it is what selects cfg.py's multi-unit render path;
+                  every profile below except ERCF_VVD is the one-unit case.
     """
 
-    def __init__(self, name, syms=None, extra_params=None, description=''):
+    def __init__(self, name, syms=None, extra_params=None, description='', units=None):
         self.name = name
         self.syms = dict(syms or {})
         self.extra_params = dict(extra_params or {})
         self.description = description
+        self.units = list(units or [])
 
-    def derive(self, name, syms=None, extra_params=None, description=''):
+    def derive(self, name, syms=None, extra_params=None, description='', units=None):
         merged_syms = dict(self.syms)
         merged_syms.update(syms or {})
         merged_params = dict(self.extra_params)
         merged_params.update(extra_params or {})
-        return Profile(name, merged_syms, merged_params, description or self.description)
+        return Profile(name, merged_syms, merged_params, description or self.description,
+                       units if units is not None else self.units)
 
     def __repr__(self):
         return 'Profile(%r)' % (self.name,)
 
 
-# BoxTurtle is the first-milestone profile on purpose: it is a Type-B machine with
-# selector_type VirtualSelector, and cmd_MMU_BOOTUP skips home_unit for a virtual
-# selector (extras/mmu/mmu_controller.py:385-405). That means bootup can be reached
-# without a working HomingMove, which the harness does not have until the
-# filament-path model lands. It still exercises 4 gates, multigear steppers, an
-# espooler, LEDs, a buffer and entry/exit/shared-exit sensors.
+def clone_across_units(name, base, unit_names, description=''):
+    """
+    Turn a SINGLE-unit profile into a multi-unit one by repeating it per unit.
+
+    A test fixture builder, not a machine: no real printer is two identical BoxTurtles. It
+    exists because the honest way to get a multi-unit config is to render one, and the
+    alternative that tests reached for instead - deriving a single-unit profile with
+    extra_params={'UNIT_NAME': 'unit1', ...} - is quietly WRONG. That injects the names as
+    jinja params after the Kconfig was already parsed under unit0's env, so the pins still say
+    'unit0:' inside sections named 'unit1': a config wired to the wrong board.
+
+    Deliberately NOT added to PROFILES. Use it when a test needs a multi-unit shape rather than
+    a particular machine; use ERCF_VVD when it needs a real one.
+    """
+    return Profile(
+        name,
+        units=[UnitProfile(unit, syms=base.syms, index=index)
+               for index, unit in enumerate(unit_names)],
+        description=description or ('%s repeated across %s'
+                                    % (base.name, ', '.join(unit_names))))
+
+
+# BoxTurtle is the first-milestone profile on purpose: a Type-B machine with selector_type
+# VirtualSelector, so there is no carriage to model at all. It exercises 4 gates, multigear
+# steppers, an espooler, LEDs, a buffer and entry/exit/shared-exit sensors.
+#
+# It is NOT true (as this comment used to say) that bootup depends on a VirtualSelector-only
+# skip of home_unit. Nothing autohomes at bootup on any of these machines:
+# config/base/mmu_parameters.cfg:608-611 renders startup_home_selector: 0 for EVERY physical
+# selector, and mmu_controller.py:386-388 additionally logs-and-continues for an uncalibrated
+# one. Physical selectors now home and move filament too - see test_mmu_selector.py.
 BOXTURTLE = Profile(
     'boxturtle',
     syms={'MMU_TYPE_BOX_TURTLE_1_0': True},
@@ -227,18 +288,147 @@ ENCODER = BOXTURTLE.derive(
     },
     description='BoxTurtle + encoder, gate_homing_endstop=encoder')
 
-# NOTE on ADC coverage: no profile here SYNTHESISES an ADC pin. The `emu` profile above
-# brings a proportional sensor of its own, which is the honest way to get one. Real
-# machine profiles take their pins from an MCU board selection, and switching on a
-# proportional buffer sensor outside its intended starter leaves dependent params
-# (analog_max_tension, analog_sensor_threshold) blank, producing a section HH cannot
-# parse. An earlier attempt at exactly that was reverted; MmuAdcHelper's compat shim is
-# covered directly by test_mmu_adc_compat.py instead.
+# NOTE on ADC coverage: `emu` brings a proportional sensor with its machine type and
+# `ercf_vvd`'s unit0 enables one explicitly (MMU_HAS_SENSOR_BUFFER_PROPORTIONAL +
+# PIN_BUFFER_ANALOG).
+#
+# The second of those used to be considered unsafe: this note said enabling a proportional
+# buffer outside its intended starter leaves dependent params (analog_max_tension,
+# analog_sensor_threshold) blank and renders a section HH cannot parse. That is no longer
+# true - Kconfig.sync_feedback_buffer:207-252 now defaults every one of them (threshold 0.9,
+# max_compression 1.0, max_tension 0.0, neutral 0.5, gamma 1.0), and ercf_vvd renders and
+# boots with it. The general lesson still holds though, and it is why the claim was worth
+# rechecking rather than inheriting: render the profile and READ the section, do not assume
+# either way. MmuAdcHelper's compat shim is covered directly by test_mmu_adc_compat.py.
+# The only MULTI-UNIT profile, and a transcription of a REAL machine rather than a
+# combination assembled to hit features. Two genuinely different units on one printer:
+#
+#   unit0  ERCF 1.1sb on ERB v1   9 gates  LinearServoSelector  encoder gate homing
+#   unit1  ViViD 1.0 on ViViD 1.0 4 gates  IndexedSelector      mmu_exit gate homing
+#
+# 13 gates in total, which is the point of PARAM_TOTAL_NUM_GATES being a cross-unit sum.
+#
+# What ONLY this profile covers:
+#   - two units at all: per-unit Kconfig parses, contiguous gate numbering (unit1 owns
+#     gates 9-12), and sensors qualified per unit
+#   - IndexedSelector, a third selector class - and one that self-calibrates and
+#     self-homes at handle_ready (mmu_indexed_selector.py:137-140)
+#   - a SPARSE per-gate list. The ViViD fits NFC readers on gates 0 and 2 only
+#     (boards/custom/Kconfig.vvd:57-58), so nfc_readers renders as
+#     'unit1_nfc0, , unit1_nfc2,'. Every other profile populates every gate, which is why
+#     the harness's own getlist could drop blanks unnoticed for so long.
+#   - a machine whose filament_heater must resolve, i.e. the heater_generic fake
+#   - LEDs on a chain declared OUTSIDE Happy Hare's own config (unit0 points at
+#     'neopixel:cabinet_leds' from the user's printer.cfg - see bootstrap.PRINTER_STUB)
+#
+# TRANSCRIPTION RULES, learned the hard way - see the omit list below. Only symbols the
+# user actually CHOSE are set here; everything else is left to Kconfig's select/imply/
+# default chains, which is the whole reason profiles are symbol sets and not saved .cfg
+# files. Notably absent, and deliberately:
+#
+#   MULTI_UNIT / MULTI_UNIT_ENTRY_POINT / MMU_UNITS
+#       No prompt (Kconfig:146-162) - env-driven. Supplying `units` below IS the
+#       declaration; cfg.py sets the env and MMU_UNITS derives from the joined names.
+#   PREFERS_CHOICE_GATE_HOMING_ENDSTOP_ENCODER
+#       No prompt, and unnecessary: Kconfig.ercf:9 selects MMU_HAS_ENCODER at family
+#       level and :26 implies the preference, so gate_homing_endstop lands on 'encoder'
+#       with nothing set. Verified by rendering.
+#   CUSTOM_LED_SETUP / CUSTOM_ENVIRONMENT_SENSOR_SETUP / CUSTOM_HEATER_SETUP
+#       No prompt; derived from MMU_TYPE_VVD_1_0. They suppress the generic template
+#       blocks so the board's own PARAM_MISC_HARDWARE text wins.
+#   CHOICE_MMU_SERIAL_DEVICE_USB_... / CHOICE_BUFFER_SERIAL_DEVICE_...
+#       Kconfig:112-116 builds these symbol NAMES by shelling out to
+#       `ls /dev/serial/by-id/*`, so on a host with no MMU plugged in they do not exist
+#       and setting one raises KeyError. Harmless to omit: the choice falls back to
+#       ..._OTHER and the harness fakes every [mcu] while ignoring the transport
+#       (klippy_root/mcu.py:44-48).
+ERCF_VVD = Profile(
+    'ercf_vvd',
+    syms={
+        # Printer-level, shared by both units. MMU_HAS_SENSOR_TOOLHEAD/_EXTRUDER are read
+        # back off this parse and handed down to each unit as env, mirroring
+        # install.sh:424-426.
+        'MMU_HAS_SENSOR_TOOLHEAD': True,
+        'MMU_HAS_SENSOR_EXTRUDER': True,
+        'PIN_TOOLHEAD_SENSOR': 'PG13',
+        'PIN_EXTRUDER_SENSOR': 'PG14',
+        'TOOLHEAD_TYPE_STEALTHBURNER_CLOCKWORK2_REVO_VORON': True,
+        'BOOL_ENDLESS_SPOOL_ENABLED': True,
+        # Spoolman itself is OFF, but auto-create is on - the combination a user reaches by
+        # enabling NFC first. nfc_auto_create_enabled() is deep_read AND auto_create AND
+        # writable, so this exercises the guard rather than the happy path.
+        'BOOL_SPOOLMAN_NFC_AUTO_CREATE': True,
+        'CHOICE_LOG_FILE_LEVEL_STEPPER': True,
+        # Both default y (macro_vars/Kconfig.software:30,41); turned off on this machine, so
+        # mmu_macro_vars.cfg gets check_gates/load_initial_tool = False at print start.
+        'BOOL_SOFTWARE_CHECK_GATES': False,
+        'BOOL_SOFTWARE_LOAD_INITIAL_TOOL': False,
+    },
+    units=[
+        # ERCF 1.1 with the Springy + Binky mods. Those two are NOT cosmetic: together they
+        # set PARAM_VERSION to '1.1sb' and switch the encoder from TCRT5000 to Binky-8
+        # (Kconfig.ercf:157-162, :198-199), taking encoder resolution 0.7059 -> 0.979.
+        UnitProfile('unit0', index=0, syms={
+            'MMU_FAMILY_ERCF': True,     # MMU_TYPE_ERCF_1_1 is in a choice nested under it
+            'MMU_TYPE_ERCF_1_1': True,
+            'BOARD_TYPE_ERB_1': True,
+            'MOD_BINKY': True,
+            'MOD_SPRINGY': True,
+            # Set EXPLICITLY, and not redundantly: this machine has a Binky-12 wheel
+            # (resolution 0.979), but ERCF 1.1 + MOD_BINKY now defaults the choice to
+            # Binky-8 (Kconfig.ercf:198) for a resolution of 1.469 - a 50% difference. The
+            # generic default at Kconfig.encoder:67 is still Binky-12, which is what this
+            # machine's stored config recorded. Pinning it keeps the profile faithful to the
+            # hardware rather than to whichever default currently wins.
+            'CHOICE_ENCODER_TYPE_BINKY_12': True,
+            'BOOL_HAS_BYPASS': True,
+            'SERVO_TYPE_SAVOX_SH0255MG': True,
+            'PARAM_SERVO_MAX_ANGLE': 180,
+            # An external chain, not one Happy Hare declares - see PRINTER_STUB. 9 exit
+            # LEDs over 9 gates satisfies mmu_leds.py:102-103's num_leds % num_gates == 0.
+            'MMU_HAS_LEDS': True,
+            'PARAM_EXIT_LEDS': 'neopixel:cabinet_leds (1-9)',
+            'PARAM_STATUS_LEDS': 'neopixel:cabinet_leds (11)',
+            # The analog buffer sensor. Unlike the note further up this file, enabling one
+            # outside EMU is now safe: Kconfig.sync_feedback_buffer:207-252 defaults every
+            # dependent param.
+            'MMU_HAS_SYNC_FEEDBACK_BUFFER': True,
+            'CHOICE_BUFFER_SPRING_STATE_TENSION': True,
+            'MMU_HAS_SENSOR_BUFFER_PROPORTIONAL': True,
+            'PIN_BUFFER_ANALOG': 'PF6',
+            'CHOICE_EXTRUDER_HOMING_ENDSTOP_ENCODER': True,
+        }),
+        # ViViD 1.0. Its buffer lives on a SECOND mcu (OPTION_VVD_BUFFER selects
+        # MMU_HAS_BUFFER_MCU), so this unit alone renders two [mcu] sections.
+        UnitProfile('unit1', index=1, syms={
+            'MMU_TYPE_VVD_1_0': True,
+            'BOARD_TYPE_VVD_1_0': True,
+            'OPTION_VVD_BUFFER': True,
+            # Explicit, because the derived default from UNIT_INDEX would be 'VVD-1'
+            'PARAM_DISPLAY_NAME': 'VVD-11',
+            # A shared PN532 over host serial - the only NFC transport that is not
+            # MCU-mediated. Note the board ALSO defaults MMU_HAS_PER_GATE_NFC_READERS on
+            # (gates 0 and 2), so this unit renders a common reader AND a sparse per-gate
+            # list. That combination is what the getlist fix exists for.
+            'MMU_HAS_NFC_READER': True,
+            'MMU_HAS_COMMON_NFC_READER': True,
+            'CHOICE_NFC_READER_TYPE_PN532_UART': True,
+            'PARAM_NFC_READER_SERIAL': '/dev/serial/shared_nfc',
+            'MMU_HAS_EJECT_BUTTONS': True,
+            'PIN_EJECT_BUTTON_0': 'unit1:pin0',
+            'PIN_EJECT_BUTTON_1': 'unit1:pin1',
+            'PIN_EJECT_BUTTON_2': 'unit1:pin2',
+            'PIN_EJECT_BUTTON_3': 'unit1:pin3',
+        }),
+    ],
+    description='ERCF 1.1sb (9 gates) + ViViD 1.0 (4 gates) - the only multi-unit profile')
+
 PROFILES = {p.name: p for p in (BOXTURTLE, TRADRACK, EMU, ENCODER, NFC_SINGLE,
                                 NFC_PER_GATE, NFC_PN5180, NFC_PN5180_PER_GATE,
                                 NFC_PN532, NFC_PN532_SW_I2C,
                                 NFC_PN532_UART, NFC_PN532_UART_PER_GATE,
-                                NFC_SPOOLMAN, NFC_SPOOLMAN_SHARED)}
+                                NFC_SPOOLMAN, NFC_SPOOLMAN_SHARED,
+                                ERCF_VVD)}
 
 
 def get(name):

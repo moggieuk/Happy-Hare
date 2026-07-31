@@ -13,6 +13,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
+import re
 import unittest
 
 from test.hh import cfg, profiles
@@ -133,6 +134,111 @@ class TestBoxTurtleRender(unittest.TestCase):
         extruder = dict(parser.items('extruder'))
         self.assertEqual(extruder['step_pin'], 'mcu:PA1')          # from the stub
         self.assertIn('max_extrude_only_distance', extruder)       # from the template
+
+
+# Deliberately TWO IDENTICAL BOXTURTLES rather than the real ercf_vvd profile. The point is
+# to test the multi-unit RENDER PATH, so both units being the machine every other test
+# already trusts means a failure here is the path and not an ERCF or ViViD quirk. It lives
+# in this file rather than the PROFILES registry because it is a test fixture, not a machine
+# anyone would run.
+# Note there are NO shared syms. MULTI_UNIT, MULTI_UNIT_ENTRY_POINT and MMU_UNITS all have
+# no prompt (Kconfig:146-162) - they are driven purely by env, so setting them here would warn
+# and do nothing. Supplying `units` is the whole declaration; cfg.py derives the rest, which is
+# why clone_across_units() needs to say so little.
+TWO_UNIT = profiles.clone_across_units(
+    'two_boxturtles', profiles.get('boxturtle'), ('unit0', 'unit1'),
+    description='two BoxTurtles, for the multi-unit render path')
+
+
+class TestMultiUnitRender(unittest.TestCase):
+    """
+    A multi-unit render is THREE Kconfig parses with different env, not one
+    (install.sh:385-432). Everything here is a way for that plumbing to be silently wrong.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.rendered = cfg.render(TWO_UNIT)
+
+    def test_no_silent_misrender(self):
+        """
+        The cheapest and most specific check on the per-unit env: get MCU_NAME wrong and
+        unit1's pins render as ':PD5' rather than 'unit1:PD5'.
+        """
+        cfg.assert_sane(self.rendered)
+
+    def test_produces_the_installers_file_set_in_include_order(self):
+        """
+        Per-unit files carry a _<unit> suffix (Makefile:151-158) while mmu.cfg and
+        mmu_macro_vars.cfg stay single. Insertion order IS include order for assemble(),
+        and Klipper's glob is sorted.
+        """
+        self.assertEqual(list(self.rendered), [
+            'config/base/mmu.cfg',
+            'config/base/mmu_hardware_unit0.cfg',
+            'config/base/mmu_hardware_unit1.cfg',
+            'config/base/mmu_macro_vars.cfg',
+            'config/base/mmu_parameters_unit0.cfg',
+            'config/base/mmu_parameters_unit1.cfg',
+        ])
+
+    def test_each_unit_gets_its_own_mcu_pins(self):
+        """
+        THE test for per-parse env. kconfiglib expands $(MCU_NAME) into every board pin
+        default at parse time, so if the second parse reused the first's env, unit1's
+        hardware would be full of 'unit0:' pins - a valid-looking config wired to the wrong
+        board.
+        """
+        for unit in ('unit0', 'unit1'):
+            hw = self.rendered['config/base/mmu_hardware_%s.cfg' % unit]
+            chips = {m.group(1) for m in re.finditer(r'[:!^~]?(unit\d+):', hw)}
+            self.assertEqual(chips, {unit},
+                             '%s references chips %s' % (unit, sorted(chips)))
+
+    def test_units_are_declared_on_mmu_machine(self):
+        parser = cfg.assemble(self.rendered)
+        self.assertEqual(dict(parser.items('mmu_machine'))['units'], 'unit0,unit1')
+
+    def test_gate_counts_are_per_unit_and_the_total_is_their_sum(self):
+        """
+        PARAM_TOTAL_NUM_GATES is the CROSS-UNIT SUM (build.py:481-492), not this unit's
+        count. It drives the Tx macro wrappers, which are printer-wide - so a machine with
+        4+4 gates needs T0..T7, and getting it wrong silently loses half the tools.
+        """
+        parser = cfg.assemble(self.rendered)
+        for unit in ('unit0', 'unit1'):
+            self.assertEqual(int(dict(parser.items('mmu_unit %s' % unit))['num_gates']), 4)
+        tools = sorted(int(m.group(1)) for m in
+                       (re.fullmatch(r'gcode_macro T(\d+)', s) for s in parser.sections())
+                       if m)
+        self.assertEqual(tools, list(range(8)),
+                         'expected T0..T7 for a 4+4 gate machine')
+
+    def test_a_multi_unit_render_does_not_leak_env_into_later_renders(self):
+        """
+        The env-leak guard, and the reason _env() restores rather than just assigns.
+
+        ORDER IS LOAD-BEARING: the multi-unit render has to happen BETWEEN the two
+        single-unit ones, because a leak only shows in a parse that follows it. A leaked
+        MCU_NAME=unit1 would re-render boxturtle against unit1's MCU - wrong output, not an
+        error, and assert_sane cannot see it because the pins are still well-formed.
+
+        This also fails if the _render_cache key ever stops accounting for the units, since
+        a stale cache would hand back the first render and hide a genuine leak.
+        """
+        before = cfg.render(profiles.get('boxturtle'))
+        cfg.render(TWO_UNIT)
+        # A distinct name so the cache cannot answer this from the first call
+        again = cfg.render(profiles.Profile(
+            'boxturtle_after_multi_unit',
+            syms=dict(profiles.get('boxturtle').syms),
+            description='env-leak guard'))
+
+        self.assertEqual(sorted(before), sorted(again))
+        for name in before:
+            self.assertEqual(before[name], again[name],
+                             '%s changed after an intervening multi-unit render - env '
+                             'leaked out of _env()' % name)
 
 
 if __name__ == '__main__':
