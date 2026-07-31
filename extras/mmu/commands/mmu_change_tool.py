@@ -228,12 +228,12 @@ class MmuChangeToolCommand(BaseCommand):
                                 fw_retract = mmu.printer.lookup_object('firmware_retraction', None)
                                 if fw_retract: # translate G10 into distance/speed for compensation
                                     slicer_retract_len = fw_retract.retract_length
-                                    if fw_retract.slicer_retract_speed > 0:
+                                    if fw_retract.retract_speed > 0:
                                         slicer_retract_speed = fw_retract.retract_speed
                             elif mmu.slicer_retraction > 0:
                                 sequence_vars        = mmu.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
                                 slicer_retract_len   = mmu.slicer_retraction
-                                slicer_retract_speed = sequence_vars.variables.get('slicer_retract_speed', slicer_retract_speed) if sequence_vars else slicer_retract_speed
+                                slicer_retract_speed = sequence_vars.variables.get('retract_speed', slicer_retract_speed) if sequence_vars else slicer_retract_speed
 
                             # Add unhandled slicer retract distance to _MMU_PARK macro retracted_length and log info message
                             if slicer_retract_len > 0 and park_macro:
