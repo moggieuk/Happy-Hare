@@ -8,7 +8,7 @@
 # owns NCI and raw tag commands; tag_handler owns retry windows, payload parsing,
 # Spoolman lookups, and Happy Hare side effects.
 
-from .log import logger, trace
+from .log import logger
 
 
 PN7160_I2C_ADDRESS = 0x28
@@ -161,7 +161,7 @@ class PN7160Handler:
 
     def __init__(self, config, i2c, name, ven_pin=None, irq_pin=None,
                  response_delay=0.020, nci_poll_interval=0.250,
-                 read_timeout=0.500, raw_log=False, debug=False,
+                 read_timeout=0.500, raw_log=False, debug=0,
                  ven_pre_high_time=0.010,
                  ven_low_time=0.010, ven_post_high_time=0.100,
                  init_retries=3, init_retry_delay=0.500,
@@ -253,12 +253,8 @@ class PN7160Handler:
         """
         return getattr(self.i2c, "i2c_transfer_cmd", None) is not None
 
-    # Lazy %-args like every other log call here: the format string is only
-    # interpolated if the line is actually emitted. Note self.debug is a BOOLEAN
-    # (debug >= 4 or pn7160_debug) and is NOT the trace() latch - routing these
-    # through trace() would silently break pn7160_debug at debug < 4.
     def _debug(self, msg, *args):
-        if self.debug:
+        if self.debug >= 4:
             logger.info("[%s pn7160] debug: " + msg, self._name, *args)
 
     def _core_info(self, msg, *args):
@@ -1286,15 +1282,13 @@ class PN7160Driver:
         # 20ms tick is cheaper than the blocking shim it replaces.
         self._probe_polled = config.getboolean('probe_polled', True)
         raw_log = config.getboolean('raw_log', False)
-        pn7160_debug = config.getboolean('pn7160_debug', False)
-        handler_debug = debug >= 4 or pn7160_debug
         self._handler = PN7160Handler(
             config, i2c, name,
             ven_pin=config.get('ven_pin', None),
             irq_pin=config.get('irq_pin', None),
             response_delay=config.getfloat('response_delay', 0.020, minval=0.0),
             nci_poll_interval=config.getfloat('nci_poll_interval', 0.250, minval=0.0),
-            read_timeout=config.getfloat('read_timeout', 0.500, minval=0.0), raw_log=raw_log, debug=handler_debug,
+            read_timeout=config.getfloat('read_timeout', 0.500, minval=0.0), raw_log=raw_log, debug=debug,
             ven_pre_high_time=config.getfloat('ven_pre_high_time', 0.010, minval=0.0),
             ven_low_time=config.getfloat('ven_low_time', 0.010, minval=0.0),
             ven_post_high_time=config.getfloat('ven_post_high_time', 0.100, minval=0.0),
@@ -1620,8 +1614,8 @@ class PN7160Driver:
             self._handler.stop_discovery()
         except Exception as e:
             if self._debug >= 4:
-                trace("[%s pn7160] stop discovery failed (%s): %s",
-                             self._name, reason, e)
+                logger.info("[%s pn7160] stop discovery failed (%s): %s",
+                            self._name, reason, e)
         finally:
             self._discovery_active = False
 

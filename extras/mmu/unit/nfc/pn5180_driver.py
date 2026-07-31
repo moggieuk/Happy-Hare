@@ -33,7 +33,7 @@
 #   Unlike the RC522 driver, sleep_fn defaults to reactor.pause here, so an
 #   instance built without one is still reactor-friendly.
 
-from .log import logger, trace
+from .log import logger
 
 
 SYSTEM_CONFIG = 0x00
@@ -659,8 +659,8 @@ class PN5180Driver:
             return
         except Exception as error:
             if self._debug >= 4:
-                trace('[%s pn5180] release failed (%s): %s',
-                             self._name, reason, error)
+                logger.info('[%s pn5180] release failed (%s): %s',
+                            self._name, reason, error)
         self._clear_current_card()
 
     def _set_current_card(self, target):

@@ -48,7 +48,7 @@
 import time
 import traceback
 
-from .log import logger, trace
+from .log import logger
 
 # ─────────────────────────────────────────────────────────────────────────────
 # RC522 register addresses
@@ -185,8 +185,8 @@ class RC522Driver:
     def _write(self, reg, val):
         """Write one byte to an RC522 register (no response expected)."""
         if self._debug >= 4:
-            trace("[%s rc522] W %-15s (0x%02X) = 0x%02X",
-                          self._name, _REG_NAMES.get(reg, '?'), reg, val & 0xFF)
+            logger.info("[%s rc522] W %-15s (0x%02X) = 0x%02X",
+                        self._name, _REG_NAMES.get(reg, '?'), reg, val & 0xFF)
         self._spi.spi_send([(reg << 1) & 0x7E, val & 0xFF])
 
     def _read(self, reg):
@@ -194,8 +194,8 @@ class RC522Driver:
         resp = self._spi.spi_transfer([((reg << 1) & 0x7E) | 0x80, 0x00])
         val = resp['response'][1]
         if self._debug >= 4:
-            trace("[%s rc522] R %-15s (0x%02X) -> 0x%02X",
-                          self._name, _REG_NAMES.get(reg, '?'), reg, val)
+            logger.info("[%s rc522] R %-15s (0x%02X) -> 0x%02X",
+                        self._name, _REG_NAMES.get(reg, '?'), reg, val)
         return val
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -222,16 +222,18 @@ class RC522Driver:
                 last_error = None
             except Exception as e:
                 last_error = e
-                trace("[%s rc522] init attempt %d raised: %s\n%s",
-                      self._name, attempt, e, traceback.format_exc())
+                if self._debug >= 4:
+                    logger.info("[%s rc522] init attempt %d raised: %s\n%s",
+                                self._name, attempt, e, traceback.format_exc())
             else:
                 if tx_final & 0x03:
                     suffix = '' if attempt == 1 else ' on attempt %d' % attempt
                     logger.info("[%s rc522] init OK%s (TxControl=0x%02X, %s)",
                                 self._name, suffix, tx_final, self._bus_description())
                     return
-                trace("[%s rc522] init attempt %d left TxControl=0x%02X",
-                      self._name, attempt, tx_final)
+                if self._debug >= 4:
+                    logger.info("[%s rc522] init attempt %d left TxControl=0x%02X",
+                                self._name, attempt, tx_final)
             if attempt < self._INIT_ATTEMPTS:
                 self._sleep(self._INIT_RETRY_DELAY)
 
@@ -249,12 +251,12 @@ class RC522Driver:
     def _init_once(self):
         """One reset-and-configure pass. Returns TxControlReg as read back."""
         if self._debug >= 4:
-            trace("[%s rc522] init — soft-resetting", self._name)
+            logger.info("[%s rc522] init — soft-resetting", self._name)
         self._write(_CommandReg,    _PCD_RESETPHASE)
         self._sleep(0.050)           # Datasheet: max reset time 37.74 ms; 50 ms is safe
         if self._debug >= 4:
-            trace("[%s rc522] init — reset done, configuring timer "
-                         "and modulation", self._name)
+            logger.info("[%s rc522] init — reset done, configuring timer "
+                        "and modulation", self._name)
         self._write(_TModeReg,      0x8D)
         self._write(_TPrescalerReg, 0x3E)
         self._write(_TReloadRegH,   0x00)
@@ -265,8 +267,8 @@ class RC522Driver:
         tx = self._read(_TxControlReg)
         if not (tx & 0x03):
             if self._debug >= 4:
-                trace("[%s rc522] init — enabling antenna TX pins "
-                             "(TxControl was 0x%02X)", self._name, tx)
+                logger.info("[%s rc522] init — enabling antenna TX pins "
+                            "(TxControl was 0x%02X)", self._name, tx)
             self._write(_TxControlReg, tx | 0x03)
         return self._read(_TxControlReg)
 
@@ -334,16 +336,16 @@ class RC522Driver:
                     "[%s rc522] not responding — antenna TX bits are off "
                     "(TxControl=0x%02X)", self._name, tx)
             elif self._debug >= 4:
-                trace("[%s rc522] alive (TxControl=0x%02X)",
-                             self._name, tx)
+                logger.info("[%s rc522] alive (TxControl=0x%02X)",
+                            self._name, tx)
             return alive
         except Exception as e:
             logger.warning(
                 "[%s rc522] health check failed — SPI reader did not "
                 "respond: %s", self._name, e)
             if self._debug >= 4:
-                trace("[%s rc522] is_alive traceback:\n%s",
-                             self._name, traceback.format_exc())
+                logger.info("[%s rc522] is_alive traceback:\n%s",
+                            self._name, traceback.format_exc())
             return False
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -359,9 +361,9 @@ class RC522Driver:
                 (MI_ERR, [], 0) on timeout, collision, or protocol error.
         """
         if self._debug >= 4:
-            trace("[%s rc522] _transceive send=[%s]",
-                          self._name,
-                          ' '.join('0x%02X' % b for b in send_data))
+            logger.info("[%s rc522] _transceive send=[%s]",
+                        self._name,
+                        ' '.join('0x%02X' % b for b in send_data))
 
         # Enable all interrupt sources; clear pending flags; flush FIFO
         self._write(_ComIEnReg,    self._read(_ComIEnReg) | 0x80)
@@ -380,9 +382,9 @@ class RC522Driver:
         delay = self._transceive_delay if timeout is None else max(
             0.0, min(float(timeout), self._transceive_delay))
         if self._debug >= 4:
-            trace("[%s rc522] _transceive — transmission started, "
-                          "waiting %.0f ms for response",
-                          self._name, delay * 1000)
+            logger.info("[%s rc522] _transceive — transmission started, "
+                        "waiting %.0f ms for response",
+                        self._name, delay * 1000)
 
         # Wait for tag response (or internal timer timeout at ~0.5 ms)
         self._sleep(delay)
@@ -392,36 +394,36 @@ class RC522Driver:
 
         irq = self._read(_ComIrqReg)
         if self._debug >= 4:
-            trace("[%s rc522] _transceive IRQ=0x%02X "
-                          "(TimerIRq=%d RxIRq=%d IdleIRq=%d)",
-                          self._name, irq,
-                          (irq >> 0) & 1, (irq >> 5) & 1, (irq >> 4) & 1)
+            logger.info("[%s rc522] _transceive IRQ=0x%02X "
+                        "(TimerIRq=%d RxIRq=%d IdleIRq=%d)",
+                        self._name, irq,
+                        (irq >> 0) & 1, (irq >> 5) & 1, (irq >> 4) & 1)
 
         # TimerIRq (bit 0) set with no RxIRq (bit 5) or IdleIRq (bit 4) → no tag
         if (irq & 0x01) and not (irq & 0x30):
             if self._debug >= 4:
-                trace("[%s rc522] _transceive -> MI_ERR (timer "
-                              "expired, no tag response)", self._name)
+                logger.info("[%s rc522] _transceive -> MI_ERR (timer "
+                            "expired, no tag response)", self._name)
             return MI_ERR, [], 0
 
         # Protocol error (collision, CRC error, buffer overflow, parity error)
         err = self._read(_ErrorReg)
         if err & 0x1B:
             if self._debug >= 4:
-                trace("[%s rc522] _transceive -> MI_ERR "
-                              "(ErrorReg=0x%02X: collision=%d CRC=%d overflow=%d "
-                              "parity=%d)",
-                              self._name, err,
-                              (err >> 3) & 1, (err >> 2) & 1,
-                              (err >> 4) & 1, (err >> 1) & 1)
+                logger.info("[%s rc522] _transceive -> MI_ERR "
+                            "(ErrorReg=0x%02X: collision=%d CRC=%d overflow=%d "
+                            "parity=%d)",
+                            self._name, err,
+                            (err >> 3) & 1, (err >> 2) & 1,
+                            (err >> 4) & 1, (err >> 1) & 1)
             return MI_ERR, [], 0
 
         # Read received bytes from FIFO
         fifo_len = self._read(_FIFOLevelReg)
         if fifo_len == 0:
             if self._debug >= 4:
-                trace("[%s rc522] _transceive -> MI_ERR "
-                              "(FIFO empty after IRQ)", self._name)
+                logger.info("[%s rc522] _transceive -> MI_ERR "
+                            "(FIFO empty after IRQ)", self._name)
             return MI_ERR, [], 0
 
         last_bits = self._read(_ControlReg) & 0x07
@@ -432,10 +434,10 @@ class RC522Driver:
         back_data = [self._read(_FIFODataReg) for _ in range(fifo_len)]
 
         if self._debug >= 4:
-            trace("[%s rc522] _transceive -> MI_OK "
-                          "fifo=%d bits=%d data=[%s]",
-                          self._name, fifo_len, bit_len,
-                          ' '.join('0x%02X' % b for b in back_data))
+            logger.info("[%s rc522] _transceive -> MI_OK "
+                        "fifo=%d bits=%d data=[%s]",
+                        self._name, fifo_len, bit_len,
+                        ' '.join('0x%02X' % b for b in back_data))
 
         return MI_OK, back_data, bit_len
 
@@ -682,7 +684,7 @@ class RC522Driver:
                         self._name, 'OK' if status == MI_OK else 'ERR',
                         len(data))
                     if self._debug >= 4:
-                        trace(
+                        logger.info(
                             "[%s rc522] ANTICOLL response bits=%d data=[%s]",
                             self._name, bits,
                             ' '.join('0x%02X' % b for b in data))
@@ -742,7 +744,7 @@ class RC522Driver:
             else:
                 self._clear_current_card()
             if self._debug >= 4 and target_info is not None:
-                trace(
+                logger.info(
                     "[%s rc522] read_target — uid=%s protocol=%s "
                     "SAK=%s ATQA=0x%04X",
                     self._name, target_info.get('uid'),
@@ -762,8 +764,8 @@ class RC522Driver:
                 "[%s rc522] target read failed — check SPI wiring and reader "
                 "state: %s", self._name, e)
             if self._debug >= 4:
-                trace("[%s rc522] read_target traceback:\n%s",
-                             self._name, traceback.format_exc())
+                logger.info("[%s rc522] read_target traceback:\n%s",
+                            self._name, traceback.format_exc())
             self._clear_current_card()
             return None
 
@@ -784,8 +786,8 @@ class RC522Driver:
     def _release_current_target(self, reason="manual"):
         """Clear cached target state."""
         if self._debug >= 4:
-            trace("[%s rc522] release target reason=%s",
-                         self._name, reason)
+            logger.info("[%s rc522] release target reason=%s",
+                        self._name, reason)
         self._clear_current_card()
 
     def _ensure_selected_target(self, timeout=0.500, expect_uid_bytes=None):
@@ -825,7 +827,7 @@ class RC522Driver:
             [_PICC_MIFARE_READ, page & 0xFF], timeout=timeout)
         if status != MI_OK or len(data) < 16:
             if self._debug >= 4:
-                trace(
+                logger.info(
                     "[%s rc522] NTAG page %d read failed "
                     "(status=%s bits=%d data=[%s])",
                     self._name, page, 'OK' if status == MI_OK else 'ERR',
@@ -877,7 +879,7 @@ class RC522Driver:
                     user_data.extend(page_data[:remaining_pages * 4])
                 if 0xFE in page_data:
                     if self._debug >= 4:
-                        trace(
+                        logger.info(
                             "[%s rc522] NTAG terminator found at "
                             "page %d offset %d",
                             self._name, current_page, page_data.index(0xFE))
@@ -952,7 +954,7 @@ class RC522Driver:
                     self._sleep(0.005)
             result = user_data[:min(len(user_data), target_bytes)]
             if self._debug >= 4 and ndef_len is not None:
-                trace(
+                logger.info(
                     "[%s rc522] NTAG NDEF length=%d read=%d bytes",
                     self._name, ndef_len, len(result))
             return result
@@ -996,7 +998,7 @@ class RC522Driver:
         for _ in range(poll_ms):
             if self._read(_Status2Reg) & 0x08:
                 if self._debug >= 4:
-                    trace(
+                    logger.info(
                         "[%s rc522] MIFARE auth block=%d key_%s OK",
                         self._name, block_addr, 'B' if use_key_b else 'A')
                 return True
@@ -1022,7 +1024,7 @@ class RC522Driver:
             [_PICC_MIFARE_READ, block_addr & 0xFF], timeout=timeout)
         if status != MI_OK or len(data) < 16:
             if self._debug >= 4:
-                trace(
+                logger.info(
                     "[%s rc522] MIFARE block %d read failed "
                     "(status=%s bits=%d len=%d)",
                     self._name, block_addr, 'OK' if status == MI_OK else 'ERR',

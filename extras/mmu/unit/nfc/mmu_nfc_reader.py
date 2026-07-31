@@ -18,7 +18,7 @@
 #   i2c_address: 0x24               # shared I2C address default
 #   reader_type: pn532              # default chip type for instances below
 #   #interface: i2c                 # default transport for instances below
-#   debug: 2                        # 0=silent .. 4=trace, logged to klippy.log
+#   debug: 2                        # 0=silent .. 4=trace, for THIS reader, to klippy.log
 #   #transceive_delay: 0.250        # pn532/pn7160 tag-wait (min 0.050)
 #   #crc_delay: 0.050               # pn532 InRelease wait
 #   #tag_max_pages: 16              # NTAG/Type-5 pages read during a deep read (4..135)
@@ -244,9 +244,6 @@ class MmuNfcReader:
                                                               default=default_interface)
 
         self.debug = config.getint('debug', self._defaults.debug if self._defaults else 2, minval=0, maxval=4)
-        if self.debug >= 4:
-            # Opens the expensive trace()/tag_trace() paths on the shared mmu_rfid.* channels.
-            reader_log.enable_trace()
         transceive_delay = config.getfloat('transceive_delay',
                                            self._defaults.transceive_delay if self._defaults else 0.250,
                                            minval=0.050, maxval=2.0)

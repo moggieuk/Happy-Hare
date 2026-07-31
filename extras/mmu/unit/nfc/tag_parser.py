@@ -121,9 +121,9 @@ import struct
 from typing import Optional
 
 # Channel and levels are owned by log.py, shared with the readers - see the header
-# there for why nothing in the NFC layer calls logger.debug(). tag_trace() is the
-# gated detail path; it needs a reader configured debug: 4.
-from .log import tag_logger as _log, tag_trace as _trace_log
+# there for why nothing in the NFC layer calls logger.debug(). Parse detail goes to
+# the caller's trace callback (see _make_trace), not to this channel.
+from .log import tag_logger as _log
 
 
 def _make_trace(trace):
@@ -1545,7 +1545,7 @@ def _try_qidi_box(raw: bytes) -> Optional[dict]:
 _OPENTAG3D_MIME = "application/vnd.opentag3d"
 
 
-def _try_opentag3d(mime_type: str, payload: bytes) -> Optional[dict]:
+def _try_opentag3d(mime_type: str, payload: bytes, trace=None) -> Optional[dict]:
     """Parse OpenTag3D binary NDEF payload.
 
     The spec stores fields as big-endian unsigned integers; temperatures
@@ -1565,6 +1565,7 @@ def _try_opentag3d(mime_type: str, payload: bytes) -> Optional[dict]:
         ...          Drying temp uint16 BE (Celsius*5)
         ...          Drying time uint8 (hours)
     """
+    trace = _make_trace(trace)
     if mime_type.lower() != _OPENTAG3D_MIME:
         return None
     if len(payload) < 4:
@@ -1644,7 +1645,7 @@ def _try_opentag3d(mime_type: str, payload: bytes) -> Optional[dict]:
         return info if info.get("material") else None
 
     except Exception as exc:
-        _trace_log("opentag3d parse error: %s", exc)
+        trace("debug", "opentag3d parse error: %s", exc)
         return None
 
 
@@ -1683,7 +1684,7 @@ def _loads_json_text(text: str, trace=None) -> tuple[Optional[dict], bool]:
             trace("info", "normalized nonstandard JSON punctuation")
             return data, True
     except Exception as exc:
-        _trace_log("JSON parse failed after quote normalization: %s", exc)
+        trace("debug", "JSON parse failed after quote normalization: %s", exc)
     return None, True
 
 
@@ -2032,8 +2033,9 @@ def _try_openprinttag_standard(meta: dict, meta_end: int,
     return info
 
 
-def _try_openprinttag(mime_type: str, payload: bytes) -> Optional[dict]:
+def _try_openprinttag(mime_type: str, payload: bytes, trace=None) -> Optional[dict]:
     """Parse an OpenPrintTag CBOR NDEF payload."""
+    trace = _make_trace(trace)
     if mime_type.lower() != _OPENPRINTTAG_MIME:
         return None
     if not payload:
@@ -2056,7 +2058,7 @@ def _try_openprinttag(mime_type: str, payload: bytes) -> Optional[dict]:
         return _openprinttag_legacy_from_map(data)
 
     except Exception as exc:
-        _trace_log("openprinttag cbor parse error: %s", exc)
+        trace("debug", "openprinttag cbor parse error: %s", exc)
         return None
 
 
@@ -2261,14 +2263,9 @@ def parse_tag(raw, uid_hex: Optional[str] = None, trace=None) -> Optional[dict]:
                 trace("debug", "parse_tag: trying Bambu block layout")
                 result = _parse_bambu_blocks(blocks)
                 if result is not None:
-                    _trace_log(
-                        "parsed Bambu Lab blocks uid=%s",
-                        uid_hex or "unknown",
-                    )
                     trace("info", "parse_tag: matched Bambu Lab blocks")
                     return result
             except Exception as exc:
-                _trace_log("Bambu block parse error: %s", exc)
                 trace("debug", "parse_tag: Bambu block parse error: %s", exc)
             # Try Creality AES tag layout — needs sector 1 read with the
             # UID-derived Key B (see _creality_derive_key_b()); a Key-A read
@@ -2283,14 +2280,9 @@ def parse_tag(raw, uid_hex: Optional[str] = None, trace=None) -> Optional[dict]:
                         if uid_bytes is not None else None),
                     trace=trace)
                 if result is not None:
-                    _trace_log(
-                        "parsed Creality AES tag blocks uid=%s",
-                        uid_hex or "unknown",
-                    )
                     trace("info", "parse_tag: matched Creality AES tag blocks")
                     return result
             except Exception as exc:
-                _trace_log("Creality AES block parse error: %s", exc)
                 trace("debug", "parse_tag: Creality AES block parse error: %s", exc)
             # Build a flat byte string for Creality/QIDI parsers.
             # Use a fixed-size buffer indexed by absolute block number so that
@@ -2317,14 +2309,12 @@ def parse_tag(raw, uid_hex: Optional[str] = None, trace=None) -> Optional[dict]:
             trace("debug", "parse_tag: trying Creality CFS blocks")
             result = _try_creality_cfs(flat_blocks)
             if result is not None:
-                _trace_log("parsed Creality CFS blocks uid=%s", uid_hex or "unknown")
                 trace("info", "parse_tag: matched Creality CFS blocks")
                 return result
             # Try QIDI Box (block-based)
             trace("debug", "parse_tag: trying QIDI Box blocks")
             result = _try_qidi_box(flat_blocks)
             if result is not None:
-                _trace_log("parsed QIDI Box blocks uid=%s", uid_hex or "unknown")
                 trace("info", "parse_tag: matched QIDI Box blocks")
                 return result
         trace("info", "parse_tag: no authenticated block parser matched")
@@ -2337,7 +2327,6 @@ def parse_tag(raw, uid_hex: Optional[str] = None, trace=None) -> Optional[dict]:
         trace("info", "parse_tag: no raw data")
         return None
 
-    uid_info = f" uid={uid_hex}" if uid_hex else ""
     trace("debug", "parse_tag: raw byte input uid=%s raw_len=%d",
           uid_hex or "unknown", len(raw))
 
@@ -2345,7 +2334,6 @@ def parse_tag(raw, uid_hex: Optional[str] = None, trace=None) -> Optional[dict]:
     trace("debug", "parse_tag: trying ELEGOO binary")
     result = _try_elegoo(raw)
     if result is not None:
-        _trace_log("parsed ELEGOO tag%s", uid_info)
         trace("info", "parse_tag: matched ELEGOO")
         return result
 
@@ -2353,7 +2341,6 @@ def parse_tag(raw, uid_hex: Optional[str] = None, trace=None) -> Optional[dict]:
     trace("debug", "parse_tag: trying Anycubic ACE binary")
     result = _try_anycubic_ace(raw)
     if result is not None:
-        _trace_log("parsed Anycubic ACE tag%s", uid_info)
         trace("info", "parse_tag: matched Anycubic ACE")
         return result
 
@@ -2361,7 +2348,6 @@ def parse_tag(raw, uid_hex: Optional[str] = None, trace=None) -> Optional[dict]:
     trace("debug", "parse_tag: trying TigerTag binary")
     result = _try_tigertag(raw)
     if result is not None:
-        _trace_log("parsed TigerTag tag%s", uid_info)
         trace("info", "parse_tag: matched TigerTag")
         return result
 
@@ -2376,14 +2362,12 @@ def parse_tag(raw, uid_hex: Optional[str] = None, trace=None) -> Optional[dict]:
         for mime_type, payload in _get_ndef_mime_records(records):
             trace("debug", "parse_tag: trying NDEF MIME %s payload_len=%d",
                   mime_type, len(payload))
-            result = _try_opentag3d(mime_type, payload)
+            result = _try_opentag3d(mime_type, payload, trace=trace)
             if result is not None:
-                _trace_log("parsed OpenTag3D tag%s", uid_info)
                 trace("info", "parse_tag: matched OpenTag3D")
                 return result
-            result = _try_openprinttag(mime_type, payload)
+            result = _try_openprinttag(mime_type, payload, trace=trace)
             if result is not None:
-                _trace_log("parsed OpenPrintTag tag%s", uid_info)
                 trace("info", "parse_tag: matched OpenPrintTag")
                 return result
 
@@ -2393,19 +2377,16 @@ def parse_tag(raw, uid_hex: Optional[str] = None, trace=None) -> Optional[dict]:
             trace("debug", "parse_tag: trying NDEF text/URI length=%d", len(text))
             result = _try_openspool(text, trace=trace)
             if result is not None:
-                _trace_log("parsed OpenSpool tag%s", uid_info)
                 trace("info", "parse_tag: matched OpenSpool")
                 return result
             # SimplyPrint / QIDI URL
             result = _try_simplyprint_url(text)
             if result is not None:
-                _trace_log("parsed SimplyPrint URL tag%s", uid_info)
                 trace("info", "parse_tag: matched SimplyPrint URL")
                 return result
             # Generic NDEF JSON
             result = _try_generic_ndef_json(text, trace=trace)
             if result is not None:
-                _trace_log("parsed generic NDEF JSON tag%s", uid_info)
                 trace("info", "parse_tag: matched generic NDEF JSON")
                 return result
     else:
@@ -2415,7 +2396,6 @@ def parse_tag(raw, uid_hex: Optional[str] = None, trace=None) -> Optional[dict]:
     trace("debug", "parse_tag: trying Creality CFS raw bytes")
     result = _try_creality_cfs(raw)
     if result is not None:
-        _trace_log("parsed Creality CFS tag%s", uid_info)
         trace("info", "parse_tag: matched Creality CFS")
         return result
 
@@ -2423,7 +2403,6 @@ def parse_tag(raw, uid_hex: Optional[str] = None, trace=None) -> Optional[dict]:
     trace("debug", "parse_tag: trying QIDI Box raw bytes")
     result = _try_qidi_box(raw)
     if result is not None:
-        _trace_log("parsed QIDI Box tag%s", uid_info)
         trace("info", "parse_tag: matched QIDI Box")
         return result
 
@@ -2433,10 +2412,6 @@ def parse_tag(raw, uid_hex: Optional[str] = None, trace=None) -> Optional[dict]:
     # HKDF-derived Key A keys; a raw byte dump cannot be decrypted here.
     # Use is_parse_error() to distinguish this from a successful parse.
     if _detect_bambu(raw):
-        _trace_log(
-            "Bambu Lab tag detected in raw dump%s — "
-            "use authenticated read for full data", uid_info
-        )
         trace("info", "parse_tag: detected Bambu raw dump without authenticated data")
         return {
             "error": (
@@ -2454,23 +2429,19 @@ def parse_tag(raw, uid_hex: Optional[str] = None, trace=None) -> Optional[dict]:
             trace("debug", "parse_tag: trying raw UTF-8 fallback length=%d", len(text))
             result = _try_openspool(text, trace=trace)
             if result is not None:
-                _trace_log("parsed OpenSpool (raw UTF-8) tag%s", uid_info)
                 trace("info", "parse_tag: matched OpenSpool raw UTF-8")
                 return result
             result = _try_simplyprint_url(text)
             if result is not None:
-                _trace_log("parsed SimplyPrint URL (raw UTF-8) tag%s", uid_info)
                 trace("info", "parse_tag: matched SimplyPrint URL raw UTF-8")
                 return result
             result = _try_generic_ndef_json(text, trace=trace)
             if result is not None:
-                _trace_log("parsed generic JSON (raw UTF-8) tag%s", uid_info)
                 trace("info", "parse_tag: matched generic JSON raw UTF-8")
                 return result
     except Exception:
         pass
 
-    _trace_log("unrecognised tag format%s raw_len=%d", uid_info, len(raw))
     trace("info", "parse_tag: unrecognised tag format raw_len=%d", len(raw))
     return None
 

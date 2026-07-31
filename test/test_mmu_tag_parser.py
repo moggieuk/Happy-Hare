@@ -26,6 +26,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 import json
+import logging
 import unittest
 
 from test.hh import install
@@ -359,3 +360,46 @@ class TestBlankTagMisdetectedAsBambu(TagParserTestCase):
     def test_a_written_ndef_tag_is_never_mistaken_for_bambu(self):
         """The NDEF escape hatch works, which is what keeps real tags safe."""
         self.assertFalse(tag_parser._detect_bambu(openspool_tag()))
+
+
+class TestParseDiagnostics(TagParserTestCase):
+    """
+    parse_tag reports what it tried through the caller's trace callback, and only
+    there: the caller owns the debug level, so a parse with no callback is silent
+    however the machine is configured.
+    """
+
+    def test_parse_without_a_callback_logs_nothing(self):
+        handler = logging.Handler(level=logging.INFO)
+        records = []
+        handler.emit = lambda record: records.append(record.getMessage())
+        channels = ('mmu_rfid.tag_parser', 'mmu_rfid.reader')
+        saved = {}
+        for name in channels:
+            logger_obj = logging.getLogger(name)
+            saved[name] = (logger_obj.level, logger_obj.propagate)
+            logger_obj.addHandler(handler)
+            logger_obj.setLevel(logging.INFO)
+            logger_obj.propagate = False
+        try:
+            self.parse(openspool_tag())
+            self.parse(b'\x00' * 32)            # matches nothing
+        finally:
+            for name in channels:
+                logger_obj = logging.getLogger(name)
+                logger_obj.setLevel(saved[name][0])
+                logger_obj.propagate = saved[name][1]
+                logger_obj.removeHandler(handler)
+        self.assertEqual(records, [])
+
+    def test_the_callback_still_reports_the_conclusion(self):
+        seen = []
+        tag_parser.parse_tag(openspool_tag(),
+                             trace=lambda level, msg, *a: seen.append(msg % a))
+        self.assertTrue(any('matched OpenSpool' in line for line in seen), seen)
+
+        seen = []
+        tag_parser.parse_tag(b'\x00' * 32,
+                             trace=lambda level, msg, *a: seen.append(msg % a))
+        self.assertTrue(any('unrecognised' in line or 'no NDEF' in line
+                            for line in seen), seen)

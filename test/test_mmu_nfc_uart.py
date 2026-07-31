@@ -80,14 +80,16 @@ def _raise_io(*_args, **_kwargs):
     raise OSError(6, 'Device not configured')
 
 
-def capture_warnings(logger_name=READER_CHANNEL):
+def capture_records(logger_name=READER_CHANNEL, level=logging.INFO):
     """
-    Collect WARNING+ records from a logger. Used instead of assertNoLogs, which
-    needs Python 3.10 - Klipper hosts run whatever the distro ships.
+    Collect records at 'level' and above. Used instead of assertNoLogs, which needs
+    Python 3.10 - Klipper hosts run whatever the distro ships - and alongside
+    assertLogs, which fails when nothing is logged. "Nothing was logged" is the
+    interesting half of a per-reader debug level.
     """
     class Collector(logging.Handler):
         def __init__(self):
-            logging.Handler.__init__(self, level=logging.WARNING)
+            logging.Handler.__init__(self, level=level)
             self.records = []
 
         def emit(self, record):
@@ -96,20 +98,24 @@ def capture_warnings(logger_name=READER_CHANNEL):
     return Collector(), logging.getLogger(logger_name)
 
 
+def capture_warnings(logger_name=READER_CHANNEL):
+    return capture_records(logger_name, level=logging.WARNING)
+
+
 def framer(chunks):
     """A framer reading from a fixed list of chunks, one per pump()."""
     queue = list(chunks)
     return _HSUFrameReader(lambda n: queue.pop(0) if queue else b'')
 
 
-def driver(chunks=(), chip=None, **kwargs):
+def driver(chunks=(), chip=None, name="gate0", debug=0, **kwargs):
     """A real PN532UARTDriver on a fake port. Returns (driver, port, clock)."""
     clock = Clock()
     port = fake_serial.Serial('/dev/fake-nfc', 115200, timeout=0)
     port.feed(*chunks)
     if chip is not None:
         port.on_write = chip.on_write
-    drv = PN532UARTDriver('/dev/fake-nfc', name="gate0", debug=0,
+    drv = PN532UARTDriver('/dev/fake-nfc', name=name, debug=debug,
                           serial_factory=lambda p, b: port,
                           sleep_fn=clock.sleep, time_fn=clock.now, **kwargs)
     return drv, port, clock
@@ -517,6 +523,54 @@ class TestReadAckAndRecv(unittest.TestCase):
         drv, _port, _clock = driver(chip=chip)
         drv.init()
         self.assertIsNone(drv.read_target(timeout=0.5))
+
+
+class TestDebugLevelIsPerReader(unittest.TestCase):
+    """
+    debug: is documented per-reader, and level 4 must be no exception. A machine can
+    run several readers, so tracing the one that will not talk must not turn every
+    other reader (or the tag parser) into a firehose in the same klippy.log.
+    """
+
+    def send_one_command(self, name, debug):
+        drv, _port, _clock = driver(name=name, debug=debug)
+        drv._send([0x02])                       # _send logs its TX frame at level 4
+
+    def test_only_the_traced_reader_logs(self):
+        """
+        Both readers still log the events they always log (a port opening); it is the
+        per-transaction detail that must belong to one reader only.
+        """
+        with self.assertLogs(READER_CHANNEL, level='INFO') as captured:
+            self.send_one_command('quiet_gate', 0)
+            self.send_one_command('traced_gate', 4)
+        traced = [line for line in captured.output if '_send: TX' in line]
+        self.assertTrue(traced, 'the debug: 4 reader logged no TX detail at all')
+        self.assertFalse([line for line in traced if 'quiet_gate' in line],
+                         'a reader at debug: 0 traced because another reader was at '
+                         'debug: 4 - the level is per-reader, not per-machine')
+
+    def test_level_four_is_what_turns_it_on(self):
+        with self.assertLogs(READER_CHANNEL, level='INFO') as captured:
+            self.send_one_command('gate4', 4)
+        self.assertTrue(any('_send: TX' in line for line in captured.output),
+                        'debug: 4 must produce the per-transaction TX line')
+
+    def test_lower_levels_emit_nothing_per_transaction(self):
+        handler, logger_obj = capture_records()
+        logger_obj.addHandler(handler)
+        previous, propagate = logger_obj.level, logger_obj.propagate
+        logger_obj.setLevel(logging.INFO)
+        logger_obj.propagate = False        # keep the events off the test console
+        try:
+            for level in (0, 3):
+                self.send_one_command('gate%d' % level, level)
+        finally:
+            logger_obj.setLevel(previous)
+            logger_obj.propagate = propagate
+            logger_obj.removeHandler(handler)
+        self.assertEqual([r for r in handler.records if '_send: TX' in r], [],
+                         'debug: 3 and below must not emit per-transaction detail')
 
 
 class TestUartContractShape(unittest.TestCase):

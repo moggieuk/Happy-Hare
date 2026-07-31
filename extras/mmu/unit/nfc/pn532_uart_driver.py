@@ -52,7 +52,7 @@
 #     dependency (it IS in Klipper's own klippy-requirements.txt, so a real
 #     install has it) and it is absent from the test venv.
 
-from .log import logger, trace
+from .log import logger
 from .pn532_driver import (
     _PN532Base,
     _MAX_RESPONSE_BYTES,
@@ -309,8 +309,8 @@ class PN532UARTDriver(_PN532Base):
 
     def _framer_log(self, fmt, *args):
         if self._debug >= 4:
-            trace("[%s %s] framer: " + fmt,
-                         *((self._name, self._transport_name) + args))
+            logger.info("[%s %s] framer: " + fmt,
+                        *((self._name, self._transport_name) + args))
 
     # ─────────────────────────────────────────────────────────────────────────
     # Port lifecycle
@@ -404,8 +404,8 @@ class PN532UARTDriver(_PN532Base):
             port.close()
         except Exception as e:
             if self._debug >= 4:
-                trace("[%s %s] close: close failed: %s",
-                             self._name, self._transport_name, e)
+                logger.info("[%s %s] close: close failed: %s",
+                            self._name, self._transport_name, e)
 
     def _flush_input(self):
         """Drop both buffered layers: our accumulator and the OS receive buffer."""
@@ -416,8 +416,8 @@ class PN532UARTDriver(_PN532Base):
             self._serial.reset_input_buffer()
         except Exception as e:
             if self._debug >= 4:
-                trace("[%s %s] _flush_input: failed: %s",
-                             self._name, self._transport_name, e)
+                logger.info("[%s %s] _flush_input: failed: %s",
+                            self._name, self._transport_name, e)
 
     def _on_io_error(self, operation, exc):
         """
@@ -471,9 +471,9 @@ class PN532UARTDriver(_PN532Base):
         """Write a command frame to the PN532."""
         frame = bytes(self._build_frame(cmd_and_params))
         if self._debug >= 4:
-            trace("[%s %s] _send: TX  cmd=0x%02X  frame=%s",
-                         self._name, self._transport_name, cmd_and_params[0],
-                         _hex(frame, ' '))
+            logger.info("[%s %s] _send: TX  cmd=0x%02X  frame=%s",
+                        self._name, self._transport_name, cmd_and_params[0],
+                        _hex(frame, ' '))
         # A new command starts a new exchange, so anything still buffered belongs
         # to the previous one and can only be mistaken for this command's ACK. On
         # I2C an unread response waits inside the chip and cannot do this; here it
@@ -521,10 +521,10 @@ class PN532UARTDriver(_PN532Base):
                                 got[0], _hex(got[1], ' '))
             if self._now() >= deadline:
                 if self._debug >= 4:
-                    trace("[%s %s] _await(%s): timeout after %.3fs "
-                                 "(buffered=%s)", self._name,
-                                 self._transport_name, what, timeout,
-                                 _hex(self._framer.buffered(), ' ') or '(empty)')
+                    logger.info("[%s %s] _await(%s): timeout after %.3fs "
+                                "(buffered=%s)", self._name,
+                                self._transport_name, what, timeout,
+                                _hex(self._framer.buffered(), ' ') or '(empty)')
                 return None
             self._sleep(poll_interval)
 
@@ -634,8 +634,8 @@ class PN532UARTDriver(_PN532Base):
             self._probe_send_abort()
         except Exception as e:
             if self._debug >= 4:
-                trace("[%s %s] _probe_abort: abort write failed: %s",
-                             self._name, self._transport_name, e)
+                logger.info("[%s %s] _probe_abort: abort write failed: %s",
+                            self._name, self._transport_name, e)
             # Fall through and still drain: the stale bytes are the real hazard.
 
         deadline   = self._now() + self._ABORT_MAX_TIME
@@ -650,8 +650,8 @@ class PN532UARTDriver(_PN532Base):
                 # that would flush mid-transit, which is the very ordering hazard
                 # the comment below warns about.
                 if self._debug >= 4:
-                    trace("[%s %s] _probe_abort: drain read failed: %s",
-                                 self._name, self._transport_name, e)
+                    logger.info("[%s %s] _probe_abort: drain read failed: %s",
+                                self._name, self._transport_name, e)
                 self._framer.reset()
                 return
             if arrived:
@@ -673,9 +673,9 @@ class PN532UARTDriver(_PN532Base):
         """Send the HSU 0x55 resync burst before a GetFirmwareVersion attempt."""
         self._open()
         if self._debug >= 4:
-            trace("[%s %s] _transport_wake_preamble: TX %s",
-                         self._name, self._transport_name,
-                         _hex(self._WAKE_PREAMBLE, ' '))
+            logger.info("[%s %s] _transport_wake_preamble: TX %s",
+                        self._name, self._transport_name,
+                        _hex(self._WAKE_PREAMBLE, ' '))
         self._write(self._WAKE_PREAMBLE)
         self._sleep(self._WAKE_SETTLE)
         # The burst can bounce bytes back; clear them so they cannot be read as

@@ -686,6 +686,42 @@ class TestPn7160ProbeStartCost(unittest.TestCase):
                         % sum(reactor.pauses))
 
 
+class TestPn7160HandlerFollowsReaderDebug(unittest.TestCase):
+    """The handler's NCI frame detail is level 4 on this reader, nothing else."""
+
+    def handler(self, **opts):
+        reactor = _FakeReactor()
+        drv = PN7160Driver(_FakeConfig(_FakePrinter(reactor), **opts), FakeI2c(),
+                           name="gate0", debug=opts.get('debug', 2))
+        return drv._handler
+
+    def test_debug_level_reaches_the_handler(self):
+        self.assertEqual(self.handler(debug=4).debug, 4)
+        self.assertEqual(self.handler(debug=2).debug, 2)
+
+    def test_handler_detail_needs_level_four(self):
+        with self.assertLogs('mmu_rfid.reader', level='INFO') as captured:
+            self.handler(debug=4)._debug("hello")
+        self.assertTrue(any('hello' in line for line in captured.output))
+
+        handler = self.handler(debug=3)
+        records = []
+        logger_obj = logging.getLogger('mmu_rfid.reader')
+        collector = logging.Handler(level=logging.INFO)
+        collector.emit = lambda record: records.append(record.getMessage())
+        logger_obj.addHandler(collector)
+        previous, propagate = logger_obj.level, logger_obj.propagate
+        logger_obj.setLevel(logging.INFO)
+        logger_obj.propagate = False
+        try:
+            handler._debug("hello")
+        finally:
+            logger_obj.setLevel(previous)
+            logger_obj.propagate = propagate
+            logger_obj.removeHandler(collector)
+        self.assertEqual(records, [])
+
+
 class TestPn7160ProbeContractShape(unittest.TestCase):
     def test_driver_exposes_the_full_contract(self):
         drv, _i2c, _reactor = pn7160()
