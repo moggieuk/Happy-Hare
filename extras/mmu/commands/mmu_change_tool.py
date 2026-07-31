@@ -254,7 +254,7 @@ class MmuChangeToolCommand(BaseCommand):
                                 except MmuError as ee:
                                     if i == attempts - 1:
                                         raise MmuError("%s.\nOccurred when changing tool: %s" % (str(ee), mmu._last_toolchange))
-                                    mmu.log_error("%s.\nOccured when changing tool: %s. Retrying..." % (str(ee), mmu._last_toolchange))
+                                    mmu.log_error("%s.\nOccurred when changing tool: %s. Retrying..." % (str(ee), mmu._last_toolchange))
                                     # Try again but recover_filament_pos will ensure conservative treatment of unload
                                     mmu.recover_filament_pos()
 
