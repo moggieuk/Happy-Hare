@@ -239,7 +239,7 @@ class MmuChangeToolCommand(BaseCommand):
                             if slicer_retract_len > 0 and park_macro:
                                 retracted_length = float(park_macro.variables.get('retracted_length', 0) or 0)
                                 mmu.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=retracted_length VALUE=%s" % (retracted_length + slicer_retract_len))
-                                mmu.log_info("Compensating and adjusting distances for unhandled slicer %.2fmm retraction" % -slicer_retract_len)
+                                mmu.log_info("Compensating for unhandled slicer %.2fmm retraction" % -slicer_retract_len)
 
                         mmu._set_next_position(next_pos) # This can also clear next_position
                         mmu._track_time_start('total')
@@ -248,6 +248,7 @@ class MmuChangeToolCommand(BaseCommand):
                         # Remember the tool that was actually in use before any load attempts
                         prev_tool = mmu.tool_selected
 
+                        # Load attempts
                         attempts = 2 if mmu.p.retry_tool_change_on_error and (mmu.is_printing() or standalone) else 1 # TODO Replace with inattention timer
                         try:
                             for i in range(attempts):
@@ -279,10 +280,10 @@ class MmuChangeToolCommand(BaseCommand):
                     if slicer_retract_len and park_macro:
                         mmu.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=retracted_length VALUE=%s" % (retracted_length))
 
-                    # Deliberately outside of _wrap_gear_synced_to_extruder() so there is no absolutely no delay after restoring position
+                    # Restore to print deliberately outside of _wrap_gear_synced_to_extruder() to minimise delay after restoring position
                     mmu._continue_after('toolchange', restore=restore)
 
-                    # Unhandled retraction fall back - if _mmu_park parking/retraction logic is bypassed, issue adjustment before resuming print
+                    # Unhandled retraction fall back / edge case - if _mmu_park parking/retraction logic is bypassed, issue adjustment before resuming print
                     if slicer_retract_len and park_macro:
                         if float(park_macro.variables.get('retracted_length', 0) or 0):
                             #mmu.reset_sync_gear_to_extruder(None, force_grip=True)
