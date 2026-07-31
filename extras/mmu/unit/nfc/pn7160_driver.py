@@ -149,7 +149,8 @@ def _frame_summary(frame):
 
 
 class PN7160Handler:
-    """Minimal PN7160 NCI state machine.
+    """
+    Minimal PN7160 NCI state machine.
 
     PN7160 is an NFC Controller Interface (NCI) device.  Unlike PN532, it is
     not a simple command/ACK module, so reads are driven by NCI response and
@@ -236,7 +237,8 @@ class PN7160Handler:
 
     @property
     def i2c_status_supported(self):
-        """True if the MCU can REPORT an I2C NACK instead of dying on one.
+        """
+        True if the MCU can REPORT an I2C NACK instead of dying on one.
 
         Klipper's 'i2c_transfer' command returns i2c_bus_status, which
         _i2c_transfer_safe turns into PN7160I2CStatusError. Without that command,
@@ -262,8 +264,10 @@ class PN7160Handler:
     def _core_info(self, msg, *args):
         logger.info("[%s pn7160] info: " + msg, self._name, *args)
 
+
     def _pause(self, seconds):
         self.reactor.pause(self.reactor.monotonic() + seconds)
+
 
     def _irq_callback(self, eventtime, state):
         prev_state = self.irq_state
@@ -271,6 +275,7 @@ class PN7160Handler:
         if state == 1 and (prev_state == 0 or prev_state is None):
             self.irq_event_time = eventtime
             self._debug("IRQ rising edge at %.6f", eventtime)
+
 
     def _wait_for_irq(self, start_time, timeout, accept_current=True):
         if not self.irq_enabled:
@@ -285,6 +290,7 @@ class PN7160Handler:
             self._pause(min(self.response_delay, 0.010))
         return False
 
+
     def _wait_for_irq_release(self, start_time, timeout=0.050):
         if not self.irq_enabled:
             return False
@@ -295,9 +301,11 @@ class PN7160Handler:
             self._pause(min(self.response_delay, 0.010))
         return False
 
+
     def _log_frame(self, direction, frame):
         if self.raw_log:
             logger.info("[%s pn7160] raw %s %s", self._name, direction, _hex(frame))
+
 
     def hardware_reset(self):
         if self.ven is None:
@@ -316,6 +324,7 @@ class PN7160Handler:
                     + self.ven_low_time + self.ven_post_high_time)
         self.initialized = False
 
+
     def _i2c_write_safe(self, data, label=None):
         if not self.i2c_status_supported:
             try:
@@ -329,6 +338,7 @@ class PN7160Handler:
         response = list(bytearray(params.get("response", [])))
         if status != "SUCCESS":
             raise PN7160I2CStatusError(status, response, label=label)
+
 
     def _i2c_transfer_safe(self, write, read_len, label=None):
         if not self.i2c_status_supported:
@@ -356,10 +366,12 @@ class PN7160Handler:
             raise PN7160I2CStatusError(status, response, label=label)
         return status, response
 
+
     def write_frame(self, frame, label=None):
         self._debug("write %s len=%d data=%s", label or "NCI", len(frame), _hex(frame))
         self._log_frame(">>", frame)
         self._i2c_write_safe(frame, label=label)
+
 
     def _read_exact(self, length, label=None):
         status, data = self._i2c_transfer_safe([], length, label=label)
@@ -368,6 +380,7 @@ class PN7160Handler:
                 "short I2C read: expected %d bytes, got %d"
                 % (length, len(data)))
         return data
+
 
     def read_frame_once(self):
         read_start = self.reactor.monotonic()
@@ -382,8 +395,10 @@ class PN7160Handler:
         self._wait_for_irq_release(read_start)
         return frame
 
+
     def read_frame_if_pending(self):
-        """One non-blocking attempt to collect a pending NCI frame; None if silent.
+        """
+        One non-blocking attempt to collect a pending NCI frame; None if silent.
 
         In polled mode the speculative read IS the "is a frame pending?" test - the
         PN7160 NACKs a read when it has nothing to say, the same fact
@@ -416,9 +431,11 @@ class PN7160Handler:
         self._wait_for_irq_release(read_start)   # No-op when irq_enabled is False
         return frame
 
+
     @staticmethod
     def _plausible_nci_header(header):
-        """Reject only what cannot be a host-bound NCI frame header.
+        """
+        Reject only what cannot be a host-bound NCI frame header.
 
         A NACKed read hands back a zero-filled buffer on some MCUs, and 00 00 00 is
         otherwise indistinguishable from a real frame. Kept deliberately loose:
@@ -431,6 +448,7 @@ class PN7160Handler:
             return False
         return header[2] <= NCI_MAX_FRAME - 3
 
+
     def read_optional_frame(self, timeout=0.050):
         if self.irq_enabled:
             start_time = self.reactor.monotonic()
@@ -439,9 +457,11 @@ class PN7160Handler:
             return self.read_frame_once()
         return self.read_frame_once()
 
+
     @property
     def no_irq_fast_poll(self):
-        """True if polled reads may retry at no_irq_poll_interval instead of
+        """
+        True if polled reads may retry at no_irq_poll_interval instead of
         settling for the full no_irq_read_delay before each attempt.
 
         Reading before the NFCC has answered costs a NACK, so this is only allowed
@@ -454,9 +474,11 @@ class PN7160Handler:
         return (self.no_irq_mode and self.i2c_status_supported
                 and self.no_irq_poll_interval > 0.0)
 
+
     def _no_irq_attempt_delay(self):
         return (self.no_irq_poll_interval if self.no_irq_fast_poll
                 else self.no_irq_read_delay)
+
 
     def wait_frame(self, timeout=None, poll_interval=None, irq_after=None,
                    accept_current_irq=True, label=None):
@@ -495,6 +517,7 @@ class PN7160Handler:
                           % ("" if label is None else " " + label,
                              last_error))
 
+
     def command(self, frame, expected_gid, expected_oid, timeout=1.0,
                 allow_extra_ntf=True, allowed_statuses=None):
         if allowed_statuses is None:
@@ -530,8 +553,10 @@ class PN7160Handler:
                               % _frame_summary(rx))
         raise PN7160Error("timeout waiting for response: %s" % last_error)
 
+
     def wait_data_frame(self, timeout=0.100, label=None):
-        """Wait for an NCI DATA frame after sending a tag command.
+        """
+        Wait for an NCI DATA frame after sending a tag command.
 
         NTAG READ and ISO15693 block reads travel as data packets once an RF
         interface is active.  CORE_CONN_CREDITS notifications are flow-control
@@ -569,11 +594,13 @@ class PN7160Handler:
             self._debug("data wait ignored frame: %s", _frame_summary(frame))
         raise PN7160Error("timeout waiting for data frame: %s" % last_error)
 
+
     def transceive_data(self, payload, timeout=0.100, label="DATA"):
         frame = [0x00, 0x00, len(payload)] + list(payload)
         self._debug("data transceive %s payload=%s", label, _hex(payload))
         self.write_frame(frame, label=label)
         return self.wait_data_frame(timeout=timeout, label=label)
+
 
     def ntag_read_page_once(self, page, timeout=0.100):
         rx = self.transceive_data(
@@ -586,6 +613,7 @@ class PN7160Handler:
         data = list(payload[:16])
         self._debug("NTAG page %d data=%s", page, _hex(data))
         return data, rx
+
 
     def ntag_read_page(self, page, timeout=0.100):
         attempts = max(1, self.ntag_read_retries + 1)
@@ -602,9 +630,11 @@ class PN7160Handler:
         raise PN7160Error("NTAG page %d failed after %d attempts: %s"
                           % (page, attempts, last_error))
 
+
     def mifare_authenticate(self, block_addr, key, uid_bytes,
                             use_key_b=False, timeout=0.500):
-        """Authenticate a MIFARE Classic sector on the active TAGCMD session.
+        """
+        Authenticate a MIFARE Classic sector on the active TAGCMD session.
 
         PN7160 exposes MIFARE Classic through NXP's proprietary TAGCMD
         extension, not through the PN532-style over-the-air auth frame.  The
@@ -649,6 +679,7 @@ class PN7160Handler:
             block_addr, sector, 'B' if use_key_b else 'A', _hex(rsp))
         return False
 
+
     def mifare_read_block(self, block_addr, timeout=0.500):
         """Read one 16-byte MIFARE Classic block after sector auth."""
         rx = self.transceive_data(
@@ -666,6 +697,7 @@ class PN7160Handler:
         self._debug("MIFARE block %d data=%s", block_addr, _hex(data))
         return data
 
+
     def _mifare_sector_from_block(self, block_addr):
         """Map an absolute MIFARE Classic block number to sector number."""
         block = int(block_addr) & 0xff
@@ -673,10 +705,10 @@ class PN7160Handler:
             return 32 + ((block - 128) // 16)
         return block // 4
 
-    def mifare_read_authenticated_blocks(self, sector_keys, sectors,
-                                         uid_bytes=None, timeout=0.500,
-                                         use_key_b=False):
-        """Authenticate sectors and read their data blocks.
+
+    def mifare_read_authenticated_blocks(self, sector_keys, sectors, uid_bytes=None, timeout=0.500, use_key_b=False):
+        """
+        Authenticate sectors and read their data blocks.
 
         Returns the same shape as PN532Driver so tag_handler and the Bambu
         parser stay reader-agnostic. use_key_b authenticates with Key B
@@ -724,6 +756,7 @@ class PN7160Handler:
             result["read_failed_blocks"] = read_failed_blocks
         return result
 
+
     def ntag_read_user_memory(self, start_page=4, end_page=67,
                               timeout=0.100):
         data = bytearray()
@@ -744,6 +777,7 @@ class PN7160Handler:
             if current_page <= end_page and self.ntag_data_delay > 0.0:
                 self._pause(self.ntag_data_delay)
         return data
+
 
     @staticmethod
     def _ndef_tlv_extent(data):
@@ -771,6 +805,7 @@ class PN7160Handler:
                 return value_end, tlv_len
             i = value_end
         return None
+
 
     def ntag_read_ndef_user_memory(self, start_page=4, max_pages=16,
                                    max_ndef_pages=135, timeout=0.100):
@@ -801,6 +836,7 @@ class PN7160Handler:
             if len(data) < target_bytes and self.ntag_data_delay > 0.0:
                 self._pause(self.ntag_data_delay)
         return data[:min(len(data), target_bytes)]
+
 
     def iso15693_read_blocks_once(self, tag, start_block, block_count,
                                   timeout=0.100):
@@ -839,6 +875,7 @@ class PN7160Handler:
                    response[-1]))
         return list(response[1:expected_len]), rx
 
+
     def iso15693_read_single_block_once(self, block, timeout=0.100):
         payload = [
             ISO15693_FLAG_HIGH_DATA_RATE,
@@ -863,6 +900,7 @@ class PN7160Handler:
                 % (block, response[-1]))
         return list(response[1:5]), rx
 
+
     def iso15693_read_blocks(self, tag, start_block, block_count,
                              timeout=0.100):
         attempts = max(1, self.ntag_read_retries + 1)
@@ -882,6 +920,7 @@ class PN7160Handler:
                           % (start_block, start_block + block_count - 1,
                              attempts, last_error))
 
+
     def iso15693_read_blocks_with_fallback(self, tag, start_block,
                                            block_count, timeout=0.100):
         try:
@@ -898,6 +937,7 @@ class PN7160Handler:
             data += block_data
             frames.append(frame)
         return data, frames
+
 
     def iso15693_read_user_memory(self, tag,
                                   start_block=ISO15693_DEFAULT_START_BLOCK,
@@ -923,9 +963,11 @@ class PN7160Handler:
                 self._pause(self.ntag_data_delay)
         return data
 
+
     @staticmethod
     def _is_empty_data(data):
         return bool(data) and all(b == 0x00 for b in data)
+
 
     @staticmethod
     def _expected_tlv_total_length(data):
@@ -938,6 +980,7 @@ class PN7160Handler:
             if total is not None:
                 return total
         return None
+
 
     @staticmethod
     def _expected_tlv_total_length_at(data, offset):
@@ -966,6 +1009,7 @@ class PN7160Handler:
             pos = end
         return None
 
+
     def connect_nci(self, reset=True, keep_config=False):
         last_error = None
         for attempt in range(1, max(1, self.init_retries) + 1):
@@ -981,6 +1025,7 @@ class PN7160Handler:
                 if attempt < self.init_retries:
                     self._pause(self.init_retry_delay)
         raise PN7160Error("connect_nci failed: %s" % last_error)
+
 
     def _connect_nci_once(self, reset=True, keep_config=False):
         if reset:
@@ -1002,6 +1047,7 @@ class PN7160Handler:
         self._summarize_core_startup([init_rsp] + init_extra)
         return [reset_rsp] + reset_extra + [init_rsp] + init_extra
 
+
     def _summarize_core_startup(self, frames):
         for frame in frames:
             if len(frame) < 4 or _gid(frame) != NCI_GID_CORE:
@@ -1014,10 +1060,12 @@ class PN7160Handler:
             elif _message_type(frame) == NCI_MT_RSP and _oid(frame) == 0x01:
                 self._core_info("CORE_INIT_RSP status=0x%02X raw=%s", frame[3], _hex(frame))
 
+
     def configure_discovery_map(self):
         rsp, extra = self.command(
             NCI_RF_DISCOVER_MAP_RW_CMD, NCI_GID_RF, 0x00, timeout=1.0)
         return [rsp] + extra
+
 
     def start_discovery(self):
         rsp, extra = self.command(
@@ -1029,6 +1077,7 @@ class PN7160Handler:
                 NCI_STATUS_DISCOVERY_TEAR_DOWN,
             ))
         return [rsp] + extra
+
 
     def stop_discovery(self):
         try:
@@ -1042,6 +1091,7 @@ class PN7160Handler:
         except Exception as e:
             self._debug("stop discovery skipped/failed: %s", e)
             return []
+
 
     def wait_for_activation(self, timeout=None):
         timeout = self.read_timeout if timeout is None else timeout
@@ -1064,6 +1114,7 @@ class PN7160Handler:
                 return result
         raise PN7160NoTag("no NFC tag found")
 
+
     def _wait_for_activation_no_irq(self, timeout):
         frames = []
         if self.no_irq_read_delay > 0.0:
@@ -1077,6 +1128,7 @@ class PN7160Handler:
         if result is not None:
             return result
         raise PN7160NoTag("no NFC tag found")
+
 
     def _handle_activation_frame(self, frame, frames):
         if self._is_activation_ntf(frame):
@@ -1094,8 +1146,10 @@ class PN7160Handler:
                         return tag, select_frame, frames
         return None
 
+
     def is_tag_present_ntf(self, frame):
-        """True if 'frame' means a tag is in the RF field.
+        """
+        True if 'frame' means a tag is in the RF field.
 
         Either notification qualifies: RF_DISCOVER_NTF (a tag was found, awaiting
         selection) or RF_INTF_ACTIVATED_NTF (discovery auto-activated a lone tag).
@@ -1105,13 +1159,16 @@ class PN7160Handler:
         """
         return self._is_activation_ntf(frame) or self._is_discover_ntf(frame)
 
+
     def _is_activation_ntf(self, frame):
         return (_message_type(frame) == NCI_MT_NTF
                 and _gid(frame) == NCI_GID_RF and _oid(frame) == 0x05)
 
+
     def _is_discover_ntf(self, frame):
         return (_message_type(frame) == NCI_MT_NTF
                 and _gid(frame) == NCI_GID_RF and _oid(frame) == 0x03)
+
 
     def select_discovered_endpoint(self, frame):
         payload = frame[3:]
@@ -1128,12 +1185,14 @@ class PN7160Handler:
         rsp, extra = self.command(cmd, NCI_GID_RF, 0x04, timeout=1.0)
         return [rsp] + extra
 
+
     def _interface_for_protocol(self, protocol):
         if protocol == NCI_PROT_ISODEP:
             return NCI_INTF_ISODEP
         if protocol == NCI_PROT_MIFARE:
             return NCI_INTF_TAGCMD
         return NCI_INTF_FRAME
+
 
     def parse_activation_tag(self, frame):
         payload = frame[3:]
@@ -1146,6 +1205,7 @@ class PN7160Handler:
         if mode_tech == NCI_MODE_PASSIVE_NFCV or protocol == NCI_PROT_ISO15693:
             return self._parse_nfcv_tag(payload, protocol, mode_tech)
         return None
+
 
     def _parse_nfca_tag(self, payload, protocol, mode_tech):
         params = payload[7:]
@@ -1176,6 +1236,7 @@ class PN7160Handler:
             'sak': sak,
         }
 
+
     def _parse_nfcv_tag(self, payload, protocol, mode_tech):
         params = payload[7:]
         if len(params) < 10:
@@ -1193,7 +1254,8 @@ class PN7160Handler:
 
 
 class PN7160Driver:
-    """Happy Hare reader adapter for PN7160.
+    """
+    Happy Hare reader adapter for PN7160.
 
     The public methods intentionally mirror PN532Driver where the tag type
     allows it.  More specialized capabilities, such as MIFARE Classic
@@ -1230,38 +1292,25 @@ class PN7160Driver:
             config, i2c, name,
             ven_pin=config.get('ven_pin', None),
             irq_pin=config.get('irq_pin', None),
-            response_delay=config.getfloat(
-                'response_delay', 0.020, minval=0.0),
-            nci_poll_interval=config.getfloat(
-                'nci_poll_interval', 0.250, minval=0.0),
-            read_timeout=config.getfloat(
-                'read_timeout', 0.500, minval=0.0),
-            raw_log=raw_log,
-            debug=handler_debug,
-            ven_pre_high_time=config.getfloat(
-                'ven_pre_high_time', 0.010, minval=0.0),
-            ven_low_time=config.getfloat(
-                'ven_low_time', 0.010, minval=0.0),
-            ven_post_high_time=config.getfloat(
-                'ven_post_high_time', 0.100, minval=0.0),
+            response_delay=config.getfloat('response_delay', 0.020, minval=0.0),
+            nci_poll_interval=config.getfloat('nci_poll_interval', 0.250, minval=0.0),
+            read_timeout=config.getfloat('read_timeout', 0.500, minval=0.0), raw_log=raw_log, debug=handler_debug,
+            ven_pre_high_time=config.getfloat('ven_pre_high_time', 0.010, minval=0.0),
+            ven_low_time=config.getfloat('ven_low_time', 0.010, minval=0.0),
+            ven_post_high_time=config.getfloat('ven_post_high_time', 0.100, minval=0.0),
             init_retries=config.getint('init_retries', 3, minval=1),
-            init_retry_delay=config.getfloat(
-                'init_retry_delay', 0.500, minval=0.0),
-            no_irq_read_delay=config.getfloat(
-                'no_irq_read_delay', 0.100, minval=0.0),
+            init_retry_delay=config.getfloat('init_retry_delay', 0.500, minval=0.0),
+            no_irq_read_delay=config.getfloat('no_irq_read_delay', 0.100, minval=0.0),
             # Polled retry spacing where an I2C NACK is reportable (see
             # PN7160Handler.no_irq_fast_poll). Tested on hardware I2C. Raise it on a
             # bit-banged software bus, where every read costs the MCU real work: at
             # 8ms a command that ends up timing out attempts ~125 reads instead of the
             # ~8 the 100ms settle gave. Set 0 to fall back to no_irq_read_delay.
-            no_irq_poll_interval=config.getfloat(
-                'no_irq_poll_interval', 0.008, minval=0.0),
-            ntag_data_delay=config.getfloat(
-                'ntag_data_delay', 0.005, minval=0.0),
-            ntag_read_retries=config.getint(
-                'ntag_read_retries', 2, minval=0),
-            ntag_retry_delay=config.getfloat(
-                'ntag_retry_delay', 0.025, minval=0.0))
+            no_irq_poll_interval=config.getfloat('no_irq_poll_interval', 0.008, minval=0.0),
+            ntag_data_delay=config.getfloat('ntag_data_delay', 0.005, minval=0.0),
+            ntag_read_retries=config.getint('ntag_read_retries', 2, minval=0),
+            ntag_retry_delay=config.getfloat('ntag_retry_delay', 0.025, minval=0.0))
+
 
     def _clear_current_card(self):
         self.current_target = None
@@ -1269,11 +1318,13 @@ class PN7160Driver:
         self.current_uid_hex = ''
         self.current_target_info = None
 
+
     def _set_current_card(self, target_info):
         self.current_target_info = dict(target_info)
         self.current_target = target_info.get('target')
         self.current_uid = list(target_info.get('uid_bytes') or [])
         self.current_uid_hex = target_info.get('uid', _hex(self.current_uid, ''))
+
 
     def init(self):
         # connect_nci raises once its retries are exhausted, so this only runs on success
@@ -1282,18 +1333,19 @@ class PN7160Driver:
         # Report WHY, not just whether. The two ways to lose the probe need completely
         # different responses from the user - "you turned it off with probe_polled" and
         # "your Klipper can't report an I2C NACK, so wire irq_pin or update"
-        logger.info("[%s pn7160] init OK (tag homing probe %s)", self._name,
-                    self._probe_mode_text())
+        logger.info("[%s pn7160] init OK (tag homing probe %s)", self._name, self._probe_mode_text())
         # Klipper calls init() during startup as a health check.  Keep the next
-        # real read conservative: it should still run full setup before
-        # starting RF discovery.
+        # real read conservative: it should still run full setup before starting RF discovery.
         self._needs_full_setup = True
+
 
     def is_alive(self):
         return bool(self._alive and self._handler.initialized)
 
+
     def _setup_for_read(self, full=None):
-        """Prepare PN7160 for one read operation.
+        """
+        Prepare PN7160 for one read operation.
 
         PN532 can stay initialized after SAMConfiguration.  PN7160 is different:
         each read starts a small NCI setup sequence before RF discovery.  The
@@ -1352,7 +1404,8 @@ class PN7160Driver:
     _PROBE_MAX_FRAME_ERRORS = 3  # Consecutive torn frames before a resync
 
     def probe_supported(self):
-        """True if this reader can answer "tag present?" without blocking.
+        """
+        True if this reader can answer "tag present?" without blocking.
 
         Attribute reads only - MmuNfcManager._homing_poll_interval() calls this once
         per tick, so it must never touch the bus.
@@ -1361,8 +1414,11 @@ class PN7160Driver:
             return True
         return bool(self._probe_polled and self._handler.i2c_status_supported)
 
+
     def _probe_mode_text(self):
-        """Why probing is (un)available, for the init() log line."""
+        """
+        Why probing is (un)available, for the init() log line.
+        """
         if getattr(self._handler, 'irq_enabled', False):
             return "available (irq_pin)"
         if not self._probe_polled:
@@ -1372,8 +1428,10 @@ class PN7160Driver:
                     "polled probe would risk an MCU shutdown; wire irq_pin or update")
         return "available (polled - speculative read)"
 
+
     def probe_start(self):
-        """Bring up RF discovery and begin listening for an activation frame.
+        """
+        Bring up RF discovery and begin listening for an activation frame.
 
         Called from MmuNfcEndstop.home_start(), i.e. before the drip move launches,
         so the NCI setup here is on the homing critical path. In polled mode that is
@@ -1403,8 +1461,10 @@ class PN7160Driver:
             self._needs_full_setup = True
             return False
 
+
     def probe_poll(self):
-        """Collect at most one pending NCI frame.
+        """
+        Collect at most one pending NCI frame.
 
         Returns True (a tag is in the field), False (discovery failed or stalled - the
         caller should restart) or None (nothing pending yet).
@@ -1468,8 +1528,10 @@ class PN7160Driver:
             self._clear_current_card()
             return False
 
+
     def _probe_frame_error(self, detail):
-        """Count a frame the chip promised but did not deliver.
+        """
+        Count a frame the chip promised but did not deliver.
 
         Transport noise, not a dead reader, so tolerate a few and answer None; past
         _PROBE_MAX_FRAME_ERRORS answer False, which tears discovery down so the
@@ -1488,12 +1550,15 @@ class PN7160Driver:
         self._probe_stop_discovery()
         return False
 
+
     def _probe_stop_discovery(self):
         self._probe_active = False
         self._stop_discovery(reason="probe")
 
+
     def probe_stop(self):
-        """Tear down discovery and drop any activated target.
+        """
+        Tear down discovery and drop any activated target.
 
         stop_discovery() already honours the 25ms RF_DEACTIVATE guard the NXP
         firmware notes require before the next RF_DISCOVER, so the following
@@ -1507,6 +1572,7 @@ class PN7160Driver:
             return False
         return True
 
+
     def read_tag(self, timeout=None):
         target_info = self.read_target(timeout=timeout)
         if target_info is None:
@@ -1514,6 +1580,7 @@ class PN7160Driver:
         uid = target_info.get('uid')
         self._release_current_target(reason="uid_read_complete")
         return uid
+
 
     def read_target(self, timeout=None):
         try:
@@ -1540,9 +1607,11 @@ class PN7160Driver:
             if self.current_target_info is None:
                 self._stop_discovery()
 
+
     def _release_current_target(self, reason="manual"):
         self._stop_discovery(reason=reason)
         self._clear_current_card()
+
 
     def _stop_discovery(self, reason="read_complete"):
         if not self._discovery_active:
@@ -1556,6 +1625,7 @@ class PN7160Driver:
         finally:
             self._discovery_active = False
 
+
     def _ensure_active_target(self, timeout=0.500):
         if self.current_target_info is not None and self._discovery_active:
             return self.current_target_info
@@ -1564,9 +1634,10 @@ class PN7160Driver:
             raise PN7160NoTag("no active PN7160 target")
         return target_info
 
-    def ntag_read_user_memory(self, start_page=4, end_page=67,
-                              timeout=0.100):
-        """Read raw NTAG/Type-2 user memory like PN532Driver does.
+
+    def ntag_read_user_memory(self, start_page=4, end_page=67, timeout=0.100):
+        """
+        Read raw NTAG/Type-2 user memory like PN532Driver does.
 
         The tag is already activated by read_target() in the normal
         tag_handler flow.  If called directly, this method performs one
@@ -1579,6 +1650,7 @@ class PN7160Driver:
         finally:
             self._release_current_target(reason="user_memory_complete")
 
+
     def ntag_read_ndef_user_memory(self, start_page=4, max_pages=16,
                                    max_ndef_pages=135, timeout=0.100):
         try:
@@ -1588,6 +1660,7 @@ class PN7160Driver:
                 max_ndef_pages=max_ndef_pages, timeout=timeout)
         finally:
             self._release_current_target(reason="ndef_user_memory_complete")
+
 
     def iso15693_read_user_memory(self, tag=None,
                                   start_block=ISO15693_DEFAULT_START_BLOCK,
@@ -1603,10 +1676,10 @@ class PN7160Driver:
         finally:
             self._release_current_target(reason="iso15693_user_memory_complete")
 
-    def mifare_read_authenticated_blocks(self, sector_keys, sectors,
-                                         uid_bytes=None, timeout=0.500,
-                                         use_key_b=False):
-        """Authenticate and read MIFARE Classic blocks like PN532Driver.
+
+    def mifare_read_authenticated_blocks(self, sector_keys, sectors, uid_bytes=None, timeout=0.500, use_key_b=False):
+        """
+        Authenticate and read MIFARE Classic blocks like PN532Driver.
 
         The target must remain active for the whole auth/read sequence because
         MIFARE Classic authentication state is tied to the current RF session.
@@ -1620,6 +1693,7 @@ class PN7160Driver:
                 use_key_b=use_key_b)
         finally:
             self._release_current_target(reason="mifare_read_complete")
+
 
     def _target_info_from_tag(self, tag):
         uid_bytes = list(tag.get('uid') or [])
