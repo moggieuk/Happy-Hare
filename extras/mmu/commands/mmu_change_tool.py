@@ -220,9 +220,10 @@ class MmuChangeToolCommand(BaseCommand):
                         # Determine retraction options post load to compensate for unhandled orca/prusa/super slicer toolchange retraction when slicer settings are passed to mmu_change_tool
                         slicer_retract_len   = 0
                         slicer_retract_speed = 30
+                        retract_fallback     = False
                         park_macro           = mmu.printer.lookup_object("gcode_macro _MMU_PARK", None)
 
-                        # Only compensate when printing post initial change
+                        # Only compensate when printing post initial change (firmware flag is true regardless if enabled, slicer_retraction is only > 0 when it needs to be applied)
                         if mmu.is_printing() and mmu.num_toolchanges >= 1:
                             if mmu.slicer_fw_retraction:
                                 fw_retract = mmu.printer.lookup_object('firmware_retraction', None)
@@ -276,13 +277,16 @@ class MmuChangeToolCommand(BaseCommand):
                         if retracted_length > 0:
                             mmu.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=retracted_length VALUE=%s" % (retracted_length))
                             mmu.log_info("Adjusting un-retraction to %.2fmm to compensate for unhandled slicer %.2fmm retraction during toolchange" % (retracted_length, slicer_retract_len))
+                        else:
+                            mmu.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=retracted_length VALUE=%s" % 0)
+                            retract_fallback = True
 
                     # Restore to print deliberately outside of _wrap_gear_synced_to_extruder() to minimise delay after restoring position
                     mmu._continue_after('toolchange', restore=restore)
 
-                    # Fall back / edge case - if _mmu_park parking/retraction is bypassed, issue slicer retraction adjustment directly before resuming print
+                    # Fall back / edge case - if _mmu_park parking/retraction is bypassed or slicer retraction > retracted_length
                     if slicer_retract_len and park_macro:
-                        if float(park_macro.variables.get('retracted_length', 0) or 0):
+                        if retract_fallback or float(park_macro.variables.get('retracted_length', 0) or 0):
                             mmu.gcode.run_script_from_command("G1 E-%.2f F%d " % (slicer_retract_len, slicer_retract_speed * 60))
                             mmu.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=retracted_length VALUE=%s" % 0)
                             mmu.log_info("Un-retracting %.2fmm to compensate for unhandled slicer retraction during toolchange" % (slicer_retract_len))
