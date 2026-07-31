@@ -217,7 +217,7 @@ class MmuChangeToolCommand(BaseCommand):
 
                         mmu._save_toolhead_position_and_park('toolchange', next_pos=next_pos)
 
-                        # Determine retraction options to compensate unhandled orca/prusa/super slicer toolchange retractions when slicer settings are passed to mmu_change_tool
+                        # Determine retraction options post load to compensate for unhandled orca/prusa/super slicer toolchange retraction when slicer settings are passed to mmu_change_tool
                         slicer_retract_len   = 0
                         slicer_retract_speed = 30
                         park_macro           = mmu.printer.lookup_object("gcode_macro _MMU_PARK", None)
@@ -234,12 +234,6 @@ class MmuChangeToolCommand(BaseCommand):
                                 sequence_vars        = mmu.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
                                 slicer_retract_len   = mmu.slicer_retraction
                                 slicer_retract_speed = sequence_vars.variables.get('retract_speed', slicer_retract_speed) if sequence_vars else slicer_retract_speed
-
-                            # Add unhandled slicer retract distance to _MMU_PARK macro retracted_length and log info message
-                            if slicer_retract_len > 0 and park_macro:
-                                retracted_length = float(park_macro.variables.get('retracted_length', 0) or 0)
-                                mmu.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=retracted_length VALUE=%s" % (retracted_length + slicer_retract_len))
-                                mmu.log_info("Compensating for unhandled slicer %.2fmm retraction during toolchange" % slicer_retract_len)
 
                         mmu._set_next_position(next_pos) # This can also clear next_position
                         mmu._track_time_start('total')
@@ -276,9 +270,11 @@ class MmuChangeToolCommand(BaseCommand):
                     mmu._persist_swap_statistics()
                     mmu._persist_gate_statistics()
 
-                    # If compensating for unhandled slicer retraction, reset retract_length to correct length for _mmu_park un-retraction
+                    # Compensate for unhandled slicer toolchange retraction by reducing _mmu_park un-retraction
                     if slicer_retract_len and park_macro:
+                        retracted_length = float(park_macro.variables.get('retracted_length', 0) or 0) - slicer_retract_len
                         mmu.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=retracted_length VALUE=%s" % (retracted_length))
+                        mmu.log_info("Adjusting un-retraction to %.2fmm to compensate for unhandled slicer %.2fmm retraction during toolchange" % (retracted_length, slicer_retract_len))
 
                     # Restore to print deliberately outside of _wrap_gear_synced_to_extruder() to minimise delay after restoring position
                     mmu._continue_after('toolchange', restore=restore)
