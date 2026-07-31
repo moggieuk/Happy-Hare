@@ -273,17 +273,19 @@ class MmuChangeToolCommand(BaseCommand):
                     # Compensate for unhandled slicer toolchange retraction by reducing _mmu_park un-retraction
                     if slicer_retract_len and park_macro:
                         retracted_length = float(park_macro.variables.get('retracted_length', 0) or 0) - slicer_retract_len
-                        mmu.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=retracted_length VALUE=%s" % (retracted_length))
-                        mmu.log_info("Adjusting un-retraction to %.2fmm to compensate for unhandled slicer %.2fmm retraction during toolchange" % (retracted_length, slicer_retract_len))
+                        if retracted_length > 0:
+                            mmu.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=retracted_length VALUE=%s" % (retracted_length))
+                            mmu.log_info("Adjusting un-retraction to %.2fmm to compensate for unhandled slicer %.2fmm retraction during toolchange" % (retracted_length, slicer_retract_len))
 
                     # Restore to print deliberately outside of _wrap_gear_synced_to_extruder() to minimise delay after restoring position
                     mmu._continue_after('toolchange', restore=restore)
 
-                    # Fall back / edge case - if _mmu_park parking/retraction logic is bypassed, issue slicer retraction adjustment directly before resuming print
+                    # Fall back / edge case - if _mmu_park parking/retraction is bypassed, issue slicer retraction adjustment directly before resuming print
                     if slicer_retract_len and park_macro:
                         if float(park_macro.variables.get('retracted_length', 0) or 0):
                             mmu.gcode.run_script_from_command("G1 E-%.2f F%d " % (slicer_retract_len, slicer_retract_speed * 60))
                             mmu.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=retracted_length VALUE=%s" % 0)
+                            mmu.log_info("Un-retracting %.2fmm to compensate for unhandled slicer retraction during toolchange" % (slicer_retract_len))
 
         except MmuError as ee:
             mmu.handle_mmu_error(str(ee))
