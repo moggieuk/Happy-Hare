@@ -444,8 +444,23 @@ diff: | build
 	$(Q)$(call diff,$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE),$(patsubst $(SRC)/%,%,$(OUT)/$(PRINTER_CONFIG_FILE)))
 	$(Q)$(call diff,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE),$(patsubst $(SRC)/%,%,$(OUT)/$(MOONRAKER_CONFIG_FILE)))
 
-# Guarded by the interpreter it produces, so this runs once. A failed venv is left in
-# place: `-m venv` is idempotent so the retry is clean, and VENV may be a user directory
+# A venv can exist and still have no pip - Debian/Raspberry Pi OS split ensurepip into
+# python3-venv, and `python3 -m venv` there creates bin/python and only THEN fails. That
+# half-built venv satisfies $(VENV_PY), so the creation rule never runs again and the
+# next make reaches pip with no pip to reach. Both venv targets therefore check the
+# module rather than the interpreter, and try ensurepip before giving up. rm -rf is
+# deliberately not the answer: VENV may point at a directory the user chose.
+venv_pip_check = \
+	$(VENV_PY) -m pip --version >/dev/null 2>&1 || \
+	$(VENV_PY) -m ensurepip --default-pip >/dev/null 2>&1 || { \
+		echo "$(C_ERROR)The virtualenv at '$(patsubst $(SRC)/%,%,$(VENV))' has no pip$(C_OFF)"; \
+		echo "$(C_ERROR)On Debian/Ubuntu/Raspberry Pi OS: sudo apt install python3-venv$(C_OFF)"; \
+		echo "$(C_ERROR)then rebuild it with: make clean_venv test$(C_OFF)"; \
+		echo "$(C_ERROR)Or skip the venv and use the system interpreter: make NO_VENV=1 test$(C_OFF)"; \
+		exit 1; \
+	}
+
+# Guarded by the interpreter it produces, so this runs once
 $(VENV_PY):
 	$(Q)echo "$(C_INFO)Creating test virtualenv in '$(patsubst $(SRC)/%,%,$(VENV))'$(C_OFF)"
 	$(Q)$(BOOTSTRAP_PY) -m venv "$(VENV)" || { \
@@ -454,9 +469,11 @@ $(VENV_PY):
 		echo "$(C_ERROR)Or skip the venv and use the system interpreter: make NO_VENV=1 test$(C_OFF)"; \
 		exit 1; \
 	}
+	$(Q)$(venv_pip_check)
 
 # Stamp lives inside the venv, so a deleted venv or an edited requirements.txt reinstalls
 $(VENV_STAMP): $(SRC)/test/requirements.txt | $(VENV_PY)
+	$(Q)$(venv_pip_check)
 	$(Q)echo "$(C_INFO)Installing test dependencies from $(patsubst $(SRC)/%,%,$<)$(C_OFF)"
 	$(Q)$(VENV_PY) -m pip install --quiet --disable-pip-version-check -r "$<"
 	$(Q)touch "$@"
