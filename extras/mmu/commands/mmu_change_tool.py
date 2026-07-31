@@ -239,7 +239,7 @@ class MmuChangeToolCommand(BaseCommand):
                             if slicer_retract_len > 0 and park_macro:
                                 retracted_length = float(park_macro.variables.get('retracted_length', 0) or 0)
                                 mmu.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=retracted_length VALUE=%s" % (retracted_length + slicer_retract_len))
-                                mmu.log_info("Compensating for unhandled slicer %.2fmm retraction" % -slicer_retract_len)
+                                mmu.log_info("Compensating for unhandled slicer %.2fmm retraction during load" % -slicer_retract_len)
 
                         mmu._set_next_position(next_pos) # This can also clear next_position
                         mmu._track_time_start('total')
