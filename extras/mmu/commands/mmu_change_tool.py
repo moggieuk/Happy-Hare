@@ -276,7 +276,7 @@ class MmuChangeToolCommand(BaseCommand):
                         retracted_length = float(park_macro.variables.get('retracted_length', 0) or 0) - slicer_retract_len
                         if retracted_length > 0:
                             mmu.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=retracted_length VALUE=%s" % (retracted_length))
-                            mmu.log_info("Adjusting un-retraction to %.2fmm to compensate for unhandled slicer %.2fmm retraction during toolchange" % (retracted_length, slicer_retract_len))
+                            mmu.log_info("Adjusting un-retraction to %.1fmm to compensate for unhandled slicer %.1fmm retraction during toolchange" % (retracted_length, slicer_retract_len))
                         else:
                             mmu.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=retracted_length VALUE=%s" % 0)
                             retract_fallback = True
@@ -289,7 +289,7 @@ class MmuChangeToolCommand(BaseCommand):
                         if retract_fallback or float(park_macro.variables.get('retracted_length', 0) or 0):
                             mmu.gcode.run_script_from_command("G1 E-%.2f F%d " % (slicer_retract_len, slicer_retract_speed * 60))
                             mmu.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=retracted_length VALUE=%s" % 0)
-                            mmu.log_info("Un-retracting %.2fmm to compensate for unhandled slicer retraction during toolchange" % (slicer_retract_len))
+                            mmu.log_info("Un-retracting %.1fmm to compensate for unhandled slicer retraction during toolchange" % (slicer_retract_len))
 
         except MmuError as ee:
             mmu.handle_mmu_error(str(ee))
