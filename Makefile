@@ -6,12 +6,19 @@ PY    := python
 
 # For quiet make builds, override with make Q= for verbose output
 Q  ?= @
+
 # For verbose output (mostly from python builder), set to -v to enable
 V  ?=
+
 # For unittests, e.g. make UT=test_build.py test
 # A UT pattern skips the interactive picker, as do ALL=1 (run everything) and LAST=1
 # (re-run the last selection). See test/README.md section 1
 UT ?= *
+
+# Extra flags for the pip that installs installer/requirements.txt. Exported rather than
+# passed on the command line when it has to survive install.sh, which forwards no make
+# vars: export PIP_ARGS='--user --break-system-packages' on a PEP 668 python with no venv
+PIP_ARGS ?=
 
 # Parallel build
 MAKEFLAGS += --jobs 16
@@ -60,10 +67,14 @@ export SRC ?= $(CURDIR)
 export srctree := $(SRC)/installer
 export PYTHONPATH:=$(SRC)/installer/lib/kconfiglib:$(PYTHONPATH)
 
-# Test virtualenv, created on demand by `make test`. See test/README.md
+# Virtualenv, created on demand by `make test` and by `make installer_venv` (which
+# install.sh runs for a PEP 668 python). See test/README.md
 VENV       ?= $(SRC)/venv
 VENV_PY    := $(VENV)/bin/python
 VENV_STAMP := $(VENV)/.hh-test-requirements
+# Separate stamp: test/requirements.txt and installer/requirements.txt are installed
+# independently into the same venv, and neither should trigger the other
+INSTALLER_STAMP := $(VENV)/.hh-installer-requirements
 
 # Interpreter used to create the venv, falling back where plain `python` isn't a name
 BOOTSTRAP_PY := $(if $(shell command -v $(PY) 2>/dev/null),$(PY),python3)
@@ -127,7 +138,7 @@ restart_klipper = 0
 .SECONDEXPANSION:
 .DEFAULT_GOAL := build
 .PRECIOUS: $(KCONFIG_CONFIG) $(KCONFIG_CONFIG)_%
-.PHONY: menuconfig install uninstall check_version diff test console venv clean_venv build clean variables python_deps fix_links gen_kconfig kconfig_needs_update olddefconfig verify_pickle
+.PHONY: menuconfig install uninstall check_version diff test console venv installer_venv clean_venv build clean variables python_deps fix_links gen_kconfig kconfig_needs_update olddefconfig verify_pickle
 .SECONDARY: \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
@@ -417,13 +428,36 @@ clean:
 
 # Deliberately not part of `clean`, which runs far too often to pay for a venv rebuild
 clean_venv:
-	$(Q)[ -f "$(VENV_PY)" ] || { echo "$(C_WARNING)No test virtualenv at '$(VENV)'$(C_OFF)"; exit 0; }; \
-		echo "$(C_INFO)Removing test virtualenv '$(patsubst $(SRC)/%,%,$(VENV))'$(C_OFF)"; \
+	$(Q)[ -f "$(VENV_PY)" ] || { echo "$(C_WARNING)No virtualenv at '$(VENV)'$(C_OFF)"; exit 0; }; \
+		echo "$(C_INFO)Removing virtualenv '$(patsubst $(SRC)/%,%,$(VENV))'$(C_OFF)"; \
 		rm -rf "$(VENV)"
 
+# Shared tail for every pip failure below, whichever of the three it is: the ways out are
+# the same, and the install path and the test path can each reach any of them
+no_venv_hint = \
+	echo "$(C_ERROR)Or install into your system python anyway (PEP 668 override):$(C_OFF)"; \
+	echo "$(C_ERROR)  export PIP_ARGS='--user --break-system-packages'$(C_OFF)"; \
+	echo "$(C_ERROR)For tests only, the system interpreter also works: make NO_VENV=1 test$(C_OFF)";
+
+# Always '$(PY) -m pip', never a bare 'pip'. The first pip on PATH need not belong to the
+# interpreter every other recipe runs under, so the deps can land where $(PY) cannot see
+# them - and on macOS /usr/local/bin/pip is often a leftover whose '#!/usr/bin/python'
+# shebang no longer exists at all ("bad interpreter", make Error 126).
+# Runs on nearly every invocation (order-only prereq of build/install/pickle), so it stays
+# quiet on success. PEP 668 interpreters (homebrew python, Debian Bookworm system python)
+# refuse to install outside a venv at all: install.sh handles that before make ever starts,
+# so what is left here is a plain `make` on such a python, hence the hints below.
 python_deps:
 	$(Q)echo "$(C_INFO)Checking for python dependencies$(C_OFF)"
-	$(Q)pip -qq install -r $(SRC)/installer/requirements.txt
+	$(Q)$(PY) -m pip install --quiet --disable-pip-version-check $(PIP_ARGS) \
+		-r $(SRC)/installer/requirements.txt || { \
+		echo "$(C_ERROR)'$(PY) -m pip' could not install installer/requirements.txt$(C_OFF)"; \
+		echo "$(C_ERROR)If pip refused with 'externally-managed-environment' (PEP 668), work in$(C_OFF)"; \
+		echo "$(C_ERROR)a virtualenv as install.sh does, then re-run:$(C_OFF)"; \
+		echo "$(C_ERROR)  make installer_venv && . $(patsubst $(SRC)/%,%,$(VENV))/bin/activate$(C_OFF)"; \
+		$(no_venv_hint) \
+		exit 1; \
+	}
 
 $(OUT)/$(notdir $(KCONFIG_CONFIG)).pickle: $(KCONFIG_CONFIG) | python_deps $(OUT)
 	$(Q)echo "$(C_INFO)Pre-parsing Kconfig $(notdir $(KCONFIG_CONFIG))$(C_OFF)"
@@ -446,41 +480,54 @@ diff: | build
 
 # A venv can exist and still have no pip - Debian/Raspberry Pi OS split ensurepip into
 # python3-venv, and `python3 -m venv` there creates bin/python and only THEN fails. That
-# half-built venv satisfies $(VENV_PY), so the creation rule never runs again and the
-# next make reaches pip with no pip to reach. Both venv targets therefore check the
-# module rather than the interpreter, and try ensurepip before giving up. rm -rf is
-# deliberately not the answer: VENV may point at a directory the user chose.
+# half-built venv satisfies $(VENV_PY), so the creation rule never runs again and the next
+# make reaches pip with no pip to reach. The check therefore belongs with the rule that
+# uses pip, not the one that creates the venv: the stamp rule below runs it every time.
+# rm -rf is deliberately not the answer: VENV may point at a directory the user chose.
 venv_pip_check = \
 	$(VENV_PY) -m pip --version >/dev/null 2>&1 || \
 	$(VENV_PY) -m ensurepip --default-pip >/dev/null 2>&1 || { \
 		echo "$(C_ERROR)The virtualenv at '$(patsubst $(SRC)/%,%,$(VENV))' has no pip$(C_OFF)"; \
 		echo "$(C_ERROR)On Debian/Ubuntu/Raspberry Pi OS: sudo apt install python3-venv$(C_OFF)"; \
-		echo "$(C_ERROR)then rebuild it with: make clean_venv test$(C_OFF)"; \
-		echo "$(C_ERROR)Or skip the venv and use the system interpreter: make NO_VENV=1 test$(C_OFF)"; \
+		echo "$(C_ERROR)then remove the half-built one with: make clean_venv$(C_OFF)"; \
+		$(no_venv_hint) \
 		exit 1; \
 	}
 
 # Guarded by the interpreter it produces, so this runs once
 $(VENV_PY):
-	$(Q)echo "$(C_INFO)Creating test virtualenv in '$(patsubst $(SRC)/%,%,$(VENV))'$(C_OFF)"
+	$(Q)echo "$(C_INFO)Creating virtualenv in '$(patsubst $(SRC)/%,%,$(VENV))'$(C_OFF)"
 	$(Q)$(BOOTSTRAP_PY) -m venv "$(VENV)" || { \
 		echo "$(C_ERROR)Could not create a virtualenv with '$(BOOTSTRAP_PY) -m venv'$(C_OFF)"; \
 		echo "$(C_ERROR)On Debian/Ubuntu install it with: sudo apt install python3-venv$(C_OFF)"; \
-		echo "$(C_ERROR)Or skip the venv and use the system interpreter: make NO_VENV=1 test$(C_OFF)"; \
+		$(no_venv_hint) \
 		exit 1; \
 	}
-	$(Q)$(venv_pip_check)
 
-# Stamp lives inside the venv, so a deleted venv or an edited requirements.txt reinstalls
-$(VENV_STAMP): $(SRC)/test/requirements.txt | $(VENV_PY)
+# One rule for both tenants of the venv: '.hh-<dir>-requirements' is the stamp for
+# <dir>/requirements.txt, so test/ and installer/ deps install independently and neither
+# invalidates the other. Stamps live inside the venv, so a deleted venv or an edited
+# requirements.txt reinstalls
+$(VENV)/.hh-%-requirements: $(SRC)/%/requirements.txt | $(VENV_PY)
 	$(Q)$(venv_pip_check)
-	$(Q)echo "$(C_INFO)Installing test dependencies from $(patsubst $(SRC)/%,%,$<)$(C_OFF)"
+	$(Q)echo "$(C_INFO)Installing $* dependencies from $(patsubst $(SRC)/%,%,$<)$(C_OFF)"
 	$(Q)$(VENV_PY) -m pip install --quiet --disable-pip-version-check -r "$<"
 	$(Q)touch "$@"
 
 # Explicit target for anyone who wants the venv without running the tests
 venv: $(VENV_STAMP)
 	$(Q)echo "$(C_NOTICE)Test virtualenv ready: $(patsubst $(SRC)/%,%,$(VENV_PY))$(C_OFF)"
+
+# Installer deps only - test/requirements.txt's greenlet is a compile on a Pi and the
+# installer never needs it. install.sh runs this and then activates the venv when the
+# system python is PEP 668 externally managed, so 'python' downstream (including in every
+# make recipe) is this interpreter. Only the installer's own templating needs it: the
+# extras it installs run under klipper's python, which this does not touch.
+# python_deps then installs the same requirements again into the activated venv, finds them
+# satisfied and stays quiet - it is the guard for a plain `make`, and is not wasted here.
+# The no-op recipe keeps make from reporting 'Nothing to be done' on every install
+installer_venv: $(INSTALLER_STAMP)
+	@:
 
 # Opens the interactive file picker, everything pre-ticked, so Enter runs the whole suite as
 # before. Skipped for UT/ALL/LAST or when stdin isn't a tty - test/select.py decides. Extra

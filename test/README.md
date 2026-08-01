@@ -39,6 +39,13 @@ at `venv/` and installs `test/requirements.txt` into it if it isn't already ther
 Git ignores `venv/` (Python's `venv` module writes an ignore rule into it), so it will
 never show up in `git status` or a commit.
 
+The tests are not its only tenant. On a system whose Python refuses to install anything
+outside a virtualenv (PEP 668 "externally managed" — Homebrew, Debian Bookworm), and where
+Klipper's own `klippy-env` isn't there to be used instead, `install.sh` builds the same
+venv via `make installer_venv` and runs the installer out of it. That installs only
+`installer/requirements.txt`, tracked by its own stamp file, so the two sets never
+invalidate each other and the installer never pays for `greenlet`.
+
 It is only built once. Later runs reuse it and go straight to the tests; editing
 `test/requirements.txt` reinstalls automatically. Some knobs:
 

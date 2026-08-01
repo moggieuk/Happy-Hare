@@ -40,6 +40,19 @@ if [ -n "$(which tput 2>/dev/null)" ]; then
     C_ERROR=$(tput -Txterm-256color bold)$(tput -Txterm-256color setaf 1)
 fi
 
+# A PEP 668 'externally managed' python (homebrew, Debian Bookworm) refuses to pip install
+# outside a venv, so the installer's deps (installer/requirements.txt) can never be put
+# where it would find them. Run from the repo venv instead, just as klippy-env is activated
+# above - klippy-env is itself a venv, so a normal printer install never reaches this.
+# PIP_ARGS means the user has chosen how to feed their system python, so leave it alone.
+if [ -z "${PIP_ARGS}" ] && ! python -c 'import os, sys, sysconfig; sys.exit(0 if sys.prefix != sys.base_prefix or not os.path.exists(os.path.join(sysconfig.get_path("stdlib"), "EXTERNALLY-MANAGED")) else 1)'; then
+    # Exported so make picks the same directory as the activate line below
+    export VENV="${VENV:-${SCRIPT_DIR}/venv}"
+    echo "${C_INFO}System python is externally managed (PEP 668), using virtualenv '${VENV}'${C_OFF}"
+    make --no-print-directory -C "${SCRIPT_DIR}" installer_venv
+    . "${VENV}/bin/activate"
+fi
+
 usage() {
     USAGE="Usage: $0"
     SPACE=$(echo "${USAGE}" | tr "[:print:]" " ")
@@ -85,7 +98,11 @@ ordinal() {
 prompt_yn() {
     while true; do
         printf "%s (y/n)? " "$*"
-        read -r yn
+        if ! read -r yn; then
+            echo
+            echo "${C_ERROR}Aborting: no answer available on stdin${C_OFF}" >&2
+            exit 1
+        fi
         case "${yn}" in
         Y | y)
             return 1
