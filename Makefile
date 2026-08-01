@@ -67,8 +67,9 @@ export SRC ?= $(CURDIR)
 export srctree := $(SRC)/installer
 export PYTHONPATH:=$(SRC)/installer/lib/kconfiglib:$(PYTHONPATH)
 
-# Virtualenv, created on demand by `make test` and by `make installer_venv` (which
-# install.sh runs for a PEP 668 python). See test/README.md
+# Virtualenv, created on demand by any goal that needs an interpreter the machine cannot
+# otherwise provide: `make test` for the test deps, and anything running the builder where
+# $(PY) resolved to it below. See test/README.md
 VENV       ?= $(SRC)/venv
 VENV_PY    := $(VENV)/bin/python
 VENV_STAMP := $(VENV)/.hh-test-requirements
@@ -89,6 +90,26 @@ ifneq ($(filter test console,$(MAKECMDGOALS)),)
     klippy_env_py := $(shell $(klippy_env_py) -c 'import greenlet, jinja2' 2>/dev/null && echo $(klippy_env_py))
   endif
 endif
+
+# The builder needs jinja2, which a PEP 668 python outside a venv will never accept, so keep
+# the first interpreter that already has it and fall back to the venv. Skipped when someone
+# has said which to feed (PY=, PIP_ARGS, a live venv). Must stay below BOOTSTRAP_PY
+ifeq ($(VIRTUAL_ENV)$(PIP_ARGS),)
+  ifneq ($(origin PY),command line)
+    PY := $(shell for p in $(PY) $(KLIPPY_ENV)/bin/python $(VENV_PY); do \
+              command -v "$$p" >/dev/null 2>&1 && \
+              "$$p" -c 'import jinja2' >/dev/null 2>&1 && { echo "$$p"; exit 0; }; \
+            done; \
+            $(PY) -c 'import os, sys, sysconfig; \
+                sys.exit(0 if os.path.exists(os.path.join(sysconfig.get_path("stdlib"), "EXTERNALLY-MANAGED")) else 1)' \
+              >/dev/null 2>&1 && echo $(VENV_PY) || echo $(PY))
+  endif
+endif
+
+# If $(PY) landed on the venv it has to exist before any recipe runs, so python_deps - which
+# everything running the builder waits on - builds it. Empty otherwise, so a python whose pip
+# works still just installs the deps rather than getting a venv it never asked for
+builder_prereq := $(if $(filter $(VENV_PY),$(PY)),$(INSTALLER_STAMP))
 
 # NO_VENV=1 or an explicit PY= runs the tests against the system interpreter instead.
 # test_prereqs keys off TEST_PY so opting out never builds a venv it then ignores
@@ -435,7 +456,7 @@ fix_links:
 check_version: $(hh_configs_to_parse) $(KCONFIG_PREREQS) | python_deps
 	$(Q)$(PY) -m installer.build $(V) --check-version "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)
 
-gen_kconfig:
+gen_kconfig: | python_deps
 	@echo "$(C_NOTICE)kconfig=$(KCONFIG_CONFIG)$(C_OFF)"
 	$(Q)$(PY) -m installer.build $(V) --gen-kconfig-options "$(KCONFIG_CONFIG)"
 
@@ -455,15 +476,10 @@ no_venv_hint = \
 	echo "$(C_ERROR)  export PIP_ARGS='--user --break-system-packages'$(C_OFF)"; \
 	echo "$(C_ERROR)For tests only, the system interpreter also works: make NO_VENV=1 test$(C_OFF)";
 
-# Always '$(PY) -m pip', never a bare 'pip'. The first pip on PATH need not belong to the
-# interpreter every other recipe runs under, so the deps can land where $(PY) cannot see
-# them - and on macOS /usr/local/bin/pip is often a leftover whose '#!/usr/bin/python'
-# shebang no longer exists at all ("bad interpreter", make Error 126).
-# Runs on nearly every invocation (order-only prereq of build/install/pickle), so it stays
-# quiet on success. PEP 668 interpreters (homebrew python, Debian Bookworm system python)
-# refuse to install outside a venv at all: install.sh handles that before make ever starts,
-# so what is left here is a plain `make` on such a python, hence the hints below.
-python_deps:
+# Always '$(PY) -m pip', never a bare 'pip': the first pip on PATH need not belong to $(PY),
+# and on macOS is often a leftover with a dead shebang. Runs on nearly every invocation so it
+# stays quiet on success. Only a PEP 668 python with no venv to fall back on reaches the hints
+python_deps: $(builder_prereq)
 	$(Q)echo "$(C_INFO)Checking for python dependencies$(C_OFF)"
 	$(Q)$(PY) -m pip install --quiet --disable-pip-version-check $(PIP_ARGS) \
 		-r $(SRC)/installer/requirements.txt || { \
@@ -494,14 +510,9 @@ diff: | build
 	$(Q)$(call diff,$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE),$(patsubst $(SRC)/%,%,$(OUT)/$(PRINTER_CONFIG_FILE)))
 	$(Q)$(call diff,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE),$(patsubst $(SRC)/%,%,$(OUT)/$(MOONRAKER_CONFIG_FILE)))
 
-# A venv can exist and still have no pip - Debian/Raspberry Pi OS split ensurepip into
-# python3-venv, and `python3 -m venv` there creates bin/python and only THEN fails. That
-# half-built venv satisfies $(VENV_PY), so the creation rule never runs again and the next
-# make reaches pip with no pip to reach. The check therefore belongs with the rule that
-# uses pip, not the one that creates the venv: the stamp rule below runs it every time.
-# ensurepip is the repair, not just a probe - it puts pip into an existing venv, so once
-# the missing package is installed a re-run fixes the half-built one in place. Deleting and
-# rebuilding would buy nothing: it needs the very module that is missing.
+# Debian/RPi OS split ensurepip into python3-venv, so `python3 -m venv` there leaves a
+# bin/python with no pip - and since that satisfies $(VENV_PY), creation never re-runs. Hence
+# the check sits with the rule that uses pip, and ensurepip is the repair, not just a probe
 venv_pip_check = \
 	$(VENV_PY) -m pip --version >/dev/null 2>&1 || \
 	$(VENV_PY) -m ensurepip --default-pip >/dev/null 2>&1 || { \
@@ -526,10 +537,9 @@ $(VENV_PY):
 		exit 1; \
 	}
 
-# One rule for both tenants of the venv: '.hh-<dir>-requirements' is the stamp for
-# <dir>/requirements.txt, so test/ and installer/ deps install independently and neither
-# invalidates the other. Stamps live inside the venv, so a deleted venv or an edited
-# requirements.txt reinstalls
+# One rule for both tenants: '.hh-<dir>-requirements' stamps <dir>/requirements.txt, so test/
+# and installer/ deps install independently. Stamps live inside the venv, so a deleted venv
+# or an edited requirements.txt reinstalls
 $(VENV)/.hh-%-requirements: $(SRC)/%/requirements.txt | $(VENV_PY)
 	$(Q)$(venv_pip_check)
 	$(Q)echo "$(C_INFO)Installing $* dependencies from $(patsubst $(SRC)/%,%,$<)$(C_OFF)"
@@ -540,14 +550,9 @@ $(VENV)/.hh-%-requirements: $(SRC)/%/requirements.txt | $(VENV_PY)
 venv: $(VENV_STAMP)
 	$(Q)echo "$(C_NOTICE)Test virtualenv ready: $(patsubst $(SRC)/%,%,$(VENV_PY))$(C_OFF)"
 
-# Installer deps only - test/requirements.txt's greenlet is a compile on a Pi and the
-# installer never needs it. install.sh runs this and then activates the venv when the
-# system python is PEP 668 externally managed, so 'python' downstream (including in every
-# make recipe) is this interpreter. Only the installer's own templating needs it: the
-# extras it installs run under klipper's python, which this does not touch.
-# python_deps then installs the same requirements again into the activated venv, finds them
-# satisfied and stays quiet - it is the guard for a plain `make`, and is not wasted here.
-# The no-op recipe keeps make from reporting 'Nothing to be done' on every install
+# Installer deps only - the tests' greenlet is a compile on a Pi and the installer never
+# needs it. install.sh runs this then activates the venv on a PEP 668 python. The extras it
+# installs still run under klipper's python. The no-op recipe silences 'Nothing to be done'
 installer_venv: $(INSTALLER_STAMP)
 	@:
 
@@ -587,6 +592,8 @@ variables:
 	@echo "$(C_NOTICE)OUT                            =$(C_INFO) $(OUT)$(C_OFF)"
 	@echo "$(C_NOTICE)IN                             =$(C_INFO) $(IN)$(C_OFF)"
 	@echo "$(C_NOTICE)KCONFIG_CONFIG                 =$(C_INFO) $(KCONFIG_CONFIG)$(C_OFF)"
+	@echo "$(C_NOTICE)PY (builder)                   =$(C_INFO) $(PY)$(C_OFF)"
+	@echo "$(C_NOTICE)TEST_PY (test/console)         =$(C_INFO) $(TEST_PY)$(C_OFF)"
 	@echo "========================="
 
 
@@ -615,7 +622,7 @@ ifeq ($(F_MULTI_UNIT_ENTRY_POINT),y)
   MENUCONFIG_STYLE := aquatic
 endif
 
-menuconfig: $(SRC)/installer/Kconfig
+menuconfig: $(SRC)/installer/Kconfig | python_deps
 	$(Q)MENUCONFIG_STYLE="$(MENUCONFIG_STYLE)" KLIPPER_HOME=$(KLIPPER_HOME) $(PY) -m menuconfig Kconfig
 
 
@@ -634,6 +641,6 @@ kconfig_needs_update:
 	done; \
 	echo n
 
-olddefconfig:
+olddefconfig: | python_deps
 	$(Q)$(PY) -m olddefconfig $(SRC)/installer/Kconfig >/dev/null
 	$(Q)touch "$(KCONFIG_CONFIG)"

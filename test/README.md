@@ -49,10 +49,13 @@ never show up in `git status` or a commit.
 
 The tests are not its only tenant. On a system whose Python refuses to install anything
 outside a virtualenv (PEP 668 "externally managed" — Homebrew, Debian Bookworm), and where
-Klipper's own `klippy-env` isn't there to be used instead, `install.sh` builds the same
-venv via `make installer_venv` and runs the installer out of it. That installs only
-`installer/requirements.txt`, tracked by its own stamp file, so the two sets never
-invalidate each other and the installer never pays for `greenlet`.
+Klipper's own `klippy-env` isn't there to be used instead, the installer needs it too — it
+cannot render a config without `jinja2`. So `./install.sh`, and equally a bare `make build`,
+`make verify_pickle` or any other goal that runs the builder, will create this venv and use
+it. Those install only `installer/requirements.txt`, tracked by its own stamp file, so the
+two sets never invalidate each other and the installer never pays for `greenlet`.
+
+`make variables` prints which interpreter each half settled on, if you ever wonder.
 
 It is only built once. Later runs reuse it and go straight to the tests; editing
 `test/requirements.txt` reinstalls automatically. Some knobs:
