@@ -15,7 +15,7 @@
 # on the event passes while bootup is entirely broken. Every test that boots must
 # also assert hh.errors == [].
 #
-# Run with the repo venv (needs jinja2/dill for template rendering, greenlet for the
+# Run with the repo venv (needs jinja2 for template rendering, greenlet for the
 # reactor):
 #   ./venv/bin/python -m unittest test.test_mmu_bootup
 #

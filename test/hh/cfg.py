@@ -2,7 +2,7 @@
 #
 # We reuse exactly two functions from installer/build.py - render_template (:459)
 # and KConfig.as_dict (:178) - and bypass all the heavy machinery in
-# build_config_file (:508). No .mmu_config, no dill pickle, no OUT/SRC build dir,
+# build_config_file (:508). No .mmu_config, no kconfig pickle, no OUT/SRC build dir,
 # no version-upgrade migrations, no filesystem writes.
 #
 # Four gotchas are encoded here; each one silently produces wrong output rather

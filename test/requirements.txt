@@ -17,4 +17,3 @@ greenlet
 # Already in installer/requirements.txt, repeated so this file stands alone. Used to
 # render the real shipped config templates rather than hand-written fixtures.
 jinja2
-dill

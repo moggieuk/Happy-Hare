@@ -8,7 +8,7 @@
 # change there fails fast and legibly here rather than surfacing later as a
 # mysterious bootup failure.
 #
-# Requires jinja2 + dill (installer/requirements.txt) - run with the repo venv:
+# Requires jinja2 (installer/requirements.txt) - run with the repo venv:
 #   ./venv/bin/python -m unittest test.test_mmu_config
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.

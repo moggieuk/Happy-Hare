@@ -5,7 +5,7 @@
 # sys.path[0]. So PN532UARTDriver's lazy `import serial` resolves here.
 #
 # It SHADOWS pyserial process-wide for the whole test session. Safe today because
-# test/requirements.txt lists only greenlet, jinja2 and dill - nothing real is
+# test/requirements.txt lists only greenlet and jinja2 - nothing real is
 # being hidden. If pyserial ever becomes a test dependency, this file has to go
 # and the constructor seam below becomes the only injection route.
 #

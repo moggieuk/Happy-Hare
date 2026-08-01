@@ -18,7 +18,7 @@ import os
 import copy
 import logging
 import subprocess
-import dill
+import pickle
 
 from jinja2  import Environment, FileSystemLoader, UndefinedError
 from pathlib import Path
@@ -273,7 +273,7 @@ class KConfig(kconfiglib.Kconfig):
 class ParsedKConfig:
     """
     Lightweight Kconfig with just essentials for pickling without getting to
-    silly recursion depths with dill.pickle(). Depth was >20000!
+    silly recursion depths pickling the Kconfig object graph. Depth was >20000!
     """
     def __init__(self, config_file, values, choices):
         self.config_file = config_file
@@ -822,7 +822,6 @@ def check_version(kconfig, input_files):
 #    with open(pickle_file, "wb") as f:
 #        dill.dump(kcfg, f, recurse=True)
 #
-#
 #def load_parsed_kconfig(kconfig):
 #    out = os.getenv("OUT")
 #    base = os.path.basename(kconfig)
@@ -867,7 +866,7 @@ def pre_parse_kconfig(kconfig):
             },
         }
         with open(tmp_file, "wb") as f:
-            dill.dump(data, f)
+            pickle.dump(data, f)
 
         os.replace(tmp_file, pickle_file)
 
@@ -887,7 +886,7 @@ def load_parsed_kconfig(kconfig):
 
     try:
         with open(pickle_file, "rb") as f:
-            data = dill.load(f)
+            data = pickle.load(f)
 
             return ParsedKConfig(
                 data["config_file"],
