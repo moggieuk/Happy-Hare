@@ -36,6 +36,14 @@ in a **virtualenv** — a private Python install that lives in the repo director
 *not* part of the git repo, and is never installed onto a printer. `make test` creates it
 at `venv/` and installs `test/requirements.txt` into it if it isn't already there.
 
+**On a printer there is usually nothing to create.** Klipper's own `~/klippy-env` already
+contains greenlet and Jinja2 — it requires both — which is the whole of
+`test/requirements.txt`, so `make test` and `make console` use it directly and say so. That
+matters most on Debian/Raspberry Pi OS, where `ensurepip` ships in the separate
+`python3-venv` package and `python3 -m venv` would otherwise produce a venv with no pip.
+Point `KLIPPY_ENV=` elsewhere if yours is not at `~/klippy-env`, or at a path that does not
+exist to force the venv route.
+
 Git ignores `venv/` (Python's `venv` module writes an ignore rule into it), so it will
 never show up in `git status` or a commit.
 
@@ -53,6 +61,7 @@ It is only built once. Later runs reuse it and go straight to the tests; editing
 make venv                       # build the venv, don't run anything
 make clean_venv                 # throw it away (`make clean` deliberately does not)
 make VENV=/somewhere/else test  # put the venv somewhere other than ./venv
+make KLIPPY_ENV=/nonexistent test  # ignore klipper's env, build the venv instead
 make NO_VENV=1 test             # don't use a venv at all (see below)
 make PY=/usr/bin/python3 test   # ditto, against a named interpreter
 ```
