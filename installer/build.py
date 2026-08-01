@@ -24,7 +24,7 @@ from jinja2  import Environment, FileSystemLoader, UndefinedError
 from pathlib import Path
 
 import kconfiglib
-from .parser   import ConfigBuilder, WhitespaceNode
+from .parser   import ConfigBuilder, WhitespaceNode, PARSE_ERROR_MARKER
 from .upgrades import Upgrades
 
 # Check for python 3.x
@@ -332,6 +332,10 @@ class HHConfig(ConfigBuilder):
                     if (section, option) not in self.origins:
                         self.origins[(section, option)] = basename
 
+        # These files get regenerated from the templates, so anything unparsable here isn't
+        # merely unreadable - it won't survive the rebuild. Say so plainly
+        report_parse_errors(self, "existing Happy Hare config", preserved=False)
+
     def remove_option(self, section_name, option_name):
         if (section_name, option_name) in self.origins:
             self.origins.pop((section_name, option_name))
@@ -435,6 +439,37 @@ class HHConfig(ConfigBuilder):
 # ---------------------------------------
 
 
+def report_parse_errors(builder, filename, preserved=True):
+    """
+    Summarize anything the config parser couldn't understand. The parser recovers rather than
+    aborting (it used to bomb out with a traceback, which is a hard blocker for the user), but
+    we must be loud about it because either way HH cannot see options in those lines.
+
+    preserved=True  - the file is edited in place (printer.cfg, moonraker.conf), so the lines
+                      survive verbatim with a marker comment added
+    preserved=False - the file is regenerated from a template with the user's values copied
+                      over (Happy Hare's own cfg files), so those lines will NOT be carried
+                      across and have to be re-applied by hand
+    """
+    errors = builder.parse_errors()
+    if not errors:
+        return False
+
+    logging.error("!! Unable to fully parse '{}' - {} problem(s) found:".format(filename, len(errors)))
+    for node in errors:
+        where = "{} ".format(node.origin) if node.origin else ""
+        logging.error("!!   {}line {}: {}".format(where, node.line, node.reason))
+        for line in node.value.strip("\n").split("\n")[:4]:
+            logging.error("!!     | {}".format(line))
+    if preserved:
+        logging.error("!! These lines were left exactly as they were and marked with '{}'".format(PARSE_ERROR_MARKER))
+        logging.error("!! Happy Hare has continued, but please fix them and re-run the installer")
+    else:
+        logging.error("!! Any settings in these lines could not be read and will be MISSING from the")
+        logging.error("!! rebuilt config. Fix them in the '.old-<timestamp>' backup and re-run the installer")
+    return True
+
+
 def add_supplemental_params(builder, hhcfg, section):
     for param in supplemental_params + hidden_params:
         if hhcfg.has_option(section, param):
@@ -534,6 +569,7 @@ def build_config_file(cfg_file_basename, dest_file, kcfg, input_files, extra_par
     # 4.Generate builder Config from rendered cfg template
     builder = ConfigBuilder()
     builder.read_buf(buffer)
+    report_parse_errors(builder, cfg_file_basename)
 
     # 5.Special case cfg files that contains parameters so we can add back any optional,
     #   hidden or supplemental params because they are not present in cfg template
@@ -624,6 +660,7 @@ def install_moonraker(moonraker_cfg, existing_cfg, kconfig):
     update = ConfigBuilder()
     update.read_buf(buffer)
     builder = ConfigBuilder(existing_cfg)
+    report_parse_errors(builder, existing_cfg)
 
     def update_section(section):
         if not builder.has_section(section):
@@ -649,6 +686,7 @@ def uninstall_moonraker(moonraker_cfg):
 
     logging.info("Cleaning up moonraker.conf additions")
     builder = ConfigBuilder(moonraker_cfg)
+    report_parse_errors(builder, moonraker_cfg)
 
     if builder.has_section("update_manager happy-hare"):
         logging.debug(" > Removing [update_manager happy-hare]")
@@ -667,6 +705,7 @@ def install_includes(dest_file, kconfig):
 
     kcfg = load_parsed_kconfig(kconfig)
     builder = ConfigBuilder(dest_file)
+    report_parse_errors(builder, dest_file)
 
     def check_include(builder, param, include, comment="", at_top=True):
         include = "include " + include
@@ -721,6 +760,7 @@ def uninstall_includes(dest_file):
 
     logging.info("Cleaning up includes")
     builder = ConfigBuilder(dest_file)
+    report_parse_errors(builder, dest_file)
     for section in builder.sections():
         if section.startswith("include mmu/"):
             logging.debug(" > Removing include [{}]".format(section))
