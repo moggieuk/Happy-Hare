@@ -79,13 +79,32 @@ INSTALLER_STAMP := $(VENV)/.hh-installer-requirements
 # Interpreter used to create the venv, falling back where plain `python` isn't a name
 BOOTSTRAP_PY := $(if $(shell command -v $(PY) 2>/dev/null),$(PY),python3)
 
+# Klipper's own virtualenv carries greenlet and Jinja2 - klippy-requirements.txt needs both -
+# which is the whole of test/requirements.txt. So on a printer there is nothing to build:
+# use it and skip the venv, which matters on Debian where `python3 -m venv` cannot seed pip
+# without the separate python3-venv package. Confirmed by import rather than assumed, and
+# only probed for the goals that need such an interpreter, so a build or install pays
+# nothing for it. `make venv` is deliberately not in the list: asking for the venv builds it
+KLIPPY_ENV ?= $(HOME)/klippy-env
+ifneq ($(filter test console,$(MAKECMDGOALS)),)
+  klippy_env_py := $(wildcard $(KLIPPY_ENV)/bin/python)
+  ifneq ($(klippy_env_py),)
+    klippy_env_py := $(shell $(klippy_env_py) -c 'import greenlet, jinja2' 2>/dev/null && echo $(klippy_env_py))
+  endif
+endif
+
 # NO_VENV=1 or an explicit PY= runs the tests against the system interpreter instead.
 # test_prereqs keys off TEST_PY so opting out never builds a venv it then ignores
 ifdef NO_VENV
   TEST_PY ?= $(BOOTSTRAP_PY)
 endif
-TEST_PY      ?= $(if $(findstring command line,$(origin PY)),$(PY),$(VENV_PY))
+TEST_PY      ?= $(if $(findstring command line,$(origin PY)),$(PY),$(if $(klippy_env_py),$(klippy_env_py),$(VENV_PY)))
 test_prereqs := $(if $(filter $(VENV_PY),$(TEST_PY)),$(VENV_STAMP))
+
+# Which python ran the tests should never be a mystery, and this is the surprising one.
+# No commas in the message: $(if) splits its arguments on them
+using_klippy_env = $(if $(filter $(klippy_env_py),$(TEST_PY)), \
+	echo "$(C_INFO)Using klipper's virtualenv '$(KLIPPY_ENV)' - it already has greenlet and jinja2$(C_OFF)",:)
 
 ifneq ($(TESTDIR),)
   OUTDIR := $(TESTDIR)
@@ -478,31 +497,49 @@ diff: | build
 	$(Q)$(call diff,$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE),$(patsubst $(SRC)/%,%,$(OUT)/$(PRINTER_CONFIG_FILE)))
 	$(Q)$(call diff,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE),$(patsubst $(SRC)/%,%,$(OUT)/$(MOONRAKER_CONFIG_FILE)))
 
+venv_create = \
+	echo "$(C_INFO)Creating virtualenv in '$(patsubst $(SRC)/%,%,$(VENV))'$(C_OFF)"; \
+	$(BOOTSTRAP_PY) -m venv "$(VENV)" || { \
+		echo "$(C_ERROR)Could not create a virtualenv with '$(BOOTSTRAP_PY) -m venv'$(C_OFF)"; \
+		echo "$(C_ERROR)On Debian/Ubuntu install it with: sudo apt install python3-venv$(C_OFF)"; \
+		$(no_venv_hint) \
+		exit 1; \
+	}
+
 # A venv can exist and still have no pip - Debian/Raspberry Pi OS split ensurepip into
 # python3-venv, and `python3 -m venv` there creates bin/python and only THEN fails. That
 # half-built venv satisfies $(VENV_PY), so the creation rule never runs again and the next
 # make reaches pip with no pip to reach. The check therefore belongs with the rule that
 # uses pip, not the one that creates the venv: the stamp rule below runs it every time.
-# rm -rf is deliberately not the answer: VENV may point at a directory the user chose.
+# A venv that fails it is rebuilt from scratch, which is what makes `sudo apt install
+# python3-venv` then re-running work without a `make clean_venv` in between. Only ever one
+# we can prove is a venv, by its pyvenv.cfg: VENV may point at a directory the user chose.
+# klippy-env is excluded outright - it has a pyvenv.cfg like any other venv, and a stray
+# `make VENV=~/klippy-env` must never be able to delete klipper's own environment.
 venv_pip_check = \
 	$(VENV_PY) -m pip --version >/dev/null 2>&1 || \
 	$(VENV_PY) -m ensurepip --default-pip >/dev/null 2>&1 || { \
+		[ -f "$(VENV)/pyvenv.cfg" ] && [ "$(VENV)" != "$(KLIPPY_ENV)" ] && { \
+			echo "$(C_WARNING)Virtualenv '$(patsubst $(SRC)/%,%,$(VENV))' has no pip, rebuilding it$(C_OFF)"; \
+			rm -rf "$(VENV)"; \
+			$(venv_create); \
+			$(VENV_PY) -m pip --version >/dev/null 2>&1 || \
+				$(VENV_PY) -m ensurepip --default-pip >/dev/null 2>&1; \
+		}; \
+	} || { \
 		echo "$(C_ERROR)The virtualenv at '$(patsubst $(SRC)/%,%,$(VENV))' has no pip$(C_OFF)"; \
 		echo "$(C_ERROR)On Debian/Ubuntu/Raspberry Pi OS: sudo apt install python3-venv$(C_OFF)"; \
-		echo "$(C_ERROR)then remove the half-built one with: make clean_venv$(C_OFF)"; \
+		[ -x "$(KLIPPY_ENV)/bin/python" ] && { \
+			echo "$(C_ERROR)Klipper's own virtualenv already has what the tests need$(C_OFF)"; \
+			echo "$(C_ERROR)and installs nothing: make PY=$(KLIPPY_ENV)/bin/python test$(C_OFF)"; \
+		}; \
 		$(no_venv_hint) \
 		exit 1; \
 	}
 
 # Guarded by the interpreter it produces, so this runs once
 $(VENV_PY):
-	$(Q)echo "$(C_INFO)Creating virtualenv in '$(patsubst $(SRC)/%,%,$(VENV))'$(C_OFF)"
-	$(Q)$(BOOTSTRAP_PY) -m venv "$(VENV)" || { \
-		echo "$(C_ERROR)Could not create a virtualenv with '$(BOOTSTRAP_PY) -m venv'$(C_OFF)"; \
-		echo "$(C_ERROR)On Debian/Ubuntu install it with: sudo apt install python3-venv$(C_OFF)"; \
-		$(no_venv_hint) \
-		exit 1; \
-	}
+	$(Q)$(venv_create)
 
 # One rule for both tenants of the venv: '.hh-<dir>-requirements' is the stamp for
 # <dir>/requirements.txt, so test/ and installer/ deps install independently and neither
@@ -533,6 +570,7 @@ installer_venv: $(INSTALLER_STAMP)
 # before. Skipped for UT/ALL/LAST or when stdin isn't a tty - test/select.py decides. Extra
 # unittest flags go through ARGS, e.g. make test ARGS='-k homing'
 test: $(test_prereqs)
+	$(Q)$(using_klippy_env)
 	$(Q)PYTHONPATH="$(SRC)/installer/lib/kconfiglib:$(PYTHONPATH)" \
 		$(TEST_PY) -m test.select $(V) \
 			$(if $(filter-out *,$(UT)),--pattern '$(strip $(UT))') \
@@ -542,6 +580,7 @@ test: $(test_prereqs)
 #   make console ARGS='--profile /tmp/mmu_test/printer_data/config'
 #   make console ARGS='--profile encoder --header machine,sensors,filament,leds'
 console: $(test_prereqs)
+	$(Q)$(using_klippy_env)
 	$(Q)PYTHONPATH="$(SRC)/installer/lib/kconfiglib:$(PYTHONPATH)" \
 		$(TEST_PY) -m test.console $(ARGS)
 

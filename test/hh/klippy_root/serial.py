@@ -4,10 +4,12 @@
 # under klippy_root/ preserving its relative path), and the overlay sits at
 # sys.path[0]. So PN532UARTDriver's lazy `import serial` resolves here.
 #
-# It SHADOWS pyserial process-wide for the whole test session. Safe today because
-# test/requirements.txt lists only greenlet and jinja2 - nothing real is
-# being hidden. If pyserial ever becomes a test dependency, this file has to go
-# and the constructor seam below becomes the only injection route.
+# It SHADOWS pyserial process-wide for the whole test session, and wins from sys.path[0]
+# even where a real pyserial exists - which it does when the tests run under klipper's
+# klippy-env (klippy-requirements.txt pins pyserial 3.4), the default on a printer. That is
+# intended: nothing here wants the real one. But it does mean the shadow is load-bearing
+# rather than merely unopposed, so if pyserial ever becomes a test dependency this file has
+# to go and the constructor seam below becomes the only injection route.
 #
 # Only the surface PN532UARTDriver actually touches is implemented: read, write,
 # reset_input_buffer, in_waiting, close.
