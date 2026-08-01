@@ -1207,6 +1207,22 @@ class ConfigBuilder(object):
             return value.strip().lower() in ["1", "true", "yes", "on"]
         return default
 
+    @staticmethod
+    def _find_value_node(option):
+        """
+        Locate where an option's value text actually starts: the first ValueEntryNode holding
+        something other than whitespace. Returns (line index, node), or (0, None) when the
+        option carries no value text at all.
+
+        Everything skipped on the way is layout that has to survive a set() - the "\\n" of a
+        value that begins on the following line, a blank line, a commented out first entry.
+        """
+        for i, value_line in enumerate(option.body):
+            for node in value_line.body:
+                if isinstance(node, ValueEntryNode) and node.value.strip():
+                    return i, node
+        return 0, None
+
     def set(self, section_name, option_name, value):
         if value is None:
             logging.warning("{} in section [{}] has no value".format(option_name, section_name))
@@ -1218,42 +1234,49 @@ class ConfigBuilder(object):
 #        if idx != -1:
 #            value = value[:idx] + re.sub(r"^(?=\S)", r"    ", value[idx:], flags=re.MULTILINE)
 
-        # Build/rebuild first ValueLineNode with updated value
+        # Overwrite where the value actually is, which is not always the first ValueEntryNode.
+        # A value that starts on the line after the key leaves layout-only nodes in front of
+        # it - a bare "\n", a blank line, a commented out first line - and writing over one
+        # of those loses the line break ("a: \n    b" came back as "a: b") or, worse, joins
+        # the value to a comment ("a: x# c", which configparser reads as the literal "x# c"
+        # because an inline comment only counts when whitespace precedes it)
         if self.has_option(section_name, option_name):
             option = self._get_option(section_name, option_name)
             if option.body:
-                vln = option.body[0]
-                value_replaced = False
+                target_line, target_node = self._find_value_node(option)
 
-                if isinstance(vln.body[0], CommentNode):
-                    vln.body.insert(0, ValueEntryNode(value))
-                else:
-                    for b in vln.body:
-                        if isinstance(b, ValueEntryNode):
-                            b.value = value
-                            value_replaced = True
-                            break
+                if target_node is None:
+                    # Nothing but layout, e.g. an option with no value at all. Put the value
+                    # on the key line, ahead of any comment that is sitting there
+                    vln = option.body[0]
+                    if isinstance(vln.body[0], CommentNode):
+                        vln.body.insert(0, ValueEntryNode(value))
                     else:
                         vln.body.append(ValueEntryNode(value))
+                else:
+                    # Keep the node's own indentation: it is the layout of the line the value
+                    # lives on, not part of the value (which arrives here already stripped)
+                    indent = target_node.value[: len(target_node.value) - len(target_node.value.lstrip(" \t"))]
+                    target_node.value = indent + value
 
-                # Hack to remove other parts of a multi-lined value. E.g.
-                #   [mmu_led_effect mmu_red_strobe]
-                #   layers:       strobe    1 1.5 add (1,1,1)
-                #                 breathing 2 0   difference (0.95,0,0) # animate
-                #                 static    0 0   top (1,0,0)
-                # If ValueEntryNode is whitespace, retain because probably just comment. E.g.
-                # print_start_detection: 1   # ADVANCED: xxx
-                #                            # ADVANCED: yyy
-                # Side effects:
-                #  - comments on values in subsequent lines will be removed
-                #  - trailing whitespace on value will be removed (good thing)
-                if value_replaced:
-                    removes = []
-                    for i, vln in enumerate(option.body[1:]):
-                        if isinstance(vln.body[0], ValueEntryNode) and vln.body[0].value.strip() != '':
-                            removes.append(i + 1)
-                    for i in reversed(removes):
-                        option.body.pop(i)
+                    # Remove what is left of a multi-lined value, the new one replaces all of
+                    # it. E.g.
+                    #   [mmu_led_effect mmu_red_strobe]
+                    #   layers:       strobe    1 1.5 add (1,1,1)
+                    #                 breathing 2 0   difference (0.95,0,0) # animate
+                    #                 static    0 0   top (1,0,0)
+                    # Only lines after the one just written are candidates, so the layout in
+                    # front of the value survives. A line whose ValueEntryNode is whitespace is
+                    # retained because it is probably just carrying a comment. E.g.
+                    # print_start_detection: 1   # ADVANCED: xxx
+                    #                            # ADVANCED: yyy
+                    # Side effects:
+                    #  - comments on value lines after the value will be removed
+                    #  - trailing whitespace on value will be removed (good thing)
+                    for i in range(len(option.body) - 1, target_line, -1):
+                        first = option.body[i].body[0]
+                        if isinstance(first, ValueEntryNode) and first.value.strip() != '':
+                            option.body.pop(i)
 
             else:
                 body = self.parser.parse_value(Tokenizer(value, CONFIG_SPEC))

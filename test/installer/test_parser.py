@@ -258,5 +258,106 @@ class TestErrorRecovery(unittest.TestCase):
         self.assertIn("nonsense", builder.write())
 
 
+# The installer rebuilds Happy Hare's cfg files from templates and copies the user's values
+# across with set(get(...)) (installer/build.py:399). get() strips the value, so set() has to
+# put it back where it was without the surrounding layout as a guide. It used to overwrite the
+# first ValueEntryNode in the option, which for a value starting on the line after the key is
+# the bare "\n" - so "a: \n    b" came back as "a: b" on every single install, and with a
+# commented out first entry it came back as "a: b# c", which configparser reads as the literal
+# "b# c" because an inline comment only counts when whitespace precedes it.
+LAYOUTS = {
+    "value on the next line":      "[s]\nextra_endstops: \n    a=1,\n     b=2\nnext: 1\n",
+    "...with no space after ':'":  "[s]\nextra_endstops:\n    a=1,\n     b=2\nnext: 1\n",
+    "...behind a comment":         "[s]\nextra_endstops: \n# commented out\n    a=1\nnext: 1\n",
+    "...behind a blank line":      "[s]\nextra_endstops: \n\n    a=1\nnext: 1\n",
+    "value on the key line":       "[s]\nextra_endstops:  a=1\n     b=2\nnext: 1\n",
+    "single line":                 "[s]\nextra_endstops: a=1\nnext: 1\n",
+    "with an inline comment":      "[s]\nextra_endstops: a=1   # why\nnext: 1\n",
+    "comment on the line below":   "[s]\nextra_endstops: a=1   # xxx\n                      # yyy\nnext: 1\n",
+    "no value at all":             "[s]\nextra_endstops: \nnext: 1\n",
+}
+
+
+class TestSetPreservesLayout(unittest.TestCase):
+
+    def test_rewriting_a_value_with_itself_changes_nothing(self):
+        """What an unchanged option goes through on every re-install - it must be a no-op"""
+        for name, buf in LAYOUTS.items():
+            with self.subTest(layout=name):
+                builder = build(buf)
+                builder.set("s", "extra_endstops", builder.get("s", "extra_endstops") or "")
+                self.assertEqual(builder.write(), buf)
+
+    def test_the_option_below_is_never_disturbed(self):
+        for name, buf in LAYOUTS.items():
+            with self.subTest(layout=name):
+                builder = build(buf)
+                builder.set("s", "extra_endstops", "z=9")
+                self.assertEqual(builder.get("s", "next"), "1")
+                self.assertEqual(klipper_value(builder.write(), "s", "next"), "1")
+
+    def test_klipper_reads_the_same_value_after_a_rewrite(self):
+        """The layout is only worth preserving if the printer's view of it does not move"""
+        for name, buf in LAYOUTS.items():
+            with self.subTest(layout=name):
+                builder = build(buf)
+                builder.set("s", "extra_endstops", builder.get("s", "extra_endstops") or "")
+                self.assertEqual(
+                    klipper_value(builder.write(), "s", "extra_endstops"),
+                    klipper_value(buf, "s", "extra_endstops"),
+                )
+
+    def test_a_new_value_reads_back_as_that_value(self):
+        """Layout is preserved, but never at the cost of what Klipper ends up reading. A value
+        starting on the next line reads back with a leading newline, as it did before us"""
+        for name, buf in LAYOUTS.items():
+            with self.subTest(layout=name):
+                builder = build(buf)
+                builder.set("s", "extra_endstops", "z=9")
+                self.assertEqual(builder.get("s", "extra_endstops"), "z=9")
+                self.assertEqual(klipper_value(builder.write(), "s", "extra_endstops").strip(), "z=9")
+
+    def test_commented_out_entry_does_not_get_joined_to_the_value(self):
+        """'a=1# commented out' would be read by configparser as a value, not a comment"""
+        buf = LAYOUTS["...behind a comment"]
+        builder = build(buf)
+        builder.set("s", "extra_endstops", builder.get("s", "extra_endstops"))
+        self.assertIn("\n# commented out\n", builder.write())
+        self.assertNotIn("a=1# commented out", builder.write())
+        self.assertEqual(klipper_value(builder.write(), "s", "extra_endstops").strip(), "a=1")
+
+    def test_value_keeps_starting_on_the_next_line(self):
+        builder = build(LAYOUTS["value on the next line"])
+        builder.set("s", "extra_endstops", "c=3")
+        self.assertEqual(builder.write(), "[s]\nextra_endstops: \n    c=3\nnext: 1\n")
+
+    def test_stale_continuation_lines_are_dropped(self):
+        """[mmu_led_effect] layers: - the replacement value replaces all of the old one"""
+        buf = "[s]\nlayers:       strobe    1 1.5 add (1,1,1)\n" \
+              "              breathing 2 0   difference (0.95,0,0)\n" \
+              "              static    0 0   top (1,0,0)\nnext: 1\n"
+        builder = build(buf)
+        builder.set("s", "layers", "solid 9")
+        self.assertEqual(builder.write(), "[s]\nlayers:       solid 9\nnext: 1\n")
+
+    def test_an_empty_option_gets_its_value_on_the_key_line(self):
+        builder = build(LAYOUTS["no value at all"])
+        builder.set("s", "extra_endstops", "a=1")
+        self.assertEqual(builder.write(), "[s]\nextra_endstops: a=1\nnext: 1\n")
+
+    def test_a_value_that_is_only_a_comment_keeps_the_comment_behind_it(self):
+        """'extra_endstops: # none yet' - the value goes in front, not after the '#'"""
+        builder = build("[s]\nextra_endstops: # none yet\nnext: 1\n")
+        builder.set("s", "extra_endstops", "a=1")
+        self.assertEqual(klipper_value(builder.write(), "s", "extra_endstops"), "a=1")
+        self.assertIn("# none yet", builder.write())
+
+    def test_multi_line_value_written_into_a_next_line_layout(self):
+        builder = build(LAYOUTS["value on the next line"])
+        builder.set("s", "extra_endstops", "c=3,\n     d=4")
+        self.assertEqual(builder.write(), "[s]\nextra_endstops: \n    c=3,\n     d=4\nnext: 1\n")
+        self.assertEqual(klipper_value(builder.write(), "s", "extra_endstops").split(), ["c=3,", "d=4"])
+
+
 if __name__ == "__main__":
     unittest.main()
