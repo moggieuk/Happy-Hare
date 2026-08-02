@@ -1,0 +1,17 @@
+# Documentation-tooling dependencies. Deliberately separate from both
+# installer/requirements.txt (what end users install) and test/requirements.txt
+# (the harness) - nothing here is needed to run Happy Hare or its tests.
+#
+# You do not install these by hand: `make shots` creates ./venv and installs this
+# file into it on demand, via the generic '.hh-<dir>-requirements' stamp rule
+# (Makefile:543). Editing this file makes the next `make shots` reinstall.
+
+# Terminal emulator. menuconfig is a curses app, so the only way to see what it
+# drew is to run it against a pty and interpret the escape stream. pyte gives the
+# resulting character grid plus per-cell colour, which is what doc/capture.py
+# renders and what its screen assertions read.
+pyte
+
+# Renders that grid to PNG. No headless browser, no ImageMagick, no system
+# terminal - the whole pipeline stays inside the venv.
+pillow

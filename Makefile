@@ -32,7 +32,7 @@ ifeq ($(CHECK_OUTPUT_SYNC),)
   # 'console' and 'test' must stay in this list: --output-sync buffers a recipe's output
   # until it finishes, which for an interactive prompt means no prompt at all. 'test' opens
   # the file picker in test/select.py
-  ifeq ($(strip $(filter menuconfig uninstall variables gen_kconfig fix_links console test,$(MAKECMDGOALS))),)
+  ifeq ($(strip $(filter menuconfig uninstall variables gen_kconfig fix_links console test shots,$(MAKECMDGOALS))),)
     ifneq ($(wildcard $(KCONFIG_CONFIG)),)
       # Check whether $KCONFIG_CONFIG is outdated. if so menuconfig will be triggered and output-sync should stay disabled
       ifeq ($(shell $(MAKE) CHECK_OUTPUT_SYNC=y -q $(KCONFIG_CONFIG) >/dev/null 2>&1 && echo y),y)
@@ -175,7 +175,7 @@ restart_klipper = 0
 .SECONDEXPANSION:
 .DEFAULT_GOAL := build
 .PRECIOUS: $(KCONFIG_CONFIG) $(KCONFIG_CONFIG)_%
-.PHONY: menuconfig install uninstall check_version diff test console venv installer_venv clean_venv build clean variables python_deps fix_links gen_kconfig kconfig_needs_update olddefconfig verify_pickle
+.PHONY: menuconfig install uninstall check_version diff test console shots venv installer_venv clean_venv build clean variables python_deps fix_links gen_kconfig kconfig_needs_update olddefconfig verify_pickle
 .SECONDARY: \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
@@ -624,6 +624,20 @@ endif
 
 menuconfig: $(SRC)/installer/Kconfig | python_deps
 	$(Q)MENUCONFIG_STYLE="$(MENUCONFIG_STYLE)" KLIPPER_HOME=$(KLIPPER_HOME) $(PY) -m menuconfig Kconfig
+
+# Documentation screenshots: runs menuconfig headlessly and renders its screens to
+# doc/images. Pass flags through ARGS, e.g.
+#   make shots ARGS='--list'
+#   make shots ARGS='--only mmu-type -v'
+# Or drive it by hand to find a screen worth capturing:
+#   make shots CAPTURE=1 ARGS='--keys "select:Purging,enter" --dump'
+#
+# Always the venv python: doc/requirements.txt (pyte, Pillow) is doc tooling that no
+# other target needs, and the '.hh-<dir>-requirements' rule above installs it on
+# demand. The tool sets up its own Kconfig environment - see doc/capture.py - so
+# unlike 'menuconfig' this target deliberately passes nothing from here.
+shots: $(VENV)/.hh-doc-requirements
+	$(Q)$(VENV_PY) -m doc.$(if $(CAPTURE),capture,shots) $(ARGS)
 
 
 
