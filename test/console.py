@@ -26,9 +26,12 @@
 from __future__ import annotations
 
 import argparse
+import collections
+import contextlib
 import logging
 import os
 import re
+import select
 import sys
 
 # The fakes log at debug/warning through the root logger and every test file quiets it at
@@ -54,6 +57,15 @@ except Exception:                                   # pragma: no cover - Windows
         readline = None
 
 HISTORY_FILE = os.path.expanduser('~/.hh_console_history')
+
+# -- optional raw keyboard, for the scrollback pager -------------------------------
+HAVE_RAWKEY = False
+try:
+    import termios
+    import tty
+    HAVE_RAWKEY = True
+except Exception:                                   # pragma: no cover - Windows
+    termios = tty = None
 
 # Where a preloaded filament tip is placed: past the entry switch at -50, which is the
 # precondition Happy Hare requires before a preload can start (test/README.md section 5).
@@ -159,6 +171,64 @@ def fg(r, g, b, mode='256'):
 
 
 _SGR = re.compile(r'\033\[([0-9;]*)m')
+# Any escape sequence, SGR or not. Used by wrap_ansi() to step over one without counting it
+# as a column; cursor control and SGR both have to survive a wrap intact.
+_CSI = re.compile(r'\033\[[0-9;?]*[ -/]*[@-~]|\033[@-Z\\-_]')
+
+
+def _sgr_state(text, cur_fg='', bold=False):
+    """
+    Fold the SGR codes in `text` into the (foreground, bold) state they leave behind.
+
+    Only these two are tracked because they are the only two Happy Hare emits - see
+    html_to_ansi(), which maps <span style="color:#..."> and <b> and nothing else.
+    """
+    for code in _SGR.findall(text):
+        if code in ('0', ''):
+            cur_fg, bold = '', False
+        elif code == '39':
+            cur_fg = ''
+        elif code == '22':
+            bold = False
+        elif code == '1':
+            bold = True
+        elif code.startswith('38;') or (code.isdigit() and (
+                30 <= int(code) <= 37 or 90 <= int(code) <= 97)):
+            cur_fg = '\033[%sm' % code
+    return cur_fg, bold
+
+
+def wrap_ansi(line, width):
+    """
+    Split one logical line into display rows of at most `width` VISIBLE columns.
+
+    Escape sequences cost no columns and must never be cut in half, and each continuation row
+    has to re-open whatever colour was still active - otherwise a wrapped warning is pink for
+    its first row and default for the rest. Same reasoning as _close_open_attributes(), and
+    the same state machine, which is why both call _sgr_state().
+    """
+    if width < 1:
+        return [line]
+    rows, cur, used = [], [], 0
+    cur_fg, bold = '', False
+    pos, end = 0, len(line)
+    while pos < end:
+        if line[pos] == '\033':
+            match = _CSI.match(line, pos)
+            seq = match.group(0) if match else line[pos]
+            cur.append(seq)
+            cur_fg, bold = _sgr_state(seq, cur_fg, bold)
+            pos += len(seq)
+            continue
+        if used == width:
+            rows.append(''.join(cur) + (RESET if (cur_fg or bold) else ''))
+            cur = [cur_fg + ('\033[1m' if bold else '')] if (cur_fg or bold) else []
+            used = 0
+        cur.append(line[pos])
+        used += 1
+        pos += 1
+    rows.append(''.join(cur) + (RESET if (cur_fg or bold) else ''))
+    return rows
 
 
 def _close_open_attributes(msg):
@@ -180,18 +250,7 @@ def _close_open_attributes(msg):
     cur_fg, bold, out = '', False, []
     for line in msg.split('\n'):
         prefix = cur_fg + ('\033[1m' if bold else '')
-        for code in _SGR.findall(line):
-            if code in ('0', ''):
-                cur_fg, bold = '', False
-            elif code == '39':
-                cur_fg = ''
-            elif code == '22':
-                bold = False
-            elif code == '1':
-                bold = True
-            elif code.startswith('38;') or (code.isdigit() and (
-                    30 <= int(code) <= 37 or 90 <= int(code) <= 97)):
-                cur_fg = '\033[%sm' % code
+        cur_fg, bold = _sgr_state(line, cur_fg, bold)
         out.append(prefix + line + (RESET if (cur_fg or bold or prefix) else ''))
     return '\n'.join(out)
 
@@ -214,6 +273,155 @@ def paint(text, code, enabled=True):
     return '\033[%sm%s%s' % (code, text, RESET) if enabled else text
 
 
+# Marks a line as coming from the SIMULATOR rather than from Happy Hare.
+#
+# NOT '!'. This console already spells a command that raised '!! ...' and one that does not
+# exist '?? ...', so a lone '!' would read as a quieter error rather than as a note. '#' is
+# the comment marker in every config and G-code file the reader is already looking at, which
+# carries exactly the "not an instruction, just a remark" sense wanted here.
+INFO_PREFIX = '# '
+# Grey rather than SGR 2 (faint) on purpose: _sgr_state() tracks foreground colours and
+# bold, so a grey line re-opens its colour correctly when the pager wraps it. Faint would be
+# dropped at the wrap and the continuation rows would come back at full brightness.
+INFO_COLOUR = '90'
+
+
+def raw_stdout():
+    """
+    The real stream underneath any ScrollbackTee.
+
+    Cursor control must not reach the scrollback buffer - it is not log content, and for the
+    pager, which repaints a whole pane per keypress, feeding its own frames back into the
+    buffer it is displaying would make the thing grow as you scroll it.
+
+    Resolved at CALL time rather than captured once, so that with no tee installed this is
+    simply whatever sys.stdout currently is - including a StringIO under redirect_stdout,
+    which is how the header is tested.
+    """
+    return getattr(sys.stdout, 'raw_stream', sys.stdout)
+
+
+class ScrollbackTee:
+    r"""
+    Stands in for sys.stdout while the prompt is running, keeping a copy of every line.
+
+    Needed because a DECSTBM scroll region is NOT backed by the terminal's own scrollback:
+    rows that scroll off the top of the region are discarded, not saved, so with a pinned
+    header there is nothing to scroll back to. The console has to keep the lines itself.
+
+    print() writes the text and the '\n' as two separate calls, so lines are reassembled here
+    rather than assumed to arrive whole.
+    """
+
+    def __init__(self, stream, buffer):
+        self.raw_stream = stream                    # what raw_stdout() hands back
+        self.buffer = buffer
+        self._partial = ''
+
+    def write(self, text):
+        written = self.raw_stream.write(text)
+        self.write_capture(text)
+        return written
+
+    def write_capture(self, text):
+        """
+        Buffer only, no forwarding. Console.echo() uses this for the prompt and the echoed
+        command, which the terminal showed but which never came through write().
+        """
+        if self.buffer is None or not text:
+            return
+        self._partial += text
+        if '\n' in self._partial:
+            *done, self._partial = self._partial.split('\n')
+            self.buffer.extend(line.rstrip('\r') for line in done)
+
+    def flush(self):
+        self.raw_stream.flush()
+
+    def __getattr__(self, name):                    # isatty, encoding, fileno, ...
+        # NOT tidiness. input() only takes the readline path when sys.stdout has a real
+        # fileno(), isatty() and str encoding/errors. Spell those out as a fixed handful of
+        # methods instead and history, tab-completion and the Shift-Up binding all vanish -
+        # silently, only on a real terminal, and never in the test suite.
+        return getattr(object.__getattribute__(self, 'raw_stream'), name)
+
+
+# -- opening the pager from the prompt ---------------------------------------------
+#
+# \001 is ctrl-a and \005 ctrl-e, so the macro jumps to the start of the line, inserts
+# '/scroll ', jumps back to the end and submits. That is what lets a half-typed line survive
+# as trailing arguments instead of being clobbered - and it has to survive somehow, because
+# readline's own set_startup_hook()+insert_text() does not restore it on libedit.
+_SCROLL_MACRO = r'\001/scroll \005\n'
+# Shift-Up, Shift-PgUp and plain PgUp. Plain Up is deliberately NOT bound: it is history.
+_SCROLL_KEYS = (r'\e[1;2A', r'\e[5;2~', r'\e[5~')
+
+
+def readline_backend():
+    """
+    'editline' (libedit) or 'readline' (GNU).
+
+    readline.backend only exists on 3.13+, and `make console` picks whichever interpreter it
+    finds - klippy-env's or the venv's - so the docstring probe is the working path on older
+    ones, not redundant defence.
+    """
+    if not HAVE_READLINE:
+        return 'readline'
+    backend = getattr(readline, 'backend', None)
+    if backend:
+        return backend
+    return 'editline' if 'libedit' in (getattr(readline, '__doc__', '') or '') else 'readline'
+
+
+def scroll_binding_lines(backend, keys=_SCROLL_KEYS, macro=_SCROLL_MACRO):
+    """
+    parse_and_bind() statements that open the pager, in the dialect the backend speaks.
+
+    The two are not interchangeable and the wrong one is worse than none at all: libedit does
+    not understand GNU's '"key": "macro"' form and inserts the tail of the escape sequence as
+    literal text, so Shift-Up types ';2A' at the prompt. GNU has no 'bind -s'. Both were
+    measured, not assumed.
+    """
+    if backend == 'editline':
+        return ['bind -s "%s" "%s"' % (key, macro) for key in keys]
+    return ['"%s": "%s"' % (key, macro) for key in keys]
+
+
+def header_groups(text, known):
+    """
+    A --header / '/header' value into the list of groups it names.
+
+    'all' and 'off' are the two ends, so neither has to be typed out as a list. Shared by the
+    flag and the meta-command deliberately: they used to parse their own, which is how you
+    end up with '/header all' working and '--header all' not.
+    """
+    text = (text or '').strip().lower()
+    if text in ('off', 'none', ''):
+        return []
+    if text == 'all':
+        return list(known)
+    groups = [g for g in text.split(',') if g]
+    bad = [g for g in groups if g not in known]
+    if bad:
+        raise ValueError('unknown group(s) %s; known: %s, or all/off'
+                         % (','.join(bad), ','.join(known)))
+    return groups
+
+
+def parse_scroll_args(text):
+    """
+    Split /scroll's arguments into (rows back, recovered text).
+
+    '/scroll 5' is an offset, never a recovery of the literal text '5' - ambiguous by
+    construction, resolved in favour of the documented argument.
+    """
+    text = (text or '').strip()
+    match = re.match(r'(\d+)(?:\s+|$)', text)
+    if match is None:
+        return 0, text
+    return int(match.group(1)), text[match.end():].strip()
+
+
 
 
 class Console:
@@ -227,6 +435,15 @@ class Console:
         self.sink = []                              # ordered (index -> rendered line)
         self.startup_output = []                    # bootup, incl. the Happy Hare welcome
         self.pinned = None                          # set by interact() when pinning
+        self._can_pin = False                       # ... and whether it may re-pin later
+        self.meta_line = ''                         # the current meta-command, unsplit
+        self.scroll_keys = False                    # whether Shift-Up/PgUp could be bound
+        # Every line that reached the terminal, for the pager. Rendered, not raw: this is
+        # what was displayed, which is not the same as self.sink (MMU responses only - no
+        # banner, no meta-command output, no prompts).
+        self.scrollback = (collections.deque(maxlen=args.scrollback)
+                           if args.scrollback else None)
+        self.tee = None                             # the ScrollbackTee, while interacting
         self.hh = None
         self.fil = None
         self.running = True
@@ -325,6 +542,52 @@ class Console:
             self.hh = None
 
     # -- output ---------------------------------------------------------------
+    @contextlib.contextmanager
+    def scrollback_stdout(self, enabled):
+        """
+        Tee sys.stdout into self.scrollback for the duration, and always put it back.
+
+        `enabled` is a parameter rather than an isatty() call so the seam can be driven from
+        a test. Restoring in a finally is not optional - a Console that left a dead tee
+        behind would keep appending to a deque nobody reads for the rest of the process.
+        """
+        if not (enabled and self.scrollback is not None):
+            yield None
+            return
+        tee = ScrollbackTee(sys.stdout, self.scrollback)
+        sys.stdout = self.tee = tee
+        try:
+            yield tee
+        finally:
+            if sys.stdout is tee:
+                sys.stdout = tee.raw_stream
+            self.tee = None
+
+    def info(self, text):
+        """
+        Print a line that came from the SIMULATOR, not from Happy Hare.
+
+        Worth distinguishing because the banner lands directly underneath cmd_MMU_BOOTUP's
+        real output and reads as more of it - a reader has no way to tell that "All 13 gates
+        preloaded" is the harness talking while the line above it came off the MMU.
+
+        Multi-line text is marked per line, so a wrapped message cannot leak past the mark.
+        """
+        for line in str(text).split('\n'):
+            # flush: the startup notice is printed before a long silent boot, and block
+            # buffering would hold it back until exactly the point it stops being useful.
+            print(paint(INFO_PREFIX + line, INFO_COLOUR, self.color), flush=True)
+
+    def echo(self, text):
+        """
+        Record a line the terminal showed but stdout never carried.
+
+        readline writes the prompt and echoes what is typed at the C level, so neither
+        reaches the tee. Without this the scrollback is a list of answers with no questions.
+        """
+        if self.tee is not None:
+            self.tee.write_capture(text + '\n')
+
     def _on_output(self, msg):
         self.sink.append(msg)
 
@@ -673,18 +936,47 @@ class Console:
 
     def clear_log(self):
         """
-        Wipe the output area, leaving the status section alone.
+        Wipe the output area AND repair the status section.
 
-        With a pinned header that means erasing only from the top of the scroll region
-        downwards; without one there is nothing to preserve, so clear the lot.
+        Repair, not just wipe. Anything that scribbles on the terminal - a stray escape
+        sequence in some output, a resize the terminal handled badly, a program that left a
+        mode set - can leave the pinned band showing nonsense, and nothing else ever fixes
+        it: repaint() rewrites the rows it knows about but only re-reserves the scroll region
+        when the header CHANGES HEIGHT, so a corrupted band just stays corrupted.
+
+        Clearing the whole screen and forcing the band to be re-reserved and redrawn makes
+        /clear the one command that always gets the display back, which is the thing a user
+        actually wants from it. Erasing only below the band, which is what this used to do,
+        left them with no way out short of restarting.
         """
         if not sys.stdout.isatty():
             return
+        out = raw_stdout()
+        # The modes first, before any erase: ESC[2K and ESC[J both act with the CURRENT
+        # attributes, so a colour left open would have the "clear" paint the screen in it.
+        # Autowrap and the cursor are here because a pager killed mid-frame turns them off.
+        out.write(RESET + '\033[?7h\033[?25h')
         if self.pinned is not None and self.pinned.active:
-            sys.stdout.write(RESET + '\033[%d;1H\033[J' % (self.pinned.height + 1))
+            # Drop the region before wiping so ESC[2J is not fighting it, then rebuild it.
+            out.write('\033[r\033[2J\033[H')
+            self.pinned.repaint(force=True)         # force= is what re-reserves the band
         else:
-            sys.stdout.write(RESET + '\033[2J\033[H')
-        sys.stdout.flush()
+            out.write('\033[r\033[2J\033[H')
+        out.flush()
+
+    def redraw(self):
+        """
+        Put the whole screen back: the status band, then the log underneath it.
+
+        The difference from clear_log() is the history. /clear throws it away; this repaints
+        it from the scrollback, so it is the one to reach for when something has scribbled
+        on the terminal but you still want to read what was on it.
+        """
+        if not sys.stdout.isatty():
+            return
+        self.clear_log()                            # modes, region, screen, status band
+        if self.scrollback:
+            LogPager(self).paint_tail()
 
 
 
@@ -696,7 +988,10 @@ class Console:
         ('/advance N', 'advance virtual time N seconds (alias /wait)'),
         ('/vars [mmu|machine|file]',
          'get_status() of the mmu and mmu_machine objects, or the saved mmu_vars.cfg'),
-        ('/clear', 'clear the log window, keeping the status section'),
+        ('/s [N], /scroll [N]', 'scroll back through the log, opening N rows up. '
+                                'Arrows or j/k a line, b/f a page, g/G the ends, esc to exit'),
+        ('/redraw', 'repaint the whole screen, log and all - the display is corrupted'),
+        ('/clear', 'as /redraw, but empty the log rather than repaint it'),
         ('/sensors', 'sensor table (also: MMU_SENSORS)'),
         ('/sensor NAME on|off|enable|disable',
          'on/off drives the switch; enable/disable makes HH ignore it entirely'),
@@ -709,7 +1004,7 @@ class Console:
         ('/heat [TEMP]', 'set the extruder temperature'),
         ('/trace 0-4', "Happy Hare's own log_level, 4 = full narration"),
         ('/tag UID [GATE]', 'attach an NFC tag (needs --virtual-nfc)'),
-        ('/header [GROUPS]', 'set header groups: %s, or "off"' % ','.join(GROUPS)),
+        ('/header [GROUPS]', 'set header groups: %s, or "all"/"off"' % ','.join(GROUPS)),
         ('/log [N]', 'path to mmu.log and its last N lines (default 20)'),
         ('/errors', 'every !! message this session'),
         ('/help', 'this list'),
@@ -717,13 +1012,15 @@ class Console:
     )
 
     def meta(self, line):
+        self.meta_line = line                       # /scroll needs its arguments unsplit
         parts = line[1:].split()
         if not parts:
             return
         name, rest = parts[0].lower(), parts[1:]
         fn = getattr(self, '_meta_' + name, None)
         if fn is None:
-            alias = {'wait': '_meta_advance', 'q': '_meta_quit', 'h': '_meta_help'}.get(name)
+            alias = {'wait': '_meta_advance', 'q': '_meta_quit', 'h': '_meta_help',
+                     's': '_meta_scroll'}.get(name)
             fn = getattr(self, alias) if alias else None
         if fn is None:
             print(paint('?? unknown meta-command /%s (try /help)' % name, '33', self.color))
@@ -750,9 +1047,95 @@ class Console:
         self._drain(mark)
 
     def _meta_clear(self, args):
-        """Wipe the log window. The status section is state, not scrollback - it stays."""
+        """Wipe the log window and repair the status section - see clear_log()."""
         del self.sink[:]
+        if self.scrollback is not None:
+            self.scrollback.clear()
         self.clear_log()
+
+    def _meta_redraw(self, args):
+        """Repaint everything, log included. /clear is the same thing minus the history."""
+        self.redraw()
+
+    def _meta_scroll(self, args):
+        """
+        Open the scrollback viewer. Shift-Up and PgUp are bound to this.
+
+        A leading integer is where to open, counted in WRAPPED rows back from the end - what
+        the reader sees, not logical lines. Anything after it is the half-typed line the key
+        macro swept up (see _install_scroll_bindings), which is handed back through the
+        history rather than thrown away.
+        """
+        back, typed = parse_scroll_args(self.meta_line.partition(' ')[2])
+        self._recover_typed(typed)
+        if self.scrollback is None:
+            print(paint('   (scrollback is off - drop --scrollback 0)', '33', self.color))
+            return
+        if not (sys.stdout.isatty() and sys.stdin.isatty()):
+            # Not a terminal, so there is nothing to page over. Printing the tail keeps
+            # /scroll meaningful under --script instead of silently doing nothing.
+            for line in list(self.scrollback)[-(back or 40):]:
+                print(line)
+            return
+        LogPager(self).run(back)
+        if typed:
+            print(paint('   (press Up to get "%s" back)' % typed, '90', self.color))
+
+    @staticmethod
+    def _recover_typed(typed):
+        """
+        Tidy the history after the key macro fired.
+
+        The macro genuinely types and submits '/scroll ...', so that line lands in the
+        history the user is about to scroll through - drop it. Then push back whatever they
+        were half-way through typing, so a single Up-arrow restores it.
+
+        Best-effort throughout, like every other readline call here: get_history_item is
+        1-based and remove_history_item 0-based on both GNU readline and the libedit build
+        Python uses on macOS (measured), but pyreadline has neither.
+        """
+        if not HAVE_READLINE:
+            return
+        try:
+            count = readline.get_current_history_length()
+            if count > 0 and (readline.get_history_item(count) or '').startswith('/scroll'):
+                readline.remove_history_item(count - 1)
+        except Exception:                           # noqa: BLE001
+            pass
+        if typed:
+            try:
+                readline.add_history(typed)
+            except Exception:                       # noqa: BLE001
+                pass
+
+    def _install_scroll_bindings(self):
+        """
+        Bind Shift-Up and PgUp to /scroll, where that can actually work. Returns whether it
+        did, so the banner only advertises a key that exists.
+
+        NOT on libedit, which is what Python's readline is on macOS. Measured: libedit
+        delivers exactly the FIRST character of a macro immediately and holds the rest until
+        the next input event. A one-character macro fires at once; '\\001/scroll \\005\\n'
+        puts a lone '/' on the line and stops. Worse, the remainder is then flushed by
+        whatever the user types next, so a stray Shift-Up turns their next command into
+        '/scroll MMU_STATUS'. Better to have no key than one that corrupts the next line.
+
+        Not an escape-sequence problem to be routed around: bare control keys bound with
+        'bind -s' (^O, ^X, ^_) lag identically, so it is the macro machinery, not the CSI
+        lookahead. And neither flavour of readline can bind a key to a Python callable, so
+        there is nothing else to reach for. GNU readline runs macros properly, so Linux and
+        the printers do get the binding.
+        """
+        if not HAVE_READLINE or readline_backend() == 'editline':
+            return False
+        bound = False
+        for statement in scroll_binding_lines(readline_backend()):
+            try:
+                readline.parse_and_bind(statement)
+                bound = True
+            except Exception:                       # noqa: BLE001
+                pass
+        return bound
 
     def _meta_vars(self, args):
         """
@@ -917,15 +1300,26 @@ class Console:
         if not args:
             print('  header = %s' % (','.join(self.args.header) or 'off'))
             return
-        if args[0].lower() == 'off':
-            self.args.header = []
+        self.args.header = header_groups(args[0], self.GROUPS)
+        self._resync_pin()
+
+    def _resync_pin(self):
+        """
+        Take the pinned band down when the header is switched off, and put it back when it
+        returns.
+
+        Without this '/header off' leaves the reserved rows AND the shrunken scroll region
+        in place with a stale header frozen in them, because repaint() has nothing to draw
+        and returns early. It doubles as the escape hatch back to the terminal's own
+        scrollback, which a DECSTBM region otherwise defeats.
+        """
+        if not self._can_pin:
             return
-        groups = [g for g in args[0].split(',') if g]
-        bad = [g for g in groups if g not in self.GROUPS]
-        if bad:
-            raise ValueError('unknown group(s) %s; known: %s'
-                             % (','.join(bad), ','.join(self.GROUPS)))
-        self.args.header = groups
+        if self.args.header and self.pinned is None:
+            self.pinned = PinnedHeader(self).install()
+        elif not self.args.header and self.pinned is not None:
+            self.pinned.restore()
+            self.pinned = None
 
     def _meta_log(self, args):
         """Where mmu.log is, and its tail. It is live - `tail -f` it in another window."""
@@ -959,9 +1353,13 @@ class Console:
 
     def completer(self, text, state):
         if not hasattr(self, '_words'):
+            # Every /name in the entry, not just the first token: an entry that lists an
+            # alias ('/s [N], /scroll [N]') has two, and taking token[0] silently dropped
+            # the long form out of completion.
             self._words = sorted(list(self.hh.gcode.gcode_help)
                                  + list(self.hh.gcode.base_commands)
-                                 + ['/' + n.split()[0][1:] for n, _ in self.META_HELP])
+                                 + [w for n, _ in self.META_HELP
+                                    for w in re.findall(r'/[a-z]+', n)])
         matches = [w for w in self._words if w.upper().startswith(text.upper())]
         return matches[state] if state < len(matches) else None
 
@@ -972,20 +1370,35 @@ class Console:
             print(html_to_ansi(msg, self.color, self.mode))
         mmu = self.hh.mmu
         print()
-        print(paint('Happy Hare console', '1', self.color)
-              + '  profile=%s  gates=%d' % (self.args.profile, mmu.num_gates))
+        # Everything below here is the SIMULATOR, so it is marked and dimmed - see info().
+        # It used to be plain text sitting under the real bootup output, indistinguishable
+        # from it. No bold on the title any more: the mark is the signal now, and bold on a
+        # deliberately dimmed line just fights it.
+        self.info('Happy Hare console  profile=%s  gates=%d'
+                  % (self.args.profile, mmu.num_gates))
         if self.args.no_calibrate:
-            print('Uncalibrated and unhomed, as a fresh install would be. Run '
-                  'MMU_CALIBRATE_SELECTOR / MMU_CALIBRATE_BOWDEN;\n'
-                  '/selector places the carriage the way you would by hand.')
+            self.info('Uncalibrated and unhomed, as a fresh install would be. Run '
+                      'MMU_CALIBRATE_SELECTOR / MMU_CALIBRATE_BOWDEN;\n'
+                      '/selector places the carriage the way you would by hand.')
         elif not self.args.no_preload:
-            print('All %d gates preloaded, extruder at %g C.'
-                  % (mmu.num_gates, self.args.temp))
+            self.info('All %d gates preloaded, extruder at %g C.'
+                      % (mmu.num_gates, self.args.temp))
         if not self.args.no_log:
-            print('Log: %s' % self.hh.mmu_log)
-        print('/help for meta-commands, MMU_HELP for Happy Hare commands, Ctrl-D to quit.')
+            self.info('Log: %s' % self.hh.mmu_log)
+        self.info('/help for meta-commands, MMU_HELP for Happy Hare commands, '
+                  'Ctrl-D to quit.')
+        if self.scrollback is not None and sys.stdout.isatty():
+            self.info('%s scrolls back through the log.'
+                      % ('Shift-Up, PgUp or /s' if self.scroll_keys else '/s (or /scroll)'))
 
     def interact(self):
+        # The tee first, so the banner is in the scrollback too. isatty() and not the pinning
+        # test: --inline-header keeps its history in the terminal's own buffer, but /scroll
+        # still ought to work there.
+        with self.scrollback_stdout(sys.stdout.isatty()):
+            self._interact()
+
+    def _interact(self):
         if HAVE_READLINE:
             try:
                 readline.read_history_file(HISTORY_FILE)
@@ -994,13 +1407,16 @@ class Console:
             readline.set_history_length(1000)
             readline.set_completer(self.completer)
             readline.parse_and_bind('tab: complete')
+            self.scroll_keys = self._install_scroll_bindings()
         if sys.stdout.isatty():
-            if self.args.header and not self.args.inline_header:
+            self._can_pin = not self.args.inline_header
+            if self.args.header and self._can_pin:
                 # Clears the screen and reserves the band, so it must precede the banner
                 self.pinned = PinnedHeader(self).install()
             else:
-                sys.stdout.write(RESET + '\033[2J\033[H')
-                sys.stdout.flush()
+                out = raw_stdout()
+                out.write(RESET + '\033[2J\033[H')
+                out.flush()
         self.banner()
         try:
             while self.running:
@@ -1008,14 +1424,22 @@ class Console:
                     self.pinned.repaint()
                 else:
                     self.draw_header()
+                prompt = self.prompt()
                 try:
-                    line = input(self.prompt()).strip()
+                    typed = input(prompt)
                 except EOFError:
                     print()
                     break
                 except KeyboardInterrupt:
+                    self.echo(prompt + '^C')
                     print('\n(interrupted - /quit or Ctrl-D to exit)')
                     continue
+                line = typed.strip()
+                # readline wrote both the prompt and the echo at the C level, so the tee
+                # never saw them. Not for the '/scroll' the key macro submits, though - that
+                # is a keystroke, not something the user typed into the log.
+                if not line.startswith('/scroll'):
+                    self.echo(prompt + typed)
                 if not line:
                     continue
                 if line.startswith('/'):
@@ -1078,14 +1502,17 @@ class PinnedHeader:
         return max(8, shutil.get_terminal_size((100, 24)).lines)
 
     def _set_region(self, height):
+        # raw_stdout() throughout, not sys.stdout: cursor control is not log content and must
+        # not reach the scrollback buffer. With no tee installed the two are the same thing.
+        out = raw_stdout()
         rows = self._rows()
         height = min(height, rows - 4)              # always leave room to type
-        sys.stdout.write('\0337')                   # save cursor
-        sys.stdout.write('\033[%d;%dr' % (height + 1, rows))
-        sys.stdout.write('\0338')
+        out.write('\0337')                          # save cursor
+        out.write('\033[%d;%dr' % (height + 1, rows))
+        out.write('\0338')
         # If the cursor is still up in the reserved band, get it into the scroll region.
-        sys.stdout.write('\033[%d;1H' % (height + 1))
-        sys.stdout.flush()
+        out.write('\033[%d;1H' % (height + 1))
+        out.flush()
         self.height = height
 
     def install(self):
@@ -1095,7 +1522,7 @@ class PinnedHeader:
         overwrites it on the very first repaint.
         """
         import signal
-        sys.stdout.write(RESET + '\033[2J\033[H')   # clean slate, no inherited attributes
+        raw_stdout().write(RESET + '\033[2J\033[H')  # clean slate, no inherited attributes
         self.active = True
         self._set_region(len(self.console.header_block()))
         try:
@@ -1112,9 +1539,10 @@ class PinnedHeader:
         if not self.active:
             return
         self.active = False
-        sys.stdout.write('\033[r')                  # full-screen scrolling again
-        sys.stdout.write('\033[%d;1H' % self._rows())
-        sys.stdout.flush()
+        out = raw_stdout()
+        out.write('\033[r')                         # full-screen scrolling again
+        out.write('\033[%d;1H' % self._rows())
+        out.flush()
 
     # -- painting -------------------------------------------------------------
     def repaint(self, force=False):
@@ -1123,14 +1551,249 @@ class PinnedHeader:
             return
         if force or len(block) != self.height:
             self._set_region(len(block))
-        sys.stdout.write('\0337')                   # save cursor + attrs
+        out = raw_stdout()
+        out.write('\0337')                          # save cursor + attrs
         for i, text in enumerate(block, start=1):
             # RESET before the erase, not after: ESC[2K clears using the CURRENT attributes,
             # so a colour still open from earlier output would repaint the whole row in it.
-            sys.stdout.write('\033[%d;1H%s\033[2K' % (i, RESET))
-            sys.stdout.write(text + RESET)
-        sys.stdout.write('\0338')                   # restore cursor
-        sys.stdout.flush()
+            out.write('\033[%d;1H%s\033[2K' % (i, RESET))
+            out.write(text + RESET)
+        out.write('\0338')                          # restore cursor
+        out.flush()
+
+
+class LogPager:
+    """
+    A scrollback viewer for the log area, under the pinned header.
+
+    WHY THIS HAS TO EXIST. A terminal only pushes a row into its own scrollback buffer when
+    that row scrolls off the top of the FULL screen. Rows that scroll out of a DECSTBM region
+    - which is exactly what PinnedHeader sets up - are discarded. So with a pinned header
+    there is nothing behind you: the terminal's scrollbar and Cmd-Up show the session before
+    the header was installed and nothing since. Keeping the lines ourselves (ScrollbackTee)
+    and painting them is the only way back.
+
+    IT RUNS BETWEEN input() CALLS, which is the whole reason it is modal. readline is not
+    active here, so the terminal is entirely ours: plain Up/Down scroll, and they still mean
+    "previous command" at the prompt because the prompt never sees them.
+    """
+
+    # Bare keys. Plain arrows work here because readline is not competing for them.
+    PLAIN = {'k': 'up', 'j': 'down', 'b': 'pgup', 'f': 'pgdn', ' ': 'pgdn',
+             'g': 'home', 'G': 'end',
+             'q': 'quit', '\r': 'quit', '\n': 'quit', '\x03': 'quit', '\x04': 'quit'}
+    # Escape sequences, minus the leading ESC. Both the normal and the application-cursor
+    # forms of the arrows, because which one arrives depends on the terminal's keypad mode.
+    SEQS = {'[A': 'up', 'OA': 'up', '[B': 'down', 'OB': 'down',
+            '[5~': 'pgup', '[6~': 'pgdn',
+            '[H': 'home', 'OH': 'home', '[1~': 'home', '[7~': 'home',
+            '[F': 'end', 'OF': 'end', '[4~': 'end', '[8~': 'end'}
+
+    # How long to wait for the rest of an escape sequence before calling it a bare Esc. Not
+    # shorter: at 50ms a real arrow key arriving over ssh reads as Esc and the pager closes
+    # when the user presses Up.
+    ESC_WAIT = 0.15
+    POLL = 0.5                                      # so a SIGWINCH is noticed within half a second
+
+    def __init__(self, console):
+        self.console = console
+        self.offset = 0                             # rows back from the live tail
+        self._rows = []
+        self._resized = False
+
+    # -- pure bits, so they can be tested without a terminal ------------------
+    @staticmethod
+    def move(offset, key, total, page):
+        """Where a key takes the view. offset counts rows BACK from the live tail."""
+        top = max(0, total - page)
+        offset += {'up': 1, 'down': -1, 'pgup': page, 'pgdn': -page}.get(key, 0)
+        if key == 'home':
+            offset = top
+        elif key == 'end':
+            offset = 0
+        return max(0, min(offset, top))
+
+    def geometry(self):
+        """(first row, last row, width) of the area this may paint, 1-based and inclusive."""
+        import shutil
+        size = shutil.get_terminal_size((100, 24))
+        pinned = self.console.pinned
+        top = (pinned.height + 1) if (pinned is not None and pinned.active) else 1
+        return top, max(top + 1, size.lines), max(20, size.columns)
+
+    def _wrap(self, width):
+        rows = []
+        for line in self.console.scrollback:
+            rows.extend(wrap_ansi(line, width))
+        return rows
+
+    def _status(self, page, width):
+        first = max(0, len(self._rows) - page - self.offset) + 1
+        last = min(len(self._rows), first + page - 1)
+        where = 'END' if self.offset == 0 else '%d back' % self.offset
+        # The LETTER keys are advertised alongside the arrows on purpose. PgUp/PgDn are
+        # listed last because a terminal emulator often keeps them for its own scrollback
+        # and they never reach us at all - Terminal.app does exactly that with fn-Up.
+        text = (' scrollback  %d-%d of %d (%s)   up/down or j/k   b/f page   g/G ends   '
+                'q to return ' % (first, last, len(self._rows), where))
+        return paint(text[:width], '7', self.console.color)
+
+    # -- painting -------------------------------------------------------------
+    def _paint(self):
+        top, bottom, width = self.geometry()
+        page = bottom - top                         # last row is the status bar
+        start = max(0, len(self._rows) - page - self.offset)
+        view = self._rows[start:start + page]
+        out = raw_stdout()
+        # Autowrap off: writing the last cell of a row would otherwise wrap the cursor and,
+        # on the bottom row, scroll the region out from under the frame being painted.
+        out.write('\033[?7l')
+        for i in range(page):
+            text = view[i] if i < len(view) else ''
+            out.write('\033[%d;1H%s\033[2K%s' % (top + i, RESET, text))
+        out.write('\033[%d;1H%s\033[2K%s' % (bottom, RESET, self._status(page, width)))
+        out.write(RESET + '\033[?7h')
+        out.flush()
+
+    def paint_tail(self):
+        """
+        Put the live tail back and park the cursor on an empty bottom row.
+
+        Not cosmetic: the next thing to happen is input() drawing the prompt wherever the
+        cursor is, so it has to be somewhere a prompt belongs. Used on the way out of the
+        pager and by Console.redraw(), which needs exactly the same picture.
+        """
+        top, bottom, width = self.geometry()
+        page = bottom - top
+        rows = self._wrap(width)
+        view = rows[max(0, len(rows) - page):]
+        out = raw_stdout()
+        out.write('\033[?7l')
+        for i in range(page):
+            text = view[i] if i < len(view) else ''
+            out.write('\033[%d;1H%s\033[2K%s' % (top + i, RESET, text))
+        out.write('\033[%d;1H%s\033[2K' % (bottom, RESET))
+        out.write('\033[?7h')
+        out.flush()
+
+    # -- input ----------------------------------------------------------------
+    def _getch(self, timeout=None):
+        """
+        One character off the raw fd. os.read rather than sys.stdin.read: the TextIOWrapper
+        buffers, and a buffered read here would swallow the rest of an escape sequence.
+        """
+        fd = sys.stdin.fileno()
+        if timeout is not None and not select.select([fd], [], [], timeout)[0]:
+            return ''
+        try:
+            return os.read(fd, 1).decode('utf-8', 'replace')
+        except (OSError, ValueError):
+            return ''
+
+    def _read_key(self):
+        """
+        The next key as a name, or None for one we do not handle.
+
+        ESC is both the prefix of every arrow key AND the quit key, so it cannot simply block
+        waiting for what follows. A short poll settles it: a real arrow arrives as one burst,
+        a bare Esc has nothing behind it.
+        """
+        ch = self._getch(self.POLL)
+        if not ch:
+            return None                             # timed out - lets a resize be noticed
+        if ch != '\033':
+            return self.PLAIN.get(ch)
+        seq = ''
+        while len(seq) < 8:
+            nxt = self._getch(self.ESC_WAIT)
+            if not nxt:
+                break
+            seq += nxt
+            if seq in self.SEQS:
+                return self.SEQS[seq]
+            # ESC[1;2A (shift-up) and friends: give up on an exact match and take the final
+            # byte, so a modified arrow still scrolls rather than doing nothing. len > 1 or
+            # the introducer itself qualifies - 'O' is a letter, and ESC O B is a real arrow.
+            if len(seq) > 1 and seq[0] in '[O' and seq[-1].isalpha():
+                return self.SEQS.get(seq[0] + seq[-1])
+            if seq[-1] == '~':
+                return None
+        return 'quit' if not seq else None          # bare Esc
+
+    def _on_resize(self, *_args):
+        self._resized = True
+
+    # -- lifecycle ------------------------------------------------------------
+    def run(self, start=0):
+        """
+        Scroll the log until the user quits. `start` is an initial offset in rows.
+
+        Every terminal mode this touches is undone in the finally - cbreak most of all.
+        Leaving the terminal in cbreak is the one failure here a user cannot see and cannot
+        easily undo.
+        """
+        import signal
+        if not (HAVE_RAWKEY and sys.stdin.isatty() and sys.stdout.isatty()):
+            return False
+        fd = sys.stdin.fileno()
+        try:
+            saved = termios.tcgetattr(fd)
+        except Exception:                           # noqa: BLE001 - not a real terminal
+            return False
+
+        out = raw_stdout()
+        top, bottom, width = self.geometry()
+        self._rows = self._wrap(width)
+        self.offset = self.move(start, None, len(self._rows), bottom - top)
+
+        prev_winch = None
+        try:
+            tty.setcbreak(fd)
+            try:
+                # PinnedHeader's own SIGWINCH handler repaints the header AND moves the
+                # cursor into the region (_set_region), which would land in the middle of a
+                # frame. Ours just marks the view dirty; the header is repainted on the way
+                # back out of the prompt loop anyway.
+                prev_winch = signal.signal(signal.SIGWINCH, self._on_resize)
+            except (AttributeError, ValueError):    # not POSIX, or not the main thread
+                prev_winch = None
+            out.write('\033[?25l')                  # hide the cursor; nothing to point at
+            self._paint()
+            self._loop()
+        except KeyboardInterrupt:
+            # cbreak leaves ISIG on, so Ctrl-C arrives as a signal and never reaches
+            # _read_key's '\x03' mapping. Treat it as the quit it was meant to be:
+            # unhandled it escapes meta(), which only catches Exception, and takes the
+            # whole console down with a traceback.
+            pass
+        finally:
+            if prev_winch is not None:
+                try:
+                    signal.signal(signal.SIGWINCH, prev_winch)
+                except (AttributeError, ValueError):
+                    pass
+            try:
+                termios.tcsetattr(fd, termios.TCSADRAIN, saved)
+            except Exception:                       # noqa: BLE001
+                pass
+            out.write('\033[?7h\033[?25h' + RESET)
+            self.paint_tail()
+        return True
+
+    def _loop(self):
+        while True:
+            key = self._read_key()
+            if key == 'quit':
+                return
+            if self._resized:
+                self._resized = False
+                _, _, width = self.geometry()
+                self._rows = self._wrap(width)      # a new width is a whole new set of rows
+            elif key is None:
+                continue                            # nothing to do; just a poll timing out
+            top, bottom, _ = self.geometry()
+            self.offset = self.move(self.offset, key, len(self._rows), bottom - top)
+            self._paint()
 
 
 ##################
@@ -1164,8 +1827,13 @@ def parse_args(argv=None):
                         'ESC[38;2;R;G;Bm as separate SGR codes, and any channel in 100-107 '
                         'becomes a bright BACKGROUND colour (default: %(default)s)')
     p.add_argument('--header', default='machine,sensors,filament',
-                   help='header groups, comma separated, or "off" (%s)'
+                   help='header groups, comma separated, or "all"/"off" (%s)'
                         % ','.join(Console.GROUPS))
+    p.add_argument('--scrollback', type=int, default=5000, metavar='N',
+                   help='how many log lines to keep for /scroll and Shift-Up. A pinned '
+                        'header lives in a DECSTBM scroll region, and rows that scroll out '
+                        'of one never reach the terminal\'s own scrollback, so this is the '
+                        'only copy. 0 disables it (default: %(default)s)')
     p.add_argument('--inline-header', action='store_true',
                    help='reprint the header above each prompt instead of pinning it to '
                         'the top of the terminal (automatic when not a TTY)')
@@ -1179,20 +1847,22 @@ def parse_args(argv=None):
                    help="read commands from FILE ('-' for stdin) instead of prompting")
     args = p.parse_args(argv)
 
-    if args.header.lower() in ('off', 'none', ''):
-        args.header = []
-    else:
-        args.header = [g for g in args.header.split(',') if g]
-        bad = [g for g in args.header if g not in Console.GROUPS]
-        if bad:
-            p.error('unknown header group(s) %s; known: %s'
-                    % (','.join(bad), ','.join(Console.GROUPS)))
+    try:
+        args.header = header_groups(args.header, Console.GROUPS)
+    except ValueError as exc:
+        p.error(str(exc))
     return args
 
 
 def main(argv=None):
     args = parse_args(argv)
     console = Console(args)
+    if not args.script:
+        # boot() builds a whole fake printer and preloads every gate, which is fifteen to
+        # twenty seconds of complete silence. Say something first, or it looks hung.
+        # Transient: interact() clears the screen before the banner, so this does not stay.
+        console.info('Starting simulator on profile %r, this takes a moment...'
+                     % args.profile)
     try:
         console.boot()
     except Exception as exc:                        # noqa: BLE001

@@ -88,7 +88,7 @@ make BOOTSTRAP_PY=python3.9 VENV=venv39 test
 
 </details>
 
-`make test` offers everything — currently **620 tests, about six minutes** on a warm
+`make test` offers everything — currently **759 tests, about six minutes** on a warm
 laptop. Expect to see:
 
 ```
@@ -107,19 +107,19 @@ file picker first rather than starting straight away.
 suite exactly as it always did — but untick the expensive files and you get a focused run:
 
 ```
-Happy Hare tests - 620 tests in 23 files                    times from last run
+Happy Hare tests - 759 tests in 23 files                    times from last run
 
    1 [x] installer.test_build           1      0.0s
    2 [x] test_mmu_adc_compat           14      0.0s
    3 [x] test_mmu_bootup               31       36s
    …
-   6 [x] test_mmu_console              66      134s
+   6 [x] test_mmu_console             124      131s
    …
   13 [x] test_mmu_nfc                  17      187s
    …
   22 [x] test_mmu_toolchange           20      5.4s
 
-  selected: 23 files - 620 tests - ~6m00s last time
+  selected: 23 files - 759 tests - ~6m00s last time
 
   [Enter] run    1 3 5-8 toggle    a all    n none    v invert
   +TEXT / -TEXT tick by name    p previous selection    s sort by time    q quit
@@ -128,7 +128,7 @@ Happy Hare tests - 620 tests in 23 files                    times from last run
 
 The right-hand column is how long each file took **on your machine, last run**, and it is the
 column to look at when deciding what to drop, because the cost is wildly uneven. From a real
-full run: `test_mmu_nfc` took 187 s for 17 tests and `test_mmu_console` 152 s for 63, while
+full run: `test_mmu_nfc` took 187 s for 17 tests and `test_mmu_console` 131 s for 124, while
 six files — including `test_mmu_tag_parser`'s 34 tests — came in under a tenth of a second
 between them. A handful of the twenty-three files account for most of the run. The times
 fill in after your first run, `s` sorts by them, and the footer estimates what the current
@@ -210,14 +210,20 @@ T1   gate 1    LOADED IN NOZZLE           868.0mm  Idle
 Anything not starting with `/` is sent to the MMU as G-code. `/help` lists the
 meta-commands, `MMU_HELP` lists Happy Hare's, and every HH command takes `HELP=1`.
 
-The status section is separated from the log window by a **heavy rule**; `/clear` wipes the
-log and leaves the status alone. Useful meta-commands beyond `/help`:
+The status section is separated from the log window by a **heavy rule**.
+
+When something scribbles on the terminal, **`/redraw`** puts it all back: it clears the
+screen, re-reserves the pinned band, redraws the status section, repaints the log from the
+scrollback, and resets autowrap and the cursor. `/clear` does exactly the same but throws
+the log away instead of repainting it. Useful meta-commands beyond `/help`:
 
 | Command | Does |
 |---|---|
 | `/advance N` | move the virtual clock N seconds (nothing is time-driven without it) |
 | `/vars [mmu\|machine]` | `get_status()` of the `mmu` object, the `mmu_machine` object, or both |
-| `/clear` | clear the log window, keep the status section |
+| `/redraw` | repaint the whole screen, log and all — the way back from a corrupted display |
+| `/clear` | as `/redraw`, but empty the log rather than repaint it |
+| `/scroll [N]`, `/s` | scroll back through the log (see below) |
 | `/sensor NAME on\|off\|enable\|disable` | `on/off` drives the switch through its real button callback; `enable/disable` flips `sensor_enabled` so Happy Hare treats it as **not fitted** |
 | `/place`, `/preload`, `/exhaust` | set the scene: filament at a gate, preloaded, or run out |
 | `/log [N]`, `/trace 0-4` | the log file, and how much detail goes into it |
@@ -246,8 +252,9 @@ Useful flags — `make console ARGS='...'`:
 --profile boxturtle            # or tradrack, emu, encoder, nfc_single, nfc_spoolman, ...
                                # (default is ercf_vvd, a real 2-unit machine)
 --profile /path/to/config      # your own installed config - see below
---header machine,sensors,filament,selector,gates,leds   # or 'off'
+--header machine,sensors,filament,selector,gates,leds   # or 'all' / 'off'
 --inline-header                # reprint above each prompt instead of pinning it
+--scrollback 5000              # lines kept for /scroll; 0 disables it
 --color 256|truecolor|16|auto  # colour depth (see below)
 --log-dir /tmp                 # where mmu.log goes; --no-log to discard it
 --trace 4                      # full Happy Hare narration
@@ -260,6 +267,21 @@ Startup shows Happy Hare's **real bootup output** — the welcome banner and the
 — because `cmd_MMU_BOOTUP` runs here exactly as it does on a printer. Calibration is seeded
 *inside* `boot()`, before bootup runs, so a default session boots clean; `--no-calibrate`
 boots the machine cold and the calibration warnings then appear for real.
+
+Lines the **console itself** adds are dimmed and prefixed `#`, so there is never a question
+about which of them came off the MMU:
+
+```
+(")_(") Happy Hare v4.0.0 Ready...          <- Happy Hare, exactly as on a printer
+Unit : ------------- unit0 -------------
+...
+# Happy Hare console  profile=ercf_vvd  gates=13     <- the simulator
+# All 13 gates preloaded, extruder at 220 C.
+# Log: /tmp/mmu.log
+```
+
+`#` and not `!`: `!! …` is already a command that raised and `?? …` one that does not
+exist, so a lone `!` would read as a quieter error rather than as a note.
 
 ### The log
 
@@ -295,8 +317,68 @@ option: it emits nothing but plain `30-37`/`90-97`, which no terminal can misrea
 The header is **pinned to the top of the terminal** while output scrolls beneath it, and it
 is redrawn after every command and every `/advance`. There is nothing to poll and no
 refresh thread — since the clock is frozen at the prompt, state cannot change while you
-are typing. `/header GROUPS` switches groups live; `/header off` hides it. On a pipe or
-with `--inline-header` it falls back to reprinting above each prompt.
+are typing. `/header GROUPS` switches groups live, `/header all` turns every group on, and
+`/header off` hides it *and* releases the pinned band. `all` and `off` work on the
+`--header` flag too — both go through the same parser. On a pipe or with `--inline-header`
+it falls back to reprinting above each prompt.
+
+### Scrolling back
+
+Pinning costs you the terminal's own scrollback. The header is pinned with a DECSTBM scroll
+region, and a terminal only saves a row when it scrolls off the top of the **full screen** —
+rows that scroll out of a *region* are discarded. So the scrollbar and Cmd-Up show the
+session up to the moment the header was installed and nothing after it.
+
+The console therefore keeps its own copy of every line it printed — which is also what
+`/redraw` repaints from — and **`/s`** (or `/scroll`) opens a viewer over it, header still
+pinned:
+
+```
+  ...the log, scrolled back...
+ scrollback  15-40 of 66 (26 back)   up/down  pgup/pgdn  home/end   q to return
+```
+
+Inside the viewer, `q`/Esc/Enter returns you to the prompt and these scroll:
+
+| Keys | |
+|---|---|
+| Up/Down, or `j`/`k` | a line |
+| `b`/`f`, or space | a page |
+| `g`/`G` | oldest / newest |
+| PgUp/PgDn | a page — *if your terminal lets them through*, see below |
+
+It is **modal on purpose**: it runs between `input()` calls, so readline is not active and
+plain Up/Down keep meaning *previous command* at the prompt, which is the whole reason not
+to bind the arrows to scrolling instead.
+
+**PgUp may never reach the console at all.** Terminal.app and iTerm2 keep fn-Up/PgUp for
+their own window scrollback, and a key the emulator swallows cannot be seen by any program
+running in it — that is why the letter keys are listed first and appear in the status bar.
+If fn-Up scrolls your terminal window instead of the log, that is the emulator, not the
+console, and the window it scrolls is showing the session from *before* the header was
+pinned (see above for why).
+
+`/scroll N` opens N rows back. `--scrollback 0` turns the buffer off; `/clear` empties it
+along with the log.
+
+#### Shift-Up, and why it only works on some machines
+
+Where readline permits it, **Shift-Up** and **PgUp** open the viewer too, and whatever you
+had half-typed is not lost: the binding is a readline macro bracketed with ctrl-a/ctrl-e, so
+your text comes back with one press of Up afterwards.
+
+That only holds on **GNU readline** — Linux, and therefore the printers. On **libedit**,
+which is what Python's `readline` module is on macOS, a key binding cannot do this at all:
+libedit delivers only the *first character* of a macro immediately and holds the rest until
+the next input event. A one-character macro fires at once; `/scroll` puts a lone `/` on the
+line and stops, and the remainder is then flushed into whatever you type next — turning your
+next command into `/scroll MMU_STATUS`. There is no readline API, in either flavour, to bind
+a key straight to Python.
+
+So the console checks the backend and simply does not bind the keys on libedit, rather than
+installing one that corrupts the next line. `/s` is the two-keystroke stand-in, and the
+startup banner says which of the two you have. `/header off` remains the escape hatch: it
+drops the pinned band and gives you the terminal's own scrollback back.
 
 ### Running against your own installed config
 
@@ -379,10 +461,10 @@ The test files, grouped by what they're about:
 | `test_mmu_roundtrip.py` | 35 | Klipper and Moonraker talking to each other |
 | **Presentation** | | |
 | `test_mmu_leds.py` | 22 | LED effects, flashes, the pending overlay |
-| `test_mmu_console.py` | 63 | the interactive console of §1a — rendering, command dispatch |
+| `test_mmu_console.py` | 124 | the interactive console of §1a — rendering, command dispatch |
 
 Counts as the picker reports them; `installer/test_build.py` adds the one skipped test that
-makes up the 563 total.
+makes up the 624 total.
 
 ### Coverage map
 
