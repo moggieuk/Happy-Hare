@@ -488,7 +488,7 @@ class MmuSensorManager:
     def _runout_sensors(self):
         """
         Sensors that follow the global "monitoring on/off" state: every per-gate sensor on
-        the machine (an idle lane's runout still updates the gate map) plus the selected
+        the machine (an idle gate's runout still updates the gate map) plus the selected
         unit's own sensors, widening to all units when no unit is selected.
 
         Deliberately not the active sensor map, which is re-pointed on gate change: that
