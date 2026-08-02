@@ -79,19 +79,14 @@ class MmuChangeToolCommand(BaseCommand):
         skip_purge = bool(gcmd.get_int('SKIP_PURGE', 0, minval=0, maxval=1))
 
         # Capture slicer retraction and purge settings for later use.
-        mmu.slicer_purge         = gcmd.get_float('SLICER_PURGE', -1)
-        mmu.slicer_retraction    = gcmd.get_float('SLICER_RETRACTION', -1)
-        mmu.slicer_fw_retraction = gcmd.get('SLICER_FW_RETRACTION', '0').lower().strip()
-
-        if mmu.slicer_fw_retraction in ('true', '1'):
-            mmu.slicer_fw_retraction = True
-        elif mmu.slicer_fw_retraction in ('false', '0'):
-            mmu.slicer_fw_retraction = False
-        else:
-            mmu.slicer_fw_retraction = False
+        mmu.slicer_purge       = gcmd.get_float('SLICER_PURGE', -1)
+        mmu.slicer_retraction  = gcmd.get_float('SLICER_RETRACTION', -1)
+        fw_retraction          = gcmd.get('SLICER_FW_RETRACTION', '0').strip().lower()
+        mmu.slicer_fw_retraction = fw_retraction in ('true', '1')
+        if fw_retraction not in ('true', '1', 'false', '0'):
             mmu.log_error("Invalid slicer FW retraction setting ignored")
 
-        # check if slicer firmware retraction is enabled in the printer
+        # Check if slicer firmware retraction is enabled in the printer
         if mmu.slicer_fw_retraction:
             fw_retraction_obj = mmu.printer.lookup_object('firmware_retraction', None)
             if fw_retraction_obj:
@@ -217,13 +212,15 @@ class MmuChangeToolCommand(BaseCommand):
 
                         mmu._save_toolhead_position_and_park('toolchange', next_pos=next_pos)
 
-                        # Determine retraction options post load to compensate for unhandled orca/prusa/super slicer toolchange retraction when slicer settings are passed to mmu_change_tool
+                        # Determine retraction options post load to compensate for unhandled orca/prusa/super slicer
+                        # toolchange retraction when slicer settings are passed to mmu_change_tool
                         slicer_retract_len   = 0
                         slicer_retract_speed = 30
                         retract_fallback     = False
                         park_macro           = mmu.printer.lookup_object("gcode_macro _MMU_PARK", None)
 
-                        # Only compensate when printing post initial change (firmware flag is true regardless if enabled, slicer_retraction is only > 0 when it needs to be applied)
+                        # Only compensate when printing post initial change (firmware flag is true regardless if enabled,
+                        # slicer_retraction is only > 0 when it needs to be applied)
                         if mmu.is_printing() and mmu.num_toolchanges >= 1:
                             if mmu.slicer_fw_retraction:
                                 fw_retract = mmu.printer.lookup_object('firmware_retraction', None)
