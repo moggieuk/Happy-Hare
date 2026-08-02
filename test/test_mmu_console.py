@@ -19,13 +19,47 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 import unittest
+from unittest import mock
 
 from test.hh import cfg as cfg_mod
 from test.hh import profiles, session
 from test import console as console_mod
 
 logging.getLogger().setLevel(logging.CRITICAL)
+
+
+NEUTRAL_SGR = {'0', '', '39', '22', '49'}
+
+
+def check_no_line_leaks(case, rendered):
+    """
+    No line may end with a colour or bold still open - see the pink-terminal bug.
+
+    Module level rather than a TestRenderer method because it is the strongest assertion
+    available about wrap_ansi() too: a wrapped row is a line like any other.
+    """
+    for line in rendered.split('\n'):
+        codes = __import__('re').findall(r'\x1b\[([0-9;]*)m', line)
+        if codes:
+            case.assertIn(codes[-1], NEUTRAL_SGR,
+                          'line ends with attribute %r still open: %r' % (codes[-1], line))
+
+
+def visible(text):
+    """`text` with every escape sequence removed - what the terminal actually shows."""
+    return console_mod._CSI.sub('', text)
+
+
+class FakeTty(io.StringIO):
+    """A StringIO that claims to be a terminal, for the tty-gated paths."""
+
+    def isatty(self):
+        return True
+
+    def fileno(self):
+        return 1
 
 
 def make_install_tree(root, printer_cfg=True, macros=True, mmu_vars=True):
@@ -332,16 +366,10 @@ class TestRenderer(unittest.TestCase):
         self.assertEqual(out, 'green bold gap')
         self.assertNotIn('\033', out)
 
-    NEUTRAL = {'0', '', '39', '22', '49'}
+    NEUTRAL = NEUTRAL_SGR
 
     def assert_no_line_leaks(self, rendered):
-        """No line may end with a colour or bold still open - see the pink-terminal bug."""
-        for line in rendered.split('\n'):
-            codes = __import__('re').findall(r'\x1b\[([0-9;]*)m', line)
-            if codes:
-                self.assertIn(codes[-1], self.NEUTRAL,
-                              'line ends with attribute %r still open: %r'
-                              % (codes[-1], line))
+        check_no_line_leaks(self, rendered)
 
     def test_a_multiline_span_does_not_leak_colour_across_lines(self):
         """
@@ -635,6 +663,518 @@ class TestPinnedHeader(unittest.TestCase):
                          '--inline-header ignored')
 
 
+class TestScrollbackTee(unittest.TestCase):
+    """
+    The buffer behind /scroll.
+
+    It exists because a DECSTBM scroll region is not backed by the terminal's own scrollback:
+    rows that scroll out of the region are discarded, so with a pinned header there is
+    nothing to scroll back to unless the console keeps the lines itself.
+    """
+
+    def _tee(self, maxlen=100):
+        import collections
+        stream = io.StringIO()
+        buf = collections.deque(maxlen=maxlen)
+        return console_mod.ScrollbackTee(stream, buf), stream, buf
+
+    def test_every_write_is_forwarded_verbatim(self):
+        tee, stream, _ = self._tee()
+        tee.write('one\ntwo')
+        tee.write('\n')
+        self.assertEqual(stream.getvalue(), 'one\ntwo\n')
+
+    def test_a_line_split_across_writes_is_reassembled(self):
+        """print() emits the text and the '\\n' as two separate write() calls."""
+        tee, _, buf = self._tee()
+        tee.write('hello')
+        self.assertEqual(list(buf), [], 'committed a line before its newline arrived')
+        tee.write('\n')
+        self.assertEqual(list(buf), ['hello'])
+
+    def test_a_multi_line_write_is_split_and_the_tail_held(self):
+        tee, _, buf = self._tee()
+        tee.write('a\nb\nc')
+        self.assertEqual(list(buf), ['a', 'b'])
+        tee.write('\n')
+        self.assertEqual(list(buf), ['a', 'b', 'c'])
+
+    def test_the_buffer_is_bounded(self):
+        tee, _, buf = self._tee(maxlen=3)
+        tee.write(''.join('%d\n' % i for i in range(10)))
+        self.assertEqual(list(buf), ['7', '8', '9'])
+
+    def test_the_tee_forwards_everything_input_needs(self):
+        """
+        NOT tidiness. input() only takes the readline path when sys.stdout has a real
+        fileno(), isatty() and str encoding/errors. Replace __getattr__ with a handful of
+        explicit methods and history, completion and the Shift-Up binding vanish - silently,
+        only on a real terminal, never in this suite.
+        """
+        tee, _, _ = self._tee()
+        tee.raw_stream = FakeTty()
+        self.assertTrue(tee.isatty())
+        self.assertEqual(tee.fileno(), 1)
+        for name in ('encoding', 'errors', 'flush', 'writable'):
+            self.assertTrue(hasattr(tee, name), 'the tee hides stdout.%s' % name)
+
+    def test_control_sequences_bypass_the_buffer(self):
+        """
+        The whole reason raw_stdout() exists. The pager repaints a full pane per keypress;
+        if those frames were captured, the buffer would grow every time it was scrolled.
+        """
+        console = console_mod.Console(console_mod.parse_args(['--header', 'machine']))
+        console.header_lines = lambda: ['line one', 'line two']
+        real = FakeTty()
+        with mock.patch.object(sys, 'stdout',
+                               console_mod.ScrollbackTee(real, console.scrollback)):
+            console.tee = sys.stdout
+            pin = console_mod.PinnedHeader(console)
+            pin.install()
+            pin.repaint()
+            console.clear_log()
+            pin.restore()
+        self.assertEqual(list(console.scrollback), [],
+                         'cursor control leaked into the scrollback buffer')
+        self.assertIn('\x1b[2K', real.getvalue(), 'the escapes did not reach the terminal')
+
+    def test_clear_repairs_the_status_band_not_just_the_log(self):
+        """
+        /clear is the only way back from a corrupted display, so it has to re-reserve the
+        scroll region and repaint the band - not merely erase below it. repaint() on its own
+        will not do it: it re-runs _set_region only when the header changes HEIGHT, so a
+        band scribbled on by a stray escape sequence would stay scribbled on forever.
+        """
+        console = console_mod.Console(console_mod.parse_args(['--header', 'machine']))
+        console.header_lines = lambda: ['line one', 'line two']
+        real = FakeTty()
+        with mock.patch.object(sys, 'stdout', real):
+            console.pinned = console_mod.PinnedHeader(console).install()
+            real.truncate(0), real.seek(0)
+            console.clear_log()
+            console.pinned.restore()
+        out = real.getvalue()
+        self.assertIn('\x1b[2J', out, 'the screen was not cleared')
+        self.assertRegex(out, r'\x1b\[\d+;\d+r', 'the scroll region was not re-reserved')
+        self.assertIn('\x1b[1;1H', out, 'the status band was not repainted')
+        self.assertIn('line one', out, 'the header content was not redrawn')
+        self.assertIn('\x1b[?7h', out, 'autowrap was not restored')
+
+    def test_simulator_lines_are_marked_and_dimmed(self):
+        """
+        info() exists so the banner cannot be mistaken for MMU output - it lands directly
+        under cmd_MMU_BOOTUP's real text. '#' rather than '!' because '!!' is already this
+        console's marker for a command that raised.
+        """
+        console = console_mod.Console(console_mod.parse_args([]))
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            console.color = True
+            console.info('first line\nsecond line')
+        rendered = buf.getvalue()
+        for line in rendered.rstrip('\n').split('\n'):
+            self.assertIn(console_mod.INFO_PREFIX, visible(line), line)
+            self.assertIn('\x1b[%sm' % console_mod.INFO_COLOUR, line, 'not dimmed: %r' % line)
+        self.assertEqual(visible(rendered), '# first line\n# second line\n')
+        check_no_line_leaks(self, rendered)
+
+    def test_the_info_colour_survives_being_wrapped_by_the_pager(self):
+        """
+        Why the mark is grey and not SGR 2. _sgr_state() tracks foreground and bold, so a
+        colour is re-opened on each wrapped row; faint would be dropped at the wrap and the
+        continuation rows would come back at full brightness.
+        """
+        line = console_mod.paint(console_mod.INFO_PREFIX + 'a banner line long enough to wrap',
+                                 console_mod.INFO_COLOUR, True)
+        rows = console_mod.wrap_ansi(line, 12)
+        self.assertGreater(len(rows), 1, 'nothing wrapped')
+        for row in rows:
+            self.assertIn('\x1b[%sm' % console_mod.INFO_COLOUR, row, row)
+
+    def test_redraw_repairs_the_screen_and_keeps_the_log(self):
+        """The difference from /clear: the history is repainted, not thrown away."""
+        console = console_mod.Console(console_mod.parse_args(['--header', 'machine']))
+        console.header_lines = lambda: ['line one', 'line two']
+        console.scrollback.extend(['first log line', 'second log line'])
+        real = FakeTty()
+        with mock.patch.object(sys, 'stdout', real):
+            console.pinned = console_mod.PinnedHeader(console).install()
+            real.truncate(0), real.seek(0)
+            console.redraw()
+            console.pinned.restore()
+        out = real.getvalue()
+        self.assertIn('line one', out, 'the status band was not redrawn')
+        self.assertIn('second log line', out, 'the log was not repainted')
+        self.assertEqual(len(console.scrollback), 2, '/redraw discarded the history')
+
+    def test_the_tee_is_removed_even_when_the_body_raises(self):
+        console = console_mod.Console(console_mod.parse_args([]))
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            with self.assertRaises(RuntimeError):
+                with console.scrollback_stdout(True):
+                    self.assertIsNot(sys.stdout, buf)
+                    raise RuntimeError('boom')
+            self.assertIs(sys.stdout, buf, 'stdout was left teed')
+        self.assertIsNone(console.tee)
+
+    def test_no_tee_is_installed_when_disabled(self):
+        console = console_mod.Console(console_mod.parse_args(['--scrollback', '0']))
+        self.assertIsNone(console.scrollback)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            with console.scrollback_stdout(True) as tee:
+                self.assertIsNone(tee)
+                self.assertIs(sys.stdout, buf)
+
+    def test_echo_records_what_readline_wrote_but_stdout_never_carried(self):
+        console = console_mod.Console(console_mod.parse_args([]))
+        with contextlib.redirect_stdout(io.StringIO()):
+            with console.scrollback_stdout(True):
+                console.echo('mmu[T0 g0]> MMU_STATUS')
+        self.assertEqual(list(console.scrollback), ['mmu[T0 g0]> MMU_STATUS'])
+
+
+class TestAnsiWrap(unittest.TestCase):
+    """wrap_ansi() - logical buffer lines into the rows a terminal would show."""
+
+    COLOURED = console_mod.html_to_ansi(
+        '<span style="color:#FF69B4">a warning long enough to need wrapping</span>',
+        color=True)
+
+    def test_width_counts_printable_columns_not_escape_bytes(self):
+        self.assertEqual(len(console_mod.wrap_ansi(self.COLOURED[:0] + 'x' * 10, 10)), 1)
+        rows = console_mod.wrap_ansi(console_mod.html_to_ansi('<b>0123456789</b>'), 10)
+        self.assertEqual(len(rows), 1, rows)
+
+    def test_a_long_line_splits_at_the_width(self):
+        for row in console_mod.wrap_ansi(self.COLOURED, 12):
+            self.assertLessEqual(len(visible(row)), 12, repr(row))
+
+    def test_the_visible_text_survives_wrapping(self):
+        rows = console_mod.wrap_ansi(self.COLOURED, 7)
+        self.assertEqual(''.join(visible(r) for r in rows), visible(self.COLOURED))
+
+    def test_each_row_reopens_the_colour_and_closes_it(self):
+        rows = console_mod.wrap_ansi(self.COLOURED, 12)
+        self.assertGreater(len(rows), 1, 'nothing was wrapped')
+        check_no_line_leaks(self, '\n'.join(rows))
+        for row in rows:
+            self.assertIn('\x1b[38;5;', row, 'a wrapped row lost the colour: %r' % row)
+
+    def test_an_escape_sequence_is_never_split_across_rows(self):
+        for row in console_mod.wrap_ansi(self.COLOURED, 3):
+            self.assertNotIn('\x1b', visible(row), 'a sequence was cut in half: %r' % row)
+
+    def test_degenerate_inputs_terminate(self):
+        self.assertEqual(console_mod.wrap_ansi('', 10), [''])
+        self.assertEqual(len(console_mod.wrap_ansi('abc', 1)), 3)
+        self.assertEqual(console_mod.wrap_ansi('abc', 0), ['abc'])
+
+
+class TestPagerView(unittest.TestCase):
+    """LogPager.move() - all of the pager's arithmetic, with no terminal in sight."""
+
+    move = staticmethod(console_mod.LogPager.move)
+
+    def test_the_view_opens_at_the_live_tail(self):
+        self.assertEqual(self.move(0, None, 100, 20), 0)
+
+    def test_scrolling_stops_at_both_ends(self):
+        self.assertEqual(self.move(0, 'down', 100, 20), 0, 'scrolled past the newest line')
+        self.assertEqual(self.move(80, 'up', 100, 20), 80, 'scrolled past the oldest line')
+
+    def test_a_page_is_a_screenful(self):
+        self.assertEqual(self.move(0, 'pgup', 100, 20), 20)
+        self.assertEqual(self.move(20, 'pgdn', 100, 20), 0)
+
+    def test_home_and_end_go_to_the_extremes(self):
+        self.assertEqual(self.move(5, 'home', 100, 20), 80)
+        self.assertEqual(self.move(50, 'end', 100, 20), 0)
+
+    def test_a_buffer_shorter_than_the_screen_never_scrolls(self):
+        for key in ('up', 'pgup', 'home'):
+            self.assertEqual(self.move(0, key, 5, 20), 0, key)
+
+    def test_an_opening_offset_is_clamped(self):
+        self.assertEqual(self.move(9999, None, 100, 20), 80)
+
+
+class TestPagerKeys(unittest.TestCase):
+    """
+    LogPager._read_key() over a pipe, so no tty is needed.
+
+    Esc is both the prefix of every arrow key and the pager's own quit key, and nothing tells
+    them apart except waiting - which is what the timeout is for and why it is tested.
+    """
+
+    def setUp(self):
+        self.read_fd, self.write_fd = os.pipe()
+        self.addCleanup(os.close, self.read_fd)
+        self.pager = console_mod.LogPager(
+            console_mod.Console(console_mod.parse_args([])))
+        self.pager.ESC_WAIT = 0.05
+
+    def _key(self, data):
+        os.write(self.write_fd, data)
+        stdin = mock.Mock()
+        stdin.fileno.return_value = self.read_fd
+        with mock.patch.object(sys, 'stdin', stdin):
+            return self.pager._read_key()
+
+    def test_the_arrow_keys_are_decoded(self):
+        self.assertEqual(self._key(b'\x1b[A'), 'up')
+        self.assertEqual(self._key(b'\x1bOB'), 'down')
+
+    def test_a_modified_arrow_falls_back_to_its_final_byte(self):
+        """Shift-Up is ESC[1;2A. Anything else that ends in 'A' should still scroll up."""
+        self.assertEqual(self._key(b'\x1b[1;2A'), 'up')
+
+    def test_paging_and_jump_keys_are_decoded(self):
+        self.assertEqual(self._key(b'\x1b[5~'), 'pgup')
+        self.assertEqual(self._key(b'\x1b[6~'), 'pgdn')
+        self.assertEqual(self._key(b'\x1b[H'), 'home')
+        self.assertEqual(self._key(b'\x1b[F'), 'end')
+
+    def test_the_bare_keys_work_too(self):
+        self.assertEqual(self._key(b'k'), 'up')
+        self.assertEqual(self._key(b'G'), 'end')
+        self.assertEqual(self._key(b'q'), 'quit')
+        self.assertEqual(self._key(b'\x03'), 'quit')
+
+    def test_a_bare_escape_quits_rather_than_hanging(self):
+        self.assertEqual(self._key(b'\x1b'), 'quit')
+
+    def test_an_unknown_sequence_is_ignored_rather_than_acted_on(self):
+        self.assertIsNone(self._key(b'\x1b[99~'))
+
+    def test_an_unknown_plain_key_does_nothing(self):
+        self.assertIsNone(self._key(b'z'))
+
+
+class TestScrollBindings(unittest.TestCase):
+    """
+    The Shift-Up key binding.
+
+    The two readline dialects are NOT interchangeable and the wrong one is worse than none:
+    libedit ignores GNU's '"key": "macro"' form and inserts the tail of the escape sequence
+    as literal text, so Shift-Up types ';2A' at the prompt.
+    """
+
+    def test_the_libedit_dialect_uses_bind_dash_s(self):
+        lines = console_mod.scroll_binding_lines('editline')
+        self.assertTrue(all(line.startswith('bind -s ') for line in lines), lines)
+
+    def test_the_gnu_dialect_uses_the_colon_form(self):
+        lines = console_mod.scroll_binding_lines('readline')
+        self.assertTrue(all(line.startswith('"\\e') for line in lines), lines)
+        self.assertNotIn('bind -s', ''.join(lines))
+
+    def test_both_dialects_bracket_the_line_with_ctrl_a_and_ctrl_e(self):
+        """\\001 and \\005 are what let a half-typed line survive as trailing arguments."""
+        for backend in ('editline', 'readline'):
+            for line in console_mod.scroll_binding_lines(backend):
+                self.assertIn(r'\001/scroll ', line, backend)
+                self.assertIn(r'\005\n', line, backend)
+
+    def test_shift_up_is_bound_but_plain_up_is_not(self):
+        """Plain Up must stay command history - that is the point of a modal pager."""
+        joined = ''.join(console_mod.scroll_binding_lines('editline'))
+        self.assertIn(r'\e[1;2A', joined)
+        self.assertNotIn(r'"\e[A"', joined)
+
+    def test_the_backend_falls_back_to_the_docstring(self):
+        """readline.backend only exists on 3.13+, and `make console` picks its interpreter."""
+        with mock.patch.object(console_mod, 'readline') as fake:
+            fake.backend = None
+            fake.__doc__ = 'Importing this module enables ... using libedit readline.'
+            self.assertEqual(console_mod.readline_backend(), 'editline')
+            fake.__doc__ = 'Importing this module enables ... using GNU readline.'
+            self.assertEqual(console_mod.readline_backend(), 'readline')
+
+    def test_nothing_is_bound_on_libedit(self):
+        """
+        Measured, not assumed: libedit delivers only the FIRST character of a macro
+        immediately and holds the rest until the next input event, so Shift-Up would leave a
+        lone '/' on the line and then corrupt whatever the user typed next. No key beats a
+        key that does that.
+        """
+        console = console_mod.Console(console_mod.parse_args([]))
+        with mock.patch.object(console_mod, 'readline') as fake:
+            fake.backend = 'editline'
+            self.assertFalse(console._install_scroll_bindings())
+        fake.parse_and_bind.assert_not_called()
+
+    def test_the_bindings_are_installed_on_gnu_readline(self):
+        console = console_mod.Console(console_mod.parse_args([]))
+        with mock.patch.object(console_mod, 'readline') as fake:
+            fake.backend = 'readline'
+            self.assertTrue(console._install_scroll_bindings())
+        self.assertTrue(fake.parse_and_bind.called)
+
+    def test_installing_the_bindings_never_raises(self):
+        console = console_mod.Console(console_mod.parse_args([]))
+        with mock.patch.object(console_mod, 'readline') as fake:
+            fake.parse_and_bind.side_effect = RuntimeError('no such dialect')
+            fake.backend = 'readline'
+            self.assertFalse(console._install_scroll_bindings())
+
+
+class TestTimestamps(unittest.TestCase):
+    """
+    /timestamp. The clock is the VIRTUAL one, so these can drive it with advance() rather
+    than waiting - which is also the only reason the feature is worth having.
+    """
+
+    def _console(self):
+        console = console_mod.Console(console_mod.parse_args(['--plain', '--no-log']))
+        console.color = True
+        console.wall_start = 1000000.0              # a fixed instant, so the text is stable
+        console.clock_epoch = 1000.0
+        console.hh = mock.Mock()
+        console.hh.reactor.monotonic.return_value = 1000.0
+        return console
+
+    def _emit(self, console, text):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            console.emit(text)
+        return buf.getvalue()
+
+    def test_off_by_default_and_output_is_untouched(self):
+        console = self._console()
+        self.assertFalse(console.timestamps)
+        self.assertEqual(self._emit(console, 'a\nb'), 'a\nb\n')
+
+    def test_only_the_first_line_is_stamped_and_the_rest_line_up(self):
+        console = self._console()
+        console.timestamps = True
+        rendered = visible(self._emit(console, 'first\nsecond\nthird'))
+        head, second, third = rendered.rstrip('\n').split('\n')
+        stamp = console.sim_time()
+        self.assertTrue(head.startswith(stamp + ' '), head)
+        # The indent has to equal the stamp's width or the block reads ragged
+        self.assertEqual(second, ' ' * (len(stamp) + 1) + 'second')
+        self.assertEqual(third, ' ' * (len(stamp) + 1) + 'third')
+
+    def test_the_stamp_is_dimmed_and_leaks_no_colour(self):
+        console = self._console()
+        console.timestamps = True
+        rendered = self._emit(console, 'a line')
+        self.assertIn('\x1b[%sm' % console_mod.TIME_COLOUR, rendered)
+        check_no_line_leaks(self, rendered)
+
+    def test_a_blank_continuation_line_is_not_padded(self):
+        """Padding an empty line only leaves trailing whitespace behind."""
+        console = self._console()
+        console.timestamps = True
+        rendered = visible(self._emit(console, 'head\n\ntail'))
+        self.assertEqual(rendered.rstrip('\n').split('\n')[1], '')
+
+    def test_the_clock_follows_the_virtual_one_not_the_wall(self):
+        """/advance an hour and the stamp moves an hour, however long you actually sat there."""
+        console = self._console()
+        before = console.sim_time()
+        console.hh.reactor.monotonic.return_value = 1000.0 + 3600
+        after = console.sim_time()
+        self.assertNotEqual(before, after, 'the stamp ignored the virtual clock')
+        self.assertEqual(
+            time.strftime(console_mod.TIME_FORMAT, time.localtime(1000000.0 + 3600)), after)
+
+    def test_the_stamp_is_a_fixed_width(self):
+        """Continuation lines are indented by len(stamp), so it must not vary."""
+        console = self._console()
+        widths = set()
+        for offset in (0, 3600, 7200, 3600 * 13):
+            console.hh.reactor.monotonic.return_value = 1000.0 + offset
+            widths.add(len(console.sim_time()))
+        self.assertEqual(len(widths), 1, widths)
+
+    def test_the_meta_command_toggles(self):
+        console = self._console()
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.meta('/timestamp')
+            self.assertTrue(console.timestamps)
+            console.meta('/timestamp')
+            self.assertFalse(console.timestamps)
+            console.meta('/timestamp on')
+            self.assertTrue(console.timestamps)
+            console.meta('/timestamp off')
+            self.assertFalse(console.timestamps)
+
+
+class TestHeaderGroups(unittest.TestCase):
+    """
+    header_groups() - shared by --header and /header so the two cannot drift. They used to
+    parse the value separately, which is exactly how 'all' ends up working in one and not
+    the other.
+    """
+
+    GROUPS = console_mod.Console.GROUPS
+
+    def test_all_expands_to_every_group(self):
+        self.assertEqual(console_mod.header_groups('all', self.GROUPS), list(self.GROUPS))
+
+    def test_off_and_its_synonyms_are_empty(self):
+        for text in ('off', 'none', '', '  ', None):
+            self.assertEqual(console_mod.header_groups(text, self.GROUPS), [], repr(text))
+
+    def test_case_does_not_matter(self):
+        self.assertEqual(console_mod.header_groups('ALL', self.GROUPS), list(self.GROUPS))
+        self.assertEqual(console_mod.header_groups('OFF', self.GROUPS), [])
+
+    def test_a_list_is_kept_in_the_order_given(self):
+        self.assertEqual(console_mod.header_groups('leds,machine', self.GROUPS),
+                         ['leds', 'machine'])
+
+    def test_an_unknown_group_is_rejected_and_says_so(self):
+        with self.assertRaises(ValueError) as caught:
+            console_mod.header_groups('machine,bogus', self.GROUPS)
+        self.assertIn('bogus', str(caught.exception))
+        self.assertIn('all/off', str(caught.exception))
+
+    def test_the_flag_accepts_all_too(self):
+        self.assertEqual(console_mod.parse_args(['--header', 'all']).header,
+                         list(self.GROUPS))
+
+    def test_the_meta_command_accepts_all(self):
+        console = console_mod.Console(console_mod.parse_args(['--header', 'machine']))
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.meta('/header all')
+            self.assertEqual(console.args.header, list(self.GROUPS))
+            console.meta('/header off')
+            self.assertEqual(console.args.header, [])
+
+
+class TestScrollArguments(unittest.TestCase):
+    """parse_scroll_args() and the history tidy-up that follows the key macro."""
+
+    def test_a_leading_integer_is_an_offset(self):
+        self.assertEqual(console_mod.parse_scroll_args('50'), (50, ''))
+        self.assertEqual(console_mod.parse_scroll_args(''), (0, ''))
+
+    def test_the_rest_is_the_recovered_half_typed_line(self):
+        self.assertEqual(console_mod.parse_scroll_args('MMU_SELECT GATE=1'),
+                         (0, 'MMU_SELECT GATE=1'))
+        self.assertEqual(console_mod.parse_scroll_args('50 MMU_SELECT'), (50, 'MMU_SELECT'))
+
+    def test_the_scroll_line_is_dropped_and_the_typing_pushed_back(self):
+        with mock.patch.object(console_mod, 'readline') as fake:
+            fake.get_current_history_length.return_value = 4
+            fake.get_history_item.return_value = '/scroll MMU_ST'
+            console_mod.Console._recover_typed('MMU_ST')
+        fake.remove_history_item.assert_called_once_with(3)
+        fake.add_history.assert_called_once_with('MMU_ST')
+
+    def test_a_hand_typed_scroll_leaves_an_unrelated_history_entry_alone(self):
+        with mock.patch.object(console_mod, 'readline') as fake:
+            fake.get_current_history_length.return_value = 4
+            fake.get_history_item.return_value = 'MMU_STATUS'
+            console_mod.Console._recover_typed('')
+        fake.remove_history_item.assert_not_called()
+        fake.add_history.assert_not_called()
+
+
 class TestConsoleScript(unittest.TestCase):
     """
     End to end through main(), the same path the prompt uses.
@@ -827,9 +1367,13 @@ class TestConsoleScript(unittest.TestCase):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             console.run_command('MMU_STATUS')
+            console.scrollback.append('something to scroll back to')
             self.assertTrue(console.sink, 'nothing to clear')
             console.meta('/clear')
         self.assertEqual(console.sink, [], '/clear did not empty the log')
+        # sink is raw MMU messages, scrollback is what the terminal showed. Two objects,
+        # two purposes, and /clear has to empty both or the pager still holds the old log.
+        self.assertEqual(list(console.scrollback), [], '/clear left the scrollback behind')
 
     def test_the_status_section_ends_in_a_heavy_rule(self):
         """The boundary between state and output has to be visually distinct from the top."""
@@ -842,7 +1386,8 @@ class TestConsoleScript(unittest.TestCase):
     def test_meta_commands_do_not_crash(self):
         rc, out = self._run(['/help', '/filament', '/exhaust 0', '/trace 2', '/heat 240',
                              '/sensor mmu_entry_1 off', '/sensor mmu_exit_0 disable',
-                             '/vars', '/clear', '/log 3', '/errors', '/badmeta'],
+                             '/vars', '/clear', '/redraw', '/log 3', '/errors', '/scroll',
+                             '/scroll 5', '/s', '/timestamp', '/timestamp off', '/badmeta'],
                             ['--header', 'off'])
         self.assertEqual(rc, 0, out[-2000:])
         self.assertIn('Meta-commands', out)
@@ -909,6 +1454,55 @@ class TestTheDefaultProfile(unittest.TestCase):
         self.assertIn('cmd=', text)
         self.assertIn('HOMED', text)
         self.assertIn('servo=', text)                # unit0 is a LinearServoSelector
+
+    def test_showconfig_works_on_a_gate_of_every_unit(self):
+        """
+        SHOWCONFIG used to die with "'NoneType' object has no attribute
+        'get_clog_detection_length'" on any unit without an encoder: mmu.encoder() returns
+        None there, and mmu_status.py called it unguarded.
+
+        The gate is selected explicitly on purpose. The bug only showed up because boot
+        happens to leave the LAST gate selected, and a test that relied on that would stop
+        testing anything the day boot order changed.
+
+        _dispatch, not run_command: run_command catches and prints '!!', so a regression
+        would pass silently. _dispatch lets the exception out, which is the assertion.
+        """
+        for unit in self.console.hh.mmu.mmu_machine.units:
+            self.console._dispatch('MMU_SELECT GATE=%d' % unit.first_gate)
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.console._dispatch('MMU_STATUS SHOWCONFIG=1')
+
+    def _encoder_line(self):
+        del self.console.sink[:]
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.console.run_command('MMU_STATUS')
+        for msg in self.console.sink:
+            for line in msg.split('\n'):
+                if 'Encoder reads' in line:
+                    return line.strip()
+        return ''
+
+    def test_the_status_reports_each_units_own_encoder(self):
+        """
+        The reading printed under a unit's heading has to be THAT unit's.
+
+        mmu.get_encoder_distance() takes no gate and resolves through gate_selected, so with
+        a gate on the non-encoder unit selected it returned 0. and printed it under the
+        encoder unit's heading - the right guard, the wrong object.
+        """
+        units = self.console.hh.mmu.mmu_machine.units
+        with_encoder = [u for u in units if u.has_encoder()]
+        if not with_encoder:
+            self.skipTest('the default profile has no encoder to mis-report')
+        expected = with_encoder[0].encoder.get_distance()
+        self.assertNotEqual(expected, 0., 'nothing to distinguish a wrong reading from')
+        # Select a gate on a DIFFERENT unit - the case that used to zero the reading
+        elsewhere = [u for u in units if not u.has_encoder()]
+        if not elsewhere:
+            self.skipTest('single-unit default: nothing to select away to')
+        self.console._dispatch('MMU_SELECT GATE=%d' % elsewhere[0].first_gate)
+        self.assertIn('%.1fmm' % expected, self._encoder_line())
 
     def test_placing_the_carriage_by_hand_moves_the_tracked_position(self):
         """/selector is how a user stands in for physically sliding the carriage."""
