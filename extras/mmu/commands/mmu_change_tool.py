@@ -78,31 +78,28 @@ class MmuChangeToolCommand(BaseCommand):
         skip_tip = bool(gcmd.get_int('SKIP_TIP', 0, minval=0, maxval=1))
         skip_purge = bool(gcmd.get_int('SKIP_PURGE', 0, minval=0, maxval=1))
 
-        # Capture slicer parameters directly on the MMU object so omitted
-        # arguments fall back to the reset defaults and later code can use them
-        # without an extra temporary variable.
-        mmu.slicer_purge = gcmd.get_float('SLICER_PURGE', -1)
-        mmu.slicer_retraction = gcmd.get_float('SLICER_RETRACTION', -1)
-        slicer_fw_retraction_raw = gcmd.get('SLICER_FW_RETRACTION', '0').lower().strip()
+        # Capture slicer retraction and purge settings for later use.
+        mmu.slicer_purge         = gcmd.get_float('SLICER_PURGE', -1)
+        mmu.slicer_retraction    = gcmd.get_float('SLICER_RETRACTION', -1)
+        mmu.slicer_fw_retraction = gcmd.get('SLICER_FW_RETRACTION', '0').lower().strip()
 
-        if slicer_fw_retraction_raw in ('true', '1'):
+        if mmu.slicer_fw_retraction in ('true', '1'):
             mmu.slicer_fw_retraction = True
-        elif slicer_fw_retraction_raw in ('false', '0'):
+        elif mmu.slicer_fw_retraction in ('false', '0'):
             mmu.slicer_fw_retraction = False
         else:
             mmu.slicer_fw_retraction = False
             mmu.log_error("Invalid slicer FW retraction setting ignored")
 
-        # validate slicer retraction settings - if FW & printer supports it, disable slicer retraction, else disable FW
+        # check if slicer firmware retraction is enabled in the printer
         if mmu.slicer_fw_retraction:
             fw_retraction_obj = mmu.printer.lookup_object('firmware_retraction', None)
             if fw_retraction_obj:
                 mmu.slicer_retraction = -1
             else:
-                mmu.log_warning("Print gcode uses firmware retraction but its not enabled in the printer")
+                mmu.log_warning("Print gcode specifies firmware retraction but it's not enabled in the printer")
                 mmu.slicer_fw_retraction = False
   
-
         # Handle "next_pos" option for toolhead position restoration
         next_pos = None
         sequence_vars_macro = mmu.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
@@ -217,7 +214,28 @@ class MmuChangeToolCommand(BaseCommand):
                         # Ok, now ready to park and perform the swap
                         mmu._next_tool = tool # Valid only during the change process - cleared in _continue_after()
                         mmu.last_statistics = {}
+
                         mmu._save_toolhead_position_and_park('toolchange', next_pos=next_pos)
+
+                        # Determine retraction options post load to compensate for unhandled orca/prusa/super slicer toolchange retraction when slicer settings are passed to mmu_change_tool
+                        slicer_retract_len   = 0
+                        slicer_retract_speed = 30
+                        retract_fallback     = False
+                        park_macro           = mmu.printer.lookup_object("gcode_macro _MMU_PARK", None)
+
+                        # Only compensate when printing post initial change (firmware flag is true regardless if enabled, slicer_retraction is only > 0 when it needs to be applied)
+                        if mmu.is_printing() and mmu.num_toolchanges >= 1:
+                            if mmu.slicer_fw_retraction:
+                                fw_retract = mmu.printer.lookup_object('firmware_retraction', None)
+                                if fw_retract: # translate G10 into distance/speed for compensation
+                                    slicer_retract_len = fw_retract.retract_length
+                                    if fw_retract.retract_speed > 0:
+                                        slicer_retract_speed = fw_retract.retract_speed
+                            elif mmu.slicer_retraction > 0:
+                                sequence_vars        = mmu.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
+                                slicer_retract_len   = mmu.slicer_retraction
+                                slicer_retract_speed = sequence_vars.variables.get('retract_speed', slicer_retract_speed) if sequence_vars else slicer_retract_speed
+
                         mmu._set_next_position(next_pos) # This can also clear next_position
                         mmu._track_time_start('total')
                         mmu.printer.send_event("mmu:toolchange", mmu._last_tool, mmu._next_tool)
@@ -225,6 +243,7 @@ class MmuChangeToolCommand(BaseCommand):
                         # Remember the tool that was actually in use before any load attempts
                         prev_tool = mmu.tool_selected
 
+                        # Load attempts
                         attempts = 2 if mmu.p.retry_tool_change_on_error and (mmu.is_printing() or standalone) else 1 # TODO Replace with inattention timer
                         try:
                             for i in range(attempts):
@@ -236,7 +255,7 @@ class MmuChangeToolCommand(BaseCommand):
                                 except MmuError as ee:
                                     if i == attempts - 1:
                                         raise MmuError("%s.\nOccurred when changing tool: %s" % (str(ee), mmu._last_toolchange))
-                                    mmu.log_error("%s.\nOccured when changing tool: %s. Retrying..." % (str(ee), mmu._last_toolchange))
+                                    mmu.log_error("%s.\nOccurred when changing tool: %s. Retrying..." % (str(ee), mmu._last_toolchange))
                                     # Try again but recover_filament_pos will ensure conservative treatment of unload
                                     mmu.recover_filament_pos()
 
@@ -252,7 +271,25 @@ class MmuChangeToolCommand(BaseCommand):
                     mmu._persist_swap_statistics()
                     mmu._persist_gate_statistics()
 
-                    # Deliberately outside of _wrap_gear_synced_to_extruder() so there is no absolutely no delay after restoring position
+                    # Compensate for unhandled slicer toolchange retraction by reducing _mmu_park un-retraction
+                    if slicer_retract_len and park_macro:
+                        retracted_length = float(park_macro.variables.get('retracted_length', 0) or 0) - slicer_retract_len
+                        if retracted_length > 0:
+                            mmu.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=retracted_length VALUE=%s" % (retracted_length))
+                            mmu.log_info("Adjusting un-retraction to %.1fmm to compensate for unhandled slicer %.1fmm retraction during toolchange" % (retracted_length, slicer_retract_len))
+                        else:
+                            mmu.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=retracted_length VALUE=%s" % 0)
+                            retract_fallback = True
+
+                    # Restore to print deliberately outside of _wrap_gear_synced_to_extruder() to minimise delay after restoring position
                     mmu._continue_after('toolchange', restore=restore)
+
+                    # Fall back / edge case - if _mmu_park parking/retraction is bypassed or slicer retraction > retracted_length
+                    if slicer_retract_len and park_macro:
+                        if retract_fallback or float(park_macro.variables.get('retracted_length', 0) or 0):
+                            mmu.gcode.run_script_from_command("G1 E-%.2f F%d " % (slicer_retract_len, slicer_retract_speed * 60))
+                            mmu.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=_MMU_PARK VARIABLE=retracted_length VALUE=%s" % 0)
+                            mmu.log_info("Retracting %.1fmm to compensate for unhandled slicer retraction during toolchange" % (slicer_retract_len))
+
         except MmuError as ee:
             mmu.handle_mmu_error(str(ee))

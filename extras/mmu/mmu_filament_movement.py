@@ -1724,29 +1724,6 @@ class MmuFilamentMovement:
                         else:
                             self.wrap_gcode_command(self.p.post_load_macro, exception=True, wait=True)
 
-                # match orca/prusa/super slicer unhandled retractions after post_load when printing
-                if self.is_printing() and self.num_toolchanges >= 1:
-                    retract_len = 0
-                    speed       = 30
-                    
-                    if self.slicer_fw_retraction:
-                        fw_retract = self.printer.lookup_object('firmware_retraction', None)
-                        if fw_retract:
-                            retract_len = fw_retract.retract_length
-                            if fw_retract.retract_speed > 0:
-                                speed = fw_retract.retract_speed 
-                    elif self.slicer_retraction > 0:
-                        sequence_vars = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
-                        retract_len   = self.slicer_retraction
-                        speed         = sequence_vars.variables.get('retract_speed', speed) if sequence_vars else speed
-                    
-                    if retract_len > 0:
-                        self.log_debug("Retracting %.2fmm to match unhandled slicer retraction" % -retract_len)
-                        self.reset_sync_gear_to_extruder(False if extruder_only else None, force_grip=True)
-                        self.gcode.run_script_from_command("G1 E-%.2f F%d " % (retract_len, speed * 60))
-                    
-                    self.slicer_retraction    = -1
-                    self.slicer_fw_retraction = False
         except MmuError as ee:
             self._track_gate_statistics('load_failures', self.gate_selected)
             raise MmuError("Load sequence failed because:\n%s" % (str(ee)))
