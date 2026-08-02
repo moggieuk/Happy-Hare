@@ -45,6 +45,8 @@
 # 7. "if XX" construct is allowed on comment lines
 # 8. Added 'array_editor <separator> [size]' option for strings that represent lists
 #    E.g. `array_editor ";" PARAM_NUM_GATES
+# 9. Font manipulators like [[B]]xx[[/B] can be used in prompts and comments
+#    and include: B,BOLD,DIM,U,UNDERLINE,REV,REVERSE,C:n,COLOR:n (color), RESET
 #
 # Menuconfig:
 # 1. 'r' to reset value to default

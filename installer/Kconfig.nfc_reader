@@ -64,7 +64,7 @@ config UNSELECT_MMU_HAS_NFC_READER
 
 if !UNSELECT_MMU_HAS_NFC_READER
   comment "_"
-  comment "_RFID (BETA)"
+  comment "_RFID [[B]](BETA)[[/B]]"
 
   config MMU_HAS_NFC_READER
     bool "Has NFC reader(s) for RFID tag?"
@@ -109,22 +109,22 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
           Select the type of NFC reader being used.
 
         config CHOICE_NFC_READER_TYPE_RC522
-          bool "RC522 / SPI"
+          bool "RC522 [[DIM]]/ SPI[[/DIM]]"
           help
             RC522 NFC reader using SPI.
 
         config CHOICE_NFC_READER_TYPE_PN5180
-          bool "PN5180 / SPI"
+          bool "PN5180 [[DIM]]/ SPI[[/DIM]]"
           help
             PN5180 NFC reader using SPI. Also requires BUSY and RST pins.
 
         config CHOICE_NFC_READER_TYPE_PN532
-          bool "PN532 / I2C"
+          bool "PN532 [[DIM]]/ I2C[[/DIM]]"
           help
             PN532 NFC reader using I2C, usually at address 0x24.
 
         config CHOICE_NFC_READER_TYPE_PN532_UART
-          bool "PN532 / UART"
+          bool "PN532 [[DIM]]/ UART"
           help
             PN532 NFC reader in HSU (High Speed UART) mode, on a USB serial adapter.
 
@@ -133,13 +133,13 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
             own bit-banged bus with no extra hardware.
 
 #       config CHOICE_NFC_READER_TYPE_PN532_SPI
-#         bool "PN532 / SPI"
+#         bool "PN532 [[DIM]]/ SPI[[/DIM]]"
 #         help
 #           PN532 NFC reader using SPI. Set the breakout board's mode pads to
 #           SEL0=0, SEL1=0.
 
         config CHOICE_NFC_READER_TYPE_PN7160
-          bool "PN7160 / I2C"
+          bool "PN7160 [[DIM]]/ I2C[[/DIM]]"
           help
             PN7160 NFC reader using I2C, address range 0x28-0x2B.
       endchoice
@@ -363,16 +363,16 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
                 Select the type of NFC reader being used for this gate.
 
               config CHOICE_NFC_READER_TYPE_RC522_$(i)
-                bool "RC522 / SPI"
+                bool "RC522 [[DIM]]/ SPI[[/DIM]]"
 
               config CHOICE_NFC_READER_TYPE_PN5180_$(i)
-                bool "PN5180 / SPI"
+                bool "PN5180 [[DIM]]/ SPI[[/DIM]]"
 
               config CHOICE_NFC_READER_TYPE_PN532_$(i)
-                bool "PN532 / I2C"
+                bool "PN532 [[DIM]]/ I2C[[/DIM]]"
 
               config CHOICE_NFC_READER_TYPE_PN532_UART_$(i)
-                bool "PN532 / UART"
+                bool "PN532 [[DIM]]/ UART[[/DIM]]"
                 help
                   PN532 in HSU mode on a USB serial adapter plugged into the HOST,
                   not into an MCU. Needs its OWN adapter - a port cannot be shared
@@ -385,7 +385,7 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
                   adapters.
 
               config CHOICE_NFC_READER_TYPE_PN7160_$(i)
-                bool "PN7160 / I2C"
+                bool "PN7160 [[DIM]]/ I2C[[/DIM]]"
             endchoice
 
             config PARAM_NFC_READER_TYPE_$(i)
