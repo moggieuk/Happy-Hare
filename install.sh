@@ -13,14 +13,13 @@ set -e
 
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 
-# locate Klipper python environment (klippy-env or klipper-env) and activate it
+# Locate Klipper python environment (klippy-env or klipper-env) and activate it
 if [ -f ~/klipper-env/bin/activate ]; then
     . ~/klipper-env/bin/activate
 elif [ -f ~/klippy-env/bin/activate ]; then
     . ~/klippy-env/bin/activate
 else
-    echo "${C_ERROR}ERROR: Klipper python environment not found.${C_OFF}" >&2
-    exit 1
+    echo "${C_WARNING}Klipper python environment not found.${C_OFF}"
 fi
 
 # Check for python 3.x
