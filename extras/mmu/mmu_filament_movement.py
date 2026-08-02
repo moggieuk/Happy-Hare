@@ -1512,7 +1512,7 @@ class MmuFilamentMovement:
                     # detect failure in the critical extruder entrance transition by
                     # performing the initial load with just the extruder motor and checking
                     # that the sensor un-triggers before continuing
-                    max_range = u.buffer.buffer_maxrange * 2 # Arbitary but buffer_maxrange is not enough to overcome bowden slack
+                    max_range = u.buffer.buffer_maxrange * 2 # Arbitrary but buffer_maxrange is not enough to overcome bowden slack
                     if length > max_range:
                         self.log_debug("Monitoring extruder entrance transition for up to %.1fmm..." % max_range)
                         actual, success = u.sync_feedback.adjust_filament_tension(use_gear_motor=False, max_move=max_range)

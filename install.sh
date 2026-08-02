@@ -12,19 +12,26 @@
 set -e
 
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
-if [ -f ~/klippy-env/bin/activate ]; then
+
+# locate Klipper python environment (klippy-env or klipper-env) and activate it
+if [ -f ~/klipper-env/bin/activate ]; then
+    . ~/klipper-env/bin/activate
+elif [ -f ~/klippy-env/bin/activate ]; then
     . ~/klippy-env/bin/activate
+else
+    echo "${C_ERROR}ERROR: Klipper python environment not found.${C_OFF}" >&2
+    exit 1
 fi
 
 # Check for python 3.x
 if command -v python >/dev/null 2>&1; then
     VER=$(python -c 'import sys; print(sys.version_info[0])')
     if [ "${VER}" -lt 3 ]; then
-        echo "${C_ERROR}ERROR: Python 3 is required to run Happy-Hare 4.x.${C_OFF}" >&2
+        echo "${C_ERROR}ERROR: Python 3 is required to run Happy-Hare. Please upgrade to Python 3.x or later.${C_OFF}" >&2
         exit 1
     fi
 else
-    echo "${C_ERROR}ERROR: Python not found. Please source environment to use for Happy-Hare 4.x.${C_OFF}" >&2
+    echo "${C_ERROR}ERROR: Klipper python not found. Please source correct Klipper python environment to use for Happy-Hare.${C_OFF}" >&2
     exit 1
 fi
 
@@ -288,9 +295,8 @@ fi
 #####################
 
 if [ "${F_UNINSTALL}" ]; then
-    echo "${C_WARNING}This will uninstall and cleanup prior config${C_OFF}"
-    echo
-    if prompt_yn "Are you sure"; then
+    echo "\n${C_WARNING}This will uninstall Happy Hare and cleanup prior config${C_OFF}"
+    if prompt_yn "Are you sure you want to continue"; then
         echo
         exit 0
     fi

@@ -158,7 +158,7 @@ class MmuController(MmuFilamentMovement):
             self.runout_last_handled_time = self.reactor.monotonic()
         self.is_handling_runout = False # True whilst handling a runout
 
-        self.unit_selected = None       # Must not stay None, set when inital gate is set or in _load_persisted_state()
+        self.unit_selected = None       # Must not stay None, set when initial gate is set or in _load_persisted_state()
         self.tool_selected = self.gate_selected = TOOL_GATE_UNKNOWN
         self._last_tool = self._next_tool       = TOOL_GATE_UNKNOWN
         self._next_gate = None
@@ -174,11 +174,17 @@ class MmuController(MmuFilamentMovement):
         self._reset_job_statistics()
         self.form_tip_vars = None       # Current defaults of gcode variables for tip forming macro
         self.gate_maps.clear_slicer_tool_map()
+
         self.pending_spool_id = -1      # For automatic assignment of spool_id if set perhaps by rfid reader
         self.pending_metadata = None    # (uid, metadata) staged from a shared NFC deep read, applied to the next gate
         self.nfc_lookup_pending = False # A shared NFC reader UID lookup is in flight (guards further shared reads)
         self._nfc_led_unit = None       # mmu_unit that initiated the current NFC read (for the fail flash)
         self.pending_phase = None       # Base spoolman pending spool_id LED phase: None | 'pending' | 'expiring'
+
+        self.slicer_purge = -1          # Slicer purge volume set by MMU_CHANGE_TOOL
+        self.slicer_retraction = -1     # Slicer retraction distance set by MMU_CHANGE_TOOL
+        self.slicer_fw_retraction = 0   # Slicer firmware retraction set by MMU_CHANGE_TOOL
+
         self.saved_toolhead_max_accel = None
         self.num_toolchanges = 0
 
@@ -637,6 +643,7 @@ class MmuController(MmuFilamentMovement):
             'num_toolchanges': self.num_toolchanges,
             'last_tool': self._last_tool,
             'next_tool': self._next_tool,
+            'slicer_purge': self.slicer_purge,
             'toolchange_purge_volume': self.toolchange_purge_volume,
             'last_toolchange': self._last_toolchange,
             'operation': self.saved_toolhead_operation,
