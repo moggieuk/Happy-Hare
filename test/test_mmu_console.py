@@ -762,6 +762,34 @@ class TestConsoleScript(unittest.TestCase):
         self.assertIn('[mmu] live', out)
         self.assertNotIn('[mmu_machine]', out)
 
+    def test_vars_file_shows_the_sessions_own_mmu_vars_cfg(self):
+        """
+        The saved-variables file is real and per-session. Showing it is the answer to "does
+        the harness even have an mmu_vars.cfg?" - it does, in a tempdir, discarded on exit.
+        """
+        rc, out = self._run(['/vars file'], ['--header', 'off'])
+        self.assertEqual(rc, 0, out[-2000:])
+        self.assertIn('mmu_vars.cfg', out)
+        self.assertIn('[Variables]', out)
+        self.assertIn('mmu__revision', out)
+
+    def test_a_default_boot_does_not_warn_that_calibration_is_incomplete(self):
+        """
+        Calibration is seeded INSIDE boot(), before __MMU_BOOTUP runs. Seeding afterwards
+        (which is what this used to do) left the banner warning about a machine that was
+        calibrated a millisecond later.
+        """
+        rc, out = self._run(['MMU_STATUS'], ['--header', 'off'])
+        self.assertEqual(rc, 0, out[-2000:])
+        self.assertNotIn('Calibration steps are not complete', out)
+        self.assertNotIn('not found in mmu_vars.cfg', out)
+
+    def test_no_calibrate_boots_cold_so_the_warnings_are_real(self):
+        """The counterpart: --no-calibrate is how you drive MMU_CALIBRATE_* for real."""
+        rc, out = self._run(['MMU_STATUS'], ['--header', 'off', '--no-calibrate'])
+        self.assertEqual(rc, 0, out[-2000:])
+        self.assertIn('Calibration steps are not complete', out)
+
     def test_state_was_renamed_to_vars(self):
         rc, out = self._run(['/state'], ['--header', 'off'])
         self.assertIn('unknown meta-command /state', out)
@@ -866,6 +894,33 @@ class TestTheDefaultProfile(unittest.TestCase):
             self.console._dispatch(command)
             self.assertEqual(hh.errors, [], 'failed on %r' % command)
         self.assertEqual(hh.mmu.filament_pos, 0, 'did not end up unloaded')
+
+    def test_the_selector_header_reports_the_carriage_and_the_servo(self):
+        """
+        The default profile has physical selectors, so the group must render something. Both
+        positions are shown because a lasting disagreement between them is a bug - see
+        Console._hdr_selector.
+        """
+        self.console.args.header = ['selector']
+        lines = self.console.header_lines()
+        self.assertTrue(lines, 'the selector group rendered nothing')
+        text = '\n'.join(lines)
+        self.assertIn('carriage=', text)
+        self.assertIn('cmd=', text)
+        self.assertIn('HOMED', text)
+        self.assertIn('servo=', text)                # unit0 is a LinearServoSelector
+
+    def test_placing_the_carriage_by_hand_moves_the_tracked_position(self):
+        """/selector is how a user stands in for physically sliding the carriage."""
+        axis = self.console.hh.printer.harness_selectors[0]
+        # meta() prints; keep it out of the runner's output
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.console.meta('/selector gate 0')
+            self.assertAlmostEqual(axis.carriage, axis.nominal_gate_offsets()[0], places=3)
+            self.console.meta('/selector end')
+            self.assertAlmostEqual(axis.carriage, axis.travel_max, places=3)
+            self.console.meta('/selector home')
+            self.assertAlmostEqual(axis.carriage, axis.travel_min, places=3)
 
 
 if __name__ == '__main__':

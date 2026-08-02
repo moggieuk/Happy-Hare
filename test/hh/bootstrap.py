@@ -385,9 +385,7 @@ class Session:
                        for u in self.mmu.mmu_machine.units}
         model.bind(owned, self._set_sensor_state)
         self.printer.harness_filament = model
-        mq = self.printer.lookup_object('motion_queuing', None)
-        if mq is not None:
-            mq.move_observer = self._on_manual_move
+        self._install_move_observer()
         if self._encoders():
             model.observers.append(self._on_encoder_travel)
         return model
@@ -450,8 +448,11 @@ class Session:
         extruder = toolhead.get_extruder() if toolhead is not None else None
         stepper = getattr(getattr(extruder, 'extruder_stepper', None), 'stepper', None)
         if stepper is not None:
-            # Retract: HH reads (initial - final) * step_dist, so final must be LOWER
+            # Retract: HH reads (initial_mcu_pos - final_mcu_pos) * step_dist
+            # (mmu_filament_movement.py:2541-2559), so BOTH have to move. set_position alone
+            # is not enough - it is mcu-preserving, by design (klippy_root/stepper.py).
             stepper.set_position([stepper.get_commanded_position() - distance, 0., 0., 0.])
+            stepper.harness_note_motion(-distance)
 
         model = getattr(self.printer, 'harness_filament', None)
         gate = self.mmu.gate_selected
@@ -463,9 +464,16 @@ class Session:
         Seed the calibration a PHYSICAL-selector machine needs before it can select a gate and
         load. Returns {unit name: {what was seeded}}.
 
-        NOT called from boot(), deliberately: uncalibrated is a real state HH has to cope with,
-        tradrack's existing tests assert exactly that, and quietly calibrating everything would
-        erase the distinction. Physical-selector tests and the console call this explicitly.
+        Not called from a bare boot(), deliberately: uncalibrated is a real state HH has to
+        cope with, tradrack's existing tests assert exactly that, and quietly calibrating
+        everything would erase the distinction. Pass boot(calibrate=True), or call this
+        explicitly, to get a calibrated machine.
+
+        WORKS IN EITHER PHASE. Called BEFORE klippy:ready (which is what boot(calibrate=True)
+        does) it only writes the variables, and Happy Hare's own handle_ready then loads them
+        and marks itself calibrated - so the "not found in mmu_vars.cfg" warnings never fire.
+        Called after ready, as tests do, it additionally applies the values in memory and
+        marks calibrated itself, because handle_ready has already been and gone.
 
         Two steps, both only where the machine actually requires them:
 
@@ -481,31 +489,51 @@ class Session:
         bowden length here, and seeding anything else would leave HH's idea of the machine
         disagreeing with the machine.
 
-        Why seeding rather than running HH's MMU_CALIBRATE_SELECTOR AUTO=1, which would be the
-        better answer: see the KNOWN LIMIT note at the top of selector.py. Bowden seeding goes
-        through HH's public update_bowden_length(), which persists and marks calibrated itself.
+        Why seeding rather than running HH's MMU_CALIBRATE_SELECTOR AUTO=1: speed, and because
+        every test that wants a working machine would otherwise pay for a full calibration run.
+        Auto-calibration DOES work now (test_mmu_selector.py exercises it) - drive it directly,
+        or use the console's --no-calibrate, when the calibration flow is what you are testing.
         """
         from extras.mmu.mmu_constants import (CALIBRATED_ENCODER, CALIBRATED_SELECTOR,
+                                              VARS_MMU_BOWDEN_LENGTHS,
+                                              VARS_MMU_ENCODER_RESOLUTION,
+                                              VARS_MMU_GEAR_ROTATION_DISTANCES,
                                               VARS_MMU_SELECTOR_OFFSETS)
 
         model = self.filament()
+        # Every unit, not just the ones with a physical selector: bowden, gear and encoder
+        # seeding apply to a VirtualSelector machine too, and skipping them left BoxTurtle
+        # booting with "Calibration steps are not complete" for no reason.
+        axes = {axis.unit.name: axis
+                for axis in (getattr(self.printer, 'harness_selectors', None) or ())}
         applied = {}
-        for axis in (getattr(self.printer, 'harness_selectors', None) or ()):
-            unit = axis.unit
+        for unit in self.mmu.mmu_machine.units:
+            axis = axes.get(unit.name)
             done = {}
 
-            offsets = axis.nominal_gate_offsets()
-            if hasattr(axis.selector, 'selector_offsets') and offsets:
-                axis.selector.selector_offsets = list(offsets)
+            offsets = axis.nominal_gate_offsets() if axis is not None else []
+            if offsets:
                 axis.selector.var_manager.set(VARS_MMU_SELECTOR_OFFSETS, list(offsets),
                                               namespace=unit.name)
-                axis.selector.calibrator.mark_calibrated(CALIBRATED_SELECTOR)
+                # Pre-ready, the variable is all that is needed - LinearSelector.handle_ready
+                # reads it and marks itself calibrated (mmu_linear_selector.py:203-216).
+                # selector_offsets does not exist until then, and is the phase marker.
+                if hasattr(axis.selector, 'selector_offsets'):
+                    axis.selector.selector_offsets = list(offsets)
+                    axis.selector.calibrator.mark_calibrated(CALIBRATED_SELECTOR)
                 done['selector_offsets'] = list(offsets)
 
             if getattr(unit, 'require_bowden_move', False):
                 length = model.layout['extruder_entry'] - model.layout.get('mmu_exit', 0.0)
-                unit.calibrator.update_bowden_length(length, gate=unit.first_gate,
-                                                     reason='seeded by the test harness')
+                # Pre-ready there is no _bowden_lengths to update yet, so write the variable
+                # and let MmuCalibrator.handle_ready load it (mmu_calibrator.py:70-95).
+                if getattr(unit.calibrator, '_bowden_lengths', None) is None:
+                    unit.calibrator.var_manager.set(VARS_MMU_BOWDEN_LENGTHS,
+                                                    [length] * unit.num_gates,
+                                                    namespace=unit.name)
+                else:
+                    unit.calibrator.update_bowden_length(
+                        length, gate=unit.first_gate, reason='seeded by the test harness')
                 done['bowden_length'] = length
 
             # GEAR ROTATION DISTANCE: seeded with the value the harness is ALREADY using.
@@ -517,19 +545,34 @@ class Session:
             # rotation distance" on every load. Setting rd to its current value leaves the
             # bowden adjustment inside update_gear_rd a no-op, so ordering after the bowden
             # seeding above is safe.
+            #
+            # Pre-ready the cache does not exist yet, so read the same source it will be
+            # built from and write the variable directly; handle_ready then loads it instead
+            # of warning. The two branches agree because a unit's per-gate rotation distances
+            # all come from the same config value - verified uniform on every shipped profile.
             defaults = getattr(unit.calibrator, '_default_rotation_distances', None)
             if defaults:
                 unit.calibrator.update_gear_rd(defaults[0], gate=unit.first_gate)
                 done['gear_rotation_distance'] = defaults[0]
+            else:
+                rds = self._config_rotation_distances(unit)
+                if rds:
+                    unit.calibrator.var_manager.set(VARS_MMU_GEAR_ROTATION_DISTANCES, rds,
+                                                    namespace=unit.name)
+                    done['gear_rotation_distance'] = rds[0]
 
-            # ENCODER: marked, not measured. MMU_CALIBRATE_ENCODER exists to discover the real
-            # resolution of real hardware; here the encoder pulses are GENERATED from
-            # mmu_encoder.resolution (bootstrap._on_encoder_travel divides travel by it), so
-            # the configured value is true by construction and measuring it would only confirm
-            # arithmetic. Nothing to seed, just a status bit.
+            # ENCODER: the configured resolution written back as if it had been measured.
+            # MMU_CALIBRATE_ENCODER exists to discover the real resolution of real hardware;
+            # here the encoder pulses are GENERATED from mmu_encoder.resolution
+            # (bootstrap._on_encoder_travel divides travel by it), so the configured value is
+            # true by construction and measuring it would only confirm arithmetic.
             if unit.has_encoder():
+                for encoder, _counter in self._encoders():
+                    unit.calibrator.var_manager.set(VARS_MMU_ENCODER_RESOLUTION,
+                                                    round(encoder.resolution, 4),
+                                                    namespace=encoder.name)
                 unit.calibrator.mark_calibrated(CALIBRATED_ENCODER)
-                done['encoder'] = 'marked (resolution is config-true in the harness)'
+                done['encoder'] = 'resolution is config-true in the harness'
 
             if done:
                 applied[unit.name] = done
@@ -592,10 +635,20 @@ class Session:
         TestEveryDriveModeMovesFilament pins all four modes to the exact distance, so a
         regression to either the dropped-move or the double-counted kind fails loudly.
 
-        Plain SELECTOR moves need nothing here: the carriage is the stepper's own commanded
-        position (see SelectorAxis.carriage) and no filament travels with it. A selector is
-        never the driving stepper, so they fall out for free.
+        Plain SELECTOR moves are handled first and separately. They carry no filament - the
+        carriage is a different axis - but they DO have to move the carriage, because the
+        harness now tracks it (see the note at the top of test/hh/selector.py). Two things
+        break without this: the retract inside MmuGenericRail.home() never backs the carriage
+        off the switch, so the second homing move measures zero; and MMU_CALIBRATE_SELECTOR
+        AUTO=1 never reaches the end of travel it is trying to find.
         """
+        axis = self._selector_axis_for(trapq)
+        if axis is not None:
+            moved = axis.advance(distance)
+            for stepper in axis.stepper.get_steppers():
+                stepper.harness_note_motion(moved)
+            return
+
         model = getattr(self.printer, 'harness_filament', None)
         if model is None:
             return
@@ -606,6 +659,38 @@ class Session:
         if stepper is None or getattr(stepper, 'manual_trapq', None) is not trapq:
             return
         model.advance(gate, distance, 'move')
+
+    def _config_rotation_distances(self, unit):
+        """
+        The per-gate gear rotation distances straight off the steppers - the same expression
+        MmuCalibrator.handle_ready uses to build _default_rotation_distances
+        (mmu_calibrator.py:108-111). Needed only when seeding BEFORE ready, when that cache
+        does not exist yet.
+        """
+        try:
+            steppers = [d.mmu_gear_stepper for d in unit.drives][:unit.num_gates]
+            return [s.stepper.get_rotation_distance()[0] for s in steppers]
+        except Exception:                           # pragma: no cover - defensive
+            logging.debug('harness: no gear steppers to read rotation distance from')
+            return []
+
+    def _selector_axis_for(self, trapq):
+        """The SelectorAxis whose stepper owns `trapq`, or None for any other move."""
+        for axis in (getattr(self.printer, 'harness_selectors', None) or ()):
+            if getattr(axis.stepper, 'manual_trapq', None) is trapq:
+                return axis
+        return None
+
+    def _install_move_observer(self):
+        """
+        Watch every plain (non-homing) move. Needed by BOTH the filament model and the
+        selector axes, so it is installed independently of either - a selector can move
+        before anything has asked for the filament model, and filament() is lazy.
+        """
+        mq = self.printer.lookup_object('motion_queuing', None)
+        if mq is not None:
+            mq.move_observer = self._on_manual_move
+        return self
 
     def _driving_stepper(self, gate):
         """
@@ -715,24 +800,45 @@ class Session:
         self.printer.send_event('klippy:ready')
         return self
 
-    def boot(self, extra=0.01):
+    def boot(self, extra=0.01, calibrate=False):
         """
         Full sequence to a live MMU: connect -> ready -> pump the reactor past
         BOOT_DELAY so the scheduled bootup callback runs __MMU_BOOTUP, then past the
         NFC reader init delay that bootup schedules.
+
+        calibrate=True seeds calibration BEFORE klippy:ready, so Happy Hare's own handle_ready
+        loads the variables and neither the per-subsystem "... not found in mmu_vars.cfg"
+        warnings nor __MMU_BOOTUP's "Calibration steps are not complete" ever fire. Seeding
+        afterwards (as the console used to) left the banner warning about a machine that was
+        calibrated a millisecond later.
+
+        It deliberately does NOT home. Measured on tradrack, seeding alone leaves bootup's
+        output byte-identical minus the warnings; homing here as well makes bootup take a
+        different recovery branch (the "Attempting to recover filament position" line goes
+        away and the selector row changes). Homing stays where it was - after boot() returns.
+
+        Defaults to False: an uncalibrated machine is a real state HH has to cope with, and
+        the tests assert it.
         """
         if not self._booted:
             if self.config is None:
                 self.build()
             self.connect()
-            self.ready()
-            # Selector endstop geometry. Published here rather than from filament(), which is
+            # Selector endstop geometry, and the plain-move observer that keeps each
+            # carriage up to date. Published here rather than from filament(), which is
             # LAZY - nothing builds the filament model until a test asks for it, and a
             # selector homing move can happen before that (MMU_HOME needs no filament). It is
             # also a genuinely separate axis, so hanging it off the filament model would be
             # the wrong dependency even if the timing worked. Empty list on a VirtualSelector
             # machine, so nothing changes for profiles that have no selector.
+            #
+            # Before ready() because calibrate() needs the axes to read each unit's CAD
+            # geometry; everything they touch is settled at config load.
             self.printer.harness_selectors = selector_mod.axes_for(self.printer)
+            self._install_move_observer()
+            if calibrate:
+                self.calibrate()
+            self.ready()
             self.install_macro_effects()
             self.reactor.advance(BOOT_DELAY + extra)
             self._settle_nfc_init(extra)

@@ -262,7 +262,10 @@ class Console:
         if a.plain:
             self.hh.mmu.p.console_show_colored_text = 0
 
-        self.hh.boot()
+        # Seed calibration INSIDE boot(), before __MMU_BOOTUP runs. Calibrating afterwards
+        # (which is what this used to do) left the banner warning "Calibration steps are not
+        # complete" about a machine that was calibrated a millisecond later.
+        self.hh.boot(calibrate=not a.no_calibrate)
         self.startup_output = list(self.sink)        # the welcome, shown by banner()
         del self.sink[:]
 
@@ -281,21 +284,25 @@ class Console:
         # machine, so this costs the older profiles nothing.
         self._prepare_selectors()
 
-        if not a.no_preload:
+        if not (a.no_preload or a.no_calibrate):
             self._preload_all()
         return self
 
     def _prepare_selectors(self):
         """
-        Seed selector/bowden calibration and home each physical selector.
+        Home each physical selector. Calibration itself is seeded inside boot() - see the
+        note there - but homing stays here on purpose: doing it before __MMU_BOOTUP sends
+        bootup down a different recovery branch.
 
-        boot() deliberately leaves a machine uncalibrated - that is a real state HH has to cope
-        with, and tests assert it - so the console asks for it explicitly. MMU_HOME must name
-        its unit on a multi-unit machine.
+        MMU_HOME must name its unit on a multi-unit machine.
+
+        Skipped entirely under --no-calibrate, which boots the machine cold so the real
+        MMU_CALIBRATE_* flow can be driven by hand.
         """
+        if self.args.no_calibrate:
+            return
         if not getattr(self.hh.printer, 'harness_selectors', None):
             return
-        self.hh.calibrate()
         for index, unit in enumerate(self.hh.mmu.mmu_machine.units):
             if getattr(unit.selector, 'selector_stepper', None) is not None:
                 self._dispatch('MMU_HOME UNIT=%d' % index)
@@ -413,7 +420,7 @@ class Console:
 
     # get_status() is a pure read with no remote calls, and nothing changes while the user
     # types, so the whole header is rebuilt per prompt rather than diffed or cached.
-    GROUPS = ('machine', 'sensors', 'filament', 'gates', 'leds')
+    GROUPS = ('machine', 'sensors', 'filament', 'selector', 'gates', 'leds')
 
     def _status(self):
         return self.hh.mmu.get_status(self.hh.reactor.monotonic())
@@ -560,6 +567,33 @@ class Console:
             out.append('  %sgate %-3d %s  %+8.1f' % (flag, gate, ' '.join(cells), tip))
         return out
 
+    def _hdr_selector(self, st):
+        """
+        Where each physical selector carriage is, and what its servo is doing.
+
+        carriage is the harness's PHYSICAL truth; cmd is what Happy Hare thinks. They agree
+        except while a homing move is in flight, when MmuGenericRail.home() has rebased the
+        frame to `forcepos` - so a lasting disagreement means something has gone wrong.
+
+        Servo state is NOT in mmu.get_status(); it lives only on the selector object
+        (LinearServoSelector -> 'servo', MmuServoSelector -> 'grip'), so read it there.
+        Empty on a VirtualSelector machine, which has no carriage and no servo.
+        """
+        out = []
+        for axis in (getattr(self.hh.printer, 'harness_selectors', None) or ()):
+            selector = axis.selector
+            bits = ['carriage=%7.2f' % axis.carriage, 'cmd=%7.2f' % axis.commanded,
+                    'home=%.2f' % axis.home_position()]
+            homed = getattr(selector, 'is_homed', None)
+            bits.append(paint('HOMED', '32', self.color) if homed
+                        else paint('NOT HOMED', '33', self.color))
+            status = selector.get_status(self.hh.reactor.monotonic()) or {}
+            for key in ('servo', 'grip'):
+                if status.get(key) is not None:
+                    bits.append('%s=%s' % (key, status[key]))
+            out.append('  %-8s %s' % (axis.unit.name, '  '.join(bits)))
+        return out
+
     def _hdr_gates(self, st):
         # These are LIVE list references from gate_maps, not copies - read only.
         status = st.get('gate_status')
@@ -660,7 +694,8 @@ class Console:
 
     META_HELP = (
         ('/advance N', 'advance virtual time N seconds (alias /wait)'),
-        ('/vars [mmu|machine]', 'get_status() of the mmu and mmu_machine objects'),
+        ('/vars [mmu|machine|file]',
+         'get_status() of the mmu and mmu_machine objects, or the saved mmu_vars.cfg'),
         ('/clear', 'clear the log window, keeping the status section'),
         ('/sensors', 'sensor table (also: MMU_SENSORS)'),
         ('/sensor NAME on|off|enable|disable',
@@ -669,6 +704,8 @@ class Console:
         ('/preload GATE', 'place then MMU_PRELOAD that gate'),
         ('/exhaust GATE', 'give the filament a finite tail - this is what a runout IS'),
         ('/filament', 'per-gate tip/tail description'),
+        ('/selector [POS|gate N|home|end] [UNIT=n]',
+         'where the selector carriage physically is - set it as you would by hand'),
         ('/heat [TEMP]', 'set the extruder temperature'),
         ('/trace 0-4', "Happy Hare's own log_level, 4 = full narration"),
         ('/tag UID [GATE]', 'attach an NFC tag (needs --virtual-nfc)'),
@@ -725,8 +762,10 @@ class Console:
         it is still the only place the per-unit config summary appears.
         """
         want = args[0].lower() if args else None
-        if want not in (None, 'mmu', 'machine'):
-            raise ValueError("usage: /vars [mmu|machine]")
+        if want not in (None, 'mmu', 'machine', 'file'):
+            raise ValueError("usage: /vars [mmu|machine|file]")
+        if want == 'file':
+            return self._dump_mmu_vars()
         if want in (None, 'mmu'):
             print(paint('  [mmu] live', '1', self.color))
             st = self._status()
@@ -747,6 +786,71 @@ class Console:
                         print('      %-28s %s' % (k2, value[k2]))
                 else:
                     print('    %-30s %s' % (key, value))
+
+    def _dump_mmu_vars(self):
+        """
+        The session's mmu_vars.cfg, on disk, as MMU_CALIBRATE_* leaves it.
+
+        It is a per-session copy of the repo's config/mmu_vars.cfg living in the harness
+        tempdir (test/hh/bootstrap.py:_mmu_vars_copy) and it goes away with the session -
+        deliberately, so a run can never touch a real install's calibration.
+        """
+        save_vars = self.hh.printer.lookup_object('save_variables', None)
+        path = getattr(save_vars, 'filename', None)
+        if not path or not os.path.exists(path):
+            print('    (no mmu_vars.cfg for this session)')
+            return
+        print(paint('  [mmu_vars.cfg] %s (per-session copy, discarded on exit)'
+                    % path, '1', self.color))
+        with open(path) as handle:
+            for line in handle:
+                print('    %s' % line.rstrip())
+
+    def _meta_selector(self, args):
+        """
+        Report or place the selector carriage.
+
+        Placing it is the simulator's stand-in for physically sliding the carriage, which is
+        exactly what MMU_CALIBRATE_SELECTOR AUTO=1 asks for: "the user has manually
+        positioned the selector aligned with gate 0 before calling"
+        (mmu_linear_selector.py:_calibrate_selector_auto).
+        """
+        axes = list(getattr(self.hh.printer, 'harness_selectors', None) or ())
+        if not axes:
+            print('    (this machine has no physical selector)')
+            return
+
+        rest, unit = [], 0
+        for arg in args:
+            if arg.upper().startswith('UNIT='):
+                unit = int(arg.split('=', 1)[1])
+            else:
+                rest.append(arg)
+        if not 0 <= unit < len(axes):
+            raise ValueError('no selector on unit %d (have 0-%d)' % (unit, len(axes) - 1))
+
+        if not rest:
+            for axis in axes:
+                print('    %s' % axis.describe())
+            return
+
+        axis, word = axes[unit], rest[0].lower()
+        if word == 'gate':
+            offsets = axis.nominal_gate_offsets()
+            gate = int(rest[1])
+            if not offsets or not 0 <= gate < len(offsets):
+                raise ValueError('no nominal position for gate %d' % gate)
+            target = offsets[gate]
+        elif word == 'home':
+            target = axis.travel_min
+        elif word == 'end':
+            if axis.travel_max is None:
+                raise ValueError('this selector has no known end of travel')
+            target = axis.travel_max
+        else:
+            target = float(word)
+        axis.place(target)
+        print('    %s' % axis.describe())
 
     def _meta_sensors(self, args):
         self.run_command('MMU_SENSORS')
@@ -870,7 +974,11 @@ class Console:
         print()
         print(paint('Happy Hare console', '1', self.color)
               + '  profile=%s  gates=%d' % (self.args.profile, mmu.num_gates))
-        if not self.args.no_preload:
+        if self.args.no_calibrate:
+            print('Uncalibrated and unhomed, as a fresh install would be. Run '
+                  'MMU_CALIBRATE_SELECTOR / MMU_CALIBRATE_BOWDEN;\n'
+                  '/selector places the carriage the way you would by hand.')
+        elif not self.args.no_preload:
             print('All %d gates preloaded, extruder at %g C.'
                   % (mmu.num_gates, self.args.temp))
         if not self.args.no_log:
@@ -1041,6 +1149,9 @@ def parse_args(argv=None):
                    help='extruder temperature to set at startup (default %(default)s)')
     p.add_argument('--no-preload', action='store_true',
                    help='leave every gate empty (gates start empty, so MMU_LOAD will fail)')
+    p.add_argument('--no-calibrate', action='store_true',
+                   help='boot cold: no seeded calibration, no homing, no preload - the state '
+                        'a fresh install is in, so MMU_CALIBRATE_* can be driven for real')
     p.add_argument('--trace', type=int, default=0, metavar='0-4',
                    help="Happy Hare log_level; 4 is full narration")
     p.add_argument('--virtual-nfc', action='store_true',

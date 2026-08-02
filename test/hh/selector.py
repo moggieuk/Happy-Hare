@@ -25,17 +25,23 @@
 #   IndexedSelector (ViViD)                 NO home switch at all; one index switch PER GATE,
 #                                           laid out in selector_gate_order.
 #
-# KNOWN LIMIT: HH's own MMU_CALIBRATE_SELECTOR AUTO=1 cannot run here, so offsets are seeded
-# instead (Session.calibrate_selectors). Auto-calibration measures travel as
-# (trig_mcu_pos - init_mcu_pos) * step_dist (extras/mmu_stepper.py:414-459), which needs the
-# mcu position to survive the set_position(forcepos) that precedes every homing move. Real
-# Klipper gets that from step generation, with set_position preserving the mcu position
-# (klippy/stepper.py:158-177). The fake has no step generation - set_position IS how it
-# effects motion - so making it preserve the mcu position instead makes travel measure 0 and
-# homing die with "Endstop still triggered after retract". Verified by experiment. Decoupling
-# the two would mean reworking motion semantics for every stepper in the fake, which is a
-# bigger change than this needs; seeding costs one call and duplicates no HH logic beyond the
-# published quick-method formula.
+# THE CARRIAGE IS TRACKED, not read off the stepper. This file used to be stateless with
+# respect to position - `carriage` was just `stepper.commanded_pos` - and that is what made
+# MMU_CALIBRATE_SELECTOR unusable: MmuGenericRail.home() teleports the axis to `forcepos`
+# immediately before every homing move (extras/mmu_stepper.py:424), so a trip resolved against
+# the stepper coordinate always measured |position_endstop - forcepos|, i.e. the homing SEARCH
+# distance. Every gate reported the same number.
+#
+# So the harness carries the physical truth, exactly as filament.py does for the filament, and
+# the fake motion layer keeps the two meanings of "position" apart:
+#
+#   set_position()        redefine the coordinate frame; no motion   (klippy_root/stepper.py)
+#   harness_note_motion() real travel; moves the mcu step count      (klippy_root/stepper.py)
+#
+# Motion reaches us from exactly two places - the fake HomingMove for homing moves, and
+# Session._on_manual_move for plain ones. Both must call advance(); a plain move that is not
+# observed leaves the carriage on the home switch through the retract inside rail.home(), and
+# the second homing move then measures zero.
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
@@ -44,10 +50,11 @@ import logging
 
 class SelectorAxis:
     """
-    The endstop geometry of one unit's selector.
+    The endstop geometry of one unit's selector, and where its carriage physically is.
 
-    Stateless with respect to position - it reads the rail and the selector each time - so it
-    can be rebuilt at any point without going out of step with the machine.
+    The geometry half is stateless - it reads the rail and the selector each time. The
+    carriage is tracked (see the note at the top of this file), so an axis must be built once
+    and kept, not rebuilt mid-session.
     """
 
     def __init__(self, unit, selector, stepper):
@@ -55,14 +62,60 @@ class SelectorAxis:
         self.selector = selector
         self.stepper = stepper
 
+        # The physical limits of travel. `travel_min` is the home switch, which on every
+        # shipped LinearSelector doubles as a hard stop; `travel_max` is the far end, which
+        # _calibrate_selector_auto deliberately drives into to discover the selector length
+        # (mmu_linear_selector.py:_calibrate_selector_auto step 2), so a plain move HAS to
+        # stop there or step 3 measures a number the machine does not have.
+        self.travel_min = self.home_position()
+        offsets = self.nominal_gate_offsets()
+        if offsets:
+            self.travel_max = offsets[-1] + (self._cad('cad_last_gate_offset') or 0.)
+        else:
+            positions = self.gate_positions()
+            self.travel_max = max(positions.values()) if positions else None
+
+        # WHERE THE CARRIAGE POWERS ON. Nominal gate 0, NOT the home switch: a carriage
+        # sitting on its own switch makes the first homing move travel zero, which trips
+        # HomingMove.check_no_movement() and fails MMU_HOME with "Endstop still triggered
+        # after retract". Gate 0 is also where MMU_CALIBRATE_SELECTOR AUTO=1 asks the user to
+        # put it by hand, so a cold session is ready for the real calibration flow.
+        self.carriage = offsets[0] if offsets else (self.travel_min or 0.)
+
+    # -- motion ------------------------------------------------------------------
+
+    def place(self, position):
+        """Put the carriage somewhere, as a user sliding it by hand would. Clamped."""
+        self.carriage = self._clamp(position)
+        return self.carriage
+
+    def advance(self, delta):
+        """Move the carriage by `delta`, and return the distance it ACTUALLY travelled.
+
+        The return value is what the caller must feed to harness_note_motion: a move that
+        runs into either end of travel moves the mcu position by less than it asked for.
+        """
+        if not delta:
+            return 0.
+        target = self._clamp(self.carriage + delta)
+        moved = target - self.carriage
+        self.carriage = target
+        return moved
+
+    def _clamp(self, position):
+        if self.travel_min is not None:
+            position = max(self.travel_min, position)
+        if self.travel_max is not None:
+            position = min(self.travel_max, position)
+        return position
+
     # -- geometry ----------------------------------------------------------------
 
     @property
-    def carriage(self):
+    def commanded(self):
         """
-        Where the carriage is, in axis coordinates. Read from the stepper rather than tracked:
-        homing leaves the axis at position_endstop and selecting a gate is a plain move to
-        that gate's offset, so the stepper's own commanded position is already the answer.
+        What Happy Hare THINKS the position is. Equal to `carriage` except while a homing
+        move is in flight, when rail.home() has rebased the frame to `forcepos`.
         """
         return self.stepper.commanded_pos
 
@@ -162,8 +215,9 @@ class SelectorAxis:
         return abs(travel)
 
     def describe(self):
-        parts = ['%s selector carriage=%.2f home=%.2f'
-                 % (self.unit.name, self.carriage, self.home_position())]
+        parts = ['%s selector carriage=%.2f cmd=%.2f home=%.2f max=%s'
+                 % (self.unit.name, self.carriage, self.commanded, self.home_position(),
+                    '-' if self.travel_max is None else '%.2f' % self.travel_max)]
         for name, pos in sorted(self.gate_positions().items(), key=lambda kv: kv[1]):
             parts.append('%s=%.2f' % (name.split(':')[-1], pos))
         return ' '.join(parts)

@@ -97,7 +97,38 @@ class MCU_stepper:
         return coord[0]
 
     def set_position(self, coord):
-        self._commanded_pos = self.calc_position_from_coord(coord)
+        self.set_commanded_position(self.calc_position_from_coord(coord))
+
+    def set_commanded_position(self, pos):
+        """
+        Redefine the origin WITHOUT registering motion, exactly as real Klipper does
+        (klippy/stepper.py set_commanded_position). The mcu step count is physical and
+        must survive a change of coordinate frame.
+
+        This is load-bearing for MmuGenericRail.home(), which teleports the axis to
+        `forcepos` before each homing move and then measures travel as
+        (trig_mcu_pos - init_mcu_pos) * step_dist (extras/mmu_stepper.py:414-459). If the
+        teleports counted as movement, every measurement would come back as the homing
+        SEARCH distance instead of the distance actually travelled - which is exactly what
+        MMU_CALIBRATE_SELECTOR used to report.
+        """
+        self._mcu_position_offset += self._commanded_pos - pos
+        self._commanded_pos = pos
+
+    def harness_note_motion(self, distance):
+        """
+        Register `distance` mm of REAL travel. The counterpart to set_position.
+
+        The fake has no step generation, so nothing else advances the mcu position. The
+        harness drives this from the two places motion actually happens: the fake
+        HomingMove (klippy_root/extras/homing.py) and the plain-move observer
+        (test/hh/bootstrap.py:_on_manual_move).
+
+        Adjusts the OFFSET rather than _commanded_pos on purpose: the commanded position is
+        owned by set_position and mirrors MmuStepper.commanded_pos, so moving it here would
+        make everything that reads get_commanded_position() disagree with Happy Hare.
+        """
+        self._mcu_position_offset += distance
 
     def get_commanded_position(self):
         return self._commanded_pos

@@ -196,8 +196,21 @@ class HomingMove:
             for stepper in endstop.get_steppers()
         ]
 
+        # THE TWO BRANCHES BELOW MUST STAY SEPARATE - do not "simplify" them into one.
+        #
+        # A SELECTOR move is resolved against the carriage's PHYSICAL position, because
+        # start_axis is the frame rail.home() just rebased to `forcepos` and means nothing.
+        # It then reports real travel through harness_note_motion and halts at `movepos`,
+        # which is what real Klipper does for probe_pos=False and what leaves
+        # MmuStepper.commanded_pos at position_endstop for _home_selector.
+        #
+        # A FILAMENT move is resolved against the filament model, which already tracks
+        # position independently, and halts at start_axis + travel. That is the behaviour the
+        # whole filament/sensor model was built and validated against; it does not register
+        # motion because HH measures it from commanded coordinates (do_homing_move returns
+        # trig_pos/halt_pos), never from the mcu step count.
         if axis is not None:
-            winner, travel = self._resolve_selector(axis, leaves, start_axis, delta)
+            winner, travel = self._resolve_selector(axis, leaves, axis.carriage, delta)
         else:
             winner, travel = self._resolve(model, leaves, delta, triggered)
 
@@ -209,7 +222,9 @@ class HomingMove:
             # A selector move advances no filament: the carriage is a different axis, and
             # feeding its displacement into the gate model would push a gate's filament by
             # the selector's travel. Only the axis position matters here.
-            if model is not None and axis is None:
+            if axis is not None:
+                self._move_selector(axis, delta)
+            elif model is not None:
                 model.advance(self._gate(), delta,
                               'homing MISS [%s]' % ','.join(n for _e, n in leaves))
             toolhead.set_position([target_axis, 0., 0., 0.])
@@ -221,9 +236,13 @@ class HomingMove:
 
         endstop, name = winner
         signed = travel if delta > 0 else -travel
-        if model is not None and axis is None:      # selector moves carry no filament
-            model.advance(self._gate(), signed, 'homing -> %s' % name)
-        halt_axis = start_axis + signed
+        if axis is not None:
+            self._move_selector(axis, signed)
+            halt_axis = target_axis
+        else:
+            if model is not None:
+                model.advance(self._gate(), signed, 'homing -> %s' % name)
+            halt_axis = start_axis + signed
         toolhead.set_position([halt_axis, 0., 0., 0.])
         toolhead.flush_step_generation()
         _fire(endstop, print_time, eventtime)
@@ -283,6 +302,20 @@ class HomingMove:
             if candidate.stepper is self.toolhead:
                 return candidate
         return None
+
+    def _move_selector(self, axis, delta):
+        """
+        Move the carriage and register the travel on the mcu, which is where
+        MmuGenericRail.home() reads it back from.
+
+        axis.advance() clamps at the ends of travel and returns what actually happened, so
+        driving into the hard stop reports the shorter distance - which is the whole point of
+        MMU_CALIBRATE_SELECTOR AUTO=1's "search for the end of the selector" step.
+        """
+        moved = axis.advance(delta)
+        for stepper in axis.stepper.get_steppers():
+            stepper.harness_note_motion(moved)
+        return moved
 
     def _resolve_selector(self, axis, leaves, start, delta):
         """

@@ -137,6 +137,113 @@ class TestLinearSelector(SelectorTestCase):
         self.assertAlmostEqual(axis.carriage, before, places=3)
 
 
+class TestSelectorCalibration(unittest.TestCase):
+    """
+    Happy Hare's OWN MMU_CALIBRATE_SELECTOR, run for real against an UNSEEDED machine.
+
+    This used to be impossible. measure_to_home() reports
+    (trig_mcu_pos - init_mcu_pos) * step_dist (extras/mmu_stepper.py:414-459), and
+    rail.home() rebases the axis to `forcepos` immediately beforehand - so while the harness
+    read the carriage position off the stepper coordinate, every gate measured the same
+    number, the homing SEARCH distance (170.5mm on tradrack), and every calibration was
+    rejected as "more than the anticipated maximum". The carriage is tracked now; see the
+    note at the top of test/hh/selector.py.
+
+    Deliberately NOT a SelectorTestCase: the whole point is to start uncalibrated.
+    """
+
+    PROFILE = 'tradrack'
+    CAD_GATE0 = 2.5             # tradrack's own cad_gate0_pos / cad_gate_width
+    CAD_WIDTH = 17.0
+
+    def setUp(self):
+        self.hh = session(self.PROFILE)
+        self.hh.boot()                              # no calibrate=, no seeding
+        self.axis = self.hh.printer.harness_selectors[0]
+        self.selector = self.axis.selector
+
+    def tearDown(self):
+        self.hh.close()
+
+    def saved_offsets(self):
+        from extras.mmu.mmu_constants import VARS_MMU_SELECTOR_OFFSETS
+        return self.selector.var_manager.get(VARS_MMU_SELECTOR_OFFSETS, None,
+                                             namespace='unit0')
+
+    def test_a_gate_measures_the_distance_the_carriage_actually_travelled(self):
+        """
+        Each gate must report ITS OWN offset. Two gates, because one could still pass with a
+        constant - which is exactly how this failed before.
+        """
+        for gate in (0, 4, 9):
+            with self.subTest(gate=gate):
+                self.axis.place(self.CAD_GATE0 + gate * self.CAD_WIDTH)
+                self.hh.run_gcode('MMU_CALIBRATE_SELECTOR UNIT=0 GATE=%d' % gate)
+                self.assertAlmostEqual(self.selector.selector_offsets[gate],
+                                       self.CAD_GATE0 + gate * self.CAD_WIDTH, places=1)
+
+    def test_a_calibrated_gate_is_persisted_to_mmu_vars(self):
+        """Calibration is only worth anything if it survives into mmu_vars.cfg."""
+        self.axis.place(self.CAD_GATE0)
+        self.hh.run_gcode('MMU_CALIBRATE_SELECTOR UNIT=0 GATE=0')
+        saved = self.saved_offsets()
+        self.assertIsNotNone(saved, 'nothing was written to mmu_vars.cfg')
+        self.assertAlmostEqual(saved[0], self.CAD_GATE0, places=1)
+
+    def test_auto_calibration_derives_every_gate_from_two_measurements(self):
+        """
+        AUTO=1 measures gate 0, rams the far end of travel, measures back, and interpolates.
+        It needs BOTH halves of the model: the tracked carriage for the two homing moves, and
+        the travel_max clamp for the ram - without the clamp step 3 reports a length the
+        machine does not have.
+        """
+        self.axis.place(self.CAD_GATE0)             # as AUTO=1 requires the user to do
+        self.hh.run_gcode('MMU_CALIBRATE_SELECTOR UNIT=0 AUTO=1')
+        offsets = self.selector.selector_offsets
+        self.assertEqual(len(offsets), self.hh.mmu.num_gates)
+        for i, offset in enumerate(offsets):
+            self.assertAlmostEqual(offset, self.CAD_GATE0 + i * self.CAD_WIDTH, places=1)
+
+    def test_a_carriage_in_the_wrong_place_is_still_rejected(self):
+        """
+        The harness must not have made calibration unconditionally succeed. Parked at the far
+        gate, gate 0's measurement genuinely exceeds its CAD maximum and HH must refuse it.
+        """
+        self.axis.place(self.axis.travel_max)
+        self.hh.run_gcode('MMU_CALIBRATE_SELECTOR UNIT=0 GATE=0')
+        # handle_ready seeds the variable with -1 per gate, which IS the uncalibrated value
+        self.assertEqual(self.saved_offsets(), [-1] * self.hh.mmu.num_gates,
+                         'a bogus measurement was saved')
+
+
+class TestStepperPositionSemantics(unittest.TestCase):
+    """
+    The invariant the whole calibration fix rests on: in the fake, redefining the coordinate
+    origin and actually moving are DIFFERENT operations. Real Klipper gets this for free from
+    step generation; the fake has none, so it is asserted here instead.
+    """
+
+    def setUp(self):
+        self.hh = session('tradrack')
+        self.hh.boot()
+        self.stepper = self.hh.printer.harness_selectors[0].stepper.get_steppers()[0]
+
+    def tearDown(self):
+        self.hh.close()
+
+    def test_set_position_does_not_register_as_movement(self):
+        before = self.stepper.get_mcu_position()
+        self.stepper.set_position([self.stepper.get_commanded_position() + 37., 0., 0., 0.])
+        self.assertEqual(self.stepper.get_mcu_position(), before)
+
+    def test_note_motion_does_register_as_movement(self):
+        before = self.stepper.get_mcu_position()
+        self.stepper.harness_note_motion(37.)
+        travelled = ((self.stepper.get_mcu_position() - before)
+                     * self.stepper.get_step_dist())
+        self.assertAlmostEqual(travelled, 37., places=3)
+
+
 class TestMultiUnitSelectors(SelectorTestCase):
     """
     ercf_vvd: two units, two selector classes, and an encoder on one of them.

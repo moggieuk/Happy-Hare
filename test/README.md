@@ -246,18 +246,20 @@ Useful flags — `make console ARGS='...'`:
 --profile boxturtle            # or tradrack, emu, encoder, nfc_single, nfc_spoolman, ...
                                # (default is ercf_vvd, a real 2-unit machine)
 --profile /path/to/config      # your own installed config - see below
---header machine,sensors,filament,gates,leds     # or 'off'
+--header machine,sensors,filament,selector,gates,leds   # or 'off'
 --inline-header                # reprint above each prompt instead of pinning it
 --color 256|truecolor|16|auto  # colour depth (see below)
 --log-dir /tmp                 # where mmu.log goes; --no-log to discard it
 --trace 4                      # full Happy Hare narration
 --no-preload                   # leave every gate empty
+--no-calibrate                 # boot cold: no seeded calibration, no homing, no preload
 --script FILE                  # run non-interactively (this is how it is tested)
 ```
 
-Startup shows Happy Hare's **real bootup output** — the welcome banner, the unit summary and
-the calibration warnings — because `cmd_MMU_BOOTUP` runs here exactly as it does on a
-printer.
+Startup shows Happy Hare's **real bootup output** — the welcome banner and the unit summary
+— because `cmd_MMU_BOOTUP` runs here exactly as it does on a printer. Calibration is seeded
+*inside* `boot()`, before bootup runs, so a default session boots clean; `--no-calibrate`
+boots the machine cold and the calibration warnings then appear for real.
 
 ### The log
 
@@ -321,10 +323,11 @@ leaves the gate-0 gear pins empty and fails with `Invalid pin description ''`.
    body, so `T1`, the print start/end and the park/cut/purge sequences produce **silence**.
    Use `MMU_CHANGE_TOOL TOOL=1`. The console notices a bare `T<n>` and says so.
 2. **A physical selector must be calibrated and homed before it can select a gate.** The
-   console does that for you at startup (`_prepare_selectors`); in a test, call
-   `hh.calibrate()` then `MMU_HOME UNIT=<n>`. Skip it and every selection fails with
-   *"Selector is not clibrated"* (sic). Calibration is **seeded**, not measured — see §
-   "Physical selectors" below for why, and what that does not cover.
+   console does that for you at startup (`boot(calibrate=True)` plus `_prepare_selectors`);
+   in a test, call `hh.boot(calibrate=True)`, or `hh.boot()` then `hh.calibrate()`, then
+   `MMU_HOME UNIT=<n>`. Skip it and every selection fails with *"Selector is not clibrated"*
+   (sic). Calibration is **seeded** by default for speed, but `MMU_CALIBRATE_*` genuinely
+   works — see § "Physical selectors" below.
 3. **Pause is sticky.** After a failed operation the MMU sits paused and later commands
    refuse. The prompt shows `PAUSED`; recover with `MMU_UNLOCK` / `MMU_RECOVER`.
 
@@ -397,7 +400,7 @@ Green is not the same as covered. Roughly where things stand:
 | LEDs | **good** | effects and overlays; not the neopixel protocol |
 | Sync feedback / buffer sensors | **partial** | EMU's analog sensor boots; the tension logic has a known bug |
 | Physical selector homing and selection | **good** | both selector families home, select and move filament — `test_mmu_selector.py` |
-| Calibration | **thin** | seeded, not exercised: `MMU_CALIBRATE_*` is never run (see "Physical selectors") |
+| Calibration | **partial** | seeded by default for speed, but `MMU_CALIBRATE_SELECTOR` (manual and `AUTO=1`) and `MMU_CALIBRATE_BOWDEN` run for real — `test_mmu_selector.py` |
 | Espooler, FlowGuard | **none** | |
 | Multi-unit machines | **good** | `ercf_vvd` renders, boots and loads on both units |
 | Klipper motion and timing | **none** | out of scope by design — see §9 |
@@ -538,18 +541,33 @@ the shipped families disagree: the `LinearSelector` family (ERCF, Tradrack) has 
 switch and reaches gates by plain moves to calibrated offsets, while `IndexedSelector` (ViViD)
 has no home switch at all and one index switch per gate, visited in `selector_gate_order`.
 
-**Calibration is seeded, not measured.** `Session.calibrate()` writes selector offsets, bowden
-length and gear rotation distance through HH's own setters, using HH's own published formulas
-and the harness's own filament geometry — so no numbers are invented and no HH logic is
-duplicated. It is not called from `boot()`, because uncalibrated is a real state HH has to cope
-with and tests assert it.
+**The carriage is tracked**, in `SelectorAxis.carriage`, the same way `filament.py` tracks the
+filament — because the two meanings of "position" have to be kept apart. `MmuGenericRail.home()`
+rebases the axis to `forcepos` immediately before every homing move, so the stepper coordinate
+says nothing about where the carriage physically is. In the fake `MCU_stepper`:
 
-What that does **not** cover: `MMU_CALIBRATE_SELECTOR AUTO=1` and friends never run. They
-measure travel through the mcu step counter, which needs the mcu position to survive the
-`set_position(forcepos)` that precedes every homing move. Real Klipper gets that from step
-generation; the fake has none — `set_position` *is* how it effects motion — so making it
-preserve the mcu position makes travel measure 0 and homing die with *"Endstop still triggered
-after retract"*. The reasoning is recorded at the top of `test/hh/selector.py`.
+| | effect |
+|---|---|
+| `set_position()` | redefines the coordinate frame; **mcu-preserving**, as in real Klipper |
+| `harness_note_motion()` | real travel; moves the mcu step count |
+
+Motion reaches the axis from exactly two places — the fake `HomingMove` and
+`Session._on_manual_move`. Both must call `advance()`; a plain move that is not observed leaves
+the carriage on the home switch through the retract inside `rail.home()`, and the second homing
+move then measures zero.
+
+**Calibration is seeded by default, but not fake.** `Session.calibrate()` writes selector
+offsets, bowden length, gear rotation distance and encoder resolution using HH's own published
+formulas and the harness's own filament geometry, so no numbers are invented. It is a shortcut,
+not a substitute: `MMU_CALIBRATE_SELECTOR` (manual and `AUTO=1`) measures real travel and is
+covered by `TestSelectorCalibration`. To drive the real flow, boot uncalibrated
+(`hh.boot()` with no `calibrate=`, or `make console ARGS='--no-calibrate'`) and place the
+carriage where the procedure expects it — `axis.place(mm)` in a test, `/selector` in the console.
+
+`boot(calibrate=True)` seeds *before* `klippy:ready`, so Happy Hare's own `handle_ready` loads
+the variables and the "not found in mmu_vars.cfg" warnings never fire. Called after ready, as
+tests do, `calibrate()` applies the values in memory instead. A bare `boot()` seeds nothing,
+because uncalibrated is a real state HH has to cope with and tests assert it.
 
 **Tip forming is the one macro with an effect.** Bodies do not run (see §"Three things that
 will look like bugs"), but HH measures how far the extruder moved during `_MMU_FORM_TIP` and
@@ -725,10 +743,9 @@ per-area picture; these are the structural limits behind it.
 - **Proprietary tag formats are untested.** Bambu, Creality, QIDI and Anycubic parsing
   needs captured dumps from real spools — synthesising them would only prove the test
   agrees with itself.
-- **One unit only.** Genuine multi-unit machines need per-unit Kconfig loading that the
-  config layer deliberately bypasses, so nothing about unit selection is covered.
-- **Calibration is untouched.** Every profile uses shipped defaults; no calibration
-  command has ever been run here.
+- **Encoder and gear calibration are seeded, never measured.** `MMU_CALIBRATE_ENCODER` and
+  `MMU_CALIBRATE_GEAR` would only re-derive the numbers the harness generates its moves
+  from, so they would confirm arithmetic rather than test anything.
 - **Macros load but mostly don't run.** The shipped `config/macros/*.cfg` are read
   verbatim so sequences can find them, but a test that asserts on macro *behaviour* would
   be testing Klipper's Jinja, not Happy Hare.
