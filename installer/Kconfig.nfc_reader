@@ -64,7 +64,7 @@ config UNSELECT_MMU_HAS_NFC_READER
 
 if !UNSELECT_MMU_HAS_NFC_READER
   comment "_"
-  comment "_RFID"
+  comment "_RFID (BETA)"
 
   config MMU_HAS_NFC_READER
     bool "Has NFC reader(s) for RFID tag?"
