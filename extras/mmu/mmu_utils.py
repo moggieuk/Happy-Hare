@@ -1,6 +1,9 @@
 # Happy Hare MMU Software
 # Utility classes for Happy Hare MMU
 #
+# SaveVariableJournal
+# Goal: Ensure no save_variable update can be lost to a klipper reload
+#
 # DebugStepperMovement
 # Goal: Internal testing class for debugging synced movement
 #
@@ -16,7 +19,69 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
-import math
+import copy, math
+
+
+DELETED = object() # Journal sentinel: "this key must not exist on disk"
+
+
+# Tracks save_variable updates that are not yet known to be on disk.
+#
+# SAVE_VARIABLE snapshots klipper's variable dict up front, then pauses, then replaces the
+# dict with a re-read of the file. Anything set mid-command misses the snapshot and is then
+# erased by the re-read - silently, and from memory as well as disk. Any SAVE_VARIABLE opens
+# that window, including ones issued by macros we do not control.
+#
+# So an entry is removed from the journal ONLY once a post-write re-read has proved it
+# reached disk. Nothing else clears it, which means a lost update is simply written again by
+# the next flush.
+class SaveVariableJournal:
+    def __init__(self, save_variables):
+        self.save_variables = save_variables
+        self.pending = {}   # key -> value, or DELETED
+        self.mutations = 0  # Bumped on every change; lets a flush spot a write it raced with
+
+    # Copy containers, pass scalars through. Callers hand us live objects they keep mutating,
+    # so we must own a private copy or we cannot tell a dropped write from a later edit.
+    # No 'set': klipper cannot round-trip one, repr() gives "set()" which won't parse back.
+    @staticmethod
+    def snapshot(value):
+        if isinstance(value, (list, dict, tuple)):
+            return copy.deepcopy(value)
+        return value
+
+    def record(self, key, value):
+        value = self.snapshot(value)
+        self.pending[key] = value
+        self.mutations += 1
+        return value
+
+    def record_delete(self, key):
+        self.pending[key] = DELETED
+        self.mutations += 1
+
+    # Push unpersisted updates into klipper's dict. Gets them into the next SAVE_VARIABLE
+    # snapshot, and repairs the dict after any re-read has replaced it.
+    def apply(self):
+        all_variables = self.save_variables.allVariables
+        for key, value in self.pending.items():
+            if value is DELETED:
+                all_variables.pop(key, None)
+            else:
+                all_variables[key] = value
+
+    # Drop entries the post-write re-read proves are on disk. SAVE_VARIABLE ends by re-reading
+    # the file, so klipper's dict now IS the file contents - this verifies the write rather
+    # than assuming it. Anything left over is re-applied so it is not lost from memory either.
+    def reconcile(self):
+        all_variables = self.save_variables.allVariables
+        for key, value in list(self.pending.items()):
+            if value is DELETED:
+                if key not in all_variables:
+                    del self.pending[key]
+            elif key in all_variables and all_variables[key] == value:
+                del self.pending[key]
+        self.apply()
 
 
 # Internal testing class for debugging synced movement

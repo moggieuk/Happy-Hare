@@ -30,7 +30,7 @@ from .mmu_shared                import *
 from .mmu_logger                import MmuLogger
 from .mmu_selector              import *
 from .mmu_test                  import MmuTest
-from .mmu_utils                 import DebugStepperMovement, PurgeVolCalculator
+from .mmu_utils                 import DebugStepperMovement, PurgeVolCalculator, SaveVariableJournal
 from .mmu_sensor_manager        import MmuSensorManager
 from .mmu_led_manager           import MmuLedManager
 from .mmu_sync_feedback_manager import MmuSyncFeedbackManager
@@ -159,6 +159,10 @@ class Mmu:
     FILAMENT_DRIVE_STATE   = 1
     FILAMENT_HOLD_STATE    = 2
 
+    # save_variable write behavior
+    VARS_FLUSH_ATTEMPTS               = 3     # Write retries when an update raced with the write
+    VARS_FLUSH_RETRY_DELAY            = 0.05  # Re-check interval while a command holds the gcode mutex
+
     # mmu_vars.cfg variables
     VARS_MMU_REVISION                 = "mmu__revision"
     VARS_MMU_CALIB_CLOG_LENGTH        = "mmu_calibration_clog_length"
@@ -265,6 +269,9 @@ class Mmu:
         self._next_gate = None
         self.toolchange_retract = 0.          # Set from mmu_macro_vars
         self._can_write_variables = False
+        self._var_journal = None              # Unpersisted save_variable updates. Setup on connect
+        self._var_flush_timer = None          # Non-None while a coalesced write is outstanding
+        self._writing_variables = False       # Guards against overlapping writes
         self.toolchange_purge_volume = 0.
         self.mmu_logger = None                # Setup on connect
         self._standalone_sync = False         # Used to indicate synced extruder intention whilst out of print
@@ -799,6 +806,10 @@ class Mmu:
         if not self.save_variables or (rd_var is None and revision_var is None):
             raise self.config.error("Calibration settings file (mmu_vars.cfg) not found. Check [save_variables] section in mmu_macro_vars.cfg\nAlso ensure you only have a single [save_variables] section defined in your printer config and it contains the line: mmu__revision = 0. If not, add this line and restart")
 
+        # Must exist before anything calls save_variable(), i.e. before the upgrade block
+        # below and before the managers connect
+        self._var_journal = SaveVariableJournal(self.save_variables)
+
         # Create autotune manager to oversee calibration updates based on available telemetry
         self.calibration_manager = MmuCalibrationManager(self)
 
@@ -807,10 +818,10 @@ class Mmu:
         if bowden_length:
             self.log_debug("Upgrading %s variable" % (self.VARS_MMU_CALIB_BOWDEN_LENGTH))
             bowden_lengths = self._ensure_list_size([round(bowden_length, 1)], self.num_gates)
-            self.save_variables.allVariables.pop(self.VARS_MMU_CALIB_BOWDEN_LENGTH, None)
+            self.delete_variable(self.VARS_MMU_CALIB_BOWDEN_LENGTH)
             # Can't write file now so we let this occur naturally on next write
-            self.save_variables.allVariables[self.VARS_MMU_CALIB_BOWDEN_LENGTHS] = bowden_lengths
-            self.save_variables.allVariables[self.VARS_MMU_CALIB_BOWDEN_HOME] = self.gate_homing_endstop
+            self.save_variable(self.VARS_MMU_CALIB_BOWDEN_LENGTHS, bowden_lengths)
+            self.save_variable(self.VARS_MMU_CALIB_BOWDEN_HOME, self.gate_homing_endstop)
 
         rotation_distance = self.save_variables.allVariables.get(self.VARS_MMU_GEAR_ROTATION_DISTANCE, None)
         if rotation_distance:
@@ -819,12 +830,12 @@ class Mmu:
             for i in range(self.num_gates):
                 ratio = self.save_variables.allVariables.get("%s%d" % (self.VARS_MMU_CALIB_PREFIX, i), 0)
                 rotation_distances.append(round(rotation_distance * ratio, 4))
-                self.save_variables.allVariables.pop("%s%d" % (self.VARS_MMU_CALIB_PREFIX, i), None)
-            self.save_variables.allVariables.pop(self.VARS_MMU_GEAR_ROTATION_DISTANCE, None)
+                self.delete_variable("%s%d" % (self.VARS_MMU_CALIB_PREFIX, i))
+            self.delete_variable(self.VARS_MMU_GEAR_ROTATION_DISTANCE)
             # Can't write file now so we let this occur naturally on next write
-            self.save_variables.allVariables[self.VARS_MMU_GEAR_ROTATION_DISTANCES] = rotation_distances
+            self.save_variable(self.VARS_MMU_GEAR_ROTATION_DISTANCES, rotation_distances)
         else:
-            self.save_variables.allVariables.pop("%s0" % self.VARS_MMU_CALIB_PREFIX, None)
+            self.delete_variable("%s0" % self.VARS_MMU_CALIB_PREFIX)
 
         # Load bowden length configuration (calibration set with MMU_CALIBRATE_BOWDEN) ----------------------
         self.bowden_lengths = self.save_variables.allVariables.get(self.VARS_MMU_CALIB_BOWDEN_LENGTHS, None)
@@ -852,8 +863,8 @@ class Mmu:
         else:
             self.bowden_lengths = [0] * self.num_gates
             self.calibration_status |= self.CALIBRATED_BOWDENS
-        self.save_variables.allVariables[self.VARS_MMU_CALIB_BOWDEN_LENGTHS] = self.bowden_lengths
-        self.save_variables.allVariables[self.VARS_MMU_CALIB_BOWDEN_HOME] = bowden_home
+        self.save_variable(self.VARS_MMU_CALIB_BOWDEN_LENGTHS, self.bowden_lengths)
+        self.save_variable(self.VARS_MMU_CALIB_BOWDEN_HOME, bowden_home)
 
         # Load gear rotation distance configuration (calibration set with MMU_CALIBRATE_GEAR) ---------------
         self.default_rotation_distance = self.gear_rail.steppers[0].get_rotation_distance()[0] # TODO Should probably be per gear in case they are disimilar?
@@ -878,7 +889,7 @@ class Mmu:
         else:
             self.log_warning("Warning: Gear rotation distances not found in mmu_vars.cfg. Probably not calibrated yet")
             self.rotation_distances = [-1] * self.num_gates
-        self.save_variables.allVariables[self.VARS_MMU_GEAR_ROTATION_DISTANCES] = self.rotation_distances
+        self.save_variable(self.VARS_MMU_GEAR_ROTATION_DISTANCES, self.rotation_distances)
 
         # Load encoder configuration (calibration set with MMU_CALIBRATE_ENCODER) ---------------------------
         self.encoder_resolution = 1.0
@@ -926,13 +937,36 @@ class Mmu:
     def handle_disconnect(self):
         self.log_debug('Klipper disconnected!')
 
+        # Last chance to persist, since writes are deferred. Ignores _can_write_variables on
+        # purpose: it means "not yet", but there is no later write, and a suspended batch is
+        # the largest thing we could drop. Best-effort - the reactor has stopped, so a pause
+        # here cannot complete.
+        if self._var_journal and self._var_journal.pending:
+            try:
+                self._can_write_variables = True
+                self._write_variables_now()
+            except Exception:
+                logging.exception("MMU: Unable to flush save_variables on disconnect")
+
         # Sub components
         for m in self.managers:
             if hasattr(m, 'handle_disconnect'):
                 m.handle_disconnect()
 
-    def handle_ready(self):
+    # Enabling writes is deferred to a reactor callback rather than done here.
+    #
+    # Klipper forbids pausing inside its ready handler loop, and SAVE_VARIABLE pauses, so a
+    # write from anywhere in this handler raises "Internal error - reactor pause disabled".
+    # Deferring the FLAG (not just the write) makes that structurally impossible: everything
+    # below stages into the journal and lands in one write once we are clear of the dispatch.
+    def _handle_ready_flush_variables(self, eventtime):
+        if self.printer.is_shutdown():
+            return # A later ready handler failed; gcode is dead
         self._can_write_variables = True
+        self._write_variables_now() # Already on the reactor, so write directly
+
+    def handle_ready(self):
+        self.reactor.register_callback(self._handle_ready_flush_variables)
 
         # Pull retraction length from macro config
         sequence_vars_macro = self.printer.lookup_object("gcode_macro _MMU_SEQUENCE_VARS", None)
@@ -3886,21 +3920,68 @@ class Mmu:
         self._set_print_state("standby")
         self.log_always("MMU disabled")
 
-    # Wrapper so we can minimize actual disk writes and batch updates
+    # Wrapper so we can minimize actual disk writes and batch updates.
+    #
+    # Every update is journalled, because SAVE_VARIABLE pauses mid-command and then replaces
+    # klipper's variable dict with a re-read of the file - so anything set during the pause is
+    # silently discarded. See SaveVariableJournal in mmu_utils.py.
     def save_variable(self, variable, value, write=False):
-        self.save_variables.allVariables[variable] = value
+        self.save_variables.allVariables[variable] = self._var_journal.record(variable, value)
         if write:
             self.write_variables()
 
     def delete_variable(self, variable, write=False):
+        self._var_journal.record_delete(variable)
         _ = self.save_variables.allVariables.pop(variable, None)
         if write:
             self.write_variables()
 
+    # Request a write. The disk write itself happens on a reactor timer, so several requests
+    # in the same pass collapse into one, and it never runs inline where SAVE_VARIABLE's pause
+    # would be illegal (klippy:ready) or would need a gcode mutex we may not hold.
     def write_variables(self):
-        if self._can_write_variables:
-            mmu_vars_revision = self.save_variables.allVariables.get(self.VARS_MMU_REVISION, 0) + 1
-            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_REVISION, mmu_vars_revision))
+        if not self._can_write_variables or self._var_flush_timer is not None:
+            return
+        self._var_flush_timer = self.reactor.register_timer(self._flush_variables, self.reactor.NOW)
+
+    # Retries rather than blocking when a command holds the gcode mutex: run_script would park
+    # this callback mid-flight for the length of that command, and a state save has no deadline.
+    def _flush_variables(self, eventtime):
+        if self._can_write_variables and not self.printer.is_shutdown():
+            if self.gcode.get_mutex().test():
+                return eventtime + self.VARS_FLUSH_RETRY_DELAY # Leave the timer armed
+            try:
+                self._write_variables_now()
+            except Exception:
+                # A failed save must not take the printer down, nor strand the timer handle,
+                # which would stop all future writes. Nothing is lost - the journal keeps
+                # every unconfirmed update for the next attempt.
+                logging.exception("MMU: Error flushing save_variables")
+        self.reactor.unregister_timer(self._var_flush_timer)
+        self._var_flush_timer = None
+        return self.reactor.NEVER
+
+    # Persist by bumping the revision, which rewrites the whole file. Retries only when the
+    # mutation counter shows something was set while we were paused; retrying on any mismatch
+    # would treble every write for a value klipper cannot round-trip.
+    def _write_variables_now(self):
+        if self._writing_variables:
+            return # Re-entrant request; the loop below will pick the new updates up
+        self._writing_variables = True
+        try:
+            for _ in range(self.VARS_FLUSH_ATTEMPTS):
+                self._var_journal.apply()
+                mutations = self._var_journal.mutations
+                mmu_vars_revision = self.save_variables.allVariables.get(self.VARS_MMU_REVISION, 0) + 1
+                self.gcode.run_script("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (self.VARS_MMU_REVISION, mmu_vars_revision))
+                self._var_journal.reconcile()
+                if not self._var_journal.pending or mutations == self._var_journal.mutations:
+                    break # Nothing left, or nothing raced with us so retrying is futile
+            if self._var_journal.pending:
+                logging.info("MMU: %d save_variable(s) not confirmed on disk after %d attempt(s): %s"
+                             % (len(self._var_journal.pending), self.VARS_FLUSH_ATTEMPTS, sorted(self._var_journal.pending)))
+        finally:
+            self._writing_variables = False
 
     @contextlib.contextmanager
     def _wrap_suspendwrite_variables(self):

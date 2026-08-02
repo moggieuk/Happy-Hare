@@ -320,14 +320,14 @@ class LinearSelector(BaseSelector, object):
         else:
             self.mmu.log_always("Warning: Selector offsets not found in mmu_vars.cfg. Probably not calibrated")
             self.selector_offsets = [-1] * self.mmu.num_gates
-        self.mmu.save_variables.allVariables[self.VARS_MMU_SELECTOR_OFFSETS] = self.selector_offsets
+        self.mmu.save_variable(self.VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets)
 
         self.bypass_offset = self.mmu.save_variables.allVariables.get(self.VARS_MMU_SELECTOR_BYPASS, -1)
         if self.bypass_offset > 0:
             self.mmu.log_debug("Loaded saved bypass offset: %s" % self.bypass_offset)
         else:
             self.bypass_offset = -1 # Ensure -1 value for uncalibrated / non-existent
-        self.mmu.save_variables.allVariables[self.VARS_MMU_SELECTOR_BYPASS] = self.bypass_offset
+        self.mmu.save_variable(self.VARS_MMU_SELECTOR_BYPASS, self.bypass_offset)
 
         # See if we have a TMC controller setup with stallguard
         self.selector_tmc = None
@@ -1241,7 +1241,7 @@ class RotarySelector(BaseSelector, object):
         else:
             self.mmu.log_always("Warning: Selector offsets not found in mmu_vars.cfg. Probably not calibrated")
             self.selector_offsets = [-1] * self.mmu.num_gates
-        self.mmu.save_variables.allVariables[self.VARS_MMU_SELECTOR_OFFSETS] = self.selector_offsets
+        self.mmu.save_variable(self.VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets)
 
     def _ensure_list_size(self, lst, size, default_value=-1):
         lst = lst[:size]
