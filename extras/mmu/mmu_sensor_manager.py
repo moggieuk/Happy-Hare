@@ -207,13 +207,18 @@ class MmuSensorManager:
         """
         # We do this in two steps to allow sensor sharing
 
+        # A shared sensor (e.g. a common toolhead/extruder switch) appears in every unit's map,
+        # so it must be left alone here or selecting a unit would disarm its own sensor
+        shared = {sensor for sname, sensor in self.unit_sensors[unit].items()
+                  if not self.is_gate_sensor_name(sname)}
+
         # First ensure any excluded unit sensor is completely deactivated
         for i, sensors in enumerate(self.unit_sensors):
             if i == unit:
                 continue
 
             for sname, sensor in sensors.items():
-                if not self.is_gate_sensor_name(sname):
+                if not self.is_gate_sensor_name(sname) and sensor not in shared:
                     sensor.runout_helper.enable_runout(False)
                     sensor.runout_helper.enable_button_feedback(False)
 
@@ -221,6 +226,11 @@ class MmuSensorManager:
         for sname, sensor in self.unit_sensors[unit].items():
             if not self.is_gate_sensor_name(sname):
                 sensor.runout_helper.enable_button_feedback(True)
+
+        # Selecting a unit changes WHICH sensors are in scope, not whether monitoring is on,
+        # so re-apply the current state - otherwise the new unit stays disarmed until the
+        # next enable, which for a unit-level runout sensor means a missed runout
+        self._set_sensor_runout(self.mmu.filament_monitoring_enabled, self.mmu.gate_selected)
 
 
     def get_sensor_states(self, unit=None, all_sensors=False):

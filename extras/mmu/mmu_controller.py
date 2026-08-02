@@ -143,6 +143,7 @@ class MmuController(MmuFilamentMovement):
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
         self.printer.register_event_handler('klippy:disconnect', self.handle_disconnect)
         self.printer.register_event_handler('klippy:ready', self.handle_ready)
+        self.printer.register_event_handler('mmu:unit_selected', self._handle_unit_selected)
 
 
     def reinit(self):
@@ -2220,7 +2221,10 @@ class MmuController(MmuFilamentMovement):
 
         self.log_trace("Disabling FlowGuard and runout detection")
         self.sensor_manager.disable_runout(self.gate_selected)
-        self.mmu_unit().sync_feedback.deactivate_flowguard(eventtime)
+        self._apply_flowguard_scope(eventtime)
+
+        # Active unit only - disarming restores gear current on the SELECTED gate, so doing
+        # this for another unit would drive the wrong stepper
         self.mmu_unit().sync_feedback.deactivate_tangle_prevention(eventtime)
         return enabled
 
@@ -2234,8 +2238,30 @@ class MmuController(MmuFilamentMovement):
         self.sensor_manager.enable_runout(self.gate_selected)
         if not enabled:
             self.runout_last_enable_time = eventtime # Only the transition closes the window
-        self.mmu_unit().sync_feedback.activate_flowguard(eventtime)
+        self._apply_flowguard_scope(eventtime)
         self.mmu_unit().sync_feedback.activate_tangle_prevention(eventtime)
+
+
+    def _handle_unit_selected(self, unit, prev_unit):
+        # Selecting a unit changes which unit FlowGuard belongs to, not whether monitoring
+        # is on, so re-scope it even when nothing else about monitoring changed
+        self._apply_flowguard_scope()
+
+
+    def _apply_flowguard_scope(self, eventtime=None):
+        """
+        FlowGuard raises clog/tangle without consulting the sensor arming, and it is per-unit,
+        so it must be armed on the selected unit and disarmed on every other. Re-applied on
+        both a monitoring state change and a unit change.
+        """
+        eventtime = self.reactor.monotonic() if eventtime is None else eventtime
+        active_unit = self.mmu_unit() if self.filament_monitoring_enabled else None
+
+        for unit in self.mmu_machine.units:
+            if unit is active_unit:
+                unit.sync_feedback.activate_flowguard(eventtime)
+            else:
+                unit.sync_feedback.deactivate_flowguard(eventtime)
 
 
     @contextlib.contextmanager
