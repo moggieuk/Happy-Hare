@@ -19,6 +19,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -1019,6 +1020,89 @@ class TestScrollBindings(unittest.TestCase):
             self.assertFalse(console._install_scroll_bindings())
 
 
+class TestTimestamps(unittest.TestCase):
+    """
+    /timestamp. The clock is the VIRTUAL one, so these can drive it with advance() rather
+    than waiting - which is also the only reason the feature is worth having.
+    """
+
+    def _console(self):
+        console = console_mod.Console(console_mod.parse_args(['--plain', '--no-log']))
+        console.color = True
+        console.wall_start = 1000000.0              # a fixed instant, so the text is stable
+        console.clock_epoch = 1000.0
+        console.hh = mock.Mock()
+        console.hh.reactor.monotonic.return_value = 1000.0
+        return console
+
+    def _emit(self, console, text):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            console.emit(text)
+        return buf.getvalue()
+
+    def test_off_by_default_and_output_is_untouched(self):
+        console = self._console()
+        self.assertFalse(console.timestamps)
+        self.assertEqual(self._emit(console, 'a\nb'), 'a\nb\n')
+
+    def test_only_the_first_line_is_stamped_and_the_rest_line_up(self):
+        console = self._console()
+        console.timestamps = True
+        rendered = visible(self._emit(console, 'first\nsecond\nthird'))
+        head, second, third = rendered.rstrip('\n').split('\n')
+        stamp = console.sim_time()
+        self.assertTrue(head.startswith(stamp + ' '), head)
+        # The indent has to equal the stamp's width or the block reads ragged
+        self.assertEqual(second, ' ' * (len(stamp) + 1) + 'second')
+        self.assertEqual(third, ' ' * (len(stamp) + 1) + 'third')
+
+    def test_the_stamp_is_dimmed_and_leaks_no_colour(self):
+        console = self._console()
+        console.timestamps = True
+        rendered = self._emit(console, 'a line')
+        self.assertIn('\x1b[%sm' % console_mod.TIME_COLOUR, rendered)
+        check_no_line_leaks(self, rendered)
+
+    def test_a_blank_continuation_line_is_not_padded(self):
+        """Padding an empty line only leaves trailing whitespace behind."""
+        console = self._console()
+        console.timestamps = True
+        rendered = visible(self._emit(console, 'head\n\ntail'))
+        self.assertEqual(rendered.rstrip('\n').split('\n')[1], '')
+
+    def test_the_clock_follows_the_virtual_one_not_the_wall(self):
+        """/advance an hour and the stamp moves an hour, however long you actually sat there."""
+        console = self._console()
+        before = console.sim_time()
+        console.hh.reactor.monotonic.return_value = 1000.0 + 3600
+        after = console.sim_time()
+        self.assertNotEqual(before, after, 'the stamp ignored the virtual clock')
+        self.assertEqual(
+            time.strftime(console_mod.TIME_FORMAT, time.localtime(1000000.0 + 3600)), after)
+
+    def test_the_stamp_is_a_fixed_width(self):
+        """Continuation lines are indented by len(stamp), so it must not vary."""
+        console = self._console()
+        widths = set()
+        for offset in (0, 3600, 7200, 3600 * 13):
+            console.hh.reactor.monotonic.return_value = 1000.0 + offset
+            widths.add(len(console.sim_time()))
+        self.assertEqual(len(widths), 1, widths)
+
+    def test_the_meta_command_toggles(self):
+        console = self._console()
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.meta('/timestamp')
+            self.assertTrue(console.timestamps)
+            console.meta('/timestamp')
+            self.assertFalse(console.timestamps)
+            console.meta('/timestamp on')
+            self.assertTrue(console.timestamps)
+            console.meta('/timestamp off')
+            self.assertFalse(console.timestamps)
+
+
 class TestHeaderGroups(unittest.TestCase):
     """
     header_groups() - shared by --header and /header so the two cannot drift. They used to
@@ -1303,7 +1387,7 @@ class TestConsoleScript(unittest.TestCase):
         rc, out = self._run(['/help', '/filament', '/exhaust 0', '/trace 2', '/heat 240',
                              '/sensor mmu_entry_1 off', '/sensor mmu_exit_0 disable',
                              '/vars', '/clear', '/redraw', '/log 3', '/errors', '/scroll',
-                             '/scroll 5', '/s', '/badmeta'],
+                             '/scroll 5', '/s', '/timestamp', '/timestamp off', '/badmeta'],
                             ['--header', 'off'])
         self.assertEqual(rc, 0, out[-2000:])
         self.assertIn('Meta-commands', out)

@@ -88,7 +88,7 @@ make BOOTSTRAP_PY=python3.9 VENV=venv39 test
 
 </details>
 
-`make test` offers everything — currently **759 tests, about six minutes** on a warm
+`make test` offers everything — currently **766 tests, about six minutes** on a warm
 laptop. Expect to see:
 
 ```
@@ -107,19 +107,19 @@ file picker first rather than starting straight away.
 suite exactly as it always did — but untick the expensive files and you get a focused run:
 
 ```
-Happy Hare tests - 759 tests in 23 files                    times from last run
+Happy Hare tests - 766 tests in 23 files                    times from last run
 
    1 [x] installer.test_build           1      0.0s
    2 [x] test_mmu_adc_compat           14      0.0s
    3 [x] test_mmu_bootup               31       36s
    …
-   6 [x] test_mmu_console             124      131s
+   6 [x] test_mmu_console             131      131s
    …
   13 [x] test_mmu_nfc                  17      187s
    …
   22 [x] test_mmu_toolchange           20      5.4s
 
-  selected: 23 files - 759 tests - ~6m00s last time
+  selected: 23 files - 766 tests - ~6m00s last time
 
   [Enter] run    1 3 5-8 toggle    a all    n none    v invert
   +TEXT / -TEXT tick by name    p previous selection    s sort by time    q quit
@@ -128,7 +128,7 @@ Happy Hare tests - 759 tests in 23 files                    times from last run
 
 The right-hand column is how long each file took **on your machine, last run**, and it is the
 column to look at when deciding what to drop, because the cost is wildly uneven. From a real
-full run: `test_mmu_nfc` took 187 s for 17 tests and `test_mmu_console` 131 s for 124, while
+full run: `test_mmu_nfc` took 187 s for 17 tests and `test_mmu_console` 131 s for 131, while
 six files — including `test_mmu_tag_parser`'s 34 tests — came in under a tenth of a second
 between them. A handful of the twenty-three files account for most of the run. The times
 fill in after your first run, `s` sorts by them, and the footer estimates what the current
@@ -194,7 +194,7 @@ make console
 ```
 
 ```
-mmu[T0 g0]> MMU_CHANGE_TOOL TOOL=1
+> MMU_CHANGE_TOOL TOOL=1
 Tool change requested: T1
 ...
 ------------------------------------------------------------------------
@@ -209,6 +209,9 @@ T1   gate 1    LOADED IN NOZZLE           868.0mm  Idle
 
 Anything not starting with `/` is sent to the MMU as G-code. `/help` lists the
 meta-commands, `MMU_HELP` lists Happy Hare's, and every HH command takes `HELP=1`.
+
+The prompt is a bare `> ` — the tool, the gate and the paused state are all on the first
+line of the status section, so repeating them would only cost columns.
 
 The status section is separated from the log window by a **heavy rule**.
 
@@ -227,6 +230,7 @@ the log away instead of repainting it. Useful meta-commands beyond `/help`:
 | `/sensor NAME on\|off\|enable\|disable` | `on/off` drives the switch through its real button callback; `enable/disable` flips `sensor_enabled` so Happy Hare treats it as **not fitted** |
 | `/place`, `/preload`, `/exhaust` | set the scene: filament at a gate, preloaded, or run out |
 | `/log [N]`, `/trace 0-4` | the log file, and how much detail goes into it |
+| `/timestamp [on\|off]` | stamp MMU output with the virtual clock (no argument toggles) |
 
 ### Multi-unit
 
@@ -245,6 +249,23 @@ fires, no LED animation ticks, no pending-spool timeout expires. That is what ma
 prompt safe, and it is why `/advance N` exists — without it you never see anything
 time-driven. `/advance 12` clears the 8-second boot LED rainbow; the pending spool_id
 timeout is 20 seconds.
+
+`/timestamp` shows that clock, dimmed, against each MMU reply — the time the simulator
+started plus however far the reactor has been advanced since, so `/advance 3725` really does
+move it an hour and two minutes while however long you spent reading moves it not at all.
+Seconds are shown because the virtual clock usually moves in fractions of one: at minute
+resolution a whole session reads as a single instant. Only the first line of a reply is
+stamped; the rest are indented to line up under it:
+
+```
+> MMU_SENSORS
+22:45:16 filament_compression  --> Open
+         filament_tension      --> TRIGGERED
+         mmu_entry_0           --> Open
+> /advance 3725
+> MMU_SENSORS
+23:47:21 filament_compression  --> Open
+```
 
 Useful flags — `make console ARGS='...'`:
 
@@ -461,10 +482,10 @@ The test files, grouped by what they're about:
 | `test_mmu_roundtrip.py` | 35 | Klipper and Moonraker talking to each other |
 | **Presentation** | | |
 | `test_mmu_leds.py` | 22 | LED effects, flashes, the pending overlay |
-| `test_mmu_console.py` | 124 | the interactive console of §1a — rendering, command dispatch |
+| `test_mmu_console.py` | 131 | the interactive console of §1a — rendering, command dispatch |
 
 Counts as the picker reports them; `installer/test_build.py` adds the one skipped test that
-makes up the 624 total.
+makes up the 631 total.
 
 ### Coverage map
 

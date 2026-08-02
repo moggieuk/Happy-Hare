@@ -33,6 +33,7 @@ import os
 import re
 import select
 import sys
+import time
 
 # The fakes log at debug/warning through the root logger and every test file quiets it at
 # import (e.g. test/test_mmu_bootup.py:30). A module that imports test.hh directly does
@@ -285,6 +286,13 @@ INFO_PREFIX = '# '
 # dropped at the wrap and the continuation rows would come back at full brightness.
 INFO_COLOUR = '90'
 
+# How /timestamp renders the virtual clock. Fixed width, so continuation lines can be
+# indented to line up under the first - a ragged left edge is worse than no stamp at all.
+# Seconds matter here: the virtual clock usually moves in fractions of a second, so at
+# minute resolution a whole session reads as one instant.
+TIME_FORMAT = '%H:%M:%S'
+TIME_COLOUR = '90'
+
 
 def raw_stdout():
     """
@@ -438,6 +446,9 @@ class Console:
         self._can_pin = False                       # ... and whether it may re-pin later
         self.meta_line = ''                         # the current meta-command, unsplit
         self.scroll_keys = False                    # whether Shift-Up/PgUp could be bound
+        self.timestamps = False                     # /timestamp
+        self.wall_start = time.time()               # what virtual t=0 is called in real time
+        self.clock_epoch = None                     # reactor.monotonic() at that moment
         # Every line that reached the terminal, for the pager. Rendered, not raw: this is
         # what was displayed, which is not the same as self.sink (MMU responses only - no
         # banner, no meta-command output, no prompts).
@@ -503,6 +514,12 @@ class Console:
 
         if not (a.no_preload or a.no_calibrate):
             self._preload_all()
+
+        # Anchor the virtual clock LAST, so /timestamp reads "now" at the first prompt
+        # rather than a few virtual seconds into the past. Read from the reactor rather
+        # than assuming its start value, which is the reactor's business, not ours.
+        self.wall_start = time.time()
+        self.clock_epoch = self.hh.reactor.monotonic()
         return self
 
     def _prepare_selectors(self):
@@ -591,9 +608,39 @@ class Console:
     def _on_output(self, msg):
         self.sink.append(msg)
 
+    def sim_time(self):
+        """
+        The virtual clock as a time of day: when the simulator started, plus however far the
+        reactor has been advanced since. So '/advance 3600' really does move it an hour, and
+        a session that never advances stays at the minute it booted.
+        """
+        elapsed = 0.
+        if self.clock_epoch is not None:
+            elapsed = self.hh.reactor.monotonic() - self.clock_epoch
+        return time.strftime(TIME_FORMAT, time.localtime(self.wall_start + elapsed))
+
+    def emit(self, text):
+        """
+        Print a message from the MMU, stamped with the virtual clock if /timestamp is on.
+
+        Only the FIRST line carries the stamp; the rest are indented to sit under it, so a
+        multi-line reply still reads as one block rather than as one stamped line followed
+        by loose text.
+        """
+        if not self.timestamps:
+            print(text)
+            return
+        stamp = self.sim_time()
+        pad = ' ' * (len(stamp) + 1)
+        lines = text.split('\n')
+        # Blank lines stay blank rather than becoming nine spaces: the indent is there to
+        # line text up, and padding an empty line only leaves trailing whitespace behind.
+        print('\n'.join([paint(stamp, TIME_COLOUR, self.color) + ' ' + lines[0]]
+                        + [pad + line if line else '' for line in lines[1:]]))
+
     def _drain(self, mark):
         for msg in self.sink[mark:]:
-            print(html_to_ansi(msg, self.color, self.mode))
+            self.emit(html_to_ansi(msg, self.color, self.mode))
 
     # -- dispatch -------------------------------------------------------------
     def _dispatch(self, line):
@@ -1002,6 +1049,8 @@ class Console:
         ('/selector [POS|gate N|home|end] [UNIT=n]',
          'where the selector carriage physically is - set it as you would by hand'),
         ('/heat [TEMP]', 'set the extruder temperature'),
+        ('/timestamp [on|off]', 'stamp MMU output with the virtual clock (no argument '
+                                'toggles)'),
         ('/trace 0-4', "Happy Hare's own log_level, 4 = full narration"),
         ('/tag UID [GATE]', 'attach an NFC tag (needs --virtual-nfc)'),
         ('/header [GROUPS]', 'set header groups: %s, or "all"/"off"' % ','.join(GROUPS)),
@@ -1286,6 +1335,21 @@ class Console:
     def _meta_heat(self, args):
         self.hh.heat_extruder(float(args[0]) if args else self.args.temp)
 
+    def _meta_timestamp(self, args):
+        """
+        Stamp MMU output with the virtual clock. No argument toggles.
+
+        Worth having because the clock here is not real: it is frozen while you type and
+        only moves inside a dispatch or an explicit /advance, so the stamps show what the
+        MMU thinks the time is rather than how long you spent reading.
+        """
+        if args:
+            self.timestamps = args[0].lower() in ('1', 'on', 'true', 'yes')
+        else:
+            self.timestamps = not self.timestamps
+        self.info('timestamps %s (clock reads %s)'
+                  % ('on' if self.timestamps else 'off', self.sim_time()))
+
     def _meta_trace(self, args):
         self.hh.mmu.p.log_level = int(args[0]) if args else 1
         print('  log_level = %s' % self.hh.mmu.p.log_level)
@@ -1346,10 +1410,12 @@ class Console:
     ######################
 
     def prompt(self):
-        mmu = self.hh.mmu
-        tag = 'PAUSED' if mmu.is_mmu_paused() else 'T%s g%s' % (mmu.tool_selected,
-                                                                mmu.gate_selected)
-        return 'mmu[%s]> ' % tag
+        """
+        Just '> '. The tool, the gate and the paused state are all on the first line of the
+        status section, so spelling them out again here was duplication that cost a dozen
+        columns on every line of the transcript.
+        """
+        return '> '
 
     def completer(self, text, state):
         if not hasattr(self, '_words'):
