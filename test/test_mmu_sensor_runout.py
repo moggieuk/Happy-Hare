@@ -234,6 +234,76 @@ class TestRunoutArmingAcrossUnits(unittest.TestCase):
     def suspended(self, name):
         return self.mmu.sensor_manager.all_sensors_map[name].runout_helper.runout_suspended
 
+    def flowguard(self, index):
+        return self.mmu.mmu_machine.get_mmu_unit_by_index(index).sync_feedback.flowguard_active
+
+    def encoder_flowguard(self, index):
+        encoder = self.mmu.mmu_machine.get_mmu_unit_by_index(index).encoder
+        return encoder.is_flowguard_enabled() if encoder else False
+
+    def test_flowguard_follows_the_selected_unit(self):
+        """
+        FlowGuard raises clog/tangle through note_clog_tangle, which does not consult the
+        sensor arming at all, so it needs its own per-unit hand-off. A unit change that is
+        not bracketed by a suspend block used to leave the previous unit armed.
+        """
+        self.mmu.select_gate(0)
+        self.mmu._enable_filament_monitoring()
+        self.assertTrue(self.flowguard(0))
+        self.assertFalse(self.flowguard(1))
+
+        self.mmu.select_gate(9) # No suspend block around this
+
+        self.assertTrue(self.flowguard(1))
+        self.assertFalse(self.flowguard(0), 'previous unit still armed to raise clog/tangle')
+        self.assertFalse(self.encoder_flowguard(0), 'previous unit encoder still armed')
+        self.assertEqual(self.hh.errors, [])
+
+    def test_monitoring_off_disarms_every_unit(self):
+        self.mmu.select_gate(0)
+        self.mmu._enable_filament_monitoring()
+        self.mmu._disable_filament_monitoring()
+
+        for index in (0, 1):
+            self.assertFalse(self.flowguard(index))
+            self.assertFalse(self.encoder_flowguard(index))
+        self.assertTrue(self.suspended('default:extruder'))
+
+    def test_a_shared_sensor_survives_a_unit_change(self):
+        """
+        A common toolhead/extruder switch is in every unit's map, so the "disarm the other
+        units" pass would disarm the selected unit's own sensor. Extruder runout is the one
+        that demands manual intervention, so losing it is the worst case.
+        """
+        extruder = self.mmu.sensor_manager.all_sensors_map['default:extruder']
+        self.assertTrue(all(extruder in sensors.values()
+                            for sensors in self.mmu.sensor_manager.unit_sensors),
+                        'profile no longer shares the extruder sensor - test is vacuous')
+
+        self.mmu.select_gate(0)
+        self.mmu._enable_filament_monitoring()
+        self.assertFalse(self.suspended('default:extruder'))
+
+        self.mmu.select_gate(9)
+        self.assertFalse(self.suspended('default:extruder'),
+                         'shared extruder sensor disarmed by a unit change')
+
+    def test_the_newly_selected_unit_is_armed_without_waiting_for_a_re_enable(self):
+        """
+        Unit selection changes which sensors are in scope, not whether monitoring is on. A
+        unit-level runout sensor on the incoming unit must not sit disarmed until whatever
+        happens to call _enable_filament_monitoring next.
+        """
+        self.mmu.select_gate(0)
+        self.mmu._enable_filament_monitoring()
+        self.assertTrue(self.suspended('unit1:filament_compression'))
+
+        self.mmu.select_gate(9)
+
+        self.assertFalse(self.suspended('unit1:filament_compression'),
+                         'incoming unit left disarmed after a unit change')
+        self.assertTrue(self.suspended('unit0:filament_compression'))
+
     def test_crossing_units_hands_over_cleanly(self):
         self.mmu.select_gate(0)
         self.mmu._enable_filament_monitoring()
