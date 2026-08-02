@@ -107,7 +107,7 @@ class MmuSyncFeedback:
             self._init_controller()
 
 
-    def _handle_printing(self, print_time=None):
+    def _handle_printing(self, eventtime=None):
         """
         On transition into the printing state: clear stale telemetry logs and, if a gate
         is already synced/active (so no sync transition will reset the controller), start

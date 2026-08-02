@@ -152,7 +152,10 @@ class MmuController(MmuFilamentMovement):
         self.is_enabled = True      # Whether Happy Hare is enabled or not
 
         self.filament_monitoring_enabled = False
-        self.runout_last_enable_time = self.reactor.monotonic() # Used to help filter late runout callbacks
+        # Bracket the last suspend window and the last time we started handling a runout. Together
+        # these let a delayed runout callback be classified as stale or genuine (see MmuSensorRunoutCommand)
+        self.runout_last_enable_time = self.runout_last_disable_time = \
+            self.runout_last_handled_time = self.reactor.monotonic()
         self.is_handling_runout = False # True whilst handling a runout
 
         self.unit_selected = None       # Must not stay None, set when inital gate is set or in _load_persisted_state()
@@ -2205,6 +2208,8 @@ class MmuController(MmuFilamentMovement):
         eventtime = self.reactor.monotonic()
         enabled = self.filament_monitoring_enabled
         self.filament_monitoring_enabled = False
+        if enabled:
+            self.runout_last_disable_time = eventtime # Only the outermost suspend opens the window
 
         self.log_trace("Disabling FlowGuard and runout detection")
         self.sensor_manager.disable_runout(self.gate_selected)
@@ -2215,11 +2220,13 @@ class MmuController(MmuFilamentMovement):
 
     def _enable_filament_monitoring(self):
         eventtime = self.reactor.monotonic()
+        enabled = self.filament_monitoring_enabled
         self.filament_monitoring_enabled = True
 
         self.log_trace("Enabling FlowGuard and runout detection")
         self.sensor_manager.enable_runout(self.gate_selected)
-        self.runout_last_enable_time = eventtime
+        if not enabled:
+            self.runout_last_enable_time = eventtime # Only the transition closes the window
         self.mmu_unit().sync_feedback.activate_flowguard(eventtime)
         self.mmu_unit().sync_feedback.activate_tangle_prevention(eventtime)
 
@@ -3447,6 +3454,10 @@ class MmuController(MmuFilamentMovement):
           event_type - type of runout, if None then caller isn't sure (runout or clog)
           sensor     - sensor that triggered the event or None if forced
         """
+        # Any event raised before this point belongs to the same physical runout we are about to
+        # handle, so a second sensor reporting it later can be recognized as a duplicate
+        self.runout_last_handled_time = self.reactor.monotonic()
+
         with self.wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during handling
             self.is_handling_runout = (event_type == "runout") # Best starting assumption
             self._save_toolhead_position_and_park('runout') # includes "clog" and "tangle"

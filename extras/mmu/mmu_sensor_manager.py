@@ -35,6 +35,8 @@ class MmuSensorManager:
         self.gate_sensors = []       # Sensors on each gate with names stripped of gate suffix and unit prefix (indexed by gate index)
         self.bypass_sensors_map = {} # Map of sensors when bypass is selected (likely just extruder and toolhead)
         self.active_sensors_map = {} # Points to current version of gate_sensors (simple names). Resets on gate change
+        self._suspended_sensors = [] # Exactly what suspend_sensor_events(True) touched, so restore matches
+        self._suspend_depth = 0      # ...and how many nested blocks are holding it
 
         def collect_sensors(pairs):
             return {key: sensor for sensor, key in pairs if sensor}
@@ -483,8 +485,28 @@ class MmuSensorManager:
         self._set_sensor_runout(False, gate)
 
 
+    def _runout_sensors(self):
+        """
+        Sensors that follow the global "monitoring on/off" state: every per-gate sensor on
+        the machine (an idle lane's runout still updates the gate map) plus the selected
+        unit's own sensors, widening to all units when no unit is selected.
+
+        Deliberately not the active sensor map, which is re-pointed on gate change: that
+        would disarm one set and re-arm another, stranding sensors suspended for good.
+        """
+        sensors = [sensor for name, sensor in self.all_sensors_map.items()
+                   if self.is_gate_sensor_name(name)]
+
+        unit = self.mmu.unit_selected
+        units = range(len(self.unit_sensors)) if unit is None else (unit,)
+        for u in units:
+            sensors += [sensor for name, sensor in self.unit_sensors[u].items()
+                        if not self.is_gate_sensor_name(name)]
+        return sensors
+
+
     def _set_sensor_runout(self, enable, gate):
-        for name, sensor in self.active_sensors_map.items():
+        for sensor in self._runout_sensors():
             sensor.runout_helper.enable_runout(enable and gate >= 0)
 
 
@@ -492,13 +514,31 @@ class MmuSensorManager:
         """
         Suspend (or restore) insert/remove/runout gcode events on every active sensor.
 
-        Needed because an MMU-commanded move can legitimately push filament across an entry
-        sensor - MMU_NFC_SCAN homes through the gate to establish a datum - and an insert
-        event there starts an MMU_PRELOAD inside the operation that caused it.
-        disable_runout() does not cover it: that only gates the runout branch.
+        Needed for an operation that deliberately drives filament across a sensor, where the
+        resulting event would start a second operation inside the one that caused it.
+        Disabling runout does not cover it: that only gates the runout branch.
+
+        Restores exactly the sensors it suspended, and counts nesting, so neither a gate
+        change nor an inner block's exit can leave a sensor stranded either way.
         """
-        for name, sensor in self.active_sensors_map.items():
+        if suspend:
+            self._suspend_depth += 1
+            if self._suspend_depth > 1:
+                return # Already suspended by an enclosing block
+            self._suspended_sensors = list(self.active_sensors_map.values())
+
+        else:
+            if self._suspend_depth == 0:
+                return # Unbalanced restore
+            self._suspend_depth -= 1
+            if self._suspend_depth > 0:
+                return # Still inside an enclosing block
+
+        for sensor in self._suspended_sensors:
             sensor.runout_helper.suspend_events(suspend)
+
+        if not suspend:
+            self._suspended_sensors = []
 
 
     def _get_sensors(self, pos, gate, position_condition):

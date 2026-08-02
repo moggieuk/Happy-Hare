@@ -125,6 +125,8 @@ class MmuRunoutHelper:
         self.sensor_enabled = True
         self.runout_suspended = False
         self.button_handler_suspended = False
+        self.events_suspended = False
+        self._events_suspended_from = None
 
         self.printer.register_event_handler("klippy:ready", self._handle_ready)
 
@@ -261,11 +263,18 @@ class MmuRunoutHelper:
         gates the sync-feedback callback, not these gcode events.
         """
         if suspend:
-            self._events_suspended_from = self.min_event_systime
+            if not self.events_suspended:
+                self.events_suspended = True
+                self._events_suspended_from = self.min_event_systime # Save once, so nesting is safe
             self.min_event_systime = self.reactor.NEVER
-        else:
-            self.min_event_systime = getattr(
-                self, '_events_suspended_from', self.reactor.monotonic())
+
+        elif self.events_suspended:
+            self.events_suspended = False
+            # NEVER means a handler was in flight when we suspended. Restoring it would
+            # silence the sensor for the rest of the session, so re-open the gate instead
+            restore = self._events_suspended_from
+            self.min_event_systime = (
+                self.reactor.monotonic() if restore == self.reactor.NEVER else restore)
 
 
     def get_status(self, eventtime=None):
@@ -415,9 +424,10 @@ class MmuVirtualEndstopSensor(MmuSensor):
 
 
     def trigger_handler(self, eventtime, state):
-        # Update sensor functionality. note_filament_present needs the raw reactor
-        # eventtime (its runout-event gating compares against reactor.monotonic()).
-        self.runout_helper.note_filament_present(eventtime, state)
+        # Sensor gating is on the host reactor clock but 'eventtime' may be print_time
+        # (see the table below), so take reactor time from the reactor rather than trust it.
+        # Callbacks reach us on the host, so this is within a report interval of the event.
+        self.runout_helper.note_filament_present(self.runout_helper.reactor.monotonic(), state)
 
         # Process endstop if homing. The recorded trigger time is returned by
         # home_wait() and fed to stepper.get_past_mcu_position(), which needs MCU
@@ -445,9 +455,9 @@ class MmuVirtualEndstopSensor(MmuSensor):
     #   MmuAdcSwitchSensor           reactor eventtime       convert  -> print_time
     #   MmuNfcEndstop (host poll)    reactor eventtime       convert  -> print_time
     #
-    # note_filament_present() (above) always gets the RAW incoming eventtime, never
-    # the converted value - its runout-event gating compares against
-    # reactor.monotonic(), so it needs the reactor clock, not print_time.
+    # note_filament_present() (above) never sees this value at all - it is given
+    # reactor.monotonic() directly, because its event gating and the EVENTTIME it
+    # passes to the runout handler are both on the reactor clock.
     def _endstop_trigger_time(self, eventtime):
         """
         Time recorded for a homing trigger. Default identity; host-timed

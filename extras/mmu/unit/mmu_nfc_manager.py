@@ -477,7 +477,7 @@ class MmuNfcManager:
         return self.reactor.NEVER
 
 
-    def _handle_printing(self, print_time):
+    def _handle_printing(self, eventtime):
         """
         Deactivate all readers while actively printing so no NFC transaction runs
         on the reactor thread mid-print. The shared poll and auto read_gate honor
@@ -486,7 +486,7 @@ class MmuNfcManager:
         self._set_all_active(False)
 
 
-    def _handle_not_printing(self, print_time):
+    def _handle_not_printing(self, eventtime):
         """
         Re-activate all readers once printing stops.
         """

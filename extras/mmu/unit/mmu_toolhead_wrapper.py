@@ -264,11 +264,12 @@ class MmuHallEndstop(MmuVirtualEndstopSensor):
 
 
     def _update_from_adc(self, read_time):
-        # 'read_time' is the MCU sample time (print_time), supplied by Klipper's
-        # setup_adc_callback - not a host reactor eventtime.
+        # 'read_time' is the MCU sample time (print_time) from setup_adc_callback, which is
+        # what the inherited identity _endstop_trigger_time() wants for the homing trigger.
+        # trigger_handler takes reactor time for the sensor side itself.
         self._calc_diameter()
         is_present = self.diameter > self.hall_min_diameter
-        self.note_filament_present(read_time, is_present)
+        self.trigger_handler(read_time, is_present)
 
 
     def get_status(self, eventtime):

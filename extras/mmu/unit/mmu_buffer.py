@@ -307,7 +307,9 @@ class MmuProportionalSensor:
             extreme = 1 if self.value > 0 else -1
             if extreme != self._last_extreme: # Avoid repeated events
                 self._last_extreme = extreme
-                self.printer.send_event("mmu:sync_feedback", read_time, self.value)
+                # Reactor time, matching the switch callbacks - the controller differences
+                # consecutive timestamps, so both senders must be on the same clock
+                self.printer.send_event("mmu:sync_feedback", self.reactor.monotonic(), self.value)
 
 
     def get_status(self, eventtime):

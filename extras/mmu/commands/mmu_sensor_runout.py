@@ -72,22 +72,37 @@ class MmuSensorRunoutCommand(BaseCommand):
         sensor = mmu.sensor_manager.get_unprefixed_sensor_name(raw_sensor)
         process_runout = False
 
+        # Delivery is slow by design: the handler blocks on the gcode mutex, so an event can arrive
+        # long after it was raised. Only drop it if it was raised before a runout we already handled,
+        # or inside a window where monitoring was deliberately suspended
+        duplicate = eventtime < mmu.runout_last_handled_time
+        suspended = mmu.runout_last_disable_time <= eventtime < mmu.runout_last_enable_time
+
         try:
             with mmu.wrap_sync_gear_to_extruder():
 
-                if eventtime < mmu.runout_last_enable_time:
-                    mmu.log_assertion("Late sensor runout event on %s. Ignored" % raw_sensor)
-
-                elif sensor and mmu.sensor_manager.check_sensor(sensor):
+                if sensor and mmu.sensor_manager.check_sensor(sensor):
                     mmu.log_assertion("Runout handler suspects sensor malfunction on %s. Ignored" % raw_sensor)
 
                 else:
-                    # Always update gate map from mmu entry sensor
+                    # Always update gate map from mmu entry sensor, even if the event is stale
                     if sensor.startswith(SENSOR_ENTRY_PREFIX) and gate != mmu.gate_selected:
                         mmu.gate_maps.set_gate_status(gate, GATE_EMPTY)
 
+                    if duplicate or suspended:
+                        msg = (
+                            "%s sensor runout event on %s. Ignored (event=%.3f disable=%.3f enable=%.3f handled=%.3f now=%.3f)"
+                            % ("Duplicate" if duplicate else "Suspended", raw_sensor, eventtime,
+                               mmu.runout_last_disable_time, mmu.runout_last_enable_time,
+                               mmu.runout_last_handled_time, mmu.reactor.monotonic())
+                        )
+                        if duplicate:
+                            mmu.log_trace(msg) # Expected: second sensor reporting a runout we already handled
+                        else:
+                            mmu.log_debug(msg)
+
                     # Real runout to process...
-                    if sensor.startswith(SENSOR_ENTRY_PREFIX) and gate == mmu.gate_selected:
+                    elif sensor.startswith(SENSOR_ENTRY_PREFIX) and gate == mmu.gate_selected:
                         if mmu.endless_spool_enabled and mmu.p.endless_spool_eject_gate == gate:
                             mmu.log_trace(
                                 "Ignoring filament runout detected by %s because endless_spool_eject_gate is active on that gate"
@@ -104,6 +119,13 @@ class MmuSensorRunoutCommand(BaseCommand):
 
                     elif sensor.startswith(SENSOR_EXTRUDER_ENTRY):
                         raise MmuError("Filament runout occured at extruder. Manual intervention is required")
+
+                    # An idle lane emptying is normal (the user pulled the spool). The gate map
+                    # was updated above if it was an entry sensor; there is nothing else to do
+                    elif sensor.startswith((SENSOR_ENTRY_PREFIX, SENSOR_EXIT_PREFIX)):
+                        mmu.log_debug(
+                            "Runout event on %s which is not the selected gate. Ignored" % raw_sensor
+                        )
 
                     else:
                         mmu.log_assertion(

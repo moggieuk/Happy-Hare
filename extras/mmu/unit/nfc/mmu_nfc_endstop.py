@@ -51,8 +51,9 @@ class MmuNfcEndstop(MmuVirtualEndstopSensor):
 
     def home_start(self, print_time, sample_time, sample_count, rest_time, triggered):
         # Reset detection state so a previous read can't pre-trigger this home,
-        # then start the manager's tight poll of this gate's reader.
-        self.runout_helper.note_filament_present(print_time, False)
+        # then start the manager's tight poll of this gate's reader. Reactor time,
+        # not the homing print_time - that is the clock the helper gates on.
+        self.runout_helper.note_filament_present(self.runout_helper.reactor.monotonic(), False)
 
         self._poll_controller.start_homing_poll(self)
 

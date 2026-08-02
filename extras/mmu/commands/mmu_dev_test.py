@@ -456,7 +456,8 @@ class MmuTestCommand(BaseCommand):
             if feedback is not None:
                 have_run_test = True
                 mmu.log_info("Sending 'mmu:sync_feedback %.2f' event" % feedback)
-                mmu.printer.send_event("mmu:sync_feedback", mmu.toolhead.get_last_move_time(), feedback)
+                # Reactor time, like the real sensors - not print_time
+                mmu.printer.send_event("mmu:sync_feedback", mmu.reactor.monotonic(), feedback)
 
             printing_event = gcmd.get_int('SEND_PRINTING_EVENT', None, minval=0, maxval=1)
             if printing_event is not None:
