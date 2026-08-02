@@ -261,6 +261,67 @@ class TestReady(BootedSessionMixin, unittest.TestCase):
         self.assertEqual(status['num_gates'], 4)
 
 
+class TestReadySaveVariables(unittest.TestCase):
+    """
+    A4: the startup flush must not run on the klippy:ready dispatch.
+
+    Klipper runs the whole ready handler loop inside reactor.assert_no_pause()
+    (klippy.py:159-165), and since commit 332fbf236 SAVE_VARIABLE goes through
+    aio_executor and pauses the calling greenlet. SaveVariableManager.handle_ready
+    used to issue it inline, which raised ReactorError - reported to the user as
+    "Internal error during ready callback: Unable to save variable", the ReactorError
+    itself being swallowed by the bare except in klipper's cmd_SAVE_VARIABLE.
+
+    Needs its own sessions rather than BootedSessionMixin: the whole point is what
+    ready() does, and it runs both klipper generations.
+    """
+
+    def _ready_session(self, klipper_aio):
+        hh = session('boxturtle', klipper_aio=klipper_aio)
+        self.addCleanup(hh.close)
+        hh.build()
+        hh.connect()
+        hh.ready()          # must not raise ReactorError
+        return hh
+
+    def test_startup_flush_survives_ready_dispatch(self):
+        for klipper_aio in (True, False):
+            with self.subTest(klipper_aio=klipper_aio):
+                hh = self._ready_session(klipper_aio)
+                # The flush is deferred to a reactor callback, so it has not happened
+                # yet - pump the reactor to let it run.
+                hh.reactor.advance(0.)
+                revisions = [v for name, v in hh.save_variables.writes
+                             if name == 'mmu__revision']
+                self.assertEqual(len(revisions), 1,
+                                 'expected exactly one startup revision bump, got %r'
+                                 % (revisions,))
+                self.assertEqual(hh.errors, [])
+
+    def test_flush_is_abandoned_if_the_printer_shut_down(self):
+        """
+        Deferring opens a window that did not exist before: a klippy:ready handler
+        registered after SaveVariableManager can throw, and klipper then calls
+        invoke_shutdown (klippy.py:168) before our callback gets to run. Writing into
+        a shut-down printer at that point would raise out of the reactor.
+        """
+        hh = self._ready_session(klipper_aio=True)
+        hh.printer.in_shutdown_state = True
+        hh.reactor.advance(0.)
+        self.assertEqual(hh.save_variables.writes, [])
+
+    def test_nothing_is_written_during_ready_dispatch(self):
+        """
+        The guarantee is structural, not incidental. Before the fix this held only
+        because mmu_machine.py:99 happens to construct SaveVariableManager last, so
+        its handler ran after every other ready handler had staged its values.
+        """
+        for klipper_aio in (True, False):
+            with self.subTest(klipper_aio=klipper_aio):
+                hh = self._ready_session(klipper_aio)
+                self.assertEqual(hh.save_variables.writes, [])
+
+
 class TestBootup(BootedSessionMixin, unittest.TestCase):
     """A5: mmu:bootup - the headline milestone."""
 

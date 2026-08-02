@@ -24,7 +24,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 
-import logging, math, contextlib, re
+import logging, math, contextlib, re, copy
 
 # Happy Hare imports
 from .mmu_constants import *
@@ -47,10 +47,21 @@ class MmuError(Exception):
 # WRAPPER FOR EFFICIENT USE OF SAVE VARIABLES
 # -----------------------------------------------------------------------------------------------------------
 
+_DELETED = object() # Journal sentinel: "this key must not exist on disk"
+
+
 class SaveVariableManager:
     """
     Centralization of all save_variable manipulation for per-unit namespacing and efficiency
+
+    SAVE_VARIABLE snapshots klipper's variable dict up front, then pauses and finally
+    replaces it with a re-read of the file, so anything set mid-command is silently lost.
+    Every set()/delete() is therefore journalled in _pending and only dropped once a
+    post-write re-read proves it reached disk. Writes are coalesced onto a reactor timer.
     """
+
+    MAX_FLUSH_ATTEMPTS = 3
+    FLUSH_RETRY_DELAY  = 0.05 # Re-check interval while a command holds the gcode mutex
 
     def __init__(self, config, mmu_machine):
         """
@@ -65,6 +76,11 @@ class SaveVariableManager:
         self.save_variables = self.mmu_machine.printer.load_object(config, 'save_variables')
 
         self._can_write_variables = False # Whether it is ok to write to "save_variables"
+
+        self._pending = {}           # Unpersisted deltas: key -> value, or _DELETED
+        self._mutations = 0          # Bumped by every set()/delete(); detects write races
+        self._flush_timer = None     # Non-None while a coalesced flush is outstanding
+        self._writing = False        # Guards against overlapping physical writes
 
         # Sanity check to see that mmu_vars.cfg is included.  This will verify path
         # because default deliberately has 'mmu_revision' entry
@@ -84,14 +100,30 @@ class SaveVariableManager:
             )
 
         self.printer.register_event_handler("klippy:ready", self.handle_ready)
+        self.printer.register_event_handler("klippy:disconnect", self.handle_disconnect)
 
 
     def handle_ready(self):
         """
-        Enable writes once Klipper is ready and flush any pending updates.
+        Schedule the startup flush; it must not run on the "klippy:ready" dispatch.
+
+        Klipper forbids pausing inside its ready handler loop, and SAVE_VARIABLE pauses,
+        so writing from here raises "Internal error - reactor pause disabled".
         """
+        self.printer.get_reactor().register_callback(self._handle_ready_flush)
+
+
+    def _handle_ready_flush(self, eventtime):
+        """
+        Enable writes once we are clear of ready dispatch and flush pending updates.
+
+        Writes _write_now() directly because we are already on the reactor. Everything
+        the ready handlers staged is in the journal and lands in this one flush.
+        """
+        if self.printer.is_shutdown():
+            return                       # A later ready handler failed; gcode is dead
         self._can_write_variables = True # This prevents early writes until klipper is ready
-        self.write()                     # Flush anything that was pending
+        self._write_now()                # Flush anything that was pending
 
 
     def namespace(self, variable, namespace):
@@ -103,38 +135,179 @@ class SaveVariableManager:
         return variable
 
 
+    @staticmethod
+    def _snapshot(value):
+        """
+        Copy containers, pass scalars through.
+
+        Callers pass live objects they keep mutating (gate maps, stats), so the journal
+        must own a private copy or it cannot tell a dropped write from a later edit.
+        No `set`: klipper cannot round-trip one, repr() gives "set()" which won't parse.
+        """
+        if isinstance(value, (list, dict, tuple)):
+            return copy.deepcopy(value)
+        return value
+
+
     def get(self, variable, default, namespace=None):
         """
         Get a variable value from save_variables with optional namespacing.
+
+        Unpersisted deltas win over klipper's dict, which a reload can rewrite at any
+        time. Returns a copy so a caller cannot end up owning the journal's object.
         """
-        return self.save_variables.allVariables.get(self.namespace(variable, namespace), default)
+        key = self.namespace(variable, namespace)
+        if key in self._pending:
+            value = self._pending[key]
+            return default if value is _DELETED else self._snapshot(value)
+        return self.save_variables.allVariables.get(key, default)
 
 
     def set(self, variable, value, namespace=None, write=False):
         """
-        Set a variable value with optional namespacing and optional immediate write.
+        Set a variable value with optional namespacing and optional batch flush.
+
+        write=True means "this batch is complete, schedule a flush", not "write now" -
+        several in the same reactor pass collapse into a single file write.
         """
-        self.save_variables.allVariables[self.namespace(variable, namespace)] = value
+        key = self.namespace(variable, namespace)
+        value = self._snapshot(value)
+        self._pending[key] = value
+        self._mutations += 1
+        self.save_variables.allVariables[key] = value
         if write:
             self.write()
 
 
     def delete(self, variable, namespace=None, write=False):
         """
-        Delete a variable with optional namespacing and optional immediate write.
+        Delete a variable with optional namespacing and optional batch flush.
         """
-        _ = self.save_variables.allVariables.pop(self.namespace(variable, namespace), None)
+        key = self.namespace(variable, namespace)
+        self._pending[key] = _DELETED
+        self._mutations += 1
+        _ = self.save_variables.allVariables.pop(key, None)
         if write:
             self.write()
 
 
+    def _apply_pending(self):
+        """
+        Push unpersisted deltas back into klipper's dict.
+
+        Gets them into the next SAVE_VARIABLE snapshot, and repairs the dict after any
+        re-read has replaced it - ours or one triggered by a macro elsewhere.
+        """
+        all_variables = self.save_variables.allVariables
+        for key, value in self._pending.items():
+            if value is _DELETED:
+                all_variables.pop(key, None)
+            else:
+                all_variables[key] = value
+
+
+    def _reconcile(self):
+        """
+        Drop journal entries the post-write re-read proves are on disk.
+
+        SAVE_VARIABLE ends by re-reading the file, so klipper's dict now IS the file
+        contents - comparing against it verifies the write rather than assuming it.
+        """
+        all_variables = self.save_variables.allVariables
+        for key, value in list(self._pending.items()):
+            if value is _DELETED:
+                if key not in all_variables:
+                    del self._pending[key]
+            elif key in all_variables and all_variables[key] == value:
+                del self._pending[key]
+        self._apply_pending() # Whatever is left is unpersisted; keep it readable
+
+
     def write(self):
         """
-        Persist changes by bumping the MMU vars revision (if writes are enabled).
+        Request a flush. The physical write happens on a reactor timer.
+
+        SAVE_VARIABLE pauses, so issuing it inline needs the gcode mutex - and we are
+        called from both locked (gcode command) and unlocked (bare reactor timer)
+        contexts. Deferring every write to one place means run_script, which takes the
+        mutex itself, is always correct and no caller has to know where it is running.
         """
-        if self._can_write_variables:
-            mmu_vars_revision = self.save_variables.allVariables.get(VARS_MMU_REVISION, 0) + 1
-            self.gcode.run_script_from_command("SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (VARS_MMU_REVISION, mmu_vars_revision))
+        if not self._can_write_variables or self._flush_timer is not None:
+            return
+        reactor = self.printer.get_reactor()
+        self._flush_timer = reactor.register_timer(self._flush, reactor.NOW)
+
+
+    def _flush(self, eventtime):
+        """
+        Timer callback that performs the coalesced write.
+
+        Retries rather than blocking when a command holds the gcode mutex: run_script
+        would park this callback mid-flight for the length of that command, and a state
+        save has no deadline.
+        """
+        reactor = self.printer.get_reactor()
+        if self._can_write_variables and not self.printer.is_shutdown():
+            if self.gcode.get_mutex().test():
+                return eventtime + self.FLUSH_RETRY_DELAY # Leave the timer armed
+            try:
+                self._write_now()
+            except Exception:
+                # A failed save must not take the printer down, nor strand _flush_timer
+                # set, which would stop all future flushes. Nothing is lost - the journal
+                # keeps every unconfirmed delta for the next attempt.
+                logging.exception("MMU: error flushing save_variables")
+        reactor.unregister_timer(self._flush_timer)
+        self._flush_timer = None
+        return reactor.NEVER
+
+
+    def _write_now(self):
+        """
+        Persist by bumping the MMU vars revision, which rewrites the whole file.
+
+        Retries only when the mutation counter shows something was set while we were
+        paused. Retrying on any mismatch would be a write-amplification trap: a value
+        klipper cannot round-trip would mismatch forever and treble every flush.
+        """
+        if self._writing:
+            return # Re-entrant request; the loop below will pick the new deltas up
+        self._writing = True
+        try:
+            for _ in range(self.MAX_FLUSH_ATTEMPTS):
+                self._apply_pending()
+                mutations = self._mutations
+                mmu_vars_revision = self.save_variables.allVariables.get(VARS_MMU_REVISION, 0) + 1
+                self.gcode.run_script(
+                    "SAVE_VARIABLE VARIABLE=%s VALUE=%d" % (VARS_MMU_REVISION, mmu_vars_revision)
+                )
+                self._reconcile()
+                if not self._pending or mutations == self._mutations:
+                    break # Nothing left, or nothing raced with us so retrying is futile
+            if self._pending:
+                logging.info(
+                    "MMU: %d save_variable(s) not confirmed on disk after %d attempt(s): %s"
+                    % (len(self._pending), self.MAX_FLUSH_ATTEMPTS, sorted(self._pending))
+                )
+        finally:
+            self._writing = False
+
+
+    def handle_disconnect(self):
+        """
+        Last chance to persist anything still pending, since flushes are deferred.
+
+        Ignores _can_write_variables on purpose: it means "not yet", but at disconnect
+        there is no later flush, and a suspended batch is the largest thing we could
+        drop. Best-effort - the reactor has stopped, so a pause here cannot complete.
+        """
+        if not self._pending:
+            return
+        try:
+            self._can_write_variables = True
+            self._write_now()
+        except Exception:
+            logging.exception("MMU: unable to flush save_variables on disconnect")
 
 
     def upgrade(self, variable, namespace):

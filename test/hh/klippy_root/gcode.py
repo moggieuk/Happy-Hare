@@ -126,6 +126,18 @@ class GCodeDispatch:
     def __init__(self, printer, strict=False):
         self.printer = printer
         self.strict = strict
+        # Real object, like klipper's gcode.py:111, so callers that consult
+        # get_mutex().test() behave the same here as in production - notably
+        # SaveVariableManager._flush, which defers rather than writing under a command.
+        #
+        # DELIBERATELY NOT TAKEN BY run_script BELOW. Locking it for real deadlocks the
+        # harness: a reactor callback that queues behind a command parks, __exit__ hands
+        # it ownership without clearing is_locked (reactor.py ReactorMutex.__exit__), and
+        # it only resumes when something pumps. A test calling run_gcode from the main
+        # greenlet then finds the mutex locked and waits with _g_dispatch None - where
+        # _sys_pause returns immediately, so __enter__ spins forever. Real klipper never
+        # sees this because its reactor never stops; our pump has an edge.
+        self.mutex = printer.get_reactor().mutex()
         # Klipper keeps TWO handler dicts: ready_gcode_handlers is everything, and
         # base_gcode_handlers only the when_not_ready subset that works before klippy:ready.
         # MMU_HELP enumerates ready_gcode_handlers to find the non-Happy-Hare commands
@@ -231,6 +243,9 @@ class GCodeDispatch:
                 val = val[1:-1]
             params[key] = val
         return command, params, line
+
+    def get_mutex(self):
+        return self.mutex
 
     def run_script_from_command(self, script):
         self._run(script)

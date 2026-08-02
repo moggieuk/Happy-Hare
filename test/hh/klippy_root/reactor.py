@@ -34,6 +34,10 @@ MAX_ITERATIONS = 100000
 MAX_WALL_SECONDS = 10.
 
 
+class ReactorError(Exception):
+    pass
+
+
 class ReactorTimer:
     def __init__(self, callback, waketime):
         self.callback = callback
@@ -88,6 +92,18 @@ class ReactorGreenlet(greenlet.greenlet):
         self.timer = None
 
 
+class ReactorPreventPause:
+    """Ported from klipper's reactor.py:96-102. A nesting counter, not a flag."""
+    def __init__(self, reactor):
+        self.reactor = reactor
+
+    def __enter__(self):
+        self.reactor._prevent_pause_count += 1
+
+    def __exit__(self, type=None, value=None, tb=None):
+        self.reactor._prevent_pause_count -= 1
+
+
 class ReactorMutex:
     def __init__(self, reactor, is_locked):
         self.reactor = reactor
@@ -100,10 +116,25 @@ class ReactorMutex:
     def test(self):
         return self.is_locked
 
+    def _g_dispatch_is_none(self):
+        return self.reactor._g_dispatch is None
+
     def __enter__(self):
         if not self.is_locked:
             self.is_locked = True
             return
+        if self._g_dispatch_is_none():
+            # Waiting here would spin, not block: pause() outside a running dispatch
+            # goes to _sys_pause, which returns immediately for NEVER, so the loop
+            # below never yields and nothing can ever release the mutex. Real klipper
+            # cannot reach this - its reactor never stops - so it is always a harness
+            # bug (usually: pump the reactor before issuing gcode). Fail legibly
+            # instead of hanging the suite with no diagnostic.
+            raise AssertionError(
+                'gcode mutex is held and there is no running dispatch to release it. '
+                'A reactor callback is probably parked holding or queued on it - call '
+                'reactor.advance(0.) before issuing more gcode.'
+            )
         g = greenlet.getcurrent()
         self.queue.append(g)
         while 1:
@@ -131,6 +162,7 @@ class VirtualReactor:
         self._timers = []
         self._next_timer = self.NEVER
         self._g_dispatch = None
+        self._prevent_pause_count = 0
         self._greenlets = []
         self._all_greenlets = []
         self._process = False
@@ -194,6 +226,24 @@ class VirtualReactor:
     def mutex(self, is_locked=False):
         return ReactorMutex(self, is_locked)
 
+    # -- pause guard -------------------------------------------------------
+    # Ported from klipper's reactor.py:270-275. Klipper wraps contexts where a
+    # greenlet switch would be unsafe - the whole klippy:ready handler loop
+    # (klippy.py:161), invoke_shutdown (:210), every get_status() (gcode_macro.py:30,
+    # webhooks.py:495) - and anything that pauses inside one raises.
+    #
+    # Only Session.ready() enters such a block today, so in practice the guard only
+    # sees SAVE_VARIABLE. It sits at the top of pause() though, so it covers every
+    # pause path - ReactorMutex.__enter__ and ReactorCompletion.wait included. A
+    # future harness caller that wraps get_status() or shutdown dispatch the way
+    # klipper does will widen its reach accordingly.
+    def assert_no_pause(self):
+        return ReactorPreventPause(self)
+
+    def verify_can_pause(self):
+        if self._prevent_pause_count:
+            raise ReactorError("Internal error - reactor pause disabled")
+
     # -- greenlets ---------------------------------------------------------
     def _sys_pause(self, waketime):
         """
@@ -205,6 +255,13 @@ class VirtualReactor:
         return self._now
 
     def pause(self, waketime):
+        # Guard FIRST, unlike klipper's reactor.py:236-240 which checks _g_dispatch
+        # before _prevent_pause_count. Real klipper dispatches klippy:ready from
+        # _connect, which IS a reactor callback, so _g_dispatch is never None inside
+        # its assert_no_pause block. The harness fires ready from the main greenlet
+        # (bootstrap.py Session.ready), so deferring to klipper's ordering would send
+        # every ready-time pause down _sys_pause and make the assertion unreachable.
+        self.verify_can_pause()
         g = greenlet.getcurrent()
         if g is not self._g_dispatch:
             if self._g_dispatch is None:

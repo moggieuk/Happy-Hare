@@ -98,12 +98,19 @@ class Session:
 
     def __init__(self, profile='boxturtle', adc_api='new', adc_payload='samples',
                  strict_gcode=False, printer_stub=PRINTER_STUB, virtual_nfc=False,
-                 log_dir=None):
+                 log_dir=None, klipper_aio=True):
         self.klippy = install()
         self.profile = (profile if isinstance(profile, profiles_mod.Profile)
                         else profiles_mod.get(profile))
         self.adc_api = adc_api
         self.adc_payload = adc_payload
+        # Which klipper generation to emulate for save_variables, the same kind of
+        # version switch as adc_api. True models klipper >= 332fbf236 (2026-03-21),
+        # where SAVE_VARIABLE goes through aio_executor and PAUSES the calling
+        # greenlet, and where the klippy:ready dispatch loop runs inside
+        # reactor.assert_no_pause(). False models everything before that: a plain
+        # synchronous write and no pause guard. Defaults to the modern behaviour.
+        self.klipper_aio = klipper_aio
         self.strict_gcode = strict_gcode
         self.printer_stub = printer_stub
         # Swap reader chips for model-driven virtual ones instead of scripting the real
@@ -168,6 +175,9 @@ class Session:
             'debuginput': None,
         }
         self.printer = printer = klippy.Printer(start_args, self.reactor)
+        # Read by the save_variables stub, which is built by the section loop below and
+        # so cannot be handed the mode directly the way ppins.adc_api is.
+        printer.harness_klipper_aio = self.klipper_aio
         gcode_mod.add_early_printer_objects(printer)
         webhooks_mod.add_early_printer_objects(printer)
 
@@ -796,8 +806,16 @@ class Session:
         return model
 
     def ready(self):
-        """Step 7 (klippy:ready)."""
-        self.printer.send_event('klippy:ready')
+        """
+        Step 7 (klippy:ready).
+
+        Wrapped in assert_no_pause to match klipper's own dispatch (klippy.py:159-165),
+        which has run the whole ready handler loop that way since 302df255d. Anything
+        that pauses in here - most easily a SAVE_VARIABLE on modern klipper - raises
+        ReactorError, exactly as it does on a real printer.
+        """
+        with (self.reactor.assert_no_pause() if self.klipper_aio else _nullcontext()):
+            self.printer.send_event('klippy:ready')
         return self
 
     def boot(self, extra=0.01, calibrate=False):
@@ -937,6 +955,11 @@ class Session:
     @property
     def webhooks(self):
         return self.printer.lookup_object('webhooks')
+
+    @property
+    def save_variables(self):
+        """The stub carries a `writes` list of every (name, value) SAVE_VARIABLE saw."""
+        return self.printer.lookup_object('save_variables')
 
     @property
     def errors(self):
