@@ -1839,6 +1839,31 @@ class TestTheDefaultProfile(unittest.TestCase):
         self.assertEqual(len(self.console.sink), len(self.console.sink_stamp),
                          'the two lists are indexed in lockstep')
 
+    def test_output_is_printed_while_the_command_is_still_running(self):
+        """
+        Streaming, not buffering. Output used to be held until the command returned, so a paced
+        load printed a dozen correct-looking timestamps all in one burst - the timings said the
+        operation took 11 seconds and the screen said it took none.
+
+        Asserting on WHEN emit() is called, by recording the clock at each call: more than one
+        distinct reading is only possible if lines went out mid-command.
+        """
+        hh = self.console.hh
+        hh.set_pacing(1.)
+        self.addCleanup(hh.set_pacing, 0.)
+        gate = hh.mmu.num_gates - 1
+        self.console._dispatch('MMU_SELECT GATE=%d' % gate)
+
+        clocks = []
+        original = self.console.emit
+        self.console.emit = lambda text, stamp=None: clocks.append(hh.reactor.monotonic())
+        self.addCleanup(setattr, self.console, 'emit', original)
+
+        self.console.run_command('MMU_LOAD')
+        self.assertGreater(len(clocks), 2, 'expected several lines from a load')
+        self.assertGreater(len(set(clocks)), 1,
+                           'every line was printed at the same instant - still buffering')
+
     def test_clearing_the_sink_clears_the_stamps_with_it(self):
         """Out of step and _drain() would stamp lines with another line's clock."""
         self.assertEqual(len(self.console.sink), len(self.console.sink_stamp))

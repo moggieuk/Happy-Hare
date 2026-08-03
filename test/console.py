@@ -460,6 +460,12 @@ class Console:
                      else ('truecolor' if truecolor_supported() else '256'))
         self.sink = []                              # ordered (index -> rendered line)
         self.sink_stamp = []                        # ... and the clock when HH said it
+        self._printed = 0                           # how much of it has reached the screen
+        # Print Happy Hare's output as it arrives rather than after the command. Enabled ONLY
+        # around run_command - the path that presents to a user. Startup output belongs to
+        # banner(), and _dispatch() is the raw path used by setup and by the tests, which must
+        # stay silent.
+        self.streaming = False
         self.startup_output = []                    # bootup, incl. the Happy Hare welcome
         self.pinned = None                          # set by interact() when pinning
         self._can_pin = False                       # ... and whether it may re-pin later
@@ -668,11 +674,27 @@ class Console:
         # stood at the END - which hid the very progression /timestamp exists to show. Under
         # /pace a load reported eight identical stamps while the clock had moved 11s.
         self.sink_stamp.append(self.sim_time())
+        # And PRINT it now too, once a session is live. Buffering until the command returned
+        # meant a paced load printed correct-looking timestamps all at once at the end - the
+        # timings said one thing and the screen said another. Streaming makes the pauses land
+        # BETWEEN lines, where they belong. The prompt is unavailable while a command runs,
+        # which is what a printer does anyway.
+        if self.streaming:
+            self._emit_pending()
+
+    def _emit_pending(self):
+        """Print whatever Happy Hare has said that has not been printed yet."""
+        while self._printed < len(self.sink):
+            index = self._printed
+            self._printed += 1
+            self.emit(html_to_ansi(self.sink[index], self.color, self.mode),
+                      stamp=self.sink_stamp[index])
 
     def _clear_sink(self):
-        """Both lists together - they are indexed in lockstep by _drain()."""
+        """All three together - the lists are indexed in lockstep by _drain()."""
         del self.sink[:]
         del self.sink_stamp[:]
+        self._printed = 0
 
     def sim_time(self):
         """
@@ -706,9 +728,14 @@ class Console:
                         + [pad + line if line else '' for line in lines[1:]]))
 
     def _drain(self, mark):
-        for index in range(mark, len(self.sink)):
-            self.emit(html_to_ansi(self.sink[index], self.color, self.mode),
-                      stamp=self.sink_stamp[index])
+        """
+        Print from `mark`, skipping anything streaming already printed.
+
+        Still needed even with streaming on: boot() runs with it off (banner() shows that
+        output), and _printed is the authority on what has reached the screen either way.
+        """
+        self._printed = max(self._printed, mark)
+        self._emit_pending()
 
     # -- dispatch -------------------------------------------------------------
     def _dispatch(self, line):
@@ -744,6 +771,10 @@ class Console:
     def run_command(self, line):
         mark = len(self.sink)
         unhandled_mark = len(self.hh.gcode.unhandled)
+        # Stream Happy Hare's output as it happens rather than after the command returns.
+        # Scoped to here, not global: _dispatch() is also the raw path for setup and for the
+        # tests, and both need it silent.
+        self.streaming = True
         try:
             self._dispatch(line)
         except Exception as exc:                    # noqa: BLE001
@@ -759,7 +790,8 @@ class Console:
         except Exception as exc:                    # noqa: BLE001
             print(paint('!! reactor: %s' % exc, '1;31', self.color))
         self._settle_moonraker()
-        self._drain(mark)
+        self._drain(mark)                           # anything streaming did not already print
+        self.streaming = False
         self._warn_unhandled(line, unhandled_mark)
         self._warn_silent_macro(line, mark)
 
