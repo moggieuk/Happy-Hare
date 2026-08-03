@@ -354,9 +354,13 @@ ERCF_VVD = Profile(
         'PIN_EXTRUDER_SENSOR': 'PG14',
         'TOOLHEAD_TYPE_STEALTHBURNER_CLOCKWORK2_REVO_VORON': True,
         'BOOL_ENDLESS_SPOOL_ENABLED': True,
-        # Spoolman itself is OFF, but auto-create is on - the combination a user reaches by
-        # enabling NFC first. nfc_auto_create_enabled() is deep_read AND auto_create AND
-        # writable, so this exercises the guard rather than the happy path.
+        # Spoolman READONLY, with auto-create on. Readonly rather than off so a UID->spool
+        # lookup is actually dispatched on an NFC read (mmu_controller.py:3284 gates that on
+        # spoolman_support != off) - which is what the console is for. Readonly rather than
+        # push/pull because it is the mode that still lets nfc_auto_create_enabled() (deep_read
+        # AND auto_create AND WRITABLE) come out False, so the guard is exercised rather than
+        # the happy path. NFC_SPOOLMAN covers push.
+        'CHOICE_SPOOLMAN_SUPPORT_RO': True,
         'BOOL_SPOOLMAN_NFC_AUTO_CREATE': True,
         'CHOICE_LOG_FILE_LEVEL_STEPPER': True,
         # Both default y (macro_vars/Kconfig.software:30,41); turned off on this machine, so

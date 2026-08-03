@@ -805,6 +805,74 @@ class Session:
             self.reactor.advance(0.)
         return model
 
+    # Plausible spool metadata for prime_gate_map(). Vendors and materials are real names a
+    # user would recognise, so the gate table, the LED filament_color render and the Spoolman
+    # paths all have something to show that is not "Unknown".
+    FILAMENT_VENDORS = ('eSun', 'KVS', 'Bambu Labs', 'Prusa')
+    FILAMENT_MATERIALS = ('ABS', 'ABS+', 'PLA', 'TPU', 'PLA+')
+    FILAMENT_TEMP_RANGE = (210, 250)
+    # The filament NAME is a product name, and HH renders it next to the vendor
+    # ("Prusa | PLA Matte"), so it must not repeat the vendor or the line reads "Prusa Prusa".
+    # Matches the shape of the material_detail field a real deep-read tag carries.
+    FILAMENT_GRADES = ('Basic', 'Matte', 'Silk', 'Tough', 'HF')
+
+    def prime_gate_map(self, seed=0):
+        """
+        Give every gate a vendor, material, colour and temperature. Returns
+        {gate: {what was set}}.
+
+        A fresh machine has none of this - `MMU_STATUS` shows "Unknown | 200C | Unknown" on
+        every gate, and the LED filament_color effect has nothing to render - which makes
+        anything that presents filament attributes impossible to eyeball.
+
+        SEEDED, so a session is reproducible: the point is varied data, not different data
+        every run. Pass a different seed for a different spread.
+
+        Goes through HH's own set_gate_filament_from_tag (mmu_gate_maps.py:352) rather than
+        assigning the lists directly, so the colour is validated, gate_color_rgb is refreshed
+        and the map is persisted exactly as a real tag read would leave it. That setter does
+        NOT touch spool_id - a resolved Spoolman spool stays authoritative.
+        """
+        import random as _random
+
+        rng = _random.Random(seed)
+        applied = {}
+        for gate in range(self.mmu.num_gates):
+            material = rng.choice(self.FILAMENT_MATERIALS)
+            attrs = {
+                'vendor': rng.choice(self.FILAMENT_VENDORS),
+                'material': material,
+                'color': '%06X' % rng.randrange(0x1000000),
+                'temperature': rng.randint(*self.FILAMENT_TEMP_RANGE),
+                'name': '%s %s' % (material, rng.choice(self.FILAMENT_GRADES)),
+            }
+            self.mmu.gate_maps.set_gate_filament_from_tag(gate, **attrs)
+            applied[gate] = attrs
+        return applied
+
+    def settle_leds(self, limit=20.):
+        """
+        Advance the virtual clock until no unit is held by a timed state effect.
+
+        effect_initialized is a unit-wide 8s flash from bootup (mmu_led_manager.py:254), and
+        while it holds a unit EVERY transient flash is silently dropped
+        (mmu_led_manager.py:473) - so an NFC read acknowledgment, say, does nothing. On a
+        printer that window passes on its own; here the clock stops where boot() left it,
+        2.5s in, so an interactive session sits inside it for good.
+
+        Returns the seconds advanced. Deliberately NOT called from boot(): tests assert the
+        held state (test_mmu_leds.TestTransientFlashWhileHeld), and warming up costs every
+        other test 10 virtual seconds it does not need.
+        """
+        manager = getattr(self.mmu, 'led_manager', None)
+        if manager is None:
+            return 0.
+        advanced = 0.
+        while any(manager.pending_update) and advanced < limit:
+            self.reactor.advance(1.)
+            advanced += 1.
+        return advanced
+
     def ready(self):
         """
         Step 7 (klippy:ready).

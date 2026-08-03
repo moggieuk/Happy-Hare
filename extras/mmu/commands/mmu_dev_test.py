@@ -1223,7 +1223,7 @@ class MmuTestCommand(BaseCommand):
                 # _reader_for / _read_reader / _want_metadata) is bypassed by construction.
                 # The downstream *feature* gates (per-unit nfc_deep_read, spoolman_support)
                 # are still honoured; we log when one will suppress part of the injection.
-                uid = gcmd.get('UID', '04A1B2C3D4E5').strip()
+                uid = gcmd.get('UID', 'DEADBEEF').strip()
                 deep = bool(gcmd.get_int('DEEP', 0, minval=0, maxval=1))
                 gate = gcmd.get_int('GATE', -1, minval=-1, maxval=mmu.num_gates - 1)
 
