@@ -1103,6 +1103,186 @@ class TestTimestamps(unittest.TestCase):
             self.assertFalse(console.timestamps)
 
 
+class TestLiveClock(unittest.TestCase):
+    """
+    Live mode - the clock running while you sit at the prompt.
+
+    A signal and not a thread, and that is not a style choice: the reactor is greenlet-based
+    and greenlets belong to the thread that created them, so pumping it from a worker dies
+    with 'greenlet.error: Cannot switch to a different thread'. Everything here therefore
+    checks main-thread behaviour and the arm/disarm discipline that keeps a tick out of a
+    dispatch.
+    """
+
+    def _console(self, argv=()):
+        console = console_mod.Console(console_mod.parse_args(list(argv)))
+        console.hh = mock.Mock()
+        console.hh.reactor.monotonic.return_value = 1000.0
+        # Explicitly None: a bare Mock attribute is truthy, and the tick reads _g_dispatch
+        # to tell whether the reactor is mid-callback.
+        console.hh.reactor._g_dispatch = None
+        console.clock_epoch = 1000.0
+        console._at_prompt = True                   # where a tick is allowed to run
+        return console
+
+    def test_both_default_off_when_not_interactive(self):
+        """--script must stay byte-for-byte reproducible; a clock in the output cannot."""
+        console = self._console()                   # tests never run on a tty
+        self.assertFalse(console.live)
+        self.assertFalse(console.timestamps)
+
+    def test_the_flags_override_the_default_either_way(self):
+        self.assertTrue(self._console(['--live', '--timestamp']).live)
+        self.assertTrue(self._console(['--live', '--timestamp']).timestamps)
+        self.assertFalse(self._console(['--no-live']).live)
+        self.assertFalse(self._console(['--no-timestamp']).timestamps)
+
+    def test_a_real_prompt_turns_both_on(self):
+        with mock.patch.object(sys, 'stdout', FakeTty()):
+            console = console_mod.Console(console_mod.parse_args([]))
+        self.assertTrue(console.live, 'live should default on at a terminal')
+        self.assertTrue(console.timestamps)
+
+    def test_script_mode_stays_off_even_on_a_terminal(self):
+        with mock.patch.object(sys, 'stdout', FakeTty()):
+            console = console_mod.Console(console_mod.parse_args(['--script', 'f.txt']))
+        self.assertFalse(console.live)
+        self.assertFalse(console.timestamps)
+
+    def test_disarming_is_not_gated_on_the_flag(self):
+        """
+        _arm_tick(False) has to fire whatever self.live says, or /live off would clear the
+        flag and leave the itimer running - a signal every second with nothing to catch it.
+        """
+        console = self._console(['--no-live'])
+        with mock.patch('signal.setitimer') as setitimer:
+            console._arm_tick(False)
+        setitimer.assert_called_once()
+        self.assertEqual(setitimer.call_args[0][1], 0, 'did not cancel the timer')
+
+    def test_a_tick_does_nothing_when_live_is_off(self):
+        console = self._console(['--no-live'])
+        console.advance = mock.Mock()
+        console._tick()
+        console.advance.assert_not_called()
+
+    def test_a_tick_delivered_late_does_not_run(self):
+        """
+        The race the _at_prompt flag exists for. setitimer(0) stops FUTURE signals, but one
+        already taken by the C handler is still flagged and Python runs the Python-level
+        handler at the next bytecode boundary - by then inside the command that just
+        started, where advance() asserts 'called from inside a callback'.
+        """
+        console = self._console(['--live'])
+        console._at_prompt = False                  # what interact() sets before dispatching
+        console.advance = mock.Mock()
+        console._tick()
+        console.advance.assert_not_called()
+
+    def test_a_tick_stays_out_of_a_live_dispatch(self):
+        console = self._console(['--live'])
+        console.hh.reactor._g_dispatch = object()   # the reactor is inside a callback
+        console.advance = mock.Mock()
+        console._tick()
+        console.advance.assert_not_called()
+
+    def test_a_tick_cannot_re_enter_itself(self):
+        """Python runs a pending handler at the next bytecode boundary - including one
+        inside the handler."""
+        console = self._console(['--live'])
+        console._ticking = True
+        console.advance = mock.Mock()
+        console._tick()
+        console.advance.assert_not_called()
+
+    def test_a_tick_advances_by_real_elapsed_time_and_is_capped(self):
+        console = self._console(['--live'])
+        console.advance = mock.Mock()
+        with mock.patch.object(console_mod.time, 'monotonic', return_value=500.0):
+            console._last_tick = 499.0
+            console._tick()
+        self.assertAlmostEqual(console.advance.call_args[0][0], 1.0, places=3)
+
+        console.advance.reset_mock()
+        with mock.patch.object(console_mod.time, 'monotonic', return_value=9999.0):
+            console._last_tick = 0.0                # a slept laptop, or a SIGSTOP
+            console._tick()
+        self.assertEqual(console.advance.call_args[0][0], console_mod.LIVE_MAX_CATCHUP)
+
+    def test_a_failing_tick_stops_the_clock_instead_of_repeating(self):
+        console = self._console(['--live'])
+        console.advance = mock.Mock(side_effect=RuntimeError('reactor went bang'))
+        console._reprint = lambda fn: fn()
+        with mock.patch('signal.setitimer'), contextlib.redirect_stdout(io.StringIO()) as buf:
+            with mock.patch.object(console_mod.time, 'monotonic', return_value=500.0):
+                console._last_tick = 499.0
+                console._tick()
+        self.assertFalse(console.live, 'a broken clock kept ticking')
+        self.assertIn('reactor went bang', buf.getvalue())
+
+    def test_the_meta_command_toggles_and_reports(self):
+        console = self._console(['--live'])
+        with mock.patch('signal.setitimer'), mock.patch('signal.signal'), \
+                mock.patch.object(sys, 'stdout', FakeTty()), \
+                mock.patch.object(sys, 'stdin', FakeTty()):
+            console.meta('/live off')
+            self.assertFalse(console.live)
+            console.meta('/live')
+            self.assertTrue(console.live)
+            printed = sys.stdout.getvalue()
+        self.assertIn('live clock off', printed)
+        self.assertIn('live clock on', printed)
+
+    def test_live_refuses_to_arm_off_a_terminal(self):
+        """
+        script() has no arm/disarm discipline, so a '/live on' in a command file would leave
+        an itimer running and the next tick would land inside a dispatch.
+        """
+        console = self._console(['--live'])
+        with mock.patch('signal.setitimer') as setitimer, mock.patch('signal.signal'):
+            self.assertFalse(console._arm_tick(True), 'armed a timer with no terminal')
+        setitimer.assert_not_called()
+
+    def test_live_says_so_when_it_cannot_arm(self):
+        console = self._console(['--no-live'])
+        with mock.patch('signal.setitimer'), contextlib.redirect_stdout(io.StringIO()) as buf:
+            console.meta('/live on')
+        self.assertFalse(console.live)
+        self.assertIn('unavailable', buf.getvalue())
+
+
+class TestSlicedAdvance(unittest.TestCase):
+    """
+    advance() has a per-call iteration cap and the LED effects animate at 24fps, so a single
+    long call dies partway through the seventh virtual minute. Slicing gets there because
+    the counter resets per call.
+    """
+
+    def _console(self):
+        console = console_mod.Console(console_mod.parse_args([]))
+        console.hh = mock.Mock()
+        return console
+
+    def test_a_short_advance_is_one_call(self):
+        console = self._console()
+        console.advance(5.0)
+        console.hh.reactor.advance.assert_called_once_with(5.0)
+
+    def test_a_long_advance_is_sliced_and_totals_correctly(self):
+        console = self._console()
+        console.advance(600.0)
+        steps = [c[0][0] for c in console.hh.reactor.advance.call_args_list]
+        self.assertGreater(len(steps), 1, 'not sliced - this is what used to raise')
+        self.assertAlmostEqual(sum(steps), 600.0, places=6)
+        self.assertLessEqual(max(steps), console_mod.ADVANCE_SLICE)
+
+    def test_zero_and_negative_do_nothing(self):
+        console = self._console()
+        console.advance(0.)
+        console.advance(-5.)
+        console.hh.reactor.advance.assert_not_called()
+
+
 class TestHeaderGroups(unittest.TestCase):
     """
     header_groups() - shared by --header and /header so the two cannot drift. They used to
@@ -1387,7 +1567,8 @@ class TestConsoleScript(unittest.TestCase):
         rc, out = self._run(['/help', '/filament', '/exhaust 0', '/trace 2', '/heat 240',
                              '/sensor mmu_entry_1 off', '/sensor mmu_exit_0 disable',
                              '/vars', '/clear', '/redraw', '/log 3', '/errors', '/scroll',
-                             '/scroll 5', '/s', '/timestamp', '/timestamp off', '/badmeta'],
+                             '/scroll 5', '/s', '/timestamp', '/timestamp off',
+                             '/live on', '/live off', '/advance 600', '/badmeta'],
                             ['--header', 'off'])
         self.assertEqual(rc, 0, out[-2000:])
         self.assertIn('Meta-commands', out)
