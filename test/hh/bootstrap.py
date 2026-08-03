@@ -464,17 +464,34 @@ class Session:
         toolhead = self.printer.lookup_object('toolhead', None)
         extruder = toolhead.get_extruder() if toolhead is not None else None
         stepper = getattr(getattr(extruder, 'extruder_stepper', None), 'stepper', None)
-        if stepper is not None:
-            # Retract: HH reads (initial_mcu_pos - final_mcu_pos) * step_dist
-            # (mmu_filament_movement.py:2541-2559), so BOTH have to move. set_position alone
-            # is not enough - it is mcu-preserving, by design (klippy_root/stepper.py).
-            stepper.set_position([stepper.get_commanded_position() - distance, 0., 0., 0.])
-            stepper.harness_note_motion(-distance)
-
         model = getattr(self.printer, 'harness_filament', None)
         gate = self.mmu.gate_selected
-        if model is not None and gate is not None and gate >= 0:
-            model.advance(gate, -distance, 'tip forming')
+        if gate is None or gate < 0:
+            model = None
+
+        # HOW LONG it takes, so a paced session does not do the whole retract in one instant -
+        # it is the first thing an unload does, and it was the last step still finishing
+        # immediately. The speed is the macro's OWN unloading_speed_start, not a number chosen
+        # here; without it (or unpaced) pace_move yields the whole distance once.
+        # unloading_speed, not unloading_speed_start: the distance modelled here IS the cooling
+        # tube (position + length), and unloading_speed is the macro's own "slow move to cooling
+        # zone". _start is the fast move before it, and at 80mm/s it made the whole retract
+        # 0.5s - shorter than the real macro's ramming and cooling by a wide margin.
+        speed = (float(variables.get('unloading_speed') or 0.0)
+                 or float(variables.get('unloading_speed_start') or 0.0))
+        mq = self.printer.lookup_object('motion_queuing', None)
+        duration = (distance / speed) if speed else 0.
+        slices = (mq.pace_move(duration, -distance) if mq is not None else (-distance,))
+
+        for amount in slices:
+            if stepper is not None:
+                # Retract: HH reads (initial_mcu_pos - final_mcu_pos) * step_dist
+                # (mmu_filament_movement.py:2541-2559), so BOTH have to move. set_position
+                # alone is not enough - it is mcu-preserving, by design (klippy_root/stepper.py)
+                stepper.set_position([stepper.get_commanded_position() + amount, 0., 0., 0.])
+                stepper.harness_note_motion(amount)
+            if model is not None:
+                model.advance(gate, amount, 'tip forming')
 
     def calibrate(self):
         """

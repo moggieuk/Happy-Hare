@@ -229,10 +229,11 @@ class HomingMove:
             # feeding its displacement into the gate model would push a gate's filament by
             # the selector's travel. Only the axis position matters here.
             if axis is not None:
-                self._move_selector(axis, delta)
+                self._move_selector(axis, delta, speed)
             elif model is not None and gate is not None:
-                model.advance(gate, delta,
-                              'homing MISS [%s]' % ','.join(n for _e, n in leaves))
+                self._advance_filament(
+                    model, gate, delta, speed,
+                    'homing MISS [%s]' % ','.join(n for _e, n in leaves))
             toolhead.set_position([target_axis, 0., 0., 0.])
             toolhead.flush_step_generation()
             _home_wait_all(self.endstops, print_time)
@@ -243,11 +244,11 @@ class HomingMove:
         endstop, name = winner
         signed = travel if delta > 0 else -travel
         if axis is not None:
-            self._move_selector(axis, signed)
+            self._move_selector(axis, signed, speed)
             halt_axis = target_axis
         else:
             if model is not None and gate is not None:
-                model.advance(gate, signed, 'homing -> %s' % name)
+                self._advance_filament(model, gate, signed, speed, 'homing -> %s' % name)
             halt_axis = start_axis + signed
         toolhead.set_position([halt_axis, 0., 0., 0.])
         toolhead.flush_step_generation()
@@ -309,7 +310,30 @@ class HomingMove:
                 return candidate
         return None
 
-    def _move_selector(self, axis, delta):
+    def _pace_slices(self, total, speed):
+        """
+        Slice a homing move so it can take time, like a plain one does.
+
+        Homing moves never reach trapq_append, so they were the whole reason a paced unload
+        spent all of its seconds inside the ONE bowden move while every home-to-sensor step
+        happened in the same instant. Duration is distance/speed - the same arithmetic the real
+        trapezoid reduces to at cruise.
+
+        Yields `total` once when there is nothing to pace against (no speed, or pacing off),
+        so the unpaced path is exactly as it was.
+        """
+        mq = self.printer.lookup_object('motion_queuing', None)
+        if mq is None or not speed:
+            yield total
+            return
+        for amount in mq.pace_move(abs(total) / float(speed), total):
+            yield amount
+
+    def _advance_filament(self, model, gate, total, speed, reason):
+        for amount in self._pace_slices(total, speed):
+            model.advance(gate, amount, reason)
+
+    def _move_selector(self, axis, delta, speed=None):
         """
         Move the carriage and register the travel on the mcu, which is where
         MmuGenericRail.home() reads it back from.
@@ -318,9 +342,12 @@ class HomingMove:
         driving into the hard stop reports the shorter distance - which is the whole point of
         MMU_CALIBRATE_SELECTOR AUTO=1's "search for the end of the selector" step.
         """
-        moved = axis.advance(delta)
-        for stepper in axis.stepper.get_steppers():
-            stepper.harness_note_motion(moved)
+        moved = 0.
+        for amount in self._pace_slices(delta, speed):
+            step = axis.advance(amount)
+            for stepper in axis.stepper.get_steppers():
+                stepper.harness_note_motion(step)
+            moved += step
         return moved
 
     def _resolve_selector(self, axis, leaves, start, delta):

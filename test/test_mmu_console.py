@@ -1479,6 +1479,15 @@ class TestConsoleScript(unittest.TestCase):
     --profile happens to be the default made them fail the moment the default became a
     multi-unit ERCF+ViViD: it has no per-gate entry sensors on unit0, and MMU_HOME there
     requires a UNIT. The default profile gets its own coverage below instead.
+
+    ALSO PINNED TO --pace 0, and that one is a finding rather than a preference. BoxTurtle and
+    EMU are the two shipped profiles where a PACED load logs a spurious "Operation not
+    possible. Filament is loaded": the load pushes filament across a per-gate entry sensor,
+    that raises an insert event, and with gate_autoload set HH starts an MMU_PRELOAD inside the
+    load that caused it. Happy Hare has the guard for exactly this - wrap_suspend_insert_events,
+    whose docstring describes this failure word for word - but applies it only on the NFC-scan
+    path (mmu_filament_movement.py:523), never on the load path. It stayed invisible while moves
+    took no time. The load still completes correctly; the message is the whole symptom.
     """
 
     PROFILE = 'boxturtle'
@@ -1492,14 +1501,17 @@ class TestConsoleScript(unittest.TestCase):
         with contextlib.redirect_stdout(buf):
             # --profile first so a caller can still override it in extra_args (argparse keeps
             # the last occurrence)
-            rc = console_mod.main(['--profile', self.PROFILE, '--plain', '--script', path]
-                                  + list(extra_args))
+            # --pace 0: this class is about console MECHANICS on boxturtle, and boxturtle is
+            # one of the two shipped profiles where a PACED load raises a spurious insert event
+            # mid-operation (see the note on TestConsoleScript). Unpaced is also faster.
+            rc = console_mod.main(['--profile', self.PROFILE, '--plain', '--pace', '0',
+                                   '--script', path] + list(extra_args))
         return rc, buf.getvalue()
 
     def _make_console(self, argv):
         """A booted Console on THIS class's profile, closed on teardown."""
         console = console_mod.Console(
-            console_mod.parse_args(['--profile', self.PROFILE] + list(argv)))
+            console_mod.parse_args(['--profile', self.PROFILE, '--pace', '0'] + list(argv)))
         self.addCleanup(console.close)
         console.boot()
         return console
@@ -1810,8 +1822,8 @@ class TestTheDefaultProfile(unittest.TestCase):
         lands in the same instant. Pacing spends each move's real duration in virtual time.
         """
         hh = self.console.hh
-        self.assertEqual(hh.pacing, 0., 'instant is the default')
         self.assertEqual(hh.pacing_wall, 0., 'the suite must never sleep')
+        hh.set_pacing(0.)                           # the console default is 0.5; measure from 0
         gate = hh.mmu.num_gates - 1
         self.console._dispatch('MMU_SELECT GATE=%d' % gate)
 
@@ -1905,8 +1917,9 @@ class TestTheDefaultProfile(unittest.TestCase):
         """
         hh = self.console.hh
         self.console.args.header = ['machine']
-        self.addCleanup(hh.set_pacing, 0.)
+        self.addCleanup(hh.set_pacing, hh.pacing)
 
+        hh.set_pacing(0.)
         self.assertNotIn('realtime', '\n'.join(self.console.header_lines()))
         hh.set_pacing(0.5)
         self.assertIn('realtime=50%', '\n'.join(self.console.header_lines()))

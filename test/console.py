@@ -468,6 +468,7 @@ class Console:
         self.streaming = False
         self.startup_output = []                    # bootup, incl. the Happy Hare welcome
         self.pinned = None                          # set by interact() when pinning
+        self.interactive = False                    # ... and True once its loop is running
         self._can_pin = False                       # ... and whether it may re-pin later
         self.meta_line = ''                         # the current meta-command, unsplit
         self.scroll_keys = False                    # whether Shift-Up/PgUp could be bound
@@ -1587,12 +1588,13 @@ class Console:
         before the command returns. Off for a script or a pipe, where the point of the harness
         is that it does not wait for anything; --wall/--no-wall overrides either way.
 
-        A --script run counts as non-interactive even on a tty: it has nobody watching it, and
-        that is also what keeps the test suite from ever sleeping.
+        Requires interact() to have actually started, not merely a tty: a --script run has
+        nobody watching it, and a Console driven straight from a test would otherwise sleep for
+        real whenever the suite happens to run attached to a terminal.
         """
         if self.args.wall is not None:
             return 1. if self.args.wall else 0.
-        return 1. if (self.args.script is None and sys.stdout.isatty()) else 0.
+        return 1. if (self.interactive and sys.stdout.isatty()) else 0.
 
     ####################
     ##### Live mode ####
@@ -1869,6 +1871,10 @@ class Console:
                       'own. /live off freezes it.')
 
     def interact(self):
+        # Now there is a human watching, which is the condition wall-clock pacing waits on -
+        # re-applied because boot() computed it before this was true. See _wall_pacing.
+        self.interactive = True
+        self.hh.set_pacing(self.hh.pacing, wall=self._wall_pacing())
         # The tee first, so the banner is in the scrollback too. isatty() and not the pinning
         # test: --inline-header keeps its history in the terminal's own buffer, but /scroll
         # still ought to work there.
@@ -2337,9 +2343,9 @@ def parse_args(argv=None):
                         '(the default at an interactive prompt, off for a script or pipe)')
     p.add_argument('--no-wall', dest='wall', action='store_false',
                    help='with --pace, move the virtual clock but never sleep')
-    p.add_argument('--pace', type=float, default=0., metavar='FACTOR',
+    p.add_argument('--pace', type=float, default=0.5, metavar='FACTOR',
                    help='how much of each move\'s real duration to spend in virtual time: '
-                        '0 (default) is instant, 0.5 is twice as fast as real, 1 is real '
+                        '0 is instant, 0.5 (default) is twice as fast as real, 1 is real '
                         'time. Also settable live with /pace')
     p.add_argument('--trace', type=int, default=0, metavar='0-4',
                    help="Happy Hare log_level; 4 is full narration")

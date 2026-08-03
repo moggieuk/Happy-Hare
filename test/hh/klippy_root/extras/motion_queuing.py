@@ -82,18 +82,32 @@ class PrinterMotionQueuing:
         return trapq_append
 
     def _run_move(self, trapq, distance, duration):
-        """
-        Effect a move: tell the observer how far it went, and optionally spend its duration.
+        """Effect a plain trapq move: walk it, telling the observer each slice's share."""
+        for amount in self.pace_move(duration, distance):
+            self._note_move(trapq, amount)
 
-        Unpaced (the default, and every test) this is one notification and no time at all.
-        Paced, it is walked in PACE_TICK slices - the model, the clock, the repaint and the
-        sleep all advancing together - because a single 8-second move otherwise did one
-        advance() and one sleep() and FROZE for the whole of it: no LED frames, no repaint,
-        no intermediate position. Nothing to watch is the opposite of the point.
+    def pace_move(self, duration, total):
+        """
+        Walk a move of `total` (mm, signed) taking `duration` seconds, yielding the amount to
+        apply for each slice and spending the time between yields.
+
+        THE reusable pacer - a plain trapq move is not the only kind that should take time.
+        Homing moves never reach trapq_append (they go through the fake HomingMove), so before
+        this existed an unload spent all of its 9 seconds inside the ONE bowden move while tip
+        forming and every homing move to a sensor happened in the same instant.
+
+        Unpaced (the default, and every test) it yields `total` once and takes no time at all.
+
+        Paced, it is sliced at PACE_TICK with the caller's model, the clock, the repaint and the
+        sleep all advancing together - a single advance() plus a single sleep() froze for the
+        whole move: no LED frames, no repaint, no intermediate position.
+
+        Slices are yielded as EXACT differences of cumulative position, so the last one absorbs
+        the rounding and the total a caller applies is the total it asked for.
         """
         factor = self._pace_factor()
-        if factor is None:
-            self._note_move(trapq, distance)
+        if factor is None or duration <= 0.:
+            yield total
             return
 
         spent = duration * factor
@@ -103,11 +117,13 @@ class PrinterMotionQueuing:
         reactor = self.printer.get_reactor()
         observer = getattr(self.printer, 'harness_pace_observer', None)
         wall = getattr(self.printer, 'harness_pace_wall', 0.) or 0.
+        applied = elapsed = 0.
         for index in range(slices):
-            # Give the LAST slice whatever rounding left over, so the totals are exact
-            done = spent * index / slices
-            step = (spent * (index + 1) / slices) - done
-            self._note_move(trapq, distance / slices)
+            done = (index + 1) / slices
+            yield total * done - applied
+            applied = total * done
+            step = spent * done - elapsed
+            elapsed = spent * done
             reactor.advance(step)
             if observer is not None:
                 observer()

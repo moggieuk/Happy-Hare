@@ -331,7 +331,7 @@ Useful flags — `make console ARGS='...'`:
 --no-prime                     # leave the gate map blank instead of filling it in
 --seed N                       # seed for the primed gate map (default 0, reproducible)
 --no-moonraker                 # don't attach the fake Moonraker/Spoolman
---pace FACTOR                  # 0=instant (default), 0.5=twice as fast as real, 1=real time
+--pace FACTOR                  # 0=instant, 0.5=twice as fast as real (default), 1=real time
 --wall / --no-wall             # with --pace, whether to sleep in real time (default: interactive only)
 --script FILE                  # run non-interactively (this is how it is tested)
 ```
@@ -364,7 +364,7 @@ all. Fast, but nothing time-driven is observable — an LED effect never reaches
 and every action transition lands in the same instant.
 
 `/pace FACTOR` spends that fraction of each move's *real* duration in virtual time: `0` is
-instant (the default), `0.5` twice as fast as real, `1` roughly real time. While it is on, the
+instant, `0.5` twice as fast as real (the default), `1` roughly real time. While it is on, the
 `machine` header carries `realtime=<n>%` next to the clock — that is the field it explains,
 since `t=` only moves during an operation when pacing is on. Absent at `0`. Each move's duration
 is already known — `MmuStepper._submit_move` computes the real trapezoid — so this is HH's own
@@ -386,8 +386,21 @@ followed by one `sleep()` would freeze for the whole move: no LED frames, no rep
 intermediate position. A single 13-gate load produces ~240 updates, and the totals stay exact —
 paced and unpaced end with the filament in the same place.
 
+Every kind of move is paced, not just the plain ones: homing moves never reach
+`trapq_append`, so until `pace_move()` became reusable an unload spent all of its seconds
+inside the one bowden move while every home-to-sensor step and the tip-forming retract happened
+in the same instant. Tip forming is timed off the macro's own `unloading_speed`.
+
 Note the log still arrives in **blocks**, because Happy Hare only logs at operation-step
 boundaries, not continuously. The header is what moves during a long move.
+
+**One known consequence.** On `boxturtle` and `emu` — the shipped profiles with per-gate entry
+sensors *and* `gate_autoload` — a paced load logs a spurious `Operation not possible. Filament
+is loaded`. The load pushes filament across an entry sensor, that raises an insert event, and HH
+starts an `MMU_PRELOAD` inside the load that caused it. Happy Hare has the guard for exactly
+this (`wrap_suspend_insert_events`, whose docstring describes it word for word) but applies it
+only on the NFC-scan path, never on the load path. Invisible while moves took no time. The load
+still completes correctly.
 
 `/timestamp on` is what makes the pacing legible: output is stamped with the virtual clock as
 of **when Happy Hare produced the line**, not when it was printed — `_drain()` runs after a
