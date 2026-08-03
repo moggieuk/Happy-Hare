@@ -8,7 +8,12 @@
 #
 #  - Layout preservation: whitespace/comments are first-class nodes and retained through round trips
 #  - Indented multi-line values: indentation signals continuation; a bare newline without leading space ends the value
+#  - Full-line comments inside a multi-line value are transparent (like Klipper's configparser): the value
+#    resumes on the next indented line. E.g. commenting out one of a [quad_gantry_level] "points:" lines
 #  - Special-case gcode* options: parses their values literally to avoid misinterpreting gcode content
+#  - Error recovery: an unparsable construct doesn't abort the parse. The offending text is kept verbatim in
+#    an UnparsedNode (so round trips stay byte-exact), a marker comment is added and parsing resumes at the
+#    next [section] or option. Callers can list the damage with ConfigBuilder.parse_errors()
 #
 # (\_/)
 # ( *,*)
@@ -18,6 +23,7 @@
 #
 
 import sys
+import os
 import logging
 import re
 import copy
@@ -40,11 +46,12 @@ CONFIG_SPEC = [
     ("comment", re.compile(r"^[ \t]*[#;].*?(?=\{[^}]+\})")),
     ("comment", re.compile(r"^[ \t]*[#;].*")),
     ("whitespace", re.compile(r"^\s+")),
-    ("section", re.compile(r"^\[.+\]")),
-    ("word", re.compile(r"^\w[\w%]*")),
+    # ("section", re.compile(r"^\[.+\]")),
+    ("section", re.compile(r"^\[.+\](?=[ \t]*(?:[#;][^\r\n]*)?(?:\r?\n|$))")),  ("word", re.compile(r"^\w[\w%]*")),
     ("assign_op", re.compile(r"^[:=]")),
     ("placeholder", re.compile(r"^\{(?:PIN_|PARAM_)[^%}]+\}")),
-    ("template", re.compile(r"^\{\%[^\n]*\%\}")),
+    ("template", re.compile(r"^\{\%[\s\S]*?\%\}")),
+    # ("template", re.compile(r"^\{\%[^\n]*\%\}")),
     ("template", re.compile(r"^\{\#[^\n]*\#\}")),
     ("template", re.compile(r"^\{\{[^\n]*\}\}")),
     ("unknown", re.compile(r"^\S")),
@@ -53,8 +60,35 @@ CONFIG_SPEC = [
 GCODE_BOUNDARY_OPTION   = re.compile(r"^variable_\w+[ \t]*[:=]")
 MAGIC_EXCLUSION_COMMENT = re.compile(r"^# EXCLUDE FROM CONFIG BUILDER.*")
 
+# A whole line that is nothing but a comment, and a line that continues a multi-line value
+COMMENT_ONLY_LINE       = re.compile(r"^[ \t]*[#;]")
+CONTINUATION_LINE       = re.compile(r"^[ \t]+\S")
+
+# Where parsing can safely pick up again after an error: a new [section] or a new option
+RESYNC_LINE             = re.compile(r"^(?:\[[^\r\n]*\]|\w[\w%]*[ \t]*[:=])")
+
+# Marker comment left in the config to show where parsing failed. Must be recognizable so a
+# re-run replaces it rather than stacking up another copy
+PARSE_ERROR_MARKER      = "# !! HAPPY HARE PARSE ERROR"
+MAX_RECOVERIES          = 50
+
 if sys.version_info[0] >= 3:
     unicode = str
+
+
+class ConfigSyntaxError(SyntaxError):
+    """
+    SyntaxError that also carries the bits needed to report/recover: a short one-line
+    reason (no context block) plus the location it happened at.
+    """
+
+    def __init__(self, reason, line=None, col=None, origin=None, context=""):
+        SyntaxError.__init__(self, "{} \n{}".format(reason, context))
+        self.reason = reason
+        self.line = line
+        self.col = col
+        self.origin = origin
+        self.context = context
 
 
 class Token(object):
@@ -160,8 +194,12 @@ class Tokenizer(object):
 
         # Unknown/unmatchable byte (should be rare since 'unknown' exists, but keep defensive)
         ch = self.slice[0]
-        raise SyntaxError(
-            "Unexpected token '{}' \n{}".format(ch, self._format_error_context(start_line, start_col, self.origin))
+        raise ConfigSyntaxError(
+            "Unexpected token '{}'".format(ch),
+            start_line,
+            start_col,
+            self.origin,
+            self._format_error_context(start_line, start_col, self.origin),
         )
 
     def peek(self):
@@ -173,21 +211,22 @@ class Tokenizer(object):
         return self.next_token
 
     def take(self, token_type):
-        token = next(self)
+        try:
+            token = next(self)
+        except StopIteration:
+            token = None  # end of file - report it like any other mismatch
         if token and token.type == token_type:
             return token
         else:
-            got = token.type if token else None
-            raise SyntaxError(
-                "Expected {}, got {} \n{}".format(
-                    token_type,
-                    got,
-                    self._format_error_context(
-                        token.line if token else self.line,
-                        token.col if token else self.col,
-                        self.origin,
-                    ),
-                )
+            got = token.type if token else "end of file"
+            line = token.line if token else self.line
+            col = token.col if token else self.col
+            raise ConfigSyntaxError(
+                "Expected {}, got {}".format(token_type, got),
+                line,
+                col,
+                self.origin,
+                self._format_error_context(line, col, self.origin),
             )
 
     def unread(self, s):
@@ -203,6 +242,36 @@ class Tokenizer(object):
         peek = self.peek()
         if peek and peek.type == token_type:
             self.take(token_type)
+
+    def resync(self, start_pos, to_eof=False):
+        """
+        Error recovery. Rewind to `start_pos` (the start of the construct that failed) and
+        swallow raw text up to the beginning of the next line that can start a fresh
+        construct - a [section] header or an option assignment. The skipped text is
+        returned so it can be preserved verbatim.
+
+        At least the remainder of the failing line is always consumed, so the caller is
+        guaranteed to make progress and cannot loop.
+        """
+        start_pos = max(0, min(start_pos, len(self.buf)))
+
+        nl = self.buf.find("\n", start_pos)
+        pos = len(self.buf) if nl == -1 else nl + 1
+        while pos < len(self.buf) and not to_eof:
+            nl = self.buf.find("\n", pos)
+            line = self.buf[pos:] if nl == -1 else self.buf[pos:nl]
+            if RESYNC_LINE.match(line):
+                break
+            pos = len(self.buf) if nl == -1 else nl + 1
+        if to_eof:
+            pos = len(self.buf)
+
+        text = self.buf[start_pos:pos]
+        self.next_token = None
+        self.pos = pos
+        self.slice = self.buf[pos:]
+        self._recompute_line_col()
+        return text
 
 
 class Node(object):
@@ -350,6 +419,24 @@ class WhitespaceNode(Node):
         return self.value
 
 
+class UnparsedNode(Node):
+    """
+    Text the parser could not make sense of. Kept exactly as it was read so writing the
+    document back out never loses or mangles a user's config, and tagged with why/where so
+    the installer can tell them about it.
+    """
+
+    def __init__(self, value, line=None, origin=None, reason=None):
+        Node.__init__(self, "unparsed")
+        self.value = value
+        self.line = line
+        self.origin = origin
+        self.reason = reason
+
+    def serialize(self):
+        return self.value
+
+
 class TemplateNode(Node):
     def __init__(self, value):
         Node.__init__(self, "template")
@@ -360,12 +447,15 @@ class TemplateNode(Node):
 
 
 class Parser(object):
-    def __init__(self, default_assign_op=":", default_comment_ch="#"):
+    def __init__(self, default_assign_op=":", default_comment_ch="#", recover=True, error_marker=True):
         self.origin = None
         self.default_assign_op = default_assign_op
         self.default_comment_ch = default_comment_ch
+        self.recover = recover              # keep going after a syntax error instead of raising
+        self.error_marker = error_marker    # leave a marker comment in the config at the bad spot
+        self.recoveries = 0
 
-    def _syntax_error(self, tokenizer, message, peek=None):
+    def _syntax_error(self, tokenizer, message, peek=None, include_token=True):
         if peek is not None and getattr(peek, "line", None) is not None:
             line = peek.line
             col = peek.col
@@ -375,14 +465,64 @@ class Parser(object):
 
         origin = self.origin or getattr(tokenizer, "origin", None)
 
-        token_info = " '{}'".format(peek) if peek is not None else ""
+        token_info = " '{}'".format(peek) if peek is not None and include_token else ""
         ctx = tokenizer._format_error_context(line, col, origin) if hasattr(tokenizer, "_format_error_context") else ""
-        raise SyntaxError("{}{} \n{}".format(message, token_info, ctx))
+        raise ConfigSyntaxError("{}{}".format(message, token_info), line, col, origin, ctx)
 
     def parse(self, buffer, origin=None):
         self.origin = origin
+        self.recoveries = 0
         tokenizer = Tokenizer(buffer, CONFIG_SPEC, origin=origin)
         return self._post_process(self.parse_document(tokenizer))
+
+    def _recover(self, tokenizer, err, start_pos):
+        """
+        Turn a syntax error into a reported-but-survivable one. Everything from the start of
+        the failing construct up to the next section/option is kept verbatim in an
+        UnparsedNode, followed by a marker comment so the user can find it in the file.
+
+        The marker goes *after* the skipped text, on a line of its own: a comment there is
+        always legal to Klipper, whereas inserting one ahead of a partially consumed line
+        would rewrite the meaning of that line.
+        """
+        self.recoveries += 1
+        if not self.recover:
+            raise err
+
+        # A config this broken isn't worth chasing line by line - keep the rest verbatim
+        give_up = self.recoveries > MAX_RECOVERIES
+        text = tokenizer.resync(start_pos, to_eof=give_up)
+        if give_up:
+            logging.error("Too many parse errors - the remainder of the file was left unparsed")
+
+        # Drop markers left by an earlier run so repeated builds don't stack them up
+        without_markers = "\n".join([l for l in text.split("\n") if not l.lstrip().startswith(PARSE_ERROR_MARKER)])
+        text = without_markers if without_markers.strip() else text
+        if not text:
+            return []
+
+        reason = getattr(err, "reason", None) or unicode(err).splitlines()[0].strip()
+        line = getattr(err, "line", None)
+        origin = self.origin or getattr(tokenizer, "origin", None)
+
+        logging.error("Unable to parse {}{}".format("{} ".format(origin) if origin else "", unicode(err)))
+        logging.error(
+            "Skipped {} unparsable line(s) from line {} and carried on".format(
+                len(text.strip("\n").split("\n")), line
+            )
+        )
+
+        nodes = [UnparsedNode(text, line=line, origin=origin, reason=reason)]
+        if self.error_marker:
+            if not text.endswith("\n"):
+                nodes.append(WhitespaceNode("\n"))
+            # Deliberately no line number in the marker: it has to survive a rebuild that
+            # inserts an [include] above it without the text changing, or every install
+            # would churn the user's config
+            marker = "{}: {} - line(s) above left untouched, please fix".format(PARSE_ERROR_MARKER, reason)
+            nodes.append(CommentNode([CommentEntryNode(marker)]))
+            nodes.append(WhitespaceNode("\n"))
+        return nodes
 
     def filter_tree(self, node, predicate):
         """
@@ -409,20 +549,24 @@ class Parser(object):
 
     def parse_document(self, tokenizer):
         def _parse_regular(peek, body):
-            if peek.type == "section":
-                body.append(self.parse_section(tokenizer))
-            elif peek.type == "hidden_option_comment":
-                body.append(self.parse_hidden_option_comment(tokenizer))
-            elif peek.type == "comment":
-                body.append(self.parse_comment(tokenizer))
-            elif peek.type == "whitespace":
-                body.append(self.parse_whitespace(tokenizer))
-            elif peek.type == "placeholder":
-                body.append(self.parse_placeholder(tokenizer))
-            elif peek.type == "template":
-                body.append(self.parse_template(tokenizer))
-            else:
-                self._syntax_error(tokenizer, "Unexpected token", peek)
+            start_pos = peek.pos
+            try:
+                if peek.type == "section":
+                    body.append(self.parse_section(tokenizer))
+                elif peek.type == "hidden_option_comment":
+                    body.append(self.parse_hidden_option_comment(tokenizer))
+                elif peek.type == "comment":
+                    body.append(self.parse_comment(tokenizer))
+                elif peek.type == "whitespace":
+                    body.append(self.parse_whitespace(tokenizer))
+                elif peek.type == "placeholder":
+                    body.append(self.parse_placeholder(tokenizer))
+                elif peek.type == "template":
+                    body.append(self.parse_template(tokenizer))
+                else:
+                    self._syntax_error(tokenizer, "Expected a [section], an option or a comment, got", peek)
+            except SyntaxError as err:
+                body.extend(self._recover(tokenizer, err, start_pos))
 
         body = []
         peek = tokenizer.peek()
@@ -476,20 +620,24 @@ class Parser(object):
             if _is_magic_comment_token(peek):
                 break  # Do not consume here—let parse_document() handle it
 
-            if peek.type == "hidden_option_comment":
-                body.append(self.parse_hidden_option_comment(tokenizer))
-            elif peek.type == "comment":
-                body.append(self.parse_comment(tokenizer))
-            elif peek.type == "word":
-                body.append(self.parse_option(tokenizer))
-            elif peek.type == "placeholder":
-                body.append(self.parse_placeholder(tokenizer))
-            elif peek.type == "whitespace":
-                body.append(self.parse_whitespace(tokenizer))
-            elif peek.type == "template":
-                body.append(self.parse_template(tokenizer))
-            else:
-                self._syntax_error(tokenizer, "Unexpected token", peek)
+            start_pos = peek.pos
+            try:
+                if peek.type == "hidden_option_comment":
+                    body.append(self.parse_hidden_option_comment(tokenizer))
+                elif peek.type == "comment":
+                    body.append(self.parse_comment(tokenizer))
+                elif peek.type == "word":
+                    body.append(self.parse_option(tokenizer))
+                elif peek.type == "placeholder":
+                    body.append(self.parse_placeholder(tokenizer))
+                elif peek.type == "whitespace":
+                    body.append(self.parse_whitespace(tokenizer))
+                elif peek.type == "template":
+                    body.append(self.parse_template(tokenizer))
+                else:
+                    self._syntax_error(tokenizer, "Expected a [section], an option or a comment, got", peek)
+            except SyntaxError as err:
+                body.extend(self._recover(tokenizer, err, start_pos))
             peek = tokenizer.peek()
 
         return SectionNode(token.value[1:-1], body)
@@ -497,8 +645,20 @@ class Parser(object):
     def parse_option(self, tokenizer):
         token = tokenizer.take("word")
         trailing_ws = ""
-        if tokenizer.peek().type == "whitespace":
+        peek = tokenizer.peek()
+        if peek is None:
+            self._syntax_error(tokenizer, "Unexpected end of file after '{}'".format(token.value))
+        if peek.type == "whitespace":
             trailing_ws = tokenizer.take("whitespace").value
+
+        # Spelled out rather than left as a bare "Expected assign_op": this is the error a
+        # user actually hits (e.g. an orphaned value line) and they have to act on it. Kept
+        # short because it also ends up in the marker comment written into their config
+        peek = tokenizer.peek()
+        if peek is None or peek.type != "assign_op":
+            self._syntax_error(
+                tokenizer, "Expected ':' or '=' after '{}'".format(token.value), peek, include_token=False
+            )
         assign_op = tokenizer.take("assign_op").value
         if token.value.startswith("gcode"):  # parse gcode options as-is, so we don't parse gcode as structure'
             value = self.parse_value(tokenizer, as_is=True)
@@ -506,6 +666,35 @@ class Parser(object):
             value = self.parse_value(tokenizer)
 
         return OptionNode(token.value, value, assign_op, trailing_ws)
+
+    def _continues_after_comments(self, tokenizer, token):
+        """
+        Called where a multi-line value would normally end (a newline with nothing indented
+        after it). Klipper's configparser treats a whole-line comment as invisible inside a
+        value, so a value can be interrupted by commented out lines and still continue. E.g.
+
+            points:
+            ### 30, 5
+                50, 10
+                150, 225
+
+        Peek past a run of comment-only lines and report whether an indented continuation
+        line follows. Blank lines still end a value, as they always have here.
+        """
+        if token.value.count("\n") != 1:
+            return False
+
+        rest = tokenizer.slice  # text after the peeked newline, so starts at column 1 of a line
+        pos = 0
+        while pos < len(rest):
+            eol = rest.find("\n", pos)
+            line = rest[pos:] if eol == -1 else rest[pos:eol]
+            if not COMMENT_ONLY_LINE.match(line):
+                return CONTINUATION_LINE.match(line) is not None
+            if eol == -1:
+                return False
+            pos = eol + 1
+        return False
 
     def parse_value(self, tokenizer, as_is=False):
         body = []
@@ -577,8 +766,9 @@ class Parser(object):
 
                             # Otherwise keep consuming gcode lines.
                             pass
-                        else:
+                        elif not self._continues_after_comments(tokenizer, token=peek):
                             break
+                        # else: only full-line comments separate us from more indented value
                     # else: we're inside {...}/(...)/[...] so don't break
 
                 token = tokenizer.take("whitespace")
@@ -704,7 +894,8 @@ class ConfigBuilder(object):
         self.document = DocumentNode()
         if self.filename:
             with open(self.filename, "r") as f:
-                self.document = self.parser.parse(f.read())
+                # Pass the name so any parse error can say which file it was in
+                self.document = self.parser.parse(f.read(), os.path.basename(self.filename))
 
     def read(self, filename, origin=None):
         with open(filename, "r") as f:
@@ -732,6 +923,19 @@ class ConfigBuilder(object):
             return True, buffer
 
         return self.document.walk(print_node, "")
+
+    def parse_errors(self):
+        """
+        Return the UnparsedNode for every region that failed to parse, across all files
+        read/merged into this document. Empty list means the config was fully understood.
+        """
+
+        def collect_unparsed(node, acc, _depth):
+            if isinstance(node, UnparsedNode):
+                acc.append(node)
+            return True, acc
+
+        return self.document.walk(collect_unparsed, [])
 
     def excluded_nodes(self, origin=None):
         """
@@ -1003,6 +1207,22 @@ class ConfigBuilder(object):
             return value.strip().lower() in ["1", "true", "yes", "on"]
         return default
 
+    @staticmethod
+    def _find_value_node(option):
+        """
+        Locate where an option's value text actually starts: the first ValueEntryNode holding
+        something other than whitespace. Returns (line index, node), or (0, None) when the
+        option carries no value text at all.
+
+        Everything skipped on the way is layout that has to survive a set() - the "\\n" of a
+        value that begins on the following line, a blank line, a commented out first entry.
+        """
+        for i, value_line in enumerate(option.body):
+            for node in value_line.body:
+                if isinstance(node, ValueEntryNode) and node.value.strip():
+                    return i, node
+        return 0, None
+
     def set(self, section_name, option_name, value):
         if value is None:
             logging.warning("{} in section [{}] has no value".format(option_name, section_name))
@@ -1014,42 +1234,49 @@ class ConfigBuilder(object):
 #        if idx != -1:
 #            value = value[:idx] + re.sub(r"^(?=\S)", r"    ", value[idx:], flags=re.MULTILINE)
 
-        # Build/rebuild first ValueLineNode with updated value
+        # Overwrite where the value actually is, which is not always the first ValueEntryNode.
+        # A value that starts on the line after the key leaves layout-only nodes in front of
+        # it - a bare "\n", a blank line, a commented out first line - and writing over one
+        # of those loses the line break ("a: \n    b" came back as "a: b") or, worse, joins
+        # the value to a comment ("a: x# c", which configparser reads as the literal "x# c"
+        # because an inline comment only counts when whitespace precedes it)
         if self.has_option(section_name, option_name):
             option = self._get_option(section_name, option_name)
             if option.body:
-                vln = option.body[0]
-                value_replaced = False
+                target_line, target_node = self._find_value_node(option)
 
-                if isinstance(vln.body[0], CommentNode):
-                    vln.body.insert(0, ValueEntryNode(value))
-                else:
-                    for b in vln.body:
-                        if isinstance(b, ValueEntryNode):
-                            b.value = value
-                            value_replaced = True
-                            break
+                if target_node is None:
+                    # Nothing but layout, e.g. an option with no value at all. Put the value
+                    # on the key line, ahead of any comment that is sitting there
+                    vln = option.body[0]
+                    if isinstance(vln.body[0], CommentNode):
+                        vln.body.insert(0, ValueEntryNode(value))
                     else:
                         vln.body.append(ValueEntryNode(value))
+                else:
+                    # Keep the node's own indentation: it is the layout of the line the value
+                    # lives on, not part of the value (which arrives here already stripped)
+                    indent = target_node.value[: len(target_node.value) - len(target_node.value.lstrip(" \t"))]
+                    target_node.value = indent + value
 
-                # Hack to remove other parts of a multi-lined value. E.g.
-                #   [mmu_led_effect mmu_red_strobe]
-                #   layers:       strobe    1 1.5 add (1,1,1)
-                #                 breathing 2 0   difference (0.95,0,0) # animate
-                #                 static    0 0   top (1,0,0)
-                # If ValueEntryNode is whitespace, retain because probably just comment. E.g.
-                # print_start_detection: 1   # ADVANCED: xxx
-                #                            # ADVANCED: yyy
-                # Side effects:
-                #  - comments on values in subsequent lines will be removed
-                #  - trailing whitespace on value will be removed (good thing)
-                if value_replaced:
-                    removes = []
-                    for i, vln in enumerate(option.body[1:]):
-                        if isinstance(vln.body[0], ValueEntryNode) and vln.body[0].value.strip() != '':
-                            removes.append(i + 1)
-                    for i in reversed(removes):
-                        option.body.pop(i)
+                    # Remove what is left of a multi-lined value, the new one replaces all of
+                    # it. E.g.
+                    #   [mmu_led_effect mmu_red_strobe]
+                    #   layers:       strobe    1 1.5 add (1,1,1)
+                    #                 breathing 2 0   difference (0.95,0,0) # animate
+                    #                 static    0 0   top (1,0,0)
+                    # Only lines after the one just written are candidates, so the layout in
+                    # front of the value survives. A line whose ValueEntryNode is whitespace is
+                    # retained because it is probably just carrying a comment. E.g.
+                    # print_start_detection: 1   # ADVANCED: xxx
+                    #                            # ADVANCED: yyy
+                    # Side effects:
+                    #  - comments on value lines after the value will be removed
+                    #  - trailing whitespace on value will be removed (good thing)
+                    for i in range(len(option.body) - 1, target_line, -1):
+                        first = option.body[i].body[0]
+                        if isinstance(first, ValueEntryNode) and first.value.strip() != '':
+                            option.body.pop(i)
 
             else:
                 body = self.parser.parse_value(Tokenizer(value, CONFIG_SPEC))
@@ -1137,6 +1364,16 @@ if __name__ == "__main__":
             action="store_true",
             help="Dump a pretty print of node tree for debugging",
         )
+        ap.add_argument(
+            "--no-marker",
+            action="store_true",
+            help="Don't add '# HAPPY HARE PARSE ERROR' marker comments (keeps round trip byte-exact)",
+        )
+        ap.add_argument(
+            "--strict",
+            action="store_true",
+            help="Abort on the first syntax error instead of recovering from it",
+        )
         return ap
 
     def _main():
@@ -1158,13 +1395,16 @@ if __name__ == "__main__":
 
         # Parse > serialize
         try:
-            parser = Parser()
+            parser = Parser(recover=not args.strict, error_marker=not args.no_marker)
             builder = ConfigBuilder(parser=parser)
             builder.read_buf(original_text)
             roundtripped_text = builder.write()
         except Exception as e:
             sys.stderr.write("[ERROR] Parsing/serialization failed: {}\n".format(e))
             sys.exit(2)
+
+        for node in builder.parse_errors():
+            sys.stderr.write("[RECOVERED] line {}: {}\n".format(node.line, node.reason))
 
         # Encode output bytes (preserve BOM if used)
         try:
@@ -1217,4 +1457,3 @@ if __name__ == "__main__":
             print("Wrote round-tripped file to: {}".format(out_path))
 
     _main()
-

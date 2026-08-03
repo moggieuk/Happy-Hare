@@ -137,7 +137,7 @@ def verify_pickle_matches_config(config_file, pickle_values, base_kconfig="Kconf
 
 
 def main():
-    import dill
+    import pickle
 
     ap = argparse.ArgumentParser(description=__doc__,
                                   formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -147,7 +147,7 @@ def main():
     args = ap.parse_args()
 
     with open(args.pickle_file, "rb") as f:
-        data = dill.load(f)
+        data = pickle.load(f)
 
     mismatches = verify_pickle_matches_config(args.config_file, data["values"], args.kconfig)
 

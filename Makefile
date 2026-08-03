@@ -1,10 +1,27 @@
 SHELL := /usr/bin/env sh
 PY    := python
-Q  ?= @                           # For quiet make builds, override with make Q= for verbose output
-V  ?=                             # For verbose output (mostly from python builder), set to -v to enable
-UT ?= *                           # For unittests, e.g. make UT=test_build.py test
 
-MAKEFLAGS += --jobs 16            # Parallel build
+# Keep these comments on their own line: an inline one pads the value with the spaces
+# leading up to the '#', which silently breaks anything matching on the value
+
+# For quiet make builds, override with make Q= for verbose output
+Q  ?= @
+
+# For verbose output (mostly from python builder), set to -v to enable
+V  ?=
+
+# For unittests, e.g. make UT=test_build.py test
+# A UT pattern skips the interactive picker, as do ALL=1 (run everything) and LAST=1
+# (re-run the last selection). See test/README.md section 1
+UT ?= *
+
+# Extra flags for the pip that installs installer/requirements.txt. Exported rather than
+# passed on the command line when it has to survive install.sh, which forwards no make
+# vars: export PIP_ARGS='--user --break-system-packages' on a PEP 668 python with no venv
+PIP_ARGS ?=
+
+# Parallel build
+MAKEFLAGS += --jobs 16
 
 # By default KCONFIG_CONFIG is '.mmu_config', but it can be overridden by the user
 export KCONFIG_CONFIG ?= .mmu_config
@@ -12,7 +29,10 @@ export KCONFIG_CONFIG ?= .mmu_config
 # Enable output-sync if menuconfig will not trigger. menuconfig.py will crash if output-sync is enabled on certain systems
 ifeq ($(CHECK_OUTPUT_SYNC),)
   # Never probe for menuconfig or uninstall and only if KCONFIG exists
-  ifeq ($(strip $(filter menuconfig uninstall variables gen_kconfig fix_links,$(MAKECMDGOALS))),)
+  # 'console' and 'test' must stay in this list: --output-sync buffers a recipe's output
+  # until it finishes, which for an interactive prompt means no prompt at all. 'test' opens
+  # the file picker in test/select.py
+  ifeq ($(strip $(filter menuconfig uninstall variables gen_kconfig fix_links console test shots,$(MAKECMDGOALS))),)
     ifneq ($(wildcard $(KCONFIG_CONFIG)),)
       # Check whether $KCONFIG_CONFIG is outdated. if so menuconfig will be triggered and output-sync should stay disabled
       ifeq ($(shell $(MAKE) CHECK_OUTPUT_SYNC=y -q $(KCONFIG_CONFIG) >/dev/null 2>&1 && echo y),y)
@@ -42,11 +62,67 @@ endif
 # Couple verbose debug output to python debugging flag
 debug = $(if $(findstring -v,$(V)),$(info $(1)))
 
-
 export SRC ?= $(CURDIR)
 # export $srctree for menuconfig and kconfiglib
 export srctree := $(SRC)/installer
 export PYTHONPATH:=$(SRC)/installer/lib/kconfiglib:$(PYTHONPATH)
+
+# Virtualenv, created on demand by any goal that needs an interpreter the machine cannot
+# otherwise provide: `make test` for the test deps, and anything running the builder where
+# $(PY) resolved to it below. See test/README.md
+VENV       ?= $(SRC)/venv
+VENV_PY    := $(VENV)/bin/python
+VENV_STAMP := $(VENV)/.hh-test-requirements
+# Separate stamp: test/requirements.txt and installer/requirements.txt are installed
+# independently into the same venv, and neither should trigger the other
+INSTALLER_STAMP := $(VENV)/.hh-installer-requirements
+
+# Interpreter used to create the venv, falling back where plain `python` isn't a name
+BOOTSTRAP_PY := $(if $(shell command -v $(PY) 2>/dev/null),$(PY),python3)
+
+# Klipper's own virtualenv carries greenlet and Jinja2 - klippy-requirements.txt needs both -
+# which is the whole of test/requirements.txt. So on a printer there is nothing to build:
+# use it and skip the venv
+KLIPPY_ENV ?= $(HOME)/klippy-env
+ifneq ($(filter test console,$(MAKECMDGOALS)),)
+  klippy_env_py := $(wildcard $(KLIPPY_ENV)/bin/python)
+  ifneq ($(klippy_env_py),)
+    klippy_env_py := $(shell $(klippy_env_py) -c 'import greenlet, jinja2' 2>/dev/null && echo $(klippy_env_py))
+  endif
+endif
+
+# The builder needs jinja2, which a PEP 668 python outside a venv will never accept, so keep
+# the first interpreter that already has it and fall back to the venv. Skipped when someone
+# has said which to feed (PY=, PIP_ARGS, a live venv). Must stay below BOOTSTRAP_PY
+ifeq ($(VIRTUAL_ENV)$(PIP_ARGS),)
+  ifneq ($(origin PY),command line)
+    PY := $(shell for p in $(PY) $(KLIPPY_ENV)/bin/python $(VENV_PY); do \
+              command -v "$$p" >/dev/null 2>&1 && \
+              "$$p" -c 'import jinja2' >/dev/null 2>&1 && { echo "$$p"; exit 0; }; \
+            done; \
+            $(PY) -c 'import os, sys, sysconfig; \
+                sys.exit(0 if os.path.exists(os.path.join(sysconfig.get_path("stdlib"), "EXTERNALLY-MANAGED")) else 1)' \
+              >/dev/null 2>&1 && echo $(VENV_PY) || echo $(PY))
+  endif
+endif
+
+# If $(PY) landed on the venv it has to exist before any recipe runs, so python_deps - which
+# everything running the builder waits on - builds it. Empty otherwise, so a python whose pip
+# works still just installs the deps rather than getting a venv it never asked for
+builder_prereq := $(if $(filter $(VENV_PY),$(PY)),$(INSTALLER_STAMP))
+
+# NO_VENV=1 or an explicit PY= runs the tests against the system interpreter instead.
+# test_prereqs keys off TEST_PY so opting out never builds a venv it then ignores
+ifdef NO_VENV
+  TEST_PY ?= $(BOOTSTRAP_PY)
+endif
+TEST_PY      ?= $(if $(findstring command line,$(origin PY)),$(PY),$(if $(klippy_env_py),$(klippy_env_py),$(VENV_PY)))
+test_prereqs := $(if $(filter $(VENV_PY),$(TEST_PY)),$(VENV_STAMP))
+
+# Which python ran the tests should never be a mystery, and this is the surprising one.
+# No commas in the message: $(if) splits its arguments on them
+using_klippy_env = $(if $(filter $(klippy_env_py),$(TEST_PY)), \
+	echo "$(C_INFO)Using klipper's virtualenv '$(KLIPPY_ENV)' - it already has greenlet and jinja2$(C_OFF)",:)
 
 ifneq ($(TESTDIR),)
   OUTDIR := $(TESTDIR)
@@ -99,7 +175,7 @@ restart_klipper = 0
 .SECONDEXPANSION:
 .DEFAULT_GOAL := build
 .PRECIOUS: $(KCONFIG_CONFIG) $(KCONFIG_CONFIG)_%
-.PHONY: menuconfig install uninstall check_version diff test build clean variables python_deps fix_links gen_kconfig kconfig_needs_update olddefconfig verify_pickle
+.PHONY: menuconfig install uninstall check_version diff test console shots venv installer_venv clean_venv build clean variables python_deps fix_links gen_kconfig kconfig_needs_update olddefconfig verify_pickle
 .SECONDARY: \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
@@ -111,7 +187,7 @@ restart_klipper = 0
 ##### File sets #####
 #####################
 
-hh_klipper_extras_files := $(wildcard extras/*.py extras/mmu/*.py extras/mmu/unit/*.py extras/mmu/unit/selectors/*.py extras/mmu/commands/*.py)
+hh_klipper_extras_files := $(wildcard extras/*.py extras/mmu/*.py extras/mmu/unit/*.py extras/mmu/unit/nfc/*.py extras/mmu/unit/selectors/*.py extras/mmu/commands/*.py)
 hh_old_klipper_modules  := mmu_toolhead.py mmu_encoder.py mmu_espooler.py mmu_leds.py mmu_sensors.py mmu/* # These will get removed upon install/uninstall
 hh_moonraker_components := $(wildcard components/*.py)
 
@@ -380,16 +456,40 @@ fix_links:
 check_version: $(hh_configs_to_parse) $(KCONFIG_PREREQS) | python_deps
 	$(Q)$(PY) -m installer.build $(V) --check-version "$(KCONFIG_CONFIG)" $(hh_configs_to_parse)
 
-gen_kconfig:
+gen_kconfig: | python_deps
 	@echo "$(C_NOTICE)kconfig=$(KCONFIG_CONFIG)$(C_OFF)"
 	$(Q)$(PY) -m installer.build $(V) --gen-kconfig-options "$(KCONFIG_CONFIG)"
 
 clean:
 	$(Q)rm -rf $(OUT)
 
-python_deps:
+# Deliberately not part of `clean`, which runs far too often to pay for a venv rebuild
+clean_venv:
+	$(Q)[ -f "$(VENV_PY)" ] || { echo "$(C_WARNING)No virtualenv at '$(VENV)'$(C_OFF)"; exit 0; }; \
+		echo "$(C_INFO)Removing virtualenv '$(patsubst $(SRC)/%,%,$(VENV))'$(C_OFF)"; \
+		rm -rf "$(VENV)"
+
+# Shared tail for every pip failure below, whichever of the three it is: the ways out are
+# the same, and the install path and the test path can each reach any of them
+no_venv_hint = \
+	echo "$(C_ERROR)Or install into your system python anyway (PEP 668 override):$(C_OFF)"; \
+	echo "$(C_ERROR)  export PIP_ARGS='--user --break-system-packages'$(C_OFF)"; \
+	echo "$(C_ERROR)For tests only, the system interpreter also works: make NO_VENV=1 test$(C_OFF)";
+
+# Always '$(PY) -m pip', never a bare 'pip': the first pip on PATH need not belong to $(PY),
+# and on macOS is often a leftover with a dead shebang. Runs on nearly every invocation so it
+# stays quiet on success. Only a PEP 668 python with no venv to fall back on reaches the hints
+python_deps: $(builder_prereq)
 	$(Q)echo "$(C_INFO)Checking for python dependencies$(C_OFF)"
-	$(Q)pip -qq install -r $(SRC)/installer/requirements.txt
+	$(Q)$(PY) -m pip install --quiet --disable-pip-version-check $(PIP_ARGS) \
+		-r $(SRC)/installer/requirements.txt || { \
+		echo "$(C_ERROR)'$(PY) -m pip' could not install installer/requirements.txt$(C_OFF)"; \
+		echo "$(C_ERROR)If pip refused with 'externally-managed-environment' (PEP 668), work in$(C_OFF)"; \
+		echo "$(C_ERROR)a virtualenv as install.sh does, then re-run:$(C_OFF)"; \
+		echo "$(C_ERROR)  make installer_venv && . $(patsubst $(SRC)/%,%,$(VENV))/bin/activate$(C_OFF)"; \
+		$(no_venv_hint) \
+		exit 1; \
+	}
 
 $(OUT)/$(notdir $(KCONFIG_CONFIG)).pickle: $(KCONFIG_CONFIG) | python_deps $(OUT)
 	$(Q)echo "$(C_INFO)Pre-parsing Kconfig $(notdir $(KCONFIG_CONFIG))$(C_OFF)"
@@ -410,8 +510,69 @@ diff: | build
 	$(Q)$(call diff,$(KLIPPER_CONFIG_HOME)/$(PRINTER_CONFIG_FILE),$(patsubst $(SRC)/%,%,$(OUT)/$(PRINTER_CONFIG_FILE)))
 	$(Q)$(call diff,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE),$(patsubst $(SRC)/%,%,$(OUT)/$(MOONRAKER_CONFIG_FILE)))
 
-test: 
-	$(Q)$(PY) -m unittest discover $(V) -p '$(UT)'
+# Debian/RPi OS split ensurepip into python3-venv, so `python3 -m venv` there leaves a
+# bin/python with no pip - and since that satisfies $(VENV_PY), creation never re-runs. Hence
+# the check sits with the rule that uses pip, and ensurepip is the repair, not just a probe
+venv_pip_check = \
+	$(VENV_PY) -m pip --version >/dev/null 2>&1 || \
+	$(VENV_PY) -m ensurepip --default-pip >/dev/null 2>&1 || { \
+		echo "$(C_ERROR)The virtualenv at '$(patsubst $(SRC)/%,%,$(VENV))' has no pip$(C_OFF)"; \
+		echo "$(C_ERROR)On Debian/Ubuntu/Raspberry Pi OS: sudo apt install python3-venv$(C_OFF)"; \
+		echo "$(C_ERROR)and just run this again$(C_OFF)"; \
+		[ -x "$(KLIPPY_ENV)/bin/python" ] && { \
+			echo "$(C_ERROR)Klipper's own virtualenv already has what the tests need$(C_OFF)"; \
+			echo "$(C_ERROR)and installs nothing: make PY=$(KLIPPY_ENV)/bin/python test$(C_OFF)"; \
+		}; \
+		$(no_venv_hint) \
+		exit 1; \
+	}
+
+# Guarded by the interpreter it produces, so this runs once
+$(VENV_PY):
+	$(Q)echo "$(C_INFO)Creating virtualenv in '$(patsubst $(SRC)/%,%,$(VENV))'$(C_OFF)"
+	$(Q)$(BOOTSTRAP_PY) -m venv "$(VENV)" || { \
+		echo "$(C_ERROR)Could not create a virtualenv with '$(BOOTSTRAP_PY) -m venv'$(C_OFF)"; \
+		echo "$(C_ERROR)On Debian/Ubuntu install it with: sudo apt install python3-venv$(C_OFF)"; \
+		$(no_venv_hint) \
+		exit 1; \
+	}
+
+# One rule for both tenants: '.hh-<dir>-requirements' stamps <dir>/requirements.txt, so test/
+# and installer/ deps install independently. Stamps live inside the venv, so a deleted venv
+# or an edited requirements.txt reinstalls
+$(VENV)/.hh-%-requirements: $(SRC)/%/requirements.txt | $(VENV_PY)
+	$(Q)$(venv_pip_check)
+	$(Q)echo "$(C_INFO)Installing $* dependencies from $(patsubst $(SRC)/%,%,$<)$(C_OFF)"
+	$(Q)$(VENV_PY) -m pip install --quiet --disable-pip-version-check -r "$<"
+	$(Q)touch "$@"
+
+# Explicit target for anyone who wants the venv without running the tests
+venv: $(VENV_STAMP)
+	$(Q)echo "$(C_NOTICE)Test virtualenv ready: $(patsubst $(SRC)/%,%,$(VENV_PY))$(C_OFF)"
+
+# Installer deps only - the tests' greenlet is a compile on a Pi and the installer never
+# needs it. install.sh runs this then activates the venv on a PEP 668 python. The extras it
+# installs still run under klipper's python. The no-op recipe silences 'Nothing to be done'
+installer_venv: $(INSTALLER_STAMP)
+	@:
+
+# Opens the interactive file picker, everything pre-ticked, so Enter runs the whole suite as
+# before. Skipped for UT/ALL/LAST or when stdin isn't a tty - test/select.py decides. Extra
+# unittest flags go through ARGS, e.g. make test ARGS='-k homing'
+test: $(test_prereqs)
+	$(Q)$(using_klippy_env)
+	$(Q)PYTHONPATH="$(SRC)/installer/lib/kconfiglib:$(PYTHONPATH)" \
+		$(TEST_PY) -m test.select $(V) \
+			$(if $(filter-out *,$(UT)),--pattern '$(strip $(UT))') \
+			$(if $(ALL),--all) $(if $(LAST),--last) $(ARGS)
+
+# Interactive MMU console on the test harness. Pass flags through ARGS, e.g.
+#   make console ARGS='--profile /tmp/mmu_test/printer_data/config'
+#   make console ARGS='--profile encoder --header machine,sensors,filament,leds'
+console: $(test_prereqs)
+	$(Q)$(using_klippy_env)
+	$(Q)PYTHONPATH="$(SRC)/installer/lib/kconfiglib:$(PYTHONPATH)" \
+		$(TEST_PY) -m test.console $(ARGS)
 
 variables:
 	@echo "========================="
@@ -431,13 +592,14 @@ variables:
 	@echo "$(C_NOTICE)OUT                            =$(C_INFO) $(OUT)$(C_OFF)"
 	@echo "$(C_NOTICE)IN                             =$(C_INFO) $(IN)$(C_OFF)"
 	@echo "$(C_NOTICE)KCONFIG_CONFIG                 =$(C_INFO) $(KCONFIG_CONFIG)$(C_OFF)"
+	@echo "$(C_NOTICE)PY (builder)                   =$(C_INFO) $(PY)$(C_OFF)"
+	@echo "$(C_NOTICE)TEST_PY (test/console)         =$(C_INFO) $(TEST_PY)$(C_OFF)"
 	@echo "========================="
 
 
 # Verify that every explicit CONFIG_* assignment in each raw Kconfig value file survived
 # correctly into its pickle. Catches silent value-dropping or mis-typing bugs in KConfig.as_dict()
-# (see installer/lib/kconfiglib/test_kconfig_pickle_consistency.py for why this
-# check exists and how it works).
+# (see installer/lib/kconfiglib/test_kconfig_pickle_consistency.py for why this check exists and how it works).
 kconfig_pickles := $(addprefix $(OUT)/,$(addsuffix .pickle,$(notdir $(kconfig_files))))
 verify_pickle: $(kconfig_pickles) | python_deps
 	$(Q)status=0; \
@@ -460,8 +622,22 @@ ifeq ($(F_MULTI_UNIT_ENTRY_POINT),y)
   MENUCONFIG_STYLE := aquatic
 endif
 
-menuconfig: $(SRC)/installer/Kconfig
+menuconfig: $(SRC)/installer/Kconfig | python_deps
 	$(Q)MENUCONFIG_STYLE="$(MENUCONFIG_STYLE)" KLIPPER_HOME=$(KLIPPER_HOME) $(PY) -m menuconfig Kconfig
+
+# Documentation screenshots: runs menuconfig headlessly and renders its screens to
+# doc/images. Pass flags through ARGS, e.g.
+#   make shots ARGS='--list'
+#   make shots ARGS='--only mmu-type -v'
+# Or drive it by hand to find a screen worth capturing:
+#   make shots CAPTURE=1 ARGS='--keys "select:Purging,enter" --dump'
+#
+# Always the venv python: doc/requirements.txt (pyte, Pillow) is doc tooling that no
+# other target needs, and the '.hh-<dir>-requirements' rule above installs it on
+# demand. The tool sets up its own Kconfig environment - see doc/capture.py - so
+# unlike 'menuconfig' this target deliberately passes nothing from here.
+shots: $(VENV)/.hh-doc-requirements
+	$(Q)$(VENV_PY) -m doc.$(if $(CAPTURE),capture,shots) $(ARGS)
 
 
 
@@ -479,6 +655,6 @@ kconfig_needs_update:
 	done; \
 	echo n
 
-olddefconfig:
+olddefconfig: | python_deps
 	$(Q)$(PY) -m olddefconfig $(SRC)/installer/Kconfig >/dev/null
 	$(Q)touch "$(KCONFIG_CONFIG)"

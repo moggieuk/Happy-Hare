@@ -290,15 +290,14 @@ class MmuCalibrator:
 
     def update_clog_detection_length(self, cdl, push=False):
         """
-        Persist the calibrated encoder clog detection length and notify the encoder of change if in auto mode
-        If not forced then save if auto but don't update the encoder
+        Persist the calibrated encoder clog detection length
+        push=True flushes to disk immediately. The encoder picks the new value up itself on the
+        next enable_flowguard() which pulls with get_clog_detection_length() when in auto mode
         """
         if not self.mmu_unit.has_encoder(): return
         if not cdl: return
 
         self.var_manager.set(VARS_MMU_ENCODER_CLOG_LENGTH, cdl, namespace=self.mmu_unit.encoder.name, write=push)
-        if push:
-            self.mmu_unit.encoder.set_clog_detection_length(cdl)
 
 
     # -----------------------------------------------------------------------------------------------------------

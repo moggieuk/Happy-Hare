@@ -138,6 +138,13 @@ def load_config_prefix(config):
 #   - 'ledEffect' -> '_ledEffect' to avoid name collision with real module
 #   - def load_config_prefix(config) removed
 #   - self.handler loads object 'mmu_led_effect'
+#   - ledFrameHandler.flush_frames() and _ledEffect.blanks_on_next_frame(): a stopped effect
+#     used to keep hold of its LEDs until the next frame timer tick and blank them then,
+#     which wiped any SET_LED issued in between - see flush_frames() for the full story
+#
+# Every change to the embedded module below is bracketed by
+# "--- Happy Hare added ---" / "--- end Happy Hare added ---" so it can be told from the
+# original at a glance, and so a future re-import knows what has to be carried across.
 #
 # --------------------------------------------------------------------------------------
 
@@ -373,6 +380,42 @@ class ledFrameHandler:
         colors = [clamp(x) for x in colors]
         return tuple(colors)
 
+    # --- Happy Hare added: flush_frames() -------------------------------------------------
+    def flush_frames(self):
+        """
+        Render the pending frame pass NOW instead of on the next timer tick.
+
+        WHY THIS HAS TO EXIST. Stopping an effect does not turn its LEDs off there and then:
+        set_enabled(False) only arms the frame timer, and the actual blanking is the one-shot
+        zero frame _ledEffect.getFrame emits on the pass after that. So between the stop
+        returning and the timer firing, the stopped effect still OWNS its LEDs - and
+        _getFrames zeroes every LED of an updating effect before it sums. Anything written in
+        that window is wiped.
+
+        That window is not theoretical, it is the normal path. mmu_led_manager's
+        filament_color / slicer_color / explicit-(r,g,b) branches all do
+        "_MMU_STOP_LED_EFFECTS, then SET_LED per gate" (stop_effect_and_set_gate_rgb), and
+        SET_LED applies synchronously - ToolHead.register_lookahead_callback calls straight
+        through when the move queue is empty, which it is for an idle printer. So the colours
+        landed, the timer fired, and the segment went black. It only looked right from the
+        SECOND repaint onwards, because by then the effect had latched nextEventTime = NEVER
+        and no longer emitted the blank.
+
+        Flushing here closes the window: the effect writes its final black and releases
+        ownership before the stopping command returns.
+
+        Not the same as a bare "zero this effect's LEDs". Running the whole pass is what keeps
+        an LED shared with a still-running effect from flashing off for a frame - the zero and
+        the re-sum happen together, exactly as they would have on the tick.
+        """
+        # frameTimer/reactor only exist from _handle_ready; a stop before then has nothing
+        # to flush. shutdown is checked because _getFrames must not transmit to a dead MCU.
+        if self.shutdown or getattr(self, 'frameTimer', None) is None:
+            return
+        eventtime = self.reactor.monotonic()
+        self.reactor.update_timer(self.frameTimer, self._getFrames(eventtime))
+    # --- end Happy Hare added -------------------------------------------------------------
+
     def _getFrames(self, eventtime):
         chainsToUpdate = set()
 
@@ -445,6 +488,7 @@ class ledFrameHandler:
     def cmd_STOP_LED_EFFECTS(self, gcmd):
         ledParam = gcmd.get('LEDS', "")
         stopAll = (ledParam == "")
+        stopped_now = False     # --- Happy Hare added (see flush_frames() below) ---
 
         for effect in self.effects:
             stopEffect = stopAll
@@ -466,6 +510,18 @@ class ledFrameHandler:
                 if effect.enabled:
                     effect.set_fade_time(gcmd.get_float('FADETIME', 0.0))
                 effect.set_enabled(False)
+                # --- Happy Hare added -----------------------------------------------------
+                stopped_now = stopped_now or effect.blanks_on_next_frame()
+                # --- end Happy Hare added -------------------------------------------------
+
+        # --- Happy Hare added -------------------------------------------------------------
+        # Turn the stopped effects off before returning, not on the next tick - see
+        # flush_frames(). Skipped when every effect stopped here is FADING: a fade
+        # legitimately keeps rendering, and keeps ownership, until it completes, and forcing
+        # a frame now would only render it early.
+        if stopped_now:
+            self.flush_frames()
+        # --- end Happy Hare added ---------------------------------------------------------
 
 def load_config(config):
     return ledFrameHandler(config)
@@ -690,7 +746,24 @@ class _ledEffect:
             self.enabled = state
             self.nextEventTime = self.handler.reactor.NOW
             self.handler.reactor.update_timer(self.handler.frameTimer, self.handler.reactor.NOW)
-    
+
+    # --- Happy Hare added: blanks_on_next_frame() -----------------------------------------
+    def blanks_on_next_frame(self):
+        """
+        True when this effect is stopped and still owes its LEDs the one-shot black.
+
+        Exactly the condition getFrame() tests on entry, kept next to it so the two cannot
+        drift. Callers use it to decide whether the pass has to be flushed before they return
+        - see ledFrameHandler.flush_frames(). A FADING effect is deliberately not included:
+        it keeps rendering, and keeps ownership, until the fade runs out.
+
+        Unguarded on handler.reactor, unlike flush_frames(): the only callers are gcode
+        handlers, and klipper does not dispatch gcode before klippy:ready.
+        """
+        return (not self.enabled and self.fadeValue <= 0.0
+                and self.nextEventTime < self.handler.reactor.NEVER)
+    # --- end Happy Hare added -------------------------------------------------------------
+
     def reset_frame(self):
         for layer in self.layers:
             layer.frameNumber = 0
@@ -708,12 +781,25 @@ class _ledEffect:
             if self.enabled:
                 self.set_fade_time(parmFadeTime)
             self.set_enabled(False)
+            # --- Happy Hare added ---------------------------------------------------------
+            # Same reasoning as _MMU_STOP_LED_EFFECTS: release the LEDs before returning, so
+            # a SET_LED on the next line is not wiped by a blank that arrives a frame later.
+            if self.blanks_on_next_frame():
+                self.handler.flush_frames()
+            # --- end Happy Hare added -----------------------------------------------------
         else:
             if self.recalculate:
                 kwargs = self.layerTempl.create_template_context()
                 kwargs['params'] = gcmd.get_command_parameters()
                 kwargs['rawparams'] = gcmd.get_raw_command_parameters()
                 self._generateLayers(kwargs)
+            # --- Happy Hare added: comment only, the code below is unchanged --------------
+            # No flush_frames() on this branch, deliberately. The effects displaced by
+            # REPLACE hand their LEDs straight to the one being enabled below, and the pass
+            # that blanks them is the same pass that draws it - zero and re-sum together, so
+            # nothing is lost and nothing flashes. Flushing here would blank them a frame
+            # BEFORE the replacement had anything to draw.
+            # --- end Happy Hare added -----------------------------------------------------
             if gcmd.get_int('REPLACE',0) >= 1:
                 for led in self.leds:
                     for effect in self.handler.effects:

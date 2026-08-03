@@ -32,13 +32,16 @@ class MmuGateMapCommand(BaseCommand):
         + "RESET        = 1 To reset filament attributes to configured defaults\n"
         + "GATES        = g,g,g comma separated list of gates (don't mix with GATE)\n"
         + "GATE         = g Specify a single gate (don't mix with GATES)\n"
-        + "NEXT_SPOOLID = id Specify the spoolman id of the next filament loaded - automatically assigned\n"
+        + "BYPASS       = 1 Set filament attributes for the bypass\n"
+        + "NEXT_SPOOLID = id Specify the spoolman id of the next filament loaded - automatically assigned (0 to cancel)\n"
         + "NAME         = # Filament name\n"
         + "MATERIAL     = # Material type\n"
+        + "VENDOR       = # Filament vendor/brand name\n"
         + "COLOR        = # Filament color as w3c name or RRGGBB or RRGGBBaa (without #)\n"
         + "SPOOLID      = # Optionally the spoolman ID for the filament (don't need to specify other attributes)\n"
         + "TEMP         = # Default temperature of filament\n"
         + "SPEED        = % Speed override (use <100 for soft TPU types)\n"
+        + "RFID         = # RFID tag value read from the gate's spool (blank to clear)\n"
         + "AVAILABLE    = [-1|0|1|2] Filament availability: Unknown | Empty | Available | Available from filament buffer\n"
         + "(no parameters for status report)\n"
     )
@@ -48,6 +51,7 @@ class MmuGateMapCommand(BaseCommand):
         + f"{CMD} GATE=5 COLOR=red MATERIAL=pla  ...Set filament attributes for gate 5\n"
         + f"{CMD} NEXT_SPOOLID=45                ...Automatically mark the next spool preloaded or loaded with spoolman id 45\n"
         + f"{CMD} GATE=0 SPEED=50                ...Set load/unload speed of gate 0 to 50% - great for TPU!\n"
+        + f"{CMD} GATE=0 RFID=E2003412            ...Record the RFID tag read for the spool loaded in gate 0\n"
         + f"{CMD} RESET=1                        ...Reset filament attributes to defaults optionally configured in cfg files\n"
     )
 
@@ -75,7 +79,10 @@ class MmuGateMapCommand(BaseCommand):
         replace = bool(gcmd.get_int('REPLACE', 0, minval=0, maxval=1)) # Hidden option for bulk filament update from spoolman
         from_spoolman = bool(gcmd.get_int('FROM_SPOOLMAN', 0, minval=0, maxval=1)) # Hidden option for bulk filament update from spoolman
         gate = gcmd.get_int('GATE', -1, minval=0, maxval=mmu.num_gates - 1)
-        next_spool_id = gcmd.get_int('NEXT_SPOOLID', None, minval=-1)
+        bypass = bool(gcmd.get_int('BYPASS', 0, minval=0, maxval=1)) # Target 'active_filament' for the bypass (no gate-map row)
+        next_spool_id = gcmd.get_int('NEXT_SPOOLID', None, minval=-2)
+        lookup = gcmd.get_int('LOOKUP', None, minval=-2, maxval=-1)  # Hidden: failed per-gate lookup result from Moonraker
+        created = bool(gcmd.get_int('CREATED', 0, minval=0, maxval=1)) # Set by Moonraker when the UID minted a new spool
 
         gate_map = None
         try:
@@ -85,24 +92,79 @@ class MmuGateMapCommand(BaseCommand):
             mmu.log_debug("Exception whilst parsing gate map in MMU_GATE_MAP: %s" % str(e))
             return
 
-        # Ensure webhooks always sees a change if we edit map
-        mmu.gate_maps.renew_gate_map()
-
         if reset:
             mmu.gate_maps.reset_gate_map()
 
-        if next_spool_id:
-            if mmu.p.spoolman_support != SPOOLMAN_PULL:
-                if next_spool_id > 0:
-                    mmu.pending_spool_id = next_spool_id
-                    mmu.reactor.update_timer(mmu.pending_spool_id_timer, mmu.reactor.monotonic() + mmu.p.pending_spool_id_timeout)
-                else:
-                    # Disable timer to prevent reuse
-                    mmu.pending_spool_id = -1
-                    mmu.reactor.update_timer(mmu.pending_spool_id_timer, mmu.reactor.NEVER)
+        if next_spool_id is not None:
+            # Completion of an in-flight shared NFC lookup (or a manual assignment/cancel).
+            #   >0  success - assign as the pending spool
+            #    0  manual user cancellation (spool ids are 1-based)
+            #   -1  recoverable failure (e.g. Spoolman comms) - allow immediate re-read
+            #   -2  definitive "unknown tag" - release guard but don't re-read
+            if next_spool_id <= 0:
+                # 0 (or a negative with no lookup in flight) is a deliberate cancel, not a failure
+                failed_lookup = mmu.nfc_lookup_pending and next_spool_id < 0
+                mmu.set_pending_spool_id(-1) # Cancel any stale pending assignment
+                if failed_lookup:
+                    mmu._nfc_led_on_fail()   # Shared-reader lookup failed -> failure flash
+                    # Surface to console too (LED alone is easy to miss), matching per-gate
+                    if next_spool_id == -2:
+                        mmu.log_error("NFC: scanned tag is not registered against any spool in Spoolman")
+                    else:
+                        mmu.log_error("NFC: could not reach Spoolman to resolve scanned tag - will re-read")
+                reread = (next_spool_id == -1)
+            elif mmu.p.spoolman_support != SPOOLMAN_PULL:
+                mmu.set_pending_spool_id(next_spool_id)
+                if created:
+                    mmu.log_always("Spool ID: created new Spoolman spool %d for scanned tag" % next_spool_id)
+                reread = False
             else:
-                mmu.log_error("Cannot use use NEXT_SPOOLID feature with spoolman_support: pull. Use 'push' or 'readonly' modes")
+                mmu.log_error("Cannot use NEXT_SPOOLID feature with spoolman_support: pull. Use 'push' or 'readonly' modes")
+                reread = False
+            mmu.nfc_lookup_resolved(reread=reread)
+            return
+
+        if lookup is not None:
+            # Failed PER-GATE NFC lookup result from Moonraker. The gate map is untouched;
+            # LED fail flash (queued behind the gate's read flash) + console error, matching
+            # the shared-reader failure feedback.
+            #   -1  recoverable failure (e.g. Spoolman comms)
+            #   -2  definitive "unknown tag"
+            if gate >= 0:
+                mmu._nfc_led_on_gate_fail(gate)
+                if lookup == -2:
+                    mmu.log_error("NFC: scanned tag on gate %d is not registered against any spool in Spoolman" % gate)
+                else:
+                    mmu.log_error("NFC: could not reach Spoolman to resolve scanned tag on gate %d" % gate)
+            return
+
+        if bypass:
+            # Filament attributes for the bypass "gate" -> active_filament only (there is no
+            # gate-map row). Normally sent by Moonraker (async, after a bypass spool
+            # activation requested attributes) but can also be set manually
+            if mmu.gate_selected != TOOL_GATE_BYPASS:
+                mmu.log_debug("Ignoring bypass filament attribute update - bypass no longer selected")
                 return
+            color = gcmd.get('COLOR', '').lower()
+            validated_color = MmuColorUtils.validate_color(color)
+            if validated_color is None:
+                mmu.log_debug("Invalid COLOR '%s' in bypass filament update - ignored" % color)
+                validated_color = ''
+            mmu.active_filament = {
+                'filament_name': gcmd.get('NAME', ''),
+                'material': gcmd.get('MATERIAL', '').upper(),
+                'vendor': gcmd.get('VENDOR', ''),
+                'color': validated_color,
+                'spool_id': gcmd.get_int('SPOOLID', -1),
+                'temperature': max(gcmd.get_int('TEMP', int(mmu.p.default_extruder_temp)), int(mmu.p.default_extruder_temp)),
+            }
+            if not quiet:
+                mmu.log_always("Bypass filament attributes updated")
+            return
+
+        # Ensure webhooks always sees a change if we edit the map (the callback-style
+        # blocks above don't touch the gate map, so they skip this churn)
+        mmu.gate_maps.renew_gate_map()
 
         changed_gate_ids = []
 
@@ -125,11 +187,14 @@ class MmuGateMapCommand(BaseCommand):
                         mmu.gate_spool_id[gate_idx] = spool_id
                         mmu.gate_filament_name[gate_idx] = fil.get('name', '')
                         mmu.gate_material[gate_idx] = fil.get('material', '')
+                        mmu.gate_vendor[gate_idx] = fil.get('vendor', '')
                         mmu.gate_color[gate_idx] = fil.get('color', '')
                         mmu.gate_temperature[gate_idx] = max(
                             self._safe_int(fil.get('temp', mmu.p.default_extruder_temp)),
                             mmu.p.default_extruder_temp
                         )
+                        # RFID is read locally from gate hardware, not owned by spoolman, so preserve it unless explicitly supplied
+                        mmu.gate_spool_rfid[gate_idx] = fil.get('rfid', mmu.gate_spool_rfid[gate_idx])
                         # gate_speed_override and gate_status can be set locally
                 else:
                     # Update map (ui or from spoolman in "readonly" and "push" modes)
@@ -144,6 +209,7 @@ class MmuGateMapCommand(BaseCommand):
                             # Update attributes but don't allow spoolman to accidently clear
                             mmu.gate_filament_name[gate_idx] = fil.get('name', '')
                             mmu.gate_material[gate_idx] = fil.get('material', '')
+                            mmu.gate_vendor[gate_idx] = fil.get('vendor', '')
                             mmu.gate_color[gate_idx] = fil.get('color', '')
                             mmu.gate_temperature[gate_idx] = max(
                                 self._safe_int(fil.get('temp', mmu.p.default_extruder_temp)),
@@ -151,6 +217,10 @@ class MmuGateMapCommand(BaseCommand):
                             )
                             mmu.gate_speed_override[gate_idx] = self._safe_int(fil.get('speed_override', mmu.gate_speed_override[gate_idx]))
                             mmu.gate_status[gate_idx] = self._safe_int(fil.get('status', mmu.gate_status[gate_idx])) # For UI manual fixing of availabilty
+
+                        # RFID is read locally from gate hardware; always allow it through regardless of spoolman origin
+                        if not from_spoolman:
+                            mmu.gate_spool_rfid[gate_idx] = fil.get('rfid', mmu.gate_spool_rfid[gate_idx])
 
                         # If spool_id has changed, clean up possible stale use of old one
                         if spool_id != mmu.gate_spool_id[gate_idx]:
@@ -185,16 +255,23 @@ class MmuGateMapCommand(BaseCommand):
                 available = gcmd.get_int('AVAILABLE', mmu.gate_status[gate_idx], minval=-1, maxval=2)
                 name = gcmd.get('NAME', None)
                 material = gcmd.get('MATERIAL', None)
+                vendor = gcmd.get('VENDOR', None)
                 color = gcmd.get('COLOR', None)
                 spool_id = gcmd.get_int('SPOOLID', None, minval=-1)
                 temperature = gcmd.get_int('TEMP', int(mmu.p.default_extruder_temp))
                 speed_override = gcmd.get_int('SPEED', mmu.gate_speed_override[gate_idx], minval=10, maxval=150)
+                rfid = gcmd.get('RFID', None)
+
+                # RFID is read locally from gate hardware and isn't owned by spoolman, so it's always settable
+                rfid = rfid if rfid is not None else mmu.gate_spool_rfid[gate_idx]
+                mmu.gate_spool_rfid[gate_idx] = rfid
 
                 if mmu.p.spoolman_support != SPOOLMAN_PULL:
                     # Local gate map, can update attributes
                     spool_id = spool_id or mmu.gate_spool_id[gate_idx]
                     name = name if name is not None else mmu.gate_filament_name[gate_idx]
                     material = (material if material is not None else mmu.gate_material[gate_idx]).upper()
+                    vendor = vendor if vendor is not None else mmu.gate_vendor[gate_idx]
                     color = (color if color is not None else mmu.gate_color[gate_idx]).lower()
                     temperature = temperature or mmu.gate_temperature[gate_idx]
                     color = MmuColorUtils.validate_color(color)
@@ -202,6 +279,7 @@ class MmuGateMapCommand(BaseCommand):
                         raise gcmd.error("Color specification must be in form 'rrggbb' or 'rrggbbaa' hexadecimal value (no '#') or valid color name or empty string")
                     mmu.gate_filament_name[gate_idx] = name
                     mmu.gate_material[gate_idx] = material
+                    mmu.gate_vendor[gate_idx] = vendor
                     mmu.gate_color[gate_idx] = color
                     mmu.gate_temperature[gate_idx] = temperature
                     mmu.gate_speed_override[gate_idx] = speed_override
@@ -213,11 +291,16 @@ class MmuGateMapCommand(BaseCommand):
                         for (g, sid) in mod_gate_ids:
                             ids_dict[g] = sid
 
+                    # A per-gate NFC scan that auto-created a Spoolman spool (console log
+                    # complements the gate's LED feedback)
+                    if created and spool_id and spool_id > 0:
+                        mmu.log_always("Spool ID: created new Spoolman spool %d for scanned tag (gate %d)" % (spool_id, gate_idx))
+
                 else:
                     # Remote (spoolman) gate map, don't update local attributes that are set by spoolman
                     mmu.gate_status[gate_idx] = available
                     mmu.gate_speed_override[gate_idx] = speed_override
-                    if any(x is not None for x in [material, color, spool_id, name]):
+                    if any(x is not None for x in [material, vendor, color, spool_id, name]):
                         mmu.log_error("Spoolman mode is '%s': Can only set gate status and speed override locally\nUse MMU_SPOOLMAN or update spoolman directly" % SPOOLMAN_PULL)
                         break
 

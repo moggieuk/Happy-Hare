@@ -5,7 +5,12 @@
 #   PARAM_LOG_FILE_LEVEL
 #
 #   PARAM_SPOOLMAN_SUPPORT
+#   PARAM_SPOOLMAN_PENDING_ID_TIMEOUT
+#   PARAM_SPOOLMAN_LED_SEGMENT
+#   PARAM_SPOOLMAN_NFC_AUTO_CREATE
 #   PARAM_ENDLESS_SPOOL_ENABLED
+#   PARAM_ENDLESS_SPOOL_ON_LOAD
+#   PARAM_T_MACRO_COLOR
 #
 #   INSTALL_12864_MENU
 #   INSTALL_CLIENT_MACROS
@@ -18,83 +23,43 @@ menu "Software Options"
     config files.
 
 
-# -------------------------------------
-# Logging
-# -------------------------------------
-
-  menu "Logging"
-    choice CHOICE_LOG_LEVEL
-      prompt "Console log level"
-      default CHOICE_LOG_LEVEL_INFO
-      help
-        Select verbosity of console logging.
-        Essential is minimal; Developer is very verbose.
-        Recommend "Info"
-
-      config CHOICE_LOG_LEVEL_ESSENTIAL
-        bool "Essential"
-      config CHOICE_LOG_LEVEL_INFO
-        bool "Info"
-      config CHOICE_LOG_LEVEL_DEBUG
-        bool "Debug"
-      config CHOICE_LOG_LEVEL_TRACE
-        bool "Trace"
-      config CHOICE_LOG_LEVEL_STEPPER
-        bool "Developer"
-    endchoice
-
-    config PARAM_LOG_LEVEL
-      int
-      default 0 if CHOICE_LOG_LEVEL_ESSENTIAL
-      default 1 if CHOICE_LOG_LEVEL_INFO
-      default 2 if CHOICE_LOG_LEVEL_DEBUG
-      default 3 if CHOICE_LOG_LEVEL_TRACE
-      default 4 if CHOICE_LOG_LEVEL_STEPPER
-      default 1
-
-    choice CHOICE_LOG_FILE_LEVEL
-      prompt "Log file (mmu.log) level"
-      default CHOICE_LOG_FILE_LEVEL_DEBUG
-      help
-        Select verbosity of mmu.log logging.
-        Essential is minimal; Developer is very verbose.
-        Recommend "Debug"
-
-      config CHOICE_LOG_FILE_LEVEL_ESSENTIAL
-        bool "Essential"
-      config CHOICE_LOG_FILE_LEVEL_INFO
-        bool "Info"
-      config CHOICE_LOG_FILE_LEVEL_DEBUG
-        bool "Debug"
-      config CHOICE_LOG_FILE_LEVEL_TRACE
-        bool "Trace"
-      config CHOICE_LOG_FILE_LEVEL_STEPPER
-        bool "Developer / Stepper"
-    endchoice
-
-    config PARAM_LOG_FILE_LEVEL
-      int
-      default 0 if CHOICE_LOG_FILE_LEVEL_ESSENTIAL
-      default 1 if CHOICE_LOG_FILE_LEVEL_INFO
-      default 2 if CHOICE_LOG_FILE_LEVEL_DEBUG
-      default 3 if CHOICE_LOG_FILE_LEVEL_TRACE
-      default 4 if CHOICE_LOG_FILE_LEVEL_STEPPER
-      default 2
-  endmenu
 
 
 # -------------------------------------
 # Endless Spool
 # -------------------------------------
 
+  comment "_"
+  comment "_EndlessSpool"
+
   config BOOL_ENDLESS_SPOOL_ENABLED
     bool "Enable EndlessSpool?"
     help
       This uses filament runout detection to automate switching to a new spool without interruption
+
   config PARAM_ENDLESS_SPOOL_ENABLED
     int
     default 1 if BOOL_ENDLESS_SPOOL_ENABLED
     default 0
+
+  config BOOL_ENDLESS_SPOOL_ON_LOAD
+    bool "Apply EndlessSpool automatically when loading an empty gate?"
+    help
+      If the gate selected for a load is empty, automatically run EndlessSpool to find and
+      switch to a gate that has filament instead of erroring
+
+  config PARAM_ENDLESS_SPOOL_ON_LOAD
+    int
+    default 1 if BOOL_ENDLESS_SPOOL_ON_LOAD
+    default 0
+
+
+# -------------------------------------
+# Spoolman
+# -------------------------------------
+
+  comment "_"
+  comment "_Spoolman"
 
   choice CHOICE_SPOOLMAN_SUPPORT
     prompt "Select spoolman spool manager support"
@@ -137,10 +102,159 @@ menu "Software Options"
     default "push" if CHOICE_SPOOLMAN_SUPPORT_PUSH
     default "pull" if CHOICE_SPOOLMAN_SUPPORT_PULL
 
+  config PARAM_SPOOLMAN_PENDING_ID_TIMEOUT
+    int "Seconds before a pending spool_id assignment is voided"
+    range 5 120
+    default 20
+
+  choice CHOICE_SPOOLMAN_LED_SEGMENT
+    prompt "LED segment for pending spool effect"
+    default CHOICE_SPOOLMAN_LED_SEGMENT_GATE_STATUS
+
+    config CHOICE_SPOOLMAN_LED_SEGMENT_GATE_STATUS
+      bool "gate_status"
+      help
+        Show the pending spool_id overlay on LED segments displaying "gate_status"
+
+    config CHOICE_SPOOLMAN_LED_SEGMENT_STATUS
+      bool "status"
+      help
+        Show the pending spool_id overlay on the unit status LED only
+
+    config CHOICE_SPOOLMAN_LED_SEGMENT_BOTH
+      bool "both"
+      help
+        Show the pending spool_id overlay on segments displaying "gate_status" and the status segment
+  endchoice
+
+  config PARAM_SPOOLMAN_LED_SEGMENT
+    string
+    default "gate_status" if CHOICE_SPOOLMAN_LED_SEGMENT_GATE_STATUS
+    default "status" if CHOICE_SPOOLMAN_LED_SEGMENT_STATUS
+    default "both" if CHOICE_SPOOLMAN_LED_SEGMENT_BOTH
+
+  config BOOL_SPOOLMAN_NFC_AUTO_CREATE
+    bool "Auto-create a Spoolman spool from an unknown NFC/RFID tag?"
+    help
+      When a scanned tag UID is unknown to Spoolman, create a new spool from the tag metadata
+      (requires nfc_deep_read and spoolman_support push or pull)
+
+  config PARAM_SPOOLMAN_NFC_AUTO_CREATE
+    int
+    default 1 if BOOL_SPOOLMAN_NFC_AUTO_CREATE
+    default 0
+
+
+# -------------------------------------
+# Logging
+# -------------------------------------
+
+  comment "_"
+  comment "_Logging"
+
+  choice CHOICE_LOG_LEVEL
+    prompt "Console log level"
+    default CHOICE_LOG_LEVEL_INFO
+    help
+      Select verbosity of console logging.
+      Essential is minimal; Developer is very verbose.
+      Recommend "Info"
+
+    config CHOICE_LOG_LEVEL_ESSENTIAL
+      bool "Essential"
+    config CHOICE_LOG_LEVEL_INFO
+      bool "Info"
+    config CHOICE_LOG_LEVEL_DEBUG
+      bool "Debug"
+    config CHOICE_LOG_LEVEL_TRACE
+      bool "Trace"
+    config CHOICE_LOG_LEVEL_STEPPER
+      bool "Developer"
+  endchoice
+
+  config PARAM_LOG_LEVEL
+    int
+    default 0 if CHOICE_LOG_LEVEL_ESSENTIAL
+    default 1 if CHOICE_LOG_LEVEL_INFO
+    default 2 if CHOICE_LOG_LEVEL_DEBUG
+    default 3 if CHOICE_LOG_LEVEL_TRACE
+    default 4 if CHOICE_LOG_LEVEL_STEPPER
+    default 1
+
+  choice CHOICE_LOG_FILE_LEVEL
+    prompt "Log file (mmu.log) level"
+    default CHOICE_LOG_FILE_LEVEL_DEBUG
+    help
+      Select verbosity of mmu.log logging.
+      Essential is minimal; Developer is very verbose.
+      Recommend "Debug"
+
+    config CHOICE_LOG_FILE_LEVEL_ESSENTIAL
+      bool "Essential"
+    config CHOICE_LOG_FILE_LEVEL_INFO
+      bool "Info"
+    config CHOICE_LOG_FILE_LEVEL_DEBUG
+      bool "Debug"
+    config CHOICE_LOG_FILE_LEVEL_TRACE
+      bool "Trace"
+    config CHOICE_LOG_FILE_LEVEL_STEPPER
+      bool "Developer / Stepper"
+  endchoice
+
+  config PARAM_LOG_FILE_LEVEL
+    int
+    default 0 if CHOICE_LOG_FILE_LEVEL_ESSENTIAL
+    default 1 if CHOICE_LOG_FILE_LEVEL_INFO
+    default 2 if CHOICE_LOG_FILE_LEVEL_DEBUG
+    default 3 if CHOICE_LOG_FILE_LEVEL_TRACE
+    default 4 if CHOICE_LOG_FILE_LEVEL_STEPPER
+    default 2
+
+
+# -------------------------------------
+# Tool (Tx) Macros
+# -------------------------------------
+
+  comment "_"
+
+  choice CHOICE_T_MACRO_COLOR
+    prompt "Filament color shown on Tx tool macros (Mainsail/Fluidd)"
+    default CHOICE_T_MACRO_COLOR_SLICER
+
+    config CHOICE_T_MACRO_COLOR_SLICER
+      bool "slicer"
+      help
+        Color from the slicer tool map (default, what the slicer expects)
+
+    config CHOICE_T_MACRO_COLOR_ALLGATES
+      bool "allgates"
+      help
+        Color from all the tools in the gate map after running through the TTG map
+
+    config CHOICE_T_MACRO_COLOR_GATEMAP
+      bool "gatemap"
+      help
+        As per gatemap but hide empty tools
+
+    config CHOICE_T_MACRO_COLOR_OFF
+      bool "off"
+      help
+        Turn off color (and spool_id) association
+  endchoice
+
+  config PARAM_T_MACRO_COLOR
+    string
+    default "slicer" if CHOICE_T_MACRO_COLOR_SLICER
+    default "allgates" if CHOICE_T_MACRO_COLOR_ALLGATES
+    default "gatemap" if CHOICE_T_MACRO_COLOR_GATEMAP
+    default "off" if CHOICE_T_MACRO_COLOR_OFF
+
 
 # -------------------------------------
 # Optional Macros
 # -------------------------------------
+
+  comment "_"
 
   config INSTALL_12864_MENU
     bool "Install Mini 12864 display menu?"

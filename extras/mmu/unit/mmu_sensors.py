@@ -139,3 +139,10 @@ class MmuAdcSwitchSensor(MmuVirtualEndstopSensor):
         buttons.register_adc_button(switch_pin, a_min, a_max, a_pullup, self.trigger_handler)
 
         logging.info("MMU: Created MmuAdcSwitchSensor(%s)" % self.name)
+
+
+    def _endstop_trigger_time(self, eventtime):
+        # register_adc_button delivers a host reactor eventtime (Klipper marshals
+        # the ADC-button callback through reactor.register_async_callback), so
+        # convert to MCU print_time for the homing trigger position calc.
+        return self.estimated_print_time(eventtime)

@@ -24,9 +24,6 @@
 # is initiated with this option. IMPORTANT: filament must be removed from the MMU inlet and
 # fastened to the spool and the GATES parameter must be supplied.
 #
-# Implements commands:
-#   MMU_HEATER
-#
 # Implements printer variables:
 #   drying_state   [{string} : list indexed by gate with values:
 #                                DRYING_STATE_ACTIVE    'active'    actively drying

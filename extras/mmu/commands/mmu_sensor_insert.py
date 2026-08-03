@@ -69,7 +69,7 @@ class MmuSensorInsertCommand(BaseCommand):
 
                 if sensor.startswith(SENSOR_ENTRY_PREFIX) and gate is not None:
                     mmu.gate_maps.set_gate_status(gate, GATE_UNKNOWN)
-                    mmu._check_pending_spool_id(gate)  # Have spool_id ready?
+                    mmu._check_pending_filament(gate)  # Have spool_id ready?
                     if not mmu.is_printing() and mmu.mmu_unit().p.gate_autoload:
                         mmu.gcode.run_script_from_command("MMU_PRELOAD GATE=%d" % gate)
 

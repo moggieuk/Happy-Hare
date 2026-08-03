@@ -3373,8 +3373,10 @@ def _node_str(node):
                 text = node.prompt[0][1:]
                 middle = f" {text.upper()} "
                 heading = "───────" + middle
-                if len(heading) < max_width:
-                    heading += "─" * (max_width - len(heading))
+                # Happy Hare: Markup tokens in the text are zero-width so discount them from the rule padding
+                width = len(heading) - _token_char_count(heading)
+                if width < max_width:
+                    heading += "─" * (max_width - width)
                 s = "{}".format(heading)
             else:
                 s += " *** {} ***".format(node.prompt[0])
@@ -3738,7 +3740,7 @@ def _safe_addstr(win, *args):
 #_TAG_RE = re.compile(r"\[\[(/?)([A-Za-z]+)(?::(\d+))?\]\]")
 _TAG_RE = re.compile(r"""
 \[\[
-(?= (?:/?(?:B|U|REV|DIM) | C:[0-9]+ | /C | RESET ) \]\] ) # whitelist gate
+(?= (?:/?(?:BOLD|B|UNDERLINE|U|REVERSE|REV|DIM) | (?:COLOR|C):[0-9]+ | /(?:COLOR|C) | RESET ) \]\] ) # whitelist gate, short and long forms
 (?P<slash>/)?(?P<name>[A-Z]+)(?::(?P<digits>[0-9]+))?     # captures: /?, name, :digits
 \]\]
 """, re.X)

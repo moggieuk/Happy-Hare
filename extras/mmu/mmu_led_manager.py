@@ -4,9 +4,26 @@
 # Copyright (C) 2022-2026  moggieuk#6538 (discord)
 #                          moggieuk@hotmail.com
 #
-# Goal: Manager class to centralize mmu_led operations accross all mmu_units
+# Goal: Manager class to centralize mmu_led operations across all mmu_units
+# 
+# One per-machine manager reacts to action / print-state / gate-map changes and drives each
+# unit's LED segments (exit, entry, status, logo). All rendering funnels through _set_led(),
+# which resolves an "effect" — a named [mmu_led_effect] animation, an "r,g,b" color, or a
+# functional effect (off/on/gate_status/filament_color/slicer_color) — and, in static mode,
+# falls back to a plain RGB. A timed effect (duration=) auto-returns that unit to its default
+# via a per-unit timer (per-unit so a flash on one unit never disturbs another); an update
+# arriving while a timed effect holds the unit is deferred (last one wins) and replayed when
+# the timer fires. Two overlays are baked into the render: the selected-gate emphasis and the
+# base spoolman "pending spool_id" phase (see _pending_overlay_effect / pending_changed).
 #
-# Implements commands:
+# set_transient_effect() additionally lets a feature (e.g. the NFC reader indicators) flash a
+# caller-owned effect on ONE segment (optionally one gate) through the same pipeline: the
+# segment's prior effect is snapshotted and restored when the flash expires - unless something
+# newer painted over the flash, in which case the restore self-cancels (newest wins; for a
+# gate-scoped flash a baseline repaint of ANOTHER gate doesn't count as newer). Flashes never
+# block or reset other segments. This keeps feature-specific LED policy in the caller.
+#
+# Supports commands:
 #   MMU_SET_LED
 #   MMU_LED
 #
@@ -17,6 +34,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
+import functools
 import logging
 
 # Happy Hare imports
@@ -25,13 +43,23 @@ from .unit.mmu_leds import MmuLeds
 
 
 class MmuLedManager:
+
+    # Functional effects _set_led renders directly (no [mmu_led_effect] / RGB fallback needed)
+    FUNCTIONAL_EFFECTS = ('off', 'on', 'gate_status', 'filament_color', 'slicer_color')
+
     def __init__(self, mmu):
         self.mmu = mmu
         self.mmu_machine = mmu.mmu_machine
 
-        self.inside_timer = False
-        self.pending_update = [False] * self.mmu_machine.num_units
+        num_units = self.mmu_machine.num_units
+        self.inside_timer = [False] * num_units    # Per-unit re-entrancy guard for its led timer
+        self.pending_update = [False] * num_units
+        self.deferred = [None] * num_units         # Per-unit last _set_led request blocked by a timed effect, replayed when it ends
+        self.led_timers = [None] * num_units       # Per-unit "return to default" timers (registered at ready)
         self.effect_state = {} # Current state used to minimise updates {unit: {segment: effect}}
+        self.transient_flash = {}  # Active transient flash per (unit, segment): {'prior', 'flash', 'gate'}
+        self.transient_timers = {} # Lazily registered restore timer per (unit, segment)
+        self.transient_pending = {} # Optional queued flash per (unit, segment), promoted when the active flash ends
         self._initialized = False # Used to prevent very early calls before leds are fully initialized
 
         # Event handlers
@@ -43,24 +71,40 @@ class MmuLedManager:
 
 
     def setup_led_timer(self):
-        self.led_timer = self.mmu.reactor.register_timer(self.led_timer_handler, self.mmu.reactor.NEVER)
+        # A separate timer per unit so a timed effect on one unit cannot reset or cut short
+        # the LEDs on another - each unit owns its own "return to default" schedule.
+        for unit in range(self.mmu_machine.num_units):
+            self.led_timers[unit] = self.mmu.reactor.register_timer(
+                functools.partial(self.led_timer_handler, unit), self.mmu.reactor.NEVER)
 
 
-    def led_timer_handler(self, eventtime):
-        self.inside_timer = True
+    def led_timer_handler(self, unit, eventtime):
+        self.inside_timer[unit] = True
+        next_wake = self.mmu.reactor.NEVER
         try:
-            for unit in range(self.mmu_machine.num_units):
-                self.pending_update[unit] = False
-                self._set_led(unit, None, exit_effect='default', entry_effect='default', status_effect='default', logo_effect='default')
+            self.pending_update[unit] = False
+            self._set_led(unit, None, exit_effect='default', entry_effect='default', status_effect='default', logo_effect='default')
+
+            # Replay the last update that arrived while the timed effect was held (over the
+            # reset, so its segments win and the rest stay at default). If that update itself
+            # carried a duration, re-arm this timer via the return value (schedule_led_command
+            # is a no-op while inside_timer, and update_timer here would be clobbered by the
+            # returned waketime anyway).
+            deferred, self.deferred[unit] = self.deferred[unit], None
+            if deferred is not None:
+                self._set_led(unit, deferred['gate'], fadetime=deferred['fadetime'], **deferred['effects'])
+                if deferred['duration'] is not None:
+                    self.pending_update[unit] = True
+                    next_wake = self.mmu.reactor.monotonic() + deferred['duration']
         finally:
-            self.inside_timer = False
-        return self.mmu.reactor.NEVER
+            self.inside_timer[unit] = False
+        return next_wake
 
 
     def schedule_led_command(self, duration, unit):
-        if not self.inside_timer:
+        if not self.inside_timer[unit]:
             self.pending_update[unit] = True
-            self.mmu.reactor.update_timer(self.led_timer, self.mmu.reactor.monotonic() + duration)
+            self.mmu.reactor.update_timer(self.led_timers[unit], self.mmu.reactor.monotonic() + duration)
 
 
     # Called when an action has changed to update LEDs
@@ -171,7 +215,7 @@ class MmuLedManager:
 
             # idle -> select -> idle
             elif action == ACTION_SELECTING:
-                if old_action not in [ACTION_CHECKING]:
+                if old_action not in [ACTION_CHECKING, ACTION_PRELOAD]:
                     self._set_led(
                         unit, None,
                         exit_effect='default',
@@ -179,13 +223,14 @@ class MmuLedManager:
                         fadetime=0
                     )
 
-            # idle -> check -> select* -> check* -> select* -> check* -> idle
-            elif action == ACTION_CHECKING:
+            # idle -> check/preload -> select* -> check* -> select* -> check* -> idle
+            elif action in [ACTION_CHECKING, ACTION_PRELOAD]:
                 if old_action == ACTION_IDLE:
+                    operation = 'preloading' if action == ACTION_PRELOAD else 'checking'
                     self._set_led(
                         unit, None,
                         exit_effect='default',
-                        status_effect=self.effect_name(unit, 'checking')
+                        status_effect=self.effect_name(unit, operation)
                     )
 
 
@@ -206,7 +251,7 @@ class MmuLedManager:
                     exit_effect=self.effect_name(unit, 'initialized'),
                     entry_effect=self.effect_name(unit, 'initialized'),
                     status_effect=self.effect_name(unit, 'initialized'),
-                    duration=8
+                    duration=self.effect_duration(unit, 'initialized', 8)
                 )
 
             elif state == "printing":
@@ -244,7 +289,7 @@ class MmuLedManager:
                     unit, None,
                     exit_effect=self.effect_name(unit, 'complete'),
                     status_effect='default',
-                    duration=10
+                    duration=self.effect_duration(unit, 'complete', 10)
                 )
 
             elif state == "error":
@@ -252,7 +297,7 @@ class MmuLedManager:
                     unit, None,
                     exit_effect=self.effect_name(unit, 'error'),
                     status_effect='default',
-                    duration=10
+                    duration=self.effect_duration(unit, 'error', 10)
                 )
 
             elif state == "cancelled":
@@ -305,6 +350,193 @@ class MmuLedManager:
         if leds:
             return leds.get_effect(operation)
         return ''
+
+
+    def effect_duration(self, unit, operation, default=None):
+        """
+        Return the config-specified default duration (3rd field of effect_<operation> in [mmu_leds]) for
+        'operation', or 'default' when the config omits it
+        """
+        leds = self.mmu_machine.get_mmu_unit_by_index(unit).leds
+        if leds:
+            duration = leds.get_duration(operation)
+            if duration is not None:
+                return duration
+        return default
+
+
+    def _pending_overlay_effect(self, mmu_unit, segment):
+        """
+        Base spoolman pending-spool_id overlay for 'segment', or None. Baked into the
+        render (not a transient), so any pending spool_id - from an NFC lookup OR a manual
+        MMU_GATE_MAP NEXT_SPOOLID - shows on the segments chosen by the machine param
+        spoolman_led_segment (gate_status | status | both). Returns '' -> None so it's opt-in
+        (map effect_pending_spoolid[_expiring] to enable it).
+        """
+        phase = self.mmu.pending_phase
+        if not phase:
+            return None
+        mode = self.mmu.p.spoolman_led_segment
+        if segment in ('exit', 'entry'):
+            if mode not in ('gate_status', 'both'):
+                return None
+        elif segment == 'status':
+            if mode not in ('status', 'both'):
+                return None
+        else:
+            return None
+        op = 'pending_spoolid_expiring' if phase == 'expiring' else 'pending_spoolid'
+        return self.effect_name(mmu_unit.unit_index, op) or None
+
+
+    def pending_changed(self):
+        """
+        Re-render each unit's overlay-carrying segments when the pending spool_id phase
+        changes (set/expiring/cleared). A full default refresh picks up pending_phase in the
+        render branches; the overlay reverts automatically once the phase returns to None.
+        A segment owned by an active transient flash (e.g. an NFC read strobe) is NOT
+        repainted - a background baseline change must not cut a flash short. Instead the
+        flash's restore target is retargeted to 'default' so the new baseline (overlay on
+        or off) lands when the flash (or its queued successor) ends.
+        """
+        if not self._initialized:
+            return
+        for unit in range(self.mmu_machine.num_units):
+            effects = {}
+            for segment in ('exit', 'entry', 'status'):
+                key = (unit, segment)
+                if key in self.transient_flash:
+                    self.transient_flash[key]['prior'] = 'default'
+                else:
+                    effects['%s_effect' % segment] = 'default'
+            if effects:
+                self._set_led(unit, None, **effects)
+
+
+    def set_transient_effect(self, mmu_unit, effect, segment='exit', gate=None, duration=None, fadetime=0, defer=False):
+        """
+        Apply a caller-owned effect to one segment via the normal LED pipeline - used for
+        short-lived feature indicators (e.g. the NFC read/fail flashes) without this module
+        knowing anything about the feature.
+
+        'effect' is a resolved value understood by _set_led: a named [mmu_led_effect], an
+        "r,g,b" colour, or a functional effect (off/on/gate_status/filament_color/
+        slicer_color). Segment availability, gate ownership and animation-vs-static handling
+        are all handled by _set_led.
+
+        With a 'duration' this is a segment-scoped flash: what the segment was showing is
+        snapshotted first and restored when the duration expires - but ONLY if the flash is
+        still what's showing (anything painted over it in the meantime wins and the restore
+        self-cancels). Other segments are never touched and updates are never blocked.
+        Back-to-back flashes on the same segment keep the original pre-flash snapshot.
+        With defer=True a flash requested while another is still running on the segment is
+        queued and painted when that one ends (last queued wins) rather than cutting it short
+        - e.g. so a fast NFC fail result doesn't stomp the read-acknowledge flash.
+        With duration=None the effect simply persists until the next repaint of that
+        segment (no restore bookkeeping).
+
+        Returns True if dispatched, else False (no/disabled leds, bad segment, a named
+        effect with no static RGB fallback while animation is off, or a flash requested
+        while a unit-wide timed state effect holds the unit - a cosmetic flash is dropped
+        rather than deferred, which would leave it with no way to clear).
+        """
+        if mmu_unit is None or not effect:
+            return False
+        segment = (segment or 'exit').strip().lower()
+        if segment not in MmuLeds.SEGMENTS:
+            return False
+        leds = mmu_unit.leds
+        if leds is None or not leds.enabled:
+            return False
+
+        # In static (non-animation) mode a bare named effect needs an RGB fallback to
+        # render; RGB literals and functional effects are always renderable by _set_led,
+        # so only reject an unmapped *named* effect.
+        is_rgb = isinstance(effect, tuple) or (isinstance(effect, str) and ',' in effect)
+        if (not leds.animation and not is_rgb
+                and effect not in self.FUNCTIONAL_EFFECTS
+                and effect not in leds.get_effect_names()):
+            logging.warning("MMU: LED effect '%s' has no static RGB mapping for unit %s" % (effect, mmu_unit.name))
+            return False
+
+        unit = mmu_unit.unit_index
+        key = (unit, segment)
+        if duration is None:
+            # Persistent: paint and walk away (ends at the next repaint of the segment). A
+            # fresh paint abandons any flash queued behind a now-superseded sequence.
+            self.transient_pending.pop(key, None)
+            self._set_led(unit, gate, fadetime=fadetime, **{'%s_effect' % segment: effect})
+            return True
+
+        # Flash: drop (don't defer) while a unit-wide timed state effect (initialized/
+        # complete/error) holds the unit - a deferred flash would replay at its end with
+        # nothing scheduled to clear it, and a cosmetic indicator isn't worth extending
+        if self.pending_update[unit]:
+            self.mmu.log_trace("LED: transient '%s' flash dropped - unit %d held by a timed state effect" % (effect, unit))
+            return False
+
+        entry = self.transient_flash.get(key)
+        if entry is not None and defer:
+            # A flash is still running on this segment; queue this one to paint when it ends
+            # (last queued wins) instead of cutting the running flash short.
+            self.transient_pending[key] = {'effect': effect, 'gate': gate, 'duration': duration, 'fadetime': fadetime}
+            self.mmu.log_trace("LED: transient '%s' flash queued behind active '%s' on unit %d/%s" % (effect, entry['flash'], unit, segment))
+            return True
+
+        # Immediate paint. A fresh (non-deferred) flash abandons any queued deferral - it
+        # belongs to a superseded sequence.
+        self.transient_pending.pop(key, None)
+        if entry is None:
+            # Snapshot what the segment is showing BEFORE the flash paints (first-wins so
+            # chained flashes, e.g. read -> fail, restore the true pre-flash baseline)
+            prior = self.effect_state.get(unit, {}).get(segment, 'default')
+        else:
+            prior = entry['prior']
+
+        # Paint through the normal pipeline WITHOUT a _set_led duration: no unit-wide
+        # reset, no pending_update lock - other segments and later updates stay live
+        self._set_led(unit, gate, fadetime=fadetime, **{'%s_effect' % segment: effect})
+
+        self.transient_flash[key] = {'prior': prior, 'flash': effect, 'gate': gate}
+        if key not in self.transient_timers:
+            self.transient_timers[key] = self.mmu.reactor.register_timer(
+                functools.partial(self._transient_flash_handler, unit, segment), self.mmu.reactor.NEVER)
+        self.mmu.reactor.update_timer(self.transient_timers[key], self.mmu.reactor.monotonic() + duration)
+        return True
+
+
+    def _transient_flash_handler(self, unit, segment, eventtime):
+        """End a segment-scoped transient flash: restore the pre-flash effect, but only if
+        the flash is still what the segment is showing. If anything painted over it (action
+        transition, pending overlay, state change - none of which are blocked by a flash),
+        the newer effect wins and the restore self-cancels (and any queued flash is dropped).
+        If a flash was queued behind this one (defer=True) and this flash is still showing,
+        promote it: paint it over this flash and re-arm for its duration, keeping the ORIGINAL
+        pre-flash baseline so the chain (e.g. read -> fail -> baseline) restores correctly."""
+        key = (unit, segment)
+        entry = self.transient_flash.pop(key, None)
+        pending = self.transient_pending.pop(key, None)
+        state = self.effect_state.get(unit, {}).get(segment)
+        # A GATE-scoped flash paints one gate but effect_state records per segment: another
+        # gate repainting with the same baseline (e.g. its gate_status refreshed) changes the
+        # record while our gate still shows the flash. In that case (state == the flash's own
+        # restore baseline) proceed normally - restoring/promoting one gate is always safe.
+        # Anything else painted over the segment (action/state effect) wins: self-cancel.
+        survived = entry is not None and (
+            state == entry['flash'] or (entry['gate'] is not None and state == entry['prior']))
+        if not survived:
+            self.mmu.log_trace("LED: transient flash end on unit %d/%s self-cancelled (overpainted: showing '%s')%s" % (
+                unit, segment, state,
+                (" - dropping queued '%s'" % pending['effect']) if pending else ""))
+            return self.mmu.reactor.NEVER # Something newer won - self-cancel
+        if pending is not None:
+            self.mmu.log_trace("LED: promoting queued '%s' flash on unit %d/%s for %.1fs" % (pending['effect'], unit, segment, pending['duration']))
+            self._set_led(unit, pending['gate'], fadetime=pending['fadetime'], **{'%s_effect' % segment: pending['effect']})
+            self.transient_flash[key] = {'prior': entry['prior'], 'flash': pending['effect'], 'gate': pending['gate']}
+            return self.mmu.reactor.monotonic() + pending['duration'] # Re-arm for the promoted flash
+        self.mmu.log_trace("LED: transient flash end on unit %d/%s - restoring '%s'" % (unit, segment, entry['prior']))
+        self._set_led(unit, entry['gate'], fadetime=0, **{'%s_effect' % segment: entry['prior']})
+        return self.mmu.reactor.NEVER
 
 
     # Make the necessary configuration changes to LED accross all mmu_units
@@ -436,8 +668,21 @@ class MmuLedManager:
             if gate is not None and gate < 0:
                 return
 
-            # Don't allow changes to shortcut animations - important changes will be seen when update timer fires
+            # A timed effect is currently held on this unit. Don't paint over it now; instead
+            # remember this request (last one wins) and replay it when the timed effect's timer
+            # fires - honoring "important changes will be seen when the update timer fires".
             if self.pending_update[unit]:
+                self.deferred[unit] = {
+                    'gate': gate,
+                    'fadetime': fadetime,
+                    'duration': duration,
+                    'effects': {
+                        'exit_effect': exit_effect,
+                        'entry_effect': entry_effect,
+                        'status_effect': status_effect,
+                        'logo_effect': logo_effect,
+                    },
+                }
                 return
 
             # Schedule a return to defaults after duration
@@ -459,10 +704,25 @@ class MmuLedManager:
                     stop_effect_and_set_gate_rgb((0,0,0), unit, segment, gate, fadetime=fadetime)
 
                 elif effect == "gate_status":  # Filament availability (gate_map)
-                    def _effect_for_gate(g):
+                    pending_overlay = self._pending_overlay_effect(mmu_unit, segment)
+                    def _effect_for_gate(g, pending_overlay=pending_overlay):
+                        # Base spoolman pending overlay (if active) supersedes per-gate availability
+                        if pending_overlay:
+                            return pending_overlay
+
                         # Selected gate, with filament past extruder entry: force 'gate_selected'
                         if g == self.mmu.gate_selected and self.mmu.filament_pos > FILAMENT_POS_EXTRUDER_ENTRY:
                             return self.effect_name(unit, 'gate_selected')
+
+                        # Gate actively being checked/preloaded: show the operation effect on its
+                        # gate LEDs. Baked into the render (not painted by action_changed) because
+                        # the target gate is selected AFTER the action starts - the IDLE->action
+                        # repaint lights the current gate and select_gate's gate_map_changed
+                        # repaints move it to each newly selected gate automatically.
+                        if g == self.mmu.gate_selected and self.mmu.action in (ACTION_CHECKING, ACTION_PRELOAD):
+                            op_effect = self.effect_name(unit, 'preloading' if self.mmu.action == ACTION_PRELOAD else 'checking')
+                            if op_effect:
+                                return op_effect
 
                         suffix = '_sel' if g == self.mmu.gate_selected else ''
                         status = self.mmu.gate_status[g]
@@ -540,9 +800,17 @@ class MmuLedManager:
             #
             segment = "status"
             effect = get_effective_effect(mmu_unit, segment, effects[segment])
+            # Base spoolman pending overlay supersedes the configured status effect (only when
+            # the status segment is available, i.e. effect resolved to non-empty)
+            pending_overlay = self._pending_overlay_effect(mmu_unit, segment) if effect else None
 
             #if not effect or self.effect_state.get(unit, {}).get(segment) == effect:
-            if not effect:
+            if pending_overlay:
+                # Note: effect_state still records the underlying configured effect (like the
+                # exit branch does for gate_status) - the overlay is transient render state
+                set_gate_effect(pending_overlay, unit, segment, None, fadetime=fadetime)
+
+            elif not effect:
                 pass
 
             elif effect == "off":
@@ -577,8 +845,10 @@ class MmuLedManager:
             elif effect != "": # Named effect
                 set_gate_effect(effect, unit, segment, None, fadetime=fadetime, raw=False)
 
-            self.effect_state.setdefault(unit, {})[segment] = effect
-    
+            if effect: # Only record state when something was actually painted (a partial
+                       # update that omits this segment must not clobber its recorded state)
+                self.effect_state.setdefault(unit, {})[segment] = effect
+
             #
             # Logo
             #
@@ -599,7 +869,8 @@ class MmuLedManager:
             elif effect != "": # Named effect
                 set_gate_effect(effect, unit, segment, None, fadetime=fadetime, raw=False)
 
-            self.effect_state.setdefault(unit, {})[segment] = effect
+            if effect: # Only record state when something was actually painted
+                self.effect_state.setdefault(unit, {})[segment] = effect
 
         except Exception as e:
             # Don't let a misconfiguration ruin a print!

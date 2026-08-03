@@ -47,7 +47,6 @@ class MmuMachineParameters(TunableParametersBase):
         # Printer interaction config
         ParamSpec('timeout_pause',                 'int',   72000, section="PRINTER", limits=dict(minval=120)),
         ParamSpec('default_idle_timeout',          'int',      -1, section="PRINTER", limits=dict(minval=120)),
-        ParamSpec('pending_spool_id_timeout',      'int',      20, section="PRINTER", limits=dict(minval=-1), hidden=True),
         ParamSpec('disable_heater',                'int',     600, section="PRINTER", limits=dict(minval=60)),
         ParamSpec('default_extruder_temp',         'float', 200.0, section="PRINTER", limits=dict(minval=0.0)),
         ParamSpec('extruder_temp_variance',        'float',   2.0, section="PRINTER", limits=dict(minval=1.0)),
@@ -93,9 +92,11 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('default_gate_status',           'intlist', [], section="DEFAULT MAPS", hidden=True),
         ParamSpec('default_gate_filament_name',    'list',    [], section="DEFAULT MAPS", hidden=True),
         ParamSpec('default_gate_material',         'list',    [], section="DEFAULT MAPS", hidden=True),
+        ParamSpec('default_gate_vendor',           'list',    [], section="DEFAULT MAPS", hidden=True),
         ParamSpec('default_gate_color',            'list',    [], section="DEFAULT MAPS", hidden=True),
         ParamSpec('default_gate_temperature',      'intlist', [], section="DEFAULT MAPS", hidden=True),
         ParamSpec('default_gate_spool_id',         'intlist', [], section="DEFAULT MAPS", hidden=True),
+        ParamSpec('default_gate_spool_rfid',       'list',    [], section="DEFAULT MAPS", hidden=True),
         ParamSpec('default_gate_speed_override',   'intlist', [], section="DEFAULT MAPS", hidden=True),
         ParamSpec('default_endless_spool_groups',  'intlist', [], section="DEFAULT MAPS", hidden=True),
 
@@ -116,14 +117,16 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('macro_toolhead_min_cruise_ratio','float', 0.0, section="TOOLHEAD/EXTRUDER", limits=dict(minval=0.0, below=1.0)),
 
         # Optional features
-        ParamSpec('spoolman_support',              'choice', SPOOLMAN_OFF,         section="FEATURES", choices={o: o for o in SPOOLMAN_OPTIONS},      on_change=_on_spoolman_support),
+        ParamSpec('spoolman_support',              'choice', SPOOLMAN_OFF,  section="FEATURES", choices={o: o for o in SPOOLMAN_OPTIONS}, on_change=_on_spoolman_support),
+        ParamSpec('spoolman_pending_id_timeout',   'int',    20,            section="FEATURES", limits=dict(minval=5, maxval=120)),
+        ParamSpec('spoolman_nfc_auto_create',      'int',    0,             section="FEATURES", limits=dict(minval=0, maxval=1)),
+        ParamSpec('spoolman_led_segment',          'choice', 'gate_status', section="FEATURES", choices={o: o for o in ('gate_status', 'status', 'both')}),
+
         ParamSpec('t_macro_color',                 'choice', T_MACRO_COLOR_SLICER, section="FEATURES", choices={o: o for o in T_MACRO_COLOR_OPTIONS}, on_change=_on_t_macro_color),
         ParamSpec('endless_spool_groups',          'intlist', [], section="FEATURES"),
         ParamSpec('endless_spool_enabled',         'int',      0, section="FEATURES", limits=dict(minval=0, maxval=1)),
         ParamSpec('endless_spool_on_load',         'int',      0, section="FEATURES", limits=dict(minval=0, maxval=1)),
         ParamSpec('endless_spool_eject_gate',      'int',     -1, section="FEATURES", limits=dict(minval=-1)),
-        ParamSpec('select_tool_macro',             'str',   None, section="FEATURES"),
-        ParamSpec('select_tool_num_switches',      'int',      0, section="FEATURES", limits=dict(minval=0)),
         ParamSpec('bypass_autoload',               'int',      1, section="FEATURES", guard=_guard_has_sensor(SENSOR_EXTRUDER_ENTRY), limits=dict(minval=0, maxval=1)),
 
         # Logging
@@ -188,9 +191,11 @@ class MmuMachineParameters(TunableParametersBase):
         self.default_gate_status          = list(self.default_gate_status)
         self.default_gate_filament_name   = list(self.default_gate_filament_name)
         self.default_gate_material        = list(self.default_gate_material)
+        self.default_gate_vendor          = list(self.default_gate_vendor)
         self.default_gate_color           = list(self.default_gate_color)
         self.default_gate_temperature     = list(self.default_gate_temperature)
         self.default_gate_spool_id        = list(self.default_gate_spool_id)
+        self.default_gate_spool_rfid      = list(self.default_gate_spool_rfid)
         self.default_gate_speed_override  = list(self.default_gate_speed_override)
         self.default_endless_spool_groups = list(self.default_endless_spool_groups)
 

@@ -129,6 +129,7 @@ ACTION_SELECTING = 9
 ACTION_CUTTING_TIP = 10         # Cutting at toolhead e.g.  _MMU_CUT_TIP macro
 ACTION_CUTTING_FILAMENT = 11    # Cutting at MMU e.g. EREC cutting macro
 ACTION_PURGING = 12             # Non slicer purging e.g. when running blobifier
+ACTION_PRELOAD = 13             # Preloading filament into a gate (own action so it can consume a pending spool_id)
 
 MACRO_EVENT_RESTART          = "restart"          # Params: None
 MACRO_EVENT_GATE_MAP_CHANGED = "gate_map_changed" # Params: GATE changed or GATE=-1 for all
@@ -160,6 +161,7 @@ SENSOR_EXTRUDER_TOUCH    = "mmu_ext_touch"
 SENSOR_SELECTOR_TOUCH    = "mmu_sel_touch"  # For LinearSelector and LinearServoSelector
 SENSOR_SELECTOR_HOME     = "mmu_sel_home"   # For LinearSelector and LinearServoSelector
 SENSOR_ENTRY_PREFIX      = "mmu_entry"
+SENSOR_NFC_PREFIX        = "mmu_nfc"        # Per-gate NFC/RFID reader used as a "tag detected" homing endstop
 
 EXTRUDER_ENDSTOPS = [SENSOR_EXTRUDER_ENCODER, SENSOR_GEAR_TOUCH, SENSOR_EXTRUDER_ENTRY, SENSOR_EXTRUDER_NONE, SENSOR_COMPRESSION]
 GATE_ENDSTOPS     = [SENSOR_SHARED_EXIT, SENSOR_ENCODER, SENSOR_EXIT_PREFIX, SENSOR_EXTRUDER_ENTRY]
@@ -216,10 +218,12 @@ VARS_MMU_ENDLESS_SPOOL_GROUPS      = "mmu_state_endless_spool_groups"
 VARS_MMU_TOOL_TO_GATE_MAP          = "mmu_state_tool_to_gate_map"
 VARS_MMU_GATE_STATUS               = "mmu_state_gate_status"
 VARS_MMU_GATE_MATERIAL             = "mmu_state_gate_material"
+VARS_MMU_GATE_VENDOR               = "mmu_state_gate_vendor"
 VARS_MMU_GATE_COLOR                = "mmu_state_gate_color"
 VARS_MMU_GATE_FILAMENT_NAME        = "mmu_state_gate_filament_name"
 VARS_MMU_GATE_TEMPERATURE          = "mmu_state_gate_temperature"
 VARS_MMU_GATE_SPOOL_ID             = "mmu_state_gate_spool_id"
+VARS_MMU_GATE_SPOOL_RFID           = "mmu_state_gate_spool_rfid"
 VARS_MMU_GATE_SPEED_OVERRIDE       = "mmu_state_gate_speed_override"
 VARS_MMU_GATE_SELECTED             = "mmu_state_gate_selected"
 VARS_MMU_TOOL_SELECTED             = "mmu_state_tool_selected"

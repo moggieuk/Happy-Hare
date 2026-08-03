@@ -44,7 +44,7 @@ class ParamSpec:
     """
     Single source of truth for a parameter:
       - name: instance attribute name + config key + (by default) gcmd key
-      - kind: 'int' | 'float' | 'choice' | 'str' | 'list' | 'intlist'
+      - kind: 'bool' | 'int' | 'float' | 'choice' | 'str' | 'list' | 'intlist' | 'floatlist'
       - default: value or callable(self)->value (for dependent defaults)
       - limits: pass-through kwargs like minval/maxval/above/below (values may be callables)
       - choices: for 'choice' (map used by config.getchoice)
@@ -74,7 +74,7 @@ class ParamSpec:
 
 class _SourceAdapter:
     """
-    Unifies access to config (getint/getfloat/getchoice/getlist/getintlist/get)
+    Unifies access to config (getint/getfloat/getchoice/getlist/getintlist/getfloatlist/get)
     and gcmd (get_int/get_float/get).
     gcmd keys are expected to match spec.name (no capitalization required).
     """
@@ -104,6 +104,13 @@ class _SourceAdapter:
         if spec.kind == 'int':
             fn = getattr(self.src, 'get_int' if self.is_gcmd else 'getint')
             return fn(key, default, **limits)
+
+        if spec.kind == 'bool':
+            if self.is_gcmd:
+                fn = getattr(self.src, 'get_int')
+                return bool(fn(key, int(bool(default)), minval=0, maxval=1))
+            fn = getattr(self.src, 'getboolean')
+            return fn(key, default)
 
         if spec.kind == 'float':
             fn = getattr(self.src, 'get_float' if self.is_gcmd else 'getfloat')
@@ -158,6 +165,26 @@ class _SourceAdapter:
                 return [int(x.strip()) for x in s.split(',') if x.strip()]
 
             fn = getattr(self.src, 'getintlist')
+            return list(fn(key, default))
+
+        if spec.kind == 'floatlist':
+            if self.is_gcmd:
+                # Accept either a python list/tuple, or a comma-separated string
+                fn = getattr(self.src, 'get')
+                raw = fn(key, None)
+                if raw is None:
+                    return default
+
+                if isinstance(raw, (list, tuple)):
+                    return [float(x) for x in raw]
+
+                # comma-separated string: "1.0,2.5,3"
+                s = str(raw).strip()
+                if s == '':
+                    return []
+                return [float(x.strip()) for x in s.split(',') if x.strip()]
+
+            fn = getattr(self.src, 'getfloatlist')
             return list(fn(key, default))
 
         raise ValueError(f"Unknown kind={spec.kind} for {spec.name}")

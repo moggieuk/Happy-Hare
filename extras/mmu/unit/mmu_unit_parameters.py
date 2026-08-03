@@ -82,22 +82,77 @@ class MmuUnitParameters(TunableParametersBase):
             self._mmu_unit.sync_feedback.apply_extrude_threshold()
 
 
+    # ---- Validators ----
+
+    def _validate_nfc_gate_jog_scan_window(self, value):
+        # Empty (or absent) disables MMU_NFC_SCAN
+        if not value:
+            return
+        if len(value) != 2:
+            raise ValueError("nfc_gate_jog_scan_window must be two values (neg, pos), e.g. 0,480")
+        neg, pos = value[0], value[1]
+        if neg > 0 or pos < 0:
+            raise ValueError("nfc_gate_jog_scan_window must be (neg, pos) with neg <= 0 <= pos")
+        # Both values are TARGETS measured from the gate homing point, not from the parked
+        # position: _jog_scan homes to the gate for a datum first, then sweeps to gate+neg
+        # and gate+pos.
+        #
+        # The return leg no longer constrains this - _load_gate() takes an extra_homing
+        # budget now, so it scales with however far the sweep strayed. What is still worth
+        # rejecting is a backward reach beyond the machine's own gate homing budget, which
+        # means pulling filament further back than gate homing was ever configured to
+        # recover. (The positive side is deliberately left unchecked so no configuration
+        # that loads today stops loading; see the note in the plan.)
+        if abs(neg) > self.gate_homing_max:
+            raise ValueError(
+                "nfc_gate_jog_scan_window backward reach (%.1fmm) cannot exceed gate_homing_max (%.1fmm)"
+                % (abs(neg), self.gate_homing_max)
+            )
+
+    # Parking distance sign convention: -ve = retraction (toward the gate/gears), +ve =
+    # extrusion (forward, past the sensor). Parking forward past the sensor is only safe
+    # on the per-gate mmu_exit sensor; the shared mmu_shared_exit, encoder and
+    # extruder_entry endstops must park with a retraction.
+
+    def _validate_gate_parking_distance(self, value):
+        if value > 0 and self.gate_homing_endstop != SENSOR_EXIT_PREFIX:
+            raise ValueError(
+                "gate_parking_distance must be a retraction (<= 0) unless gate_homing_endstop "
+                "is '%s' (got %.1f with endstop '%s')"
+                % (SENSOR_EXIT_PREFIX, value, self.gate_homing_endstop))
+
+    def _validate_gate_preload_parking_distance(self, value):
+        endstop = self.gate_preload_endstop or self.gate_homing_endstop # '' inherits gate_homing_endstop
+        if value > 0 and endstop != SENSOR_EXIT_PREFIX:
+            raise ValueError(
+                "gate_preload_parking_distance must be a retraction (<= 0) unless the preload "
+                "endstop is '%s' (got %.1f with endstop '%s')"
+                % (SENSOR_EXIT_PREFIX, value, endstop))
+
+
     # ---- Specs ----
 
     _SPECS: Sequence[ParamSpec] = (
-        # Gate
+        # Gate loading
         ParamSpec('gate_homing_endstop',              'choice', SENSOR_ENCODER, section="GATE HOMING", choices={o: o for o in GATE_ENDSTOPS}, on_change=_on_gate_homing_endstop),
         ParamSpec('gate_homing_max',                  'float', 100.0, section="GATE HOMING", limits=dict(minval=10)),
-        ParamSpec('gate_parking_distance',            'float',  23.0, section="GATE HOMING"),
+        ParamSpec('gate_parking_distance',            'float', -10.0, section="GATE HOMING", validator=_validate_gate_parking_distance),
+        ParamSpec('gate_load_attempts',               'int',       1, section="GATE HOMING", limits=dict(minval=1, maxval=20)),
 
+        # Gate preloading
         ParamSpec('gate_preload_endstop',             'choice',   '', section="GATE HOMING", choices={o: o for o in (GATE_ENDSTOPS + [''])}),
         ParamSpec('gate_preload_homing_max',          'float', lambda self: self.gate_homing_max, section="GATE HOMING"),
-        ParamSpec('gate_preload_parking_distance',    'float', -10.0, section="GATE HOMING"),
+        ParamSpec('gate_preload_parking_distance',    'float', -10.0, section="GATE HOMING", validator=_validate_gate_preload_parking_distance),
         ParamSpec('gate_preload_attempts',            'int',       1, section="GATE HOMING", limits=dict(minval=1, maxval=20)),
-        ParamSpec('gate_endstop_to_encoder',          'float',   0.0, section="GATE HOMING", limits=dict(minval=0.0),           guard=_guard_encoder_offset),
-        ParamSpec('gate_load_retries',                'int',       1, section="GATE HOMING", limits=dict(minval=1, maxval=5)),
         ParamSpec('gate_autoload',                    'int',       1, section="GATE HOMING", limits=dict(minval=0, maxval=1)),
+
+        ParamSpec('gate_endstop_to_encoder',          'float',   0.0, section="GATE HOMING", limits=dict(minval=0.0),           guard=_guard_encoder_offset),
         ParamSpec('gate_final_eject_distance',        'float',   0.0, section="GATE HOMING"),
+
+        # NFC / RFID reading
+        ParamSpec('nfc_gate_jog_scan_window',         'floatlist', [0.0, 0.0], section="NFC", validator=_validate_nfc_gate_jog_scan_window),
+        ParamSpec('nfc_deep_read',                    'int',    0,    section="NFC", limits=dict(minval=0, maxval=1)),
+        ParamSpec('nfc_led_segment',                  'str',  'auto', section="NFC"),
 
         # Bowden
         ParamSpec('bowden_homing_max',                'float',2000.0, section="BOWDEN MOVE", limits=dict(minval=100.0)),

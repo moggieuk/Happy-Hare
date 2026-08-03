@@ -85,7 +85,7 @@ class MmuStatusCommand(BaseCommand):
             lines.append(f"{UI_CASCADE} Connected to extruder: {unit.extruder_name()}\n")
             lines.append(f"{UI_CASCADE} {unit.selector.get_mmu_status_config()}\n")
             if unit.has_encoder():
-                lines.append(f"{UI_CASCADE} Encoder reads {mmu.get_encoder_distance():.1f}mm\n")
+                lines.append(f"{UI_CASCADE} Encoder reads {unit.encoder.get_distance():.1f}mm\n")
 
 
         # This is all now the currently active unit ---------
@@ -130,9 +130,10 @@ class MmuStatusCommand(BaseCommand):
 
             # Temp scalar pulled for _f_calc() use
             self.calibrated_bowden_length = mmu_unit.calibrator.get_bowden_length()
-            self.encoder_clog_detection_length = mmu.encoder().get_clog_detection_length() # Never None
+            self.encoder_clog_detection_length = mmu.encoder().get_effective_clog_detection_length(mmu_unit) if mmu.has_encoder() else 0.
             self.toolchange_retract = mmu.toolchange_retract
             self.filament_remaining = mmu_unit.extruder_wrapper.filament_remaining
+            self.buffer_range = mmu_unit.buffer.buffer_range if mmu_unit.has_buffer() else 0.
 
             lines.append("\n\nLOAD SEQUENCE:")
 

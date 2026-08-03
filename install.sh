@@ -13,14 +13,13 @@ set -e
 
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 
-# locate Klipper python environment (klippy-env or klipper-env) and activate it
+# Locate Klipper python environment (klippy-env or klipper-env) and activate it
 if [ -f ~/klipper-env/bin/activate ]; then
     . ~/klipper-env/bin/activate
 elif [ -f ~/klippy-env/bin/activate ]; then
     . ~/klippy-env/bin/activate
 else
-    echo "${C_ERROR}ERROR: Klipper python environment not found.${C_OFF}" >&2
-    exit 1
+    echo "${C_WARNING}Klipper python environment not found.${C_OFF}"
 fi
 
 # Check for python 3.x
@@ -45,6 +44,19 @@ if [ -n "$(which tput 2>/dev/null)" ]; then
     C_NOTICE=$(tput -Txterm-256color bold)$(tput -Txterm-256color setaf 2)
     C_WARNING=$(tput -Txterm-256color setaf 3)
     C_ERROR=$(tput -Txterm-256color bold)$(tput -Txterm-256color setaf 1)
+fi
+
+# A PEP 668 'externally managed' python (homebrew, Debian Bookworm) refuses to pip install
+# outside a venv, so the installer's deps (installer/requirements.txt) can never be put
+# where it would find them. Run from the repo venv instead, just as klippy-env is activated
+# above - klippy-env is itself a venv, so a normal printer install never reaches this.
+# PIP_ARGS means the user has chosen how to feed their system python, so leave it alone.
+if [ -z "${PIP_ARGS}" ] && ! python -c 'import os, sys, sysconfig; sys.exit(0 if sys.prefix != sys.base_prefix or not os.path.exists(os.path.join(sysconfig.get_path("stdlib"), "EXTERNALLY-MANAGED")) else 1)'; then
+    # Exported so make picks the same directory as the activate line below
+    export VENV="${VENV:-${SCRIPT_DIR}/venv}"
+    echo "${C_INFO}System python is externally managed (PEP 668), using virtualenv '${VENV}'${C_OFF}"
+    make --no-print-directory -C "${SCRIPT_DIR}" installer_venv
+    . "${VENV}/bin/activate"
 fi
 
 usage() {
@@ -92,7 +104,11 @@ ordinal() {
 prompt_yn() {
     while true; do
         printf "%s (y/n)? " "$*"
-        read -r yn
+        if ! read -r yn; then
+            echo
+            echo "${C_ERROR}Aborting: no answer available on stdin${C_OFF}" >&2
+            exit 1
+        fi
         case "${yn}" in
         Y | y)
             return 1
@@ -349,7 +365,7 @@ if [ -r "${KCONFIG_CONFIG}" ] && [ -n "${F_MENUCONFIG:-}" ]; then
         *) export F_CFG_UPGRADE_MODE=refresh ;;
     esac
 
-    echo "${C_INFO}Launching menuconfig (${F_CFG_UPGRADE_MODE})...${C_OFF}"
+    echo "${C_INFO}Launching menuconfig (${F_CFG_UPGRADE_MODE} mode)...${C_OFF}"
     if [ -n "${F_PER_GATE_MCU:-}" ]; then
         echo "${C_INFO}Per-gate MCU support enabled. Menuconfig startup will be slower.${C_OFF}"
     fi
