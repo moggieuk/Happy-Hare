@@ -295,10 +295,13 @@ TIME_COLOUR = '90'
 
 # -- live mode ---------------------------------------------------------------------
 #
-# How often the virtual clock is nudged forward while you sit at the prompt. Cheap: one
-# virtual second costs about 5ms of CPU on the default profile, so running the clock at
-# wall speed is roughly half a percent of one core.
-LIVE_INTERVAL = 1.0
+# How often the virtual clock is nudged forward while you sit at the prompt, and how often
+# the header is therefore repainted. Halving this does NOT double the reactor's work: _tick
+# advances by the REAL time measured since the last one, not by this constant, so virtual
+# seconds per wall second is invariant and only the per-tick overhead (chiefly repaint)
+# scales. 0.5s because that is what makes an led_effect animation legible - at frame_rate 24
+# a one-second sample showed every 24th frame, which reads as a jump rather than a fade.
+LIVE_INTERVAL = 0.5
 # Never advance more than this in one tick. A laptop that slept, or a SIGSTOP, would
 # otherwise come back to a catch-up of hours - which is both slow and, past about seven
 # virtual minutes, over the reactor's iteration cap.
@@ -516,14 +519,23 @@ class Console:
         # Seed calibration INSIDE boot(), before __MMU_BOOTUP runs. Calibrating afterwards
         # (which is what this used to do) left the banner warning "Calibration steps are not
         # complete" about a machine that was calibrated a millisecond later.
-        self.hh.boot(calibrate=not a.no_calibrate)
+        # gates_loaded_at for the same reason as calibrate: __MMU_BOOTUP prints the gate
+        # table, and _preload_all() runs AFTER boot() returns - so the banner said every gate
+        # was unknown (ERCF) or empty (ViViD, which has per-gate switches) about a machine
+        # that is fully preloaded by the time the prompt appears, and that banner is the last
+        # thing on screen. Only seeded when the preload is actually going to happen.
+        preloading = not (a.no_preload or a.no_calibrate)
+        self.hh.boot(calibrate=not a.no_calibrate,
+                     gates_loaded_at=TIP_AT_GATE if preloading else None)
         self.startup_output = list(self.sink)        # the welcome, shown by banner()
         del self.sink[:]
 
         # MANDATORY, and the easiest thing to get wrong: the filament model is created
         # lazily and only then installs the move observer (test/hh/bootstrap.py:336).
-        # boot() does not do it. Without it every motion command dies with a misleading
-        # "No trigger on ... after full movement" from the fake HomingMove.
+        # Without it every motion command dies with a misleading "No trigger on ... after
+        # full movement" from the fake HomingMove. seed_loaded_gates() has already built it
+        # on the preloading path, so this is a plain fetch there - but NOT under
+        # --no-preload/--no-calibrate, which is why it stays unconditional.
         self.fil = self.hh.filament()
 
         # Without this HH auto-heats and reports it through log_error, which lands in the
@@ -535,7 +547,7 @@ class Console:
         # machine, so this costs the older profiles nothing.
         self._prepare_selectors()
 
-        if not (a.no_preload or a.no_calibrate):
+        if preloading:
             self._preload_all()
 
         # Anchor the virtual clock LAST, so /timestamp reads "now" at the first prompt
@@ -945,6 +957,24 @@ class Console:
             cells.append('%d:%s' % (gate, '/'.join(bits)))
         return ['  ' + '  '.join(cells)]
 
+    # A lit LED is a SOLID BLOCK, not '##'. The old glyph was painted in the LED's own
+    # colour, which made a white or grey LED - mmu_breathing_white_fast (0.2,0.2,0.2) on
+    # 'selecting', mmu_sparkle on 'complete', white_light (1,1,1) for an uncoloured gate
+    # under filament_color - indistinguishable from ordinary text, because the terminal's
+    # default foreground IS white/grey. A block in that same colour still reads as a block.
+    # Foreground only: _sgr_state() tracks fg and bold, so a background colour would not
+    # survive a wrap in the pager.
+    #
+    # LED_DIM exists because "lit" and "visible" are not the same thing. black_light is
+    # (0.01, 0, 0.02) - which is what an idle status segment under filament_color shows, and
+    # what any BLACK filament shows - and that paints to xterm 16, i.e. pure black: less
+    # visible than the grey '··' used for OFF, which inverts the whole mapping. So anything
+    # below DIM_FLOOR is painted at DIM_FLOOR with its hue preserved and marked with a
+    # lighter glyph. The brightness is a display floor, not a reading; the glyph is what says
+    # so, which is why the colour is not simply left alone.
+    LED_ON, LED_DIM, LED_OFF = '██', '▓▓', '··'
+    DIM_FLOOR = 64                                  # of 255, ~25%
+
     def _hdr_leds(self, st):
         """
         effect_state is per-SEGMENT, so it cannot show a per-gate colour. The harness keeps
@@ -953,12 +983,15 @@ class Console:
         # Every unit, not just the selected one, and each unit's own effect_state index -
         # this used to read mmu_unit() and effect_state[0], so on a multi-unit machine it
         # showed unit 0's effects against whichever unit happened to be selected.
+        from extras.mmu.unit.mmu_leds import MmuLeds
         out = []
         for index, unit in enumerate(self.units):
             leds = getattr(unit, 'leds', None)
             if leds is None:
                 continue
-            for segment in ('exit', 'entry'):
+            # All four, not just the per-gate pair: a configured 'status' or 'logo' segment
+            # was invisible here, which reads as "not working" rather than "not shown".
+            for segment in MmuLeds.SEGMENTS:
                 chain = getattr(leds, 'virtual_chains', {}).get(segment)
                 if chain is None:
                     continue
@@ -970,15 +1003,46 @@ class Console:
                     # A configured segment with no LEDs on it. Rendering it gives an empty
                     # row and a '?' effect, which reads as breakage rather than absence.
                     continue
-                swatches = []
-                for rgbw in data:
-                    r, g, b = (int(round(c * 255)) for c in rgbw[:3])
-                    swatches.append(paint('##', fg(r, g, b, self.mode)[2:-1], self.color)
-                                    if (r or g or b) else paint('..', '90', self.color))
                 effect = self.hh.mmu.led_manager.effect_state.get(index, {}).get(segment, '?')
                 label = ('%s %s' % (unit.name, segment)) if self.num_units > 1 else segment
-                out.append('  led %-14s %s  [%s]' % (label, ' '.join(swatches), effect))
+                # status and logo are not indexed by gate, so grouping them would be a lie.
+                # For the per-gate pair mmu_leds.py:101-102 has already guaranteed that the
+                # division is exact.
+                per_gate = len(data)
+                if segment in MmuLeds.PER_GATE_SEGMENTS and unit.num_gates:
+                    per_gate = max(1, len(data) // unit.num_gates)
+                out.append('  led %-14s %s  [%s]'
+                           % (label, self._swatches(data, per_gate), effect))
         return out
+
+    def _swatches(self, data, per_gate):
+        """
+        One block per LED, `per_gate` of them run together and a space between groups.
+
+        Ungrouped, ViViD's exit segment - 28 LEDs over 4 gates - renders a 117-column row,
+        which soft-wraps and scribbles over the row below it (PinnedHeader.repaint writes
+        header rows by absolute position and does not wrap). Grouped it is 59, and you can
+        actually see which LEDs belong to which gate.
+        """
+        cells = []
+        for rgbw in data:
+            # Fold the white channel in rather than dropping it: an RGBW chain lit only on
+            # W would otherwise read as off. Zero with every shipped effect, but free.
+            white = rgbw[3] if len(rgbw) > 3 else 0.
+            r, g, b = (min(255, int(round((c + white) * 255))) for c in rgbw[:3])
+            peak = max(r, g, b)
+            if not peak:
+                cells.append(paint(self.LED_OFF, '90', self.color))
+                continue
+            glyph = self.LED_ON
+            if peak < self.DIM_FLOOR:               # see LED_DIM
+                scale = self.DIM_FLOOR / float(peak)
+                r, g, b = (min(255, int(round(c * scale))) for c in (r, g, b))
+                glyph = self.LED_DIM
+            cells.append(paint(glyph, fg(r, g, b, self.mode)[2:-1], self.color))
+        per_gate = max(1, per_gate)                  # or the slice below is empty and loops
+        return ' '.join(''.join(cells[i:i + per_gate])
+                        for i in range(0, len(cells), per_gate))
 
     # A HEAVY rule marks the boundary between the status section and the log window - that
     # is the one line a reader uses to tell "state" from "output" at a glance. The top edge
@@ -1108,6 +1172,14 @@ class Console:
         print('Meta-commands:')
         for name, desc in self.META_HELP:
             print('  %-22s %s' % (name, desc))
+        # The one part of the header that is not self-describing: a coloured block is not
+        # obviously "one LED" until someone says so, and the gate grouping is invisible on a
+        # one-LED-per-gate machine.
+        print("\nIn the 'leds' header group, one block is one physical LED painted in its "
+              'own\ncolour - %s lit, %s lit but too dim to see honestly (shown brighter), '
+              '%s off -\nwith a gate\'s LEDs run together and a space between gates. [...] '
+              "is the\nsegment's current effect."
+              % (self.LED_ON, self.LED_DIM, self.LED_OFF))
         print('\nEverything else is sent to the MMU as G-code. MMU_HELP lists Happy Hare\'s\n'
               'commands, and any of them accepts HELP=1 for its own parameters.')
 
@@ -1418,7 +1490,7 @@ class Console:
 
     def _tick(self, *_args):
         """
-        One second of virtual time, while you are doing nothing.
+        A LIVE_INTERVAL slice of virtual time, while you are doing nothing.
 
         Anything the MMU says is printed above the prompt and the prompt is then put back
         with whatever was half-typed still on it, so this cannot eat a command in progress.
@@ -1448,7 +1520,7 @@ class Console:
             try:
                 self.advance(dt)
             except Exception as exc:                # noqa: BLE001
-                # Stop rather than reprint the same failure every second.
+                # Stop rather than reprint the same failure on every tick.
                 self.live = False
                 self._arm_tick(False)
                 self._reprint(lambda: self.info('live clock stopped: %s' % exc))
@@ -1805,7 +1877,7 @@ class PinnedHeader:
             return
         # Against `wanted`, not `height`: on a terminal too short for the whole header the
         # band is capped, so height stays below len(block) permanently and comparing against
-        # it would re-run _set_region on every repaint - which moves the cursor, once a
+        # it would re-run _set_region on every repaint - which moves the cursor, twice a
         # second under a live clock, right out from under the prompt.
         if force or len(block) != self.wanted:
             self._set_region(len(block))

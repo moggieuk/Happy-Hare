@@ -517,6 +517,48 @@ class TestBootupOutput(unittest.TestCase):
         self.assertIn('Ready', joined)
         self.assertEqual(console.sink, [], 'preload noise leaked into the console history')
 
+    def _avail_row(self, console):
+        """The gate-availability row of the bootup table. One sink entry is one MESSAGE, and
+        the whole table arrives as a single multi-line one, so split before matching."""
+        for entry in console.startup_output:
+            for line in entry.split('\n'):
+                if line.startswith('Avail:'):
+                    return line
+        self.fail('bootup printed no gate table')
+
+    def test_bootup_reports_the_gates_the_console_is_about_to_preload(self):
+        """
+        __MMU_BOOTUP prints the gate table, and _preload_all() runs after boot() returns - so
+        the banner used to say the whole machine was unknown about one that is fully loaded by
+        the time the prompt appears, and that banner is the last thing on screen. boot() now
+        seeds it (Session.seed_loaded_gates) exactly as a real printer's mmu_vars.cfg would.
+
+        The default profile is ercf_vvd, which is what makes this worth asserting: ERCF has no
+        per-gate switches and takes the persisted map, while ViViD re-derives its gates from
+        mmu_entry_9..12 at bootup. Seeding the map alone left ViViD's four reading EMPTY.
+        """
+        console = console_mod.Console(console_mod.parse_args(['--no-log', '--plain']))
+        self.addCleanup(console.close)
+        console.boot()
+        # AFTER boot(), never before: importing `extras` while the fake klippy tree is not yet
+        # on sys.path binds the repo's own extras/ into sys.modules and every later session in
+        # this process fails root.install()'s leak assertion.
+        from extras.mmu.mmu_constants import GATE_AVAILABLE
+        mmu = console.hh.mmu
+        self.assertEqual(mmu.gate_status, [GATE_AVAILABLE] * mmu.num_gates)
+        row = self._avail_row(console)
+        self.assertNotIn('?', row, 'a gate still reads unknown in the bootup table: %r' % row)
+        self.assertNotIn('-', row, 'a gate still reads empty in the bootup table: %r' % row)
+        self.assertEqual(console.hh.errors, [], 'seeding made bootup dirty')
+
+    def test_no_preload_still_boots_an_unknown_machine(self):
+        """The seeding is tied to the preload, not to booting - --no-preload is a cold start."""
+        console = console_mod.Console(console_mod.parse_args(
+            ['--no-preload', '--no-log', '--plain']))
+        self.addCleanup(console.close)
+        console.boot()
+        self.assertIn('?', self._avail_row(console))
+
 
 class TestMmuLog(unittest.TestCase):
     """
@@ -870,6 +912,78 @@ class TestAnsiWrap(unittest.TestCase):
         self.assertEqual(console_mod.wrap_ansi('', 10), [''])
         self.assertEqual(len(console_mod.wrap_ansi('abc', 1)), 3)
         self.assertEqual(console_mod.wrap_ansi('abc', 0), ['abc'])
+
+
+class TestLedSwatches(unittest.TestCase):
+    """
+    Console._swatches - the LED row, with no printer in sight.
+
+    A lit LED is a solid block rather than '##' because '##' was painted in the LED's own
+    colour, and a white or grey LED (mmu_breathing_white_fast, mmu_sparkle, white_light for
+    an uncoloured gate) then looked exactly like ordinary text - which is what made a lit
+    row read as "some default-coloured thing I do not recognise".
+    """
+
+    def swatches(self, data, per_gate, color=False):
+        console = console_mod.Console(console_mod.parse_args(['--plain', '--no-log']))
+        console.color = color
+        return console._swatches(data, per_gate)
+
+    ON, OFF = console_mod.Console.LED_ON, console_mod.Console.LED_OFF
+
+    def test_lit_and_unlit_use_different_glyphs(self):
+        got = self.swatches([(1., 0., 0., 0.), (0., 0., 0., 0.)], 1)
+        self.assertEqual(got, '%s %s' % (self.ON, self.OFF))
+
+    def test_one_led_per_gate_is_spaced_by_gate(self):
+        self.assertEqual(self.swatches([(0., 0.5, 0., 0.)] * 4, 1),
+                         ' '.join([self.ON] * 4))
+
+    def test_several_leds_per_gate_run_together_within_the_gate(self):
+        """
+        ViViD is 28 exit LEDs over 4 gates. Ungrouped that was a 117-column row, and
+        PinnedHeader.repaint writes header rows by absolute position without wrapping, so it
+        soft-wrapped over the row beneath. Grouped it fits, and you can see the gates.
+        """
+        got = self.swatches([(0., 0., 1., 0.)] * 28, 7)
+        self.assertEqual(got, ' '.join([self.ON * 7] * 4))
+        # The width claim, separately: len() is the column count only because this call is
+        # unpainted and a block is one column. 59 + the '  led unit1 exit    ' prefix and the
+        # '  [gate_status]' suffix is 95, which fits the 100-column band; ungrouped 2-column
+        # swatches were 83, i.e. a 117-column row.
+        self.assertEqual(len(visible(got)), 59)
+
+    def test_a_whole_segment_in_one_group_has_no_gaps(self):
+        """How status and logo arrive - neither is indexed by gate."""
+        self.assertEqual(self.swatches([(1., 1., 1., 0.)] * 4, 4), self.ON * 4)
+
+    def test_the_white_channel_counts_as_lit(self):
+        """An RGBW chain lit only on W read as off while rgbw[:3] was dropping it."""
+        self.assertEqual(self.swatches([(0., 0., 0., 1.)], 1), self.ON)
+
+    def test_a_near_black_led_is_marked_dim_and_painted_visibly(self):
+        """
+        black_light (0.01,0,0.02) - an idle status segment under filament_color, and any
+        black filament - is (3,0,5) of 255, which paints to xterm 16: blacker than the grey
+        used for OFF. Lit has to be more visible than unlit, not less.
+        """
+        got = self.swatches([(0.01, 0., 0.02, 0.)], 1, color=True)
+        self.assertIn(console_mod.Console.LED_DIM, got, 'a near-black LED must say it is dim')
+        self.assertNotIn('\x1b[38;5;16m', got, 'still painted pure black')
+
+    def test_a_bright_led_is_left_exactly_as_it_is(self):
+        """The floor is for the bottom of the range only - it must not touch anything else."""
+        self.assertEqual(self.swatches([(0.25, 0.25, 0.25, 0.)], 1, color=True),
+                         console_mod.paint(self.ON, console_mod.fg(64, 64, 64, '256')[2:-1]))
+
+    def test_a_lit_led_is_painted_in_its_own_colour(self):
+        got = self.swatches([(1., 0., 0., 0.), (0., 0., 0., 0.)], 1, color=True)
+        self.assertIn('\x1b[38;5;', got, 'the lit LED lost its colour')
+        self.assertIn('\x1b[90m', got, 'the unlit LED should be grey')
+        check_no_line_leaks(self, got)
+
+    def test_a_degenerate_group_size_still_terminates(self):
+        self.assertEqual(self.swatches([(0., 0., 0., 0.)] * 2, 0), self.OFF + ' ' + self.OFF)
 
 
 class TestPagerView(unittest.TestCase):

@@ -274,10 +274,19 @@ reassembling a line. Output produced by a tick is printed above the prompt and t
 then rebuilt from `readline.get_line_buffer()`, so a tick landing while you are mid-command
 cannot eat what you have typed.
 
-It costs about **0.5% of one core**: a virtual second is roughly 5 ms of CPU, and live mode
-spends that over a real second. Catching up is the expensive direction — an hour compressed
-into one call is ~17 s of CPU — which is why a tick is capped at a few seconds rather than
-jumping to "now" after the machine has slept.
+The tick fires every `LIVE_INTERVAL` = **0.5 s** and advances by the *real* time measured
+since the last one, not by that constant — so the interval sets how often the header is
+repainted, not how fast the clock runs. Halving it (it was 1.0 s) therefore costs a second
+repaint per second, not twice the reactor work, and it is what makes an `led_effect`
+animation legible: at `frame_rate: 24` a one-second sample showed every 24th frame, which
+reads as a jump rather than a fade.
+
+The clock itself costs under **1% of one core**: measured on `ercf_vvd`, `advance(60)` is
+8.6 ms of CPU per virtual second, and live mode spends that over a real second. (It was
+7.7 ms before unit0 gained its entry/status/logo segments — 16 more LEDs to animate.)
+Catching up is the expensive direction — an hour compressed into one call is ~30 s of CPU —
+which is why a tick is capped at a few seconds rather than jumping to "now" after the
+machine has slept.
 
 `/advance` is sliced for the same reason. One `advance()` call has an iteration cap and the
 LED effects animate at 24 fps, so on the default profile a single call dies partway through
@@ -326,6 +335,17 @@ Startup shows Happy Hare's **real bootup output** — the welcome banner and the
 — because `cmd_MMU_BOOTUP` runs here exactly as it does on a printer. Calibration is seeded
 *inside* `boot()`, before bootup runs, so a default session boots clean; `--no-calibrate`
 boots the machine cold and the calibration warnings then appear for real.
+
+The **gate map is seeded the same way**, and for the same reason: bootup prints the gate
+table, `_preload_all()` runs after `boot()` returns, and that table is the last thing on
+screen when the prompt appears — so it used to report the whole machine unknown about one
+that is fully loaded. `Session.seed_loaded_gates()` places filament at every gate and
+persists `mmu_state_gate_status` before `klippy:ready`, which is exactly the state a real
+printer restores from `mmu_vars.cfg`. Both halves are needed: the persisted map is the only
+source for a unit with no per-gate switches (ERCF), and it is not enough for one that has
+them (ViViD re-derives its gates from `mmu_entry_9..12` at bootup and would overwrite a
+seeded map with `GATE_EMPTY`). `--no-preload` and `--no-calibrate` skip it, so a cold start
+is still a cold start.
 
 Lines the **console itself** adds are dimmed and prefixed `#`, so there is never a question
 about which of them came off the MMU:
@@ -380,6 +400,42 @@ are typing. `/header GROUPS` switches groups live, `/header all` turns every gro
 `/header off` hides it *and* releases the pinned band. `all` and `off` work on the
 `--header` flag too — both go through the same parser. On a pipe or with `--inline-header`
 it falls back to reprinting above each prompt.
+
+### Reading the LED rows
+
+```
+  led unit0 exit     ██ ██ ██ ██ ██ ██ ██ ██ ██  [gate_status]
+  led unit0 entry    ██ ██ ██ ██ ██ ██ ██ ██ ██  [filament_color]
+  led unit0 status   ████████  [filament_color]
+  led unit0 logo     ██████  [(0.0, 0.0, 0.3)]
+  led unit1 exit     ██████████████ ██████████████ ██████████████ ██████████████  [gate_status]
+```
+
+One block per **physical** LED, in that LED's own colour: `██` lit, `▓▓` lit but too dim to
+show honestly, `··` off (grey). The LEDs of one gate run together and the gates are separated
+by a space, so ViViD's seven-per-gate strip reads as four groups rather than 28
+undifferentiated cells — and fits in 100 columns, which the ungrouped 117-column version did
+not. `[...]` is the segment's effect from `led_manager.effect_state`; `[?]` means nothing has
+painted it yet.
+
+`▓▓` is not a third state, just an honest one. `black_light` is `(0.01, 0, 0.02)` — what an
+idle `status` segment under `filament_color` shows, and what any black filament shows — and
+that paints to xterm 16, i.e. pure black, *less* visible than the grey used for off. Anything
+below 25% is therefore painted at 25% with its hue kept, and the lighter glyph is what tells
+you the brightness on screen is a floor rather than a reading.
+
+A lit LED used to be `##`, which was a problem rather than a shorthand: the glyph was painted
+in the LED's colour, and a white or grey LED — `mmu_breathing_white_fast` on `selecting`,
+`mmu_sparkle` on `complete`, `white_light` for an uncoloured gate under `filament_color` — came
+out indistinguishable from ordinary text, because the terminal's default foreground *is* white.
+A block in the same colour still reads as a block.
+
+All four segments are shown. `ercf_vvd`'s unit0 configures every one of them (9 exit, 9 entry,
+4 status, 3 logo) precisely so every effect path has somewhere to land. Note `define_on` in
+`config/base/mmu.cfg` restricts most effects to `exit`/`gates`/`status`: only
+`mmu_breathing_red_slow`, `mmu_red_strobe` and `mmu_green_strobe_fast` can run on `logo`. That
+restriction is deliberate — it caps how many effect instances get pre-computed, which grows
+with gate count — so widen it in your own config, not in the shipped template.
 
 ### Scrolling back
 
@@ -658,7 +714,7 @@ templates** from them, so a broken template shows up as a test failure.
 
 | Profile | What it gives you |
 |---|---|
-| `ercf_vvd` | **the console default.** The only multi-unit profile, and a transcription of a real machine: ERCF 1.1sb (9 gates, `LinearServoSelector`, encoder) + ViViD 1.0 (4 gates, `IndexedSelector`), 13 gates. Also the only one with a sparse per-gate device list, an external LED chain and a filament heater |
+| `ercf_vvd` | **the console default.** The only multi-unit profile, and a transcription of a real machine: ERCF 1.1sb (9 gates, `LinearServoSelector`, encoder) + ViViD 1.0 (4 gates, `IndexedSelector`), 13 gates. Also the only one with a sparse per-gate device list, a filament heater, and full LED coverage: unit0 wires all four segments (9 exit on an external chain, 9 entry, 4 status, 3 logo) while unit1 has 28 exit LEDs over 4 gates |
 | `boxturtle` | 4 gates, no NFC — the default for most tests |
 | `tradrack` | a physical (servo) selector, single unit, no encoder — the simplest physical-selector case |
 | `emu` | 5 gates and the only shipped profile with an analog buffer sensor |
