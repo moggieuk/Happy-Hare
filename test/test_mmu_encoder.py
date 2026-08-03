@@ -265,5 +265,189 @@ class TestLoadAndUnload(EncoderTestCase):
         self.assertEqual(self.hh.mmu.gate_status[0], GATE_AVAILABLE)
 
 
+class TestClogDetectionLength(EncoderTestCase):
+    """
+    The calibrated clog detection length is PERSISTED by the calibrator and PULLED by the
+    encoder in enable_flowguard(). It used to travel the other way - the calibrator called
+    encoder.set_clog_detection_length() - and that method went away with the flowguard
+    cleanup, leaving a call to nothing. Anything asking for a push (MMU_CALIBRATE_BOWDEN,
+    MMU_TEST_CONFIG) took Klipper down with an AttributeError. Both entry points are covered
+    here, and so is the pull, because with the push gone the pull is the only way a
+    calibrated length ever reaches a running encoder.
+    """
+
+    CDL = 25.0
+
+    def setUp(self):
+        super().setUp()
+        self.unit = self.hh.mmu.mmu_unit(0)
+        self.calibrator = self.unit.calibrator
+
+    def test_persisting_with_push_stays_inside_the_calibrator(self):
+        """The line that crashed. push=True persists and flushes, and touches nothing else."""
+        self.calibrator.update_clog_detection_length(self.CDL, push=True)
+        self.assertEqual(self.calibrator.get_clog_detection_length(), self.CDL)
+
+    def test_mmu_test_config_can_set_the_clog_length(self):
+        """
+        The second push=True caller. A separate route into the same defect, and the one a
+        user reaches without running a calibration at all.
+        """
+        self.hh.run_gcode('MMU_TEST_CONFIG calibrated_encoder_clog_length=%.1f' % self.CDL)
+        self.assertEqual(self.hh.errors, [])
+        self.assertEqual(self.calibrator.get_clog_detection_length(), self.CDL)
+
+    def test_the_encoder_pulls_the_calibrated_length_when_flowguard_enables(self):
+        """
+        What replaces the push. If this regresses, the persisted value simply never arrives
+        and nothing complains. The shipped encoder profile has flowguard_encoder_mode=0, and
+        only AUTOMATIC (2) consults the calibrated value - static mode uses the configured
+        flowguard_encoder_max_motion - so the mode has to be set first.
+        """
+        self.hh.run_gcode('MMU_TEST_CONFIG flowguard_encoder_mode=2')
+        self.calibrator.update_clog_detection_length(self.CDL, push=True)
+        self.assertTrue(self.encoder.enable_flowguard(self.unit))
+        self.assertEqual(self.encoder.get_clog_detection_length(), self.CDL)
+
+    def test_calibrate_bowden_saves_a_clog_length(self):
+        """
+        The command from the original traceback, end to end. It derives a recommended clog
+        length from the measured bowden length and saves it with push=True, which is exactly
+        where it used to die - and it dies outside the MmuError handler, so the failure was
+        a shutdown rather than a paused print.
+        """
+        self.preload()
+        self.hh.run_gcode('MMU_CALIBRATE_BOWDEN BOWDEN_LENGTH=500 REPEATS=1')
+        self.assertEqual(self.hh.errors, [])
+        self.assertEqual(
+            self.calibrator.get_clog_detection_length(),
+            self.calibrator.calc_clog_detection_length(self.calibrator.get_bowden_length())
+        )
+
+    def test_persisting_statistics_does_not_revert_the_clog_length(self):
+        """
+        _persist_gate_statistics used to copy the encoder's LIVE detection length back over
+        the persisted one in auto mode, with no check that the encoder had caught up. Any
+        calibrator-side write the encoder had not pulled yet was silently reverted by the
+        next command that persisted statistics - two commands, no print, no setup. The
+        encoder notifies the calibrator itself when auto-tuning moves the value
+        (mmu_encoder.py:288), so the write-back was redundant as well as harmful.
+        """
+        self.hh.run_gcode('MMU_TEST_CONFIG flowguard_encoder_mode=2')
+        self.hh.run_gcode('MMU_TEST_CONFIG calibrated_encoder_clog_length=30')
+        self.hh.run_gcode('MMU_STATS RESET=1')
+        self.assertEqual(self.hh.errors, [])
+        self.assertEqual(self.calibrator.get_clog_detection_length(), 30.0)
+
+    def test_effective_length_is_the_calibrated_one_while_flowguard_is_off(self):
+        """
+        Reporting used to read the encoder's LIVE length, which only moves when flowguard
+        enables. So a fresh calibration was announced by the calibrating command and then
+        contradicted by everything that displayed it, still showing the config default.
+        get_effective_clog_detection_length reports what the next enable will settle on.
+        """
+        self.hh.run_gcode('MMU_TEST_CONFIG flowguard_encoder_mode=2')
+        self.calibrator.update_clog_detection_length(30.0, push=True)
+
+        self.assertFalse(self.encoder.is_flowguard_enabled(), 'nothing should have pulled yet')
+        self.assertNotEqual(self.encoder.get_clog_detection_length(), 30.0)
+        self.assertEqual(self.encoder.get_effective_clog_detection_length(self.unit), 30.0)
+
+    def test_effective_length_is_the_live_one_once_flowguard_owns_it(self):
+        """
+        The other half. While flowguard runs, autotuning owns the length and it is the
+        PERSISTED value that lags. Preferring the calibrated one unconditionally would just
+        move the same defect to the opposite case.
+        """
+        self.hh.run_gcode('MMU_TEST_CONFIG flowguard_encoder_mode=2')
+        self.calibrator.update_clog_detection_length(30.0, push=True)
+        self.assertTrue(self.encoder.enable_flowguard(self.unit))
+
+        self.encoder.min_headroom = 0.          # Starved: autotune grows the live length
+        self.encoder._update_detection_length()
+        live = self.encoder.get_clog_detection_length()
+        self.assertGreater(live, 30.0)
+        self.assertEqual(self.encoder.get_effective_clog_detection_length(self.unit), live)
+
+    def test_effective_length_ignores_the_calibration_in_static_mode(self):
+        """
+        Static mode never consults the calibrated length, so reporting one would describe
+        behaviour the machine is not going to exhibit.
+        """
+        self.hh.run_gcode('MMU_TEST_CONFIG flowguard_encoder_mode=1')
+        self.calibrator.update_clog_detection_length(30.0, push=True)
+        self.assertEqual(self.encoder.get_effective_clog_detection_length(self.unit),
+                         self.unit.p.flowguard_encoder_max_motion)
+
+    def test_showconfig_quotes_the_effective_clog_length(self):
+        """
+        MMU_STATUS SHOWCONFIG is the visible consumer - it sizes the post-load tightening
+        move from the clog length and annotates the figure with the variable it came from,
+        which is what is asserted here.
+
+        sync_to_extruder is assigned directly rather than through MMU_TEST_CONFIG: it is
+        guarded against runtime change on a machine whose filament is always gripped, and
+        the tightening line only renders while the gear is unsynced.
+        """
+        self.unit.p.sync_to_extruder = 0
+        self.hh.run_gcode('MMU_TEST_CONFIG flowguard_encoder_mode=2')
+        self.hh.run_gcode('MMU_TEST_CONFIG calibrated_encoder_clog_length=30')
+
+        del self.hh.console[:]
+        self.hh.run_gcode('MMU_STATUS SHOWCONFIG=1')
+        self.assertEqual(self.hh.errors, [])
+        shown = '\n'.join(str(msg) for msg in self.hh.console)
+        self.assertIn('encoder_clog_detection_length:30.0', shown)
+
+    def test_the_tightening_move_matches_what_showconfig_quoted(self):
+        """
+        SHOWCONFIG does not just display the clog length, it quotes the tightening move
+        derived from it, and that move is performed by a load running inside
+        wrap_suspend_filament_monitoring - where flowguard is off by construction. Reading
+        the live length in one place and the effective one in the other would have the
+        status screen promise a pullback the machine does not perform.
+        """
+        self.unit.p.sync_to_extruder = 0
+        self.hh.run_gcode('MMU_TEST_CONFIG flowguard_encoder_mode=2')
+        self.hh.run_gcode('MMU_TEST_CONFIG calibrated_encoder_clog_length=30')
+        expected = min(30.0 * self.unit.p.toolhead_post_load_tighten / 100, 15)
+
+        self.preload()
+        self.hh.heat_extruder(220)
+        del self.hh.console[:]
+        self.hh.run_gcode('MMU_CHANGE_TOOL TOOL=0')
+        self.assertEqual(self.hh.errors, [])
+
+        tightened = [line for msg in self.hh.console for line in str(msg).split('\n')
+                     if 'Filament tightened by' in line]
+        self.assertTrue(tightened, 'the tightening move did not run')
+        self.assertIn('%.1fmm' % expected, tightened[0])
+
+    def test_autotuning_persists_itself(self):
+        """
+        The claim that made removing that write-back safe: the encoder tells its own
+        calibrator whenever autotuning moves the length, so nothing else has to copy it
+        out. If this regresses, autotuned lengths stop being saved and there is no longer
+        a second mechanism quietly covering for it.
+        """
+        self.hh.run_gcode('MMU_TEST_CONFIG flowguard_encoder_mode=2')
+        self.calibrator.update_clog_detection_length(20.0, push=True)
+        self.encoder.enable_flowguard(self.unit)
+
+        self.encoder.min_headroom = 0.                                  # Starved: must grow
+        self.encoder._update_detection_length()
+        self.assertGreater(self.encoder.get_clog_detection_length(), 20.0)
+        self.assertEqual(self.calibrator.get_clog_detection_length(),
+                         self.encoder.get_clog_detection_length())
+
+        grown = self.encoder.get_clog_detection_length()
+        self.encoder.min_headroom = self.encoder.desired_headroom + 5.  # Roomy: averages down
+        self.encoder._update_detection_length()
+        self.assertLess(self.encoder.get_clog_detection_length(), grown)
+        # Averaging down lands on a long float; only 1dp reaches mmu_vars.cfg
+        self.assertEqual(self.calibrator.get_clog_detection_length(),
+                         round(self.encoder.get_clog_detection_length(), 1))
+
+
 if __name__ == '__main__':
     unittest.main()

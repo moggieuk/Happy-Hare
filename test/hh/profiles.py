@@ -384,11 +384,24 @@ ERCF_VVD = Profile(
             'BOOL_HAS_BYPASS': True,
             'SERVO_TYPE_SAVOX_SH0255MG': True,
             'PARAM_SERVO_MAX_ANGLE': 180,
-            # An external chain, not one Happy Hare declares - see PRINTER_STUB. 9 exit
-            # LEDs over 9 gates satisfies mmu_leds.py:102-103's num_leds % num_gates == 0.
+            # ALL FOUR segments, so the console exercises every LED effect path.
+            #
+            # exit stays on 'cabinet_leds', an external chain Happy Hare does not declare
+            # (see PRINTER_STUB) - that combination is the point of it. The other three go
+            # on '_unit0_leds', the chain the template already emits on PIN_NEOPIXEL
+            # (unit0:gpio21, boards/Kconfig.erb_1:70) because ERCF does not set
+            # CUSTOM_LED_SETUP. Nothing referenced it before, so it was dead config on a
+            # perfectly good fake pin. PARAM_CHAIN_COUNT defaults to PARAM_NUM_GATES = 9
+            # (Kconfig.leds:103-107); 16 covers entry 9 + status 4 + logo 3.
+            #
+            # 9 entry and 9 exit LEDs over 9 gates satisfy mmu_leds.py:101-102's
+            # num_leds % num_gates == 0; status and logo are unconstrained.
             'MMU_HAS_LEDS': True,
+            'PARAM_CHAIN_COUNT': 16,
             'PARAM_EXIT_LEDS': 'neopixel:cabinet_leds (1-9)',
-            'PARAM_STATUS_LEDS': 'neopixel:cabinet_leds (11)',
+            'PARAM_ENTRY_LEDS': 'neopixel:_unit0_leds (1-9)',
+            'PARAM_STATUS_LEDS': 'neopixel:_unit0_leds (10-13)',
+            'PARAM_LOGO_LEDS': 'neopixel:_unit0_leds (14-16)',
             # The analog buffer sensor. Unlike the note further up this file, enabling one
             # outside EMU is now safe: Kconfig.sync_feedback_buffer:207-252 defaults every
             # dependent param.

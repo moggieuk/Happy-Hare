@@ -167,6 +167,7 @@ class VirtualReactor:
         self._all_greenlets = []
         self._process = False
         self.iterations = 0
+        self._wall_deadline = None
         self._pending_error = None
 
     # -- clock -------------------------------------------------------------
@@ -374,7 +375,17 @@ class VirtualReactor:
 
     def _dispatch_loop(self):
         self._g_dispatch = greenlet.getcurrent()
-        wall_deadline = _wall.monotonic() + MAX_WALL_SECONDS
+        # The deadline belongs to the ADVANCE, not to this greenlet's invocation of the
+        # loop, and reading it from the reactor is what makes that true.
+        #
+        # A dispatch greenlet parks inside pause() and is pooled, so its _dispatch_loop
+        # call can be suspended for unbounded REAL time - across later advance() calls,
+        # or simply while the user sits at the console prompt. A deadline captured in a
+        # local when that invocation first started is then long past by the time the
+        # greenlet is resumed, and trips on its very next iteration having done no work
+        # at all. That is not a hang; it is a stopwatch nobody stopped, and it produced
+        # a bogus "wall-clock budget exceeded" on the first command after any pause -
+        # reported with iterations=2 and every timer perfectly healthy.
         try:
             while self._process:
                 if self._next_timer > self._target:
@@ -382,7 +393,7 @@ class VirtualReactor:
                 self.iterations += 1
                 if self.iterations > MAX_ITERATIONS:
                     raise AssertionError(self._watchdog_msg('iteration cap'))
-                if _wall.monotonic() > wall_deadline:
+                if _wall.monotonic() > self._wall_deadline:
                     raise AssertionError(self._watchdog_msg('wall-clock budget'))
                 eventtime = max(self._now, min(self._next_timer, self._target))
                 self._now = eventtime
@@ -400,10 +411,16 @@ class VirtualReactor:
     def _watchdog_msg(self, why):
         pending = [(getattr(t.callback, '__qualname__', repr(t.callback)), t.waketime)
                    for t in self._timers if t.waketime < self.NEVER]
-        return ("VirtualReactor.advance() exceeded its %s at t=%.3f. This normally "
+        # The clock state is in here because without it these reports are unreadable:
+        # whether _now has reached _target is the difference between "waiting for time
+        # that will never come" and "genuinely stuck", and _next_timer says which.
+        return ("VirtualReactor.advance() exceeded its %s at t=%.6f. This normally "
                 "means a completion.wait() will never be completed, or a timer "
-                "re-arms itself immediately.\nPending timers: %r"
-                % (why, self._now, pending))
+                "re-arms itself immediately.\n"
+                "now=%.6f target=%.6f next_timer=%.6f iterations=%d\n"
+                "Pending timers: %r"
+                % (why, self._now, self._now, self._target, self._next_timer,
+                   self.iterations, pending))
 
     # -- test-facing pump --------------------------------------------------
     def advance(self, dt=0.):
@@ -417,6 +434,7 @@ class VirtualReactor:
         self._target = self._now + dt
         self._process = True
         self.iterations = 0
+        self._wall_deadline = _wall.monotonic() + MAX_WALL_SECONDS
         self._pending_error = None
         try:
             g = ReactorGreenlet(run=self._dispatch_loop)

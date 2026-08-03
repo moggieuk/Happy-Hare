@@ -130,7 +130,7 @@ class MmuStatusCommand(BaseCommand):
 
             # Temp scalar pulled for _f_calc() use
             self.calibrated_bowden_length = mmu_unit.calibrator.get_bowden_length()
-            self.encoder_clog_detection_length = mmu.encoder().get_clog_detection_length() if mmu.has_encoder() else 0.
+            self.encoder_clog_detection_length = mmu.encoder().get_effective_clog_detection_length(mmu_unit) if mmu.has_encoder() else 0.
             self.toolchange_retract = mmu.toolchange_retract
             self.filament_remaining = mmu_unit.extruder_wrapper.filament_remaining
             self.buffer_range = mmu_unit.buffer.buffer_range if mmu_unit.has_buffer() else 0.

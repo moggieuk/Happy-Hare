@@ -1682,7 +1682,7 @@ class MmuFilamentMovement:
             # Tightening move to prevent erroneous encoder clog detection/runout if gear stepper is not synced with extruder
             with self.wrap_gear_current(percent=50, reason="to tighten filament in bowden"):
                 # Filament will already be gripped so perform fixed MMU only retract
-                cdl = self.encoder().get_clog_detection_length()
+                cdl = self.encoder().get_effective_clog_detection_length(u) # Flowguard is suspended here so the live length can lag
                 pullback = min(cdl * u.p.toolhead_post_load_tighten / 100, 15) # % of current clog detection length or 15mm min
                 self.move_filament("Tightening filament in bowden", -pullback, motor="gear", wait=True)
                 self.log_info("Filament tightened by %.1fmm to prevent false encoder clog detection" % pullback)
