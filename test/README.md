@@ -328,6 +328,8 @@ Useful flags — `make console ARGS='...'`:
 --trace 4                      # full Happy Hare narration
 --no-preload                   # leave every gate empty
 --no-calibrate                 # boot cold: no seeded calibration, no homing, no preload
+--no-prime                     # leave the gate map blank instead of filling it in
+--seed N                       # seed for the primed gate map (default 0, reproducible)
 --script FILE                  # run non-interactively (this is how it is tested)
 ```
 
@@ -335,6 +337,17 @@ Startup shows Happy Hare's **real bootup output** — the welcome banner and the
 — because `cmd_MMU_BOOTUP` runs here exactly as it does on a printer. Calibration is seeded
 *inside* `boot()`, before bootup runs, so a default session boots clean; `--no-calibrate`
 boots the machine cold and the calibration warnings then appear for real.
+
+Two more things happen at startup that a printer does for itself and a frozen clock does not:
+
+- **The gate map is primed** — every gate gets a vendor, material, colour and temperature, so
+  the gate table and the LED `filament_color` effect have something to show instead of
+  `Unknown | 200C | Unknown`. Seeded, so a session is reproducible; `--seed N` for a different
+  spread, `--no-prime` for none.
+- **`effect_initialized` is waited out.** It is a unit-wide 8s state flash from bootup, and
+  while it holds a unit *every* transient flash is dropped (`mmu_led_manager.py:473`) — so an
+  NFC read acknowledgment, for one, silently does nothing. `boot()` stops the clock 2.5s in, so
+  without `Session.settle_leds()` an interactive session would never leave that window.
 
 The **gate map is seeded the same way**, and for the same reason: bootup prints the gate
 table, `_preload_all()` runs after `boot()` returns, and that table is the last thing on

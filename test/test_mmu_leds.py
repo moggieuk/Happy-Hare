@@ -374,6 +374,24 @@ class TestFlashDroppedUnderStateEffect(unittest.TestCase):
                                       segment='exit', duration=1.0),
             'a flash under a timed state effect must be dropped, not queued')
 
+    def test_settle_leds_advances_out_of_the_hold(self):
+        """
+        The harness counterpart. boot() stops the clock 2.5s in, inside effect_initialized's
+        8s window, so an interactive session would drop EVERY transient flash for good - which
+        is how the NFC read acknowledgment came to look broken. settle_leds() walks out of it,
+        the way a printer does by itself.
+        """
+        leds = self.hh.mmu.led_manager
+        unit = self.hh.mmu.mmu_unit(0)
+        self.assertTrue(any(leds.pending_update), 'precondition: a unit should still be held')
+        advanced = self.hh.settle_leds()
+        self.assertGreater(advanced, 0.)
+        self.assertFalse(any(leds.pending_update), 'settle_leds did not clear the hold')
+        self.assertTrue(
+            leds.set_transient_effect(unit, 'mmu_green_strobe_fast',
+                                      segment='exit', duration=1.0),
+            'a flash should be accepted once nothing holds the unit')
+
     def test_flash_is_accepted_once_the_state_effect_expires(self):
         leds = self.hh.mmu.led_manager
         unit = self.hh.mmu.mmu_unit(0)

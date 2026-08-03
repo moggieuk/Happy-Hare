@@ -212,6 +212,104 @@ class TestSensorProbes(DevTestCase):
                 self.run_option(args)
 
 
+class TestNfcReadFeedback(DevTestCase):
+    """
+    What a user actually sees when a tag is read: a console line and an LED flash.
+
+    Both were invisible on the default profile, for two unrelated reasons - see the two tests.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.hh.settle_leds()                       # or every flash below is dropped
+
+    def test_a_shared_read_says_so_on_the_console(self):
+        """
+        A per-gate read logs "gate N filament set from tag ..." at info; a shared read only
+        staged its metadata at DEBUG, so at default log level it produced no output at all and
+        looked like nothing had happened.
+        """
+        unit = next(u for u in self.hh.mmu.mmu_machine.units
+                    if self.hh.mmu.nfc_deep_read_enabled(u))
+        before = len(self.hh.console)
+        self.hh.run_gcode('_MMU_TEST NFC_READ=1 DEEP=1 UNIT=%d' % unit.unit_index)
+        said = ' '.join(self.hh.console[before:])
+        self.assertIn('NFC: tag', said)
+        self.assertIn('staged', said)
+
+    def test_the_read_flash_lands_on_a_segment_the_unit_actually_has(self):
+        """
+        nfc_led_segment 'auto' resolved a shared read to 'status' unconditionally. The ViViD
+        ships exit-only, so on the default profile - whose shared reader lives on exactly that
+        unit - the acknowledgment flashed a segment with zero LEDs and was invisible.
+        """
+        mmu = self.hh.mmu
+        unit = next(u for u in mmu.mmu_machine.units
+                    if u.leds and not u.leds.get_status()['status']
+                    and u.leds.get_status()['exit'])
+        self.assertEqual(mmu._nfc_led_segment(unit, gate=None), 'exit',
+                         'auto should not pick a segment with no LEDs')
+        mmu._nfc_led_on_read(unit, deep=True, gate=None)
+        self.assertEqual(
+            mmu.led_manager.effect_state.get(unit.unit_index, {}).get('exit'),
+            mmu.led_manager.effect_name(unit.unit_index, 'nfc_deep_read'))
+
+    def test_status_is_still_preferred_when_the_unit_has_it(self):
+        """The fallback must not steal the flash from a unit that does have status LEDs."""
+        mmu = self.hh.mmu
+        unit = next(u for u in mmu.mmu_machine.units
+                    if u.leds and u.leds.get_status()['status'])
+        self.assertEqual(mmu._nfc_led_segment(unit, gate=None), 'status')
+
+    def test_a_per_gate_read_still_targets_the_gates_own_leds(self):
+        mmu = self.hh.mmu
+        unit = mmu.mmu_unit(0)
+        self.assertEqual(mmu._nfc_led_segment(unit, gate=0), 'exit')
+
+    def test_the_read_then_fail_chain_plays_out_on_the_fallback_segment(self):
+        """
+        The fail flash is deferred so it queues behind the read acknowledgment rather than
+        cutting it short. Worth its own test because the segment tests above call
+        _nfc_led_on_read directly and never reach the deferred promotion - the place a
+        segment-selection change could plausibly break the chain.
+        """
+        mmu, lm = self.hh.mmu, self.hh.mmu.led_manager
+        unit = next(u for u in mmu.mmu_machine.units
+                    if u.leds and not u.leds.get_status()['status'])
+        index = unit.unit_index
+
+        mmu._nfc_led_on_read(unit, deep=True, gate=None)
+        self.assertEqual(lm.effect_state.get(index, {}).get('exit'),
+                         lm.effect_name(index, 'nfc_deep_read'))
+
+        mmu.nfc_lookup_pending = True               # as an in-flight lookup would leave it
+        mmu._nfc_led_on_fail()
+        self.assertIn((index, 'exit'), lm.transient_pending, 'fail flash was not queued')
+
+        self.hh.reactor.advance(3.)                 # read flash expires, fail is promoted
+        self.assertEqual(lm.effect_state.get(index, {}).get('exit'),
+                         lm.effect_name(index, 'nfc_fail'))
+        self.hh.reactor.advance(6.)                 # and the baseline comes back
+        self.assertEqual(lm.effect_state.get(index, {}).get('exit'), 'gate_status')
+
+    def test_a_tag_with_no_usable_data_is_reported_as_such(self):
+        """
+        Describing the tag means reaching into the payload, and metadata this thin gets
+        REJECTED when the pending gate is assigned - so claiming it was staged would be a lie.
+        """
+        unit = next(u for u in self.hh.mmu.mmu_machine.units
+                    if self.hh.mmu.nfc_deep_read_enabled(u))
+        before = len(self.hh.console)
+        # MATERIAL= LAST, deliberately. Klipper's parser lets an empty value swallow the next
+        # token, so 'MATERIAL= UNIT=1' sets MATERIAL to the string "UNIT=1" - truthy, and the
+        # opposite of what this test is for. Do not reorder these.
+        self.hh.run_gcode('_MMU_TEST NFC_READ=1 DEEP=1 UNIT=%d MATERIAL=' % unit.unit_index)
+        said = ' '.join(self.hh.console[before:])
+        self.assertIn('no usable filament data', said)
+        self.assertNotIn('staged', said)
+        self.assertEqual(self.hh.errors, [])
+
+
 class TestMovementProbes(DevTestCase):
     """
     The selector and stress probes. They assert only that the call lands: what they exist to
