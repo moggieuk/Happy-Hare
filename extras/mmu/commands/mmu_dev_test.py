@@ -17,7 +17,7 @@ import random, logging, math, ast
 from ...mmu_stepper     import MmuGenericRail
 from ..mmu_constants    import *
 from ..mmu_utils        import MmuError, PurgeVolCalculator, DebugStepperMovement
-from ..unit.mmu_sensors import MmuSensors
+from ..mmu_sensor_utils import MmuSensorFactory
 from .mmu_base_command  import *
 
 
@@ -84,7 +84,7 @@ class MmuTestCommand(BaseCommand):
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
         + "HELP=1 Show this help\n"
-        + "SYNC_STATE=['compression'|'tension'|'both'|'neutral'|'loop'] Set the sync state (or run looped test). Params: LOOP={n} (with SYNC_STATE=loop) number of iterations\n"
+        + "SYNC_STATE=['compression'|'tension'|'both'|'neutral'] Set the sync state ('loop' is disabled - it busy-waits and wedges the reactor)\n"
         + "SYNC_EVENT=[-1.0 ... 1.0] Generate sync feedback event\n"
         + "SEND_PRINTING_EVENT=[0|1] Send mmu:printing or mmu:not_printing event\n"
         + "ACTIVATE_FLOWGUARD=[0|1] Call the flowguard activation/deactivation hooks\n"
@@ -97,6 +97,8 @@ class MmuTestCommand(BaseCommand):
         + "SET_RD={gear_rd} [GATE=] Update the specified gate's rotation distance\n"
         + "GET_POSITION=1 Fetch the current filament position\n"
         + "SET_POSITION={pos} Set the current filament position\n"
+        + "GET_EXT_POSITION=1 Fetch the current extruder position\n"
+        + "SET_ACTION={action} Set the current action state\n"
         + "SYNC_LOAD_TEST=1 Hammer stepper syncing and movement. Params: LOOP={n} ENDSTOP={name} SELECT=[0|1] WAIT=[0|1]\n"
         + "REALISTIC_SYNC_TEST=1 Load test normal stepper syncing and movement. Params: LOOP={n} ENDSTOP={name} SELECT=[0|1] SERVO=[0|1]\n"
         + "QUIESCE_TEST=1 Quick test of problematic sync changes\n"
@@ -105,7 +107,8 @@ class MmuTestCommand(BaseCommand):
         + "SEL_LOAD_TEST=1 Load test selector movements. Params: LOOP={n} HOME=[0|1]\n"
         + "TTC_TEST=1 / TTC_TEST2=1 / TTC_TEST3=1 Provoke known TTC conditions. Params: LOOP={n} MIX=[0|1] DEBUG=[0|1] WAIT=[0|1]\n"
         + "STEPCOMPRESS_TEST=1 Provoke stepcompress error. Params: LOOP={n} MIX=[0|1] DEBUG=[0|1] WAIT=[0|1] SELECT=[0|1] MOTOR={name} STOP_ON_ENDSTOP=[-1|0|1]\n"
-        + "AUTO_CALIBRATE=1 Call auto-calibrate directly. Params: GATE={n} DIRECTION=[-1|0|1] RATIO={f} HOMING={mm}\n"
+        + "NOTE_LOAD_TELEMETRY=1 Feed load telemetry to autotune. Params: GATE={n} LENGTH={mm} TRAVEL={mm} RATIO={f}\n"
+        + "NOTE_UNLOAD_TELEMETRY=1 Feed unload telemetry to autotune. Params: GATE={n} LENGTH={mm} TRAVEL={mm} RATIO={f}\n"
         + "SYNC=[0|1|2|3|gear|gear+extruder|extruder|synced]\n"
         + "CALC_PURGE=1 Purge volume calculator quick tests\n"
         + "RUNOUT=[0|1] Enable/disable runout handling\n"
@@ -169,30 +172,83 @@ class MmuTestCommand(BaseCommand):
             sync_state = gcmd.get('SYNC_STATE', None)
             if sync_state is not None:
                 have_run_test = True
-                # Create phony sensors for testing purposes (will be removed after the test)
-                mmu_sensors = mmu.printer.lookup_object("mmu_sensors")
-                config = mmu.config.getsection('mmu_sensors')
-                sensors_to_remove = []
+
+                # REFUSE 'loop' rather than hang. wait_run() and wait_for_results() below are
+                # `while <cond>: pass` busy-waits sitting inside a gcode handler, so they block
+                # the single reactor greenlet - and the mmu:sync_feedback_finished events they
+                # are waiting on are delivered by MmuSyncFeedback's settle TIMERS, which can
+                # then never fire. It wedges the reactor, on a printer as much as in the test
+                # harness. This used to be unreachable only because the setup below died first
+                # on a stale lookup_object('mmu_sensors'); fixing that made it reachable, so
+                # fail fast until the choreography is rewritten to yield.
+                if sync_state == 'loop':
+                    raise gcmd.error(
+                        "SYNC_STATE=loop is not usable: its result-gathering is a busy-wait "
+                        "that blocks the reactor, so the events it waits for never arrive. "
+                        "Use SYNC_STATE=compression|tension|both|neutral instead."
+                    )
+
+                # The sync feedback sensors belong to the unit's BUFFER, not to MmuSensors
+                # (unit/mmu_buffer.py:60-82), and both the object and its config section are
+                # per-unit. Everything here used to go through a global "mmu_sensors" object
+                # that no longer exists.
+                mmu_unit = mmu.mmu_unit()
+                buffer = getattr(mmu_unit, 'buffer', None)
+                if buffer is None:
+                    raise gcmd.error("Unit '%s' has no mmu_buffer, so there are no sync "
+                                     "feedback sensors to drive" % mmu_unit.name)
+                config = mmu.config.getsection('mmu_buffer %s' % buffer.name)
+                factory = MmuSensorFactory(mmu.printer)
+                sensors_to_remove = {}
                 compression_sensor_filament_present = tension_sensor_filament_present = False
 
-                # Use the temporary sensors for the test if the real ones are not present or disabled
-                compression_test_sensor = mmu_sensors.sensors.get(SENSOR_COMPRESSION, None)
-                if compression_test_sensor is None or not compression_test_sensor.runout_helper.sensor_enabled:
-                    mmu_sensors._create_mmu_sensor(
-                        config, SENSOR_COMPRESSION, None, 'test_' + SENSOR_COMPRESSION + '_pin', 0,
-                        button_handler=mmu_sensors.sync_compression_callback
+                # Create phony sensors for testing purposes (removed again after the test)
+                def create_test_sensor(sensor_name, button_handler):
+                    return factory.create_mmu_sensor(
+                        config, sensor_name, None, 'test_' + sensor_name + '_pin',
+                        event_delay=0, button_handler=button_handler
                     )
-                    compression_test_sensor = mmu_sensors.sensors.get(SENSOR_COMPRESSION, None)
-                    sensors_to_remove.append(SENSOR_COMPRESSION)
 
-                tension_test_sensor = mmu_sensors.sensors.get(SENSOR_TENSION, None)
+                def remove_test_sensors():
+                    """
+                    Unregister anything create_test_sensor() made.
+
+                    Runs on EVERY exit path, not just the 'loop' one. It used to live inside
+                    the loop branch, so a second plain SYNC_STATE call died with "mux command
+                    QUERY_FILAMENT_SENSOR SENSOR filament_compression already registered".
+
+                    Keyed off each sensor's OWN name - MmuSensor registers as
+                    "filament_switch_sensor <name>" (mmu_sensor_utils.py:379) - rather than a
+                    reconstructed "<x>_sensor", which stopped matching when that suffix was
+                    dropped.
+                    """
+                    ppins = mmu.printer.lookup_object('pins')
+                    for sensor, sensor_obj in sensors_to_remove.items():
+                        object_name = "filament_switch_sensor %s" % sensor_obj.name
+                        mmu.printer.objects.pop(object_name, None)
+                        config.fileconfig.pop(object_name, None)
+
+                        pin_params = ppins.parse_pin('test_' + sensor + '_pin')
+                        ppins.active_pins.pop(
+                            "%s:%s" % (pin_params['chip_name'], pin_params['pin']), None)
+
+                        for cmd, (__, val) in mmu.gcode.mux_commands.items():
+                            if sensor_obj.name in [k for k in [v for v in val.keys() if v]]:
+                                mmu.gcode.mux_commands[cmd][1].pop(sensor_obj.name)
+                    sensors_to_remove.clear()
+
+                # Use the temporary sensors for the test if the real ones are not present or disabled
+                compression_test_sensor = buffer.compression_sensor
+                if compression_test_sensor is None or not compression_test_sensor.runout_helper.sensor_enabled:
+                    compression_test_sensor = create_test_sensor(
+                        SENSOR_COMPRESSION, buffer.sync_compression_callback)
+                    sensors_to_remove[SENSOR_COMPRESSION] = compression_test_sensor
+
+                tension_test_sensor = buffer.tension_sensor
                 if tension_test_sensor is None or not tension_test_sensor.runout_helper.sensor_enabled:
-                    mmu_sensors._create_mmu_sensor(
-                        config, SENSOR_TENSION, None, 'test_' + SENSOR_TENSION + '_pin', 0,
-                        button_handler=mmu_sensors.sync_tension_callback
-                    )
-                    tension_test_sensor = mmu_sensors.sensors.get(SENSOR_TENSION, None)
-                    sensors_to_remove.append(SENSOR_TENSION)
+                    tension_test_sensor = create_test_sensor(
+                        SENSOR_TENSION, buffer.sync_tension_callback)
+                    sensors_to_remove[SENSOR_TENSION] = tension_test_sensor
 
                 if sync_state == 'loop':
                     nb_iterations = gcmd.get_int('LOOP', 1000, minval=1, maxval=10000000)
@@ -393,23 +449,6 @@ class MmuTestCommand(BaseCommand):
                         gathered_states = []
                         tests = []
 
-                    # remove test sensors and associated config
-                    ppins = mmu.printer.lookup_object('pins')
-                    for sensor in sensors_to_remove:
-                        mmu.printer.objects.pop("filament_switch_sensor %s_sensor" % sensor)
-                        config.fileconfig.pop("filament_switch_sensor %s_sensor" % sensor)
-                        mmu_sensors.sensors.pop(sensor)
-
-                        share_name = "%s:%s" % (
-                            ppins.parse_pin('test_' + sensor + '_pin')['chip_name'],
-                            ppins.parse_pin('test_' + sensor + '_pin')['pin']
-                        )
-                        ppins.active_pins.pop(share_name)
-
-                        for cmd, (__, val) in mmu.gcode.mux_commands.items():
-                            if ("%s_sensor" % sensor) in [k for k in [v for v in val.keys() if v]]:
-                                mmu.gcode.mux_commands[cmd][1].pop(("%s_sensor" % sensor))
-
                     # restore the original sensor state
                     compression_test_sensor.runout_helper.sensor_enabled = saved_compr
                     tension_test_sensor.runout_helper.sensor_enabled = saved_tens
@@ -447,9 +486,10 @@ class MmuTestCommand(BaseCommand):
                     if tension_test_sensor is not None:
                         tension_test_sensor.runout_helper.note_filament_present(tension_sensor_filament_present)
 
-                # Remove event handlers
+                # Remove event handlers and any phony sensors, on both branches
                 mmu.printer.event_handlers.pop("mmu:sync_feedback_finished", None)
                 mmu.printer.event_handlers.pop("mmu:test_gen_finished", None)
+                remove_test_sensors()
                 return
 
             feedback = gcmd.get_float('SYNC_EVENT', None, minval=-1., maxval=1.)
@@ -575,12 +615,15 @@ class MmuTestCommand(BaseCommand):
 
                 mmu.drive().sync_mode(mode)
 
-            pos = gcmd.get_float('SET_POS', 0, minval=0, maxval=1)
-            if pos > 0:
+            # A FILAMENT_POS_* state, not a distance - see SET_POSITION below for millimetres.
+            # Sentinel is -1 rather than 0 because 0 is FILAMENT_POS_UNLOADED, a state you
+            # must be able to set.
+            pos = gcmd.get_int('SET_POS', -1, minval=0, maxval=10)
+            if pos >= 0:
                 have_run_test = True
                 mmu.set_filament_pos_state(pos)
 
-            gpos = gcmd.get_int('GET_POS', 0, minval=0, maxval=10)
+            gpos = gcmd.get_int('GET_POS', 0, minval=0, maxval=1)
             if gpos:
                 have_run_test = True
                 fil_pos_str = FILAMENT_POS_NAME_MAP.get(mmu.filament_pos, "INVALID")
@@ -591,7 +634,9 @@ class MmuTestCommand(BaseCommand):
                 have_run_test = True
                 gate = gcmd.get_int('GATE', -1, minval=-2, maxval=mmu.num_gates)
                 if gate >= 0:
-                    mmu.calibration_manager.update_gear_rd(rd, gate)
+                    # Calibration moved onto the per-unit calibrator; there is no longer a
+                    # controller-level calibration_manager (unit/mmu_calibrator.py:375)
+                    mmu.mmu_unit(gate).calibrator.update_gear_rd(rd, gate=gate, console_msg=True)
 
             position = gcmd.get_float('SET_POSITION', -1, minval=0)
             if position >= 0:
@@ -740,10 +785,14 @@ class MmuTestCommand(BaseCommand):
                             )
 
                         # Run a few randomized moves on the printer toolhead to simulate user movement
-                        # Sync state must either be unsynced or DRIVE_GEAR_SYNCED_TO_EXTRUDER
-                        sync = None if random.randint(0, 1) else DRIVE_GEAR_SYNCED_TO_EXTRUDER
+                        # Sync state must either be unsynced or DRIVE_GEAR_SYNCED_TO_EXTRUDER.
+                        # "Unsynced" is DRIVE_UNSYNCED, not None - sync_mode() rejects anything
+                        # outside DRIVE_MODE_NAMES. This only failed intermittently because the
+                        # validity check sits behind an `if mode == prev_mode: return` early
+                        # out, so None got through whenever the previous mode was also None.
+                        sync = DRIVE_UNSYNCED if random.randint(0, 1) else DRIVE_GEAR_SYNCED_TO_EXTRUDER
                         mmu.drive().sync_mode(sync)
-                        log(">> Extruder movement (%s)..." % ("not synced" if sync is None else "synced to extruder"))
+                        log(">> Extruder movement (%s)..." % DRIVE_MODE_NAMES[sync])
                         for j in range(5):
                             move = random.randint(-10, 10)
                             mmu.gcode.run_script_from_command("G1 E%d F6000" % move)
@@ -854,7 +903,8 @@ class MmuTestCommand(BaseCommand):
                 loop = gcmd.get_int('LOOP', 1, minval=1)
                 for i in range(loop):
                     pos = mmu.selector().selector_stepper.commanded_pos
-                    actual = mmu.selector.move("Test move", pos + move, speed=speed, accel=accel, wait=wait)
+                    # move() returns (position, homed) - see LinearSelector._move_selector
+                    actual, _ = mmu.selector().move("Test move", pos + move, speed=speed, accel=accel, wait=wait)
                     mmu.log_always("%d. Rail starting pos: %s, Selector moved to %.4fmm" % (i, pos, actual))
                     if actual != pos + move:
                         mmu.log_always("Off target position by: %.4f" % (actual - (pos + move)))
@@ -865,11 +915,11 @@ class MmuTestCommand(BaseCommand):
                 speed = gcmd.get_float('SPEED', None)
                 accel = gcmd.get_float('ACCEL', None)
                 loop = gcmd.get_int('LOOP', 1, minval=1)
-                endstop = gcmd.get('ENDSTOP', SENSOR_SELECTOR_TOUCH if mmu.selector.use_touch_move() else SENSOR_SELECTOR_HOME)
+                endstop = gcmd.get('ENDSTOP', SENSOR_SELECTOR_TOUCH if mmu.selector().use_touch_move() else SENSOR_SELECTOR_HOME)
                 for i in range(loop):
                     pos = mmu.selector().selector_stepper.commanded_pos
                     mmu.log_always("Rail starting pos: %s" % pos)
-                    actual, homed = mmu.selector.homing_move("Test homing move", pos + move, speed=speed, accel=accel, homing_move=1, endstop_name=endstop)
+                    actual, homed = mmu.selector().homing_move("Test homing move", pos + move, speed=speed, accel=accel, homing_move=1, endstop_name=endstop)
                     mmu.log_always("%d. Rail starting pos: %s, Selector moved to %.4fmm homing to %s (%s)" % (i, pos, actual, endstop, "homed" if homed else "DID NOT HOME"))
                     if actual != pos + move:
                         mmu.log_always("Off target position by: %.4f" % (actual - (pos + move)))
@@ -878,7 +928,10 @@ class MmuTestCommand(BaseCommand):
                 have_run_test = True
                 loop = gcmd.get_int('LOOP', 10, minval=1, maxval=1000)
                 if gcmd.get_int('HOME', 0, minval=0, maxval=1):
-                    mmu.gcode.run_script_from_command("MMU_HOME")
+                    # MMU_HOME insists on a UNIT once more than one is configured
+                    # (mmu_base_command.py:198), so always name the one we are driving
+                    mmu.gcode.run_script_from_command(
+                        "MMU_HOME UNIT=%d" % mmu.mmu_unit().unit_index)
                 for i in range(loop):
                     move_type = random.randint(0, 2)
                     move = random.randint(10, 100)
@@ -888,10 +941,10 @@ class MmuTestCommand(BaseCommand):
                     pos = mmu.selector().selector_stepper.commanded_pos
                     if move_type in (1, 2):
                         endstop = "mmu_sel_touch" if move_type == 2 else "mmu_sel_home"
-                        actual, homed = mmu.selector.homing_move("Test homing move", move, speed=speed, accel=accel, homing_move=1, endstop_name=endstop)
+                        actual, homed = mmu.selector().homing_move("Test homing move", move, speed=speed, accel=accel, homing_move=1, endstop_name=endstop)
                         mmu.log_always("%d. Homing move: Rail starting pos: %s, Selector moved to %.4fmm homing to %s (%s)" % (i, pos, actual, endstop, "homed" if homed else "DID NOT HOME"))
                     else:
-                        actual = mmu.selector.move("Test move", move, speed=speed, accel=accel, wait=w)
+                        actual, _ = mmu.selector().move("Test move", move, speed=speed, accel=accel, wait=w)
                         mmu.log_always("%d. Move: Rail starting pos: %s, Selector moved to %.4fmm" % (i, pos, actual))
 
             if gcmd.get_int('TTC_TEST', 0, minval=0, maxval=1):
@@ -959,7 +1012,7 @@ class MmuTestCommand(BaseCommand):
 
             if gcmd.get_int('STEPCOMPRESS_TEST', 0, minval=0, maxval=1):
                 have_run_test = True
-                loop = gcmd.get_int('LOOP', 1, minval=10, maxval=1000)
+                loop = gcmd.get_int('LOOP', 10, minval=10, maxval=1000)
                 debug = gcmd.get_int('DEBUG', 0, minval=0, maxval=1)
                 motor = gcmd.get('MOTOR', None)
                 wait = gcmd.get_int('WAIT', None, minval=0, maxval=1)
@@ -981,14 +1034,26 @@ class MmuTestCommand(BaseCommand):
                     with DebugStepperMovement(mmu, debug):
                         mmu.move_filament("test", 1, motor=motor, homing_move=stop_on_endstop, endstop_name="toolhead", wait=w)
 
-            if gcmd.get_int('AUTO_CALIBRATE', 0, minval=0, maxval=1):
-                have_run_test = True
-                gate = gcmd.get_int('GATE', 0, minval=-2, maxval=8)
-                direction = gcmd.get_int('DIRECTION', 1, minval=-1, maxval=1)
-                ratio = gcmd.get_float('RATIO', 1., minval=-1, maxval=2)
-                homing_movement = gcmd.get_float('HOMING', None, minval=0, maxval=100)
-                mmu.gate_selected = gate
-                mmu._auto_calibrate(direction, ratio, homing_movement)
+            # Autotune, driven by hand. What used to be a single AUTO_CALIBRATE with a
+            # DIRECTION parameter is now two calibrator methods, one per direction
+            # (unit/mmu_calibrator.py:520-539). The real caller is
+            # mmu_filament_movement.py:2155/2370 at the end of a full load/unload.
+            for option, method in (('NOTE_LOAD_TELEMETRY', 'note_load_telemetry'),
+                                   ('NOTE_UNLOAD_TELEMETRY', 'note_unload_telemetry')):
+                if gcmd.get_int(option, 0, minval=0, maxval=1):
+                    have_run_test = True
+                    gate = gcmd.get_int('GATE', mmu.gate_selected, minval=0, maxval=mmu.num_gates - 1)
+                    calibrator = mmu.mmu_unit(gate).calibrator
+                    # LENGTH is what the machine currently believes; TRAVEL is what it would
+                    # have measured. Autotune acts on the delta, so defaulting TRAVEL to
+                    # LENGTH makes a bare call inert - name a TRAVEL to provoke a correction.
+                    length = gcmd.get_float('LENGTH', calibrator.get_bowden_length(gate), minval=0)
+                    travel = gcmd.get_float('TRAVEL', length, minval=0)
+                    # None skips the encoder branch entirely, so it stays off unless asked for
+                    ratio = gcmd.get_float('RATIO', None, minval=-1, maxval=2)
+                    mmu.log_info("%s: gate %d, bowden length %.1fmm, travel %.1fmm, ratio %s"
+                                 % (option, gate, length, travel, ratio))
+                    getattr(calibrator, method)(gate, length, travel, ratio)
 
             if gcmd.get_int('CALC_PURGE', 0, minval=0, maxval=1):
 
@@ -1037,10 +1102,13 @@ class MmuTestCommand(BaseCommand):
             runout = gcmd.get_int('RUNOUT', None, minval=0, maxval=1)
             if runout is not None:
                 have_run_test = True
+                # Runout arming lives on the sensor manager and is per-gate
+                # (mmu_sensor_manager.py:490-496)
+                gate = gcmd.get_int('GATE', mmu.gate_selected, minval=-2, maxval=mmu.num_gates)
                 if runout == 1:
-                    mmu._enable_runout()
-                elif runout == 0:
-                    mmu._disable_runout()
+                    mmu.sensor_manager.enable_runout(gate)
+                else:
+                    mmu.sensor_manager.disable_runout(gate)
 
             if gcmd.get_int('SENSOR', 0, minval=0, maxval=1):
                 have_run_test = True

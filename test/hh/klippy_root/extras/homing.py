@@ -214,6 +214,12 @@ class HomingMove:
         else:
             winner, travel = self._resolve(model, leaves, delta, triggered)
 
+        # May be None: a filament homing move with NO gate selected is something a developer
+        # can genuinely provoke (_MMU_TEST's movement probes do). _resolve already bails out on
+        # it, but the miss path below used to reach FilamentPath.advance(None) and die on
+        # `self.tip[None]`.
+        gate = self._gate()
+
         if winner is None:
             # Full movement with no trigger. Move the model the whole way, leave the
             # axis at the target, then fail the way real Klipper does so HH's own
@@ -224,8 +230,8 @@ class HomingMove:
             # the selector's travel. Only the axis position matters here.
             if axis is not None:
                 self._move_selector(axis, delta)
-            elif model is not None:
-                model.advance(self._gate(), delta,
+            elif model is not None and gate is not None:
+                model.advance(gate, delta,
                               'homing MISS [%s]' % ','.join(n for _e, n in leaves))
             toolhead.set_position([target_axis, 0., 0., 0.])
             toolhead.flush_step_generation()
@@ -240,8 +246,8 @@ class HomingMove:
             self._move_selector(axis, signed)
             halt_axis = target_axis
         else:
-            if model is not None:
-                model.advance(self._gate(), signed, 'homing -> %s' % name)
+            if model is not None and gate is not None:
+                model.advance(gate, signed, 'homing -> %s' % name)
             halt_axis = start_axis + signed
         toolhead.set_position([halt_axis, 0., 0., 0.])
         toolhead.flush_step_generation()
