@@ -910,7 +910,7 @@ class Session:
             })
         return spools
 
-    def set_pacing(self, factor):
+    def set_pacing(self, factor, wall=None):
         """
         How much of each move's real duration to spend in virtual time. Returns the factor.
 
@@ -919,17 +919,29 @@ class Session:
         frame, and every action transition happens in the same instant. 1.0 gives each move
         roughly the time the real machine would need; 0.5 is twice as fast as real.
 
+        `wall` is a SEPARATE multiplier for sleeping in real time. Virtual time is free -
+        advancing the clock 11 seconds costs milliseconds - so pacing alone makes an operation
+        report the right timings while still flashing past in an instant. wall=1 holds each
+        move for as long as it claims to take, which is what makes it watchable; 0 (the
+        default) never sleeps, so tests can pace freely. Left as None it is unchanged.
+
         Only meaningful for commands dispatched at TOP LEVEL (the console, and the tests):
         the pacer advances the reactor, which is illegal inside a reactor callback and is
         skipped there. See PrinterMotionQueuing._pace.
         """
         factor = max(0., float(factor))
         self.printer.harness_pacing = factor
+        if wall is not None:
+            self.printer.harness_pace_wall = max(0., float(wall))
         return factor
 
     @property
     def pacing(self):
         return getattr(self.printer, 'harness_pacing', 0.) or 0.
+
+    @property
+    def pacing_wall(self):
+        return getattr(self.printer, 'harness_pace_wall', 0.) or 0.
 
     def settle_leds(self, limit=20.):
         """

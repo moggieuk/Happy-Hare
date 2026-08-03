@@ -459,6 +459,7 @@ class Console:
         self.mode = (args.color if args.color != 'auto'
                      else ('truecolor' if truecolor_supported() else '256'))
         self.sink = []                              # ordered (index -> rendered line)
+        self.sink_stamp = []                        # ... and the clock when HH said it
         self.startup_output = []                    # bootup, incl. the Happy Hare welcome
         self.pinned = None                          # set by interact() when pinning
         self._can_pin = False                       # ... and whether it may re-pin later
@@ -529,7 +530,7 @@ class Console:
                      gates_loaded_at=TIP_AT_GATE if preloading else None,
                      prime=not a.no_prime, seed=a.seed)
         self.startup_output = list(self.sink)        # the welcome, shown by banner()
-        del self.sink[:]
+        self._clear_sink()
 
         # MANDATORY, and the easiest thing to get wrong: the filament model is created
         # lazily and only then installs the move observer (test/hh/bootstrap.py:336).
@@ -561,7 +562,7 @@ class Console:
         # 13 gates at --pace 1 would otherwise cost minutes of virtual time before the first
         # prompt. /pace changes it live.
         if a.pace:
-            self.hh.set_pacing(a.pace)
+            self.hh.set_pacing(a.pace, wall=self._wall_pacing())
 
         # Walk past effect_initialized, the 8s unit-wide flash bootup leaves running. While it
         # holds a unit every transient flash is DROPPED (mmu_led_manager.py:473), so an NFC
@@ -604,7 +605,7 @@ class Console:
             # Settle between gates. Without it the preload does not finish and the gate is
             # left EMPTY, which then fails every load with "Gate N is empty".
             self.hh.reactor.advance(0.)
-        self.sink.clear()                           # setup noise is not console history
+        self._clear_sink()  # setup noise is not console history
 
     def close(self):
         if self.hh is not None:
@@ -662,6 +663,16 @@ class Console:
 
     def _on_output(self, msg):
         self.sink.append(msg)
+        # Stamp NOW, not when it is printed. _drain() runs after the command returns, so
+        # stamping there gave every line of an operation the same reading - the clock as it
+        # stood at the END - which hid the very progression /timestamp exists to show. Under
+        # /pace a load reported eight identical stamps while the clock had moved 11s.
+        self.sink_stamp.append(self.sim_time())
+
+    def _clear_sink(self):
+        """Both lists together - they are indexed in lockstep by _drain()."""
+        del self.sink[:]
+        del self.sink_stamp[:]
 
     def sim_time(self):
         """
@@ -674,18 +685,19 @@ class Console:
             elapsed = self.hh.reactor.monotonic() - self.clock_epoch
         return time.strftime(TIME_FORMAT, time.localtime(self.wall_start + elapsed))
 
-    def emit(self, text):
+    def emit(self, text, stamp=None):
         """
         Print a message from the MMU, stamped with the virtual clock if /timestamp is on.
 
-        Only the FIRST line carries the stamp; the rest are indented to sit under it, so a
-        multi-line reply still reads as one block rather than as one stamped line followed
-        by loose text.
+        `stamp` is the clock as it stood when Happy Hare produced the line (recorded by
+        _on_output); without one, now. Only the FIRST line carries the stamp; the rest are
+        indented to sit under it, so a multi-line reply still reads as one block rather than
+        as one stamped line followed by loose text.
         """
         if not self.timestamps:
             print(text)
             return
-        stamp = self.sim_time()
+        stamp = stamp or self.sim_time()
         pad = ' ' * (len(stamp) + 1)
         lines = text.split('\n')
         # Blank lines stay blank rather than becoming nine spaces: the indent is there to
@@ -694,8 +706,9 @@ class Console:
                         + [pad + line if line else '' for line in lines[1:]]))
 
     def _drain(self, mark):
-        for msg in self.sink[mark:]:
-            self.emit(html_to_ansi(msg, self.color, self.mode))
+        for index in range(mark, len(self.sink)):
+            self.emit(html_to_ansi(self.sink[index], self.color, self.mode),
+                      stamp=self.sink_stamp[index])
 
     # -- dispatch -------------------------------------------------------------
     def _dispatch(self, line):
@@ -1259,7 +1272,7 @@ class Console:
 
     def _meta_clear(self, args):
         """Wipe the log window and repair the status section - see clear_log()."""
-        del self.sink[:]
+        self._clear_sink()
         if self.scrollback is not None:
             self.scrollback.clear()
         self.clear_log()
@@ -1511,12 +1524,33 @@ class Console:
         if not args:
             factor = self.hh.pacing
         else:
-            factor = self.hh.set_pacing(args[0])
+            factor = self.hh.set_pacing(args[0], wall=self._wall_pacing())
         if not factor:
             self.info('pace=0 - moves are instant, the clock does not move')
+            return
+        self.info('pace=%g - each move spends %g%% of its real duration '
+                  '(%.4gx real time)' % (factor, factor * 100., 1. / factor))
+        if self.hh.pacing_wall:
+            self.info('  operations will take that long for real - Ctrl-C to interrupt one')
         else:
-            self.info('pace=%g - each move spends %g%% of its real duration '
-                      '(%.4gx real time)' % (factor, factor * 100., 1. / factor))
+            self.info('  the virtual clock moves but nothing sleeps, so operations still '
+                      'complete instantly (--wall to sleep)')
+
+    def _wall_pacing(self):
+        """
+        Whether a paced move should also sleep in REAL time.
+
+        On for an interactive session, because "make it take as long as the machine would" is
+        the only reason to ask for pacing by hand - you cannot watch an LED effect that is over
+        before the command returns. Off for a script or a pipe, where the point of the harness
+        is that it does not wait for anything; --wall/--no-wall overrides either way.
+
+        A --script run counts as non-interactive even on a tty: it has nobody watching it, and
+        that is also what keeps the test suite from ever sleeping.
+        """
+        if self.args.wall is not None:
+            return 1. if self.args.wall else 0.
+        return 1. if (self.args.script is None and sys.stdout.isatty()) else 0.
 
     ####################
     ##### Live mode ####
@@ -2256,6 +2290,11 @@ def parse_args(argv=None):
     p.add_argument('--no-moonraker', action='store_true',
                    help='do not attach the fake Moonraker/Spoolman, so calls out to it go '
                         'unanswered - which is what a printer with Moonraker down looks like')
+    p.add_argument('--wall', dest='wall', action='store_true', default=None,
+                   help='with --pace, sleep in real time so an operation can be watched '
+                        '(the default at an interactive prompt, off for a script or pipe)')
+    p.add_argument('--no-wall', dest='wall', action='store_false',
+                   help='with --pace, move the virtual clock but never sleep')
     p.add_argument('--pace', type=float, default=0., metavar='FACTOR',
                    help='how much of each move\'s real duration to spend in virtual time: '
                         '0 (default) is instant, 0.5 is twice as fast as real, 1 is real '

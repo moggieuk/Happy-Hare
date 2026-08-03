@@ -332,6 +332,7 @@ Useful flags — `make console ARGS='...'`:
 --seed N                       # seed for the primed gate map (default 0, reproducible)
 --no-moonraker                 # don't attach the fake Moonraker/Spoolman
 --pace FACTOR                  # 0=instant (default), 0.5=twice as fast as real, 1=real time
+--wall / --no-wall             # with --pace, whether to sleep in real time (default: interactive only)
 --script FILE                  # run non-interactively (this is how it is tested)
 ```
 
@@ -372,8 +373,26 @@ arithmetic, not an invented number.
 The pacer advances the reactor, which **runs timers** (a `pause()` would only jump the clock,
 see `reactor._sys_pause`). That is the whole point. It cannot run inside a reactor callback, so
 it no-ops there; top-level dispatch, which is what the console and the tests use, is where
-pacing applies. With a pinned header it also repaints between moves, so the operation can be
-watched rather than merely take longer.
+pacing applies.
+
+**Virtual time is free** — advancing the clock 11 seconds costs milliseconds — so pacing alone
+makes an operation *report* the right timings while still finishing in an instant. To actually
+watch one, it has to sleep, which it does at an interactive prompt and never in a script, a
+pipe or the test suite (`--wall` / `--no-wall` to force it either way). With a pinned header the
+pacer repaints between moves, so the operation plays out on screen.
+
+`/timestamp on` is what makes the pacing legible: output is stamped with the virtual clock as
+of **when Happy Hare produced the line**, not when it was printed — `_drain()` runs after a
+command returns, so stamping there gave every line of a load the same end-of-command reading.
+
+```
+> /pace 1
+> MMU_LOAD
+23:05:41 Loading filament...
+23:05:41 [T9] ███◉█┈┈┈┈┈┈┈┈┈ ...  ▷▷▷    0.0mm
+23:05:49 [T9] ███◉██████████ ...  ▷▷▷  680.0mm      <- the bowden move took 8s
+23:05:53 [T9] ███◉██████████ ... LOADED 801.8mm
+```
 
 The **gate map is seeded the same way**, and for the same reason: bootup prints the gate
 table, `_preload_all()` runs after `boot()` returns, and that table is the last thing on

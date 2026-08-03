@@ -14,6 +14,8 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
+import time
+
 
 class Trapq:
     """List-backed stand-in for the chelper trapq struct."""
@@ -101,13 +103,21 @@ class PrinterMotionQueuing:
         reactor = self.printer.get_reactor()
         if reactor.in_dispatch():
             return
-        reactor.advance(duration * factor)
+        spent = duration * factor
+        reactor.advance(spent)
         # Let whoever is watching redraw. Without this the clock moves but nothing renders
         # until the command returns, so a paced load still can't be WATCHED - which is the
         # only reason to pace one. The console points this at its pinned header.
         observer = getattr(self.printer, 'harness_pace_observer', None)
         if observer is not None:
             observer()
+        # And optionally hold it there in WALL time. Virtual time is free - advancing the
+        # clock 11 seconds costs milliseconds - so without this a paced load reports the right
+        # timings and still flashes past in an instant. Sleeping is what makes it watchable,
+        # and it is separate from `factor` precisely so tests can pace without ever sleeping.
+        wall = getattr(self.printer, 'harness_pace_wall', 0.) or 0.
+        if wall > 0.:
+            time.sleep(spent * wall)
 
     def check_step_generation_scan_windows(self):
         self.scan_window_checks += 1

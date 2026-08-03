@@ -1787,6 +1787,7 @@ class TestTheDefaultProfile(unittest.TestCase):
         """
         hh = self.console.hh
         self.assertEqual(hh.pacing, 0., 'instant is the default')
+        self.assertEqual(hh.pacing_wall, 0., 'the suite must never sleep')
         gate = hh.mmu.num_gates - 1
         self.console._dispatch('MMU_SELECT GATE=%d' % gate)
 
@@ -1814,6 +1815,38 @@ class TestTheDefaultProfile(unittest.TestCase):
         self.assertEqual(hh.mmu.filament_pos, FILAMENT_POS_UNLOADED)
         self.assertNotIn(0, hh.mmu.gate_maps.gate_status, 'a gate went EMPTY during a paced run')
         self.assertEqual(hh.errors, [])
+
+    def test_output_is_stamped_when_happy_hare_said_it(self):
+        """
+        _drain() runs AFTER a command returns, so stamping there gave every line of an
+        operation the same reading - the clock as it stood at the END. Under /pace a load
+        reported eight identical stamps while the clock had moved 11 seconds, which hid the
+        very progression /timestamp exists to show.
+        """
+        hh = self.console.hh
+        hh.set_pacing(1.)
+        self.addCleanup(hh.set_pacing, 0.)
+        gate = hh.mmu.num_gates - 1
+        self.console._dispatch('MMU_SELECT GATE=%d' % gate)
+
+        mark = len(self.console.sink)
+        self.console._dispatch('MMU_LOAD')
+        stamps = self.console.sink_stamp[mark:]
+        self.assertGreater(len(stamps), 2, 'expected several lines from a load')
+        self.assertGreater(len(set(stamps)), 1,
+                           'every line of a paced load carried the same timestamp')
+        self.assertEqual(stamps, sorted(stamps), 'stamps must not go backwards')
+        self.assertEqual(len(self.console.sink), len(self.console.sink_stamp),
+                         'the two lists are indexed in lockstep')
+
+    def test_clearing_the_sink_clears_the_stamps_with_it(self):
+        """Out of step and _drain() would stamp lines with another line's clock."""
+        self.assertEqual(len(self.console.sink), len(self.console.sink_stamp))
+        self.console._dispatch('MMU_STATUS')
+        self.assertEqual(len(self.console.sink), len(self.console.sink_stamp))
+        self.console._clear_sink()
+        self.assertEqual(self.console.sink, [])
+        self.assertEqual(self.console.sink_stamp, [])
 
     def test_the_header_reports_pacing_only_when_it_is_on(self):
         """
