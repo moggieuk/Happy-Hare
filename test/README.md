@@ -199,7 +199,7 @@ Tool change requested: T1
 ...
 ------------------------------------------------------------------------
 T1   gate 1    LOADED IN NOZZLE           868.0mm  Idle
-  print=initialized  SYNCED  t=+2.51s
+  print=initialized  SYNCED  t=+2.51s  realtime=100%
   mmu_entry_1=1  mmu_exit_1=1  filament_compression=1  filament_tension=1  ...
             nfc pre ent exit/gate shex enc comp/extr nozl
    gate 0    ..  ..  ..     ..     ..   ..     ..     ..     -100.0
@@ -363,7 +363,9 @@ all. Fast, but nothing time-driven is observable — an LED effect never reaches
 and every action transition lands in the same instant.
 
 `/pace FACTOR` spends that fraction of each move's *real* duration in virtual time: `0` is
-instant (the default), `0.5` twice as fast as real, `1` roughly real time. Each move's duration
+instant (the default), `0.5` twice as fast as real, `1` roughly real time. While it is on, the
+`machine` header carries `realtime=<n>%` next to the clock — that is the field it explains,
+since `t=` only moves during an operation when pacing is on. Absent at `0`. Each move's duration
 is already known — `MmuStepper._submit_move` computes the real trapezoid — so this is HH's own
 arithmetic, not an invented number.
 

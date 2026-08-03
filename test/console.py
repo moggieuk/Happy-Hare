@@ -856,6 +856,12 @@ class Console:
         if bowden >= 0:
             extra.append('bowden=%d%%' % bowden)
         extra.append('t=%+.2fs' % (self.hh.reactor.monotonic() - 1000.))
+        # Only when pacing is ON. 0 is the default and means "moves are instant", which is
+        # the absence of a mode rather than a mode - and a permanent 'realtime=0%' would just
+        # be a row of noise on every prompt. Shown next to the clock because that is the
+        # field it explains: with this present, t= moves during an operation.
+        if self.hh.pacing:
+            extra.append('realtime=%g%%' % (self.hh.pacing * 100.))
         out.append('  ' + '  '.join(extra))
         if mmu.is_mmu_paused():
             # Read the reason from status, not psm.reason_for_pause, which persists after

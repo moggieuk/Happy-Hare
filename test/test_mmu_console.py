@@ -1815,6 +1815,24 @@ class TestTheDefaultProfile(unittest.TestCase):
         self.assertNotIn(0, hh.mmu.gate_maps.gate_status, 'a gate went EMPTY during a paced run')
         self.assertEqual(hh.errors, [])
 
+    def test_the_header_reports_pacing_only_when_it_is_on(self):
+        """
+        Next to the clock, because that is the field it explains: with pacing on, t= moves
+        during an operation. Absent at 0 - the default means "instant", which is the absence
+        of a mode rather than a mode, and a permanent realtime=0% would be noise.
+        """
+        hh = self.console.hh
+        self.console.args.header = ['machine']
+        self.addCleanup(hh.set_pacing, 0.)
+
+        self.assertNotIn('realtime', '\n'.join(self.console.header_lines()))
+        hh.set_pacing(0.5)
+        self.assertIn('realtime=50%', '\n'.join(self.console.header_lines()))
+        hh.set_pacing(1.)
+        self.assertIn('realtime=100%', '\n'.join(self.console.header_lines()))
+        hh.set_pacing(0.)
+        self.assertNotIn('realtime', '\n'.join(self.console.header_lines()))
+
     def test_a_paced_preload_still_marks_the_gate_available(self):
         """
         The specific silent failure reactor dispatch caused. Preload is the most timer-sensitive
