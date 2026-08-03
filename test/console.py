@@ -483,6 +483,7 @@ class Console:
         self.tee = None                             # the ScrollbackTee, while interacting
         self.hh = None
         self.fil = None
+        self.primed = {}                            # gate -> filament attributes, /gates
         self.running = True
         # Commands that raised. Counted separately from hh.errors because an exception out
         # of the dispatcher never reaches respond_raw, so a parse failure would otherwise
@@ -549,6 +550,18 @@ class Console:
 
         if preloading:
             self._preload_all()
+
+        # Something for the gate table, the LED filament_color render and the Spoolman paths
+        # to show. A fresh machine reports "Unknown | 200C | Unknown" on every gate.
+        if not a.no_prime:
+            self.primed = self.hh.prime_gate_map(seed=a.seed)
+
+        # Walk past effect_initialized, the 8s unit-wide flash bootup leaves running. While it
+        # holds a unit every transient flash is DROPPED (mmu_led_manager.py:473), so an NFC
+        # read acknowledgment - or anything else cosmetic - silently does nothing. A printer
+        # leaves that window on its own; here the clock stops where boot() left it, 2.5s in,
+        # so without this an interactive session never gets out of it.
+        self.hh.settle_leds()
 
         # Anchor the virtual clock LAST, so /timestamp reads "now" at the first prompt
         # rather than a few virtual seconds into the past. Read from the reactor rather
@@ -2157,6 +2170,12 @@ def parse_args(argv=None):
     p.add_argument('--no-calibrate', action='store_true',
                    help='boot cold: no seeded calibration, no homing, no preload - the state '
                         'a fresh install is in, so MMU_CALIBRATE_* can be driven for real')
+    p.add_argument('--no-prime', action='store_true',
+                   help='leave the gate map blank instead of giving every gate a vendor, '
+                        'material, colour and temperature')
+    p.add_argument('--seed', type=int, default=0,
+                   help='seed for the primed gate map, so a session is reproducible '
+                        '(default %(default)s)')
     p.add_argument('--trace', type=int, default=0, metavar='0-4',
                    help="Happy Hare log_level; 4 is full narration")
     p.add_argument('--virtual-nfc', action='store_true',

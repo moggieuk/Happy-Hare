@@ -1897,11 +1897,26 @@ class MmuController(MmuFilamentMovement):
 
     def _nfc_led_segment(self, unit, gate=None):
         # 'auto' (or empty) -> 'status' for a shared/bypass reader, the gate's own 'exit'
-        # LEDs for a per-gate reader. An explicit configured value applies to both.
+        # LEDs for a per-gate reader. An explicit configured value applies to both, and is
+        # taken at face value - if you name a segment, you get it.
         seg = unit.p.nfc_led_segment
         if seg and seg != 'auto':
             return seg
-        return 'exit' if gate is not None else 'status'
+        if gate is not None:
+            return 'exit'
+        # A shared read wants 'status', but plenty of boards have no status LEDs at all (the
+        # ViViD ships exit-only) - and flashing a segment with zero LEDs makes the whole
+        # acknowledgment invisible. Prefer 'status', fall back to the segment every board has.
+        # A unit with neither is no worse off than before: _set_led drops it either way.
+        if self._segment_led_count(unit, 'status'):
+            return 'status'
+        return 'exit'
+
+    def _segment_led_count(self, unit, segment):
+        leds = getattr(unit, 'leds', None)
+        if leds is None:
+            return 0
+        return leds.get_status().get(segment, 0)
 
     def _nfc_led_flash(self, operation, duration=None, default=None, defer=False, unit=None, gate=None):
         """Flash the effect mapped to 'operation' (effect_<operation> in [mmu_leds]) on the
@@ -3301,7 +3316,20 @@ class MmuController(MmuFilamentMovement):
         self.pending_metadata = (uid, metadata)
         self.reactor.update_timer(self.pending_timer,
                                   self.reactor.monotonic() + self.p.spoolman_pending_id_timeout)
-        self.log_debug("NFC: staged tag metadata for uid %s pending gate assignment" % uid)
+        # log_info, not log_debug: this is the ONLY acknowledgment a shared reader produces.
+        # A per-gate read says "gate N filament set from tag ..." (_apply_metadata_to_gate),
+        # so at debug level a shared read looked like nothing had happened at all.
+        #
+        # Guarded exactly as _apply_metadata_to_gate is, and for two reasons: describing the
+        # tag means reaching into the payload, and metadata this thin will be REJECTED by that
+        # same guard when the pending gate is assigned - so claiming it was staged would be a
+        # lie. Fall back to naming the UID.
+        if isinstance(metadata, dict) and metadata.get('material'):
+            name, material, vendor, _color, temperature = self._filament_from_metadata(metadata)
+            self.log_info("NFC: tag %s read: %s %s %s @ %dC - staged for the next gate loaded"
+                          % (uid, vendor, material, name, temperature))
+        else:
+            self.log_info("NFC: tag %s read, but it carries no usable filament data" % uid)
 
 
     def _apply_metadata_to_gate(self, gate, uid, metadata):

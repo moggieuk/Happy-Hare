@@ -1735,6 +1735,47 @@ class TestTheDefaultProfile(unittest.TestCase):
             self.assertEqual(hh.errors, [], 'failed on %r' % command)
         self.assertEqual(hh.mmu.filament_pos, 0, 'did not end up unloaded')
 
+    def test_every_gate_starts_with_plausible_filament(self):
+        """
+        A fresh machine reports "Unknown | 200C | Unknown" on every gate, which makes anything
+        that presents filament attributes - the gate table, the LED filament_color effect, the
+        Spoolman paths - impossible to eyeball. Priming gives each gate real-looking metadata.
+        """
+        hh = self.console.hh
+        maps = hh.mmu.gate_maps
+        num_gates = hh.mmu.num_gates
+        low, high = hh.FILAMENT_TEMP_RANGE
+        self.assertEqual(len(self.console.primed), num_gates)
+        for gate in range(num_gates):
+            with self.subTest(gate=gate):
+                self.assertIn(maps.gate_vendor[gate], hh.FILAMENT_VENDORS)
+                self.assertIn(maps.gate_material[gate], hh.FILAMENT_MATERIALS)
+                self.assertTrue(maps.gate_color[gate], 'no colour on gate %d' % gate)
+                self.assertTrue(low <= maps.gate_temperature[gate] <= high,
+                                maps.gate_temperature[gate])
+                # The name is a product name and HH renders it next to the vendor, so it
+                # must not repeat it ("Prusa | Prusa PLA")
+                self.assertNotIn(maps.gate_vendor[gate], maps.gate_filament_name[gate])
+
+    def test_priming_is_reproducible_and_varied(self):
+        """
+        Seeded on purpose: the point is data that LOOKS real, not data that changes every run.
+        Varied across gates, identical across runs with the same seed.
+        """
+        first = self.console.hh.prime_gate_map(seed=7)
+        second = self.console.hh.prime_gate_map(seed=7)
+        self.assertEqual(first, second, 'same seed produced different data')
+        self.assertGreater(len({(a['vendor'], a['material']) for a in first.values()}), 1,
+                           'every gate got the same filament')
+
+    def test_no_prime_leaves_the_gate_map_alone(self):
+        console = console_mod.Console(console_mod.parse_args(
+            ['--plain', '--no-log', '--header', 'off', '--no-prime']))
+        self.addCleanup(console.close)
+        console.boot()
+        self.assertEqual(console.primed, {})
+        self.assertEqual(console.hh.mmu.gate_maps.gate_vendor[0], '')
+
     def test_the_selector_header_reports_the_carriage_and_the_servo(self):
         """
         The default profile has physical selectors, so the group must render something. Both
