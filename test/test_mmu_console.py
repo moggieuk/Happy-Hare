@@ -1930,6 +1930,45 @@ class TestTheDefaultProfile(unittest.TestCase):
                             'paced preload left the gate EMPTY')
         self.assertEqual(hh.errors, [])
 
+    def test_a_paced_move_is_walked_rather_than_jumped(self):
+        """
+        A single long move used to do one advance() and one sleep(), so it FROZE for the whole
+        of it - no LED frames, no repaint, no intermediate position. A load looked like three
+        blocks with nothing happening in between.
+
+        Each move is now walked in slices, the model and the clock advancing together, so the
+        filament genuinely travels and there are hundreds of repaint opportunities.
+        """
+        hh = self.console.hh
+        gate = hh.mmu.num_gates - 1
+        self.console._dispatch('MMU_SELECT GATE=%d' % gate)
+
+        seen = []
+        hh.printer.harness_pace_observer = lambda: seen.append(round(self.console.fil.tip[gate], 2))
+        self.addCleanup(setattr, hh.printer, 'harness_pace_observer', None)
+        hh.set_pacing(1.)
+        self.addCleanup(hh.set_pacing, 0.)
+        self.console._dispatch('MMU_LOAD')
+
+        self.assertGreater(len(seen), 50, 'a whole load produced only a handful of updates')
+        self.assertGreater(len(set(seen)), 50, 'the filament did not move between updates')
+        self.assertEqual(seen, sorted(seen), 'a load should only ever feed filament forwards')
+
+    def test_pacing_does_not_change_where_the_filament_ends_up(self):
+        """Slicing a move must be exact - the totals cannot drift from the unpaced answer."""
+        hh = self.console.hh
+        gate = hh.mmu.num_gates - 1
+        self.console._dispatch('MMU_SELECT GATE=%d' % gate)
+        self.console._dispatch('MMU_LOAD')
+        unpaced = round(self.console.fil.tip[gate], 4)
+        self.console._dispatch('MMU_UNLOAD')
+
+        hh.set_pacing(1.)
+        self.addCleanup(hh.set_pacing, 0.)
+        self.console._dispatch('MMU_LOAD')
+        self.assertAlmostEqual(round(self.console.fil.tip[gate], 4), unpaced, places=3)
+        self.assertEqual(hh.errors, [])
+
     def test_pacing_is_skipped_inside_a_reactor_callback(self):
         """
         advance() asserts if it re-enters a callback, so the pacer must no-op there. Only
@@ -1939,11 +1978,11 @@ class TestTheDefaultProfile(unittest.TestCase):
         hh.set_pacing(1.)
         self.addCleanup(hh.set_pacing, 0.)
         mq = hh.printer.lookup_object('motion_queuing')
-        before = hh.reactor.monotonic()
-        hh.reactor.register_callback(lambda et: mq._pace(5.))
+        self.assertIsNotNone(mq._pace_factor(), 'precondition: pacing is on at top level')
+        inside = []
+        hh.reactor.register_callback(lambda et: inside.append(mq._pace_factor()))
         hh.reactor.advance(0.)
-        # advance(0) itself does not move the clock, and the paced call inside must not either
-        self.assertAlmostEqual(hh.reactor.monotonic(), before, places=3)
+        self.assertEqual(inside, [None], 'a move inside a callback must not be paced')
 
     def test_a_spool_lookup_resolves_instead_of_timing_out(self):
         """

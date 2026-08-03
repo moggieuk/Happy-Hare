@@ -29,6 +29,12 @@ class Trapq:
 
 
 class PrinterMotionQueuing:
+    # How finely a PACED move is walked. 50ms is ~20 updates a second, which is smooth to an
+    # eye and cheap enough that a long move does not turn into thousands of reactor passes.
+    PACE_TICK = 0.05
+    # ... and the ceiling on slices per move, so a 60-second one does not run 1200 of them.
+    PACE_MAX_SLICES = 400
+
     def __init__(self, config):
         self.printer = config.get_printer()
         self.trapqs = []
@@ -70,54 +76,74 @@ class PrinterMotionQueuing:
             # Homing moves do NOT appear here (they go through HomingMove, which only
             # calls set_position), so there is no double counting. The retract inside
             # MmuGenericRail.home DOES appear, and should.
-            if self.move_observer is not None:
-                distance = axes_r_x * cruise_v * (accel_t + cruise_t)
-                if distance:
-                    self.move_observer(trapq, distance)
-            # Optionally let this move take TIME. See _pace().
-            self._pace(accel_t + cruise_t + decel_t)
+            distance = axes_r_x * cruise_v * (accel_t + cruise_t)
+            # Optionally let this move take TIME, walking the filament along as it goes.
+            self._run_move(trapq, distance, accel_t + cruise_t + decel_t)
         return trapq_append
 
-    def _pace(self, duration):
+    def _run_move(self, trapq, distance, duration):
         """
-        Spend `duration` seconds of virtual time on a move that has already happened.
+        Effect a move: tell the observer how far it went, and optionally spend its duration.
 
-        Off unless printer.harness_pacing is set (see Session.set_pacing). At 0 - the default,
-        and what every test uses - a whole MMU_LOAD completes without the clock moving at all,
-        which is fast but means nothing time-driven is observable: LED effects never reach a
-        second frame, and every action transition lands in the same instant.
+        Unpaced (the default, and every test) this is one notification and no time at all.
+        Paced, it is walked in PACE_TICK slices - the model, the clock, the repaint and the
+        sleep all advancing together - because a single 8-second move otherwise did one
+        advance() and one sleep() and FROZE for the whole of it: no LED frames, no repaint,
+        no intermediate position. Nothing to watch is the opposite of the point.
+        """
+        factor = self._pace_factor()
+        if factor is None:
+            self._note_move(trapq, distance)
+            return
 
-        AFTER the fact, not during: the move observer above has already advanced the filament
-        model the full distance, so this is "hold the finished state for as long as the move
-        would have taken" rather than an interpolation. That is what makes a load watchable -
-        HH emits many moves per operation, so the pauses land between them.
+        spent = duration * factor
+        # Cap the slice COUNT, not the tick: a 60-second paced move should not run 1200
+        # iterations, and past ~20 updates/second there is nothing left for an eye to gain.
+        slices = max(1, min(self.PACE_MAX_SLICES, int(round(spent / self.PACE_TICK))))
+        reactor = self.printer.get_reactor()
+        observer = getattr(self.printer, 'harness_pace_observer', None)
+        wall = getattr(self.printer, 'harness_pace_wall', 0.) or 0.
+        for index in range(slices):
+            # Give the LAST slice whatever rounding left over, so the totals are exact
+            done = spent * index / slices
+            step = (spent * (index + 1) / slices) - done
+            self._note_move(trapq, distance / slices)
+            reactor.advance(step)
+            if observer is not None:
+                observer()
+            if wall > 0.:
+                time.sleep(step * wall)
 
-        reactor.advance() RUNS TIMERS, which is the whole point (a pause() would only jump the
-        clock, see reactor._sys_pause). It cannot be called from inside a reactor callback, so
-        this is a no-op there - the console dispatches at top level, which is where pacing is
-        wanted and where advance() is legal.
+    def _note_move(self, trapq, distance):
+        # THE hook for plain (non-homing) filament moves - notably the final park in
+        # _unload_gate, which homing never sees. MmuStepper._submit_move
+        # (extras/mmu_stepper.py:853-861) is the sole producer of these, and the signed
+        # distance is exactly recoverable from the trapezoid:
+        #
+        #   force_move.calc_move_time gives dist = speed * (accel_t + cruise_t) with
+        #   cruise_v == speed, so signed dist = axes_r_x * cruise_v * (accel_t + cruise_t)
+        #   - exact for both the accel and zero-accel branches.
+        #
+        # Homing moves do NOT appear here (they go through HomingMove, which only calls
+        # set_position), so there is no double counting. The retract inside
+        # MmuGenericRail.home DOES appear, and should.
+        if self.move_observer is not None and distance:
+            self.move_observer(trapq, distance)
+
+    def _pace_factor(self):
+        """
+        The pacing factor if this move should be paced, else None.
+
+        None covers three cases that all mean "just move": pacing off (the default),
+        a zero-length move, and being inside a reactor callback - advance() asserts there, and
+        the console dispatches at top level, which is where pacing is wanted anyway.
         """
         factor = getattr(self.printer, 'harness_pacing', 0.) or 0.
-        if factor <= 0. or duration <= 0.:
-            return
-        reactor = self.printer.get_reactor()
-        if reactor.in_dispatch():
-            return
-        spent = duration * factor
-        reactor.advance(spent)
-        # Let whoever is watching redraw. Without this the clock moves but nothing renders
-        # until the command returns, so a paced load still can't be WATCHED - which is the
-        # only reason to pace one. The console points this at its pinned header.
-        observer = getattr(self.printer, 'harness_pace_observer', None)
-        if observer is not None:
-            observer()
-        # And optionally hold it there in WALL time. Virtual time is free - advancing the
-        # clock 11 seconds costs milliseconds - so without this a paced load reports the right
-        # timings and still flashes past in an instant. Sleeping is what makes it watchable,
-        # and it is separate from `factor` precisely so tests can pace without ever sleeping.
-        wall = getattr(self.printer, 'harness_pace_wall', 0.) or 0.
-        if wall > 0.:
-            time.sleep(spent * wall)
+        if factor <= 0.:
+            return None
+        if self.printer.get_reactor().in_dispatch():
+            return None
+        return factor
 
     def check_step_generation_scan_windows(self):
         self.scan_window_checks += 1

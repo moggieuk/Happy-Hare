@@ -378,8 +378,16 @@ pacing applies.
 **Virtual time is free** — advancing the clock 11 seconds costs milliseconds — so pacing alone
 makes an operation *report* the right timings while still finishing in an instant. To actually
 watch one, it has to sleep, which it does at an interactive prompt and never in a script, a
-pipe or the test suite (`--wall` / `--no-wall` to force it either way). With a pinned header the
-pacer repaints between moves, so the operation plays out on screen.
+pipe or the test suite (`--wall` / `--no-wall` to force it either way).
+
+A paced move is **walked, not jumped** — sliced at `PACE_TICK` (50ms), with the filament model,
+the clock, the pinned-header repaint and the sleep all advancing together. One `advance()`
+followed by one `sleep()` would freeze for the whole move: no LED frames, no repaint, no
+intermediate position. A single 13-gate load produces ~240 updates, and the totals stay exact —
+paced and unpaced end with the filament in the same place.
+
+Note the log still arrives in **blocks**, because Happy Hare only logs at operation-step
+boundaries, not continuously. The header is what moves during a long move.
 
 `/timestamp on` is what makes the pacing legible: output is stamped with the virtual clock as
 of **when Happy Hare produced the line**, not when it was printed — `_drain()` runs after a
