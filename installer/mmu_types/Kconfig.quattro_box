@@ -76,9 +76,9 @@ if MMU_FAMILY_QUATTRO_BOX
       default "1.0"
 
     config PARAM_GEAR_GEAR_RATIO
-      default "1:1"
+      default "50:17"
     config PARAM_GEAR_RUN_CURRENT
-      default 0.7
+      default 1.27
     config PARAM_GEAR_HOLD_CURRENT
       default 0.2
     config PARAM_GEAR_HOMING_SPEED
@@ -109,9 +109,9 @@ if MMU_FAMILY_QUATTRO_BOX
       default "1.1"
 
     config PARAM_GEAR_GEAR_RATIO
-      default "1:1"
+      default "50:17"
     config PARAM_GEAR_RUN_CURRENT
-      default 0.7
+      default 1.27
     config PARAM_GEAR_HOLD_CURRENT
       default 0.2
     config PARAM_GEAR_HOMING_SPEED
