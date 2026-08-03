@@ -578,7 +578,7 @@ leaves the gate-0 gear pins empty and fails with `Invalid pin description ''`.
    body, so `T1`, the print start/end and the park/cut/purge sequences produce **silence**.
    Use `MMU_CHANGE_TOOL TOOL=1`. The console notices a bare `T<n>` and says so.
 2. **A physical selector must be calibrated and homed before it can select a gate.** The
-   console does that for you at startup (`boot(calibrate=True)` plus `_prepare_selectors`);
+   console does that for you at startup (`boot(calibrate=True, pre_bootup=...)`);
    in a test, call `hh.boot(calibrate=True)`, or `hh.boot()` then `hh.calibrate()`, then
    `MMU_HOME UNIT=<n>`. Skip it and every selection fails with *"Selector is not clibrated"*
    (sic). Calibration is **seeded** by default for speed, but `MMU_CALIBRATE_*` genuinely

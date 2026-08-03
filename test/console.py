@@ -532,9 +532,13 @@ class Console:
         # that is fully preloaded by the time the prompt appears, and that banner is the last
         # thing on screen. Only seeded when the preload is actually going to happen.
         preloading = not (a.no_preload or a.no_calibrate)
+        # home= for the same reason as the other two: bootup renders the selector and filament
+        # rows, and homing afterwards left the banner showing 'Selct: XXXX' and '[T?]' about a
+        # machine a later MMU_STATUS reported as homed with a gate selected.
         self.hh.boot(calibrate=not a.no_calibrate,
                      gates_loaded_at=TIP_AT_GATE if preloading else None,
-                     prime=not a.no_prime, seed=a.seed)
+                     prime=not a.no_prime, seed=a.seed,
+                     pre_bootup=self._home_before_bootup)
         self.startup_output = list(self.sink)        # the welcome, shown by banner()
         self._clear_sink()
 
@@ -553,8 +557,6 @@ class Console:
         # A PHYSICAL selector needs calibrating and homing before it can select a gate, and an
         # uncalibrated one refuses with "Selector is not clibrated". No-op on a VirtualSelector
         # machine, so this costs the older profiles nothing.
-        self._prepare_selectors()
-
         if preloading:
             self._preload_all()
 
@@ -583,25 +585,6 @@ class Console:
         self.wall_start = time.time()
         self.clock_epoch = self.hh.reactor.monotonic()
         return self
-
-    def _prepare_selectors(self):
-        """
-        Home each physical selector. Calibration itself is seeded inside boot() - see the
-        note there - but homing stays here on purpose: doing it before __MMU_BOOTUP sends
-        bootup down a different recovery branch.
-
-        MMU_HOME must name its unit on a multi-unit machine.
-
-        Skipped entirely under --no-calibrate, which boots the machine cold so the real
-        MMU_CALIBRATE_* flow can be driven by hand.
-        """
-        if self.args.no_calibrate:
-            return
-        if not getattr(self.hh.printer, 'harness_selectors', None):
-            return
-        for index, unit in enumerate(self.hh.mmu.mmu_machine.units):
-            if getattr(unit.selector, 'selector_stepper', None) is not None:
-                self._dispatch('MMU_HOME UNIT=%d' % index)
 
     def _preload_all(self):
         """Gates start empty (TIP_ABSENT), so a bare MMU_LOAD on a fresh session fails."""
@@ -794,6 +777,33 @@ class Console:
         self.streaming = False
         self._warn_unhandled(line, unhandled_mark)
         self._warn_silent_macro(line, mark)
+
+    def _home_before_bootup(self):
+        """
+        Home every physical selector while bootup can still see it, and keep the chatter out
+        of the banner.
+
+        Homing has to precede __MMU_BOOTUP or the banner renders an unhomed machine - 'Selct:
+        XXXX', tool 'T?' - which a later MMU_STATUS contradicts. But "Homing MMU unit0... /
+        Homed" is setup, not bootup, and startup_output is printed under the welcome, so
+        leaving it in put three lines of it ABOVE the rabbit. Dropped the same way the
+        preload's noise is (see _preload_all).
+
+        Skipped under --no-calibrate, which boots the machine cold on purpose.
+        """
+        if self.args.no_calibrate:
+            return
+        mark = len(self.sink)
+        self.hh.home_selectors()
+        # Then pick a gate, so bootup renders a machine that knows where it is rather than
+        # '[T?] ... 0.0mm'. It cannot be seeded pre-ready like the rest of the gate map -
+        # load_persisted_state drops a persisted selection while the selector is unhomed, and
+        # homing needs a live machine - so it has to be a real selection made right here.
+        if self.hh.mmu.gate_selected < 0:
+            self.hh.gcode.run_script('MMU_SELECT GATE=0')
+        del self.sink[mark:]
+        del self.sink_stamp[mark:]
+        self._printed = min(self._printed, mark)
 
     def _settle_moonraker(self):
         """

@@ -1757,6 +1757,30 @@ class TestTheDefaultProfile(unittest.TestCase):
                 # must not repeat it ("Prusa | Prusa PLA")
                 self.assertNotIn(maps.gate_vendor[gate], maps.gate_filament_name[gate])
 
+    def test_the_bootup_banner_shows_a_homed_machine_with_a_gate_selected(self):
+        """
+        __MMU_BOOTUP renders the selector row and the filament row, so homing after boot()
+        returned left the banner reporting 'Selct: XXXX' and tool 'T?' about a machine a later
+        MMU_STATUS described as homed with a gate selected.
+
+        The two rows are read out of the banner rather than off the objects, because the
+        complaint was about what the banner SAYS.
+        """
+        joined = '\n'.join(self.console.startup_output)
+        selct = next(l for l in joined.split('\n') if l.startswith('Selct:'))
+        self.assertNotIn('X', selct, 'the selector reads as unhomed at bootup')
+        self.assertNotIn('[T?]', joined, 'bootup rendered an unknown tool')
+
+    def test_the_homing_chatter_stays_out_of_the_banner(self):
+        """
+        Homing has to precede bootup, but "Homing MMU unit0... / Homed" is setup rather than
+        bootup output - and startup_output prints under the welcome, so leaving it in put three
+        lines of it above the rabbit.
+        """
+        joined = '\n'.join(self.console.startup_output)
+        self.assertNotIn('Homing MMU', joined)
+        self.assertIn('Ready', joined, 'the welcome should still be there')
+
     def test_the_bootup_banner_already_shows_the_primed_map(self):
         """
         __MMU_BOOTUP prints the gate/filament table, so priming has to happen BEFORE it.

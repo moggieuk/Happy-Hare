@@ -1011,6 +1011,11 @@ class Session:
         afterwards - it resets every switch to its configured resting state and would undo
         the placement.
         """
+        # NOT the selected gate/tool. Seeding VARS_MMU_GATE_SELECTED here looks like the same
+        # idea, but load_persisted_state discards it at handle_ready with "Persisted gate/tool
+        # 0/0 dropped because selector isn't homed" - and a physical selector cannot be homed
+        # before ready, because MMU_HOME is a gcode command on a live machine. Selecting a gate
+        # belongs after homing; see Console._home_before_bootup.
         from extras.mmu.mmu_constants import GATE_AVAILABLE, VARS_MMU_GATE_STATUS
         model = self.filament()
         for gate in range(self.mmu.num_gates):
@@ -1020,7 +1025,22 @@ class Session:
                                  * self.mmu.num_gates)
         return self
 
-    def boot(self, extra=0.01, calibrate=False, gates_loaded_at=None, prime=False, seed=0):
+    def home_selectors(self):
+        """
+        MMU_HOME every unit that has a physical selector. Returns the units homed.
+
+        Named per unit because MMU_HOME insists on it once more than one is configured
+        (mmu_base_command.py:198). No-op on a VirtualSelector machine.
+        """
+        homed = []
+        for index, unit in enumerate(self.mmu.mmu_machine.units):
+            if getattr(unit.selector, 'selector_stepper', None) is not None:
+                self.gcode.run_script('MMU_HOME UNIT=%d' % index)
+                homed.append(unit.name)
+        return homed
+
+    def boot(self, extra=0.01, calibrate=False, gates_loaded_at=None, prime=False, seed=0,
+             pre_bootup=None):
         """
         Full sequence to a live MMU: connect -> ready -> pump the reactor past
         BOOT_DELAY so the scheduled bootup callback runs __MMU_BOOTUP, then past the
@@ -1041,13 +1061,18 @@ class Session:
         so priming afterwards left the bootup banner showing "Unknown" on every gate while a
         later MMU_STATUS showed the real thing.
 
-        It deliberately does NOT home. Measured on tradrack, seeding alone leaves bootup's
-        output byte-identical minus the warnings; homing here as well makes bootup take a
-        different recovery branch (the "Attempting to recover filament position" line goes
-        away and the selector row changes). Homing stays where it was - after boot() returns.
+        pre_bootup is a callable run after klippy:ready but before the advance that fires
+        __MMU_BOOTUP - the seam for anything needing a LIVE machine that bootup nonetheless has
+        to see. The console passes homing (see home_selectors): bootup renders the selector and
+        filament rows, and homing afterwards left it showing an unhomed 'Selct: XXXX' about a
+        machine a later MMU_STATUS reported as homed.
 
-        Both default to False: an uncalibrated machine with an unknown gate map is a real
-        state HH has to cope with, and the tests assert it.
+        What homing here trades away: bootup takes a different recovery branch on an already
+        homed machine, so its "Attempting to recover filament position" line does not appear
+        there (MMU_HOME emits it instead). A test asserting on that line wants pre_bootup=None.
+
+        All of them default to False: an uncalibrated, unhomed machine with an unknown gate map
+        is a real state HH has to cope with, and the tests assert it.
         """
         if not self._booted:
             if self.config is None:
@@ -1072,6 +1097,10 @@ class Session:
             if gates_loaded_at is not None:
                 self.seed_loaded_gates(gates_loaded_at)
             self.ready()
+            # The seam for anything that needs a LIVE machine but has to happen before bootup
+            # renders - homing, in the console's case. See the docstring.
+            if pre_bootup is not None:
+                pre_bootup()
             self.install_macro_effects()
             self.reactor.advance(BOOT_DELAY + extra)
             self._settle_nfc_init(extra)
