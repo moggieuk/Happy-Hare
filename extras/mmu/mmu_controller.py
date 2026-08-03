@@ -1468,10 +1468,6 @@ class MmuController(MmuFilamentMovement):
         for gate in range(self.num_gates):
             mmu_unit = self.mmu_unit(gate)
             self.var_manager.set("%s%d" % (VARS_MMU_GATE_STATISTICS_PREFIX, mmu_unit.local_gate(gate)), self.gate_statistics[gate], namespace=mmu_unit.name)
-
-        # Note: deliberately not persisting the auto mode clog detection length from here. The
-        # encoder tells its own calibrator when autotuning moves it, so reading the encoder's
-        # live length back would only risk reverting a calibrator write it hadn't yet pulled
         self.var_manager.write()
 
 
