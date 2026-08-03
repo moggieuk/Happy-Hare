@@ -88,7 +88,7 @@ make BOOTSTRAP_PY=python3.9 VENV=venv39 test
 
 </details>
 
-`make test` offers everything — currently **766 tests, about six minutes** on a warm
+`make test` offers everything — currently **786 tests, about six minutes** on a warm
 laptop. Expect to see:
 
 ```
@@ -107,19 +107,19 @@ file picker first rather than starting straight away.
 suite exactly as it always did — but untick the expensive files and you get a focused run:
 
 ```
-Happy Hare tests - 766 tests in 23 files                    times from last run
+Happy Hare tests - 786 tests in 23 files                    times from last run
 
    1 [x] installer.test_build           1      0.0s
    2 [x] test_mmu_adc_compat           14      0.0s
    3 [x] test_mmu_bootup               31       36s
    …
-   6 [x] test_mmu_console             131      131s
+   6 [x] test_mmu_console             148      137s
    …
   13 [x] test_mmu_nfc                  17      187s
    …
   22 [x] test_mmu_toolchange           20      5.4s
 
-  selected: 23 files - 766 tests - ~6m00s last time
+  selected: 23 files - 786 tests - ~6m00s last time
 
   [Enter] run    1 3 5-8 toggle    a all    n none    v invert
   +TEXT / -TEXT tick by name    p previous selection    s sort by time    q quit
@@ -128,7 +128,7 @@ Happy Hare tests - 766 tests in 23 files                    times from last run
 
 The right-hand column is how long each file took **on your machine, last run**, and it is the
 column to look at when deciding what to drop, because the cost is wildly uneven. From a real
-full run: `test_mmu_nfc` took 187 s for 17 tests and `test_mmu_console` 131 s for 131, while
+full run: `test_mmu_nfc` took 187 s for 17 tests and `test_mmu_console` 137 s for 148, while
 six files — including `test_mmu_tag_parser`'s 34 tests — came in under a tenth of a second
 between them. A handful of the twenty-three files account for most of the run. The times
 fill in after your first run, `s` sorts by them, and the footer estimates what the current
@@ -222,7 +222,8 @@ the log away instead of repainting it. Useful meta-commands beyond `/help`:
 
 | Command | Does |
 |---|---|
-| `/advance N` | move the virtual clock N seconds (nothing is time-driven without it) |
+| `/advance N` | jump the virtual clock forward N seconds |
+| `/live [on\|off]` | run the clock while you sit at the prompt; **on by default** at a terminal, off is the reproducible mode |
 | `/vars [mmu\|machine]` | `get_status()` of the `mmu` object, the `mmu_machine` object, or both |
 | `/redraw` | repaint the whole screen, log and all — the way back from a corrupted display |
 | `/clear` | as `/redraw`, but empty the log rather than repaint it |
@@ -230,7 +231,7 @@ the log away instead of repainting it. Useful meta-commands beyond `/help`:
 | `/sensor NAME on\|off\|enable\|disable` | `on/off` drives the switch through its real button callback; `enable/disable` flips `sensor_enabled` so Happy Hare treats it as **not fitted** |
 | `/place`, `/preload`, `/exhaust` | set the scene: filament at a gate, preloaded, or run out |
 | `/log [N]`, `/trace 0-4` | the log file, and how much detail goes into it |
-| `/timestamp [on\|off]` | stamp MMU output with the virtual clock (no argument toggles) |
+| `/timestamp [on\|off]` | stamp MMU output with the virtual clock; **on by default** at a terminal |
 
 ### Multi-unit
 
@@ -244,11 +245,55 @@ needs the qualified name — a bare name that matches more than one unit is reje
 than silently resolved. The filament view groups gates under their unit, and the LED view
 shows every unit rather than only the selected one.
 
-**The clock is virtual and frozen while you type.** Nothing happens at the prompt: no timer
-fires, no LED animation ticks, no pending-spool timeout expires. That is what makes the
-prompt safe, and it is why `/advance N` exists — without it you never see anything
-time-driven. `/advance 12` clears the 8-second boot LED rainbow; the pending spool_id
-timeout is 20 seconds.
+**The clock is virtual.** At a terminal it is also **live**: it runs at wall speed while you
+sit at the prompt, so timers fire on their own — the 8-second boot LED rainbow finishes, the
+20-second pending-spool timeout expires, and on an NFC machine the poll loop keeps turning
+without being asked. `/advance N` jumps it forward by N seconds whether live or not.
+
+`/live off` freezes it, which is the **reproducible** mode: with the clock stopped the same
+commands always produce the same transcript however long you took over them, which is what
+you want when you are pinning down a specific sequence. `--no-live` starts that way. Live is
+off automatically for `--script` and anything that is not a terminal, so command files stay
+deterministic.
+
+<details>
+<summary>How the live clock works, and why it is a signal rather than a thread</summary>
+
+A `setitimer` handler, armed only around `input()` and disarmed for the whole of a dispatch.
+
+Not a background thread, and that is not a preference: the reactor is greenlet-based —
+which is what gives it Klipper-faithful `pause()` and completion semantics — and greenlets
+belong to the thread that created them. Pumping the reactor from a worker thread fails
+outright with `greenlet.error: Cannot switch to a different thread`. A signal handler runs
+on the **main** thread, so the greenlets stay consistent, and it does fire while blocked
+inside readline's `input()`.
+
+Arming only around `input()` is what keeps a tick out of a dispatch, where `advance()`
+asserts on re-entry and where the scrollback tee could be caught halfway through
+reassembling a line. Output produced by a tick is printed above the prompt and the prompt is
+then rebuilt from `readline.get_line_buffer()`, so a tick landing while you are mid-command
+cannot eat what you have typed.
+
+The tick fires every `LIVE_INTERVAL` = **0.5 s** and advances by the *real* time measured
+since the last one, not by that constant — so the interval sets how often the header is
+repainted, not how fast the clock runs. Halving it (it was 1.0 s) therefore costs a second
+repaint per second, not twice the reactor work, and it is what makes an `led_effect`
+animation legible: at `frame_rate: 24` a one-second sample showed every 24th frame, which
+reads as a jump rather than a fade.
+
+The clock itself costs under **1% of one core**: measured on `ercf_vvd`, `advance(60)` is
+8.6 ms of CPU per virtual second, and live mode spends that over a real second. (It was
+7.7 ms before unit0 gained its entry/status/logo segments — 16 more LEDs to animate.)
+Catching up is the expensive direction — an hour compressed into one call is ~30 s of CPU —
+which is why a tick is capped at a few seconds rather than jumping to "now" after the
+machine has slept.
+
+`/advance` is sliced for the same reason. One `advance()` call has an iteration cap and the
+LED effects animate at 24 fps, so on the default profile a single call dies partway through
+the seventh virtual minute — `/advance 600` used to stop at 444 s and raise. The counter
+resets per call, so the span is fed in 60-second slices; timers fire in the same order.
+
+</details>
 
 `/timestamp` shows that clock, dimmed, against each MMU reply — the time the simulator
 started plus however far the reactor has been advanced since, so `/advance 3725` really does
@@ -276,6 +321,8 @@ Useful flags — `make console ARGS='...'`:
 --header machine,sensors,filament,selector,gates,leds   # or 'all' / 'off'
 --inline-header                # reprint above each prompt instead of pinning it
 --scrollback 5000              # lines kept for /scroll; 0 disables it
+--no-live                      # freeze the clock (default: live at a terminal)
+--no-timestamp                 # no clock in the output (default: on at a terminal)
 --color 256|truecolor|16|auto  # colour depth (see below)
 --log-dir /tmp                 # where mmu.log goes; --no-log to discard it
 --trace 4                      # full Happy Hare narration
@@ -288,6 +335,17 @@ Startup shows Happy Hare's **real bootup output** — the welcome banner and the
 — because `cmd_MMU_BOOTUP` runs here exactly as it does on a printer. Calibration is seeded
 *inside* `boot()`, before bootup runs, so a default session boots clean; `--no-calibrate`
 boots the machine cold and the calibration warnings then appear for real.
+
+The **gate map is seeded the same way**, and for the same reason: bootup prints the gate
+table, `_preload_all()` runs after `boot()` returns, and that table is the last thing on
+screen when the prompt appears — so it used to report the whole machine unknown about one
+that is fully loaded. `Session.seed_loaded_gates()` places filament at every gate and
+persists `mmu_state_gate_status` before `klippy:ready`, which is exactly the state a real
+printer restores from `mmu_vars.cfg`. Both halves are needed: the persisted map is the only
+source for a unit with no per-gate switches (ERCF), and it is not enough for one that has
+them (ViViD re-derives its gates from `mmu_entry_9..12` at bootup and would overwrite a
+seeded map with `GATE_EMPTY`). `--no-preload` and `--no-calibrate` skip it, so a cold start
+is still a cold start.
 
 Lines the **console itself** adds are dimmed and prefixed `#`, so there is never a question
 about which of them came off the MMU:
@@ -342,6 +400,42 @@ are typing. `/header GROUPS` switches groups live, `/header all` turns every gro
 `/header off` hides it *and* releases the pinned band. `all` and `off` work on the
 `--header` flag too — both go through the same parser. On a pipe or with `--inline-header`
 it falls back to reprinting above each prompt.
+
+### Reading the LED rows
+
+```
+  led unit0 exit     ██ ██ ██ ██ ██ ██ ██ ██ ██  [gate_status]
+  led unit0 entry    ██ ██ ██ ██ ██ ██ ██ ██ ██  [filament_color]
+  led unit0 status   ████████  [filament_color]
+  led unit0 logo     ██████  [(0.0, 0.0, 0.3)]
+  led unit1 exit     ██████████████ ██████████████ ██████████████ ██████████████  [gate_status]
+```
+
+One block per **physical** LED, in that LED's own colour: `██` lit, `▓▓` lit but too dim to
+show honestly, `··` off (grey). The LEDs of one gate run together and the gates are separated
+by a space, so ViViD's seven-per-gate strip reads as four groups rather than 28
+undifferentiated cells — and fits in 100 columns, which the ungrouped 117-column version did
+not. `[...]` is the segment's effect from `led_manager.effect_state`; `[?]` means nothing has
+painted it yet.
+
+`▓▓` is not a third state, just an honest one. `black_light` is `(0.01, 0, 0.02)` — what an
+idle `status` segment under `filament_color` shows, and what any black filament shows — and
+that paints to xterm 16, i.e. pure black, *less* visible than the grey used for off. Anything
+below 25% is therefore painted at 25% with its hue kept, and the lighter glyph is what tells
+you the brightness on screen is a floor rather than a reading.
+
+A lit LED used to be `##`, which was a problem rather than a shorthand: the glyph was painted
+in the LED's colour, and a white or grey LED — `mmu_breathing_white_fast` on `selecting`,
+`mmu_sparkle` on `complete`, `white_light` for an uncoloured gate under `filament_color` — came
+out indistinguishable from ordinary text, because the terminal's default foreground *is* white.
+A block in the same colour still reads as a block.
+
+All four segments are shown. `ercf_vvd`'s unit0 configures every one of them (9 exit, 9 entry,
+4 status, 3 logo) precisely so every effect path has somewhere to land. Note `define_on` in
+`config/base/mmu.cfg` restricts most effects to `exit`/`gates`/`status`: only
+`mmu_breathing_red_slow`, `mmu_red_strobe` and `mmu_green_strobe_fast` can run on `logo`. That
+restriction is deliberate — it caps how many effect instances get pre-computed, which grows
+with gate count — so widen it in your own config, not in the shipped template.
 
 ### Scrolling back
 
@@ -461,7 +555,7 @@ The test files, grouped by what they're about:
 | **Foundation** | | |
 | `test_mmu_import.py` | 10 | Happy Hare imports at all outside Klipper; repo-wide syntax check |
 | `test_mmu_config.py` | 8 | the real shipped `config/` templates render correctly |
-| `test_mmu_reactor.py` | 21 | the fake reactor itself (see §3) |
+| `test_mmu_reactor.py` | 24 | the fake reactor itself (see §3) |
 | `test_mmu_bootup.py` | 31 | config load → `klippy:connect` → `klippy:ready` → `mmu:bootup` |
 | `test_mmu_profiles.py` | 19 | the same checks across BoxTurtle, Tradrack and EMU |
 | `test_mmu_adc_compat.py` | 14 | the Klipper-version ADC compatibility shim |
@@ -482,10 +576,10 @@ The test files, grouped by what they're about:
 | `test_mmu_roundtrip.py` | 35 | Klipper and Moonraker talking to each other |
 | **Presentation** | | |
 | `test_mmu_leds.py` | 22 | LED effects, flashes, the pending overlay |
-| `test_mmu_console.py` | 131 | the interactive console of §1a — rendering, command dispatch |
+| `test_mmu_console.py` | 148 | the interactive console of §1a — rendering, command dispatch |
 
 Counts as the picker reports them; `installer/test_build.py` adds the one skipped test that
-makes up the 631 total.
+makes up the 651 total.
 
 ### Coverage map
 
@@ -620,7 +714,7 @@ templates** from them, so a broken template shows up as a test failure.
 
 | Profile | What it gives you |
 |---|---|
-| `ercf_vvd` | **the console default.** The only multi-unit profile, and a transcription of a real machine: ERCF 1.1sb (9 gates, `LinearServoSelector`, encoder) + ViViD 1.0 (4 gates, `IndexedSelector`), 13 gates. Also the only one with a sparse per-gate device list, an external LED chain and a filament heater |
+| `ercf_vvd` | **the console default.** The only multi-unit profile, and a transcription of a real machine: ERCF 1.1sb (9 gates, `LinearServoSelector`, encoder) + ViViD 1.0 (4 gates, `IndexedSelector`), 13 gates. Also the only one with a sparse per-gate device list, a filament heater, and full LED coverage: unit0 wires all four segments (9 exit on an external chain, 9 entry, 4 status, 3 logo) while unit1 has 28 exit LEDs over 4 gates |
 | `boxturtle` | 4 gates, no NFC — the default for most tests |
 | `tradrack` | a physical (servo) selector, single unit, no encoder — the simplest physical-selector case |
 | `emu` | 5 gates and the only shipped profile with an analog buffer sensor |

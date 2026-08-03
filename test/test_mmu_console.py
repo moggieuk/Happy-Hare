@@ -517,6 +517,48 @@ class TestBootupOutput(unittest.TestCase):
         self.assertIn('Ready', joined)
         self.assertEqual(console.sink, [], 'preload noise leaked into the console history')
 
+    def _avail_row(self, console):
+        """The gate-availability row of the bootup table. One sink entry is one MESSAGE, and
+        the whole table arrives as a single multi-line one, so split before matching."""
+        for entry in console.startup_output:
+            for line in entry.split('\n'):
+                if line.startswith('Avail:'):
+                    return line
+        self.fail('bootup printed no gate table')
+
+    def test_bootup_reports_the_gates_the_console_is_about_to_preload(self):
+        """
+        __MMU_BOOTUP prints the gate table, and _preload_all() runs after boot() returns - so
+        the banner used to say the whole machine was unknown about one that is fully loaded by
+        the time the prompt appears, and that banner is the last thing on screen. boot() now
+        seeds it (Session.seed_loaded_gates) exactly as a real printer's mmu_vars.cfg would.
+
+        The default profile is ercf_vvd, which is what makes this worth asserting: ERCF has no
+        per-gate switches and takes the persisted map, while ViViD re-derives its gates from
+        mmu_entry_9..12 at bootup. Seeding the map alone left ViViD's four reading EMPTY.
+        """
+        console = console_mod.Console(console_mod.parse_args(['--no-log', '--plain']))
+        self.addCleanup(console.close)
+        console.boot()
+        # AFTER boot(), never before: importing `extras` while the fake klippy tree is not yet
+        # on sys.path binds the repo's own extras/ into sys.modules and every later session in
+        # this process fails root.install()'s leak assertion.
+        from extras.mmu.mmu_constants import GATE_AVAILABLE
+        mmu = console.hh.mmu
+        self.assertEqual(mmu.gate_status, [GATE_AVAILABLE] * mmu.num_gates)
+        row = self._avail_row(console)
+        self.assertNotIn('?', row, 'a gate still reads unknown in the bootup table: %r' % row)
+        self.assertNotIn('-', row, 'a gate still reads empty in the bootup table: %r' % row)
+        self.assertEqual(console.hh.errors, [], 'seeding made bootup dirty')
+
+    def test_no_preload_still_boots_an_unknown_machine(self):
+        """The seeding is tied to the preload, not to booting - --no-preload is a cold start."""
+        console = console_mod.Console(console_mod.parse_args(
+            ['--no-preload', '--no-log', '--plain']))
+        self.addCleanup(console.close)
+        console.boot()
+        self.assertIn('?', self._avail_row(console))
+
 
 class TestMmuLog(unittest.TestCase):
     """
@@ -872,6 +914,78 @@ class TestAnsiWrap(unittest.TestCase):
         self.assertEqual(console_mod.wrap_ansi('abc', 0), ['abc'])
 
 
+class TestLedSwatches(unittest.TestCase):
+    """
+    Console._swatches - the LED row, with no printer in sight.
+
+    A lit LED is a solid block rather than '##' because '##' was painted in the LED's own
+    colour, and a white or grey LED (mmu_breathing_white_fast, mmu_sparkle, white_light for
+    an uncoloured gate) then looked exactly like ordinary text - which is what made a lit
+    row read as "some default-coloured thing I do not recognise".
+    """
+
+    def swatches(self, data, per_gate, color=False):
+        console = console_mod.Console(console_mod.parse_args(['--plain', '--no-log']))
+        console.color = color
+        return console._swatches(data, per_gate)
+
+    ON, OFF = console_mod.Console.LED_ON, console_mod.Console.LED_OFF
+
+    def test_lit_and_unlit_use_different_glyphs(self):
+        got = self.swatches([(1., 0., 0., 0.), (0., 0., 0., 0.)], 1)
+        self.assertEqual(got, '%s %s' % (self.ON, self.OFF))
+
+    def test_one_led_per_gate_is_spaced_by_gate(self):
+        self.assertEqual(self.swatches([(0., 0.5, 0., 0.)] * 4, 1),
+                         ' '.join([self.ON] * 4))
+
+    def test_several_leds_per_gate_run_together_within_the_gate(self):
+        """
+        ViViD is 28 exit LEDs over 4 gates. Ungrouped that was a 117-column row, and
+        PinnedHeader.repaint writes header rows by absolute position without wrapping, so it
+        soft-wrapped over the row beneath. Grouped it fits, and you can see the gates.
+        """
+        got = self.swatches([(0., 0., 1., 0.)] * 28, 7)
+        self.assertEqual(got, ' '.join([self.ON * 7] * 4))
+        # The width claim, separately: len() is the column count only because this call is
+        # unpainted and a block is one column. 59 + the '  led unit1 exit    ' prefix and the
+        # '  [gate_status]' suffix is 95, which fits the 100-column band; ungrouped 2-column
+        # swatches were 83, i.e. a 117-column row.
+        self.assertEqual(len(visible(got)), 59)
+
+    def test_a_whole_segment_in_one_group_has_no_gaps(self):
+        """How status and logo arrive - neither is indexed by gate."""
+        self.assertEqual(self.swatches([(1., 1., 1., 0.)] * 4, 4), self.ON * 4)
+
+    def test_the_white_channel_counts_as_lit(self):
+        """An RGBW chain lit only on W read as off while rgbw[:3] was dropping it."""
+        self.assertEqual(self.swatches([(0., 0., 0., 1.)], 1), self.ON)
+
+    def test_a_near_black_led_is_marked_dim_and_painted_visibly(self):
+        """
+        black_light (0.01,0,0.02) - an idle status segment under filament_color, and any
+        black filament - is (3,0,5) of 255, which paints to xterm 16: blacker than the grey
+        used for OFF. Lit has to be more visible than unlit, not less.
+        """
+        got = self.swatches([(0.01, 0., 0.02, 0.)], 1, color=True)
+        self.assertIn(console_mod.Console.LED_DIM, got, 'a near-black LED must say it is dim')
+        self.assertNotIn('\x1b[38;5;16m', got, 'still painted pure black')
+
+    def test_a_bright_led_is_left_exactly_as_it_is(self):
+        """The floor is for the bottom of the range only - it must not touch anything else."""
+        self.assertEqual(self.swatches([(0.25, 0.25, 0.25, 0.)], 1, color=True),
+                         console_mod.paint(self.ON, console_mod.fg(64, 64, 64, '256')[2:-1]))
+
+    def test_a_lit_led_is_painted_in_its_own_colour(self):
+        got = self.swatches([(1., 0., 0., 0.), (0., 0., 0., 0.)], 1, color=True)
+        self.assertIn('\x1b[38;5;', got, 'the lit LED lost its colour')
+        self.assertIn('\x1b[90m', got, 'the unlit LED should be grey')
+        check_no_line_leaks(self, got)
+
+    def test_a_degenerate_group_size_still_terminates(self):
+        self.assertEqual(self.swatches([(0., 0., 0., 0.)] * 2, 0), self.OFF + ' ' + self.OFF)
+
+
 class TestPagerView(unittest.TestCase):
     """LogPager.move() - all of the pager's arithmetic, with no terminal in sight."""
 
@@ -1101,6 +1215,186 @@ class TestTimestamps(unittest.TestCase):
             self.assertTrue(console.timestamps)
             console.meta('/timestamp off')
             self.assertFalse(console.timestamps)
+
+
+class TestLiveClock(unittest.TestCase):
+    """
+    Live mode - the clock running while you sit at the prompt.
+
+    A signal and not a thread, and that is not a style choice: the reactor is greenlet-based
+    and greenlets belong to the thread that created them, so pumping it from a worker dies
+    with 'greenlet.error: Cannot switch to a different thread'. Everything here therefore
+    checks main-thread behaviour and the arm/disarm discipline that keeps a tick out of a
+    dispatch.
+    """
+
+    def _console(self, argv=()):
+        console = console_mod.Console(console_mod.parse_args(list(argv)))
+        console.hh = mock.Mock()
+        console.hh.reactor.monotonic.return_value = 1000.0
+        # Explicitly None: a bare Mock attribute is truthy, and the tick reads _g_dispatch
+        # to tell whether the reactor is mid-callback.
+        console.hh.reactor._g_dispatch = None
+        console.clock_epoch = 1000.0
+        console._at_prompt = True                   # where a tick is allowed to run
+        return console
+
+    def test_both_default_off_when_not_interactive(self):
+        """--script must stay byte-for-byte reproducible; a clock in the output cannot."""
+        console = self._console()                   # tests never run on a tty
+        self.assertFalse(console.live)
+        self.assertFalse(console.timestamps)
+
+    def test_the_flags_override_the_default_either_way(self):
+        self.assertTrue(self._console(['--live', '--timestamp']).live)
+        self.assertTrue(self._console(['--live', '--timestamp']).timestamps)
+        self.assertFalse(self._console(['--no-live']).live)
+        self.assertFalse(self._console(['--no-timestamp']).timestamps)
+
+    def test_a_real_prompt_turns_both_on(self):
+        with mock.patch.object(sys, 'stdout', FakeTty()):
+            console = console_mod.Console(console_mod.parse_args([]))
+        self.assertTrue(console.live, 'live should default on at a terminal')
+        self.assertTrue(console.timestamps)
+
+    def test_script_mode_stays_off_even_on_a_terminal(self):
+        with mock.patch.object(sys, 'stdout', FakeTty()):
+            console = console_mod.Console(console_mod.parse_args(['--script', 'f.txt']))
+        self.assertFalse(console.live)
+        self.assertFalse(console.timestamps)
+
+    def test_disarming_is_not_gated_on_the_flag(self):
+        """
+        _arm_tick(False) has to fire whatever self.live says, or /live off would clear the
+        flag and leave the itimer running - a signal every second with nothing to catch it.
+        """
+        console = self._console(['--no-live'])
+        with mock.patch('signal.setitimer') as setitimer:
+            console._arm_tick(False)
+        setitimer.assert_called_once()
+        self.assertEqual(setitimer.call_args[0][1], 0, 'did not cancel the timer')
+
+    def test_a_tick_does_nothing_when_live_is_off(self):
+        console = self._console(['--no-live'])
+        console.advance = mock.Mock()
+        console._tick()
+        console.advance.assert_not_called()
+
+    def test_a_tick_delivered_late_does_not_run(self):
+        """
+        The race the _at_prompt flag exists for. setitimer(0) stops FUTURE signals, but one
+        already taken by the C handler is still flagged and Python runs the Python-level
+        handler at the next bytecode boundary - by then inside the command that just
+        started, where advance() asserts 'called from inside a callback'.
+        """
+        console = self._console(['--live'])
+        console._at_prompt = False                  # what interact() sets before dispatching
+        console.advance = mock.Mock()
+        console._tick()
+        console.advance.assert_not_called()
+
+    def test_a_tick_stays_out_of_a_live_dispatch(self):
+        console = self._console(['--live'])
+        console.hh.reactor._g_dispatch = object()   # the reactor is inside a callback
+        console.advance = mock.Mock()
+        console._tick()
+        console.advance.assert_not_called()
+
+    def test_a_tick_cannot_re_enter_itself(self):
+        """Python runs a pending handler at the next bytecode boundary - including one
+        inside the handler."""
+        console = self._console(['--live'])
+        console._ticking = True
+        console.advance = mock.Mock()
+        console._tick()
+        console.advance.assert_not_called()
+
+    def test_a_tick_advances_by_real_elapsed_time_and_is_capped(self):
+        console = self._console(['--live'])
+        console.advance = mock.Mock()
+        with mock.patch.object(console_mod.time, 'monotonic', return_value=500.0):
+            console._last_tick = 499.0
+            console._tick()
+        self.assertAlmostEqual(console.advance.call_args[0][0], 1.0, places=3)
+
+        console.advance.reset_mock()
+        with mock.patch.object(console_mod.time, 'monotonic', return_value=9999.0):
+            console._last_tick = 0.0                # a slept laptop, or a SIGSTOP
+            console._tick()
+        self.assertEqual(console.advance.call_args[0][0], console_mod.LIVE_MAX_CATCHUP)
+
+    def test_a_failing_tick_stops_the_clock_instead_of_repeating(self):
+        console = self._console(['--live'])
+        console.advance = mock.Mock(side_effect=RuntimeError('reactor went bang'))
+        console._reprint = lambda fn: fn()
+        with mock.patch('signal.setitimer'), contextlib.redirect_stdout(io.StringIO()) as buf:
+            with mock.patch.object(console_mod.time, 'monotonic', return_value=500.0):
+                console._last_tick = 499.0
+                console._tick()
+        self.assertFalse(console.live, 'a broken clock kept ticking')
+        self.assertIn('reactor went bang', buf.getvalue())
+
+    def test_the_meta_command_toggles_and_reports(self):
+        console = self._console(['--live'])
+        with mock.patch('signal.setitimer'), mock.patch('signal.signal'), \
+                mock.patch.object(sys, 'stdout', FakeTty()), \
+                mock.patch.object(sys, 'stdin', FakeTty()):
+            console.meta('/live off')
+            self.assertFalse(console.live)
+            console.meta('/live')
+            self.assertTrue(console.live)
+            printed = sys.stdout.getvalue()
+        self.assertIn('live clock off', printed)
+        self.assertIn('live clock on', printed)
+
+    def test_live_refuses_to_arm_off_a_terminal(self):
+        """
+        script() has no arm/disarm discipline, so a '/live on' in a command file would leave
+        an itimer running and the next tick would land inside a dispatch.
+        """
+        console = self._console(['--live'])
+        with mock.patch('signal.setitimer') as setitimer, mock.patch('signal.signal'):
+            self.assertFalse(console._arm_tick(True), 'armed a timer with no terminal')
+        setitimer.assert_not_called()
+
+    def test_live_says_so_when_it_cannot_arm(self):
+        console = self._console(['--no-live'])
+        with mock.patch('signal.setitimer'), contextlib.redirect_stdout(io.StringIO()) as buf:
+            console.meta('/live on')
+        self.assertFalse(console.live)
+        self.assertIn('unavailable', buf.getvalue())
+
+
+class TestSlicedAdvance(unittest.TestCase):
+    """
+    advance() has a per-call iteration cap and the LED effects animate at 24fps, so a single
+    long call dies partway through the seventh virtual minute. Slicing gets there because
+    the counter resets per call.
+    """
+
+    def _console(self):
+        console = console_mod.Console(console_mod.parse_args([]))
+        console.hh = mock.Mock()
+        return console
+
+    def test_a_short_advance_is_one_call(self):
+        console = self._console()
+        console.advance(5.0)
+        console.hh.reactor.advance.assert_called_once_with(5.0)
+
+    def test_a_long_advance_is_sliced_and_totals_correctly(self):
+        console = self._console()
+        console.advance(600.0)
+        steps = [c[0][0] for c in console.hh.reactor.advance.call_args_list]
+        self.assertGreater(len(steps), 1, 'not sliced - this is what used to raise')
+        self.assertAlmostEqual(sum(steps), 600.0, places=6)
+        self.assertLessEqual(max(steps), console_mod.ADVANCE_SLICE)
+
+    def test_zero_and_negative_do_nothing(self):
+        console = self._console()
+        console.advance(0.)
+        console.advance(-5.)
+        console.hh.reactor.advance.assert_not_called()
 
 
 class TestHeaderGroups(unittest.TestCase):
@@ -1387,7 +1681,8 @@ class TestConsoleScript(unittest.TestCase):
         rc, out = self._run(['/help', '/filament', '/exhaust 0', '/trace 2', '/heat 240',
                              '/sensor mmu_entry_1 off', '/sensor mmu_exit_0 disable',
                              '/vars', '/clear', '/redraw', '/log 3', '/errors', '/scroll',
-                             '/scroll 5', '/s', '/timestamp', '/timestamp off', '/badmeta'],
+                             '/scroll 5', '/s', '/timestamp', '/timestamp off',
+                             '/live on', '/live off', '/advance 600', '/badmeta'],
                             ['--header', 'off'])
         self.assertEqual(rc, 0, out[-2000:])
         self.assertIn('Meta-commands', out)

@@ -818,7 +818,48 @@ class Session:
             self.printer.send_event('klippy:ready')
         return self
 
-    def boot(self, extra=0.01, calibrate=False):
+    def seed_loaded_gates(self, tip_position, status=None):
+        """
+        Put filament at every gate and persist an 'available' map, BEFORE klippy:ready.
+
+        Same trick and the same reason as calibrate(): __MMU_BOOTUP prints the gate table,
+        and anything the caller does afterwards is invisible in it. The console preloads
+        every gate right after boot() returns, so its bootup banner reported the whole
+        machine unknown (or empty) about a machine that is fully loaded by the time the
+        prompt appears - and that banner is the last thing on screen.
+
+        This is what a real printer looks like, not a fiction: gate_status is persisted in
+        mmu_vars.cfg and MmuGateMaps.load_persisted_state reads it back at handle_ready
+        (mmu_controller.py:228), so a printer that was loaded yesterday boots up loaded. A
+        harness session starts with no vars file at all, which is the only reason it came up
+        GATE_UNKNOWN.
+
+        BOTH HALVES ARE NEEDED, and each covers what the other cannot:
+
+          - the persisted map is the only source for a unit with no per-gate sensors (ERCF),
+          - and it is not enough for one that has them (ViViD's mmu_entry_9..12). __MMU_BOOTUP
+            re-derives those gates from their switches, so a seeded 'available' with no
+            filament in front of the switch is overwritten with GATE_EMPTY.
+
+        Placing pre-ready is also why it is safe to place at all: filament arriving at a gate
+        is a real insert event that Happy Hare responds to by preloading that gate (see
+        quiet_sensors), and nothing is listening yet.
+
+        Must be called between connect() and ready(): mmu.var_manager is bound in
+        handle_connect (mmu_controller.py:192). Do NOT call apply_initial_sensor_states()
+        afterwards - it resets every switch to its configured resting state and would undo
+        the placement.
+        """
+        from extras.mmu.mmu_constants import GATE_AVAILABLE, VARS_MMU_GATE_STATUS
+        model = self.filament()
+        for gate in range(self.mmu.num_gates):
+            model.place(gate, tip_position)
+        self.mmu.var_manager.set(VARS_MMU_GATE_STATUS,
+                                 [GATE_AVAILABLE if status is None else status]
+                                 * self.mmu.num_gates)
+        return self
+
+    def boot(self, extra=0.01, calibrate=False, gates_loaded_at=None):
         """
         Full sequence to a live MMU: connect -> ready -> pump the reactor past
         BOOT_DELAY so the scheduled bootup callback runs __MMU_BOOTUP, then past the
@@ -830,13 +871,17 @@ class Session:
         afterwards (as the console used to) left the banner warning about a machine that was
         calibrated a millisecond later.
 
+        gates_loaded_at=<tip position> is the same idea for the gate map - see
+        seed_loaded_gates(). Only the console passes it, and only when it is about to preload
+        every gate anyway.
+
         It deliberately does NOT home. Measured on tradrack, seeding alone leaves bootup's
         output byte-identical minus the warnings; homing here as well makes bootup take a
         different recovery branch (the "Attempting to recover filament position" line goes
         away and the selector row changes). Homing stays where it was - after boot() returns.
 
-        Defaults to False: an uncalibrated machine is a real state HH has to cope with, and
-        the tests assert it.
+        Both default to False: an uncalibrated machine with an unknown gate map is a real
+        state HH has to cope with, and the tests assert it.
         """
         if not self._booted:
             if self.config is None:
@@ -856,6 +901,8 @@ class Session:
             self._install_move_observer()
             if calibrate:
                 self.calibrate()
+            if gates_loaded_at is not None:
+                self.seed_loaded_gates(gates_loaded_at)
             self.ready()
             self.install_macro_effects()
             self.reactor.advance(BOOT_DELAY + extra)

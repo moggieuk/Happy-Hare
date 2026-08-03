@@ -1475,14 +1475,6 @@ class MmuController(MmuFilamentMovement):
         for gate in range(self.num_gates):
             mmu_unit = self.mmu_unit(gate)
             self.var_manager.set("%s%d" % (VARS_MMU_GATE_STATISTICS_PREFIX, mmu_unit.local_gate(gate)), self.gate_statistics[gate], namespace=mmu_unit.name)
-
-        # Also a good place to update the persisted calibrated clog length (for auto mode)
-        if self.has_encoder():
-            mode = self.mmu_unit().sync_feedback.p.flowguard_encoder_mode
-            if mode == ENCODER_RUNOUT_AUTOMATIC:
-                cdl = self.encoder().get_clog_detection_length() # Never None
-                self.mmu_unit().calibrator.update_clog_detection_length(round(cdl, 1))
-
         self.var_manager.write()
 
 

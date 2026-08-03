@@ -48,6 +48,186 @@ class LedTestCase(unittest.TestCase):
         return self.leds.effect_state.get(unit, {}).get(segment)
 
 
+class TestSetLedReachesTheChain(LedTestCase):
+    """
+    The harness implements Klipper's core SET_LED (klippy_root/extras/led.py), and every
+    STATIC colour Happy Hare paints depends on it: mmu_led_manager.py:635-642 drives the
+    'off', filament_color, slicer_color and explicit-(r,g,b) branches - plus everything
+    under 'animation: False' - through it. It was missing, so all of those silently landed
+    in gcode.unhandled and the LEDs stayed black. These assert the wiring, not HH's paint
+    logic, so they drive the command directly.
+    """
+
+    def chain(self, segment='exit'):
+        return self.unit.leds.virtual_chains[segment]
+
+    def test_a_single_index_reaches_the_physical_chain(self):
+        self.hh.run_gcode('SET_LED LED=unit0_mmu_exit_leds INDEX=2 '
+                          'RED=1 GREEN=0.5 BLUE=0 TRANSMIT=1')
+        self.assertEqual(self.chain().get_status()['color_data'][1],
+                         (1., 0.5, 0., 0.))
+
+    def test_no_index_paints_the_whole_segment(self):
+        self.hh.run_gcode('SET_LED LED=unit0_mmu_exit_leds RED=0 GREEN=0 BLUE=1')
+        self.assertEqual(self.chain().get_status()['color_data'],
+                         [(0., 0., 1., 0.)] * 4)
+
+    def test_transmit_zero_defers_until_the_last_write(self):
+        """
+        set_gate_rgb sends TRANSMIT=0 for every index but the last, so honouring it is what
+        makes a whole-segment repaint one flush instead of N. Ignoring the flag would still
+        LOOK right - the colours land either way - so assert the transmit count.
+        """
+        physical = self.hh.printer.lookup_object('neopixel _unit0_leds')
+        before = len(physical.updates)
+        for index in range(1, 4):
+            self.hh.run_gcode('SET_LED LED=unit0_mmu_exit_leds INDEX=%d RED=1 TRANSMIT=0'
+                              % index)
+        self.assertEqual(len(physical.updates), before, 'TRANSMIT=0 flushed anyway')
+        self.hh.run_gcode('SET_LED LED=unit0_mmu_exit_leds INDEX=4 RED=1 TRANSMIT=1')
+        self.assertEqual(len(physical.updates), before + 1)
+        self.assertEqual(self.chain().get_status()['color_data'],
+                         [(1., 0., 0., 0.)] * 4)
+
+    def test_an_unchanged_colour_still_propagates(self):
+        """
+        Deliberately NOT Klipper's `_set_color` short-circuit. Here the transmit is what
+        runs VirtualMmuLedChain.update_leds, i.e. the virtual -> physical copy, so skipping
+        a repaint of the same colour would leave a physically stale chain.
+        """
+        physical = self.hh.printer.lookup_object('neopixel _unit0_leds')
+        self.hh.run_gcode('SET_LED LED=unit0_mmu_exit_leds INDEX=1 RED=1')
+        before = len(physical.updates)
+        physical.led_helper.led_state[0] = (0., 0., 0., 0.)     # something else clobbered it
+        self.hh.run_gcode('SET_LED LED=unit0_mmu_exit_leds INDEX=1 RED=1')
+        self.assertEqual(len(physical.updates), before + 1)
+        self.assertEqual(self.chain().get_status()['color_data'][0], (1., 0., 0., 0.))
+
+
+class TestStopReleasesTheLedsImmediately(LedTestCase):
+    """
+    Stopping an effect used to hand its LEDs back one frame LATE, and anything painted in
+    that window was lost.
+
+    set_enabled(False) only arms the frame timer; the blanking is the one-shot zero frame
+    getFrame emits on the pass after that, and _getFrames zeroes every LED of an updating
+    effect before it sums. So "_MMU_STOP_LED_EFFECTS then SET_LED" - which is exactly what
+    mmu_led_manager's filament_color, slicer_color and (r,g,b) branches emit - landed the
+    colours and then had them wiped by the timer. It came right only from the SECOND repaint,
+    because by then the effect had latched nextEventTime = NEVER.
+
+    cmd_STOP_LED_EFFECTS now flushes the pass before returning (ledFrameHandler.flush_frames).
+
+    The commands go through ONE run_script on purpose. Happy Hare emits them from inside a
+    single _set_led dispatch via run_script_from_command, and splitting them across calls
+    would let the reactor turn in between, which is precisely the window being closed.
+    """
+
+    CHAIN = 'unit0_mmu_exit_leds'
+    EFFECT = 'unit0_mmu_rainbow_exit'
+
+    def colors(self):
+        return self.unit.leds.virtual_chains['exit'].get_status()['color_data']
+
+    def run_script(self, *lines):
+        self.hh.gcode.run_script('\n'.join(lines))
+
+    def start_effect(self):
+        self.run_script("_MMU_SET_LED_EFFECT EFFECT='%s' REPLACE=1" % self.EFFECT)
+        self.hh.reactor.advance(0.5)                # let it render a few frames
+
+    def test_a_colour_set_right_after_a_stop_survives(self):
+        """
+        THE regression. Both halves matter: the write always LANDED, so a same-pass
+        assertion passes even against the bug - it is the advance that catches it, because
+        the blank was deferred to the frame timer.
+        """
+        self.start_effect()
+        self.run_script("_MMU_STOP_LED_EFFECTS LEDS='%s'" % self.CHAIN,
+                        'SET_LED LED=%s RED=1 GREEN=1 BLUE=1' % self.CHAIN)
+        white = [(1., 1., 1., 0.)] * len(self.colors())
+        self.assertEqual(self.colors(), white, 'the write did not even land')
+        self.hh.reactor.advance(1.0)
+        self.assertEqual(self.colors(), white,
+                         'the stopped effect blanked a colour set after it')
+
+    def test_a_stop_on_its_own_still_turns_the_leds_off(self):
+        """
+        The blank is not removed, only brought forward - a bare stop must still black out,
+        and now does so before the command returns rather than on the next tick.
+        """
+        self.start_effect()
+        self.assertNotEqual(self.colors(), [(0., 0., 0., 0.)] * len(self.colors()),
+                            'precondition: the effect is lighting something')
+        self.run_script("_MMU_STOP_LED_EFFECTS LEDS='%s'" % self.CHAIN)
+        self.assertEqual(self.colors(), [(0., 0., 0., 0.)] * len(self.colors()))
+
+    def test_a_fading_stop_is_left_to_fade(self):
+        """
+        A fade legitimately keeps rendering, and keeps ownership, until it runs out - so it
+        must NOT be flushed to black on the spot. blanks_on_next_frame() is what excludes it.
+        """
+        self.start_effect()
+        self.run_script("_MMU_STOP_LED_EFFECTS LEDS='%s' FADETIME=2" % self.CHAIN)
+        self.assertNotEqual(self.colors(), [(0., 0., 0., 0.)] * len(self.colors()),
+                            'the fade was cut short')
+        self.hh.reactor.advance(3.0)
+        self.assertEqual(self.colors(), [(0., 0., 0., 0.)] * len(self.colors()),
+                         'the fade never finished')
+
+    def test_replacing_an_effect_does_not_flash_the_leds_off(self):
+        """
+        The displaced effects hand their LEDs straight to the new one, and the pass that
+        blanks them is the pass that draws it. Flushing on REPLACE would blank them a frame
+        before the replacement had anything to draw, so that branch deliberately does not.
+        """
+        self.start_effect()
+        self.run_script("_MMU_SET_LED_EFFECT EFFECT='mmu_static_green_exit_0' REPLACE=1")
+        self.hh.reactor.advance(0.1)
+        self.assertEqual(self.colors()[0], (0., 0.5, 0., 0.))
+
+
+class TestAllFourSegments(unittest.TestCase):
+    """
+    ercf_vvd's unit0 configures every segment - 9 exit, 9 entry, 4 status, 3 logo - so the
+    console can exercise each one. exit is on the external 'cabinet_leds' chain from
+    PRINTER_STUB; the other three sit on '_unit0_leds', which the template emits anyway.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.hh = session('ercf_vvd')
+        cls.hh.boot()
+        cls.hh.reactor.advance(WARMUP)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.hh.close()
+
+    def unit(self, index=0):
+        return self.hh.mmu.mmu_machine.units[index]
+
+    def test_every_segment_has_the_expected_led_count(self):
+        leds = self.unit().leds
+        self.assertEqual({s: len(leds.virtual_chains[s].leds)
+                          for s in ('exit', 'entry', 'status', 'logo')},
+                         {'exit': 9, 'entry': 9, 'status': 4, 'logo': 3})
+
+    def test_the_second_unit_still_has_exit_only(self):
+        """ViViD's 28-over-4-gates chain is the multi-LED-per-gate case; leave it alone."""
+        leds = self.unit(1).leds
+        self.assertEqual(len(leds.virtual_chains['exit'].leds), 28)
+        self.assertEqual(len(leds.virtual_chains['entry'].leds), 0)
+
+    def test_the_logo_tuple_effect_actually_lights_the_leds(self):
+        """
+        logo_effect is the r,g,b tuple (0,0,0.3), i.e. a pure SET_LED path with no
+        animation behind it. Black here means the static path is broken again.
+        """
+        data = self.unit().leds.virtual_chains['logo'].get_status()['color_data']
+        self.assertEqual(data, [(0., 0., 0.3, 0.)] * 3)
+
+
 class TestEffectConfiguration(LedTestCase):
     """The [mmu_leds] operation->effect mapping, as rendered from the real templates."""
 

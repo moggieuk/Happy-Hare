@@ -324,3 +324,55 @@ class TestVirtualReactor(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestWallClockBudget(unittest.TestCase):
+    """
+    The wall-clock safety net must time the ADVANCE, not the greenlet.
+
+    A dispatch greenlet parks inside pause() and is pooled, so its _dispatch_loop call
+    can be suspended for unbounded real time - across later advance() calls, or while a
+    user sits at the console prompt. A deadline captured when that invocation first
+    started is long expired by the time the greenlet resumes, and trips on its next
+    iteration having done no work. That produced a bogus "exceeded its wall-clock
+    budget" on the first command after any pause, with iterations=2 and every timer
+    healthy - see the console's _MMU_TEST / MMU_GATE_MAP reports.
+    """
+
+    def setUp(self):
+        self.reactor = reactor_mod.VirtualReactor(start_time=1000.)
+
+    def test_a_parked_greenlet_does_not_carry_a_stale_deadline(self):
+        # A callback that parks the dispatch greenlet, exactly as a driver sleep or
+        # save_variables' zero-length aio pause does.
+        def sleeper(eventtime):
+            self.reactor.pause(self.reactor.monotonic() + 0.01)
+            return self.reactor.NEVER
+
+        self.reactor.register_timer(sleeper, 1000.5)
+        self.reactor.advance(1.)
+
+        # Real time passes with the greenlet pooled - the user reading the screen.
+        self.reactor._wall_deadline = (reactor_mod._wall.monotonic()
+                                       - reactor_mod.MAX_WALL_SECONDS * 2)
+        # The next advance must set its own deadline rather than inherit that one.
+        self.reactor.advance(0.)
+        self.reactor.advance(1.)
+        self.assertGreater(self.reactor._wall_deadline, reactor_mod._wall.monotonic(),
+                           'advance() reused an expired deadline')
+
+    def test_the_budget_still_catches_a_genuine_hang(self):
+        """The net must still work: a timer re-arming at the same instant forever."""
+        def stuck(eventtime):
+            return eventtime                    # due again immediately, forever
+
+        self.reactor.register_timer(stuck, 1000.5)
+        with self.assertRaises(AssertionError) as caught:
+            self.reactor.advance(1.)
+        self.assertIn('exceeded its', str(caught.exception))
+
+    def test_the_watchdog_reports_the_clock_state(self):
+        """now/target/next_timer is what distinguishes a hang from a stopped clock."""
+        msg = self.reactor._watchdog_msg('iteration cap')
+        for field in ('now=', 'target=', 'next_timer=', 'iterations=', 'Pending timers:'):
+            self.assertIn(field, msg)

@@ -293,6 +293,24 @@ INFO_COLOUR = '90'
 TIME_FORMAT = '%H:%M:%S'
 TIME_COLOUR = '90'
 
+# -- live mode ---------------------------------------------------------------------
+#
+# How often the virtual clock is nudged forward while you sit at the prompt, and how often
+# the header is therefore repainted. Halving this does NOT double the reactor's work: _tick
+# advances by the REAL time measured since the last one, not by this constant, so virtual
+# seconds per wall second is invariant and only the per-tick overhead (chiefly repaint)
+# scales. 0.5s because that is what makes an led_effect animation legible - at frame_rate 24
+# a one-second sample showed every 24th frame, which reads as a jump rather than a fade.
+LIVE_INTERVAL = 0.5
+# Never advance more than this in one tick. A laptop that slept, or a SIGSTOP, would
+# otherwise come back to a catch-up of hours - which is both slow and, past about seven
+# virtual minutes, over the reactor's iteration cap.
+LIVE_MAX_CATCHUP = 5.0
+# advance() resets its iteration counter per call, so a long jump that would blow the cap
+# in one go succeeds when it is fed in slices. Measured on the default profile: advance(600)
+# dies at 444s, the same 600s in 60s slices completes.
+ADVANCE_SLICE = 60.0
+
 
 def raw_stdout():
     """
@@ -446,9 +464,17 @@ class Console:
         self._can_pin = False                       # ... and whether it may re-pin later
         self.meta_line = ''                         # the current meta-command, unsplit
         self.scroll_keys = False                    # whether Shift-Up/PgUp could be bound
-        self.timestamps = False                     # /timestamp
+        # Both default ON at a real prompt and OFF otherwise. --script has to stay
+        # byte-for-byte reproducible to be usable as a regression tool, and a clock in the
+        # output is the one thing guaranteed to differ between two runs of it.
+        interactive = sys.stdout.isatty() and not args.script
+        self.timestamps = interactive if args.timestamp is None else args.timestamp
+        self.live = interactive if args.live is None else args.live
         self.wall_start = time.time()               # what virtual t=0 is called in real time
         self.clock_epoch = None                     # reactor.monotonic() at that moment
+        self._ticking = False                       # re-entry guard for the live tick
+        self._at_prompt = False                     # ... and the only place a tick may run
+        self._last_tick = None
         # Every line that reached the terminal, for the pager. Rendered, not raw: this is
         # what was displayed, which is not the same as self.sink (MMU responses only - no
         # banner, no meta-command output, no prompts).
@@ -493,14 +519,23 @@ class Console:
         # Seed calibration INSIDE boot(), before __MMU_BOOTUP runs. Calibrating afterwards
         # (which is what this used to do) left the banner warning "Calibration steps are not
         # complete" about a machine that was calibrated a millisecond later.
-        self.hh.boot(calibrate=not a.no_calibrate)
+        # gates_loaded_at for the same reason as calibrate: __MMU_BOOTUP prints the gate
+        # table, and _preload_all() runs AFTER boot() returns - so the banner said every gate
+        # was unknown (ERCF) or empty (ViViD, which has per-gate switches) about a machine
+        # that is fully preloaded by the time the prompt appears, and that banner is the last
+        # thing on screen. Only seeded when the preload is actually going to happen.
+        preloading = not (a.no_preload or a.no_calibrate)
+        self.hh.boot(calibrate=not a.no_calibrate,
+                     gates_loaded_at=TIP_AT_GATE if preloading else None)
         self.startup_output = list(self.sink)        # the welcome, shown by banner()
         del self.sink[:]
 
         # MANDATORY, and the easiest thing to get wrong: the filament model is created
         # lazily and only then installs the move observer (test/hh/bootstrap.py:336).
-        # boot() does not do it. Without it every motion command dies with a misleading
-        # "No trigger on ... after full movement" from the fake HomingMove.
+        # Without it every motion command dies with a misleading "No trigger on ... after
+        # full movement" from the fake HomingMove. seed_loaded_gates() has already built it
+        # on the preloading path, so this is a plain fetch there - but NOT under
+        # --no-preload/--no-calibrate, which is why it stays unconditional.
         self.fil = self.hh.filament()
 
         # Without this HH auto-heats and reports it through log_error, which lands in the
@@ -512,7 +547,7 @@ class Console:
         # machine, so this costs the older profiles nothing.
         self._prepare_selectors()
 
-        if not (a.no_preload or a.no_calibrate):
+        if preloading:
             self._preload_all()
 
         # Anchor the virtual clock LAST, so /timestamp reads "now" at the first prompt
@@ -922,6 +957,24 @@ class Console:
             cells.append('%d:%s' % (gate, '/'.join(bits)))
         return ['  ' + '  '.join(cells)]
 
+    # A lit LED is a SOLID BLOCK, not '##'. The old glyph was painted in the LED's own
+    # colour, which made a white or grey LED - mmu_breathing_white_fast (0.2,0.2,0.2) on
+    # 'selecting', mmu_sparkle on 'complete', white_light (1,1,1) for an uncoloured gate
+    # under filament_color - indistinguishable from ordinary text, because the terminal's
+    # default foreground IS white/grey. A block in that same colour still reads as a block.
+    # Foreground only: _sgr_state() tracks fg and bold, so a background colour would not
+    # survive a wrap in the pager.
+    #
+    # LED_DIM exists because "lit" and "visible" are not the same thing. black_light is
+    # (0.01, 0, 0.02) - which is what an idle status segment under filament_color shows, and
+    # what any BLACK filament shows - and that paints to xterm 16, i.e. pure black: less
+    # visible than the grey '··' used for OFF, which inverts the whole mapping. So anything
+    # below DIM_FLOOR is painted at DIM_FLOOR with its hue preserved and marked with a
+    # lighter glyph. The brightness is a display floor, not a reading; the glyph is what says
+    # so, which is why the colour is not simply left alone.
+    LED_ON, LED_DIM, LED_OFF = '██', '▓▓', '··'
+    DIM_FLOOR = 64                                  # of 255, ~25%
+
     def _hdr_leds(self, st):
         """
         effect_state is per-SEGMENT, so it cannot show a per-gate colour. The harness keeps
@@ -930,12 +983,15 @@ class Console:
         # Every unit, not just the selected one, and each unit's own effect_state index -
         # this used to read mmu_unit() and effect_state[0], so on a multi-unit machine it
         # showed unit 0's effects against whichever unit happened to be selected.
+        from extras.mmu.unit.mmu_leds import MmuLeds
         out = []
         for index, unit in enumerate(self.units):
             leds = getattr(unit, 'leds', None)
             if leds is None:
                 continue
-            for segment in ('exit', 'entry'):
+            # All four, not just the per-gate pair: a configured 'status' or 'logo' segment
+            # was invisible here, which reads as "not working" rather than "not shown".
+            for segment in MmuLeds.SEGMENTS:
                 chain = getattr(leds, 'virtual_chains', {}).get(segment)
                 if chain is None:
                     continue
@@ -947,15 +1003,46 @@ class Console:
                     # A configured segment with no LEDs on it. Rendering it gives an empty
                     # row and a '?' effect, which reads as breakage rather than absence.
                     continue
-                swatches = []
-                for rgbw in data:
-                    r, g, b = (int(round(c * 255)) for c in rgbw[:3])
-                    swatches.append(paint('##', fg(r, g, b, self.mode)[2:-1], self.color)
-                                    if (r or g or b) else paint('..', '90', self.color))
                 effect = self.hh.mmu.led_manager.effect_state.get(index, {}).get(segment, '?')
                 label = ('%s %s' % (unit.name, segment)) if self.num_units > 1 else segment
-                out.append('  led %-14s %s  [%s]' % (label, ' '.join(swatches), effect))
+                # status and logo are not indexed by gate, so grouping them would be a lie.
+                # For the per-gate pair mmu_leds.py:101-102 has already guaranteed that the
+                # division is exact.
+                per_gate = len(data)
+                if segment in MmuLeds.PER_GATE_SEGMENTS and unit.num_gates:
+                    per_gate = max(1, len(data) // unit.num_gates)
+                out.append('  led %-14s %s  [%s]'
+                           % (label, self._swatches(data, per_gate), effect))
         return out
+
+    def _swatches(self, data, per_gate):
+        """
+        One block per LED, `per_gate` of them run together and a space between groups.
+
+        Ungrouped, ViViD's exit segment - 28 LEDs over 4 gates - renders a 117-column row,
+        which soft-wraps and scribbles over the row below it (PinnedHeader.repaint writes
+        header rows by absolute position and does not wrap). Grouped it is 59, and you can
+        actually see which LEDs belong to which gate.
+        """
+        cells = []
+        for rgbw in data:
+            # Fold the white channel in rather than dropping it: an RGBW chain lit only on
+            # W would otherwise read as off. Zero with every shipped effect, but free.
+            white = rgbw[3] if len(rgbw) > 3 else 0.
+            r, g, b = (min(255, int(round((c + white) * 255))) for c in rgbw[:3])
+            peak = max(r, g, b)
+            if not peak:
+                cells.append(paint(self.LED_OFF, '90', self.color))
+                continue
+            glyph = self.LED_ON
+            if peak < self.DIM_FLOOR:               # see LED_DIM
+                scale = self.DIM_FLOOR / float(peak)
+                r, g, b = (min(255, int(round(c * scale))) for c in (r, g, b))
+                glyph = self.LED_DIM
+            cells.append(paint(glyph, fg(r, g, b, self.mode)[2:-1], self.color))
+        per_gate = max(1, per_gate)                  # or the slice below is empty and loops
+        return ' '.join(''.join(cells[i:i + per_gate])
+                        for i in range(0, len(cells), per_gate))
 
     # A HEAVY rule marks the boundary between the status section and the log window - that
     # is the one line a reader uses to tell "state" from "output" at a glance. The top edge
@@ -1033,6 +1120,8 @@ class Console:
 
     META_HELP = (
         ('/advance N', 'advance virtual time N seconds (alias /wait)'),
+        ('/live [on|off]', 'let the clock run while you sit at the prompt; off is the '
+                           'reproducible mode (no argument toggles)'),
         ('/vars [mmu|machine|file]',
          'get_status() of the mmu and mmu_machine objects, or the saved mmu_vars.cfg'),
         ('/s [N], /scroll [N]', 'scroll back through the log, opening N rows up. '
@@ -1083,16 +1172,39 @@ class Console:
         print('Meta-commands:')
         for name, desc in self.META_HELP:
             print('  %-22s %s' % (name, desc))
+        # The one part of the header that is not self-describing: a coloured block is not
+        # obviously "one LED" until someone says so, and the gate grouping is invisible on a
+        # one-LED-per-gate machine.
+        print("\nIn the 'leds' header group, one block is one physical LED painted in its "
+              'own\ncolour - %s lit, %s lit but too dim to see honestly (shown brighter), '
+              '%s off -\nwith a gate\'s LEDs run together and a space between gates. [...] '
+              "is the\nsegment's current effect."
+              % (self.LED_ON, self.LED_DIM, self.LED_OFF))
         print('\nEverything else is sent to the MMU as G-code. MMU_HELP lists Happy Hare\'s\n'
               'commands, and any of them accepts HELP=1 for its own parameters.')
 
     def _meta_quit(self, args):
         self.running = False
 
+    def advance(self, dt):
+        """
+        Move the virtual clock, in slices.
+
+        One advance() call has an iteration cap, and the LED effects animate at 24fps, so on
+        the default profile a single call dies partway through the seventh virtual minute -
+        '/advance 600' really did stop at 444s and raise. The counter resets per call, so
+        feeding the same span in slices gets there; the timers fire in the same order either
+        way, since each slice still runs everything due within it.
+        """
+        left = float(dt)
+        while left > 0:
+            step = min(ADVANCE_SLICE, left)
+            self.hh.reactor.advance(step)
+            left -= step
+
     def _meta_advance(self, args):
-        dt = float(args[0]) if args else 1.0
         mark = len(self.sink)
-        self.hh.reactor.advance(dt)
+        self.advance(float(args[0]) if args else 1.0)
         self._drain(mark)
 
     def _meta_clear(self, args):
@@ -1335,6 +1447,132 @@ class Console:
     def _meta_heat(self, args):
         self.hh.heat_extruder(float(args[0]) if args else self.args.temp)
 
+    ####################
+    ##### Live mode ####
+    ####################
+
+    # WHY A SIGNAL AND NOT A THREAD. The reactor is greenlet-based, and greenlets belong to
+    # the thread that made them: pumping it from a worker thread fails outright with
+    # "greenlet.error: Cannot switch to a different thread". A setitimer handler runs on the
+    # MAIN thread, so the greenlets stay consistent, and it does fire while blocked inside
+    # readline's input() - which is the only moment we want it to.
+    #
+    # The timer is armed only around input() and disarmed for the whole of a dispatch, so a
+    # tick can never land inside one. advance() asserts if it re-enters a callback, and the
+    # tee's partial-line buffer would corrupt if a handler printed through the middle of a
+    # write. _ticking guards the remaining case: Python runs a pending handler at the next
+    # bytecode boundary, including one inside the handler itself.
+
+    def _arm_tick(self, on):
+        """
+        Start or stop the idle clock. A no-op where signals are unavailable.
+
+        Disarming is NOT gated on self.live. It has to run unconditionally or turning live
+        off would leave the itimer running, and every path that stops the clock sets the
+        flag first.
+        """
+        import signal
+        try:
+            if not on:
+                signal.setitimer(signal.ITIMER_REAL, 0)
+                return False
+            # Only ever armed around a real prompt. script() has no arm/disarm discipline
+            # of its own, so a '/live on' in a command file would leave a timer running and
+            # the next tick would land inside a dispatch, where advance() asserts.
+            if not (self.live and sys.stdout.isatty() and sys.stdin.isatty()):
+                return False
+            self._last_tick = time.monotonic()
+            signal.signal(signal.SIGALRM, self._tick)
+            signal.setitimer(signal.ITIMER_REAL, LIVE_INTERVAL, LIVE_INTERVAL)
+        except (AttributeError, ValueError, OSError):    # not POSIX, or not the main thread
+            return False
+        return True
+
+    def _tick(self, *_args):
+        """
+        A LIVE_INTERVAL slice of virtual time, while you are doing nothing.
+
+        Anything the MMU says is printed above the prompt and the prompt is then put back
+        with whatever was half-typed still on it, so this cannot eat a command in progress.
+        """
+        # _at_prompt, not just the itimer, because DISARMING DOES NOT UNDO A DELIVERED
+        # SIGNAL. setitimer(0) stops future ones, but a SIGALRM already taken by the C
+        # handler is still flagged, and Python runs its Python-level handler at the next
+        # bytecode boundary - which by then is inside the command that just started. The
+        # tick would then call advance() from inside a dispatch, where the reactor asserts
+        # "advance() called from inside a callback". Checked HERE, in the handler, so a late
+        # delivery is a no-op rather than a race.
+        if self._ticking or not self.live or self.hh is None or not self._at_prompt:
+            return
+        if getattr(self.hh.reactor, '_g_dispatch', None) is not None:
+            return                                  # belt and braces: mid-dispatch anyway
+        self._ticking = True
+        try:
+            now = time.monotonic()
+            # 'is None', not 'or': _last_tick is a float and 0.0 is a legitimate reading,
+            # which 'or' would silently treat as never-ticked and skip the advance.
+            last = now if self._last_tick is None else self._last_tick
+            dt = min(now - last, LIVE_MAX_CATCHUP)
+            self._last_tick = now
+            if dt <= 0:
+                return
+            mark = len(self.sink)
+            try:
+                self.advance(dt)
+            except Exception as exc:                # noqa: BLE001
+                # Stop rather than reprint the same failure on every tick.
+                self.live = False
+                self._arm_tick(False)
+                self._reprint(lambda: self.info('live clock stopped: %s' % exc))
+                return
+            if len(self.sink) > mark:
+                self._reprint(lambda: self._drain(mark))
+            if self.pinned is not None:
+                self.pinned.repaint()               # the clock and t=+Ns moved
+        finally:
+            self._ticking = False
+
+    def _reprint(self, emit_output):
+        """
+        Print from under the prompt: wipe the prompt line, emit, put the prompt back.
+
+        readline believes it still owns that line, so it has to be erased first and rebuilt
+        afterwards from get_line_buffer() - otherwise the output lands on top of what the
+        user is typing and the typing is lost.
+        """
+        out = raw_stdout()
+        out.write('\r\033[2K')
+        out.flush()
+        emit_output()
+        pending = ''
+        if HAVE_READLINE:
+            try:
+                pending = readline.get_line_buffer()
+            except Exception:                       # noqa: BLE001
+                pending = ''
+        out.write(self.prompt() + pending)
+        out.flush()
+
+    def _meta_live(self, args):
+        """
+        Let the virtual clock run while you sit at the prompt. On by default at a terminal.
+
+        Off is the reproducible mode: with the clock frozen the same commands always give
+        the same transcript, however long you took over them. On is the realistic one -
+        timeouts expire and the NFC poll loop runs without being asked.
+        """
+        if args:
+            self.live = args[0].lower() in ('1', 'on', 'true', 'yes')
+        else:
+            self.live = not self.live
+        if self.live and not self._arm_tick(True):
+            self.live = False
+            self.info('live clock unavailable here (needs a POSIX terminal)')
+            return
+        if not self.live:
+            self._arm_tick(False)
+        self.info('live clock %s' % ('on' if self.live else 'off - /advance moves it'))
+
     def _meta_timestamp(self, args):
         """
         Stamp MMU output with the virtual clock. No argument toggles.
@@ -1369,13 +1607,17 @@ class Console:
 
     def _resync_pin(self):
         """
-        Take the pinned band down when the header is switched off, and put it back when it
-        returns.
+        Put the screen back together after the header groups change.
 
-        Without this '/header off' leaves the reserved rows AND the shrunken scroll region
-        in place with a stale header frozen in them, because repaint() has nothing to draw
-        and returns early. It doubles as the escape hatch back to the terminal's own
-        scrollback, which a DECSTBM region otherwise defeats.
+        Two things go wrong without it. '/header off' leaves the reserved rows AND the
+        shrunken scroll region in place with a stale header frozen in them, because
+        repaint() has nothing to draw and returns early. And any change of HEIGHT moves the
+        top of the scroll region over rows that were holding log output, so the band lands
+        on top of old text and the prompt reappears at the top of the region instead of the
+        bottom - the corruption that /redraw was being used to clear up.
+
+        Redrawing is the same work /redraw does, and it is the only thing that fixes both:
+        re-reserve the band, repaint it, and repaint the log underneath from the scrollback.
         """
         if not self._can_pin:
             return
@@ -1384,6 +1626,7 @@ class Console:
         elif not self.args.header and self.pinned is not None:
             self.pinned.restore()
             self.pinned = None
+        self.redraw()
 
     def _meta_log(self, args):
         """Where mmu.log is, and its tail. It is live - `tail -f` it in another window."""
@@ -1456,6 +1699,9 @@ class Console:
         if self.scrollback is not None and sys.stdout.isatty():
             self.info('%s scrolls back through the log.'
                       % ('Shift-Up, PgUp or /s' if self.scroll_keys else '/s (or /scroll)'))
+        if self.live:
+            self.info('Clock is live: it runs while you sit here, so timers fire on their '
+                      'own. /live off freezes it.')
 
     def interact(self):
         # The tee first, so the banner is in the scrollback too. isatty() and not the pinning
@@ -1491,6 +1737,11 @@ class Console:
                 else:
                     self.draw_header()
                 prompt = self.prompt()
+                # Armed ONLY around input(). Everything below runs with it off, so a tick
+                # can never land inside a dispatch, inside the pager, or in the middle of
+                # the tee reassembling a line.
+                self._at_prompt = True
+                self._arm_tick(True)
                 try:
                     typed = input(prompt)
                 except EOFError:
@@ -1500,6 +1751,11 @@ class Console:
                     self.echo(prompt + '^C')
                     print('\n(interrupted - /quit or Ctrl-D to exit)')
                     continue
+                finally:
+                    # Order matters: clear the flag FIRST. Between disarming and here, a
+                    # signal taken microseconds ago can still run its handler.
+                    self._at_prompt = False
+                    self._arm_tick(False)
                 line = typed.strip()
                 # readline wrote both the prompt and the echo at the C level, so the tee
                 # never saw them. Not for the '/scroll' the key macro submits, though - that
@@ -1514,7 +1770,9 @@ class Console:
                     self.run_command(line)
         finally:
             # Unconditional: a crash that skipped this would leave the user's terminal
-            # with a shrunken scrolling region and no obvious way to notice why.
+            # with a shrunken scrolling region and no obvious way to notice why. Same for
+            # the itimer, which would otherwise keep signalling a console that has gone.
+            self._arm_tick(False)
             if self.pinned is not None:
                 self.pinned.restore()
                 self.pinned = None
@@ -1558,7 +1816,8 @@ class PinnedHeader:
 
     def __init__(self, console):
         self.console = console
-        self.height = 0
+        self.height = 0                             # rows actually reserved
+        self.wanted = 0                             # rows the header asked for
         self.active = False
 
     # -- terminal plumbing ----------------------------------------------------
@@ -1572,6 +1831,7 @@ class PinnedHeader:
         # not reach the scrollback buffer. With no tee installed the two are the same thing.
         out = raw_stdout()
         rows = self._rows()
+        self.wanted = height
         height = min(height, rows - 4)              # always leave room to type
         out.write('\0337')                          # save cursor
         out.write('\033[%d;%dr' % (height + 1, rows))
@@ -1615,8 +1875,19 @@ class PinnedHeader:
         block = self.console.header_block()
         if not block:
             return
-        if force or len(block) != self.height:
+        # Against `wanted`, not `height`: on a terminal too short for the whole header the
+        # band is capped, so height stays below len(block) permanently and comparing against
+        # it would re-run _set_region on every repaint - which moves the cursor, twice a
+        # second under a live clock, right out from under the prompt.
+        if force or len(block) != self.wanted:
             self._set_region(len(block))
+        if len(block) > self.height:
+            # The band is capped at rows-4 so there is always room to type. Painting the
+            # whole block regardless would write through the bottom of the band and into the
+            # scroll region, over the log. '/header all' on a 13-gate machine wants 28 rows.
+            block = block[:self.height - 1] + [
+                paint('  ... %d more header rows: terminal too short, or use fewer /header '
+                      'groups' % (len(block) - self.height + 1), '90', self.console.color)]
         out = raw_stdout()
         out.write('\0337')                          # save cursor + attrs
         for i, text in enumerate(block, start=1):
@@ -1739,6 +2010,11 @@ class LogPager:
             text = view[i] if i < len(view) else ''
             out.write('\033[%d;1H%s\033[2K%s' % (top + i, RESET, text))
         out.write('\033[%d;1H%s\033[2K' % (bottom, RESET))
+        # Park just after the last line, not always on the bottom row: a log shorter than
+        # the pane would otherwise get a band of blank rows between it and the prompt. Once
+        # the log fills the pane - the usual case, and always on the way out of the pager -
+        # this is the bottom row anyway.
+        out.write('\033[%d;1H' % min(bottom, top + len(view)))
         out.write('\033[?7h')
         out.flush()
 
@@ -1892,8 +2168,11 @@ def parse_args(argv=None):
                         'else 256 - a terminal without truecolor parses the channels of '
                         'ESC[38;2;R;G;Bm as separate SGR codes, and any channel in 100-107 '
                         'becomes a bright BACKGROUND colour (default: %(default)s)')
-    p.add_argument('--header', default='machine,sensors,filament',
-                   help='header groups, comma separated, or "all"/"off" (%s)'
+    p.add_argument('--header', default='all',
+                   help='header groups, comma separated, or "all"/"off" (%s). All of them '
+                        'wants a tall terminal - 28 rows on the default 13-gate machine - '
+                        'and the band is capped at four rows short of the screen, so a '
+                        'shorter one gets a truncation notice (default: %%(default)s)'
                         % ','.join(Console.GROUPS))
     p.add_argument('--scrollback', type=int, default=5000, metavar='N',
                    help='how many log lines to keep for /scroll and Shift-Up. A pinned '
@@ -1909,6 +2188,19 @@ def parse_args(argv=None):
                         '(default: %(default)s)')
     p.add_argument('--no-log', action='store_true',
                    help='leave the log in the session temp dir, discarded on exit')
+    # Tri-state: None means "on at a real prompt, off otherwise". --script has to stay
+    # reproducible, and both of these put wall-clock-derived text into the output.
+    p.add_argument('--live', dest='live', action='store_true', default=None,
+                   help='let the virtual clock run while you sit at the prompt, so timers '
+                        'fire and the NFC poll loop turns without being asked (default: on '
+                        'when interactive)')
+    p.add_argument('--no-live', dest='live', action='store_false',
+                   help='freeze the clock unless /advance moves it - the reproducible mode')
+    p.add_argument('--timestamp', dest='timestamp', action='store_true', default=None,
+                   help='stamp MMU output with the virtual clock (default: on when '
+                        'interactive)')
+    p.add_argument('--no-timestamp', dest='timestamp', action='store_false',
+                   help='no clock in the output')
     p.add_argument('--script', metavar='FILE',
                    help="read commands from FILE ('-' for stdin) instead of prompting")
     args = p.parse_args(argv)
