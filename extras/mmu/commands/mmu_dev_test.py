@@ -575,12 +575,12 @@ class MmuTestCommand(BaseCommand):
 
                 mmu.drive().sync_mode(mode)
 
-            pos = gcmd.get_float('SET_POS', 0, minval=0, maxval=1)
+            pos = gcmd.get_float('SET_POS', 0, minval=0, maxval=10)
             if pos > 0:
                 have_run_test = True
                 mmu.set_filament_pos_state(pos)
 
-            gpos = gcmd.get_int('GET_POS', 0, minval=0, maxval=10)
+            gpos = gcmd.get_int('GET_POS', 0, minval=0, maxval=1)
             if gpos:
                 have_run_test = True
                 fil_pos_str = FILAMENT_POS_NAME_MAP.get(mmu.filament_pos, "INVALID")
