@@ -61,7 +61,12 @@ class TMCVirtualPinHelper:
         self.diag_pin = config.get('diag_pin', None)
         ppins = self.printer.lookup_object('pins')
         chip_name = "%s_%s" % (name_parts[0], name_parts[-1])
-        ppins.register_virtual_endstop_chip(chip_name)
+        # The chip MUST carry an mcu. A TMC virtual endstop belongs to the mcu driving the
+        # stepper, and anything that reports on endstops walks es.get_mcu().get_name() -
+        # _MMU_TEST DUMP_MCU_ENDSTOPS and MmuStepper's own diagnostic dump both do. Left as
+        # None (the default) they raise "'NoneType' object has no attribute 'get_name'".
+        # Every fake stepper resolves to the single [mcu], so that is the faithful owner.
+        ppins.register_virtual_endstop_chip(chip_name, self.printer.lookup_object('mcu', None))
         self.chip_name = chip_name
 
     def setup_pin(self, pin_type, pin_params):
