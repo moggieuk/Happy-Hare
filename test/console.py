@@ -483,7 +483,6 @@ class Console:
         self.tee = None                             # the ScrollbackTee, while interacting
         self.hh = None
         self.fil = None
-        self.primed = {}                            # gate -> filament attributes, /gates
         self.running = True
         # Commands that raised. Counted separately from hh.errors because an exception out
         # of the dispatcher never reaches respond_raw, so a parse failure would otherwise
@@ -527,7 +526,8 @@ class Console:
         # thing on screen. Only seeded when the preload is actually going to happen.
         preloading = not (a.no_preload or a.no_calibrate)
         self.hh.boot(calibrate=not a.no_calibrate,
-                     gates_loaded_at=TIP_AT_GATE if preloading else None)
+                     gates_loaded_at=TIP_AT_GATE if preloading else None,
+                     prime=not a.no_prime, seed=a.seed)
         self.startup_output = list(self.sink)        # the welcome, shown by banner()
         del self.sink[:]
 
@@ -551,10 +551,17 @@ class Console:
         if preloading:
             self._preload_all()
 
-        # Something for the gate table, the LED filament_color render and the Spoolman paths
-        # to show. A fresh machine reports "Unknown | 200C | Unknown" on every gate.
-        if not a.no_prime:
-            self.primed = self.hh.prime_gate_map(seed=a.seed)
+        # A live fake Moonraker + Spoolman, seeded to agree with the primed gate map. Without
+        # it every call Happy Hare makes to Moonraker goes into the void, so an NFC read ends
+        # in "Automatic assignment of id timed out" 20s later instead of resolving a spool.
+        if not a.no_moonraker:
+            self.hh.attach_moonraker(spools=self.hh.spools_for_gate_map())
+
+        # LAST, so startup itself stays instant no matter what pacing is asked for - preloading
+        # 13 gates at --pace 1 would otherwise cost minutes of virtual time before the first
+        # prompt. /pace changes it live.
+        if a.pace:
+            self.hh.set_pacing(a.pace)
 
         # Walk past effect_initialized, the 8s unit-wide flash bootup leaves running. While it
         # holds a unit every transient flash is DROPPED (mmu_led_manager.py:473), so an NFC
@@ -738,9 +745,30 @@ class Console:
             self.hh.reactor.advance(0.)
         except Exception as exc:                    # noqa: BLE001
             print(paint('!! reactor: %s' % exc, '1;31', self.color))
+        self._settle_moonraker()
         self._drain(mark)
         self._warn_unhandled(line, unhandled_mark)
         self._warn_silent_macro(line, mark)
+
+    def _settle_moonraker(self):
+        """
+        Run the Klipper <-> Moonraker contract to quiescence after a command.
+
+        Both directions are fire-and-forget in production, so a command that calls out to
+        Moonraker returns before anything answers. settle() alternately delivers queued calls
+        each way until neither side has work - which is what turns a spool lookup into a gate
+        map update within the same prompt.
+
+        Errors are reported, not raised: an unanswerable remote method is a finding about the
+        machine, not a reason to end the session.
+        """
+        link = self.hh.moonraker_link
+        if link is None:
+            return
+        try:
+            link.settle()
+        except Exception as exc:                    # noqa: BLE001
+            print(paint('!! moonraker: %s' % exc, '1;31', self.color))
 
     def _warn_silent_macro(self, line, mark):
         """
@@ -1151,6 +1179,9 @@ class Console:
         ('/selector [POS|gate N|home|end] [UNIT=n]',
          'where the selector carriage physically is - set it as you would by hand'),
         ('/heat [TEMP]', 'set the extruder temperature'),
+        ('/pace [FACTOR]', 'how much of each move\'s real duration to spend: 0=instant '
+                           '(default), 0.5=twice as fast as real, 1=real time '
+                           '(alias /realtime)'),
         ('/timestamp [on|off]', 'stamp MMU output with the virtual clock (no argument '
                                 'toggles)'),
         ('/trace 0-4', "Happy Hare's own log_level, 4 = full narration"),
@@ -1171,7 +1202,7 @@ class Console:
         fn = getattr(self, '_meta_' + name, None)
         if fn is None:
             alias = {'wait': '_meta_advance', 'q': '_meta_quit', 'h': '_meta_help',
-                     's': '_meta_scroll'}.get(name)
+                     's': '_meta_scroll', 'realtime': '_meta_pace'}.get(name)
             fn = getattr(self, alias) if alias else None
         if fn is None:
             print(paint('?? unknown meta-command /%s (try /help)' % name, '33', self.color))
@@ -1460,6 +1491,27 @@ class Console:
     def _meta_heat(self, args):
         self.hh.heat_extruder(float(args[0]) if args else self.args.temp)
 
+    def _meta_pace(self, args):
+        """
+        Trade speed for observability. Without a factor, just report the current one.
+
+        At 0 an MMU_LOAD finishes with the clock untouched: fast, but nothing time-driven ever
+        happens - the LED effect never reaches a second frame and every action transition lands
+        in the same instant. Above 0 each move spends that fraction of its real duration in
+        virtual time, so the operation plays out and `/header leds` shows it changing.
+
+        Costs real seconds too: the reactor has to run every timer in the window it skips.
+        """
+        if not args:
+            factor = self.hh.pacing
+        else:
+            factor = self.hh.set_pacing(args[0])
+        if not factor:
+            self.info('pace=0 - moves are instant, the clock does not move')
+        else:
+            self.info('pace=%g - each move spends %g%% of its real duration '
+                      '(%.4gx real time)' % (factor, factor * 100., 1. / factor))
+
     ####################
     ##### Live mode ####
     ####################
@@ -1639,7 +1691,25 @@ class Console:
         elif not self.args.header and self.pinned is not None:
             self.pinned.restore()
             self.pinned = None
+        self._install_pace_observer()
         self.redraw()
+
+    def _install_pace_observer(self):
+        """
+        Let a PACED operation redraw the header while it is still running.
+
+        Pacing spends virtual time on each move, but a command still owns the terminal until
+        it returns - so without this the clock advances and nothing is rendered until the end,
+        which defeats the point. The pacer calls this between moves, from top level (never
+        from inside a reactor callback), so it is the same context an ordinary repaint runs in.
+
+        Only ever a PINNED header: repaint() saves and restores the cursor and rewrites the
+        reserved band, leaving the log flow alone. Reprinting an inline header mid-command
+        would interleave with Happy Hare's own output.
+        """
+        pinned = self.pinned
+        self.hh.printer.harness_pace_observer = (
+            pinned.repaint if (pinned is not None and pinned.active) else None)
 
     def _meta_log(self, args):
         """Where mmu.log is, and its tail. It is live - `tail -f` it in another window."""
@@ -1738,6 +1808,7 @@ class Console:
             if self.args.header and self._can_pin:
                 # Clears the screen and reserves the band, so it must precede the banner
                 self.pinned = PinnedHeader(self).install()
+                self._install_pace_observer()
             else:
                 out = raw_stdout()
                 out.write(RESET + '\033[2J\033[H')
@@ -2176,6 +2247,13 @@ def parse_args(argv=None):
     p.add_argument('--seed', type=int, default=0,
                    help='seed for the primed gate map, so a session is reproducible '
                         '(default %(default)s)')
+    p.add_argument('--no-moonraker', action='store_true',
+                   help='do not attach the fake Moonraker/Spoolman, so calls out to it go '
+                        'unanswered - which is what a printer with Moonraker down looks like')
+    p.add_argument('--pace', type=float, default=0., metavar='FACTOR',
+                   help='how much of each move\'s real duration to spend in virtual time: '
+                        '0 (default) is instant, 0.5 is twice as fast as real, 1 is real '
+                        'time. Also settable live with /pace')
     p.add_argument('--trace', type=int, default=0, metavar='0-4',
                    help="Happy Hare log_level; 4 is full narration")
     p.add_argument('--virtual-nfc', action='store_true',

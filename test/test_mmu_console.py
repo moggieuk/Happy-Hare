@@ -1745,7 +1745,7 @@ class TestTheDefaultProfile(unittest.TestCase):
         maps = hh.mmu.gate_maps
         num_gates = hh.mmu.num_gates
         low, high = hh.FILAMENT_TEMP_RANGE
-        self.assertEqual(len(self.console.primed), num_gates)
+        self.assertEqual(len(self.console.hh.primed), num_gates)
         for gate in range(num_gates):
             with self.subTest(gate=gate):
                 self.assertIn(maps.gate_vendor[gate], hh.FILAMENT_VENDORS)
@@ -1756,6 +1756,17 @@ class TestTheDefaultProfile(unittest.TestCase):
                 # The name is a product name and HH renders it next to the vendor, so it
                 # must not repeat it ("Prusa | Prusa PLA")
                 self.assertNotIn(maps.gate_vendor[gate], maps.gate_filament_name[gate])
+
+    def test_the_bootup_banner_already_shows_the_primed_map(self):
+        """
+        __MMU_BOOTUP prints the gate/filament table, so priming has to happen BEFORE it.
+        Priming afterwards left the banner showing "Unknown" on every gate while a later
+        MMU_STATUS showed the real thing - the same class of bug as the stale calibration
+        warnings, and fixed the same way.
+        """
+        joined = ' '.join(self.console.startup_output)
+        self.assertIn('Ready', joined, 'precondition: this is the bootup output')
+        self.assertNotIn('Unknown', joined)
 
     def test_priming_is_reproducible_and_varied(self):
         """
@@ -1768,12 +1779,102 @@ class TestTheDefaultProfile(unittest.TestCase):
         self.assertGreater(len({(a['vendor'], a['material']) for a in first.values()}), 1,
                            'every gate got the same filament')
 
+    def test_pacing_makes_an_operation_take_virtual_time(self):
+        """
+        At pace 0 a whole MMU_LOAD completes without the clock moving, so nothing time-driven
+        is observable - the LED effect never reaches a second frame and every action transition
+        lands in the same instant. Pacing spends each move's real duration in virtual time.
+        """
+        hh = self.console.hh
+        self.assertEqual(hh.pacing, 0., 'instant is the default')
+        gate = hh.mmu.num_gates - 1
+        self.console._dispatch('MMU_SELECT GATE=%d' % gate)
+
+        before = hh.reactor.monotonic()
+        self.console._dispatch('MMU_LOAD')
+        instant = hh.reactor.monotonic() - before
+        self.console._dispatch('MMU_UNLOAD')
+
+        hh.set_pacing(1.)
+        self.addCleanup(hh.set_pacing, 0.)
+        before = hh.reactor.monotonic()
+        self.console._dispatch('MMU_LOAD')
+        paced = hh.reactor.monotonic() - before
+
+        self.assertAlmostEqual(instant, 0., places=3, msg='pace 0 should not move the clock')
+        self.assertGreater(paced, 1., 'pacing did not spend virtual time')
+
+        # AND THE OPERATION MUST STILL HAVE WORKED. Pacing runs timers between moves, which is
+        # the same hazard reactor-level dispatch hit: it left every gate GATE_EMPTY instead of
+        # GATE_AVAILABLE, silently, with no error (see Console._dispatch). So assert the
+        # OUTCOME - an empty error list was measurably not enough to catch that.
+        from extras.mmu.mmu_constants import FILAMENT_POS_LOADED, FILAMENT_POS_UNLOADED
+        self.assertEqual(hh.mmu.filament_pos, FILAMENT_POS_LOADED)
+        self.console._dispatch('MMU_UNLOAD')
+        self.assertEqual(hh.mmu.filament_pos, FILAMENT_POS_UNLOADED)
+        self.assertNotIn(0, hh.mmu.gate_maps.gate_status, 'a gate went EMPTY during a paced run')
+        self.assertEqual(hh.errors, [])
+
+    def test_a_paced_preload_still_marks_the_gate_available(self):
+        """
+        The specific silent failure reactor dispatch caused. Preload is the most timer-sensitive
+        path in the harness - HH's own tail concludes the gate is not loaded if the entry sensor
+        is still triggered afterwards - so it is the one to pin.
+        """
+        hh = self.console.hh
+        hh.set_pacing(1.)
+        self.addCleanup(hh.set_pacing, 0.)
+        hh.place_filament(0, position=console_mod.TIP_AT_GATE)
+        self.console._dispatch('MMU_PRELOAD GATE=0')
+        self.assertNotEqual(hh.mmu.gate_maps.gate_status[0], 0,
+                            'paced preload left the gate EMPTY')
+        self.assertEqual(hh.errors, [])
+
+    def test_pacing_is_skipped_inside_a_reactor_callback(self):
+        """
+        advance() asserts if it re-enters a callback, so the pacer must no-op there. Only
+        top-level dispatch - the console, and the tests - is paced.
+        """
+        hh = self.console.hh
+        hh.set_pacing(1.)
+        self.addCleanup(hh.set_pacing, 0.)
+        mq = hh.printer.lookup_object('motion_queuing')
+        before = hh.reactor.monotonic()
+        hh.reactor.register_callback(lambda et: mq._pace(5.))
+        hh.reactor.advance(0.)
+        # advance(0) itself does not move the clock, and the paced call inside must not either
+        self.assertAlmostEqual(hh.reactor.monotonic(), before, places=3)
+
+    def test_a_spool_lookup_resolves_instead_of_timing_out(self):
+        """
+        The fake Moonraker holds a REAL MmuServer, seeded to agree with the primed gate map.
+        Without it a UID lookup is dispatched and nothing ever answers, so an NFC read ends in
+        "Automatic assignment of id timed out" 20 seconds later.
+        """
+        hh = self.console.hh
+        self.assertIsNotNone(hh.moonraker_link, 'Moonraker should be attached by default')
+        before = len(hh.console)
+        # run_command prints; keep it out of the runner's output
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.console.run_command('_MMU_TEST NFC_READ=1 DEEP=1 UID=BADCAFE03')
+        said = ' '.join(hh.console[before:])
+        self.assertIn('Spool ID', said)
+        self.assertNotIn('timed out', said)
+
+    def test_no_moonraker_leaves_calls_unanswered(self):
+        """The counterpart - what a printer with Moonraker down looks like."""
+        console = console_mod.Console(console_mod.parse_args(
+            ['--plain', '--no-log', '--header', 'off', '--no-preload', '--no-moonraker']))
+        self.addCleanup(console.close)
+        console.boot()
+        self.assertIsNone(console.hh.moonraker_link)
+
     def test_no_prime_leaves_the_gate_map_alone(self):
         console = console_mod.Console(console_mod.parse_args(
             ['--plain', '--no-log', '--header', 'off', '--no-prime']))
         self.addCleanup(console.close)
         console.boot()
-        self.assertEqual(console.primed, {})
+        self.assertEqual(console.hh.primed, {})
         self.assertEqual(console.hh.mmu.gate_maps.gate_vendor[0], '')
 
     def test_the_selector_header_reports_the_carriage_and_the_servo(self):

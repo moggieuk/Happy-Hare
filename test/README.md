@@ -330,6 +330,8 @@ Useful flags — `make console ARGS='...'`:
 --no-calibrate                 # boot cold: no seeded calibration, no homing, no preload
 --no-prime                     # leave the gate map blank instead of filling it in
 --seed N                       # seed for the primed gate map (default 0, reproducible)
+--no-moonraker                 # don't attach the fake Moonraker/Spoolman
+--pace FACTOR                  # 0=instant (default), 0.5=twice as fast as real, 1=real time
 --script FILE                  # run non-interactively (this is how it is tested)
 ```
 
@@ -348,6 +350,28 @@ Two more things happen at startup that a printer does for itself and a frozen cl
   while it holds a unit *every* transient flash is dropped (`mmu_led_manager.py:473`) — so an
   NFC read acknowledgment, for one, silently does nothing. `boot()` stops the clock 2.5s in, so
   without `Session.settle_leds()` an interactive session would never leave that window.
+- **A fake Moonraker + Spoolman is attached**, seeded to agree with the primed gate map (gate
+  N's tag UID is `BADCAFE<NN>`). The `MmuServer` inside it is *real*, so the round trip
+  exercises the actual contract both ways. Without it every call Happy Hare makes to Moonraker
+  goes unanswered and an NFC read ends in *"Automatic assignment of id timed out"* 20s later —
+  which is what `--no-moonraker` gives you, and what a printer with Moonraker down looks like.
+
+### Watching an operation happen — `/pace`
+
+Moves complete instantly by default: an `MMU_LOAD` finishes without the virtual clock moving at
+all. Fast, but nothing time-driven is observable — an LED effect never reaches a second frame,
+and every action transition lands in the same instant.
+
+`/pace FACTOR` spends that fraction of each move's *real* duration in virtual time: `0` is
+instant (the default), `0.5` twice as fast as real, `1` roughly real time. Each move's duration
+is already known — `MmuStepper._submit_move` computes the real trapezoid — so this is HH's own
+arithmetic, not an invented number.
+
+The pacer advances the reactor, which **runs timers** (a `pause()` would only jump the clock,
+see `reactor._sys_pause`). That is the whole point. It cannot run inside a reactor callback, so
+it no-ops there; top-level dispatch, which is what the console and the tests use, is where
+pacing applies. With a pinned header it also repaints between moves, so the operation can be
+watched rather than merely take longer.
 
 The **gate map is seeded the same way**, and for the same reason: bootup prints the gate
 table, `_preload_all()` runs after `boot()` returns, and that table is the last thing on

@@ -127,6 +127,9 @@ class Session:
         self.reactor = None
         self.config = None
         self.fileconfig = None
+        self.primed = {}                # gate -> filament attributes, from prime_gate_map()
+        self.moonraker = None           # set by attach_moonraker()
+        self.moonraker_link = None
         self._booted = False
 
     # -- lifecycle ---------------------------------------------------------
@@ -139,6 +142,10 @@ class Session:
         return False
 
     def close(self):
+        if self.moonraker is not None:
+            # Owns an asyncio loop; leaks a ResourceWarning per session otherwise
+            self.moonraker.close()
+            self.moonraker = self.moonraker_link = None
         try:
             mmu = self.printer.lookup_object('mmu', None) if self.printer else None
             logger = getattr(mmu, 'logger', None) if mmu else None
@@ -850,6 +857,80 @@ class Session:
             applied[gate] = attrs
         return applied
 
+    def attach_moonraker(self, spools=None, hostname='mmu-sim', **kwargs):
+        """
+        Give this session a live fake Moonraker + Spoolman, and return the MoonrakerLink.
+
+        Without one, every call Happy Hare makes to Moonraker goes into the void: a UID
+        lookup is dispatched and nothing ever answers, so an NFC read ends in "Automatic
+        assignment of id timed out" ~20s later. That is faithful to a printer with Moonraker
+        down, and useless for exercising the Spoolman paths.
+
+        The MmuServer is REAL - only the server around it is faked - so the round trip
+        exercises the actual contract in both directions. The caller must pump it: the link's
+        settle() alternately delivers queued Klipper->Moonraker calls and Moonraker->Klipper
+        gcode until both sides are quiet.
+
+        Must be called AFTER boot(): component_init() replays the state bootup published.
+        """
+        from .moonraker import MoonrakerHarness
+        from .roundtrip import MoonrakerLink
+
+        self.moonraker = MoonrakerHarness(
+            spools=list(spools or ()), num_gates=self.mmu.num_gates,
+            hostname=hostname, **kwargs)
+        self.moonraker.component_init()
+        self.moonraker_link = MoonrakerLink(self, self.moonraker)
+        self.moonraker_link.settle()
+        return self.moonraker_link
+
+    def spools_for_gate_map(self, uid_for=None):
+        """
+        One Spoolman spool per gate, matching what prime_gate_map() put in the gate map, each
+        registered against a UID. Returns the list of add_spool() kwargs.
+
+        Matching matters: a resolved spool OVERRIDES the local gate map, so seeding Spoolman
+        with unrelated filament would make every lookup visibly rewrite the gate it resolved
+        for - which looks like a bug rather than like a printer.
+
+        uid_for(gate) supplies the tag UID; the default is stable and greppable, so
+        `_MMU_TEST NFC_READ=1 UID=<it>` resolves without having to look anything up.
+        """
+        uid_for = uid_for or (lambda gate: 'BADCAFE%02X' % gate)
+        spools = []
+        for gate, attrs in sorted((self.primed or {}).items()):
+            spools.append({
+                'uid': uid_for(gate),
+                'gate': gate,
+                'name': attrs['name'],
+                'material': attrs['material'],
+                'vendor': attrs['vendor'],
+                'color_hex': attrs['color'],
+                'extruder_temp': attrs['temperature'],
+            })
+        return spools
+
+    def set_pacing(self, factor):
+        """
+        How much of each move's real duration to spend in virtual time. Returns the factor.
+
+        0 (the default) is instant: an MMU_LOAD finishes without the clock moving, which is
+        fast but leaves nothing time-driven observable - LED effects never reach a second
+        frame, and every action transition happens in the same instant. 1.0 gives each move
+        roughly the time the real machine would need; 0.5 is twice as fast as real.
+
+        Only meaningful for commands dispatched at TOP LEVEL (the console, and the tests):
+        the pacer advances the reactor, which is illegal inside a reactor callback and is
+        skipped there. See PrinterMotionQueuing._pace.
+        """
+        factor = max(0., float(factor))
+        self.printer.harness_pacing = factor
+        return factor
+
+    @property
+    def pacing(self):
+        return getattr(self.printer, 'harness_pacing', 0.) or 0.
+
     def settle_leds(self, limit=20.):
         """
         Advance the virtual clock until no unit is held by a timed state effect.
@@ -927,7 +1008,7 @@ class Session:
                                  * self.mmu.num_gates)
         return self
 
-    def boot(self, extra=0.01, calibrate=False, gates_loaded_at=None):
+    def boot(self, extra=0.01, calibrate=False, gates_loaded_at=None, prime=False, seed=0):
         """
         Full sequence to a live MMU: connect -> ready -> pump the reactor past
         BOOT_DELAY so the scheduled bootup callback runs __MMU_BOOTUP, then past the
@@ -942,6 +1023,11 @@ class Session:
         gates_loaded_at=<tip position> is the same idea for the gate map - see
         seed_loaded_gates(). Only the console passes it, and only when it is about to preload
         every gate anyway.
+
+        prime=True is the same idea again, for the filament ATTRIBUTES - see prime_gate_map().
+        Also before ready, and for the same reason: __MMU_BOOTUP prints the gate/filament table,
+        so priming afterwards left the bootup banner showing "Unknown" on every gate while a
+        later MMU_STATUS showed the real thing.
 
         It deliberately does NOT home. Measured on tradrack, seeding alone leaves bootup's
         output byte-identical minus the warnings; homing here as well makes bootup take a
@@ -969,6 +1055,8 @@ class Session:
             self._install_move_observer()
             if calibrate:
                 self.calibrate()
+            if prime:
+                self.primed = self.prime_gate_map(seed=seed)
             if gates_loaded_at is not None:
                 self.seed_loaded_gates(gates_loaded_at)
             self.ready()

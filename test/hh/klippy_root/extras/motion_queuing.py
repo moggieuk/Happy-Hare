@@ -72,7 +72,42 @@ class PrinterMotionQueuing:
                 distance = axes_r_x * cruise_v * (accel_t + cruise_t)
                 if distance:
                     self.move_observer(trapq, distance)
+            # Optionally let this move take TIME. See _pace().
+            self._pace(accel_t + cruise_t + decel_t)
         return trapq_append
+
+    def _pace(self, duration):
+        """
+        Spend `duration` seconds of virtual time on a move that has already happened.
+
+        Off unless printer.harness_pacing is set (see Session.set_pacing). At 0 - the default,
+        and what every test uses - a whole MMU_LOAD completes without the clock moving at all,
+        which is fast but means nothing time-driven is observable: LED effects never reach a
+        second frame, and every action transition lands in the same instant.
+
+        AFTER the fact, not during: the move observer above has already advanced the filament
+        model the full distance, so this is "hold the finished state for as long as the move
+        would have taken" rather than an interpolation. That is what makes a load watchable -
+        HH emits many moves per operation, so the pauses land between them.
+
+        reactor.advance() RUNS TIMERS, which is the whole point (a pause() would only jump the
+        clock, see reactor._sys_pause). It cannot be called from inside a reactor callback, so
+        this is a no-op there - the console dispatches at top level, which is where pacing is
+        wanted and where advance() is legal.
+        """
+        factor = getattr(self.printer, 'harness_pacing', 0.) or 0.
+        if factor <= 0. or duration <= 0.:
+            return
+        reactor = self.printer.get_reactor()
+        if reactor.in_dispatch():
+            return
+        reactor.advance(duration * factor)
+        # Let whoever is watching redraw. Without this the clock moves but nothing renders
+        # until the command returns, so a paced load still can't be WATCHED - which is the
+        # only reason to pace one. The console points this at its pinned header.
+        observer = getattr(self.printer, 'harness_pace_observer', None)
+        if observer is not None:
+            observer()
 
     def check_step_generation_scan_windows(self):
         self.scan_window_checks += 1

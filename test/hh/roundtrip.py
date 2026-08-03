@@ -35,43 +35,21 @@ from .moonraker import MoonrakerHarness
 BUILTIN_METHODS = ('spoolman_set_active_spool',)
 
 
-class RoundTrip:
+class MoonrakerLink:
     """
-    A joined Klipper + Moonraker session. Both halves are REAL Happy Hare code; only
-    their surroundings are faked.
+    The bidirectional pump between one Session and one MoonrakerHarness.
+
+    Separate from RoundTrip because RoundTrip OWNS the session it builds, and the console
+    already owns its own - so the console attaches a link to that instead. Nothing here
+    touches session construction or teardown.
     """
 
-    def __init__(self, profile='nfc_spoolman', spools=(), num_gates=4,
-                 hostname='testprinter', klipper_kwargs=None,
-                 moonraker_kwargs=None):
-        self.klipper = Session(profile, **(klipper_kwargs or {}))
-        self.moonraker = MoonrakerHarness(
-            spools=list(spools), num_gates=num_gates, hostname=hostname,
-            **(moonraker_kwargs or {}))
-        self.builtin_calls = []     # calls to Moonraker's own components
+    def __init__(self, klipper, moonraker):
+        self.klipper = klipper
+        self.moonraker = moonraker
+        self.builtin_calls = []      # calls to Moonraker's own components
         self._settling = False
 
-    # -- lifecycle ---------------------------------------------------------
-    def __enter__(self):
-        return self.boot()
-
-    def __exit__(self, exc_type, exc, tb):
-        self.close()
-        return False
-
-    def boot(self):
-        self.klipper.boot()
-        self.moonraker.component_init()
-        # Bootup itself calls out to Moonraker (_spoolman_sync /
-        # _moonraker_sync_lane_data), so settle before handing back a quiet machine.
-        self.settle()
-        return self
-
-    def close(self):
-        self.moonraker.close()
-        self.klipper.close()
-
-    # -- the pump ----------------------------------------------------------
     def settle(self, max_rounds=40):
         """
         Run the contract to quiescence: alternately deliver queued Klipper->Moonraker
@@ -131,6 +109,57 @@ class RoundTrip:
         self.klipper.reactor.advance(seconds)
         self.moonraker.advance(seconds)
         self.settle()
+        return self
+
+
+class RoundTrip:
+    """
+    A joined Klipper + Moonraker session. Both halves are REAL Happy Hare code; only
+    their surroundings are faked.
+    """
+
+    def __init__(self, profile='nfc_spoolman', spools=(), num_gates=4,
+                 hostname='testprinter', klipper_kwargs=None,
+                 moonraker_kwargs=None):
+        self.klipper = Session(profile, **(klipper_kwargs or {}))
+        self.moonraker = MoonrakerHarness(
+            spools=list(spools), num_gates=num_gates, hostname=hostname,
+            **(moonraker_kwargs or {}))
+        self.link = MoonrakerLink(self.klipper, self.moonraker)
+
+    # -- lifecycle ---------------------------------------------------------
+    def __enter__(self):
+        return self.boot()
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
+        return False
+
+    def boot(self):
+        self.klipper.boot()
+        self.moonraker.component_init()
+        # Bootup itself calls out to Moonraker (_spoolman_sync /
+        # _moonraker_sync_lane_data), so settle before handing back a quiet machine.
+        self.settle()
+        return self
+
+    def close(self):
+        self.moonraker.close()
+        self.klipper.close()
+
+    # -- the pump, on the link ---------------------------------------------
+    @property
+    def builtin_calls(self):
+        return self.link.builtin_calls
+
+    def settle(self, max_rounds=40):
+        return self.link.settle(max_rounds)
+
+    def _dispatch(self, name, kwargs):
+        return self.link._dispatch(name, kwargs)
+
+    def advance(self, seconds):
+        self.link.advance(seconds)
         return self
 
     # -- driving -----------------------------------------------------------
