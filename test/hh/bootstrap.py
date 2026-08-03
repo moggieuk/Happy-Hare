@@ -426,7 +426,34 @@ class Session:
         if effects is None:
             effects = self.printer.harness_macro_effects = {}
         effects.setdefault('_MMU_FORM_TIP', self._effect_form_tip)
+        # Purge moves a lot of filament through the nozzle, none of which this harness models -
+        # but it TAKES TIME on a real machine, and a paced session that skips it in an instant
+        # reads as if the operation were over when it is not. Time only; no movement.
+        effects.setdefault('_MMU_PURGE', self._effect_spend_time)
         return effects
+
+    # What a macro whose body never runs would nonetheless COST, at pace 1. Tip forming and
+    # purging are both a sequence of ramming, cooling and wiping moves that the harness does not
+    # reproduce (see _effect_form_tip); a few seconds each is the honest stand-in, and it is a
+    # round number on purpose - deriving one from the macro's own speeds implies a fidelity the
+    # net-movement model does not have.
+    MACRO_DURATION = 4.0
+
+    def _spend_macro_time(self, seconds=None, movement=0.):
+        """
+        Let a macro cost time, walking `movement` mm of filament across it if there is any.
+
+        Yields nothing itself - the caller gets the per-slice movement so it can apply it - and
+        with pacing off it is a single slice and no time at all, exactly as before.
+        """
+        mq = self.printer.lookup_object('motion_queuing', None)
+        if mq is None:
+            return iter((movement,))
+        return mq.pace_move(self.MACRO_DURATION if seconds is None else seconds, movement)
+
+    def _effect_spend_time(self, macro, gcmd):
+        for _amount in self._spend_macro_time():
+            pass
 
     def _effect_form_tip(self, macro, gcmd):
         """
@@ -471,19 +498,14 @@ class Session:
 
         # HOW LONG it takes, so a paced session does not do the whole retract in one instant -
         # it is the first thing an unload does, and it was the last step still finishing
-        # immediately. The speed is the macro's OWN unloading_speed_start, not a number chosen
-        # here; without it (or unpaced) pace_move yields the whole distance once.
-        # unloading_speed, not unloading_speed_start: the distance modelled here IS the cooling
-        # tube (position + length), and unloading_speed is the macro's own "slow move to cooling
-        # zone". _start is the fast move before it, and at 80mm/s it made the whole retract
-        # 0.5s - shorter than the real macro's ramming and cooling by a wide margin.
-        speed = (float(variables.get('unloading_speed') or 0.0)
-                 or float(variables.get('unloading_speed_start') or 0.0))
-        mq = self.printer.lookup_object('motion_queuing', None)
-        duration = (distance / speed) if speed else 0.
-        slices = (mq.pace_move(duration, -distance) if mq is not None else (-distance,))
-
-        for amount in slices:
+        # immediately.
+        #
+        # MACRO_DURATION rather than distance/speed. The retract modelled here is the macro's
+        # NET movement, but the real macro spends its time ramming, cooling and dipping over
+        # that same span - so dividing the net distance by any one of its speeds understates it
+        # (unloading_speed_start put the whole thing at 0.5s). A flat few seconds is the honest
+        # answer for a body that does not run.
+        for amount in self._spend_macro_time(movement=-distance):
             if stepper is not None:
                 # Retract: HH reads (initial_mcu_pos - final_mcu_pos) * step_dist
                 # (mmu_filament_movement.py:2541-2559), so BOTH have to move. set_position

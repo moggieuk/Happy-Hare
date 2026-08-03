@@ -1481,13 +1481,26 @@ class TestConsoleScript(unittest.TestCase):
     requires a UNIT. The default profile gets its own coverage below instead.
 
     ALSO PINNED TO --pace 0, and that one is a finding rather than a preference. BoxTurtle and
-    EMU are the two shipped profiles where a PACED load logs a spurious "Operation not
-    possible. Filament is loaded": the load pushes filament across a per-gate entry sensor,
-    that raises an insert event, and with gate_autoload set HH starts an MMU_PRELOAD inside the
-    load that caused it. Happy Hare has the guard for exactly this - wrap_suspend_insert_events,
-    whose docstring describes this failure word for word - but applies it only on the NFC-scan
-    path (mmu_filament_movement.py:523), never on the load path. It stayed invisible while moves
-    took no time. The load still completes correctly; the message is the whole symptom.
+    EMU are the two shipped profiles with per-gate entry sensors AND gate_autoload, and paced
+    they PRELOAD TWICE:
+
+        > MMU_PRELOAD GATE=1
+        Preloading filament in gate 1...
+        Preloading...
+        Preloading filament in current gate...     <- nobody asked for this one
+        Preloading...
+
+    A preload is the operation that crosses the entry sensor (a load does not - the filament is
+    already past it), so it raises an insert event, and with gate_autoload set HH answers by
+    starting another preload. Happy Hare has the guard for exactly this -
+    wrap_suspend_insert_events, whose docstring describes the failure word for word - but
+    applies it only on the NFC-scan path (mmu_filament_movement.py:523).
+
+    Unpaced it never surfaced, because the entry sensor's event_delay defers the insert by 0.5s
+    and no virtual time ever passed. Paced, the deferred event lands mid-operation, so an
+    MMU_LOAD (which preloads first when the gate is not already available) picks it up during
+    the bowden move and logs "Operation not possible. Filament is loaded" - by then the machine
+    IS loaded. The load still completes correctly; the message is the whole symptom.
     """
 
     PROFILE = 'boxturtle'

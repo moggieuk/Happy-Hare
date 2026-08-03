@@ -388,19 +388,28 @@ paced and unpaced end with the filament in the same place.
 
 Every kind of move is paced, not just the plain ones: homing moves never reach
 `trapq_append`, so until `pace_move()` became reusable an unload spent all of its seconds
-inside the one bowden move while every home-to-sensor step and the tip-forming retract happened
-in the same instant. Tip forming is timed off the macro's own `unloading_speed`.
+inside the one bowden move while every home-to-sensor step happened in the same instant.
+
+**Tip forming and purging get a flat `Session.MACRO_DURATION` (4s at pace 1)** rather than a
+distance/speed figure. Their bodies never run here, and what the harness models of tip forming
+is only its *net* retraction — but the real macros spend their time ramming, cooling, dipping
+and wiping over that span, so dividing the net distance by any one of the macro's own speeds
+badly understates it (`unloading_speed_start` put the whole retract at 0.5s). A round number is
+the honest answer for work that is deliberately not modelled.
 
 Note the log still arrives in **blocks**, because Happy Hare only logs at operation-step
 boundaries, not continuously. The header is what moves during a long move.
 
 **One known consequence.** On `boxturtle` and `emu` — the shipped profiles with per-gate entry
-sensors *and* `gate_autoload` — a paced load logs a spurious `Operation not possible. Filament
-is loaded`. The load pushes filament across an entry sensor, that raises an insert event, and HH
-starts an `MMU_PRELOAD` inside the load that caused it. Happy Hare has the guard for exactly
-this (`wrap_suspend_insert_events`, whose docstring describes it word for word) but applies it
-only on the NFC-scan path, never on the load path. Invisible while moves took no time. The load
-still completes correctly.
+sensors *and* `gate_autoload` — pacing makes them **preload twice**, and a subsequent load log a
+spurious `Operation not possible. Filament is loaded`.
+
+A *preload* is the operation that crosses the entry sensor (a load does not — the filament is
+already past it), so it raises an insert event, and with `gate_autoload` set HH answers by
+starting another preload. Happy Hare has the guard for exactly this
+(`wrap_suspend_insert_events`, whose docstring describes it word for word) but applies it only on
+the NFC-scan path. Unpaced it never surfaced, because the entry sensor's `event_delay` defers the
+insert by 0.5s and no virtual time ever passed. Everything still completes correctly.
 
 `/timestamp on` is what makes the pacing legible: output is stamped with the virtual clock as
 of **when Happy Hare produced the line**, not when it was printed — `_drain()` runs after a
