@@ -137,6 +137,29 @@ class MmuEncoder:
         return self.detection_length
 
 
+    def get_effective_clog_detection_length(self, mmu_unit):
+        """
+        The detection length in force for a unit, for callers outside the flowguard loop.
+        While flowguard is enabled the live length is the answer because autotuning owns it.
+        While it isn't, the live length is just whatever was last in use and can lag a fresh
+        calibration, so answer with what the next enable_flowguard() will settle on instead
+        """
+        if self._flowguard_enabled and self.active_mmu_unit is mmu_unit:
+            return self.detection_length
+        return self._resolve_detection_length(mmu_unit)
+
+
+    # The detection length a unit's mode calls for. Auto mode follows the calibrated length
+    # until there is one, everything else uses the configured maximum motion
+    def _resolve_detection_length(self, mmu_unit):
+        cdl = mmu_unit.p.flowguard_encoder_max_motion
+        if mmu_unit.p.flowguard_encoder_mode == ENCODER_RUNOUT_AUTOMATIC:
+            cal_cdl = mmu_unit.calibrator.get_clog_detection_length()
+            if cal_cdl is not None:
+                cdl = cal_cdl
+        return max(cdl, 2.)
+
+
     # Suggest that a new automatic detection length is calculated
     def note_clog_detection_length(self):
         self._update_detection_length()
@@ -155,13 +178,7 @@ class MmuEncoder:
         mode = mmu_unit.p.flowguard_encoder_mode
         self.detection_mode = mode
 
-        # Figure out the correct detection length based on mode
-        cdl = mmu_unit.p.flowguard_encoder_max_motion
-        if mode == ENCODER_RUNOUT_AUTOMATIC:
-            cal_cdl = mmu_unit.calibrator.get_clog_detection_length()
-            if cal_cdl is not None:
-                cdl = cal_cdl
-        self.detection_length = max(cdl, 2.)
+        self.detection_length = self._resolve_detection_length(mmu_unit)
 
         self._reset_filament_runout_params()
         self._flowguard_enabled = (mode != 0)
@@ -287,7 +304,7 @@ class MmuEncoder:
 
             # Tell the calibrator for this unit of the change
             if self.active_mmu_unit:
-                self.active_mmu_unit.calibrator.update_clog_detection_length(self.detection_length)
+                self.active_mmu_unit.calibrator.update_clog_detection_length(round(self.detection_length, 1))
 
 
     # Called to see if state update requires callback notification
