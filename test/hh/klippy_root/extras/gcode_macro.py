@@ -22,6 +22,25 @@
 
 import jinja2
 
+# One Environment and one compiled-template cache for the whole PROCESS, not per boot.
+# env.from_string(script) is a pure function of the literal script text: this Environment's
+# config ('{%','%}','{','}', extensions=['jinja2.ext.do']) never varies, and everything that
+# differs per render - printer state, gate, eventtime - is injected later via
+# TemplateWrapper.render(context), never baked into the compiled template at from_string()
+# time. That is what makes this safe to cache for the process's entire lifetime, unlike
+# test/hh/cfg.py's $(shell,...) cache: that one has to be cleared every Kconfig() parse
+# because a few of ITS macros read a bare $VAR the subprocess resolves from a live os.environ
+# at exec time - there is no such live dependency here.
+#
+# Without this, every boot rebuilt a fresh Environment and recompiled every one of the ~360
+# gcode_macro sections a rendered profile ships from scratch: measured at 23,603
+# jinja2.environment.compile calls / 39.7s across 65-66 boots in test_mmu_console.py alone.
+# Sharing the Environment and caching by script text cut one profile's boot() cost 5.9x
+# (1.47s -> 0.25s). Only the compiled TEMPLATE is cached - printer/name/script stay
+# per-instance below so error messages still reference the right session.
+_ENV = jinja2.Environment('{%', '%}', '{', '}', extensions=['jinja2.ext.do'])
+_TEMPLATE_CACHE = {}
+
 
 class TemplateWrapper:
     def __init__(self, printer, env, name, script):
@@ -29,7 +48,13 @@ class TemplateWrapper:
         self.name = name
         self.script = script
         try:
-            self.template = env.from_string(script)
+            template = _TEMPLATE_CACHE.get(script)
+            if template is None:
+                # Only cache on SUCCESS: a compile failure must raise with THIS call's
+                # printer/name below, not poison the cache with a partial/failed entry.
+                template = env.from_string(script)
+                _TEMPLATE_CACHE[script] = template
+            self.template = template
         except Exception as e:
             raise printer.config_error("Error building template '%s': %s" % (name, e))
 
@@ -48,8 +73,7 @@ class TemplateWrapper:
 class PrinterGCodeMacro:
     def __init__(self, config):
         self.printer = config.get_printer()
-        self.env = jinja2.Environment('{%', '%}', '{', '}',
-                                      extensions=['jinja2.ext.do'])
+        self.env = _ENV
 
     def load_template(self, config, option, default=None):
         name = "%s:%s" % (config.get_name(), option)
