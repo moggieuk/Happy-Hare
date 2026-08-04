@@ -62,6 +62,23 @@ class FakeTty(io.StringIO):
         return 1
 
 
+@contextlib.contextmanager
+def no_tty():
+    """
+    The mirror image of FakeTty: force both streams to look like pipes.
+
+    Console derives its interactive defaults from sys.stdout.isatty() (test/console.py:478)
+    and _arm_tick re-checks stdout AND stdin at call time, so a test that pins the
+    NON-interactive behaviour has to say so rather than inherit it. Without this the
+    affected tests pass under `make test | cat` - and under CI, and under an agent's piped
+    shell - then fail for anyone running the same suite straight from a terminal, which is
+    the one way it is most often run by hand.
+    """
+    with mock.patch.object(sys, 'stdout', io.StringIO()), \
+            mock.patch.object(sys, 'stdin', io.StringIO()):
+        yield
+
+
 def make_install_tree(root, printer_cfg=True, macros=True, mmu_vars=True):
     """An install-shaped directory, laid out exactly as ./install.sh -z -t leaves one."""
     rendered = cfg_mod.render(profiles.get('boxturtle'))
@@ -1141,7 +1158,8 @@ class TestTimestamps(unittest.TestCase):
     """
 
     def _console(self):
-        console = console_mod.Console(console_mod.parse_args(['--plain', '--no-log']))
+        with no_tty():                              # pin the non-interactive defaults
+            console = console_mod.Console(console_mod.parse_args(['--plain', '--no-log']))
         console.color = True
         console.wall_start = 1000000.0              # a fixed instant, so the text is stable
         console.clock_epoch = 1000.0
@@ -1229,7 +1247,8 @@ class TestLiveClock(unittest.TestCase):
     """
 
     def _console(self, argv=()):
-        console = console_mod.Console(console_mod.parse_args(list(argv)))
+        with no_tty():                              # pin the non-interactive defaults
+            console = console_mod.Console(console_mod.parse_args(list(argv)))
         console.hh = mock.Mock()
         console.hh.reactor.monotonic.return_value = 1000.0
         # Explicitly None: a bare Mock attribute is truthy, and the tick reads _g_dispatch
@@ -1241,7 +1260,7 @@ class TestLiveClock(unittest.TestCase):
 
     def test_both_default_off_when_not_interactive(self):
         """--script must stay byte-for-byte reproducible; a clock in the output cannot."""
-        console = self._console()                   # tests never run on a tty
+        console = self._console()                   # _console() pins stdout to a pipe
         self.assertFalse(console.live)
         self.assertFalse(console.timestamps)
 
@@ -1353,7 +1372,9 @@ class TestLiveClock(unittest.TestCase):
         an itimer running and the next tick would land inside a dispatch.
         """
         console = self._console(['--live'])
-        with mock.patch('signal.setitimer') as setitimer, mock.patch('signal.signal'):
+        # no_tty() has to cover the CALL, not just construction: _arm_tick re-reads both
+        # streams every time, which is exactly the discipline under test.
+        with no_tty(), mock.patch('signal.setitimer') as setitimer, mock.patch('signal.signal'):
             self.assertFalse(console._arm_tick(True), 'armed a timer with no terminal')
         setitimer.assert_not_called()
 
