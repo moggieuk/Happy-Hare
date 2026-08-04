@@ -75,6 +75,11 @@ if !UNSELECT_MMU_HAS_NFC_READER
 endif
 
 
+# Define type now so it can be explicitly selected
+config MMU_HAS_PER_GATE_NFC_READERS
+  def_bool n
+
+
 # ------------------------------------
 # NFC reader config
 # ------------------------------------
@@ -327,8 +332,7 @@ if MMU_HAS_NFC_READER && ! CUSTOM_NFC_READER_SETUP
     # --------------------------------------
 
     config MMU_HAS_PER_GATE_NFC_READERS
-      bool "Per-gate NFC readers?"
-      default n
+      prompt "Per-gate NFC readers?"
       help
         Most designs will only have a single NFC reader that allows presenting
         filament prior to preload. However, some designs have a reader built
