@@ -459,8 +459,16 @@ class Console:
         self.mode = (args.color if args.color != 'auto'
                      else ('truecolor' if truecolor_supported() else '256'))
         self.sink = []                              # ordered (index -> rendered line)
+        self.sink_stamp = []                        # ... and the clock when HH said it
+        self._printed = 0                           # how much of it has reached the screen
+        # Print Happy Hare's output as it arrives rather than after the command. Enabled ONLY
+        # around run_command - the path that presents to a user. Startup output belongs to
+        # banner(), and _dispatch() is the raw path used by setup and by the tests, which must
+        # stay silent.
+        self.streaming = False
         self.startup_output = []                    # bootup, incl. the Happy Hare welcome
         self.pinned = None                          # set by interact() when pinning
+        self.interactive = False                    # ... and True once its loop is running
         self._can_pin = False                       # ... and whether it may re-pin later
         self.meta_line = ''                         # the current meta-command, unsplit
         self.scroll_keys = False                    # whether Shift-Up/PgUp could be bound
@@ -483,7 +491,6 @@ class Console:
         self.tee = None                             # the ScrollbackTee, while interacting
         self.hh = None
         self.fil = None
-        self.primed = {}                            # gate -> filament attributes, /gates
         self.running = True
         # Commands that raised. Counted separately from hh.errors because an exception out
         # of the dispatcher never reaches respond_raw, so a parse failure would otherwise
@@ -526,10 +533,15 @@ class Console:
         # that is fully preloaded by the time the prompt appears, and that banner is the last
         # thing on screen. Only seeded when the preload is actually going to happen.
         preloading = not (a.no_preload or a.no_calibrate)
+        # home= for the same reason as the other two: bootup renders the selector and filament
+        # rows, and homing afterwards left the banner showing 'Selct: XXXX' and '[T?]' about a
+        # machine a later MMU_STATUS reported as homed with a gate selected.
         self.hh.boot(calibrate=not a.no_calibrate,
-                     gates_loaded_at=TIP_AT_GATE if preloading else None)
+                     gates_loaded_at=TIP_AT_GATE if preloading else None,
+                     prime=not a.no_prime, seed=a.seed,
+                     pre_bootup=self._home_before_bootup)
         self.startup_output = list(self.sink)        # the welcome, shown by banner()
-        del self.sink[:]
+        self._clear_sink()
 
         # MANDATORY, and the easiest thing to get wrong: the filament model is created
         # lazily and only then installs the move observer (test/hh/bootstrap.py:336).
@@ -546,15 +558,20 @@ class Console:
         # A PHYSICAL selector needs calibrating and homing before it can select a gate, and an
         # uncalibrated one refuses with "Selector is not clibrated". No-op on a VirtualSelector
         # machine, so this costs the older profiles nothing.
-        self._prepare_selectors()
-
         if preloading:
             self._preload_all()
 
-        # Something for the gate table, the LED filament_color render and the Spoolman paths
-        # to show. A fresh machine reports "Unknown | 200C | Unknown" on every gate.
-        if not a.no_prime:
-            self.primed = self.hh.prime_gate_map(seed=a.seed)
+        # A live fake Moonraker + Spoolman, seeded to agree with the primed gate map. Without
+        # it every call Happy Hare makes to Moonraker goes into the void, so an NFC read ends
+        # in "Automatic assignment of id timed out" 20s later instead of resolving a spool.
+        if not a.no_moonraker:
+            self.hh.attach_moonraker(spools=self.hh.spools_for_gate_map())
+
+        # LAST, so startup itself stays instant no matter what pacing is asked for - preloading
+        # 13 gates at --pace 1 would otherwise cost minutes of virtual time before the first
+        # prompt. /pace changes it live.
+        if a.pace:
+            self.hh.set_pacing(a.pace, wall=self._wall_pacing())
 
         # Walk past effect_initialized, the 8s unit-wide flash bootup leaves running. While it
         # holds a unit every transient flash is DROPPED (mmu_led_manager.py:473), so an NFC
@@ -570,25 +587,6 @@ class Console:
         self.clock_epoch = self.hh.reactor.monotonic()
         return self
 
-    def _prepare_selectors(self):
-        """
-        Home each physical selector. Calibration itself is seeded inside boot() - see the
-        note there - but homing stays here on purpose: doing it before __MMU_BOOTUP sends
-        bootup down a different recovery branch.
-
-        MMU_HOME must name its unit on a multi-unit machine.
-
-        Skipped entirely under --no-calibrate, which boots the machine cold so the real
-        MMU_CALIBRATE_* flow can be driven by hand.
-        """
-        if self.args.no_calibrate:
-            return
-        if not getattr(self.hh.printer, 'harness_selectors', None):
-            return
-        for index, unit in enumerate(self.hh.mmu.mmu_machine.units):
-            if getattr(unit.selector, 'selector_stepper', None) is not None:
-                self._dispatch('MMU_HOME UNIT=%d' % index)
-
     def _preload_all(self):
         """Gates start empty (TIP_ABSENT), so a bare MMU_LOAD on a fresh session fails."""
         for gate in range(self.hh.mmu.num_gates):
@@ -597,7 +595,7 @@ class Console:
             # Settle between gates. Without it the preload does not finish and the gate is
             # left EMPTY, which then fails every load with "Gate N is empty".
             self.hh.reactor.advance(0.)
-        self.sink.clear()                           # setup noise is not console history
+        self._clear_sink()  # setup noise is not console history
 
     def close(self):
         if self.hh is not None:
@@ -655,6 +653,32 @@ class Console:
 
     def _on_output(self, msg):
         self.sink.append(msg)
+        # Stamp NOW, not when it is printed. _drain() runs after the command returns, so
+        # stamping there gave every line of an operation the same reading - the clock as it
+        # stood at the END - which hid the very progression /timestamp exists to show. Under
+        # /pace a load reported eight identical stamps while the clock had moved 11s.
+        self.sink_stamp.append(self.sim_time())
+        # And PRINT it now too, once a session is live. Buffering until the command returned
+        # meant a paced load printed correct-looking timestamps all at once at the end - the
+        # timings said one thing and the screen said another. Streaming makes the pauses land
+        # BETWEEN lines, where they belong. The prompt is unavailable while a command runs,
+        # which is what a printer does anyway.
+        if self.streaming:
+            self._emit_pending()
+
+    def _emit_pending(self):
+        """Print whatever Happy Hare has said that has not been printed yet."""
+        while self._printed < len(self.sink):
+            index = self._printed
+            self._printed += 1
+            self.emit(html_to_ansi(self.sink[index], self.color, self.mode),
+                      stamp=self.sink_stamp[index])
+
+    def _clear_sink(self):
+        """All three together - the lists are indexed in lockstep by _drain()."""
+        del self.sink[:]
+        del self.sink_stamp[:]
+        self._printed = 0
 
     def sim_time(self):
         """
@@ -667,18 +691,19 @@ class Console:
             elapsed = self.hh.reactor.monotonic() - self.clock_epoch
         return time.strftime(TIME_FORMAT, time.localtime(self.wall_start + elapsed))
 
-    def emit(self, text):
+    def emit(self, text, stamp=None):
         """
         Print a message from the MMU, stamped with the virtual clock if /timestamp is on.
 
-        Only the FIRST line carries the stamp; the rest are indented to sit under it, so a
-        multi-line reply still reads as one block rather than as one stamped line followed
-        by loose text.
+        `stamp` is the clock as it stood when Happy Hare produced the line (recorded by
+        _on_output); without one, now. Only the FIRST line carries the stamp; the rest are
+        indented to sit under it, so a multi-line reply still reads as one block rather than
+        as one stamped line followed by loose text.
         """
         if not self.timestamps:
             print(text)
             return
-        stamp = self.sim_time()
+        stamp = stamp or self.sim_time()
         pad = ' ' * (len(stamp) + 1)
         lines = text.split('\n')
         # Blank lines stay blank rather than becoming nine spaces: the indent is there to
@@ -687,8 +712,14 @@ class Console:
                         + [pad + line if line else '' for line in lines[1:]]))
 
     def _drain(self, mark):
-        for msg in self.sink[mark:]:
-            self.emit(html_to_ansi(msg, self.color, self.mode))
+        """
+        Print from `mark`, skipping anything streaming already printed.
+
+        Still needed even with streaming on: boot() runs with it off (banner() shows that
+        output), and _printed is the authority on what has reached the screen either way.
+        """
+        self._printed = max(self._printed, mark)
+        self._emit_pending()
 
     # -- dispatch -------------------------------------------------------------
     def _dispatch(self, line):
@@ -724,6 +755,10 @@ class Console:
     def run_command(self, line):
         mark = len(self.sink)
         unhandled_mark = len(self.hh.gcode.unhandled)
+        # Stream Happy Hare's output as it happens rather than after the command returns.
+        # Scoped to here, not global: _dispatch() is also the raw path for setup and for the
+        # tests, and both need it silent.
+        self.streaming = True
         try:
             self._dispatch(line)
         except Exception as exc:                    # noqa: BLE001
@@ -738,9 +773,58 @@ class Console:
             self.hh.reactor.advance(0.)
         except Exception as exc:                    # noqa: BLE001
             print(paint('!! reactor: %s' % exc, '1;31', self.color))
-        self._drain(mark)
+        self._settle_moonraker()
+        self._drain(mark)                           # anything streaming did not already print
+        self.streaming = False
         self._warn_unhandled(line, unhandled_mark)
         self._warn_silent_macro(line, mark)
+
+    def _home_before_bootup(self):
+        """
+        Home every physical selector while bootup can still see it, and keep the chatter out
+        of the banner.
+
+        Homing has to precede __MMU_BOOTUP or the banner renders an unhomed machine - 'Selct:
+        XXXX', tool 'T?' - which a later MMU_STATUS contradicts. But "Homing MMU unit0... /
+        Homed" is setup, not bootup, and startup_output is printed under the welcome, so
+        leaving it in put three lines of it ABOVE the rabbit. Dropped the same way the
+        preload's noise is (see _preload_all).
+
+        Skipped under --no-calibrate, which boots the machine cold on purpose.
+        """
+        if self.args.no_calibrate:
+            return
+        mark = len(self.sink)
+        self.hh.home_selectors()
+        # Then pick a gate, so bootup renders a machine that knows where it is rather than
+        # '[T?] ... 0.0mm'. It cannot be seeded pre-ready like the rest of the gate map -
+        # load_persisted_state drops a persisted selection while the selector is unhomed, and
+        # homing needs a live machine - so it has to be a real selection made right here.
+        if self.hh.mmu.gate_selected < 0:
+            self.hh.gcode.run_script('MMU_SELECT GATE=0')
+        del self.sink[mark:]
+        del self.sink_stamp[mark:]
+        self._printed = min(self._printed, mark)
+
+    def _settle_moonraker(self):
+        """
+        Run the Klipper <-> Moonraker contract to quiescence after a command.
+
+        Both directions are fire-and-forget in production, so a command that calls out to
+        Moonraker returns before anything answers. settle() alternately delivers queued calls
+        each way until neither side has work - which is what turns a spool lookup into a gate
+        map update within the same prompt.
+
+        Errors are reported, not raised: an unanswerable remote method is a finding about the
+        machine, not a reason to end the session.
+        """
+        link = self.hh.moonraker_link
+        if link is None:
+            return
+        try:
+            link.settle()
+        except Exception as exc:                    # noqa: BLE001
+            print(paint('!! moonraker: %s' % exc, '1;31', self.color))
 
     def _warn_silent_macro(self, line, mark):
         """
@@ -828,6 +912,12 @@ class Console:
         if bowden >= 0:
             extra.append('bowden=%d%%' % bowden)
         extra.append('t=%+.2fs' % (self.hh.reactor.monotonic() - 1000.))
+        # Only when pacing is ON. 0 is the default and means "moves are instant", which is
+        # the absence of a mode rather than a mode - and a permanent 'realtime=0%' would just
+        # be a row of noise on every prompt. Shown next to the clock because that is the
+        # field it explains: with this present, t= moves during an operation.
+        if self.hh.pacing:
+            extra.append('realtime=%g%%' % (self.hh.pacing * 100.))
         out.append('  ' + '  '.join(extra))
         if mmu.is_mmu_paused():
             # Read the reason from status, not psm.reason_for_pause, which persists after
@@ -1151,6 +1241,9 @@ class Console:
         ('/selector [POS|gate N|home|end] [UNIT=n]',
          'where the selector carriage physically is - set it as you would by hand'),
         ('/heat [TEMP]', 'set the extruder temperature'),
+        ('/pace [FACTOR]', 'how much of each move\'s real duration to spend: 0=instant '
+                           '(default), 0.5=twice as fast as real, 1=real time '
+                           '(alias /realtime)'),
         ('/timestamp [on|off]', 'stamp MMU output with the virtual clock (no argument '
                                 'toggles)'),
         ('/trace 0-4', "Happy Hare's own log_level, 4 = full narration"),
@@ -1171,7 +1264,7 @@ class Console:
         fn = getattr(self, '_meta_' + name, None)
         if fn is None:
             alias = {'wait': '_meta_advance', 'q': '_meta_quit', 'h': '_meta_help',
-                     's': '_meta_scroll'}.get(name)
+                     's': '_meta_scroll', 'realtime': '_meta_pace'}.get(name)
             fn = getattr(self, alias) if alias else None
         if fn is None:
             print(paint('?? unknown meta-command /%s (try /help)' % name, '33', self.color))
@@ -1222,7 +1315,7 @@ class Console:
 
     def _meta_clear(self, args):
         """Wipe the log window and repair the status section - see clear_log()."""
-        del self.sink[:]
+        self._clear_sink()
         if self.scrollback is not None:
             self.scrollback.clear()
         self.clear_log()
@@ -1460,6 +1553,49 @@ class Console:
     def _meta_heat(self, args):
         self.hh.heat_extruder(float(args[0]) if args else self.args.temp)
 
+    def _meta_pace(self, args):
+        """
+        Trade speed for observability. Without a factor, just report the current one.
+
+        At 0 an MMU_LOAD finishes with the clock untouched: fast, but nothing time-driven ever
+        happens - the LED effect never reaches a second frame and every action transition lands
+        in the same instant. Above 0 each move spends that fraction of its real duration in
+        virtual time, so the operation plays out and `/header leds` shows it changing.
+
+        Costs real seconds too: the reactor has to run every timer in the window it skips.
+        """
+        if not args:
+            factor = self.hh.pacing
+        else:
+            factor = self.hh.set_pacing(args[0], wall=self._wall_pacing())
+        if not factor:
+            self.info('pace=0 - moves are instant, the clock does not move')
+            return
+        self.info('pace=%g - each move spends %g%% of its real duration '
+                  '(%.4gx real time)' % (factor, factor * 100., 1. / factor))
+        if self.hh.pacing_wall:
+            self.info('  operations will take that long for real - Ctrl-C to interrupt one')
+        else:
+            self.info('  the virtual clock moves but nothing sleeps, so operations still '
+                      'complete instantly (--wall to sleep)')
+
+    def _wall_pacing(self):
+        """
+        Whether a paced move should also sleep in REAL time.
+
+        On for an interactive session, because "make it take as long as the machine would" is
+        the only reason to ask for pacing by hand - you cannot watch an LED effect that is over
+        before the command returns. Off for a script or a pipe, where the point of the harness
+        is that it does not wait for anything; --wall/--no-wall overrides either way.
+
+        Requires interact() to have actually started, not merely a tty: a --script run has
+        nobody watching it, and a Console driven straight from a test would otherwise sleep for
+        real whenever the suite happens to run attached to a terminal.
+        """
+        if self.args.wall is not None:
+            return 1. if self.args.wall else 0.
+        return 1. if (self.interactive and sys.stdout.isatty()) else 0.
+
     ####################
     ##### Live mode ####
     ####################
@@ -1639,7 +1775,25 @@ class Console:
         elif not self.args.header and self.pinned is not None:
             self.pinned.restore()
             self.pinned = None
+        self._install_pace_observer()
         self.redraw()
+
+    def _install_pace_observer(self):
+        """
+        Let a PACED operation redraw the header while it is still running.
+
+        Pacing spends virtual time on each move, but a command still owns the terminal until
+        it returns - so without this the clock advances and nothing is rendered until the end,
+        which defeats the point. The pacer calls this between moves, from top level (never
+        from inside a reactor callback), so it is the same context an ordinary repaint runs in.
+
+        Only ever a PINNED header: repaint() saves and restores the cursor and rewrites the
+        reserved band, leaving the log flow alone. Reprinting an inline header mid-command
+        would interleave with Happy Hare's own output.
+        """
+        pinned = self.pinned
+        self.hh.printer.harness_pace_observer = (
+            pinned.repaint if (pinned is not None and pinned.active) else None)
 
     def _meta_log(self, args):
         """Where mmu.log is, and its tail. It is live - `tail -f` it in another window."""
@@ -1717,6 +1871,10 @@ class Console:
                       'own. /live off freezes it.')
 
     def interact(self):
+        # Now there is a human watching, which is the condition wall-clock pacing waits on -
+        # re-applied because boot() computed it before this was true. See _wall_pacing.
+        self.interactive = True
+        self.hh.set_pacing(self.hh.pacing, wall=self._wall_pacing())
         # The tee first, so the banner is in the scrollback too. isatty() and not the pinning
         # test: --inline-header keeps its history in the terminal's own buffer, but /scroll
         # still ought to work there.
@@ -1738,6 +1896,7 @@ class Console:
             if self.args.header and self._can_pin:
                 # Clears the screen and reserves the band, so it must precede the banner
                 self.pinned = PinnedHeader(self).install()
+                self._install_pace_observer()
             else:
                 out = raw_stdout()
                 out.write(RESET + '\033[2J\033[H')
@@ -2176,6 +2335,18 @@ def parse_args(argv=None):
     p.add_argument('--seed', type=int, default=0,
                    help='seed for the primed gate map, so a session is reproducible '
                         '(default %(default)s)')
+    p.add_argument('--no-moonraker', action='store_true',
+                   help='do not attach the fake Moonraker/Spoolman, so calls out to it go '
+                        'unanswered - which is what a printer with Moonraker down looks like')
+    p.add_argument('--wall', dest='wall', action='store_true', default=None,
+                   help='with --pace, sleep in real time so an operation can be watched '
+                        '(the default at an interactive prompt, off for a script or pipe)')
+    p.add_argument('--no-wall', dest='wall', action='store_false',
+                   help='with --pace, move the virtual clock but never sleep')
+    p.add_argument('--pace', type=float, default=0.5, metavar='FACTOR',
+                   help='how much of each move\'s real duration to spend in virtual time: '
+                        '0 is instant, 0.5 (default) is twice as fast as real, 1 is real '
+                        'time. Also settable live with /pace')
     p.add_argument('--trace', type=int, default=0, metavar='0-4',
                    help="Happy Hare log_level; 4 is full narration")
     p.add_argument('--virtual-nfc', action='store_true',

@@ -768,7 +768,7 @@ class MmuController(MmuFilamentMovement):
         if bold:
             home, line, arrow = (
                 UI_HOME_BOLD,
-                UI_LINE_BOLD,
+                UI_SOLID_SQUARE,
                 UI_HOME_BOLD,
             )
         else:

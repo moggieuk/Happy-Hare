@@ -14,6 +14,8 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
+import time
+
 
 class Trapq:
     """List-backed stand-in for the chelper trapq struct."""
@@ -27,6 +29,12 @@ class Trapq:
 
 
 class PrinterMotionQueuing:
+    # How finely a PACED move is walked. 50ms is ~20 updates a second, which is smooth to an
+    # eye and cheap enough that a long move does not turn into thousands of reactor passes.
+    PACE_TICK = 0.05
+    # ... and the ceiling on slices per move, so a 60-second one does not run 1200 of them.
+    PACE_MAX_SLICES = 400
+
     def __init__(self, config):
         self.printer = config.get_printer()
         self.trapqs = []
@@ -68,11 +76,90 @@ class PrinterMotionQueuing:
             # Homing moves do NOT appear here (they go through HomingMove, which only
             # calls set_position), so there is no double counting. The retract inside
             # MmuGenericRail.home DOES appear, and should.
-            if self.move_observer is not None:
-                distance = axes_r_x * cruise_v * (accel_t + cruise_t)
-                if distance:
-                    self.move_observer(trapq, distance)
+            distance = axes_r_x * cruise_v * (accel_t + cruise_t)
+            # Optionally let this move take TIME, walking the filament along as it goes.
+            self._run_move(trapq, distance, accel_t + cruise_t + decel_t)
         return trapq_append
+
+    def _run_move(self, trapq, distance, duration):
+        """Effect a plain trapq move: walk it, telling the observer each slice's share."""
+        for amount in self.pace_move(duration, distance):
+            self._note_move(trapq, amount)
+
+    def pace_move(self, duration, total):
+        """
+        Walk a move of `total` (mm, signed) taking `duration` seconds, yielding the amount to
+        apply for each slice and spending the time between yields.
+
+        THE reusable pacer - a plain trapq move is not the only kind that should take time.
+        Homing moves never reach trapq_append (they go through the fake HomingMove), so before
+        this existed an unload spent all of its 9 seconds inside the ONE bowden move while tip
+        forming and every homing move to a sensor happened in the same instant.
+
+        Unpaced (the default, and every test) it yields `total` once and takes no time at all.
+
+        Paced, it is sliced at PACE_TICK with the caller's model, the clock, the repaint and the
+        sleep all advancing together - a single advance() plus a single sleep() froze for the
+        whole move: no LED frames, no repaint, no intermediate position.
+
+        Slices are yielded as EXACT differences of cumulative position, so the last one absorbs
+        the rounding and the total a caller applies is the total it asked for.
+        """
+        factor = self._pace_factor()
+        if factor is None or duration <= 0.:
+            yield total
+            return
+
+        spent = duration * factor
+        # Cap the slice COUNT, not the tick: a 60-second paced move should not run 1200
+        # iterations, and past ~20 updates/second there is nothing left for an eye to gain.
+        slices = max(1, min(self.PACE_MAX_SLICES, int(round(spent / self.PACE_TICK))))
+        reactor = self.printer.get_reactor()
+        observer = getattr(self.printer, 'harness_pace_observer', None)
+        wall = getattr(self.printer, 'harness_pace_wall', 0.) or 0.
+        applied = elapsed = 0.
+        for index in range(slices):
+            done = (index + 1) / slices
+            yield total * done - applied
+            applied = total * done
+            step = spent * done - elapsed
+            elapsed = spent * done
+            reactor.advance(step)
+            if observer is not None:
+                observer()
+            if wall > 0.:
+                time.sleep(step * wall)
+
+    def _note_move(self, trapq, distance):
+        # THE hook for plain (non-homing) filament moves - notably the final park in
+        # _unload_gate, which homing never sees. MmuStepper._submit_move
+        # (extras/mmu_stepper.py:853-861) is the sole producer of these, and the signed
+        # distance is exactly recoverable from the trapezoid:
+        #
+        #   force_move.calc_move_time gives dist = speed * (accel_t + cruise_t) with
+        #   cruise_v == speed, so signed dist = axes_r_x * cruise_v * (accel_t + cruise_t)
+        #   - exact for both the accel and zero-accel branches.
+        #
+        # Homing moves do NOT appear here (they go through HomingMove, which only calls
+        # set_position), so there is no double counting. The retract inside
+        # MmuGenericRail.home DOES appear, and should.
+        if self.move_observer is not None and distance:
+            self.move_observer(trapq, distance)
+
+    def _pace_factor(self):
+        """
+        The pacing factor if this move should be paced, else None.
+
+        None covers three cases that all mean "just move": pacing off (the default),
+        a zero-length move, and being inside a reactor callback - advance() asserts there, and
+        the console dispatches at top level, which is where pacing is wanted anyway.
+        """
+        factor = getattr(self.printer, 'harness_pacing', 0.) or 0.
+        if factor <= 0.:
+            return None
+        if self.printer.get_reactor().in_dispatch():
+            return None
+        return factor
 
     def check_step_generation_scan_windows(self):
         self.scan_window_checks += 1

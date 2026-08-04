@@ -127,6 +127,9 @@ class Session:
         self.reactor = None
         self.config = None
         self.fileconfig = None
+        self.primed = {}                # gate -> filament attributes, from prime_gate_map()
+        self.moonraker = None           # set by attach_moonraker()
+        self.moonraker_link = None
         self._booted = False
 
     # -- lifecycle ---------------------------------------------------------
@@ -139,6 +142,10 @@ class Session:
         return False
 
     def close(self):
+        if self.moonraker is not None:
+            # Owns an asyncio loop; leaks a ResourceWarning per session otherwise
+            self.moonraker.close()
+            self.moonraker = self.moonraker_link = None
         try:
             mmu = self.printer.lookup_object('mmu', None) if self.printer else None
             logger = getattr(mmu, 'logger', None) if mmu else None
@@ -419,7 +426,34 @@ class Session:
         if effects is None:
             effects = self.printer.harness_macro_effects = {}
         effects.setdefault('_MMU_FORM_TIP', self._effect_form_tip)
+        # Purge moves a lot of filament through the nozzle, none of which this harness models -
+        # but it TAKES TIME on a real machine, and a paced session that skips it in an instant
+        # reads as if the operation were over when it is not. Time only; no movement.
+        effects.setdefault('_MMU_PURGE', self._effect_spend_time)
         return effects
+
+    # What a macro whose body never runs would nonetheless COST, at pace 1. Tip forming and
+    # purging are both a sequence of ramming, cooling and wiping moves that the harness does not
+    # reproduce (see _effect_form_tip); a few seconds each is the honest stand-in, and it is a
+    # round number on purpose - deriving one from the macro's own speeds implies a fidelity the
+    # net-movement model does not have.
+    MACRO_DURATION = 4.0
+
+    def _spend_macro_time(self, seconds=None, movement=0.):
+        """
+        Let a macro cost time, walking `movement` mm of filament across it if there is any.
+
+        Yields nothing itself - the caller gets the per-slice movement so it can apply it - and
+        with pacing off it is a single slice and no time at all, exactly as before.
+        """
+        mq = self.printer.lookup_object('motion_queuing', None)
+        if mq is None:
+            return iter((movement,))
+        return mq.pace_move(self.MACRO_DURATION if seconds is None else seconds, movement)
+
+    def _effect_spend_time(self, macro, gcmd):
+        for _amount in self._spend_macro_time():
+            pass
 
     def _effect_form_tip(self, macro, gcmd):
         """
@@ -457,17 +491,29 @@ class Session:
         toolhead = self.printer.lookup_object('toolhead', None)
         extruder = toolhead.get_extruder() if toolhead is not None else None
         stepper = getattr(getattr(extruder, 'extruder_stepper', None), 'stepper', None)
-        if stepper is not None:
-            # Retract: HH reads (initial_mcu_pos - final_mcu_pos) * step_dist
-            # (mmu_filament_movement.py:2541-2559), so BOTH have to move. set_position alone
-            # is not enough - it is mcu-preserving, by design (klippy_root/stepper.py).
-            stepper.set_position([stepper.get_commanded_position() - distance, 0., 0., 0.])
-            stepper.harness_note_motion(-distance)
-
         model = getattr(self.printer, 'harness_filament', None)
         gate = self.mmu.gate_selected
-        if model is not None and gate is not None and gate >= 0:
-            model.advance(gate, -distance, 'tip forming')
+        if gate is None or gate < 0:
+            model = None
+
+        # HOW LONG it takes, so a paced session does not do the whole retract in one instant -
+        # it is the first thing an unload does, and it was the last step still finishing
+        # immediately.
+        #
+        # MACRO_DURATION rather than distance/speed. The retract modelled here is the macro's
+        # NET movement, but the real macro spends its time ramming, cooling and dipping over
+        # that same span - so dividing the net distance by any one of its speeds understates it
+        # (unloading_speed_start put the whole thing at 0.5s). A flat few seconds is the honest
+        # answer for a body that does not run.
+        for amount in self._spend_macro_time(movement=-distance):
+            if stepper is not None:
+                # Retract: HH reads (initial_mcu_pos - final_mcu_pos) * step_dist
+                # (mmu_filament_movement.py:2541-2559), so BOTH have to move. set_position
+                # alone is not enough - it is mcu-preserving, by design (klippy_root/stepper.py)
+                stepper.set_position([stepper.get_commanded_position() + amount, 0., 0., 0.])
+                stepper.harness_note_motion(amount)
+            if model is not None:
+                model.advance(gate, amount, 'tip forming')
 
     def calibrate(self):
         """
@@ -850,6 +896,92 @@ class Session:
             applied[gate] = attrs
         return applied
 
+    def attach_moonraker(self, spools=None, hostname='mmu-sim', **kwargs):
+        """
+        Give this session a live fake Moonraker + Spoolman, and return the MoonrakerLink.
+
+        Without one, every call Happy Hare makes to Moonraker goes into the void: a UID
+        lookup is dispatched and nothing ever answers, so an NFC read ends in "Automatic
+        assignment of id timed out" ~20s later. That is faithful to a printer with Moonraker
+        down, and useless for exercising the Spoolman paths.
+
+        The MmuServer is REAL - only the server around it is faked - so the round trip
+        exercises the actual contract in both directions. The caller must pump it: the link's
+        settle() alternately delivers queued Klipper->Moonraker calls and Moonraker->Klipper
+        gcode until both sides are quiet.
+
+        Must be called AFTER boot(): component_init() replays the state bootup published.
+        """
+        from .moonraker import MoonrakerHarness
+        from .roundtrip import MoonrakerLink
+
+        self.moonraker = MoonrakerHarness(
+            spools=list(spools or ()), num_gates=self.mmu.num_gates,
+            hostname=hostname, **kwargs)
+        self.moonraker.component_init()
+        self.moonraker_link = MoonrakerLink(self, self.moonraker)
+        self.moonraker_link.settle()
+        return self.moonraker_link
+
+    def spools_for_gate_map(self, uid_for=None):
+        """
+        One Spoolman spool per gate, matching what prime_gate_map() put in the gate map, each
+        registered against a UID. Returns the list of add_spool() kwargs.
+
+        Matching matters: a resolved spool OVERRIDES the local gate map, so seeding Spoolman
+        with unrelated filament would make every lookup visibly rewrite the gate it resolved
+        for - which looks like a bug rather than like a printer.
+
+        uid_for(gate) supplies the tag UID; the default is stable and greppable, so
+        `_MMU_TEST NFC_READ=1 UID=<it>` resolves without having to look anything up.
+        """
+        uid_for = uid_for or (lambda gate: 'BADCAFE%02X' % gate)
+        spools = []
+        for gate, attrs in sorted((self.primed or {}).items()):
+            spools.append({
+                'uid': uid_for(gate),
+                'gate': gate,
+                'name': attrs['name'],
+                'material': attrs['material'],
+                'vendor': attrs['vendor'],
+                'color_hex': attrs['color'],
+                'extruder_temp': attrs['temperature'],
+            })
+        return spools
+
+    def set_pacing(self, factor, wall=None):
+        """
+        How much of each move's real duration to spend in virtual time. Returns the factor.
+
+        0 (the default) is instant: an MMU_LOAD finishes without the clock moving, which is
+        fast but leaves nothing time-driven observable - LED effects never reach a second
+        frame, and every action transition happens in the same instant. 1.0 gives each move
+        roughly the time the real machine would need; 0.5 is twice as fast as real.
+
+        `wall` is a SEPARATE multiplier for sleeping in real time. Virtual time is free -
+        advancing the clock 11 seconds costs milliseconds - so pacing alone makes an operation
+        report the right timings while still flashing past in an instant. wall=1 holds each
+        move for as long as it claims to take, which is what makes it watchable; 0 (the
+        default) never sleeps, so tests can pace freely. Left as None it is unchanged.
+
+        Only meaningful for commands dispatched at TOP LEVEL (the console, and the tests):
+        the pacer advances the reactor, which is illegal inside a reactor callback and is
+        skipped there. See PrinterMotionQueuing._pace.
+        """
+        factor = max(0., float(factor))
+        self.printer.harness_pacing = factor
+        if wall is not None:
+            self.printer.harness_pace_wall = max(0., float(wall))
+        return factor
+
+    @property
+    def pacing(self):
+        return getattr(self.printer, 'harness_pacing', 0.) or 0.
+
+    @property
+    def pacing_wall(self):
+        return getattr(self.printer, 'harness_pace_wall', 0.) or 0.
+
     def settle_leds(self, limit=20.):
         """
         Advance the virtual clock until no unit is held by a timed state effect.
@@ -918,6 +1050,11 @@ class Session:
         afterwards - it resets every switch to its configured resting state and would undo
         the placement.
         """
+        # NOT the selected gate/tool. Seeding VARS_MMU_GATE_SELECTED here looks like the same
+        # idea, but load_persisted_state discards it at handle_ready with "Persisted gate/tool
+        # 0/0 dropped because selector isn't homed" - and a physical selector cannot be homed
+        # before ready, because MMU_HOME is a gcode command on a live machine. Selecting a gate
+        # belongs after homing; see Console._home_before_bootup.
         from extras.mmu.mmu_constants import GATE_AVAILABLE, VARS_MMU_GATE_STATUS
         model = self.filament()
         for gate in range(self.mmu.num_gates):
@@ -927,7 +1064,22 @@ class Session:
                                  * self.mmu.num_gates)
         return self
 
-    def boot(self, extra=0.01, calibrate=False, gates_loaded_at=None):
+    def home_selectors(self):
+        """
+        MMU_HOME every unit that has a physical selector. Returns the units homed.
+
+        Named per unit because MMU_HOME insists on it once more than one is configured
+        (mmu_base_command.py:198). No-op on a VirtualSelector machine.
+        """
+        homed = []
+        for index, unit in enumerate(self.mmu.mmu_machine.units):
+            if getattr(unit.selector, 'selector_stepper', None) is not None:
+                self.gcode.run_script('MMU_HOME UNIT=%d' % index)
+                homed.append(unit.name)
+        return homed
+
+    def boot(self, extra=0.01, calibrate=False, gates_loaded_at=None, prime=False, seed=0,
+             pre_bootup=None):
         """
         Full sequence to a live MMU: connect -> ready -> pump the reactor past
         BOOT_DELAY so the scheduled bootup callback runs __MMU_BOOTUP, then past the
@@ -943,13 +1095,23 @@ class Session:
         seed_loaded_gates(). Only the console passes it, and only when it is about to preload
         every gate anyway.
 
-        It deliberately does NOT home. Measured on tradrack, seeding alone leaves bootup's
-        output byte-identical minus the warnings; homing here as well makes bootup take a
-        different recovery branch (the "Attempting to recover filament position" line goes
-        away and the selector row changes). Homing stays where it was - after boot() returns.
+        prime=True is the same idea again, for the filament ATTRIBUTES - see prime_gate_map().
+        Also before ready, and for the same reason: __MMU_BOOTUP prints the gate/filament table,
+        so priming afterwards left the bootup banner showing "Unknown" on every gate while a
+        later MMU_STATUS showed the real thing.
 
-        Both default to False: an uncalibrated machine with an unknown gate map is a real
-        state HH has to cope with, and the tests assert it.
+        pre_bootup is a callable run after klippy:ready but before the advance that fires
+        __MMU_BOOTUP - the seam for anything needing a LIVE machine that bootup nonetheless has
+        to see. The console passes homing (see home_selectors): bootup renders the selector and
+        filament rows, and homing afterwards left it showing an unhomed 'Selct: XXXX' about a
+        machine a later MMU_STATUS reported as homed.
+
+        What homing here trades away: bootup takes a different recovery branch on an already
+        homed machine, so its "Attempting to recover filament position" line does not appear
+        there (MMU_HOME emits it instead). A test asserting on that line wants pre_bootup=None.
+
+        All of them default to False: an uncalibrated, unhomed machine with an unknown gate map
+        is a real state HH has to cope with, and the tests assert it.
         """
         if not self._booted:
             if self.config is None:
@@ -969,9 +1131,15 @@ class Session:
             self._install_move_observer()
             if calibrate:
                 self.calibrate()
+            if prime:
+                self.primed = self.prime_gate_map(seed=seed)
             if gates_loaded_at is not None:
                 self.seed_loaded_gates(gates_loaded_at)
             self.ready()
+            # The seam for anything that needs a LIVE machine but has to happen before bootup
+            # renders - homing, in the console's case. See the docstring.
+            if pre_bootup is not None:
+                pre_bootup()
             self.install_macro_effects()
             self.reactor.advance(BOOT_DELAY + extra)
             self._settle_nfc_init(extra)

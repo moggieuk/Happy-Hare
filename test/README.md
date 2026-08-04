@@ -199,7 +199,7 @@ Tool change requested: T1
 ...
 ------------------------------------------------------------------------
 T1   gate 1    LOADED IN NOZZLE           868.0mm  Idle
-  print=initialized  SYNCED  t=+2.51s
+  print=initialized  SYNCED  t=+2.51s  realtime=100%
   mmu_entry_1=1  mmu_exit_1=1  filament_compression=1  filament_tension=1  ...
             nfc pre ent exit/gate shex enc comp/extr nozl
    gate 0    ..  ..  ..     ..     ..   ..     ..     ..     -100.0
@@ -330,6 +330,9 @@ Useful flags — `make console ARGS='...'`:
 --no-calibrate                 # boot cold: no seeded calibration, no homing, no preload
 --no-prime                     # leave the gate map blank instead of filling it in
 --seed N                       # seed for the primed gate map (default 0, reproducible)
+--no-moonraker                 # don't attach the fake Moonraker/Spoolman
+--pace FACTOR                  # 0=instant, 0.5=twice as fast as real (default), 1=real time
+--wall / --no-wall             # with --pace, whether to sleep in real time (default: interactive only)
 --script FILE                  # run non-interactively (this is how it is tested)
 ```
 
@@ -348,6 +351,78 @@ Two more things happen at startup that a printer does for itself and a frozen cl
   while it holds a unit *every* transient flash is dropped (`mmu_led_manager.py:473`) — so an
   NFC read acknowledgment, for one, silently does nothing. `boot()` stops the clock 2.5s in, so
   without `Session.settle_leds()` an interactive session would never leave that window.
+- **A fake Moonraker + Spoolman is attached**, seeded to agree with the primed gate map (gate
+  N's tag UID is `BADCAFE<NN>`). The `MmuServer` inside it is *real*, so the round trip
+  exercises the actual contract both ways. Without it every call Happy Hare makes to Moonraker
+  goes unanswered and an NFC read ends in *"Automatic assignment of id timed out"* 20s later —
+  which is what `--no-moonraker` gives you, and what a printer with Moonraker down looks like.
+
+### Watching an operation happen — `/pace`
+
+Moves complete instantly by default: an `MMU_LOAD` finishes without the virtual clock moving at
+all. Fast, but nothing time-driven is observable — an LED effect never reaches a second frame,
+and every action transition lands in the same instant.
+
+`/pace FACTOR` spends that fraction of each move's *real* duration in virtual time: `0` is
+instant, `0.5` twice as fast as real (the default), `1` roughly real time. While it is on, the
+`machine` header carries `realtime=<n>%` next to the clock — that is the field it explains,
+since `t=` only moves during an operation when pacing is on. Absent at `0`. Each move's duration
+is already known — `MmuStepper._submit_move` computes the real trapezoid — so this is HH's own
+arithmetic, not an invented number.
+
+The pacer advances the reactor, which **runs timers** (a `pause()` would only jump the clock,
+see `reactor._sys_pause`). That is the whole point. It cannot run inside a reactor callback, so
+it no-ops there; top-level dispatch, which is what the console and the tests use, is where
+pacing applies.
+
+**Virtual time is free** — advancing the clock 11 seconds costs milliseconds — so pacing alone
+makes an operation *report* the right timings while still finishing in an instant. To actually
+watch one, it has to sleep, which it does at an interactive prompt and never in a script, a
+pipe or the test suite (`--wall` / `--no-wall` to force it either way).
+
+A paced move is **walked, not jumped** — sliced at `PACE_TICK` (50ms), with the filament model,
+the clock, the pinned-header repaint and the sleep all advancing together. One `advance()`
+followed by one `sleep()` would freeze for the whole move: no LED frames, no repaint, no
+intermediate position. A single 13-gate load produces ~240 updates, and the totals stay exact —
+paced and unpaced end with the filament in the same place.
+
+Every kind of move is paced, not just the plain ones: homing moves never reach
+`trapq_append`, so until `pace_move()` became reusable an unload spent all of its seconds
+inside the one bowden move while every home-to-sensor step happened in the same instant.
+
+**Tip forming and purging get a flat `Session.MACRO_DURATION` (4s at pace 1)** rather than a
+distance/speed figure. Their bodies never run here, and what the harness models of tip forming
+is only its *net* retraction — but the real macros spend their time ramming, cooling, dipping
+and wiping over that span, so dividing the net distance by any one of the macro's own speeds
+badly understates it (`unloading_speed_start` put the whole retract at 0.5s). A round number is
+the honest answer for work that is deliberately not modelled.
+
+Note the log still arrives in **blocks**, because Happy Hare only logs at operation-step
+boundaries, not continuously. The header is what moves during a long move.
+
+**One known consequence.** On `boxturtle` and `emu` — the shipped profiles with per-gate entry
+sensors *and* `gate_autoload` — pacing makes them **preload twice**, and a subsequent load log a
+spurious `Operation not possible. Filament is loaded`.
+
+A *preload* is the operation that crosses the entry sensor (a load does not — the filament is
+already past it), so it raises an insert event, and with `gate_autoload` set HH answers by
+starting another preload. Happy Hare has the guard for exactly this
+(`wrap_suspend_insert_events`, whose docstring describes it word for word) but applies it only on
+the NFC-scan path. Unpaced it never surfaced, because the entry sensor's `event_delay` defers the
+insert by 0.5s and no virtual time ever passed. Everything still completes correctly.
+
+`/timestamp on` is what makes the pacing legible: output is stamped with the virtual clock as
+of **when Happy Hare produced the line**, not when it was printed — `_drain()` runs after a
+command returns, so stamping there gave every line of a load the same end-of-command reading.
+
+```
+> /pace 1
+> MMU_LOAD
+23:05:41 Loading filament...
+23:05:41 [T9] ███◉█┈┈┈┈┈┈┈┈┈ ...  ▷▷▷    0.0mm
+23:05:49 [T9] ███◉██████████ ...  ▷▷▷  680.0mm      <- the bowden move took 8s
+23:05:53 [T9] ███◉██████████ ... LOADED 801.8mm
+```
 
 The **gate map is seeded the same way**, and for the same reason: bootup prints the gate
 table, `_preload_all()` runs after `boot()` returns, and that table is the last thing on
@@ -533,7 +608,7 @@ leaves the gate-0 gear pins empty and fails with `Invalid pin description ''`.
    body, so `T1`, the print start/end and the park/cut/purge sequences produce **silence**.
    Use `MMU_CHANGE_TOOL TOOL=1`. The console notices a bare `T<n>` and says so.
 2. **A physical selector must be calibrated and homed before it can select a gate.** The
-   console does that for you at startup (`boot(calibrate=True)` plus `_prepare_selectors`);
+   console does that for you at startup (`boot(calibrate=True, pre_bootup=...)`);
    in a test, call `hh.boot(calibrate=True)`, or `hh.boot()` then `hh.calibrate()`, then
    `MMU_HOME UNIT=<n>`. Skip it and every selection fails with *"Selector is not clibrated"*
    (sic). Calibration is **seeded** by default for speed, but `MMU_CALIBRATE_*` genuinely

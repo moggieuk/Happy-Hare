@@ -1479,6 +1479,28 @@ class TestConsoleScript(unittest.TestCase):
     --profile happens to be the default made them fail the moment the default became a
     multi-unit ERCF+ViViD: it has no per-gate entry sensors on unit0, and MMU_HOME there
     requires a UNIT. The default profile gets its own coverage below instead.
+
+    ALSO PINNED TO --pace 0, and that one is a finding rather than a preference. BoxTurtle and
+    EMU are the two shipped profiles with per-gate entry sensors AND gate_autoload, and paced
+    they PRELOAD TWICE:
+
+        > MMU_PRELOAD GATE=1
+        Preloading filament in gate 1...
+        Preloading...
+        Preloading filament in current gate...     <- nobody asked for this one
+        Preloading...
+
+    A preload is the operation that crosses the entry sensor (a load does not - the filament is
+    already past it), so it raises an insert event, and with gate_autoload set HH answers by
+    starting another preload. Happy Hare has the guard for exactly this -
+    wrap_suspend_insert_events, whose docstring describes the failure word for word - but
+    applies it only on the NFC-scan path (mmu_filament_movement.py:523).
+
+    Unpaced it never surfaced, because the entry sensor's event_delay defers the insert by 0.5s
+    and no virtual time ever passed. Paced, the deferred event lands mid-operation, so an
+    MMU_LOAD (which preloads first when the gate is not already available) picks it up during
+    the bowden move and logs "Operation not possible. Filament is loaded" - by then the machine
+    IS loaded. The load still completes correctly; the message is the whole symptom.
     """
 
     PROFILE = 'boxturtle'
@@ -1492,14 +1514,17 @@ class TestConsoleScript(unittest.TestCase):
         with contextlib.redirect_stdout(buf):
             # --profile first so a caller can still override it in extra_args (argparse keeps
             # the last occurrence)
-            rc = console_mod.main(['--profile', self.PROFILE, '--plain', '--script', path]
-                                  + list(extra_args))
+            # --pace 0: this class is about console MECHANICS on boxturtle, and boxturtle is
+            # one of the two shipped profiles where a PACED load raises a spurious insert event
+            # mid-operation (see the note on TestConsoleScript). Unpaced is also faster.
+            rc = console_mod.main(['--profile', self.PROFILE, '--plain', '--pace', '0',
+                                   '--script', path] + list(extra_args))
         return rc, buf.getvalue()
 
     def _make_console(self, argv):
         """A booted Console on THIS class's profile, closed on teardown."""
         console = console_mod.Console(
-            console_mod.parse_args(['--profile', self.PROFILE] + list(argv)))
+            console_mod.parse_args(['--profile', self.PROFILE, '--pace', '0'] + list(argv)))
         self.addCleanup(console.close)
         console.boot()
         return console
@@ -1745,7 +1770,7 @@ class TestTheDefaultProfile(unittest.TestCase):
         maps = hh.mmu.gate_maps
         num_gates = hh.mmu.num_gates
         low, high = hh.FILAMENT_TEMP_RANGE
-        self.assertEqual(len(self.console.primed), num_gates)
+        self.assertEqual(len(self.console.hh.primed), num_gates)
         for gate in range(num_gates):
             with self.subTest(gate=gate):
                 self.assertIn(maps.gate_vendor[gate], hh.FILAMENT_VENDORS)
@@ -1756,6 +1781,41 @@ class TestTheDefaultProfile(unittest.TestCase):
                 # The name is a product name and HH renders it next to the vendor, so it
                 # must not repeat it ("Prusa | Prusa PLA")
                 self.assertNotIn(maps.gate_vendor[gate], maps.gate_filament_name[gate])
+
+    def test_the_bootup_banner_shows_a_homed_machine_with_a_gate_selected(self):
+        """
+        __MMU_BOOTUP renders the selector row and the filament row, so homing after boot()
+        returned left the banner reporting 'Selct: XXXX' and tool 'T?' about a machine a later
+        MMU_STATUS described as homed with a gate selected.
+
+        The two rows are read out of the banner rather than off the objects, because the
+        complaint was about what the banner SAYS.
+        """
+        joined = '\n'.join(self.console.startup_output)
+        selct = next(l for l in joined.split('\n') if l.startswith('Selct:'))
+        self.assertNotIn('X', selct, 'the selector reads as unhomed at bootup')
+        self.assertNotIn('[T?]', joined, 'bootup rendered an unknown tool')
+
+    def test_the_homing_chatter_stays_out_of_the_banner(self):
+        """
+        Homing has to precede bootup, but "Homing MMU unit0... / Homed" is setup rather than
+        bootup output - and startup_output prints under the welcome, so leaving it in put three
+        lines of it above the rabbit.
+        """
+        joined = '\n'.join(self.console.startup_output)
+        self.assertNotIn('Homing MMU', joined)
+        self.assertIn('Ready', joined, 'the welcome should still be there')
+
+    def test_the_bootup_banner_already_shows_the_primed_map(self):
+        """
+        __MMU_BOOTUP prints the gate/filament table, so priming has to happen BEFORE it.
+        Priming afterwards left the banner showing "Unknown" on every gate while a later
+        MMU_STATUS showed the real thing - the same class of bug as the stale calibration
+        warnings, and fixed the same way.
+        """
+        joined = ' '.join(self.console.startup_output)
+        self.assertIn('Ready', joined, 'precondition: this is the bootup output')
+        self.assertNotIn('Unknown', joined)
 
     def test_priming_is_reproducible_and_varied(self):
         """
@@ -1768,12 +1828,218 @@ class TestTheDefaultProfile(unittest.TestCase):
         self.assertGreater(len({(a['vendor'], a['material']) for a in first.values()}), 1,
                            'every gate got the same filament')
 
+    def test_pacing_makes_an_operation_take_virtual_time(self):
+        """
+        At pace 0 a whole MMU_LOAD completes without the clock moving, so nothing time-driven
+        is observable - the LED effect never reaches a second frame and every action transition
+        lands in the same instant. Pacing spends each move's real duration in virtual time.
+        """
+        hh = self.console.hh
+        self.assertEqual(hh.pacing_wall, 0., 'the suite must never sleep')
+        hh.set_pacing(0.)                           # the console default is 0.5; measure from 0
+        gate = hh.mmu.num_gates - 1
+        self.console._dispatch('MMU_SELECT GATE=%d' % gate)
+
+        before = hh.reactor.monotonic()
+        self.console._dispatch('MMU_LOAD')
+        instant = hh.reactor.monotonic() - before
+        self.console._dispatch('MMU_UNLOAD')
+
+        hh.set_pacing(1.)
+        self.addCleanup(hh.set_pacing, 0.)
+        before = hh.reactor.monotonic()
+        self.console._dispatch('MMU_LOAD')
+        paced = hh.reactor.monotonic() - before
+
+        self.assertAlmostEqual(instant, 0., places=3, msg='pace 0 should not move the clock')
+        self.assertGreater(paced, 1., 'pacing did not spend virtual time')
+
+        # AND THE OPERATION MUST STILL HAVE WORKED. Pacing runs timers between moves, which is
+        # the same hazard reactor-level dispatch hit: it left every gate GATE_EMPTY instead of
+        # GATE_AVAILABLE, silently, with no error (see Console._dispatch). So assert the
+        # OUTCOME - an empty error list was measurably not enough to catch that.
+        from extras.mmu.mmu_constants import FILAMENT_POS_LOADED, FILAMENT_POS_UNLOADED
+        self.assertEqual(hh.mmu.filament_pos, FILAMENT_POS_LOADED)
+        self.console._dispatch('MMU_UNLOAD')
+        self.assertEqual(hh.mmu.filament_pos, FILAMENT_POS_UNLOADED)
+        self.assertNotIn(0, hh.mmu.gate_maps.gate_status, 'a gate went EMPTY during a paced run')
+        self.assertEqual(hh.errors, [])
+
+    def test_output_is_stamped_when_happy_hare_said_it(self):
+        """
+        _drain() runs AFTER a command returns, so stamping there gave every line of an
+        operation the same reading - the clock as it stood at the END. Under /pace a load
+        reported eight identical stamps while the clock had moved 11 seconds, which hid the
+        very progression /timestamp exists to show.
+        """
+        hh = self.console.hh
+        hh.set_pacing(1.)
+        self.addCleanup(hh.set_pacing, 0.)
+        gate = hh.mmu.num_gates - 1
+        self.console._dispatch('MMU_SELECT GATE=%d' % gate)
+
+        mark = len(self.console.sink)
+        self.console._dispatch('MMU_LOAD')
+        stamps = self.console.sink_stamp[mark:]
+        self.assertGreater(len(stamps), 2, 'expected several lines from a load')
+        self.assertGreater(len(set(stamps)), 1,
+                           'every line of a paced load carried the same timestamp')
+        self.assertEqual(stamps, sorted(stamps), 'stamps must not go backwards')
+        self.assertEqual(len(self.console.sink), len(self.console.sink_stamp),
+                         'the two lists are indexed in lockstep')
+
+    def test_output_is_printed_while_the_command_is_still_running(self):
+        """
+        Streaming, not buffering. Output used to be held until the command returned, so a paced
+        load printed a dozen correct-looking timestamps all in one burst - the timings said the
+        operation took 11 seconds and the screen said it took none.
+
+        Asserting on WHEN emit() is called, by recording the clock at each call: more than one
+        distinct reading is only possible if lines went out mid-command.
+        """
+        hh = self.console.hh
+        hh.set_pacing(1.)
+        self.addCleanup(hh.set_pacing, 0.)
+        gate = hh.mmu.num_gates - 1
+        self.console._dispatch('MMU_SELECT GATE=%d' % gate)
+
+        clocks = []
+        original = self.console.emit
+        self.console.emit = lambda text, stamp=None: clocks.append(hh.reactor.monotonic())
+        self.addCleanup(setattr, self.console, 'emit', original)
+
+        self.console.run_command('MMU_LOAD')
+        self.assertGreater(len(clocks), 2, 'expected several lines from a load')
+        self.assertGreater(len(set(clocks)), 1,
+                           'every line was printed at the same instant - still buffering')
+
+    def test_clearing_the_sink_clears_the_stamps_with_it(self):
+        """Out of step and _drain() would stamp lines with another line's clock."""
+        self.assertEqual(len(self.console.sink), len(self.console.sink_stamp))
+        self.console._dispatch('MMU_STATUS')
+        self.assertEqual(len(self.console.sink), len(self.console.sink_stamp))
+        self.console._clear_sink()
+        self.assertEqual(self.console.sink, [])
+        self.assertEqual(self.console.sink_stamp, [])
+
+    def test_the_header_reports_pacing_only_when_it_is_on(self):
+        """
+        Next to the clock, because that is the field it explains: with pacing on, t= moves
+        during an operation. Absent at 0 - the default means "instant", which is the absence
+        of a mode rather than a mode, and a permanent realtime=0% would be noise.
+        """
+        hh = self.console.hh
+        self.console.args.header = ['machine']
+        self.addCleanup(hh.set_pacing, hh.pacing)
+
+        hh.set_pacing(0.)
+        self.assertNotIn('realtime', '\n'.join(self.console.header_lines()))
+        hh.set_pacing(0.5)
+        self.assertIn('realtime=50%', '\n'.join(self.console.header_lines()))
+        hh.set_pacing(1.)
+        self.assertIn('realtime=100%', '\n'.join(self.console.header_lines()))
+        hh.set_pacing(0.)
+        self.assertNotIn('realtime', '\n'.join(self.console.header_lines()))
+
+    def test_a_paced_preload_still_marks_the_gate_available(self):
+        """
+        The specific silent failure reactor dispatch caused. Preload is the most timer-sensitive
+        path in the harness - HH's own tail concludes the gate is not loaded if the entry sensor
+        is still triggered afterwards - so it is the one to pin.
+        """
+        hh = self.console.hh
+        hh.set_pacing(1.)
+        self.addCleanup(hh.set_pacing, 0.)
+        hh.place_filament(0, position=console_mod.TIP_AT_GATE)
+        self.console._dispatch('MMU_PRELOAD GATE=0')
+        self.assertNotEqual(hh.mmu.gate_maps.gate_status[0], 0,
+                            'paced preload left the gate EMPTY')
+        self.assertEqual(hh.errors, [])
+
+    def test_a_paced_move_is_walked_rather_than_jumped(self):
+        """
+        A single long move used to do one advance() and one sleep(), so it FROZE for the whole
+        of it - no LED frames, no repaint, no intermediate position. A load looked like three
+        blocks with nothing happening in between.
+
+        Each move is now walked in slices, the model and the clock advancing together, so the
+        filament genuinely travels and there are hundreds of repaint opportunities.
+        """
+        hh = self.console.hh
+        gate = hh.mmu.num_gates - 1
+        self.console._dispatch('MMU_SELECT GATE=%d' % gate)
+
+        seen = []
+        hh.printer.harness_pace_observer = lambda: seen.append(round(self.console.fil.tip[gate], 2))
+        self.addCleanup(setattr, hh.printer, 'harness_pace_observer', None)
+        hh.set_pacing(1.)
+        self.addCleanup(hh.set_pacing, 0.)
+        self.console._dispatch('MMU_LOAD')
+
+        self.assertGreater(len(seen), 50, 'a whole load produced only a handful of updates')
+        self.assertGreater(len(set(seen)), 50, 'the filament did not move between updates')
+        self.assertEqual(seen, sorted(seen), 'a load should only ever feed filament forwards')
+
+    def test_pacing_does_not_change_where_the_filament_ends_up(self):
+        """Slicing a move must be exact - the totals cannot drift from the unpaced answer."""
+        hh = self.console.hh
+        gate = hh.mmu.num_gates - 1
+        self.console._dispatch('MMU_SELECT GATE=%d' % gate)
+        self.console._dispatch('MMU_LOAD')
+        unpaced = round(self.console.fil.tip[gate], 4)
+        self.console._dispatch('MMU_UNLOAD')
+
+        hh.set_pacing(1.)
+        self.addCleanup(hh.set_pacing, 0.)
+        self.console._dispatch('MMU_LOAD')
+        self.assertAlmostEqual(round(self.console.fil.tip[gate], 4), unpaced, places=3)
+        self.assertEqual(hh.errors, [])
+
+    def test_pacing_is_skipped_inside_a_reactor_callback(self):
+        """
+        advance() asserts if it re-enters a callback, so the pacer must no-op there. Only
+        top-level dispatch - the console, and the tests - is paced.
+        """
+        hh = self.console.hh
+        hh.set_pacing(1.)
+        self.addCleanup(hh.set_pacing, 0.)
+        mq = hh.printer.lookup_object('motion_queuing')
+        self.assertIsNotNone(mq._pace_factor(), 'precondition: pacing is on at top level')
+        inside = []
+        hh.reactor.register_callback(lambda et: inside.append(mq._pace_factor()))
+        hh.reactor.advance(0.)
+        self.assertEqual(inside, [None], 'a move inside a callback must not be paced')
+
+    def test_a_spool_lookup_resolves_instead_of_timing_out(self):
+        """
+        The fake Moonraker holds a REAL MmuServer, seeded to agree with the primed gate map.
+        Without it a UID lookup is dispatched and nothing ever answers, so an NFC read ends in
+        "Automatic assignment of id timed out" 20 seconds later.
+        """
+        hh = self.console.hh
+        self.assertIsNotNone(hh.moonraker_link, 'Moonraker should be attached by default')
+        before = len(hh.console)
+        # run_command prints; keep it out of the runner's output
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.console.run_command('_MMU_TEST NFC_READ=1 DEEP=1 UID=BADCAFE03')
+        said = ' '.join(hh.console[before:])
+        self.assertIn('Spool ID', said)
+        self.assertNotIn('timed out', said)
+
+    def test_no_moonraker_leaves_calls_unanswered(self):
+        """The counterpart - what a printer with Moonraker down looks like."""
+        console = console_mod.Console(console_mod.parse_args(
+            ['--plain', '--no-log', '--header', 'off', '--no-preload', '--no-moonraker']))
+        self.addCleanup(console.close)
+        console.boot()
+        self.assertIsNone(console.hh.moonraker_link)
+
     def test_no_prime_leaves_the_gate_map_alone(self):
         console = console_mod.Console(console_mod.parse_args(
             ['--plain', '--no-log', '--header', 'off', '--no-prime']))
         self.addCleanup(console.close)
         console.boot()
-        self.assertEqual(console.primed, {})
+        self.assertEqual(console.hh.primed, {})
         self.assertEqual(console.hh.mmu.gate_maps.gate_vendor[0], '')
 
     def test_the_selector_header_reports_the_carriage_and_the_servo(self):
