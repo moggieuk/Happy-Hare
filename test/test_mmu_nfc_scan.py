@@ -227,6 +227,39 @@ class TestPreloadNfcCompound(NfcScanTestCase):
         banners = [l for l in self.hh.console[at:] if l.startswith('Preloading')]
         self.assertEqual(banners, ['Preloading gate 0 with NFC scan...'])
 
+    def test_a_tag_that_was_read_is_reported(self):
+        """
+        The banner promised a scan, so the outcome has to be stated. Reported at info
+        level, in the same words MMU_NFC_SCAN uses, rather than tacked onto the
+        always-visible "Filament detected and loaded" line.
+        """
+        at = len(self.hh.console)
+        self.preload_with_tag_before_the_gate()
+        said = ' '.join(self.hh.console[at:]).lower()
+        self.assertIn('tag read for gate 0', said)
+
+    def test_a_tag_that_was_not_found_is_also_reported(self):
+        """
+        The case that used to be silent: a scan ran, found nothing, and said so only by
+        omission - leaving no way to tell a spool with no tag from a broken reader.
+        """
+        self.hh.place_filament(0, position=-100.0)      # no tag attached
+        at = len(self.hh.console)
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+        said = ' '.join(self.hh.console[at:]).lower()
+        self.assertIn('no tag found for gate 0', said)
+        self.assertNotIn('tag read', said)
+
+    def test_a_plain_preload_says_nothing_about_nfc(self):
+        """Only the scan path reports a scan result - gate 0's reader is disabled here."""
+        self.hh.run_gcode('MMU_NFC GATE=0 ENABLE=0')
+        self.hh.place_filament(0, position=-100.0)
+        at = len(self.hh.console)
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+        said = ' '.join(self.hh.console[at:]).lower()
+        self.assertIn('preloading gate 0...', said)
+        self.assertNotIn('nfc:', said)
+
     def test_nfc_first_finishes_on_the_gate_and_parks_without_reverse_homing(self):
         """
         Reader stops the move, tag is read, homing CONTINUES to the gate switch - so the

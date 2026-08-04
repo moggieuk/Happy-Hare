@@ -195,7 +195,15 @@ class MmuFilamentMovement:
                 self.drive().mmu_gear_stepper.rail.remove_compound_endstop(nfc[0].name)
 
         self.gate_maps.set_gate_status(gate, GATE_AVAILABLE)
-        self.log_always("Filament detected and loaded in gate %d%s" % (gate, " (tag read)" if tag_read else ""))
+        self.log_always("Filament detected and loaded in gate %d" % gate)
+        if nfc is not None:
+            # The banner promised a scan, so say how it went either way - a silent
+            # "loaded" left the user unable to tell a missing tag from a working one.
+            # Same wording as MMU_NFC_SCAN so the two paths read alike.
+            if tag_read:
+                self.log_info("NFC: tag read for gate %d" % gate)
+            else:
+                self.log_info("NFC: no tag found for gate %d while preloading" % gate)
         self._check_pending_filament(gate, pending=pending) # Apply the grabbed spool_id if any
         run_post_preload_macro()
 
@@ -892,7 +900,7 @@ class MmuFilamentMovement:
         u = self.mmu_unit()
         gate = self.gate_selected
 
-        self.log_always("Ejecting...")
+        self.log_always("Ejecting gate %d..." % gate)
 
         # First find reliable starting position if we have individual gate exit sensor
         gate_exit_sensor = self.sensor_manager.check_gate_sensor(SENSOR_EXIT_PREFIX, gate)
@@ -2139,7 +2147,12 @@ class MmuFilamentMovement:
                         self.reset_sync_gear_to_extruder(False if extruder_only else None, force_grip=True)
                     self.wrap_gcode_command(self.p.pre_load_macro, exception=True, wait=True)
 
-            self.log_info("Loading %s..." % ("extruder" if extruder_only else "filament"))
+            # Name the gate, like preload, unload and eject do. Not for an extruder-only
+            # load (no gate involved) nor for bypass/unknown, where there is no gate to name.
+            self.log_info("Loading %s..." % (
+                "extruder" if extruder_only
+                else "gate %d" % self.gate_selected if self.gate_selected >= 0
+                else "filament"))
             if not extruder_only:
                 self._display_visual_state()
 
@@ -2388,7 +2401,13 @@ class MmuFilamentMovement:
                         self.reset_sync_gear_to_extruder(False if extruder_only else None, force_grip=True)
                         self.wrap_gcode_command(self.p.pre_unload_macro, exception=True, wait=True)
 
-            self.log_info("Unloading %s..." % ("extruder" if extruder_only else "filament"))
+            # Name the gate, like preload and eject do. Not for an extruder-only unload
+            # (no gate involved) nor for bypass/unknown, where selected_gate_string() has
+            # nothing useful to say.
+            self.log_info("Unloading %s..." % (
+                "extruder" if extruder_only
+                else "gate %d" % self.gate_selected if self.gate_selected >= 0
+                else "filament"))
             if not extruder_only:
                 self._display_visual_state()
 

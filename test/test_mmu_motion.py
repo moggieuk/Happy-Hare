@@ -401,6 +401,39 @@ class TestPreload(MotionTestCase):
         self.hh.run_gcode('MMU_PRELOAD GATE=2')
         self.assertEqual(self.hh.mmu.gate_status[2], GATE_EMPTY)
 
+    def test_eject_announces_itself_once_and_names_the_gate(self):
+        """
+        Same shape as the preload banner, and for the same reason: MMU_EJECT used to log
+        its own "Ejecting filament out of gate 1" and then _eject_from_gate logged a bare
+        "Ejecting...", so the user saw two lines and neither pairing was obvious.
+        """
+        self.hh.place_filament(1, position=TIP_AT_GATE)
+        self.hh.run_gcode('MMU_PRELOAD GATE=1')
+        at = len(self.hh.console)
+        self.hh.run_gcode('MMU_EJECT GATE=1')
+        banners = [l for l in self.hh.console[at:] if l.lower().startswith('ejecting')]
+        self.assertEqual(banners, ['Ejecting gate 1...'])
+        self.assertEqual(self.hh.mmu.gate_status[1], GATE_EMPTY)
+
+    def test_a_failed_preload_keeps_an_assigned_spool_id(self):
+        """
+        The spool_id is assigned by the entry-insert handler BEFORE the preload runs, so
+        what happens to it on failure matters. Nothing in the failure path clears it -
+        set_gate_status only touches gate_status, and only reset_gate (eject) and
+        reset_gate_map clear gate_spool_id. Pinned because the alternative would mean the
+        assignment had to be deferred until after the preload succeeded.
+        """
+        mmu = self.hh.mmu
+        mmu.pending_spool_id = 7
+        mmu._check_pending_filament(2)
+        self.assertEqual(mmu.gate_maps.gate_spool_id[2], 7)
+
+        self.hh.place_filament(2, position=-100000.0)
+        self.hh.run_gcode('MMU_PRELOAD GATE=2')
+        self.assertEqual(mmu.gate_status[2], GATE_EMPTY)
+        self.assertEqual(mmu.gate_maps.gate_spool_id[2], 7,
+                         'a failed preload must not discard the assigned spool')
+
     def test_preload_leaves_other_gates_alone(self):
         self.hh.place_filament(0)
         self.hh.place_filament(1, position=TIP_AT_GATE)

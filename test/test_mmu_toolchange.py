@@ -151,6 +151,25 @@ class TestUnload(ToolchangeTestCase):
         self.assertFalse(self.hh.sensor('mmu_exit_0').present)
         self.assertTrue(self.hh.sensor('mmu_entry_0').present)
 
+    def test_unload_names_the_gate_it_is_unloading(self):
+        """
+        unload_sequence's banner used to be a bare "Unloading filament..." with no way to
+        tell which lane it referred to on a multi-gate machine. Named like preload and
+        eject now. Still info level - it is progress, not an outcome.
+        """
+        at = len(self.hh.console)
+        self.hh.run_gcode('MMU_UNLOAD')
+        banners = [l for l in self.hh.console[at:] if l.lower().startswith('unloading')]
+        self.assertEqual(banners, ['Unloading gate 0...'])
+
+    def test_load_names_the_gate_it_is_loading(self):
+        """The other half of the pair - load_sequence's banner, same shape."""
+        self.hh.run_gcode('MMU_UNLOAD')
+        at = len(self.hh.console)
+        self.hh.run_gcode('MMU_LOAD')
+        banners = [l for l in self.hh.console[at:] if l.lower().startswith('loading')]
+        self.assertEqual(banners, ['Loading gate 0...'])
+
     def test_load_unload_is_a_round_trip(self):
         """The whole point: a cycle must leave the machine where it started."""
         start = TIP_PARKED
