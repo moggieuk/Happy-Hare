@@ -56,11 +56,13 @@ import sys
 import tempfile
 import termios
 import time
+from collections import Counter
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 INSTALLER = os.path.join(REPO_ROOT, 'installer')
 KCONFIGLIB = os.path.join(INSTALLER, 'lib', 'kconfiglib')
-IMAGES = os.path.join(REPO_ROOT, 'doc', 'images')
+DOC = os.path.join(REPO_ROOT, 'doc')
+IMAGES = os.path.join(DOC, 'images')
 
 # Where a screenshot pretends Klipper lives. Deliberately NOT $HOME/klipper: a real
 # checkout makes Kconfig's canbus_query.py actually run and the MCU menus fill with
@@ -80,11 +82,41 @@ START_TIMEOUT = 180                 # Kconfig parse on a slow machine
 STEP_TIMEOUT = 10                   # a redraw after one keypress
 SETTLE = 0.4                        # quiet period accepted as "the redraw finished"
 
+# autofit() bounds.
+#
+# MIN_ROWS is a floor on the finished image rather than a technical limit - menuconfig
+# lays out happily in about 15 rows. A documentation set reads badly when its
+# screenshots are wildly different heights, and a two-item menu shrunk to fit looks
+# like a cropped fragment rather than the installer, so short screens are padded to a
+# consistent size. Override per session ('min_rows') or per command (--min-rows).
+#
+# MAX_ROWS is a backstop for a menu genuinely longer than any sane screenshot - it is
+# reported rather than silently accepted, because the image will contain scroll arrows.
+#
+# GAP_ROWS is height autofit is NOT allowed to hand back: at least this many blank rows
+# stay between the last menu item and the separator bar above the help text, so that
+# text never reads as though it's crowding the menu above it. menu_slack() reclaims
+# only what's left over past this gap, not all of it.
+MIN_ROWS, MAX_ROWS, GROW_STEP, GAP_ROWS = 30, 96, 10, 2
+
+# Terminal width. 100 columns is menuconfig's traditional default; wider gives long
+# items (board names, pin lists) room to sit on one line instead of wrapping.
+DEFAULT_COLS = 110
+
+# menuconfig draws _N_SCROLL_ARROWS (14) of ACS_UARROW/ACS_DARROW on the separator
+# bars when a window has content off-screen (menuconfig.py:1376,1422). pyte resolves
+# the VT100 graphics charset, so they arrive as these glyphs. Three in a row is
+# unambiguous - nothing else in the installer draws them.
+SCROLL_ARROWS = ('↓', '↑')            # down, up
+
 # Key encodings. The cursor keys are the SS3 forms - see note 1 in the header.
 DOWN, UP, LEFT, RIGHT = b'\x1bOB', b'\x1bOA', b'\x1bOD', b'\x1bOC'
 ENTER, ESC, SPACE, TAB = b'\r', b'\x1b', b' ', b'\t'
 PGDN, PGUP = b'\x1b[6~', b'\x1b[5~'
 HELP, QUIT = b'?', b'q'
+# menuconfig binds 'g' to _select_first_menu_entry (menuconfig.py:869), which is the
+# only way in to reset a menu's scroll offset from outside
+HOME = b'g'
 
 _SELECTED_BG = 'blue'               # see note 2 in the header
 
@@ -193,7 +225,8 @@ def resolve_seed(spec, env):
     produce a whole set of screenshots of the wrong machine.
 
     'none' means no seed, i.e. bare Kconfig defaults. It is handled here rather than
-    at each entry point so that doc.shots and doc.capture cannot disagree about it.
+    at each entry point so that doc_tools.shots and doc_tools.capture cannot disagree
+    about it.
     """
     if spec is None or spec == 'none':
         return None
@@ -273,15 +306,17 @@ class Menuconfig:
     (see the seed handling in __init__).
     """
 
-    def __init__(self, cols=100, rows=40, seed=DEFAULT_SEED, style=None, **context):
+    def __init__(self, cols=DEFAULT_COLS, rows=40, seed=DEFAULT_SEED, style=None,
+                 min_rows=MIN_ROWS, **context):
         """
         `seed` is a built-in name, a path to an existing .mmu_config, or None for
-        Kconfig defaults. `context` overrides what unit_context() infers from the seed
-        (unit_name, multi_unit, entry_point, unit_index, capabilities).
+        Kconfig defaults. `min_rows` is the shortest a fitted screenshot may be.
+        `context` overrides what unit_context() infers from the seed (unit_name,
+        multi_unit, entry_point, unit_index, capabilities).
         """
-        import pyte                                  # kept local: see doc/requirements.txt
+        import pyte                                  # kept local: see doc_tools/requirements.txt
 
-        self.cols, self.rows = cols, rows
+        self.cols, self.rows, self.min_rows = cols, rows, min_rows
         self.screen = pyte.Screen(cols, rows)
         self.stream = pyte.ByteStream(self.screen)
 
@@ -307,12 +342,18 @@ class Menuconfig:
 
         env = dict(os.environ)
         env.update(doc_env(**self.context))
+        # NO LINES/COLUMNS HERE. ncurses honours $LINES/$COLUMNS over the terminal's
+        # actual size, so setting them pins the layout for the life of the process:
+        # the pty resizes, the child gets SIGWINCH, and menuconfig re-reads the
+        # environment and decides nothing changed. Leaving them unset is what makes
+        # autofit() possible - the size then comes from the ioctl below.
         env.update(
             PYTHONPATH=KCONFIGLIB,
             KCONFIG_CONFIG=self._config,
             TERM='xterm-256color',
-            LINES=str(rows), COLUMNS=str(cols),
         )
+        env.pop('LINES', None)
+        env.pop('COLUMNS', None)
         if style:
             env['MENUCONFIG_STYLE'] = style
         self.style = env['MENUCONFIG_STYLE']
@@ -426,6 +467,71 @@ class Menuconfig:
 
     def has(self, text):
         return any(text in line for line in self.lines)
+
+    # -- geometry, for autofit ------------------------------------------------
+
+    def scroll_arrows(self):
+        """
+        Rows showing menuconfig's "there is more off-screen" indicator.
+
+        This is the thing a screenshot must never contain: a row of arrows tells the
+        reader the menu is cut off, which is an artefact of the capture height rather
+        than anything about their machine.
+        """
+        return [(y, arrow) for y, line in enumerate(self.lines)
+                for arrow in SCROLL_ARROWS if arrow * 3 in line]
+
+    def _bars(self):
+        """Full-width coloured rows: the title bar, and the separator below the menu."""
+        page = Counter(self.screen.buffer[y][x].bg
+                       for y in range(self.rows)
+                       for x in range(self.cols)).most_common(1)[0][0]
+        found = []
+        for y in range(self.rows):
+            row = self.screen.buffer[y]
+            colours = Counter(row[x].bg for x in range(self.cols))
+            colour, count = colours.most_common(1)[0]
+            if count == self.cols and colour != page:
+                found.append(y)
+        return found
+
+    def _trailing_blank(self):
+        """
+        Blank rows directly above the separator bar, or None if the geometry can't be
+        read (a dialog is up, or nothing is drawn yet). The menu window ends where
+        these begin; see menu_slack() and autofit() for what that's used for.
+        """
+        bars = self._bars()
+        if len(bars) < 2:
+            return None
+        top, separator = bars[0], bars[-1]
+        blank = 0
+        for y in range(separator - 1, top, -1):
+            if self.lines[y].strip():
+                break
+            blank += 1
+        return blank
+
+    def menu_slack(self):
+        """
+        Height that can be given back without crowding the help text against the menu.
+
+        The layout is: breadcrumb, title bar, menu window, separator bar, a help pane
+        of a FIXED eight rows (menuconfig.py:251 _SHOW_HELP_HEIGHT), then two rows of
+        key hints. Shrinking the terminal takes rows off the menu window only, so the
+        blank space inside the help pane is overhead that cannot be reclaimed and must
+        not be counted here - subtracting it would cut into the menu and bring the
+        scroll arrows straight back.
+
+        Of the blank rows directly above the separator, GAP_ROWS are reserved rather
+        than reclaimed - the whole point of a gap is that it exists whether or not the
+        menu itself happened to have trailing blank rows of its own, so it comes off
+        the total rather than being conditional on it. autofit() separately GROWS the
+        terminal first if there weren't even GAP_ROWS to begin with; this only ever
+        shrinks, so it can't undo that.
+        """
+        blank = self._trailing_blank()
+        return None if blank is None else max(blank - GAP_ROWS, 0)
 
     def state(self):
         """One line naming where we are - used in errors and by --dump."""
@@ -584,11 +690,113 @@ class Menuconfig:
         """
         if item:
             self.select(item)
+        self.autofit()          # size the menu now; it cannot be done with the box up
         return self.step(ENTER, lambda mc: mc.in_editor())
 
     def cancel(self):
         """Close the editor WITHOUT applying it."""
         return self.step(ESC, lambda mc: not mc.in_editor())
+
+    def resize(self, rows):
+        """
+        Change the terminal height under the running menuconfig.
+
+        Works only because the child's environment has no $LINES - see __init__.
+        menuconfig relayouts from the SIGWINCH the pty raises, so there is nothing to
+        send and no key to press; both this object's pyte screen and the pty are
+        resized together so the two never disagree about the geometry.
+        """
+        if rows == self.rows:
+            return self
+        before = tuple(self.lines)
+        fcntl.ioctl(self.fd, termios.TIOCSWINSZ,
+                    struct.pack('HHHH', rows, self.cols, 0, 0))
+        self.rows = rows
+        self.screen.resize(rows, self.cols)
+        self._wait(lambda: tuple(self.lines) != before, STEP_TIMEOUT, 'resize')
+        return self
+
+    def _unscroll(self):
+        """
+        Send a scrolled menu back to the top, keeping the highlight where it is.
+
+        A menu keeps its scroll offset across a resize: coming back from a submenu on a
+        short terminal leaves the list scrolled, and the up-arrows that go with it stay
+        put however tall the terminal then gets. Growing cannot fix an offset, so it
+        has to be reset - 'g' does that and moves the highlight to the first entry,
+        which select() then puts back. With the whole menu now fitting, walking back
+        down does not scroll it again.
+        """
+        if not any(arrow == '↑' for _, arrow in self.scroll_arrows()):
+            return self
+        wanted = self.selected
+        self.key(HOME)
+        if wanted and wanted not in self.selected:
+            self.select(wanted)
+        return self.repaint()
+
+    def autofit(self, quiet=False):
+        """
+        Pick the shortest height that shows the whole screen without scroll arrows.
+
+        Grows first - a screen with arrows is cut off and no amount of measuring will
+        tell us by how much, since what is hidden is not drawn - then hands back the
+        slack the menu window is not using. Two or three resizes, not a search.
+
+        The order matters: measuring slack on a screen that still has arrows would
+        read zero and stop, which is precisely the state being fixed.
+
+        Does nothing while the small value editor is open. Resizing under it does not
+        relayout the menu behind it, so the arrows never clear and this would grow to
+        the cap for nothing; and the arrows the edit box draws itself (menuconfig.py:
+        2722) mean the VALUE is wider than the field, which no terminal height fixes.
+        edit() fits the menu before opening the box instead, so the screen a dialog is
+        photographed on has already been sized.
+        """
+        if self.in_editor():
+            return self
+
+        # Measure only on a freshly painted screen. A row of arrows from an earlier,
+        # shorter layout can survive in this pipeline's copy of the screen after the
+        # real one has moved on (see repaint() for why), and autofit would then grow
+        # all the way to the cap chasing arrows that are not on the terminal at all.
+        self.repaint()
+        self._unscroll()
+        while self.scroll_arrows() and self.rows < MAX_ROWS:
+            self.resize(min(self.rows + GROW_STEP, MAX_ROWS))
+            self.repaint()
+            self._unscroll()
+
+        if self.scroll_arrows():
+            if not quiet:
+                print('    WARNING: %s still shows scroll arrows at the %d-row cap'
+                      % (self.breadcrumb or 'screen', MAX_ROWS), file=sys.stderr)
+            return self
+
+        # A menu that exactly fills its window has zero trailing blank rows, and
+        # menu_slack() only ever shrinks - it would never grow the terminal to CREATE
+        # the gap that isn't there yet. So that case is handled first, separately: grow
+        # by the shortfall and re-measure, the same coarse-then-settle shape as the
+        # scroll-arrow loop above, because growing can itself shift where the help pane
+        # starts rounding and needs a row of slack in either direction.
+        while (self._trailing_blank() or 0) < GAP_ROWS and self.rows < MAX_ROWS:
+            deficit = GAP_ROWS - (self._trailing_blank() or 0)
+            self.resize(min(self.rows + deficit, MAX_ROWS))
+            self.repaint()
+
+        # Hand back the slack, but never go under the floor - and note this can resize
+        # UPWARDS, when a screen small enough to need no trimming is still shorter than
+        # a screenshot should be.
+        target = max(self.rows - (self.menu_slack() or 0), self.min_rows)
+        if target != self.rows:
+            self.resize(target)
+            self.repaint()
+            # One row of rounding is possible - the help pane can round differently at
+            # the new height - so give a row back rather than ship arrows.
+            while self.scroll_arrows() and self.rows < MAX_ROWS:
+                self.resize(self.rows + 1)
+                self.repaint()
+        return self
 
     def write(self, text):
         """
@@ -608,16 +816,26 @@ class Menuconfig:
 
     # -- output ---------------------------------------------------------------
 
-    def shot(self, path, trim=True, scale=2, heal=None):
+    def shot(self, path, trim=True, scale=2, heal=None, fit=True):
         """
         Render the current screen.
 
-        `heal` defaults to "unless this is a dialog" - see repaint(), which opens one
-        and so cannot be used to tidy up another. Pass it explicitly to override.
+        `fit` sizes the terminal to the screen first, so no image ever contains the
+        scroll arrows that mean "cut off here" - pass False to keep whatever height
+        the session was started with. `heal` defaults to "unless this is a dialog" -
+        see repaint(), which opens one and so cannot be used to tidy up another.
         """
         from .render import render                   # deferred: needs Pillow
+        if fit:
+            self.autofit()
         if heal or (heal is None and not self.in_dialog()):
             self.repaint()
+        # Post-condition, not an assumption: the whole point of autofit is that no
+        # published image says "cut off here", and healing happens after it.
+        arrows = self.scroll_arrows()
+        if arrows and not self.in_editor():
+            print('    WARNING: %s is being captured with scroll arrows on row %d'
+                  % (os.path.basename(path), arrows[0][0]), file=sys.stderr)
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         render(self.screen, path, trim=trim, scale=scale)
         return path
@@ -648,8 +866,8 @@ def run_keys(mc, spec, on_shot=None):
     Apply a comma-separated key spec.
 
     'shot:PATH' captures mid-sequence, so one command can walk a config and collect
-    several images before the session closes - the same thing doc/shots.py does, only
-    written on a command line.
+    several images before the session closes - the same thing doc_tools/shots.py does,
+    only written on a command line.
     """
     for token in [t.strip() for t in spec.split(',') if t.strip()]:
         verb, _, arg = token.partition(':')
@@ -678,8 +896,15 @@ def run_keys(mc, spec, on_shot=None):
 
 
 def add_common_args(parser):
-    parser.add_argument('--cols', type=int, default=100, help='terminal width (default 100)')
-    parser.add_argument('--rows', type=int, default=40, help='terminal height (default 40)')
+    parser.add_argument('--cols', type=int, default=DEFAULT_COLS,
+                        help='terminal width (default %d)' % DEFAULT_COLS)
+    parser.add_argument('--rows', type=int, default=40,
+                        help='starting terminal height (default 40); each shot then '
+                             'autofits, so this only matters with --no-fit')
+    parser.add_argument('--min-rows', type=int, default=MIN_ROWS,
+                        help='shortest a fitted screenshot may be (default %d)' % MIN_ROWS)
+    parser.add_argument('--no-fit', action='store_true',
+                        help='keep --rows as-is instead of fitting each screen')
     parser.add_argument('--seed', default=DEFAULT_SEED,
                         help='.mmu_config (or .mmu_config_<unit>) to start from, or a '
                              'built-in name: %s. Copied, never written back. '
@@ -709,7 +934,7 @@ def context_from_args(args):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        prog='python -m doc.capture',
+        prog='python -m doc_tools.capture',
         description='Drive menuconfig headlessly; dump a screen or save it as a PNG.')
     add_common_args(parser)
     parser.add_argument('--keys', default='',
@@ -723,11 +948,11 @@ def main(argv=None):
         args.dump = True                             # looking around is the common case
 
     def shot(path):
-        mc.shot(path, trim=not args.no_trim, scale=args.scale)
-        print('wrote %s (%s)' % (path, mc.state()))
+        mc.shot(path, trim=not args.no_trim, scale=args.scale, fit=not args.no_fit)
+        print('wrote %s (%dx%d, %s)' % (path, mc.cols, mc.rows, mc.state()))
 
-    with Menuconfig(cols=args.cols, rows=args.rows, seed=args.seed,
-                    style=args.style, **context_from_args(args)) as mc:
+    with Menuconfig(cols=args.cols, rows=args.rows, seed=args.seed, style=args.style,
+                    min_rows=args.min_rows, **context_from_args(args)) as mc:
         run_keys(mc, args.keys, on_shot=shot)
         if args.expect and not mc.has(args.expect):
             print('EXPECTED %r on screen (%s)' % (args.expect, mc.state()), file=sys.stderr)

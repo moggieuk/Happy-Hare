@@ -46,6 +46,14 @@ BOLD_SIBLING = {'DejaVuSansMono.ttf': 'DejaVuSansMono-Bold.ttf'}
 PAD = 14                    # border, in unscaled pixels
 CELL_ASPECT = 1.32          # line height as a multiple of the font size
 
+# Box-drawing (U+2500-257F) and block-element (U+2580-259F) characters. menuconfig's
+# section separators and the selection highlight both draw these, and Menlo's BOLD
+# weight has no glyphs for the box-drawing block - every one of them measures as the
+# same placeholder box, so a bold separator (any separator under the selection bar)
+# renders as mojibake. The regular weight has them all; since a one-pixel-wide rule
+# does not read as bold anyway, these are always drawn with the regular font.
+_LINE_DRAWING = range(0x2500, 0x25A0)
+
 
 DARK_TEXT, LIGHT_TEXT = '#1c1e24', '#f0f2f5'
 
@@ -63,7 +71,7 @@ def _contrast_fg(bg_hex):
     Readable text for a cell whose foreground is 'default'.
 
     It has to be chosen against the CELL's background, not the page's. The aquatic
-    style (which the multi-unit entry point forces, see doc/capture.py) paints its
+    style (which the multi-unit entry point forces, see doc_tools/capture.py) paints its
     title and footer bars blue while leaving the text default: taking the page colour
     there gives dark grey on blue, which is legible in a terminal that resolves
     'default' to its own bright foreground and nearly unreadable in a PNG.
@@ -161,8 +169,9 @@ def render(screen, path, trim=True, scale=2):
                 # highlight bar, which otherwise shows as vertical striping.
                 draw.rectangle([left, top, left + cell_w + 0.6, top + cell_h], fill=bg_hex)
             if cell.data.strip():
+                use_bold = cell.bold and ord(cell.data[0]) not in _LINE_DRAWING
                 draw.text((left, top + cell_h * 0.12), cell.data,
-                          font=(bold if cell.bold else regular), fill=fg_hex)
+                          font=(bold if use_bold else regular), fill=fg_hex)
 
     image.save(path)
     return path
