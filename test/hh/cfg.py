@@ -183,6 +183,41 @@ def _prepare_imports():
             sys.path.insert(0, p)
 
 
+# installer/Kconfig's serial/canbus auto-detect macros (serial_device, mmu_serial_config,
+# canbus_uuid, ...) are parameterised - which in Kconfig means "=", not ":=" - so kconfiglib
+# re-forks a shell for every REFERENCE, not just once per definition. One multi-unit parse
+# references them ~370 times, but only ~60 distinct command strings: the same gate/MCU probe
+# is asked for repeatedly by different `default`/`depends on` lines. Measured: 22s of a 25s
+# `make console` boot was $(shell, ...) subprocess overhead alone.
+#
+# Caching is scoped to ONE Kconfig() construction, not the whole process: some other macros
+# here (mmu_has_sensor_toolhead, unit_suffix, ...) read a bare, un-substituted $VAR that the
+# *subprocess* resolves from os.environ at exec time, not a Kconfig $(VAR) baked into the
+# command text at parse time - and _env() (above) deliberately sets different values of that
+# environment across the entry-point parse and each per-unit parse. A cache that lived across
+# parses would silently replay the entry-point parse's answer into a unit parse with a
+# different environment. Reset per-parse costs nothing (env and cwd are fixed for the
+# lifetime of one Kconfig().__init__) and is where all the duplication above was measured to
+# live anyway.
+def _install_shell_cache(kconfiglib):
+    if getattr(kconfiglib._shell_fn, '_hh_cache', None) is not None:
+        return kconfiglib._shell_fn._hh_cache
+    real_shell_fn = kconfiglib._shell_fn
+    cache = {}
+
+    def cached_shell_fn(kconf, name, command):
+        try:
+            return cache[command]
+        except KeyError:
+            result = real_shell_fn(kconf, name, command)
+            cache[command] = result
+            return result
+
+    cached_shell_fn._hh_cache = cache
+    kconfiglib._shell_fn = cached_shell_fn
+    return cache
+
+
 def _kconfig(label, syms):
     """
     One Kconfig parse with `syms` applied. The CALLER owns the env - wrap this in _env(),
@@ -191,6 +226,8 @@ def _kconfig(label, syms):
     _prepare_imports()
     import kconfiglib
     import installer.build as build
+
+    _install_shell_cache(kconfiglib).clear()
 
     class _HarnessKConfig(build.KConfig):
         """
