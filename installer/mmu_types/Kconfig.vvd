@@ -6,6 +6,8 @@ config MMU_TYPE_VVD_1_0
   select MMU_HAS_SENSOR_ENTRY
   select MMU_HAS_ENVIRONMENT_SENSOR
   select MMU_HAS_HEATER
+  select MMU_HAS_NFC_READER
+  select MMU_HAS_PER_GATE_NFC_READERS
   select UNSELECT_MMU_HAS_ESPOOLER        # Disable
   select UNSELECT_MMU_HAS_FILAMENT_BUFFER # Disable
 
@@ -51,6 +53,8 @@ if MMU_TYPE_VVD_1_0
   config CUSTOM_ENVIRONMENT_SENSOR_SETUP
     def_bool y
   config CUSTOM_HEATER_SETUP
+    def_bool y
+  config CUSTOM_NFC_READER_SETUP
     def_bool y
 
   if SHOW_MMU_ADDITIONS_WITH_TYPE
@@ -118,6 +122,15 @@ if MMU_TYPE_VVD_1_0
     default "$(UNIT_NAME)_heater"
   config PARAM_HEATER_MAX_TEMP
     default "75"
+
+  config PARAM_NFC_READER_0
+    default "$(UNIT_NAME)_nfc01"
+  config PARAM_NFC_READER_1
+    default "$(UNIT_NAME)_nfc01"
+  config PARAM_NFC_READER_2
+    default "$(UNIT_NAME)_nfc23"
+  config PARAM_NFC_READER_3
+    default "$(UNIT_NAME)_nfc23"
 
   comment "_"
 
