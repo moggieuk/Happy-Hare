@@ -1,13 +1,16 @@
 # Documentation tooling
 
 Screenshots of the menuconfig installer, generated from the real thing rather than
-captured by hand. `doc/capture.py` runs `menuconfig` against `installer/Kconfig` in a
-pty, interprets what it draws, and renders the screen to a PNG. `doc/shots.py` is the
-list of images the documentation needs.
+captured by hand. `doc_tools/capture.py` runs `menuconfig` against `installer/Kconfig`
+in a pty, interprets what it draws, and renders the screen to a PNG.
+`doc_tools/shots.py` is the list of images the documentation needs.
 
-Nothing here is installed on a printer or imported by Happy Hare, the installer or
-the tests. The dependencies (`pyte`, `Pillow`) live in `doc/requirements.txt` and are
-installed into `./venv` on demand by the `shots` target.
+The split is deliberate: **this directory is code**, and everything it produces -
+`doc/images/`, `doc/GettingStartedWithBoxTurtle.md` and its image folder, any future
+page - lives under `doc/` instead. Nothing here is installed on a printer or imported
+by Happy Hare, the installer or the tests. The dependencies (`pyte`, `Pillow`) live in
+`doc_tools/requirements.txt` and are installed into `./venv` on demand by the `shots`
+target.
 
 ## Regenerating the images
 
@@ -46,8 +49,8 @@ Seeds are inputs. The session copies one into a temporary directory and points
 ## One session, many screenshots
 
 Parsing the Kconfig tree costs several seconds, so a session starts `menuconfig`
-once, walks it, and captures along the way. In `doc/shots.py` a session is a function
-that receives a started driver and a `shot()` callback:
+once, walks it, and captures along the way. In `doc_tools/shots.py` a session is a
+function that receives a started driver and a `shot()` callback:
 
 ```python
 def _purging_screens(mc, shot):
@@ -62,13 +65,50 @@ SESSIONS = [
         'name': 'purging',
         'caption': 'Purging options, and the Blobifier sub-screen',
         'scenes': _purging_screens,
-        'rows': 30,
     },
 ]
 ```
 
 Group screens belonging to one walkthrough into one session; start a new session when
 the seed or the unit has to change.
+
+### A getting-started page's images live next to the page
+
+By convention, a page like `doc/GettingStartedWithBoxTurtle.md` keeps its images in
+`doc/GettingStartedWithBoxTurtle/` — not in the shared `doc/images/` pool. Give the
+session an `outdir` (relative to `doc/`) and it always writes there, regardless of
+`--outdir`:
+
+```python
+SESSIONS = [
+    {
+        'name': 'getting-started-boxturtle',
+        'caption': 'doc/GettingStartedWithBoxTurtle.md - first menuconfig pass',
+        'scenes': _getting_started_boxturtle,
+        'outdir': 'GettingStartedWithBoxTurtle',
+        'seed': 'none',
+    },
+]
+```
+
+`seed: 'none'` there is deliberate, not the usual choice: that page is about the act
+of choosing `MMU Type` and watching the warnings panel react, which only shows up if
+the session starts before that choice is made. Most sessions want the `boxturtle`
+default instead - see Seeds, above.
+
+```bash
+make shots ARGS='--only getting-started-boxturtle'
+```
+
+Embed the result centered at 70% width rather than plain Markdown `![]()` - full width
+is wide for a 140-column capture sitting in prose, and GitHub renders the HTML fine
+inside a `.md` file:
+
+```html
+<p align="center">
+  <img src="GettingStartedWithBoxTurtle/01-first-run.png" alt="..." width="70%">
+</p>
+```
 
 ## Height looks after itself
 
@@ -85,6 +125,17 @@ reads badly at wildly different heights, and a two-item menu shrunk to fit looks
 cropped fragment rather than the installer. Change it with `--min-rows`, or `min_rows`
 on a session. The eight rows menuconfig reserves for the help pane below the separator
 are fixed, so blank space *there* is overhead that no height can reclaim.
+
+Reclaiming never goes all the way, either: **2 rows** (`GAP_ROWS` in
+`doc_tools/capture.py`) always stay between the last menu item and the separator bar,
+even on a menu that would otherwise fit exactly. A gap of zero reads as the help text
+crowding the menu above it; autofit will GROW past a tight fit to make room for the
+gap before it considers shrinking for the floor, so the two never fight each other.
+
+Width is fixed, not fitted - there's no signal in the terminal comparable to a scroll
+arrow that says "too narrow". The default is **110 columns**, wide enough that long
+board names and pin lists sit on one line rather than wrapping; override with `--cols`
+or `'cols'` on a session.
 
 Two things are worth knowing if you touch this:
 

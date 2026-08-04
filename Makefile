@@ -626,18 +626,20 @@ menuconfig: $(SRC)/installer/Kconfig | python_deps
 	$(Q)MENUCONFIG_STYLE="$(MENUCONFIG_STYLE)" KLIPPER_HOME=$(KLIPPER_HOME) $(PY) -m menuconfig Kconfig
 
 # Documentation screenshots: runs menuconfig headlessly and renders its screens to
-# doc/images. Pass flags through ARGS, e.g.
+# doc/images (and per-page image folders under doc/ - see doc_tools/README.md).
+# The tool itself lives in doc_tools/; doc/ holds only what it generates. Pass flags
+# through ARGS, e.g.
 #   make shots ARGS='--list'
 #   make shots ARGS='--only mmu-type -v'
 # Or drive it by hand to find a screen worth capturing:
 #   make shots CAPTURE=1 ARGS='--keys "select:Purging,enter" --dump'
 #
-# Always the venv python: doc/requirements.txt (pyte, Pillow) is doc tooling that no
-# other target needs, and the '.hh-<dir>-requirements' rule above installs it on
-# demand. The tool sets up its own Kconfig environment - see doc/capture.py - so
-# unlike 'menuconfig' this target deliberately passes nothing from here.
-shots: $(VENV)/.hh-doc-requirements
-	$(Q)$(VENV_PY) -m doc.$(if $(CAPTURE),capture,shots) $(ARGS)
+# Always the venv python: doc_tools/requirements.txt (pyte, Pillow) is doc tooling
+# that no other target needs, and the '.hh-<dir>-requirements' rule above installs it
+# on demand. The tool sets up its own Kconfig environment - see doc_tools/capture.py -
+# so unlike 'menuconfig' this target deliberately passes nothing from here.
+shots: $(VENV)/.hh-doc_tools-requirements
+	$(Q)$(VENV_PY) -m doc_tools.$(if $(CAPTURE),capture,shots) $(ARGS)
 
 
 

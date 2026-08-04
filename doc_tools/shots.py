@@ -1,15 +1,21 @@
 # The screenshots the documentation needs.
 #
-#   make shots                        # regenerate everything into doc/images
+#   make shots                        # regenerate every session's images
 #   make shots ARGS='--list'          # the sessions, and what each one covers
-#   make shots ARGS='--only boxturtle-walkthrough'
+#   make shots ARGS='--only getting-started-boxturtle'
 #   make shots ARGS='--seed ~/printer_data/.mmu_config'   # against a real machine
 #
 # A SESSION IS ONE menuconfig, MANY IMAGES. Parsing the Kconfig tree costs several
 # seconds, so a session starts the installer once, walks it, and captures along the
-# way - `shot('name')` writes doc/images/name.png and carries on from where it is.
-# Group screens that belong to the same walkthrough into one session; start a new one
-# when the seed or the unit has to change.
+# way - `shot('name')` writes name.png under the session's 'outdir' and carries on
+# from where it is. Group screens that belong to the same walkthrough into one
+# session; start a new one when the seed or the unit has to change.
+#
+# EVERY SESSION NAMES A REAL PAGE. There is no shared demo pool: a session exists
+# because doc/Something.md embeds its images, and its 'outdir' is that page's own
+# folder (see doc_tools/README.md). Falling back to the shared doc/images/ default
+# is for CAPTURE=1 exploration only - don't add a session that writes there, or
+# `make shots` starts regenerating pictures nothing reads.
 #
 # HEIGHT LOOKS AFTER ITSELF. Each shot() fits the terminal to the screen in front of
 # it, so no image contains menuconfig's row of scroll arrows and none carries a band
@@ -36,7 +42,7 @@ import os
 import sys
 import traceback
 
-from .capture import DEFAULT_SEED, IMAGES, MIN_ROWS, Menuconfig, ScreenError
+from .capture import DEFAULT_COLS, DEFAULT_SEED, DOC, IMAGES, MIN_ROWS, Menuconfig, ScreenError
 
 # ---------------------------------------------------------------------------
 # The sessions. Extend these; the runner needs no changes.
@@ -44,6 +50,9 @@ from .capture import DEFAULT_SEED, IMAGES, MIN_ROWS, Menuconfig, ScreenError
 #   name     --only key, and the prefix for anything the session does not name
 #   caption  what the session covers, for whoever writes the prose
 #   scenes   f(mc, shot) - navigate, calling shot('image-name') at each screen
+#   outdir   where this session's images go, relative to doc/ - name it after the
+#            page (e.g. 'GettingStartedWithBoxTurtle'). Every session should set
+#            this; see the header above.
 #   seed     a config to start from - a built-in name or a path (default: boxturtle)
 #   min_rows shortest a fitted screenshot may be (default 30, for a consistent set)
 #   fit      False to stop autofitting and honour 'rows' instead
@@ -52,53 +61,69 @@ from .capture import DEFAULT_SEED, IMAGES, MIN_ROWS, Menuconfig, ScreenError
 # ---------------------------------------------------------------------------
 
 
-def _installer_tour(mc, shot):
-    """The main screens a first-time installer sees, in the order they see them."""
+def _getting_started_boxturtle(mc, shot):
+    """
+    For doc/GettingStartedWithBoxTurtle.md - the installer screens a first-time Box
+    Turtle owner walks through, in that order. Runs from a bare Kconfig ('seed': None)
+    rather than the boxturtle seed used elsewhere, because the page is about DRIVING
+    menuconfig - selecting MMU Type is the first real thing a reader does with it,
+    and the root-warnings screen is only informative if the warnings visibly clear as
+    a result of that choice, which requires starting before it happens.
+    """
     mc.select('MMU Type')
-    shot('top-menu')
+    shot('01-first-run')                            # every field still a placeholder
 
     mc.enter('MMU Type')
-    shot('mmu-type')
+    mc.select('Box Turtle')
+    mc.toggle()
+    shot('02-mmu-type-boxturtle')                   # (X) Box Turtle; Turtle Neck now offered
+
+    mc.enter('Turtle Neck')
+    shot('03-turtleneck-buffer')                    # v2 is the default - nothing to change
+    mc.back()
+    mc.back()                                       # -> (Top)
+
+    mc.select('MMU Type')
+    shot('04-root-warnings')                        # only the (later-page) toolhead warning remains
+
+    mc.enter('Board type')
+    shot('05-board-type')                           # AFC Lite v1.0 - the board this MMU shipped with
     mc.back()
 
     mc.enter('MCU connection')
-    shot('mcu-connection')
+    shot('06-mcu-connection')                        # Serial - already right for a USB-attached board
     mc.back()
 
-    mc.enter('Toolhead sensors/settings')
-    shot('toolhead-sensors')
+    mc.enter('MMU Features / Additions')
+    shot('07-mmu-features')                          # LEDs/eSpooler/buffer already on; nothing to add
     mc.back()
 
-    mc.enter('Paths & Services')
-    shot('paths-services')
-    mc.back()
+    mc.enter('Pins / TMC')
+    mc.enter('Gear pins')
+    shot('08-gear-pins')                             # every gate's step/dir/enable/diag pin
 
-
-def _help_and_editing(mc, shot):
-    """The two interactions worth showing once: per-item help, and editing a value."""
-    mc.enter('MMU Type')
-    mc.help()
-    shot('item-help')
+    mc.edit('Gear dir pin')
+    shot('09-gear-dir-editor')                       # the pin nobody can predict from a drawing
+    mc.write('!unit0:PD3')
+    shot('10-gear-dir-inverted')                     # '!' reverses it - no rewiring, no cfg edits
+    mc.cancel()                                      # this page only shows the move; it does not make it
     mc.back()
-    mc.back()
+    mc.back()                                        # -> (Top)
 
-    mc.edit('Display name')
-    shot('editor')
-    mc.write('Turtle Left')
-    shot('editor-typed')
-    mc.cancel()
+    mc.enter('Software Options')
+    mc.enter('Select spoolman spool manager support')
+    mc.select('Read-only')
+    mc.toggle()
+    shot('11-spoolman-readonly')                     # the one setting this page actually changes
 
 
 SESSIONS = [
     {
-        'name': 'installer-tour',
-        'caption': 'The main installer screens for a Box Turtle',
-        'scenes': _installer_tour,
-    },
-    {
-        'name': 'help-and-editing',
-        'caption': 'Per-item help, and editing a parameter value',
-        'scenes': _help_and_editing,
+        'name': 'getting-started-boxturtle',
+        'caption': 'doc/GettingStartedWithBoxTurtle.md - first menuconfig pass for a Box Turtle',
+        'scenes': _getting_started_boxturtle,
+        'outdir': 'GettingStartedWithBoxTurtle',
+        'seed': 'none',
     },
 ]
 
@@ -108,8 +133,11 @@ def run_session(session, outdir, scale=2, seed=None, min_rows=None, verbose=Fals
     written = []
     context = {key: session[key] for key in ('unit_name', 'multi_unit', 'entry_point')
                if key in session}
+    # A session with its own 'outdir' (a getting-started page's image folder) always
+    # goes there; --outdir only redirects sessions that did not ask for a home.
+    outdir = os.path.join(DOC, session['outdir']) if 'outdir' in session else outdir
 
-    with Menuconfig(cols=session.get('cols', 100), rows=session.get('rows', 40),
+    with Menuconfig(cols=session.get('cols', DEFAULT_COLS), rows=session.get('rows', 40),
                     seed=seed or session.get('seed', DEFAULT_SEED),
                     style=session.get('style'),
                     min_rows=min_rows or session.get('min_rows', MIN_ROWS),
@@ -130,7 +158,7 @@ def run_session(session, outdir, scale=2, seed=None, min_rows=None, verbose=Fals
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        prog='python -m doc.shots',
+        prog='python -m doc_tools.shots',
         description='Regenerate the menuconfig screenshots used by the documentation.')
     parser.add_argument('--only', action='append', default=[], metavar='NAME',
                         help='just this session; repeatable')
@@ -157,13 +185,16 @@ def main(argv=None):
         parser.error('no such session: %s (try --list)' % ', '.join(unknown))
     wanted = [s for s in SESSIONS if not args.only or s['name'] in args.only]
 
-    os.makedirs(args.outdir, exist_ok=True)
-    failed, total = [], 0
+    # No pre-creation of args.outdir here: shot() (doc_tools/capture.py) already
+    # makes whatever directory a PNG needs, and args.outdir is only the fallback
+    # for a session with no 'outdir' of its own - creating it eagerly would recreate
+    # exactly the unused doc/images/ this file's header says not to write to.
+    failed, written = [], []
     for index, session in enumerate(wanted, 1):
         print('[%d/%d] %s' % (index, len(wanted), session['name']))
         try:
-            total += len(run_session(session, args.outdir, args.scale,
-                                     args.seed, args.min_rows, args.verbose))
+            written += run_session(session, args.outdir, args.scale,
+                                   args.seed, args.min_rows, args.verbose)
         except (ScreenError, OSError) as exc:
             failed.append(session['name'])
             print(traceback.format_exc() if args.verbose else '    FAILED: %s' % exc,
@@ -173,8 +204,12 @@ def main(argv=None):
         print('\n%d of %d sessions failed: %s' % (len(failed), len(wanted), ', '.join(failed)),
               file=sys.stderr)
         return 1
-    print('\n%d screenshot%s in %s' % (total, '' if total == 1 else 's',
-                                       os.path.relpath(args.outdir)))
+    # Sessions each name their own 'outdir' (see the header above), so a run can
+    # easily span several folders - naming just one, as if there were a single
+    # shared pool, would be as misleading as recreating that pool would be.
+    dirs = sorted({os.path.relpath(os.path.dirname(path)) for path in written})
+    print('\n%d screenshot%s in %s' % (len(written), '' if len(written) == 1 else 's',
+                                       ', '.join(dirs) if dirs else '(nothing written)'))
     return 0
 
 
