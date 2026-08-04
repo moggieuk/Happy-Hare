@@ -68,9 +68,22 @@ class MmuSensorInsertCommand(BaseCommand):
             with mmu.wrap_sync_gear_to_extruder():
 
                 if sensor.startswith(SENSOR_ENTRY_PREFIX) and gate is not None:
+                    # The entry sensor is upstream of the gear, so an insert here is ALWAYS
+                    # the user pushing filament in - the MMU cannot cause one. Record it.
                     mmu.gate_maps.set_gate_status(gate, GATE_UNKNOWN)
                     mmu._check_pending_filament(gate)  # Have spool_id ready?
-                    if not mmu.is_printing() and mmu.mmu_unit().p.gate_autoload:
+
+                    # Autoloading is a gate change, so never start one on top of an
+                    # operation already in flight. On real Klipper this is belt-and-braces
+                    # (gcode.run_script serialises the whole handler behind the running
+                    # command, so we normally arrive idle) - but a nested select_gate would
+                    # be bad enough to be worth the two lines. An insert raised by the very
+                    # operation we would be interrupting is suppressed at source instead,
+                    # by wrap_suspend_insert_events in _preload_gate / _jog_scan.
+                    if mmu.action != ACTION_IDLE:
+                        mmu.log_debug("Not autoloading gate %d: an MMU operation is already "
+                                      "in progress" % gate)
+                    elif not mmu.is_printing() and mmu.mmu_unit(gate).p.gate_autoload:
                         mmu.gcode.run_script_from_command("MMU_PRELOAD GATE=%d" % gate)
 
                 elif sensor == SENSOR_EXTRUDER_ENTRY:

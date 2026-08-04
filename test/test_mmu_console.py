@@ -1480,9 +1480,9 @@ class TestConsoleScript(unittest.TestCase):
     multi-unit ERCF+ViViD: it has no per-gate entry sensors on unit0, and MMU_HOME there
     requires a UNIT. The default profile gets its own coverage below instead.
 
-    ALSO PINNED TO --pace 0, and that one is a finding rather than a preference. BoxTurtle and
-    EMU are the two shipped profiles with per-gate entry sensors AND gate_autoload, and paced
-    they PRELOAD TWICE:
+    ALSO PINNED TO --pace 0, now purely because unpaced is faster. It used to be a finding:
+    BoxTurtle and EMU are the two shipped profiles with per-gate entry sensors AND
+    gate_autoload, and paced they PRELOADED TWICE:
 
         > MMU_PRELOAD GATE=1
         Preloading filament in gate 1...
@@ -1490,17 +1490,17 @@ class TestConsoleScript(unittest.TestCase):
         Preloading filament in current gate...     <- nobody asked for this one
         Preloading...
 
-    A preload is the operation that crosses the entry sensor (a load does not - the filament is
-    already past it), so it raises an insert event, and with gate_autoload set HH answers by
-    starting another preload. Happy Hare has the guard for exactly this -
-    wrap_suspend_insert_events, whose docstring describes the failure word for word - but
-    applies it only on the NFC-scan path (mmu_filament_movement.py:523).
+    A preload crosses the entry sensor, so it raises an insert event, and with gate_autoload
+    set HH answered by starting another preload. Unpaced it never surfaced, because the entry
+    sensor's event_delay defers the insert by 0.5s and no virtual time ever passed. Paced, the
+    deferred event landed mid-operation, so an MMU_LOAD (which preloads first when the gate is
+    not already available) picked it up during the bowden move and logged "Operation not
+    possible. Filament is loaded" - by then the machine WAS loaded.
 
-    Unpaced it never surfaced, because the entry sensor's event_delay defers the insert by 0.5s
-    and no virtual time ever passed. Paced, the deferred event lands mid-operation, so an
-    MMU_LOAD (which preloads first when the gate is not already available) picks it up during
-    the bowden move and logs "Operation not possible. Filament is loaded" - by then the machine
-    IS loaded. The load still completes correctly; the message is the whole symptom.
+    Fixed in __MMU_SENSOR_INSERT: an entry insert only means "the user pushed filament in"
+    when mmu.action is ACTION_IDLE. During a preload, load or scan the MMU is driving filament
+    across that sensor itself, so the event is logged and ignored. Both symptoms are gone
+    under --pace 0.5; the pin stays for speed.
     """
 
     PROFILE = 'boxturtle'

@@ -32,6 +32,7 @@ from extras.mmu.unit import mmu_nfc_manager
 logging.getLogger().setLevel(logging.CRITICAL)
 
 GATE_AVAILABLE = 1
+FILAMENT_POS_UNLOADED = 0
 TAG = '04A1B2C3'
 
 
@@ -164,7 +165,7 @@ class TestJogScanFindsTag(NfcScanTestCase):
 
 class TestPreloadNfcCompound(NfcScanTestCase):
     """
-    _home_gate_with_nfc: preload homes to a FIRST-WINS MmuCompoundEndstop over
+    _home_to_gate_with_nfc: preload homes to a FIRST-WINS MmuCompoundEndstop over
     [gate switch, NFC reader], so a tag is identified as the filament loads and no
     separate MMU_NFC_SCAN is needed.
 
@@ -214,6 +215,52 @@ class TestPreloadNfcCompound(NfcScanTestCase):
         trips = [r for _g, _d, r in self.fil.history if 'mmu_exit_0' in r]
         self.assertTrue(trips, 'with no tag the gate switch must be what stops the move')
         self.assertEqual(self.hh.mmu.gate_status[0], GATE_AVAILABLE)
+
+    def test_the_banner_says_the_scan_is_happening(self):
+        """
+        One banner, and it has to be truthful: _preload_gate decides whether the compound
+        is really available BEFORE it logs, so "with NFC scan" is never a promise the
+        move cannot keep.
+        """
+        at = len(self.hh.console)
+        self.preload_with_tag_before_the_gate()
+        banners = [l for l in self.hh.console[at:] if l.startswith('Preloading')]
+        self.assertEqual(banners, ['Preloading gate 0 with NFC scan...'])
+
+    def test_nfc_first_finishes_on_the_gate_and_parks_without_reverse_homing(self):
+        """
+        Reader stops the move, tag is read, homing CONTINUES to the gate switch - so the
+        filament ends standing on the datum and the park is a plain retraction. Two
+        forward homing legs, no backward one.
+        """
+        at = len(self.fil.history)
+        self.preload_with_tag_before_the_gate()
+        homing = [(d, r) for _g, d, r in self.fil.history[at:] if 'homing' in r]
+        self.assertEqual([d > 0 for d, _r in homing], [True, True],
+                         'expected forward-to-reader then forward-to-gate, got %r' % (homing,))
+        self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_UNLOADED)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_gate_first_scans_forward_then_reverse_homes_exactly_once(self):
+        """
+        Gate switch wins, so preload hands over to the scan logic: sweep forward through
+        the positive half of the window, then ONE reverse-home back to the datum before
+        parking. It used to do that reverse-home twice - once inline and once again in the
+        borrowed _unload_gate - and the second one was budgeted for a normal load, not for
+        however far the scan had chased.
+        """
+        # No tag at all: the forward scan runs the full window and finds nothing, which is
+        # the case that strays furthest from the gate and so needs the biggest park budget.
+        self.hh.place_filament(0, position=-100.0)
+        at = len(self.fil.history)
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+        back = [(d, r) for _g, d, r in self.fil.history[at:] if 'homing' in r and d < 0]
+        self.assertEqual(len(back), 1,
+                         'expected exactly one reverse-home back to the gate, got %r' % (back,))
+        self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_UNLOADED)
+        self.assertFalse(self.hh.sensor('mmu_exit_0').present,
+                         'the park must end behind the gate switch')
+        self.assertEqual(self.hh.errors, [])
 
 
 class NfcProbeTestCase(NfcScanTestCase):

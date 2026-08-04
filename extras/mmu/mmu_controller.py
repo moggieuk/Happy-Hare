@@ -2284,13 +2284,18 @@ class MmuController(MmuFilamentMovement):
     @contextlib.contextmanager
     def wrap_suspend_insert_events(self):
         """
-        Suspend the sensors' insert/remove events for an operation that deliberately
-        pushes filament across them.
+        Suspend the selected gate's insert/remove events for the duration of an operation
+        that owns that gate's filament.
 
         Separate from wrap_suspend_filament_monitoring, which only disables the runout
-        branch. Without this, an MMU-commanded move over an entry sensor raises an insert
-        event, and with gate_autoload set that starts an MMU_PRELOAD in the middle of the
-        operation that caused it.
+        branch. The case this covers is a USER insertion arriving mid-operation - typically
+        filament pushed in just after MMU_PRELOAD was issued. gcode.run_script serialises
+        the handler behind the running command, so without this the event fires the instant
+        the operation completes and starts a second, redundant preload. Suspension drops
+        the edge rather than deferring it, which is the whole point.
+
+        Scoped to sensor_manager.active_sensors_map - the selected gate only - so an
+        insertion on any other gate still queues and is honoured in turn.
         """
         self.sensor_manager.suspend_sensor_events(True)
         try:

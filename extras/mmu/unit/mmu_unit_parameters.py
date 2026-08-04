@@ -143,7 +143,7 @@ class MmuUnitParameters(TunableParametersBase):
         ParamSpec('gate_preload_endstop',             'choice',   '', section="GATE HOMING", choices={o: o for o in (GATE_ENDSTOPS + [''])}),
         ParamSpec('gate_preload_homing_max',          'float', lambda self: self.gate_homing_max, section="GATE HOMING"),
         ParamSpec('gate_preload_parking_distance',    'float', -10.0, section="GATE HOMING", validator=_validate_gate_preload_parking_distance),
-        ParamSpec('gate_preload_attempts',            'int',       1, section="GATE HOMING", limits=dict(minval=1, maxval=20)),
+        ParamSpec('gate_preload_attempts',            'int',       2, section="GATE HOMING", limits=dict(minval=1, maxval=20)),
         ParamSpec('gate_autoload',                    'int',       1, section="GATE HOMING", limits=dict(minval=0, maxval=1)),
 
         ParamSpec('gate_endstop_to_encoder',          'float',   0.0, section="GATE HOMING", limits=dict(minval=0.0),           guard=_guard_encoder_offset),

@@ -116,10 +116,18 @@ class TestRunoutSwapsGate(EndlessSpoolTestCase):
         self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_LOADED)
 
     def test_the_new_gate_is_actually_loaded(self):
+        """
+        The runout swap also ejects the exhausted lane's remnant. _eject_from_gate homes
+        BACKWARD against the entry switch until it releases (mmu_filament_movement.py:920-929)
+        - "so we don't over eject if the user pulls out filament" - so the remnant ends at
+        the switch, out of the gear, rather than at the park where it would still be gripped.
+        """
         original = self.load_and_run_out(tool=0)
         new_gate = self.hh.mmu.gate_selected
         self.assertEqual(self.loaded_gates(), [new_gate])
-        self.assertAlmostEqual(self.fil.tip[original], TIP_PARKED, places=1)
+        self.assertAlmostEqual(self.fil.tip[original], self.fil.layout['mmu_entry'], places=1)
+        self.assertFalse(self.hh.sensor('mmu_entry_%d' % original).present,
+                         'the ejected remnant must have cleared the entry switch')
 
     def test_the_exhausted_gate_is_marked_empty(self):
         original = self.load_and_run_out(tool=0)

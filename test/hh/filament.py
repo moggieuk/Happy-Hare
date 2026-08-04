@@ -9,11 +9,13 @@
 # "tip") along that gate's path, in mm, measured so that 0 is the gate's homing
 # sensor. Negative is back toward the spool, positive is forward toward the extruder.
 #
-#   spool ... park(-100) ... entry(-50) ... exit(0) shared_exit(+10) ... extruder(+700)
-#                    |             |            |
-#   tip ------------>                               (moves right when loading)
+#   spool ... entry(-150) [GEAR] park(-100) ... exit(0) shared_exit(+10) ... extruder(+700)
+#                   |                  |            |
+#   tip ----------->                                    (moves right when loading)
 #
-#   Parked at -100 the entry switch is CLEAR; pushing filament past -50 is an insert.
+#   Parked at -100 the entry switch is COVERED - the filament runs back through it to the
+#   spool, which is the only way the gear can still grip it. Pushing filament past -150 is
+#   an insert, and only a user can do that: the gear is downstream of the switch.
 #
 # SENSOR SEMANTICS. Filament occupies the span [tail, tip], so a switch at position P
 # reads triggered exactly when tail <= P <= tip. Loading trips sensors in ascending order,
@@ -36,17 +38,36 @@
 import logging
 
 # Logical sensor name -> path position (mm). Chosen to be consistent with the shipped
-# BoxTurtle defaults: gate_homing_endstop is mmu_exit and gate_parking_distance is
-# -100, so a parked/preloaded filament sits at -100 with the entry switch covered.
-# The entry switch MUST sit between the park position and the gate sensor, i.e. a
-# parked filament leaves it CLEAR. That is not an arbitrary choice - Happy Hare's own
-# preload failure tail marks a gate GATE_UNKNOWN when the entry sensor is still
-# triggered after preloading, so a layout where parking leaves it covered makes every
-# preload "fail". Getting this backwards was the first thing the harness caught about
-# its own geometry.
+# BoxTurtle defaults: gate_homing_endstop is mmu_exit, gate_parking_distance is -100 and
+# gate_final_eject_distance is 100 (installer/mmu_types/Kconfig.box_turtle:97-104).
+#
+# THE ENTRY SWITCH IS UPSTREAM OF THE GEAR, and those two shipped distances pin where it
+# has to go to within 100mm:
+#
+#   entry < -100  A parked filament must still be gripped, so it necessarily runs back
+#                 through the switch to the spool - parked means entry COVERED. Happy
+#                 Hare relies on this: mmu_gate_maps.validate_gate_status forces a
+#                 non-EMPTY gate to GATE_EMPTY when entry reads clear, so a layout where
+#                 parking uncovers it demotes every gate the moment that runs.
+#   entry > -200  Eject retracts 100mm PAST park precisely to release the filament from
+#                 the gear, and homes against the entry switch going clear
+#                 (_eject_from_gate, mmu_filament_movement.py:920-929). Put the switch
+#                 outside that reach and the homing move can never trigger.
+#
+# -150 sits in the middle. The consequence that matters for the rest of the suite: no
+# MMU-commanded move ever crosses this switch. Loading, preloading and the NFC jog all
+# live between -100 and the extruder. Only a user insertion (or a spool running out, via
+# exhaust()) can change its state - which is exactly the real machine.
+#
+# This was previously inverted - entry at -50, i.e. between park and the gate - on the
+# reasoning that HH's preload tail marks a gate GATE_UNKNOWN when entry is still covered
+# afterwards. That tail is inside `except MmuError` (mmu_filament_movement.py:180-189)
+# and cannot fire on a successful preload, so it never justified the geometry. What the
+# inverted layout did produce was a stream of phantom insert events from the MMU's own
+# moves, and the nested preloads that followed them.
 DEFAULT_LAYOUT = {
-    'mmu_pre_gate': -70.0,
-    'mmu_entry': -50.0,         # cleared when parked at -100
+    'mmu_pre_gate': -150.0,     # v3 alias: the SAME switch as mmu_entry, so same position
+    'mmu_entry': -150.0,        # covered when parked at -100; upstream of the gear
     'mmu_gate': 0.0,            # alternative gate sensor name
     'mmu_exit': 0.0,            # BoxTurtle's gate_homing_endstop
     'mmu_nfc': -80.0,           # per-gate reader, reachable from park within the jog window
@@ -85,7 +106,7 @@ DEFAULT_LAYOUT = {
 # Where a filament tip sits in each notional state
 TIP_ABSENT = -10000.0           # no filament anywhere near this gate
 TIP_PARKED = -100.0             # gate_parking_distance for BoxTurtle
-TIP_PRESENTED = -60.0           # offered to the gate, not yet past the entry switch (-50)
+TIP_PRESENTED = -180.0          # offered to the MMU, not yet past the entry switch (-150)
 
 # A tag travels with the filament this far behind the tip.
 DEFAULT_TAG_OFFSET = 0.0

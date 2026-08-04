@@ -94,7 +94,7 @@ class MmuNfcScanCommand(BaseCommand):
             self.mmu.log_error("Operation not possible: Can't crossload on this mmu type")
             return
 
-        mmu.log_always("Scanning NFC tag in %s..." % ("current gate" if gate == current_gate else "gate %d" % gate))
+        mmu.log_always("Scanning gate %d for NFC tag..." % gate)
         try:
             with mmu.wrap_sync_gear_to_extruder():
                 with mmu.wrap_suppress_visual_log():

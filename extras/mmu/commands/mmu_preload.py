@@ -102,7 +102,6 @@ class MmuPreloadCommand(BaseCommand):
             self.mmu.log_error("Operation not possible: Perhaps no exit sensors or filament still loaded")
             return
 
-        mmu.log_always("Preloading filament in %s..." % ("current gate" if gate == current_gate else "gate %d" % gate))
         # Grab any pending shared-NFC spool_id NOW so the preload owns it locally - immune
         # to the assignment timeout during the moves below; applied on preload success.
         pending = mmu._grab_pending()
@@ -123,6 +122,14 @@ class MmuPreloadCommand(BaseCommand):
                                 # If necessary or easy restore previous gate
                                 if mmu.is_in_print() or active_unit.multigear or filament_pos != FILAMENT_POS_UNLOADED:
                                     mmu.select_gate(current_gate)
+                                    # filament_pos is machine-wide, not per gate, so preloading
+                                    # ANOTHER gate has just overwritten it - the park at the end
+                                    # of the preload leaves it FILAMENT_POS_UNLOADED. Handing the
+                                    # selector back without also handing back the state it
+                                    # describes would tell a resuming print that nothing is
+                                    # loaded while this gate's filament is still in the extruder.
+                                    # Silent: it is a restoration, not a transition.
+                                    mmu.set_filament_pos_state(filament_pos, silent=True)
                                 else:
                                     # Lazy gate reselection means we have side effect of changed tool/gate
                                     mmu.gate_maps.ensure_ttg_match()

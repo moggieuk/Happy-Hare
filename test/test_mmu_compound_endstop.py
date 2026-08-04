@@ -2,7 +2,7 @@
 #
 # A compound endstop homes several endstops at once, first wins, and callers then ask
 # get_triggered_endstop_name() WHICH one stopped the move. Two callers act on the answer:
-# _home_gate_with_nfc decides whether the tag or the gate switch arrived first, and
+# _home_to_gate_with_nfc decides whether the tag or the gate switch arrived first, and
 # _jog_scan tells a datum trip from a tag detection. Getting it wrong is not cosmetic -
 # a mis-named gate win has the scan believe it is sitting on the gate datum when it is
 # actually at the reader.

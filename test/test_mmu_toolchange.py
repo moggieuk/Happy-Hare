@@ -141,10 +141,15 @@ class TestUnload(ToolchangeTestCase):
         self.assertEqual(self.hh.errors, [])
 
     def test_unload_clears_the_path_sensors(self):
+        """
+        Everything downstream of the gate goes clear. The ENTRY switch does not, and must
+        not: an unload parks the filament, and a parked filament is still gripped by the
+        gear and still runs back through that switch to its spool. Only MMU_EJECT (or the
+        user) clears it.
+        """
         self.hh.run_gcode('MMU_UNLOAD')
-        for name in ('mmu_exit_0', 'mmu_entry_0'):
-            with self.subTest(sensor=name):
-                self.assertFalse(self.hh.sensor(name).present)
+        self.assertFalse(self.hh.sensor('mmu_exit_0').present)
+        self.assertTrue(self.hh.sensor('mmu_entry_0').present)
 
     def test_load_unload_is_a_round_trip(self):
         """The whole point: a cycle must leave the machine where it started."""
@@ -273,6 +278,71 @@ class TestStateTracking(ToolchangeTestCase):
         self.assertEqual(status['tool'], 0)
         self.assertEqual(status['gate'], 0)
         self.assertEqual(status['filament'], 'Loaded')
+
+
+class TestPreloadWhilePaused(ToolchangeTestCase):
+    """
+    Preloading during an ACTIVE print is not supported - it would stall extruder movement
+    and show up in the part. Pause -> preload -> resume is the realistic way to refill a
+    lane mid-job, and it is a different predicate: is_printing() is "printing AND NOT
+    paused" (mmu_print_state_machine.py:247), so a paused machine gets past
+    check_if_printing, while is_in_print() - "printing OR paused" - is what
+    mmu_preload.py's finally uses to hand the selector back.
+
+    Only works on a machine that can crossload (mmu_unit.py:136), since the printing
+    gate's filament is still loaded. BoxTurtle's VirtualSelector can.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.hh.mmu.select_gate(0)
+        self.hh.run_gcode('MMU_LOAD')
+        self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_LOADED)
+        self.hh.mmu.psm.set_print_state('paused', call_macro=False)
+
+    def test_preload_is_allowed_while_paused(self):
+        self.hh.place_filament(2, position=TIP_AT_GATE)
+        self.hh.run_gcode('MMU_PRELOAD GATE=2')
+        self.assertEqual(self.hh.mmu.gate_status[2], GATE_AVAILABLE)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_the_printing_gate_is_handed_back(self):
+        """The is_in_print() branch in mmu_preload.py's finally - resume must find gate 0."""
+        self.hh.place_filament(2, position=TIP_AT_GATE)
+        self.hh.run_gcode('MMU_PRELOAD GATE=2')
+        self.assertEqual(self.hh.mmu.gate_selected, 0)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_the_printing_gates_filament_pos_survives(self):
+        """
+        filament_pos is machine-wide, not per gate. A crossload preload of gate 2 ends by
+        parking, which sets FILAMENT_POS_UNLOADED, so mmu_preload.py's finally has to hand
+        back the STATE along with the selector. Without that a pause -> preload -> resume
+        left HH believing nothing was loaded while gate 0's filament was still in the
+        extruder - which is the state a resume then acts on.
+        """
+        self.hh.place_filament(2, position=TIP_AT_GATE)
+        self.hh.run_gcode('MMU_PRELOAD GATE=2')
+        self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_LOADED)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_a_failed_preload_still_hands_the_state_back(self):
+        """
+        The restore lives in a finally, so it must survive the preload failing - an empty
+        gate 2 must not leave the printing gate looking unloaded either.
+        """
+        self.hh.place_filament(2, position=-100000.0)
+        self.hh.run_gcode('MMU_PRELOAD GATE=2')
+        self.assertEqual(self.hh.mmu.gate_status[2], GATE_EMPTY)
+        self.assertEqual(self.hh.mmu.gate_selected, 0)
+        self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_LOADED)
+
+    def test_preload_is_refused_while_actively_printing(self):
+        self.hh.mmu.psm.set_print_state('printing', call_macro=False)
+        self.hh.place_filament(2, position=TIP_AT_GATE)
+        self.hh.run_gcode('MMU_PRELOAD GATE=2')
+        self.assertIn('printing', ' '.join(self.hh.errors).lower())
+        self.assertEqual(self.hh.mmu.gate_selected, 0)
 
 
 if __name__ == '__main__':
