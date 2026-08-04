@@ -88,8 +88,8 @@ make BOOTSTRAP_PY=python3.9 VENV=venv39 test
 
 </details>
 
-`make test` offers everything — currently **786 tests, about six minutes** on a warm
-laptop. Expect to see:
+`make test` offers everything — currently **862 tests, about 1m40s** on a warm laptop.
+Expect to see:
 
 ```
 OK (skipped=1, expected failures=4)
@@ -98,8 +98,8 @@ OK (skipped=1, expected failures=4)
 `skipped` and `expected failures` are normal and explained in §6. Anything else — `FAILED
 (failures=…)` or `(errors=…)` — is a genuine problem.
 
-Six minutes is still too long to sit through on every change, which is why `make test` opens a
-file picker first rather than starting straight away.
+A minute and a half is still too long to sit through on every change, which is why `make
+test` opens a file picker first rather than starting straight away.
 
 ### Running less than everything
 
@@ -107,19 +107,19 @@ file picker first rather than starting straight away.
 suite exactly as it always did — but untick the expensive files and you get a focused run:
 
 ```
-Happy Hare tests - 786 tests in 23 files                    times from last run
+Happy Hare tests - 862 tests in 27 files        times from last run (~ = reference, never run locally)
 
-   1 [x] installer.test_build           1      0.0s
-   2 [x] test_mmu_adc_compat           14      0.0s
-   3 [x] test_mmu_bootup               31       36s
+   1 [x] installer.test_build           1     0.0s
+   2 [x] test_mmu_adc_compat           14     0.0s
+   3 [x] test_mmu_bootup               34     2.3s
    …
-   6 [x] test_mmu_console             148      137s
+   7 [x] test_mmu_console             176      37s
    …
-  13 [x] test_mmu_nfc                  17      187s
+  15 [x] test_mmu_nfc                  17     9.7s
    …
-  22 [x] test_mmu_toolchange           20      5.4s
+  27 [x] test_mmu_toolchange           20     0.9s
 
-  selected: 23 files - 786 tests - ~6m00s last time
+  selected: 27 files - 862 tests - ~1m42s last time
 
   [Enter] run    1 3 5-8 toggle    a all    n none    v invert
   +TEXT / -TEXT tick by name    p previous selection    s sort by time    q quit
@@ -128,19 +128,29 @@ Happy Hare tests - 786 tests in 23 files                    times from last run
 
 The right-hand column is how long each file took **on your machine, last run**, and it is the
 column to look at when deciding what to drop, because the cost is wildly uneven. From a real
-full run: `test_mmu_nfc` took 187 s for 17 tests and `test_mmu_console` 137 s for 148, while
-six files — including `test_mmu_tag_parser`'s 34 tests — came in under a tenth of a second
-between them. A handful of the twenty-three files account for most of the run. The times
+full run: `test_mmu_console` took 37 s for 176 tests and `test_mmu_nfc` 9.7 s for 17, while
+several files — including `test_mmu_tag_parser`'s 36 tests — came in under a tenth of a second
+between them. A handful of the twenty-seven files account for most of the run. The times
 fill in after your first run, `s` sorts by them, and the footer estimates what the current
 selection will cost.
 
+Never run the suite on this machine at all? The picker still isn't guessing: `test/benchmark.json`
+ships a checked-in reference measurement, so every file you haven't personally timed yet shows
+that number instead, marked with a trailing `~` (header and footer say so too, e.g. "reference
+times only - never run locally"). Run any file for real and its row switches to your own number
+immediately — reference and local times can be mixed in the same screen, one row at a time.
+
 Two things to know about the numbers. They cover each file's **class fixtures** as well as its
 tests, which is where nearly all the time actually is — `setUpClass` building a printer, not
-the assertions. And part of that cost is shared and cached across a run (`test/hh/cfg.py`
-caches template rendering, `test/hh/root.py` builds the fake Klipper overlay once), so a file
-run on its own can cost far more than the same file inside a full run — `test_mmu_config` is
-0.1 s in a full run and 35 s alone. Treat the column as a guide to relative cost within a run,
-not an absolute per-file price.
+the assertions. And part of that cost is shared and cached across a *run* (`test/hh/cfg.py`
+caches Kconfig parsing per profile, and the fake `gcode_macro.py` caches compiled Jinja macro
+templates), so a file run on its own can still cost a little more than the same file inside a
+full run — `test_mmu_config` is 6.7 s in a full run and 7.5 s alone, the gap being the one
+Kconfig parse and macro compile nothing earlier in that solo run had already warmed. That gap
+used to be nearly two orders of magnitude wider (0.1 s vs 35 s) before those two caches existed —
+most of the profile-parsing and macro-compiling cost used to be paid fresh on every single boot,
+not just the first one in a run. Treat the column as a guide to relative cost within a run, not
+an absolute per-file price.
 
 Typing `n` then `+nfc` then Enter runs just the NFC files. `p` recalls the last selection you
 narrowed to — a full run doesn't overwrite it, so you can alternate between a focused loop
@@ -180,7 +190,9 @@ path**, so `test/test_mmu_leds.py` becomes `test.test_mmu_leds`:
 ```
 
 Your selection and the timings live in `.mmu_test_state` at the repo root. It's gitignored,
-and deleting it just means the picker opens with no times to show.
+and deleting it just means the picker falls all the way back to `test/benchmark.json` — the
+checked-in reference numbers described above, regenerated by hand from an occasional full run
+(see that file's own comment) rather than by CI, since none runs `make test` today.
 
 ---
 

@@ -42,8 +42,15 @@ if __package__ in (None, ''):                       # allow `python test/select.
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Remembered selection and per-file timings. Sibling of .mmu_config, and gitignored the
-# same way. Losing it costs nothing: the menu just opens with no times to show
+# same way. Losing it costs nothing: the menu just falls back to REFERENCE_FILE below
 STATE_FILE = os.path.join(ROOT, '.mmu_test_state')
+
+# Checked-in reference timings (test/benchmark.json), for anyone who has never run the
+# suite on this machine. Unlike STATE_FILE this IS committed - see the file's own
+# "_comment" for how it's regenerated. Read-only: a reference number must never be able to
+# flow into STATE_FILE (see _load_reference/_save_state), or the next narrowed run would
+# fold a fabricated measurement into the user's own history as if they had really run it.
+REFERENCE_FILE = os.path.join(ROOT, 'test', 'benchmark.json')
 
 
 # -- timing ------------------------------------------------------------------------
@@ -122,6 +129,19 @@ def _display(module):
 
 # -- state -------------------------------------------------------------------------
 
+def _parse_times(raw):
+    """{module: [seconds, count]} (JSON's shape - a list, not a tuple) -> {module: (float, int)}.
+
+    Shared by _load_state and _load_reference: both treat a malformed entry as simply
+    unknown rather than a reason to reject the whole file.
+    """
+    records = {}
+    for module, value in (raw or {}).items():
+        if isinstance(value, (list, tuple)) and len(value) == 2:
+            records[module] = (float(value[0]), int(value[1]))
+    return records
+
+
 def _load_state():
     """Returns (selection, {module: (seconds, tests run)}). Junk in the file is ignored."""
     try:
@@ -132,11 +152,22 @@ def _load_state():
     if not isinstance(state, dict):
         return [], {}
     selection = [s for s in state.get('selection') or [] if isinstance(s, str)]
-    records = {}
-    for module, value in (state.get('times') or {}).items():
-        if isinstance(value, (list, tuple)) and len(value) == 2:
-            records[module] = (float(value[0]), int(value[1]))
-    return selection, records
+    return selection, _parse_times(state.get('times'))
+
+
+def _load_reference():
+    """{module: seconds} from the checked-in test/benchmark.json, or {} if it is missing or
+    unreadable - a first-time user with no reference file just sees no estimate, same as
+    today. Metadata keys other than "times" (git_rev, machine, ...) are for a human
+    regenerating the file, not read here."""
+    try:
+        with open(REFERENCE_FILE) as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {module: seconds for module, (seconds, _) in _parse_times(data.get('times')).items()}
 
 
 def _save_state(selection, records):
@@ -184,29 +215,52 @@ def _fmt_secs(seconds):
     return '%dm%02ds' % (minutes, rest)
 
 
-def _render(entries, selected, times, order, c):
+def _render(entries, selected, times, local, order, c):
+    """`times` is reference-first, local-second (see main()) so it covers every module the
+    user has ever measured OR that test/benchmark.json ships; `local` is just the modules the
+    USER has personally timed, needed here only to mark the rest as reference-sourced."""
     total = sum(count for _, _, count in entries)
     width = max(len(display) for _, display, _ in entries)
+    reference_shown = any(module in times and module not in local for module, _, _ in entries)
 
+    if local:
+        suffix = '        times from last run (~ = reference, never run locally)'
+    elif times:
+        suffix = '        reference times only - never run locally'
+    else:
+        suffix = ''
     print()
     print('%sHappy Hare tests%s - %d tests in %d files%s' % (
-        c['notice'], c['off'], total, len(entries), '        times from last run' if times else ''))
+        c['notice'], c['off'], total, len(entries), suffix))
     print()
     for index in order:
         module, display, count = entries[index]
         ticked = module in selected
-        row = '%4d %s %-*s %5d %8s' % (
-            index + 1, '[x]' if ticked else '[ ]', width, display, count,
-            _fmt_secs(times.get(module)))
+        secs = times.get(module)
+        shown = _fmt_secs(secs)
+        if secs is not None and module not in local:
+            shown += '~'
+        row = '%4d %s %-*s %5d %9s' % (
+            index + 1, '[x]' if ticked else '[ ]', width, display, count, shown)
         print('%s%s%s' % (c['info'] if ticked else '', row, c['off'] if ticked else ''))
 
     files = sum(1 for module, _, _ in entries if module in selected)
     tests = sum(count for module, _, count in entries if module in selected)
-    known = [times[module] for module, _, _ in entries if module in selected and module in times]
+    known = [module for module, _, _ in entries if module in selected and module in times]
+    known_local = sum(1 for module in known if module in local)
     missing = files - len(known)
     estimate = ''
     if known:
-        estimate = ' - %s%s last time' % ('~' if not missing else '>', _fmt_secs(sum(known)))
+        total_known = sum(times[module] for module in known)
+        marker = '~' if not missing else '>'
+        if known_local == len(known):
+            estimate = ' - %s%s last time' % (marker, _fmt_secs(total_known))
+        elif known_local == 0:
+            estimate = ' - %s%s expected (reference, never run locally)' % (
+                marker, _fmt_secs(total_known))
+        else:
+            estimate = ' - %s%s expected (%d/%d files from your last run)' % (
+                marker, _fmt_secs(total_known), known_local, len(known))
         if missing:
             estimate += ' (%d never timed)' % missing
     print()
@@ -215,6 +269,9 @@ def _render(entries, selected, times, order, c):
     print('  %s[Enter]%s run    1 3 5-8 toggle    a all    n none    v invert'
           % (c['notice'], c['off']))
     print('  +TEXT / -TEXT tick by name    p previous selection    s sort by time    q quit')
+    if reference_shown:
+        print('  ~ marks a checked-in reference time (test/benchmark.json) - '
+              'you have not run that file here yet')
 
 
 # -- the menu ----------------------------------------------------------------------
@@ -240,7 +297,7 @@ def _toggle_tokens(line, entries, selected):
     return True
 
 
-def _menu(entries, times, previous):
+def _menu(entries, times, local, previous):
     """Returns the chosen module names, or None if the user quit."""
     c = _colours()
     selected = {module for module, _, _ in entries}
@@ -249,7 +306,7 @@ def _menu(entries, times, previous):
     message = ''
 
     while True:
-        _render(entries, selected, times, order, c)
+        _render(entries, selected, times, local, order, c)
         if message:
             print('  %s%s%s' % (c['warn'], message, c['off']))
             message = ''
@@ -321,7 +378,9 @@ def main(argv=None):
     sink = {}
     loader, entries = _discover(sink, args.pattern or '*')
     previous, records = _load_state()
-    times = {module: seconds for module, (seconds, _) in records.items()}
+    local = {module: seconds for module, (seconds, _) in records.items()}
+    times = _load_reference()
+    times.update(local)          # the user's own measurement always wins
 
     if args.pattern:
         return _run(sink, ['discover', '-p', args.pattern] + passthrough, None, entries)
@@ -349,7 +408,7 @@ def main(argv=None):
     elif args.all or not (sys.stdin.isatty() and sys.stdout.isatty()):
         return _run(sink, ['discover', '-p', '*'] + passthrough, None, entries)
     else:
-        chosen = _menu(entries, times, previous)
+        chosen = _menu(entries, times, local, previous)
         if chosen is None:
             print('Nothing run.')
             return 1                                # so `make test && ...` does not proceed
