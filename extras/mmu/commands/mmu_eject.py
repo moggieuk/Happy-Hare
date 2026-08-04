@@ -108,7 +108,9 @@ class MmuEjectCommand(UnloadEjectMixin, BaseCommand):
             mmu.log_always("Filament not loaded")
             return
 
-        mmu.log_always("Ejecting filament out of %s" % ("current gate" if gate == current_gate else "gate %d" % gate))
+        # No banner here: _eject_from_gate() announces the operation itself, once, and
+        # names the gate ("Ejecting gate N..."). An unload that has to run first
+        # announces itself the same way.
         try:
             with mmu.wrap_sync_gear_to_extruder():
                 with mmu.wrap_suspend_filament_monitoring(): # Don't want runout accidently triggering during unload
