@@ -104,9 +104,9 @@ def clone_across_units(name, base, unit_names, description=''):
 #
 # It is NOT true (as this comment used to say) that bootup depends on a VirtualSelector-only
 # skip of home_unit. Nothing autohomes at bootup on any of these machines:
-# config/base/mmu_parameters.cfg:608-611 renders startup_home_selector: 0 for EVERY physical
-# selector, and mmu_controller.py:386-388 additionally logs-and-continues for an uncalibrated
-# one. Physical selectors now home and move filament too - see test_mmu_selector.py.
+# config/base/mmu_parameters.cfg renders startup_home_selector: 0 for EVERY physical selector,
+# and mmu_controller.py:386-388 additionally logs-and-continues for an uncalibrated one. Physical
+# selectors now home and move filament too - see test_mmu_selector.py.
 BOXTURTLE = Profile(
     'boxturtle',
     syms={'MMU_TYPE_BOX_TURTLE_1_0': True},
@@ -254,6 +254,40 @@ TRADRACK = Profile(
     'tradrack',
     syms={'MMU_TYPE_TRADRACK_1_0': True},
     description='Tradrack 1.0 - physical LinearServoSelector')
+
+# 3D Chameleon: the ONLY profile with a RotarySelector, and the only machine where selecting a
+# gate is not a bijection with a carriage position. There is one gear motor for all four gates,
+# reversed on half of them (selector_gate_directions), and no servo - so "release the filament"
+# is expressed as "drive the carriage to the offset of the OPPOSING gate"
+# (selector_release_gates, [2, 3, 0, 1]). Nothing else in the harness exercises either idea, and
+# the AttributeError at mmu_rotary_selector.py:229 sat in the release path until this profile
+# reached it. See TestRotarySelector in test_mmu_selector.py.
+#
+# TWO SYMBOLS SET BEYOND THE MACHINE TYPE, both because the vendor Kconfig leaves them open and
+# a real user would have to answer them at menuconfig:
+#
+#   BOARD_TYPE_MMB_2_0        Kconfig.3d_chameleon sets no board default (unlike box_turtle,
+#       tradrack and emu, which each default one), so the choice falls to BOARD_TYPE_OTHER and
+#       every pin renders empty - config load dies on "Invalid pin description ''". MMB 2.0 is
+#       tradrack's own default and supplies the gear stepper, a selector stepper WITH an
+#       endstop, and PIN_SHARED_EXIT_SENSOR. Note that boards/Kconfig.chameleon_x5_1, despite
+#       the name, is a QuattroBox per-gate board with four gear steppers and no selector pins.
+#   MMU_HAS_SENSOR_SHARED_EXIT  The type ships no sensor and no encoder, which leaves the gate
+#       homing choice on CHOICE_GATE_HOMING_ENDSTOP_NONE and renders gate_homing_endstop as ''
+#       - a state Kconfig.endstops:129 itself calls "actually a config error", and which fails
+#       as "Choice '' for option 'gate_homing_endstop' is not a valid choice". A single sensor
+#       at the combiner exit is the shape of the machine (four gates, one output path) and the
+#       cheapest honest answer; it is also what tradrack selects.
+#
+# filament_always_gripped renders 0 (no vendor override, and DEF_PROFILE's default is False in
+# mmu_unit.py:97), which is what puts the lazy-grip release path in play at all. That is not
+# unique - tradrack and both ercf_vvd units render 0 too - but on those it means a servo lift.
+CHAMELEON = Profile(
+    'chameleon',
+    syms={'MMU_TYPE_3D_CHAMELEON_1_0': True,
+          'BOARD_TYPE_MMB_2_0': True,
+          'MMU_HAS_SENSOR_SHARED_EXIT': True},
+    description='3D Chameleon 1.0 - 4 gates, the only RotarySelector')
 
 # EMU: 5 gates, and the only shipped profile that brings a PROPORTIONAL (analog) buffer
 # sensor with it. That makes it the profile that exercises MmuAdcHelper's ADC compat shim
@@ -440,7 +474,7 @@ ERCF_VVD = Profile(
     ],
     description='ERCF 1.1sb (9 gates) + ViViD 1.0 (4 gates) - the only multi-unit profile')
 
-PROFILES = {p.name: p for p in (BOXTURTLE, TRADRACK, EMU, ENCODER, NFC_SINGLE,
+PROFILES = {p.name: p for p in (BOXTURTLE, TRADRACK, CHAMELEON, EMU, ENCODER, NFC_SINGLE,
                                 NFC_PER_GATE, NFC_PN5180, NFC_PN5180_PER_GATE,
                                 NFC_PN532, NFC_PN532_SW_I2C,
                                 NFC_PN532_UART, NFC_PN532_UART_PER_GATE,

@@ -778,6 +778,8 @@ class MmuFilamentMovement:
             # home - every path out of this leg must leave the filament ON the datum,
             # which is what the rest of the scan rests on.
             found = bool(nfc_manager.read_gate_after_home(gate))
+            if found:
+                self.log_debug("NFC: gate %d: tag read after %.1fmm on the datum leg" % (gate, actual))
             remaining = dist - actual
             if remaining:
                 _, homed, _, _ = self.move_filament(
@@ -828,6 +830,7 @@ class MmuFilamentMovement:
                 # on through the deceleration ramp and may be at the edge of antenna range.
                 off += actual
                 if nfc_manager.read_gate_after_home(gate):
+                    self.log_debug("NFC: gate %d: tag read after %.1fmm of sweep" % (gate, actual))
                     return True, off
                 # Reader stopped us but the tag is no longer readable. Carry on from here
                 # rather than claiming a find.
@@ -848,6 +851,8 @@ class MmuFilamentMovement:
                 if trigger == 'nfc':
                     off += actual
                     if nfc_manager.read_gate_after_home(gate):
+                        self.log_debug("NFC: gate %d: tag read after %.1fmm of continued sweep"
+                                       % (gate, actual))
                         return True, off
                     continue
                 off = target

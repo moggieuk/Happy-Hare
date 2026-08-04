@@ -1050,11 +1050,8 @@ class Session:
         afterwards - it resets every switch to its configured resting state and would undo
         the placement.
         """
-        # NOT the selected gate/tool. Seeding VARS_MMU_GATE_SELECTED here looks like the same
-        # idea, but load_persisted_state discards it at handle_ready with "Persisted gate/tool
-        # 0/0 dropped because selector isn't homed" - and a physical selector cannot be homed
-        # before ready, because MMU_HOME is a gcode command on a live machine. Selecting a gate
-        # belongs after homing; see Console._home_before_bootup.
+        # NOT the selected gate/tool: that is seed_selection()'s job, and it has its own rules
+        # about pairing with seed_selector_last_pos().
         from extras.mmu.mmu_constants import GATE_AVAILABLE, VARS_MMU_GATE_STATUS
         model = self.filament()
         for gate in range(self.mmu.num_gates):
@@ -1062,6 +1059,60 @@ class Session:
         self.mmu.var_manager.set(VARS_MMU_GATE_STATUS,
                                  [GATE_AVAILABLE if status is None else status]
                                  * self.mmu.num_gates)
+        return self
+
+    def seed_selection(self, gate, tool=None):
+        """
+        Persist a selected gate/tool BEFORE klippy:ready, as a printer that ran yesterday does.
+
+        Same window and the same reason as seed_loaded_gates(): must be between connect() and
+        ready(), because mmu.var_manager is bound in handle_connect (mmu_controller.py:196), and
+        MmuGateMaps.load_persisted_state() reads it during MmuController.handle_ready.
+
+        Both vars are GLOBAL, not unit-namespaced (mmu_constants.py:228-229) - which is exactly
+        why they can outlive a per-unit mmu_<unit>_selector_last_pos across a rename or an
+        upgrade, and so why the selector falls back to them. tool defaults to gate, i.e. the
+        identity TTG map every profile ships with.
+
+        On its own this leaves the selector claiming a gate with NO position on record, which is
+        the fallback path (PhysicalSelector._persisted_gate_position). Pair it with
+        seed_selector_last_pos() to model an ordinary power-off instead.
+        """
+        from extras.mmu.mmu_constants import VARS_MMU_GATE_SELECTED, VARS_MMU_TOOL_SELECTED
+        self.mmu.var_manager.set(VARS_MMU_GATE_SELECTED, gate)
+        self.mmu.var_manager.set(VARS_MMU_TOOL_SELECTED, gate if tool is None else tool)
+        return self
+
+    def selector_offset(self, gate, unit=0):
+        """
+        The calibrated carriage offset for a gate, read straight from the persisted vars.
+
+        Works BEFORE ready(), unlike selector.selector_offsets, which the selector only loads in
+        its own handle_ready - so this is how a test seeds a position that AGREES with a gate.
+        None on a selector that keeps no offsets (IndexedSelector) or before calibrate().
+        """
+        from extras.mmu.mmu_constants import VARS_MMU_SELECTOR_OFFSETS
+        mmu_unit = self.mmu.mmu_machine.units[unit]
+        offsets = self.mmu.var_manager.get(VARS_MMU_SELECTOR_OFFSETS, None, namespace=mmu_unit.name)
+        lgate = mmu_unit.local_gate(gate)
+        if not offsets or not 0 <= lgate < len(offsets):
+            return None
+        return offsets[lgate]
+
+    def seed_selector_last_pos(self, pos, unit=0):
+        """
+        Persist a unit's raw selector carriage position BEFORE klippy:ready.
+
+        This is the PRIMARY position record, restored by the selector's own handle_ready, which
+        runs before MmuController.handle_ready - so it is what decides whether the selector
+        claims homed in time for load_persisted_state to keep the persisted gate.
+
+        Namespaced per unit (mmu_<unit>_selector_last_pos), so a value seeded for unit0 says
+        nothing about unit1. Pass pos=None to model a position that was deliberately invalidated.
+        """
+        from extras.mmu.mmu_constants import VARS_MMU_SELECTOR_LAST_POS
+        mmu_unit = self.mmu.mmu_machine.units[unit]
+        self.mmu.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, pos, namespace=mmu_unit.name)
         return self
 
     def home_selectors(self):
@@ -1079,7 +1130,7 @@ class Session:
         return homed
 
     def boot(self, extra=0.01, calibrate=False, gates_loaded_at=None, prime=False, seed=0,
-             pre_bootup=None):
+             pre_bootup=None, selected_gate=None, selected_tool=None, selector_last_pos=None):
         """
         Full sequence to a live MMU: connect -> ready -> pump the reactor past
         BOOT_DELAY so the scheduled bootup callback runs __MMU_BOOTUP, then past the
@@ -1110,6 +1161,17 @@ class Session:
         homed machine, so its "Attempting to recover filament position" line does not appear
         there (MMU_HOME emits it instead). A test asserting on that line wants pre_bootup=None.
 
+        selected_gate / selected_tool / selector_last_pos are the same idea for the persisted
+        SELECTION - see seed_selection() and seed_selector_last_pos(). Seed both to model an
+        ordinary power-off; seed only the gate to model a machine whose per-unit position var
+        never existed (a rename or an upgrade), which is the gate-offset fallback path. Needs
+        calibrate=True to do anything on a physical selector: the fallback refuses to turn a gate
+        into a position while the offsets are -1 placeholders.
+
+        selector_last_pos=True is the shorthand for "the calibrated offset of selected_gate",
+        resolved after calibrate() on the unit that owns the gate. Pass a number for a position
+        that deliberately disagrees with the gate.
+
         All of them default to False: an uncalibrated, unhomed machine with an unknown gate map
         is a real state HH has to cope with, and the tests assert it.
         """
@@ -1135,6 +1197,15 @@ class Session:
                 self.primed = self.prime_gate_map(seed=seed)
             if gates_loaded_at is not None:
                 self.seed_loaded_gates(gates_loaded_at)
+            if selected_gate is not None:
+                self.seed_selection(selected_gate, selected_tool)
+            if selector_last_pos is not None:
+                # True means "the offset that agrees with selected_gate", resolved on the unit
+                # that owns it - so a test never has to restate a CAD number
+                unit_index = self.mmu.mmu_unit(selected_gate).unit_index
+                if selector_last_pos is True:
+                    selector_last_pos = self.selector_offset(selected_gate, unit=unit_index)
+                self.seed_selector_last_pos(selector_last_pos, unit=unit_index)
             self.ready()
             # The seam for anything that needs a LIVE machine but has to happen before bootup
             # renders - homing, in the console's case. See the docstring.

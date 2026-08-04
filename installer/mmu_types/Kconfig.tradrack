@@ -66,10 +66,6 @@ if MMU_TYPE_TRADRACK_1_0
     default 0.63
   config PARAM_SELECTOR_HOLD_CURRENT
     default 0.2
-  config PARAM_SELECTOR_GATE_DIRECTIONS
-    default "[1, 1, 0, 0]"
-  config PARAM_SELECTOR_RELEASE_GATES
-    default "[2, 3, 0, 1]"
 
   # Selector servo
   config PARAM_SERVO_BUZZ_GEAR_ON_DOWN
