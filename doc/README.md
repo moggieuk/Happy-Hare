@@ -68,8 +68,37 @@ SESSIONS = [
 ```
 
 Group screens belonging to one walkthrough into one session; start a new session when
-the seed, the terminal size or the unit has to change (the terminal is sized when the
-session starts and stays that way).
+the seed or the unit has to change.
+
+## Height looks after itself
+
+Every shot fits the terminal to the screen in front of it, so no image ever contains
+menuconfig's row of scroll arrows — the `↓↓↓↓` that tells a reader the menu is cut off
+when in truth only the capture was — and none carries a band of dead space either.
+Sessions do not set a height; the reported size per image (`100x26`) is what it chose.
+
+It grows first, because a screen with arrows is cut off and nothing about how much is
+hidden can be measured while it is; then it hands back the blank rows the menu window
+is not using, down to a floor of **30 rows**. The floor is presentation, not a
+technical limit — menuconfig lays out happily in about 15 — but a set of screenshots
+reads badly at wildly different heights, and a two-item menu shrunk to fit looks like a
+cropped fragment rather than the installer. Change it with `--min-rows`, or `min_rows`
+on a session. The eight rows menuconfig reserves for the help pane below the separator
+are fixed, so blank space *there* is overhead that no height can reclaim.
+
+Two things are worth knowing if you touch this:
+
+* A menu keeps its **scroll offset** across a resize. Coming back from a submenu on a
+  short terminal leaves the list scrolled, and no amount of growing clears the
+  up-arrows that go with it — the offset has to be reset (`g`), and the highlight put
+  back afterwards.
+* Autofit does nothing while the small **value editor** is open: resizing does not
+  relayout the menu behind it, and the arrows the edit box draws itself mean the value
+  is wider than the field, which no height fixes. `mc.edit()` therefore fits the menu
+  before opening the box.
+
+`--no-fit` (or `'fit': False` on a session) pins `--rows` instead. Either way, a shot
+that ends up with arrows on it says so on stderr rather than shipping quietly.
 
 Prefer `mc.enter()`, `mc.select()`, `mc.edit()` and `mc.step()`, which raise when the
 expected screen does not arrive, over `mc.key()`, which tolerates a keypress that
@@ -101,9 +130,9 @@ make shots CAPTURE=1 ARGS='--keys "edit:Display name,type:Turtle Left,shot:/tmp/
 `enter:TEXT` (select and open), `edit:TEXT` (open the value editor), `type:TEXT`,
 `cancel`, `shot:PATH` and `repeat:down*5`.
 
-Useful flags: `--rows` (terminal height — the honest way to cut dead space out of a
-short menu), `--cols`, `--seed`, `--unit`, `--multi-unit`, `--entry-point`, `--scale`,
-`--expect TEXT` (fail unless it is on the final screen).
+Useful flags: `--cols`, `--seed`, `--unit`, `--multi-unit`, `--entry-point`, `--scale`,
+`--expect TEXT` (fail unless it is on the final screen), `--min-rows` for the height
+floor, and `--rows` / `--no-fit` to pin a height rather than let each shot fit itself.
 
 ## What is not reproducible
 

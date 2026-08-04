@@ -9,7 +9,13 @@
 # seconds, so a session starts the installer once, walks it, and captures along the
 # way - `shot('name')` writes doc/images/name.png and carries on from where it is.
 # Group screens that belong to the same walkthrough into one session; start a new one
-# when the seed, the terminal size or the unit has to change.
+# when the seed or the unit has to change.
+#
+# HEIGHT LOOKS AFTER ITSELF. Each shot() fits the terminal to the screen in front of
+# it, so no image contains menuconfig's row of scroll arrows and none carries a band
+# of dead space either - subject to a 30-row floor, so a two-item menu still looks like
+# the installer rather than a cropped fragment. Sessions do not set 'rows'; pass
+# 'min_rows' to change the floor, or 'fit': False and a 'rows' to pin a height.
 #
 # ALWAYS ASSERT THE LANDING SCREEN. Use mc.enter()/mc.edit()/mc.step(), which raise
 # when the expected screen does not arrive, rather than mc.key(), which tolerates a
@@ -30,7 +36,7 @@ import os
 import sys
 import traceback
 
-from .capture import DEFAULT_SEED, IMAGES, Menuconfig, ScreenError
+from .capture import DEFAULT_SEED, IMAGES, MIN_ROWS, Menuconfig, ScreenError
 
 # ---------------------------------------------------------------------------
 # The sessions. Extend these; the runner needs no changes.
@@ -38,8 +44,10 @@ from .capture import DEFAULT_SEED, IMAGES, Menuconfig, ScreenError
 #   name     --only key, and the prefix for anything the session does not name
 #   caption  what the session covers, for whoever writes the prose
 #   scenes   f(mc, shot) - navigate, calling shot('image-name') at each screen
-#   rows     terminal height; fixed for the whole session, so split if it must change
 #   seed     a config to start from - a built-in name or a path (default: boxturtle)
+#   min_rows shortest a fitted screenshot may be (default 30, for a consistent set)
+#   fit      False to stop autofitting and honour 'rows' instead
+#   rows     starting height; only meaningful with 'fit': False
 #   unit_name / multi_unit / entry_point - inferred from the seed, override here
 # ---------------------------------------------------------------------------
 
@@ -86,18 +94,16 @@ SESSIONS = [
         'name': 'installer-tour',
         'caption': 'The main installer screens for a Box Turtle',
         'scenes': _installer_tour,
-        'rows': 30,
     },
     {
         'name': 'help-and-editing',
         'caption': 'Per-item help, and editing a parameter value',
         'scenes': _help_and_editing,
-        'rows': 26,
     },
 ]
 
 
-def run_session(session, outdir, scale=2, seed=None, verbose=False):
+def run_session(session, outdir, scale=2, seed=None, min_rows=None, verbose=False):
     """Run one session, returning the images it produced."""
     written = []
     context = {key: session[key] for key in ('unit_name', 'multi_unit', 'entry_point')
@@ -105,14 +111,17 @@ def run_session(session, outdir, scale=2, seed=None, verbose=False):
 
     with Menuconfig(cols=session.get('cols', 100), rows=session.get('rows', 40),
                     seed=seed or session.get('seed', DEFAULT_SEED),
-                    style=session.get('style'), **context) as mc:
+                    style=session.get('style'),
+                    min_rows=min_rows or session.get('min_rows', MIN_ROWS),
+                    **context) as mc:
 
         def shot(name):
             path = os.path.join(outdir, name + '.png')
-            mc.shot(path, trim=session.get('trim', True), scale=scale)
+            mc.shot(path, trim=session.get('trim', True), scale=scale,
+                    fit=session.get('fit', True))
             if verbose:
                 mc.dump()
-            print('    %-24s %s' % (name + '.png', mc.state()))
+            print('    %-24s %2dx%-3d %s' % (name + '.png', mc.cols, mc.rows, mc.state()))
             written.append(path)
 
         session['scenes'](mc, shot)
@@ -129,6 +138,8 @@ def main(argv=None):
     parser.add_argument('--seed', help='override every session\'s seed: a built-in name, '
                                        'or a path to a .mmu_config / .mmu_config_<unit>')
     parser.add_argument('--scale', type=int, default=2, help='pixel scale (default 2)')
+    parser.add_argument('--min-rows', type=int,
+                        help='override every session\'s height floor (default %d)' % MIN_ROWS)
     parser.add_argument('--list', action='store_true', help='list the sessions and exit')
     parser.add_argument('-v', '--verbose', action='store_true',
                         help='dump each captured screen as text too')
@@ -152,7 +163,7 @@ def main(argv=None):
         print('[%d/%d] %s' % (index, len(wanted), session['name']))
         try:
             total += len(run_session(session, args.outdir, args.scale,
-                                     args.seed, args.verbose))
+                                     args.seed, args.min_rows, args.verbose))
         except (ScreenError, OSError) as exc:
             failed.append(session['name'])
             print(traceback.format_exc() if args.verbose else '    FAILED: %s' % exc,
