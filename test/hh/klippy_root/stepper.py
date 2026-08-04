@@ -66,6 +66,28 @@ class MCU_stepper:
     def is_dir_inverted(self):
         return self._invert_dir
 
+    def set_dir_inverted(self, invert_dir):
+        """
+        Flip the direction pin, as real Klipper does (klippy/stepper.py:146-153).
+
+        Needed by a RotarySelector, which reverses the gear on the gates whose filament path
+        runs the other way (MmuDrive.set_gear_direction, called from every _grip_release). No
+        other selector touches it, so the fake got away without a setter until the 3D Chameleon
+        profile arrived - the omission surfaced as AttributeError on MMU_SELECT.
+
+        There is no step compression to reprogram here, so this is bookkeeping plus the event,
+        which the real tmc.py registers for (extras/tmc.py:343) to keep its own direction
+        tracking in step. Early-returning on an unchanged value is deliberate and matches
+        Klipper: it is what stops the event firing on every grip.
+        """
+        invert_dir = bool(invert_dir)
+        if invert_dir == self._invert_dir:
+            return
+        self._invert_dir = invert_dir
+        printer = self._mcu.get_printer() if self._mcu is not None else None
+        if printer is not None:
+            printer.send_event('stepper:set_dir_inverted', self)
+
     # -- kinematics --------------------------------------------------------
     def setup_itersolve(self, alloc_func, *params):
         self._sk = StepperKinematics(alloc_func, params[0] if params else None)

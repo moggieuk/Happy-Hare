@@ -182,11 +182,9 @@ class RotarySelector(PhysicalSelector):
             self.selector_offsets = [-1] * self.mmu_unit.num_gates
         self.var_manager.set(VARS_MMU_SELECTOR_OFFSETS, self.selector_offsets, namespace=self.mmu_unit.name)
 
-        # Finally restore the last known local gate position to avoid need to re-home
-        last_pos = self.var_manager.get(VARS_MMU_SELECTOR_LAST_POS, None, namespace=self.mmu_unit.name)
-        if last_pos is not None:
-            self._restore_position(last_pos)
-            self.is_homed = True
+        # Finally restore the last known local gate position to avoid need to re-home. Must come
+        # after the offsets above: the gate fallback needs them to turn a gate into a position.
+        self._restore_position_at_startup()
 
 
     # Actual gate selection can be delayed (if not forcing grip) until the
@@ -228,7 +226,7 @@ class RotarySelector(PhysicalSelector):
         """
         if lgate >= 0:
             if release:
-                pos = self.selector_offsets[self.selector_release_gates[lgate]]
+                pos = self.selector_offsets[self.p.selector_release_gates[lgate]]
                 state = FILAMENT_RELEASE_STATE
                 action = "filament released"
 
@@ -262,6 +260,18 @@ class RotarySelector(PhysicalSelector):
         return self.grip_state
 
 
+    def _gate_position(self, lgate):
+        """
+        Note this is the GRIP position for the gate. Gate -> position is not a bijection on a
+        rotary selector: the lazy-grip park sits at another gate's offset (see _grip_release), so
+        a gate on its own cannot say whether we were parked gripped or released. Harmless for the
+        startup restore because _reinit() resets grip_state to unknown on every boot anyway.
+        """
+        if 0 <= lgate < len(self.selector_offsets) and self.selector_offsets[lgate] >= 0:
+            return self.selector_offsets[lgate]
+        return None # No bypass on a rotary selector
+
+
     def enable_motors(self):
         self.selector_stepper.do_enable(True)
 
@@ -270,9 +280,9 @@ class RotarySelector(PhysicalSelector):
         self.selector_stepper.do_enable(False)
         self._reinit()
 
-        # Assume that if disabling motor then the position will be modified
-        self.is_homed = False
-        self.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, None, namespace=self.mmu_unit.name)
+        # Assume that if disabling motor then the position will be modified. Clears the persisted
+        # gate too so the pair stays correlated -- see _invalidate_persisted_position()
+        self._invalidate_persisted_position()
 
 
     def buzz_motor(self, motor):
@@ -408,8 +418,7 @@ class RotarySelector(PhysicalSelector):
             self.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, 0, namespace=self.mmu_unit.name)
 
         except Exception as e:
-            self.is_homed = False
-            self.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, None, namespace=self.mmu_unit.name)
+            self._invalidate_persisted_position() # Where the carriage stopped is anyone's guess
             raise MmuError(f"Homing selector failed because of blockage or malfunction. Klipper reports: {e}") from e
 
 

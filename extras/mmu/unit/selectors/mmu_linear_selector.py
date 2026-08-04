@@ -229,15 +229,21 @@ class LinearSelector(PhysicalSelector):
         else:
             self.mmu.log_debug("Selector 'touch' movement and recovery possible")
 
-        # Finally restore the last known local gate position to avoid need to re-home
-        last_pos = self.var_manager.get(VARS_MMU_SELECTOR_LAST_POS, None, namespace=self.mmu_unit.name)
-        if last_pos is not None:
-            self._restore_position(last_pos)
-            self.is_homed = True
+        # Finally restore the last known local gate position to avoid need to re-home. Must come
+        # after the offsets above: the gate fallback needs them to turn a gate into a position.
+        self._restore_position_at_startup()
 
 
     def handle_disconnect(self):
         super().handle_disconnect()
+
+
+    def _gate_position(self, lgate):
+        if lgate == TOOL_GATE_BYPASS and self.has_bypass():
+            return self.bypass_offset
+        if 0 <= lgate < len(self.selector_offsets) and self.selector_offsets[lgate] >= 0:
+            return self.selector_offsets[lgate]
+        return None
 
 
     def _select_gate(self, lgate):
@@ -245,19 +251,17 @@ class LinearSelector(PhysicalSelector):
 
         with self.mmu.wrap_action(ACTION_SELECTING):
             self.filament_hold_move()
-            if lgate == TOOL_GATE_BYPASS and self.has_bypass():
-                self._select_position(self.bypass_offset)
-            elif lgate >= 0:
-                self._select_position(self.selector_offsets[lgate])
+            position = self._gate_position(lgate)
+            if position is not None:
+                self._select_position(position)
 
 
     def _restore_gate(self, lgate):
         super()._restore_gate(lgate) # Important because LinearMultiGear*Selector inherits from this class
 
-        if lgate == TOOL_GATE_BYPASS and self.has_bypass():
-            self._restore_position(self.bypass_offset)
-        elif lgate >= 0:
-            self._restore_position(self.selector_offsets[lgate])
+        position = self._gate_position(lgate)
+        if position is not None:
+            self._restore_position(position)
 
 
     def enable_motors(self):
@@ -267,9 +271,9 @@ class LinearSelector(PhysicalSelector):
     def disable_motors(self):
         self.selector_stepper.do_enable(False)
 
-        # Assume that if disabling motor then the position will be modified
-        self.is_homed = False
-        self.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, None, namespace=self.mmu_unit.name)
+        # Assume that if disabling motor then the position will be modified. Clears the persisted
+        # gate too so the pair stays correlated -- see _invalidate_persisted_position()
+        self._invalidate_persisted_position()
 
 
     def buzz_motor(self, motor):
@@ -537,8 +541,7 @@ class LinearSelector(PhysicalSelector):
             self.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, 0, namespace=self.mmu_unit.name)
 
         except Exception as e:
-            self.is_homed = False
-            self.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, None, namespace=self.mmu_unit.name)
+            self._invalidate_persisted_position() # Where the carriage stopped is anyone's guess
             raise MmuError(f"Homing selector failed because of blockage or malfunction. Klipper reports: {e}") from e
 
 
@@ -592,11 +595,12 @@ class LinearSelector(PhysicalSelector):
             current_pos = target
 
         finally:
-            # Persist position change
+            # Persist position change. write=True so the position and the gate that follows it
+            # (mmu_controller._set_gate_selected) cannot reach disk in separate flushes
             if not self.is_homed:
-                current_pos = None
-
-            self.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, current_pos, namespace=self.mmu_unit.name)
+                self._invalidate_persisted_position() # A blocked touch move lost track of us
+            else:
+                self.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, current_pos, write=True, namespace=self.mmu_unit.name)
 
 
     # Internal raw wrapper around all selector moves except rail homing

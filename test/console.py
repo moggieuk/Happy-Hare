@@ -589,11 +589,23 @@ class Console:
 
     def _preload_all(self):
         """Gates start empty (TIP_ABSENT), so a bare MMU_LOAD on a fresh session fails."""
+        # The preload walks every gate and would otherwise leave the LAST one selected, which
+        # is the one thing about the machine the bootup banner cannot be made to agree with:
+        # it renders before this runs. Preloading from the pre_bootup seam instead is not a
+        # free swap - today the preload runs after _settle_nfc_init() and after bootup sets
+        # the print state to 'initialized', and moving it ahead of bootup changes that
+        # ordering. So restore the selection bootup reported instead, and the banner's
+        # 'Selct:'/'T' row still describes the machine the first MMU_STATUS sees. Read from
+        # the machine rather than hardcoding gate 0, so a persisted selection is honoured too.
+        selected = self.hh.mmu.gate_selected
         for gate in range(self.hh.mmu.num_gates):
             self.hh.place_filament(gate, position=TIP_AT_GATE)
             self._dispatch('MMU_PRELOAD GATE=%d' % gate)
             # Settle between gates. Without it the preload does not finish and the gate is
             # left EMPTY, which then fails every load with "Gate N is empty".
+            self.hh.reactor.advance(0.)
+        if selected >= 0 and self.hh.mmu.gate_selected != selected:
+            self._dispatch('MMU_SELECT GATE=%d' % selected)
             self.hh.reactor.advance(0.)
         self._clear_sink()  # setup noise is not console history
 
@@ -797,9 +809,10 @@ class Console:
         mark = len(self.sink)
         self.hh.home_selectors()
         # Then pick a gate, so bootup renders a machine that knows where it is rather than
-        # '[T?] ... 0.0mm'. It cannot be seeded pre-ready like the rest of the gate map -
-        # load_persisted_state drops a persisted selection while the selector is unhomed, and
-        # homing needs a live machine - so it has to be a real selection made right here.
+        # '[T?] ... 0.0mm'. A real printer arrives here already knowing, because the selector
+        # restored its saved position at klippy:ready - but a console session starts with a
+        # fresh vars file, so there is nothing to restore and the selection has to be made for
+        # real, right here. The guard honours a restored selection if one ever does exist.
         if self.hh.mmu.gate_selected < 0:
             self.hh.gcode.run_script('MMU_SELECT GATE=0')
         del self.sink[mark:]

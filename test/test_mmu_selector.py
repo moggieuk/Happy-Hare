@@ -6,11 +6,15 @@
 # mmu_sel_home after full movement" because selector endstops were routed through the
 # gate-filament model, which has no selector axis. See test/hh/selector.py.
 #
-# TWO GEOMETRIES, and they disagree about everything:
+# THREE SELECTOR FAMILIES, and they disagree about everything:
 #
-#   tradrack / ERCF   LinearServoSelector   one home switch; gates at calibrated offsets
+#   tradrack / ERCF   LinearServoSelector   one home switch; gates at calibrated offsets;
+#                                           a servo grips and releases
 #   ViViD             IndexedSelector       no home switch; one index switch PER gate,
 #                                           visited in selector_gate_order
+#   3D Chameleon      RotarySelector        one home switch, gates at calibrated offsets like
+#                                           the linear family - but NO servo, so releasing
+#                                           means driving to the OPPOSING gate's offset
 #
 # Built on tradrack first, deliberately: it is single-unit and has no encoder, so a failure
 # there has one candidate cause. ercf_vvd then adds units, an encoder, and the second
@@ -30,6 +34,10 @@ logging.getLogger().setLevel(logging.CRITICAL)
 FILAMENT_POS_UNLOADED = 0
 FILAMENT_POS_LOADED = 10
 TIP_AT_GATE = -40.0             # past the entry switch: where a user's push leaves it
+
+# mmu_constants.py:209-211, mirrored here for the same reason FILAMENT_POS_* is
+FILAMENT_RELEASE_STATE = 0
+FILAMENT_DRIVE_STATE = 1
 
 
 class SelectorTestCase(unittest.TestCase):
@@ -135,6 +143,139 @@ class TestLinearSelector(SelectorTestCase):
         before = axis.carriage
         self.load_and_unload(5)
         self.assertAlmostEqual(axis.carriage, before, places=3)
+
+
+class TestRotarySelector(SelectorTestCase):
+    """
+    chameleon: a RotarySelector, and the only machine here with NO servo.
+
+    That one missing part changes the meaning of a gate position. Everywhere else a gate has
+    exactly one place the carriage belongs and gripping is a separate axis (the servo); on a
+    3D Chameleon the "opposing gate" mechanism means the carriage itself expresses grip:
+
+        grip gate g     -> selector_offsets[g]
+        release gate g  -> selector_offsets[selector_release_gates[g]]   i.e. ANOTHER gate
+
+    and the single gear motor is reversed on the gates whose filament path runs backwards
+    (selector_gate_directions). Both lists are per-gate config, and both are read on every
+    _grip_release, which is why they get direct assertions rather than being taken on trust.
+
+    Gripping is LAZY: with filament_always_gripped 0, _select_gate does not grip at all
+    (mmu_rotary_selector.py:194-197) and the carriage only reaches the gate's own offset when
+    something asks to drive the filament.
+    """
+
+    PROFILE = 'chameleon'
+
+    # The machine's own config, from Kconfig.3d_chameleon:48-54. Repeated here so a test failure
+    # says which permutation was expected, and pinned by
+    # test_the_machine_still_has_the_geometry_these_tests_assume below.
+    RELEASE_GATES = (2, 3, 0, 1)
+    GATE_DIRECTIONS = (1, 1, 0, 0)
+
+    def test_the_machine_still_has_the_geometry_these_tests_assume(self):
+        """
+        A guard, not a behaviour test. Everything below is only interesting because release
+        goes to a DIFFERENT gate and because the machine is allowed to release at all - if a
+        vendor default ever changes, this fails first and says so, rather than the assertions
+        quietly becoming tautologies.
+        """
+        selector = self.selector('unit0')
+        self.assertEqual(type(selector).__name__, 'RotarySelector')
+        self.assertFalse(self.hh.mmu.mmu_unit(0).filament_always_gripped,
+                         'with grip forced on, the release path under test is dead code')
+        self.assertEqual(tuple(selector.p.selector_release_gates), self.RELEASE_GATES)
+        self.assertEqual(tuple(selector.p.selector_gate_directions), self.GATE_DIRECTIONS)
+        for gate, release_gate in enumerate(self.RELEASE_GATES):
+            self.assertNotEqual(gate, release_gate,
+                                'gate %d releases into itself, so it proves nothing' % gate)
+
+    def test_releasing_parks_the_carriage_at_the_opposing_gates_offset(self):
+        """
+        THE regression test for this class. mmu_rotary_selector.py:229 read
+        `self.selector_release_gates`, but that name is a ParamSpec and so lives on `self.p`
+        (the same line's neighbour at :257 gets it right) - so every release raised
+        AttributeError: 'RotarySelector' object has no attribute 'selector_release_gates'.
+
+        Reached from MMU_RELEASE, and on this machine from plain MMU_SELECT as well:
+        reset_sync_gear_to_extruder calls filament_release() on the way out of every wrapped
+        operation (mmu_filament_movement.py:3607), so an unfixed rotary selector cannot select
+        a gate at all.
+
+        Asserts the offset of the OPPOSING gate specifically. "The carriage moved" would pass
+        with the permutation applied in the wrong direction, or ignored.
+        """
+        selector, axis = self.selector('unit0'), self.axis('unit0')
+        for gate, release_gate in enumerate(self.RELEASE_GATES):
+            with self.subTest(gate=gate):
+                self.hh.run_gcode('MMU_SELECT GATE=%d' % gate)
+                self.hh.run_gcode('MMU_RELEASE')
+                self.assertEqual(selector.grip_state, FILAMENT_RELEASE_STATE)
+                self.assertAlmostEqual(axis.carriage,
+                                       selector.selector_offsets[release_gate], places=3,
+                                       msg='gate %d should release at gate %d'
+                                           % (gate, release_gate))
+                self.assertEqual(self.hh.errors, [])
+
+    def test_gripping_parks_the_carriage_at_the_gates_own_offset(self):
+        """
+        The other half of the pair, and what makes the release assertion above mean something:
+        the two positions are genuinely different, so a release that silently behaved like a
+        grip would fail one of these.
+        """
+        selector, axis = self.selector('unit0'), self.axis('unit0')
+        for gate in range(self.hh.mmu.num_gates):
+            with self.subTest(gate=gate):
+                self.hh.run_gcode('MMU_SELECT GATE=%d' % gate)
+                self.hh.run_gcode('MMU_GRIP')
+                self.assertEqual(selector.grip_state, FILAMENT_DRIVE_STATE)
+                self.assertAlmostEqual(axis.carriage, selector.selector_offsets[gate],
+                                       places=3)
+                self.assertEqual(self.hh.errors, [])
+
+    def test_selection_alone_leaves_the_filament_released(self):
+        """
+        LAZY GRIP. _select_gate skips the grip entirely when the machine can release, so a
+        bare MMU_SELECT must leave the carriage parked at the release position - NOT at the
+        gate it just selected. This is the state a rotary machine idles in.
+        """
+        selector, axis = self.selector('unit0'), self.axis('unit0')
+        gate = 1
+        self.hh.run_gcode('MMU_SELECT GATE=%d' % gate)
+
+        self.assertEqual(self.hh.mmu.gate_selected, gate)
+        self.assertEqual(selector.grip_state, FILAMENT_RELEASE_STATE)
+        self.assertAlmostEqual(axis.carriage,
+                               selector.selector_offsets[self.RELEASE_GATES[gate]], places=3)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_the_gear_direction_follows_the_selected_gate(self):
+        """
+        One gear motor serves all four gates, so the direction pin IS the per-gate wiring:
+        _grip_release hands selector_gate_directions[gate] to MmuDrive.set_gear_direction on
+        every grip and every release. Gates 0-1 are reversed on this machine and 2-3 are not,
+        so a direction that was ignored, or applied from the release gate instead of the
+        selected one, shows up as a mismatch here.
+        """
+        for gate, direction in enumerate(self.GATE_DIRECTIONS):
+            with self.subTest(gate=gate):
+                self.hh.run_gcode('MMU_SELECT GATE=%d' % gate)
+                stepper = self.hh.mmu.drive(gate).mmu_gear_stepper.stepper
+                inverted, _original = stepper.get_dir_inverted()
+                self.assertEqual(bool(inverted), bool(direction),
+                                 'gate %d should drive the gear %s'
+                                 % (gate, 'reversed' if direction else 'forwards'))
+
+    def test_full_load_and_unload(self):
+        """
+        The milestone for this machine: filament movement with grip expressed as selector
+        position. Every load and unload crosses _grip_release repeatedly, so this is the test
+        that would notice the release path failing anywhere other than at a bare MMU_RELEASE.
+        """
+        loaded, unloaded = self.load_and_unload(1)
+        self.assertEqual(loaded, FILAMENT_POS_LOADED)
+        self.assertEqual(unloaded, FILAMENT_POS_UNLOADED)
+        self.assertEqual(self.hh.errors, [])
 
 
 class TestSelectorCalibration(unittest.TestCase):
@@ -338,6 +479,235 @@ class TestMultiUnitSelectors(SelectorTestCase):
                                  '%s is not owned by the filament model' % name)
             self.assertIn(name, model.sensor_names(),
                           '%s is not bound, so it can never read triggered' % name)
+
+
+class TestPersistedPositionRestore(unittest.TestCase):
+    """
+    A physical selector must come back from a reboot knowing where it is, so a printer that was
+    running yesterday needs no re-home. Two records say where the carriage is:
+
+      mmu_<unit>_selector_last_pos   the raw position (PRIMARY)
+      mmu_state_gate_selected        the gate it corresponds to (SECONDARY)
+
+    They are written and cleared TOGETHER (PhysicalSelector._invalidate_persisted_position), and
+    that pairing is what makes the gate safe to fall back on: the gate can only be trusted when
+    last_pos was never RECORDED - an upgrade, or a unit rename that orphaned the namespaced var -
+    never when it was deliberately INVALIDATED by a motors-off.
+
+    Sessions are built per test rather than shared: is_homed is sticky, and the whole point of
+    these tests is what a FRESH klippy:ready decides.
+    """
+
+    GATE = 3    # A gate that is neither the first nor the bypass, on unit0 of both profiles
+
+    def tearDown(self):
+        if getattr(self, 'hh', None) is not None:
+            self.hh.close()
+
+    def boot(self, profile='tradrack', **kwargs):
+        self.hh = session(profile)
+        self.hh.boot(**kwargs)
+        self.assertEqual(self.hh.errors, [], 'bootup was not clean')
+        return self.hh
+
+    def selector(self, unit_name='unit0'):
+        return {u.name: u for u in self.hh.mmu.mmu_machine.units}[unit_name].selector
+
+    def axis(self, unit_name='unit0'):
+        for candidate in self.hh.printer.harness_selectors:
+            if candidate.unit.name == unit_name:
+                return candidate
+        self.fail('no selector axis for %r' % unit_name)
+
+    def var(self, name):
+        return self.hh.save_variables.allVariables.get(name, 'MISSING')
+
+    def believed_position(self, unit_name='unit0'):
+        """
+        Where Happy Hare thinks the carriage is.
+
+        NOT axis().carriage, which is where the harness's fake carriage physically sits. A
+        restore is do_set_position - a software rebase that moves nothing (extras/mmu_stepper.py)
+        - so the two deliberately disagree in these tests: that IS the model of a reboot finding
+        the carriage already parked where it was left.
+        """
+        return self.selector(unit_name).selector_stepper.commanded_pos
+
+    # -- restore ------------------------------------------------------------------------------
+
+    def test_a_power_off_comes_back_homed_on_the_same_gate(self):
+        """
+        The ordinary case, and the one that must never regress: both records present and
+        agreeing. Power off at gate 3, boot, and the machine is at gate 3 and homed without
+        having moved a step to find out.
+        """
+        hh = self.boot(calibrate=True, selected_gate=self.GATE, selector_last_pos=True)
+        selector = self.selector()
+
+        self.assertTrue(selector.is_homed, 'a restored position must count as homed')
+        self.assertEqual(hh.mmu.gate_selected, self.GATE)
+        self.assertEqual(hh.mmu.tool_selected, self.GATE)
+        self.assertAlmostEqual(self.believed_position(), selector.selector_offsets[self.GATE],
+                               places=3)
+
+    def test_a_gate_with_no_position_on_record_falls_back_to_its_offset(self):
+        """
+        last_pos missing but the gate still persisted - what an upgrade or a renamed unit leaves
+        behind, because the gate var is global while last_pos is namespaced per unit. There is
+        nothing to distrust here (a motors-off would have cleared the gate too), so the gate's
+        calibrated offset IS the position.
+        """
+        hh = self.boot(calibrate=True, selected_gate=self.GATE)
+        selector = self.selector()
+
+        self.assertTrue(selector.is_homed)
+        self.assertEqual(hh.mmu.gate_selected, self.GATE)
+        self.assertAlmostEqual(self.believed_position(), selector.selector_offsets[self.GATE],
+                               places=3)
+        self.assertAlmostEqual(self.var('mmu_unit0_selector_last_pos'),
+                               selector.selector_offsets[self.GATE], places=3,
+                               msg='the derived position should be written back')
+
+    def test_an_uncalibrated_selector_still_refuses_to_claim_homed(self):
+        """
+        The fallback needs real offsets. Uncalibrated they are -1 placeholders, so it must
+        decline and let the gate be dropped - which is also what keeps
+        test_mmu_profiles.py's "unit0 is uncalibrated, so it must NOT claim homed" true.
+        """
+        hh = self.boot(selected_gate=self.GATE)
+
+        self.assertFalse(self.selector().is_homed)
+        self.assertEqual(hh.mmu.gate_selected, -1)
+
+    def test_the_second_units_selector_ignores_a_gate_it_does_not_own(self):
+        """
+        The restore has to work on a multi-unit machine too, and unit_selected has to follow the
+        restored gate rather than defaulting to unit 0 the way a dropped gate did.
+        """
+        hh = self.boot('ercf_vvd', calibrate=True, selected_gate=self.GATE)
+
+        self.assertEqual(hh.mmu.gate_selected, self.GATE)
+        self.assertEqual(hh.mmu.unit_selected, 0)
+        self.assertTrue(self.selector('unit0').is_homed)
+        self.assertAlmostEqual(self.believed_position('unit0'),
+                               self.selector('unit0').selector_offsets[self.GATE], places=3)
+
+    def test_a_selector_offers_no_position_for_a_gate_another_unit_owns(self):
+        """
+        The gate var is machine-wide, so every unit's selector reads the same number and must
+        check it owns the gate first. Tested directly rather than through a boot: the only
+        multi-unit profile pairs a linear selector with an IndexedSelector, which does not use
+        this path at all - so a boot-level assertion about "the other unit" would pass even with
+        the guard deleted.
+
+        The errors assertion is the part that bites. Without the guard the answer is STILL None,
+        because local_gate() refuses too - but it refuses via log_assertion("Fatal: Gate 12 is
+        not managed by unit0"), so every boot of a multi-unit machine would carry a fatal-looking
+        line about nothing being wrong.
+        """
+        from extras.mmu.mmu_constants import VARS_MMU_GATE_SELECTED
+
+        hh = self.boot('ercf_vvd', calibrate=True)
+        unit0 = self.selector('unit0')
+
+        hh.mmu.var_manager.set(VARS_MMU_GATE_SELECTED, 12) # Gate 12 lives on unit1
+        self.assertIsNone(unit0._persisted_gate_position(),
+                          'unit0 offered a carriage position for a gate it does not manage')
+        self.assertEqual(hh.errors, [], 'declining another unit\'s gate must be silent')
+
+        hh.mmu.var_manager.set(VARS_MMU_GATE_SELECTED, self.GATE)
+        self.assertAlmostEqual(unit0._persisted_gate_position(),
+                               unit0.selector_offsets[self.GATE], places=3)
+
+    # -- invalidation -------------------------------------------------------------------------
+
+    def test_motors_off_invalidates_the_gate_as_well_as_the_position(self):
+        """
+        The correlation invariant. Nulling last_pos on its own was not enough: the gate alone is
+        enough to reconstruct a position, so a surviving gate would resurrect exactly the
+        position the user's motors-off just invalidated.
+        """
+        hh = self.boot(calibrate=True, selected_gate=self.GATE, selector_last_pos=True)
+        hh.run_gcode('MMU_MOTORS_OFF')
+
+        self.assertFalse(self.selector().is_homed)
+        self.assertIsNone(self.var('mmu_unit0_selector_last_pos'))
+        self.assertEqual(self.var('mmu_state_gate_selected'), -1)
+        self.assertEqual(self.var('mmu_state_tool_selected'), -1)
+        self.assertEqual(hh.errors, [])
+
+    def test_motors_off_on_one_unit_leaves_another_units_selection_alone(self):
+        """
+        MMU_MOTORS_OFF is per-unit, so unit0 must not wipe a perfectly good selection that lives
+        on unit1.
+
+        Gate 12 is selected live rather than seeded: seeding it boots into an indeterminate
+        filament position on unit1's per-gate switches ("Filament not detected as either unloaded
+        or fully loaded"), which is pre-existing and nothing to do with the scoping being tested.
+        """
+        hh = self.boot('ercf_vvd')
+        hh.calibrate()
+        hh.run_gcode('MMU_SELECT GATE=12')
+        self.assertEqual(hh.mmu.gate_selected, 12, 'gate 12 should be on unit1')
+        self.assertEqual(self.var('mmu_state_gate_selected'), 12)
+
+        hh.run_gcode('MMU_MOTORS_OFF UNIT=0')
+
+        self.assertEqual(self.var('mmu_state_gate_selected'), 12,
+                         "unit0's motors-off cleared unit1's selection")
+        self.assertIsNone(self.var('mmu_unit0_selector_last_pos'))
+        self.assertEqual(hh.errors, [])
+
+    def test_a_failed_home_invalidates_the_pair_too(self):
+        """
+        A blocked or broken home is the other way the position becomes unknowable, and it must
+        obey the same invariant as an explicit motors-off - otherwise the next boot would
+        confidently restore a gate whose carriage is stuck somewhere else.
+
+        A GUARD, not a demonstration: this passes with or without the selector-side change,
+        because every route to a failed _home_selector already clears the gate through the
+        controller (home_unit unselects before homing, and select_gate's autohome unselects on
+        MmuError). It is here so that if either of those ever stops clearing, the invariant does
+        not quietly depend on them.
+        """
+        hh = self.boot(calibrate=True, selected_gate=self.GATE, selector_last_pos=True)
+        selector = self.selector()
+
+        def explode():
+            raise Exception('harness: selector jammed')
+        selector.selector_stepper.do_home_rail = explode
+
+        hh.run_gcode('MMU_HOME UNIT=0')
+
+        self.assertFalse(selector.is_homed)
+        self.assertIsNone(self.var('mmu_unit0_selector_last_pos'))
+        self.assertEqual(self.var('mmu_state_gate_selected'), -1)
+
+    # -- interaction with startup_home_selector ------------------------------------------------
+
+    def test_startup_home_selector_homes_first_and_then_reselects_the_gate(self):
+        """
+        The opt-in path: when the user asks for homing at startup they get a real home, and the
+        restored gate must survive it to be reselected afterwards. Before the records were
+        paired the gate had already been dropped by then, so bootup silently re-selected the
+        unit's FIRST gate instead of the one the user was on.
+
+        startup_home_selector is set live rather than in config: the shipped template hardcodes
+        0 for every physical selector (config/base/mmu_parameters.cfg), so there is no profile
+        to switch to.
+        """
+        def enable_startup_homing():
+            self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 startup_home_selector=1')
+
+        hh = self.boot(calibrate=True, selected_gate=self.GATE, selector_last_pos=True,
+                       pre_bootup=enable_startup_homing)
+
+        self.assertIn('Homing MMU', '\n'.join(hh.console), 'bootup did not actually home')
+        self.assertTrue(self.selector().is_homed)
+        self.assertEqual(hh.mmu.gate_selected, self.GATE,
+                         'the gate the user was on must be reselected after homing')
+        self.assertAlmostEqual(self.axis().carriage,
+                               self.selector().selector_offsets[self.GATE], places=3)
 
 
 class TestTipFormingEffect(unittest.TestCase):

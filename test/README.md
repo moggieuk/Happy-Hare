@@ -625,6 +625,10 @@ leaves the gate-0 gear pins empty and fails with `Invalid pin description ''`.
    `MMU_HOME UNIT=<n>`. Skip it and every selection fails with *"Selector is not clibrated"*
    (sic). Calibration is **seeded** by default for speed, but `MMU_CALIBRATE_*` genuinely
    works — see § "Physical selectors" below.
+   A real printer usually skips the homing because it restores the position it saved at
+   shutdown; a harness session starts with no vars file, so there is nothing to restore. To
+   model the printer instead, pass `boot(calibrate=True, selected_gate=<n>,
+   selector_last_pos=True)` — see `seed_selection` / `seed_selector_last_pos`.
 3. **Pause is sticky.** After a failed operation the MMU sits paused and later commands
    refuse. The prompt shows `PAUSED`; recover with `MMU_UNLOCK` / `MMU_RECOVER`.
 
@@ -697,7 +701,7 @@ Green is not the same as covered. Roughly where things stand:
 | Endless spool and runout | **good** | including the clog-vs-runout decision |
 | LEDs | **good** | effects and overlays; not the neopixel protocol |
 | Sync feedback / buffer sensors | **partial** | EMU's analog sensor boots; the tension logic has a known bug |
-| Physical selector homing and selection | **good** | both selector families home, select and move filament — `test_mmu_selector.py` |
+| Physical selector homing and selection | **good** | all three selector families home, select and move filament — `test_mmu_selector.py`. `RotarySelector` also expresses grip as a carriage position, so releasing to the opposing gate is covered there |
 | Calibration | **partial** | seeded by default for speed, but `MMU_CALIBRATE_SELECTOR` (manual and `AUTO=1`) and `MMU_CALIBRATE_BOWDEN` run for real — `test_mmu_selector.py` |
 | Developer commands (`_MMU_TEST`) | **partial** | every option is run and must not raise — `test_mmu_dev_test.py`. What the stress probes *provoke* is step-generation timing the harness does not model |
 | Espooler, FlowGuard | **none** | |
@@ -819,6 +823,7 @@ templates** from them, so a broken template shows up as a test failure.
 | `ercf_vvd` | **the console default.** The only multi-unit profile, and a transcription of a real machine: ERCF 1.1sb (9 gates, `LinearServoSelector`, encoder) + ViViD 1.0 (4 gates, `IndexedSelector`), 13 gates. Also the only one with a sparse per-gate device list, a filament heater, and full LED coverage: unit0 wires all four segments (9 exit on an external chain, 9 entry, 4 status, 3 logo) while unit1 has 28 exit LEDs over 4 gates |
 | `boxturtle` | 4 gates, no NFC — the default for most tests |
 | `tradrack` | a physical (servo) selector, single unit, no encoder — the simplest physical-selector case |
+| `chameleon` | 3D Chameleon: the only `RotarySelector`, and the only machine with no servo — one gear motor reversed on half the gates, and "release" means driving the carriage to the opposing gate's offset |
 | `emu` | 5 gates and the only shipped profile with an analog buffer sensor |
 | `encoder` | BoxTurtle plus an encoder, homing to it instead of to the gate switch |
 | `nfc_single` | one common NFC reader |
@@ -835,10 +840,13 @@ catches.
 ### Physical selectors, and what "calibrated" means here
 
 `test/hh/selector.py` models where a unit's selector endstops sit — a **separate axis** from
-the filament path, which is one scalar per gate and has no carriage. Two geometries, because
-the shipped families disagree: the `LinearSelector` family (ERCF, Tradrack) has one home
+the filament path, which is one scalar per gate and has no carriage. Two **endstop** geometries,
+because the shipped families disagree: the `LinearSelector` family (ERCF, Tradrack) has one home
 switch and reaches gates by plain moves to calibrated offsets, while `IndexedSelector` (ViViD)
 has no home switch at all and one index switch per gate, visited in `selector_gate_order`.
+`RotarySelector` (3D Chameleon) shares the first geometry but not its meaning: with no servo,
+the carriage position *is* the grip — a released gate parks at another gate's offset
+(`selector_release_gates`), so gate → position is not a bijection.
 
 **The carriage is tracked**, in `SelectorAxis.carriage`, the same way `filament.py` tracks the
 filament — because the two meanings of "position" have to be kept apart. `MmuGenericRail.home()`
@@ -875,7 +883,7 @@ reads as a jam. `printer.harness_macro_effects` maps a macro alias to a callable
 registered effect retracts the extruder and moves the filament model together, by a distance
 read from the machine's own `_MMU_FORM_TIP_VARS`.
 
-The first four profiles above are shipped machine types. `encoder` is derived — BoxTurtle with menuconfig
+The first five profiles above are shipped machine types. `encoder` is derived — BoxTurtle with menuconfig
 options flipped. That is only safe when the resulting config renders *complete*: enabling a
 feature outside the starter that ships it can leave dependent parameters blank, producing a
 machine that boots but behaves like nothing real. Render it and read the section before

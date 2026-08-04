@@ -18,12 +18,18 @@
 # (extras/mmu_stepper.py:895-924), so the endstops are defined in absolute terms and a homing
 # move that reaches the target coordinate is exactly a switch being made.
 #
-# TWO GEOMETRIES, because the two shipped physical-selector families disagree:
+# TWO GEOMETRIES, because the shipped physical-selector families disagree about endstops:
 #
 #   LinearSelector family (ERCF, Tradrack)  ONE home switch at position_endstop; gates are
 #                                           reached by plain moves to calibrated offsets.
 #   IndexedSelector (ViViD)                 NO home switch at all; one index switch PER GATE,
 #                                           laid out in selector_gate_order.
+#
+# RotarySelector (3D Chameleon) is a THIRD family but not a third geometry: it homes and selects
+# exactly like the linear one, and nothing it does differently (grip expressed as a carriage
+# position, gear direction per gate) is about where a switch sits. So it needs nothing here -
+# cad_gate0_pos and cad_gate_width, which the offsets below are built from, are parameters it
+# already has. Its own behaviour is covered in test_mmu_selector.TestRotarySelector.
 #
 # THE CARRIAGE IS TRACKED, not read off the stepper. This file used to be stateless with
 # respect to position - `carriage` was just `stepper.commanded_pos` - and that is what made

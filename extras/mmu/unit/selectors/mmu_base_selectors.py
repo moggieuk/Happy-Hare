@@ -238,6 +238,99 @@ class PhysicalSelector(BaseSelector, object):
         super().handle_disconnect()
 
 
+    # -----------------------------------------------------------------------------------------------------------
+    # Persisted position
+    #
+    # Two records describe where the carriage is, and they must never disagree:
+    #   VARS_MMU_SELECTOR_LAST_POS  - this unit's raw carriage position (primary)
+    #   VARS_MMU_GATE_SELECTED      - the gate that position corresponds to (secondary)
+    # Everything that forgets the position goes through _invalidate_persisted_position(), which
+    # clears both. That is what makes the gate safe to fall back on: it can only be trusted
+    # when last_pos was never RECORDED, never when it was INVALIDATED.
+    # -----------------------------------------------------------------------------------------------------------
+
+    def _gate_position(self, lgate):
+        """
+        Carriage position for a local gate, or None if this selector cannot say.
+
+        Override in selectors that map gates to positions.
+        """
+        return None
+
+
+    def _restore_position_at_startup(self):
+        """
+        Re-establish the carriage position at klippy:ready so a reboot needs no re-home.
+
+        This runs before MmuController.handle_ready (units are built before the controller in
+        mmu_machine.py, and klipper dispatches in registration order), so is_homed is already
+        settled by the time mmu_gate_maps.load_persisted_state() decides whether to keep the
+        persisted gate.
+
+        NOTE: a bare M84 / TURN_OFF_MOTORS de-energises the selector through klipper's
+        stepper_enable without Happy Hare seeing it, so last_pos survives a de-energising we
+        never observed. Trusting it is a pre-existing assumption of this scheme, not something
+        the gate fallback adds.
+        """
+        last_pos = self.var_manager.get(VARS_MMU_SELECTOR_LAST_POS, None, namespace=self.mmu_unit.name)
+        if last_pos is None and self.requires_homing:
+            # No position on record. If the gate is still on record it was never invalidated
+            # (an upgrade or a renamed unit that never wrote the namespaced var), so the gate's
+            # calibrated offset is where we are.
+            #
+            # requires_homing only: type-C (LinearMultiGear*Selector) inherits this handler but
+            # is always-homed by MRO, so it never reports unhomed and has nothing to rescue -
+            # and it never re-homes to correct a wrong guess either. Its pre-existing last_pos
+            # restore below is untouched; only the INFERRED position is withheld.
+            last_pos = self._persisted_gate_position()
+            if last_pos is not None:
+                self.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, last_pos, namespace=self.mmu_unit.name)
+
+        if last_pos is not None:
+            self._restore_position(last_pos)
+            self.is_homed = True
+
+
+    def _persisted_gate_position(self):
+        """
+        Position implied by the persisted gate selection, or None if it can't be trusted.
+        """
+        if not self.calibrator.check_calibrated(CALIBRATED_SELECTOR):
+            return None # Offsets are -1 placeholders, so keep reporting unhomed
+
+        gate = self.var_manager.get(VARS_MMU_GATE_SELECTED, TOOL_GATE_UNKNOWN)
+        if not isinstance(gate, int) or gate == TOOL_GATE_UNKNOWN:
+            return None # Explicit: manages_gate() answers True on unknown for EVERY unit
+
+        if not self.mmu_unit.manages_gate(gate):
+            return None # Another unit's gate
+
+        return self._gate_position(self._local_gate(gate))
+
+
+    def _invalidate_persisted_position(self):
+        """
+        Forget where we are, on disk as well as in memory.
+
+        Clears the persisted gate/tool alongside last_pos: the gate alone is enough for
+        _persisted_gate_position() to reconstruct a position, so leaving it behind would
+        resurrect exactly the position this call is invalidating. Scoped to the unit that owns
+        the selection a reboot would restore, so MMU_MOTORS_OFF UNIT=0 cannot wipe a good
+        selection belonging to another unit.
+        """
+        self.is_homed = False
+        self.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, None, namespace=self.mmu_unit.name)
+
+        # The persisted gate, not mmu.gate_selected: the question is literally what a reboot
+        # would reconstruct from this file.
+        gate = self.var_manager.get(VARS_MMU_GATE_SELECTED, TOOL_GATE_UNKNOWN)
+        if isinstance(gate, int) and gate != TOOL_GATE_UNKNOWN and self.mmu_unit.manages_gate(gate):
+            self.var_manager.set(VARS_MMU_GATE_SELECTED, TOOL_GATE_UNKNOWN)
+            self.var_manager.set(VARS_MMU_TOOL_SELECTED, TOOL_GATE_UNKNOWN)
+
+        self.var_manager.write() # One flush, so the pair can never land separately
+
+
     def home(self, force_unload = None):
         """
         Home the selector, optionally unloading filament first.
