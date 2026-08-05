@@ -407,7 +407,6 @@ def pn7160(script=(), status_support=True, irq=False, raises=None, **opts):
     drv._needs_full_setup = False        # _setup_for_read() cleared it
     drv._probe_active = True
     drv._discovery_active = True
-    drv._probe_deadline = reactor.monotonic() + drv._PROBE_WATCHDOG
     i2c.transcript.clear()
     reactor.strict = True
     return drv, i2c, reactor
@@ -483,9 +482,10 @@ class TestPn7160SilentTick(unittest.TestCase):
 
     def test_silence_never_triggers_a_discovery_restart(self):
         """
-        Pins the watchdog asymmetry. In polled mode silence is normal, and a teardown
-        (RF_DEACTIVATE) plus probe_start() mid-move is blocking NCI work - worse than
-        the shim this replaces. 4s here is twice _PROBE_WATCHDOG.
+        Silence is "no tag yet", not a stall, and must never tear discovery down. A
+        teardown (RF_DEACTIVATE) plus probe_start() mid-move is blocking NCI work -
+        worse than the shim this replaces. 4s here is longer than any watchdog this
+        driver used to carry.
         """
         drv, i2c, reactor = pn7160([NACK] * 200)
         for _tick in range(200):
@@ -493,10 +493,28 @@ class TestPn7160SilentTick(unittest.TestCase):
             self.assertIsNone(drv.probe_poll())
         self.assertEqual(i2c.writes(), [],
                          'a write during a run of silence means silence tore discovery '
-                         'down - the polled probe has no time-based watchdog')
-        self.assertIsInstance(drv._probe_deadline, float,
-                              'the IRQ branch compares against _probe_deadline, so it '
-                              'must stay a number even when polled mode ignores it')
+                         'down - the probe has no time-based watchdog')
+
+    def test_irq_silence_never_triggers_a_discovery_restart(self):
+        """
+        THE 500mm SWEEP REGRESSION. A 2s watchdog here used to answer False on normal
+        silence, so MmuNfcManager restarted discovery (_homing_poll) partway through
+        every sweep longer than 2s - a 500mm window at 100mm/s is 5s of legitimate
+        silence. Each restart blinded the reader for probe_start()'s full NCI bring-up
+        (~124ms, 12mm of travel), and the repeated hardware resets provoked I2C
+        START_NACKs that made recovery slower still. Silence must stay None forever.
+        """
+        drv, i2c, reactor = pn7160([], irq=True)
+        drv._handler.irq_state = 0                  # IRQ low: nothing pending
+        for _tick in range(500):                    # 10s at a 20ms tick
+            reactor.now += 0.020
+            self.assertIsNone(drv.probe_poll(),
+                              'IRQ-mode silence must answer None - False restarts '
+                              'discovery mid-sweep and loses the tag')
+        self.assertTrue(drv._probe_active,
+                        'a silent sweep must leave the probe armed')
+        self.assertEqual(i2c.writes(), [],
+                         'an IRQ-low tick must cost no bus traffic at all')
 
     def test_status_less_reply_is_silence_not_an_error(self):
         """

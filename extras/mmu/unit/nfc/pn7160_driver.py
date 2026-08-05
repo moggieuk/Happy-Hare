@@ -1268,7 +1268,6 @@ class PN7160Driver:
         self._clear_current_card()
         # Non-blocking presence probe (homing) state
         self._probe_active = False
-        self._probe_deadline = 0.0
         self._probe_errors = 0
 
         # Advanced PN7160 tuning options are intentionally hidden from the
@@ -1381,11 +1380,21 @@ class PN7160Driver:
     # IRQ is still preferred where it exists, and probe_supported() short-circuits to
     # it: a free question beats a cheap one.
     #
-    # The two modes differ in one place - the watchdog. With IRQ, prolonged silence
-    # means discovery has stalled and is worth a teardown/restart. In polled mode
-    # silence is simply the answer on every tick until the tag arrives, and a restart
-    # means paying probe_start()'s blocking NCI setup mid-move, so polled mode has no
-    # silence watchdog and recovers via the consecutive-frame-error count instead.
+    # NEITHER mode has a silence watchdog, and that is deliberate. Silence is simply
+    # the answer on every tick until the tag arrives - in BOTH modes - so a time-based
+    # teardown cannot tell "the NFCC is wedged" from "the tag has not reached the
+    # reader yet". A sweep is routinely longer than any such timeout: a 500mm
+    # nfc_gate_jog_scan_window at 100mm/s is 5 seconds of entirely normal silence, and
+    # tearing down partway through costs probe_start()'s blocking NCI setup (a VEN
+    # toggle plus full bring-up, ~124ms = 12mm of travel at that speed) with discovery
+    # DOWN for all of it. Worse, a restart storm destabilises the chip: repeated
+    # hardware resets provoke I2C START_NACKs, whose recovery is slower again.
+    #
+    # Note this is NOT the same situation as pn532_driver's watchdog, which is correct
+    # for that chip: there an InListPassiveTarget command is outstanding and the chip
+    # OWES a response, so silence really does mean a wedged exchange. PN7160 discovery
+    # is autonomous and owes nothing until a tag appears. Both modes recover instead
+    # via the consecutive-frame-error count, which counts real faults rather than time.
     #
     # The probe reports PRESENCE and stops there - it never selects or activates the
     # tag. That is not just a simplification: activation goes through
@@ -1394,7 +1403,6 @@ class PN7160Driver:
     # to remove. read_target() does the full discover-and-activate afterwards, once
     # the machine is stationary.
 
-    _PROBE_WATCHDOG = 2.0        # Stalled-discovery restart, seconds (IRQ mode only)
     _PROBE_MAX_FRAME_ERRORS = 3  # Consecutive torn frames before a resync
 
     def probe_supported(self):
@@ -1437,7 +1445,6 @@ class PN7160Driver:
             self._setup_for_read()
             self._handler.start_discovery()
             self._discovery_active = True
-            self._probe_deadline = self._handler.reactor.monotonic() + self._PROBE_WATCHDOG
             self._probe_errors = 0
             self._probe_active = True
             if self._debug >= 3:
@@ -1460,8 +1467,13 @@ class PN7160Driver:
         """
         Collect at most one pending NCI frame.
 
-        Returns True (a tag is in the field), False (discovery failed or stalled - the
+        Returns True (a tag is in the field), False (discovery genuinely failed - the
         caller should restart) or None (nothing pending yet).
+
+        False is reserved for real faults. Silence is NOT one: it is the expected
+        answer on every tick until the tag reaches the reader, in both IRQ and polled
+        mode, and answering False to it makes MmuNfcManager restart discovery mid-move
+        (see _homing_poll) with the reader blind throughout the rebuild.
 
         With irq_pin, a tick with no IRQ pending does no bus I/O and no waiting at
         all; in polled mode it costs one 3-byte I2C transfer and still no pause. On
@@ -1475,14 +1487,11 @@ class PN7160Driver:
         handler = self._handler
         try:
             if handler.irq_enabled and not handler.irq_state:
-                # Nothing pending, and asking cost nothing. The watchdog applies HERE
-                # ONLY: silence with an IRQ line means discovery has stalled, so tear
-                # down and let the caller restart on a clean NFCC. In polled mode
-                # silence is the normal answer and a 2s restart storm mid-move would
-                # be worse than the shim this replaces.
-                if handler.reactor.monotonic() > self._probe_deadline:
-                    self._probe_stop_discovery()
-                    return False
+                # Nothing pending, and asking cost nothing. NO time-based teardown
+                # here: silence means "no tag yet", which is the normal answer for the
+                # whole sweep until the tag arrives. Restarting on it blinds the reader
+                # for the duration of probe_start()'s NCI setup, which is how a healthy
+                # scan turned into a restart storm that found nothing.
                 return None
 
             frame = handler.read_frame_if_pending()
