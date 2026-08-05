@@ -71,7 +71,6 @@ class MmuSensorInsertCommand(BaseCommand):
                     # The entry sensor is upstream of the gear, so an insert here is ALWAYS
                     # the user pushing filament in - the MMU cannot cause one. Record it.
                     mmu.gate_maps.set_gate_status(gate, GATE_UNKNOWN)
-                    mmu._check_pending_filament(gate)  # Have spool_id ready?
 
                     # Autoloading is a gate change, so never start one on top of an
                     # operation already in flight. On real Klipper this is belt-and-braces
@@ -81,10 +80,18 @@ class MmuSensorInsertCommand(BaseCommand):
                     # operation we would be interrupting is suppressed at source instead,
                     # by wrap_suspend_insert_events in _preload_gate / _jog_scan.
                     if mmu.action != ACTION_IDLE:
+                        # Nothing else will consume a pending shared-NFC result for this gate.
+                        mmu._check_pending_filament(gate)  # Have spool_id ready?
                         mmu.log_debug("Not autoloading gate %d: an MMU operation is already "
                                       "in progress" % gate)
                     elif not mmu.is_printing() and mmu.mmu_unit(gate).p.gate_autoload:
+                        # Leave any pending shared-NFC result live: MMU_PRELOAD already grabs
+                        # it up front (_grab_pending, before its own moves) so _preload_gate
+                        # can bypass its per-gate NFC reader and apply the resolved
+                        # spool_id/tag itself on success.
                         mmu.gcode.run_script_from_command("MMU_PRELOAD GATE=%d" % gate)
+                    else:
+                        mmu._check_pending_filament(gate)  # Have spool_id ready?
 
                 elif sensor == SENSOR_EXTRUDER_ENTRY:
                     if mmu.gate_selected != TOOL_GATE_BYPASS:
