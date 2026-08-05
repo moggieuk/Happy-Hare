@@ -122,7 +122,7 @@ reader_type           : rc522\n\
 cs_pin                : $(MCU_NAME):PB14\n\
 spi_bus               : spi2_PB2_PB11_PB10\n\
 spi_speed             : 1000000\n\
-debug                 : n\n\
+debug                 : 0\n\
 \n\
 # NFC reader gates 2/3\n\
 [mmu_nfc_reader unit1_nfc23]\n\
