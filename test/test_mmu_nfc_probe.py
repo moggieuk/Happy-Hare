@@ -407,7 +407,6 @@ def pn7160(script=(), status_support=True, irq=False, raises=None, **opts):
     drv._needs_full_setup = False        # _setup_for_read() cleared it
     drv._probe_active = True
     drv._discovery_active = True
-    drv._probe_deadline = reactor.monotonic() + drv._PROBE_WATCHDOG
     i2c.transcript.clear()
     reactor.strict = True
     return drv, i2c, reactor
@@ -483,9 +482,10 @@ class TestPn7160SilentTick(unittest.TestCase):
 
     def test_silence_never_triggers_a_discovery_restart(self):
         """
-        Pins the watchdog asymmetry. In polled mode silence is normal, and a teardown
-        (RF_DEACTIVATE) plus probe_start() mid-move is blocking NCI work - worse than
-        the shim this replaces. 4s here is twice _PROBE_WATCHDOG.
+        Silence is "no tag yet", not a stall, and must never tear discovery down. A
+        teardown (RF_DEACTIVATE) plus probe_start() mid-move is blocking NCI work -
+        worse than the shim this replaces. 4s here is longer than any watchdog this
+        driver used to carry.
         """
         drv, i2c, reactor = pn7160([NACK] * 200)
         for _tick in range(200):
@@ -493,10 +493,28 @@ class TestPn7160SilentTick(unittest.TestCase):
             self.assertIsNone(drv.probe_poll())
         self.assertEqual(i2c.writes(), [],
                          'a write during a run of silence means silence tore discovery '
-                         'down - the polled probe has no time-based watchdog')
-        self.assertIsInstance(drv._probe_deadline, float,
-                              'the IRQ branch compares against _probe_deadline, so it '
-                              'must stay a number even when polled mode ignores it')
+                         'down - the probe has no time-based watchdog')
+
+    def test_irq_silence_never_triggers_a_discovery_restart(self):
+        """
+        THE 500mm SWEEP REGRESSION. A 2s watchdog here used to answer False on normal
+        silence, so MmuNfcManager restarted discovery (_homing_poll) partway through
+        every sweep longer than 2s - a 500mm window at 100mm/s is 5s of legitimate
+        silence. Each restart blinded the reader for probe_start()'s full NCI bring-up
+        (~124ms, 12mm of travel), and the repeated hardware resets provoked I2C
+        START_NACKs that made recovery slower still. Silence must stay None forever.
+        """
+        drv, i2c, reactor = pn7160([], irq=True)
+        drv._handler.irq_state = 0                  # IRQ low: nothing pending
+        for _tick in range(500):                    # 10s at a 20ms tick
+            reactor.now += 0.020
+            self.assertIsNone(drv.probe_poll(),
+                              'IRQ-mode silence must answer None - False restarts '
+                              'discovery mid-sweep and loses the tag')
+        self.assertTrue(drv._probe_active,
+                        'a silent sweep must leave the probe armed')
+        self.assertEqual(i2c.writes(), [],
+                         'an IRQ-low tick must cost no bus traffic at all')
 
     def test_status_less_reply_is_silence_not_an_error(self):
         """
@@ -515,6 +533,87 @@ class TestPn7160SilentTick(unittest.TestCase):
         self.assertIsNone(drv.probe_poll())
         self.assertEqual(i2c.reads(), [3],
                          'a garbage header must not be followed by a payload read')
+
+
+class TestPn7160TransportErrors(unittest.TestCase):
+    """
+    A Klipper/MCU comms fault is not a dead PN7160. On a CAN toolhead a 20ms polled
+    tick competes with step data, so "Unable to obtain 'i2c_response' response" happens
+    under load and is transient. Escalating one straight to not-alive forced a full
+    re-init (VEN toggle + NCI bring-up, ~124ms blind, 12mm of travel at 100mm/s) whose
+    repeated hardware resets then provoked I2C START_NACKs costing 1.7-2.1s each.
+    """
+
+    KLIPPER_TIMEOUT = Exception("Unable to obtain 'i2c_response' response")
+
+    def test_one_transport_error_is_tolerated(self):
+        """THE regression. One hiccup must not cost the scan."""
+        drv, _i2c, _reactor = pn7160(raises=self.KLIPPER_TIMEOUT)
+        self.assertIsNone(drv.probe_poll(),
+                          'a transient MCU timeout must answer None, not False - '
+                          'False makes MmuNfcManager rebuild discovery mid-sweep')
+        self.assertTrue(drv.is_alive(), 'the reader is fine; the host bus was busy')
+        self.assertFalse(drv._needs_full_setup,
+                         'forcing full setup is what made the next restart cost 124ms')
+        self.assertTrue(drv._probe_active, 'the probe must stay armed')
+
+    def test_a_sustained_run_still_escalates(self):
+        """Tolerance is not blindness - a reader that has really gone must be caught."""
+        drv, _i2c, _reactor = pn7160(raises=self.KLIPPER_TIMEOUT)
+        results = [drv.probe_poll() for _ in range(drv._PROBE_MAX_TRANSPORT_ERRORS)]
+        self.assertEqual(results[:-1], [None] * (drv._PROBE_MAX_TRANSPORT_ERRORS - 1))
+        self.assertIs(results[-1], False, 'the cap must still escalate')
+        self.assertFalse(drv.is_alive())
+        self.assertTrue(drv._needs_full_setup)
+
+    def test_a_good_frame_clears_the_transport_count(self):
+        """
+        Consecutive is the whole point: scattered hiccups across a long sweep must
+        never accumulate into a teardown.
+        """
+        drv, _i2c, _reactor = pn7160([RF_DISCOVER_NTF[:3], RF_DISCOVER_NTF[3:]])
+        drv._probe_transport_errors = drv._PROBE_MAX_TRANSPORT_ERRORS - 1
+        self.assertTrue(drv.probe_poll(), 'a real detection must still report True')
+        self.assertEqual(drv._probe_transport_errors, 0,
+                         'a good frame proves the transport recovered')
+
+
+class TestPn7160TotalDuration(unittest.TestCase):
+    """
+    TOTAL_DURATION is the NCI discovery period: the NFCC interrogates the field once
+    per period then idles. Never sent before, so the firmware default (hundreds of ms)
+    stood, making detection of a moving tag probabilistic - P(catch) ~ dwell / period.
+    """
+
+    def test_the_set_frame_encodes_the_period_little_endian(self):
+        """
+        Hand-encoded NCI. A byte wrong here is a silently wrong period, which shows up
+        only as flaky detection on hardware - exactly the bug being fixed.
+        """
+        cmd = pn7160_driver.NCI_CORE_SET_TOTAL_DURATION_CMD
+        self.assertEqual(cmd[:3], [0x20, 0x02, 0x05],
+                         'CORE_SET_CONFIG (GID CORE, OID 0x02) with 5 payload octets')
+        self.assertEqual(cmd[3:6], [0x01, 0x00, 0x02],
+                         'one parameter: TOTAL_DURATION (0x00), 2 octets long')
+        self.assertEqual(len(cmd), 3 + cmd[2],
+                         'the length octet must match the real payload length')
+        ms = cmd[6] | (cmd[7] << 8)
+        self.assertEqual(ms, pn7160_driver.PN7160_TOTAL_DURATION_MS,
+                         'NCI multi-octet values are little-endian - a byte-swapped '
+                         '50ms becomes 12800ms, which is worse than the default')
+
+    def test_the_period_is_short_enough_for_a_moving_tag(self):
+        """
+        Pins the REASON for the value. At 100mm/s the readable zone is ~15-20mm, so a
+        period much above ~100ms makes detection a coin flip rather than a certainty.
+        """
+        self.assertLessEqual(pn7160_driver.PN7160_TOTAL_DURATION_MS, 100)
+        self.assertGreater(pn7160_driver.PN7160_TOTAL_DURATION_MS, 0)
+
+    def test_the_get_frame_asks_for_total_duration(self):
+        cmd = pn7160_driver.NCI_CORE_GET_TOTAL_DURATION_CMD
+        self.assertEqual(cmd, [0x20, 0x03, 0x02, 0x01, 0x00],
+                         'CORE_GET_CONFIG for one parameter, TOTAL_DURATION')
 
 
 class TestPn7160Detection(unittest.TestCase):
@@ -604,7 +703,15 @@ class TestPn7160ErrorTaxonomy(unittest.TestCase):
         self.assertEqual(drv._probe_errors, 0)
 
     def test_a_real_transport_failure_still_escalates(self):
+        """
+        A SUSTAINED transport failure must still be reported. Escalation is now on the
+        consecutive count rather than the first fault, because a single one is usually
+        just a busy host bus (see TestPn7160TransportErrors) - but a reader that has
+        genuinely gone must not be polled forever.
+        """
         drv, _i2c, _reactor = pn7160(raises=RuntimeError('mcu is gone'))
+        for _ in range(drv._PROBE_MAX_TRANSPORT_ERRORS - 1):
+            self.assertIsNone(drv.probe_poll(), 'below the cap: tolerated')
         self.assertFalse(drv.probe_poll())
         self.assertFalse(drv.is_alive())
         self.assertTrue(drv._needs_full_setup,
@@ -657,9 +764,11 @@ class TestPn7160ProbeStartCost(unittest.TestCase):
     point of no_irq_fast_poll is to bring that down to something a move can absorb.
     """
 
-    # RSPs the setup sequence waits for: CORE_RESET, CORE_INIT, RF_DISCOVER_MAP, RF_DISCOVER
+    # RSPs the setup sequence waits for, in order: CORE_RESET, CORE_INIT,
+    # CORE_SET_CONFIG (TOTAL_DURATION), RF_DISCOVER_MAP, RF_DISCOVER
     SETUP_RSPS = ([0x40, 0x00, 0x03, 0x00, 0x11, 0x01],
                   [0x40, 0x01, 0x01, 0x00],
+                  [0x40, 0x02, 0x02, 0x00, 0x00],
                   [0x41, 0x00, 0x01, 0x00],
                   [0x41, 0x03, 0x01, 0x00])
 

@@ -33,6 +33,32 @@ NCI_RF_DISCOVER_NFCA_NFCV_CMD = [
 NCI_RF_DEACTIVATE_IDLE_CMD = [0x21, 0x06, 0x01, 0x00]
 PN7160_RF_DEACTIVATE_GUARD_TIME = 0.025
 
+# NCI discovery period (RF config parameter TOTAL_DURATION, ID 0x00). The NFCC
+# interrogates the field once per period then idles for the remainder, so this - not
+# the host probe tick - bounds how fast a MOVING tag can be caught. Never sent before,
+# which left the NXP firmware default (measured in the hundreds of ms) in force, and
+# CORE_RESET with clear-config re-wipes it on every full setup.
+#
+# Why it matters: detection is probabilistic, P(catch) ~ dwell / period. A ~15-20mm
+# readable zone at 100mm/s is 150-200ms of dwell, so a ~500ms period catches the tag
+# on roughly one pass in three - which is exactly the hit rate seen on hardware, with
+# 500mm sweeps running their full length undetected in between. At 50ms the field is
+# interrogated every 5mm at 100mm/s, comfortably inside the zone.
+#
+# Tune with the millisecond value; the frame is built from it at import time.
+PN7160_TOTAL_DURATION_MS = 50
+NCI_CORE_SET_TOTAL_DURATION_CMD = [
+    0x20, 0x02, 0x05,       # CORE_SET_CONFIG, 5 payload octets
+    0x01,                   # one parameter follows
+    0x00, 0x02,             # TOTAL_DURATION, value is 2 octets
+    PN7160_TOTAL_DURATION_MS & 0xFF,         # uint16, little-endian
+    (PN7160_TOTAL_DURATION_MS >> 8) & 0xFF,
+]
+NCI_CORE_GET_TOTAL_DURATION_CMD = [
+    0x20, 0x03, 0x02,       # CORE_GET_CONFIG, 2 payload octets
+    0x01, 0x00,             # one parameter: TOTAL_DURATION
+]
+
 NCI_GID_CORE = 0x00
 NCI_GID_RF = 0x01
 NCI_MT_DATA = 0x00
@@ -1063,6 +1089,55 @@ class PN7160Handler:
         return [rsp] + extra
 
 
+    def _log_current_total_duration(self):
+        """
+        Read back TOTAL_DURATION before overwriting it, so the firmware default is
+        recorded rather than assumed. debug >= 3 only - this costs an NCI round trip
+        and its whole value is diagnostic.
+
+        CORE_GET_CONFIG_RSP payload: status, numParams, then ID/Len/Value triples.
+        """
+        try:
+            rsp, _extra = self.command(
+                NCI_CORE_GET_TOTAL_DURATION_CMD, NCI_GID_CORE, 0x03, timeout=1.0)
+        except Exception as e:
+            self._core_info("TOTAL_DURATION read-back unavailable: %s", e)
+            return
+        # 40 03 <len> <status> <numParams> <id> <len> <lo> <hi>
+        if len(rsp) >= 9 and rsp[3] == NCI_STATUS_OK and rsp[5] == 0x00:
+            self._core_info("TOTAL_DURATION was %dms (firmware default)",
+                            rsp[7] | (rsp[8] << 8))
+        else:
+            self._core_info("TOTAL_DURATION read-back unparsed: %s", _hex(rsp))
+
+
+    def configure_total_duration(self):
+        """
+        Set the NCI discovery period (see PN7160_TOTAL_DURATION_MS).
+
+        Must run while the NFCC is IDLE - after CORE_INIT, before RF_DISCOVER - as NCI
+        does not allow configuration changes once discovery is running.
+
+        Non-fatal: a chip that rejects the parameter still reads tags, just at the old
+        default, so warn and carry on rather than failing bring-up over a tuning knob.
+        """
+        # NB: on the HANDLER 'debug' is the level and '_debug' is the log method - the
+        # reverse of PN7160Driver, where '_debug' holds the level.
+        if self.debug >= 3:
+            self._log_current_total_duration()
+        try:
+            rsp, extra = self.command(
+                NCI_CORE_SET_TOTAL_DURATION_CMD, NCI_GID_CORE, 0x02, timeout=1.0)
+        except Exception as e:
+            logger.warning("[%s pn7160] TOTAL_DURATION=%dms rejected (%s) - discovery "
+                           "stays at the firmware default, so a tag crossing the "
+                           "antenna during a move may not be caught",
+                           self._name, PN7160_TOTAL_DURATION_MS, e)
+            return []
+        self._core_info("TOTAL_DURATION set to %dms", PN7160_TOTAL_DURATION_MS)
+        return [rsp] + extra
+
+
     def start_discovery(self):
         rsp, extra = self.command(
             NCI_RF_DISCOVER_NFCA_NFCV_CMD, NCI_GID_RF, 0x03, timeout=1.0,
@@ -1268,8 +1343,8 @@ class PN7160Driver:
         self._clear_current_card()
         # Non-blocking presence probe (homing) state
         self._probe_active = False
-        self._probe_deadline = 0.0
         self._probe_errors = 0
+        self._probe_transport_errors = 0
 
         # Advanced PN7160 tuning options are intentionally hidden from the
         # default config templates.  Users can still override them in a specific
@@ -1351,6 +1426,12 @@ class PN7160Driver:
             full = self._needs_full_setup
         if full:
             self._handler.connect_nci(reset=True, keep_config=False)
+            # Order is load-bearing: the clear-config CORE_RESET above is what wipes
+            # TOTAL_DURATION, and NCI only accepts config changes while IDLE, so this
+            # has to sit after the reset and before any RF_DISCOVER. Full setup only -
+            # probe_start()'s keep-config path is the homing critical path, and a
+            # keep-config reset preserves the value anyway.
+            self._handler.configure_total_duration()
             self._handler.configure_discovery_map()
         else:
             self._handler.connect_nci(reset=False, keep_config=True)
@@ -1381,11 +1462,21 @@ class PN7160Driver:
     # IRQ is still preferred where it exists, and probe_supported() short-circuits to
     # it: a free question beats a cheap one.
     #
-    # The two modes differ in one place - the watchdog. With IRQ, prolonged silence
-    # means discovery has stalled and is worth a teardown/restart. In polled mode
-    # silence is simply the answer on every tick until the tag arrives, and a restart
-    # means paying probe_start()'s blocking NCI setup mid-move, so polled mode has no
-    # silence watchdog and recovers via the consecutive-frame-error count instead.
+    # NEITHER mode has a silence watchdog, and that is deliberate. Silence is simply
+    # the answer on every tick until the tag arrives - in BOTH modes - so a time-based
+    # teardown cannot tell "the NFCC is wedged" from "the tag has not reached the
+    # reader yet". A sweep is routinely longer than any such timeout: a 500mm
+    # nfc_gate_jog_scan_window at 100mm/s is 5 seconds of entirely normal silence, and
+    # tearing down partway through costs probe_start()'s blocking NCI setup (a VEN
+    # toggle plus full bring-up, ~124ms = 12mm of travel at that speed) with discovery
+    # DOWN for all of it. Worse, a restart storm destabilises the chip: repeated
+    # hardware resets provoke I2C START_NACKs, whose recovery is slower again.
+    #
+    # Note this is NOT the same situation as pn532_driver's watchdog, which is correct
+    # for that chip: there an InListPassiveTarget command is outstanding and the chip
+    # OWES a response, so silence really does mean a wedged exchange. PN7160 discovery
+    # is autonomous and owes nothing until a tag appears. Both modes recover instead
+    # via the consecutive-frame-error count, which counts real faults rather than time.
     #
     # The probe reports PRESENCE and stops there - it never selects or activates the
     # tag. That is not just a simplification: activation goes through
@@ -1394,8 +1485,13 @@ class PN7160Driver:
     # to remove. read_target() does the full discover-and-activate afterwards, once
     # the machine is stationary.
 
-    _PROBE_WATCHDOG = 2.0        # Stalled-discovery restart, seconds (IRQ mode only)
-    _PROBE_MAX_FRAME_ERRORS = 3  # Consecutive torn frames before a resync
+    _PROBE_MAX_FRAME_ERRORS = 3      # Consecutive torn frames before a resync
+    _PROBE_MAX_TRANSPORT_ERRORS = 5  # Consecutive Klipper/MCU comms faults before
+                                     # the reader is declared gone. Higher than the
+                                     # frame cap on purpose: a torn frame means the
+                                     # NFCC misbehaved, while these mean the host bus
+                                     # was busy, which is both likelier and more
+                                     # obviously transient during a fast move.
 
     def probe_supported(self):
         """
@@ -1437,8 +1533,8 @@ class PN7160Driver:
             self._setup_for_read()
             self._handler.start_discovery()
             self._discovery_active = True
-            self._probe_deadline = self._handler.reactor.monotonic() + self._PROBE_WATCHDOG
             self._probe_errors = 0
+            self._probe_transport_errors = 0
             self._probe_active = True
             if self._debug >= 3:
                 logger.info("[%s pn7160] probe_start took %.3fs", self._name,
@@ -1460,8 +1556,13 @@ class PN7160Driver:
         """
         Collect at most one pending NCI frame.
 
-        Returns True (a tag is in the field), False (discovery failed or stalled - the
+        Returns True (a tag is in the field), False (discovery genuinely failed - the
         caller should restart) or None (nothing pending yet).
+
+        False is reserved for real faults. Silence is NOT one: it is the expected
+        answer on every tick until the tag reaches the reader, in both IRQ and polled
+        mode, and answering False to it makes MmuNfcManager restart discovery mid-move
+        (see _homing_poll) with the reader blind throughout the rebuild.
 
         With irq_pin, a tick with no IRQ pending does no bus I/O and no waiting at
         all; in polled mode it costs one 3-byte I2C transfer and still no pause. On
@@ -1475,14 +1576,11 @@ class PN7160Driver:
         handler = self._handler
         try:
             if handler.irq_enabled and not handler.irq_state:
-                # Nothing pending, and asking cost nothing. The watchdog applies HERE
-                # ONLY: silence with an IRQ line means discovery has stalled, so tear
-                # down and let the caller restart on a clean NFCC. In polled mode
-                # silence is the normal answer and a 2s restart storm mid-move would
-                # be worse than the shim this replaces.
-                if handler.reactor.monotonic() > self._probe_deadline:
-                    self._probe_stop_discovery()
-                    return False
+                # Nothing pending, and asking cost nothing. NO time-based teardown
+                # here: silence means "no tag yet", which is the normal answer for the
+                # whole sweep until the tag arrives. Restarting on it blinds the reader
+                # for the duration of probe_start()'s NCI setup, which is how a healthy
+                # scan turned into a restart storm that found nothing.
                 return None
 
             frame = handler.read_frame_if_pending()
@@ -1500,6 +1598,7 @@ class PN7160Driver:
                 # anything - no teardown, no restart, no not-alive.
                 return None
             self._probe_errors = 0
+            self._probe_transport_errors = 0
             if handler.is_tag_present_ntf(frame):
                 # Presence is all we need. Do NOT go on to select/activate here -
                 # that path blocks on an NCI command; read_target() does it later.
@@ -1514,13 +1613,43 @@ class PN7160Driver:
             # stream is out of step.
             return self._probe_frame_error(e)
         except Exception as e:
-            logger.warning("[%s pn7160] probe_poll failed: %s", self._name, e)
-            self._probe_active = False
-            self._alive = False
-            self._handler.initialized = False
-            self._needs_full_setup = True
-            self._clear_current_card()
-            return False
+            # A HOST-side transport fault, not a reader fault - see
+            # _probe_transport_error for why that distinction has to be made here.
+            return self._probe_transport_error(e)
+
+
+    def _probe_transport_error(self, detail):
+        """
+        Count a Klipper/MCU transport fault, which says nothing about the PN7160.
+
+        A 20ms polled tick is an I2C round trip to an MCU that, on a CAN toolhead,
+        is simultaneously carrying step data. Missing a response deadline there
+        surfaces as Klipper's "Unable to obtain 'i2c_response' response" (or a bare
+        ('i2c_response', N) tuple) and is transient by nature.
+
+        Treating one as a dead reader is what turned a single hiccup into a lost
+        scan: it set _needs_full_setup, so the caller's restart paid a VEN toggle
+        plus a complete NCI bring-up (~124ms with discovery DOWN, 12mm of travel at
+        100mm/s), and the repeated hardware resets then provoked I2C START_NACKs
+        whose recovery ran to 1.7-2.1s each. Tolerate a short run of them instead.
+
+        Escalation past the cap is unchanged - a reader that really has gone away
+        must still be marked not-alive rather than polled forever.
+        """
+        self._probe_transport_errors += 1
+        if self._probe_transport_errors < self._PROBE_MAX_TRANSPORT_ERRORS:
+            if self._debug >= 3:
+                logger.info("[%s pn7160] probe transport error %d (tolerated): %s",
+                            self._name, self._probe_transport_errors, detail)
+            return None
+        logger.warning("[%s pn7160] probe_poll failed after %d consecutive transport "
+                       "errors: %s", self._name, self._probe_transport_errors, detail)
+        self._probe_active = False
+        self._alive = False
+        self._handler.initialized = False
+        self._needs_full_setup = True
+        self._clear_current_card()
+        return False
 
 
     def _probe_frame_error(self, detail):
