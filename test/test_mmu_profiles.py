@@ -197,25 +197,40 @@ class TestMultiUnitMachine(unittest.TestCase):
         self.assertFalse(by_name['unit0'].selector.is_homed,
                          'unit0 is uncalibrated in the harness, so it must NOT claim homed')
 
-    def test_sparse_per_gate_nfc_readers_survive_config_load(self):
+    def test_per_gate_nfc_readers_are_shared_across_a_gate_pair(self):
         """
-        THE regression test for blank-preserving getlist. The ViViD fits readers on gates 0
-        and 2 only (boards/custom/Kconfig.vvd:57-58), so nfc_readers renders as
-        'unit1_nfc0, , unit1_nfc2,'. Drop the blanks and it arrives as 2 entries where
-        mmu_unit.py:208-209 demands 0 or num_gates, and the whole machine fails to load.
+        The ViViD hand-writes two physical readers, each covering an adjacent gate pair
+        (boards/custom/Kconfig.vvd:120-133), so nfc_readers renders DENSE - every gate
+        populated, with gates 0/1 and 2/3 naming the SAME reader - rather than sparse.
+        mmu_nfc_manager._lookup_or_create_reader dedupes by name for exactly this case
+        ("Already created (e.g. shared between gates)").
+
+        unit1 has CUSTOM_NFC_READER_SETUP set, which hides the generic wiring menu
+        entirely (installer/Kconfig.nfc_reader), so it has no common reader of its own -
+        that lives on unit0 instead (test_a_common_reader_can_coexist_with_per_gate_ones).
         """
         from test.hh import cfg, profiles
         parser = cfg.assemble(cfg.render(profiles.get('ercf_vvd')))
         raw = dict(parser.items('mmu_unit unit1'))['nfc_readers']
         self.assertEqual([p.strip() for p in raw.split(',')],
-                         ['unit1_nfc0', '', 'unit1_nfc2', ''])
+                         ['unit1_nfc01', 'unit1_nfc01', 'unit1_nfc23', 'unit1_nfc23'])
 
         unit1 = {u.name: u for u in self.hh.mmu.mmu_machine.units}['unit1']
         self.assertEqual(len(unit1.nfc_readers), 4)
-        self.assertEqual([bool(r) for r in unit1.nfc_readers],
-                         [True, False, True, False])
-        # ...and the common reader coexists with them
-        self.assertEqual(unit1.nfc_reader, 'unit1_nfc')
+        self.assertEqual([bool(r) for r in unit1.nfc_readers], [True, True, True, True])
+        self.assertEqual(unit1.nfc_reader, '', 'unit1 must have no common reader')
+
+    def test_a_common_reader_can_coexist_with_per_gate_ones(self):
+        """
+        THE regression test for blank-preserving getlist, moved here from unit1 once
+        unit1's per-gate list stopped being sparse (see the test above). unit0 renders a
+        common reader (the generic wiring prompts, unaffected by CUSTOM_NFC_READER_SETUP)
+        alongside unit1's own per-gate list on the SAME multi-unit machine - two
+        different mechanisms coexisting without either one clobbering the other.
+        """
+        unit0 = {u.name: u for u in self.hh.mmu.mmu_machine.units}['unit0']
+        self.assertEqual(unit0.nfc_reader, 'unit0_nfc')
+        self.assertEqual(unit0.nfc_readers, [])
 
     def test_filament_heater_resolves(self):
         """

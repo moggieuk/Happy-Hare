@@ -258,6 +258,82 @@ class TestErrorRecovery(unittest.TestCase):
         self.assertIn("nonsense", builder.write())
 
 
+# Klipper appends a SAVE_CONFIG block to printer.cfg and everything from that marker to EOF
+# (pid, input_shaper, bed_mesh, save_variables, ...) is auto-generated and must never be
+# touched. install_includes() used to add [include mmu/optional/client_macros.cfg] with
+# at_top=False, and add_section() fell through to "append to the absolute end of the
+# document" whenever there was no other [include ...] to anchor after (e.g. a fresh
+# printer.cfg, or INSTALL_12864_MENU disabled) - landing the include *after* a real user's
+# SAVE_CONFIG block.
+SAVE_CONFIG_BLOCK = (
+    "#*# <---------------------- SAVE_CONFIG ---------------------->\n"
+    "#*# DO NOT EDIT THIS BLOCK OR BELOW. The contents are auto-generated.\n"
+    "#*#\n"
+    "#*# [heater_bed]\n"
+    "#*# control = pid\n"
+    "#*# pid_kp = 42.438\n"
+    "#*# pid_ki = 0.922\n"
+    "#*# pid_kd = 488.564\n"
+    "#*#\n"
+    "#*# [extruder]\n"
+    "#*#\n"
+    "#*# [input_shaper]\n"
+    "#*# shaper_freq_x = 72.0\n"
+    "#*# shaper_type_y = ei\n"
+    "#*# shaper_freq_y = 52.0\n"
+    "#*# shaper_type_x = ei\n"
+    "#*#\n"
+)
+
+
+class TestSaveConfigIsNeverWrittenInto(unittest.TestCase):
+
+    def test_the_reported_bug_is_fixed(self):
+        """
+        No pre-existing [include ...] to anchor after - the exact fallback path that used
+        to append after SAVE_CONFIG instead of before it
+        """
+        buf = "[stepper_x]\nstep_pin: PB1\n\n[extruder]\nstep_pin: PC1\n\n" + SAVE_CONFIG_BLOCK
+        builder = build(buf)
+        builder.add_section("include mmu/optional/client_macros.cfg", comment="Client macros", at_top=False)
+        out = builder.write()
+
+        marker_pos = out.index("#*# <---")
+        include_pos = out.index("[include mmu/optional/client_macros.cfg]")
+        self.assertLess(include_pos, marker_pos)
+        self.assertTrue(out.endswith(SAVE_CONFIG_BLOCK), out)
+
+    def test_anchored_case_still_stays_above_save_config(self):
+        """A normal install: an existing include to anchor after, and a SAVE_CONFIG block"""
+        buf = "[include mmu/base/*.cfg]\n\n[stepper_x]\nstep_pin: PB1\n\n" + SAVE_CONFIG_BLOCK
+        builder = build(buf)
+        builder.add_section("include mmu/optional/client_macros.cfg", comment="Client macros", at_top=False)
+        out = builder.write()
+
+        marker_pos = out.index("#*# <---")
+        include_pos = out.index("[include mmu/optional/client_macros.cfg]")
+        self.assertLess(include_pos, marker_pos)
+        self.assertTrue(out.endswith(SAVE_CONFIG_BLOCK), out)
+        self.assertEqual(build(out).sections()[:2],
+                         ["include mmu/base/*.cfg", "include mmu/optional/client_macros.cfg"])
+
+    def test_no_save_config_present_is_unaffected(self):
+        """No marker in the file - falls back to the original append-to-end behavior"""
+        buf = "[stepper_x]\nstep_pin: PB1\n"
+        builder = build(buf)
+        builder.add_section("include mmu/optional/client_macros.cfg", comment="Client macros", at_top=False)
+        out = builder.write()
+        self.assertTrue(out.rstrip("\n").endswith("[include mmu/optional/client_macros.cfg]"), out)
+
+    def test_idempotent_round_trip(self):
+        buf = "[stepper_x]\nstep_pin: PB1\n\n" + SAVE_CONFIG_BLOCK
+        builder = build(buf)
+        builder.add_section("include mmu/optional/client_macros.cfg", comment="Client macros", at_top=False)
+        once = builder.write()
+        twice = build(once).write()
+        self.assertEqual(once, twice)
+
+
 # The installer rebuilds Happy Hare's cfg files from templates and copies the user's values
 # across with set(get(...)) (installer/build.py:399). get() strips the value, so set() has to
 # put it back where it was without the surrounding layout as a guide. It used to overwrite the

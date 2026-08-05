@@ -347,10 +347,12 @@ ENCODER = BOXTURTLE.derive(
 #     gates 9-12), and sensors qualified per unit
 #   - IndexedSelector, a third selector class - and one that self-calibrates and
 #     self-homes at handle_ready (mmu_indexed_selector.py:137-140)
-#   - a SPARSE per-gate list. The ViViD fits NFC readers on gates 0 and 2 only
-#     (boards/custom/Kconfig.vvd:57-58), so nfc_readers renders as
-#     'unit1_nfc0, , unit1_nfc2,'. Every other profile populates every gate, which is why
-#     the harness's own getlist could drop blanks unnoticed for so long.
+#   - a common reader coexisting with a per-gate list, on DIFFERENT units. unit0 has a
+#     shared PN532 (nfc_reader='unit0_nfc') through the generic wiring prompts; unit1's
+#     CUSTOM_NFC_READER_SETUP hides that menu entirely and hand-writes two custom readers
+#     instead (boards/custom/Kconfig.vvd), one per adjacent gate pair, so nfc_readers
+#     renders DENSE - 'unit1_nfc01, unit1_nfc01, unit1_nfc23, unit1_nfc23' - with no
+#     common reader of its own (nfc_reader is blank).
 #   - a machine whose filament_heater must resolve, i.e. the heater_generic fake
 #   - LEDs on a chain declared OUTSIDE Happy Hare's own config (unit0 points at
 #     'neopixel:cabinet_leds' from the user's printer.cfg - see bootstrap.PRINTER_STUB)
@@ -448,6 +450,14 @@ ERCF_VVD = Profile(
             'MMU_HAS_SENSOR_BUFFER_PROPORTIONAL': True,
             'PIN_BUFFER_ANALOG': 'PF6',
             'CHOICE_EXTRUDER_HOMING_ENDSTOP_ENCODER': True,
+            # A shared PN532 over host serial - the only NFC transport that is not
+            # MCU-mediated. Lives on unit0 (generic wiring prompts) rather than unit1: VVD's
+            # CUSTOM_NFC_READER_SETUP hides that whole menu and hand-writes its own per-gate
+            # readers instead (boards/custom/Kconfig.vvd), so it has no common reader at all.
+            'MMU_HAS_NFC_READER': True,
+            'MMU_HAS_COMMON_NFC_READER': True,
+            'CHOICE_NFC_READER_TYPE_PN532_UART': True,
+            'PARAM_NFC_READER_SERIAL': '/dev/serial/shared_nfc',
         }),
         # ViViD 1.0. Its buffer lives on a SECOND mcu (OPTION_VVD_BUFFER selects
         # MMU_HAS_BUFFER_MCU), so this unit alone renders two [mcu] sections.
@@ -457,14 +467,6 @@ ERCF_VVD = Profile(
             'OPTION_VVD_BUFFER': True,
             # Explicit, because the derived default from UNIT_INDEX would be 'VVD-1'
             'PARAM_DISPLAY_NAME': 'VVD-11',
-            # A shared PN532 over host serial - the only NFC transport that is not
-            # MCU-mediated. Note the board ALSO defaults MMU_HAS_PER_GATE_NFC_READERS on
-            # (gates 0 and 2), so this unit renders a common reader AND a sparse per-gate
-            # list. That combination is what the getlist fix exists for.
-            'MMU_HAS_NFC_READER': True,
-            'MMU_HAS_COMMON_NFC_READER': True,
-            'CHOICE_NFC_READER_TYPE_PN532_UART': True,
-            'PARAM_NFC_READER_SERIAL': '/dev/serial/shared_nfc',
             'MMU_HAS_EJECT_BUTTONS': True,
             'PIN_EJECT_BUTTON_0': 'unit1:pin0',
             'PIN_EJECT_BUTTON_1': 'unit1:pin1',

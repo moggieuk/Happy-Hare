@@ -260,6 +260,26 @@ class TestPreloadNfcCompound(NfcScanTestCase):
         self.assertIn('preloading gate 0...', said)
         self.assertNotIn('nfc:', said)
 
+    def test_pending_shared_uid_bypasses_the_per_gate_reader(self):
+        """
+        A shared-reader pending takes precedence over this gate's own NFC reader: the
+        autoload preload it triggers must skip the per-gate scan entirely and apply the
+        pending spool_id, rather than re-scan for (and not find) a tag of its own.
+
+        Regression test: the entry-insert handler used to consume the pending before
+        MMU_PRELOAD's _grab_pending() ever saw it (mmu_sensor_insert.py), so have_pending
+        was always False on the autoload path and the per-gate scan always ran.
+        """
+        self.hh.mmu.mmu_unit(0).p.gate_autoload = 1
+        self.hh.mmu.pending_spool_id = 7  # No tag attached to gate 0 - a scan would find none
+        at = len(self.hh.console)
+        self.hh.place_filament(0, position=self.fil.layout['mmu_entry'] + 10.0, quiet=False)
+        self.hh.settle()
+        banners = [l for l in self.hh.console[at:] if l.startswith('Preloading')]
+        self.assertEqual(banners, ['Preloading gate 0...'],
+                         'per-gate NFC scan ran despite a pending shared-reader UID')
+        self.assertEqual(self.hh.mmu.gate_maps.gate_spool_id[0], 7)
+
     def test_nfc_first_finishes_on_the_gate_and_parks_without_reverse_homing(self):
         """
         Reader stops the move, tag is read, homing CONTINUES to the gate switch - so the
