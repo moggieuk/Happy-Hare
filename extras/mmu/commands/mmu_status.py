@@ -103,7 +103,7 @@ class MmuStatusCommand(BaseCommand):
             lines.append(". Toolhead position saved")
 
         lines.append(
-            f"\nMMU gear stepper at {mmu.gear_run_current_percent}% current and is "
+            f"\nMMU gear stepper at {mmu.gear_run_current()}% current and is "
             f"{'SYNCED' if mmu.drive().is_synced_to_extruder() else 'NOT SYNCED'} "
             f"to extruder"
         )
