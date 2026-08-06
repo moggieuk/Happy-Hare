@@ -301,8 +301,11 @@ class MmuUnit:
                             logging.info("MMU: Loaded: [%s]" % alt_tmc_section)
                             break
 
-        # Now load the mmu_steppers and create control wrappers
+        # Now load the mmu_steppers and create control wrappers.
+        # 'drives' is gate-indexed and repeats the same object on a single-gear unit, so
+        # 'drives_unique' exists for anything that must touch each drive exactly once
         self.drives = []
+        self.drives_unique = []
         drive = None
         for i, sname in enumerate(self.mmu_gear_names):
             if drive is None or self.multigear:
@@ -313,6 +316,7 @@ class MmuUnit:
                 self.printer.add_object(c.get_name(), gear)
                 logging.info(f"MMU: Loaded: [{section}]")
                 drive = MmuDrive(config, self, gear, self.extruder_wrapper.homing_extruder_stepper)
+                self.drives_unique.append(drive)
 
             logging.info(f"MMU: Created: MmuDrive for gate {self.first_gate + i} using mmu_stepper {sname}")
             self.drives.append(drive)
@@ -582,23 +586,11 @@ class MmuUnit:
     def handle_connect(self):
         self.mmu = self.mmu_machine.mmu_controller # Master MMU controller
 
-        # Find and record all gear steppers, controlling tmc chip (if available) and default current indexed by gate
-        self.mmu_gear_tmcs = []
-        self.mmu_gear_currents = []
-
-        for name in self.mmu_gear_names:
-            for chip in TMC_CHIPS:
-                c = self.printer.lookup_object("%s mmu_stepper %s" % (chip, name), None)
-                if c is not None:
-                    self.mmu_gear_tmcs.append(c)
-                    self.mmu_gear_currents.append(c.get_status(0).get("run_current"))
-                    break
-            else:
-                self.mmu_gear_tmcs.append(None)
-                self.mmu_gear_currents.append(None)
-
-        gates_with_tmc    = [i + self.first_gate for i, tmc in enumerate(self.mmu_gear_tmcs) if tmc is not None]
-        gates_without_tmc = [i + self.first_gate for i, tmc in enumerate(self.mmu_gear_tmcs) if tmc is None]
+        # Each drive resolved its own tmc chip and default current at connect. Report per gate:
+        # a single-gear unit shares one drive across all of them, so every gate is covered
+        gate_tmcs = [drive.tmc_obj() for drive in self.drives]
+        gates_with_tmc    = [i + self.first_gate for i, tmc in enumerate(gate_tmcs) if tmc is not None]
+        gates_without_tmc = [i + self.first_gate for i, tmc in enumerate(gate_tmcs) if tmc is None]
 
         if gates_with_tmc:
             self.mmu.log_debug(
@@ -631,6 +623,13 @@ class MmuUnit:
 
 
     def reinit(self):
+        # Drives and the extruder wrapper are not subcomponents (shared objects deliberately are
+        # not), so walk them here. The wrapper may be shared with another unit, but its reset is
+        # idempotent so reaching it once per unit costs nothing
+        for drive in self.drives_unique:
+            drive.reinit()
+        self.extruder_wrapper.reinit()
+
         for obj in self.subcomponents:
             if obj is not None:
                 method = getattr(obj, "reinit", None)
@@ -743,12 +742,10 @@ class MmuUnit:
         return self.drives[lgate]
 
     def gear_tmc_obj(self, gate):
-        lgate = self.local_gate(gate, True)
-        return self.mmu_gear_tmcs[lgate]
+        return self.drive_obj(gate).tmc_obj()
 
     def gear_default_current(self, gate):
-        lgate = self.local_gate(gate, True)
-        return self.mmu_gear_currents[lgate]
+        return self.drive_obj(gate).default_current()
 
 
     # Parallel accessors extruder stepper to match MMU gear stepper accessors

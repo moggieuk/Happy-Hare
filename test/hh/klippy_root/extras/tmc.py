@@ -1,13 +1,15 @@
 # Fake Klipper extras/tmc.py (+ per-chip shims) for the Happy Hare test harness.
 #
-# Two jobs:
+# Three jobs:
 #
-# 1. get_status() must expose 'run_current'. That is the ONLY field HH reads
-#    (extras/mmu/mmu_unit.py:593, extras/mmu/unit/mmu_extruder_wrapper.py:109).
-#    Current CHANGES go out as SET_TMC_CURRENT gcode
-#    (extras/mmu/mmu_filament_movement.py:3489), so no setter is needed.
+# 1. get_status() must expose 'run_current'. HH snapshots it once at connect as each
+#    stepper's default (extras/mmu/mmu_unit.py, extras/mmu/unit/mmu_extruder_wrapper.py).
 #
-# 2. It must register a pin chip named "<chip>_<stepper>" exposing 'virtual_endstop',
+# 2. It must model SET_TMC_CURRENT, so run_current actually tracks what HH asked for.
+#    Without the handler the command falls through gcode.py's ignore-unknown path and the
+#    modelled current never moves - the console shows HH's intent with nothing behind it.
+#
+# 3. It must register a pin chip named "<chip>_<stepper>" exposing 'virtual_endstop',
 #    mirroring Klipper's TMCVirtualPinHelper. The rendered BoxTurtle config relies on
 #    this: [mmu_stepper unit0_gear] has
 #        extra_endstops: mmu_gear_touch=tmc2209_unit0_gear:virtual_endstop
@@ -34,12 +36,40 @@ class TMCCommandHelper:
         self.diag_pin = config.get('diag_pin', None)
         self.mcu_tmc = mcu_tmc
         self.echeck_helper = None
+        self.max_current = config.getfloat('max_current', 2.0, above=0.)
         self.current_changes = []       # test assertion surface
+
+        # Keyed on STEPPER= exactly as real Klipper's TMCCommandHelper does. HH changes gear
+        # and extruder current by emitting this gcode, so without the handler the modelled
+        # driver never moves and any test or panel reading it is reading the config default.
+        self.printer.lookup_object('gcode').register_mux_command(
+            'SET_TMC_CURRENT', 'STEPPER', self.stepper_name,
+            self._cmd_SET_TMC_CURRENT,
+            desc='Set the current of a TMC driver')
+
+    def get_current(self):
+        return self.run_current, self.hold_current, self.hold_current, self.max_current
 
     def set_current(self, run_current, hold_current, print_time):
         self.run_current = run_current
         self.hold_current = hold_current
         self.current_changes.append((print_time, run_current, hold_current))
+
+    def _cmd_SET_TMC_CURRENT(self, gcmd):
+        # Mirrors real Klipper: both args optional, a bare call is a query, and the reported
+        # value is re-read after applying so it is the applied current, not the requested one.
+        run_current = gcmd.get_float('CURRENT', None, minval=0., maxval=self.max_current)
+        hold_current = gcmd.get_float('HOLDCURRENT', None, above=0., maxval=self.max_current)
+
+        if run_current is not None or hold_current is not None:
+            prev_run, _prev_hold, req_hold, _max = self.get_current()
+            toolhead = self.printer.lookup_object('toolhead')
+            self.set_current(prev_run if run_current is None else run_current,
+                             req_hold if hold_current is None else hold_current,
+                             toolhead.get_last_move_time())
+
+        gcmd.respond_info("Run Current: %0.2fA Hold Current: %0.2fA"
+                          % (self.run_current, self.hold_current))
 
     def get_status(self, eventtime=None):
         return {
@@ -86,6 +116,8 @@ class TMC:
         # HH reads run_current straight off get_status()
         self.get_status = self.cmd_helper.get_status
         self.set_current = self.cmd_helper.set_current
+        self.get_current = self.cmd_helper.get_current
+        self.current_changes = self.cmd_helper.current_changes
 
     def get_phase_offset(self):
         return None, 256

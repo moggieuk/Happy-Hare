@@ -70,10 +70,6 @@ class MmuController(MmuFilamentMovement):
         self.has_mmu_cutter = False             # Post unload cutting macro (like EREC)
         self.has_toolhead_cutter = False        # Form tip cutting macro (like _MMU_CUT_TIP)
         self._is_running_test = False           # True while running QA or soak tests
-        # Run current % per gear stepper, keyed by stepper name rather than gate: a multigear unit
-        # has one stepper per gate but a single-gear unit shares one across all of them
-        self.gear_run_current_percents = {}
-        self.extruder_run_current_percent = 100 # Single value is fine - one shared toolhead extruder
         self._gear_run_current_depth = 0        # Nesting depth of wrap_gear_current(), which locks out changes
         self.p = mmu_machine.params             # Shared Parameters shortcut
 
@@ -153,10 +149,6 @@ class MmuController(MmuFilamentMovement):
         Ensure clean state on initialiaztion and after MMU enable/disable operation
         """
         self.is_enabled = True      # Whether Happy Hare is enabled or not
-
-        # Disable/enable restores every gear stepper to its configured default, so forget what we
-        # believed each was set to rather than carrying a stale record across the cycle
-        self.gear_run_current_percents.clear()
 
         self.filament_monitoring_enabled = False
         # Bracket the last suspend window and the last time we started handling a runout. Together
