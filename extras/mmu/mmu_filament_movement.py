@@ -3252,7 +3252,7 @@ class MmuFilamentMovement:
             self.set_filament_pos_state(FILAMENT_POS_HOMED_ENTRY, silent=silent) # Allows for fast bowden unload move
 
         # Parked at gate (when parking distance is not a retract i.e. gs sensor expected to be triggered)
-        elif gs and filament_detected and u.p.gate_parking_distance <= 0:
+        elif gs and filament_detected and u.p.gate_parking_distance >= 0:
             self.set_filament_pos_state(FILAMENT_POS_UNLOADED, silent=silent)
 
         # Somewhere in bowden
