@@ -416,11 +416,16 @@ class MmuEnvironmentManager:
     # Both of these run from the environment timer. A gate this unit doesn't own has no slot here,
     # and a negative index would quietly read or overwrite the last gate's state instead
 
+    def _local_slot(self, gate):
+        # -1 for a gate this unit doesn't own, so the callers' existing bounds checks reject it
+        return self.mmu_unit.local_gate(gate) if self.mmu_unit.owns_gate(gate) else -1
+
+
     def _state_get(self, gate):
         """
         Get drying state for a global (logical) gate.
         """
-        if not self.mmu_unit.manages_gate(gate) or gate < 0:
+        if not self.mmu_unit.owns_gate(gate):
             return DRYING_STATE_NONE
         return self._drying_state[self.mmu_unit.local_gate(gate)]
 
@@ -429,7 +434,7 @@ class MmuEnvironmentManager:
         """
         Set drying state for a global (logical) gate.
         """
-        if not self.mmu_unit.manages_gate(gate) or gate < 0:
+        if not self.mmu_unit.owns_gate(gate):
             return
         self._drying_state[self.mmu_unit.local_gate(gate)] = state
 
@@ -766,7 +771,7 @@ class MmuEnvironmentManager:
             return
 
         heaters = self.mmu_unit.filament_heaters
-        lgate = self.mmu_unit.local_gate(gate)
+        lgate = self._local_slot(gate)
         if lgate < 0 or lgate >= len(heaters) or not heaters[lgate]:
             self.mmu.log_warning("MmuEnvironmentManager: No heater configured for gate %d" % gate)
             return
@@ -797,7 +802,7 @@ class MmuEnvironmentManager:
             return
 
         heaters = self.mmu_unit.filament_heaters
-        lgate = self.mmu_unit.local_gate(gate)
+        lgate = self._local_slot(gate)
         if lgate < 0 or lgate >= len(heaters) or not heaters[lgate]:
             return
         _,target = self._get_heater_status(gate)
@@ -824,7 +829,7 @@ class MmuEnvironmentManager:
             heater_name = self.mmu_unit.filament_heater
         else:
             heaters = self.mmu_unit.filament_heaters
-            lgate = self.mmu_unit.local_gate(gate)
+            lgate = self._local_slot(gate)
             if lgate < 0 or lgate >= len(heaters) or not heaters[lgate]:
                 return (None, None)
             heater_name = heaters[lgate]
@@ -846,7 +851,7 @@ class MmuEnvironmentManager:
             sensor = self.mmu_unit.environment_sensor
         else:
             sensors = self.mmu_unit.environment_sensors
-            lgate = self.mmu_unit.local_gate(gate)
+            lgate = self._local_slot(gate)
             if lgate < 0 or lgate >= len(sensors) or not sensors[lgate]:
                 return None, None
             sensor = sensors[lgate]
