@@ -77,22 +77,22 @@ if MMU_HAS_LEDS
     config PARAM_EXIT_LEDS
       string
       array_editor ";"
-      default ""
+      default "" if CUSTOM_LED_SETUP
 
     config PARAM_ENTRY_LEDS
       string
       array_editor ";"
-      default ""
+      default "" if CUSTOM_LED_SETUP
 
     config PARAM_STATUS_LEDS
       string
       array_editor ";"
-      default ""
+      default "" if CUSTOM_LED_SETUP
 
     config PARAM_LOGO_LEDS
       string
       array_editor ";"
-      default ""
+      default "" if CUSTOM_LED_SETUP
 
     if !CUSTOM_LED_SETUP
 
@@ -112,7 +112,7 @@ if MMU_HAS_LEDS
 
       config PARAM_EXIT_LEDS
         prompt "Exit leds       "
-        generated_default "neopixel:_$(UNIT_NAME)_gate{iter}_leds (1-%d)" "PARAM_NUM_GATES" "; " 0 PARAM_NUM_GATES if MMU_HAS_PER_GATE_MCU
+        generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (1-%d)" "PARAM_NUM_GATES" "; " 0 PARAM_NUM_GATES if MMU_HAS_PER_GATE_MCU
         generated_default "neopixel:_$(UNIT_NAME)_leds (1-%d)" "PARAM_NUM_GATES"
 
       config PARAM_ENTRY_LEDS

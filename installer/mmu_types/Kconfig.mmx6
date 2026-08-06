@@ -41,6 +41,9 @@ if MMU_TYPE_MMX6_1_0
   config PARAM_GATE_HOMING_MAX
     default 1000
 
+  config PARAM_SELECTOR_RELEASE_GATES
+    default "1, 2, 3, 4, 5, 0"
+
   comment "_"
 
 endif 
