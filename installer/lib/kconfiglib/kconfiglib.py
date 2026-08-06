@@ -5468,7 +5468,15 @@ class Symbol(object):
         for node in self.nodes:
             for template, args, separator, start_sym, stop_sym, cond in node.generated_defaults:
                 if expr_value(cond):
-                    return _generated_default_value(template, args, separator, start_sym, stop_sym), True
+                    try:
+                        return _generated_default_value(
+                            template, args, separator, start_sym, stop_sym), True
+                    except GeneratedDefaultError as e:
+                        self.kconfig._warn(
+                            "generated_default for {} failed to render (template {!r}): {}"
+                            .format(self.name, template, e),
+                            node.filename, node.linenr)
+                        return "", True
 
             for sym, cond in node.defaults:
                 if expr_value(cond):
@@ -6907,6 +6915,12 @@ def _strcmp(s1, s2):
 
     return (s1 > s2) - (s1 < s2)
 
+# Happy Hare: Added. Raised for any generated_default template that fails to
+# render, so the one caller with file/line context (Symbol._node_ordered_string_default)
+# can warn with specifics instead of the value silently going to "".
+class GeneratedDefaultError(Exception):
+    pass
+
 # Happy Hare: Added. Matches a single non-nested '{...}' block in a
 # generated_default template.
 _generated_default_brace_re = re.compile(r"\{([^{}]*)\}")
@@ -6975,7 +6989,11 @@ def _render_generated_default(template, base_args, iter_value):
             if iter_value is None:
                 raise ValueError("%i used without iteration")
             return str(iter_value)
-        return tok % next(args_iter)  # %s or %d
+        try:
+            arg = next(args_iter)
+        except StopIteration:
+            raise ValueError("not enough args for the %s/%d placeholders in this template")
+        return tok % arg
 
     substituted = _generated_default_token_re.sub(token_repl, template)
     for _ in args_iter:
@@ -7032,8 +7050,10 @@ def _generated_default_value(template, args, separator=", ", start_sym=None, sto
         return separator.join(
             _render_generated_default(template, base_args, i) for i in range(start, stop))
 
-    except Exception:
-        return ""
+    except GeneratedDefaultError:
+        raise
+    except Exception as e:
+        raise GeneratedDefaultError("{}: {}".format(type(e).__name__, e)) from e
 
 def _sym_to_num(sym):
     # expr_value() helper for converting a symbol to a number. Raises
