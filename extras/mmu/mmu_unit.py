@@ -301,8 +301,11 @@ class MmuUnit:
                             logging.info("MMU: Loaded: [%s]" % alt_tmc_section)
                             break
 
-        # Now load the mmu_steppers and create control wrappers
+        # Now load the mmu_steppers and create control wrappers.
+        # 'drives' is gate-indexed and repeats the same object on a single-gear unit, so
+        # 'drives_unique' exists for anything that must touch each drive exactly once
         self.drives = []
+        self.drives_unique = []
         drive = None
         for i, sname in enumerate(self.mmu_gear_names):
             if drive is None or self.multigear:
@@ -313,6 +316,7 @@ class MmuUnit:
                 self.printer.add_object(c.get_name(), gear)
                 logging.info(f"MMU: Loaded: [{section}]")
                 drive = MmuDrive(config, self, gear, self.extruder_wrapper.homing_extruder_stepper)
+                self.drives_unique.append(drive)
 
             logging.info(f"MMU: Created: MmuDrive for gate {self.first_gate + i} using mmu_stepper {sname}")
             self.drives.append(drive)
@@ -619,6 +623,10 @@ class MmuUnit:
 
 
     def reinit(self):
+        # Drives are not subcomponents (shared objects deliberately are not), so walk them here
+        for drive in self.drives_unique:
+            drive.reinit()
+
         for obj in self.subcomponents:
             if obj is not None:
                 method = getattr(obj, "reinit", None)
