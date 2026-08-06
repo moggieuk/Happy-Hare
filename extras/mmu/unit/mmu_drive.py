@@ -40,6 +40,7 @@ class MmuDrive():
         # Resolved at connect. None until then, and None for a stepper with no TMC
         self._tmc = None
         self._default_current = None
+        self._run_current_percent = 100
 
         # Event handlers
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
@@ -58,12 +59,27 @@ class MmuDrive():
                 break
 
 
+    def reinit(self):
+        # Record only. Runs during config load, before handle_connect, so nothing here may
+        # touch self.mmu. Enable/disable restores the driver to its configured default, so
+        # forgetting what we believed is the whole job
+        self._run_current_percent = 100
+
+
     def tmc_obj(self):
         return self._tmc
 
 
     def default_current(self):
         return self._default_current
+
+
+    def run_current_percent(self):
+        return self._run_current_percent
+
+
+    def set_run_current_percent(self, percent):
+        self._run_current_percent = percent
 
 
     def sync_mode(self, mode):
