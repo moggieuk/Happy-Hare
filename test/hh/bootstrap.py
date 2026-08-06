@@ -324,17 +324,26 @@ class Session:
         """
         from extras.mmu.mmu_constants import SENSOR_TENSION, SENSOR_COMPRESSION
         resting = {'tension': SENSOR_TENSION, 'compression': SENSOR_COMPRESSION}
+        # Keyed by the buffer's OWN namespace prefix (buffer.name, which is what
+        # MmuBuffer actually qualifies its sensor keys with - not necessarily the
+        # requesting unit's name, for a shared buffer). Bare sensor names collide
+        # across units (every buffer's switches are called filament_tension /
+        # filament_compression regardless of which unit owns them), so both `at_rest`
+        # and `derived` below must stay qualified or one unit's buffer state bleeds
+        # into another's - which is what silently left a switch-based buffer's
+        # sensors untouched whenever another unit's buffer was proportional.
         at_rest = set()
-        spring_states = []
+        spring_by_prefix = {}
         for unit in self.mmu.mmu_machine.units:
             buffer = getattr(unit, 'buffer', None)
             if buffer is None:
                 continue
             spring = getattr(buffer, 'buffer_spring_state', 'none')
-            spring_states.append(spring)
+            prefix = getattr(buffer, 'name', unit.name)
+            spring_by_prefix[prefix] = spring
             sensor_name = resting.get(spring)
             if sensor_name is not None:
-                at_rest.add(sensor_name)
+                at_rest.add('%s:%s' % (prefix, sensor_name))
 
         # A PROPORTIONAL (analog) buffer derives its compression/tension sensors from the
         # ADC reading, so the resting state must be expressed as a RAW VALUE and left to
@@ -347,19 +356,20 @@ class Session:
             handle = _SensorHandle(self, name, sensor)
             if handle.kind != 'proportional':
                 continue
-            spring = spring_states[0] if spring_states else 'none'
+            prefix = name.split(':')[0]
+            spring = spring_by_prefix.get(prefix, 'none')
             handle.feed(self._resting_raw(handle, spring), settle=False)
-            # Exclude the analog sensor ITSELF as well as the two it derives: the loop
-            # below would otherwise call set(False) on it, which for a proportional sensor
-            # means feeding neutral - overwriting the resting value just fed.
-            derived |= {SENSOR_TENSION, SENSOR_COMPRESSION, name.split(':')[-1]}
+            # Exclude the analog sensor ITSELF as well as the two it derives, scoped to
+            # THIS buffer's own namespace: the loop below would otherwise call set(False)
+            # on it, which for a proportional sensor means feeding neutral - overwriting
+            # the resting value just fed.
+            derived |= {'%s:%s' % (prefix, SENSOR_TENSION), '%s:%s' % (prefix, SENSOR_COMPRESSION), name}
 
         for name, sensor in self.sensors().items():
-            bare = name.split(':')[-1]
-            if bare in derived:
+            if name in derived:
                 continue        # derived from the analog reading above
             try:
-                _SensorHandle(self, name, sensor).set(bare in at_rest)
+                _SensorHandle(self, name, sensor).set(name in at_rest)
             except AssertionError:
                 logging.debug('cannot drive sensor %s directly', name)
         self.reactor.advance(0.)
@@ -394,7 +404,7 @@ class Session:
         from .filament import FilamentPath
         model = FilamentPath(self.mmu.num_gates, layout=layout)
         owned = [name for name in self.sensors()
-                 if name.split(':')[-1] not in getattr(self, '_spring_at_rest', set())
+                 if name not in getattr(self, '_spring_at_rest', set())
                  and model.position(name) is not None]
         # Which gates each unit owns, so a unit-qualified sensor is not answered from another
         # unit's filament - see FilamentPath.gates_visible_to.

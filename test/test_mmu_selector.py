@@ -570,6 +570,35 @@ class TestMultiUnitSelectors(SelectorTestCase):
             self.assertIn(name, model.sensor_names(),
                           '%s is not bound, so it can never read triggered' % name)
 
+    def test_recover_reports_unloaded_for_a_forward_parked_exit_sensor(self):
+        """
+        unit1's gate_homing_endstop is mmu_exit with gate_parking_distance = +10 (a
+        forward park, not a retract), so a properly parked gate leaves the exit switch
+        covered rather than clear. recover_filament_pos's gate-parked branch used to
+        also require filament_detected, which is computed from
+        get_all_sensors_for_gate() - and that deliberately excludes this exact sensor's
+        position when parking is forward (mmu_sensor_manager.py's _get_sensors, "only
+        valid if is not usually triggered i.e. parking retract"), so the requirement
+        could never be satisfied and MMU_RECOVER concluded IN_BOWDEN for a perfectly
+        normal parked gate.
+        """
+        model = self.hh.filament()
+        self.hh.run_gcode('MMU_SELECT GATE=10')
+        self.hh.place_filament(10, position=model.layout['mmu_exit'] + 10.0)
+        self.assertTrue(model.triggered('mmu_exit_10'))
+
+        self.hh.run_gcode('MMU_RECOVER')
+
+        self.assertEqual(self.hh.errors, [])
+        self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_UNLOADED)
+
+        # The status line should show the gate as homed (3 blocks then the triggered
+        # marker), not as not-yet-reached, and the trailing state text should read
+        # UNLOADED rather than nothing at all.
+        visual = self.hh.mmu.get_filament_position_string()
+        self.assertIn('■■■◉', visual)  # UI_SOLID_SQUARE x3 then UI_SENSOR_TRIGGERED
+        self.assertIn('UNLOADED', visual)
+
 
 class TestPersistedPositionRestore(unittest.TestCase):
     """

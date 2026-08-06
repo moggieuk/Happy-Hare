@@ -809,6 +809,14 @@ class MmuController(MmuFilamentMovement):
                 return homed_segment(target_pos, sensor_label(sensor))
             return pad(target_pos, width)
 
+        def gate_segment():
+            # Forward-parked exit sensor: filament is UNLOADED but still sits at/past the
+            # gate sensor (positive gate_parking_distance), so render it as homed there
+            # rather than as not-yet-reached
+            if pos == FILAMENT_POS_UNLOADED and self.sensor_manager.check_sensor(gate_homing_endstop):
+                return home + sensor_label(gate_homing_endstop) + space
+            return optional_sensor(gate_homing_endstop, FILAMENT_POS_HOMED_GATE)
+
         def nozzle_segment():
             if pos >= FILAMENT_POS_LOADED:
                 return arrow + home + "Nz" + arrow * 2
@@ -891,7 +899,7 @@ class MmuController(MmuFilamentMovement):
             tool_text,
             past(FILAMENT_POS_UNLOADED) * 2,
 
-            optional_sensor(gate_homing_endstop, FILAMENT_POS_HOMED_GATE),
+            gate_segment(),
 
             (
                 "En" + past(encoder_ref_pos) * 2
