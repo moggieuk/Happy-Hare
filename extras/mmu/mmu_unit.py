@@ -582,23 +582,11 @@ class MmuUnit:
     def handle_connect(self):
         self.mmu = self.mmu_machine.mmu_controller # Master MMU controller
 
-        # Find and record all gear steppers, controlling tmc chip (if available) and default current indexed by gate
-        self.mmu_gear_tmcs = []
-        self.mmu_gear_currents = []
-
-        for name in self.mmu_gear_names:
-            for chip in TMC_CHIPS:
-                c = self.printer.lookup_object("%s mmu_stepper %s" % (chip, name), None)
-                if c is not None:
-                    self.mmu_gear_tmcs.append(c)
-                    self.mmu_gear_currents.append(c.get_status(0).get("run_current"))
-                    break
-            else:
-                self.mmu_gear_tmcs.append(None)
-                self.mmu_gear_currents.append(None)
-
-        gates_with_tmc    = [i + self.first_gate for i, tmc in enumerate(self.mmu_gear_tmcs) if tmc is not None]
-        gates_without_tmc = [i + self.first_gate for i, tmc in enumerate(self.mmu_gear_tmcs) if tmc is None]
+        # Each drive resolved its own tmc chip and default current at connect. Report per gate:
+        # a single-gear unit shares one drive across all of them, so every gate is covered
+        gate_tmcs = [drive.tmc_obj() for drive in self.drives]
+        gates_with_tmc    = [i + self.first_gate for i, tmc in enumerate(gate_tmcs) if tmc is not None]
+        gates_without_tmc = [i + self.first_gate for i, tmc in enumerate(gate_tmcs) if tmc is None]
 
         if gates_with_tmc:
             self.mmu.log_debug(
@@ -743,12 +731,10 @@ class MmuUnit:
         return self.drives[lgate]
 
     def gear_tmc_obj(self, gate):
-        lgate = self.local_gate(gate, True)
-        return self.mmu_gear_tmcs[lgate]
+        return self.drive_obj(gate).tmc_obj()
 
     def gear_default_current(self, gate):
-        lgate = self.local_gate(gate, True)
-        return self.mmu_gear_currents[lgate]
+        return self.drive_obj(gate).default_current()
 
 
     # Parallel accessors extruder stepper to match MMU gear stepper accessors

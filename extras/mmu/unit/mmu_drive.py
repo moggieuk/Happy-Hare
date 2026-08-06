@@ -37,12 +37,33 @@ class MmuDrive():
         self._sync_mode = DRIVE_UNSYNCED
         self._driving_stepper = self.mmu_gear_stepper
 
+        # Resolved at connect. None until then, and None for a stepper with no TMC
+        self._tmc = None
+        self._default_current = None
+
         # Event handlers
         self.printer.register_event_handler('klippy:connect', self.handle_connect)
 
 
     def handle_connect(self):
         self.mmu = self.mmu_machine.mmu_controller # Master MMU controller
+
+        # Our own driver, found by stepper name. Runs before MmuUnit.handle_connect, so the
+        # unit's per-gate accessors read back through here rather than resolving separately
+        for chip in TMC_CHIPS:
+            c = self.printer.lookup_object("%s mmu_stepper %s" % (chip, self.name), None)
+            if c is not None:
+                self._tmc = c
+                self._default_current = c.get_status(0).get("run_current")
+                break
+
+
+    def tmc_obj(self):
+        return self._tmc
+
+
+    def default_current(self):
+        return self._default_current
 
 
     def sync_mode(self, mode):
