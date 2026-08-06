@@ -11,10 +11,12 @@
 # entirely: there is no correct local index, so demanding physical hardware for one now raises
 # instead of silently clamping to this unit's gate 0.
 #
-# Default mode still returns -1 for a foreign gate, because roughly sixteen callers treat that as a
-# "not mine, use a default" signal (mmu_calibrator, mmu_environment_manager, mmu_nfc_manager) and
-# some of them sit on a reactor timer, in get_status, or in a toolhead lookahead callback where
-# raising would be far worse than declining.
+# The conversion refuses a foreign gate in BOTH modes. It used to return -1 in default mode, and
+# roughly sixteen callers branched on that as a "not mine, use a default" signal - several of them
+# on a reactor timer, in get_status, or in a toolhead lookahead callback where raising would be far
+# worse than declining. Those now test owns_gate() before converting, so the decision about what a
+# foreign gate means is made by the caller that knows, rather than smuggled through a return value
+# indistinguishable from a legitimate bypass.
 #
 # Uses 'ercf_vvd', the only multi-unit profile - on a single-unit machine a foreign gate cannot be
 # expressed at all, so none of this is testable.
@@ -78,12 +80,15 @@ class TestForeignGate(MultiUnitTestCase):
         self.assertEqual(self.unit1.gear_name(self.foreign), 'unit1_gear')
         self.assertIsNot(self.unit0.drive_obj(0), self.unit1.drive_obj(self.foreign))
 
-    def test_default_mode_still_declines_rather_than_raising(self):
+    def test_conversion_refuses_a_foreign_gate_in_both_modes(self):
         """
-        Callers on reactor timers, in get_status and in a toolhead lookahead callback branch on
-        this -1 instead of guarding up front. Raising here would reach Klipper's flush path.
+        Callers that can legitimately be handed another unit's gate now test owns_gate() up
+        front, so there is no longer a mode in which the conversion quietly returns something.
         """
-        self.assertEqual(self.unit0.local_gate(self.foreign), TOOL_GATE_UNKNOWN)
+        with self.assertRaises(self.MmuError):
+            self.unit0.local_gate(self.foreign)
+        with self.assertRaises(self.MmuError):
+            self.unit0.local_gate(self.foreign, force_physical=True)
 
     def test_a_non_gate_is_rejected_as_such(self):
         with self.assertRaises(self.MmuError):
@@ -102,6 +107,52 @@ class TestBypassAndUnknownPassThrough(MultiUnitTestCase):
             with self.subTest(gate=gate):
                 self.assertEqual(self.unit0.gear_name(gate), self.unit0.gear_name(0))
                 self.assertIs(self.unit0.drive_obj(gate), self.unit0.drive_obj(0))
+
+
+class TestCallersDeclineRatherThanConvert(MultiUnitTestCase):
+    """
+    Now that the conversion refuses a foreign gate, every caller that can be handed one has to
+    decide for itself. These are the paths that previously leaned on the -1 return, several of
+    them on a reactor timer, in get_status, or in a lookahead callback - so a raise escaping any
+    of them is worse than the bug being fixed.
+    """
+
+    def calibrator(self):
+        return self.unit0.calibrator
+
+    def test_calibrator_queries_fall_back_instead_of_raising(self):
+        cal = self.calibrator()
+        self.assertEqual(cal.get_bowden_length(self.foreign), cal.get_bowden_length(0))
+        self.assertEqual(cal.get_default_gear_rd(self.foreign), cal.get_default_gear_rd(0))
+        self.assertTrue(cal.is_bowden_length_calibrated(self.foreign))
+        self.assertTrue(cal.is_gear_rd_calibrated(self.foreign))
+        self.assertGreater(cal.get_gear_rd(self.foreign), 0)
+
+    def test_calibrator_mutations_decline_quietly(self):
+        cal = self.calibrator()
+        bowden_before = list(cal._bowden_lengths)
+        rd_before = list(cal.rotation_distances)
+
+        cal.update_bowden_length(123.4, gate=self.foreign)
+        cal.update_gear_rd(22.5, gate=self.foreign)
+        cal.apply_gear_rd(22.5, gate=self.foreign)
+        cal.restore_gear_rd(gate=self.foreign)
+
+        self.assertEqual(cal._bowden_lengths, bowden_before, 'wrote a foreign gate\'s bowden length')
+        self.assertEqual(cal.rotation_distances, rd_before, 'wrote a foreign gate\'s rotation distance')
+        self.assertEqual(self.hh.errors, [])
+
+    def test_nfc_predicates_answer_no_rather_than_throwing(self):
+        nfc = self.unit0.nfc_manager
+        self.assertFalse(nfc.has_gate_nfc_reader(self.foreign))
+        self.assertIsNone(nfc._local_index(self.foreign))
+        self.assertIsNone(nfc._local_index(None))
+
+    def test_environment_lookups_report_nothing_configured(self):
+        env = self.unit0.environment_manager
+        self.assertEqual(env._get_environment_status(self.foreign), (None, None))
+        self.assertEqual(env._get_heater_status(self.foreign), (None, None))
+        self.assertEqual(self.hh.errors, [])
 
 
 class TestRoundTrip(MultiUnitTestCase):

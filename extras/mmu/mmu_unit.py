@@ -682,6 +682,14 @@ class MmuUnit:
         return (self.first_gate <= gate < self.first_gate + self.num_gates)
 
 
+    def owns_gate(self, gate):
+        """
+        True only for a real gate on this unit. Unlike manages_gate() this excludes the
+        bypass/unknown sentinels, which have no slot in any per-gate array.
+        """
+        return isinstance(gate, int) and gate >= 0 and self.manages_gate(gate)
+
+
     def gate_bounds(self):
         return self.first_gate, self.first_gate + self.num_gates - 1
 
@@ -694,10 +702,12 @@ class MmuUnit:
         """
         Convert mmu_machine gate number to relative gate on mmu_unit
 
+        A gate this unit doesn't own has no local equivalent, so it raises. Callers that can
+        legitimately be asked about another unit's gate must test owns_gate() first.
+
         Args:
-          'force_physical' will default to local gate 0 if bypass/unknown and is safe for array
-           lookup, but only for those - a gate this unit doesn't manage has no local equivalent
-           and raises rather than silently resolving to another gate's hardware
+          'force_physical' will default to local gate 0 if bypass/unknown and is safe for
+           array lookup - but only for those sentinels
         """
         if not isinstance(gate, int):
             raise MmuError("Gate %s is not a gate number" % (gate,))
@@ -706,14 +716,9 @@ class MmuUnit:
             lgate = gate # bypass/unknown
         elif self.manages_gate(gate):
             lgate = gate - self.first_gate
-        elif force_physical:
+        else:
             raise MmuError("Gate %d is not managed by %s (range=%d-%d)"
                            % (gate, self.name, *self.gate_bounds()))
-        else:
-            # Only a decline now that anything wanting real hardware raises above, and callers
-            # that can be asked about another unit's gate treat it as one - so don't shout
-            self.mmu.log_debug("Gate %d is not managed by %s" % (gate, self.name))
-            lgate = TOOL_GATE_UNKNOWN
 
         return lgate if not force_physical else max(0, lgate)
 
