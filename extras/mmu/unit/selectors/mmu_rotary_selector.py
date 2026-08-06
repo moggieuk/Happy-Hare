@@ -251,8 +251,10 @@ class RotarySelector(PhysicalSelector):
         self._position(pos)
         self.grip_state = state
 
-        # Ensure gate filament drive is in the correct direction
-        self.mmu_unit.drive_obj(lgate).set_gear_direction(self.p.selector_gate_directions[lgate])
+        # Ensure gate filament drive is in the correct direction. drive_obj() takes a machine gate
+        # but everything here is unit-local, so convert rather than hand it a local index
+        self.mmu_unit.drive_obj(self.mmu_unit.logical_gate(lgate)).set_gear_direction(
+            self.p.selector_gate_directions[lgate])
         self.mmu.movequeue_wait()
 
 
@@ -553,7 +555,13 @@ class MmuCalibrateRotarySelectorCommand(BaseCommand):
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         single = gcmd.get_int('SINGLE', 0, minval=0, maxval=1)
         quick = gcmd.get_int('QUICK', 0, minval=0, maxval=1)
-        gate = gcmd.get_int('GATE', 0, minval=0, maxval=mmu_unit.num_gates - 1)
+        # GATE is a machine-wide number, so range it against the machine and check ownership -
+        # a unit-local range silently addresses the wrong gate on any unit that isn't first
+        min_gate, max_gate = mmu_unit.gate_bounds()
+        gate = gcmd.get_int('GATE', min_gate, minval=0, maxval=mmu.num_gates - 1)
+        if not mmu_unit.manages_gate(gate):
+            raise gcmd.error("Gate %d is not managed by %s (range=%d-%d)"
+                             % (gate, mmu_unit.name, min_gate, max_gate))
 
         try:
             mmu.calibrating = True

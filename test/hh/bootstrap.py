@@ -1094,8 +1094,10 @@ class Session:
         from extras.mmu.mmu_constants import VARS_MMU_SELECTOR_OFFSETS
         mmu_unit = self.mmu.mmu_machine.units[unit]
         offsets = self.mmu.var_manager.get(VARS_MMU_SELECTOR_OFFSETS, None, namespace=mmu_unit.name)
+        if not mmu_unit.owns_gate(gate):
+            return None
         lgate = mmu_unit.local_gate(gate)
-        if not offsets or not 0 <= lgate < len(offsets):
+        if not offsets or lgate >= len(offsets):
             return None
         return offsets[lgate]
 

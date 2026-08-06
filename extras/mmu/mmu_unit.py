@@ -47,6 +47,7 @@ from .unit.selectors                    import SELECTOR_REGISTRY
 from .unit.selectors.mmu_base_selectors import VirtualSelector
 from .unit.mmu_environment_manager      import MmuEnvironmentManager
 from .unit.mmu_nfc_manager              import MmuNfcManager
+from .mmu_utils                         import MmuError
 
 
 # Default selector classes for known vendors
@@ -681,6 +682,14 @@ class MmuUnit:
         return (self.first_gate <= gate < self.first_gate + self.num_gates)
 
 
+    def owns_gate(self, gate):
+        """
+        True only for a real gate on this unit. Unlike manages_gate() this excludes the
+        bypass/unknown sentinels, which have no slot in any per-gate array.
+        """
+        return isinstance(gate, int) and gate >= 0 and self.manages_gate(gate)
+
+
     def gate_bounds(self):
         return self.first_gate, self.first_gate + self.num_gates - 1
 
@@ -692,17 +701,24 @@ class MmuUnit:
     def local_gate(self, gate, force_physical=False):
         """
         Convert mmu_machine gate number to relative gate on mmu_unit
+
+        A gate this unit doesn't own has no local equivalent, so it raises. Callers that can
+        legitimately be asked about another unit's gate must test owns_gate() first.
+
         Args:
-          'force_physical' will default to local gate 0 if bypass/unknown
-           and is safe for when using result for array lookup
+          'force_physical' will default to local gate 0 if bypass/unknown and is safe for
+           array lookup - but only for those sentinels
         """
-        if gate >= 0 and self.manages_gate(gate):
-            lgate = gate - self.first_gate
-        elif gate < 0:
+        if not isinstance(gate, int):
+            raise MmuError("Gate %s is not a gate number" % (gate,))
+
+        if gate < 0:
             lgate = gate # bypass/unknown
+        elif self.manages_gate(gate):
+            lgate = gate - self.first_gate
         else:
-            self.mmu.log_assertion("Fatal: Gate %d is not managed by %s" % (gate, self.name))
-            lgate = TOOL_GATE_UNKNOWN
+            raise MmuError("Gate %d is not managed by %s (range=%d-%d)"
+                           % (gate, self.name, *self.gate_bounds()))
 
         return lgate if not force_physical else max(0, lgate)
 

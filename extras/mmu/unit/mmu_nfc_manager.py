@@ -179,8 +179,10 @@ class MmuNfcManager:
         nfc_readers = self.mmu_unit.nfc_readers
         if not nfc_readers:
             return False
+        if not self.mmu_unit.owns_gate(gate):
+            return False
         lgate = self.mmu_unit.local_gate(gate)
-        return 0 <= lgate < len(nfc_readers) and bool(nfc_readers[lgate])
+        return lgate < len(nfc_readers) and bool(nfc_readers[lgate])
 
 
     def allow_reread(self):
@@ -525,8 +527,10 @@ class MmuNfcManager:
         """
         if gate is None:
             return None
+        if not self.mmu_unit.owns_gate(gate):
+            return None
         lgate = self.mmu_unit.local_gate(gate)
-        return lgate if 0 <= lgate < len(self.gate_readers) else None
+        return lgate if lgate < len(self.gate_readers) else None
 
 
     def _reader_for(self, shared=False, gate=None):
