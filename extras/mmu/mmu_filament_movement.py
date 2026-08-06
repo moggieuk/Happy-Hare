@@ -3251,8 +3251,11 @@ class MmuFilamentMovement:
         elif es:
             self.set_filament_pos_state(FILAMENT_POS_HOMED_ENTRY, silent=silent) # Allows for fast bowden unload move
 
-        # Parked at gate (when parking distance is not a retract i.e. gs sensor expected to be triggered)
-        elif gs and filament_detected and u.p.gate_parking_distance >= 0:
+        # Parked at gate (when parking distance is not a retract i.e. gs sensor expected to be triggered).
+        # Note: filament_detected is deliberately not required here - for a forward parking distance,
+        # get_all_sensors_for_gate() excludes this exact sensor from its position ordering (see
+        # mmu_sensor_manager.py _get_sensors), so filament_detected can never be true from gs alone
+        elif gs and u.p.gate_parking_distance >= 0:
             self.set_filament_pos_state(FILAMENT_POS_UNLOADED, silent=silent)
 
         # Somewhere in bowden
