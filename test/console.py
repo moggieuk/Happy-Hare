@@ -857,8 +857,8 @@ class Console:
         """
         Unknown commands are recorded and ignored (gcode.py:230), so a typo produces no
         output whatsoever. Only warn about the line the user actually typed: Happy Hare
-        legitimately emits M104/M117/SET_TMC_CURRENT into the same list, which is why
-        strict mode is not the answer here.
+        legitimately emits M104/M117 into the same list, which is why strict mode is not
+        the answer here.
         """
         typed = line.strip().split(None, 1)[0].upper() if line.strip() else ''
         for raw in self.hh.gcode.unhandled[mark:]:
@@ -925,6 +925,7 @@ class Console:
         if bowden >= 0:
             extra.append('bowden=%d%%' % bowden)
         extra.append('t=%+.2fs' % (self.hh.reactor.monotonic() - 1000.))
+        extra.extend(self._current_cells(gate))
         # Only when pacing is ON. 0 is the default and means "moves are instant", which is
         # the absence of a mode rather than a mode - and a permanent 'realtime=0%' would just
         # be a row of noise on every prompt. Shown next to the clock because that is the
@@ -938,6 +939,36 @@ class Console:
             out.append(paint('  PAUSED: %s  (MMU_UNLOCK / MMU_RECOVER)'
                              % (st.get('reason_for_pause') or 'unknown'), '1;31', self.color))
         return out
+
+    def _current_cells(self, gate):
+        """
+        Stepper run current, as HH believes it and as the modelled driver holds it. Shown
+        always: watching the number move is the point, and a cell that only appears when
+        off-default hides the resting state. Amps come from the TMC so a divergence between
+        HH's percentage and the driver is visible rather than inferred.
+        """
+        mmu = self.hh.mmu
+        cells = []
+        for label, pct, tmc in (
+            ('gear', mmu.gear_run_current(gate), self._tmc_for_gate(gate)),
+            ('ext', mmu.extruder_run_current_percent, self._extruder_tmc()),
+        ):
+            amps = tmc.get_status().get('run_current') if tmc else None
+            cells.append('%s=%d%%' % (label, pct) if amps is None
+                         else '%s=%d%% %.2fA' % (label, pct, amps))
+        return cells
+
+    def _tmc_for_gate(self, gate):
+        try:
+            return self.hh.mmu.mmu_unit(gate).gear_tmc_obj(gate)
+        except Exception:
+            return None # No TMC on this gate, or too early to resolve one
+
+    def _extruder_tmc(self):
+        try:
+            return self.hh.mmu.mmu_unit().extruder_tmc_obj()
+        except Exception:
+            return None
 
     def _hdr_sensors(self, st):
         # NOT status['sensors']: that is only the selected gate's sensors and it carries
