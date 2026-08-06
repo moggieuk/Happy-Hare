@@ -413,10 +413,15 @@ class MmuEnvironmentManager:
         self.reinit()
 
 
+    # Both of these run from the environment timer. A gate this unit doesn't own has no slot here,
+    # and a negative index would quietly read or overwrite the last gate's state instead
+
     def _state_get(self, gate):
         """
         Get drying state for a global (logical) gate.
         """
+        if not self.mmu_unit.manages_gate(gate) or gate < 0:
+            return DRYING_STATE_NONE
         return self._drying_state[self.mmu_unit.local_gate(gate)]
 
 
@@ -424,6 +429,8 @@ class MmuEnvironmentManager:
         """
         Set drying state for a global (logical) gate.
         """
+        if not self.mmu_unit.manages_gate(gate) or gate < 0:
+            return
         self._drying_state[self.mmu_unit.local_gate(gate)] = state
 
 
