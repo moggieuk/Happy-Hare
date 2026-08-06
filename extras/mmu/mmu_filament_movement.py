@@ -3679,6 +3679,13 @@ class MmuFilamentMovement:
         return self.drive(gate).run_current_percent()
 
 
+    def extruder_run_current(self):
+        """
+        Run current percentage believed to be applied to the selected unit's extruder.
+        """
+        return self.mmu_unit().extruder_wrapper.run_current_percent()
+
+
     def _adjust_gear_current(self, gate=None, percent=100, reason="", restore=False):
         """
         Apply a gear-stepper run-current percentage change when allowed.
@@ -3766,25 +3773,24 @@ class MmuFilamentMovement:
         Returns:
             int or float: Previously active or currently retained extruder-current percentage.
         """
-        u = self.mmu_unit()
-
-        current_percent = self.extruder_run_current_percent
+        wrapper = self.mmu_unit().extruder_wrapper
+        current_percent = wrapper.run_current_percent()
 
         if not (0 < percent < 200):
             return current_percent
-        if u.extruder_tmc_obj() is None:
+        if wrapper.extruder_tmc_obj() is None:
             return current_percent
-        if percent == self.extruder_run_current_percent:
+        if percent == current_percent:
             return current_percent
 
-        sname = u.extruder_name()
+        sname = wrapper.extruder_name()
         if restore:
             msg = "Restoring extruder stepper %s run current to %d%% ({}A)" % (sname, percent)
         else:
             msg = "Modifying extruder stepper %s run current to %d%% ({}A) %s" % (sname, percent, reason)
-        target_current = (u.extruder_default_current() * percent) / 100.0
+        target_current = (wrapper.extruder_default_current() * percent) / 100.0
         self._set_tmc_current(sname, target_current, msg)
-        self.extruder_run_current_percent = percent # Update global record of current %
+        wrapper.set_run_current_percent(percent)
         return current_percent
 
 

@@ -623,9 +623,12 @@ class MmuUnit:
 
 
     def reinit(self):
-        # Drives are not subcomponents (shared objects deliberately are not), so walk them here
+        # Drives and the extruder wrapper are not subcomponents (shared objects deliberately are
+        # not), so walk them here. The wrapper may be shared with another unit, but its reset is
+        # idempotent so reaching it once per unit costs nothing
         for drive in self.drives_unique:
             drive.reinit()
+        self.extruder_wrapper.reinit()
 
         for obj in self.subcomponents:
             if obj is not None:
