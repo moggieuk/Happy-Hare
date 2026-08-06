@@ -121,24 +121,27 @@ if MMU_TYPE_EMU_1_0
   config PARAM_SYNC_GEAR_CURRENT
     default 52
 
+  config PARAM_NFC_GATE_JOG_SCAN_WINDOW
+    default "-100, 400"
+
   config PARAM_COLOR_ORDER
     default "GRBW"
   
   if BOARD_TYPE_SLB_1_0
     config PARAM_ENTRY_LEDS
-      generated_default "neopixel:_$(UNIT_NAME)_gate{iter}_box (1)" "" "; " PARAM_NUM_GATES
+      generated_default "neopixel:_$(UNIT_NAME)_gate%i_box (1)" "" "; " PARAM_NUM_GATES
 
     config PARAM_EXIT_LEDS
-      generated_default "neopixel:_$(UNIT_NAME)_gate{iter}_leds (1,2,3,4)" "" "; " PARAM_NUM_GATES
+      generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (1,2,3,4)" "" "; " PARAM_NUM_GATES
 
   endif
 
   if BOARD_TYPE_EBB_1_0
     config PARAM_ENTRY_LEDS
-      generated_default "neopixel:_$(UNIT_NAME)_gate{iter}_leds (5)" "" "; " PARAM_NUM_GATES
+      generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (5)" "" "; " PARAM_NUM_GATES
 
     config PARAM_EXIT_LEDS
-      generated_default "neopixel:_$(UNIT_NAME)_gate{iter}_leds (1,2,3,4)" "" "; " PARAM_NUM_GATES
+      generated_default "neopixel:_$(UNIT_NAME)_gate%i_leds (1,2,3,4)" "" "; " PARAM_NUM_GATES
     
   endif
 
@@ -155,7 +158,7 @@ if MMU_TYPE_EMU_1_0
     default 100
 
   config PARAM_FILAMENT_HEATERS 
-    generated_default "$(UNIT_NAME)_heater{iter}" "" PARAM_NUM_GATES
+    generated_default "$(UNIT_NAME)_heater%i" "" PARAM_NUM_GATES
 
   comment "_"
 
