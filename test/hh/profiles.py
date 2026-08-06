@@ -476,12 +476,51 @@ ERCF_VVD = Profile(
     ],
     description='ERCF 1.1sb (9 gates) + ViViD 1.0 (4 gates) - the only multi-unit profile')
 
+# The only machine whose two units drive DIFFERENT physical extruders. Everything else, including
+# ercf_vvd itself, leaves both on the default one and so shares a single MmuExtruderWrapper - which
+# hides anything that treats extruder state as machine-wide. Needs [extruder1] and its mandatory
+# TMC section added to the printer stub; see EXTRA_EXTRUDER_STUB.
+ERCF_VVD_DUAL_EXTRUDER = ERCF_VVD.derive(
+    'ercf_vvd_dual_extruder',
+    units=[
+        ERCF_VVD.units[0],
+        ERCF_VVD.units[1].derive(syms={'PARAM_EXTRUDER_NAME': 'extruder1'}),
+    ],
+    description='ercf_vvd with each unit on its own extruder')
+
+# Appended to bootstrap.PRINTER_STUB by tests using the profile above. The TMC section is not
+# optional - MmuExtruderWrapper raises without one for the extruder it is given.
+EXTRA_EXTRUDER_STUB = """
+[extruder1]
+step_pin: mcu:PB1
+dir_pin: mcu:PB2
+enable_pin: !mcu:PB3
+microsteps: 16
+full_steps_per_rotation: 200
+rotation_distance: 22.0
+nozzle_diameter: 0.400
+filament_diameter: 1.750
+heater_pin: mcu:PB4
+sensor_type: EPCOS 100K B57560G104F
+sensor_pin: mcu:PB5
+control: pid
+pid_Kp: 22.2
+pid_Ki: 1.08
+pid_Kd: 114
+min_temp: 0
+max_temp: 300
+
+[tmc2209 extruder1]
+uart_pin: mcu:PB6
+run_current: 0.6
+"""
+
 PROFILES = {p.name: p for p in (BOXTURTLE, TRADRACK, CHAMELEON, EMU, ENCODER, NFC_SINGLE,
                                 NFC_PER_GATE, NFC_PN5180, NFC_PN5180_PER_GATE,
                                 NFC_PN532, NFC_PN532_SW_I2C,
                                 NFC_PN532_UART, NFC_PN532_UART_PER_GATE,
                                 NFC_SPOOLMAN, NFC_SPOOLMAN_SHARED,
-                                ERCF_VVD)}
+                                ERCF_VVD, ERCF_VVD_DUAL_EXTRUDER)}
 
 
 def get(name):

@@ -169,9 +169,10 @@ class MmuCalibrator:
         """
         if gate is None:
             gate = self.mmu.gate_selected
-        lgate = self.mmu_unit.local_gate(gate)
-
-        ref_gate = lgate if lgate >= 0 and self.mmu_unit.variable_bowden_lengths else 0
+        # Another unit's gate has no entry here, so fall back to this unit's reference gate
+        ref_gate = 0
+        if self.mmu_unit.owns_gate(gate) and self.mmu_unit.variable_bowden_lengths:
+            ref_gate = self.mmu_unit.local_gate(gate)
         return self._bowden_lengths[ref_gate]
 
 
@@ -184,11 +185,10 @@ class MmuCalibrator:
             gate = self.mmu.gate_selected
         mmu = self.mmu
         mmu_unit = self.mmu_unit
-        lgate = mmu_unit.local_gate(gate)
-
-        if lgate < 0:
-            mmu.log_debug("Assertion failure: cannot save bowden length for gate: %s" % mmu.selected_gate_string(gate))
+        if not mmu_unit.owns_gate(gate):
+            mmu.log_debug("Cannot save bowden length for gate: %s" % mmu.selected_gate_string(gate))
             return
+        lgate = mmu_unit.local_gate(gate)
 
         all_gates = not mmu_unit.variable_bowden_lengths
 
@@ -266,12 +266,9 @@ class MmuCalibrator:
         """
         if gate is None:
             gate = self.mmu.gate_selected
-        lgate = self.mmu_unit.local_gate(gate)
-
-        if lgate >= 0:
-            return self._bowden_lengths[lgate] >= 0
-
-        return True
+        if not self.mmu_unit.owns_gate(gate):
+            return True
+        return self._bowden_lengths[self.mmu_unit.local_gate(gate)] >= 0
 
 
     # -----------------------------------------------------------------------------------------------------------
@@ -313,10 +310,9 @@ class MmuCalibrator:
         """
         if gate is None:
             gate = self.mmu.gate_selected
-        lgate = self.mmu_unit.local_gate(gate)
-
-        idx = lgate if lgate >= 0 else 0
-        rd = self.rotation_distances[lgate] if lgate >= 0 else self._default_rotation_distances[0]
+        owned = self.mmu_unit.owns_gate(gate)
+        idx = self.mmu_unit.local_gate(gate) if owned else 0
+        rd = self.rotation_distances[idx] if owned else self._default_rotation_distances[0]
 
         if rd <= 0:
             rd = self._default_rotation_distances[idx]
@@ -331,9 +327,7 @@ class MmuCalibrator:
         """
         if gate is None:
             gate = self.mmu.gate_selected
-        lgate = self.mmu_unit.local_gate(gate)
-
-        lgate = max(0, lgate)
+        lgate = self.mmu_unit.local_gate(gate) if self.mmu_unit.owns_gate(gate) else 0
         return self._default_rotation_distances[lgate]
 
 
@@ -344,9 +338,8 @@ class MmuCalibrator:
         """
         if gate is None:
             gate = self.mmu.gate_selected
-        lgate = self.mmu_unit.local_gate(gate)
-
-        lgate = max(0, lgate)
+        if not self.mmu_unit.owns_gate(gate):
+            return
         rd = self.get_gear_rd(gate)
         mcu_stepper = self.mmu_unit.drive_obj(gate).mmu_gear_stepper.stepper
         if (
@@ -364,9 +357,7 @@ class MmuCalibrator:
         """
         if gate is None:
             gate = self.mmu.gate_selected
-        lgate = self.mmu_unit.local_gate(gate)
-
-        if rd and lgate >= 0:
+        if rd and self.mmu_unit.owns_gate(gate):
             self.mmu.log_trace("Set stepper for gate %d gear motor rotation distance: %.4f" % (gate, rd))
             mcu_stepper = self.mmu_unit.drive_obj(gate).mmu_gear_stepper.stepper
             mcu_stepper.set_rotation_distance(rd)
@@ -382,11 +373,10 @@ class MmuCalibrator:
 
         if gate is None:
             gate = mmu.gate_selected
-        lgate = mmu_unit.local_gate(gate)
-
-        if lgate < 0:
-            mmu.log_debug("Assertion failure: cannot save gear rotation_distance for gate: %d" % gate)
+        if not mmu_unit.owns_gate(gate):
+            mmu.log_debug("Cannot save gear rotation_distance for gate: %s" % mmu.selected_gate_string(gate))
             return
+        lgate = mmu_unit.local_gate(gate)
 
         all_gates = not mmu_unit.variable_rotation_distances
 
@@ -449,12 +439,9 @@ class MmuCalibrator:
         """
         if gate is None:
             gate = self.mmu.gate_selected
-        lgate = self.mmu_unit.local_gate(gate)
-
-        if lgate >= 0:
-            return self.rotation_distances[lgate] >= 0
-
-        return True
+        if not self.mmu_unit.owns_gate(gate):
+            return True
+        return self.rotation_distances[self.mmu_unit.local_gate(gate)] >= 0
 
 
     # -----------------------------------------------------------------------------------------------------------

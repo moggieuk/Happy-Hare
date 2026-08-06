@@ -600,10 +600,8 @@ class TestPersistedPositionRestore(unittest.TestCase):
         this path at all - so a boot-level assertion about "the other unit" would pass even with
         the guard deleted.
 
-        The errors assertion is the part that bites. Without the guard the answer is STILL None,
-        because local_gate() refuses too - but it refuses via log_assertion("Fatal: Gate 12 is
-        not managed by unit0"), so every boot of a multi-unit machine would carry a fatal-looking
-        line about nothing being wrong.
+        The guard is now load-bearing rather than cosmetic: local_gate() raises for a gate the
+        unit does not own, so without the ownership check this would throw instead of declining.
         """
         from extras.mmu.mmu_constants import VARS_MMU_GATE_SELECTED
 

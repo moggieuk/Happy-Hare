@@ -70,9 +70,7 @@ class MmuController(MmuFilamentMovement):
         self.has_mmu_cutter = False             # Post unload cutting macro (like EREC)
         self.has_toolhead_cutter = False        # Form tip cutting macro (like _MMU_CUT_TIP)
         self._is_running_test = False           # True while running QA or soak tests
-        self.gear_run_current_percent = 100     # Current run percentage of active gear stepper
-        self.extruder_run_current_percent = 100 # Current run percentage of active extruder
-        self._gear_run_current_locked = False   # True if changes to gear current is currently locked by wrap_gear_current()
+        self._gear_run_current_depth = 0        # Nesting depth of wrap_gear_current(), which locks out changes
         self.p = mmu_machine.params             # Shared Parameters shortcut
 
         self.kalico = bool(self.printer.lookup_object('danger_options', False))
