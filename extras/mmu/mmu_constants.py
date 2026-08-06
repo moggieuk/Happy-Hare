@@ -166,6 +166,12 @@ SENSOR_NFC_PREFIX        = "mmu_nfc"        # Per-gate NFC/RFID reader used as a
 EXTRUDER_ENDSTOPS = [SENSOR_EXTRUDER_ENCODER, SENSOR_GEAR_TOUCH, SENSOR_EXTRUDER_ENTRY, SENSOR_EXTRUDER_NONE, SENSOR_COMPRESSION]
 GATE_ENDSTOPS     = [SENSOR_SHARED_EXIT, SENSOR_ENCODER, SENSOR_EXIT_PREFIX, SENSOR_EXTRUDER_ENTRY]
 
+#   Gate endstops downstream of the merge point. The sensor is shared with other gates, so
+#   it may be occupied by another gate's filament and filament forward of it is not private.
+#    Homing to one is only valid on a path that legitimately crosses it (a normal load or
+#    unload), never as a way to re-establish a datum from the gate side.
+SHARED_GATE_ENDSTOPS = [SENSOR_SHARED_EXIT, SENSOR_EXTRUDER_ENTRY]
+
 # Gear/Extruder synchronization modes
 DRIVE_UNSYNCED                = 0
 DRIVE_EXTRUDER_SYNCED_TO_GEAR = 1 # Aka 'gear+extruder'

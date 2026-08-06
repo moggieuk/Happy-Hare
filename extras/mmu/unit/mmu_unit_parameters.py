@@ -108,6 +108,9 @@ class MmuUnitParameters(TunableParametersBase):
                 "nfc_gate_jog_scan_window backward reach (%.1fmm) cannot exceed gate_homing_max (%.1fmm)"
                 % (abs(neg), self.gate_homing_max)
             )
+        # Note: a forward reach past a SHARED gate datum is deliberately not rejected here.
+        # Whether that is safe depends on the shared path being unoccupied, which is a
+        # runtime property - _jog_scan checks the shared sensor before it moves.
 
     # Parking distance sign convention: -ve = retraction (toward the gate/gears), +ve =
     # extrusion (forward, past the sensor). Parking forward past the sensor is only safe
