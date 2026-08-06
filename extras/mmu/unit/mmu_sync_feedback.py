@@ -72,13 +72,24 @@ class MmuSyncFeedback:
         # Initial flowguard status (when using sync-feedback controller)
         self.flowguard_status = {'trigger': '', 'reason': '', 'level': 0.0, 'max_clog': 0.0, 'max_tangle': 0.0, 'active': False, 'enabled': False}
 
-        # Tangle prevention - gear current boost on high tension (spool resistance)
-        self._tangle_prevention_boosted = False # Gear current currently boosted to 100%
-        self._tangle_prevention_active  = False # Armed (only while filament monitoring is active, not during load/unload)
+        # Tangle prevention - gear current boost on high tension (spool resistance).
+        # 'requested' is the hysteresis intent, 'boosted' is what actually reached the driver;
+        # they differ whenever a change is deferred, refused or superseded
+        self._tangle_prevention_active    = False # Armed (only while filament monitoring is active, not during load/unload)
+        self._tangle_prevention_requested = False
+        self._tangle_prevention_boosted   = False
+        self._tangle_prevention_gate      = None  # Gate whose stepper is boosted
+        self._pending_tangle              = None  # Latest coalesced (gate, percent, boost, msg)
+        self._tangle_cb_scheduled         = False
 
 
     def reinit(self):
-        pass
+        self._tangle_prevention_active    = False
+        self._tangle_prevention_requested = False
+        self._tangle_prevention_boosted   = False
+        self._tangle_prevention_gate      = None
+        self._pending_tangle              = None
+        self._tangle_cb_scheduled         = False
 
 
     def handle_connect(self):
@@ -214,21 +225,67 @@ class MmuSyncFeedback:
         if self._tangle_prevention_active:
             self._tangle_prevention_active = False
             self.mmu.log_debug("Tangle Prevention: Disarmed")
-        self._restore_tangle_prevention_current(eventtime, "disarmed")
+        self._invalidate_tangle_prevention("disarmed")
 
 
-    def _reset_tangle_prevention(self, eventtime):
+    def _reset_tangle_prevention(self, eventtime=None):
         # Disarm and restore boosted current on unsync
         self._tangle_prevention_active = False
-        self._restore_tangle_prevention_current(eventtime, "reset")
+        self._invalidate_tangle_prevention("reset")
 
 
-    def _restore_tangle_prevention_current(self, eventtime, reason):
+    def _invalidate_tangle_prevention(self, reason):
+        """
+        Drop any deferred change and put the boosted stepper back. Dropping first matters: a queued
+        boost must not land after the restore. The restore itself stays synchronous because a
+        deferred one could arrive after an unrelated operation legitimately raised that stepper.
+        """
+        self._pending_tangle = None
+        self._tangle_prevention_requested = False
+
         if self._tangle_prevention_boosted:
+            gate = self._tangle_prevention_gate
             self._tangle_prevention_boosted = False
+            self._tangle_prevention_gate = None
             restore_percent = self.p.sync_gear_current
             self.mmu.log_debug("Tangle Prevention: Restoring gear current to %d%%" % restore_percent)
-            self.mmu._adjust_gear_current(percent=restore_percent, reason="tangle prevention %s" % reason)
+            self.mmu._adjust_gear_current(gate=gate, percent=restore_percent,
+                                          reason="tangle prevention %s" % reason, restore=True)
+
+
+    def _schedule_tangle_current(self, gate, percent, boost, msg):
+        # Coalesce to the latest intent behind a single callback
+        self._pending_tangle = (gate, percent, boost, msg)
+        if self._tangle_cb_scheduled: return
+        self._tangle_cb_scheduled = True
+        self.mmu.reactor.register_callback(self._apply_pending_tangle)
+
+
+    def _apply_pending_tangle(self, eventtime):
+        """
+        Apply the deferred current change against the gate captured when it was decided, not
+        whatever is selected now. Re-validated here because the selection and the armed state can
+        both move while this sits queued.
+        """
+        pending, self._pending_tangle = self._pending_tangle, None
+        self._tangle_cb_scheduled = False
+        if pending is None: return
+
+        gate, percent, boost, msg = pending
+        if not (self.mmu.is_enabled and self.active and self._tangle_prevention_active):
+            self._tangle_prevention_requested = self._tangle_prevention_boosted
+            return
+
+        self.mmu.log_info(msg) # Logged on apply so we never announce a change that got refused
+        self.mmu._adjust_gear_current(gate=gate, percent=percent, restore=not boost,
+                                      reason="for tangle prevention" if boost else "tangle prevention release")
+
+        if self.mmu.gear_run_current(gate) == percent:
+            self._tangle_prevention_boosted = boost
+            self._tangle_prevention_gate = gate if boost else None
+        else:
+            # Refused, so realign intent with reality and let the next tick retry
+            self._tangle_prevention_requested = self._tangle_prevention_boosted
 
 
     def _check_tangle_prevention(self, eventtime):
@@ -242,21 +299,21 @@ class MmuSyncFeedback:
         # Tension is the negative half of the sensor range; work with abs value
         tension_level = -self._get_sensor_state()
 
-        if not self._tangle_prevention_boosted:
+        if not self._tangle_prevention_requested:
             if tension_level >= self.p.tangle_prevention_threshold:
-                self._tangle_prevention_boosted = True
-                self.mmu.log_info("Tangle Prevention: High tension detected (%.0f%%), boosting gear current to 100%%" % (tension_level * 100.))
-                # Defer current change to its own greenlet so SET_TMC_CURRENT's get_last_move_time()
-                # doesn't flush the lookahead in this timer-driven path (risking a move stall)
-                self.mmu.reactor.register_callback(
-                    lambda pt: self.mmu._adjust_gear_current(percent=100, reason="for tangle prevention"))
+                self._tangle_prevention_requested = True
+                msg = "Tangle Prevention: High tension detected (%.0f%%), boosting gear current to 100%%" % (tension_level * 100.)
+                # Defer the current change to its own greenlet so SET_TMC_CURRENT's
+                # get_last_move_time() doesn't flush the lookahead here (risking a move stall)
+                self._schedule_tangle_current(self.mmu.gate_selected, 100, True, msg)
         else:
             if tension_level <= self.p.tangle_prevention_release:
-                self._tangle_prevention_boosted = False
+                self._tangle_prevention_requested = False
                 restore_percent = self.p.sync_gear_current
-                self.mmu.log_info("Tangle Prevention: Tension eased (%.0f%%), restoring gear current to %d%%" % (tension_level * 100., restore_percent))
-                self.mmu.reactor.register_callback(
-                    lambda pt, p=restore_percent: self.mmu._adjust_gear_current(percent=p, reason="tangle prevention release"))
+                gate = self._tangle_prevention_gate
+                if gate is None: gate = self.mmu.gate_selected
+                msg = "Tangle Prevention: Tension eased (%.0f%%), restoring gear current to %d%%" % (tension_level * 100., restore_percent)
+                self._schedule_tangle_current(gate, restore_percent, False, msg)
 
 
     def adjust_filament_tension(self, use_gear_motor=True, max_move=None):
@@ -408,6 +465,10 @@ class MmuSyncFeedback:
         # Ignore event if not for this unit
         if not self.mmu_unit.manages_gate(self.mmu.gate_selected): return
 
+        # Ahead of the early return below: a boosted stepper has to come back down even when the
+        # feature was switched off while it was boosted, or it stays high for the rest of the print
+        self._invalidate_tangle_prevention("unsynced")
+
         if not (self.mmu.is_enabled and self.p.sync_feedback_enabled and self.active): return
         if eventtime is None: eventtime = self.mmu.reactor.monotonic()
 
@@ -445,6 +506,10 @@ class MmuSyncFeedback:
         """
         if not self.mmu_unit.has_buffer(): return
         self._invalidate_rd_scheduler()
+
+        # Usually a no-op because the unsync ahead of the gate change already restored, but it
+        # covers the paths where that handler bails early (feature toggled off mid-boost)
+        self._invalidate_tangle_prevention("gate change")
 
 
     def _handle_extruder_movement(self, eventtime, move):

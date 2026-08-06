@@ -3658,13 +3658,28 @@ class MmuFilamentMovement:
         Yields:
             self while the temporary gear-current override is active.
         """
-        prev_percent = self._adjust_gear_current(percent=percent, reason=reason)
-        self._gear_run_current_locked = True
+        # Bind the stepper at entry so a block that changes selection still restores the one it
+        # changed. Only the outermost wrap applies and restores; inner ones are locked out
+        gate = self.gate_selected
+        outermost = self._gear_run_current_depth == 0
+        prev_percent = self._adjust_gear_current(gate=gate, percent=percent, reason=reason) if outermost else None
+        self._gear_run_current_depth += 1
         try:
             yield self
         finally:
-            self._gear_run_current_locked = False
-            self._restore_gear_current(percent=prev_percent)
+            self._gear_run_current_depth -= 1
+            if self._gear_run_current_depth == 0:
+                self._restore_gear_current(gate=gate, percent=prev_percent)
+
+
+    def gear_run_current(self, gate=None):
+        """
+        Run current percentage believed to be applied to a gate's gear stepper.
+        """
+        if gate is None:
+            gate = self.gate_selected
+        sname = self.mmu_unit(gate).gear_name(gate)
+        return self.gear_run_current_percents.get(sname, 100)
 
 
     def _adjust_gear_current(self, gate=None, percent=100, reason="", restore=False):
@@ -3680,31 +3695,32 @@ class MmuFilamentMovement:
         Returns:
             int or float: Previously active or currently retained gear-current percentage.
         """
-        u = self.mmu_unit(gate)
-
-        current_percent = self.gear_run_current_percent
-
-        if self._gear_run_current_locked:
-            return current_percent
+        # Resolve the gate before naming the stepper - gear_name() cannot take None
         if gate is None:
             gate = self.gate_selected
+        u = self.mmu_unit(gate)
+
         if gate < 0:
+            return 100
+        sname = u.gear_name(gate)
+        current_percent = self.gear_run_current_percents.get(sname, 100)
+
+        if self._gear_run_current_depth:
             return current_percent
         if not (0 < percent < 200):
             return current_percent
         if u.gear_tmc_obj(gate) is None:
             return current_percent
-        if percent == self.gear_run_current_percent:
+        if percent == current_percent:
             return current_percent
 
-        sname = u.gear_name(gate)
         if restore:
             msg = "Restoring MMU %s run current to %d%% ({}A)" % (sname, percent)
         else:
             msg = "Modifying MMU %s run current to %d%% ({}A) %s" % (sname, percent, reason)
         target_current = (u.gear_default_current(gate) * percent) / 100.0
         self._set_tmc_current(sname, target_current, msg)
-        self.gear_run_current_percent = percent # Update global record of current %
+        self.gear_run_current_percents[sname] = percent
         return current_percent
 
 
