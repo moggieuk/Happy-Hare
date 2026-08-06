@@ -98,7 +98,7 @@ class TestExtruderNestsFully(CurrentNestingTestCase):
         applied = [run for _t, run, _h in tmc.current_changes[changes:]]
         self.assertEqual([round(a / default, 2) for a in applied], [0.80, 0.40, 0.80, 1.00],
                          'inner wrap must restore to the outer percentage, not to the default')
-        self.assertEqual(self.mmu.extruder_run_current_percent, 100)
+        self.assertEqual(self.mmu.extruder_run_current(), 100)
 
 
 if __name__ == '__main__':

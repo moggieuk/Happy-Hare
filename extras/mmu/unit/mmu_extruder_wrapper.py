@@ -36,6 +36,9 @@ class MmuExtruderWrapper():
         self.filament_remaining = 0.            # The amount of filament remaining in extruder hotend
         self.filament_remaining_color = UNKNOWN_FILAMENT_COLOR # Color of remaining filament
 
+        # Per physical extruder, not per machine: units on different extruders each have their own
+        self._run_current_percent = 100
+
         # Build homing extruder stepper if option enabled ---------------------------------------------------
 
         self.homing_extruder_stepper = None
@@ -149,6 +152,20 @@ class MmuExtruderWrapper():
 
     def extruder_default_current(self):
         return self._extruder_current
+
+
+    def run_current_percent(self):
+        return self._run_current_percent
+
+
+    def set_run_current_percent(self, percent):
+        self._run_current_percent = percent
+
+
+    def reinit(self):
+        # Record only, and safe pre-connect. Enable/disable restores the driver to its
+        # configured default, so all we do is forget what we believed
+        self._run_current_percent = 100
 
 
     def set_filament_remaining(self, length, color=UNKNOWN_FILAMENT_COLOR):

@@ -98,5 +98,57 @@ class TestConsoleOutput(StepperCurrentTestCase):
                         'driver did not acknowledge the change: %s' % emitted)
 
 
+class TestPerExtruderAccounting(unittest.TestCase):
+    """
+    Two units on DIFFERENT physical extruders. Every other profile leaves both on the default one,
+    so they share a wrapper and nothing distinguishes per-extruder state from machine-wide state.
+    """
+
+    def setUp(self):
+        from test.hh.bootstrap import PRINTER_STUB
+        from test.hh.profiles import EXTRA_EXTRUDER_STUB
+        self.hh = session('ercf_vvd_dual_extruder',
+                          printer_stub=PRINTER_STUB + EXTRA_EXTRUDER_STUB)
+        self.hh.boot(calibrate=True)
+        self.assertEqual(self.hh.errors, [], 'bootup was not clean')
+        self.mmu = self.hh.mmu
+        self.unit0 = self.mmu.mmu_machine.get_mmu_unit_by_index(0)
+        self.unit1 = self.mmu.mmu_machine.get_mmu_unit_by_index(1)
+        self.assertIsNot(self.unit0.extruder_wrapper, self.unit1.extruder_wrapper,
+                         'units share a wrapper - fixture is not doing its job')
+
+    def tearDown(self):
+        self.hh.close()
+
+    def currents(self):
+        return [line for line in self.hh.gcode.executed if line.startswith('SET_TMC_CURRENT')]
+
+    def test_one_extruder_does_not_suppress_the_other(self):
+        """
+        The record used to be one machine-wide value, so setting extruder A then asking for the
+        same percentage on B was refused as a no-op - and A was never restored either.
+        """
+        self.mmu.select_gate(0)
+        self.mmu._adjust_extruder_current(60, "test")
+        mark = len(self.currents())
+
+        self.mmu.select_gate(9) # unit1, a different extruder
+        self.mmu._adjust_extruder_current(60, "test")
+
+        applied = self.currents()[mark:]
+        self.assertEqual(len(applied), 1, 'second extruder was suppressed: %s' % applied)
+        self.assertIn('STEPPER=%s' % self.unit1.extruder_name(), applied[0])
+        self.assertEqual(self.unit0.extruder_wrapper.run_current_percent(), 60)
+        self.assertEqual(self.unit1.extruder_wrapper.run_current_percent(), 60)
+
+    def test_the_record_is_forgotten_on_reinit(self):
+        self.mmu.select_gate(0)
+        self.mmu._adjust_extruder_current(60, "test")
+        self.assertEqual(self.mmu.extruder_run_current(), 60)
+
+        self.mmu.reinit()
+        self.assertEqual(self.mmu.extruder_run_current(), 100)
+
+
 if __name__ == '__main__':
     unittest.main()

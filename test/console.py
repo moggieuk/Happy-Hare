@@ -951,7 +951,7 @@ class Console:
         cells = []
         for label, pct, tmc in (
             ('gear', mmu.gear_run_current(gate), self._tmc_for_gate(gate)),
-            ('ext', mmu.extruder_run_current_percent, self._extruder_tmc()),
+            ('ext', mmu.extruder_run_current(), self._extruder_tmc()),
         ):
             amps = tmc.get_status().get('run_current') if tmc else None
             cells.append('%s=%d%%' % (label, pct) if amps is None
