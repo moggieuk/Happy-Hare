@@ -47,6 +47,7 @@ from .unit.selectors                    import SELECTOR_REGISTRY
 from .unit.selectors.mmu_base_selectors import VirtualSelector
 from .unit.mmu_environment_manager      import MmuEnvironmentManager
 from .unit.mmu_nfc_manager              import MmuNfcManager
+from .mmu_utils                         import MmuError
 
 
 # Default selector classes for known vendors
@@ -692,16 +693,26 @@ class MmuUnit:
     def local_gate(self, gate, force_physical=False):
         """
         Convert mmu_machine gate number to relative gate on mmu_unit
+
         Args:
-          'force_physical' will default to local gate 0 if bypass/unknown
-           and is safe for when using result for array lookup
+          'force_physical' will default to local gate 0 if bypass/unknown and is safe for array
+           lookup, but only for those - a gate this unit doesn't manage has no local equivalent
+           and raises rather than silently resolving to another gate's hardware
         """
-        if gate >= 0 and self.manages_gate(gate):
-            lgate = gate - self.first_gate
-        elif gate < 0:
+        if not isinstance(gate, int):
+            raise MmuError("Gate %s is not a gate number" % (gate,))
+
+        if gate < 0:
             lgate = gate # bypass/unknown
+        elif self.manages_gate(gate):
+            lgate = gate - self.first_gate
+        elif force_physical:
+            raise MmuError("Gate %d is not managed by %s (range=%d-%d)"
+                           % (gate, self.name, *self.gate_bounds()))
         else:
-            self.mmu.log_assertion("Fatal: Gate %d is not managed by %s" % (gate, self.name))
+            # Only a decline now that anything wanting real hardware raises above, and callers
+            # that can be asked about another unit's gate treat it as one - so don't shout
+            self.mmu.log_debug("Gate %d is not managed by %s" % (gate, self.name))
             lgate = TOOL_GATE_UNKNOWN
 
         return lgate if not force_physical else max(0, lgate)
