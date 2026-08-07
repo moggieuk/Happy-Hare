@@ -612,12 +612,6 @@ class MmuFilamentMovement:
         filament starts and ends at the regular gate park, so the preload parameters - which
         describe a different endstop and a different park - have no business here.
 
-        A forward sweep past a SHARED gate datum enters the merged path. That is fine on an
-        empty path - we are not printing - but a shared endstop already reading triggered
-        means another gate's filament is sitting there to be hit, so the scan refuses
-        before any motion (the same guard _preload_gate uses). Only the forward side can
-        reach it, so a window that never goes forward of the datum is unaffected.
-
         Returns:
             bool: True if the tag was found (and read), else False.
 
@@ -642,13 +636,6 @@ class MmuFilamentMovement:
             raise MmuError("Gate %d has no NFC reader to scan" % gate)
         if not nfc_manager.is_enabled(gate=gate):
             raise MmuError("Gate %d NFC reader is disabled (re-enable with MMU_NFC ... ENABLE=1)" % gate)
-
-        if pos > 0 and profile.endstop in SHARED_GATE_ENDSTOPS:
-            shared_name = self.sensor_manager.get_qualified_endstop_name(profile.endstop)
-            if self.sensor_manager.check_sensor(shared_name):
-                raise MmuError("Cannot scan gate %d: shared exit sensor '%s' is already "
-                               "triggered (filament from another gate still loaded?)"
-                               % (gate, shared_name))
 
         endstop_name = self.sensor_manager.get_gate_sensor_name(SENSOR_NFC_PREFIX, gate)
 
@@ -891,7 +878,8 @@ class MmuFilamentMovement:
         model, so hardware-only), and _park_from_gate carries the encoder-overshoot
         handling. extra_homing=abs(off) budgets homing_max + however far we strayed.
 
-        SHARED datum (see SHARED_GATE_ENDSTOPS): do NOT home. The scan never reached that
+        SHARED datum (mmu_shared_exit, or the extruder entry sensor on a no-bowden design
+        where it is registered as the shared exit): do NOT home. The scan never reached that
         sensor - it is downstream of the merge and park sits parking_distance behind it
         (-100mm on Box Turtle) - and a reverse home against an already-clear sensor
         completes instantly at zero distance (MmuVirtualEndstopSensor.home_start), giving
@@ -911,7 +899,7 @@ class MmuFilamentMovement:
         is not the gate homing endstop (Box Turtle implies both), and reading it costs no
         motion.
         """
-        if profile.endstop not in SHARED_GATE_ENDSTOPS:
+        if profile.endstop not in (SENSOR_SHARED_EXIT, SENSOR_EXTRUDER_ENTRY):
             covered = self.sensor_manager.check_sensor(gate_es_name)
             if covered is None:
                 covered = off > 0   # Encoder gate homing: no switch to consult

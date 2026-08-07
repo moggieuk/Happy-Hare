@@ -110,7 +110,8 @@ class MmuUnitParameters(TunableParametersBase):
             )
         # Note: a forward reach past a SHARED gate datum is deliberately not rejected here.
         # Whether that is safe depends on the shared path being unoccupied, which is a
-        # runtime property - _jog_scan checks the shared sensor before it moves.
+        # runtime property this validator cannot see. Nothing checks it at scan time
+        # either - a sweep forward of a shared datum can meet another gate's filament.
 
     # Parking distance sign convention: -ve = retraction (toward the gate/gears), +ve =
     # extrusion (forward, past the sensor). Parking forward past the sensor is only safe
