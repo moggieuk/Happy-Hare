@@ -3483,27 +3483,30 @@ class MmuController(MmuFilamentMovement):
             self.log_error("Error while registering tag uid: %s\n%s" % (str(e), SPOOLMAN_CONFIG_ERROR))
 
 
-    def _spoolman_set_spool_uid(self, spool_id, uid, quiet=True):
+    def _spoolman_set_spool_uid(self, spool_id, uid, append=False, quiet=True):
         """
-        Register (write) an NFC/RFID tag UID onto a spool record in Spoolman
-        so future scans of that tag resolve to this spool_id. Called by
-        'MMU_SPOOLMAN SPOOLID=.. RFID=..'.
+        Write NFC/RFID tag UID(s) onto a spool record in Spoolman so future
+        scans of those tags resolve to this spool_id. Called by
+        'MMU_SPOOLMAN SPOOLID=.. RFID=..' and by a per-gate 'MMU_NFC REGISTER=1
+        APPEND=1' binding a newly scanned tag onto the gate's assigned spool.
 
-        This is the opposite direction to _spoolman_register_tag / MMU_NFC REGISTER=1,
-        which takes a UID and finds (or auto-creates) a spool for it. Here the spool
-        already exists and the tag is bound onto it - the case auto-create cannot serve.
+        This is the opposite direction to _spoolman_register_tag / MMU_NFC REGISTER=1
+        (without APPEND), which takes a UID and finds (or auto-creates) a spool for it.
+        Here the spool already exists and the tag is bound onto it - the case auto-create
+        cannot serve.
 
         Args:
             spool_id: Spool ID to associate the tag with.
-            uid: Tag UID to write onto the spool record.
+            uid: Tag UID (or comma-separated UIDs) to write onto the spool record.
+            append: If True, add to the spool's existing UID(s) instead of replacing them.
             quiet: If True, suppress non-critical output.
         """
         if self.p.spoolman_support == SPOOLMAN_OFF: return
-        self.log_debug("Registering tag uid %s against spool %s in spoolman db" % (uid, spool_id))
+        self.log_debug("Registering tag uid %s against spool %s in spoolman db (append=%s)" % (uid, spool_id, append))
         try:
             webhooks = self.printer.lookup_object('webhooks')
             webhooks.call_remote_method("spoolman_set_spool_uid",
-                                        spool_id=spool_id, uid=uid, silent=quiet)
+                                        spool_id=spool_id, uid=uid, append=append, silent=quiet)
         except Exception as e:
             self.log_error("Error while registering tag uid on spool: %s\n%s" % (str(e), SPOOLMAN_CONFIG_ERROR))
 

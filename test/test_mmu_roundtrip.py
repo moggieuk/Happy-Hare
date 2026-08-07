@@ -29,6 +29,7 @@ logging.getLogger().setLevel(logging.CRITICAL)
 
 TAG_A = 'AAAA1111'
 TAG_B = 'BBBB2222'
+TAG_C = 'CCCC3333'
 UNKNOWN_TAG = 'DEADBEEF'
 TAG_METADATA = dict(material='PETG', brand='Overture', color='00FF00',
                     detail='PETG_Basic', min_temp=230, max_temp=250)
@@ -405,13 +406,23 @@ class TestSpoolmanRfidCommand(RoundTripTestCase):
         self.assertGreater(len(self.rt.errors), errors_before)
         self.assertIn('spoolid', self.rt.errors[-1].lower())
 
-    def test_blank_rfid_errors_rather_than_clearing(self):
-        """Blank means 'clear' in MMU_GATE_MAP; here it must not silently PATCH ''."""
+    def test_blank_rfid_clears_the_registered_tag(self):
+        """
+        Blank RFID= (no APPEND=1) is the documented way to unregister all tags
+        from a spool - it must succeed silently, not error (that used to be
+        rejected outright; now RFID='' is how a spool's tag(s) get cleared).
+        """
         self.rt.run_gcode('MMU_SPOOLMAN SPOOLID=2 RFID=%s' % TAG_B)
         errors_before = len(self.rt.errors)
-        self.rt.run_gcode('MMU_SPOOLMAN SPOOLID=2 RFID=')
-        self.assertGreater(len(self.rt.errors), errors_before)
-        self.assertEqual(self.rt.db.spool_uid(2), TAG_B, 'existing tag must be untouched')
+        self.rt.run_gcode("MMU_SPOOLMAN SPOOLID=2 RFID=''")
+        self.assertEqual(len(self.rt.errors), errors_before)
+        self.assertEqual(self.rt.db.spool_uid(2), '')
+
+    def test_append_adds_a_second_tag_without_losing_the_first(self):
+        """A spool can carry more than one physical tag (e.g. one on each side)."""
+        self.rt.run_gcode('MMU_SPOOLMAN SPOOLID=2 RFID=%s' % TAG_B)
+        self.rt.run_gcode('MMU_SPOOLMAN SPOOLID=2 RFID=%s APPEND=1' % TAG_C)
+        self.assertEqual(set(self.rt.db.spool_uids(2)), {TAG_B, TAG_C})
 
     def test_the_registered_tag_then_resolves_on_a_scan(self):
         """The round trip: bind a tag, then scanning it must resolve to that spool."""
