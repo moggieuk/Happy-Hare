@@ -8,6 +8,7 @@
 #
 # PARAM_NFC_DEEP_READ
 # PARAM_NFC_GATE_JOG_SCAN_WINDOW
+# PARAM_NFC_PRELOAD_JOG_SCAN_WINDOW
 # PARAM_NFC_LED_SEGMENT
 #
 # Shared:
@@ -610,6 +611,17 @@ if MMU_HAS_NFC_READER
         direction that is safely possible when searching for the RFID tag. To be sure to allow for complete spool
         rotation this range should be at least 480mm if possible.
         E.g. "-100, 400" means can retract -100mm and extruder 400mm. "0, 0" will disable jog scan operation
+
+    config PARAM_NFC_PRELOAD_JOG_SCAN_WINDOW
+      string "NFC reader preload jog scan window"
+      default PARAM_NFC_GATE_JOG_SCAN_WINDOW
+      array_editor "," 2
+      help
+        Same as the jog scan window above, but used specifically when scanning for a tag during MMU_PRELOAD.
+        Preload often homes to a different endstop (typically the per-gate mmu_exit sensor rather than the
+        general gate homing endstop), so the safe scan range can differ. Defaults to the same value as the
+        gate jog scan window.
+        E.g. "-100, 400" means can retract -100mm and extrude 400mm. "0, 0" disables jog scanning during preload
 
     choice CHOICE_NFC_LED_SEGMENT
       prompt "NFC reader led feedback segment"

@@ -109,6 +109,24 @@ class MmuUnitParameters(TunableParametersBase):
                 % (abs(neg), self.gate_homing_max)
             )
 
+    def _validate_nfc_preload_jog_scan_window(self, value):
+        # Empty (or absent) disables the NFC scan-on-miss during MMU_PRELOAD
+        if not value:
+            return
+        if len(value) != 2:
+            raise ValueError("nfc_preload_jog_scan_window must be two values (neg, pos), e.g. 0,480")
+        neg, pos = value[0], value[1]
+        if neg > 0 or pos < 0:
+            raise ValueError("nfc_preload_jog_scan_window must be (neg, pos) with neg <= 0 <= pos")
+        # Same TARGETS-from-the-gate-datum semantics as nfc_gate_jog_scan_window, but
+        # checked against the preload homing budget - preload can home to a different
+        # endstop (e.g. the per-gate mmu_exit sensor) with its own recovery budget.
+        if abs(neg) > self.gate_preload_homing_max:
+            raise ValueError(
+                "nfc_preload_jog_scan_window backward reach (%.1fmm) cannot exceed gate_preload_homing_max (%.1fmm)"
+                % (abs(neg), self.gate_preload_homing_max)
+            )
+
     # Parking distance sign convention: -ve = retraction (toward the gate/gears), +ve =
     # extrusion (forward, past the sensor). Parking forward past the sensor is only safe
     # on the per-gate mmu_exit sensor; the shared mmu_shared_exit, encoder and
@@ -151,6 +169,7 @@ class MmuUnitParameters(TunableParametersBase):
 
         # NFC / RFID reading
         ParamSpec('nfc_gate_jog_scan_window',         'floatlist', [0.0, 0.0], section="NFC", validator=_validate_nfc_gate_jog_scan_window),
+        ParamSpec('nfc_preload_jog_scan_window',      'floatlist', lambda self: self.nfc_gate_jog_scan_window, section="NFC", validator=_validate_nfc_preload_jog_scan_window),
         ParamSpec('nfc_deep_read',                    'int',    0,    section="NFC", limits=dict(minval=0, maxval=1)),
         ParamSpec('nfc_led_segment',                  'str',  'auto', section="NFC"),
 
