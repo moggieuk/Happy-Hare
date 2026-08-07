@@ -148,6 +148,23 @@ class TestJogScanFindsTag(NfcScanTestCase):
         self.hh.run_gcode('MMU_NFC_SCAN GATE=0')
         self.assertNotIn('tag read', ' '.join(self.hh.console).lower())
 
+    def test_scan_uses_the_gate_window_even_when_preload_window_differs(self):
+        """
+        Regression test: MMU_NFC_SCAN always drives _gate_profile(), so it must keep
+        sweeping nfc_gate_jog_scan_window even when nfc_preload_jog_scan_window is set
+        to something else entirely.
+        """
+        u = self.hh.mmu.mmu_unit(0)
+        u.p.nfc_gate_jog_scan_window = [-50.0, 30.0]
+        u.p.nfc_preload_jog_scan_window = [-20.0, 12.0]
+        self.preload(0)  # no tag attached: sweep runs its full length, finds nothing
+        self.hh.mmu.select_gate(0)
+        self.hh.run_gcode('MMU_NFC_SCAN GATE=0')
+
+        trips = [d for _g, d, r in self.fil.history if 'mmu_nfc_0' in r and abs(d) in (30.0, 12.0)]
+        self.assertIn(30.0, [abs(d) for d in trips], 'MMU_NFC_SCAN never swept the 30mm gate window')
+        self.assertNotIn(12.0, [abs(d) for d in trips], 'MMU_NFC_SCAN swept the preload window instead')
+
     def test_tag_already_on_the_reader_short_circuits_the_jog(self):
         """
         _jog_scan pre-reads before moving, so a tag already sitting on the reader is
@@ -313,6 +330,26 @@ class TestPreloadNfcCompound(NfcScanTestCase):
         self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_UNLOADED)
         self.assertFalse(self.hh.sensor('mmu_exit_0').present,
                          'the park must end behind the gate switch')
+        self.assertEqual(self.hh.errors, [])
+
+    def test_gate_first_scan_uses_the_preload_window_not_the_gate_window(self):
+        """
+        Regression test: _home_to_gate_with_nfc must sweep whatever window its caller's
+        profile carries. MMU_PRELOAD drives _preload_profile(), so its forward sweep leg
+        must be bounded by nfc_preload_jog_scan_window, not nfc_gate_jog_scan_window -
+        the two are given distinct positive halves here so a fix that reads the wrong one
+        is caught immediately.
+        """
+        u = self.hh.mmu.mmu_unit(0)
+        u.p.nfc_gate_jog_scan_window = [-50.0, 30.0]
+        u.p.nfc_preload_jog_scan_window = [-20.0, 12.0]
+        self.hh.place_filament(0, position=-100.0)  # no tag: gate switch always wins first
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+
+        trips = [d for _g, d, r in self.fil.history if 'mmu_nfc_0' in r and d > 0]
+        self.assertEqual(trips, [12.0],
+                         'preload swept %r - expected a single 12mm leg from '
+                         'nfc_preload_jog_scan_window' % (trips,))
         self.assertEqual(self.hh.errors, [])
 
 

@@ -47,8 +47,9 @@ from .mmu_sensor_utils    import MmuVirtualEndstopSensor, MmuCompoundEndstop
 # Parameter set for a "home filament to the gate" operation and the park that follows it.
 # There are exactly two of these: the normal gate_* set (_gate_profile) and the preload
 # gate_preload_* set (_preload_profile). Every gate homing/parking primitive is driven by
-# one of them, so the endstop, homing budget and parking distance always travel together.
-GateHomeProfile = namedtuple('GateHomeProfile', ['endstop', 'homing_max', 'parking_distance', 'attempts'])
+# one of them, so the endstop, homing budget, parking distance and NFC jog scan window
+# always travel together.
+GateHomeProfile = namedtuple('GateHomeProfile', ['endstop', 'homing_max', 'parking_distance', 'attempts', 'jog_scan_window'])
 
 
 class MmuFilamentMovement:
@@ -69,6 +70,7 @@ class MmuFilamentMovement:
             homing_max=u.p.gate_homing_max,
             parking_distance=u.p.gate_parking_distance,
             attempts=(u.p.gate_load_attempts if allow_retry else 1),
+            jog_scan_window=u.p.nfc_gate_jog_scan_window,
         )
 
 
@@ -84,6 +86,7 @@ class MmuFilamentMovement:
             homing_max=u.p.gate_preload_homing_max,
             parking_distance=u.p.gate_preload_parking_distance,
             attempts=u.p.gate_preload_attempts,
+            jog_scan_window=u.p.nfc_preload_jog_scan_window,
         )
 
 
@@ -97,7 +100,7 @@ class MmuFilamentMovement:
               [gate_preload_endstop, NFC reader]. If the READER stops the move the tag is
               read and homing continues to the physical endstop, then parks. If the PHYSICAL
               endstop stops it first we hand over to the scan logic: sweep forward through
-              the positive half of nfc_gate_jog_scan_window looking for the tag, then park
+              the positive half of nfc_preload_jog_scan_window looking for the tag, then park
               from wherever that left us (reverse-home back to the gate, then park).
 
         'pending' is the (spool_id, tag) the MMU_PRELOAD command grabbed up front (before its
@@ -303,7 +306,7 @@ class MmuFilamentMovement:
             for i in range(profile.attempts):
                 if nfc is not None:
                     homed, tag_read, overshoot = self._home_to_gate_with_nfc(
-                        gate, endstop_name, nfc, homing_max)
+                        gate, endstop_name, nfc, homing_max, profile.jog_scan_window)
                 else:
                     msg = (
                         f"Initial homing to {endstop_name} sensor"
@@ -485,7 +488,7 @@ class MmuFilamentMovement:
         return compound, nfc_es_name, nfc_mgr
 
 
-    def _home_to_gate_with_nfc(self, gate, gate_es_name, nfc, homing_max):
+    def _home_to_gate_with_nfc(self, gate, gate_es_name, nfc, homing_max, jog_scan_window):
         """
         One NFC-augmented gate-home attempt against the compound [gate switch, NFC reader].
         Forward-only, and the two outcomes are deliberately different operations:
@@ -494,20 +497,24 @@ class MmuFilamentMovement:
             then carry on homing to the gate switch. We finish ON the datum, so the caller
             parks in place (offset 0).
           GATE switch stops us first - the tag is somewhere ahead of the reader. Hand over to
-            the scan logic and sweep forward through the positive half of
-            nfc_gate_jog_scan_window looking for it. We finish AHEAD of the datum, so the
+            the scan logic and sweep forward through the positive half of the caller's
+            jog_scan_window (the profile's nfc_gate_jog_scan_window or
+            nfc_preload_jog_scan_window) looking for it. We finish AHEAD of the datum, so the
             caller has to reverse-home back to it before parking (offset > 0).
 
         Reads the tag (deep if enabled) when found and applies it to the gate map. Never
         parks - the caller owns that.
 
+        Args:
+            jog_scan_window: (neg, pos) from the caller's GateHomeProfile - only the
+                positive half is used, to bound the forward scan leg.
+
         Returns:
             (homed, tag_read, offset) - offset is how far forward of the gate datum the
             filament was left, for the caller to budget its park with.
         """
-        u = self.mmu_unit()
         compound, nfc_es_name, nfc_mgr = nfc
-        window = u.p.nfc_gate_jog_scan_window
+        window = jog_scan_window
         pos = max(0.0, window[1]) if len(window) == 2 else 0.0
 
         # Phase 1: home to whichever of {gate switch, tag} arrives first
@@ -623,7 +630,7 @@ class MmuFilamentMovement:
         profile = self._gate_profile()
         pre_scan_status = self.gate_status[gate] # Restored if a re-park fails (filament is still present)
 
-        window = u.p.nfc_gate_jog_scan_window
+        window = profile.jog_scan_window
         if len(window) != 2 or window[0] > 0 or window[1] < 0:
             raise MmuError("nfc_gate_jog_scan_window must be (neg, pos) with neg <= 0 <= pos, got %s" % (window,))
         neg, pos = window[0], window[1]
