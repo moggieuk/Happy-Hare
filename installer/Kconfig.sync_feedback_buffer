@@ -7,6 +7,10 @@
 #   PARAM_BUFFER_RANGE
 #   PARAM_BUFFER_MAXRANGE
 #   PARAM_BUFFER_SPRING_STATE
+#   PARAM_SYNC_FEEDBACK_SPEED_MULTIPLIER
+#   PARAM_SYNC_FEEDBACK_BOOST_MULTIPLIER
+#   PARAM_SYNC_FEEDBACK_EXTRUDE_THRESHOLD
+#   PARAM_SYNC_FEEDBACK_DEBUG_LOG
 #   MMU_HAS_SENSOR_BUFFER_COMPRESSION
 #   MMU_HAS_SENSOR_BUFFER_TENSION
 #   MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
@@ -265,6 +269,43 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
         default 0
 
     endif
+
+    comment "_"
+    comment "_Feedback tuning"
+
+    config PARAM_SYNC_FEEDBACK_SPEED_MULTIPLIER
+      float "Sync feedback speed multiplier   "
+      range 1 50
+      default 5
+      help
+        % "twolevel" gear speed delta to keep filament neutral in buffer (recommend 5%)
+
+    config PARAM_SYNC_FEEDBACK_BOOST_MULTIPLIER
+      float "Sync feedback boost multiplier   "
+      range 1 50
+      default 3
+      help
+        % "twolevel" extra gear speed boost for finding initial neutral position (recommend 3%)
+
+    config PARAM_SYNC_FEEDBACK_EXTRUDE_THRESHOLD
+      float "Sync feedback extrude threshold  "
+      default 5
+      help
+        Extruder movement (mm) for updates (keep small but set > retract distance)
+
+    config BOOL_SYNC_FEEDBACK_DEBUG_LOG
+      bool "Enable sync-feedback telemetry log?"
+      default n
+      help
+        If enabled this forces debugging to a telemetry log file "sync_<gate>.jsonl". This is great if
+        trying to tune clog/tangle detection or for getting help on the Happy Hare forum. To plot graph
+        of sync-feedback operation, run:
+          ~/Happy-Hare/utils/plot_sync_feedback.sh
+
+    config PARAM_SYNC_FEEDBACK_DEBUG_LOG
+      int
+      default 1 if BOOL_SYNC_FEEDBACK_DEBUG_LOG
+      default 0
 
   endmenu
 endif
