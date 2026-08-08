@@ -297,6 +297,30 @@ class TestPreloadNfcCompound(NfcScanTestCase):
                          'per-gate NFC scan ran despite a pending shared-reader UID')
         self.assertEqual(self.hh.mmu.gate_maps.gate_spool_id[0], 7)
 
+    def test_weak_pending_does_not_bypass_the_per_gate_reader(self):
+        """
+        A bare-uid ('weak') pending is not trusted enough to skip the gate's own NFC
+        reader - only a resolved spool_id or a tag with usable metadata ('strong') does.
+        A fresh per-gate read must win over the stale weak pending, not be clobbered by it.
+        """
+        self.hh.mmu.pending_tag = ('DEADBEEF', None)
+        self.fil.attach_tag(0, TAG, offset=40.0)
+        at = len(self.hh.console)
+        self.hh.place_filament(0, position=-100.0)
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+        banners = [l for l in self.hh.console[at:] if l.startswith('Preloading')]
+        self.assertEqual(banners, ['Preloading gate 0 with NFC scan...'],
+                         'a weak (bare-uid) pending must not skip the per-gate NFC scan')
+        self.assertEqual(self.hh.mmu.gate_maps.gate_spool_rfid[0], TAG,
+                         "the gate's own fresher read must win over the stale weak pending")
+
+    def test_weak_pending_is_applied_when_the_gates_reader_finds_nothing(self):
+        """The weak pending is not wasted - it is the fallback when the per-gate scan finds no tag."""
+        self.hh.mmu.pending_tag = ('DEADBEEF', None)
+        self.hh.place_filament(0, position=-100.0)   # no tag attached
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+        self.assertEqual(self.hh.mmu.gate_maps.gate_spool_rfid[0], 'DEADBEEF')
+
     def test_nfc_first_finishes_on_the_gate_and_parks_without_reverse_homing(self):
         """
         Reader stops the move, tag is read, homing CONTINUES to the gate switch - so the
