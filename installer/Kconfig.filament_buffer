@@ -8,7 +8,7 @@
 
 
 config UNSELECT_MMU_HAS_FILAMENT_BUFFER
-  bool
+  def_bool n
 
 if !UNSELECT_MMU_HAS_FILAMENT_BUFFER
   comment "_"

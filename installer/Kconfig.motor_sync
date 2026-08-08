@@ -7,6 +7,8 @@
 #   PARAM_SYNC_FORM_TIP
 #   PARAM_SYNC_PURGE
 #   PARAM_SYNC_GEAR_CURRENT
+#   PARAM_TOOLHEAD_POST_LOAD_TENSION_ADJUST
+#   PARAM_TOOLHEAD_ENTRY_TENSION_TEST
 
 menu "MMU/Extruder sync"
   help
@@ -73,6 +75,33 @@ menu "MMU/Extruder sync"
   config PARAM_SYNC_PURGE
     int
     default 1 if BOOL_ENABLE_SYNC_PURGE
+    default 0
+
+  comment "_"
+
+  config BOOL_TOOLHEAD_POST_LOAD_TENSION_ADJUST
+    bool "Adjust neutral tension after toolhead load?"
+    default y
+    help
+      If synchronizing gear and extruder and you have a sync-feedback "buffer" (switch based or
+      proportional) this setting determines whether to use it to create neutral tension after loading
+
+  config PARAM_TOOLHEAD_POST_LOAD_TENSION_ADJUST
+    int
+    default 1 if BOOL_TOOLHEAD_POST_LOAD_TENSION_ADJUST
+    default 0
+
+  config BOOL_TOOLHEAD_ENTRY_TENSION_TEST
+    bool "Test filament entry via tension after extruder move?"
+    default y
+    help
+      If sync-feedback compression sensor is available this test will ensure the filament passes the
+      extruder entry by checking for neutral tension when moving filament with just the extruder.
+      Recommended with sprung loaded sync-feedback buffers. This is ignored if toolhead sensor is available.
+
+  config PARAM_TOOLHEAD_ENTRY_TENSION_TEST
+    int
+    default 1 if BOOL_TOOLHEAD_ENTRY_TENSION_TEST
     default 0
 
 endmenu
