@@ -494,7 +494,7 @@ class TestSetSpoolUid(MoonrakerTestCase):
     """
     Binding a tag onto an EXISTING spool - the opposite direction to get_spool_by_uid,
     which takes a UID and finds or auto-creates a spool. Reached from Klipper as
-    'MMU_SPOOLMAN SPOOLID=.. RFID=..'.
+    'MMU_SPOOLMAN_TAG SPOOLID=.. RFID=..'.
     """
 
     SPOOLS = (dict(uid=KNOWN_UID, material='PLA'),

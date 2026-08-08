@@ -3509,9 +3509,9 @@ class MmuController(MmuFilamentMovement):
         """
         Write NFC/RFID tag UID(s) onto a spool record in Spoolman so future
         scans of those tags resolve to this spool_id. Called by
-        'MMU_SPOOLMAN SPOOLID=.. RFID=..', by a per-gate 'MMU_NFC REGISTER=1
+        'MMU_SPOOLMAN_TAG SPOOLID=.. RFID=..', by a per-gate 'MMU_NFC REGISTER=1
         APPEND=1' binding a newly scanned tag onto the gate's assigned spool, and
-        by 'MMU_SPOOLMAN GATE=.. SPOOLID=.. REGISTER=1'.
+        by 'MMU_SPOOLMAN_TAG GATE=.. SPOOLID=.. REGISTER=1'.
 
         This is the opposite direction to _spoolman_register_tag / MMU_NFC REGISTER=1
         (without APPEND), which takes a UID and finds (or auto-creates) a spool for it.
