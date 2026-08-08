@@ -40,13 +40,14 @@ class MmuSpoolmanTagCommand(BaseCommand):
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
-        + f"{CMD} SPOOLID=45 RFID=E2003412     ...Register tag E2003412 against spool id 45 in the spoolman db (replaces any existing tags)\n"
+        + f"{CMD} SPOOLID=45 RFID=E2003412          ...Register tag E2003412 against spool id 45 in the spoolman db (replaces any existing tags)\n"
         + f"{CMD} SPOOLID=45 RFID=E2003499 APPEND=1 ...Register a second tag on the same spool (e.g. one on each side), keeping E2003412\n"
-        + f"{CMD} SPOOLID=45 RFID=''           ...Clear all tags registered against spool id 45\n"
-        + f"{CMD} GATE=0 RFID=E2003412         ...Same, for whichever spool is assigned to gate 0\n"
-        + f"{CMD} GATE=3 SPOOLID=87 REGISTER=1    ...Bind gate 3's already-known tag uid to newly-created spool 87\n"
-        + f"{CMD} GATE=LAST SPOOLID=87 REGISTER=1 ...Bind last gate preloaded already-known tag uid to spool 87\n"
-        + f"{CMD} SPOOLID=87 REGISTER=1           ...Bind currently selected gate's tag uid to spool 87\n"
+        + f"{CMD} SPOOLID=45 RFID=''                ...Clear all tags registered against spool id 45\n"
+        + f"{CMD} GATE=0 RFID=E2003412              ...Same, for whichever spool is assigned to gate 0\n"
+        + f"{CMD} GATE=3 SPOOLID=87 REGISTER=1      ...Bind gate 3's already-known tag uid to newly-created spool 87\n"
+        + f"{CMD} GATE=LAST SPOOLID=87 REGISTER=1   ...Bind last gate preloaded already-known tag uid to spool 87\n"
+        + f"{CMD} SPOOLID=87 REGISTER=1             ...Bind currently selected gate's tag uid to spool 87\n"
+        + "\nSee MMU_SPOOLMAN read or change gate-spool assignment in spoolman\n"
     )
 
     def __init__(self, mmu):

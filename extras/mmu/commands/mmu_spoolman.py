@@ -43,13 +43,13 @@ class MmuSpoolmanCommand(BaseCommand):
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
-        + f"{CMD}                              ...Show the current spoolman gate/spool assignments\n"
-        + f"{CMD} REFRESH=1                    ...Refresh the local gate map from the spoolman database\n"
-        + f"{CMD} GATE=0 SPOOLID=45            ...Assign spoolman spool id 45 to gate 0\n"
-        + f"{CMD} GATE=0                       ...Unassign whichever spool is on gate 0\n"
-        + f"{CMD} SPOOLID=45                   ...Unassign spool id 45 from whichever gate it's on\n"
-        + f"{CMD} SPOOLINFO=45                 ...Display spoolman details for spool id 45\n"
-        + f"{CMD} SPOOLINFO=-1                 ...Display spoolman details for active spool\n"
+        + f"{CMD}                   ...Show the current spoolman gate/spool assignments\n"
+        + f"{CMD} REFRESH=1         ...Refresh the local gate map from the spoolman database\n"
+        + f"{CMD} GATE=0 SPOOLID=45 ...Assign spoolman spool id 45 to gate 0\n"
+        + f"{CMD} GATE=0            ...Unassign whichever spool is on gate 0\n"
+        + f"{CMD} SPOOLID=45        ...Unassign spool id 45 from whichever gate it's on\n"
+        + f"{CMD} SPOOLINFO=45      ...Display spoolman details for spool id 45\n"
+        + f"{CMD} SPOOLINFO=-1      ...Display spoolman details for active spool\n"
         + "\nSee MMU_SPOOLMAN_TAG to register a tag/UID onto a spool record.\n"
     )
 
