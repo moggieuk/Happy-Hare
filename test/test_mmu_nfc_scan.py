@@ -278,7 +278,7 @@ class TestPreloadNfcCompound(NfcScanTestCase):
         self.assertNotIn('nfc:', said)
 
     def test_last_preloaded_gate_is_recorded_on_success(self):
-        """MMU_SPOOLMAN GATE=LAST relies on this being set after a normal successful preload."""
+        """MMU_SPOOLMAN_TAG GATE=LAST relies on this being set after a normal successful preload."""
         self.hh.place_filament(0, position=-100.0)
         self.assertEqual(self.hh.mmu.last_preloaded_gate, -1, 'precondition: nothing preloaded yet')
         self.hh.run_gcode('MMU_PRELOAD GATE=0')

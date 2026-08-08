@@ -190,7 +190,7 @@ class MmuNfcCommand(BaseCommand):
                         if shared:
                             if append:
                                 mmu.log_error("NFC: APPEND=1 needs a gate with an assigned spool - not "
-                                              "applicable to the shared reader. Use 'MMU_SPOOLMAN "
+                                              "applicable to the shared reader. Use 'MMU_SPOOLMAN_TAG "
                                               "SPOOLID=<id> RFID=%s APPEND=1' instead." % uid)
                             else:
                                 # Report-only Spoolman resolve/auto-create: no pending, no gate map
