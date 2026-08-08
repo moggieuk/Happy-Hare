@@ -1,4 +1,4 @@
-menu "Blobifier (_BLOBIFIER)"
+menu "Blobifier            (_BLOBIFIER)"
   help
     Blobifier purging system configuration variables.
 

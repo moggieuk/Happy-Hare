@@ -1,4 +1,4 @@
-menu "Tip forming        (_MMU_FORM_TIP)"
+menu "Tip forming          (_MMU_FORM_TIP)"
   help
     Happy Hare tip forming macro configuration variables.
 
