@@ -108,6 +108,10 @@ class MmuUnitParameters(TunableParametersBase):
                 "nfc_gate_jog_scan_window backward reach (%.1fmm) cannot exceed gate_homing_max (%.1fmm)"
                 % (abs(neg), self.gate_homing_max)
             )
+        # Note: a forward reach past a SHARED gate datum is deliberately not rejected here.
+        # Whether that is safe depends on the shared path being unoccupied, which is a
+        # runtime property this validator cannot see. Nothing checks it at scan time
+        # either - a sweep forward of a shared datum can meet another gate's filament.
 
     def _validate_nfc_preload_jog_scan_window(self, value):
         # Empty (or absent) disables the NFC scan-on-miss during MMU_PRELOAD
