@@ -29,10 +29,10 @@
 config UNSELECT_MMU_HAS_ESPOOLER
   def_bool n
 
-if !UNSELECT_MMU_HAS_ESPOOLER
-  comment "_"
-  comment "_Espooler"
+comment "_"
+comment "_Espooler"
 
+if !UNSELECT_MMU_HAS_ESPOOLER
 config MMU_HAS_ESPOOLER
   prompt "Has eSpooler?"
   forceshow
@@ -50,10 +50,6 @@ endif
 # -------------------------------------
 
 if MMU_HAS_ESPOOLER
-
-  # Can't also have filament catchment buffer
-  config UNSELECT_MMU_HAS_FILAMENT_BUFFER
-    default y
 
   menu "eSpooler config"
 

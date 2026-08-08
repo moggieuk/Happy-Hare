@@ -344,7 +344,7 @@ if [ -r "${KCONFIG_CONFIG}" ] && [ -n "${F_MENUCONFIG:-}" ]; then
     echo "   to only ADDING NEW or missing config sections/options. Note that parameter values shown"
     echo "   in menuconfig may be stale and not reflect your actual .cfg config"
     echo
-    echo "${C_WARNING}2) Replace (select 2)${C_OFF}"
+    echo "${C_WARNING}2) Replace (select 2)${C_OFF} (Recommended)"
     echo "   This will OVERWRITE changes made directly to your .cfg files and create new default"
     echo "   configuration based on choices made in menuconfig (which initializes to your previous config)."
     echo "   This is RECOMMENDED if you make ALL your configuration changes via menuconfig. It is also"

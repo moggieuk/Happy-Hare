@@ -10,12 +10,12 @@
 config UNSELECT_MMU_HAS_FILAMENT_BUFFER
   def_bool n
 
-if !UNSELECT_MMU_HAS_FILAMENT_BUFFER
-  comment "_"
-  comment "_Filament Catchment"
+comment "_"
+comment "_Filament Catchment"
 
+if !UNSELECT_MMU_HAS_FILAMENT_BUFFER
   config MMU_HAS_FILAMENT_BUFFER
-    bool "Has filament buffer to catch loose filament?"
+    prompt "Has filament buffer to catch loose filament?"
     forceshow
     default n
     help

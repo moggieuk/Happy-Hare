@@ -21,7 +21,6 @@ if MMU_FAMILY_ERCF
       help
         ERCF v1.1 is the original DIY MMU for klipper.
         Originally fitted with a TCRT5000 based encoder.
-      imply MMU_HAS_FILAMENT_BUFFER
       imply PREFERS_CHOICE_GATE_HOMING_ENDSTOP_ENCODER
 
     config MMU_TYPE_ERCF_2_0
@@ -32,7 +31,6 @@ if MMU_FAMILY_ERCF
       imply MMU_HAS_LEDS
       imply MMU_HAS_SENSOR_ENTRY
       imply BOOL_HAS_BYPASS
-      imply MMU_HAS_FILAMENT_BUFFER
       imply PREFERS_CHOICE_GATE_HOMING_ENDSTOP_ENCODER
 
     config MMU_TYPE_ERCF_3_0
@@ -94,7 +92,7 @@ if MMU_FAMILY_ERCF
           Alternative filament block with slightly different geometry.
 
       config MMU_HAS_FILAMENT_BUFFER
-        bool "Has Cotton Tail filament buffer?"
+        prompt "Has Cotton Tail filament buffer?"
         help
           Does MMU have the Cotton Tail filament buffer to catch the uncoiled
           filament on unload. NOTE unselect if you are using Filamentalist.
@@ -117,7 +115,7 @@ if MMU_FAMILY_ERCF
           is always gripped
 
       config MMU_HAS_FILAMENT_BUFFER
-        bool "Has Cotton Tail filament buffer?"
+        prompt "Has Cotton Tail filament buffer?"
         help
           Does MMU have the Cotton Tail filament buffer to catch the uncoiled
           filament on unload. NOTE unselect if you are using Filamentalist.
