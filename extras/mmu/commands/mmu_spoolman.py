@@ -21,7 +21,7 @@ from .mmu_base_command import *
 
 class MmuSpoolmanCommand(BaseCommand):
     """
-    Manage spoolman integration.
+    Manage spoolman interactions displaying status or simple mutations of extra fields like printer, gate and rfid/uid".
     """
 
     CMD = "MMU_SPOOLMAN"
@@ -34,17 +34,11 @@ class MmuSpoolmanCommand(BaseCommand):
         + "CLEAR     = [0|1] Clear all gate/spool assignments for this printer in the spoolman db\n"
         + "REFRESH   = [0|1] Rebuild spoolman's cache of this printer's assignments, then sync (unless SYNC= is also given)\n"
         + "FIX       = [0|1] With REFRESH=, also unassign any inconsistent spool/gate pairs found (partial or duplicate assignments)\n"
-        + "SPOOLID   = #(int) Spoolman spool id. With GATE=, assign it to that gate; alone, unset\n"
-        + "              its gate. Also the target spool for RFID=/REGISTER=/SPOOLINFO=\n"
-        + "GATE      = #(int) Gate number. With SPOOLID=, assign that spool to it; alone, unset\n"
-        + "              its spool. Also resolves RFID='s target spool, or REGISTER='s source gate\n"
-        + "RFID      = # Write this NFC/RFID tag UID (or comma-separated UIDs) onto the spool record\n"
-        + "              (needs SPOOLID or GATE). Replaces any existing UID(s); RFID='' clears them.\n"
-        + "APPEND    = [0|1] With RFID=, add to the existing UID(s) instead of replacing them; with\n"
-        + "              REGISTER=, add to the spool's existing UID(s) instead of replacing them\n"
-        + "REGISTER  = [0|1] With GATE= and SPOOLID=, write GATE's already-recorded NFC/RFID uid\n"
-        + "              onto SPOOLID in spoolman and assign it locally (no new scan - unlike\n"
-        + "              'MMU_NFC ... REGISTER=1', which reads a fresh tag). Needs spoolman_support != pull.\n"
+        + "SPOOLID   = #(int) Spoolman spool id. With GATE=, assign it to that gate; Without GATE=, unset its gate. Also the target spool for RFID=/REGISTER=/SPOOLINFO=\n"
+        + "GATE      = #(int) Gate number. With SPOOLID=, assign that spool to it; alone, unset its spool. Also resolves RFID='s target spool, or REGISTER='s source gate\n"
+        + "RFID      = # Write this NFC/RFID tag UID (or comma-separated UIDs) onto the spool record (needs SPOOLID or GATE). Replaces any existing UID(s); RFID='' clears them.\n"
+        + "APPEND    = [0|1] With RFID=, add to the existing UID(s) instead of replacing them; with REGISTER=, add to the spool's existing UID(s) instead of replacing them\n"
+        + "REGISTER  = [0|1] With GATE= and SPOOLID=, write GATE's already-recorded NFC/RFID uid onto SPOOLID in spoolman and assign it locally (needs spoolman_support != pull)\n"
         + "PRINTER   = _name_ Show another printer's gate/spool assignments instead of this one\n"
         + "SPOOLINFO = [0|-1|spool_id] Display spoolman details for a spool (0 or -1 = the active spool)\n"
         + "(no parameters to shoe the current spoolman gate/spool assignments)\n"

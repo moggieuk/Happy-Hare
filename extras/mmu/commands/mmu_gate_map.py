@@ -51,8 +51,8 @@ class MmuGateMapCommand(BaseCommand):
         + f"{CMD} GATE=5 COLOR=red MATERIAL=pla  ...Set filament attributes for gate 5\n"
         + f"{CMD} NEXT_SPOOLID=45                ...Automatically mark the next spool preloaded or loaded with spoolman id 45\n"
         + f"{CMD} GATE=0 SPEED=50                ...Set load/unload speed of gate 0 to 50% - great for TPU!\n"
-        + f"{CMD} GATE=0 RFID=E2003412            ...Record the RFID tag read for the spool loaded in gate 0\n"
-        + f"{CMD} RESET=1                        ...Reset filament attributes to defaults optionally configured in cfg files\n"
+        + f"{CMD} GATE=0 RFID=E2003412           ...Record the RFID tag read for the spool loaded in gate 0\n"
+        + f"{CMD} RESET=1                        ...Reset filament attributes (optionally to defaults configured in mmu.cfg file)\n"
     )
 
     def __init__(self, mmu):
