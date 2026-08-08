@@ -277,6 +277,20 @@ class TestPreloadNfcCompound(NfcScanTestCase):
         self.assertIn('preloading gate 0...', said)
         self.assertNotIn('nfc:', said)
 
+    def test_last_preloaded_gate_is_recorded_on_success(self):
+        """MMU_SPOOLMAN GATE=LAST relies on this being set after a normal successful preload."""
+        self.hh.place_filament(0, position=-100.0)
+        self.assertEqual(self.hh.mmu.last_preloaded_gate, -1, 'precondition: nothing preloaded yet')
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+        self.assertEqual(self.hh.mmu.last_preloaded_gate, 0)
+
+    def test_last_preloaded_gate_is_recorded_when_already_preloaded(self):
+        """The early-return 'already preloaded' path counts too - the user did run MMU_PRELOAD."""
+        self.hh.place_filament(0, position=0.0)  # filament already at the gate/exit datum
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+        self.assertIn('already preloaded', ' '.join(self.hh.console).lower())
+        self.assertEqual(self.hh.mmu.last_preloaded_gate, 0)
+
     def test_pending_shared_uid_bypasses_the_per_gate_reader(self):
         """
         A shared-reader pending takes precedence over this gate's own NFC reader: the

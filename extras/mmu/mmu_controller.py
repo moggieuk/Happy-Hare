@@ -159,6 +159,7 @@ class MmuController(MmuFilamentMovement):
 
         self.unit_selected = None       # Must not stay None, set when initial gate is set or in _load_persisted_state()
         self.tool_selected = self.gate_selected = TOOL_GATE_UNKNOWN
+        self.last_preloaded_gate = TOOL_GATE_UNKNOWN # Gate MMU_PRELOAD most recently completed successfully
         self._last_tool = self._next_tool       = TOOL_GATE_UNKNOWN
         self._next_gate = None
         self._last_toolchange = "Unknown"
@@ -3504,12 +3505,13 @@ class MmuController(MmuFilamentMovement):
             self.log_error("Error while registering tag uid: %s\n%s" % (str(e), SPOOLMAN_CONFIG_ERROR))
 
 
-    def _spoolman_set_spool_uid(self, spool_id, uid, append=False, quiet=True):
+    def _spoolman_set_spool_uid(self, spool_id, uid, append=False, quiet=True, gate=None):
         """
         Write NFC/RFID tag UID(s) onto a spool record in Spoolman so future
         scans of those tags resolve to this spool_id. Called by
-        'MMU_SPOOLMAN SPOOLID=.. RFID=..' and by a per-gate 'MMU_NFC REGISTER=1
-        APPEND=1' binding a newly scanned tag onto the gate's assigned spool.
+        'MMU_SPOOLMAN SPOOLID=.. RFID=..', by a per-gate 'MMU_NFC REGISTER=1
+        APPEND=1' binding a newly scanned tag onto the gate's assigned spool, and
+        by 'MMU_SPOOLMAN GATE=.. SPOOLID=.. REGISTER=1'.
 
         This is the opposite direction to _spoolman_register_tag / MMU_NFC REGISTER=1
         (without APPEND), which takes a UID and finds (or auto-creates) a spool for it.
@@ -3521,13 +3523,16 @@ class MmuController(MmuFilamentMovement):
             uid: Tag UID (or comma-separated UIDs) to write onto the spool record.
             append: If True, add to the spool's existing UID(s) instead of replacing them.
             quiet: If True, suppress non-critical output.
+            gate: If given, Moonraker confirms the write by calling back
+                'MMU_GATE_MAP GATE=<gate> SPOOLID=<spool_id>' - the gate map is only
+                updated once the write has actually succeeded, never optimistically.
         """
         if self.p.spoolman_support == SPOOLMAN_OFF: return
         self.log_debug("Registering tag uid %s against spool %s in spoolman db (append=%s)" % (uid, spool_id, append))
         try:
             webhooks = self.printer.lookup_object('webhooks')
             webhooks.call_remote_method("spoolman_set_spool_uid",
-                                        spool_id=spool_id, uid=uid, append=append, silent=quiet)
+                                        spool_id=spool_id, uid=uid, append=append, silent=quiet, gate=gate)
         except Exception as e:
             self.log_error("Error while registering tag uid on spool: %s\n%s" % (str(e), SPOOLMAN_CONFIG_ERROR))
 

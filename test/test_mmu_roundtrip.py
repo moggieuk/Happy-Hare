@@ -486,8 +486,10 @@ class TestSpoolmanRegisterCommand(RoundTripTestCase):
     """
     'MMU_SPOOLMAN GATE= SPOOLID= REGISTER=1': a spool with no Spoolman entry at scan
     time leaves its uid sitting in the gate map with no spool_id. Once the matching
-    spool exists, REGISTER=1 binds the gate's already-known uid onto it, assigns it
-    locally, and fetches its attributes - without any new tag read.
+    spool exists, REGISTER=1 binds the gate's already-known uid onto it - without any
+    new tag read. The gate map only updates once Spoolman confirms the write (via the
+    same 'MMU_GATE_MAP GATE=<g> SPOOLID=<id>' callback a per-gate NFC lookup resolution
+    uses), never optimistically.
     """
     SPOOLS = (dict(uid=TAG_A, material='PLA'),
               dict(material='ABS', vendor='Polymaker'))
@@ -502,6 +504,13 @@ class TestSpoolmanRegisterCommand(RoundTripTestCase):
         self.rt.run_gcode('MMU_SPOOLMAN GATE=3 SPOOLID=2 REGISTER=1')
         self.assertEqual(self.rt.db.spool_uid(2), UNKNOWN_TAG)
         self.assertEqual(self.rt.mmu.gate_spool_id[3], 2)
+
+    def test_failed_write_leaves_the_gate_map_untouched(self):
+        self._scan_bare_uid()
+        self.rt.db.offline = True
+        self.rt.run_gcode('MMU_SPOOLMAN GATE=3 SPOOLID=2 REGISTER=1')
+        self.assertEqual(self.rt.mmu.gate_spool_id[3], -1,
+                         'a failed remote write must not commit the local assignment')
 
     def test_no_recorded_uid_errors(self):
         errors_before = len(self.rt.errors)
@@ -528,6 +537,24 @@ class TestSpoolmanRegisterCommand(RoundTripTestCase):
         self.rt.run_gcode('MMU_SPOOLMAN GATE=3 SPOOLID=2 REGISTER=1')
         self.assertGreater(len(self.rt.errors), errors_before)
         self.assertIn('pull', self.rt.errors[-1].lower())
+
+    def test_omitted_gate_defaults_to_the_selected_gate(self):
+        self._scan_bare_uid()
+        self.rt.run_gcode('MMU_SELECT GATE=3')
+        self.rt.run_gcode('MMU_SPOOLMAN SPOOLID=2 REGISTER=1')
+        self.assertEqual(self.rt.mmu.gate_spool_id[3], 2)
+
+    def test_gate_last_resolves_to_the_most_recently_preloaded_gate(self):
+        self._scan_bare_uid()
+        self.rt.mmu.last_preloaded_gate = 3
+        self.rt.run_gcode('MMU_SPOOLMAN GATE=LAST SPOOLID=2 REGISTER=1')
+        self.assertEqual(self.rt.mmu.gate_spool_id[3], 2)
+
+    def test_gate_last_errors_when_nothing_has_been_preloaded(self):
+        errors_before = len(self.rt.errors)
+        self.rt.run_gcode('MMU_SPOOLMAN GATE=LAST SPOOLID=2 REGISTER=1')
+        self.assertGreater(len(self.rt.errors), errors_before)
+        self.assertIn('preloaded', self.rt.errors[-1].lower())
 
 
 if __name__ == '__main__':

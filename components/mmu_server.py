@@ -937,6 +937,20 @@ class MmuServer:
             logging.error(f"NFC: failed to send GATE={gate} LOOKUP={value}: {str(e)}")
 
 
+    async def _send_gate_spoolid(self, gate, spool_id):
+        '''
+        Confirm a gate<->spool association back to Happy Hare - the same success shape as
+        a per-gate NFC lookup resolving (GATE=<g> SPOOLID=<id>). Used by set_spool_uid so
+        the local gate map only updates once Spoolman has actually accepted the uid write.
+        '''
+        if not self._mmu_backend_enabled():
+            return
+        try:
+            await self.klippy_apis.run_gcode(f"MMU_GATE_MAP GATE={gate} SPOOLID={spool_id} QUIET=1")
+        except Exception as e:
+            logging.error(f"NFC: failed to send GATE={gate} SPOOLID={spool_id}: {str(e)}")
+
+
     async def get_spool_by_uid(self, uid=None, gate=None, metadata=None, save=False, silent=False, report_only=False) -> bool:
         '''
         Resolve a scanned NFC/RFID tag UID to a spool_id and hand it back to
@@ -1504,7 +1518,7 @@ class MmuServer:
         return None
 
 
-    async def set_spool_uid(self, spool_id=None, uid=None, append=False, silent=False) -> bool:
+    async def set_spool_uid(self, spool_id=None, uid=None, append=False, silent=False, gate=None) -> bool:
         '''
         Write NFC/RFID tag UID(s) onto a spool record in Spoolman, so future
         scans of those tags resolve to this spool_id. 'uid' may be blank, a
@@ -1520,6 +1534,10 @@ class MmuServer:
         second physical tag stuck on the other side of the same spool. The
         current value is re-fetched from Spoolman rather than trusted from
         the local cache, to avoid acting on a stale read.
+
+        gate: if given, confirms the write back to Happy Hare on success via
+        '_send_gate_spoolid' so the local gate map is only updated once this
+        write has actually succeeded - never optimistically.
         '''
         if not await self._check_init_spoolman(): return False
         async with self.cache_lock:
@@ -1564,9 +1582,9 @@ class MmuServer:
                     logging.warning(f"NFC: failed to strip moved tag {u} from its previous spool {other_spool_id}: {self.spoolman._get_response_error(other_resp)}")
                     continue
                 if other_spool_id in self.spool_location:
-                    printer, gate, filament_attr = self.spool_location[other_spool_id]
+                    printer, other_gate, filament_attr = self.spool_location[other_spool_id]
                     filament_attr['rfid'] = ','.join(other_uids)
-                    self.spool_location[other_spool_id] = (printer, gate, filament_attr)
+                    self.spool_location[other_spool_id] = (printer, other_gate, filament_attr)
 
             data = {'extra': {MMU_RFID_FIELD: json.dumps(','.join(final_uids))}}
             response = await self.http_client.request(
@@ -1591,15 +1609,18 @@ class MmuServer:
             for u in new_uids:
                 self.uid_miss_cache.pop(u, None) # This tag is now known
             if spool_id in self.spool_location:
-                printer, gate, filament_attr = self.spool_location[spool_id]
+                printer, cached_gate, filament_attr = self.spool_location[spool_id]
                 filament_attr['rfid'] = ','.join(final_uids)
-                self.spool_location[spool_id] = (printer, gate, filament_attr)
+                self.spool_location[spool_id] = (printer, cached_gate, filament_attr)
 
             if not final_uids:
                 await self._log_n_send(f"NFC: cleared all registered tags for spool {spool_id} in Spoolman db", silent=silent)
             else:
                 verb = "appended to" if append else "registered against"
                 await self._log_n_send(f"NFC: tag(s) {','.join(new_uids)} {verb} spool {spool_id} in Spoolman db", silent=silent)
+
+            if gate is not None:
+                await self._send_gate_spoolid(gate, spool_id)
             return True
 
 
