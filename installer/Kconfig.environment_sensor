@@ -33,13 +33,13 @@
 #   select UNSELECT_MMU_HAS_NFC_READER
 
 
+comment "_"
+comment "_Environment Sensor"
+
 config UNSELECT_MMU_HAS_ENVIRONMENT_SENSOR
   def_bool n
 
 if !UNSELECT_MMU_HAS_ENVIRONMENT_SENSOR
-  comment "_"
-  comment "_Environment Sensor"
-
   config MMU_HAS_ENVIRONMENT_SENSOR
     bool "Has environment sensor(s)?"
     forceshow

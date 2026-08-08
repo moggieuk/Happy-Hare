@@ -124,6 +124,7 @@ class MmuFilamentMovement:
         if self.sensor_manager.check_gate_sensor(SENSOR_EXIT_PREFIX, gate):
             self.log_always("Filament already preloaded in gate %d" % gate)
             self.gate_maps.set_gate_status(gate, GATE_AVAILABLE)
+            self.last_preloaded_gate = gate
             # Still apply a grabbed spool_id: the caller scanned a tag and preloaded this
             # gate, so assign it even though filament was already seated (the grab already
             # cleared the global pending, so it would otherwise be lost here).
@@ -202,6 +203,7 @@ class MmuFilamentMovement:
                 self.drive().mmu_gear_stepper.rail.remove_compound_endstop(nfc[0].name)
 
         self.gate_maps.set_gate_status(gate, GATE_AVAILABLE)
+        self.last_preloaded_gate = gate
         self.log_always("Filament detected and loaded in gate %d" % gate)
         if nfc is not None:
             # The banner promised a scan, so say how it went either way - a silent

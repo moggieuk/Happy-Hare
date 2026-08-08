@@ -8,13 +8,13 @@
 #   select UNSELECT_MMU_HAS_ENCODER
 
 
+comment "_"
+comment "_Eject Buttons"
+
 config UNSELECT_MMU_HAS_EJECT_BUTTONS
   def_bool n
 
 if !UNSELECT_MMU_HAS_EJECT_BUTTONS
-  comment "_"
-  comment "_Eject Buttons"
-
   config MMU_HAS_EJECT_BUTTONS
     prompt "Has eject buttons?"
     forceshow

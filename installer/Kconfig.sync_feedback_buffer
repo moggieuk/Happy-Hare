@@ -33,13 +33,13 @@
 #   select UNSELECT_MMU_HAS_SENSOR_BUFFER_COMPRESSION
 
 
+comment "_"
+comment "_Sync Feedback Buffer"
+
 config UNSELECT_MMU_HAS_SYNC_FEEDBACK_BUFFER
   def_bool n
 
 if !UNSELECT_MMU_HAS_SYNC_FEEDBACK_BUFFER
-  comment "_"
-  comment "_Sync Feedback Buffer"
-
   config MMU_HAS_SYNC_FEEDBACK_BUFFER
     prompt "Has sync-feedback buffer?"
     forceshow

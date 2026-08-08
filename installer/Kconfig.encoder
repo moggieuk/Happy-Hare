@@ -16,13 +16,13 @@
 #   select UNSELECT_MMU_HAS_ENCODER
 
 
+comment "_"
+comment "_Encoder"
+
 config UNSELECT_MMU_HAS_ENCODER
   def_bool n
 
 if !UNSELECT_MMU_HAS_ENCODER
-  comment "_"
-  comment "_Encoder"
-
   config MMU_HAS_ENCODER
     prompt "Has encoder?"
     forceshow

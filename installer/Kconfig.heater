@@ -20,13 +20,13 @@
 #   select UNSELECT_MMU_HAS_HEATER
 
 
+comment "_"
+comment "_Heater"
+
 config UNSELECT_MMU_HAS_HEATER
   def_bool n
 
 if !UNSELECT_MMU_HAS_HEATER
-  comment "_"
-  comment "_Heater"
-
   config MMU_HAS_HEATER
     prompt "Has enclosure heater(s)?"
     depends on !UNSELECT_MMU_HAS_HEATER
