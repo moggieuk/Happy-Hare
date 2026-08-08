@@ -1,4 +1,4 @@
-menu "Sequence macros    (_MMU_SEQUENCE)"
+menu "Sequence macros      (_MMU_SEQUENCE)"
   help
     Happy Hare sequence macro configuration variables.
 

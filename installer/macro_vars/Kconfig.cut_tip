@@ -1,4 +1,4 @@
-menu "Toolhead tip cutting (_MMU_CUT_TIP)"
+menu "Toolhead tip cutting   (_MMU_CUT_TIP)"
   help
     Happy Hare toolhead tip cutting macro configuration variables.
 

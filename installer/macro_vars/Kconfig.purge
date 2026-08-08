@@ -1,4 +1,4 @@
-menu "Purge              (_MMU_PURGE)"
+menu "Purge                (_MMU_PURGE)"
   help
     Happy Hare reference purging macro configuration variables.
 
