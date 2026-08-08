@@ -144,17 +144,21 @@ class MmuFilamentMovement:
                                "triggered (filament from another gate still loaded?)"
                                % (gate, shared_name))
 
-        # A pending shared-NFC spool_id takes precedence over this gate's own reader: consume
-        # the pending and do a normal preload (skip the per-gate NFC read) rather than have
-        # both try to assign the gate. Without a pending, use the per-gate reader if present.
-        have_pending = pending is not None and (pending[0] > 0 or pending[1] is not None)
+        # A strong pending (resolved spool_id, or a tag with usable metadata) takes precedence
+        # over this gate's own reader: consume it and do a normal preload (skip the per-gate
+        # NFC read) rather than have both try to assign the gate. A weak pending (bare uid only)
+        # is not trusted enough to skip the gate's own reader - it's applied below only as a
+        # fallback if that reader finds nothing.
+        spool_id, tag = pending if pending is not None else (-1, None)
+        has_material = tag is not None and isinstance(tag[1], dict) and tag[1].get('material')
+        have_strong_pending = spool_id > 0 or has_material
 
         # Decide the NFC path HERE, above the banner, so the banner cannot promise a scan
         # that won't happen. _build_gate_nfc_compound() declines (returns None) when there is
         # no reader, the reader is disabled, or the gate endstop isn't a real MCU switch.
         # Encoder homing can't be compounded at all, so it never even asks.
         nfc = None
-        if not have_pending and profile.endstop != SENSOR_ENCODER:
+        if not have_strong_pending and profile.endstop != SENSOR_ENCODER:
             gate_es_name = self.sensor_manager.get_qualified_endstop_name(profile.endstop)
             compound, nfc_es_name, nfc_mgr = self._build_gate_nfc_compound(
                 gate, gate_es_name, name="preload_compound")
@@ -207,7 +211,10 @@ class MmuFilamentMovement:
                 self.log_info("NFC: tag read for gate %d" % gate)
             else:
                 self.log_info("NFC: no tag found for gate %d while preloading" % gate)
-        self._check_pending_filament(gate, pending=pending) # Apply the grabbed spool_id if any
+        if not tag_read:
+            # A fresh per-gate read already applied directly above - don't let a weaker/stale
+            # pending from a different physical location overwrite it.
+            self._check_pending_filament(gate, pending=pending)
         run_post_preload_macro()
 
 

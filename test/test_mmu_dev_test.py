@@ -294,8 +294,9 @@ class TestNfcReadFeedback(DevTestCase):
 
     def test_a_tag_with_no_usable_data_is_reported_as_such(self):
         """
-        Describing the tag means reaching into the payload, and metadata this thin gets
-        REJECTED when the pending gate is assigned - so claiming it was staged would be a lie.
+        Describing the tag means reaching into the payload, and metadata this thin carries
+        no filament attributes - but the bare uid itself IS still staged and will land on
+        whichever gate loads next, so "staged" is now accurate, not a lie.
         """
         unit = next(u for u in self.hh.mmu.mmu_machine.units
                     if self.hh.mmu.nfc_deep_read_enabled(u))
@@ -306,7 +307,7 @@ class TestNfcReadFeedback(DevTestCase):
         self.hh.run_gcode('_MMU_TEST NFC_READ=1 DEEP=1 UNIT=%d MATERIAL=' % unit.unit_index)
         said = ' '.join(self.hh.console[before:])
         self.assertIn('no usable filament data', said)
-        self.assertNotIn('staged', said)
+        self.assertIn('staged', said)
         self.assertEqual(self.hh.errors, [])
 
 
