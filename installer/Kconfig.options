@@ -239,19 +239,23 @@ menu "Software Options"
     bool "Log visual representation of filament?"
     default y
     help
-      1 log visual representation of filament, 0 = disable
+      Whether to log visual representation of filament in console
 
   config PARAM_LOG_VISUAL
     int
     default 1 if BOOL_LOG_VISUAL
     default 0
 
-  config PARAM_LOG_STARTUP_STATUS
-    int "Log tool to gate status on startup"
-    range 0 2
-    default 1
+  config BOOL_LOG_STARTUP_STATUS
+    bool "Log tool to gate status on startup"
+    default y
     help
-      Whether to log tool to gate status on startup, 1 = summary (default), 0 = disable
+      Whether to log tool summary and gate status on startup
+
+  config PARAM_LOG_STARTUP_STATUS
+    int
+    default 1 if BOOL_LOG_STARTUP_STATUS
+    default 0
 
   config BOOL_LOG_M117_MESSAGES
     bool "Send toolchange message via M117 to screen?"
@@ -345,7 +349,7 @@ menu "Software Options"
     bool "Reset tool-to-gate map on startup?"
     default n
     help
-      1 = reset TTG map on startup, 0 = do nothing
+      Whether to reset TTG map on startup
 
   config PARAM_STARTUP_RESET_TTG_MAP
     int
@@ -356,7 +360,7 @@ menu "Software Options"
     bool "Show pop-up dialog on error?"
     default y
     help
-      1 = show pop-up dialog in addition to console message, 0 = show error in console
+      Select to show pop-up dialog in addition to console message
 
   config PARAM_SHOW_ERROR_DIALOG
     int
@@ -379,7 +383,7 @@ menu "Software Options"
     bool "Check filament position on pause/error?"
     default y
     help
-      1 = Run a quick check to determine current filament position on pause/error, 0 = disable
+      Whether to run a quick check to determine current filament position on pause/error
 
   config PARAM_FILAMENT_RECOVERY_ON_PAUSE
     int
