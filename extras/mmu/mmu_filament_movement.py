@@ -90,6 +90,37 @@ class MmuFilamentMovement:
         )
 
 
+    def _shared_gate_path_occupied(self, endstop, gate):
+        """
+        True if 'endstop' is a per-UNIT resource shared by every gate on that unit (not
+        owned by any single gate - see SHARED_GATE_ENDSTOPS) and another gate on the same
+        unit currently occupies it.
+
+        mmu_shared_exit / extruder_entry are real switches downstream of every gate on the
+        unit: read the live sensor directly, since it reflects any gate's filament, not just
+        the one selected - this is correct no matter when it's called.
+
+        The encoder has no presence sensor at all. The only equivalent signal is whether the
+        unit's actively-loaded (fed-forward) filament belongs to a different gate - the same
+        physical fact the switch reads, measured the only way available. That signal only
+        exists BEFORE this operation's own gate selection moves 'gate_selected' onto 'gate' -
+        callers must check this ahead of their own select_gate(gate) (see the command-level
+        can_continue checks in mmu_nfc_scan.py / mmu_preload.py). Called again afterwards, as
+        _preload_gate/_jog_scan do below for the switch-based endstops, gate_selected already
+        equals 'gate' and this branch is inert by construction - there is nothing left to
+        observe at that point, which is fine since the command layer already gated entry.
+        """
+        if endstop not in SHARED_GATE_ENDSTOPS:
+            return False
+        if endstop == SENSOR_ENCODER:
+            unit = self.mmu_unit(gate)
+            return (self.filament_pos != FILAMENT_POS_UNLOADED
+                    and self.gate_selected != gate
+                    and unit.owns_gate(self.gate_selected))
+        shared_name = self.sensor_manager.get_qualified_endstop_name(endstop)
+        return bool(self.sensor_manager.check_sensor(shared_name))
+
+
     def _preload_gate(self, pending=None):
         """
         Preload filament at the selected gate, working entirely from the preload parameter
@@ -134,16 +165,14 @@ class MmuFilamentMovement:
         profile = self._preload_profile()
 
         # MMU_PRELOAD only runs on a gate that is free to preload (unloaded, or a different
-        # unit, or crossload-capable). A *shared* gate endstop that already reads triggered
-        # therefore means another gate's filament occupies the shared exit path - preloading
-        # would home backward into it. Refuse rather than proceed. (A pre-triggered per-gate
-        # exit sensor is the benign "already preloaded" case handled above.)
-        if profile.endstop == SENSOR_SHARED_EXIT:
-            shared_name = self.sensor_manager.get_qualified_endstop_name(SENSOR_SHARED_EXIT)
-            if self.sensor_manager.check_sensor(shared_name):
-                raise MmuError("Cannot preload gate %d: shared exit sensor '%s' is already "
-                               "triggered (filament from another gate still loaded?)"
-                               % (gate, shared_name))
+        # unit, or crossload-capable). A *shared* gate endstop already occupied by another
+        # gate's filament means preloading would home backward (or, for the encoder, forward)
+        # into it. Refuse rather than proceed. (A pre-triggered per-gate exit sensor is the
+        # benign "already preloaded" case handled above - not a shared endstop.)
+        if self._shared_gate_path_occupied(profile.endstop, gate):
+            raise MmuError("Cannot preload gate %d: shared '%s' path is already occupied "
+                           "(filament from another gate still loaded?)"
+                           % (gate, profile.endstop))
 
         # A strong pending (resolved spool_id, or a tag with usable metadata) takes precedence
         # over this gate's own reader: consume it and do a normal preload (skip the per-gate
@@ -653,6 +682,15 @@ class MmuFilamentMovement:
         if not nfc_manager.is_enabled(gate=gate):
             raise MmuError("Gate %d NFC reader is disabled (re-enable with MMU_NFC ... ENABLE=1)" % gate)
 
+        # The forward sweep can reach past a SHARED gate datum into territory another gate's
+        # filament may occupy (see _shared_gate_path_occupied). MMU_NFC_SCAN already selected
+        # this gate before calling in here, so this only still catches mmu_shared_exit/
+        # extruder_entry (a live switch, order-independent) - the command-level can_continue
+        # check is what guards the encoder case, before selection moved.
+        if self._shared_gate_path_occupied(profile.endstop, gate):
+            raise MmuError("Cannot scan gate %d: shared '%s' path is already occupied "
+                           "(filament from another gate still loaded?)" % (gate, profile.endstop))
+
         endstop_name = self.sensor_manager.get_gate_sensor_name(SENSOR_NFC_PREFIX, gate)
 
         # Save every unit's NFC active flags so only the target gate is active while scanning
@@ -884,25 +922,61 @@ class MmuFilamentMovement:
 
     def _park_after_scan(self, off, profile, gate_es_name):
         """
-        Return the filament to its parked position after a scan, from a real gate datum.
+        Return the filament to park after a scan. Park is 'gate datum + parking_distance'
+        and 'off' is the offset from that datum, so both routes below produce the same
+        displacement - they differ only in whether the datum is re-observed on the way.
 
-        Always finishes through _park_from_gate() so the park is measured from the switch
-        RELEASE point every time. Approaching the datum from the other direction would
-        land the park a switch-hysteresis off (the test model has no hysteresis, so this
-        is only visible on hardware), and _park_from_gate also carries the encoder-overshoot
-        handling.
+        PRIVATE datum (per-gate mmu_exit, or the encoder): home to it, so the park is
+        measured from the switch RELEASE point every time. Approaching from the other
+        direction would land the park a switch-hysteresis off (no hysteresis in the test
+        model, so hardware-only), and _park_from_gate carries the encoder-overshoot
+        handling. extra_homing=abs(off) budgets homing_max + however far we strayed.
 
-        extra_homing=abs(off) budgets profile.homing_max + the distance we actually strayed,
-        so a sweep that ended far from the gate can still reach it.
+        SHARED datum (mmu_shared_exit, or the extruder entry sensor on a no-bowden design
+        where it is registered as the shared exit): do NOT home. The scan never reached that
+        sensor - it is downstream of the merge and park sits parking_distance behind it
+        (-100mm on Box Turtle) - and a reverse home against an already-clear sensor
+        completes instantly at zero distance (MmuVirtualEndstopSensor.home_start), giving
+        a fake datum plus an unearned parking move that walks the filament backward on
+        every scan. Move the known displacement instead: 'off' is accumulated from halt
+        positions (mmu_drive.move takes halt_pos, not trig_pos) so the deceleration ramps
+        are already in it, and this is the same open-loop trust the parking move itself
+        relies on.
+
+        The rewind is the same net displacement _park_from_gate would produce (-off back
+        to the datum, then +parking_distance), without the trip to a sensor we cannot
+        reach. It comes out positive only when the sweep ended further back than park, in
+        which case we creep forward to it - still behind the datum, so never into shared
+        territory.
+
+        Finishes with a free slip check: a per-gate exit sensor may be fitted even when it
+        is not the gate homing endstop (Box Turtle implies both), and reading it costs no
+        motion.
         """
-        covered = self.sensor_manager.check_sensor(gate_es_name)
-        if covered is None:
-            covered = off > 0   # Encoder gate homing: no switch to consult
-        if covered:
-            self._park_from_gate(profile, extra_homing=abs(off))
-        else:
-            self._home_to_gate(profile._replace(attempts=1), extra_homing=abs(off))
-            self._park_from_gate(profile)
+        if profile.endstop not in (SENSOR_SHARED_EXIT, SENSOR_EXTRUDER_ENTRY):
+            covered = self.sensor_manager.check_sensor(gate_es_name)
+            if covered is None:
+                covered = off > 0   # Encoder gate homing: no switch to consult
+            if covered:
+                self._park_from_gate(profile, extra_homing=abs(off))
+            else:
+                self._home_to_gate(profile._replace(attempts=1), extra_homing=abs(off))
+                self._park_from_gate(profile)
+            return
+
+        rewind = profile.parking_distance - off
+        self.log_debug("NFC: gate %d: rewinding %.1fmm to park (off=%.1f from datum, "
+                       "parking_distance=%.1f, shared datum '%s' not re-homed)"
+                       % (self.gate_selected, rewind, off, profile.parking_distance,
+                          profile.endstop))
+        self.set_filament_direction(DIRECTION_UNLOAD)
+        self.move_filament("NFC: rewind to park", rewind)
+        self.set_filament_pos_state(FILAMENT_POS_UNLOADED)
+
+        exit_name = self.sensor_manager.get_gate_sensor_name(SENSOR_EXIT_PREFIX, self.gate_selected)
+        if self.sensor_manager.has_sensor(exit_name) and self.sensor_manager.check_sensor(exit_name):
+            self.log_warning("NFC: gate %d: filament still detected at '%s' after re-park "
+                             "- possible slip during the scan" % (self.gate_selected, exit_name))
 
 
 # -----------------------------------------------------------------------------------------------------------

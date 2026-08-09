@@ -70,6 +70,20 @@ class MmuUnitParameters(TunableParametersBase):
     def _on_gate_homing_endstop(self, old, new):
         if new != old:
             self._mmu_unit.calibrator.adjust_bowden_lengths_on_homing_change()
+            # gate_parking_distance's legal sign depends on this endstop (see
+            # _validate_gate_parking_distance) - a value that was fine for the old endstop
+            # can be unsafe for the new one (e.g. a positive park, fine on mmu_exit, driving
+            # forward into a now-shared merge zone on encoder/mmu_shared_exit/extruder_entry).
+            # Re-check it now rather than leaving a stale, now-unsafe value in place until
+            # something else happens to touch it. Same for gate_preload_parking_distance
+            # when gate_preload_endstop is '' and so inherits this one.
+            self._validate_gate_parking_distance(self.gate_parking_distance)
+            if not self.gate_preload_endstop:
+                self._validate_gate_preload_parking_distance(self.gate_preload_parking_distance)
+
+    def _on_gate_preload_endstop(self, old, new):
+        if new != old:
+            self._validate_gate_preload_parking_distance(self.gate_preload_parking_distance)
 
     def _on_flowguard_tuning_change(self, old, new):
         # Push live FlowGuard tuning (relief) to a running controller
@@ -108,6 +122,10 @@ class MmuUnitParameters(TunableParametersBase):
                 "nfc_gate_jog_scan_window backward reach (%.1fmm) cannot exceed gate_homing_max (%.1fmm)"
                 % (abs(neg), self.gate_homing_max)
             )
+        # Note: a forward reach past a SHARED gate datum is deliberately not rejected here.
+        # Whether that is safe depends on the shared path being unoccupied, which is a
+        # runtime property this validator cannot see. Nothing checks it at scan time
+        # either - a sweep forward of a shared datum can meet another gate's filament.
 
     def _validate_nfc_preload_jog_scan_window(self, value):
         # Empty (or absent) disables the NFC scan-on-miss during MMU_PRELOAD
@@ -158,7 +176,7 @@ class MmuUnitParameters(TunableParametersBase):
         ParamSpec('gate_load_attempts',               'int',       1, section="GATE HOMING", limits=dict(minval=1, maxval=20)),
 
         # Gate preloading
-        ParamSpec('gate_preload_endstop',             'choice',   '', section="GATE HOMING", choices={o: o for o in (GATE_ENDSTOPS + [''])}),
+        ParamSpec('gate_preload_endstop',             'choice',   '', section="GATE HOMING", choices={o: o for o in (GATE_ENDSTOPS + [''])}, on_change=_on_gate_preload_endstop),
         ParamSpec('gate_preload_homing_max',          'float', lambda self: self.gate_homing_max, section="GATE HOMING"),
         ParamSpec('gate_preload_parking_distance',    'float', -10.0, section="GATE HOMING", validator=_validate_gate_preload_parking_distance),
         ParamSpec('gate_preload_attempts',            'int',       2, section="GATE HOMING", limits=dict(minval=1, maxval=20)),
