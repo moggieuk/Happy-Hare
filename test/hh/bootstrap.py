@@ -251,11 +251,14 @@ class Session:
         return self.nfc_chips
 
     def chip(self, name_or_gate):
-        """A virtual chip by reader name, or by gate index for a per-gate reader."""
+        """
+        A virtual chip by reader name, or by gate index for a per-gate reader. A chip
+        shared between neighboring gates matches on any gate in its _gates list.
+        """
         if name_or_gate in self.nfc_chips:
             return self.nfc_chips[name_or_gate]
         for chip in self.nfc_chips.values():
-            if chip._gate == name_or_gate:
+            if chip._gate == name_or_gate or name_or_gate in chip._gates:
                 return chip
         raise KeyError('no virtual NFC chip for %r; have: %s'
                        % (name_or_gate, ', '.join(sorted(self.nfc_chips))))
