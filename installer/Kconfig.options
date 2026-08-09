@@ -239,7 +239,7 @@ menu "Software Options"
     bool "Log visual representation of filament?"
     default y
     help
-      1 log visual representation of filament, 0 = disable
+      Whether to log visual representation of filament in console
 
   config PARAM_LOG_VISUAL
     int
@@ -349,7 +349,7 @@ menu "Software Options"
     bool "Reset tool-to-gate map on startup?"
     default n
     help
-      1 = reset TTG map on startup, 0 = do nothing
+      Whether to reset TTG map on startup
 
   config PARAM_STARTUP_RESET_TTG_MAP
     int
@@ -360,7 +360,7 @@ menu "Software Options"
     bool "Show pop-up dialog on error?"
     default y
     help
-      1 = show pop-up dialog in addition to console message, 0 = show error in console
+      Select to show pop-up dialog in addition to console message
 
   config PARAM_SHOW_ERROR_DIALOG
     int
@@ -383,7 +383,7 @@ menu "Software Options"
     bool "Check filament position on pause/error?"
     default y
     help
-      1 = Run a quick check to determine current filament position on pause/error, 0 = disable
+      Whether to run a quick check to determine current filament position on pause/error
 
   config PARAM_FILAMENT_RECOVERY_ON_PAUSE
     int
