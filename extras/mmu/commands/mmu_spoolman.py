@@ -21,33 +21,36 @@ from .mmu_base_command import *
 
 class MmuSpoolmanCommand(BaseCommand):
     """
-    Manage spoolman integration.
+    Manage spoolman gate/spool assignment and status. Tag/UID registration onto a
+    spool record lives in MMU_SPOOLMAN_TAG instead.
     """
 
     CMD = "MMU_SPOOLMAN"
 
-    HELP_BRIEF = "Manage spoolman integration"
+    HELP_BRIEF = "Manage spoolman status / gate-spool assignment"
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
-        + "QUIET     = [0|1]\n"
-        + "SYNC      = [0|1]\n"
-        + "CLEAR     = [0|1]\n"
-        + "REFRESH   = [0|1]\n"
-        + "FIX       = [0|1]\n"
-        + "SPOOLID   = #(int)\n"
-        + "GATE      = #(int)\n"
-        + "RFID      = # Write this NFC/RFID tag UID onto the spool record (needs SPOOLID or GATE)\n"
-        + "PRINTER   = _name_\n"
-        + "SPOOLINFO = [0|-1|spool_id]\n"
+        + "QUIET     = [0|1] Suppress non-critical console output\n"
+        + "SYNC      = 1 Sync the local and remote (spoolman) gate maps\n"
+        + "CLEAR     = 1 Clear all gate/spool assignments for this printer in the spoolman db\n"
+        + "REFRESH   = 1 Rebuild spoolman's cache of this printer's assignments, then sync (unless SYNC= is also given)\n"
+        + "FIX       = 1 With REFRESH=, also unassign any inconsistent spool/gate pairs found (partial or duplicate assignments)\n"
+        + "SPOOLID   = #(int) Spoolman spool id\n"
+        + "GATE      = #(int) Gate number\n"
+        + "PRINTER   = _name_ Show another printer's gate/spool assignments instead of this one\n"
+        + "SPOOLINFO = [-1|spool_id] Display spoolman details for a spool (0 = the active spool)\n"
+        + "(no parameters to show the current spoolman gate/spool assignments)\n"
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
-        + f"{CMD}                     ...Show the current spoolman gate/spool assignments\n"
-        + f"{CMD} REFRESH=1           ...Refresh the local gate map from the spoolman database\n"
-        + f"{CMD} GATE=0 SPOOLID=45   ...Assign spoolman spool id 45 to gate 0\n"
-        + f"{CMD} SPOOLINFO=45        ...Display spoolman details for spool id 45\n"
-        + f"{CMD} SPOOLID=45 RFID=E2003412  ...Register tag E2003412 against spool id 45 in the spoolman db\n"
-        + f"{CMD} GATE=0 RFID=E2003412      ...Same, for whichever spool is assigned to gate 0\n"
+        + f"{CMD}                   ...Show the current spoolman gate/spool assignments\n"
+        + f"{CMD} REFRESH=1         ...Refresh the local gate map from the spoolman database\n"
+        + f"{CMD} GATE=0 SPOOLID=45 ...Assign spoolman spool id 45 to gate 0\n"
+        + f"{CMD} GATE=0            ...Unassign whichever spool is on gate 0\n"
+        + f"{CMD} SPOOLID=45        ...Unassign spool id 45 from whichever gate it's on\n"
+        + f"{CMD} SPOOLINFO=45      ...Display spoolman details for spool id 45\n"
+        + f"{CMD} SPOOLINFO=-1      ...Display spoolman details for active spool\n"
+        + "\nSee MMU_SPOOLMAN_TAG to register a tag/UID onto a spool record.\n"
     )
 
     def __init__(self, mmu):
@@ -77,7 +80,6 @@ class MmuSpoolmanCommand(BaseCommand):
         gate = gcmd.get_int('GATE', None, minval=-1, maxval=mmu.num_gates - 1)
         printer = gcmd.get('PRINTER', None)  # Option to see other printers
         spoolinfo = gcmd.get_int('SPOOLINFO', None, minval=-1)  # -1 or 0 is active spool
-        rfid = gcmd.get('RFID', None)        # Tag UID to write onto a spool record
         run = False
 
         if refresh:
@@ -101,35 +103,7 @@ class MmuSpoolmanCommand(BaseCommand):
             run = True
 
         # Rest of the options are mutually exclusive
-        if rfid is not None:
-            # Write an NFC/RFID tag UID onto an EXISTING spool record in the spoolman db.
-            #
-            # Note the direction: this is the opposite of 'MMU_NFC ... REGISTER=1', which
-            # takes a UID and finds (or auto-creates) a spool for it. Here the spool
-            # already exists and the tag is bound onto it - the case auto-create cannot
-            # serve, e.g. sticking a blank tag on a spool spoolman already knows about.
-            #
-            # Dispatched before the SPOOLID/GATE branch below, where a bare SPOOLID means
-            # "unset that spool's gate" - which would otherwise swallow SPOOLID=n RFID=x.
-            if not rfid.strip():
-                mmu.log_error("RFID= needs a tag UID. To clear a gate's locally recorded "
-                              "tag use 'MMU_GATE_MAP GATE=%s RFID='" % (gate if gate is not None else 'n'))
-                return
-            target = spool_id
-            if target is None:
-                if gate is None or gate < 0:
-                    mmu.log_error("RFID= needs SPOOLID=<id>, or GATE=<gate> to use the spool "
-                                  "already assigned to that gate")
-                    return
-                target = mmu.gate_spool_id[gate]
-                if target is None or target <= 0:
-                    mmu.log_error("Gate %d has no spoolman spool assigned - use SPOOLID= to "
-                                  "name the spool explicitly" % gate)
-                    return
-                mmu.log_debug("Gate %d resolves to spool id %d for tag registration" % (gate, target))
-            mmu._spoolman_set_spool_uid(target, rfid.strip(), quiet=quiet)
-
-        elif spoolinfo is not None:
+        if spoolinfo is not None:
             # Dump spool info for active spool or specified spool id
             mmu._spoolman_display_spool_info(
                 spoolinfo if spoolinfo > 0 else None

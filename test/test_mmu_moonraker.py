@@ -154,6 +154,29 @@ class TestUidCache(MoonrakerTestCase):
                                  'MMU_GATE_MAP NEXT_SPOOLID=1 QUIET=1')
 
 
+class TestMultiUidSpool(MoonrakerTestCase):
+    """
+    A spool can carry more than one physical tag (e.g. one stuck on each side).
+    Both UIDs must independently resolve to the same spool_id.
+    """
+    SECOND_UID = '99998888'
+    SPOOLS = (dict(uid=[KNOWN_UID, SECOND_UID], material='PLA'),)
+
+    def test_extra_field_stores_both_uids_comma_separated(self):
+        self.assertEqual(set(self.hh.db.spool_uids(1)), {KNOWN_UID, self.SECOND_UID})
+
+    def test_cache_maps_both_uids_to_the_same_spool(self):
+        self.assertEqual(self.hh.mmu_server.uid_to_spool_id,
+                         {KNOWN_UID: 1, self.SECOND_UID: 1})
+
+    def test_either_uid_resolves_to_the_spool(self):
+        for uid in (KNOWN_UID, self.SECOND_UID):
+            with self.subTest(uid=uid):
+                self.hh.call_remote('spoolman_get_spool_by_uid', uid=uid,
+                                    gate=None, silent=True)
+                self.assertEqual(self.last_gcode(), 'MMU_GATE_MAP NEXT_SPOOLID=1 QUIET=1')
+
+
 class TestSharedReaderLookup(MoonrakerTestCase):
     SPOOLS = (dict(uid=KNOWN_UID, material='PLA', vendor='Prusament'),)
 
@@ -471,7 +494,7 @@ class TestSetSpoolUid(MoonrakerTestCase):
     """
     Binding a tag onto an EXISTING spool - the opposite direction to get_spool_by_uid,
     which takes a UID and finds or auto-creates a spool. Reached from Klipper as
-    'MMU_SPOOLMAN SPOOLID=.. RFID=..'.
+    'MMU_SPOOLMAN_TAG SPOOLID=.. RFID=..'.
     """
 
     SPOOLS = (dict(uid=KNOWN_UID, material='PLA'),
@@ -494,15 +517,54 @@ class TestSetSpoolUid(MoonrakerTestCase):
                                      uid='11223344', silent=True)
         self.assertFalse(result)
 
-    def test_missing_uid_is_refused(self):
-        result = self.hh.call_remote('spoolman_set_spool_uid', spool_id=2, uid=None,
+    def test_blank_uid_clears_the_tag(self):
+        """A blank RFID (replace mode, the default) is the documented way to
+        unregister all tags from a spool - it must succeed, not be refused."""
+        self.assertEqual(self.hh.db.spool_uid(1), KNOWN_UID, 'precondition')
+        result = self.hh.call_remote('spoolman_set_spool_uid', spool_id=1, uid='',
                                      silent=True)
+        self.assertTrue(result)
+        self.assertEqual(self.hh.db.spool_uid(1), '')
+        self.assertIsNone(self.hh.mmu_server.uid_to_spool_id.get(KNOWN_UID))
+
+    def test_replace_drops_the_previous_tag(self):
+        """Default (append=False) replaces, it does not add to, the existing tag(s)."""
+        self.hh.call_remote('spoolman_set_spool_uid', spool_id=1, uid='99998888',
+                            silent=True)
+        self.assertEqual(self.hh.db.spool_uid(1), '99998888')
+        self.assertIsNone(self.hh.db.find_spool_by_uid(KNOWN_UID))
+
+    def test_append_keeps_the_existing_tag_and_adds_the_new_one(self):
+        """The 'second tag on the same spool' case: APPEND=1 must not lose KNOWN_UID."""
+        result = self.hh.call_remote('spoolman_set_spool_uid', spool_id=1,
+                                     uid='99998888', append=True, silent=True)
+        self.assertTrue(result)
+        self.assertEqual(set(self.hh.db.spool_uids(1)), {KNOWN_UID, '99998888'})
+        self.assertEqual(self.hh.db.find_spool_by_uid(KNOWN_UID), 1)
+        self.assertEqual(self.hh.db.find_spool_by_uid('99998888'), 1)
+
+    def test_append_with_blank_uid_is_refused(self):
+        result = self.hh.call_remote('spoolman_set_spool_uid', spool_id=1, uid='',
+                                     append=True, silent=True)
         self.assertFalse(result)
-        self.assertEqual(self.hh.db.spool_uid(2), '')
+        self.assertEqual(self.hh.db.spool_uid(1), KNOWN_UID, 'must be left untouched')
+
+    def test_append_moves_a_tag_registered_to_a_different_spool(self):
+        """No hard block on stealing a UID from another spool - just a warning
+        (mmu_server.py set_spool_uid) - but the move itself must still happen."""
+        self.hh.call_remote('spoolman_set_spool_uid', spool_id=2, uid=KNOWN_UID,
+                            append=True, silent=True)
+        self.assertEqual(self.hh.db.find_spool_by_uid(KNOWN_UID), 2)
+        self.assertNotIn(KNOWN_UID, self.hh.db.spool_uids(1))
 
     def test_unknown_spool_is_refused(self):
         result = self.hh.call_remote('spoolman_set_spool_uid', spool_id=999,
                                      uid='11223344', silent=True)
+        self.assertFalse(result)
+
+    def test_unknown_spool_is_refused_when_appending(self):
+        result = self.hh.call_remote('spoolman_set_spool_uid', spool_id=999,
+                                     uid='11223344', append=True, silent=True)
         self.assertFalse(result)
 
 

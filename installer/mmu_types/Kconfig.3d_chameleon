@@ -45,9 +45,6 @@ if MMU_TYPE_3D_CHAMELEON_1_0
   config PARAM_SELECTOR_HOLD_CURRENT
     default 0.2
 
-  # Comma separated, NOT bracketed: these render straight into mmu_parameters.cfg and are read
-  # with Klipper's getintlist(), which rejects a literal '[1, 1, 0, 0]' with "Unable to parse
-  # option". The generic prompts they override (Kconfig.selector_stepper:80,89) get this right.
   config PARAM_SELECTOR_GATE_DIRECTIONS
     default "1, 1, 0, 0"
   config PARAM_SELECTOR_RELEASE_GATES

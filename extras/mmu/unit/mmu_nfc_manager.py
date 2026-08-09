@@ -179,8 +179,10 @@ class MmuNfcManager:
         nfc_readers = self.mmu_unit.nfc_readers
         if not nfc_readers:
             return False
+        if not self.mmu_unit.owns_gate(gate):
+            return False
         lgate = self.mmu_unit.local_gate(gate)
-        return 0 <= lgate < len(nfc_readers) and bool(nfc_readers[lgate])
+        return lgate < len(nfc_readers) and bool(nfc_readers[lgate])
 
 
     def allow_reread(self):
@@ -462,7 +464,8 @@ class MmuNfcManager:
         """
         MMU bootup event. Schedule initialization after the I2C bus settles.
         """
-        num_readers = (1 if self.shared_reader is not None else 0) + sum(1 for r in self.gate_readers if r is not None)
+        num_readers = ((1 if self.shared_reader is not None else 0) +
+                       sum(1 for r, _ in self._unique_readers() if r is not self.shared_reader))
         self.mmu.log_debug("NFC: bootup on %s - scheduling %d reader(s) in %.1fs" %
                            (self.mmu_unit.name, num_readers, NFC_INIT_DELAY))
         self.reactor.update_timer(self._bootup_init_timer,
@@ -525,8 +528,10 @@ class MmuNfcManager:
         """
         if gate is None:
             return None
+        if not self.mmu_unit.owns_gate(gate):
+            return None
         lgate = self.mmu_unit.local_gate(gate)
-        return lgate if 0 <= lgate < len(self.gate_readers) else None
+        return lgate if lgate < len(self.gate_readers) else None
 
 
     def _reader_for(self, shared=False, gate=None):
@@ -550,22 +555,43 @@ class MmuNfcManager:
         return self.mmu_unit.first_gate + lg if lg is not None else '?'
 
 
-    def _all_readers(self):
-        readers = []
-        if self.shared_reader is not None:
-            readers.append(self.shared_reader)
-        readers.extend(r for r in self.gate_readers if r is not None)
-        return readers
+    def _unique_readers(self):
+        """
+        [(reader, [global_gate, ...])] in first-appearance order, deduped by object
+        identity. One physical reader may be named by more than one gate slot (a
+        reader shared between neighboring gates - see mmu_unit.py's 'nfc_readers'),
+        and may also double as the unit's shared reader. Anything that drives
+        HARDWARE per boot/event must iterate this, not gate_readers directly, or
+        the chip gets the same transaction N times.
+        """
+        by_id = {}
+        result = []
+        for lgate, reader in enumerate(self.gate_readers):
+            if reader is None:
+                continue
+            global_gate = self.mmu_unit.first_gate + lgate
+            idx = by_id.get(id(reader))
+            if idx is None:
+                by_id[id(reader)] = len(result)
+                result.append((reader, [global_gate]))
+            else:
+                result[idx][1].append(global_gate)
+        return result
 
 
     def _init_all_readers(self):
         # The shared reader is labelled with the unit name; per-gate readers with
-        # their logical gate number (local index + first_gate).
+        # their first logical gate number (a reader shared between two gates is
+        # only inited once here, not once per gate slot - see _unique_readers()).
         if self.shared_reader is not None:
             self._init_reader(self.shared_reader, self.mmu_unit.name)
-        for lgate, reader in enumerate(self.gate_readers):
-            if reader is not None:
-                self._init_reader(reader, self.mmu_unit.first_gate + lgate)
+        for reader, gates in self._unique_readers():
+            if reader is self.shared_reader:
+                continue # Dual shared/per-gate role - already inited above
+            if len(gates) > 1:
+                self.mmu.log_debug("NFC: reader '%s' serves gates %s - initializing once" %
+                                   (getattr(reader, 'name', '?'), ",".join(map(str, gates))))
+            self._init_reader(reader, gates[0])
 
 
     def _init_reader(self, reader, gate):

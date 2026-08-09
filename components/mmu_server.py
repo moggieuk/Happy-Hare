@@ -28,7 +28,9 @@
 #    which this module auto-creates on the Spoolman server if missing:
 #      - printer_name : which printer a spool is assigned to
 #      - mmu_gate_map : which gate on that printer the spool sits in
-#      - rfid         : the NFC/RFID tag UID registered against the spool
+#      - rfid         : the NFC/RFID tag UID(s) registered against the spool
+#                        (a comma-separated list - a spool can have more than
+#                        one physical tag, e.g. one on each side)
 #    A cache of spool -> (printer, gate, attributes) is maintained locally for
 #    efficiency, along with a reverse UID -> spool_id map for fast tag lookups.
 # 
@@ -385,20 +387,50 @@ class MmuServer:
                             .replace(' ', ''))
 
 
-    def _get_uid_from_extra(self, extra) -> str:
+    @staticmethod
+    def _parse_uid_list(raw) -> list[str]:
         '''
-        Read and normalise the tag UID stored in a spool's extra fields.
-        Values are JSON-encoded on the wire (like the other extra fields) but
-        tolerate a bare string in case it was set manually. Returns '' if unset.
+        Split a (possibly comma-separated) UID value into normalised UIDs.
+        Blank entries are dropped and duplicates removed, order preserved.
+        None/'' -> [].
+        '''
+        if not raw:
+            return []
+        seen: list[str] = []
+        for part in str(raw).split(','):
+            part = part.strip()
+            if not part:
+                continue
+            norm = MmuServer._normalise_uid(part)
+            if norm and norm not in seen:
+                seen.append(norm)
+        return seen
+
+
+    def _get_uid_list_from_extra(self, extra) -> list[str]:
+        '''
+        Read the list of tag UIDs stored in a spool's extra fields. Values are
+        JSON-encoded on the wire (like the other extra fields) but tolerate a
+        bare string in case it was set manually. A spool may have more than
+        one UID registered (e.g. a tag on each side), stored comma-separated.
+        Returns [] if unset.
         '''
         raw = (extra or {}).get(MMU_RFID_FIELD)
         if not raw:
-            return ''
+            return []
         try:
             raw = json.loads(raw)
         except (ValueError, TypeError):
             pass # Fall back to the raw value if it isn't valid JSON
-        return self._normalise_uid(raw) if raw else ''
+        return self._parse_uid_list(raw)
+
+
+    def _get_uid_from_extra(self, extra) -> str:
+        '''
+        Comma-joined display string of all tag UIDs registered on this spool
+        (see _get_uid_list_from_extra). Returns '' if unset.
+        '''
+        return ','.join(self._get_uid_list_from_extra(extra))
 
 
     def _get_filament_attr(self, spool_info) -> dict:
@@ -439,9 +471,14 @@ class MmuServer:
                 filament_attr = self._get_filament_attr(spool_info)
                 new_spool_location[spool_id] = (printer_name, mmu_gate, filament_attr)
 
-                # Maintain reverse UID -> spool_id map for fast tag resolution
-                uid = filament_attr.get('rfid')
-                if uid:
+                # Maintain reverse UID -> spool_id map for fast tag resolution. A spool
+                # may register more than one UID (e.g. a tag on each side). There's no
+                # automatic fix for a UID claimed by two spools, so just report it -
+                # the later spool_id wins the cache entry.
+                for uid in self._get_uid_list_from_extra(spool_info.get('extra')):
+                    other_spool_id = new_uid_to_spool_id.get(uid)
+                    if other_spool_id is not None and other_spool_id != spool_id:
+                        errors += f"\n  - Tag {uid} is registered against both spool {other_spool_id} and spool {spool_id}"
                     new_uid_to_spool_id[uid] = spool_id
 
                 if printer_name and mmu_gate >= 0:
@@ -900,6 +937,20 @@ class MmuServer:
             logging.error(f"NFC: failed to send GATE={gate} LOOKUP={value}: {str(e)}")
 
 
+    async def _send_gate_spoolid(self, gate, spool_id):
+        '''
+        Confirm a gate<->spool association back to Happy Hare - the same success shape as
+        a per-gate NFC lookup resolving (GATE=<g> SPOOLID=<id>). Used by set_spool_uid so
+        the local gate map only updates once Spoolman has actually accepted the uid write.
+        '''
+        if not self._mmu_backend_enabled():
+            return
+        try:
+            await self.klippy_apis.run_gcode(f"MMU_GATE_MAP GATE={gate} SPOOLID={spool_id} QUIET=1")
+        except Exception as e:
+            logging.error(f"NFC: failed to send GATE={gate} SPOOLID={spool_id}: {str(e)}")
+
+
     async def get_spool_by_uid(self, uid=None, gate=None, metadata=None, save=False, silent=False, report_only=False) -> bool:
         '''
         Resolve a scanned NFC/RFID tag UID to a spool_id and hand it back to
@@ -1352,8 +1403,7 @@ class MmuServer:
         mmu_gate = int(extra.get(MMU_GATE_FIELD, -1))
         filament_attr = self._get_filament_attr(spool_info)
         self.spool_location[spool_id] = (printer_name, mmu_gate, filament_attr)
-        uid = filament_attr.get('rfid')
-        if uid:
+        for uid in self._get_uid_list_from_extra(extra):
             self.uid_to_spool_id[uid] = spool_id
         return spool_id
 
@@ -1468,19 +1518,75 @@ class MmuServer:
         return None
 
 
-    async def set_spool_uid(self, spool_id=None, uid=None, silent=False) -> bool:
+    async def set_spool_uid(self, spool_id=None, uid=None, append=False, silent=False, gate=None) -> bool:
         '''
-        Register (write) an NFC/RFID tag UID onto a spool record in Spoolman,
-        so future scans of that tag resolve to this spool_id.
+        Write NFC/RFID tag UID(s) onto a spool record in Spoolman, so future
+        scans of those tags resolve to this spool_id. 'uid' may be blank, a
+        single UID or a comma-separated list.
+
+        append=False (default): replace whatever UID(s) are currently
+        registered with the ones supplied. A blank 'uid' clears the field
+        entirely - this is the supported way to unregister all tags from a
+        spool.
+
+        append=True: add the supplied UID(s) to whatever is already
+        registered (deduped), rather than replacing it - e.g. registering a
+        second physical tag stuck on the other side of the same spool. The
+        current value is re-fetched from Spoolman rather than trusted from
+        the local cache, to avoid acting on a stale read.
+
+        gate: if given, confirms the write back to Happy Hare on success via
+        '_send_gate_spoolid' so the local gate map is only updated once this
+        write has actually succeeded - never optimistically.
         '''
         if not await self._check_init_spoolman(): return False
         async with self.cache_lock:
-            if spool_id is None or not uid:
+            if spool_id is None:
                 await self._log_n_send(f"NFC: cannot register tag - spool_id={spool_id} uid={uid}", error=True, silent=silent)
                 return False
 
-            uid_norm = self._normalise_uid(uid)
-            data = {'extra': {MMU_RFID_FIELD: json.dumps(uid_norm)}}
+            new_uids = self._parse_uid_list(uid)
+            if append and not new_uids:
+                await self._log_n_send("NFC: APPEND=1 needs a tag UID to add", error=True, silent=silent)
+                return False
+
+            if append:
+                spool_info = await self._fetch_spool_info(spool_id)
+                if spool_info is None:
+                    await self._log_n_send(f"NFC: SpoolId {spool_id} not found", error=True, silent=silent)
+                    return False
+                existing_uids = self._get_uid_list_from_extra(spool_info.get('extra'))
+                final_uids = existing_uids + [u for u in new_uids if u not in existing_uids]
+            else:
+                final_uids = new_uids
+
+            # A UID that's already claimed by a different spool is silently moved
+            # over - make that visible, and strip it from the OTHER spool's own
+            # record too, so it doesn't reappear there on the next full cache
+            # rebuild (best-effort: a failure here doesn't abort this write).
+            for u in new_uids:
+                other_spool_id = self.uid_to_spool_id.get(u)
+                if other_spool_id is None or other_spool_id == spool_id:
+                    continue
+                await self._log_n_send(f"NFC: tag {u} was registered to spool {other_spool_id} - moving it to spool {spool_id}", silent=silent)
+                other_info = await self._fetch_spool_info(other_spool_id)
+                if other_info is None:
+                    continue
+                other_uids = [x for x in self._get_uid_list_from_extra(other_info.get('extra')) if x != u]
+                other_resp = await self.http_client.request(
+                    method="PATCH",
+                    url=f"{self.spoolman.spoolman_url}/v1/spool/{other_spool_id}",
+                    body={'extra': {MMU_RFID_FIELD: json.dumps(','.join(other_uids))}}
+                )
+                if other_resp.has_error():
+                    logging.warning(f"NFC: failed to strip moved tag {u} from its previous spool {other_spool_id}: {self.spoolman._get_response_error(other_resp)}")
+                    continue
+                if other_spool_id in self.spool_location:
+                    printer, other_gate, filament_attr = self.spool_location[other_spool_id]
+                    filament_attr['rfid'] = ','.join(other_uids)
+                    self.spool_location[other_spool_id] = (printer, other_gate, filament_attr)
+
+            data = {'extra': {MMU_RFID_FIELD: json.dumps(','.join(final_uids))}}
             response = await self.http_client.request(
                 method="PATCH",
                 url=f"{self.spoolman.spoolman_url}/v1/spool/{spool_id}",
@@ -1493,19 +1599,28 @@ class MmuServer:
             elif response.has_error():
                 err_msg = self.spoolman._get_response_error(response)
                 logging.error(f"Attempt to register tag failed: {err_msg}")
-                await self._log_n_send(f"NFC: Failed to register tag {uid_norm} on spool {spool_id}. See moonraker.log for details.", error=True, silent=silent)
+                await self._log_n_send(f"NFC: Failed to register tag(s) {','.join(new_uids)} on spool {spool_id}. See moonraker.log for details.", error=True, silent=silent)
                 return False
 
             # Update caches to reflect the new UID association
             self.uid_to_spool_id = {u: sid for u, sid in self.uid_to_spool_id.items() if sid != spool_id}
-            self.uid_to_spool_id[uid_norm] = spool_id
-            self.uid_miss_cache.pop(uid_norm, None) # This tag is now known
+            for u in final_uids:
+                self.uid_to_spool_id[u] = spool_id
+            for u in new_uids:
+                self.uid_miss_cache.pop(u, None) # This tag is now known
             if spool_id in self.spool_location:
-                printer, gate, filament_attr = self.spool_location[spool_id]
-                filament_attr['rfid'] = uid_norm
-                self.spool_location[spool_id] = (printer, gate, filament_attr)
+                printer, cached_gate, filament_attr = self.spool_location[spool_id]
+                filament_attr['rfid'] = ','.join(final_uids)
+                self.spool_location[spool_id] = (printer, cached_gate, filament_attr)
 
-            await self._log_n_send(f"NFC: tag {uid_norm} registered against spool {spool_id} in Spoolman db", silent=silent)
+            if not final_uids:
+                await self._log_n_send(f"NFC: cleared all registered tags for spool {spool_id} in Spoolman db", silent=silent)
+            else:
+                verb = "appended to" if append else "registered against"
+                await self._log_n_send(f"NFC: tag(s) {','.join(new_uids)} {verb} spool {spool_id} in Spoolman db", silent=silent)
+
+            if gate is not None:
+                await self._send_gate_spoolid(gate, spool_id)
             return True
 
 

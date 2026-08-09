@@ -555,6 +555,8 @@ import os
 import re
 import sys
 import math # Happy Hare: Added
+import ast # Happy Hare: Added
+import operator # Happy Hare: Added
 
 # Get rid of some attribute lookups. These are obvious in context.
 from glob import iglob
@@ -4884,19 +4886,13 @@ class Symbol(object):
                 # If the symbol is visible and has a user value, use that
                 val = self.user_value
             else:
-                # Happy Hare: Added else block
-                for template, args, separator, start_sym, stop_sym, cond in self.generated_defaults:
-                    if expr_value(cond):
-                        val = _generated_default_value(template, args, separator, start_sym, stop_sym)
-                        self._write_to_conf = True
-                        break
-                else:
-                    # Otherwise, look at defaults
-                    for sym, cond in self.defaults:
-                        if expr_value(cond):
-                            val = sym.str_value
-                            self._write_to_conf = True
-                            break
+                # Happy Hare: 'default' and 'generated_default' are resolved
+                # together, in declaration order, so either can override the
+                # other depending on which Kconfig file is parsed later
+                found_val, found = self._node_ordered_string_default()
+                if found:
+                    val = found_val
+                    self._write_to_conf = True
 
         elif self.orig_type is FLOAT: # Happy Hare: Added
             if vis and self.user_value is not None:
@@ -5444,17 +5440,49 @@ class Symbol(object):
 
             return TRI_TO_STR[val]
 
-        if self.orig_type:  # STRING/INT/HEX
-            # Happy Hare: Added (favor generated defaults)
-            for template, args, separator, start_sym, stop_sym, cond in self.generated_defaults:
-                if expr_value(cond):
-                    return _generated_default_value(template, args, separator, start_sym, stop_sym)
+        if self.orig_type is STRING:
+            # Happy Hare: 'default' and 'generated_default' are resolved
+            # together, in declaration order -- see _node_ordered_string_default()
+            val, found = self._node_ordered_string_default()
+            if found:
+                return val
+            return ""
 
+        if self.orig_type:  # INT/HEX
             for default, cond in self.defaults:
                 if expr_value(cond):
                     return default.str_value
 
         return ""
+
+    def _node_ordered_string_default(self):
+        # Happy Hare: Added. Resolves 'default' and 'generated_default'
+        # together, walking self.nodes in source-parse order and checking
+        # each node's own generated_defaults/defaults before moving to the
+        # next node. This mirrors how multiple plain 'default's across
+        # Kconfig files already override each other (first satisfied
+        # condition, in declaration order), so a 'generated_default' in one
+        # file can be overridden by a plain 'default' in another file parsed
+        # later, and vice versa -- rather than 'generated_default' always
+        # taking priority regardless of file order.
+        for node in self.nodes:
+            for template, args, separator, start_sym, stop_sym, cond in node.generated_defaults:
+                if expr_value(cond):
+                    try:
+                        return _generated_default_value(
+                            template, args, separator, start_sym, stop_sym), True
+                    except GeneratedDefaultError as e:
+                        self.kconfig._warn(
+                            "generated_default for {} failed to render (template {!r}): {}"
+                            .format(self.name, template, e),
+                            node.filename, node.linenr)
+                        return "", True
+
+            for sym, cond in node.defaults:
+                if expr_value(cond):
+                    return sym.str_value, True
+
+        return None, False
 
     def _warn_select_unsatisfied_deps(self):
         # Helper for printing an informative warning when a symbol with
@@ -6887,6 +6915,95 @@ def _strcmp(s1, s2):
 
     return (s1 > s2) - (s1 < s2)
 
+# Happy Hare: Added. Raised for any generated_default template that fails to
+# render, so the one caller with file/line context (Symbol._node_ordered_string_default)
+# can warn with specifics instead of the value silently going to "".
+class GeneratedDefaultError(Exception):
+    pass
+
+# Happy Hare: Added. Matches a single non-nested '{...}' block in a
+# generated_default template.
+_generated_default_brace_re = re.compile(r"\{([^{}]*)\}")
+
+# Happy Hare: Added. %s/%d/%i/%% tokens -- any other '%' (e.g. used as
+# the modulo operator inside a '{...}' block) is left as literal text.
+_generated_default_token_re = re.compile(r"%[sdi%]")
+
+# Happy Hare: Added. Whitelisted operators for the restricted-arithmetic
+# evaluator used inside generated_default '{...}' blocks.
+_generated_default_binops = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.FloorDiv: operator.floordiv,
+    ast.Mod: operator.mod,
+    ast.Pow: operator.pow,
+}
+_generated_default_unaryops = {
+    ast.UAdd: operator.pos,
+    ast.USub: operator.neg,
+}
+
+# Happy Hare: Added
+def _eval_generated_default_expr(node):
+    # Evaluates an already-parsed AST node from a '{...}' block as a
+    # whitelist-only numeric expression. By the time this runs, %s/%d/%i
+    # substitution has already replaced every placeholder with a literal
+    # number, so a bare identifier here means the author put a
+    # non-numeric %s value inside {...} -- treated as an error like
+    # anything else disallowed.
+    if isinstance(node, ast.Constant):
+        if isinstance(node.value, bool) or not isinstance(node.value, (int, float)):
+            raise ValueError("only numeric literals are allowed in {...}")
+        return node.value
+
+    if isinstance(node, ast.BinOp):
+        op = _generated_default_binops.get(type(node.op))
+        if op is None:
+            raise ValueError("operator not allowed in {...}: %s" % type(node.op).__name__)
+        return op(_eval_generated_default_expr(node.left),
+                  _eval_generated_default_expr(node.right))
+
+    if isinstance(node, ast.UnaryOp):
+        op = _generated_default_unaryops.get(type(node.op))
+        if op is None:
+            raise ValueError("unary operator not allowed in {...}: %s" % type(node.op).__name__)
+        return op(_eval_generated_default_expr(node.operand))
+
+    raise ValueError("disallowed syntax in {...}: %s" % type(node).__name__)
+
+# Happy Hare: Added
+def _render_generated_default(template, base_args, iter_value):
+    # One full render of a generated_default template: substitutes
+    # %s/%d/%i/%% (wherever they appear, inside or outside braces), then
+    # evaluates each '{...}' block -- now pure number/operator text -- as
+    # arithmetic.
+    args_iter = iter(base_args)
+
+    def token_repl(m):
+        tok = m.group(0)
+        if tok == "%%":
+            return "%"
+        if tok == "%i":
+            if iter_value is None:
+                raise ValueError("%i used without iteration")
+            return str(iter_value)
+        try:
+            arg = next(args_iter)
+        except StopIteration:
+            raise ValueError("not enough args for the %s/%d placeholders in this template")
+        return tok % arg
+
+    substituted = _generated_default_token_re.sub(token_repl, template)
+    for _ in args_iter:
+        raise ValueError("not all arguments converted")  # extra unused args
+
+    return _generated_default_brace_re.sub(
+        lambda m: str(_eval_generated_default_expr(
+            ast.parse(m.group(1).strip(), mode="eval").body)),
+        substituted)
+
 # Happy Hare: Added
 def _generated_default_value(template, args, separator=", ", start_sym=None, stop_sym=None):
     def sym_val(sym):
@@ -6922,7 +7039,7 @@ def _generated_default_value(template, args, separator=", ", start_sym=None, sto
 
     try:
         if stop_sym is None:
-            return template % tuple(base_args)
+            return _render_generated_default(template, base_args, None)
 
         start = int_val(start_sym, 0)
         stop = int_val(stop_sym, 0)
@@ -6930,16 +7047,13 @@ def _generated_default_value(template, args, separator=", ", start_sym=None, sto
         if stop <= start:
             return ""
 
-        out = []
-        for i in range(start, stop):
-            rendered = template.replace("{iter}", str(i))
-            rendered = rendered % tuple(base_args)
-            out.append(rendered)
+        return separator.join(
+            _render_generated_default(template, base_args, i) for i in range(start, stop))
 
-        return separator.join(out)
-
-    except Exception:
-        return ""
+    except GeneratedDefaultError:
+        raise
+    except Exception as e:
+        raise GeneratedDefaultError("{}: {}".format(type(e).__name__, e)) from e
 
 def _sym_to_num(sym):
     # expr_value() helper for converting a symbol to a number. Raises

@@ -47,8 +47,9 @@ from .mmu_sensor_utils    import MmuVirtualEndstopSensor, MmuCompoundEndstop
 # Parameter set for a "home filament to the gate" operation and the park that follows it.
 # There are exactly two of these: the normal gate_* set (_gate_profile) and the preload
 # gate_preload_* set (_preload_profile). Every gate homing/parking primitive is driven by
-# one of them, so the endstop, homing budget and parking distance always travel together.
-GateHomeProfile = namedtuple('GateHomeProfile', ['endstop', 'homing_max', 'parking_distance', 'attempts'])
+# one of them, so the endstop, homing budget, parking distance and NFC jog scan window
+# always travel together.
+GateHomeProfile = namedtuple('GateHomeProfile', ['endstop', 'homing_max', 'parking_distance', 'attempts', 'jog_scan_window'])
 
 
 class MmuFilamentMovement:
@@ -69,6 +70,7 @@ class MmuFilamentMovement:
             homing_max=u.p.gate_homing_max,
             parking_distance=u.p.gate_parking_distance,
             attempts=(u.p.gate_load_attempts if allow_retry else 1),
+            jog_scan_window=u.p.nfc_gate_jog_scan_window,
         )
 
 
@@ -84,7 +86,39 @@ class MmuFilamentMovement:
             homing_max=u.p.gate_preload_homing_max,
             parking_distance=u.p.gate_preload_parking_distance,
             attempts=u.p.gate_preload_attempts,
+            jog_scan_window=u.p.nfc_preload_jog_scan_window,
         )
+
+
+    def _shared_gate_path_occupied(self, endstop, gate):
+        """
+        True if 'endstop' is a per-UNIT resource shared by every gate on that unit (not
+        owned by any single gate - see SHARED_GATE_ENDSTOPS) and another gate on the same
+        unit currently occupies it.
+
+        mmu_shared_exit / extruder_entry are real switches downstream of every gate on the
+        unit: read the live sensor directly, since it reflects any gate's filament, not just
+        the one selected - this is correct no matter when it's called.
+
+        The encoder has no presence sensor at all. The only equivalent signal is whether the
+        unit's actively-loaded (fed-forward) filament belongs to a different gate - the same
+        physical fact the switch reads, measured the only way available. That signal only
+        exists BEFORE this operation's own gate selection moves 'gate_selected' onto 'gate' -
+        callers must check this ahead of their own select_gate(gate) (see the command-level
+        can_continue checks in mmu_nfc_scan.py / mmu_preload.py). Called again afterwards, as
+        _preload_gate/_jog_scan do below for the switch-based endstops, gate_selected already
+        equals 'gate' and this branch is inert by construction - there is nothing left to
+        observe at that point, which is fine since the command layer already gated entry.
+        """
+        if endstop not in SHARED_GATE_ENDSTOPS:
+            return False
+        if endstop == SENSOR_ENCODER:
+            unit = self.mmu_unit(gate)
+            return (self.filament_pos != FILAMENT_POS_UNLOADED
+                    and self.gate_selected != gate
+                    and unit.owns_gate(self.gate_selected))
+        shared_name = self.sensor_manager.get_qualified_endstop_name(endstop)
+        return bool(self.sensor_manager.check_sensor(shared_name))
 
 
     def _preload_gate(self, pending=None):
@@ -97,7 +131,7 @@ class MmuFilamentMovement:
               [gate_preload_endstop, NFC reader]. If the READER stops the move the tag is
               read and homing continues to the physical endstop, then parks. If the PHYSICAL
               endstop stops it first we hand over to the scan logic: sweep forward through
-              the positive half of nfc_gate_jog_scan_window looking for the tag, then park
+              the positive half of nfc_preload_jog_scan_window looking for the tag, then park
               from wherever that left us (reverse-home back to the gate, then park).
 
         'pending' is the (spool_id, tag) the MMU_PRELOAD command grabbed up front (before its
@@ -121,6 +155,7 @@ class MmuFilamentMovement:
         if self.sensor_manager.check_gate_sensor(SENSOR_EXIT_PREFIX, gate):
             self.log_always("Filament already preloaded in gate %d" % gate)
             self.gate_maps.set_gate_status(gate, GATE_AVAILABLE)
+            self.last_preloaded_gate = gate
             # Still apply a grabbed spool_id: the caller scanned a tag and preloaded this
             # gate, so assign it even though filament was already seated (the grab already
             # cleared the global pending, so it would otherwise be lost here).
@@ -130,28 +165,30 @@ class MmuFilamentMovement:
         profile = self._preload_profile()
 
         # MMU_PRELOAD only runs on a gate that is free to preload (unloaded, or a different
-        # unit, or crossload-capable). A *shared* gate endstop that already reads triggered
-        # therefore means another gate's filament occupies the shared exit path - preloading
-        # would home backward into it. Refuse rather than proceed. (A pre-triggered per-gate
-        # exit sensor is the benign "already preloaded" case handled above.)
-        if profile.endstop == SENSOR_SHARED_EXIT:
-            shared_name = self.sensor_manager.get_qualified_endstop_name(SENSOR_SHARED_EXIT)
-            if self.sensor_manager.check_sensor(shared_name):
-                raise MmuError("Cannot preload gate %d: shared exit sensor '%s' is already "
-                               "triggered (filament from another gate still loaded?)"
-                               % (gate, shared_name))
+        # unit, or crossload-capable). A *shared* gate endstop already occupied by another
+        # gate's filament means preloading would home backward (or, for the encoder, forward)
+        # into it. Refuse rather than proceed. (A pre-triggered per-gate exit sensor is the
+        # benign "already preloaded" case handled above - not a shared endstop.)
+        if self._shared_gate_path_occupied(profile.endstop, gate):
+            raise MmuError("Cannot preload gate %d: shared '%s' path is already occupied "
+                           "(filament from another gate still loaded?)"
+                           % (gate, profile.endstop))
 
-        # A pending shared-NFC spool_id takes precedence over this gate's own reader: consume
-        # the pending and do a normal preload (skip the per-gate NFC read) rather than have
-        # both try to assign the gate. Without a pending, use the per-gate reader if present.
-        have_pending = pending is not None and (pending[0] > 0 or pending[1] is not None)
+        # A strong pending (resolved spool_id, or a tag with usable metadata) takes precedence
+        # over this gate's own reader: consume it and do a normal preload (skip the per-gate
+        # NFC read) rather than have both try to assign the gate. A weak pending (bare uid only)
+        # is not trusted enough to skip the gate's own reader - it's applied below only as a
+        # fallback if that reader finds nothing.
+        spool_id, tag = pending if pending is not None else (-1, None)
+        has_material = tag is not None and isinstance(tag[1], dict) and tag[1].get('material')
+        have_strong_pending = spool_id > 0 or has_material
 
         # Decide the NFC path HERE, above the banner, so the banner cannot promise a scan
         # that won't happen. _build_gate_nfc_compound() declines (returns None) when there is
         # no reader, the reader is disabled, or the gate endstop isn't a real MCU switch.
         # Encoder homing can't be compounded at all, so it never even asks.
         nfc = None
-        if not have_pending and profile.endstop != SENSOR_ENCODER:
+        if not have_strong_pending and profile.endstop != SENSOR_ENCODER:
             gate_es_name = self.sensor_manager.get_qualified_endstop_name(profile.endstop)
             compound, nfc_es_name, nfc_mgr = self._build_gate_nfc_compound(
                 gate, gate_es_name, name="preload_compound")
@@ -195,6 +232,7 @@ class MmuFilamentMovement:
                 self.drive().mmu_gear_stepper.rail.remove_compound_endstop(nfc[0].name)
 
         self.gate_maps.set_gate_status(gate, GATE_AVAILABLE)
+        self.last_preloaded_gate = gate
         self.log_always("Filament detected and loaded in gate %d" % gate)
         if nfc is not None:
             # The banner promised a scan, so say how it went either way - a silent
@@ -204,7 +242,10 @@ class MmuFilamentMovement:
                 self.log_info("NFC: tag read for gate %d" % gate)
             else:
                 self.log_info("NFC: no tag found for gate %d while preloading" % gate)
-        self._check_pending_filament(gate, pending=pending) # Apply the grabbed spool_id if any
+        if not tag_read:
+            # A fresh per-gate read already applied directly above - don't let a weaker/stale
+            # pending from a different physical location overwrite it.
+            self._check_pending_filament(gate, pending=pending)
         run_post_preload_macro()
 
 
@@ -303,7 +344,7 @@ class MmuFilamentMovement:
             for i in range(profile.attempts):
                 if nfc is not None:
                     homed, tag_read, overshoot = self._home_to_gate_with_nfc(
-                        gate, endstop_name, nfc, homing_max)
+                        gate, endstop_name, nfc, homing_max, profile.jog_scan_window)
                 else:
                     msg = (
                         f"Initial homing to {endstop_name} sensor"
@@ -485,7 +526,7 @@ class MmuFilamentMovement:
         return compound, nfc_es_name, nfc_mgr
 
 
-    def _home_to_gate_with_nfc(self, gate, gate_es_name, nfc, homing_max):
+    def _home_to_gate_with_nfc(self, gate, gate_es_name, nfc, homing_max, jog_scan_window):
         """
         One NFC-augmented gate-home attempt against the compound [gate switch, NFC reader].
         Forward-only, and the two outcomes are deliberately different operations:
@@ -494,20 +535,24 @@ class MmuFilamentMovement:
             then carry on homing to the gate switch. We finish ON the datum, so the caller
             parks in place (offset 0).
           GATE switch stops us first - the tag is somewhere ahead of the reader. Hand over to
-            the scan logic and sweep forward through the positive half of
-            nfc_gate_jog_scan_window looking for it. We finish AHEAD of the datum, so the
+            the scan logic and sweep forward through the positive half of the caller's
+            jog_scan_window (the profile's nfc_gate_jog_scan_window or
+            nfc_preload_jog_scan_window) looking for it. We finish AHEAD of the datum, so the
             caller has to reverse-home back to it before parking (offset > 0).
 
         Reads the tag (deep if enabled) when found and applies it to the gate map. Never
         parks - the caller owns that.
 
+        Args:
+            jog_scan_window: (neg, pos) from the caller's GateHomeProfile - only the
+                positive half is used, to bound the forward scan leg.
+
         Returns:
             (homed, tag_read, offset) - offset is how far forward of the gate datum the
             filament was left, for the caller to budget its park with.
         """
-        u = self.mmu_unit()
         compound, nfc_es_name, nfc_mgr = nfc
-        window = u.p.nfc_gate_jog_scan_window
+        window = jog_scan_window
         pos = max(0.0, window[1]) if len(window) == 2 else 0.0
 
         # Phase 1: home to whichever of {gate switch, tag} arrives first
@@ -623,7 +668,7 @@ class MmuFilamentMovement:
         profile = self._gate_profile()
         pre_scan_status = self.gate_status[gate] # Restored if a re-park fails (filament is still present)
 
-        window = u.p.nfc_gate_jog_scan_window
+        window = profile.jog_scan_window
         if len(window) != 2 or window[0] > 0 or window[1] < 0:
             raise MmuError("nfc_gate_jog_scan_window must be (neg, pos) with neg <= 0 <= pos, got %s" % (window,))
         neg, pos = window[0], window[1]
@@ -636,6 +681,15 @@ class MmuFilamentMovement:
             raise MmuError("Gate %d has no NFC reader to scan" % gate)
         if not nfc_manager.is_enabled(gate=gate):
             raise MmuError("Gate %d NFC reader is disabled (re-enable with MMU_NFC ... ENABLE=1)" % gate)
+
+        # The forward sweep can reach past a SHARED gate datum into territory another gate's
+        # filament may occupy (see _shared_gate_path_occupied). MMU_NFC_SCAN already selected
+        # this gate before calling in here, so this only still catches mmu_shared_exit/
+        # extruder_entry (a live switch, order-independent) - the command-level can_continue
+        # check is what guards the encoder case, before selection moved.
+        if self._shared_gate_path_occupied(profile.endstop, gate):
+            raise MmuError("Cannot scan gate %d: shared '%s' path is already occupied "
+                           "(filament from another gate still loaded?)" % (gate, profile.endstop))
 
         endstop_name = self.sensor_manager.get_gate_sensor_name(SENSOR_NFC_PREFIX, gate)
 
@@ -3287,8 +3341,11 @@ class MmuFilamentMovement:
         elif es:
             self.set_filament_pos_state(FILAMENT_POS_HOMED_ENTRY, silent=silent) # Allows for fast bowden unload move
 
-        # Parked at gate (when parking distance is not a retract i.e. gs sensor expected to be triggered)
-        elif gs and filament_detected and u.p.gate_parking_distance <= 0:
+        # Parked at gate (when parking distance is not a retract i.e. gs sensor expected to be triggered).
+        # Note: filament_detected is deliberately not required here - for a forward parking distance,
+        # get_all_sensors_for_gate() excludes this exact sensor from its position ordering (see
+        # mmu_sensor_manager.py _get_sensors), so filament_detected can never be true from gs alone
+        elif gs and u.p.gate_parking_distance >= 0:
             self.set_filament_pos_state(FILAMENT_POS_UNLOADED, silent=silent)
 
         # Somewhere in bowden
@@ -3694,13 +3751,32 @@ class MmuFilamentMovement:
         Yields:
             self while the temporary gear-current override is active.
         """
-        prev_percent = self._adjust_gear_current(percent=percent, reason=reason)
-        self._gear_run_current_locked = True
+        # Bind the stepper at entry so a block that changes selection still restores the one it
+        # changed. Only the outermost wrap applies and restores; inner ones are locked out
+        gate = self.gate_selected
+        outermost = self._gear_run_current_depth == 0
+        prev_percent = self._adjust_gear_current(gate=gate, percent=percent, reason=reason) if outermost else None
+        self._gear_run_current_depth += 1
         try:
             yield self
         finally:
-            self._gear_run_current_locked = False
-            self._restore_gear_current(percent=prev_percent)
+            self._gear_run_current_depth -= 1
+            if self._gear_run_current_depth == 0:
+                self._restore_gear_current(gate=gate, percent=prev_percent)
+
+
+    def gear_run_current(self, gate=None):
+        """
+        Run current percentage believed to be applied to a gate's gear stepper.
+        """
+        return self.drive(gate).run_current_percent()
+
+
+    def extruder_run_current(self):
+        """
+        Run current percentage believed to be applied to the selected unit's extruder.
+        """
+        return self.mmu_unit().extruder_wrapper.run_current_percent()
 
 
     def _adjust_gear_current(self, gate=None, percent=100, reason="", restore=False):
@@ -3716,31 +3792,32 @@ class MmuFilamentMovement:
         Returns:
             int or float: Previously active or currently retained gear-current percentage.
         """
-        u = self.mmu_unit(gate)
-
-        current_percent = self.gear_run_current_percent
-
-        if self._gear_run_current_locked:
-            return current_percent
+        # Resolve the gate before the drive - the accessors cannot take None
         if gate is None:
             gate = self.gate_selected
         if gate < 0:
+            return 100
+
+        drive = self.drive(gate)
+        sname = drive.get_name()
+        current_percent = drive.run_current_percent()
+
+        if self._gear_run_current_depth:
             return current_percent
         if not (0 < percent < 200):
             return current_percent
-        if u.gear_tmc_obj(gate) is None:
+        if drive.tmc_obj() is None:
             return current_percent
-        if percent == self.gear_run_current_percent:
+        if percent == current_percent:
             return current_percent
 
-        sname = u.gear_name(gate)
         if restore:
             msg = "Restoring MMU %s run current to %d%% ({}A)" % (sname, percent)
         else:
             msg = "Modifying MMU %s run current to %d%% ({}A) %s" % (sname, percent, reason)
-        target_current = (u.gear_default_current(gate) * percent) / 100.0
+        target_current = (drive.default_current() * percent) / 100.0
         self._set_tmc_current(sname, target_current, msg)
-        self.gear_run_current_percent = percent # Update global record of current %
+        drive.set_run_current_percent(percent)
         return current_percent
 
 
@@ -3789,25 +3866,24 @@ class MmuFilamentMovement:
         Returns:
             int or float: Previously active or currently retained extruder-current percentage.
         """
-        u = self.mmu_unit()
-
-        current_percent = self.extruder_run_current_percent
+        wrapper = self.mmu_unit().extruder_wrapper
+        current_percent = wrapper.run_current_percent()
 
         if not (0 < percent < 200):
             return current_percent
-        if u.extruder_tmc_obj() is None:
+        if wrapper.extruder_tmc_obj() is None:
             return current_percent
-        if percent == self.extruder_run_current_percent:
+        if percent == current_percent:
             return current_percent
 
-        sname = u.extruder_name()
+        sname = wrapper.extruder_name()
         if restore:
             msg = "Restoring extruder stepper %s run current to %d%% ({}A)" % (sname, percent)
         else:
             msg = "Modifying extruder stepper %s run current to %d%% ({}A) %s" % (sname, percent, reason)
-        target_current = (u.extruder_default_current() * percent) / 100.0
+        target_current = (wrapper.extruder_default_current() * percent) / 100.0
         self._set_tmc_current(sname, target_current, msg)
-        self.extruder_run_current_percent = percent # Update global record of current %
+        wrapper.set_run_current_percent(percent)
         return current_percent
 
 

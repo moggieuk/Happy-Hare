@@ -20,18 +20,26 @@
 # 1. Dynamic defaults 'generated_default'
 #
 #   Syntax:
-#     generated_default "<template>" "<args>"
-#     generated_default "<template>" "<args>" <stop>
-#     generated_default "<template>" "<args>" <start> <stop>
+#     generated_default "<template>" "<args>" [<separator>] [[<start>] <stop>]
 #
-#   <args> is a space-separated list of Kconfig symbols used for %-formatting.
-#   {iter} is replaced by the iterator value when repeating.
+#   <args> is a space-separated list of Kconfig symbols. Inside <template>:
+#     %s, %d    - next arg from <args>, filled in left-to-right wherever it appears
+#                 (list a symbol twice in <args> to fill two placeholders with it)
+#     %i        - the current iterator value (only valid when <start>/<stop> given)
+#     %%        - a literal '%'
+#     {...}     - a basic arithmetic expression (+ - * / // % ** and parens),
+#                 evaluated AFTER %s/%d/%i substitution -- reference them by
+#                 writing the token inside the braces, e.g. "{%i % %d}"
+#   Without <start>/<stop>, the template is rendered once. With them, it's
+#   rendered once per value in range(start, stop) (start defaults to 0) and
+#   the results joined with <separator> (defaults to ", ").
 #
 # Examples:
 #   generated_default "%s_%d" "PARAM_ONE PARAM_TWO"
-#   generated_default "{iter}_%s" "PARAM_ONE" PARAM_STOP
-#   generated_default "%s_{iter}" "PARAM_VENDOR PARAM_VERSION" PARAM_START PARAM_STOP
-#   generated_default "neopixel:$(UNIT_NAME)_gate{iter}_leds (1-%d)" "PARAM_NUM_GATES" PARAM_NUM_GATES
+#   generated_default "%i_%s" "PARAM_ONE" PARAM_STOP
+#   generated_default "%s_%i" "PARAM_VENDOR PARAM_VERSION" PARAM_START PARAM_STOP
+#   generated_default "neopixel:$(UNIT_NAME)_gate%i_leds (1-%d)" "PARAM_NUM_GATES" PARAM_NUM_GATES
+#   generated_default "{(%i + 1) % %d}" "PARAM_NUM_GATES" ", " 0 PARAM_NUM_GATES
 #
 # 2. Added float type
 # 3. Option 'force_show'to force display even if dependency isn't met

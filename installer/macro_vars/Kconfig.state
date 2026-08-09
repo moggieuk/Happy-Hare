@@ -1,4 +1,4 @@
-menu "State change hooks (_MMU_STATE)"
+menu "State change hooks   (_MMU_STATE)"
   help
     You can extend functionality to all Happy Hare state change or event
     macros by adding a command (or call to your gcode macro).

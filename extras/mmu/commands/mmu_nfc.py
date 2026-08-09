@@ -40,6 +40,7 @@ class MmuNfcCommand(BaseCommand):
         + "READ     = [0|1] Read the addressed reader once and report the UID\n"
         + "DEEP     = [0|1] With READ=1, also parse and report the tag metadata (ignores nfc_deep_read setting)\n"
         + "REGISTER = [0|1] Read tag (implies READ=1 DEEP=1) and resolve it in Spoolman (may auto-create). Shared reader: report-only, Per-gate: updates gate map\n"
+        + "APPEND   = [0|1] With REGISTER=1 on a gate that already has a spool assigned, bind the newly scanned tag onto that spool instead of resolving/auto-creating (e.g. a second tag on the same spool)\n"
         + "INIT     = [0|1] (Re)initialize the addressed reader\n"
         + "RELEASE  = [0|1] Release the current target on the addressed reader\n"
         + "INIT_ALL = [0|1] (Re)initialize every reader on every unit\n"
@@ -55,6 +56,7 @@ class MmuNfcCommand(BaseCommand):
         + f"{CMD} SHARED=1 READ=1 DEEP=1 ...Read the shared reader and report the parsed tag metadata\n"
         + f"{CMD} SHARED=1 REGISTER=1    ...Read tag and resolve/register it in Spoolman (report only, no assignment)\n"
         + f"{CMD} GATE=2 REGISTER=1      ...Read tag on gate 2 and apply to the gate map (as if auto-scanned)\n"
+        + f"{CMD} GATE=2 REGISTER=1 APPEND=1 ...Read a 2nd tag on gate 2 and bind it onto the spool already assigned there\n"
         + f"{CMD} GATE=2 INIT=1          ...(Re)initialize the reader on gate 2\n"
         + f"{CMD} GATES=0,1,2,3 ENABLE=0 ...Disable selected per-gate readers\n"
         + f"{CMD} INIT_ALL=1             ...Re-initialize every reader on all units\n"
@@ -85,6 +87,7 @@ class MmuNfcCommand(BaseCommand):
         read     = gcmd.get_int('READ', 0, minval=0, maxval=1)
         deep     = bool(gcmd.get_int('DEEP', 0, minval=0, maxval=1))
         register = bool(gcmd.get_int('REGISTER', 0, minval=0, maxval=1))
+        append   = bool(gcmd.get_int('APPEND', 0, minval=0, maxval=1))
         init     = gcmd.get_int('INIT', 0, minval=0, maxval=1)
         release  = gcmd.get_int('RELEASE', 0, minval=0, maxval=1)
         if register: # Registration needs the tag read and its metadata (for auto-create)
@@ -125,7 +128,7 @@ class MmuNfcCommand(BaseCommand):
                 if mgr is None or not mgr.has_reader(gate=g):
                     skipped.append(g)
                     continue
-                if not self._do_actions(mmu, mmu_unit, mgr, False, g, enable, init, release, read, deep, register):
+                if not self._do_actions(mmu, mmu_unit, mgr, False, g, enable, init, release, read, deep, register, append):
                     self._report_one(mmu_unit, mgr, shared=False, gate=g, details=details)
             if skipped:
                 mmu.log_always("NFC: no reader on gate(s) %s - skipped" % ",".join(map(str, skipped)))
@@ -140,10 +143,10 @@ class MmuNfcCommand(BaseCommand):
             raise gcmd.error("%s: no NFC %s configured" % (mmu_unit.name, label))
 
         # A bare selector (e.g. MMU_NFC GATE=3) just reports that reader's status
-        if not self._do_actions(mmu, mmu_unit, mgr, shared, gate, enable, init, release, read, deep, register):
+        if not self._do_actions(mmu, mmu_unit, mgr, shared, gate, enable, init, release, read, deep, register, append):
             self._report_one(mmu_unit, mgr, shared=shared, gate=gate, details=details)
 
-    def _do_actions(self, mmu, mmu_unit, mgr, shared, gate, enable, init, release, read, deep=False, register=False):
+    def _do_actions(self, mmu, mmu_unit, mgr, shared, gate, enable, init, release, read, deep=False, register=False, append=False):
         """
         Apply the requested action(s) to one addressed reader. Returns True if any
         action was performed (False -> caller falls back to a status report).
@@ -185,13 +188,29 @@ class MmuNfcCommand(BaseCommand):
                     mmu.log_always(msg)
                     if register:
                         if shared:
-                            # Report-only Spoolman resolve/auto-create: no pending, no gate map
-                            mmu._spoolman_register_tag(uid, metadata)
+                            if append:
+                                mmu.log_error("NFC: APPEND=1 needs a gate with an assigned spool - not "
+                                              "applicable to the shared reader. Use 'MMU_SPOOLMAN_TAG "
+                                              "SPOOLID=<id> RFID=%s APPEND=1' instead." % uid)
+                            else:
+                                # Report-only Spoolman resolve/auto-create: no pending, no gate map
+                                mmu._spoolman_register_tag(uid, metadata)
                         else:
-                            # Per-gate: full normal tag-read semantics - gate map updates
-                            # (spool_id on async resolution; metadata per nfc_deep_read)
-                            mmu.log_always("NFC: dispatching tag for gate %d - gate map will update on resolution" % gate)
-                            mmu._nfc_tag_read(uid, gate=gate, metadata=metadata, unit=mmu_unit)
+                            existing_spool_id = mmu.gate_spool_id[gate]
+                            if append and existing_spool_id and existing_spool_id > 0:
+                                # Bind this newly scanned tag onto the spool already assigned to
+                                # this gate (e.g. a 2nd physical tag on the same spool) instead of
+                                # resolving/auto-creating - which would otherwise ignore an unknown
+                                # tag or, worse, auto-create a duplicate spool for it.
+                                mmu.log_always("NFC: appending tag %s to spool %d already assigned to gate %d" % (uid, existing_spool_id, gate))
+                                mmu._spoolman_set_spool_uid(existing_spool_id, uid, append=True, quiet=False)
+                            else:
+                                if append:
+                                    mmu.log_always("NFC: gate %d has no spool assigned yet - APPEND=1 ignored, resolving/creating normally" % gate)
+                                # Per-gate: full normal tag-read semantics - gate map updates
+                                # (spool_id on async resolution; metadata per nfc_deep_read)
+                                mmu.log_always("NFC: dispatching tag for gate %d - gate map will update on resolution" % gate)
+                                mmu._nfc_tag_read(uid, gate=gate, metadata=metadata, unit=mmu_unit)
                 else:
                     mmu.log_always("NFC: %s %s - no tag detected" % (mmu_unit.name, label))
             did_action = True

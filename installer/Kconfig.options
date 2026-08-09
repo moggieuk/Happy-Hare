@@ -14,6 +14,23 @@
 #
 #   INSTALL_12864_MENU
 #   INSTALL_CLIENT_MACROS
+#
+#   PARAM_LOG_STATISTICS
+#   PARAM_LOG_VISUAL
+#   PARAM_LOG_STARTUP_STATUS
+#   PARAM_LOG_M117_MESSAGES
+#
+#   PARAM_TIMEOUT_PAUSE
+#   PARAM_DISABLE_HEATER
+#   PARAM_DEFAULT_EXTRUDER_TEMP
+#   PARAM_EXTRUDER_TEMP_VARIANCE
+#
+#   PARAM_STARTUP_RESET_TTG_MAP
+#   PARAM_SHOW_ERROR_DIALOG
+#   PARAM_STRICT_FILAMENT_RECOVERY
+#   PARAM_FILAMENT_RECOVERY_ON_PAUSE
+#   PARAM_RETRY_TOOL_CHANGE_ON_ERROR
+#   PARAM_BYPASS_AUTOLOAD
 
 menu "Software Options"
   help
@@ -23,13 +40,10 @@ menu "Software Options"
     config files.
 
 
-
-
 # -------------------------------------
 # Endless Spool
 # -------------------------------------
 
-  comment "_"
   comment "_EndlessSpool"
 
   config BOOL_ENDLESS_SPOOL_ENABLED
@@ -210,12 +224,54 @@ menu "Software Options"
     default 4 if CHOICE_LOG_FILE_LEVEL_STEPPER
     default 2
 
+  config BOOL_LOG_STATISTICS
+    bool "Log statistics on every toolchange?"
+    default y
+    help
+      1 to log statistics on every toolchange (default), 0 to disable (but still recorded)
+
+  config PARAM_LOG_STATISTICS
+    int
+    default 1 if BOOL_LOG_STATISTICS
+    default 0
+
+  config BOOL_LOG_VISUAL
+    bool "Log visual representation of filament?"
+    default y
+    help
+      Whether to log visual representation of filament in console
+
+  config PARAM_LOG_VISUAL
+    int
+    default 1 if BOOL_LOG_VISUAL
+    default 0
+
+  config BOOL_LOG_STARTUP_STATUS
+    bool "Log tool to gate status on startup"
+    default y
+    help
+      Whether to log tool summary and gate status on startup
+
+  config PARAM_LOG_STARTUP_STATUS
+    int
+    default 1 if BOOL_LOG_STARTUP_STATUS
+    default 0
+
+  config BOOL_LOG_M117_MESSAGES
+    bool "Send toolchange message via M117 to screen?"
+    default y
+    help
+      Whether send toolchange message via M117 to screen
+
+  config PARAM_LOG_M117_MESSAGES
+    int
+    default 1 if BOOL_LOG_M117_MESSAGES
+    default 0
+
 
 # -------------------------------------
 # Tool (Tx) Macros
 # -------------------------------------
-
-  comment "_"
 
   choice CHOICE_T_MACRO_COLOR
     prompt "Filament color shown on Tx tool macros (Mainsail/Fluidd)"
@@ -251,10 +307,121 @@ menu "Software Options"
 
 
 # -------------------------------------
+# Temperature & Timeouts
+# -------------------------------------
+
+  comment "_"
+  comment "_Temperature & Timeouts"
+
+  config PARAM_TIMEOUT_PAUSE
+    int "Pause idle timeout                 "
+    default 72000
+    help
+      Idle time out (printer shuts down) in seconds used when in MMU pause state
+
+  config PARAM_DISABLE_HEATER
+    int "Disable heater delay               "
+    default 600
+    help
+      Delay in seconds after which the hotend heater is disabled in the MMU_PAUSE state
+
+  config PARAM_DEFAULT_EXTRUDER_TEMP
+    float "Default extruder temperature       "
+    default 200
+    help
+      Default temperature for performing swaps and forming tips when not in print (overridden by gate map)
+
+  config PARAM_EXTRUDER_TEMP_VARIANCE
+    float "Extruder temperature variance      "
+    default 2
+    help
+      When waiting for extruder temperature this is the +/- permissible variance in degrees (>= 1)
+
+
+# -------------------------------------
+# Workflow
+# -------------------------------------
+
+  comment "_"
+  comment "_Workflow"
+
+  config BOOL_STARTUP_RESET_TTG_MAP
+    bool "Reset tool-to-gate map on startup?"
+    default n
+    help
+      Whether to reset TTG map on startup
+
+  config PARAM_STARTUP_RESET_TTG_MAP
+    int
+    default 1 if BOOL_STARTUP_RESET_TTG_MAP
+    default 0
+
+  config BOOL_SHOW_ERROR_DIALOG
+    bool "Show pop-up dialog on error?"
+    default y
+    help
+      Select to show pop-up dialog in addition to console message
+
+  config PARAM_SHOW_ERROR_DIALOG
+    int
+    default 1 if BOOL_SHOW_ERROR_DIALOG
+    default 0
+
+  config BOOL_STRICT_FILAMENT_RECOVERY
+    bool "Use strict filament recovery?"
+    default n
+    help
+      If enabled with MMU with toolhead sensor, this will cause filament position recovery to perform
+      extra moves to look for filament trapped in the space after extruder but before sensor
+
+  config PARAM_STRICT_FILAMENT_RECOVERY
+    int
+    default 1 if BOOL_STRICT_FILAMENT_RECOVERY
+    default 0
+
+  config BOOL_FILAMENT_RECOVERY_ON_PAUSE
+    bool "Check filament position on pause/error?"
+    default y
+    help
+      Whether to run a quick check to determine current filament position on pause/error
+
+  config PARAM_FILAMENT_RECOVERY_ON_PAUSE
+    int
+    default 1 if BOOL_FILAMENT_RECOVERY_ON_PAUSE
+    default 0
+
+  config BOOL_RETRY_TOOL_CHANGE_ON_ERROR
+    bool "Automatically retry a failed tool change?"
+    default n
+    help
+      Whether to automatically retry a failed tool change. If enabled Happy Hare will perform the
+      equivalent of 'MMU_RECOVER' + 'Tx' commands which usually is all that is necessary to recover.
+      Note that enabling this can mask problems with your MMU
+
+  config PARAM_RETRY_TOOL_CHANGE_ON_ERROR
+    int
+    default 1 if BOOL_RETRY_TOOL_CHANGE_ON_ERROR
+    default 0
+
+  config BOOL_BYPASS_AUTOLOAD
+    bool "Automatically load extruder for bypass operation?"
+    default y
+    depends on MMU_HAS_SENSOR_EXTRUDER
+    help
+      If extruder sensor fitted this controls the automatic loading of extruder for bypass operation
+
+  config PARAM_BYPASS_AUTOLOAD
+    int
+    default 1 if BOOL_BYPASS_AUTOLOAD
+    default 0
+
+
+# -------------------------------------
 # Optional Macros
 # -------------------------------------
 
   comment "_"
+  comment "_Optional Macros"
 
   config INSTALL_12864_MENU
     bool "Install Mini 12864 display menu?"

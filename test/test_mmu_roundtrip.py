@@ -29,6 +29,7 @@ logging.getLogger().setLevel(logging.CRITICAL)
 
 TAG_A = 'AAAA1111'
 TAG_B = 'BBBB2222'
+TAG_C = 'CCCC3333'
 UNKNOWN_TAG = 'DEADBEEF'
 TAG_METADATA = dict(material='PETG', brand='Overture', color='00FF00',
                     detail='PETG_Basic', min_temp=230, max_temp=250)
@@ -133,12 +134,21 @@ class TestSharedReaderAutoCreate(RoundTripTestCase):
         self.assertEqual(self.rt.mmu.pending_spool_id, -1)
 
     def test_no_autocreate_without_metadata(self):
-        """A UID-only read of an unregistered tag is a definitive miss."""
+        """A UID-only read of an unregistered tag is a definitive miss on spool_id."""
         self.rt.present_tag(UNKNOWN_TAG, gate=None, deep=False)
         self.assertEqual(self.rt.db.created_spools, [])
         self.assertEqual(self.last_callback(),
                          'MMU_GATE_MAP NEXT_SPOOLID=-2 QUIET=1')
         self.assertEqual(self.rt.mmu.pending_spool_id, -1)
+
+    def test_bare_uid_is_retained_as_a_weak_pending_after_the_miss(self):
+        """
+        The uid itself is not a dead end even though Spoolman doesn't know it - it stays
+        staged (no spool_id LED overlay, since there is no spool_id) so it can still land
+        on whichever gate loads next.
+        """
+        self.rt.present_tag(UNKNOWN_TAG, gate=None, deep=False)
+        self.assertEqual(self.rt.mmu.pending_tag, (UNKNOWN_TAG, None))
 
 
 class TestKnownTagResolution(RoundTripTestCase):
@@ -188,12 +198,27 @@ class TestKnownTagResolution(RoundTripTestCase):
         self.rt.present_tag(TAG_A, gate=2, deep=False)
         self.assertEqual(list(self.rt.mmu.gate_spool_id), [-1, -1, 1, -1])
 
+    def test_shared_resolution_uid_is_applied_with_the_spool_id(self):
+        """
+        A shared read that resolves to a spool_id must not lose the uid itself - once
+        applied to a gate, gate_spool_rfid records which physical tag resolved there.
+        """
+        self.rt.present_tag(TAG_A, gate=None, deep=False)
+        self.assertEqual(self.rt.mmu.pending_tag, (TAG_A, None),
+                         'the uid must survive spool_id resolution, only metadata is superseded')
+        self.rt.mmu._check_pending_filament(3)
+        self.assertEqual(self.rt.mmu.gate_spool_id[3], 1)
+        self.assertEqual(self.rt.mmu.gate_spool_rfid[3], TAG_A)
+
 
 class TestPerGateFailure(RoundTripTestCase):
     """
     Session 5: a per-gate lookup failure used to send NOTHING back. Now all three
     failure sites report GATE=x LOOKUP=-1|-2 so the console and the gate's LEDs
-    learn about it - while leaving the gate map untouched.
+    learn about it. The gate map's *filament attributes* stay untouched by a
+    failure, but a genuinely different physical tag (new uid) always lands its
+    uid on the gate and clears whatever spool_id belonged to the old one - see
+    TestStaleSpoolIdIsCleared below.
     """
     SPOOLS = (dict(uid=TAG_A, material='PLA'),)
 
@@ -201,11 +226,27 @@ class TestPerGateFailure(RoundTripTestCase):
         self.rt.present_tag(UNKNOWN_TAG, gate=2, deep=False)
         self.assertEqual(self.last_callback(), 'MMU_GATE_MAP GATE=2 LOOKUP=-2 QUIET=1')
 
-    def test_gate_map_is_untouched_by_a_failure(self):
+    def test_a_new_tags_failure_clears_the_old_spool_id(self):
+        """
+        Gate 2 was carrying spool 1's tag. A different, unregistered tag is scanned on
+        the same gate - the old spool_id must not linger next to the new uid.
+        """
         self.rt.present_tag(TAG_A, gate=2, deep=False)
         self.rt.present_tag(UNKNOWN_TAG, gate=2, deep=False)
+        self.assertEqual(self.rt.mmu.gate_spool_id[2], -1,
+                         'a new physical tag must clear the old spool_id, not carry it over')
+        self.assertEqual(self.rt.mmu.gate_spool_rfid[2], UNKNOWN_TAG)
+
+    def test_rescanning_the_same_tag_does_not_clear_its_own_assignment(self):
+        """
+        The clear is keyed on the uid changing, not on the lookup failing - re-presenting
+        the SAME tag (e.g. a recoverable Spoolman outage) must leave the assignment alone.
+        """
+        self.rt.present_tag(TAG_A, gate=2, deep=False)
+        self.rt.db.offline = True
+        self.rt.present_tag(TAG_A, gate=2, deep=False)
         self.assertEqual(self.rt.mmu.gate_spool_id[2], 1,
-                         'a failed lookup must not clear an existing assignment')
+                         'a recoverable failure on the SAME tag must not clear the assignment')
 
     def test_failure_is_surfaced_to_the_console(self):
         self.rt.present_tag(UNKNOWN_TAG, gate=2, deep=False)
@@ -309,6 +350,14 @@ class TestSpoolmanOff(RoundTripTestCase):
                          'no Spoolman means no spool id')
         self.assertEqual(self.rt.errors, [])
 
+    def test_bare_uid_still_reaches_the_gate_map(self):
+        """Even with no metadata and no spool_id, the uid itself is recorded locally."""
+        self.rt.present_tag(UNKNOWN_TAG, gate=1, deep=False)
+        self.assertEqual(self.rt.mmu.gate_spool_rfid[1], UNKNOWN_TAG)
+        self.assertEqual(self.rt.mmu.gate_spool_id[1], -1)
+        self.assertEqual(self.rt.mmu.gate_material[1], '')
+        self.assertEqual(self.rt.errors, [])
+
 
 class TestNfcCommandSurface(RoundTripTestCase):
     """
@@ -355,7 +404,7 @@ class TestNfcCommandSurface(RoundTripTestCase):
 
 class TestSpoolmanRfidCommand(RoundTripTestCase):
     """
-    'MMU_SPOOLMAN ... RFID=' end to end: Klipper command -> _spoolman_set_spool_uid ->
+    'MMU_SPOOLMAN_TAG ... RFID=' end to end: Klipper command -> _spoolman_set_spool_uid ->
     webhook -> MmuServer.set_spool_uid -> the spoolman db.
 
     Direction matters: this BINDS a tag onto an existing spool. The other direction -
@@ -368,17 +417,17 @@ class TestSpoolmanRfidCommand(RoundTripTestCase):
 
     def test_explicit_spoolid_registers_the_tag(self):
         self.assertEqual(self.rt.db.spool_uid(2), '', 'precondition: spool 2 has no tag')
-        self.rt.run_gcode('MMU_SPOOLMAN SPOOLID=2 RFID=%s' % TAG_B)
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG SPOOLID=2 RFID=%s' % TAG_B)
         self.assertEqual(self.rt.db.spool_uid(2), TAG_B)
 
     def test_gate_resolves_to_its_assigned_spool(self):
         self.rt.run_gcode('MMU_GATE_MAP GATE=3 SPOOLID=2')
-        self.rt.run_gcode('MMU_SPOOLMAN GATE=3 RFID=%s' % TAG_B)
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG GATE=3 RFID=%s' % TAG_B)
         self.assertEqual(self.rt.db.spool_uid(2), TAG_B,
                          "GATE= must resolve through the gate map to spool 2")
 
     def test_separators_are_stripped(self):
-        self.rt.run_gcode('MMU_SPOOLMAN SPOOLID=2 RFID=bb:bb:22:22')
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG SPOOLID=2 RFID=bb:bb:22:22')
         self.assertEqual(self.rt.db.spool_uid(2), TAG_B, 'normalised uppercase, no separators')
 
     def test_does_not_unset_the_gate_assignment(self):
@@ -389,38 +438,123 @@ class TestSpoolmanRfidCommand(RoundTripTestCase):
         """
         self.rt.run_gcode('MMU_GATE_MAP GATE=3 SPOOLID=2')
         self.assertEqual(self.rt.db.spool_gate(2), 3, 'precondition: spool 2 is on gate 3')
-        self.rt.run_gcode('MMU_SPOOLMAN SPOOLID=2 RFID=%s' % TAG_B)
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG SPOOLID=2 RFID=%s' % TAG_B)
         self.assertEqual(self.rt.db.spool_gate(2), 3, 'gate assignment must survive')
         self.assertEqual(self.rt.db.spool_uid(2), TAG_B)
 
     def test_gate_with_no_spool_errors(self):
         errors_before = len(self.rt.errors)
-        self.rt.run_gcode('MMU_SPOOLMAN GATE=1 RFID=%s' % TAG_B)
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG GATE=1 RFID=%s' % TAG_B)
         self.assertGreater(len(self.rt.errors), errors_before)
         self.assertIn('no spoolman spool assigned', self.rt.errors[-1].lower())
 
     def test_neither_spoolid_nor_gate_errors(self):
         errors_before = len(self.rt.errors)
-        self.rt.run_gcode('MMU_SPOOLMAN RFID=%s' % TAG_B)
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG RFID=%s' % TAG_B)
         self.assertGreater(len(self.rt.errors), errors_before)
         self.assertIn('spoolid', self.rt.errors[-1].lower())
 
-    def test_blank_rfid_errors_rather_than_clearing(self):
-        """Blank means 'clear' in MMU_GATE_MAP; here it must not silently PATCH ''."""
-        self.rt.run_gcode('MMU_SPOOLMAN SPOOLID=2 RFID=%s' % TAG_B)
+    def test_blank_rfid_clears_the_registered_tag(self):
+        """
+        Blank RFID= (no APPEND=1) is the documented way to unregister all tags
+        from a spool - it must succeed silently, not error (that used to be
+        rejected outright; now RFID='' is how a spool's tag(s) get cleared).
+        """
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG SPOOLID=2 RFID=%s' % TAG_B)
         errors_before = len(self.rt.errors)
-        self.rt.run_gcode('MMU_SPOOLMAN SPOOLID=2 RFID=')
-        self.assertGreater(len(self.rt.errors), errors_before)
-        self.assertEqual(self.rt.db.spool_uid(2), TAG_B, 'existing tag must be untouched')
+        self.rt.run_gcode("MMU_SPOOLMAN_TAG SPOOLID=2 RFID=''")
+        self.assertEqual(len(self.rt.errors), errors_before)
+        self.assertEqual(self.rt.db.spool_uid(2), '')
+
+    def test_append_adds_a_second_tag_without_losing_the_first(self):
+        """A spool can carry more than one physical tag (e.g. one on each side)."""
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG SPOOLID=2 RFID=%s' % TAG_B)
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG SPOOLID=2 RFID=%s APPEND=1' % TAG_C)
+        self.assertEqual(set(self.rt.db.spool_uids(2)), {TAG_B, TAG_C})
 
     def test_the_registered_tag_then_resolves_on_a_scan(self):
         """The round trip: bind a tag, then scanning it must resolve to that spool."""
-        self.rt.run_gcode('MMU_SPOOLMAN SPOOLID=2 RFID=%s' % TAG_B)
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG SPOOLID=2 RFID=%s' % TAG_B)
         self.rt.present_tag(TAG_B, gate=0, deep=False)
         self.assertEqual(self.rt.mmu.gate_spool_id[0], 2,
                          'the freshly bound tag must resolve to spool 2')
         self.assertEqual(len(self.rt.db.created_spools), 0,
                          'it must resolve, not auto-create a duplicate')
+
+
+class TestSpoolmanRegisterCommand(RoundTripTestCase):
+    """
+    'MMU_SPOOLMAN_TAG GATE= SPOOLID= REGISTER=1': a spool with no Spoolman entry at scan
+    time leaves its uid sitting in the gate map with no spool_id. Once the matching
+    spool exists, REGISTER=1 binds the gate's already-known uid onto it - without any
+    new tag read. The gate map only updates once Spoolman confirms the write (via the
+    same 'MMU_GATE_MAP GATE=<g> SPOOLID=<id>' callback a per-gate NFC lookup resolution
+    uses), never optimistically.
+    """
+    SPOOLS = (dict(uid=TAG_A, material='PLA'),
+              dict(material='ABS', vendor='Polymaker'))
+
+    def _scan_bare_uid(self, gate=3, uid=UNKNOWN_TAG):
+        self.rt.present_tag(uid, gate=gate, deep=False)
+        self.assertEqual(self.rt.mmu.gate_spool_rfid[gate], uid, 'precondition: uid recorded, no spool')
+        self.assertEqual(self.rt.mmu.gate_spool_id[gate], -1, 'precondition: no spool_id yet')
+
+    def test_registers_the_gates_known_uid_and_assigns_locally(self):
+        self._scan_bare_uid()
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG GATE=3 SPOOLID=2 REGISTER=1')
+        self.assertEqual(self.rt.db.spool_uid(2), UNKNOWN_TAG)
+        self.assertEqual(self.rt.mmu.gate_spool_id[3], 2)
+
+    def test_failed_write_leaves_the_gate_map_untouched(self):
+        self._scan_bare_uid()
+        self.rt.db.offline = True
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG GATE=3 SPOOLID=2 REGISTER=1')
+        self.assertEqual(self.rt.mmu.gate_spool_id[3], -1,
+                         'a failed remote write must not commit the local assignment')
+
+    def test_no_recorded_uid_errors(self):
+        errors_before = len(self.rt.errors)
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG GATE=3 SPOOLID=2 REGISTER=1')
+        self.assertGreater(len(self.rt.errors), errors_before)
+        self.assertIn('no nfc/rfid tag uid recorded', self.rt.errors[-1].lower())
+
+    def test_missing_gate_or_spoolid_errors(self):
+        errors_before = len(self.rt.errors)
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG SPOOLID=2 REGISTER=1')
+        self.assertGreater(len(self.rt.errors), errors_before)
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG GATE=3 REGISTER=1')
+        self.assertGreater(len(self.rt.errors), errors_before + 1)
+
+    def test_bypass_gate_is_rejected(self):
+        errors_before = len(self.rt.errors)
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG GATE=-1 SPOOLID=2 REGISTER=1')
+        self.assertGreater(len(self.rt.errors), errors_before)
+
+    def test_pull_mode_errors_instead_of_silently_finding_nothing(self):
+        self._scan_bare_uid()
+        self.rt.mmu.p.spoolman_support = 'pull'
+        errors_before = len(self.rt.errors)
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG GATE=3 SPOOLID=2 REGISTER=1')
+        self.assertGreater(len(self.rt.errors), errors_before)
+        self.assertIn('pull', self.rt.errors[-1].lower())
+
+    def test_omitted_gate_defaults_to_the_selected_gate(self):
+        self._scan_bare_uid()
+        self.rt.run_gcode('MMU_SELECT GATE=3')
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG SPOOLID=2 REGISTER=1')
+        self.assertEqual(self.rt.mmu.gate_spool_id[3], 2)
+
+    def test_gate_last_resolves_to_the_most_recently_preloaded_gate(self):
+        self._scan_bare_uid()
+        self.rt.mmu.last_preloaded_gate = 3
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG GATE=LAST SPOOLID=2 REGISTER=1')
+        self.assertEqual(self.rt.mmu.gate_spool_id[3], 2)
+
+    def test_gate_last_errors_when_nothing_has_been_preloaded(self):
+        errors_before = len(self.rt.errors)
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG GATE=LAST SPOOLID=2 REGISTER=1')
+        self.assertGreater(len(self.rt.errors), errors_before)
+        self.assertIn('preloaded', self.rt.errors[-1].lower())
 
 
 if __name__ == '__main__':

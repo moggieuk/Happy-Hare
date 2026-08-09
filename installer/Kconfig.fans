@@ -21,13 +21,13 @@
 #   select UNSELECT_MMU_HAS_FANS
 
 
+comment "_"
+comment "_Fans"
+
 config UNSELECT_MMU_HAS_FANS
   def_bool n
 
 if !UNSELECT_MMU_HAS_FANS
-  comment "_"
-  comment "_Fans"
-
   config MMU_HAS_FANS
     bool "Has cooling fans?"
     forceshow

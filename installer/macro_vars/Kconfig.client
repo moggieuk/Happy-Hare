@@ -1,4 +1,4 @@
-menu "Client macros (_MMU_CLIENT)"
+menu "Client macros        (_MMU_CLIENT)"
   help
     Happy Hare client macro configuration variables.
 

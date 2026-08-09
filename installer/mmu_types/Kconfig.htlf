@@ -1,8 +1,8 @@
-config MMU_TYPE_MMX6_1_0
-  bool "MMX6"
+config MMU_TYPE_HTLF_1_0
+  bool "HTLF"
   help
-    MMX is a 6 gate type-A MMU with rotary cam based selection
-    mechanism controlled by stepper
+    HappyTurtleLettuceFeeder (HTLF) is a 4 gate type-A MMU with
+    rotary cam based selection mechanism controlled by stepper
   select ROTARY_SELECTOR
   select MMU_HAS_LEDS
   imply  BOOL_REQUIRE_BOWDEN_MOVE
@@ -14,7 +14,7 @@ config MMU_TYPE_MMX6_1_0
 ##### Defaults #####
 ####################
 
-if MMU_TYPE_MMX6_1_0
+if MMU_TYPE_HTLF_1_0
 
   if SHOW_MMU_ADDITIONS_WITH_TYPE
     source "Kconfig.mmu_additions"
@@ -23,11 +23,11 @@ if MMU_TYPE_MMX6_1_0
   source "Kconfig.capabilities"
 
   config PARAM_VENDOR
-    default "MMX6"
+    default "HTLF"
   config PARAM_VERSION
     default "1.0"
   config PARAM_NUM_GATES
-    default 6
+    default 4
 
   config PARAM_GEAR_GEAR_RATIO
     default "80:20"
@@ -42,7 +42,7 @@ if MMU_TYPE_MMX6_1_0
     default 1000
 
   config PARAM_SELECTOR_RELEASE_GATES
-    default "1, 2, 3, 4, 5, 0"
+    default "1, 2, 3, 0"
 
   comment "_"
 

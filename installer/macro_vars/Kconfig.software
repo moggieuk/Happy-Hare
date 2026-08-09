@@ -1,4 +1,4 @@
-menu "Print start/end (_MMU_SOFTWARE)"
+menu "Print start/end      (_MMU_SOFTWARE)"
   help
     Happy Hare optional configuration for print start/end checks.
 

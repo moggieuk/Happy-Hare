@@ -28,11 +28,22 @@ from test.hh.bootstrap import install
 install()   # Put the fake klippy root on sys.path before importing MMU modules
 
 from extras.mmu.unit import mmu_nfc_manager
+from test.hh import profiles as hh_profiles
+
+# nfc_per_gate has no encoder object at all (mmu_unit().encoder is None) - fine for every
+# other test here, but the encoder-occupancy guard needs a profile where 'encoder' is a real,
+# usable gate_homing_endstop rather than one that would blow up on first use regardless of
+# the guard. Derived rather than added to profiles.py: nothing else needs this combination.
+NFC_PER_GATE_ENCODER = hh_profiles.NFC_PER_GATE.derive(
+    'nfc_per_gate_encoder',
+    syms={'MMU_HAS_ENCODER': True, 'PIN_ENCODER': 'unit0:PA6', 'CHOICE_GATE_HOMING_ENDSTOP_ENCODER': True},
+    description='BoxTurtle + per-gate NFC + encoder, for shared-endstop occupancy tests')
 
 logging.getLogger().setLevel(logging.CRITICAL)
 
 GATE_AVAILABLE = 1
 FILAMENT_POS_UNLOADED = 0
+FILAMENT_POS_LOADED = 10
 TAG = '04A1B2C3'
 
 
@@ -148,6 +159,23 @@ class TestJogScanFindsTag(NfcScanTestCase):
         self.hh.run_gcode('MMU_NFC_SCAN GATE=0')
         self.assertNotIn('tag read', ' '.join(self.hh.console).lower())
 
+    def test_scan_uses_the_gate_window_even_when_preload_window_differs(self):
+        """
+        Regression test: MMU_NFC_SCAN always drives _gate_profile(), so it must keep
+        sweeping nfc_gate_jog_scan_window even when nfc_preload_jog_scan_window is set
+        to something else entirely.
+        """
+        u = self.hh.mmu.mmu_unit(0)
+        u.p.nfc_gate_jog_scan_window = [-50.0, 30.0]
+        u.p.nfc_preload_jog_scan_window = [-20.0, 12.0]
+        self.preload(0)  # no tag attached: sweep runs its full length, finds nothing
+        self.hh.mmu.select_gate(0)
+        self.hh.run_gcode('MMU_NFC_SCAN GATE=0')
+
+        trips = [d for _g, d, r in self.fil.history if 'mmu_nfc_0' in r and abs(d) in (30.0, 12.0)]
+        self.assertIn(30.0, [abs(d) for d in trips], 'MMU_NFC_SCAN never swept the 30mm gate window')
+        self.assertNotIn(12.0, [abs(d) for d in trips], 'MMU_NFC_SCAN swept the preload window instead')
+
     def test_tag_already_on_the_reader_short_circuits_the_jog(self):
         """
         _jog_scan pre-reads before moving, so a tag already sitting on the reader is
@@ -260,6 +288,20 @@ class TestPreloadNfcCompound(NfcScanTestCase):
         self.assertIn('preloading gate 0...', said)
         self.assertNotIn('nfc:', said)
 
+    def test_last_preloaded_gate_is_recorded_on_success(self):
+        """MMU_SPOOLMAN_TAG GATE=LAST relies on this being set after a normal successful preload."""
+        self.hh.place_filament(0, position=-100.0)
+        self.assertEqual(self.hh.mmu.last_preloaded_gate, -1, 'precondition: nothing preloaded yet')
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+        self.assertEqual(self.hh.mmu.last_preloaded_gate, 0)
+
+    def test_last_preloaded_gate_is_recorded_when_already_preloaded(self):
+        """The early-return 'already preloaded' path counts too - the user did run MMU_PRELOAD."""
+        self.hh.place_filament(0, position=0.0)  # filament already at the gate/exit datum
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+        self.assertIn('already preloaded', ' '.join(self.hh.console).lower())
+        self.assertEqual(self.hh.mmu.last_preloaded_gate, 0)
+
     def test_pending_shared_uid_bypasses_the_per_gate_reader(self):
         """
         A shared-reader pending takes precedence over this gate's own NFC reader: the
@@ -279,6 +321,30 @@ class TestPreloadNfcCompound(NfcScanTestCase):
         self.assertEqual(banners, ['Preloading gate 0...'],
                          'per-gate NFC scan ran despite a pending shared-reader UID')
         self.assertEqual(self.hh.mmu.gate_maps.gate_spool_id[0], 7)
+
+    def test_weak_pending_does_not_bypass_the_per_gate_reader(self):
+        """
+        A bare-uid ('weak') pending is not trusted enough to skip the gate's own NFC
+        reader - only a resolved spool_id or a tag with usable metadata ('strong') does.
+        A fresh per-gate read must win over the stale weak pending, not be clobbered by it.
+        """
+        self.hh.mmu.pending_tag = ('DEADBEEF', None)
+        self.fil.attach_tag(0, TAG, offset=40.0)
+        at = len(self.hh.console)
+        self.hh.place_filament(0, position=-100.0)
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+        banners = [l for l in self.hh.console[at:] if l.startswith('Preloading')]
+        self.assertEqual(banners, ['Preloading gate 0 with NFC scan...'],
+                         'a weak (bare-uid) pending must not skip the per-gate NFC scan')
+        self.assertEqual(self.hh.mmu.gate_maps.gate_spool_rfid[0], TAG,
+                         "the gate's own fresher read must win over the stale weak pending")
+
+    def test_weak_pending_is_applied_when_the_gates_reader_finds_nothing(self):
+        """The weak pending is not wasted - it is the fallback when the per-gate scan finds no tag."""
+        self.hh.mmu.pending_tag = ('DEADBEEF', None)
+        self.hh.place_filament(0, position=-100.0)   # no tag attached
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+        self.assertEqual(self.hh.mmu.gate_maps.gate_spool_rfid[0], 'DEADBEEF')
 
     def test_nfc_first_finishes_on_the_gate_and_parks_without_reverse_homing(self):
         """
@@ -313,6 +379,26 @@ class TestPreloadNfcCompound(NfcScanTestCase):
         self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_UNLOADED)
         self.assertFalse(self.hh.sensor('mmu_exit_0').present,
                          'the park must end behind the gate switch')
+        self.assertEqual(self.hh.errors, [])
+
+    def test_gate_first_scan_uses_the_preload_window_not_the_gate_window(self):
+        """
+        Regression test: _home_to_gate_with_nfc must sweep whatever window its caller's
+        profile carries. MMU_PRELOAD drives _preload_profile(), so its forward sweep leg
+        must be bounded by nfc_preload_jog_scan_window, not nfc_gate_jog_scan_window -
+        the two are given distinct positive halves here so a fix that reads the wrong one
+        is caught immediately.
+        """
+        u = self.hh.mmu.mmu_unit(0)
+        u.p.nfc_gate_jog_scan_window = [-50.0, 30.0]
+        u.p.nfc_preload_jog_scan_window = [-20.0, 12.0]
+        self.hh.place_filament(0, position=-100.0)  # no tag: gate switch always wins first
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+
+        trips = [d for _g, d, r in self.fil.history if 'mmu_nfc_0' in r and d > 0]
+        self.assertEqual(trips, [12.0],
+                         'preload swept %r - expected a single 12mm leg from '
+                         'nfc_preload_jog_scan_window' % (trips,))
         self.assertEqual(self.hh.errors, [])
 
 
@@ -639,6 +725,107 @@ class TestReparkDrift(NfcScanTestCase):
         # sought=False is "home until the switch releases"; already released -> 0 travel
         trip = self.fil.trip_distance(0, -300., ['mmu_exit_0'], sought=False)
         self.assertEqual(trip, ('mmu_exit_0', 0.0))
+
+
+class TestSharedGateOccupancy(NfcScanTestCase):
+    """
+    PR #1028/#1032 fixed _park_after_scan's re-park for a SHARED gate endstop (mmu_shared_exit
+    / extruder_entry) but, by its own added comment in _validate_nfc_gate_jog_scan_window,
+    left the actual cross-gate hazard unguarded: nothing stopped a scan from sweeping into a
+    shared path another gate on the same unit was already occupying. can_crossload cannot
+    cover this on its own - it says the SELECTOR mechanism won't jam moving between gates, not
+    that a downstream SHARED sensor/encoder is clear. These pin the guard added on top:
+    _shared_gate_path_occupied(), called from the command-level can_continue check and again
+    (for the switch-based endstops) from _jog_scan/_preload_gate itself.
+    """
+
+    def use_shared_endstop(self, endstop, gate=0):
+        self.hh.mmu.mmu_unit(gate).p.gate_homing_endstop = endstop
+
+    def test_shared_exit_rewind_settles_and_does_not_drift_on_repeated_scans(self):
+        """
+        The open-loop rewind _park_after_scan now uses for mmu_shared_exit/extruder_entry
+        must settle at ONE park position and stay there - the same invariant TestReparkDrift
+        pins for the per-gate mmu_exit case, just off a different datum (mmu_shared_exit sits
+        +10mm from the gate, not 0, so the settled park differs from mmu_exit's -100).
+        """
+        self.use_shared_endstop('mmu_shared_exit')
+        self.preload(0)
+        self.hh.mmu.select_gate(0)
+        self.hh.run_gcode('MMU_NFC_SCAN GATE=0')
+        self.assertEqual(self.hh.errors, [])
+        settled = self.fil.tip[0]
+        for _ in range(3):
+            self.hh.run_gcode('MMU_NFC_SCAN GATE=0')
+        self.assertEqual(self.hh.errors, [])
+        self.assertAlmostEqual(self.fil.tip[0], settled, places=1,
+                               msg='repeated scans drifted away from the settled shared-exit park')
+
+    def test_shared_exit_scan_is_refused_when_a_sibling_gate_occupies_it(self):
+        """
+        mmu_shared_exit is ONE physical switch shared by every gate on the unit. If gate 1's
+        filament is currently sitting on it, scanning gate 0 must not sweep into that
+        occupied territory - refuse before any motion, the same way _preload_gate already did
+        for this endstop (now widened and reused here).
+        """
+        self.use_shared_endstop('mmu_shared_exit')
+        self.preload(0)
+        self.hh.place_filament(1, position=self.fil.layout['mmu_shared_exit'] + 5.0)
+        self.hh.mmu.gate_maps.set_gate_status(1, GATE_AVAILABLE)
+        self.hh.mmu.select_gate(0)
+        self.fil.history.clear()
+        self.hh.run_gcode('MMU_NFC_SCAN GATE=0')
+        self.assertEqual(self.fil.history, [], 'an occupied shared path must not move the filament')
+        self.assertTrue(any('occupied' in e for e in self.hh.errors), self.hh.errors)
+
+    def test_encoder_scan_is_refused_when_the_active_filament_is_on_a_sibling_gate(self):
+        """
+        The encoder has no presence sensor, so the only signal equivalent to "is the shared
+        path occupied" is whether the unit's actively fed-forward filament belongs to a
+        different gate - measured before this command's own gate selection moves it. The
+        command-level can_continue check is the only place this is checkable (see
+        _shared_gate_path_occupied's docstring), so it must refuse here even though the unit
+        is crossload-capable.
+
+        Needs a profile with a real encoder object (nfc_per_gate has none), so this boots its
+        own session rather than using self.hh.
+        """
+        hh = session(NFC_PER_GATE_ENCODER, virtual_nfc=True)
+        try:
+            hh.boot()
+            self.assertEqual(hh.errors, [], 'bootup was not clean')
+            fil = hh.filament()
+            self.assertEqual(hh.mmu.mmu_unit(0).p.gate_homing_endstop, 'encoder')
+            self.assertTrue(hh.mmu.mmu_unit(0).can_crossload, 'precondition: boxturtle is crossload-capable')
+            hh.place_filament(0)
+            hh.mmu.gate_maps.set_gate_status(0, GATE_AVAILABLE)
+            hh.place_filament(1)
+            hh.mmu.gate_maps.set_gate_status(1, GATE_AVAILABLE)
+            hh.mmu.select_gate(1)
+            hh.mmu.filament_pos = FILAMENT_POS_LOADED
+            fil.history.clear()
+            hh.run_gcode('MMU_NFC_SCAN GATE=0')
+            self.assertEqual(fil.history, [], 'encoder-shared occupancy must not move the filament')
+            self.assertTrue(hh.errors, 'expected the scan to be refused')
+        finally:
+            hh.close()
+
+    def test_switching_to_a_shared_endstop_rechecks_a_stale_parking_distance(self):
+        """
+        gate_parking_distance's legal sign depends on gate_homing_endstop (see
+        _validate_gate_parking_distance). MMU_TEST_CONFIG already re-validates correctly
+        within ONE combined command (alphabetical field order applies gate_homing_endstop
+        first), but two SEPARATE commands used to leave a hole: set a positive parking
+        distance while on mmu_exit (legal), then switch to a shared endstop in a later
+        command, and the stale now-unsafe value was never rechecked.
+        """
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_parking_distance=10')
+        self.assertEqual(self.hh.errors, [])
+        with self.assertRaises(Exception) as cm:
+            self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_homing_endstop=encoder')
+        self.assertIn('gate_parking_distance', str(cm.exception))
+        # The switch must not have landed half-applied with a stale positive parking distance
+        self.assertEqual(self.hh.mmu.mmu_unit(0).p.gate_homing_endstop, 'encoder')
 
 
 if __name__ == '__main__':

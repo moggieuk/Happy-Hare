@@ -28,6 +28,7 @@ import logging
 import unittest
 
 from test.hh import session
+from test.hh.profiles import PROFILES, clone_across_units
 
 logging.getLogger().setLevel(logging.CRITICAL)
 
@@ -278,6 +279,95 @@ class TestRotarySelector(SelectorTestCase):
         self.assertEqual(self.hh.errors, [])
 
 
+class TestRotarySelectorOnALaterUnit(SelectorTestCase):
+    """
+    A rotary machine whose gates do NOT start at zero.
+
+    Every gate number crossing a unit boundary exists in two numbering schemes - machine-wide
+    and unit-local - and the rotary selector works almost entirely in local ones, because its
+    per-gate config lists (offsets, release gates, directions) are local arrays. Handing one of
+    those local indexes to an API that wants a machine gate is the mistake this class exists to
+    catch, and it is invisible on the shipped chameleon profile: single unit, first gate zero,
+    so the two numberings are the same number and every confusion is an identity.
+
+    Two chameleons rather than a real machine. Nobody sells this, but the shape is what matters
+    and clone_across_units is the sanctioned way to get it - see its note about why deriving a
+    single-unit profile with unit names injected as params is quietly wrong.
+    """
+
+    PROFILE = clone_across_units(
+        'two_chameleons', PROFILES['chameleon'], ('unit0', 'unit1'),
+        description='two 3D Chameleons - a rotary selector on a unit that does not start at gate 0')
+    HOME_UNITS = (0, 1)
+
+    UNIT1_FIRST_GATE = 4
+
+    def unit1(self):
+        return self.hh.mmu.mmu_machine.get_mmu_unit_by_index(1)
+
+    def test_the_second_unit_really_does_start_elsewhere(self):
+        """
+        A guard. If the two units ever collapse to the same numbering, everything below stops
+        distinguishing a local index from a machine gate and passes for the wrong reason.
+        """
+        unit1 = self.unit1()
+        self.assertEqual(unit1.first_gate, self.UNIT1_FIRST_GATE)
+        self.assertEqual(type(unit1.selector).__name__, 'RotarySelector')
+        self.assertNotEqual(unit1.logical_gate(1), 1, 'local and machine gates still coincide')
+
+    def test_gripping_on_the_later_unit_reaches_its_own_drive(self):
+        """
+        The regression. _grip_release works in local gates but set_gear_direction is reached
+        through drive_obj(), which takes a machine gate - so the local index was being resolved
+        against the wrong unit. On the shipped single-unit profile that resolved to the right
+        stepper by coincidence; here it names a gate unit1 does not own.
+        """
+        for lgate in range(self.hh.mmu.mmu_unit(self.UNIT1_FIRST_GATE).num_gates):
+            gate = self.UNIT1_FIRST_GATE + lgate
+            with self.subTest(gate=gate):
+                self.hh.run_gcode('MMU_SELECT GATE=%d' % gate)
+                self.hh.run_gcode('MMU_GRIP')
+                self.assertEqual(self.selector('unit1').grip_state, FILAMENT_DRIVE_STATE)
+                self.assertEqual(self.hh.errors, [])
+
+    def test_the_gear_direction_is_read_from_the_units_own_table(self):
+        """
+        selector_gate_directions is a LOCAL array, so gate 4 must take entry 0. Reading it with
+        the machine gate would run off the end; resolving the drive with the local one grabs
+        another unit's stepper. Only a unit that does not start at zero can tell those apart.
+        """
+        selector = self.selector('unit1')
+        for lgate, direction in enumerate(selector.p.selector_gate_directions):
+            gate = self.UNIT1_FIRST_GATE + lgate
+            with self.subTest(gate=gate):
+                self.hh.run_gcode('MMU_SELECT GATE=%d' % gate)
+                stepper = self.hh.mmu.drive(gate).mmu_gear_stepper.stepper
+                inverted, _original = stepper.get_dir_inverted()
+                self.assertEqual(bool(inverted), bool(direction))
+                self.assertEqual(self.hh.errors, [])
+
+    def test_calibration_takes_a_machine_gate_not_a_local_one(self):
+        """
+        The command's GATE was ranged against the unit's gate COUNT but used as a machine gate,
+        so on a later unit the accepted values addressed another unit's gates entirely - and
+        the measured offset landed in the wrong slot. It now ranges machine-wide and rejects a
+        gate the named unit does not own, matching what the linear selector already did.
+        """
+        before = list(self.selector('unit1').selector_offsets)
+
+        with self.assertRaises(Exception) as ctx:
+            self.hh.run_gcode('MMU_CALIBRATE_ROTARY_SELECTOR UNIT=1 GATE=0 QUICK=1 SAVE=0')
+        self.assertIn('not managed by unit1', str(ctx.exception))
+        self.assertEqual(self.selector('unit1').selector_offsets, before,
+                         'a foreign gate wrote into this unit\'s offsets')
+
+    def test_calibrating_a_gate_the_unit_owns_is_accepted(self):
+        """The other half: the machine-wide numbers in unit1's own range must still work."""
+        self.hh.run_gcode('MMU_CALIBRATE_ROTARY_SELECTOR UNIT=1 GATE=%d QUICK=1 SAVE=0'
+                          % self.UNIT1_FIRST_GATE)
+        self.assertEqual(self.hh.errors, [])
+
+
 class TestSelectorCalibration(unittest.TestCase):
     """
     Happy Hare's OWN MMU_CALIBRATE_SELECTOR, run for real against an UNSEEDED machine.
@@ -480,6 +570,35 @@ class TestMultiUnitSelectors(SelectorTestCase):
             self.assertIn(name, model.sensor_names(),
                           '%s is not bound, so it can never read triggered' % name)
 
+    def test_recover_reports_unloaded_for_a_forward_parked_exit_sensor(self):
+        """
+        unit1's gate_homing_endstop is mmu_exit with gate_parking_distance = +10 (a
+        forward park, not a retract), so a properly parked gate leaves the exit switch
+        covered rather than clear. recover_filament_pos's gate-parked branch used to
+        also require filament_detected, which is computed from
+        get_all_sensors_for_gate() - and that deliberately excludes this exact sensor's
+        position when parking is forward (mmu_sensor_manager.py's _get_sensors, "only
+        valid if is not usually triggered i.e. parking retract"), so the requirement
+        could never be satisfied and MMU_RECOVER concluded IN_BOWDEN for a perfectly
+        normal parked gate.
+        """
+        model = self.hh.filament()
+        self.hh.run_gcode('MMU_SELECT GATE=10')
+        self.hh.place_filament(10, position=model.layout['mmu_exit'] + 10.0)
+        self.assertTrue(model.triggered('mmu_exit_10'))
+
+        self.hh.run_gcode('MMU_RECOVER')
+
+        self.assertEqual(self.hh.errors, [])
+        self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_UNLOADED)
+
+        # The status line should show the gate as homed (3 blocks then the triggered
+        # marker), not as not-yet-reached, and the trailing state text should read
+        # UNLOADED rather than nothing at all.
+        visual = self.hh.mmu.get_filament_position_string()
+        self.assertIn('■■■◉', visual)  # UI_SOLID_SQUARE x3 then UI_SENSOR_TRIGGERED
+        self.assertIn('UNLOADED', visual)
+
 
 class TestPersistedPositionRestore(unittest.TestCase):
     """
@@ -600,10 +719,8 @@ class TestPersistedPositionRestore(unittest.TestCase):
         this path at all - so a boot-level assertion about "the other unit" would pass even with
         the guard deleted.
 
-        The errors assertion is the part that bites. Without the guard the answer is STILL None,
-        because local_gate() refuses too - but it refuses via log_assertion("Fatal: Gate 12 is
-        not managed by unit0"), so every boot of a multi-unit machine would carry a fatal-looking
-        line about nothing being wrong.
+        The guard is now load-bearing rather than cosmetic: local_gate() raises for a gate the
+        unit does not own, so without the ownership check this would throw instead of declining.
         """
         from extras.mmu.mmu_constants import VARS_MMU_GATE_SELECTED
 

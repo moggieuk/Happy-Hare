@@ -18,7 +18,7 @@
 # CANCEL_PRINT (extras/mmu/mmu_controller.py:245-252).
 #
 # Unknown commands are recorded and ignored by default (HH legitimately issues
-# M104/M117/M220/SET_TMC_CURRENT/... owned by Klipper modules we do not fake), with
+# M104/M117/M220/... owned by Klipper modules we do not fake), with
 # strict=True to turn them into errors for targeted tests. `unhandled` is asserted on
 # in one test so the set stays visible and changes get reviewed.
 #
