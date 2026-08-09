@@ -134,7 +134,7 @@ class MmuMachineParameters(TunableParametersBase):
         ParamSpec('log_file_level',                'int',      2, section="LOGGING", limits=dict(minval=-1, maxval=4)),
         ParamSpec('log_statistics',                'int',      0, section="LOGGING", limits=dict(minval=0, maxval=1)),
         ParamSpec('log_visual',                    'int',      1, section="LOGGING", limits=dict(minval=0, maxval=1)),
-        ParamSpec('log_startup_status',            'int',      1, section="LOGGING", limits=dict(minval=0, maxval=2)),
+        ParamSpec('log_startup_status',            'int',      1, section="LOGGING", limits=dict(minval=0, maxval=1)),
         ParamSpec('log_m117_messages',             'int',      1, section="LOGGING", limits=dict(minval=0, maxval=1)),
 
         # Cosmetic console stuff
