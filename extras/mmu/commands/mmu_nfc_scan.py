@@ -83,11 +83,15 @@ class MmuNfcScanCommand(BaseCommand):
         filament_pos = mmu.filament_pos
         is_unloaded = filament_pos == FILAMENT_POS_UNLOADED
 
-        # Selecting a different gate with filament loaded requires a crossload-capable MMU
+        # Selecting a different gate with filament loaded requires a crossload-capable MMU -
+        # and, if the gate endstop is a per-unit SHARED resource (mmu_shared_exit, extruder
+        # entry, or the encoder), can_crossload alone isn't enough: it says the selector won't
+        # jam, not that the shared path is clear. Check both.
         can_continue = (
             is_unloaded
             or scan_unit is not active_unit
-            or active_unit.can_crossload
+            or (active_unit.can_crossload
+                and not mmu._shared_gate_path_occupied(scan_unit.p.gate_homing_endstop, gate))
         )
         if not can_continue:
             if self.check_if_loaded(): return
