@@ -267,6 +267,10 @@ class VirtualNfcChip:
     _release_current_target. Optionally also the non-blocking presence-probe contract
     - see probe_support below. Note the chip's own _gate is set by virtualise() and is
     functional (it selects the tag to show); MmuNfcReader no longer writes to it.
+    _gates (plural) is the full list a chip is bound to - more than one entry when
+    the chip is shared between neighboring gates (see virtualise()); _visible_tag()
+    checks each in order and returns the first tag found, an arbitrary tie-break for
+    a chip serving two gates at once.
 
     Targets report protocol='uid_only', so _classify_target returns 'uid_only' and
     read_tag_data yields (uid, None) - a UID read with no metadata. That is deliberate:
@@ -286,8 +290,10 @@ class VirtualNfcChip:
     of the contract, so it needs to be reachable in a test.
     """
 
-    def __init__(self, model=None, gate=None, label=None, probe_support=False):
+    def __init__(self, model=None, gate=None, gates=None, label=None, probe_support=False):
         self._gate = gate if gate is not None else label
+        self._gates = ([g for g in gates if isinstance(g, int)] if gates
+                       else ([self._gate] if isinstance(self._gate, int) else []))
         self.model = model
         self.presented = None       # explicit override, for shared/common readers
         self.reads = 0              # assertion surface
@@ -418,10 +424,15 @@ class VirtualNfcChip:
     def _visible_tag(self):
         if self.presented is not None:
             return self.presented
-        # A per-gate reader sees its own gate's filament; a common reader has an
-        # integer-less label, so it only ever reports an explicitly presented tag.
-        if self.model is not None and isinstance(self._gate, int):
-            return self.model.tag_detected(self._gate)
+        # A per-gate reader sees its own gate's filament; a reader shared between
+        # neighboring gates checks each of _gates in order (first tag found wins -
+        # tests should present one tag at a time). A common reader has no int gate
+        # at all, so it only ever reports an explicitly presented tag.
+        if self.model is not None:
+            for gate in self._gates:
+                tag = self.model.tag_detected(gate)
+                if tag is not None:
+                    return tag
         return None
 
     def __repr__(self):
@@ -441,6 +452,11 @@ def virtualise(printer, model=None, probe_support=False):
     care set it explicitly; a chip's flag can also be flipped afterwards, since
     has_probe_support() consults probe_supported() on each call.
 
+    A reader shared between neighboring gates (mmu_unit.py's 'nfc_readers' repeating a
+    name) appears more than once in gate_readers by object identity; it gets exactly
+    ONE chip serving every gate it's bound to (VirtualNfcChip._gates), not one chip
+    per slot - which would silently drop all but the last-processed gate.
+
     Returns {reader_name: VirtualNfcChip}.
     """
     machine = printer.lookup_object('mmu_machine', None)
@@ -456,13 +472,27 @@ def virtualise(printer, model=None, probe_support=False):
         # the chip's label with the global gate and paper over the difference; it no
         # longer does, and every NFC profile today is single-unit (first_gate == 0), so
         # this was latent rather than live.
-        readers = [(unit.first_gate + lgate, r) for lgate, r in enumerate(
-            getattr(manager, 'gate_readers', ()) or ()) if r is not None]
+        #
+        # Dedupe by reader identity first, so a shared-pair reader collects BOTH gates
+        # onto one entry instead of producing two entries that would spawn two chips
+        # (the second silently winning as reader.reader, per gate-slot info lost).
+        by_id = {}
+        entries = []
+        for lgate, r in enumerate(getattr(manager, 'gate_readers', ()) or ()):
+            if r is None:
+                continue
+            gate = unit.first_gate + lgate
+            idx = by_id.get(id(r))
+            if idx is None:
+                by_id[id(r)] = len(entries)
+                entries.append([r, [gate]])
+            else:
+                entries[idx][1].append(gate)
         shared = getattr(manager, 'shared_reader', None)
         if shared is not None:
-            readers.append((None, shared))
-        for gate, reader in readers:
-            chip = VirtualNfcChip(model=model, gate=gate, label=reader.name,
+            entries.append([shared, [None]])
+        for reader, gates in entries:
+            chip = VirtualNfcChip(model=model, gate=gates[0], gates=gates, label=reader.name,
                                   probe_support=probe_support)
             reader.reader = chip
             chips[reader.name] = chip

@@ -278,5 +278,96 @@ class TestPn5180Wiring(unittest.TestCase):
             hh.close()
 
 
+class TestSharedGatePairReader(unittest.TestCase):
+    """
+    RUNTIME REGRESSION GUARD for one physical NFC reader serving a PAIR of neighboring
+    gates - the ViViD machine: gates 9/10 share reader 'unit1_nfc01', gates 11/12 share
+    'unit1_nfc23' (installer/boards/custom/Kconfig.vvd:119-133). test_mmu_profiles.py's
+    test_per_gate_nfc_readers_are_shared_across_a_gate_pair already covers config
+    rendering; this exercises the live MmuNfcManager: reader identity sharing, single-init
+    hardware hygiene (the regression this pass fixes), independent per-gate enable/active
+    state, and reads.
+    """
+
+    TAG = '04A1B2C3'
+
+    def setUp(self):
+        # A fresh boot per test, not setUpClass: several tests toggle enabled/active,
+        # and re-enabling triggers a real reader re-init (chip.inits) - state that must
+        # not leak into test_shared_reader_is_hardware_inited_exactly_once.
+        self.hh = session('ercf_vvd', virtual_nfc=True)
+        self.hh.boot()
+        self.assertEqual(self.hh.errors, [], 'bootup was not clean')
+        self.mgr = {u.name: u for u in self.hh.mmu.mmu_machine.units}['unit1'].nfc_manager
+
+    def tearDown(self):
+        self.hh.close()
+
+    def test_reader_identity_is_shared_within_a_pair_not_across_pairs(self):
+        self.assertIs(self.mgr.gate_readers[0], self.mgr.gate_readers[1])
+        self.assertIs(self.mgr.gate_readers[2], self.mgr.gate_readers[3])
+        self.assertIsNot(self.mgr.gate_readers[0], self.mgr.gate_readers[2])
+
+    def test_shared_reader_is_hardware_inited_exactly_once(self):
+        """
+        Before the _init_all_readers dedupe fix, a reader shared by two gate slots was
+        passed through reader.init() once per slot - two redundant hardware
+        transactions at every boot for what is physically one chip.
+        """
+        self.assertEqual(self.hh.chip(9).inits, 1)
+        self.assertEqual(self.hh.chip(11).inits, 1)
+
+    def test_enabled_is_independent_per_gate_of_a_shared_pair(self):
+        self.mgr.set_enabled(False, gate=9)
+        try:
+            self.assertFalse(self.mgr.is_enabled(gate=9))
+            self.assertTrue(self.mgr.is_enabled(gate=10),
+                            'disabling gate 9 must not disable its paired gate 10')
+        finally:
+            self.mgr.set_enabled(True, gate=9)
+
+    def test_active_is_independent_per_gate_of_a_shared_pair(self):
+        self.mgr.set_active(False, gate=9)
+        try:
+            self.assertFalse(self.mgr.is_active(gate=9))
+            self.assertTrue(self.mgr.is_active(gate=10),
+                            'deactivating gate 9 must not deactivate its paired gate 10')
+        finally:
+            self.mgr.set_active(True, gate=9)
+
+    def test_status_shares_reader_state_but_keeps_enabled_active_independent(self):
+        """
+        Documents the intended shape, not a bug: paired gates 9/10 report the SAME
+        underlying reader's 'alive' (one chip) but independent 'active'.
+        """
+        self.mgr.set_active(False, gate=10)
+        try:
+            status = self.mgr.get_status()
+            self.assertEqual(sorted(status['gates']), [9, 10, 11, 12])
+            self.assertEqual(status['gates'][9]['alive'], status['gates'][10]['alive'])
+            self.assertTrue(status['gates'][9]['active'])
+            self.assertFalse(status['gates'][10]['active'])
+        finally:
+            self.mgr.set_active(True, gate=10)
+
+    def test_a_gate_reads_the_shared_reader_independently_of_its_pair_partner(self):
+        chip = self.hh.chip(9)
+        chip.present(self.TAG)
+        try:
+            self.mgr.set_active(False, gate=10)
+            self.assertIsNone(self.mgr.read_gate(10),
+                              'gate 10 must not auto-read while inactive, even though '
+                              'its paired reader has a tag presented')
+
+            uid = self.mgr.read_gate(9)
+            self.assertEqual(uid, self.TAG)
+            self.assertEqual(self.hh.mmu.gate_maps.gate_spool_rfid[9], self.TAG)
+            self.assertFalse(self.hh.mmu.gate_maps.gate_spool_rfid[10],
+                             "a read dispatched for gate 9 must not touch gate 10's map entry")
+        finally:
+            self.mgr.set_active(True, gate=10)
+            chip.clear()
+
+
 if __name__ == '__main__':
     unittest.main()

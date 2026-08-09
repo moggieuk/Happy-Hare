@@ -213,6 +213,14 @@ class MmuUnit:
             if name and not config.has_section('mmu_nfc_reader %s' % name):
                 raise config.error("MMU NFC reader section [mmu_nfc_reader %s] not found!" % name)
 
+        # A name may repeat in 'nfc_readers' (e.g. 'a, a, b, b') - that's intentional,
+        # not an error: it shares one physical reader between neighboring gates (one
+        # antenna positioned between them). MmuNfcManager._lookup_or_create_reader()
+        # creates the Klipper object once and reuses it for every gate that names it;
+        # enable/active state stays independent per gate. Adjacency is a hardware-layout
+        # fact, not something validated here. See installer/boards/custom/Kconfig.vvd
+        # for the in-tree example (the ViViD machine).
+
 
         # ---------------------------------------------------------------------------------------------------
         # MMU Extruder
