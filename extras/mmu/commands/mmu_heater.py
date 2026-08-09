@@ -21,9 +21,10 @@
 #
 
 # Happy Hare imports
-from ..mmu_constants   import *
-from ..mmu_utils       import MmuError
-from .mmu_base_command import *
+from ..mmu_constants                import *
+from ..mmu_utils                    import MmuError
+from ..unit.mmu_environment_manager import ENV_CHECK_INTERVAL
+from .mmu_base_command              import *
 
 
 class MmuHeaterCommand(BaseCommand):
