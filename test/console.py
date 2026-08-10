@@ -573,12 +573,15 @@ class Console:
         if a.pace:
             self.hh.set_pacing(a.pace, wall=self._wall_pacing())
 
-        # Walk past effect_initialized, the 8s unit-wide flash bootup leaves running. While it
-        # holds a unit every transient flash is DROPPED (mmu_led_manager.py:473), so an NFC
-        # read acknowledgment - or anything else cosmetic - silently does nothing. A printer
-        # leaves that window on its own; here the clock stops where boot() left it, 2.5s in,
-        # so without this an interactive session never gets out of it.
-        self.hh.settle_leds()
+        # Walk past effect_initialized, the 8s unit-wide flash bootup leaves running - UNLESS
+        # the clock is about to run live, in which case let it play out for real instead: that
+        # is what a printer's own user sees at power-on, transient flashes are correctly
+        # DROPPED for that window on real hardware too (mmu_led_manager.py:473), and skipping
+        # it here is why the effect was never visible at the prompt. Without --live (a frozen
+        # clock - the reproducible mode, and every script/pipe) nothing else ever advances the
+        # clock, so that session would sit in the window for good without this.
+        if not self.live:
+            self.hh.settle_leds()
 
         # Anchor the virtual clock LAST, so /timestamp reads "now" at the first prompt
         # rather than a few virtual seconds into the past. Read from the reactor rather
@@ -2393,8 +2396,15 @@ def parse_args(argv=None):
                         'time. Also settable live with /pace')
     p.add_argument('--trace', type=int, default=0, metavar='0-4',
                    help="Happy Hare log_level; 4 is full narration")
-    p.add_argument('--virtual-nfc', action='store_true',
-                   help='virtualise NFC readers so /tag works')
+    p.add_argument('--virtual-nfc', dest='virtual_nfc', action='store_true', default=True,
+                   help='virtualise NFC readers so /tag works (default: on)')
+    p.add_argument('--no-virtual-nfc', dest='virtual_nfc', action='store_false',
+                   help='use the real reader driver instead, against a fake bus scripted '
+                        'with a finite number of init cycles (test/hh/nfc_fixtures.py) - '
+                        'ordinary shared-reader polling drains it too, so a long session '
+                        'or a few MMU_ENABLE cycles will eventually make the real driver '
+                        'genuinely report "did not respond - check wiring". Useful for '
+                        'exercising the actual byte-level protocol, not for everyday use')
     p.add_argument('--plain', action='store_true',
                    help='strip colour instead of translating it to ANSI')
     p.add_argument('--color', choices=('auto', 'truecolor', '256', '16'), default='auto',
