@@ -269,7 +269,7 @@ EOF
 # no valid python3 venv found, check system default python3
 if [ "${python_ver}" != "3" ]; then
     if [ "$(get_python_version)" = "3" ]; then
-        echo "${C_WARNING}No suitable Klipper Python 3 venv found; continuing with system python${C_OFF}"
+        echo "${C_WARNING}No suitable Klipper Python 3 venv found; continuing with system Python 3${C_OFF}"
     else
         echo "${C_ERROR}ERROR: No suitable Klipper Python 3 environment found.${C_OFF}"
         echo "${C_INFO}Checked environments:${C_OFF}"
