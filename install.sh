@@ -207,9 +207,12 @@ if [ "${machine_arch}" = "mips" ] && [ -d "/usr/data/creality" ]; then
 elif [ "${os_release_name}" = "FlyOS-Fast" ]; then
     os_type="flyos-fast"
     echo "${C_INFO}Detected FlyOS-Fast${C_OFF}"
-elif [ "${machine_arch}" = "mips" ] && [ -d "/root/printer_software" ]; then
+elif [ "${machine_arch}" = "mips" ] && [ "$(id -u)" -eq 0 ] && [ -d "/root/printer_software" ]; then
     os_type="guppy-k1"
     echo "${C_INFO}Detected Guppy K1 Mod${C_OFF}"
+elif [ "${machine_arch}" = "mips" ]; then
+    echo "${C_ERROR}ERROR: Unable to detect embedded OS layout without root access. Re-run ${SCRIPT_NAME} as root (sudo).${C_OFF}" >&2
+    exit 1
 fi
 
 case "${os_type}" in
