@@ -85,6 +85,12 @@ class TestInitialisation(MoonrakerTestCase):
         self.assertEqual(self.hh.mmu_server.spoolman_version, (0, 18, 1))
         self.assertTrue(self.hh.mmu_server.spoolman_has_extras)
 
+    def test_spool_list_request_identifies_printer(self):
+        headers = [headers for method, url, headers in self.hh.http.requests
+                   if method == 'GET' and url.endswith('/v1/spool')]
+        self.assertTrue(headers)
+        self.assertEqual(headers[-1], {'X-Printer-Name': 'testprinter'})
+
     def test_extra_fields_created_when_absent(self):
         """
         A virgin Spoolman needs printer_name / mmu_gate / rfid adding
