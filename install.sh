@@ -44,15 +44,6 @@ usage() {
     echo "  -s to skip restart of services"
     echo "  -b <branch> to switch to specified feature branch (sticky)"
     echo "  -n to specify a multiple MMU unit setup"
-<<<<<<< Updated upstream
-    echo "  -k <dir> non-default klipper home directory"
-    echo "  -c <dir> non-default klipper config directory"
-    echo "  -m <dir> non-default moonraker home directory"
-    # TODO: Repetier-Server stub support
-    # echo "  -r specify Repetier-Server <stub> to override printer.cfg and klipper.service names"
-    echo "  -a <name>  alternative Klipper service name (e.g. when installed via Kiauh)"
-    echo "  -e, --emu Enables multi MCU support (for EMU design)"
-=======
     echo "  -k <dir> to specify location of non-default klipper home directory"
     echo "  -c <dir> to specify location of non-default klipper config directory"
     echo "  -m <dir> to specify location of non-default moonraker home directory"
@@ -62,7 +53,6 @@ usage() {
     echo "  -t activate test mode to create test config files in /tmp"
     echo "  -r allow running ${SCRIPT_NAME} as root"
     echo "  -e Enables multi MCU support (for EMU design)"
->>>>>>> Stashed changes
     echo "  -o Override compatibility checks (e.g. Kalico detection)"
     echo "  -t  test mode - write config to /tmp instead of your real install"
     echo "  (-q verbose make for debugging)"
@@ -195,11 +185,10 @@ fi
 export KCONFIG_CONFIG="${KCONFIG_CONFIG-.mmu_config}"
 export PATH="${SCRIPT_DIR}:${PATH}"
 
-# Platform-specific defaults for Klipper home/config and Moonraker locations if not explicitly set with -k/-c/-m options or env vars.
-
+# Set platform-specific defaults for Klipper home, klipper config and Moonraker if not explicitly set
 os_type=""
-machine_arch="$(uname -m 2>/dev/null || echo "")"
-os_release_name="$(sed -n 's/^NAME="\(.*\)"/\1/p' /etc/os-release 2>/dev/null)"
+machine_arch="$(uname -m 2>/dev/null || true)"
+os_release_name="$(sed -n 's/^NAME="\(.*\)"/\1/p' /etc/os-release 2>/dev/null || true)"
 
 if [ "${machine_arch}" = "mips" ] && [ -d "/usr/data/creality" ]; then
     os_type="creality-k1"
@@ -235,62 +224,69 @@ esac
 
 export CONFIG_KLIPPER_HOME CONFIG_KLIPPER_CONFIG_HOME CONFIG_MOONRAKER_HOME
 
-# Source Klipper python environment after -k/-c/-m and OS defaults are set.
-# Search standard home envs first, then envs adjacent to CONFIG_KLIPPER_HOME.
-search_paths="${HOME}/klipper-env/bin/activate
-${HOME}/klippy-env/bin/activate"
+# Source and validate python3 venvs
+get_python_version() {
+    if command -v python >/dev/null 2>&1; then
+        python -c 'import sys; print(sys.version_info[0])' 2>/dev/null || true
+    elif command -v python3 >/dev/null 2>&1; then
+        python3 -c 'import sys; print(sys.version_info[0])' 2>/dev/null || true
+    fi
+}
 
-if [ -n "${CONFIG_KLIPPER_HOME:-}" ]; then
-    cfg_parent_dir="$(dirname "${CONFIG_KLIPPER_HOME}")"
-    search_paths="${search_paths}
-${cfg_parent_dir%/}/klipper-env/bin/activate
-${cfg_parent_dir%/}/klippy-env/bin/activate"
-fi
+# List of venv's to check in preferred order
+venvs="${venvs}
+${CONFIG_KLIPPER_HOME}/klipper-env
+${CONFIG_KLIPPER_HOME}/klippy-env
+${HOME}/klipper-env
+${HOME}/klippy-env"
 
-found_venv=""
-while IFS= read -r activate_path; do
-    [ -n "${activate_path}" ] || continue
-    if [ -f "${activate_path}" ]; then
-        . "${activate_path}"
-        found_venv="${activate_path}"
-        echo "${C_INFO}Using Klipper python environment: ${found_venv}${C_OFF}"
-        break
+# check venv list for python3
+python_ver=""
+checked_summary=""
+
+while IFS= read -r venv; do
+    [ -n "${venv}" ] || continue
+
+    if [ -f "${venv}/bin/activate" ]; then
+        . "${venv}/bin/activate"
+
+        python_ver=$(get_python_version)
+        if [ "${python_ver}" = "3" ]; then
+            echo "${C_INFO}Using python ${python_ver} from ${venv}${C_OFF}"
+            break
+        fi
+
+        checked_summary="${checked_summary}${venv}: Python 3 unavailable
+"
+    else
+        checked_summary="${checked_summary}${venv}: not found
+"
     fi
 done <<EOF
-${search_paths}
+${venvs}
 EOF
 
-if [ -z "${found_venv}" ]; then
-    echo "${C_ERROR}ERROR: Suitable Klipper python environment not found.${C_OFF}"
-    echo "${C_INFO}Searched for:${C_OFF}"
-    while IFS= read -r activate_path; do
-        [ -n "${activate_path}" ] || continue
-        echo "  - ${activate_path}"
-    done <<EOF
-${search_paths}
-EOF
-    exit 1
-fi
-
-# Verify python 3.x is available after activating venv.
-if command -v python >/dev/null 2>&1; then
-    VER=$(python -c 'import sys; print(sys.version_info[0])')
-    if [ "${VER}" -lt 3 ]; then
-        echo "${C_ERROR}ERROR: Python 3 is required to run Happy-Hare. Please upgrade to Python 3.x or later.${C_OFF}" >&2
+# no valid python3 venv found, check system default python3
+if [ "${python_ver}" != "3" ]; then
+    if [ "$(get_python_version)" = "3" ]; then
+        echo "${C_WARNING}No suitable Klipper Python 3 venv found; continuing with system python${C_OFF}"
+    else
+        echo "${C_ERROR}ERROR: No suitable Klipper Python 3 environment found.${C_OFF}"
+        echo "${C_INFO}Checked environments:${C_OFF}"
+        printf '%s\n' "${checked_summary}" | while IFS= read -r entry; do
+            [ -n "${entry}" ] || continue
+            echo "  - ${entry}"
+        done
         exit 1
     fi
-else
-    echo "${C_ERROR}ERROR: Suitable Klipper python environment not found. Please source correct Klipper python environment to use for Happy-Hare.${C_OFF}" >&2
-    exit 1
 fi
 
-# A PEP 668 'externally managed' python (homebrew, Debian Bookworm) refuses to pip install
-# outside a venv, so the installer's deps (installer/requirements.txt) can never be put
-# where it would find them. Run from the repo venv instead, just as klippy-env is activated
+# Handle PEP 668 "externally managed" python environments that refuse pip installs outside a venv, so installer's deps
+# (installer/requirements.txt) can never be resolved. Use repo venv instead, just as klippy-env is activated 
 # above - klippy-env is itself a venv, so a normal printer install never reaches this.
-# PIP_ARGS means the user has chosen how to feed their system python, so leave it alone.
-if [ -z "${PIP_ARGS}" ] && ! python -c 'import os, sys, sysconfig; sys.exit(0 if sys.prefix != sys.base_prefix or not os.path.exists(os.path.join(sysconfig.get_path("stdlib"), "EXTERNALLY-MANAGED")) else 1)'; then
-    # Exported so make picks the same directory as the activate line below
+# PIP_ARGS means the user has chosen how to feed their system python, so do nothing
+if [ -z "${PIP_ARGS}" ] && command -v python >/dev/null 2>&1 && \
+   ! python -c 'import os, sys, sysconfig; sys.exit(0 if sys.prefix != sys.base_prefix or not os.path.exists(os.path.join(sysconfig.get_path("stdlib"), "EXTERNALLY-MANAGED")) else 1)' 2>/dev/null; then
     export VENV="${VENV:-${SCRIPT_DIR}/venv}"
     echo "${C_INFO}System python is externally managed (PEP 668), using virtualenv '${VENV}'${C_OFF}"
     make --no-print-directory -C "${SCRIPT_DIR}" installer_venv
