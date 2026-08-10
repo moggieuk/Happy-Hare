@@ -480,7 +480,7 @@ no_venv_hint = \
 # and on macOS is often a leftover with a dead shebang. Runs on nearly every invocation so it
 # stays quiet on success. Only a PEP 668 python with no venv to fall back on reaches the hints
 python_deps: $(builder_prereq)
-	$(Q)echo "$(C_INFO)Checking for python dependencies$(C_OFF)"
+	$(Q)echo "$(C_INFO)Checking and resolving python dependencies$(C_OFF)"
 	$(Q)$(PY) -m pip install --quiet --disable-pip-version-check $(PIP_ARGS) \
 		-r $(SRC)/installer/requirements.txt || { \
 		echo "$(C_ERROR)'$(PY) -m pip' could not install installer/requirements.txt$(C_OFF)"; \

@@ -2,37 +2,17 @@
 #
 # Happy Hare MMU Software
 #
-# Installer / Updater launch script with familar options
+# Installer / Updater launch script with familiar options
 #
 # Carefully written to only use options that are widely available
-# Please report any incompatability via github issue
+# Please report any incompatibility via github issue
 #
 
 # Exit immediately on error (really important to catch menuconfig errors / non-saves / aborts)
 set -e
 
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
-
-# Locate Klipper python environment (klippy-env or klipper-env) and activate it
-if [ -f ~/klipper-env/bin/activate ]; then
-    . ~/klipper-env/bin/activate
-elif [ -f ~/klippy-env/bin/activate ]; then
-    . ~/klippy-env/bin/activate
-else
-    echo "${C_WARNING}Klipper python environment not found.${C_OFF}"
-fi
-
-# Check for python 3.x
-if command -v python >/dev/null 2>&1; then
-    VER=$(python -c 'import sys; print(sys.version_info[0])')
-    if [ "${VER}" -lt 3 ]; then
-        echo "${C_ERROR}ERROR: Python 3 is required to run Happy-Hare. Please upgrade to Python 3.x or later.${C_OFF}" >&2
-        exit 1
-    fi
-else
-    echo "${C_ERROR}ERROR: Klipper python not found. Please source correct Klipper python environment to use for Happy-Hare.${C_OFF}" >&2
-    exit 1
-fi
+SCRIPT_NAME=$(basename "$0")
 
 # Get current HH version from the mmu_constants.py file
 export HH_VERSION=$(sed -n 's/^VERSION = "\(.*\)".*/\1/p' "$SCRIPT_DIR/extras/mmu/mmu_constants.py")
@@ -46,24 +26,11 @@ if [ -n "$(which tput 2>/dev/null)" ]; then
     C_ERROR=$(tput -Txterm-256color bold)$(tput -Txterm-256color setaf 1)
 fi
 
-# A PEP 668 'externally managed' python (homebrew, Debian Bookworm) refuses to pip install
-# outside a venv, so the installer's deps (installer/requirements.txt) can never be put
-# where it would find them. Run from the repo venv instead, just as klippy-env is activated
-# above - klippy-env is itself a venv, so a normal printer install never reaches this.
-# PIP_ARGS means the user has chosen how to feed their system python, so leave it alone.
-if [ -z "${PIP_ARGS}" ] && ! python -c 'import os, sys, sysconfig; sys.exit(0 if sys.prefix != sys.base_prefix or not os.path.exists(os.path.join(sysconfig.get_path("stdlib"), "EXTERNALLY-MANAGED")) else 1)'; then
-    # Exported so make picks the same directory as the activate line below
-    export VENV="${VENV:-${SCRIPT_DIR}/venv}"
-    echo "${C_INFO}System python is externally managed (PEP 668), using virtualenv '${VENV}'${C_OFF}"
-    make --no-print-directory -C "${SCRIPT_DIR}" installer_venv
-    . "${VENV}/bin/activate"
-fi
-
 usage() {
     USAGE="Usage: $0"
     SPACE=$(echo "${USAGE}" | tr "[:print:]" " ")
     echo "${C_INFO}"
-    echo "${USAGE} [-i] [-u] [-d] [-z] [-s] [-t]"
+    echo "${USAGE} [-i] [-u] [-d] [-z] [-s] [-t] [-r]"
     echo "${SPACE} [-b <branch>]"
     echo "${SPACE} [-k <klipper_home_dir>] [-c <klipper_config_dir>] [-m <moonraker_home_dir>]"
     echo "${SPACE} [-a <kiauh_alternate_klipper>] [config_file]" # [-r <repetier_server stub>]"
@@ -77,6 +44,7 @@ usage() {
     echo "  -s to skip restart of services"
     echo "  -b <branch> to switch to specified feature branch (sticky)"
     echo "  -n to specify a multiple MMU unit setup"
+<<<<<<< Updated upstream
     echo "  -k <dir> non-default klipper home directory"
     echo "  -c <dir> non-default klipper config directory"
     echo "  -m <dir> non-default moonraker home directory"
@@ -84,6 +52,17 @@ usage() {
     # echo "  -r specify Repetier-Server <stub> to override printer.cfg and klipper.service names"
     echo "  -a <name>  alternative Klipper service name (e.g. when installed via Kiauh)"
     echo "  -e, --emu Enables multi MCU support (for EMU design)"
+=======
+    echo "  -k <dir> to specify location of non-default klipper home directory"
+    echo "  -c <dir> to specify location of non-default klipper config directory"
+    echo "  -m <dir> to specify location of non-default moonraker home directory"
+    # TODO: Repetier-Server stub support - need better detection option 
+    # echo "-? TBC specify Repetier-Server <stub> to override printer.cfg and klipper.service names"
+    echo "  -a <name> to specify alternative klipper-service-name when installed with Kiauh"
+    echo "  -t activate test mode to create test config files in /tmp"
+    echo "  -r allow running ${SCRIPT_NAME} as root"
+    echo "  -e Enables multi MCU support (for EMU design)"
+>>>>>>> Stashed changes
     echo "  -o Override compatibility checks (e.g. Kalico detection)"
     echo "  -t  test mode - write config to /tmp instead of your real install"
     echo "  (-q verbose make for debugging)"
@@ -163,7 +142,7 @@ for arg in "$@"; do
     esac
 done
 
-while getopts "ehfiudzsb:nk:c:m:a:toqv" arg; do
+while getopts "rehfiudzsb:nk:c:m:a:toqv" arg; do
     case $arg in
     f)
         FIX_LINKS=y
@@ -186,6 +165,7 @@ while getopts "ehfiudzsb:nk:c:m:a:toqv" arg; do
     #     ;;
     a) export CONFIG_KLIPPER_SERVICE="${OPTARG}.service" ;;
     t) export TESTDIR=/tmp/mmu_test ;;
+    r) export F_ALLOW_ROOT=y ;;
     o) export F_OVERRIDE_CHECKS=y ;;
     q) export Q= ;;   # Developer: Disable quiet mode in Makefile
     v) export V=-v ;; # Developer: Enable verbose mode in builder and debug in Makefile
@@ -214,6 +194,129 @@ fi
 
 export KCONFIG_CONFIG="${KCONFIG_CONFIG-.mmu_config}"
 export PATH="${SCRIPT_DIR}:${PATH}"
+
+# Platform-specific defaults for Klipper home/config and Moonraker locations if not explicitly set with -k/-c/-m options or env vars.
+
+os_type=""
+machine_arch="$(uname -m 2>/dev/null || echo "")"
+os_release_name="$(sed -n 's/^NAME="\(.*\)"/\1/p' /etc/os-release 2>/dev/null)"
+
+if [ "${machine_arch}" = "mips" ] && [ -d "/usr/data/creality" ]; then
+    os_type="creality-k1"
+    echo "${C_INFO}Detected Creality K1 series printer${C_OFF}"
+elif [ "${os_release_name}" = "FlyOS-Fast" ]; then
+    os_type="flyos-fast"
+    echo "${C_INFO}Detected FlyOS-Fast${C_OFF}"
+elif [ "${machine_arch}" = "mips" ] && [ -d "/root/printer_software" ]; then
+    os_type="guppy-k1"
+    echo "${C_INFO}Detected Guppy K1 Mod${C_OFF}"
+fi
+
+case "${os_type}" in
+creality-k1)
+    : "${CONFIG_KLIPPER_HOME:=/usr/share/klipper}"
+    : "${CONFIG_MOONRAKER_HOME:=/usr/data/moonraker/moonraker}"
+    : "${CONFIG_KLIPPER_CONFIG_HOME:=/usr/data/printer_data/config}"
+    ;;
+flyos-fast)
+    : "${CONFIG_KLIPPER_HOME:=/data/klipper}"
+    : "${CONFIG_MOONRAKER_HOME:=/data/moonraker}"
+    : "${CONFIG_KLIPPER_CONFIG_HOME:=/usr/share/printer_data/config}"
+    ;;
+guppy-k1)
+    : "${CONFIG_KLIPPER_HOME:=/root/printer_software/klipper}"
+    : "${CONFIG_MOONRAKER_HOME:=/root/printer_software/moonraker/moonraker}"
+    : "${CONFIG_KLIPPER_CONFIG_HOME:=/root/printer_data/config}"
+    ;;
+esac
+
+export CONFIG_KLIPPER_HOME CONFIG_KLIPPER_CONFIG_HOME CONFIG_MOONRAKER_HOME
+
+# Source Klipper python environment after -k/-c/-m and OS defaults are set.
+# Search standard home envs first, then envs adjacent to CONFIG_KLIPPER_HOME.
+search_paths="${HOME}/klipper-env/bin/activate
+${HOME}/klippy-env/bin/activate"
+
+if [ -n "${CONFIG_KLIPPER_HOME:-}" ]; then
+    cfg_parent_dir="$(dirname "${CONFIG_KLIPPER_HOME}")"
+    search_paths="${search_paths}
+${cfg_parent_dir%/}/klipper-env/bin/activate
+${cfg_parent_dir%/}/klippy-env/bin/activate"
+fi
+
+found_venv=""
+while IFS= read -r activate_path; do
+    [ -n "${activate_path}" ] || continue
+    if [ -f "${activate_path}" ]; then
+        . "${activate_path}"
+        found_venv="${activate_path}"
+        echo "${C_INFO}Using Klipper python environment: ${found_venv}${C_OFF}"
+        break
+    fi
+done <<EOF
+${search_paths}
+EOF
+
+if [ -z "${found_venv}" ]; then
+    echo "${C_ERROR}ERROR: Suitable Klipper python environment not found.${C_OFF}"
+    echo "${C_INFO}Searched for:${C_OFF}"
+    while IFS= read -r activate_path; do
+        [ -n "${activate_path}" ] || continue
+        echo "  - ${activate_path}"
+    done <<EOF
+${search_paths}
+EOF
+    exit 1
+fi
+
+# Verify python 3.x is available after activating venv.
+if command -v python >/dev/null 2>&1; then
+    VER=$(python -c 'import sys; print(sys.version_info[0])')
+    if [ "${VER}" -lt 3 ]; then
+        echo "${C_ERROR}ERROR: Python 3 is required to run Happy-Hare. Please upgrade to Python 3.x or later.${C_OFF}" >&2
+        exit 1
+    fi
+else
+    echo "${C_ERROR}ERROR: Suitable Klipper python environment not found. Please source correct Klipper python environment to use for Happy-Hare.${C_OFF}" >&2
+    exit 1
+fi
+
+# A PEP 668 'externally managed' python (homebrew, Debian Bookworm) refuses to pip install
+# outside a venv, so the installer's deps (installer/requirements.txt) can never be put
+# where it would find them. Run from the repo venv instead, just as klippy-env is activated
+# above - klippy-env is itself a venv, so a normal printer install never reaches this.
+# PIP_ARGS means the user has chosen how to feed their system python, so leave it alone.
+if [ -z "${PIP_ARGS}" ] && ! python -c 'import os, sys, sysconfig; sys.exit(0 if sys.prefix != sys.base_prefix or not os.path.exists(os.path.join(sysconfig.get_path("stdlib"), "EXTERNALLY-MANAGED")) else 1)'; then
+    # Exported so make picks the same directory as the activate line below
+    export VENV="${VENV:-${SCRIPT_DIR}/venv}"
+    echo "${C_INFO}System python is externally managed (PEP 668), using virtualenv '${VENV}'${C_OFF}"
+    make --no-print-directory -C "${SCRIPT_DIR}" installer_venv
+    . "${VENV}/bin/activate"
+fi
+
+# root check: installer must run as root for specific OS use cases. Others require explicit -r override to enable install as root
+if [ -z "${F_ALLOW_ROOT+x}" ]; then
+    case "${os_type}" in
+    creality-k1 | flyos-fast | guppy-k1)
+        # Embedded systems require root
+        if [ "$(id -u)" -ne 0 ]; then
+            echo "${C_ERROR}ERROR: ${SCRIPT_NAME} must be run as root for ${os_type}.${C_OFF}" >&2
+            exit 1
+        fi
+        F_ALLOW_ROOT=y
+        ;;
+    *)
+        F_ALLOW_ROOT=n
+        ;;
+    esac
+fi
+
+# Enforce root user policy
+if [ "$(id -u)" -eq 0 ] && [ "${F_ALLOW_ROOT}" != "y" ]; then
+    echo "${C_ERROR}ERROR: Running ${SCRIPT_NAME} as root is not allowed on this OS by default. Run as the same user you used to install Klipper.${C_OFF}" >&2
+    echo "${C_INFO}Use -r to explicitly allow root installation.${C_OFF}" >&2
+    exit 1
+fi
 
 if [ "${F_MENUCONFIG}" ] && [ "${F_UNINSTALL}" ]; then
     echo "${C_ERROR}Can't install and uninstall at the same time!${C_OFF}"
@@ -286,7 +389,6 @@ if [ "${FIX_LINKS}" ]; then
     time_elapsed make --no-print-directory -C "${SCRIPT_DIR}" fix_links
     exit 0
 fi
-
 
 
 #####################
