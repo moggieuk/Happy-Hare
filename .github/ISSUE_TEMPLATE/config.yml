@@ -1,6 +1,18 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Ask a usage question (join Happy Hare Discord)
+  - name: 📄 Documentation issue
+    url: https://github.com/moggieuk/Happy-Hare-Doc/issues/new/choose
+    about: Typo, broken link, unclear instructions, or missing page on the docs site? Report it in the Happy-Hare-Doc repo instead.
+  - name: 🖥️ KlipperScreen UI issue
+    url: https://github.com/moggieuk/KlipperScreen-Happy-Hare-Edition/issues/new/choose
+    about: Bug or request specific to the KlipperScreen-Happy-Hare-Edition interface? File it in that repo instead.
+  - name: 🖱️ Mainsail UI issue
+    url: https://github.com/moggieuk/mainsail-happy-hare-edition/issues/new/choose
+    about: Bug or request specific to the Mainsail-Happy-Hare-Edition interface? File it in that repo instead.
+  - name: 🖱️ Fluidd UI issue
+    url: https://github.com/moggieuk/fluidd-happy-hare-edition/issues/new/choose
+    about: Bug or request specific to the Fluidd-Happy-Hare-Edition interface? File it in that repo instead.
+  - name: 💬 Ask a usage question (join Happy Hare Discord)
     url: https://discord.gg/98TYYUf6f2
     about: Q&A and troubleshooting belong in Discussions
 

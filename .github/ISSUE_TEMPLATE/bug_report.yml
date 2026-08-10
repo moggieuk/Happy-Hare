@@ -5,7 +5,14 @@ labels: ["bug", "needs-triage"]
 body:
   - type: markdown
     attributes:
-      value: "Thanks! Please complete all required fields."
+      value: |
+        Thanks! Please complete all required fields.
+
+        This repo covers the Happy Hare Klipper/Moonraker extension itself. If
+        your bug is actually about the **documentation site**, the
+        **KlipperScreen** interface, or the **Mainsail/Fluidd** UI, please use
+        the links on the [issue chooser page](https://github.com/moggieuk/Happy-Hare/issues/new/choose)
+        instead - it'll get triaged faster in the right repo.
 
   - type: input
     id: summary
@@ -42,6 +49,8 @@ body:
     id: mmu_type
     attributes:
       label: MMU Type
+      description: Select every unit type on the printer - some setups combine more than one (e.g. an ERCF unit and a ViViD unit on the same machine).
+      multiple: true
       options: ["3D Chameleon", "3MS", "AngryBeaver", "BoxTurtle", "EMU", "ERCF", "KMS", "MMX", "QuattroBox", "NightOwl", "Pico", "Prusa", "Tradrack", "ViViD", "Other/Unknown"]
     validations:
       required: true
