@@ -76,9 +76,11 @@ class FakeHttpClient:
         self.spoolman = spoolman
         self.spoolmandb = spoolmandb
         self.requests = []          # [(method, url)] assertion surface
+        self.request_headers = []   # [(method, url, headers)] assertion surface
 
     async def request(self, method, url, body=None, **kwargs):
         self.requests.append((method, url))
+        self.request_headers.append((method, url, dict(kwargs.get('headers') or {})))
         if 'donkie.github.io' in url:
             return self._spoolmandb(url)
         return self.spoolman.handle(method.upper(), url, body)

@@ -461,7 +461,9 @@ class MmuServer:
             errors = ""
             assignments = {}
             sids_to_fix = []
-            response = await self.http_client.get(url=f'{self.spoolman.spoolman_url}/v1/spool')
+            response = await self.http_client.get(
+                url=f'{self.spoolman.spoolman_url}/v1/spool',
+                headers={'X-Printer-Name': self.printer_hostname})
             if response.has_error():
                 raise RuntimeError(self.spoolman._get_response_error(response))
             for spool_info in response.json():
