@@ -256,6 +256,8 @@ class LinearSelector(BaseSelector, object):
         gcode = mmu.printer.lookup_object('gcode')
         gcode.register_command('MMU_CALIBRATE_SELECTOR', self.cmd_MMU_CALIBRATE_SELECTOR, desc = self.cmd_MMU_CALIBRATE_SELECTOR_help)
         gcode.register_command('MMU_SOAKTEST_SELECTOR', self.cmd_MMU_SOAKTEST_SELECTOR, desc = self.cmd_MMU_SOAKTEST_SELECTOR_help)
+        gcode.register_command('MMU_MOVE_SELECTOR', self.cmd_MMU_MOVE_SELECTOR, desc = self.cmd_MMU_MOVE_SELECTOR_help)
+        gcode.register_command('MMU_HOME_SELECTOR', self.cmd_MMU_HOME_SELECTOR, desc = self.cmd_MMU_HOME_SELECTOR_help)
 
         # Selector stepper setup before MMU toolhead is instantiated
         section = mmu_machine.SELECTOR_STEPPER_CONFIG
@@ -489,6 +491,37 @@ class LinearSelector(BaseSelector, object):
                         self.filament_drive()
         except MmuError as ee:
             self.mmu.handle_mmu_error("Soaktest abandoned because of error: %s" % str(ee))
+
+    cmd_MMU_MOVE_SELECTOR_help = "Manually move the selector to an absolute position (mm from home). Enables motor and goes through MmuToolHead so shift register DIR/ENABLE are updated correctly."
+    def cmd_MMU_MOVE_SELECTOR(self, gcmd):
+        self.mmu.log_to_file(gcmd.get_commandline())
+        if self.mmu.check_if_disabled(): return
+        pos = gcmd.get_float('MOVE')
+        speed = gcmd.get_float('SPEED', self.selector_move_speed)
+        try:
+            with self.mmu.wrap_sync_gear_to_extruder():
+                self.enable_motors()
+                self.move("Manual selector move to %.1fmm" % pos, pos, speed=speed)
+                self.mmu.log_always("Selector moved to %.1fmm" % pos)
+        except MmuError as ee:
+            self.mmu.handle_mmu_error(str(ee))
+
+    cmd_MMU_HOME_SELECTOR_help = "Manually home the selector to the touch endstop without full MMU home sequence"
+    def cmd_MMU_HOME_SELECTOR(self, gcmd):
+        self.mmu.log_to_file(gcmd.get_commandline())
+        if self.mmu.check_if_disabled(): return
+        try:
+            with self.mmu.wrap_sync_gear_to_extruder():
+                self.mmu.calibrating = True
+                traveled, found_home = self.measure_to_home()
+                if found_home:
+                    self.mmu.log_always("Selector homed after %.1fmm" % traveled)
+                else:
+                    self.mmu.log_error("Selector did not find home endstop")
+        except MmuError as ee:
+            self.mmu.handle_mmu_error(str(ee))
+        finally:
+            self.mmu.calibrating = False
 
     def _get_max_selector_movement(self, gate=-1):
         n = gate if gate >= 0 else self.mmu.num_gates - 1
@@ -1189,9 +1222,15 @@ class LinearSelectorIdler:
 
     def servo_up(self, measure=False):
         if self.mmu._is_running_test: return 0. # Save idler while testing
-        if self.idler_state == self.IDLER_UP_STATE: return 0.
-
-        self._set_idler_to_gate(self._disengaged_gate)
+        # Position at selected gate if known (pre-position for MMU3 idler),
+        # otherwise disengage to home position.
+        gate = self.mmu.gate_selected if self.mmu.gate_selected >= 0 else self._disengaged_gate
+        if self.active_gate == gate:
+            return 0. # Already at correct position
+        # Selector and idler share the same MCU — wait for selector to finish
+        # before starting idler move to avoid MCU move queue overflow.
+        self.mmu.movequeues_wait(toolhead=False, mmu_toolhead=True)
+        self._set_idler_to_gate(gate)
 
     def _servo_auto(self):
         if self.mmu.is_printing() and self.mmu_toolhead.is_gear_synced_to_extruder():
@@ -1223,16 +1262,19 @@ class LinearSelectorIdler:
     def buzz_motor(self):
         self.mmu.movequeues_wait()
         old_state = self.idler_state
-        low = min(self.idler_positions['down'], self.idler_positions['up'])
-        high = max(self.idler_positions['down'], self.idler_positions['up'])
-        mid = (low + high) // 2
-        move = (high - low) // 4
-        self.idler.do_move(mid)
-        self.mmu.movequeues_dwell(0.5, mmu_toolhead=False)
-        self.idler.do_move(mid - move)
-        self.mmu.movequeues_dwell(0.5, mmu_toolhead=False)
-        self.idler.do_move(mid + move)
-        self.mmu.movequeues_dwell(0.5, mmu_toolhead=False)
+        # Move idler back and forth a small amount relative to current position
+        cur_pos = self.mmu_toolhead.get_position()
+        idler_pos = cur_pos[2]
+        buzz_dist = 2.0  # mm
+        speed, accel = self.mmu_toolhead.get_idler_limits()
+        with self.mmu.wrap_accel(accel):
+            p = list(cur_pos)
+            p[2] = idler_pos + buzz_dist
+            self.mmu_toolhead.move(p, speed)
+            p[2] = idler_pos - buzz_dist
+            self.mmu_toolhead.move(p, speed)
+            p[2] = idler_pos
+            self.mmu_toolhead.move(p, speed)
         self.mmu.movequeues_wait()
         if old_state == self.IDLER_DOWN_STATE:
             self.servo_down(buzz_gear=False)

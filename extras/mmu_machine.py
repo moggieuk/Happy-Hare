@@ -297,6 +297,8 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.reactor = self.printer.get_reactor()
         self.all_mcus = [m for n, m in self.printer.lookup_objects(module='mcu')]
         self.mcu = self.all_mcus[0]
+        # Klipper >=0.13.0-709: motion flushing moved from ToolHead to motion_queuing module
+        self.motion_queuing = self.printer.load_object(config, 'motion_queuing')
 
         if hasattr(toolhead, 'BUFFER_TIME_HIGH'):
             time_high = toolhead.BUFFER_TIME_HIGH
@@ -361,18 +363,22 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.special_queuing_state = "NeedPrime"
         self.priming_timer = None
         self.drip_completion = None # TODO No longer part of Klipper >v0.13.0-46
-        # Flush tracking
-        self.flush_timer = self.reactor.register_timer(self._flush_handler)
+        # Flush tracking — in Klipper >=0.13.0-709 the flush timer lives in
+        # motion_queuing; register a callback so we still get flush notifications.
+        self.motion_queuing.register_flush_callback(self._handle_step_flush)
         self.do_kick_flush_timer = True
         self.last_flush_time = self.last_sg_flush_time = self.min_restart_time = 0. # last_sg_flush_time deprecated
         self.need_flush_time = self.step_gen_time = self.clear_history_time = 0.
         # Kinematic step generation scan window time tracking
-        self.kin_flush_delay = toolhead.SDS_CHECK_TIME # Happy Hare: Use base class
+        # SDS_CHECK_TIME moved to motion_queuing in Klipper >=0.13.0-709
+        import extras.motion_queuing as mq_module
+        self.kin_flush_delay = mq_module.SDS_CHECK_TIME if hasattr(mq_module, 'SDS_CHECK_TIME') else getattr(toolhead, 'SDS_CHECK_TIME', 0.001)
         self.kin_flush_times = []
-        # Setup iterative solver
+        # Setup iterative solver — use motion_queuing to allocate trapq so it
+        # gets registered with the global step-generation flush system.
         ffi_main, ffi_lib = chelper.get_ffi()
-        self.trapq = ffi_main.gc(ffi_lib.trapq_alloc(), ffi_lib.trapq_free)
-        self.trapq_append = ffi_lib.trapq_append
+        self.trapq = self.motion_queuing.allocate_trapq()
+        self.trapq_append = self.motion_queuing.lookup_trapq_append()
         self.trapq_finalize_moves = ffi_lib.trapq_finalize_moves
         # Motion flushing
         self.step_generators = []
@@ -422,6 +428,20 @@ class MmuToolHead(toolhead.ToolHead, object):
         self.inactive_gear_steppers = []
         self.sync_mode = None
 
+    # Klipper >=0.13.0-709: flush callback registered with motion_queuing
+    def _handle_step_flush(self, flush_time, step_gen_time):
+        if self.special_queuing_state:
+            return
+        kin_flush_delay = self.motion_queuing.get_kin_flush_delay()
+        if step_gen_time >= self.print_time - kin_flush_delay - 0.001:
+            self._flush_lookahead(is_runout=True)
+
+    # Klipper >=0.13.0-709: register_step_generator removed; keep stub for
+    # sync/unsync code which appends to step_generators for book-keeping.
+    def register_step_generator(self, handler):
+        if handler not in self.step_generators:
+            self.step_generators.append(handler)
+
     def handle_connect(self):
         self.printer_toolhead = self.printer.lookup_object('toolhead')
         self.last_move_time = self.printer_toolhead.get_last_move_time()
@@ -437,6 +457,29 @@ class MmuToolHead(toolhead.ToolHead, object):
             self.mmu_extruder_stepper.stepper.set_trapq(printer_extruder.get_trapq())
         else:
             self.mmu_extruder_stepper = printer_extruder.extruder_stepper
+
+    # Pre-update shift register direction bits before each move.
+    # In Klipper >=0.13.0-709, dir pins are controlled by MCU firmware via a
+    # real GPIO placeholder. The actual TMC direction (via shift register) must
+    # be set at Python level before the move starts.
+    def move(self, newpos, speed):
+        curpos = self.commanded_pos
+        rails = self.kin.rails
+        for i in range(min(len(newpos), len(rails))):
+            delta = newpos[i] - curpos[i]
+            if delta != 0:
+                new_dir = 0 if delta > 0 else 1
+                for s in rails[i].get_steppers():
+                    vpin = getattr(s, '_dir_pin_virtual', None)
+                    if vpin is not None:
+                        # Pass new_dir directly — ShiftRegisterBit.set_digital()
+                        # already applies the pin's invert flag internally,
+                        # so we must NOT XOR with _invert_dir here or the
+                        # inversion would be applied twice and cancel out.
+                        curtime = self.reactor.monotonic()
+                        sched_time = self.mcu.estimated_print_time(curtime) + 0.010
+                        vpin.set_digital(sched_time, new_dir)
+        super(MmuToolHead, self).move(newpos, speed)
 
     # Ensure the correct number of axes for convenience - MMU only has two
     # Also, handle case when gear rail is synced to extruder
@@ -480,11 +523,11 @@ class MmuToolHead(toolhead.ToolHead, object):
         for s in self.all_gear_rail_steppers:
             if selected_steppers and s.get_name() in selected_steppers:
                 gear_rail.steppers.append(s)
-                if s.generate_steps not in self.mmu_toolhead.step_generators:
+                if hasattr(s, 'generate_steps') and s.generate_steps not in self.mmu_toolhead.step_generators:
                     self.mmu_toolhead.register_step_generator(s.generate_steps)
             else:
                 # Cripple unused/unwanted gear steppers
-                if s.generate_steps in self.mmu_toolhead.step_generators:
+                if hasattr(s, 'generate_steps') and s.generate_steps in self.mmu_toolhead.step_generators:
                     self.mmu_toolhead.step_generators.remove(s.generate_steps)
 
         if selected_steppers:
@@ -539,7 +582,8 @@ class MmuToolHead(toolhead.ToolHead, object):
             if new_sync_mode == self.EXTRUDER_ONLY_ON_GEAR:
                 self.inactive_gear_steppers = list(rail.steppers)
                 for s in self.inactive_gear_steppers:
-                    self.mmu_toolhead.step_generators.remove(s.generate_steps)
+                    if hasattr(s, 'generate_steps') and s.generate_steps in self.mmu_toolhead.step_generators:
+                        self.mmu_toolhead.step_generators.remove(s.generate_steps)
             rail.steppers.extend(following_steppers)
 
         elif new_sync_mode == self.GEAR_SYNCED_TO_EXTRUDER:
@@ -559,8 +603,10 @@ class MmuToolHead(toolhead.ToolHead, object):
             s_kinematics = ffi_main.gc(s_alloc, ffi_lib.free)
             self._prev_sk.append(s.set_stepper_kinematics(s_kinematics))
             self._prev_rd.append(s.get_rotation_distance()[0])
-            following_toolhead.step_generators.remove(s.generate_steps)
-            driving_toolhead.register_step_generator(s.generate_steps)
+            if hasattr(s, 'generate_steps') and s.generate_steps in following_toolhead.step_generators:
+                following_toolhead.step_generators.remove(s.generate_steps)
+            if hasattr(s, 'generate_steps'):
+                driving_toolhead.register_step_generator(s.generate_steps)
             s.set_trapq(driving_trapq)
             s.set_position(pos)
 
@@ -587,7 +633,8 @@ class MmuToolHead(toolhead.ToolHead, object):
             rail = self.mmu_toolhead.get_kinematics().rails[1]
             if self.sync_mode == self.EXTRUDER_ONLY_ON_GEAR: # I.e. self.inactive_gear_steppers is not None
                 for s in self.inactive_gear_steppers:
-                    self.mmu_toolhead.register_step_generator(s.generate_steps)
+                    if hasattr(s, 'generate_steps'):
+                        self.mmu_toolhead.register_step_generator(s.generate_steps)
                     s.set_position([0., self.mmu_toolhead.get_position()[1], 0.])
                 self.inactive_gear_steppers = [] # python3 - self.inactive_gear_steppers.clear()
             rail.steppers = rail.steppers[:-len(following_steppers)]
@@ -604,8 +651,10 @@ class MmuToolHead(toolhead.ToolHead, object):
         for i, s in enumerate(following_steppers):
             s.set_stepper_kinematics(self._prev_sk[i])
             s.set_rotation_distance(self._prev_rd[i])
-            driving_toolhead.step_generators.remove(s.generate_steps)
-            following_toolhead.register_step_generator(s.generate_steps)
+            if hasattr(s, 'generate_steps') and s.generate_steps in driving_toolhead.step_generators:
+                driving_toolhead.step_generators.remove(s.generate_steps)
+            if hasattr(s, 'generate_steps'):
+                following_toolhead.register_step_generator(s.generate_steps)
             s.set_trapq(self._prev_trapq)
             s.set_position(pos)
 
@@ -708,7 +757,9 @@ class MmuKinematics:
 
         for s in self.get_steppers():
             s.set_trapq(toolhead.get_trapq())
-            toolhead.register_step_generator(s.generate_steps)
+            # generate_steps removed in Klipper >=0.13.0-709; steppersync handles it
+            if hasattr(s, 'generate_steps'):
+                toolhead.register_step_generator(s.generate_steps)
 
         # Setup boundary checks
         self.selector_max_velocity, self.selector_max_accel = toolhead.get_selector_limits()
@@ -761,6 +812,18 @@ class MmuKinematics:
             else:
                 forcepos[axis] += 1.5 * (position_max - hi.position_endstop)
             logging.info("Homing info %s %s %s", axis, forcepos, homepos)
+            # drip_move() (used internally by home_rails) bypasses MmuToolHead.move(),
+            # so the shift register DIR bit is never updated during homing.
+            # Pre-set it here before home_rails() is called.
+            new_dir = 0 if hi.positive_dir else 1
+            reactor = self.printer.get_reactor()
+            mcu = self.printer.lookup_object('mcu mmu')
+            curtime = reactor.monotonic()
+            sched_time = mcu.estimated_print_time(curtime) + 0.010
+            for s in rail.get_steppers():
+                vpin = getattr(s, '_dir_pin_virtual', None)
+                if vpin is not None:
+                    vpin.set_digital(sched_time, new_dir)
             homing_state.home_rails([rail], forcepos, homepos) # Perform homing
 
     def set_accel_limit(self, accel):
@@ -775,12 +838,19 @@ class MmuKinematics:
             move.limit_speed(self.selector_max_velocity, min(self.selector_max_accel, self.move_accel or self.selector_max_accel))
         elif move.axes_d[1]: # Gear
             move.limit_speed(self.gear_max_velocity, min(self.gear_max_accel, self.move_accel or self.gear_max_accel))
+        elif len(move.axes_d) > 2 and move.axes_d[2]: # Idler (Prusa MMU3)
+            move.limit_speed(self.idler_max_velocity, min(self.idler_max_accel, self.move_accel or self.idler_max_accel))
 
     def get_status(self, eventtime):
-        axes = [a for a, (l, h) in zip("xy", self.limits) if l <= h]
+        axes = [a for a, (l, h) in zip("xy", self.limits[:2]) if l <= h]
+        if len(self.limits) > 2:
+            idler_homed = self.limits[2][0] <= self.limits[2][1]
+        else:
+            idler_homed = False
         return {
             'homed_axes': "".join(axes),
             'selector_homed': self.limits[0][0] <= self.limits[0][1],
+            'idler_homed': idler_homed,
         }
 
 
