@@ -770,59 +770,11 @@ def uninstall_includes(dest_file):
         f.write(builder.write())
 
 
-def detect_os_type():
-    """Return platform tag used for service handling."""
-    machine_arch = ""
-    try:
-        machine_arch = subprocess.check_output(["uname", "-m"], text=True).strip()
-    except Exception:
-        machine_arch = ""
-
-    os_release_name = ""
-    try:
-        with open("/etc/os-release", "r", encoding="utf-8") as f:
-            for line in f:
-                if line.startswith("NAME="):
-                    os_release_name = line.split("=", 1)[1].strip().strip('"')
-                    break
-    except Exception:
-        os_release_name = ""
-
-    if machine_arch == "mips" and os.path.isdir("/usr/data/creality"):
-        return "creality-k1"
-    if os_release_name == "FlyOS-Fast":
-        return "flyos-fast"
-    if machine_arch == "mips" and os.path.isdir("/root/printer_software"):
-        return "guppy-k1"
-    return ""
-
-
 def restart_service(name, service, kconfig):
     if not service:
         logging.warning("No {} service specified - Please restart manually".format(name))
     else:
         logging.info("Restarting {}...".format(name))
-
-    os_type = detect_os_type()
-    service_script = None
-    if os_type == "creality-k1":
-        if name.lower() == "klipper":
-            service_script = "/etc/init.d/*klipper_service"
-        elif name.lower() == "moonraker":
-            service_script = "/etc/init.d/*moonraker_service"
-    elif os_type == "guppy-k1":
-        if name.lower() == "klipper":
-            service_script = "/etc/init.d/S60klipper"
-        elif name.lower() == "moonraker":
-            service_script = "/etc/init.d/S65moonraker"
-
-    if service_script:
-        # Some embedded init scripts are more reliable with an explicit stop/start.
-        subprocess.call("{} stop".format(service_script), shell=True)
-        restart_rc = subprocess.call("{} start".format(service_script), shell=True)
-        if restart_rc:
-            logging.warning("Service script '{}' restart failed (rc={})".format(service_script, restart_rc))
-        return
 
     kcfg = load_parsed_kconfig(kconfig)
     if kcfg.is_enabled("INIT_SYSTEMD"):
