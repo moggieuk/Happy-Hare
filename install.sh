@@ -154,6 +154,84 @@ time_elapsed() {
     echo
 }
 
+# Best-effort guess at the printer config directory, used only to detect a v3 install
+# before self-update/uninstall/menuconfig have touched anything. Kconfig resolves this
+# authoritatively later in the script; this just needs to be good enough for the
+# one-time upgrade prompt below.
+guess_klipper_config_home() {
+    if [ -n "${TESTDIR}" ]; then
+        echo "${TESTDIR}/printer_data/config"
+    elif [ -n "${CONFIG_KLIPPER_CONFIG_HOME}" ]; then
+        echo "${CONFIG_KLIPPER_CONFIG_HOME}"
+    elif [ -d "/usr/data/printer_data/config" ]; then
+        echo "/usr/data/printer_data/config"
+    else
+        echo "${HOME}/printer_data/config"
+    fi
+}
+
+# Detect a v3 install: no v4 Kconfig file yet, but a v3-era mmu_parameters.cfg already
+# on disk with a "happy_hare_version: 3.x" stamp (the value Happy Hare itself writes
+# and trusts for exactly this purpose).
+v3_detected() {
+    guessed_kconfig="${KCONFIG_CONFIG:-${SCRIPT_DIR}/.mmu_config}"
+    v3_cfg="$(guess_klipper_config_home)/mmu/base/mmu_parameters.cfg"
+    [ ! -e "${guessed_kconfig}" ] \
+        && [ -f "${v3_cfg}" ] \
+        && grep -qE '^happy_hare_version:[[:space:]]*3\.' "${v3_cfg}"
+}
+
+# The v3 -> v4 choice ("blue pill" stay on v3 / "red pill" upgrade to v4) has to be
+# settled before anything else in this script touches git, the filesystem, or Klipper/
+# Moonraker config - including self-update's own git pull, -f's symlink fix, and
+# uninstall. Runs for any invocation (default, -i, -u, -f, ...); the only exemptions
+# are -h/usage (already exited by then) and the internal re-exec after self-update or
+# after switching branches below (F_SKIP_UPDATE=force), so this never re-prompts itself
+# in a loop.
+offer_v3_v4_choice() {
+    klipper_config_home=$(guess_klipper_config_home)
+    moonraker_conf="${klipper_config_home}/moonraker.conf"
+
+    echo
+    echo "${C_WARNING}Happy Hare v4 is a major rework with breaking changes, and your existing${C_OFF}"
+    echo "${C_WARNING}install looks like the previous (v3) release.${C_OFF}"
+    echo
+    echo "${C_WARNING}1) Stay on v3${C_OFF}"
+    echo "   Switches this checkout to the 'v3' branch and points Moonraker's update"
+    echo "   manager at it, so future updates keep tracking v3 instead of v4."
+    echo
+    echo "${C_WARNING}2) Upgrade to v4${C_OFF}"
+    echo "   Backs up your current .cfg files, then walks you through a FRESH v4 setup."
+    echo "   Your v3 settings are NOT carried over automatically - you'll reconfigure via"
+    echo "   menuconfig, using the backed-up files as a reference."
+    echo
+    echo "More details: https://github.com/moggieuk/Happy-Hare-Doc/blob/main/doc/Upgrade-v3-v4.md"
+    echo
+
+    sel=$(prompt_n 2 "Choose an option")
+    echo
+
+    if [ "${sel}" = "1" ]; then
+        if [ -f "${moonraker_conf}" ] && grep -q '^\[update_manager happy-hare\]' "${moonraker_conf}"; then
+            echo "${C_INFO}Pointing Moonraker's update manager at the 'v3' branch...${C_OFF}"
+            awk '
+                /^\[update_manager happy-hare\]/ { in_section=1; print; next }
+                /^\[/ { in_section=0 }
+                in_section && /^primary_branch:/ { print "primary_branch: v3"; next }
+                { print }
+            ' "${moonraker_conf}" >"${moonraker_conf}.tmp" && mv "${moonraker_conf}.tmp" "${moonraker_conf}"
+        fi
+        echo "${C_INFO}Switching to the 'v3' branch...${C_OFF}"
+        export BRANCH=v3
+        "$SCRIPT_DIR/installer/self_update.sh" || exit 1
+        F_SKIP_UPDATE=force exec "$0" "$@"
+    else
+        echo "${C_WARNING}Proceeding with the v4 upgrade. Your v3 settings will NOT be carried over${C_OFF}"
+        echo "${C_WARNING}automatically - your old .cfg files will be backed up for reference.${C_OFF}"
+        echo
+    fi
+}
+
 # Convert long options to short options
 for arg in "$@"; do
     shift
@@ -194,6 +272,11 @@ while getopts "ehfiudzsb:nk:c:m:a:toqv" arg; do
     *) usage ;;
     esac
 done
+
+# Settle v3 vs v4 before anything else runs (see offer_v3_v4_choice for why).
+if [ "${F_SKIP_UPDATE}" != "force" ] && v3_detected; then
+    offer_v3_v4_choice
+fi
 
 # Handle git self update or branch change
 if [ "${F_SKIP_UPDATE}" = "force" ]; then

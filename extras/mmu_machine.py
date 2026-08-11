@@ -16,14 +16,34 @@
 
 import logging
 
-# Happy Hare imports
-from .mmu                        import mmu_unit
-from .mmu.mmu_unit               import MmuUnit
-from .mmu.mmu_constants          import *
-from .mmu.mmu_utils              import SaveVariableManager
-from .mmu.mmu_sensor_utils       import MmuSensorFactory
-from .mmu.mmu_machine_parameters import MmuMachineParameters
-from .mmu.mmu_controller         import MmuController
+# Happy Hare imports. Guarded because a Happy Hare update pulled in without re-running
+# install.sh (e.g. via Moonraker's update_manager) leaves these new/renamed modules
+# unlinked in klippy/extras, so the import itself is the first thing to fail. Report
+# that failure as a clean config.error from load_config() instead of letting Klipper
+# surface a raw ImportError.
+_IMPORT_ERROR = None
+try:
+    from .mmu                        import mmu_unit
+    from .mmu.mmu_unit               import MmuUnit
+    from .mmu.mmu_constants          import *
+    from .mmu.mmu_utils              import SaveVariableManager
+    from .mmu.mmu_sensor_utils       import MmuSensorFactory
+    from .mmu.mmu_machine_parameters import MmuMachineParameters
+    from .mmu.mmu_controller         import MmuController
+except Exception as e:
+    _IMPORT_ERROR = e
+
+# VERSION/UPGRADE_REMINDER come from the guarded import above, so the failure message
+# can't reference them - keep this literal and self-contained.
+_NOT_INSTALLED_MSG = (
+    "Happy Hare's Klipper modules failed to load (%s).\n"
+    "This usually means Happy Hare was updated (e.g. via Moonraker's update manager)\n"
+    "without re-running the installer. Please run:\n"
+    "  cd ~/Happy-Hare && ./install.sh\n"
+#PAUL    "To stay on the previous release instead, run:\n"
+#PAUL    "  cd ~/Happy-Hare && ./install.sh -b v3\n"
+#PAUL    "More details: https://moggieuk.github.io/Happy-Hare-Doc/Upgrade-v3-v4.md"
+)
 
 
 class MmuMachine:
@@ -44,7 +64,7 @@ class MmuMachine:
         if self.happy_hare_version is None:
             raise self.config.error("Looks like Happy Hare is not installed correctly - cannot find `happy_hare_version` in klipper config")
         elif major_minor(self.happy_hare_version) < major_minor(VERSION):
-            raise self.config.error("Looks like you upgraded (v%s -> v%s)?\n%s" % (self.p.happy_hare_version, VERSION, UPGRADE_REMINDER))
+            raise self.config.error("Looks like you upgraded (v%s -> v%s)?\n%s" % (self.happy_hare_version, VERSION, UPGRADE_REMINDER))
 
         self.unit_names = list(config.getlist('units'))
         self.num_units = len(self.unit_names)
@@ -128,4 +148,6 @@ class MmuMachine:
 
 
 def load_config(config):
+    if _IMPORT_ERROR is not None:
+        raise config.error(_NOT_INSTALLED_MSG % str(_IMPORT_ERROR))
     return MmuMachine(config)
