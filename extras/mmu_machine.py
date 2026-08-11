@@ -38,7 +38,7 @@ except Exception as e:
 # below can't reference them - keep these literal and self-contained.
 _NOT_INSTALLED_MSG = (
     "Happy Hare's Klipper modules failed to load (%s).\n"
-    "This looks like it is because of a update to Happy Hare v4 while you are still running v3\n"
+    "This looks like it is because of a update to Happy Hare v4 while you are still configured for v3\n"
     "To see options please run:\n"
     "  cd ~/Happy-Hare && ./install.sh\n"
     "If you know you want to stat on v3, run:\n"
