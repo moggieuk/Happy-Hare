@@ -7,6 +7,8 @@
 #   PARAM_GEAR_HOLD_CURRENT
 #   PARAM_GEAR_FULL_STEPS_PER_ROTATION
 #   PARAM_GEAR_SENSE_RESISTOR
+#   PARAM_GEAR_SPI_BUS
+
 
 menu "Gear stepper"
 
@@ -42,5 +44,11 @@ menu "Gear stepper"
     default 0.110
     help
       Current-sense resistor value used by the gear stepper driver.
+  config PARAM_GEAR_SPI_BUS
+    string "Gear SPI bus           "
+    default "spi"
+    help
+      Only used when the gear TMC is a SPI chip (e.g. tmc2130)
+
 
 endmenu

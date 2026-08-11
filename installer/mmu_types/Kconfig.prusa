@@ -1,0 +1,91 @@
+config MMU_TYPE_PRUSA_MMU3_3_0
+  bool "Prusa MMU3"
+  select LINEAR_IDLER_SELECTOR
+  select MMU_HAS_SENSOR_SHARED_EXIT
+  select UNSELECT_MMU_HAS_LEDS        # MMU3 LEDs are on the SHR16 shift register (custom setup)
+  select UNSELECT_MMU_HAS_ENCODER
+  select UNSELECT_MMU_HAS_ESPOOLER
+  select UNSELECT_MMU_HAS_FILAMENT_BUFFER
+
+  select BOOL_REQUIRE_BOWDEN_MOVE
+  select UNSELECT_VARIABLE_BOWDEN_LENGTHS # Disable
+  select UNSELECT_FILAMENT_ALWAYS_GRIPPED # Disable
+  select UNSELECT_MMU_HAS_BYPASS          # No bypass gate
+
+  select DISABLE_NUM_GATES_OPTION
+
+if MMU_TYPE_PRUSA_MMU3_3_0
+
+  config PARAM_VENDOR
+    default "Prusa"
+  config PARAM_VERSION
+    default "3.0"
+  config PARAM_NUM_GATES
+    default 5
+
+  choice BOARD_TYPE
+    default BOARD_TYPE_PRUSA_MMU3_1_0
+  endchoice
+
+  # The MMU3 has three fixed TMC2130s on the hardware SPI bus
+  config PARAM_GEAR_TMC
+    default "tmc2130"
+  config PARAM_SELECTOR_TMC
+    default "tmc2130"
+  config PARAM_GEAR_SPI_BUS
+    default "spi"
+  config PARAM_SELECTOR_SPI_BUS
+    default "spi"
+  config PARAM_IDLER_SPI_BUS
+    default "spi"
+
+  # ------------------------------------------------------------------
+  # Defaults (gear/selector/idler motion hardware)
+  # NOTE: rotation distances are calibration-dependent on the MMU3 and
+  # should be tuned for your unit with MMU_CALIBRATE_GEAR / selector
+  # calibration routines
+  # ------------------------------------------------------------------
+
+  config PARAM_GEAR_GEAR_RATIO
+    default "1:1"
+  config PARAM_GEAR_ROTATION_DISTANCE
+    default 22.7
+  config PARAM_GEAR_RUN_CURRENT
+    default 0.6
+  config PARAM_GEAR_HOLD_CURRENT
+    default 0.1
+  config PARAM_GEAR_HOMING_SPEED
+    default 30
+
+  config PARAM_SELECTOR_GEAR_RATIO
+    default "1:1"
+  config PARAM_SELECTOR_ROTATION_DISTANCE
+    default 40
+  config PARAM_SELECTOR_RUN_CURRENT
+    default 0.5
+  config PARAM_SELECTOR_HOLD_CURRENT
+    default 0.2
+  config PARAM_SELECTOR_ACCEL
+    default 1200
+  config PARAM_SELECTOR_HOMING_SPEED
+    default 60
+
+  config PARAM_IDLER_GEAR_RATIO
+    default "1:1"
+  config PARAM_IDLER_ROTATION_DISTANCE
+    default 40
+  config PARAM_IDLER_RUN_CURRENT
+    default 0.5
+  config PARAM_IDLER_HOLD_CURRENT
+    default 0.2
+
+  config CUSTOM_LED_SETUP
+    def_bool y
+
+  if SHOW_MMU_ADDITIONS_WITH_TYPE
+    source "Kconfig.mmu_additions"
+  endif
+
+  source "Kconfig.capabilities"
+
+endif

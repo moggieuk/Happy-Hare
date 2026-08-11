@@ -78,6 +78,15 @@ class _Chip:
         self.ppins = ppins
         self.mcu = mcu
 
+    def __getattr__(self, name):
+        # Real Klipper registers the MCU object itself as the pin chip, so
+        # MCU command/config APIs (create_oid, alloc_command_queue, ...) live
+        # directly on the chip. Delegate so modules like shift_register.py that
+        # drive raw MCU commands work against the fake.
+        if 'mcu' in self.__dict__ and self.mcu is not None:
+            return getattr(self.mcu, name)
+        raise AttributeError(name)
+
     def setup_pin(self, pin_type, pin_params):
         return self.ppins._make_pin(self, pin_type, pin_params)
 

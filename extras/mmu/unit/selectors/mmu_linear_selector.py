@@ -114,6 +114,14 @@ class LinearSelectorParameters(TunableParametersBase):
                 'cad_last_gate_offset': 0.0,
             })
 
+        elif vendor == VENDOR_PRUSA.lower():
+            cad.update({
+                'cad_gate0_pos': 4.0,       # Approximate distance from endstop to first gate
+                'cad_gate_width': 20.0,     # MMU3 gate pitch
+                'cad_bypass_offset': 0.0,   # MMU3 has no bypass
+                'cad_last_gate_offset': 2.0,# Has hard stop at limit of travel
+            })
+
         return cad
 
 
