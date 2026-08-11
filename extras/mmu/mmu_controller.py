@@ -1787,9 +1787,12 @@ class MmuController(MmuFilamentMovement):
 
         if spool_id > 0 and self.p.spoolman_support != SPOOLMAN_PULL:
             self.log_info("Spool ID: %s automatically assigned to gate %d" % (spool_id, gate))
+            self.gate_maps.renew_gate_map() # Ensure webhooks sees get_status() change
             mod_gate_ids = self.gate_maps.assign_spool_id(gate, spool_id)
             if tag is not None:
-                self.gate_maps.set_gate_filament_from_tag(gate, rfid=tag[0])
+                self.gate_maps.set_gate_filament_from_tag(gate, rfid=tag[0]) # Also persists
+            else:
+                self.gate_maps.persist_gate_map(spoolman_sync=False) # Local-only; spoolman sync below
 
             # Request sync and update of filament attributes from Spoolman
             if self.p.spoolman_support == SPOOLMAN_PUSH:
