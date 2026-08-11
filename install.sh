@@ -30,7 +30,7 @@ OS_TYPE=""
 if [ $(uname -m) = "mips" ] && [ -d "/usr/data/creality" ]; then
     OS_TYPE="${OS_CREALITY_K1}"
     echo "Detected Creality K1 series printer"
-elif [ $(sed -n 's/^NAME="\(.*\)"/\1/p' /etc/os-release 2>/dev/null) = "FlyOS-Fast" ]; then
+elif [ "$(sed -n 's/^NAME="\(.*\)"/\1/p' /etc/os-release 2>/dev/null)" = "FlyOS-Fast" ]; then
     OS_TYPE="${OS_FLYOS_FAST}"
     echo "Detected FlyOS-Fast"
 elif [ $(uname -m) = "mips" ] && [ -d "/root/printer_software" ]; then
