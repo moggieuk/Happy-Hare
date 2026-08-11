@@ -170,6 +170,24 @@ guess_klipper_config_home() {
     fi
 }
 
+# Point Moonraker's update manager at a specific branch, so future automatic updates
+# keep tracking it instead of drifting back to whatever primary_branch was there before.
+# Scoped to the [update_manager happy-hare] section only - other [update_manager ...]
+# sections (for other repos) must not be touched.
+set_moonraker_primary_branch() {
+    branch="$1"
+    moonraker_conf="$(guess_klipper_config_home)/moonraker.conf"
+    if [ -f "${moonraker_conf}" ] && grep -q '^\[update_manager happy-hare\]' "${moonraker_conf}"; then
+        echo "${C_INFO}Pointing Moonraker's update manager at the '${branch}' branch...${C_OFF}"
+        awk -v branch="${branch}" '
+            /^\[update_manager happy-hare\]/ { in_section=1; print; next }
+            /^\[/ { in_section=0 }
+            in_section && /^primary_branch:/ { print "primary_branch: " branch; next }
+            { print }
+        ' "${moonraker_conf}" >"${moonraker_conf}.tmp" && mv "${moonraker_conf}.tmp" "${moonraker_conf}"
+    fi
+}
+
 # Detect a v3 install: no v4 Kconfig file yet, but a v3-era mmu_parameters.cfg already
 # on disk with a "happy_hare_version: 3.x" stamp (the value Happy Hare itself writes
 # and trusts for exactly this purpose).
@@ -189,42 +207,32 @@ v3_detected() {
 # after switching branches below (F_SKIP_UPDATE=force), so this never re-prompts itself
 # in a loop.
 offer_v3_v4_choice() {
-    klipper_config_home=$(guess_klipper_config_home)
-    moonraker_conf="${klipper_config_home}/moonraker.conf"
-
     echo
+    echo "${C_WARNING}------------------------------------------------------------------------${C_OFF}"
     echo "${C_WARNING}Happy Hare v4 is a major rework with breaking changes, and your existing${C_OFF}"
     echo "${C_WARNING}install looks like the previous (v3) release.${C_OFF}"
     echo "${C_WARNING}Much like The Matrix you have a choice..${C_OFF}"
     echo
-    echo "${C_WARNING}1) Stay on v3${C_OFF}"
-    echo "   Take the Blue 'ignorance' pill."
+    echo "${C_WARNING}1) Take the Blue 'ignorance' pill and stay on v3${C_OFF}"
     echo "   This switches this checkout to the 'v3' branch and points Moonraker's update"
     echo "   manager at it, so future updates keep tracking v3 instead of v4."
     echo "   You are free to upgrade at a later date."
     echo
-    echo "${C_WARNING}2) Upgrade to v4${C_OFF}"
-    echo "   Take the Red 'awakening' pill."
+    echo "${C_WARNING}2) Take the Red 'awakening' pill and upgrade to v4${C_OFF}"
     echo "   Backs up your current .cfg files, then walks you through a FRESH v4 setup."
     echo "   Your v3 settings are NOT carried over automatically - you'll reconfigure via"
     echo "   menuconfig, using the backed-up files as a reference."
+    echo "   ${C_WARNING}NOTE: DOES NOT YET WORK ON KALICO - stay on v3 for now${C_OFF}"
     echo
-    echo "More details: https://moggieuk.github.io/Happy-Hare-Doc/Upgrade-v3-v4.md"
+    echo "More details: https://moggieuk.github.io/Happy-Hare-Doc/Upgrade-v3-v4/"
+    echo "${C_WARNING}------------------------------------------------------------------------${C_OFF}"
     echo
 
     sel=$(prompt_n 2 "Choose your pill (option)")
     echo
 
     if [ "${sel}" = "1" ]; then
-        if [ -f "${moonraker_conf}" ] && grep -q '^\[update_manager happy-hare\]' "${moonraker_conf}"; then
-            echo "${C_INFO}Pointing Moonraker's update manager at the 'v3' branch...${C_OFF}"
-            awk '
-                /^\[update_manager happy-hare\]/ { in_section=1; print; next }
-                /^\[/ { in_section=0 }
-                in_section && /^primary_branch:/ { print "primary_branch: v3"; next }
-                { print }
-            ' "${moonraker_conf}" >"${moonraker_conf}.tmp" && mv "${moonraker_conf}.tmp" "${moonraker_conf}"
-        fi
+        set_moonraker_primary_branch v3
         echo "${C_INFO}Switching to the 'v3' branch...${C_OFF}"
         export BRANCH=v3
         "$SCRIPT_DIR/installer/self_update.sh" || exit 1
@@ -241,6 +249,7 @@ for arg in "$@"; do
     shift
     case "$arg" in
         --emu) set -- "$@" -e ;;
+        --help) set -- "$@" -h ;;
         *)     set -- "$@" "$arg" ;;
     esac
 done
@@ -287,6 +296,11 @@ if [ "${F_SKIP_UPDATE}" = "force" ]; then
     : # If we just restarted with a forced skip, do nothing
 elif [ ! "${F_SKIP_UPDATE}" ] && [ ! "${F_UNINSTALL}" ]; then
     [ -t 1 ] && clear
+    # -b <branch> is what self_update.sh is about to act on below - pin Moonraker's
+    # update manager to match, or it silently drifts back to the old primary_branch on
+    # its next check. Skipped by -z, exactly as -b itself is (see usage: "-z ... nullifies
+    # -b <branch>") since self_update.sh never runs to consult BRANCH in that case either.
+    [ -n "${BRANCH}" ] && set_moonraker_primary_branch "${BRANCH}"
     "$SCRIPT_DIR/installer/self_update.sh" || exit 1
     F_SKIP_UPDATE=force exec "$0" "$@"
 else
