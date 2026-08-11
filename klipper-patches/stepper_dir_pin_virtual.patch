@@ -1,0 +1,45 @@
+--- a/klippy/stepper.py
++++ b/klippy/stepper.py
+@@ -18,6 +18,12 @@
+ MIN_OPTIMIZED_BOTH_EDGE_DURATION = 0.000000150
+ MAX_STEPCOMPRESS_ERROR = 0.000025
+ 
++# Dummy GPIO configured as the firmware-side dir pin when the real dir pin is
++# virtual (e.g. a shift register bit driven from Python). Must be a pin that
++# nothing else uses on the stepper's mcu. 'PD5' is free on the Prusa MMU3
++# board (ATmega32U4).
++VIRTUAL_DIR_PLACEHOLDER_PIN = 'PD5'
++
+ # Interface to low-level mcu and chelper code
+ class MCU_stepper:
+     def __init__(self, config, step_pin_params, dir_pin_params,
+@@ -36,10 +42,25 @@
+         self._invert_step = step_pin_params['invert']
+         printer = mcu.get_printer()
+         if dir_pin_params['chip'] is not mcu:
+-            raise printer.config_error(
+-                "Stepper dir pin must be on same mcu as step pin")
+-        self._dir_pin = dir_pin_params['pin']
+-        self._invert_dir = self._orig_invert_dir = dir_pin_params['invert']
++            # A dir pin on a virtual chip (e.g. a shift register bit) cannot be
++            # driven by the mcu firmware. Store the virtual pin object so
++            # callers (Happy Hare's MmuStepper._pre_set_dir_pin()) can write
++            # the direction from Python before each move, and give the firmware
++            # a dummy GPIO to configure as its dir pin -- it is never
++            # meaningfully driven. The virtual pin applies its own inversion,
++            # so the firmware-side dir inversion is disabled.
++            if not hasattr(dir_pin_params['chip'], 'setup_pin'):
++                raise printer.config_error(
++                    "Stepper dir pin chip '%s' is not on the stepper mcu '%s'"
++                    % (dir_pin_params['chip_name'], mcu.get_name()))
++            self._dir_pin_virtual = dir_pin_params['chip'].setup_pin(
++                'digital_out', dir_pin_params)
++            self._dir_pin = VIRTUAL_DIR_PLACEHOLDER_PIN
++            self._invert_dir = self._orig_invert_dir = 0
++        else:
++            self._dir_pin_virtual = None
++            self._dir_pin = dir_pin_params['pin']
++            self._invert_dir = self._orig_invert_dir = dir_pin_params['invert']
+         self._step_both_edge = self._req_step_both_edge = False
+         self._mcu_position_offset = 0.
+         self._reset_cmd_tag = self._get_position_cmd = None
