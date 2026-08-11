@@ -98,7 +98,7 @@
 
 
 # IMPORTANT keep version string up-to-date and constistent with git tag
-happy_hare_version := $HH_VERSION
+happy_hare_version := $(HH_VERSION)
 
 hh_message  := $(shell, echo "Happy Hare v$(happy_hare_version)")
 unit_suffix := $(shell, [ -n "$$UNIT_NAME" ] && echo "Unit: [[B]]$(UNIT_NAME)[[/B]]" || echo "")

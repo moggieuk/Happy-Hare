@@ -95,12 +95,12 @@ hidden_params = [
 VAR_SECTION_MAP = {
     "var_software_":     "gcode_macro _MMU_SOFTWARE_VARS",
     "var_state_":        "gcode_macro _MMU_STATE_VARS",
-    "var_sequence_":     "gcode_macro _MMU_STATE_VARS",
+    "var_sequence_":     "gcode_macro _MMU_SEQUENCE_VARS",
     "var_client_":       "gcode_macro _MMU_CLIENT_VARS",
     "var_cut_tip_":      "gcode_macro _MMU_CUT_TIP_VARS",
     "var_form_tip_":     "gcode_macro _MMU_CUT_TIP_VARS",
     "var_servo_cutter_": "gcode_macro _MMU_SERVO_CUTTER_VARS",
-    "var_blobifer_":     "gcode_macro _BLOBIFIER_VARS",
+    "var_blobifier_":    "gcode_macro _BLOBIFIER_VARS",
     "var_purge_":        "gcode_macro _MMU_PURGE_VARS",
     "var_fan_":          "gcode_macro _MMU_FAN_VARS",
 }
