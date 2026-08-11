@@ -195,20 +195,24 @@ offer_v3_v4_choice() {
     echo
     echo "${C_WARNING}Happy Hare v4 is a major rework with breaking changes, and your existing${C_OFF}"
     echo "${C_WARNING}install looks like the previous (v3) release.${C_OFF}"
+    echo "${C_WARNING}Much like The Matrix you have a choice..${C_OFF}"
     echo
     echo "${C_WARNING}1) Stay on v3${C_OFF}"
-    echo "   Switches this checkout to the 'v3' branch and points Moonraker's update"
+    echo "   Take the Blue 'ignorance' pill."
+    echo "   This switches this checkout to the 'v3' branch and points Moonraker's update"
     echo "   manager at it, so future updates keep tracking v3 instead of v4."
+    echo "   You are free to upgrade at a later date."
     echo
     echo "${C_WARNING}2) Upgrade to v4${C_OFF}"
+    echo "   Take the Red 'awakening' pill."
     echo "   Backs up your current .cfg files, then walks you through a FRESH v4 setup."
     echo "   Your v3 settings are NOT carried over automatically - you'll reconfigure via"
     echo "   menuconfig, using the backed-up files as a reference."
     echo
-    echo "More details: https://github.com/moggieuk/Happy-Hare-Doc/blob/main/doc/Upgrade-v3-v4.md"
+    echo "More details: https://moggieuk.github.io/Happy-Hare-Doc/Upgrade-v3-v4.md"
     echo
 
-    sel=$(prompt_n 2 "Choose an option")
+    sel=$(prompt_n 2 "Choose your pill (option)")
     echo
 
     if [ "${sel}" = "1" ]; then
