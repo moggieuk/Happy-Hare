@@ -488,6 +488,14 @@ ERCF_VVD_DUAL_EXTRUDER = ERCF_VVD.derive(
     ],
     description='ercf_vvd with each unit on its own extruder')
 
+# Prusa MMU3 - Type A, LinearIdlerSelector, 5 gates. Exercises the shift register
+# based stepper DIR/ENABLE pins (mmu_sr:N virtual pins), the TMC2130 SPI TMC
+# sections and the idler stepper with stallguard "touch" homing.
+PRUSA_MMU3 = Profile(
+    'prusa_mmu3',
+    syms={'MMU_TYPE_PRUSA_MMU3_3_0': True},
+    description='Prusa MMU3 - Type A, LinearIdlerSelector, 5 gates, SHR16 shift register')
+
 # Appended to bootstrap.PRINTER_STUB by tests using the profile above. The TMC section is not
 # optional - MmuExtruderWrapper raises without one for the extruder it is given.
 EXTRA_EXTRUDER_STUB = """
@@ -520,7 +528,7 @@ PROFILES = {p.name: p for p in (BOXTURTLE, TRADRACK, CHAMELEON, EMU, ENCODER, NF
                                 NFC_PN532, NFC_PN532_SW_I2C,
                                 NFC_PN532_UART, NFC_PN532_UART_PER_GATE,
                                 NFC_SPOOLMAN, NFC_SPOOLMAN_SHARED,
-                                ERCF_VVD, ERCF_VVD_DUAL_EXTRUDER)}
+                                ERCF_VVD, ERCF_VVD_DUAL_EXTRUDER, PRUSA_MMU3)}
 
 
 def get(name):

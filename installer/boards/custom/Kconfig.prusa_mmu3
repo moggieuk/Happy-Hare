@@ -1,0 +1,78 @@
+config BOARD_TYPE_PRUSA_MMU3_1_0
+  bool "Prusa MMU3 MCU"
+
+if BOARD_TYPE_PRUSA_MMU3_1_0
+  config PARAM_BOARD_TYPE
+    default "Prusa MMU3 (ATmega32U4)"
+
+  choice CHOICE_MMU_CONNECTION_TYPE
+    default CHOICE_MMU_CONNECTION_TYPE_SERIAL
+  endchoice
+  choice CHOICE_MMU_SERIAL_CONNECTION
+    default $(mmu_serial_config,1,atmega32u4)
+  endchoice
+
+  # ------------------------------------------------------------------
+  # Prusa MMU3 fixed pinout
+  # The three TMC2130 steppers are on the hardware SPI bus (spi) with
+  # individual CS pins. DIR/ENABLE for all three steppers come from the
+  # SHR16 shift register (virtual pins mmu_sr:N) so the [shift_register]
+  # section is mandatory.
+  #   SR bit 0/1  = Gear DIR/ENABLE (enable active low)
+  #   SR bit 2/3  = Selector DIR/ENABLE (enable active low)
+  #   SR bit 4/5  = Idler DIR/ENABLE (enable active low)
+  #   SR bit 6-15 = LEDs
+  # ------------------------------------------------------------------
+
+  # Gear TMC2130
+  config PIN_GEAR_STEP
+    default "$(MCU_NAME):PB4"
+  config PIN_GEAR_CS
+    default "!$(MCU_NAME):PC6"
+  config PIN_GEAR_DIR
+    default "!mmu_sr:0"
+  config PIN_GEAR_ENABLE
+    default "!mmu_sr:1"
+  config PIN_GEAR_DIAG
+    default "!$(MCU_NAME):PF4"
+
+  # Selector TMC2130
+  config PIN_SELECTOR_STEP
+    default "$(MCU_NAME):PD4"
+  config PIN_SELECTOR_CS
+    default "!$(MCU_NAME):PD7"
+  config PIN_SELECTOR_DIR
+    default "mmu_sr:2"
+  config PIN_SELECTOR_ENABLE
+    default "!mmu_sr:3"
+  config PIN_SELECTOR_DIAG
+    default "!$(MCU_NAME):PF1"
+  # No physical selector endstop on the MMU3 -- stallguard "touch" homing
+  config PIN_SELECTOR_ENDSTOP
+    default "tmc2130_$(UNIT_NAME)_selector:virtual_endstop"
+
+  # Idler TMC2130
+  config PIN_IDLER_STEP
+    default "$(MCU_NAME):PD6"
+  config PIN_IDLER_CS
+    default "!$(MCU_NAME):PB7"
+  config PIN_IDLER_DIR
+    default "!mmu_sr:4"
+  config PIN_IDLER_ENABLE
+    default "!mmu_sr:5"
+  config PIN_IDLER_DIAG
+    default "!$(MCU_NAME):PF0"
+
+  # SHR16 shift register control pins
+  config PIN_SR_DATA
+    default "$(MCU_NAME):PB5"
+  config PIN_SR_CLOCK
+    default "$(MCU_NAME):PC7"
+  config PIN_SR_LATCH
+    default "$(MCU_NAME):PB6"
+
+  # Gate filament sensor (single sensor shared by all gates)
+  config PIN_SHARED_EXIT_SENSOR
+    default "!$(MCU_NAME):PF6"
+
+endif

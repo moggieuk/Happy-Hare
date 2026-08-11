@@ -59,6 +59,7 @@ SELECTOR_ROTARY            = 'RotarySelector'          # Type-A (Chameleon) desi
 SELECTOR_MACRO             = 'MacroSelector'           # Fully user implemented
 SELECTOR_INDEXED           = 'IndexedSelector'         # Type-A with rotating indexed stepper gate selection (BTT ViViD design)
 SELECTOR_LINEAR_MULTI_GEAR = 'LinearMultiGearSelector' # Type-C with linear stepper
+SELECTOR_LINEAR_IDLER      = 'LinearIdlerSelector'     # Type-A with linear stepper and idler stepper filament grip (Prusa MMU3)
 
 
 # Define type/style of MMU and expand configuration for convenience. Validate hardware configuration
@@ -117,10 +118,8 @@ class MmuUnit:
             VENDOR_KMS:          replace(DEF_PROFILE, filament_always_gripped=True),
             VENDOR_EMU:          replace(DEF_PROFILE, variable_bowden_lengths=True, filament_always_gripped=True),
             VENDOR_LOW_RIDER:    replace(DEF_PROFILE, selector_type=SELECTOR_ROTARY),
+            VENDOR_PRUSA:        replace(DEF_PROFILE, selector_type=SELECTOR_LINEAR_IDLER, variable_rotation_distances=False),
         }
-
-        if self.mmu_vendor == VENDOR_PRUSA:
-            raise config.error("Prusa MMU is not yet supported")
 
         profile = VENDOR_PROFILES.get(self.mmu_vendor, DEF_PROFILE)
 
@@ -252,6 +251,11 @@ class MmuUnit:
                 raise config.error("gear_steppers is not the correct length, expected %d elements" % self.num_gates)
         else:
             self.mmu_gear_names = [config.get('gear_stepper')] * self.num_gates
+
+        # Optional idler stepper (e.g. Prusa MMU3 filament grip barrel)
+        self.mmu_idler_name = config.get('idler_stepper', None)
+        if self.selector_type == SELECTOR_LINEAR_IDLER and not self.mmu_idler_name:
+            raise config.error("'idler_stepper' must be specified in [mmu_unit %s] for a LinearIdlerSelector" % self.name)
 
         # Find the TMC controller for base gear stepper so we can fill in missing config for other matching steppers
         # and ensure all gear steppers can be loaded

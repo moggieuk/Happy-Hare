@@ -52,6 +52,8 @@ menu "Pins / TMC"
   menu "Gear pins"
     config PIN_GEAR_UART
       string "Gear UART pin    "
+    config PIN_GEAR_CS
+      string "Gear CS pin      "
     config PIN_GEAR_STEP
       string "Gear step pin    "
     config PIN_GEAR_DIR
@@ -63,6 +65,8 @@ menu "Pins / TMC"
 
     @repeat var=i min=1 max=11@
       config PIN_GEAR_UART_$(i)
+        string
+      config PIN_GEAR_CS_$(i)
         string
       config PIN_GEAR_STEP_$(i)
         string
@@ -100,6 +104,8 @@ menu "Pins / TMC"
 
   config PIN_SELECTOR_UART
     string
+  config PIN_SELECTOR_CS
+    string
   config PIN_SELECTOR_STEP
     string
   config PIN_SELECTOR_DIR
@@ -111,6 +117,25 @@ menu "Pins / TMC"
   config PIN_SELECTOR_ENDSTOP
     string
   config PIN_SELECTOR_SERVO
+    string
+
+  config PIN_IDLER_UART
+    string
+  config PIN_IDLER_CS
+    string
+  config PIN_IDLER_STEP
+    string
+  config PIN_IDLER_DIR
+    string
+  config PIN_IDLER_ENABLE
+    string
+  config PIN_IDLER_DIAG
+    string
+  config PIN_SR_DATA
+    string
+  config PIN_SR_CLOCK
+    string
+  config PIN_SR_LATCH
     string
 
   @repeat var=i min=0 max=11@
@@ -181,6 +206,29 @@ menu "Pins / TMC"
     config PIN_SELECTOR_SERVO
       prompt "Servo pin           " if MMU_HAS_SELECTOR_SERVO
   endmenu
+
+  if MMU_HAS_IDLER
+    menu "Idler pins"
+      config PIN_IDLER_UART
+        prompt "Idler UART pin      "
+      config PIN_IDLER_CS
+        prompt "Idler CS pin        "
+      config PIN_IDLER_STEP
+        prompt "Idler step pin      "
+      config PIN_IDLER_DIR
+        prompt "Idler dir pin       "
+      config PIN_IDLER_ENABLE
+        prompt "Idler enable pin    "
+      config PIN_IDLER_DIAG
+        prompt "Idler diag pin      "
+      config PIN_SR_DATA
+        prompt "Shift register data pin"
+      config PIN_SR_CLOCK
+        prompt "Shift register clock pin"
+      config PIN_SR_LATCH
+        prompt "Shift register latch pin"
+    endmenu
+  endif
 
 # -------------------------------------
 # eSpooler

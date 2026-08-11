@@ -56,6 +56,8 @@ BOOTABLE = {
     # count, and the selector named here is unit0's - unit1 is an IndexedSelector and gets
     # its own assertions in TestMultiUnitMachine below.
     'ercf_vvd': (13, 'LinearServoSelector'),
+    # Prusa MMU3 - Type A, LinearIdlerSelector, SHR16 shift register stepper pins
+    'prusa_mmu3': (5, 'LinearIdlerSelector'),
 }
 
 # Selector classes reached only through a non-first unit, so the BOOTABLE table above cannot
@@ -115,6 +117,23 @@ class TestEveryBootableProfile(unittest.TestCase):
     def test_ercf_vvd(self):
         """Two units, two selector classes, 13 gates - see TestMultiUnitMachine."""
         self._check('ercf_vvd')
+
+    def test_prusa_mmu3(self):
+        """
+        The only LinearIdlerSelector, and the only machine with shift-register stepper
+        DIR/ENABLE pins (mmu_sr:N). Checks the idler stepper + its stallguard touch
+        endstop resolved, and that the shift register chip registered as a pin provider.
+        """
+        hh = self._check('prusa_mmu3')
+        selector = hh.mmu.mmu_unit(0).selector
+        self.assertEqual(type(selector).__name__, 'LinearIdlerSelector')
+        self.assertTrue(selector.idler.idler_touch)
+        self.assertTrue(hasattr(selector.idler, 'idler_stepper'))
+        self.assertEqual(selector.idler.idler_stepper.full_name, 'mmu_stepper unit0_idler')
+
+        # The SHR16 shift register chip must be registered as a pin provider
+        ppins = hh.printer.lookup_object('pins')
+        self.assertIn('mmu_sr', ppins.chips)
 
     def test_each_profile_reaches_a_determinate_filament_state(self):
         """
@@ -267,7 +286,7 @@ class TestSelectorCoverage(unittest.TestCase):
                      | EXERCISED_BY_LATER_UNITS)
         self.assertEqual(
             exercised,
-            {'VirtualSelector', 'LinearServoSelector', 'IndexedSelector', 'RotarySelector'},
+            {'VirtualSelector', 'LinearServoSelector', 'LinearIdlerSelector', 'IndexedSelector', 'RotarySelector'},
             'update this and the README coverage map when a profile adds another selector '
             'type')
 

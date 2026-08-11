@@ -44,6 +44,12 @@ class MCU:
         self._name = name
         self._reactor = reactor
         self._freq = 64000000.
+        # Raw MCU command APIs (used by e.g. shift_register.py's _RawDigitalOut)
+        self._config_callbacks = []
+        self._oid_count = 0
+        self.config_cmds = []
+        self.sent_commands = []     # [(msgformat, args)] in send order
+        self._command_queues = []
 
     def get_name(self):
         return self._name
@@ -68,6 +74,27 @@ class MCU:
 
     def get_printer(self):
         return None
+
+    # -- raw MCU config/command surface (Klipper mcu.py equivalents) ----------
+
+    def register_config_callback(self, cb):
+        self._config_callbacks.append(cb)
+
+    def create_oid(self):
+        self._oid_count += 1
+        return self._oid_count
+
+    def add_config_cmd(self, cmd, is_init=False, on_error=True):
+        self.config_cmds.append(cmd)
+
+    def alloc_command_queue(self):
+        self._command_queues.append(None)
+        return len(self._command_queues) - 1
+
+    def lookup_command(self, msgformat, cq=None):
+        def _send(args, **kwargs):
+            self.sent_commands.append((msgformat, dict(args)))
+        return _send
 
 
 class _PinBase:

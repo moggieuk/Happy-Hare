@@ -701,7 +701,7 @@ Green is not the same as covered. Roughly where things stand:
 | Endless spool and runout | **good** | including the clog-vs-runout decision |
 | LEDs | **good** | effects and overlays; not the neopixel protocol |
 | Sync feedback / buffer sensors | **partial** | EMU's analog sensor boots; the tension logic has a known bug |
-| Physical selector homing and selection | **good** | all three selector families home, select and move filament — `test_mmu_selector.py`. `RotarySelector` also expresses grip as a carriage position, so releasing to the opposing gate is covered there |
+| Physical selector homing and selection | **good** | all four selector families home, select and move filament — `test_mmu_selector.py`. `RotarySelector` also expresses grip as a carriage position, so releasing to the opposing gate is covered there; `LinearIdlerSelector` (Prusa MMU3) homes its idler barrel with stallguard and grips per gate |
 | Calibration | **partial** | seeded by default for speed, but `MMU_CALIBRATE_SELECTOR` (manual and `AUTO=1`) and `MMU_CALIBRATE_BOWDEN` run for real — `test_mmu_selector.py` |
 | Developer commands (`_MMU_TEST`) | **partial** | every option is run and must not raise — `test_mmu_dev_test.py`. What the stress probes *provoke* is step-generation timing the harness does not model |
 | Espooler, FlowGuard | **none** | |
@@ -825,6 +825,7 @@ templates** from them, so a broken template shows up as a test failure.
 | `tradrack` | a physical (servo) selector, single unit, no encoder — the simplest physical-selector case |
 | `chameleon` | 3D Chameleon: the only `RotarySelector`, and the only machine with no servo — one gear motor reversed on half the gates, and "release" means driving the carriage to the opposing gate's offset |
 | `emu` | 5 gates and the only shipped profile with an analog buffer sensor |
+| `prusa_mmu3` | Prusa MMU3: the only `LinearIdlerSelector` and the only machine with shift-register stepper DIR/ENABLE pins (`mmu_sr:N`) and TMC2130 SPI TMC sections. 5 gates, a stepper-driven idler barrel (homed with stallguard) and a fixed MMU3 board pinout |
 | `encoder` | BoxTurtle plus an encoder, homing to it instead of to the gate switch |
 | `nfc_single` | one common NFC reader |
 | `nfc_per_gate` | one reader per gate |

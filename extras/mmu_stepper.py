@@ -850,10 +850,42 @@ class MmuStepper(ExtruderStepper):
             self.commanded_pos = setpos
 
 
+    def _pre_set_dir_pin(self, dist, positive_dir=None):
+        """
+        Pre-set shift register DIR bit before a move (Prusa MMU3 SHR16).
+
+        The SR DIR bit lives in Python (ShiftRegisterBit), never in MCU
+        firmware, so it must be written before the move starts. Klipper's
+        firmware-side dir pin is a no-op placeholder in this setup.
+
+        Called from:
+          - _submit_move()      -> regular moves (via do_move)
+          - do_homing_move()    -> HomingMove drips moves, bypassing do_move
+          - do_home_rail()      -> MmuGenericRail.home() drips too
+
+        `positive_dir` overrides the sign of `dist` for homing where the
+        drip move target may not reflect the first approach direction.
+        """
+        if dist == 0:
+            return
+        vpin = getattr(self.stepper, '_dir_pin_virtual', None)
+        if vpin is None:
+            return
+        new_dir = 0 if (positive_dir if positive_dir is not None else dist > 0) else 1
+        # Pass new_dir directly -- ShiftRegisterBit.set_digital() already
+        # applies the pin's invert flag internally, so do NOT XOR with the
+        # stepper's dir_inverted flag or the inversion cancels out.
+        mcu = vpin.get_mcu()
+        curtime = self.printer.get_reactor().monotonic()
+        sched_time = mcu.estimated_print_time(curtime) + 0.010
+        vpin.set_digital(sched_time, new_dir)
+
+
     def _submit_move(self, movetime, movepos, speed, accel):
         self._require_manual_mode("MOVE")
         cp = self.commanded_pos
         dist = movepos - cp
+        self._pre_set_dir_pin(dist) # Pre-set shift register DIR bit (Prusa MMU3)
         axis_r, accel_t, cruise_t, cruise_v = force_move.calc_move_time(dist, speed, accel)
         self.trapq_append(self.manual_trapq, movetime, accel_t, cruise_t, accel_t,
                           cp, 0., 0., axis_r, 0., 0., 0., cruise_v, accel)
@@ -878,6 +910,8 @@ class MmuStepper(ExtruderStepper):
         if not isinstance(self.rail, MmuGenericRail):
             raise self.printer.command_error("No endstop for this MMU stepper")
 
+        self._pre_set_dir_pin(movepos - self.commanded_pos) # Pre-set shift register DIR bit (Prusa MMU3)
+
         endstops = self.rail.get_homing_endstops(endstop_name)
 
         phoming = self.printer.lookup_object('homing')
@@ -899,6 +933,8 @@ class MmuStepper(ExtruderStepper):
 
         position_min, position_max = self.rail.get_range()
         hi = self.rail.get_homing_info()
+
+        self._pre_set_dir_pin(1.0, positive_dir=hi.positive_dir) # Pre-set shift register DIR bit (Prusa MMU3)
 
         homepos = hi.position_endstop
         if hi.positive_dir:

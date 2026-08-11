@@ -47,6 +47,9 @@ config MMU_HAS_SELECTOR_STEPPER
 config MMU_HAS_SELECTOR_SERVO
   def_bool n
 
+config MMU_HAS_IDLER
+  def_bool n
+
 config MMU_HAS_ENCODER
   def_bool n
 

@@ -475,6 +475,116 @@ class TestStepperPositionSemantics(unittest.TestCase):
         self.assertAlmostEqual(travelled, 37., places=3)
 
 
+class TestPrusaIdlerSelector(SelectorTestCase):
+    """
+    Prusa MMU3: a LinearIdlerSelector. The selector is a plain linear carriage
+    (homing with stallguard, like the LinearSelector family) and the IDLER is a
+    stepper barrel that grips/releases filament at each gate, with one extra
+    disengaged position beyond the last gate. Both home during MMU_HOME.
+    """
+
+    PROFILE = 'prusa_mmu3'
+
+    def idler(self):
+        return self.selector('unit0').idler
+
+    def idler_axis(self):
+        for axis in self.hh.printer.harness_selectors:
+            if getattr(axis, 'idler', None) is not None:
+                return axis
+        self.fail('no idler axis published for prusa_mmu3')
+
+    def test_homing_homes_both_selector_and_idler(self):
+        selector = self.selector('unit0')
+        self.assertTrue(selector.is_homed)
+        self.assertTrue(selector.idler.is_homed)
+
+    def test_idler_offsets_follow_the_rotation_distance(self):
+        """
+        Nominal idler geometry: one gate position per rotation/num_gates, and the
+        disengaged position one full rotation beyond home. The harness seeds from
+        the stepper's rotation distance, so the offsets must match it.
+        """
+        idler = self.idler()
+        rd = idler.idler_stepper.stepper.get_rotation_distance()[0]
+        spacing = rd / self.hh.mmu.num_gates
+        self.assertEqual(idler.idler_offsets[:5],
+                         [round(i * spacing, 1) for i in range(5)])
+        self.assertEqual(idler.idler_offsets[5], round(spacing * 5, 1))
+
+    def test_selecting_a_gate_grips_filament_at_that_gates_offset(self):
+        idler, axis = self.idler(), self.idler_axis()
+        for gate in (0, 2, 4):
+            with self.subTest(gate=gate):
+                self.hh.run_gcode('MMU_SELECT GATE=%d' % gate)
+                self.assertEqual(self.hh.mmu.gate_selected, gate)
+                self.assertAlmostEqual(axis.carriage, idler.idler_offsets[gate],
+                                       places=3)
+                self.assertEqual(idler.get_filament_grip_state(), FILAMENT_DRIVE_STATE)
+                self.assertEqual(self.hh.errors, [])
+
+    def test_release_pre_positions_at_the_selected_gate(self):
+        """
+        MMU3 semantics: release pre-positions the idler at the selected gate so the
+        gear can drive filament immediately. Only selector movement disengages.
+        """
+        idler, axis = self.idler(), self.idler_axis()
+        self.hh.run_gcode('MMU_SELECT GATE=1')
+        self.hh.mmu.mmu_unit(0).selector.filament_release()
+        self.assertAlmostEqual(axis.carriage, idler.idler_offsets[1], places=3)
+        self.assertEqual(idler.get_filament_grip_state(), FILAMENT_DRIVE_STATE)
+
+    def test_hold_move_disengages_before_selector_movement(self):
+        """filament_hold_move() (called before every selector move) parks the idler."""
+        idler, axis = self.idler(), self.idler_axis()
+        self.hh.run_gcode('MMU_SELECT GATE=3')
+        self.hh.mmu.mmu_unit(0).selector.filament_hold_move()
+        self.assertAlmostEqual(axis.carriage, idler.idler_offsets[5], places=3)
+        self.assertEqual(idler.get_filament_grip_state(), FILAMENT_RELEASE_STATE)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_drive_after_home_moves_to_the_gate(self):
+        idler, axis = self.idler(), self.idler_axis()
+        self.hh.run_gcode('MMU_SELECT GATE=0')
+        self.hh.mmu.mmu_unit(0).selector.filament_drive()
+        self.assertAlmostEqual(axis.carriage, idler.idler_offsets[0], places=3)
+        self.assertEqual(idler.get_filament_grip_state(), FILAMENT_DRIVE_STATE)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_idler_moves_go_through_the_mmu_stepper_with_dir_pre_set(self):
+        """
+        The _pre_set_dir_pin hook must fire for idler moves: the MMU3 DIR bits live
+        on the SHR16 shift register and are written before every move. Patch a
+        recorder onto the stepper's virtual dir pin and watch do_move() drive it.
+
+        After MMU_HOME the idler sits DISENGAGED at the far end (the homing
+        reselect parks it there), so a move to gate 2 is backward (dir 1) and a
+        move to gate 5 is forward (dir 0).
+        """
+        idler = self.idler()
+        calls = []
+
+        class FakeVirtualDirPin:
+            def get_mcu(self):
+                return idler.idler_stepper.stepper.get_mcu()
+            def set_digital(self, print_time, value):
+                calls.append((print_time, value))
+
+        stepper = idler.idler_stepper.stepper
+        original = getattr(stepper, '_dir_pin_virtual', None)
+        stepper._dir_pin_virtual = FakeVirtualDirPin()
+        try:
+            idler._set_idler_to_gate(2)   # 40 -> 16: backward move, dir 1
+            self.assertEqual(calls[-1][1], 1)
+            idler._set_idler_to_gate(5)   # 16 -> 40: forward move, dir 0
+            self.assertEqual(calls[-1][1], 0)
+        finally:
+            if original is None:
+                delattr(stepper, '_dir_pin_virtual')
+            else:
+                stepper._dir_pin_virtual = original
+
+
 class TestMultiUnitSelectors(SelectorTestCase):
     """
     ercf_vvd: two units, two selector classes, and an encoder on one of them.

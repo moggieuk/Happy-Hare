@@ -6,6 +6,7 @@
 #   PARAM_GEAR_RUN_CURRENT
 #   PARAM_GEAR_HOLD_CURRENT
 #   PARAM_GEAR_FULL_STEPS_PER_ROTATION
+#   PARAM_GEAR_SPI_BUS
 
 menu "Gear stepper"
 
@@ -34,5 +35,11 @@ menu "Gear stepper"
     default 200
     help
       200 for 1.8 degree, 400 for 0.9 degree
+
+  config PARAM_GEAR_SPI_BUS
+    string "Gear SPI bus           "
+    default "spi"
+    help
+      Only used when the gear TMC is a SPI chip (e.g. tmc2130)
 
 endmenu

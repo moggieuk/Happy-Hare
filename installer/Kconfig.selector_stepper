@@ -15,6 +15,8 @@
 #
 #   PARAM_SELECTOR_GATE_DIRECTIONS
 #   PARAM_SELECTOR_RELEASE_GATES
+#
+#   PARAM_SELECTOR_SPI_BUS
 
 
 if MMU_HAS_SELECTOR_STEPPER
@@ -53,6 +55,12 @@ if MMU_HAS_SELECTOR_STEPPER
       default 200
       help
         200 for 1.8 degree, 400 for 0.9 degree
+
+    config PARAM_SELECTOR_SPI_BUS
+      string "Selector SPI bus                "
+      default "spi"
+      help
+        Only used when the selector TMC is a SPI chip (e.g. tmc2130)
 
     config BOOL_STARTUP_HOME_SELECTOR
       bool "Home selector at startup?"

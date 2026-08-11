@@ -26,6 +26,13 @@ choice CHOICE_SELECTOR_TYPE
     help
       This uses stepper for linear movement and servo for filament gripping
 
+  config CHOICE_SELECTOR_TYPE_LINEAR_IDLER_SELECTOR
+    bool "LinearIdlerSelector" 
+    help
+      This uses stepper for linear movement and a stepper driven idler
+      barrel for filament gripping (e.g. Prusa MMU3)
+      Requires an idler stepper with stallguard "touch" homing
+
   config CHOICE_SELECTOR_TYPE_LINEAR_MUTLI_GEAR_SELECTOR
     bool "LinearMultiGearSelector" 
     help
@@ -77,6 +84,11 @@ config LINEAR_SERVO_SELECTOR
   select MMU_HAS_SELECTOR_STEPPER
   select MMU_HAS_SELECTOR_SERVO
 
+config LINEAR_IDLER_SELECTOR
+  def_bool CHOICE_SELECTOR_TYPE_LINEAR_IDLER_SELECTOR
+  select MMU_HAS_SELECTOR_STEPPER
+  select MMU_HAS_IDLER
+
 config LINEAR_MUTLI_GEAR_SELECTOR
   def_bool CHOICE_SELECTOR_TYPE_LINEAR_MULTI_GEAR_SELECTOR
   select MMU_HAS_SELECTOR_STEPPER
@@ -108,6 +120,7 @@ config PARAM_SELECTOR_TYPE
   default "VirtualSelector"         if VIRTUAL_SELECTOR
   default "LinearSelector"          if LINEAR_SELECTOR
   default "LinearServoSelector"     if LINEAR_SERVO_SELECTOR
+  default "LinearIdlerSelector"     if LINEAR_IDLER_SELECTOR
   default "LinearMultiGearSelector" if LINEAR_MULTI_GEAR_SELECTOR
   default "RotarySelector"          if ROTARY_SELECTOR
   default "MacroSelector"           if MACRO_SELECTOR

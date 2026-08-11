@@ -1,0 +1,85 @@
+# Idler stepper parameter tokens for hardware and speeds
+# Must be in a "if MMU_HAS_IDLER" clause in cfg templates
+#
+# Responsible for setting:
+#   PARAM_IDLER_GEAR_RATIO
+#   PARAM_IDLER_ROTATION_DISTANCE
+#   PARAM_IDLER_RUN_CURRENT
+#   PARAM_IDLER_HOLD_CURRENT
+#   PARAM_IDLER_FULL_STEPS_PER_ROTATION
+#   PARAM_IDLER_TMC
+#   PARAM_IDLER_SPI_BUS
+#
+# The idler is a stepper-driven filament grip barrel (e.g. Prusa MMU3)
+# homed with stallguard "touch" on the TMC virtual endstop (mmu_idler_touch)
+
+
+if MMU_HAS_IDLER
+  menu "Idler stepper"
+
+    config PARAM_IDLER_GEAR_RATIO
+      string "Idler gear ratio               "
+      default "1:1"
+
+    config PARAM_IDLER_ROTATION_DISTANCE
+      float "Idler rotation distance        "
+      default 40
+      help
+        Distance the idler barrel moves for one full rotation.
+        MMU3 moves the idler one gate position per rotation/num_gates.
+
+    config PARAM_IDLER_RUN_CURRENT
+      float "Idler run current              "
+      default 0.5
+
+    config PARAM_IDLER_HOLD_CURRENT
+      float "Idler hold current             "
+      default 0.2
+
+    config PARAM_IDLER_FULL_STEPS_PER_ROTATION
+      int "Idler full steps per rotation  "
+      default 200
+      help
+        200 for 1.8 degree, 400 for 0.9 degree
+
+    config PARAM_IDLER_TMC
+      string "Idler TMC driver type          "
+      default "tmc2130"
+      help
+        The idler needs a TMC driver with stallguard for "touch" homing
+
+    config PARAM_IDLER_SPI_BUS
+      string "Idler SPI bus                  "
+      default "spi"
+      help
+        Only used when the idler TMC is a SPI chip (e.g. tmc2130)
+
+    config PARAM_IDLER_DWELL
+      float "Idler dwell time               "
+      default 0.4
+      help
+        Minimum time given to the idler to complete movement prior to next move
+
+    config PARAM_IDLER_BUZZ_GEAR_ON_DOWN
+      int "Buzz gear on idler down        "
+      default 3
+      help
+        Whether to "buzz" the gear stepper on idler down to aid engagement
+        (0 to disable)
+
+    config PARAM_IDLER_HOMING_SPEED
+      float "Idler homing speed             "
+      default 20
+      help
+        Speed of the idler homing move (stallguard "touch")
+
+    config PARAM_IDLER_HOMING_MOVE_DIST
+      float "Idler homing move distance     "
+      default 40
+      help
+        Distance to search for the idler home position. The MMU3 idler barrel
+        homes by driving against its mechanical stop (stallguard), so this
+        must be at least one full rotation.
+
+  endmenu
+endif

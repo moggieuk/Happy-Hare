@@ -86,7 +86,10 @@ class SelectorAxis:
         # HomingMove.check_no_movement() and fails MMU_HOME with "Endstop still triggered
         # after retract". Gate 0 is also where MMU_CALIBRATE_SELECTOR AUTO=1 asks the user to
         # put it by hand, so a cold session is ready for the real calibration flow.
-        self.carriage = offsets[0] if offsets else (self.travel_min or 0.)
+        self.carriage = self._start_carriage(offsets)
+
+    def _start_carriage(self, offsets):
+        return offsets[0] if offsets else (self.travel_min or 0.)
 
     # -- motion ------------------------------------------------------------------
 
@@ -243,6 +246,11 @@ def axes_for(printer):
     renaming. Units with a VirtualSelector have no selector_stepper and are skipped, which is
     why a BoxTurtle session gets an empty list and behaves exactly as before.
 
+    A unit with an IDLER (e.g. Prusa MMU3 LinearIdlerSelector) gets an extra IdlerAxis for
+    its idler stepper: idler homing drives against the mechanical stop with stallguard
+    (default endstop is the TMC virtual endstop), so the axis models home at position_endstop
+    with the carriage starting at the far end of the homing search.
+
     The fake klippy tree never imports from test.hh - it communicates only through
     printer.harness_* attributes (see harness_filament, harness_counters) - so this is called
     from the harness side and the result handed over.
@@ -255,4 +263,32 @@ def axes_for(printer):
         stepper = getattr(selector, 'selector_stepper', None)
         if stepper is not None:
             out.append(SelectorAxis(unit, selector, stepper))
+        idler = getattr(selector, 'idler', None)
+        idler_stepper = getattr(idler, 'idler_stepper', None)
+        if idler_stepper is not None:
+            out.append(IdlerAxis(unit, idler, idler_stepper))
     return out
+
+
+class IdlerAxis(SelectorAxis):
+    """
+    The endstop geometry of one unit's idler barrel (Prusa MMU3).
+
+    The idler homes with stallguard against its mechanical stop, so the rail's
+    default endstop (a TMC virtual_endstop) sits at position_endstop and the
+    carriage starts at the far end of the homing search distance -- the same
+    "start away from home" choice SelectorAxis makes by starting at gate 0.
+    """
+
+    def __init__(self, unit, idler, stepper):
+        self.idler = idler
+        super().__init__(unit, idler.selector, stepper)
+
+    def nominal_gate_offsets(self):
+        # The idler has no CAD geometry of its own. Leave the carriage where
+        # homing would find it: at the far end of the search distance.
+        return []
+
+    def _start_carriage(self, offsets):
+        hi = self.stepper.rail.get_homing_info()
+        return hi.move_dist or self.home_position()
