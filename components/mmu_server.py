@@ -75,7 +75,7 @@ if TYPE_CHECKING:
     from ..common import WebRequest
     from ..common import RequestType
     from ..confighelper import ConfigHelper
-    from .http_client import HttpClient, HttpResponse
+    from .http_client import HttpResponse
     from .database import MoonrakerDatabase
     from .announcements import Announcements
     from .klippy_apis import KlippyAPI as APIComp
@@ -86,6 +86,8 @@ MMU_NAME_FIELD   = 'printer_name'
 MMU_GATE_FIELD   = 'mmu_gate_map'
 MMU_RFID_FIELD   = 'rfid_tag'      # NFC/RFID tag UID registered against a spool
 MIN_SM_VER       = (0, 18, 1)
+
+PRINTER_NAME_HEADER = 'X-Printer-Name'  # sent with every request to the configured Spoolman server
 
 NFC_UID_MISS_TTL = 10.0            # Seconds to remember a UID that isn't in Spoolman (avoids re-querying on every scan)
 
@@ -115,6 +117,40 @@ DB_NAMESPACE     = "moonraker"
 ACTIVE_SPOOL_KEY = "spoolman.spool_id"
 
 
+class _SpoolmanHeaderHttpClient:
+    '''
+    Wraps Moonraker's shared HttpClient to add X-Printer-Name: <hostname> on
+    any request targeting the configured Spoolman server, leaving all other
+    traffic (notably the two donkie.github.io SpoolmanDB fetches, which share
+    this same http_client) untouched.
+    '''
+    def __init__(self, http_client, owner):
+        self._http_client = http_client
+        self._owner = owner
+
+    def _inject(self, url, headers):
+        spoolman = self._owner.spoolman
+        spoolman_url = getattr(spoolman, "spoolman_url", None) if spoolman else None
+        printer_name = getattr(self._owner, "printer_hostname", None)
+        if spoolman_url and printer_name and url.startswith(spoolman_url):
+            merged = dict(headers) if headers else {}
+            merged.setdefault(PRINTER_NAME_HEADER, printer_name)
+            return merged
+        return headers
+
+    async def get(self, url, headers=None, **kwargs):
+        return await self._http_client.get(url, headers=self._inject(url, headers), **kwargs)
+
+    async def post(self, url, body=None, headers=None, **kwargs):
+        return await self._http_client.post(url, body=body, headers=self._inject(url, headers), **kwargs)
+
+    async def request(self, method, url, body=None, headers=None, **kwargs):
+        return await self._http_client.request(method, url, body=body, headers=self._inject(url, headers), **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._http_client, name) # Passthrough for anything else (get_file, etc.)
+
+
 class MmuServer:
 
     def __init__(self, config: ConfigHelper):
@@ -126,7 +162,7 @@ class MmuServer:
             self.spoolman: SpoolManager = self.server.load_component(config, "spoolman", None)
         self.spoolman: SpoolManager = self.server.lookup_component("spoolman", None)
         self.klippy_apis: APIComp = self.server.lookup_component("klippy_apis")
-        self.http_client: HttpClient = self.server.lookup_component("http_client")
+        self.http_client = _SpoolmanHeaderHttpClient(self.server.lookup_component("http_client"), self)
         self.database: MoonrakerDatabase = self.server.lookup_component("database")
 
         # Full cache of spool_ids and location + key attributes (printer, gate, attr_dict))
@@ -359,7 +395,7 @@ class MmuServer:
         '''
         Retrieve an individual spool_info record
         '''
-        response = await self.spoolman.http_client.request(
+        response = await self.http_client.request(
             method="GET",
             url=f'{self.spoolman.spoolman_url}/v1/spool/{spool_id}',
             body=None)

@@ -243,7 +243,7 @@ class TestMissCache(MoonrakerTestCase):
     SPOOLS = (dict(uid=KNOWN_UID, material='PLA'),)
 
     def _spool_list_fetches(self):
-        return len([1 for m, u in self.hh.http.requests
+        return len([1 for m, u, h in self.hh.http.requests
                     if m == 'GET' and u.endswith('/v1/spool')])
 
     def test_cached_miss_still_sends_terminal_result(self):
@@ -280,6 +280,39 @@ class TestMissCache(MoonrakerTestCase):
                             gate=None, silent=True, report_only=True)
         self.assertGreater(self._spool_list_fetches(), before,
                           'an explicit REGISTER request must get a live answer')
+
+
+class TestPrinterNameHeader(MoonrakerTestCase):
+    """
+    X-Printer-Name identifies this printer to a Spoolman-compatible service on
+    every request, not just the initial bootstrap fetch (mmu_server.py -
+    _SpoolmanHeaderHttpClient). It must NOT leak onto the two SpoolmanDB
+    (donkie.github.io) fetches, which share the same underlying http_client.
+    """
+
+    def test_header_present_on_spoolman_absent_on_spoolmandb(self):
+        # is_bambu=True with a PETG tag exercises both SpoolmanDB fixtures (no
+        # PETG entry in SPOOLMANDB_BAMBU, so density resolution falls through
+        # to materials.json too) plus vendor/filament/spool creation against
+        # the real (fake) Spoolman server.
+        self.hh.call_remote('spoolman_get_spool_by_uid', uid=UNKNOWN_UID, gate=None,
+                            metadata=dict(TAG_METADATA, is_bambu=True), save=True,
+                            silent=True)
+
+        header = self.hh.mmu_server_mod.PRINTER_NAME_HEADER
+        spoolman_url = self.hh.mmu_server.spoolman.spoolman_url
+        seen_spoolman = seen_spoolmandb = False
+        for method, url, headers in self.hh.http.requests:
+            if url.startswith(spoolman_url):
+                seen_spoolman = True
+                self.assertEqual(headers.get(header), self.hh.mmu_server.printer_hostname,
+                                 'missing/wrong %s on %s %s' % (header, method, url))
+            elif 'donkie.github.io' in url:
+                seen_spoolmandb = True
+                self.assertNotIn(header, headers,
+                                 '%s leaked onto SpoolmanDB call %s' % (header, url))
+        self.assertTrue(seen_spoolman and seen_spoolmandb,
+                        'scenario did not exercise both Spoolman and SpoolmanDB traffic')
 
 
 class TestAutoCreate(MoonrakerTestCase):
