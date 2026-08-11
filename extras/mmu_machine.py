@@ -41,7 +41,7 @@ _NOT_INSTALLED_MSG = (
     "This looks like it is because of a update to Happy Hare v4 while you are still configured for v3\n"
     "To see options please run:\n"
     "  cd ~/Happy-Hare && ./install.sh\n"
-    "If you know you want to stat on v3, run:\n"
+    "If you know you want to stay on v3, run:\n"
     "  cd ~/Happy-Hare && ./install.sh -b v3\n"
     "More details: https://moggieuk.github.io/Happy-Hare-Doc/Upgrade-v3-v4.md"
 )
