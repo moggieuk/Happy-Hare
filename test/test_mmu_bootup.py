@@ -103,6 +103,34 @@ class TestConfigLoad(unittest.TestCase):
         self.assertEqual(self.hh.errors, [])
 
 
+class TestVersionMismatch(unittest.TestCase):
+    """
+    extras/mmu_machine.py:44-47 is meant to turn a stale `happy_hare_version` into a
+    friendly "Looks like you upgraded" config.error. A prior bug (self.p.happy_hare_version
+    - self.p was never defined) turned that exact branch into an AttributeError instead,
+    which Klipper would have shown as a generic "Internal error during connect" rather
+    than the intended message. No Session/config-rendering needed: the check runs before
+    anything else in MmuMachine.__init__ touches the config.
+    """
+
+    def test_stale_version_raises_config_error_not_attribute_error(self):
+        from test.hh import install
+        install()
+
+        import configparser
+        from configfile import ConfigWrapper, error as ConfigError
+        import extras.mmu_machine as mmu_machine
+
+        fileconfig = configparser.RawConfigParser()
+        fileconfig.add_section('mmu_machine')
+        fileconfig.set('mmu_machine', 'happy_hare_version', '3.99.0')
+        config = ConfigWrapper(None, fileconfig, {}, 'mmu_machine')
+
+        with self.assertRaises(ConfigError) as cm:
+            mmu_machine.load_config(config)
+        self.assertIn('3.99.0', str(cm.exception))
+
+
 class TestPinBindings(unittest.TestCase):
     """
     A2: every pin description is recorded with the type it was bound as. This is the

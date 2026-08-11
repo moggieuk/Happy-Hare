@@ -4,6 +4,7 @@
 #                          moggieuk@hotmail.com
 #
 # Goal: Definition of logical MMU
+#   - checks for upgrade need
 #   - allows for specification and aggregation of multiple mmu_units
 #
 #
@@ -16,14 +17,57 @@
 
 import logging
 
-# Happy Hare imports
-from .mmu                        import mmu_unit
-from .mmu.mmu_unit               import MmuUnit
-from .mmu.mmu_constants          import *
-from .mmu.mmu_utils              import SaveVariableManager
-from .mmu.mmu_sensor_utils       import MmuSensorFactory
-from .mmu.mmu_machine_parameters import MmuMachineParameters
-from .mmu.mmu_controller         import MmuController
+# Happy Hare imports. Guarded because a Happy Hare update pulled in without re-running
+# install.sh (e.g. via Moonraker's update_manager) leaves these new/renamed modules
+# unlinked in klippy/extras, so the import itself is the first thing to fail. Report
+# that failure as a clean config.error from load_config() instead of letting Klipper
+# surface a raw ImportError.
+_IMPORT_ERROR = None
+try:
+    from .mmu                        import mmu_unit
+    from .mmu.mmu_unit               import MmuUnit
+    from .mmu.mmu_constants          import *
+    from .mmu.mmu_utils              import SaveVariableManager
+    from .mmu.mmu_sensor_utils       import MmuSensorFactory
+    from .mmu.mmu_machine_parameters import MmuMachineParameters
+    from .mmu.mmu_controller         import MmuController
+except Exception as e:
+    _IMPORT_ERROR = e
+
+# VERSION/UPGRADE_REMINDER come from the guarded import above, so the failure messages
+# below can't reference them - keep these literal and self-contained.
+_NOT_INSTALLED_MSG = (
+    "Happy Hare's Klipper modules failed to load (%s).\n"
+    "This looks like it is because of a update to Happy Hare v4 while you are still configured for v3\n"
+    "To see options please run:\n"
+    "  cd ~/Happy-Hare && ./install.sh\n"
+    "If you know you want to stay on v3, run:\n"
+    "  cd ~/Happy-Hare && ./install.sh -b v3\n"
+    "More details: https://moggieuk.github.io/Happy-Hare-Doc/Upgrade-v3-v4.md"
+)
+
+# Same failure, different cause: an already-v4 install whose klippy/extras symlinks
+# were wiped out from under it (a "hard" Klipper update is the usual culprit - see
+# install.sh's own -f flag). No config migration needed here, just re-linking.
+_BROKEN_SYMLINKS_MSG = (
+    "Happy Hare's Klipper modules failed to load (%s).\n"
+    "This usually means a Klipper update wiped the extras/ symlinks Happy Hare needs.\n"
+    "Please run:\n"
+    "  cd ~/Happy-Hare && ./install.sh -f\n"
+    "to restore them. If that doesn't help, run ./install.sh to reinstall properly."
+)
+
+
+def _looks_like_v3(config):
+    """
+    True if the parsed config still carries a [mmu] section - v3's home for
+    happy_hare_version. A v4 config never has one (replaced by [mmu_machine] /
+    [mmu_parameters]), so its presence means this printer.cfg (and the mmu/*.cfg it
+    includes) predates the v4 rework, whatever the reason our own imports just failed.
+    has_section() reads off the whole parsed config regardless of this wrapper's own
+    section, exactly like the has_section('mmu_parameters') check further down.
+    """
+    return config.has_section('mmu')
 
 
 class MmuMachine:
@@ -44,7 +88,7 @@ class MmuMachine:
         if self.happy_hare_version is None:
             raise self.config.error("Looks like Happy Hare is not installed correctly - cannot find `happy_hare_version` in klipper config")
         elif major_minor(self.happy_hare_version) < major_minor(VERSION):
-            raise self.config.error("Looks like you upgraded (v%s -> v%s)?\n%s" % (self.p.happy_hare_version, VERSION, UPGRADE_REMINDER))
+            raise self.config.error("Looks like you upgraded (v%s -> v%s)?\n%s" % (self.happy_hare_version, VERSION, UPGRADE_REMINDER))
 
         self.unit_names = list(config.getlist('units'))
         self.num_units = len(self.unit_names)
@@ -128,4 +172,10 @@ class MmuMachine:
 
 
 def load_config(config):
+    if _IMPORT_ERROR is not None:
+        # v3 takes precedence: an old config always means "you upgraded without
+        # reinstalling", even if the extras/ symlinks also happen to be stale.
+        if _looks_like_v3(config):
+            raise config.error(_NOT_INSTALLED_MSG % str(_IMPORT_ERROR))
+        raise config.error(_BROKEN_SYMLINKS_MSG % str(_IMPORT_ERROR))
     return MmuMachine(config)
