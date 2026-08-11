@@ -38,10 +38,10 @@ except Exception as e:
 # below can't reference them - keep these literal and self-contained.
 _NOT_INSTALLED_MSG = (
     "Happy Hare's Klipper modules failed to load (%s).\n"
-    "This usually means Happy Hare was updated (e.g. via Moonraker's update manager)\n"
-    "without re-running the installer. Please run:\n"
+    "This looks like it is because of a update to Happy Hare v4 while you are still running v3\n"
+    "To see options please run:\n"
     "  cd ~/Happy-Hare && ./install.sh\n"
-    "To stay on the previous release instead, run:\n"
+    "If you know you want to stat on v3, run:\n"
     "  cd ~/Happy-Hare && ./install.sh -b v3\n"
     "More details: https://moggieuk.github.io/Happy-Hare-Doc/Upgrade-v3-v4.md"
 )
