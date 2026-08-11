@@ -219,9 +219,10 @@ offer_v3_v4_choice() {
     echo "   You are free to upgrade at a later date."
     echo
     echo "${C_WARNING}2) Take the Red 'awakening' pill and upgrade to v4${C_OFF}"
-    echo "   Backs up your current .cfg files, then walks you through a FRESH v4 setup."
-    echo "   Your v3 settings are NOT carried over automatically - you'll reconfigure via"
-    echo "   menuconfig, using the backed-up files as a reference."
+    echo "   Your whole v3 'mmu' config directory is renamed to 'mmu.V3' (untouched, not"
+    echo "   deleted), old includes are removed from printer.cfg and moonraker.conf, and"
+    echo "   you're walked through a FRESH v4 setup via menuconfig. Nothing from mmu.V3"
+    echo "   is carried over automatically - it's there for you to copy values back out of."
     echo "   ${C_WARNING}NOTE: DOES NOT YET WORK ON KALICO - stay on v3 for now${C_OFF}"
     echo
     echo "More details: https://moggieuk.github.io/Happy-Hare-Doc/Upgrade-v3-v4/"
@@ -238,10 +239,66 @@ offer_v3_v4_choice() {
         "$SCRIPT_DIR/installer/self_update.sh" || exit 1
         F_SKIP_UPDATE=force exec "$0" "$@"
     else
-        echo "${C_WARNING}Proceeding with the v4 upgrade. Your v3 settings will NOT be carried over${C_OFF}"
-        echo "${C_WARNING}automatically - your old .cfg files will be backed up for reference.${C_OFF}"
+        echo "${C_WARNING}Proceeding with the v4 upgrade. Your v3 'mmu' config directory will be${C_OFF}"
+        echo "${C_WARNING}renamed to 'mmu.V3' for reference - nothing is deleted.${C_OFF}"
         echo
+        # Consulted once Kconfig has resolved real paths (see v3_upgrade_cleanup),
+        # since CONFIG_KLIPPER_CONFIG_HOME etc. don't exist yet at this point in the
+        # script. export, not just assignment, so it survives the self-update re-exec.
+        export F_V3_UPGRADE=y
     fi
+}
+
+# Give a completely clean start to a v3 -> v4 upgrade ("red pill", F_V3_UPGRADE=y):
+# back up the whole old 'mmu' config directory (never delete it), then strip HH's old
+# includes/sections from printer.cfg and moonraker.conf so the imminent `make install`
+# rebuilds them fresh rather than merging into stale v3 content.
+#
+# Must run AFTER Kconfig has resolved real paths (menuconfig/olddefconfig, just above
+# this function's call site) - CONFIG_KLIPPER_CONFIG_HOME and friends do not exist
+# before that, and guess_klipper_config_home()'s best-effort guess is not good enough
+# to risk a mv/rm against. Every path used below is guarded for exactly this reason:
+# an unresolved variable here would turn a directory move into an operation on the
+# filesystem root.
+v3_upgrade_cleanup() {
+    unset CONFIG_KLIPPER_CONFIG_HOME CONFIG_PRINTER_CONFIG_FILE CONFIG_MOONRAKER_CONFIG_FILE
+    # shellcheck source=.mmu_config
+    . "${KCONFIG_CONFIG}"
+
+    if [ -z "${CONFIG_KLIPPER_CONFIG_HOME:-}" ]; then
+        echo "${C_ERROR}Could not resolve the printer config directory from '${KCONFIG_CONFIG}' -" \
+            "skipping v3 cleanup to be safe. Your old 'mmu' directory is untouched;" \
+            "clean it up by hand once you've confirmed the new install works.${C_OFF}"
+        return 0
+    fi
+
+    printer_cfg="${CONFIG_KLIPPER_CONFIG_HOME}/${CONFIG_PRINTER_CONFIG_FILE:-printer.cfg}"
+    moonraker_conf="${CONFIG_KLIPPER_CONFIG_HOME}/${CONFIG_MOONRAKER_CONFIG_FILE:-moonraker.conf}"
+    mmu_dir="${CONFIG_KLIPPER_CONFIG_HOME}/mmu"
+    backup_dir="${CONFIG_KLIPPER_CONFIG_HOME}/mmu.V3"
+
+    if [ -d "${mmu_dir}" ]; then
+        if [ -e "${backup_dir}" ]; then
+            backup_dir="${backup_dir}-$(date +%Y%m%d-%H%M%S)"
+        fi
+        echo "${C_INFO}Backing up your v3 config: '$(basename "${mmu_dir}")' -> '$(basename "${backup_dir}")'${C_OFF}"
+        mv "${mmu_dir}" "${backup_dir}"
+    fi
+
+    echo "${C_INFO}Removing old v3 includes from '$(basename "${printer_cfg}")' and" \
+        "'$(basename "${moonraker_conf}")'...${C_OFF}"
+    # -m installer.build needs SCRIPT_DIR on PYTHONPATH so it resolves regardless of the
+    # caller's cwd (unlike `make -C`, a bare `python -m` doesn't take a directory to run
+    # from). installer.build also imports the vendored kconfiglib at module scope
+    # regardless of which function is called, so that needs to be on PYTHONPATH too,
+    # matching what the Makefile exports for its own installer.build invocations.
+    PYTHONPATH="${SCRIPT_DIR}:${SCRIPT_DIR}/installer/lib/kconfiglib:${PYTHONPATH}" \
+        python -m installer.build --uninstall-includes "${printer_cfg}"
+    PYTHONPATH="${SCRIPT_DIR}:${SCRIPT_DIR}/installer/lib/kconfiglib:${PYTHONPATH}" \
+        python -m installer.build --uninstall-moonraker "${moonraker_conf}"
+
+    echo "${C_INFO}Cleaning up stale v3 Klipper/Moonraker symlinks...${C_OFF}"
+    time_elapsed make --no-print-directory -C "${SCRIPT_DIR}" F_NO_SERVICE=y fix_links
 }
 
 # Convert long options to short options
@@ -619,6 +676,12 @@ fi
 # Always refresh stale configs after any optional menuconfig pass.
 run_kconfig_top olddefconfig y
 run_kconfig_units olddefconfig y
+
+# Give the v3 -> v4 upgrade a clean start now that Kconfig has resolved real paths -
+# see v3_upgrade_cleanup for why this can't happen any earlier.
+if [ -n "${F_V3_UPGRADE:-}" ]; then
+    v3_upgrade_cleanup
+fi
 
 
 
