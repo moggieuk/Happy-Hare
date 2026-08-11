@@ -16,10 +16,15 @@ firmware, so:
   as step pin").
 
 This patch modifies stock Klipper's `klippy/stepper.py` to do the second part:
-when the dir pin resolves to a virtual chip, it stores the chip's pin object as
-`self._dir_pin_virtual` (which Happy Hare reads back via `getattr`) and gives
-the MCU firmware a dummy GPIO to configure as the dir pin (one that nothing
-else uses, `PD5` on the MMU3 board - change the constant if your board differs).
+when the dir pin resolves to a virtual chip it checks the chip is backed by
+the stepper's own MCU (the `shift_register` chip exposes its MCU as `.mcu`),
+stores the chip's virtual pin object as `self._dir_pin_virtual` (which Happy
+Hare reads back via `getattr`) and uses the chip's DATA pin name as a
+placeholder for the firmware `config_stepper` dir pin - the firmware never
+meaningfully drives it, the host's Python writes do.
+
+Verified working on a live MMU3 (Raspberry Pi + MMU3 board via USB) with
+Klipper `170c4b37`.
 
 ## Apply
 
