@@ -131,6 +131,14 @@ class TestEveryBootableProfile(unittest.TestCase):
         self.assertTrue(hasattr(selector.idler, 'idler_stepper'))
         self.assertEqual(selector.idler.idler_stepper.full_name, 'mmu_stepper unit0_idler')
 
+        # The idler params must render OUTSIDE the servo guard -- this broke when
+        # the block sat inside [% if MMU_HAS_SELECTOR_SERVO %] and silently fell
+        # back to ParamSpec defaults on the MMU3.
+        cfg = hh.fileconfig
+        params = next(s for s in cfg.sections() if s.startswith('mmu_unit_parameters'))
+        self.assertIn('idler_dwell', cfg.options(params))
+        self.assertIn('idler_buzz_gear_on_down', cfg.options(params))
+
         # The SHR16 shift register chip must be registered as a pin provider
         ppins = hh.printer.lookup_object('pins')
         self.assertIn('mmu_sr', ppins.chips)
