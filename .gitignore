@@ -8,6 +8,7 @@ out_*/
 __pycache__/
 *.pyc
 venv/
+.hh-stamps/
 .DS_Store
 .claude/*
 !.claude/skills/
