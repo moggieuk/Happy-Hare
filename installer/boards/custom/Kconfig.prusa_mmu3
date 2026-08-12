@@ -34,7 +34,7 @@ if BOARD_TYPE_PRUSA_MMU3_1_0
   config PIN_GEAR_STEP
     default "$(MCU_NAME):PB4"
   config PIN_GEAR_CS
-    default "!$(MCU_NAME):PC6"
+    default "$(MCU_NAME):PC6"   # Active-low by TMC convention; Klipper's SPI CS takes no inversion
   config PIN_GEAR_DIR
     default "$(MCU_NAME):PD5"   # Dummy -- real DIR is on the shift register
   config PIN_GEAR_DIR_SR
@@ -48,7 +48,7 @@ if BOARD_TYPE_PRUSA_MMU3_1_0
   config PIN_SELECTOR_STEP
     default "$(MCU_NAME):PD4"
   config PIN_SELECTOR_CS
-    default "!$(MCU_NAME):PD7"
+    default "$(MCU_NAME):PD7"   # Active-low by TMC convention
   config PIN_SELECTOR_DIR
     default "$(MCU_NAME):PF2"   # Dummy -- real DIR is on the shift register
   config PIN_SELECTOR_DIR_SR
@@ -65,7 +65,7 @@ if BOARD_TYPE_PRUSA_MMU3_1_0
   config PIN_IDLER_STEP
     default "$(MCU_NAME):PD6"
   config PIN_IDLER_CS
-    default "!$(MCU_NAME):PB7"
+    default "$(MCU_NAME):PB7"   # Active-low by TMC convention
   config PIN_IDLER_DIR
     default "$(MCU_NAME):PF3"   # Dummy -- real DIR is on the shift register
   config PIN_IDLER_DIR_SR
