@@ -282,6 +282,14 @@ class Session:
         from kinematics import extruder as extruder_mod
         toolhead_mod.add_printer_objects(self.config)
         extruder_mod.add_printer_objects(self.config)
+        # Real Klipper runs every MCU's config callbacks (config_stepper,
+        # config_digital_out, ...) during the connect phase before klippy:connect.
+        # The harness has no such phase, so flush them here -- after the section
+        # loop has registered them all, matching real Klipper's ordering.
+        import mcu as mcu_mod
+        for obj in self.printer.objects.values():
+            if isinstance(obj, mcu_mod.MCU):
+                obj._flush_config_callbacks()
         self.printer.send_event('klippy:connect')
         self.apply_initial_sensor_states()
         return self

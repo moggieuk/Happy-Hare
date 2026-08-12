@@ -529,6 +529,18 @@ class MmuStepper(ExtruderStepper):
         self.has_default_endstop = config.get('endstop_pin', None) is not None
         self.has_extra_endstops = config.get('extra_endstops', None) is not None
 
+        # Optional virtual (shift register) DIR pin. Machines like the Prusa
+        # MMU3 have no spare GPIO for DIR; the real direction lives on a bit of
+        # the SHR16 shift register while `dir_pin` in the stepper config points
+        # at a dummy GPIO so stock Klipper accepts it. The firmware never
+        # meaningfully drives the dummy pin; the direction is written here from
+        # Python before every move (see _pre_set_dir_pin).
+        self._dir_sr_pin = None
+        dir_sr_pin = config.get('dir_sr_pin', None)
+        if dir_sr_pin:
+            ppins = self.printer.lookup_object('pins')
+            self._dir_sr_pin = ppins.setup_pin('digital_out', dir_sr_pin)
+
         if force_rail or self.has_default_endstop or self.has_extra_endstops:
             self.can_home = self.has_default_endstop
             self.rail = MmuLookupRailFromStepper(self.stepper, config, need_position_minmax=False, default_position_endstop=0.)
@@ -852,10 +864,12 @@ class MmuStepper(ExtruderStepper):
 
     def _pre_set_dir_pin(self, dist, positive_dir=None):
         """
-        Pre-set shift register DIR bit before a move (Prusa MMU3 SHR16).
+        Pre-set a virtual (shift register) DIR bit before a move (Prusa MMU3).
 
-        The SR DIR bit lives in Python (ShiftRegisterBit), never in MCU
-        firmware, so it must be written before the move starts. Klipper's
+        The stepper's `dir_pin` is a dummy GPIO -- the real direction lives on a
+        bit of the SHR16 shift register (config option `dir_sr_pin`) that only
+        exists in Python (ShiftRegisterBit) and can never be driven by the MCU
+        firmware. It must therefore be written before the move starts; the
         firmware-side dir pin is a no-op placeholder in this setup.
 
         Called from:
@@ -868,7 +882,7 @@ class MmuStepper(ExtruderStepper):
         """
         if dist == 0:
             return
-        vpin = getattr(self.stepper, '_dir_pin_virtual', None)
+        vpin = self._dir_sr_pin
         if vpin is None:
             return
         new_dir = 0 if (positive_dir if positive_dir is not None else dist > 0) else 1

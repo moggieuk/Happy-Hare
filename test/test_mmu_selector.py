@@ -553,36 +553,28 @@ class TestPrusaIdlerSelector(SelectorTestCase):
 
     def test_idler_moves_go_through_the_mmu_stepper_with_dir_pre_set(self):
         """
-        The _pre_set_dir_pin hook must fire for idler moves: the MMU3 DIR bits live
-        on the SHR16 shift register and are written before every move. Patch a
-        recorder onto the stepper's virtual dir pin and watch do_move() drive it.
+        The _pre_set_dir_pin hook must fire for idler moves: the MMU3 DIR bit
+        lives on the SHR16 shift register (dir_sr_pin config) and is written
+        from Python before every move through the resolved ShiftRegisterBit.
 
         After MMU_HOME the idler sits DISENGAGED at the far end (the homing
-        reselect parks it there), so a move to gate 2 is backward (dir 1) and a
-        move to gate 5 is forward (dir 0).
+        reselect parks it there), so a move to gate 2 is backward (logical
+        dir 1 -> physical 0 once the ! inversion is applied) and a move to
+        gate 5 is forward (logical dir 0 -> physical 1).
         """
         idler = self.idler()
-        calls = []
+        sr = self.hh.printer.lookup_object('shift_register mmu_sr')
 
-        class FakeVirtualDirPin:
-            def get_mcu(self):
-                return idler.idler_stepper.stepper.get_mcu()
-            def set_digital(self, print_time, value):
-                calls.append((print_time, value))
+        # The stepper resolved its dir_sr_pin config into bit 4 of the SR
+        vpin = idler.idler_stepper._dir_sr_pin
+        self.assertIsNotNone(vpin)
+        self.assertEqual(vpin._bit_num, 4)   # Idler DIR is SR bit 4
+        self.assertEqual(vpin._invert, 1)    # config says !mmu_sr:4
 
-        stepper = idler.idler_stepper.stepper
-        original = getattr(stepper, '_dir_pin_virtual', None)
-        stepper._dir_pin_virtual = FakeVirtualDirPin()
-        try:
-            idler._set_idler_to_gate(2)   # 40 -> 16: backward move, dir 1
-            self.assertEqual(calls[-1][1], 1)
-            idler._set_idler_to_gate(5)   # 16 -> 40: forward move, dir 0
-            self.assertEqual(calls[-1][1], 0)
-        finally:
-            if original is None:
-                delattr(stepper, '_dir_pin_virtual')
-            else:
-                stepper._dir_pin_virtual = original
+        idler._set_idler_to_gate(2)   # 40 -> 16: backward, dir 1 -> physical 0
+        self.assertEqual((sr.state >> 4) & 1, 0)
+        idler._set_idler_to_gate(5)   # 16 -> 40: forward, dir 0 -> physical 1
+        self.assertEqual((sr.state >> 4) & 1, 1)
 
 
 class TestMultiUnitSelectors(SelectorTestCase):

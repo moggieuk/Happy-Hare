@@ -54,6 +54,8 @@ menu "Pins / TMC"
       string "Gear UART pin    "
     config PIN_GEAR_CS
       string "Gear CS pin      "
+    config PIN_GEAR_DIR_SR
+      string "Gear SR dir bit  "
     config PIN_GEAR_STEP
       string "Gear step pin    "
     config PIN_GEAR_DIR
@@ -106,6 +108,8 @@ menu "Pins / TMC"
     string
   config PIN_SELECTOR_CS
     string
+  config PIN_SELECTOR_DIR_SR
+    string
   config PIN_SELECTOR_STEP
     string
   config PIN_SELECTOR_DIR
@@ -122,6 +126,8 @@ menu "Pins / TMC"
   config PIN_IDLER_UART
     string
   config PIN_IDLER_CS
+    string
+  config PIN_IDLER_DIR_SR
     string
   config PIN_IDLER_STEP
     string
@@ -188,6 +194,8 @@ menu "Pins / TMC"
         prompt "Selector step pin   "
       config PIN_SELECTOR_DIR
         prompt "Selector dir pin    "
+      config PIN_SELECTOR_DIR_SR
+        prompt "Selector SR dir bit "
       config PIN_SELECTOR_ENABLE
         prompt "Selector enable pin "
       config PIN_SELECTOR_DIAG
@@ -213,6 +221,8 @@ menu "Pins / TMC"
         prompt "Idler UART pin      "
       config PIN_IDLER_CS
         prompt "Idler CS pin        "
+      config PIN_IDLER_DIR_SR
+        prompt "Idler SR dir bit    "
       config PIN_IDLER_STEP
         prompt "Idler step pin      "
       config PIN_IDLER_DIR

@@ -80,6 +80,21 @@ class MCU:
     def register_config_callback(self, cb):
         self._config_callbacks.append(cb)
 
+    def _flush_config_callbacks(self):
+        """
+        Run pending config callbacks, mirroring real Klipper's mcu.connect().
+
+        Real Klipper generates all config commands (OIDs, config_stepper,
+        config_digital_out, ...) during the connect phase, after every object
+        has registered its callbacks. The harness has no connect phase, so the
+        Session flushes the callbacks after the section loop and before
+        klippy:connect -- the same ordering, which shift_register.py's
+        _RawDigitalOut depends on to get its queue_digital_out command.
+        """
+        cbs, self._config_callbacks = self._config_callbacks, []
+        for cb in cbs:
+            cb()
+
     def create_oid(self):
         self._oid_count += 1
         return self._oid_count
@@ -92,9 +107,15 @@ class MCU:
         return len(self._command_queues) - 1
 
     def lookup_command(self, msgformat, cq=None):
-        def _send(args, **kwargs):
-            self.sent_commands.append((msgformat, dict(args)))
-        return _send
+        # Real Klipper returns a CommandWrapper with .send(); shift_register.py's
+        # _RawDigitalOut calls set_cmd.send([...], minclock=..., reqclock=...).
+        class _CommandWrapper:
+            def __init__(self, owner, fmt):
+                self._owner = owner
+                self._fmt = fmt
+            def send(self, args, **kwargs):
+                self._owner.sent_commands.append((self._fmt, list(args), dict(kwargs)))
+        return _CommandWrapper(self, msgformat)
 
 
 class _PinBase:

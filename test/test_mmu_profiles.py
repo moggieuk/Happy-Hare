@@ -135,6 +135,40 @@ class TestEveryBootableProfile(unittest.TestCase):
         ppins = hh.printer.lookup_object('pins')
         self.assertIn('mmu_sr', ppins.chips)
 
+    def test_prusa_mmu3_steppers_resolve_the_shift_register_dir_bits(self):
+        """
+        No Klipper patch: each stepper's dir_pin is a dummy GPIO and the real
+        direction is resolved from dir_sr_pin into a ShiftRegisterBit at config
+        time. All three MMU3 steppers must resolve their bit (0 gear, 2
+        selector, 4 idler) and keep a plain MCU pin as their firmware dir pin.
+        """
+        hh = self._check('prusa_mmu3')
+        unit = hh.mmu.mmu_unit(0)
+
+        steppers = {
+            'gear': unit.drives_unique[0].mmu_gear_stepper,
+            'selector': unit.selector.selector_stepper,
+            'idler': unit.selector.idler.idler_stepper,
+        }
+        expected_bit = {'gear': 0, 'selector': 2, 'idler': 4}
+        expected_invert = {'gear': 1, 'selector': 0, 'idler': 1}  # !mmu_sr:0, mmu_sr:2, !mmu_sr:4
+
+        for name, stepper in steppers.items():
+            with self.subTest(stepper=name):
+                vpin = stepper._dir_sr_pin
+                self.assertIsNotNone(vpin, 'dir_sr_pin was not resolved for %s' % name)
+                self.assertEqual(vpin._bit_num, expected_bit[name])
+                self.assertEqual(vpin._invert, expected_invert[name])
+                # The rendered stepper config keeps a plain MCU GPIO as dir_pin
+                # and moves the real direction to dir_sr_pin -- the whole point
+                # of the no-patch approach.
+                section = 'mmu_stepper unit0_%s' % name
+                dir_pin = hh.fileconfig.get(section, 'dir_pin')
+                self.assertNotIn('mmu_sr', dir_pin)
+                prefix = '!' if expected_invert[name] else ''
+                self.assertEqual(hh.fileconfig.get(section, 'dir_sr_pin'),
+                                 '%smmu_sr:%d' % (prefix, expected_bit[name]))
+
     def test_each_profile_reaches_a_determinate_filament_state(self):
         """
         A powered-on machine with no filament must know it is unloaded. Anything else and
