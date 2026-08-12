@@ -564,6 +564,7 @@ class MmuStepper(ExtruderStepper):
         # Manual mode state
         self.manual_motion_queue = None
         self._manual_followers = set()
+        self._dir_sr_last = None # Last logical direction written to the SR DIR bit
 
         # Registered with toolhead as an extra axis only in manual mode
         self.axis_gcode_id = None
@@ -862,7 +863,7 @@ class MmuStepper(ExtruderStepper):
             self.commanded_pos = setpos
 
 
-    def _pre_set_dir_pin(self, dist, positive_dir=None):
+    def _pre_set_dir_pin(self, dist, positive_dir=None, move_time=None):
         """
         Pre-set a virtual (shift register) DIR bit before a move (Prusa MMU3).
 
@@ -872,34 +873,44 @@ class MmuStepper(ExtruderStepper):
         firmware. It must therefore be written before the move starts; the
         firmware-side dir pin is a no-op placeholder in this setup.
 
-        Called from:
-          - _submit_move()      -> regular moves (via do_move)
-          - do_homing_move()    -> HomingMove drips moves, bypassing do_move
-          - do_home_rail()      -> MmuGenericRail.home() drips too
+        Returns the extra time the move must be delayed so its first step lands
+        after the shift register write completes. The bitbang is 50 timed MCU
+        commands (~25ms) and USB CDC latency on the ATmega32U4 means a short
+        lead pushes commands past their schedule, shutting the MCU down
+        ("Rescheduled timer in the past") -- so the write gets the same
+        generous lead the boot-time writes use, and the move waits for it.
 
         `positive_dir` overrides the sign of `dist` for homing where the
         drip move target may not reflect the first approach direction.
         """
         if dist == 0:
-            return
+            return 0.
         vpin = self._dir_sr_pin
         if vpin is None:
-            return
+            return 0.
         new_dir = 0 if (positive_dir if positive_dir is not None else dist > 0) else 1
+        if new_dir == self._dir_sr_last:
+            return 0. # Direction unchanged -- nothing to write, no delay
         # Pass new_dir directly -- ShiftRegisterBit.set_digital() already
         # applies the pin's invert flag internally, so do NOT XOR with the
         # stepper's dir_inverted flag or the inversion cancels out.
         mcu = vpin.get_mcu()
         curtime = self.printer.get_reactor().monotonic()
-        sched_time = mcu.estimated_print_time(curtime) + 0.010
+        now_pt = mcu.estimated_print_time(curtime)
+        sched_time = now_pt + 0.100
         vpin.set_digital(sched_time, new_dir)
+        self._dir_sr_last = new_dir
+        # Bitbang ends ~25ms after it starts; add a margin for the pacing
+        write_end = sched_time + 0.035
+        base = move_time if move_time is not None else now_pt
+        return max(0., write_end - base)
 
 
     def _submit_move(self, movetime, movepos, speed, accel):
         self._require_manual_mode("MOVE")
         cp = self.commanded_pos
         dist = movepos - cp
-        self._pre_set_dir_pin(dist) # Pre-set shift register DIR bit (Prusa MMU3)
+        movetime += self._pre_set_dir_pin(dist, move_time=movetime) # Pre-set shift register DIR bit (Prusa MMU3)
         axis_r, accel_t, cruise_t, cruise_v = force_move.calc_move_time(dist, speed, accel)
         self.trapq_append(self.manual_trapq, movetime, accel_t, cruise_t, accel_t,
                           cp, 0., 0., axis_r, 0., 0., 0., cruise_v, accel)
@@ -924,7 +935,7 @@ class MmuStepper(ExtruderStepper):
         if not isinstance(self.rail, MmuGenericRail):
             raise self.printer.command_error("No endstop for this MMU stepper")
 
-        self._pre_set_dir_pin(movepos - self.commanded_pos) # Pre-set shift register DIR bit (Prusa MMU3)
+        self.next_cmd_time += self._pre_set_dir_pin(movepos - self.commanded_pos) # Pre-set shift register DIR bit (Prusa MMU3)
 
         endstops = self.rail.get_homing_endstops(endstop_name)
 
@@ -948,7 +959,7 @@ class MmuStepper(ExtruderStepper):
         position_min, position_max = self.rail.get_range()
         hi = self.rail.get_homing_info()
 
-        self._pre_set_dir_pin(1.0, positive_dir=hi.positive_dir) # Pre-set shift register DIR bit (Prusa MMU3)
+        self.next_cmd_time += self._pre_set_dir_pin(1.0, positive_dir=hi.positive_dir) # Pre-set shift register DIR bit (Prusa MMU3)
 
         homepos = hi.position_endstop
         if hi.positive_dir:
