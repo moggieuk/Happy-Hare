@@ -157,8 +157,10 @@ class TestEveryBootableProfile(unittest.TestCase):
                                  '^!unit0:PF%d' % {'gear': 4, 'selector': 1, 'idler': 0}[name])
                 # tmc2130's stallguard threshold register is SGT, not SGTHRS
                 # (that is the tmc2209 name) -- emitting driver_SGTHRS died at
-                # config load with "Option 'driver_sgthrs' is not valid".
+                # config load with "Option 'driver_sgthrs' is not valid". SGT
+                # is a 5-bit signed field so the value must be <= 63.
                 self.assertIn('driver_SGT', cfg.options('tmc2130 mmu_stepper unit0_%s' % name))
+                self.assertLessEqual(cfg.getint('tmc2130 mmu_stepper unit0_%s' % name, 'driver_SGT'), 63)
 
         # The SHR16 shift register chip must be registered as a pin provider
         ppins = hh.printer.lookup_object('pins')
