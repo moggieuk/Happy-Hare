@@ -74,7 +74,7 @@ if MMU_TYPE_PRUSA_MMU3_3_0
   config PARAM_SELECTOR_GEAR_RATIO
     default "1:1"
   config PARAM_SELECTOR_ROTATION_DISTANCE
-    default 8
+    default 7
   config PARAM_SELECTOR_RUN_CURRENT
     default 0.8
   config PARAM_SELECTOR_HOLD_CURRENT
@@ -88,7 +88,12 @@ if MMU_TYPE_PRUSA_MMU3_3_0
   config PARAM_SELECTOR_ACCEL
     default 1200
   config PARAM_SELECTOR_HOMING_SPEED
-    default 60
+    default 8
+    help
+      StallGuard only detects stalls at medium motor speeds. At 8mm/s and a
+      7mm rotation distance the selector runs ~70RPM -- well within range.
+      Faster speeds (60mm/s = ~500RPM) push the back-EMF too high and the
+      stall is never detected (verified on the live MMU3).
 
   config PARAM_IDLER_GEAR_RATIO
     default "1:1"
