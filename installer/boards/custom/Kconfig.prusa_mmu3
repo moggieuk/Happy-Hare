@@ -15,13 +15,19 @@ if BOARD_TYPE_PRUSA_MMU3_1_0
   # ------------------------------------------------------------------
   # Prusa MMU3 fixed pinout
   # The three TMC2130 steppers are on the hardware SPI bus (spi) with
-  # individual CS pins. DIR/ENABLE for all three steppers come from the
-  # SHR16 shift register (virtual pins mmu_sr:N) so the [shift_register]
-  # section is mandatory.
+  # individual CS pins. The MMU3 board has no spare GPIOs for DIR/ENABLE -
+  # they all live on the SHR16 shift register (virtual pins mmu_sr:N), so
+  # the [shift_register] section is mandatory:
   #   SR bit 0/1  = Gear DIR/ENABLE (enable active low)
   #   SR bit 2/3  = Selector DIR/ENABLE (enable active low)
   #   SR bit 4/5  = Idler DIR/ENABLE (enable active low)
   #   SR bit 6-15 = LEDs
+  #
+  # DIR cannot be driven by the MCU firmware, so each stepper's `dir_pin`
+  # points at a dummy (unused) GPIO that stock Klipper accepts, and the real
+  # direction is written from Python before each move via the `dir_sr_pin`
+  # virtual pin (see extras/mmu_stepper.py _pre_set_dir_pin). ENABLE goes
+  # straight to the shift register - stepper_enable supports virtual chips.
   # ------------------------------------------------------------------
 
   # Gear TMC2130
@@ -30,6 +36,8 @@ if BOARD_TYPE_PRUSA_MMU3_1_0
   config PIN_GEAR_CS
     default "!$(MCU_NAME):PC6"
   config PIN_GEAR_DIR
+    default "$(MCU_NAME):PD5"   # Dummy -- real DIR is on the shift register
+  config PIN_GEAR_DIR_SR
     default "!mmu_sr:0"
   config PIN_GEAR_ENABLE
     default "!mmu_sr:1"
@@ -42,6 +50,8 @@ if BOARD_TYPE_PRUSA_MMU3_1_0
   config PIN_SELECTOR_CS
     default "!$(MCU_NAME):PD7"
   config PIN_SELECTOR_DIR
+    default "$(MCU_NAME):PF2"   # Dummy -- real DIR is on the shift register
+  config PIN_SELECTOR_DIR_SR
     default "mmu_sr:2"
   config PIN_SELECTOR_ENABLE
     default "!mmu_sr:3"
@@ -57,6 +67,8 @@ if BOARD_TYPE_PRUSA_MMU3_1_0
   config PIN_IDLER_CS
     default "!$(MCU_NAME):PB7"
   config PIN_IDLER_DIR
+    default "$(MCU_NAME):PF3"   # Dummy -- real DIR is on the shift register
+  config PIN_IDLER_DIR_SR
     default "!mmu_sr:4"
   config PIN_IDLER_ENABLE
     default "!mmu_sr:5"
