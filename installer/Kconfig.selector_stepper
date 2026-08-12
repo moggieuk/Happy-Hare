@@ -56,6 +56,26 @@ if MMU_HAS_SELECTOR_STEPPER
       help
         200 for 1.8 degree, 400 for 0.9 degree
 
+    config PARAM_SELECTOR_MICROSTEPS
+      int "Selector microsteps          "
+      default 16
+      help
+        Don't need high fidelity
+
+    config PARAM_SELECTOR_STEALTHCHOP
+      float "Selector stealthchop threshold"
+      default 100
+      help
+        Speeds below this use stealthChop. Set 0 for always spreadCycle --
+        REQUIRED for tmc2130 StallGuard homing (stealthChop disables it).
+
+    config PARAM_SELECTOR_SGT
+      int "Selector StallGuard threshold (SGT)"
+      default 60
+      help
+        tmc2130 only. StallGuard sensitivity: -64 to 63. 255 is most
+        sensitive value, 0 is least sensitive.
+
     config PARAM_SELECTOR_SPI_BUS
       string "Selector SPI bus                "
       default "spi"

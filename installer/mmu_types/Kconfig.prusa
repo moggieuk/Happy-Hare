@@ -42,6 +42,11 @@ if MMU_TYPE_PRUSA_MMU3_3_0
 
   # ------------------------------------------------------------------
   # Defaults (gear/selector/idler motion hardware)
+  # Values are those tuned on the reference MMU3 (Freakazo's mk3s):
+  #   - selector/idler run in spreadCycle (stealthchop_threshold 0) so
+  #     tmc2130 StallGuard works -- stealthChop disables stall detection
+  #   - SGT: selector 15, idler 0
+  #   - gear freewheels when disabled (driver_FREEWHEEL 1)
   # NOTE: rotation distances are calibration-dependent on the MMU3 and
   # should be tuned for your unit with MMU_CALIBRATE_GEAR / selector
   # calibration routines
@@ -50,22 +55,36 @@ if MMU_TYPE_PRUSA_MMU3_3_0
   config PARAM_GEAR_GEAR_RATIO
     default "1:1"
   config PARAM_GEAR_ROTATION_DISTANCE
-    default 22.7
+    default 19.394
   config PARAM_GEAR_RUN_CURRENT
-    default 0.6
+    default 0.5
   config PARAM_GEAR_HOLD_CURRENT
-    default 0.1
+    default 0.01
+  config PARAM_GEAR_MICROSTEPS
+    default 16
+  config PARAM_GEAR_STEALTHCHOP
+    default 999999		# No gear stallguard homing on MMU3 -- always stealthChop
+  config PARAM_GEAR_SGT
+    default 0
+  config PARAM_GEAR_FREEWHEEL
+    default 1
   config PARAM_GEAR_HOMING_SPEED
     default 30
 
   config PARAM_SELECTOR_GEAR_RATIO
     default "1:1"
   config PARAM_SELECTOR_ROTATION_DISTANCE
-    default 40
+    default 8
   config PARAM_SELECTOR_RUN_CURRENT
-    default 0.5
+    default 0.8
   config PARAM_SELECTOR_HOLD_CURRENT
-    default 0.2
+    default 0.3
+  config PARAM_SELECTOR_MICROSTEPS
+    default 8
+  config PARAM_SELECTOR_STEALTHCHOP
+    default 0		# Always spreadCycle so StallGuard homing works
+  config PARAM_SELECTOR_SGT
+    default 15
   config PARAM_SELECTOR_ACCEL
     default 1200
   config PARAM_SELECTOR_HOMING_SPEED
@@ -74,11 +93,17 @@ if MMU_TYPE_PRUSA_MMU3_3_0
   config PARAM_IDLER_GEAR_RATIO
     default "1:1"
   config PARAM_IDLER_ROTATION_DISTANCE
-    default 40
+    default 128
   config PARAM_IDLER_RUN_CURRENT
-    default 0.5
+    default 0.8
   config PARAM_IDLER_HOLD_CURRENT
-    default 0.2
+    default 0.1
+  config PARAM_IDLER_MICROSTEPS
+    default 8
+  config PARAM_IDLER_STEALTHCHOP
+    default 0		# Always spreadCycle so StallGuard homing works
+  config PARAM_IDLER_SGT
+    default 0
 
   config CUSTOM_LED_SETUP
     def_bool y

@@ -162,6 +162,20 @@ class TestEveryBootableProfile(unittest.TestCase):
                 self.assertIn('driver_SGT', cfg.options('tmc2130 mmu_stepper unit0_%s' % name))
                 self.assertLessEqual(cfg.getint('tmc2130 mmu_stepper unit0_%s' % name, 'driver_SGT'), 63)
 
+        # StallGuard only works in spreadCycle: the selector and idler must not
+        # run stealthChop (threshold 0) or homing never triggers. This was the
+        # live failure -- "No trigger on mmu_stepper unit0_selector" with the
+        # default threshold of 100 while homing at 60 mm/s.
+        for name, expected in (('selector', 0.0), ('idler', 0.0)):
+            with self.subTest(stealthchop=name):
+                self.assertEqual(cfg.getfloat('tmc2130 mmu_stepper unit0_%s' % name, 'stealthchop_threshold'),
+                                 expected)
+        # The gear is the opposite: no stallguard homing on the MMU3, always
+        # stealthChop and freewheel when disabled (reference machine values).
+        self.assertEqual(cfg.getfloat('tmc2130 mmu_stepper unit0_gear', 'stealthchop_threshold'), 999999.0)
+        self.assertEqual(cfg.getint('tmc2130 mmu_stepper unit0_gear', 'driver_FREEWHEEL'), 1)
+        self.assertEqual(cfg.getint('tmc2130 mmu_stepper unit0_selector', 'driver_SGT'), 15)
+
         # The SHR16 shift register chip must be registered as a pin provider
         ppins = hh.printer.lookup_object('pins')
         self.assertIn('mmu_sr', ppins.chips)
