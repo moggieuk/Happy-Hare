@@ -139,6 +139,14 @@ class TestEveryBootableProfile(unittest.TestCase):
         self.assertIn('idler_dwell', cfg.options(params))
         self.assertIn('idler_buzz_gear_on_down', cfg.options(params))
 
+        # TMC SPI CS pins must not be inverted: Klipper's bus.MCU_SPI_from_config
+        # looks the cs_pin up without can_invert, so a '!' there dies at config
+        # load with "Unknown pin chip name '!unit0'". Caught on the live printer.
+        for name in ('gear', 'selector', 'idler'):
+            with self.subTest(cs_pin=name):
+                cs = cfg.get('tmc2130 mmu_stepper unit0_%s' % name, 'cs_pin')
+                self.assertFalse(cs.startswith('!'), 'cs_pin must not be inverted: %s' % cs)
+
         # The SHR16 shift register chip must be registered as a pin provider
         ppins = hh.printer.lookup_object('pins')
         self.assertIn('mmu_sr', ppins.chips)
