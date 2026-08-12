@@ -147,6 +147,15 @@ class TestEveryBootableProfile(unittest.TestCase):
                 cs = cfg.get('tmc2130 mmu_stepper unit0_%s' % name, 'cs_pin')
                 self.assertFalse(cs.startswith('!'), 'cs_pin must not be inverted: %s' % cs)
 
+        # tmc2130's sensorless-homing helper reads diag0_pin (not diag_pin) when
+        # the chip has a diag0_stall register -- the MMU3's stallguard touch
+        # endstops only resolve if the template emitted diag0_pin. Caught on the
+        # live printer ("tmc virtual endstop requires diag pin config").
+        for name in ('gear', 'selector', 'idler'):
+            with self.subTest(diag_pin=name):
+                self.assertEqual(cfg.get('tmc2130 mmu_stepper unit0_%s' % name, 'diag0_pin'),
+                                 '^!unit0:PF%d' % {'gear': 4, 'selector': 1, 'idler': 0}[name])
+
         # The SHR16 shift register chip must be registered as a pin provider
         ppins = hh.printer.lookup_object('pins')
         self.assertIn('mmu_sr', ppins.chips)

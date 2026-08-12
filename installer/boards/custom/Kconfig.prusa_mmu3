@@ -42,7 +42,7 @@ if BOARD_TYPE_PRUSA_MMU3_1_0
   config PIN_GEAR_ENABLE
     default "!mmu_sr:1"
   config PIN_GEAR_DIAG
-    default "!$(MCU_NAME):PF4"
+    default "^!$(MCU_NAME):PF4"
 
   # Selector TMC2130
   config PIN_SELECTOR_STEP
@@ -56,7 +56,7 @@ if BOARD_TYPE_PRUSA_MMU3_1_0
   config PIN_SELECTOR_ENABLE
     default "!mmu_sr:3"
   config PIN_SELECTOR_DIAG
-    default "!$(MCU_NAME):PF1"
+    default "^!$(MCU_NAME):PF1"
   # No physical selector endstop on the MMU3 -- stallguard "touch" homing
   config PIN_SELECTOR_ENDSTOP
     default "tmc2130_$(UNIT_NAME)_selector:virtual_endstop"
@@ -73,7 +73,7 @@ if BOARD_TYPE_PRUSA_MMU3_1_0
   config PIN_IDLER_ENABLE
     default "!mmu_sr:5"
   config PIN_IDLER_DIAG
-    default "!$(MCU_NAME):PF0"
+    default "^!$(MCU_NAME):PF0"
 
   # SHR16 shift register control pins
   config PIN_SR_DATA
