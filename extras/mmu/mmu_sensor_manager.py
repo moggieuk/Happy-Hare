@@ -320,21 +320,27 @@ class MmuSensorManager:
         Convert simple endstop name into fully qualified sensor based on context
         Harmless if name is already fully qualified
         """
+        mmu_unit = self.mmu.mmu_unit()
+
         # These have form: "<unitName>:genericName"
         if endstop_name in [SENSOR_SHARED_EXIT]:
-            return self.get_prefixed_sensor_name(endstop_name, self.mmu.mmu_unit().name)
+            return self.get_prefixed_sensor_name(endstop_name, mmu_unit.name)
 
-        # These have form: "<bufferName>:genericName"
+        # These have form: "<bufferName>:genericName" (buffer is optional, may not be fitted)
         if endstop_name in [SENSOR_COMPRESSION, SENSOR_TENSION]:
-            return self.get_prefixed_sensor_name(endstop_name, self.mmu.mmu_unit().buffer.name)
+            if mmu_unit.buffer:
+                return self.get_prefixed_sensor_name(endstop_name, mmu_unit.buffer.name)
+            return endstop_name
 
-        # These have form: "<encoderName>:genericName"
+        # These have form: "<encoderName>:genericName" (encoder is optional, may not be fitted)
         if endstop_name in [SENSOR_ENCODER]:
-            return self.get_prefixed_sensor_name(endstop_name, self.mmu.mmu_unit().encoder.name)
+            if mmu_unit.encoder:
+                return self.get_prefixed_sensor_name(endstop_name, mmu_unit.encoder.name)
+            return endstop_name
 
         # These have form: "<toolheadName>:genericName"
         if endstop_name in [SENSOR_EXTRUDER_ENTRY, SENSOR_TOOLHEAD]:
-            return self.get_prefixed_sensor_name(endstop_name, self.mmu.mmu_unit().toolhead_wrapper.name)
+            return self.get_prefixed_sensor_name(endstop_name, mmu_unit.toolhead_wrapper.name)
 
         # These have form: "genericName_<gate#>"
         if endstop_name in [SENSOR_ENTRY_PREFIX, SENSOR_EXIT_PREFIX, SENSOR_GEAR_TOUCH, SENSOR_NFC_PREFIX]:
@@ -354,25 +360,26 @@ class MmuSensorManager:
         # Handle "<name>:genericName"
         if ":" in endstop_name:
             prefix, generic = endstop_name.split(":", 1)
+            mmu_unit = self.mmu.mmu_unit()
 
             # Unit-based sensors
             if generic in [SENSOR_SHARED_EXIT]:
-                if prefix == self.mmu.mmu_unit().name:
+                if prefix == mmu_unit.name:
                     return generic
 
-            # Buffer-based sensors
+            # Buffer-based sensors (buffer is optional, may not be fitted)
             if generic in [SENSOR_COMPRESSION, SENSOR_TENSION]:
-                if prefix == self.mmu.mmu_unit().buffer.name:
+                if mmu_unit.buffer and prefix == mmu_unit.buffer.name:
                     return generic
 
-            # Encoder-based sensors
+            # Encoder-based sensors (encoder is optional, may not be fitted)
             if generic in [SENSOR_ENCODER]:
-                if prefix == self.mmu.mmu_unit().encoder.name:
+                if mmu_unit.encoder and prefix == mmu_unit.encoder.name:
                     return generic
 
             # Toolhead-based sensors
             if generic in [SENSOR_EXTRUDER_ENTRY, SENSOR_TOOLHEAD]:
-                if prefix == self.mmu.mmu_unit().toolhead_wrapper.name:
+                if prefix == mmu_unit.toolhead_wrapper.name:
                     return generic
 
         # Handle "genericName_<gate#>"
