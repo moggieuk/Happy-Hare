@@ -358,6 +358,7 @@ class MmuGateMaps:
         """
         if not (0 <= gate < self.num_gates):
             return
+        self.renew_gate_map() # Copy before mutation so webhooks retains the previous values
         if name is not None:
             self.gate_filament_name[gate] = name
         if material is not None:
@@ -373,7 +374,6 @@ class MmuGateMaps:
         if rfid is not None:
             self.gate_spool_rfid[gate] = rfid
         self.update_gate_color_rgb()
-        self.renew_gate_map() # Ensure webhooks sees get_status() change
         self.persist_gate_map(spoolman_sync=False) # Local-only; nothing to push to Spoolman
 
 
