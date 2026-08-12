@@ -466,8 +466,11 @@ gen_kconfig: | python_deps
 clean:
 	$(Q)rm -rf $(OUT)
 
-# Deliberately not part of `clean`, which runs far too often to pay for a venv rebuild
+# Deliberately not part of `clean`, which runs far too often to pay for a venv rebuild.
+# STAMP_DIR is cleared unconditionally, even with no venv - it can hold a stamp for a
+# klippy-env or system PY too, and either way it must stop claiming deps are installed
 clean_venv:
+	$(Q)rm -rf "$(STAMP_DIR)"
 	$(Q)[ -f "$(VENV_PY)" ] || { echo "$(C_WARNING)No virtualenv at '$(VENV)'$(C_OFF)"; exit 0; }; \
 		echo "$(C_INFO)Removing virtualenv '$(patsubst $(SRC)/%,%,$(VENV))'$(C_OFF)"; \
 		rm -rf "$(VENV)"
@@ -481,17 +484,22 @@ no_venv_hint = \
 
 # Stamp so a `make` invocation with nothing changed just stats it, instead of every one of
 # install.sh's several `make` calls per run re-installing from scratch. Reuses $(INSTALLER_STAMP)
-# when $(PY) is $(VENV_PY) - installer_venv already keeps that fresh - otherwise keys off $(OUT)
-# and $(PY)'s resolved path, so switching interpreters without a `make clean` still reinstalls
+# when $(PY) is $(VENV_PY) - installer_venv already keeps that fresh - otherwise keys off
+# $(PY)'s resolved path, so switching interpreters without a `make clean` still reinstalls.
+# Not under $(OUT): `uninstall: clean | python_deps` races `rm -rf $(OUT)` against this touch under -j
+STAMP_DIR := $(SRC)/.hh-stamps
 python_deps_pyid    := $(subst /,_,$(shell command -v $(PY) 2>/dev/null))
-python_deps_stamp   := $(if $(builder_prereq),$(builder_prereq),$(OUT)/.python-deps-installed-$(python_deps_pyid))
+python_deps_stamp   := $(if $(builder_prereq),$(builder_prereq),$(STAMP_DIR)/.python-deps-installed-$(python_deps_pyid))
 
 # Always '$(PY) -m pip', never a bare 'pip': the first pip on PATH need not belong to $(PY),
 # and on macOS is often a leftover with a dead shebang. Only a PEP 668 python with no venv to
 # fall back on reaches the hints
 python_deps: $(python_deps_stamp)
 
-$(OUT)/.python-deps-installed-$(python_deps_pyid): $(SRC)/installer/requirements.txt | $(OUT)
+$(STAMP_DIR):
+	$(Q)mkdir -p "$@"
+
+$(STAMP_DIR)/.python-deps-installed-$(python_deps_pyid): $(SRC)/installer/requirements.txt | $(STAMP_DIR)
 	$(Q)echo "$(C_INFO)Checking and resolving python dependencies$(C_OFF)"
 	$(Q)$(PY) -m pip install --quiet --disable-pip-version-check $(PIP_ARGS) \
 		-r $(SRC)/installer/requirements.txt || { \
