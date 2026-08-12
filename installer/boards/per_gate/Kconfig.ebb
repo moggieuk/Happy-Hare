@@ -1,9 +1,9 @@
 config BOARD_TYPE_EBB_1_0
-  bool "EBB MCU"
+  bool "EBB36/42 gen1 MCU"
 
 if BOARD_TYPE_EBB_1_0
   config PARAM_BOARD_TYPE
-    default "EBB v1"
+    default "EBB36/42 gen1"
 
   choice CHOICE_MMU_CONNECTION_TYPE
     default CHOICE_MMU_CONNECTION_TYPE_CANBUS
