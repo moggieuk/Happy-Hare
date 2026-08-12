@@ -1,9 +1,12 @@
-config BOARD_TYPE_EBB_1_0
-  bool "EBB MCU"
+config BOARD_TYPE_EBB_GEN1
+  bool "EBB36/42 gen1 MCU"
+  help
+    This covers the gen 1 EBB36 and EBB42 boards
+    (v1.1 and v 1.2)
 
-if BOARD_TYPE_EBB_1_0
+if BOARD_TYPE_EBB_GEN1
   config PARAM_BOARD_TYPE
-    default "EBB v1"
+    default "EBB36/42 gen1"
 
   choice CHOICE_MMU_CONNECTION_TYPE
     default CHOICE_MMU_CONNECTION_TYPE_CANBUS
@@ -41,6 +44,9 @@ if BOARD_TYPE_EBB_1_0
 
     config PIN_NEOPIXEL
       default "$(MCU_NAME):PD3"
+
+    config PIN_FAN_$(gate)
+      default "$(MCU_NAME):PA0"
 
     config PIN_BUFFER_TENSION
       default "^$(MCU_NAME):PB8"

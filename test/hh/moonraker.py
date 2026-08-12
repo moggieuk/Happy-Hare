@@ -75,10 +75,10 @@ class FakeHttpClient:
     def __init__(self, spoolman, spoolmandb=True):
         self.spoolman = spoolman
         self.spoolmandb = spoolmandb
-        self.requests = []          # [(method, url)] assertion surface
+        self.requests = []          # [(method, url, headers)] assertion surface
 
-    async def request(self, method, url, body=None, **kwargs):
-        self.requests.append((method, url))
+    async def request(self, method, url, body=None, headers=None, **kwargs):
+        self.requests.append((method, url, dict(headers) if headers else {}))
         if 'donkie.github.io' in url:
             return self._spoolmandb(url)
         return self.spoolman.handle(method.upper(), url, body)
@@ -106,14 +106,16 @@ class FakeHttpClient:
         return spoolman_mod.Response(404)
 
     def requests_to(self, fragment):
-        return [(m, u) for m, u in self.requests if fragment in u]
+        return [(m, u, h) for m, u, h in self.requests if fragment in u]
 
 
 class FakeSpoolmanComponent:
     """
     Moonraker's own [spoolman] component. mmu_server reaches through it for
-    spoolman_url, its http_client (_fetch_spool_info uses
-    self.spoolman.http_client.request, :361) and _get_response_error.
+    spoolman_url and _get_response_error. Its own http_client reference
+    mirrors production (spoolman.py looks the component up independently) but
+    mmu_server no longer calls through it - every Spoolman request goes via
+    mmu_server's own (wrapped) self.http_client instead.
     """
 
     def __init__(self, http_client, url=SPOOLMAN_URL):

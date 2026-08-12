@@ -123,11 +123,175 @@ time_elapsed() {
     echo
 }
 
+# Best-effort guess at the printer config directory, used only to detect a v3 install
+# before self-update/uninstall/menuconfig have touched anything. Kconfig resolves this
+# authoritatively later in the script; this just needs to be good enough for the
+# one-time upgrade prompt below.
+guess_klipper_config_home() {
+    if [ -n "${TESTDIR}" ]; then
+        echo "${TESTDIR}/printer_data/config"
+    elif [ -n "${CONFIG_KLIPPER_CONFIG_HOME}" ]; then
+        echo "${CONFIG_KLIPPER_CONFIG_HOME}"
+    elif [ -d "/usr/data/printer_data/config" ]; then
+        echo "/usr/data/printer_data/config"
+    else
+        echo "${HOME}/printer_data/config"
+    fi
+}
+
+# Point Moonraker's update manager at a specific branch, so future automatic updates
+# keep tracking it instead of drifting back to whatever primary_branch was there before.
+# Scoped to the [update_manager happy-hare] section only - other [update_manager ...]
+# sections (for other repos) must not be touched.
+set_moonraker_primary_branch() {
+    branch="$1"
+    moonraker_conf="$(guess_klipper_config_home)/moonraker.conf"
+    if [ -f "${moonraker_conf}" ] && grep -q '^\[update_manager happy-hare\]' "${moonraker_conf}"; then
+        echo "${C_INFO}Pointing Moonraker's update manager at the '${branch}' branch...${C_OFF}"
+        awk -v branch="${branch}" '
+            /^\[update_manager happy-hare\]/ { in_section=1; print; next }
+            /^\[/ { in_section=0 }
+            in_section && /^primary_branch:/ { print "primary_branch: " branch; next }
+            { print }
+        ' "${moonraker_conf}" >"${moonraker_conf}.tmp" && mv "${moonraker_conf}.tmp" "${moonraker_conf}"
+    fi
+}
+
+
+##### V3 Upgrade support vvv ##################################################################
+
+# Detect a v3 install: no v4 Kconfig file yet, but a v3-era mmu_parameters.cfg already
+# on disk with a "happy_hare_version: 3.x" stamp (the value Happy Hare itself writes
+# and trusts for exactly this purpose).
+v3_detected() {
+    guessed_kconfig="${KCONFIG_CONFIG:-${SCRIPT_DIR}/.mmu_config}"
+    v3_cfg="$(guess_klipper_config_home)/mmu/base/mmu_parameters.cfg"
+    [ ! -e "${guessed_kconfig}" ] \
+        && [ -f "${v3_cfg}" ] \
+        && grep -qE '^happy_hare_version:[[:space:]]*3\.' "${v3_cfg}"
+}
+
+# The v3 -> v4 choice ("blue pill" stay on v3 / "red pill" upgrade to v4) has to be
+# settled before anything else in this script touches git, the filesystem, or Klipper/
+# Moonraker config - including self-update's own git pull, -f's symlink fix, and
+# uninstall. Runs for any invocation (default, -i, -u, -f, ...); the only exemptions
+# are -h/usage (already exited by then) and the internal re-exec after self-update or
+# after switching branches below (F_SKIP_UPDATE=force), so this never re-prompts itself
+# in a loop.
+offer_v3_v4_choice() {
+    echo
+    echo "${C_WARNING}------------------------------------------------------------------------${C_OFF}"
+    echo "${C_WARNING}Happy Hare v4 is a major rework with breaking changes, and your existing${C_OFF}"
+    echo "${C_WARNING}install looks like the previous (v3) release.${C_OFF}"
+    echo "${C_WARNING}Much like The Matrix you have a choice..${C_OFF}"
+    echo
+    echo "${C_WARNING}1) Take the Blue 'ignorance' pill and stay on v3${C_OFF}"
+    echo "   This switches this checkout to the 'v3' branch and points Moonraker's update"
+    echo "   manager at it, so future updates keep tracking v3 instead of v4."
+    echo "   You are free to upgrade at a later date."
+    echo
+    echo "${C_WARNING}2) Take the Red 'awakening' pill and upgrade to v4${C_OFF}"
+    echo "   Your whole v3 'mmu' config directory is renamed to 'mmu.V3' (untouched, not"
+    echo "   deleted), old includes are removed from printer.cfg and moonraker.conf, and"
+    echo "   you're walked through a FRESH v4 setup via menuconfig. Nothing from mmu.V3"
+    echo "   is carried over automatically - it's there for you to copy values back out of."
+    echo "   ${C_WARNING}NOTE: DOES NOT YET WORK ON KALICO - stay on v3 for now${C_OFF}"
+    echo
+    echo "More details: https://moggieuk.github.io/Happy-Hare-Doc/Upgrade-v3-v4/"
+    echo "${C_WARNING}------------------------------------------------------------------------${C_OFF}"
+    echo
+
+    sel=$(prompt_n 2 "Choose your pill (option)")
+    echo
+
+    if [ "${sel}" = "1" ]; then
+        set_moonraker_primary_branch v3
+        echo "${C_INFO}Switching to the 'v3' branch...${C_OFF}"
+        export BRANCH=v3
+        "$SCRIPT_DIR/installer/self_update.sh" || exit 1
+        F_SKIP_UPDATE=force exec "$0" "$@"
+    else
+        echo "${C_WARNING}Proceeding with the v4 upgrade. Your v3 'mmu' config directory will be${C_OFF}"
+        echo "${C_WARNING}renamed to 'mmu.V3' for reference - nothing is deleted.${C_OFF}"
+        echo
+        # Consulted once Kconfig has resolved real paths (see v3_upgrade_cleanup),
+        # since CONFIG_KLIPPER_CONFIG_HOME etc. don't exist yet at this point in the
+        # script. export, not just assignment, so it survives the self-update re-exec.
+        export F_V3_UPGRADE=y
+    fi
+}
+
+# Give a completely clean start to a v3 -> v4 upgrade ("red pill", F_V3_UPGRADE=y):
+# back up the whole old 'mmu' config directory (never delete it), then strip HH's old
+# includes/sections from printer.cfg and moonraker.conf so the imminent `make install`
+# rebuilds them fresh rather than merging into stale v3 content.
+#
+# Must run AFTER Kconfig has resolved real paths (menuconfig/olddefconfig, just above
+# this function's call site) - CONFIG_KLIPPER_CONFIG_HOME and friends do not exist
+# before that, and guess_klipper_config_home()'s best-effort guess is not good enough
+# to risk a mv/rm against. Every path used below is guarded for exactly this reason:
+# an unresolved variable here would turn a directory move into an operation on the
+# filesystem root.
+v3_upgrade_cleanup() {
+    unset CONFIG_KLIPPER_CONFIG_HOME CONFIG_PRINTER_CONFIG_FILE CONFIG_MOONRAKER_CONFIG_FILE
+    # shellcheck source=.mmu_config
+    . "${KCONFIG_CONFIG}"
+
+    case "${CONFIG_KLIPPER_CONFIG_HOME:-}" in
+        "~"*) CONFIG_KLIPPER_CONFIG_HOME="${HOME}${CONFIG_KLIPPER_CONFIG_HOME#\~}" ;;
+    esac
+    case "${CONFIG_PRINTER_CONFIG_FILE:-}" in
+        "~"*) CONFIG_PRINTER_CONFIG_FILE="${HOME}${CONFIG_PRINTER_CONFIG_FILE#\~}" ;;
+    esac
+    case "${CONFIG_MOONRAKER_CONFIG_FILE:-}" in
+        "~"*) CONFIG_MOONRAKER_CONFIG_FILE="${HOME}${CONFIG_MOONRAKER_CONFIG_FILE#\~}" ;;
+    esac
+
+    if [ -z "${CONFIG_KLIPPER_CONFIG_HOME:-}" ]; then
+        echo "${C_ERROR}Could not resolve the printer config directory from '${KCONFIG_CONFIG}' -" \
+            "skipping v3 cleanup to be safe. Your old 'mmu' directory is untouched;" \
+            "clean it up by hand once you've confirmed the new install works.${C_OFF}"
+        return 0
+    fi
+
+    printer_cfg="${CONFIG_KLIPPER_CONFIG_HOME}/${CONFIG_PRINTER_CONFIG_FILE:-printer.cfg}"
+    moonraker_conf="${CONFIG_KLIPPER_CONFIG_HOME}/${CONFIG_MOONRAKER_CONFIG_FILE:-moonraker.conf}"
+    mmu_dir="${CONFIG_KLIPPER_CONFIG_HOME}/mmu"
+    backup_dir="${CONFIG_KLIPPER_CONFIG_HOME}/mmu.V3"
+
+    if [ -d "${mmu_dir}" ]; then
+        if [ -e "${backup_dir}" ]; then
+            backup_dir="${backup_dir}-$(date +%Y%m%d-%H%M%S)"
+        fi
+        echo "${C_INFO}Backing up your v3 config: '$(basename "${mmu_dir}")' -> '$(basename "${backup_dir}")'${C_OFF}"
+        mv "${mmu_dir}" "${backup_dir}"
+    fi
+
+    echo "${C_INFO}Removing old v3 includes from '$(basename "${printer_cfg}")' and" \
+        "'$(basename "${moonraker_conf}")'...${C_OFF}"
+    # -m installer.build needs SCRIPT_DIR on PYTHONPATH so it resolves regardless of the
+    # caller's cwd (unlike `make -C`, a bare `python -m` doesn't take a directory to run
+    # from). installer.build also imports the vendored kconfiglib at module scope
+    # regardless of which function is called, so that needs to be on PYTHONPATH too,
+    # matching what the Makefile exports for its own installer.build invocations.
+    PYTHONPATH="${SCRIPT_DIR}:${SCRIPT_DIR}/installer/lib/kconfiglib:${PYTHONPATH}" \
+        python -m installer.build --uninstall-includes "${printer_cfg}"
+    PYTHONPATH="${SCRIPT_DIR}:${SCRIPT_DIR}/installer/lib/kconfiglib:${PYTHONPATH}" \
+        python -m installer.build --uninstall-moonraker "${moonraker_conf}"
+
+    echo "${C_INFO}Cleaning up stale v3 Klipper/Moonraker symlinks...${C_OFF}"
+    time_elapsed make --no-print-directory -C "${SCRIPT_DIR}" F_NO_SERVICE=y fix_links
+}
+
+##### V3 Upgrade support ^^^ ##################################################################
+
+
 # Convert long options to short options
 for arg in "$@"; do
     shift
     case "$arg" in
         --emu) set -- "$@" -e ;;
+        --help) set -- "$@" -h ;;
         *)     set -- "$@" "$arg" ;;
     esac
 done
@@ -165,11 +329,21 @@ while getopts "rehfiudzsb:nk:c:m:a:toqv" arg; do
     esac
 done
 
+# Settle v3 vs v4 before anything else runs (see offer_v3_v4_choice for why).
+if [ "${F_SKIP_UPDATE}" != "force" ] && v3_detected; then
+    offer_v3_v4_choice
+fi
+
 # Handle git self update or branch change
 if [ "${F_SKIP_UPDATE}" = "force" ]; then
     : # If we just restarted with a forced skip, do nothing
 elif [ ! "${F_SKIP_UPDATE}" ] && [ ! "${F_UNINSTALL}" ]; then
     [ -t 1 ] && clear
+    # -b <branch> is what self_update.sh is about to act on below - pin Moonraker's
+    # update manager to match, or it silently drifts back to the old primary_branch on
+    # its next check. Skipped by -z, exactly as -b itself is (see usage: "-z ... nullifies
+    # -b <branch>") since self_update.sh never runs to consult BRANCH in that case either.
+    [ -n "${BRANCH}" ] && set_moonraker_primary_branch "${BRANCH}"
     "$SCRIPT_DIR/installer/self_update.sh" || exit 1
     F_SKIP_UPDATE=force exec "$0" "$@"
 else
@@ -408,15 +582,15 @@ fi
 
 
 
+################################
+##### Menuconfig / Refresh #####
+################################
+
 # Force F_PER_GATE_MCU if existing config already enables per-gate MCU support.
 # This preserves the expanded menuconfig behavior on later runs without needing -e.
 if [ -r "${KCONFIG_CONFIG}" ] && grep -q '^CONFIG_MMU_HAS_PER_GATE_MCU=y' "${KCONFIG_CONFIG}"; then
     export F_PER_GATE_MCU=y
 fi
-
-################################
-##### Menuconfig / Refresh #####
-################################
 
 # Decide whether interactive configuration is required.
 if [ ! -e "${KCONFIG_CONFIG}" ] && [ -z "${F_MENUCONFIG:-}" ]; then
@@ -619,6 +793,12 @@ fi
 # Always refresh stale configs after any optional menuconfig pass.
 run_kconfig_top olddefconfig y
 run_kconfig_units olddefconfig y
+
+# Give the v3 -> v4 upgrade a clean start now that Kconfig has resolved real paths -
+# see v3_upgrade_cleanup for why this can't happen any earlier.
+if [ -n "${F_V3_UPGRADE:-}" ]; then
+    v3_upgrade_cleanup
+fi
 
 
 

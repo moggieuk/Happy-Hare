@@ -358,6 +358,7 @@ class MmuGateMaps:
         """
         if not (0 <= gate < self.num_gates):
             return
+        self.renew_gate_map() # Copy before mutation so webhooks retains the previous values
         if name is not None:
             self.gate_filament_name[gate] = name
         if material is not None:
@@ -654,7 +655,7 @@ class MmuGateMaps:
                                     warnings.append("Color matching seems quite good %s" % (UI_EMOTICONS[3] if t == 'emoticon' else ''))
                                 elif distance > 0.02:
                                     warnings.append("Color matching is excellent %s" % (UI_EMOTICONS[2] if t == 'emoticon' else ''))
-                                elif distance < 0.02:
+                                else:
                                     warnings.append("Color matching is perfect %s" % (UI_EMOTICONS[1] if t == 'emoticon' else ''))
                                 remaps.append("T%s --> G%s (%s with closest color: %s)" % (tool, gn, gm, color))
                                 self.mmu.wrap_gcode_command("MMU_TTG_MAP TOOL=%d GATE=%d QUIET=1" % (tool, gn))
