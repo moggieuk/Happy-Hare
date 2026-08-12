@@ -772,9 +772,9 @@ def uninstall_includes(dest_file):
 
 def restart_service(name, service, kconfig):
     if not service:
-        logging.warning("No {name} service specified - Please restart manually")
+        logging.warning(f"No {name} service specified - Please restart manually")
     else:
-        logging.info("Restarting {}...".format(name))
+        logging.info(f"Restarting {name}...")
 
     kcfg = load_parsed_kconfig(kconfig)
     if kcfg.is_enabled("INIT_SYSTEMD"):

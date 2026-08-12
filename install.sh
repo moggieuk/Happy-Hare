@@ -2,10 +2,10 @@
 #
 # Happy Hare MMU Software
 #
-# Installer / Updater launch script with familar options
+# Installer / Updater launch script with familiar options
 #
 # Carefully written to only use options that are widely available
-# Please report any incompatability via github issue
+# Please report any incompatibility via github issue
 #
 
 # Exit immediately on error (really important to catch menuconfig errors / non-saves / aborts)
@@ -83,7 +83,7 @@ usage() {
     # TODO: Repetier-Server stub support
     # echo "  -r specify Repetier-Server <stub> to override printer.cfg and klipper.service names"
     echo "  -a <name>  alternative Klipper service name (e.g. when installed via Kiauh)"
-    echo "  -e, --emu Enables multi MCU support (for EMU design)"
+    echo "  -e, --emu Enables multi MCU support (e.g. for EMU design)"
     echo "  -o Override compatibility checks (e.g. Kalico detection)"
     echo "  -t  test mode - write config to /tmp instead of your real install"
     echo "  (-q verbose make for debugging)"

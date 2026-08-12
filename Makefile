@@ -492,7 +492,7 @@ python_deps_stamp   := $(if $(builder_prereq),$(builder_prereq),$(OUT)/.python-d
 python_deps: $(python_deps_stamp)
 
 $(OUT)/.python-deps-installed-$(python_deps_pyid): $(SRC)/installer/requirements.txt | $(OUT)
-	$(Q)echo "$(C_INFO)Checking for python dependencies$(C_OFF)"
+	$(Q)echo "$(C_INFO)Checking and resolving python dependencies$(C_OFF)"
 	$(Q)$(PY) -m pip install --quiet --disable-pip-version-check $(PIP_ARGS) \
 		-r $(SRC)/installer/requirements.txt || { \
 		echo "$(C_ERROR)'$(PY) -m pip' could not install installer/requirements.txt$(C_OFF)"; \
