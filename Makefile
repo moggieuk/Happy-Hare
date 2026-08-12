@@ -191,9 +191,12 @@ hh_klipper_extras_files := $(wildcard extras/*.py extras/mmu/*.py extras/mmu/uni
 hh_old_klipper_modules  := mmu_toolhead.py mmu_encoder.py mmu_espooler.py mmu_leds.py mmu_sensors.py mmu/* # These will get removed upon install/uninstall
 hh_moonraker_components := $(wildcard components/*.py)
 
-# All repo configs files less mmu_vars.cfg
+# All repo configs files less mmu_vars.cfg. Zero-length files (e.g. config/base/*.cfg
+# upgrade-path placeholders, see config/base/README.md) are deliberately excluded here:
+# $(wildcard) can't test size, so use find -size +0c instead, or every fresh install
+# would build and install those empty stubs as real (if empty) config files.
 repo_cfgs := \
-	$(patsubst config/%,%, $(wildcard config/*.cfg config/**/*.cfg))
+	$(patsubst config/%,%, $(shell find config -mindepth 1 -maxdepth 2 -name '*.cfg' -size +0c))
 
 # Per-unit files: <unit>_{hardware,parameters}.cfg
 hh_unit_config_files := \

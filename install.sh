@@ -188,6 +188,9 @@ set_moonraker_primary_branch() {
     fi
 }
 
+
+##### V3 Upgrade support vvv ##################################################################
+
 # Detect a v3 install: no v4 Kconfig file yet, but a v3-era mmu_parameters.cfg already
 # on disk with a "happy_hare_version: 3.x" stamp (the value Happy Hare itself writes
 # and trusts for exactly this purpose).
@@ -265,6 +268,16 @@ v3_upgrade_cleanup() {
     # shellcheck source=.mmu_config
     . "${KCONFIG_CONFIG}"
 
+    case "${CONFIG_KLIPPER_CONFIG_HOME:-}" in
+        "~"*) CONFIG_KLIPPER_CONFIG_HOME="${HOME}${CONFIG_KLIPPER_CONFIG_HOME#\~}" ;;
+    esac
+    case "${CONFIG_PRINTER_CONFIG_FILE:-}" in
+        "~"*) CONFIG_PRINTER_CONFIG_FILE="${HOME}${CONFIG_PRINTER_CONFIG_FILE#\~}" ;;
+    esac
+    case "${CONFIG_MOONRAKER_CONFIG_FILE:-}" in
+        "~"*) CONFIG_MOONRAKER_CONFIG_FILE="${HOME}${CONFIG_MOONRAKER_CONFIG_FILE#\~}" ;;
+    esac
+
     if [ -z "${CONFIG_KLIPPER_CONFIG_HOME:-}" ]; then
         echo "${C_ERROR}Could not resolve the printer config directory from '${KCONFIG_CONFIG}' -" \
             "skipping v3 cleanup to be safe. Your old 'mmu' directory is untouched;" \
@@ -300,6 +313,9 @@ v3_upgrade_cleanup() {
     echo "${C_INFO}Cleaning up stale v3 Klipper/Moonraker symlinks...${C_OFF}"
     time_elapsed make --no-print-directory -C "${SCRIPT_DIR}" F_NO_SERVICE=y fix_links
 }
+
+##### V3 Upgrade support ^^^ ##################################################################
+
 
 # Convert long options to short options
 for arg in "$@"; do
@@ -465,15 +481,15 @@ fi
 
 
 
+################################
+##### Menuconfig / Refresh #####
+################################
+
 # Force F_PER_GATE_MCU if existing config already enables per-gate MCU support.
 # This preserves the expanded menuconfig behavior on later runs without needing -e.
 if [ -r "${KCONFIG_CONFIG}" ] && grep -q '^CONFIG_MMU_HAS_PER_GATE_MCU=y' "${KCONFIG_CONFIG}"; then
     export F_PER_GATE_MCU=y
 fi
-
-################################
-##### Menuconfig / Refresh #####
-################################
 
 # Decide whether interactive configuration is required.
 if [ ! -e "${KCONFIG_CONFIG}" ] && [ -z "${F_MENUCONFIG:-}" ]; then
