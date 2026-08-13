@@ -368,9 +368,14 @@ class MmuNfcFieldArbiter:
         finally:
             # Ratify BEFORE restoring evicted neighbors: the ratification re-probe must see the
             # field as the caller's own operation left it, not after neighbors are re-parked
-            # (which is itself extra motion that could disturb the reading).
+            # (which is itself extra motion that could disturb the reading). Guarded on its own:
+            # an unexpected error here must never skip the restore below and leave an evicted
+            # neighbor stranded off its park position.
             if provisional:
-                self._ratify(gate, nfc_mgr)
+                try:
+                    self._ratify(gate, nfc_mgr)
+                except Exception as e:
+                    self.mmu.log_error("NFC: gate %d: ratification check failed: %s" % (gate, str(e)))
             # Unconditional: eviction/settling can raise part-way with a neighbor selected and
             # nothing yet recorded in 'evicted', and the caller must still get its gate back.
             with self.mmu.wrap_suspend_filament_monitoring():
