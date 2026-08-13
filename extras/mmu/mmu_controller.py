@@ -403,13 +403,12 @@ class MmuController(MmuFilamentMovement):
 
                 if u.p.startup_home_selector:
                     unit_loaded = (
-                        self.gate_selected != TOOL_GATE_UNKNOWN and
                         u.manages_gate(self.gate_selected) and
-                        self.filament_pos not in [FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN]
+                        self.filament_pos != FILAMENT_POS_UNLOADED
                     )
 
                     if unit_loaded:
-                        self.log_warning(f"Skipping autohome of {u.name} because it may have filament loaded")
+                        self.log_warning(f"Skipping autohome of {u.name} because it may have filament loaded (or filament state could not be confirmed)")
                         continue
 
                     try:
