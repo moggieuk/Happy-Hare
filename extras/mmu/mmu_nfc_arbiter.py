@@ -266,19 +266,28 @@ class MmuNfcFieldArbiter:
         homing+park, or a jog-scan's sweep with its fast path suppressed) has completed, to
         confirm or reject a NFC_FIELD_PROVISIONAL verdict.
 
+        Deliberately a raw presence check (nfc_mgr.probe_gate_field), NOT _field_check /
+        _field_verdict: the read this verdict was protecting has already run and already
+        written gate_spool_rfid[gate] to whatever UID is in the field (see _nfc_tag_read), so
+        re-deriving ownership via find_gate_by_rfid here would be circular - it would
+        tautologically resolve back to 'gate' every time, since the map entry it would check
+        is the one the read itself just wrote. The only question that isn't circular is
+        "is anything still there".
+
         This is purely diagnostic. The tag read already taken during the caller's operation is
         not undone either way (a Spoolman resolution may already be in flight) - this can only
         warn that the attribution just made may have been wrong.
         """
-        verdict, uid, owner, diag = self._field_check(gate, nfc_mgr)
-        if verdict == NFC_FIELD_CLEAR or (verdict == NFC_FIELD_MINE and owner == gate):
+        uid = nfc_mgr.probe_gate_field(gate)
+        if not uid:
             self.mmu.log_debug("NFC: gate %d: provisional tag attribution ratified (field "
                                 "clear after the operation's own motion)" % gate)
             return
         self.mmu.log_warning(
             "NFC: gate %d: failed to reliably detect this gate's own tag - the reader still "
-            "shows a tag after gate %d's own filament settled, so a neighboring gate's tag may "
-            "have been misattributed here. Verify gate %d's rfid/spool_id manually" % (gate, gate, gate))
+            "shows tag %s after gate %d's own filament settled, so a neighboring gate's tag may "
+            "have been misattributed here. Verify gate %d's rfid/spool_id manually"
+            % (gate, uid, gate, gate))
 
 
     # ---- Restore ------------------------------------------------------------------------------
