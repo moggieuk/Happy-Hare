@@ -136,11 +136,12 @@ if MMU_HAS_NFC_READER
         config CHOICE_NFC_READER_TYPE_PN532_UART
           bool "PN532 [[DIM]]/ UART"
           help
-            PN532 NFC reader in HSU (High Speed UART) mode, on a USB serial adapter.
+            PN532 in HSU mode on a USB serial adapter. One reader per adapter -
+            for more than one, use "PN532 / I2C" with software I2C instead (a
+            separate bit-banged bus per reader, no extra hardware).
 
-            One reader per adapter. For more than one reader use "PN532 / I2C"
-            and choose software I2C, which gives each reader its
-            own bit-banged bus with no extra hardware.
+            An unplugged adapter does not stop Klipper starting; reconnect it
+            and run MMU_RFID_INIT to recover.
 
        config CHOICE_NFC_READER_TYPE_PN532_SPI
          bool "PN532 [[DIM]]/ SPI[[/DIM]]"
@@ -630,16 +631,13 @@ if MMU_HAS_NFC_READER
       bool "NFC neighbor field check"
       default n
       help
-        With per-gate readers the gates can be close enough that a spool parked at a
-        neighboring gate sits inside this gate's RF field, which could satisfy the preload
-        NFC endstop or a MMU_NFC_SCAN before the filament has moved and misattribute a
-        neighbor's spool to this gate. When enabled, Happy Hare identifies the tag by UID
-        against the gate map before trusting a read: a tag registered to this gate (or
-        unrecognised) is read as before; a tag registered to a neighboring gate is not
-        attributed. Off by default - a stock machine does no extra reader I/O.
+        A neighboring gate's spool can sit inside this gate's RF field, satisfying
+        the preload NFC endstop or MMU_NFC_SCAN before the filament moves and
+        misattributing that spool to this gate. When enabled, the tag's UID is
+        checked against the gate map first: a tag registered elsewhere is refused
+        rather than attributed. Off by default (no extra reader I/O).
 
-        See "NFC neighbor eviction jog" below to also move a neighboring gate's filament out
-        of the way rather than just refusing to read.
+        See "NFC neighbor eviction jog" below to also move it out of the way.
 
     config PARAM_NFC_NEIGHBOR_CHECK
       int
@@ -650,17 +648,13 @@ if MMU_HAS_NFC_READER
       float "NFC neighbor eviction jog"
       default 0
       help
-        Adds neighbor-eviction motion on top of the neighbor field check above: when a tag is
-        identified as belonging to a specific neighboring gate, that gate is temporarily
-        loaded and its filament jogged this far off its park position until the field clears,
-        then re-parked afterwards (even if the operation fails).
+        Adds eviction motion on top of the check above: an identified neighboring
+        gate is loaded and jogged this far off its park position until the field
+        clears, then re-parked afterwards. Signed: +ve is forward of the gate,
+        -ve is behind it (forward requires gate_homing_endstop=mmu_exit - see
+        the warning below). Must fit inside the jog scan window above.
 
-        Signed: +ve jogs the neighbor forward of its gate, -ve behind it. Must fit inside the
-        matching half of the jog scan window above. A forward jog is only allowed when the
-        gate homing endstop is the per-gate mmu_exit sensor - on a shared exit path a forward
-        jog would obstruct the very gate you are trying to read, so jog backward there.
-        Requires the filament to be unloaded. 0 disables eviction (default) - reducing reader
-        gain is NOT an alternative: a neighbor's tag can be physically closer than your own.
+        0 disables eviction (default); reader gain is not a substitute.
 
     config PARAM_NFC_FIELD_PROBE_READS
       int "NFC field probe reads"
