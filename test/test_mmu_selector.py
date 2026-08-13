@@ -499,6 +499,22 @@ class TestPrusaIdlerSelector(SelectorTestCase):
         self.assertTrue(selector.is_homed)
         self.assertTrue(selector.idler.is_homed)
 
+    def test_uncalibrated_idler_falls_back_to_the_vendor_cad_defaults(self):
+        """
+        A fresh install with no saved idler offsets must come up with working
+        gate positions, not an unusable [-1...] list. The vendor defaults are
+        Prusa's factory idler geometry (prusa-firmware-mmu config.h: slots at
+        58-218deg, 40deg pitch, idle 18deg from the far endstop) converted to
+        rotation_distance 40 units, with gate 0 = the right-most lane.
+        """
+        hh = session(self.PROFILE)
+        hh.boot()                                   # no calibrate -> no seeding
+        selector = {u.name: u for u in hh.mmu.mmu_machine.units}['unit0'].selector
+        self.assertEqual(selector.idler.idler_offsets,
+                         [19.7, 15.3, 10.9, 6.4, 2.0, 23.5])
+        from extras.mmu.unit.mmu_calibrator import CALIBRATED_SELECTOR
+        self.assertTrue(selector.calibrator.check_calibrated(CALIBRATED_SELECTOR))
+
     def test_idler_offsets_follow_the_rotation_distance(self):
         """
         Nominal idler geometry: one gate position per rotation/num_gates, and the

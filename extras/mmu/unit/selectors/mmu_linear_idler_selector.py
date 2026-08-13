@@ -222,8 +222,18 @@ class LinearSelectorIdler:
             if not any(x == -1 for x in self.idler_offsets):
                 self.calibrator.mark_calibrated(CALIBRATED_SELECTOR)
         else:
-            self.mmu.log_always("Warning: Idler offsets not found in mmu_vars.cfg. Probably not calibrated")
-            self.idler_offsets = [-1] * (self.mmu_unit.num_gates + 1)
+            # No saved offsets: fall back to the vendor CAD defaults (derived
+            # from Prusa's factory idler geometry) so a fresh install has
+            # working gate positions out of the box.
+            defaults = list(self.p.cad_idler_offsets)
+            defaults = ensure_list_size(defaults, self.mmu_unit.num_gates + 1)
+            if not any(x == -1 for x in defaults):
+                self.mmu.log_always("Idler offsets not found in mmu_vars.cfg. Using CAD defaults: %s" % defaults)
+                self.idler_offsets = defaults
+                self.calibrator.mark_calibrated(CALIBRATED_SELECTOR)
+            else:
+                self.mmu.log_always("Warning: Idler offsets not found in mmu_vars.cfg. Probably not calibrated")
+                self.idler_offsets = [-1] * (self.mmu_unit.num_gates + 1)
         self.var_manager.set(VARS_MMU_IDLER_OFFSETS, self.idler_offsets, namespace=self.mmu_unit.name)
 
 
@@ -457,9 +467,12 @@ class MmuCalibrateIdlerCommand(BaseCommand):
         lgate = gcmd.get_int('LGATE', None, minval=0, maxval=mmu_unit.num_gates) # num_gates == disengaged position
 
         if reset:
-            idler.idler_offsets = [-1] * (mmu_unit.num_gates + 1)
-            idler.var_manager.delete(VARS_MMU_IDLER_OFFSETS, namespace=mmu_unit.name, write=True)
-            mmu.log_always(f"Reset idler calibration on {mmu_unit.name}")
+            defaults = list(selector.p.cad_idler_offsets)
+            size = mmu_unit.num_gates + 1
+            idler.idler_offsets = (defaults[:size] + [-1] * (size - len(defaults))) if defaults else [-1] * size
+            idler.var_manager.set(VARS_MMU_IDLER_OFFSETS, idler.idler_offsets, write=True, namespace=mmu_unit.name)
+            idler._check_calibrated()
+            mmu.log_always(f"Reset idler calibration on {mmu_unit.name} to: {idler.idler_offsets}")
             return
 
         if gate is not None and not mmu_unit.manages_gate(gate):
