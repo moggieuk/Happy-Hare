@@ -177,6 +177,12 @@ class MmuSensorManager:
         self.mmu.log_debug(f"bypass_sensors_map={fmt(self.bypass_sensors_map)}")
         self.mmu.log_debug("-------------------")
 
+        # Reverse index so a MmuRunoutHelper (e.g. from cmd_SET_FILAMENT_SENSOR) can find its
+        # own qualified name to persist a live enable/disable change (see set_sensor_enabled())
+        self._helper_to_qualified_name = {
+            sensor.runout_helper: qname for qname, sensor in self.all_sensors_map.items()
+        }
+
         # Initialize with assumption of unit 0 selected
         self.active_sensors_map = self.unit_sensors[0]
 
@@ -315,12 +321,12 @@ class MmuSensorManager:
         return name.split(":", 1)[-1]
 
 
-    def get_qualified_endstop_name(self, endstop_name):
+    def get_qualified_endstop_name(self, endstop_name, mmu_unit=None):
         """
         Convert simple endstop name into fully qualified sensor based on context
         Harmless if name is already fully qualified
         """
-        mmu_unit = self.mmu.mmu_unit()
+        mmu_unit = mmu_unit or self.mmu.mmu_unit()
 
         # These have form: "<unitName>:genericName"
         if endstop_name in [SENSOR_SHARED_EXIT]:
@@ -389,6 +395,112 @@ class MmuSensorManager:
 
         # Doesn't map
         return endstop_name
+
+
+    def resolve_sensor(self, sname, mmu_unit=None):
+        """
+        Resolve a user-supplied sensor name against all_sensors_map - the stable, fully-qualified
+        registry of every sensor on the machine (unlike active_sensors_map/get_sensor_obj(), which
+        only cover what's currently in scope for the selected gate/unit and would miss an
+        out-of-scope or already-disabled sensor - both of which still need to be nameable here).
+
+        Accepts:
+          - a fully-qualified name exactly as MMU_SENSORS prints it (e.g. 'unit0:mmu_shared_exit',
+            'mmu_exit_0') - tried first, always unambiguous.
+          - a bare/generic name (e.g. 'mmu_shared_exit', 'filament_tension') - qualified using
+            mmu_unit's context if given. Without mmu_unit, a bare name that maps to more than one
+            unit's sensor is rejected as ambiguous rather than silently resolved against whichever
+            gate/unit happens to be selected right now.
+
+        Returns (qualified_name, sensor, error): error is None on success, else 'unknown' or
+        'ambiguous' (qualified_name/sensor are None in the error case).
+        """
+        if sname in self.all_sensors_map:
+            return sname, self.all_sensors_map[sname], None
+
+        if mmu_unit is not None:
+            qualified = self.get_qualified_endstop_name(sname, mmu_unit=mmu_unit)
+            if qualified in self.all_sensors_map:
+                return qualified, self.all_sensors_map[qualified], None
+
+        matches = [k for k in self.all_sensors_map if self.get_unprefixed_sensor_name(k) == sname]
+        if len(matches) == 1:
+            return matches[0], self.all_sensors_map[matches[0]], None
+        if len(matches) > 1:
+            return None, None, 'ambiguous'
+
+        if mmu_unit is None:
+            qualified = self.get_qualified_endstop_name(sname)
+            if qualified in self.all_sensors_map:
+                return qualified, self.all_sensors_map[qualified], None
+
+        return None, None, 'unknown'
+
+
+    def _persist_enabled(self, qualified_name, enabled, write=True):
+        """
+        Sparse persistence: only entries that are disabled (False) are ever stored. "Enabled" is
+        the default and is never written, so a stale entry left behind by a config edit that
+        removed/renamed a sensor is simply never looked up again (see load_persisted_state()) -
+        it can't block boot.
+        """
+        persisted = dict(self.mmu.var_manager.get(VARS_MMU_SENSOR_ENABLED, {}))
+        changed = False
+        if enabled:
+            if persisted.pop(qualified_name, None) is not None:
+                changed = True
+        elif persisted.get(qualified_name) is not False:
+            persisted[qualified_name] = False
+            changed = True
+
+        if changed:
+            self.mmu.var_manager.set(VARS_MMU_SENSOR_ENABLED, persisted, write=write)
+        return changed
+
+
+    def set_sensor_enabled(self, qualified_name, enabled, write=True):
+        """
+        Enable/disable one sensor by its all_sensors_map key and persist the change so it
+        survives a restart (MMU_SENSORS SENSOR=<name> ENABLE=[0|1]).
+
+        Drives runout_helper.sensor_enabled unconditionally, regardless of its current live
+        value: SET_FILAMENT_SENSOR (Mainsail) can already have changed the live flag without
+        touching the persisted record, so a "only touch it if the live value differs" guard
+        would see live already matching, do nothing, and never write the persisted record.
+        Only the write itself is conditional, on whether the persisted dict actually changed.
+
+        Returns True if the persisted record changed.
+        """
+        sensor = self.all_sensors_map[qualified_name]
+        sensor.runout_helper.sensor_enabled = bool(enabled)
+        return self._persist_enabled(qualified_name, enabled, write=write)
+
+
+    def persist_sensor_enabled_change(self, runout_helper):
+        """
+        Called by MmuRunoutHelper.cmd_SET_FILAMENT_SENSOR so a live Mainsail toggle of a
+        registered sensor is exactly as sticky as one made via MMU_SENSORS ENABLE= - otherwise a
+        sensor disabled via MMU_SENSORS then re-enabled via Mainsail would silently revert back
+        to disabled on the next restart.
+        """
+        qualified_name = self._helper_to_qualified_name.get(runout_helper)
+        if qualified_name is not None:
+            self._persist_enabled(qualified_name, runout_helper.sensor_enabled)
+
+
+    def load_persisted_state(self):
+        """
+        Re-apply persisted per-sensor disables to the current all_sensors_map. Only ever assigns
+        False - "enabled" is never persisted - so this can't clobber a live SET_FILAMENT_SENSOR
+        toggle made after boot, and is safe to call more than once (klippy:ready and again from
+        the MMU_RESET-style re-enable path). A persisted name that no longer resolves (config
+        edit removed/renamed that sensor) is silently skipped.
+        """
+        persisted = self.mmu.var_manager.get(VARS_MMU_SENSOR_ENABLED, {})
+        for qualified_name, enabled in persisted.items():
+            sensor = self.all_sensors_map.get(qualified_name)
+            if sensor is not None:
+                sensor.runout_helper.sensor_enabled = bool(enabled)
 
 
     def check_sensor(self, name):

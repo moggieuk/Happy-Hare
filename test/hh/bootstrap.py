@@ -1130,6 +1130,19 @@ class Session:
         self.mmu.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, pos, namespace=mmu_unit.name)
         return self
 
+    def seed_sensor_disabled(self, names):
+        """
+        Persist a sparse per-sensor disabled map BEFORE klippy:ready, as a printer that had
+        MMU_SENSORS SENSOR=... ENABLE=0 run against it yesterday does.
+
+        Must be called between connect() and ready(): mmu.var_manager is bound in
+        handle_connect, and MmuSensorManager.load_persisted_state() reads it back at
+        klippy:ready.
+        """
+        from extras.mmu.mmu_constants import VARS_MMU_SENSOR_ENABLED
+        self.mmu.var_manager.set(VARS_MMU_SENSOR_ENABLED, {name: False for name in names})
+        return self
+
     def home_selectors(self):
         """
         MMU_HOME every unit that has a physical selector. Returns the units homed.
@@ -1145,7 +1158,8 @@ class Session:
         return homed
 
     def boot(self, extra=0.01, calibrate=False, gates_loaded_at=None, prime=False, seed=0,
-             pre_bootup=None, selected_gate=None, selected_tool=None, selector_last_pos=None):
+             pre_bootup=None, selected_gate=None, selected_tool=None, selector_last_pos=None,
+             sensors_disabled=None):
         """
         Full sequence to a live MMU: connect -> ready -> pump the reactor past
         BOOT_DELAY so the scheduled bootup callback runs __MMU_BOOTUP, then past the
@@ -1187,6 +1201,10 @@ class Session:
         resolved after calibrate() on the unit that owns the gate. Pass a number for a position
         that deliberately disagrees with the gate.
 
+        sensors_disabled=[names] is the same idea for per-sensor enable state - see
+        seed_sensor_disabled(). Models a printer that had MMU_SENSORS SENSOR=... ENABLE=0 run
+        against it before this boot.
+
         All of them default to False: an uncalibrated, unhomed machine with an unknown gate map
         is a real state HH has to cope with, and the tests assert it.
         """
@@ -1221,6 +1239,8 @@ class Session:
                 if selector_last_pos is True:
                     selector_last_pos = self.selector_offset(selected_gate, unit=unit_index)
                 self.seed_selector_last_pos(selector_last_pos, unit=unit_index)
+            if sensors_disabled is not None:
+                self.seed_sensor_disabled(sensors_disabled)
             self.ready()
             # The seam for anything that needs a LIVE machine but has to happen before bootup
             # renders - homing, in the console's case. See the docstring.

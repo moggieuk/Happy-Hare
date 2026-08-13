@@ -297,6 +297,10 @@ class MmuRunoutHelper:
     cmd_SET_FILAMENT_SENSOR_help = "Sets the filament sensor on/off"
     def cmd_SET_FILAMENT_SENSOR(self, gcmd):
         self.sensor_enabled = bool(gcmd.get_int("ENABLE", 1))
+        # Make a Mainsail/SET_FILAMENT_SENSOR toggle just as sticky as MMU_SENSORS ENABLE=
+        mmu = self.printer.lookup_object('mmu', None)
+        if mmu is not None:
+            mmu.sensor_manager.persist_sensor_enabled_change(self)
 
 
 
