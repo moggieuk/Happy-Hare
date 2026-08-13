@@ -163,10 +163,13 @@ class TestEveryBootableProfile(unittest.TestCase):
                 self.assertLessEqual(cfg.getint('tmc2130 mmu_stepper unit0_%s' % name, 'driver_SGT'), 63)
 
         # StallGuard only works in spreadCycle: the selector and idler must not
-        # run stealthChop (threshold 0) or homing never triggers. This was the
-        # live failure -- "No trigger on mmu_stepper unit0_selector" with the
-        # default threshold of 100 while homing at 60 mm/s.
-        for name, expected in (('selector', 0.0), ('idler', 0.0)):
+        # run stealthChop while homing or the stall is never detected. A small
+        # threshold (3mm/s) keeps the motors silent in stealthChop at standstill
+        # while all homing speeds (selector 8, idler 20mm/s) and the second
+        # homing approach (half the homing speed) stay in spreadCycle. This was
+        # the live failure -- "No trigger on mmu_stepper unit0_selector" with
+        # the default threshold of 100 while homing at 60 mm/s.
+        for name, expected in (('selector', 3.0), ('idler', 3.0)):
             with self.subTest(stealthchop=name):
                 self.assertEqual(cfg.getfloat('tmc2130 mmu_stepper unit0_%s' % name, 'stealthchop_threshold'),
                                  expected)
