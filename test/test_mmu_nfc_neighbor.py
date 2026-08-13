@@ -384,6 +384,53 @@ class TestArbitrationEndToEnd(NeighborTestCase):
         self.assertIn('tag read', ' '.join(self.hh.console).lower())
         self.assertEqual(self.hh.mmu.gate_maps.gate_spool_rfid[0], TAG)
 
+    def test_provisional_attribution_is_never_committed_when_not_ratified_scan(self):
+        """
+        Row 6, made genuinely reachable end to end (not just as a unit test on _ratify):
+        offset=-20 puts the tag exactly at the reader whenever gate 0's own filament is
+        parked at its normal park position (park -100, reader -80, tag_pos = tip - offset).
+        The sweep's own motion moves the tag out of range briefly (e.g. while homing to the
+        gate datum at position 0), but the FINAL park brings it right back into range - by
+        construction, indistinguishable from a stationary neighbour's tag that just happens
+        to sit at this reader. This is the actual point of the deferred-commit fix: before
+        it, the read taken mid-sweep would already have been committed to the gate map by
+        the time this assertion runs, warning or no warning.
+        """
+        self.hh.mmu.mmu_unit(0).p.nfc_neighbor_evict_distance = -40.0
+        self.fil.attach_tag(0, TAG, offset=-20.0)  # unregistered, and never truly clears
+        self.hh.mmu.select_gate(0)
+        self.hh.place_filament(0)  # normal park position
+        self.hh.mmu.gate_maps.set_gate_status(0, GATE_AVAILABLE)
+        self.assertIsNotNone(self.fil.tag_detected(0), 'precondition: tag must be in range at rest')
+        self.hh.run_gcode('MMU_NFC_SCAN GATE=0')
+        self.assertEqual(self.hh.errors, [])
+        self.assertEqual(self.hh.mmu.gate_maps.gate_spool_rfid[0], '',
+                         "a never-ratified provisional read must never be committed to the gate map")
+        self.assertIn('no tag found', ' '.join(self.hh.console).lower())
+        self.assertTrue(
+            any('could not confirm this gate' in c for c in self.hh.console), self.hh.console)
+
+    def test_provisional_attribution_is_never_committed_when_not_ratified_preload(self):
+        """
+        Preload's side of the same scenario: drops to 'no tag found' and never writes the
+        gate map, same as the scan case above. Starts from the normal PARK position (not at
+        the reader) - that keeps the per-gate exit sensor unTRIGGERED so preload takes its
+        normal homing path rather than the "already preloaded" shortcut (which would bypass
+        arbitration entirely), while still putting the tag in range from the very start (see
+        the scan test's docstring for the offset/park/reader arithmetic).
+        """
+        self.hh.mmu.mmu_unit(0).p.nfc_neighbor_evict_distance = -40.0
+        self.fil.attach_tag(0, TAG, offset=-20.0)
+        self.hh.mmu.select_gate(0)
+        self.hh.place_filament(0)  # normal park position, exit sensor not yet triggered
+        self.assertIsNotNone(self.fil.tag_detected(0), 'precondition: tag must be in range at rest')
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+        self.assertEqual(self.hh.errors, [])
+        self.assertEqual(self.hh.mmu.gate_status[0], GATE_AVAILABLE, 'filament still physically arrived')
+        self.assertEqual(self.hh.mmu.gate_maps.gate_spool_rfid[0], '',
+                         "a never-ratified provisional read must never be committed to the gate map")
+        self.assertIn('no tag found', ' '.join(self.hh.console).lower())
+
 
 class TestRatifyDoesNotSelfPoison(NeighborTestCase):
     """
@@ -408,9 +455,9 @@ class TestRatifyDoesNotSelfPoison(NeighborTestCase):
         # already attributes this exact UID to gate 0, same as _nfc_tag_read would leave it.
         self.hh.mmu.gate_maps.set_gate_rfid(0, TAG)
         self.hh.gcode.console.clear()
-        self.arbiter._ratify(0, mgr)
+        self.assertFalse(self.arbiter._ratify(0, mgr))
         self.assertTrue(
-            any('failed to reliably detect' in c for c in self.hh.console), self.hh.console)
+            any('could not confirm this gate' in c for c in self.hh.console), self.hh.console)
 
     def test_a_different_uid_still_present_is_also_not_ratified(self):
         """The fix must not special-case "same UID as just attributed" vs "a different one" -
@@ -420,9 +467,9 @@ class TestRatifyDoesNotSelfPoison(NeighborTestCase):
         self.hh.place_filament(0, position=self.fil.layout['mmu_nfc'])
         self.hh.mmu.gate_maps.set_gate_rfid(0, TAG) # Map says something else entirely
         self.hh.gcode.console.clear()
-        self.arbiter._ratify(0, mgr)
+        self.assertFalse(self.arbiter._ratify(0, mgr))
         self.assertTrue(
-            any('failed to reliably detect' in c for c in self.hh.console), self.hh.console)
+            any('could not confirm this gate' in c for c in self.hh.console), self.hh.console)
 
     def test_genuinely_clear_field_is_still_ratified(self):
         """Sanity check the fix didn't break the success path: nothing in the field at all
@@ -430,9 +477,9 @@ class TestRatifyDoesNotSelfPoison(NeighborTestCase):
         mgr = self.hh.mmu.mmu_unit(0).nfc_manager
         self.hh.mmu.gate_maps.set_gate_rfid(0, TAG)
         self.hh.gcode.console.clear()
-        self.arbiter._ratify(0, mgr)
+        self.assertTrue(self.arbiter._ratify(0, mgr))
         self.assertFalse(
-            any('failed to reliably detect' in c for c in self.hh.console), self.hh.console)
+            any('could not confirm this gate' in c for c in self.hh.console), self.hh.console)
 
 
 if __name__ == '__main__':
