@@ -826,6 +826,51 @@ class TestPersistedPositionRestore(unittest.TestCase):
         self.assertAlmostEqual(self.axis().carriage,
                                self.selector().selector_offsets[self.GATE], places=3)
 
+    def test_startup_home_selector_skips_rather_than_guess_on_unresolved_filament_state(self):
+        """
+        An unresolved filament_pos at boot (a sensor read failure, a fresh install with no
+        persisted state - anything that leaves cmd_MMU_BOOTUP's own recovery attempt short of a
+        definite answer) must not be treated as "safe to auto-home". Before the fix,
+        FILAMENT_POS_UNKNOWN was explicitly exempted from the boot skip-check, so bootup would
+        proceed into home_unit() -> PhysicalSelector.home(), whose "automatic unload case" branch
+        then runs a real unload_sequence() - which can heat the extruder - based on nothing more
+        than an ambiguous read. The fix (mmu_controller.py's autohoming loop) must skip and warn
+        instead, leaving the unload untouched.
+
+        No gate is seeded here: an unresolved filament_pos is most likely exactly when no gate
+        has ever been selected either (a fresh install), and that combination is what let the old
+        check's `gate_selected != TOOL_GATE_UNKNOWN` clause slip past it too.
+
+        Not using self.boot(): a genuinely unresolved state legitimately produces two
+        informational errors of its own (the rigged sensor failure itself, and
+        report_necessary_recovery's "Filament detected but tool/gate is unknown" guidance,
+        mmu_filament_movement.py:3351-3352) - orthogonal to this fix, which is only about what
+        the autohoming loop does next. Pinning the exact pair below still catches anything ELSE
+        going wrong (e.g. an unload attempt blowing up) as a third, unexpected error.
+        """
+        unload_calls = []
+
+        def rig_unresolved_filament_state():
+            self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 startup_home_selector=1')
+
+            def explode(*args, **kwargs):
+                raise Exception('harness: filament state sensors unavailable')
+            self.hh.mmu.recover_filament_pos = explode
+            self.hh.mmu.unload_sequence = lambda *args, **kwargs: unload_calls.append((args, kwargs))
+
+        self.hh = session('tradrack')
+        self.hh.boot(calibrate=True, pre_bootup=rig_unresolved_filament_state)
+        hh = self.hh
+
+        self.assertEqual(unload_calls, [], 'an unresolved filament state must never trigger an automatic unload')
+        self.assertIn('may have filament loaded', '\n'.join(hh.console),
+                      'bootup did not warn about the unresolved filament state')
+        self.assertFalse(self.selector().is_homed, 'the selector must not be homed on an unresolved state either')
+        self.assertEqual(hh.errors, [
+            '!! harness: filament state sensors unavailable',
+            '!! Filament detected but tool/gate is unknown. Please use MMU_RECOVER GATE=xx to correct state',
+        ], 'only the rigged sensor failure and the resulting recovery guidance should be reported')
+
 
 class TestTipFormingEffect(unittest.TestCase):
     """
