@@ -101,6 +101,14 @@ if MMU_TYPE_PRUSA_MMU3_3_0
       (homing_speed/2 = 4mm/s) or the approach runs in stealthChop and the
       stall is never detected.
 
+  config PARAM_SELECTOR_MOVE_SPEED
+    default 20
+    help
+      Slow, quiet gate selection moves. The 200mm/s generic default is too
+      fast for the MMU3's ATmega32U4: the step command pressure combined
+      with the shift register bitbang burst overflowed the MCU move queue
+      ("Move queue overflow" -- verified on the live MMU3).
+
   config PARAM_IDLER_GEAR_RATIO
     default "1:1"
   config PARAM_IDLER_ROTATION_DISTANCE
