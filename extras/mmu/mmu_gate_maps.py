@@ -191,6 +191,7 @@ class MmuGateMaps:
 
         self.mmu.led_manager.gate_map_changed(None) # Force full LED update
         self.mmu.mmu_macro_event(MACRO_EVENT_GATE_MAP_CHANGED, "GATE=-1")
+        self.mmu._moonraker_push_lane_data()
 
 
 # -----------------------------------------------------------------------------------------------------------
@@ -292,6 +293,7 @@ class MmuGateMaps:
                 self.persist_gate_status()
                 self.mmu.led_manager.gate_map_changed(gate)
                 self.mmu.mmu_macro_event(MACRO_EVENT_GATE_MAP_CHANGED, "GATE=%d" % gate)
+                self.mmu._moonraker_push_lane_data([(gate, self.gate_spool_id[gate])])
 
 
     def reset_gate_map(self):

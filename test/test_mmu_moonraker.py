@@ -486,6 +486,29 @@ class TestBackendGate(unittest.TestCase):
             hh.close()
 
 
+class TestLaneData(MoonrakerTestCase):
+
+    def test_available_gate_without_spool_id_keeps_local_metadata(self):
+        self.hh.klippy.extra_status = {
+            'gate_status': [1, 0, 0, 0],
+            'gate_filament_name': ['PLA Basic', '', '', ''],
+            'gate_material': ['PLA', '', '', ''],
+            'gate_vendor': ['Bambu Lab', '', '', ''],
+            'gate_color': ['00ae42', '', '', ''],
+            'gate_temperature': [210, 200, 200, 200],
+        }
+
+        self.hh.call_remote('moonraker_push_lane_data', gate_ids=[(0, -1)])
+
+        lane = self.hh.server.database.store['lane_data']['lane0']
+        self.assertEqual(lane['name'], 'PLA Basic')
+        self.assertEqual(lane['material'], 'PLA')
+        self.assertEqual(lane['vendor_name'], 'Bambu Lab')
+        self.assertEqual(lane['color'], '00ae42')
+        self.assertEqual(lane['nozzle_temp'], 210)
+        self.assertIsNone(lane['spool_id'])
+
+
 class TestGateAssignment(MoonrakerTestCase):
     SPOOLS = (dict(uid=KNOWN_UID, material='PLA'),
               dict(material='ABS', vendor='Polymaker'))

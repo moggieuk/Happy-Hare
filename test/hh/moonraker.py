@@ -215,6 +215,9 @@ class FakeDatabase:
             ns = ns.setdefault(part, {})
         ns[parts[-1]] = value
 
+    async def insert_batch(self, namespace, records):
+        self.store.setdefault(namespace, {}).update(records)
+
     async def delete_item(self, namespace, key, drop_empty_db=False):
         ns = self.store.setdefault(namespace, {})
         parts = key.split('.')
