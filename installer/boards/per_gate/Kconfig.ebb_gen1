@@ -45,7 +45,7 @@ if BOARD_TYPE_EBB_GEN1
     config PIN_NEOPIXEL
       default "$(MCU_NAME):PD3"
 
-    config PIN_FAN_$(gate)
+    config PIN_FAN
       default "$(MCU_NAME):PA0"
 
     config PIN_BUFFER_TENSION
