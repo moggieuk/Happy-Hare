@@ -55,6 +55,7 @@ class LinearSelectorParameters(TunableParametersBase):
         ParamSpec('cad_bypass_block_width', 'float', lambda self: self._cad_default('cad_bypass_block_width'), section="CAD", limits=dict(minval=0.0), hidden=True),
         ParamSpec('cad_bypass_block_delta', 'float', lambda self: self._cad_default('cad_bypass_block_delta'), section="CAD", limits=dict(minval=0.0), hidden=True),
         ParamSpec('cad_selector_tolerance', 'float', lambda self: self._cad_default('cad_selector_tolerance'), section="CAD", limits=dict(minval=0.0), hidden=True),
+        ParamSpec('cad_idler_offsets',     'floatlist', lambda self: self._cad_default('cad_idler_offsets'),     section="CAD", hidden=True),
     )
 
     def __init__(self, config, selector):
@@ -85,6 +86,7 @@ class LinearSelectorParameters(TunableParametersBase):
             'cad_bypass_block_width': 6.0,
             'cad_bypass_block_delta': 9.0,
             'cad_selector_tolerance': 15.0,
+            'cad_idler_offsets': [-1.0] * 6,
         }
 
         vendor = self._selector.mmu_unit.mmu_vendor.lower()
@@ -126,6 +128,14 @@ class LinearSelectorParameters(TunableParametersBase):
                 'cad_gate_width': 14.0,     # MMU3 gate pitch (measured)
                 'cad_bypass_offset': 0.0,   # MMU3 has no bypass
                 'cad_last_gate_offset': 2.0,# Has hard stop at limit of travel
+                # Idler barrel positions (units of motor travel at rd=40,
+                # 1 unit = 9deg) from the homed silicone stop. Derived from
+                # Prusa's factory geometry (prusa-firmware-mmu config.h:
+                # slots 58-218deg at 40deg pitch from the far endstop, idle
+                # 18deg from it, measured ~225deg stop-to-stop): gate 0 is
+                # the right-most lane (Prusa slot 5), gate 4 the left-most.
+                # Verified lane-by-lane on the live MMU3.
+                'cad_idler_offsets': [19.7, 15.3, 10.9, 6.4, 2.0, 23.5],
             })
 
         return cad
