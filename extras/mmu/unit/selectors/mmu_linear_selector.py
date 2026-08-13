@@ -115,9 +115,15 @@ class LinearSelectorParameters(TunableParametersBase):
             })
 
         elif vendor == VENDOR_PRUSA.lower():
+            # Measured on the live MMU3 (Freakazo's mk3s): the selector homes
+            # at the right endstop and the first real gate (Prusa slot 5) sits
+            # ~18mm from home -- the position ~4mm from home is the "skip"
+            # (park) position used by Prusa firmware, not a filament gate.
+            # Five gates span 18..74mm with ~14mm pitch (the CAD 20mm pitch
+            # overestimates); total travel to the hard stop is ~76mm.
             cad.update({
-                'cad_gate0_pos': 4.0,       # Approximate distance from endstop to first gate
-                'cad_gate_width': 20.0,     # MMU3 gate pitch
+                'cad_gate0_pos': 18.0,      # Distance from endstop to first real gate (Prusa slot 5)
+                'cad_gate_width': 14.0,     # MMU3 gate pitch (measured)
                 'cad_bypass_offset': 0.0,   # MMU3 has no bypass
                 'cad_last_gate_offset': 2.0,# Has hard stop at limit of travel
             })
