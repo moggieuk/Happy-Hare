@@ -134,6 +134,25 @@ NFC_PER_GATE = BOXTURTLE.derive(
     syms={'MMU_HAS_NFC_READER': True, 'MMU_HAS_PER_GATE_NFC_READERS': True},
     description='BoxTurtle + per-gate NFC readers')
 
+# Per-gate readers with NFC neighbor-field CHECKING switched on (no eviction motion): a tag
+# positively registered to a neighboring gate is refused rather than attributed, but nothing
+# is jogged. This is the "fast-fail" half of the feature (MmuNfcFieldArbiter), reachable with
+# no window/direction configuration at all.
+NFC_NEIGHBOR_CHECK = NFC_PER_GATE.derive(
+    'nfc_neighbor_check',
+    syms={'BOOL_NFC_NEIGHBOR_CHECK': True},
+    description='BoxTurtle + per-gate NFC readers, neighbor field check (no eviction)')
+
+# Per-gate readers with neighbor EVICTION switched on too. The jog is BACKWARD (-40): a
+# backward jog is unconditionally legal regardless of gate_homing_endstop (only a FORWARD
+# jog is restricted to the per-gate mmu_exit sensor - see _validate_nfc_neighbor_evict_distance),
+# so this value works whatever endstop a derived profile happens to use. -40 also has to fit
+# inside the negative half of nfc_gate_jog_scan_window (default -50, 50), which it does.
+NFC_NEIGHBOR_EVICT = NFC_PER_GATE.derive(
+    'nfc_neighbor_evict',
+    syms={'PARAM_NFC_NEIGHBOR_EVICT_DISTANCE': '-40'},
+    description='BoxTurtle + per-gate NFC readers, neighbor eviction enabled (backward jog)')
+
 # PN5180 is the second SPI reader type, and the only one needing pins beyond the SPI
 # bus: BUSY (how the driver paces every command) and RST (its only recovery route).
 # Both are required by the driver, so the template must emit them or config load dies
@@ -516,7 +535,8 @@ run_current: 0.6
 """
 
 PROFILES = {p.name: p for p in (BOXTURTLE, TRADRACK, CHAMELEON, EMU, ENCODER, NFC_SINGLE,
-                                NFC_PER_GATE, NFC_PN5180, NFC_PN5180_PER_GATE,
+                                NFC_PER_GATE, NFC_NEIGHBOR_CHECK, NFC_NEIGHBOR_EVICT,
+                                NFC_PN5180, NFC_PN5180_PER_GATE,
                                 NFC_PN532, NFC_PN532_SW_I2C,
                                 NFC_PN532_UART, NFC_PN532_UART_PER_GATE,
                                 NFC_SPOOLMAN, NFC_SPOOLMAN_SHARED,
