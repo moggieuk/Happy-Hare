@@ -559,8 +559,11 @@ class TestPrusaIdlerSelector(SelectorTestCase):
 
         After MMU_HOME the idler sits DISENGAGED at the far end (the homing
         reselect parks it there), so a move to gate 2 is backward (logical
-        dir 1 -> physical 0 once the ! inversion is applied) and a move to
-        gate 5 is forward (logical dir 0 -> physical 1).
+        dir 1 -> physical 1 without inversion) and a move to gate 5 is
+        forward (logical dir 0 -> physical 0). The idler homes toward the
+        silicone stop at position 0, so the DIR bit is NOT inverted
+        (mmu_sr:4) -- with the old ! inversion the homing pressed the far
+        hard endstop instead (verified on the live MMU3).
         """
         idler = self.idler()
         sr = self.hh.printer.lookup_object('shift_register mmu_sr')
@@ -569,12 +572,12 @@ class TestPrusaIdlerSelector(SelectorTestCase):
         vpin = idler.idler_stepper._dir_sr_pin
         self.assertIsNotNone(vpin)
         self.assertEqual(vpin._bit_num, 4)   # Idler DIR is SR bit 4
-        self.assertEqual(vpin._invert, 1)    # config says !mmu_sr:4
+        self.assertEqual(vpin._invert, 0)    # config says mmu_sr:4 (no inversion)
 
-        idler._set_idler_to_gate(2)   # 40 -> 16: backward, dir 1 -> physical 0
-        self.assertEqual((sr.state >> 4) & 1, 0)
-        idler._set_idler_to_gate(5)   # 16 -> 40: forward, dir 0 -> physical 1
+        idler._set_idler_to_gate(2)   # 40 -> 16: backward, dir 1 -> physical 1
         self.assertEqual((sr.state >> 4) & 1, 1)
+        idler._set_idler_to_gate(5)   # 16 -> 40: forward, dir 0 -> physical 0
+        self.assertEqual((sr.state >> 4) & 1, 0)
 
 
 class TestMultiUnitSelectors(SelectorTestCase):

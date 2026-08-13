@@ -134,14 +134,15 @@ if MMU_TYPE_PRUSA_MMU3_3_0
   config PARAM_IDLER_STEALTHCHOP
     default 3		# stealthChop below 3mm/s (quiet standstill); spreadCycle above so StallGuard homing works
   config PARAM_IDLER_SGT
-    default 12
+    default 10
     help
       StallGuard2 threshold for the light idler barrel. The stock 60 (and
-      15) never trip at the silicone stop, while 0 and below false-trigger
-      on free motion ("Homed" instantly with no travel). 6 still
-      false-triggered on the acceleration transient at homing start; 14
-      never trips. 10-12 trip exactly at the stop after full travel
-      (verified on the live MMU3).
+      15) never trip at the stop, while 0 and below false-trigger on free
+      motion ("Homed" instantly with no travel). Tuned against the SOFT
+      silicone stop the idler parks at: 12 never trips on the compliant
+      stop, 8-6 false-trigger on the homing acceleration transient; 10
+      trips reliably at the silicone after full travel (verified on the
+      live MMU3).
 
   config CUSTOM_LED_SETUP
     def_bool y

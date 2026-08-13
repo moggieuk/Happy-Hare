@@ -185,7 +185,7 @@ class TestEveryBootableProfile(unittest.TestCase):
         # trip exactly at the stop after full travel -- the live failure was
         # "No trigger on mmu_stepper unit0_idler after full movement" with
         # SGT 60/15 and instant false "homes" with SGT <= 6.
-        self.assertEqual(cfg.getint('tmc2130 mmu_stepper unit0_idler', 'driver_SGT'), 12)
+        self.assertEqual(cfg.getint('tmc2130 mmu_stepper unit0_idler', 'driver_SGT'), 10)
 
         # The SHR16 shift register chip must be registered as a pin provider
         ppins = hh.printer.lookup_object('pins')
@@ -207,7 +207,7 @@ class TestEveryBootableProfile(unittest.TestCase):
             'idler': unit.selector.idler.idler_stepper,
         }
         expected_bit = {'gear': 0, 'selector': 2, 'idler': 4}
-        expected_invert = {'gear': 1, 'selector': 0, 'idler': 1}  # !mmu_sr:0, mmu_sr:2, !mmu_sr:4
+        expected_invert = {'gear': 1, 'selector': 0, 'idler': 0}  # !mmu_sr:0, mmu_sr:2, mmu_sr:4
 
         for name, stepper in steppers.items():
             with self.subTest(stepper=name):
