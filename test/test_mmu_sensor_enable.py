@@ -20,6 +20,7 @@
 import ast
 import configparser
 import logging
+import re
 import unittest
 
 from test.hh import session
@@ -74,7 +75,7 @@ class SensorEnableTestCase(unittest.TestCase):
         hh.gcode.console.clear()
         hh.run_gcode('MMU_SENSORS')
         self.assertIn('mmu_exit_0', hh.console[-1])
-        self.assertIn('(disabled)', hh.console[-1])
+        self.assertIn('(DISABLE)', hh.console[-1])
 
     def test_reenable_clears_persisted_entry_and_is_idempotent(self):
         hh = self.hh
@@ -100,7 +101,7 @@ class SensorEnableTestCase(unittest.TestCase):
         hh.run_gcode('MMU_SENSORS SENSOR=mmu_exit_0')
         self.assertEqual(hh.errors, [])
         self.assertIn('mmu_exit_0', hh.console[-1])
-        self.assertIn('(disabled)', hh.console[-1])
+        self.assertIn('(DISABLE)', hh.console[-1])
         self.assertNotIn('Sensors configured for', hh.console[-1])
 
     def test_enable_without_sensor_errors_and_writes_nothing(self):
@@ -122,6 +123,16 @@ class SensorEnableTestCase(unittest.TestCase):
         hh.run_gcode('MMU_SENSORS SENSOR=unit0:mmu_shared_exit ENABLE=0')
         self.assertEqual(hh.errors, [])
         self.assertTrue(any('shared-gate endstop' in line for line in hh.console))
+
+    def test_report_has_no_trailing_newline(self):
+        hh = self.hh
+        hh.gcode.console.clear()
+        hh.run_gcode('MMU_SENSORS')
+        self.assertFalse(hh.console[-1].endswith('\n'))
+
+        hh.gcode.console.clear()
+        hh.run_gcode('MMU_SENSORS SENSOR=mmu_exit_0')
+        self.assertFalse(hh.console[-1].endswith('\n'))
 
 
 class SensorEnableMultiUnitTestCase(unittest.TestCase):
@@ -159,6 +170,20 @@ class SensorEnableMultiUnitTestCase(unittest.TestCase):
         self.assertTrue(sm.all_sensors_map['unit0:filament_compression'].runout_helper.sensor_enabled)
         self.assertTrue(sm.all_sensors_map['unit0:filament_tension'].runout_helper.sensor_enabled)
 
+    def test_report_sorts_gate_numbers_naturally(self):
+        """unit1 (ViViD) is gates 9-12 - a plain string sort would list 10, 11, 12, 9."""
+        hh = self.hh
+        hh.gcode.console.clear()
+        hh.run_gcode('MMU_SENSORS')
+        report = hh.console[-1]
+
+        entry_gates = [int(m.group(1)) for m in re.finditer(r'mmu_entry_(\d+)', report)]
+        self.assertEqual(entry_gates, sorted(entry_gates))
+        self.assertEqual(entry_gates[0], 9, 'gate 9 must list before gate 10')
+
+        exit_gates = [int(m.group(1)) for m in re.finditer(r'mmu_exit_(\d+)', report)]
+        self.assertEqual(exit_gates, sorted(exit_gates))
+
 
 class SensorEnableRestartAndMainsailTestCase(unittest.TestCase):
     """A fresh session models "the printer was rebooted"; each test boots its own."""
@@ -174,7 +199,7 @@ class SensorEnableRestartAndMainsailTestCase(unittest.TestCase):
             hh.gcode.console.clear()
             hh.run_gcode('MMU_SENSORS')
             self.assertIn('mmu_shared_exit', hh.console[-1])
-            self.assertIn('(disabled)', hh.console[-1])
+            self.assertIn('(DISABLE)', hh.console[-1])
         finally:
             hh.close()
 
