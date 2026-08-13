@@ -68,6 +68,14 @@ VENDORS = [
 
 BOOT_DELAY = 2.5 # Delay before running bootup tasks
 
+# Bootup homing/reselect is deferred until the MCU clock estimate is reliable.
+# On the ATmega32U4 the USB CDC latency during the boot command flood makes the
+# host's clock estimate lag reality for several seconds after connect; timed
+# commands scheduled from that estimate arrive in the past and shut the MCU
+# down ("Rescheduled timer in the past"). 30s matches the shift register's own
+# initial-write delay.
+BOOT_CLOCK_CONVERGENCE_DELAY = 30.0
+
 TOOL_GATE_UNKNOWN = -1
 TOOL_GATE_BYPASS = -2
 
