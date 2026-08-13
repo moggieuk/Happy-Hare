@@ -58,7 +58,7 @@ class SensorEnableTestCase(unittest.TestCase):
     def tearDown(self):
         self.hh.close()
 
-    def test_disable_persists_and_hides_from_default_report(self):
+    def test_disable_persists_and_report_always_shows_disabled_tag(self):
         hh = self.hh
         hh.run_gcode('MMU_SENSORS SENSOR=mmu_exit_0 ENABLE=0')
         self.assertEqual(hh.errors, [])
@@ -70,12 +70,9 @@ class SensorEnableTestCase(unittest.TestCase):
         hh.reactor.advance(0.) # let the SAVE_VARIABLE flush timer fire
         self.assertEqual(read_vars_file(hh).get(VARS_MMU_SENSOR_ENABLED), {'mmu_exit_0': False})
 
+        # MMU_SENSORS always lists every sensor, disabled or not - no DETAIL= needed
         hh.gcode.console.clear()
         hh.run_gcode('MMU_SENSORS')
-        self.assertNotIn('mmu_exit_0', hh.console[-1])
-
-        hh.gcode.console.clear()
-        hh.run_gcode('MMU_SENSORS DETAIL=1')
         self.assertIn('mmu_exit_0', hh.console[-1])
         self.assertIn('(disabled)', hh.console[-1])
 
@@ -95,7 +92,7 @@ class SensorEnableTestCase(unittest.TestCase):
         hh.run_gcode('MMU_SENSORS SENSOR=mmu_exit_0 ENABLE=1')
         self.assertIn('no change', hh.console[0])
 
-    def test_sensor_alone_shows_disabled_sensor_without_detail(self):
+    def test_sensor_alone_shows_disabled_sensor(self):
         hh = self.hh
         hh.run_gcode('MMU_SENSORS SENSOR=mmu_exit_0 ENABLE=0')
 
@@ -176,7 +173,8 @@ class SensorEnableRestartAndMainsailTestCase(unittest.TestCase):
 
             hh.gcode.console.clear()
             hh.run_gcode('MMU_SENSORS')
-            self.assertNotIn('mmu_shared_exit', hh.console[-1])
+            self.assertIn('mmu_shared_exit', hh.console[-1])
+            self.assertIn('(disabled)', hh.console[-1])
         finally:
             hh.close()
 
