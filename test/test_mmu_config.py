@@ -241,5 +241,29 @@ class TestMultiUnitRender(unittest.TestCase):
                              'leaked out of _env()' % name)
 
 
+class TestSelectorTypeChoice(unittest.TestCase):
+    """
+    The CHOICE_SELECTOR_TYPE menu (installer/Kconfig.selector_type, depends on MMU_CUSTOM) is
+    not exercised by any Profile - every real machine picks its selector implicitly, through
+    its own mmu_types/Kconfig.<vendor> defaults, never through this menu. So a broken choice
+    here has no other test to catch it; hence going straight at kconfiglib rather than adding a
+    whole custom-MMU profile just to reach one menu.
+
+    LinearMultiGearSelector specifically had a typo'd symbol name (LINEAR_MUTLI_GEAR_SELECTOR)
+    at the choice-option declaration, while the PARAM_SELECTOR_TYPE default (and
+    Kconfig.speeds' depends on) used the correctly-spelled LINEAR_MULTI_GEAR_SELECTOR - a
+    symbol that therefore never existed, so selecting this option in the installer silently
+    fell through to the "VirtualSelector # Safety" catch-all instead.
+    """
+
+    def test_choosing_linear_multi_gear_selector_sets_the_matching_param(self):
+        with cfg._env({}):
+            kc = cfg._kconfig('linear-multi-gear-selector-choice', {
+                'MMU_CUSTOM': True,
+                'CHOICE_SELECTOR_TYPE_LINEAR_MULTI_GEAR_SELECTOR': True,
+            })
+        self.assertEqual(kc.syms['PARAM_SELECTOR_TYPE'].str_value, 'LinearMultiGearSelector')
+
+
 if __name__ == '__main__':
     unittest.main()
