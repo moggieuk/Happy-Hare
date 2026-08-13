@@ -283,6 +283,9 @@ class MmuController(MmuFilamentMovement):
         # Load gate-map / TTG-map / EndlessSpool state
         errors = self.gate_maps.load_persisted_state()
 
+        # Load persisted per-sensor enable/disable state (MMU_SENSORS ENABLE=)
+        self.sensor_manager.load_persisted_state()
+
         # Previous filament position
         self.filament_pos = self.var_manager.get(VARS_MMU_FILAMENT_POS, self.filament_pos)
 

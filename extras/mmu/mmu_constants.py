@@ -219,6 +219,7 @@ FILAMENT_HOLD_STATE    = 2
 VARS_MMU_REVISION                  = "mmu__revision"
 VARS_MMU_ENABLE_ENDLESS_SPOOL      = "mmu_state_enable_endless_spool"
 VARS_MMU_ENDLESS_SPOOL_GROUPS      = "mmu_state_endless_spool_groups"
+VARS_MMU_SENSOR_ENABLED            = "mmu_state_sensor_enabled"  # Sparse {qualified_sensor_name: False}, only disabled entries stored
 VARS_MMU_TOOL_TO_GATE_MAP          = "mmu_state_tool_to_gate_map"
 VARS_MMU_GATE_STATUS               = "mmu_state_gate_status"
 VARS_MMU_GATE_MATERIAL             = "mmu_state_gate_material"
