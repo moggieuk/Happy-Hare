@@ -43,8 +43,11 @@ if MMU_TYPE_PRUSA_MMU3_3_0
   # ------------------------------------------------------------------
   # Defaults (gear/selector/idler motion hardware)
   # Values are those tuned on the reference MMU3 (Freakazo's mk3s):
-  #   - selector/idler run in spreadCycle (stealthchop_threshold 0) so
-  #     tmc2130 StallGuard works -- stealthChop disables stall detection
+  #   - selector/idler run in spreadCycle above ~3mm/s (stealthchop_threshold
+  #     3) so tmc2130 StallGuard works during homing while the motors sit
+  #     silently in stealthChop at standstill -- stealthChop disables stall
+  #     detection so the threshold must stay below the slowest homing
+  #     (selector second homing approach runs at 8/2=4mm/s)
   #   - SGT: selector 15, idler 0
   #   - gear freewheels when disabled (driver_FREEWHEEL 1)
   # NOTE: rotation distances are calibration-dependent on the MMU3 and
@@ -82,7 +85,7 @@ if MMU_TYPE_PRUSA_MMU3_3_0
   config PARAM_SELECTOR_MICROSTEPS
     default 8
   config PARAM_SELECTOR_STEALTHCHOP
-    default 0		# Always spreadCycle so StallGuard homing works
+    default 3		# stealthChop below 3mm/s (quiet standstill); spreadCycle above so StallGuard homing works
   config PARAM_SELECTOR_SGT
     default 15
   config PARAM_SELECTOR_ACCEL
@@ -94,6 +97,9 @@ if MMU_TYPE_PRUSA_MMU3_3_0
       8mm rotation distance the selector runs ~60RPM -- well within range.
       Faster speeds (60mm/s = ~450RPM) push the back-EMF too high and the
       stall is never detected (verified on the live MMU3).
+      stealthchop_threshold must stay below the second homing approach speed
+      (homing_speed/2 = 4mm/s) or the approach runs in stealthChop and the
+      stall is never detected.
 
   config PARAM_IDLER_GEAR_RATIO
     default "1:1"
@@ -106,7 +112,7 @@ if MMU_TYPE_PRUSA_MMU3_3_0
   config PARAM_IDLER_MICROSTEPS
     default 8
   config PARAM_IDLER_STEALTHCHOP
-    default 0		# Always spreadCycle so StallGuard homing works
+    default 3		# stealthChop below 3mm/s (quiet standstill); spreadCycle above so StallGuard homing works
   config PARAM_IDLER_SGT
     default 0
 
