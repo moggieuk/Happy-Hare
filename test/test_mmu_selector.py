@@ -871,6 +871,52 @@ class TestPersistedPositionRestore(unittest.TestCase):
             '!! Filament detected but tool/gate is unknown. Please use MMU_RECOVER GATE=xx to correct state',
         ], 'only the rigged sensor failure and the resulting recovery guidance should be reported')
 
+    def test_startup_home_selector_does_not_launder_a_sibling_units_loaded_gate(self):
+        """
+        The cross-unit case the other two startup_home_selector tests cannot reach: filament_pos
+        is machine-wide, not per-unit, so on a multi-unit machine it reflects whichever gate is
+        currently selected - here, one that belongs to unit0, not unit1.
+
+        home_unit() resets gate_selected to TOOL_GATE_UNKNOWN before calling selector.home() -
+        but only on the branch it already decided owns the selected gate
+        (manages_gate(gate_selected) was True to get there). manages_gate(TOOL_GATE_UNKNOWN) is
+        unconditionally True, so if that reset ever leaked into the OTHER branch (a unit that
+        does not own the selected gate), PhysicalSelector.home()'s automatic-unload check would
+        launder "not my gate" into "TOOL_GATE_UNKNOWN, so automatically mine" and unit1 homing
+        itself would trigger unit0's unload_sequence() - heating included - as a side effect.
+
+        It does not leak: the unowned branch (mmu_controller.py's "Safe to just home selector")
+        never touches gate_selected, so home()'s own re-check of manages_gate(gate_selected)
+        still sees the real, unchanged gate and still evaluates False. This test pins that by
+        construction rather than by inference: unit0 genuinely owns gate 3 with a real (not
+        ambiguous) FILAMENT_POS_LOADED, and both units ask for startup homing at once.
+        """
+        unload_calls = []
+
+        def rig_a_genuinely_loaded_sibling_unit():
+            self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 startup_home_selector=1')
+            self.hh.run_gcode('MMU_TEST_CONFIG UNIT=1 startup_home_selector=1')
+
+            def force_loaded(*args, **kwargs):
+                self.hh.mmu.filament_pos = FILAMENT_POS_LOADED
+            self.hh.mmu.recover_filament_pos = force_loaded
+            self.hh.mmu.unload_sequence = lambda *args, **kwargs: unload_calls.append((args, kwargs))
+
+        hh = self.boot('ercf_vvd', calibrate=True, selected_gate=self.GATE, selector_last_pos=True,
+                       pre_bootup=rig_a_genuinely_loaded_sibling_unit)
+
+        self.assertEqual(unload_calls, [],
+                         "unit1 homing must never trigger unit0's automatic unload")
+        console = '\n'.join(hh.console)
+        self.assertIn('Skipping autohome of unit0', console,
+                      'unit0 (the genuinely loaded unit) should have been skipped, not homed')
+        self.assertIn('Homing MMU unit1', console,
+                      'unit1 (an unrelated unit) should have homed normally')
+        self.assertTrue(self.selector('unit1').is_homed)
+        self.assertEqual(hh.mmu.gate_selected, self.GATE,
+                         "unit1's homing must not disturb unit0's gate selection")
+        self.assertEqual(hh.errors, [])
+
 
 class TestTipFormingEffect(unittest.TestCase):
     """
