@@ -224,9 +224,11 @@ menu "Sequence macros      (_MMU_SEQUENCE)"
 
   config BOOL_SEQUENCE_AUTO_HOME
     bool "Automatically home if necessary"
-    default y
+    default n
     help
-      Automatically home if necessary.
+      Automatically home printer if necessary (with G28 command)
+      so that toolchange toolhead movement can occur. If not homed
+      movement will simply be skipped.
 
   config VAR_SEQUENCE_AUTO_HOME
     string
