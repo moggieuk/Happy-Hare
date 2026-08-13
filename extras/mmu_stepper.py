@@ -898,10 +898,12 @@ class MmuStepper(ExtruderStepper):
         curtime = self.printer.get_reactor().monotonic()
         now_pt = mcu.estimated_print_time(curtime)
         sched_time = now_pt + 0.100
-        vpin.set_digital(sched_time, new_dir)
+        actual_time = vpin.set_digital(sched_time, new_dir)
         self._dir_sr_last = new_dir
-        # Bitbang ends ~25ms after it starts; add a margin for the pacing
-        write_end = sched_time + 0.035
+        # Bitbang ends ~25ms after its actual (possibly deferred) start;
+        # add a margin for the pacing. Using the deferred start keeps the
+        # move from overlapping another stepper's in-flight SR write.
+        write_end = actual_time + 0.035
         base = move_time if move_time is not None else now_pt
         return max(0., write_end - base)
 

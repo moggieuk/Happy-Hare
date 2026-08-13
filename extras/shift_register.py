@@ -136,10 +136,14 @@ class ShiftRegisterBit:
         return print_time
 
     def set_digital(self, print_time, value):
-        """Set this bit at the given print_time."""
+        """Set this bit at the given print_time.
+
+        Returns the actual print_time the write was scheduled at (may be
+        deferred behind another in-flight shift register write).
+        """
         logical = int(not not value)
         physical = logical ^ self._invert
-        self._sr._set_bit_at_time(self._bit_num, physical, print_time)
+        return self._sr._set_bit_at_time(self._bit_num, physical, print_time)
 
     def set_pwm(self, print_time, value):
         """PWM fallback: treat as digital (>0.5 = HIGH)."""
@@ -177,6 +181,10 @@ class ShiftRegister:
 
         # Initial state (all outputs low)
         self.state = 0
+        # End print_time of the most recently scheduled bitbang; used to
+        # serialize writes so two overlapping bitbangs never send the MCU
+        # timer dispatcher backwards ("Rescheduled timer in the past").
+        self._last_write_end = 0.
 
         # DATA and CLOCK pins are shared with the TMC2130 software SPI bus
         # (PB5 = MOSI, PC7 = SCLK on the MMU3 board). Allow multi-use so
@@ -278,6 +286,10 @@ class ShiftRegister:
         arrive at the MCU after their scheduled time ("Rescheduled timer in
         the past"). This can happen when print_time comes from a stale
         toolhead position (e.g. SET_PIN with no recent moves).
+
+        Returns the actual print_time the write was scheduled at (which may
+        be later than requested if it had to be deferred behind another
+        in-flight shift register write).
         """
         self._set_bit(bit_num, value)
         # Guarantee at least 100ms into the future from NOW.
@@ -289,7 +301,7 @@ class ShiftRegister:
         min_time = self.mcu.estimated_print_time(curtime + 0.100)
         if print_time < min_time:
             print_time = min_time
-        self._write_register(print_time)
+        return self._write_register(print_time)
 
     def _write_register(self, print_time):
         """
@@ -305,11 +317,21 @@ class ShiftRegister:
         Sequential MCU commands are sent with incrementally increasing
         print_times (8000 ticks apart) to guarantee in-order execution on
         the MCU and absorb USB CDC jitter. 50 ops × 8000 ticks ≈ 25ms.
+
+        Writes are serialized: if another write is still in flight (its
+        commands extend beyond this write's requested start) this write is
+        deferred to start after it. Without this, two back-to-back writes
+        (e.g. idler and selector homing a few ms apart, or a motor-enable
+        write colliding with a DIR write) overlap in time and the MCU's
+        timer dispatcher sees clock values going backwards once the later
+        commands arrive -- "Rescheduled timer in the past" shutdown
+        (verified on the live MMU3: two full bitbangs 5ms apart crashed the
+        ATmega32U4 at every boot).
+
+        Returns the actual print_time the write started at.
         """
-        # Each timed MCU command (queue_digital_out) needs at least
-        # TIMER_MIN_ENTRY_TICKS + TIMER_MIN_EXIT_TICKS = ~91 ticks gap on AVR.
-        # Use 8000 ticks (500μs @ 16MHz) to absorb USB CDC jitter on the
-        # ATmega32U4. 50 commands × 8000 ticks = 400,000 ticks ≈ 25ms total.
+        if print_time < self._last_write_end:
+            print_time = self._last_write_end
         mcu_freq = self.mcu.seconds_to_clock(1.0)
         dt = 8000.0 / mcu_freq  # 8000 ticks = 500μs between commands (USB CDC jitter safety)
 
@@ -331,9 +353,13 @@ class ShiftRegister:
         t += dt
         self._latch_pin.set_digital(t, 0)
 
+        self._last_write_end = t + dt
+
         logging.debug(
             "shift_register '%s': wrote 0x%04x at print_time=%.6f",
             self.name, state, print_time)
+
+        return print_time
 
     # -- Status ------------------------------------------------------------------
 
