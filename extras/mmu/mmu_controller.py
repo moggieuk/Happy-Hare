@@ -29,6 +29,7 @@ from .mmu_led_manager           import MmuLedManager
 from .mmu_filament_movement     import MmuFilamentMovement
 from .mmu_print_state_machine   import MmuPrintStateMachine
 from .mmu_gate_maps             import MmuGateMaps
+from .mmu_nfc_arbiter           import MmuNfcFieldArbiter
 from .commands                  import COMMAND_REGISTRY
 from .commands.mmu_base_command import *
 
@@ -87,6 +88,7 @@ class MmuController(MmuFilamentMovement):
         self.led_manager    = MmuLedManager(self)        # Manages leds accross all units
         self.sensor_manager = MmuSensorManager(self)     # Manages sensors accross all units
         self.gate_maps      = MmuGateMaps(self)          # Gate map / TTG map / EndlessSpool state
+        self.nfc_arbiter    = MmuNfcFieldArbiter(self)   # NFC "noisy neighbor" field arbitration
 
 
         # Register GCODE commands ---------------------------------------------------------------------------
@@ -282,6 +284,9 @@ class MmuController(MmuFilamentMovement):
 
         # Load gate-map / TTG-map / EndlessSpool state
         errors = self.gate_maps.load_persisted_state()
+
+        # Load persisted per-sensor enable/disable state (MMU_SENSORS ENABLE=)
+        self.sensor_manager.load_persisted_state()
 
         # Previous filament position
         self.filament_pos = self.var_manager.get(VARS_MMU_FILAMENT_POS, self.filament_pos)
@@ -3327,6 +3332,19 @@ class MmuController(MmuFilamentMovement):
             self._stage_pending_tag(uid, metadata)
         else:
             self._apply_tag_to_gate(gate, uid, metadata)
+        # Record the UID unconditionally, regardless of Spoolman mode, AFTER
+        # _apply_tag_to_gate above: that method compares the incoming uid against the
+        # CURRENT gate_spool_rfid to detect "a new physical tag" (clearing a stale
+        # spool_id) - updating the map before that comparison would make every read look
+        # unchanged. _apply_tag_to_gate already writes rfid itself except under
+        # SPOOLMAN_PULL (remote owns filament attributes there), which would otherwise
+        # leave gate_spool_rfid perpetually blank and NFC neighbor-field arbitration
+        # (find_gate_by_rfid) unable to answer "whose tag is this?" on a PULL-mode
+        # machine. This call is a no-op when the value is already current (see
+        # set_gate_rfid). Local identity cache only; does not affect what's authoritative
+        # or pushed to Spoolman.
+        if gate is not None and uid:
+            self.gate_maps.set_gate_rfid(gate, uid)
         if self.p.spoolman_support != SPOOLMAN_OFF:
             self._spoolman_get_spool_by_uid(uid, gate=gate, metadata=metadata, unit=unit)
 

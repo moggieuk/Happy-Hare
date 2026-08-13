@@ -399,6 +399,30 @@ class MmuNfcManager:
         return self._read_reader(reader, deep=deep)
 
 
+    def probe_gate_field(self, gate, reads=None):
+        """
+        Is anything in this gate's reader field right now? Returns the first UID seen
+        (or None). For NFC neighbor-field arbitration (MmuNfcFieldArbiter): a probe is a
+        *question*, not an attribution, so it reuses read_reader()'s semantics (overrides the
+        'active' guard the way an explicit request should, honors 'enabled', never dispatches
+        a Spoolman lookup) via a live, UID-only read.
+
+        Reads up to 'reads' times (default the unit's nfc_field_probe_reads): a tag at the
+        edge of the field - exactly the signature of a neighboring gate's spool intruding on
+        this reader - can read intermittently, so a single read can miss it.
+        """
+        if not self.has_gate_nfc_reader(gate) or not self.is_enabled(gate=gate):
+            return None
+        if reads is None:
+            reads = self.mmu_unit.p.nfc_field_probe_reads
+        for _ in range(max(1, reads)):
+            self.clear_gate_reader(gate) # Live detection, not a stale sticky UID
+            uid, _metadata = self.read_reader(gate=gate, deep=False)
+            if uid:
+                return uid
+        return None
+
+
     def release_reader(self, shared=False, gate=None):
         """
         Release the current target on an addressed reader.
