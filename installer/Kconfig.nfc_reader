@@ -9,6 +9,9 @@
 # PARAM_NFC_DEEP_READ
 # PARAM_NFC_GATE_JOG_SCAN_WINDOW
 # PARAM_NFC_PRELOAD_JOG_SCAN_WINDOW
+# PARAM_NFC_NEIGHBOR_CHECK
+# PARAM_NFC_NEIGHBOR_EVICT_DISTANCE
+# PARAM_NFC_FIELD_PROBE_READS
 # PARAM_NFC_LED_SEGMENT
 #
 # Shared:
@@ -622,6 +625,52 @@ if MMU_HAS_NFC_READER
         general gate homing endstop), so the safe scan range can differ. Defaults to the same value as the
         gate jog scan window.
         E.g. "-100, 400" means can retract -100mm and extrude 400mm. "0, 0" disables jog scanning during preload
+
+    config BOOL_NFC_NEIGHBOR_CHECK
+      bool "NFC neighbor field check"
+      default n
+      help
+        With per-gate readers the gates can be close enough that a spool parked at a
+        neighboring gate sits inside this gate's RF field, which could satisfy the preload
+        NFC endstop or a MMU_NFC_SCAN before the filament has moved and misattribute a
+        neighbor's spool to this gate. When enabled, Happy Hare identifies the tag by UID
+        against the gate map before trusting a read: a tag registered to this gate (or
+        unrecognised) is read as before; a tag registered to a neighboring gate is not
+        attributed. Off by default - a stock machine does no extra reader I/O.
+
+        See "NFC neighbor eviction jog" below to also move a neighboring gate's filament out
+        of the way rather than just refusing to read.
+
+    config PARAM_NFC_NEIGHBOR_CHECK
+      int
+      default 1 if BOOL_NFC_NEIGHBOR_CHECK
+      default 0
+
+    config PARAM_NFC_NEIGHBOR_EVICT_DISTANCE
+      float "NFC neighbor eviction jog"
+      default 0
+      help
+        Adds neighbor-eviction motion on top of the neighbor field check above: when a tag is
+        identified as belonging to a specific neighboring gate, that gate is temporarily
+        loaded and its filament jogged this far off its park position until the field clears,
+        then re-parked afterwards (even if the operation fails).
+
+        Signed: +ve jogs the neighbor forward of its gate, -ve behind it. Must fit inside the
+        matching half of the jog scan window above. A forward jog is only allowed when the
+        gate homing endstop is the per-gate mmu_exit sensor - on a shared exit path a forward
+        jog would obstruct the very gate you are trying to read, so jog backward there.
+        Requires the filament to be unloaded. 0 disables eviction (default) - reducing reader
+        gain is NOT an alternative: a neighbor's tag can be physically closer than your own.
+
+    config PARAM_NFC_FIELD_PROBE_READS
+      int "NFC field probe reads"
+      default 3
+      range 1 10
+      help
+        How many times to read a gate's reader when asking "is anything in this field?". A
+        tag at the edge of the field - the neighboring-spool signature - reads intermittently,
+        so a single read can miss it. Only used when the neighbor check or eviction jog above
+        is enabled.
 
     choice CHOICE_NFC_LED_SEGMENT
       prompt "NFC reader led feedback segment"

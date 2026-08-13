@@ -170,6 +170,20 @@ GATE_ENDSTOPS     = [SENSOR_SHARED_EXIT, SENSOR_ENCODER, SENSOR_EXIT_PREFIX, SEN
 # owned by a single gate (contrast SENSOR_EXIT_PREFIX, which is per-gate)
 SHARED_GATE_ENDSTOPS = [SENSOR_SHARED_EXIT, SENSOR_EXTRUDER_ENTRY, SENSOR_ENCODER]
 
+# Verdicts from MmuNfcFieldArbiter's "who is in my reader field?" classification ladder.
+# NFC_FIELD_NEIGHBOR is an intermediate/internal state used while attempting eviction and
+# never yielded to a caller.
+NFC_FIELD_CLEAR       = 0 # Nothing in the field
+NFC_FIELD_MINE        = 1 # This gate's own tag, positively confirmed by the gate map
+NFC_FIELD_NEIGHBOR    = 2 # Registered to another gate on the same unit - evictable (internal)
+NFC_FIELD_FOREIGN     = 3 # Known to be another gate's tag (or cross-unit) and could not be
+                          # attributed to this gate
+NFC_FIELD_PROVISIONAL = 4 # An unregistered tag tentatively treated as this gate's own, not
+                          # yet confirmed - the caller proceeds exactly as it would for MINE,
+                          # except MMU_NFC_SCAN must not take its "already at reader" fast
+                          # path (there'd be nothing to observe clearing). Ratified/rejected
+                          # after the caller's own natural motion completes.
+
 # Gear/Extruder synchronization modes
 DRIVE_UNSYNCED                = 0
 DRIVE_EXTRUDER_SYNCED_TO_GEAR = 1 # Aka 'gear+extruder'

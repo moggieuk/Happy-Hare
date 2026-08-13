@@ -377,6 +377,41 @@ class MmuGateMaps:
         self.persist_gate_map(spoolman_sync=False) # Local-only; nothing to push to Spoolman
 
 
+    def set_gate_rfid(self, gate, rfid):
+        """
+        Record the tag UID last read at 'gate'. Unlike set_gate_filament_from_tag() this is
+        called for *every* attributed read regardless of Spoolman mode (including PULL, where
+        remote metadata otherwise wins), so the gate map can always answer "which gate does
+        this UID belong to?" (see find_gate_by_rfid) - needed for NFC neighbor-field
+        arbitration. Purely local identity - never pushed to Spoolman. A no-op when the value
+        is unchanged so the common re-read case costs no persist.
+        """
+        if not (0 <= gate < self.num_gates):
+            return
+        if self.gate_spool_rfid[gate] == rfid:
+            return
+        self.renew_gate_map() # Ensure webhooks see get_status() change
+        self.gate_spool_rfid[gate] = rfid
+        self.persist_gate_map(spoolman_sync=False) # Local-only; nothing to push to Spoolman
+
+
+    def find_gate_by_rfid(self, rfid):
+        """
+        Reverse lookup: the first gate registered to tag UID 'rfid', or None. Searches the
+        whole machine (the gate map is machine-wide, indexed by global gate) - callers that
+        care about locality (e.g. same-unit-only) compare mmu.mmu_unit(gate) themselves. Not
+        narrowed to a single unit here: a cross-unit match must stay distinguishable from
+        "unknown tag" for NFC neighbor-field arbitration.
+        """
+        if not rfid:
+            return None
+        wanted = str(rfid).lower()
+        for gate, uid in enumerate(self.gate_spool_rfid):
+            if uid and str(uid).lower() == wanted:
+                return gate
+        return None
+
+
 # -----------------------------------------------------------------------------------------------------------
 # COLOR / MACRO SUPPORT
 # -----------------------------------------------------------------------------------------------------------

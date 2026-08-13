@@ -25,7 +25,7 @@ config SW3
 config SHOW_PER_UNIT_WARNINGS
   bool
   depends on !MULTI_UNIT_ENTRY_POINT
-  @repeat var=i min=1 max=16@
+  @repeat var=i min=1 max=17@
     default y if W$(i)
   @endrepeat@
 
@@ -77,6 +77,11 @@ config W15
 config W16
     def_bool y if MMU_HAS_SYNC_FEEDBACK_BUFFER && !MMU_SHARED_SYNC_FEEDBACK_BUFFER && (MMU_HAS_SENSOR_BUFFER_TENSION || MMU_HAS_SENSOR_BUFFER_COMPRESSION) && MMU_HAS_SENSOR_BUFFER_PROPORTIONAL
 
+# A forward NFC neighbor-eviction jog pushes a neighbor's filament past its gate, which is
+# only safe when each gate has its own exit path. Same rule (and same reason) as W5.
+config W17
+    def_bool y if !CHOICE_GATE_HOMING_ENDSTOP_EXIT && PARAM_NFC_NEIGHBOR_EVICT_DISTANCE > 0
+
 
 
 if SHOW_PER_UNIT_WARNINGS || SHOW_SHARED_WARNINGS
@@ -106,5 +111,6 @@ if SHOW_PER_UNIT_WARNINGS || SHOW_SHARED_WARNINGS
     comment "MMU environment sensor is enabled but sensor name(s) not defined"    if W14
     comment "Sync-feedback buffer configured but it had no sensors defined"       if W15
     comment "Warning: Sync-feedback buffer configured with both analog and digital inputs" if W16
+    comment "NFC neighbor eviction jog must be backward (<=0) unless gate endstop is mmu_exit" if W17
   endif
 endif

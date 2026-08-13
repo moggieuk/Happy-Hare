@@ -80,6 +80,10 @@ class MmuUnitParameters(TunableParametersBase):
             self._validate_gate_parking_distance(self.gate_parking_distance)
             if not self.gate_preload_endstop:
                 self._validate_gate_preload_parking_distance(self.gate_preload_parking_distance)
+            # nfc_neighbor_evict_distance's forward-jog legality depends on this endstop too
+            # (see _validate_nfc_neighbor_evict_distance) - same reasoning as the parking
+            # distance re-checks just above.
+            self._validate_nfc_neighbor_evict_distance(self.nfc_neighbor_evict_distance)
 
     def _on_gate_preload_endstop(self, old, new):
         if new != old:
@@ -145,6 +149,38 @@ class MmuUnitParameters(TunableParametersBase):
                 % (abs(neg), self.gate_preload_homing_max)
             )
 
+    def _validate_nfc_neighbor_evict_distance(self, value):
+        # 0 disables neighbor eviction entirely
+        if not value:
+            return
+        window = self.nfc_gate_jog_scan_window
+        if not window or len(window) != 2 or (window[0] == 0 and window[1] == 0):
+            raise ValueError(
+                "nfc_neighbor_evict_distance requires nfc_gate_jog_scan_window to be "
+                "configured - the eviction jog travels within that same window regardless "
+                "of which operation (preload or MMU_NFC_SCAN) it is protecting")
+        neg, pos = window[0], window[1]
+        # The eviction jog is the same physical travel as a scan jog, so it must fit inside
+        # the matching half of the window that already bounds nfc_gate_jog_scan_window itself
+        if value > pos:
+            raise ValueError(
+                "nfc_neighbor_evict_distance forward jog (%.1fmm) cannot exceed the forward "
+                "reach of nfc_gate_jog_scan_window (%.1fmm)" % (value, pos))
+        if value < neg:
+            raise ValueError(
+                "nfc_neighbor_evict_distance backward jog (%.1fmm) cannot exceed the backward "
+                "reach of nfc_gate_jog_scan_window (%.1fmm)" % (value, neg))
+        # A forward jog pushes the evicted neighbor's filament past its own gate. That is
+        # only safe when each gate has its own exit path (gate_homing_endstop == mmu_exit);
+        # every other gate endstop is a per-UNIT shared resource (SHARED_GATE_ENDSTOPS), so a
+        # forward jog would obstruct another gate (see the gate-endstop-invariants skill).
+        if value > 0 and self.gate_homing_endstop in SHARED_GATE_ENDSTOPS:
+            raise ValueError(
+                "nfc_neighbor_evict_distance must be a backward jog (< 0) unless "
+                "gate_homing_endstop is '%s' - every gate shares the forward path through "
+                "'%s' (got %.1f)"
+                % (SENSOR_EXIT_PREFIX, self.gate_homing_endstop, value))
+
     # Parking distance sign convention: -ve = retraction (toward the gate/gears), +ve =
     # extrusion (forward, past the sensor). Parking forward past the sensor is only safe
     # on the per-gate mmu_exit sensor; the shared mmu_shared_exit, encoder and
@@ -188,6 +224,10 @@ class MmuUnitParameters(TunableParametersBase):
         # NFC / RFID reading
         ParamSpec('nfc_gate_jog_scan_window',         'floatlist', [0.0, 0.0], section="NFC", validator=_validate_nfc_gate_jog_scan_window),
         ParamSpec('nfc_preload_jog_scan_window',      'floatlist', lambda self: self.nfc_gate_jog_scan_window, section="NFC", validator=_validate_nfc_preload_jog_scan_window),
+        ParamSpec('nfc_neighbor_check',                'int',    0,    section="NFC", limits=dict(minval=0, maxval=1)),
+        # Declared after nfc_gate_jog_scan_window so the validator can cross-check it
+        ParamSpec('nfc_neighbor_evict_distance',       'float',  0.0,  section="NFC", validator=_validate_nfc_neighbor_evict_distance),
+        ParamSpec('nfc_field_probe_reads',              'int',    3,    section="NFC", limits=dict(minval=1, maxval=10)),
         ParamSpec('nfc_deep_read',                    'int',    0,    section="NFC", limits=dict(minval=0, maxval=1)),
         ParamSpec('nfc_led_segment',                  'str',  'auto', section="NFC"),
 
