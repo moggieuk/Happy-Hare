@@ -57,12 +57,13 @@ if MMU_HAS_IDLER
 
     config PARAM_IDLER_SGT
       int "Idler StallGuard threshold (SGT)"
-      default 6
+      default 12
       help
         tmc2130 only. StallGuard sensitivity: -64 to 63 (higher = less
-        sensitive). The Prusa MMU3 firmware tunes the idler at 2-10 --
-        the stock 60 never trips on the light barrel, while 0 and below
-        false-trigger on free motion.
+        sensitive). The Prusa MMU3 firmware tunes the idler at 2-10 -- the
+        stock 60 never trips on the light barrel, while 0 and below
+        false-trigger on free motion. 6 still false-triggers on the homing
+        acceleration transient; 10-12 trip exactly at the stop.
 
     config PARAM_IDLER_TMC
       string "Idler TMC driver type          "

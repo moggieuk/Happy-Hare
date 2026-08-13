@@ -179,11 +179,13 @@ class TestEveryBootableProfile(unittest.TestCase):
         self.assertEqual(cfg.getint('tmc2130 mmu_stepper unit0_gear', 'driver_FREEWHEEL'), 1)
         self.assertEqual(cfg.getint('tmc2130 mmu_stepper unit0_selector', 'driver_SGT'), 15)
         # The idler is a light rotating barrel; the stock 60 (and 15) never
-        # trips at the stop while 0 and below false-trigger on free motion.
-        # Prusa's own firmware tunes the idler at 2-10 on this board -- the
-        # live failure was "No trigger on mmu_stepper unit0_idler after full
-        # movement" with SGT 60/15 and instant false "homes" with SGT <= 0.
-        self.assertEqual(cfg.getint('tmc2130 mmu_stepper unit0_idler', 'driver_SGT'), 6)
+        # trips at the stop while 0 and below false-trigger on free motion,
+        # and 6 still false-triggers on the homing acceleration transient
+        # ("Homed" instantly with no travel). 14 never trips either; 10-12
+        # trip exactly at the stop after full travel -- the live failure was
+        # "No trigger on mmu_stepper unit0_idler after full movement" with
+        # SGT 60/15 and instant false "homes" with SGT <= 6.
+        self.assertEqual(cfg.getint('tmc2130 mmu_stepper unit0_idler', 'driver_SGT'), 12)
 
         # The SHR16 shift register chip must be registered as a pin provider
         ppins = hh.printer.lookup_object('pins')
