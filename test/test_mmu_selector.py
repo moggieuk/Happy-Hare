@@ -915,12 +915,18 @@ class TestPersistedPositionRestore(unittest.TestCase):
         0 for every physical selector (config/base/mmu_parameters.cfg), so there is no profile
         to switch to.
         """
+        from extras.mmu.mmu_constants import BOOT_CLOCK_CONVERGENCE_DELAY
+
         def enable_startup_homing():
             self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 startup_home_selector=1')
 
         hh = self.boot(calibrate=True, selected_gate=self.GATE, selector_last_pos=True,
                        pre_bootup=enable_startup_homing)
 
+        # The bootup autohome is deferred BOOT_CLOCK_CONVERGENCE_DELAY seconds past
+        # connect (the MCU clock estimate is unreliable that early), so the reactor
+        # must be advanced past the deferral before the homing happens.
+        hh.settle(BOOT_CLOCK_CONVERGENCE_DELAY + 1.)
         self.assertIn('Homing MMU', '\n'.join(hh.console), 'bootup did not actually home')
         self.assertTrue(self.selector().is_homed)
         self.assertEqual(hh.mmu.gate_selected, self.GATE,
