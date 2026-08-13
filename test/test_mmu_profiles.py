@@ -56,6 +56,8 @@ BOOTABLE = {
     # count, and the selector named here is unit0's - unit1 is an IndexedSelector and gets
     # its own assertions in TestMultiUnitMachine below.
     'ercf_vvd': (13, 'LinearServoSelector'),
+    # Prusa MMU3 - Type A, LinearIdlerSelector, SHR16 shift register stepper pins
+    'prusa_mmu3': (5, 'LinearIdlerSelector'),
 }
 
 # Selector classes reached only through a non-first unit, so the BOOTABLE table above cannot
@@ -115,6 +117,113 @@ class TestEveryBootableProfile(unittest.TestCase):
     def test_ercf_vvd(self):
         """Two units, two selector classes, 13 gates - see TestMultiUnitMachine."""
         self._check('ercf_vvd')
+
+    def test_prusa_mmu3(self):
+        """
+        The only LinearIdlerSelector, and the only machine with shift-register stepper
+        DIR/ENABLE pins (mmu_sr:N). Checks the idler stepper + its stallguard touch
+        endstop resolved, and that the shift register chip registered as a pin provider.
+        """
+        hh = self._check('prusa_mmu3')
+        selector = hh.mmu.mmu_unit(0).selector
+        self.assertEqual(type(selector).__name__, 'LinearIdlerSelector')
+        self.assertTrue(selector.idler.idler_touch)
+        self.assertTrue(hasattr(selector.idler, 'idler_stepper'))
+        self.assertEqual(selector.idler.idler_stepper.full_name, 'mmu_stepper unit0_idler')
+
+        # The idler params must render OUTSIDE the servo guard -- this broke when
+        # the block sat inside [% if MMU_HAS_SELECTOR_SERVO %] and silently fell
+        # back to ParamSpec defaults on the MMU3.
+        cfg = hh.fileconfig
+        params = next(s for s in cfg.sections() if s.startswith('mmu_unit_parameters'))
+        self.assertIn('idler_dwell', cfg.options(params))
+        self.assertIn('idler_buzz_gear_on_down', cfg.options(params))
+
+        # TMC SPI CS pins must not be inverted: Klipper's bus.MCU_SPI_from_config
+        # looks the cs_pin up without can_invert, so a '!' there dies at config
+        # load with "Unknown pin chip name '!unit0'". Caught on the live printer.
+        for name in ('gear', 'selector', 'idler'):
+            with self.subTest(cs_pin=name):
+                cs = cfg.get('tmc2130 mmu_stepper unit0_%s' % name, 'cs_pin')
+                self.assertFalse(cs.startswith('!'), 'cs_pin must not be inverted: %s' % cs)
+
+        # tmc2130's sensorless-homing helper reads diag0_pin (not diag_pin) when
+        # the chip has a diag0_stall register -- the MMU3's stallguard touch
+        # endstops only resolve if the template emitted diag0_pin. Caught on the
+        # live printer ("tmc virtual endstop requires diag pin config").
+        for name in ('gear', 'selector', 'idler'):
+            with self.subTest(diag_pin=name):
+                self.assertEqual(cfg.get('tmc2130 mmu_stepper unit0_%s' % name, 'diag0_pin'),
+                                 '^!unit0:PF%d' % {'gear': 4, 'selector': 1, 'idler': 0}[name])
+                # tmc2130's stallguard threshold register is SGT, not SGTHRS
+                # (that is the tmc2209 name) -- emitting driver_SGTHRS died at
+                # config load with "Option 'driver_sgthrs' is not valid". SGT
+                # is a 5-bit signed field so the value must be <= 63.
+                self.assertIn('driver_SGT', cfg.options('tmc2130 mmu_stepper unit0_%s' % name))
+                self.assertLessEqual(cfg.getint('tmc2130 mmu_stepper unit0_%s' % name, 'driver_SGT'), 63)
+
+        # StallGuard only works in spreadCycle: the selector and idler must not
+        # run stealthChop while homing or the stall is never detected. A small
+        # threshold (3mm/s) keeps the motors silent in stealthChop at standstill
+        # while all homing speeds (selector 8, idler 20mm/s) and the second
+        # homing approach (half the homing speed) stay in spreadCycle. This was
+        # the live failure -- "No trigger on mmu_stepper unit0_selector" with
+        # the default threshold of 100 while homing at 60 mm/s.
+        for name, expected in (('selector', 3.0), ('idler', 3.0)):
+            with self.subTest(stealthchop=name):
+                self.assertEqual(cfg.getfloat('tmc2130 mmu_stepper unit0_%s' % name, 'stealthchop_threshold'),
+                                 expected)
+        # The gear is the opposite: no stallguard homing on the MMU3, always
+        # stealthChop and freewheel when disabled (reference machine values).
+        self.assertEqual(cfg.getfloat('tmc2130 mmu_stepper unit0_gear', 'stealthchop_threshold'), 999999.0)
+        self.assertEqual(cfg.getint('tmc2130 mmu_stepper unit0_gear', 'driver_FREEWHEEL'), 1)
+        self.assertEqual(cfg.getint('tmc2130 mmu_stepper unit0_selector', 'driver_SGT'), 15)
+        # The idler is a light rotating barrel; the stock 60 (and 15) never
+        # trips at the stop while 0 and below false-trigger on free motion,
+        # and 6 still false-triggers on the homing acceleration transient
+        # ("Homed" instantly with no travel). 14 never trips either; 10-12
+        # trip exactly at the stop after full travel -- the live failure was
+        # "No trigger on mmu_stepper unit0_idler after full movement" with
+        # SGT 60/15 and instant false "homes" with SGT <= 6.
+        self.assertEqual(cfg.getint('tmc2130 mmu_stepper unit0_idler', 'driver_SGT'), 10)
+
+        # The SHR16 shift register chip must be registered as a pin provider
+        ppins = hh.printer.lookup_object('pins')
+        self.assertIn('mmu_sr', ppins.chips)
+
+    def test_prusa_mmu3_steppers_resolve_the_shift_register_dir_bits(self):
+        """
+        No Klipper patch: each stepper's dir_pin is a dummy GPIO and the real
+        direction is resolved from dir_sr_pin into a ShiftRegisterBit at config
+        time. All three MMU3 steppers must resolve their bit (0 gear, 2
+        selector, 4 idler) and keep a plain MCU pin as their firmware dir pin.
+        """
+        hh = self._check('prusa_mmu3')
+        unit = hh.mmu.mmu_unit(0)
+
+        steppers = {
+            'gear': unit.drives_unique[0].mmu_gear_stepper,
+            'selector': unit.selector.selector_stepper,
+            'idler': unit.selector.idler.idler_stepper,
+        }
+        expected_bit = {'gear': 0, 'selector': 2, 'idler': 4}
+        expected_invert = {'gear': 1, 'selector': 0, 'idler': 0}  # !mmu_sr:0, mmu_sr:2, mmu_sr:4
+
+        for name, stepper in steppers.items():
+            with self.subTest(stepper=name):
+                vpin = stepper._dir_sr_pin
+                self.assertIsNotNone(vpin, 'dir_sr_pin was not resolved for %s' % name)
+                self.assertEqual(vpin._bit_num, expected_bit[name])
+                self.assertEqual(vpin._invert, expected_invert[name])
+                # The rendered stepper config keeps a plain MCU GPIO as dir_pin
+                # and moves the real direction to dir_sr_pin -- the whole point
+                # of the no-patch approach.
+                section = 'mmu_stepper unit0_%s' % name
+                dir_pin = hh.fileconfig.get(section, 'dir_pin')
+                self.assertNotIn('mmu_sr', dir_pin)
+                prefix = '!' if expected_invert[name] else ''
+                self.assertEqual(hh.fileconfig.get(section, 'dir_sr_pin'),
+                                 '%smmu_sr:%d' % (prefix, expected_bit[name]))
 
     def test_each_profile_reaches_a_determinate_filament_state(self):
         """
@@ -267,7 +376,7 @@ class TestSelectorCoverage(unittest.TestCase):
                      | EXERCISED_BY_LATER_UNITS)
         self.assertEqual(
             exercised,
-            {'VirtualSelector', 'LinearServoSelector', 'IndexedSelector', 'RotarySelector'},
+            {'VirtualSelector', 'LinearServoSelector', 'LinearIdlerSelector', 'IndexedSelector', 'RotarySelector'},
             'update this and the README coverage map when a profile adds another selector '
             'type')
 

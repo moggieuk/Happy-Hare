@@ -6,6 +6,7 @@
 #   PARAM_GEAR_RUN_CURRENT
 #   PARAM_GEAR_HOLD_CURRENT
 #   PARAM_GEAR_FULL_STEPS_PER_ROTATION
+#   PARAM_GEAR_SPI_BUS
 
 menu "Gear stepper"
 
@@ -34,5 +35,33 @@ menu "Gear stepper"
     default 200
     help
       200 for 1.8 degree, 400 for 0.9 degree
+
+  config PARAM_GEAR_SPI_BUS
+    string "Gear SPI bus           "
+    default "spi"
+    help
+      Only used when the gear TMC is a SPI chip (e.g. tmc2130)
+
+  config PARAM_GEAR_STEALTHCHOP
+    float "Gear stealthchop threshold"
+    default 0
+    help
+      Speeds below this use stealthChop. Set 0 for always spreadCycle
+      (required for tmc2130 StallGuard). Some designs prefer always
+      stealthChop (e.g. 999999) when no stallguard homing is used.
+
+  config PARAM_GEAR_SGT
+    int "Gear StallGuard threshold (SGT)"
+    default 60
+    help
+      tmc2130 only. StallGuard sensitivity: -64 to 63. 255 is most
+      sensitive value, 0 is least sensitive.
+
+  config PARAM_GEAR_FREEWHEEL
+    int "Gear driver FREEWHEEL      "
+    default 0
+    help
+      Set 1 to freewheel the gear motor when disabled (e.g. some MMU3
+      designs so filament can be pulled by hand).
 
 endmenu

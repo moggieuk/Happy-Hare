@@ -316,6 +316,54 @@ class MmuController(MmuFilamentMovement):
 
 
     cmd_MMU_BOOTUP_help = "Internal commands to complete bootup of MMU"
+    def _bootup_autohome(self):
+        """
+        Deferred bootup autohoming of all units plus reselection of the last
+        used gate. Runs 30s after connect so the MCU clock estimate is
+        reliable -- see the comment at the call site in cmd_MMU_BOOTUP.
+        """
+        try:
+            # Autohoming...
+            for u in self.mmu_machine.units:
+
+                if not u.calibrator.check_calibrated(CALIBRATED_SELECTOR):
+                    self.log_debug(f"Cannot autohome selector for {u.name} because selector is not yet calibrated")
+                    continue
+
+                if u.p.startup_home_selector:
+                    unit_loaded = (
+                        self.gate_selected != TOOL_GATE_UNKNOWN and
+                        u.manages_gate(self.gate_selected) and
+                        self.filament_pos not in [FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN]
+                    )
+
+                    if unit_loaded:
+                        self.log_warning(f"Skipping autohome of {u.name} because it may have filament loaded")
+                        continue
+
+                    try:
+                        self.home_unit(u) # Will reselect previous gate if on this unit
+
+                    except Exception as e:
+                        # This is recoverable so just report errors
+                        self.log_error(str(e))
+
+            # Make sure the gate is really selected (allows selectors to initialize themselves).
+            # Ask the unit that owns the gate: the autohoming loop variable would be whichever
+            # unit happened to be last, so an uncalibrated final unit used to veto a reselect
+            # on a perfectly good one (and vice versa).
+            if self.gate_selected != TOOL_GATE_UNKNOWN and self.mmu_unit(self.gate_selected).calibrator.check_calibrated(CALIBRATED_SELECTOR):
+                try:
+                    self.log_info(f"Selecting last gate used ({self.gate_selected})...")
+                    self.select_gate(self.gate_selected)
+                except Exception as e:
+                    # This is recoverable so just report errors
+                    self.log_error(str(e))
+
+        except Exception as e:
+            # This is recoverable so just report errors
+            self.log_error(str(e))
+
     def cmd_MMU_BOOTUP(self, gcmd):
         self.log_to_file(gcmd.get_commandline())
 
@@ -392,42 +440,20 @@ class MmuController(MmuFilamentMovement):
                 # This is recoverable so just report errors
                 self.log_error(str(e))
 
-            # Autohoming...
-            for u in self.mmu_machine.units:
-
-                if not u.calibrator.check_calibrated(CALIBRATED_SELECTOR):
-                    self.log_debug(f"Cannot autohome selector for {u.name} because selector is not yet calibrated")
-                    continue
-
-                if u.p.startup_home_selector:
-                    unit_loaded = (
-                        self.gate_selected != TOOL_GATE_UNKNOWN and
-                        u.manages_gate(self.gate_selected) and
-                        self.filament_pos not in [FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN]
-                    )
-
-                    if unit_loaded:
-                        self.log_warning(f"Skipping autohome of {u.name} because it may have filament loaded")
-                        continue
-
-                    try:
-                        self.home_unit(u) # Will reselect previous gate if on this unit
-
-                    except Exception as e:
-                        # This is recoverable so just report errors
-                        self.log_error(str(e))
-
-            # Make sure the gate is really selected (allows selectors to initialize themselves).
-            # Ask the unit that owns the gate: the autohoming loop variable would be whichever
-            # unit happened to be last, so an uncalibrated final unit used to veto a reselect
-            # on a perfectly good one (and vice versa).
-            if self.gate_selected != TOOL_GATE_UNKNOWN and self.mmu_unit(self.gate_selected).calibrator.check_calibrated(CALIBRATED_SELECTOR):
-                try:
-                    self.log_info(f"Selecting last gate used ({self.gate_selected})...")
-                    self.select_gate(self.gate_selected)
-                except Exception as e:
-                    # This is recoverable so just report errors
-                    self.log_error(str(e))
+            # Autohoming and gate reselect move the selector/idler through the
+            # shift register and trigger TMC SPI register writes during the
+            # homing moves. Both are scheduled against the MCU clock estimate,
+            # which can lag reality for several seconds after connect on the
+            # ATmega32U4 (USB CDC latency while the boot command flood is in
+            # flight) -- a timed command that arrives after its scheduled
+            # clock shuts the MCU down with "Rescheduled timer in the past"
+            # (verified on the live MMU3: every boot crashed inside
+            # __MMU_BOOTUP until this was deferred). Run them only once the
+            # clock estimate is reliable, mirroring the shift register's
+            # initial-write delay.
+            self.reactor.register_callback(
+                lambda pt: self._bootup_autohome(),
+                self.reactor.monotonic() + BOOT_CLOCK_CONVERGENCE_DELAY)
 
             # Initial state (this will also enable the leds with opening effect)
             self.psm.set_print_state("initialized")

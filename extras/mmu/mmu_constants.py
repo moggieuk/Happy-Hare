@@ -68,6 +68,14 @@ VENDORS = [
 
 BOOT_DELAY = 2.5 # Delay before running bootup tasks
 
+# Bootup homing/reselect is deferred until the MCU clock estimate is reliable.
+# On the ATmega32U4 the USB CDC latency during the boot command flood makes the
+# host's clock estimate lag reality for several seconds after connect; timed
+# commands scheduled from that estimate arrive in the past and shut the MCU
+# down ("Rescheduled timer in the past"). 30s matches the shift register's own
+# initial-write delay.
+BOOT_CLOCK_CONVERGENCE_DELAY = 30.0
+
 TOOL_GATE_UNKNOWN = -1
 TOOL_GATE_BYPASS = -2
 
@@ -160,6 +168,7 @@ SENSOR_EXTRUDER_TOUCH    = "mmu_ext_touch"
 
 SENSOR_SELECTOR_TOUCH    = "mmu_sel_touch"  # For LinearSelector and LinearServoSelector
 SENSOR_SELECTOR_HOME     = "mmu_sel_home"   # For LinearSelector and LinearServoSelector
+SENSOR_IDLER_TOUCH       = "mmu_idler_touch" # For Prusa MMU3 idler (stallguard homing)
 SENSOR_ENTRY_PREFIX      = "mmu_entry"
 SENSOR_NFC_PREFIX        = "mmu_nfc"        # Per-gate NFC/RFID reader used as a "tag detected" homing endstop
 
@@ -257,6 +266,7 @@ VARS_MMU_SELECTOR_ANGLES           = "mmu_selector_angles"
 VARS_MMU_SELECTOR_BYPASS_ANGLE     = "mmu_selector_bypass_angle"
 VARS_MMU_SELECTOR_RELEASE_ANGLE    = "mmu_selector_release_angle"
 VARS_MMU_SELECTOR_SERVO_ANGLES     = "mmu_selector_servo_angles"      # Used on linear selectors with servo for filament grip
+VARS_MMU_IDLER_OFFSETS             = "mmu_idler_offsets"              # Per-gate idler barrel positions (+1 disengaged) for Prusa MMU3
 VARS_MMU_SELECTOR_GATE_SEQUENCE    = "mmu_selector_gate_sequence"     # Used by indexed selectors
 VARS_MMU_SELECTOR_ENDSTOP_WIDTHS   = "mmu_selector_endstop_widths"    # Used by indexed selectors
 

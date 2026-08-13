@@ -282,6 +282,14 @@ class Session:
         from kinematics import extruder as extruder_mod
         toolhead_mod.add_printer_objects(self.config)
         extruder_mod.add_printer_objects(self.config)
+        # Real Klipper runs every MCU's config callbacks (config_stepper,
+        # config_digital_out, ...) during the connect phase before klippy:connect.
+        # The harness has no such phase, so flush them here -- after the section
+        # loop has registered them all, matching real Klipper's ordering.
+        import mcu as mcu_mod
+        for obj in self.printer.objects.values():
+            if isinstance(obj, mcu_mod.MCU):
+                obj._flush_config_callbacks()
         self.printer.send_event('klippy:connect')
         self.apply_initial_sensor_states()
         return self
@@ -567,6 +575,7 @@ class Session:
                                               VARS_MMU_BOWDEN_LENGTHS,
                                               VARS_MMU_ENCODER_RESOLUTION,
                                               VARS_MMU_GEAR_ROTATION_DISTANCES,
+                                              VARS_MMU_IDLER_OFFSETS,
                                               VARS_MMU_SELECTOR_OFFSETS)
 
         model = self.filament()
@@ -642,6 +651,24 @@ class Session:
                                                     namespace=encoder.name)
                 unit.calibrator.mark_calibrated(CALIBRATED_ENCODER)
                 done['encoder'] = 'resolution is config-true in the harness'
+
+            # IDLER OFFSETS, for a unit whose selector has an idler (Prusa MMU3).
+            # The MMU3 idler barrel moves one gate position per rotation/num_gates
+            # and the disengaged position is one full rotation, so the nominal
+            # offsets are i * rotation_distance/num_gates. Same seeding rationale
+            # as the selector offsets above: the value is written straight back
+            # into HH's own persistence so handle_ready marks the idler calibrated.
+            idler = getattr(axis.selector, 'idler', None) if axis is not None else None
+            if idler is not None:
+                rd = idler.idler_stepper.stepper.get_rotation_distance()[0]
+                spacing = rd / unit.num_gates
+                idler_offsets = [round(i * spacing, 1) for i in range(unit.num_gates + 1)]
+                idler.var_manager.set(VARS_MMU_IDLER_OFFSETS, idler_offsets,
+                                      namespace=unit.name)
+                if hasattr(idler, 'idler_offsets'):
+                    idler.idler_offsets = list(idler_offsets)
+                    idler.calibrator.mark_calibrated(CALIBRATED_SELECTOR)
+                done['idler_offsets'] = idler_offsets
 
             if done:
                 applied[unit.name] = done

@@ -44,6 +44,12 @@ class MCU:
         self._name = name
         self._reactor = reactor
         self._freq = 64000000.
+        # Raw MCU command APIs (used by e.g. shift_register.py's _RawDigitalOut)
+        self._config_callbacks = []
+        self._oid_count = 0
+        self.config_cmds = []
+        self.sent_commands = []     # [(msgformat, args)] in send order
+        self._command_queues = []
 
     def get_name(self):
         return self._name
@@ -68,6 +74,48 @@ class MCU:
 
     def get_printer(self):
         return None
+
+    # -- raw MCU config/command surface (Klipper mcu.py equivalents) ----------
+
+    def register_config_callback(self, cb):
+        self._config_callbacks.append(cb)
+
+    def _flush_config_callbacks(self):
+        """
+        Run pending config callbacks, mirroring real Klipper's mcu.connect().
+
+        Real Klipper generates all config commands (OIDs, config_stepper,
+        config_digital_out, ...) during the connect phase, after every object
+        has registered its callbacks. The harness has no connect phase, so the
+        Session flushes the callbacks after the section loop and before
+        klippy:connect -- the same ordering, which shift_register.py's
+        _RawDigitalOut depends on to get its queue_digital_out command.
+        """
+        cbs, self._config_callbacks = self._config_callbacks, []
+        for cb in cbs:
+            cb()
+
+    def create_oid(self):
+        self._oid_count += 1
+        return self._oid_count
+
+    def add_config_cmd(self, cmd, is_init=False, on_error=True):
+        self.config_cmds.append(cmd)
+
+    def alloc_command_queue(self):
+        self._command_queues.append(None)
+        return len(self._command_queues) - 1
+
+    def lookup_command(self, msgformat, cq=None):
+        # Real Klipper returns a CommandWrapper with .send(); shift_register.py's
+        # _RawDigitalOut calls set_cmd.send([...], minclock=..., reqclock=...).
+        class _CommandWrapper:
+            def __init__(self, owner, fmt):
+                self._owner = owner
+                self._fmt = fmt
+            def send(self, args, **kwargs):
+                self._owner.sent_commands.append((self._fmt, list(args), dict(kwargs)))
+        return _CommandWrapper(self, msgformat)
 
 
 class _PinBase:

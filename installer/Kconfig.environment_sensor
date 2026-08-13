@@ -326,8 +326,12 @@ endif
 # MCU CPU Temperature sensors
 # -------------------------------------
 
+config UNSELECT_CREATE_MCU_ENVIRONMENT_SENSORS
+  def_bool n
+
 config BOOL_CREATE_MCU_ENVIRONMENT_SENSORS
   bool "Create MCU CPU sensor(s)?"
+  default n if UNSELECT_CREATE_MCU_ENVIRONMENT_SENSORS
   default y
   help
     Create [temperature_sensor] sections for the MCU(s) themselves for CPU temperature monitoring.

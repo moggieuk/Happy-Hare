@@ -38,8 +38,13 @@ choice BOARD_TYPE
     rsource "custom/Kconfig.vvd"
   endif
 
+  # Prusa MMU3 has fixed custom mcu
+  if MMU_TYPE_PRUSA_MMU3_3_0
+    rsource "custom/Kconfig.prusa_mmu3"
+  endif
+
   # Offer other where it makes sense as last option
-  if !MMU_TYPE_KMS_1_0 && !MMU_TYPE_VVD_1_0
+  if !MMU_TYPE_KMS_1_0 && !MMU_TYPE_VVD_1_0 && !MMU_TYPE_PRUSA_MMU3_3_0
     config BOARD_TYPE_OTHER
       bool "Not listed / Other"
 
