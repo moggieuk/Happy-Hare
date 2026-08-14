@@ -104,7 +104,7 @@ if BOARD_TYPE_EBB_GEN1
         default "^$(MCU_NAME)_gate$(gate):PB5"
 
       config PIN_EJECT_BUTTON_$(gate)
-        default "^$(MCU_NAME)_gate$(gate):PB6"
+        default "^!$(MCU_NAME)_gate$(gate):PB6"
 
       config PIN_NEOPIXEL_$(gate)
         default "$(MCU_NAME)_gate$(gate):PD3"
