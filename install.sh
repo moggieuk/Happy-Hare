@@ -50,11 +50,10 @@ usage() {
     # TODO: Repetier-Server stub support - need better detection option 
     # echo "-? TBC specify Repetier-Server <stub> to override printer.cfg and klipper.service names"
     echo "  -a <name> to specify alternative klipper-service-name when installed with Kiauh"
-    echo "  -t activate test mode to create test config files in /tmp"
     echo "  -r allow running ${SCRIPT_NAME} as root"
     echo "  -e, --emu enables multi MCU support (for EMU design)"
     echo "  -o override compatibility checks (e.g. Kalico detection)"
-    echo "  -t  test mode - write config to /tmp instead of your real install"
+    echo "  -t  activate test mode - write config to /tmp instead of your real install"
     echo "  (-q verbose make for debugging)"
     echo "  (-v verbose builder for debugging)"
     echo
