@@ -97,10 +97,12 @@ class MmuMachine:
         self.units = []              # Unit by index
         self.unit_by_name = {}       # Unit lookup by name
         self.unit_by_gate = []       # Quick unit lookup by gate
-        self.unit_status = {}        # Aggregated status for backward comptability
+        self.machine_status = {}     # Aggregated static status
         self.unit_with_bypass = None # Unit with selectable bypass (only one allowed)
 
         logging.info("MMU: Loaded [%s]" % config.get_name())
+
+        self.machine_status["happy_hare_version"] = self.happy_hare_version
 
         for i, name in enumerate(self.unit_names):
             section = "mmu_unit %s" % name
@@ -115,7 +117,7 @@ class MmuMachine:
             self.units.append(unit)
             self.unit_by_name[name] = unit
             self.unit_by_gate[self.num_gates:self.num_gates + unit.num_gates] = [unit] * unit.num_gates
-            self.unit_status["unit_%d" % i] = unit.get_status(0)
+            self.machine_status["unit_%d" % i] = unit.get_status(0)
             if unit.show_bypass:
                 logging.info(f"MMU: Unit with bypass: {unit.name}")
                 if self.unit_with_bypass is not None:
@@ -124,8 +126,8 @@ class MmuMachine:
 
             self.num_gates += unit.num_gates
 
-        self.unit_status['num_units'] = self.num_units
-        self.unit_status['num_gates'] = self.num_gates
+        self.machine_status['num_units'] = self.num_units
+        self.machine_status['num_gates'] = self.num_gates
 
         # Load parameters config for mmu machine
         if not config.has_section('mmu_parameters'):
@@ -168,7 +170,7 @@ class MmuMachine:
 
 
     def get_status(self, eventtime):
-        return self.unit_status
+        return self.machine_status
 
 
 def load_config(config):
