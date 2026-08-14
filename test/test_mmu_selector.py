@@ -826,7 +826,6 @@ class TestPersistedPositionRestore(unittest.TestCase):
         self.assertAlmostEqual(self.axis().carriage,
                                self.selector().selector_offsets[self.GATE], places=3)
 
-
     def test_startup_home_selector_skips_rather_than_guess_on_unresolved_filament_state(self):
         """
         An unresolved filament_pos at boot (a sensor read failure, a fresh install with no
