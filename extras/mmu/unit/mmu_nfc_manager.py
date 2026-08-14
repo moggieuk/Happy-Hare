@@ -126,6 +126,11 @@ class MmuNfcManager:
         # runs on MMU enable/init, never mid-operation, so nothing legitimately pending
         # is discarded here - and the readers get re-inited on that path anyway.
         self._probe_reader = None
+        # Deferred-attribution hold for NFC neighbor-field arbitration (MmuNfcFieldArbiter) -
+        # see hold_attribution(). Single-slot: only one gate's read is ever held at a time,
+        # since only one gate's preload/scan runs at once in this synchronous command model.
+        self._held_gate = None
+        self._held_dispatch = None
 
 
     def _handle_connect(self):
@@ -226,8 +231,45 @@ class MmuNfcManager:
             deep = False
         uid, metadata = self._read_reader(reader, deep=deep)
         if uid:
-            self._dispatch_lookup(uid, gate=gate, metadata=metadata)
+            if gate is not None and gate == self._held_gate:
+                # A hold is armed for this exact gate (NFC neighbor-field arbitration,
+                # NFC_FIELD_PROVISIONAL) - stash instead of dispatching. See
+                # hold_attribution().
+                self._held_dispatch = (uid, gate, metadata)
+            else:
+                self._dispatch_lookup(uid, gate=gate, metadata=metadata)
         return uid
+
+
+    def hold_attribution(self, gate):
+        """
+        Arm a hold on gate 'gate': the next successful read_gate()/read_gate_after_home()
+        for this exact gate stashes its (uid, metadata) instead of dispatching immediately.
+
+        Used by MmuNfcFieldArbiter for a NFC_FIELD_PROVISIONAL verdict, where whether an
+        unregistered tag actually belongs to this gate isn't known until the caller's own
+        operation completes and ratification re-probes the field - attributing it eagerly
+        and only warning on failure would leave a neighbor's tag (and, via Spoolman, its
+        spool_id) committed to the wrong gate with no way to un-commit it. Single-slot:
+        only one gate's read is ever held at a time in this synchronous command model.
+        """
+        self._held_gate = gate
+        self._held_dispatch = None
+
+
+    def release_held_attribution(self):
+        """Commit a held read (if one is stashed) and clear the hold either way."""
+        if self._held_dispatch is not None:
+            uid, gate, metadata = self._held_dispatch
+            self._dispatch_lookup(uid, gate=gate, metadata=metadata)
+        self._held_gate = None
+        self._held_dispatch = None
+
+
+    def discard_held_attribution(self):
+        """Drop a held read (if one is stashed) WITHOUT dispatching it, and clear the hold."""
+        self._held_gate = None
+        self._held_dispatch = None
 
 
     def read_gate_after_home(self, gate):

@@ -45,6 +45,27 @@ from .mmu_constants import *
 from .mmu_utils      import MmuError
 
 
+class NfcFieldOutcome:
+    """
+    What clear_field() yields. 'verdict' is known immediately (before the caller's enclosed
+    operation runs); 'ratified' is only known afterwards, once clear_field()'s own `finally`
+    has re-probed the field - so it stays None (not applicable) for the duration of the
+    `with` block itself, and callers must read it only after the block has closed.
+
+    ratified is:
+        None  - verdict was not NFC_FIELD_PROVISIONAL; there was nothing to ratify.
+        True  - a provisional read was confirmed and committed to the gate map.
+        False - a provisional read could not be confirmed and was discarded, never
+                committed at all - callers should downgrade their own "tag read"/"found"
+                reporting to match, since nothing was actually attributed.
+    """
+    __slots__ = ('verdict', 'ratified')
+
+    def __init__(self, verdict):
+        self.verdict = verdict
+        self.ratified = None
+
+
 class MmuNfcFieldArbiter:
     """
     Owns the classification ladder, candidate selection, eviction-by-jogging and provisional-
@@ -264,21 +285,31 @@ class MmuNfcFieldArbiter:
         """
         Re-probe gate 'gate's reader once, after the caller's own natural motion (preload's
         homing+park, or a jog-scan's sweep with its fast path suppressed) has completed, to
-        confirm or reject a NFC_FIELD_PROVISIONAL verdict.
+        confirm or reject a NFC_FIELD_PROVISIONAL verdict. Returns True (ratified) or False
+        (not ratified).
 
-        This is purely diagnostic. The tag read already taken during the caller's operation is
-        not undone either way (a Spoolman resolution may already be in flight) - this can only
-        warn that the attribution just made may have been wrong.
+        Deliberately a raw presence check (nfc_mgr.probe_gate_field), NOT _field_check /
+        _field_verdict: find_gate_by_rfid would resolve ownership against whatever the read
+        this verdict is protecting is ABOUT to write (see clear_field - attribution is held,
+        not yet committed, while this runs), which is a different but related circularity to
+        guard against. The only question that isn't circular either way is "is anything still
+        there".
+
+        The caller (clear_field) uses this return value to decide whether to commit the held
+        read (release_held_attribution) or drop it (discard_held_attribution) - nothing is
+        attributed to the wrong gate here, it just hasn't been committed yet either way.
         """
-        verdict, uid, owner, diag = self._field_check(gate, nfc_mgr)
-        if verdict == NFC_FIELD_CLEAR or (verdict == NFC_FIELD_MINE and owner == gate):
+        uid = nfc_mgr.probe_gate_field(gate)
+        if not uid:
             self.mmu.log_debug("NFC: gate %d: provisional tag attribution ratified (field "
                                 "clear after the operation's own motion)" % gate)
-            return
+            return True
         self.mmu.log_warning(
-            "NFC: gate %d: failed to reliably detect this gate's own tag - the reader still "
-            "shows a tag after gate %d's own filament settled, so a neighboring gate's tag may "
-            "have been misattributed here. Verify gate %d's rfid/spool_id manually" % (gate, gate, gate))
+            "NFC: gate %d: could not confirm this gate's own tag - the reader still shows "
+            "tag %s after gate %d's own filament settled, so the read is being discarded "
+            "rather than attributed. If this is a new/unregistered spool, re-run once the "
+            "neighboring gate's spool has been moved or registered" % (gate, uid, gate))
+        return False
 
 
     # ---- Restore ------------------------------------------------------------------------------
@@ -330,20 +361,25 @@ class MmuNfcFieldArbiter:
         operation, temporarily jogging identified neighboring gates' filament off their park
         position when arbitration has a motion budget for it.
 
-        Yields one of:
+        Yields a NfcFieldOutcome, whose 'verdict' is one of:
             NFC_FIELD_CLEAR       nothing in the field, or arbitration isn't armed for this
                                    gate (nfc_mgr is None) - either way the caller does exactly
                                    what it always did.
-            NFC_FIELD_MINE        the tag is positively confirmed as this gate's own.
+            NFC_FIELD_MINE        the tag is positively confirmed as this gate's own -
+                                   attributed immediately, as always, by the caller's own read.
             NFC_FIELD_FOREIGN     a tag known not to be this gate's, uncleared - the caller
                                    must not attribute it (see per-caller handling in
                                    _preload_gate / _jog_scan).
             NFC_FIELD_PROVISIONAL an unregistered tag tentatively treated as MINE - the caller
                                    proceeds as it would for MINE, EXCEPT a jog-scan must not
                                    take its "already at reader" fast path, since there would be
-                                   nothing left to observe clearing. Ratified/rejected in this
-                                   method's own `finally`, once the caller's own natural motion
-                                   has completed.
+                                   nothing left to observe clearing. Any read the caller's
+                                   operation makes under this verdict is HELD, not committed
+                                   (see MmuNfcManager.hold_attribution) - committed only if
+                                   ratified once the caller's own natural motion has
+                                   completed, discarded otherwise. Only readable via the
+                                   outcome's 'ratified' attribute AFTER the `with` block
+                                   closes (see NfcFieldOutcome).
 
         On exit, every jogged gate is re-parked and its prior gate_status restored, in reverse
         order, even when the enclosed block raised, and 'gate' is left selected.
@@ -353,29 +389,43 @@ class MmuNfcFieldArbiter:
         contextmanager does not nest.
         """
         if nfc_mgr is None:
-            yield NFC_FIELD_CLEAR
+            yield NfcFieldOutcome(NFC_FIELD_CLEAR)
             return
 
         distance = self.mmu.mmu_unit(gate).p.nfc_neighbor_evict_distance
         evicted = []
         provisional = False
+        outcome = None
         try:
             with self.mmu.wrap_suspend_filament_monitoring():
                 verdict = self._settle(gate, nfc_mgr, distance, evicted)
                 self.mmu.select_gate(gate) # The enclosed block runs on 'gate', as it did before
             provisional = (verdict == NFC_FIELD_PROVISIONAL)
-            yield verdict
+            outcome = NfcFieldOutcome(verdict)
+            if provisional:
+                # Hold any read the enclosed operation makes for this gate rather than let it
+                # commit immediately - whether it should be trusted at all isn't known until
+                # ratification re-probes below, once that operation's own motion is done.
+                nfc_mgr.hold_attribution(gate)
+            yield outcome
         finally:
             # Ratify BEFORE restoring evicted neighbors: the ratification re-probe must see the
             # field as the caller's own operation left it, not after neighbors are re-parked
             # (which is itself extra motion that could disturb the reading). Guarded on its own:
             # an unexpected error here must never skip the restore below and leave an evicted
-            # neighbor stranded off its park position.
+            # neighbor stranded off its park position, or leave a hold armed forever.
             if provisional:
                 try:
-                    self._ratify(gate, nfc_mgr)
+                    ratified = self._ratify(gate, nfc_mgr)
                 except Exception as e:
                     self.mmu.log_error("NFC: gate %d: ratification check failed: %s" % (gate, str(e)))
+                    ratified = False # Safer to discard an unconfirmed read than commit it blind
+                if outcome is not None:
+                    outcome.ratified = ratified
+                if ratified:
+                    nfc_mgr.release_held_attribution()
+                else:
+                    nfc_mgr.discard_held_attribution()
             # Unconditional: eviction/settling can raise part-way with a neighbor selected and
             # nothing yet recorded in 'evicted', and the caller must still get its gate back.
             with self.mmu.wrap_suspend_filament_monitoring():

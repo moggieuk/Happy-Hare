@@ -193,7 +193,7 @@ class MmuFilamentMovement:
         if not have_strong_pending and profile.endstop != SENSOR_ENCODER:
             arb_mgr = self._nfc_field_arm(gate, profile.endstop)
 
-        with self.nfc_arbiter.clear_field(gate, arb_mgr) as verdict:
+        with self.nfc_arbiter.clear_field(gate, arb_mgr) as outcome:
             # Decide the NFC path HERE, above the banner, so the banner cannot promise a scan
             # that won't happen. _build_gate_nfc_compound() declines (returns None) when there is
             # no reader, the reader is disabled, or the gate endstop isn't a real MCU switch.
@@ -202,7 +202,7 @@ class MmuFilamentMovement:
             # the NFC leg here would just risk misattributing it again, so fall back to a plain
             # preload instead (mechanically identical, nothing written to the gate map).
             nfc = None
-            if verdict != NFC_FIELD_FOREIGN and not have_strong_pending and profile.endstop != SENSOR_ENCODER:
+            if outcome.verdict != NFC_FIELD_FOREIGN and not have_strong_pending and profile.endstop != SENSOR_ENCODER:
                 gate_es_name = self.sensor_manager.get_qualified_endstop_name(profile.endstop)
                 compound, nfc_es_name, nfc_mgr = self._build_gate_nfc_compound(
                     gate, gate_es_name, name="preload_compound")
@@ -244,6 +244,12 @@ class MmuFilamentMovement:
             finally:
                 if nfc is not None:
                     self.drive().mmu_gear_stepper.rail.remove_compound_endstop(nfc[0].name)
+
+        if outcome.ratified is False:
+            # A provisional read never cleared the field once this gate's own filament
+            # settled, so it was discarded (never committed to the gate map at all) rather
+            # than attributed - report it as no tag found, not as a successful read.
+            tag_read = False
 
         self.gate_maps.set_gate_status(gate, GATE_AVAILABLE)
         self.last_preloaded_gate = gate
@@ -761,8 +767,8 @@ class MmuFilamentMovement:
         # report. arb_mgr is None (clear_field() then an inert passthrough) whenever
         # arbitration isn't armed for this gate.
         arb_mgr = self._nfc_field_arm(gate)
-        with self.nfc_arbiter.clear_field(gate, arb_mgr) as verdict:
-            if verdict == NFC_FIELD_FOREIGN:
+        with self.nfc_arbiter.clear_field(gate, arb_mgr) as outcome:
+            if outcome.verdict == NFC_FIELD_FOREIGN:
                 raise MmuError(
                     "Cannot scan gate %d: the NFC reader field could not be reliably "
                     "attributed to this gate (see the log for detail)" % gate)
@@ -782,7 +788,7 @@ class MmuFilamentMovement:
                 # clear_field()'s ratification re-probe to observe, so the sweep below is
                 # forced to run instead - it's the only thing that can actually tell this
                 # gate's own tag apart from an unregistered neighbor's.
-                if verdict != NFC_FIELD_PROVISIONAL:
+                if outcome.verdict != NFC_FIELD_PROVISIONAL:
                     nfc_manager.clear_gate_reader(gate)
                     if nfc_manager.read_gate(gate):
                         found = True
@@ -823,6 +829,12 @@ class MmuFilamentMovement:
             finally:
                 for mgr, snap in active_snaps:
                     mgr.restore_active(snap)
+
+        if outcome.ratified is False:
+            # A provisional read never cleared the field once this gate's own filament
+            # settled, so it was discarded (never committed to the gate map at all) rather
+            # than attributed - report it as no tag found, not as a successful read.
+            found = False
 
         if found:
             self.log_info("NFC: tag read for gate %d" % gate)
