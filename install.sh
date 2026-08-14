@@ -367,36 +367,60 @@ os_release_name="$(sed -n 's/^NAME="\(.*\)"/\1/p' /etc/os-release 2>/dev/null ||
 if [ "${machine_arch}" = "mips" ] && [ -d "/usr/data/creality" ]; then
     os_type="creality-k1"
     echo "${C_INFO}Detected Creality K1 series printer${C_OFF}"
+
+    [ -n "${CONFIG_KLIPPER_HOME:-}" ]        || CONFIG_KLIPPER_HOME=/usr/share/klipper
+    [ -n "${CONFIG_MOONRAKER_HOME:-}" ]      || CONFIG_MOONRAKER_HOME=/usr/data/moonraker/moonraker
+    [ -n "${CONFIG_KLIPPER_CONFIG_HOME:-}" ] || CONFIG_KLIPPER_CONFIG_HOME=/usr/data/printer_data/config
+
 elif [ "${os_release_name}" = "FlyOS-Fast" ]; then
     os_type="flyos-fast"
     echo "${C_INFO}Detected FlyOS-Fast${C_OFF}"
+
+    [ -n "${CONFIG_KLIPPER_HOME:-}" ]        || CONFIG_KLIPPER_HOME=/data/klipper
+    [ -n "${CONFIG_MOONRAKER_HOME:-}" ]      || CONFIG_MOONRAKER_HOME=/data/moonraker
+    [ -n "${CONFIG_KLIPPER_CONFIG_HOME:-}" ] || CONFIG_KLIPPER_CONFIG_HOME=/usr/share/printer_data/config
+
 elif [ "${machine_arch}" = "mips" ] && [ "$(id -u)" -eq 0 ] && [ -d "/root/printer_software" ]; then
     os_type="guppy-k1"
     echo "${C_INFO}Detected Guppy K1 Mod${C_OFF}"
-elif [ "${machine_arch}" = "mips" ]; then
-    echo "${C_ERROR}ERROR: Unable to detect embedded OS layout without root access. Re-run ${SCRIPT_NAME} as root (sudo).${C_OFF}" >&2
+
+    [ -n "${CONFIG_KLIPPER_HOME:-}" ]        || CONFIG_KLIPPER_HOME=/root/printer_software/klipper
+    [ -n "${CONFIG_MOONRAKER_HOME:-}" ]      || CONFIG_MOONRAKER_HOME=/root/printer_software/moonraker/moonraker
+    [ -n "${CONFIG_KLIPPER_CONFIG_HOME:-}" ] || CONFIG_KLIPPER_CONFIG_HOME=/root/printer_data/config
+
+elif [ "${machine_arch}" = "mips" ] && ( [ -z "${CONFIG_KLIPPER_HOME:-}" ] || [ -z "${CONFIG_KLIPPER_CONFIG_HOME:-}" ] || [ -z "${CONFIG_MOONRAKER_HOME:-}" ] ); then
+    [ "$(id -u)" -ne 0 ] && echo "${C_ERROR}ERROR: Unable to detect embedded MIPS OS setup without root access. Re-run ${SCRIPT_NAME} as root.${C_OFF}" >&2 || echo "${C_ERROR}ERROR: Unable to detect embedded MIPS OS setup and required paths. Set manually using -k, -c, & -m.${C_OFF}" >&2
     exit 1
 fi
 
+# Root policy: embedded OS installs require root; reject root for other OS's unless -r is explicitly set.
+if [ -z "${F_ALLOW_ROOT+x}" ]; then
+    F_ALLOW_ROOT=n
+fi
+
 case "${os_type}" in
-creality-k1)
-    : "${CONFIG_KLIPPER_HOME:=/usr/share/klipper}"
-    : "${CONFIG_MOONRAKER_HOME:=/usr/data/moonraker/moonraker}"
-    : "${CONFIG_KLIPPER_CONFIG_HOME:=/usr/data/printer_data/config}"
+creality-k1 | flyos-fast | guppy-k1)
+    if [ "$(id -u)" -ne 0 ]; then
+        echo "${C_ERROR}ERROR: ${SCRIPT_NAME} must be run as root for ${os_type}.${C_OFF}" >&2
+        exit 1
+    fi
+    F_ALLOW_ROOT=y
     ;;
-flyos-fast)
-    : "${CONFIG_KLIPPER_HOME:=/data/klipper}"
-    : "${CONFIG_MOONRAKER_HOME:=/data/moonraker}"
-    : "${CONFIG_KLIPPER_CONFIG_HOME:=/usr/share/printer_data/config}"
-    ;;
-guppy-k1)
-    : "${CONFIG_KLIPPER_HOME:=/root/printer_software/klipper}"
-    : "${CONFIG_MOONRAKER_HOME:=/root/printer_software/moonraker/moonraker}"
-    : "${CONFIG_KLIPPER_CONFIG_HOME:=/root/printer_data/config}"
+*)
+    if [ "$(id -u)" -eq 0 ] && [ "${F_ALLOW_ROOT}" != "y" ]; then
+        echo "${C_ERROR}ERROR: Running ${SCRIPT_NAME} as root is not recommended. Please run as the same user you used to install Klipper.${C_OFF}" >&2
+        echo "${C_INFO}Use -r to explicitly allow root installation.${C_OFF}" >&2
+        exit 1
+    fi
     ;;
 esac
 
 export CONFIG_KLIPPER_HOME CONFIG_KLIPPER_CONFIG_HOME CONFIG_MOONRAKER_HOME
+
+# Summarise directory overrides
+[ -n "${CONFIG_KLIPPER_HOME:-}" ]        && echo "${C_INFO}KLIPPER_HOME=${CONFIG_KLIPPER_HOME}${C_OFF}"
+[ -n "${CONFIG_KLIPPER_CONFIG_HOME:-}" ] && echo "${C_INFO}KLIPPER_CONFIG_HOME=${CONFIG_KLIPPER_CONFIG_HOME}${C_OFF}"
+[ -n "${CONFIG_MOONRAKER_HOME:-}" ]      && echo "${C_INFO}MOONRAKER_HOME=${CONFIG_MOONRAKER_HOME}${C_OFF}"
 
 # Source and validate python3 venvs
 get_python_version() {
@@ -455,7 +479,7 @@ if [ "${python_ver}" != "3" ]; then
     fi
 fi
 
-# Handle PEP 668 "externally managed" python environments that refuse pip installs outside a venv, so installer's deps
+# Handle PEP 668 "externally managed" python environments that refuse pip installs without a venv, so installer's deps
 # (installer/requirements.txt) can never be resolved. Use repo venv instead, just as klippy-env is activated 
 # above - klippy-env is itself a venv, so a normal printer install never reaches this.
 # PIP_ARGS means the user has chosen how to feed their system python, so do nothing
@@ -465,30 +489,6 @@ if [ -z "${PIP_ARGS}" ] && command -v python >/dev/null 2>&1 && \
     echo "${C_INFO}System python is externally managed (PEP 668), using virtualenv '${VENV}'${C_OFF}"
     make --no-print-directory -C "${SCRIPT_DIR}" installer_venv
     . "${VENV}/bin/activate"
-fi
-
-# root check: installer must run as root for specific OS use cases. Others require explicit -r override to enable install as root
-if [ -z "${F_ALLOW_ROOT+x}" ]; then
-    case "${os_type}" in
-    creality-k1 | flyos-fast | guppy-k1)
-        # Embedded systems require root
-        if [ "$(id -u)" -ne 0 ]; then
-            echo "${C_ERROR}ERROR: ${SCRIPT_NAME} must be run as root for ${os_type}.${C_OFF}" >&2
-            exit 1
-        fi
-        F_ALLOW_ROOT=y
-        ;;
-    *)
-        F_ALLOW_ROOT=n
-        ;;
-    esac
-fi
-
-# Enforce root user policy
-if [ "$(id -u)" -eq 0 ] && [ "${F_ALLOW_ROOT}" != "y" ]; then
-    echo "${C_ERROR}ERROR: Running ${SCRIPT_NAME} as root is not allowed on this OS by default. Run as the same user you used to install Klipper.${C_OFF}" >&2
-    echo "${C_INFO}Use -r to explicitly allow root installation.${C_OFF}" >&2
-    exit 1
 fi
 
 if [ "${F_MENUCONFIG}" ] && [ "${F_UNINSTALL}" ]; then
