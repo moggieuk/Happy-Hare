@@ -454,9 +454,9 @@ done <<EOF
 ${venvs}
 EOF
 
-# no valid python3 venv found, check system default python3
+# no valid python3 venv found, check system python default
 if [ "${python_ver}" != "3" ]; then
-    if [ "$(python --version 2>&1 | grep -o '^Python 3')" = "Python 3" ]; then
+    if command -v python >/dev/null 2>&1 && [ "$(python --version 2>&1 | grep -o '^Python 3')" = "Python 3" ]; then
         echo "${C_WARNING}No suitable Klipper Python 3 venv found; continuing with system Python 3${C_OFF}"
     else
         echo "${C_ERROR}ERROR: No suitable Klipper Python 3 environment found.${C_OFF}"
