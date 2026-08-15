@@ -231,7 +231,10 @@ class IndexedSelector(PhysicalSelector):
             endstop_name=self._get_gate_endstop_name(lgate),
         )
 
-        if abs(delta) > 0 and homed:
+        if not homed:
+            raise MmuError("Failed to locate selector index for gate %d" % self._logical_gate(lgate))
+
+        if abs(delta) > 0:
             # If we actually moved to home make sure we are centered on index endstop
             nudge = self.endstop_widths[lgate] / 2
             center_move = nudge * rotation_dir

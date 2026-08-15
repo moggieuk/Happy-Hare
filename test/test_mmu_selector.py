@@ -28,7 +28,7 @@ import logging
 import unittest
 
 from test.hh import session
-from test.hh.profiles import PROFILES, clone_across_units
+from test.hh.profiles import PROFILES, Profile, clone_across_units
 
 logging.getLogger().setLevel(logging.CRITICAL)
 
@@ -39,6 +39,35 @@ TIP_AT_GATE = -40.0             # past the entry switch: where a user's push lea
 # mmu_constants.py:209-211, mirrored here for the same reason FILAMENT_POS_* is
 FILAMENT_RELEASE_STATE = 0
 FILAMENT_DRIVE_STATE = 1
+
+
+# The installer exposes LinearMultiGearSelector only for custom machines. MMB 2.0 has
+# enough gear outputs but reuses its normal selector pins for those extra gears, so this
+# fixture supplies a separate selector driver explicitly, as a real custom build must.
+LINEAR_MULTI_GEAR = Profile(
+    'linear_multi_gear',
+    syms={
+        'MMU_CUSTOM': True,
+        'CHOICE_SELECTOR_TYPE_LINEAR_MULTI_GEAR_SELECTOR': True,
+        'BOARD_TYPE_MMB_2_0': True,
+        'MMU_HAS_SENSOR_SHARED_EXIT': True,
+        'PIN_SELECTOR_STEP': 'unit0:PA8',
+        'PIN_SELECTOR_DIR': 'unit0:PA9',
+        'PIN_SELECTOR_ENABLE': 'unit0:PA10',
+        'PIN_SELECTOR_UART': 'unit0:PA11',
+        'PIN_SELECTOR_ENDSTOP': 'unit0:PA12',
+    },
+    description='custom four-gate LinearMultiGearSelector with a separate selector driver')
+
+MACRO_SELECTOR = Profile(
+    'macro_selector',
+    syms={
+        'MMU_CUSTOM': True,
+        'CHOICE_SELECTOR_TYPE_MACRO_SELECTOR': True,
+        'BOARD_TYPE_MMB_2_0': True,
+        'MMU_HAS_SENSOR_SHARED_EXIT': True,
+    },
+    description='custom four-gate MacroSelector in direct (zero-switch) mode')
 
 
 class SelectorTestCase(unittest.TestCase):
@@ -144,6 +173,74 @@ class TestLinearSelector(SelectorTestCase):
         before = axis.carriage
         self.load_and_unload(5)
         self.assertAlmostEqual(axis.carriage, before, places=3)
+
+
+class TestLinearMultiGearSelector(SelectorTestCase):
+    """A type-C selector is still a physical axis and must home before absolute moves."""
+
+    PROFILE = LINEAR_MULTI_GEAR
+
+    def test_it_retains_physical_selector_homing(self):
+        selector = self.selector('unit0')
+        axis = self.axis('unit0')
+        self.assertTrue(selector.requires_homing)
+        self.assertTrue(selector.is_homed)
+        self.assertAlmostEqual(axis.carriage, axis.home_position(), places=3)
+
+    def test_selection_uses_the_homed_coordinate_frame(self):
+        selector = self.selector('unit0')
+        axis = self.axis('unit0')
+        self.hh.run_gcode('MMU_SELECT GATE=3')
+        self.assertAlmostEqual(axis.carriage, selector.selector_offsets[3], places=3)
+        self.assertEqual(self.hh.errors, [])
+
+    def test_per_gate_drives_do_not_depend_on_virtual_selector(self):
+        """Type-C gear dispatch belongs to MmuUnit, independently of selector inheritance."""
+        unit = self.hh.mmu.mmu_unit(0)
+        self.assertTrue(unit.multigear)
+        self.assertEqual(len({id(drive) for drive in unit.drives}), unit.num_gates)
+        for lgate, expected_drive in enumerate(unit.drives):
+            gate = unit.logical_gate(lgate)
+            self.assertIs(self.hh.mmu.drive(gate), expected_drive)
+
+    def test_full_load_and_unload(self):
+        loaded, unloaded = self.load_and_unload(2)
+        self.assertEqual(loaded, FILAMENT_POS_LOADED)
+        self.assertEqual(unloaded, FILAMENT_POS_UNLOADED)
+        self.assertEqual(self.hh.errors, [])
+
+
+class TestServoSelector(SelectorTestCase):
+    """MMX provides valid vendor angles and exercises the otherwise-unused ServoSelector."""
+
+    PROFILE = 'mmx'
+    HOME_UNITS = ()
+
+    def test_vendor_gate_angles_are_loaded(self):
+        self.assertEqual(self.selector('unit0').servo_gate_angles, [60, 0, 180, 120])
+
+    def test_full_load_and_unload(self):
+        loaded, unloaded = self.load_and_unload(2)
+        self.assertEqual(loaded, FILAMENT_POS_LOADED)
+        self.assertEqual(unloaded, FILAMENT_POS_UNLOADED)
+        self.assertEqual(self.hh.errors, [])
+
+
+class TestMacroSelector(SelectorTestCase):
+    """The generated zero-switch config is direct mode and preserves the v3 GATE contract."""
+
+    PROFILE = MACRO_SELECTOR
+    HOME_UNITS = ()
+
+    def test_direct_mode_boots_and_passes_both_gate_numbering_schemes(self):
+        selector = self.selector('unit0')
+        calls = []
+        self.hh.mmu.wrap_gcode_command = calls.append
+
+        selector.select_gate(2)
+
+        self.assertFalse(selector.binary_mode)
+        self.assertEqual(calls, ['select_tool_macro GATE=2 LGATE=2'])
 
 
 class TestRotarySelector(SelectorTestCase):
@@ -514,6 +611,32 @@ class TestMultiUnitSelectors(SelectorTestCase):
             name = self.selector('unit1')._get_gate_endstop_name(lgate)
             self.assertAlmostEqual(positions[name], slot * spacing, places=3,
                                    msg='gate %d should sit in slot %d' % (lgate, slot))
+
+    def test_indexed_selector_rejects_a_missed_target_index(self):
+        """A missed sensor must not turn into a successful logical gate change."""
+        selector = self.selector('unit1')
+        self.hh.run_gcode('MMU_SELECT GATE=9')
+
+        def miss_index(*args, **kwargs):
+            raise self.hh.printer.command_error('simulated missed selector index')
+
+        selector.selector_stepper.do_homing_move = miss_index
+        self.hh.run_gcode('MMU_SELECT GATE=10')
+
+        self.assertEqual(self.hh.mmu.gate_selected, -1)
+        self.assertEqual(selector.lgate_selected, 0,
+                         'the selector cache must retain the last physically located gate')
+        self.assertTrue(any('Failed to locate selector index for gate 10' in error
+                            for error in self.hh.errors))
+
+    def test_indexed_selector_wraps_through_zero(self):
+        """The fake ViViD ring must not turn its final index into a linear hard stop."""
+        for gate in (9, 10, 11, 12):
+            self.hh.run_gcode('MMU_SELECT GATE=%d' % gate)
+
+        self.assertEqual(self.hh.mmu.gate_selected, 12, self.hh.errors)
+        self.assertEqual(self.selector('unit1').lgate_selected, 3)
+        self.assertEqual(self.hh.errors, [])
 
     def test_unit0_loads_and_unloads(self):
         """
