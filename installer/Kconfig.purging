@@ -53,7 +53,7 @@ menu "Purging"
   config MMU_HAS_BLOBIFIER
     prompt "Have Blobifier?"
     help
-      Enable this if you have a Blobifer purging system fitted.
+      Enable this if you have a Blobifier purging system fitted.
 
       NOTE: There is a lot of setup for Blobifier. After enabling this
       be sure to edit Macro variables
@@ -62,7 +62,7 @@ menu "Purging"
     config PIN_BLOBIFIER_BUCKET_SWITCH
       prompt "Blobifier bucket switch pin"
       help
-        The pullup ( ^ ) is important here
+        The pull-up ( ^ ) is important here
 
     choice CHOICE_BLOBIFIER_TYPE
       prompt "Blobifier tray actuator    "
@@ -107,7 +107,7 @@ menu "Purging"
       config PIN_BLOBIFIER_STEPPER_ENDSTOP
         prompt "Stepper endstop pin        "
         help
-          The pullup/invert ( ^! ) is typically required here
+          The pull-up/invert ( ^! ) is typically required here
       config PIN_BLOBIFIER_STEPPER_UART
         prompt "Stepper TMC UART pin       "
       config PARAM_BLOBIFIER_STEPPER_RUN_CURRENT

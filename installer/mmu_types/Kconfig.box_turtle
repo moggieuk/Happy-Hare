@@ -2,9 +2,9 @@ config MMU_TYPE_BOX_TURTLE_1_0
   bool "Box Turtle"
   help
     Box Turtle is typically a 4 gate type-B MMU/AFC with separate
-    gear steppers for each gate and untilizes a DC motor for respooling
+    gear steppers for each gate and utilizes a DC motor for respooling
     and optionally assisting spool movement. Build options include TurtleNeck
-    "buffer" which provides feeback of filament compression/tension.
+    "buffer" which provides feedback of filament compression/tension.
   select VIRTUAL_SELECTOR
   select MMU_HAS_ESPOOLER
   select MMU_HAS_LEDS
@@ -50,7 +50,7 @@ if MMU_TYPE_BOX_TURTLE_1_0
       bool "Other"
       help
         Select if you use another type of sync-feedback buffer
-        including the new proprtional types
+        including the new proportional types
       select MMU_HAS_SYNC_FEEDBACK_BUFFER
 
   endchoice

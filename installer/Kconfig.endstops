@@ -108,7 +108,7 @@ menu "Endstops and Bowden movement"
       depends on MMU_HAS_SENSOR_EXTRUDER && !BOOL_REQUIRE_BOWDEN_MOVE
       help 
         Use extruder entry sensor (Only for some type-B designs,
-        where multiple bowdens are combined near the toolhead).
+        where multiple bowden tubes are combined near the toolhead).
 
     config CHOICE_GATE_HOMING_ENDSTOP_NONE
       bool "No homing endstop available"

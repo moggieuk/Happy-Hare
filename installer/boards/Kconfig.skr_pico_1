@@ -32,7 +32,7 @@ if BOARD_TYPE_SKR_PICO_1
     config PIN_GEAR_ENABLE_1
       default "!$(MCU_NAME):gpio7" 
     config PIN_GEAR_DIAG_1
-      default "$(MCU_NAME):gpop3" 
+      default "$(MCU_NAME):gpio3" 
 
     config PIN_GEAR_STEP_2
       default "$(MCU_NAME):gpio19" 

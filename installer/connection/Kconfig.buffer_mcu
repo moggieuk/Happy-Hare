@@ -107,7 +107,7 @@ if CHOICE_BUFFER_CONNECTION_TYPE_CANBUS
         string "Enter CANbus UUID"
         default "-enter-canbus-id-"
         help
-          Specifiy the CANbus UUID that is used for connection to the sync-feedback buffer
+          Specify the CANbus UUID that is used for connection to the sync-feedback buffer
           It is a 6 byte ID represented in hex.
           This can be found with:
             ~/klipper/klippy-env/bin/python ~/klipper/klipper/scripts/canbus_query.py can0
