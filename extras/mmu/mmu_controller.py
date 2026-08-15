@@ -403,8 +403,9 @@ class MmuController(MmuFilamentMovement):
 
                 if u.p.startup_home_selector:
                     unit_loaded = (
-                        u.manages_gate(self.gate_selected) and
-                        self.filament_pos != FILAMENT_POS_UNLOADED
+                        self.filament_pos != FILAMENT_POS_UNLOADED and
+                        (self.gate_selected == TOOL_GATE_UNKNOWN or
+                         self._unit_owns_selection(u, self.gate_selected))
                     )
 
                     if unit_loaded:
@@ -412,7 +413,7 @@ class MmuController(MmuFilamentMovement):
                         continue
 
                     try:
-                        self.home_unit(u) # Will reselect previous gate if on this unit
+                        self.home_unit(u, force_unload=False) # Startup never initiates filament movement
 
                     except Exception as e:
                         # This is recoverable so just report errors
@@ -2894,6 +2895,17 @@ class MmuController(MmuFilamentMovement):
             self.wrap_gcode_command("SET_GCODE_VARIABLE MACRO=%s VARIABLE=next_pos VALUE=False" % self.p.park_macro)
 
 
+    def _unit_owns_selection(self, mmu_unit, gate):
+        """Whether a real gate or the active unit's bypass belongs to mmu_unit."""
+        if mmu_unit.owns_gate(gate):
+            return True
+        if gate == TOOL_GATE_BYPASS:
+            # Bypass is a machine-wide sentinel. unit_selected supplies its otherwise
+            # missing ownership; manages_gate() cannot distinguish multiple bypass units.
+            return mmu_unit is self.mmu_unit(gate)
+        return False
+
+
     def home_unit(self, mmu_unit, force_unload=None, reselect=True):
         """
         Home the specific mmu unit
@@ -2901,45 +2913,71 @@ class MmuController(MmuFilamentMovement):
           force_unload - whether to unload current gate
             None  - intelligently unload if necessary (default)
             True  - always force an unload regardless of filament position state (safety)
-            False - never attempt filament unload, instead homing may fail
+            False - never unload; explicit override when gate ownership is unknown
           reselect - whether to reselect gate (default is True)
         """
-        if mmu_unit.selector.requires_homing: # Make a no-op for MMU's that don't require homing (like class-B designs)
-            if mmu_unit.manages_gate(self.gate_selected):
-                if not force_unload and self.filament_pos not in [FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN]:
-                    raise MmuError("Cannot home %s because has filament loaded" % mmu_unit.name)
-                else:
-                    try:
-                        prev_gate = self.gate_selected
-                        self._set_gate_selected(TOOL_GATE_UNKNOWN)
-                        mmu_unit.selector.home(force_unload)
-                        if reselect:
-                            if prev_gate != TOOL_GATE_UNKNOWN:
-                                self.select_gate(prev_gate)
-                            else:
-                                self.select_gate(mmu_unit.first_gate)
-                    except MmuError as ee:
-                        self._set_gate_selected(TOOL_GATE_UNKNOWN)
-                        raise ee
-            else:
-                # Safe to just home selector
-                mmu_unit.selector.home()
+        selector = mmu_unit.selector
+        if not selector.requires_homing: return # Class-B and other non-physical selectors
+        if force_unload is not None:
+            force_unload = bool(force_unload) # G-Code supplies 0/1 integers
+
+        prev_gate = self.gate_selected
+        owns_selection = self._unit_owns_selection(mmu_unit, prev_gate)
+
+        # With no gate identity there is no safe drive or unit to unload. In particular,
+        # manages_gate(UNKNOWN) is true for every unit, so never use it to infer ownership.
+        if (
+            prev_gate == TOOL_GATE_UNKNOWN and
+            self.filament_pos != FILAMENT_POS_UNLOADED and
+            force_unload is not False
+        ):
+            raise MmuError(
+                "Cannot home %s because filament state or gate ownership is unknown. "
+                "Use MMU_RECOVER GATE=xx first, or FORCE_UNLOAD=0 to home without unloading" % mmu_unit.name)
+
+        # Filament policy belongs here, while the real gate still identifies its unit and
+        # drive. selector.home() is deliberately mechanical and must not infer ownership.
+        if owns_selection:
+            if force_unload is False:
+                if self.filament_pos not in [FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN]:
+                    raise MmuError("Cannot home %s because it has filament loaded" % mmu_unit.name)
+            elif force_unload is True:
+                self.unload_sequence(check_state=True)
+            elif self.filament_pos != FILAMENT_POS_UNLOADED:
+                self.unload_sequence()
+
+        # An unrelated unit can home without disturbing the active gate. For the owning unit
+        # (or an empty, as-yet-unselected machine), invalidate the logical selection before the
+        # physical move and restore it afterwards only when requested.
+        scoped_selection = owns_selection or prev_gate == TOOL_GATE_UNKNOWN
+        try:
+            if scoped_selection:
+                self._set_gate_selected(TOOL_GATE_UNKNOWN)
+            selector.home()
+            if scoped_selection and reselect:
+                self.select_gate(prev_gate if prev_gate != TOOL_GATE_UNKNOWN else mmu_unit.first_gate)
+        except MmuError:
+            if scoped_selection:
+                self._set_gate_selected(TOOL_GATE_UNKNOWN)
+            raise
 
 
     def select_gate(self, gate):
         mmu_unit = self.mmu_unit(gate)
         selector = mmu_unit.selector
+
+        # Keep homing outside the selection error handler. home_unit() preserves the owning
+        # gate when an unload fails and invalidates it itself when selector homing fails; the
+        # blanket unselect below would otherwise erase the recovery identity in the first case.
+        if gate != self.gate_selected and not selector.is_homed:
+            self.log_info(f"MMU selector for gate {gate} not homed, will home before continuing")
+            self.home_unit(mmu_unit, reselect=False)
+
         try:
             if gate == self.gate_selected:
                 selector.select_gate(gate) # Always give selector a chance to fix position
             else:
-                # Autohome if necessary
-                if not selector.is_homed:
-                    self.log_info(f"MMU selector for gate {gate} not homed, will home before continuing")
-                    selector.home()
-
                 self._next_gate = gate # Valid only during the gate selection process
-                _prev_gate = self.gate_selected
                 selector.select_gate(gate)
                 self._set_gate_selected(gate) # Will send gate/unit changed events
 
