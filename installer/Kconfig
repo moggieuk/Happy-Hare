@@ -11,9 +11,8 @@
 # changes them. Also when they are changed from default values menuconfig will mark as
 # "(NOT DEFAULT)" and allow the "r" keystroke to reset back to default value
 #   
-# Other names are stored and handled as normal Kconfig variables. For one of the special
-# names above, add the 'sticky' property when a default-valued assignment must remain
-# explicit across subsequent loads instead of following a recalculated default.
+# Other names are stored and handled as normal Kconfig variables. Unlike the special names
+# above, their saved values are always loaded as explicit assignments.
 #
 # Some Happy Hare augmented features:
 # Kconfig:
@@ -44,7 +43,8 @@
 # 2. Added float type
 # 3. Option 'force_show'to force display even if dependency isn't met
 # 4. Recording of default value with #~DEFAULT~# magic token
-# 5. Option 'sticky' to persist a default-valued symbol without the #~DEFAULT~# marker
+# 5. Preprocessor function 'saved-config-value' to read a symbol's previous assignment from
+#    KCONFIG_CONFIG before normal config loading, including lines marked with #~DEFAULT~#
 # 6. repeat expansion macro to avoid multiple lines (can be nested):
 #      @repeat var=i min=0 max=3@
 #        config PARAM_MMU_CANBUS_UNIT_$(i)

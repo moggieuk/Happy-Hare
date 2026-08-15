@@ -1701,7 +1701,6 @@ class Kconfig(object):
                 if (
                     isinstance(item, Symbol) and
                     not item._was_set and
-                    not item.sticky and
                     item.name.startswith(('PARAM_', 'VAR_', 'PIN_', 'BOOL_', 'MMU_HAS_', 'CHOICE_', 'UNSELECT_'))
                 ) or (
                     isinstance(item, Choice) and
@@ -3486,12 +3485,6 @@ class Kconfig(object):
 
                 node.forceshow = True
 
-            elif t0 is _T_STICKY: # Happy Hare: Added to retain default-valued Symbols
-                if node.item.__class__ is not Symbol:
-                    self._parse_error("sticky is only valid for symbols")
-
-                node.item.sticky = True
-
             elif t0 is _T_ARRAY_EDITOR: # Happy Hare: Added multi-line/array editor for STRING symbols
                 if node.item.__class__ is not Symbol:
                     self._parse_error("array_editor is only valid for symbols")
@@ -4710,13 +4703,6 @@ class Symbol(object):
       value. Must be given unquoted in the Kconfig file -- a quoted string
       there is parsed as a constant rather than a symbol reference.
 
-    sticky:
-      Happy Hare: Added. False for symbols without a 'sticky' property, and
-      True when the property is present. A sticky symbol whose value matches
-      its default is written to .config without Happy Hare's #~DEFAULT~#
-      marker, so the assignment is retained on subsequent loads instead of
-      being discarded in favor of a newly calculated default.
-
     is_allnoconfig_y:
       True if the symbol has 'option allnoconfig_y' set on it. This has no
       effect internally (except when printing symbols), but can be checked by
@@ -4756,7 +4742,6 @@ class Symbol(object):
         "ranges",
         "rev_dep",
         "selects",
-        "sticky", # Happy Hare: Added
         "user_value",
         "weak_rev_dep",
     )
@@ -5316,7 +5301,6 @@ class Symbol(object):
         # Symbol gets a .config entry.
 
         self.is_allnoconfig_y = \
-        self.sticky = \
         self._was_set = \
         self._write_to_conf = False
 
@@ -7613,12 +7597,11 @@ except AttributeError:
     _T_RSOURCE,
     _T_SELECT,
     _T_SOURCE,
-    _T_STICKY, # Happy Hare: Added
     _T_STRING,
     _T_TRISTATE,
     _T_UNEQUAL,
     _T_VISIBLE,
-) = range(1, 57) # Happy Hare: 51->57
+) = range(1, 56) # Happy Hare: 51->56
 
 # Keyword to token map, with the get() method assigned directly as a small
 # optimization
@@ -7668,7 +7651,6 @@ _get_keyword = {
     "rsource":        _T_RSOURCE,
     "select":         _T_SELECT,
     "source":         _T_SOURCE,
-    "sticky":         _T_STICKY, # Happy Hare: Added
     "string":         _T_STRING,
     "tristate":       _T_TRISTATE,
     "visible":        _T_VISIBLE,

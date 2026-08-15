@@ -267,20 +267,38 @@ class TestSelectorTypeChoice(unittest.TestCase):
         self.assertEqual(kc.syms['PARAM_SELECTOR_TYPE'].str_value, 'LinearMultiGearSelector')
 
 
-class TestStickyKconfigSymbols(unittest.TestCase):
-    """The sticky property pins selected hardware identifiers across installer runs."""
+class TestPreviousKconfigSelections(unittest.TestCase):
+    """Unavailable dynamic devices remain selectable through a stable previous option."""
 
     KCONFIG_TEMPLATE = '''\
-mainmenu "Sticky property test"
+mainmenu "Previous selection test"
 
-config PARAM_FOLLOWS_DEFAULT
-  string
-  default "%s"
+config CURRENT_AVAILABLE
+  bool
+  default %s
 
-config PARAM_STICKY
+choice DEVICE_CHOICE
+  prompt "Select device"
+  default DEVICE_PREVIOUS if "$(saved-config-value,PARAM_DEVICE)" != ""
+  default DEVICE_CURRENT if CURRENT_AVAILABLE
+
+  config DEVICE_PREVIOUS
+    bool "Previous selection: $(saved-config-value,PARAM_DEVICE)"
+    depends on "$(saved-config-value,PARAM_DEVICE)" != ""
+
+  config DEVICE_CURRENT
+    bool "Current device"
+    depends on CURRENT_AVAILABLE
+
+  config DEVICE_OTHER
+    bool "Other"
+endchoice
+
+config PARAM_DEVICE
   string
-  sticky
-  default "%s"
+  default "$(saved-config-value,PARAM_DEVICE)" if DEVICE_PREVIOUS
+  default "/dev/current" if DEVICE_CURRENT
+  default "/dev/other" if DEVICE_OTHER
 '''
 
     @classmethod
@@ -297,39 +315,56 @@ config PARAM_STICKY
     def tearDown(self):
         self.tmpdir.cleanup()
 
-    def _parse(self, default):
+    def _parse(self, current_available):
         with open(self.kconfig_path, 'w') as f:
-            f.write(self.KCONFIG_TEMPLATE % (default, default))
-        return self.kconfiglib.Kconfig(self.kconfig_path, warn=False)
+            f.write(self.KCONFIG_TEMPLATE % ('y' if current_available else 'n'))
+        with cfg._env({'KCONFIG_CONFIG': self.config_path}):
+            return self.kconfiglib.Kconfig(self.kconfig_path, warn=False)
 
-    def test_sticky_default_is_saved_as_an_explicit_assignment(self):
-        kc = self._parse('first')
+    def test_previous_option_survives_discovery_changes_and_tracks_new_selection(self):
+        kc = self._parse(current_available=True)
+        self.assertEqual(kc.named_choices['DEVICE_CHOICE'].selection.name,
+                         'DEVICE_CURRENT')
         kc.write_config(self.config_path, save_old=False)
 
         with open(self.config_path) as f:
             saved = f.read()
+        self.assertIn('CONFIG_PARAM_DEVICE="/dev/current" #~DEFAULT~#', saved)
 
-        self.assertIn('CONFIG_PARAM_FOLLOWS_DEFAULT="first" #~DEFAULT~#', saved)
-        self.assertIn('CONFIG_PARAM_STICKY="first"\n', saved)
-        self.assertNotIn('CONFIG_PARAM_STICKY="first" #~DEFAULT~#', saved)
-        self.assertFalse(kc.syms['PARAM_FOLLOWS_DEFAULT'].sticky)
-        self.assertTrue(kc.syms['PARAM_STICKY'].sticky)
-
-    def test_reload_keeps_sticky_assignment_but_recalculates_normal_default(self):
-        self._parse('first').write_config(self.config_path, save_old=False)
-        kc = self._parse('second')
+        kc = self._parse(current_available=False)
         kc.load_config(self.config_path)
+        self.assertEqual(kc.named_choices['DEVICE_CHOICE'].selection.name,
+                         'DEVICE_PREVIOUS')
+        self.assertEqual(kc.syms['PARAM_DEVICE'].str_value, '/dev/current')
+        self.assertEqual(kc.syms['DEVICE_PREVIOUS'].nodes[0].prompt[0],
+                         'Previous selection: /dev/current')
 
-        normal = kc.syms['PARAM_FOLLOWS_DEFAULT']
-        sticky = kc.syms['PARAM_STICKY']
-        self.assertIsNone(normal.user_value)
-        self.assertEqual(normal.str_value, 'second')
-        self.assertEqual(sticky.user_value, 'first')
-        self.assertTrue(sticky._was_set)
-        self.assertFalse(sticky._was_default)
+        kc.syms['DEVICE_OTHER'].set_value(2)
+        kc.write_config(self.config_path, save_old=False)
+        kc = self._parse(current_available=False)
+        kc.load_config(self.config_path)
+        self.assertEqual(kc.named_choices['DEVICE_CHOICE'].selection.name,
+                         'DEVICE_OTHER')
+        self.assertEqual(kc.syms['PARAM_DEVICE'].str_value, '/dev/other')
 
-    def test_all_connection_parameters_opt_in_to_sticky(self):
+    def test_all_real_connection_choices_expose_their_previous_values(self):
+        values = {
+            'PARAM_MMU_SERIAL_DEVICE': '/dev/previous-main',
+            'PARAM_MMU_CANBUS_UUID': 'abc123def456',
+            'PARAM_BUFFER_SERIAL_DEVICE': '/dev/previous-buffer',
+            'PARAM_BUFFER_CANBUS_UUID': 'def456abc123',
+        }
+        for gate in range(5):
+            values['PARAM_MMU_SERIAL_DEVICE_%d' % gate] = \
+                '/dev/previous-gate-%d' % gate
+            values['PARAM_MMU_CANBUS_UUID_%d' % gate] = \
+                'abc123def4%02d' % gate
+        with open(self.config_path, 'w') as f:
+            for name, value in values.items():
+                f.write('CONFIG_%s="%s" #~DEFAULT~#\n' % (name, value))
+
         env = {
+            'KCONFIG_CONFIG': self.config_path,
             'F_PER_GATE_MCU': 'y',
             'UNIT_NAME': 'unit0',
             'MCU_NAME': 'unit0',
@@ -337,24 +372,68 @@ config PARAM_STICKY
             'F_MULTI_UNIT': '',
             'F_MULTI_UNIT_ENTRY_POINT': '',
         }
+        emu_syms = dict(profiles.get('emu').syms)
+        emu_syms['CHOICE_MMU_CONNECTION_TYPE_SERIAL'] = True
         with cfg._env(env):
-            kc = cfg._kconfig('sticky-connection-parameters', {})
+            kc = cfg._kconfig('previous-connection-selections', emu_syms)
 
-        names = [
-            'PARAM_MMU_SERIAL_DEVICE',
-            'PARAM_MMU_CANBUS_UUID',
-            'PARAM_BUFFER_SERIAL_DEVICE',
-            'PARAM_BUFFER_CANBUS_UUID',
-        ]
-        for gate in range(10):
-            names.extend((
-                'PARAM_MMU_SERIAL_DEVICE_%d' % gate,
-                'PARAM_MMU_CANBUS_UUID_%d' % gate,
-            ))
+        for gate in range(5):
+            choice = kc.named_choices['CHOICE_MMU_SERIAL_CONNECTION_%d' % gate]
+            self.assertEqual(choice.selection.name,
+                             'CHOICE_MMU_SERIAL_DEVICE_PREVIOUS_%d' % gate)
+            name = 'PARAM_MMU_SERIAL_DEVICE_%d' % gate
+            self.assertEqual(kc.syms[name].str_value, values[name])
+            canbus = kc.syms['CHOICE_MMU_CANBUS_UUID_PREVIOUS_%d' % gate]
+            self.assertEqual(canbus.nodes[0].prompt[0],
+                             'Previous selection: %s' %
+                             values['PARAM_MMU_CANBUS_UUID_%d' % gate])
 
-        for name in names:
-            self.assertIn(name, kc.syms)
-            self.assertTrue(kc.syms[name].sticky, '%s must be sticky' % name)
+        vvd = profiles.get('ercf_vvd').units[1]
+        buffer_env = {
+            'KCONFIG_CONFIG': self.config_path,
+            'F_PER_GATE_MCU': '',
+            'UNIT_NAME': vvd.name,
+            'MCU_NAME': vvd.mcu_name,
+            'UNIT_INDEX': str(vvd.index),
+            'F_MULTI_UNIT': 'y',
+            'F_MULTI_UNIT_ENTRY_POINT': '',
+        }
+        buffer_syms = dict(vvd.syms)
+        buffer_syms['CHOICE_BUFFER_CONNECTION_TYPE_SERIAL'] = True
+        with cfg._env(buffer_env):
+            kc = cfg._kconfig('previous-buffer-selection', buffer_syms)
+
+        buffer_choice = kc.named_choices['CHOICE_BUFFER_SERIAL_CONNECTION']
+        self.assertEqual(buffer_choice.selection.name,
+                         'CHOICE_BUFFER_SERIAL_DEVICE_PREVIOUS')
+        self.assertEqual(kc.syms['PARAM_BUFFER_SERIAL_DEVICE'].str_value,
+                         values['PARAM_BUFFER_SERIAL_DEVICE'])
+        buffer_canbus = kc.syms['CHOICE_BUFFER_CANBUS_UUID_PREVIOUS']
+        self.assertEqual(buffer_canbus.nodes[0].prompt[0],
+                         'Previous selection: %s' %
+                         values['PARAM_BUFFER_CANBUS_UUID'])
+
+        base_env = dict(buffer_env)
+        base_env.update({
+            'UNIT_NAME': 'unit0',
+            'MCU_NAME': 'unit0',
+            'UNIT_INDEX': '0',
+            'F_MULTI_UNIT': '',
+        })
+        base_syms = dict(profiles.get('boxturtle').syms)
+        base_syms['CHOICE_MMU_CONNECTION_TYPE_CANBUS'] = True
+        with cfg._env(base_env):
+            kc = cfg._kconfig('previous-base-canbus-selection', base_syms)
+
+        base_choice = kc.named_choices['CHOICE_MMU_CANBUS_CONNECTION']
+        self.assertEqual(base_choice.selection.name,
+                         'CHOICE_MMU_CANBUS_UUID_PREVIOUS')
+        self.assertEqual(kc.syms['PARAM_MMU_CANBUS_UUID'].str_value,
+                         values['PARAM_MMU_CANBUS_UUID'])
+        base_serial = kc.syms['CHOICE_MMU_SERIAL_DEVICE_PREVIOUS']
+        self.assertEqual(base_serial.nodes[0].prompt[0],
+                         'Previous selection: %s' %
+                         values['PARAM_MMU_SERIAL_DEVICE'])
 
 
 if __name__ == '__main__':

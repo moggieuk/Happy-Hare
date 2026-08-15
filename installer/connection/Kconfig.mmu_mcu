@@ -45,7 +45,12 @@ if !MMU_HAS_PER_GATE_MCU
 
     choice CHOICE_MMU_SERIAL_CONNECTION
       prompt "Select serial device for MMU"
+      default CHOICE_MMU_SERIAL_DEVICE_PREVIOUS if "$(saved-config-value,PARAM_MMU_SERIAL_DEVICE)" != ""
       default CHOICE_MMU_SERIAL_DEVICE_OTHER if !$(serial_exists,1)
+
+      config CHOICE_MMU_SERIAL_DEVICE_PREVIOUS
+        bool "Previous selection: $(saved-config-value,PARAM_MMU_SERIAL_DEVICE)"
+        depends on "$(saved-config-value,PARAM_MMU_SERIAL_DEVICE)" != ""
 
       @repeat var=i min=1 max=10@
       config $(mmu_serial_config,$(i))
@@ -65,7 +70,7 @@ if !MMU_HAS_PER_GATE_MCU
 
     config PARAM_MMU_SERIAL_DEVICE
       string
-      sticky
+      default "$(saved-config-value,PARAM_MMU_SERIAL_DEVICE)" if CHOICE_MMU_SERIAL_DEVICE_PREVIOUS
       @repeat var=i min=1 max=10@
       default "$(serial_device,$(i))" if $(mmu_serial_config,$(i))
       @endrepeat@
@@ -77,7 +82,12 @@ if !MMU_HAS_PER_GATE_MCU
 
     choice CHOICE_MMU_CANBUS_CONNECTION
       prompt "Select canbus UUID for MMU"
+      default CHOICE_MMU_CANBUS_UUID_PREVIOUS if "$(saved-config-value,PARAM_MMU_CANBUS_UUID)" != ""
       default CHOICE_MMU_CANBUS_UUID_OTHER if $(canbus_uuid_count) = 0
+
+      config CHOICE_MMU_CANBUS_UUID_PREVIOUS
+        bool "Previous selection: $(saved-config-value,PARAM_MMU_CANBUS_UUID)"
+        depends on "$(saved-config-value,PARAM_MMU_CANBUS_UUID)" != ""
 
       @repeat var=i min=1 max=10@
       config $(mmu_canbus_config,$(i))
@@ -97,7 +107,7 @@ if !MMU_HAS_PER_GATE_MCU
 
     config PARAM_MMU_CANBUS_UUID
       string
-      sticky
+      default "$(saved-config-value,PARAM_MMU_CANBUS_UUID)" if CHOICE_MMU_CANBUS_UUID_PREVIOUS
       @repeat var=i min=1 max=10@
       default "$(canbus_uuid,$(i))" if $(mmu_canbus_config,$(i))
       @endrepeat@
@@ -124,7 +134,12 @@ if MMU_HAS_PER_GATE_MCU
 
       choice CHOICE_MMU_SERIAL_CONNECTION_$(gate)
         prompt "Select serial device for MMU gate $(gate)"
+        default CHOICE_MMU_SERIAL_DEVICE_PREVIOUS_$(gate) if "$(saved-config-value,PARAM_MMU_SERIAL_DEVICE_$(gate))" != ""
         default CHOICE_MMU_SERIAL_DEVICE_OTHER_$(gate) if !$(serial_exists,1)
+
+        config CHOICE_MMU_SERIAL_DEVICE_PREVIOUS_$(gate)
+          bool "Previous selection: $(saved-config-value,PARAM_MMU_SERIAL_DEVICE_$(gate))"
+          depends on "$(saved-config-value,PARAM_MMU_SERIAL_DEVICE_$(gate))" != ""
 
         @repeat var=i min=1 max=10@
         config CHOICE_MMU_SERIAL_DEVICE_$(gate)_$(i)
@@ -144,7 +159,7 @@ if MMU_HAS_PER_GATE_MCU
 
       config PARAM_MMU_SERIAL_DEVICE_$(gate)
         string
-        sticky
+        default "$(saved-config-value,PARAM_MMU_SERIAL_DEVICE_$(gate))" if CHOICE_MMU_SERIAL_DEVICE_PREVIOUS_$(gate)
         @repeat var=i min=1 max=10@
         default "$(serial_device,$(i))" if CHOICE_MMU_SERIAL_DEVICE_$(gate)_$(i)
         @endrepeat@
@@ -156,7 +171,12 @@ if MMU_HAS_PER_GATE_MCU
 
       choice CHOICE_MMU_CANBUS_CONNECTION_$(gate)
         prompt "Select canbus UUID for MMU gate $(gate)"
+        default CHOICE_MMU_CANBUS_UUID_PREVIOUS_$(gate) if "$(saved-config-value,PARAM_MMU_CANBUS_UUID_$(gate))" != ""
         default CHOICE_MMU_CANBUS_UUID_OTHER_$(gate) if $(canbus_uuid_count) = 0
+
+        config CHOICE_MMU_CANBUS_UUID_PREVIOUS_$(gate)
+          bool "Previous selection: $(saved-config-value,PARAM_MMU_CANBUS_UUID_$(gate))"
+          depends on "$(saved-config-value,PARAM_MMU_CANBUS_UUID_$(gate))" != ""
 
         @repeat var=i min=1 max=10@
         config CHOICE_MMU_CANBUS_UUID_$(gate)_$(i)
@@ -176,7 +196,7 @@ if MMU_HAS_PER_GATE_MCU
 
       config PARAM_MMU_CANBUS_UUID_$(gate)
         string
-        sticky
+        default "$(saved-config-value,PARAM_MMU_CANBUS_UUID_$(gate))" if CHOICE_MMU_CANBUS_UUID_PREVIOUS_$(gate)
         @repeat var=i min=1 max=10@
         default "$(canbus_uuid,$(i))" if CHOICE_MMU_CANBUS_UUID_$(gate)_$(i)
         @endrepeat@
