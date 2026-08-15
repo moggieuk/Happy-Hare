@@ -421,52 +421,56 @@ esac
 
 export CONFIG_KLIPPER_HOME CONFIG_KLIPPER_CONFIG_HOME CONFIG_MOONRAKER_HOME
 
-# List of Python interpreters to check in preferred order
-python_candidates="
-${CONFIG_KLIPPER_HOME}/klipper-env/bin/python
-${CONFIG_KLIPPER_HOME}/klippy-env/bin/python
-${HOME}/klipper-env/bin/python
-${HOME}/klippy-env/bin/python
-python"
-
 # Check Python candidates for Python 3
 python_ver=""
 checked_summary=""
 
-while IFS= read -r python_path; do
-    [ -n "${python_path}" ] || continue
-
-    if [ "${python_path}" = "python" ]; then
-        command -v python >/dev/null 2>&1 || {
-            checked_summary="${checked_summary}System python: not found
-"
-            continue
-        }
-    elif [ ! -x "${python_path}" ]; then
+# Try venv paths first (in preferred order)
+for python_path in \
+    "${CONFIG_KLIPPER_HOME}/klipper-env/bin/python" \
+    "${CONFIG_KLIPPER_HOME}/klippy-env/bin/python" \
+    "${HOME}/klipper-env/bin/python" \
+    "${HOME}/klippy-env/bin/python"; do
+    
+    if [ ! -x "${python_path}" ]; then
         checked_summary="${checked_summary}${python_path}: not found
 "
         continue
     fi
-
+    
     case "$("${python_path}" --version 2>&1)" in
         Python\ 3.*)
             python_ver=3
-            case "${python_path}" in
-                */bin/python)
-                    venv=${python_path%/bin/python}
-                    . "${venv}/bin/activate"
-                    ;;
-            esac
-            echo "${C_INFO}Using Python 3 from ${python_path}${C_OFF}"
+            venv=${python_path%/bin/python}
+            . "${venv}/bin/activate"
+            echo "${C_INFO}Using Python 3 from ${venv}${C_OFF}"
             break
             ;;
-    esac
-
-    checked_summary="${checked_summary}${python_path}: Python 3 unavailable
+        *)
+            checked_summary="${checked_summary}${python_path}: Python 3 unavailable
 "
-done <<EOF
-${python_candidates}
-EOF
+            ;;
+    esac
+done
+
+# Fall back to system Python if no venv found
+if [ "${python_ver}" != "3" ]; then
+    if command -v python >/dev/null 2>&1; then
+        case "$(python --version 2>&1)" in
+            Python\ 3.*)
+                python_ver=3
+                echo "${C_WARNING}No suitable Klipper Python 3 venv found; continuing with system Python 3${C_OFF}"
+                ;;
+            *)
+                checked_summary="${checked_summary}System python: Python 3 unavailable
+"
+                ;;
+        esac
+    else
+        checked_summary="${checked_summary}System python: not found
+"
+    fi
+fi
 
 if [ "${python_ver}" != "3" ]; then
     echo "${C_ERROR}ERROR: No suitable Python 3 environment found.${C_OFF}"
