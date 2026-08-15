@@ -692,7 +692,7 @@ Green is not the same as covered. Roughly where things stand:
 
 | Area | State | Notes |
 |---|---|---|
-| Config rendering and load | **solid** | real templates, three machine profiles |
+| Config rendering and load | **solid** | real templates, eight shipped machine/unit profiles |
 | Bootup sequence | **solid** | including the error sentinel that stops bootup faking success |
 | Tag decoding, Spoolman round trip | **solid** | including auto-create and the miss cache |
 | Load / unload / tool change | **good** | the happy path and its common failures |
@@ -701,7 +701,7 @@ Green is not the same as covered. Roughly where things stand:
 | Endless spool and runout | **good** | including the clog-vs-runout decision |
 | LEDs | **good** | effects and overlays; not the neopixel protocol |
 | Sync feedback / buffer sensors | **partial** | EMU's analog sensor boots; the tension logic has a known bug |
-| Physical selector homing and selection | **good** | all three selector families home, select and move filament — `test_mmu_selector.py`. `RotarySelector` also expresses grip as a carriage position, so releasing to the opposing gate is covered there |
+| Selector homing and selection | **good** | `LinearSelector`, `LinearServoSelector`, `LinearMultiGearSelector`, `RotarySelector`, `IndexedSelector`, `ServoSelector`, and `VirtualSelector` are booted or exercised — `test_mmu_selector.py`. `MacroSelector` direct-mode dispatch is covered without executing a user macro |
 | Calibration | **partial** | seeded by default for speed, but `MMU_CALIBRATE_SELECTOR` (manual and `AUTO=1`) and `MMU_CALIBRATE_BOWDEN` run for real — `test_mmu_selector.py` |
 | Developer commands (`_MMU_TEST`) | **partial** | every option is run and must not raise — `test_mmu_dev_test.py`. What the stress probes *provoke* is step-generation timing the harness does not model |
 | Espooler, FlowGuard | **none** | |
@@ -824,6 +824,8 @@ templates** from them, so a broken template shows up as a test failure.
 | `boxturtle` | 4 gates, no NFC — the default for most tests |
 | `tradrack` | a physical (servo) selector, single unit, no encoder — the simplest physical-selector case |
 | `chameleon` | 3D Chameleon: the only `RotarySelector`, and the only machine with no servo — one gear motor reversed on half the gates, and "release" means driving the carriage to the opposing gate's offset |
+| `pico_mmu` | PicoMMU's `ServoSelector`; deliberately boots uncalibrated because its gate angles depend on the physical cam build |
+| `mmx` | MMX's `ServoSelector` with its vendor gate-angle order; also used for a full load/unload selector test |
 | `emu` | 5 gates and the only shipped profile with an analog buffer sensor |
 | `encoder` | BoxTurtle plus an encoder, homing to it instead of to the gate switch |
 | `nfc_single` | one common NFC reader |
@@ -844,7 +846,9 @@ the filament path, which is one scalar per gate and has no carriage. Two **endst
 because the shipped families disagree: the `LinearSelector` family (ERCF, Tradrack) has one home
 switch and reaches gates by plain moves to calibrated offsets, while `IndexedSelector` (ViViD)
 has no home switch at all and one index switch per gate, visited in `selector_gate_order`.
-`RotarySelector` (3D Chameleon) shares the first geometry but not its meaning: with no servo,
+`LinearMultiGearSelector` shares the linear geometry but uses one gear drive per gate and still
+has to home its physical selector axis. `RotarySelector` (3D Chameleon) shares the first
+geometry but not its meaning: with no servo,
 the carriage position *is* the grip — a released gate parks at another gate's offset
 (`selector_release_gates`), so gate → position is not a bijection.
 

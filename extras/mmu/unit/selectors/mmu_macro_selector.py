@@ -30,8 +30,8 @@ from .mmu_base_selectors    import BaseSelector
 class MacroSelectorParameters(TunableParametersBase):
 
     _SPECS: Sequence[ParamSpec] = (
-        ParamSpec('select_tool_macro',        'str', _REQUIRED, section="SELECTOR", limits=dict(minval=1.0)),
-        ParamSpec('select_tool_num_switches', 'int',  1,        section="SELECTOR", limits=dict(minval=1), hidden=True),
+        ParamSpec('select_tool_macro',        'str', _REQUIRED, section="SELECTOR"),
+        ParamSpec('select_tool_num_switches', 'int',  0,        section="SELECTOR", limits=dict(minval=0), hidden=True),
     )
 
     def __init__(self, config, selector):
@@ -92,12 +92,14 @@ class MacroSelector(BaseSelector):
         """
         Select the specified gate by invoking the configured macro.
 
-        Always passes GATE=<n>. In binary mode, also passes S0=..Sn= bits for
+        Passes the machine-wide GATE=<n> used by existing macros and the
+        unit-local LGATE=<n>. In binary mode, also passes S0=..Sn= bits for
         demultiplexer-style selectors.
         """
         # Store parameters as list
-        params = ['LGATE=' + str(lgate)]
-        if self.binary_mode: # If demultiplexer, pass binary parameters to the macro in the form of S0=, S1=, S2=, etc.
+        gate = self._logical_gate(lgate) if lgate >= 0 else lgate
+        params = ['GATE=' + str(gate), 'LGATE=' + str(lgate)]
+        if self.binary_mode and lgate >= 0: # If demultiplexer, pass binary parameters to the macro in the form of S0=, S1=, S2=, etc.
             binary = list(reversed('{0:b}'.format(lgate).zfill(self.p.select_tool_num_switches)))
             for i in range(self.p.select_tool_num_switches):
                 char = binary[i]

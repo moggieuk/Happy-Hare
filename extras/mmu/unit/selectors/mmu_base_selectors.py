@@ -278,10 +278,9 @@ class PhysicalSelector(BaseSelector, object):
             # (an upgrade or a renamed unit that never wrote the namespaced var), so the gate's
             # calibrated offset is where we are.
             #
-            # requires_homing only: type-C (LinearMultiGear*Selector) inherits this handler but
-            # is always-homed by MRO, so it never reports unhomed and has nothing to rescue -
-            # and it never re-homes to correct a wrong guess either. Its pre-existing last_pos
-            # restore below is untouched; only the INFERRED position is withheld.
+            # Only a physical selector that requires homing may infer a carriage position.
+            # Always-homed selectors such as VirtualSelector have no carriage position to
+            # reconstruct; their pre-existing explicit last_pos handling below is untouched.
             last_pos = self._persisted_gate_position()
             if last_pos is not None:
                 self.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, last_pos, namespace=self.mmu_unit.name)

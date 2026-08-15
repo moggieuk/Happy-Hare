@@ -17,18 +17,16 @@
 #
 import logging
 
-from .mmu_base_selectors  import VirtualSelector
 from .mmu_linear_selector import LinearSelector
 
 
-class LinearMultiGearSelector(LinearSelector, VirtualSelector):
+class LinearMultiGearSelector(LinearSelector):
     """
     Linear selector for type-C MMUs with one gear stepper per gate.
 
-    Combines VirtualSelector (for selecting the per-gate gear driver) with
-    LinearSelector (for moving the physical selector mechanism with an endstop).
-    The MRO ensures gear selection occurs before selector movement when using
-    super() in select_gate().
+    Gate-specific drives are resolved by MmuUnit/MmuController. The selector
+    remains a physical LinearSelector and therefore must home normally before
+    making absolute-position moves.
     """
 
     def __init__(self, config, mmu_unit, params):

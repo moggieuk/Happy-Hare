@@ -18,19 +18,17 @@
 #
 import logging
 
-from .mmu_base_selectors        import VirtualSelector
 from .mmu_linear_servo_selector import LinearServoSelector
 
 
-class LinearMultiGearServoSelector(LinearServoSelector, VirtualSelector):
+class LinearMultiGearServoSelector(LinearServoSelector):
     """
     Linear selector for type-C MMUs with one gear stepper per gate and a servo
     for filament gripping.
 
-    Combines VirtualSelector (for selecting the per-gate gear driver) with
-    LinearServoSelector (for endstop-based selector movement plus servo grip/
-    release). The MRO ensures gear selection occurs before selector movement
-    when using super() in select_gate().
+    Gate-specific drives are resolved by MmuUnit/MmuController. The selector
+    remains a physical LinearServoSelector and therefore retains normal homing
+    and persisted-position semantics.
     """
 
     def __init__(self, config, mmu_unit, params):
