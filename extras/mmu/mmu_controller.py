@@ -830,23 +830,35 @@ class MmuController(MmuFilamentMovement):
         # happen) is treated as furthest-along/already passed.
         GATE_SENSOR_ORDER = (SENSOR_EXIT_PREFIX, SENSOR_SHARED_EXIT, SENSOR_ENCODER, SENSOR_EXTRUDER_ENTRY)
 
+        # shared_exit/encoder/extruder are shared across a unit's gates (and the
+        # encoder is a movement latch, not a presence sensor) -- a trigger there
+        # says nothing about THIS gate specifically, so the UNLOADED forward-park
+        # inference below may only draw on the one genuinely per-gate sensor.
+        PER_GATE_SENSORS = (SENSOR_EXIT_PREFIX,)
+
         def _furthest_triggered_gate_sensor_index():
             index = -1
-            for i, s in enumerate(GATE_SENSOR_ORDER):
+            for s in PER_GATE_SENSORS:
                 if self.sensor_manager.has_sensor(s) and self.sensor_manager.check_sensor(s):
-                    index = max(index, i)
+                    index = max(index, GATE_SENSOR_ORDER.index(s))
             return index
 
         def _gate_empty():
             # gate_status is persisted and can go stale (e.g. a failed home marks
             # a gate GATE_EMPTY even when filament is still physically present) --
-            # a triggered entry or gate-area sensor always overrides it, same as
+            # a triggered entry or exit sensor always overrides it, same as
             # gate_sensor_marker() never lets gate_status hide a real reading.
+            # Deliberately only entry/exit, NOT _furthest_triggered_gate_sensor_index()
+            # -- shared_exit/encoder/extruder_entry are shared across a unit's gates
+            # (see gate-endstop-invariants), so a reading there says nothing about
+            # whether THIS gate specifically is empty.
             if gate_status != GATE_EMPTY:
                 return False
             if self.sensor_manager.check_sensor(SENSOR_ENTRY_PREFIX) is True:
                 return False
-            return _furthest_triggered_gate_sensor_index() < 0
+            if self.sensor_manager.check_sensor(SENSOR_EXIT_PREFIX) is True:
+                return False
+            return True
 
         def _passed_gate_sensor(sensor):
             if pos == FILAMENT_POS_UNLOADED:
