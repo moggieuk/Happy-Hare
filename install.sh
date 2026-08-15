@@ -414,59 +414,68 @@ creality-k1 | flyos-fast | guppy-k1)
     ;;
 esac
 
-export CONFIG_KLIPPER_HOME CONFIG_KLIPPER_CONFIG_HOME CONFIG_MOONRAKER_HOME
-
 # Summarise directory overrides
 [ -n "${CONFIG_KLIPPER_HOME:-}" ]        && echo "${C_INFO}KLIPPER_HOME=${CONFIG_KLIPPER_HOME}${C_OFF}"
 [ -n "${CONFIG_KLIPPER_CONFIG_HOME:-}" ] && echo "${C_INFO}KLIPPER_CONFIG_HOME=${CONFIG_KLIPPER_CONFIG_HOME}${C_OFF}"
 [ -n "${CONFIG_MOONRAKER_HOME:-}" ]      && echo "${C_INFO}MOONRAKER_HOME=${CONFIG_MOONRAKER_HOME}${C_OFF}"
 
-# List of venv's to check in preferred order
-venvs="${venvs}
-${CONFIG_KLIPPER_HOME}/klipper-env
-${CONFIG_KLIPPER_HOME}/klippy-env
-${HOME}/klipper-env
-${HOME}/klippy-env"
+export CONFIG_KLIPPER_HOME CONFIG_KLIPPER_CONFIG_HOME CONFIG_MOONRAKER_HOME
 
-# check venv list for python3
+# List of Python interpreters to check in preferred order
+python_candidates="
+${CONFIG_KLIPPER_HOME}/klipper-env/bin/python
+${CONFIG_KLIPPER_HOME}/klippy-env/bin/python
+${HOME}/klipper-env/bin/python
+${HOME}/klippy-env/bin/python
+python"
+
+# Check Python candidates for Python 3
 python_ver=""
 checked_summary=""
 
-while IFS= read -r venv; do
-    [ -n "${venv}" ] || continue
+while IFS= read -r python_path; do
+    [ -n "${python_path}" ] || continue
 
-    if [ -x "${venv}/bin/python" ]; then
-
-        if "${venv}/bin/python" --version 2>&1 | grep -q '^Python 3\.'; then
-            python_ver=3
-            . "${venv}/bin/activate"
-            echo "${C_INFO}Using Python 3 from ${venv}${C_OFF}"
-            break
-        fi
-
-        checked_summary="${checked_summary}${venv}: Python 3 unavailable
+    if [ "${python_path}" = "python" ]; then
+        command -v python >/dev/null 2>&1 || {
+            checked_summary="${checked_summary}System python: not found
 "
-    else
-        checked_summary="${checked_summary}${venv}: python not found
+            continue
+        }
+    elif [ ! -x "${python_path}" ]; then
+        checked_summary="${checked_summary}${python_path}: not found
 "
+        continue
     fi
+
+    case "$("${python_path}" --version 2>&1)" in
+        Python\ 3.*)
+            python_ver=3
+            case "${python_path}" in
+                */bin/python)
+                    venv=${python_path%/bin/python}
+                    . "${venv}/bin/activate"
+                    ;;
+            esac
+            echo "${C_INFO}Using Python 3 from ${python_path}${C_OFF}"
+            break
+            ;;
+    esac
+
+    checked_summary="${checked_summary}${python_path}: Python 3 unavailable
+"
 done <<EOF
-${venvs}
+${python_candidates}
 EOF
 
-# no valid python3 venv found, check system python default
 if [ "${python_ver}" != "3" ]; then
-    if command -v python >/dev/null 2>&1 && [ "$(python --version 2>&1 | grep -o '^Python 3')" = "Python 3" ]; then
-        echo "${C_WARNING}No suitable Klipper Python 3 venv found; continuing with system Python 3${C_OFF}"
-    else
-        echo "${C_ERROR}ERROR: No suitable Klipper Python 3 environment found.${C_OFF}"
-        echo "${C_INFO}Checked environments:${C_OFF}"
-        printf '%s\n' "${checked_summary}" | while IFS= read -r entry; do
-            [ -n "${entry}" ] || continue
-            echo "  - ${entry}"
-        done
-        exit 1
-    fi
+    echo "${C_ERROR}ERROR: No suitable Python 3 environment found.${C_OFF}"
+    echo "${C_INFO}Checked:${C_OFF}"
+    printf '%s\n' "${checked_summary}" | while IFS= read -r entry; do
+        [ -n "${entry}" ] || continue
+        echo "  - ${entry}"
+    done
+    exit 1
 fi
 
 # Handle PEP 668 "externally managed" python environments that refuse pip installs without a venv, so installer's deps
