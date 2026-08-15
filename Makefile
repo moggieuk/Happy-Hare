@@ -236,7 +236,8 @@ install_targets := \
 	$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)
 
 kconfig_sources := \
-	$(wildcard $(SRC)/installer/Kconfig* $(SRC)/installer/**/Kconfig*)
+	$(wildcard $(SRC)/installer/Kconfig* $(SRC)/installer/**/Kconfig*) \
+	$(SRC)/installer/lib/kconfiglib/kconfigfunctions.py
 
 
 ############################
