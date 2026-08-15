@@ -421,15 +421,6 @@ export CONFIG_KLIPPER_HOME CONFIG_KLIPPER_CONFIG_HOME CONFIG_MOONRAKER_HOME
 [ -n "${CONFIG_KLIPPER_CONFIG_HOME:-}" ] && echo "${C_INFO}KLIPPER_CONFIG_HOME=${CONFIG_KLIPPER_CONFIG_HOME}${C_OFF}"
 [ -n "${CONFIG_MOONRAKER_HOME:-}" ]      && echo "${C_INFO}MOONRAKER_HOME=${CONFIG_MOONRAKER_HOME}${C_OFF}"
 
-# Source and validate python3 venvs
-get_python_version() {
-    if command -v python >/dev/null 2>&1; then
-        python -c 'import sys; print(sys.version_info[0])' 2>/dev/null || true
-    elif command -v python3 >/dev/null 2>&1; then
-        python3 -c 'import sys; print(sys.version_info[0])' 2>/dev/null || true
-    fi
-}
-
 # List of venv's to check in preferred order
 venvs="${venvs}
 ${CONFIG_KLIPPER_HOME}/klipper-env
@@ -444,19 +435,19 @@ checked_summary=""
 while IFS= read -r venv; do
     [ -n "${venv}" ] || continue
 
-    if [ -f "${venv}/bin/activate" ]; then
-        . "${venv}/bin/activate"
+    if [ -x "${venv}/bin/python" ]; then
 
-        python_ver=$(get_python_version)
-        if [ "${python_ver}" = "3" ]; then
-            echo "${C_INFO}Using python ${python_ver} from ${venv}${C_OFF}"
+        if "${venv}/bin/python" --version 2>&1 | grep -q '^Python 3\.'; then
+            python_ver=3
+            . "${venv}/bin/activate"
+            echo "${C_INFO}Using Python 3 from ${venv}${C_OFF}"
             break
         fi
 
         checked_summary="${checked_summary}${venv}: Python 3 unavailable
 "
     else
-        checked_summary="${checked_summary}${venv}: not found
+        checked_summary="${checked_summary}${venv}: python not found
 "
     fi
 done <<EOF
@@ -465,7 +456,7 @@ EOF
 
 # no valid python3 venv found, check system default python3
 if [ "${python_ver}" != "3" ]; then
-    if [ "$(get_python_version)" = "3" ]; then
+    if [ "$(python --version 2>&1 | grep -o '^Python 3')" = "Python 3" ]; then
         echo "${C_WARNING}No suitable Klipper Python 3 venv found; continuing with system Python 3${C_OFF}"
     else
         echo "${C_ERROR}ERROR: No suitable Klipper Python 3 environment found.${C_OFF}"
