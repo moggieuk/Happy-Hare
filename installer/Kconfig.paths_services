@@ -1,7 +1,7 @@
 menu "Paths & Services"
   help 
     Advanced
-    If you have a non-standard install of klipper or moonraker you can configure
+    If you have a non-standard install of Klipper or Moonraker you can configure
     paths and service names here in addition to some other miscellaneous system options
 
   config REPETIER

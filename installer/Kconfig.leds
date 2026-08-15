@@ -27,7 +27,7 @@ config UNSELECT_MMU_HAS_LEDS
 
 if !UNSELECT_MMU_HAS_LEDS
   config MMU_HAS_LEDS
-    prompt "Has Leds?"
+    prompt "Has LEDs?"
     forceshow
     default n
     help
@@ -40,7 +40,7 @@ endif
 # -------------------------------------
 
 if MMU_HAS_LEDS
-  menu "Led config"
+  menu "LED config"
 
     config BOOL_ENABLE_LEDS
       bool "Enable LEDs?"

@@ -6,7 +6,7 @@
 #   CHOICE_X, CHOICE_X_*   Named choice "X" or boolean selection config
 #   UNSELECT_*             Special boolean symbol used to implement forced "unselect"
 #
-# The above list is special is that default values will be stored in the .mmu_config but will not
+# The above list is special in that default values will be stored in the .mmu_config but will not
 # force setting on subsequent runs. They therefore remain as modifiable defaults until user explicitly
 # changes them. Also when they are changed from default values menuconfig will mark as
 # "(NOT DEFAULT)" and allow the "r" keystroke to reset back to default value
@@ -264,7 +264,7 @@ if !MULTI_UNIT_ENTRY_POINT
   source "Kconfig.name"             # Simple display name
   source "boards/Kconfig"           # MCU Selection menu
   if !SHOW_MMU_ADDITIONS_WITH_TYPE
-    source "Kconfig.mmu_additions"  # MMU Additions/Customization menu (if not inlined with mmu type)
+    source "Kconfig.mmu_additions"  # MMU Additions/Customization menu (if not inlined with MMU type)
   endif
   comment "_"
   source "connection/Kconfig"       # MCU Connection

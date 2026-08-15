@@ -54,7 +54,7 @@ if MMU_HAS_ENCODER
           Enter the name of shared encoder. A shared encoder must be see the filament from
           each MMU and thus is not a common setup.
 
-          If this is the second mmu unit is it likely that the name of the existing encoder
+          If this is the second mmu unit it is likely that the name of the existing encoder
           is 'unit0' (default name)
     endif
 

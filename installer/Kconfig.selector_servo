@@ -54,7 +54,7 @@ if MMU_HAS_SELECTOR_SERVO
       bool "Servo always active?"
       help
         This option will force the servo to always stay active. It can be dangerous on some
-        on some designs or miscalibrated MMU because it strains the servo and control electronics.
+        designs or miscalibrated MMU because it strains the servo and control electronics.
 
         Recommend to disable unless you are sure you know you need it.
     config PARAM_SERVO_ALWAYS_ACTIVE

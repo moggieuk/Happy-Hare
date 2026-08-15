@@ -50,7 +50,7 @@ if MMU_HAS_HEATER
         bool "Per-gate Heaters?"
         default n
         help
-          Most designs will only have a single heater but some, like EMU have a per-gate heater
+          Most designs will only have a single heater but some, like EMU, have a per-gate heater
 
 
       # ------------------------------------

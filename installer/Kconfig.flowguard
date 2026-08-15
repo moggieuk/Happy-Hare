@@ -16,9 +16,9 @@ config BOOL_FLOWGUARD_ENABLED
   bool "Enable sync-feedback base FlowGuard (sync speed correction, clog/tangle/runout)?"
   default y
   help
-    Flowguard is a feature that uses the sync-feedback buffer and/or encoder to detect
+    FlowGuard is a feature that uses the sync-feedback buffer and/or encoder to detect
     filament clogs, tangles and runouts. If enabled the print will be paused to allow
-    you to correct the issue possibly saving your print but certainly saving your printer.
+    you to correct the issue, possibly saving your print but certainly saving your printer.
 config PARAM_FLOWGUARD_ENABLED
   int
   default 1 if BOOL_FLOWGUARD_ENABLED
