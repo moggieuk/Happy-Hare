@@ -53,6 +53,14 @@ class TestPerGateNfcBoots(unittest.TestCase):
     def test_no_shared_reader_in_per_gate_mode(self):
         self.assertIsNone(self.unit().nfc_manager.shared_reader)
 
+    def test_gate_map_displays_uppercase_rfid_uid(self):
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 RFID=ab12cd34 QUIET=1')
+
+        gate_map = self.hh.mmu.gate_maps.gate_map_to_string()
+
+        self.assertIn(' | AB12CD34', gate_map)
+        self.assertNotIn(' | RFID', gate_map)
+
     def test_reader_sections_are_registered_objects(self):
         for i in range(4):
             self.assertIn('mmu_nfc_reader unit0_nfc%d' % i, self.hh.printer.objects)

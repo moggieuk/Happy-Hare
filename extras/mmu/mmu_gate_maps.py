@@ -583,7 +583,7 @@ class MmuGateMaps:
 
             available_fstr = "{};".format(available).ljust(11, UI_SPACE)
             fil_fstr = "{} | {}{}C | {} | {}".format(material, temperature, UI_DEGREE, color, name)
-            rfid_fstr = " | RFID" if self.gate_spool_rfid[g] else ""
+            rfid_fstr = " | {}".format(self.gate_spool_rfid[g].upper()) if self.gate_spool_rfid[g] else ""
 
             spool_option = (str(self.gate_spool_id[g]) if self.gate_spool_id[g] > 0 else "n/a")
             if self.p.spoolman_support == SPOOLMAN_OFF:
