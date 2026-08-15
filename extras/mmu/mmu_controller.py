@@ -1102,7 +1102,9 @@ class MmuController(MmuFilamentMovement):
                     tool_strings.append(("|%s " % (tool_str if tool_str else " {} ".format(UI_SEPARATOR)))[:4])
 
                 if g == self.gate_selected:
-                    if self.filament_pos < FILAMENT_POS_START_BOWDEN:
+                    if g == TOOL_GATE_BYPASS:
+                        ext_swatch = bypass_ext_swatch
+                    elif self.filament_pos < FILAMENT_POS_START_BOWDEN:
                         ext_swatch = UI_SEPARATOR
                     else:
                         ext_swatch = self._get_filament_char(g, show_swatch=True, symbol=UI_SOLID_TRIANGLE)
