@@ -1060,11 +1060,15 @@ class MmuController(MmuFilamentMovement):
         msg_selct = "Selct: "
         bypass_shown = False
 
-        if self.filament_pos < FILAMENT_POS_START_BOWDEN:
-            bypass_fil_swatch = bypass_ext_swatch = UI_SEPARATOR
-        else:
+        bypass_has_filament = (
+            self.gate_selected == TOOL_GATE_BYPASS and
+            self.filament_pos >= FILAMENT_POS_START_BOWDEN
+        )
+        if bypass_has_filament:
             bypass_fil_swatch = UI_SOLID_SQUARE
             bypass_ext_swatch = UI_SOLID_TRIANGLE
+        else:
+            bypass_fil_swatch = bypass_ext_swatch = UI_SEPARATOR
 
         for unit in self.mmu_machine.units:
             show_bypass = unit is self.mmu_machine.unit_with_bypass
@@ -1111,7 +1115,10 @@ class MmuController(MmuFilamentMovement):
             msg_gates += sep
             msg_avail += sep
             msg_tools += "".join(tool_strings) + sep
-            msg_selct += ("".join(select_strings) + selct_char)[:len(gate_indices) * 4 + 1] + (divider if not is_last else "")
+            unit_selection = "".join(select_strings)
+            if self.gate_selected not in gate_indices:
+                unit_selection += selct_char
+            msg_selct += unit_selection + (divider if not is_last else "")
             msg_selct = msg_selct.replace("*", fil_swatch)
 
         if self.gate_selected == TOOL_GATE_BYPASS and not bypass_shown:
