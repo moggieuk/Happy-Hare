@@ -715,11 +715,12 @@ class TestMultiUnitSelectors(SelectorTestCase):
         self.assertEqual(self.hh.errors, [])
         self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_UNLOADED)
 
-        # The status line should show the gate as homed (3 blocks then the triggered
-        # marker), not as not-yet-reached, and the trailing state text should read
-        # UNLOADED rather than nothing at all.
+        # The status line should show the exit sensor as reached/triggered, not
+        # not-yet-reached, and the trailing state text should read UNLOADED
+        # rather than the misleading EMPTY a stale gate_status would otherwise
+        # produce for a gate that a fitted sensor confirms is not empty.
         visual = self.hh.mmu.get_filament_position_string()
-        self.assertIn('■■■◉', visual)  # UI_SOLID_SQUARE x3 then UI_SENSOR_TRIGGERED
+        self.assertIn('◉■■◉', visual)  # entry triggered, gap fully filled, exit triggered
         self.assertIn('UNLOADED', visual)
 
 

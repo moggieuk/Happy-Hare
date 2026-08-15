@@ -370,6 +370,7 @@ UI_GATE_MARK          = '\u2524'  # ┤
 
 UI_SENSOR_EMPTY       = '\u25EF'  # ◯
 UI_SENSOR_TRIGGERED   = '\u25C9'  # ◉
+UI_ENCODER_VIRTUAL_TRIGGER = '\u00EA'  # ê - encoder has no physical trigger; virtual "triggered" marker
 
 UI_HOME_LIGHT         = '\u252B'  # ┫
 UI_LINE_LIGHT         = '\u2501'  # ━

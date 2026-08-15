@@ -758,6 +758,7 @@ class MmuController(MmuFilamentMovement):
         pos = self.filament_pos
         direction = self.filament_direction
         gate_homing_endstop = self.mmu_unit().p.gate_homing_endstop
+        gate_status = self.gate_status[gate] if gate >= 0 else GATE_UNKNOWN
 
         status = self.get_status(0)
         if status['filament_remaining']:
@@ -784,9 +785,18 @@ class MmuController(MmuFilamentMovement):
                 UI_ARROW_FILLED_RIGHT,
             )
 
+        # Placeholder that survives the "no tip beside home" pass below as a
+        # literal tip glyph even when a `home` exists elsewhere -- used where the
+        # leading edge is genuinely past a home point (encoder-homing overshoot;
+        # filament past the nozzle once LOADED).
+        TIP_OVERRIDE = "\x00"
+
         # Helper methods -------
 
         def past(target_pos):
+            # A genuinely empty gate has nothing to show as "already passed"
+            if pos <= FILAMENT_POS_UNLOADED and _gate_empty():
+                return space
             return arrow if pos >= target_pos else space
 
         def sensor_label(sensor, label=""):
@@ -814,17 +824,139 @@ class MmuController(MmuFilamentMovement):
                 return homed_segment(target_pos, sensor_label(sensor))
             return pad(target_pos, width)
 
-        def gate_segment():
-            # Forward-parked exit sensor: filament is UNLOADED but still sits at/past the
-            # gate sensor (positive gate_parking_distance), so render it as homed there
-            # rather than as not-yet-reached
-            if pos == FILAMENT_POS_UNLOADED and self.sensor_manager.check_sensor(gate_homing_endstop):
-                return home + sensor_label(gate_homing_endstop) + space
-            return optional_sensor(gate_homing_endstop, FILAMENT_POS_HOMED_GATE)
+        # Physical order of the gate-area endstops, gate-ward to extruder-ward --
+        # decides whether the tip has already passed a sensor once homed via a
+        # different, further-along endstop. Anything not in this tuple (shouldn't
+        # happen) is treated as furthest-along/already passed.
+        GATE_SENSOR_ORDER = (SENSOR_EXIT_PREFIX, SENSOR_SHARED_EXIT, SENSOR_ENCODER, SENSOR_EXTRUDER_ENTRY)
+
+        def _furthest_triggered_gate_sensor_index():
+            index = -1
+            for i, s in enumerate(GATE_SENSOR_ORDER):
+                if self.sensor_manager.has_sensor(s) and self.sensor_manager.check_sensor(s):
+                    index = max(index, i)
+            return index
+
+        def _gate_empty():
+            # gate_status is persisted and can go stale (e.g. a failed home marks
+            # a gate GATE_EMPTY even when filament is still physically present) --
+            # a triggered entry or gate-area sensor always overrides it, same as
+            # gate_sensor_marker() never lets gate_status hide a real reading.
+            if gate_status != GATE_EMPTY:
+                return False
+            if self.sensor_manager.check_sensor(SENSOR_ENTRY_PREFIX) is True:
+                return False
+            return _furthest_triggered_gate_sensor_index() < 0
+
+        def _passed_gate_sensor(sensor):
+            if pos == FILAMENT_POS_UNLOADED:
+                # Forward-parked: a triggered downstream sensor implies every
+                # upstream point was passed too, regardless of this sensor's own
+                # (possibly absent) reading -- avoids a false gap in the line.
+                # Strictly further-than, not as-far-as (see _reached_gate_sensor).
+                return _furthest_triggered_gate_sensor_index() > GATE_SENSOR_ORDER.index(sensor)
+            if pos > FILAMENT_POS_HOMED_GATE:
+                return True
+            if pos == FILAMENT_POS_HOMED_GATE:
+                try:
+                    return GATE_SENSOR_ORDER.index(gate_homing_endstop) > GATE_SENSOR_ORDER.index(sensor)
+                except ValueError:
+                    return True
+            return False
+
+        def _reached_gate_sensor(sensor):
+            # Like _passed_gate_sensor but >= rather than > -- "arrived, maybe not
+            # past yet". Decides whether a gap reads as "just arrived" vs "long
+            # since passed" (gate_sensor_gap).
+            if pos == FILAMENT_POS_UNLOADED:
+                return _furthest_triggered_gate_sensor_index() >= GATE_SENSOR_ORDER.index(sensor)
+            if pos > FILAMENT_POS_HOMED_GATE:
+                return True
+            if pos == FILAMENT_POS_HOMED_GATE:
+                try:
+                    return GATE_SENSOR_ORDER.index(gate_homing_endstop) >= GATE_SENSOR_ORDER.index(sensor)
+                except ValueError:
+                    return True
+            return False
+
+        def _homed_here(sensor):
+            return pos == FILAMENT_POS_HOMED_GATE and gate_homing_endstop == sensor
+
+        def _with_home(fill, sensor):
+            # Swap fill's last char for `home` when exactly homed at `sensor` now
+            if _homed_here(sensor) and fill:
+                return fill[:-1] + home
+            return fill
+
+        def gate_presence_marker():
+            # Filament can be present at the gate even when the entry sensor
+            # itself hasn't triggered (not fitted, or fitted but not yet reached)
+            # -- gate_status is the one source of truth for that, shown here as
+            # plain presence, never as a promotable tip.
+            if pos <= FILAMENT_POS_UNLOADED and _gate_empty():
+                return space
+            return line
+
+        def entry_marker():
+            if self.sensor_manager.has_sensor(SENSOR_ENTRY_PREFIX):
+                return trig_sensor if self.sensor_manager.check_sensor(SENSOR_ENTRY_PREFIX) else empty_sensor
+            return past(FILAMENT_POS_UNLOADED)
+
+        def gate_sensor_marker(sensor):
+            # A fitted sensor's own reading is always shown -- there's no such
+            # thing as "stale" real data. Only an unfitted sensor falls back to
+            # inferring passage from a later, further-along real trigger.
+            if self.sensor_manager.has_sensor(sensor):
+                return trig_sensor if self.sensor_manager.check_sensor(sensor) else empty_sensor
+            return arrow if _passed_gate_sensor(sensor) else space
+
+        def gate_sensor_gap(sensor, width=2):
+            if _passed_gate_sensor(sensor):
+                return arrow * width
+            # Split arrow/space only applies to the UNLOADED forward-parked
+            # ambiguity -- HOMED_GATE is a crisp, discrete event (home + space,
+            # like every other homed_segment()), not a partial/ambiguous split.
+            if pos == FILAMENT_POS_UNLOADED and _reached_gate_sensor(sensor):
+                left = width - width // 2
+                right = width // 2
+                return arrow * left + space * right
+            return space * width
+
+        def entry_exit_gap(width=2):
+            # entry is excluded from GATE_SENSOR_ORDER, so this checks its own
+            # reading directly: a token sliver (one tip char) only once entry has
+            # confirmed the tip got that far; otherwise gate_presence_marker() is
+            # the only "something's here" signal, until exit itself is reached.
+            if pos <= FILAMENT_POS_UNLOADED and _gate_empty():
+                return space * width
+            if pos == FILAMENT_POS_UNLOADED and not _reached_gate_sensor(SENSOR_EXIT_PREFIX):
+                if self.sensor_manager.check_sensor(SENSOR_ENTRY_PREFIX) is not True:
+                    return space * width
+                left = width - width // 2
+                right = width // 2
+                return arrow * left + space * right
+            return arrow * width
+
+        def gate_area_segment():
+            # presence, entry, then [exit marker, gap] and [shared_exit marker,
+            # gap] -- both shown independently, each its own real reading, since a
+            # unit can fit both even though only one is the active
+            # gate_homing_endstop. 2-char gaps (funded by shrinking bowden fill
+            # elsewhere) keep exit/shared_exit/encoder visually distinct. The gap
+            # before the active gate_homing_endstop shows `home` when homed.
+            return (
+                gate_presence_marker()
+                + entry_marker()
+                + _with_home(entry_exit_gap(), SENSOR_EXIT_PREFIX)
+                + gate_sensor_marker(SENSOR_EXIT_PREFIX)
+                + _with_home(gate_sensor_gap(SENSOR_EXIT_PREFIX), SENSOR_SHARED_EXIT)
+                + gate_sensor_marker(SENSOR_SHARED_EXIT)
+                + _with_home(gate_sensor_gap(SENSOR_SHARED_EXIT), SENSOR_ENCODER)
+            )
 
         def nozzle_segment():
             if pos >= FILAMENT_POS_LOADED:
-                return arrow + home + "Nz" + arrow * 2
+                return arrow + home + "Nz" + TIP_OVERRIDE
             if residual_filament_color:
                 return residual_line + gate_mark + "Nz"
             return space + gate_mark + "Nz"
@@ -899,20 +1031,35 @@ class MmuController(MmuFilamentMovement):
             if gate_homing_endstop == SENSOR_ENCODER
             else FILAMENT_POS_IN_BOWDEN
         )
+        # Virtually-triggered the instant we're exactly homed via the encoder
+        # itself, even before pos reaches encoder_ref_pos (movement vs "this is
+        # the endstop we just homed on" are different thresholds)
+        encoder_char = (
+            UI_ENCODER_VIRTUAL_TRIGGER
+            if pos >= encoder_ref_pos or _homed_here(SENSOR_ENCODER)
+            else "e"
+        )
+
+        # The encoder is a movement-based virtual endstop with no physical
+        # trigger point, so homing against it always overshoots slightly --
+        # marked with TIP_OVERRIDE right after the encoder glyph.
+        encoder_overshoots = self.has_encoder() and _homed_here(SENSOR_ENCODER)
 
         parts = [
             tool_text,
-            past(FILAMENT_POS_UNLOADED) * 2,
 
-            gate_segment(),
+            gate_area_segment(),
 
             (
-                "En" + past(encoder_ref_pos) * 2
+                encoder_char
+                + (TIP_OVERRIDE if encoder_overshoots else past(encoder_ref_pos))
+                + past(encoder_ref_pos)
                 if self.has_encoder()
-                else past(encoder_ref_pos) * 4
+                else past(encoder_ref_pos) * 3
             ),
 
-            past(FILAMENT_POS_IN_BOWDEN) * bowden_half,
+            # 2 shorter than nominal -- reclaimed to fund gate_area_segment()'s wider gaps
+            past(FILAMENT_POS_IN_BOWDEN) * max(0, bowden_half - 2),
 
             (
                 buffer_segment()
@@ -920,7 +1067,8 @@ class MmuController(MmuFilamentMovement):
                 else pad(FILAMENT_POS_IN_BOWDEN, 7)
             ),
 
-            past(FILAMENT_POS_END_BOWDEN) * bowden_half,
+            # 2 shorter than nominal -- same reclaiming as above, plus 1 more to trim overall length
+            past(FILAMENT_POS_END_BOWDEN) * max(0, bowden_half - 2),
 
             optional_sensor(SENSOR_EXTRUDER_ENTRY, FILAMENT_POS_HOMED_ENTRY),
 
@@ -933,10 +1081,12 @@ class MmuController(MmuFilamentMovement):
             nozzle_segment(),
         ]
 
+        is_empty = pos == FILAMENT_POS_UNLOADED and _gate_empty()
+
         if pos == FILAMENT_POS_LOADED:
             parts.append(" {5}{4}LOADED{0}{6}")
         elif pos == FILAMENT_POS_UNLOADED:
-            parts.append(" {5}{4}UNLOADED{0}{6}")
+            parts.append(" {5}{4}%s{0}{6}" % ("EMPTY" if is_empty else "UNLOADED"))
         elif pos == FILAMENT_POS_UNKNOWN:
             parts.append(" {5}{4}UNKNOWN{0}{6}")
         elif direction == DIRECTION_LOAD:
@@ -944,12 +1094,14 @@ class MmuController(MmuFilamentMovement):
         elif direction == DIRECTION_UNLOAD:
             parts.append(" {5}{4}" + UI_ARROW_HOLLOW_LEFT * 3 + "{0}{6}")
 
-        encoder_str = (
-            " {1}(e:%.1fmm){0}" % self.get_encoder_distance(dwell=None)
-            if self.has_encoder() and self.mmu_unit().p.encoder_move_validation
-            else ""
-        )
-        parts.append(" {5}%.1fmm{6}%s" % (self.drive().get_filament_position(), encoder_str))
+        # A genuinely empty gate has no measurements to report
+        if not is_empty:
+            encoder_str = (
+                " {1}(e:%.1fmm){0}" % self.get_encoder_distance(dwell=None)
+                if self.has_encoder() and self.mmu_unit().p.encoder_move_validation
+                else ""
+            )
+            parts.append(" {5}%.1fmm{6}%s" % (self.drive().get_filament_position(), encoder_str))
 
         visual = "".join(parts)
 
@@ -958,8 +1110,16 @@ class MmuController(MmuFilamentMovement):
 
         visual = visual.replace(arrow, line)
 
-        if last_arrow != -1 and (last_home == -1 or not bold):
+        # Arrow-as-tip only applies "in transit" (no `home` present) -- a `home`
+        # marks an exact arrival, so any leftover arrow elsewhere shouldn't also
+        # compete for the tip. In bold, home and arrow are the same glyph, so
+        # this is equivalent to "never restore", matching bold's all-solid look.
+        if last_arrow != -1 and last_home == -1:
             visual = visual[:last_arrow] + arrow + visual[last_arrow + 1:]
+
+        # bold: arrow==home, folds into `line` like every bold tip; thin: arrow
+        # is the distinct tip glyph these placeholders should render as
+        visual = visual.replace(TIP_OVERRIDE, line if bold else arrow)
 
         # Post process filament color
         if color and gate >= 0:
@@ -967,13 +1127,13 @@ class MmuController(MmuFilamentMovement):
                 rgb_hex = MmuColorUtils.color_to_rgb_hex(residual_filament_color)
                 visual = _color_filament(visual, rgb_hex, residual_line)
             else:
-                # No special color treatment
                 visual = visual.replace(residual_line, line)
 
             rgb_hex = MmuColorUtils.color_to_rgb_hex(self.gate_color[gate], "FFFFFF")
             visual = _color_filament(visual, rgb_hex, line)
 
-            # Get rid of special residual filament character
+            # Must happen after gate_color coloring, else residual_filament_color's
+            # own markup above would be overwritten
             visual = visual.replace(residual_line, line)
 
         return visual
