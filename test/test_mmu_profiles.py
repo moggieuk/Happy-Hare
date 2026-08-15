@@ -5,7 +5,7 @@
 # [% if %] guard or a missing template section shows up here rather than on a user's
 # printer.
 #
-# There are 19 shipped machine types. Six boot in the harness today:
+# There are 19 shipped machine types. Eight boot in the harness today:
 #
 #   boxturtle  4 gates,  VirtualSelector       - Type B, the default everywhere else
 #   tradrack  10 gates,  LinearServoSelector   - a PHYSICAL selector, so the suite is not
@@ -13,6 +13,10 @@
 #   chameleon  4 gates,  RotarySelector        - a fourth selector class, and the only one
 #                                                with no servo: releasing drives the carriage
 #                                                to the OPPOSING gate's offset
+#   pico_mmu   4 gates,  ServoSelector         - boots uncalibrated because its 140-degree
+#                                                servo has no universally safe gate defaults
+#   mmx        4 gates,  ServoSelector         - vendor-supplied gate angles, including a
+#                                                full load/unload behavioral test
 #   emu        5 gates,  VirtualSelector       - the only shipped profile with a
 #                                                PROPORTIONAL (analog) buffer sensor
 #   ercf 1.1   9 gates,  LinearServoSelector   - unit0 of ercf_vvd; encoder gate homing
@@ -31,7 +35,7 @@
 #       no MMU attached. The answer is to omit it: the choice falls back to ..._OTHER and
 #       the harness fakes every [mcu] anyway.
 #
-# The remaining machines should mostly be a board selection away; nobody has tried.
+# The remaining machines should mostly be a board selection away.
 #
 #   ./venv/bin/python -m unittest test.test_mmu_profiles
 #
@@ -51,6 +55,8 @@ BOOTABLE = {
     # Needs two symbols the vendor Kconfig leaves open (a board and a gate homing sensor) or it
     # does not render at all - see the profile's own comment in test/hh/profiles.py.
     'chameleon': (4, 'RotarySelector'),
+    'pico_mmu': (4, 'ServoSelector'),
+    'mmx': (4, 'ServoSelector'),
     'emu': (5, 'VirtualSelector'),
     # The only multi-unit entry. 13 is a CROSS-UNIT SUM (unit0 9 + unit1 4), not one unit's
     # count, and the selector named here is unit0's - unit1 is an IndexedSelector and gets
@@ -108,6 +114,18 @@ class TestEveryBootableProfile(unittest.TestCase):
         selector = hh.mmu.mmu_unit(0).selector
         self.assertEqual(len(selector.p.selector_release_gates), 4)
         self.assertEqual(len(selector.p.selector_gate_directions), 4)
+
+    def test_pico_mmu(self):
+        """PicoMMU must boot safely and require calibration rather than exceed its 140 degree servo range."""
+        hh = self._check('pico_mmu')
+        selector = hh.mmu.mmu_unit(0).selector
+        self.assertEqual(selector.servo_gate_angles, [-1, -1, -1, -1])
+
+    def test_mmx(self):
+        """MMX's vendor-specific gate angles must override the unsafe generic 360 degree defaults."""
+        hh = self._check('mmx')
+        selector = hh.mmu.mmu_unit(0).selector
+        self.assertEqual(selector.servo_gate_angles, [60, 0, 180, 120])
 
     def test_emu(self):
         self._check('emu')
@@ -254,7 +272,7 @@ class TestMultiUnitMachine(unittest.TestCase):
 
 class TestSelectorCoverage(unittest.TestCase):
     """
-    9 selector classes exist; 4 are reachable through a bootable profile. Recorded as a
+    9 selector classes exist; 5 are reachable through a bootable profile. Recorded as a
     test so the gap is visible in the suite rather than only in a document.
     """
 
@@ -267,7 +285,8 @@ class TestSelectorCoverage(unittest.TestCase):
                      | EXERCISED_BY_LATER_UNITS)
         self.assertEqual(
             exercised,
-            {'VirtualSelector', 'LinearServoSelector', 'IndexedSelector', 'RotarySelector'},
+            {'VirtualSelector', 'LinearServoSelector', 'IndexedSelector', 'RotarySelector',
+             'ServoSelector'},
             'update this and the README coverage map when a profile adds another selector '
             'type')
 

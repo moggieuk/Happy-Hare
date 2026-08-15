@@ -75,11 +75,23 @@ class SelectorAxis:
         # stop there or step 3 measures a number the machine does not have.
         self.travel_min = self.home_position()
         offsets = self.nominal_gate_offsets()
+        positions = self.gate_positions()
+        # An IndexedSelector is a rotary ring, not a rail. Its last published index is not
+        # a hard stop: moving forward from it wraps through zero to the first indexes again.
+        # Keep the circumference separate from travel_max, which remains useful diagnostic
+        # output and is still a real hard limit for every linear-selector family.
+        self.circumference = None
+        if callable(getattr(self.selector, '_get_gate_endstop_name', None)):
+            spacing = self._cad('cad_gate_width') or 1.0
+            self.circumference = self.unit.num_gates * spacing
         if offsets:
             self.travel_max = offsets[-1] + (self._cad('cad_last_gate_offset') or 0.)
+        elif positions:
+            self.travel_max = max(positions.values())
+        elif self.circumference is not None:
+            self.travel_max = self.circumference - spacing
         else:
-            positions = self.gate_positions()
-            self.travel_max = max(positions.values()) if positions else None
+            self.travel_max = None
 
         # WHERE THE CARRIAGE POWERS ON. Nominal gate 0, NOT the home switch: a carriage
         # sitting on its own switch makes the first homing move travel zero, which trips
@@ -103,12 +115,17 @@ class SelectorAxis:
         """
         if not delta:
             return 0.
+        if self.circumference is not None:
+            self.carriage = self._clamp(self.carriage + delta)
+            return delta
         target = self._clamp(self.carriage + delta)
         moved = target - self.carriage
         self.carriage = target
         return moved
 
     def _clamp(self, position):
+        if self.circumference is not None:
+            return position % self.circumference
         if self.travel_min is not None:
             position = max(self.travel_min, position)
         if self.travel_max is not None:
@@ -213,7 +230,14 @@ class SelectorAxis:
         target = self.position(name)
         if target is None or not delta:
             return None
-        travel = target - start
+        if self.circumference is not None:
+            start %= self.circumference
+            if delta > 0:
+                travel = (target - start) % self.circumference
+            else:
+                travel = -((start - target) % self.circumference)
+        else:
+            travel = target - start
         if travel and (travel > 0) != (delta > 0):
             return None                             # switch is behind us
         if abs(travel) > abs(delta):

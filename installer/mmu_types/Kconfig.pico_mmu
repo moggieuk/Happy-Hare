@@ -48,6 +48,13 @@ if MMU_TYPE_PICO_MMU_1_0
   config PARAM_GATE_PARKING_DISTANCE
     default -25
 
+  # Gate angles depend on the particular cam build. The generic four-gate
+  # default assumes 360 degree travel, but PicoMMU's ES3004 is limited to 140
+  # degrees. Leave them unseeded so Happy Hare boots safely and requires the
+  # user to calibrate the actual mechanism.
+  config PARAM_SERVO_GATE_ANGLES
+    default ""
+
   comment "_"
 
 endif 

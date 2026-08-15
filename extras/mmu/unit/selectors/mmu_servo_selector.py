@@ -39,6 +39,8 @@ class ServoSelectorParameters(TunableParametersBase):
 
     def _validate_int_list(self, value, *, minval=None, maxval=None):
         expected = self._selector.mmu_unit.num_gates
+        if not value:
+            return # An empty list deliberately forces calibration
         if len(value) != expected:
             raise ValueError(f"Expected {expected} gate values, got {len(value)}")
 

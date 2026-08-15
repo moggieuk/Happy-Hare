@@ -308,6 +308,23 @@ CHAMELEON = Profile(
           'MMU_HAS_SENSOR_SHARED_EXIT': True},
     description='3D Chameleon 1.0 - 4 gates, the only RotarySelector')
 
+# PicoMMU and MMX are the two shipped ServoSelector machines. Like Chameleon, neither
+# chooses a controller board or a gate-homing sensor on its own, so the harness supplies
+# the same complete, ordinary setup a user must choose in menuconfig.
+PICO_MMU = Profile(
+    'pico_mmu',
+    syms={'MMU_TYPE_PICO_MMU_1_0': True,
+          'BOARD_TYPE_MMB_2_0': True,
+          'MMU_HAS_SENSOR_SHARED_EXIT': True},
+    description='PicoMMU 1.0 - 4 gates, ServoSelector requiring calibration')
+
+MMX = Profile(
+    'mmx',
+    syms={'MMU_TYPE_MMX_1_0': True,
+          'BOARD_TYPE_MMB_2_0': True,
+          'MMU_HAS_SENSOR_SHARED_EXIT': True},
+    description='MMX 1.0 - 4 gates, ServoSelector with vendor gate angles')
+
 # EMU: 5 gates, and the only shipped profile that brings a PROPORTIONAL (analog) buffer
 # sensor with it. That makes it the profile that exercises MmuAdcHelper's ADC compat shim
 # for real, and the virtual compression/tension sensors derived from an analog reading
@@ -534,7 +551,7 @@ uart_pin: mcu:PB6
 run_current: 0.6
 """
 
-PROFILES = {p.name: p for p in (BOXTURTLE, TRADRACK, CHAMELEON, EMU, ENCODER, NFC_SINGLE,
+PROFILES = {p.name: p for p in (BOXTURTLE, TRADRACK, CHAMELEON, PICO_MMU, MMX, EMU, ENCODER, NFC_SINGLE,
                                 NFC_PER_GATE, NFC_NEIGHBOR_CHECK, NFC_NEIGHBOR_EVICT,
                                 NFC_PN5180, NFC_PN5180_PER_GATE,
                                 NFC_PN532, NFC_PN532_SW_I2C,
