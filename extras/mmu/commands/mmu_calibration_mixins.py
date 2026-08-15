@@ -122,7 +122,11 @@ class CalibrationMixin:
                 msg += f"\n(encoder measured {(measured - mmu_unit.p.gate_parking_distance):.1f}mm)"
             mmu.log_always(msg)
 
-            mmu._unload_bowden(calibrated_length) # Fast move
+            # Retract filament out of the extruder gears (synced gear+extruder) before the
+            # fast gear-only bowden retract below - otherwise the idle extruder motor grips
+            # and stalls the filament right where _home_to_extruder() just parked it.
+            _, ext_unload_overshoot = mmu._unload_extruder()
+            mmu._unload_bowden(calibrated_length, ext_unload_overshoot) # Fast move
             mmu._unload_gate()
             return calibrated_length
 
