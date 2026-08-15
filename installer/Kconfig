@@ -11,9 +11,9 @@
 # changes them. Also when they are changed from default values menuconfig will mark as
 # "(NOT DEFAULT)" and allow the "r" keystroke to reset back to default value
 #   
-# Other names will be store and handled as normal Kconfig variables. Therefore if you
-# don't want the abilty to "reset to default" and you want past values to be "sticky" you
-# must use alternative names (or unamed choice)
+# Other names are stored and handled as normal Kconfig variables. For one of the special
+# names above, add the 'sticky' property when a default-valued assignment must remain
+# explicit across subsequent loads instead of following a recalculated default.
 #
 # Some Happy Hare augmented features:
 # Kconfig:
@@ -44,16 +44,17 @@
 # 2. Added float type
 # 3. Option 'force_show'to force display even if dependency isn't met
 # 4. Recording of default value with #~DEFAULT~# magic token
-# 5. repeat expansion macro to avoid multiple lines (can be nested):
+# 5. Option 'sticky' to persist a default-valued symbol without the #~DEFAULT~# marker
+# 6. repeat expansion macro to avoid multiple lines (can be nested):
 #      @repeat var=i min=0 max=3@
 #        config PARAM_MMU_CANBUS_UNIT_$(i)
 #          string "CANbus UUID for MMU unit $(i)"
 #      @endrepeat@
-# 6. help added to menus
-# 7. "if XX" construct is allowed on comment lines
-# 8. Added 'array_editor <separator> [size]' option for strings that represent lists
+# 7. help added to menus
+# 8. "if XX" construct is allowed on comment lines
+# 9. Added 'array_editor <separator> [size]' option for strings that represent lists
 #    E.g. `array_editor ";" PARAM_NUM_GATES
-# 9. Font manipulators like [[B]]xx[[/B] can be used in prompts and comments
+# 10. Font manipulators like [[B]]xx[[/B] can be used in prompts and comments
 #    and include: B,BOLD,DIM,U,UNDERLINE,REV,REVERSE,C:n,COLOR:n (color), RESET
 #
 # Menuconfig:

@@ -13,7 +13,9 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
+import os
 import re
+import tempfile
 import unittest
 
 from test.hh import cfg, profiles
@@ -263,6 +265,96 @@ class TestSelectorTypeChoice(unittest.TestCase):
                 'CHOICE_SELECTOR_TYPE_LINEAR_MULTI_GEAR_SELECTOR': True,
             })
         self.assertEqual(kc.syms['PARAM_SELECTOR_TYPE'].str_value, 'LinearMultiGearSelector')
+
+
+class TestStickyKconfigSymbols(unittest.TestCase):
+    """The sticky property pins selected hardware identifiers across installer runs."""
+
+    KCONFIG_TEMPLATE = '''\
+mainmenu "Sticky property test"
+
+config PARAM_FOLLOWS_DEFAULT
+  string
+  default "%s"
+
+config PARAM_STICKY
+  string
+  sticky
+  default "%s"
+'''
+
+    @classmethod
+    def setUpClass(cls):
+        cfg._prepare_imports()
+        import kconfiglib
+        cls.kconfiglib = kconfiglib
+
+    def setUp(self):
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.kconfig_path = os.path.join(self.tmpdir.name, 'Kconfig')
+        self.config_path = os.path.join(self.tmpdir.name, '.config')
+
+    def tearDown(self):
+        self.tmpdir.cleanup()
+
+    def _parse(self, default):
+        with open(self.kconfig_path, 'w') as f:
+            f.write(self.KCONFIG_TEMPLATE % (default, default))
+        return self.kconfiglib.Kconfig(self.kconfig_path, warn=False)
+
+    def test_sticky_default_is_saved_as_an_explicit_assignment(self):
+        kc = self._parse('first')
+        kc.write_config(self.config_path, save_old=False)
+
+        with open(self.config_path) as f:
+            saved = f.read()
+
+        self.assertIn('CONFIG_PARAM_FOLLOWS_DEFAULT="first" #~DEFAULT~#', saved)
+        self.assertIn('CONFIG_PARAM_STICKY="first"\n', saved)
+        self.assertNotIn('CONFIG_PARAM_STICKY="first" #~DEFAULT~#', saved)
+        self.assertFalse(kc.syms['PARAM_FOLLOWS_DEFAULT'].sticky)
+        self.assertTrue(kc.syms['PARAM_STICKY'].sticky)
+
+    def test_reload_keeps_sticky_assignment_but_recalculates_normal_default(self):
+        self._parse('first').write_config(self.config_path, save_old=False)
+        kc = self._parse('second')
+        kc.load_config(self.config_path)
+
+        normal = kc.syms['PARAM_FOLLOWS_DEFAULT']
+        sticky = kc.syms['PARAM_STICKY']
+        self.assertIsNone(normal.user_value)
+        self.assertEqual(normal.str_value, 'second')
+        self.assertEqual(sticky.user_value, 'first')
+        self.assertTrue(sticky._was_set)
+        self.assertFalse(sticky._was_default)
+
+    def test_all_connection_parameters_opt_in_to_sticky(self):
+        env = {
+            'F_PER_GATE_MCU': 'y',
+            'UNIT_NAME': 'unit0',
+            'MCU_NAME': 'unit0',
+            'UNIT_INDEX': '0',
+            'F_MULTI_UNIT': '',
+            'F_MULTI_UNIT_ENTRY_POINT': '',
+        }
+        with cfg._env(env):
+            kc = cfg._kconfig('sticky-connection-parameters', {})
+
+        names = [
+            'PARAM_MMU_SERIAL_DEVICE',
+            'PARAM_MMU_CANBUS_UUID',
+            'PARAM_BUFFER_SERIAL_DEVICE',
+            'PARAM_BUFFER_CANBUS_UUID',
+        ]
+        for gate in range(10):
+            names.extend((
+                'PARAM_MMU_SERIAL_DEVICE_%d' % gate,
+                'PARAM_MMU_CANBUS_UUID_%d' % gate,
+            ))
+
+        for name in names:
+            self.assertIn(name, kc.syms)
+            self.assertTrue(kc.syms[name].sticky, '%s must be sticky' % name)
 
 
 if __name__ == '__main__':

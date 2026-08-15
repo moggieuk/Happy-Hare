@@ -65,6 +65,7 @@ if !MMU_HAS_PER_GATE_MCU
 
     config PARAM_MMU_SERIAL_DEVICE
       string
+      sticky
       @repeat var=i min=1 max=10@
       default "$(serial_device,$(i))" if $(mmu_serial_config,$(i))
       @endrepeat@
@@ -96,6 +97,7 @@ if !MMU_HAS_PER_GATE_MCU
 
     config PARAM_MMU_CANBUS_UUID
       string
+      sticky
       @repeat var=i min=1 max=10@
       default "$(canbus_uuid,$(i))" if $(mmu_canbus_config,$(i))
       @endrepeat@
@@ -142,6 +144,7 @@ if MMU_HAS_PER_GATE_MCU
 
       config PARAM_MMU_SERIAL_DEVICE_$(gate)
         string
+        sticky
         @repeat var=i min=1 max=10@
         default "$(serial_device,$(i))" if CHOICE_MMU_SERIAL_DEVICE_$(gate)_$(i)
         @endrepeat@
@@ -173,6 +176,7 @@ if MMU_HAS_PER_GATE_MCU
 
       config PARAM_MMU_CANBUS_UUID_$(gate)
         string
+        sticky
         @repeat var=i min=1 max=10@
         default "$(canbus_uuid,$(i))" if CHOICE_MMU_CANBUS_UUID_$(gate)_$(i)
         @endrepeat@

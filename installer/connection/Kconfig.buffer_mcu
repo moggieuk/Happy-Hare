@@ -63,6 +63,7 @@ if CHOICE_BUFFER_CONNECTION_TYPE_SERIAL
 
   config PARAM_BUFFER_SERIAL_DEVICE
     string
+    sticky
     @repeat var=i min=1 max=10@
     default "$(serial_device,$(i))" if $(buffer_serial_config,$(i))
     @endrepeat@
@@ -107,6 +108,7 @@ if CHOICE_BUFFER_CONNECTION_TYPE_CANBUS
 
   config PARAM_BUFFER_CANBUS_UUID
     string
+    sticky
     @repeat var=i min=1 max=10@
     default "$(canbus_uuid,$(i))" if $(buffer_canbus_config,$(i))
     @endrepeat@
