@@ -16,6 +16,8 @@ import argparse
 import re
 import os
 import copy
+import ast
+import json
 import logging
 import subprocess
 import pickle
@@ -477,8 +479,49 @@ def add_supplemental_params(builder, hhcfg, section):
             builder.copy_option(hhcfg, section, param)
 
 
+INVALID_KLIPPER_STRING_LITERAL = "<invalid klipper string literal>"
+
+
+def klipper_string_literal(value):
+    """Render arbitrary menuconfig text as a Klipper/Python string literal.
+
+    Kconfig strings are decoded before they reach Jinja, while Klipper expects
+    every gcode_macro variable to be a valid Python literal.  JSON string
+    encoding is also valid Python string syntax and safely handles quotes,
+    backslashes, control characters, and newlines.
+
+    Early menuconfig users worked around the missing encoding by entering the
+    surrounding quotes themselves.  Preserve those values by unwrapping a
+    complete quoted string literal before encoding it again.
+
+    This filter must never abort template rendering.  Kconfig supplies strings,
+    but if an unexpected internal value cannot be converted or encoded, emit an
+    intentionally invalid literal so Klipper reports the bad generated option.
+    """
+    try:
+        text = value if isinstance(value, str) else str(value)
+    except Exception:
+        logging.exception("Unable to convert value to a Klipper string literal")
+        return INVALID_KLIPPER_STRING_LITERAL
+
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in ("'", '"'):
+        try:
+            legacy_value = ast.literal_eval(text)
+        except Exception:
+            pass
+        else:
+            if isinstance(legacy_value, str):
+                text = legacy_value
+
+    try:
+        return json.dumps(text, ensure_ascii=True)
+    except Exception:
+        logging.exception("Unable to encode value as a Klipper string literal")
+        return INVALID_KLIPPER_STRING_LITERAL
+
+
 def jinja_env():
-    return Environment(
+    env = Environment(
         loader=FileSystemLoader("."),
         block_start_string="[%",
         block_end_string="%]",
@@ -489,6 +532,8 @@ def jinja_env():
         trim_blocks=True,
         line_comment_prefix=";;",
     )
+    env.filters["klipper_string_literal"] = klipper_string_literal
+    return env
 
 
 def render_template(template_file, kcfg, extra_params):

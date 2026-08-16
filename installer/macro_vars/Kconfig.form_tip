@@ -45,6 +45,7 @@ menu "Tip forming          (_MMU_FORM_TIP)"
     help
       Fan name if not using the default [fan].
       Example: fan_generic fan0
+      Enter the name without surrounding quotes.
 
   config VAR_FORM_TIP_TOOLCHANGE_FAN_SPEED
     int "Toolchange % fan speed     "

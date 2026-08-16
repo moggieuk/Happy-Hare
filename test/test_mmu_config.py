@@ -13,6 +13,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
+import ast
 import os
 import re
 import tempfile
@@ -72,6 +73,17 @@ class TestBoxTurtleRender(unittest.TestCase):
                          'virtual_sdcard', 'display_status',
                          'gcode_macro _MMU_SEQUENCE_VARS'):
             self.assertIn(expected, secs)
+
+    def test_every_rendered_macro_variable_is_a_valid_klipper_literal(self):
+        """Real Klipper rejects the entire config if any variable is not a Python literal."""
+        parser = cfg.assemble(self.rendered, macros=False)
+        for section in parser.sections():
+            if not section.startswith('gcode_macro '):
+                continue
+            for option, value in parser.items(section):
+                if option.startswith('variable_'):
+                    with self.subTest(section=section, option=option, value=value):
+                        ast.literal_eval(value)
 
     def test_unit_topology_is_self_consistent(self):
         """
@@ -136,6 +148,74 @@ class TestBoxTurtleRender(unittest.TestCase):
         extruder = dict(parser.items('extruder'))
         self.assertEqual(extruder['step_pin'], 'mcu:PA1')          # from the stub
         self.assertIn('max_extrude_only_distance', extruder)       # from the template
+
+
+class TestMenuconfigMacroStrings(unittest.TestCase):
+
+    def _pre_unload_value(self, configured, profile_name):
+        profile = profiles.get('boxturtle').derive(
+            profile_name,
+            syms={'VAR_SEQUENCE_USER_PRE_UNLOAD_EXTENSION': configured})
+        rendered = cfg.render(profile)
+        parser = cfg.assemble(rendered, macros=False)
+        raw = dict(parser.items('gcode_macro _MMU_SEQUENCE_VARS'))[
+            'variable_user_pre_unload_extension']
+        return raw, ast.literal_eval(raw)
+
+    def test_plain_gcode_is_rendered_as_a_string_literal(self):
+        raw, value = self._pre_unload_value('MY_PRE_UNLOAD', 'macro_string_plain')
+        self.assertEqual(raw, '"MY_PRE_UNLOAD"')
+        self.assertEqual(value, 'MY_PRE_UNLOAD')
+
+    def test_empty_hook_is_an_empty_string_not_a_blank_value(self):
+        raw, value = self._pre_unload_value('', 'macro_string_empty')
+        self.assertEqual(raw, '""')
+        self.assertEqual(value, '')
+
+    def test_arbitrary_quotes_backslashes_and_newlines_survive_round_trip(self):
+        configured = 'RESPOND MSG="can\'t unload" PATH=C:\\tmp\\tool\\nM117 done'
+        raw, value = self._pre_unload_value(configured, 'macro_string_escaping')
+        self.assertEqual(value, configured.replace('\\n', '\n'))
+        self.assertIn('\\"', raw)
+        self.assertIn('\\\\tmp', raw)
+        self.assertIn('\\n', raw)
+
+    def test_malformed_quoted_input_does_not_abort_jinja_rendering(self):
+        configured = 'RESPOND MSG="unterminated'
+        raw, value = self._pre_unload_value(configured, 'macro_string_malformed_quote')
+        self.assertEqual(value, configured)
+        self.assertTrue(raw.startswith('"'))
+
+    def test_unexpected_internal_value_renders_invalid_sentinel_instead_of_raising(self):
+        cfg._prepare_imports()
+        from installer import build
+
+        class Unstringable:
+            def __str__(self):
+                raise RuntimeError('cannot stringify')
+
+        with self.assertLogs(level='ERROR'):
+            rendered = build.klipper_string_literal(Unstringable())
+        self.assertEqual(rendered, build.INVALID_KLIPPER_STRING_LITERAL)
+        with self.assertRaises((SyntaxError, ValueError)):
+            ast.literal_eval(rendered)
+
+    def test_existing_manually_quoted_workaround_is_not_double_quoted(self):
+        raw, value = self._pre_unload_value("'LEGACY_PRE_UNLOAD'",
+                                            'macro_string_legacy_quotes')
+        self.assertEqual(raw, '"LEGACY_PRE_UNLOAD"')
+        self.assertEqual(value, 'LEGACY_PRE_UNLOAD')
+
+    def test_optional_blobifier_fan_name_uses_the_same_encoding(self):
+        profile = profiles.get('boxturtle').derive(
+            'macro_string_blobifier',
+            syms={'MMU_HAS_BLOBIFIER': True,
+                  'VAR_BLOBIFIER_FAN_NAME': 'fan_generic fan0'})
+        rendered = cfg.render(profile)
+        parser = cfg.assemble(rendered, macros=False)
+        raw = dict(parser.items('gcode_macro _BLOBIFIER_VARS'))['variable_fan_name']
+        self.assertEqual(raw, '"fan_generic fan0"')
+        self.assertEqual(ast.literal_eval(raw), 'fan_generic fan0')
 
 
 # Deliberately TWO IDENTICAL BOXTURTLES rather than the real ercf_vvd profile. The point is

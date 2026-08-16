@@ -32,17 +32,20 @@ menu "Client macros        (_MMU_CLIENT)"
     default ""
     help
       Executed after the Klipper base pause.
+      Enter G-code without surrounding quotes.
 
   config VAR_CLIENT_USER_RESUME_EXTENSION
     string "Resume extension macro"
     default ""
     help
       Executed before the Klipper base resume.
+      Enter G-code without surrounding quotes.
 
   config VAR_CLIENT_USER_CANCEL_EXTENSION
     string "Cancel extension macro"
     default ""
     help
       Executed before the Klipper base cancel_print.
+      Enter G-code without surrounding quotes.
 
 endmenu

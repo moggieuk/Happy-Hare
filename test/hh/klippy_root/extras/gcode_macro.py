@@ -20,6 +20,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
+import json
 import jinja2
 
 # One Environment and one compiled-template cache for the whole PROCESS, not per boot.
@@ -131,10 +132,13 @@ class GCodeMacro:
         import ast
         for option in config.get_prefix_options('variable_'):
             try:
-                self.variables[option[len('variable_'):]] = ast.literal_eval(
-                    config.get(option).strip())
-            except (SyntaxError, ValueError):
-                self.variables[option[len('variable_'):]] = config.get(option).strip()
+                literal = ast.literal_eval(config.get(option))
+                json.dumps(literal, separators=(',', ':'))
+                self.variables[option[len('variable_'):]] = literal
+            except (SyntaxError, TypeError, ValueError) as e:
+                raise config.error(
+                    "Option '%s' in section '%s' is not a valid literal: %s" % (
+                        option, config.get_name(), e))
         self.calls = []         # test assertion surface
         self.gcode.register_command(self.alias, self.cmd, desc=self.description)
 
