@@ -145,10 +145,10 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP
 
       config PARAM_ENVIRONMENT_SENSOR_I2C_ADDRESS
         int "i2c address       "
-        default 119 if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280
+        default 118 if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280
         default 56
         help
-          i2c address of the environment sensor (default 56 [0x38] for AHT sensors, 119 [0x77] for BME280)
+          i2c address of the environment sensor (default 56 [0x38] for AHT sensors, 118 [0x76] for BME280)
 
       if CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE
         choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS
@@ -297,10 +297,10 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP
             config PARAM_ENVIRONMENT_SENSOR_I2C_ADDRESS_$(i)
               int "Gate $(i) i2c address       "
 
-              default 119 if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280_$(i)
+              default 118 if CHOICE_ENVIRONMENT_SENSOR_TYPE_BME280_$(i)
               default 56
               help
-                i2c address of the sensor (default 56 [0x38] for AHT sensors, 119 [0x77] for BME280)
+                i2c address of the sensor (default 56 [0x38] for AHT sensors, 118 [0x76] for BME280)
 
             if CHOICE_ENVIRONMENT_SENSOR_I2C_SOFTWARE_$(i)
               config PIN_ENVIRONMENT_SENSOR_SCL_$(i)
