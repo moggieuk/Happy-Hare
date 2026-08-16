@@ -1093,7 +1093,11 @@ class MmuController(MmuFilamentMovement):
             nozzle_segment(),
         ]
 
-        is_empty = pos == FILAMENT_POS_UNLOADED and _gate_empty()
+        # Unlike the fill/marker helpers above, the EMPTY/UNLOADED text itself is
+        # never second-guessed by a sensor -- gate_status is what the user (or
+        # gate-map logic) declared, and that word should be trustworthy on its
+        # own even while a sensor's real reading still draws filament above it.
+        is_empty = pos == FILAMENT_POS_UNLOADED and gate_status == GATE_EMPTY
 
         if pos == FILAMENT_POS_LOADED:
             parts.append(" {5}{4}LOADED{0}{6}")
