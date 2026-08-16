@@ -6,7 +6,7 @@
 #   CHOICE_X, CHOICE_X_*   Named choice "X" or boolean selection config
 #   UNSELECT_*             Special boolean symbol used to implement forced "unselect"
 #
-# The above list is special is that default values will be stored in the .mmu_config but will not
+# The above list is special in that default values will be stored in the .mmu_config but will not
 # force setting on subsequent runs. They therefore remain as modifiable defaults until user explicitly
 # changes them. Also when they are changed from default values menuconfig will mark as
 # "(NOT DEFAULT)" and allow the "r" keystroke to reset back to default value
@@ -65,7 +65,7 @@
 # 5. Added array editor - used on "," or ";" separated strings
 #
 #
-# Capability parmams:
+# Capability params:
 #   MMU_HAS_BUFFER_MCU
 #   MMU_HAS_EJECT_BUTTONS
 #   MMU_HAS_ENCODER
@@ -98,7 +98,7 @@
 #   MMU_HAS_BLOBIFIER
 
 
-# IMPORTANT keep version string up-to-date and constistent with git tag
+# IMPORTANT keep version string up-to-date and consistent with git tag
 happy_hare_version := $(HH_VERSION)
 
 hh_message  := $(shell, echo "Happy Hare v$(happy_hare_version)")
@@ -127,7 +127,7 @@ mmu_serial_config    = $(shell, basename '$(serial_device,$(1),$(2))' | sed 's/-
 mmu_serial_config_pg = $(shell, basename '$(serial_device,$(2),$(3))' | sed 's/-/_/g' | awk -v gate=$(1) 'BEGIN{out="CHOICE_MMU_SERIAL_DEVICE_NONE_GATE_" gate } NF && $$0!="." {out="CHOICE_MMU_SERIAL_DEVICE_" toupper($$0) "_GATE_" gate} END{print out}')
 buffer_serial_config = $(shell, basename '$(serial_device,$(1),$(2))' | sed 's/-/_/g' | awk 'BEGIN{out="CHOICE_BUFFER_SERIAL_DEVICE_NONE"} NF && $$0!="." {out="CHOICE_BUFFER_SERIAL_DEVICE_" toupper($$0)} END{print out}')
 
-# Grab the UUIDs that are not in use by klipper as a space-separated list, e.g. "43a8... 25ff... aaba..."
+# Grab the UUIDs that are not in use by klipper as a space-separated list, e.g. "43a8... 25ff... aab3..."
 canbus_query        := $(shell, echo "$(KLIPPER_HOME)/../klippy-env/bin/python $(KLIPPER_HOME)/scripts/canbus_query.py can0")
 canbus_uuids        := $(shell, $(canbus_query) 2>/dev/null | sed -n 's/.*canbus_uuid=\([0-9a-fA-F][0-9a-fA-F]*\).*/\1/p')
 canbus_uuid_count   := $(count, $(canbus_uuids))
@@ -226,7 +226,7 @@ if MULTI_UNIT_ENTRY_POINT
     array_editor ","
     help
       Comma-separated list of unit names. Careful: Use only alphanumeric characters.
-      If this is the first time configuring mulit-unit from previous single-unit install
+      If this is the first time configuring multi-unit from previous single-unit install
       then the first name must be unit0 because that is how it was configured.
       E.g. "unit0,unit1"
 
@@ -242,13 +242,13 @@ if MULTI_UNIT_ENTRY_POINT
   source "Kconfig.speeds"           # Access to extruder speeds
   source "macro_vars/Kconfig"       # Variables for all macros
 
-  # Thesee are duplicated settings that are excluded from units when MULTI_UNIT
+  # These are duplicated settings that are excluded from units when MULTI_UNIT
   menu "Pins"
     help
       Here you can configure per-printer pins such as toolhead sensors and
       additional gantry servo for filament cutter
 
-    source "Kconfig.shared_pins"    # Pins on components shared accros units
+    source "Kconfig.shared_pins"    # Pins on components shared across units
   endmenu
 
   source "Kconfig.paths_services"   # Advanced install options
@@ -264,7 +264,7 @@ if !MULTI_UNIT_ENTRY_POINT
   source "Kconfig.name"             # Simple display name
   source "boards/Kconfig"           # MCU Selection menu
   if !SHOW_MMU_ADDITIONS_WITH_TYPE
-    source "Kconfig.mmu_additions"  # MMU Additions/Customization menu (if not inlined with mmu type)
+    source "Kconfig.mmu_additions"  # MMU Additions/Customization menu (if not inlined with MMU type)
   endif
   comment "_"
   source "connection/Kconfig"       # MCU Connection

@@ -120,8 +120,8 @@ endif
 # -------------------------------------
 # Pre-Gate MCU's
 # This section is ONLY pre-processed if
-# PER_GATE_MCU environment varible is
-# y/yes/1/true becuase it is expensive!
+# PER_GATE_MCU environment variable is
+# y/yes/1/true because it is expensive!
 # -------------------------------------
 
 @if F_PER_GATE_MCU@

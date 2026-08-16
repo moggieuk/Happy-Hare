@@ -54,7 +54,7 @@ if MMU_HAS_SELECTOR_SERVO
       bool "Servo always active?"
       help
         This option will force the servo to always stay active. It can be dangerous on some
-        on some designs or miscalibrated MMU because it strains the servo and control electronics.
+        designs or miscalibrated MMU because it strains the servo and control electronics.
 
         Recommend to disable unless you are sure you know you need it.
     config PARAM_SERVO_ALWAYS_ACTIVE
@@ -153,8 +153,8 @@ if MMU_HAS_SELECTOR_SERVO
         default -1
         help
           Optional specific servo position to allow release of filament
-          Leave at '-1' for default bahavior of selecting angle half way between gates
-          Can be overriden by calibrated value saved in 'mmu_vars.cfg'
+          Leave at '-1' for default behavior of selecting angle half way between gates
+          Can be overridden by calibrated value saved in 'mmu_vars.cfg'
 
       config PARAM_SERVO_BYPASS_ANGLE
         int "Servo bypass angle   "
@@ -162,7 +162,7 @@ if MMU_HAS_SELECTOR_SERVO
         help
           Optional servo position for bypass gate.
           Leave at '-1' if not supported.
-          Can be overriden by calibrated value saved in 'mmu_vars.cfg'
+          Can be overridden by calibrated value saved in 'mmu_vars.cfg'
 
       config PARAM_SERVO_MIN_ANGLE
         int "Servo selector min   "
@@ -176,7 +176,7 @@ if MMU_HAS_SELECTOR_SERVO
         range 0 360
         default 360
         help
-          Happy Hare will never move the server past this mximum configured angle
+          Happy Hare will never move the server past this maximum configured angle
 
 
     endif

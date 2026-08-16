@@ -34,8 +34,8 @@
 #   PARAM_REQUIRE_BOWDEN_MOVE
 #   PARAM_FILAMENT_ALWAYS_GRIPPED
 #
-# Some custom designs have special hardware setup. If so that is included
-# in MISC_HARDWARE and and these totken may be 'y' to prevent duplicate setup.
+# Some custom designs have special hardware setup. If so, that is included
+# in MISC_HARDWARE and these tokens may be 'y' to prevent duplicate setup.
 #   CUSTOM_LED_SETUP
 #   CUSTOM_ENVIRONMENT_SENSOR_SETUP
 #   CUSTOM_HEATER_SETUP
@@ -88,7 +88,7 @@ config MMU_HAS_BUFFER_MCU
 config MMU_HAS_PER_GATE_MCU
   def_bool n
 
-# Some custom designs have some pre-packaged hwardware configuration
+# Some custom designs have some pre-packaged hardware configuration
 config PARAM_MISC_HARDWARE
   string
 

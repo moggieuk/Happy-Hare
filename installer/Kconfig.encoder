@@ -30,7 +30,7 @@ if !UNSELECT_MMU_HAS_ENCODER
     help
       An encoder measures filament movement and can be used to validate
       movement, detect clogs, monitor flow rate and detect filament
-      collision with the extruder in liue of a toolhead switch sensor.
+      collision with the extruder in lieu of a toolhead switch sensor.
 endif
 
 
@@ -54,7 +54,7 @@ if MMU_HAS_ENCODER
           Enter the name of shared encoder. A shared encoder must be see the filament from
           each MMU and thus is not a common setup.
 
-          If this is the second mmu unit is it likely that the name of the existing encoder
+          If this is the second mmu unit it is likely that the name of the existing encoder
           is 'unit0' (default name)
     endif
 
@@ -64,7 +64,7 @@ if MMU_HAS_ENCODER
         default UNIT_NAME
         help
           The name of the klipper object for this encoder. Unless it is going to be shared
-          accross multiple MMU units it is recommended to use the unit name.
+          across multiple MMU units it is recommended to use the unit name.
 
       choice CHOICE_ENCODER_TYPE
         prompt "Type"
@@ -134,7 +134,7 @@ if MMU_HAS_ENCODER
         help
           This controls whether the encoder appears as a (virtual) filament switch
           sensor in UI's like Mainsail and Fluidd.
-          Note that it is always available as an sensor/endstop. This controlls
+          Note that it is always available as an sensor/endstop. This controls
           just the visibility in UI's
 
       config PARAM_REGISTER_AS_SENSOR
@@ -172,7 +172,7 @@ if MMU_HAS_ENCODER
       bool "Check for bowden movement before full unload pull?"
       default y
       help
-        This saftey check uses the encoder to verify the filament is free of extruder before the fast bowden
+        This safety check uses the encoder to verify the filament is free of extruder before the fast bowden
         movement to reduce possibility of grinding filament. If enabled the trigger can be tuned by setting
         the "bowden_pre_unload_error_tolerance" which represents the percentage of allowable mismatch between
         actual movement and that seen by encoder. Setting to 50% tolerance usually works well. Increasing

@@ -60,7 +60,7 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP
       depends on MMU_HAS_PER_GATE_MCU
       default n
       help
-        Most designs will only have a single environment sensor but some, like EMU have a per-gate sensor.
+        Most designs will only have a single environment sensor but some, like EMU, have a per-gate sensor.
         Blank the Sensor Name if you don't have one fitted to every gate.
 
     if !MMU_HAS_PER_GATE_ENV_SENSORS

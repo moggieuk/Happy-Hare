@@ -110,7 +110,7 @@ if MMU_HAS_NFC_READER
         default "$(UNIT_NAME)_nfc"
         help
           The name of the klipper object for this NFC reader. Unless it is going to be shared
-          accross multiple MMU units it is recommended to use the default.
+          across multiple MMU units it is recommended to use the default.
 
       choice CHOICE_NFC_READER_TYPE
         prompt "Reader type       "
@@ -177,7 +177,7 @@ if MMU_HAS_NFC_READER
           help
             Path of the serial adapter the PN532 is wired to.
             Use the /dev/serial/by-id/ form: it is stable, whereas /dev/ttyUSB0
-            changes when devices are replugged or enumerate in a different order,
+            changes when devices are re-plugged or enumerate in a different order,
             and swapping with another adapter is a confusing failure to diagnose.
             Example: /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
 
@@ -426,7 +426,7 @@ if MMU_HAS_NFC_READER
                    Path of the USB serial adapter for THIS gate's reader. Every gate
                    needs a different one; reusing a port is rejected at startup.
                    List them with: ls /dev/serial/by-id/
-                   Use the by-id form - /dev/ttyUSB0 is not stable across replugs.
+                   Use the by-id form - /dev/ttyUSB0 is not stable across re-plugs.
 
                config PARAM_NFC_READER_BAUD_$(i)
                  int "Gate $(i) baud rate         "

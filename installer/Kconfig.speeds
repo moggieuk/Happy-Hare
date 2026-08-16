@@ -40,7 +40,7 @@ menu "Speeds"
       default 100
       help
         This is the default bowden load speed for long movements.
-        On systems with buffer that catches loose filament this can be used to
+        On systems with a buffer that catches loose filament this can be used to
         set a lower speed (for first time load) to overcome friction without
         the stepper loosing steps
 
@@ -48,7 +48,7 @@ menu "Speeds"
       float "Normal load acceleration        "
       default 100
       help
-        Default bowden load accelaration for long movements.
+        Default bowden load acceleration for long movements.
 
     if MMU_HAS_FILAMENT_BUFFER
       config PARAM_GEAR_FROM_FILAMENT_BUFFER_SPEED
@@ -58,7 +58,7 @@ menu "Speeds"
           High speed for normal filament loading (or from filament buffer if fitted)
 
       config PARAM_GEAR_FROM_FILAMENT_BUFFER_ACCEL
-        float "From buffer load accelaration   "
+        float "From buffer load acceleration   "
         default 400
     endif
 

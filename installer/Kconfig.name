@@ -7,6 +7,6 @@ config PARAM_DISPLAY_NAME
   default UNIT_NAME
   help
     The display name identifies your MMU in various UI's.
-    It is NOT the identification name which is typically just "unit_X"
+    It is NOT the identifier name, which is typically just "unit_X"
 
-    Keep if reasonble short but it can contain spaces.
+    Keep it reasonably short but it may contain spaces.

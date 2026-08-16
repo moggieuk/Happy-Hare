@@ -79,7 +79,7 @@ menu "Calibration/Autotuning"
     help
       Skip encoder calibration (MMU_CALIBRATE_ENCODER).
       Will rely on installed default value (although it can still be calibrated).
-      Not recommended but allows for easier initial setup especially when 'autotune_encoder'
+      Not recommended but allows for easier initial setup especially when using 'autotune_encoder'
   config PARAM_SKIP_CAL_ENCODER
     int
     default 1 if BOOL_SKIP_CAL_ENCODER
