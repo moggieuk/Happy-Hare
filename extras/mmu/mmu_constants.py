@@ -170,6 +170,20 @@ GATE_ENDSTOPS     = [SENSOR_SHARED_EXIT, SENSOR_ENCODER, SENSOR_EXIT_PREFIX, SEN
 # owned by a single gate (contrast SENSOR_EXIT_PREFIX, which is per-gate)
 SHARED_GATE_ENDSTOPS = [SENSOR_SHARED_EXIT, SENSOR_EXTRUDER_ENTRY, SENSOR_ENCODER]
 
+# Verdicts from MmuNfcFieldArbiter's "who is in my reader field?" classification ladder.
+# NFC_FIELD_NEIGHBOR is an intermediate/internal state used while attempting eviction and
+# never yielded to a caller.
+NFC_FIELD_CLEAR       = 0 # Nothing in the field
+NFC_FIELD_MINE        = 1 # This gate's own tag, positively confirmed by the gate map
+NFC_FIELD_NEIGHBOR    = 2 # Registered to another gate on the same unit - evictable (internal)
+NFC_FIELD_FOREIGN     = 3 # Known to be another gate's tag (or cross-unit) and could not be
+                          # attributed to this gate
+NFC_FIELD_PROVISIONAL = 4 # An unregistered tag tentatively treated as this gate's own, not
+                          # yet confirmed - the caller proceeds exactly as it would for MINE,
+                          # except MMU_NFC_SCAN must not take its "already at reader" fast
+                          # path (there'd be nothing to observe clearing). Ratified/rejected
+                          # after the caller's own natural motion completes.
+
 # Gear/Extruder synchronization modes
 DRIVE_UNSYNCED                = 0
 DRIVE_EXTRUDER_SYNCED_TO_GEAR = 1 # Aka 'gear+extruder'
@@ -219,6 +233,7 @@ FILAMENT_HOLD_STATE    = 2
 VARS_MMU_REVISION                  = "mmu__revision"
 VARS_MMU_ENABLE_ENDLESS_SPOOL      = "mmu_state_enable_endless_spool"
 VARS_MMU_ENDLESS_SPOOL_GROUPS      = "mmu_state_endless_spool_groups"
+VARS_MMU_SENSOR_ENABLED            = "mmu_state_sensor_enabled"  # Sparse {qualified_sensor_name: False}, only disabled entries stored
 VARS_MMU_TOOL_TO_GATE_MAP          = "mmu_state_tool_to_gate_map"
 VARS_MMU_GATE_STATUS               = "mmu_state_gate_status"
 VARS_MMU_GATE_MATERIAL             = "mmu_state_gate_material"
@@ -313,7 +328,7 @@ DRYING_STATE_CANCELLED = 'canceled'
 
 EMPTY_GATE_STATS_ENTRY = {'pauses': 0, 'loads': 0, 'load_distance': 0.0, 'load_delta': 0.0, 'unloads': 0, 'unload_distance': 0.0, 'unload_delta': 0.0, 'load_failures': 0, 'unload_failures': 0, 'quality': -1.}
 
-UPGRADE_REMINDER = "Sorry but Happy Hare requires you to re-run this to complete the update:\ncd ~/Happy-Hare\n./install.sh\nMore details: https://github.com/moggieuk/Happy-Hare/wiki/Upgrade-Notice"
+UPGRADE_REMINDER = "Sorry but Happy Hare requires you to re-run this to complete the update:\ncd ~/Happy-Hare\n./install.sh [-i]"
 
 # TMC chips to search for
 TMC_CHIPS = ["tmc2209", "tmc2130", "tmc2208", "tmc2660", "tmc5160", "tmc2240"]
@@ -355,6 +370,7 @@ UI_GATE_MARK          = '\u2524'  # ┤
 
 UI_SENSOR_EMPTY       = '\u25EF'  # ◯
 UI_SENSOR_TRIGGERED   = '\u25C9'  # ◉
+UI_ENCODER_VIRTUAL_TRIGGER = '\u00EA'  # ê - encoder has no physical trigger; virtual "triggered" marker
 
 UI_HOME_LIGHT         = '\u252B'  # ┫
 UI_LINE_LIGHT         = '\u2501'  # ━

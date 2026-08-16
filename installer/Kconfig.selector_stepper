@@ -58,7 +58,7 @@ if MMU_HAS_SELECTOR_STEPPER
       bool "Home selector at startup?"
       default n
       help
-        1 = force mmu homing on startup if unloaded, then reselect the last gate used
+        1 = force MMU homing on startup if unloaded, then reselect the last gate used
         0 = trust the position saved at shutdown, so no homing is needed (an explicit
             MMU_MOTORS_OFF discards that saved position and does require a re-home)
 

@@ -16,9 +16,9 @@ config BOOL_FLOWGUARD_ENABLED
   bool "Enable sync-feedback base FlowGuard (sync speed correction, clog/tangle/runout)?"
   default y
   help
-    Flowguard is a feature that uses the sync-feedback buffer and/or encoder to detect
-    filament clogs, tangles and runoutout. If enabled the print will be paused to allow
-    you to correct the issue possibily saving your print but certainly saving your printer.
+    FlowGuard is a feature that uses the sync-feedback buffer and/or encoder to detect
+    filament clogs, tangles and runouts. If enabled the print will be paused to allow
+    you to correct the issue, possibly saving your print but certainly saving your printer.
 config PARAM_FLOWGUARD_ENABLED
   int
   default 1 if BOOL_FLOWGUARD_ENABLED
@@ -34,7 +34,7 @@ config PARAM_FLOWGUARD_MAX_RELIEF
   help
     The amount of relief movement (effective mm change in filament length between MMU and extruder) that
     Happy Hare will wait until triggering a clog or runout. A smaller value is more sensitive to triggering. Since
-    the relief movement is hightly dependent on filament "spring" in the bowden tube, filament friction, and
+    the relief movement is highly dependent on filament "spring" in the bowden tube, filament friction, and
     'sync_feedback_buffer_range', it is generally good to start high and then decrease if a more sensitive trigger is desired.
     Analog proportional (type P) sensors can generally have a much lower value. Increase if you have false triggers.
 
@@ -112,7 +112,7 @@ if MMU_HAS_ENCODER
       The encoder_max_motion is the absolute max permitted extruder movement without the encoder seeing movement when using
       non-automatic mode (mode=1). Smaller values are more sensitive but beware of going too small - slack and friction in the
       bowden may cause gaps in encoder movement. Increase if you have false triggers.
-      Note that this value is overriden by any calibrated value stored in 'mmu_vars.cfg' if in automatic mode (mode=2).
+      Note that this value is overridden by any calibrated value stored in 'mmu_vars.cfg' if in automatic mode (mode=2).
 endif
 
 endmenu

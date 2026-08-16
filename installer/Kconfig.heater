@@ -33,7 +33,7 @@ if !UNSELECT_MMU_HAS_HEATER
     forceshow
     default n
     help
-        Select if the MMU has a heater in the filament storate enclosure
+        Select if the MMU has a heater in the filament storage enclosure
 endif
 
 
@@ -50,7 +50,7 @@ if MMU_HAS_HEATER
         bool "Per-gate Heaters?"
         default n
         help
-          Most designs will only have a single heater but some, like EMU have a per-gate heater
+          Most designs will only have a single heater but some, like EMU, have a per-gate heater
 
 
       # ------------------------------------
@@ -63,7 +63,7 @@ if MMU_HAS_HEATER
           depends on !MMU_HAS_PER_GATE_HEATERS
           default ""
           help
-            Enter the fullname of heater used to heat the filament enclosure.
+            Enter the full name of the heater used to heat the filament enclosure.
 
             E.g. If you have a section like this: [heater_generic MMU_heater], then enter
                  without the square brackets: "MMU_heater"
@@ -75,13 +75,13 @@ if MMU_HAS_HEATER
       # ------------------------------------
 
       if MMU_HAS_PER_GATE_HEATERS
-        # Currently we don't create heater objects so just assemble arbitary names
+        # Currently we don't create heater objects so just assemble arbitrary names
 
         config PARAM_FILAMENT_HEATERS
           string "List of enclosure heaters "
           default ""
           help
-            Enter a command separated list of fullnames for heaters used to heat individual compartments
+            Enter a command separated list of full names for heaters used to heat individual compartments
             of the enclosure.
 
             E.g. If you have a section like this: [heater_generic MMU_heater0], then enter
@@ -131,7 +131,7 @@ if MMU_HAS_HEATER
       string "Vent macro                "
       default "_MMU_VENT"
       help
-        Name of macro to periodicaly call during drying cycle
+        Name of macro to periodically call during drying cycle
 
     config PARAM_HEATER_VENT_INTERVAL
       string "Vent interval             "

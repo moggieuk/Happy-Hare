@@ -358,6 +358,32 @@ class TestSpoolmanOff(RoundTripTestCase):
         self.assertEqual(self.rt.mmu.gate_material[1], '')
         self.assertEqual(self.rt.errors, [])
 
+    def test_gate_map_changes_refresh_moonraker_lane_data(self):
+        calls_before = len(self.rt.remote_calls('moonraker_push_lane_data'))
+        self.rt.run_gcode(
+            'MMU_GATE_MAP GATE=1 AVAILABLE=1 NAME="PLA Basic" '
+            'MATERIAL=PLA VENDOR="Bambu Lab" COLOR=00AE42 TEMP=210'
+        )
+
+        calls = self.rt.remote_calls('moonraker_push_lane_data')
+        self.assertEqual(len(calls), calls_before + 1)
+        self.assertEqual(
+            calls[-1]['gate_ids'],
+            list(enumerate(self.rt.mmu.gate_spool_id))
+        )
+
+    def test_gate_status_changes_refresh_moonraker_lane_data(self):
+        self.rt.run_gcode(
+            'MMU_GATE_MAP GATE=1 AVAILABLE=1 MATERIAL=PLA COLOR=00AE42 TEMP=210'
+        )
+        calls_before = len(self.rt.remote_calls('moonraker_push_lane_data'))
+        self.rt.mmu.gate_maps.set_gate_status(1, 0)
+        self.rt.settle()
+
+        calls = self.rt.remote_calls('moonraker_push_lane_data')
+        self.assertEqual(len(calls), calls_before + 1)
+        self.assertEqual(calls[-1]['gate_ids'], [(1, -1)])
+
 
 class TestNfcCommandSurface(RoundTripTestCase):
     """

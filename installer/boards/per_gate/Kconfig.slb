@@ -105,7 +105,7 @@ if BOARD_TYPE_SLB_1_0
         default "^$(MCU_NAME)_gate$(gate):PA0"
 
       config PIN_EJECT_BUTTON_$(gate)
-        default "^$(MCU_NAME)_gate$(gate):PB2"
+        default "^!$(MCU_NAME)_gate$(gate):PB2"
 
       config PIN_NEOPIXEL_$(gate)
         default "$(MCU_NAME)_gate$(gate):PA4"

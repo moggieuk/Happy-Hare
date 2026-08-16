@@ -396,18 +396,36 @@ class Session:
         The 1-D filament path model for this machine, created on first use and
         published as printer.harness_filament so the fake HomingMove can find it.
 
-        Sensors it does not own are left alone: the buffer spring sensors are held at
-        their configured resting state by apply_initial_sensor_states, and a filament
-        model that also drove them would fight it.
+        Sensors it does not own are left alone. Unsupported buffer types remain at the
+        state established by apply_initial_sensor_states; a tension-sprung two-switch
+        buffer is explicitly claimed by the filament model so its state can change.
         """
         existing = getattr(self.printer, 'harness_filament', None)
         if existing is not None and layout is None:
             return existing
 
         from .filament import FilamentPath
+        from extras.mmu.mmu_constants import (
+            DRIVE_UNSYNCED, DRIVE_EXTRUDER_ONLY,
+        )
+
+        def drive_mode(gate):
+            mode = self.mmu.drive(gate).get_sync_mode()
+            if mode == DRIVE_UNSYNCED:
+                return 'gear'
+            if mode == DRIVE_EXTRUDER_ONLY:
+                return 'extruder'
+            return 'synced'
+
         model = FilamentPath(self.mmu.num_gates, layout=layout)
+        model.configure_buffers(
+            self.mmu.mmu_machine.units,
+            selected_gate=lambda: self.mmu.gate_selected,
+            drive_mode=drive_mode,
+        )
         owned = [name for name in self.sensors()
-                 if name not in getattr(self, '_spring_at_rest', set())
+                 if (name not in getattr(self, '_spring_at_rest', set())
+                     or model.models_sensor(name))
                  and model.position(name) is not None]
         # Which gates each unit owns, so a unit-qualified sensor is not answered from another
         # unit's filament - see FilamentPath.gates_visible_to.
@@ -890,7 +908,10 @@ class Session:
         Goes through HH's own set_gate_filament_from_tag (mmu_gate_maps.py:352) rather than
         assigning the lists directly, so the colour is validated, gate_color_rgb is refreshed
         and the map is persisted exactly as a real tag read would leave it. That setter does
-        NOT touch spool_id - a resolved Spoolman spool stays authoritative.
+        NOT touch spool_id - a resolved Spoolman spool stays authoritative. The same values
+        are installed as the harness's configured defaults so MMU_GATE_MAP RESET=1 can restore
+        the reproducible dummy filament map just as it could restore default_gate_XXX values
+        from a real mmu.cfg.
         """
         import random as _random
 
@@ -906,6 +927,11 @@ class Session:
                 'name': '%s %s' % (material, rng.choice(self.FILAMENT_GRADES)),
             }
             self.mmu.gate_maps.set_gate_filament_from_tag(gate, **attrs)
+            self.mmu.p.default_gate_vendor[gate] = attrs['vendor']
+            self.mmu.p.default_gate_material[gate] = attrs['material']
+            self.mmu.p.default_gate_color[gate] = attrs['color'].lower()
+            self.mmu.p.default_gate_temperature[gate] = attrs['temperature']
+            self.mmu.p.default_gate_filament_name[gate] = attrs['name']
             applied[gate] = attrs
         return applied
 
@@ -1069,9 +1095,10 @@ class Session:
         model = self.filament()
         for gate in range(self.mmu.num_gates):
             model.place(gate, tip_position)
+        seeded_status = GATE_AVAILABLE if status is None else status
         self.mmu.var_manager.set(VARS_MMU_GATE_STATUS,
-                                 [GATE_AVAILABLE if status is None else status]
-                                 * self.mmu.num_gates)
+                                 [seeded_status] * self.mmu.num_gates)
+        self.mmu.p.default_gate_status[:] = [seeded_status] * self.mmu.num_gates
         return self
 
     def seed_selection(self, gate, tool=None):
@@ -1130,6 +1157,19 @@ class Session:
         self.mmu.var_manager.set(VARS_MMU_SELECTOR_LAST_POS, pos, namespace=mmu_unit.name)
         return self
 
+    def seed_sensor_disabled(self, names):
+        """
+        Persist a sparse per-sensor disabled map BEFORE klippy:ready, as a printer that had
+        MMU_SENSORS SENSOR=... ENABLE=0 run against it yesterday does.
+
+        Must be called between connect() and ready(): mmu.var_manager is bound in
+        handle_connect, and MmuSensorManager.load_persisted_state() reads it back at
+        klippy:ready.
+        """
+        from extras.mmu.mmu_constants import VARS_MMU_SENSOR_ENABLED
+        self.mmu.var_manager.set(VARS_MMU_SENSOR_ENABLED, {name: False for name in names})
+        return self
+
     def home_selectors(self):
         """
         MMU_HOME every unit that has a physical selector. Returns the units homed.
@@ -1140,12 +1180,15 @@ class Session:
         homed = []
         for index, unit in enumerate(self.mmu.mmu_machine.units):
             if getattr(unit.selector, 'selector_stepper', None) is not None:
-                self.gcode.run_script('MMU_HOME UNIT=%d' % index)
+                # The harness knows its freshly-created selector paths are empty even when
+                # preloaded gate sensors make the machine-wide filament state ambiguous.
+                self.gcode.run_script('MMU_HOME UNIT=%d FORCE_UNLOAD=0' % index)
                 homed.append(unit.name)
         return homed
 
     def boot(self, extra=0.01, calibrate=False, gates_loaded_at=None, prime=False, seed=0,
-             pre_bootup=None, selected_gate=None, selected_tool=None, selector_last_pos=None):
+             pre_bootup=None, selected_gate=None, selected_tool=None, selector_last_pos=None,
+             sensors_disabled=None):
         """
         Full sequence to a live MMU: connect -> ready -> pump the reactor past
         BOOT_DELAY so the scheduled bootup callback runs __MMU_BOOTUP, then past the
@@ -1187,6 +1230,10 @@ class Session:
         resolved after calibrate() on the unit that owns the gate. Pass a number for a position
         that deliberately disagrees with the gate.
 
+        sensors_disabled=[names] is the same idea for per-sensor enable state - see
+        seed_sensor_disabled(). Models a printer that had MMU_SENSORS SENSOR=... ENABLE=0 run
+        against it before this boot.
+
         All of them default to False: an uncalibrated, unhomed machine with an unknown gate map
         is a real state HH has to cope with, and the tests assert it.
         """
@@ -1221,6 +1268,8 @@ class Session:
                 if selector_last_pos is True:
                     selector_last_pos = self.selector_offset(selected_gate, unit=unit_index)
                 self.seed_selector_last_pos(selector_last_pos, unit=unit_index)
+            if sensors_disabled is not None:
+                self.seed_sensor_disabled(sensors_disabled)
             self.ready()
             # The seam for anything that needs a LIVE machine but has to happen before bootup
             # renders - homing, in the console's case. See the docstring.

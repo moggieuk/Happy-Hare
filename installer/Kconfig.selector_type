@@ -26,8 +26,8 @@ choice CHOICE_SELECTOR_TYPE
     help
       This uses stepper for linear movement and servo for filament gripping
 
-  config CHOICE_SELECTOR_TYPE_LINEAR_MUTLI_GEAR_SELECTOR
-    bool "LinearMultiGearSelector" 
+  config CHOICE_SELECTOR_TYPE_LINEAR_MULTI_GEAR_SELECTOR
+    bool "LinearMultiGearSelector"
     help
       Use this for type-C MMU designs with separate gear motors and a stepper
       for gate selection
@@ -77,7 +77,7 @@ config LINEAR_SERVO_SELECTOR
   select MMU_HAS_SELECTOR_STEPPER
   select MMU_HAS_SELECTOR_SERVO
 
-config LINEAR_MUTLI_GEAR_SELECTOR
+config LINEAR_MULTI_GEAR_SELECTOR
   def_bool CHOICE_SELECTOR_TYPE_LINEAR_MULTI_GEAR_SELECTOR
   select MMU_HAS_SELECTOR_STEPPER
 
@@ -118,4 +118,4 @@ config PARAM_SELECTOR_TYPE
 
 config MULTIGEAR
   bool
-  default y                         if VIRTUAL_SELECTOR || LINEAR_MUTLI_GEAR_SELECTOR
+  default y                         if VIRTUAL_SELECTOR || LINEAR_MULTI_GEAR_SELECTOR

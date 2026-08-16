@@ -34,8 +34,8 @@ if MMU_TYPE_EMU_1_0
   config OPTION_PSF_BUFFER
     bool "PSF buffer"
     help
-      Select if using the recommended PSF brand buffer connected to the bowden tube
-      using its integrated mcu. Don't select if using a different buffer system (instead add
+      Select if using the recommended PSF brand buffer connected to the bowden tube.
+      Don't select if using a different sync-feedback buffer system (instead add
       under MMU additions)
     select MMU_HAS_SYNC_FEEDBACK_BUFFER
     select MMU_HAS_SENSOR_BUFFER_PROPORTIONAL

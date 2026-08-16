@@ -28,7 +28,7 @@
 # Can be disabled and forced off with:
 #   select UNSELECT_MMU_HAS_SYNC_FEEDBACK_BUFFER
 #
-# Behavior parameters for buffer tension/compresion can be determined by MMU type to force off/disable:
+# Behavior parameters for buffer tension/compression can be determined by MMU type to force off/disable:
 #   select UNSELECT_MMU_HAS_SENSOR_BUFFER_TENSION
 #   select UNSELECT_MMU_HAS_SENSOR_BUFFER_COMPRESSION
 
@@ -69,10 +69,10 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
         string "Shared buffer name"
         default "-specify name-"
         help
-          Enter the name of shared sync-feedback buffer. If fitting a second MMU it is likley
-          the buffer will be shared if it is after the bowden combiner near the toolhed.
+          Enter the name of shared sync-feedback buffer. If fitting a second MMU it is likely
+          the buffer will be shared if it is after the bowden combiner near the toolhead.
 
-          If this is the second mmu unit is it likely that the name of the existing buffer
+          If this is the second mmu unit it is likely that the name of the existing buffer
           is 'unit0' (default name)
     endif
 
@@ -136,7 +136,7 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
         config CHOICE_BUFFER_SPRING_STATE_NONE
           bool "n/a"
           help
-            Set for no spring or if buffer doesn't have a relaible resting position
+            Set for no spring or if buffer doesn't have a reliable resting position
       endchoice
 
       config PARAM_BUFFER_SPRING_STATE
@@ -198,7 +198,7 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
         help
           A sync-feedback sensor (often referred to as a "buffer") is a sensor that can detect filament
           compression and/or tension. Select this option if your sensor uses an analog input
-          proportional to position. Usually this is an alternate to descrete switch based sensors
+          proportional to position. Usually this is an alternate to discrete switch based sensors
           but they can also be added. If not, a virtual compression/tension sensor will be created.
 
           This sensor also allows the MMU gear stepper to be accurately synchronized with the extruder.
@@ -278,14 +278,14 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
       range 1 50
       default 5
       help
-        % "twolevel" gear speed delta to keep filament neutral in buffer (recommend 5%)
+        % "two-level" gear speed delta to keep filament neutral in buffer (recommend 5%)
 
     config PARAM_SYNC_FEEDBACK_BOOST_MULTIPLIER
       float "Sync feedback boost multiplier   "
       range 1 50
       default 3
       help
-        % "twolevel" extra gear speed boost for finding initial neutral position (recommend 3%)
+        % "two-level" extra gear speed boost for finding initial neutral position (recommend 3%)
 
     config PARAM_SYNC_FEEDBACK_EXTRUDE_THRESHOLD
       float "Sync feedback extrude threshold  "

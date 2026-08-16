@@ -1,7 +1,7 @@
 config MMU_HAS_SENSOR_EXIT
   bool "Has gate/lane exit sensors?"
   help
-    Select if you have seperate per-gate filament sensors after the MMU
+    Select if you have separate per-gate filament sensors after the MMU
     drive gear but before any combiner/splitter. Typically this is only
     fitted to type-B designs.
 

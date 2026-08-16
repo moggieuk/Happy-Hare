@@ -1,4 +1,4 @@
-# Defines MMU's abilty to select a bypass gate. Separated out of capabilities
+# Defines MMU's ability to select a bypass gate. Separated out of capabilities
 # because it is used in several places
 #
 # Responsible for defining:

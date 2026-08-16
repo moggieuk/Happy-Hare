@@ -18,7 +18,9 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 import glob
+import importlib
 import os
+import sys
 import unittest
 import warnings
 
@@ -178,6 +180,92 @@ class TestHappyHareImports(unittest.TestCase):
         import chelper
         with self.assertRaises(AssertionError):
             chelper.get_ffi()
+
+
+class TestMmuMachineImportGuard(unittest.TestCase):
+    """
+    A Happy Hare update pulled in without re-running install.sh (e.g. via Moonraker's
+    update_manager) leaves new-in-this-release modules unlinked in klippy/extras, so
+    extras/mmu_machine.py's own top-level imports are the first thing to fail - before
+    load_config ever runs. Reproduce that by removing one such symlink from the fake
+    overlay and confirm the failure is caught and reported as a clean config.error
+    rather than a raw ImportError/AttributeError - with the message depending on
+    whether the config looks like a v3 remnant (an old [mmu] section) or an
+    already-v4 install with merely broken symlinks (no [mmu] section).
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.klippy = install()
+        cls.victim = os.path.join(cls.klippy, 'extras', 'mmu', 'mmu_unit.py')
+        assert os.path.islink(cls.victim), (
+            'expected %s to be a symlink in the fake overlay' % cls.victim)
+        cls.victim_target = os.readlink(cls.victim)
+
+    def _evict_from_module_cache(self):
+        sys.modules.pop('extras.mmu_machine', None)
+        sys.modules.pop('extras.mmu.mmu_unit', None)
+
+    def _restore_symlink_and_reimport(self):
+        if not os.path.exists(self.victim):
+            os.symlink(self.victim_target, self.victim)
+        self._evict_from_module_cache()
+        # Leave the shared, process-wide overlay/module cache healthy for every test
+        # that runs after this one, regardless of suite ordering.
+        mod = importlib.import_module('extras.mmu_machine')
+        assert mod._IMPORT_ERROR is None, (
+            'failed to restore a working extras.mmu_machine after the test: %r'
+            % (mod._IMPORT_ERROR,))
+
+    def _mmu_machine_with_broken_import(self):
+        """Break one v4-only symlink and return a freshly (re-)imported module,
+        restoring it and the shared module cache once the test is done."""
+        self.addCleanup(self._restore_symlink_and_reimport)
+        os.unlink(self.victim)
+        self._evict_from_module_cache()
+        mod = importlib.import_module('extras.mmu_machine')
+        self.assertIsNotNone(mod._IMPORT_ERROR,
+                              'extras.mmu_machine should have caught the import failure')
+        return mod
+
+    def test_missing_module_without_v3_config_reports_broken_symlinks(self):
+        """No [mmu] section: this is an already-v4 install, just missing symlinks."""
+        mod = self._mmu_machine_with_broken_import()
+
+        import configparser
+        from configfile import ConfigWrapper, error as ConfigError
+
+        fileconfig = configparser.RawConfigParser()
+        fileconfig.add_section('mmu_machine')
+        config = ConfigWrapper(None, fileconfig, {}, 'mmu_machine')
+
+        with self.assertRaises(ConfigError) as cm:
+            mod.load_config(config)
+        msg = str(cm.exception)
+        self.assertIn('./install.sh -f', msg)
+        self.assertNotIn('-b v3', msg)
+
+    def test_missing_module_with_v3_config_reports_v3_upgrade(self):
+        """
+        A [mmu] section means a v3 remnant config, and that must win even though the
+        import failure looks identical to the broken-symlinks case above.
+        """
+        mod = self._mmu_machine_with_broken_import()
+
+        import configparser
+        from configfile import ConfigWrapper, error as ConfigError
+
+        fileconfig = configparser.RawConfigParser()
+        fileconfig.add_section('mmu_machine')
+        fileconfig.add_section('mmu')
+        fileconfig.set('mmu', 'happy_hare_version', '3.42')
+        config = ConfigWrapper(None, fileconfig, {}, 'mmu_machine')
+
+        with self.assertRaises(ConfigError) as cm:
+            mod.load_config(config)
+        msg = str(cm.exception)
+        self.assertIn('./install.sh', msg)
+        self.assertIn('-b v3', msg)
 
 
 if __name__ == '__main__':

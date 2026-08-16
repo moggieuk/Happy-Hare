@@ -13,7 +13,9 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
+import os
 import re
+import tempfile
 import unittest
 
 from test.hh import cfg, profiles
@@ -239,6 +241,199 @@ class TestMultiUnitRender(unittest.TestCase):
             self.assertEqual(before[name], again[name],
                              '%s changed after an intervening multi-unit render - env '
                              'leaked out of _env()' % name)
+
+
+class TestSelectorTypeChoice(unittest.TestCase):
+    """
+    The CHOICE_SELECTOR_TYPE menu (installer/Kconfig.selector_type, depends on MMU_CUSTOM) is
+    not exercised by any Profile - every real machine picks its selector implicitly, through
+    its own mmu_types/Kconfig.<vendor> defaults, never through this menu. So a broken choice
+    here has no other test to catch it; hence going straight at kconfiglib rather than adding a
+    whole custom-MMU profile just to reach one menu.
+
+    LinearMultiGearSelector specifically had a typo'd symbol name (LINEAR_MUTLI_GEAR_SELECTOR)
+    at the choice-option declaration, while the PARAM_SELECTOR_TYPE default (and
+    Kconfig.speeds' depends on) used the correctly-spelled LINEAR_MULTI_GEAR_SELECTOR - a
+    symbol that therefore never existed, so selecting this option in the installer silently
+    fell through to the "VirtualSelector # Safety" catch-all instead.
+    """
+
+    def test_choosing_linear_multi_gear_selector_sets_the_matching_param(self):
+        with cfg._env({}):
+            kc = cfg._kconfig('linear-multi-gear-selector-choice', {
+                'MMU_CUSTOM': True,
+                'CHOICE_SELECTOR_TYPE_LINEAR_MULTI_GEAR_SELECTOR': True,
+            })
+        self.assertEqual(kc.syms['PARAM_SELECTOR_TYPE'].str_value, 'LinearMultiGearSelector')
+
+
+class TestPreviousKconfigSelections(unittest.TestCase):
+    """Unavailable dynamic devices remain selectable through a stable previous option."""
+
+    KCONFIG_TEMPLATE = '''\
+mainmenu "Previous selection test"
+
+config CURRENT_AVAILABLE
+  bool
+  default %s
+
+choice DEVICE_CHOICE
+  prompt "Select device"
+  default DEVICE_PREVIOUS if "$(saved-config-value,PARAM_DEVICE)" != ""
+  default DEVICE_CURRENT if CURRENT_AVAILABLE
+
+  config DEVICE_PREVIOUS
+    bool "Previous selection: $(saved-config-value,PARAM_DEVICE)"
+    depends on "$(saved-config-value,PARAM_DEVICE)" != ""
+
+  config DEVICE_CURRENT
+    bool "Current device"
+    depends on CURRENT_AVAILABLE
+
+  config DEVICE_OTHER
+    bool "Other"
+endchoice
+
+config PARAM_DEVICE
+  string
+  default "$(saved-config-value,PARAM_DEVICE)" if DEVICE_PREVIOUS
+  default "/dev/current" if DEVICE_CURRENT
+  default "/dev/other" if DEVICE_OTHER
+'''
+
+    @classmethod
+    def setUpClass(cls):
+        cfg._prepare_imports()
+        import kconfiglib
+        cls.kconfiglib = kconfiglib
+
+    def setUp(self):
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.kconfig_path = os.path.join(self.tmpdir.name, 'Kconfig')
+        self.config_path = os.path.join(self.tmpdir.name, '.config')
+
+    def tearDown(self):
+        self.tmpdir.cleanup()
+
+    def _parse(self, current_available):
+        with open(self.kconfig_path, 'w') as f:
+            f.write(self.KCONFIG_TEMPLATE % ('y' if current_available else 'n'))
+        with cfg._env({'KCONFIG_CONFIG': self.config_path}):
+            return self.kconfiglib.Kconfig(self.kconfig_path, warn=False)
+
+    def test_previous_option_survives_discovery_changes_and_tracks_new_selection(self):
+        kc = self._parse(current_available=True)
+        self.assertEqual(kc.named_choices['DEVICE_CHOICE'].selection.name,
+                         'DEVICE_CURRENT')
+        kc.write_config(self.config_path, save_old=False)
+
+        with open(self.config_path) as f:
+            saved = f.read()
+        self.assertIn('CONFIG_PARAM_DEVICE="/dev/current" #~DEFAULT~#', saved)
+
+        kc = self._parse(current_available=False)
+        kc.load_config(self.config_path)
+        self.assertEqual(kc.named_choices['DEVICE_CHOICE'].selection.name,
+                         'DEVICE_PREVIOUS')
+        self.assertEqual(kc.syms['PARAM_DEVICE'].str_value, '/dev/current')
+        self.assertEqual(kc.syms['DEVICE_PREVIOUS'].nodes[0].prompt[0],
+                         'Previous selection: /dev/current')
+
+        kc.syms['DEVICE_OTHER'].set_value(2)
+        kc.write_config(self.config_path, save_old=False)
+        kc = self._parse(current_available=False)
+        kc.load_config(self.config_path)
+        self.assertEqual(kc.named_choices['DEVICE_CHOICE'].selection.name,
+                         'DEVICE_OTHER')
+        self.assertEqual(kc.syms['PARAM_DEVICE'].str_value, '/dev/other')
+
+    def test_all_real_connection_choices_expose_their_previous_values(self):
+        values = {
+            'PARAM_MMU_SERIAL_DEVICE': '/dev/previous-main',
+            'PARAM_MMU_CANBUS_UUID': 'abc123def456',
+            'PARAM_BUFFER_SERIAL_DEVICE': '/dev/previous-buffer',
+            'PARAM_BUFFER_CANBUS_UUID': 'def456abc123',
+        }
+        for gate in range(5):
+            values['PARAM_MMU_SERIAL_DEVICE_%d' % gate] = \
+                '/dev/previous-gate-%d' % gate
+            values['PARAM_MMU_CANBUS_UUID_%d' % gate] = \
+                'abc123def4%02d' % gate
+        with open(self.config_path, 'w') as f:
+            for name, value in values.items():
+                f.write('CONFIG_%s="%s" #~DEFAULT~#\n' % (name, value))
+
+        env = {
+            'KCONFIG_CONFIG': self.config_path,
+            'F_PER_GATE_MCU': 'y',
+            'UNIT_NAME': 'unit0',
+            'MCU_NAME': 'unit0',
+            'UNIT_INDEX': '0',
+            'F_MULTI_UNIT': '',
+            'F_MULTI_UNIT_ENTRY_POINT': '',
+        }
+        emu_syms = dict(profiles.get('emu').syms)
+        emu_syms['CHOICE_MMU_CONNECTION_TYPE_SERIAL'] = True
+        with cfg._env(env):
+            kc = cfg._kconfig('previous-connection-selections', emu_syms)
+
+        for gate in range(5):
+            choice = kc.named_choices['CHOICE_MMU_SERIAL_CONNECTION_%d' % gate]
+            self.assertEqual(choice.selection.name,
+                             'CHOICE_MMU_SERIAL_DEVICE_PREVIOUS_%d' % gate)
+            name = 'PARAM_MMU_SERIAL_DEVICE_%d' % gate
+            self.assertEqual(kc.syms[name].str_value, values[name])
+            canbus = kc.syms['CHOICE_MMU_CANBUS_UUID_PREVIOUS_%d' % gate]
+            self.assertEqual(canbus.nodes[0].prompt[0],
+                             'Previous selection: %s' %
+                             values['PARAM_MMU_CANBUS_UUID_%d' % gate])
+
+        vvd = profiles.get('ercf_vvd').units[1]
+        buffer_env = {
+            'KCONFIG_CONFIG': self.config_path,
+            'F_PER_GATE_MCU': '',
+            'UNIT_NAME': vvd.name,
+            'MCU_NAME': vvd.mcu_name,
+            'UNIT_INDEX': str(vvd.index),
+            'F_MULTI_UNIT': 'y',
+            'F_MULTI_UNIT_ENTRY_POINT': '',
+        }
+        buffer_syms = dict(vvd.syms)
+        buffer_syms['CHOICE_BUFFER_CONNECTION_TYPE_SERIAL'] = True
+        with cfg._env(buffer_env):
+            kc = cfg._kconfig('previous-buffer-selection', buffer_syms)
+
+        buffer_choice = kc.named_choices['CHOICE_BUFFER_SERIAL_CONNECTION']
+        self.assertEqual(buffer_choice.selection.name,
+                         'CHOICE_BUFFER_SERIAL_DEVICE_PREVIOUS')
+        self.assertEqual(kc.syms['PARAM_BUFFER_SERIAL_DEVICE'].str_value,
+                         values['PARAM_BUFFER_SERIAL_DEVICE'])
+        buffer_canbus = kc.syms['CHOICE_BUFFER_CANBUS_UUID_PREVIOUS']
+        self.assertEqual(buffer_canbus.nodes[0].prompt[0],
+                         'Previous selection: %s' %
+                         values['PARAM_BUFFER_CANBUS_UUID'])
+
+        base_env = dict(buffer_env)
+        base_env.update({
+            'UNIT_NAME': 'unit0',
+            'MCU_NAME': 'unit0',
+            'UNIT_INDEX': '0',
+            'F_MULTI_UNIT': '',
+        })
+        base_syms = dict(profiles.get('boxturtle').syms)
+        base_syms['CHOICE_MMU_CONNECTION_TYPE_CANBUS'] = True
+        with cfg._env(base_env):
+            kc = cfg._kconfig('previous-base-canbus-selection', base_syms)
+
+        base_choice = kc.named_choices['CHOICE_MMU_CANBUS_CONNECTION']
+        self.assertEqual(base_choice.selection.name,
+                         'CHOICE_MMU_CANBUS_UUID_PREVIOUS')
+        self.assertEqual(kc.syms['PARAM_MMU_CANBUS_UUID'].str_value,
+                         values['PARAM_MMU_CANBUS_UUID'])
+        base_serial = kc.syms['CHOICE_MMU_SERIAL_DEVICE_PREVIOUS']
+        self.assertEqual(base_serial.nodes[0].prompt[0],
+                         'Previous selection: %s' %
+                         values['PARAM_MMU_SERIAL_DEVICE'])
 
 
 if __name__ == '__main__':

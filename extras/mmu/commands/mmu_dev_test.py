@@ -121,6 +121,7 @@ class MmuTestCommand(BaseCommand):
         + "DUMP_ACTIVE_SENSORS=1 Dump raw active sensors map\n"
         + "UPDATE_STATUS={dict} Force override (update) of mmu get_status() with supplied dict. 'OFF' to remove\n"
         + "NFC_READ=1 Simulate an NFC tag read. Params: UID={hex} DEEP=[0|1] GATE={n}(per-gate, else shared) UNIT={n} MATERIAL= BRAND= COLOR= DETAIL= MIN_TEMP= MAX_TEMP=\n"
+        + "NFC_FIELD=1 Classify a tag UID against the gate map (no reader, no motion). Params: GATE={n} UID={hex}\n"
     )
     HELP_SUPPLEMENT = (
         ""
@@ -1251,6 +1252,61 @@ class MmuTestCommand(BaseCommand):
 
                 log("NFC_READ: injecting %s tag UID=%s%s" % (kind, uid, " (deep)" if deep else ""))
                 target_unit.nfc_manager._dispatch_lookup(uid, gate=tag_gate, metadata=metadata)
+                return
+
+            nfc_field = gcmd.get_int('NFC_FIELD', None, minval=0, maxval=1)
+            if nfc_field is not None:
+                have_run_test = True
+                # Exercise MmuNfcFieldArbiter's "who is in my reader field?" ladder with NO
+                # reader hardware and NO motion - _field_verdict is a pure function of
+                # (gate, uid) against the gate map, so every rung is reachable just by
+                # choosing a UID: one registered to GATE, one registered to a neighboring
+                # gate, one registered to a gate on another unit, or one registered nowhere.
+                gate = gcmd.get_int('GATE', max(0, mmu.gate_selected), minval=0, maxval=mmu.num_gates - 1)
+                uid = gcmd.get('UID', '04A1B2C3D4E5').strip()
+
+                names = {
+                    NFC_FIELD_CLEAR:       'CLEAR',
+                    NFC_FIELD_MINE:        'MINE',
+                    NFC_FIELD_NEIGHBOR:   'NEIGHBOR',
+                    NFC_FIELD_FOREIGN:     'FOREIGN',
+                    NFC_FIELD_PROVISIONAL: 'PROVISIONAL',
+                }
+                arbiter = mmu.nfc_arbiter
+                verdict, owner, diag = arbiter._field_verdict(gate, uid)
+                log("NFC_FIELD: gate %d, uid %s -> %s (owner gate %s)"
+                    % (gate, uid, names.get(verdict, verdict),
+                       'none' if owner is None else owner))
+                if diag:
+                    log("NFC_FIELD: diagnostic: %s" % diag)
+
+                # Arming and eligibility are config/machine-state, not part of the pure
+                # ladder - reported separately so a caller can see both without any I/O.
+                u = mmu.mmu_unit(gate)
+                armed = mmu._nfc_field_arm(gate) is not None
+                log("NFC_FIELD: arbitration %s (nfc_neighbor_check=%d, "
+                    "nfc_neighbor_evict_distance=%.1f, probe reads=%d)"
+                    % ("ARMED" if armed else "not armed", u.p.nfc_neighbor_check,
+                       u.p.nfc_neighbor_evict_distance, u.p.nfc_field_probe_reads))
+
+                if verdict == NFC_FIELD_NEIGHBOR:
+                    candidates = arbiter._neighbor_candidates(gate, owner)
+                    log("NFC_FIELD: candidate order (identity first, then physical "
+                        "neighbors): %s" % candidates)
+                    for candidate in candidates:
+                        reason = arbiter._evict_reject(gate, candidate)
+                        log("NFC_FIELD: candidate gate %d is %s"
+                            % (candidate, "evictable" if reason is None
+                               else "NOT evictable: %s" % reason))
+                    if owner is None:
+                        log("NFC_FIELD: unregistered - with no motion budget this resolves "
+                            "to MINE (optimistic default); with a motion budget it resolves "
+                            "to PROVISIONAL and is only confirmed/rejected by the caller's "
+                            "own natural motion (see clear_field)")
+                    else:
+                        log("NFC_FIELD: registered to a known neighbor - with no motion "
+                            "budget, or if eviction fails, this resolves to FOREIGN "
+                            "(fast-fail), never PROVISIONAL")
                 return
 
             # -----------

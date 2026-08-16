@@ -61,7 +61,7 @@ if MMU_HAS_ESPOOLER
       float "Espooler minimum move distance   "
       default 30
       help
-        Individual stepper movements less than this distance will not active espooler
+        Individual stepper movements less than this distance will not activate espooler
 
     config PARAM_ESPOOLER_MAX_STEPPER_SPEED
       float "Espooler max stepper speed       "
@@ -114,7 +114,7 @@ if MMU_HAS_ESPOOLER
           print  - while printing. Generally set 'espooler_printing_power' to a low percentage just to
                    allow motor to be turned freely or set to 0 to enable/allow "burst" assist movements
 
-        If using a digitally controlled espooler motor (not PWM) then you should remove "print" and set
+        If using a digitally controlled espooler motor (not PWM), then you should remove "print" and set
         'espooler_min_stepper_speed' to prevent "over movement"
 
     comment "_"

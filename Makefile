@@ -175,7 +175,7 @@ restart_klipper = 0
 .SECONDEXPANSION:
 .DEFAULT_GOAL := build
 .PRECIOUS: $(KCONFIG_CONFIG) $(KCONFIG_CONFIG)_%
-.PHONY: menuconfig install uninstall check_version diff test console shots venv installer_venv clean_venv build clean variables python_deps fix_links gen_kconfig kconfig_needs_update olddefconfig verify_pickle
+.PHONY: menuconfig install uninstall check_version diff test console filament_display shots venv installer_venv clean_venv build clean variables python_deps fix_links gen_kconfig kconfig_needs_update olddefconfig verify_pickle
 .SECONDARY: \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
@@ -191,9 +191,12 @@ hh_klipper_extras_files := $(wildcard extras/*.py extras/mmu/*.py extras/mmu/uni
 hh_old_klipper_modules  := mmu_toolhead.py mmu_encoder.py mmu_espooler.py mmu_leds.py mmu_sensors.py mmu/* # These will get removed upon install/uninstall
 hh_moonraker_components := $(wildcard components/*.py)
 
-# All repo configs files less mmu_vars.cfg
+# All repo configs files less mmu_vars.cfg. Zero-length files (e.g. config/base/*.cfg
+# upgrade-path placeholders, see config/base/README.md) are deliberately excluded here:
+# $(wildcard) can't test size, so use find -size +0c instead, or every fresh install
+# would build and install those empty stubs as real (if empty) config files.
 repo_cfgs := \
-	$(patsubst config/%,%, $(wildcard config/*.cfg config/**/*.cfg))
+	$(patsubst config/%,%, $(shell find config -mindepth 1 -maxdepth 2 -name '*.cfg' -size +0c))
 
 # Per-unit files: <unit>_{hardware,parameters}.cfg
 hh_unit_config_files := \
@@ -233,7 +236,8 @@ install_targets := \
 	$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)
 
 kconfig_sources := \
-	$(wildcard $(SRC)/installer/Kconfig* $(SRC)/installer/**/Kconfig*)
+	$(wildcard $(SRC)/installer/Kconfig* $(SRC)/installer/**/Kconfig*) \
+	$(SRC)/installer/lib/kconfiglib/kconfigfunctions.py
 
 
 ############################
@@ -463,8 +467,11 @@ gen_kconfig: | python_deps
 clean:
 	$(Q)rm -rf $(OUT)
 
-# Deliberately not part of `clean`, which runs far too often to pay for a venv rebuild
+# Deliberately not part of `clean`, which runs far too often to pay for a venv rebuild.
+# STAMP_DIR is cleared unconditionally, even with no venv - it can hold a stamp for a
+# klippy-env or system PY too, and either way it must stop claiming deps are installed
 clean_venv:
+	$(Q)rm -rf "$(STAMP_DIR)"
 	$(Q)[ -f "$(VENV_PY)" ] || { echo "$(C_WARNING)No virtualenv at '$(VENV)'$(C_OFF)"; exit 0; }; \
 		echo "$(C_INFO)Removing virtualenv '$(patsubst $(SRC)/%,%,$(VENV))'$(C_OFF)"; \
 		rm -rf "$(VENV)"
@@ -476,11 +483,25 @@ no_venv_hint = \
 	echo "$(C_ERROR)  export PIP_ARGS='--user --break-system-packages'$(C_OFF)"; \
 	echo "$(C_ERROR)For tests only, the system interpreter also works: make NO_VENV=1 test$(C_OFF)";
 
+# Stamp so a `make` invocation with nothing changed just stats it, instead of every one of
+# install.sh's several `make` calls per run re-installing from scratch. Reuses $(INSTALLER_STAMP)
+# when $(PY) is $(VENV_PY) - installer_venv already keeps that fresh - otherwise keys off
+# $(PY)'s resolved path, so switching interpreters without a `make clean` still reinstalls.
+# Not under $(OUT): `uninstall: clean | python_deps` races `rm -rf $(OUT)` against this touch under -j
+STAMP_DIR := $(SRC)/.hh-stamps
+python_deps_pyid    := $(subst /,_,$(shell command -v $(PY) 2>/dev/null))
+python_deps_stamp   := $(if $(builder_prereq),$(builder_prereq),$(STAMP_DIR)/.python-deps-installed-$(python_deps_pyid))
+
 # Always '$(PY) -m pip', never a bare 'pip': the first pip on PATH need not belong to $(PY),
-# and on macOS is often a leftover with a dead shebang. Runs on nearly every invocation so it
-# stays quiet on success. Only a PEP 668 python with no venv to fall back on reaches the hints
-python_deps: $(builder_prereq)
-	$(Q)echo "$(C_INFO)Checking for python dependencies$(C_OFF)"
+# and on macOS is often a leftover with a dead shebang. Only a PEP 668 python with no venv to
+# fall back on reaches the hints
+python_deps: $(python_deps_stamp)
+
+$(STAMP_DIR):
+	$(Q)mkdir -p "$@"
+
+$(STAMP_DIR)/.python-deps-installed-$(python_deps_pyid): $(SRC)/installer/requirements.txt | $(STAMP_DIR)
+	$(Q)echo "$(C_INFO)Checking and resolving python dependencies$(C_OFF)"
 	$(Q)$(PY) -m pip install --quiet --disable-pip-version-check $(PIP_ARGS) \
 		-r $(SRC)/installer/requirements.txt || { \
 		echo "$(C_ERROR)'$(PY) -m pip' could not install installer/requirements.txt$(C_OFF)"; \
@@ -490,6 +511,7 @@ python_deps: $(builder_prereq)
 		$(no_venv_hint) \
 		exit 1; \
 	}
+	$(Q)touch $@
 
 $(OUT)/$(notdir $(KCONFIG_CONFIG)).pickle: $(KCONFIG_CONFIG) | python_deps $(OUT)
 	$(Q)echo "$(C_INFO)Pre-parsing Kconfig $(notdir $(KCONFIG_CONFIG))$(C_OFF)"
@@ -556,6 +578,12 @@ venv: $(VENV_STAMP)
 installer_venv: $(INSTALLER_STAMP)
 	@:
 
+
+
+###########################
+##### Testing targets #####
+###########################
+
 # Opens the interactive file picker, everything pre-ticked, so Enter runs the whole suite as
 # before. Skipped for UT/ALL/LAST or when stdin isn't a tty - test/select.py decides. Extra
 # unittest flags go through ARGS, e.g. make test ARGS='-k homing'
@@ -573,6 +601,15 @@ console: $(test_prereqs)
 	$(Q)$(using_klippy_env)
 	$(Q)PYTHONPATH="$(SRC)/installer/lib/kconfiglib:$(PYTHONPATH)" \
 		$(TEST_PY) -m test.console $(ARGS)
+
+# Bulk sensor/position/gate_homing_endstop sweep for get_filament_position_string(),
+# Pass flags through ARGS, e.g. make filament_display ARGS='-k UNKNOWN'
+# HH_FILAMENT_DISPLAY_REVIEW gates filament_display_review.py's load_tests hook: unset,
+# `make test`'s pattern='*' discovery loads the module and gets nothing back from it
+filament_display: $(test_prereqs)
+	$(Q)$(using_klippy_env)
+	$(Q)HH_FILAMENT_DISPLAY_REVIEW=1 PYTHONPATH="$(SRC)/installer/lib/kconfiglib:$(PYTHONPATH)" \
+		$(TEST_PY) -m unittest test.filament_display_review -v $(ARGS)
 
 variables:
 	@echo "========================="

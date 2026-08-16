@@ -29,9 +29,9 @@ class MmuGateMapCommand(BaseCommand):
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
         + "QUIET        = 1 To minimize console reporting\n"
-        + "RESET        = 1 To reset filament attributes to configured defaults\n"
-        + "GATES        = g,g,g comma separated list of gates (don't mix with GATE)\n"
-        + "GATE         = g Specify a single gate (don't mix with GATES)\n"
+        + "RESET        = 1 To reset specified GATE/GATES filament attributes to configured defaults\n"
+        + "GATES        = g,g,g comma separated list of gates; required with RESET unless GATE is used\n"
+        + "GATE         = g Specify a single gate; required with RESET unless GATES is used\n"
         + "BYPASS       = 1 Set filament attributes for the bypass\n"
         + "NEXT_SPOOLID = id Specify the spoolman id of the next filament loaded - automatically assigned (0 to cancel)\n"
         + "NAME         = # Filament name\n"
@@ -52,7 +52,7 @@ class MmuGateMapCommand(BaseCommand):
         + f"{CMD} NEXT_SPOOLID=45                ...Automatically mark the next spool preloaded or loaded with spoolman id 45\n"
         + f"{CMD} GATE=0 SPEED=50                ...Set load/unload speed of gate 0 to 50% - great for TPU!\n"
         + f"{CMD} GATE=0 RFID=E2003412           ...Record the RFID tag read for the spool loaded in gate 0\n"
-        + f"{CMD} RESET=1                        ...Reset filament attributes (optionally to defaults configured in mmu.cfg file)\n"
+        + f"{CMD} RESET=1 GATES=4,5              ...Reset gates 4 and 5 to defaults configured in mmu.cfg\n"
     )
 
     def __init__(self, mmu):
@@ -92,8 +92,8 @@ class MmuGateMapCommand(BaseCommand):
             mmu.log_debug("Exception whilst parsing gate map in MMU_GATE_MAP: %s" % str(e))
             return
 
-        if reset:
-            mmu.gate_maps.reset_gate_map()
+        if reset and gates == "!" and gate < 0:
+            raise gcmd.error("RESET=1 requires GATE or GATES")
 
         if next_spool_id is not None:
             # Completion of an in-flight shared NFC lookup (or a manual assignment/cancel).
@@ -168,6 +168,27 @@ class MmuGateMapCommand(BaseCommand):
 
         changed_gate_ids = []
 
+        gatelist = []
+        if gates != "!":
+            try:
+                for gate_str in gates.split(','):
+                    gate_idx = int(gate_str)
+                    if not 0 <= gate_idx < mmu.num_gates:
+                        if reset:
+                            raise ValueError
+                        continue
+                    gatelist.append(gate_idx)
+            except ValueError:
+                raise gcmd.error("Invalid GATES parameter: %s" % gates)
+        elif gate >= 0:
+            gatelist.append(gate)
+
+        if reset:
+            mmu.gate_maps.reset_gate_map(gatelist)
+            if not quiet:
+                mmu.log_always(mmu.gate_maps.gate_map_to_string(), color=True)
+            return
+
         if gate_map: # --------- BATCH UPDATE from spoolman or UI --------
             try:
                 mmu.log_debug("Received gate map update (replace: %s)" % replace)
@@ -207,6 +228,10 @@ class MmuGateMapCommand(BaseCommand):
                         spool_id = self._safe_int(fil.get('spool_id', -1))
                         if (not from_spoolman or spool_id != -1):
                             # Update attributes but don't allow spoolman to accidently clear
+                            status = self._safe_int(fil.get('status', mmu.gate_status[gate_idx]))
+                            if status == GATE_EMPTY and mmu.gate_status[gate_idx] != GATE_EMPTY:
+                                mmu.gate_maps.clear_gate_attributes(gate_idx)
+                                ids_dict[gate_idx] = -1
                             mmu.gate_filament_name[gate_idx] = fil.get('name', '')
                             mmu.gate_material[gate_idx] = fil.get('material', '')
                             mmu.gate_vendor[gate_idx] = fil.get('vendor', '')
@@ -216,7 +241,7 @@ class MmuGateMapCommand(BaseCommand):
                                 mmu.p.default_extruder_temp
                             )
                             mmu.gate_speed_override[gate_idx] = self._safe_int(fil.get('speed_override', mmu.gate_speed_override[gate_idx]))
-                            mmu.gate_status[gate_idx] = self._safe_int(fil.get('status', mmu.gate_status[gate_idx])) # For UI manual fixing of availabilty
+                            mmu.gate_status[gate_idx] = status # For UI manual fixing of availability
 
                         # RFID is read locally from gate hardware; always allow it through regardless of spoolman origin
                         if not from_spoolman:
@@ -235,21 +260,7 @@ class MmuGateMapCommand(BaseCommand):
                 mmu.log_debug("Invalid MAP parameter: %s\nException: %s" % (gate_map, str(e)))
                 raise gcmd.error("Invalid MAP parameter. See mmu.log for details")
 
-        elif gates != "!" or gate >= 0:
-            gatelist = []
-            if gates != "!":
-                # List of gates
-                try:
-                    for gate_str in gates.split(','):
-                        gate_idx = int(gate_str)
-                        if 0 <= gate_idx < mmu.num_gates:
-                            gatelist.append(gate_idx)
-                except ValueError:
-                    raise gcmd.error("Invalid GATES parameter: %s" % gates)
-            else:
-                # Specifying one gate (filament)
-                gatelist.append(gate)
-
+        elif gatelist:
             ids_dict = {}
             for gate_idx in gatelist:
                 available = gcmd.get_int('AVAILABLE', mmu.gate_status[gate_idx], minval=-1, maxval=2)
@@ -259,8 +270,12 @@ class MmuGateMapCommand(BaseCommand):
                 color = gcmd.get('COLOR', None)
                 spool_id = gcmd.get_int('SPOOLID', None, minval=-1)
                 temperature = gcmd.get_int('TEMP', int(mmu.p.default_extruder_temp))
-                speed_override = gcmd.get_int('SPEED', mmu.gate_speed_override[gate_idx], minval=10, maxval=150)
+                speed_override = gcmd.get_int('SPEED', None, minval=10, maxval=150)
                 rfid = gcmd.get('RFID', None)
+
+                if available == GATE_EMPTY and mmu.gate_status[gate_idx] != GATE_EMPTY:
+                    mmu.gate_maps.clear_gate_attributes(gate_idx)
+                    ids_dict[gate_idx] = -1
 
                 # RFID is read locally from gate hardware and isn't owned by spoolman, so it's always settable
                 rfid = rfid if rfid is not None else mmu.gate_spool_rfid[gate_idx]
@@ -274,6 +289,7 @@ class MmuGateMapCommand(BaseCommand):
                     vendor = vendor if vendor is not None else mmu.gate_vendor[gate_idx]
                     color = (color if color is not None else mmu.gate_color[gate_idx]).lower()
                     temperature = temperature or mmu.gate_temperature[gate_idx]
+                    speed_override = speed_override if speed_override is not None else mmu.gate_speed_override[gate_idx]
                     color = MmuColorUtils.validate_color(color)
                     if color is None:
                         raise gcmd.error("Color specification must be in form 'rrggbb' or 'rrggbbaa' hexadecimal value (no '#') or valid color name or empty string")
@@ -299,7 +315,8 @@ class MmuGateMapCommand(BaseCommand):
                 else:
                     # Remote (spoolman) gate map, don't update local attributes that are set by spoolman
                     mmu.gate_status[gate_idx] = available
-                    mmu.gate_speed_override[gate_idx] = speed_override
+                    if speed_override is not None:
+                        mmu.gate_speed_override[gate_idx] = speed_override
                     if any(x is not None for x in [material, vendor, color, spool_id, name]):
                         mmu.log_error("Spoolman mode is '%s': Can only set gate status and speed override locally\nUse MMU_SPOOLMAN or update spoolman directly" % SPOOLMAN_PULL)
                         break

@@ -1681,6 +1681,96 @@ class TestConsoleScript(unittest.TestCase):
         self.assertIn('mmu_entry_1 disabled', out)
         self.assertIn('mmu_entry_1 enabled', out)
 
+    def test_gate_map_empty_removes_filament_from_the_gate_sensors(self):
+        console = self._make_console(['--no-log', '--plain', '--header', 'off'])
+        hh = console.hh
+        # Put this gate through every fitted sensor; other gates remain merely parked.
+        hh.place_filament(0, position=800.)
+        affected = [name for name in console.fil.sensor_names()
+                    if console.fil.gate_of(name) in (None, 0)
+                    # Buffer switches report stored slack/tension, not filament
+                    # presence, and are intentionally not all true at once.
+                    and not console.fil.models_sensor(name)]
+        self.assertTrue(affected, 'profile has no modelled sensors for gate 0')
+        self.assertTrue(all(hh.sensor(name).present for name in affected),
+                        'precondition: filament did not cover every sensor')
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.run_command('MMU_GATE_MAP GATE=0 AVAILABLE=0 QUIET=1')
+
+        self.assertEqual(hh.mmu.gate_maps.gate_status[0], 0)
+        self.assertTrue(all(not hh.sensor(name).present for name in affected),
+                        'EMPTY left one or more gate-path sensors triggered')
+
+    def test_gate_map_reset_restores_the_primed_filament_defaults(self):
+        console = self._make_console(['--no-log', '--plain', '--header', 'off'])
+        hh = console.hh
+        maps = hh.mmu.gate_maps
+        attrs = ('gate_filament_name', 'gate_material', 'gate_vendor', 'gate_color',
+                 'gate_temperature', 'gate_speed_override', 'gate_spool_id',
+                 'gate_spool_rfid')
+        initial = {attr: getattr(maps, attr)[0] for attr in attrs}
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.run_command('MMU_GATE_MAP GATE=0 AVAILABLE=0 QUIET=1')
+            console.run_command('MMU_GATE_MAP GATE=0 RESET=1 QUIET=1')
+
+        self.assertEqual({attr: getattr(maps, attr)[0] for attr in attrs}, initial)
+        self.assertEqual(maps.gate_status[0], 0,
+                         'RESET must not recreate filament removed from the simulator')
+
+    def test_gate_map_available_parks_filament_through_the_entry_sensor(self):
+        console = self._make_console(['--no-preload', '--no-log', '--plain',
+                                      '--header', 'off'])
+        hh = console.hh
+
+        for available in (1, 2):
+            with self.subTest(available=available):
+                # Force a real status transition for both availability values.
+                with contextlib.redirect_stdout(io.StringIO()):
+                    console.run_command('MMU_GATE_MAP GATE=0 AVAILABLE=0 QUIET=1')
+                    console.run_command(
+                        'MMU_GATE_MAP GATE=0 AVAILABLE=%d QUIET=1' % available)
+                self.assertEqual(hh.mmu.gate_maps.gate_status[0], available)
+                self.assertTrue(hh.sensor('mmu_entry_0').present)
+                self.assertFalse(hh.sensor('mmu_exit_0').present)
+
+    def test_gate_map_unknown_does_not_move_filament_or_change_sensors(self):
+        console = self._make_console(['--no-preload', '--no-log', '--plain',
+                                      '--header', 'off'])
+        hh = console.hh
+        hh.place_filament(0, position=20.)
+        before_tip = console.fil.tip[0]
+        before_sensors = {name: hh.sensor(name).present for name in hh.sensors()}
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.run_command('MMU_GATE_MAP GATE=0 AVAILABLE=-1 QUIET=1')
+
+        self.assertEqual(hh.mmu.gate_maps.gate_status[0], -1)
+        self.assertEqual(console.fil.tip[0], before_tip)
+        self.assertEqual({name: hh.sensor(name).present for name in hh.sensors()},
+                         before_sensors)
+
+    def test_bulk_gate_map_status_update_does_not_move_filament(self):
+        """Moonraker/UI MAP callbacks describe state; only AVAILABLE is a console action."""
+        console = self._make_console(['--no-preload', '--no-log', '--plain',
+                                      '--header', 'off'])
+        hh = console.hh
+        hh.place_filament(0, position=20.)
+        before_tip = console.fil.tip[0]
+        before_sensors = {name: hh.sensor(name).present for name in hh.sensors()}
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.run_command(
+                'MMU_GATE_MAP MAP="{0: {\'status\': 0, \'spool_id\': 5}}" '
+                'FROM_SPOOLMAN=1 QUIET=1')
+
+        self.assertEqual(hh.mmu.gate_maps.gate_status[0], 0,
+                         'precondition: bulk callback did not change map status')
+        self.assertEqual(console.fil.tip[0], before_tip)
+        self.assertEqual({name: hh.sensor(name).present for name in hh.sensors()},
+                         before_sensors)
+
     def test_a_disabled_sensor_reads_as_the_third_state(self):
         """Disabled is None, distinct from clear - the header must show it differently."""
         console = self._make_console(['--no-preload', '--no-log', '--plain', '--header', 'sensors'])
@@ -1816,6 +1906,39 @@ class TestTheDefaultProfile(unittest.TestCase):
         selct = next(l for l in joined.split('\n') if l.startswith('Selct:'))
         self.assertNotIn('X', selct, 'the selector reads as unhomed at bootup')
         self.assertNotIn('[T?]', joined, 'bootup rendered an unknown tool')
+
+    def test_selected_available_gate_has_a_filament_triangle(self):
+        """An available gate keeps its tip marker even while filament is parked at the gate."""
+        from extras.mmu.mmu_constants import GATE_AVAILABLE, UI_SOLID_TRIANGLE
+
+        mmu = self.console.hh.mmu
+        self.assertEqual(mmu.filament_pos, 0, 'precondition: filament is parked at the gate')
+        self.assertGreaterEqual(mmu.gate_status[mmu.gate_selected], GATE_AVAILABLE)
+        selct = next(
+            line for line in mmu._mmu_visual_to_string().split('\n')
+            if line.startswith('Selct:')
+        )
+        self.assertIn(UI_SOLID_TRIANGLE, selct)
+
+    def test_unknown_gate_keeps_its_colored_swatch_and_selector_triangle(self):
+        """Unknown describes availability, so it must not hide known filament color."""
+        from extras.mmu.mmu_constants import GATE_UNKNOWN, UI_SOLID_SQUARE, UI_SOLID_TRIANGLE
+
+        mmu = self.console.hh.mmu
+        gate = mmu.gate_selected
+        mmu.gate_status[gate] = GATE_UNKNOWN
+        mmu.gate_color[gate] = 'ff0000'
+        square = '{{ff0000}}%s{{}}' % UI_SOLID_SQUARE
+        triangle = '{{ff0000}}%s{{}}' % UI_SOLID_TRIANGLE
+
+        visual = mmu._mmu_visual_to_string().split('\n')
+        avail = next(line for line in visual if line.startswith('Avail:'))
+        selct = next(line for line in visual if line.startswith('Selct:'))
+        self.assertIn('|%s?%s|' % (square, square), avail)
+        self.assertIn('|\\%s/|' % triangle, selct)
+
+        gate_row = mmu.gate_maps.gate_map_to_string().splitlines()[gate + 1]
+        self.assertIn('(%s?%s)' % (square, square), gate_row)
 
     def test_the_homing_chatter_stays_out_of_the_banner(self):
         """
@@ -2000,6 +2123,49 @@ class TestTheDefaultProfile(unittest.TestCase):
         self.assertGreater(len(seen), 50, 'a whole load produced only a handful of updates')
         self.assertGreater(len(set(seen)), 50, 'the filament did not move between updates')
         self.assertEqual(seen, sorted(seen), 'a load should only ever feed filament forwards')
+
+    def test_gate9_compression_rises_only_during_extruder_home(self):
+        """ViViD's buffer must stay uncompressed throughout its Bowden move."""
+        from extras.mmu.mmu_constants import (
+            FILAMENT_POS_HOMED_ENTRY,
+            FILAMENT_POS_HOMED_EXTRUDER,
+            FILAMENT_POS_LOADED,
+        )
+        console = self.console
+        hh = console.hh
+        hh.set_pacing(1.)
+        compression = hh.sensor('unit1:filament_compression')
+        previous = [compression.present]
+        rising_reasons = []
+        filament_states = []
+
+        def observe(gate, delta, start_tip, start_tail):
+            if gate != 9:
+                return
+            present = compression.present
+            if present and not previous[0]:
+                rising_reasons.append(console.fil.history[-1][2])
+            previous[0] = present
+
+        console.fil.observers.append(observe)
+        hh.run_gcode('MMU_SELECT GATE=9')
+        original_set_state = hh.mmu.set_filament_pos_state
+
+        def record_state(state, silent=False):
+            filament_states.append(state)
+            return original_set_state(state, silent=silent)
+
+        hh.mmu.set_filament_pos_state = record_state
+        self.addCleanup(setattr, hh.mmu, 'set_filament_pos_state', original_set_state)
+        hh.run_gcode('MMU_LOAD')
+
+        self.assertEqual(rising_reasons,
+                         ['homing -> unit1:filament_compression'])
+        self.assertNotIn(FILAMENT_POS_HOMED_ENTRY, filament_states,
+                         'compression homing must not masquerade as entry-sensor homing')
+        self.assertIn(FILAMENT_POS_HOMED_EXTRUDER, filament_states)
+        self.assertEqual(hh.mmu.filament_pos, FILAMENT_POS_LOADED)
+        self.assertEqual(hh.errors, [])
 
     def test_pacing_does_not_change_where_the_filament_ends_up(self):
         """Slicing a move must be exact - the totals cannot drift from the unpaced answer."""

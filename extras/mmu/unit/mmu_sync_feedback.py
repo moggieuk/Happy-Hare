@@ -637,8 +637,11 @@ class MmuSyncFeedback:
                 sm = self.mmu.sensor_manager
                 sensor = sm.get_sensor_obj(sensor_key)
 
-                if sensor is not None:
+                if sensor is not None and sensor.runout_helper.sensor_enabled:
                     sensor.runout_helper.note_clog_tangle(f_trigger)
+                elif sensor is not None:
+                    self.mmu.log_debug(
+                        "FlowGuard %s trigger on '%s' suppressed: sensor is disabled" % (f_trigger, sensor_key))
                 self.deactivate_flowguard(eventtime)
             else:
                 self.mmu.log_debug("FlowGuard detected a %s, but handling is disabled.\nReason for trip: %s" % (f_trigger, f_reason))

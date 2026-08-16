@@ -9,6 +9,9 @@
 # PARAM_NFC_DEEP_READ
 # PARAM_NFC_GATE_JOG_SCAN_WINDOW
 # PARAM_NFC_PRELOAD_JOG_SCAN_WINDOW
+# PARAM_NFC_NEIGHBOR_CHECK
+# PARAM_NFC_NEIGHBOR_EVICT_DISTANCE
+# PARAM_NFC_FIELD_PROBE_READS
 # PARAM_NFC_LED_SEGMENT
 #
 # Shared:
@@ -107,7 +110,7 @@ if MMU_HAS_NFC_READER
         default "$(UNIT_NAME)_nfc"
         help
           The name of the klipper object for this NFC reader. Unless it is going to be shared
-          accross multiple MMU units it is recommended to use the default.
+          across multiple MMU units it is recommended to use the default.
 
       choice CHOICE_NFC_READER_TYPE
         prompt "Reader type       "
@@ -133,11 +136,12 @@ if MMU_HAS_NFC_READER
         config CHOICE_NFC_READER_TYPE_PN532_UART
           bool "PN532 [[DIM]]/ UART"
           help
-            PN532 NFC reader in HSU (High Speed UART) mode, on a USB serial adapter.
+            PN532 in HSU mode on a USB serial adapter. One reader per adapter -
+            for more than one, use "PN532 / I2C" with software I2C instead (a
+            separate bit-banged bus per reader, no extra hardware).
 
-            One reader per adapter. For more than one reader use "PN532 / I2C"
-            and choose software I2C, which gives each reader its
-            own bit-banged bus with no extra hardware.
+            An unplugged adapter does not stop Klipper starting; reconnect it
+            and run MMU_RFID_INIT to recover.
 
        config CHOICE_NFC_READER_TYPE_PN532_SPI
          bool "PN532 [[DIM]]/ SPI[[/DIM]]"
@@ -173,7 +177,7 @@ if MMU_HAS_NFC_READER
           help
             Path of the serial adapter the PN532 is wired to.
             Use the /dev/serial/by-id/ form: it is stable, whereas /dev/ttyUSB0
-            changes when devices are replugged or enumerate in a different order,
+            changes when devices are re-plugged or enumerate in a different order,
             and swapping with another adapter is a confusing failure to diagnose.
             Example: /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
 
@@ -422,7 +426,7 @@ if MMU_HAS_NFC_READER
                    Path of the USB serial adapter for THIS gate's reader. Every gate
                    needs a different one; reusing a port is rejected at startup.
                    List them with: ls /dev/serial/by-id/
-                   Use the by-id form - /dev/ttyUSB0 is not stable across replugs.
+                   Use the by-id form - /dev/ttyUSB0 is not stable across re-plugs.
 
                config PARAM_NFC_READER_BAUD_$(i)
                  int "Gate $(i) baud rate         "
@@ -622,6 +626,45 @@ if MMU_HAS_NFC_READER
         general gate homing endstop), so the safe scan range can differ. Defaults to the same value as the
         gate jog scan window.
         E.g. "-100, 400" means can retract -100mm and extrude 400mm. "0, 0" disables jog scanning during preload
+
+    config BOOL_NFC_NEIGHBOR_CHECK
+      bool "NFC neighbor field check"
+      default n
+      help
+        A neighboring gate's spool can sit inside this gate's RF field, satisfying
+        the preload NFC endstop or MMU_NFC_SCAN before the filament moves and
+        misattributing that spool to this gate. When enabled, the tag's UID is
+        checked against the gate map first: a tag registered elsewhere is refused
+        rather than attributed. Off by default (no extra reader I/O).
+
+        See "NFC neighbor eviction jog" below to also move it out of the way.
+
+    config PARAM_NFC_NEIGHBOR_CHECK
+      int
+      default 1 if BOOL_NFC_NEIGHBOR_CHECK
+      default 0
+
+    config PARAM_NFC_NEIGHBOR_EVICT_DISTANCE
+      float "NFC neighbor eviction jog"
+      default 0
+      help
+        Adds eviction motion on top of the check above: an identified neighboring
+        gate is loaded and jogged this far off its park position until the field
+        clears, then re-parked afterwards. Signed: +ve is forward of the gate,
+        -ve is behind it (forward requires gate_homing_endstop=mmu_exit - see
+        the warning below). Must fit inside the jog scan window above.
+
+        0 disables eviction (default); reader gain is not a substitute.
+
+    config PARAM_NFC_FIELD_PROBE_READS
+      int "NFC field probe reads"
+      default 3
+      range 1 10
+      help
+        How many times to read a gate's reader when asking "is anything in this field?". A
+        tag at the edge of the field - the neighboring-spool signature - reads intermittently,
+        so a single read can miss it. Only used when the neighbor check or eviction jog above
+        is enabled.
 
     choice CHOICE_NFC_LED_SEGMENT
       prompt "NFC reader led feedback segment"

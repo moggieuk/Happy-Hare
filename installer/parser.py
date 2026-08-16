@@ -807,7 +807,15 @@ class Parser(object):
             # else and get swallowed into the gcode value
             elif as_is and peek.type == "section":
                 break
- 
+
+            # A comment's text is prose, not code: quotes/brackets inside it (e.g. a
+            # contraction like "don't") must never affect the brace/bracket/paren/quote
+            # balance used above to detect the end of the gcode value, or the value
+            # swallows everything up to the next [section] - silently absorbing any
+            # variable_* options that follow the gcode: line in the same section.
+            elif as_is and peek.type == "comment":
+                current_entry += next(tokenizer).value
+
             elif not as_is and peek.type == "placeholder":
                 if len(current_entry) > 0:
                     current_line.append(ValueEntryNode(current_entry))

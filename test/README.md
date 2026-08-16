@@ -212,8 +212,8 @@ Tool change requested: T1
 ------------------------------------------------------------------------
 T1   gate 1    LOADED IN NOZZLE           868.0mm  Idle
   print=initialized  SYNCED  t=+2.51s  realtime=100%
-  mmu_entry_1=1  mmu_exit_1=1  filament_compression=1  filament_tension=1  ...
-            nfc pre ent exit/gate shex enc comp/extr nozl
+  mmu_entry_1=1  mmu_exit_1=1  filament_compression=0  filament_tension=0  ...
+            nfc pre ent exit/gate shex enc extr comp nozl
    gate 0    ..  ..  ..     ..     ..   ..     ..     ..     -100.0
   *gate 1    ##  ##  ##     ##     ##   ##     ##     ##     +768.0
 ------------------------------------------------------------------------
@@ -640,16 +640,49 @@ reactor fixes that in theory but breaks `MMU_PRELOAD` in practice (every gate en
 
 ---
 
+## 1b. The filament-display sweep
+
+```
+make filament_display
+make filament_display ARGS='-k UNKNOWN'
+```
+
+Renders `get_filament_position_string()` (the `[T0] ■◉■■◉■┈┈┈...` status line) across
+every sensor/position/`gate_homing_endstop` combination — thousands of them, in
+milliseconds — so a change to that method can be eyeballed everywhere at once instead
+of one console prompt at a time. `filament_display.py` wraps a plain-data
+`FilamentDisplayState` in a duck-typed stand-in for `self` and calls the *real*
+`MmuController.get_filament_position_string` directly, so there's no copy of its logic
+to keep in sync — only the stand-in's attribute names need updating if that method ever
+touches something new on `self`.
+
+Not part of `make test`: this repo's discovery pattern is `*`, not unittest's default
+`test*.py`, so a `test_*.py`-style name alone wouldn't keep this out — `make test` would
+sweep it in and print its whole render matrix as test output. Instead
+`filament_display_review.py` defines a `load_tests(loader, tests, pattern)` hook, which
+unittest's loader always consults in place of collecting `TestCase` subclasses; it
+returns an empty suite unless `HH_FILAMENT_DISPLAY_REVIEW` is set, which only the
+`filament_display` Makefile target does. It's a manual/visual review aid (most of it
+renders combinations for a human to read, not asserts against them), not a correctness
+suite that should gate CI — run it on demand when touching the status line.
+
+`make UT='filament_display_review.py' test` won't work for this reason (same empty
+suite, no env var set) — `make filament_display` is the only entry point.
+
+---
+
 ## 2. What is where
 
 ```
 test/
-  test_mmu_*.py     the tests themselves — this is what you read and write
-  select.py         the file picker `make test` opens (§1)
-  console.py        the interactive console (§1a)
-  hh/               the harness: the fake Klipper and fake Moonraker
-  hh/klippy_root/   41 stand-in modules that pretend to be Klipper's own code
-  installer/        legacy installer tests, currently skipped (see §6)
+  test_mmu_*.py             the tests themselves — this is what you read and write
+  select.py                 the file picker `make test` opens (§1)
+  console.py                the interactive console (§1a)
+  filament_display.py       duck-typed adapter for get_filament_position_string() (§1b)
+  filament_display_review.py  the bulk sweep, run via `make filament_display` (§1b)
+  hh/                       the harness: the fake Klipper and fake Moonraker
+  hh/klippy_root/           41 stand-in modules that pretend to be Klipper's own code
+  installer/                legacy installer tests, currently skipped (see §6)
 ```
 
 The test files, grouped by what they're about:
@@ -692,7 +725,7 @@ Green is not the same as covered. Roughly where things stand:
 
 | Area | State | Notes |
 |---|---|---|
-| Config rendering and load | **solid** | real templates, three machine profiles |
+| Config rendering and load | **solid** | real templates, eight shipped machine/unit profiles |
 | Bootup sequence | **solid** | including the error sentinel that stops bootup faking success |
 | Tag decoding, Spoolman round trip | **solid** | including auto-create and the miss cache |
 | Load / unload / tool change | **good** | the happy path and its common failures |
@@ -701,7 +734,7 @@ Green is not the same as covered. Roughly where things stand:
 | Endless spool and runout | **good** | including the clog-vs-runout decision |
 | LEDs | **good** | effects and overlays; not the neopixel protocol |
 | Sync feedback / buffer sensors | **partial** | EMU's analog sensor boots; the tension logic has a known bug |
-| Physical selector homing and selection | **good** | all three selector families home, select and move filament — `test_mmu_selector.py`. `RotarySelector` also expresses grip as a carriage position, so releasing to the opposing gate is covered there |
+| Selector homing and selection | **good** | `LinearSelector`, `LinearServoSelector`, `LinearMultiGearSelector`, `RotarySelector`, `IndexedSelector`, `ServoSelector`, and `VirtualSelector` are booted or exercised — `test_mmu_selector.py`. `MacroSelector` direct-mode dispatch is covered without executing a user macro |
 | Calibration | **partial** | seeded by default for speed, but `MMU_CALIBRATE_SELECTOR` (manual and `AUTO=1`) and `MMU_CALIBRATE_BOWDEN` run for real — `test_mmu_selector.py` |
 | Developer commands (`_MMU_TEST`) | **partial** | every option is run and must not raise — `test_mmu_dev_test.py`. What the stress probes *provoke* is step-generation timing the harness does not model |
 | Espooler, FlowGuard | **none** | |
@@ -754,6 +787,14 @@ sensor never releases.
 The encoder is not a switch: it reports *motion*, so what matters is how much of a move
 happened while filament covered the wheel. That is `fil.travel_over()`, and the harness
 turns it into real pulses so Happy Hare's own counter callback does the accumulating.
+
+A tension-sprung, two-switch sync-feedback buffer also has travel. It starts squeezed with
+tension triggered. Reaching the extruder opens tension, but passing the nominal coordinate
+during an ordinary Bowden move does not prove contact and cannot build compression. A
+`filament_compression` homing move establishes contact; another 70% of the configured
+`buffer_maxrange` then triggers compression. Gear-only and extruder-only moves change that
+stored travel in opposite directions, so a paced console load visibly passes through tension,
+neutral and compression.
 
 **The fake Moonraker** provides a working in-memory Spoolman — not a mock. When Happy Hare
 auto-creates a spool, a spool really is created, and the next scan of that tag really
@@ -824,6 +865,8 @@ templates** from them, so a broken template shows up as a test failure.
 | `boxturtle` | 4 gates, no NFC — the default for most tests |
 | `tradrack` | a physical (servo) selector, single unit, no encoder — the simplest physical-selector case |
 | `chameleon` | 3D Chameleon: the only `RotarySelector`, and the only machine with no servo — one gear motor reversed on half the gates, and "release" means driving the carriage to the opposing gate's offset |
+| `pico_mmu` | PicoMMU's `ServoSelector`; deliberately boots uncalibrated because its gate angles depend on the physical cam build |
+| `mmx` | MMX's `ServoSelector` with its vendor gate-angle order; also used for a full load/unload selector test |
 | `emu` | 5 gates and the only shipped profile with an analog buffer sensor |
 | `encoder` | BoxTurtle plus an encoder, homing to it instead of to the gate switch |
 | `nfc_single` | one common NFC reader |
@@ -844,7 +887,9 @@ the filament path, which is one scalar per gate and has no carriage. Two **endst
 because the shipped families disagree: the `LinearSelector` family (ERCF, Tradrack) has one home
 switch and reaches gates by plain moves to calibrated offsets, while `IndexedSelector` (ViViD)
 has no home switch at all and one index switch per gate, visited in `selector_gate_order`.
-`RotarySelector` (3D Chameleon) shares the first geometry but not its meaning: with no servo,
+`LinearMultiGearSelector` shares the linear geometry but uses one gear drive per gate and still
+has to home its physical selector axis. `RotarySelector` (3D Chameleon) shares the first
+geometry but not its meaning: with no servo,
 the carriage position *is* the grip — a released gate parks at another gate's offset
 (`selector_release_gates`), so gate → position is not a bijection.
 
