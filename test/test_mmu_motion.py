@@ -118,6 +118,38 @@ class TestModelItself(MotionTestCase):
         self.assertIsNone(self.fil.trip_distance(0, 50., ['mmu_exit_0']),
                           'a 50mm move cannot reach a sensor 100mm away')
 
+    def test_tension_sprung_buffer_uses_configured_travel(self):
+        """Only contact during extruder homing can build compression."""
+        buffer = self.hh.mmu.mmu_machine.units[0].buffer
+        entry = self.fil.layout['extruder_entry']
+        compression = entry + buffer.buffer_maxrange * 0.7
+
+        self.assertAlmostEqual(self.fil.position('filament_compression'), compression)
+
+        self.hh.place_filament(0, position=entry - 1.)
+        self.assertTrue(self.hh.sensor('filament_tension').present)
+        self.assertFalse(self.hh.sensor('filament_compression').present)
+
+        self.hh.place_filament(0, position=entry)
+        self.assertFalse(self.hh.sensor('filament_tension').present)
+        self.assertFalse(self.hh.sensor('filament_compression').present)
+
+        # A calibrated Bowden move can overshoot the nominal coordinate without
+        # proving that the filament has contacted the extruder. It must not squeeze
+        # the buffer merely because the model's absolute tip position passed entry.
+        self.fil.advance(0, buffer.buffer_maxrange, 'move')
+        self.assertFalse(self.hh.sensor('filament_tension').present)
+        self.assertFalse(self.hh.sensor('filament_compression').present)
+
+        trip = self.fil.trip_distance(
+            0, buffer.buffer_maxrange,
+            ['unit0:filament_compression'],
+        )
+        self.assertAlmostEqual(trip[1], buffer.buffer_maxrange * 0.7)
+        self.fil.advance(0, trip[1], 'homing -> unit0:filament_compression')
+        self.assertFalse(self.hh.sensor('filament_tension').present)
+        self.assertTrue(self.hh.sensor('filament_compression').present)
+
 
 class TestGateMapCommand(MotionTestCase):
 

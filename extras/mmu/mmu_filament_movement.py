@@ -1596,9 +1596,9 @@ class MmuFilamentMovement:
                     f"(measured {measured:.1f}mm)"
                 )
 
-                self.set_filament_pos_state(FILAMENT_POS_HOMED_ENTRY)
-
                 if u.p.extruder_homing_endstop == SENSOR_EXTRUDER_ENTRY:
+                    self.set_filament_pos_state(FILAMENT_POS_HOMED_ENTRY)
+
                     # Close the fixed gap from the entry sensor to the extruder gear.
                     actual, _, measured, _ = self.move_filament(
                         "Aligning filament to extruder gear",
