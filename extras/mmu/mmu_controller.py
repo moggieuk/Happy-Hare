@@ -965,7 +965,14 @@ class MmuController(MmuFilamentMovement):
         def entry_marker():
             if self.sensor_manager.has_sensor(SENSOR_ENTRY_PREFIX):
                 return trig_sensor if self.sensor_manager.check_sensor(SENSOR_ENTRY_PREFIX) else empty_sensor
-            return past(FILAMENT_POS_UNLOADED)
+            # NOT past(FILAMENT_POS_UNLOADED): past()'s `pos >= target_pos` can
+            # never be true for FILAMENT_POS_UNKNOWN, since it sits below every
+            # real target_pos rather than further along one -- that left a
+            # one-character gap right after gate_presence_marker() at UNKNOWN
+            # even with a non-empty gate. gate_presence_marker() has no such
+            # comparison (only the same empty-gate guard), so it's already
+            # correct here in every case, UNKNOWN included.
+            return gate_presence_marker()
 
         def gate_sensor_marker(sensor):
             # A fitted sensor's own reading is always shown -- there's no such
@@ -1167,8 +1174,10 @@ class MmuController(MmuFilamentMovement):
         elif direction == DIRECTION_UNLOAD:
             parts.append(" {5}{4}" + UI_ARROW_HOLLOW_LEFT * 3 + "{0}{6}")
 
-        # A genuinely empty gate has no measurements to report
-        if not is_empty:
+        # A genuinely empty gate has no measurements to report -- neither does a
+        # genuinely unknown position, for the same reason: there's nothing
+        # meaningful to measure yet.
+        if not is_empty and pos != FILAMENT_POS_UNKNOWN:
             encoder_str = (
                 " {1}(e:%.1fmm){0}" % self.get_encoder_distance(dwell=None)
                 if self.has_encoder() and self.mmu_unit().p.encoder_move_validation
