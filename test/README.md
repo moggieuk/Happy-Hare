@@ -640,16 +640,49 @@ reactor fixes that in theory but breaks `MMU_PRELOAD` in practice (every gate en
 
 ---
 
+## 1b. The filament-display sweep
+
+```
+make filament_display
+make filament_display ARGS='-k UNKNOWN'
+```
+
+Renders `get_filament_position_string()` (the `[T0] ■◉■■◉■┈┈┈...` status line) across
+every sensor/position/`gate_homing_endstop` combination — thousands of them, in
+milliseconds — so a change to that method can be eyeballed everywhere at once instead
+of one console prompt at a time. `filament_display.py` wraps a plain-data
+`FilamentDisplayState` in a duck-typed stand-in for `self` and calls the *real*
+`MmuController.get_filament_position_string` directly, so there's no copy of its logic
+to keep in sync — only the stand-in's attribute names need updating if that method ever
+touches something new on `self`.
+
+Not part of `make test`: this repo's discovery pattern is `*`, not unittest's default
+`test*.py`, so a `test_*.py`-style name alone wouldn't keep this out — `make test` would
+sweep it in and print its whole render matrix as test output. Instead
+`filament_display_review.py` defines a `load_tests(loader, tests, pattern)` hook, which
+unittest's loader always consults in place of collecting `TestCase` subclasses; it
+returns an empty suite unless `HH_FILAMENT_DISPLAY_REVIEW` is set, which only the
+`filament_display` Makefile target does. It's a manual/visual review aid (most of it
+renders combinations for a human to read, not asserts against them), not a correctness
+suite that should gate CI — run it on demand when touching the status line.
+
+`make UT='filament_display_review.py' test` won't work for this reason (same empty
+suite, no env var set) — `make filament_display` is the only entry point.
+
+---
+
 ## 2. What is where
 
 ```
 test/
-  test_mmu_*.py     the tests themselves — this is what you read and write
-  select.py         the file picker `make test` opens (§1)
-  console.py        the interactive console (§1a)
-  hh/               the harness: the fake Klipper and fake Moonraker
-  hh/klippy_root/   41 stand-in modules that pretend to be Klipper's own code
-  installer/        legacy installer tests, currently skipped (see §6)
+  test_mmu_*.py             the tests themselves — this is what you read and write
+  select.py                 the file picker `make test` opens (§1)
+  console.py                the interactive console (§1a)
+  filament_display.py       duck-typed adapter for get_filament_position_string() (§1b)
+  filament_display_review.py  the bulk sweep, run via `make filament_display` (§1b)
+  hh/                       the harness: the fake Klipper and fake Moonraker
+  hh/klippy_root/           41 stand-in modules that pretend to be Klipper's own code
+  installer/                legacy installer tests, currently skipped (see §6)
 ```
 
 The test files, grouped by what they're about:

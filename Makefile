@@ -175,7 +175,7 @@ restart_klipper = 0
 .SECONDEXPANSION:
 .DEFAULT_GOAL := build
 .PRECIOUS: $(KCONFIG_CONFIG) $(KCONFIG_CONFIG)_%
-.PHONY: menuconfig install uninstall check_version diff test console shots venv installer_venv clean_venv build clean variables python_deps fix_links gen_kconfig kconfig_needs_update olddefconfig verify_pickle
+.PHONY: menuconfig install uninstall check_version diff test console filament_display shots venv installer_venv clean_venv build clean variables python_deps fix_links gen_kconfig kconfig_needs_update olddefconfig verify_pickle
 .SECONDARY: \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
@@ -578,6 +578,12 @@ venv: $(VENV_STAMP)
 installer_venv: $(INSTALLER_STAMP)
 	@:
 
+
+
+###########################
+##### Testing targets #####
+###########################
+
 # Opens the interactive file picker, everything pre-ticked, so Enter runs the whole suite as
 # before. Skipped for UT/ALL/LAST or when stdin isn't a tty - test/select.py decides. Extra
 # unittest flags go through ARGS, e.g. make test ARGS='-k homing'
@@ -595,6 +601,15 @@ console: $(test_prereqs)
 	$(Q)$(using_klippy_env)
 	$(Q)PYTHONPATH="$(SRC)/installer/lib/kconfiglib:$(PYTHONPATH)" \
 		$(TEST_PY) -m test.console $(ARGS)
+
+# Bulk sensor/position/gate_homing_endstop sweep for get_filament_position_string(),
+# Pass flags through ARGS, e.g. make filament_display ARGS='-k UNKNOWN'
+# HH_FILAMENT_DISPLAY_REVIEW gates filament_display_review.py's load_tests hook: unset,
+# `make test`'s pattern='*' discovery loads the module and gets nothing back from it
+filament_display: $(test_prereqs)
+	$(Q)$(using_klippy_env)
+	$(Q)HH_FILAMENT_DISPLAY_REVIEW=1 PYTHONPATH="$(SRC)/installer/lib/kconfiglib:$(PYTHONPATH)" \
+		$(TEST_PY) -m unittest test.filament_display_review -v $(ARGS)
 
 variables:
 	@echo "========================="

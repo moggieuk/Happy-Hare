@@ -759,6 +759,7 @@ class MmuController(MmuFilamentMovement):
         pos = self.filament_pos
         direction = self.filament_direction
         gate_homing_endstop = self.mmu_unit().p.gate_homing_endstop
+        gate_status = self.gate_status[gate] if gate >= 0 else GATE_UNKNOWN
 
         status = self.get_status(0)
         if status['filament_remaining']:
@@ -785,14 +786,19 @@ class MmuController(MmuFilamentMovement):
                 UI_ARROW_FILLED_RIGHT,
             )
 
+        # Placeholder that survives the "no tip beside home" pass below as a
+        # literal tip glyph even when a `home` exists elsewhere -- used where the
+        # leading edge is genuinely past a home point (encoder-homing overshoot;
+        # filament past the nozzle once LOADED).
+        TIP_OVERRIDE = "\x00"
+
         # Helper methods -------
 
         def past(target_pos):
+            # A genuinely empty gate has nothing to show as "already passed"
+            if pos <= FILAMENT_POS_UNLOADED and _gate_empty():
+                return space
             return arrow if pos >= target_pos else space
-
-        def sensor_label(sensor, label=""):
-            marker = trig_sensor if self.sensor_manager.check_sensor(sensor) else empty_sensor
-            return marker + label
 
         def homed_segment(target_pos, label):
             if pos > target_pos:
@@ -812,20 +818,186 @@ class MmuController(MmuFilamentMovement):
 
         def optional_sensor(sensor, target_pos, width=3):
             if self.sensor_manager.has_sensor(sensor):
-                return homed_segment(target_pos, sensor_label(sensor))
+                marker = trig_sensor if self.sensor_manager.check_sensor(sensor) else empty_sensor
+                return homed_segment(target_pos, marker)
             return pad(target_pos, width)
 
-        def gate_segment():
-            # Forward-parked exit sensor: filament is UNLOADED but still sits at/past the
-            # gate sensor (positive gate_parking_distance), so render it as homed there
-            # rather than as not-yet-reached
-            if pos == FILAMENT_POS_UNLOADED and self.sensor_manager.check_sensor(gate_homing_endstop):
-                return home + sensor_label(gate_homing_endstop) + space
-            return optional_sensor(gate_homing_endstop, FILAMENT_POS_HOMED_GATE)
+        # Physical order of the gate-area endstops, gate-ward to extruder-ward --
+        # decides whether the tip has already passed a sensor once homed via a
+        # different, further-along endstop. Anything not in this tuple (shouldn't
+        # happen) is treated as furthest-along/already passed.
+        GATE_SENSOR_ORDER = (SENSOR_EXIT_PREFIX, SENSOR_SHARED_EXIT, SENSOR_ENCODER, SENSOR_EXTRUDER_ENTRY)
+
+        # encoder/extruder are shared across a unit's gates (and the encoder is a
+        # movement latch, not a presence sensor), so a trigger there says nothing
+        # about THIS gate. shared_exit is shared hardware too, but it's a
+        # real-time switch and only the currently selected gate is ever rendered
+        # here, so its reading is real evidence for THIS gate specifically
+        # (unlike _gate_empty()'s at-rest presence check below, which excludes it
+        # since a stale cross-gate reading is a real risk there).
+        PER_GATE_SENSORS = (SENSOR_EXIT_PREFIX, SENSOR_SHARED_EXIT)
+
+        def _furthest_triggered_gate_sensor_index():
+            index = -1
+            for s in PER_GATE_SENSORS:
+                if self.sensor_manager.has_sensor(s) and self.sensor_manager.check_sensor(s):
+                    index = max(index, GATE_SENSOR_ORDER.index(s))
+            return index
+
+        def _parked_forward_cap():
+            # At UNLOADED, absent any trigger, parking convention assumes
+            # filament sits as far forward as possible, capped at the nearest
+            # point real evidence could contradict: a fitted, clear entry sensor
+            # caps it at nothing (matches entry_exit_gap()'s token-sliver rule);
+            # otherwise the cap is one short of the nearest fitted
+            # GATE_SENSOR_ORDER sensor, whose own reading is never overridden here.
+            if self.sensor_manager.check_sensor(SENSOR_ENTRY_PREFIX) is False:
+                return -1
+            for i, s in enumerate(GATE_SENSOR_ORDER):
+                if self.sensor_manager.has_sensor(s):
+                    return i - 1
+            return len(GATE_SENSOR_ORDER) - 1
+
+        def _gate_empty():
+            # gate_status can go stale (e.g. a failed home marks a gate EMPTY
+            # despite filament still being present) -- a triggered entry/exit
+            # sensor always overrides it. Narrower than PER_GATE_SENSORS above:
+            # this question stays limited to sensors that can only ever mean
+            # THIS gate.
+            if gate_status != GATE_EMPTY:
+                return False
+            if self.sensor_manager.check_sensor(SENSOR_ENTRY_PREFIX) is True:
+                return False
+            if self.sensor_manager.check_sensor(SENSOR_EXIT_PREFIX) is True:
+                return False
+            return True
+
+        def _passed_gate_sensor(sensor):
+            # UNKNOWN and UNLOADED both carry no positional info, so both rely
+            # on real sensor evidence; only UNLOADED additionally falls back to
+            # the parked-forward assumption below (a parking-specific
+            # convention, meaningless before a position has even been determined).
+            if pos in (FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN):
+                # A triggered downstream sensor implies every upstream point
+                # was passed too, regardless of this sensor's own reading.
+                if _furthest_triggered_gate_sensor_index() > GATE_SENSOR_ORDER.index(sensor):
+                    return True
+                if pos != FILAMENT_POS_UNLOADED:
+                    return False
+                return not _gate_empty() and _parked_forward_cap() >= GATE_SENSOR_ORDER.index(sensor)
+            if pos > FILAMENT_POS_HOMED_GATE:
+                return True
+            if pos == FILAMENT_POS_HOMED_GATE:
+                try:
+                    return GATE_SENSOR_ORDER.index(gate_homing_endstop) > GATE_SENSOR_ORDER.index(sensor)
+                except ValueError:
+                    return True
+            return False
+
+        def _reached_gate_sensor(sensor):
+            # Same as _passed_gate_sensor but >= rather than > -- "arrived,
+            # maybe not past yet" (decides gate_sensor_gap()'s "just arrived"
+            # split vs full fill).
+            if pos in (FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN):
+                # A sensor's own fitted, directly-triggered reading is the
+                # strongest evidence it's been reached.
+                if self.sensor_manager.has_sensor(sensor) and self.sensor_manager.check_sensor(sensor):
+                    return True
+                if _furthest_triggered_gate_sensor_index() >= GATE_SENSOR_ORDER.index(sensor):
+                    return True
+                if pos != FILAMENT_POS_UNLOADED:
+                    return False
+                return not _gate_empty() and _parked_forward_cap() >= GATE_SENSOR_ORDER.index(sensor)
+            if pos > FILAMENT_POS_HOMED_GATE:
+                return True
+            if pos == FILAMENT_POS_HOMED_GATE:
+                try:
+                    return GATE_SENSOR_ORDER.index(gate_homing_endstop) >= GATE_SENSOR_ORDER.index(sensor)
+                except ValueError:
+                    return True
+            return False
+
+        def _homed_here(sensor):
+            return pos == FILAMENT_POS_HOMED_GATE and gate_homing_endstop == sensor
+
+        def _with_home(fill, sensor):
+            # Swap fill's last char for `home` when exactly homed at `sensor` now
+            if _homed_here(sensor) and fill:
+                return fill[:-1] + home
+            return fill
+
+        def gate_presence_marker():
+            # Filament can be present even when entry hasn't triggered (unfitted,
+            # or not yet reached) -- gate_status decides that. Returns `arrow`
+            # (not `line`) so the tip-restoration pass below can promote it when
+            # it's the furthest-along signal in the whole line; it only stays a
+            # plain line when something later is the genuine last arrow.
+            if pos <= FILAMENT_POS_UNLOADED and _gate_empty():
+                return space
+            return arrow
+
+        def entry_marker():
+            if self.sensor_manager.has_sensor(SENSOR_ENTRY_PREFIX):
+                return trig_sensor if self.sensor_manager.check_sensor(SENSOR_ENTRY_PREFIX) else empty_sensor
+            # NOT past(FILAMENT_POS_UNLOADED): its `pos >= target_pos` comparison
+            # can never be true for UNKNOWN (below every target, not further
+            # along one). gate_presence_marker() has no such comparison and is
+            # correct here in every case.
+            return gate_presence_marker()
+
+        def gate_sensor_marker(sensor):
+            # A fitted sensor's own reading is always shown; only an unfitted
+            # one falls back to inferring passage from a further-along trigger.
+            if self.sensor_manager.has_sensor(sensor):
+                return trig_sensor if self.sensor_manager.check_sensor(sensor) else empty_sensor
+            return arrow if _passed_gate_sensor(sensor) else space
+
+        def gate_sensor_gap(sensor, width=2):
+            if _passed_gate_sensor(sensor):
+                return arrow * width
+            # Split applies when there's no positional info (UNLOADED/UNKNOWN);
+            # HOMED_GATE is a crisp, discrete event, not a partial split.
+            if pos in (FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN) and _reached_gate_sensor(sensor):
+                left = width - width // 2
+                right = width // 2
+                return arrow * left + space * right
+            return space * width
+
+        def entry_exit_gap(width=2):
+            # entry isn't in GATE_SENSOR_ORDER, so this checks its own reading
+            # directly: a token sliver only once entry confirms the tip got that
+            # far; UNKNOWN is treated like UNLOADED since neither carries
+            # positional info of its own.
+            if pos <= FILAMENT_POS_UNLOADED and _gate_empty():
+                return space * width
+            if pos in (FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN) and not _reached_gate_sensor(SENSOR_EXIT_PREFIX):
+                if self.sensor_manager.check_sensor(SENSOR_ENTRY_PREFIX) is not True:
+                    return space * width
+                left = width - width // 2
+                right = width // 2
+                return arrow * left + space * right
+            return arrow * width
+
+        def gate_area_segment():
+            # presence, entry, then [exit marker, gap] and [shared_exit marker,
+            # gap] -- both shown independently, each its own real reading, since a
+            # unit can fit both even though only one is the active
+            # gate_homing_endstop. 2-char gaps (funded by shrinking bowden fill
+            # elsewhere) keep exit/shared_exit/encoder visually distinct. The gap
+            # before the active gate_homing_endstop shows `home` when homed.
+            return (
+                gate_presence_marker()
+                + entry_marker()
+                + _with_home(entry_exit_gap(), SENSOR_EXIT_PREFIX)
+                + gate_sensor_marker(SENSOR_EXIT_PREFIX)
+                + _with_home(gate_sensor_gap(SENSOR_EXIT_PREFIX), SENSOR_SHARED_EXIT)
+                + gate_sensor_marker(SENSOR_SHARED_EXIT)
+                + _with_home(gate_sensor_gap(SENSOR_SHARED_EXIT), SENSOR_ENCODER)
+            )
 
         def nozzle_segment():
             if pos >= FILAMENT_POS_LOADED:
-                return arrow + home + "Nz" + arrow * 2
+                return arrow + home + "Nz" + TIP_OVERRIDE
             if residual_filament_color:
                 return residual_line + gate_mark + "Nz"
             return space + gate_mark + "Nz"
@@ -900,20 +1072,35 @@ class MmuController(MmuFilamentMovement):
             if gate_homing_endstop == SENSOR_ENCODER
             else FILAMENT_POS_IN_BOWDEN
         )
+        # Virtually-triggered the instant we're exactly homed via the encoder
+        # itself, even before pos reaches encoder_ref_pos (movement vs "this is
+        # the endstop we just homed on" are different thresholds)
+        encoder_char = (
+            UI_ENCODER_VIRTUAL_TRIGGER
+            if pos >= encoder_ref_pos or _homed_here(SENSOR_ENCODER)
+            else "e"
+        )
+
+        # The encoder is a movement-based virtual endstop with no physical
+        # trigger point, so homing against it always overshoots slightly --
+        # marked with TIP_OVERRIDE right after the encoder glyph.
+        encoder_overshoots = self.has_encoder() and _homed_here(SENSOR_ENCODER)
 
         parts = [
             tool_text,
-            past(FILAMENT_POS_UNLOADED) * 2,
 
-            gate_segment(),
+            gate_area_segment(),
 
             (
-                "En" + past(encoder_ref_pos) * 2
+                encoder_char
+                + (TIP_OVERRIDE if encoder_overshoots else past(encoder_ref_pos))
+                + past(encoder_ref_pos)
                 if self.has_encoder()
-                else past(encoder_ref_pos) * 4
+                else past(encoder_ref_pos) * 3
             ),
 
-            past(FILAMENT_POS_IN_BOWDEN) * bowden_half,
+            # 2 shorter than nominal -- reclaimed to fund gate_area_segment()'s wider gaps
+            past(FILAMENT_POS_IN_BOWDEN) * max(0, bowden_half - 2),
 
             (
                 buffer_segment()
@@ -921,7 +1108,8 @@ class MmuController(MmuFilamentMovement):
                 else pad(FILAMENT_POS_IN_BOWDEN, 7)
             ),
 
-            past(FILAMENT_POS_END_BOWDEN) * bowden_half,
+            # 2 shorter than nominal -- same reclaiming as above, plus 1 more to trim overall length
+            past(FILAMENT_POS_END_BOWDEN) * max(0, bowden_half - 2),
 
             optional_sensor(SENSOR_EXTRUDER_ENTRY, FILAMENT_POS_HOMED_ENTRY),
 
@@ -934,10 +1122,16 @@ class MmuController(MmuFilamentMovement):
             nozzle_segment(),
         ]
 
+        # Unlike the fill/marker helpers above, the EMPTY/UNLOADED text itself is
+        # never second-guessed by a sensor -- gate_status is what the user (or
+        # gate-map logic) declared, and that word should be trustworthy on its
+        # own even while a sensor's real reading still draws filament above it.
+        is_empty = pos == FILAMENT_POS_UNLOADED and gate_status == GATE_EMPTY
+
         if pos == FILAMENT_POS_LOADED:
             parts.append(" {5}{4}LOADED{0}{6}")
         elif pos == FILAMENT_POS_UNLOADED:
-            parts.append(" {5}{4}UNLOADED{0}{6}")
+            parts.append(" {5}{4}%s{0}{6}" % ("EMPTY" if is_empty else "UNLOADED"))
         elif pos == FILAMENT_POS_UNKNOWN:
             parts.append(" {5}{4}UNKNOWN{0}{6}")
         elif direction == DIRECTION_LOAD:
@@ -945,12 +1139,16 @@ class MmuController(MmuFilamentMovement):
         elif direction == DIRECTION_UNLOAD:
             parts.append(" {5}{4}" + UI_ARROW_HOLLOW_LEFT * 3 + "{0}{6}")
 
-        encoder_str = (
-            " {1}(e:%.1fmm){0}" % self.get_encoder_distance(dwell=None)
-            if self.has_encoder() and self.mmu_unit().p.encoder_move_validation
-            else ""
-        )
-        parts.append(" {5}%.1fmm{6}%s" % (self.drive().get_filament_position(), encoder_str))
+        # A genuinely empty gate has no measurements to report -- neither does a
+        # genuinely unknown position, for the same reason: there's nothing
+        # meaningful to measure yet.
+        if not is_empty and pos != FILAMENT_POS_UNKNOWN:
+            encoder_str = (
+                " {1}(e:%.1fmm){0}" % self.get_encoder_distance(dwell=None)
+                if self.has_encoder() and self.mmu_unit().p.encoder_move_validation
+                else ""
+            )
+            parts.append(" {5}%.1fmm{6}%s" % (self.drive().get_filament_position(), encoder_str))
 
         visual = "".join(parts)
 
@@ -959,22 +1157,29 @@ class MmuController(MmuFilamentMovement):
 
         visual = visual.replace(arrow, line)
 
-        if last_arrow != -1 and (last_home == -1 or not bold):
+        # Arrow-as-tip only applies "in transit" (no `home` present) -- a `home`
+        # marks an exact arrival, so any leftover arrow elsewhere shouldn't also
+        # compete for the tip. In bold, home and arrow are the same glyph, so
+        # this is equivalent to "never restore", matching bold's all-solid look.
+        if last_arrow != -1 and last_home == -1:
             visual = visual[:last_arrow] + arrow + visual[last_arrow + 1:]
 
-        # Post process filament color
+        # bold: arrow==home, folds into `line` like every bold tip; thin: arrow
+        # is the distinct tip glyph these placeholders should render as
+        visual = visual.replace(TIP_OVERRIDE, line if bold else arrow)
+
         if color and gate >= 0:
             if residual_filament_color:
                 rgb_hex = MmuColorUtils.color_to_rgb_hex(residual_filament_color)
                 visual = _color_filament(visual, rgb_hex, residual_line)
             else:
-                # No special color treatment
                 visual = visual.replace(residual_line, line)
 
             rgb_hex = MmuColorUtils.color_to_rgb_hex(self.gate_color[gate], "FFFFFF")
             visual = _color_filament(visual, rgb_hex, line)
 
-            # Get rid of special residual filament character
+            # Must happen after gate_color coloring, else residual_filament_color's
+            # own markup above would be overwritten
             visual = visual.replace(residual_line, line)
 
         return visual

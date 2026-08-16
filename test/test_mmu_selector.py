@@ -717,12 +717,16 @@ class TestMultiUnitSelectors(SelectorTestCase):
         self.assertEqual(self.hh.errors, [])
         self.assertEqual(self.hh.mmu.filament_pos, FILAMENT_POS_UNLOADED)
 
-        # The status line should show the gate as homed (3 blocks then the triggered
-        # marker), not as not-yet-reached, and the trailing state text should read
-        # UNLOADED rather than nothing at all.
+        # gate_status is left GATE_EMPTY by this path (filament_detected excludes
+        # a forward-parked, non-active-endstop exit sensor - see the docstring
+        # above), so the trailing state text correctly reads EMPTY: that text is
+        # always gate_status's word, never second-guessed by a sensor. The exit
+        # sensor's own trigger is still drawn in the fill regardless, so the two
+        # facts - "gate_map says empty" and "something is physically detected" -
+        # are both visible at once rather than one hiding the other.
         visual = self.hh.mmu.get_filament_position_string()
-        self.assertIn('■■■◉', visual)  # UI_SOLID_SQUARE x3 then UI_SENSOR_TRIGGERED
-        self.assertIn('UNLOADED', visual)
+        self.assertIn('◉■■◉', visual)  # entry triggered, gap fully filled, exit triggered
+        self.assertIn('EMPTY', visual)
 
 
 class TestPersistedPositionRestore(unittest.TestCase):
