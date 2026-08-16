@@ -166,7 +166,7 @@ class MmuGateMaps:
         self.mmu.var_manager.set(VARS_MMU_GATE_STATUS, self.gate_status, write=True)
 
 
-    def persist_gate_map(self, spoolman_sync=False, gate_ids=None):
+    def persist_gate_map(self, spoolman_sync=False, gate_ids=None, changed_gate=None):
         self.mmu.var_manager.set(VARS_MMU_GATE_STATUS, self.gate_status)
         self.mmu.var_manager.set(VARS_MMU_GATE_FILAMENT_NAME, self.gate_filament_name)
         self.mmu.var_manager.set(VARS_MMU_GATE_MATERIAL, self.gate_material)
@@ -189,9 +189,11 @@ class MmuGateMaps:
             elif self.p.spoolman_support == SPOOLMAN_READONLY:
                 self.mmu._spoolman_update_filaments(gate_ids)
 
-        self.mmu.led_manager.gate_map_changed(None) # Force full LED update
-        self.mmu.mmu_macro_event(MACRO_EVENT_GATE_MAP_CHANGED, "GATE=-1")
-        self.mmu._moonraker_push_lane_data()
+        self.mmu.led_manager.gate_map_changed(changed_gate)
+        event_gate = -1 if changed_gate is None else changed_gate
+        self.mmu.mmu_macro_event(MACRO_EVENT_GATE_MAP_CHANGED, "GATE=%d" % event_gate)
+        lane_ids = None if changed_gate is None else [(changed_gate, self.gate_spool_id[changed_gate])]
+        self.mmu._moonraker_push_lane_data(lane_ids)
 
 
 # -----------------------------------------------------------------------------------------------------------
@@ -216,9 +218,11 @@ class MmuGateMaps:
 
     # Use mmu entry (and gear) sensors to "correct" gate status
     # Return updated gate_status adjusted by sensor readings
-    def validate_gate_status(self):
+    def validate_gate_status(self, gates=None):
         v_gate_status = list(self.gate_status) # Ensure that webhooks sees get_status() change
-        for gate, status in enumerate(v_gate_status):
+        gates = range(self.num_gates) if gates is None else gates
+        for gate in gates:
+            status = v_gate_status[gate]
             gear_detected = self.mmu.sensor_manager.check_gate_sensor(SENSOR_EXIT_PREFIX, gate)
             if gear_detected is True:
                 v_gate_status[gate] = GATE_AVAILABLE
@@ -228,6 +232,8 @@ class MmuGateMaps:
                     v_gate_status[gate] = GATE_UNKNOWN
                 elif pre_detected is False and status != GATE_EMPTY:
                     v_gate_status[gate] = GATE_EMPTY
+            if status != GATE_EMPTY and v_gate_status[gate] == GATE_EMPTY:
+                self.clear_gate_attributes(gate)
         self.gate_status = v_gate_status
 
 
@@ -289,52 +295,66 @@ class MmuGateMaps:
         if 0 <= gate < self.num_gates:
             if state != self.gate_status[gate]:
                 self.gate_status = list(self.gate_status) # Ensure that webhooks sees get_status() change
+                if state == GATE_EMPTY:
+                    self.clear_gate_attributes(gate)
                 self.gate_status[gate] = state
+                if state == GATE_EMPTY:
+                    self.update_gate_color_rgb()
+                    self.persist_gate_map(
+                        spoolman_sync=True,
+                        gate_ids=[(gate, -1)],
+                        changed_gate=gate
+                    )
+                    return
                 self.persist_gate_status()
                 self.mmu.led_manager.gate_map_changed(gate)
                 self.mmu.mmu_macro_event(MACRO_EVENT_GATE_MAP_CHANGED, "GATE=%d" % gate)
                 self.mmu._moonraker_push_lane_data([(gate, self.gate_spool_id[gate])])
 
 
-    def reset_gate_map(self):
-        self.mmu.log_debug("Resetting gate map")
-        self.gate_status = list(self.p.default_gate_status)
-        self.validate_gate_status()
-        self.gate_filament_name = list(self.p.default_gate_filament_name)
-        self.gate_material = list(self.p.default_gate_material)
-        self.gate_vendor = list(self.p.default_gate_vendor)
-        self.gate_color = list(self.p.default_gate_color)
-        self.gate_temperature = list(self.p.default_gate_temperature)
-        if self.p.spoolman_support in [SPOOLMAN_OFF, SPOOLMAN_PULL]:
-            self.gate_spool_id = [-1] * self.num_gates
-        else:
-            self.gate_spool_id = list(self.p.default_gate_spool_id)
-        self.gate_speed_override = list(self.p.default_gate_speed_override)
-        self.gate_spool_rfid = list(self.p.default_gate_spool_rfid)
+    def reset_gate_map(self, gates=None):
+        gates = list(range(self.num_gates)) if gates is None else list(gates)
+        self.mmu.log_debug("Resetting gate map for gates: %s" % gates)
+        self.renew_gate_map()
+        for gate in gates:
+            self.gate_status[gate] = self.p.default_gate_status[gate]
+        self.validate_gate_status(gates)
+        # Applying defaults after status validation deliberately allows configured
+        # metadata to be added back to a gate whose validated status is EMPTY.
+        for gate in gates:
+            for _, attr, default in self._gate_map_vars:
+                if attr == 'gate_status':
+                    continue
+                default_attr = getattr(self.p, "default_" + attr)
+                getattr(self, attr)[gate] = default_attr[gate] if default_attr else default
+            if self.p.spoolman_support in [SPOOLMAN_OFF, SPOOLMAN_PULL]:
+                self.gate_spool_id[gate] = -1
         self.update_gate_color_rgb()
-        self.persist_gate_map(spoolman_sync=True)
+        self.persist_gate_map(
+            spoolman_sync=True,
+            gate_ids=[(gate, self.gate_spool_id[gate]) for gate in gates]
+        )
+
+
+    def clear_gate_attributes(self, gate):
+        """Clear filament metadata when a gate transitions to EMPTY."""
+        for _, attr, default in self._gate_map_vars:
+            if attr != 'gate_status':
+                getattr(self, attr)[gate] = default
 
 
     def reset_gate(self, gate, status=GATE_EMPTY):
         """
-        Per-gate analog of reset_gate_map, used when filament is ejected: restore the
-        gate's filament attributes (name/material/vendor/color/temperature/speed) to
-        their configured defaults, but force availability to 'status' (the caller
-        knows ground truth - the spool is gone) and always clear the spool identity
-        (spool_id, rfid) regardless of defaults, since the physical spool has been
-        removed. Persists and syncs to spoolman ('push' mode unassigns the gate in
-        the spoolman db; 'readonly' has nothing to sync for a cleared spool_id).
+        Clear a gate when filament is ejected and force availability to ``status``.
+        Configured defaults are restored only by MMU_GATE_MAP RESET=1; an empty gate
+        must not retain metadata for the spool that was physically removed.
         """
         if not (0 <= gate < self.num_gates):
             return
         self.mmu.log_debug("Clearing gate map for gate %d" % gate)
         self.renew_gate_map() # Ensure webhooks sees get_status() change
-        for _, attr, default in self._gate_map_vars:
-            default_attr = getattr(self.p, "default_" + attr)
-            getattr(self, attr)[gate] = default_attr[gate] if default_attr else default
+        self.clear_gate_attributes(gate)
         self.gate_status[gate] = status
-        self.gate_spool_id[gate] = -1
-        self.gate_spool_rfid[gate] = ""
         self.update_gate_color_rgb()
         self.persist_gate_map(spoolman_sync=True, gate_ids=[(gate, -1)])
 

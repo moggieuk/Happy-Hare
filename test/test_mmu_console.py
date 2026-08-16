@@ -1699,6 +1699,23 @@ class TestConsoleScript(unittest.TestCase):
         self.assertTrue(all(not hh.sensor(name).present for name in affected),
                         'EMPTY left one or more gate-path sensors triggered')
 
+    def test_gate_map_reset_restores_the_primed_filament_defaults(self):
+        console = self._make_console(['--no-log', '--plain', '--header', 'off'])
+        hh = console.hh
+        maps = hh.mmu.gate_maps
+        attrs = ('gate_filament_name', 'gate_material', 'gate_vendor', 'gate_color',
+                 'gate_temperature', 'gate_speed_override', 'gate_spool_id',
+                 'gate_spool_rfid')
+        initial = {attr: getattr(maps, attr)[0] for attr in attrs}
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.run_command('MMU_GATE_MAP GATE=0 AVAILABLE=0 QUIET=1')
+            console.run_command('MMU_GATE_MAP GATE=0 RESET=1 QUIET=1')
+
+        self.assertEqual({attr: getattr(maps, attr)[0] for attr in attrs}, initial)
+        self.assertEqual(maps.gate_status[0], 0,
+                         'RESET must not recreate filament removed from the simulator')
+
     def test_gate_map_available_parks_filament_through_the_entry_sensor(self):
         console = self._make_console(['--no-preload', '--no-log', '--plain',
                                       '--header', 'off'])

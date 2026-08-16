@@ -890,7 +890,10 @@ class Session:
         Goes through HH's own set_gate_filament_from_tag (mmu_gate_maps.py:352) rather than
         assigning the lists directly, so the colour is validated, gate_color_rgb is refreshed
         and the map is persisted exactly as a real tag read would leave it. That setter does
-        NOT touch spool_id - a resolved Spoolman spool stays authoritative.
+        NOT touch spool_id - a resolved Spoolman spool stays authoritative. The same values
+        are installed as the harness's configured defaults so MMU_GATE_MAP RESET=1 can restore
+        the reproducible dummy filament map just as it could restore default_gate_XXX values
+        from a real mmu.cfg.
         """
         import random as _random
 
@@ -906,6 +909,11 @@ class Session:
                 'name': '%s %s' % (material, rng.choice(self.FILAMENT_GRADES)),
             }
             self.mmu.gate_maps.set_gate_filament_from_tag(gate, **attrs)
+            self.mmu.p.default_gate_vendor[gate] = attrs['vendor']
+            self.mmu.p.default_gate_material[gate] = attrs['material']
+            self.mmu.p.default_gate_color[gate] = attrs['color'].lower()
+            self.mmu.p.default_gate_temperature[gate] = attrs['temperature']
+            self.mmu.p.default_gate_filament_name[gate] = attrs['name']
             applied[gate] = attrs
         return applied
 
@@ -1069,9 +1077,10 @@ class Session:
         model = self.filament()
         for gate in range(self.mmu.num_gates):
             model.place(gate, tip_position)
+        seeded_status = GATE_AVAILABLE if status is None else status
         self.mmu.var_manager.set(VARS_MMU_GATE_STATUS,
-                                 [GATE_AVAILABLE if status is None else status]
-                                 * self.mmu.num_gates)
+                                 [seeded_status] * self.mmu.num_gates)
+        self.mmu.p.default_gate_status[:] = [seeded_status] * self.mmu.num_gates
         return self
 
     def seed_selection(self, gate, tool=None):

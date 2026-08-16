@@ -119,6 +119,70 @@ class TestModelItself(MotionTestCase):
                           'a 50mm move cannot reach a sensor 100mm away')
 
 
+class TestGateMapCommand(MotionTestCase):
+
+    def test_reset_requires_a_gate_target(self):
+        self.hh.run_gcode('MMU_GATE_MAP GATE=1 MATERIAL=PLA')
+        with self.assertRaisesRegex(Exception, 'requires GATE or GATES'):
+            self.hh.run_gcode('MMU_GATE_MAP RESET=1')
+        self.assertEqual(self.hh.mmu.gate_material[1], 'PLA')
+
+    def test_reset_only_restores_the_requested_gates(self):
+        mmu = self.hh.mmu
+        mmu.p.default_gate_material[0] = 'ABS'
+        mmu.p.default_gate_material[2] = 'PETG'
+        self.hh.run_gcode('MMU_GATE_MAP GATES=0,1,2 MATERIAL=PLA')
+
+        self.hh.run_gcode('MMU_GATE_MAP RESET=1 GATES=0,2')
+
+        self.assertEqual(mmu.gate_material[0], 'ABS')
+        self.assertEqual(mmu.gate_material[1], 'PLA')
+        self.assertEqual(mmu.gate_material[2], 'PETG')
+
+    def test_empty_transition_clears_all_gate_attributes(self):
+        mmu = self.hh.mmu
+        self.hh.run_gcode(
+            'MMU_GATE_MAP GATE=1 AVAILABLE=1 NAME=Basic MATERIAL=PLA '
+            'VENDOR=Maker COLOR=ff0000 TEMP=230 SPEED=50 SPOOLID=7 RFID=abc123'
+        )
+
+        self.hh.run_gcode('MMU_GATE_MAP GATE=1 AVAILABLE=0')
+
+        self.assertEqual(mmu.gate_filament_name[1], '')
+        self.assertEqual(mmu.gate_material[1], '')
+        self.assertEqual(mmu.gate_vendor[1], '')
+        self.assertEqual(mmu.gate_color[1], '')
+        self.assertEqual(mmu.gate_temperature[1], int(mmu.p.default_extruder_temp))
+        self.assertEqual(mmu.gate_speed_override[1], 100)
+        self.assertEqual(mmu.gate_spool_id[1], -1)
+        self.assertEqual(mmu.gate_spool_rfid[1], '')
+
+        # Clearing is transition-based: metadata may intentionally be added later
+        # without first changing the gate away from EMPTY.
+        self.hh.run_gcode('MMU_GATE_MAP GATE=1 MATERIAL=PETG RFID=newtag')
+        self.assertEqual(mmu.gate_material[1], 'PETG')
+        self.assertEqual(mmu.gate_spool_rfid[1], 'newtag')
+
+    def test_runtime_empty_transition_also_clears_attributes(self):
+        mmu = self.hh.mmu
+        self.hh.run_gcode(
+            'MMU_GATE_MAP GATE=2 AVAILABLE=1 NAME=Basic MATERIAL=PLA '
+            'SPOOLID=8 RFID=abc123'
+        )
+
+        mmu.gate_maps.set_gate_status(2, GATE_EMPTY)
+
+        self.assertEqual(mmu.gate_filament_name[2], '')
+        self.assertEqual(mmu.gate_material[2], '')
+        self.assertEqual(mmu.gate_spool_id[2], -1)
+        self.assertEqual(mmu.gate_spool_rfid[2], '')
+
+    def test_help_shows_targeted_reset_example(self):
+        at = len(self.hh.console)
+        self.hh.run_gcode('MMU_GATE_MAP HELP=1')
+        help_text = '\n'.join(self.hh.console[at:])
+        self.assertIn('RESET=1 GATES=4,5', help_text)
+
 class TestEveryDriveModeMovesFilament(MotionTestCase):
     """
     Happy Hare drives filament in four sync modes (mmu_constants.py:169-172), and a plain move
@@ -417,11 +481,8 @@ class TestPreload(MotionTestCase):
 
     def test_a_failed_preload_keeps_an_assigned_spool_id(self):
         """
-        The spool_id is assigned by the entry-insert handler BEFORE the preload runs, so
-        what happens to it on failure matters. Nothing in the failure path clears it -
-        set_gate_status only touches gate_status, and only reset_gate (eject) and
-        reset_gate_map clear gate_spool_id. Pinned because the alternative would mean the
-        assignment had to be deferred until after the preload succeeded.
+        The pending spool is assigned while this gate is already EMPTY, so a failed
+        preload does not constitute a transition into EMPTY and must not clear it.
         """
         mmu = self.hh.mmu
         mmu.pending_spool_id = 7
@@ -431,8 +492,7 @@ class TestPreload(MotionTestCase):
         self.hh.place_filament(2, position=-100000.0)
         self.hh.run_gcode('MMU_PRELOAD GATE=2')
         self.assertEqual(mmu.gate_status[2], GATE_EMPTY)
-        self.assertEqual(mmu.gate_maps.gate_spool_id[2], 7,
-                         'a failed preload must not discard the assigned spool')
+        self.assertEqual(mmu.gate_maps.gate_spool_id[2], 7)
 
     def test_preload_leaves_other_gates_alone(self):
         self.hh.place_filament(0)
