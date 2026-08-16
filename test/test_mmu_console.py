@@ -1681,6 +1681,76 @@ class TestConsoleScript(unittest.TestCase):
         self.assertIn('mmu_entry_1 disabled', out)
         self.assertIn('mmu_entry_1 enabled', out)
 
+    def test_gate_map_empty_removes_filament_from_the_gate_sensors(self):
+        console = self._make_console(['--no-log', '--plain', '--header', 'off'])
+        hh = console.hh
+        # Put this gate through every fitted sensor; other gates remain merely parked.
+        hh.place_filament(0, position=800.)
+        affected = [name for name in console.fil.sensor_names()
+                    if console.fil.gate_of(name) in (None, 0)]
+        self.assertTrue(affected, 'profile has no modelled sensors for gate 0')
+        self.assertTrue(all(hh.sensor(name).present for name in affected),
+                        'precondition: filament did not cover every sensor')
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.run_command('MMU_GATE_MAP GATE=0 AVAILABLE=0 QUIET=1')
+
+        self.assertEqual(hh.mmu.gate_maps.gate_status[0], 0)
+        self.assertTrue(all(not hh.sensor(name).present for name in affected),
+                        'EMPTY left one or more gate-path sensors triggered')
+
+    def test_gate_map_available_parks_filament_through_the_entry_sensor(self):
+        console = self._make_console(['--no-preload', '--no-log', '--plain',
+                                      '--header', 'off'])
+        hh = console.hh
+
+        for available in (1, 2):
+            with self.subTest(available=available):
+                # Force a real status transition for both availability values.
+                with contextlib.redirect_stdout(io.StringIO()):
+                    console.run_command('MMU_GATE_MAP GATE=0 AVAILABLE=0 QUIET=1')
+                    console.run_command(
+                        'MMU_GATE_MAP GATE=0 AVAILABLE=%d QUIET=1' % available)
+                self.assertEqual(hh.mmu.gate_maps.gate_status[0], available)
+                self.assertTrue(hh.sensor('mmu_entry_0').present)
+                self.assertFalse(hh.sensor('mmu_exit_0').present)
+
+    def test_gate_map_unknown_does_not_move_filament_or_change_sensors(self):
+        console = self._make_console(['--no-preload', '--no-log', '--plain',
+                                      '--header', 'off'])
+        hh = console.hh
+        hh.place_filament(0, position=20.)
+        before_tip = console.fil.tip[0]
+        before_sensors = {name: hh.sensor(name).present for name in hh.sensors()}
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.run_command('MMU_GATE_MAP GATE=0 AVAILABLE=-1 QUIET=1')
+
+        self.assertEqual(hh.mmu.gate_maps.gate_status[0], -1)
+        self.assertEqual(console.fil.tip[0], before_tip)
+        self.assertEqual({name: hh.sensor(name).present for name in hh.sensors()},
+                         before_sensors)
+
+    def test_bulk_gate_map_status_update_does_not_move_filament(self):
+        """Moonraker/UI MAP callbacks describe state; only AVAILABLE is a console action."""
+        console = self._make_console(['--no-preload', '--no-log', '--plain',
+                                      '--header', 'off'])
+        hh = console.hh
+        hh.place_filament(0, position=20.)
+        before_tip = console.fil.tip[0]
+        before_sensors = {name: hh.sensor(name).present for name in hh.sensors()}
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            console.run_command(
+                'MMU_GATE_MAP MAP="{0: {\'status\': 0, \'spool_id\': 5}}" '
+                'FROM_SPOOLMAN=1 QUIET=1')
+
+        self.assertEqual(hh.mmu.gate_maps.gate_status[0], 0,
+                         'precondition: bulk callback did not change map status')
+        self.assertEqual(console.fil.tip[0], before_tip)
+        self.assertEqual({name: hh.sensor(name).present for name in hh.sensors()},
+                         before_sensors)
+
     def test_a_disabled_sensor_reads_as_the_third_state(self):
         """Disabled is None, distinct from clear - the header must show it differently."""
         console = self._make_console(['--no-preload', '--no-log', '--plain', '--header', 'sensors'])

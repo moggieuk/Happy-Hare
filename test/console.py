@@ -72,6 +72,11 @@ except Exception:                                   # pragma: no cover - Windows
 # precondition Happy Hare requires before a preload can start (test/README.md section 5).
 TIP_AT_GATE = -40.0
 DEFAULT_TEMP = 220
+# Gate availability values accepted by MMU_GATE_MAP. These stay local because importing
+# production `extras` before hh_session installs fake Klipper contaminates module resolution.
+GATE_EMPTY = 0
+GATE_AVAILABLE = 1
+GATE_AVAILABLE_FROM_BUFFER = 2
 
 
 ####################
@@ -770,6 +775,10 @@ class Console:
     def run_command(self, line):
         mark = len(self.sink)
         unhandled_mark = len(self.hh.gcode.unhandled)
+        gate_status_before = None
+        if (re.match(r'^\s*MMU_GATE_MAP(?:\s|$)', line, re.I)
+                and re.search(r'(?:^|\s)AVAILABLE\s*=', line, re.I)):
+            gate_status_before = list(self.hh.mmu.gate_maps.gate_status)
         # Stream Happy Hare's output as it happens rather than after the command returns.
         # Scoped to here, not global: _dispatch() is also the raw path for setup and for the
         # tests, and both need it silent.
@@ -782,6 +791,8 @@ class Console:
             # parameter would end the session.
             print(paint('!! %s' % exc, '1;31', self.color))
             self.failures += 1
+        if gate_status_before is not None:
+            self._sync_filament_to_gate_map(gate_status_before)
         # Settle whatever the command armed. Re-run unconditionally: a failed advance
         # skips its clock assignment, so this also repairs a mid-flight clock.
         try:
@@ -793,6 +804,22 @@ class Console:
         self.streaming = False
         self._warn_unhandled(line, unhandled_mark)
         self._warn_silent_macro(line, mark)
+
+    def _sync_filament_to_gate_map(self, before):
+        """Make explicit MMU_GATE_MAP availability changes physical in the simulator."""
+        after = self.hh.mmu.gate_maps.gate_status
+        with self.hh.quiet_sensors():
+            for gate, (old, new) in enumerate(zip(before, after)):
+                if old == new:
+                    continue
+                if new == GATE_EMPTY:
+                    self.fil.remove(gate)
+                elif new in (GATE_AVAILABLE, GATE_AVAILABLE_FROM_BUFFER):
+                    # An available gate has filament running back towards its source and
+                    # parked through the entry switch, ready for the MMU to pick up.
+                    self.fil.refill(gate, sync=False)
+                    self.fil.park(gate)
+                # GATE_UNKNOWN describes knowledge, not a physical state: preserve it.
 
     def _home_before_bootup(self):
         """
