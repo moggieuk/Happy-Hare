@@ -903,11 +903,16 @@ class MmuController(MmuFilamentMovement):
         def gate_presence_marker():
             # Filament can be present at the gate even when the entry sensor
             # itself hasn't triggered (not fitted, or fitted but not yet reached)
-            # -- gate_status is the one source of truth for that, shown here as
-            # plain presence, never as a promotable tip.
+            # -- gate_status is the one source of truth for that. Returns `arrow`
+            # (not `line`) like every other fill helper: whenever nothing further
+            # along the line shows real progress, this presence marker IS the
+            # leading edge of what's known, so the global tip-restoration pass
+            # should be free to promote it to a tip glyph -- same convention as
+            # everywhere else in thin style. It only stays a plain arrow-turned-
+            # line when something later in the string is the genuine last arrow.
             if pos <= FILAMENT_POS_UNLOADED and _gate_empty():
                 return space
-            return line
+            return arrow
 
         def entry_marker():
             if self.sensor_manager.has_sensor(SENSOR_ENTRY_PREFIX):
