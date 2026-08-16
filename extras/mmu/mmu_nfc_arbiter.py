@@ -102,6 +102,18 @@ class MmuNfcFieldArbiter:
 
         owner = self.mmu.gate_maps.find_gate_by_rfid(uid)
         if owner is None:
+            """
+            Not the UID most recently read at any gate, but it may still be another of the
+            UIDs registered to the spool at this gate or an adjacent one (a spool can carry
+            a tag on each side); those alias sets come from Spoolman via Moonraker.
+            """
+            self.mmu.log_debug("NFC: gate %d: tag %s not found in primary UID map; checking RFID aliases"
+                               % (gate, uid))
+            owner = self.mmu.gate_maps.find_gate_by_rfid_alias(gate, uid)
+            if owner is None:
+                self.mmu.log_debug("NFC: gate %d: tag %s did not match an RFID alias"
+                                   % (gate, uid))
+        if owner is None:
             return NFC_FIELD_NEIGHBOR, None, ""
         if owner == gate:
             return NFC_FIELD_MINE, owner, ""

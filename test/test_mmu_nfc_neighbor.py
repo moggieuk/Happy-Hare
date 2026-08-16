@@ -275,6 +275,114 @@ class TestGateRfidPlumbing(NeighborTestCase):
         self.hh.mmu.gate_maps.set_gate_rfid(2, TAG.lower())
         self.assertEqual(self.hh.mmu.gate_maps.find_gate_by_rfid(TAG.upper()), 2)
 
+    def test_neighbor_alias_lookup_checks_left_neighbor_first(self):
+        alias = 'BBBB1234'
+        self.hh.mmu.gate_maps.set_gate_rfid(2, TAG)
+        self.hh.mmu.gate_maps.set_gate_rfid_aliases(2, (TAG, alias))
+        self.assertIsNone(self.hh.mmu.gate_maps.find_gate_by_rfid(alias.lower()))
+        self.assertEqual(self.hh.mmu.gate_maps.find_gate_by_rfid_alias(3, alias.lower()), 2)
+
+    def test_own_alias_beats_a_neighbors_alias(self):
+        """
+        A spool can carry a tag on each side, and gate_spool_rfid only ever holds the one most
+        recently read - so the scanning gate's OWN alias set has to be consulted before the
+        neighbors', or its second tag reads as unattributable (PROVISIONAL + an avoidable
+        sweep) rather than a positive MINE.
+        """
+        alias = 'BBBB1234'
+        self.hh.mmu.gate_maps.set_gate_rfid(2, TAG)                     # side A, last read here
+        self.hh.mmu.gate_maps.set_gate_rfid_aliases(2, (TAG, alias))    # side B never read yet
+        self.hh.mmu.gate_maps.set_gate_rfid_aliases(1, (alias,))        # neighbor claims it too
+        self.assertEqual(self.hh.mmu.gate_maps.find_gate_by_rfid_alias(2, alias), 2)
+        verdict, owner, _diag = self.arbiter._field_verdict(2, alias)
+        self.assertEqual((verdict, owner), (NFC_FIELD_MINE, 2))
+
+    def test_global_primary_uid_wins_before_neighbor_aliases(self):
+        alias = 'BBBB1234'
+        self.hh.mmu.gate_maps.set_gate_rfid(2, TAG)
+        self.hh.mmu.gate_maps.set_gate_rfid_aliases(2, (TAG, alias))
+        self.hh.mmu.gate_maps.set_gate_rfid(3, alias)
+        verdict, owner, _diag = self.arbiter._field_verdict(3, alias)
+        self.assertEqual((verdict, owner), (NFC_FIELD_MINE, 3))
+
+    def test_aliases_survive_the_spool_assignment_that_delivered_them(self):
+        """
+        Moonraker sends RFID_ALIASES alongside the SPOOLID it just resolved, so the gate's
+        spool_id is changing on the very command that carries the aliases. assign_spool_id
+        clears the aliases on a spool change (they belong to the outgoing spool), so setting
+        them before it ran silently discarded every alias set the callback ever delivered -
+        leaving gate_spool_rfid_aliases permanently empty on a real machine and
+        find_gate_by_rfid_alias unable to ever match.
+        """
+        alias = 'BBBB1234'
+        self.hh.run_gcode('MMU_GATE_MAP GATE=2 SPOOLID=77 RFID=%s RFID_ALIASES=%s,%s QUIET=1'
+                          % (TAG, TAG, alias))
+        self.assertEqual(self.hh.mmu.gate_maps.gate_spool_id[2], 77)
+        self.assertEqual(self.hh.mmu.gate_maps.gate_spool_rfid_aliases[2], (TAG, alias))
+        self.assertEqual(self.hh.mmu.gate_maps.find_gate_by_rfid_alias(3, alias), 2)
+
+    def test_aliases_are_recorded_under_spoolman_pull(self):
+        """
+        PULL mode rejects a locally-supplied SPOOLID and breaks out of the gate loop, so the
+        alias set has to happen ahead of that rejection - same reasoning as
+        test_uid_is_recorded_locally_even_under_spoolman_pull, which this mirrors.
+        """
+        alias = 'BBBB1234'
+        self.hh.mmu.p.spoolman_support = SPOOLMAN_PULL
+        self.hh.run_gcode('MMU_GATE_MAP GATE=2 SPOOLID=77 RFID=%s RFID_ALIASES=%s,%s QUIET=1'
+                          % (TAG, TAG, alias))
+        self.assertEqual(self.hh.mmu.gate_maps.gate_spool_rfid_aliases[2], (TAG, alias))
+
+    def test_bulk_pull_applies_aliases_from_the_map(self):
+        """
+        Startup / bulk sync in PULL mode arrives as MAP=...REPLACE=1, which is where a
+        PULL-mode machine gets its whole gate map from. It has to carry the aliases across
+        too, or the feature stays dark until every gate happens to be rescanned.
+        """
+        alias = 'BBBB1234'
+        self.hh.mmu.p.spoolman_support = SPOOLMAN_PULL
+        gate_map = {2: {'spool_id': 77, 'rfid': TAG, 'rfid_uids': (TAG, alias)}}
+        self.hh.run_gcode('MMU_GATE_MAP MAP="%s" REPLACE=1 FROM_SPOOLMAN=1 QUIET=1' % gate_map)
+        self.assertEqual(self.hh.mmu.gate_maps.gate_spool_rfid_aliases[2], (TAG, alias))
+
+    def test_bulk_pull_clears_aliases_of_a_replaced_spool(self):
+        """
+        The REPLACE branch assigns gate_spool_id directly, bypassing the assign_spool_id that
+        normally drops an outgoing spool's aliases - so a bulk pull that swaps the spool at a
+        gate would otherwise leave the OLD spool's UIDs claiming it. Stale aliases are the
+        dangerous direction: they read as positive ownership evidence, so the arbiter loads
+        and jogs that gate's filament aside for a tag that is not its own, and returns a hard
+        FOREIGN (refusing a legitimate read) when the eviction can't be done.
+        """
+        self.hh.mmu.gate_maps.set_gate_status(2, GATE_AVAILABLE)
+        self.hh.mmu.gate_maps.assign_spool_id(2, 77)
+        self.hh.mmu.gate_maps.set_gate_rfid_aliases(2, (TAG, 'BBBB1234'))
+        self.hh.mmu.p.spoolman_support = SPOOLMAN_PULL
+        gate_map = {2: {'spool_id': 99, 'rfid': 'CCCC9999', 'rfid_uids': ('CCCC9999',)}}
+        self.hh.run_gcode('MMU_GATE_MAP MAP="%s" REPLACE=1 FROM_SPOOLMAN=1 QUIET=1' % gate_map)
+        self.assertEqual(self.hh.mmu.gate_maps.gate_spool_id[2], 99)
+        self.assertEqual(self.hh.mmu.gate_maps.gate_spool_rfid_aliases[2], ('CCCC9999',))
+        # The departed spool's second tag must no longer point anywhere
+        self.assertIsNone(self.hh.mmu.gate_maps.find_gate_by_rfid_alias(3, 'BBBB1234'))
+
+    def test_a_ui_map_without_aliases_leaves_them_alone(self):
+        """
+        The non-REPLACE batch path also serves the UI, which knows nothing about aliases. An
+        absent key there must preserve what the last scan recorded rather than wipe it (the
+        REPLACE path above deliberately does the opposite - it is a full-map replacement).
+        """
+        alias = 'BBBB1234'
+        self.hh.mmu.gate_maps.assign_spool_id(2, 77)
+        self.hh.mmu.gate_maps.set_gate_rfid_aliases(2, (TAG, alias))
+        gate_map = {2: {'spool_id': 77, 'name': 'PLA Basic', 'material': 'PLA', 'color': 'ff0000'}}
+        self.hh.run_gcode('MMU_GATE_MAP MAP="%s" QUIET=1' % gate_map)
+        self.assertEqual(self.hh.mmu.gate_maps.gate_spool_rfid_aliases[2], (TAG, alias))
+
+    def test_aliases_accept_a_bare_comma_string(self):
+        """A hand-written or UI-sent MAP= can deliver a string; per-character is not a UID."""
+        self.hh.mmu.gate_maps.set_gate_rfid_aliases(2, '%s, BBBB1234' % TAG)
+        self.assertEqual(self.hh.mmu.gate_maps.gate_spool_rfid_aliases[2], (TAG, 'BBBB1234'))
+
     def test_unknown_uid_finds_nothing(self):
         self.assertIsNone(self.hh.mmu.gate_maps.find_gate_by_rfid('NOTAREALTAG'))
 

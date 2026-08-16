@@ -83,6 +83,7 @@ class MmuGateMapCommand(BaseCommand):
         next_spool_id = gcmd.get_int('NEXT_SPOOLID', None, minval=-2)
         lookup = gcmd.get_int('LOOKUP', None, minval=-2, maxval=-1)  # Hidden: failed per-gate lookup result from Moonraker
         created = bool(gcmd.get_int('CREATED', 0, minval=0, maxval=1)) # Set by Moonraker when the UID minted a new spool
+        rfid_aliases = gcmd.get('RFID_ALIASES', None)                 # Hidden: all UIDs registered to the resolved Spoolman spool
 
         gate_map = None
         try:
@@ -216,6 +217,14 @@ class MmuGateMapCommand(BaseCommand):
                         )
                         # RFID is read locally from gate hardware, not owned by spoolman, so preserve it unless explicitly supplied
                         mmu.gate_spool_rfid[gate_idx] = fil.get('rfid', mmu.gate_spool_rfid[gate_idx])
+                        """
+                        Aliases ARE replaced wholesale (unlike rfid above): this branch assigns
+                        spool_id directly, bypassing the assign_spool_id that would otherwise drop
+                        the outgoing spool's aliases. Keeping stale ones is the dangerous direction -
+                        they make the arbiter jog a neighbor aside for a tag that isn't its own -
+                        so an absent/empty value must clear rather than preserve.
+                        """
+                        mmu.gate_maps.set_gate_rfid_aliases(gate_idx, fil.get('rfid_uids') or ())
                         # gate_speed_override and gate_status can be set locally
                 else:
                     # Update map (ui or from spoolman in "readonly" and "push" modes)
@@ -253,6 +262,14 @@ class MmuGateMapCommand(BaseCommand):
                             mod_gate_ids = mmu.gate_maps.assign_spool_id(gate_idx, spool_id)
                             for (g, sid) in mod_gate_ids:
                                 ids_dict[g] = sid
+
+                        """
+                        Refresh aliases only when the sender actually carries them (a UI map has no
+                        notion of them and must not wipe what the last scan set); after
+                        assign_spool_id for the same reason as the per-gate path below.
+                        """
+                        if 'rfid_uids' in fil:
+                            mmu.gate_maps.set_gate_rfid_aliases(gate_idx, fil.get('rfid_uids') or ())
 
                     changed_gate_ids = list(ids_dict.items())
 
@@ -307,13 +324,27 @@ class MmuGateMapCommand(BaseCommand):
                         for (g, sid) in mod_gate_ids:
                             ids_dict[g] = sid
 
+                    """
+                    Must follow assign_spool_id: a spool change clears the gate's aliases,
+                    which would otherwise discard the very set Moonraker just sent alongside
+                    the new SPOOLID (i.e. every first scan of a tag at this gate).
+                    """
+                    if rfid_aliases is not None:
+                        mmu.gate_maps.set_gate_rfid_aliases(gate_idx, rfid_aliases.split(','))
+
                     # A per-gate NFC scan that auto-created a Spoolman spool (console log
                     # complements the gate's LED feedback)
                     if created and spool_id and spool_id > 0:
                         mmu.log_always("Spool ID: created new Spoolman spool %d for scanned tag (gate %d)" % (spool_id, gate_idx))
 
                 else:
-                    # Remote (spoolman) gate map, don't update local attributes that are set by spoolman
+                    """
+                    Remote (spoolman) gate map, don't update local attributes that are set by
+                    spoolman. Aliases are derived from the local scan, not owned by spoolman, and
+                    must be set before the SPOOLID rejection below breaks out of the gate loop.
+                    """
+                    if rfid_aliases is not None:
+                        mmu.gate_maps.set_gate_rfid_aliases(gate_idx, rfid_aliases.split(','))
                     mmu.gate_status[gate_idx] = available
                     if speed_override is not None:
                         mmu.gate_speed_override[gate_idx] = speed_override

@@ -219,7 +219,8 @@ class TestPerGateLookup(MoonrakerTestCase):
     def test_known_tag_assigns_the_gate_directly(self):
         self.hh.call_remote('spoolman_get_spool_by_uid', uid=KNOWN_UID, gate=2,
                             silent=True)
-        self.assertEqual(self.last_gcode(), 'MMU_GATE_MAP GATE=2 SPOOLID=1 QUIET=1')
+        self.assertEqual(self.last_gcode(),
+                         'MMU_GATE_MAP GATE=2 SPOOLID=1 RFID_ALIASES=%s QUIET=1' % KNOWN_UID)
 
     def test_failure_reports_back_per_gate(self):
         """
@@ -425,7 +426,8 @@ class TestAutoCreate(MoonrakerTestCase):
                             metadata=TAG_METADATA, save=True, silent=True)
         sid = self.hh.db.created_spools[0]
         self.assertEqual(self.last_gcode(),
-                         'MMU_GATE_MAP GATE=1 SPOOLID=%d CREATED=1 QUIET=1' % sid)
+                         'MMU_GATE_MAP GATE=1 SPOOLID=%d RFID_ALIASES=%s CREATED=1 QUIET=1'
+                         % (sid, UNKNOWN_UID))
 
 
 class TestReportOnly(MoonrakerTestCase):

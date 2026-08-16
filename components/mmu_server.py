@@ -479,8 +479,10 @@ class MmuServer:
         bed_temp = filament.get('settings_bed_temp', '')
         vendor = filament.get('vendor', {}).get('name', '')
         filament_id = filament.get('id', '')
+        # All RFID tags associated with this spool are cached for gate-map noisy-neighbor resolution.
+        rfid_uids = tuple(self._get_uid_list_from_extra(spool_info.get('extra')))
         rfid = self._get_uid_from_extra(spool_info.get('extra'))
-        return {'spool_id': spool_id, 'material': material, 'color': color_hex, 'name': name, 'temp': temp, 'bed_temp': bed_temp, 'vendor': vendor, 'filament_id': filament_id, 'rfid': rfid}
+        return {'spool_id': spool_id, 'material': material, 'color': color_hex, 'name': name, 'temp': temp, 'bed_temp': bed_temp, 'vendor': vendor, 'filament_id': filament_id, 'rfid': rfid, 'rfid_uids': rfid_uids}
 
 
     async def _build_spool_location_cache(self, fix=False, silent=False) -> bool:
@@ -973,6 +975,15 @@ class MmuServer:
             logging.error(f"NFC: failed to send GATE={gate} LOOKUP={value}: {str(e)}")
 
 
+    def _gate_rfid_aliases_arg(self, spool_id):
+        """Format the cached RFID aliases for a per-gate Klipper callback."""
+        cached = self.spool_location.get(spool_id)
+        if cached is None:
+            return ''
+        aliases = cached[2].get('rfid_uids', ())
+        return ' RFID_ALIASES=' + ','.join(aliases) if aliases else ''
+
+
     async def _send_gate_spoolid(self, gate, spool_id):
         '''
         Confirm a gate<->spool association back to Happy Hare - the same success shape as
@@ -982,7 +993,8 @@ class MmuServer:
         if not self._mmu_backend_enabled():
             return
         try:
-            await self.klippy_apis.run_gcode(f"MMU_GATE_MAP GATE={gate} SPOOLID={spool_id} QUIET=1")
+            aliases = self._gate_rfid_aliases_arg(spool_id)
+            await self.klippy_apis.run_gcode(f"MMU_GATE_MAP GATE={gate} SPOOLID={spool_id}{aliases} QUIET=1")
         except Exception as e:
             logging.error(f"NFC: failed to send GATE={gate} SPOOLID={spool_id}: {str(e)}")
 
@@ -1121,7 +1133,8 @@ class MmuServer:
                 if gate is None:
                     cmd = f"MMU_GATE_MAP NEXT_SPOOLID={spool_id}{created_flag} QUIET=1"
                 else:
-                    cmd = f"MMU_GATE_MAP GATE={gate} SPOOLID={spool_id}{created_flag} QUIET=1"
+                    aliases = self._gate_rfid_aliases_arg(spool_id)
+                    cmd = f"MMU_GATE_MAP GATE={gate} SPOOLID={spool_id}{aliases}{created_flag} QUIET=1"
                 try:
                     logging.debug(f"NFC lookup: callback to Klipper: {cmd}")
                     await self.klippy_apis.run_gcode(cmd)
@@ -1620,6 +1633,7 @@ class MmuServer:
                 if other_spool_id in self.spool_location:
                     printer, other_gate, filament_attr = self.spool_location[other_spool_id]
                     filament_attr['rfid'] = ','.join(other_uids)
+                    filament_attr['rfid_uids'] = tuple(other_uids)
                     self.spool_location[other_spool_id] = (printer, other_gate, filament_attr)
 
             data = {'extra': {MMU_RFID_FIELD: json.dumps(','.join(final_uids))}}
@@ -1647,6 +1661,7 @@ class MmuServer:
             if spool_id in self.spool_location:
                 printer, cached_gate, filament_attr = self.spool_location[spool_id]
                 filament_attr['rfid'] = ','.join(final_uids)
+                filament_attr['rfid_uids'] = tuple(final_uids)
                 self.spool_location[spool_id] = (printer, cached_gate, filament_attr)
 
             if not final_uids:

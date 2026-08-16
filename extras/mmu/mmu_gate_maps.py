@@ -67,6 +67,11 @@ class MmuGateMaps:
             else:
                 default_attr.extend([default] * self.num_gates)
             setattr(self, attr, list(default_attr))
+        """
+        Non-persisted Spoolman RFID aliases for noisy-neighbor ownership lookup.
+        gate_spool_rfid remains the one physical UID most recently read at the gate.
+        """
+        self.gate_spool_rfid_aliases = [tuple() for _ in range(self.num_gates)]
         self.update_gate_color_rgb()
 
         # Helper RGB map used by slicer color projection / UI / LEDs
@@ -341,6 +346,7 @@ class MmuGateMaps:
         for _, attr, default in self._gate_map_vars:
             if attr != 'gate_status':
                 getattr(self, attr)[gate] = default
+        self.gate_spool_rfid_aliases[gate] = tuple()
 
 
     def reset_gate(self, gate, status=GATE_EMPTY):
@@ -361,11 +367,14 @@ class MmuGateMaps:
 
     # Assign spool id to gate and clear from other gates returning list of changes
     def assign_spool_id(self, gate, spool_id):
+        if self.gate_spool_id[gate] != spool_id:
+            self.gate_spool_rfid_aliases[gate] = tuple()
         self.gate_spool_id[gate] = spool_id
         mod_gate_ids = [(gate, spool_id)]
         for i, sid in enumerate(self.gate_spool_id):
             if sid == spool_id and i != gate:
                 self.gate_spool_id[i] = -1
+                self.gate_spool_rfid_aliases[i] = tuple()
                 mod_gate_ids.append((i, -1))
         return mod_gate_ids
 
@@ -417,6 +426,20 @@ class MmuGateMaps:
         self.persist_gate_map(spoolman_sync=False) # Local-only; nothing to push to Spoolman
 
 
+    def set_gate_rfid_aliases(self, gate, rfid_uids):
+        """
+        Cache every RFID UID registered to this gate's Spoolman spool. Accepts a sequence or
+        a comma-separated string - a hand-written or UI-sent MAP= can deliver either, and
+        iterating a bare string would otherwise yield one bogus alias per character.
+        """
+        if not (0 <= gate < self.num_gates):
+            return
+        if isinstance(rfid_uids, str):
+            rfid_uids = rfid_uids.split(',')
+        aliases = tuple(dict.fromkeys(str(uid).strip() for uid in rfid_uids if str(uid).strip()))
+        self.gate_spool_rfid_aliases[gate] = aliases
+
+
     def find_gate_by_rfid(self, rfid):
         """
         Reverse lookup: the first gate registered to tag UID 'rfid', or None. Searches the
@@ -431,6 +454,37 @@ class MmuGateMaps:
         for gate, uid in enumerate(self.gate_spool_rfid):
             if uid and str(uid).lower() == wanted:
                 return gate
+        return None
+
+
+    def find_gate_by_rfid_alias(self, gate, rfid):
+        """
+        Fallback lookup for a UID the primary map (find_gate_by_rfid) doesn't know: match it
+        against the full UID set of the spool sitting at 'gate' itself, then at gate-1, then
+        gate+1, on the same unit only. Returns the owning gate, or None.
+
+        'gate' itself is checked first and matters as much as the neighbors: a spool with a
+        tag on each side presents whichever UID faces the reader, while gate_spool_rfid holds
+        only the one most recently read. Without this the gate's own second tag reads as
+        unattributable and degrades to a PROVISIONAL verdict (and an avoidable sweep) instead
+        of a positive MINE.
+        """
+        if not rfid:
+            return None
+        unit = self.mmu.mmu_unit(gate)
+        wanted = str(rfid).lower()
+        for candidate in (gate, gate - 1, gate + 1):
+            if not unit.owns_gate(candidate):
+                continue
+            aliases = self.gate_spool_rfid_aliases[candidate]
+            if not aliases:
+                continue # Nothing to match and nothing worth logging - the norm with spoolman off
+            self.mmu.log_debug("NFC: gate %d: checking tag %s against gate %d RFID aliases: %s"
+                               % (gate, rfid, candidate, ','.join(aliases)))
+            if any(str(alias).lower() == wanted for alias in aliases):
+                self.mmu.log_debug("NFC: gate %d: tag %s matched gate %d RFID alias"
+                                   % (gate, rfid, candidate))
+                return candidate
         return None
 
 

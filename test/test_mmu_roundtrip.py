@@ -171,7 +171,7 @@ class TestKnownTagResolution(RoundTripTestCase):
         """
         self.rt.present_tag(TAG_A, gate=1, deep=False)
         callbacks = self.rt.gate_map_commands()
-        self.assertIn('MMU_GATE_MAP GATE=1 SPOOLID=1 QUIET=1', callbacks)
+        self.assertIn('MMU_GATE_MAP GATE=1 SPOOLID=1 RFID_ALIASES=%s QUIET=1' % TAG_A, callbacks)
 
         follow_ups = [c for c in callbacks if 'FROM_SPOOLMAN=1' in c and "'material'" in c]
         self.assertTrue(follow_ups,
