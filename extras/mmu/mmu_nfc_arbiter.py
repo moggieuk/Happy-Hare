@@ -45,6 +45,21 @@ from .mmu_constants import *
 from .mmu_utils      import MmuError
 
 
+# Readable verdict names for the log_debug trace below (log_level/log_file_level >= 2). The
+# constants themselves are ints, and a bare number in a trace is worse than useless.
+NFC_FIELD_NAMES = {
+    NFC_FIELD_CLEAR:       'CLEAR',
+    NFC_FIELD_MINE:        'MINE',
+    NFC_FIELD_NEIGHBOR:    'NEIGHBOR',
+    NFC_FIELD_FOREIGN:     'FOREIGN',
+    NFC_FIELD_PROVISIONAL: 'PROVISIONAL',
+}
+
+
+def _verdict_name(verdict):
+    return NFC_FIELD_NAMES.get(verdict, str(verdict))
+
+
 class NfcFieldOutcome:
     """
     What clear_field() yields. 'verdict' is known immediately (before the caller's enclosed
@@ -227,6 +242,13 @@ class MmuNfcFieldArbiter:
         restored instead of silently left loaded.
         """
         saved_status = self.mmu.gate_status[candidate]
+        # [2/4] The decision to move someone else's filament - the first point at which
+        # arbitration stops being read-only and the active gate is deselected
+        self.mmu.log_debug(
+            "NFC: gate %d: evicting gate %d - selecting it, loading to its gate, then jogging "
+            "%.0fmm %s (gate %d status %d will be restored afterwards)"
+            % (gate, candidate, abs(distance), "forward" if distance > 0 else "back",
+               candidate, saved_status))
         try:
             self.mmu.select_gate(candidate)
             self.mmu._load_gate(allow_retry=False)
@@ -258,12 +280,19 @@ class MmuNfcFieldArbiter:
         tried = set()
         verdict = uid = owner = diag = None
         unit = self.mmu.mmu_unit(gate)
-        for _ in range(unit.num_gates + 1):
+        for probe in range(unit.num_gates + 1):
             verdict, uid, owner, diag = self._field_check(gate, nfc_mgr)
+            # [1/4] What the reader actually sees, and how the gate map classified it
+            self.mmu.log_debug(
+                "NFC: gate %d: field probe %d: tag %s -> %s (owner gate %s, evict budget %.0fmm)"
+                % (gate, probe + 1, uid or '(none)', _verdict_name(verdict),
+                   'none' if owner is None else owner, distance))
             if verdict != NFC_FIELD_NEIGHBOR or not distance:
                 break
             candidate = self._next_candidate(gate, owner, tried)
             if candidate is None:
+                self.mmu.log_debug("NFC: gate %d: no evictable candidate left to try - "
+                                    "the field cannot be cleared by moving anything" % gate)
                 break
             tried.add(candidate)
             self._evict_one(gate, candidate, distance, evicted)
@@ -356,6 +385,12 @@ class MmuNfcFieldArbiter:
         eviction blew up part-way and left a neighbor selected.
         """
         if evicted:
+            # [4/4] The tail: putting everyone back. Logged before the moves, so a jam during
+            # a re-park is bracketed by this line and the log_error in _repark_evicted
+            self.mmu.log_debug(
+                "NFC: gate %d: restoring %d evicted neighbor(s) %s to their park positions, "
+                "then reselecting gate %d"
+                % (gate, len(evicted), [c for c, _ in reversed(evicted)], gate))
             self._repark_evicted(gate, distance, evicted)
         try:
             self.mmu.select_gate(gate)
@@ -414,6 +449,19 @@ class MmuNfcFieldArbiter:
                 self.mmu.select_gate(gate) # The enclosed block runs on 'gate', as it did before
             provisional = (verdict == NFC_FIELD_PROVISIONAL)
             outcome = NfcFieldOutcome(verdict)
+            """
+            [3/4] Hand-off to the active gate: this is what the caller (_preload_gate or
+            _jog_scan) is about to act on, and the single most useful line in the trace -
+            it says whether the gate proceeds normally, proceeds with its read held back
+            pending ratification, or is refused a read entirely.
+            """
+            self.mmu.log_debug(
+                "NFC: gate %d: field settled as %s - gate %d reselected, %d neighbor(s) "
+                "currently jogged aside; the operation now %s"
+                % (gate, _verdict_name(verdict), gate, len(evicted),
+                   "proceeds and attributes its read as normal" if verdict in (NFC_FIELD_CLEAR, NFC_FIELD_MINE)
+                   else "proceeds but its read is HELD until ratification" if provisional
+                   else "must proceed WITHOUT attributing a tag"))
             if provisional:
                 # Hold any read the enclosed operation makes for this gate rather than let it
                 # commit immediately - whether it should be trusted at all isn't known until
