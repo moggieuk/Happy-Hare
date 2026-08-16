@@ -843,6 +843,24 @@ class MmuController(MmuFilamentMovement):
                     index = max(index, GATE_SENSOR_ORDER.index(s))
             return index
 
+        def _parked_forward_cap():
+            # At UNLOADED, absent any real trigger, parking convention assumes
+            # filament sits as far forward as possible -- but only up to the
+            # nearest point real evidence could contradict. A fitted, confirmed-
+            # clear entry sensor is the strongest such evidence (nothing has
+            # passed entry at all, full stop -- matches the entry_exit_gap()
+            # token-sliver rule). Otherwise the cap is one short of whichever
+            # GATE_SENSOR_ORDER sensor is fitted nearest the gate: everything
+            # strictly before it is unfitted (no evidence either way) so the
+            # assumption may cover it, but the fitted sensor itself keeps its own
+            # real reading (via gate_sensor_marker()), never overridden here.
+            if self.sensor_manager.check_sensor(SENSOR_ENTRY_PREFIX) is False:
+                return -1
+            for i, s in enumerate(GATE_SENSOR_ORDER):
+                if self.sensor_manager.has_sensor(s):
+                    return i - 1
+            return len(GATE_SENSOR_ORDER) - 1
+
         def _gate_empty():
             # gate_status is persisted and can go stale (e.g. a failed home marks
             # a gate GATE_EMPTY even when filament is still physically present) --
@@ -866,7 +884,12 @@ class MmuController(MmuFilamentMovement):
                 # upstream point was passed too, regardless of this sensor's own
                 # (possibly absent) reading -- avoids a false gap in the line.
                 # Strictly further-than, not as-far-as (see _reached_gate_sensor).
-                return _furthest_triggered_gate_sensor_index() > GATE_SENSOR_ORDER.index(sensor)
+                if _furthest_triggered_gate_sensor_index() > GATE_SENSOR_ORDER.index(sensor):
+                    return True
+                # No real trigger anywhere -- fall back to the parked-forward
+                # assumption, capped at the nearest fitted sensor/entry evidence
+                # (see _parked_forward_cap()), never past a real "clear" reading.
+                return not _gate_empty() and _parked_forward_cap() >= GATE_SENSOR_ORDER.index(sensor)
             if pos > FILAMENT_POS_HOMED_GATE:
                 return True
             if pos == FILAMENT_POS_HOMED_GATE:
@@ -881,7 +904,14 @@ class MmuController(MmuFilamentMovement):
             # past yet". Decides whether a gap reads as "just arrived" vs "long
             # since passed" (gate_sensor_gap).
             if pos == FILAMENT_POS_UNLOADED:
-                return _furthest_triggered_gate_sensor_index() >= GATE_SENSOR_ORDER.index(sensor)
+                # `sensor`'s own fitted, directly-triggered reading is the
+                # strongest possible evidence it's been reached -- checked before
+                # any inference from a different sensor.
+                if self.sensor_manager.has_sensor(sensor) and self.sensor_manager.check_sensor(sensor):
+                    return True
+                if _furthest_triggered_gate_sensor_index() >= GATE_SENSOR_ORDER.index(sensor):
+                    return True
+                return not _gate_empty() and _parked_forward_cap() >= GATE_SENSOR_ORDER.index(sensor)
             if pos > FILAMENT_POS_HOMED_GATE:
                 return True
             if pos == FILAMENT_POS_HOMED_GATE:
