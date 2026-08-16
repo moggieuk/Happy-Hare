@@ -153,6 +153,7 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP
       if CHOICE_ENVIRONMENT_SENSOR_I2C_HARDWARE
         choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS
           prompt "i2c bus name      "
+          default CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C3 if BOARD_TYPE_EBB_GEN1
           default CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C2
           help
             Select the hardware i2c bus to use for the environment sensor
@@ -271,6 +272,7 @@ if MMU_HAS_ENVIRONMENT_SENSOR && !CUSTOM_ENVIRONMENT_SENSOR_SETUP
               choice CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_$(i)
                 prompt "Gate $(i) i2c bus name      "
 
+                default CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C3_$(i) if BOARD_TYPE_EBB_GEN1
                 default CHOICE_ENVIRONMENT_SENSOR_I2C_BUS_I2C2_$(i)
                 help
                   Select the hardware i2c bus to use for the sensor
