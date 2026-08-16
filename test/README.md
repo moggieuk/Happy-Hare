@@ -212,8 +212,8 @@ Tool change requested: T1
 ------------------------------------------------------------------------
 T1   gate 1    LOADED IN NOZZLE           868.0mm  Idle
   print=initialized  SYNCED  t=+2.51s  realtime=100%
-  mmu_entry_1=1  mmu_exit_1=1  filament_compression=1  filament_tension=1  ...
-            nfc pre ent exit/gate shex enc comp/extr nozl
+  mmu_entry_1=1  mmu_exit_1=1  filament_compression=0  filament_tension=0  ...
+            nfc pre ent exit/gate shex enc extr comp nozl
    gate 0    ..  ..  ..     ..     ..   ..     ..     ..     -100.0
   *gate 1    ##  ##  ##     ##     ##   ##     ##     ##     +768.0
 ------------------------------------------------------------------------
@@ -787,6 +787,14 @@ sensor never releases.
 The encoder is not a switch: it reports *motion*, so what matters is how much of a move
 happened while filament covered the wheel. That is `fil.travel_over()`, and the harness
 turns it into real pulses so Happy Hare's own counter callback does the accumulating.
+
+A tension-sprung, two-switch sync-feedback buffer also has travel. It starts squeezed with
+tension triggered. Reaching the extruder opens tension, but passing the nominal coordinate
+during an ordinary Bowden move does not prove contact and cannot build compression. A
+`filament_compression` homing move establishes contact; another 70% of the configured
+`buffer_maxrange` then triggers compression. Gear-only and extruder-only moves change that
+stored travel in opposite directions, so a paced console load visibly passes through tension,
+neutral and compression.
 
 **The fake Moonraker** provides a working in-memory Spoolman — not a mock. When Happy Hare
 auto-creates a spool, a spool really is created, and the next scan of that tag really

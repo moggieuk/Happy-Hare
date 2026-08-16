@@ -78,6 +78,7 @@ class FilamentDisplayState:
     # Per-unit gate endstop config
     gate_homing_endstop: str = SENSOR_ENCODER
     gate_preload_endstop: str = ''  # NOTE: not currently read by get_filament_position_string()
+    extruder_homing_endstop: str = 'none'  # NOTE: not currently read by get_filament_position_string()
 
     # Whether this gate has a spool in it at all (GATE_EMPTY/GATE_AVAILABLE/
     # GATE_UNKNOWN, mmu_constants.py) -- tracked per-gate, independent of pos
@@ -173,6 +174,7 @@ class _MmuUnitShim:
 class _UnitParams:
     def __init__(self, state):
         self.gate_homing_endstop = state.gate_homing_endstop
+        self.extruder_homing_endstop = state.extruder_homing_endstop
         self.encoder_move_validation = state.encoder_move_validation
 
 

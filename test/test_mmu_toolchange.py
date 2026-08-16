@@ -6,17 +6,19 @@
 #
 # WHAT MAKES A FULL LOAD POSSIBLE HERE
 #
-#  - filament_compression is modelled at the extruder entry. BoxTurtle's
+#  - filament_compression is modelled after the extruder entry. BoxTurtle's
 #    extruder_homing_endstop is filament_compression: the MMU pushes filament until it
-#    meets the stationary extruder gears and the buffer compresses. Without that sensor in
-#    the layout a load dies with "Failed to reach extruder 'filament_compression' endstop".
+#    meets the stationary extruder gears, then expands the buffer through 70% of its
+#    configured max range. Without that sensor in the layout a load dies with "Failed to
+#    reach extruder 'filament_compression' endstop".
 #  - the shipped config/macros/*.cfg are loaded verbatim. An unload refuses to run without
 #    _MMU_FORM_TIP ("Filament tip forming macro not found"). They are COPIED not rendered
 #    by the installer (Makefile:148), so the harness reads them raw.
 #  - the extruder is pre-heated. Otherwise HH auto-heats and reports it through log_error
 #    (mmu_controller.py:2456), which lands in the error sentinel.
 #
-# GEOMETRY. park -100, entry -50, gate 0, extruder entry / compression +700, nozzle +740.
+# GEOMETRY. park -100, entry -150, gate 0, extruder entry +700, BoxTurtle compression
+# +708.4 (70% of its 12mm max range), nozzle +740.
 # A loaded filament sits at +768 - past the nozzle by toolhead_extruder_to_nozzle.
 #
 #   ./venv/bin/python -m unittest test.test_mmu_toolchange
@@ -84,6 +86,32 @@ class TestLoad(ToolchangeTestCase):
                         'never homed to the gate')
         self.assertTrue(any('filament_compression' in r for r in reasons),
                         'never homed to the extruder compression sensor')
+
+    def test_compression_home_includes_buffer_travel(self):
+        """Compression trips after the tip reaches the extruder plus 70% of maxrange."""
+        self.hh.mmu.select_gate(0)
+        self.hh.run_gcode('MMU_LOAD')
+        moves = [d for _g, d, reason in self.fil.history
+                 if 'homing -> unit0:filament_compression' in reason]
+        buffer = self.hh.mmu.mmu_machine.units[0].buffer
+        expected = self.fil.layout['extruder_entry'] + buffer.buffer_maxrange * 0.7
+        self.assertTrue(moves)
+        # Loading immediately reverse-homes off compression with the extruder; that
+        # second transition is only a microscopic release move.
+        self.assertAlmostEqual(max(moves), expected, places=3)
+
+    def test_paced_load_shows_all_three_buffer_states(self):
+        """The console pacer exposes tension, neutral and compression while loading."""
+        seen = set()
+        self.hh.set_pacing(1.)
+        self.hh.printer.harness_pace_observer = lambda: seen.add((
+            self.hh.sensor('filament_tension').present,
+            self.hh.sensor('filament_compression').present,
+        ))
+        self.addCleanup(setattr, self.hh.printer, 'harness_pace_observer', None)
+        self.hh.mmu.select_gate(0)
+        self.hh.run_gcode('MMU_LOAD')
+        self.assertTrue({(True, False), (False, False), (False, True)} <= seen)
 
     def test_bowden_distance_is_travelled(self):
         """Gate (0) to extruder (+700) really is covered, not skipped."""

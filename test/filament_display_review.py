@@ -34,6 +34,7 @@ from extras.mmu.mmu_constants import (
     DIRECTION_LOAD, DIRECTION_UNLOAD, DIRECTION_UNKNOWN, TOOL_GATE_BYPASS,
     SENSOR_ENCODER, SENSOR_EXTRUDER_ENTRY, SENSOR_TOOLHEAD, SENSOR_TENSION, SENSOR_COMPRESSION,
     SENSOR_PROPORTIONAL, SENSOR_ENTRY_PREFIX, SENSOR_EXIT_PREFIX, SENSOR_SHARED_EXIT,
+    SENSOR_GEAR_TOUCH, SENSOR_EXTRUDER_NONE,
     GATE_EMPTY, GATE_AVAILABLE, UI_SENSOR_TRIGGERED, UI_SENSOR_EMPTY,
 )
 
@@ -291,6 +292,7 @@ def _position_walk(gate_endstop):
     if gate_endstop == SENSOR_EXTRUDER_ENTRY:
         return [
             ("HOMED_GATE", FILAMENT_POS_HOMED_EXTRUDER),
+            ("HOMED_EXTRUDER", FILAMENT_POS_HOMED_EXTRUDER),
             ("EXTRUDER_ENTRY", FILAMENT_POS_EXTRUDER_ENTRY),
             ("HOMED_TS", FILAMENT_POS_HOMED_TS),
             ("IN_EXTRUDER", FILAMENT_POS_IN_EXTRUDER),
@@ -448,6 +450,7 @@ class TestFilamentDisplayVisualReview(unittest.TestCase):
             visual = render(f"[{sub_label}]", state)
             _assert_sensor_markers(self, visual, sensors, sub_label)
 
+        position_visuals = {}
         for label, pos in _position_walk(gate_endstop):
             sensors = _derive_sensors(pos, gate_endstop, fitted)
             state = FilamentDisplayState(
@@ -457,7 +460,15 @@ class TestFilamentDisplayVisualReview(unittest.TestCase):
                 filament_position=1234.5,
             )
             visual = render(f"[{label}]", state)
+            position_visuals[label] = visual
             _assert_sensor_markers(self, visual, sensors, label)
+
+        if gate_endstop == SENSOR_EXTRUDER_ENTRY:
+            self.assertEqual(
+                position_visuals["HOMED_GATE"],
+                position_visuals["HOMED_EXTRUDER"],
+                "gate homing on the extruder sensor should render at HOMED_EXTRUDER",
+            )
 
     def test_visual_review(self):
         print()
@@ -476,6 +487,69 @@ class TestFilamentDisplayVisualReview(unittest.TestCase):
                 for endstop_label, gate_endstop in valid_endstops:
                     print(f"\n--- {n}) {combo_desc} / gate_endstop={endstop_label} ---")
                     self._render_combo(combo, gate_endstop, is_bold)
+
+
+class TestFilamentDisplayExtruderHomingEndstops(unittest.TestCase):
+    """Focused extruder-area matrix with every displayable sensor fitted."""
+
+    POSITIONS = (
+        FILAMENT_POS_END_BOWDEN,
+        FILAMENT_POS_HOMED_ENTRY,
+        FILAMENT_POS_HOMED_EXTRUDER,
+        FILAMENT_POS_EXTRUDER_ENTRY,
+    )
+    ENDSTOPS = (
+        ("filament_compression", SENSOR_COMPRESSION),
+        ("extruder", SENSOR_EXTRUDER_ENTRY),
+        ("encoder", SENSOR_ENCODER),
+        ("mmu_gear_touch", SENSOR_GEAR_TOUCH),
+        ("none", SENSOR_EXTRUDER_NONE),
+    )
+    FITTED = frozenset((
+        SENSOR_ENTRY_PREFIX,
+        SENSOR_EXIT_PREFIX,
+        SENSOR_SHARED_EXIT,
+        SENSOR_EXTRUDER_ENTRY,
+        SENSOR_TOOLHEAD,
+    ))
+
+    def test_extruder_homing_endstop_matrix(self):
+        print()
+        for style_name, is_bold in BOLD_STYLES:
+            style_header(style_name, is_bold)
+            for endstop_label, extruder_endstop in self.ENDSTOPS:
+                print(
+                    "\n--- all sensors / gate_endstop=exit / "
+                    f"extruder_homing_endstop={endstop_label} ---"
+                )
+                for pos in self.POSITIONS:
+                    sensors = _derive_sensors(pos, SENSOR_EXIT_PREFIX, self.FITTED)
+                    compression_homed = (
+                        extruder_endstop == SENSOR_COMPRESSION
+                        and pos >= FILAMENT_POS_HOMED_ENTRY
+                    )
+                    sensors[SENSOR_COMPRESSION] = compression_homed
+                    sensors[SENSOR_TENSION] = False
+                    state = FilamentDisplayState(
+                        tool=0,
+                        gate=0,
+                        pos=pos,
+                        bold=is_bold,
+                        gate_homing_endstop=SENSOR_EXIT_PREFIX,
+                        extruder_homing_endstop=extruder_endstop,
+                        sensors=sensors,
+                        has_encoder=True,
+                        encoder_move_validation=True,
+                        encoder_distance=1234.5,
+                        has_buffer=True,
+                        sync_feedback_state=(
+                            "compressed" if compression_homed else "neutral"
+                        ),
+                        filament_position=1234.5,
+                    )
+                    visual = render(f"[{POS_NAMES[pos]}]", state)
+                    _assert_sensor_markers(self, visual, sensors, POS_NAMES[pos])
+                    self.assertTrue(visual)
 
 
 class TestFilamentDisplayAllSensorsAlwaysFalse(unittest.TestCase):

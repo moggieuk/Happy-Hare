@@ -396,18 +396,36 @@ class Session:
         The 1-D filament path model for this machine, created on first use and
         published as printer.harness_filament so the fake HomingMove can find it.
 
-        Sensors it does not own are left alone: the buffer spring sensors are held at
-        their configured resting state by apply_initial_sensor_states, and a filament
-        model that also drove them would fight it.
+        Sensors it does not own are left alone. Unsupported buffer types remain at the
+        state established by apply_initial_sensor_states; a tension-sprung two-switch
+        buffer is explicitly claimed by the filament model so its state can change.
         """
         existing = getattr(self.printer, 'harness_filament', None)
         if existing is not None and layout is None:
             return existing
 
         from .filament import FilamentPath
+        from extras.mmu.mmu_constants import (
+            DRIVE_UNSYNCED, DRIVE_EXTRUDER_ONLY,
+        )
+
+        def drive_mode(gate):
+            mode = self.mmu.drive(gate).get_sync_mode()
+            if mode == DRIVE_UNSYNCED:
+                return 'gear'
+            if mode == DRIVE_EXTRUDER_ONLY:
+                return 'extruder'
+            return 'synced'
+
         model = FilamentPath(self.mmu.num_gates, layout=layout)
+        model.configure_buffers(
+            self.mmu.mmu_machine.units,
+            selected_gate=lambda: self.mmu.gate_selected,
+            drive_mode=drive_mode,
+        )
         owned = [name for name in self.sensors()
-                 if name not in getattr(self, '_spring_at_rest', set())
+                 if (name not in getattr(self, '_spring_at_rest', set())
+                     or model.models_sensor(name))
                  and model.position(name) is not None]
         # Which gates each unit owns, so a unit-qualified sensor is not answered from another
         # unit's filament - see FilamentPath.gates_visible_to.

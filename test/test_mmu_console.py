@@ -1687,7 +1687,10 @@ class TestConsoleScript(unittest.TestCase):
         # Put this gate through every fitted sensor; other gates remain merely parked.
         hh.place_filament(0, position=800.)
         affected = [name for name in console.fil.sensor_names()
-                    if console.fil.gate_of(name) in (None, 0)]
+                    if console.fil.gate_of(name) in (None, 0)
+                    # Buffer switches report stored slack/tension, not filament
+                    # presence, and are intentionally not all true at once.
+                    and not console.fil.models_sensor(name)]
         self.assertTrue(affected, 'profile has no modelled sensors for gate 0')
         self.assertTrue(all(hh.sensor(name).present for name in affected),
                         'precondition: filament did not cover every sensor')
@@ -2120,6 +2123,49 @@ class TestTheDefaultProfile(unittest.TestCase):
         self.assertGreater(len(seen), 50, 'a whole load produced only a handful of updates')
         self.assertGreater(len(set(seen)), 50, 'the filament did not move between updates')
         self.assertEqual(seen, sorted(seen), 'a load should only ever feed filament forwards')
+
+    def test_gate9_compression_rises_only_during_extruder_home(self):
+        """ViViD's buffer must stay uncompressed throughout its Bowden move."""
+        from extras.mmu.mmu_constants import (
+            FILAMENT_POS_HOMED_ENTRY,
+            FILAMENT_POS_HOMED_EXTRUDER,
+            FILAMENT_POS_LOADED,
+        )
+        console = self.console
+        hh = console.hh
+        hh.set_pacing(1.)
+        compression = hh.sensor('unit1:filament_compression')
+        previous = [compression.present]
+        rising_reasons = []
+        filament_states = []
+
+        def observe(gate, delta, start_tip, start_tail):
+            if gate != 9:
+                return
+            present = compression.present
+            if present and not previous[0]:
+                rising_reasons.append(console.fil.history[-1][2])
+            previous[0] = present
+
+        console.fil.observers.append(observe)
+        hh.run_gcode('MMU_SELECT GATE=9')
+        original_set_state = hh.mmu.set_filament_pos_state
+
+        def record_state(state, silent=False):
+            filament_states.append(state)
+            return original_set_state(state, silent=silent)
+
+        hh.mmu.set_filament_pos_state = record_state
+        self.addCleanup(setattr, hh.mmu, 'set_filament_pos_state', original_set_state)
+        hh.run_gcode('MMU_LOAD')
+
+        self.assertEqual(rising_reasons,
+                         ['homing -> unit1:filament_compression'])
+        self.assertNotIn(FILAMENT_POS_HOMED_ENTRY, filament_states,
+                         'compression homing must not masquerade as entry-sensor homing')
+        self.assertIn(FILAMENT_POS_HOMED_EXTRUDER, filament_states)
+        self.assertEqual(hh.mmu.filament_pos, FILAMENT_POS_LOADED)
+        self.assertEqual(hh.errors, [])
 
     def test_pacing_does_not_change_where_the_filament_ends_up(self):
         """Slicing a move must be exact - the totals cannot drift from the unpaced answer."""
