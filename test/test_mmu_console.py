@@ -1917,6 +1917,26 @@ class TestTheDefaultProfile(unittest.TestCase):
         )
         self.assertIn(UI_SOLID_TRIANGLE, selct)
 
+    def test_unknown_gate_keeps_its_colored_swatch_and_selector_triangle(self):
+        """Unknown describes availability, so it must not hide known filament color."""
+        from extras.mmu.mmu_constants import GATE_UNKNOWN, UI_SOLID_SQUARE, UI_SOLID_TRIANGLE
+
+        mmu = self.console.hh.mmu
+        gate = mmu.gate_selected
+        mmu.gate_status[gate] = GATE_UNKNOWN
+        mmu.gate_color[gate] = 'ff0000'
+        square = '{{ff0000}}%s{{}}' % UI_SOLID_SQUARE
+        triangle = '{{ff0000}}%s{{}}' % UI_SOLID_TRIANGLE
+
+        visual = mmu._mmu_visual_to_string().split('\n')
+        avail = next(line for line in visual if line.startswith('Avail:'))
+        selct = next(line for line in visual if line.startswith('Selct:'))
+        self.assertIn('|%s?%s|' % (square, square), avail)
+        self.assertIn('|\\%s/|' % triangle, selct)
+
+        gate_row = mmu.gate_maps.gate_map_to_string().splitlines()[gate + 1]
+        self.assertIn('(%s?%s)' % (square, square), gate_row)
+
     def test_the_homing_chatter_stays_out_of_the_banner(self):
         """
         Homing has to precede bootup, but "Homing MMU unit0... / Homed" is setup rather than
