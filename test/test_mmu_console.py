@@ -1904,6 +1904,19 @@ class TestTheDefaultProfile(unittest.TestCase):
         self.assertNotIn('X', selct, 'the selector reads as unhomed at bootup')
         self.assertNotIn('[T?]', joined, 'bootup rendered an unknown tool')
 
+    def test_selected_available_gate_has_a_filament_triangle(self):
+        """An available gate keeps its tip marker even while filament is parked at the gate."""
+        from extras.mmu.mmu_constants import GATE_AVAILABLE, UI_SOLID_TRIANGLE
+
+        mmu = self.console.hh.mmu
+        self.assertEqual(mmu.filament_pos, 0, 'precondition: filament is parked at the gate')
+        self.assertGreaterEqual(mmu.gate_status[mmu.gate_selected], GATE_AVAILABLE)
+        selct = next(
+            line for line in mmu._mmu_visual_to_string().split('\n')
+            if line.startswith('Selct:')
+        )
+        self.assertIn(UI_SOLID_TRIANGLE, selct)
+
     def test_the_homing_chatter_stays_out_of_the_banner(self):
         """
         Homing has to precede bootup, but "Homing MMU unit0... / Homed" is setup rather than
