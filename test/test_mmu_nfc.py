@@ -53,6 +53,39 @@ class TestPerGateNfcBoots(unittest.TestCase):
     def test_no_shared_reader_in_per_gate_mode(self):
         self.assertIsNone(self.unit().nfc_manager.shared_reader)
 
+    def test_gate_map_displays_uppercase_rfid_uid_as_own_field_without_spool_id(self):
+        self.hh.run_gcode('MMU_GATE_MAP GATE=0 RFID=ab12cd34 QUIET=1')
+
+        gate_row = self.hh.mmu.gate_maps.gate_map_to_string().splitlines()[1]
+
+        self.assertIn('(AB12CD34);', gate_row)
+        self.assertNotIn('Unknown | AB12CD34', gate_row)
+
+    def test_gate_map_displays_uppercase_rfid_uid_after_spool_id(self):
+        hh = session('nfc_spoolman')
+        try:
+            hh.boot()
+            hh.run_gcode('MMU_GATE_MAP GATE=0 SPOOLID=8 RFID=ab12cd34 QUIET=1')
+
+            gate_row = hh.mmu.gate_maps.gate_map_to_string().splitlines()[1]
+
+            self.assertIn('Id: 8 (AB12CD34) -->', gate_row)
+            self.assertNotIn('(AB12CD34);', gate_row)
+        finally:
+            hh.close()
+
+    def test_gate_map_justifies_material_to_five_characters(self):
+        self.hh.run_gcode('MMU_GATE_MAP GATE=1 MATERIAL=TPU QUIET=1')
+        self.hh.run_gcode('MMU_GATE_MAP GATE=2 MATERIAL=PLA+ QUIET=1')
+
+        gate_rows = [
+            line.replace('\xa0', ' ')
+            for line in self.hh.mmu.gate_maps.gate_map_to_string().splitlines()
+        ]
+
+        self.assertIn('TPU   |', gate_rows[2])
+        self.assertIn('PLA+  |', gate_rows[3])
+
     def test_reader_sections_are_registered_objects(self):
         for i in range(4):
             self.assertIn('mmu_nfc_reader unit0_nfc%d' % i, self.hh.printer.objects)

@@ -582,21 +582,25 @@ class MmuGateMaps:
             gate_fstr = "{}({}){}:".format(gate_fstr, filament_char, tools_fstr).ljust(14 + len(filament_char), UI_SPACE)
 
             available_fstr = "{};".format(available).ljust(11, UI_SPACE)
-            fil_fstr = "{} | {}{}C | {} | {}".format(material, temperature, UI_DEGREE, color, name)
-            rfid_fstr = " | RFID" if self.gate_spool_rfid[g] else ""
+            material_fstr = material.ljust(5, UI_SPACE)
+            fil_fstr = "{} | {}{}C | {} | {}".format(material_fstr, temperature, UI_DEGREE, color, name)
+            rfid = (self.gate_spool_rfid[g] or "").upper()
+            rfid_fstr = "({});".format(rfid).ljust(12, UI_SPACE) if rfid else ""
 
             spool_option = (str(self.gate_spool_id[g]) if self.gate_spool_id[g] > 0 else "n/a")
             if self.p.spoolman_support == SPOOLMAN_OFF:
-                spool_fstr = ""
+                spool_fstr = rfid_fstr
             elif self.gate_spool_id[g] <= 0:
-                spool_fstr = "Id: {};".format(spool_option).ljust(12, UI_SPACE)
+                spool_fstr = rfid_fstr or "Id: {};".format(spool_option).ljust(12, UI_SPACE)
+            elif rfid:
+                spool_fstr = "Id: {} ({}) --> ".format(spool_option, rfid)
             else:
                 spool_fstr = "Id: {}".format(spool_option).ljust(8, UI_SPACE) + "--> "
 
             speed_fstr = " [Speed:{}%]".format(self.gate_speed_override[g]) if self.gate_speed_override[g] != 100 else ""
             extra_fstr = " [SELECTED]" if g == self.mmu.gate_selected else ""
 
-            msg += "\n{}{}{}{}{}{}".format(gate_fstr, available_fstr, spool_fstr, fil_fstr, rfid_fstr, speed_fstr, extra_fstr)
+            msg += "\n{}{}{}{}{}{}".format(gate_fstr, available_fstr, spool_fstr, fil_fstr, speed_fstr, extra_fstr)
         return msg
 
 
