@@ -1289,6 +1289,22 @@ class MmuTestCommand(BaseCommand):
                     % ("ARMED" if armed else "not armed", u.p.nfc_neighbor_check,
                        u.p.nfc_neighbor_evict_distance, u.p.nfc_field_probe_reads))
 
+                """
+                What the ownership lookup actually has to work with, for this gate and the two
+                the alias fallback consults. 'rfid' is the single UID most recently read at that
+                gate (the primary map, searched machine-wide); 'aliases' is the full UID set of
+                that gate's Spoolman spool, pushed by Moonraker on a successful lookup and held
+                only in memory - it is not persisted and survives no restart, so an empty set on
+                a gate that has not been scanned since boot is expected, not a fault.
+                """
+                gm = mmu.gate_maps
+                for g in (gate - 1, gate, gate + 1):
+                    if not u.owns_gate(g):
+                        continue
+                    log("NFC_FIELD: gate %d: spool_id=%d rfid=%s aliases=%s"
+                        % (g, gm.gate_spool_id[g], gm.gate_spool_rfid[g] or '(none)',
+                           ','.join(gm.gate_spool_rfid_aliases[g]) or '(none)'))
+
                 if verdict == NFC_FIELD_NEIGHBOR:
                     candidates = arbiter._neighbor_candidates(gate, owner)
                     log("NFC_FIELD: candidate order (identity first, then physical "
