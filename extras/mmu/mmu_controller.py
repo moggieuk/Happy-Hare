@@ -830,11 +830,18 @@ class MmuController(MmuFilamentMovement):
         # happen) is treated as furthest-along/already passed.
         GATE_SENSOR_ORDER = (SENSOR_EXIT_PREFIX, SENSOR_SHARED_EXIT, SENSOR_ENCODER, SENSOR_EXTRUDER_ENTRY)
 
-        # shared_exit/encoder/extruder are shared across a unit's gates (and the
-        # encoder is a movement latch, not a presence sensor) -- a trigger there
-        # says nothing about THIS gate specifically, so the UNLOADED forward-park
-        # inference below may only draw on the one genuinely per-gate sensor.
-        PER_GATE_SENSORS = (SENSOR_EXIT_PREFIX,)
+        # encoder/extruder are shared across a unit's gates (and the encoder is a
+        # movement latch, not a presence sensor) -- a trigger there says nothing
+        # about THIS gate specifically. shared_exit is ALSO shared hardware, but
+        # unlike those two it's a real-time switch: get_filament_position_string()
+        # only ever renders the currently selected/engaged gate, so its reading
+        # right now genuinely reflects that gate's own progress (this is a
+        # different question from _gate_empty()'s "is this gate empty", which
+        # deliberately still excludes it -- a stale reading left over from
+        # whichever gate was selected before this one is a real risk for an
+        # at-rest presence check, not for inferring how far THIS gate's tip has
+        # travelled once its own entry/exit already confirm it's moved at all).
+        PER_GATE_SENSORS = (SENSOR_EXIT_PREFIX, SENSOR_SHARED_EXIT)
 
         def _furthest_triggered_gate_sensor_index():
             index = -1
@@ -866,10 +873,13 @@ class MmuController(MmuFilamentMovement):
             # a gate GATE_EMPTY even when filament is still physically present) --
             # a triggered entry or exit sensor always overrides it, same as
             # gate_sensor_marker() never lets gate_status hide a real reading.
-            # Deliberately only entry/exit, NOT _furthest_triggered_gate_sensor_index()
-            # -- shared_exit/encoder/extruder_entry are shared across a unit's gates
-            # (see gate-endstop-invariants), so a reading there says nothing about
-            # whether THIS gate specifically is empty.
+            # Deliberately its own entry/exit-only check, NOT
+            # _furthest_triggered_gate_sensor_index() (which now also allows
+            # shared_exit, for a different purpose -- see PER_GATE_SENSORS above):
+            # a stale shared_exit reading left over from whichever gate was
+            # selected before this one is a real risk for an at-rest presence
+            # check specifically, so this question stays limited to sensors that
+            # can only ever mean THIS gate.
             if gate_status != GATE_EMPTY:
                 return False
             if self.sensor_manager.check_sensor(SENSOR_ENTRY_PREFIX) is True:
@@ -879,13 +889,19 @@ class MmuController(MmuFilamentMovement):
             return True
 
         def _passed_gate_sensor(sensor):
-            if pos == FILAMENT_POS_UNLOADED:
+            # UNKNOWN shares UNLOADED's total absence of positional information --
+            # real sensor evidence is all there is either way -- but NOT the
+            # parked-forward assumption below: that's a parking-specific
+            # convention, meaningless before a position has even been determined.
+            if pos in (FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN):
                 # Forward-parked: a triggered downstream sensor implies every
                 # upstream point was passed too, regardless of this sensor's own
                 # (possibly absent) reading -- avoids a false gap in the line.
                 # Strictly further-than, not as-far-as (see _reached_gate_sensor).
                 if _furthest_triggered_gate_sensor_index() > GATE_SENSOR_ORDER.index(sensor):
                     return True
+                if pos != FILAMENT_POS_UNLOADED:
+                    return False
                 # No real trigger anywhere -- fall back to the parked-forward
                 # assumption, capped at the nearest fitted sensor/entry evidence
                 # (see _parked_forward_cap()), never past a real "clear" reading.
@@ -903,7 +919,7 @@ class MmuController(MmuFilamentMovement):
             # Like _passed_gate_sensor but >= rather than > -- "arrived, maybe not
             # past yet". Decides whether a gap reads as "just arrived" vs "long
             # since passed" (gate_sensor_gap).
-            if pos == FILAMENT_POS_UNLOADED:
+            if pos in (FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN):
                 # `sensor`'s own fitted, directly-triggered reading is the
                 # strongest possible evidence it's been reached -- checked before
                 # any inference from a different sensor.
@@ -911,6 +927,8 @@ class MmuController(MmuFilamentMovement):
                     return True
                 if _furthest_triggered_gate_sensor_index() >= GATE_SENSOR_ORDER.index(sensor):
                     return True
+                if pos != FILAMENT_POS_UNLOADED:
+                    return False
                 return not _gate_empty() and _parked_forward_cap() >= GATE_SENSOR_ORDER.index(sensor)
             if pos > FILAMENT_POS_HOMED_GATE:
                 return True
@@ -960,10 +978,11 @@ class MmuController(MmuFilamentMovement):
         def gate_sensor_gap(sensor, width=2):
             if _passed_gate_sensor(sensor):
                 return arrow * width
-            # Split arrow/space only applies to the UNLOADED forward-parked
-            # ambiguity -- HOMED_GATE is a crisp, discrete event (home + space,
-            # like every other homed_segment()), not a partial/ambiguous split.
-            if pos == FILAMENT_POS_UNLOADED and _reached_gate_sensor(sensor):
+            # Split arrow/space applies whenever there's no positional info to
+            # go on (UNLOADED forward-parked, or UNKNOWN) -- HOMED_GATE is a
+            # crisp, discrete event (home + space, like every other
+            # homed_segment()), not a partial/ambiguous split.
+            if pos in (FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN) and _reached_gate_sensor(sensor):
                 left = width - width // 2
                 right = width // 2
                 return arrow * left + space * right
@@ -974,20 +993,17 @@ class MmuController(MmuFilamentMovement):
             # reading directly: a token sliver (one tip char) only once entry has
             # confirmed the tip got that far; otherwise gate_presence_marker() is
             # the only "something's here" signal, until exit itself is reached.
+            # UNKNOWN is treated the same as UNLOADED here -- neither carries any
+            # positional information of its own, so real sensor evidence (exit
+            # reached, or entry's own reading) is all either state has to go on.
             if pos <= FILAMENT_POS_UNLOADED and _gate_empty():
                 return space * width
-            if pos == FILAMENT_POS_UNLOADED and not _reached_gate_sensor(SENSOR_EXIT_PREFIX):
+            if pos in (FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN) and not _reached_gate_sensor(SENSOR_EXIT_PREFIX):
                 if self.sensor_manager.check_sensor(SENSOR_ENTRY_PREFIX) is not True:
                     return space * width
                 left = width - width // 2
                 right = width // 2
                 return arrow * left + space * right
-            # Strictly below UNLOADED (i.e. FILAMENT_POS_UNKNOWN) has no evidence
-            # of any progress at all -- pos == UNLOADED falls through here too
-            # (the branch above only returns early when NOT yet reached), and
-            # that "reached" case legitimately wants the arrow fill below.
-            if pos < FILAMENT_POS_UNLOADED:
-                return space * width
             return arrow * width
 
         def gate_area_segment():
