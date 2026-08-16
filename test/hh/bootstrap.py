@@ -1153,7 +1153,9 @@ class Session:
         homed = []
         for index, unit in enumerate(self.mmu.mmu_machine.units):
             if getattr(unit.selector, 'selector_stepper', None) is not None:
-                self.gcode.run_script('MMU_HOME UNIT=%d' % index)
+                # The harness knows its freshly-created selector paths are empty even when
+                # preloaded gate sensors make the machine-wide filament state ambiguous.
+                self.gcode.run_script('MMU_HOME UNIT=%d FORCE_UNLOAD=0' % index)
                 homed.append(unit.name)
         return homed
 

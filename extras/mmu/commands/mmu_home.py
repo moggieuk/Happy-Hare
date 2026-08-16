@@ -28,7 +28,7 @@ class MmuHomeCommand(BaseCommand):
         f"{CMD}: {HELP_BRIEF}\n"
         + "UNIT         = #(int)|_name_|ALL Specify unit by name, number or all-units (optional if single unit)\n"
         + "TOOL         = #(int) Optionally select tool number after homing\n"
-        + "FORCE_UNLOAD = [0|1]  Force unloaded of filament\n"
+        + "FORCE_UNLOAD = [0|1]  Omit to unload when needed; 1 forces recovery; 0 homes without unloading\n"
         + "SKIP_HOMED   = [0|1]  Skip homing of units that are already homed\n"
         + "(no parameters: home selector on single unit setup and select T0)\n"
     )

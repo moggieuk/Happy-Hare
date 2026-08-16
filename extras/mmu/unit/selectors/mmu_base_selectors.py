@@ -332,31 +332,17 @@ class PhysicalSelector(BaseSelector, object):
 
     def home(self, force_unload = None):
         """
-        Home the selector, optionally unloading filament first.
+        Home the physical selector mechanism.
 
-        If bypass is active, homing is skipped. When requested (or required by
-        filament state), triggers an unload sequence before selector homing.
+        Filament unload policy is owned by MmuController.home_unit(), which can
+        make the decision while the selected gate still identifies the correct
+        unit and drive. The argument remains for selector interface compatibility.
         """
         if not self.requires_homing: return
         if self.check_if_unit_bypass(): return
 
         with self.mmu.wrap_action(ACTION_HOMING):
             self.mmu.log_info("Homing MMU %s..." % self.mmu_unit.name)
-
-            if force_unload is not None:
-                self.mmu.log_debug("(asked to %s)" % ("force unload" if force_unload else "not unload"))
-
-            if force_unload is True:
-                # Forced unload case for recovery
-                self.mmu.unload_sequence(check_state=True)
-
-            elif (
-                force_unload is None and
-                self.mmu_unit.manages_gate(self.mmu.gate_selected)
-                and self.mmu.filament_pos != FILAMENT_POS_UNLOADED
-            ):
-                # Automatic unload case
-                self.mmu.unload_sequence()
 
             self._home_selector()
 
@@ -377,7 +363,7 @@ class PhysicalSelector(BaseSelector, object):
         """
         Similar to MMU controller check but localized to specific selector
         """
-        if not self.mmu_unit.manages_gate(self.mmu.gate_selected):
+        if not self.mmu._unit_owns_selection(self.mmu_unit, self.mmu.gate_selected):
             return False
         if self.mmu.tool_selected == TOOL_GATE_BYPASS and self.mmu.filament_pos not in [FILAMENT_POS_UNLOADED]:
             self.mmu.log_error("Operation not possible. MMU is currently using bypass. Unload or select a different gate first")
@@ -519,7 +505,7 @@ class MmuSoaktestSelectorCommand(BaseCommand):
                     gate = random.randint(min_gate, max_gate)
 
                     if random.randint(0, 10) == 0 and home:
-                        mmu.home_unit(mmu_unit)
+                        mmu.home_unit(mmu_unit, force_unload=False)
 
                     if random.randint(0, 10) == 0 and mmu_unit.selector.has_bypass():
                         mmu.log_always("Testing loop %d / %d. Selecting bypass..." % (l + 1, loops))
