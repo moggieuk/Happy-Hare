@@ -582,7 +582,8 @@ class MmuGateMaps:
             gate_fstr = "{}({}){}:".format(gate_fstr, filament_char, tools_fstr).ljust(14 + len(filament_char), UI_SPACE)
 
             available_fstr = "{};".format(available).ljust(11, UI_SPACE)
-            fil_fstr = "{} | {}{}C | {} | {}".format(material, temperature, UI_DEGREE, color, name)
+            material_fstr = material.ljust(5, UI_SPACE)
+            fil_fstr = "{} | {}{}C | {} | {}".format(material_fstr, temperature, UI_DEGREE, color, name)
             rfid = (self.gate_spool_rfid[g] or "").upper()
             rfid_fstr = "({});".format(rfid).ljust(12, UI_SPACE) if rfid else ""
 

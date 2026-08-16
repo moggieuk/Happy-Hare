@@ -74,6 +74,18 @@ class TestPerGateNfcBoots(unittest.TestCase):
         finally:
             hh.close()
 
+    def test_gate_map_justifies_material_to_five_characters(self):
+        self.hh.run_gcode('MMU_GATE_MAP GATE=1 MATERIAL=TPU QUIET=1')
+        self.hh.run_gcode('MMU_GATE_MAP GATE=2 MATERIAL=PLA+ QUIET=1')
+
+        gate_rows = [
+            line.replace('\xa0', ' ')
+            for line in self.hh.mmu.gate_maps.gate_map_to_string().splitlines()
+        ]
+
+        self.assertIn('TPU   |', gate_rows[2])
+        self.assertIn('PLA+  |', gate_rows[3])
+
     def test_reader_sections_are_registered_objects(self):
         for i in range(4):
             self.assertIn('mmu_nfc_reader unit0_nfc%d' % i, self.hh.printer.objects)
