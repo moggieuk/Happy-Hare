@@ -1251,7 +1251,7 @@ class MmuController(MmuFilamentMovement):
         elif gate_status == GATE_EMPTY:
             return "-" if show_letter or show_swatch else UI_SEPARATOR
 
-        return "?" if show_letter or show_swatch else UI_SEPARATOR
+        return "?" if show_letter or show_swatch else swatch
 
 
     def _mmu_visual_to_string(self):
@@ -1310,8 +1310,8 @@ class MmuController(MmuFilamentMovement):
                 if g == self.gate_selected:
                     if g == TOOL_GATE_BYPASS:
                         ext_swatch = bypass_ext_swatch
-                    elif self.gate_status[g] >= GATE_AVAILABLE:
-                        ext_swatch = self._get_filament_char(g, show_swatch=True, symbol=UI_SOLID_TRIANGLE)
+                    elif self.gate_status[g] != GATE_EMPTY:
+                        ext_swatch = self._get_filament_char(g, symbol=UI_SOLID_TRIANGLE)
                     else:
                         ext_swatch = UI_SEPARATOR
                     select_strings.append(f"|\\{ext_swatch}/|")
