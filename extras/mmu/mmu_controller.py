@@ -947,6 +947,12 @@ class MmuController(MmuFilamentMovement):
                 left = width - width // 2
                 right = width // 2
                 return arrow * left + space * right
+            # Strictly below UNLOADED (i.e. FILAMENT_POS_UNKNOWN) has no evidence
+            # of any progress at all -- pos == UNLOADED falls through here too
+            # (the branch above only returns early when NOT yet reached), and
+            # that "reached" case legitimately wants the arrow fill below.
+            if pos < FILAMENT_POS_UNLOADED:
+                return space * width
             return arrow * width
 
         def gate_area_segment():
