@@ -99,6 +99,14 @@ class TestConfigLoad(unittest.TestCase):
         self.assertIsNotNone(getattr(unit, 'buffer', None), 'buffer missing')
         self.assertIsNotNone(getattr(unit, 'leds', None), 'leds missing')
 
+    def test_status_fields_exist_before_ready(self):
+        status = self.hh.mmu.get_status(self.hh.reactor.monotonic())
+        for key in ('encoder', 'sync_feedback_state', 'sync_feedback_enabled',
+                    'sync_feedback_bias_raw', 'sync_feedback_bias_modelled',
+                    'sync_feedback_flow_rate', 'flowguard', 'tangle_prevention'):
+            self.assertIn(key, status)
+            self.assertIsNone(status[key])
+
     def test_no_errors_during_config_load(self):
         self.assertEqual(self.hh.errors, [])
 
@@ -287,6 +295,12 @@ class TestReady(BootedSessionMixin, unittest.TestCase):
         status = self.hh.mmu.get_status(self.hh.reactor.monotonic())
         self.assertTrue(status['enabled'])
         self.assertEqual(status['num_gates'], 4)
+        self.assertIsNone(status['encoder'])
+        for key in ('sync_feedback_state', 'sync_feedback_enabled',
+                    'sync_feedback_bias_raw', 'sync_feedback_bias_modelled',
+                    'sync_feedback_flow_rate', 'flowguard', 'tangle_prevention'):
+            self.assertIn(key, status)
+            self.assertIsNotNone(status[key])
 
 
 class TestReadySaveVariables(unittest.TestCase):
