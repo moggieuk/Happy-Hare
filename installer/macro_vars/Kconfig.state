@@ -11,6 +11,7 @@ menu "State change hooks   (_MMU_STATE)"
       Optional user macro that is executed after default logic when
       MMU action changes. Used to extend Happy Hare functionality.
       (passed same params as original macro)
+      Enter G-code without surrounding quotes.
 
   config VAR_STATE_USER_PRINT_STATE_CHANGED_EXTENSION
     string "Print state changed extension macro"
@@ -19,6 +20,7 @@ menu "State change hooks   (_MMU_STATE)"
       Optional user macro that is executed after default logic when
       MMU print state changes. Used to extend Happy Hare functionality.
       (passed same params as original macro)
+      Enter G-code without surrounding quotes.
 
   config VAR_STATE_USER_MMU_EVENT_EXTENSION
     string "MMU event extension macro          "
@@ -27,6 +29,7 @@ menu "State change hooks   (_MMU_STATE)"
       Optional user macro that is executed after default logic when
       MMU event occurs. Used to extend Happy Hare functionality.
       (passed same params as original macro)
+      Enter G-code without surrounding quotes.
 
   comment "_"
   comment "_Consumption counters"

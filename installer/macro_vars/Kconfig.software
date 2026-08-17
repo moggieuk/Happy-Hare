@@ -13,6 +13,7 @@ menu "Print start/end      (_MMU_SOFTWARE)"
     help
       Macro executed at start of MMU_START_SETUP.
       Commonly G28 to home.
+      Enter G-code without surrounding quotes.
 
   config BOOL_SOFTWARE_HOME_MMU
     bool "Home MMU before print starts"
@@ -104,6 +105,7 @@ menu "Print start/end      (_MMU_SOFTWARE)"
     help
       Macro executed at start of MMU_END.
       Good place to move off print.
+      Enter G-code without surrounding quotes.
 
   config BOOL_SOFTWARE_UNLOAD_TOOL
     bool "Unload tool at end of print"

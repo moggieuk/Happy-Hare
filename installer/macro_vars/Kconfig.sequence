@@ -182,42 +182,49 @@ menu "Sequence macros      (_MMU_SEQUENCE)"
     default ""
     help
       Executed after default logic when MMU error condition occurs.
+      Enter G-code without surrounding quotes.
 
   config VAR_SEQUENCE_USER_PRE_UNLOAD_EXTENSION
     string "Pre-unload extension macro   "
     default ""
     help
       Executed after default logic.
+      Enter G-code without surrounding quotes.
 
   config VAR_SEQUENCE_USER_POST_FORM_TIP_EXTENSION
     string "Post-form-tip extension macro"
     default ""
     help
       Executed after default logic.
+      Enter G-code without surrounding quotes.
 
   config VAR_SEQUENCE_USER_POST_UNLOAD_EXTENSION
     string "Post-unload extension macro  "
     default ""
     help
       Executed after default logic.
+      Enter G-code without surrounding quotes.
 
   config VAR_SEQUENCE_USER_PRE_LOAD_EXTENSION
     string "Pre-load extension macro     "
     default ""
     help
       Executed after default logic.
+      Enter G-code without surrounding quotes.
 
   config VAR_SEQUENCE_USER_POST_LOAD_EXTENSION
     string "Post-load extension macro    "
     default ""
     help
       Executed after default logic but before restoring toolhead position.
+      Enter G-code without surrounding quotes.
 
   config VAR_SEQUENCE_USER_POST_PRELOAD_EXTENSION
     string "Post-preload extension macro "
     default ""
     help
       Executed after successful filament preload
+      Enter G-code without surrounding quotes.
 
   comment "_"
   comment "_Misc"
@@ -253,6 +260,7 @@ menu "Sequence macros      (_MMU_SEQUENCE)"
       Advanced. User supplied macro that is executed instead of the default G1 XY
       move to park position.  Macro is called with X, Y, and F parameters. When
       restoring, it is also passed RESTORE=1.
+      Enter the macro name without surrounding quotes.
 
       This is useful when you want to control the movement path of the toolhead
       to avoid an area rather than accept the direct line

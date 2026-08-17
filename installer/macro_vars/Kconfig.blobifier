@@ -208,6 +208,7 @@ menu "Blobifier            (_BLOBIFIER)"
     default ""
     help
       Optional part fan name if using a fan other than [fan].
+      Enter the name without surrounding quotes.
 
   comment "_"
   comment "_Purge Length Tuning"
