@@ -19,11 +19,11 @@ enabled — see the commented-out line in `config/base/mmu_parameters.cfg`).
 ```bash
 ./plot_sync_feedback.sh                    # picks from ~/printer_data/logs/sync_*.jsonl
 ./plot_sync_feedback.sh /path/to/sync_1.jsonl
-make plot-sync                             # installs plotting deps and offers a gate picker
-make plot-sync LOG=/path/to/sync_1.jsonl   # skip the picker
+make plot_sync                             # installs plotting deps and offers a gate picker
+make plot_sync LOG=/path/to/sync_1.jsonl   # skip the picker
 ```
 
-`make plot-sync` creates or reuses `./venv` and automatically installs the
+`make plot_sync` creates or reuses `./venv` and automatically installs the
 dependencies in `utils/requirements.txt`. Override discovery or output with
 `PLOT_LOG_DIR=/path/to/logs` and `PLOT_OUT=/path/to/graph.png`.
 
