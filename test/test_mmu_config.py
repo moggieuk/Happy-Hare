@@ -454,6 +454,11 @@ config PARAM_DEVICE
         }
         emu_syms = dict(profiles.get('emu').syms)
         emu_syms['CHOICE_MMU_CONNECTION_TYPE_SERIAL'] = True
+        # Select the saved entries explicitly.  Board Kconfigs can prefer a currently
+        # discovered MCU, and letting /dev/serial/by-id leak into this fixture makes the
+        # result depend on whether the test happens to run on a live printer.
+        for gate in range(5):
+            emu_syms['CHOICE_MMU_SERIAL_DEVICE_PREVIOUS_%d' % gate] = True
         with cfg._env(env):
             kc = cfg._kconfig('previous-connection-selections', emu_syms)
 
@@ -480,6 +485,7 @@ config PARAM_DEVICE
         }
         buffer_syms = dict(vvd.syms)
         buffer_syms['CHOICE_BUFFER_CONNECTION_TYPE_SERIAL'] = True
+        buffer_syms['CHOICE_BUFFER_SERIAL_DEVICE_PREVIOUS'] = True
         with cfg._env(buffer_env):
             kc = cfg._kconfig('previous-buffer-selection', buffer_syms)
 
@@ -502,6 +508,7 @@ config PARAM_DEVICE
         })
         base_syms = dict(profiles.get('boxturtle').syms)
         base_syms['CHOICE_MMU_CONNECTION_TYPE_CANBUS'] = True
+        base_syms['CHOICE_MMU_CANBUS_UUID_PREVIOUS'] = True
         with cfg._env(base_env):
             kc = cfg._kconfig('previous-base-canbus-selection', base_syms)
 
