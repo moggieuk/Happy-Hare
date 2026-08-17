@@ -32,7 +32,7 @@ ifeq ($(CHECK_OUTPUT_SYNC),)
   # 'console' and 'test' must stay in this list: --output-sync buffers a recipe's output
   # until it finishes, which for an interactive prompt means no prompt at all. 'test' opens
   # the file picker in test/select.py
-  ifeq ($(strip $(filter menuconfig uninstall variables gen_kconfig fix_links console test shots,$(MAKECMDGOALS))),)
+  ifeq ($(strip $(filter menuconfig uninstall variables gen_kconfig fix_links console test shots plot-sync,$(MAKECMDGOALS))),)
     ifneq ($(wildcard $(KCONFIG_CONFIG)),)
       # Check whether $KCONFIG_CONFIG is outdated. if so menuconfig will be triggered and output-sync should stay disabled
       ifeq ($(shell $(MAKE) CHECK_OUTPUT_SYNC=y -q $(KCONFIG_CONFIG) >/dev/null 2>&1 && echo y),y)
@@ -73,9 +73,10 @@ export PYTHONPATH:=$(SRC)/installer/lib/kconfiglib:$(PYTHONPATH)
 VENV       ?= $(SRC)/venv
 VENV_PY    := $(VENV)/bin/python
 VENV_STAMP := $(VENV)/.hh-test-requirements
-# Separate stamp: test/requirements.txt and installer/requirements.txt are installed
-# independently into the same venv, and neither should trigger the other
+# Separate stamps: test, installer and utility requirements are installed
+# independently into the same venv, and none should trigger the others
 INSTALLER_STAMP := $(VENV)/.hh-installer-requirements
+UTILS_STAMP     := $(VENV)/.hh-utils-requirements
 
 # Interpreter used to create the venv, falling back where plain `python` isn't a name
 BOOTSTRAP_PY := $(if $(shell command -v $(PY) 2>/dev/null),$(PY),python3)
@@ -175,7 +176,7 @@ restart_klipper = 0
 .SECONDEXPANSION:
 .DEFAULT_GOAL := build
 .PRECIOUS: $(KCONFIG_CONFIG) $(KCONFIG_CONFIG)_%
-.PHONY: menuconfig install uninstall check_version diff test console filament_display shots venv installer_venv clean_venv build clean variables python_deps fix_links gen_kconfig kconfig_needs_update olddefconfig verify_pickle
+.PHONY: menuconfig install uninstall check_version diff test console filament_display plot-sync shots venv installer_venv clean_venv build clean variables python_deps fix_links gen_kconfig kconfig_needs_update olddefconfig verify_pickle
 .SECONDARY: \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
@@ -610,6 +611,18 @@ filament_display: $(test_prereqs)
 	$(Q)$(using_klippy_env)
 	$(Q)HH_FILAMENT_DISPLAY_REVIEW=1 PYTHONPATH="$(SRC)/installer/lib/kconfiglib:$(PYTHONPATH)" \
 		$(TEST_PY) -m unittest test.filament_display_review -v $(ARGS)
+
+# Plot a real FlowGuard telemetry log. With several sync_<gate>.jsonl files the
+# wrapper presents an interactive picker; LOG= skips it. PLOT_LOG_DIR defaults to
+# the logs directory beside Klipper's configured config directory, then to the
+# conventional Moonraker path when this checkout has not been configured.
+PLOT_LOG_DIR ?= $(if $(strip $(KLIPPER_CONFIG_HOME)),$(patsubst %/,%,$(dir $(KLIPPER_CONFIG_HOME)))/logs,$(HOME)/printer_data/logs)
+PLOT_OUT     ?= sync_feedback_plot.png
+
+plot-sync: $(UTILS_STAMP)
+	$(Q)MPLCONFIGDIR="$(VENV)/.matplotlib" PYTHON="$(VENV_PY)" $(SRC)/utils/plot_sync_feedback.sh \
+		$(if $(strip $(LOG)),--log "$(LOG)") \
+		--log-dir "$(PLOT_LOG_DIR)" --out "$(PLOT_OUT)" -- $(ARGS)
 
 variables:
 	@echo "========================="
