@@ -260,6 +260,12 @@ class MmuFilamentMovement:
             # Same wording as MMU_NFC_SCAN so the two paths read alike.
             if tag_read:
                 self.log_info("NFC: tag read for gate %d" % gate)
+            elif outcome.ratified is False:
+                # Distinguish this from a genuinely empty field: a tag WAS seen (see the
+                # discard warning above), it just couldn't be confirmed as this gate's own.
+                self.log_info("NFC: no tag found for gate %d - a tag was seen but could not "
+                              "be confirmed as this gate's own, so it was discarded rather "
+                              "than assigned (see the warning above)" % gate)
             else:
                 self.log_info("NFC: no tag found for gate %d while preloading" % gate)
         if not tag_read:
@@ -769,9 +775,7 @@ class MmuFilamentMovement:
         arb_mgr = self._nfc_field_arm(gate)
         with self.nfc_arbiter.clear_field(gate, arb_mgr) as outcome:
             if outcome.verdict == NFC_FIELD_FOREIGN:
-                raise MmuError(
-                    "Cannot scan gate %d: the NFC reader field could not be reliably "
-                    "attributed to this gate (see the log for detail)" % gate)
+                raise MmuError("Cannot scan gate %d: %s" % (gate, outcome.reason))
 
             found = False
             try:
@@ -838,6 +842,12 @@ class MmuFilamentMovement:
 
         if found:
             self.log_info("NFC: tag read for gate %d" % gate)
+        elif outcome.ratified is False:
+            # Distinguish this from a genuinely empty field: a tag WAS seen (see the
+            # discard warning above), it just couldn't be confirmed as this gate's own.
+            self.log_info("NFC: no tag found for gate %d - a tag was seen but could not be "
+                          "confirmed as this gate's own, so it was discarded rather than "
+                          "assigned (see the warning above)" % gate)
         else:
             self.log_info("NFC: no tag found for gate %d within window %s" % (gate, window))
         return found

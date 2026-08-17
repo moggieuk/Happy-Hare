@@ -341,7 +341,7 @@ class TestArbitrationEndToEnd(NeighborTestCase):
         self.hh.mmu.gate_maps.set_gate_status(0, GATE_AVAILABLE)
         self.hh.run_gcode('MMU_NFC_SCAN GATE=0')
         self.assertTrue(
-            any('could not be reliably attributed' in e for e in self.hh.errors),
+            any('could not be moved out of the way' in e for e in self.hh.errors),
             self.hh.errors)
         self.assertNotEqual(self.hh.mmu.gate_maps.gate_spool_rfid[0], TAG,
                             "gate 0's map entry must not be set from a tag known not to be its own")
