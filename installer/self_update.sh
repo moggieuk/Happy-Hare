@@ -49,6 +49,10 @@ self_update() {
 
     if [ "${switch}" -eq 1 ]; then
         git checkout "${current_branch}" --quiet
+        # A branch selected with -b may already exist locally without an upstream.
+        # Point it at the remote branch explicitly so this and future pulls do not
+        # depend on how the local branch was originally created.
+        git branch --quiet --set-upstream-to="origin/${current_branch}" "${current_branch}"
         git pull --quiet --force
         git_version=$(git describe --tags)
         echo "${C_NOTICE}Now on git version: ${git_version}${C_OFF}"
