@@ -139,7 +139,7 @@ class SensorEnableMultiUnitTestCase(unittest.TestCase):
     """ercf_vvd: a bare name that collides across units, and the no-cascading guarantee."""
 
     def setUp(self):
-        self.hh = session('ercf_vvd')
+        self.hh = session('ercf_vvd_buffers')
         self.hh.boot()
         self.assertEqual(self.hh.errors, [], 'bootup was not clean')
 

@@ -34,10 +34,10 @@
 #   RUN_SEQUENCE,       Run, but every timing is 0.0 because macro bodies never execute.
 #   RUN_CHANGE_SEQUENCE
 #
-# PINNED TO THE DEFAULT PROFILE. ercf_vvd is the only shipped profile with a toolhead sensor
-# (profiles.py:351), and the movement probes default to ENDSTOP=toolhead with no way to
-# redirect some of them. It also has two units, an encoder and a buffer, so every option has
-# the hardware it needs.
+# PINNED TO THE BUFFERED MULTI-UNIT TEST PROFILE. ercf_vvd is the only shipped profile with a
+# toolhead sensor, and the movement probes default to ENDSTOP=toolhead with no way to redirect
+# some of them. The synthetic variant adds a buffer to its ERCF unit so every option has the
+# hardware it needs without making the default console claim that the real ERCF owns one.
 #
 #   ./venv/bin/python -m unittest test.test_mmu_dev_test
 #
@@ -60,7 +60,7 @@ class DevTestCase(unittest.TestCase):
     would read.
     """
 
-    PROFILE = 'ercf_vvd'
+    PROFILE = 'ercf_vvd_buffers'
 
     def setUp(self):
         self.hh = session(self.PROFILE)

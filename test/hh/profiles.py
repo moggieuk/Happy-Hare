@@ -358,18 +358,9 @@ ENCODER = BOXTURTLE.derive(
     },
     description='BoxTurtle + encoder, gate_homing_endstop=encoder')
 
-# NOTE on ADC coverage: `emu` brings a proportional sensor with its machine type and
-# `ercf_vvd`'s unit0 enables one explicitly (MMU_HAS_SENSOR_BUFFER_PROPORTIONAL +
-# PIN_BUFFER_ANALOG).
-#
-# The second of those used to be considered unsafe: this note said enabling a proportional
-# buffer outside its intended starter leaves dependent params (analog_max_tension,
-# analog_sensor_threshold) blank and renders a section HH cannot parse. That is no longer
-# true - Kconfig.sync_feedback_buffer:207-252 now defaults every one of them (threshold 0.9,
-# max_compression 1.0, max_tension 0.0, neutral 0.5, gamma 1.0), and ercf_vvd renders and
-# boots with it. The general lesson still holds though, and it is why the claim was worth
-# rechecking rather than inheriting: render the profile and READ the section, do not assume
-# either way. MmuAdcHelper's compat shim is covered directly by test_mmu_adc_compat.py.
+# NOTE on ADC coverage: `emu` brings a proportional sensor with its machine type and is the
+# shipped profile used to exercise that path. MmuAdcHelper's compat shim is covered directly
+# by test_mmu_adc_compat.py.
 # The only MULTI-UNIT profile, and a transcription of a REAL machine rather than a
 # combination assembled to hit features. Two genuinely different units on one printer:
 #
@@ -478,13 +469,6 @@ ERCF_VVD = Profile(
             'PARAM_ENTRY_LEDS': 'neopixel:_unit0_leds (1-9)',
             'PARAM_STATUS_LEDS': 'neopixel:_unit0_leds (10-13)',
             'PARAM_LOGO_LEDS': 'neopixel:_unit0_leds (14-16)',
-            # The analog buffer sensor. Unlike the note further up this file, enabling one
-            # outside EMU is now safe: Kconfig.sync_feedback_buffer:207-252 defaults every
-            # dependent param.
-            'MMU_HAS_SYNC_FEEDBACK_BUFFER': True,
-            'CHOICE_BUFFER_SPRING_STATE_TENSION': True,
-            'MMU_HAS_SENSOR_BUFFER_PROPORTIONAL': True,
-            'PIN_BUFFER_ANALOG': 'PF6',
             'CHOICE_EXTRUDER_HOMING_ENDSTOP_ENCODER': True,
             # A shared PN532 over host serial - the only NFC transport that is not
             # MCU-mediated. Lives on unit0 (generic wiring prompts) rather than unit1: VVD's
@@ -511,6 +495,22 @@ ERCF_VVD = Profile(
         }),
     ],
     description='ERCF 1.1sb (9 gates) + ViViD 1.0 (4 gates) - the only multi-unit profile')
+
+# Synthetic variant for tests that specifically need unit-scoped sync-feedback state on BOTH
+# sides of a unit hand-off. Keep it out of the default console profile: the real ERCF unit0
+# above has no sync-feedback buffer, and adding one makes its filament status line lie.
+ERCF_VVD_BUFFERS = ERCF_VVD.derive(
+    'ercf_vvd_buffers',
+    units=[
+        ERCF_VVD.units[0].derive(syms={
+            'MMU_HAS_SYNC_FEEDBACK_BUFFER': True,
+            'CHOICE_BUFFER_SPRING_STATE_TENSION': True,
+            'MMU_HAS_SENSOR_BUFFER_PROPORTIONAL': True,
+            'PIN_BUFFER_ANALOG': 'PF6',
+        }),
+        ERCF_VVD.units[1],
+    ],
+    description='Synthetic ercf_vvd variant with buffers on both units')
 
 # The only machine whose two units drive DIFFERENT physical extruders. Everything else, including
 # ercf_vvd itself, leaves both on the default one and so shares a single MmuExtruderWrapper - which
@@ -551,13 +551,18 @@ uart_pin: mcu:PB6
 run_current: 0.6
 """
 
-PROFILES = {p.name: p for p in (BOXTURTLE, TRADRACK, CHAMELEON, PICO_MMU, MMX, EMU, ENCODER, NFC_SINGLE,
-                                NFC_PER_GATE, NFC_NEIGHBOR_CHECK, NFC_NEIGHBOR_EVICT,
-                                NFC_PN5180, NFC_PN5180_PER_GATE,
-                                NFC_PN532, NFC_PN532_SW_I2C,
-                                NFC_PN532_UART, NFC_PN532_UART_PER_GATE,
-                                NFC_SPOOLMAN, NFC_SPOOLMAN_SHARED,
-                                ERCF_VVD, ERCF_VVD_DUAL_EXTRUDER)}
+# Profiles that `make console` can boot without extra fixture-only printer sections. This is
+# also the startup picker's source, so its list and the accepted profile objects stay one
+# thing. The buffered and dual-extruder ERCF variants below are registered for tests but are
+# deliberately absent: one is synthetic and the other needs EXTRA_EXTRUDER_STUB.
+CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, CHAMELEON, PICO_MMU, MMX, EMU, ENCODER,
+                    NFC_SINGLE, NFC_PER_GATE, NFC_NEIGHBOR_CHECK, NFC_NEIGHBOR_EVICT,
+                    NFC_PN5180, NFC_PN5180_PER_GATE, NFC_PN532, NFC_PN532_SW_I2C,
+                    NFC_PN532_UART, NFC_PN532_UART_PER_GATE,
+                    NFC_SPOOLMAN, NFC_SPOOLMAN_SHARED)
+
+PROFILES = {p.name: p for p in CONSOLE_PROFILES +
+            (ERCF_VVD_BUFFERS, ERCF_VVD_DUAL_EXTRUDER)}
 
 
 def get(name):
