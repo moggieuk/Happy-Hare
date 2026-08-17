@@ -209,6 +209,9 @@ class TestMmuMachineImportGuard(unittest.TestCase):
     def _restore_symlink_and_reimport(self):
         if not os.path.exists(self.victim):
             os.symlink(self.victim_target, self.victim)
+        # FileFinder caches directory contents.  A fast unlink/recreate can leave the
+        # negative lookup cached on filesystems whose directory timestamp did not tick.
+        importlib.invalidate_caches()
         self._evict_from_module_cache()
         # Leave the shared, process-wide overlay/module cache healthy for every test
         # that runs after this one, regardless of suite ordering.
@@ -222,6 +225,7 @@ class TestMmuMachineImportGuard(unittest.TestCase):
         restoring it and the shared module cache once the test is done."""
         self.addCleanup(self._restore_symlink_and_reimport)
         os.unlink(self.victim)
+        importlib.invalidate_caches()
         self._evict_from_module_cache()
         mod = importlib.import_module('extras.mmu_machine')
         self.assertIsNotNone(mod._IMPORT_ERROR,
