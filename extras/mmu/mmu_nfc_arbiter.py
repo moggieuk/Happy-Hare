@@ -58,12 +58,18 @@ class NfcFieldOutcome:
         False - a provisional read could not be confirmed and was discarded, never
                 committed at all - callers should downgrade their own "tag read"/"found"
                 reporting to match, since nothing was actually attributed.
-    """
-    __slots__ = ('verdict', 'ratified')
 
-    def __init__(self, verdict):
+    'reason' is a short, caller-agnostic explanation for a NFC_FIELD_FOREIGN verdict - None
+    for every other verdict. A caller that turns FOREIGN into a hard failure (MMU_NFC_SCAN)
+    can fold this straight into its own error message instead of pointing the user back at
+    the log for a warning that was written for the console record, not for embedding.
+    """
+    __slots__ = ('verdict', 'ratified', 'reason')
+
+    def __init__(self, verdict, reason=None):
         self.verdict = verdict
         self.ratified = None
+        self.reason = reason
 
 
 class MmuNfcFieldArbiter:
@@ -239,9 +245,12 @@ class MmuNfcFieldArbiter:
         of it until it clears (or nothing more can be tried). Bounded to the unit's gate count
         (at worst every other gate gets tried once).
 
-        Returns one of NFC_FIELD_CLEAR / NFC_FIELD_MINE / NFC_FIELD_FOREIGN / NFC_FIELD_PROVISIONAL -
-        never the intermediate NFC_FIELD_NEIGHBOR, which is resolved into one of the above
-        before returning.
+        Returns (verdict, reason): verdict is one of NFC_FIELD_CLEAR / NFC_FIELD_MINE /
+        NFC_FIELD_FOREIGN / NFC_FIELD_PROVISIONAL - never the intermediate NFC_FIELD_NEIGHBOR,
+        which is resolved into one of the above before returning. 'reason' is a short
+        explanation of a NFC_FIELD_FOREIGN verdict (the fuller warning with remediation
+        advice is logged here regardless), for a caller to embed in its own error message
+        instead of pointing back at the log; None for every other verdict.
         """
         tried = set()
         verdict = uid = owner = diag = None
@@ -260,10 +269,10 @@ class MmuNfcFieldArbiter:
         if verdict in (NFC_FIELD_CLEAR, NFC_FIELD_MINE):
             if diag:
                 self.mmu.log_info(diag)
-            return verdict
+            return verdict, None
         if verdict == NFC_FIELD_FOREIGN:
             self.mmu.log_warning(diag)
-            return NFC_FIELD_FOREIGN
+            return NFC_FIELD_FOREIGN, "tag %s is registered to a gate on a different unit" % uid
 
         # Still NFC_FIELD_NEIGHBOR: either there was no motion budget to begin with, or every
         # reachable candidate was tried/rejected and the field never cleared.
@@ -275,8 +284,9 @@ class MmuNfcFieldArbiter:
                 "NFC: gate %d: tag %s belongs to gate %d and could not be moved out of the way "
                 "- proceeding without reading a tag. If that spool was moved by hand, clear "
                 "the stale entry with 'MMU_GATE_MAP GATE=%d RFID='" % (gate, uid, owner, owner))
-            return NFC_FIELD_FOREIGN
-        return NFC_FIELD_PROVISIONAL
+            return NFC_FIELD_FOREIGN, ("tag %s belongs to gate %d and could not be moved "
+                                        "out of the way" % (uid, owner))
+        return NFC_FIELD_PROVISIONAL, None
 
 
     # ---- Provisional-verdict ratification ------------------------------------------------------
@@ -369,7 +379,9 @@ class MmuNfcFieldArbiter:
                                    attributed immediately, as always, by the caller's own read.
             NFC_FIELD_FOREIGN     a tag known not to be this gate's, uncleared - the caller
                                    must not attribute it (see per-caller handling in
-                                   _preload_gate / _jog_scan).
+                                   _preload_gate / _jog_scan). The outcome's 'reason' is a
+                                   short explanation a caller can embed directly in its own
+                                   error message (see MMU_NFC_SCAN's MmuError).
             NFC_FIELD_PROVISIONAL an unregistered tag tentatively treated as MINE - the caller
                                    proceeds as it would for MINE, EXCEPT a jog-scan must not
                                    take its "already at reader" fast path, since there would be
@@ -398,10 +410,10 @@ class MmuNfcFieldArbiter:
         outcome = None
         try:
             with self.mmu.wrap_suspend_filament_monitoring():
-                verdict = self._settle(gate, nfc_mgr, distance, evicted)
+                verdict, reason = self._settle(gate, nfc_mgr, distance, evicted)
                 self.mmu.select_gate(gate) # The enclosed block runs on 'gate', as it did before
             provisional = (verdict == NFC_FIELD_PROVISIONAL)
-            outcome = NfcFieldOutcome(verdict)
+            outcome = NfcFieldOutcome(verdict, reason)
             if provisional:
                 # Hold any read the enclosed operation makes for this gate rather than let it
                 # commit immediately - whether it should be trusted at all isn't known until
