@@ -127,14 +127,20 @@ mmu_serial_config    = $(shell, basename '$(serial_device,$(1),$(2))' | sed 's/-
 mmu_serial_config_pg = $(shell, basename '$(serial_device,$(2),$(3))' | sed 's/-/_/g' | awk -v gate=$(1) 'BEGIN{out="CHOICE_MMU_SERIAL_DEVICE_NONE_GATE_" gate } NF && $$0!="." {out="CHOICE_MMU_SERIAL_DEVICE_" toupper($$0) "_GATE_" gate} END{print out}')
 buffer_serial_config = $(shell, basename '$(serial_device,$(1),$(2))' | sed 's/-/_/g' | awk 'BEGIN{out="CHOICE_BUFFER_SERIAL_DEVICE_NONE"} NF && $$0!="." {out="CHOICE_BUFFER_SERIAL_DEVICE_" toupper($$0)} END{print out}')
 
-# Grab the UUIDs that are not in use by klipper as a space-separated list, e.g. "43a8... 25ff... aab3..."
-canbus_query        := $(shell, echo "$(KLIPPER_HOME)/../klippy-env/bin/python $(KLIPPER_HOME)/scripts/canbus_query.py can0")
-canbus_uuids        := $(shell, $(canbus_query) 2>/dev/null | sed -n 's/.*canbus_uuid=\([0-9a-fA-F][0-9a-fA-F]*\).*/\1/p')
-canbus_uuid_count   := $(count, $(canbus_uuids))
-canbus_uuid          = $(shell, echo $(canbus_uuids) | awk -v n=$(1) '{ print $n }')
-mmu_canbus_config    = $(shell, echo $(canbus_uuid,$(1)) | awk 'BEGIN{out="CHOICE_MMU_CANBUS_UUID_NONE"} NF {out="CHOICE_MMU_CANBUS_UUID_" toupper($$0)} END{print out}')
-mmu_canbus_config_pg = $(shell, echo $(canbus_uuid,$(2)) | awk -v gate=$(1) 'BEGIN{out="CHOICE_MMU_CANBUS_UUID_NONE_GATE_" gate} NF {out="CHOICE_MMU_CANBUS_UUID_" toupper($$0) "_GATE_" gate} END{print out}')
-buffer_canbus_config = $(shell, echo $(canbus_uuid,$(1)) | awk 'BEGIN{out="CHOICE_BUFFER_CANBUS_UUID_NONE"} NF {out="CHOICE_BUFFER_CANBUS_UUID_" toupper($$0)} END{print out}')
+# Grab UUIDs that are not in use by Klipper from all available CAN interfaces.
+# Keep each interface attached to its UUID, e.g. "can0:43a8... vlan1:25ff...".
+canbus_query        := $(shell, echo "$(KLIPPER_HOME)/../klippy-env/bin/python $(KLIPPER_HOME)/scripts/canbus_query.py")
+canbus_interfaces   := $(shell, (ip -o link show type can | awk -F': ' '{print $2}') 2>/dev/null || true)
+canbus_connections  := $(shell, (for interface in $(canbus_interfaces); do $(canbus_query) "$interface" | sed -n 's/.*canbus_uuid=\([0-9a-fA-F][0-9a-fA-F]*\).*/\1/p' | while IFS= read -r uuid; do printf '%s:%s\n' "$interface" "$uuid"; done; done) 2>/dev/null || true)
+canbus_uuid_count   := $(count, $(canbus_connections))
+canbus_connection    = $(shell, echo $(canbus_connections) | awk -v n=$(1) '{ print $n }')
+canbus_interface     = $(shell, echo $(canbus_connection,$(1)) | cut -d: -f1)
+canbus_uuid          = $(shell, echo $(canbus_connection,$(1)) | cut -d: -f2)
+saved_canbus_interface = $(shell, [ -n '$(saved-config-value,$(1))' ] && echo '$(saved-config-value,$(1))' || echo can0)
+saved_canbus_connection = $(saved_canbus_interface,$(1)):$(saved-config-value,$(2))
+mmu_canbus_config    = $(shell, echo $(canbus_connection,$(1)) | tr ':a-z' '_A-Z' | sed 's/[^A-Z0-9_]/_/g' | awk 'BEGIN{out="CHOICE_MMU_CANBUS_UUID_NONE"} NF {out="CHOICE_MMU_CANBUS_UUID_" $0} END{print out}')
+mmu_canbus_config_pg = $(shell, echo $(canbus_connection,$(2)) | tr ':a-z' '_A-Z' | sed 's/[^A-Z0-9_]/_/g' | awk -v gate=$(1) 'BEGIN{out="CHOICE_MMU_CANBUS_UUID_NONE_GATE_" gate} NF {out="CHOICE_MMU_CANBUS_UUID_" $0 "_GATE_" gate} END{print out}')
+buffer_canbus_config = $(shell, echo $(canbus_connection,$(1)) | tr ':a-z' '_A-Z' | sed 's/[^A-Z0-9_]/_/g' | awk 'BEGIN{out="CHOICE_BUFFER_CANBUS_UUID_NONE"} NF {out="CHOICE_BUFFER_CANBUS_UUID_" $0} END{print out}')
 
 # Used for comment padding
 pad = $(shell, printf "%-$(1)s" "$(2)")

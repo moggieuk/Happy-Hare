@@ -6,12 +6,14 @@
 #   CHOICE_MMU_CONNECTION_TYPE_CANBUS
 #   PARAM_MMU_SERIAL_DEVICE
 #   PARAM_MMU_CANBUS_UUID
+#   PARAM_MMU_CANBUS_INTERFACE
 #
 # If F_PER_GATE_MCU (EMU design) the special inclusion macro
 # will include the extra Kconfig logic. This is relatively expensive
 # so it is not normally included. Additional params will be set:
 #   PARAM_MMU_SERIAL_DEVICE_<gate>
 #   PARAM_MMU_CANBUS_UUID_<gate>
+#   PARAM_MMU_CANBUS_INTERFACE_<gate>
 
 
 choice CHOICE_MMU_CONNECTION_TYPE
@@ -86,12 +88,12 @@ if !MMU_HAS_PER_GATE_MCU
       default CHOICE_MMU_CANBUS_UUID_OTHER if $(canbus_uuid_count) = 0
 
       config CHOICE_MMU_CANBUS_UUID_PREVIOUS
-        bool "Previous selection: $(saved-config-value,PARAM_MMU_CANBUS_UUID)"
+        bool "Previous selection: $(saved_canbus_connection,PARAM_MMU_CANBUS_INTERFACE,PARAM_MMU_CANBUS_UUID)"
         depends on "$(saved-config-value,PARAM_MMU_CANBUS_UUID)" != ""
 
       @repeat var=i min=1 max=10@
       config $(mmu_canbus_config,$(i))
-        bool "$(canbus_uuid,$(i))"
+        bool "$(canbus_connection,$(i))"
         depends on $(canbus_uuid_count) >= $(i)
       @endrepeat@
 
@@ -102,6 +104,9 @@ if !MMU_HAS_PER_GATE_MCU
         config MMU_CANBUS_UUID_OTHER
           string "Enter CANbus uuid"
           default "-enter-canbus-id-"
+        config MMU_CANBUS_INTERFACE_OTHER
+          string "Enter CANbus interface"
+          default "can0"
       endif
     endchoice
 
@@ -112,6 +117,14 @@ if !MMU_HAS_PER_GATE_MCU
       default "$(canbus_uuid,$(i))" if $(mmu_canbus_config,$(i))
       @endrepeat@
       default MMU_CANBUS_UUID_OTHER if CHOICE_MMU_CANBUS_UUID_OTHER
+
+    config PARAM_MMU_CANBUS_INTERFACE
+      string
+      default "$(saved_canbus_interface,PARAM_MMU_CANBUS_INTERFACE)" if CHOICE_MMU_CANBUS_UUID_PREVIOUS
+      @repeat var=i min=1 max=10@
+      default "$(canbus_interface,$(i))" if $(mmu_canbus_config,$(i))
+      @endrepeat@
+      default MMU_CANBUS_INTERFACE_OTHER if CHOICE_MMU_CANBUS_UUID_OTHER
 
   endif
 
@@ -175,12 +188,12 @@ if MMU_HAS_PER_GATE_MCU
         default CHOICE_MMU_CANBUS_UUID_OTHER_$(gate) if $(canbus_uuid_count) = 0
 
         config CHOICE_MMU_CANBUS_UUID_PREVIOUS_$(gate)
-          bool "Previous selection: $(saved-config-value,PARAM_MMU_CANBUS_UUID_$(gate))"
+          bool "Previous selection: $(saved_canbus_connection,PARAM_MMU_CANBUS_INTERFACE_$(gate),PARAM_MMU_CANBUS_UUID_$(gate))"
           depends on "$(saved-config-value,PARAM_MMU_CANBUS_UUID_$(gate))" != ""
 
         @repeat var=i min=1 max=10@
         config CHOICE_MMU_CANBUS_UUID_$(gate)_$(i)
-          bool "$(canbus_uuid,$(i))"
+          bool "$(canbus_connection,$(i))"
           depends on $(canbus_uuid_count) >= $(i)
         @endrepeat@
 
@@ -191,6 +204,9 @@ if MMU_HAS_PER_GATE_MCU
           config MMU_CANBUS_UUID_OTHER_$(gate)
             string "Enter CANbus uuid"
             default "-enter-canbus-id-"
+          config MMU_CANBUS_INTERFACE_OTHER_$(gate)
+            string "Enter CANbus interface"
+            default "can0"
         endif
       endchoice
 
@@ -201,6 +217,14 @@ if MMU_HAS_PER_GATE_MCU
         default "$(canbus_uuid,$(i))" if CHOICE_MMU_CANBUS_UUID_$(gate)_$(i)
         @endrepeat@
         default MMU_CANBUS_UUID_OTHER_$(gate) if CHOICE_MMU_CANBUS_UUID_OTHER_$(gate)
+
+      config PARAM_MMU_CANBUS_INTERFACE_$(gate)
+        string
+        default "$(saved_canbus_interface,PARAM_MMU_CANBUS_INTERFACE_$(gate))" if CHOICE_MMU_CANBUS_UUID_PREVIOUS_$(gate)
+        @repeat var=i min=1 max=10@
+        default "$(canbus_interface,$(i))" if CHOICE_MMU_CANBUS_UUID_$(gate)_$(i)
+        @endrepeat@
+        default MMU_CANBUS_INTERFACE_OTHER_$(gate) if CHOICE_MMU_CANBUS_UUID_OTHER_$(gate)
 
     endif
 
