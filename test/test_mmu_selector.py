@@ -136,6 +136,11 @@ class TestLinearSelector(SelectorTestCase):
         self.assertTrue(selector.is_homed)
         self.assertEqual(self.axis('unit0').carriage, self.axis('unit0').home_position())
 
+    def test_selector_status_is_published_under_mmu_selector(self):
+        selector = self.selector('unit0')
+
+        self.assertEqual(self.hh.mmu.get_status(0)['selector'], selector.get_status(0))
+
     def test_calibration_is_seeded_from_the_machines_own_cad_table(self):
         """
         Offsets come from HH's published quick method (cad_gate0_pos + i*cad_gate_width), so

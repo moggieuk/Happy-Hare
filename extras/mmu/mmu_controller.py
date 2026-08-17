@@ -694,6 +694,9 @@ class MmuController(MmuFilamentMovement):
         # Adds sync_feedback status (this includes flowguard status)
         status.update(self.mmu_unit().sync_feedback.get_status(eventtime))
 
+        # Add selector status for the active unit
+        status['selector'] = self.selector().get_status(eventtime)
+
         # Add in active sensors
         status['sensors'] = self.sensor_manager.get_status(eventtime)
 
