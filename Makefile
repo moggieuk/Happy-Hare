@@ -32,7 +32,7 @@ ifeq ($(CHECK_OUTPUT_SYNC),)
   # 'console' and 'test' must stay in this list: --output-sync buffers a recipe's output
   # until it finishes, which for an interactive prompt means no prompt at all. 'test' opens
   # the file picker in test/select.py
-  ifeq ($(strip $(filter menuconfig uninstall variables gen_kconfig fix_links console test shots plot-sync,$(MAKECMDGOALS))),)
+  ifeq ($(strip $(filter menuconfig uninstall variables gen_kconfig fix_links console test shots plot_sync,$(MAKECMDGOALS))),)
     ifneq ($(wildcard $(KCONFIG_CONFIG)),)
       # Check whether $KCONFIG_CONFIG is outdated. if so menuconfig will be triggered and output-sync should stay disabled
       ifeq ($(shell $(MAKE) CHECK_OUTPUT_SYNC=y -q $(KCONFIG_CONFIG) >/dev/null 2>&1 && echo y),y)
@@ -176,7 +176,7 @@ restart_klipper = 0
 .SECONDEXPANSION:
 .DEFAULT_GOAL := build
 .PRECIOUS: $(KCONFIG_CONFIG) $(KCONFIG_CONFIG)_%
-.PHONY: menuconfig install uninstall check_version diff test console filament_display plot-sync shots venv installer_venv clean_venv build clean variables python_deps fix_links gen_kconfig kconfig_needs_update olddefconfig verify_pickle
+.PHONY: menuconfig install uninstall check_version diff test console filament_display plot_sync shots venv installer_venv clean_venv build clean variables python_deps fix_links gen_kconfig kconfig_needs_update olddefconfig verify_pickle
 .SECONDARY: \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/mmu) \
 	$(call backup_name,$(KLIPPER_CONFIG_HOME)/$(MOONRAKER_CONFIG_FILE)) \
@@ -619,7 +619,7 @@ filament_display: $(test_prereqs)
 PLOT_LOG_DIR ?= $(if $(strip $(KLIPPER_CONFIG_HOME)),$(patsubst %/,%,$(dir $(KLIPPER_CONFIG_HOME)))/logs,$(HOME)/printer_data/logs)
 PLOT_OUT     ?= sync_feedback_plot.png
 
-plot-sync: $(UTILS_STAMP)
+plot_sync: $(UTILS_STAMP)
 	$(Q)MPLCONFIGDIR="$(VENV)/.matplotlib" PYTHON="$(VENV_PY)" $(SRC)/utils/plot_sync_feedback.sh \
 		$(if $(strip $(LOG)),--log "$(LOG)") \
 		--log-dir "$(PLOT_LOG_DIR)" --out "$(PLOT_OUT)" -- $(ARGS)

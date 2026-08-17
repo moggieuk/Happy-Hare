@@ -80,6 +80,8 @@ if [ -z "$log" ]; then
 
     if [ "${#logs[@]}" -eq 0 ]; then
         echo "No FlowGuard telemetry logs found in '$log_dir'" >&2
+        echo "Is 'sync_feedback_debug_log' enabled?" >&2
+        echo "Use PLOT_LOG_DIR=<dir> to point make at a non-standard directory." >&2
         exit 1
     elif [ "${#logs[@]}" -eq 1 ]; then
         log="${logs[0]}"
@@ -125,7 +127,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 mmu_dir="${script_dir}/../extras/mmu"
 export PYTHONPATH="${mmu_dir}${PYTHONPATH:+:${PYTHONPATH}}"
 
-# make plot-sync supplies the managed venv explicitly. Direct invocations reuse
+# make plot_sync supplies the managed venv explicitly. Direct invocations reuse
 # that venv when present, then fall back to Klipper's environment or PATH.
 if [ -n "${PYTHON:-}" ]; then
     python_bin="$PYTHON"
