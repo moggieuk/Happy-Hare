@@ -72,6 +72,7 @@ except Exception:                                   # pragma: no cover - Windows
 # precondition Happy Hare requires before a preload can start (test/README.md section 5).
 TIP_AT_GATE = -40.0
 DEFAULT_TEMP = 220
+DEFAULT_PROFILE = 'ercf_vvd'
 # Gate availability values accepted by MMU_GATE_MAP. These stay local because importing
 # production `extras` before hh_session installs fake Klipper contaminates module resolution.
 GATE_EMPTY = 0
@@ -2388,12 +2389,68 @@ class LogPager:
 ##### Driver #####
 ##################
 
+def choose_startup_profile(entries=None, input_fn=None):
+    """Show the console-ready profiles and return the selected name.
+
+    Kept separate from parse_args so the menu is directly testable without pretending the
+    whole unittest process is a terminal. `entries` accepts Profile-like objects for the
+    same reason; production always reads CONSOLE_PROFILES.
+    """
+    if entries is None:
+        from test.hh.profiles import CONSOLE_PROFILES
+        entries = CONSOLE_PROFILES
+    entries = list(entries)
+    if not entries:
+        return DEFAULT_PROFILE
+
+    # The default is entry 1 even if the registry is later reordered.
+    entries.sort(key=lambda profile: (profile.name != DEFAULT_PROFILE, profile.name))
+    by_name = {profile.name.lower(): profile.name for profile in entries}
+    width = max(len(profile.name) for profile in entries)
+
+    print('Happy Hare simulator profiles')
+    print()
+    for index, profile in enumerate(entries, 1):
+        suffix = ' (default)' if profile.name == DEFAULT_PROFILE else ''
+        print('  %2d  %-*s  %s%s' %
+              (index, width, profile.name, profile.description, suffix))
+    print()
+
+    read = input if input_fn is None else input_fn
+    while True:
+        try:
+            answer = read('Profile [1]: ').strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            raise SystemExit(0)
+        if not answer:
+            return entries[0].name
+        if answer.lower() in ('q', 'quit'):
+            raise SystemExit(0)
+        if answer.isdigit():
+            index = int(answer)
+            if 1 <= index <= len(entries):
+                return entries[index - 1].name
+        elif answer.lower() in by_name:
+            return by_name[answer.lower()]
+        print('Choose 1-%d, enter a profile name, or q to quit.' % len(entries))
+
+
+def select_startup_profile(args):
+    """Apply the picker at the executable boundary, leaving parse_args side-effect free."""
+    if (args.profile_omitted and args.script is None
+            and sys.stdin.isatty() and sys.stdout.isatty()):
+        args.profile = choose_startup_profile()
+    return args
+
+
 def parse_args(argv=None):
     p = argparse.ArgumentParser(
         prog='make console',
         description='Interactive MMU console on the Happy Hare test harness.')
-    p.add_argument('--profile', default='ercf_vvd',
-                   help='harness profile name. Default ercf_vvd is a real 2-unit machine '
+    p.add_argument('--profile', default=None,
+                   help='harness profile name. When omitted at a terminal, choose from a '
+                        'startup list; otherwise ercf_vvd is used. ercf_vvd is a real 2-unit machine '
                         '(ERCF 1.1sb + ViViD 1.0, 13 gates). Others: boxturtle, tradrack, '
                         'emu, encoder, nfc_single, nfc_per_gate, nfc_spoolman, ...')
     p.add_argument('--temp', type=float, default=DEFAULT_TEMP,
@@ -2480,11 +2537,14 @@ def parse_args(argv=None):
         args.header = header_groups(args.header, Console.GROUPS)
     except ValueError as exc:
         p.error(str(exc))
+    args.profile_omitted = args.profile is None
+    if args.profile_omitted:
+        args.profile = DEFAULT_PROFILE
     return args
 
 
 def main(argv=None):
-    args = parse_args(argv)
+    args = select_startup_profile(parse_args(argv))
     console = Console(args)
     if not args.script:
         # boot() builds a whole fake printer and preloads every gate, which is fifteen to

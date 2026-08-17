@@ -205,6 +205,14 @@ simulation:
 make console
 ```
 
+At an interactive terminal this first presents the available simulator profiles; press
+Enter for the default `ercf_vvd`, or choose by number or name. Skip the picker by supplying
+the profile explicitly:
+
+```bash
+make console ARGS='--profile boxturtle'
+```
+
 ```
 > MMU_CHANGE_TOOL TOOL=1
 Tool change requested: T1
@@ -327,8 +335,8 @@ stamped; the rest are indented to line up under it:
 Useful flags — `make console ARGS='...'`:
 
 ```bash
---profile boxturtle            # or tradrack, emu, encoder, nfc_single, nfc_spoolman, ...
-                               # (default is ercf_vvd, a real 2-unit machine)
+--profile boxturtle            # skip the startup picker; or tradrack, emu, encoder, ...
+                               # non-interactive default: ercf_vvd, a real 2-unit machine
 --profile /path/to/config      # your own installed config - see below
 --header machine,sensors,filament,selector,gates,leds   # or 'all' / 'off'
 --inline-header                # reprint above each prompt instead of pinning it

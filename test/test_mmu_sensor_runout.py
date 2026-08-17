@@ -221,10 +221,10 @@ class TestRunoutArming(RunoutFilterTestCase):
 
 
 class TestRunoutArmingAcrossUnits(unittest.TestCase):
-    """ercf_vvd is the only multi-unit profile - ERCF (gates 0-8) plus ViViD (gates 9-12)."""
+    """Use the synthetic two-buffer variant to exercise both sides of the hand-off."""
 
     def setUp(self):
-        self.hh = session('ercf_vvd')
+        self.hh = session('ercf_vvd_buffers')
         self.hh.boot(calibrate=True)
         self.mmu = self.hh.mmu
 

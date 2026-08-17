@@ -21,6 +21,7 @@ import sys
 import tempfile
 import time
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 from test.hh import cfg as cfg_mod
@@ -1418,6 +1419,60 @@ class TestSlicedAdvance(unittest.TestCase):
         console.hh.reactor.advance.assert_not_called()
 
 
+class TestProfilePicker(unittest.TestCase):
+
+    def profiles(self):
+        return [
+            SimpleNamespace(name='zeta', description='Last profile'),
+            SimpleNamespace(name='ercf_vvd', description='Default profile'),
+            SimpleNamespace(name='alpha', description='First profile'),
+        ]
+
+    def choose(self, answers):
+        answers = iter(answers)
+        return console_mod.choose_startup_profile(
+            self.profiles(), input_fn=lambda _prompt: next(answers))
+
+    def test_enter_chooses_the_default(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(self.choose(['']), 'ercf_vvd')
+
+    def test_a_number_or_name_selects_a_profile(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(self.choose(['2']), 'alpha')
+            self.assertEqual(self.choose(['ZETA']), 'zeta')
+
+    def test_invalid_choice_reprompts_with_guidance(self):
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(self.choose(['99', 'alpha']), 'alpha')
+        self.assertIn('Choose 1-3', out.getvalue())
+
+    def test_noninteractive_omission_keeps_the_default(self):
+        with no_tty(), mock.patch.object(console_mod, 'choose_startup_profile') as choose:
+            args = console_mod.select_startup_profile(console_mod.parse_args([]))
+        self.assertEqual(args.profile, 'ercf_vvd')
+        choose.assert_not_called()
+
+    def test_interactive_omission_opens_the_picker(self):
+        with mock.patch.object(sys, 'stdin', FakeTty()), \
+                mock.patch.object(sys, 'stdout', FakeTty()), \
+                mock.patch.object(console_mod, 'choose_startup_profile', return_value='emu') as choose:
+            args = console_mod.select_startup_profile(console_mod.parse_args([]))
+        self.assertEqual(args.profile, 'emu')
+        choose.assert_called_once_with()
+
+    def test_explicit_profile_and_script_skip_the_picker(self):
+        for argv in (['--profile', 'boxturtle'], ['--script', 'commands.txt']):
+            with self.subTest(argv=argv), \
+                    mock.patch.object(sys, 'stdin', FakeTty()), \
+                    mock.patch.object(sys, 'stdout', FakeTty()), \
+                    mock.patch.object(console_mod, 'choose_startup_profile') as choose:
+                args = console_mod.select_startup_profile(console_mod.parse_args(argv))
+            choose.assert_not_called()
+            self.assertEqual(args.profile,
+                             'boxturtle' if '--profile' in argv else 'ercf_vvd')
+
+
 class TestHeaderGroups(unittest.TestCase):
     """
     header_groups() - shared by --header and /header so the two cannot drift. They used to
@@ -1852,6 +1907,20 @@ class TestTheDefaultProfile(unittest.TestCase):
     def test_it_boots_cleanly(self):
         self.assertTrue(self.console.hh.fired('mmu:bootup'))
         self.assertEqual(self.console.hh.errors, [])
+
+    def test_ercf_filament_line_does_not_show_a_sync_feedback_buffer(self):
+        """The default multi-unit fixture must reflect which unit actually owns a buffer."""
+        mmu = self.console.hh.mmu
+        self.assertEqual(mmu.mmu_unit(0).name, 'unit0')
+        self.assertFalse(mmu.mmu_unit(0).has_buffer(), 'ERCF fixture gained a phantom buffer')
+        mmu.gate_selected = 0
+        ercf_line = mmu.get_filament_position_string()
+        self.assertNotIn(' [   ] ', ercf_line)
+
+        self.assertTrue(mmu.mmu_unit(9).has_buffer(), 'ViViD fixture lost its real buffer')
+        mmu.gate_selected = 9
+        vivid_line = mmu.get_filament_position_string()
+        self.assertIn(' [   ] ', vivid_line)
 
     def test_it_moves_filament_on_the_last_gate(self):
         """
