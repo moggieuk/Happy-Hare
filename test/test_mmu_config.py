@@ -427,18 +427,98 @@ config PARAM_DEVICE
                          'DEVICE_OTHER')
         self.assertEqual(kc.syms['PARAM_DEVICE'].str_value, '/dev/other')
 
+    def test_canbus_discovery_aggregates_interfaces_and_splits_selection(self):
+        klipper_home = os.path.join(self.tmpdir.name, 'klipper')
+        python_path = os.path.join(self.tmpdir.name, 'klippy-env', 'bin', 'python')
+        mock_bin = os.path.join(self.tmpdir.name, 'bin')
+        os.makedirs(os.path.dirname(python_path))
+        os.makedirs(mock_bin)
+        os.makedirs(os.path.join(klipper_home, 'scripts'))
+        ip_path = os.path.join(mock_bin, 'ip')
+        with open(ip_path, 'w') as f:
+            f.write('''#!/bin/sh
+echo "2: can0: <NOARP,UP> mtu 16 qdisc pfifo_fast state UNKNOWN mode DEFAULT group default"
+echo "3: vlan-1: <NOARP,UP> mtu 16 qdisc pfifo_fast state UNKNOWN mode DEFAULT group default"
+echo "4: can1: <NOARP,UP> mtu 16 qdisc pfifo_fast state UNKNOWN mode DEFAULT group default"
+''')
+        os.chmod(ip_path, 0o755)
+        with open(python_path, 'w') as f:
+            f.write('''#!/bin/sh
+case "$2" in
+  can0) echo "Found canbus_uuid=aaa111aaa111" ;;
+  vlan-1) echo "Found canbus_uuid=bbb222bbb222" ;;
+  can1) echo "Found canbus_uuid=ccc333ccc333" ;;
+esac
+''')
+        os.chmod(python_path, 0o755)
+
+        syms = dict(profiles.get('boxturtle').syms)
+        syms['CHOICE_MMU_CONNECTION_TYPE_SERIAL'] = False
+        syms['CHOICE_MMU_CONNECTION_TYPE_CANBUS'] = True
+        with cfg._env({'KLIPPER_HOME': klipper_home,
+                       'PATH': mock_bin + os.pathsep + os.environ['PATH']}):
+            kc = cfg._kconfig('multi-interface-canbus-discovery', syms)
+
+        choice = kc.named_choices['CHOICE_MMU_CANBUS_CONNECTION']
+        prompts = [node.prompt[0] for symbol in choice.syms
+                   for node in symbol.nodes if node.prompt]
+        self.assertIn('can0:aaa111aaa111', prompts)
+        self.assertIn('vlan-1:bbb222bbb222', prompts)
+        self.assertIn('can1:ccc333ccc333', prompts)
+
+        kc.syms['CHOICE_MMU_CANBUS_UUID_VLAN_1_BBB222BBB222'].set_value(2)
+        self.assertEqual(kc.syms['PARAM_MMU_CANBUS_UUID'].str_value,
+                         'bbb222bbb222')
+        self.assertEqual(kc.syms['PARAM_MMU_CANBUS_INTERFACE'].str_value,
+                         'vlan-1')
+
+    def test_failed_canbus_queries_produce_no_discovered_choices(self):
+        klipper_home = os.path.join(self.tmpdir.name, 'klipper')
+        python_path = os.path.join(self.tmpdir.name, 'klippy-env', 'bin', 'python')
+        mock_bin = os.path.join(self.tmpdir.name, 'bin')
+        os.makedirs(os.path.dirname(python_path))
+        os.makedirs(mock_bin)
+        os.makedirs(os.path.join(klipper_home, 'scripts'))
+
+        ip_path = os.path.join(mock_bin, 'ip')
+        with open(ip_path, 'w') as f:
+            f.write('#!/bin/sh\necho "2: vlan1: <NOARP,UP> mtu 16"\n')
+        os.chmod(ip_path, 0o755)
+        with open(python_path, 'w') as f:
+            f.write('#!/bin/sh\necho "CAN query failed" >&2\nexit 1\n')
+        os.chmod(python_path, 0o755)
+
+        syms = dict(profiles.get('boxturtle').syms)
+        syms['CHOICE_MMU_CONNECTION_TYPE_SERIAL'] = False
+        syms['CHOICE_MMU_CONNECTION_TYPE_CANBUS'] = True
+        with cfg._env({'KLIPPER_HOME': klipper_home,
+                       'PATH': mock_bin + os.pathsep + os.environ['PATH']}):
+            kc = cfg._kconfig('failed-canbus-query', syms)
+
+        choice = kc.named_choices['CHOICE_MMU_CANBUS_CONNECTION']
+        discovered = [node.prompt[0] for symbol in choice.syms
+                      for node in symbol.nodes
+                      if node.prompt and ':' in node.prompt[0]
+                      and not node.prompt[0].startswith('Previous selection:')]
+        self.assertEqual(discovered, [])
+        self.assertEqual(choice.selection.name,
+                         'CHOICE_MMU_CANBUS_UUID_OTHER')
+
     def test_all_real_connection_choices_expose_their_previous_values(self):
         values = {
             'PARAM_MMU_SERIAL_DEVICE': '/dev/previous-main',
             'PARAM_MMU_CANBUS_UUID': 'abc123def456',
             'PARAM_BUFFER_SERIAL_DEVICE': '/dev/previous-buffer',
             'PARAM_BUFFER_CANBUS_UUID': 'def456abc123',
+            'PARAM_BUFFER_CANBUS_INTERFACE': 'can2',
         }
         for gate in range(5):
             values['PARAM_MMU_SERIAL_DEVICE_%d' % gate] = \
                 '/dev/previous-gate-%d' % gate
             values['PARAM_MMU_CANBUS_UUID_%d' % gate] = \
                 'abc123def4%02d' % gate
+            values['PARAM_MMU_CANBUS_INTERFACE_%d' % gate] = \
+                'can%d' % (gate % 3)
         with open(self.config_path, 'w') as f:
             for name, value in values.items():
                 f.write('CONFIG_%s="%s" #~DEFAULT~#\n' % (name, value))
@@ -465,8 +545,22 @@ config PARAM_DEVICE
             self.assertEqual(kc.syms[name].str_value, values[name])
             canbus = kc.syms['CHOICE_MMU_CANBUS_UUID_PREVIOUS_%d' % gate]
             self.assertEqual(canbus.nodes[0].prompt[0],
-                             'Previous selection: %s' %
-                             values['PARAM_MMU_CANBUS_UUID_%d' % gate])
+                             'Previous selection: %s:%s' % (
+                                 values['PARAM_MMU_CANBUS_INTERFACE_%d' % gate],
+                                 values['PARAM_MMU_CANBUS_UUID_%d' % gate]))
+
+        emu_canbus_syms = dict(profiles.get('emu').syms)
+        emu_canbus_syms['CHOICE_MMU_CONNECTION_TYPE_SERIAL'] = False
+        emu_canbus_syms['CHOICE_MMU_CONNECTION_TYPE_CANBUS'] = True
+        with cfg._env(env):
+            kc = cfg._kconfig('previous-canbus-gate-selections',
+                              emu_canbus_syms)
+        for gate in range(5):
+            choice = kc.named_choices['CHOICE_MMU_CANBUS_CONNECTION_%d' % gate]
+            self.assertEqual(choice.selection.name,
+                             'CHOICE_MMU_CANBUS_UUID_PREVIOUS_%d' % gate)
+            interface = 'PARAM_MMU_CANBUS_INTERFACE_%d' % gate
+            self.assertEqual(kc.syms[interface].str_value, values[interface])
 
         vvd = profiles.get('ercf_vvd').units[1]
         buffer_env = {
@@ -490,8 +584,18 @@ config PARAM_DEVICE
                          values['PARAM_BUFFER_SERIAL_DEVICE'])
         buffer_canbus = kc.syms['CHOICE_BUFFER_CANBUS_UUID_PREVIOUS']
         self.assertEqual(buffer_canbus.nodes[0].prompt[0],
-                         'Previous selection: %s' %
-                         values['PARAM_BUFFER_CANBUS_UUID'])
+                         'Previous selection: %s:%s' % (
+                             values['PARAM_BUFFER_CANBUS_INTERFACE'],
+                             values['PARAM_BUFFER_CANBUS_UUID']))
+
+        buffer_canbus_syms = dict(vvd.syms)
+        buffer_canbus_syms['CHOICE_BUFFER_CONNECTION_TYPE_SERIAL'] = False
+        buffer_canbus_syms['CHOICE_BUFFER_CONNECTION_TYPE_CANBUS'] = True
+        with cfg._env(buffer_env):
+            kc = cfg._kconfig('previous-buffer-canbus-selection',
+                              buffer_canbus_syms)
+        self.assertEqual(kc.syms['PARAM_BUFFER_CANBUS_INTERFACE'].str_value,
+                         values['PARAM_BUFFER_CANBUS_INTERFACE'])
 
         base_env = dict(buffer_env)
         base_env.update({
@@ -509,6 +613,11 @@ config PARAM_DEVICE
         self.assertEqual(base_choice.selection.name,
                          'CHOICE_MMU_CANBUS_UUID_PREVIOUS')
         self.assertEqual(kc.syms['PARAM_MMU_CANBUS_UUID'].str_value,
+                         values['PARAM_MMU_CANBUS_UUID'])
+        self.assertEqual(kc.syms['PARAM_MMU_CANBUS_INTERFACE'].str_value,
+                         'can0')
+        self.assertEqual(base_choice.selection.nodes[0].prompt[0],
+                         'Previous selection: can0:%s' %
                          values['PARAM_MMU_CANBUS_UUID'])
         base_serial = kc.syms['CHOICE_MMU_SERIAL_DEVICE_PREVIOUS']
         self.assertEqual(base_serial.nodes[0].prompt[0],

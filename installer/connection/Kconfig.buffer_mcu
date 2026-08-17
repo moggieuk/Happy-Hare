@@ -6,6 +6,7 @@
 #   CHOICE_BUFFER_CONNECTION_TYPE_CANBUS
 #   PARAM_BUFFER_SERIAL_DEVICE
 #   PARAM_BUFFER_CANBUS_UUID
+#   PARAM_BUFFER_CANBUS_INTERFACE
 
 choice CHOICE_BUFFER_CONNECTION_TYPE
   prompt "MCU connection for sync-feedback buffer"
@@ -91,12 +92,12 @@ if CHOICE_BUFFER_CONNECTION_TYPE_CANBUS
       "Other" and enter it manually.
 
     config CHOICE_BUFFER_CANBUS_UUID_PREVIOUS
-      bool "Previous selection: $(saved-config-value,PARAM_BUFFER_CANBUS_UUID)"
+      bool "Previous selection: $(saved_canbus_connection,PARAM_BUFFER_CANBUS_INTERFACE,PARAM_BUFFER_CANBUS_UUID)"
       depends on "$(saved-config-value,PARAM_BUFFER_CANBUS_UUID)" != ""
 
     @repeat var=i min=1 max=10@
     config $(buffer_canbus_config,$(i))
-      bool "$(canbus_uuid,$(i))"
+      bool "$(canbus_connection,$(i))"
       depends on $(canbus_uuid_count) >= $(i)
     @endrepeat@
 
@@ -110,9 +111,12 @@ if CHOICE_BUFFER_CONNECTION_TYPE_CANBUS
           Specify the CANbus UUID that is used for connection to the sync-feedback buffer
           It is a 6 byte ID represented in hex.
           This can be found with:
-            ~/klipper/klippy-env/bin/python ~/klipper/klipper/scripts/canbus_query.py can0
+            ~/klipper/klippy-env/bin/python ~/klipper/klipper/scripts/canbus_query.py <interface>
           Enter only the uuid portion (12 hex digits)
             E.g. 127081e7e3c6
+      config BUFFER_CANBUS_INTERFACE_OTHER
+        string "Enter CANbus interface"
+        default "can0"
     endif
   endchoice
 
@@ -123,5 +127,13 @@ if CHOICE_BUFFER_CONNECTION_TYPE_CANBUS
     default "$(canbus_uuid,$(i))" if $(buffer_canbus_config,$(i))
     @endrepeat@
     default BUFFER_CANBUS_UUID_OTHER if CHOICE_BUFFER_CANBUS_UUID_OTHER
+
+  config PARAM_BUFFER_CANBUS_INTERFACE
+    string
+    default "$(saved_canbus_interface,PARAM_BUFFER_CANBUS_INTERFACE)" if CHOICE_BUFFER_CANBUS_UUID_PREVIOUS
+    @repeat var=i min=1 max=10@
+    default "$(canbus_interface,$(i))" if $(buffer_canbus_config,$(i))
+    @endrepeat@
+    default BUFFER_CANBUS_INTERFACE_OTHER if CHOICE_BUFFER_CANBUS_UUID_OTHER
 
 endif
