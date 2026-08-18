@@ -216,7 +216,8 @@ class MmuNfcFieldArbiter:
 
     # ---- Provisional-verdict ratification ------------------------------------------------------
 
-    def _ratify(self, gate, nfc_mgr, endstop, clear_distance=0.0):
+    def _ratify(self, gate, nfc_mgr, endstop, clear_distance=0.0,
+                parking_distance=None, homing_max=None):
         """
         Re-probe once after the caller's own motion completes, to confirm/reject a
         PROVISIONAL verdict. Raw presence check, not _field_check - re-deriving ownership
@@ -237,7 +238,14 @@ class MmuNfcFieldArbiter:
             return True
 
         distance = clear_distance
-        if distance and not (distance > 0 and endstop in SHARED_GATE_ENDSTOPS):
+        safe_reach = (
+            homing_max is None
+            or (abs(distance) <= homing_max
+                and (parking_distance is None
+                     or parking_distance + distance >= -homing_max))
+        )
+        if (distance and safe_reach
+                and not (distance > 0 and endstop in SHARED_GATE_ENDSTOPS)):
             if self._verify_by_self_jog(gate, nfc_mgr, distance):
                 self.mmu.log_debug(
                     "NFC: gate %d: provisional tag attribution ratified via a deliberate "
@@ -322,7 +330,8 @@ class MmuNfcFieldArbiter:
     # ---- Public entry point ---------------------------------------------------------------------
 
     @contextlib.contextmanager
-    def clear_field(self, gate, nfc_mgr, endstop=None, clear_distance=0.0):
+    def clear_field(self, gate, nfc_mgr, endstop=None, clear_distance=0.0,
+                    parking_distance=None, homing_max=None):
         """
         Settle gate 'gate's NFC field for the enclosed operation, evicting neighbors when
         armed.
@@ -364,7 +373,9 @@ class MmuNfcFieldArbiter:
             # the read); guarded so an error here can't skip the restore below
             if provisional:
                 try:
-                    ratified = self._ratify(gate, nfc_mgr, endstop, clear_distance)
+                    ratified = self._ratify(
+                        gate, nfc_mgr, endstop, clear_distance,
+                        parking_distance, homing_max)
                 except Exception as e:
                     self.mmu.log_error("NFC: gate %d: ratification check failed: %s" % (gate, str(e)))
                     ratified = False # safer to discard than commit blind

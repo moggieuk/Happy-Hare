@@ -667,6 +667,7 @@ if MMU_HAS_NFC_READER
         jogs THIS gate's own filament this far further off park and back before discarding -
         catches a tag mounted close enough to stay in range at rest. Signed from
         park position (+ve forward, -ve back; forward needs gate_homing_endstop=mmu_exit).
+        The jog magnitude and its backward target must fit gate_homing_max.
 
         0 disables this escalation for MMU_NFC_SCAN (default).
 
@@ -679,6 +680,7 @@ if MMU_HAS_NFC_READER
         differ, including in sign, from the scan distance. Defaults to it, since
         preload usually wants the same clear jog. Forward requires the preload
         endstop (or, if unset, gate_homing_endstop) to be mmu_exit.
+        The jog magnitude and its backward target must fit gate_preload_homing_max.
 
         0 disables this escalation for MMU_PRELOAD (default).
 
@@ -690,7 +692,7 @@ if MMU_HAS_NFC_READER
         How many times to read a gate's reader when asking "is anything in this field?". A
         tag at the edge of the field - the neighboring-spool signature - reads intermittently,
         so a single read can miss it. Only used when the neighbor check or eviction jog above
-        is enabled.
+        or either self-jog clear distance is enabled.
 
     choice CHOICE_NFC_LED_SEGMENT
       prompt "NFC reader led feedback segment"

@@ -74,12 +74,29 @@ class MmuUnitParameters(TunableParametersBase):
             self._validate_gate_parking_distance(self.gate_parking_distance)
             if not self.gate_preload_endstop:
                 self._validate_gate_preload_parking_distance(self.gate_preload_parking_distance)
+                self._validate_nfc_preload_clear_distance(self.nfc_preload_clear_distance)
             self._validate_nfc_neighbor_evict_distance(self.nfc_neighbor_evict_distance)
             self._validate_nfc_gate_clear_distance(self.nfc_gate_clear_distance)
 
     def _on_gate_preload_endstop(self, old, new):
         if new != old:
             self._validate_gate_preload_parking_distance(self.gate_preload_parking_distance)
+            self._validate_nfc_preload_clear_distance(self.nfc_preload_clear_distance)
+
+    def _on_gate_homing_max(self, old, new):
+        if new != old:
+            self._validate_nfc_gate_clear_distance(self.nfc_gate_clear_distance)
+
+    def _on_gate_parking_distance(self, old, new):
+        if new != old:
+            self._validate_nfc_gate_clear_distance(self.nfc_gate_clear_distance)
+
+    def _on_gate_preload_homing_max(self, old, new):
+        if new != old:
+            self._validate_nfc_preload_clear_distance(self.nfc_preload_clear_distance)
+
+    def _on_gate_preload_parking_distance(self, old, new):
+        if new != old:
             self._validate_nfc_preload_clear_distance(self.nfc_preload_clear_distance)
 
     def _on_flowguard_tuning_change(self, old, new):
@@ -153,9 +170,12 @@ class MmuUnitParameters(TunableParametersBase):
                 % (SENSOR_EXIT_PREFIX, self.gate_homing_endstop, value))
 
     def _validate_nfc_gate_clear_distance(self, value):
-        # 0 disables; park-relative jog-and-restore, no window-fit check (no re-home involved)
+        # 0 disables; park-relative jog-and-restore, bounded by the gate homing budget
         if not value:
             return
+        self._validate_nfc_clear_reach(
+            'nfc_gate_clear_distance', value, self.gate_parking_distance,
+            self.gate_homing_max)
         if value > 0 and self.gate_homing_endstop in SHARED_GATE_ENDSTOPS:
             raise ValueError(
                 "nfc_gate_clear_distance must be a backward jog (< 0) unless "
@@ -167,12 +187,29 @@ class MmuUnitParameters(TunableParametersBase):
         # 0 disables; independent of nfc_gate_clear_distance, can differ including in sign
         if not value:
             return
+        self._validate_nfc_clear_reach(
+            'nfc_preload_clear_distance', value, self.gate_preload_parking_distance,
+            self.gate_preload_homing_max)
         endstop = self.gate_preload_endstop or self.gate_homing_endstop # '' inherits gate_homing_endstop
         if value > 0 and endstop in SHARED_GATE_ENDSTOPS:
             raise ValueError(
                 "nfc_preload_clear_distance must be a backward jog (< 0) unless the preload "
                 "endstop is '%s' - every gate shares the forward path through '%s' (got %.1f)"
                 % (SENSOR_EXIT_PREFIX, endstop, value))
+
+    def _validate_nfc_clear_reach(self, name, value, parking_distance, homing_max):
+        # The move is relative to park, but both its magnitude and its furthest backward
+        # target must stay inside the profile's configured recovery reach. Otherwise the
+        # open-loop return can lose the filament after retracting it out of the drive.
+        target = parking_distance + value
+        if abs(value) > homing_max:
+            raise ValueError(
+                "%s jog magnitude (%.1fmm) cannot exceed its homing maximum (%.1fmm)"
+                % (name, abs(value), homing_max))
+        if target < -homing_max:
+            raise ValueError(
+                "%s reaches %.1fmm behind the homing datum after parking, beyond its "
+                "homing maximum (%.1fmm)" % (name, target, homing_max))
 
     # Parking distance sign convention: -ve = retraction (toward the gate/gears), +ve =
     # extrusion (forward, past the sensor). Parking forward past the sensor is only safe
@@ -200,14 +237,14 @@ class MmuUnitParameters(TunableParametersBase):
     _SPECS: Sequence[ParamSpec] = (
         # Gate loading
         ParamSpec('gate_homing_endstop',              'choice', SENSOR_ENCODER, section="GATE HOMING", choices={o: o for o in GATE_ENDSTOPS}, on_change=_on_gate_homing_endstop),
-        ParamSpec('gate_homing_max',                  'float', 100.0, section="GATE HOMING", limits=dict(minval=10)),
-        ParamSpec('gate_parking_distance',            'float', -10.0, section="GATE HOMING", validator=_validate_gate_parking_distance),
+        ParamSpec('gate_homing_max',                  'float', 100.0, section="GATE HOMING", limits=dict(minval=10), on_change=_on_gate_homing_max),
+        ParamSpec('gate_parking_distance',            'float', -10.0, section="GATE HOMING", validator=_validate_gate_parking_distance, on_change=_on_gate_parking_distance),
         ParamSpec('gate_load_attempts',               'int',       1, section="GATE HOMING", limits=dict(minval=1, maxval=20)),
 
         # Gate preloading
         ParamSpec('gate_preload_endstop',             'choice',   '', section="GATE HOMING", choices={o: o for o in (GATE_ENDSTOPS + [''])}, on_change=_on_gate_preload_endstop),
-        ParamSpec('gate_preload_homing_max',          'float', lambda self: self.gate_homing_max, section="GATE HOMING"),
-        ParamSpec('gate_preload_parking_distance',    'float', -10.0, section="GATE HOMING", validator=_validate_gate_preload_parking_distance),
+        ParamSpec('gate_preload_homing_max',          'float', lambda self: self.gate_homing_max, section="GATE HOMING", on_change=_on_gate_preload_homing_max),
+        ParamSpec('gate_preload_parking_distance',    'float', -10.0, section="GATE HOMING", validator=_validate_gate_preload_parking_distance, on_change=_on_gate_preload_parking_distance),
         ParamSpec('gate_preload_attempts',            'int',       2, section="GATE HOMING", limits=dict(minval=1, maxval=20)),
         ParamSpec('gate_autoload',                    'int',       1, section="GATE HOMING", limits=dict(minval=0, maxval=1)),
 
