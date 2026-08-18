@@ -70,24 +70,34 @@ class MmuUnitParameters(TunableParametersBase):
     def _on_gate_homing_endstop(self, old, new):
         if new != old:
             self._mmu_unit.calibrator.adjust_bowden_lengths_on_homing_change()
-            # gate_parking_distance's legal sign depends on this endstop (see
-            # _validate_gate_parking_distance) - a value that was fine for the old endstop
-            # can be unsafe for the new one (e.g. a positive park, fine on mmu_exit, driving
-            # forward into a now-shared merge zone on encoder/mmu_shared_exit/extruder_entry).
-            # Re-check it now rather than leaving a stale, now-unsafe value in place until
-            # something else happens to touch it. Same for gate_preload_parking_distance
-            # when gate_preload_endstop is '' and so inherits this one.
+            # re-check values whose legal sign/direction depends on this endstop
             self._validate_gate_parking_distance(self.gate_parking_distance)
             if not self.gate_preload_endstop:
                 self._validate_gate_preload_parking_distance(self.gate_preload_parking_distance)
-            # nfc_neighbor_evict_distance's forward-jog legality depends on this endstop too
-            # (see _validate_nfc_neighbor_evict_distance) - same reasoning as the parking
-            # distance re-checks just above.
+                self._validate_nfc_preload_clear_distance(self.nfc_preload_clear_distance)
             self._validate_nfc_neighbor_evict_distance(self.nfc_neighbor_evict_distance)
+            self._validate_nfc_gate_clear_distance(self.nfc_gate_clear_distance)
 
     def _on_gate_preload_endstop(self, old, new):
         if new != old:
             self._validate_gate_preload_parking_distance(self.gate_preload_parking_distance)
+            self._validate_nfc_preload_clear_distance(self.nfc_preload_clear_distance)
+
+    def _on_gate_homing_max(self, old, new):
+        if new != old:
+            self._validate_nfc_gate_clear_distance(self.nfc_gate_clear_distance)
+
+    def _on_gate_parking_distance(self, old, new):
+        if new != old:
+            self._validate_nfc_gate_clear_distance(self.nfc_gate_clear_distance)
+
+    def _on_gate_preload_homing_max(self, old, new):
+        if new != old:
+            self._validate_nfc_preload_clear_distance(self.nfc_preload_clear_distance)
+
+    def _on_gate_preload_parking_distance(self, old, new):
+        if new != old:
+            self._validate_nfc_preload_clear_distance(self.nfc_preload_clear_distance)
 
     def _on_flowguard_tuning_change(self, old, new):
         # Push live FlowGuard tuning (relief) to a running controller
@@ -103,7 +113,7 @@ class MmuUnitParameters(TunableParametersBase):
     # ---- Validators ----
 
     def _validate_nfc_gate_jog_scan_window(self, value):
-        # Empty (or absent) disables MMU_NFC_SCAN
+        # empty disables MMU_NFC_SCAN; values are targets from the homing datum, not park
         if not value:
             return
         if len(value) != 2:
@@ -111,28 +121,15 @@ class MmuUnitParameters(TunableParametersBase):
         neg, pos = value[0], value[1]
         if neg > 0 or pos < 0:
             raise ValueError("nfc_gate_jog_scan_window must be (neg, pos) with neg <= 0 <= pos")
-        # Both values are TARGETS measured from the gate homing point, not from the parked
-        # position: _jog_scan homes to the gate for a datum first, then sweeps to gate+neg
-        # and gate+pos.
-        #
-        # The return leg no longer constrains this - _load_gate() takes an extra_homing
-        # budget now, so it scales with however far the sweep strayed. What is still worth
-        # rejecting is a backward reach beyond the machine's own gate homing budget, which
-        # means pulling filament further back than gate homing was ever configured to
-        # recover. (The positive side is deliberately left unchecked so no configuration
-        # that loads today stops loading; see the note in the plan.)
         if abs(neg) > self.gate_homing_max:
             raise ValueError(
                 "nfc_gate_jog_scan_window backward reach (%.1fmm) cannot exceed gate_homing_max (%.1fmm)"
                 % (abs(neg), self.gate_homing_max)
             )
-        # Note: a forward reach past a SHARED gate datum is deliberately not rejected here.
-        # Whether that is safe depends on the shared path being unoccupied, which is a
-        # runtime property this validator cannot see. Nothing checks it at scan time
-        # either - a sweep forward of a shared datum can meet another gate's filament.
+        # forward reach past a shared datum is deliberately not rejected here (runtime-only property)
 
     def _validate_nfc_preload_jog_scan_window(self, value):
-        # Empty (or absent) disables the NFC scan-on-miss during MMU_PRELOAD
+        # empty disables scan-on-miss during MMU_PRELOAD; datum-relative like the gate window
         if not value:
             return
         if len(value) != 2:
@@ -140,9 +137,6 @@ class MmuUnitParameters(TunableParametersBase):
         neg, pos = value[0], value[1]
         if neg > 0 or pos < 0:
             raise ValueError("nfc_preload_jog_scan_window must be (neg, pos) with neg <= 0 <= pos")
-        # Same TARGETS-from-the-gate-datum semantics as nfc_gate_jog_scan_window, but
-        # checked against the preload homing budget - preload can home to a different
-        # endstop (e.g. the per-gate mmu_exit sensor) with its own recovery budget.
         if abs(neg) > self.gate_preload_homing_max:
             raise ValueError(
                 "nfc_preload_jog_scan_window backward reach (%.1fmm) cannot exceed gate_preload_homing_max (%.1fmm)"
@@ -150,7 +144,7 @@ class MmuUnitParameters(TunableParametersBase):
             )
 
     def _validate_nfc_neighbor_evict_distance(self, value):
-        # 0 disables neighbor eviction entirely
+        # 0 disables eviction; datum-relative, must fit the gate jog scan window
         if not value:
             return
         window = self.nfc_gate_jog_scan_window
@@ -160,8 +154,6 @@ class MmuUnitParameters(TunableParametersBase):
                 "configured - the eviction jog travels within that same window regardless "
                 "of which operation (preload or MMU_NFC_SCAN) it is protecting")
         neg, pos = window[0], window[1]
-        # The eviction jog is the same physical travel as a scan jog, so it must fit inside
-        # the matching half of the window that already bounds nfc_gate_jog_scan_window itself
         if value > pos:
             raise ValueError(
                 "nfc_neighbor_evict_distance forward jog (%.1fmm) cannot exceed the forward "
@@ -170,16 +162,54 @@ class MmuUnitParameters(TunableParametersBase):
             raise ValueError(
                 "nfc_neighbor_evict_distance backward jog (%.1fmm) cannot exceed the backward "
                 "reach of nfc_gate_jog_scan_window (%.1fmm)" % (value, neg))
-        # A forward jog pushes the evicted neighbor's filament past its own gate. That is
-        # only safe when each gate has its own exit path (gate_homing_endstop == mmu_exit);
-        # every other gate endstop is a per-UNIT shared resource (SHARED_GATE_ENDSTOPS), so a
-        # forward jog would obstruct another gate (see the gate-endstop-invariants skill).
         if value > 0 and self.gate_homing_endstop in SHARED_GATE_ENDSTOPS:
             raise ValueError(
                 "nfc_neighbor_evict_distance must be a backward jog (< 0) unless "
                 "gate_homing_endstop is '%s' - every gate shares the forward path through "
                 "'%s' (got %.1f)"
                 % (SENSOR_EXIT_PREFIX, self.gate_homing_endstop, value))
+
+    def _validate_nfc_gate_clear_distance(self, value):
+        # 0 disables; park-relative jog-and-restore, bounded by the gate homing budget
+        if not value:
+            return
+        self._validate_nfc_clear_reach(
+            'nfc_gate_clear_distance', value, self.gate_parking_distance,
+            self.gate_homing_max)
+        if value > 0 and self.gate_homing_endstop in SHARED_GATE_ENDSTOPS:
+            raise ValueError(
+                "nfc_gate_clear_distance must be a backward jog (< 0) unless "
+                "gate_homing_endstop is '%s' - every gate shares the forward path through "
+                "'%s' (got %.1f)"
+                % (SENSOR_EXIT_PREFIX, self.gate_homing_endstop, value))
+
+    def _validate_nfc_preload_clear_distance(self, value):
+        # 0 disables; independent of nfc_gate_clear_distance, can differ including in sign
+        if not value:
+            return
+        self._validate_nfc_clear_reach(
+            'nfc_preload_clear_distance', value, self.gate_preload_parking_distance,
+            self.gate_preload_homing_max)
+        endstop = self.gate_preload_endstop or self.gate_homing_endstop # '' inherits gate_homing_endstop
+        if value > 0 and endstop in SHARED_GATE_ENDSTOPS:
+            raise ValueError(
+                "nfc_preload_clear_distance must be a backward jog (< 0) unless the preload "
+                "endstop is '%s' - every gate shares the forward path through '%s' (got %.1f)"
+                % (SENSOR_EXIT_PREFIX, endstop, value))
+
+    def _validate_nfc_clear_reach(self, name, value, parking_distance, homing_max):
+        # The move is relative to park, but both its magnitude and its furthest backward
+        # target must stay inside the profile's configured recovery reach. Otherwise the
+        # open-loop return can lose the filament after retracting it out of the drive.
+        target = parking_distance + value
+        if abs(value) > homing_max:
+            raise ValueError(
+                "%s jog magnitude (%.1fmm) cannot exceed its homing maximum (%.1fmm)"
+                % (name, abs(value), homing_max))
+        if target < -homing_max:
+            raise ValueError(
+                "%s reaches %.1fmm behind the homing datum after parking, beyond its "
+                "homing maximum (%.1fmm)" % (name, target, homing_max))
 
     # Parking distance sign convention: -ve = retraction (toward the gate/gears), +ve =
     # extrusion (forward, past the sensor). Parking forward past the sensor is only safe
@@ -207,14 +237,14 @@ class MmuUnitParameters(TunableParametersBase):
     _SPECS: Sequence[ParamSpec] = (
         # Gate loading
         ParamSpec('gate_homing_endstop',              'choice', SENSOR_ENCODER, section="GATE HOMING", choices={o: o for o in GATE_ENDSTOPS}, on_change=_on_gate_homing_endstop),
-        ParamSpec('gate_homing_max',                  'float', 100.0, section="GATE HOMING", limits=dict(minval=10)),
-        ParamSpec('gate_parking_distance',            'float', -10.0, section="GATE HOMING", validator=_validate_gate_parking_distance),
+        ParamSpec('gate_homing_max',                  'float', 100.0, section="GATE HOMING", limits=dict(minval=10), on_change=_on_gate_homing_max),
+        ParamSpec('gate_parking_distance',            'float', -10.0, section="GATE HOMING", validator=_validate_gate_parking_distance, on_change=_on_gate_parking_distance),
         ParamSpec('gate_load_attempts',               'int',       1, section="GATE HOMING", limits=dict(minval=1, maxval=20)),
 
         # Gate preloading
         ParamSpec('gate_preload_endstop',             'choice',   '', section="GATE HOMING", choices={o: o for o in (GATE_ENDSTOPS + [''])}, on_change=_on_gate_preload_endstop),
-        ParamSpec('gate_preload_homing_max',          'float', lambda self: self.gate_homing_max, section="GATE HOMING"),
-        ParamSpec('gate_preload_parking_distance',    'float', -10.0, section="GATE HOMING", validator=_validate_gate_preload_parking_distance),
+        ParamSpec('gate_preload_homing_max',          'float', lambda self: self.gate_homing_max, section="GATE HOMING", on_change=_on_gate_preload_homing_max),
+        ParamSpec('gate_preload_parking_distance',    'float', -10.0, section="GATE HOMING", validator=_validate_gate_preload_parking_distance, on_change=_on_gate_preload_parking_distance),
         ParamSpec('gate_preload_attempts',            'int',       2, section="GATE HOMING", limits=dict(minval=1, maxval=20)),
         ParamSpec('gate_autoload',                    'int',       1, section="GATE HOMING", limits=dict(minval=0, maxval=1)),
 
@@ -225,8 +255,9 @@ class MmuUnitParameters(TunableParametersBase):
         ParamSpec('nfc_gate_jog_scan_window',         'floatlist', [0.0, 0.0], section="NFC", validator=_validate_nfc_gate_jog_scan_window),
         ParamSpec('nfc_preload_jog_scan_window',      'floatlist', lambda self: self.nfc_gate_jog_scan_window, section="NFC", validator=_validate_nfc_preload_jog_scan_window),
         ParamSpec('nfc_neighbor_check',                'int',    0,    section="NFC", limits=dict(minval=0, maxval=1)),
-        # Declared after nfc_gate_jog_scan_window so the validator can cross-check it
         ParamSpec('nfc_neighbor_evict_distance',       'float',  0.0,  section="NFC", validator=_validate_nfc_neighbor_evict_distance),
+        ParamSpec('nfc_gate_clear_distance',           'float',  0.0,  section="NFC", validator=_validate_nfc_gate_clear_distance),
+        ParamSpec('nfc_preload_clear_distance',        'float',  lambda self: self.nfc_gate_clear_distance, section="NFC", validator=_validate_nfc_preload_clear_distance),
         ParamSpec('nfc_field_probe_reads',              'int',    3,    section="NFC", limits=dict(minval=1, maxval=10)),
         ParamSpec('nfc_deep_read',                    'int',    0,    section="NFC", limits=dict(minval=0, maxval=1)),
         ParamSpec('nfc_led_segment',                  'str',  'auto', section="NFC"),

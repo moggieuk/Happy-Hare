@@ -1283,11 +1283,18 @@ class MmuTestCommand(BaseCommand):
                 # Arming and eligibility are config/machine-state, not part of the pure
                 # ladder - reported separately so a caller can see both without any I/O.
                 u = mmu.mmu_unit(gate)
-                armed = mmu._nfc_field_arm(gate) is not None
-                log("NFC_FIELD: arbitration %s (nfc_neighbor_check=%d, "
-                    "nfc_neighbor_evict_distance=%.1f, probe reads=%d)"
-                    % ("ARMED" if armed else "not armed", u.p.nfc_neighbor_check,
-                       u.p.nfc_neighbor_evict_distance, u.p.nfc_field_probe_reads))
+                scan_armed = mmu._nfc_field_arm(
+                    gate, clear_distance=u.p.nfc_gate_clear_distance) is not None
+                preload_endstop = u.p.gate_preload_endstop or u.p.gate_homing_endstop
+                preload_armed = mmu._nfc_field_arm(
+                    gate, preload_endstop, u.p.nfc_preload_clear_distance) is not None
+                log("NFC_FIELD: arbitration scan=%s, preload=%s (nfc_neighbor_check=%d, "
+                    "nfc_neighbor_evict_distance=%.1f, nfc_gate_clear_distance=%.1f, "
+                    "nfc_preload_clear_distance=%.1f, probe reads=%d)"
+                    % ("ARMED" if scan_armed else "not armed",
+                       "ARMED" if preload_armed else "not armed", u.p.nfc_neighbor_check,
+                       u.p.nfc_neighbor_evict_distance, u.p.nfc_gate_clear_distance,
+                       u.p.nfc_preload_clear_distance, u.p.nfc_field_probe_reads))
 
                 if verdict == NFC_FIELD_NEIGHBOR:
                     candidates = arbiter._neighbor_candidates(gate, owner)

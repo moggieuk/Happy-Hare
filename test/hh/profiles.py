@@ -153,6 +153,18 @@ NFC_NEIGHBOR_EVICT = NFC_PER_GATE.derive(
     syms={'PARAM_NFC_NEIGHBOR_EVICT_DISTANCE': '-40'},
     description='BoxTurtle + per-gate NFC readers, neighbor eviction enabled (backward jog)')
 
+# Per-gate readers with the self-jog ratification escalation switched on for MMU_NFC_SCAN,
+# independent of neighbor eviction above (nfc_neighbor_evict_distance stays 0 here) - a
+# still-detected tag is confirmed/discarded by jogging THIS gate's own filament further off
+# park, not a neighbor's. Backward (-40): no window-fit check applies (this is a plain
+# jog-and-restore off park, not a re-home), only the same shared-endstop direction rule as
+# NFC_NEIGHBOR_EVICT. nfc_preload_clear_distance is left at its default (mirrors this value)
+# so preload gets the same escalation for free.
+NFC_GATE_CLEAR = NFC_PER_GATE.derive(
+    'nfc_gate_clear',
+    syms={'PARAM_NFC_GATE_CLEAR_DISTANCE': '-40'},
+    description='BoxTurtle + per-gate NFC readers, self-jog clear distance enabled (backward jog)')
+
 # PN5180 is the second SPI reader type, and the only one needing pins beyond the SPI
 # bus: BUSY (how the driver paces every command) and RST (its only recovery route).
 # Both are required by the driver, so the template must emit them or config load dies
@@ -557,6 +569,7 @@ run_current: 0.6
 # deliberately absent: one is synthetic and the other needs EXTRA_EXTRUDER_STUB.
 CONSOLE_PROFILES = (ERCF_VVD, BOXTURTLE, TRADRACK, CHAMELEON, PICO_MMU, MMX, EMU, ENCODER,
                     NFC_SINGLE, NFC_PER_GATE, NFC_NEIGHBOR_CHECK, NFC_NEIGHBOR_EVICT,
+                    NFC_GATE_CLEAR,
                     NFC_PN5180, NFC_PN5180_PER_GATE, NFC_PN532, NFC_PN532_SW_I2C,
                     NFC_PN532_UART, NFC_PN532_UART_PER_GATE,
                     NFC_SPOOLMAN, NFC_SPOOLMAN_SHARED)

@@ -49,7 +49,7 @@ from .mmu_sensor_utils    import MmuVirtualEndstopSensor, MmuCompoundEndstop
 # gate_preload_* set (_preload_profile). Every gate homing/parking primitive is driven by
 # one of them, so the endstop, homing budget, parking distance and NFC jog scan window
 # always travel together.
-GateHomeProfile = namedtuple('GateHomeProfile', ['endstop', 'homing_max', 'parking_distance', 'attempts', 'jog_scan_window'])
+GateHomeProfile = namedtuple('GateHomeProfile', ['endstop', 'homing_max', 'parking_distance', 'attempts', 'jog_scan_window', 'clear_distance'])
 
 
 class MmuFilamentMovement:
@@ -71,6 +71,7 @@ class MmuFilamentMovement:
             parking_distance=u.p.gate_parking_distance,
             attempts=(u.p.gate_load_attempts if allow_retry else 1),
             jog_scan_window=u.p.nfc_gate_jog_scan_window,
+            clear_distance=u.p.nfc_gate_clear_distance,
         )
 
 
@@ -87,6 +88,7 @@ class MmuFilamentMovement:
             parking_distance=u.p.gate_preload_parking_distance,
             attempts=u.p.gate_preload_attempts,
             jog_scan_window=u.p.nfc_preload_jog_scan_window,
+            clear_distance=u.p.nfc_preload_clear_distance,
         )
 
 
@@ -183,17 +185,18 @@ class MmuFilamentMovement:
         has_material = tag is not None and isinstance(tag[1], dict) and tag[1].get('material')
         have_strong_pending = spool_id > 0 or has_material
 
-        # A neighboring gate's spool sitting in this gate's reader field could satisfy the NFC
-        # leg of the compound below at (near) zero distance and be misattributed to this gate.
-        # Settle who is actually in the field - jogging an identified neighbor aside when
-        # arbitration has a motion budget for it - before deciding the NFC path. arb_mgr is
-        # None (clear_field() then an inert passthrough) whenever we wouldn't attempt an NFC
-        # leg at all anyway (strong pending, or encoder homing), so this costs nothing then.
+        # A neighboring gate's spool could satisfy the NFC leg below and get misattributed -
+        # settle field ownership first. arb_mgr stays None (inert) if we wouldn't attempt an
+        # NFC leg anyway (strong pending, or encoder homing).
         arb_mgr = None
         if not have_strong_pending and profile.endstop != SENSOR_ENCODER:
-            arb_mgr = self._nfc_field_arm(gate, profile.endstop)
+            arb_mgr = self._nfc_field_arm(gate, profile.endstop, profile.clear_distance)
 
-        with self.nfc_arbiter.clear_field(gate, arb_mgr) as outcome:
+        with self.nfc_arbiter.clear_field(
+                gate, arb_mgr, endstop=profile.endstop,
+                clear_distance=profile.clear_distance,
+                parking_distance=profile.parking_distance,
+                homing_max=profile.homing_max) as outcome:
             # Decide the NFC path HERE, above the banner, so the banner cannot promise a scan
             # that won't happen. _build_gate_nfc_compound() declines (returns None) when there is
             # no reader, the reader is disabled, or the gate endstop isn't a real MCU switch.
@@ -529,29 +532,24 @@ class MmuFilamentMovement:
         return nfc_mgr
 
 
-    def _nfc_field_arm(self, gate, profile_endstop=None):
+    def _nfc_field_arm(self, gate, profile_endstop=None, clear_distance=0.0):
         """
-        Should NFC neighbor-field arbitration (MmuNfcFieldArbiter) run for gate 'gate'?
-        Returns the gate's NFC manager when it should, else None - in which case
-        self.nfc_arbiter.clear_field() is an inert passthrough and the caller behaves exactly
-        as it did before this feature existed.
+        Should NFC neighbor-field arbitration run for gate 'gate'? Returns the gate's NFC
+        manager if so, else None (clear_field() is then an inert passthrough).
 
-        Deliberately off by default: neither nfc_neighbor_check nor nfc_neighbor_evict_distance
-        is armed out of the box, so a stock machine never probes, never warns, and pays no
-        extra reader I/O.
+        Off by default: the shared neighbor options and this operation's clear distance
+        are all zero/off out of the box. The other operation's clear distance is irrelevant.
 
-        'profile_endstop' is the gate endstop the caller's enclosed operation will itself home
-        to (preload passes its profile endstop; MMU_NFC_SCAN homes to the reader itself and
-        passes nothing).
+        'profile_endstop': the endstop the caller will itself home to (preload's own
+        endstop; MMU_NFC_SCAN passes nothing, it homes to the reader).
         """
         u = self.mmu_unit(gate)
-        if not u.p.nfc_neighbor_check and not u.p.nfc_neighbor_evict_distance:
+        # Neighbor handling is shared; self-jog arming is specific to this operation.
+        if (not u.p.nfc_neighbor_check and not u.p.nfc_neighbor_evict_distance
+                and not clear_distance):
             return None
         if profile_endstop == SENSOR_ENCODER:
-            # Encoder homing can't be compounded with the reader (see
-            # _build_gate_nfc_compound), so no tag is ever read on that path and there is
-            # nothing here worth protecting.
-            return None
+            return None # can't compound with the reader, nothing to protect
         return self._gate_nfc_reader(gate)
 
 
@@ -765,15 +763,14 @@ class MmuFilamentMovement:
             for mgr in [unit.nfc_manager] if mgr is not None
         ]
 
-        # Settle who is in this gate's reader field before trusting either the fast path or
-        # the sweep below - a neighboring gate's tag sitting in range is just as capable of
-        # fooling a sweep as it is the fast path. MMU_NFC_SCAN's whole point is to read a tag,
-        # so unlike preload, a verdict we can't attribute fails the command outright rather
-        # than falling back to a plain (non-NFC) operation - there is nothing legitimate to
-        # report. arb_mgr is None (clear_field() then an inert passthrough) whenever
-        # arbitration isn't armed for this gate.
-        arb_mgr = self._nfc_field_arm(gate)
-        with self.nfc_arbiter.clear_field(gate, arb_mgr) as outcome:
+        # Settle field ownership before trusting the fast path or sweep - unlike preload, an
+        # unattributable verdict fails the command outright (there's nothing else to report).
+        arb_mgr = self._nfc_field_arm(gate, clear_distance=profile.clear_distance)
+        with self.nfc_arbiter.clear_field(
+                gate, arb_mgr, endstop=profile.endstop,
+                clear_distance=profile.clear_distance,
+                parking_distance=profile.parking_distance,
+                homing_max=profile.homing_max) as outcome:
             if outcome.verdict == NFC_FIELD_FOREIGN:
                 raise MmuError("Cannot scan gate %d: %s" % (gate, outcome.reason))
 
