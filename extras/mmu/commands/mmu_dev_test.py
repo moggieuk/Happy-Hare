@@ -1285,9 +1285,11 @@ class MmuTestCommand(BaseCommand):
                 u = mmu.mmu_unit(gate)
                 armed = mmu._nfc_field_arm(gate) is not None
                 log("NFC_FIELD: arbitration %s (nfc_neighbor_check=%d, "
-                    "nfc_neighbor_evict_distance=%.1f, probe reads=%d)"
+                    "nfc_neighbor_evict_distance=%.1f, nfc_self_verify_distance=%.1f, "
+                    "probe reads=%d)"
                     % ("ARMED" if armed else "not armed", u.p.nfc_neighbor_check,
-                       u.p.nfc_neighbor_evict_distance, u.p.nfc_field_probe_reads))
+                       u.p.nfc_neighbor_evict_distance, u.p.nfc_self_verify_distance,
+                       u.p.nfc_field_probe_reads))
 
                 if verdict == NFC_FIELD_NEIGHBOR:
                     candidates = arbiter._neighbor_candidates(gate, owner)

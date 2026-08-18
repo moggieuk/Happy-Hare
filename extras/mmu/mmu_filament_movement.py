@@ -536,16 +536,19 @@ class MmuFilamentMovement:
         self.nfc_arbiter.clear_field() is an inert passthrough and the caller behaves exactly
         as it did before this feature existed.
 
-        Deliberately off by default: neither nfc_neighbor_check nor nfc_neighbor_evict_distance
-        is armed out of the box, so a stock machine never probes, never warns, and pays no
-        extra reader I/O.
+        Deliberately off by default: none of nfc_neighbor_check, nfc_neighbor_evict_distance,
+        or nfc_self_verify_distance is armed out of the box, so a stock machine never probes,
+        never warns, and pays no extra reader I/O.
 
         'profile_endstop' is the gate endstop the caller's enclosed operation will itself home
         to (preload passes its profile endstop; MMU_NFC_SCAN homes to the reader itself and
         passes nothing).
         """
         u = self.mmu_unit(gate)
-        if not u.p.nfc_neighbor_check and not u.p.nfc_neighbor_evict_distance:
+        # nfc_self_verify_distance arms this on its own - a machine that wants only the
+        # self-jog ratification escalation, with neither neighbor check nor eviction, must
+        # still reach clear_field()/_ratify() for there to be anything to escalate.
+        if not u.p.nfc_neighbor_check and not u.p.nfc_neighbor_evict_distance and not u.p.nfc_self_verify_distance:
             return None
         if profile_endstop == SENSOR_ENCODER:
             # Encoder homing can't be compounded with the reader (see

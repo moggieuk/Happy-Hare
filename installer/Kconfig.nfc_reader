@@ -11,6 +11,7 @@
 # PARAM_NFC_PRELOAD_JOG_SCAN_WINDOW
 # PARAM_NFC_NEIGHBOR_CHECK
 # PARAM_NFC_NEIGHBOR_EVICT_DISTANCE
+# PARAM_NFC_SELF_VERIFY_DISTANCE
 # PARAM_NFC_FIELD_PROBE_READS
 # PARAM_NFC_LED_SEGMENT
 #
@@ -655,6 +656,18 @@ if MMU_HAS_NFC_READER
         the warning below). Must fit inside the jog scan window above.
 
         0 disables eviction (default); reader gain is not a substitute.
+
+    config PARAM_NFC_SELF_VERIFY_DISTANCE
+      float "NFC self-jog verification distance"
+      default 0
+      help
+        Independent of the eviction jog above. If a tag is still seen once this
+        gate's own filament settles, jogs THIS gate's own filament this far further
+        and re-checks rather than discarding outright - catches a tag mounted close
+        enough to stay in range at the normal park position. Same signed convention
+        and shared-endstop caution as the eviction jog.
+
+        0 disables this escalation (default).
 
     config PARAM_NFC_FIELD_PROBE_READS
       int "NFC field probe reads"

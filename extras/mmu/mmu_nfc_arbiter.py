@@ -26,10 +26,12 @@
 # clear_field() context manager and an arm check, so this bookkeeping doesn't grow those
 # already-large functions further.
 #
-# Off by default: neither nfc_neighbor_check nor nfc_neighbor_evict_distance is armed out of
-# the box, and clear_field() is an inert passthrough when arbitration isn't armed for a gate -
-# a stock machine does no extra reader I/O and behaves exactly as it did before this module
-# existed.
+# Off by default: none of nfc_neighbor_check, nfc_neighbor_evict_distance, or
+# nfc_self_verify_distance is armed out of the box, and clear_field() is an inert passthrough
+# when arbitration isn't armed for a gate - a stock machine does no extra reader I/O and
+# behaves exactly as it did before this module existed. nfc_self_verify_distance is
+# independent of the other two - it controls only whether _ratify() escalates a PROVISIONAL
+# verdict to a deliberate self-jog, not neighbor eviction.
 #
 # (\_/)
 # ( *,*)
@@ -312,7 +314,8 @@ class MmuNfcFieldArbiter:
         there".
 
         If that passive check still finds a tag, and there is a motion budget
-        (nfc_neighbor_evict_distance != 0) that is safe to spend in this direction for
+        (nfc_self_verify_distance != 0 - independent of nfc_neighbor_evict_distance, which
+        only governs neighbor eviction) that is safe to spend in this direction for
         'endstop' (see _verify_by_self_jog), escalate to a deliberate causal test rather than
         settling for "whatever the operation's own incidental motion happened to leave
         behind" - a tag physically mounted such that it stays in range at the normal park
@@ -332,7 +335,7 @@ class MmuNfcFieldArbiter:
                                 "clear after the operation's own motion)" % gate)
             return True
 
-        distance = self.mmu.mmu_unit(gate).p.nfc_neighbor_evict_distance
+        distance = self.mmu.mmu_unit(gate).p.nfc_self_verify_distance
         if distance and not (distance > 0 and endstop in SHARED_GATE_ENDSTOPS):
             if self._verify_by_self_jog(gate, nfc_mgr, distance):
                 self.mmu.log_debug(
@@ -361,12 +364,12 @@ class MmuNfcFieldArbiter:
     def _verify_by_self_jog(self, gate, nfc_mgr, distance):
         """
         Escalate the passive ratification check into a deliberate, causal one: jog gate's own
-        already-parked filament ANOTHER 'distance' mm further off its park position (reusing
-        nfc_neighbor_evict_distance's own sign/direction convention - same value, same
-        meaning, no new config parameter), re-probe, and see whether detection tracks that
-        deliberate motion. This is materially stronger evidence than the passive check alone,
-        which only observes whatever incidental settling the caller's own necessary motion
-        happened to produce.
+        already-parked filament ANOTHER 'distance' mm further off its park position
+        (nfc_self_verify_distance's sign/direction convention - independent of, but shaped
+        the same way as, nfc_neighbor_evict_distance), re-probe, and see whether detection
+        tracks that deliberate motion. This is materially stronger evidence than the passive
+        check alone, which only observes whatever incidental settling the caller's own
+        necessary motion happened to produce.
 
         Deliberately reuses _jog_off (called once forward, once reversed) rather than a
         homing-based restore like _repark_evicted's: at this point the filament is sitting at
