@@ -609,7 +609,7 @@ if MMU_HAS_NFC_READER
       default 0
 
     config PARAM_NFC_GATE_JOG_SCAN_WINDOW
-      string "NFC reader jog scan window"
+      string "NFC jog scan window (scan)           "
       default "-50, 50"
       array_editor "," 2
       help
@@ -619,7 +619,7 @@ if MMU_HAS_NFC_READER
         E.g. "-100, 400" means can retract -100mm and extruder 400mm. "0, 0" will disable jog scan operation
 
     config PARAM_NFC_PRELOAD_JOG_SCAN_WINDOW
-      string "NFC reader preload jog scan window"
+      string "NFC jog scan window (preload)        "
       default PARAM_NFC_GATE_JOG_SCAN_WINDOW
       array_editor "," 2
       help
@@ -627,7 +627,8 @@ if MMU_HAS_NFC_READER
         Preload often homes to a different endstop (typically the per-gate mmu_exit sensor rather than the
         general gate homing endstop), so the safe scan range can differ. Defaults to the same value as the
         gate jog scan window.
-        E.g. "-100, 400" means can retract -100mm and extrude 400mm. "0, 0" disables jog scanning during preload
+        E.g. "-100, 400" means can retract -100mm and extrude 400mm.
+             "0, 0" disables jog scanning during preload
 
     config BOOL_NFC_NEIGHBOR_CHECK
       bool "NFC neighbor field check"
@@ -647,7 +648,7 @@ if MMU_HAS_NFC_READER
       default 0
 
     config PARAM_NFC_NEIGHBOR_EVICT_DISTANCE
-      float "NFC neighbor eviction jog"
+      float "NFC neighbor eviction jog            "
       default 0
       help
         Adds eviction motion on top of the check above: an identified neighboring
@@ -659,15 +660,13 @@ if MMU_HAS_NFC_READER
         0 disables eviction (default); reader gain is not a substitute.
 
     config PARAM_NFC_GATE_CLEAR_DISTANCE
-      float "NFC self-jog clear distance (scan)"
+      float "NFC self-jog clear distance (scan)   "
       default 0
       help
-        Independent of the eviction jog above and the preload distance below. If
-        a tag is still seen once this gate settles during MMU_NFC_SCAN, jogs THIS
-        gate's own filament this far further off park and back before discarding -
+        If a tag is still seen once this gate finished movement during MMU_NFC_SCAN, this
+        jogs THIS gate's own filament this far further off park and back before discarding -
         catches a tag mounted close enough to stay in range at rest. Signed from
-        park (+ve forward, -ve back; forward needs gate_homing_endstop=mmu_exit).
-        A plain jog-and-restore, not checked against any window - size for your machine.
+        park position (+ve forward, -ve back; forward needs gate_homing_endstop=mmu_exit).
 
         0 disables this escalation for MMU_NFC_SCAN (default).
 
@@ -684,7 +683,7 @@ if MMU_HAS_NFC_READER
         0 disables this escalation for MMU_PRELOAD (default).
 
     config PARAM_NFC_FIELD_PROBE_READS
-      int "NFC field probe reads"
+      int "NFC field probe reads                "
       default 3
       range 1 10
       help
