@@ -193,7 +193,7 @@ class MmuFilamentMovement:
         if not have_strong_pending and profile.endstop != SENSOR_ENCODER:
             arb_mgr = self._nfc_field_arm(gate, profile.endstop)
 
-        with self.nfc_arbiter.clear_field(gate, arb_mgr) as outcome:
+        with self.nfc_arbiter.clear_field(gate, arb_mgr, endstop=profile.endstop) as outcome:
             # Decide the NFC path HERE, above the banner, so the banner cannot promise a scan
             # that won't happen. _build_gate_nfc_compound() declines (returns None) when there is
             # no reader, the reader is disabled, or the gate endstop isn't a real MCU switch.
@@ -773,7 +773,7 @@ class MmuFilamentMovement:
         # report. arb_mgr is None (clear_field() then an inert passthrough) whenever
         # arbitration isn't armed for this gate.
         arb_mgr = self._nfc_field_arm(gate)
-        with self.nfc_arbiter.clear_field(gate, arb_mgr) as outcome:
+        with self.nfc_arbiter.clear_field(gate, arb_mgr, endstop=profile.endstop) as outcome:
             if outcome.verdict == NFC_FIELD_FOREIGN:
                 raise MmuError("Cannot scan gate %d: %s" % (gate, outcome.reason))
 

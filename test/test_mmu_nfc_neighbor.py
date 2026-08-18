@@ -395,8 +395,16 @@ class TestArbitrationEndToEnd(NeighborTestCase):
         to sit at this reader. This is the actual point of the deferred-commit fix: before
         it, the read taken mid-sweep would already have been committed to the gate map by
         the time this assertion runs, warning or no warning.
+
+        evict_distance is deliberately -10.0, not some larger value: the passive check
+        fails (tag_pos=-80, dead center), and ratification now escalates to a self-jog of
+        -10mm too (tip -110 -> tag_pos -90, |-90-(-80)|=10 <= the 15 tag_window - still
+        detected). Kept inside the window on purpose, so this test exercises "escalation
+        was attempted and still correctly failed to clear", not "escalation never ran at
+        all" - see test_provisional_verdict_is_ratified_via_self_jog_when_passive_check_fails_scan
+        for the -40.0 case where the self-jog actually clears it.
         """
-        self.hh.mmu.mmu_unit(0).p.nfc_neighbor_evict_distance = -40.0
+        self.hh.mmu.mmu_unit(0).p.nfc_neighbor_evict_distance = -10.0
         self.fil.attach_tag(0, TAG, offset=-20.0)  # unregistered, and never truly clears
         self.hh.mmu.select_gate(0)
         self.hh.place_filament(0)  # normal park position
@@ -417,9 +425,10 @@ class TestArbitrationEndToEnd(NeighborTestCase):
         the reader) - that keeps the per-gate exit sensor unTRIGGERED so preload takes its
         normal homing path rather than the "already preloaded" shortcut (which would bypass
         arbitration entirely), while still putting the tag in range from the very start (see
-        the scan test's docstring for the offset/park/reader arithmetic).
+        the scan test's docstring for the offset/park/reader arithmetic, and for why
+        evict_distance is -10.0 here too - self-jog escalation must run and still fail).
         """
-        self.hh.mmu.mmu_unit(0).p.nfc_neighbor_evict_distance = -40.0
+        self.hh.mmu.mmu_unit(0).p.nfc_neighbor_evict_distance = -10.0
         self.fil.attach_tag(0, TAG, offset=-20.0)
         self.hh.mmu.select_gate(0)
         self.hh.place_filament(0)  # normal park position, exit sensor not yet triggered
@@ -430,6 +439,74 @@ class TestArbitrationEndToEnd(NeighborTestCase):
         self.assertEqual(self.hh.mmu.gate_maps.gate_spool_rfid[0], '',
                          "a never-ratified provisional read must never be committed to the gate map")
         self.assertIn('no tag found', ' '.join(self.hh.console).lower())
+
+    def test_provisional_verdict_is_ratified_via_self_jog_when_passive_check_fails_scan(self):
+        """
+        Same physical setup as the "never ratified" scan test above, but with the ORIGINAL
+        -40.0 evict_distance: the passive check fails exactly the same way (tag_pos=-80,
+        dead center), but escalation's self-jog moves the tip an ADDITIONAL 40mm (tip=-140
+        -> tag_pos=-120, |-120-(-80)|=40 > the 15 tag_window) - clear this time, so the
+        provisional read IS ratified and committed. This is the motivating case from the
+        real captured log this feature was built to fix: a genuinely-owned tag that the
+        passive check alone would discard forever.
+        """
+        self.hh.mmu.p.log_level = 4  # so the self-jog's own log_debug lines are visible
+        self.hh.mmu.mmu_unit(0).p.nfc_neighbor_evict_distance = -40.0
+        self.fil.attach_tag(0, TAG, offset=-20.0)
+        self.hh.mmu.select_gate(0)
+        self.hh.place_filament(0)
+        self.hh.mmu.gate_maps.set_gate_status(0, GATE_AVAILABLE)
+        self.assertIsNotNone(self.fil.tag_detected(0), 'precondition: tag must be in range at rest')
+        self.hh.run_gcode('MMU_NFC_SCAN GATE=0')
+        self.assertEqual(self.hh.errors, [])
+        self.assertEqual(self.hh.mmu.gate_maps.gate_spool_rfid[0], TAG,
+                         "a self-jog-ratified provisional read must be committed to the gate map")
+        console = ' '.join(self.hh.console).lower()
+        self.assertIn('tag read', console)
+        self.assertIn('ratified via a deliberate self-jog', console)
+
+    def test_provisional_verdict_is_ratified_via_self_jog_when_passive_check_fails_preload(self):
+        """Preload's side of the self-jog-succeeds scenario above."""
+        self.hh.mmu.p.log_level = 4
+        self.hh.mmu.mmu_unit(0).p.nfc_neighbor_evict_distance = -40.0
+        self.fil.attach_tag(0, TAG, offset=-20.0)
+        self.hh.mmu.select_gate(0)
+        self.hh.place_filament(0)
+        self.assertIsNotNone(self.fil.tag_detected(0), 'precondition: tag must be in range at rest')
+        self.hh.run_gcode('MMU_PRELOAD GATE=0')
+        self.assertEqual(self.hh.errors, [])
+        self.assertEqual(self.hh.mmu.gate_status[0], GATE_AVAILABLE)
+        self.assertEqual(self.hh.mmu.gate_maps.gate_spool_rfid[0], TAG,
+                         "a self-jog-ratified provisional read must be committed to the gate map")
+        console = ' '.join(self.hh.console).lower()
+        self.assertIn('tag read', console)
+        self.assertIn('ratified via a deliberate self-jog', console)
+
+    def test_check_only_mode_spends_zero_extra_motion_on_a_never_ratified_read(self):
+        """
+        nfc_neighbor_check=1 with nfc_neighbor_evict_distance=0 (check-only mode's own
+        default) must keep its "no motion budget at all" promise even with self-jog
+        escalation added: _ratify's `if distance and ...` guard is false for distance=0,
+        so it falls straight to the unchanged passive-only discard, exactly as before this
+        feature existed. log_level=4 makes _jog_off's own "jogging ... off its park
+        reference" debug line visible if it ran at all - asserting its absence is a direct
+        check that neither neighbor eviction nor the new self-jog spent any motion.
+        """
+        self.hh.mmu.p.log_level = 4
+        self.hh.mmu.mmu_unit(0).p.nfc_neighbor_evict_distance = 0.0
+        self.fil.attach_tag(0, TAG, offset=-20.0)
+        self.hh.mmu.select_gate(0)
+        self.hh.place_filament(0)
+        self.hh.mmu.gate_maps.set_gate_status(0, GATE_AVAILABLE)
+        self.assertIsNotNone(self.fil.tag_detected(0), 'precondition: tag must be in range at rest')
+        self.hh.run_gcode('MMU_NFC_SCAN GATE=0')
+        self.assertEqual(self.hh.errors, [])
+        self.assertEqual(self.hh.mmu.gate_maps.gate_spool_rfid[0], '',
+                         "check-only mode must never commit an unconfirmed read")
+        console = ' '.join(self.hh.console).lower()
+        self.assertIn('no tag found', console)
+        self.assertIn('could not confirm this gate', console)
+        self.assertNotIn('jogging', console, 'check-only mode (evict_distance=0) must spend zero motion')
 
 
 class TestRatifyDoesNotSelfPoison(NeighborTestCase):
@@ -455,7 +532,7 @@ class TestRatifyDoesNotSelfPoison(NeighborTestCase):
         # already attributes this exact UID to gate 0, same as _nfc_tag_read would leave it.
         self.hh.mmu.gate_maps.set_gate_rfid(0, TAG)
         self.hh.gcode.console.clear()
-        self.assertFalse(self.arbiter._ratify(0, mgr))
+        self.assertFalse(self.arbiter._ratify(0, mgr, None))
         self.assertTrue(
             any('could not confirm this gate' in c for c in self.hh.console), self.hh.console)
 
@@ -467,7 +544,7 @@ class TestRatifyDoesNotSelfPoison(NeighborTestCase):
         self.hh.place_filament(0, position=self.fil.layout['mmu_nfc'])
         self.hh.mmu.gate_maps.set_gate_rfid(0, TAG) # Map says something else entirely
         self.hh.gcode.console.clear()
-        self.assertFalse(self.arbiter._ratify(0, mgr))
+        self.assertFalse(self.arbiter._ratify(0, mgr, None))
         self.assertTrue(
             any('could not confirm this gate' in c for c in self.hh.console), self.hh.console)
 
@@ -477,7 +554,7 @@ class TestRatifyDoesNotSelfPoison(NeighborTestCase):
         mgr = self.hh.mmu.mmu_unit(0).nfc_manager
         self.hh.mmu.gate_maps.set_gate_rfid(0, TAG)
         self.hh.gcode.console.clear()
-        self.assertTrue(self.arbiter._ratify(0, mgr))
+        self.assertTrue(self.arbiter._ratify(0, mgr, None))
         self.assertFalse(
             any('could not confirm this gate' in c for c in self.hh.console), self.hh.console)
 

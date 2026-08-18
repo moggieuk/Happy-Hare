@@ -198,18 +198,24 @@ class MmuNfcFieldArbiter:
 
     def _jog_off(self, distance):
         """
-        Move the CURRENTLY SELECTED gate's filament 'distance' mm off the gate reference so
-        its RFID tag leaves a *neighboring* gate's reader field. Signed: positive travels
-        forward of the gate, negative behind it. Assumes the filament is homed at the gate
-        (the caller does _load_gate() first).
+        Move the CURRENTLY SELECTED gate's filament 'distance' mm off its reference position.
+        Signed: positive travels forward of the gate, negative behind it. Assumes the
+        filament is homed at the gate or already parked (the caller is responsible for
+        getting it there first - _load_gate() for a fresh neighbor candidate, or nothing
+        further for a gate already sitting at its own park).
 
         A plain move, not a homing move - there is nothing to home against here, the whole
         point is to travel past wherever the tag currently sits.
+
+        Used both to evict a *neighboring* gate's tag out of a different gate's reader field
+        (_evict_one), and to deliberately jog THIS gate's own filament during self-jog
+        ratification (_verify_by_self_jog) - the motion is identical either way, only the
+        reason differs, so the log message below stays purpose-agnostic.
         """
-        self.mmu.log_debug("NFC: gate %d: jogging %.0fmm %s to clear a neighbor's reader field"
+        self.mmu.log_debug("NFC: gate %d: jogging %.0fmm %s off its park reference"
                             % (self.mmu.gate_selected, abs(distance),
                                "forward" if distance > 0 else "back"))
-        self.mmu.move_filament("NFC: neighbor evict", distance, motor="gear")
+        self.mmu.move_filament("NFC: gate jog", distance, motor="gear")
 
 
     def _evict_one(self, gate, candidate, distance, evicted):
@@ -291,7 +297,7 @@ class MmuNfcFieldArbiter:
 
     # ---- Provisional-verdict ratification ------------------------------------------------------
 
-    def _ratify(self, gate, nfc_mgr):
+    def _ratify(self, gate, nfc_mgr, endstop):
         """
         Re-probe gate 'gate's reader once, after the caller's own natural motion (preload's
         homing+park, or a jog-scan's sweep with its fast path suppressed) has completed, to
@@ -305,15 +311,45 @@ class MmuNfcFieldArbiter:
         guard against. The only question that isn't circular either way is "is anything still
         there".
 
-        The caller (clear_field) uses this return value to decide whether to commit the held
-        read (release_held_attribution) or drop it (discard_held_attribution) - nothing is
-        attributed to the wrong gate here, it just hasn't been committed yet either way.
+        If that passive check still finds a tag, and there is a motion budget
+        (nfc_neighbor_evict_distance != 0) that is safe to spend in this direction for
+        'endstop' (see _verify_by_self_jog), escalate to a deliberate causal test rather than
+        settling for "whatever the operation's own incidental motion happened to leave
+        behind" - a tag physically mounted such that it stays in range at the normal park
+        position would otherwise fail the passive check every single time, forever, even
+        when it is genuinely this gate's own spool. 'endstop' is the caller's own homing
+        endstop (gate_preload_endstop for preload, gate_homing_endstop for a scan) - expected
+        non-None whenever the verdict reaching here is NFC_FIELD_PROVISIONAL; both current
+        callers always pass it.
+
+        The caller (clear_field) uses the final return value to decide whether to commit the
+        held read (release_held_attribution) or drop it (discard_held_attribution) - nothing
+        is attributed to the wrong gate here, it just hasn't been committed yet either way.
         """
         uid = nfc_mgr.probe_gate_field(gate)
         if not uid:
             self.mmu.log_debug("NFC: gate %d: provisional tag attribution ratified (field "
                                 "clear after the operation's own motion)" % gate)
             return True
+
+        distance = self.mmu.mmu_unit(gate).p.nfc_neighbor_evict_distance
+        if distance and not (distance > 0 and endstop in SHARED_GATE_ENDSTOPS):
+            if self._verify_by_self_jog(gate, nfc_mgr, distance):
+                self.mmu.log_debug(
+                    "NFC: gate %d: provisional tag attribution ratified via a deliberate "
+                    "self-jog (field cleared when this gate's own filament was jogged %.0fmm "
+                    "further off its park position, and returned to it)" % (gate, abs(distance)))
+                return True
+            self.mmu.log_warning(
+                "NFC: gate %d: could not confirm this gate's own tag - the reader still shows "
+                "tag %s even after gate %d's own filament was deliberately jogged %.0fmm "
+                "further off its park position and back, so the read is being discarded "
+                "rather than attributed. If this is a new/unregistered spool, re-run once the "
+                "neighboring gate's spool has been moved or registered" % (gate, uid, gate, abs(distance)))
+            return False
+
+        # No motion budget, or the direction isn't safe for this endstop - plain discard,
+        # wording unchanged from before self-jog escalation existed.
         self.mmu.log_warning(
             "NFC: gate %d: could not confirm this gate's own tag - the reader still shows "
             "tag %s after gate %d's own filament settled, so the read is being discarded "
@@ -322,8 +358,58 @@ class MmuNfcFieldArbiter:
         return False
 
 
+    def _verify_by_self_jog(self, gate, nfc_mgr, distance):
+        """
+        Escalate the passive ratification check into a deliberate, causal one: jog gate's own
+        already-parked filament ANOTHER 'distance' mm further off its park position (reusing
+        nfc_neighbor_evict_distance's own sign/direction convention - same value, same
+        meaning, no new config parameter), re-probe, and see whether detection tracks that
+        deliberate motion. This is materially stronger evidence than the passive check alone,
+        which only observes whatever incidental settling the caller's own necessary motion
+        happened to produce.
+
+        Deliberately reuses _jog_off (called once forward, once reversed) rather than a
+        homing-based restore like _repark_evicted's: at this point the filament is sitting at
+        a precisely known position (the caller's own park move, executed moments earlier, is
+        itself a plain dead-reckoned move - see _park_at_gate's "Final parking" - not a
+        homing move), so an equal-and-opposite plain jog is exactly as trustworthy as that
+        just-established park and needs no knowledge of which parameter profile (gate_* vs
+        gate_preload_*) established it. _repark_evicted's reverse-home + park is solving a
+        different problem - a NEIGHBOR candidate whose post-eviction position is genuinely
+        less certain (freshly loaded, then jogged) - and reusing it here would silently
+        re-park THIS gate to the wrong (always-normal-profile) position when called from
+        preload's ratify. Do not merge the two.
+
+        Returns True if the field cleared under the self-jog, False if the tag is still seen
+        even after deliberately moving this gate's own filament further away and back.
+
+        Caller (_ratify) decides WHETHER it is safe/worth calling this at all (nonzero
+        distance, direction safe for the endstop in effect) - this method does no gating of
+        its own, only the motion and the probe.
+        """
+        self.mmu.select_gate(gate)  # _ratify runs before _restore_evicted's own reselect,
+                                    # so a neighbor may still be selected at this point
+        with self.mmu.wrap_suspend_filament_monitoring():
+            try:
+                self._jog_off(distance)
+                try:
+                    uid = nfc_mgr.probe_gate_field(gate)
+                finally:
+                    self._jog_off(-distance)
+            except Exception as e:
+                self.mmu.gate_maps.set_gate_status(gate, GATE_UNKNOWN)
+                self.mmu.log_error(
+                    "NFC: gate %d: self-jog verification move failed: %s. Gate marked "
+                    "unknown - check for a jam" % (gate, str(e)))
+                raise
+        return not uid
+
+
     # ---- Restore ------------------------------------------------------------------------------
 
+    # NOTE: _verify_by_self_jog (above) deliberately does NOT reuse this reverse-home + park
+    # restore for the gate under test - see its docstring for why (wrong profile risk). Don't
+    # "simplify" by merging the two.
     def _repark_evicted(self, gate, distance, evicted):
         """The re-park half of _restore_evicted, in reverse eviction order."""
         while evicted:
@@ -365,11 +451,18 @@ class MmuNfcFieldArbiter:
     # ---- Public entry point ---------------------------------------------------------------------
 
     @contextlib.contextmanager
-    def clear_field(self, gate, nfc_mgr):
+    def clear_field(self, gate, nfc_mgr, endstop=None):
         """
         Ensure gate 'gate's NFC reader field is settled for the duration of the enclosed
         operation, temporarily jogging identified neighboring gates' filament off their park
         position when arbitration has a motion budget for it.
+
+        'endstop' is the caller's own homing endstop for this operation (gate_preload_endstop
+        for preload, gate_homing_endstop for a scan) - used only if ratification needs to
+        escalate to a deliberate self-jog, to decide whether a forward jog is safe (see
+        MmuNfcFieldArbiter._ratify). Both current callers always pass it; a caller that
+        forgets to would be treated as "forward is safe" (None is not a SHARED_GATE_ENDSTOPS
+        member), so don't add a new caller without it.
 
         Yields a NfcFieldOutcome, whose 'verdict' is one of:
             NFC_FIELD_CLEAR       nothing in the field, or arbitration isn't armed for this
@@ -428,7 +521,7 @@ class MmuNfcFieldArbiter:
             # neighbor stranded off its park position, or leave a hold armed forever.
             if provisional:
                 try:
-                    ratified = self._ratify(gate, nfc_mgr)
+                    ratified = self._ratify(gate, nfc_mgr, endstop)
                 except Exception as e:
                     self.mmu.log_error("NFC: gate %d: ratification check failed: %s" % (gate, str(e)))
                     ratified = False # Safer to discard an unconfirmed read than commit it blind
