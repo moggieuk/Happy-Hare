@@ -984,6 +984,10 @@ class MmuController(MmuFilamentMovement):
             # gate_homing_endstop. 2-char gaps (funded by shrinking bowden fill
             # elsewhere) keep exit/shared_exit/encoder visually distinct. The gap
             # before the active gate_homing_endstop shows `home` when homed.
+            encoder_approach = _with_home(gate_sensor_gap(SENSOR_SHARED_EXIT), SENSOR_ENCODER)
+            if pos == FILAMENT_POS_UNLOADED and self.has_encoder():
+                encoder_approach = encoder_approach[:-1] + space
+
             return (
                 gate_presence_marker()
                 + entry_marker()
@@ -991,7 +995,7 @@ class MmuController(MmuFilamentMovement):
                 + gate_sensor_marker(SENSOR_EXIT_PREFIX)
                 + _with_home(gate_sensor_gap(SENSOR_EXIT_PREFIX), SENSOR_SHARED_EXIT)
                 + gate_sensor_marker(SENSOR_SHARED_EXIT)
-                + _with_home(gate_sensor_gap(SENSOR_SHARED_EXIT), SENSOR_ENCODER)
+                + encoder_approach
             )
 
         def nozzle_segment():
