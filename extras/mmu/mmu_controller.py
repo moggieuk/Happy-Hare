@@ -402,18 +402,12 @@ class MmuController(MmuFilamentMovement):
                     continue
 
                 if u.p.startup_home_selector:
-                    unit_loaded = (
-                        self.filament_pos != FILAMENT_POS_UNLOADED and
-                        (self.gate_selected == TOOL_GATE_UNKNOWN or
-                         self._unit_owns_selection(u, self.gate_selected))
-                    )
-
-                    if unit_loaded:
+                    if self._unit_may_have_filament(u):
                         self.log_warning(f"Skipping autohome of {u.name} because it may have filament loaded (or filament state could not be confirmed)")
                         continue
 
                     try:
-                        self.home_unit(u, force_unload=False) # Startup never initiates filament movement
+                        self.home_unit(u)
 
                     except Exception as e:
                         # This is recoverable so just report errors
@@ -3125,45 +3119,35 @@ class MmuController(MmuFilamentMovement):
         return False
 
 
-    def home_unit(self, mmu_unit, force_unload=None, reselect=True):
+    def _unit_may_have_filament(self, mmu_unit):
+        """Whether selector motion on mmu_unit may be obstructed by filament."""
+        return (
+            self.filament_pos != FILAMENT_POS_UNLOADED and
+            (self.gate_selected == TOOL_GATE_UNKNOWN or
+             self._unit_owns_selection(mmu_unit, self.gate_selected))
+        )
+
+
+    def home_unit(self, mmu_unit, reselect=True):
         """
         Home the specific mmu unit
         Params:
-          force_unload - whether to unload current gate
-            None  - intelligently unload if necessary (default)
-            True  - always force an unload regardless of filament position state (safety)
-            False - never unload; explicit override when gate ownership is unknown
           reselect - whether to reselect gate (default is True)
         """
         selector = mmu_unit.selector
         if not selector.requires_homing: return # Class-B and other non-physical selectors
-        if force_unload is not None:
-            force_unload = bool(force_unload) # G-Code supplies 0/1 integers
 
         prev_gate = self.gate_selected
         owns_selection = self._unit_owns_selection(mmu_unit, prev_gate)
 
-        # With no gate identity there is no safe drive or unit to unload. In particular,
-        # manages_gate(UNKNOWN) is true for every unit, so never use it to infer ownership.
-        if (
-            prev_gate == TOOL_GATE_UNKNOWN and
-            self.filament_pos != FILAMENT_POS_UNLOADED and
-            force_unload is not False
-        ):
-            raise MmuError(
-                "Cannot home %s because filament state or gate ownership is unknown. "
-                "Use MMU_RECOVER GATE=xx first, or FORCE_UNLOAD=0 to home without unloading" % mmu_unit.name)
-
-        # Filament policy belongs here, while the real gate still identifies its unit and
-        # drive. selector.home() is deliberately mechanical and must not infer ownership.
-        if owns_selection:
-            if force_unload is False:
-                if self.filament_pos not in [FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN]:
-                    raise MmuError("Cannot home %s because it has filament loaded" % mmu_unit.name)
-            elif force_unload is True:
-                self.unload_sequence(check_state=True)
-            elif self.filament_pos != FILAMENT_POS_UNLOADED:
-                self.unload_sequence()
+        # Selector homing never moves filament. Refuse unless the target unit is definitely
+        # empty; an unrelated unit may still home without disturbing the active filament.
+        if self._unit_may_have_filament(mmu_unit):
+            if prev_gate == TOOL_GATE_UNKNOWN:
+                raise MmuError(
+                    "Cannot home %s because filament state or gate ownership is unknown. "
+                    "Use MMU_RECOVER GATE=xx first" % mmu_unit.name)
+            raise MmuError("Cannot home %s because it may have filament loaded. Unload filament first" % mmu_unit.name)
 
         # An unrelated unit can home without disturbing the active gate. For the owning unit
         # (or an empty, as-yet-unselected machine), invalidate the logical selection before the

@@ -471,6 +471,18 @@ class TestRotarySelectorOnALaterUnit(SelectorTestCase):
                           % self.UNIT1_FIRST_GATE)
         self.assertEqual(self.hh.errors, [])
 
+    def test_rotary_calibration_refuses_filament_on_its_own_unit(self):
+        gate = self.UNIT1_FIRST_GATE
+        before = list(self.selector('unit1').selector_offsets)
+        self.hh.run_gcode('MMU_SELECT GATE=%d' % gate)
+        self.hh.mmu.set_filament_pos_state(FILAMENT_POS_LOADED, silent=True)
+
+        self.hh.run_gcode('MMU_CALIBRATE_ROTARY_SELECTOR UNIT=1 GATE=%d QUICK=1 SAVE=0'
+                          % gate)
+
+        self.assertEqual(self.selector('unit1').selector_offsets, before)
+        self.assertTrue(any('Filament may be loaded' in error for error in self.hh.errors))
+
 
 class TestSelectorCalibration(unittest.TestCase):
     """
@@ -549,6 +561,17 @@ class TestSelectorCalibration(unittest.TestCase):
         # handle_ready seeds the variable with -1 per gate, which IS the uncalibrated value
         self.assertEqual(self.saved_offsets(), [-1] * self.hh.mmu.num_gates,
                          'a bogus measurement was saved')
+
+    def test_linear_calibration_refuses_filament_before_selector_motion(self):
+        before = self.axis.carriage
+        self.hh.mmu._set_gate_selected(0)
+        self.hh.mmu.set_filament_pos_state(FILAMENT_POS_LOADED, silent=True)
+
+        self.hh.run_gcode('MMU_CALIBRATE_SELECTOR UNIT=0 GATE=0')
+
+        self.assertEqual(self.axis.carriage, before)
+        self.assertEqual(self.saved_offsets(), [-1] * self.hh.mmu.num_gates)
+        self.assertTrue(any('Filament may be loaded' in error for error in self.hh.errors))
 
 
 class TestStepperPositionSemantics(unittest.TestCase):
@@ -644,6 +667,18 @@ class TestMultiUnitSelectors(SelectorTestCase):
         self.assertEqual(self.hh.mmu.gate_selected, 12, self.hh.errors)
         self.assertEqual(self.selector('unit1').lgate_selected, 3)
         self.assertEqual(self.hh.errors, [])
+
+    def test_index_calibration_refuses_filament_before_selector_motion(self):
+        gate = 10
+        axis = self.axis('unit1')
+        self.hh.run_gcode('MMU_SELECT GATE=%d' % gate)
+        self.hh.mmu.set_filament_pos_state(FILAMENT_POS_LOADED, silent=True)
+        before = axis.carriage
+
+        self.hh.run_gcode('MMU_CALIBRATE_SELECTOR_INDEXES UNIT=1 SAVE=0')
+
+        self.assertEqual(axis.carriage, before)
+        self.assertTrue(any('Filament may be loaded' in error for error in self.hh.errors))
 
     def test_unit0_loads_and_unloads(self):
         """
@@ -964,14 +999,14 @@ class TestPersistedPositionRestore(unittest.TestCase):
         persisted state - anything that leaves cmd_MMU_BOOTUP's own recovery attempt short of a
         definite answer) must not be treated as "safe to auto-home". Before the fix,
         FILAMENT_POS_UNKNOWN was explicitly exempted from the boot skip-check, so bootup would
-        proceed into home_unit() -> PhysicalSelector.home(), whose "automatic unload case" branch
-        then runs a real unload_sequence() - which can heat the extruder - based on nothing more
-        than an ambiguous read. The fix (mmu_controller.py's autohoming loop) must skip and warn
-        instead, leaving the unload untouched.
+        proceed into selector homing based on nothing more than an ambiguous read. The startup
+        loop must skip and warn instead, leaving both filament and selector untouched.
 
         No gate is seeded here: an unresolved filament_pos is most likely exactly when no gate
         has ever been selected either (a fresh install), and that combination is what let the old
-        check's `gate_selected != TOOL_GATE_UNKNOWN` clause slip past it too.
+        check's `gate_selected != TOOL_GATE_UNKNOWN` clause slip past it too. Selector homing
+        now never unloads, but this remains the startup guard against moving a carriage when
+        filament presence cannot be ruled out.
 
         Not using self.boot(): a genuinely unresolved state legitimately produces two
         informational errors of its own (the rigged sensor failure itself, and
@@ -1009,9 +1044,9 @@ class TestPersistedPositionRestore(unittest.TestCase):
         is machine-wide, not per-unit, so on a multi-unit machine it reflects whichever gate is
         currently selected - here, one that belongs to unit0, not unit1.
 
-        home_unit() now owns all unload policy and checks real ownership before changing
-        gate_selected. PhysicalSelector.home() is mechanical only, so an unrelated unit never
-        gets a second opportunity to infer ownership from the machine-wide UNKNOWN sentinel.
+        home_unit() checks real ownership before changing gate_selected. PhysicalSelector.home()
+        is mechanical only, so an unrelated unit never gets a second opportunity to infer
+        ownership from the machine-wide UNKNOWN sentinel.
         This test pins that by construction: unit0 genuinely owns gate 3 with a real (not
         ambiguous) FILAMENT_POS_LOADED, and both units ask for startup homing at once.
         """
@@ -1041,9 +1076,40 @@ class TestPersistedPositionRestore(unittest.TestCase):
                          "unit1's homing must not disturb unit0's gate selection")
         self.assertEqual(hh.errors, [])
 
+    def test_startup_home_failure_does_not_stop_other_units_or_bootup(self):
+        """A failed physical home is local and must not truncate delayed initialization."""
+        later_home_calls = []
+        downstream_calls = []
 
-class TestHomeUnitUnloadPolicy(unittest.TestCase):
-    """Controller owns filament policy; selector.home() owns only selector motion."""
+        def rig_first_unit_failure():
+            hh = self.hh
+            hh.run_gcode('MMU_TEST_CONFIG UNIT=0 startup_home_selector=1')
+            hh.run_gcode('MMU_TEST_CONFIG UNIT=1 startup_home_selector=1')
+            units = hh.mmu.mmu_machine.units
+
+            def fail_home():
+                raise Exception('harness: startup selector jammed')
+
+            units[0].selector.selector_stepper.do_home_rail = fail_home
+            units[1].selector._home_selector = lambda: later_home_calls.append(True)
+            hh.mmu._spoolman_sync = lambda: downstream_calls.append('spoolman')
+            hh.mmu._moonraker_sync_lane_data = lambda: downstream_calls.append('lanes')
+
+        self.hh = session('ercf_vvd')
+        self.hh.boot(calibrate=True, pre_bootup=rig_first_unit_failure)
+        hh = self.hh
+
+        self.assertEqual(later_home_calls, [True],
+                         'the first unit failure stopped startup homing of the next unit')
+        self.assertEqual(downstream_calls, ['spoolman', 'lanes'])
+        self.assertEqual(hh.mmu.psm.print_state, 'initialized')
+        self.assertTrue(hh.fired('mmu:bootup'))
+        self.assertTrue(any('startup selector jammed' in error for error in hh.errors))
+        self.assertFalse(any('Error booting up MMU' in error for error in hh.errors), hh.errors)
+
+
+class TestHomeUnitFilamentGuard(unittest.TestCase):
+    """Selector homing never moves filament and requires the target unit to be empty."""
 
     GATE = 3
 
@@ -1064,130 +1130,80 @@ class TestHomeUnitUnloadPolicy(unittest.TestCase):
         self.hh.run_gcode('MMU_SELECT GATE=%d' % self.GATE)
         self.mmu.set_filament_pos_state(state, silent=True)
 
-    def _record_successful_unload(self):
+    def _record_unload_attempts(self):
         calls = []
 
         def unload(*args, **kwargs):
             calls.append((self.mmu.gate_selected, args, kwargs))
-            self.mmu.set_filament_pos_state(FILAMENT_POS_UNLOADED, silent=True)
 
         self.mmu.unload_sequence = unload
         return calls
 
-    def test_automatic_policy_unloads_before_forgetting_the_owning_gate(self):
+    def test_home_unit_refuses_loaded_filament_without_motion(self):
         self._select_loaded_gate()
-        calls = self._record_successful_unload()
+        unload_calls = self._record_unload_attempts()
+        home_calls = []
+        self.selector._home_selector = lambda: home_calls.append(True)
 
-        self.mmu.home_unit(self.unit, force_unload=None, reselect=False)
+        with self.assertRaisesRegex(Exception, 'Unload filament first'):
+            self.mmu.home_unit(self.unit, reselect=False)
 
-        self.assertEqual(calls, [(self.GATE, (), {})])
-        self.assertEqual(self.mmu.gate_selected, TOOL_GATE_UNKNOWN)
-        self.assertTrue(self.selector.is_homed)
-
-    def test_automatic_policy_can_recover_unknown_filament_when_gate_is_known(self):
-        self._select_loaded_gate(FILAMENT_POS_UNKNOWN)
-        calls = self._record_successful_unload()
-
-        self.mmu.home_unit(self.unit, force_unload=None, reselect=False)
-
-        self.assertEqual(calls, [(self.GATE, (), {})])
-        self.assertEqual(self.mmu.gate_selected, TOOL_GATE_UNKNOWN)
-
-    def test_forced_policy_preserves_gate_identity_during_state_recovery(self):
-        self._select_loaded_gate(FILAMENT_POS_UNKNOWN)
-        calls = self._record_successful_unload()
-
-        self.mmu.home_unit(self.unit, force_unload=True, reselect=False)
-
-        self.assertEqual(calls, [(self.GATE, (), {'check_state': True})])
-        self.assertEqual(self.mmu.gate_selected, TOOL_GATE_UNKNOWN)
-
-    def test_gcode_force_unload_one_uses_forced_policy(self):
-        self._select_loaded_gate()
-        calls = self._record_successful_unload()
-
-        self.hh.run_gcode('MMU_HOME UNIT=0 FORCE_UNLOAD=1')
-
-        self.assertEqual(calls, [(self.GATE, (), {'check_state': True})])
-        self.assertEqual(self.hh.errors, [])
-
-    def test_gcode_force_unload_zero_never_unloads(self):
-        self._select_loaded_gate()
-        calls = self._record_successful_unload()
-
-        self.hh.run_gcode('MMU_HOME UNIT=0 FORCE_UNLOAD=0')
-
-        self.assertEqual(calls, [])
+        self.assertEqual(unload_calls, [])
+        self.assertEqual(home_calls, [])
         self.assertEqual(self.mmu.gate_selected, self.GATE)
-        self.assertTrue(any('has filament loaded' in error for error in self.hh.errors))
 
-    def test_default_gcode_home_performs_a_real_automatic_unload(self):
-        self.hh.place_filament(self.GATE, position=TIP_AT_GATE)
-        self.hh.run_gcode('MMU_PRELOAD GATE=%d' % self.GATE)
-        self.hh.run_gcode('MMU_SELECT GATE=%d' % self.GATE)
-        self.hh.run_gcode('MMU_LOAD')
-        self.assertEqual(self.mmu.filament_pos, FILAMENT_POS_LOADED)
+    def test_gcode_home_reports_loaded_filament_without_unloading(self):
+        self._select_loaded_gate()
+        unload_calls = self._record_unload_attempts()
 
         self.hh.run_gcode('MMU_HOME UNIT=0')
 
-        self.assertEqual(self.mmu.filament_pos, FILAMENT_POS_UNLOADED)
-        self.assertTrue(self.selector.is_homed)
-        self.assertEqual(self.hh.errors, [])
-
-    def test_failed_unload_keeps_the_owning_gate_for_recovery(self):
-        self._select_loaded_gate()
-        calls = []
-
-        def fail_unload(*args, **kwargs):
-            calls.append(self.mmu.gate_selected)
-            from extras.mmu.mmu_utils import MmuError
-            raise MmuError('simulated unload failure')
-
-        self.mmu.unload_sequence = fail_unload
-
-        with self.assertRaisesRegex(Exception, 'simulated unload failure'):
-            self.mmu.home_unit(self.unit, force_unload=None, reselect=False)
-
-        self.assertEqual(calls, [self.GATE])
+        self.assertEqual(unload_calls, [])
         self.assertEqual(self.mmu.gate_selected, self.GATE)
+        self.assertTrue(any('Unload filament first' in error for error in self.hh.errors))
 
-    def test_autohome_unload_failure_also_keeps_the_owning_gate(self):
+    def test_select_gate_autohome_refuses_loaded_filament(self):
         self._select_loaded_gate()
         self.selector.is_homed = False
+        unload_calls = self._record_unload_attempts()
 
-        def fail_unload(*args, **kwargs):
-            from extras.mmu.mmu_utils import MmuError
-            raise MmuError('simulated autohome unload failure')
-
-        self.mmu.unload_sequence = fail_unload
-
-        with self.assertRaisesRegex(Exception, 'simulated autohome unload failure'):
+        with self.assertRaisesRegex(Exception, 'Unload filament first'):
             self.mmu.select_gate(self.GATE + 1)
 
+        self.assertEqual(unload_calls, [])
+        self.assertEqual(self.mmu.gate_selected, self.GATE)
+
+    def test_unknown_filament_state_on_known_gate_is_refused(self):
+        self._select_loaded_gate(FILAMENT_POS_UNKNOWN)
+        home_calls = []
+        self.selector._home_selector = lambda: home_calls.append(True)
+
+        with self.assertRaisesRegex(Exception, 'may have filament loaded'):
+            self.mmu.home_unit(self.unit, reselect=False)
+
+        self.assertEqual(home_calls, [])
         self.assertEqual(self.mmu.gate_selected, self.GATE)
 
     def test_unknown_gate_with_unresolved_filament_requires_recovery(self):
         self.mmu.unselect_gate()
         self.mmu.set_filament_pos_state(FILAMENT_POS_UNKNOWN, silent=True)
-        unload_calls = self._record_successful_unload()
+        unload_calls = self._record_unload_attempts()
         home_calls = []
         self.selector._home_selector = lambda: home_calls.append(True)
 
         with self.assertRaisesRegex(Exception, 'MMU_RECOVER GATE'):
-            self.mmu.home_unit(self.unit, force_unload=None, reselect=False)
+            self.mmu.home_unit(self.unit, reselect=False)
 
         self.assertEqual(unload_calls, [])
         self.assertEqual(home_calls, [])
         self.assertEqual(self.mmu.gate_selected, TOOL_GATE_UNKNOWN)
 
-    def test_explicit_never_unload_can_home_with_unknown_ownership(self):
-        self.mmu.unselect_gate()
-        self.mmu.set_filament_pos_state(FILAMENT_POS_UNKNOWN, silent=True)
-        unload_calls = self._record_successful_unload()
+    def test_empty_unit_homes_without_calling_unload(self):
+        unload_calls = self._record_unload_attempts()
         home_calls = []
         self.selector._home_selector = lambda: home_calls.append(True)
 
-        self.mmu.home_unit(self.unit, force_unload=False, reselect=False)
+        self.mmu.home_unit(self.unit, reselect=False)
 
         self.assertEqual(unload_calls, [])
         self.assertEqual(home_calls, [True])
@@ -1195,7 +1211,7 @@ class TestHomeUnitUnloadPolicy(unittest.TestCase):
 
     def test_selector_home_is_mechanical_and_never_infers_filament_ownership(self):
         self._select_loaded_gate()
-        unload_calls = self._record_successful_unload()
+        unload_calls = self._record_unload_attempts()
         home_calls = []
         self.selector._home_selector = lambda: home_calls.append(self.mmu.gate_selected)
 
@@ -1205,7 +1221,7 @@ class TestHomeUnitUnloadPolicy(unittest.TestCase):
         self.assertEqual(home_calls, [self.GATE])
         self.assertEqual(self.mmu.gate_selected, self.GATE)
 
-    def test_homing_another_unit_never_unloads_the_active_units_gate(self):
+    def test_homing_another_unit_is_allowed_while_the_active_unit_is_loaded(self):
         self.hh.close()
         self.hh = session('ercf_vvd')
         self.hh.boot()
@@ -1214,10 +1230,10 @@ class TestHomeUnitUnloadPolicy(unittest.TestCase):
         self.hh.run_gcode('MMU_HOME UNIT=0')
         self.hh.run_gcode('MMU_SELECT GATE=3')
         self.mmu.set_filament_pos_state(FILAMENT_POS_LOADED, silent=True)
-        unload_calls = self._record_successful_unload()
+        unload_calls = self._record_unload_attempts()
         sibling = self.mmu.mmu_machine.units[1]
 
-        self.mmu.home_unit(sibling, force_unload=True, reselect=False)
+        self.mmu.home_unit(sibling, reselect=False)
 
         self.assertEqual(unload_calls, [])
         self.assertEqual(self.mmu.gate_selected, self.GATE)

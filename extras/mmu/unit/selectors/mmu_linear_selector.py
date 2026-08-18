@@ -786,6 +786,8 @@ class MmuCalibrateSelectorCommand(BaseCommand):
             selector.calibrator.mark_not_calibrated(CALIBRATED_SELECTOR)
             return
 
+        if selector.check_if_unit_loaded(): return
+
         if gate is not None and not mmu_unit.manages_gate(gate):
             raise gcmd.error("Gate %d is not managed by %s (range=%d-%d)" % (gate, mmu_unit.name, min_gate, max_gate))
 
