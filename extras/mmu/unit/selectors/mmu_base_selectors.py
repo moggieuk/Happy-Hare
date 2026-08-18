@@ -93,7 +93,7 @@ class BaseSelector:
         pass
 
 
-    def home(self, force_unload = None):
+    def home(self):
         pass
 
 
@@ -330,13 +330,12 @@ class PhysicalSelector(BaseSelector, object):
         self.var_manager.write() # One flush, so the pair can never land separately
 
 
-    def home(self, force_unload = None):
+    def home(self):
         """
         Home the physical selector mechanism.
 
-        Filament unload policy is owned by MmuController.home_unit(), which can
-        make the decision while the selected gate still identifies the correct
-        unit and drive. The argument remains for selector interface compatibility.
+        MmuController.home_unit() verifies that selector motion cannot be
+        obstructed by filament before calling this mechanical operation.
         """
         if not self.requires_homing: return
         if self.check_if_unit_bypass(): return
@@ -375,10 +374,8 @@ class PhysicalSelector(BaseSelector, object):
         """
         Similar to MMU controller check but localized to specific selector
         """
-        if not self.mmu_unit.manages_gate(self.mmu.gate_selected):
-            return False
-        if self.mmu.filament_pos not in [FILAMENT_POS_UNLOADED, FILAMENT_POS_UNKNOWN]:
-            self.mmu.log_error("Operation not possible. Filament is loaded")
+        if self.mmu._unit_may_have_filament(self.mmu_unit):
+            self.mmu.log_error("Operation not possible. Filament may be loaded or its state is unknown")
             return True
         return False
 
@@ -505,7 +502,7 @@ class MmuSoaktestSelectorCommand(BaseCommand):
                     gate = random.randint(min_gate, max_gate)
 
                     if random.randint(0, 10) == 0 and home:
-                        mmu.home_unit(mmu_unit, force_unload=False)
+                        mmu.home_unit(mmu_unit)
 
                     if random.randint(0, 10) == 0 and mmu_unit.selector.has_bypass():
                         mmu.log_always("Testing loop %d / %d. Selecting bypass..." % (l + 1, loops))

@@ -499,6 +499,8 @@ class MmuCalibrateSelectorIndexesCommand(BaseCommand):
             mmu.log_always(f"Reset selector index calibration on {mmu_unit.name}")
             return
 
+        if selector.check_if_unit_loaded(): return
+
         mmu.log_always(f"Calibrating selector indexes on {mmu_unit.name}...")
 
         try:

@@ -28,7 +28,6 @@ class MmuHomeCommand(BaseCommand):
         f"{CMD}: {HELP_BRIEF}\n"
         + "UNIT         = #(int)|_name_|ALL Specify unit by name, number or all-units (optional if single unit)\n"
         + "TOOL         = #(int) Optionally select tool number after homing\n"
-        + "FORCE_UNLOAD = [0|1]  Omit to unload when needed; 1 forces recovery; 0 homes without unloading\n"
         + "SKIP_HOMED   = [0|1]  Skip homing of units that are already homed\n"
         + "(no parameters: home selector on single unit setup and select T0)\n"
     )
@@ -36,7 +35,7 @@ class MmuHomeCommand(BaseCommand):
         "Examples:\n"
         + f"{CMD} UNIT=ALL              ...Home all mmu units with selector kinimatics\n"
         + f"{CMD} UNIT=ALL SKIP_HOMED=1 ...Home only units that are not already homed\n"
-        + f"{CMD} UNIT=1 FORCE_UNLOAD=1 ...Home unit 1 unloading filament if necessary\n"
+        + f"{CMD} UNIT=1              ...Home unit 1\n"
     )
 
     def __init__(self, mmu):
@@ -61,10 +60,8 @@ class MmuHomeCommand(BaseCommand):
         if self.check_if_not_calibrated(CALIBRATED_SELECTOR, mmu_unit=mmu_unit):
             mmu.log_always("Not calibrated. Will attempt to home to endstop")
             tool = -1
-            force_unload = 0
         else:
             tool = gcmd.get_int('TOOL', mmu.tool_selected, minval=0, maxval=mmu.num_gates - 1)
-            force_unload = gcmd.get_int('FORCE_UNLOAD', None, minval=0, maxval=1)
         skip_homed = gcmd.get_int('SKIP_HOMED', 0, minval=0, maxval=1)
 
         # With UNIT=ALL this handler is called once per unit. Defer the tool selection
@@ -79,7 +76,7 @@ class MmuHomeCommand(BaseCommand):
                 if skip_homed and mmu_unit.selector.is_homed:
                     mmu.log_always("Skipped homing %s (not necessary / already homed)" % mmu_unit.name if all_units else "Skipped homing (not necessary / already homed)")
                 else:
-                    mmu.home_unit(mmu_unit, force_unload=force_unload, reselect=False)
+                    mmu.home_unit(mmu_unit, reselect=False)
                     mmu.log_always("Homed %s" % mmu_unit.name if all_units else "Homed")
 
                 # Always select gate for chosen tool (just once, at the end, if UNIT=ALL)

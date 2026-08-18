@@ -552,6 +552,8 @@ class MmuCalibrateRotarySelectorCommand(BaseCommand):
             self.mmu.log_error("Operation not possible on this selector type (RotarySelector only)")
             return
 
+        if selector.check_if_unit_loaded(): return
+
         save = gcmd.get_int('SAVE', 1, minval=0, maxval=1)
         single = gcmd.get_int('SINGLE', 0, minval=0, maxval=1)
         quick = gcmd.get_int('QUICK', 0, minval=0, maxval=1)
