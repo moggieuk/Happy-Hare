@@ -41,7 +41,7 @@ class MmuGateMapCommand(BaseCommand):
         + "SPOOLID      = # Optionally the spoolman ID for the filament (don't need to specify other attributes)\n"
         + "TEMP         = # Default temperature of filament\n"
         + "SPEED        = % Speed override (use <100 for soft TPU types)\n"
-        + "RFID         = # RFID tag value read from the gate's spool (blank to clear)\n"
+        + "RFID         = # Single hexadecimal RFID tag UID read at the gate (blank to clear)\n"
         + "AVAILABLE    = [-1|0|1|2] Filament availability: Unknown | Empty | Available | Available from filament buffer\n"
         + "(no parameters for status report)\n"
     )
@@ -83,6 +83,7 @@ class MmuGateMapCommand(BaseCommand):
         next_spool_id = gcmd.get_int('NEXT_SPOOLID', None, minval=-2)
         lookup = gcmd.get_int('LOOKUP', None, minval=-2, maxval=-1)  # Hidden: failed per-gate lookup result from Moonraker
         created = bool(gcmd.get_int('CREATED', 0, minval=0, maxval=1)) # Set by Moonraker when the UID minted a new spool
+        rfids = gcmd.get('RFIDS', None)                              # Hidden: complete UID set registered to the resolved spool
 
         gate_map = None
         try:
@@ -214,8 +215,13 @@ class MmuGateMapCommand(BaseCommand):
                             self._safe_int(fil.get('temp', mmu.p.default_extruder_temp)),
                             mmu.p.default_extruder_temp
                         )
-                        # RFID is read locally from gate hardware, not owned by spoolman, so preserve it unless explicitly supplied
-                        mmu.gate_spool_rfid[gate_idx] = fil.get('rfid', mmu.gate_spool_rfid[gate_idx])
+                        # The observed RFID is local hardware state and is never supplied by
+                        # Spoolman. A non-Spoolman map may still set one validated UID explicitly.
+                        if not from_spoolman and 'rfid' in fil:
+                            self._set_gate_rfid(gate_idx, fil.get('rfid'))
+                        # REPLACE is authoritative for spool assignments, so absent aliases
+                        # clear any set belonging to the outgoing spool.
+                        mmu.gate_maps.set_gate_rfid_aliases(gate_idx, fil.get('rfids', ''))
                         # gate_speed_override and gate_status can be set locally
                 else:
                     # Update map (ui or from spoolman in "readonly" and "push" modes)
@@ -243,9 +249,11 @@ class MmuGateMapCommand(BaseCommand):
                             mmu.gate_speed_override[gate_idx] = self._safe_int(fil.get('speed_override', mmu.gate_speed_override[gate_idx]))
                             mmu.gate_status[gate_idx] = status # For UI manual fixing of availability
 
-                        # RFID is read locally from gate hardware; always allow it through regardless of spoolman origin
+                        # Only a local/UI map may update the observed UID. Spoolman
+                        # supplies its complete UID set through rfids instead.
                         if not from_spoolman:
-                            mmu.gate_spool_rfid[gate_idx] = fil.get('rfid', mmu.gate_spool_rfid[gate_idx])
+                            if 'rfid' in fil:
+                                self._set_gate_rfid(gate_idx, fil.get('rfid'))
 
                         # If spool_id has changed, clean up possible stale use of old one
                         if spool_id != mmu.gate_spool_id[gate_idx]:
@@ -253,6 +261,11 @@ class MmuGateMapCommand(BaseCommand):
                             mod_gate_ids = mmu.gate_maps.assign_spool_id(gate_idx, spool_id)
                             for (g, sid) in mod_gate_ids:
                                 ids_dict[g] = sid
+
+                        # Apply after assign_spool_id(), which clears aliases whenever the
+                        # spool changes.
+                        if 'rfids' in fil:
+                            mmu.gate_maps.set_gate_rfid_aliases(gate_idx, fil.get('rfids'))
 
                     changed_gate_ids = list(ids_dict.items())
 
@@ -277,9 +290,10 @@ class MmuGateMapCommand(BaseCommand):
                     mmu.gate_maps.clear_gate_attributes(gate_idx)
                     ids_dict[gate_idx] = -1
 
-                # RFID is read locally from gate hardware and isn't owned by spoolman, so it's always settable
-                rfid = rfid if rfid is not None else mmu.gate_spool_rfid[gate_idx]
-                mmu.gate_spool_rfid[gate_idx] = rfid
+                # RFID is one locally observed UID. Invalid values, including lists,
+                # are reported and ignored without disturbing the existing gate value.
+                if rfid is not None:
+                    self._set_gate_rfid(gate_idx, rfid)
 
                 if mmu.p.spoolman_support != SPOOLMAN_PULL:
                     # Local gate map, can update attributes
@@ -307,6 +321,9 @@ class MmuGateMapCommand(BaseCommand):
                         for (g, sid) in mod_gate_ids:
                             ids_dict[g] = sid
 
+                    if rfids is not None:
+                        mmu.gate_maps.set_gate_rfid_aliases(gate_idx, rfids)
+
                     # A per-gate NFC scan that auto-created a Spoolman spool (console log
                     # complements the gate's LED feedback)
                     if created and spool_id and spool_id > 0:
@@ -314,6 +331,8 @@ class MmuGateMapCommand(BaseCommand):
 
                 else:
                     # Remote (spoolman) gate map, don't update local attributes that are set by spoolman
+                    if rfids is not None:
+                        mmu.gate_maps.set_gate_rfid_aliases(gate_idx, rfids)
                     mmu.gate_status[gate_idx] = available
                     if speed_override is not None:
                         mmu.gate_speed_override[gate_idx] = speed_override
@@ -339,3 +358,15 @@ class MmuGateMapCommand(BaseCommand):
             return int(i)
         except ValueError:
             return default
+
+
+    def _set_gate_rfid(self, gate, rfid):
+        """Apply one valid UID (or blank clear); invalid/list values are ignored."""
+        normalized = self.mmu.gate_maps.normalize_gate_rfid(rfid)
+        if normalized is None:
+            self.mmu.log_error(
+                "Ignoring invalid RFID value for gate %d: expected one even-length hexadecimal UID; "
+                "comma-separated UID lists belong in Spoolman" % gate)
+            return False
+        self.mmu.gate_spool_rfid[gate] = normalized
+        return True

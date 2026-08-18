@@ -67,6 +67,11 @@ class MmuNfcFieldArbiter:
 
         owner = self.mmu.gate_maps.find_gate_by_rfid(uid)
         if owner is None:
+            # The gate map intentionally stores only the UID physically observed
+            # here. Consult the complete Spoolman UID set as a secondary identity
+            # source before treating an alternate tag as unknown.
+            owner = self.mmu.gate_maps.find_gate_by_rfid_alias(gate, uid)
+        if owner is None:
             return NFC_FIELD_NEIGHBOR, None, ""
         if owner == gate:
             return NFC_FIELD_MINE, owner, ""

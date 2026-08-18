@@ -175,12 +175,26 @@ class TestMultiUidSpool(MoonrakerTestCase):
         self.assertEqual(self.hh.mmu_server.uid_to_spool_id,
                          {KNOWN_UID: 1, self.SECOND_UID: 1})
 
+    def test_filament_attributes_expose_only_the_complete_rfid_set(self):
+        attributes = self.hh.mmu_server.spool_location[1][2]
+        self.assertNotIn('rfid', attributes)
+        self.assertEqual(attributes['rfids'],
+                         '%s,%s' % (KNOWN_UID, self.SECOND_UID))
+
     def test_either_uid_resolves_to_the_spool(self):
         for uid in (KNOWN_UID, self.SECOND_UID):
             with self.subTest(uid=uid):
                 self.hh.call_remote('spoolman_get_spool_by_uid', uid=uid,
                                     gate=None, silent=True)
                 self.assertEqual(self.last_gcode(), 'MMU_GATE_MAP NEXT_SPOOLID=1 QUIET=1')
+
+    def test_per_gate_lookup_returns_complete_rfids_set(self):
+        self.hh.call_remote('spoolman_get_spool_by_uid', uid=self.SECOND_UID,
+                            gate=2, silent=True)
+        self.assertEqual(
+            self.last_gcode(),
+            'MMU_GATE_MAP GATE=2 SPOOLID=1 RFIDS=%s,%s QUIET=1'
+            % (KNOWN_UID, self.SECOND_UID))
 
 
 class TestSharedReaderLookup(MoonrakerTestCase):
@@ -219,7 +233,8 @@ class TestPerGateLookup(MoonrakerTestCase):
     def test_known_tag_assigns_the_gate_directly(self):
         self.hh.call_remote('spoolman_get_spool_by_uid', uid=KNOWN_UID, gate=2,
                             silent=True)
-        self.assertEqual(self.last_gcode(), 'MMU_GATE_MAP GATE=2 SPOOLID=1 QUIET=1')
+        self.assertEqual(self.last_gcode(),
+                         'MMU_GATE_MAP GATE=2 SPOOLID=1 RFIDS=%s QUIET=1' % KNOWN_UID)
 
     def test_failure_reports_back_per_gate(self):
         """
@@ -425,7 +440,8 @@ class TestAutoCreate(MoonrakerTestCase):
                             metadata=TAG_METADATA, save=True, silent=True)
         sid = self.hh.db.created_spools[0]
         self.assertEqual(self.last_gcode(),
-                         'MMU_GATE_MAP GATE=1 SPOOLID=%d CREATED=1 QUIET=1' % sid)
+                         'MMU_GATE_MAP GATE=1 SPOOLID=%d RFIDS=%s CREATED=1 QUIET=1'
+                         % (sid, UNKNOWN_UID))
 
 
 class TestReportOnly(MoonrakerTestCase):

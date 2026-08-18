@@ -191,9 +191,32 @@ class TestGateMapCommand(MotionTestCase):
 
         # Clearing is transition-based: metadata may intentionally be added later
         # without first changing the gate away from EMPTY.
-        self.hh.run_gcode('MMU_GATE_MAP GATE=1 MATERIAL=PETG RFID=newtag')
+        self.hh.run_gcode('MMU_GATE_MAP GATE=1 MATERIAL=PETG RFID=deadbeef')
         self.assertEqual(mmu.gate_material[1], 'PETG')
-        self.assertEqual(mmu.gate_spool_rfid[1], 'newtag')
+        self.assertEqual(mmu.gate_spool_rfid[1], 'DEADBEEF')
+
+    def test_gate_map_rejects_invalid_or_multiple_rfid_values(self):
+        mmu = self.hh.mmu
+        self.hh.run_gcode('MMU_GATE_MAP GATE=1 RFID=aabbccdd QUIET=1')
+        self.assertEqual(mmu.gate_spool_rfid[1], 'AABBCCDD')
+
+        self.hh.run_gcode('MMU_GATE_MAP GATE=1 RFID=11111111,22222222 QUIET=1')
+        self.assertEqual(mmu.gate_spool_rfid[1], 'AABBCCDD')
+
+        self.hh.run_gcode('MMU_GATE_MAP GATE=1 RFID=not-hex QUIET=1')
+        self.assertEqual(mmu.gate_spool_rfid[1], 'AABBCCDD')
+
+    def test_spoolman_map_preserves_observed_uid_and_applies_aliases(self):
+        mmu = self.hh.mmu
+        self.hh.run_gcode('MMU_GATE_MAP GATE=1 RFID=aabbccdd QUIET=1')
+        gate_map = {
+            1: {'spool_id': 7, 'rfids': 'AABBCCDD,BBBB1234'}
+        }
+        self.hh.run_gcode('MMU_GATE_MAP MAP="%s" FROM_SPOOLMAN=1 QUIET=1' % gate_map)
+
+        self.assertEqual(mmu.gate_spool_rfid[1], 'AABBCCDD')
+        self.assertEqual(mmu.gate_maps.gate_spool_rfid_aliases[1],
+                         ('AABBCCDD', 'BBBB1234'))
 
     def test_runtime_empty_transition_also_clears_attributes(self):
         mmu = self.hh.mmu

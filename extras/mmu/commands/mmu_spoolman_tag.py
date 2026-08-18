@@ -142,7 +142,8 @@ class MmuSpoolmanTagCommand(BaseCommand):
                                   "name the spool explicitly" % gate)
                     return
                 mmu.log_debug("Gate %d resolves to spool id %d for tag registration" % (gate, target))
-            mmu._spoolman_set_spool_uid(target, rfid.strip(), append=append, quiet=quiet)
+            mmu._spoolman_set_spool_uid(target, rfid.strip(), append=append, quiet=quiet,
+                                        gate=gate if gate is not None and gate >= 0 else None)
 
         else:
             mmu.log_error("%s needs RFID=<uid> or REGISTER=1" % self.CMD)

@@ -442,6 +442,26 @@ class TestGateRfidPlumbing(NeighborTestCase):
         self.hh.mmu.gate_maps.set_gate_rfid(2, TAG.lower())
         self.assertEqual(self.hh.mmu.gate_maps.find_gate_by_rfid(TAG.upper()), 2)
 
+    def test_alias_identifies_second_tag_on_same_spool(self):
+        alias = 'BBBB1234'
+        self.hh.mmu.gate_maps.set_gate_rfid(2, TAG)
+        self.hh.mmu.gate_maps.set_gate_rfid_aliases(2, (TAG, alias))
+        verdict, owner, _diag = self.arbiter._field_verdict(2, alias.lower())
+        self.assertEqual((verdict, owner), (NFC_FIELD_MINE, 2))
+
+    def test_alias_identifies_tag_bleeding_from_neighbor(self):
+        alias = 'BBBB1234'
+        self.hh.mmu.gate_maps.set_gate_rfid(2, TAG)
+        self.hh.mmu.gate_maps.set_gate_rfid_aliases(2, (TAG, alias))
+        verdict, owner, _diag = self.arbiter._field_verdict(3, alias)
+        self.assertEqual((verdict, owner), (NFC_FIELD_NEIGHBOR, 2))
+
+    def test_aliases_clear_when_spool_assignment_changes(self):
+        self.hh.mmu.gate_maps.assign_spool_id(2, 7)
+        self.hh.mmu.gate_maps.set_gate_rfid_aliases(2, (TAG, 'BBBB1234'))
+        self.hh.mmu.gate_maps.assign_spool_id(2, 8)
+        self.assertEqual(self.hh.mmu.gate_maps.gate_spool_rfid_aliases[2], tuple())
+
     def test_unknown_uid_finds_nothing(self):
         self.assertIsNone(self.hh.mmu.gate_maps.find_gate_by_rfid('NOTAREALTAG'))
 
