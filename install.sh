@@ -543,6 +543,15 @@ if [ "${F_MENUCONFIG}" ] && [ "${F_UNINSTALL}" ]; then
 fi
 
 if [ "${TESTDIR}" ]; then
+    # Test mode redirects installation into a synthetic Klipper tree. Preserve the
+    # operational Klipper checkout so menuconfig can still run its CAN discovery tool.
+    if [ -n "${CONFIG_KLIPPER_HOME:-}" ]; then
+        export REAL_KLIPPER_HOME="${CONFIG_KLIPPER_HOME}"
+    elif [ -d "/usr/share/klipper" ]; then
+        export REAL_KLIPPER_HOME="/usr/share/klipper"
+    else
+        export REAL_KLIPPER_HOME="${HOME}/klipper"
+    fi
     export CONFIG_KLIPPER_HOME="${TESTDIR}/klipper"
     export CONFIG_KLIPPER_CONFIG_HOME="${TESTDIR}/printer_data/config"
     export CONFIG_MOONRAKER_HOME="${TESTDIR}/moonraker"
