@@ -49,7 +49,7 @@ from .mmu_sensor_utils    import MmuVirtualEndstopSensor, MmuCompoundEndstop
 # gate_preload_* set (_preload_profile). Every gate homing/parking primitive is driven by
 # one of them, so the endstop, homing budget, parking distance and NFC jog scan window
 # always travel together.
-GateHomeProfile = namedtuple('GateHomeProfile', ['endstop', 'homing_max', 'parking_distance', 'attempts', 'jog_scan_window'])
+GateHomeProfile = namedtuple('GateHomeProfile', ['endstop', 'homing_max', 'parking_distance', 'attempts', 'jog_scan_window', 'clear_distance'])
 
 
 class MmuFilamentMovement:
@@ -71,6 +71,7 @@ class MmuFilamentMovement:
             parking_distance=u.p.gate_parking_distance,
             attempts=(u.p.gate_load_attempts if allow_retry else 1),
             jog_scan_window=u.p.nfc_gate_jog_scan_window,
+            clear_distance=u.p.nfc_gate_clear_distance,
         )
 
 
@@ -87,6 +88,7 @@ class MmuFilamentMovement:
             parking_distance=u.p.gate_preload_parking_distance,
             attempts=u.p.gate_preload_attempts,
             jog_scan_window=u.p.nfc_preload_jog_scan_window,
+            clear_distance=u.p.nfc_preload_clear_distance,
         )
 
 
@@ -193,7 +195,7 @@ class MmuFilamentMovement:
         if not have_strong_pending and profile.endstop != SENSOR_ENCODER:
             arb_mgr = self._nfc_field_arm(gate, profile.endstop)
 
-        with self.nfc_arbiter.clear_field(gate, arb_mgr, endstop=profile.endstop) as outcome:
+        with self.nfc_arbiter.clear_field(gate, arb_mgr, endstop=profile.endstop, clear_distance=profile.clear_distance) as outcome:
             # Decide the NFC path HERE, above the banner, so the banner cannot promise a scan
             # that won't happen. _build_gate_nfc_compound() declines (returns None) when there is
             # no reader, the reader is disabled, or the gate endstop isn't a real MCU switch.
@@ -537,18 +539,20 @@ class MmuFilamentMovement:
         as it did before this feature existed.
 
         Deliberately off by default: none of nfc_neighbor_check, nfc_neighbor_evict_distance,
-        or nfc_self_verify_distance is armed out of the box, so a stock machine never probes,
-        never warns, and pays no extra reader I/O.
+        nfc_gate_clear_distance, or nfc_preload_clear_distance is armed out of the box, so a
+        stock machine never probes, never warns, and pays no extra reader I/O.
 
         'profile_endstop' is the gate endstop the caller's enclosed operation will itself home
         to (preload passes its profile endstop; MMU_NFC_SCAN homes to the reader itself and
         passes nothing).
         """
         u = self.mmu_unit(gate)
-        # nfc_self_verify_distance arms this on its own - a machine that wants only the
-        # self-jog ratification escalation, with neither neighbor check nor eviction, must
-        # still reach clear_field()/_ratify() for there to be anything to escalate.
-        if not u.p.nfc_neighbor_check and not u.p.nfc_neighbor_evict_distance and not u.p.nfc_self_verify_distance:
+        # nfc_gate_clear_distance/nfc_preload_clear_distance each arm this on their own - a
+        # machine that wants only one operation's self-jog ratification escalation, with
+        # neither neighbor check nor eviction, must still reach clear_field()/_ratify() for
+        # there to be anything to escalate.
+        if (not u.p.nfc_neighbor_check and not u.p.nfc_neighbor_evict_distance
+                and not u.p.nfc_gate_clear_distance and not u.p.nfc_preload_clear_distance):
             return None
         if profile_endstop == SENSOR_ENCODER:
             # Encoder homing can't be compounded with the reader (see
@@ -776,7 +780,7 @@ class MmuFilamentMovement:
         # report. arb_mgr is None (clear_field() then an inert passthrough) whenever
         # arbitration isn't armed for this gate.
         arb_mgr = self._nfc_field_arm(gate)
-        with self.nfc_arbiter.clear_field(gate, arb_mgr, endstop=profile.endstop) as outcome:
+        with self.nfc_arbiter.clear_field(gate, arb_mgr, endstop=profile.endstop, clear_distance=profile.clear_distance) as outcome:
             if outcome.verdict == NFC_FIELD_FOREIGN:
                 raise MmuError("Cannot scan gate %d: %s" % (gate, outcome.reason))
 

@@ -198,14 +198,22 @@ class TestFieldArm(NeighborTestCase):
         self.hh.mmu.mmu_unit(0).p.nfc_neighbor_evict_distance = -40.0
         self.assertIsNotNone(self.hh.mmu._nfc_field_arm(0))
 
-    def test_self_verify_distance_alone_arms(self):
+    def test_gate_clear_distance_alone_arms(self):
         """
-        A machine that only wants the self-jog ratification escalation, with neither
-        neighbor check nor eviction, must still reach clear_field()/_ratify() - otherwise
-        nfc_self_verify_distance would be configured but silently do nothing.
+        A machine that only wants the scan-context self-jog ratification escalation, with
+        neither neighbor check nor eviction nor the preload distance, must still reach
+        clear_field()/_ratify() - otherwise nfc_gate_clear_distance would be configured but
+        silently do nothing.
         """
         self.hh.mmu.mmu_unit(0).p.gate_homing_endstop = 'mmu_exit'
-        self.hh.mmu.mmu_unit(0).p.nfc_self_verify_distance = -40.0
+        self.hh.mmu.mmu_unit(0).p.nfc_gate_clear_distance = -40.0
+        self.assertIsNotNone(self.hh.mmu._nfc_field_arm(0))
+
+    def test_preload_clear_distance_alone_arms(self):
+        """Same as above, but for the independent preload-context distance."""
+        self.hh.mmu.mmu_unit(0).p.gate_homing_endstop = 'mmu_exit'
+        self.hh.mmu.mmu_unit(0).p.nfc_gate_clear_distance = 0.0
+        self.hh.mmu.mmu_unit(0).p.nfc_preload_clear_distance = -40.0
         self.assertIsNotNone(self.hh.mmu._nfc_field_arm(0))
 
     def test_encoder_homing_never_arms(self):
@@ -274,60 +282,116 @@ class TestNeighborEvictDistanceValidation(NeighborTestCase):
         self.assertEqual(self.hh.mmu.mmu_unit(0).p.gate_homing_endstop, 'mmu_shared_exit')
 
 
-class TestSelfVerifyDistanceValidation(NeighborTestCase):
+class TestClearDistanceValidation(NeighborTestCase):
     """
-    Config validation for nfc_self_verify_distance, and its on_change revalidation - mirrors
-    TestNeighborEvictDistanceValidation exactly, since the validator logic is the same shape,
-    but nfc_self_verify_distance is a genuinely independent parameter (see
-    MmuNfcFieldArbiter._ratify) so it gets its own coverage rather than assuming the other
-    class's tests are enough.
+    Config validation for nfc_gate_clear_distance / nfc_preload_clear_distance, and their
+    on_change revalidation. Unlike nfc_neighbor_evict_distance, these have NO window-fit
+    check at all: the self-jog and its restore are both plain relative moves off the
+    already-established park position (see MmuNfcFieldArbiter._verify_by_self_jog) - there is
+    no re-home involved, so there is no re-homing budget to bound them against. Only the
+    forward-jog-vs-shared-endstop safety rule applies, same shape as
+    TestNeighborEvictDistanceValidation, checked against each parameter's OWN endstop.
     """
 
-    def test_zero_disables_and_needs_no_window(self):
-        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 nfc_self_verify_distance=0')
+    def test_zero_disables(self):
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 nfc_gate_clear_distance=0')
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 nfc_preload_clear_distance=0')
         self.assertEqual(self.hh.errors, [])
 
-    def test_forward_jog_rejected_on_shared_endstop(self):
+    def test_any_magnitude_is_accepted_with_no_window_fit_check(self):
+        """Deliberately left to the user to size sensibly - not bounded against anything."""
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_homing_endstop=mmu_exit')
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 nfc_gate_clear_distance=-999')
+        self.assertEqual(self.hh.errors, [])
+        self.assertEqual(self.hh.mmu.mmu_unit(0).p.nfc_gate_clear_distance, -999.0)
+
+    def test_gate_forward_jog_rejected_on_shared_endstop(self):
         self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_homing_endstop=mmu_shared_exit')
         self.assertEqual(self.hh.errors, [])
         with self.assertRaises(Exception) as cm:
-            self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 nfc_self_verify_distance=40')
-        self.assertIn('nfc_self_verify_distance', str(cm.exception))
-        self.assertEqual(self.hh.mmu.mmu_unit(0).p.nfc_self_verify_distance, 0.0)
+            self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 nfc_gate_clear_distance=40')
+        self.assertIn('nfc_gate_clear_distance', str(cm.exception))
+        self.assertEqual(self.hh.mmu.mmu_unit(0).p.nfc_gate_clear_distance, 0.0)
 
-    def test_backward_jog_accepted_on_shared_endstop(self):
+    def test_gate_backward_jog_accepted_on_shared_endstop(self):
         self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_homing_endstop=mmu_shared_exit')
-        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 nfc_self_verify_distance=-40')
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 nfc_gate_clear_distance=-40')
         self.assertEqual(self.hh.errors, [])
-        self.assertEqual(self.hh.mmu.mmu_unit(0).p.nfc_self_verify_distance, -40.0)
+        self.assertEqual(self.hh.mmu.mmu_unit(0).p.nfc_gate_clear_distance, -40.0)
 
-    def test_forward_jog_accepted_on_a_per_gate_exit_endstop(self):
+    def test_gate_forward_jog_accepted_on_a_per_gate_exit_endstop(self):
         self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_homing_endstop=mmu_exit')
         self.assertEqual(self.hh.errors, [])
-        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 nfc_self_verify_distance=40')
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 nfc_gate_clear_distance=40')
         self.assertEqual(self.hh.errors, [])
 
-    def test_out_of_window_distance_is_rejected(self):
-        with self.assertRaises(Exception) as cm:
-            self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 nfc_self_verify_distance=-999')
-        self.assertIn('nfc_gate_jog_scan_window', str(cm.exception))
-
-    def test_switching_to_a_shared_endstop_rechecks_a_stale_self_verify_distance(self):
+    def test_switching_to_a_shared_endstop_rechecks_a_stale_gate_clear_distance(self):
         self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_homing_endstop=mmu_exit')
-        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 nfc_self_verify_distance=40')
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 nfc_gate_clear_distance=40')
         self.assertEqual(self.hh.errors, [])
         with self.assertRaises(Exception) as cm:
             self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_homing_endstop=mmu_shared_exit')
-        self.assertIn('nfc_self_verify_distance', str(cm.exception))
+        self.assertIn('nfc_gate_clear_distance', str(cm.exception))
         self.assertEqual(self.hh.mmu.mmu_unit(0).p.gate_homing_endstop, 'mmu_shared_exit')
 
+    def test_preload_can_diverge_from_gate_including_in_sign(self):
+        """
+        Confirms the two are genuinely independent, not just two names for one value - the
+        motivating case from the user's own request: opposite-signed clear jogs for preload
+        (forward) vs scan (backward), since the two operations can home/park via different
+        endstops. (The "preload defaults to gate" relationship is a boot-time ParamSpec
+        default - like nfc_preload_jog_scan_window's own default - not something a later
+        MMU_TEST_CONFIG change re-derives live, so that half isn't exercised here.)
+        """
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 nfc_gate_clear_distance=-40')
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_preload_endstop=mmu_exit')
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 nfc_preload_clear_distance=25')
+        self.assertEqual(self.hh.errors, [])
+        self.assertEqual(self.hh.mmu.mmu_unit(0).p.nfc_gate_clear_distance, -40.0,
+                         'setting the preload distance must not disturb the gate distance')
+        self.assertEqual(self.hh.mmu.mmu_unit(0).p.nfc_preload_clear_distance, 25.0)
+
+    def test_preload_forward_jog_rejected_on_its_own_shared_endstop(self):
+        """The preload distance is checked against the PRELOAD endstop, not the gate one."""
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_homing_endstop=mmu_exit')
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_preload_endstop=mmu_shared_exit')
+        self.assertEqual(self.hh.errors, [])
+        with self.assertRaises(Exception) as cm:
+            self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 nfc_preload_clear_distance=40')
+        self.assertIn('nfc_preload_clear_distance', str(cm.exception))
+
+    def test_preload_endstop_unset_inherits_gate_homing_endstop_for_validation(self):
+        """
+        gate_preload_endstop='' inherits gate_homing_endstop, same as everywhere else - the
+        test profile's own boot-time default already resolves it to a concrete value
+        ('mmu_exit'), so it has to be forced back to '' explicitly to exercise inheritance.
+        """
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_preload_endstop=')
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_homing_endstop=mmu_shared_exit')
+        self.assertEqual(self.hh.errors, [])
+        with self.assertRaises(Exception) as cm:
+            self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 nfc_preload_clear_distance=40')
+        self.assertIn('nfc_preload_clear_distance', str(cm.exception))
+
+    def test_switching_preload_endstop_rechecks_a_stale_preload_clear_distance(self):
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_homing_endstop=mmu_exit')
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_preload_endstop=mmu_exit')
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 nfc_preload_clear_distance=40')
+        self.assertEqual(self.hh.errors, [])
+        with self.assertRaises(Exception) as cm:
+            self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 gate_preload_endstop=mmu_shared_exit')
+        self.assertIn('nfc_preload_clear_distance', str(cm.exception))
+        self.assertEqual(self.hh.mmu.mmu_unit(0).p.gate_preload_endstop, 'mmu_shared_exit')
+
     def test_independent_of_neighbor_evict_distance(self):
-        """The two parameters must not interfere with each other's validation or value."""
+        """The three parameters must not interfere with each other's validation or value."""
         self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 nfc_neighbor_evict_distance=-10')
-        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 nfc_self_verify_distance=-40')
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 nfc_gate_clear_distance=-40')
+        self.hh.run_gcode('MMU_TEST_CONFIG UNIT=0 nfc_preload_clear_distance=-25')
         self.assertEqual(self.hh.errors, [])
         self.assertEqual(self.hh.mmu.mmu_unit(0).p.nfc_neighbor_evict_distance, -10.0)
-        self.assertEqual(self.hh.mmu.mmu_unit(0).p.nfc_self_verify_distance, -40.0)
+        self.assertEqual(self.hh.mmu.mmu_unit(0).p.nfc_gate_clear_distance, -40.0)
+        self.assertEqual(self.hh.mmu.mmu_unit(0).p.nfc_preload_clear_distance, -25.0)
 
 
 class TestGateRfidPlumbing(NeighborTestCase):
@@ -462,17 +526,17 @@ class TestArbitrationEndToEnd(NeighborTestCase):
         it, the read taken mid-sweep would already have been committed to the gate map by
         the time this assertion runs, warning or no warning.
 
-        nfc_self_verify_distance is deliberately -10.0, not some larger value: the passive
+        nfc_gate_clear_distance is deliberately -10.0, not some larger value: the passive
         check fails (tag_pos=-80, dead center), and ratification now escalates to a self-jog
         of -10mm too (tip -110 -> tag_pos -90, |-90-(-80)|=10 <= the 15 tag_window - still
-        detected). Kept inside the window on purpose, so this test exercises "escalation
-        was attempted and still correctly failed to clear", not "escalation never ran at
-        all" - see test_provisional_verdict_is_ratified_via_self_jog_when_passive_check_fails_scan
+        detected). Kept small on purpose, so this test exercises "escalation was attempted
+        and still correctly failed to clear", not "escalation never ran at all" - see
+        test_provisional_verdict_is_ratified_via_self_jog_when_passive_check_fails_scan
         for the -40.0 case where the self-jog actually clears it. nfc_neighbor_evict_distance
         is deliberately left at its default 0 - proves self-jog escalation runs on its own,
         independent of neighbor eviction (see MmuNfcFieldArbiter._ratify).
         """
-        self.hh.mmu.mmu_unit(0).p.nfc_self_verify_distance = -10.0
+        self.hh.mmu.mmu_unit(0).p.nfc_gate_clear_distance = -10.0
         self.fil.attach_tag(0, TAG, offset=-20.0)  # unregistered, and never truly clears
         self.hh.mmu.select_gate(0)
         self.hh.place_filament(0)  # normal park position
@@ -494,10 +558,10 @@ class TestArbitrationEndToEnd(NeighborTestCase):
         normal homing path rather than the "already preloaded" shortcut (which would bypass
         arbitration entirely), while still putting the tag in range from the very start (see
         the scan test's docstring for the offset/park/reader arithmetic, and for why
-        nfc_self_verify_distance is -10.0 here too - self-jog escalation must run and
+        nfc_preload_clear_distance is -10.0 here too - self-jog escalation must run and
         still fail, independent of neighbor eviction which stays at its default 0).
         """
-        self.hh.mmu.mmu_unit(0).p.nfc_self_verify_distance = -10.0
+        self.hh.mmu.mmu_unit(0).p.nfc_preload_clear_distance = -10.0
         self.fil.attach_tag(0, TAG, offset=-20.0)
         self.hh.mmu.select_gate(0)
         self.hh.place_filament(0)  # normal park position, exit sensor not yet triggered
@@ -522,7 +586,7 @@ class TestArbitrationEndToEnd(NeighborTestCase):
         need neighbor eviction armed at all.
         """
         self.hh.mmu.p.log_level = 4  # so the self-jog's own log_debug lines are visible
-        self.hh.mmu.mmu_unit(0).p.nfc_self_verify_distance = -40.0
+        self.hh.mmu.mmu_unit(0).p.nfc_gate_clear_distance = -40.0
         self.fil.attach_tag(0, TAG, offset=-20.0)
         self.hh.mmu.select_gate(0)
         self.hh.place_filament(0)
@@ -539,7 +603,7 @@ class TestArbitrationEndToEnd(NeighborTestCase):
     def test_provisional_verdict_is_ratified_via_self_jog_when_passive_check_fails_preload(self):
         """Preload's side of the self-jog-succeeds scenario above."""
         self.hh.mmu.p.log_level = 4
-        self.hh.mmu.mmu_unit(0).p.nfc_self_verify_distance = -40.0
+        self.hh.mmu.mmu_unit(0).p.nfc_preload_clear_distance = -40.0
         self.fil.attach_tag(0, TAG, offset=-20.0)
         self.hh.mmu.select_gate(0)
         self.hh.place_filament(0)
@@ -555,10 +619,10 @@ class TestArbitrationEndToEnd(NeighborTestCase):
 
     def test_check_only_mode_spends_zero_extra_motion_on_a_never_ratified_read(self):
         """
-        nfc_neighbor_check=1 with both nfc_neighbor_evict_distance=0 and
-        nfc_self_verify_distance=0 (both default) must keep the "no motion budget at all"
-        promise even with self-jog escalation added: _ratify's `if distance and ...` guard
-        is false for distance=0, so it falls straight to the unchanged passive-only
+        nfc_neighbor_check=1 with nfc_neighbor_evict_distance=0 and both nfc_gate_clear_distance
+        and nfc_preload_clear_distance=0 (all default) must keep the "no motion budget at
+        all" promise even with self-jog escalation added: _ratify's `if distance and ...`
+        guard is false for distance=0, so it falls straight to the unchanged passive-only
         discard, exactly as before this feature existed. log_level=4 makes _jog_off's own
         "jogging ... off its park reference" debug line visible if it ran at all -
         asserting its absence is a direct check that neither neighbor eviction nor the
@@ -566,7 +630,7 @@ class TestArbitrationEndToEnd(NeighborTestCase):
         """
         self.hh.mmu.p.log_level = 4
         self.hh.mmu.mmu_unit(0).p.nfc_neighbor_evict_distance = 0.0
-        self.hh.mmu.mmu_unit(0).p.nfc_self_verify_distance = 0.0
+        self.hh.mmu.mmu_unit(0).p.nfc_gate_clear_distance = 0.0
         self.fil.attach_tag(0, TAG, offset=-20.0)
         self.hh.mmu.select_gate(0)
         self.hh.place_filament(0)

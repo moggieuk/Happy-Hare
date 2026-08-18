@@ -11,7 +11,8 @@
 # PARAM_NFC_PRELOAD_JOG_SCAN_WINDOW
 # PARAM_NFC_NEIGHBOR_CHECK
 # PARAM_NFC_NEIGHBOR_EVICT_DISTANCE
-# PARAM_NFC_SELF_VERIFY_DISTANCE
+# PARAM_NFC_GATE_CLEAR_DISTANCE
+# PARAM_NFC_PRELOAD_CLEAR_DISTANCE
 # PARAM_NFC_FIELD_PROBE_READS
 # PARAM_NFC_LED_SEGMENT
 #
@@ -657,17 +658,30 @@ if MMU_HAS_NFC_READER
 
         0 disables eviction (default); reader gain is not a substitute.
 
-    config PARAM_NFC_SELF_VERIFY_DISTANCE
-      float "NFC self-jog verification distance"
+    config PARAM_NFC_GATE_CLEAR_DISTANCE
+      float "NFC self-jog clear distance (scan)"
       default 0
       help
-        Independent of the eviction jog above. If a tag is still seen once this
-        gate's own filament settles, jogs THIS gate's own filament this far further
-        and re-checks rather than discarding outright - catches a tag mounted close
-        enough to stay in range at the normal park position. Same signed convention
-        and shared-endstop caution as the eviction jog.
+        Independent of the eviction jog above and the preload distance below. If
+        a tag is still seen once this gate settles during MMU_NFC_SCAN, jogs THIS
+        gate's own filament this far further off park and back before discarding -
+        catches a tag mounted close enough to stay in range at rest. Signed from
+        park (+ve forward, -ve back; forward needs gate_homing_endstop=mmu_exit).
+        A plain jog-and-restore, not checked against any window - size for your machine.
 
-        0 disables this escalation (default).
+        0 disables this escalation for MMU_NFC_SCAN (default).
+
+    config PARAM_NFC_PRELOAD_CLEAR_DISTANCE
+      float "NFC self-jog clear distance (preload)"
+      default PARAM_NFC_GATE_CLEAR_DISTANCE
+      help
+        Same as the scan clear distance above, but used during MMU_PRELOAD, which
+        can home/park via a different endstop (gate_preload_endstop) - so this can
+        differ, including in sign, from the scan distance. Defaults to it, since
+        preload usually wants the same clear jog. Forward requires the preload
+        endstop (or, if unset, gate_homing_endstop) to be mmu_exit.
+
+        0 disables this escalation for MMU_PRELOAD (default).
 
     config PARAM_NFC_FIELD_PROBE_READS
       int "NFC field probe reads"

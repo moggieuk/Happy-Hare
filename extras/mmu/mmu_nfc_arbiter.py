@@ -26,12 +26,13 @@
 # clear_field() context manager and an arm check, so this bookkeeping doesn't grow those
 # already-large functions further.
 #
-# Off by default: none of nfc_neighbor_check, nfc_neighbor_evict_distance, or
-# nfc_self_verify_distance is armed out of the box, and clear_field() is an inert passthrough
-# when arbitration isn't armed for a gate - a stock machine does no extra reader I/O and
-# behaves exactly as it did before this module existed. nfc_self_verify_distance is
-# independent of the other two - it controls only whether _ratify() escalates a PROVISIONAL
-# verdict to a deliberate self-jog, not neighbor eviction.
+# Off by default: none of nfc_neighbor_check, nfc_neighbor_evict_distance,
+# nfc_gate_clear_distance, or nfc_preload_clear_distance is armed out of the box, and
+# clear_field() is an inert passthrough when arbitration isn't armed for a gate - a stock
+# machine does no extra reader I/O and behaves exactly as it did before this module existed.
+# nfc_gate_clear_distance/nfc_preload_clear_distance are independent of neighbor eviction and
+# of each other - each controls only whether _ratify() escalates a PROVISIONAL verdict to a
+# deliberate self-jog for its own operation (MMU_NFC_SCAN / MMU_PRELOAD respectively).
 #
 # (\_/)
 # ( *,*)
@@ -299,7 +300,7 @@ class MmuNfcFieldArbiter:
 
     # ---- Provisional-verdict ratification ------------------------------------------------------
 
-    def _ratify(self, gate, nfc_mgr, endstop):
+    def _ratify(self, gate, nfc_mgr, endstop, clear_distance=0.0):
         """
         Re-probe gate 'gate's reader once, after the caller's own natural motion (preload's
         homing+park, or a jog-scan's sweep with its fast path suppressed) has completed, to
@@ -314,16 +315,22 @@ class MmuNfcFieldArbiter:
         there".
 
         If that passive check still finds a tag, and there is a motion budget
-        (nfc_self_verify_distance != 0 - independent of nfc_neighbor_evict_distance, which
-        only governs neighbor eviction) that is safe to spend in this direction for
-        'endstop' (see _verify_by_self_jog), escalate to a deliberate causal test rather than
-        settling for "whatever the operation's own incidental motion happened to leave
-        behind" - a tag physically mounted such that it stays in range at the normal park
-        position would otherwise fail the passive check every single time, forever, even
-        when it is genuinely this gate's own spool. 'endstop' is the caller's own homing
-        endstop (gate_preload_endstop for preload, gate_homing_endstop for a scan) - expected
-        non-None whenever the verdict reaching here is NFC_FIELD_PROVISIONAL; both current
-        callers always pass it.
+        ('clear_distance' != 0 - independent of nfc_neighbor_evict_distance, which only
+        governs neighbor eviction) that is safe to spend in this direction for 'endstop'
+        (see _verify_by_self_jog), escalate to a deliberate causal test rather than settling
+        for "whatever the operation's own incidental motion happened to leave behind" - a tag
+        physically mounted such that it stays in range at the normal park position would
+        otherwise fail the passive check every single time, forever, even when it is
+        genuinely this gate's own spool.
+
+        'clear_distance' and 'endstop' both describe the CALLER's own context - the caller
+        picks its own matching config value (nfc_gate_clear_distance/gate_homing_endstop for
+        MMU_NFC_SCAN, nfc_preload_clear_distance/gate_preload_endstop for preload - they can
+        differ, including in sign, since the two operations can home/park via different
+        endstops) and passes both in; this method has no opinion on which parameter a value
+        came from, only on whether it's safe/worth spending. Both are expected non-None
+        whenever the verdict reaching here is NFC_FIELD_PROVISIONAL; both current callers
+        always pass them.
 
         The caller (clear_field) uses the final return value to decide whether to commit the
         held read (release_held_attribution) or drop it (discard_held_attribution) - nothing
@@ -335,7 +342,7 @@ class MmuNfcFieldArbiter:
                                 "clear after the operation's own motion)" % gate)
             return True
 
-        distance = self.mmu.mmu_unit(gate).p.nfc_self_verify_distance
+        distance = clear_distance
         if distance and not (distance > 0 and endstop in SHARED_GATE_ENDSTOPS):
             if self._verify_by_self_jog(gate, nfc_mgr, distance):
                 self.mmu.log_debug(
@@ -364,10 +371,10 @@ class MmuNfcFieldArbiter:
     def _verify_by_self_jog(self, gate, nfc_mgr, distance):
         """
         Escalate the passive ratification check into a deliberate, causal one: jog gate's own
-        already-parked filament ANOTHER 'distance' mm further off its park position
-        (nfc_self_verify_distance's sign/direction convention - independent of, but shaped
-        the same way as, nfc_neighbor_evict_distance), re-probe, and see whether detection
-        tracks that deliberate motion. This is materially stronger evidence than the passive
+        already-parked filament ANOTHER 'distance' mm further off its park position (the
+        caller's own nfc_gate_clear_distance/nfc_preload_clear_distance value, already
+        resolved by _ratify - this method doesn't care which), re-probe, and see whether
+        detection tracks that deliberate motion. This is materially stronger evidence than the passive
         check alone, which only observes whatever incidental settling the caller's own
         necessary motion happened to produce.
 
@@ -454,18 +461,19 @@ class MmuNfcFieldArbiter:
     # ---- Public entry point ---------------------------------------------------------------------
 
     @contextlib.contextmanager
-    def clear_field(self, gate, nfc_mgr, endstop=None):
+    def clear_field(self, gate, nfc_mgr, endstop=None, clear_distance=0.0):
         """
         Ensure gate 'gate's NFC reader field is settled for the duration of the enclosed
         operation, temporarily jogging identified neighboring gates' filament off their park
         position when arbitration has a motion budget for it.
 
-        'endstop' is the caller's own homing endstop for this operation (gate_preload_endstop
-        for preload, gate_homing_endstop for a scan) - used only if ratification needs to
-        escalate to a deliberate self-jog, to decide whether a forward jog is safe (see
-        MmuNfcFieldArbiter._ratify). Both current callers always pass it; a caller that
-        forgets to would be treated as "forward is safe" (None is not a SHARED_GATE_ENDSTOPS
-        member), so don't add a new caller without it.
+        'endstop' and 'clear_distance' both describe the CALLER's own context (see
+        MmuNfcFieldArbiter._ratify) - used only if ratification needs to escalate to a
+        deliberate self-jog: 'clear_distance' is the caller's own matching config value
+        (nfc_gate_clear_distance for a scan, nfc_preload_clear_distance for preload), and
+        'endstop' decides whether jogging it forward is safe. Both current callers always
+        pass both; a caller that forgets 'endstop' would be treated as "forward is safe"
+        (None is not a SHARED_GATE_ENDSTOPS member), so don't add a new caller without it.
 
         Yields a NfcFieldOutcome, whose 'verdict' is one of:
             NFC_FIELD_CLEAR       nothing in the field, or arbitration isn't armed for this
@@ -524,7 +532,7 @@ class MmuNfcFieldArbiter:
             # neighbor stranded off its park position, or leave a hold armed forever.
             if provisional:
                 try:
-                    ratified = self._ratify(gate, nfc_mgr, endstop)
+                    ratified = self._ratify(gate, nfc_mgr, endstop, clear_distance)
                 except Exception as e:
                     self.mmu.log_error("NFC: gate %d: ratification check failed: %s" % (gate, str(e)))
                     ratified = False # Safer to discard an unconfirmed read than commit it blind

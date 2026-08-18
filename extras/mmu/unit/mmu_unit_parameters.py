@@ -84,12 +84,15 @@ class MmuUnitParameters(TunableParametersBase):
             # (see _validate_nfc_neighbor_evict_distance) - same reasoning as the parking
             # distance re-checks just above.
             self._validate_nfc_neighbor_evict_distance(self.nfc_neighbor_evict_distance)
-            # Same reasoning again for the independent self-verify distance.
-            self._validate_nfc_self_verify_distance(self.nfc_self_verify_distance)
+            # Same reasoning again for the gate-context clear distance.
+            self._validate_nfc_gate_clear_distance(self.nfc_gate_clear_distance)
 
     def _on_gate_preload_endstop(self, old, new):
         if new != old:
             self._validate_gate_preload_parking_distance(self.gate_preload_parking_distance)
+            # nfc_preload_clear_distance's forward-jog legality depends on this endstop, same
+            # reasoning as nfc_gate_clear_distance above.
+            self._validate_nfc_preload_clear_distance(self.nfc_preload_clear_distance)
 
     def _on_flowguard_tuning_change(self, old, new):
         # Push live FlowGuard tuning (relief) to a running controller
@@ -183,41 +186,36 @@ class MmuUnitParameters(TunableParametersBase):
                 "'%s' (got %.1f)"
                 % (SENSOR_EXIT_PREFIX, self.gate_homing_endstop, value))
 
-    def _validate_nfc_self_verify_distance(self, value):
-        # 0 disables self-jog ratification entirely - independent of nfc_neighbor_evict_distance,
-        # so a machine can have one without the other (see MmuNfcFieldArbiter._ratify).
+    def _validate_nfc_gate_clear_distance(self, value):
+        # 0 disables self-jog ratification entirely for MMU_NFC_SCAN - independent of
+        # nfc_neighbor_evict_distance and of nfc_preload_clear_distance below, so a machine
+        # can arm any combination of these (see MmuNfcFieldArbiter._ratify).
         if not value:
             return
-        window = self.nfc_gate_jog_scan_window
-        if not window or len(window) != 2 or (window[0] == 0 and window[1] == 0):
-            raise ValueError(
-                "nfc_self_verify_distance requires nfc_gate_jog_scan_window to be "
-                "configured - the self-jog travels within that same window regardless of "
-                "which operation (preload or MMU_NFC_SCAN) it is protecting")
-        neg, pos = window[0], window[1]
-        # Same physical travel corridor as the eviction jog above - it must fit inside the
-        # matching half of the window that already bounds nfc_gate_jog_scan_window itself.
-        if value > pos:
-            raise ValueError(
-                "nfc_self_verify_distance forward jog (%.1fmm) cannot exceed the forward "
-                "reach of nfc_gate_jog_scan_window (%.1fmm)" % (value, pos))
-        if value < neg:
-            raise ValueError(
-                "nfc_self_verify_distance backward jog (%.1fmm) cannot exceed the backward "
-                "reach of nfc_gate_jog_scan_window (%.1fmm)" % (value, neg))
-        # Same forward-jog restriction as nfc_neighbor_evict_distance, checked here against
-        # gate_homing_endstop as a baseline sanity check (matches a plain MMU_NFC_SCAN). The
-        # self-jog can also run from preload's ratify, where the gate is actually parked via
-        # gate_preload_endstop instead - that combination can't be caught at config time (it
-        # depends on which operation is running), so MmuNfcFieldArbiter._ratify re-checks the
-        # ACTUAL endstop in effect at runtime and skips escalation there if it's unsafe. This
-        # static check stays as a first line of defence against the common misconfiguration.
+        # No window-fit check: unlike neighbor eviction, this jog and its restore are both
+        # plain relative moves off the already-established park position (see
+        # MmuNfcFieldArbiter._verify_by_self_jog) - there is no re-home involved and so no
+        # re-homing budget this needs to fit inside. Deliberately left to the user to size
+        # sensibly for their machine.
         if value > 0 and self.gate_homing_endstop in SHARED_GATE_ENDSTOPS:
             raise ValueError(
-                "nfc_self_verify_distance must be a backward jog (< 0) unless "
+                "nfc_gate_clear_distance must be a backward jog (< 0) unless "
                 "gate_homing_endstop is '%s' - every gate shares the forward path through "
                 "'%s' (got %.1f)"
                 % (SENSOR_EXIT_PREFIX, self.gate_homing_endstop, value))
+
+    def _validate_nfc_preload_clear_distance(self, value):
+        # 0 disables self-jog ratification entirely for MMU_PRELOAD - independent of the
+        # gate-context distance above, since preload can home/park via a different endstop
+        # and may need a different (even oppositely-signed) clear jog.
+        if not value:
+            return
+        endstop = self.gate_preload_endstop or self.gate_homing_endstop # '' inherits gate_homing_endstop
+        if value > 0 and endstop in SHARED_GATE_ENDSTOPS:
+            raise ValueError(
+                "nfc_preload_clear_distance must be a backward jog (< 0) unless the preload "
+                "endstop is '%s' - every gate shares the forward path through '%s' (got %.1f)"
+                % (SENSOR_EXIT_PREFIX, endstop, value))
 
     # Parking distance sign convention: -ve = retraction (toward the gate/gears), +ve =
     # extrusion (forward, past the sensor). Parking forward past the sensor is only safe
@@ -265,10 +263,14 @@ class MmuUnitParameters(TunableParametersBase):
         ParamSpec('nfc_neighbor_check',                'int',    0,    section="NFC", limits=dict(minval=0, maxval=1)),
         # Declared after nfc_gate_jog_scan_window so the validator can cross-check it
         ParamSpec('nfc_neighbor_evict_distance',       'float',  0.0,  section="NFC", validator=_validate_nfc_neighbor_evict_distance),
-        # Independent of nfc_neighbor_evict_distance above - controls only the self-jog
-        # ratification escalation (MmuNfcFieldArbiter._verify_by_self_jog), not neighbor
-        # eviction. Off by default; a machine can arm either, both, or neither.
-        ParamSpec('nfc_self_verify_distance',          'float',  0.0,  section="NFC", validator=_validate_nfc_self_verify_distance),
+        # Independent of nfc_neighbor_evict_distance and of each other - each controls only
+        # its own operation's self-jog ratification escalation (MmuNfcFieldArbiter._ratify /
+        # _verify_by_self_jog), not neighbor eviction. Off by default; a machine can arm any
+        # combination. nfc_preload_clear_distance defaults to nfc_gate_clear_distance (same
+        # pattern as nfc_preload_jog_scan_window defaulting to nfc_gate_jog_scan_window) since
+        # preload usually - but not always - wants the same clear jog as a plain scan.
+        ParamSpec('nfc_gate_clear_distance',           'float',  0.0,  section="NFC", validator=_validate_nfc_gate_clear_distance),
+        ParamSpec('nfc_preload_clear_distance',        'float',  lambda self: self.nfc_gate_clear_distance, section="NFC", validator=_validate_nfc_preload_clear_distance),
         ParamSpec('nfc_field_probe_reads',              'int',    3,    section="NFC", limits=dict(minval=1, maxval=10)),
         ParamSpec('nfc_deep_read',                    'int',    0,    section="NFC", limits=dict(minval=0, maxval=1)),
         ParamSpec('nfc_led_segment',                  'str',  'auto', section="NFC"),
