@@ -129,8 +129,8 @@ buffer_serial_config = $(shell, basename '$(serial_device,$(1),$(2))' | sed 's/-
 
 # Grab UUIDs that are not in use by Klipper from all available CAN interfaces.
 # Keep each interface attached to its UUID, e.g. "can0:43a8... vlan1:25ff...".
-canbus_query_home   := $(shell, if [ -f "$(KLIPPER_HOME)/scripts/canbus_query.py" ]; then printf '%s' "$(KLIPPER_HOME)"; else printf '%s' ~/klipper; fi)
-canbus_query        := $(shell, echo "$(canbus_query_home)/../klippy-env/bin/python $(canbus_query_home)/scripts/canbus_query.py")
+real_klipper_home   := $(shell, if [ -n "$(REAL_KLIPPER_HOME)" ]; then printf '%s' "$(REAL_KLIPPER_HOME)"; else printf '%s' "$(KLIPPER_HOME)"; fi)
+canbus_query        := $(shell, echo "$(real_klipper_home)/../klippy-env/bin/python $(real_klipper_home)/scripts/canbus_query.py")
 canbus_interfaces   := $(shell, (ip -o link show type can | awk -F': ' '{print $2}') 2>/dev/null || true)
 canbus_connections  := $(shell, (for interface in $(canbus_interfaces); do $(canbus_query) "$interface" | sed -n 's/.*canbus_uuid=\([0-9a-fA-F][0-9a-fA-F]*\).*/\1/p' | while IFS= read -r uuid; do printf '%s:%s\n' "$interface" "$uuid"; done; done) 2>/dev/null || true)
 canbus_uuid_count   := $(count, $(canbus_connections))

@@ -472,6 +472,42 @@ esac
         self.assertEqual(kc.syms['PARAM_MMU_CANBUS_INTERFACE'].str_value,
                          'vlan-1')
 
+    def test_canbus_discovery_uses_real_klipper_home_override(self):
+        install_home = os.path.join(self.tmpdir.name, 'test-install', 'klipper')
+        real_home = os.path.join(self.tmpdir.name, 'real', 'klipper')
+        python_path = os.path.join(self.tmpdir.name, 'real', 'klippy-env',
+                                   'bin', 'python')
+        mock_bin = os.path.join(self.tmpdir.name, 'bin')
+        os.makedirs(install_home)
+        os.makedirs(os.path.dirname(python_path))
+        os.makedirs(os.path.join(real_home, 'scripts'))
+        os.makedirs(mock_bin)
+
+        query_path = os.path.join(real_home, 'scripts', 'canbus_query.py')
+        with open(query_path, 'w') as f:
+            f.write('# mock canbus query\n')
+        ip_path = os.path.join(mock_bin, 'ip')
+        with open(ip_path, 'w') as f:
+            f.write('#!/bin/sh\necho "2: can0: <NOARP,UP> mtu 16"\n')
+        os.chmod(ip_path, 0o755)
+        with open(python_path, 'w') as f:
+            f.write('#!/bin/sh\n'
+                    'echo "Found canbus_uuid=abc123abc123"\n')
+        os.chmod(python_path, 0o755)
+
+        syms = dict(profiles.get('boxturtle').syms)
+        syms['CHOICE_MMU_CONNECTION_TYPE_SERIAL'] = False
+        syms['CHOICE_MMU_CONNECTION_TYPE_CANBUS'] = True
+        with cfg._env({'KLIPPER_HOME': install_home,
+                       'REAL_KLIPPER_HOME': real_home,
+                       'PATH': mock_bin + os.pathsep + os.environ['PATH']}):
+            kc = cfg._kconfig('real-klipper-home-canbus-discovery', syms)
+
+        choice = kc.named_choices['CHOICE_MMU_CANBUS_CONNECTION']
+        prompts = [node.prompt[0] for symbol in choice.syms
+                   for node in symbol.nodes if node.prompt]
+        self.assertIn('can0:abc123abc123', prompts)
+
     def test_failed_canbus_queries_produce_no_discovered_choices(self):
         klipper_home = os.path.join(self.tmpdir.name, 'klipper')
         python_path = os.path.join(self.tmpdir.name, 'klippy-env', 'bin', 'python')
