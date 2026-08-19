@@ -20,6 +20,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
+import json
 import logging
 import unittest
 
@@ -158,6 +159,17 @@ class TestUidCache(MoonrakerTestCase):
                                     gate=None, silent=True)
                 self.assertEqual(self.last_gcode(),
                                  'MMU_GATE_MAP NEXT_SPOOLID=1 QUIET=1')
+
+    def test_direct_spoolman_values_are_cleaned_for_the_cache_only(self):
+        raw = json.dumps('04:a1:b2:c3, invalid, 99-99-88-88, 123')
+        self.hh.db.spools[1]['extra'][spoolman.FIELD_RFID] = raw
+        self.hh.call_remote('spoolman_refresh', silent=True)
+
+        self.assertEqual(self.hh.mmu_server.uid_to_spool_id,
+                         {KNOWN_UID: 1, '99998888': 1})
+        self.assertEqual(self.hh.mmu_server.spool_location[1][2]['rfids'],
+                         '%s,99998888' % KNOWN_UID)
+        self.assertEqual(self.hh.db.spools[1]['extra'][spoolman.FIELD_RFID], raw)
 
 
 class TestMultiUidSpool(MoonrakerTestCase):
@@ -626,6 +638,12 @@ class TestSetSpoolUid(MoonrakerTestCase):
                                      append=True, silent=True)
         self.assertFalse(result)
         self.assertEqual(self.hh.db.spool_uid(1), KNOWN_UID, 'must be left untouched')
+
+    def test_invalid_uid_is_refused_without_clearing_existing_tags(self):
+        result = self.hh.call_remote('spoolman_set_spool_uid', spool_id=1,
+                                     uid='not-a-uid', silent=True)
+        self.assertFalse(result)
+        self.assertEqual(self.hh.db.spool_uid(1), KNOWN_UID)
 
     def test_append_moves_a_tag_registered_to_a_different_spool(self):
         """No hard block on stealing a UID from another spool - just a warning

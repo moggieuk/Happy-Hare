@@ -412,15 +412,13 @@ class MmuServer:
 
     @staticmethod
     def _normalise_uid(uid_str) -> str:
-        '''
-        Normalise an NFC/RFID tag UID for comparison: strip surrounding quotes
-        and separators and uppercase, so e.g. '"04:a2:3b"' == "04A23B"
-        '''
-        return (str(uid_str).strip('"\'')
-                            .upper()
-                            .replace(':', '')
-                            .replace('-', '')
-                            .replace(' ', ''))
+        '''Return a canonical UID, or blank if invalid.'''
+        uid = (str(uid_str).strip('"\'')
+                           .upper()
+                           .replace(':', '')
+                           .replace('-', '')
+                           .replace(' ', ''))
+        return uid if len(uid) % 2 == 0 and re.fullmatch(r'[0-9A-F]+', uid) else ''
 
 
     @staticmethod
@@ -440,6 +438,8 @@ class MmuServer:
             norm = MmuServer._normalise_uid(part)
             if norm and norm not in seen:
                 seen.append(norm)
+            elif not norm:
+                logging.warning("Ignoring invalid NFC/RFID UID: %r", part)
         return seen
 
 
@@ -504,7 +504,7 @@ class MmuServer:
                 # may register more than one UID (e.g. a tag on each side). There's no
                 # automatic fix for a UID claimed by two spools, so just report it -
                 # the later spool_id wins the cache entry.
-                for uid in self._get_uid_list_from_extra(spool_info.get('extra')):
+                for uid in self._parse_uid_list(filament_attr['rfids']):
                     other_spool_id = new_uid_to_spool_id.get(uid)
                     if other_spool_id is not None and other_spool_id != spool_id:
                         errors += f"\n  - Tag {uid} is registered against both spool {other_spool_id} and spool {spool_id}"
@@ -1029,6 +1029,9 @@ class MmuServer:
                 return False
 
             uid_norm = self._normalise_uid(uid)
+            if not uid_norm:
+                await self._log_n_send(f"NFC: invalid tag UID {uid}", error=True, silent=silent)
+                return False
             spool_id = self.uid_to_spool_id.get(uid_norm)
             logging.debug(
                 "NFC lookup: received uid_raw=%r uid=%s gate=%s save=%s report_only=%s "
@@ -1586,6 +1589,9 @@ class MmuServer:
                 return False
 
             new_uids = self._parse_uid_list(uid)
+            if str(uid or '').strip() and not new_uids:
+                await self._log_n_send(f"NFC: invalid tag UID(s) {uid}", error=True, silent=silent)
+                return False
             if append and not new_uids:
                 await self._log_n_send("NFC: APPEND=1 needs a tag UID to add", error=True, silent=silent)
                 return False

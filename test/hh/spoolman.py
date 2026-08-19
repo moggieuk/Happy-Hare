@@ -21,6 +21,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 
 import json
+import re
 import urllib.parse
 
 # Spoolman `extra` field keys. These MUST match mmu_server.py:83-85
@@ -52,8 +53,9 @@ SPOOLMANDB_BAMBU = {
 
 
 def normalise_uid(uid):
-    return (str(uid).strip('"\'').upper()
-            .replace(':', '').replace('-', '').replace(' ', ''))
+    uid = (str(uid).strip('"\'').upper()
+           .replace(':', '').replace('-', '').replace(' ', ''))
+    return uid if len(uid) % 2 == 0 and re.fullmatch(r'[0-9A-F]+', uid) else ''
 
 
 def parse_uid_list(raw):
