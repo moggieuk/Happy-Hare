@@ -974,7 +974,7 @@ class Session:
         uid_for(gate) supplies the tag UID; the default is stable and greppable, so
         `_MMU_TEST NFC_READ=1 UID=<it>` resolves without having to look anything up.
         """
-        uid_for = uid_for or (lambda gate: 'BADCAFE%02X' % gate)
+        uid_for = uid_for or (lambda gate: 'BADCAFE%03X' % gate)
         spools = []
         for gate, attrs in sorted((self.primed or {}).items()):
             spools.append({
