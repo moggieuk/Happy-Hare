@@ -29,6 +29,7 @@ class MmuGateMapCommand(BaseCommand):
     HELP_PARAMS = (
         f"{CMD}: {HELP_BRIEF}\n"
         + "QUIET        = 1 To minimize console reporting\n"
+        + "DETAILS      = 1 Include the complete Spoolman RFID UID set for each gate\n"
         + "RESET        = 1 To reset specified GATE/GATES filament attributes to configured defaults\n"
         + "GATES        = g,g,g comma separated list of gates; required with RESET unless GATE is used\n"
         + "GATE         = g Specify a single gate; required with RESET unless GATES is used\n"
@@ -73,6 +74,7 @@ class MmuGateMapCommand(BaseCommand):
         if self.check_if_disabled(): return
 
         quiet = bool(gcmd.get_int('QUIET', 0, minval=0, maxval=1))
+        details = bool(gcmd.get_int('DETAILS', 0, minval=0, maxval=1))
         reset = bool(gcmd.get_int('RESET', 0, minval=0, maxval=1))
         gates = gcmd.get('GATES', "!")
         gmapstr = gcmd.get('MAP', "{}")                                # Hidden option for bulk filament update (from moonraker/ui components)
@@ -187,7 +189,7 @@ class MmuGateMapCommand(BaseCommand):
         if reset:
             mmu.gate_maps.reset_gate_map(gatelist)
             if not quiet:
-                mmu.log_always(mmu.gate_maps.gate_map_to_string(), color=True)
+                mmu.log_always(mmu.gate_maps.gate_map_to_string(details=details), color=True)
             return
 
         if gate_map: # --------- BATCH UPDATE from spoolman or UI --------
@@ -349,7 +351,7 @@ class MmuGateMapCommand(BaseCommand):
         mmu.gate_maps.persist_gate_map(spoolman_sync=bool(changed_gate_ids) and not from_spoolman, gate_ids=changed_gate_ids) # This will also update LED status
 
         if not quiet:
-            mmu.log_always(mmu.gate_maps.gate_map_to_string(), color=True)
+            mmu.log_always(mmu.gate_maps.gate_map_to_string(details=details), color=True)
 
 
     # Helper to ensure int when strings may be passed from UI

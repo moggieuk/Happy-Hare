@@ -629,7 +629,7 @@ class MmuGateMaps:
         return msg
 
 
-    def gate_map_to_string(self):
+    def gate_map_to_string(self, details=False):
         """
         Format per-gate filament details into a readable summary.
         """
@@ -677,6 +677,9 @@ class MmuGateMaps:
 
             speed_fstr = " [Speed:{}%]".format(self.gate_speed_override[g]) if self.gate_speed_override[g] != 100 else ""
             extra_fstr = " [SELECTED]" if g == self.mmu.gate_selected else ""
+            if details:
+                rfids = ','.join(self.gate_spool_rfid_aliases[g]) or "none"
+                extra_fstr += " [RFIDS: {}]".format(rfids)
 
             msg += "\n{}{}{}{}{}{}".format(gate_fstr, available_fstr, spool_fstr, fil_fstr, speed_fstr, extra_fstr)
         return msg

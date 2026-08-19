@@ -218,6 +218,18 @@ class TestGateMapCommand(MotionTestCase):
         self.assertEqual(mmu.gate_maps.gate_spool_rfid_aliases[1],
                          ('AABBCCDD', 'BBBB1234'))
 
+    def test_gate_map_details_reports_rfid_aliases(self):
+        mmu = self.hh.mmu
+        mmu.gate_maps.set_gate_rfid_aliases(1, ('AABBCCDD', 'BBBB1234'))
+
+        at = len(self.hh.console)
+        self.hh.run_gcode('MMU_GATE_MAP DETAILS=1')
+        report = '\n'.join(self.hh.console[at:])
+
+        self.assertIn('[RFIDS: AABBCCDD,BBBB1234]', report)
+        self.assertIn('[RFIDS: none]', report)
+        self.assertNotIn('[RFIDS:', mmu.gate_maps.gate_map_to_string())
+
     def test_runtime_empty_transition_also_clears_attributes(self):
         mmu = self.hh.mmu
         self.hh.run_gcode(
