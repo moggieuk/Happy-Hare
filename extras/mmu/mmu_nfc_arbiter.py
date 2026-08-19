@@ -67,6 +67,16 @@ class MmuNfcFieldArbiter:
 
         owner = self.mmu.gate_maps.find_gate_by_rfid(uid)
         if owner is None:
+            # The gate map intentionally stores only the UID physically observed
+            # here. Consult the complete Spoolman UID set as a secondary identity
+            # source before treating an alternate tag as unknown.
+            self.mmu.log_debug("NFC: gate %d: tag %s not found in observed RFID map; checking RFIDS"
+                               % (gate, uid))
+            owner = self.mmu.gate_maps.find_gate_by_rfid_alias(gate, uid)
+            if owner is None:
+                self.mmu.log_debug("NFC: gate %d: tag %s did not match cached RFIDS"
+                                   % (gate, uid))
+        if owner is None:
             return NFC_FIELD_NEIGHBOR, None, ""
         if owner == gate:
             return NFC_FIELD_MINE, owner, ""
@@ -158,6 +168,10 @@ class MmuNfcFieldArbiter:
         'evicted' as soon as the load succeeds, so a failed jog still gets restored.
         """
         saved_status = self.mmu.gate_status[candidate]
+        self.mmu.log_debug(
+            "NFC: gate %d: evicting gate %d - load then jog %.0fmm %s; status %d will be restored"
+            % (gate, candidate, abs(distance), "forward" if distance > 0 else "back",
+               saved_status))
         try:
             self.mmu.select_gate(candidate)
             self.mmu._load_gate(allow_retry=False)
@@ -183,12 +197,17 @@ class MmuNfcFieldArbiter:
         tried = set()
         verdict = uid = owner = diag = None
         unit = self.mmu.mmu_unit(gate)
-        for _ in range(unit.num_gates + 1):
+        for probe in range(unit.num_gates + 1):
             verdict, uid, owner, diag = self._field_check(gate, nfc_mgr)
+            self.mmu.log_debug(
+                "NFC: gate %d: field probe %d: tag %s -> %s (owner gate %s, evict budget %.0fmm)"
+                % (gate, probe + 1, uid or '(none)', NFC_FIELD_NAMES.get(verdict, verdict),
+                   'none' if owner is None else owner, distance))
             if verdict != NFC_FIELD_NEIGHBOR or not distance:
                 break
             candidate = self._next_candidate(gate, owner, tried)
             if candidate is None:
+                self.mmu.log_debug("NFC: gate %d: no evictable candidate remains" % gate)
                 break
             tried.add(candidate)
             self._evict_one(gate, candidate, distance, evicted)
@@ -319,6 +338,9 @@ class MmuNfcFieldArbiter:
     def _restore_evicted(self, gate, distance, evicted):
         """Re-park all evicted gates in reverse order; always leaves 'gate' selected."""
         if evicted:
+            self.mmu.log_debug(
+                "NFC: gate %d: restoring %d evicted neighbor(s) %s, then reselecting gate %d"
+                % (gate, len(evicted), [candidate for candidate, _ in reversed(evicted)], gate))
             self._repark_evicted(gate, distance, evicted)
         try:
             self.mmu.select_gate(gate)
@@ -364,6 +386,16 @@ class MmuNfcFieldArbiter:
                 self.mmu.select_gate(gate)
             provisional = (verdict == NFC_FIELD_PROVISIONAL)
             outcome = NfcFieldOutcome(verdict, reason)
+            action = (
+                "proceeds and attributes its read normally"
+                if verdict in (NFC_FIELD_CLEAR, NFC_FIELD_MINE)
+                else "proceeds with its read held for ratification"
+                if provisional
+                else "must proceed without attributing a tag"
+            )
+            self.mmu.log_debug(
+                "NFC: gate %d: field settled as %s - %d neighbor(s) evicted; operation %s"
+                % (gate, NFC_FIELD_NAMES.get(verdict, verdict), len(evicted), action))
             if provisional:
                 # hold rather than commit - trust isn't known until ratification below
                 nfc_mgr.hold_attribution(gate)

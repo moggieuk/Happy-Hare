@@ -171,7 +171,8 @@ class TestKnownTagResolution(RoundTripTestCase):
         """
         self.rt.present_tag(TAG_A, gate=1, deep=False)
         callbacks = self.rt.gate_map_commands()
-        self.assertIn('MMU_GATE_MAP GATE=1 SPOOLID=1 QUIET=1', callbacks)
+        self.assertIn('MMU_GATE_MAP GATE=1 SPOOLID=1 RFIDS=%s QUIET=1' % TAG_A,
+                      callbacks)
 
         follow_ups = [c for c in callbacks if 'FROM_SPOOLMAN=1' in c and "'material'" in c]
         self.assertTrue(follow_ups,
@@ -185,14 +186,14 @@ class TestKnownTagResolution(RoundTripTestCase):
         self.assertEqual(self.rt.mmu.pending_spool_id, -1,
                          'a per-gate read must not also set a pending spool')
 
-    def test_resolved_attributes_include_the_tag_uid(self):
+    def test_resolved_attributes_include_the_tag_alias(self):
         """
-        The attribute push carries 'rfid' back, so the gate map records which tag is
-        on the gate - the single authoritative UID<->spool mapping.
+        The attribute push carries the complete Spoolman UID set separately from
+        the one physical UID observed at the gate.
         """
         self.rt.present_tag(TAG_A, gate=1, deep=False)
         pushes = [c for c in self.rt.gate_map_commands() if 'FROM_SPOOLMAN=1' in c]
-        self.assertTrue(any(TAG_A in c for c in pushes))
+        self.assertTrue(any("'rfids': '%s'" % TAG_A in c for c in pushes))
 
     def test_only_the_addressed_gate_changes(self):
         self.rt.present_tag(TAG_A, gate=2, deep=False)
@@ -209,6 +210,28 @@ class TestKnownTagResolution(RoundTripTestCase):
         self.rt.mmu._check_pending_filament(3)
         self.assertEqual(self.rt.mmu.gate_spool_id[3], 1)
         self.assertEqual(self.rt.mmu.gate_spool_rfid[3], TAG_A)
+
+
+class TestMultiUidGateResolution(RoundTripTestCase):
+    SPOOLS = (dict(uid=[TAG_A, TAG_B], material='PLA'),)
+
+    def test_gate_keeps_observed_uid_and_caches_complete_alias_set(self):
+        self.rt.present_tag(TAG_B, gate=1, deep=False)
+
+        self.assertEqual(self.rt.mmu.gate_spool_rfid[1], TAG_B)
+        self.assertNotIn(',', self.rt.mmu.gate_spool_rfid[1])
+        self.assertEqual(self.rt.mmu.gate_maps.gate_spool_rfid_aliases[1],
+                         (TAG_A, TAG_B))
+        self.assertTrue(any('RFIDS=%s,%s' % (TAG_A, TAG_B) in command
+                            for command in self.rt.gate_map_commands()))
+
+    def test_alternate_known_uid_does_not_clear_existing_spool_assignment(self):
+        self.rt.present_tag(TAG_A, gate=1, deep=False)
+        self.assertEqual(self.rt.mmu.gate_spool_id[1], 1)
+
+        self.rt.present_tag(TAG_B.lower(), gate=1, deep=False)
+        self.assertEqual(self.rt.mmu.gate_spool_id[1], 1)
+        self.assertEqual(self.rt.mmu.gate_spool_rfid[1], TAG_B)
 
 
 class TestPerGateFailure(RoundTripTestCase):
@@ -497,6 +520,16 @@ class TestSpoolmanRfidCommand(RoundTripTestCase):
         self.rt.run_gcode('MMU_SPOOLMAN_TAG SPOOLID=2 RFID=%s' % TAG_B)
         self.rt.run_gcode('MMU_SPOOLMAN_TAG SPOOLID=2 RFID=%s APPEND=1' % TAG_C)
         self.assertEqual(set(self.rt.db.spool_uids(2)), {TAG_B, TAG_C})
+
+    def test_gate_targeted_update_refreshes_and_clears_alias_cache(self):
+        self.rt.run_gcode('MMU_GATE_MAP GATE=3 SPOOLID=2')
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG GATE=3 RFID=%s' % TAG_B)
+        self.rt.run_gcode('MMU_SPOOLMAN_TAG GATE=3 RFID=%s APPEND=1' % TAG_C)
+        self.assertEqual(self.rt.mmu.gate_maps.gate_spool_rfid_aliases[3],
+                         (TAG_B, TAG_C))
+
+        self.rt.run_gcode("MMU_SPOOLMAN_TAG GATE=3 RFID=''")
+        self.assertEqual(self.rt.mmu.gate_maps.gate_spool_rfid_aliases[3], tuple())
 
     def test_the_registered_tag_then_resolves_on_a_scan(self):
         """The round trip: bind a tag, then scanning it must resolve to that spool."""

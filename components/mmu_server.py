@@ -412,15 +412,13 @@ class MmuServer:
 
     @staticmethod
     def _normalise_uid(uid_str) -> str:
-        '''
-        Normalise an NFC/RFID tag UID for comparison: strip surrounding quotes
-        and separators and uppercase, so e.g. '"04:a2:3b"' == "04A23B"
-        '''
-        return (str(uid_str).strip('"\'')
-                            .upper()
-                            .replace(':', '')
-                            .replace('-', '')
-                            .replace(' ', ''))
+        '''Return a canonical UID, or blank if invalid.'''
+        uid = (str(uid_str).strip('"\'')
+                           .upper()
+                           .replace(':', '')
+                           .replace('-', '')
+                           .replace(' ', ''))
+        return uid if len(uid) % 2 == 0 and re.fullmatch(r'[0-9A-F]+', uid) else ''
 
 
     @staticmethod
@@ -440,6 +438,8 @@ class MmuServer:
             norm = MmuServer._normalise_uid(part)
             if norm and norm not in seen:
                 seen.append(norm)
+            elif not norm:
+                logging.warning("Ignoring invalid NFC/RFID UID: %r", part)
         return seen
 
 
@@ -461,14 +461,6 @@ class MmuServer:
         return self._parse_uid_list(raw)
 
 
-    def _get_uid_from_extra(self, extra) -> str:
-        '''
-        Comma-joined display string of all tag UIDs registered on this spool
-        (see _get_uid_list_from_extra). Returns '' if unset.
-        '''
-        return ','.join(self._get_uid_list_from_extra(extra))
-
-
     def _get_filament_attr(self, spool_info) -> dict:
         spool_id = spool_info["id"]
         filament = spool_info["filament"]
@@ -479,8 +471,9 @@ class MmuServer:
         bed_temp = filament.get('settings_bed_temp', '')
         vendor = filament.get('vendor', {}).get('name', '')
         filament_id = filament.get('id', '')
-        rfid = self._get_uid_from_extra(spool_info.get('extra'))
-        return {'spool_id': spool_id, 'material': material, 'color': color_hex, 'name': name, 'temp': temp, 'bed_temp': bed_temp, 'vendor': vendor, 'filament_id': filament_id, 'rfid': rfid}
+        rfid_uids = self._get_uid_list_from_extra(spool_info.get('extra'))
+        rfids = ','.join(rfid_uids)
+        return {'spool_id': spool_id, 'material': material, 'color': color_hex, 'name': name, 'temp': temp, 'bed_temp': bed_temp, 'vendor': vendor, 'filament_id': filament_id, 'rfids': rfids}
 
 
     async def _build_spool_location_cache(self, fix=False, silent=False) -> bool:
@@ -511,7 +504,7 @@ class MmuServer:
                 # may register more than one UID (e.g. a tag on each side). There's no
                 # automatic fix for a UID claimed by two spools, so just report it -
                 # the later spool_id wins the cache entry.
-                for uid in self._get_uid_list_from_extra(spool_info.get('extra')):
+                for uid in self._parse_uid_list(filament_attr['rfids']):
                     other_spool_id = new_uid_to_spool_id.get(uid)
                     if other_spool_id is not None and other_spool_id != spool_id:
                         errors += f"\n  - Tag {uid} is registered against both spool {other_spool_id} and spool {spool_id}"
@@ -973,6 +966,15 @@ class MmuServer:
             logging.error(f"NFC: failed to send GATE={gate} LOOKUP={value}: {str(e)}")
 
 
+    def _gate_rfids_arg(self, spool_id):
+        """Return the complete cached Spoolman UID set as a hidden G-code argument."""
+        cached = self.spool_location.get(spool_id)
+        if cached is None:
+            return ''
+        rfids = cached[2].get('rfids', '')
+        return f" RFIDS={rfids}" if rfids else " RFIDS=''"
+
+
     async def _send_gate_spoolid(self, gate, spool_id):
         '''
         Confirm a gate<->spool association back to Happy Hare - the same success shape as
@@ -982,7 +984,8 @@ class MmuServer:
         if not self._mmu_backend_enabled():
             return
         try:
-            await self.klippy_apis.run_gcode(f"MMU_GATE_MAP GATE={gate} SPOOLID={spool_id} QUIET=1")
+            rfids = self._gate_rfids_arg(spool_id)
+            await self.klippy_apis.run_gcode(f"MMU_GATE_MAP GATE={gate} SPOOLID={spool_id}{rfids} QUIET=1")
         except Exception as e:
             logging.error(f"NFC: failed to send GATE={gate} SPOOLID={spool_id}: {str(e)}")
 
@@ -1026,6 +1029,9 @@ class MmuServer:
                 return False
 
             uid_norm = self._normalise_uid(uid)
+            if not uid_norm:
+                await self._log_n_send(f"NFC: invalid tag UID {uid}", error=True, silent=silent)
+                return False
             spool_id = self.uid_to_spool_id.get(uid_norm)
             logging.debug(
                 "NFC lookup: received uid_raw=%r uid=%s gate=%s save=%s report_only=%s "
@@ -1121,7 +1127,8 @@ class MmuServer:
                 if gate is None:
                     cmd = f"MMU_GATE_MAP NEXT_SPOOLID={spool_id}{created_flag} QUIET=1"
                 else:
-                    cmd = f"MMU_GATE_MAP GATE={gate} SPOOLID={spool_id}{created_flag} QUIET=1"
+                    rfids = self._gate_rfids_arg(spool_id)
+                    cmd = f"MMU_GATE_MAP GATE={gate} SPOOLID={spool_id}{rfids}{created_flag} QUIET=1"
                 try:
                     logging.debug(f"NFC lookup: callback to Klipper: {cmd}")
                     await self.klippy_apis.run_gcode(cmd)
@@ -1582,6 +1589,9 @@ class MmuServer:
                 return False
 
             new_uids = self._parse_uid_list(uid)
+            if str(uid or '').strip() and not new_uids:
+                await self._log_n_send(f"NFC: invalid tag UID(s) {uid}", error=True, silent=silent)
+                return False
             if append and not new_uids:
                 await self._log_n_send("NFC: APPEND=1 needs a tag UID to add", error=True, silent=silent)
                 return False
@@ -1619,7 +1629,7 @@ class MmuServer:
                     continue
                 if other_spool_id in self.spool_location:
                     printer, other_gate, filament_attr = self.spool_location[other_spool_id]
-                    filament_attr['rfid'] = ','.join(other_uids)
+                    filament_attr['rfids'] = ','.join(other_uids)
                     self.spool_location[other_spool_id] = (printer, other_gate, filament_attr)
 
             data = {'extra': {MMU_RFID_FIELD: json.dumps(','.join(final_uids))}}
@@ -1646,7 +1656,7 @@ class MmuServer:
                 self.uid_miss_cache.pop(u, None) # This tag is now known
             if spool_id in self.spool_location:
                 printer, cached_gate, filament_attr = self.spool_location[spool_id]
-                filament_attr['rfid'] = ','.join(final_uids)
+                filament_attr['rfids'] = ','.join(final_uids)
                 self.spool_location[spool_id] = (printer, cached_gate, filament_attr)
 
             if not final_uids:

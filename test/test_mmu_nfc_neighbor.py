@@ -31,7 +31,8 @@ install()   # Put the fake klippy root on sys.path before importing MMU modules
 
 from extras.mmu.mmu_constants import (
     NFC_FIELD_CLEAR, NFC_FIELD_MINE, NFC_FIELD_NEIGHBOR, NFC_FIELD_FOREIGN,
-    NFC_FIELD_PROVISIONAL, GATE_EMPTY, GATE_AVAILABLE, SPOOLMAN_PULL, SPOOLMAN_OFF,
+    NFC_FIELD_PROVISIONAL, NFC_FIELD_NAMES, GATE_EMPTY, GATE_AVAILABLE,
+    SPOOLMAN_PULL, SPOOLMAN_OFF,
 )
 
 logging.getLogger().setLevel(logging.CRITICAL)
@@ -69,6 +70,12 @@ class TestFieldVerdictLadder(NeighborTestCase):
         verdict, owner, diag = self.arbiter._field_verdict(0, None)
         self.assertEqual(verdict, NFC_FIELD_CLEAR)
         self.assertIsNone(owner)
+
+    def test_symbolic_names_cover_every_verdict(self):
+        self.assertEqual(
+            set(NFC_FIELD_NAMES),
+            {NFC_FIELD_CLEAR, NFC_FIELD_MINE, NFC_FIELD_NEIGHBOR,
+             NFC_FIELD_FOREIGN, NFC_FIELD_PROVISIONAL})
 
     def test_registered_to_this_gate_is_mine(self):
         self.hh.mmu.gate_maps.set_gate_rfid(0, TAG)
@@ -441,6 +448,99 @@ class TestGateRfidPlumbing(NeighborTestCase):
     def test_find_is_case_insensitive(self):
         self.hh.mmu.gate_maps.set_gate_rfid(2, TAG.lower())
         self.assertEqual(self.hh.mmu.gate_maps.find_gate_by_rfid(TAG.upper()), 2)
+
+    def test_alias_identifies_second_tag_on_same_spool(self):
+        alias = 'BBBB1234'
+        self.hh.mmu.gate_maps.set_gate_rfid(2, TAG)
+        self.hh.mmu.gate_maps.set_gate_rfid_aliases(2, (TAG, alias))
+        verdict, owner, _diag = self.arbiter._field_verdict(2, alias.lower())
+        self.assertEqual((verdict, owner), (NFC_FIELD_MINE, 2))
+
+    def test_alias_identifies_tag_bleeding_from_neighbor(self):
+        alias = 'BBBB1234'
+        self.hh.mmu.gate_maps.set_gate_rfid(2, TAG)
+        self.hh.mmu.gate_maps.set_gate_rfid_aliases(2, (TAG, alias))
+        verdict, owner, _diag = self.arbiter._field_verdict(3, alias)
+        self.assertEqual((verdict, owner), (NFC_FIELD_NEIGHBOR, 2))
+
+    def test_alias_lookup_checks_left_neighbor_first(self):
+        alias = 'BBBB1234'
+        self.hh.mmu.gate_maps.set_gate_rfid_aliases(1, (alias,))
+        self.hh.mmu.gate_maps.set_gate_rfid_aliases(3, (alias,))
+        self.assertEqual(self.hh.mmu.gate_maps.find_gate_by_rfid_alias(2, alias), 1)
+
+    def test_own_alias_beats_neighbor_alias(self):
+        alias = 'BBBB1234'
+        self.hh.mmu.gate_maps.set_gate_rfid(2, TAG)
+        self.hh.mmu.gate_maps.set_gate_rfid_aliases(2, (TAG, alias))
+        self.hh.mmu.gate_maps.set_gate_rfid_aliases(1, (alias,))
+        verdict, owner, _diag = self.arbiter._field_verdict(2, alias)
+        self.assertEqual((verdict, owner), (NFC_FIELD_MINE, 2))
+
+    def test_observed_rfid_wins_before_neighbor_rfids(self):
+        alias = 'BBBB1234'
+        self.hh.mmu.gate_maps.set_gate_rfid_aliases(2, (TAG, alias))
+        self.hh.mmu.gate_maps.set_gate_rfid(3, alias)
+        verdict, owner, _diag = self.arbiter._field_verdict(3, alias)
+        self.assertEqual((verdict, owner), (NFC_FIELD_MINE, 3))
+
+    def test_rfids_survive_spool_assignment_that_delivered_them(self):
+        alias = 'BBBB1234'
+        self.hh.run_gcode('MMU_GATE_MAP GATE=2 SPOOLID=77 RFID=%s RFIDS=%s,%s QUIET=1'
+                          % (TAG, TAG, alias))
+        self.assertEqual(self.hh.mmu.gate_maps.gate_spool_rfid_aliases[2], (TAG, alias))
+
+    def test_rfids_are_recorded_under_spoolman_pull(self):
+        alias = 'BBBB1234'
+        self.hh.mmu.p.spoolman_support = SPOOLMAN_PULL
+        self.hh.run_gcode('MMU_GATE_MAP GATE=2 SPOOLID=77 RFIDS=%s,%s QUIET=1'
+                          % (TAG, alias))
+        self.assertEqual(self.hh.mmu.gate_maps.gate_spool_rfid_aliases[2], (TAG, alias))
+
+    def test_bulk_pull_applies_rfids(self):
+        alias = 'BBBB1234'
+        self.hh.mmu.p.spoolman_support = SPOOLMAN_PULL
+        gate_map = {2: {'spool_id': 77, 'rfids': '%s,%s' % (TAG, alias)}}
+        self.hh.run_gcode('MMU_GATE_MAP MAP="%s" REPLACE=1 FROM_SPOOLMAN=1 QUIET=1' % gate_map)
+        self.assertEqual(self.hh.mmu.gate_maps.gate_spool_rfid_aliases[2], (TAG, alias))
+
+    def test_bulk_pull_clears_rfids_from_replaced_spool(self):
+        self.hh.mmu.gate_maps.assign_spool_id(2, 77)
+        self.hh.mmu.gate_maps.set_gate_rfid_aliases(2, (TAG, 'BBBB1234'))
+        self.hh.mmu.p.spoolman_support = SPOOLMAN_PULL
+        gate_map = {2: {'spool_id': 99, 'rfids': 'CCCC9999'}}
+        self.hh.run_gcode('MMU_GATE_MAP MAP="%s" REPLACE=1 FROM_SPOOLMAN=1 QUIET=1' % gate_map)
+        self.assertEqual(self.hh.mmu.gate_maps.gate_spool_rfid_aliases[2], ('CCCC9999',))
+        self.assertIsNone(self.hh.mmu.gate_maps.find_gate_by_rfid_alias(3, 'BBBB1234'))
+
+    def test_ui_map_without_rfids_preserves_cache(self):
+        alias = 'BBBB1234'
+        self.hh.mmu.gate_maps.assign_spool_id(2, 77)
+        self.hh.mmu.gate_maps.set_gate_rfid_aliases(2, (TAG, alias))
+        gate_map = {2: {'spool_id': 77, 'name': 'PLA Basic', 'material': 'PLA', 'color': 'ff0000'}}
+        self.hh.run_gcode('MMU_GATE_MAP MAP="%s" QUIET=1' % gate_map)
+        self.assertEqual(self.hh.mmu.gate_maps.gate_spool_rfid_aliases[2], (TAG, alias))
+
+    def test_rfids_accept_comma_separated_string(self):
+        self.hh.mmu.gate_maps.set_gate_rfid_aliases(2, '%s, BBBB1234' % TAG)
+        self.assertEqual(self.hh.mmu.gate_maps.gate_spool_rfid_aliases[2], (TAG, 'BBBB1234'))
+
+    def test_dev_field_report_shows_symbolic_verdict_and_rfids(self):
+        alias = 'BBBB1234'
+        self.hh.mmu.gate_maps.assign_spool_id(2, 77)
+        self.hh.mmu.gate_maps.set_gate_rfid(2, TAG)
+        self.hh.mmu.gate_maps.set_gate_rfid_aliases(2, (TAG, alias))
+        at = len(self.hh.console)
+        self.hh.run_gcode('_MMU_TEST NFC_FIELD=1 GATE=2 UID=%s' % alias)
+        report = '\n'.join(self.hh.console[at:])
+        self.assertIn('-> MINE', report)
+        self.assertIn('spool_id=77 rfid=%s rfids=%s,%s' % (TAG, TAG, alias), report)
+
+    def test_aliases_clear_when_spool_assignment_changes(self):
+        self.hh.mmu.gate_maps.assign_spool_id(2, 7)
+        self.hh.mmu.gate_maps.set_gate_rfid_aliases(2, (TAG, 'BBBB1234'))
+        self.hh.mmu.gate_maps.assign_spool_id(2, 8)
+        self.assertEqual(self.hh.mmu.gate_maps.gate_spool_rfid_aliases[2], tuple())
 
     def test_unknown_uid_finds_nothing(self):
         self.assertIsNone(self.hh.mmu.gate_maps.find_gate_by_rfid('NOTAREALTAG'))

@@ -13,7 +13,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 #
 
-import logging, unicodedata
+import logging, re, unicodedata
 
 # Happy Hare imports
 from .mmu_constants import *
@@ -67,6 +67,15 @@ class MmuGateMaps:
             else:
                 default_attr.extend([default] * self.num_gates)
             setattr(self, attr, list(default_attr))
+
+        # Ensure loaded gate RFID values are valid single UIDs.
+        self.gate_spool_rfid = [self.normalize_gate_rfid(uid) or ''
+                                for uid in self.gate_spool_rfid]
+
+        # Non-persisted aliases supplied by Spoolman for NFC noisy-neighbor
+        # attribution. gate_spool_rfid remains the single UID physically observed
+        # at the gate; this cache contains every UID registered to its spool.
+        self.gate_spool_rfid_aliases = [tuple() for _ in range(self.num_gates)]
         self.update_gate_color_rgb()
 
         # Helper RGB map used by slicer color projection / UI / LEDs
@@ -341,6 +350,7 @@ class MmuGateMaps:
         for _, attr, default in self._gate_map_vars:
             if attr != 'gate_status':
                 getattr(self, attr)[gate] = default
+        self.gate_spool_rfid_aliases[gate] = tuple()
 
 
     def reset_gate(self, gate, status=GATE_EMPTY):
@@ -361,11 +371,14 @@ class MmuGateMaps:
 
     # Assign spool id to gate and clear from other gates returning list of changes
     def assign_spool_id(self, gate, spool_id):
+        if self.gate_spool_id[gate] != spool_id:
+            self.gate_spool_rfid_aliases[gate] = tuple()
         self.gate_spool_id[gate] = spool_id
         mod_gate_ids = [(gate, spool_id)]
         for i, sid in enumerate(self.gate_spool_id):
             if sid == spool_id and i != gate:
                 self.gate_spool_id[i] = -1
+                self.gate_spool_rfid_aliases[i] = tuple()
                 mod_gate_ids.append((i, -1))
         return mod_gate_ids
 
@@ -394,7 +407,9 @@ class MmuGateMaps:
         if temperature is not None:
             self.gate_temperature[gate] = temperature
         if rfid is not None:
-            self.gate_spool_rfid[gate] = rfid
+            rfid = self.normalize_gate_rfid(rfid)
+            if rfid is not None:
+                self.gate_spool_rfid[gate] = rfid
         self.update_gate_color_rgb()
         self.persist_gate_map(spoolman_sync=False) # Local-only; nothing to push to Spoolman
 
@@ -410,11 +425,54 @@ class MmuGateMaps:
         """
         if not (0 <= gate < self.num_gates):
             return
+        rfid = self.normalize_gate_rfid(rfid)
+        if rfid is None:
+            self.mmu.log_warning("Ignoring invalid RFID value for gate %d; expected one even-length hexadecimal UID" % gate)
+            return
         if self.gate_spool_rfid[gate] == rfid:
             return
         self.renew_gate_map() # Ensure webhooks see get_status() change
         self.gate_spool_rfid[gate] = rfid
         self.persist_gate_map(spoolman_sync=False) # Local-only; nothing to push to Spoolman
+
+
+    @staticmethod
+    def normalize_gate_rfid(rfid):
+        """Return a canonical single gate UID, '' for clear, or None if invalid."""
+        if rfid is None:
+            return None
+        rfid = str(rfid).strip().upper()
+        if not rfid:
+            return ''
+        if ',' in rfid or len(rfid) % 2 or re.fullmatch(r'[0-9A-F]+', rfid) is None:
+            return None
+        return rfid
+
+
+    def set_gate_rfid_aliases(self, gate, rfid_aliases):
+        """Cache the valid UID set registered to the Spoolman spool at ``gate``."""
+        if not (0 <= gate < self.num_gates):
+            return
+        if isinstance(rfid_aliases, str):
+            rfid_aliases = rfid_aliases.split(',')
+        aliases = []
+        for uid in rfid_aliases or ():
+            uid = self.normalize_gate_rfid(uid)
+            if uid and uid not in aliases:
+                aliases.append(uid)
+        self.gate_spool_rfid_aliases[gate] = tuple(aliases)
+
+
+    def find_gate_by_rfid_alias(self, gate, rfid):
+        """Find an alias owner at this gate or either adjacent gate on its unit."""
+        wanted = self.normalize_gate_rfid(rfid)
+        if not wanted:
+            return None
+        unit = self.mmu.mmu_unit(gate)
+        for candidate in (gate, gate - 1, gate + 1):
+            if unit.owns_gate(candidate) and wanted in self.gate_spool_rfid_aliases[candidate]:
+                return candidate
+        return None
 
 
     def find_gate_by_rfid(self, rfid):
@@ -571,7 +629,7 @@ class MmuGateMaps:
         return msg
 
 
-    def gate_map_to_string(self):
+    def gate_map_to_string(self, details=False):
         """
         Format per-gate filament details into a readable summary.
         """
@@ -619,6 +677,9 @@ class MmuGateMaps:
 
             speed_fstr = " [Speed:{}%]".format(self.gate_speed_override[g]) if self.gate_speed_override[g] != 100 else ""
             extra_fstr = " [SELECTED]" if g == self.mmu.gate_selected else ""
+            if details:
+                rfids = ','.join(self.gate_spool_rfid_aliases[g]) or "none"
+                extra_fstr += " [RFIDS: {}]".format(rfids)
 
             msg += "\n{}{}{}{}{}{}".format(gate_fstr, available_fstr, spool_fstr, fil_fstr, speed_fstr, extra_fstr)
         return msg

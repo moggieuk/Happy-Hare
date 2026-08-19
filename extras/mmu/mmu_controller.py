@@ -3622,15 +3622,20 @@ class MmuController(MmuFilamentMovement):
         metadata. Does not assign a spool_id from metadata alone; if a Spoolman spool
         later resolves for this tag it takes precedence and overwrites these attributes.
 
-        A uid different from the one already recorded on this gate means the physical
-        tag changed, so any spool_id assigned here belongs to the old tag and is
-        cleared - Spoolman resolution, if any, will reassign the correct one.
+        A uid different from the observed UID and every known Spoolman alias means the
+        physical spool changed, so any existing spool_id is cleared. An alternate tag
+        registered to the same spool keeps the assignment while becoming the newly
+        observed gate UID.
         """
         if self.p.spoolman_support == SPOOLMAN_PULL:
             return # Remote gate map owns filament attributes, including rfid/spool_id
 
         mod_gate_ids = []
-        if uid != self.gate_maps.gate_spool_rfid[gate] and self.gate_maps.gate_spool_id[gate] > 0:
+        uid_norm = self.gate_maps.normalize_gate_rfid(uid)
+        known_uids = self.gate_maps.gate_spool_rfid_aliases[gate]
+        same_spool = (uid_norm is not None and
+                      (uid_norm == self.gate_maps.gate_spool_rfid[gate] or uid_norm in known_uids))
+        if not same_spool and self.gate_maps.gate_spool_id[gate] > 0:
             mod_gate_ids = self.gate_maps.assign_spool_id(gate, -1)
 
         if isinstance(metadata, dict) and metadata.get('material'):

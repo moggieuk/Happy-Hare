@@ -1265,17 +1265,10 @@ class MmuTestCommand(BaseCommand):
                 gate = gcmd.get_int('GATE', max(0, mmu.gate_selected), minval=0, maxval=mmu.num_gates - 1)
                 uid = gcmd.get('UID', '04A1B2C3D4E5').strip()
 
-                names = {
-                    NFC_FIELD_CLEAR:       'CLEAR',
-                    NFC_FIELD_MINE:        'MINE',
-                    NFC_FIELD_NEIGHBOR:   'NEIGHBOR',
-                    NFC_FIELD_FOREIGN:     'FOREIGN',
-                    NFC_FIELD_PROVISIONAL: 'PROVISIONAL',
-                }
                 arbiter = mmu.nfc_arbiter
                 verdict, owner, diag = arbiter._field_verdict(gate, uid)
                 log("NFC_FIELD: gate %d, uid %s -> %s (owner gate %s)"
-                    % (gate, uid, names.get(verdict, verdict),
+                    % (gate, uid, NFC_FIELD_NAMES.get(verdict, verdict),
                        'none' if owner is None else owner))
                 if diag:
                     log("NFC_FIELD: diagnostic: %s" % diag)
@@ -1295,6 +1288,17 @@ class MmuTestCommand(BaseCommand):
                        "ARMED" if preload_armed else "not armed", u.p.nfc_neighbor_check,
                        u.p.nfc_neighbor_evict_distance, u.p.nfc_gate_clear_distance,
                        u.p.nfc_preload_clear_distance, u.p.nfc_field_probe_reads))
+
+                # Show the identity information available to arbitration for this gate
+                # and the two physical neighbors its RFIDS fallback can consult.
+                gm = mmu.gate_maps
+                for candidate in (gate - 1, gate, gate + 1):
+                    if not u.owns_gate(candidate):
+                        continue
+                    log("NFC_FIELD: gate %d: spool_id=%d rfid=%s rfids=%s"
+                        % (candidate, gm.gate_spool_id[candidate],
+                           gm.gate_spool_rfid[candidate] or '(none)',
+                           ','.join(gm.gate_spool_rfid_aliases[candidate]) or '(none)'))
 
                 if verdict == NFC_FIELD_NEIGHBOR:
                     candidates = arbiter._neighbor_candidates(gate, owner)

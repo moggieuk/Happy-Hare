@@ -372,7 +372,7 @@ Two more things happen at startup that a printer does for itself and a frozen cl
   NFC read acknowledgment, for one, silently does nothing. `boot()` stops the clock 2.5s in, so
   without `Session.settle_leds()` an interactive session would never leave that window.
 - **A fake Moonraker + Spoolman is attached**, seeded to agree with the primed gate map (gate
-  N's tag UID is `BADCAFE<NN>`). The `MmuServer` inside it is *real*, so the round trip
+  N's tag UID is `BADCAFE<NNN>`). The `MmuServer` inside it is *real*, so the round trip
   exercises the actual contract both ways. Without it every call Happy Hare makes to Moonraker
   goes unanswered and an NFC read ends in *"Automatic assignment of id timed out"* 20s later —
   which is what `--no-moonraker` gives you, and what a printer with Moonraker down looks like.

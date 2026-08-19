@@ -2277,7 +2277,7 @@ class TestTheDefaultProfile(unittest.TestCase):
         before = len(hh.console)
         # run_command prints; keep it out of the runner's output
         with contextlib.redirect_stdout(io.StringIO()):
-            self.console.run_command('_MMU_TEST NFC_READ=1 DEEP=1 UID=BADCAFE03')
+            self.console.run_command('_MMU_TEST NFC_READ=1 DEEP=1 UID=BADCAFE003')
         said = ' '.join(hh.console[before:])
         self.assertIn('Spool ID', said)
         self.assertNotIn('timed out', said)

@@ -184,6 +184,14 @@ NFC_FIELD_PROVISIONAL = 4 # An unregistered tag tentatively treated as this gate
                           # path (there'd be nothing to observe clearing). Ratified/rejected
                           # after the caller's own natural motion completes.
 
+NFC_FIELD_NAMES = {
+    NFC_FIELD_CLEAR:       "CLEAR",
+    NFC_FIELD_MINE:        "MINE",
+    NFC_FIELD_NEIGHBOR:    "NEIGHBOR",
+    NFC_FIELD_FOREIGN:     "FOREIGN",
+    NFC_FIELD_PROVISIONAL: "PROVISIONAL",
+}
+
 # Gear/Extruder synchronization modes
 DRIVE_UNSYNCED                = 0
 DRIVE_EXTRUDER_SYNCED_TO_GEAR = 1 # Aka 'gear+extruder'
