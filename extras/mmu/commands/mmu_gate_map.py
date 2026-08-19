@@ -48,6 +48,7 @@ class MmuGateMapCommand(BaseCommand):
     )
     HELP_SUPPLEMENT = (
         "Examples:\n"
+        + f"{CMD} DETAILS=1                      ...Display the gate map with all cached RFID UIDs\n"
         + f"{CMD} GATES=0,1,2,3 AVAILABLE=1      ...Mark gates 0-3 as having filament available\n"
         + f"{CMD} GATE=5 COLOR=red MATERIAL=pla  ...Set filament attributes for gate 5\n"
         + f"{CMD} NEXT_SPOOLID=45                ...Automatically mark the next spool preloaded or loaded with spoolman id 45\n"
