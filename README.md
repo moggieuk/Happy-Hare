@@ -19,7 +19,11 @@
     <img src="assets/images/badge-last-commit.svg" alt="Last commit"></a>
 </p>
 
-<p align="center"><strong>One driver. Every kind of MMU. A complete Klipper experience.</strong></p>
+<p>&nbsp;</p
+
+<p>
+  <strong>One driver. Every kind of MMU. A complete Klipper experience.</strong>
+</p>
 
 Happy Hare is the original open-source filament changer controller for
 multi-color printing. Its philosophy is to provide a universal control system
@@ -55,7 +59,7 @@ Mainsail and Fluidd.
 
 <p align="center">
   <a href="https://moggieuk.github.io/Happy-Hare-Doc/">
-    <img src="assets/images/happy_hare_docs_logo.png" alt="Happy Hare v4 documentation" width="105" align="middle"> &nbsp;
+    <img src="assets/images/happy_hare_docs_logo.png" alt="Happy Hare v4 documentation" width="120" align="middle">
     <strong>Explore the Happy Hare v4 documentation</strong>
   </a>
 </p>
@@ -170,7 +174,7 @@ documentation site are a substantial undertaking:
     <td width="50%" align="center" valign="middle" style="border: 0;">
       <p align="center">
         <a href="https://www.paypal.me/moggieuk">
-          <img src="assets/images/donate.svg" alt="Donate with PayPal" width="50%">
+          <img src="assets/images/donate.svg" alt="Donate with PayPal" width="100%">
         </a>
       </p>
     </td>
@@ -206,18 +210,16 @@ Multi-color printing can be addictive and occasionally frustrating. Be patient,
 read the docs, ask the community when you get stuck, and remember to enjoy the
 machine you built.
 
-> <p align="center">
-> <strong>❝</strong>
-> <em>There once was a printer so keen,<br>
-> To print in red, yellow, and green.<br>
-> It whirred and it spun,<br>
-> Mixing colors for fun,<br>
-> The most vibrant prints ever seen!</em>
-> </p>
+<p align="center">
+<strong>❝</strong>
+<em>There once was a printer so keen,<br>
+To print in red, yellow, and green.<br>
+It whirred and it spun,<br>
+Mixing colors for fun,<br>
+The most vibrant prints ever seen!</em>
+</p>
 
----
-
-<pre style="line-height: 1.1;">
+<pre>
   (\_/)
   ( *,*)
   (")_(") Happy Hare Ready
