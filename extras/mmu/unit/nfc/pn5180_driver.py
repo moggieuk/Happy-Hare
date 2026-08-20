@@ -34,6 +34,7 @@
 #   instance built without one is still reactor-friendly.
 
 from .log import logger
+from .rx_gain import RX_GAIN_CODES
 
 
 SYSTEM_CONFIG = 0x00
@@ -43,6 +44,7 @@ CRC_RX_CONFIG = 0x12
 RX_STATUS = 0x13
 CRC_TX_CONFIG = 0x19
 RF_STATUS = 0x1D
+RF_CONTROL_RX = 0x22
 
 PRODUCT_VERSION = 0x10
 FIRMWARE_VERSION = 0x12
@@ -120,6 +122,7 @@ class PN5180Core:
         self.spi = spi
         self.mcu = spi.get_mcu()
         self.debug = debug
+        self.rx_gain_code = None
         self._sleep_fn = sleep_fn or self._default_sleep
 
         self.rf_timeout = config.getfloat(
@@ -224,6 +227,20 @@ class PN5180Core:
 
     def load_rf_config(self, tx_conf, rx_conf):
         self._transceive_command([CMD_LOAD_RF_CONFIG, tx_conf, rx_conf])
+        # LOAD_RF_CONFIG replaces RF_CONTROL_RX, so a static override must be
+        # restored for every protocol profile (Type A and ISO15693), not merely
+        # after the initial hardware reset.
+        if self.rx_gain_code is not None:
+            self._write_rx_gain(self.rx_gain_code)
+
+    def _write_rx_gain(self, code):
+        value = (self.read_register(RF_CONTROL_RX) & ~0x03) | code
+        self.write_register(RF_CONTROL_RX, value)
+        return value
+
+    def set_rx_gain(self, code):
+        self.rx_gain_code = code
+        return self._write_rx_gain(code)
 
     def _wait_irq(self, mask, timeout=None, raise_on_error=True):
         deadline = self._now() + (self.rf_timeout if timeout is None else timeout)
@@ -633,6 +650,16 @@ class PN5180Driver:
 
     def is_alive(self):
         return self._core.initialized and self._core.is_alive()
+
+    def set_rx_gain(self, db):
+        """Set and retain RF_CONTROL_RX.RX_GAIN across protocol loads."""
+        code = RX_GAIN_CODES['pn5180'].get(db)
+        if code is None:
+            return False
+        value = self._core.set_rx_gain(code)
+        logger.info('[%s pn5180] rx_gain set to %d dB (RF_CONTROL_RX=0x%08X)',
+                    self._name, db, value)
+        return True
 
     def _clear_current_card(self):
         self.current_target_info = None

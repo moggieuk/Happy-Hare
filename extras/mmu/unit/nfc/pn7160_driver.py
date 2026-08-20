@@ -9,6 +9,7 @@
 # Spoolman lookups, and Happy Hare side effects.
 
 from .log import logger
+from .rx_gain import RX_GAIN_CODES
 
 
 PN7160_I2C_ADDRESS = 0x28
@@ -58,6 +59,14 @@ NCI_CORE_GET_TOTAL_DURATION_CMD = [
     0x20, 0x03, 0x02,       # CORE_GET_CONFIG, 2 payload octets
     0x01, 0x00,             # one parameter: TOTAL_DURATION
 ]
+
+# Proprietary RF configuration entries used by this driver. Both receive paths
+# it enables need the same configured gain: NFC-A/106 and ISO15693. Register
+# 0x44 is CLIF_ANA_RX_REG; RX_GAIN_I is bits 2:0 and RX_GAIN_Q bits 6:4.
+PN7160_RX_TRANSITIONS = (
+    (0x3C, 0x0A),  # RF_CLIF_CFG_BR_106_I_RXA_P; default HPCF = 2
+    (0x20, 0x0A),  # RF_CLIF_CFG_TECHNO_I_RX15693; default HPCF = 2
+)
 
 NCI_GID_CORE = 0x00
 NCI_GID_RF = 0x01
@@ -1138,6 +1147,22 @@ class PN7160Handler:
         return [rsp] + extra
 
 
+    def configure_rx_gain(self, code, db):
+        """Set both I/Q BBA gains in the enabled reader-mode RF profiles."""
+        gain_byte = code | (code << 4)
+        frames = []
+        for transition, hpcf_byte in PN7160_RX_TRANSITIONS:
+            # CORE_SET_CONFIG, one proprietary A0 0D parameter containing one
+            # RF transition/register/value tuple. The 32-bit register value is LE.
+            cmd = [0x20, 0x02, 0x0A, 0x01, 0xA0, 0x0D, 0x06,
+                   transition, 0x44, gain_byte, hpcf_byte, 0x00, 0x00]
+            rsp, extra = self.command(cmd, NCI_GID_CORE, 0x02, timeout=1.0)
+            frames.extend([rsp] + extra)
+        logger.info('[%s pn7160] rx_gain set to %d dB for NFC-A and ISO15693',
+                    self._name, db)
+        return frames
+
+
     def start_discovery(self):
         rsp, extra = self.command(
             NCI_RF_DISCOVER_NFCA_NFCV_CMD, NCI_GID_RF, 0x03, timeout=1.0,
@@ -1345,6 +1370,7 @@ class PN7160Driver:
         self._probe_active = False
         self._probe_errors = 0
         self._probe_transport_errors = 0
+        self._rx_gain = None
 
         # Advanced PN7160 tuning options are intentionally hidden from the
         # default config templates.  Users can still override them in a specific
@@ -1412,6 +1438,16 @@ class PN7160Driver:
         return bool(self._alive and self._handler.initialized)
 
 
+    def set_rx_gain(self, db):
+        """Set and retain PN7160 reader-mode I/Q gain across full NCI resets."""
+        code = RX_GAIN_CODES['pn7160'].get(db)
+        if code is None:
+            return False
+        self._rx_gain = (code, db)
+        self._handler.configure_rx_gain(code, db)
+        return True
+
+
     def _setup_for_read(self, full=None):
         """
         Prepare PN7160 for one read operation.
@@ -1432,6 +1468,8 @@ class PN7160Driver:
             # probe_start()'s keep-config path is the homing critical path, and a
             # keep-config reset preserves the value anyway.
             self._handler.configure_total_duration()
+            if self._rx_gain is not None:
+                self._handler.configure_rx_gain(*self._rx_gain)
             self._handler.configure_discovery_map()
         else:
             self._handler.connect_nci(reset=False, keep_config=True)

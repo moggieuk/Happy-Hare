@@ -105,6 +105,7 @@ import time
 import traceback
 
 from .log import logger
+from .rx_gain import RX_GAIN_CODES
 
 # ─────────────────────────────────────────────────────────────────────────────
 # PN532 frame constants
@@ -115,6 +116,7 @@ _TFI_PN532_TO_HOST = 0xD5
 
 # PN532 command codes, mirrored from HH_code/pn532.py.
 PN532_COMMAND_GETFIRMWAREVERSION = 0x02
+PN532_COMMAND_WRITEREGISTER = 0x08
 PN532_COMMAND_SAMCONFIGURATION = 0x14
 PN532_COMMAND_RFCONFIGURATION = 0x32
 PN532_COMMAND_INLISTPASSIVETARGET = 0x4A
@@ -131,6 +133,7 @@ PN532_ACK = [0x00, 0x00, 0xFF, 0x00, 0xFF, 0x00]
 
 # Internal aliases retained for the existing driver implementation.
 _CMD_GETFIRMWAREVERSION = PN532_COMMAND_GETFIRMWAREVERSION
+_CMD_WRITEREGISTER = PN532_COMMAND_WRITEREGISTER
 _CMD_SAMCONFIGURATION = PN532_COMMAND_SAMCONFIGURATION
 _CMD_RFCONFIGURATION = PN532_COMMAND_RFCONFIGURATION
 _CMD_INLISTPASSIVETARGET = PN532_COMMAND_INLISTPASSIVETARGET
@@ -373,6 +376,22 @@ class _PN532Base:
                 logger.info("[%s %s] probe_stop: release failed: %s",
                             self._name, self._transport_name, e)
             return False
+        return True
+
+    def set_rx_gain(self, db):
+        """Set CIU_RFCfg.RxGain for every PN532 transport."""
+        code = RX_GAIN_CODES['pn532'].get(db)
+        if code is None:
+            return False
+        # CIU_RFCfg (0x6316): bits 6:4 are RxGain. Preserve the documented
+        # power-on RFLevel value (bits 3:0 = 8); bit 7 is reserved zero.
+        payload = self._transceive(
+            [_CMD_WRITEREGISTER, 0x63, 0x16, (code << 4) | 0x08],
+            _CMD_WRITEREGISTER + 1, read_len=12, timeout=0.200)
+        if payload is None:
+            return False
+        logger.info("[%s %s] rx_gain set to %d dB",
+                    self._name, self._transport_name, db)
         return True
 
     # ─────────────────────────────────────────────────────────────────────────
