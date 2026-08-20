@@ -135,6 +135,17 @@ if MMU_TYPE_VVD_1_0
   config PARAM_NFC_READER_3
     default "$(UNIT_NAME)_nfc23"
 
+  config PARAM_NFC_GATE_JOG_SCAN_WINDOW
+    default "-300, 200"
+  config PARAM_NFC_PRELOAD_JOG_SCAN_WINDOW
+    default "-300, 200"
+  config PARAM_NFC_GATE_CLEAR_DISTANCE
+    default -70
+  config PARAM_NFC_PRELOAD_CLEAR_DISTANCE
+    default -70
+  config BOOL_NFC_NEIGHBOR_CHECK
+    default y
+
   comment "_"
 
 endif 

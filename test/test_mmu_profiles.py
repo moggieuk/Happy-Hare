@@ -159,6 +159,54 @@ class TestEveryBootableProfile(unittest.TestCase):
                 self.assertEqual(rendered, gates)
 
 
+class TestMachineNfcDefaults(unittest.TestCase):
+    """Machine-specific NFC defaults must override the generic Kconfig values."""
+
+    def _defaults(self, profile_name, unit_name=None):
+        from test.hh import cfg, profiles
+        profile = profiles.get(profile_name)
+        syms = dict(profile.syms)
+        if unit_name is not None:
+            syms = dict(next(unit.syms for unit in profile.units if unit.name == unit_name))
+        # EMU offers NFC as an addition rather than forcing the hardware capability on.
+        # Activate it here so the hidden runtime parameter derived from the menu bool is
+        # resolved exactly as it will be in an NFC-equipped EMU configuration.
+        syms['MMU_HAS_NFC_READER'] = True
+        with cfg._env(cfg._SINGLE_UNIT_ENV):
+            kc = cfg._kconfig('%s-nfc-defaults' % profile_name, syms)
+        return {
+            name: kc.get(name)
+            for name in (
+                'PARAM_NFC_GATE_JOG_SCAN_WINDOW',
+                'PARAM_NFC_PRELOAD_JOG_SCAN_WINDOW',
+                'PARAM_NFC_GATE_CLEAR_DISTANCE',
+                'PARAM_NFC_PRELOAD_CLEAR_DISTANCE',
+                'BOOL_NFC_NEIGHBOR_CHECK',
+                'PARAM_NFC_NEIGHBOR_CHECK',
+            )
+        }
+
+    def test_emu(self):
+        self.assertEqual(self._defaults('emu'), {
+            'PARAM_NFC_GATE_JOG_SCAN_WINDOW': '-100, 450',
+            'PARAM_NFC_PRELOAD_JOG_SCAN_WINDOW': '-100, 450',
+            'PARAM_NFC_GATE_CLEAR_DISTANCE': '70',
+            'PARAM_NFC_PRELOAD_CLEAR_DISTANCE': '70',
+            'BOOL_NFC_NEIGHBOR_CHECK': 'y',
+            'PARAM_NFC_NEIGHBOR_CHECK': '1',
+        })
+
+    def test_vivid(self):
+        self.assertEqual(self._defaults('ercf_vvd', 'unit1'), {
+            'PARAM_NFC_GATE_JOG_SCAN_WINDOW': '-300, 200',
+            'PARAM_NFC_PRELOAD_JOG_SCAN_WINDOW': '-300, 200',
+            'PARAM_NFC_GATE_CLEAR_DISTANCE': '-70',
+            'PARAM_NFC_PRELOAD_CLEAR_DISTANCE': '-70',
+            'BOOL_NFC_NEIGHBOR_CHECK': 'y',
+            'PARAM_NFC_NEIGHBOR_CHECK': '1',
+        })
+
+
 class TestMultiUnitMachine(unittest.TestCase):
     """
     `ercf_vvd` is the only profile with two units, so everything here is unreachable
