@@ -54,7 +54,7 @@ for dedicated touchscreen control, or use the native Happy Hare panels in
 Mainsail and Fluidd.
 
 <p align="center">
-  <img src="assets/images/universal_mmu_driver.png" alt="Happy Hare driving several different MMUs through Mainsail, Fluidd, KlipperScreen and the console" width="100%">
+  <img src="assets/images/happy_hare_ecosystem.jpg" alt="Happy Hare driving several different MMUs through Mainsail, Fluidd, KlipperScreen and the console" width="100%">
 </p>
 
 <p align="center">
