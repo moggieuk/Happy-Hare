@@ -5,6 +5,8 @@
 #   PARAM_MACRO_TOOLHEAD_MIN_CRUISE_RATIO
 
 menu "Macro Variables"
+  help
+    Configure settings for Happy Hare klipper macros.
 
   rsource "Kconfig.software"
   rsource "Kconfig.state"

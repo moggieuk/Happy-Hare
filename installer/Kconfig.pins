@@ -9,7 +9,8 @@
 #   for type-B boards is 5 (Chameleon X5)
 
 menu "Pins / TMC"
-
+  help
+    Configure TMC driver types for gear and selector steppers and MCU pin assignments.
 
 # -------------------------------------
 # Gear TMC chip
