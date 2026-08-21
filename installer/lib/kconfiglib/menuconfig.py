@@ -248,7 +248,7 @@ _SUBMENU_INDENT = 4
 _PG_JUMP = 6
 
 # Height of the help window in show-help mode
-_SHOW_HELP_HEIGHT = 6
+_SHOW_HELP_HEIGHT = 7
 
 # How far the cursor needs to be from the edge of the window before it starts
 # to scroll. Used for the main menu display, the information display, the

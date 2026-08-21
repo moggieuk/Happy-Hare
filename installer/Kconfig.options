@@ -79,14 +79,13 @@ menu "Software Options"
     prompt "Select spoolman spool manager support"
     default CHOICE_SPOOLMAN_SUPPORT_OFF
     help
-      |                  | Activate/  | Fetch filament attributes | Filament gate    | Filament gate     |
-      | spoolman_support | Deactivate | attributes from spoolman  | assignment shown | assignment pulled |
-      |                  | spool?     | based on spool_id?        | in spoolman db?  | from spoolman db? |
-      +------------------+------------+---------------------------+------------------+-------------------+
-      |      off         |     no     |           no              |        no        |        no         |
-      |      readonly    |     yes    |           yes             |        no        |        no         |
-      |      push        |     yes    |           yes             |        yes       |        no         |
-      |      pull        |     yes    |           yes             |        yes       |        yes        |
+      |                  |    Activate /     | Fetch filament attributes from | Filament gate assignment | Filament gate assignment |
+      | spoolman_support | Deactivate spool? |   spoolman based on spool_id?  |   shown in spoolman DB?  | pulled from spoolman DB? |
+      +------------------+-------------------+--------------------------------+--------------------------+--------------------------+
+      |      off         |        no         |                no              |             no           |            no            |
+      |      readonly    |        yes        |                yes             |             no           |            no            |
+      |      push        |        yes        |                yes             |             yes          |            no            |
+      |      pull        |        yes        |                yes             |             yes          |            yes           |
 
     config CHOICE_SPOOLMAN_SUPPORT_OFF
       bool "Off"
