@@ -249,6 +249,7 @@ _PG_JUMP = 6
 
 # Height of the help window in show-help mode
 _SHOW_HELP_HEIGHT = 7
+_ALWAYS_SHOW_HELP_WINDOW = True
 
 # How far the cursor needs to be from the edge of the window before it starts
 # to scroll. Used for the main menu display, the information display, the
@@ -1069,7 +1070,8 @@ def _resize_main():
     _top_sep_win.resize(1, screen_width)
     _bot_sep_win.resize(1, screen_width)
 
-    help_win_height = _SHOW_HELP_HEIGHT + len(_MAIN_HELP_LINES)
+    show_item_help = _ALWAYS_SHOW_HELP_WINDOW or (_show_help and _node_has_help())
+    help_win_height = (_SHOW_HELP_HEIGHT if show_item_help else 0) + len(_MAIN_HELP_LINES)
 
     menu_win_height = screen_height - help_win_height - 3
 
@@ -1438,13 +1440,15 @@ def _draw_main():
     # Update the help window, which shows either key bindings or help texts
     #
 
-    if _show_help and _node_has_help():  # Happy Hare: Added
+    show_item_help = _ALWAYS_SHOW_HELP_WINDOW or (_show_help and _node_has_help())
+    if show_item_help:  # Happy Hare: Added
         _set_style(_help_win, "show-help")
         _resize_main()
         _help_win.erase()
 
         node = _shown[_sel_node_i]
-        help_lines = node.help.split("\n")  # Happy Hare: Retain line formatting
+        help_text = getattr(node, "help", None)
+        help_lines = help_text.split("\n") if help_text else []  # Happy Hare: Retain line formatting
         for i in range(min(_SHOW_HELP_HEIGHT, len(help_lines))):
             _safe_addstr(_help_win, i, 0, help_lines[i])
 
@@ -1459,7 +1463,7 @@ def _draw_main():
 
     # Happy Hare: Always show the main help lines
     for i, line in enumerate(_MAIN_HELP_LINES):
-        _safe_addstr(_help_win, _SHOW_HELP_HEIGHT + i, 0, line)
+        _safe_addstr(_help_win, (_SHOW_HELP_HEIGHT if show_item_help else 0) + i, 0, line)
 
     _bot_sep_win.noutrefresh()
     _help_win.noutrefresh()
@@ -1593,7 +1597,8 @@ def _shown_nodes(menu):
 
 def _node_has_help():
     node = _shown[_sel_node_i]
-    return (isinstance(node.item, (Symbol, Choice)) or node.item == MENU) and node.help
+    return (isinstance(node.item, (Symbol, Choice)) or node.item == MENU) and \
+        getattr(node, "help", None)
 
 
 def _visible(node):

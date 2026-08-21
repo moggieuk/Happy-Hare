@@ -517,7 +517,7 @@ class Menuconfig:
         Height that can be given back without crowding the help text against the menu.
 
         The layout is: breadcrumb, title bar, menu window, separator bar, a help pane
-        of a FIXED eight rows (menuconfig.py:251 _SHOW_HELP_HEIGHT), then two rows of
+        of a FIXED seven rows (menuconfig.py:251 _SHOW_HELP_HEIGHT), then two rows of
         key hints. Shrinking the terminal takes rows off the menu window only, so the
         blank space inside the help pane is overhead that cannot be reclaimed and must
         not be counted here - subtracting it would cut into the menu and bring the
