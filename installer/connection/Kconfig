@@ -2,6 +2,9 @@
 # and optionally sync-feedback buffer
 
 menu "MCU connection"
+  help
+    Configure MMU controller communication settings using serial USB and CANbus.
+
   rsource "Kconfig.mmu_mcu"
 endmenu
 

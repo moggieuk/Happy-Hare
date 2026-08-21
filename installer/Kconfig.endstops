@@ -48,6 +48,8 @@ config PREFERS_CHOICE_EXTRUDER_HOMING_ENDSTOP_NONE
 
 
 menu "Endstops and Bowden movement"
+  help
+    Configure endstops, gate and extruder homing options.
 
 # -------------------------------------
 # Gate Endstop
