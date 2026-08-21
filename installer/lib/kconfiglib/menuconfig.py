@@ -248,7 +248,7 @@ _SUBMENU_INDENT = 4
 _PG_JUMP = 6
 
 # Height of the help window in show-help mode
-_SHOW_HELP_HEIGHT = 8
+_SHOW_HELP_HEIGHT = 6
 
 # How far the cursor needs to be from the edge of the window before it starts
 # to scroll. Used for the main menu display, the information display, the
@@ -1069,7 +1069,7 @@ def _resize_main():
     _top_sep_win.resize(1, screen_width)
     _bot_sep_win.resize(1, screen_width)
 
-    help_win_height = (_SHOW_HELP_HEIGHT if _show_help and _node_has_help() else 0) + len(_MAIN_HELP_LINES)
+    help_win_height = _SHOW_HELP_HEIGHT + len(_MAIN_HELP_LINES)
 
     menu_win_height = screen_height - help_win_height - 3
 
@@ -1445,7 +1445,7 @@ def _draw_main():
 
         node = _shown[_sel_node_i]
         help_lines = node.help.split("\n")  # Happy Hare: Retain line formatting
-        for i in range(min(_height(_help_win), len(help_lines))):
+        for i in range(min(_SHOW_HELP_HEIGHT, len(help_lines))):
             _safe_addstr(_help_win, i, 0, help_lines[i])
 
         # Happy Hare: Reset the background of the main help lines
@@ -1459,7 +1459,7 @@ def _draw_main():
 
     # Happy Hare: Always show the main help lines
     for i, line in enumerate(_MAIN_HELP_LINES):
-        _safe_addstr(_help_win, (_SHOW_HELP_HEIGHT if _show_help and _node_has_help() else 0) + i, 0, line)
+        _safe_addstr(_help_win, _SHOW_HELP_HEIGHT + i, 0, line)
 
     _bot_sep_win.noutrefresh()
     _help_win.noutrefresh()
