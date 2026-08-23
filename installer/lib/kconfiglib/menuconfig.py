@@ -270,8 +270,7 @@ _N_SCROLL_ARROWS = 14
 #"""[1:-1].split("\n")
 # Happy Hare: Remove show-help text...
 _MAIN_HELP_LINES = """
-+[Space/Enter] Toggle/enter      [R] Reset parameter to default
-+[Q] Quit (prompts for save)     [ESC] Leave menu
+ [Space/Enter] Toggle/enter  [R] Reset parameter to default  [Q] Quit (prompts for save)  [ESC] Leave menu
 """[1:-1].split("\n")
 
 # Lines of help text shown at the bottom of the information dialog
@@ -923,7 +922,7 @@ def _menuconfig(stdscr):
             # dialog was open
             _resize_main()
 
-        elif c == "?":
+        elif False and c == "?": # Happy Hare: Disable
             _info_dialog(_shown[_sel_node_i], False)
             # The terminal might have been resized while the fullscreen info
             # dialog was open
@@ -1423,6 +1422,15 @@ def _draw_main():
     if _menu_scroll < _max_scroll(_shown, _menu_win):
         _safe_hline(_bot_sep_win, 0, 4, curses.ACS_DARROW, _N_SCROLL_ARROWS)
 
+    # Happy Hare: Label the separator above the help pane
+    help_label = " Help "
+    _safe_addstr(
+        _bot_sep_win,
+        0,
+        max((term_width - len(help_label)) // 2, 0),
+        help_label,
+    )
+
     # Indicate when show-name/show-help/show-all mode is enabled
     enabled_modes = []
     # Happy Hare: Always show the help lines
@@ -1450,7 +1458,7 @@ def _draw_main():
         help_text = getattr(node, "help", None)
         help_lines = help_text.split("\n") if help_text else []  # Happy Hare: Retain line formatting
         for i in range(min(_SHOW_HELP_HEIGHT, len(help_lines))):
-            _safe_addstr(_help_win, i, 0, help_lines[i])
+            _safe_addstr(_help_win, i, 1, help_lines[i])
 
         # Happy Hare: Reset the background of the main help lines
         _set_style(_help_win, "help")
