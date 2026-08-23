@@ -157,14 +157,12 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
         forceshow
         default n
         help
-          A sync-feedback sensor (often referred to as a "buffer") is
-          a sensor that can detect filament compression and/or tension.
-          Select this option if your sensor can detect filament being
-          COMPRESSED in the bowden tube.
+          A sync-feedback sensor (often referred to as a "buffer") is a sensor that can
+          detect filament compression and/or tension.  Select this option if your sensor
+          can detect filament being COMPRESSED in the bowden tube.
 
-          This sensor allows the MMU gear stepper to be synchronized with
-          the extruder and can be used to detect collision of the filament
-          with the extruder.
+          This sensor allows the MMU gear stepper to be synchronized with the extruder and
+          can be used to detect collision of the filament with the extruder.
 
       config PIN_BUFFER_COMPRESSION
         prompt "Sync feedback compression pin" if MMU_HAS_SENSOR_BUFFER_COMPRESSION
@@ -177,13 +175,11 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
         forceshow
         default n
         help
-          A sync-feedback sensor (often referred to as a "buffer") is
-          a sensor that can detect filament compression and/or tension.
-          Select this option if your sensor can detect filament being
-          UNDER TENSION in the bowden tube.
+          A sync-feedback sensor (often referred to as a "buffer") is a sensor that
+          can detect filament compression and/or tension.  Select this option if your
+          sensor can detect filament being UNDER TENSION in the bowden tube.
 
-          This sensor allows the MMU gear stepper to be synchronized with
-          the extruder.
+          This sensor allows the MMU gear stepper to be synchronized with the extruder.
 
       config PIN_BUFFER_TENSION
         prompt "Sync feedback tension pin    " if MMU_HAS_SENSOR_BUFFER_TENSION

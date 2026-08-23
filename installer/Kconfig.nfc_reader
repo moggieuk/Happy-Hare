@@ -675,11 +675,10 @@ if MMU_HAS_NFC_READER
       float "NFC self-jog clear distance (preload)"
       default PARAM_NFC_GATE_CLEAR_DISTANCE
       help
-        Same as the scan clear distance above, but used during MMU_PRELOAD, which
-        can home/park via a different endstop (gate_preload_endstop) - so this can
-        differ, including in sign, from the scan distance. Defaults to it, since
-        preload usually wants the same clear jog. Forward requires the preload
-        endstop (or, if unset, gate_homing_endstop) to be mmu_exit.
+        Same as the scan clear distance above, but used during MMU_PRELOAD, which can home/park
+        via a different endstop (gate_preload_endstop) - so this can differ, including in sign,
+        from the scan distance. Defaults to it, since preload usually wants the same clear jog.
+        Forward requires the preload endstop (or, if unset, gate_homing_endstop) to be mmu_exit.
         The jog magnitude and its backward target must fit gate_preload_homing_max.
 
         0 disables this escalation for MMU_PRELOAD (default).

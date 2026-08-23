@@ -81,9 +81,8 @@ menu "Blobifier            (_BLOBIFIER)"
     float "Brush width                    "
     default 35
     help
-      +               ←   brush_width   →
-                       _________________
-                      |                 |  ↑                Y position is acquired from your
+      +                _________________
+                      |←  brush_width  →|  ↑                Y position is acquired from your
       brush_start (x) |                 | brush_depth       stepper_y position_max. Adjust
                       |_________________|  ↓                your brush physically in Y so
                               (y)                           that the nozzle scrubs within the
