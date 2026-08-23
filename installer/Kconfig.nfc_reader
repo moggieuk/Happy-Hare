@@ -340,10 +340,10 @@ if MMU_HAS_NFC_READER
         help
           Static startup gain; 0 keeps the chip/RF-profile default.
           Valid dB values (effective default in parentheses):
-            RC522/PN532: 18, 23, 33, 38, 43, 48 (33)
-            PN5180: 33, 40, 50, 57 (50)
-            PN7160: 18, 26, 32, 39, 44, 51, 53, 60
-            PN7160 defaults: NFC-A 106=53; ISO15693=51
+            RC522/PN532: 18, 23, (33), 38, 43, 48
+            PN5180: 33, 40, (50), 57
+            PN7160: 18, 26, 32, 39, 44, (51), (53), 60
+              PN7160 defaults: NFC-A 106=53; ISO15693=51
           Bench-tuning option for the antenna and receive path.
     endif
 
