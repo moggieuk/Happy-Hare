@@ -1,6 +1,10 @@
 menu "Blobifier            (_BLOBIFIER)"
+  depends on MMU_HAS_BLOBIFIER
+  forceshow
   help
     Blobifier purging system configuration variables.
+
+    (if desired but disabled, make sure you select Blobifer under purge option)
 
   config VAR_BLOBIFIER_PURGE_SPD
     float "Purge speed                    "
@@ -239,14 +243,9 @@ menu "Blobifier            (_BLOBIFIER)"
     int "Maximum blobs                  "
     default 400
 
-  config BOOL_BLOBIFIER_ENABLE_SHAKER
-    bool "Enable bucket shaker"
-    default y
-
   config VAR_BLOBIFIER_ENABLE_SHAKER
-    int
-    default 1 if BOOL_BLOBIFIER_ENABLE_SHAKER
-    default 0
+    boolint "Enable bucket shaker"
+    default 1
 
   config VAR_BLOBIFIER_SHAKER_POS_X
     float "Shaker X position offset       "

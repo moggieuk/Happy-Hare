@@ -80,8 +80,9 @@ if MMU_HAS_HEATER
         config PARAM_FILAMENT_HEATERS
           string "List of enclosure heaters "
           default ""
+          array_editor ","
           help
-            Enter a command separated list of full names for heaters used to heat individual compartments
+            Enter a list of full names for heaters used to heat individual compartments
             of the enclosure.
 
             E.g. If you have a section like this: [heater_generic MMU_heater0], then enter

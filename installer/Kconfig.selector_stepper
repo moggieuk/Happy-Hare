@@ -54,41 +54,32 @@ if MMU_HAS_SELECTOR_STEPPER
       help
         200 for 1.8 degree, 400 for 0.9 degree
 
-    config BOOL_STARTUP_HOME_SELECTOR
-      bool "Home selector at startup?"
-      default n
+    config PARAM_STARTUP_HOME_SELECTOR
+      boolint "Home selector at startup?"
+      default 0
       help
         1 = force MMU homing on startup if unloaded, then reselect the last gate used
         0 = trust the position saved at shutdown, so no homing is needed (an explicit
             MMU_MOTORS_OFF discards that saved position and does require a re-home)
-
-    config PARAM_STARTUP_HOME_SELECTOR
-      int
-      default 1 if BOOL_STARTUP_HOME_SELECTOR
-      default 0
 
 
 # -------------------------------------
 # Selector touch Operation
 # -------------------------------------
 
-  config BOOL_SELECTOR_TOUCH_ENABLED
-    bool "Enable touch selector movement using TMC Stallguard?"
+  config PARAM_SELECTOR_TOUCH_ENABLED
+    boolint "Enable touch selector movement using TMC Stallguard?"
+    default 0
     help
       This allows for additional selector recovery steps but is difficult to tune.
       Not recommended if you are new to MMU/Happy-Hare.
       The MCU must have DIAG output for steppers. Possible to configure later
     depends on MMU_HAS_SELECTOR_STEPPER && (LINEAR_SELECTOR || LINEAR_SERVO_SELECTOR)
-  config PARAM_SELECTOR_TOUCH_ENABLED
-    int
-    default 1 if BOOL_SELECTOR_TOUCH_ENABLED
-    default 0
-
   if BOARD_TYPE_EASY_BRD
     comment " !!! IMPORTANT: Set the J6 jumper pins to 2-3 and 4-5, i.e. .[..][..] on the EASY-BRD. MAKE A NOTE NOW !!! "
-      depends on BOOL_SELECTOR_TOUCH_ENABLED
+      depends on PARAM_SELECTOR_TOUCH_ENABLED
     comment " !!! IMPORTANT: Set the J6 jumper pins to 1-2 and 4-5, i.e. [..].[..] on the EASY-BRD. MAKE A NOTE NOW !!! "
-      depends on !BOOL_SELECTOR_TOUCH_ENABLED
+      depends on !PARAM_SELECTOR_TOUCH_ENABLED
   endif
 
 

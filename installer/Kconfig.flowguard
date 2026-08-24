@@ -12,25 +12,20 @@
 menu "FlowGuard (clog/tangle/runout detection)"
 depends on MMU_HAS_SYNC_FEEDBACK_BUFFER || MMU_HAS_ENCODER
 
-config BOOL_FLOWGUARD_ENABLED
-  bool "Enable sync-feedback base FlowGuard (sync speed correction, clog/tangle/runout)?"
-  default y
+config PARAM_FLOWGUARD_ENABLED
+  boolint "Enable sync-feedback base FlowGuard (sync speed correction, clog/tangle/runout)?"
+  default 1
   help
     FlowGuard is a feature that uses the sync-feedback buffer and/or encoder to detect
     filament clogs, tangles and runouts. If enabled the print will be paused to allow
     you to correct the issue, possibly saving your print but certainly saving your printer.
-config PARAM_FLOWGUARD_ENABLED
-  int
-  default 1 if BOOL_FLOWGUARD_ENABLED
-  default 0
-
 config PARAM_FLOWGUARD_MAX_RELIEF
   float
   default 40
 
 config PARAM_FLOWGUARD_MAX_RELIEF
   prompt "Max relief movement"
-  depends on MMU_HAS_SYNC_FEEDBACK_BUFFER && BOOL_FLOWGUARD_ENABLED
+  depends on MMU_HAS_SYNC_FEEDBACK_BUFFER && PARAM_FLOWGUARD_ENABLED
   help
     The amount of relief movement (effective mm change in filament length between MMU and extruder) that
     Happy Hare will wait until triggering a clog or runout. A smaller value is more sensitive to triggering. Since
@@ -40,19 +35,14 @@ config PARAM_FLOWGUARD_MAX_RELIEF
 
 
 if MMU_HAS_SYNC_FEEDBACK_BUFFER
-  config BOOL_TANGLE_PREVENTION_ENABLED
-    bool "Enable tangle prevention (boost gear current on high spool tension)?"
-    default y
+  config PARAM_TANGLE_PREVENTION_ENABLED
+    boolint "Enable tangle prevention (boost gear current on high spool tension)?"
+    default 1
     help
       Tangle prevention boosts the gear stepper current to 100% when the proportional sync-feedback
       sensor reports high filament tension (the gear struggling to pull filament from the spool),
       then restores normal current once tension eases. This helps pull through minor spool
       resistance before it develops into a tangle. Requires a proportional (type P) sensor.
-
-  config PARAM_TANGLE_PREVENTION_ENABLED
-    int
-    default 1 if BOOL_TANGLE_PREVENTION_ENABLED
-    default 0
 
   config PARAM_TANGLE_PREVENTION_THRESHOLD
     float
@@ -60,7 +50,7 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
 
   config PARAM_TANGLE_PREVENTION_THRESHOLD
     prompt "Tension threshold to boost gear current"
-    depends on BOOL_TANGLE_PREVENTION_ENABLED
+    depends on PARAM_TANGLE_PREVENTION_ENABLED
     help
       Proportional sensor tension level (0.2-0.9, fraction of the tension half of the sensor range) at which the
       gear current is boosted to 100%. Lower values trigger the boost sooner. Increase if you get false triggers.
@@ -71,7 +61,7 @@ if MMU_HAS_SYNC_FEEDBACK_BUFFER
 
   config PARAM_TANGLE_PREVENTION_RELEASE
     prompt "Tension level to restore gear current"
-    depends on BOOL_TANGLE_PREVENTION_ENABLED
+    depends on PARAM_TANGLE_PREVENTION_ENABLED
     help
       Tension level (0.15-0.8) at which the boosted gear current is restored to normal once tension eases. Must be
       below the threshold - the gap between the two provides hysteresis to prevent the current thrashing on and off.

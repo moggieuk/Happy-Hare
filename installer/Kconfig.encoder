@@ -128,28 +128,23 @@ if MMU_HAS_ENCODER
       config PIN_ENCODER
         prompt "Encoder pin                     "
 
-      config BOOL_REGISTER_AS_SENSOR
-        bool "Register as virtual switch sensor"
-        default y
+      config PARAM_REGISTER_AS_SENSOR
+        boolint "Register as virtual switch sensor"
+        default 1
         help
           This controls whether the encoder appears as a (virtual) filament switch
           sensor in UI's like Mainsail and Fluidd.
           Note that it is always available as an sensor/endstop. This controls
           just the visibility in UI's
 
-      config PARAM_REGISTER_AS_SENSOR
-        int
-        default 1 if BOOL_REGISTER_AS_SENSOR
-        default 0
-
     endif
 
     comment "_"
     comment "_Bowden movement"
 
-    config BOOL_BOWDEN_APPLY_CORRECTION
-      bool "Apply bowden correction moves?"
-      default n
+    config PARAM_BOWDEN_APPLY_CORRECTION
+      boolint "Apply bowden correction moves?"
+      default 0
       help
         In addition to different bowden loading speeds for buffer and non-buffered filament it is possible to
         detect missed steps caused by "jerking" on a heavy spool. If bowden correction is enabled Happy Hare
@@ -157,20 +152,15 @@ if MMU_HAS_ENCODER
         'bowden_allowable_encoder_delta' of the end of bowden position (this does require a reliable encoder
         and is not recommended for very high speed loading >350mm/s)
 
-    config PARAM_BOWDEN_APPLY_CORRECTION
-      int
-      default 1 if BOOL_BOWDEN_APPLY_CORRECTION
-      default 0
-
     config PARAM_BOWDEN_ALLOWABLE_ENCODER_DELTA
       float "Bowden allowable encoder delta"
       default 20.0
       help
         How close in mm the correction moves will attempt to get to target
 
-    config BOOL_BOWDEN_PRE_UNLOAD_TEST
-      bool "Check for bowden movement before full unload pull?"
-      default y
+    config PARAM_BOWDEN_PRE_UNLOAD_TEST
+      boolint "Check for bowden movement before full unload pull?"
+      default 1
       help
         This safety check uses the encoder to verify the filament is free of extruder before the fast bowden
         movement to reduce possibility of grinding filament. If enabled the trigger can be tuned by setting
@@ -179,22 +169,12 @@ if MMU_HAS_ENCODER
         will make test more tolerant and a value of 100% essentially disables error detection.
         1 to check for bowden movement before full pull (slower), 0 don't check (faster)
 
-    config PARAM_BOWDEN_PRE_UNLOAD_TEST
-      int
-      default 1 if BOOL_BOWDEN_PRE_UNLOAD_TEST
-      default 0
-
-    config BOOL_ENCODER_MOVE_VALIDATION
-      bool "Use encoder to validate movement distance?"
-      default y
+    config PARAM_ENCODER_MOVE_VALIDATION
+      boolint "Use encoder to validate movement distance?"
+      default 1
       help
         ADVANCED: Determines if encoder measurement should be used to validate movement distance.
         Disabling eliminates slight pause between moves but is less safe
-
-    config PARAM_ENCODER_MOVE_VALIDATION
-      int
-      default 1 if BOOL_ENCODER_MOVE_VALIDATION
-      default 0
 
   endmenu
 endif

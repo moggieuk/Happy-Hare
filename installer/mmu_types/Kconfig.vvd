@@ -11,7 +11,7 @@ config MMU_TYPE_VVD_1_0
   select UNSELECT_MMU_HAS_ESPOOLER        # Disable
   select UNSELECT_MMU_HAS_FILAMENT_BUFFER # Disable
 
-  select BOOL_REQUIRE_BOWDEN_MOVE
+  select PARAM_REQUIRE_BOWDEN_MOVE
   select UNSELECT_VARIABLE_BOWDEN_LENGTHS # Disable
   select UNSELECT_FILAMENT_ALWAYS_GRIPPED # Disable
 
@@ -143,7 +143,7 @@ if MMU_TYPE_VVD_1_0
     default -70
   config PARAM_NFC_PRELOAD_CLEAR_DISTANCE
     default -70
-  config BOOL_NFC_NEIGHBOR_CHECK
+  config PARAM_NFC_NEIGHBOR_CHECK
     default y
 
   comment "_"

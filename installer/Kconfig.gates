@@ -71,16 +71,11 @@ menu "Gate loading & parking"
     help
       Number of times MMU will attempt to grab the filament on initial load (type-A designs with servo)
 
-  config BOOL_GATE_AUTOLOAD
-    bool "Automatically load gate when entry sensor triggers?"
-    default y
+  config PARAM_GATE_AUTOLOAD
+    boolint "Automatically load gate when entry sensor triggers?"
+    default 1
     depends on MMU_HAS_SENSOR_ENTRY
     help
       If mmu entry sensor fitted this controls the automatic loading of the gate
-
-  config PARAM_GATE_AUTOLOAD
-    int
-    default 1 if BOOL_GATE_AUTOLOAD
-    default 0
 
 endmenu

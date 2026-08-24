@@ -67,7 +67,10 @@ def _expected_value(sym_obj):
     """
     raw = sym_obj.user_value if sym_obj.user_value is not None else sym_obj.str_value
 
-    # BOOL/TRISTATE user_value is an int tri-state (0/1/2), not "n"/"m"/"y"
+    # BOOL/BOOLINT/TRISTATE user_value is stored as an internal tristate integer.
+    if sym_obj.type == kconfiglib.BOOLINT:
+        return "1" if raw in (1, 2, "1", "y") else "0"
+
     if sym_obj.type in (kconfiglib.BOOL, kconfiglib.TRISTATE) and isinstance(raw, int):
         raw = kconfiglib.TRI_TO_STR[raw]
 

@@ -114,23 +114,20 @@ menu "Design attributes"
 
   config UNSELECT_VARIABLE_BOWDEN_LENGTHS
     def_bool n
-  config BOOL_VARIABLE_BOWDEN_LENGTHS
-    bool "Variable bowden lengths?" 
+  config PARAM_VARIABLE_BOWDEN_LENGTHS
+    boolint "Variable bowden lengths?"
+    default 0
     forceshow
     depends on !UNSELECT_VARIABLE_BOWDEN_LENGTHS
     help
       Whether filament path from parked position in the gate to the extruder is different
       for each gate. Typically this is true of type-B designs but not true of type-A with
       Linear Selector and single bowden exit from the MMU.
-  config PARAM_VARIABLE_BOWDEN_LENGTHS
-    int
-    default 1 if BOOL_VARIABLE_BOWDEN_LENGTHS
-    default 0
-
   config UNSELECT_VARIABLE_ROTATION_DISTANCES
     def_bool n
-  config BOOL_VARIABLE_ROTATION_DISTANCES
-    bool "Variable rotation distances?"
+  config PARAM_VARIABLE_ROTATION_DISTANCES
+    boolint "Variable rotation distances?"
+    default 0
     forceshow
     depends on !UNSELECT_VARIABLE_ROTATION_DISTANCES
     help
@@ -139,39 +136,26 @@ menu "Design attributes"
       If this is selected you are able to tune the rotation distance of each gate/lane
       independently which may useful especially with long bowden tubes where
       lack of calibration can multiply.
-  config PARAM_VARIABLE_ROTATION_DISTANCES
-    int
-    default 1 if BOOL_VARIABLE_ROTATION_DISTANCES
-    default 0
-
   config UNSELECT_REQUIRE_BOWDEN_MOVE
     def_bool n
-  config BOOL_REQUIRE_BOWDEN_MOVE
-    bool "Require bowden move?"
+  config PARAM_REQUIRE_BOWDEN_MOVE
+    boolint "Require bowden move?"
+    default 0
     forceshow
     depends on !UNSELECT_REQUIRE_BOWDEN_MOVE
     help
       Whether the design requires a calibrated fast bowden move to reach the extruder.
       This is not necessary if there is a filament splitter/combiner at the toolhead
       and the extruder entry sensor is leveraged as the gate endstop.
-  config PARAM_REQUIRE_BOWDEN_MOVE
-    int
-    default 1 if BOOL_REQUIRE_BOWDEN_MOVE
-    default 0
-
   config UNSELECT_FILAMENT_ALWAYS_GRIPPED
     def_bool n
-  config BOOL_FILAMENT_ALWAYS_GRIPPED
-    bool "Filament always gripped?"
+  config PARAM_FILAMENT_ALWAYS_GRIPPED
+    boolint "Filament always gripped?"
+    default 0
     forceshow
     depends on !UNSELECT_FILAMENT_ALWAYS_GRIPPED
     help
       Whether the design is always gripping the filament. For most type-B designs this
       will be true, but type-A designs usually have a choice because of their filament
       release mechanism..
-  config PARAM_FILAMENT_ALWAYS_GRIPPED
-    int
-    default 1 if BOOL_FILAMENT_ALWAYS_GRIPPED
-    default 0
-
 endmenu

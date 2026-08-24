@@ -217,7 +217,7 @@ import textwrap
 
 # Happy Hare: Added FLOAT
 from kconfiglib import Symbol, Choice, MENU, COMMENT, MenuNode, \
-                       BOOL, TRISTATE, STRING, FLOAT, INT, HEX, \
+                       BOOL, BOOLINT, TRISTATE, STRING, FLOAT, INT, HEX, \
                        AND, OR, \
                        expr_str, expr_value, split_expr, \
                        standard_sc_expr_str, \
@@ -769,7 +769,7 @@ def _needs_save():
             if sym.config_string and not sym._was_default:
                 # Unwritten symbol
                 return True
-        elif sym.orig_type in (BOOL, TRISTATE):
+        elif sym.orig_type in (BOOL, BOOLINT, TRISTATE):
             if sym.tri_value != sym.user_value and not sym._was_default:
                 # Written bool/tristate symbol, new value
                 return True
@@ -1125,6 +1125,12 @@ def _enter_menu(menu):
 
     if not menu.is_menuconfig:
         return False  # Not a menu
+
+    # Happy Hare: A force-shown menu whose dependencies are not met is a
+    # disabled placeholder. Keep it visible for context/help, but do not allow
+    # navigation into its inactive children.
+    if _forced_disabled_menu(menu):
+        return False
 
     shown_sub = _shown_nodes(menu)
     # Never enter empty menus. We depend on having a current node.
@@ -1609,15 +1615,33 @@ def _node_has_help():
         getattr(node, "help", None)
 
 
+def _normally_visible(node):
+    # Returns True when the node is visible according to standard Kconfig
+    # prompt and menu visibility rules.
+    return bool(
+        node.prompt and
+        expr_value(node.prompt[1]) and
+        not (node.item == MENU and not expr_value(node.visibility))
+    )
+
+
+def _forced_disabled_menu(node):
+    # A force-shown menu remains listed when inactive, but acts as a disabled
+    # placeholder rather than an enterable submenu.
+    return (
+        node.item == MENU and
+        hasattr(node, "forceshow") and
+        not _normally_visible(node)
+    )
+
+
 def _visible(node):
     # Returns True if the node should appear in the menu (outside show-all
-    # mode)
-
-    # Happy Hare: Add (and impl) "or node.forceshow" to be able to force showing
-    return node.prompt and (expr_value(node.prompt[1]) or hasattr(node, 'forceshow')) and not \
-        (node.item == MENU and not expr_value(node.visibility))
-#    return node.prompt and expr_value(node.prompt[1]) and not \
-#        (node.item == MENU and not expr_value(node.visibility))
+    # mode). Happy Hare: forceshow can make inactive symbols and menus visible.
+    return bool(
+        node.prompt and
+        (_normally_visible(node) or hasattr(node, "forceshow"))
+    )
 
 
 def _reset_node(node): # Happy Hare: Added method
@@ -1679,8 +1703,8 @@ def _value_repr(item): # Happy Hare: Added method
     if isinstance(item, Choice):
         sel = item.selection
         return sel.name if sel is not None else "(none)"
-    if item.type in (BOOL, TRISTATE):
-        return item.str_value # "n"/"m"/"y"
+    if item.type in (BOOL, BOOLINT, TRISTATE):
+        return item.str_value # "n"/"m"/"y" or BOOLINT "0"/"1"
     return item.str_value     # strings/ints/hex already as text
     
 
@@ -1711,7 +1735,7 @@ def differs_from_default(node, sc, reset=True): # Happy Hare: Added method
 
         # Restore the choice's own mode first
         if saved_choice_uv is not None:
-            if sc.type in (BOOL, TRISTATE):
+            if sc.type in (BOOL, BOOLINT, TRISTATE):
                 sc.set_value(("n", "m", "y")[saved_choice_uv])
             else:
                 sc.set_value(saved_choice_uv)
@@ -1725,7 +1749,7 @@ def differs_from_default(node, sc, reset=True): # Happy Hare: Added method
             if m is saved_user_sel:
                 continue
 
-            if m.type in (BOOL, TRISTATE):
+            if m.type in (BOOL, BOOLINT, TRISTATE):
 
                 # Skip restoring alternate selected members
                 if uv == 2:   # y
@@ -1755,7 +1779,7 @@ def differs_from_default(node, sc, reset=True): # Happy Hare: Added method
 
         # Restore
         if saved_uv is not None:
-            if sc.type in (BOOL, TRISTATE):
+            if sc.type in (BOOL, BOOLINT, TRISTATE):
                 sc.set_value(("n","m","y")[saved_uv])
             else:
                 sc.set_value(saved_uv)
@@ -3465,11 +3489,17 @@ def _node_str(node):
             s += " [[DIM]](NOT DEFAULT)[[/DIM]]"
 
     # Print "--->" next to nodes that have menus that can potentially be
-    # entered. Print "----" if the menu is empty. We don't allow those to be
-    # entered.
+    # entered. Force-shown inactive menus retain the arrow for context, carry
+    # a disabled label, and render the entire row dimmed.
+    disabled_menu = _forced_disabled_menu(node)
     if node.is_menuconfig:
-        # Happy Hare s += "  --->" if _shown_nodes(node) else "  ----"
-        s += "  --->" if _shown_nodes(node) else ""
+        if disabled_menu:
+            s += "  --- [DISABLED]"
+        elif _shown_nodes(node):
+            s += "  --->"
+
+    if disabled_menu:
+        s = "[[DIM]]{}[[/DIM]]".format(s)
 
     return s
 
@@ -3503,7 +3533,7 @@ def _value_str(node):
             return "([[B]]{}[[/B]])".format(item.str_value)
             #return "({})".format(item.str_value)
 
-    # BOOL or TRISTATE
+    # BOOL, BOOLINT, or TRISTATE
 
     if _is_y_mode_choice_sym(item):
         return "(X)" if item.choice.selection is item else "( )"
@@ -3514,7 +3544,7 @@ def _value_str(node):
         # Pinned to a single value
         return "" if isinstance(item, Choice) else "-{}-".format(tri_val_str)
 
-    if item.type == BOOL:
+    if item.type in (BOOL, BOOLINT):
         return "[{}]".format(tri_val_str)
 
     # item.type == TRISTATE

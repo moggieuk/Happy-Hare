@@ -177,19 +177,14 @@ menu "Purging"
 # Other purge options
 # -------------------------------------
 
-  config BOOL_FORCE_PURGE_STANDALONE
-    bool "Happy Hare controlled in-print purge"
-    def_bool n if CHOICE_PURGE_MACRO_SLICER
-    def_bool y
+  config PARAM_FORCE_PURGE_STANDALONE
+    boolint "Happy Hare controlled in-print purge"
+    default 0 if CHOICE_PURGE_MACRO_SLICER
+    default 1
     help
       You can choose whether you want the slicer or Happy Hare (recommended) to control filament purging.
       To use intelligent volume purging or purge systems like Blobifier ensure this selection is checked
       and be sure to TURN OFF in your slicer
-  config PARAM_FORCE_PURGE_STANDALONE
-    int
-    default 1 if BOOL_FORCE_PURGE_STANDALONE
-    default 0
-
   config PARAM_EXTRUDER_PURGE_CURRENT
     int "Extruder purging current       "
     default 100
