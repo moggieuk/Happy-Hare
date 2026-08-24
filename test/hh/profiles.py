@@ -140,7 +140,7 @@ NFC_PER_GATE = BOXTURTLE.derive(
 # no window/direction configuration at all.
 NFC_NEIGHBOR_CHECK = NFC_PER_GATE.derive(
     'nfc_neighbor_check',
-    syms={'BOOL_NFC_NEIGHBOR_CHECK': True},
+    syms={'PARAM_NFC_NEIGHBOR_CHECK': True},
     description='BoxTurtle + per-gate NFC readers, neighbor field check (no eviction)')
 
 # Per-gate readers with neighbor EVICTION switched on too. The jog is BACKWARD (-40): a
@@ -260,8 +260,8 @@ NFC_SPOOLMAN = NFC_PER_GATE.derive(
     'nfc_spoolman',
     syms={
         'CHOICE_SPOOLMAN_SUPPORT_PUSH': True,
-        'BOOL_SPOOLMAN_NFC_AUTO_CREATE': True,
-        'BOOL_NFC_DEEP_READ': True,
+        'PARAM_SPOOLMAN_NFC_AUTO_CREATE': True,
+        'PARAM_NFC_DEEP_READ': True,
     },
     description='Per-gate NFC + Spoolman push + auto-create + deep read')
 
@@ -273,8 +273,8 @@ NFC_SPOOLMAN_SHARED = NFC_SINGLE.derive(
     'nfc_spoolman_shared',
     syms={
         'CHOICE_SPOOLMAN_SUPPORT_PUSH': True,
-        'BOOL_SPOOLMAN_NFC_AUTO_CREATE': True,
-        'BOOL_NFC_DEEP_READ': True,
+        'PARAM_SPOOLMAN_NFC_AUTO_CREATE': True,
+        'PARAM_NFC_DEEP_READ': True,
     },
     description='Unit-level NFC + Spoolman push + auto-create + deep read')
 
@@ -428,7 +428,7 @@ ERCF_VVD = Profile(
         'PIN_TOOLHEAD_SENSOR': 'PG13',
         'PIN_EXTRUDER_SENSOR': 'PG14',
         'TOOLHEAD_TYPE_STEALTHBURNER_CLOCKWORK2_REVO_VORON': True,
-        'BOOL_ENDLESS_SPOOL_ENABLED': True,
+        'PARAM_ENDLESS_SPOOL_ENABLED': True,
         # Spoolman READONLY, with auto-create on. Readonly rather than off so a UID->spool
         # lookup is actually dispatched on an NFC read (mmu_controller.py:3284 gates that on
         # spoolman_support != off) - which is what the console is for. Readonly rather than
@@ -436,7 +436,7 @@ ERCF_VVD = Profile(
         # AND auto_create AND WRITABLE) come out False, so the guard is exercised rather than
         # the happy path. NFC_SPOOLMAN covers push.
         'CHOICE_SPOOLMAN_SUPPORT_RO': True,
-        'BOOL_SPOOLMAN_NFC_AUTO_CREATE': True,
+        'PARAM_SPOOLMAN_NFC_AUTO_CREATE': True,
         'CHOICE_LOG_FILE_LEVEL_STEPPER': True,
         # Both default y (macro_vars/Kconfig.software:30,41); turned off on this machine, so
         # mmu_macro_vars.cfg gets check_gates/load_initial_tool = False at print start.
@@ -460,7 +460,7 @@ ERCF_VVD = Profile(
             # machine's stored config recorded. Pinning it keeps the profile faithful to the
             # hardware rather than to whichever default currently wins.
             'CHOICE_ENCODER_TYPE_BINKY_12': True,
-            'BOOL_HAS_BYPASS': True,
+            'PARAM_HAS_BYPASS': True,
             'SERVO_TYPE_SAVOX_SH0255MG': True,
             'PARAM_SERVO_MAX_ANGLE': 180,
             # ALL FOUR segments, so the console exercises every LED effect path.
