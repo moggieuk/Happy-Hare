@@ -4,7 +4,8 @@ menu "Blobifier            (_BLOBIFIER)"
   help
     Blobifier purging system configuration variables.
 
-    (if desired but disabled, make sure you select Blobifer under purge option)
+    (if disabled but desired, make sure you select "Have Blobifer" option
+     under "Purging --->" menu)
 
   config VAR_BLOBIFIER_PURGE_SPD
     float "Purge speed                    "

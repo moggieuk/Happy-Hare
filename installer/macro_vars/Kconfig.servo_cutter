@@ -7,7 +7,8 @@ menu "Servo cutter at MMU  (_MMU_SERVO_CUTTER)"
     This currently supports EREC and similar cutters that operate
     at the MMU end of the bowden.
 
-    (if desired but disabled, make sure you select mmu servo tip cutter option)
+    (if disabled but desired, make sure you select "Have cutter at MMU" option
+     under "Tip Forming / Cutting --->" menu)
 
   comment "_"
   comment "_Servo movement"
