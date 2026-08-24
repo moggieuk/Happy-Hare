@@ -695,12 +695,13 @@ def menuconfig(kconf):
     # Filename to save minimal configuration to
     _minconf_filename = "defconfig"
 
-    # Any visible items in the top menu?
+    # Any selectable items in the top menu? Comments are displayed, but the
+    # cursor never lands on them.
     _show_all = False
-    if not _shown_nodes(kconf.top_node):
+    if _first_selectable_index(_shown_nodes(kconf.top_node)) is None:
         # Nothing visible. Start in show-all mode and try again.
         _show_all = True
-        if not _shown_nodes(kconf.top_node):
+        if _first_selectable_index(_shown_nodes(kconf.top_node)) is None:
             # Give up. The implementation relies on always having a selected
             # node.
             print("Empty configuration -- nothing to configure.\n"
@@ -1048,7 +1049,8 @@ def _init():
 
     _cur_menu = _kconf.top_node
     _shown = _shown_nodes(_cur_menu)
-    _sel_node_i = _menu_scroll = 0
+    _sel_node_i = _first_selectable_index(_shown)
+    _menu_scroll = 0
 
     _show_help = True
     _show_name = False
@@ -1133,8 +1135,10 @@ def _enter_menu(menu):
         return False
 
     shown_sub = _shown_nodes(menu)
-    # Never enter empty menus. We depend on having a current node.
-    if not shown_sub:
+    first_selectable = _first_selectable_index(shown_sub)
+    # Never enter menus that contain no selectable entries. Comments can make
+    # a menu non-empty while still leaving nowhere valid for the cursor.
+    if first_selectable is None:
         return False
 
     # Remember where the current node appears on the screen, so we can try
@@ -1144,7 +1148,8 @@ def _enter_menu(menu):
     # Jump into menu
     _cur_menu = menu
     _shown = shown_sub
-    _sel_node_i = _menu_scroll = 0
+    _sel_node_i = first_selectable
+    _menu_scroll = 0
 
     if isinstance(menu.item, Choice):
         _select_selected_choice_sym()
@@ -1250,6 +1255,21 @@ def _leave_menu():
         _center_vertically()
 
 
+def _first_selectable_index(nodes):
+    # Comments provide structure and explanation, but are not interactive menu
+    # entries. Return None when a list contains comments only.
+    return _next_selectable_index(nodes, -1, 1)
+
+
+def _next_selectable_index(nodes, start, step):
+    i = start + step
+    while 0 <= i < len(nodes):
+        if nodes[i].item != COMMENT:
+            return i
+        i += step
+    return None
+
+
 def _select_next_menu_entry():
     # Selects the menu entry after the current one, adjusting the scroll if
     # necessary. Does nothing if we're already at the last menu entry.
@@ -1257,18 +1277,19 @@ def _select_next_menu_entry():
     global _sel_node_i
     global _menu_scroll
 
-    if _sel_node_i < len(_shown) - 1:
-        # Jump to the next node
-        _sel_node_i += 1
+    next_i = _next_selectable_index(_shown, _sel_node_i, 1)
+    if next_i is not None:
+        old_i = _sel_node_i
+        _sel_node_i = next_i
 
         # If the new node is sufficiently close to the edge of the menu window
         # (as determined by _SCROLL_OFFSET), increase the scroll by one. This
         # gives nice and non-jumpy behavior even when
         # _SCROLL_OFFSET >= _height(_menu_win).
-        if _sel_node_i >= _menu_scroll + _height(_menu_win) - _SCROLL_OFFSET \
-           and _menu_scroll < _max_scroll(_shown, _menu_win):
-
-            _menu_scroll += 1
+        for node_i in range(old_i + 1, _sel_node_i + 1):
+            if node_i >= _menu_scroll + _height(_menu_win) - _SCROLL_OFFSET \
+               and _menu_scroll < _max_scroll(_shown, _menu_win):
+                _menu_scroll += 1
 
 
 def _select_prev_menu_entry():
@@ -1278,13 +1299,15 @@ def _select_prev_menu_entry():
     global _sel_node_i
     global _menu_scroll
 
-    if _sel_node_i > 0:
-        # Jump to the previous node
-        _sel_node_i -= 1
+    prev_i = _next_selectable_index(_shown, _sel_node_i, -1)
+    if prev_i is not None:
+        old_i = _sel_node_i
+        _sel_node_i = prev_i
 
         # See _select_next_menu_entry()
-        if _sel_node_i < _menu_scroll + _SCROLL_OFFSET:
-            _menu_scroll = max(_menu_scroll - 1, 0)
+        for node_i in range(old_i - 1, _sel_node_i - 1, -1):
+            if node_i < _menu_scroll + _SCROLL_OFFSET:
+                _menu_scroll = max(_menu_scroll - 1, 0)
 
 
 def _select_last_menu_entry():
@@ -1293,7 +1316,7 @@ def _select_last_menu_entry():
     global _sel_node_i
     global _menu_scroll
 
-    _sel_node_i = len(_shown) - 1
+    _sel_node_i = _next_selectable_index(_shown, len(_shown), -1)
     _menu_scroll = _max_scroll(_shown, _menu_win)
 
 
@@ -1303,7 +1326,8 @@ def _select_first_menu_entry():
     global _sel_node_i
     global _menu_scroll
 
-    _sel_node_i = _menu_scroll = 0
+    _sel_node_i = _first_selectable_index(_shown)
+    _menu_scroll = 0
 
 
 def _toggle_show_all():
